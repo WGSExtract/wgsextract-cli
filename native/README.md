@@ -92,17 +92,29 @@ FASTQ parsing and verification are excluded from the timed sections.
 
 The prototype uses one read per GPU thread, a shared page-aligned no-copy BWT
 buffer and bounded per-read scratch. Reads longer than 512 bases, scratch
-overflow (64 intervals) or output overflow (128 intervals) fall back to upstream
-CPU collection and are counted explicitly. `--group` selects the threadgroup
-size. `--verify-only` omits timing; `--scratch-limit` and `--output-limit` lower
-the bounds to exercise fallback. `metal_seeding_parity` covers synthetic unique,
-repetitive, ambiguous, short and overlength reads, partial batches and overflow.
+overflow (128 intervals) or output overflow (256 intervals) fall back to upstream
+CPU collection and are counted explicitly. `--fallback-threads` selects CPU
+fallback workers (default nine); thus `gpu_s` measures the hybrid path, not a
+GPU-only speedup. `fallback_s` reports the separate fallback phase. `--group`
+selects the threadgroup size. `--verify-only` omits timing; `--scratch-limit` and
+`--output-limit` lower the bounds to exercise fallback or tune divergence.
+`metal_seeding_parity` covers unique, repetitive, ambiguous, short and overlength
+reads, partial batches, overflow, and tiny indexes with missing DNA symbols.
 Missing Metal devices return 77; shader or parity failures are errors.
 
 This is a feasibility tool, not a `wgse-bwa --metal` backend. Neither production
 aligner is changed by it. The small `metal-common/` runtime provides reusable
 device/queue setup, runtime shader compilation, shared buffers and dispatch;
 the existing BWA-MEM2 extension backend is deliberately left untouched.
+
+`--concurrent` additionally partitions the input into disjoint CPU9 and GPU
+workloads sharing the same physical BWT. `--gpu-percent` controls the GPU share
+(default 50). `combined_s` includes launch/join, packing, GPU dispatch, unpacking,
+CPU fallback and the slower partition's tail; `combined_rps` counts each input
+read once. Partition construction and verification are excluded. CPU and GPU
+completion times expose imbalance rather than summing isolated throughputs.
+Fallback workers may briefly oversubscribe the nine CPU workers; use
+`--fallback-threads 1` as a low-contention control.
 
 ## Licences
 

@@ -176,7 +176,9 @@ kernel void collect_seeds(device const uint *bwt [[buffer(0)]],
     SeedVector mem = {scratch + tid, p.count, 0, p.scratch_limit};
     SeedVector prev = {scratch + region + tid, p.count, 0, p.scratch_limit};
     SeedVector curr = {scratch + 2 * region + tid, p.count, 0, p.scratch_limit};
-    SeedVector out = {output + tid, p.count, 0, p.output_limit};
+    // Scratch remains lane-interleaved; final output is contiguous per read so
+    // CPU consumers can copy intervals without a strided cache/TLB walk.
+    SeedVector out = {output + ulong(tid) * seed_output_capacity, 1, 0, p.output_limit};
     for (int x = 0; x < len;) {
         if (q[x] >= 4) { ++x; continue; }
         x = seed_smem(bwt, q, len, x, 1, p, mem, prev, curr);

@@ -16,8 +16,8 @@ using SeedI32 = int32_t;
 #endif
 
 enum : SeedU32 {
-    seed_scratch_capacity = 64,
-    seed_output_capacity = 128,
+    seed_scratch_capacity = 128,
+    seed_output_capacity = 256,
     seed_max_length = 512
 };
 

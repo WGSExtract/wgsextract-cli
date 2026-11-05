@@ -46,3 +46,25 @@ grep -Eq 'scratch=[1-9][0-9]*' scratch-fallback.log
     --output-limit 1 > output-fallback.log 2>&1
 cat output-fallback.log
 grep -Eq 'output=[1-9][0-9]*' output-fallback.log
+
+# Tiny indexes exercise sentinel/block boundaries and absent DNA symbols.
+awk 'BEGIN {
+    for (i = 1; i <= 127; ++i) seq = seq "A"
+    print ">tiny\n" seq > "tiny.fa"
+    split("A C G T N", base, " ")
+    for (b = 1; b <= 5; ++b) {
+        for (n = 18; n <= 151; ++n) {
+            read = ""; quality = ""
+            for (i = 1; i <= n; ++i) { read = read base[b]; quality = quality "I" }
+            printf "@tiny%d_%d\n%s\n+\n%s\n", b, n, read, quality > "tiny.fq"
+        }
+    }
+}'
+"$aligner" index tiny.fa > tiny-index.log 2>&1
+"$benchmark" tiny.fa tiny.fq --reads 1000 --batch 257 --verify-only > tiny-parity.log 2>&1
+cat tiny-parity.log
+
+"$benchmark" reference.fa reads.fq --reads 2048 --batch 257 --verify-only \
+    --concurrent --scratch-limit 1 --output-limit 1 > concurrent-parity.log 2>&1
+cat concurrent-parity.log
+grep -q 'concurrent_parity=exact' concurrent-parity.log
