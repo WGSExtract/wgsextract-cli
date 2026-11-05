@@ -12,5 +12,8 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 include(FetchContent)
 include(CTest)
 
+if(BUILD_TESTING)
+    add_subdirectory(metal-common)
+endif()
 add_subdirectory(bwa-mem2)
 add_subdirectory(bwa)

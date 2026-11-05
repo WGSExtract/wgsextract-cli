@@ -73,6 +73,37 @@ hidden GPU tuning flags. Metal tests are skipped when no Metal device is
 available. `.github/workflows/macos_aligners.yml` builds, tests and packages
 both executables, and publishes them when run with a `macos-aligners-N` tag.
 
+### FM-index seeding feasibility benchmark
+
+With `BUILD_TESTING=ON`, `bwa/seeding_benchmark` compares Metal against BWA
+0.7.19's actual `mem_collect_intv` on one and nine CPU threads:
+
+```bash
+out/native/bwa/seeding_benchmark hs38.fa reads.fastq.gz \
+    --reads 32768 --batch 8192 --repeat 3
+```
+
+It needs an existing `.bwt` index and FASTQ (plain or gzip); no suffix array is
+needed to collect intervals. All three default seeding passes, interval order,
+and all four 64-bit interval fields must agree exactly. A warm-up precedes
+timing. `gpu_s` includes packing, dispatch, waiting, unpacking and CPU fallback;
+`kernel_s` is Metal command execution time. Index loading, shader compilation,
+FASTQ parsing and verification are excluded from the timed sections.
+
+The prototype uses one read per GPU thread, a shared page-aligned no-copy BWT
+buffer and bounded per-read scratch. Reads longer than 512 bases, scratch
+overflow (64 intervals) or output overflow (128 intervals) fall back to upstream
+CPU collection and are counted explicitly. `--group` selects the threadgroup
+size. `--verify-only` omits timing; `--scratch-limit` and `--output-limit` lower
+the bounds to exercise fallback. `metal_seeding_parity` covers synthetic unique,
+repetitive, ambiguous, short and overlength reads, partial batches and overflow.
+Missing Metal devices return 77; shader or parity failures are errors.
+
+This is a feasibility tool, not a `wgse-bwa --metal` backend. Neither production
+aligner is changed by it. The small `metal-common/` runtime provides reusable
+device/queue setup, runtime shader compilation, shared buffers and dispatch;
+the existing BWA-MEM2 extension backend is deliberately left untouched.
+
 ## Licences
 
 `wgse-bwa` is GPL-3.0 (BWA). `wgse-bwa-mem2` combines BWA-MEM2 (MIT), sse2neon

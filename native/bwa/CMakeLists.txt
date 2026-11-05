@@ -27,6 +27,37 @@ target_link_libraries(wgse-bwa PRIVATE ZLIB::ZLIB Threads::Threads m)
 if(BUILD_TESTING)
     add_test(NAME bwa_smoke COMMAND "${PROJECT_SOURCE_DIR}/tests/smoke.sh"
         $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/smoke")
+
+    # The oracle includes upstream bwamem.c to expose its otherwise-static
+    # mem_collect_intv. No patches or instrumentation enter the release aligner.
+    set(oracle_sources ${bwa_sources})
+    list(REMOVE_ITEM oracle_sources "${bwa_SOURCE_DIR}/main.c"
+        "${bwa_SOURCE_DIR}/bwamem.c")
+    add_library(bwa_seed_oracle STATIC ${oracle_sources} seed_oracle.c)
+    set_source_files_properties(seed_oracle.c PROPERTIES
+        COMPILE_OPTIONS "-Wall;-Wextra;-Werror")
+    target_include_directories(bwa_seed_oracle SYSTEM PUBLIC "${bwa_SOURCE_DIR}")
+    target_include_directories(bwa_seed_oracle PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_definitions(bwa_seed_oracle PRIVATE HAVE_PTHREAD USE_MALLOC_WRAPPERS
+        PACKAGE_VERSION="0.7.19-r1273-wgse-${PROJECT_VERSION}")
+    target_compile_options(bwa_seed_oracle PRIVATE -Wno-unused-function
+        -Wno-unused-but-set-variable -Wno-deprecated-non-prototype)
+    target_link_libraries(bwa_seed_oracle PUBLIC ZLIB::ZLIB Threads::Threads m)
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/seeding_types.h" seeding_types)
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/seeding.metal" seeding_source)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/seeding_types.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/seeding.metal")
+    configure_file(seeding_source.h.in generated/seeding_source.h @ONLY)
+    add_executable(seeding_benchmark seeding_benchmark.mm)
+    target_include_directories(seeding_benchmark PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+    target_compile_options(seeding_benchmark PRIVATE -fobjc-arc -Wall -Wextra -Werror)
+    target_link_libraries(seeding_benchmark PRIVATE bwa_seed_oracle wgse_metal_common)
+    add_test(NAME metal_seeding_parity COMMAND sh
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/seeding_parity.sh"
+        $<TARGET_FILE:wgse-bwa> $<TARGET_FILE:seeding_benchmark>
+        "${CMAKE_CURRENT_BINARY_DIR}/seeding-parity")
+    set_tests_properties(metal_seeding_parity PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
 install(TARGETS wgse-bwa RUNTIME DESTINATION bin)
