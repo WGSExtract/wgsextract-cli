@@ -189,7 +189,10 @@ CPU, with these exact changes to upstream's code (none changes any output):
 
 `-DWGSE_MINIMAP2_KSW2=sse2` builds upstream's SSE2-only base-level alignment
 (as Bioconda does) instead of the default SSE4.1 kernels; both give the same
-alignments.
+alignments. The tests build unmodified upstream minimap2 2.31 and require
+identical indexes and SAM records (apart from `@PG`) for map-hifi, map-ont,
+map-pb and sr on a synthetic genome with segmental duplications and tandem
+repeats.
 
 ## Memory
 
@@ -448,7 +451,9 @@ adapted from BWA's MIT-licensed `bwt.c`, `bwamem.c`, `bwamem_pair.c` and
 `wgse-bwa-mem2` combines BWA-MEM2 (MIT), sse2neon
 (MIT) and safestringlib (MIT) with the code in `bwa-mem2/` (GPL-3.0-or-later,
 like this repository). `wgse-minimap2` combines minimap2 (MIT) and sse2neon
-(MIT) with the code in `minimap2/` (GPL-3.0-or-later), whose sketching and radix
-sort code is adapted from minimap2's `sketch.c` and `ksort.h`. Each package ships its licences, including this
-repository's GPL-3.0 text as `WGSE-LICENSE`, under `share/licenses/`, and the corresponding source is this directory plus the
+(MIT) with the code in `minimap2/` (GPL-3.0-or-later). Its sketching code is
+adapted from minimap2's `sketch.c` (`MINIMAP2-LICENSE`) and its radix sort from
+minimap2's `ksort.h`, whose own MIT notice ships as `KSORT-LICENSE`. Each package
+ships its licences, including this repository's GPL-3.0 text as `WGSE-LICENSE`,
+under `share/licenses/`, and the corresponding source is this directory plus the
 pinned upstream archives in the CMake files.

@@ -107,10 +107,12 @@ file(WRITE "${generated}/sketch.c" "${sketch_source}\n#include \"wgse_sketch.inc
 set(minimap2_names
     kthread kalloc bseq sdust options lchain align hit jump
     map format pe esterr splitidx ksw2_ll_sse)
-list(TRANSFORM minimap2_names PREPEND "${minimap2_SOURCE_DIR}/" OUTPUT_VARIABLE minimap2_sources)
+list(TRANSFORM minimap2_names PREPEND "${minimap2_SOURCE_DIR}/" OUTPUT_VARIABLE minimap2_common_sources)
+list(TRANSFORM minimap2_common_sources APPEND ".c")
+set(minimap2_seamed main index misc seed sketch)
+list(TRANSFORM minimap2_seamed PREPEND "${generated}/" OUTPUT_VARIABLE minimap2_sources)
 list(TRANSFORM minimap2_sources APPEND ".c")
-list(APPEND minimap2_sources "${generated}/main.c" "${generated}/index.c" "${generated}/misc.c"
-    "${generated}/seed.c" "${generated}/sketch.c")
+list(PREPEND minimap2_sources ${minimap2_common_sources})
 
 set(WGSE_MINIMAP2_KSW2 sse41 CACHE STRING
     "ksw2 extension kernels: sse41 (sse2neon 1.8.0) or sse2 (upstream's NEON build)")
@@ -134,17 +136,22 @@ target_include_directories(wgse_minimap2_ksw2 SYSTEM PRIVATE "${minimap2_SOURCE_
 target_compile_definitions(wgse_minimap2_ksw2 PRIVATE HAVE_KALLOC)
 target_compile_options(wgse_minimap2_ksw2 PRIVATE -UNDEBUG -fsigned-char -Wno-unused-function)
 
+function(minimap2_target_settings target)
+    target_include_directories(${target} SYSTEM PUBLIC "${minimap2_SOURCE_DIR}")
+    target_include_directories(${target} SYSTEM PRIVATE "${minimap2_SOURCE_DIR}/sse2neon")
+    target_compile_definitions(${target} PRIVATE HAVE_KALLOC _FILE_OFFSET_BITS=64)
+    # Upstream asserts stay on, as in its own and Bioconda's builds.
+    target_compile_options(${target} PRIVATE -UNDEBUG -fsigned-char
+        -Wno-unused-function -Wno-unused-but-set-variable -Wno-unused-variable)
+    target_link_libraries(${target} PUBLIC ZLIB::ZLIB Threads::Threads m)
+endfunction()
+
 function(wgse_minimap2_executable name core)
     add_library(${core} STATIC ${minimap2_sources} $<TARGET_OBJECTS:wgse_minimap2_ksw2>)
-    target_include_directories(${core} SYSTEM PUBLIC "${minimap2_SOURCE_DIR}")
-    target_include_directories(${core} SYSTEM PRIVATE "${minimap2_SOURCE_DIR}/sse2neon")
+    minimap2_target_settings(${core})
     target_include_directories(${core} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
-    target_compile_definitions(${core} PRIVATE HAVE_KALLOC _FILE_OFFSET_BITS=64
+    target_compile_definitions(${core} PRIVATE
         WGSE_PG_VERSION="2.31-r1302-wgse-${WGSE_MINIMAP2_VERSION}")
-    # Upstream asserts stay on, as in its own and Bioconda's builds.
-    target_compile_options(${core} PRIVATE -UNDEBUG -fsigned-char
-        -Wno-unused-function -Wno-unused-but-set-variable -Wno-unused-variable)
-    target_link_libraries(${core} PUBLIC ZLIB::ZLIB Threads::Threads m)
 
     add_executable(${name} main.mm)
     target_compile_definitions(${name} PRIVATE WGSE_VERSION="${WGSE_MINIMAP2_VERSION}")
@@ -168,6 +175,15 @@ if(BUILD_TESTING)
     add_test(NAME minimap2_segments COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/segments.sh"
         $<TARGET_FILE:wgse-minimap2> $<TARGET_FILE:wgse-minimap2-segments>
         "${CMAKE_CURRENT_BINARY_DIR}/segments")
+    # Unmodified upstream sources, to check that the seams change no index or alignment.
+    add_executable(minimap2-upstream
+        ${minimap2_common_sources} "${minimap2_SOURCE_DIR}/main.c" "${minimap2_SOURCE_DIR}/index.c"
+        "${minimap2_SOURCE_DIR}/misc.c" "${minimap2_SOURCE_DIR}/seed.c"
+        "${minimap2_SOURCE_DIR}/sketch.c" $<TARGET_OBJECTS:wgse_minimap2_ksw2>)
+    minimap2_target_settings(minimap2-upstream)
+    add_test(NAME minimap2_upstream_parity COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
+        $<TARGET_FILE:wgse-minimap2> $<TARGET_FILE:minimap2-upstream>
+        "${CMAKE_CURRENT_BINARY_DIR}/upstream")
 endif()
 
 install(TARGETS wgse-minimap2 RUNTIME DESTINATION bin)
@@ -177,3 +193,13 @@ install(FILES "${minimap2_SOURCE_DIR}/LICENSE.txt" DESTINATION share/licenses/wg
     RENAME MINIMAP2-LICENSE)
 install(FILES "${neon_SOURCE_DIR}/LICENSE" DESTINATION share/licenses/wgse-minimap2
     RENAME sse2neon-LICENSE)
+# wgse_ksort.h adapts ksort.h, whose MIT notice differs from minimap2's.
+file(READ "${minimap2_SOURCE_DIR}/ksort.h" ksort_source)
+string(REGEX MATCH "/\\* The MIT License[^*]*\\*/" ksort_license "${ksort_source}")
+if(NOT ksort_license)
+    message(FATAL_ERROR "No MIT notice in upstream ksort.h")
+endif()
+string(REGEX REPLACE "^/\\* | *\\*/$" "" ksort_license "${ksort_license}")
+string(REGEX REPLACE "\n   " "\n" ksort_license "${ksort_license}")
+file(WRITE "${generated}/KSORT-LICENSE" "${ksort_license}\n")
+install(FILES "${generated}/KSORT-LICENSE" DESTINATION share/licenses/wgse-minimap2)

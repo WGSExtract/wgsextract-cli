@@ -3,6 +3,7 @@
  * hash table type. Each bucket's hash table is filled in upstream's order, so the
  * tables, and everything mapped with them, are identical to upstream's. */
 #include <errno.h>
+#include <pthread.h>
 #include <string.h>
 
 static int wgse_n_threads = 1; // set from the reader's -t
@@ -125,6 +126,21 @@ static mm_idx_t *wgse_mm_idx_load(FILE *fp, int n_threads)
 
 int wgse_mm_sketch_range(void *km, const char *str, int len, int warm, int beg, int end, int w, int k, uint32_t rid, int is_hpc, mm128_v *p);
 
+/* Step 0 can pack the next batch while step 1 sketches this one. One team of at most
+ * -t workers runs at a time, so the two steps never use more than -t threads between them,
+ * and a team never has more workers than jobs. */
+static pthread_mutex_t wgse_team_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void wgse_team(void (*func)(void*, long, int), void *data, long n)
+{
+	int n_threads = wgse_n_threads > 0? wgse_n_threads : 1;
+	if (n <= 0) return;
+	if (n_threads > n) n_threads = (int)n;
+	pthread_mutex_lock(&wgse_team_lock);
+	kt_for(n_threads, func, data, n);
+	pthread_mutex_unlock(&wgse_team_lock);
+}
+
 typedef struct {
 	uint32_t *S;
 	uint64_t word0, n_words;
@@ -156,7 +172,7 @@ static void wgse_pack(uint32_t *S, uint64_t offset, const char *seq, uint32_t le
 	n_words = (len - j) / 8;
 	if (n_words > 0) {
 		d.S = S, d.word0 = (offset + j) >> 3, d.n_words = n_words, d.seq = seq + j;
-		kt_for(wgse_n_threads > 0? wgse_n_threads : 1, wgse_pack_worker, &d, (n_words + WGSE_PACK_BLOCK - 1) / WGSE_PACK_BLOCK);
+		wgse_team(wgse_pack_worker, &d, (long)((n_words + WGSE_PACK_BLOCK - 1) / WGSE_PACK_BLOCK));
 		j += n_words * 8;
 	}
 	for (; j < len; ++j)
@@ -189,19 +205,21 @@ static inline int wgse_run_start(const char *s, int i) // homopolymer runs start
 	return seq_nt4_table[(uint8_t)s[i - 1]] != seq_nt4_table[(uint8_t)s[i]];
 }
 
-// The next segment start at or after t: preceded by WGSE_SKETCH_WARM unambiguous bases
-// (the warm-up starting at a homopolymer run), or len if there is none.
-static int wgse_next_split(const char *s, int len, int t, int is_hpc, int *warm)
+// The first segment start at or after t: preceded by WGSE_SKETCH_WARM unambiguous bases
+// (the warm-up starting at a homopolymer run), or len if there is none. Each test only
+// skips starts that fail it, so their order does not change the result; the cheap ones
+// come first. Positions are 64-bit so that skips past len cannot overflow.
+static int wgse_next_split(const char *s, int len, int64_t t, int is_hpc, int *warm)
 {
-	int p = t < WGSE_SKETCH_WARM + 1? WGSE_SKETCH_WARM + 1 : t;
+	int64_t p = t < WGSE_SKETCH_WARM + 1? WGSE_SKETCH_WARM + 1 : t, q;
 	while (p < len) {
-		int q;
-		for (q = p - 1; q >= p - WGSE_SKETCH_WARM && seq_nt4_table[(uint8_t)s[q]] < 4; --q) {}
-		if (q >= p - WGSE_SKETCH_WARM) { p = q + 1 + WGSE_SKETCH_WARM; continue; }
+		if (seq_nt4_table[(uint8_t)s[p - 1]] > 3) { p += WGSE_SKETCH_WARM; continue; }
 		if (is_hpc && !wgse_run_start(s, p)) { ++p; continue; }
+		for (q = p - 2; q >= p - WGSE_SKETCH_WARM && seq_nt4_table[(uint8_t)s[q]] < 4; --q) {}
+		if (q >= p - WGSE_SKETCH_WARM) { p = q + 1 + WGSE_SKETCH_WARM; continue; }
 		for (q = p - WGSE_SKETCH_WARM; is_hpc && q < p && !wgse_run_start(s, q); ++q) {}
-		*warm = q;
-		return p;
+		*warm = (int)q;
+		return (int)p;
 	}
 	return len;
 }
@@ -222,7 +240,7 @@ static void wgse_sketch_batch(const mm_idx_t *mi, int n_seq, mm_bseq1_t *seq, mm
 			continue;
 		}
 		while (beg < t->l_seq) {
-			int next_warm = 0, end = wgse_next_split(t->seq, t->l_seq, beg + WGSE_SKETCH_SEGMENT, is_hpc, &next_warm);
+			int next_warm = 0, end = wgse_next_split(t->seq, t->l_seq, (int64_t)beg + WGSE_SKETCH_SEGMENT, is_hpc, &next_warm);
 			if (n == m) {
 				m = m? m * 2 : 64;
 				g = (wgse_segment_t*)realloc(g, m * sizeof(wgse_segment_t));
@@ -234,7 +252,7 @@ static void wgse_sketch_batch(const mm_idx_t *mi, int n_seq, mm_bseq1_t *seq, mm
 		}
 	}
 	d.mi = mi, d.seq = seq, d.seg = g;
-	kt_for(wgse_n_threads > 0? wgse_n_threads : 1, wgse_sketch_worker, &d, n);
+	wgse_team(wgse_sketch_worker, &d, n);
 	for (i = 0, total = a->n; i < n; ++i) total += g[i].a.n;
 	if (total > a->m) kv_resize(mm128_t, 0, *a, total); // one exact allocation while the segments are still held
 	for (i = 0; i < n;) {
