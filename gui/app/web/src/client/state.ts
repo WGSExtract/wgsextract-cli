@@ -31,6 +31,8 @@ export function createInitialState(): WebUIState {
         sourceRootPath: "",
         appVersion: "",
         workspaceLocation: null,
+        workspaceLocationDraft: null,
+        workspaceMove: null,
         activePageID: "",
         fieldValues: {},
         checkedOptions: {},

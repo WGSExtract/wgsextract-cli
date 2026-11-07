@@ -1623,3 +1623,8 @@ tbody tr + tr {
     gap: 6px;
   }
 }
+
+.workspace-location-confirm {
+  display: grid;
+  gap: 8px;
+}
