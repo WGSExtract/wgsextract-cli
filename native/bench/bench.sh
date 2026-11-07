@@ -246,7 +246,7 @@ warm() {
 # One run: writes $dir/runstat.txt, stderr.txt, samples.tsv, vm_*.txt and
 # hash, and prints its results.tsv row.
 run_one() {
-    local dir=$1 label=$2 bin=$3 config=$4 round=$5 rc sampler_pid hash status expected
+    local dir=$1 label=$2 bin=$3 config=$4 round=$5 rc sampler_pid hash status expected report
     mkdir -p "$dir"
     parse_config "$config"
     tool_command "$bin" "$c_tool" "$c_backend" "$c_threads" "$c_K" "$ref_fa" \
@@ -268,6 +268,10 @@ run_one() {
     hash=$(cat "$dir/hash")
     expected=$(awk -F '\t' -v tier="$tier" -v tool="$(tool_binary "$c_tool")" -v K="$c_K" \
         '!/^#/ && $1 == tier && $2 == tool && $3 == K { print $4 }' "$here/expected.tsv")
+    # The GPU resets of the run, which macOS reports even when the aligner recovers.
+    for report in /Library/Logs/DiagnosticReports/*.gpuRestart; do
+        [ -f "$report" ] && [ "$report" -nt "$dir/started.txt" ] && cp "$report" "$dir/" || true
+    done
     if [ "$rc" != 0 ]; then
         diagnose "$dir"
         if [ "$c_probe" = 1 ]; then status=probe-failed; else status=failed; fi
@@ -296,13 +300,15 @@ results_header() {
 }
 
 row() {
-    local dir=$1 label=$2 config=$3 round=$4 rc=$5 hash=$6 expected=$7 status=$8 note jetsam=0
+    local dir=$1 label=$2 config=$3 round=$4 rc=$5 hash=$6 expected=$7 status=$8 note jetsam=0 resets
     note=$(grep -m 1 -o 'CPU fallback: .*\|Metal execution failed.*\|[Ee]rror[: ].*\|[Ff]ailed.*' "$dir/stderr.txt" |
         tr '\t' ' ' | cut -c1-120 || true)
     if [ -s "$dir/memorystatus.log" ] && grep -qi "killing.*wgse\|wgse.*kill" "$dir/memorystatus.log"; then
         jetsam=1
     fi
     ls "$dir"/JetsamEvent* > /dev/null 2>&1 && jetsam=1
+    resets=$(find "$dir" -name '*.gpuRestart' | wc -l | tr -d ' ')
+    [ "$resets" = 0 ] || note="$resets GPU resets${note:+; $note}"
     awk -F '=' -v OFS='\t' -v name="$name" -v tier="$tier" -v label="$label" -v config="$config" \
         -v round="$round" -v rc="$rc" -v hash="$hash" -v expected="$expected" -v status="$status" \
         -v note="${note:--}" -v jetsam="$jetsam" -v page="$(sysctl -n hw.pagesize)" \

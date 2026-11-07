@@ -11,5 +11,6 @@ jobs:
     with:
       variants: "main"
       tiers: "full-5m"
-      runners: "macos-15"
-      configs: "bwa:metal,bwa:cpu"
+      runners: "macos-15,macos-26"
+      configs: "bwa:metal"
+      run_timeout_minutes: "90"

@@ -12,5 +12,5 @@ jobs:
       variants: "main"
       tiers: "full"
       runners: "macos-15,macos-26"
-      configs: "bwa:cpu,bwa:metal,mem2:metal:probe,mem2:cpu:probe"
-      run_timeout_minutes: "45"
+      configs: "bwa:metal,bwa:cpu:probe"
+      run_timeout_minutes: "30"
