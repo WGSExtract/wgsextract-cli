@@ -24,6 +24,42 @@ int half_max(int value) {
 // Whether segment j is part of a query with slen segments.
 bool live(int j, int slen) { return j < forward_segments && j < slen; }
 
+// Per-pass constants of the inner loop.
+struct Costs {
+    ushort shift, ambiguous_s, e_del, e_ins, oe_del, oe_ins;
+};
+
+// One target row over this lane's segments; returns the row maximum. h enters as
+// the H carried from the left neighbour and f leaves as this lane's final F.
+// may_be_n is false when no lane of the SIMD-group has an N target base.
+template <bool may_be_n>
+ushort row(thread ushort (&H)[segments], thread ushort (&E)[segments],
+    const thread uint (&P)[segments], int slen, ushort base, int real, ushort h,
+    thread ushort &f, Costs c)
+{
+    const bool n = may_be_n && base == 4;
+    const uint lane_shift = n ? 0u : 8u * uint(base);
+    ushort row_max = 0;
+    _Pragma("unroll")
+    for (int j = 0; j < segments; ++j) {
+        if (live(j, slen)) {
+            const ushort profile = ushort((P[j] >> lane_shift) & 255u);
+            // An N in the target scores ambiguous against everything except padding.
+            const ushort score = !n ? profile : j < real ? c.ambiguous_s : c.shift;
+            const ushort previous = H[j];
+            h = subsat(min(ushort(h + score), ushort(255)), c.shift);
+            const ushort e = E[j];
+            h = max(h, max(e, f));
+            row_max = max(row_max, h);
+            H[j] = h;
+            E[j] = max(subsat(e, c.e_del), subsat(h, c.oe_del));
+            f = max(subsat(f, c.e_ins), subsat(h, c.oe_ins));
+            h = previous;
+        }
+    }
+    return row_max;
+}
+
 struct Pass {
     int gmax, te, qe, rows;
 };
@@ -50,6 +86,7 @@ Pass striped(bool run, int lane, uint side, const device uchar *query, int qlen,
     // Profile values (score + shift) for a match, a mismatch and an N.
     const ushort match_s = ushort(p.match + p.shift), mismatch_s = ushort(p.mismatch + p.shift),
         ambiguous_s = ushort(p.ambiguous + p.shift);
+    const Costs c{shift, ambiguous_s, e_del, e_ins, oe_del16, oe_ins16};
     _Pragma("unroll")
     for (int j = 0; j < segments; ++j) {
         const int position = lane * slen + j;
@@ -76,27 +113,13 @@ Pass striped(bool run, int lane, uint side, const device uchar *query, int qlen,
         ushort h = ushort(simd_shuffle_up(last, ushort(1)));
         if (lane == 0) h = 0;
         ushort f = 0, row_max = 0;
+        // Rows without an N in the target need no per-cell ambiguity test.
+        const bool plain = simd_all(base != 4);
         if (run) {
-            // An N in the target scores ambiguous against everything except padding.
-            const uint lane_shift = base == 4 ? 0u : 8u * uint(base);
             // Segments below real hold query bases; the rest are padding.
             const int real = qlen - lane * slen;
-            _Pragma("unroll")
-            for (int j = 0; j < segments; ++j) {
-                if (live(j, slen)) {
-                    const ushort profile = ushort((P[j] >> lane_shift) & 255u);
-                    const ushort score = base != 4 ? profile : j < real ? ambiguous_s : shift;
-                    const ushort previous = H[j];
-                    h = subsat(min(ushort(h + score), ushort(255)), shift);
-                    const ushort e = E[j];
-                    h = max(h, max(e, f));
-                    row_max = max(row_max, h);
-                    H[j] = h;
-                    E[j] = max(subsat(e, e_del), subsat(h, oe_del16));
-                    f = max(subsat(f, e_ins), subsat(h, oe_ins16));
-                    h = previous;
-                }
-            }
+            row_max = plain ? row<false>(H, E, P, slen, base, real, h, f, c)
+                : row<true>(H, E, P, slen, base, real, h, f, c);
         }
         // Lazy F (ksw_u8's SWPS3 loop): in round k every lane takes the F its
         // left neighbour ended round k - 1 with and, segment by segment, raises
