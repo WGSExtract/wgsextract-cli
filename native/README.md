@@ -201,6 +201,11 @@ though it keeps up to eight prepared seeding batches per chunk and seeds up to
 two chunks ahead. That leaves more room for other applications on a 32 GB
 Mac; it has not been tested on a 16 GB Mac.
 
+On a base M1 Mac mini with 16 GB, `wgse-bwa` 0.5.0 built the hs38 index with a
+6.2 GiB peak. Aligning with 0.7.0 and 8 threads peaked at 5.5 GiB on the CPU and
+6.2 GiB of resident memory with `--metal`. Both finished at the same speed
+alongside a 6 GB process that pushed about 3.7 GB into swap.
+
 ## Performance
 
 Measured on an M1 Pro (8P+2E cores, 32 GB). All runs in each group produced
@@ -320,6 +325,31 @@ in cache:
 | Bioconda bwa-mem2 2.3 | 8 | 45.7 s | — |
 | `wgse-bwa-mem2` | 9 | 35.0 s | −23.5% |
 | `wgse-bwa-mem2 --metal` | 9 | 31.0 s | −32.2% |
+
+On a base M1 Mac mini (4P+4E cores, 8-core GPU, 16 GB) with the same 5M pairs
+and `-K 10000000`, with a display attached. Each row's runs produced identical
+alignments and exited 0, and no command buffer was aborted. `wgse-bwa` used
+hs38; `wgse-bwa-mem2` used the small reference, as its full index does not fit
+in this memory on the CPU and was not built for `--metal`:
+
+| Aligner | Threads | Time | Peak RSS | vs CPU |
+| --- | --- | --- | --- | --- |
+| `wgse-bwa` 0.7.0 | 4 | 932.8 s | 5.4 GiB | — |
+| `wgse-bwa --metal` 0.7.0 | 4 | 214.8 s | 6.2 GiB | −77.0% |
+| `wgse-bwa` 0.7.0 | 8 | 611.8 s | 5.5 GiB | — |
+| `wgse-bwa --metal` 0.7.0 | 8 | 211.6 s | 6.2 GiB | −65.4% |
+| `wgse-bwa-mem2` 0.3.0 | 4 | 1589.2 s | 1.3 GiB | — |
+| `wgse-bwa-mem2 --metal` 0.3.0 | 4 | 383.4 s | 2.1 GiB | −75.9% |
+| `wgse-bwa-mem2` 0.3.0 | 8 | 985.3 s | 1.4 GiB | — |
+| `wgse-bwa-mem2 --metal` 0.3.0 | 8 | 373.8 s | 2.4 GiB | −62.1% |
+
+The `--metal` 8-thread `wgse-bwa` row is the mean of three runs. With an animated
+browser page redrawing the display, `wgse-bwa --metal` took 280.0 s with 8
+threads (four runs) and 284.5 s with 4. Alongside a 6 GB process it took 211.5 s
+with 8 threads and 215.2 s with 4, against 613.7 s on the CPU with 8. On this
+machine `wgse-bwa --metal` 0.5.0 was aborted in about half of its full-genome
+runs and then finished on the CPU with exit status 1; 0.7.0 was not aborted in
+any of its 11. Building the hs38 BWA index with 0.5.0 took 41 minutes.
 
 On the CPU `wgse-bwa` matches the packaged build; its value is a
 self-contained, dependency-free macOS build. Compiler tuning does not help:
