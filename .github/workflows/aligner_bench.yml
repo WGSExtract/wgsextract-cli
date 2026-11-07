@@ -90,7 +90,10 @@ jobs:
               [[ $runner != *intel* && $runner != macos-13* ]] || break
             done < <(list "$TIERS")
           done < <(list "$RUNNERS")
-          [ "$variants" != '[]' ] && [ "$jobs" != '[]' ] || { echo "::error::nothing to run"; exit 1; }
+          if [ "$variants" = '[]' ] || [ "$jobs" = '[]' ]; then
+            echo "::error::nothing to run"
+            exit 1
+          fi
           {
             echo "variants=$variants"
             echo "labels=${labels# }"
