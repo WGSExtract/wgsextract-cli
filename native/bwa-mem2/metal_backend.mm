@@ -1205,8 +1205,9 @@ public:
                 // The table depends only on the index (p.count, p.sentinel).
                 const size_t entries = ((size_t(1) << (2 * (seed_prefix_depth + 1))) - 4) / 3;
                 id<MTLBuffer> table = runtime_.allocate(entries * 3 * sizeof(int64_t));
+                if (!table) throw std::runtime_error("GPU seeding allocation failed");
                 double seconds = 0;
-                if (!table || !runtime_.dispatch(prefix_pipeline_, {index_, parameters_, table},
+                if (!runtime_.dispatch(prefix_pipeline_, {index_, parameters_, table},
                         entries, seed_group, seconds))
                     throw std::runtime_error("GPU seeding: " + runtime_.failure());
                 prefixes_ = table;
