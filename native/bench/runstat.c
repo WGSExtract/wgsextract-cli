@@ -26,8 +26,7 @@ static void forward(int signo) {
 
 static void expire(int signo) {
     (void)signo;
-    if (child <= 0) return;
-    kill(child, timed_out ? SIGKILL : SIGTERM);
+    if (child <= 0 || kill(child, timed_out ? SIGKILL : SIGTERM) != 0) return;
     timed_out = 1;
     alarm(30);
 }
@@ -61,9 +60,13 @@ int main(int argc, char **argv) {
         _exit(127);
     }
     child = pid;
-    signal(SIGTERM, forward);
-    signal(SIGINT, forward);
-    signal(SIGALRM, expire);
+    struct sigaction action = {0};
+    sigemptyset(&action.sa_mask);
+    action.sa_handler = forward;
+    sigaction(SIGTERM, &action, NULL);
+    sigaction(SIGINT, &action, NULL);
+    action.sa_handler = expire;
+    sigaction(SIGALRM, &action, NULL);
     if (timeout) alarm(timeout);
 
     siginfo_t info;

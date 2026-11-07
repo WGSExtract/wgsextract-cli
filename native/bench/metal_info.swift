@@ -1,4 +1,5 @@
 // Print the default Metal device's properties as key=value lines.
+import Foundation
 import Metal
 
 guard let device = MTLCreateSystemDefaultDevice() else {

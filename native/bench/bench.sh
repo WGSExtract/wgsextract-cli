@@ -162,11 +162,15 @@ fetch() {
             mkdir -p "$(dirname "$data/$path")"
             local parts=()
             for part in ${assets//,/ }; do parts+=("$data/.download/$part"); done
-            case $assets in
+            for part in "${parts[@]}"; do total=$((total + $(file_bytes "$part"))); done
+            if ! case $assets in
                 *.zst | *.zst.[0-9][0-9]*) cat "${parts[@]}" | zstd -q -d -c > "$data/$path" ;;
                 *) cat "${parts[@]}" > "$data/$path" ;;
-            esac
-            for part in "${parts[@]}"; do total=$((total + $(file_bytes "$part"))); done
+            esac; then
+                echo "fetch: could not unpack $path (attempt $attempt)" >&2
+                rm -f "${parts[@]}" "$data/$path"
+                continue
+            fi
             rm -f "${parts[@]}"
             if [ "$(sha256 "$data/$path")" = "$sha" ]; then
                 echo "$sha" > "$data/$path.sha256"
@@ -423,12 +427,12 @@ run() {
     [ -z "$balloon_pid" ] || { kill "$balloon_pid" 2> /dev/null || true; trap - EXIT; }
 
     # Runs of a tool on a tier with the same K must all agree.
-    awk -F '\t' -v OFS='\t' '
-        NR == FNR { if (FNR > 1 && $6 == 0) { split($4, f, ":"); K = 10000000
+    awk -F '\t' -v OFS='\t' -v default_K="$default_K" '
+        NR == FNR { if (FNR > 1 && $6 == 0) { split($4, f, ":"); K = default_K
                 for (j in f) if (f[j] ~ /^K[0-9]+$/) K = substr(f[j], 2)
                 key = f[1] ":" K; if (!(key in first)) first[key] = $26; else if ($26 != first[key]) bad[key] = 1 }
             next }
-        FNR > 1 { split($4, f, ":"); K = 10000000; for (j in f) if (f[j] ~ /^K[0-9]+$/) K = substr(f[j], 2)
+        FNR > 1 { split($4, f, ":"); K = default_K; for (j in f) if (f[j] ~ /^K[0-9]+$/) K = substr(f[j], 2)
             if ((f[1] ":" K) in bad && $28 == "pass") $28 = "inconsistent" }
         { print }' "$out/results.tsv" "$out/results.tsv" > "$out/results.tsv.new"
     mv "$out/results.tsv.new" "$out/results.tsv"
