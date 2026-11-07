@@ -31,6 +31,13 @@ export type LabelTextKey =
     | "sidebarHideLabel"
     | "openBundleWorkspaceTitle"
     | "openBundleWorkspaceTooltip"
+    | "workspaceLocationTitle"
+    | "workspaceLocationFolderLabel"
+    | "workspaceLocationCurrentLabel"
+    | "workspaceLocationUseDefaultTitle"
+    | "workspaceLocationNote"
+    | "workspaceLocationRestartNote"
+    | "workspaceLocationEnvironmentNote"
     | "terminalCopyTextLabel"
     | "terminalCopiedTextLabel"
     | "terminalCancelButtonTitle"
@@ -433,6 +440,7 @@ export interface ManifestResponse {
     usingSystemDefaultLocale?: boolean;
     bundleState?: BundleStateSnapshot | null;
     appVersion?: string;
+    workspaceLocation?: WorkspaceLocationInfo;
     bundleRootPath: string;
     sourceRootPath: string;
     lastResultDocumentPaths?: LastResultDocumentPaths;
@@ -526,6 +534,7 @@ export interface WebUIState {
     lastResultDocumentPaths: LastResultDocumentPaths;
     sourceRootPath: string;
     appVersion: string;
+    workspaceLocation: WorkspaceLocationInfo | null;
     activePageID: string;
     fieldValues: ValueMap;
     checkedOptions: Record<string, Set<string>>;
@@ -560,4 +569,13 @@ export interface WebUIState {
     sidebarWidth: number;
     terminalHeight: number;
     [key: string]: unknown;
+}
+
+/** Where this bundle's workspace is, and where the bundle workspaces folder is set to be from the next launch. */
+export interface WorkspaceLocationInfo {
+    workspaceRoot: string;
+    defaultDirectory: string;
+    configuredDirectory: string | null;
+    environmentOverride: boolean;
+    restartRequired: boolean;
 }
