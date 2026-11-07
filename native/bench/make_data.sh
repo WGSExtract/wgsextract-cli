@@ -135,7 +135,7 @@ part_bytes=1900000000
                     rm "$out/assets/$asset"
                 fi
             fi
-            assets=$(cd "$out/assets" && ls "$asset"* | paste -sd , -)
+            assets=$(cd "$out/assets" && printf '%s\n' "$asset"* | paste -sd , -)
             printf '%s\t%s\t%s\t%s\n' "$path" "$(stat -L -f %z "$data/$path")" \
                 "$(shasum -a 256 < "$data/$path" | cut -d' ' -f1)" "$assets"
         done
@@ -149,5 +149,6 @@ part_bytes=1900000000
         done
     done
 } > "$out/data.tsv"
-echo "Wrote $out/data.tsv, $out/expected.tsv and $(ls "$out/assets" | wc -l | tr -d ' ') assets ($(du -sh "$out/assets" | cut -f1))"
+set -- "$out"/assets/*
+echo "Wrote $out/data.tsv, $out/expected.tsv and $# assets ($(du -sh "$out/assets" | cut -f1))"
 echo "Upload: gh release upload $tag $out/assets/* ; then copy data.tsv and expected.tsv to $here"

@@ -22,7 +22,7 @@ on:
         description: Comma-separated tiers from native/bench/tiers.tsv (small, medium, full, full-5m).
         default: small
       configs:
-        description: Comma-separated TOOL:BACKEND[:tN][:KN][:probe] configs (empty uses each tier's defaults).
+        description: Comma-separated TOOL:BACKEND[:tN][:KN][:probe][:+ARG] configs (empty uses each tier's defaults).
         default: ""
       runners:
         description: Comma-separated macOS runner labels.
@@ -44,48 +44,6 @@ on:
         default: "300"
       max_parallel:
         description: Most bench jobs at once.
-        default: "4"
-  workflow_call: # TEMPORARY, for testing from the branch
-    inputs:
-      variants:
-        description: Comma-separated git refs to build, or macos-aligners-N releases; the first is the baseline.
-        type: string
-        default: main
-      tiers:
-        description: Comma-separated tiers from native/bench/tiers.tsv (small, medium, full, full-5m).
-        type: string
-        default: small
-      configs:
-        description: Comma-separated TOOL:BACKEND[:tN][:KN][:probe] configs (empty uses each tier's defaults).
-        type: string
-        default: ""
-      runners:
-        description: Comma-separated macOS runner labels.
-        type: string
-        default: macos-15,macos-26
-      rounds:
-        description: Times to run each config with each variant.
-        type: string
-        default: "1"
-      threads:
-        description: Aligner threads (empty uses every core).
-        type: string
-        default: ""
-      balloon_mib:
-        description: MiB of RAM to wire during the runs, to act like a smaller Mac (0 for none).
-        type: string
-        default: "0"
-      run_timeout_minutes:
-        description: Minutes before one aligner run is stopped.
-        type: string
-        default: "120"
-      job_timeout_minutes:
-        description: Minutes before a bench job is cancelled (at most 360).
-        type: string
-        default: "300"
-      max_parallel:
-        description: Most bench jobs at once.
-        type: string
         default: "4"
 
 permissions:

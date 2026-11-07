@@ -387,7 +387,7 @@ gh run watch "$(gh run list --workflow aligner_bench.yml --limit 1 --json databa
   release and checks their sha256 (`bench/data.tsv`).
 - `configs`: `TOOL:BACKEND[:tN][:KN][:probe][:+ARG...]`, for example
   `bwa:metal:t2` or `mem2:metal:probe`; by default each tier's configs in
-  `bench/tiers.tsv` (only `wgse-bwa` on `full`). A failure of a `probe`
+  `bench/tiers.tsv` (only `wgse-bwa --metal` on `full`). A failure of a `probe`
   config, such as an out-of-memory kill, is reported but does not fail the job.
 - `runners`: runner labels; larger runners such as `macos-15-xlarge` work when
   the organisation pays for them.
@@ -418,6 +418,21 @@ native/bench/bench.sh run --data out/bench-data --tier small --out out/bench \
 
 `bench/make_data.sh` builds the datasets and expected hashes from hs38 and
 HG002 reads.
+
+What the hosted 7 GiB runners showed (issue #364):
+
+- `--metal` is 4–5 times faster than the CPU backends on their virtual GPU:
+  on `medium`, about 27 s against 130 s for `wgse-bwa` and 30–38 s against
+  130–150 s for `wgse-bwa-mem2`.
+- On `full` (hs38) only `wgse-bwa --metal` finishes: 200k pairs in 95–120 s
+  with a 6 GiB footprint. Its Metal buffers keep the index in RAM. The CPU
+  backend of `wgse-bwa`, and both backends of `wgse-bwa-mem2` (11–17 GiB),
+  page through the memory compressor and swap and do not finish within
+  45 minutes. Neither tool warns about this.
+- `wgse-bwa-mem2 --metal` on hs38 falls back to the CPU on GPUs whose largest
+  buffer is under 5.8 GiB, as on 8 GB Macs.
+- `full-5m` does not finish on a 7 GiB runner: after about 30 minutes the
+  virtual GPU hung, `wgse-bwa` fell back to the CPU and then thrashed.
 
 ## Licences
 
