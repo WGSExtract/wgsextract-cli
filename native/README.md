@@ -424,15 +424,18 @@ What the hosted 7 GiB runners showed (issue #364):
 - `--metal` is 4–5 times faster than the CPU backends on their virtual GPU:
   on `medium`, about 27 s against 130 s for `wgse-bwa` and 30–38 s against
   130–150 s for `wgse-bwa-mem2`.
-- On `full` (hs38) only `wgse-bwa --metal` finishes: 200k pairs in 95–120 s
-  with a 6 GiB footprint. Its Metal buffers keep the index in RAM. The CPU
-  backend of `wgse-bwa`, and both backends of `wgse-bwa-mem2` (11–17 GiB),
-  page through the memory compressor and swap and do not finish within
-  45 minutes. Neither tool warns about this.
+- On `full` (hs38), `wgse-bwa --metal` finished all six runs, aligning
+  200k pairs in 95–200 s with a 6 GiB footprint; its Metal buffers keep the
+  index in RAM. The `wgse-bwa` CPU backend finished one run in six (167 s).
+  The others, and both backends of `wgse-bwa-mem2` (11–17 GiB), paged through
+  the memory compressor and swap until they were stopped after 20–45 minutes.
+  Neither tool warns about this.
 - `wgse-bwa-mem2 --metal` on hs38 falls back to the CPU on GPUs whose largest
   buffer is under 5.8 GiB, as on 8 GB Macs.
-- `full-5m` does not finish on a 7 GiB runner: after about 30 minutes the
-  virtual GPU hung, `wgse-bwa` fell back to the CPU and then thrashed.
+- On `full-5m`, `wgse-bwa --metal` took 66 and 87 minutes and its alignments
+  matched. In a third run the virtual GPU hung after about 30 minutes;
+  `wgse-bwa` fell back to the CPU and then thrashed. Keep
+  `run_timeout_minutes` at its default of 120 or more for this tier.
 
 ## Licences
 
