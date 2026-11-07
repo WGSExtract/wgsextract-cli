@@ -48,7 +48,9 @@ std::atomic<int32_t> aggregation_target{8192}, aggregation_delay_us{100};
 std::atomic<int32_t> aggregation_queue_pairs{32768};
 std::atomic<int32_t> aggregation_target8{8192};
 std::atomic<int32_t> minimum_pairs8{1};
-std::atomic<bool> enable_gpu8{true};
+// 8-bit batches run on the CPU while the worker's 16-bit batch is on the GPU:
+// on an M1 Pro the GPU is the bottleneck, so this is ~3% faster end to end.
+std::atomic<bool> enable_gpu8{false};
 std::atomic<bool> paired_gpu8{true};
 std::atomic<bool> enable_pipelining{true};
 std::atomic<uint64_t> help_ns{0}, help_calls{0}, blocked_ns{0};
@@ -1107,12 +1109,16 @@ constexpr size_t seed_group = 64;
 
 struct SeedKernel {
     wgse::metal::Runtime runtime;
-    id<MTLComputePipelineState> pipeline = nil;
+    id<MTLComputePipelineState> pipeline = nil, prefixes = nil;
     SeedKernel() {
-        if (runtime.device()) pipeline = runtime.compile(wgse_seeding_source, "collect_smems");
+        if (!runtime.device()) return;
+        if (id<MTLLibrary> library = runtime.library(wgse_seeding_source)) {
+            pipeline = runtime.pipeline(library, "collect_smems");
+            prefixes = runtime.pipeline(library, "seed_prefixes");
+        }
     }
     std::string failure() const {
-        return pipeline ? std::string()
+        return pipeline && prefixes ? std::string()
             : runtime.failure().empty() ? "seeding kernel unavailable" : runtime.failure();
     }
 };
@@ -1159,8 +1165,8 @@ struct SeedBatch : BatchBase {
 class GpuSeeds {
 public:
     GpuSeeds(SeedKernel &kernel, const FMI_search *fmi) : runtime_(kernel.runtime),
-        pipeline_(kernel.pipeline), fmi_(fmi) {
-        if (!pipeline_) throw std::runtime_error(kernel.failure());
+        pipeline_(kernel.pipeline), prefix_pipeline_(kernel.prefixes), fmi_(fmi) {
+        if (!pipeline_ || !prefix_pipeline_) throw std::runtime_error(kernel.failure());
         const size_t page = static_cast<size_t>(getpagesize());
         const void *checkpoints = fmi->wgse_cp_occ();
         const size_t bytes = size_t((fmi->reference_seq_len >> CP_SHIFT) + 1) * sizeof(CP_OCC);
@@ -1195,13 +1201,23 @@ public:
             reserve(smems_, count * p.capacity * sizeof(SeedSmem));
             reserve(counts_, count * sizeof(SeedCount));
             memcpy(parameters_.contents, &p, sizeof(p));
+            if (!prefixes_) {
+                // The table depends only on the index (p.count, p.sentinel).
+                const size_t entries = ((size_t(1) << (2 * (seed_prefix_depth + 1))) - 4) / 3;
+                id<MTLBuffer> table = runtime_.allocate(entries * 3 * sizeof(int64_t));
+                double seconds = 0;
+                if (!table || !runtime_.dispatch(prefix_pipeline_, {index_, parameters_, table},
+                        entries, seed_group, seconds))
+                    throw std::runtime_error("GPU seeding: " + runtime_.failure());
+                prefixes_ = table;
+            }
             if (!batch.bases.empty())
                 memcpy(bases_.contents, batch.bases.data(), batch.bases.size());
             memcpy(reads_.contents, batch.reads.data(), count * sizeof(SeedRead));
             // Every dispatch rewrites its outputs from unchanged inputs, so
             // Runtime::dispatch can rerun an interrupted one.
             if (!runtime_.dispatch(pipeline_,
-                {index_, parameters_, bases_, reads_, scratch_, smems_, counts_}, count,
+                {index_, parameters_, bases_, reads_, scratch_, smems_, counts_, prefixes_}, count,
                 seed_group, elapsed))
                 throw std::runtime_error("GPU seeding: " + runtime_.failure());
             const auto *counts = static_cast<const SeedCount *>(counts_.contents);
@@ -1233,11 +1249,11 @@ public:
 
 private:
     wgse::metal::Runtime &runtime_;
-    id<MTLComputePipelineState> pipeline_;
+    id<MTLComputePipelineState> pipeline_, prefix_pipeline_;
     const FMI_search *fmi_;
     std::mutex mutex_;
     id<MTLBuffer> index_ = nil, parameters_ = nil, bases_ = nil, reads_ = nil, scratch_ = nil,
-        smems_ = nil, counts_ = nil;
+        smems_ = nil, counts_ = nil, prefixes_ = nil;
 
     void reserve(__strong id<MTLBuffer> &buffer, size_t bytes) {
         bytes = std::max<size_t>(bytes, 1);

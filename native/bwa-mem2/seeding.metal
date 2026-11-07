@@ -71,21 +71,56 @@ Interval initial(constant SeedParameters &p, uint a, uint x) {
     return {p.count[a], p.count[3 - a], p.count[a + 1] - p.count[a], x, x};
 }
 
+// The interval of every string of 1..seed_prefix_depth bases, from initial() and
+// forward() as the walks below compute it: shallow intervals are wide, so each
+// forward step there reads two far-apart checkpoints, and a lookup replaces them.
+// Strings of d bases start at entry (4^d - 4) / 3, the first base most significant.
+struct Prefix {
+    long k, l, s;
+};
+
+uint prefix_entry(uint depth, uint code) { return ((1u << (2 * depth)) - 4) / 3 + code; }
+
+Interval extend_prefix(device const Prefix *prefixes, Interval in, uint depth, uint code) {
+    const Prefix t = prefixes[prefix_entry(depth, code)];
+    in.k = t.k;
+    in.l = t.l;
+    in.s = t.s;
+    return in;
+}
+
+kernel void seed_prefixes(device const Checkpoint *cp [[buffer(0)]],
+    constant SeedParameters &p [[buffer(1)]],
+    device Prefix *prefixes [[buffer(2)]],
+    uint id [[thread_position_in_grid]]) {
+    if (id >= prefix_entry(seed_prefix_depth + 1, 0)) return;
+    uint depth = 1;
+    while (id >= prefix_entry(depth + 1, 0)) ++depth;
+    const uint code = id - prefix_entry(depth, 0);
+    Interval smem = initial(p, code >> (2 * (depth - 1)), 0);
+    for (uint d = depth - 1; d-- > 0;) smem = forward(cp, p, smem, (code >> (2 * d)) & 3);
+    prefixes[id] = {smem.k, smem.l, smem.s};
+}
+
 // FMI_search::getSMEMsOnePosOneThread for one read from x; returns next_x, or
 // -1 when the output or scratch is full.
-int one_position(device const Checkpoint *cp, constant SeedParameters &p,
-    device const uchar *q, int length, int x, int min_intv, Scratch prev, thread Output &out) {
+int one_position(device const Checkpoint *cp, device const Prefix *prefixes,
+    constant SeedParameters &p, device const uchar *q, int length, int x, int min_intv,
+    Scratch prev, thread Output &out) {
     int next_x = x + 1;
     uint a = q[x];
     if (a >= 4) return next_x;
     Interval smem = initial(p, a, uint(x));
-    uint count = 0;
+    uint count = 0, code = a;
     int j;
     for (j = x + 1; j < length; ++j) {
         a = q[j];
         next_x = j + 1;
         if (a >= 4) break;
-        Interval next = forward(cp, p, smem, a);
+        const uint depth = uint(j - x) + 1;
+        code = code << 2 | a;
+        Interval next = depth <= seed_prefix_depth ? extend_prefix(prefixes, smem, depth, code)
+            : forward(cp, p, smem, a);
         next.n = uint(j);
         if (count >= prev.capacity) return -1;
         prev.set(count, smem);
@@ -150,6 +185,7 @@ kernel void collect_smems(device const Checkpoint *cp [[buffer(0)]],
     device Interval *scratch [[buffer(4)]],
     device SeedSmem *smems [[buffer(5)]],
     device SeedCount *counts [[buffer(6)]],
+    device const Prefix *prefixes [[buffer(7)]],
     uint id [[thread_position_in_grid]]) {
     if (id >= p.reads) return;
     const int length = int(reads[id].length);
@@ -159,7 +195,7 @@ kernel void collect_smems(device const Checkpoint *cp [[buffer(0)]],
     SeedCount result = {seed_overflow, {0, 0, 0}, 0};
     // Pass one: getSMEMsAllPosOneThread with min_intv 1.
     for (int x = 0; x < length;) {
-        x = one_position(cp, p, q, length, x, 1, prev, out);
+        x = one_position(cp, prefixes, p, q, length, x, 1, prev, out);
         if (x < 0) {
             counts[id] = result;
             return;
@@ -173,7 +209,7 @@ kernel void collect_smems(device const Checkpoint *cp [[buffer(0)]],
         if (end - start < p.split_len || smem.s > p.split_width) continue;
         result.query_bases += uint(end - start);
         // Upstream's int32 min_intv.
-        if (one_position(cp, p, q, length, (end + start) >> 1, int(smem.s + 1),
+        if (one_position(cp, prefixes, p, q, length, (end + start) >> 1, int(smem.s + 1),
             prev, out) < 0) {
             counts[id] = result;
             return;
@@ -188,7 +224,21 @@ kernel void collect_smems(device const Checkpoint *cp [[buffer(0)]],
             uint a = q[x];
             if (a < 4) {
                 Interval smem = initial(p, a, uint(x));
-                for (int j = x + 1; j < length; ++j) {
+                int j = x + 1;
+                // Strings shorter than min_len cannot stop the walk, so it starts
+                // at the deepest prefix when that has no N.
+                if (seed_prefix_depth < min_len && x + int(seed_prefix_depth) <= length) {
+                    uint code = a, d = 1;
+                    for (; d < seed_prefix_depth && q[x + int(d)] < 4; ++d)
+                        code = code << 2 | q[x + int(d)];
+                    if (d == seed_prefix_depth) {
+                        smem = extend_prefix(prefixes, smem, d, code);
+                        j = x + int(d);
+                        smem.n = uint(j - 1);
+                        next_x = j;
+                    }
+                }
+                for (; j < length; ++j) {
                     next_x = j + 1;
                     a = q[j];
                     if (a >= 4) break;
