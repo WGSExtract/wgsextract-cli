@@ -253,6 +253,8 @@ run_one() {
         "$data/reads/${reads}_R1.fastq.gz" "$data/reads/${reads}_R2.fastq.gz" ${c_args[@]+"${c_args[@]}"}
     printf '%q ' "${cmd[@]}" > "$dir/command.txt"
     warm
+    # Flush dirty pages (from the fetch or the last run) so the run starts with reclaimable cache.
+    sync
     vm_counters > "$dir/vm_before.txt"
     date '+%Y-%m-%d %H:%M:%S' > "$dir/started.txt"
     sampler > "$dir/samples.tsv" 2> /dev/null &
