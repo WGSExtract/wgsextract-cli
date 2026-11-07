@@ -82,6 +82,9 @@ test("--port rejects values that are not a port from 0 to 65535 (#527)", () => {
 test("--port accepts the boundary ports 0 and 65535 (#527)", () => {
   assert.equal(parseArgs(["--port", "0"]).port, "0");
   assert.equal(parseArgs(["--port", "65535"]).port, "65535");
+});
+
+test("port validation keeps the omitted and missing --port behaviour (#527)", () => {
   assert.equal(parseArgs(["--bundle", "b"]).port, undefined);
   assert.throws(() => parseArgs(["--port"]), /Missing value for --port/);
 });
