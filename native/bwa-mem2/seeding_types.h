@@ -30,6 +30,10 @@ struct SeedSmem {
     SeedI64 k, l, s;
 };
 
+// The kernel looks up the intervals of strings of up to this many bases in a
+// table of (4^(depth + 1) - 4) / 3 entries of three int64s.
+enum : SeedU32 { seed_prefix_depth = 10 };
+
 // One read's 2-bit bases in the batch's base buffer.
 struct SeedRead {
     SeedU32 offset, length;

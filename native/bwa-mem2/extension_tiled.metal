@@ -34,7 +34,20 @@ void finish_row(thread ExtensionState &s, Pair pair, constant Parameters &p,
     s.end = min(pair.len2, max(last, first - 1) + 2);
 }
 
-template<typename Row>
+// Substitution scores of one target base against query bases.
+struct RowScores {
+    int match, mismatch, ambiguous, base;
+    constant char *row;
+};
+
+template<bool simple>
+int substitution(RowScores r, int q)
+{
+    if (!simple) return int(r.row[q]);
+    return q == r.base ? r.match : q == 4 ? r.ambiguous : r.mismatch;
+}
+
+template<typename Row, bool simple>
 void serial_row(Row boundary, const device uint *query,
     Pair pair, constant Parameters &p, thread ExtensionState &s, int i, int base, int width)
 {
@@ -44,44 +57,54 @@ void serial_row(Row boundary, const device uint *query,
         s.done = true;
         return;
     }
-    int h = begin == 0 ? max(0, pair.h0 - p.open_del - p.extend_del * (i + 1)) : 0;
-    int f = 0, row_best = 0, row_j = -1, first = end, last = begin - 1;
+    const int e_del = p.extend_del, e_ins = p.extend_ins;
+    const int oe_del = p.open_del + e_del, oe_ins = p.open_ins + e_ins;
+    // In a simple matrix an N scores matrix[24] against everything.
+    const int ambiguous = int(p.matrix[24]);
+    RowScores scores{base == 4 ? ambiguous : int(p.matrix[0]),
+        base == 4 ? ambiguous : int(p.matrix[1]), ambiguous, base, p.matrix + base * 5};
+    int h = begin == 0 ? max(0, pair.h0 - oe_del - e_del * i) : 0;
+    // The row maximum and its last column, packed as h * 512 + j + 1 (len2 <= 256).
+    int f = 0, packed_best = 0, first = end, last = begin - 1;
     for (int tile = (begin / 8) * 8; tile < end; tile += 8) {
         uint word = query[pair.idq + (tile / 8) * 32];
         ushort2 state[8];
         #pragma unroll
         for (int k = 0; k < 8; ++k) state[k] = boundary[(tile + k) * 32];
+        const bool interior = tile >= begin && tile + 8 <= end;
         #pragma unroll
         for (int k = 0; k < 8; ++k) {
             int j = tile + k;
-            if (j < begin || j >= end) continue;
+            if (!interior && (j < begin || j >= end)) continue;
             int diagonal = int(state[k].x), e = int(state[k].y);
             int q = int((word >> (k * 4)) & 15);
-            int substitution = p.simple_matrix
-                ? (base == 4 || q == 4 ? int(p.matrix[24])
-                    : base == q ? int(p.matrix[0]) : int(p.matrix[1]))
-                : int(p.matrix[base * 5 + q]);
-            int match = diagonal == 0 ? 0 : diagonal + substitution;
+            int match = diagonal == 0 ? 0 : diagonal + substitution<simple>(scores, q);
             state[k].x = ushort(h);
             h = max(match, max(e, f));
-            e = max(e - p.extend_del, max(0, match - p.open_del - p.extend_del));
-            f = max(f - p.extend_ins, max(0, match - p.open_ins - p.extend_ins));
+            e = max(e - e_del, max(0, match - oe_del));
+            f = max(f - e_ins, max(0, match - oe_ins));
             state[k].y = ushort(e);
             if (state[k].x != 0 || e != 0) {
                 first = min(first, j);
                 last = j;
             }
-            if (h >= row_best) {
-                row_best = h;
-                row_j = j;
-            }
+            packed_best = max(packed_best, h * 512 + j + 1);
         }
         #pragma unroll
         for (int k = 0; k < 8; ++k) boundary[(tile + k) * 32] = state[k];
     }
     boundary[end * 32] = ushort2(h, 0);
     if (h != 0) last = end;
-    finish_row(s, pair, p, i, begin, end, h, row_best, row_j, first, last);
+    finish_row(s, pair, p, i, begin, end, h, packed_best / 512, packed_best % 512 - 1,
+        first, last);
+}
+
+template<typename Row>
+void serial_row(Row boundary, const device uint *query,
+    Pair pair, constant Parameters &p, thread ExtensionState &s, int i, int base, int width)
+{
+    if (p.simple_matrix) serial_row<Row, true>(boundary, query, pair, p, s, i, base, width);
+    else serial_row<Row, false>(boundary, query, pair, p, s, i, base, width);
 }
 
 void write_extension(device Pair &out, ExtensionState s, int issued) {

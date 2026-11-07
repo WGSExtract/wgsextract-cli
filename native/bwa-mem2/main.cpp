@@ -56,7 +56,7 @@ int main(int argc, char **argv) {
     int gpu_minimum = 128, gpu_inflight = 16;
     int gpu_target = 8192, gpu_delay = 100, gpu_queue = 32768;
     int gpu_target8 = 8192, gpu_min8 = 1;
-    bool gpu8 = true;
+    bool gpu8 = false;
     bool gpu8_paired = true;
     while (argc > command_index && (strcmp(argv[command_index], "--capture-batches") == 0
         || strcmp(argv[command_index], "--gpu-rescue") == 0
