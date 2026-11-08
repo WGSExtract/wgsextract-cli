@@ -12,6 +12,7 @@ import json
 import logging
 import math
 import re
+import sys
 from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -39,6 +40,13 @@ class Server(ThreadingHTTPServer):
         self.token = token
         self.manager = manager
         self.guard = guard
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        # A client that drops its connection (Windows resets idle keep-alive
+        # connections) isn't a server error worth a traceback.
+        if isinstance(sys.exc_info()[1], ConnectionError):
+            return
+        super().handle_error(request, client_address)
 
     @property
     def url(self) -> str:
