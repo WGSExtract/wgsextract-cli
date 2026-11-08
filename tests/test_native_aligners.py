@@ -289,11 +289,31 @@ def test_a_mac_too_small_for_metal_runs_wgse_bwa_on_the_cpu(tmp_path, bwa_bin, r
     _install_build(bwa_bin, "bwa")
     ram(2 * GIB + _needed(reads, "256M") - GIB // 4)
 
-    bam, result = _align(reads, tmp_path / "out")
+    bam, result = _align(reads, tmp_path / "out", "--memory", "256M")
 
     assert _mapper(bam).startswith("wgse-bwa mem -K 100000000 ")
-    assert _sort_memory(bam) == "1G"
+    assert _sort_memory(bam) == "256M"
     assert result.metrics["native_aligner_backend"] == "cpu"
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_a_genome_too_big_for_the_macs_ram_still_aligns_on_metal(
+    tmp_path, bwa_bin, ram
+):
+    # #549: a 30x genome on a 16 GB M1 was estimated over RAM with or without
+    # the GPU, so wgse-bwa ran on the CPU, about 4x slower. Metal with less
+    # sort memory needs less than the CPU run with the default.
+    reads = _short_reads(tmp_path)
+    _install_build(bwa_bin, "bwa")
+    upstream_bam, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
+    ram(2 * GIB + _needed(reads, "256M") - GIB)
+
+    bam, result = _align(reads, tmp_path / "out")
+
+    assert _mapper(bam).startswith("wgse-bwa --backend auto mem -K 100000000 ")
+    assert _sort_memory(bam) == "512M"
+    assert _samtools("view", bam) == _samtools("view", upstream_bam)
+    assert result.metrics["native_aligner_backend"] == "metal"
 
 
 @pytest.mark.usefixtures("apple_silicon")
