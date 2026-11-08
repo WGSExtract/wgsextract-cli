@@ -29,7 +29,11 @@ MODE="${LAB_MODE:-install}"
 DMG="$HOME/Downloads/WGSExtract.dmg"
 APP="/Applications/WGSExtract.app"
 BUNDLE_ID="dev.guiforcli.embed.wgsextract"
-WORKSPACE="$HOME/Library/Application Support/$BUNDLE_ID/BundleWorkspaces/wgs-extract"
+# Apps since PR #531 keep the workspace in the home folder; released apps
+# before it keep it in their app data (OLD_WORKSPACE). use_workspace picks
+# the one setup made.
+WORKSPACE="$HOME/wgs-extract"
+OLD_WORKSPACE="$HOME/Library/Application Support/$BUNDLE_ID/BundleWorkspaces/wgs-extract"
 # The test runner is lab tooling, not the product: it lives outside $HOME and
 # keeps its own app data under a name the product never uses.
 RUNNER_DIR="$R/runner"
@@ -41,7 +45,7 @@ export GUI_FOR_CLI_APP_SUPPORT_NAME_RUNNER="lab-bundle-runner"
 # The app's own processes, and everything it starts: setup's scripts and
 # downloads run from the workspace (set again once the bundle ID is known).
 APP_MAIN="$APP/Contents/MacOS/"
-APP_TREE="$APP_MAIN|$WORKSPACE/"
+APP_TREE="$APP_MAIN|$WORKSPACE/|$OLD_WORKSPACE/"
 # shellcheck source=scripts/installlab/guest/app-lifecycle.sh
 . "$HERE/app-lifecycle.sh"
 
@@ -105,8 +109,8 @@ install_app() {
     rmdir "$mount"
     codesign --verify --deep --strict --verbose=2 "$APP" || rc=1
     BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Contents/Info.plist") || return 1
-    WORKSPACE="$HOME/Library/Application Support/$BUNDLE_ID/BundleWorkspaces/wgs-extract"
-    APP_TREE="$APP_MAIN|$WORKSPACE/"
+    OLD_WORKSPACE="$HOME/Library/Application Support/$BUNDLE_ID/BundleWorkspaces/wgs-extract"
+    APP_TREE="$APP_MAIN|$WORKSPACE/|$OLD_WORKSPACE/"
     return $rc
 }
 
@@ -187,7 +191,14 @@ install_runner() {
         curl -fsSL "$LAB_RUNNER_URL" | tar -xzf - -C "$RUNNER_DIR"
 }
 
+use_workspace() {
+    if [ ! -e "$WORKSPACE/.bundle-workspace" ] && [ -e "$OLD_WORKSPACE/.bundle-workspace" ]; then
+        WORKSPACE="$OLD_WORKSPACE"
+    fi
+}
+
 app_actions() {
+    use_workspace
     if is_tauri; then
         resources="$APP/Contents/Resources"
         GUI_FOR_CLI_APP_SUPPORT_NAME="$BUNDLE_ID" "$resources/node/bin/node" \

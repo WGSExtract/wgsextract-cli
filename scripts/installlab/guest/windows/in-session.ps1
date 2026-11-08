@@ -88,13 +88,22 @@ function Get-PageText($Window) {
         ForEach-Object { $_.Current.Name }) -join " | "
 }
 
-# Any other dialog from the wizard (an error, a warning) is read, answered with
-# OK, and recorded; the caller fails the step if there was one.
+# The uninstall's question whether to delete the workspace too is answered Yes,
+# so the uninstall restores the baseline. Any other dialog from the wizard (an
+# error, a warning) is read, answered with OK, and recorded; the caller fails
+# the step if there was one.
 function Read-MessageBoxes($Window, [string]$TitlePattern) {
     foreach ($w in Get-TopWindows) {
         if ($w.Current.ClassName -ne "#32770" -or $w.Current.NativeWindowHandle -eq $Window.Current.NativeWindowHandle -or
             $w.Current.Name -notlike $TitlePattern) { continue }
-        $complaint = "message box '$($w.Current.Name)': $(Get-PageText $w)"
+        $text = Get-PageText $w
+        if ($text -like "*workspace folder?*") {
+            Note "message box '$($w.Current.Name)': $text"
+            Click (Find-Button $w "Yes" 5)
+            Note "clicked Yes"
+            continue
+        }
+        $complaint = "message box '$($w.Current.Name)': $text"
         Note $complaint
         Click (Find-Button $w "OK" 5)
         $complaint

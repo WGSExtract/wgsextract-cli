@@ -27,6 +27,12 @@ async function fixture(t, script) {
   return { root, bundle, workspace, result: path.join(root, "result.json") };
 }
 
+/** The workspace as setup leaves it: the bundle's copy, marked as the app's. */
+async function setUp(paths) {
+  await cp(paths.bundle, paths.workspace, { recursive: true });
+  await writeFile(path.join(paths.workspace, ".bundle-workspace"), "GUI for CLI bundle workspace\n");
+}
+
 function runCli(paths, ...flags) {
   return new Promise((resolve) => {
     execFile(process.execPath, [cli, "--app-support-name", "test.app", ...flags, paths.bundle], {
@@ -37,7 +43,7 @@ function runCli(paths, ...flags) {
 
 test("runs the bundle's uninstall steps on the app's workspace and reports the result", { skip: process.platform === "win32" }, async (t) => {
   const paths = await fixture(t, '#!/bin/sh\necho "removing runtime"\nrm -rf "$GUI_FOR_CLI_BUNDLE_WORKSPACE/runtime"\n');
-  await cp(paths.bundle, paths.workspace, { recursive: true });
+  await setUp(paths);
   await mkdir(path.join(paths.workspace, "runtime"));
 
   const { code, stdout } = await runCli(paths);
@@ -52,7 +58,7 @@ test("runs the bundle's uninstall steps on the app's workspace and reports the r
 
 test("a failed uninstall step fails the command and its result", { skip: process.platform === "win32" }, async (t) => {
   const paths = await fixture(t, "#!/bin/sh\necho 'could not remove' >&2\nexit 3\n");
-  await cp(paths.bundle, paths.workspace, { recursive: true });
+  await setUp(paths);
 
   const { code } = await runCli(paths);
 
@@ -72,18 +78,19 @@ test("with no workspace (setup never ran) there is nothing to remove", { skip: p
   assert.deepEqual(result.results, []);
 });
 
-test("--remove-app-data deletes the app's data after the steps, and keeps it if one failed", { skip: process.platform === "win32" }, async (t) => {
+test("--remove-app-data deletes the app's data after the steps but not the workspace in it, and keeps it all if one failed", { skip: process.platform === "win32" }, async (t) => {
   const removed = await fixture(t, "#!/bin/sh\nexit 0\n");
-  await cp(removed.bundle, removed.workspace, { recursive: true });
+  await setUp(removed);
   const appData = path.dirname(path.dirname(removed.workspace));
   await mkdir(path.join(appData, "WebKitCache"), { recursive: true });
 
   assert.equal((await runCli(removed, "--remove-app-data")).code, 0);
-  await assert.rejects(stat(appData), { code: "ENOENT" });
-  assert.deepEqual(JSON.parse(await readFile(removed.result, "utf8")).log, [`Removed ${appData}`]);
+  await assert.rejects(stat(path.join(appData, "WebKitCache")), { code: "ENOENT" });
+  await stat(path.join(removed.workspace, "manifest.json"));
+  assert.deepEqual(JSON.parse(await readFile(removed.result, "utf8")).log, [`Removed ${appData}, except the workspace in it`]);
 
   const kept = await fixture(t, "#!/bin/sh\nexit 3\n");
-  await cp(kept.bundle, kept.workspace, { recursive: true });
+  await setUp(kept);
   assert.equal((await runCli(kept, "--remove-app-data")).code, 1);
   await stat(path.join(kept.workspace, "manifest.json"));
 });
