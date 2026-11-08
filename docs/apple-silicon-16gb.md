@@ -33,7 +33,7 @@ a little deeper than the usual 30x, so a 30x genome should take a little less.
 - **`realign` takes 6 hours**, and the GPU sets the pace. Calling SNPs and
   indels takes 68 minutes. Every other step takes under 4 minutes.
 - **Memory.** Only `realign` comes close to 16 GB: all processes together used
-  10.4 GiB at their peak and macOS swapped up to 4.9 GiB. Every other step
+  10.4 GiB at their peak and macOS swapped up to 4.8 GiB. Every other step
   used under 4 GiB.
 - **Disk.** `realign` needs about 166 GiB free at its peak, on top of the input.
 - **Accuracy.** Against GIAB v4.2.1, `bcftools` SNP calls have 99.1% recall and
@@ -46,7 +46,7 @@ Two passes ran every command family:
 
 - **Fake genomes** from the test fixtures: 53 commands, each within 30 s
   except `deps check`, and at most 4.1 GiB (`realign`). `deps check` took
-  74 s on the first run; it now takes about 10 s
+  74 s on its first, cold run; it now takes about 10 s
   ([#552](https://github.com/WGSExtract/wgsextract-cli/pull/552)). 44 passed.
   Of the 9 that exited non-zero, 7 stopped for the right reason, with a clear
   message:
@@ -96,7 +96,7 @@ default:
 - **`vcf snp` and `vcf indel` used one core.** They now call contigs in
   parallel when `--threads` is above 1, with identical records: 849 s became
   211 s ([#560](https://github.com/WGSExtract/wgsextract-cli/pull/560)).
-- **`deps check` took 32 s**, mostly asking Pixi to size the checkout. It now
+- **`deps check` took 32 s warm (74 s cold)**, mostly asking Pixi to size the checkout. It now
   takes 9.8 s ([#552](https://github.com/WGSExtract/wgsextract-cli/pull/552)).
 - **`realign`'s FASTQ extraction showed 0% for 23 minutes.** It now reports
   how much of the input it has read, then how many reads it has written
@@ -144,7 +144,7 @@ process list every 30 s
 | `report` | under 1 s | 0.13 GiB |
 
 Peak memory is the largest single process. During `realign` all the user's
-processes together peaked at 10.42 GiB, and swap grew from 1.5 to 4.9 GiB;
+processes together peaked at 10.42 GiB, and swap grew from 1.5 to 4.8 GiB;
 during calling they stayed under 1.6 GiB, and swap didn't grow in any later
 step.
 
