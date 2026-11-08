@@ -459,6 +459,11 @@ def get_config_path() -> Path:
     return get_config_dir() / "config.toml"
 
 
+def read_toml(path: Path) -> dict[str, Any]:
+    """Parse a TOML file, accepting the UTF-8 byte-order mark Windows editors add."""
+    return tomllib.loads(path.read_bytes().decode("utf-8-sig"))
+
+
 def load_config() -> dict[str, Any]:
     """
     Load configuration from the standard config file.
@@ -469,8 +474,7 @@ def load_config() -> dict[str, Any]:
     config_path = get_config_path()
     if config_path.exists():
         try:
-            with open(config_path, "rb") as f:
-                config = tomllib.load(f)
+            config = read_toml(config_path)
         except (OSError, tomllib.TOMLDecodeError) as e:
             logging.warning(f"Ignoring unreadable config {config_path}: {e}")
 
@@ -546,8 +550,7 @@ def save_config(updates: dict[str, Any]) -> None:
         # Refuse to overwrite a config we cannot parse; that would drop the
         # user's other settings.
         try:
-            with open(config_path, "rb") as f:
-                current_config = tomllib.load(f)
+            current_config = read_toml(config_path)
         except tomllib.TOMLDecodeError as e:
             raise WGSExtractError(
                 f"Cannot update {config_path}: it is not valid TOML ({e})."

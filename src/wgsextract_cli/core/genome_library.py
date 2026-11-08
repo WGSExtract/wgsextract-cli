@@ -8,7 +8,7 @@ from typing import Any
 
 import tomli_w
 
-from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.config import read_toml, settings
 from wgsextract_cli.core.utils import WGSExtractError
 
 if sys.version_info >= (3, 11):
@@ -151,8 +151,7 @@ def _load_genome_config(config_path: Path) -> dict[str, Any]:
     if not config_path.exists():
         return {}
     try:
-        with open(config_path, "rb") as f:
-            return tomllib.load(f)
+        return read_toml(config_path)
     except (OSError, tomllib.TOMLDecodeError) as e:
         raise WGSExtractError(f"Failed to read {config_path}: {e}") from e
 

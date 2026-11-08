@@ -243,6 +243,19 @@ def test_save_config_refuses_to_overwrite_invalid_toml(temp_config):
     assert temp_config.read_text() == "this is = = not toml\n"
 
 
+def test_config_with_utf8_bom_is_read_and_updated(temp_config):
+    # Issue #554: Windows PowerShell 5 and older Notepad save UTF-8 with a BOM;
+    # such a config.toml was ignored and `ref bootstrap` refused to update it.
+    temp_config.write_bytes(b"\xef\xbb\xbfreference_library = 'D:\\wgse\\reflib'\r\n")
+    config.reload_settings()
+    assert config.settings["reference_library"] == "D:\\wgse\\reflib"
+
+    config.save_config({"cpu_threads": 4})
+
+    saved = tomllib.loads(temp_config.read_text(encoding="utf-8"))
+    assert saved == {"reference_library": "D:\\wgse\\reflib", "cpu_threads": 4}
+
+
 def test_full_help_unescapes_percent_signs(capsys):
     cli_parser, _ = parser.build_parser()
     parser.print_full_help(cli_parser)
