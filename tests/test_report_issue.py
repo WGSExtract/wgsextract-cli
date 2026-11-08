@@ -86,6 +86,30 @@ def test_failed_run_report_names_the_failure_but_nothing_personal(
             assert leak.lower() not in text.lower(), (leak, text)
 
 
+def test_a_result_file_does_not_garble_the_report(
+    capfd: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    # Issue #554: the app passes --result-file .../result.json to every run, and
+    # its stem was redacted as a sample name everywhere: "--<sample>-file".
+    folder = Path.home() / "genomes" / SAMPLE
+    folder.mkdir(parents=True)
+    bam = folder / f"{SAMPLE}.hg38.bam"
+    bam.write_bytes(b"not a BAM")
+    result = tmp_path / "gui-result" / "result.json"
+    code, _, _ = _cli(
+        capfd, "info", "--input", str(bam), "--outdir", str(tmp_path),
+        "--result-file", str(result),
+    )  # fmt: skip
+    assert code == 1
+
+    code, out, _ = _cli(capfd, "report-issue", "--json", "--print")
+
+    diagnostics = _issue_fields(json.loads(out)["details"]["url"])["diagnostics"]
+    assert "--result-file <path>/" in diagnostics
+    assert "--<sample>-file" not in diagnostics
+    assert SAMPLE.lower() not in diagnostics.lower()
+
+
 def test_last_failed_reports_the_failure_after_a_later_success(
     capfd: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
