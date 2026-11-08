@@ -18,3 +18,7 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 ## Fixes
 
 - `realign`'s FASTQ extraction now shows progress while it runs: the share of the input read, then the reads written. Before, a whole-genome extraction showed 0% until it finished.
+- `analyze comprehensive` no longer stops before variant calling when the Y
+  haplogroup can't be called, for example on a low-coverage male genome. It
+  records a `y_haplogroup_failed` warning and carries on; a rerun retries the
+  Y haplogroup ([#549](https://github.com/WGSExtract/wgsextract-cli/issues/549)).

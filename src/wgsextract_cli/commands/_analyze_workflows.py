@@ -618,10 +618,22 @@ def run_bam_chain(
             )
 
             params["tree"], tree_inputs = configured_tree_step()
-        run_step(
-            journal,
-            subcommand_step(name, command, params, tools=tools, inputs=tree_inputs),
-            subcommand_action(command, job),
-        )
+        step = subcommand_step(name, command, params, tools=tools, inputs=tree_inputs)
+        try:
+            run_step(journal, step, subcommand_action(command, job))
+        except WGSExtractError:
+            if name != "y-haplogroup":
+                raise
+            from wgsextract_cli.api._runtime import checkpoint
+
+            checkpoint()  # a cancel that killed Yleaf is no Y haplogroup failure
+            # Too few chrY reads (low coverage) mustn't cost the variant
+            # calls; the step isn't journalled, so a rerun retries it.
+            warn(
+                "y_haplogroup_failed",
+                "No Y haplogroup could be called (see above); continuing "
+                "the analysis without it.",
+                step=name,
+            )
 
     return gender
