@@ -8,6 +8,7 @@ const defaultTests = [
   "tests/manifest-validator.test.mjs",
   "tests/bundle-archive.test.mjs",
   "tests/paths.test.mjs",
+  "tests/workspace-paths.test.mjs",
   "tests/config-store.test.mjs",
   "tests/bundle-test-runner.test.mjs",
   "tests/bundle-uninstall-cli.test.mjs",

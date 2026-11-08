@@ -111,8 +111,8 @@
 "sections.microarray.microarray-inputs.title" = "Dane wejściowe"  # i18n-source-hash:bbcf64a3
 "controls.microarray.microarray-inputs.bam_path.label" = "Wejście BAM/CRAM"  # i18n-source-hash:d5294c18
 "controls.microarray.microarray-inputs.bam_path.tooltip" = "Wejściowy plik BAM lub CRAM."  # i18n-source-hash:1165be08
-"controls.microarray.microarray-inputs.ref_path.label" = "Biblioteka referencyjna"  # i18n-source-hash:ade2055c
-"controls.microarray.microarray-inputs.ref_path.tooltip" = "Ścieżka do katalogu zawierającego genomy referencyjne i powiązane pliki."  # i18n-source-hash:05d614f9
+"controls.microarray.microarray-inputs.ref_fasta.label" = "Genom referencyjny"  # i18n-source-hash:4ff94bd8
+"controls.microarray.microarray-inputs.ref_fasta.tooltip" = "Downloaded reference genome FASTA, from the reference library, used to genotype the BAM/CRAM."  # i18n-ignore; TODO: translate
 "controls.microarray.microarray-inputs.out_dir.label" = "Katalog wyjściowy"  # i18n-source-hash:772dbe47
 "controls.microarray.microarray-inputs.out_dir.tooltip" = "Katalog, do którego zostaną zapisane wygenerowane pliki zestawów mikromacierzy."  # i18n-source-hash:b6d2a02d
 "sections.microarray.microarray-formats.title" = "Formaty docelowe"  # i18n-source-hash:c1a6a3d1
@@ -451,9 +451,9 @@
 "options.microarray.post-v063.aadr-union.title" = "AADR 1240K + Human Origins (PLINK + EIGENSTRAT)"  # i18n-ignore; TODO: translate
 "controls.extract.post-v063.poz.label" = "Restrict Y BAM to Poz regions"  # i18n-ignore; TODO: translate
 "controls.extract.post-v063.poz.tooltip" = "Y BAM only: opt in to the licensed CombBED/McDonald/Poznik union on GRCh37 or GRCh38. Other builds are rejected; unchecked keeps whole-Y extraction."  # i18n-ignore; TODO: translate
-"controls.extract.post-v063.ybrowse.label" = "Call installed yBrowse Y SNPs"  # i18n-ignore; TODO: translate
+"controls.extract.post-v063.ybrowse.label" = "Annotate VCF with yBrowse SNP names"  # i18n-ignore; TODO: translate
 "controls.extract.post-v063.ybrowse.tooltip" = "Y VCF only: opt in to allele-annotated yBrowse targets with an indexed matching GRCh38 reference. Install the yBrowse reference resource first; this action never downloads it."  # i18n-ignore; TODO: translate
-"controls.extract.post-v063.fastq.label" = "Also export unmapped FASTQs"  # i18n-ignore; TODO: translate
+"controls.extract.post-v063.fastq.label" = "Include unmatched read segments"  # i18n-ignore; TODO: translate
 "controls.extract.post-v063.fastq.tooltip" = "Unmapped extraction only: also write paired, single-end and singleton FASTQs. Unchecked keeps the existing alignment-only output."  # i18n-ignore; TODO: translate
 "actions.info-bam.post-v063.coverage-bins.title" = "Exact per-chromosome depth bins"  # i18n-ignore; TODO: translate
 "actions.info-bam.post-v063.coverage-bins.tooltip" = "Opt-in streaming depth report for 0, 1-3, 4-7 and 8+ reads per contig. Performs a full scan; CRAM needs its matching reference."  # i18n-ignore; TODO: translate

@@ -1,4 +1,5 @@
 import { applyDataSourcePayload, configValueKey, hydrateRows, isSectionVisible, rowContext, } from "../../../shared/rendering.js";
+import { displayWorkspacePath } from "../../../shared/workspace-paths.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
 import { buildTagStyle, commandContext, configDataSourceContext, displayOption, localizedStatus, localizedTag, renderIcon, renderIconTitle, renderInlineError, renderLoadingBox, renderLoadingInline, renderTooltip, resolveText, tagStyle, } from "./model.js";
 import { ensureDataSource } from "./operations.js";
@@ -27,7 +28,7 @@ export function renderBundleHeader() {
     return `
     <header class="bundle-header">
       ${icon}
-      <h1 title="${escapeAttribute(manifest.summary)}">${escapeHTML(manifest.displayName)}${renderTooltip(manifest.summary)}</h1>
+      <h1>${escapeHTML(manifest.displayName)}${renderTooltip(manifest.summary)}</h1>
       ${appVersion ? `<p class="app-version" data-app-version>${escapeHTML(appVersionLabel)} ${escapeHTML(appVersion)}</p>` : ""}
     </header>
   `;
@@ -178,7 +179,7 @@ export function renderControl(control: ControlSpec, sectionContext: CommandConte
             body = renderInlineError(`Unsupported control kind: ${renderedControl.kind}`);
     }
     return `
-    <div class="control" title="${escapeAttribute(renderedControl.tooltip ?? "")}">
+    <div class="control">
       ${body}
       ${loading && renderedControl.kind !== "libraryList" ? renderLoadingInline(state.labels.loadingTitle) : ""}
       ${error
@@ -190,7 +191,9 @@ export function renderControl(control: ControlSpec, sectionContext: CommandConte
 export function renderTextControl(control: ControlSpec) {
     const inputID = `control-${control.id}`;
     const pathAttributes = control.kind === "path" ? ` class="path-input" dir="ltr"` : "";
-    const input = `<input id="${escapeAttribute(inputID)}" type="text"${pathAttributes} value="${escapeAttribute(state.fieldValues[control.id] ?? control.value ?? "")}"
+    const rawValue = state.fieldValues[control.id] ?? control.value ?? "";
+    const value = control.kind === "path" ? displayWorkspacePath(rawValue, state.bundleRootPath) : rawValue;
+    const input = `<input id="${escapeAttribute(inputID)}" type="text"${pathAttributes} value="${escapeAttribute(value)}"
         placeholder="${escapeAttribute(control.placeholder ?? "")}" data-field-id="${escapeAttribute(control.id)}">`;
     return `
     <div class="form-row">
@@ -226,9 +229,13 @@ export function renderToggleControl(control: ControlSpec) {
 export function renderCheckboxGroup(control: ControlSpec) {
     const selected = state.checkedOptions[control.id] ?? new Set((control.options ?? []).filter((option) => option.selected).map((option) => option.id));
     const groups = groupedOptions(control.options ?? []);
+    // A lone checkbox named like its group needs no heading: its own name says it, with the tooltip beside it.
+    const onlyOption = control.options?.length === 1 ? control.options[0] : undefined;
+    const optionNamesGroup = onlyOption != null && sameLabel(displayOption(onlyOption), control.label);
+    const optionSuffix = optionNamesGroup ? renderTooltip(control.tooltip) : "";
     return `
     <fieldset class="checkbox-group">
-      <legend>${escapeHTML(control.label)}${renderTooltip(control.tooltip)}</legend>
+      ${optionNamesGroup ? "" : `<legend>${escapeHTML(control.label)}${renderTooltip(control.tooltip)}</legend>`}
       ${groups
         .map((group) => `
         <div class="option-group">
@@ -237,13 +244,17 @@ export function renderCheckboxGroup(control: ControlSpec) {
             ${group.options.map((option) => `
               <label>
                 <input type="checkbox" data-check-group="${escapeAttribute(control.id)}" value="${escapeAttribute(option.id)}" ${selected.has(option.id) ? "checked" : ""}>
-                <span>${escapeHTML(displayOption(option))}</span>
+                <span>${escapeHTML(displayOption(option))}${optionSuffix}</span>
               </label>`).join("")}
           </div>
         </div>`)
         .join("")}
     </fieldset>
   `;
+}
+function sameLabel(left: string | undefined, right: string | undefined) {
+    const normalize = (value: string | undefined) => (value ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+    return normalize(left) !== "" && normalize(left) === normalize(right);
 }
 type OptionGroup = { title: string; options: ControlOption[] };
 function groupedOptions(options: ControlOption[]) {
@@ -311,18 +322,17 @@ export function renderLibraryList(control: ControlSpec, context: CommandContext,
 export function renderConfigEditor(control: ControlSpec, location: ManifestLocation) {
     return `
     <div class="config-editor">
-      <div class="control-label">${escapeHTML(control.label)}${renderTooltip(control.tooltip)}</div>
       ${control.configFile
         ? `<label class="form-row">
-              <span class="row-label">${escapeHTML(state.labels.settingsFileLabel)}</span>
+              <span class="row-label">${escapeHTML(control.label || state.labels.settingsFileLabel)}${renderTooltip(control.tooltip)}</span>
               <span class="input-button-row">
-                <input type="text" class="mono path-input" dir="ltr" value="${escapeAttribute(state.configFilePaths[control.id] ?? control.configFile.path)}"
+                <input type="text" class="mono path-input" dir="ltr" value="${escapeAttribute(displayWorkspacePath(state.configFilePaths[control.id] ?? control.configFile.path, state.bundleRootPath))}"
                   data-config-path="${escapeAttribute(control.id)}">
                 <button type="button" class="secondary-button" data-load-config="${escapeAttribute(control.id)}">${escapeHTML(state.labels.loadButtonTitle)}</button>
               </span>
             </label>
             <button type="button" class="visually-hidden" data-save-config="${escapeAttribute(control.id)}">${escapeHTML(state.labels.saveButtonTitle)}</button>`
-        : ""}
+        : `<div class="control-label">${escapeHTML(control.label)}${renderTooltip(control.tooltip)}</div>`}
       ${(control.settings ?? []).map((setting) => renderConfigSetting(control, setting, location)).join("")}
     </div>
   `;
@@ -362,7 +372,7 @@ export function renderConfigSetting(control: ControlSpec, setting: ConfigSetting
     <div class="form-row">
       <label class="row-label" for="${escapeAttribute(inputID)}">${escapeHTML(setting.label)}${renderTooltip(setting.tooltip)}</label>
       ${setting.kind === "path"
-        ? `<span class="input-button-row"><input id="${escapeAttribute(inputID)}" type="text" class="path-input" dir="ltr" value="${escapeAttribute(value)}" placeholder="${escapeAttribute(setting.placeholder ?? "")}" ${common}>
+        ? `<span class="input-button-row"><input id="${escapeAttribute(inputID)}" type="text" class="path-input" dir="ltr" value="${escapeAttribute(displayWorkspacePath(value, state.bundleRootPath))}" placeholder="${escapeAttribute(setting.placeholder ?? "")}" ${common}>
               <button type="button" class="secondary-button" data-config-path-prompt="${escapeAttribute(control.id)}:${escapeAttribute(setting.id)}">${escapeHTML(state.labels.chooseButtonTitle)}</button></span>`
         : `<input id="${escapeAttribute(inputID)}" type="text" value="${escapeAttribute(value)}" placeholder="${escapeAttribute(setting.placeholder ?? "")}" ${common}>`}
     </div>

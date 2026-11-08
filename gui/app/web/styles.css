@@ -809,6 +809,12 @@ input[type="checkbox"] {
   gap: 8px;
 }
 
+.option-grid label > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .info-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

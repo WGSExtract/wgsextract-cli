@@ -570,3 +570,117 @@ test("path text fields stay left-to-right in RTL locales", async () => {
   assert.match(configHTML, /class="mono path-input" dir="ltr"/);
   assert.match(configHTML, /class="path-input" dir="ltr"/);
 });
+
+test("config editor names its settings file once, with the control's label", async () => {
+  // Regression: the Settings page read "WGS Extract Settings File Settings File".
+  globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+  globalThis.window = { innerHeight: 900 };
+
+  const { createInitialState, state } = await import("../dist/web/src/client/state.js");
+  const { renderConfigEditor } = await import("../dist/web/src/client/view.js");
+  Object.assign(state, createInitialState(), {
+    labels: { loadButtonTitle: "Load", saveButtonTitle: "Save", settingsFileLabel: "Settings File" },
+  });
+
+  const html = renderConfigEditor({
+    id: "wgs_settings",
+    kind: "configEditor",
+    label: "WGS Extract Settings File",
+    configFile: { path: "/tmp/config.toml" },
+    settings: [],
+  });
+  const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+
+  assert.match(text, /WGS Extract Settings File/);
+  assert.doesNotMatch(text, /Settings File\s+Settings File/);
+  assert.equal(text.match(/Settings File/g)?.length, 1);
+});
+
+test("a lone checkbox named like its group shows its name once", async () => {
+  // Regression: optional checkboxes showed the same text as a heading above and beside the box.
+  globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+  globalThis.window = { innerHeight: 900 };
+
+  const { createInitialState, state } = await import("../dist/web/src/client/state.js");
+  const { renderCheckboxGroup } = await import("../dist/web/src/client/view.js");
+  Object.assign(state, createInitialState());
+  const visibleText = (html) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+
+  const lone = renderCheckboxGroup({
+    id: "extract_poz",
+    kind: "checkboxGroup",
+    label: "Restrict Y BAM to Poz regions",
+    tooltip: "Only Poz regions.",
+    options: [{ id: "--poz", title: "Restrict Y BAM to Poz regions" }],
+  });
+  assert.equal(visibleText(lone).match(/Restrict Y BAM to Poz regions/g)?.length, 1);
+  assert.match(lone, /data-tooltip="Only Poz regions\."/);
+  assert.match(lone, /data-check-group="extract_poz" value="--poz"/);
+
+  const named = renderCheckboxGroup({
+    id: "formats",
+    kind: "checkboxGroup",
+    label: "Formats",
+    options: [{ id: "23andme", title: "23andMe v5" }],
+  });
+  assert.match(visibleText(named), /^Formats 23andMe v5$/);
+});
+
+test("a control's help shows only in its info tooltip, not also as a native title", async () => {
+  // Regression: hovering an info circle on Windows showed the app's tooltip and an unwrapped native one.
+  globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+  globalThis.window = { innerHeight: 900 };
+
+  const { createInitialState, state } = await import("../dist/web/src/client/state.js");
+  const { renderBundleHeader, renderControl } = await import("../dist/web/src/client/view.js");
+  Object.assign(state, createInitialState(), {
+    labels: { chooseButtonTitle: "Choose..." },
+    manifest: { id: "demo", displayName: "Demo", summary: "Demo bundle summary.", pages: [] },
+  });
+
+  const control = renderControl(
+    { id: "sample", kind: "text", label: "Sample", tooltip: "Sample name help." },
+    { fieldValues: {}, checkedOptions: {}, configValues: {}, rowValues: {} },
+    { pageID: "page", sectionID: "section" },
+  );
+  const header = renderBundleHeader();
+
+  assert.equal(control.match(/data-tooltip="Sample name help\."/g)?.length, 1);
+  assert.doesNotMatch(control, /\stitle="Sample name help\./);
+  assert.equal(header.match(/data-tooltip="Demo bundle summary\."/g)?.length, 1);
+  assert.doesNotMatch(header, /\stitle="Demo bundle summary\./);
+});
+
+test("path fields show workspace paths as {{bundleWorkspace}}", async () => {
+  globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+  globalThis.window = { innerHeight: 900 };
+
+  const workspace = "/home/me/gui-for-cli/BundleWorkspaces/wgs-extract";
+  const { createInitialState, state } = await import("../dist/web/src/client/state.js");
+  const { renderConfigEditor, renderTextControl } = await import("../dist/web/src/client/view.js");
+  Object.assign(state, createInitialState(), {
+    bundleRootPath: workspace,
+    labels: { chooseButtonTitle: "Choose...", loadButtonTitle: "Load", saveButtonTitle: "Save" },
+    fieldValues: { out_dir: `${workspace}/output`, other_dir: "/data/genomes", sample: `${workspace}/output` },
+    configFilePaths: { wgs_settings: `${workspace}/settings/config.toml` },
+    configValues: { "wgs_settings.ref_path": `${workspace}/reference` },
+  });
+
+  const pathField = renderTextControl({ id: "out_dir", kind: "path", label: "Output Directory" });
+  const outsideField = renderTextControl({ id: "other_dir", kind: "path", label: "Genomes" });
+  const textField = renderTextControl({ id: "sample", kind: "text", label: "Sample" });
+  const config = renderConfigEditor({
+    id: "wgs_settings",
+    kind: "configEditor",
+    label: "WGS Extract Settings File",
+    configFile: { path: "{{bundleWorkspace}}/settings/config.toml" },
+    settings: [{ id: "ref_path", kind: "path", label: "Reference Library" }],
+  });
+
+  assert.match(pathField, /value="\{\{bundleWorkspace\}\}\/output"/);
+  assert.match(outsideField, /value="\/data\/genomes"/);
+  assert.match(textField, new RegExp(`value="${workspace}/output"`));
+  assert.match(config, /value="\{\{bundleWorkspace\}\}\/settings\/config.toml"/);
+  assert.match(config, /value="\{\{bundleWorkspace\}\}\/reference"/);
+  assert.doesNotMatch(config, new RegExp(`value="${workspace}`));
+});

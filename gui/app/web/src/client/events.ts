@@ -1,5 +1,6 @@
 import { api } from "./api.js";
 import { configValueKey } from "../../../shared/rendering.js";
+import { expandWorkspacePath } from "../../../shared/workspace-paths.js";
 import { bundlePickerDefaultPath, rememberBundlePickerPath } from "./bundle-picker-memory.js";
 import { clamp } from "./dom.js";
 import { normalizeColorTheme, normalizeIconSet } from "./icons.js";
@@ -94,7 +95,8 @@ export function bindEvents(bootstrap: Bootstrap) {
     elements<HTMLInputElement | HTMLSelectElement>("[data-field-id]").forEach((input) => {
         input.addEventListener("change", async () => {
             const control = findControl(requiredDataset(input, "fieldId"));
-            await fieldValueChanged(input.dataset.toggle != null ? String((input as HTMLInputElement).checked) : input.value, control);
+            const value = input.dataset.toggle != null ? String((input as HTMLInputElement).checked) : input.value;
+            await fieldValueChanged(control.kind === "path" ? expandWorkspacePath(value, state.bundleRootPath) : value, control);
             clearDataSourcesAndRender();
         });
     });
@@ -123,7 +125,7 @@ export function bindEvents(bootstrap: Bootstrap) {
     });
     elements<HTMLInputElement>("[data-config-path]").forEach((input) => {
         input.addEventListener("change", async () => {
-            state.configFilePaths[requiredDataset(input, "configPath")] = input.value;
+            state.configFilePaths[requiredDataset(input, "configPath")] = expandWorkspacePath(input.value, state.bundleRootPath);
             await persistBundleState();
         });
     });
@@ -132,7 +134,7 @@ export function bindEvents(bootstrap: Bootstrap) {
             const control = findControl(requiredDataset(input, "configControl"));
             const setting = findSetting(control, requiredDataset(input, "configSetting"));
             const value = input.dataset.toggle != null ? String((input as HTMLInputElement).checked) : input.value;
-            await configSettingChanged(value, setting, control);
+            await configSettingChanged(setting.kind === "path" ? expandWorkspacePath(value, state.bundleRootPath) : value, setting, control);
             clearDataSourcesAndRender();
         });
     });
