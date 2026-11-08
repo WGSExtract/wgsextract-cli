@@ -32,7 +32,7 @@
 #            (wgse-bwa-mem3 or bwa-mem3, on the BWA-MEM2 index) or mm2
 #            (wgse-minimap2 or minimap2, -ax sr on <ref>.fa.sr.mmi); upstream
 #            executables (without wgse-) run only the cpu backend
-#   BACKEND  cpu, metal (--metal) or auto (--backend auto); mem3 has only cpu
+#   BACKEND  cpu, metal (--metal) or auto (--backend auto)
 #   tN       threads (default --threads, or every core)
 #   KN       -K N (default 10000000, or minimap2's own for mm2; K0 leaves -K out)
 #   probe    a failure (crash, kill, timeout) is reported, not failed
@@ -118,8 +118,6 @@ parse_config() {
     tool_binary "$c_tool" > /dev/null
     [ "$c_tool" != mm2 ] || c_K=0
     case $c_backend in cpu | metal | auto) ;; *) die "unknown backend in $1" ;; esac
-    [ "$c_tool:$c_backend" != mem3:metal ] && [ "$c_tool:$c_backend" != mem3:auto ] ||
-        die "wgse-bwa-mem3 has no Metal backend (config $1)"
     for field in "${fields[@]:2}"; do
         case $field in
             t[0-9]*) c_threads=${field#t}; [[ $c_threads =~ ^[1-9][0-9]*$ ]] || die "bad threads $field in config $1" ;;
@@ -389,7 +387,7 @@ row() {
             if (s[3] > pressure) pressure = s[3]; if (s[4] != "" && s[4] < free_min) free_min = s[4]
             if (s[5] > compressor) compressor = s[5]; next }
         FILENAME == stderr { line = $0
-            while (match(line, /(gpu|seed|rescue|extend)_batches=[0-9]+/)) {
+            while (match(line, /(gpu|seed|rescue|extend|extension)_batches=[0-9]+/)) {
                 v = substr(line, RSTART, RLENGTH); sub(/.*=/, "", v); gpu += v; line = substr(line, RSTART + RLENGTH) }
             if (match($0, /interruptions=[0-9]+/)) { v = substr($0, RSTART, RLENGTH); sub(/.*=/, "", v); interruptions += v }
             if ($0 ~ /CPU fallback/) fallback++

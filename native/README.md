@@ -9,7 +9,7 @@ they are qualified on full genomes (#364).
 | --- | --- | --- |
 | `wgse-bwa` | BWA 0.7.19 | Native arm64 build. CPU by default (unmodified upstream code); `--metal` is **experimental**. Low memory: about 6 GB for a human index. |
 | `wgse-bwa-mem2` | BWA-MEM2 2.3 | arm64 build through sse2neon. CPU by default; `--metal` is **experimental**. Needs much more memory than BWA (see below). |
-| `wgse-bwa-mem3` | bwa-mem3 0.16.0 | Self-contained arm64 build of bwa-mem3, a faster BWA-MEM2 descendant that reads the BWA-MEM2 index and can write BWA's or BWA-MEM2's exact records (`--compat`). CPU only; no `--metal` yet. |
+| `wgse-bwa-mem3` | bwa-mem3 0.16.0 | Self-contained arm64 build of bwa-mem3, a faster BWA-MEM2 descendant that reads the BWA-MEM2 index and can write BWA's or BWA-MEM2's exact records (`--compat`). CPU by default; `--metal` is **experimental**. |
 | `wgse-minimap2` | minimap2 2.31 | arm64 build through sse2neon, with faster index loading and building, seeding and anchor sorting on the CPU. `--metal` (long-read presets) is **experimental**. |
 
 All write the same alignments as their upstream release (in each of
@@ -21,13 +21,14 @@ printed by `--version`.
 ## Installing
 
 The `macos-aligners-13` prerelease has `wgse-bwa` 0.7.1, `wgse-bwa-mem2`
-0.4.1, `wgse-bwa-mem3` 0.1.0 and `wgse-minimap2` 0.2.0, whose `--metal` runs
-gap fills on the GPU.
+0.4.1, `wgse-bwa-mem3` 0.2.0, whose `--metal` scores seed extensions on the
+GPU, and `wgse-minimap2` 0.2.0, whose `--metal` runs gap fills on the GPU.
 `wgse-bwa` 0.7.1 shares the updated
 mate-rescue kernel with `wgse-bwa-mem2` 0.4.0 and aligns exactly as 0.7.0
 does. `wgse-bwa --metal` and `wgse-bwa capabilities` need `wgse-bwa` 0.2.0 or
 later. `macos-aligners-12` has the same `wgse-bwa` and `wgse-bwa-mem2` with
-`wgse-minimap2` 0.1.0, which aligns on the CPU only. `macos-aligners-11` has
+`wgse-minimap2` 0.1.0, which aligns on the CPU only, and no `wgse-bwa-mem3`.
+`macos-aligners-11` has
 `wgse-bwa` 0.7.1, `wgse-bwa-mem2` 0.4.0, which aligns exactly as 0.4.1 but
 without its memory and GPU-limit warnings, and `wgse-minimap2` 0.1.0. Earlier
 prereleases, without `wgse-minimap2`: `macos-aligners-10` has
@@ -71,14 +72,15 @@ for dir in wgse-*-macos-arm64; do PATH="$PWD/$dir/bin:$PATH"; done
 export PATH
 wgse-bwa capabilities --json
 wgse-bwa-mem2 capabilities --json
-wgse-bwa-mem3 capabilities --json   # in macos-aligners-13 and later
+wgse-bwa-mem3 capabilities --json
 wgse-minimap2 capabilities --json
 ```
 
 macOS kills a quarantined executable as soon as it starts. If an archive was
 downloaded in a browser, clear the flag before running, for example
 `xattr -dr com.apple.quarantine wgse-bwa-0.7.1-macos-arm64` (and likewise
-`wgse-bwa-mem2-0.4.1-macos-arm64` and `wgse-minimap2-0.2.0-macos-arm64`).
+`wgse-bwa-mem2-0.4.1-macos-arm64`, `wgse-bwa-mem3-0.2.0-macos-arm64` and
+`wgse-minimap2-0.2.0-macos-arm64`).
 
 ## Usage
 
@@ -96,6 +98,7 @@ wgse-bwa-mem2 capabilities --json
 wgse-bwa-mem3 index hs38.fa   # or reuse a BWA-MEM2 index; .0123 is not needed
 wgse-bwa-mem3 mem -t 9 hs38.fa R1.fastq.gz R2.fastq.gz > out.sam
 wgse-bwa-mem3 mem -t 9 --compat=bwa-mem hs38.fa R1.fastq.gz R2.fastq.gz > out.sam
+wgse-bwa-mem3 --metal mem -t 9 hs38.fa R1.fastq.gz R2.fastq.gz > out.sam
 wgse-bwa-mem3 capabilities --json
 
 wgse-minimap2 -t 9 -ax map-hifi hs38.fa hifi.fastq.gz > out.sam
@@ -105,7 +108,7 @@ wgse-minimap2 --metal -t 9 -ax map-hifi hs38.map-hifi.mmi hifi.fastq.gz > out.sa
 wgse-minimap2 capabilities --json
 ```
 
-For `wgse-bwa` and `wgse-bwa-mem2`, options before the command select the
+For `wgse-bwa`, `wgse-bwa-mem2` and `wgse-bwa-mem3`, options before the command select the
 backend of `mem` (other commands ignore them):
 
 - default (`--backend cpu`): the upstream CPU code, unchanged;
@@ -115,9 +118,7 @@ backend of `mem` (other commands ignore them):
 - `--backend auto`: like `--metal`, but falls back to the CPU in both cases
   with only a note on stderr.
 
-`wgse-bwa-mem3` accepts the same options, but has no Metal backend yet:
-`--metal` exits 1 and `--backend auto` runs on the CPU with a note on stderr.
-Its `mem` is upstream bwa-mem3's: by default it writes bwa-mem3's records
+`wgse-bwa-mem3`'s `mem` is upstream bwa-mem3's: by default it writes bwa-mem3's records
 (BWA-MEM2's, with different MAPQs and `MQ`/`HN` tags), `--compat=bwa-mem` and
 `--compat=bwa-mem2` write exactly BWA's and BWA-MEM2's records, and `--fast`
 trades alignments for speed. It is built with upstream's own dependencies
@@ -207,8 +208,24 @@ What runs on the GPU:
   the CPU, while the GPU still extends seeds and rescues mates, and exits 0;
   earlier versions did the same after a "CPU fallback" message and then
   exited 1 with `--metal`.
+- `wgse-bwa-mem3` (from 0.2.0): seed extension only, in every output mode.
+  bwa-mem3 extends seeds in batches, scoring each batch first with 8-bit
+  scores and then, for the extensions that overflow, with 16-bit scores; the
+  GPU scores whole 8-bit batches with `wgse-bwa-mem2`'s extension kernel,
+  which gives the same results as upstream's NEON kernel, and the 16-bit
+  batches stay on the CPU. A batch with a query over 256 bases or a base
+  other than A, C, G, T and N is scored by upstream's code; on HG002 none
+  was. A CPU thread waits while the GPU scores its batch, so `--metal` runs
+  twice `-t` alignment threads (`--gpu-threads PERCENT`, from 100 to 800,
+  sets the share; the size of a chunk of reads still follows `-t`, so the
+  output does not change). A GPU command buffer that macOS aborts to keep the
+  display responsive is run again, up to four times; any other GPU error,
+  such as a GPU hang, sends that batch and every later one to the CPU (and
+  `--metal` exits 1). The GPU saves 7–10% of the time in the modes that use
+  upstream's full seed extension and nothing with `--fast` (see
+  Performance).
 
-With a Metal backend both print GPU and CPU work counts to stderr.
+With a Metal backend all three print GPU and CPU work counts to stderr.
 `wgse-bwa-mem2 capabilities --json [index]` (0.4.1) also reports the Mac's
 memory (`physical_memory_bytes`) and the GPU's limits (`metal.max_buffer_bytes`,
 `metal.recommended_max_working_set_bytes`); given an index prefix, it reports
@@ -319,8 +336,15 @@ warning on the CPU but not with `--metal` and up to 8 threads.
 
 `wgse-bwa-mem3` reads the same index as `wgse-bwa-mem2`, without the 6.2 GB
 `.0123` file, and like Bioconda's bwa-mem3 0.16.0 peaked at about 10.9 GiB on
-hs38 with 9 threads and `-K 10000000`. Its denser suffix-array index
-(`bwa-mem3 re-sa -u 2`) peaked at 14.5 GiB and was slower on this Mac.
+hs38 with 9 threads and `-K 10000000`; `--metal` adds about 0.2 GiB. Its
+denser suffix-array index (`bwa-mem3 re-sa -u 2`) peaked at 14.5 GiB and was
+slower on this Mac. From 0.2.0, `mem` warns on stderr, as `wgse-bwa-mem2`
+0.4.1 does, when the Mac has less physical memory than its estimate of the
+run's peak: the `.bwt.2bit.64` and `.pac` files (10.1 GiB for hs38), plus
+1 GiB, plus 24 bytes per base of a chunk (`-K`, or 10M bases per thread by
+default). The run still goes ahead with the same output. `wgse-bwa-mem3
+capabilities --json` reports `physical_memory_bytes` and the GPU's limits
+(`metal.max_buffer_bytes`, `metal.recommended_max_working_set_bytes`).
 
 `wgse-minimap2` uses within about 1 GiB of upstream minimap2's memory: with 9 threads on
 hs38 it peaked at 13–15 GiB for HiFi reads, 10–14 GiB for ONT reads and
@@ -643,6 +667,33 @@ them:
 - `-mcpu=apple-m1`: the same code;
 - the denser suffix-array sample (`re-sa -u 2`): slower in every mode tried
   (81–94 s, and 42 s with `--fast`), at 14.5 GiB.
+
+`wgse-bwa-mem3` 0.2.0 `--metal` was measured the same way, against its own
+CPU backend (0.1.0) and Bioconda's build, in interleaved rounds on a later
+day (load averages 5–47); the last round ran 0.2.0 as released, with its
+default settings. Every run of a mode wrote the alignments above. Times are
+means, with each run in brackets:
+
+| Mode | Bioconda bwa-mem3 0.16.0 | CPU, `-t 9` | `--metal`, `-t 9` | Change | Peak RSS (CPU / `--metal`) |
+| --- | --- | --- | --- | --- | --- |
+| plain | 69.0 s | 70.8 s (71.8, 78.7, 69.4, 68.5, 68.4, 69.1, 69.8) | 64.0 s (63.3, 63.9, 65.0, 63.0, 63.0, 62.9, 66.8) | −9.6% | 10.7 / 10.9 GiB |
+| `--compat=bwa-mem` | 68.3 s | 68.5 s (69.0, 67.5, 67.6, 69.9) | 63.9 s (63.0, 65.4, 62.5, 64.7) | −6.7% | 10.7 / 10.9 GiB |
+| `--compat=bwa-mem2` | 70.1 s | 69.5 s (69.4, 68.7, 68.7, 71.3) | 63.6 s (65.1, 63.2, 62.9, 63.2) | −8.5% | 10.7 / 10.9 GiB |
+| `--fast` | 31.8 s | 32.5 s (31.7, 34.9, 31.0, 32.3) | 33.2 s (31.4, 36.3, 31.9, 33.3) | +2.3% | 10.5 / 10.6 GiB |
+
+The CPU threads wait for the GPU, so `--metal` runs 18 alignment threads for
+`-t 9`. More CPU threads alone do not explain the gain: in the same rounds,
+plain mode on the CPU took 68.4 s with `-t 10` (68.5, 69.6, 67.0) and 67.9 s
+with `-t 18` (69.9, 67.0, 66.7). The GPU scored all of a run's 8-bit
+extension batches: 63.1M extensions in about 7,500 command buffers and 41 s
+of GPU time in plain and `--compat` modes, and 13.5M in 15–16 s with
+`--fast`, whose extensions are too few for the GPU to save time. The GPU
+extends seeds more slowly than nine CPU threads (upstream spends 23.5 s of
+wall time on it), but frees those threads for the other stages. On
+the `medium` bench tier (500k pairs on chr1–3), where loading the index
+takes much of the time, the gain was within the noise. Rescuing mates on the
+GPU with `wgse-bwa`'s kernel was also tried; it was no faster on `medium`, so
+0.2.0 does not do it.
 
 ### Energy
 
