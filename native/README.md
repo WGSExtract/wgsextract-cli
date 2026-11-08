@@ -543,6 +543,38 @@ and chaining (about 70%) dominating ONT reads, and minimizer lookups and seed
 collection (about 58%) dominating short reads. 0.1.0 leaves that mostly
 unchanged, so those are the targets for GPU work.
 
+`wgse-bwa-mem3` 0.1.0 was measured against Bioconda's bwa-mem3 0.16.0 on hs38
+(the first 5M HG002 pairs above, 9 threads, `-K 10000000`) in interleaved
+rounds on AC power, with the machine shared with other work (load averages
+10–40). Each mode's runs wrote identical alignments (SHA-256 of the SAM
+without `@PG`, first 16 hex digits). Times are means of the clean runs; runs
+that overlapped other benchmarks were discarded:
+
+| Mode | Bioconda bwa-mem3 0.16.0 | `wgse-bwa-mem3` 0.1.0 | Peak RSS (Bioconda / 0.1.0) | Alignments |
+| --- | --- | --- | --- | --- |
+| plain (bwa-mem3's records) | 73.7 s (1 run) | 75.6 s (3 runs: 82.1, 71.3, 73.3) | 10.9 / 10.7 GiB | `895c361c65ceb365` |
+| `--compat=bwa-mem` | 74.3 s (76.8, 71.8) | 74.7 s (75.0, 74.4) | 10.9 / 10.7 GiB | `e2febf171215d840` |
+| `--compat=bwa-mem2` | 71.8 s (71.0, 72.5) | 71.4 s (69.6, 73.1) | 10.9 / 10.7 GiB | `dff39743a72242de` |
+| `--fast` | 34.7 s (32.8, 37.0, 34.2) | 35.0 s (33.7, 35.2, 36.1) | 10.7 / 10.5 GiB | `d27f9ccd7a921c97` |
+
+The `--compat` hashes are those of `wgse-bwa` and `wgse-bwa-mem2`. bwa-mem3
+already has NEON kernels for Apple Silicon, so 0.1.0 is upstream's code built
+with Apple clang, and as fast as Bioconda's build. Upstream's stage timer
+(wall seconds, plain mode, 73.3 s run) split the time into reading reads
+8.2 s, SMEM seeding 12.3 s, chaining 8.6 s, suffix-array lookup 8.5 s, banded
+Smith-Waterman seed extension (BSW) 23.5 s, and pairing, mate rescue and SAM
+formatting 23.9 s; `--fast` cut BSW to 5.2 s and the pairing step to 6.3 s.
+None of these changes was faster, with identical output, so 0.1.0 has none of
+them:
+
+- making the bundled mimalloc replace `malloc` (Bioconda's build notes that it
+  does not): 75.8 s plain and 33.5 s `--fast` over three rounds;
+- that plus link-time optimisation: 78.1 s plain;
+- profile-guided optimisation: no faster on chr1–3 in any mode;
+- `-mcpu=apple-m1`: the same code;
+- the denser suffix-array sample (`re-sa -u 2`): slower in every mode tried
+  (81–94 s, and 42 s with `--fast`), at 14.5 GiB.
+
 ### Energy
 
 Each aligner's energy was measured with `bench/bench.sh --power` on the same
