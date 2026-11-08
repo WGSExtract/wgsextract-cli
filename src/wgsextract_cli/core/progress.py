@@ -25,6 +25,8 @@ class Heartbeat:
         self.emit = emit
         self.completed = 0
         self.started = time.monotonic()
+        self._estimate: tuple[float, float] | None = None
+        self._writing_since = self.started
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -61,9 +63,54 @@ class Heartbeat:
         if match := _READS.search(line):
             self.advance(int(match.group(1)))
 
+    def estimate(self, read: float, written: float = 0.0) -> None:
+        """Record the shares of the input read and of the output written, for
+        a pass that reports its count only when it finishes. A reported count
+        takes precedence."""
+        with self._lock:
+            if read >= 1 and not (self._estimate and self._estimate[0] >= 1):
+                self._writing_since = time.monotonic()
+            self._estimate = (min(1.0, max(0.0, read)), min(1.0, max(0.0, written)))
+
+    def _report_estimate(self, read: float, written: float) -> None:
+        total = self.total
+        if written:
+            count = (
+                f"~{round(written * total):,}/{total:,} {self.unit} written"
+                if total
+                else f"{written:.0%} written"
+            )
+            share, since = written, self._writing_since
+        else:
+            count = f"{read:.0%} of the input read"
+            share, since = read, self.started
+        _report(count, (read + written) / 2)
+        if not self.emit:
+            return
+        now = time.monotonic()
+        detail = f" ({share:.1%})" if written and total else ""
+        if read >= 1 and not written:
+            detail = ", collating pairs to write"
+        elif 0 < share < 1:
+            left = (now - since) * (1 - share) / share
+            detail += f", about {left:.0f}s left " + (
+                "to write" if written else "to read; output is written after that"
+            )
+        logging.info(
+            "%s heartbeat: %s%s, elapsed %.0fs",
+            self.label,
+            count,
+            detail,
+            max(0.0, now - self.started),
+        )
+
     def report(self) -> None:
         with self._lock:
             done = self.completed
+            estimate = None if done else self._estimate
+        if estimate:
+            self._report_estimate(*estimate)
+            return
         if done or self.total:
             _report(
                 f"{done:,}/{self.total:,} {self.unit}"

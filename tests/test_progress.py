@@ -1,4 +1,5 @@
 import logging
+import subprocess
 import sys
 import time
 from collections.abc import Callable
@@ -113,3 +114,41 @@ def test_heartbeat_sends_its_count_and_fraction_to_api_callers():
         ProgressEvent("heartbeat", "0/4 reads", 0.0),
         ProgressEvent("heartbeat", "3/4 reads", 0.75),
     ]
+
+
+def test_extraction_heartbeat_moves_before_samtools_reports_its_count(
+    tmp_path, caplog, monkeypatch
+):
+    # Issue #549: a 35x FASTQ extraction showed "0/835M reads (0.0%)" for 23
+    # minutes, because samtools fastq prints its count only when it finishes.
+    original = utils.Heartbeat
+    monkeypatch.setattr(
+        utils, "Heartbeat", lambda *a, **k: original(*a, interval=0.01, **k)
+    )
+    state = tmp_path / "state"
+    stage = [
+        sys.executable,
+        "-c",
+        "import pathlib,sys,time;state=pathlib.Path(sys.argv[1])\n"
+        "for shares in ('0.5 0','1 0','1 0.5'):\n"
+        "    state.write_text(shares);time.sleep(.2)\n"
+        "sys.stderr.write('[M::bam2fq_mainloop] processed 4 reads\\n')",
+        str(state),
+        "samtools",
+        "fastq",
+    ]
+
+    def estimate() -> tuple[float, float]:
+        read, written = (state.read_text() or "0 0").split()
+        return float(read), float(written)
+
+    state.write_text("0 0")
+    caplog.set_level(logging.INFO)
+    utils.run_pipeline(
+        [stage], stdout=subprocess.DEVNULL, heartbeat=True, expected_reads=4,
+        estimate=estimate,
+    )  # fmt: skip
+    assert "50% of the input read" in caplog.text
+    assert "100% of the input read, collating pairs" in caplog.text
+    assert "~2/4 reads written (50.0%)" in caplog.text
+    assert "4/4 reads (100.0%)" in caplog.text
