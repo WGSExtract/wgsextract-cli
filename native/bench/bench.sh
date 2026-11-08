@@ -438,7 +438,11 @@ run() {
                 awk -F '\t' '{ printf "   %s s, max RSS %s MiB, swap %s MiB, exit %s, %s %s\n", $9, $12, $16, $6, $28, $26 }'
         done
     done
-    [ -z "$balloon_pid" ] || { kill "$balloon_pid" 2> /dev/null || true; trap - EXIT; }
+    if [ -n "$balloon_pid" ]; then
+        kill "$balloon_pid" 2> /dev/null || true
+        wait "$balloon_pid" 2> /dev/null || true
+        trap - EXIT
+    fi
 
     # Runs of a tool on a tier with the same K and +ARGs (and, without -K, the same threads) must all agree.
     awk -F '\t' -v OFS='\t' -v default_K="$default_K" -v threads="$threads" '
@@ -488,11 +492,13 @@ summary() {
             if ($19 > pressure[key]) pressure[key] = $19
             if ($20 != "-" && (!(key in freemin) || $20 < freemin[key])) freemin[key] = $20
             gpu[key] += $21; fallback[key] += $22 + $23; interruptions[key] += $24
-            if ($6 == 0 || !(key in hash)) hash[key] = $26
+            if ($6 == 0) { if (!(key in okhash)) okhash[key] = $26; else if (okhash[key] != $26) several[key] = 1
+                hash[key] = (key in several) ? "several" : okhash[key] }
+            else if (!(key in hash)) hash[key] = $26
             if ($28 != "pass" && $28 != "probe-failed" || note[key] == "") if ($29 != "-") note[key] = $29
         }
         END {
-            print "| Runner | Tier | Config | Variant | Runs | Status | Time s | vs first | CPU s | Max RSS GiB | Footprint GiB | Swap GiB | Swapped out GiB | Pressure | Min free | GPU batches | Fallbacks | Hash | Notes |"
+            print "| Runner | Tier | Config | Variant | Runs | Status | Time s | vs first | CPU s | Max RSS GiB | Footprint GiB | System swap GiB | Swapped out GiB | Pressure | Min free | GPU batches | Fallbacks | Hash | Notes |"
             print "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | --- | --- |"
             for (k = 1; k <= nkeys; k++) {
                 key = keys[k]; split(key, p, SUBSEP); group = p[1] SUBSEP p[2] SUBSEP p[3]

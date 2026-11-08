@@ -139,12 +139,19 @@ part_bytes=1900000000
         for ext in amb ann bwt pac sa bwt.2bit.64 0123; do
             path=$file.$ext
             asset=$(basename "$path").zst
-            if ! ls "$out/assets/$asset"* > /dev/null 2>&1; then
-                zstd -q -T"$threads" -10 -c < "$data/$path" > "$out/assets/$asset"
-                if [ "$(stat -f %z "$out/assets/$asset")" -gt "$part_bytes" ]; then
-                    split -b "$part_bytes" -d -a 2 "$out/assets/$asset" "$out/assets/$asset."
-                    rm "$out/assets/$asset"
+            if [ ! -e "$out/assets/$asset" ] && [ ! -e "$out/assets/$asset.00" ]; then
+                # Staged, and the first piece moved last, so that an interrupted
+                # build leaves no asset that looks complete.
+                rm -rf "$out/staging" "$out/assets/$asset".[0-9][0-9] && mkdir "$out/staging"
+                zstd -q -T"$threads" -10 -c < "$data/$path" > "$out/staging/$asset"
+                if [ "$(stat -f %z "$out/staging/$asset")" -gt "$part_bytes" ]; then
+                    split -b "$part_bytes" -d -a 2 "$out/staging/$asset" "$out/staging/$asset."
+                    rm "$out/staging/$asset"
                 fi
+                for part in "$out/staging/$asset".*; do
+                    [ ! -e "$part" ] || [ "$part" = "$out/staging/$asset.00" ] || mv "$part" "$out/assets/"
+                done
+                mv "$out/staging/$asset"* "$out/assets/"
             fi
             assets=$(cd "$out/assets" && printf '%s\n' "$asset"* | paste -sd , -)
             printf '%s\t%s\t%s\t%s\n' "$path" "$(stat -L -f %z "$data/$path")" \
@@ -154,12 +161,16 @@ part_bytes=1900000000
     for reads in chr20-hg002 chr1-3-hg002 hg002-200k hg002-5m; do
         for mate in 1 2; do
             path=reads/${reads}_R$mate.fastq.gz
-            [ -e "$out/assets/$(basename "$path")" ] || cp -L "$data/$path" "$out/assets/"
+            if [ ! -e "$out/assets/$(basename "$path")" ]; then
+                cp -L "$data/$path" "$out/assets/$(basename "$path").partial"
+                mv "$out/assets/$(basename "$path").partial" "$out/assets/$(basename "$path")"
+            fi
             printf '%s\t%s\t%s\t%s\n' "$path" "$(stat -L -f %z "$data/$path")" \
                 "$(shasum -a 256 < "$data/$path" | cut -d' ' -f1)" "$(basename "$path")"
         done
     done
 } > "$out/data.tsv"
+rm -rf "$out/staging"
 set -- "$out"/assets/*
 echo "Wrote $out/data.tsv, $out/expected.tsv and $# assets ($(du -sh "$out/assets" | cut -f1))"
 echo "Upload: gh release upload $tag $out/assets/* ; then copy data.tsv and expected.tsv to $here"

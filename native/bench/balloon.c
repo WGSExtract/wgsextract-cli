@@ -1,23 +1,17 @@
 /* Wire memory so that a benchmark sees a Mac with less RAM.
  * Usage: balloon <MiB>
  * Allocates and mlock()s <MiB> in 64 MiB pieces, prints "wired <n> MiB" (or
- * how far it got and why it stopped), then holds the memory until it receives
- * SIGTERM or SIGINT. If it cannot wire everything it says so and exits 1 at
- * once, releasing what it wired. */
+ * how far it got and why it stopped), then holds the memory until a signal
+ * kills it or its parent exits, so that a killed benchmark cannot leave memory
+ * wired. If it cannot wire everything it says so and exits 1 at once,
+ * releasing what it wired. */
 #include <errno.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/event.h>
 #include <sys/mman.h>
 #include <unistd.h>
-
-static volatile sig_atomic_t stop;
-
-static void on_signal(int signo) {
-    (void)signo;
-    stop = 1;
-}
 
 int main(int argc, char **argv) {
     const size_t piece = (size_t)64 << 20;
@@ -27,8 +21,14 @@ int main(int argc, char **argv) {
         fprintf(stderr, "usage: balloon <MiB>\n");
         return 2;
     }
-    signal(SIGTERM, on_signal);
-    signal(SIGINT, on_signal);
+    pid_t parent = getppid();
+    int queue = kqueue();
+    struct kevent watch;
+    EV_SET(&watch, parent, EVFILT_PROC, EV_ADD, NOTE_EXIT, 0, NULL);
+    if (queue < 0 || kevent(queue, &watch, 1, NULL, 0, NULL) < 0) {
+        fprintf(stderr, "balloon: cannot watch the parent process: %s\n", strerror(errno));
+        return 1;
+    }
     size_t wanted = (size_t)mib << 20, wired = 0;
     while (wired < wanted) {
         size_t size = wanted - wired < piece ? wanted - wired : piece;
@@ -48,6 +48,8 @@ int main(int argc, char **argv) {
     printf("wired %zu MiB\n", wired >> 20);
     fflush(stdout);
     if (wired < wanted) return 1;
-    while (!stop) pause();
+    // SIGTERM and SIGINT keep their default action, ending the process and freeing the memory.
+    struct kevent event;
+    while (kevent(queue, NULL, 0, &event, 1, NULL) < 0 && errno == EINTR) {}
     return 0;
 }
