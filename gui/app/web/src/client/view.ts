@@ -29,7 +29,7 @@ export function renderBundleHeader() {
     return `
     <header class="bundle-header">
       ${icon}
-      <h1 title="${escapeAttribute(manifest.summary)}">${escapeHTML(manifest.displayName)}${renderTooltip(manifest.summary)}</h1>
+      <h1>${escapeHTML(manifest.displayName)}${renderTooltip(manifest.summary)}</h1>
       ${appVersion ? `<p class="app-version" data-app-version>${escapeHTML(appVersionLabel)} ${escapeHTML(appVersion)}</p>` : ""}
     </header>
   `;
@@ -180,7 +180,7 @@ export function renderControl(control: ControlSpec, sectionContext: CommandConte
             body = renderInlineError(`Unsupported control kind: ${renderedControl.kind}`);
     }
     return `
-    <div class="control" title="${escapeAttribute(renderedControl.tooltip ?? "")}">
+    <div class="control">
       ${body}
       ${loading && renderedControl.kind !== "libraryList" ? renderLoadingInline(state.labels.loadingTitle) : ""}
       ${error
@@ -229,9 +229,13 @@ export function renderToggleControl(control: ControlSpec) {
 export function renderCheckboxGroup(control: ControlSpec) {
     const selected = state.checkedOptions[control.id] ?? new Set((control.options ?? []).filter((option) => option.selected).map((option) => option.id));
     const groups = groupedOptions(control.options ?? []);
+    // A lone checkbox named like its group needs no heading: its own name says it, with the tooltip beside it.
+    const onlyOption = control.options?.length === 1 ? control.options[0] : undefined;
+    const optionNamesGroup = onlyOption != null && sameLabel(displayOption(onlyOption), control.label);
+    const optionSuffix = optionNamesGroup ? renderTooltip(control.tooltip) : "";
     return `
     <fieldset class="checkbox-group">
-      <legend>${escapeHTML(control.label)}${renderTooltip(control.tooltip)}</legend>
+      ${optionNamesGroup ? "" : `<legend>${escapeHTML(control.label)}${renderTooltip(control.tooltip)}</legend>`}
       ${groups
         .map((group) => `
         <div class="option-group">
@@ -240,13 +244,17 @@ export function renderCheckboxGroup(control: ControlSpec) {
             ${group.options.map((option) => `
               <label>
                 <input type="checkbox" data-check-group="${escapeAttribute(control.id)}" value="${escapeAttribute(option.id)}" ${selected.has(option.id) ? "checked" : ""}>
-                <span>${escapeHTML(displayOption(option))}</span>
+                <span>${escapeHTML(displayOption(option))}${optionSuffix}</span>
               </label>`).join("")}
           </div>
         </div>`)
         .join("")}
     </fieldset>
   `;
+}
+function sameLabel(left: string | undefined, right: string | undefined) {
+    const normalize = (value: string | undefined) => (value ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+    return normalize(left) !== "" && normalize(left) === normalize(right);
 }
 type OptionGroup = { title: string; options: ControlOption[] };
 function groupedOptions(options: ControlOption[]) {
@@ -316,7 +324,7 @@ export function renderConfigEditor(control: ControlSpec, location: ManifestLocat
     <div class="config-editor">
       ${control.configFile
         ? `<label class="form-row">
-              <span class="row-label">${escapeHTML(control.label)}${renderTooltip(control.tooltip)}</span>
+              <span class="row-label">${escapeHTML(control.label || state.labels.settingsFileLabel)}${renderTooltip(control.tooltip)}</span>
               <span class="input-button-row">
                 <input type="text" class="mono path-input" dir="ltr" value="${escapeAttribute(displayWorkspacePath(state.configFilePaths[control.id] ?? control.configFile.path, state.bundleRootPath))}"
                   data-config-path="${escapeAttribute(control.id)}">
