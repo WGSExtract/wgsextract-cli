@@ -151,34 +151,56 @@ jobs:
       - name: Build and smoke test the package
         run: pixi run package-smoke
 
-  release:
+  # The "Protect release tags" ruleset doesn't let the workflow token create
+  # v* tags, so the tag is pushed with a deploy key the ruleset lets through.
+  # The key is a secret of the release-tag environment, which only main can
+  # use, so no other job or branch sees it.
+  tag:
     needs: [ resolve, verify ]
+    if: needs.resolve.outputs.create_tag == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
+    environment: release-tag
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.resolve.outputs.sha }}
-      - name: Create the tag
-        if: needs.resolve.outputs.create_tag == 'true'
+          ssh-key: ${{ secrets.RELEASE_TAG_DEPLOY_KEY }}
+      - name: Push the tag
         env:
-          GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.resolve.outputs.tag }}
           SHA: ${{ needs.resolve.outputs.sha }}
-        # A tag created with the workflow token doesn't start another run.
-        # Safe to repeat: an existing tag on the same commit is fine.
+        # The push starts another Release run, which waits for this one (see
+        # concurrency) and then finds the release published. Safe to repeat:
+        # an existing tag on the same commit is fine, annotated or not.
         run: |
-          if ! gh api "repos/$GITHUB_REPOSITORY/git/refs" \
-               -f ref="refs/tags/$TAG" -f sha="$SHA" --silent; then
-            current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha)
+          if ! git push origin "$SHA:refs/tags/$TAG"; then
+            current=$(git ls-remote origin "refs/tags/$TAG^{}" | cut -f1)
+            [ -n "$current" ] || current=$(git ls-remote origin "refs/tags/$TAG" | cut -f1)
             if [ "$current" != "$SHA" ]; then
               echo "::error::$TAG already points at $current, not $SHA."
               exit 1
             fi
           fi
+
+  release:
+    needs: [ resolve, verify, tag ]
+    # The tag job is skipped when the tag already exists.
+    if: ${{ !cancelled() && needs.verify.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.tag.result) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      created: ${{ steps.create.outputs.created }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
       - name: Create the release
+        id: create
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.resolve.outputs.tag }}
@@ -192,6 +214,7 @@ jobs:
             echo "::notice::No $notes, so $TAG is a draft with generated notes; edit and publish it."
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
               --draft --generate-notes --title "WGS Extract $TAG"
+            echo "created=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # Don't move "latest" back to an older version.
@@ -200,9 +223,13 @@ jobs:
           make_latest=$([ "$newest" = "$TAG" ] && echo true || echo false)
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "WGS Extract $TAG" --notes-file "$notes" --latest="$make_latest"
+          echo "created=true" >> "$GITHUB_OUTPUT"
 
   app:
     needs: [ resolve, release ]
+    # Only the run that created the release builds the app. The tag push's own
+    # run can't see a draft with its read-only token and would get this far.
+    if: ${{ !cancelled() && needs.release.outputs.created == 'true' }}
     permissions:
       contents: write
     uses: ./.github/workflows/gui-distribution.yml
