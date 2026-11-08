@@ -9,7 +9,7 @@ they are qualified on full genomes (#364).
 | --- | --- | --- |
 | `wgse-bwa` | BWA 0.7.19 | Native arm64 build. CPU by default (unmodified upstream code); `--metal` is **experimental**. Low memory: about 6 GB for a human index. |
 | `wgse-bwa-mem2` | BWA-MEM2 2.3 | arm64 build through sse2neon. CPU by default; `--metal` is **experimental**. Needs much more memory than BWA (see below). |
-| `wgse-minimap2` | minimap2 2.31 | arm64 build through sse2neon, with faster index loading and building, seeding and anchor sorting on the CPU. No `--metal` yet. |
+| `wgse-minimap2` | minimap2 2.31 | arm64 build through sse2neon, with faster index loading and building, seeding and anchor sorting on the CPU. `--metal` (long-read presets) is **experimental**. |
 
 All write the same alignments as their upstream release, with or without
 `--metal`; only the `@PG` version gains a `-wgse-<version>` suffix (and its
@@ -18,11 +18,14 @@ printed by `--version`.
 
 ## Installing
 
-The `macos-aligners-11` prerelease has `wgse-bwa` 0.7.1, `wgse-bwa-mem2`
-0.4.0 and `wgse-minimap2` 0.1.0. `wgse-bwa` 0.7.1 shares the updated
+The `macos-aligners-12` prerelease has `wgse-bwa` 0.7.1, `wgse-bwa-mem2`
+0.4.0 and `wgse-minimap2` 0.2.0, whose `--metal` runs gap fills on the GPU.
+`wgse-bwa` 0.7.1 shares the updated
 mate-rescue kernel with `wgse-bwa-mem2` 0.4.0 and aligns exactly as 0.7.0
 does. `wgse-bwa --metal` and `wgse-bwa capabilities` need `wgse-bwa` 0.2.0 or
-later. Earlier prereleases, without `wgse-minimap2`: `macos-aligners-10` has
+later. `macos-aligners-11` has the same `wgse-bwa` and `wgse-bwa-mem2` with
+`wgse-minimap2` 0.1.0, which aligns on the CPU only. Earlier prereleases,
+without `wgse-minimap2`: `macos-aligners-10` has
 `wgse-bwa` 0.7.1 and `wgse-bwa-mem2` 0.4.0; `macos-aligners-9` has `wgse-bwa`
 0.7.0 and `wgse-bwa-mem2` 0.3.0, with slower GPU kernels; `macos-aligners-8`
 has `wgse-bwa` 0.7.0 and
@@ -47,8 +50,8 @@ publishes for each release asset:
 
 ```bash
 mkdir wgse-aligners && cd wgse-aligners
-gh release download macos-aligners-11 -R WGSExtract/wgsextract-cli
-gh release view macos-aligners-11 -R WGSExtract/wgsextract-cli --json assets \
+gh release download macos-aligners-12 -R WGSExtract/wgsextract-cli
+gh release view macos-aligners-12 -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
   shasum -a 256 -c
 ```
@@ -69,7 +72,7 @@ wgse-minimap2 capabilities --json
 macOS kills a quarantined executable as soon as it starts. If an archive was
 downloaded in a browser, clear the flag before running, for example
 `xattr -dr com.apple.quarantine wgse-bwa-0.7.1-macos-arm64` (and likewise
-`wgse-bwa-mem2-0.4.0-macos-arm64` and `wgse-minimap2-0.1.0-macos-arm64`).
+`wgse-bwa-mem2-0.4.0-macos-arm64` and `wgse-minimap2-0.2.0-macos-arm64`).
 
 ## Usage
 
@@ -87,6 +90,7 @@ wgse-bwa-mem2 capabilities --json
 wgse-minimap2 -t 9 -ax map-hifi hs38.fa hifi.fastq.gz > out.sam
 wgse-minimap2 -x map-ont -d hs38.map-ont.mmi hs38.fa
 wgse-minimap2 -t 9 -ax map-ont hs38.map-ont.mmi ont.fastq.gz > out.sam
+wgse-minimap2 --metal -t 9 -ax map-hifi hs38.map-hifi.mmi hifi.fastq.gz > out.sam
 wgse-minimap2 capabilities --json
 ```
 
@@ -180,8 +184,8 @@ What runs on the GPU:
 With a Metal backend both print GPU and CPU work counts to stderr.
 
 `wgse-minimap2` takes minimap2's options and writes the same `.mmi` indexes,
-which either tool can load. It has no backend options yet: it aligns on the
-CPU, with these exact changes to upstream's code (none changes any output):
+which either tool can load. By default it aligns on the CPU, with these exact
+changes to upstream's code (none changes any output):
 
 - loading a `.mmi` reads each hash bucket in one call and fills the buckets'
   hash tables on `-t` threads, in upstream's insertion order;
@@ -198,12 +202,33 @@ CPU, with these exact changes to upstream's code (none changes any output):
 - seed collection prefetches the hash slots and positions of the minimizers
   ahead.
 
+`--metal` (0.2.0, experimental; given before minimap2's options) runs most
+base-level gap fills on the GPU, for presets whose alignment uses two affine
+gap costs (`map-hifi`, `map-ont`, `map-pb` and `asm*`). Before a read is
+aligned, the gap fills between its chained anchors are queued for a Metal
+kernel that computes the same scores and backtrack as minimap2's
+`ksw_extd2`; minimap2 then takes a GPU result only for byte-identical inputs.
+To keep enough reads in flight for large GPU batches (up to 4096 fills), each
+`-t` thread runs 16 reads as user-space fibers that switch while a read waits
+for the GPU, sharing the thread's memory arena, and threads that run out of
+reads compute queued fills themselves. Fills longer than 512 read bases or
+4096 reference bases, or that minimap2's band would narrow, run on the CPU, as
+do the
+largest fills (more than 8192 cells per kernel lane, about 3% of HiFi fills),
+because a GPU batch takes as long as its slowest fill. The ends of each
+alignment, `sr` and the splice presets stay on the CPU. `--metal` fails if
+Metal is unavailable, and exits 1 if a GPU batch fails (its fills then run on
+the CPU, so the output is complete and correct). It prints GPU and CPU fill
+counts to stderr.
+
 `-DWGSE_MINIMAP2_KSW2=sse2` builds upstream's SSE2-only base-level alignment
 (as Bioconda does) instead of the default SSE4.1 kernels; both give the same
 alignments. The tests build unmodified upstream minimap2 2.31 and require
 identical indexes and SAM records (apart from `@PG`) for map-hifi, map-ont,
 map-pb and sr on a synthetic genome with segmental duplications and tandem
-repeats.
+repeats. On a Mac with Metal they also require the same records from
+`--metal`, including with small batches, one fiber per thread, a lower cost
+cap, interrupted command buffers and an injected GPU failure.
 
 ## Memory
 
