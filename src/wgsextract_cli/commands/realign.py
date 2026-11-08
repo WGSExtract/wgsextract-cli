@@ -23,10 +23,10 @@ that finished, and redoes the one that didn't.
 import argparse
 import logging
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api.align import RealignParams
@@ -499,6 +499,7 @@ def _align(
     def written(tool: str) -> None:
         nonlocal indexing
         aligning.metrics["aligner"] = tool
+        aligning.metrics.update(_native_aligner_metrics(current_result().metrics))
         journal.finish(aligning)
         indexing = journal.start(journal.decide(_index_step(out_path)))
 
@@ -508,6 +509,7 @@ def _align(
         journal.finish(indexing)
     else:
         aligning.metrics["aligner"] = current_result().metrics.get("aligner")
+        aligning.metrics.update(_native_aligner_metrics(current_result().metrics))
         journal.finish(aligning)
         # The aligner indexed its output itself; record that as the index step.
         index = journal.check(_index_step(out_path))
@@ -532,6 +534,21 @@ def _resume_alignment(
             align_cmd._index_output(out_path, threads=threads)
     aligner = str(decision.metrics.get("aligner") or "aligner")
     align_cmd.record_alignment(out_path, aligner, target or "")
+    native = _native_aligner_metrics(decision.metrics)
+    current_result().add_metrics(**native)
+    if native.get("native_aligner") and native.get("native_aligner_version"):
+        # The build that made the alignment, not whichever is installed now.
+        current_result().record_tool_version(
+            str(native["native_aligner"]), str(native["native_aligner_version"])
+        )
+
+
+def _native_aligner_metrics(metrics: Mapping[str, Any]) -> dict[str, Any]:
+    """The metrics naming the Apple Silicon aligner build that made an
+    alignment (AlignerCommand.record), kept in the journal for a resume."""
+    return {
+        key: value for key, value in metrics.items() if key.startswith("native_aligner")
+    }
 
 
 def _realign_long_reads(

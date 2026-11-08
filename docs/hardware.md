@@ -110,13 +110,54 @@ What `--gpu` refuses:
 - **PacBio CLR/subreads**: there is no GPU preset.
 - **`--aligner bwa-mem2`**: Parabricks runs its own BWA-MEM; use `auto` or `bwa`.
 
+## Apple Silicon (Metal)
+
+WGS Extract publishes its own builds of three aligners for Apple Silicon Macs:
+`wgse-bwa` (bwa 0.7.19), `wgse-bwa-mem2` (bwa-mem2 2.3) and `wgse-minimap2`
+(minimap2 2.31). Each writes the same alignments as its upstream release and
+reads the same index files; `wgse-bwa` and `wgse-bwa-mem2` can run much of the
+work on the Metal GPU. Install them as the
+[Installing](../native/README.md#installing) section of `native/README.md`
+describes; WGS Extract doesn't install them.
+
+When one is on `PATH`, `align` and `realign` run it in place of bwa, bwa-mem2
+or minimap2 (`native_aligners = "auto"`, the default; `--native-aligners off`
+or `native_aligners = "off"` in `config.toml` turns this off). The upstream
+aligner is still needed: it builds missing indexes. Each run asks the build for
+its `capabilities --json` once and logs which binary runs; a build that fails
+the check, or is older than the oldest supported release, raises the
+`native_aligner_unusable` warning and the upstream aligner runs instead.
+
+- **Metal.** `wgse-bwa` and `wgse-bwa-mem2` run with `--backend auto`, using the
+  GPU when their capabilities report `metal_available`. If the GPU fails during
+  a run, they finish on the CPU with the same alignments. `wgse-minimap2` runs on
+  the CPU.
+- **Memory.** `wgse-bwa`'s GPU backend needs about 0.75 GiB more than bwa (8.76
+  against 7.96 GB peak for 5M read pairs on hs38 at 8 threads), and 0.76 GiB
+  more for a denser suffix-array sample after 20M reads. When the alignment's
+  memory estimate with it exceeds the Mac's RAM less 2 GiB, the sort memory per
+  thread is lowered (768M, 512M, 384M, then 256M; sorting more often doesn't
+  change the output). When `realign` streams reads from the input into the
+  aligner, the estimate must also fit the RAM available when it starts, so the
+  GPU never pushes it to extracting FASTQs. If even 256M doesn't fit,
+  `wgse-bwa` runs on the CPU. The batch size (`-K`) never changes.
+  `wgse-bwa-mem2` is chosen only when
+  bwa-mem2's own (CPU) memory estimate fits, so a GPU too small for its index
+  tables, where it finishes on the CPU, still fits; this keeps it off 16 GB and
+  smaller Macs.
+- **Provenance.** The `@PG` header names the binary that ran and its version
+  (for example `VN:0.7.19-r1273-wgse-0.7.1`). The result manifest lists it under
+  `tools` and records the `native_aligner`, `native_aligner_version` and
+  `native_aligner_backend` (`metal` or `cpu`) metrics.
+
+The builds are `macos-aligners-N` prerelease assets; see
+[native/README.md](../native/README.md) for their measured speed.
+
 ## Other GPUs
 
-WGS Extract has no GPU alignment for AMD (ROCm), Intel (oneAPI) or Apple
-(Metal) GPUs: we know of no maintained aligner for them whose output matches
-BWA-MEM. Integrated GPUs give no meaningful benefit. A Metal-accelerated
-aligner for Apple Silicon is being researched in
-[#364](https://github.com/WGSExtract/wgsextract-cli/issues/364).
+WGS Extract has no GPU alignment for AMD (ROCm) or Intel (oneAPI) GPUs: we know
+of no maintained aligner for them whose output matches BWA-MEM. Integrated GPUs
+give no meaningful benefit.
 
 ## When a GPU is worth it
 

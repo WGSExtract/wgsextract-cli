@@ -301,6 +301,7 @@ def estimate_resources(
     parallel: bool = False,
     gatk_workers: int = 1,
     additional_ram_bytes: int = 0,
+    gpu_bytes: int = 0,
     inference_batch_size: int = 1024,
     deepvariant_model: str = "WGS",
     postprocess_plan: PostprocessPlan | None = None,
@@ -379,7 +380,13 @@ def estimate_resources(
             read_length=read_length,
             preset=preset,
             input_bytes=size if aligner == "minimap2" else None,
+            gpu_bytes=gpu_bytes,
         )
+        if gpu_bytes:
+            notes.append(
+                f"Working memory includes {gpu_bytes / 1024**3:.1f} GiB for the "
+                "aligner's Metal GPU backend."
+            )
         if aligner == "minimap2":
             notes.append(
                 f"minimap2 builds its {preset or 'largest (sr)'} index in memory each "

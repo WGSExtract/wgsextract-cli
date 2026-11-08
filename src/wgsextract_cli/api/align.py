@@ -13,8 +13,10 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.core.native_aligners import SETTINGS as NATIVE_ALIGNER_SETTINGS
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
 
@@ -37,6 +39,22 @@ PLATFORMS = ("illumina", "dnbseq", "ultima", "pacbio", "hifi", "clr", "ont", "na
 ALIGNERS = ("auto", "bwa", "bwa-mem2", "minimap2", "pbmm2")
 PRESETS = ("sr", "map-pb", "map-hifi", "map-ont", "ccs", "subread")
 REALIGN_STEPS = ("extract", "align", "index")
+
+
+def _native_aligners_param() -> Any:
+    return param(
+        None,
+        help="On Apple Silicon, align with wgse-bwa, wgse-bwa-mem2 or "
+        "wgse-minimap2 in place of bwa, bwa-mem2 or minimap2 when they're on "
+        "PATH (auto; same alignments, faster, on the Metal GPU when it fits) "
+        "or never (off). Default: config native_aligners, else auto. Install "
+        "them as native/README.md describes.",
+        doc="auto (the default, or config native_aligners) uses WGS Extract's "
+        "Apple Silicon aligner builds when installed on PATH; off never does.",
+        choices=NATIVE_ALIGNER_SETTINGS,
+        config_key="native_aligners",
+    )
+
 
 GPU_HELP = (
     "Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, "
@@ -86,6 +104,7 @@ class AlignParams(Params):
         "when installed, otherwise minimap2.",
         choices=ALIGNERS,
     )
+    native_aligners: str | None = _native_aligners_param()
     gpu: bool = param(False, help=GPU_HELP, action="store_true")
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
     sample: str | None = param(
@@ -155,6 +174,7 @@ class RealignParams(Params):
         doc="Aligner: auto, bwa, bwa-mem2, minimap2 or pbmm2, chosen as for align.",
         choices=ALIGNERS,
     )
+    native_aligners: str | None = _native_aligners_param()
     gpu: bool = param(False, help=GPU_HELP, action="store_true")
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
     platform: str | None = param(

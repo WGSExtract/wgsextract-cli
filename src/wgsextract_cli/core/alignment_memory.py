@@ -40,6 +40,13 @@ _PIPELINE_OVERHEAD_BYTES = _GIB // 2
 # Full H2 RSS/anonymous+swap observations require headroom beyond steady stages.
 _H2_TRANSIENT_BYTES = 5 * _GIB // 2
 _BWA_BATCH_BASES = 100_000_000
+# wgse-bwa --metal 0.7.0 at -K 100M, 8 threads, 5M HG002 pairs on hs38 peaked
+# at 8.76 GB RSS against Bioconda bwa's 7.96 GB: its GPU buffers and a second
+# chunk of reads in flight. After 20M reads (on Macs with 16 GiB or more) it
+# adds a denser suffix-array sample, one 33-bit entry per 32 of the 2n+1 rows
+# (0.76 GiB for hs38; native/README.md, Memory).
+_BWA_METAL_BYTES = 3 * _GIB // 4
+_BWA_METAL_DENSE_SA_AFTER_READS = 20_000_000
 # minimap2 2.31 builds its index from the FASTA on every run. On hs38 (3.10
 # Gbases) the build peaked at 11.1-11.3 GiB with every preset but map-pb's
 # homopolymer-compressed 8.6 GiB. The built index (as a saved .mmi) is smaller:
@@ -276,6 +283,14 @@ def reference_bases(ref: str | None) -> int:
         return 0
 
 
+def bwa_metal_memory(ref: str | None, reads: int | None) -> int:
+    """What ``wgse-bwa --metal`` needs beyond bwa's estimate."""
+    if reads is not None and reads <= _BWA_METAL_DENSE_SA_AFTER_READS:
+        return _BWA_METAL_BYTES
+    bases = reference_bases(ref) or _HUMAN_REFERENCE_BASES
+    return _BWA_METAL_BYTES + math.ceil((2 * bases + 1) * 33 / (32 * 8))
+
+
 def estimate_mapping_memory(
     ref: str | None,
     aligner: str,
@@ -288,9 +303,11 @@ def estimate_mapping_memory(
     read_length: float | None = None,
     preset: str | None = None,
     input_bytes: int | None = None,
+    gpu_bytes: int = 0,
 ) -> MappingMemory:
     """Peak memory of the alignment pipeline. ``preset`` is minimap2's, and
-    ``input_bytes`` (the read files' size) bounds its batches."""
+    ``input_bytes`` (the read files' size) bounds its batches. ``gpu_bytes``
+    (an aligner's GPU backend: bwa_metal_memory) counts as working memory."""
     bases = (
         reference_bases(ref)
         or (_fasta_bases_bound(ref) if aligner == "minimap2" else 0)
@@ -347,7 +364,8 @@ def estimate_mapping_memory(
             pass
     return MappingMemory(
         index,
-        _working_memory(aligner, int(threads), reads, platform, read_length),
+        _working_memory(aligner, int(threads), reads, platform, read_length)
+        + gpu_bytes,
         (input_reads * _SAMBLASTER_BYTES_PER_PAIR + 1) // 2 if samblaster else 0,
         sort,
         _PIPELINE_OVERHEAD_BYTES + input_reads * _H2_TRANSIENT_BYTES // _H2_INPUT_READS,
@@ -367,6 +385,7 @@ def check_mapping_memory(
     additional_ram_bytes: int = 0,
     preset: str | None = None,
     input_bytes: int | None = None,
+    gpu_bytes: int = 0,
 ) -> None:
     """Log the alignment's memory estimate, and warn (or for bwa-mem2, raise)
     with settings that fit when it exceeds the available memory."""
@@ -383,6 +402,7 @@ def check_mapping_memory(
             read_length=read_length,
             preset=preset,
             input_bytes=input_bytes,
+            gpu_bytes=gpu_bytes,
         )
 
     requested = estimate(threads, memory)
