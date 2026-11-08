@@ -86,6 +86,18 @@ def test_an_unchanged_config_is_not_rewritten(library):
     assert config.read_text() == '# my notes\nalignment = "ken.bam"\n'
 
 
+def test_a_bom_config_with_non_ascii_paths_survives_discovery(library):
+    # Issue #554 / PR #558: Windows editors save UTF-8 with a byte-order mark;
+    # the rewrite after discovery must stay readable UTF-8 on any code page.
+    genome = _genome(library, "ken", "Müller.bam", "ken.vcf.gz")
+    config = genome / GENOME_CONFIG_NAME
+    config.write_bytes('\ufeffalignment = "Müller.bam"\n'.encode())
+
+    assert _select("ken", command="info").input == str(genome / "Müller.bam")
+    assert 'vcf = "ken.vcf.gz"' in config.read_text(encoding="utf-8")
+    assert _select("ken", command="info").input == str(genome / "Müller.bam")
+
+
 def test_a_broken_config_is_reported_with_its_path(library):
     genome = _genome(library, "ken", "ken.bam")
     (genome / GENOME_CONFIG_NAME).write_text("alignment = \n")
