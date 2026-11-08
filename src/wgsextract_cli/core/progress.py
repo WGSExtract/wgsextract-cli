@@ -156,11 +156,13 @@ class Heartbeat:
             if previous is None or cores >= IDLE_CORES:
                 self._busy = now
             quiet, idle = now - self._progressed, now - self._busy
-        if quiet < self.stall_after:
-            return ""
-        state = "stalled" if idle >= self.stall_after else "busy"
-        if self._warned != state and (state == "stalled" or self.completed):
-            self._warned = state
+            if quiet < self.stall_after:
+                return ""
+            state = "stalled" if idle >= self.stall_after else "busy"
+            notify = self._warned != state and (state == "stalled" or self.completed)
+            if notify:
+                self._warned = state
+        if notify:
             if state == "busy":
                 logging.warning(
                     "%s has reported no progress for %.0f min but its pipeline "
