@@ -685,6 +685,7 @@ def test_real_vep(real_dataset: RealDataset, tmp_path: Path) -> None:
     _run_ok(
         [
             "vep",
+            "run",
             "--input",
             str(real_dataset.vcf),
             "--ref",
