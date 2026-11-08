@@ -1,4 +1,5 @@
 import gzip
+import logging
 import os
 import random
 import re
@@ -215,6 +216,28 @@ def test_ont_realign_honors_disk_space_preflight(
         ):
             run_wgsextract(*argv)
         assert not (out / "ont_aligned.bam").exists()
+
+
+@needs_tools("samtools", "minimap2")
+def test_ont_realign_reports_ample_disk_space_without_a_warning(
+    tmp_path, genome_ref, caplog
+):
+    """Issue #549: long-read realigns warned "~N GB free space required"
+    with room to spare; only a shortfall is worth a warning."""
+    genome, ref = genome_ref
+    seq = genome[500:2500]
+    bam = sam_to_bam(
+        [
+            "@RG\tID:r\tPL:ONT\tSM:s",
+            f"{UUID}\t4\t*\t0\t0\t*\t*\t0\t0\t{seq}\t{'I' * len(seq)}",
+        ],
+        tmp_path / "ont.bam",
+    )
+    caplog.set_level(logging.INFO)
+    run_wgsextract("realign", "--input", bam, "--ref", str(ref), "--outdir",
+                   str(tmp_path / "out"), "--threads", "1", "--memory", "256M")  # fmt: skip
+    disk = [r for r in caplog.records if "Realign pre-flight" in r.getMessage()]
+    assert disk and all(r.levelno < logging.WARNING for r in disk)
 
 
 @needs_tools("samtools", "minimap2")

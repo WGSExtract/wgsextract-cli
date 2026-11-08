@@ -163,9 +163,12 @@ the check, or is older than the oldest supported release, raises the
   more for a denser suffix-array sample after 20M reads. When the alignment's
   memory estimate with it exceeds the Mac's RAM less 2 GiB, the sort memory per
   thread is lowered (768M, 512M, 384M, then 256M; sorting more often doesn't
-  change the output). When `realign` streams reads from the input into the
-  aligner, the estimate must also fit the RAM available when it starts, so the
-  GPU never pushes it to extracting FASTQs. If even 256M doesn't fit,
+  change the output). When the CPU run's own estimate is larger than that, as
+  for a 30x genome on a 16 GB Mac, the GPU run only has to fit within it: the
+  CPU run would go ahead regardless, about four times slower.
+  When `realign` streams reads from the input into the aligner, the estimate
+  must also fit the RAM available when it starts, so the GPU never pushes it
+  to extracting FASTQs. If even 256M doesn't fit,
   `wgse-bwa` runs on the CPU. The batch size (`-K`) never changes.
   `wgse-bwa-mem2` is chosen only when
   bwa-mem2's own (CPU) memory estimate fits, so a GPU too small for its index

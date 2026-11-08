@@ -108,6 +108,11 @@ if sub in ("install", "list", "run") and "--no-install" not in flags:
     os.makedirs(os.path.dirname(marker), exist_ok=True)
     open(marker, "w").write("{{}}")
 if sub == "list":
+    # pixi sizes the app's editable source as "./" from the current directory,
+    # walking all of it; past the limit, stand in for that taking too long.
+    limit = state["list_walk_limit"]
+    if limit is not None and sum(len(f) for _, _, f in os.walk(".")) > limit:
+        sys.exit("pixi list: still sizing ./")
     if state["list_stdout"] is not None:
         print(state["list_stdout"])
         sys.exit(state["list_returncode"])
@@ -169,6 +174,7 @@ class FakePixi:
             "info_stdout": None,
             "list_stdout": None,
             "list_returncode": 0,
+            "list_walk_limit": None,
             "run_stdout": None,
         }
         self._save()
@@ -185,7 +191,9 @@ class FakePixi:
         self._state.write_text(json.dumps(self._data))
 
     def set(self, **outputs: object) -> None:
-        """Replace an answer: info_stdout, list_stdout/list_returncode or run_stdout."""
+        """Replace an answer: info_stdout, list_stdout/list_returncode,
+        list_walk_limit (files under the current directory `list` can size)
+        or run_stdout."""
         self._data.update(outputs)
         self._save()
 

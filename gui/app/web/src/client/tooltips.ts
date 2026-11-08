@@ -9,6 +9,8 @@ export function bindTooltipEvents() {
         target.addEventListener("mouseleave", hideFloatingTooltip);
         target.addEventListener("focus", () => showFloatingTooltip(target));
         target.addEventListener("blur", hideFloatingTooltip);
+        // A tooltip inside a checkbox's label must not tick the checkbox when clicked.
+        target.addEventListener("click", (event) => event.preventDefault());
         target.addEventListener("keydown", (event) => {
             if (event.key === "Escape") {
                 hideFloatingTooltip();
