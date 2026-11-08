@@ -12,21 +12,12 @@ cli_vep_download = cli_handler(VepDownloadParams, run_vep_download)
 cli_vep_verify = cli_handler(VepVerifyParams, run_vep_verify)
 
 
-def _add_run_args(parser: argparse.ArgumentParser) -> None:
-    add_arguments(parser, VepRunParams, config_defaults=True)
-    parser.set_defaults(func=cli_vep_run)
-
-
 def register(
     subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
     base_parser: argparse.ArgumentParser,
 ) -> None:
-    parser = subparsers.add_parser(
-        "vep", parents=[base_parser], help=CLI_HELP["cmd_vep"]
-    )
-    # `wgsextract vep ...` and `wgsextract vep run ...` both run VEP.
-    _add_run_args(parser)
-    vep_subs = parser.add_subparsers(dest="vep_cmd", required=False)
+    parser = subparsers.add_parser("vep", help=CLI_HELP["cmd_vep"])
+    vep_subs = parser.add_subparsers(dest="vep_cmd", required=True)
 
     dl_parser = vep_subs.add_parser(
         "download", parents=[base_parser], help=CLI_HELP["cmd_vep-download"]
@@ -43,4 +34,5 @@ def register(
     run_parser = vep_subs.add_parser(
         "run", parents=[base_parser], help=CLI_HELP["cmd_vep-run"]
     )
-    _add_run_args(run_parser)
+    add_arguments(run_parser, VepRunParams, config_defaults=True)
+    run_parser.set_defaults(func=cli_vep_run)

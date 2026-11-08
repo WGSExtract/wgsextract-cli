@@ -91,7 +91,7 @@ def _vcf(path: Path, records: str = "1\t10\t.\tA\tG\t50\tPASS\t.\tGT\t0/1\n") ->
 
 
 def _vep(*argv: str) -> None:
-    run_wgsextract("vep", *argv)
+    run_wgsextract("vep", "run", *argv)
 
 
 def _value(cmd: list[str], flag: str) -> str:

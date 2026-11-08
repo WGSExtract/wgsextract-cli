@@ -216,12 +216,9 @@ class Deprecation:
     bare: bool = False
 
 
-# Commands that duplicate another one exactly (the #352 wrapper audit). Help
-# and the generated docs list them as deprecated, and running one warns.
-DEPRECATIONS: tuple[Deprecation, ...] = (
-    Deprecation("ref library-list", "ref library --list", "0.8.0"),
-    Deprecation("vep", "vep run", "0.8.0", bare=True),
-)
+# Commands on their way out. Help and the generated docs list them as
+# deprecated, and running one warns.
+DEPRECATIONS: tuple[Deprecation, ...] = ()
 DEPRECATED = {deprecation.path: deprecation for deprecation in DEPRECATIONS}
 
 

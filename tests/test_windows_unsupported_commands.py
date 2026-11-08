@@ -22,7 +22,6 @@ UNSUPPORTED = [
     (["vcf", "freebayes"], "FreeBayes"),
     (["vcf", "deepvariant"], "DeepVariant"),
     (["vcf", "pharmcat"], "PharmCAT"),
-    (["vep"], "VEP"),
     (["vep", "run"], "VEP"),
     (["vep", "download"], "VEP"),
     (["vep", "verify"], "VEP"),

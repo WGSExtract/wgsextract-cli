@@ -1663,7 +1663,7 @@ each mirror that hosts it.
 
 ### `api.ref.library_list(RefLibraryListParams)`
 
-CLI: `wgsextract ref library-list`.
+CLI: `wgsextract ref library --list`.
 
 List the library. `details` has `library`, `genomes` (`code`,
 `label`, `file`, `status`, `size`, and whether its `n_counts` and
