@@ -193,6 +193,8 @@ Use the standalone installer. It opens the install folder in Finder and creates 
 
 {{ tag: osx-arm64 }}
 {{ tag: osx-64 }}
+
+{{ link: A 30x genome on a 16 GB Apple M1|https://github.com/WGSExtract/wgsextract-cli/blob/main/docs/apple-silicon-16gb.md|inline-link }}
 :::
 
 ::: card
