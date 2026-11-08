@@ -150,7 +150,6 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf alphamissense": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf pharmcat": _n(MINUTES, "bcftools", "pharmcat", "tabix", optional="bgzip"),
     "vcf chain-annotate": _n(MINUTES, *_VCF, optional="bgzip samtools vep"),
-    "vep": _n(HOURS, "bcftools", "tabix", "vep", optional="samtools"),
     "vep run": _n(HOURS, "bcftools", "tabix", "vep", optional="samtools"),
     "vep download": _n(DOWNLOAD, "curl", "tar"),
     "vep verify": _n(SECONDS, scale=""),
@@ -161,7 +160,6 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "ref library": _n(
         DOWNLOAD, "bcftools", "bgzip", "curl", "htsfile", "samtools", "tabix"
     ),
-    "ref library-list": _n(INSTANT),
     "ref status": _n(SECONDS, scale=""),
     "ref bootstrap": _n(DOWNLOAD),
     "ref aadr": _n(DOWNLOAD, optional="curl"),

@@ -313,7 +313,7 @@ def run_table(params: VcfTableParams) -> None:
             "nothing_annotated",
             f"{input_vcf} has no VEP, SnpEff, ClinVar, gnomAD or PharmGKB "
             "annotations, so those columns are empty. Annotate it first, e.g. "
-            "with 'wgsextract vep' and 'wgsextract vcf clinvar'.",
+            "with 'wgsextract vep run' and 'wgsextract vcf clinvar'.",
             path=input_vcf,
         )
     if rows == 0:

@@ -143,12 +143,6 @@ Pick the line that matches your file and run its commands in order. Each command
 Advanced subcommands of core groups: `extract bam-subset`, `vcf alphamissense`, `vcf cadd`, `vcf chain-annotate`, `vcf clair3`, `vcf cnv`, `vcf deepvariant`, `vcf freebayes`, `vcf gatk`, `vcf gerp`, `vcf pharmcat`, `vcf phase`, `vcf phylop`, `vcf spliceai`, `vcf sv`, `vcf to-fasta`, `vcf trio`.
 :::
 
-::: card
-### Deprecated
-- `ref library-list`: use `ref library --list`; removed in 0.9.0.
-- `vep` without a subcommand: use `vep run`; removed in 0.9.0.
-:::
-
 :::
 :::
 :::

@@ -30,14 +30,11 @@ def _parse(argv: list[str]) -> tuple[Namespace, set[str]]:
     return parser.parse_args(*parser.build_parser(), argv)
 
 
-@pytest.mark.parametrize("command", [["vep"], ["vep", "run"]])
 @pytest.mark.parametrize("flag", ["--assembly", "--vep-assembly"])
-def test_vep_run_assembly_aliases_preserve_the_runtime_destination(
-    command, flag, caplog
-):
+def test_vep_run_assembly_aliases_preserve_the_runtime_destination(flag, caplog):
     from wgsextract_cli.commands._vep_run import _apply_forced_assembly
 
-    args, explicit = _parse([*command, flag, "GRCh37"])
+    args, explicit = _parse(["vep", "run", flag, "GRCh37"])
     assert args.vep_assembly == "GRCh37"
     assert "vep_assembly" in explicit
     lib = SimpleNamespace(build="hg38", fasta="/lib/GRCh38.fa")

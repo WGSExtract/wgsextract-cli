@@ -135,15 +135,6 @@ Commands are grouped by tier. The core tier is the usual path, in order: check a
 | `benchmark` | Time the main workflows on test data. | runs/&lt;timestamp>/ under --outdir (default out/benchmark): benchmark_report.md and benchmark_results.json (timings, tool versions) and per-step logs. | no external tools; depending on options and inputs, also: bcftools, bgzip, curl, samtools, tabix; hours for the full suite | `wgsextract benchmark --profile smoke` |
 | `serve` | Local HTTP/JSON and MCP server for apps and AI agents. | Prints the server's address and token, also saved to state/server/server.json (setting state_directory) for you only; jobs and their logs go in state/server/jobs. Each operation writes its usual outputs and result manifest. | no external tools; seconds to start; runs until stopped | `wgsextract serve --allow ~/wgs` |
 
-## Deprecated
-
-These still work for one more minor release, with a warning (`deprecated_command`).
-
-| Command | Use instead | Removed in |
-| --- | --- | --- |
-| `vep` without a subcommand | `vep run` | 0.9.0 |
-| `ref library-list` | `ref library --list` | 0.9.0 |
-
 ## Help topics
 
 `wgsextract help <topic>` explains:

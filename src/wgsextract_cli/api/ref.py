@@ -206,7 +206,10 @@ class RefLibraryListParams(_InLibrary, Params):
     unindexed, incomplete or missing), size, N counts and VEP cache, then the
     gene maps and annotation data it holds."""
 
+    # The server operation (ref/library-list) and MCP tool keep this name; the
+    # CLI has no such subcommand and lists with 'ref library --list' (#352).
     COMMAND = "ref library-list"
+    CLI_COMMAND = "ref library --list"
 
     ref: Path | None = param(
         None,

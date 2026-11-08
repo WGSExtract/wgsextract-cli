@@ -299,10 +299,6 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         f"wgsextract vcf to-fasta {_VCF_IN} --ref hs38.fa",
     ),
     # vep
-    "vep": _h(
-        "Same as 'vep run'.",
-        "wgsextract vep --input sample.vcf.gz",
-    ),
     "vep run": _h(
         "<input stem>_vep.vcf.gz (or .tsv/.json with --format), with VEP's summary.",
         "wgsextract vep run --input sample.vcf.gz",
@@ -325,10 +321,6 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         f"{_LIBRARY}: the chosen reference genome and its indexes.",
         "wgsextract ref library --list",
         "wgsextract ref library --install hs38",
-    ),
-    "ref library-list": _h(
-        "Prints the installed and available assets; writes no files.",
-        "wgsextract ref library-list",
     ),
     "ref status": _h(
         "Prints the reference library's status; writes no files.",

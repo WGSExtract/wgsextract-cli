@@ -55,7 +55,6 @@ ADVANCED_OPTIONS: dict[str, tuple[str, ...]] = {
         "--no-ref-inference",
     ),
     "lineage y-str": ("--min-reads", "--min-fraction", "--min-mapq"),
-    "vep": _VEP,
     "vep run": _VEP,
     "vcf gatk": ("--no-gpu-memory-check",),
     "vcf deepvariant": (
