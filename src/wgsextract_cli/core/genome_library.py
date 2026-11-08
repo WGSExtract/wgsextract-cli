@@ -198,7 +198,7 @@ def _write_genome_config(config_path: Path, config: dict[str, Any]) -> None:
     text = "\n".join(lines) + "\n"
     if extra:
         text += "\n" + tomli_w.dumps(extra)
-    config_path.write_text(text, newline="\n")
+    config_path.write_text(text, encoding="utf-8", newline="\n")
 
 
 def _set_alignment_input(
