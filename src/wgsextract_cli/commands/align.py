@@ -518,6 +518,9 @@ def native_short_read_aligner(
     needs bwa_metal_memory more: when the pipeline's estimate with it exceeds
     this Mac's RAM less headroom, sort memory is lowered (which leaves the
     output unchanged), and when even 256M doesn't fit wgse-bwa runs on the CPU.
+    Streaming realign (additional_ram_bytes) also needs it to fit the RAM
+    available now, as streaming_mapping_fits checks, so Metal never pushes it
+    to extracting FASTQs.
     wgse-bwa-mem2 keeps bwa-mem2's (CPU) estimate, which also covers its CPU
     fallback when the GPU can't hold its index tables.
     """
@@ -531,6 +534,8 @@ def native_short_read_aligner(
     else:
         gpu = bwa_metal_memory(ref, reads)
         budget = psutil.virtual_memory().total - _METAL_HEADROOM_BYTES
+        if additional_ram_bytes:
+            budget = min(budget, available_memory())
         amount, unit = parse_memory(memory)
         mib = amount * (1024 if unit == "G" else 1)
         candidates = [memory] + [
@@ -556,8 +561,7 @@ def native_short_read_aligner(
             logging.info(
                 f"Running {native.binary} on the CPU: with its Metal GPU backend "
                 f"the alignment is estimated to need {needed(candidates[-1]) / 1024**3:.1f} "
-                f"GiB, more than this Mac's {budget / 1024**3:.1f} GiB of RAM "
-                "less headroom."
+                f"GiB, more than the {budget / 1024**3:.1f} GiB of RAM it can use."
             )
             aligner = AlignerCommand(tool, native)
         else:

@@ -113,6 +113,14 @@ def _sort_memory(bam):
     return words[words.index("-m") + 1]
 
 
+def _run_realign(source, ref, outdir):
+    result = results.CommandResult(command="realign")
+    with results.collecting(result):
+        realign.run(_realign_args(source, ref=ref, outdir=str(outdir)))
+    result.finalize()
+    return result
+
+
 def _native(result):
     return {k: v for k, v in result.metrics.items() if k.startswith("native_")}
 
@@ -214,6 +222,26 @@ def test_an_unusable_build_warns_and_upstream_bwa_aligns(
 
 
 @pytest.mark.usefixtures("apple_silicon")
+def test_a_broken_build_is_asked_once_per_process_until_replaced(tmp_path, bwa_bin):
+    # #541 review: a hung or broken build was probed again on every run in a
+    # long-lived process (the app), each time up to the 30 s timeout.
+    reads = _short_reads(tmp_path)
+    asked = tmp_path / "asked"
+    broken = f"import sys\nopen({str(asked)!r}, 'a').write('x')\nsys.exit(1)\n"
+    python_tool(bwa_bin, "wgse-bwa", broken)
+
+    runs = [_align(reads, tmp_path / f"run{i}")[1] for i in range(2)]
+    asked_before_replacing = asked.read_text()
+    python_tool(bwa_bin, "wgse-bwa", broken + "# a new build\n")
+    _align(reads, tmp_path / "replaced")
+
+    assert asked_before_replacing == "x"
+    assert asked.read_text() == "xx"
+    for result in runs:
+        assert [w.code for w in result.warnings] == ["native_aligner_unusable"]
+
+
+@pytest.mark.usefixtures("apple_silicon")
 def test_wgse_bwa_without_metal_aligns_on_the_cpu(tmp_path, bwa_bin):
     reads = _short_reads(tmp_path)
     _install_build(bwa_bin, "bwa", _capabilities("bwa", metal_available=False))
@@ -302,14 +330,14 @@ def test_realign_streams_into_wgse_bwa_and_a_resumed_run_still_names_it(
     outdir = tmp_path / "out"
 
     def realign_once():
-        result = results.CommandResult(command="realign")
-        with results.collecting(result):
-            realign.run(_realign_args(source, ref=ref, outdir=str(outdir)))
-        return result
+        return _run_realign(source, ref, outdir)
 
     first = realign_once()
     bam = outdir / "x_aligned.bam"
     written = bam.stat().st_mtime_ns
+    # #541 review: the resumed manifest names the build that aligned, not a
+    # newer one installed since.
+    _install_build(bwa_bin, "bwa", _capabilities("bwa", version="0.7.2"))
     resumed = realign_once()
 
     assert _mapper(str(bam)).startswith("wgse-bwa --backend auto mem ")
@@ -324,3 +352,33 @@ def test_realign_streams_into_wgse_bwa_and_a_resumed_run_still_names_it(
             "native_aligner_backend": "metal",
         }
     )
+    assert first.provenance.tools["wgse-bwa"] == "0.7.1"
+    assert resumed.provenance.tools["wgse-bwa"] == "0.7.1"
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_realign_keeps_streaming_when_only_metal_would_not_fit(tmp_path, bwa_bin, ram):
+    # #541 review: picking Metal pushed realign off streaming ("Available RAM
+    # changed before streaming started") into extracting FASTQs to disk.
+    genome = _short_reads(tmp_path / "reads").genome[:6_000]
+    (tmp_path / "old").mkdir()
+    ref = str(write_fasta(tmp_path / "ref.fa", {"chr1": genome}))
+    source, pairs = _old_alignment(tmp_path, genome)
+    _install_build(bwa_bin, "bwa")
+    reads = 2 * pairs
+    upstream = estimate_mapping_memory(
+        ref, "bwa", threads="2", memory="100M", samblaster=True, reads=reads,
+        platform="illumina", read_length=100,
+    ).total  # fmt: skip
+    # Room for bwa's pipeline and collation's few reads, but not for the GPU.
+    ram(16 * GIB, available=upstream + bwa_metal_memory(ref, reads) // 2)
+    outdir = tmp_path / "out"
+
+    result = _run_realign(source, ref, outdir)
+
+    bam = str(outdir / "x_aligned.bam")
+    assert _mapper(bam).startswith("wgse-bwa mem ") and " -p " in _mapper(bam)
+    steps = json.loads((outdir / "x_aligned.bam.steps.json").read_text())["steps"]
+    assert "extract" not in steps
+    assert not list(outdir.glob("*.fastq.gz"))
+    assert result.metrics["native_aligner_backend"] == "cpu"

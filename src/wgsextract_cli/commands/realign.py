@@ -534,7 +534,13 @@ def _resume_alignment(
             align_cmd._index_output(out_path, threads=threads)
     aligner = str(decision.metrics.get("aligner") or "aligner")
     align_cmd.record_alignment(out_path, aligner, target or "")
-    current_result().add_metrics(**_native_aligner_metrics(decision.metrics))
+    native = _native_aligner_metrics(decision.metrics)
+    current_result().add_metrics(**native)
+    if native.get("native_aligner") and native.get("native_aligner_version"):
+        # The build that made the alignment, not whichever is installed now.
+        current_result().record_tool_version(
+            str(native["native_aligner"]), str(native["native_aligner_version"])
+        )
 
 
 def _native_aligner_metrics(metrics: Mapping[str, Any]) -> dict[str, Any]:

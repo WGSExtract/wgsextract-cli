@@ -131,9 +131,11 @@ def _version_tuple(version: object) -> tuple[int, int, int] | None:
 
 
 @lru_cache(maxsize=16)
-def _capabilities(path: str, mtime_ns: int, size: int) -> dict[str, object]:
-    """``capabilities --json`` of the executable at ``path`` (cached by its
-    modification time and size, so a replaced build is asked again)."""
+def _probe(path: str, mtime_ns: int, size: int) -> dict[str, object] | str:
+    """``capabilities --json`` of the executable at ``path``, or why it can't
+    be used. Cached by its modification time and size, failures included, so
+    a hung build costs one timeout per process and a replaced one is asked
+    again."""
     del mtime_ns, size
     try:
         completed = subprocess.run(
@@ -144,31 +146,32 @@ def _capabilities(path: str, mtime_ns: int, size: int) -> dict[str, object]:
             check=False,
             timeout=_PROBE_TIMEOUT_SECONDS,
         )
-    except subprocess.TimeoutExpired as error:
-        raise NativeAlignerUnusable(
-            f"`capabilities --json` took over {_PROBE_TIMEOUT_SECONDS} s"
-        ) from error
+    except subprocess.TimeoutExpired:
+        return f"`capabilities --json` took over {_PROBE_TIMEOUT_SECONDS} s"
     except OSError as error:
-        raise NativeAlignerUnusable(f"it could not be run: {error}") from error
+        return f"it could not be run: {error}"
     if completed.returncode != 0:
         detail = completed.stderr.strip().splitlines()[-1:] or [""]
-        raise NativeAlignerUnusable(
-            f"`capabilities --json` exited with {completed.returncode} {detail[0]}".rstrip()
-        )
+        return f"`capabilities --json` exited with {completed.returncode} {detail[0]}".rstrip()
     try:
         document = json.loads(completed.stdout)
-    except json.JSONDecodeError as error:
-        raise NativeAlignerUnusable(
-            "`capabilities --json` did not print JSON"
-        ) from error
+    except json.JSONDecodeError:
+        return "`capabilities --json` did not print JSON"
     if not isinstance(document, dict):
-        raise NativeAlignerUnusable("`capabilities --json` did not print an object")
+        return "`capabilities --json` did not print an object"
     return document
 
 
-def _check(tool: str, binary: str, path: str) -> NativeAligner:
+def _capabilities(path: str) -> dict[str, object]:
     stat = Path(path).stat()
-    document = _capabilities(path, stat.st_mtime_ns, stat.st_size)
+    probed = _probe(path, stat.st_mtime_ns, stat.st_size)
+    if isinstance(probed, str):
+        raise NativeAlignerUnusable(probed)
+    return probed
+
+
+def _check(tool: str, binary: str, path: str) -> NativeAligner:
+    document = _capabilities(path)
     schema = document.get("schema_version")
     if schema != CAPABILITIES_SCHEMA:
         raise NativeAlignerUnusable(
