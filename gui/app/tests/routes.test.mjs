@@ -294,6 +294,46 @@ test("a declared result document is read from stdout, and only its files can be 
   assert.deepEqual(calls.runProcess.slice(1).map((call) => call.args), [[output]]);
 });
 
+test("PR #530 review: a bug report reads the last action run in the app, not the CLI's last run", async (t) => {
+  const { baseURL, context } = await withTestServer(t);
+  context.manifest.resultDocument = { format: "wgsextract.result/1", executables: ["tool"], arguments: ["--json"] };
+  context.manifest.pages[0].sections[0].actions.push({
+    id: "report",
+    title: "Report",
+    command: { executable: "tool", arguments: ["report-issue"], optionalArguments: [["--run", "{{lastResultDocumentPath}}"]] },
+  });
+  const commands = [];
+  context.runProcess = async (executable, args) => {
+    commands.push(args.join(" "));
+    const failed = args[0] === "FAIL";
+    const document = { schema: "wgsextract.result/1", command: args[0], status: failed ? "failed" : "ok", exit_code: failed ? 1 : 0 };
+    return { exitCode: failed ? 1 : 0, stdout: JSON.stringify(document), stderr: "" };
+  };
+  const run = async (actionID, sample, extraContext = {}) => {
+    const events = await readNDJSON(await apiFetch(baseURL, "/api/run/stream", {
+      body: { action: { pageID: "main", sectionID: "run", actionID }, context: { ...runContext, fieldValues: { sample }, ...extraContext } },
+    }));
+    return events.at(-1).result.lastResultDocumentPaths;
+  };
+  const savedCommand = async (filePath) => JSON.parse(await readFile(filePath, "utf8")).command;
+
+  // A page cannot point the report at a file of its choosing.
+  await run("report", "", { lastResultDocumentPaths: { last: "/etc/passwd" } });
+  assert.equal(commands.at(-1), "report-issue --json");
+
+  const afterFailure = await run("run", "FAIL");
+  const afterSuccess = await run("run", "HG001");
+  const afterReport = await run("report", "");
+
+  assert.equal(await savedCommand(afterFailure.lastFailed), "FAIL");
+  assert.equal(await savedCommand(afterSuccess.last), "HG001");
+  assert.equal(await savedCommand(afterSuccess.lastFailed), "FAIL");
+  assert.equal(commands.at(-1), `report-issue --run ${afterSuccess.last} --json`);
+  // The report itself does not become the last run.
+  assert.deepEqual(afterReport, afterSuccess);
+  assert.equal(await savedCommand(afterReport.last), "HG001");
+});
+
 test("review regression: a listed relative output stays tied to its run's workspace, and a failed opener is reported", async (t) => {
   const { baseURL, context, tempRoot } = await withTestServer(t);
   context.manifest.resultDocument = { format: "wgsextract.result/1", executables: ["tool"], arguments: ["--json"] };

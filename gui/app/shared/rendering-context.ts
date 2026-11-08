@@ -1,5 +1,7 @@
 import { allControls } from "./rendering-controls.js";
-import type { BundleManifest, CommandContext, Labels, LooseRecord, StateValue, StringMap, ValueMap } from "./types.js";
+import { lastResultDocumentPlaceholders } from "./last-result-documents.js";
+import { currentSetupPlatform } from "./setup-platforms.js";
+import type { BundleManifest, CommandContext, Labels, LastResultDocumentPaths, LooseRecord, StateValue, StringMap, ValueMap } from "./types.js";
 
 type CheckedOptionsInput = Record<string, Set<string> | string[] | string | null | undefined>;
 type StateLike = {
@@ -9,6 +11,7 @@ type StateLike = {
     bundleRootPath?: string;
     manifest?: BundleManifest | null;
     homePath?: string;
+    lastResultDocumentPaths?: LastResultDocumentPaths;
 } & LooseRecord;
 
 export function commandContextFromState(state: StateLike, rowValues: ValueMap = {}, sectionValues: ValueMap = {}): CommandContext {
@@ -24,6 +27,9 @@ export function commandContextFromState(state: StateLike, rowValues: ValueMap = 
     }
     if (state.homePath != null) {
         context.homePath = state.homePath;
+    }
+    if (state.lastResultDocumentPaths != null) {
+        context.lastResultDocumentPaths = state.lastResultDocumentPaths;
     }
     return context;
 }
@@ -54,6 +60,15 @@ export function contextValue(context: CommandContext, placeholder: string): Stat
     }
     if (placeholder === "home") {
         return context.homePath;
+    }
+    if (placeholder === "hostPlatform") {
+        return currentSetupPlatform();
+    }
+    if (placeholder === lastResultDocumentPlaceholders.last) {
+        return context.lastResultDocumentPaths?.last;
+    }
+    if (placeholder === lastResultDocumentPlaceholders.lastFailed) {
+        return context.lastResultDocumentPaths?.lastFailed;
     }
     if (placeholder.startsWith("row.")) {
         return context.rowValues?.[placeholder.slice(4)];

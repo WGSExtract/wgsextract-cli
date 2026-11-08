@@ -1,4 +1,4 @@
-import { applyDataSourcePayload, configValueKey, hydrateRows, rowContext, } from "../../../shared/rendering.js";
+import { applyDataSourcePayload, configValueKey, hydrateRows, isSectionVisible, rowContext, } from "../../../shared/rendering.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
 import { buildTagStyle, commandContext, configDataSourceContext, displayOption, localizedStatus, localizedTag, renderIcon, renderIconTitle, renderInlineError, renderLoadingBox, renderLoadingInline, renderTooltip, resolveText, tagStyle, } from "./model.js";
 import { ensureDataSource } from "./operations.js";
@@ -114,6 +114,10 @@ export function renderSection(section: PageSection, page: BundlePage) {
     }
     const sectionValues = state.dataSourcePayloads.get(key)?.values ?? {};
     const context = commandContext({}, sectionValues);
+    // Checked after the section's own data source starts, so visibleWhen can read the values it returns.
+    if (!isSectionVisible(section, context)) {
+        return "";
+    }
     return `
     <section class="card" aria-labelledby="section-${escapeAttribute(section.id)}">
       <header class="section-header">

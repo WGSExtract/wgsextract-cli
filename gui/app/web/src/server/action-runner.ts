@@ -3,7 +3,7 @@ import { homedir, platform, tmpdir } from "node:os";
 import path from "node:path";
 import { commandLine, evaluateNumeric, interpolate, renderedCommand } from "../../../shared/rendering.js";
 import { commandWithResultArguments, parseResultDocumentText, resultDocumentInFile, type ResultDocument, type ResultDocumentSpec } from "../../../shared/result-document.js";
-import type { ActionSpec, BundleManifest, CommandContext, DataSourcePayload, Labels, LooseRecord, ProcessResult, RunProcess, StringMap, ValueMap } from "../../../shared/types.js";
+import type { ActionSpec, BundleManifest, CommandContext, DataSourcePayload, Labels, LastResultDocumentPaths, LooseRecord, ProcessResult, RunProcess, StringMap, ValueMap } from "../../../shared/types.js";
 import { decodeXML, environmentKey, formatGB, resolveBundlePath, resolveUserPath } from "./paths.js";
 import { platformCommand } from "./platform-command.js";
 import { isPlatformScriptReference, resolvePlatformScriptPath } from "./platform-scripts.js";
@@ -17,6 +17,8 @@ export type ActionRunResult = ProcessResult & {
     command: string;
     /** Set when the action declares a result document: the parsed document, or null when the command wrote none. */
     resultDocument?: ResultDocument | null;
+    /** Set when the app streams the run: its saved last result documents once this run finished. */
+    lastResultDocumentPaths?: LastResultDocumentPaths;
 };
 
 export type ActionEvent =

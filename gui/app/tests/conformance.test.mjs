@@ -4,7 +4,9 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
 import { parseJsonWithComments } from "../dist/shared/json-comments.js";
-import { conditionMatches, displayCommand, hydrateRows, missingPlaceholders } from "../dist/shared/rendering.js";
+import { conditionMatches, displayCommand, hydrateRows, isActionVisible, isSectionVisible, missingPlaceholders } from "../dist/shared/rendering.js";
+import { readsLastResultDocument } from "../dist/shared/last-result-documents.js";
+import { currentSetupPlatform } from "../dist/shared/setup-platforms.js";
 import { loadLocalizedBundle } from "../dist/web/src/server/bundle-loader.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -56,6 +58,63 @@ test("WGSExtract release conformance rejects unsupported features without blocki
   assert.doesNotThrow(() => assertWgsExtractReleaseCompatible("v0.6.3", [{ id: "original-page" }]));
   assert.doesNotThrow(() => assertWgsExtractReleaseCompatible("v0.6.4", pages));
   assert.doesNotThrow(() => assertWgsExtractReleaseCompatible("v0.7.0", pages));
+});
+
+test("WGSExtract v0.6.6 controls start unset and platform-limited sections hide on Windows", async () => {
+  const bundle = await loadLocalizedBundle("en", repoRoot, wgsExtractBundleRoot, wgsExtractBundleRoot);
+  const pages = bundle.manifest.pages;
+  const sections = pages.flatMap((page) => page.sections ?? []);
+  const controls = sections.flatMap((section) => section.controls ?? []);
+  for (const id of ["deepvariant_model", "sv_read_type", "methylation_context", "methylation_5hmc", "methylation_combine_strands", "y_str_panel"]) {
+    const control = controls.find((candidate) => candidate.id === id);
+    assert.ok(control, `${id} exists`);
+    assert.equal(control.value, undefined, `${id} has no default value`);
+    assert.equal(control.options[0].id, "", `${id} starts on its unset choice`);
+    assert.equal(control.options.some((option) => option.selected), false, `${id} selects nothing`);
+  }
+  assert.deepEqual(
+    controls.find((control) => control.id === "sv_read_type").options.map((option) => option.id),
+    ["", "--ont", "--long-read"],
+  );
+  assert.ok(controls.find((control) => control.id === "deepvariant_model").options.some((option) => option.id === "ONT_R104"));
+
+  const context = { fieldValues: { bam_path: "/tmp/sample.bam" }, checkedOptions: {}, configValues: {}, rowValues: {}, bundleRootPath: "/bundle" };
+  const calling = sections.find((section) => section.id === "variant-calling");
+  const svCommand = displayCommand(calling.actions.find((action) => action.id === "vcf-sv").command, context);
+  const deepVariantCommand = displayCommand(calling.actions.find((action) => action.id === "vcf-deepvariant").command, context);
+  assert.ok(!/--ont|--long-read|--caller|--tandem-repeats/.test(svCommand), svCommand);
+  assert.ok(!/--ont|--model-type/.test(deepVariantCommand), deepVariantCommand);
+
+  const methylation = sections.find((section) => section.id === "methylation");
+  const pileup = displayCommand(methylation.actions[0].command, context);
+  assert.ok(!/--context|5hmc|combine-strands/.test(pileup), pileup);
+
+  for (const id of ["clair3", "methylation"]) {
+    const section = sections.find((candidate) => candidate.id === id);
+    assert.deepEqual(section.visibleWhen, [{ placeholder: "hostPlatform", notEquals: "windows" }]);
+    assert.equal(isSectionVisible(section, context), currentSetupPlatform() !== "windows");
+  }
+  assert.equal(isSectionVisible(calling, context), true);
+  assert.equal(conditionMatches({ placeholder: "hostPlatform", equals: currentSetupPlatform() }, context), true);
+});
+
+test("PR #530 review: WGSExtract's bug report preview targets the app's last run, never itself", async () => {
+  const bundle = await loadLocalizedBundle("en", repoRoot, wgsExtractBundleRoot, wgsExtractBundleRoot);
+  const section = bundle.manifest.pages.flatMap((page) => page.sections ?? []).find((candidate) => candidate.id === "report-issue");
+  const paths = { last: "/w/.last-results/last.json", lastFailed: "/w/.last-results/last-failed.json" };
+  const shown = (lastFailedChecked, lastResultDocumentPaths) => {
+    const context = { fieldValues: {}, checkedOptions: { report_last_failed: lastFailedChecked ? "--last-failed" : "" }, configValues: {}, rowValues: {}, lastResultDocumentPaths };
+    const visible = section.actions.filter((action) => isActionVisible(action, context));
+    assert.equal(visible.length, 1);
+    assert.equal(readsLastResultDocument(visible[0]), true);
+    return displayCommand(visible[0].command, context).replace(/^\S+ /, "");
+  };
+
+  assert.equal(shown(false, paths), `report-issue --print --run ${paths.last}`);
+  assert.equal(shown(true, paths), `report-issue --print --run ${paths.lastFailed}`);
+  // Before the app has run anything, the CLI's own record is the only one.
+  assert.equal(shown(false, {}), "report-issue --print");
+  assert.equal(shown(true, {}), "report-issue --print --last-failed");
 });
 
 test("conformance bundle preserves shared runtime semantics in TypeScript", async () => {
