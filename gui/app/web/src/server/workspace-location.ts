@@ -72,7 +72,7 @@ const maxDefaultWorkspaceSuffix = 100;
 
 /**
  * The workspace to prepare. When the bundle's default folder in the home folder is already someone else's
- * (non-empty and not a workspace, also when only its letter case differs on a case-insensitive disk), the
+ * (a file, an unreadable folder, or non-empty and not a workspace, also when only its letter case differs on a case-insensitive disk), the
  * first free "<name>-2", "<name>-3", ... is used instead and recorded, so it stays the default from then on.
  * The user's folder is never adopted. A folder the user chose must be usable, or this fails saying what to do.
  */
@@ -81,7 +81,7 @@ export async function claimWorkspaceRoot(manifest: Pick<BundleManifest, "id" | "
     if (configured) {
         const root = workspaceRootIn(configured, manifest.id);
         if (!(await isAdoptableWorkspaceRoot(root))) {
-            throw new Error(`The workspaces folder chosen in Settings holds a folder that is not this app's workspace: ${root}. Move that folder away, or remove "bundleWorkspacesDirectory" from ${appSettingsPath()} to use the default location.`);
+            throw new Error(`The workspaces folder chosen in Settings holds something that is not this app's workspace, or that can't be read: ${root}. Move that folder away, or remove "bundleWorkspacesDirectory" from ${appSettingsPath()} to use the default location.`);
         }
         return root;
     }
@@ -123,14 +123,21 @@ export async function assertAdoptableWorkspaceRoot(workspaceRoot: string) {
     }
 }
 
+// A file, or a folder this user can't read, under the name is someone else's: never adoptable.
+const unusableWorkspaceRootCodes = new Set(["ENOTDIR", "EACCES", "EPERM"]);
+
 async function isAdoptableWorkspaceRoot(workspaceRoot: string) {
     const entries = await readdir(workspaceRoot).catch((error: unknown) => {
-        if (errnoCode(error) === "ENOENT") {
+        const code = errnoCode(error);
+        if (code === "ENOENT") {
             return [];
+        }
+        if (code && unusableWorkspaceRootCodes.has(code)) {
+            return null;
         }
         throw error;
     });
-    return entries.length === 0 || await isManagedWorkspace(workspaceRoot);
+    return entries != null && (entries.length === 0 || await isManagedWorkspace(workspaceRoot));
 }
 
 export async function isManagedWorkspace(workspaceRoot: string) {

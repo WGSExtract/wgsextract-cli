@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -100,6 +100,27 @@ test("PR #531 review: a folder of the user's with the default name is left alone
   await rm(path.join(root, "visible-workspace"), { recursive: true });
   assert.equal(await prepareBundleWorkspace(declared, source), fallback);
   assert.equal((await workspaceLocationInfo(declared, fallback)).usingDefault, true);
+});
+
+test("PR #531 re-review: a file, or a folder that can't be read, with the default name doesn't stop the backend", async (t) => {
+  const declared = { ...manifest, defaultWorkspace: "~/visible-workspace" };
+  const { root, source } = await fixture(t, declared);
+  await writeFile(path.join(root, "visible-workspace"), "");
+  // Permissions don't hide a folder from root or on Windows.
+  const unreadable = process.platform !== "win32" && process.getuid?.() !== 0;
+  if (unreadable) {
+    await mkdir(path.join(root, "visible-workspace-2"), { mode: 0o000 });
+  }
+
+  const fallback = path.join(root, unreadable ? "visible-workspace-3" : "visible-workspace-2");
+  try {
+    assert.equal(await prepareBundleWorkspace(declared, source), fallback);
+  } finally {
+    if (unreadable) {
+      await chmod(path.join(root, "visible-workspace-2"), 0o700);
+    }
+  }
+  assert.equal(await readFile(path.join(root, "visible-workspace"), "utf8"), "");
 });
 
 test("a folder chosen in Settings that isn't a workspace fails saying how to recover, and is left alone", async (t) => {
