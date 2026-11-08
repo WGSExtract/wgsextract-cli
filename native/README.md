@@ -249,7 +249,7 @@ Mac; it has not been tested on a 16 GB Mac. 0.4.0 adds a 34 MB table of
 index intervals; it peaked at 11.5 GiB with `-K 10000000`, like 0.3.0, and at
 15.1 GiB with `-K 100000000` (14.9 GiB for 0.3.0).
 
-`wgse-minimap2` uses as much memory as upstream minimap2: with 9 threads on
+`wgse-minimap2` uses within about 1 GiB of upstream minimap2's memory: with 9 threads on
 hs38 it peaked at 13–15 GiB for HiFi reads, 10–14 GiB for ONT reads and
 11.3 GiB for short reads, whether it loaded a `.mmi` index or built one from
 the FASTA reference.
