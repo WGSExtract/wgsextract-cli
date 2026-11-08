@@ -86,10 +86,13 @@ def ont(tmp_path_factory):
     ]
     bam = sam_to_bam([*header, *(r[2] for r in records), *unmapped], root / "x.bam")
     run_command(["samtools", "index", bam])
-    # Small slices, so that a CRAM's index splits its contigs.
+    # Small slices, so that a CRAM's index splits its contigs, and slices
+    # spanning two contigs, as for a whole genome's small contigs.
     cram = str(root / "x.cram")
-    run_command(["samtools", "view", "-C", "-T", ref, "--output-fmt-option",
-                 "seqs_per_slice=20", "-o", cram, bam])  # fmt: skip
+    run_command(["samtools", "view", "-C", "-T", ref,
+                 "--output-fmt-option", "seqs_per_slice=20",
+                 "--output-fmt-option", "multi_seq_per_slice=1",
+                 "-o", cram, bam])  # fmt: skip
     run_command(["samtools", "index", cram])
     return {"ref": str(ref), "bam": bam, "cram": cram}
 
@@ -147,6 +150,32 @@ def test_chunked_realign_writes_the_records_of_a_single_pass(
     assert os.path.isfile(index)
     assert _view("idxstats", chunked) == _view("idxstats", whole)
     assert not (tmp_path / "chunked" / f"x_aligned.{ext}.chunks").exists()
+
+
+@needs_tools("samtools", "minimap2")
+def test_a_cram_out_of_order_despite_its_header_loses_no_reads(tmp_path, ont):
+    """#431: a CRAM sliced by region with chrM before chrY still said
+    SO:coordinate. Read by region, its chunks missed every chrY read; it is
+    now realigned in one pass, every read included."""
+    ref = ont["ref"]
+    sam = tmp_path / "unsorted.sam"
+    sam.write_text(
+        _view("view", "-h", ont["bam"], "chr1", "chr3")
+        + _view("view", ont["bam"], "chr2")
+    )
+    cram = str(tmp_path / "unsorted.cram")
+    # A slice holding chr3's last reads and chr2's first: read by region,
+    # htslib stops at chr3's and returns none of chr2's.
+    run_command(["samtools", "view", "-C", "-T", ref,
+                 "--output-fmt-option", "seqs_per_slice=20",
+                 "--output-fmt-option", "multi_seq_per_slice=1",
+                 "-o", cram, str(sam)])  # fmt: skip
+    run_command(["samtools", "index", cram])
+    _realign(cram, ref, tmp_path / "out", "--chunk-size", _chunk_size(cram))
+
+    aligned = str(tmp_path / "out" / "unsorted_aligned.bam")
+    source = int(_view("view", "-c", "-F", "0x900", "-T", ref, cram))
+    assert int(_view("view", "-c", "-F", "0x900", aligned)) == source
 
 
 def _dying_tools(tmp_path, die, after):

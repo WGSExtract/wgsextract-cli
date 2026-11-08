@@ -104,22 +104,34 @@ def describe(chunk: Chunk) -> str:
 
 def _crai_segments(
     index: str, names: Sequence[str]
-) -> tuple[dict[str, list[tuple[int, int]]], int]:
+) -> tuple[dict[str, list[tuple[int, int]]], int] | None:
     """Each contig's (position, bytes) slices, and the unmapped reads' bytes,
     from a CRAM index: one line per slice with its reference ID, start,
-    span, container offset, slice offset and size."""
-    segments: dict[str, list[tuple[int, int]]] = {}
-    unmapped = 0
+    span, container offset, slice offset and size. None when the slices are
+    out of coordinate order, whatever the header says: reading such a CRAM
+    by region misses reads."""
+    entries = []
     with gzip.open(index, "rt") as handle:
         for line in handle:
             fields = line.split()
-            if len(fields) < 6:
-                continue
-            reference, start, size = int(fields[0]), int(fields[1]), int(fields[5])
-            if reference < 0:
-                unmapped += size
-            elif reference < len(names):
-                segments.setdefault(names[reference], []).append((max(1, start), size))
+            if len(fields) >= 6:
+                reference, start, _, container, slice_, size = map(int, fields[:6])
+                # A slice's unmapped reads follow its mapped ones.
+                order = reference if reference >= 0 else len(names)
+                entries.append((container, slice_, order, reference, start, size))
+    segments: dict[str, list[tuple[int, int]]] = {}
+    unmapped = 0
+    last = (-1, 0)
+    for *_, reference, start, size in sorted(entries):
+        if reference < 0:
+            unmapped += size
+            last = (len(names), 0)
+            continue
+        if (reference, start) < last:
+            return None
+        last = (reference, start)
+        if reference < len(names):
+            segments.setdefault(names[reference], []).append((max(1, start), size))
     return segments, unmapped
 
 
@@ -155,7 +167,15 @@ def plan_chunks(path: str, header: str, chunk_bytes: int) -> list[Chunk] | None:
         return None
     names = [sequence["SN"] for sequence in header_sequences(header)]
     if index.endswith(".crai"):
-        segments, unmapped = _crai_segments(index, names)
+        planned = _crai_segments(index, names)
+        if planned is None:
+            logging.warning(
+                "%s says it is coordinate-sorted, but its index lists slices "
+                "out of order.",
+                path,
+            )
+            return None
+        segments, unmapped = planned
     else:
         segments, unmapped = _idxstats_segments(path)
     chunks: list[Chunk] = []
