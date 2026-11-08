@@ -215,6 +215,14 @@ class RealignParams(Params):
         "next to the BAM.",
         action="store_true",
     )
+    chunk_size: str = param(
+        "4G",
+        help="Realign ONT and PacBio reads in chunks of about this much of "
+        "the input (K, M, G or T; 0: in one pass). Temporary files then stay "
+        "chunk-sized and an interrupted run resumes at its first unfinished "
+        "chunk. Needs a coordinate-sorted, indexed input; ignored with "
+        "--keep-fastq.",
+    )
     no_preflight: bool = param(
         False,
         help="Skip the up-front disk space check (not recommended).",
