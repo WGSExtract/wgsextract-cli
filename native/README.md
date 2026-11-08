@@ -513,6 +513,83 @@ hidden GPU tuning flags. Metal tests are skipped when no Metal device is
 available. `.github/workflows/macos_aligners.yml` builds, tests and packages
 all three executables, and publishes them when run with a `macos-aligners-N` tag.
 
+## Benchmarking on GitHub runners
+
+`.github/workflows/aligner_bench.yml` times both aligners and checks their
+alignments on GitHub-hosted Macs. Standard arm64 runners (`macos-15`,
+`macos-26`, `macos-latest`) are virtual M1s with 3 cores and 7 GiB of RAM, so
+they also show how the aligners behave on small Macs. Run it from Actions >
+Aligner Bench, or:
+
+```bash
+gh workflow run aligner_bench.yml -f variants=main,my-branch -f tiers=small,medium \
+    -f configs=bwa:cpu,bwa:metal -f rounds=3
+gh run watch "$(gh run list --workflow aligner_bench.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+```
+
+- `variants`: git refs to build, or `macos-aligners-N` releases to download;
+  the first is the baseline that the others are compared with.
+- `tiers`: the datasets in `bench/tiers.tsv`. `small` is chr20, `medium` is
+  chr1–3 and `full` is hs38, each with HG002 pairs; `full-5m` is hs38 with
+  5M pairs. The workflow downloads them from the `aligner-bench-data-1`
+  release and checks their sha256 (`bench/data.tsv`).
+- `configs`: `TOOL:BACKEND[:tN][:KN][:probe][:+ARG...]`, for example
+  `bwa:metal:t2` or `mem2:metal:probe`; by default each tier's configs in
+  `bench/tiers.tsv` (only `wgse-bwa --metal` on `full`). A failure of a `probe`
+  config, such as an out-of-memory kill, is reported but does not fail the job.
+  `+ARG` passes an extra argument to the aligner's `mem` command; such runs
+  are checked only against runs with the same arguments.
+- `runners`: runner labels; larger runners such as `macos-15-xlarge` work when
+  the organisation pays for them.
+- `rounds`, `threads`, `balloon_mib` (RAM to wire for the whole job, to act
+  like a smaller Mac; a runner can wire about 4.9 GiB), and timeouts.
+
+Each runner and tier is one job. It runs every config with every variant in
+turn, reversing the order on even rounds so that the variants share the
+runner's conditions, and records the hardware (memory, cores, Metal device),
+each run's time, CPU time, peak RSS and footprint, page faults, swap,
+memory pressure, GPU work, CPU fallbacks and exit status or signal, and a hash
+of its alignments. Alignments must match `bench/expected.tsv` (computed with
+the CPU backends, which are upstream's code) and each other (with `K0`, only
+runs with the same threads, since the batches then depend on them); a mismatch
+or a failed run fails the job. The job summary has a table per job and the report
+job one for the whole run; `bench-run-*` artifacts hold the logs. Its
+"vs first" column is the median change against the first variant over runs in
+the same round, with their range: runs on hosted runners vary by 5–20%, so
+compare variants in one job with three or more rounds. Several runs can be
+dispatched at once.
+
+`bench/bench.sh` also runs locally:
+
+```bash
+native/bench/bench.sh fetch --data out/bench-data --tier small
+native/bench/bench.sh run --data out/bench-data --tier small --out out/bench \
+    --bin main=out/native-prefix/bin --bin test=../other/out/native-prefix/bin --rounds 3
+```
+
+`bench/make_data.sh` builds the datasets and expected hashes from hs38 and
+HG002 reads. It now skips supplementary records when it picks the pairs of a
+tier, which `aligner-bench-data-1` predates (a few hundred of its pairs were
+picked by a supplementary record), so a rebuild is published under a new tag.
+
+What the hosted 7 GiB runners showed (issue #364):
+
+- `--metal` is 4–5 times faster than the CPU backends on their virtual GPU:
+  on `medium`, about 27 s against 130 s for `wgse-bwa` and 30–38 s against
+  130–150 s for `wgse-bwa-mem2`.
+- On `full` (hs38), `wgse-bwa --metal` finished all six runs, aligning
+  200k pairs in 95–200 s with a 6 GiB footprint; its Metal buffers keep the
+  index in RAM. The `wgse-bwa` CPU backend finished one run in six (167 s).
+  The others, and both backends of `wgse-bwa-mem2` (11–17 GiB), paged through
+  the memory compressor and swap until they were stopped after 20–45 minutes.
+  Neither tool warns about this.
+- `wgse-bwa-mem2 --metal` on hs38 falls back to the CPU on GPUs whose largest
+  buffer is under 5.8 GiB, as on 8 GB Macs.
+- On `full-5m`, `wgse-bwa --metal` took 66 and 87 minutes and its alignments
+  matched. In a third run the virtual GPU hung after about 30 minutes;
+  `wgse-bwa` fell back to the CPU and then thrashed. Keep
+  `run_timeout_minutes` at its default of 120 or more for this tier.
+
 ## Licences
 
 `wgse-bwa` combines BWA (GPL-3.0) with the code in `bwa/` and `metal-common/`

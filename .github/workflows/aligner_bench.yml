@@ -1,0 +1,298 @@
+name: Aligner Bench
+
+# Benchmarks and parity-tests the native aligners (wgse-bwa, wgse-bwa-mem2) on
+# GitHub-hosted Macs: Actions > Aligner Bench > Run workflow, or
+#   gh workflow run aligner_bench.yml -f variants=main,my-branch -f tiers=small,medium
+# Each variant (a git ref, built here, or a published macos-aligners-N release)
+# runs on every runner and tier in interleaved order; every job checks the
+# alignments against native/bench/expected.tsv and uploads its logs. The logic
+# is native/bench/bench.sh, which also runs locally; see "Benchmarking on
+# GitHub runners" in native/README.md.
+#
+# Dispatches are independent, so agents can run several at once; max_parallel
+# limits the macOS jobs of each one.
+
+on:
+  workflow_dispatch:
+    inputs:
+      variants:
+        description: Comma-separated git refs to build, or macos-aligners-N releases; the first is the baseline.
+        default: main
+      tiers:
+        description: Comma-separated tiers from native/bench/tiers.tsv (small, medium, full, full-5m).
+        default: small
+      configs:
+        description: Comma-separated TOOL:BACKEND[:tN][:KN][:probe][:+ARG] configs (empty uses each tier's defaults).
+        default: ""
+      runners:
+        description: Comma-separated macOS runner labels.
+        default: macos-15,macos-26
+      rounds:
+        description: Times to run each config with each variant.
+        default: "1"
+      threads:
+        description: Aligner threads (empty uses every core).
+        default: ""
+      balloon_mib:
+        description: MiB of RAM to wire during the runs, to act like a smaller Mac (0 for none).
+        default: "0"
+      run_timeout_minutes:
+        description: Minutes before one aligner run is stopped.
+        default: "120"
+      job_timeout_minutes:
+        description: Minutes before a bench job is cancelled (at most 360).
+        default: "300"
+      max_parallel:
+        description: Most bench jobs at once.
+        default: "4"
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      variants: ${{ steps.plan.outputs.variants }}
+      labels: ${{ steps.plan.outputs.labels }}
+      jobs: ${{ steps.plan.outputs.jobs }}
+    steps:
+      - id: plan
+        env:
+          VARIANTS: ${{ inputs.variants }}
+          TIERS: ${{ inputs.tiers }}
+          RUNNERS: ${{ inputs.runners }}
+          # threads may be empty (every core); balloon_mib may be 0.
+          POSITIVE: ${{ inputs.rounds }} ${{ inputs.threads }} ${{ inputs.run_timeout_minutes }} ${{ inputs.job_timeout_minutes }} ${{ inputs.max_parallel }}
+          BALLOON: ${{ inputs.balloon_mib }}
+          JOB_TIMEOUT: ${{ inputs.job_timeout_minutes }}
+        run: |
+          list() { tr ',' '\n' <<< "$1" | tr -d ' ' | sed '/^$/d'; }
+          for number in $POSITIVE; do
+            [[ $number =~ ^[1-9][0-9]*$ ]] || { echo "::error::$number is not a positive whole number"; exit 1; }
+          done
+          [[ $BALLOON =~ ^(0|[1-9][0-9]*)$ ]] || { echo "::error::balloon_mib $BALLOON is not a whole number"; exit 1; }
+          # GitHub-hosted jobs stop after 6 hours whatever timeout-minutes says.
+          if [ "$JOB_TIMEOUT" -lt 1 ] || [ "$JOB_TIMEOUT" -gt 360 ]; then
+            echo "::error::job_timeout_minutes must be 1 to 360"
+            exit 1
+          fi
+          variants='[]' labels=''
+          while read -r ref; do
+            [[ $ref =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "::error::bad variant $ref"; exit 1; }
+            label=$(tr -c 'A-Za-z0-9._\n-' _ <<< "$ref")
+            case " $labels " in *" $label "*) echo "::error::variant $ref is listed twice"; exit 1 ;; esac
+            release=false
+            [[ $ref =~ ^macos-aligners-[0-9]+$ ]] && release=true
+            variants=$(jq -c --arg ref "$ref" --arg label "$label" --argjson release "$release" \
+              '. + [{ref: $ref, label: $label, release: $release}]' <<< "$variants")
+            labels="$labels $label"
+          done < <(list "$VARIANTS")
+          jobs='[]'
+          while read -r runner; do
+            [[ $runner =~ ^[A-Za-z0-9._-]+$ ]] || { echo "::error::bad runner $runner"; exit 1; }
+            while read -r tier; do
+              [[ $tier =~ ^[a-z0-9-]+$ ]] || { echo "::error::bad tier $tier"; exit 1; }
+              jobs=$(jq -c --arg runner "$runner" --arg tier "$tier" '. + [{runner: $runner, tier: $tier}]' <<< "$jobs")
+              # Intel runners only check that the arm64 builds refuse to start, which needs one job.
+              [[ $runner != *intel* && $runner != macos-13* ]] || break
+            done < <(list "$TIERS")
+          done < <(list "$RUNNERS")
+          if [ "$variants" = '[]' ] || [ "$jobs" = '[]' ]; then
+            echo "::error::nothing to run"
+            exit 1
+          fi
+          {
+            echo "variants=$variants"
+            echo "labels=${labels# }"
+            echo "jobs=$jobs"
+          } | tee -a "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    runs-on: macos-15
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: ${{ fromJSON(needs.plan.outputs.variants) }}
+    name: build ${{ matrix.variant.label }}
+    env:
+      # The artifact holds a directory named after the variant, so that the bench jobs can
+      # merge every variant's artifact into one directory.
+      BIN: bench-bin/${{ matrix.variant.label }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ !matrix.variant.release }}
+        with:
+          ref: ${{ matrix.variant.ref }}
+          persist-credentials: false
+
+      - name: Build
+        if: ${{ !matrix.variant.release }}
+        run: |
+          cmake -S native -B out/build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DFETCHCONTENT_BASE_DIR="$PWD/out/deps"
+          cmake --build out/build -j "$(sysctl -n hw.ncpu)"
+          cmake --install out/build --prefix out/prefix
+          mkdir -p "$BIN"
+          for binary in out/prefix/bin/wgse-*; do
+            tool=$(basename "$binary")
+            # As in macos_aligners.yml: wgse-minimap2 has its own smoke test.
+            case $tool in
+              wgse-minimap2) native/minimap2/tests/smoke.sh "$PWD/$binary" "$PWD/out/smoke-$tool" ;;
+              *) native/tests/smoke.sh "$PWD/$binary" "$PWD/out/smoke-$tool" metal ;;
+            esac
+            cp "$binary" "$BIN/"
+          done
+          echo "ref=$REF commit=$(git rev-parse HEAD)" > "$BIN/variant.txt"
+        env:
+          REF: ${{ matrix.variant.ref }}
+
+      - name: Download the release
+        if: ${{ matrix.variant.release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ matrix.variant.ref }}
+        run: |
+          mkdir -p "$BIN" packages
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
+            --jq '.assets[] | select(.name | endswith("-macos-arm64.tar.gz")) | [.name, .digest] | @tsv' > assets.tsv
+          test -s assets.tsv
+          while IFS=$'\t' read -r name digest; do
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$name" --dir packages
+            [ "sha256:$(shasum -a 256 "packages/$name" | cut -d' ' -f1)" = "$digest" ] || { echo "::error::$name does not match its digest"; exit 1; }
+            tar -xzf "packages/$name" -C packages
+            cp packages/"${name%.tar.gz}"/bin/* "$BIN/"
+          done < assets.tsv
+          echo "release=$TAG" > "$BIN/variant.txt"
+
+      - name: Versions
+        run: |
+          cat "$BIN/variant.txt"
+          for binary in "$BIN"/wgse-*; do "$binary" --version; done
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bench-bin-${{ matrix.variant.label }}
+          path: bench-bin
+          if-no-files-found: error
+          retention-days: 14
+
+  bench:
+    needs: [ plan, build ]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ fromJSON(inputs.job_timeout_minutes) }}
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.max_parallel) }}
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.jobs) }}
+    name: bench ${{ matrix.runner }} ${{ matrix.tier }}
+    env:
+      TIER: ${{ matrix.tier }}
+      CONFIGS: ${{ inputs.configs }}
+      RUNNER_LABEL: ${{ matrix.runner }}
+      LABELS: ${{ needs.plan.outputs.labels }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: bench-bin-*
+          path: bins
+          merge-multiple: true
+
+      - name: Check that Intel Macs refuse the arm64 builds
+        if: runner.arch != 'ARM64'
+        run: |
+          for binary in bins/*/wgse-*; do
+            chmod +x "$binary"
+            status=0
+            { "$binary" --version; } 2> err.txt || status=$?
+            cat err.txt
+            if [ "$status" = 0 ] || ! grep -q 'Bad CPU type' err.txt; then
+              echo "::error::$binary exited $status"
+              exit 1
+            fi
+          done
+          echo "Intel runner: the arm64 builds refuse to start (as expected); nothing to benchmark." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fetch the data
+        if: runner.arch == 'ARM64'
+        run: |
+          df -h "$RUNNER_TEMP"
+          native/bench/bench.sh fetch --data "$RUNNER_TEMP/data" --tier "$TIER" ${CONFIGS:+--configs "$CONFIGS"}
+          df -h "$RUNNER_TEMP"
+
+      - name: Run
+        if: runner.arch == 'ARM64'
+        env:
+          ROUNDS: ${{ inputs.rounds }}
+          THREADS: ${{ inputs.threads }}
+          BALLOON: ${{ inputs.balloon_mib }}
+          RUN_TIMEOUT: ${{ inputs.run_timeout_minutes }}
+        run: |
+          chmod +x bins/*/wgse-*
+          bins=()
+          for label in $LABELS; do bins+=(--bin "$label=bins/$label"); done
+          status=0
+          native/bench/bench.sh run --data "$RUNNER_TEMP/data" --tier "$TIER" --out out/bench "${bins[@]}" \
+            --rounds "$ROUNDS" --timeout $((RUN_TIMEOUT * 60)) --balloon "$BALLOON" --name "$RUNNER_LABEL" \
+            ${THREADS:+--threads "$THREADS"} ${CONFIGS:+--configs "$CONFIGS"} || status=$?
+          {
+            echo "### $RUNNER_LABEL, $TIER"
+            echo
+            echo '```'
+            grep -E '^(os|hw.model|hw.ncpu|hw.memsize|vm.swapusage|disk_free_gib|power|metal_device|metal_recommended_max_working_set_bytes|metal_max_buffer_bytes)=' out/bench/hwinfo.txt
+            for label in $LABELS; do echo "$label: $(cat "bins/$label/variant.txt")"; done
+            [ ! -s out/bench/balloon.txt ] || echo "balloon: $(cat out/bench/balloon.txt)"
+            echo '```'
+            echo
+            cat out/bench/summary.md 2> /dev/null || echo "No results."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && runner.arch == 'ARM64'
+        with:
+          name: bench-run-${{ matrix.runner }}-${{ matrix.tier }}
+          path: |
+            out/bench
+            !out/bench/helpers
+          if-no-files-found: warn
+          retention-days: 30
+
+  report:
+    needs: bench
+    if: always() && needs.bench.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: native/bench
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: bench-run-*
+          path: results
+
+      - name: Report
+        run: |
+          shopt -s nullglob
+          files=(results/*/results.tsv)
+          [ ${#files[@]} -gt 0 ] || { echo "No results." >> "$GITHUB_STEP_SUMMARY"; exit 0; }
+          mkdir -p report
+          native/bench/bench.sh summary "${files[@]}" > report/summary.md
+          { head -1 "${files[0]}"; for file in "${files[@]}"; do tail -n +2 "$file"; done; } > report/results.tsv
+          { echo "## Aligner bench"; echo; cat report/summary.md; } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bench-report
+          path: report
+          if-no-files-found: ignore
