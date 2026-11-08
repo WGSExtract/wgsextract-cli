@@ -1,5 +1,6 @@
 import json
 import plistlib
+import subprocess
 import sys
 from pathlib import Path
 
@@ -345,3 +346,45 @@ def test_the_harness_notes_a_crashed_apps_events_then_stops_what_it_left(oracle)
     assert timeline.index("app-exited 3") < closes
     assert timeline.index("setup-events 2") < closes
     assert timeline[-1] == "app-closed"
+
+
+def test_optional_tools_install_into_the_workspace_runtime(tmp_path):
+    # Regression: once v0.8.5 (PR #531) became the latest app, its CLI runtime
+    # lived in ~/wgs-extract, and the lab's optional-tools step looked only in
+    # app data, so every app Install Lab failed its gatk action.
+    workspace = tmp_path / "wgs-extract"
+    manifest = workspace / "runtime" / "wgsextract-cli" / "app" / "pixi.toml"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text("")
+    pixi = manifest.parents[1] / ".pixi" / "bin" / "pixi"
+    pixi.parent.mkdir(parents=True)
+    calls = tmp_path / "pixi-args"
+    pixi.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > "{calls}"\n')
+    pixi.chmod(0o755)
+    app_data = tmp_path / "app-data"
+    (app_data / "WebKitCache").mkdir(parents=True)
+    script = LAB_SCRIPTS / "guest" / "install-optional-tools.sh"
+
+    found = subprocess.run(
+        ["sh", str(script), str(app_data), str(workspace)],
+        capture_output=True,
+        text=True,
+    )
+    missing = subprocess.run(
+        ["sh", str(script), str(app_data)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert found.returncode == 0, found.stderr
+    # contract: the gatk env must be installed into the app's own runtime.
+    assert calls.read_text().split() == [
+        "install",
+        "--locked",
+        "--manifest-path",
+        str(manifest),
+        "-e",
+        "gatk",
+    ]
+    assert missing.returncode == 1
+    assert "No installed CLI manifest" in missing.stderr
