@@ -18,7 +18,7 @@ printed by `--version`.
 
 ## Installing
 
-The `macos-aligners-12` prerelease has `wgse-bwa` 0.7.1, `wgse-bwa-mem2`
+The `macos-aligners-11` prerelease has `wgse-bwa` 0.7.1, `wgse-bwa-mem2`
 0.4.0 and `wgse-minimap2` 0.1.0. `wgse-bwa` 0.7.1 shares the updated
 mate-rescue kernel with `wgse-bwa-mem2` 0.4.0 and aligns exactly as 0.7.0
 does. `wgse-bwa --metal` and `wgse-bwa capabilities` need `wgse-bwa` 0.2.0 or
@@ -47,8 +47,8 @@ publishes for each release asset:
 
 ```bash
 mkdir wgse-aligners && cd wgse-aligners
-gh release download macos-aligners-12 -R WGSExtract/wgsextract-cli
-gh release view macos-aligners-12 -R WGSExtract/wgsextract-cli --json assets \
+gh release download macos-aligners-11 -R WGSExtract/wgsextract-cli
+gh release view macos-aligners-11 -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
   shasum -a 256 -c
 ```
