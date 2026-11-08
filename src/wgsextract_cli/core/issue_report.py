@@ -783,6 +783,10 @@ def _sensitive_names(manifest: Mapping[str, Any]) -> tuple[set[str], set[str]]:
         if isinstance(params.get(key), str):
             sensitive |= header_samples(params[key])
     safe = catalog_reference_names()
+    # A file named after what it is (the app's result.json, a tool's gatk.log)
+    # names nobody; replacing such words everywhere garbles the report.
+    generic = _not_personal_folders() | _SAFE_PROGRAMS
+    sensitive = {name for name in sensitive if name.lower() not in generic}
     return sensitive - safe, safe
 
 
