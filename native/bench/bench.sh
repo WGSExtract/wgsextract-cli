@@ -8,11 +8,19 @@
 #       verified are kept.
 #   bench.sh run --data DIR --tier TIER --out DIR --bin LABEL=DIR [--bin ...]
 #                [--configs LIST] [--rounds N] [--threads N] [--timeout SECONDS]
-#                [--balloon MIB] [--name NAME]
-#       Run every config with every binary directory (variant) LABEL, in
-#       interleaved order (reversed on even rounds), and write DIR/results.tsv,
-#       DIR/hwinfo.txt, DIR/summary.md and DIR/runs/*. Exits 1 if any run
-#       failed or any alignments differ from the expected ones.
+#                [--balloon MIB] [--name NAME] [--power] [--power-cmd CMD]
+#                [--power-idle SECONDS] [--power-quiet WATTS]
+#       Run every config with every binary directory (variant) LABEL that has
+#       its executable, in interleaved order (reversed on even rounds), and write
+#       DIR/results.tsv, DIR/hwinfo.txt, DIR/summary.md and DIR/runs/*. Exits 1
+#       if any run failed or any alignments differ from the expected ones.
+#       --power also measures each run's energy with powermetrics through
+#       power.py: CMD (default "sudo -n powermetrics") must run powermetrics as
+#       root without a prompt for the whole bench (a cached sudo ticket
+#       expires; a run whose sampling fails records power "failed"). Each run
+#       is preceded by SECONDS (default 60) of idle measurement; --power-quiet
+#       waits, up to 30 minutes, for an idle window whose mean package power
+#       is at most WATTS.
 #   bench.sh summary RESULTS.tsv...
 #       Print a Markdown table: per name, tier, config and variant, the median
 #       of the runs and the change against the first variant.
@@ -20,15 +28,18 @@
 #       Print the machine's memory, CPU, swap, power and Metal device.
 #
 # A config is TOOL:BACKEND[:tN][:KN][:probe][:+ARG...]
-#   TOOL     bwa (wgse-bwa) or mem2 (wgse-bwa-mem2)
-#   BACKEND  cpu, metal (--metal) or auto (--backend auto)
+#   TOOL     bwa (wgse-bwa or bwa), mem2 (wgse-bwa-mem2 or bwa-mem2), mem3
+#            (wgse-bwa-mem3 or bwa-mem3, on the BWA-MEM2 index) or mm2
+#            (wgse-minimap2 or minimap2, -ax sr on <ref>.fa.sr.mmi); upstream
+#            executables (without wgse-) run only the cpu backend
+#   BACKEND  cpu, metal (--metal) or auto (--backend auto); mem3 has only cpu
 #   tN       threads (default --threads, or every core)
-#   KN       -K N (default 10000000; K0 leaves -K out)
+#   KN       -K N (default 10000000, or minimap2's own for mm2; K0 leaves -K out)
 #   probe    a failure (crash, kill, timeout) is reported, not failed
 #   +ARG     an extra argument for the aligner's mem command, for example +-Y
 # Alignments of each tool, tier and K must match expected.tsv when it has them,
-# and each other, whatever the backend, threads or variant. With K0 the
-# alignments depend on the threads, so they must agree only at equal threads;
+# and each other, whatever the backend, threads or variant. With K0 the BWA
+# tools' alignments depend on the threads, so they must agree only at equal threads;
 # with +ARGs, only between runs with the same ones, and not expected.tsv.
 #
 # To add a tool, add a case to tool_binary, tool_files and tool_command.
@@ -38,14 +49,30 @@ here=$(cd "$(dirname "$0")" && pwd)
 default_K=10000000
 
 die() { echo "bench.sh: $*" >&2; exit 2; }
-usage() { sed -n '2,32p' "$0" >&2; exit 2; }
+usage() { sed -n '2,43p' "$0" >&2; exit 2; }
 
+# tool_binary TOOL: the wgse executable, which expected.tsv names.
 tool_binary() {
     case $1 in
         bwa) echo wgse-bwa ;;
         mem2) echo wgse-bwa-mem2 ;;
+        mem3) echo wgse-bwa-mem3 ;;
+        mm2) echo wgse-minimap2 ;;
         *) die "unknown tool $1" ;;
     esac
+}
+
+# tool_exe DIR TOOL BACKEND: the executable in DIR that runs TOOL with BACKEND,
+# or nothing. Upstream builds, such as Bioconda's, have only the CPU.
+tool_exe() {
+    local wgse upstream
+    wgse=$(tool_binary "$2")
+    upstream=${wgse#wgse-}
+    if [ -x "$1/$wgse" ]; then
+        echo "$1/$wgse"
+    elif [ "$3" = cpu ] && [ -x "$1/$upstream" ]; then
+        echo "$1/$upstream"
+    fi
 }
 
 # tool_files TOOL BACKEND: the index files after <ref>.fa. that it reads.
@@ -54,21 +81,27 @@ tool_files() {
         bwa:*) echo "amb ann bwt pac sa" ;;
         # --metal does not keep the .0123 in memory, but released builds still open it.
         mem2:*) echo "amb ann bwt.2bit.64 pac 0123" ;;
+        # bwa-mem3 reads the bwa-mem2 index but rebuilds the reference from the .pac.
+        mem3:*) echo "amb ann bwt.2bit.64 pac" ;;
+        mm2:*) echo "sr.mmi" ;;
     esac
 }
 
-# tool_command BIN TOOL BACKEND THREADS K REF.fa R1 R2 [ARG...]: sets cmd.
+# tool_command EXE TOOL BACKEND THREADS K REF.fa R1 R2 [ARG...]: sets cmd.
 tool_command() {
-    local bin=$1 tool=$2 backend=$3 threads=$4 K=$5 ref=$6 r1=$7 r2=$8
+    local exe=$1 tool=$2 backend=$3 threads=$4 K=$5 ref=$6 r1=$7 r2=$8
     shift 8
-    cmd=("$bin/$(tool_binary "$tool")")
+    cmd=("$exe")
     case $backend in
         cpu) ;;
         metal) cmd+=(--metal) ;;
         auto) cmd+=(--backend auto) ;;
         *) die "unknown backend $backend" ;;
     esac
-    cmd+=(mem -t "$threads")
+    case $tool in
+        mm2) cmd+=(-ax sr -t "$threads"); ref=$ref.sr.mmi ;;
+        *) cmd+=(mem -t "$threads") ;;
+    esac
     [ "$K" = 0 ] || cmd+=(-K "$K")
     cmd+=("$@" "$ref" "$r1" "$r2")
 }
@@ -83,7 +116,10 @@ parse_config() {
     c_tool=${fields[0]} c_backend=${fields[1]} c_threads=$threads c_K=$default_K c_probe=0
     c_args=()
     tool_binary "$c_tool" > /dev/null
+    [ "$c_tool" != mm2 ] || c_K=0
     case $c_backend in cpu | metal | auto) ;; *) die "unknown backend in $1" ;; esac
+    [ "$c_tool:$c_backend" != mem3:metal ] && [ "$c_tool:$c_backend" != mem3:auto ] ||
+        die "wgse-bwa-mem3 has no Metal backend (config $1)"
     for field in "${fields[@]:2}"; do
         case $field in
             t[0-9]*) c_threads=${field#t}; [[ $c_threads =~ ^[1-9][0-9]*$ ]] || die "bad threads $field in config $1" ;;
@@ -144,7 +180,7 @@ fetch() {
     local missing=() line
     for path in $(tier_paths "$tier" "$configs"); do
         line=$(awk -F '\t' -v path="$path" '$1 == path' "$here/data.tsv")
-        [ -n "$line" ] || die "data.tsv has no $path"
+        [ -n "$line" ] || die "data.tsv has no $path; build it in $data"
         IFS=$'\t' read -r path bytes sha assets <<< "$line"
         if [ -f "$data/$path.sha256" ] && [ "$(cat "$data/$path.sha256")" = "$sha" ] &&
             [ "$(file_bytes "$data/$path")" = "$bytes" ]; then
@@ -251,15 +287,16 @@ warm() {
     [ "$total" -lt $((($(sysctl -n hw.memsize) - balloon * 1048576) / 2)) ] && cat "${files[@]}" > /dev/null || true
 }
 
-# One run: writes $dir/runstat.txt, stderr.txt, samples.tsv, vm_*.txt and
-# hash, and prints its results.tsv row.
+# One run: writes $dir/runstat.txt, stderr.txt, samples.tsv, vm_*.txt, hash
+# and, with --power, power.txt, and prints its results.tsv row.
 run_one() {
     local dir=$1 label=$2 bin=$3 config=$4 round=$5 rc sampler_pid hash status expected report
+    local power=()
     # A fresh directory, so that diagnostics of an earlier run with --out cannot leak in.
     rm -rf "$dir"
     mkdir -p "$dir"
     parse_config "$config"
-    tool_command "$bin" "$c_tool" "$c_backend" "$c_threads" "$c_K" "$ref_fa" \
+    tool_command "$(tool_exe "$bin" "$c_tool" "$c_backend")" "$c_tool" "$c_backend" "$c_threads" "$c_K" "$ref_fa" \
         "$data/reads/${reads}_R1.fastq.gz" "$data/reads/${reads}_R2.fastq.gz" ${c_args[@]+"${c_args[@]}"}
     printf '%q ' "${cmd[@]}" > "$dir/command.txt"
     warm
@@ -267,10 +304,14 @@ run_one() {
     sync
     vm_counters > "$dir/vm_before.txt"
     date '+%Y-%m-%d %H:%M:%S' > "$dir/started.txt"
+    sysctl -n vm.loadavg | awk '{ print $2 }' > "$dir/load.txt"
+    # power.py measures the idle power first, then runs runstat, which times only the aligner.
+    [ -z "$power_cmd" ] || power=(python3 "$here/power.py" run --cmd "$power_cmd" --idle "$power_idle"
+        ${power_quiet:+--quiet "$power_quiet"} --out "$dir" --)
     sampler > "$dir/samples.tsv" 2> /dev/null &
     sampler_pid=$!
     set +e
-    "$helpers/runstat" -t "$timeout" "$dir/runstat.txt" "${cmd[@]}" 2> "$dir/stderr.txt" |
+    ${power[@]+"${power[@]}"} "$helpers/runstat" -t "$timeout" "$dir/runstat.txt" "${cmd[@]}" 2> "$dir/stderr.txt" |
         grep -v '^@PG' | shasum -a 256 | cut -c1-16 > "$dir/hash"
     rc=${PIPESTATUS[0]}
     set -e
@@ -285,7 +326,12 @@ run_one() {
     for report in /Library/Logs/DiagnosticReports/*.gpuRestart; do
         [ -f "$report" ] && [ "$report" -nt "$dir/started.txt" ] && cp "$report" "$dir/" || true
     done
-    if [ "$rc" != 0 ]; then
+    if [ -n "$power_cmd" ] && grep -q '^status=failed$' "$dir/power.txt" 2> /dev/null; then
+        echo "warning: $label $config has no power data: $(sed -n 's/^error=//p' "$dir/power.txt")" >&2
+    fi
+    if [ ! -f "$dir/runstat.txt" ]; then
+        status=failed
+    elif [ "$rc" != 0 ]; then
         diagnose "$dir"
         if [ "$c_probe" = 1 ]; then status=probe-failed; else status=failed; fi
     elif [ -n "$expected" ] && [ "$hash" != "$expected" ]; then
@@ -309,14 +355,21 @@ diagnose() {
 }
 
 results_header() {
-    printf 'name\ttier\tlabel\tconfig\tround\texit\tsignal\ttimed_out\treal_s\tuser_s\tsys_s\tmax_rss_mib\tfootprint_mib\tpage_faults\tpageins\tswap_max_mib\tswapout_mib\tcompressor_max_mib\tpressure_max\tfree_min_pct\tgpu_batches\tcpu_fallback\tmetal_failed\tinterruptions\tjetsam\thash\texpected\tstatus\tnote\n'
+    printf 'name\ttier\tlabel\tconfig\tround\texit\tsignal\ttimed_out\treal_s\tuser_s\tsys_s\tmax_rss_mib\tfootprint_mib\tpage_faults\tpageins\tswap_max_mib\tswapout_mib\tcompressor_max_mib\tpressure_max\tfree_min_pct\tgpu_batches\tcpu_fallback\tmetal_failed\tinterruptions\tjetsam\thash\texpected\tstatus\tnote\tload1\tpower\tidle_cpu_w\tidle_gpu_w\tidle_package_w\tcpu_wh\tgpu_wh\tpackage_wh\tnet_cpu_wh\tnet_gpu_wh\tnet_package_wh\n'
 }
 
 row() {
     local dir=$1 label=$2 config=$3 round=$4 rc=$5 hash=$6 expected=$7 status=$8 note jetsam=0 resets
+    local power_file=/dev/null runstat=$dir/runstat.txt
+    [ ! -f "$dir/power.txt" ] || power_file=$dir/power.txt
     note=$(grep -m 1 -o 'CPU fallback: .*\|Metal execution failed.*\|[Ee]rror[: ].*\|[Ff]ailed.*' "$dir/stderr.txt" |
         tr '\t' ' ' | cut -c1-120 || true)
     [ -n "$note" ] || note=$(grep -m 1 -o 'warning: .*' "$dir/stderr.txt" | tr '\t' ' ' | cut -c1-120 || true)
+    if [ ! -f "$runstat" ]; then
+        # The aligner never ran (power.py could not start it); the row still records the attempt.
+        runstat=/dev/null
+        note="the aligner did not run${note:+; $note}"
+    fi
     if [ -s "$dir/memorystatus.log" ] && grep -qi "killing.*wgse\|wgse.*kill" "$dir/memorystatus.log"; then
         jetsam=1
     fi
@@ -327,8 +380,9 @@ row() {
         -v round="$round" -v rc="$rc" -v hash="$hash" -v expected="$expected" -v status="$status" \
         -v note="${note:--}" -v jetsam="$jetsam" -v page="$(sysctl -n hw.pagesize)" \
         -v samples="$dir/samples.tsv" -v before="$dir/vm_before.txt" -v after="$dir/vm_after.txt" \
-        -v stderr="$dir/stderr.txt" '
+        -v stderr="$dir/stderr.txt" -v load="$(cat "$dir/load.txt")" -v power="$power_file" '
         BEGIN { free_min = 100 }
+        FILENAME == power { p[$1] = substr($0, length($1) + 2); next }
         FILENAME == before { vm0[$1] = $2; next }
         FILENAME == after { vm1[$1] = $2; next }
         FILENAME == samples { split($0, s, "\t"); sampled++; if (s[2] > swap) swap = s[2]
@@ -349,13 +403,17 @@ row() {
                 sprintf("%.0f", r["max_rss_bytes"] / 1048576), sprintf("%.0f", r["peak_footprint_bytes"] / 1048576),
                 r["page_faults"] + 0, r["pageins"] + 0, swap + 0, sprintf("%.0f", (vm1["Swapouts"] - vm0["Swapouts"]) * page / 1048576),
                 compressor + 0, pressure + 0, sampled ? free_min : "-", gpu + 0, fallback + 0, failed + 0, interruptions + 0,
-                jetsam, hash, expected, status, note }
-    ' "$dir/runstat.txt" "$dir/vm_before.txt" "$dir/vm_after.txt" "$dir/samples.tsv" "$dir/stderr.txt"
+                jetsam, hash, expected, status, note, ("load1" in p) ? p["load1"] : load,
+                ("status" in p) ? p["status"] : "-", f(p["idle_cpu_w"]), f(p["idle_gpu_w"]), f(p["idle_package_w"]),
+                f(p["cpu_wh"]), f(p["gpu_wh"]), f(p["package_wh"]), f(p["net_cpu_wh"]), f(p["net_gpu_wh"]), f(p["net_package_wh"]) }
+        function f(value) { return value == "" ? "-" : value }
+    ' "$runstat" "$dir/vm_before.txt" "$dir/vm_after.txt" "$dir/samples.tsv" "$dir/stderr.txt" "$power_file"
 }
 
 run() {
     local out="" configs="" rounds=1 labels=() bins=() spec
     data="" tier="" timeout=7200 threads=$(sysctl -n hw.ncpu) name=$(hostname -s) balloon=0
+    power_cmd="" power_idle=60 power_quiet=""
     while [ $# -gt 0 ]; do
         case $1 in
             --data) data=$2; shift 2 ;;
@@ -368,6 +426,10 @@ run() {
             --timeout) timeout=$2; shift 2 ;;
             --balloon) balloon=$2; shift 2 ;;
             --name) name=$2; shift 2 ;;
+            --power) [ -n "$power_cmd" ] || power_cmd="sudo -n powermetrics"; shift ;;
+            --power-cmd) power_cmd=$2; shift 2 ;;
+            --power-idle) power_idle=$2; shift 2 ;;
+            --power-quiet) power_quiet=$2; shift 2 ;;
             *) usage ;;
         esac
     done
@@ -376,6 +438,12 @@ run() {
         [[ $spec =~ ^[1-9][0-9]*$ ]] || die "--rounds, --threads and --timeout need a positive whole number, not $spec"
     done
     [[ $balloon =~ ^(0|[1-9][0-9]*)$ ]] || die "--balloon needs a whole number of MiB, not $balloon"
+    [[ $power_idle =~ ^[0-9]+$ ]] || die "--power-idle needs a whole number of seconds, not $power_idle"
+    [ -z "$power_quiet" ] || [[ $power_quiet =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "--power-quiet needs watts, not $power_quiet"
+    if [ -n "$power_cmd" ]; then
+        command -v python3 > /dev/null || die "--power needs python3"
+        python3 "$here/power.py" check --cmd "$power_cmd" || die "--power: $power_cmd cannot run powermetrics"
+    fi
     [ -n "$configs" ] || configs=$(tier_field "$tier" 4)
     check_configs "$configs"
     mkdir -p "$out/runs"
@@ -389,21 +457,28 @@ run() {
     for path in $(tier_paths "$tier" "$configs"); do
         [ -e "$data/$path" ] || die "$data/$path is missing; run bench.sh fetch"
     done
-    for i in "${!bins[@]}"; do
-        for config in ${configs//,/ }; do
-            parse_config "$config"
-            [ -x "${bins[$i]}/$(tool_binary "$c_tool")" ] ||
-                die "${bins[$i]} has no $(tool_binary "$c_tool")"
+    # Each config runs with the variants that have an executable for it.
+    local exe
+    for config in ${configs//,/ }; do
+        parse_config "$config"
+        for i in "${!bins[@]}"; do
+            exe=$(tool_exe "${bins[$i]}" "$c_tool" "$c_backend")
+            [ -z "$exe" ] || order+=("$i	$config")
         done
+        [[ " ${order[*]-} " == *"	$config "* ]] || die "no --bin directory has an executable for $config"
     done
     hwinfo --out "$out" | tee "$out/hwinfo.txt"
     for i in "${!bins[@]}"; do
         for config in ${configs//,/ }; do
             parse_config "$config"
-            "${bins[$i]}/$(tool_binary "$c_tool")" capabilities --json \
-                > "$out/capabilities-${labels[$i]}-$c_tool.json" 2>&1 || true
+            exe=$(tool_exe "${bins[$i]}" "$c_tool" "$c_backend")
+            [ -n "$exe" ] || continue
+            printf '%s\t%s\t%s\t%s\n' "${labels[$i]}" "$c_tool" "$exe" "$(sha256 "$exe")"
+            case $exe in
+                */wgse-*) "$exe" capabilities --json > "$out/capabilities-${labels[$i]}-$c_tool.json" 2>&1 || true ;;
+            esac
         done
-    done
+    done | awk '!seen[$0]++' > "$out/executables.tsv"
 
     local balloon_pid=""
     if [ "$balloon" -gt 0 ]; then
@@ -422,9 +497,6 @@ run() {
         echo "balloon: $(cat "$out/balloon.txt")"
     fi
 
-    for config in ${configs//,/ }; do
-        for i in "${!bins[@]}"; do order+=("$i	$config"); done
-    done
     results_header > "$out/results.tsv"
     local entry k count=${#order[@]} slug label
     for round in $(seq "$rounds"); do
@@ -486,7 +558,13 @@ summary() {
             statuses[key] = statuses[key] (index(" " statuses[key] " ", " " $28 " ") ? "" : (statuses[key] == "" ? "" : " ") $28)
             if ($6 == 0) { real[key] = real[key] " " $9; cpu[key] = cpu[key] " " ($10 + $11)
                 round_real[key, $5] = $9; rounds[key] = rounds[key] " " $5
-                rss[key] = rss[key] " " $12; foot[key] = foot[key] " " $13 }
+                rss[key] = rss[key] " " $12; foot[key] = foot[key] " " $13
+                if ($31 != "" && $31 != "-") energy = 1
+                # Runs whose sampler failed (power "failed") have no energy.
+                if (energy && $35 != "-") { load[key] = load[key] " " $30
+                    cpu_wh[key] = cpu_wh[key] " " $35; gpu_wh[key] = gpu_wh[key] " " $36
+                    package_wh[key] = package_wh[key] " " $37
+                    if ($34 != "-") { idle[key] = idle[key] " " $34; net_wh[key] = net_wh[key] " " $40 } } }
             else { failures[key] = failures[key] (failures[key] == "" ? "" : "; ") (($8 ? "timeout" : ($7 ? "signal " $7 : "exit " $6)) ($25 ? " (jetsam)" : "")) }
             if ($16 > swap[key]) swap[key] = $16
             if ($17 > swapout[key]) swapout[key] = $17
@@ -499,8 +577,11 @@ summary() {
             if ($28 != "pass" && $28 != "probe-failed" || note[key] == "") if ($29 != "-") note[key] = $29
         }
         END {
-            print "| Runner | Tier | Config | Variant | Runs | Status | Time s | vs first | CPU s | Max RSS GiB | Footprint GiB | System swap GiB | Swapped out GiB | Pressure | Min free | GPU batches | Fallbacks | Hash | Notes |"
-            print "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | --- | --- |"
+            printf "| Runner | Tier | Config | Variant | Runs | Status | Time s | vs first | CPU s | Max RSS GiB | Footprint GiB | System swap GiB | Swapped out GiB | Pressure | Min free | GPU batches | Fallbacks | Hash | Notes |"
+            if (energy) printf " Load | Idle W | CPU Wh | GPU Wh | Package Wh | Above idle Wh |"
+            printf "\n| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | --- | --- |"
+            if (energy) printf " ---: | ---: | ---: | ---: | ---: | ---: |"
+            printf "\n"
             for (k = 1; k <= nkeys; k++) {
                 key = keys[k]; split(key, p, SUBSEP); group = p[1] SUBSEP p[2] SUBSEP p[3]
                 t = median(real[key])
@@ -527,11 +608,16 @@ summary() {
                 if (notes != "" && note[key] != "") notes = notes "; "
                 notes = notes note[key]
                 gsub(/\|/, "/", notes)
-                printf "| %s | %s | `%s` | %s | %d | %s | %s | %s | %s | %s | %s | %.2f | %.2f | %s | %s | %d | %d | %s | %s |\n",
+                printf "| %s | %s | `%s` | %s | %d | %s | %s | %s | %s | %s | %s | %.2f | %.2f | %s | %s | %d | %d | %s | %s |",
                     p[1], p[2], p[3], p[4], runs[key], statuses[key], fmt(t, "%.1f", 1), vs,
                     fmt(median(cpu[key]), "%.0f", 1), fmt(median(rss[key]), "%.2f", 1024),
                     fmt(median(foot[key]), "%.2f", 1024), swap[key] / 1024, swapout[key] / 1024, level,
                     (key in freemin) ? freemin[key] "%" : "-", gpu[key], fallback[key], (key in hash) ? "`" hash[key] "`" : "-", notes
+                # Energy: the medians of the runs, in Wh per run; above idle subtracts the idle power.
+                if (energy) printf " %s | %s | %s | %s | %s | %s |", fmt(median(load[key]), "%.1f", 1),
+                    fmt(median(idle[key]), "%.2f", 1), fmt(median(cpu_wh[key]), "%.3f", 1), fmt(median(gpu_wh[key]), "%.3f", 1),
+                    fmt(median(package_wh[key]), "%.3f", 1), fmt(median(net_wh[key]), "%.3f", 1)
+                printf "\n"
             }
         }' "$@"
 }

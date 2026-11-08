@@ -20,9 +20,9 @@
         },
         {
           "id": "ref_fasta",
-          "label": "controls.microarray.microarray-inputs.ref_path.label",
+          "label": "controls.microarray.microarray-inputs.ref_fasta.label",
           "kind": "dropdown",
-          "tooltip": "controls.microarray.microarray-inputs.ref_path.tooltip",
+          "tooltip": "controls.microarray.microarray-inputs.ref_fasta.tooltip",
           "dataSource": {
             "path": "scripts/list-reference-genomes.py",
             "arguments": [

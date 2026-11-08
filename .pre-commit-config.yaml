@@ -71,10 +71,11 @@ repos:
         pass_filenames: false
         files: ^src/wgsextract_cli/.*\.py$
       # The desktop app's own checks (typecheck, bundles, locales, duplication);
-      # they need its dependencies: `just gui-setup`.
+      # they need its dependencies: `just gui-setup`. Run with the app's uv
+      # Python, like `just gui-lint`, so no system `python` is needed.
       - id: gui-lint
         name: gui lint (gui/tools/tasks.py lint)
-        entry: python gui/tools/tasks.py lint
+        entry: uv run --directory gui --locked python tools/tasks.py lint
         language: system
         pass_filenames: false
         files: ^gui/

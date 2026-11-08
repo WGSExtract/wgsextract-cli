@@ -9,22 +9,28 @@ they are qualified on full genomes (#364).
 | --- | --- | --- |
 | `wgse-bwa` | BWA 0.7.19 | Native arm64 build. CPU by default (unmodified upstream code); `--metal` is **experimental**. Low memory: about 6 GB for a human index. |
 | `wgse-bwa-mem2` | BWA-MEM2 2.3 | arm64 build through sse2neon. CPU by default; `--metal` is **experimental**. Needs much more memory than BWA (see below). |
-| `wgse-minimap2` | minimap2 2.31 | arm64 build through sse2neon, with faster index loading and building, seeding and anchor sorting on the CPU. No `--metal` yet. |
+| `wgse-bwa-mem3` | bwa-mem3 0.16.0 | Self-contained arm64 build of bwa-mem3, a faster BWA-MEM2 descendant that reads the BWA-MEM2 index and can write BWA's or BWA-MEM2's exact records (`--compat`). CPU only; no `--metal` yet. |
+| `wgse-minimap2` | minimap2 2.31 | arm64 build through sse2neon, with faster index loading and building, seeding and anchor sorting on the CPU. `--metal` (long-read presets) is **experimental**. |
 
-All write the same alignments as their upstream release, with or without
-`--metal`; only the `@PG` version gains a `-wgse-<version>` suffix (and its
-command line records any backend option). Each package has its own version,
+All write the same alignments as their upstream release (in each of
+bwa-mem3's output modes), with or without `--metal`; only the `@PG` version
+gains a `-wgse-<version>` suffix (and its command line records any backend
+option). Each package has its own version,
 printed by `--version`.
 
 ## Installing
 
-The `macos-aligners-12` prerelease has `wgse-bwa` 0.7.1, `wgse-bwa-mem2`
-0.4.1 and `wgse-minimap2` 0.1.0. `wgse-bwa` 0.7.1 shares the updated
+The `macos-aligners-13` prerelease has `wgse-bwa` 0.7.1, `wgse-bwa-mem2`
+0.4.1, `wgse-bwa-mem3` 0.1.0 and `wgse-minimap2` 0.2.0, whose `--metal` runs
+gap fills on the GPU.
+`wgse-bwa` 0.7.1 shares the updated
 mate-rescue kernel with `wgse-bwa-mem2` 0.4.0 and aligns exactly as 0.7.0
 does. `wgse-bwa --metal` and `wgse-bwa capabilities` need `wgse-bwa` 0.2.0 or
-later. `macos-aligners-11` has `wgse-bwa` 0.7.1, `wgse-bwa-mem2` 0.4.0, which
-aligns exactly as 0.4.1 but without its memory and GPU-limit warnings, and
-`wgse-minimap2` 0.1.0. Earlier prereleases, without `wgse-minimap2`: `macos-aligners-10` has
+later. `macos-aligners-12` has the same `wgse-bwa` and `wgse-bwa-mem2` with
+`wgse-minimap2` 0.1.0, which aligns on the CPU only. `macos-aligners-11` has
+`wgse-bwa` 0.7.1, `wgse-bwa-mem2` 0.4.0, which aligns exactly as 0.4.1 but
+without its memory and GPU-limit warnings, and `wgse-minimap2` 0.1.0. Earlier
+prereleases, without `wgse-minimap2`: `macos-aligners-10` has
 `wgse-bwa` 0.7.1 and `wgse-bwa-mem2` 0.4.0; `macos-aligners-9` has `wgse-bwa`
 0.7.0 and `wgse-bwa-mem2` 0.3.0, with slower GPU kernels; `macos-aligners-8`
 has `wgse-bwa` 0.7.0 and
@@ -49,8 +55,8 @@ publishes for each release asset:
 
 ```bash
 mkdir wgse-aligners && cd wgse-aligners
-gh release download macos-aligners-12 -R WGSExtract/wgsextract-cli
-gh release view macos-aligners-12 -R WGSExtract/wgsextract-cli --json assets \
+gh release download macos-aligners-13 -R WGSExtract/wgsextract-cli
+gh release view macos-aligners-13 -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
   shasum -a 256 -c
 ```
@@ -65,13 +71,14 @@ for dir in wgse-*-macos-arm64; do PATH="$PWD/$dir/bin:$PATH"; done
 export PATH
 wgse-bwa capabilities --json
 wgse-bwa-mem2 capabilities --json
+wgse-bwa-mem3 capabilities --json   # in macos-aligners-13 and later
 wgse-minimap2 capabilities --json
 ```
 
 macOS kills a quarantined executable as soon as it starts. If an archive was
 downloaded in a browser, clear the flag before running, for example
 `xattr -dr com.apple.quarantine wgse-bwa-0.7.1-macos-arm64` (and likewise
-`wgse-bwa-mem2-0.4.1-macos-arm64` and `wgse-minimap2-0.1.0-macos-arm64`).
+`wgse-bwa-mem2-0.4.1-macos-arm64` and `wgse-minimap2-0.2.0-macos-arm64`).
 
 ## Usage
 
@@ -86,9 +93,15 @@ wgse-bwa-mem2 mem -t 9 hs38.fa R1.fastq.gz R2.fastq.gz > out.sam
 wgse-bwa-mem2 --metal mem -t 9 hs38.fa R1.fastq.gz R2.fastq.gz > out.sam
 wgse-bwa-mem2 capabilities --json
 
+wgse-bwa-mem3 index hs38.fa   # or reuse a BWA-MEM2 index; .0123 is not needed
+wgse-bwa-mem3 mem -t 9 hs38.fa R1.fastq.gz R2.fastq.gz > out.sam
+wgse-bwa-mem3 mem -t 9 --compat=bwa-mem hs38.fa R1.fastq.gz R2.fastq.gz > out.sam
+wgse-bwa-mem3 capabilities --json
+
 wgse-minimap2 -t 9 -ax map-hifi hs38.fa hifi.fastq.gz > out.sam
 wgse-minimap2 -x map-ont -d hs38.map-ont.mmi hs38.fa
 wgse-minimap2 -t 9 -ax map-ont hs38.map-ont.mmi ont.fastq.gz > out.sam
+wgse-minimap2 --metal -t 9 -ax map-hifi hs38.map-hifi.mmi hifi.fastq.gz > out.sam
 wgse-minimap2 capabilities --json
 ```
 
@@ -101,6 +114,16 @@ backend of `mem` (other commands ignore them):
   complete and correct);
 - `--backend auto`: like `--metal`, but falls back to the CPU in both cases
   with only a note on stderr.
+
+`wgse-bwa-mem3` accepts the same options, but has no Metal backend yet:
+`--metal` exits 1 and `--backend auto` runs on the CPU with a note on stderr.
+Its `mem` is upstream bwa-mem3's: by default it writes bwa-mem3's records
+(BWA-MEM2's, with different MAPQs and `MQ`/`HN` tags), `--compat=bwa-mem` and
+`--compat=bwa-mem2` write exactly BWA's and BWA-MEM2's records, and `--fast`
+trades alignments for speed. It is built with upstream's own dependencies
+(htslib, libsais, mimalloc, zlib-ng, libdeflate) linked in, so it needs no
+other libraries. Its `index` builds the suffix array on one thread (upstream
+uses OpenMP, which Apple clang lacks); the files are the same.
 
 What runs on the GPU:
 
@@ -194,8 +217,8 @@ GPU seeding can use them (`index.gpu_seeding`, with the reason in
 `index.gpu_seeding_limit` if not).
 
 `wgse-minimap2` takes minimap2's options and writes the same `.mmi` indexes,
-which either tool can load. It has no backend options yet: it aligns on the
-CPU, with these exact changes to upstream's code (none changes any output):
+which either tool can load. By default it aligns on the CPU, with these exact
+changes to upstream's code (none changes any output):
 
 - loading a `.mmi` reads each hash bucket in one call and fills the buckets'
   hash tables on `-t` threads, in upstream's insertion order;
@@ -212,12 +235,35 @@ CPU, with these exact changes to upstream's code (none changes any output):
 - seed collection prefetches the hash slots and positions of the minimizers
   ahead.
 
+`--metal` (0.2.0, experimental; given before minimap2's options) runs most
+base-level gap fills on the GPU, for presets whose alignment uses two affine
+gap costs (`map-hifi`, `map-ont`, `map-pb` and `asm*`). Before a read is
+aligned, the gap fills between its chained anchors are queued for a Metal
+kernel that computes the same scores and backtrack as minimap2's
+`ksw_extd2`; minimap2 then takes a GPU result only for byte-identical inputs.
+To keep enough reads in flight for large GPU batches (up to 4096 fills), each
+`-t` thread runs 16 reads as user-space fibers that switch while a read waits
+for the GPU, sharing the thread's memory arena, and threads that run out of
+reads compute queued fills themselves. When that arena outgrows minimap2's
+reset limits (`--cap-kalloc`, default 500 MB), the thread starts no new reads
+until its reads in flight finish, then frees it, as minimap2 does after a read. Fills longer than 512 read bases or
+4096 reference bases, or that minimap2's band would narrow, run on the CPU, as
+do the
+largest fills (more than 8192 cells per kernel lane, about 3% of HiFi fills),
+because a GPU batch takes as long as its slowest fill. The ends of each
+alignment, `sr` and the splice presets stay on the CPU. `--metal` fails if
+Metal is unavailable, and exits 1 if a GPU batch fails (its fills then run on
+the CPU, so the output is complete and correct). It prints GPU and CPU fill
+counts to stderr.
+
 `-DWGSE_MINIMAP2_KSW2=sse2` builds upstream's SSE2-only base-level alignment
 (as Bioconda does) instead of the default SSE4.1 kernels; both give the same
 alignments. The tests build unmodified upstream minimap2 2.31 and require
 identical indexes and SAM records (apart from `@PG`) for map-hifi, map-ont,
 map-pb and sr on a synthetic genome with segmental duplications and tandem
-repeats.
+repeats. On a Mac with Metal they also require the same records from
+`--metal`, including with small batches, one fiber per thread, a lower cost
+cap, interrupted command buffers and an injected GPU failure.
 
 ## Memory
 
@@ -271,10 +317,22 @@ default). That fits the peaks above. The run then still goes ahead with the
 same `-K` and output, but expect heavy paging. For hs38 a 16 GB Mac gets the
 warning on the CPU but not with `--metal` and up to 8 threads.
 
+`wgse-bwa-mem3` reads the same index as `wgse-bwa-mem2`, without the 6.2 GB
+`.0123` file, and like Bioconda's bwa-mem3 0.16.0 peaked at about 10.9 GiB on
+hs38 with 9 threads and `-K 10000000`. Its denser suffix-array index
+(`bwa-mem3 re-sa -u 2`) peaked at 14.5 GiB and was slower on this Mac.
+
 `wgse-minimap2` uses within about 1 GiB of upstream minimap2's memory: with 9 threads on
 hs38 it peaked at 13–15 GiB for HiFi reads, 10–14 GiB for ONT reads and
 11.3 GiB for short reads, whether it loaded a `.mmi` index or built one from
-the FASTA reference.
+the FASTA reference. `--metal` allocated 370–560 MiB of GPU buffers in the full
+HiFi and ONT runs below. Its two batch buffer sets can grow to about 0.9 GiB in
+all: each holds backtrack matrices of up to 256 MiB, plus sequences and CIGARs,
+and grows half again beyond its largest batch. With 9 threads,
+its peak resident memory stayed in those ranges. Its peak footprint (resident
+plus compressed memory) was about 0.5 GB above the CPU build's for the full HiFi
+set (16.7–17.0 GB), and 1.3–2.1 GB above it for ONT (13.9–14.7 GB), whose
+reads hold more memory while their gap fills wait for the GPU.
 
 On a base M1 Mac mini with 16 GB, `wgse-bwa` 0.5.0 built the hs38 index with a
 6.2 GiB peak. Aligning with 0.7.0 and 8 threads peaked at 5.5 GiB on the CPU and
@@ -518,6 +576,118 @@ and chaining (about 70%) dominating ONT reads, and minimizer lookups and seed
 collection (about 58%) dominating short reads. 0.1.0 leaves that mostly
 unchanged, so those are the targets for GPU work.
 
+`wgse-minimap2` 0.2.0 `--metal` was measured in one session on the same
+data, with 9 threads, `.mmi` indexes and AC power. The 0.1.0 and `--metal`
+runs were interleaved, three rounds each (the Bioconda baseline ran once).
+Other agents' work kept the machine busier than in the 0.1.0 table, so
+compare within a row:
+
+| Reads | Bioconda minimap2 | `wgse-minimap2` 0.1.0 | 0.2.0 `--metal` | Peak RSS (Bioconda / 0.1.0 / `--metal`) | Alignments |
+| --- | --- | --- | --- | --- | --- |
+| HiFi, 145k reads, 2.5 Gbp (`map-hifi`) | 116.6 s | 89.7 s | 71.5 s (−20.3%) | 12.0 / 12.0–12.2 / 12.2–12.5 GiB | `bf2671dae7d3260e` |
+| ONT, 45.6k reads, 0.88 Gbp (`map-ont`) | 146.6 s | 121.8 s | 111.7 s (−8.3%) | 10.6 / 10.6–12.0 / 11.1–11.6 GiB | `3a4c91aa2339b70f` |
+| 1M 150 bp pairs (`sr`) | 42.7 s | 25.5 s | 25.6 s (CPU) | 11.7 / 11.3 / 11.3 GiB | `5f521317c321d233` |
+
+`--metal` moves the gap fills between anchors (`ksw_extd2`'s approximate
+mode, 12.7M fills for the HiFi set) to the GPU. The GPU computed 85% of the
+HiFi fills, at about 6.9 G cells/s, and CPU threads with no read left to map
+computed the rest. That cut the HiFi CPU time from about 645 to 450 s. Fills
+whose cost exceeds a cap stay on the CPU: about 3% of HiFi fills, but the
+longest. The GPU computed nearly all of ONT's 4.4M fills, but ONT reads spend
+most of their time on anchor sorting and chaining, so the gain is smaller.
+The `sr` preset stays on the CPU under `--metal`.
+
+A profile of `--metal` mapping (busy time, top of stack) found:
+
+- HiFi: the CPU's remaining `ksw_extd2` fills at 25%, anchor sorting
+  (`rs_sort_128x`) at 16%, and chaining (DP plus RMQ) at about 30%.
+- ONT: anchor sorting at 40%, chaining at about 38%, and `ksw_extd2` at 4%.
+  Sorting the seed hits in `collect_seed_hits` alone took a third of ONT's
+  busy time.
+
+Two approaches gained nothing: a GPU chaining kernel, and parking an OS
+thread on each read while its fills waited for the GPU. What paid off was:
+
+- batches of about 1,300 fills of similar size;
+- many reads in flight per OS thread (16 fibers sharing one memory arena);
+- CPU threads taking queued fills when they ran out of reads.
+
+`wgse-bwa-mem3` 0.1.0 was measured against Bioconda's bwa-mem3 0.16.0 on hs38
+(the first 5M HG002 pairs above, 9 threads, `-K 10000000`) in interleaved
+rounds on AC power, with the machine shared with other work (load averages
+10–40). Each mode's runs wrote identical alignments (SHA-256 of the SAM
+without `@PG`, first 16 hex digits). Times are means of the clean runs; runs
+that overlapped other benchmarks were discarded:
+
+| Mode | Bioconda bwa-mem3 0.16.0 | `wgse-bwa-mem3` 0.1.0 | Peak RSS (Bioconda / 0.1.0) | Alignments |
+| --- | --- | --- | --- | --- |
+| plain (bwa-mem3's records) | 73.7 s (1 run) | 75.6 s (3 runs: 82.1, 71.3, 73.3) | 10.9 / 10.7 GiB | `895c361c65ceb365` |
+| `--compat=bwa-mem` | 74.3 s (76.8, 71.8) | 74.7 s (75.0, 74.4) | 10.9 / 10.7 GiB | `e2febf171215d840` |
+| `--compat=bwa-mem2` | 71.8 s (71.0, 72.5) | 71.4 s (69.6, 73.1) | 10.9 / 10.7 GiB | `dff39743a72242de` |
+| `--fast` | 34.7 s (32.8, 37.0, 34.2) | 35.0 s (33.7, 35.2, 36.1) | 10.7 / 10.5 GiB | `d27f9ccd7a921c97` |
+
+The `--compat` hashes are those of `wgse-bwa` and `wgse-bwa-mem2`. bwa-mem3
+already has NEON kernels for Apple Silicon, so 0.1.0 is upstream's code built
+with Apple clang, and as fast as Bioconda's build. Upstream's stage timer
+(wall seconds, plain mode, 73.3 s run) split the time into reading reads
+8.2 s, SMEM seeding 12.3 s, chaining 8.6 s, suffix-array lookup 8.5 s, banded
+Smith-Waterman seed extension (BSW) 23.5 s, and pairing, mate rescue and SAM
+formatting 23.9 s; `--fast` cut BSW to 5.2 s and the pairing step to 6.3 s.
+None of these changes was faster, with identical output, so 0.1.0 has none of
+them:
+
+- making the bundled mimalloc replace `malloc` (Bioconda's build notes that it
+  does not): 75.8 s plain and 33.5 s `--fast` over three rounds;
+- that plus link-time optimisation: 78.1 s plain;
+- profile-guided optimisation: no faster on chr1–3 in any mode;
+- `-mcpu=apple-m1`: the same code;
+- the denser suffix-array sample (`re-sa -u 2`): slower in every mode tried
+  (81–94 s, and 42 s with `--fast`), at 14.5 GiB.
+
+### Energy
+
+Each aligner's energy was measured with `bench/bench.sh --power` on the same
+M1 Pro, on the 5M hs38 pairs with 9 threads (`-K 10000000` for the BWA tools,
+minimap2's defaults with `-x sr` and its `.mmi`). The machine was on AC power
+with the battery charged, and no other benchmark or build was running. The
+tools ran in one session of two rounds, the second in reverse order, and every
+run wrote the expected alignments. Each row is the mean of two runs:
+
+| Aligner | Time | Mean power | CPU Wh | GPU Wh | Package Wh | Above idle Wh | Package Wh per 30x |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Bioconda bwa 0.7.19 | 470.5 s | 21.2 W | 2.76 | 0.00 | 2.77 | 2.55 | 172 |
+| `wgse-bwa` 0.7.1 | 479.6 s | 20.8 W | 2.77 | 0.00 | 2.77 | 2.62 | 172 |
+| `wgse-bwa --metal` 0.7.1 | 127.9 s | 38.4 W | 0.97 | 0.39 | 1.37 | 1.33 | 85 |
+| Bioconda bwa-mem2 2.3 | 381.1 s | 24.0 W | 2.52 | 0.00 | 2.53 | 2.43 | 157 |
+| `wgse-bwa-mem2` 0.4.0 | 459.8 s | 21.1 W | 2.61 | 0.00 | 2.64 | 2.53 | 164 |
+| `wgse-bwa-mem2 --metal` 0.4.0 | 117.7 s | 39.7 W | 0.98 | 0.32 | 1.30 | 1.27 | 80 |
+| Bioconda bwa-mem3 0.16.0 | 70.4 s | 31.4 W | 0.61 | 0.00 | 0.61 | 0.59 | 38 |
+| Bioconda minimap2 2.31 (`sr`) | 150.2 s | 26.8 W | 1.10 | 0.00 | 1.12 | 1.05 | 69 |
+| `wgse-minimap2` 0.1.0 (`sr`) | 118.8 s | 30.1 W | 0.98 | 0.00 | 0.99 | 0.93 | 62 |
+
+`--metal` roughly halves the energy of both BWA tools, less than it cuts their
+time (by about 73%): the GPU adds 0.3–0.4 Wh, and alongside it the CPU threads
+draw more power (27–30 W against 21 W) than when they align on their own.
+The two `wgse-bwa-mem2` CPU runs took 553.1 and 366.5 s (2.91 and 2.36 Wh):
+the first spent 610 s in the kernel, against 48 s, while other applications'
+memory was compressed and swapped to make room for its 16 GB. The Bioconda
+bwa-mem2 runs (415.4 and 346.8 s) varied the same way, less.
+
+Method: `bench/power.py` runs `powermetrics --samplers cpu_power,gpu_power -i
+1000 -f plist` for the whole run and sums the CPU, GPU and Neural Engine energy
+counters of each 1 s sample (prorated at the ends of the run). "Package" is
+their sum, which leaves out memory, SSD, display and the rest of the
+machine, so energy at the wall is higher. Before each run the sampler records
+60 s of idle; "above idle" subtracts that mean power over the run's time,
+leaving the aligner's own energy apart from background work (Photos and
+Spotlight indexing at times; the idle baseline ranged from 0.6 to 3.1 W). The
+Neural Engine counter only saw that background work (at most 0.03 Wh per run).
+"Per 30x" scales the package energy by 62: a 30x human genome is about 93 Gbp,
+and these 5M pairs of 150 bp reads are 1.5 Gbp. That slightly overstates it,
+since a whole genome loads the index once rather than 62 times. Each run's
+directory in the benchmark's output keeps its samples, idle baseline and load
+average (`power.txt`, `power-samples.tsv`).
+
 ## Building
 
 Requires Xcode command-line tools and CMake 3.24 or later. Upstream sources are
@@ -533,7 +703,7 @@ cmake --install out/native --prefix out/native-prefix
 `-DBUILD_TESTING=OFF` builds the release executables without tests or the
 hidden GPU tuning flags. Metal tests are skipped when no Metal device is
 available. `.github/workflows/macos_aligners.yml` builds, tests and packages
-all three executables, and publishes them when run with a `macos-aligners-N` tag.
+all four executables, and publishes them when run with a `macos-aligners-N` tag.
 
 ## Benchmarking on GitHub runners
 
@@ -589,6 +759,39 @@ native/bench/bench.sh run --data out/bench-data --tier small --out out/bench \
     --bin main=out/native-prefix/bin --bin test=../other/out/native-prefix/bin --rounds 3
 ```
 
+A `--bin` directory may also hold upstream executables (`bwa`, `bwa-mem2`,
+`bwa-mem3`, `minimap2`, for example from a Bioconda environment); they run the
+`cpu` configs of their tool. `mem3` runs BWA-MEM3 on the BWA-MEM2 index and
+`mm2` runs `minimap2 -ax sr` on `<ref>.fa.sr.mmi`, which the data release
+does not have: build it next to the other index files with
+`minimap2 -x sr -d <ref>.fa.sr.mmi <ref>.fa`.
+
+`--power` also measures each run's energy with `powermetrics`, which needs
+root: `--power-cmd` gives the command that runs it without a password prompt
+(by default `sudo -n powermetrics`). `bench/power.py` samples CPU, GPU and ANE
+energy every second, waits `--power-idle` seconds (default 60) before each run
+to measure the idle power, and writes `power.txt` beside the run's other
+files; `results.tsv` and the summary then have the idle power, the CPU, GPU
+and package energy of the run, and the package energy above idle. With
+`--power-quiet WATTS` it waits up to 30 minutes for an idle window whose mean
+package power is at most WATTS, so that other work on the machine does not
+count towards a run.
+
+The power command must keep working without a prompt for the whole bench,
+which can take hours. A cached `sudo` ticket expires after 5 minutes, so the
+check at the start can pass and later runs still fail. Use a sudoers rule
+instead, such as `you ALL=(root) NOPASSWD: /usr/bin/powermetrics`, or a helper
+that keeps a privileged session open. If sampling fails before a run, the
+aligner still runs: its row records power `failed`, the bench prints a
+warning, and the summary leaves the run out of the energy columns. For example:
+
+```bash
+native/bench/bench.sh run --data out/bench-data --tier full-5m --out out/energy \
+    --bin bioconda=.pixi/envs/default/bin --bin wgse=out/native-prefix/bin \
+    --configs bwa:cpu,bwa:metal,mem2:cpu,mem2:metal,mem3:cpu,mm2:cpu \
+    --threads 9 --rounds 2 --power
+```
+
 `bench/make_data.sh` builds the datasets and expected hashes from hs38 and
 HG002 reads. It now skips supplementary records when it picks the pairs of a
 tier, which `aligner-bench-data-1` predates (a few hundred of its pairs were
@@ -622,7 +825,11 @@ adapted from BWA's MIT-licensed `bwt.c`, `bwamem.c`, `bwamem_pair.c` and
 `ksw.c` (`METAL-SEEDING-LICENSE`).
 `wgse-bwa-mem2` combines BWA-MEM2 (MIT), sse2neon
 (MIT) and safestringlib (MIT) with the code in `bwa-mem2/` (GPL-3.0-or-later,
-like this repository). `wgse-minimap2` combines minimap2 (MIT) and sse2neon
+like this repository). `wgse-bwa-mem3` combines bwa-mem3 (MIT), sse2neon
+(MIT), libsais (Apache-2.0), mimalloc (MIT), zlib-ng (zlib), libdeflate (MIT)
+htslib (MIT/Expat and modified BSD) and htslib's bundled htscodecs (BSD) with
+the code in `bwa-mem3/` (GPL-3.0-or-later).
+`wgse-minimap2` combines minimap2 (MIT) and sse2neon
 (MIT) with the code in `minimap2/` (GPL-3.0-or-later). Its sketching code is
 adapted from minimap2's `sketch.c` (`MINIMAP2-LICENSE`) and its radix sort from
 minimap2's `ksort.h`, whose own MIT notice ships as `KSORT-LICENSE`. Each package
