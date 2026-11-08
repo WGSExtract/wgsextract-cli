@@ -37,7 +37,7 @@ from wgsextract_cli.core.process_registry import (
     process_group_kwargs,
     terminate_trees,
 )
-from wgsextract_cli.core.progress import Heartbeat
+from wgsextract_cli.core.progress import Heartbeat, process_cpu_seconds
 from wgsextract_cli.core.resource_policy import (
     get_resource_defaults as _get_resource_defaults,
 )
@@ -713,7 +713,25 @@ def run_pipeline(
             )
         )
         if heartbeat or active_run_log():
-            monitor = Heartbeat(description, expected_reads, scan=scan, emit=heartbeat)
+            aligner = next(
+                (
+                    (names[index], procs[index].pid)
+                    for index, args in enumerate(progress_args)
+                    if is_aligner(args)
+                ),
+                None,
+            )
+            monitor = Heartbeat(
+                description,
+                expected_reads,
+                scan=scan,
+                emit=heartbeat,
+                worker=(
+                    (aligner[0], functools.partial(process_cpu_seconds, aligner[1]))
+                    if aligner
+                    else None
+                ),
+            )
             monitor.__enter__()
         returncodes = []
         for proc in procs:

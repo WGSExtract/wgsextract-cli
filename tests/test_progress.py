@@ -2,12 +2,14 @@ import logging
 import sys
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 
 from wgsextract_cli.api._runtime import ProgressEvent, _context_of
 from wgsextract_cli.core import utils
 from wgsextract_cli.core.progress import Heartbeat
+from wgsextract_cli.core.results import CommandResult, collecting
 
 
 def _wait_until(condition: Callable[[], bool], timeout: float = 5.0) -> None:
@@ -113,3 +115,37 @@ def test_heartbeat_sends_its_count_and_fraction_to_api_callers():
         ProgressEvent("heartbeat", "0/4 reads", 0.0),
         ProgressEvent("heartbeat", "3/4 reads", 0.75),
     ]
+
+
+@pytest.mark.parametrize(
+    ("work", "state"),
+    [
+        ("t=time.time()\nwhile time.time()-t<1.5: pass", "busy"),
+        ("time.sleep(1.5)", "stalled"),
+    ],
+)
+def test_quiet_aligner_heartbeat_tells_slow_batch_from_stall(
+    tmp_path, caplog, monkeypatch, work, state
+):
+    """#431: minimap2 spent hours on a batch of chr4 satellite ONT reads while
+    the heartbeat repeated the same read count, which looked like a hang."""
+    original = utils.Heartbeat
+    monkeypatch.setattr(
+        utils,
+        "Heartbeat",
+        lambda *a, **k: original(*a, interval=0.1, stall_after=0.5, **k),
+    )
+    stage = [
+        sys.executable,
+        "-c",
+        "import sys,time\nsys.stderr.write('[M::worker_pipeline] mapped 2 sequences\\n')\n"
+        f"sys.stderr.flush()\n{work}",
+        "minimap2",
+    ]
+    caplog.set_level(logging.INFO)
+    with collecting(result := CommandResult(command="align")):
+        with (tmp_path / "out").open("wb") as output:
+            utils.run_pipeline([stage], stdout=output, heartbeat=True)
+    assert f"{Path(sys.executable).stem} {state}: no progress for" in caplog.text
+    stalls = [w.code for w in result.warnings if w.code == "aligner_stalled"]
+    assert stalls == (["aligner_stalled"] if state == "stalled" else [])
