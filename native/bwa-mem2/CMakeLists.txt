@@ -206,6 +206,8 @@ mem2_seam(fastmap_source "${process_call}" "            if (wgse_overlap)
 ${process_call}")
 mem2_seam(fastmap_source "    FILE *fr = fopen(binary_seq_file, \"r\");\n"
     "    ref_string = 0;\n    aux.ref_string = 0;\n    if (!wgse_metal_active()) {\n    FILE *fr = fopen(binary_seq_file, \"r\");\n")
+mem2_seam(fastmap_source "    fprintf(stderr, \"* Ref file: %s\\n\", argv[optind]);\n"
+    "    wgse_memory_preflight(argv[optind], fixed_chunk_size > 0 ? int64_t(fixed_chunk_size)\n        : int64_t(opt->chunk_size) * opt->n_threads);\n    fprintf(stderr, \"* Ref file: %s\\n\", argv[optind]);\n")
 mem2_seam(fastmap_source "    fprintf(stderr, \"* Reference genome size: %ld bp\\n\", rlen);\n"
     "    fprintf(stderr, \"* Reference genome size: %ld bp\\n\", rlen);\n    }\n")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/fastmap_stages.cpp.in" fastmap_stages)
@@ -258,7 +260,7 @@ target_compile_options(metal_backend PRIVATE -fobjc-arc -Wall -Wextra -Werror)
 target_link_libraries(metal_backend PUBLIC mem2_core wgse_metal_common)
 add_executable(wgse-bwa-mem2 main.cpp)
 target_link_libraries(wgse-bwa-mem2 PRIVATE metal_backend)
-set(WGSE_BWA_MEM2_VERSION 0.4.0)
+set(WGSE_BWA_MEM2_VERSION 0.4.1)
 target_compile_definitions(wgse-bwa-mem2 PRIVATE WGSE_VERSION="${WGSE_BWA_MEM2_VERSION}")
 target_compile_options(wgse-bwa-mem2 PRIVATE -Wall -Wextra -Werror)
 

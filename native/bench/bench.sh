@@ -316,6 +316,7 @@ row() {
     local dir=$1 label=$2 config=$3 round=$4 rc=$5 hash=$6 expected=$7 status=$8 note jetsam=0 resets
     note=$(grep -m 1 -o 'CPU fallback: .*\|Metal execution failed.*\|[Ee]rror[: ].*\|[Ff]ailed.*' "$dir/stderr.txt" |
         tr '\t' ' ' | cut -c1-120 || true)
+    [ -n "$note" ] || note=$(grep -m 1 -o 'warning: .*' "$dir/stderr.txt" | tr '\t' ' ' | cut -c1-120 || true)
     if [ -s "$dir/memorystatus.log" ] && grep -qi "killing.*wgse\|wgse.*kill" "$dir/memorystatus.log"; then
         jetsam=1
     fi
