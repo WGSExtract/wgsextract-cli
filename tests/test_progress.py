@@ -2,12 +2,14 @@ import logging
 import sys
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 
 from wgsextract_cli.api._runtime import ProgressEvent, _context_of
 from wgsextract_cli.core import utils
 from wgsextract_cli.core.progress import Heartbeat
+from wgsextract_cli.core.results import CommandResult, collecting
 
 
 def _wait_until(condition: Callable[[], bool], timeout: float = 5.0) -> None:
@@ -113,3 +115,95 @@ def test_heartbeat_sends_its_count_and_fraction_to_api_callers():
         ProgressEvent("heartbeat", "0/4 reads", 0.0),
         ProgressEvent("heartbeat", "3/4 reads", 0.75),
     ]
+
+
+@pytest.mark.parametrize(
+    ("work", "state"),
+    [
+        ("t=time.time()\nwhile time.time()-t<1.5: pass", "busy"),
+        ("time.sleep(1.5)", "stalled"),
+    ],
+)
+def test_quiet_aligner_heartbeat_tells_slow_batch_from_stall(
+    tmp_path, caplog, monkeypatch, work, state
+):
+    """#431: minimap2 spent hours on a batch of chr4 satellite ONT reads while
+    the heartbeat repeated the same read count, which looked like a hang."""
+    original = utils.Heartbeat
+    monkeypatch.setattr(
+        utils,
+        "Heartbeat",
+        lambda *a, **k: original(*a, interval=0.1, stall_after=0.5, **k),
+    )
+    stage = [
+        sys.executable,
+        "-c",
+        "import sys,time\nsys.stderr.write('[M::worker_pipeline] mapped 2 sequences\\n')\n"
+        f"sys.stderr.flush()\n{work}",
+        "minimap2",
+    ]
+    caplog.set_level(logging.INFO)
+    with collecting(result := CommandResult(command="align")):
+        with (tmp_path / "out").open("wb") as output:
+            utils.run_pipeline([stage], stdout=output, heartbeat=True)
+    assert f"{Path(sys.executable).stem} {state}: no progress for" in caplog.text
+    stalls = [w.code for w in result.warnings if w.code == "aligner_stalled"]
+    assert stalls == (["aligner_stalled"] if state == "stalled" else [])
+
+
+def test_aligner_waiting_on_busy_upstream_stage_is_not_stalled(tmp_path, monkeypatch):
+    """PR #576 review: samtools collate reads a whole 30x input before bwa gets
+    a read; bwa idling on its empty stdin meanwhile is no stall."""
+    original = utils.Heartbeat
+    monkeypatch.setattr(
+        utils,
+        "Heartbeat",
+        lambda *a, **k: original(*a, interval=0.1, stall_after=0.5, **k),
+    )
+    collate = [
+        sys.executable,
+        "-c",
+        "import time\nt=time.time()\nwhile time.time()-t<1.5: pass\nprint('r')",
+    ]
+    aligner = [
+        sys.executable,
+        "-c",
+        "import sys\nsys.stdin.read()\n"
+        "sys.stderr.write('[M::process] Processed 1 reads\\n')",
+        "bwa",
+    ]
+    with collecting(result := CommandResult(command="realign")):
+        with (tmp_path / "out").open("wb") as output:
+            utils.run_pipeline([collate, aligner], stdout=output, heartbeat=True)
+    assert [w.code for w in result.warnings] == []
+
+
+def test_sorting_after_the_aligner_exits_is_not_a_slow_batch(
+    tmp_path, caplog, monkeypatch
+):
+    """PR #576 review: samtools sort's final merge runs for many minutes after
+    bwa has exited; that is neither a slow aligner batch nor a stall."""
+    original = utils.Heartbeat
+    monkeypatch.setattr(
+        utils,
+        "Heartbeat",
+        lambda *a, **k: original(*a, interval=0.1, stall_after=0.5, **k),
+    )
+    aligner = [
+        sys.executable,
+        "-c",
+        "import sys\nsys.stderr.write('[M::process] Processed 1 reads\\n')\nprint('r')",
+        "bwa",
+    ]
+    sort = [
+        sys.executable,
+        "-c",
+        "import sys,time\nsys.stdin.read()\nt=time.time()\n"
+        "while time.time()-t<1.5: pass",
+    ]
+    caplog.set_level(logging.INFO)
+    with collecting(result := CommandResult(command="realign")):
+        with (tmp_path / "out").open("wb") as output:
+            utils.run_pipeline([aligner, sort], stdout=output, heartbeat=True)
+    assert "no progress for" not in caplog.text
+    assert [w.code for w in result.warnings] == []
