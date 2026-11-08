@@ -38,10 +38,9 @@ class _ModuleGroup:
         raise AttributeError(name)
 
     def __setattr__(self, name, value):
-        for module in self._modules:
-            if hasattr(module, name):
-                setattr(module, name, value)
-        object.__setattr__(self, name, value)
+        # pytest 9.2's monkeypatch can't undo a patch made through this
+        # proxy, which leaked into later tests; patch the defining module.
+        raise TypeError(f"patch {name!r} on the module that uses it")
 
 
 benchmark = _ModuleGroup(

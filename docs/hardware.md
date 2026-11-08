@@ -71,6 +71,32 @@ bwa whenever less than that is free. Smaller inputs need less.
   threads use more memory; when it reports `LOW`, lower `--threads` or
   `--memory`, or use `--aligner bwa`. Threads are never lowered automatically.
 
+### Around the aligner
+
+Short reads stream from the aligner through samblaster into `samtools sort`
+(or through `samtools fixmate`, `sort` and `markdup` for single-end reads or
+when samblaster is missing). The last samtools stage writes the `.bai` or
+`.crai` as it writes the BAM or CRAM, so there is no separate pass that reads
+the whole output again to index it. The records are unchanged, and the index is
+the one `samtools index` writes (#545).
+
+The gain is modest. Measured at 4 threads on an 8-core Linux workstation
+(#545):
+
+- **Index pass, 30x (681M records, 26.5 GB BAM):** `sambamba index`, which
+  Linux used before, took 97 s and 384 CPU-s, and `samtools index` 54 s. Writing
+  the index during the BAM write added 62 CPU-s, so about 320 CPU-s and a
+  1.5-minute pass over the whole BAM are saved.
+- **Stages after the aligner, 10M reads:** samblaster used 12 CPU-s and
+  `samtools sort` 67; bwa itself is far larger. Converting the
+  SAM to uncompressed BAM before the sort saved nothing, and samblaster only
+  reads SAM. Sorting with 2 threads instead of 4 used 12% less CPU but took
+  24% longer, so the sort keeps all threads.
+- **samblaster or samtools markdup:** `fixmate | sort | markdup` used 74
+  CPU-s and 34 s, against 67 CPU-s and 30 s for samblaster and sort, and
+  marked 5,884 duplicate records instead of 5,894. samblaster stays the
+  default for paired reads.
+
 ## NVIDIA GPUs (`--gpu`, Parabricks)
 
 `align --gpu` and `realign --gpu` run [NVIDIA Parabricks](https://docs.nvidia.com/clara/parabricks/):

@@ -10,7 +10,6 @@ from wgsextract_cli.api.ref import (
     RefDownloadParams,
     RefGeneMapParams,
     RefIndexParams,
-    RefLibraryListParams,
     RefLibraryParams,
     RefStatusParams,
     RefVerifyParams,
@@ -22,7 +21,6 @@ from .core_commands import (
     cmd_count_ns,
     cmd_download,
     cmd_index,
-    cmd_library_list,
     cmd_ref_verify,
 )
 from .library_commands import (
@@ -92,12 +90,6 @@ def register(
         "--list",
         action="store_true",
         help="Non-interactively list all available genomes and their status.",
-    )
-    add(
-        "library-list",
-        RefLibraryListParams,
-        cmd_library_list,
-        "List installed and available reference genomes.",
     )
     status = add(
         "status",

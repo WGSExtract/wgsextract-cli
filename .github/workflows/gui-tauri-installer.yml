@@ -72,6 +72,22 @@ jobs:
         shell: pwsh
         run: python tools/tasks.py package tauri
 
+      # A release PR pins the bundle to a tag that only exists once it merges;
+      # until then, set up the CLI from the commit under test.
+      - name: Use this commit's CLI if the pinned release isn't published
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $tag = (Get-Content examples/WGSExtract/scripts/wgsextract-release-tag.txt -TotalCount 1).Trim()
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "$tag isn't published yet; setup installs the CLI from $env:SHA."
+            "WGSEXTRACT_REF=$env:SHA" >> $env:GITHUB_ENV
+          }
+          exit 0
+
       - name: Validate install setup uninstall lifecycle via admin broker
         shell: pwsh
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\validate-windows-tauri-lifecycle.ps1 -AutomatedAdmin

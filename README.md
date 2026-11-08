@@ -285,9 +285,7 @@ exposed as an application configuration setting.
 
 Notes on a few commands:
 
-- Deprecated, removed in 0.8.0: `ref library-list` (use `ref library --list`)
-  and running VEP with bare `vep` (use `vep run`). Both still work and warn.
-  `vep run --assembly GRCh37` and the deprecated `--vep-assembly GRCh37` select the
+- `vep run --assembly GRCh37` and the deprecated `--vep-assembly GRCh37` select the
   same annotation build; `vep download --assembly` selects the cache build.
   VEP conflict warnings use the canonical `--assembly` spelling for either alias.
 - Runtime and working-space needs depend on the input, coverage, hardware and

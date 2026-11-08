@@ -18,14 +18,16 @@ printed by `--version`.
 
 ## Installing
 
-The `macos-aligners-12` prerelease has `wgse-bwa` 0.7.1, `wgse-bwa-mem2`
-0.4.0 and `wgse-minimap2` 0.2.0, whose `--metal` runs gap fills on the GPU.
+The `macos-aligners-13` prerelease has `wgse-bwa` 0.7.1, `wgse-bwa-mem2`
+0.4.1 and `wgse-minimap2` 0.2.0, whose `--metal` runs gap fills on the GPU.
 `wgse-bwa` 0.7.1 shares the updated
 mate-rescue kernel with `wgse-bwa-mem2` 0.4.0 and aligns exactly as 0.7.0
 does. `wgse-bwa --metal` and `wgse-bwa capabilities` need `wgse-bwa` 0.2.0 or
-later. `macos-aligners-11` has the same `wgse-bwa` and `wgse-bwa-mem2` with
-`wgse-minimap2` 0.1.0, which aligns on the CPU only. Earlier prereleases,
-without `wgse-minimap2`: `macos-aligners-10` has
+later. `macos-aligners-12` has the same `wgse-bwa` and `wgse-bwa-mem2` with
+`wgse-minimap2` 0.1.0, which aligns on the CPU only. `macos-aligners-11` has
+`wgse-bwa` 0.7.1, `wgse-bwa-mem2` 0.4.0, which aligns exactly as 0.4.1 but
+without its memory and GPU-limit warnings, and `wgse-minimap2` 0.1.0. Earlier
+prereleases, without `wgse-minimap2`: `macos-aligners-10` has
 `wgse-bwa` 0.7.1 and `wgse-bwa-mem2` 0.4.0; `macos-aligners-9` has `wgse-bwa`
 0.7.0 and `wgse-bwa-mem2` 0.3.0, with slower GPU kernels; `macos-aligners-8`
 has `wgse-bwa` 0.7.0 and
@@ -50,8 +52,8 @@ publishes for each release asset:
 
 ```bash
 mkdir wgse-aligners && cd wgse-aligners
-gh release download macos-aligners-12 -R WGSExtract/wgsextract-cli
-gh release view macos-aligners-12 -R WGSExtract/wgsextract-cli --json assets \
+gh release download macos-aligners-13 -R WGSExtract/wgsextract-cli
+gh release view macos-aligners-13 -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
   shasum -a 256 -c
 ```
@@ -72,7 +74,7 @@ wgse-minimap2 capabilities --json
 macOS kills a quarantined executable as soon as it starts. If an archive was
 downloaded in a browser, clear the flag before running, for example
 `xattr -dr com.apple.quarantine wgse-bwa-0.7.1-macos-arm64` (and likewise
-`wgse-bwa-mem2-0.4.0-macos-arm64` and `wgse-minimap2-0.2.0-macos-arm64`).
+`wgse-bwa-mem2-0.4.1-macos-arm64` and `wgse-minimap2-0.2.0-macos-arm64`).
 
 ## Usage
 
@@ -180,8 +182,20 @@ What runs on the GPU:
   kernels do less work per cell; and seed extensions that fit 8-bit scores run
   on the CPU threads while their 16-bit companions are on the GPU, which
   leaves the busy GPU more time for seeding and rescue.
+  GPU seeding reads the index's occurrence table (5.8 GiB for hs38) as one
+  Metal buffer. If the GPU's largest buffer (`maxBufferLength`) is smaller,
+  as on GitHub's virtual M1s (3.5 GiB), 0.4.1 warns on stderr and seeds on
+  the CPU, while the GPU still extends seeds and rescues mates, and exits 0;
+  earlier versions did the same after a "CPU fallback" message and then
+  exited 1 with `--metal`.
 
 With a Metal backend both print GPU and CPU work counts to stderr.
+`wgse-bwa-mem2 capabilities --json [index]` (0.4.1) also reports the Mac's
+memory (`physical_memory_bytes`) and the GPU's limits (`metal.max_buffer_bytes`,
+`metal.recommended_max_working_set_bytes`); given an index prefix, it reports
+the occurrence table and index sizes the CPU and `--metal` load, and whether
+GPU seeding can use them (`index.gpu_seeding`, with the reason in
+`index.gpu_seeding_limit` if not).
 
 `wgse-minimap2` takes minimap2's options and writes the same `.mmi` indexes,
 which either tool can load. By default it aligns on the CPU, with these exact
@@ -274,7 +288,15 @@ though it keeps up to eight prepared seeding batches per chunk and seeds up to
 two chunks ahead. That leaves more room for other applications on a 32 GB
 Mac; it has not been tested on a 16 GB Mac. 0.4.0 adds a 34 MB table of
 index intervals; it peaked at 11.5 GiB with `-K 10000000`, like 0.3.0, and at
-15.1 GiB with `-K 100000000` (14.9 GiB for 0.3.0).
+15.1 GiB with `-K 100000000` (14.9 GiB for 0.3.0). With the default `-K`
+and 9 threads, the CPU backend peaked at 18.6 GiB.
+From 0.4.1, `mem` warns on stderr when the Mac has less physical memory
+than its estimate of the run's peak: the index files it loads (17.0 GB for
+hs38 on the CPU, 10.8 GB with `--metal`), plus 1 GiB, plus 24 bytes (CPU) or
+45 bytes (`--metal`) per base of a chunk (`-K`, or 10M bases per thread by
+default). That fits the peaks above. The run then still goes ahead with the
+same `-K` and output, but expect heavy paging. For hs38 a 16 GB Mac gets the
+warning on the CPU but not with `--metal` and up to 8 threads.
 
 `wgse-minimap2` uses within about 1 GiB of upstream minimap2's memory: with 9 threads on
 hs38 it peaked at 13–15 GiB for HiFi reads, 10–14 GiB for ONT reads and
@@ -649,9 +671,11 @@ What the hosted 7 GiB runners showed (issue #364):
   index in RAM. The `wgse-bwa` CPU backend finished one run in six (167 s).
   The others, and both backends of `wgse-bwa-mem2` (11–17 GiB), paged through
   the memory compressor and swap until they were stopped after 20–45 minutes.
-  Neither tool warns about this.
-- `wgse-bwa-mem2 --metal` on hs38 falls back to the CPU on GPUs whose largest
-  buffer is under 5.8 GiB, as on 8 GB Macs.
+  Before `wgse-bwa-mem2` 0.4.1 neither tool warned about this; 0.4.1 warns on
+  stderr when the Mac has less memory than its estimate of the run's peak.
+- `wgse-bwa-mem2 --metal` on hs38 seeds on the CPU on GPUs whose largest
+  buffer is under 5.8 GiB, as on these runners; 0.4.1 warns about this and
+  reports it in `capabilities --json hs38.fa`.
 - On `full-5m`, `wgse-bwa --metal` took 66 and 87 minutes and its alignments
   matched. In a third run the virtual GPU hung after about 30 minutes;
   `wgse-bwa` fell back to the CPU and then thrashed. Keep

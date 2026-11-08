@@ -189,6 +189,8 @@ def _version_output(stdout: str, stderr: str) -> str:
 
 # Tools whose version isn't printed by --version (bwa-mem2 prints its usage).
 VERSION_ARGS = {"bwa-mem2": "version"}
+# samtools 1.10 added --write-index and the file##idx##index output name.
+MINIMUM_VERSIONS = {"bcftools": (1, 0), "samtools": (1, 10)}
 # Tools whose banner names them differently ("Haplogrep 3 3.2.2").
 VERSION_BANNER_NAMES = {"haplogrep3": "haplogrep 3 "}
 
@@ -369,7 +371,7 @@ def verify_dependencies(
         )
 
     # Version Validation for critical tools
-    for tool in ["bcftools", "samtools"]:
+    for tool in MINIMUM_VERSIONS:
         if tool in tool_list and tool not in missing:
             version_str = get_tool_version(tool)
             if not version_str:
@@ -388,9 +390,12 @@ def verify_dependencies(
 
             match = re.search(r"(\d+)\.(\d+)", version_str)
             if match:
-                major = int(match.group(1))
-                if major < 1:
-                    logging.error(f"This tool requires {tool} version 1.0 or newer.")
+                minimum = MINIMUM_VERSIONS[tool]
+                if (int(match.group(1)), int(match.group(2))) < minimum:
+                    logging.error(
+                        f"This tool requires {tool} version "
+                        f"{'.'.join(map(str, minimum))} or newer."
+                    )
                     logging.info(
                         f"Your current path for {tool} is: {get_tool_path(tool)}"
                     )

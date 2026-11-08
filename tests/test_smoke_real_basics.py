@@ -713,6 +713,7 @@ class TestVEPSmoke:
             pytest.skip(f"no VEP cache at {cache}; pass --real-ref <library>")
         args = [
             "vep",
+            "run",
             "--input",
             self.fake_vcf,
             "--outdir",

@@ -148,6 +148,63 @@ def test_bwa_batch_size_does_not_depend_on_threads(tmp_path, threads):
     assert f" -K 100000000 -t {threads} " in bwa
 
 
+@needs_tools("samtools")
+def test_indexing_sort_that_spills_to_disk_keeps_every_read(tmp_path):
+    """#561 review: samtools before 1.14 named its spill files after the
+    ``##idx##`` output, so the second spill clashed with the first and the
+    BAM kept only the first block of reads."""
+    from wgsextract_cli.core.samtools_commands import get_sam_sort_cmd
+
+    rng = random.Random(561)
+    lines = ["@HD\tVN:1.6", "@SQ\tSN:c1\tLN:10000000"]
+    lines += [
+        f"r{i}\t0\tc1\t{rng.randint(1, 9_999_000)}\t60\t50M\t*\t0\t0\t"
+        f"{'ACGT' * 12}AC\t{'I' * 50}"
+        for i in range(100_000)
+    ]
+    sam = tmp_path / "in.sam"
+    sam.write_text("\n".join(lines) + "\n")
+    bam = tmp_path / "out.bam"
+    sort = get_sam_sort_cmd(bam, threads="2", memory="4M", write_index=True)
+    with sam.open("rb") as reads:
+        run_command(sort, stdin=reads)
+
+    assert int(_samtools("view", "-c", str(bam))) == 100_000
+    reindexed = tmp_path / "reindexed.bai"
+    _samtools("index", "-b", str(bam), str(reindexed))
+    assert Path(f"{bam}.bai").read_bytes() == reindexed.read_bytes()
+    assert sorted(p.name for p in tmp_path.iterdir()) == [
+        "in.sam",
+        "out.bam",
+        "out.bam.bai",
+        "reindexed.bai",
+    ]
+
+
+@needs_tools("bwa", "samtools")
+@pytest.mark.parametrize(
+    "samblaster", [pytest.param(True, marks=needs_tools("samblaster")), False]
+)
+@pytest.mark.parametrize("atomic", [True, False])
+def test_aligned_bam_comes_with_the_index_samtools_index_writes(
+    tmp_path, request, samblaster, atomic
+):
+    """#545: the sorter (or markdup) indexes as it writes, in place of a
+    separate pass, and the index is the one `samtools index` would write."""
+    from wgsextract_cli.core.atomic_output import atomic_output_mode
+
+    if not samblaster:
+        only_tools(request, "bwa", "samtools")
+    out = tmp_path / "out"
+    with atomic_output_mode(atomic):
+        bam = _align(_short_reads(tmp_path), out)
+
+    reindexed = tmp_path / "reindexed.bai"
+    _samtools("index", "-b", "-o", str(reindexed), bam)
+    assert Path(bam + ".bai").read_bytes() == reindexed.read_bytes()
+    assert not [path.name for path in out.iterdir() if "partial" in path.name]
+
+
 @needs_tools("minimap2", "samtools")
 @pytest.mark.parametrize(
     ("options", "preset"),

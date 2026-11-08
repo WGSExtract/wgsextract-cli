@@ -485,35 +485,18 @@ def _index_step(out_path: str) -> Step:
 def _align(
     journal: StepJournal,
     decision: Decision,
-    align_job: align_cmd.AlignJob,
     run: Callable[[], None],
 ) -> None:
-    """Run the align step. Aligners that report when their sorted output is
-    complete (bwa, minimap2) index it as a separate step, so a run killed
-    while indexing resumes without realigning. The others index within it,
-    and that index is then recorded as the index step."""
+    """Run the align step. Aligners index their output as they write it, so
+    that index is then recorded as the index step."""
     out_path = str(decision.step.outputs[0])
     aligning = journal.start(decision)
-    indexing = None
-
-    def written(tool: str) -> None:
-        nonlocal indexing
-        aligning.metrics["aligner"] = tool
-        aligning.metrics.update(_native_aligner_metrics(current_result().metrics))
-        journal.finish(aligning)
-        indexing = journal.start(journal.decide(_index_step(out_path)))
-
-    align_job.on_written = written
     run()
-    if indexing is not None:
-        journal.finish(indexing)
-    else:
-        aligning.metrics["aligner"] = current_result().metrics.get("aligner")
-        aligning.metrics.update(_native_aligner_metrics(current_result().metrics))
-        journal.finish(aligning)
-        # The aligner indexed its output itself; record that as the index step.
-        index = journal.check(_index_step(out_path))
-        journal.finish(journal.start(index, keep_partial=True))
+    aligning.metrics["aligner"] = current_result().metrics.get("aligner")
+    aligning.metrics.update(_native_aligner_metrics(current_result().metrics))
+    journal.finish(aligning)
+    index = journal.check(_index_step(out_path))
+    journal.finish(journal.start(index, keep_partial=True))
 
 
 def _resume_alignment(
@@ -646,7 +629,7 @@ def _realign_long_reads(
         align_job.read_group_description = align_cmd.read_group_descriptions(
             job.input, job.input_ref
         )
-    _align(journal, decision, align_job, lambda: align_cmd.run(align_job))
+    _align(journal, decision, lambda: align_cmd.run(align_job))
     if job.keep_fastq:
         current_result().add_output(fastq, "fastq_r1")
 
@@ -716,7 +699,6 @@ def _run_steps(
         _align(
             journal,
             decision,
-            align_job,
             lambda: align_cmd.align_ultima(align_job, cram_reference),
         )
         return
@@ -988,7 +970,6 @@ def _run_steps(
                 _align(
                     journal,
                     align_decision,
-                    align_job,
                     lambda: align_cmd.align_bwa(
                         align_job,
                         upstream=stages,
@@ -1060,7 +1041,7 @@ def _run_steps(
             align_step, after=[extract_decision] if extract_decision else []
         )
     try:
-        _align(journal, align_decision, align_job, lambda: align_cmd.run(align_job))
+        _align(journal, align_decision, lambda: align_cmd.run(align_job))
     except BaseException:
         if need_extract and not job.keep_fastq:
             from wgsextract_cli.core.temp_directory import retain_temporary_directory

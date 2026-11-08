@@ -208,7 +208,9 @@ class Params:
     """Base class of every operation's parameters.
 
     Subclasses are frozen, keyword-only dataclasses. ``COMMAND`` names the CLI
-    command ("vcf snp") and becomes the result's ``command``. Path fields accept
+    command ("vcf snp") and becomes the result's ``command`` and the server's
+    operation name; ``CLI_COMMAND`` is how the CLI runs an operation whose
+    ``COMMAND`` is not a CLI command ("ref library --list"). Path fields accept
     ``str`` or ``os.PathLike`` and are stored as ``Path`` (an empty string is
     ``None``); ``choices`` are checked on construction. A ``LOCAL_ONLY``
     operation is not offered by the server: it fetches any URL or changes
@@ -221,6 +223,7 @@ class Params:
     """
 
     COMMAND: ClassVar[str] = ""
+    CLI_COMMAND: ClassVar[str] = ""
     LOCAL_ONLY: ClassVar[bool] = False
     DELETES: ClassVar[bool] = False
     WRITES_BESIDE: ClassVar[str] = ""

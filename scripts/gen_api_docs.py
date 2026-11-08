@@ -143,7 +143,7 @@ def group_section(module: ModuleType) -> Iterator[str]:
             continue
         yield f"### `api.{short}.{function.__name__}({cls.__name__})`"
         yield ""
-        yield f"CLI: `wgsextract {cls.COMMAND}`."
+        yield f"CLI: `wgsextract {cls.CLI_COMMAND or cls.COMMAND}`."
         yield ""
         yield docstring(function)
         yield ""

@@ -21,8 +21,10 @@ from wgsextract_cli.commands._next_steps import NEXT_STEPS
 from wgsextract_cli.commands.registry import (
     COMMAND_TIERS,
     CORE,
+    DEPRECATED,
     DEPRECATIONS,
     JOURNEYS,
+    Deprecation,
 )
 from wgsextract_cli.core.config import KNOWN_SETTINGS
 from wgsextract_cli.core.results import CommandResult, FileRecord
@@ -313,48 +315,64 @@ def test_journey_steps_and_deprecation_replacements_are_runnable_commands():
         assert all(f.lstrip("-").replace("-", "_") in vars(args) for f in flags)
 
 
-def test_deprecated_commands_still_run_and_warn(tmp_path, capsys):
-    # #352: 'ref library-list' keeps working for one minor release and says what
-    # to use instead, in the result and on stderr.
-    main(["--json", "ref", "library-list", "--ref", str(tmp_path)])
+def test_a_deprecated_command_still_runs_warns_and_is_listed_apart(
+    tmp_path, capsys, monkeypatch
+):
+    # #352: a deprecated command keeps working and says what to use instead, in
+    # the result and on stderr; 'help --all' lists it apart.
+    retired = Deprecation("ref status", "ref library --list", "9.9.0")
+    monkeypatch.setitem(DEPRECATED, retired.path, retired)
 
+    main(["--json", "ref", "status", "--ref", str(tmp_path)])
     captured = capsys.readouterr()
     result = json.loads(captured.out)
     assert result["status"] == "ok"
     assert [w["code"] for w in result["warnings"]] == ["deprecated_command"]
     assert result["warnings"][0]["details"] == {
         "replacement": "ref library --list",
-        "remove_in": "0.8.0",
+        "remove_in": "9.9.0",
     }
     assert "ref library --list" in captured.err
 
-
-def test_help_lists_deprecated_commands_apart(capsys):
     main(["help", "--all"])
     deprecated = capsys.readouterr().out.split("Deprecated:", 1)[1]
-    assert "ref library-list" in deprecated and "Use 'ref library --list'" in deprecated
-
+    assert "ref status" in deprecated and "Use 'ref library --list'" in deprecated
     main(["help", "--all", "--json"])
     doc = json.loads(capsys.readouterr().out)
     marked = {c["path"]: c["deprecated"] for c in doc["commands"] if "deprecated" in c}
     assert marked == {
-        d.path: {
-            "replacement": d.replacement,
-            "remove_in": d.remove_in,
-            "without_subcommand": d.bare,
+        "ref status": {
+            "replacement": "ref library --list",
+            "remove_in": "9.9.0",
+            "without_subcommand": False,
         }
-        for d in DEPRECATIONS
     }
 
-    # PR #506 review: only bare 'vep' is retired, not the group.
-    with pytest.raises(SystemExit):
-        main(["--help"])
-    assert "deprecated" not in capsys.readouterr().out
-    with pytest.raises(SystemExit):
-        main(["vep", "--help"])
-    assert "Running 'wgsextract vep' without a subcommand is deprecated" in (
-        capsys.readouterr().out.replace("\n  ", " ")
-    )
+
+@pytest.mark.parametrize(
+    ("argv", "error"),
+    [
+        (["ref", "library-list"], "Did you mean 'library'?"),
+        (["vep", "--input", "x.vcf.gz"], "required: <command>"),
+    ],
+)
+def test_removed_duplicate_commands_are_usage_errors(argv, error, capsys):
+    # #352: 'ref library-list' (use 'ref library --list') and bare 'vep' (use
+    # 'vep run') were removed; they fail like any unknown or incomplete command.
+    with pytest.raises(SystemExit) as exit_info:
+        main(argv)
+    assert exit_info.value.code == 2
+    assert error in capsys.readouterr().err
+
+
+def test_ref_library_list_option_lists_the_library(tmp_path, capsys):
+    # #352: 'ref library --list' replaces the removed 'ref library-list'.
+    main(["--json", "ref", "library", "--list", "--ref", str(tmp_path)])
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "ok"
+    assert result["details"]["library"] == str(tmp_path)
+    assert {g["status"] for g in result["details"]["genomes"]} == {"missing"}
 
 
 def _parse(words: list[str]):
