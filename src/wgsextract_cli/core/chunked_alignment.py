@@ -323,12 +323,30 @@ def chunked_disk(
     its largest chunk's). Beside the output's groups (all of it, eventually)
     are the aligner's index (minimap2's is about 2.4 bytes per reference
     base) while aligning, and its largest group, sorted beside the output,
-    after. The spills are one chunk's, or one group's while it is sorted."""
+    after. The spills are one chunk's, or one group's while it is sorted.
+
+    A group's share of the output is its contigs' share of the input when
+    the input names the reference's contigs. Otherwise (``1`` realigned to
+    ``chr1``, say) it is its share of the reference's length, and at least
+    twice the average group's."""
     total = max(1, sum(plan.contigs.values()))
-    share = max(
-        sum(plan.contigs.get(region.contig, 0) for region in group) / total
-        for group in output_groups(reference)
-    )
+    groups = output_groups(reference)
+    names = {name for name, _ in reference} | {"*"}
+    if set(plan.contigs) <= names:
+        share = max(
+            sum(plan.contigs.get(region.contig, 0) for region in group) / total
+            for group in groups
+        )
+    else:
+        length = max(1, sum(size for _, size in reference))
+        share = max(
+            2 / _OUTPUT_GROUPS,
+            plan.contigs.get("*", 0) / total,
+            *(
+                sum(r.end for r in group if r.contig != "*") / length
+                for group in groups
+            ),
+        )
     bases = sum(length for _, length in reference)
     return (
         math.ceil(max(output_bytes + 2.4 * bases, output_bytes * (1 + share))),

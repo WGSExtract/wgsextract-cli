@@ -17,6 +17,8 @@ import pytest
 
 from tests.htslib_helpers import needs_tools, run_wgsextract, sam_to_bam, write_fasta
 from wgsextract_cli.core import alignment_splice
+from wgsextract_cli.core.chunked_alignment import ChunkPlan, chunked_disk
+from wgsextract_cli.core.resource_estimates import GIB
 from wgsextract_cli.core.utils import run_command
 
 COMP = str.maketrans("ACGT", "TGCA")
@@ -240,6 +242,21 @@ def test_a_read_only_reference_without_fai_aligns_in_chunks(tmp_path, ont):
         library.chmod(0o755)
     assert sorted(p.name for p in library.iterdir()) == ["ref.fa"]
     _view("quickcheck", str(tmp_path / "out/x_aligned.bam"))
+
+
+def test_disk_for_an_input_naming_contigs_differently_counts_the_largest_group():
+    """#578 review: realigning GRCh37 names (1, 2, ...) to hs38's (chr1, ...)
+    matched no input contig to an output group, so the preflight left out the
+    largest group sorted beside the output: about 24 GiB short of 200 GiB."""
+    reference = [(f"chr{n}", 100_000_000) for n in range(1, 25)]
+    sizes = {f"chr{n}": 4 * GIB for n in range(1, 25)}
+    plan = ChunkPlan([], [], sizes)
+    renamed = ChunkPlan([], [], {name[3:]: size for name, size in sizes.items()})
+    output, spill = 200 * GIB, 300 * GIB
+
+    same = chunked_disk(output, spill, GIB, plan, reference)
+    assert chunked_disk(output, spill, GIB, renamed, reference) >= same
+    assert same[0] > output * (1 + 1 / 25) and same[1] > spill / 25
 
 
 def _dying_tools(tmp_path, die, after):
