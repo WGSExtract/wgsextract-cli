@@ -46,24 +46,33 @@ coordinate-sorted, indexed BAM or CRAM in chunks of about `--chunk-size` of
 the input (default `4G`; `0` aligns in one pass):
 
 - Each chunk's primary reads (those starting in its regions, planned from the
-  `.crai`, or from a BAM's `idxstats`) are aligned and sorted on their own, then
-  split into about 24 groups of the output's contigs. The minimap2 index is
-  built once, beside the output.
+  `.crai` or the BAM's `.bai`) are aligned and sorted on their own, then split
+  into about 24 groups of the output's contigs. Unplaced unmapped reads form
+  a chunk and a group of their own. The minimap2 index is built once, beside
+  the output.
 - When every chunk is done, each group is sorted across the chunks and
   appended to the output, and its pieces are deleted.
 - Work lives in `<output>.chunks/`, and `state.json` there records each
   finished chunk and appended group. A run that is killed resumes at its
-  first unfinished chunk or group. A changed input, reference, format or
-  `--chunk-size` starts the chunks over. `--no-resume` or `--force` also does.
+  first unfinished chunk or group. A changed input, reference, format,
+  `--chunk-size` or minimap2 build starts the chunks over. `--no-resume` or
+  `--force` also does. A rerun that aligns in one pass removes the directory.
 - The records are the same as a single pass's, in the same order. Only the
   header differs: minimap2's `@PG` names the index, and there is no
   `samtools sort` `@PG`.
 
-Temporary space is then about one chunk's sort spills. The output directory
-needs the output, plus the index (about 7.5 GB for hs38) while aligning,
-plus one group while assembling. The preflight checks this.
-Input smaller than one chunk, unsorted or unindexed input (such as
-basecaller uBAMs), and `--keep-fastq` still align in one pass.
+Temporary space is then about the largest chunk's sort spills, or the
+largest group's. The output directory needs the output, plus the index
+(about 7.5 GB for hs38) while aligning, plus the largest group while
+assembling. The preflight checks this, sized from the index, and counts what
+an interrupted run already wrote as done.
+These still align in one pass:
+
+- input smaller than one chunk;
+- unsorted or unindexed input (such as basecaller uBAMs), or a CRAM whose
+  `.crai` lists slices out of order;
+- `--keep-fastq`;
+- the `sr` preset, whose duplicates are marked across the whole alignment.
 
 ## Combining flow-cell runs
 

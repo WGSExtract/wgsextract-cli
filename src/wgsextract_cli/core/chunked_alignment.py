@@ -6,7 +6,7 @@ files and runs for days, so one pass needs about three times the output's
 disk space and an interrupted run starts over. Here each chunk (a run of
 genome regions of the input, about ``chunk_size`` bytes of it) is aligned
 and sorted on its own, then split into the output's contig groups. Once
-every chunk is done, each group is merged across the chunks and appended to
+every chunk is done, each group is sorted across the chunks and appended to
 the output (core.alignment_splice), and its pieces are deleted. Temporary
 files therefore stay chunk-sized and the output is written once, beside the
 groups it replaces. ``<output>.chunks/state.json`` records each finished
@@ -30,6 +30,8 @@ import math
 import os
 import re
 import shutil
+import struct
+import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,17 +44,19 @@ from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import (
     UsageError,
+    WGSExtractError,
     run_command,
     run_pipeline,
 )
 
-SCHEMA = "wgsextract.chunked-alignment/1"
+SCHEMA = "wgsextract.chunked-alignment/2"
 DEFAULT_CHUNK_SIZE = "4G"
-# The output's contigs are split into about this many groups: the largest
-# group, merged beside the output, bounds the extra space assembly needs.
+# The output's contigs are split into about this many groups (and one of
+# the unmapped reads): the largest, sorted beside the output, bounds the
+# extra space assembly needs.
 _OUTPUT_GROUPS = 24
-# An index without positions (idxstats) is split evenly within each contig.
-_SEGMENT_BASES = 1_000_000
+# A BAM index's 16 kb windows are read in steps of this many bases.
+_SEGMENT_BASES = 1 << 20
 _UNITS = {"": 1, "K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4}
 
 
@@ -66,21 +70,18 @@ def parse_size(text: str) -> int:
 
 @dataclass(frozen=True)
 class Region:
-    """A stretch of a contig (1-based, inclusive; ``end`` None: to its end),
-    or ``*``, the unplaced unmapped reads."""
+    """A stretch of a contig (1-based, inclusive), or ``*``, the unplaced
+    unmapped reads."""
 
     contig: str
     start: int = 1
-    end: int | None = None
+    end: int = 0
 
-    def spec(self) -> str:
-        if self.contig == "*":
-            return "*"
-        # Braces keep names such as HLA-A*01:01:01:01 whole.
-        name = "{" + self.contig + "}"
-        if self.start == 1 and self.end is None:
-            return name
-        return f"{name}:{self.start}-{self.end or ''}"
+    def __str__(self) -> str:
+        return "*" if self.contig == "*" else f"{self.contig}:{self.start}-{self.end}"
+
+    def bed(self) -> str:
+        return f"{self.contig}\t{self.start - 1}\t{self.end}\n"
 
 
 Chunk = tuple[Region, ...]
@@ -96,55 +97,108 @@ def chunk_filter(chunk: Chunk) -> list[str]:
 
 
 def describe(chunk: Chunk) -> str:
-    shown = [region.spec().replace("{", "").replace("}", "") for region in chunk]
+    shown = [str(region) for region in chunk]
     return ", ".join(shown[:3]) + (
         f" and {len(shown) - 3} more" if len(shown) > 3 else ""
     )
 
 
-def _crai_segments(
-    index: str, names: Sequence[str]
-) -> tuple[dict[str, list[tuple[int, int]]], int] | None:
+Segments = dict[str, list[tuple[int, int]]]
+
+
+def _crai_segments(index: str, names: Sequence[str]) -> tuple[Segments, int] | None:
     """Each contig's (position, bytes) slices, and the unmapped reads' bytes,
-    from a CRAM index: one line per slice with its reference ID, start,
-    span, container offset, slice offset and size. None when the slices are
-    out of coordinate order, whatever the header says: reading such a CRAM
-    by region misses reads."""
-    entries = []
-    with gzip.open(index, "rt") as handle:
-        for line in handle:
-            fields = line.split()
-            if len(fields) >= 6:
-                reference, start, _, container, slice_, size = map(int, fields[:6])
-                # A slice's unmapped reads follow its mapped ones.
-                order = reference if reference >= 0 else len(names)
-                entries.append((container, slice_, order, reference, start, size))
-    segments: dict[str, list[tuple[int, int]]] = {}
+    from a CRAM index (gzipped or not): one line per slice and reference,
+    in the file's order, with the reference ID, start, span, container
+    offset, slice offset and slice size. None when the slices are out of
+    coordinate order, whatever the header says: reading such a CRAM by
+    region misses reads."""
+    with open(index, "rb") as handle:
+        data = handle.read()
+    text = gzip.decompress(data) if data[:2] == b"\x1f\x8b" else data
+    lines = [line.split() for line in text.decode().splitlines()]
+    rows = [[int(field) for field in line[:6]] for line in lines if len(line) >= 6]
+    # A slice holding several references has a row for each, each with the
+    # whole slice's size.
+    shared: dict[tuple[int, int], int] = {}
+    for row in rows:
+        shared[row[3], row[4]] = shared.get((row[3], row[4]), 0) + 1
+    segments: Segments = {}
     unmapped = 0
     last = (-1, 0)
-    for *_, reference, start, size in sorted(entries):
+    for reference, start, _, container, slice_, size in rows:
+        share = size // shared[container, slice_]
         if reference < 0:
-            unmapped += size
+            unmapped += share
             last = (len(names), 0)
             continue
         if (reference, start) < last:
             return None
         last = (reference, start)
         if reference < len(names):
-            segments.setdefault(names[reference], []).append((max(1, start), size))
+            segments.setdefault(names[reference], []).append((max(1, start), share))
     return segments, unmapped
 
 
-def _idxstats_segments(path: str) -> tuple[dict[str, list[tuple[int, int]]], int]:
+def _bai_segments(path: str, index: str, names: Sequence[str]) -> tuple[Segments, int]:
+    """Each contig's bytes per _SEGMENT_BASES, and the unplaced reads' bytes,
+    from a BAI's linear index (the file offset of each 16 kb window) and its
+    per-contig offsets and read counts (pseudo-bin 37450). The offsets are of
+    compressed blocks: a contig within one block may count 0 bytes."""
+    with open(index, "rb") as handle:
+        data = handle.read()
+    if data[:4] != b"BAI\x01":
+        raise WGSExtractError(f"{index} is not a BAI index.")
+    (count,) = struct.unpack_from("<i", data, 4)
+    offset = 8
+    segments: Segments = {}
+    end_of_reads = 0
+    step = _SEGMENT_BASES >> 14
+    for reference in range(count):
+        (bins,) = struct.unpack_from("<i", data, offset)
+        offset += 4
+        span = None
+        for _ in range(bins):
+            number, chunks = struct.unpack_from("<Ii", data, offset)
+            offset += 8
+            if number == 37450:
+                begin, end, mapped, unmapped = struct.unpack_from("<QQQQ", data, offset)
+                if mapped + unmapped:
+                    span = (begin >> 16, end >> 16)
+            offset += 16 * chunks
+        (windows,) = struct.unpack_from("<i", data, offset)
+        offset += 4
+        starts = struct.unpack_from(f"<{windows}Q", data, offset)
+        offset += 8 * windows
+        if span is None or reference >= len(names):
+            continue
+        begin, end = span
+        end_of_reads = max(end_of_reads, end)
+        marks = [begin]
+        for window in range(step, windows, step):
+            marks.append(min(end, max(marks[-1], starts[window] >> 16)))
+        marks.append(end)
+        segments[names[reference]] = [
+            (1 + number * _SEGMENT_BASES, after - before)
+            for number, (before, after) in enumerate(
+                zip(marks, marks[1:], strict=False)
+            )
+        ]
+    tail = os.path.getsize(path) - len(alignment_splice.BGZF_EOF) - end_of_reads
+    return segments, max(0, tail)
+
+
+def _idxstats_segments(path: str) -> tuple[Segments, int]:
     """Each contig's reads spread evenly over its length, weighted by the
-    file's size per record, from a BAM index's counts (samtools idxstats)."""
+    file's size per record, from a BAM index's counts (samtools idxstats):
+    for a CSI, which has no linear index."""
     lines = run_command(
         ["samtools", "idxstats", path], capture_output=True
     ).stdout.splitlines()
     counts = [line.split("\t") for line in lines if line.count("\t") == 3]
     records = sum(int(mapped) + int(unmapped) for _, _, mapped, unmapped in counts)
     per_record = os.path.getsize(path) / max(1, records)
-    segments: dict[str, list[tuple[int, int]]] = {}
+    segments: Segments = {}
     unplaced = 0
     for name, length, mapped, unmapped in counts:
         size = (int(mapped) + int(unmapped)) * per_record
@@ -159,13 +213,26 @@ def _idxstats_segments(path: str) -> tuple[dict[str, list[tuple[int, int]]], int
     return segments, unplaced
 
 
-def plan_chunks(path: str, header: str, chunk_bytes: int) -> list[Chunk] | None:
+@dataclass
+class ChunkPlan:
+    """An input's chunks, each one's estimated bytes of the input, and each
+    contig's (``*``: the unplaced reads')."""
+
+    chunks: list[Chunk]
+    sizes: list[int]
+    contigs: dict[str, int]
+
+
+def plan_chunks(path: str, header: str, chunk_bytes: int) -> ChunkPlan | None:
     """The input's chunks of about ``chunk_bytes`` each, in its order; None
-    when it can't be read by region (not coordinate-sorted or not indexed)."""
+    when it can't be read by region (not coordinate-sorted or not indexed).
+    The unplaced reads are a chunk of their own."""
     index = alignment_index(path)
     if index is None or "SO:coordinate" not in (header.splitlines() or [""])[0]:
         return None
-    names = [sequence["SN"] for sequence in header_sequences(header)]
+    sequences = header_sequences(header)
+    names = [sequence["SN"] for sequence in sequences]
+    lengths = {sequence["SN"]: int(sequence["LN"]) for sequence in sequences}
     if index.endswith(".crai"):
         planned = _crai_segments(index, names)
         if planned is None:
@@ -176,9 +243,11 @@ def plan_chunks(path: str, header: str, chunk_bytes: int) -> list[Chunk] | None:
             )
             return None
         segments, unmapped = planned
+    elif index.endswith(".bai"):
+        segments, unmapped = _bai_segments(path, index, names)
     else:
         segments, unmapped = _idxstats_segments(path)
-    chunks: list[Chunk] = []
+    plan = ChunkPlan([], [], {})
     current: list[Region] = []
     size = 0
 
@@ -187,12 +256,14 @@ def plan_chunks(path: str, header: str, chunk_bytes: int) -> list[Chunk] | None:
         if region is not None:
             current.append(region)
         if current:
-            chunks.append(tuple(current))
+            plan.chunks.append(tuple(current))
+            plan.sizes.append(size)
         current, size = [], 0
 
     for name in names:
         if name not in segments:
             continue  # No reads: nothing to align.
+        plan.contigs[name] = sum(bytes_ for _, bytes_ in segments[name])
         if size >= chunk_bytes:
             close()
         start = 1
@@ -201,43 +272,68 @@ def plan_chunks(path: str, header: str, chunk_bytes: int) -> list[Chunk] | None:
                 close(Region(name, start, position - 1))
                 start = position
             size += bytes_
-        current.append(Region(name, start))
-    if unmapped:
-        if size >= chunk_bytes:
-            close()
-        current.append(Region("*"))
+        current.append(Region(name, start, lengths[name]))
     close()
-    return chunks
+    if unmapped:
+        plan.contigs["*"] = unmapped
+        size = unmapped
+        close(Region("*"))
+    return plan
 
 
-def _contigs(reference: str) -> list[tuple[str, int]]:
-    """The reference's contigs and their lengths, from its .fai."""
+def contigs(reference: str) -> list[tuple[str, int]]:
+    """The reference's contigs and their lengths: from its .fai, or read
+    from the FASTA (samtools dict) without writing beside it."""
     fai = Path(reference + ".fai")
-    if not fai.is_file():
-        run_command(["samtools", "faidx", reference])
-    return [
-        (fields[0], int(fields[1]))
-        for fields in (line.split("\t") for line in fai.read_text().splitlines())
-        if len(fields) > 1
-    ]
+    if fai.is_file():
+        rows = [line.split("\t") for line in fai.read_text().splitlines()]
+        return [(row[0], int(row[1])) for row in rows if len(row) > 1]
+    found = []
+    text = run_command(["samtools", "dict", reference], capture_output=True).stdout
+    for sequence in header_sequences(text):
+        found.append((sequence["SN"], int(sequence["LN"])))
+    return found
 
 
-def output_groups(reference: str) -> list[list[str]]:
+def output_groups(contigs: Sequence[tuple[str, int]]) -> list[Chunk]:
     """The output's contigs (its reference's, in order) in about
-    _OUTPUT_GROUPS consecutive groups of similar length, as region specs;
-    the last group also takes the unmapped reads."""
-    contigs = _contigs(reference)
+    _OUTPUT_GROUPS consecutive groups of similar length, then the unmapped
+    reads as a group of their own."""
     target = sum(length for _, length in contigs) / _OUTPUT_GROUPS
-    groups: list[list[str]] = [[]]
+    groups: list[list[Region]] = [[]]
     size = 0
     for name, length in contigs:
         if size >= target:
             groups.append([])
             size = 0
-        groups[-1].append(Region(name).spec())
+        groups[-1].append(Region(name, 1, length))
         size += length
-    groups[-1].append("*")
-    return groups
+    return [tuple(group) for group in groups] + [(Region("*"),)]
+
+
+def chunked_disk(
+    output_bytes: int,
+    spill_bytes: int,
+    chunk_spill_bytes: int,
+    plan: ChunkPlan,
+    reference: Sequence[tuple[str, int]],
+) -> tuple[int, int]:
+    """Bytes a chunked alignment needs at its peak at its output's directory
+    and for its spills (``spill_bytes``: a single pass's; ``chunk_spill_bytes``:
+    its largest chunk's). Beside the output's groups (all of it, eventually)
+    are the aligner's index (minimap2's is about 2.4 bytes per reference
+    base) while aligning, and its largest group, sorted beside the output,
+    after. The spills are one chunk's, or one group's while it is sorted."""
+    total = max(1, sum(plan.contigs.values()))
+    share = max(
+        sum(plan.contigs.get(region.contig, 0) for region in group) / total
+        for group in output_groups(reference)
+    )
+    bases = sum(length for _, length in reference)
+    return (
+        math.ceil(max(output_bytes + 2.4 * bases, output_bytes * (1 + share))),
+        math.ceil(max(chunk_spill_bytes, spill_bytes * share)),
+    )
 
 
 @dataclass
@@ -249,7 +345,9 @@ class ChunkedAlignment:
     the argv that builds the aligner's index (minimap2 -x PRESET -t N).
     ``reads``: the stage turning a chunk's records into the aligner's FASTQ.
     ``resume``: whether the work of an interrupted run with the same
-    settings may be kept.
+    settings may be kept. The work directory, ``<output>.chunks``, is left
+    with a finished state for the caller to remove once it has recorded the
+    output: until then a rerun finds the output done.
     """
 
     input: str
@@ -272,7 +370,7 @@ class ChunkedAlignment:
     def run(self) -> None:
         """Write the output (without its index), resuming the work of an
         interrupted run with the same plan when ``resume`` allows it."""
-        groups = output_groups(self.reference)
+        groups = output_groups(contigs(self.reference))
         state = self._state(groups)
         if not state.get("done"):
             if len(state["chunks"]) < len(self.chunks):
@@ -282,23 +380,46 @@ class ChunkedAlignment:
                 Path(index).unlink(missing_ok=True)
             self._assemble(state, groups)
         if self._assembly().is_file():
+            # The output's old index must not outlive it.
+            for index in (".bai", ".crai", ".csi"):
+                Path(self.output + index).unlink(missing_ok=True)
+            Path(self.output).with_suffix(".bai").unlink(missing_ok=True)
             os.replace(self._assembly(), self.output)
-        shutil.rmtree(self.workdir, ignore_errors=True)
 
     # --- state -----------------------------------------------------------
 
-    def _key(self, groups: list[list[str]]) -> str:
+    def _engine(self) -> str:
+        """The aligner's version, so that another build restarts the work."""
+        try:
+            done = subprocess.run(
+                [self.mapper[0], "--version"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except OSError:
+            return ""
+        return done.stdout.strip()
+
+    def _key(self, groups: list[Chunk]) -> str:
+        def settings(argv: list[str]) -> list[str]:
+            # Threads don't change the alignment.
+            return [a for i, a in enumerate(argv) if "-t" not in argv[i - 1 : i] + [a]]
+
         plan = {
             "input": self.input,
-            "chunks": [[region.spec() for region in chunk] for chunk in self.chunks],
-            "groups": groups,
+            "chunks": [[str(region) for region in chunk] for chunk in self.chunks],
+            "groups": [[str(region) for region in group] for group in groups],
             "format": self.format,
             "reference": self.reference,
+            "mapper": settings(self.mapper),
+            "indexer": settings(self.indexer),
+            "engine": self._engine(),
         }
         text = json.dumps(plan, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(text.encode()).hexdigest()
 
-    def _state(self, groups: list[list[str]]) -> dict[str, Any]:
+    def _state(self, groups: list[Chunk]) -> dict[str, Any]:
         key = self._key(groups)
         path = self.workdir / "state.json"
         state: dict[str, Any] | None = None
@@ -397,6 +518,19 @@ class ChunkedAlignment:
             stale.unlink(missing_ok=True)
         return path
 
+    def _view(
+        self, options: list[str], path: str, regions: Chunk, name: str
+    ) -> list[str]:
+        """samtools view of ``regions`` of ``path``: through a BED file in the
+        work directory (command lines have limits; thousands of contigs
+        overflow Windows'), or ``*``."""
+        if regions == (Region("*"),):
+            return ["samtools", "view", *options, path, "*"]
+        bed = self.workdir / f"{name}.bed"
+        if not bed.is_file():
+            atomic_write(bed, "".join(r.bed() for r in regions).encode("utf-8"))
+        return ["samtools", "view", *options, "--region-file", str(bed), path]
+
     def _output_options(self) -> list[str]:
         if self.format == "CRAM":
             return ["-O", "CRAM", "--reference", self.reference]
@@ -422,7 +556,7 @@ class ChunkedAlignment:
         state: dict[str, Any],
         number: int,
         chunk: Chunk,
-        groups: list[list[str]],
+        groups: list[Chunk],
         index: str,
     ) -> None:
         """Align and sort one chunk, then split it into the output's groups."""
@@ -435,10 +569,10 @@ class ChunkedAlignment:
             self._group_file(group, number).unlink(missing_ok=True)
         sorted_chunk = self._temp(f"chunk-{number:05d}.bam")
         sort_prefix = self._temp(f"chunk-{number:05d}.sort")
-        view = ["samtools", "view", "-u", "-F", "0x900", *chunk_filter(chunk)]
+        view = ["-u", "-F", "0x900", *chunk_filter(chunk), *self.decode]
         run_pipeline(
             [
-                [*view, *self.decode, self.input, *(r.spec() for r in chunk)],
+                self._view(view, self.input, chunk, f"chunk-{number:05d}"),
                 self.reads,
                 [*self.mapper, index, "-"],
                 [
@@ -457,7 +591,8 @@ class ChunkedAlignment:
                     "BAM",
                     "--write-index",
                     "-o",
-                    f"{sorted_chunk}##idx##{sorted_chunk}.bai",
+                    # CSI: a BAI can't index contigs longer than 512 Mb.
+                    f"{sorted_chunk}##idx##{sorted_chunk}.csi",
                     "-",
                 ],
             ],  # fmt: skip
@@ -467,18 +602,18 @@ class ChunkedAlignment:
         sizes = []
         for group, regions in enumerate(groups):
             path = self._group_file(group, number)
+            options = ["--no-PG", "-@", self.threads, *self._output_options(),
+                       "-o", str(path)]  # fmt: skip
             run_command(
-                ["samtools", "view", "--no-PG", "-@", self.threads,
-                 *self._output_options(), "-o", str(path), str(sorted_chunk),
-                 *regions]
-            )  # fmt: skip
+                self._view(options, str(sorted_chunk), regions, f"group-{group:03d}")
+            )
             sizes.append(path.stat().st_size)
         sorted_chunk.unlink()
-        Path(f"{sorted_chunk}.bai").unlink(missing_ok=True)
+        Path(f"{sorted_chunk}.csi").unlink(missing_ok=True)
         state["chunks"][str(number)] = sizes
         self._save(state)
 
-    def _assemble(self, state: dict[str, Any], groups: list[list[str]]) -> None:
+    def _assemble(self, state: dict[str, Any], groups: list[Chunk]) -> None:
         """Merge each group across the chunks and append it to the
         assembly, deleting its pieces as it goes."""
         assembly = self._assembly()
@@ -488,16 +623,21 @@ class ChunkedAlignment:
                 logging.info(
                     "Merging output group %d of %d ...", group + 1, len(groups)
                 )
-                files = [
-                    str(self._group_file(group, n)) for n in range(len(self.chunks))
-                ]
+                files = self.workdir / f"group-{group:03d}.files"
+                atomic_write(
+                    files,
+                    "".join(
+                        f"{self._group_file(group, n)}\n"
+                        for n in range(len(self.chunks))
+                    ).encode("utf-8"),
+                )
                 # Not samtools merge: it moves each record's RG tag to its
                 # end. sort is stable, so records of the same position keep
                 # the chunks' order, which is the input's, as in one pass.
                 sort_prefix = self._temp(f"group-{group:03d}.sort")
                 run_pipeline(
                     [
-                        ["samtools", "cat", "--no-PG", "-o", "-", *files],
+                        ["samtools", "cat", "--no-PG", "-b", str(files), "-o", "-"],
                         [
                             "samtools",
                             "sort",
@@ -526,22 +666,3 @@ class ChunkedAlignment:
         alignment_splice.finish(assembly, state["bytes"])
         state["done"] = True
         self._save(state)
-
-
-def chunked_disk(
-    output_bytes: int, spill_bytes: int, chunk_spill_bytes: int, reference: str | None
-) -> tuple[int, int]:
-    """Bytes a chunked alignment needs at its peak at its output's directory
-    and for its spills (``spill_bytes``: a single pass's). Beside the output's
-    groups (all of it, eventually) are the aligner's index (minimap2's is
-    about 2.4 bytes per reference base) while aligning, and the group being
-    assembled (perhaps twice the average) after. The spills are one chunk's,
-    or one group's while it is sorted."""
-    bases = 0
-    if reference and Path(reference).is_file():
-        bases = sum(length for _, length in _contigs(reference))
-    group = 2 / _OUTPUT_GROUPS
-    return (
-        math.ceil(max(output_bytes + 2.4 * bases, output_bytes * (1 + group))),
-        math.ceil(max(chunk_spill_bytes, spill_bytes * group)),
-    )

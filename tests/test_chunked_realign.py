@@ -1,6 +1,7 @@
 """#431: realign long reads in chunks of the input, resuming an interrupted
 run at its first unfinished chunk, with the records of a single pass."""
 
+import gzip
 import os
 import platform
 import random
@@ -22,6 +23,7 @@ COMP = str.maketrans("ACGT", "TGCA")
 MODS = "MM:Z:C+m?,0,1;\tML:B:C,250,10"
 MAPPING = r"^minimap2 .*\.mmi -$"
 GROUP_SORT = r"^samtools sort .*group-[0-9]+\.sort"
+INDEXING = r"^(samtools|sambamba) index .*x_aligned\.bam$"
 CONTIGS = {"chr1": 2_400_000, "chr2": 300_000, "chr3": 60_000}
 
 
@@ -152,20 +154,32 @@ def test_chunked_realign_writes_the_records_of_a_single_pass(
     assert not (tmp_path / "chunked" / f"x_aligned.{ext}.chunks").exists()
 
 
+def _lines(ont, region):
+    return _view("view", ont["bam"], region).splitlines(keepends=True)
+
+
 @needs_tools("samtools", "minimap2")
-def test_a_cram_out_of_order_despite_its_header_loses_no_reads(tmp_path, ont):
+@pytest.mark.parametrize("within_a_slice", [False, True], ids=["across", "within"])
+def test_a_cram_out_of_order_despite_its_header_loses_no_reads(
+    tmp_path, ont, within_a_slice
+):
     """#431: a CRAM sliced by region with chrM before chrY still said
     SO:coordinate. Read by region, its chunks missed every chrY read; it is
-    now realigned in one pass, every read included."""
+    now realigned in one pass, every read included. #578 review: also when
+    the disorder lies within one slice, whose index rows share its offsets."""
     ref = ont["ref"]
     sam = tmp_path / "unsorted.sam"
-    sam.write_text(
-        _view("view", "-h", ont["bam"], "chr1", "chr3")
-        + _view("view", ont["bam"], "chr2")
-    )
+    header = _view("view", "-H", ont["bam"])
+    chr1, chr2, chr3 = (_lines(ont, name) for name in ("chr1", "chr2", "chr3"))
+    if within_a_slice:
+        # One slice holds chr1's last reads, chr3's first, then chr2's only.
+        records = chr1[:18] + chr3[:1] + chr2[:1] + chr3[1:]
+    else:
+        # A slice holds chr3's last reads and chr2's first: read by region,
+        # htslib stops at chr3's and returns none of chr2's.
+        records = chr1 + chr3 + chr2
+    sam.write_text(header + "".join(records))
     cram = str(tmp_path / "unsorted.cram")
-    # A slice holding chr3's last reads and chr2's first: read by region,
-    # htslib stops at chr3's and returns none of chr2's.
     run_command(["samtools", "view", "-C", "-T", ref,
                  "--output-fmt-option", "seqs_per_slice=20",
                  "--output-fmt-option", "multi_seq_per_slice=1",
@@ -178,6 +192,56 @@ def test_a_cram_out_of_order_despite_its_header_loses_no_reads(tmp_path, ont):
     assert int(_view("view", "-c", "-F", "0x900", aligned)) == source
 
 
+@needs_tools("samtools", "minimap2")
+def test_a_plain_text_crai_plans_chunks(tmp_path, ont):
+    """#578 review: a .crai may be uncompressed; planning read it as gzip
+    and the default chunked realign failed."""
+    cram = tmp_path / "x.cram"
+    shutil.copy(ont["cram"], cram)
+    with gzip.open(ont["cram"] + ".crai", "rb") as handle:
+        (tmp_path / "x.cram.crai").write_bytes(handle.read())
+    size = _chunk_size(str(cram))
+    _realign(cram, ont["ref"], tmp_path / "chunked", "--chunk-size", size)
+    _realign(cram, ont["ref"], tmp_path / "whole", "--chunk-size", "0")
+    assert _records(str(tmp_path / "chunked/x_aligned.bam"), ont["ref"]) == _records(
+        str(tmp_path / "whole/x_aligned.bam"), ont["ref"]
+    )
+
+
+@needs_tools("samtools", "minimap2")
+def test_the_sr_preset_still_marks_duplicates(tmp_path, ont):
+    """#578 review: with --preset sr minimap2 output has its duplicates
+    marked in one pass; the chunks didn't. sr now aligns in one pass."""
+    for out, size in (("whole", "0"), ("chunked", _chunk_size(ont["bam"]))):
+        _realign(ont["bam"], ont["ref"], tmp_path / out, "--preset", "sr",
+                 "--chunk-size", size)  # fmt: skip
+    chunked = str(tmp_path / "chunked/x_aligned.bam")
+    assert _records(chunked, ont["ref"]) == _records(
+        str(tmp_path / "whole/x_aligned.bam"), ont["ref"]
+    )
+    # The identical reads stored on chr1 and chr2: one of each pair.
+    assert int(_view("view", "-c", "-f", "0x400", chunked)) >= 2
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="POSIX permissions")
+@needs_tools("samtools", "minimap2")
+def test_a_read_only_reference_without_fai_aligns_in_chunks(tmp_path, ont):
+    """#578 review: chunked realign wrote a .fai beside --ref, failing for a
+    reference in a read-only directory that one pass aligns to."""
+    library = tmp_path / "library"
+    library.mkdir()
+    ref = library / "ref.fa"
+    shutil.copy(ont["ref"], ref)
+    library.chmod(0o555)
+    try:
+        _realign(ont["bam"], ref, tmp_path / "out",
+                 "--chunk-size", _chunk_size(ont["bam"]))  # fmt: skip
+    finally:
+        library.chmod(0o755)
+    assert sorted(p.name for p in library.iterdir()) == ["ref.fa"]
+    _view("quickcheck", str(tmp_path / "out/x_aligned.bam"))
+
+
 def _dying_tools(tmp_path, die, after):
     """samtools and minimap2 shims logging each call that kill the run (its
     process group and their own, as an OOM kill or power cut would) on the
@@ -185,8 +249,10 @@ def _dying_tools(tmp_path, die, after):
     shims = tmp_path / "shims"
     shims.mkdir()
     log = tmp_path / "calls.log"
-    for tool in ("samtools", "minimap2"):
+    for tool in ("samtools", "minimap2", "sambamba"):
         real = shutil.which(tool)
+        if real is None:
+            continue
         script = shims / tool
         script.write_text(
             "#!/usr/bin/env bash\n"
@@ -235,8 +301,10 @@ def _realign_cli(tmp_path, shims, argv, die):
         (MAPPING, 3),
         # Killed sorting the second output group, after appending the first.
         (GROUP_SORT, 2),
+        # Killed indexing the finished output, before the step is recorded.
+        (INDEXING, 1),
     ],
-    ids=["mid-chunk", "mid-assembly"],
+    ids=["mid-chunk", "mid-assembly", "mid-index"],
 )
 def test_a_killed_chunked_realign_resumes_with_identical_output(
     tmp_path, ont, die, after
@@ -277,7 +345,7 @@ def test_a_killed_chunked_realign_resumes_with_identical_output(
     assert len(redone) == len([c for c in clean_calls if re.search(die, c)]) - (
         after - 1
     )
-    if die == GROUP_SORT:
+    if die != MAPPING:
         assert not [c for c in calls if re.search(MAPPING, c)]
     bam = str(out / "x_aligned.bam")
     assert _records(bam, ref) == _records(str(tmp_path / "clean/x_aligned.bam"), ref)

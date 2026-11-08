@@ -36,8 +36,9 @@ from wgsextract_cli.core.alignment_memory import available_memory, check_mapping
 from wgsextract_cli.core.alignment_metadata import cram_encoded_with, get_bam_header
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.chunked_alignment import (
-    Chunk,
+    ChunkPlan,
     chunked_disk,
+    contigs,
     parse_size,
     plan_chunks,
 )
@@ -234,24 +235,29 @@ def _preflight_long_read_disk_space(
     extract: bool,
     threads: str,
     memory: str,
-    chunk_bytes: int = 0,
+    plan: ChunkPlan | None = None,
     reference: str | None = None,
     done_bytes: int = 0,
 ) -> None:
     """Long reads stream into the aligner without a collate: the peak is the
     sorter's spills beside its output, and an extracted FASTQ when kept. A
-    chunked alignment spills one chunk at a time, but keeps the aligner's
-    index and, while it assembles the output, one merged group beside it;
-    ``done_bytes`` of that are already in its work directory."""
+    chunked alignment (``plan``) spills one chunk at a time, but keeps the
+    aligner's index of ``reference`` and, while it assembles the output, one
+    group beside it; ``done_bytes`` of that are already in its work
+    directory."""
     amount, unit = parse_memory(memory)
     sort_buffer = int(threads) * amount * (GIB if unit == "G" else 1024**2)
     size = Path(input_path).stat().st_size
     disk = long_read_disk(input_path, size, output_format, sort_buffer)
     fastq = disk.fastq if extract else 0
     spill, output = disk.spill, disk.output
-    if chunk_bytes:
-        chunk = long_read_disk(input_path, chunk_bytes, output_format, sort_buffer)
-        output, spill = chunked_disk(disk.output, disk.spill, chunk.spill, reference)
+    if plan:
+        largest = max(plan.sizes)
+        chunk = long_read_disk(input_path, largest, output_format, sort_buffer)
+        sequences = contigs(reference) if reference else []
+        output, spill = chunked_disk(
+            disk.output, disk.spill, chunk.spill, plan, sequences
+        )
         output = max(0, output - done_bytes)
     scratch = configured_temp_directory()
     if scratch and Path(scratch).stat().st_dev != Path(outdir).stat().st_dev:
@@ -273,6 +279,15 @@ def _preflight_long_read_disk_space(
             )
 
 
+def _long_read_reference(job: RealignJob, target: str | None) -> str | None:
+    """The FASTA a long-read alignment maps to: ``target``, else the one
+    align resolves from --ref or the input's sequence dictionary."""
+    if target and Path(target).is_file():
+        return target
+    resolved = resolve_reference(job.ref, calculate_bam_md5(job.input, None))
+    return resolved if resolved and Path(resolved).is_file() else None
+
+
 def _tree_bytes(path: Path) -> int:
     """The bytes of the files under ``path`` (0 when it doesn't exist)."""
     return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
@@ -280,31 +295,34 @@ def _tree_bytes(path: Path) -> int:
 
 def _long_read_chunks(
     job: RealignJob, selected_aligner: str, chunk_bytes: int
-) -> list[Chunk] | None:
+) -> ChunkPlan | None:
     """The chunks a long-read realignment aligns one at a time, or None to
     align the input in one pass: chunking is off, the input is smaller than
-    a chunk, or it isn't a coordinate-sorted, indexed BAM/CRAM."""
+    a chunk, or it isn't a coordinate-sorted, indexed BAM/CRAM. The sr preset
+    marks duplicates, which needs the whole alignment: one pass too."""
     if selected_aligner != "minimap2" or job.keep_fastq or not chunk_bytes:
+        return None
+    if align_cmd._minimap2_preset(job) == "sr":
         return None
     if Path(job.input).stat().st_size <= chunk_bytes:
         return None
-    chunks = plan_chunks(job.input, get_bam_header(job.input), chunk_bytes)
-    if chunks is None:
+    plan = plan_chunks(job.input, get_bam_header(job.input), chunk_bytes)
+    if plan is None:
         logging.info(
             "Aligning %s in one pass: chunks need a coordinate-sorted, indexed "
             "BAM or CRAM.",
             job.input,
         )
         return None
-    if len(chunks) < 2:
+    if len(plan.chunks) < 2:
         return None
     logging.info(
         "Aligning %s in %d chunks of about %s each.",
         job.input,
-        len(chunks),
+        len(plan.chunks),
         job.chunk_size,
     )
-    return chunks
+    return plan
 
 
 def _input_cram_reference(job: RealignJob) -> list[str]:
@@ -632,6 +650,8 @@ def _realign_long_reads(
         _resume_alignment(
             journal, journal.decide(align_step), out_path, target, threads
         )
+        if not journal.dry_run:
+            shutil.rmtree(out_path + ".chunks", ignore_errors=True)
         if job.keep_fastq and not journal.dry_run:
             if Path(fastq).is_file():
                 current_result().add_output(fastq, "fastq_r1")
@@ -650,9 +670,9 @@ def _realign_long_reads(
         return
     cram_opt = input_cram_opt or _input_cram_reference(job)
     chunk_bytes = parse_size(job.chunk_size)
-    chunks = _long_read_chunks(job, selected_aligner, chunk_bytes)
+    plan = _long_read_chunks(job, selected_aligner, chunk_bytes)
     workdir = Path(out_path + ".chunks")
-    if not chunks and workdir.exists():
+    if not plan and workdir.exists():
         logging.info("Removing %s, left by an interrupted chunked run.", workdir)
         shutil.rmtree(workdir)
     if not job.no_preflight:
@@ -663,8 +683,10 @@ def _realign_long_reads(
             extract=bool(extract_decision and extract_decision.run),
             threads=threads,
             memory=memory,
-            chunk_bytes=chunk_bytes if chunks else 0,
-            reference=target or job.ref,
+            plan=plan,
+            # The FASTA alignment resolves (from the input's signature
+            # without --ref), whose index the chunks build.
+            reference=_long_read_reference(job, target) if plan else None,
             # An interrupted run's chunks are kept or, if they can't be
             # resumed, deleted: either way, that space counts as free.
             done_bytes=_tree_bytes(workdir),
@@ -675,7 +697,7 @@ def _realign_long_reads(
         job,
         r1=job.input,
         input_cram_opt=decode,
-        chunks=chunks,
+        chunks=plan.chunks if plan else None,
         resume_chunks=decision.partial,
     )
     if extract_decision is not None:
@@ -704,8 +726,11 @@ def _realign_long_reads(
         journal,
         decision,
         lambda: align_cmd.run(align_job),
-        keep_partial=bool(chunks) and decision.partial,
+        keep_partial=bool(plan) and decision.partial,
     )
+    # Only now that the align step is recorded: a run killed before keeps
+    # the chunks' finished state, so its rerun doesn't realign them.
+    shutil.rmtree(workdir, ignore_errors=True)
     if job.keep_fastq:
         current_result().add_output(fastq, "fastq_r1")
 
