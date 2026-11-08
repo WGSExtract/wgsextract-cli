@@ -149,3 +149,30 @@ def test_quiet_aligner_heartbeat_tells_slow_batch_from_stall(
     assert f"{Path(sys.executable).stem} {state}: no progress for" in caplog.text
     stalls = [w.code for w in result.warnings if w.code == "aligner_stalled"]
     assert stalls == (["aligner_stalled"] if state == "stalled" else [])
+
+
+def test_aligner_waiting_on_busy_upstream_stage_is_not_stalled(tmp_path, monkeypatch):
+    """PR #576 review: samtools collate reads a whole 30x input before bwa gets
+    a read; bwa idling on its empty stdin meanwhile is no stall."""
+    original = utils.Heartbeat
+    monkeypatch.setattr(
+        utils,
+        "Heartbeat",
+        lambda *a, **k: original(*a, interval=0.1, stall_after=0.5, **k),
+    )
+    collate = [
+        sys.executable,
+        "-c",
+        "import time\nt=time.time()\nwhile time.time()-t<1.5: pass\nprint('r')",
+    ]
+    aligner = [
+        sys.executable,
+        "-c",
+        "import sys\nsys.stdin.read()\n"
+        "sys.stderr.write('[M::process] Processed 1 reads\\n')",
+        "bwa",
+    ]
+    with collecting(result := CommandResult(command="realign")):
+        with (tmp_path / "out").open("wb") as output:
+            utils.run_pipeline([collate, aligner], stdout=output, heartbeat=True)
+    assert [w.code for w in result.warnings] == []

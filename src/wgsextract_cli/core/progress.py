@@ -15,20 +15,24 @@ STALL_AFTER = 15 * 60
 IDLE_CORES = 0.05
 
 
-def process_cpu_seconds(pid: int) -> float | None:
-    """CPU time used so far by a process and its children (a wrapper's tool)."""
+def process_cpu_seconds(*pids: int) -> float | None:
+    """CPU time used so far by processes and their children (a wrapper's
+    tool); None once none of them is running."""
     import psutil
 
-    try:
-        process = psutil.Process(pid)
-        total = 0.0
-        for each in [process, *process.children(recursive=True)]:
+    total, alive = 0.0, False
+    for pid in pids:
+        try:
+            process = psutil.Process(pid)
+            family = [process, *process.children(recursive=True)]
+        except psutil.Error:
+            continue
+        alive = True
+        for each in family:
             with contextlib.suppress(psutil.Error):
                 times = each.cpu_times()
                 total += float(times.user + times.system)
-        return total
-    except psutil.Error:
-        return None
+    return total if alive else None
 
 
 class Heartbeat:
@@ -44,9 +48,11 @@ class Heartbeat:
         worker: tuple[str, Callable[[], float | None]] | None = None,
         stall_after: float = STALL_AFTER,
     ) -> None:
-        """``worker`` names the process doing the counted work and reads its
-        CPU seconds, so a long wait for the next count says whether it is
-        still working or stalled."""
+        """``worker`` names the process doing the counted work and reads the
+        CPU seconds of the pipeline around it, so a long wait for the next
+        count says whether the pipeline is still working or stalled. A stage
+        before the aligner may hold back its output for a long time (samtools
+        collate reads its whole input first) while the aligner waits."""
         self.label, self.total, self.unit = label, total, unit
         self.interval, self.scan = interval, scan
         self.emit = emit
@@ -131,8 +137,9 @@ class Heartbeat:
 
     def _activity(self) -> str:
         """Once no count has arrived for ``stall_after`` seconds: whether the
-        worker is still using CPU (working on a slow batch) or has been idle as
-        long (stalled). Warns once per quiet spell and state."""
+        pipeline is still using CPU (working, for example on a slow batch) or
+        has been idle as long (stalled). Warns once per quiet spell and state;
+        a busy pipeline only once the worker has reported a batch."""
         if self.worker is None:
             return ""
         name, cpu_seconds = self.worker
@@ -152,13 +159,14 @@ class Heartbeat:
         if quiet < self.stall_after:
             return ""
         state = "stalled" if idle >= self.stall_after else "busy"
-        if self._warned != state:
+        if self._warned != state and (state == "stalled" or self.completed):
             self._warned = state
             if state == "busy":
                 logging.warning(
-                    "%s has reported no progress for %.0f min but is using %.1f "
-                    "CPU cores, so it is still working: a batch of long reads "
-                    "from centromeres or satellite repeats can take hours.",
+                    "%s has reported no progress for %.0f min but its pipeline "
+                    "is using %.1f CPU cores, so it is still working: a batch of "
+                    "long reads from centromeres or satellite repeats can take "
+                    "hours.",
                     name,
                     quiet / 60,
                     cores,
@@ -168,9 +176,10 @@ class Heartbeat:
 
                 warn(
                     "aligner_stalled",
-                    f"{name} has reported no progress and used no CPU for "
-                    f"{idle / 60:.0f} min: it is waiting on its input or output. "
-                    "Check the input's disk or network and the stages after it.",
+                    f"{name} has reported no progress, and no stage of its "
+                    f"pipeline has used CPU, for {idle / 60:.0f} min: it is "
+                    "waiting on its input or output. Check the input's disk or "
+                    "network and the stages after it.",
                     tool=name,
                     minutes=round(idle / 60),
                 )

@@ -715,7 +715,7 @@ def run_pipeline(
         if heartbeat or active_run_log():
             aligner = next(
                 (
-                    (names[index], procs[index].pid)
+                    names[index]
                     for index, args in enumerate(progress_args)
                     if is_aligner(args)
                 ),
@@ -727,7 +727,12 @@ def run_pipeline(
                 scan=scan,
                 emit=heartbeat,
                 worker=(
-                    (aligner[0], functools.partial(process_cpu_seconds, aligner[1]))
+                    (
+                        aligner,
+                        functools.partial(
+                            process_cpu_seconds, *(proc.pid for proc in procs)
+                        ),
+                    )
                     if aligner
                     else None
                 ),
