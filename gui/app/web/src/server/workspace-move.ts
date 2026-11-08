@@ -6,7 +6,7 @@ import { relocatePath } from "../../../shared/workspace-paths.js";
 import { bundleStatePath, writeFileAtomically } from "./config-store.js";
 import { errnoCode, HttpError } from "./errors.js";
 import { configPath } from "./paths.js";
-import { defaultWorkspaceRoot, saveWorkspacesDirectory, workspaceRootIn } from "./workspace-location.js";
+import { effectiveDefaultWorkspaceRoot, saveWorkspacesDirectory, workspaceRootIn } from "./workspace-location.js";
 
 export interface WorkspaceMoveRequest {
     manifest: BundleManifest;
@@ -31,7 +31,7 @@ export async function moveWorkspace({ manifest, sourceRoot, workspaceRoot, direc
     if (directory != null && !path.isAbsolute(directory)) {
         throw new HttpError(400, `The workspaces folder must be an absolute path: ${directory}`);
     }
-    const target = directory == null ? defaultWorkspaceRoot(manifest) : workspaceRootIn(path.resolve(directory), manifest.id);
+    const target = directory == null ? await effectiveDefaultWorkspaceRoot(manifest) : workspaceRootIn(path.resolve(directory), manifest.id);
     if (path.relative(workspaceRoot, target) === "") {
         await saveWorkspacesDirectory(directory == null ? null : path.resolve(directory));
         return;

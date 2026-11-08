@@ -2,7 +2,7 @@ import type { Dirent } from "node:fs";
 import { chmod, cp, mkdir, open, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { relativeTopLevelName, resolveUserPath } from "./paths.js";
-import { assertAdoptableWorkspaceRoot, resolveWorkspaceRoot, workspaceSentinelContents, workspaceSentinelFileName } from "./workspace-location.js";
+import { claimWorkspaceRoot, workspaceSentinelContents, workspaceSentinelFileName } from "./workspace-location.js";
 import { configEditorControls } from "../../../shared/rendering.js";
 import type { BundleManifest, ControlSpec } from "../../../shared/types.js";
 import { errnoCode } from "./errors.js";
@@ -27,12 +27,9 @@ const syncMetadataFileName = ".workspace-sync.json";
 const syncMetadataVersion = 1;
 
 export async function prepareBundleWorkspace(manifest: BundleManifest, sourceRoot: string, explicitWorkspaceRoot: string | undefined = undefined) {
-    const workspaceRoot = explicitWorkspaceRoot ? path.resolve(explicitWorkspaceRoot) : await resolveWorkspaceRoot(manifest);
+    const workspaceRoot = explicitWorkspaceRoot ? path.resolve(explicitWorkspaceRoot) : await claimWorkspaceRoot(manifest);
     if (explicitWorkspaceRoot) {
         await assertSafeExplicitWorkspaceRoot(workspaceRoot, manifest, sourceRoot);
-    }
-    else {
-        await assertAdoptableWorkspaceRoot(workspaceRoot);
     }
     await mkdir(workspaceRoot, { recursive: true });
     await writeWorkspaceSentinel(workspaceRoot);

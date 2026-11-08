@@ -50,10 +50,63 @@ async function configuredWorkspacesDirectory() {
     return typeof value === "string" && path.isAbsolute(value) ? value : null;
 }
 
+/** The folder used instead of the bundle's default when a folder of the user's already had that name (see claimWorkspaceRoot). */
+async function recordedDefaultWorkspaceRoot(manifest: Pick<BundleManifest, "id">) {
+    const roots = (await readAppSettings()).defaultWorkspaceRoots;
+    const value = roots != null && typeof roots === "object" ? (roots as Record<string, unknown>)[safePathComponent(manifest.id)] : undefined;
+    return typeof value === "string" && path.isAbsolute(value) ? value : null;
+}
+
+/** Where the workspace goes when no folder is chosen: the bundle's default, or the folder used instead of it. */
+export async function effectiveDefaultWorkspaceRoot(manifest: Pick<BundleManifest, "id" | "defaultWorkspace">) {
+    return (await recordedDefaultWorkspaceRoot(manifest)) ?? defaultWorkspaceRoot(manifest);
+}
+
 /** The bundle's workspace: in the folder saved in the app's settings, else the default. */
 export async function resolveWorkspaceRoot(manifest: Pick<BundleManifest, "id" | "defaultWorkspace">): Promise<string> {
     const configured = await configuredWorkspacesDirectory();
-    return configured ? workspaceRootIn(configured, manifest.id) : defaultWorkspaceRoot(manifest);
+    return configured ? workspaceRootIn(configured, manifest.id) : effectiveDefaultWorkspaceRoot(manifest);
+}
+
+const maxDefaultWorkspaceSuffix = 100;
+
+/**
+ * The workspace to prepare. When the bundle's default folder in the home folder is already someone else's
+ * (non-empty and not a workspace, also when only its letter case differs on a case-insensitive disk), the
+ * first free "<name>-2", "<name>-3", ... is used instead and recorded, so it stays the default from then on.
+ * The user's folder is never adopted. A folder the user chose must be usable, or this fails saying what to do.
+ */
+export async function claimWorkspaceRoot(manifest: Pick<BundleManifest, "id" | "defaultWorkspace">): Promise<string> {
+    const configured = await configuredWorkspacesDirectory();
+    if (configured) {
+        const root = workspaceRootIn(configured, manifest.id);
+        if (!(await isAdoptableWorkspaceRoot(root))) {
+            throw new Error(`The workspaces folder chosen in Settings holds a folder that is not this app's workspace: ${root}. Move that folder away, or remove "bundleWorkspacesDirectory" from ${appSettingsPath()} to use the default location.`);
+        }
+        return root;
+    }
+    const recorded = await recordedDefaultWorkspaceRoot(manifest);
+    const declared = defaultWorkspaceRoot(manifest);
+    const root = recorded ?? declared;
+    if (await isAdoptableWorkspaceRoot(root)) {
+        return root;
+    }
+    // Only the bundle's suggested folder in the home folder may give way to another name.
+    if (recorded || !manifest.defaultWorkspace?.trim()) {
+        throw new Error(`Refusing to use non-empty folder that is not a bundle workspace: ${root}`);
+    }
+    for (let suffix = 2; suffix <= maxDefaultWorkspaceSuffix; suffix++) {
+        const candidate = `${declared}-${suffix}`;
+        if (await isAdoptableWorkspaceRoot(candidate)) {
+            const settings = await readAppSettings();
+            const roots = settings.defaultWorkspaceRoots != null && typeof settings.defaultWorkspaceRoots === "object" ? settings.defaultWorkspaceRoots as Record<string, unknown> : {};
+            settings.defaultWorkspaceRoots = { ...roots, [safePathComponent(manifest.id)]: candidate };
+            await writeFileAtomically(appSettingsPath(), `${JSON.stringify(settings, null, 2)}\n`);
+            console.error(`${declared} is not this app's workspace, so the workspace is kept in ${candidate} instead.`);
+            return candidate;
+        }
+    }
+    throw new Error(`Refusing to use non-empty folder that is not a bundle workspace: ${declared}`);
 }
 
 export function workspaceRootIn(directory: string, bundleID: unknown) {
@@ -65,15 +118,19 @@ export function workspaceRootIn(directory: string, bundleID: unknown) {
  * if it is empty or already a workspace; someone else's folder of that name is never adopted.
  */
 export async function assertAdoptableWorkspaceRoot(workspaceRoot: string) {
+    if (!(await isAdoptableWorkspaceRoot(workspaceRoot))) {
+        throw new Error(`Refusing to use non-empty folder that is not a bundle workspace: ${workspaceRoot}`);
+    }
+}
+
+async function isAdoptableWorkspaceRoot(workspaceRoot: string) {
     const entries = await readdir(workspaceRoot).catch((error: unknown) => {
         if (errnoCode(error) === "ENOENT") {
             return [];
         }
         throw error;
     });
-    if (entries.length > 0 && !(await isManagedWorkspace(workspaceRoot))) {
-        throw new Error(`Refusing to use non-empty folder that is not a bundle workspace: ${workspaceRoot}`);
-    }
+    return entries.length === 0 || await isManagedWorkspace(workspaceRoot);
 }
 
 export async function isManagedWorkspace(workspaceRoot: string) {
@@ -82,7 +139,7 @@ export async function isManagedWorkspace(workspaceRoot: string) {
 }
 
 export async function workspaceLocationInfo(manifest: BundleManifest, workspaceRoot: string): Promise<WorkspaceLocationInfo> {
-    const defaultRoot = defaultWorkspaceRoot(manifest);
+    const defaultRoot = await effectiveDefaultWorkspaceRoot(manifest);
     return {
         workspaceRoot,
         defaultDirectory: path.dirname(defaultRoot),

@@ -84,14 +84,32 @@ test("a bundle can default its workspace to a visible folder in the home folder"
   }
 });
 
-test("a default workspace never takes over someone's folder of that name", async (t) => {
+test("PR #531 review: a folder of the user's with the default name is left alone and the next free name is used from then on", async (t) => {
   const declared = { ...manifest, defaultWorkspace: "~/visible-workspace" };
   const { root, source } = await fixture(t, declared);
-  await mkdir(path.join(root, "visible-workspace"));
-  await writeFile(path.join(root, "visible-workspace", "manifest.json"), "someone else's");
+  for (const name of ["visible-workspace", "visible-workspace-2"]) {
+    await mkdir(path.join(root, name));
+    await writeFile(path.join(root, name, "manifest.json"), "someone else's");
+  }
 
-  await assert.rejects(prepareBundleWorkspace(declared, source), /not a bundle workspace/);
+  const fallback = path.join(root, "visible-workspace-3");
+  assert.equal(await prepareBundleWorkspace(declared, source), fallback);
   assert.equal(await readFile(path.join(root, "visible-workspace", "manifest.json"), "utf8"), "someone else's");
+  assert.equal(await readFile(path.join(root, "visible-workspace-2", "manifest.json"), "utf8"), "someone else's");
+  // Still there once the user's folder is gone: the workspace doesn't jump back.
+  await rm(path.join(root, "visible-workspace"), { recursive: true });
+  assert.equal(await prepareBundleWorkspace(declared, source), fallback);
+  assert.equal((await workspaceLocationInfo(declared, fallback)).usingDefault, true);
+});
+
+test("a folder chosen in Settings that isn't a workspace fails saying how to recover, and is left alone", async (t) => {
+  const { root, source } = await fixture(t);
+  await mkdir(path.join(root, "chosen", "location.bundle"), { recursive: true });
+  await writeFile(path.join(root, "chosen", "location.bundle", "notes.txt"), "mine");
+  await saveWorkspacesDirectory(path.join(root, "chosen"));
+
+  await assert.rejects(prepareBundleWorkspace(manifest, source), (error) => error.message.includes("bundleWorkspacesDirectory") && error.message.includes(appSettingsPath()));
+  assert.equal(await readFile(path.join(root, "chosen", "location.bundle", "notes.txt"), "utf8"), "mine");
 });
 
 test("moving takes the contents along, and saved paths follow unless set elsewhere", async (t) => {

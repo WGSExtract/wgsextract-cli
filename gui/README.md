@@ -96,9 +96,11 @@ The app's own settings are stored in the platform Application Support directory 
 
 The WGS Extract workspace, known as `{{bundleWorkspace}}`, defaults to `~/wgs-extract` (`%USERPROFILE%\wgs-extract` on Windows). It holds the settings file, outputs, Reference and Genome Libraries, temporary files, and logs. These folders can become very large, so they are kept visible and in the user's own space rather than hidden in application data. A bundle sets this with `defaultWorkspace` in its manifest; other bundles use the Application Support directory.
 
+The app never takes over a folder of yours. If `~/wgs-extract` already exists and isn't a WGS Extract workspace, the app uses `~/wgs-extract-2` instead, or the next free name. It records that folder in its `settings.json`, so the workspace stays there. If the Workspaces Folder chosen in Settings holds such a folder, the app doesn't start. It reports the folder: move that folder away, or remove `bundleWorkspacesDirectory` from the app's `settings.json` to go back to the default location.
+
 To move the workspace, for example to a larger or faster drive, choose a **Workspaces Folder** on the Settings page and click **Move**. Its contents move with it, and paths shown under `{{bundleWorkspace}}` follow, while folders you set elsewhere stay where they are. Setup then reinstalls the CLI runtime in the new location, because the runtime holds absolute paths.
 
-Uninstalling asks before deleting the workspace, wherever it is, since its Reference and Genome Libraries may be shared. That includes a workspace in the Application Support directory, where bundles without a `defaultWorkspace` keep it: removing the app's data keeps it unless you chose to delete the workspace. A silent Windows uninstall keeps every workspace.
+Uninstalling asks before deleting the workspace, wherever it is, since its Reference and Genome Libraries may be shared. That includes a workspace in the Application Support directory, where bundles without a `defaultWorkspace` keep it: removing the app's data keeps it unless you chose to delete the workspace. A silent Windows uninstall keeps every workspace. So does the quick-uninstall script published with each Windows release.
 
 ## Distribution
 
