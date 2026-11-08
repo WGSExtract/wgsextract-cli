@@ -138,9 +138,10 @@ jobs:
           mkdir -p "$BIN"
           for binary in out/prefix/bin/wgse-*; do
             tool=$(basename "$binary")
-            # As in macos_aligners.yml: wgse-minimap2 has its own smoke test.
+            # As in macos_aligners.yml: wgse-minimap2 and wgse-minibwa have their own smoke tests.
             case $tool in
               wgse-minimap2) native/minimap2/tests/smoke.sh "$PWD/$binary" "$PWD/out/smoke-$tool" ;;
+              wgse-minibwa) native/minibwa/tests/smoke.sh "$PWD/$binary" "$PWD/$binary" "$PWD/out/smoke-$tool" ;;
               *) native/tests/smoke.sh "$PWD/$binary" "$PWD/out/smoke-$tool" metal ;;
             esac
             cp "$binary" "$BIN/"
