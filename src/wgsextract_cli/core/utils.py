@@ -37,7 +37,7 @@ from wgsextract_cli.core.process_registry import (
     process_group_kwargs,
     terminate_trees,
 )
-from wgsextract_cli.core.progress import Heartbeat, process_cpu_seconds
+from wgsextract_cli.core.progress import Heartbeat, Worker, process_cpu_seconds
 from wgsextract_cli.core.resource_policy import (
     get_resource_defaults as _get_resource_defaults,
 )
@@ -587,6 +587,10 @@ def _is_sigpipe(returncode: int) -> bool:
     return sigpipe is not None and returncode in (-sigpipe, 128 + sigpipe)
 
 
+def _running(proc: subprocess.Popen[bytes]) -> bool:
+    return proc.poll() is None
+
+
 def run_pipeline(
     stages: Sequence[PathInput | Sequence[object]],
     *,
@@ -715,7 +719,7 @@ def run_pipeline(
         if heartbeat or active_run_log():
             aligner = next(
                 (
-                    names[index]
+                    (names[index], procs[index])
                     for index, args in enumerate(progress_args)
                     if is_aligner(args)
                 ),
@@ -727,8 +731,9 @@ def run_pipeline(
                 scan=scan,
                 emit=heartbeat,
                 worker=(
-                    (
-                        aligner,
+                    Worker(
+                        aligner[0],
+                        functools.partial(_running, aligner[1]),
                         functools.partial(
                             process_cpu_seconds, *(proc.pid for proc in procs)
                         ),

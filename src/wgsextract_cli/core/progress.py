@@ -6,6 +6,7 @@ import re
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
+from typing import NamedTuple
 
 _READS = re.compile(r"(?:Processed|mapped)\s+(\d+)\s+(?:reads|sequences)", re.I)
 # Aligners report reads per batch; a batch of ultra-long ONT reads from a
@@ -35,6 +36,15 @@ def process_cpu_seconds(*pids: int) -> float | None:
     return total if alive else None
 
 
+class Worker(NamedTuple):
+    """The process doing a pipeline's counted work (the aligner): its name,
+    whether it is still running, and the CPU seconds of its pipeline."""
+
+    name: str
+    running: Callable[[], bool]
+    cpu_seconds: Callable[[], float | None]
+
+
 class Heartbeat:
     def __init__(
         self,
@@ -45,14 +55,16 @@ class Heartbeat:
         interval: float = 60,
         scan: Callable[[], None] | None = None,
         emit: bool = True,
-        worker: tuple[str, Callable[[], float | None]] | None = None,
+        worker: Worker | None = None,
         stall_after: float = STALL_AFTER,
     ) -> None:
         """``worker`` names the process doing the counted work and reads the
         CPU seconds of the pipeline around it, so a long wait for the next
         count says whether the pipeline is still working or stalled. A stage
         before the aligner may hold back its output for a long time (samtools
-        collate reads its whole input first) while the aligner waits."""
+        collate reads its whole input first) while the aligner waits. Once
+        the worker has exited, the stages after it (sorting, merging) are
+        neither a slow batch nor a stall."""
         self.label, self.total, self.unit = label, total, unit
         self.interval, self.scan = interval, scan
         self.emit = emit
@@ -140,10 +152,12 @@ class Heartbeat:
         pipeline is still using CPU (working, for example on a slow batch) or
         has been idle as long (stalled). Warns once per quiet spell and state;
         a busy pipeline only once the worker has reported a batch."""
-        if self.worker is None:
+        if self.worker is None or not self.worker.running():
             return ""
-        name, cpu_seconds = self.worker
-        now, used = time.monotonic(), cpu_seconds()
+        if self.total and self.completed >= self.total:
+            return ""
+        name = self.worker.name
+        now, used = time.monotonic(), self.worker.cpu_seconds()
         if used is None:
             return ""
         previous, self._cpu = self._cpu, (now, used)

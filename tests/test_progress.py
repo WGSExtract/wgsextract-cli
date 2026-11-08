@@ -176,3 +176,34 @@ def test_aligner_waiting_on_busy_upstream_stage_is_not_stalled(tmp_path, monkeyp
         with (tmp_path / "out").open("wb") as output:
             utils.run_pipeline([collate, aligner], stdout=output, heartbeat=True)
     assert [w.code for w in result.warnings] == []
+
+
+def test_sorting_after_the_aligner_exits_is_not_a_slow_batch(
+    tmp_path, caplog, monkeypatch
+):
+    """PR #576 review: samtools sort's final merge runs for many minutes after
+    bwa has exited; that is neither a slow aligner batch nor a stall."""
+    original = utils.Heartbeat
+    monkeypatch.setattr(
+        utils,
+        "Heartbeat",
+        lambda *a, **k: original(*a, interval=0.1, stall_after=0.5, **k),
+    )
+    aligner = [
+        sys.executable,
+        "-c",
+        "import sys\nsys.stderr.write('[M::process] Processed 1 reads\\n')\nprint('r')",
+        "bwa",
+    ]
+    sort = [
+        sys.executable,
+        "-c",
+        "import sys,time\nsys.stdin.read()\nt=time.time()\n"
+        "while time.time()-t<1.5: pass",
+    ]
+    caplog.set_level(logging.INFO)
+    with collecting(result := CommandResult(command="realign")):
+        with (tmp_path / "out").open("wb") as output:
+            utils.run_pipeline([aligner, sort], stdout=output, heartbeat=True)
+    assert "no progress for" not in caplog.text
+    assert [w.code for w in result.warnings] == []
