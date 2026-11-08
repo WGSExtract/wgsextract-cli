@@ -171,6 +171,9 @@ if $metal; then
     records upstream.km-reset.sam
     records metal.km-reset.sam
     cmp upstream.km-reset.sam.records metal.km-reset.sam.records
+    # PR #559 review: an arena over the limit while other reads hold memory in it
+    # must still be released, after those reads finish.
+    grep -Eq ' [1-9][0-9]* arena drains' metal.km-reset.log
     # Fills whose int8 differences wrap (a match score this large) must be redone on the CPU.
     "$upstream" -t 2 -ax map-hifi -A85 -B19 -O39,81 -E3,1 reference.fa hifi.fq \
         > upstream.wrap.sam 2> upstream.wrap.log

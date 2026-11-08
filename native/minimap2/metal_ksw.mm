@@ -246,6 +246,9 @@ struct Pending {
 struct Thread {
     void *km = nullptr;
     int reading = 0; // fibers in the middle of a read
+    // The arena needs minimap2's post-read reset while other reads still hold
+    // memory in it: start no reads until they finish, then replace it.
+    bool draining = false;
     std::mutex mutex;
     std::condition_variable cv;
     bool signaled = false;
@@ -318,7 +321,7 @@ public:
     void print_metrics() const;
     bool failed(std::string &reason) const;
 
-    std::atomic<size_t> taken{0};
+    std::atomic<size_t> taken{0}, drains{0};
 
 private:
     struct Buffers {
@@ -441,6 +444,11 @@ void Engine::thread_main(Thread &thread, Fiber *fibers, int n_fibers, For &job) 
     memset(&ez, 0, sizeof ez);
     bool exhausted = false;
     for (;;) {
+        if (thread.draining && thread.reading == 0) {
+            km_destroy(thread.km);
+            thread.km = km_init();
+            thread.draining = false;
+        }
         bool progressed = false;
         int waiting = 0;
         for (int k = 0; k < n_fibers; ++k) {
@@ -449,7 +457,7 @@ void Engine::thread_main(Thread &thread, Fiber *fibers, int n_fibers, For &job) 
                 fiber_resume(&f);
                 progressed = true;
             }
-            if (f.state == Fiber::Idle && !exhausted) {
+            if (f.state == Fiber::Idle && !exhausted && !thread.draining) {
                 const long i = job.next.fetch_add(1, std::memory_order_relaxed);
                 if (i >= job.n) exhausted = true;
                 else {
@@ -461,7 +469,7 @@ void Engine::thread_main(Thread &thread, Fiber *fibers, int n_fibers, For &job) 
             }
             waiting += f.state == Fiber::Waiting;
         }
-        if (progressed) continue;
+        if (progressed || (waiting == 0 && thread.draining)) continue;
         if (waiting == 0) break;
         if (help(km, ez, exhausted)) continue;
         const double t0 = now();
@@ -763,11 +771,11 @@ void Engine::print_metrics() const {
     fprintf(stderr, "[wgse-minimap2] Metal gap fills: %zu queued, %zu on the GPU (%zu used), "
         "%zu by idle CPU threads, %zu redone on the CPU (int8 overflow); %zu batches of %.0f fills, "
         "GPU %.2f s (%.2f G cells/s), batches in flight %.2f s, threads idle %.2f s; "
-        "%.0f MB of GPU buffers; %zu Metal interruptions\n",
+        "%.0f MB of GPU buffers; %zu Metal interruptions; %zu arena drains\n",
         queued_total_.load(), gpu_fills_.load(), taken.load(), helped_.load(), wrapped_.load(), batches,
         batches ? (double)gpu_fills_.load() / batches : 0.0, gpu,
         gpu > 0 ? cells_.load() / gpu / 1e9 : 0.0, busy_ns_.load() * 1e-9, idle_ns_.load() * 1e-9,
-        buffer_bytes_.load() / 1048576.0, wgse::metal::Runtime::interruptions());
+        buffer_bytes_.load() / 1048576.0, wgse::metal::Runtime::interruptions(), drains.load());
 }
 
 } // namespace
@@ -808,8 +816,20 @@ void wgse_ksw_unshare_km(void **km, void *own) {
     *km = own;
 }
 
-int wgse_ksw_km_check(void) {
-    return !current_fiber || current_fiber->read.owner->reading <= 1;
+int wgse_ksw_km_check(const void *km, int64_t cap_kalloc) {
+    if (!current_fiber) return 1;
+    Thread &thread = *current_fiber->read.owner;
+    if (thread.reading <= 1) {
+        thread.draining = false;
+        return 1;
+    }
+    km_stat_t st;
+    km_stat(km, &st);
+    if (!thread.draining && (st.largest > 1U << 28 || (cap_kalloc > 0 && st.capacity > (size_t)cap_kalloc))) {
+        thread.draining = true;
+        ++engine->drains;
+    }
+    return 0;
 }
 
 void wgse_ksw_km_reset(void *km) {
