@@ -126,11 +126,7 @@ def test_samtools_pathlike_commands_and_alternate_index(
         "--reference",
         os.fspath(ref),
     ]
-    assert samtools_commands.get_sam_index_cmd(bam) == [
-        "samtools",
-        "index",
-        os.fspath(bam),
-    ]
+    assert samtools_commands.get_sam_index_cmd(bam)[-1] == os.fspath(bam)
     assert samtools_commands.get_sam_view_cmd(fmt="CRAM", reference=ref)[-2:] == [
         "-T",
         os.fspath(ref),

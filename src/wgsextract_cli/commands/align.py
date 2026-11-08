@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, TypeVar
 
+import psutil
+
 from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api._params import job_values
 from wgsextract_cli.api.align import ALIGNERS as ALIGNERS
@@ -18,6 +20,7 @@ from wgsextract_cli.api.align import AlignParams
 from wgsextract_cli.core import bwa_mem2, ultima
 from wgsextract_cli.core.alignment_memory import (
     available_memory,
+    bwa_metal_memory,
     check_mapping_memory,
     estimate_mapping_memory,
 )
@@ -30,6 +33,7 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.genome_library import pair_stem
 from wgsextract_cli.core.messages import CLI_HELP, LOG_MESSAGES
+from wgsextract_cli.core.native_aligners import AlignerCommand, find_native_aligner
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.output_checks import record_alignment_output
 from wgsextract_cli.core.paths import absolute_path, java_local_path
@@ -135,6 +139,8 @@ class AlignJob:
     sample: str | None = None
     long_read: bool = False
     format: str = "BAM"
+    # auto or off: WGS Extract's Apple Silicon aligner builds (native_aligners).
+    native_aligners: str | None = None
     # samtools options decoding a CRAM r1 (realign's, or _cram_reference's).
     input_cram_opt: list[str] | None = None
     # Set once measured, so later stages don't read the reads again.
@@ -449,6 +455,7 @@ def streaming_mapping_fits(
     platform: str | None,
     read_length: float | None,
     additional_ram_bytes: int,
+    gpu_bytes: int = 0,
 ) -> bool:
     estimate = estimate_mapping_memory(
         ref,
@@ -459,6 +466,7 @@ def streaming_mapping_fits(
         reads=reads,
         platform=platform,
         read_length=read_length,
+        gpu_bytes=gpu_bytes,
     )
     return estimate.total + additional_ram_bytes <= available_memory()
 
@@ -484,6 +492,84 @@ def short_read_sort_memory(aligner: str, memory: str, *, log: bool = True) -> st
             )
         return "256M"
     return memory
+
+
+# Memory left for macOS and other applications when wgse-bwa --metal must fit.
+_METAL_HEADROOM_BYTES = 2 * 1024**3
+_METAL_SORT_MEMORY_STEPS_MIB = (768, 512, 384, 256)
+
+
+def native_short_read_aligner(
+    job: AlignJob,
+    tool: str,
+    ref: str,
+    *,
+    threads: str,
+    memory: str,
+    samblaster: bool,
+    reads: int | None,
+    read_length: float | None,
+    additional_ram_bytes: int = 0,
+) -> tuple[AlignerCommand, str]:
+    """How to run bwa or bwa-mem2, and the sort memory per thread to use.
+
+    Its Apple Silicon build (wgse-bwa, wgse-bwa-mem2) writes the same
+    alignments; it runs on the Metal GPU when it can. wgse-bwa's GPU backend
+    needs bwa_metal_memory more: when the pipeline's estimate with it exceeds
+    this Mac's RAM less headroom, sort memory is lowered (which leaves the
+    output unchanged), and when even 256M doesn't fit wgse-bwa runs on the CPU.
+    wgse-bwa-mem2 --metal needs less than bwa-mem2, which doesn't load .0123.
+    """
+    native = find_native_aligner(tool, job.native_aligners)
+    if native is None:
+        return AlignerCommand(tool), memory
+    if not native.metal_available:
+        aligner = AlignerCommand(tool, native)
+    elif tool != "bwa":
+        aligner = AlignerCommand(tool, native, metal=True)
+    else:
+        gpu = bwa_metal_memory(ref, reads)
+        budget = psutil.virtual_memory().total - _METAL_HEADROOM_BYTES
+        amount, unit = parse_memory(memory)
+        mib = amount * (1024 if unit == "G" else 1)
+        candidates = [memory] + [
+            f"{step}M" for step in _METAL_SORT_MEMORY_STEPS_MIB if step < mib
+        ]
+
+        def needed(sort_memory: str) -> int:
+            estimate = estimate_mapping_memory(
+                ref,
+                tool,
+                threads=threads,
+                memory=sort_memory,
+                samblaster=samblaster,
+                reads=reads,
+                platform=job.platform,
+                read_length=read_length,
+                gpu_bytes=gpu,
+            )
+            return estimate.total + additional_ram_bytes
+
+        fitting = next((m for m in candidates if needed(m) <= budget), None)
+        if fitting is None:
+            logging.info(
+                f"Running {native.binary} on the CPU: with its Metal GPU backend "
+                f"the alignment is estimated to need {needed(candidates[-1]) / 1024**3:.1f} "
+                f"GiB, more than this Mac's {budget / 1024**3:.1f} GiB of RAM "
+                "less headroom."
+            )
+            aligner = AlignerCommand(tool, native)
+        else:
+            if fitting != memory:
+                logging.info(
+                    f"Sorting with {fitting} per thread (not {memory}) to leave "
+                    f"room for {native.binary}'s Metal GPU backend; the output "
+                    "is the same."
+                )
+            aligner = AlignerCommand(tool, native, metal=True)
+            memory = fitting
+    aligner.announce()
+    return aligner, memory
 
 
 def aligned_output_path(
@@ -772,9 +858,10 @@ def _bwa_setup(
     *,
     read_paths: list[str] | None = None,
     additional_ram_bytes: int = 0,
-) -> tuple[_AlignSetup, str]:
-    """The alignment setup and bwa or bwa-mem2 (short_read_aligner's choice),
-    with the reference's index and ALT contig list in place."""
+) -> tuple[_AlignSetup, AlignerCommand]:
+    """The alignment setup and how to run bwa or bwa-mem2 (short_read_aligner's
+    choice, or its Apple Silicon build), with the reference's index and ALT
+    contig list in place."""
     tool = "bwa-mem2" if job.aligner == "bwa-mem2" else "bwa"
     setup = _prepare_alignment(job, [tool, "samtools"], task, read_paths=read_paths)
     samblaster = bool(job.r2) and get_tool_path("samblaster") is not None
@@ -797,7 +884,21 @@ def _bwa_setup(
     )
     if tool == "bwa-mem2":
         ensure_fasta_index(setup.ref)
-    setup = setup._replace(memory=short_read_sort_memory(tool, setup.memory))
+    aligner, memory = native_short_read_aligner(
+        job,
+        tool,
+        setup.ref,
+        threads=setup.threads,
+        memory=short_read_sort_memory(tool, setup.memory),
+        samblaster=samblaster,
+        reads=reads,
+        read_length=read_length,
+        additional_ram_bytes=additional_ram_bytes,
+    )
+    setup = setup._replace(memory=memory)
+    gpu_bytes = (
+        bwa_metal_memory(setup.ref, reads) if aligner.metal and tool == "bwa" else 0
+    )
     if additional_ram_bytes and not streaming_mapping_fits(
         setup.ref,
         tool,
@@ -808,6 +909,7 @@ def _bwa_setup(
         platform=job.platform,
         read_length=read_length,
         additional_ram_bytes=additional_ram_bytes,
+        gpu_bytes=gpu_bytes,
     ):
         raise StreamingMemoryUnavailable("Collation exceeds available alignment RAM")
     preflight_resources(
@@ -827,6 +929,7 @@ def _bwa_setup(
             platform=job.platform,
             read_length=read_length,
             additional_ram_bytes=additional_ram_bytes,
+            gpu_bytes=gpu_bytes,
             output_format=job.format,
             duplicate_marking=(
                 "gatk-flow"
@@ -846,6 +949,7 @@ def _bwa_setup(
             platform=job.platform,
             read_length=read_length,
             additional_ram_bytes=additional_ram_bytes,
+            gpu_bytes=gpu_bytes,
         )
     except WGSExtractError as error:
         if additional_ram_bytes:
@@ -859,7 +963,7 @@ def _bwa_setup(
         ensure_bwa_index(setup.ref)
     ensure_bwa_alt_file(setup.ref)
     print_warning("ButtonBWAAlign", threads=setup.threads)
-    return setup, tool
+    return setup, aligner
 
 
 def align_bwa(
@@ -870,7 +974,7 @@ def align_bwa(
     additional_ram_bytes: int = 0,
 ) -> None:
     """BWA-MEM alignment with bwa or bwa-mem2 (short_read_aligner's choice)."""
-    setup, tool = _bwa_setup(
+    setup, aligner = _bwa_setup(
         job,
         "BWA alignment",
         read_paths=read_paths,
@@ -884,11 +988,13 @@ def align_bwa(
         LOG_MESSAGES["aligning_reads"].format(
             input=read_paths[0] if read_paths else job.r1,
             output=out_bam,
-            tool=tool,
+            tool=aligner.binary,
         )
     )
+    tool = aligner.tool
+    aligner.record()
     align_cmd = [
-        tool, "mem", "-K", BWA_BATCH_BASES, "-t", setup.threads,
+        *aligner.argv(), "mem", "-K", BWA_BATCH_BASES, "-t", setup.threads,
         "-R", read_group(setup.stem, job.sample, job.platform),
     ]  # fmt: skip
     align_cmd += [setup.ref, setup.r1]
@@ -911,7 +1017,7 @@ def align_bwa(
             on_written=_written_hook(job, tool),
         )
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
-        raise WGSExtractError(f"{tool} alignment failed: {e}") from e
+        raise WGSExtractError(f"{aligner.binary} alignment failed: {e}") from e
     record_alignment(out_bam, tool, setup.ref)
 
 
@@ -948,14 +1054,18 @@ def align_ultima(job: AlignJob, cram_opt: list[str] | None = None) -> None:
     -Y soft-clips supplementary alignments, so every record keeps the whole
     read its tp/t0 arrays describe. Duplicates are marked in flow mode."""
     require_native_tool("gatk")
-    setup, tool = _bwa_setup(job, "Ultima alignment")
+    setup, aligner = _bwa_setup(job, "Ultima alignment")
+    tool = aligner.tool
     reads = setup.r1
     ext = ".cram" if job.format == "CRAM" else ".bam"
     out_path = str(Path(setup.outdir, f"{setup.stem}_aligned{ext}"))
     logging.info(
-        LOG_MESSAGES["aligning_reads"].format(input=reads, output=out_path, tool=tool)
+        LOG_MESSAGES["aligning_reads"].format(
+            input=reads, output=out_path, tool=aligner.binary
+        )
     )
-    bwa = [tool, "mem", "-K", BWA_BATCH_BASES, "-t", setup.threads, "-Y"]
+    aligner.record()
+    bwa = [*aligner.argv(), "mem", "-K", BWA_BATCH_BASES, "-t", setup.threads, "-Y"]
     with tempfile.TemporaryDirectory(
         dir=configured_temp_directory() or setup.outdir, prefix=".wgse_ug_"
     ) as tmp:
@@ -1000,7 +1110,7 @@ def align_ultima(job: AlignJob, cram_opt: list[str] | None = None) -> None:
                 expected_reads=job.read_count,
             )
         except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
-            raise WGSExtractError(f"{tool} alignment failed: {e}") from e
+            raise WGSExtractError(f"{aligner.binary} alignment failed: {e}") from e
     record_alignment(out_path, tool, setup.ref)
 
 
@@ -1360,7 +1470,13 @@ def align_minimap2(job: AlignJob) -> None:
         preset=preset,
         input_bytes=input_bytes,
     )
-    align_cmd = ["minimap2", "-ax", preset, "-t", setup.threads]
+    # wgse-minimap2 has no GPU backend: it runs on the CPU, like minimap2.
+    aligner = AlignerCommand(
+        "minimap2", find_native_aligner("minimap2", job.native_aligners)
+    )
+    aligner.announce()
+    aligner.record()
+    align_cmd = [*aligner.argv(), "-ax", preset, "-t", setup.threads]
     upstream: list[Sequence[object]] = []
     reads = setup.r1
     # realign --keep-fastq aligns a FASTQ, so it passes its BAM/CRAM's.
@@ -1403,7 +1519,7 @@ def align_minimap2(job: AlignJob) -> None:
             on_written=_written_hook(job, "minimap2"),
         )
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
-        raise WGSExtractError(f"Minimap2 alignment failed: {e}") from e
+        raise WGSExtractError(f"{aligner.binary} alignment failed: {e}") from e
     record_alignment(out_bam, "minimap2", setup.ref)
 
 

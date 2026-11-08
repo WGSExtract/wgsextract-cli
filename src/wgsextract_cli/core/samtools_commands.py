@@ -98,7 +98,7 @@ def get_sam_index_cmd(file_path: PathInput, threads: str = "1") -> list[str]:
     file = fspath(file_path)
     if file.lower().endswith(".bam") and _use_sambamba():
         return ["sambamba", "index", "-t", threads, file]
-    return ["samtools", "index", file]
+    return ["samtools", "index", "-@", threads, file]
 
 
 def get_sam_view_cmd(

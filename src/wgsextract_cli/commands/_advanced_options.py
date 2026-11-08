@@ -19,7 +19,13 @@ COMMON_ADVANCED = frozenset(
     }
 )
 
-_ALIGNERS = ("--preset", "--long-read", "--gpu", "--no-gpu-memory-check")
+_ALIGNERS = (
+    "--preset",
+    "--long-read",
+    "--gpu",
+    "--no-gpu-memory-check",
+    "--native-aligners",
+)
 _VEP = ("--vep-cache-version", "--vcf-type", "--add-chr", "--vep-args")
 
 ADVANCED_OPTIONS: dict[str, tuple[str, ...]] = {

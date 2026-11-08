@@ -86,6 +86,11 @@ KNOWN_SETTINGS = {
     "keep_awake": (False, "Best-effort sleep inhibition while commands run (opt-in)"),
     "haplogrep_executable": (None, "Path to the Haplogrep 3 executable or JAR"),
     "dorado_executable": (None, "Path to ONT's dorado executable for `basecall`"),
+    "native_aligners": (
+        None,
+        "Apple Silicon: `align`/`realign` use wgse-bwa, wgse-bwa-mem2 and "
+        "wgse-minimap2 when on PATH (auto, the default) or never (off)",
+    ),
     "dorado_models_directory": (
         None,
         "Folder `basecall` downloads Dorado models into (default: the "

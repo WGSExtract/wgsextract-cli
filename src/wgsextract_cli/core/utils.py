@@ -626,7 +626,18 @@ def run_pipeline(
     )
 
     def is_aligner(args: Sequence[str]) -> bool:
-        return any(Path(arg).stem in {"bwa", "bwa-mem2", "minimap2"} for arg in args)
+        return any(
+            Path(arg).stem
+            in {
+                "bwa",
+                "bwa-mem2",
+                "minimap2",
+                "wgse-bwa",
+                "wgse-bwa-mem2",
+                "wgse-minimap2",
+            }
+            for arg in args
+        )
 
     has_aligner = any(is_aligner(args) for args in progress_args)
 

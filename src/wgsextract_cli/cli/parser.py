@@ -56,6 +56,8 @@ DEFAULT_CONFIG = """# WGS Extract Configuration
 # haplocheck_path = "/path/to/haplocheck"
 # haplogrep_tree = "phylotree-fu-rcrs"  # or phylotree-rcrs, mitotree-rcrs
 # jar_dir = "/path/to/jars"
+# Apple Silicon aligner builds on PATH (native/README.md): "auto" or "off"
+# native_aligners = "auto"
 
 # --- Y haplogroup trees (lineage y-haplogroup) ---
 # y_tree = "yfull"  # or yfull_v10, ftdna, isogg, or a [y_trees] id (end of file)
