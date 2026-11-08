@@ -9,11 +9,13 @@ they are qualified on full genomes (#364).
 | --- | --- | --- |
 | `wgse-bwa` | BWA 0.7.19 | Native arm64 build. CPU by default (unmodified upstream code); `--metal` is **experimental**. Low memory: about 6 GB for a human index. |
 | `wgse-bwa-mem2` | BWA-MEM2 2.3 | arm64 build through sse2neon. CPU by default; `--metal` is **experimental**. Needs much more memory than BWA (see below). |
+| `wgse-bwa-mem3` | bwa-mem3 0.16.0 | Self-contained arm64 build of bwa-mem3, a faster BWA-MEM2 descendant that reads the BWA-MEM2 index and can write BWA's or BWA-MEM2's exact records (`--compat`). CPU only; no `--metal` yet. |
 | `wgse-minimap2` | minimap2 2.31 | arm64 build through sse2neon, with faster index loading and building, seeding and anchor sorting on the CPU. No `--metal` yet. |
 
-All write the same alignments as their upstream release, with or without
-`--metal`; only the `@PG` version gains a `-wgse-<version>` suffix (and its
-command line records any backend option). Each package has its own version,
+All write the same alignments as their upstream release (in each of
+bwa-mem3's output modes), with or without `--metal`; only the `@PG` version
+gains a `-wgse-<version>` suffix (and its command line records any backend
+option). Each package has its own version,
 printed by `--version`.
 
 ## Installing
@@ -41,6 +43,8 @@ slower GPU kernels and no overlap of mapping and pairing;
 `--metal` seeds and locates on the GPU but rescues mates on the CPU;
 `macos-aligners-2` has `wgse-bwa` 0.2.0, whose `--metal` only seeds on the
 GPU; `macos-aligners-1` has `wgse-bwa` 0.1.0, which aligns on the CPU only.
+`wgse-bwa-mem3` is not in a prerelease yet; build it from source (see
+Building).
 
 Download into an empty directory with `gh` (or `curl`), which avoids the
 browser quarantine flag that Gatekeeper applies to these ad-hoc-signed
@@ -65,6 +69,7 @@ for dir in wgse-*-macos-arm64; do PATH="$PWD/$dir/bin:$PATH"; done
 export PATH
 wgse-bwa capabilities --json
 wgse-bwa-mem2 capabilities --json
+wgse-bwa-mem3 capabilities --json
 wgse-minimap2 capabilities --json
 ```
 
@@ -86,6 +91,11 @@ wgse-bwa-mem2 mem -t 9 hs38.fa R1.fastq.gz R2.fastq.gz > out.sam
 wgse-bwa-mem2 --metal mem -t 9 hs38.fa R1.fastq.gz R2.fastq.gz > out.sam
 wgse-bwa-mem2 capabilities --json
 
+wgse-bwa-mem3 index hs38.fa   # or reuse a BWA-MEM2 index; .0123 is not needed
+wgse-bwa-mem3 mem -t 9 hs38.fa R1.fastq.gz R2.fastq.gz > out.sam
+wgse-bwa-mem3 mem -t 9 --compat=bwa-mem hs38.fa R1.fastq.gz R2.fastq.gz > out.sam
+wgse-bwa-mem3 capabilities --json
+
 wgse-minimap2 -t 9 -ax map-hifi hs38.fa hifi.fastq.gz > out.sam
 wgse-minimap2 -x map-ont -d hs38.map-ont.mmi hs38.fa
 wgse-minimap2 -t 9 -ax map-ont hs38.map-ont.mmi ont.fastq.gz > out.sam
@@ -101,6 +111,16 @@ backend of `mem` (other commands ignore them):
   complete and correct);
 - `--backend auto`: like `--metal`, but falls back to the CPU in both cases
   with only a note on stderr.
+
+`wgse-bwa-mem3` accepts the same options, but has no Metal backend yet:
+`--metal` exits 1 and `--backend auto` runs on the CPU with a note on stderr.
+Its `mem` is upstream bwa-mem3's: by default it writes bwa-mem3's records
+(BWA-MEM2's, with different MAPQs and `MQ`/`HN` tags), `--compat=bwa-mem` and
+`--compat=bwa-mem2` write exactly BWA's and BWA-MEM2's records, and `--fast`
+trades alignments for speed. It is built with upstream's own dependencies
+(htslib, libsais, mimalloc, zlib-ng, libdeflate) linked in, so it needs no
+other libraries. Its `index` builds the suffix array on one thread (upstream
+uses OpenMP, which Apple clang lacks); the files are the same.
 
 What runs on the GPU:
 
@@ -270,6 +290,11 @@ hs38 on the CPU, 10.8 GB with `--metal`), plus 1 GiB, plus 24 bytes (CPU) or
 default). That fits the peaks above. The run then still goes ahead with the
 same `-K` and output, but expect heavy paging. For hs38 a 16 GB Mac gets the
 warning on the CPU but not with `--metal` and up to 8 threads.
+
+`wgse-bwa-mem3` reads the same index as `wgse-bwa-mem2`, without the 6.2 GB
+`.0123` file, and like Bioconda's bwa-mem3 0.16.0 peaked at about 10.9 GiB on
+hs38 with 9 threads and `-K 10000000`. Its denser suffix-array index
+(`bwa-mem3 re-sa -u 2`) peaked at 14.5 GiB and was slower on this Mac.
 
 `wgse-minimap2` uses within about 1 GiB of upstream minimap2's memory: with 9 threads on
 hs38 it peaked at 13–15 GiB for HiFi reads, 10–14 GiB for ONT reads and
@@ -577,7 +602,7 @@ cmake --install out/native --prefix out/native-prefix
 `-DBUILD_TESTING=OFF` builds the release executables without tests or the
 hidden GPU tuning flags. Metal tests are skipped when no Metal device is
 available. `.github/workflows/macos_aligners.yml` builds, tests and packages
-all three executables, and publishes them when run with a `macos-aligners-N` tag.
+all four executables, and publishes them when run with a `macos-aligners-N` tag.
 
 ## Benchmarking on GitHub runners
 
@@ -699,7 +724,10 @@ adapted from BWA's MIT-licensed `bwt.c`, `bwamem.c`, `bwamem_pair.c` and
 `ksw.c` (`METAL-SEEDING-LICENSE`).
 `wgse-bwa-mem2` combines BWA-MEM2 (MIT), sse2neon
 (MIT) and safestringlib (MIT) with the code in `bwa-mem2/` (GPL-3.0-or-later,
-like this repository). `wgse-minimap2` combines minimap2 (MIT) and sse2neon
+like this repository). `wgse-bwa-mem3` combines bwa-mem3 (MIT), sse2neon
+(MIT), libsais (Apache-2.0), mimalloc (MIT), zlib-ng (zlib), libdeflate (MIT)
+and htslib (MIT/Expat and modified BSD) with the code in `bwa-mem3/` (GPL-3.0-or-later).
+`wgse-minimap2` combines minimap2 (MIT) and sse2neon
 (MIT) with the code in `minimap2/` (GPL-3.0-or-later). Its sketching code is
 adapted from minimap2's `sketch.c` (`MINIMAP2-LICENSE`) and its radix sort from
 minimap2's `ksort.h`, whose own MIT notice ships as `KSORT-LICENSE`. Each package

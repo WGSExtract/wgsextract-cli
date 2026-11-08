@@ -9,7 +9,8 @@
 #   --hs38 DIR     hs38.fa with its BWA index and hs38.fa.{bwt.2bit.64,0123}
 #   --reads        the 5M-pair reads (tier full-5m)
 #   --subset       their first 200k pairs (tier full)
-#   --bin DIR      wgse-bwa and wgse-bwa-mem2 (CPU backends, identical to upstream)
+#   --bin DIR      wgse-bwa, wgse-bwa-mem2 and wgse-bwa-mem3 (CPU backends, identical
+#                  to upstream)
 #   --out DIR      writes data/ (the layout bench.sh expects), assets/ (files
 #                  to upload), data.tsv and expected.tsv
 set -euo pipefail
@@ -103,14 +104,16 @@ for ext in amb ann bwt pac sa bwt.2bit.64 0123; do
 done
 
 # 3. Expected hashes. The CPU backends are upstream's code; for the 5M pairs
-#    --metal (byte-identical, and much faster) stands in for them.
+#    --metal (byte-identical, and much faster) stands in for them where there is one.
 expect() {
-    local tier=$1 ref=$2 reads=$3 backend=$4 tool file
-    for tool in wgse-bwa wgse-bwa-mem2; do
+    local tier=$1 ref=$2 reads=$3 backend=$4 tool file options
+    for tool in wgse-bwa wgse-bwa-mem2 wgse-bwa-mem3; do
         file=$out/$tier.$tool.hash
         [ -s "$file" ] && continue
+        options=$backend
+        [ "$tool" = wgse-bwa-mem3 ] && options=""
         # shellcheck disable=SC2086
-        "$bin/$tool" $backend mem -t "$threads" -K "$K" "$data/$ref/$ref.fa" \
+        "$bin/$tool" $options mem -t "$threads" -K "$K" "$data/$ref/$ref.fa" \
             "$data/reads/${reads}_R1.fastq.gz" "$data/reads/${reads}_R2.fastq.gz" \
             2> "$out/$tier.$tool.stderr" | sam_hash > "$file.partial"
         mv "$file.partial" "$file"
@@ -123,7 +126,7 @@ expect full-5m hs38 hg002-5m --metal
 {
     printf '# tier\ttool\tK\thash of the SAM without @PG lines (shasum -a 256, first 16)\n'
     for tier in small medium full full-5m; do
-        for tool in wgse-bwa wgse-bwa-mem2; do
+        for tool in wgse-bwa wgse-bwa-mem2 wgse-bwa-mem3; do
             [ -s "$out/$tier.$tool.hash" ] && printf '%s\t%s\t%s\t%s\n' "$tier" "$tool" "$K" "$(cat "$out/$tier.$tool.hash")"
         done
     done
