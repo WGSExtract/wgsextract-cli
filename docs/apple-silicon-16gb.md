@@ -25,9 +25,10 @@ the user's processes, sampled every 30 s.
 
 ## Summary
 
-A whole 35x genome went from a BAM file to a personal report in **7.3 hours**
-on the base 16 GB M1, with default settings and its owner's apps still open.
-Nothing ran out of memory or disk.
+A whole genome went from a BAM file to a personal report in **7.3 hours** on
+the base 16 GB M1, with default settings and its owner's apps still open.
+Nothing ran out of memory or disk. The genome, HG002, was sequenced to 35x,
+a little deeper than the usual 30x, so a 30x genome should take a little less.
 
 - **`realign` takes 6 hours**, and the GPU sets the pace. Calling SNPs and
   indels takes 68 minutes. Every other step takes under 4 minutes.
@@ -50,7 +51,8 @@ Two passes ran every command family:
   - the Y-DNA and typing commands need more reads than a fake genome has;
   - `microarray` needs the reference library (`ref bootstrap`).
 - **5 million real HG002 read pairs** (about 0.5x) aligned to hs38. Everything
-  passed except Y haplogroup and Y-STR, which can't call from 1.9x of chrY.
+  passed except Y haplogroup and Y-STR, which need more than the 1.9x of
+  chrY these reads gave.
 
 | Step (5M read pairs) | Time | Peak memory |
 | :--- | ---: | ---: |
@@ -100,7 +102,7 @@ Experiments that left the defaults alone:
   - DeepVariant needs Docker, and on a Mac it runs the x86-64 image under
     emulation.
 
-## A whole 30x genome
+## A whole genome (HG002 at 35x)
 
 The input was the public GIAB HG002 NovaSeq PCR-free 35x BAM (830 million
 reads, 43 GiB) from Google's DeepVariant case study. `realign` aligned it
@@ -136,7 +138,7 @@ step.
   never fell below 16%. A rerun on the current
   version skips the index step, because `align` and `realign` now index while
   sorting ([#545](https://github.com/WGSExtract/wgsextract-cli/issues/545)).
-- **Disk.** Use rose by at most 166 GiB above the input: the FASTQs (deleted
+- **Disk.** Disk use rose by at most 166 GiB above the input: the FASTQs (deleted
   once aligned), the sort's temporary files and the 46 GB BAM. `realign`'s
   pre-flight asked for about 185 GB.
 - **Calling** used 4 workers, the default for the M1's four performance
