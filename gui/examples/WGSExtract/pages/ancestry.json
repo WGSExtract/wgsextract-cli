@@ -30,16 +30,62 @@
           "tooltip": "controls.ancestry.ancestry-inputs.bam_path.tooltip"
         },
         {
-          "id": "yleaf_path",
-          "label": "controls.ancestry.ancestry-inputs.yleaf_path.label",
-          "kind": "path",
-          "tooltip": "controls.ancestry.ancestry-inputs.yleaf_path.tooltip"
-        },
-        {
           "id": "yleaf_pos",
           "label": "controls.ancestry.ancestry-inputs.yleaf_pos.label",
           "kind": "path",
           "tooltip": "controls.ancestry.ancestry-inputs.yleaf_pos.tooltip"
+        },
+        {
+          "id": "yleaf_tree",
+          "label": "controls.ancestry.ancestry-inputs.yleaf_tree.label",
+          "kind": "dropdown",
+          "tooltip": "controls.ancestry.ancestry-inputs.yleaf_tree.tooltip",
+          "options": [
+            {
+              "id": "",
+              "title": "options.ancestry.ancestry-inputs.yleaf_tree.default.title"
+            },
+            {
+              "id": "yfull",
+              "title": "options.ancestry.ancestry-inputs.yleaf_tree.yfull.title"
+            },
+            {
+              "id": "yfull_v10",
+              "title": "options.ancestry.ancestry-inputs.yleaf_tree.yfull_v10.title"
+            },
+            {
+              "id": "ftdna",
+              "title": "options.ancestry.ancestry-inputs.yleaf_tree.ftdna.title"
+            },
+            {
+              "id": "isogg",
+              "title": "options.ancestry.ancestry-inputs.yleaf_tree.isogg.title"
+            }
+          ]
+        },
+        {
+          "id": "yleaf_ancient",
+          "label": "controls.ancestry.ancestry-inputs.yleaf_ancient.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--ancient",
+              "title": "controls.ancestry.ancestry-inputs.yleaf_ancient.label"
+            }
+          ],
+          "tooltip": "controls.ancestry.ancestry-inputs.yleaf_ancient.tooltip"
+        },
+        {
+          "id": "yleaf_no_ref_inference",
+          "label": "controls.ancestry.ancestry-inputs.yleaf_no_ref_inference.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--no-ref-inference",
+              "title": "controls.ancestry.ancestry-inputs.yleaf_no_ref_inference.label"
+            }
+          ],
+          "tooltip": "controls.ancestry.ancestry-inputs.yleaf_no_ref_inference.tooltip"
         },
         {
           "id": "haplogrep_path",
@@ -103,9 +149,7 @@
               "lineage",
               "y-haplogroup",
               "--input",
-              "{{bam_path}}",
-              "--yleaf-path",
-              "{{yleaf_path}}"
+              "{{bam_path}}"
             ],
             "optionalArguments": [
               [
@@ -114,6 +158,16 @@
               [
                 "--pos-file",
                 "{{yleaf_pos}}"
+              ],
+              [
+                "--tree",
+                "{{yleaf_tree}}"
+              ],
+              [
+                "{{yleaf_ancient}}"
+              ],
+              [
+                "{{yleaf_no_ref_inference}}"
               ]
             ]
           }

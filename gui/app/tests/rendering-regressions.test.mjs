@@ -47,6 +47,13 @@ test("WGSExtract new options do not change default argv or selected formats", ()
   }
 });
 
+test("WGSExtract Run Yleaf sends only native y-haplogroup flags (#538)", () => {
+  assert.deepEqual(wgsCommand("ancestry", "run-yleaf"), ["lineage", "y-haplogroup", "--input", "sample.bam"]);
+  assert.deepEqual(wgsCommand("ancestry", "run-yleaf", { yleaf_tree: "isogg" }, {
+    yleaf_ancient: ["--ancient"], yleaf_no_ref_inference: ["--no-ref-inference"],
+  }).slice(4), ["--tree", "isogg", "--ancient", "--no-ref-inference"]);
+});
+
 test("WGSExtract opt-in policies render flags and preserve manifest paths with spaces", () => {
   const args = wgsCommand("microarray", "microarray-generate", {
     microarray_min_gq: "20", microarray_min_dp: "5",

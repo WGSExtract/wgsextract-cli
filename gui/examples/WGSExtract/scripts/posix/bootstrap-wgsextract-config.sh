@@ -13,7 +13,7 @@ json_escape() {
 
 printf '{\n'
 printf '  "path": "%s",\n' "$(json_escape "$config_path")"
-printf '  "contents": "output_directory = \\"%s\\"\\nreference_library = \\"%s\\"\\ngenome_library = \\"%s\\"\\nreference_fasta = \\"\\"\\ndefault_input_vcf = \\"\\"\\nmother_vcf_path = \\"\\"\\nfather_vcf_path = \\"\\"\\nyleaf_executable = \\"\\"\\nhaplogrep_executable = \\"\\"\\n"\n' \
+printf '  "contents": "output_directory = \\"%s\\"\\nreference_library = \\"%s\\"\\ngenome_library = \\"%s\\"\\nreference_fasta = \\"\\"\\ndefault_input_vcf = \\"\\"\\nmother_vcf_path = \\"\\"\\nfather_vcf_path = \\"\\"\\nhaplogrep_executable = \\"\\"\\n"\n' \
   "$(json_escape "$output_path")" \
   "$(json_escape "$reference_path")" \
   "$(json_escape "$genome_library_path")"

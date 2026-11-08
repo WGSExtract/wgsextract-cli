@@ -6,10 +6,11 @@ against a fake Pixi that records the final `pixi run wgsextract ...` command
 line. Those command lines are then parsed with the CLI's own argparse parser,
 so a flag the CLI dropped or renamed fails here instead of in the app.
 
-The parser check needs the wgsextract CLI: the runtime installed into the
-bundle by setup, or a `wgsextract` console script on PATH (for example the one
-in a wgsextract-cli checkout's `.pixi/envs/default/bin`). Without either it is
-skipped. Run with `python -m unittest discover -s tests/wgsextract`.
+The parser check imports the CLI from this repository's `src/`, with the first
+interpreter that has the CLI's dependencies: this one, the repository's Pixi
+environment, the runtime setup installed into the bundle, or the one behind a
+`wgsextract` on PATH. Without one it is skipped locally and fails in CI.
+Run with `python -m unittest discover -s tests/wgsextract`.
 """
 
 from __future__ import annotations
@@ -27,6 +28,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BUNDLE = REPO_ROOT / "examples" / "WGSExtract"
+CLI_ROOT = REPO_ROOT.parent
+CLI_ENV = {**os.environ, "PYTHONPATH": str(CLI_ROOT / "src")}
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
 from json_comments import loads_json_with_comments
@@ -108,8 +111,12 @@ json.dump(results, sys.stdout)
 
 
 def find_cli_python() -> Path | None:
-    """Return an interpreter that can import wgsextract_cli, if any."""
-    candidates = [BUNDLE / "runtime/wgsextract-cli/app/.pixi/envs/default/bin/python"]
+    """Return an interpreter that imports this repository's CLI, if any."""
+    candidates = [
+        Path(sys.executable),
+        CLI_ROOT / ".pixi/envs/default/bin/python",
+        BUNDLE / "runtime/wgsextract-cli/app/.pixi/envs/default/bin/python",
+    ]
     console_script = shutil.which("wgsextract")
     if console_script:
         first_line = Path(console_script).read_bytes().split(b"\n", 1)[0]
@@ -121,6 +128,7 @@ def find_cli_python() -> Path | None:
         probe = subprocess.run(
             [str(candidate), "-c", "import wgsextract_cli.cli.parser"],
             capture_output=True,
+            env=CLI_ENV,
             check=False,
         )
         if probe.returncode == 0:
@@ -185,8 +193,10 @@ class BundleSandbox:
             "fastq_r2": r2,
             "pet_fastq_r1": r1,
             "pet_fastq_r2": r2,
-            "yleaf_path": self._file("tools/yleaf"),
             "yleaf_pos": self._file("tools/yleaf_positions.txt"),
+            "yleaf_tree": "isogg",
+            "yleaf_ancient": "--ancient",
+            "yleaf_no_ref_inference": "--no-ref-inference",
             "haplogrep_path": self._file("tools/haplogrep"),
             "vcf_region": "chrM:1-16569",
             "extract_region": "chrM",
@@ -369,10 +379,13 @@ class BundleCommandTests(unittest.TestCase):
     def test_bundle_commands_parse_with_current_cli(self) -> None:
         python = find_cli_python()
         if python is None:
-            self.skipTest(
-                "wgsextract CLI not found: run WGSExtract setup or put a wgsextract-cli "
-                "checkout's .pixi/envs/default/bin on PATH"
+            message = (
+                f"no Python can import the CLI from {CLI_ROOT / 'src'}: install its "
+                "dependencies (`pip install -e .` or `pixi install` at the repository root)"
             )
+            if os.environ.get("CI"):
+                self.fail(message)
+            self.skipTest(message)
         invocations = self.cli_invocations()
         result = subprocess.run(
             [str(python), "-c", PARSE_CHECK],
@@ -381,7 +394,7 @@ class BundleCommandTests(unittest.TestCase):
             ),
             capture_output=True,
             text=True,
-            env={**os.environ, "HOME": str(self.sandbox.root)},
+            env={**CLI_ENV, "HOME": str(self.sandbox.root)},
             check=True,
         )
         for (label, argv), error in zip(

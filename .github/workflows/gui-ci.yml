@@ -68,6 +68,15 @@ jobs:
         run: npm ci --ignore-scripts
         working-directory: gui/app
 
+      # tests/wgsextract parses every bundle command with this checkout's CLI
+      # parser (gui/../src), which needs the CLI's Python dependencies.
+      - name: Setup Python with the CLI's dependencies
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Install the CLI's dependencies
+        run: python -m pip install --quiet --editable ..
+
       - name: Lint and test
         run: python3 tools/tasks.py ci
 
@@ -93,6 +102,17 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
         working-directory: gui/app
+
+      # tests/wgsextract parses every bundle command with this checkout's CLI
+      # parser (gui/../src), which needs the CLI's Python dependencies.
+      - name: Setup Python with the CLI's dependencies
+        if: runner.os != 'Windows'
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Install the CLI's dependencies
+        if: runner.os != 'Windows'
+        run: python -m pip install --quiet --editable ..
 
       - name: Run tests
         env:

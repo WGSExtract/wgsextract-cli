@@ -17,5 +17,5 @@ $tomlGenomeLibraryPath = ConvertTo-TomlBasicString $genomeLibraryPath
 
 [ordered]@{
     path = $configPath
-    contents = "output_directory = `"$tomlOutputPath`"`nreference_library = `"$tomlReferencePath`"`ngenome_library = `"$tomlGenomeLibraryPath`"`nreference_fasta = `"`"`ndefault_input_vcf = `"`"`nmother_vcf_path = `"`"`nfather_vcf_path = `"`"`nyleaf_executable = `"`"`nhaplogrep_executable = `"`"`n"
+    contents = "output_directory = `"$tomlOutputPath`"`nreference_library = `"$tomlReferencePath`"`ngenome_library = `"$tomlGenomeLibraryPath`"`nreference_fasta = `"`"`ndefault_input_vcf = `"`"`nmother_vcf_path = `"`"`nfather_vcf_path = `"`"`nhaplogrep_executable = `"`"`n"
 } | ConvertTo-Json -Compress
