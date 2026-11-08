@@ -1,12 +1,13 @@
 import contextlib
 import logging
 import math
+import os
 import subprocess
 import tempfile
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from os import devnull, fspath
 from pathlib import Path
-from typing import NamedTuple
+from typing import IO, NamedTuple
 
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled
 from wgsextract_cli.core.messages import LOG_MESSAGES
@@ -302,10 +303,11 @@ def _fastq_stages(
     cram_opt: list[str] | None = None,
     region: str | None = None,
     out_other: PathInput | None = None,
+    from_stdin: bool = False,
 ) -> list[list[str]]:
     view = ["samtools", "view", "-uh", "--no-PG", "-@", threads]
     view += cram_opt or []
-    view += [fspath(input_path), *([region] if region else [])]
+    view += ["-" if from_stdin else fspath(input_path), *([region] if region else [])]
     collate = ["samtools", "collate", "-u", "-O", "--no-PG", "-@", threads]
     collate += [
         "-n",
@@ -320,6 +322,33 @@ def _fastq_stages(
         fastq += ["-0", fspath(out_other)]
     fastq += ["-n", "-@", threads, "-"]
     return [view, collate, fastq]
+
+
+def _collate_progress(
+    source: IO[bytes], temporary: str
+) -> Callable[[], tuple[float, float]]:
+    """The shares of the input read and of the pairs written. samtools reads
+    ``source`` as its stdin, sharing its offset; collate spools the input into
+    bucket files, then writes them out one at a time, deleting each."""
+    size = os.fstat(source.fileno()).st_size or 1
+    peak = 0
+
+    def spooled() -> int:
+        total = 0
+        for entry in os.scandir(temporary):
+            if entry.name.startswith("collate"):
+                with contextlib.suppress(FileNotFoundError):
+                    total += entry.stat().st_size
+        return total
+
+    def estimate() -> tuple[float, float]:
+        nonlocal peak
+        read = os.lseek(source.fileno(), 0, os.SEEK_CUR) / size
+        left = spooled()
+        peak = max(peak, left)
+        return read, 1 - left / peak if read >= 1 and peak else 0.0
+
+    return estimate
 
 
 def _warn_unpaired(other: Path) -> None:
@@ -418,6 +447,13 @@ def alignments_to_fastq(
             if out_singletons
             else None
         )
+        # samtools fastq reports its count only at the end, so the heartbeat
+        # follows collate's progress (see _collate_progress).
+        source = (
+            outputs.enter_context(open(input_path, "rb"))
+            if region is None and Path(input_path).is_file()
+            else None
+        )
         run_pipeline(
             _fastq_stages(
                 input_path,
@@ -430,8 +466,11 @@ def alignments_to_fastq(
                 cram_opt=cram_opt,
                 region=region,
                 out_other=staged_other or Path(tmp, "other.fastq.gz"),
+                from_stdin=source is not None,
             ),
+            stdin=source,
             stdout=subprocess.DEVNULL,
+            estimate=_collate_progress(source, tmp) if source else None,
             description="FASTQ extraction",
             heartbeat=heartbeat,
             expected_reads=expected_reads,

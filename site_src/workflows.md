@@ -111,7 +111,7 @@ Variant calling is where small test regions are especially important. A command 
 
 Annotation is a separate step from calling. A caller says what appears to differ from the reference. Annotation adds context such as gene names, transcript consequences, population frequencies, or clinical database matches. Filtering then narrows the result to records that match a quality threshold, region, gene, consequence, or expression.
 
-SNP/indel calling remains serial by default. `--parallel` opts into per-contig workers, whose bcftools subsampling can change some calls or likelihoods on full genomes; it is not guaranteed byte-identical to serial output.
+SNP/indel calling uses per-contig workers when `--threads` is above 1, and their VCF records match a single-stream run's. `--no-parallel` calls in one stream; `--threads 1`, `--region` and unindexed inputs always do.
 
 ::: code-panel title=variants.sh subtitle="small first, then full genome"
 ```

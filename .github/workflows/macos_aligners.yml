@@ -1,9 +1,9 @@
 name: macOS Aligners
 
 # Builds the optional Apple Silicon rebuilds of BWA (wgse-bwa), BWA-MEM2
-# (wgse-bwa-mem2) and minimap2 (wgse-minimap2), each with an experimental --metal
-# flag, and of bwa-mem3 (wgse-bwa-mem3), from native/ on every change to them,
-# and publishes them to a prerelease when asked:
+# (wgse-bwa-mem2), bwa-mem3 (wgse-bwa-mem3) and minimap2 (wgse-minimap2), each
+# with an experimental --metal flag, from native/ on every change to them, and
+# publishes them to a prerelease when asked:
 # Actions > macOS Aligners > Run workflow, with a new tag such as macos-aligners-1.
 # The wgsextract CLI does not use these builds yet.
 
@@ -53,7 +53,6 @@ jobs:
             fi
             case "$tool" in
               wgse-minimap2) native/minimap2/tests/smoke.sh "$PWD/out/prefix/bin/$tool" "$PWD/out/smoke-$tool" ;;
-              wgse-bwa-mem3) native/tests/smoke.sh "$PWD/out/prefix/bin/$tool" "$PWD/out/smoke-$tool" cpu ;;
               *) native/tests/smoke.sh "$PWD/out/prefix/bin/$tool" "$PWD/out/smoke-$tool" metal ;;
             esac
             package="$tool-$version-macos-arm64"
@@ -88,7 +87,7 @@ jobs:
           case "$TAG" in macos-aligners-*) ;; *) echo "Tag must start with macos-aligners-" >&2; exit 1 ;; esac
           {
             echo "Optional Apple Silicon (macOS 13+, arm64) rebuilds of BWA 0.7.19, BWA-MEM2 2.3, bwa-mem3 0.16.0 and minimap2 2.31. Not used by the wgsextract CLI yet."
-            echo "All align on the CPU by default. The EXPERIMENTAL --metal flags offload seeding, locate, seed extension and mate rescue (wgse-bwa), seeding, seed extension and mate rescue (wgse-bwa-mem2), or base-level gap fills of long reads (wgse-minimap2) to the GPU. wgse-bwa-mem3 is CPU-only."
+            echo "All align on the CPU by default. The EXPERIMENTAL --metal flags offload seeding, locate, seed extension and mate rescue (wgse-bwa), seeding, seed extension and mate rescue (wgse-bwa-mem2), seed extension (wgse-bwa-mem3), or base-level gap fills of long reads (wgse-minimap2) to the GPU."
             echo "Built from native/ at ${GITHUB_SHA} by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
             echo "See native/README.md for usage, benchmarks and licences."
             echo

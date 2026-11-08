@@ -511,6 +511,25 @@ def test_failing_step_stops_the_pipeline_and_names_the_command(
     assert run.ran[-1] == step
 
 
+@needs_bcftools
+def test_failed_y_haplogroup_warns_and_still_calls_variants(
+    fake: FakeSteps, bam: str, tmp_path: Path
+) -> None:
+    # #549: on a male genome with too few chrY reads (0.5x, or a fake genome)
+    # Yleaf's failure stopped the run before any variant was called.
+    fake.fail = {"lineage y-haplogroup"}
+    out = tmp_path / "o"
+    run = fake.run("--input", bam, "--outdir", str(out))
+    assert run.code == 0
+    assert run.ran == _ALL_STEPS
+    codes = [w["code"] for w in run.document.get("warnings") or []]
+    assert "y_haplogroup_failed" in codes
+    assert _significant(out)
+
+    fake.fail = set()
+    assert fake.run("--input", bam, "--outdir", str(out)).ran == ["y-haplogroup"]
+
+
 # --- analyze comprehensive: resuming ---------------------------------------------
 
 

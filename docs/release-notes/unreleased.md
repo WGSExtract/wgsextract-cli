@@ -12,3 +12,18 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   `realign` to `report` with default settings: 7.3 hours, with SNP recall of
   99.1% and precision of 97.5% against GIAB v4.2.1
   ([#549](https://github.com/WGSExtract/wgsextract-cli/issues/549)).
+- **Faster SNP and indel calling by default:** `vcf snp` and `vcf indel` call
+  contigs in parallel when `--threads` is above 1, as `microarray` already
+  did; the VCF records match a single-stream run's. On a 16 GB M1 a
+  whole-genome SNP call took 211 s instead of 849 s. Contigs without reads
+  are skipped and small ones (decoys, ALTs, HLA) are called together, so
+  references with thousands of contigs don't slow it down. `--no-parallel`
+  keeps one stream ([#549](https://github.com/WGSExtract/wgsextract-cli/issues/549)).
+
+## Fixes
+
+- `realign`'s FASTQ extraction now shows progress while it runs: the share of the input read, then the reads written. Before, a whole-genome extraction showed 0% until it finished.
+- `analyze comprehensive` no longer stops before variant calling when the Y
+  haplogroup can't be called, for example on a low-coverage male genome. It
+  records a `y_haplogroup_failed` warning and carries on; a rerun retries the
+  Y haplogroup ([#549](https://github.com/WGSExtract/wgsextract-cli/issues/549)).

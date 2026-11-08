@@ -81,6 +81,7 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `alt_unaware`, `duplicates_unmarked` | `info`, `vcf snp`/`indel`, `microarray` | The alignment has ALT contigs without ALT-aware mapping, or its duplicates are not marked. |
 | `high_homozygosity`, `low_homozygosity`, `high_no_call_rate` | `microarray` | Genotype statistics outside the expected range. |
 | `alignment_memory` | `align`, `realign` | minimap2 is estimated to need more RAM than is available (`aligner`, `estimated_gib`, `available_gib`, and `suggested_threads`/`suggested_memory` that fit, or `null`). The run continues. |
+| `aligner_stalled` | `align`, `realign` | The aligner reported no progress, and no stage of its pipeline used CPU, for 15 minutes (`tool`, `minutes`): it is waiting on its input or output. A quiet aligner whose pipeline is busy (a slow batch of centromeric long reads, or samtools collate reading the whole input first) is not stalled. |
 | `native_aligner_unusable` | `align`, `realign` on Apple Silicon | A `wgse-bwa`, `wgse-bwa-mem2` or `wgse-minimap2` on `PATH` failed its `capabilities --json` check or is too old (`binary`, `path`, `aligner`); the upstream aligner ran instead. |
 | `short_read_phasing`, `no_variants_phased` | `vcf phase` | The reads are not Nanopore or PacBio (`platform`), so read-backed phasing links few variants; or no heterozygous variant (`heterozygous_variants`) was phased. |
 | `parabricks_low_memory` | `align`/`realign`/`vcf gatk` with `--gpu` | The GPU had too little free memory for the tool's default mode, so it ran with its low-memory option (`tool`, `option`, `gpu_free_gib`). |
@@ -97,6 +98,7 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `gvcf_reference_missing`, `unconfident_parent_genotypes` | `vcf trio` | A gVCF trio has no `--ref`, so reference blocks count only where they start at a variant; de novo calls rest on a parent's low-quality reference call (`count`, `total`). |
 | `no_indel_scores` | `vcf cadd` | The CADD indel file is missing, so indels are not scored. |
 | `contigs_skipped` | `vcf to-fasta` | VCF contigs absent from the reference were left out (`count`). |
+| `y_haplogroup_failed` | `analyze comprehensive` | `lineage y-haplogroup` failed (often too few chrY reads); the analysis went on without it, and a rerun retries it. |
 | `annotation_skipped`, `annotation_failed` | `vcf chain-annotate`, `analyze` | One annotation was skipped (`annotation`, `reason`) or failed. |
 | `read_groups_mixed`, `read_group_conflict` | `bam unalign`, `bam merge` | Read groups differ in a way that loses or merges information. |
 | `read_group_renamed` | `bam merge` | Runs with identical `@RG` lines that name no run (`PU`, ONT `runid=`) keep separate read groups; the later ones get suffixed IDs (`read_groups`). |
