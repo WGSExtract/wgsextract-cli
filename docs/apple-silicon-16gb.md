@@ -45,8 +45,8 @@ a little deeper than the usual 30x, so a 30x genome should take a little less.
 Two passes ran every command family:
 
 - **Fake genomes** from the test fixtures: 53 commands, each within 30 s
-  and at most 4.1 GiB (`realign`). `deps check` took 74 s on the first run;
-  it now takes about 10 s
+  except `deps check`, and at most 4.1 GiB (`realign`). `deps check` took
+  74 s on the first run; it now takes about 10 s
   ([#552](https://github.com/WGSExtract/wgsextract-cli/pull/552)). 44 passed.
   Of the 9 that exited non-zero, 7 stopped for the right reason, with a clear
   message:
@@ -161,7 +161,7 @@ step.
 - **Results.**
   - mtDNA haplogroup H5a7; Y haplogroup J-S4994.
   - Y-37: 29 markers called, and 27 of them match NIST's HG002 values.
-    The other 8 are in palindromes, longer than the reads, or poorly
+    The 8 not called are in palindromes, longer than the reads, or poorly
     supported.
   - HLA: A\*01:01/\*26:01, B\*35:08/\*38:01, C\*04:01/\*12:03,
     DRB1\*04:02/\*10:01, DQB1\*03:02/\*05:01.
