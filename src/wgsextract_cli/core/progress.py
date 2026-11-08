@@ -26,7 +26,8 @@ class Heartbeat:
         self.completed = 0
         self.started = time.monotonic()
         self._estimate: tuple[float, float] | None = None
-        self._writing_since = self.started
+        # (time, share written) at the first sample after the input was read.
+        self._write_start: tuple[float, float] | None = None
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -68,8 +69,8 @@ class Heartbeat:
         a pass that reports its count only when it finishes. A reported count
         takes precedence."""
         with self._lock:
-            if read >= 1 and not (self._estimate and self._estimate[0] >= 1):
-                self._writing_since = time.monotonic()
+            if read >= 1 and self._write_start is None:
+                self._write_start = (time.monotonic(), min(1.0, max(0.0, written)))
             self._estimate = (min(1.0, max(0.0, read)), min(1.0, max(0.0, written)))
 
     def _report_estimate(self, read: float, written: float) -> None:
@@ -80,22 +81,25 @@ class Heartbeat:
                 if total
                 else f"{written:.0%} written"
             )
-            share, since = written, self._writing_since
         else:
             count = f"{read:.0%} of the input read"
-            share, since = read, self.started
         _report(count, (read + written) / 2)
         if not self.emit:
             return
         now = time.monotonic()
-        detail = f" ({share:.1%})" if written and total else ""
+        detail = f" ({written:.1%})" if written and total else ""
         if read >= 1 and not written:
             detail = ", collating pairs to write"
-        elif 0 < share < 1:
-            left = (now - since) * (1 - share) / share
-            detail += f", about {left:.0f}s left " + (
-                "to write" if written else "to read; output is written after that"
-            )
+        elif not written and 0 < read < 1:
+            left = (now - self.started) * (1 - read) / read
+            detail += f", about {left:.0f}s left to read; output is written after that"
+        elif written < 1 and self._write_start:
+            # The rate comes from the change since writing was first seen, so
+            # output already written by then isn't credited to too little time.
+            since, base = self._write_start
+            if written > base and now > since:
+                left = (now - since) * (1 - written) / (written - base)
+                detail += f", about {left:.0f}s left to write"
         logging.info(
             "%s heartbeat: %s%s, elapsed %.0fs",
             self.label,

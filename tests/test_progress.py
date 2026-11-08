@@ -152,3 +152,49 @@ def test_extraction_heartbeat_moves_before_samtools_reports_its_count(
     assert "100% of the input read, collating pairs" in caplog.text
     assert "~2/4 reads written (50.0%)" in caplog.text
     assert "4/4 reads (100.0%)" in caplog.text
+
+
+def test_write_time_left_comes_from_progress_since_writing_was_seen(
+    caplog, monkeypatch
+):
+    # #564 review: a first sample with output already written claimed "about
+    # 0s left to write" while half the output was still to come.
+    clock = iter([0.0, 60.0, 60.0, 120.0, 120.0])
+    monkeypatch.setattr(time, "monotonic", lambda: next(clock))
+    caplog.set_level(logging.INFO)
+    heartbeat = Heartbeat("Extraction", 100)
+    heartbeat.estimate(1, 0.4)
+    heartbeat.report()
+    assert "(40.0%), elapsed" in caplog.text
+    assert "left to write" not in caplog.text
+    heartbeat.estimate(1, 0.7)
+    heartbeat.report()
+    assert "(70.0%), about 60s left to write" in caplog.text
+
+
+def test_failing_estimate_keeps_the_tools_own_count(tmp_path, caplog, monkeypatch):
+    # #564 review: an estimator error disabled the whole scan, so samtools's
+    # final count was never read.
+    original = utils.Heartbeat
+    monkeypatch.setattr(
+        utils, "Heartbeat", lambda *a, **k: original(*a, interval=0.01, **k)
+    )
+    stage = [
+        sys.executable,
+        "-c",
+        "import sys,time;time.sleep(.1)\n"
+        "sys.stderr.write('[M::bam2fq_mainloop] processed 4 reads\\n')",
+        "samtools",
+        "fastq",
+    ]
+
+    def estimate() -> tuple[float, float]:
+        raise OSError("bucket vanished")
+
+    caplog.set_level(logging.INFO)
+    utils.run_pipeline(
+        [stage], stdout=subprocess.DEVNULL, heartbeat=True, expected_reads=4,
+        estimate=estimate,
+    )  # fmt: skip
+    assert "4/4 reads (100.0%)" in caplog.text
+    assert "Progress scan unavailable" not in caplog.text

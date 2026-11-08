@@ -644,9 +644,17 @@ def run_pipeline(
 
     has_aligner = any(is_aligner(args) for args in progress_args)
 
+    estimator = estimate
+
     def scan() -> None:
-        if estimate and monitor:
-            monitor.estimate(*estimate())
+        nonlocal estimator
+        if estimator and monitor:
+            try:
+                monitor.estimate(*estimator())
+            except (OSError, ValueError) as error:
+                # Keep reading stderr: the tool's own final count still matters.
+                logging.debug("Progress estimate unavailable: %s", error)
+                estimator = None
         for index, (reader, aligner) in enumerate(readers):
             while chunk := reader.read(65536):
                 logging.debug(
