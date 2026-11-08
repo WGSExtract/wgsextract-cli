@@ -85,7 +85,9 @@ class Heartbeat:
 
     def __exit__(self, *_exc: object) -> None:
         self._stop.set()
-        self._thread.join()
+        # A signal can stop the run while __enter__ is still reporting.
+        if self._thread.ident is not None:
+            self._thread.join()
         self._scan()
         self.report()
 
