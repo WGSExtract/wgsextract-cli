@@ -170,15 +170,15 @@ jobs:
           ssh-key: ${{ secrets.RELEASE_TAG_DEPLOY_KEY }}
       - name: Push the tag
         env:
-          GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.resolve.outputs.tag }}
           SHA: ${{ needs.resolve.outputs.sha }}
         # The push starts another Release run, which waits for this one (see
         # concurrency) and then finds the release published. Safe to repeat:
-        # an existing tag on the same commit is fine.
+        # an existing tag on the same commit is fine, annotated or not.
         run: |
           if ! git push origin "$SHA:refs/tags/$TAG"; then
-            current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha)
+            current=$(git ls-remote origin "refs/tags/$TAG^{}" | cut -f1)
+            [ -n "$current" ] || current=$(git ls-remote origin "refs/tags/$TAG" | cut -f1)
             if [ "$current" != "$SHA" ]; then
               echo "::error::$TAG already points at $current, not $SHA."
               exit 1
