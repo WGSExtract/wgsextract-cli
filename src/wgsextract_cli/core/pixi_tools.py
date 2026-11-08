@@ -149,6 +149,9 @@ def _locked_package_available(pixi_cmd: str, env: str, tool: str) -> bool:
     seconds. Given the manifest, it runs from an empty directory instead.
     """
     manifest = _pixi_manifest_args()
+    if manifest and os.path.dirname(pixi_cmd):
+        # A relative path (from PIXI_EXE or PATH) must still resolve from there.
+        pixi_cmd = os.path.abspath(pixi_cmd)
     command = [pixi_cmd, "list", *manifest, "-e", env, "--no-install", "--json"]
     try:
         if manifest:

@@ -2,6 +2,7 @@
 runs in that environment (`pixi run` takes seconds on Windows), else inside it
 through pixi. Pixi is the fake from tests/fake_tools.py."""
 
+import os
 import shlex
 import subprocess
 import sys
@@ -305,6 +306,21 @@ def test_the_repair_command_is_offered_from_a_large_working_directory(
     pixi.set(list_walk_limit=10)
     monkeypatch.setenv("PIXI_EXE", str(pixi.exe))
     monkeypatch.chdir(app)
+
+    assert pixi_tools.pixi_install_command("gatk") is not None
+
+
+def test_the_repair_command_is_offered_with_a_relative_pixi_path(tmp_path, monkeypatch):
+    """Issue #549 review: the lockfile query runs from an empty directory, so
+    a relative PIXI_EXE must not be resolved from there."""
+    app = tmp_path / "app"
+    app.mkdir()
+    (app / "pixi.toml").write_text("")
+    monkeypatch.setattr(runtime, "source_checkout_root", lambda: app)
+    pixi = FakePixi(tmp_path / "pixi", app / "pixi.toml")
+    pixi.env("gatk", locked=("gatk4",), installed=False)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PIXI_EXE", os.path.relpath(pixi.exe, tmp_path))
 
     assert pixi_tools.pixi_install_command("gatk") is not None
 
