@@ -244,7 +244,7 @@ def _preflight_long_read_disk_space(
         requirements = [(outdir, disk.spill + disk.output + fastq)]
     for directory, needed in requirements:
         gigabytes = math.ceil(needed / GIB)
-        logging.warning(
+        logging.info(
             "Realign pre-flight: ~%d GB free space required at %s.",
             gigabytes,
             directory,
