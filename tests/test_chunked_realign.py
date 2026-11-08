@@ -286,6 +286,68 @@ def test_a_killed_chunked_realign_resumes_with_identical_output(
     assert not workdir.exists()
 
 
+def _kill_chunked_run(tmp_path, ont, out, die, after):
+    """Run a chunked realign into ``out`` and kill it as ``_dying_tools``
+    does; returns the arguments that rerun it."""
+    shims, _ = _dying_tools(tmp_path, die, after)
+    argv = ["--input", ont["cram"], "--ref", ont["ref"], "--outdir", str(out),
+            "--platform", "ont", "--threads", "2", "--memory", "256M",
+            "--chunk-size", _chunk_size(ont["cram"])]  # fmt: skip
+    killed = _realign_cli(tmp_path, shims, [*argv, "--no-preflight"], True)
+    assert killed.returncode != 0
+    return argv
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="bash PATH shims")
+@needs_tools("samtools", "minimap2")
+def test_resuming_needs_only_the_disk_space_left_to_fill(tmp_path, ont, monkeypatch):
+    """#578 review: the preflight asked a resumed run for the whole run's
+    space, ignoring the chunks it had kept, so a run killed late on a nearly
+    full disk could not resume."""
+    from wgsextract_cli.commands import realign
+    from wgsextract_cli.core.utils import WGSExtractError
+    from wgsextract_cli.core.warnings import GB
+
+    out = tmp_path / "out"
+    argv = _kill_chunked_run(tmp_path, ont, out, GROUP_SORT, 2)
+    kept = sum(f.stat().st_size for f in out.rglob("*.chunks/**/*") if f.is_file())
+    assert kept
+    asked = []
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            realign, "check_free_space", lambda _path, gb: asked.append(gb) or False
+        )
+        with pytest.raises(WGSExtractError, match="Insufficient free disk space"):
+            run_wgsextract("realign", *argv[:5], str(tmp_path / "fresh"), *argv[6:])
+    # Too little for a fresh run, enough for the rest of this one.
+    free = asked[0] * GB - kept / 2
+    monkeypatch.setattr(shutil, "disk_usage", lambda _path: (10 * free, 0, free))
+    with pytest.raises(WGSExtractError, match="Insufficient free disk space"):
+        run_wgsextract("realign", *argv[:5], str(tmp_path / "fresh"), *argv[6:])
+
+    run_wgsextract("realign", *argv)
+    clean = tmp_path / "clean"
+    _realign(ont["cram"], ont["ref"], clean, "--chunk-size", _chunk_size(ont["cram"]))
+    assert _records(str(out / "x_aligned.bam"), ont["ref"]) == _records(
+        str(clean / "x_aligned.bam"), ont["ref"]
+    )
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="bash PATH shims")
+@needs_tools("samtools", "minimap2")
+def test_a_one_pass_rerun_removes_an_interrupted_runs_chunks(tmp_path, ont):
+    """#578 review: rerunning an interrupted chunked realign in one pass
+    (--chunk-size 0) left the chunks' files, up to the output's size, in
+    <output>.chunks for good."""
+    out = tmp_path / "out"
+    argv = _kill_chunked_run(tmp_path, ont, out, MAPPING, 3)
+    assert (out / "x_aligned.bam.chunks").is_dir()
+
+    run_wgsextract("realign", *argv, "--chunk-size", "0", "--no-preflight")
+    assert not (out / "x_aligned.bam.chunks").exists()
+    _view("quickcheck", str(out / "x_aligned.bam"))
+
+
 @needs_tools("samtools")
 @pytest.mark.parametrize("fmt", ["BAM", "CRAM", "CRAM 3.1"])
 def test_spliced_pieces_are_one_valid_file(tmp_path, ont, fmt):

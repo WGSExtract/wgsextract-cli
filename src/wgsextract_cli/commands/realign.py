@@ -23,6 +23,7 @@ that finished, and redoes the one that didn't.
 import argparse
 import logging
 import math
+import shutil
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -235,11 +236,13 @@ def _preflight_long_read_disk_space(
     memory: str,
     chunk_bytes: int = 0,
     reference: str | None = None,
+    done_bytes: int = 0,
 ) -> None:
     """Long reads stream into the aligner without a collate: the peak is the
     sorter's spills beside its output, and an extracted FASTQ when kept. A
     chunked alignment spills one chunk at a time, but keeps the aligner's
-    index and, while it assembles the output, one merged group beside it."""
+    index and, while it assembles the output, one merged group beside it;
+    ``done_bytes`` of that are already in its work directory."""
     amount, unit = parse_memory(memory)
     sort_buffer = int(threads) * amount * (GIB if unit == "G" else 1024**2)
     size = Path(input_path).stat().st_size
@@ -249,6 +252,7 @@ def _preflight_long_read_disk_space(
     if chunk_bytes:
         chunk = long_read_disk(input_path, chunk_bytes, output_format, sort_buffer)
         output, spill = chunked_disk(disk.output, disk.spill, chunk.spill, reference)
+        output = max(0, output - done_bytes)
     scratch = configured_temp_directory()
     if scratch and Path(scratch).stat().st_dev != Path(outdir).stat().st_dev:
         requirements = [(outdir, output + fastq), (scratch, spill)]
@@ -267,6 +271,11 @@ def _preflight_long_read_disk_space(
                 f"(needs ~{gigabytes} GB). Free up space or rerun with "
                 "--no-preflight to override (not recommended)."
             )
+
+
+def _tree_bytes(path: Path) -> int:
+    """The bytes of the files under ``path`` (0 when it doesn't exist)."""
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
 
 
 def _long_read_chunks(
@@ -642,6 +651,10 @@ def _realign_long_reads(
     cram_opt = input_cram_opt or _input_cram_reference(job)
     chunk_bytes = parse_size(job.chunk_size)
     chunks = _long_read_chunks(job, selected_aligner, chunk_bytes)
+    workdir = Path(out_path + ".chunks")
+    if not chunks and workdir.exists():
+        logging.info("Removing %s, left by an interrupted chunked run.", workdir)
+        shutil.rmtree(workdir)
     if not job.no_preflight:
         _preflight_long_read_disk_space(
             job.input,
@@ -652,6 +665,9 @@ def _realign_long_reads(
             memory=memory,
             chunk_bytes=chunk_bytes if chunks else 0,
             reference=target or job.ref,
+            # An interrupted run's chunks are kept or, if they can't be
+            # resumed, deleted: either way, that space counts as free.
+            done_bytes=_tree_bytes(workdir),
         )
     # samtools fastq's -T lists tags; the reference needs --reference.
     decode = ["--reference", cram_opt[1]] if cram_opt else []
