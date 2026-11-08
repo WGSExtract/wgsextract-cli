@@ -93,7 +93,11 @@ function Get-PageText($Window) {
 # error, a warning) is read, answered with OK, and recorded; the caller fails
 # the step if there was one.
 function Read-MessageBoxes($Window, [string]$TitlePattern) {
-    foreach ($w in Get-TopWindows) {
+    # Windows 11 shows a message box the wizard owns as the wizard's child in UIA,
+    # not as a top-level window.
+    $owned = $Window.FindAll($scope::Children, (New-Object System.Windows.Automation.PropertyCondition(
+                $ae::ControlTypeProperty, [System.Windows.Automation.ControlType]::Window)))
+    foreach ($w in @(Get-TopWindows) + @($owned)) {
         if ($w.Current.ClassName -ne "#32770" -or $w.Current.NativeWindowHandle -eq $Window.Current.NativeWindowHandle -or
             $w.Current.Name -notlike $TitlePattern) { continue }
         $text = Get-PageText $w
