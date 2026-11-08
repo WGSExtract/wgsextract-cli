@@ -389,6 +389,7 @@ gh run watch "$(gh run list --workflow aligner_bench.yml --limit 1 --json databa
   `bwa:metal:t2` or `mem2:metal:probe`; by default each tier's configs in
   `bench/tiers.tsv` (only `wgse-bwa --metal` on `full`). A failure of a `probe`
   config, such as an out-of-memory kill, is reported but does not fail the job.
+  `+ARG` passes an extra argument to the aligner's `mem` command.
 - `runners`: runner labels; larger runners such as `macos-15-xlarge` work when
   the organisation pays for them.
 - `rounds`, `threads`, `balloon_mib` (RAM to wire for the whole job, to act
@@ -400,8 +401,9 @@ runner's conditions, and records the hardware (memory, cores, Metal device),
 each run's time, CPU time, peak RSS and footprint, page faults, swap,
 memory pressure, GPU work, CPU fallbacks and exit status or signal, and a hash
 of its alignments. Alignments must match `bench/expected.tsv` (computed with
-the CPU backends, which are upstream's code) and each other; a mismatch or a
-failed run fails the job. The job summary has a table per job and the report
+the CPU backends, which are upstream's code) and each other (with `K0`, only
+runs with the same threads, since the batches then depend on them); a mismatch
+or a failed run fails the job. The job summary has a table per job and the report
 job one for the whole run; `bench-run-*` artifacts hold the logs. Its
 "vs first" column is the median change against the first variant over runs in
 the same round, with their range: runs on hosted runners vary by 5–20%, so
@@ -417,7 +419,9 @@ native/bench/bench.sh run --data out/bench-data --tier small --out out/bench \
 ```
 
 `bench/make_data.sh` builds the datasets and expected hashes from hs38 and
-HG002 reads.
+HG002 reads. It now skips supplementary records when it picks the pairs of a
+tier, which `aligner-bench-data-1` predates (a few hundred of its pairs were
+picked by a supplementary record), so a rebuild is published under a new tag.
 
 What the hosted 7 GiB runners showed (issue #364):
 

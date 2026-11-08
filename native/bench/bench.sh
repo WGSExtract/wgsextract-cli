@@ -25,9 +25,10 @@
 #   tN       threads (default --threads, or every core)
 #   KN       -K N (default 10000000; K0 leaves -K out)
 #   probe    a failure (crash, kill, timeout) is reported, not failed
-#   +ARG     an extra argument for the aligner, for example +--gpu-policy:+all
+#   +ARG     an extra argument for the aligner's mem command, for example +-Y
 # Alignments of each tool, tier and K must match expected.tsv when it has them,
-# and each other, whatever the backend, threads or variant.
+# and each other, whatever the backend, threads or variant. With K0 the
+# alignments depend on the threads, so they must agree only at equal threads.
 #
 # To add a tool, add a case to tool_binary, tool_files and tool_command.
 set -euo pipefail
@@ -36,7 +37,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 default_K=10000000
 
 die() { echo "bench.sh: $*" >&2; exit 2; }
-usage() { sed -n '2,31p' "$0" >&2; exit 2; }
+usage() { sed -n '2,32p' "$0" >&2; exit 2; }
 
 tool_binary() {
     case $1 in
@@ -50,7 +51,7 @@ tool_binary() {
 tool_files() {
     case $1:$2 in
         bwa:*) echo "amb ann bwt pac sa" ;;
-        mem2:metal) echo "amb ann bwt.2bit.64 pac" ;; # --metal does not read the .0123
+        # --metal does not keep the .0123 in memory, but released builds still open it.
         mem2:*) echo "amb ann bwt.2bit.64 pac 0123" ;;
     esac
 }
@@ -73,9 +74,10 @@ tool_command() {
 
 # parse_config CONFIG: sets c_tool, c_backend, c_threads, c_K, c_probe, c_args.
 parse_config() {
-    local IFS=: field
+    local field
     local -a fields
-    read -r -a fields <<< "$1"
+    # IFS only for the read: bash 3.2 joins "${fields[@]:2}" into one word under IFS=:.
+    IFS=: read -r -a fields <<< "$1"
     [ ${#fields[@]} -ge 2 ] || die "config $1 is not TOOL:BACKEND[:...]"
     c_tool=${fields[0]} c_backend=${fields[1]} c_threads=$threads c_K=$default_K c_probe=0
     c_args=()
@@ -83,8 +85,8 @@ parse_config() {
     case $c_backend in cpu | metal | auto) ;; *) die "unknown backend in $1" ;; esac
     for field in "${fields[@]:2}"; do
         case $field in
-            t[0-9]*) c_threads=${field#t} ;;
-            K[0-9]*) c_K=${field#K} ;;
+            t[0-9]*) c_threads=${field#t}; [[ $c_threads =~ ^[1-9][0-9]*$ ]] || die "bad threads $field in config $1" ;;
+            K[0-9]*) c_K=${field#K}; [[ $c_K =~ ^[0-9]+$ ]] || die "bad K $field in config $1" ;;
             probe) c_probe=1 ;;
             +*) c_args+=("${field#+}") ;;
             *) die "unknown field $field in config $1" ;;
@@ -252,6 +254,8 @@ warm() {
 # hash, and prints its results.tsv row.
 run_one() {
     local dir=$1 label=$2 bin=$3 config=$4 round=$5 rc sampler_pid hash status expected report
+    # A fresh directory, so that diagnostics of an earlier run with --out cannot leak in.
+    rm -rf "$dir"
     mkdir -p "$dir"
     parse_config "$config"
     tool_command "$bin" "$c_tool" "$c_backend" "$c_threads" "$c_K" "$ref_fa" \
@@ -365,6 +369,10 @@ run() {
         esac
     done
     [ -n "$data" ] && [ -n "$tier" ] && [ -n "$out" ] && [ ${#bins[@]} -gt 0 ] || usage
+    for spec in "$rounds" "$threads" "$timeout"; do
+        [[ $spec =~ ^[1-9][0-9]*$ ]] || die "--rounds, --threads and --timeout need a positive whole number, not $spec"
+    done
+    [[ $balloon =~ ^(0|[1-9][0-9]*)$ ]] || die "--balloon needs a whole number of MiB, not $balloon"
     [ -n "$configs" ] || configs=$(tier_field "$tier" 4)
     check_configs "$configs"
     mkdir -p "$out/runs"
@@ -400,11 +408,14 @@ run() {
         balloon_pid=$!
         trap 'kill "$balloon_pid" 2> /dev/null || true' EXIT
         for i in $(seq 120); do
-            grep -q wired "$out/balloon.txt" 2> /dev/null && break
+            grep -qx "wired $balloon MiB" "$out/balloon.txt" 2> /dev/null && break
             kill -0 "$balloon_pid" 2> /dev/null || break
             sleep 1
         done
-        kill -0 "$balloon_pid" 2> /dev/null || { cat "$out/balloon.txt" >&2; die "the balloon could not wire $balloon MiB"; }
+        if ! grep -qx "wired $balloon MiB" "$out/balloon.txt" 2> /dev/null || ! kill -0 "$balloon_pid" 2> /dev/null; then
+            cat "$out/balloon.txt" >&2
+            die "the balloon could not wire $balloon MiB"
+        fi
         echo "balloon: $(cat "$out/balloon.txt")"
     fi
 
@@ -427,14 +438,17 @@ run() {
     done
     [ -z "$balloon_pid" ] || { kill "$balloon_pid" 2> /dev/null || true; trap - EXIT; }
 
-    # Runs of a tool on a tier with the same K must all agree.
-    awk -F '\t' -v OFS='\t' -v default_K="$default_K" '
-        NR == FNR { if (FNR > 1 && $6 == 0) { split($4, f, ":"); K = default_K
-                for (j in f) if (f[j] ~ /^K[0-9]+$/) K = substr(f[j], 2)
-                key = f[1] ":" K; if (!(key in first)) first[key] = $26; else if ($26 != first[key]) bad[key] = 1 }
+    # Runs of a tool on a tier with the same K (and, without -K, the same threads) must all agree.
+    awk -F '\t' -v OFS='\t' -v default_K="$default_K" -v threads="$threads" '
+        function key_of(config,    f, j, K, t) {
+            split(config, f, ":"); K = default_K; t = threads
+            for (j in f) { if (f[j] ~ /^K[0-9]+$/) K = substr(f[j], 2); if (f[j] ~ /^t[0-9]+$/) t = substr(f[j], 2) }
+            return f[1] ":" K (K == 0 ? ":t" t : "")
+        }
+        NR == FNR { if (FNR > 1 && $6 == 0) { key = key_of($4)
+                if (!(key in first)) first[key] = $26; else if ($26 != first[key]) bad[key] = 1 }
             next }
-        FNR > 1 { split($4, f, ":"); K = default_K; for (j in f) if (f[j] ~ /^K[0-9]+$/) K = substr(f[j], 2)
-            if ((f[1] ":" K) in bad && $28 == "pass") $28 = "inconsistent" }
+        FNR > 1 && (key_of($4) in bad) && $28 == "pass" { $28 = "inconsistent" }
         { print }' "$out/results.tsv" "$out/results.tsv" > "$out/results.tsv.new"
     mv "$out/results.tsv.new" "$out/results.tsv"
     summary "$out/results.tsv" > "$out/summary.md"
@@ -476,7 +490,7 @@ summary() {
             print "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | --- | --- |"
             for (k = 1; k <= nkeys; k++) {
                 key = keys[k]; split(key, p, SUBSEP); group = p[1] SUBSEP p[2] SUBSEP p[3]
-                t = median(real[key]); b = median(real[group SUBSEP base[group]])
+                t = median(real[key])
                 # Against the first variant: the median of the ratios of runs in the same round,
                 # which ran next to each other, and their range.
                 vs = ""; ratios = ""; lo = ""; hi = ""
@@ -491,7 +505,7 @@ summary() {
                     if (ratios != "") {
                         vs = sprintf("%+.1f%%", (median(ratios) - 1) * 100)
                         if (lo != hi) vs = vs sprintf(" (%+.0f%% to %+.0f%%)", (lo - 1) * 100, (hi - 1) * 100)
-                    } else if (t != "" && b != "") vs = sprintf("%+.1f%%", (t / b - 1) * 100)
+                    }
                 }
                 level = "normal"
                 if (pressure[key] >= 2) level = "warning"

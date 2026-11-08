@@ -27,26 +27,33 @@ while [ $# -gt 0 ]; do
     esac
 done
 [ -n "$hs38" ] && [ -n "$reads2" ] && [ -n "$subset2" ] && [ -n "$bin" ] && [ -n "$out" ] || usage
+abs() { echo "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"; }
+# Absolute, because data/ links to them.
+hs38=$(cd "$hs38" && pwd) bin=$(cd "$bin" && pwd)
+reads1=$(abs "$reads1") reads2=$(abs "$reads2") subset1=$(abs "$subset1") subset2=$(abs "$subset2")
 command -v samtools > /dev/null || { echo "make_data.sh needs samtools" >&2; exit 1; }
 command -v zstd > /dev/null || { echo "make_data.sh needs zstd" >&2; exit 1; }
 here=$(cd "$(dirname "$0")" && pwd)
 threads=$(sysctl -n hw.ncpu)
 K=10000000
 medium_pairs=500000
-tag=aligner-bench-data-1 # the release that holds the assets
+# The release that holds the assets. aligner-bench-data-1 was built before the
+# pair selection skipped supplementary records, so a rebuild needs a new tag.
+tag=aligner-bench-data-2
 mkdir -p "$out/data/reads" "$out/assets"
 out=$(cd "$out" && pwd)
 data=$out/data
 
 sam_hash() { grep -v '^@PG' | shasum -a 256 | cut -c1-16; }
 
-# 1. Where each 5M pair maps on hs38: the primary record of read 1 gives the
-#    contig of each mate. The same alignment checks the 5M expected hash.
+# 1. Where each 5M pair maps on hs38: the primary record of read 1 (not
+#    secondary, duplicate or supplementary) gives the contig of each mate.
+#    The same alignment checks the 5M expected hash.
 if [ ! -s "$out/pairs.tsv" ]; then
     "$bin/wgse-bwa" --metal mem -t "$threads" -K "$K" "$hs38/hs38.fa" "$reads1" "$reads2" \
         2> "$out/pairs.stderr" |
         tee >(sam_hash > "$out/full-5m.wgse-bwa.hash") |
-        awk -F '\t' '!/^@/ && int($2 / 64) % 2 && int($2 / 256) % 8 == 0 {
+        awk -F '\t' '!/^@/ && int($2 / 64) % 2 && int($2 / 256) % 16 == 0 {
             print $1 "\t" $3 "\t" ($7 == "=" ? $3 : $7) }' > "$out/pairs.tsv.partial"
     mv "$out/pairs.tsv.partial" "$out/pairs.tsv"
 fi
@@ -65,8 +72,9 @@ subset() {
         gzip -dc "$source" | awk -v names="$out/$name.names" '
             BEGIN { while ((getline line < names) > 0) keep[line] = 1 }
             NR % 4 == 1 { split(substr($0, 2), id, /[ \t]/); take = id[1] in keep }
-            take' | gzip -n -6 > "$data/reads/${name}_R$mate.fastq.gz"
+            take' | gzip -n -6 > "$data/reads/${name}_R$mate.fastq.gz.partial"
     done
+    for mate in 1 2; do mv "$data/reads/${name}_R$mate.fastq.gz.partial" "$data/reads/${name}_R$mate.fastq.gz"; done
     echo "$name: $(wc -l < "$out/$name.names" | tr -d ' ') pairs"
 }
 subset chr20-hg002 "chr20" 1000000000
@@ -80,11 +88,12 @@ ln -sf "$reads2" "$data/reads/hg002-5m_R2.fastq.gz"
 reference() {
     local name=$1; shift
     mkdir -p "$data/$name"
-    [ -s "$data/$name/$name.fa.0123" ] && return
+    [ -e "$data/$name/.done" ] && return
     samtools faidx "$hs38/hs38.fa" "$@" > "$data/$name/$name.fa"
     "$bin/wgse-bwa" index "$data/$name/$name.fa" > "$out/$name.bwa-index.log" 2>&1
     /usr/bin/time -l "$bin/wgse-bwa-mem2" index "$data/$name/$name.fa" \
         > "$out/$name.mem2-index.log" 2>&1
+    touch "$data/$name/.done"
 }
 reference chr20 chr20
 reference chr1-3 chr1 chr2 chr3
