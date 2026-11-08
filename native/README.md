@@ -18,11 +18,14 @@ printed by `--version`.
 
 ## Installing
 
-The `macos-aligners-12` prerelease has `wgse-bwa` 0.7.0, `wgse-bwa-mem2`
-0.3.0 and `wgse-minimap2` 0.1.0. `wgse-bwa --metal` and `wgse-bwa capabilities`
-need `wgse-bwa` 0.2.0 or later. Earlier prereleases, without `wgse-minimap2`:
-`macos-aligners-9` has `wgse-bwa` 0.7.0 and `wgse-bwa-mem2` 0.3.0;
-`macos-aligners-8` has `wgse-bwa` 0.7.0 and
+The `macos-aligners-12` prerelease has `wgse-bwa` 0.7.1, `wgse-bwa-mem2`
+0.4.0 and `wgse-minimap2` 0.1.0. `wgse-bwa` 0.7.1 shares the updated
+mate-rescue kernel with `wgse-bwa-mem2` 0.4.0 and aligns exactly as 0.7.0
+does. `wgse-bwa --metal` and `wgse-bwa capabilities` need `wgse-bwa` 0.2.0 or
+later. Earlier prereleases, without `wgse-minimap2`: `macos-aligners-10` has
+`wgse-bwa` 0.7.1 and `wgse-bwa-mem2` 0.4.0; `macos-aligners-9` has `wgse-bwa`
+0.7.0 and `wgse-bwa-mem2` 0.3.0, with slower GPU kernels; `macos-aligners-8`
+has `wgse-bwa` 0.7.0 and
 `wgse-bwa-mem2` 0.2.0, whose `--metal` loads the `.0123` file and starts GPU
 seeding only when a chunk maps; `macos-aligners-7` has `wgse-bwa` 0.7.0 and
 `wgse-bwa-mem2` 0.1.0, whose `--metal` only extends seeds on the GPU;
@@ -65,8 +68,8 @@ wgse-minimap2 capabilities --json
 
 macOS kills a quarantined executable as soon as it starts. If an archive was
 downloaded in a browser, clear the flag before running, for example
-`xattr -dr com.apple.quarantine wgse-bwa-0.7.0-macos-arm64` (and likewise
-`wgse-bwa-mem2-0.3.0-macos-arm64` and `wgse-minimap2-0.1.0-macos-arm64`).
+`xattr -dr com.apple.quarantine wgse-bwa-0.7.1-macos-arm64` (and likewise
+`wgse-bwa-mem2-0.4.0-macos-arm64` and `wgse-minimap2-0.1.0-macos-arm64`).
 
 ## Usage
 
@@ -143,7 +146,9 @@ What runs on the GPU:
   aborts one to keep the display responsive (`ImpactingInteractivity`). It
   can still do so when other processes load the GPU; 0.6.0 then runs the
   aborted work again, up to four times, before it finishes on the CPU (and
-  `--metal` exits 1).
+  `--metal` exits 1). 0.7.1 updates the mate-rescue kernel it shares with
+  `wgse-bwa-mem2` 0.4.0 (less work per cell for windows without N), with no
+  change in behaviour or results.
 - `wgse-bwa-mem2`: batches seed extension across worker threads, keeping small
   batches on the CPU. From 0.2.0 it also collects the SMEMs of batches of 16384
   reads on the GPU (upstream's three passes, reading the index's occurrence
@@ -165,6 +170,12 @@ What runs on the GPU:
   rescue mates in interleaved batches, sort alignments by pointer and unpack
   reference bases with NEON, as `wgse-bwa` 0.7.0 does. None of this changes
   any result.
+  In 0.4.0 the GPU looks up the index interval of every string of up to 10
+  bases in a 34 MB table it builds once, instead of walking the occurrence
+  table for the first bases of each SMEM; its seed-extension and mate-rescue
+  kernels do less work per cell; and seed extensions that fit 8-bit scores run
+  on the CPU threads while their 16-bit companions are on the GPU, which
+  leaves the busy GPU more time for seeding and rescue.
 
 With a Metal backend both print GPU and CPU work counts to stderr.
 
@@ -234,7 +245,9 @@ reads), up to three prepared seeding batches, mate-rescue buffers like
 11.5 GiB (14.8 GiB with the default `-K`, against 19.7 GiB for 0.2.0), even
 though it keeps up to eight prepared seeding batches per chunk and seeds up to
 two chunks ahead. That leaves more room for other applications on a 32 GB
-Mac; it has not been tested on a 16 GB Mac.
+Mac; it has not been tested on a 16 GB Mac. 0.4.0 adds a 34 MB table of
+index intervals; it peaked at 11.5 GiB with `-K 10000000`, like 0.3.0, and at
+15.1 GiB with `-K 100000000` (14.9 GiB for 0.3.0).
 
 `wgse-minimap2` uses as much memory as upstream minimap2: with 9 threads on
 hs38 it peaked at 13–15 GiB for HiFi reads, 10–14 GiB for ONT reads and
@@ -348,6 +361,34 @@ of 0.3.0 `--metal` found the GPU busy 88% of the run (extension 46 s, seeding
 38 s, mate rescue 37 s), with CPU threads seeding 16 of 4983 units; their
 busy time went to seed extension the GPU had no room for (21%), mate rescue
 (17%) and suffix-array locate (14%).
+
+0.4.0 was measured against 0.3.0 the same way, in three interleaved rounds on
+AC power, with `-K 10000000` and with `-K 100000000` (the batch size WGS
+Extract passes):
+
+| Aligner | `-K` | Time | Peak RSS | vs 0.3.0 |
+| --- | --- | --- | --- | --- |
+| `wgse-bwa-mem2 --metal` 0.3.0 | 10M | 116.6 s | 11.5 GiB | — |
+| `wgse-bwa-mem2 --metal` 0.4.0 | 10M | 110.2 s | 11.5 GiB | −5.5% |
+| `wgse-bwa-mem2 --metal` 0.3.0 | 100M | 114.6 s | 14.9 GiB | — |
+| `wgse-bwa-mem2 --metal` 0.4.0 | 100M | 108.9 s | 15.1 GiB | −4.9% |
+
+0.4.0 `--metal` (110.8, 109.9 and 110.0 s; 110.4, 108.3 and 108.1 s) was
+faster than 0.3.0 `--metal` (117.6, 115.9 and 116.3 s; 116.1, 114.1 and
+113.5 s) in each round. Most of the gain comes from the cheaper extension and
+rescue kernels; in another session the prefix table and 8-bit extensions on
+the CPU saved a further 2.3% (110.3 s against 112.9 s, faster in each round).
+The CPU backend is unchanged in 0.4.0. A profile of 0.3.0 `--metal` found the
+GPU the bottleneck: mate rescue is compute-bound, and seeding is bound by
+address translation on the 5.8 GiB occurrence table. With 8-bit extensions on
+the CPU threads, the GPU extended 73M pairs rather than 84M, leaving it more
+time for seeding and rescue. Whether the GPU or the CPU threads should run
+8-bit extensions depends on the Mac; with a larger GPU, keeping them on the
+GPU may be faster.
+
+On the same data, `wgse-bwa --metal` 0.7.1, which shares the updated
+mate-rescue kernel, took 125.9 and 125.5 s against 130.5 and 129.2 s for
+0.7.0 in two interleaved rounds, with identical alignments.
 
 Before the full index was available, BWA-MEM2 was measured with 10.6M read
 pairs against a small reference (chr20 fragment, Y, MT) whose whole index fits
