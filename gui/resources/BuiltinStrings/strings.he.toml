@@ -57,6 +57,11 @@
 "app.webUIFont.label" = "גופן אינטרנט"  # i18n-source-hash:febeb868
 "app.webUIFont.system" = "עדיפות נוכחית"  # i18n-source-hash:1ba70e38
 "app.webUIFont.sfPro" = "SF Pro אם זמין"  # i18n-source-hash:6bb1650c
+"app.uiMode.label" = "מצב"  # i18n-source-hash:a7b93d21
+"app.uiMode.basic" = "בסיסי"  # i18n-source-hash:aa2c96da
+"app.uiMode.advanced" = "מתקדם"  # i18n-source-hash:4d064726
+"app.uiMode.basic.tooltip" = "הצגת המשימות הנפוצות, עם הגדרות מומלצות שנבחרות עבורך."  # i18n-source-hash:3bb8871d
+"app.uiMode.advanced.tooltip" = "הצגת כל התכונות והאפשרויות."  # i18n-source-hash:b6229d41
 "library.status.installed" = "מותקן"  # i18n-source-hash:7bb4405c
 "library.status.unindexed" = "נדרש אינדקס"  # i18n-source-hash:a821219f
 "library.status.incomplete" = "לא שלם"  # i18n-source-hash:387fd1bb

@@ -14,6 +14,7 @@ import { bindTooltipEvents } from "./tooltips.js";
 import { bindWorkspaceLocationEvents } from "./workspace-location.js";
 import { setupPageID } from "./view.js";
 import type { ConfigSetting, ControlSpec, PathPickResponse } from "../../../shared/types.js";
+import { normalizeUIMode } from "../../../shared/ui-mode.js";
 export { bindTooltipEvents } from "./tooltips.js";
 
 /** Reloads the manifest and re-renders, optionally for another locale. */
@@ -40,6 +41,20 @@ export function bindEvents(bootstrap: Bootstrap) {
         button.addEventListener("click", async () => {
             state.activePageID = requiredDataset(button, "pageId");
             await persistAndRender();
+        });
+    });
+    elements<HTMLButtonElement>("[data-ui-mode]").forEach((button) => {
+        button.addEventListener("click", () => selectUIMode(requiredDataset(button, "uiMode")));
+        button.addEventListener("keydown", (event) => {
+            // Radio-group keys: an arrow key moves to the other mode and selects it.
+            if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+                return;
+            }
+            event.preventDefault();
+            const other = normalizeUIMode(button.dataset.uiMode) === "basic" ? "advanced" : "basic";
+            // Focus moves first, so the re-render's focus restore keeps it on the newly selected mode.
+            app.querySelector<HTMLElement>(`[data-ui-mode="${other}"]`)?.focus();
+            void selectUIMode(other);
         });
     });
     elements<HTMLSelectElement>("[data-locale-picker]").forEach((picker) => {
@@ -423,6 +438,16 @@ function resetBundleClientState() {
     state.aboutDialogVisible = false;
     state.pendingConfirmation = null;
     resetTerminalEntries();
+}
+
+/** Switches between Basic and Advanced and saves the choice, so the app restarts in the same mode. */
+async function selectUIMode(value: string) {
+    const mode = normalizeUIMode(value);
+    if (mode === state.uiMode) {
+        return;
+    }
+    state.uiMode = mode;
+    await persistAndRender();
 }
 
 async function persistAndRender(options = {}) {

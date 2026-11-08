@@ -57,6 +57,11 @@
 "app.webUIFont.label" = "網頁字型"  # i18n-source-hash:febeb868
 "app.webUIFont.system" = "目前優先順序"  # i18n-source-hash:1ba70e38
 "app.webUIFont.sfPro" = "可用時使用 SF Pro"  # i18n-source-hash:6bb1650c
+"app.uiMode.label" = "模式"  # i18n-source-hash:a7b93d21
+"app.uiMode.basic" = "基本"  # i18n-source-hash:aa2c96da
+"app.uiMode.advanced" = "進階"  # i18n-source-hash:4d064726
+"app.uiMode.basic.tooltip" = "顯示常用工作，並為你選擇建議設定。"  # i18n-source-hash:3bb8871d
+"app.uiMode.advanced.tooltip" = "顯示所有功能和選項。"  # i18n-source-hash:b6229d41
 "library.status.installed" = "已安裝"  # i18n-source-hash:7bb4405c
 "library.status.unindexed" = "需要索引"  # i18n-source-hash:a821219f
 "library.status.incomplete" = "不完整"  # i18n-source-hash:387fd1bb

@@ -57,6 +57,11 @@
 "app.webUIFont.label" = "ওয়েব ফন্ট"  # i18n-source-hash:febeb868
 "app.webUIFont.system" = "বর্তমান অগ্রাধিকার"  # i18n-source-hash:1ba70e38
 "app.webUIFont.sfPro" = "উপলভ্য হলে SF Pro"  # i18n-source-hash:6bb1650c
+"app.uiMode.label" = "মোড"  # i18n-source-hash:a7b93d21
+"app.uiMode.basic" = "মৌলিক"  # i18n-source-hash:aa2c96da
+"app.uiMode.advanced" = "উন্নত"  # i18n-source-hash:4d064726
+"app.uiMode.basic.tooltip" = "সাধারণ কাজগুলি দেখান, আপনার জন্য প্রস্তাবিত সেটিংস বেছে নেওয়া হবে।"  # i18n-source-hash:3bb8871d
+"app.uiMode.advanced.tooltip" = "সমস্ত বৈশিষ্ট্য ও বিকল্প দেখান।"  # i18n-source-hash:b6229d41
 "library.status.installed" = "ইনস্টল করা"  # i18n-source-hash:7bb4405c
 "library.status.unindexed" = "ইনডেক্স প্রয়োজন"  # i18n-source-hash:a821219f
 "library.status.incomplete" = "অসম্পূর্ণ"  # i18n-source-hash:387fd1bb

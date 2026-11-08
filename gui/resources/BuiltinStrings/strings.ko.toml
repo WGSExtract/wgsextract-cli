@@ -57,6 +57,11 @@
 "app.webUIFont.label" = "웹 글꼴"  # i18n-source-hash:febeb868
 "app.webUIFont.system" = "현재 우선순위"  # i18n-source-hash:1ba70e38
 "app.webUIFont.sfPro" = "사용 가능한 경우 SF Pro"  # i18n-source-hash:6bb1650c
+"app.uiMode.label" = "모드"  # i18n-source-hash:a7b93d21
+"app.uiMode.basic" = "기본"  # i18n-source-hash:aa2c96da
+"app.uiMode.advanced" = "고급"  # i18n-source-hash:4d064726
+"app.uiMode.basic.tooltip" = "자주 쓰는 작업을 표시하고 권장 설정을 자동으로 선택합니다."  # i18n-source-hash:3bb8871d
+"app.uiMode.advanced.tooltip" = "모든 기능과 옵션을 표시합니다."  # i18n-source-hash:b6229d41
 "library.status.installed" = "설치됨"  # i18n-source-hash:7bb4405c
 "library.status.unindexed" = "인덱스 필요"  # i18n-source-hash:a821219f
 "library.status.incomplete" = "불완전"  # i18n-source-hash:387fd1bb

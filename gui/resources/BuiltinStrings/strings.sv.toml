@@ -57,6 +57,11 @@
 "app.webUIFont.label" = "Webbtypsnitt"  # i18n-source-hash:febeb868
 "app.webUIFont.system" = "Aktuell prioritet"  # i18n-source-hash:1ba70e38
 "app.webUIFont.sfPro" = "SF Pro om tillgängligt"  # i18n-source-hash:6bb1650c
+"app.uiMode.label" = "Läge"  # i18n-source-hash:a7b93d21
+"app.uiMode.basic" = "Enkelt"  # i18n-source-hash:aa2c96da
+"app.uiMode.advanced" = "Avancerat"  # i18n-source-hash:4d064726
+"app.uiMode.basic.tooltip" = "Visar de vanliga uppgifterna, med rekommenderade inställningar valda åt dig."  # i18n-source-hash:3bb8871d
+"app.uiMode.advanced.tooltip" = "Visar alla funktioner och alternativ."  # i18n-source-hash:b6229d41
 "library.status.installed" = "Installerad"  # i18n-source-hash:7bb4405c
 "library.status.unindexed" = "Behöver index"  # i18n-source-hash:a821219f
 "library.status.incomplete" = "Ofullständig"  # i18n-source-hash:387fd1bb

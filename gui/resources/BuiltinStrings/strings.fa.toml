@@ -57,6 +57,11 @@
 "app.webUIFont.label" = "قلم وب"  # i18n-source-hash:febeb868
 "app.webUIFont.system" = "اولویت فعلی"  # i18n-source-hash:1ba70e38
 "app.webUIFont.sfPro" = "SF Pro در صورت موجود بودن"  # i18n-source-hash:6bb1650c
+"app.uiMode.label" = "حالت"  # i18n-source-hash:a7b93d21
+"app.uiMode.basic" = "پایه"  # i18n-source-hash:aa2c96da
+"app.uiMode.advanced" = "پیشرفته"  # i18n-source-hash:4d064726
+"app.uiMode.basic.tooltip" = "کارهای رایج را نشان می‌دهد و تنظیمات پیشنهادی برای شما انتخاب می‌شود."  # i18n-source-hash:3bb8871d
+"app.uiMode.advanced.tooltip" = "همه ویژگی‌ها و گزینه‌ها را نشان می‌دهد."  # i18n-source-hash:b6229d41
 "library.status.installed" = "نصب‌شده"  # i18n-source-hash:7bb4405c
 "library.status.unindexed" = "نیازمند نمایه‌سازی"  # i18n-source-hash:a821219f
 "library.status.incomplete" = "ناقص"  # i18n-source-hash:387fd1bb

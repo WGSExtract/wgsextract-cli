@@ -12,9 +12,10 @@ import { state } from "./state.js";
 import { initializeTauriUpdater } from "./tauri-updater.js";
 import { appendTerminal, discardPendingTerminalOutput, ensureMainTerminal, renderTerminalPane, terminalTabs, terminalToggleTitle } from "./terminal.js";
 import { renderUpdatePopover } from "./view/update.js";
-import { renderBundleHeader, renderConfirmationDialog, renderNavigation, renderPage, renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID } from "./view.js";
+import { renderBundleHeader, renderConfirmationDialog, renderNavigation, renderUIModeSwitch, renderPage, renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID } from "./view.js";
 import { renderAboutDialog } from "./view/about.js";
 import type { BundleManifest, ManifestResponse } from "../../../shared/types.js";
+import { normalizeUIMode } from "../../../shared/ui-mode.js";
 const app: HTMLElement = (() => {
     const el = document.querySelector<HTMLElement>("#app");
     if (!el) {
@@ -39,6 +40,7 @@ async function bootstrap(locale?: string) {
         state.iconSet = normalizeIconSet(bundle.bundleState?.iconSet);
         state.colorTheme = normalizeColorTheme(bundle.bundleState?.colorTheme);
         state.webUIFont = bundle.bundleState?.webUIFont === "sfPro" ? "sfPro" : "system";
+        state.uiMode = normalizeUIMode(bundle.bundleState?.uiMode);
         state.setupRun = bundle.bundleState?.setupRun ?? null;
         state.appVersion = bundle.appVersion ?? "";
         state.workspaceLocation = bundle.workspaceLocation ?? null;
@@ -128,6 +130,7 @@ function render() {
         ? `<aside class="sidebar">
       <button type="button" class="sidebar-toggle sidebar-toggle-inside" data-sidebar-toggle title="${escapeAttribute(sidebarToggleTitle())}" aria-label="${escapeAttribute(sidebarToggleTitle())}">◀</button>
       ${renderBundleHeader()}
+      ${renderUIModeSwitch()}
       <nav class="page-nav" aria-label="Pages">${renderNavigation()}</nav>
     </aside>
     <div class="sidebar-resizer" data-sidebar-resizer role="separator" aria-orientation="vertical" aria-label="Resize sidebar" tabindex="0"></div>`
@@ -215,6 +218,7 @@ function appWindowTitle() {
 }
 function applyDocumentPreferences() {
     document.documentElement.dataset.iconSet = state.iconSet;
+    document.documentElement.dataset.uiMode = state.uiMode;
     if (state.colorTheme === "light" || state.colorTheme === "dark") {
         document.documentElement.dataset.theme = state.colorTheme;
         document.documentElement.style.colorScheme = state.colorTheme;

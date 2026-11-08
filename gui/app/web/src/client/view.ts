@@ -11,6 +11,7 @@ import { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view
 import { renderWorkspaceLocationSection } from "./view/workspace-location.js";
 export { renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID, setupPromptMessage, } from "./view/setup.js";
 import { renderUpdateNavigationItem } from "./view/update.js";
+import type { UIMode } from "../../../shared/ui-mode.js";
 import type { BundleManifest, BundlePage, CommandContext, LocalizedOption, ControlOption, ControlSpec, ManifestLocation, PageSection, PendingConfirmation, RowColumnSpec, RowSpec, ConfigSetting } from "../../../shared/types.js";
 function requiredManifest(): BundleManifest {
     if (!state.manifest) {
@@ -32,6 +33,24 @@ export function renderBundleHeader() {
       <h1>${escapeHTML(manifest.displayName)}${renderTooltip(manifest.summary)}</h1>
       ${appVersion ? `<p class="app-version" data-app-version>${escapeHTML(appVersionLabel)} ${escapeHTML(appVersion)}</p>` : ""}
     </header>
+  `;
+}
+/** The Basic / Advanced switch at the top of the sidebar: a radio group, so exactly one mode is on. */
+export function renderUIModeSwitch() {
+    const modes: { mode: UIMode; label: string; tooltip: string }[] = [
+        { mode: "basic", label: state.labels.uiModeBasicLabel ?? "Basic", tooltip: state.labels.uiModeBasicTooltip ?? "" },
+        { mode: "advanced", label: state.labels.uiModeAdvancedLabel ?? "Advanced", tooltip: state.labels.uiModeAdvancedTooltip ?? "" },
+    ];
+    return `
+    <div class="ui-mode-switch" role="radiogroup" aria-label="${escapeAttribute(state.labels.uiModeLabel ?? "Mode")}">
+      ${modes
+        .map(({ mode, label, tooltip }) => {
+        const active = mode === state.uiMode;
+        return `<button type="button" role="radio" class="ui-mode-option ${active ? "active" : ""}" aria-checked="${active}" tabindex="${active ? 0 : -1}"
+          data-ui-mode="${mode}" title="${escapeAttribute(tooltip)}">${escapeHTML(label)}</button>`;
+    })
+        .join("")}
+    </div>
   `;
 }
 export function renderLanguagePicker() {

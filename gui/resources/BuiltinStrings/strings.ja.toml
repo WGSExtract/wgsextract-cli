@@ -57,6 +57,11 @@
 "app.webUIFont.label" = "Web フォント"  # i18n-source-hash:febeb868
 "app.webUIFont.system" = "現在の優先順位"  # i18n-source-hash:1ba70e38
 "app.webUIFont.sfPro" = "利用可能なら SF Pro"  # i18n-source-hash:6bb1650c
+"app.uiMode.label" = "モード"  # i18n-source-hash:a7b93d21
+"app.uiMode.basic" = "ベーシック"  # i18n-source-hash:aa2c96da
+"app.uiMode.advanced" = "アドバンス"  # i18n-source-hash:4d064726
+"app.uiMode.basic.tooltip" = "よく使う作業を表示し、推奨設定を自動で選びます。"  # i18n-source-hash:3bb8871d
+"app.uiMode.advanced.tooltip" = "すべての機能とオプションを表示します。"  # i18n-source-hash:b6229d41
 "library.status.installed" = "インストール済み"  # i18n-source-hash:7bb4405c
 "library.status.unindexed" = "インデックスが必要"  # i18n-source-hash:a821219f
 "library.status.incomplete" = "不完全"  # i18n-source-hash:387fd1bb

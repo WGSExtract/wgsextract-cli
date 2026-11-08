@@ -684,3 +684,23 @@ test("path fields show workspace paths as {{bundleWorkspace}}", async () => {
   assert.match(config, /value="\{\{bundleWorkspace\}\}\/reference"/);
   assert.doesNotMatch(config, new RegExp(`value="${workspace}`));
 });
+
+test("renders the Basic / Advanced switch as a radio group with only the current mode checked", async () => {
+  globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+  globalThis.window = { innerHeight: 900 };
+  const { createInitialState, state } = await import("../dist/web/src/client/state.js");
+  const { renderUIModeSwitch } = await import("../dist/web/src/client/view.js");
+  Object.assign(state, createInitialState(), { labels: { uiModeBasicLabel: "Basic", uiModeAdvancedLabel: "Advanced" } });
+
+  assert.equal(state.uiMode, "basic");
+  let html = renderUIModeSwitch();
+  assert.match(html, /role="radiogroup"/);
+  assert.match(html, /data-ui-mode="basic"[^>]*>Basic</);
+  assert.match(html, /aria-checked="true"[^>]*\s+data-ui-mode="basic"/);
+  assert.match(html, /aria-checked="false"[^>]*\s+data-ui-mode="advanced"/);
+
+  state.uiMode = "advanced";
+  html = renderUIModeSwitch();
+  assert.match(html, /aria-checked="false"[^>]*\s+data-ui-mode="basic"/);
+  assert.match(html, /aria-checked="true"[^>]*\s+data-ui-mode="advanced"/);
+});

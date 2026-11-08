@@ -1,4 +1,5 @@
 import type { IconMap } from "./icon-map.js";
+import type { UIMode } from "./ui-mode.js";
 import type { ResultDocument, ResultDocumentSpec, ResultNotice } from "./result-document.js";
 export type PrimitiveValue = string | number | boolean | null;
 export type StateValue = PrimitiveValue | undefined;
@@ -22,6 +23,11 @@ export type LabelTextKey =
     | "webUIFontPickerLabel"
     | "webUIFontSystemLabel"
     | "webUIFontSFProLabel"
+    | "uiModeLabel"
+    | "uiModeBasicLabel"
+    | "uiModeAdvancedLabel"
+    | "uiModeBasicTooltip"
+    | "uiModeAdvancedTooltip"
     | "layoutDirection"
     | "terminalMainTabTitle"
     | "terminalCommandOutputLabel"
@@ -428,6 +434,7 @@ export interface BundleStateSnapshot {
     iconSet?: unknown;
     colorTheme?: unknown;
     webUIFont?: unknown;
+    uiMode?: unknown;
     setupRun?: SetupRun | null;
     [key: string]: unknown;
 }
@@ -533,6 +540,7 @@ export interface WebUIState {
     iconSet: string;
     colorTheme: string;
     webUIFont: string;
+    uiMode: UIMode;
     bundleRootPath: string;
     homePath?: string;
     lastResultDocumentPaths: LastResultDocumentPaths;

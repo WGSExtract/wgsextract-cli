@@ -57,6 +57,11 @@
 "app.webUIFont.label" = "Weblettertype"  # i18n-source-hash:febeb868
 "app.webUIFont.system" = "Huidige prioriteit"  # i18n-source-hash:1ba70e38
 "app.webUIFont.sfPro" = "SF Pro indien beschikbaar"  # i18n-source-hash:6bb1650c
+"app.uiMode.label" = "Modus"  # i18n-source-hash:a7b93d21
+"app.uiMode.basic" = "Basis"  # i18n-source-hash:aa2c96da
+"app.uiMode.advanced" = "Geavanceerd"  # i18n-source-hash:4d064726
+"app.uiMode.basic.tooltip" = "Toont de gangbare taken, met aanbevolen instellingen die voor u worden gekozen."  # i18n-source-hash:3bb8871d
+"app.uiMode.advanced.tooltip" = "Toont alle functies en opties."  # i18n-source-hash:b6229d41
 "library.status.installed" = "Geïnstalleerd"  # i18n-source-hash:7bb4405c
 "library.status.unindexed" = "Index nodig"  # i18n-source-hash:a821219f
 "library.status.incomplete" = "Onvolledig"  # i18n-source-hash:387fd1bb

@@ -57,6 +57,11 @@
 "app.webUIFont.label" = "Fonte web"  # i18n-source-hash:febeb868
 "app.webUIFont.system" = "Prioridade atual"  # i18n-source-hash:1ba70e38
 "app.webUIFont.sfPro" = "SF Pro quando disponível"  # i18n-source-hash:6bb1650c
+"app.uiMode.label" = "Modo"  # i18n-source-hash:a7b93d21
+"app.uiMode.basic" = "Básico"  # i18n-source-hash:aa2c96da
+"app.uiMode.advanced" = "Avançado"  # i18n-source-hash:4d064726
+"app.uiMode.basic.tooltip" = "Mostra as tarefas comuns, com as configurações recomendadas escolhidas para você."  # i18n-source-hash:3bb8871d
+"app.uiMode.advanced.tooltip" = "Mostra todos os recursos e opções."  # i18n-source-hash:b6229d41
 "library.status.installed" = "Instalado"  # i18n-source-hash:7bb4405c
 "library.status.unindexed" = "Precisa de índice"  # i18n-source-hash:a821219f
 "library.status.incomplete" = "Incompleto"  # i18n-source-hash:387fd1bb
