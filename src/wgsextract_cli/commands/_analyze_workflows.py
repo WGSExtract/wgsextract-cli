@@ -624,8 +624,8 @@ def run_bam_chain(
         except WGSExtractError:
             if name != "y-haplogroup":
                 raise
-            # Too few chrY reads (low coverage, or a sex info couldn't call)
-            # mustn't cost the variant calls; a rerun retries the step.
+            # Too few chrY reads (low coverage) mustn't cost the variant
+            # calls; the step isn't journalled, so a rerun retries it.
             warn(
                 "y_haplogroup_failed",
                 "No Y haplogroup could be called (see above); continuing "
