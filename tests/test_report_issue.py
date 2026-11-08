@@ -96,6 +96,7 @@ def test_a_result_file_does_not_garble_the_report(
     bam = folder / f"{SAMPLE}.hg38.bam"
     bam.write_bytes(b"not a BAM")
     result = tmp_path / "gui-result" / "result.json"
+    result.parent.mkdir()
     code, _, _ = _cli(
         capfd, "info", "--input", str(bam), "--outdir", str(tmp_path),
         "--result-file", str(result),
