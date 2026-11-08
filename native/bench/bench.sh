@@ -28,7 +28,8 @@
 #   +ARG     an extra argument for the aligner's mem command, for example +-Y
 # Alignments of each tool, tier and K must match expected.tsv when it has them,
 # and each other, whatever the backend, threads or variant. With K0 the
-# alignments depend on the threads, so they must agree only at equal threads.
+# alignments depend on the threads, so they must agree only at equal threads;
+# with +ARGs, only between runs with the same ones, and not expected.tsv.
 #
 # To add a tool, add a case to tool_binary, tool_files and tool_command.
 set -euo pipefail
@@ -277,7 +278,8 @@ run_one() {
     wait "$sampler_pid" 2> /dev/null || true
     vm_counters > "$dir/vm_after.txt"
     hash=$(cat "$dir/hash")
-    expected=$(awk -F '\t' -v tier="$tier" -v tool="$(tool_binary "$c_tool")" -v K="$c_K" \
+    expected=""
+    [ ${#c_args[@]} -gt 0 ] || expected=$(awk -F '\t' -v tier="$tier" -v tool="$(tool_binary "$c_tool")" -v K="$c_K" \
         '!/^#/ && $1 == tier && $2 == tool && $3 == K { print $4 }' "$here/expected.tsv")
     # The GPU resets of the run, which macOS reports even when the aligner recovers.
     for report in /Library/Logs/DiagnosticReports/*.gpuRestart; do
@@ -438,12 +440,16 @@ run() {
     done
     [ -z "$balloon_pid" ] || { kill "$balloon_pid" 2> /dev/null || true; trap - EXIT; }
 
-    # Runs of a tool on a tier with the same K (and, without -K, the same threads) must all agree.
+    # Runs of a tool on a tier with the same K and +ARGs (and, without -K, the same threads) must all agree.
     awk -F '\t' -v OFS='\t' -v default_K="$default_K" -v threads="$threads" '
-        function key_of(config,    f, j, K, t) {
-            split(config, f, ":"); K = default_K; t = threads
-            for (j in f) { if (f[j] ~ /^K[0-9]+$/) K = substr(f[j], 2); if (f[j] ~ /^t[0-9]+$/) t = substr(f[j], 2) }
-            return f[1] ":" K (K == 0 ? ":t" t : "")
+        function key_of(config,    f, n, j, K, t, args) {
+            n = split(config, f, ":"); K = default_K; t = threads; args = ""
+            for (j = 1; j <= n; j++) {
+                if (f[j] ~ /^K[0-9]+$/) K = substr(f[j], 2)
+                if (f[j] ~ /^t[0-9]+$/) t = substr(f[j], 2)
+                if (f[j] ~ /^\+/) args = args ":" f[j]
+            }
+            return f[1] ":" K (K == 0 ? ":t" t : "") args
         }
         NR == FNR { if (FNR > 1 && $6 == 0) { key = key_of($4)
                 if (!(key in first)) first[key] = $26; else if ($26 != first[key]) bad[key] = 1 }

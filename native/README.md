@@ -389,7 +389,8 @@ gh run watch "$(gh run list --workflow aligner_bench.yml --limit 1 --json databa
   `bwa:metal:t2` or `mem2:metal:probe`; by default each tier's configs in
   `bench/tiers.tsv` (only `wgse-bwa --metal` on `full`). A failure of a `probe`
   config, such as an out-of-memory kill, is reported but does not fail the job.
-  `+ARG` passes an extra argument to the aligner's `mem` command.
+  `+ARG` passes an extra argument to the aligner's `mem` command; such runs
+  are checked only against runs with the same arguments.
 - `runners`: runner labels; larger runners such as `macos-15-xlarge` work when
   the organisation pays for them.
 - `rounds`, `threads`, `balloon_mib` (RAM to wire for the whole job, to act
