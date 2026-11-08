@@ -7,6 +7,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from wgsextract_cli.core import runtime
@@ -113,7 +114,9 @@ def _pixi_manifest_args() -> list[str]:
 PIXI_QUERY_TIMEOUTS = (60, 180)
 
 
-def _pixi_query(command: list[str]) -> subprocess.CompletedProcess[str]:
+def _pixi_query(
+    command: list[str], cwd: str | None = None
+) -> subprocess.CompletedProcess[str]:
     """Run a quick pixi query, retrying once on a timeout."""
     for timeout in PIXI_QUERY_TIMEOUTS[:-1]:
         try:
@@ -123,6 +126,7 @@ def _pixi_query(command: list[str]) -> subprocess.CompletedProcess[str]:
                 text=True,
                 errors="replace",
                 timeout=timeout,
+                cwd=cwd,
             )
         except subprocess.TimeoutExpired:
             pass
@@ -132,6 +136,7 @@ def _pixi_query(command: list[str]) -> subprocess.CompletedProcess[str]:
         text=True,
         errors="replace",
         timeout=PIXI_QUERY_TIMEOUTS[-1],
+        cwd=cwd,
     )
 
 
@@ -139,12 +144,21 @@ def _locked_package_available(pixi_cmd: str, env: str, tool: str) -> bool:
     """Whether the lockfile gives this platform's `env` the package providing `tool`.
 
     Reads the lockfile only, so nothing is downloaded just to answer `deps check`.
+    `pixi list` sizes the app's editable source as "./" from the current
+    directory, walking it: from a checkout's root, with its .pixi, that takes
+    seconds. Given the manifest, it runs from an empty directory instead.
     """
+    manifest = _pixi_manifest_args()
+    if manifest and os.path.dirname(pixi_cmd):
+        # A relative path (from PIXI_EXE or PATH) must still resolve from there.
+        pixi_cmd = os.path.abspath(pixi_cmd)
+    command = [pixi_cmd, "list", *manifest, "-e", env, "--no-install", "--json"]
     try:
-        result = _pixi_query(
-            [pixi_cmd, "list", *_pixi_manifest_args(), "-e", env, "--no-install"]
-            + ["--json"]
-        )
+        if manifest:
+            with tempfile.TemporaryDirectory(prefix="wgse-pixi-") as empty:
+                result = _pixi_query(command, cwd=empty)
+        else:
+            result = _pixi_query(command)
         packages = json.loads(result.stdout) if result.returncode == 0 else []
     except (OSError, subprocess.SubprocessError, ValueError):
         return False
