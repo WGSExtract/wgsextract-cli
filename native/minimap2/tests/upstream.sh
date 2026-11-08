@@ -5,6 +5,10 @@
 # masking. For map-hifi, map-ont, map-pb and sr, the indexes each builds must be
 # byte-identical, and the SAM records (all but @PG) of reads drawn from the whole genome
 # must be identical, whether wgse-minimap2 maps the FASTA or loads upstream's index.
+# Where Metal is available, so must those of --metal (gap fills on the GPU) with small
+# batches, one or several reads per thread, most fills kept on the CPU, injected Metal
+# interruptions, and an injected GPU failure, which must exit 1 after the CPU redoes the
+# failed fills.
 # Usage: upstream.sh <wgse-minimap2> <minimap2-upstream> <work-dir>
 set -eu
 wgse=$1
@@ -107,6 +111,21 @@ function quality(n,    q) {
 }'
 
 records() { grep -v '^@PG' "$1" > "$1.records"; }
+metal=false
+if "$wgse" capabilities --json | grep -q '"metal_available":true'; then metal=true; fi
+
+# metal_run <preset> <name> <expected exit> <wrapper options>... -- <minimap2 options>...
+metal_run() {
+    preset=$1 name=$2 expected=$3
+    shift 3
+    status=0
+    # shellcheck disable=SC2086
+    "$wgse" --metal "$@" -ax "$preset" reference.fa $reads > "metal.$preset.$name.sam" \
+        2> "metal.$preset.$name.log" || status=$?
+    test "$status" -eq "$expected"
+    records "metal.$preset.$name.sam"
+    cmp "upstream.$preset.sam.records" "metal.$preset.$name.sam.records"
+}
 
 for preset in map-hifi map-ont map-pb sr; do
     case $preset in
@@ -125,8 +144,45 @@ for preset in map-hifi map-ont map-pb sr; do
     for sam in "upstream.$preset.sam" "wgse.$preset.sam" "wgse.$preset.mmi.sam"; do records "$sam"; done
     cmp "upstream.$preset.sam.records" "wgse.$preset.sam.records"
     cmp "upstream.$preset.sam.records" "wgse.$preset.mmi.sam.records"
+    # sr keeps its gap fills on the CPU but still maps its reads as fibers.
+    if $metal; then metal_run "$preset" default 0 -t 4; fi
+    if $metal && [ "$preset" != sr ]; then
+        grep -Eq 'on the GPU \([1-9][0-9]* used\)' "metal.$preset.default.log"
+        metal_run "$preset" small 0 --gpu-fibers 3 --gpu-batch 5 -t 3
+        metal_run "$preset" single 0 --gpu-fibers 1 -t 1
+        metal_run "$preset" capped 0 --gpu-max-cost 3000 -t 2
+        metal_run "$preset" interrupted 0 --gpu-inject-interruptions 1 -t 2
+        grep -Eq '[1-9][0-9]* Metal interruptions' "metal.$preset.interrupted.log"
+        metal_run "$preset" failed 1 --gpu-inject-failure -t 2
+        grep -q 'a GPU batch failed (injected GPU failure)' "metal.$preset.failed.log"
+    fi
     # The repeats must give ambiguous alignments (secondary, or primary with MAPQ 0).
     awk -F '\t' '!/^@/ && int($2 / 4) % 2 == 0 && $5 == 0 { n++ } END { exit !(n > 0) }' \
         "upstream.$preset.sam"
 done
+# PR #559 review: a read of independent segments whose first segment resets the
+# thread's arena (--cap-kalloc) must hand the new arena to the reads that start
+# while a later segment waits for the GPU.
+if $metal; then
+    "$upstream" -t 2 --pairing=no --cap-kalloc 1 -ax map-hifi reference.fa hifi.fq hifi.fq \
+        > upstream.km-reset.sam 2> upstream.km-reset.log
+    "$wgse" --metal --gpu-fibers 4 -t 2 --pairing=no --cap-kalloc 1 -ax map-hifi reference.fa \
+        hifi.fq hifi.fq > metal.km-reset.sam 2> metal.km-reset.log
+    records upstream.km-reset.sam
+    records metal.km-reset.sam
+    cmp upstream.km-reset.sam.records metal.km-reset.sam.records
+    # PR #559 review: an arena over the limit while other reads hold memory in it
+    # must still be released, after those reads finish.
+    grep -Eq ' [1-9][0-9]* arena drains' metal.km-reset.log
+    # Fills whose int8 differences wrap (a match score this large) must be redone on the CPU.
+    "$upstream" -t 2 -ax map-hifi -A85 -B19 -O39,81 -E3,1 reference.fa hifi.fq \
+        > upstream.wrap.sam 2> upstream.wrap.log
+    "$wgse" --metal -t 2 -ax map-hifi -A85 -B19 -O39,81 -E3,1 reference.fa hifi.fq \
+        > metal.wrap.sam 2> metal.wrap.log
+    records upstream.wrap.sam
+    records metal.wrap.sam
+    cmp upstream.wrap.sam.records metal.wrap.sam.records
+    grep -Eq '[1-9][0-9]* redone on the CPU' metal.wrap.log
+fi
 echo "wgse-minimap2 matches upstream minimap2 for map-hifi, map-ont, map-pb and sr"
+if $metal; then echo "wgse-minimap2 --metal matches upstream minimap2 for map-hifi, map-ont, map-pb and sr"; fi
