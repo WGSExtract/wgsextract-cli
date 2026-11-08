@@ -3,7 +3,7 @@
 
   power.py check --cmd CMD
       Take one sample with CMD (for example "sudo -n powermetrics") and exit 0
-      if it reports the CPU's and GPU's energy.
+      if it reports the CPU's and GPU's energy or power.
   power.py run --cmd CMD --out DIR [--interval MS] [--idle SECONDS]
                [--quiet WATTS] [--quiet-wait SECONDS] -- COMMAND [ARG...]
       Sample power with CMD every MS milliseconds (default 1000). Measure the
@@ -12,7 +12,8 @@
       mean package power is at most WATTS. Then run COMMAND with this process's
       standard input, output and error, write DIR/power.txt (key=value) and
       DIR/power-samples.tsv, and exit with COMMAND's status (128 + the signal
-      if it was killed).
+      if it was killed). If sampling fails before COMMAND starts, COMMAND
+      still runs, and power.txt has status=failed and the error.
 
 Each powermetrics sample reports the energy that the CPU, GPU and ANE used
 since the last one (mJ). A sample's interval ends when it arrives, so the
@@ -116,8 +117,8 @@ def to_sample(plist: dict[str, Any], end: float) -> Sample:
             return float(processor[f"{name}_energy"])
         if f"{name}_power" in processor:
             return float(processor[f"{name}_power"]) * seconds
-        if name == "cpu":
-            raise ValueError("the sample has no CPU energy")
+        if name != "ane":
+            raise ValueError(f"the sample has no {name.upper()} energy or power")
         return 0.0
 
     return Sample(end, seconds, energy("cpu"), energy("gpu"), energy("ane"))
@@ -173,6 +174,10 @@ def report(
     return fields
 
 
+class SamplerFailed(Exception):
+    """Sampling stopped, or gave no sample in time, before the command started."""
+
+
 class Sampler:
     """Runs a powermetrics command and collects its samples as they arrive."""
 
@@ -211,6 +216,10 @@ class Sampler:
             with self._changed:
                 self._stopping.set()
                 self._changed.notify_all()
+
+    @property
+    def stopped(self) -> bool:
+        return self._stopping.is_set()
 
     def wait_for(self, done: Callable[[list[Sample]], bool], timeout: float) -> bool:
         """Wait until done(samples) is true; false on timeout or when sampling ends."""
@@ -277,6 +286,42 @@ def check(args: argparse.Namespace) -> int:
     return 0
 
 
+def wait_idle(
+    sampler: Sampler, args: argparse.Namespace
+) -> tuple[Energy | None, bool, float]:
+    """Wait for the idle window (and, with --quiet, a quiet one).
+
+    Returns the idle energy, whether the window was quiet, and when the wait
+    began; raises SamplerFailed as soon as sampling stops or stalls.
+    """
+    interval = args.interval / 1000
+
+    def failed(what: str) -> SamplerFailed:
+        reason = sampler.error or ("it stopped" if sampler.stopped else "it stalled")
+        return SamplerFailed(f"{args.cmd} {what}: {reason}; see power.log")
+
+    # The first sample covers powermetrics' start-up; the idle window follows it.
+    if not sampler.wait_for(lambda s: len(s) >= 2, 30 + 2 * interval):
+        raise failed("gave no samples")
+    first = sampler.samples[0].end
+    waited_from = time.monotonic()
+    idle: Energy | None = None
+    while args.idle > 0:
+        if not sampler.wait_for(
+            lambda s: s[-1].end >= first + args.idle, args.idle + 30
+        ):
+            raise failed("stopped before the idle window")
+        last = sampler.samples[-1].end
+        idle = integrate(sampler.samples, last - args.idle, last)
+        if args.quiet is None or idle.watts()[2] <= args.quiet:
+            break
+        if time.monotonic() - waited_from > args.quiet_wait:
+            return idle, False, waited_from
+        if not sampler.wait_for_next(30 + 2 * interval):
+            raise failed("stopped while waiting for a quiet window")
+    return idle, True, waited_from
+
+
 def run(args: argparse.Namespace) -> int:
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
@@ -288,30 +333,19 @@ def run(args: argparse.Namespace) -> int:
     with open(out / "power.log", "wb") as log:
         sampler = Sampler(parse_command(args.cmd), args.interval, log)
         try:
-            # The first sample covers powermetrics' start-up; the idle window follows it.
-            if not sampler.wait_for(lambda s: len(s) >= 2, 30 + 2 * interval):
-                print(
-                    f"power.py: {args.cmd} failed to give samples: "
-                    f"{sampler.error or 'see power.log'}",
-                    file=sys.stderr,
-                )
-                return 2
-            first = sampler.samples[0].end
-            waited_from = time.monotonic()
-            quiet = True
-            idle: Energy | None = None
-            while args.idle > 0:
-                sampler.wait_for(
-                    lambda s: s[-1].end >= first + args.idle, args.idle + 30
-                )
-                last = sampler.samples[-1].end
-                idle = integrate(sampler.samples, last - args.idle, last)
-                if args.quiet is None or idle.watts()[2] <= args.quiet:
-                    break
-                if time.monotonic() - waited_from > args.quiet_wait:
-                    quiet = False
-                    break
-                sampler.wait_for_next(30 + 2 * interval)
+            try:
+                idle, quiet, waited_from = wait_idle(sampler, args)
+            except SamplerFailed as error:
+                sampler.stop()
+                print(f"power.py: {error}; running without power data", file=sys.stderr)
+                fields["load1"] = f"{os.getloadavg()[0]:.2f}"
+                started = time.monotonic()
+                rc = run_command(command)
+                fields["run_s"] = f"{time.monotonic() - started:.3f}"
+                fields["status"] = "failed"
+                fields["error"] = " ".join(str(error).split())
+                write_report(out / "power.txt", fields)
+                return rc
             started = time.monotonic()
             if idle is not None:
                 idle = integrate(sampler.samples, started - args.idle, started)
@@ -335,8 +369,7 @@ def run(args: argparse.Namespace) -> int:
         fields["status"] = "incomplete"
     elif not quiet:
         fields["status"] = "not-quiet"
-    with open(out / "power.txt", "w") as file:
-        file.writelines(f"{key}={value}\n" for key, value in fields.items())
+    write_report(out / "power.txt", fields)
     with open(out / "power-samples.tsv", "w") as file:
         file.write("end_s\tseconds\tcpu_mj\tgpu_mj\tane_mj\n")
         for s in samples:
@@ -347,6 +380,11 @@ def run(args: argparse.Namespace) -> int:
     if sampler.error:
         print(f"power.py: {sampler.error}", file=sys.stderr)
     return rc
+
+
+def write_report(path: Path, fields: dict[str, str]) -> None:
+    with open(path, "w") as file:
+        file.writelines(f"{key}={value}\n" for key, value in fields.items())
 
 
 def run_command(command: Sequence[str]) -> int:

@@ -649,7 +649,15 @@ files; `results.tsv` and the summary then have the idle power, the CPU, GPU
 and package energy of the run, and the package energy above idle. With
 `--power-quiet WATTS` it waits up to 30 minutes for an idle window whose mean
 package power is at most WATTS, so that other work on the machine does not
-count towards a run. For example:
+count towards a run.
+
+The power command must keep working without a prompt for the whole bench,
+which can take hours. A cached `sudo` ticket expires after 5 minutes, so the
+check at the start can pass and later runs still fail. Use a sudoers rule
+instead, such as `you ALL=(root) NOPASSWD: /usr/bin/powermetrics`, or a helper
+that keeps a privileged session open. If sampling fails before a run, the
+aligner still runs: its row records power `failed`, the bench prints a
+warning, and the summary leaves the run out of the energy columns. For example:
 
 ```bash
 native/bench/bench.sh run --data out/bench-data --tier full-5m --out out/energy \

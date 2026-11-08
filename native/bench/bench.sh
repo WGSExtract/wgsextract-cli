@@ -16,9 +16,11 @@
 #       if any run failed or any alignments differ from the expected ones.
 #       --power also measures each run's energy with powermetrics through
 #       power.py: CMD (default "sudo -n powermetrics") must run powermetrics as
-#       root without a prompt. Each run is preceded by SECONDS (default 60) of
-#       idle measurement; --power-quiet waits, up to 30 minutes, for an idle
-#       window whose mean package power is at most WATTS.
+#       root without a prompt for the whole bench (a cached sudo ticket
+#       expires; a run whose sampling fails records power "failed"). Each run
+#       is preceded by SECONDS (default 60) of idle measurement; --power-quiet
+#       waits, up to 30 minutes, for an idle window whose mean package power
+#       is at most WATTS.
 #   bench.sh summary RESULTS.tsv...
 #       Print a Markdown table: per name, tier, config and variant, the median
 #       of the runs and the change against the first variant.
@@ -47,7 +49,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 default_K=10000000
 
 die() { echo "bench.sh: $*" >&2; exit 2; }
-usage() { sed -n '2,41p' "$0" >&2; exit 2; }
+usage() { sed -n '2,43p' "$0" >&2; exit 2; }
 
 # tool_binary TOOL: the wgse executable, which expected.tsv names.
 tool_binary() {
@@ -320,7 +322,12 @@ run_one() {
     for report in /Library/Logs/DiagnosticReports/*.gpuRestart; do
         [ -f "$report" ] && [ "$report" -nt "$dir/started.txt" ] && cp "$report" "$dir/" || true
     done
-    if [ "$rc" != 0 ]; then
+    if [ -n "$power_cmd" ] && grep -q '^status=failed$' "$dir/power.txt" 2> /dev/null; then
+        echo "warning: $label $config has no power data: $(sed -n 's/^error=//p' "$dir/power.txt")" >&2
+    fi
+    if [ ! -f "$dir/runstat.txt" ]; then
+        status=failed
+    elif [ "$rc" != 0 ]; then
         diagnose "$dir"
         if [ "$c_probe" = 1 ]; then status=probe-failed; else status=failed; fi
     elif [ -n "$expected" ] && [ "$hash" != "$expected" ]; then
@@ -349,11 +356,16 @@ results_header() {
 
 row() {
     local dir=$1 label=$2 config=$3 round=$4 rc=$5 hash=$6 expected=$7 status=$8 note jetsam=0 resets
-    local power_file=/dev/null
+    local power_file=/dev/null runstat=$dir/runstat.txt
     [ ! -f "$dir/power.txt" ] || power_file=$dir/power.txt
     note=$(grep -m 1 -o 'CPU fallback: .*\|Metal execution failed.*\|[Ee]rror[: ].*\|[Ff]ailed.*' "$dir/stderr.txt" |
         tr '\t' ' ' | cut -c1-120 || true)
     [ -n "$note" ] || note=$(grep -m 1 -o 'warning: .*' "$dir/stderr.txt" | tr '\t' ' ' | cut -c1-120 || true)
+    if [ ! -f "$runstat" ]; then
+        # The aligner never ran (power.py could not start it); the row still records the attempt.
+        runstat=/dev/null
+        note="the aligner did not run${note:+; $note}"
+    fi
     if [ -s "$dir/memorystatus.log" ] && grep -qi "killing.*wgse\|wgse.*kill" "$dir/memorystatus.log"; then
         jetsam=1
     fi
@@ -391,7 +403,7 @@ row() {
                 ("status" in p) ? p["status"] : "-", f(p["idle_cpu_w"]), f(p["idle_gpu_w"]), f(p["idle_package_w"]),
                 f(p["cpu_wh"]), f(p["gpu_wh"]), f(p["package_wh"]), f(p["net_cpu_wh"]), f(p["net_gpu_wh"]), f(p["net_package_wh"]) }
         function f(value) { return value == "" ? "-" : value }
-    ' "$dir/runstat.txt" "$dir/vm_before.txt" "$dir/vm_after.txt" "$dir/samples.tsv" "$dir/stderr.txt" "$power_file"
+    ' "$runstat" "$dir/vm_before.txt" "$dir/vm_after.txt" "$dir/samples.tsv" "$dir/stderr.txt" "$power_file"
 }
 
 run() {
@@ -543,7 +555,9 @@ summary() {
             if ($6 == 0) { real[key] = real[key] " " $9; cpu[key] = cpu[key] " " ($10 + $11)
                 round_real[key, $5] = $9; rounds[key] = rounds[key] " " $5
                 rss[key] = rss[key] " " $12; foot[key] = foot[key] " " $13
-                if ($31 != "" && $31 != "-") { energy = 1; load[key] = load[key] " " $30
+                if ($31 != "" && $31 != "-") energy = 1
+                # Runs whose sampler failed (power "failed") have no energy.
+                if (energy && $35 != "-") { load[key] = load[key] " " $30
                     cpu_wh[key] = cpu_wh[key] " " $35; gpu_wh[key] = gpu_wh[key] " " $36
                     package_wh[key] = package_wh[key] " " $37
                     if ($34 != "-") { idle[key] = idle[key] " " $34; net_wh[key] = net_wh[key] " " $40 } } }
