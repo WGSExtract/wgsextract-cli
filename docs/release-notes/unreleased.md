@@ -14,3 +14,7 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   are skipped and small ones (decoys, ALTs, HLA) are called together, so
   references with thousands of contigs don't slow it down. `--no-parallel`
   keeps one stream ([#549](https://github.com/WGSExtract/wgsextract-cli/issues/549)).
+
+## Fixes
+
+- `realign`'s FASTQ extraction now shows progress while it runs: the share of the input read, then the reads written. Before, a whole-genome extraction showed 0% until it finished.

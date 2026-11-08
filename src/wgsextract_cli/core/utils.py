@@ -602,6 +602,7 @@ def run_pipeline(
     stderr_dir: PathInput | None = None,
     heartbeat: bool = False,
     expected_reads: int | None = None,
+    estimate: Callable[[], tuple[float, float]] | None = None,
 ) -> None:
     """
     Run commands connected stdout-to-stdin, wait for every stage, and raise
@@ -612,6 +613,8 @@ def run_pipeline(
     included in the error. An upstream stage killed by SIGPIPE is not a failure
     when every later stage succeeded (the consumer intentionally stopped early).
     Cancellation kills and reaps every started stage before closing its files.
+    ``estimate`` returns the shares of the input read and output written,
+    which the heartbeat shows until a stage reports its read count.
     """
     if not stages:
         raise ValueError("run_pipeline requires at least one stage")
@@ -645,7 +648,17 @@ def run_pipeline(
 
     has_aligner = any(is_aligner(args) for args in progress_args)
 
+    estimator = estimate
+
     def scan() -> None:
+        nonlocal estimator
+        if estimator and monitor:
+            try:
+                monitor.estimate(*estimator())
+            except (OSError, ValueError) as error:
+                # Keep reading stderr: the tool's own final count still matters.
+                logging.debug("Progress estimate unavailable: %s", error)
+                estimator = None
         for index, (reader, aligner) in enumerate(readers):
             while chunk := reader.read(65536):
                 logging.debug(
