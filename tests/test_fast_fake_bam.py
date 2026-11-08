@@ -25,10 +25,9 @@ class _ModuleGroup:
         raise AttributeError(name)
 
     def __setattr__(self, name, value):
-        for module in self._modules:
-            if hasattr(module, name):
-                setattr(module, name, value)
-        object.__setattr__(self, name, value)
+        # pytest 9.2's monkeypatch can't undo a patch made through this
+        # proxy, which leaked into later tests; patch the defining module.
+        raise TypeError(f"patch {name!r} on the module that uses it")
 
 
 qc = _ModuleGroup(_qc_entry, _qc_commands, _qc_bam_writer, _qc_fake_data)
@@ -270,8 +269,8 @@ def test_qc_fake_data_accepts_build_aliases() -> None:
 
 
 def test_cmd_fake_data_rejects_legacy_bam_with_full_size(monkeypatch, tmp_path):
-    monkeypatch.setattr(qc, "verify_dependencies", lambda _tools: None)
-    monkeypatch.setattr(qc, "log_dependency_info", lambda _tools: None)
+    monkeypatch.setattr(_qc_entry, "verify_dependencies", lambda _tools: None)
+    monkeypatch.setattr(_qc_entry, "log_dependency_info", lambda _tools: None)
 
     args = Namespace(
         outdir=str(tmp_path),
@@ -323,8 +322,8 @@ def test_create_fast_fake_bam_kills_samtools_on_unexpected_stream_error(
 
     process = FakeProcess()
 
-    monkeypatch.setattr(qc, "popen", lambda _cmd, stdin: process)
-    monkeypatch.setattr(qc, "get_tool_path", lambda _tool: "samtools")
+    monkeypatch.setattr(_qc_bam_writer, "popen", lambda _cmd, stdin: process)
+    monkeypatch.setattr(_qc_bam_writer, "get_tool_path", lambda _tool: "samtools")
 
     def noise(_chrom_idx: int, pos: int, length: int) -> str:
         source = "ACGT" * ((pos + length + 4) // 4)
