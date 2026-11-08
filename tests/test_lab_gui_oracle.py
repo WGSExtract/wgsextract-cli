@@ -74,7 +74,6 @@ def test_tauri_macos_requires_the_current_apps_window_evidence(oracle, rendered)
     )
     assert window.ok is rendered
     assert "runner" not in tauri.app.steps
-    assert "/dev.guiforcli.web.embed.wgsextract/" in tauri.install_marker
 
 
 @pytest.mark.parametrize("runtime", ["swiftui", "tauri"])

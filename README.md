@@ -132,7 +132,8 @@ pixi run wgsextract info --input sample.bam --log-file out/run.log
 ```
 
 Alternatively set `log_dir = "~/wgse_logs"` in `config.toml` to create a unique log
-for each run. The UTF-8 DEBUG log retains Python diagnostics and pipeline/scatter
+for each run; the folder keeps the newest 100 runs' logs and removes older ones
+it generated. The UTF-8 DEBUG log retains Python diagnostics and pipeline/scatter
 tool messages; `run.log.provenance.json` records argv, CLI/platform versions,
 executed tool commands/versions and small reference-index signatures. Provenance
 is available during the run and finalized on normal exit or handled failure. A

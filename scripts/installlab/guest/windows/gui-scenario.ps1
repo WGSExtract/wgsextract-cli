@@ -32,7 +32,10 @@ $ProductName = "WGSExtract"
 $UninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$ProductName"
 $AppIdentifier = "dev.guiforcli.web.embed.wgsextract"
 $AppProcess = "gui-for-cli-webui-tauri"
-$Workspace = Join-Path $env:LOCALAPPDATA "$AppIdentifier\BundleWorkspaces\wgs-extract"
+# Apps since PR #531 keep the workspace in the home folder; released apps
+# before it keep it in their app data. The actions use the one setup made.
+$Workspace = Join-Path $env:USERPROFILE "wgs-extract"
+$OldWorkspace = Join-Path $env:LOCALAPPDATA "$AppIdentifier\BundleWorkspaces\wgs-extract"
 
 function Save-Snapshot([string]$Name) {
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Inventory (Join-Path $R "inventory-$Name.txt") $R
@@ -111,7 +114,8 @@ function Get-AppProcesses {
     $install = (Get-ItemProperty -LiteralPath $UninstallKey -ErrorAction SilentlyContinue).InstallLocation
     Get-Process -ErrorAction SilentlyContinue | Where-Object {
         $_.Path -and (($install -and $_.Path.StartsWith($install.Trim('"'), "OrdinalIgnoreCase")) -or
-            $_.Path.StartsWith($Workspace, "OrdinalIgnoreCase"))
+            $_.Path.StartsWith("$Workspace\", "OrdinalIgnoreCase") -or
+            $_.Path.StartsWith("$OldWorkspace\", "OrdinalIgnoreCase"))
     }
 }
 
@@ -296,6 +300,10 @@ Copy-Item -LiteralPath (Join-Path $env:LOCALAPPDATA "$AppIdentifier\logs\backend
 # The real actions through the app's own runtime: its bundled Node and its
 # bundle-test runner, on its bundle and workspace. Clicking isn't simulated;
 # everything a click would start is.
+if (-not (Test-Path -LiteralPath (Join-Path $Workspace ".bundle-workspace")) -and
+    (Test-Path -LiteralPath (Join-Path $OldWorkspace ".bundle-workspace"))) {
+    $Workspace = $OldWorkspace
+}
 $env:GUI_FOR_CLI_APP_SUPPORT_NAME = $AppIdentifier
 $BundleRunner = Join-Path $InstallDir "app\dist\web\src\server\bundle-test-cli.js"
 # Released apps before the single-app layout use platform/typescript.

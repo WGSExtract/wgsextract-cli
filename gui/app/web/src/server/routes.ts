@@ -8,7 +8,7 @@ import { loadConfig, saveBundleState, saveConfig } from "./config-store.js";
 import { errorMessage, HttpError } from "./errors.js";
 import { contentType, json, notFound, readJSONBody, serveIndex, staticFile } from "./http.js";
 import { findConfigEditorControl, locationKey, resolveActionReference, resolveDataSource, type DynamicActions } from "./manifest-lookup.js";
-import { streamNDJSON } from "./ndjson.js";
+import { streamNDJSON, type EmitEvent } from "./ndjson.js";
 import { runActionPreferringServer } from "./job-server-action.js";
 import type { ActionEvent } from "./action-runner.js";
 import { lastResultDocumentPaths, rememberLastResultDocument } from "./last-result-documents.js";
@@ -22,6 +22,7 @@ import { applySecurityHeaders, guardRequest } from "./request-guard.js";
 import { runSetup, runUninstall } from "./setup-runner.js";
 import { wrapEmitWithEventLog } from "./setup-event-log.js";
 import { bundleArchiveFormat } from "./bundle-archive.js";
+import { workspaceLocationInfo } from "./workspace-location.js";
 
 type ManifestResponse = Record<string, unknown> & { appVersion?: string; autoRunSetup?: boolean };
 
@@ -50,6 +51,7 @@ export interface RequestHandlerContext {
         load: (locale?: string, preferredLocales?: string[]) => Promise<LocalizedBundle>;
     };
     loadBundle: (requestedSource: string) => Promise<LooseRecord>;
+    moveWorkspace: (directory: string | null, emit: EmitEvent, signal: AbortSignal) => Promise<void>;
     /** The workspace manifest; actions, data sources, and settings files are only ever resolved from it. */
     manifest: BundleManifest;
     maxBodyBytes: number;
@@ -71,6 +73,8 @@ export function createRequestHandler(context: RequestHandlerContext) {
     // Bundles can only be loaded from folders the user picked in a native dialog during this session.
     const pickedBundlePaths = new Set<string>();
     const resultPaths = new ResultPaths();
+    // While the workspace moves nothing may start a process or write to it, or the write would be lost with the old copy.
+    let workspaceMoving = false;
     const staticRoutes: Record<string, RouteHandler> = {
         "/": (response, headOnly) => serveIndex(path.join(context.webRoot, "index.html"), indexToken(context), response, headOnly),
         "/index.html": (response, headOnly) => serveIndex(path.join(context.webRoot, "index.html"), indexToken(context), response, headOnly),
@@ -145,6 +149,24 @@ export function createRequestHandler(context: RequestHandlerContext) {
             await openPath(context.bundleRoot, context.runProcess);
             return { ok: true };
         }),
+        "/api/workspace-location/move": async (request, response) => {
+            const body = await readBody(request, context);
+            const directory = optionalString(body, "directory")?.trim() || null;
+            await streamNDJSON(
+                response,
+                async (emit, signal) => {
+                    workspaceMoving = true;
+                    try {
+                        await context.moveWorkspace(directory, emit, signal);
+                    }
+                    finally {
+                        workspaceMoving = false;
+                    }
+                    await emit({ type: "complete" });
+                },
+                (error) => ({ type: "error", error }),
+            );
+        },
         "/api/config/load": jsonRoute(context, async (body) => {
             const control = findConfigEditorControl(context.manifest, requiredString(body, "controlID"));
             return loadConfig(control, optionalString(body, "path"), context.bundleRoot);
@@ -173,6 +195,9 @@ export function createRequestHandler(context: RequestHandlerContext) {
                 return;
             }
             const postRoute = postRoutes[url.pathname];
+            if (method === "POST" && postRoute && workspaceMoving && url.pathname !== "/api/shutdown") {
+                throw new HttpError(409, "The workspace is being moved. Try again when the move has finished.");
+            }
             if (method === "POST" && postRoute) {
                 await postRoute(request, response);
                 return;
@@ -219,7 +244,10 @@ async function handleGet(url: URL, request: IncomingMessage, response: ServerRes
     if (url.pathname === "/api/manifest") {
         const locale = url.searchParams.has("locale") ? url.searchParams.get("locale") || undefined : context.defaultLocale;
         const loaded = await context.localizedBundleLoader.load(locale, preferredLocales(request.headers["accept-language"]));
-        const body = withAutoRunSetup(withAppVersion(loaded, context.appVersion));
+        const body = {
+            ...withAutoRunSetup(withAppVersion(loaded, context.appVersion)),
+            workspaceLocation: await workspaceLocationInfo(context.manifest, context.bundleRoot),
+        };
         json(response, context.enableDevReload ? { ...body, devReload: true } : body);
         return;
     }

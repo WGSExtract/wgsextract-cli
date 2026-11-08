@@ -1,4 +1,8 @@
-"""Opt-in, exclusive run logs and small provenance files."""
+"""Opt-in, exclusive run logs and small provenance files.
+
+A ``log_dir`` keeps the newest ``LOG_DIR_KEPT_RUNS`` runs, and any older run still writing to its
+log; a ``--log-file`` is never pruned.
+"""
 
 import argparse
 import hashlib
@@ -6,6 +10,7 @@ import json
 import logging
 import os
 import platform
+import re
 import threading
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
@@ -15,6 +20,13 @@ from uuid import uuid4
 
 from wgsextract_cli import __version__
 from wgsextract_cli.core.results import redact_argv
+
+# A log_dir keeps the newest runs' logs; only names it generated are ever removed.
+LOG_DIR_KEPT_RUNS = 100
+_GENERATED_LOG_NAME = re.compile(r"run-\d{8}T\d{6}-[0-9a-f]{32}\.log")
+# A run whose provenance still says "running" counts as going on while its log changed this recently;
+# after that it counts as a run that was killed before it could finish.
+_RUNNING_LOG_IDLE_SECONDS = 7 * 24 * 60 * 60
 
 _active: "RunLog | None" = None
 _tool_hook: Callable[[Sequence[str]], None] | None = None
@@ -162,6 +174,34 @@ class RunLog:
         }
 
 
+def _still_running(log: Path) -> bool:
+    try:
+        status = json.loads(
+            Path(str(log) + ".provenance.json").read_text(encoding="utf-8")
+        ).get("status")
+        idle = datetime.now(timezone.utc).timestamp() - log.stat().st_mtime
+    except (OSError, ValueError, AttributeError):
+        return False
+    return status == "running" and idle < _RUNNING_LOG_IDLE_SECONDS
+
+
+def _prune_log_dir(directory: Path) -> None:
+    names = sorted(
+        entry.name
+        for entry in directory.iterdir()
+        if _GENERATED_LOG_NAME.fullmatch(entry.name)
+    )
+    for name in names[:-LOG_DIR_KEPT_RUNS]:
+        # Another process's run may still be writing to it.
+        if _still_running(directory / name):
+            continue
+        for path in (directory / name, directory / (name + ".provenance.json")):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as error:
+                logging.warning("Could not remove old run log %s: %s", path, error)
+
+
 @contextmanager
 def run_logging(args: argparse.Namespace, argv: Sequence[str]) -> Iterator[None]:
     global _active
@@ -180,6 +220,8 @@ def run_logging(args: argparse.Namespace, argv: Sequence[str]) -> Iterator[None]
         session = RunLog(Path(path).expanduser())
     except OSError as error:
         raise RunLogError(str(error)) from error
+    if not getattr(args, "log_file", None):
+        _prune_log_dir(session.path.parent)
     logger = logging.getLogger()
     old_level = logger.level
     logger.addHandler(session.handler)

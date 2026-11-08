@@ -1,36 +1,50 @@
-/**
- * Path fields keep absolute paths (they go to settings files and commands), but show the bundle workspace
- * as its `{{bundleWorkspace}}` token so long per-user prefixes don't crowd out the part that matters.
- */
-export const bundleWorkspaceToken = "{{bundleWorkspace}}";
+export const workspaceToken = "{{bundleWorkspace}}";
 
-/** Shows `value` with a leading workspace folder replaced by the `{{bundleWorkspace}}` token. */
-export function displayWorkspacePath(value: unknown, workspaceRoot: string | undefined): string {
-    const text = String(value ?? "");
-    const root = trimTrailingSeparators(workspaceRoot ?? "");
-    if (!root || text.length < root.length) {
-        return text;
+/** Forward slashes, with no `.` or `..` segments, repeated slashes or trailing slash. */
+function normalizePath(candidate: string) {
+    const [first = "", ...rest] = candidate.replaceAll("\\", "/").split("/");
+    const segments: string[] = [];
+    for (const segment of rest) {
+        if (segment === "..") {
+            segments.pop();
+        }
+        else if (segment && segment !== ".") {
+            segments.push(segment);
+        }
     }
-    const head = text.slice(0, root.length);
-    const sameRoot = isWindowsPath(root) ? head.toLowerCase() === root.toLowerCase() : head === root;
-    const rest = text.slice(root.length);
-    return sameRoot && (rest === "" || /^[\\/]/.test(rest)) ? `${bundleWorkspaceToken}${rest}` : text;
+    return [first, ...segments].join("/");
 }
 
-/** Turns a leading `{{bundleWorkspace}}` token typed or shown in a path field back into the workspace folder. */
-export function expandWorkspacePath(value: string, workspaceRoot: string | undefined): string {
-    const root = trimTrailingSeparators(workspaceRoot ?? "");
-    if (!root || !value.startsWith(bundleWorkspaceToken)) {
+/** `value` relative to `root` with forward slashes: "" for the root itself, null when it is outside. */
+function pathRelativeToRoot(value: string, root: string): string | null {
+    const normalizedValue = normalizePath(value);
+    const normalizedRoot = normalizePath(root);
+    if (!normalizedRoot) {
+        return null;
+    }
+    // Drive-letter paths are Windows paths, which compare without case.
+    const comparable = (candidate: string) => /^[A-Za-z]:/.test(normalizedRoot) ? candidate.toLowerCase() : candidate;
+    if (comparable(normalizedValue) === comparable(normalizedRoot)) {
+        return "";
+    }
+    return comparable(normalizedValue).startsWith(`${comparable(normalizedRoot)}/`) ? normalizedValue.slice(normalizedRoot.length + 1) : null;
+}
+
+/** How the GUI shows a path: anything in the workspace is written relative to {{bundleWorkspace}}. */
+export function displayWorkspacePath(value: string, workspaceRoot: string): string {
+    const relative = pathRelativeToRoot(value, workspaceRoot);
+    if (relative == null) {
         return value;
     }
-    const rest = value.slice(bundleWorkspaceToken.length);
-    return `${root}${isWindowsPath(root) ? rest.replaceAll("/", "\\") : rest}`;
+    return relative ? `${workspaceToken}/${relative}` : workspaceToken;
 }
 
-function isWindowsPath(value: string): boolean {
-    return /^[A-Za-z]:/.test(value) || value.startsWith("\\\\");
-}
-
-function trimTrailingSeparators(value: string): string {
-    return value.length > 1 ? value.replace(/(?<!^[A-Za-z]:)[\\/]+$/, "") : value;
+/** The same path after `from` moved to `to`; a path outside `from` is returned unchanged. */
+export function relocatePath(value: string, from: string, to: string): string {
+    const relative = pathRelativeToRoot(value, from);
+    if (relative == null) {
+        return value;
+    }
+    const separator = to.includes("\\") ? "\\" : "/";
+    return relative ? `${to}${separator}${relative.replaceAll("/", separator)}` : to;
 }

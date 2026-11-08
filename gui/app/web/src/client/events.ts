@@ -1,6 +1,5 @@
 import { api } from "./api.js";
 import { configValueKey } from "../../../shared/rendering.js";
-import { expandWorkspacePath } from "../../../shared/workspace-paths.js";
 import { bundlePickerDefaultPath, rememberBundlePickerPath } from "./bundle-picker-memory.js";
 import { clamp } from "./dom.js";
 import { normalizeColorTheme, normalizeIconSet } from "./icons.js";
@@ -12,6 +11,7 @@ import { state } from "./state.js";
 import { dismissUpdatePopover, downloadUpdate, installUpdate, toggleUpdatePopover } from "./tauri-updater.js";
 import { appendTerminal, closeTerminalTab, resetTerminalEntries, terminalTabs } from "./terminal.js";
 import { bindTooltipEvents } from "./tooltips.js";
+import { bindWorkspaceLocationEvents } from "./workspace-location.js";
 import { setupPageID } from "./view.js";
 import type { ConfigSetting, ControlSpec, PathPickResponse } from "../../../shared/types.js";
 export { bindTooltipEvents } from "./tooltips.js";
@@ -89,14 +89,14 @@ export function bindEvents(bootstrap: Bootstrap) {
     app.querySelector("[data-open-bundle-workspace]")?.addEventListener("click", async () => {
         await openBundleWorkspace();
     });
+    bindWorkspaceLocationEvents(app);
     app.querySelector("[data-load-bundle]")?.addEventListener("click", async () => {
         await loadBundleFromPicker(bootstrap);
     });
     elements<HTMLInputElement | HTMLSelectElement>("[data-field-id]").forEach((input) => {
         input.addEventListener("change", async () => {
             const control = findControl(requiredDataset(input, "fieldId"));
-            const value = input.dataset.toggle != null ? String((input as HTMLInputElement).checked) : input.value;
-            await fieldValueChanged(control.kind === "path" ? expandWorkspacePath(value, state.bundleRootPath) : value, control);
+            await fieldValueChanged(input.dataset.toggle != null ? String((input as HTMLInputElement).checked) : input.value, control);
             clearDataSourcesAndRender();
         });
     });
@@ -125,7 +125,7 @@ export function bindEvents(bootstrap: Bootstrap) {
     });
     elements<HTMLInputElement>("[data-config-path]").forEach((input) => {
         input.addEventListener("change", async () => {
-            state.configFilePaths[requiredDataset(input, "configPath")] = expandWorkspacePath(input.value, state.bundleRootPath);
+            state.configFilePaths[requiredDataset(input, "configPath")] = input.value;
             await persistBundleState();
         });
     });
@@ -134,7 +134,7 @@ export function bindEvents(bootstrap: Bootstrap) {
             const control = findControl(requiredDataset(input, "configControl"));
             const setting = findSetting(control, requiredDataset(input, "configSetting"));
             const value = input.dataset.toggle != null ? String((input as HTMLInputElement).checked) : input.value;
-            await configSettingChanged(setting.kind === "path" ? expandWorkspacePath(value, state.bundleRootPath) : value, setting, control);
+            await configSettingChanged(value, setting, control);
             clearDataSourcesAndRender();
         });
     });

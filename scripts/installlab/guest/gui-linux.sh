@@ -25,7 +25,11 @@ PACKAGE="wgs-extract"
 APP_DIR="/usr/lib/WGSExtract"
 APP_BIN="/usr/bin/gui-for-cli-webui-tauri"
 APP_ID="dev.guiforcli.web.embed.wgsextract"
-WORKSPACE="$HOME/.local/share/$APP_ID/BundleWorkspaces/wgs-extract"
+# Apps since PR #531 keep the workspace in the home folder; released apps
+# before it keep it in their app data (OLD_WORKSPACE). app_actions uses the
+# one setup made.
+WORKSPACE="$HOME/wgs-extract"
+OLD_WORKSPACE="$HOME/.local/share/$APP_ID/BundleWorkspaces/wgs-extract"
 # A desktop session's runtime folder (logind's /run/user/<uid>), where dconf
 # keeps its runtime state; without one it falls back to ~/.cache/dconf.
 XDG_RUNTIME_DIR="/tmp/runtime-$(id -u)"
@@ -35,7 +39,7 @@ mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
 # The app's main process (its xvfb-run is app_pid), and everything it starts:
 # its backend, and setup's scripts and downloads, which run from the workspace.
 APP_MAIN="^$APP_BIN"
-APP_TREE="$APP_DIR/|$APP_BIN|$WORKSPACE/"
+APP_TREE="$APP_DIR/|$APP_BIN|$WORKSPACE/|$OLD_WORKSPACE/"
 # shellcheck source=scripts/installlab/guest/app-lifecycle.sh
 . "$HERE/app-lifecycle.sh"
 
@@ -86,6 +90,9 @@ EOF
 }
 
 app_actions() {
+    if [ ! -e "$WORKSPACE/.bundle-workspace" ] && [ -e "$OLD_WORKSPACE/.bundle-workspace" ]; then
+        WORKSPACE="$OLD_WORKSPACE"
+    fi
     runner="$APP_DIR/app/dist/web/src/server/bundle-test-cli.js"
     # Released apps before the single-app layout use platform/typescript.
     if [ ! -f "$runner" ]; then

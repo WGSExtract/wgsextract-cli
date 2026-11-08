@@ -1,7 +1,9 @@
 import argparse
 import json
 import logging
+import os
 import sys
+from pathlib import Path
 from threading import Event
 
 import pytest
@@ -9,7 +11,7 @@ import pytest
 from wgsextract_cli.cli.bootstrap import configure_logging
 from wgsextract_cli.commands._extract_helpers import cleanup_files
 from wgsextract_cli.commands.vcf.gatk_scatter import _run_worker
-from wgsextract_cli.core import dependency_checks
+from wgsextract_cli.core import dependency_checks, run_log
 from wgsextract_cli.core.run_log import RunLogError, run_logging
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
@@ -82,6 +84,44 @@ def test_log_directory_generates_unique_runs_and_rejects_output_collision(tmp_pa
             with cleanup_files(on_failure=[collision]):
                 run_command([sys.executable, "-c", "print('unused')", str(collision)])
     assert "unused" not in collision.read_text()
+
+
+def test_log_directory_keeps_only_the_newest_runs(tmp_path, monkeypatch):
+    # PR #531: the desktop app turns log_dir on by default, so it must not grow forever.
+    monkeypatch.setattr(run_log, "LOG_DIR_KEPT_RUNS", 3)
+    old = [f"run-2020010{day}T000000-{'0' * 32}.log" for day in range(1, 5)]
+    for name in old:
+        (tmp_path / name).write_text("old")
+        (tmp_path / f"{name}.provenance.json").write_text("{}")
+    (tmp_path / "notes.log").write_text("the user's")
+    args = argparse.Namespace(log_file=None, log_dir=str(tmp_path), ref=None)
+    with run_logging(args, ["info"]):
+        pass
+    logs = sorted(path.name for path in tmp_path.glob("run-*.log"))
+    assert logs[:2] == old[-2:]
+    assert len(logs) == 3
+    assert sorted(path.name for path in tmp_path.glob("*.provenance.json")) == [
+        f"{name}.provenance.json" for name in logs
+    ]
+    assert (tmp_path / "notes.log").read_text() == "the user's"
+
+
+def test_log_directory_keeps_an_older_run_still_writing_its_log(tmp_path, monkeypatch):
+    # PR #531 review: pruning must not unlink the open log of a long run in another process.
+    monkeypatch.setattr(run_log, "LOG_DIR_KEPT_RUNS", 1)
+    running = tmp_path / f"run-20200101T000000-{'1' * 32}.log"
+    running.write_text("still aligning")
+    Path(f"{running}.provenance.json").write_text('{"status": "running"}')
+    killed = tmp_path / f"run-20200102T000000-{'2' * 32}.log"
+    killed.write_text("killed long ago")
+    Path(f"{killed}.provenance.json").write_text('{"status": "running"}')
+    os.utime(killed, (0, 0))
+    args = argparse.Namespace(log_file=None, log_dir=str(tmp_path), ref=None)
+    with run_logging(args, ["info"]):
+        pass
+    assert running.read_text() == "still aligning"
+    assert not killed.exists()
+    assert len(list(tmp_path.glob("run-*.log"))) == 2
 
 
 def test_gatk_worker_retains_tool_diagnostics_without_capturing_data(tmp_path):

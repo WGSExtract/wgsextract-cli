@@ -79,6 +79,44 @@ function New-QuickUninstallScript {
     $appIdentifierLiteral = ConvertTo-PowerShellLiteral -Value $AppIdentifier
     $installerNameLiteral = ConvertTo-PowerShellLiteral -Value $installerFileName
 
+    # Kept literal: spliced into the script below as is.
+    $removeAppData = @'
+function Test-ManagedWorkspace([string]$LiteralPath) {
+    $sentinel = Join-Path $LiteralPath ".bundle-workspace"
+    if (-not (Test-Path -LiteralPath $sentinel -PathType Leaf)) {
+        return $false
+    }
+    return [System.IO.File]::ReadAllText($sentinel) -eq "GUI for CLI bundle workspace`n"
+}
+
+# Deletes an app data folder except any bundle workspace in it: those hold the user's libraries and
+# outputs, which only the app's own uninstall deletes, and only when the user says so.
+function Remove-AppData([string]$LiteralPath) {
+    if (-not (Test-Path -LiteralPath $LiteralPath -PathType Container)) {
+        Remove-Tree -LiteralPath $LiteralPath
+        return
+    }
+    if (Test-ManagedWorkspace $LiteralPath) {
+        Write-Host "Kept the workspace $LiteralPath"
+        return
+    }
+    $kept = @(Get-ChildItem -LiteralPath $LiteralPath -Recurse -Force -Depth 4 -Filter ".bundle-workspace" -File -ErrorAction SilentlyContinue |
+        ForEach-Object { $_.DirectoryName } | Where-Object { Test-ManagedWorkspace $_ })
+    if ($kept.Count -eq 0) {
+        Remove-Tree -LiteralPath $LiteralPath
+        return
+    }
+    foreach ($child in @(Get-ChildItem -LiteralPath $LiteralPath -Force)) {
+        $prefix = $child.FullName + [System.IO.Path]::DirectorySeparatorChar
+        if ($kept | Where-Object { $_ -eq $child.FullName -or $_.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase) }) {
+            Remove-AppData $child.FullName
+        } else {
+            Remove-Tree -LiteralPath $child.FullName
+        }
+    }
+}
+'@
+
     $script = @"
 `$ErrorActionPreference = "Stop"
 
@@ -109,13 +147,14 @@ function Remove-Tree {
     }
 }
 
+$removeAppData
 function Stop-WGSExtractProcesses {
     `$needles = @(
         `$AppName,
         `$AppIdentifier,
         "gui-for-cli-webui-tauri",
-        "BundleWorkspaces\wgs-extract",
-        "BundleWorkspaces/wgs-extract"
+        "\wgs-extract\",
+        "/wgs-extract/"
     ) | Where-Object { `$_ }
 
     `$currentPid = `$PID
@@ -207,7 +246,7 @@ if (`$env:LOCALAPPDATA) {
 }
 
 foreach (`$path in ((`$installDirectories + `$dataDirectories) | Where-Object { `$_ } | Select-Object -Unique)) {
-    Remove-Tree -LiteralPath `$path
+    Remove-AppData `$path
 }
 
 Write-Host "Quick uninstall complete."

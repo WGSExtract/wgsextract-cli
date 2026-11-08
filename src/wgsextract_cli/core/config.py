@@ -51,7 +51,8 @@ KNOWN_SETTINGS = {
     "quiet_mode": (False, "Enable quiet mode (errors only)"),
     "log_dir": (
         None,
-        "Opt-in directory for unique persistent DEBUG run logs and provenance",
+        "Opt-in directory for unique persistent DEBUG run logs and provenance; "
+        "it keeps the newest 100 runs",
     ),
     "state_directory": (
         None,
