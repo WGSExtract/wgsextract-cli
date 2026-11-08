@@ -348,6 +348,7 @@ def test_the_harness_notes_a_crashed_apps_events_then_stops_what_it_left(oracle)
     assert timeline[-1] == "app-closed"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX guest script")
 def test_optional_tools_install_into_the_workspace_runtime(tmp_path: Path) -> None:
     # Regression: once v0.8.5 (PR #531) became the latest app, its CLI runtime
     # lived in ~/wgs-extract, and the lab's optional-tools step looked only in
