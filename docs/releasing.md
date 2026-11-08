@@ -59,6 +59,14 @@ it.
    the app to the existing release with
    `gh workflow run gui-distribution.yml -f tag=vX.Y.Z`.
 
+   The "Protect release tags" ruleset lets only admins, maintainers and
+   deploy keys create `v*` tags, so the workflow pushes the tag with a deploy
+   key: `RELEASE_TAG_DEPLOY_KEY`, a secret of the `release-tag` environment,
+   which only `main` can use. To replace the key, add a new write deploy key
+   and set the secret to its private key
+   (`gh secret set RELEASE_TAG_DEPLOY_KEY --env release-tag < key`), then
+   delete the old deploy key.
+
 Without a notes file the release is left as a **draft** with generated notes.
 Edit and publish it on the release's GitHub page (**Edit**, then **Publish
 release**), or with

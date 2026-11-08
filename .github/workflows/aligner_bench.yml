@@ -1,6 +1,6 @@
 name: Aligner Bench
 
-# Benchmarks and parity-tests the native aligners (wgse-bwa, wgse-bwa-mem2) on
+# Benchmarks and parity-tests the native aligners (wgse-bwa, wgse-bwa-mem2, wgse-bwa-mem3) on
 # GitHub-hosted Macs: Actions > Aligner Bench > Run workflow, or
 #   gh workflow run aligner_bench.yml -f variants=main,my-branch -f tiers=small,medium
 # Each variant (a git ref, built here, or a published macos-aligners-N release)
@@ -138,9 +138,11 @@ jobs:
           mkdir -p "$BIN"
           for binary in out/prefix/bin/wgse-*; do
             tool=$(basename "$binary")
-            # As in macos_aligners.yml: wgse-minimap2 has its own smoke test.
+            # As in macos_aligners.yml: wgse-minimap2 has its own smoke test, and
+            # wgse-bwa-mem3 has no Metal backend.
             case $tool in
               wgse-minimap2) native/minimap2/tests/smoke.sh "$PWD/$binary" "$PWD/out/smoke-$tool" ;;
+              wgse-bwa-mem3) native/tests/smoke.sh "$PWD/$binary" "$PWD/out/smoke-$tool" cpu ;;
               *) native/tests/smoke.sh "$PWD/$binary" "$PWD/out/smoke-$tool" metal ;;
             esac
             cp "$binary" "$BIN/"
