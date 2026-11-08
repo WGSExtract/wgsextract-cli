@@ -100,6 +100,10 @@ def get_sam_sort_cmd(
         cmd.append("-n")
     if temp_dir:
         cmd += ["-T", fspath(temp_dir)]
+    elif write_index:
+        # samtools before 1.14 derives the spill names from -o, ##idx## and
+        # all, and htslib cuts each at ##idx##: every spill opens as out_file.
+        cmd += ["-T", f"{fspath(out_file)}.tmp"]
     if fmt == "CRAM":
         cmd += ["-O", "CRAM"]
         if reference:
