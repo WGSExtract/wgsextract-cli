@@ -211,7 +211,9 @@ kernel that computes the same scores and backtrack as minimap2's
 To keep enough reads in flight for large GPU batches (up to 4096 fills), each
 `-t` thread runs 16 reads as user-space fibers that switch while a read waits
 for the GPU, sharing the thread's memory arena, and threads that run out of
-reads compute queued fills themselves. Fills longer than 512 read bases or
+reads compute queued fills themselves. When that arena outgrows minimap2's
+reset limits (`--cap-kalloc`, default 500 MB), the thread starts no new reads
+until its reads in flight finish, then frees it, as minimap2 does after a read. Fills longer than 512 read bases or
 4096 reference bases, or that minimap2's band would narrow, run on the CPU, as
 do the
 largest fills (more than 8192 cells per kernel lane, about 3% of HiFi fills),
