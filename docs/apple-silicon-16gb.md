@@ -21,7 +21,7 @@ figure is **measured** unless labelled otherwise.
 
 Times are wall-clock. Peak memory is the largest resident set of any process
 (`/usr/bin/time -l`) and, for long steps, the summed resident memory of all
-the user's processes, sampled every 30 s.
+the user's processes, sampled every 5 s.
 
 ## Summary
 
@@ -44,12 +44,26 @@ a little deeper than the usual 30x, so a 30x genome should take a little less.
 
 Two passes ran every command family:
 
-- **Fake genomes** from the test fixtures: all 53 commands finished in
-  seconds, using at most 4.1 GiB (`realign`). The ones that stopped
-  did so for the right reason, with a clear message:
+- **Fake genomes** from the test fixtures: 53 commands, each within 30 s
+  and at most 4.1 GiB (`realign`). `deps check` took 74 s on the first run;
+  it now takes about 10 s
+  ([#552](https://github.com/WGSExtract/wgsextract-cli/pull/552)). 44 passed.
+  Of the 9 that exited non-zero, 7 stopped for the right reason, with a clear
+  message:
   - `vcf deepvariant` needs Docker;
-  - the Y-DNA and typing commands need more reads than a fake genome has;
-  - `microarray` needs the reference library (`ref bootstrap`).
+  - `lineage y-haplogroup` and `lineage y-str` find no usable chrY markers in
+    the fake genome;
+  - `typing str`, `typing hla` and `typing cyp2d6` refuse it because its
+    scaled reference is neither GRCh37 nor GRCh38;
+  - `microarray` needs the hg38-to-hg19 liftover chain from the reference
+    library (`ref bootstrap`).
+
+  The other two were faults:
+  - `bam unalign` was run without its required `--r1`/`--r2` (a test-script
+    error); given them it passes in 4 s;
+  - `analyze comprehensive` stopped at the Y haplogroup step instead of going
+    on to call variants. That is fixed in
+    [#577](https://github.com/WGSExtract/wgsextract-cli/pull/577).
 - **5 million real HG002 read pairs** (about 0.5x) aligned to hs38. Everything
   passed except Y haplogroup and Y-STR, which need more than the 1.9x of
   chrY these reads gave.
@@ -108,7 +122,8 @@ The input was the public GIAB HG002 NovaSeq PCR-free 35x BAM (830 million
 reads, 43 GiB) from Google's DeepVariant case study. `realign` aligned it
 again to hs38 (GRCh38 with no ALTs). Each command ran with defaults, one after
 another, with `/usr/bin/time -l`. A sampler recorded swap, free memory, the
-summed memory of all the user's processes, and disk use every 30 s
+summed memory of all the user's processes, and disk use every 5 s, and the
+process list every 30 s
 ([evidence](https://github.com/WGSExtract/wgsextract-cli/issues/549)).
 
 | Step | Time | Peak memory |
