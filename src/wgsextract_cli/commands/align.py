@@ -517,8 +517,9 @@ def native_short_read_aligner(
     Its Apple Silicon build (wgse-bwa, wgse-bwa-mem2) writes the same
     alignments; it runs on the Metal GPU when it can. wgse-bwa's GPU backend
     needs bwa_metal_memory more: when the pipeline's estimate with it exceeds
-    this Mac's RAM less headroom, sort memory is lowered (which leaves the
-    output unchanged), and when even 256M doesn't fit wgse-bwa runs on the CPU.
+    this Mac's RAM less headroom, or the CPU run's estimate when that is larger
+    (a 30x genome on 16 GB), sort memory is lowered (which leaves the output
+    unchanged), and when even 256M doesn't fit wgse-bwa runs on the CPU.
     Streaming realign (additional_ram_bytes) also needs it to fit the RAM
     available now, as streaming_mapping_fits checks, so Metal never pushes it
     to extracting FASTQs.
@@ -543,7 +544,7 @@ def native_short_read_aligner(
             f"{step}M" for step in _METAL_SORT_MEMORY_STEPS_MIB if step < mib
         ]
 
-        def needed(sort_memory: str) -> int:
+        def needed(sort_memory: str, gpu_bytes: int = gpu) -> int:
             estimate = estimate_mapping_memory(
                 ref,
                 tool,
@@ -553,16 +554,25 @@ def native_short_read_aligner(
                 reads=reads,
                 platform=job.platform,
                 read_length=read_length,
-                gpu_bytes=gpu,
+                gpu_bytes=gpu_bytes,
             )
             return estimate.total + additional_ram_bytes
 
-        fitting = next((m for m in candidates if needed(m) <= budget), None)
+        # The GPU never needs more than the CPU run it replaces, which goes
+        # ahead (with a LOW preflight) even when it doesn't fit.
+        cpu = needed(memory, 0)
+        limit = max(budget, cpu)
+        fitting = next((m for m in candidates if needed(m) <= limit), None)
         if fitting is None:
+            room = (
+                f"the {budget / 1024**3:.1f} GiB of RAM it can use"
+                if limit == budget
+                else f"the {cpu / 1024**3:.1f} GiB it needs on the CPU"
+            )
             logging.info(
                 f"Running {native.binary} on the CPU: with its Metal GPU backend "
                 f"the alignment is estimated to need {needed(candidates[-1]) / 1024**3:.1f} "
-                f"GiB, more than the {budget / 1024**3:.1f} GiB of RAM it can use."
+                f"GiB, more than {room}."
             )
             aligner = AlignerCommand(tool, native)
         else:
