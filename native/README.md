@@ -69,7 +69,7 @@ for dir in wgse-*-macos-arm64; do PATH="$PWD/$dir/bin:$PATH"; done
 export PATH
 wgse-bwa capabilities --json
 wgse-bwa-mem2 capabilities --json
-wgse-bwa-mem3 capabilities --json
+wgse-bwa-mem3 capabilities --json   # in macos-aligners-13 and later
 wgse-minimap2 capabilities --json
 ```
 
@@ -758,7 +758,8 @@ adapted from BWA's MIT-licensed `bwt.c`, `bwamem.c`, `bwamem_pair.c` and
 (MIT) and safestringlib (MIT) with the code in `bwa-mem2/` (GPL-3.0-or-later,
 like this repository). `wgse-bwa-mem3` combines bwa-mem3 (MIT), sse2neon
 (MIT), libsais (Apache-2.0), mimalloc (MIT), zlib-ng (zlib), libdeflate (MIT)
-and htslib (MIT/Expat and modified BSD) with the code in `bwa-mem3/` (GPL-3.0-or-later).
+htslib (MIT/Expat and modified BSD) and htslib's bundled htscodecs (BSD) with
+the code in `bwa-mem3/` (GPL-3.0-or-later).
 `wgse-minimap2` combines minimap2 (MIT) and sse2neon
 (MIT) with the code in `minimap2/` (GPL-3.0-or-later). Its sketching code is
 adapted from minimap2's `sketch.c` (`MINIMAP2-LICENSE`) and its radix sort from

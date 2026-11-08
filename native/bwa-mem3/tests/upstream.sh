@@ -82,11 +82,12 @@ function quality(n,    q) {
 
 records() { grep -v '^@PG' "$1" > "$1.records"; }
 
-for tool in upstream wgse; do
-    eval binary=\$$tool
-    cp reference.fa "$tool/reference.fa"
-    "$binary" index "$tool/reference.fa" > "$tool/index.log" 2>&1
-done
+build_index() {
+    cp reference.fa "$1/reference.fa"
+    "$2" index "$1/reference.fa" > "$1/index.log" 2>&1
+}
+build_index upstream "$upstream"
+build_index wgse "$wgse"
 for suffix in amb ann bwt.2bit.64 pac; do
     cmp "upstream/reference.fa.$suffix" "wgse/reference.fa.$suffix"
 done
@@ -98,7 +99,8 @@ for mode in bwa-mem bwa-mem2 plain fast; do
         *) options=--compat=$mode ;;
     esac
     for tool in upstream wgse; do
-        eval binary=\$$tool
+        binary=$upstream
+        [ "$tool" = wgse ] && binary=$wgse
         # shellcheck disable=SC2086 # $options holds zero or one option
         "$binary" mem -t 4 $options "$tool/reference.fa" reads_1.fq reads_2.fq \
             > "$tool.$mode.pe.sam" 2> "$tool.$mode.pe.log"
@@ -115,4 +117,9 @@ for mode in bwa-mem bwa-mem2 plain fast; do
         "upstream.$mode.pe.sam"
 done
 grep -q '^@PG	ID:bwa-mem3	PN:bwa-mem3	VN:[^	]*-wgse-' wgse.plain.pe.sam
+# The @PG command line keeps the backend option; the records do not change.
+"$wgse" --backend auto mem -t 4 wgse/reference.fa reads_1.fq > wgse.auto.se.sam 2> wgse.auto.se.log
+grep -q '^@PG	ID:bwa-mem3	.*	CL:[^	]*wgse-bwa-mem3 --backend auto mem -t 4 ' wgse.auto.se.sam
+records wgse.auto.se.sam
+cmp wgse.plain.se.sam.records wgse.auto.se.sam.records
 echo "wgse-bwa-mem3 matches upstream bwa-mem3 for --compat=bwa-mem, --compat=bwa-mem2, plain and --fast"

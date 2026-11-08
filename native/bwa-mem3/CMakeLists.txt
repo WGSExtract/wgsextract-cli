@@ -164,6 +164,10 @@ if(BUILD_TESTING)
     add_test(NAME bwa_mem3_capabilities COMMAND wgse-bwa-mem3 capabilities --json)
     set_tests_properties(bwa_mem3_capabilities PROPERTIES
         PASS_REGULAR_EXPRESSION "\"engine\":\"bwa-mem3\".*\"metal_hardware_supported\":")
+    # "version" prints one line, like --version and the other wrappers.
+    add_test(NAME bwa_mem3_version COMMAND wgse-bwa-mem3 version)
+    set_tests_properties(bwa_mem3_version PROPERTIES
+        PASS_REGULAR_EXPRESSION "^wgse-bwa-mem3 [0-9.]+; bwa-mem3 [0-9.]+\n$")
     # Without a Metal backend, --metal must fail rather than silently use the CPU.
     add_test(NAME bwa_mem3_metal_refused COMMAND wgse-bwa-mem3 --metal mem)
     set_tests_properties(bwa_mem3_metal_refused PROPERTIES
@@ -198,3 +202,6 @@ install(FILES "${mem3_zlibng_SOURCE_DIR}/LICENSE.md" DESTINATION ${licenses}
 install(FILES "${mem3_libdeflate_SOURCE_DIR}/COPYING" DESTINATION ${licenses}
     RENAME libdeflate-LICENSE)
 install(FILES "${htslib_dir}/LICENSE" DESTINATION ${licenses} RENAME htslib-LICENSE)
+# htslib's CRAM codecs (rANS, arithmetic coder, ...) come from its bundled htscodecs.
+install(FILES "${htslib_dir}/htscodecs/LICENSE.md" DESTINATION ${licenses}
+    RENAME htscodecs-LICENSE)

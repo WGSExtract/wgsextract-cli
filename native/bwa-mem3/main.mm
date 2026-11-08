@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <vector>
 
 extern "C" int wgse_bwamem3_main(int argc, char *argv[]);
 
@@ -14,13 +15,14 @@ constexpr const char *engine_version = MEM3_VERSION;
 void help(FILE *stream) {
     fprintf(stream, "%s %s (bwa-mem3 %s rebuilt for Apple Silicon)\n"
         "Usage: %s [--backend cpu|auto] <command> [arguments]\n"
-        "         bwa-mem3's commands: index, mem, version, shm, re-sa\n"
+        "         bwa-mem3's commands: index, mem, shm, re-sa\n"
         "       %s capabilities --json   report the Metal hardware\n"
-        "       %s --version             print executable and engine version\n"
+        "       %s --version | version   print executable and engine version\n"
+        "       %s version --verbose     also print bwa-mem3's build details\n"
         "Alignment is bwa-mem3's, unchanged, on the CPU: there is no Metal backend yet, so\n"
         "--metal and --backend metal fail and --backend auto runs on the CPU.\n"
         "SAM is written to stdout, diagnostics to stderr. Not qualified for clinical use.\n\n",
-        name, version, engine_version, name, name, name);
+        name, version, engine_version, name, name, name, name);
 }
 
 bool metal_hardware_supported() {
@@ -48,20 +50,25 @@ int run(int argc, char **argv) {
         }
         command_index += 2;
     }
-    if (command_index > 1) {
-        argv[command_index - 1] = argv[0];
-        argv += command_index - 1;
-        argc -= command_index - 1;
-    }
-    const std::string command = argc > 1 ? argv[1] : "";
+    const int arguments_left = argc - command_index;
+    const std::string command = arguments_left > 0 ? argv[command_index] : "";
     if (automatic && command == "mem")
         fprintf(stderr, "[%s] --backend auto: no Metal backend; aligning on the CPU\n", name);
-    if (command == "--version") {
+    if (command == "--version" || command == "version") {
+        const bool verbose = arguments_left == 2 && strcmp(argv[command_index + 1], "--verbose") == 0;
+        if (arguments_left > 1 && !verbose) {
+            fprintf(stderr, "Usage: %s version [--verbose]\n", name);
+            return 2;
+        }
         printf("%s %s; bwa-mem3 %s\n", name, version, engine_version);
-        return 0;
+        if (!verbose) return 0;
+        fflush(stdout);
+        char upstream_command[] = "version";
+        char *upstream_arguments[] = {argv[0], upstream_command, nullptr};
+        return wgse_bwamem3_main(2, upstream_arguments);
     }
     if (command == "capabilities") {
-        if (argc != 3 || strcmp(argv[2], "--json")) {
+        if (arguments_left != 2 || strcmp(argv[command_index + 1], "--json")) {
             fprintf(stderr, "Usage: %s capabilities --json\n", name);
             return 2;
         }
@@ -75,7 +82,14 @@ int run(int argc, char **argv) {
     }
     if (command.empty() || command == "--help" || command == "-h")
         help(command.empty() ? stderr : stdout);
-    return wgse_bwamem3_main(argc, argv);
+    // Upstream records argv[0] plus its arguments as the @PG CL; fold the backend options
+    // into argv[0] so the CL keeps the full command line.
+    std::string program = argv[0];
+    for (int i = 1; i < command_index; ++i) program.append(" ").append(argv[i]);
+    std::vector<char *> arguments{program.data()};
+    arguments.insert(arguments.end(), argv + command_index, argv + argc);
+    arguments.push_back(nullptr);
+    return wgse_bwamem3_main(static_cast<int>(arguments.size() - 1), arguments.data());
 }
 } // namespace
 
