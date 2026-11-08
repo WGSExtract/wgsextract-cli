@@ -1,7 +1,7 @@
 # Apple Silicon aligner rebuilds
 
-Optional macOS arm64 (macOS 13+) rebuilds of the two short-read aligners
-WGS Extract uses, published as `macos-aligners-*` prereleases. The
+Optional macOS arm64 (macOS 13+) rebuilds of the aligners WGS Extract uses,
+published as `macos-aligners-*` prereleases. The
 `wgsextract` CLI does not use them yet: they are offered for testing until
 they are qualified on full genomes (#364).
 
@@ -9,19 +9,23 @@ they are qualified on full genomes (#364).
 | --- | --- | --- |
 | `wgse-bwa` | BWA 0.7.19 | Native arm64 build. CPU by default (unmodified upstream code); `--metal` is **experimental**. Low memory: about 6 GB for a human index. |
 | `wgse-bwa-mem2` | BWA-MEM2 2.3 | arm64 build through sse2neon. CPU by default; `--metal` is **experimental**. Needs much more memory than BWA (see below). |
+| `wgse-minimap2` | minimap2 2.31 | arm64 build through sse2neon, with faster index loading and building, seeding and anchor sorting on the CPU. No `--metal` yet. |
 
-Both write the same alignments as their upstream release, with or without
+All write the same alignments as their upstream release, with or without
 `--metal`; only the `@PG` version gains a `-wgse-<version>` suffix (and its
 command line records any backend option). Each package has its own version,
 printed by `--version`.
 
 ## Installing
 
-The `macos-aligners-10` prerelease has `wgse-bwa` 0.7.1 and `wgse-bwa-mem2`
-0.4.0. `wgse-bwa` 0.7.1 shares the updated mate-rescue kernel with
-`wgse-bwa-mem2` 0.4.0 and aligns exactly as 0.7.0 does. `wgse-bwa --metal` and `wgse-bwa capabilities` need `wgse-bwa` 0.2.0 or
-later. Earlier prereleases: `macos-aligners-9` has `wgse-bwa` 0.7.0 and
-`wgse-bwa-mem2` 0.3.0, with slower GPU kernels; `macos-aligners-8` has `wgse-bwa` 0.7.0 and
+The `macos-aligners-11` prerelease has `wgse-bwa` 0.7.1, `wgse-bwa-mem2`
+0.4.0 and `wgse-minimap2` 0.1.0. `wgse-bwa` 0.7.1 shares the updated
+mate-rescue kernel with `wgse-bwa-mem2` 0.4.0 and aligns exactly as 0.7.0
+does. `wgse-bwa --metal` and `wgse-bwa capabilities` need `wgse-bwa` 0.2.0 or
+later. Earlier prereleases, without `wgse-minimap2`: `macos-aligners-10` has
+`wgse-bwa` 0.7.1 and `wgse-bwa-mem2` 0.4.0; `macos-aligners-9` has `wgse-bwa`
+0.7.0 and `wgse-bwa-mem2` 0.3.0, with slower GPU kernels; `macos-aligners-8`
+has `wgse-bwa` 0.7.0 and
 `wgse-bwa-mem2` 0.2.0, whose `--metal` loads the `.0123` file and starts GPU
 seeding only when a chunk maps; `macos-aligners-7` has `wgse-bwa` 0.7.0 and
 `wgse-bwa-mem2` 0.1.0, whose `--metal` only extends seeds on the GPU;
@@ -43,28 +47,29 @@ publishes for each release asset:
 
 ```bash
 mkdir wgse-aligners && cd wgse-aligners
-gh release download macos-aligners-10 -R WGSExtract/wgsextract-cli
-gh release view macos-aligners-10 -R WGSExtract/wgsextract-cli --json assets \
+gh release download macos-aligners-11 -R WGSExtract/wgsextract-cli
+gh release view macos-aligners-11 -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
   shasum -a 256 -c
 ```
 
-Continue only if every archive reports `OK`. Then extract them and put both
+Continue only if every archive reports `OK`. Then extract them and put the
 `bin` directories on `PATH` (add the `export` line to your shell profile to
 keep it):
 
 ```bash
-for archive in wgse-bwa-*-macos-arm64.tar.gz; do tar -xzf "$archive"; done
-for dir in wgse-bwa-*-macos-arm64; do PATH="$PWD/$dir/bin:$PATH"; done
+for archive in wgse-*-macos-arm64.tar.gz; do tar -xzf "$archive"; done
+for dir in wgse-*-macos-arm64; do PATH="$PWD/$dir/bin:$PATH"; done
 export PATH
 wgse-bwa capabilities --json
 wgse-bwa-mem2 capabilities --json
+wgse-minimap2 capabilities --json
 ```
 
 macOS kills a quarantined executable as soon as it starts. If an archive was
 downloaded in a browser, clear the flag before running, for example
-`xattr -dr com.apple.quarantine wgse-bwa-0.7.1-macos-arm64` (and
-`wgse-bwa-mem2-0.4.0-macos-arm64`).
+`xattr -dr com.apple.quarantine wgse-bwa-0.7.1-macos-arm64` (and likewise
+`wgse-bwa-mem2-0.4.0-macos-arm64` and `wgse-minimap2-0.1.0-macos-arm64`).
 
 ## Usage
 
@@ -78,10 +83,15 @@ wgse-bwa-mem2 index hs38.fa
 wgse-bwa-mem2 mem -t 9 hs38.fa R1.fastq.gz R2.fastq.gz > out.sam
 wgse-bwa-mem2 --metal mem -t 9 hs38.fa R1.fastq.gz R2.fastq.gz > out.sam
 wgse-bwa-mem2 capabilities --json
+
+wgse-minimap2 -t 9 -ax map-hifi hs38.fa hifi.fastq.gz > out.sam
+wgse-minimap2 -x map-ont -d hs38.map-ont.mmi hs38.fa
+wgse-minimap2 -t 9 -ax map-ont hs38.map-ont.mmi ont.fastq.gz > out.sam
+wgse-minimap2 capabilities --json
 ```
 
-Options before the command select the backend of `mem` (other commands ignore
-them):
+For `wgse-bwa` and `wgse-bwa-mem2`, options before the command select the
+backend of `mem` (other commands ignore them):
 
 - default (`--backend cpu`): the upstream CPU code, unchanged;
 - `--metal` (`--backend metal`): fails if Metal is unusable, and exits 1 if a
@@ -169,6 +179,32 @@ What runs on the GPU:
 
 With a Metal backend both print GPU and CPU work counts to stderr.
 
+`wgse-minimap2` takes minimap2's options and writes the same `.mmi` indexes,
+which either tool can load. It has no backend options yet: it aligns on the
+CPU, with these exact changes to upstream's code (none changes any output):
+
+- loading a `.mmi` reads each hash bucket in one call and fills the buckets'
+  hash tables on `-t` threads, in upstream's insertion order;
+- building an index from a FASTA file packs the bases and collects the
+  minimizers of each sequence on `-t` threads, in segments of about 4 Mbp
+  that each start with 1024 bases of warm-up, which leave the minimizer
+  window in the state upstream's single pass reaches (a sequence whose
+  warm-up is too short or ambiguous is sketched by upstream's code);
+- the `mid_occ` threshold and the index statistics are computed from
+  per-thread histograms of minimizer occurrences instead of a serial
+  selection;
+- the in-place radix sort of anchors and chains skips byte passes in which
+  all keys are equal, which leave the order unchanged;
+- seed collection prefetches the hash slots and positions of the minimizers
+  ahead.
+
+`-DWGSE_MINIMAP2_KSW2=sse2` builds upstream's SSE2-only base-level alignment
+(as Bioconda does) instead of the default SSE4.1 kernels; both give the same
+alignments. The tests build unmodified upstream minimap2 2.31 and require
+identical indexes and SAM records (apart from `@PG`) for map-hifi, map-ont,
+map-pb and sr on a synthetic genome with segmental duplications and tandem
+repeats.
+
 ## Memory
 
 BWA-MEM2 trades memory for speed. Building its human index needs roughly
@@ -212,6 +248,11 @@ two chunks ahead. That leaves more room for other applications on a 32 GB
 Mac; it has not been tested on a 16 GB Mac. 0.4.0 adds a 34 MB table of
 index intervals; it peaked at 11.5 GiB with `-K 10000000`, like 0.3.0, and at
 15.1 GiB with `-K 100000000` (14.9 GiB for 0.3.0).
+
+`wgse-minimap2` uses within about 1 GiB of upstream minimap2's memory: with 9 threads on
+hs38 it peaked at 13–15 GiB for HiFi reads, 10–14 GiB for ONT reads and
+11.3 GiB for short reads, whether it loaded a `.mmi` index or built one from
+the FASTA reference.
 
 ## Performance
 
@@ -388,6 +429,43 @@ threads spent 30% of their busy time in mate rescue's 8-bit kernel and 10% in
 locate. 0.7.0 therefore speeds up the CPU threads' share, so that they take
 more of the work from the GPU.
 
+`wgse-minimap2` 0.1.0 was measured against Bioconda's minimap2 2.31 (the
+default install) on hs38 with 9 threads, in three interleaved rounds on AC
+power. The "plain" build is `wgse-minimap2` without the changes to upstream's
+code listed under Usage: Apple clang `-O3` and the SSE4.1 alignment kernels
+alone. Each group's runs wrote identical alignments (SHA-256 of the SAM
+without `@PG`, first 16 hex digits):
+
+| Reads | Index | Bioconda minimap2 | Plain build | `wgse-minimap2` 0.1.0 | Peak RSS (Bioconda / 0.1.0) | Alignments |
+| --- | --- | --- | --- | --- | --- | --- |
+| HiFi, 145k reads, 2.5 Gbp (`map-hifi`) | `.mmi` | 98.8 s | 89.8 s | 74.1 s (−25.0%) | 13.9 / 14.9 GiB | `bf2671dae7d3260e` |
+| ONT, 45.6k reads, 0.88 Gbp (`map-ont`) | `.mmi` | 141.1 s | 131.3 s | 124.9 s (−11.5%) | 11.4 / 11.0 GiB | `3a4c91aa2339b70f` |
+| 1M 150 bp pairs (`sr`) | `.mmi` | 42.5 s | 42.2 s | 25.7 s (−39.5%) | 11.6 / 11.3 GiB | `5f521317c321d233` |
+| HiFi, 40k reads, 0.69 Gbp (`map-hifi`) | FASTA | 55.3 s | — | 31.2 s (−43.6%) | 14.3 / 14.6 GiB | `3b9686f30aff954f` |
+| ONT, 15k reads, 0.29 Gbp (`map-ont`) | FASTA | 66.2 s | — | 37.2 s (−43.8%) | 14.0 / 13.2 GiB | `0d2d6def67484e12` |
+
+The HiFi reads are the start of PacBio's public Revio HG002 run
+(`m84011_220902_175841_s1`); the ONT reads are the HG002 reads (Dorado hac,
+R10.4.1, GIAB 2025.01) that overlap a 750 kb window of each of chr1–22 and X;
+the short reads are the first 1M of the HG002 pairs above. With 4 threads the
+ONT alignments were the same as with 9.
+
+Building the index from the FASTA reference, as `wgsextract align` does, is
+where 0.1.0 saves most: upstream sketches each chromosome on one thread and
+selects `mid_occ` serially, so its `map-hifi` index was ready after 31.0 s,
+against 7.4 s for 0.1.0. Loading a `.mmi` and computing its statistics took
+14.7 s for `map-hifi`, 5.9 s for `map-ont` and 15.6 s for `sr` upstream,
+against 2.3, 1.5 and 2.5 s. In mapping, skipping radix-sort passes saved 10% of the CPU
+time on the ONT subset and 4% on the HiFi subset, and prefetching seeds 2% on
+ONT; the plain build's compiler and kernels saved 7–9% of the CPU time
+against Bioconda's build. Scoring chaining predecessors eight at a time with
+NEON gave nothing, because most predecessor scans stop early, and was dropped.
+A profile of the plain build's mapping found base-level alignment
+(`ksw_extd2`, about 42% of busy time) dominating HiFi reads, anchor sorting
+and chaining (about 70%) dominating ONT reads, and minimizer lookups and seed
+collection (about 58%) dominating short reads. 0.1.0 leaves that mostly
+unchanged, so those are the targets for GPU work.
+
 ## Building
 
 Requires Xcode command-line tools and CMake 3.24 or later. Upstream sources are
@@ -403,7 +481,7 @@ cmake --install out/native --prefix out/native-prefix
 `-DBUILD_TESTING=OFF` builds the release executables without tests or the
 hidden GPU tuning flags. Metal tests are skipped when no Metal device is
 available. `.github/workflows/macos_aligners.yml` builds, tests and packages
-both executables, and publishes them when run with a `macos-aligners-N` tag.
+all three executables, and publishes them when run with a `macos-aligners-N` tag.
 
 ## Licences
 
@@ -413,6 +491,10 @@ adapted from BWA's MIT-licensed `bwt.c`, `bwamem.c`, `bwamem_pair.c` and
 `ksw.c` (`METAL-SEEDING-LICENSE`).
 `wgse-bwa-mem2` combines BWA-MEM2 (MIT), sse2neon
 (MIT) and safestringlib (MIT) with the code in `bwa-mem2/` (GPL-3.0-or-later,
-like this repository). Each package ships its licences, including this
-repository's GPL-3.0 text as `WGSE-LICENSE`, under `share/licenses/`, and the corresponding source is this directory plus the
+like this repository). `wgse-minimap2` combines minimap2 (MIT) and sse2neon
+(MIT) with the code in `minimap2/` (GPL-3.0-or-later). Its sketching code is
+adapted from minimap2's `sketch.c` (`MINIMAP2-LICENSE`) and its radix sort from
+minimap2's `ksort.h`, whose own MIT notice ships as `KSORT-LICENSE`. Each package
+ships its licences, including this repository's GPL-3.0 text as `WGSE-LICENSE`,
+under `share/licenses/`, and the corresponding source is this directory plus the
 pinned upstream archives in the CMake files.
