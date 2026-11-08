@@ -5,8 +5,17 @@
 #include "bwamem.h"
 #include "../bwa/ksw_batch.h"
 
-// Replaces kt_for(worker_bwt) (appended to bwamem.cpp).
-void wgse_kt_for_bwt(worker_t &w, int n);
+// kt_for() over units of `unit` reads (an even number, so pairs stay together),
+// each taken by the next free thread (mem_stages.cpp.in).
+void wgse_kt_for(void (*func)(void *, int, int, int), worker_t *w, int n, int unit);
+// The unit of worker_bwt and worker_aln on the CPU: the fewest rounds of at
+// most BATCH_SIZE reads per thread, split evenly between the threads.
+int wgse_cpu_unit(int n, int threads);
+// worker_sam's unit: pairing time varies most between reads, so the units are small.
+constexpr int wgse_sam_unit = 128;
+// Replaces kt_for(worker_bwt) (appended to bwamem.cpp). Returns its unit,
+// which worker_aln must use too: a chain's seqid counts from its unit's start.
+int wgse_kt_for_bwt(worker_t &w, int n);
 // Runs worker(data, unit, tid) for each unit of BATCH_SIZE reads, collecting
 // their SMEMs on the GPU too; returns 0 to leave the chunk to upstream.
 int wgse_metal_seed(FMI_search *fmi, const mem_opt_t *opt, bseq1_t *seqs, int n, int threads,

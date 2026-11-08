@@ -23,6 +23,7 @@
 #include <mutex>
 #include <new>
 #include <pthread/qos.h>
+#include <sys/sysctl.h>
 #include <thread>
 #include <time.h>
 #include <utility>
@@ -1129,6 +1130,8 @@ SeedKernel &seed_kernel() {
 }
 
 std::atomic<bool> seed_enabled{true}, seed_usable{true};
+std::atomic<uint64_t> max_buffer_override{0}, physical_memory_override{0};
+double gib(uint64_t bytes) { return double(bytes) / double(uint64_t(1) << 30); }
 bool verify_seeds = false, inject_seed_failure = false;
 size_t seed_batch_reads = 16384;
 // SMEMs per read on the GPU (more is rare); a read with more goes to the CPU.
@@ -1673,8 +1676,85 @@ void *wgse_metal_index_alloc(size_t bytes) {
     if (bytes > SIZE_MAX - page
         || posix_memalign(&memory, page, (bytes + page - 1) / page * page) != 0)
         return nullptr;
+    if (wgse_metal_active() && seed_enabled) {
+        const std::string limit = wgse_gpu_seeding_limit(bytes);
+        if (!limit.empty()) {
+            seed_usable = false;
+            fprintf(stderr, "[wgse-bwa-mem2] warning: GPU seeding is off: %s; seeding runs "
+                "on the CPU, extension and mate rescue on the GPU\n", limit.c_str());
+        }
+    }
     return memory;
 }
+
+WgseMetalLimits wgse_metal_limits() {
+    WgseMetalLimits limits;
+    id<MTLDevice> device = state().device;
+    if (!device) return limits;
+    limits.device = device.name.UTF8String;
+    limits.max_buffer_bytes = device.maxBufferLength;
+    if (max_buffer_override)
+        limits.max_buffer_bytes = std::min(limits.max_buffer_bytes, max_buffer_override.load());
+    limits.recommended_working_set_bytes = device.recommendedMaxWorkingSetSize;
+    return limits;
+}
+
+std::string wgse_gpu_seeding_limit(uint64_t bytes) {
+    const uint64_t page = static_cast<uint64_t>(getpagesize());
+    const uint64_t limit = wgse_metal_limits().max_buffer_bytes;
+    if ((bytes + page - 1) / page * page <= limit) return {};
+    char text[160];
+    snprintf(text, sizeof(text), "the FM index's %.2f GiB occurrence table is larger than "
+        "this GPU's %.2f GiB buffer limit (maxBufferLength)", gib(bytes), gib(limit));
+    return text;
+}
+
+uint64_t wgse_occurrence_table_bytes(const std::string &prefix) {
+    int64_t length = 0;
+    FILE *file = fopen((prefix + ".bwt.2bit.64").c_str(), "rb");
+    if (!file) return 0;
+    const bool read = fread(&length, sizeof(length), 1, file) == 1;
+    fclose(file);
+    if (!read || length <= 0) return 0;
+    return uint64_t((length >> CP_SHIFT) + 1) * sizeof(CP_OCC);
+}
+
+uint64_t wgse_index_bytes(const std::string &prefix, bool metal) {
+    uint64_t total = 0;
+    for (const char *suffix : {".bwt.2bit.64", ".pac", ".0123"}) {
+        if (metal && strcmp(suffix, ".0123") == 0) continue;
+        std::error_code error;
+        const uintmax_t size = std::filesystem::file_size(prefix + suffix, error);
+        if (!error) total += size;
+    }
+    return total;
+}
+
+uint64_t wgse_physical_memory() {
+    if (physical_memory_override) return physical_memory_override;
+    uint64_t bytes = 0;
+    size_t size = sizeof(bytes);
+    return sysctlbyname("hw.memsize", &bytes, &size, nullptr, 0) == 0 ? bytes : 0;
+}
+
+void wgse_memory_preflight(const char *prefix, int64_t chunk_bases) {
+    const bool metal = wgse_metal_active();
+    // Measured on hs38 with 150 bp pairs: besides the index, about 1 GiB of
+    // buffers and, per base of a -K chunk, ~45 bytes with Metal (which seeds
+    // ahead and overlaps two chunks) and ~XX bytes on the CPU.
+    const uint64_t need = wgse_index_bytes(prefix, metal) + (uint64_t(1) << 30)
+        + uint64_t(std::max<int64_t>(0, chunk_bases)) * (metal ? 45 : 20);
+    const uint64_t have = wgse_physical_memory();
+    if (have && have < need)
+        fprintf(stderr, "[wgse-bwa-mem2] warning: this run needs about %.1f GiB of memory but "
+            "this Mac has %.1f GiB; expect heavy paging and a much slower run\n",
+            gib(need), gib(have));
+}
+
+#ifdef WGSE_METAL_BENCHMARK_TOOLS
+void wgse_set_max_buffer_bytes(uint64_t bytes) { max_buffer_override = bytes; }
+void wgse_set_physical_memory(uint64_t bytes) { physical_memory_override = bytes; }
+#endif
 void wgse_set_gpu_seed(bool enable) { seed_enabled = enable; }
 void wgse_set_gpu_seed_batch(size_t reads) { seed_batch_reads = std::max<size_t>(1, reads); }
 void wgse_set_gpu_seed_capacity(size_t smems) {

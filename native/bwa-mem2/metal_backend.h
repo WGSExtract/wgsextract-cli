@@ -39,7 +39,27 @@ void wgse_set_overlap(bool enable);
 // A chunk finished mapping while the previous one was pairing.
 void wgse_note_overlapped_chunk();
 // Page-aligned memory for the FM index checkpoints, so Metal can use them in place.
+// With Metal, warns and leaves seeding to the CPU if the GPU cannot map them.
 void *wgse_metal_index_alloc(size_t bytes);
+// The default device's name and limits; empty and zero without a device.
+struct WgseMetalLimits {
+    std::string device;
+    uint64_t max_buffer_bytes = 0, recommended_working_set_bytes = 0;
+};
+WgseMetalLimits wgse_metal_limits();
+// Why GPU seeding cannot read an occurrence table of `bytes` in place, or "".
+std::string wgse_gpu_seeding_limit(uint64_t bytes);
+// The size of the index's occurrence table (.bwt.2bit.64); 0 if it cannot be read.
+uint64_t wgse_occurrence_table_bytes(const std::string &prefix);
+// Index files a run loads: all of them on the CPU, all but the .0123 with Metal.
+uint64_t wgse_index_bytes(const std::string &prefix, bool metal);
+uint64_t wgse_physical_memory();
+// Warns if physical memory is below the run's estimated peak resident memory.
+void wgse_memory_preflight(const char *prefix, int64_t chunk_bases);
+#ifdef WGSE_METAL_BENCHMARK_TOOLS
+void wgse_set_max_buffer_bytes(uint64_t bytes);
+void wgse_set_physical_memory(uint64_t bytes);
+#endif
 // GPU SMEM collection (enabled with Metal) and its test hooks.
 void wgse_set_gpu_seed(bool enable);
 void wgse_set_gpu_seed_batch(size_t reads);

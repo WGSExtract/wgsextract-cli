@@ -154,3 +154,28 @@ test "$status" -eq 1
 grep -q 'CPU fallback: injected GPU seeding failure' failed-chunks.log
 test "$(metric failed-chunks.log seed_preseeded_chunks)" -ge 1
 same cpu-two.sam failed-chunks.sam
+
+# Issue #364: on GPUs whose largest buffer is smaller than the occurrence table
+# (8 GB Macs and hosted runners with hs38), --metal warns once and seeds on the
+# CPU; the run is not a failure and its output is unchanged.
+"$aligner" --gpu-max-buffer 4096 capabilities --json reference.fa > limited.json
+grep -q '"max_buffer_bytes":4096,' limited.json
+grep -q '"gpu_seeding":false,"gpu_seeding_limit":"the FM index' limited.json
+"$aligner" capabilities --json reference.fa > index.json
+grep -q '"gpu_seeding":true,"gpu_seeding_limit":""' index.json
+# shellcheck disable=SC2086
+"$aligner" $gpu --gpu-max-buffer 4096 mem -t 4 reference.fa pairs-R1.fq pairs-R2.fq \
+    > limited.sam 2> limited.log
+test "$(grep -c 'GPU seeding is off: the FM index.*larger than this GPU.*buffer limit' limited.log)" -eq 1
+if grep -q 'CPU fallback\|Metal execution failed' limited.log; then exit 1; fi
+test "$(metric limited.log seed_batches)" -eq 0
+same cpu-paired.sam limited.sam
+
+# Low memory only warns: the run and its output are unchanged.
+if grep -q 'needs about' cpu-paired.log; then exit 1; fi
+status=0
+"$aligner" --physical-memory 1048576 mem -t 4 reference.fa pairs-R1.fq pairs-R2.fq \
+    > low-memory.sam 2> low-memory.log || status=$?
+test "$status" -eq 0
+grep -q 'this run needs about .* GiB of memory but this Mac has 0.0 GiB' low-memory.log
+same cpu-paired.sam low-memory.sam
