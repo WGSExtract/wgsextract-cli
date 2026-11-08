@@ -624,6 +624,9 @@ def run_bam_chain(
         except WGSExtractError:
             if name != "y-haplogroup":
                 raise
+            from wgsextract_cli.api._runtime import checkpoint
+
+            checkpoint()  # a cancel that killed Yleaf is no Y haplogroup failure
             # Too few chrY reads (low coverage) mustn't cost the variant
             # calls; the step isn't journalled, so a rerun retries it.
             warn(
