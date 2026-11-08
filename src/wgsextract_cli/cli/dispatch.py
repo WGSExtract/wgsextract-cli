@@ -11,6 +11,7 @@ from wgsextract_cli.core import live_status
 from wgsextract_cli.core.genome_library import apply_genome_selection
 from wgsextract_cli.core.keep_awake import keep_awake
 from wgsextract_cli.core.last_run import LogTail, record_last_run
+from wgsextract_cli.core.remote_input import is_url
 from wgsextract_cli.core.results import (
     CommandResult,
     collecting,
@@ -169,6 +170,11 @@ def _run(
         fail_from_exception(result, e, debug=bool(getattr(args, "debug", False)))
 
 
+def command_reads_urls(args: argparse.Namespace) -> bool:
+    """Whether the command's --input may be an http(s) URL."""
+    return getattr(args, "command", None) == "realign"
+
+
 def _run_command(
     args: argparse.Namespace, explicit_dests: set[str], result: CommandResult
 ) -> None:
@@ -177,6 +183,8 @@ def _run_command(
     for dest, role in INPUT_ARGS.items():
         value = getattr(args, dest, None)
         if isinstance(value, str) and value and Path(value).expanduser().exists():
+            result.add_input(value, role)
+        elif dest == "input" and is_url(value) and command_reads_urls(args):
             result.add_input(value, role)
     input_path = getattr(args, "input", None)
     command = getattr(args, "command", None) or ""

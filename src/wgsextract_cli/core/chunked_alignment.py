@@ -140,7 +140,7 @@ def _crai_segments(index: str, names: Sequence[str]) -> tuple[Segments, int] | N
     return segments, unmapped
 
 
-def _bai_segments(path: str, index: str, names: Sequence[str]) -> tuple[Segments, int]:
+def _bai_segments(index: str, names: Sequence[str], size: int) -> tuple[Segments, int]:
     """Each contig's bytes per _SEGMENT_BASES, and the unplaced reads' bytes,
     from a BAI's linear index (the file offset of each 16 kb window) and its
     per-contig offsets and read counts (pseudo-bin 37450). The offsets are of
@@ -184,11 +184,11 @@ def _bai_segments(path: str, index: str, names: Sequence[str]) -> tuple[Segments
                 zip(marks, marks[1:], strict=False)
             )
         ]
-    tail = os.path.getsize(path) - len(alignment_splice.BGZF_EOF) - end_of_reads
+    tail = size - len(alignment_splice.BGZF_EOF) - end_of_reads
     return segments, max(0, tail)
 
 
-def _idxstats_segments(path: str) -> tuple[Segments, int]:
+def _idxstats_segments(path: str, file_bytes: int) -> tuple[Segments, int]:
     """Each contig's reads spread evenly over its length, weighted by the
     file's size per record, from a BAM index's counts (samtools idxstats):
     for a CSI, which has no linear index."""
@@ -197,7 +197,7 @@ def _idxstats_segments(path: str) -> tuple[Segments, int]:
     ).stdout.splitlines()
     counts = [line.split("\t") for line in lines if line.count("\t") == 3]
     records = sum(int(mapped) + int(unmapped) for _, _, mapped, unmapped in counts)
-    per_record = os.path.getsize(path) / max(1, records)
+    per_record = file_bytes / max(1, records)
     segments: Segments = {}
     unplaced = 0
     for name, length, mapped, unmapped in counts:
@@ -223,11 +223,18 @@ class ChunkPlan:
     contigs: dict[str, int]
 
 
-def plan_chunks(path: str, header: str, chunk_bytes: int) -> ChunkPlan | None:
+def plan_chunks(
+    path: str,
+    header: str,
+    chunk_bytes: int,
+    *,
+    index: str | None = None,
+    input_bytes: int | None = None,
+) -> ChunkPlan | None:
     """The input's chunks of about ``chunk_bytes`` each, in its order; None
     when it can't be read by region (not coordinate-sorted or not indexed).
     The unplaced reads are a chunk of their own."""
-    index = alignment_index(path)
+    index = index or alignment_index(path)
     if index is None or "SO:coordinate" not in (header.splitlines() or [""])[0]:
         return None
     sequences = header_sequences(header)
@@ -244,9 +251,13 @@ def plan_chunks(path: str, header: str, chunk_bytes: int) -> ChunkPlan | None:
             return None
         segments, unmapped = planned
     elif index.endswith(".bai"):
-        segments, unmapped = _bai_segments(path, index, names)
+        segments, unmapped = _bai_segments(
+            index, names, input_bytes or os.path.getsize(path)
+        )
     else:
-        segments, unmapped = _idxstats_segments(path)
+        segments, unmapped = _idxstats_segments(
+            f"{path}##idx##{index}", input_bytes or os.path.getsize(path)
+        )
     plan = ChunkPlan([], [], {})
     current: list[Region] = []
     size = 0

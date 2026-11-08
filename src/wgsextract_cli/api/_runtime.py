@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, TypeVar
 
+from wgsextract_cli.core.remote_input import is_url
 from wgsextract_cli.core.results import (
     CommandResult,
     collecting,
@@ -284,6 +285,8 @@ def _prepare(params: Params, result: CommandResult) -> None:
     """What dispatch does before a command: record and check the input, make
     the output folder."""
     input_path = getattr(params, "input", None)
+    if isinstance(input_path, str) and is_url(input_path):
+        result.add_input(input_path, "input")
     if isinstance(input_path, Path):
         input_path = input_path.expanduser()
         if input_path.exists():

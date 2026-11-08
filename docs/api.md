@@ -745,7 +745,7 @@ settings and tools are unchanged.
 | `restart` | `bool` | `False` | `--force`, `--no-resume` | Rerun every step, ignoring the steps an earlier run completed. |
 | `force_steps` | `tuple[str, ...] \| None` | `None` | `--force-step` | Steps to rerun with the steps that use their outputs; None reruns none. Steps: extract, align, index. One of: `extract`, `align`, `index` |
 | `dry_run` | `bool` | `False` | `--dry-run` | Log which steps would run or be skipped, and why, and run none. |
-| `input` | `Path` | required | `--input`, `-i` | The aligned BAM or CRAM to realign. |
+| `input` | `Path \| str` | required | `--input`, `-i` | The aligned BAM or CRAM to realign. ONT and PacBio reads may also be an http(s) URL of one (command line and Python only), streamed without a local copy; its index is downloaded beside the output. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |

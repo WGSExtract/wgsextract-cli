@@ -46,6 +46,7 @@ from wgsextract_cli.core.read_counts import (
 )
 from wgsextract_cli.core.reference_assets import header_sequences, is_fasta_path
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.remote_input import is_url
 from wgsextract_cli.core.resource_estimates import (
     estimate_resources,
     preflight_resources,
@@ -156,6 +157,8 @@ class AlignJob:
     # whether an interrupted chunked run's work may be resumed.
     chunks: list[Chunk] | None = None
     resume_chunks: bool = False
+    # What the chunks read: r1, or a remote r1 with its local index.
+    chunk_input: str | None = None
 
     @classmethod
     def of(cls: type[_Job], params: Params) -> _Job:
@@ -658,7 +661,10 @@ def _prepare_alignment(
     )
     if read_paths is None and job.r2:
         paths_to_check["--r2"] = job.r2
-    verify_paths_exist(paths_to_check)
+    # realign streams a remote BAM/CRAM's reads (core.remote_input).
+    verify_paths_exist(
+        {label: path for label, path in paths_to_check.items() if not is_url(path)}
+    )
 
     input_path = job.input or job.r1
     outdir = job.outdir or str(absolute_path(input_path).parent)
@@ -1522,7 +1528,7 @@ def align_minimap2(job: AlignJob) -> None:
     if job.chunks and upstream and _is_alignment_file(setup.r1):
         try:
             ChunkedAlignment(
-                input=setup.r1,
+                input=job.chunk_input or setup.r1,
                 output=out_bam,
                 chunks=job.chunks,
                 reference=setup.ref,

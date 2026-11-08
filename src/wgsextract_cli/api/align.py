@@ -231,10 +231,13 @@ class RealignParams(Params):
     restart: bool = restart_param()
     force_steps: tuple[str, ...] | None = force_steps_param(REALIGN_STEPS)
     dry_run: bool = dry_run_param()
-    input: Path = input_param(
-        "The aligned BAM or CRAM to realign.",
+    input: Path | str = input_param(
+        "The aligned BAM or CRAM to realign. ONT and PacBio reads may also be "
+        "an http(s) URL of one (command line and Python only), streamed "
+        "without a local copy; its index is downloaded beside the output.",
         required_message="--input <BAM|CRAM> is required for realign. Pass it "
         "before the subcommand or via --input.",
+        url=True,
     )
     ref: Path | None = ref_param()
     outdir: Path | None = outdir_param()

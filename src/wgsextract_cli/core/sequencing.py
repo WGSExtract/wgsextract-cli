@@ -1,6 +1,7 @@
 """Shared, bounded platform detection for reads and alignments."""
 
 import gzip
+import os
 import re
 import subprocess
 from functools import lru_cache
@@ -10,6 +11,7 @@ from wgsextract_cli.core import sample_workspace
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.constants import SEQUENCERS
 from wgsextract_cli.core.paths import PathInput
+from wgsextract_cli.core.remote_input import is_url, remote_file
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
@@ -75,6 +77,17 @@ def input_platform(
     """
     if reads is None:
         return None
+    if is_url(reads):
+        # A remote file has no sample workspace; its HEAD keys the cache.
+        remote = remote_file(os.fspath(reads))
+        return _input_platform(
+            remote.url,
+            str(reference) if reference else None,
+            remote.size,
+            hash(remote.fingerprint),
+            0,
+            strict,
+        )[0]
     # With an override, an undecodable probe only skips the check of it
     fact = sample_workspace.known("platform", reads)
     strict = strict and (fact is None or fact.source != "override")

@@ -2,6 +2,7 @@
 run at its first unfinished chunk, with the records of a single pass."""
 
 import gzip
+import json
 import os
 import platform
 import random
@@ -12,14 +13,16 @@ import stat
 import subprocess
 import sys
 import uuid
+from pathlib import Path
 
 import pytest
 
 from tests.htslib_helpers import needs_tools, run_wgsextract, sam_to_bam, write_fasta
+from tests.http_server import serving
 from wgsextract_cli.core import alignment_splice
 from wgsextract_cli.core.chunked_alignment import ChunkPlan, chunked_disk
 from wgsextract_cli.core.resource_estimates import GIB
-from wgsextract_cli.core.utils import run_command
+from wgsextract_cli.core.utils import UsageError, run_command
 
 COMP = str.maketrans("ACGT", "TGCA")
 MODS = "MM:Z:C+m?,0,1;\tML:B:C,250,10"
@@ -291,7 +294,7 @@ def _dying_tools(tmp_path, die, after):
     return shims, log
 
 
-def _realign_cli(tmp_path, shims, argv, die):
+def _realign_cli(tmp_path, shims, argv, die, cwd=None):
     (tmp_path / "count").unlink(missing_ok=True)
     if die:
         (tmp_path / "die").write_text("")
@@ -299,6 +302,7 @@ def _realign_cli(tmp_path, shims, argv, die):
     with subprocess.Popen(
         [sys.executable, "-m", "wgsextract_cli.main", "realign", *argv],
         env=env,
+        cwd=cwd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -474,3 +478,93 @@ def test_spliced_pieces_are_one_valid_file(tmp_path, ont, fmt):
         handle.write(data[:-10])
     with pytest.raises(alignment_splice.SpliceError, match="truncated"):
         alignment_splice.append(target, truncated, size)
+
+
+def _remote(ont, source):
+    """The files serving ``ont[source]`` and its index over HTTP."""
+    local = Path(ont[source])
+    index = Path(str(local) + (".crai" if source == "cram" else ".bai"))
+    return local, {local.name: local.read_bytes(), index.name: index.read_bytes()}
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="bash PATH shims")
+@needs_tools("samtools", "minimap2")
+@pytest.mark.parametrize("source", ["bam", "cram"])
+def test_a_url_realigns_in_chunks_like_the_local_file(tmp_path, ont, source):
+    """#431: the GIAB HG002 ONT CRAM is 104 GB, too big to keep beside its
+    realignment on the Mac that runs it. realign now reads it over https by
+    range, and resumes a run killed mid-chunk. Only its index is
+    downloaded, and removed after: nothing lands in the current folder."""
+    local, files = _remote(ont, source)
+    size = _chunk_size(str(local))
+    work = tmp_path / "work"
+    work.mkdir()
+    shims, _ = _dying_tools(tmp_path, MAPPING, 3)
+    with serving(None, files) as server:
+        url = server.url_for(local.name)
+        argv = ["--input", url, "--ref", ont["ref"], "--outdir", str(tmp_path / "remote"),
+                "--threads", "2", "--memory", "256M", "--chunk-size", size,
+                "--no-preflight"]  # fmt: skip
+        killed = _realign_cli(tmp_path, shims, argv, True, cwd=work)
+        resumed = _realign_cli(tmp_path, shims, argv, False, cwd=work)
+    assert killed.returncode != 0
+    assert resumed.returncode == 0, resumed.stderr
+    assert "Detected ont reads" in resumed.stderr
+    assert "Resuming the chunked alignment" in resumed.stderr
+
+    _realign(local, ont["ref"], tmp_path / "local", "--chunk-size", size)
+    remote = tmp_path / "remote" / "x_aligned.bam"
+    assert _records(str(remote), ont["ref"]) == _records(
+        str(tmp_path / "local" / "x_aligned.bam"), ont["ref"]
+    )
+    manifest = json.loads((tmp_path / "remote/x_aligned.bam.manifest.json").read_text())
+    assert [i["path"] for i in manifest["inputs"] if i["role"] == "input"] == [url]
+    assert list(work.iterdir()) == []
+    assert sorted(p.name for p in remote.parent.iterdir() if "x." in p.name) == []
+
+
+@needs_tools("samtools", "minimap2")
+def test_a_changed_url_is_realigned_and_an_unchanged_one_is_not(tmp_path, ont):
+    """#431: the step journal fingerprints a URL by its HEAD (ETag, else size
+    and date): a rerun skips an unchanged remote input and redoes a changed
+    one."""
+    local, files = _remote(ont, "cram")
+    out = tmp_path / "out"
+    with serving(None, files) as server:
+        url = server.url_for(local.name)
+        _realign(url, ont["ref"], out, "--chunk-size", _chunk_size(str(local)))
+        journal = out / "x_aligned.bam.steps.json"
+        first = json.loads(journal.read_text())["steps"]["align"]["run_id"]
+        _realign(url, ont["ref"], out, "--chunk-size", _chunk_size(str(local)))
+        assert json.loads(journal.read_text())["steps"]["align"]["run_id"] == first
+
+        fewer = tmp_path / "fewer.cram"
+        run_command(["samtools", "view", "-C", "-T", ont["ref"], "-o", fewer,
+                     str(local), "chr2"])  # fmt: skip
+        run_command(["samtools", "index", fewer])
+        server.files.update(
+            {local.name: fewer.read_bytes(),
+             local.name + ".crai": Path(f"{fewer}.crai").read_bytes()}
+        )  # fmt: skip
+        _realign(url, ont["ref"], out, "--chunk-size", "0")
+    assert json.loads(journal.read_text())["steps"]["align"]["run_id"] != first
+    chroms = {
+        r.split("\t")[2] for r in _view("view", str(out / "x_aligned.bam")).splitlines()
+    }
+    assert chroms <= {"chr2", "*"}
+
+
+@needs_tools("samtools")
+def test_a_url_of_short_reads_is_refused(tmp_path, ont):
+    """#431: only long reads stream from a URL; short-read realign extracts
+    and collates its input, which needs a local file."""
+    local, files = _remote(ont, "bam")
+    with (
+        serving(None, files) as server,
+        pytest.raises(UsageError, match="ONT and PacBio"),
+    ):
+        run_wgsextract(
+            "realign", "--input", server.url_for(local.name), "--ref", ont["ref"],
+            "--outdir", str(tmp_path), "--platform", "illumina",
+        )  # fmt: skip
+    assert list(tmp_path.iterdir()) == []

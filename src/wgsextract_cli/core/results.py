@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 from importlib import resources
 from pathlib import Path
 from typing import Any, Literal, TextIO
+from urllib.parse import urlsplit
 
 from wgsextract_cli import __version__
 
@@ -190,6 +191,19 @@ class FileRecord:
         kind: str | None = None,
         metrics: Mapping[str, Scalar] | None = None,
     ) -> FileRecord:
+        from wgsextract_cli.core.remote_input import is_url, remote_file
+
+        if is_url(path):
+            remote = remote_file(os.fspath(path))
+            return cls(
+                path=remote.url,
+                kind=kind or file_kind(Path(urlsplit(remote.url).path)),
+                role=role,
+                exists=True,
+                size_bytes=remote.size,
+                fingerprint=remote.fingerprint,
+                metrics=dict(metrics or {}),
+            )
         absolute = Path(path).expanduser().absolute()
         record = cls(
             path=str(absolute),
@@ -204,7 +218,10 @@ class FileRecord:
         """Re-read size, mtime, fingerprint and index from disk.
 
         Only regular files are opened; a FIFO or device (``/dev/stdin``, a
-        process substitution) is recorded without size or fingerprint."""
+        process substitution) is recorded without size or fingerprint. A
+        URL keeps what its HEAD request said."""
+        if "://" in self.path:
+            return
         path = Path(self.path)
         try:
             info = path.stat()

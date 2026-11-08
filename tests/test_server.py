@@ -748,6 +748,14 @@ def test_info_query_waits_and_reports_failures_as_failed_jobs(client, work, fake
         ("info", {"input": "{work}/../outside/a.bam"}, 403, "path_not_allowed"),
         ("info", {"input": "{work}/escape/a.bam"}, 403, "path_not_allowed"),
         ("info", {"input": "a.bam"}, 400, "usage"),
+        # #431: realign reads URLs on the command line; a server would fetch
+        # whatever a request names.
+        (
+            "realign",
+            {"input": "http://127.0.0.1:9/x.cram", "outdir": "{work}"},
+            400,
+            "usage",
+        ),
         # Security review of PR #422: Windows opens UNC paths over SMB.
         ("info", {"input": "//attacker/share/a.bam"}, 403, "path_not_allowed"),
         ("info", {"input": "\\\\attacker\\share\\a.bam"}, 403, "path_not_allowed"),

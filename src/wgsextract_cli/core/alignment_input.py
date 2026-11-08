@@ -9,6 +9,13 @@ from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 
 def validate_alignment_input(path: PathInput) -> None:
+    from os import fspath
+
+    from wgsextract_cli.core.remote_input import is_url
+
+    if is_url(path):
+        _quickcheck(fspath(path))  # htslib reads its header and EOF by range.
+        return
     file = Path(path).expanduser()
     if not file.is_file():
         raise WGSExtractError(f"Input file not found: {file}")
@@ -28,6 +35,10 @@ def validate_alignment_input(path: PathInput) -> None:
         raise WGSExtractError(
             f"Invalid alignment input {file}: file format does not match its extension"
         )
+    _quickcheck(file)
+
+
+def _quickcheck(file: PathInput) -> None:
     # -u permits legitimate unaligned BAMs without sequence dictionary entries.
     result = run_command(
         ["samtools", "quickcheck", "-v", "-u", file], capture_output=True, check=False

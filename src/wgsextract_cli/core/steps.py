@@ -390,6 +390,16 @@ class StepJournal:
         return None
 
     def _input(self, role: str, path: PathInput) -> dict[str, Any]:
+        from wgsextract_cli.core.remote_input import is_url, remote_file
+
+        if is_url(path):
+            remote = remote_file(os.fspath(path))
+            return {
+                "role": role,
+                "path": remote.url,
+                "size": remote.size,
+                "fingerprint": remote.fingerprint,
+            }
         resolved = absolute_path(path)
         item: dict[str, Any] = {"role": role, "path": str(resolved)}
         producer = self._producer(resolved)

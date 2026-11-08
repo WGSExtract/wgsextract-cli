@@ -73,6 +73,12 @@ class RangeServer:
                     body, code = data[start:end], 206
                 cut = server.drops > 0 or (code == 206 and start in server.drop_starts)
                 self.send_response(code)
+                self.send_header("Accept-Ranges", "bytes")
+                if code == 206:
+                    last = start + len(body) - 1
+                    self.send_header(
+                        "Content-Range", f"bytes {start}-{last}/{len(data)}"
+                    )
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 if cut:
