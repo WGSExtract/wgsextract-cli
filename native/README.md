@@ -277,7 +277,11 @@ index intervals; it peaked at 11.5 GiB with `-K 10000000`, like 0.3.0, and at
 `wgse-minimap2` uses within about 1 GiB of upstream minimap2's memory: with 9 threads on
 hs38 it peaked at 13–15 GiB for HiFi reads, 10–14 GiB for ONT reads and
 11.3 GiB for short reads, whether it loaded a `.mmi` index or built one from
-the FASTA reference.
+the FASTA reference. `--metal` keeps under 0.5 GB of GPU buffers. With 9 threads,
+its peak resident memory stayed in those ranges. Its peak footprint (resident
+plus compressed memory) was about 0.5 GB above the CPU build's for the full HiFi
+set (16.7–17.0 GB), and 1.3–2.1 GB above it for ONT (13.9–14.7 GB), whose
+reads hold more memory while their gap fills wait for the GPU.
 
 On a base M1 Mac mini with 16 GB, `wgse-bwa` 0.5.0 built the hs38 index with a
 6.2 GiB peak. Aligning with 0.7.0 and 8 threads peaked at 5.5 GiB on the CPU and
@@ -520,6 +524,42 @@ A profile of the plain build's mapping found base-level alignment
 and chaining (about 70%) dominating ONT reads, and minimizer lookups and seed
 collection (about 58%) dominating short reads. 0.1.0 leaves that mostly
 unchanged, so those are the targets for GPU work.
+
+`wgse-minimap2` 0.2.0 `--metal` was measured in one session on the same
+data, with 9 threads, `.mmi` indexes and AC power. The 0.1.0 and `--metal`
+runs were interleaved, three rounds each (the Bioconda baseline ran once).
+Other agents' work kept the machine busier than in the 0.1.0 table, so
+compare within a row:
+
+| Reads | Bioconda minimap2 | `wgse-minimap2` 0.1.0 | 0.2.0 `--metal` | Peak RSS (Bioconda / 0.1.0 / `--metal`) | Alignments |
+| --- | --- | --- | --- | --- | --- |
+| HiFi, 145k reads, 2.5 Gbp (`map-hifi`) | 116.6 s | 89.7 s | 71.5 s (−20.3%) | 12.0 / 12.0–12.2 / 12.2–12.5 GiB | `bf2671dae7d3260e` |
+| ONT, 45.6k reads, 0.88 Gbp (`map-ont`) | 146.6 s | 121.8 s | 111.7 s (−8.3%) | 10.6 / 10.6–12.0 / 11.1–11.6 GiB | `3a4c91aa2339b70f` |
+| 1M 150 bp pairs (`sr`) | 42.7 s | 25.5 s | 25.6 s (CPU) | 11.7 / 11.3 / 11.3 GiB | `5f521317c321d233` |
+
+`--metal` moves the gap fills between anchors (`ksw_extd2`'s approximate
+mode, 12.7M fills for the HiFi set) to the GPU. The GPU computed 85% of the
+HiFi fills, at about 6.9 G cells/s, and CPU threads with no read left to map
+computed the rest. That cut the HiFi CPU time from about 645 to 450 s. Fills
+whose cost exceeds a cap stay on the CPU: about 3% of HiFi fills, but the
+longest. The GPU computed nearly all of ONT's 4.4M fills, but ONT reads spend
+most of their time on anchor sorting and chaining, so the gain is smaller.
+The `sr` preset stays on the CPU under `--metal`.
+
+A profile of `--metal` mapping (busy time, top of stack) found:
+
+- HiFi: the CPU's remaining `ksw_extd2` fills at 25%, anchor sorting
+  (`rs_sort_128x`) at 16%, and chaining (DP plus RMQ) at about 30%.
+- ONT: anchor sorting at 40%, chaining at about 38%, and `ksw_extd2` at 4%.
+  Sorting the seed hits in `collect_seed_hits` alone took a third of ONT's
+  busy time.
+
+Two approaches gained nothing: a GPU chaining kernel, and parking an OS
+thread on each read while its fills waited for the GPU. What paid off was:
+
+- batches of about 1,300 fills of similar size;
+- many reads in flight per OS thread (16 fibers sharing one memory arena);
+- CPU threads taking queued fills when they ran out of reads.
 
 ## Building
 
