@@ -1453,24 +1453,26 @@ def align_minimap2(job: AlignJob) -> None:
     read_length = job.input_reads.read_length if job.input_reads else None
     if read_length is None and preset != "sr" and input_bytes:
         read_length = _long_read_length(setup.r1, job.input_cram_opt or [])
-    preflight_resources(
-        lambda: estimate_resources(
-            "align",
-            input_paths=read_files,
-            output_dir=setup.outdir,
-            temp_dir=configured_temp_directory(),
-            reference=setup.ref,
-            threads=setup.threads,
-            memory=setup.memory,
-            aligner="minimap2",
-            preset=preset,
-            samblaster=duplicates == "samblaster",
-            reads=read_count,
-            platform=job.platform,
-            read_length=read_length,
-            output_format=job.format,
+    # realign checked a chunked alignment's disk space, chunk by chunk.
+    if not job.chunks:
+        preflight_resources(
+            lambda: estimate_resources(
+                "align",
+                input_paths=read_files,
+                output_dir=setup.outdir,
+                temp_dir=configured_temp_directory(),
+                reference=setup.ref,
+                threads=setup.threads,
+                memory=setup.memory,
+                aligner="minimap2",
+                preset=preset,
+                samblaster=duplicates == "samblaster",
+                reads=read_count,
+                platform=job.platform,
+                read_length=read_length,
+                output_format=job.format,
+            )
         )
-    )
     check_mapping_memory(
         setup.ref,
         "minimap2",

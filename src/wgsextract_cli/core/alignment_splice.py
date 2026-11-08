@@ -46,13 +46,16 @@ def _itf8(data: bytes, offset: int) -> tuple[int, int]:
         return (first & 0x3F) << 8 | data[offset + 1], offset + 2
     if first < 0xE0:
         return (first & 0x1F) << 16 | int.from_bytes(
-            data[offset + 1 : offset + 3]
+            data[offset + 1 : offset + 3], "big"
         ), offset + 3
     if first < 0xF0:
         return (first & 0x0F) << 24 | int.from_bytes(
-            data[offset + 1 : offset + 4]
+            data[offset + 1 : offset + 4], "big"
         ), offset + 4
-    value = int.from_bytes(data[offset + 1 : offset + 4]) << 4 | data[offset + 4] & 0x0F
+    value = (
+        int.from_bytes(data[offset + 1 : offset + 4], "big") << 4
+        | data[offset + 4] & 0x0F
+    )
     return (first & 0x0F) << 28 | value, offset + 5
 
 

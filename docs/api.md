@@ -740,6 +740,7 @@ settings and tools are unchanged.
 | `format` | `str` | `'BAM'` | `--format` | Output format: BAM or CRAM (written with the target reference). One of: `BAM`, `CRAM` |
 | `keep_fastq` | `bool` | `False` | `--keep-fastq` | Keep the FASTQs extracted from --input after alignment (default: delete them); ONT and PacBio reads are then extracted to one tagged <input stem>.fastq.gz. FASTQs passed with --r1/--r2 or reused from an earlier extraction are never deleted. |
 | `force_extract` | `bool` | `False` | `--force-extract` | Re-extract FASTQs even if a matching pair already exists next to the BAM. |
+| `chunk_size` | `str` | `'4G'` | `--chunk-size` | Realign ONT and PacBio reads in chunks of about this much of the input (K, M, G or T; 0: in one pass). Temporary files then stay chunk-sized and an interrupted run resumes at its first unfinished chunk. Needs a coordinate-sorted, indexed input; ignored with --keep-fastq. |
 | `no_preflight` | `bool` | `False` | `--no-preflight` | Skip the up-front disk space check (not recommended). |
 | `restart` | `bool` | `False` | `--force`, `--no-resume` | Rerun every step, ignoring the steps an earlier run completed. |
 | `force_steps` | `tuple[str, ...] \| None` | `None` | `--force-step` | Steps to rerun with the steps that use their outputs; None reruns none. Steps: extract, align, index. One of: `extract`, `align`, `index` |

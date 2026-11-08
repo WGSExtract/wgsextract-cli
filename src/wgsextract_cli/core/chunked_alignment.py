@@ -21,6 +21,7 @@ those of a single pass; only its header lacks the sort's @PG line.
 
 from __future__ import annotations
 
+import glob
 import gzip
 import hashlib
 import json
@@ -32,6 +33,7 @@ import shutil
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from wgsextract_cli.core import alignment_splice
 from wgsextract_cli.core.atomic_output import atomic_write
@@ -188,18 +190,23 @@ def plan_chunks(path: str, header: str, chunk_bytes: int) -> list[Chunk] | None:
     return chunks
 
 
-def output_groups(reference: str) -> list[list[str]]:
-    """The output's contigs (its reference's, in order) in about
-    _OUTPUT_GROUPS consecutive groups of similar length, as region specs;
-    the last group also takes the unmapped reads."""
+def _contigs(reference: str) -> list[tuple[str, int]]:
+    """The reference's contigs and their lengths, from its .fai."""
     fai = Path(reference + ".fai")
     if not fai.is_file():
         run_command(["samtools", "faidx", reference])
-    contigs = [
+    return [
         (fields[0], int(fields[1]))
         for fields in (line.split("\t") for line in fai.read_text().splitlines())
         if len(fields) > 1
     ]
+
+
+def output_groups(reference: str) -> list[list[str]]:
+    """The output's contigs (its reference's, in order) in about
+    _OUTPUT_GROUPS consecutive groups of similar length, as region specs;
+    the last group also takes the unmapped reads."""
+    contigs = _contigs(reference)
     target = sum(length for _, length in contigs) / _OUTPUT_GROUPS
     groups: list[list[str]] = [[]]
     size = 0
@@ -248,10 +255,11 @@ class ChunkedAlignment:
         groups = output_groups(self.reference)
         state = self._state(groups)
         if not state.get("done"):
-            index = self._index(state)
-            for number, chunk in enumerate(self.chunks):
-                self._align_chunk(state, number, chunk, groups, index)
-            Path(index).unlink(missing_ok=True)
+            if len(state["chunks"]) < len(self.chunks):
+                index = self._index(state)
+                for number, chunk in enumerate(self.chunks):
+                    self._align_chunk(state, number, chunk, groups, index)
+                Path(index).unlink(missing_ok=True)
             self._assemble(state, groups)
         if self._assembly().is_file():
             os.replace(self._assembly(), self.output)
@@ -270,10 +278,10 @@ class ChunkedAlignment:
         text = json.dumps(plan, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(text.encode()).hexdigest()
 
-    def _state(self, groups: list[list[str]]) -> dict:
+    def _state(self, groups: list[list[str]]) -> dict[str, Any]:
         key = self._key(groups)
         path = self.workdir / "state.json"
-        state: dict | None = None
+        state: dict[str, Any] | None = None
         if self.resume:
             try:
                 state = json.loads(path.read_text(encoding="utf-8"))
@@ -313,7 +321,7 @@ class ChunkedAlignment:
         self._save(state)
         return state
 
-    def _intact(self, state: dict, groups: int) -> bool:
+    def _intact(self, state: dict[str, Any], groups: int) -> bool:
         """Whether every file the state counts on is there as recorded."""
         merged = set(state["merged"])
         for number, sizes in state["chunks"].items():
@@ -336,7 +344,7 @@ class ChunkedAlignment:
             assembly.is_file() and assembly.stat().st_size >= state["bytes"]
         )
 
-    def _save(self, state: dict) -> None:
+    def _save(self, state: dict[str, Any]) -> None:
         text = json.dumps(state, indent=1, sort_keys=True) + "\n"
         atomic_write(self.workdir / "state.json", text.encode("utf-8"))
 
@@ -356,6 +364,19 @@ class ChunkedAlignment:
     def _assembly(self) -> Path:
         return self.workdir / f"assembly{self._extension()}"
 
+    def _temp(self, name: str) -> Path:
+        """A temporary file of this alignment's in the temporary directory
+        (or its work directory), cleared of an interrupted run's spills."""
+        directory = configured_temp_directory()
+        if not directory:
+            path = self.workdir / name
+        else:
+            tag = hashlib.sha256(str(self.workdir.resolve()).encode()).hexdigest()
+            path = Path(directory) / f"{self.workdir.name}-{tag[:8]}-{name}"
+        for stale in path.parent.glob(glob.escape(path.name) + "*"):
+            stale.unlink(missing_ok=True)
+        return path
+
     def _output_options(self) -> list[str]:
         if self.format == "CRAM":
             return ["-O", "CRAM", "--reference", self.reference]
@@ -363,7 +384,7 @@ class ChunkedAlignment:
 
     # --- steps -----------------------------------------------------------
 
-    def _index(self, state: dict) -> str:
+    def _index(self, state: dict[str, Any]) -> str:
         """The aligner's index of the reference, built once for every chunk."""
         index = str(self.workdir / "reference.mmi")
         if state["index"] and Path(index).is_file():
@@ -378,7 +399,7 @@ class ChunkedAlignment:
 
     def _align_chunk(
         self,
-        state: dict,
+        state: dict[str, Any],
         number: int,
         chunk: Chunk,
         groups: list[list[str]],
@@ -392,9 +413,8 @@ class ChunkedAlignment:
         for group in range(len(groups)):
             self._group_file(group, number).parent.mkdir(exist_ok=True)
             self._group_file(group, number).unlink(missing_ok=True)
-        sorted_chunk = self.workdir / f"chunk-{number:05d}.bam"
-        temp = Path(configured_temp_directory() or self.workdir)
-        sort_prefix = temp / f"{self.workdir.name}-chunk-{number:05d}.sort"
+        sorted_chunk = self._temp(f"chunk-{number:05d}.bam")
+        sort_prefix = self._temp(f"chunk-{number:05d}.sort")
         view = ["samtools", "view", "-u", "-F", "0x900", *chunk_filter(chunk)]
         run_pipeline(
             [
@@ -438,7 +458,7 @@ class ChunkedAlignment:
         state["chunks"][str(number)] = sizes
         self._save(state)
 
-    def _assemble(self, state: dict, groups: list[list[str]]) -> None:
+    def _assemble(self, state: dict[str, Any], groups: list[list[str]]) -> None:
         """Merge each group across the chunks and append it to the
         assembly, deleting its pieces as it goes."""
         assembly = self._assembly()
@@ -451,10 +471,31 @@ class ChunkedAlignment:
                 files = [
                     str(self._group_file(group, n)) for n in range(len(self.chunks))
                 ]
-                run_command(
-                    ["samtools", "merge", "-f", "--no-PG", "-c", "-p", "-@", self.threads,
-                     *self._output_options(), "-o", str(piece), *files]
-                )  # fmt: skip
+                # Not samtools merge: it moves each record's RG tag to its
+                # end. sort is stable, so records of the same position keep
+                # the chunks' order, which is the input's, as in one pass.
+                sort_prefix = self._temp(f"group-{group:03d}.sort")
+                run_pipeline(
+                    [
+                        ["samtools", "cat", "--no-PG", "-o", "-", *files],
+                        [
+                            "samtools",
+                            "sort",
+                            "--no-PG",
+                            "-@",
+                            self.threads,
+                            "-m",
+                            self.memory,
+                            "-T",
+                            str(sort_prefix),
+                            *self._output_options(),
+                            "-o",
+                            str(piece),
+                            "-",
+                        ],
+                    ],  # fmt: skip
+                    description=f"Merge of output group {group + 1}",
+                )
                 state["merged"].append(group)
                 self._save(state)
                 shutil.rmtree(self._group_file(group, 0).parent, ignore_errors=True)
@@ -467,14 +508,20 @@ class ChunkedAlignment:
         self._save(state)
 
 
-def required_disk(
-    output_bytes: int, chunk_spill_bytes: int, reference_bases: int, groups: int
-) -> int:
-    """Bytes a chunked alignment needs beside its output: the largest group
-    being merged, a sorted chunk (its spills), and the aligner's index
-    (minimap2's is about 2.4 bytes per reference base)."""
-    return math.ceil(
-        output_bytes * (1 + 2 / max(1, groups))
-        + chunk_spill_bytes
-        + 2.4 * reference_bases
+def chunked_disk(
+    output_bytes: int, spill_bytes: int, chunk_spill_bytes: int, reference: str | None
+) -> tuple[int, int]:
+    """Bytes a chunked alignment needs at its peak at its output's directory
+    and for its spills (``spill_bytes``: a single pass's). Beside the output's
+    groups (all of it, eventually) are the aligner's index (minimap2's is
+    about 2.4 bytes per reference base) while aligning, and the group being
+    assembled (perhaps twice the average) after. The spills are one chunk's,
+    or one group's while it is sorted."""
+    bases = 0
+    if reference and Path(reference).is_file():
+        bases = sum(length for _, length in _contigs(reference))
+    group = 2 / _OUTPUT_GROUPS
+    return (
+        math.ceil(max(output_bytes + 2.4 * bases, output_bytes * (1 + group))),
+        math.ceil(max(chunk_spill_bytes, spill_bytes * group)),
     )

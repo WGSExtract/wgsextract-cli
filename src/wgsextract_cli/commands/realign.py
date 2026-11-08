@@ -34,6 +34,12 @@ from wgsextract_cli.core import bwa_mem2, ultima
 from wgsextract_cli.core.alignment_memory import available_memory, check_mapping_memory
 from wgsextract_cli.core.alignment_metadata import cram_encoded_with, get_bam_header
 from wgsextract_cli.core.atomic_output import atomic_output
+from wgsextract_cli.core.chunked_alignment import (
+    Chunk,
+    chunked_disk,
+    parse_size,
+    plan_chunks,
+)
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
@@ -128,6 +134,7 @@ class RealignJob(align_cmd.AlignJob):
     keep_fastq: bool = False
     force_extract: bool = False
     no_preflight: bool = False
+    chunk_size: str = "4G"
 
 
 def run_realign(params: RealignParams) -> None:
@@ -226,22 +233,27 @@ def _preflight_long_read_disk_space(
     extract: bool,
     threads: str,
     memory: str,
+    chunk_bytes: int = 0,
+    reference: str | None = None,
 ) -> None:
     """Long reads stream into the aligner without a collate: the peak is the
-    sorter's spills beside its output, and an extracted FASTQ when kept."""
+    sorter's spills beside its output, and an extracted FASTQ when kept. A
+    chunked alignment spills one chunk at a time, but keeps the aligner's
+    index and, while it assembles the output, one merged group beside it."""
     amount, unit = parse_memory(memory)
-    disk = long_read_disk(
-        input_path,
-        Path(input_path).stat().st_size,
-        output_format,
-        int(threads) * amount * (GIB if unit == "G" else 1024**2),
-    )
+    sort_buffer = int(threads) * amount * (GIB if unit == "G" else 1024**2)
+    size = Path(input_path).stat().st_size
+    disk = long_read_disk(input_path, size, output_format, sort_buffer)
     fastq = disk.fastq if extract else 0
+    spill, output = disk.spill, disk.output
+    if chunk_bytes:
+        chunk = long_read_disk(input_path, chunk_bytes, output_format, sort_buffer)
+        output, spill = chunked_disk(disk.output, disk.spill, chunk.spill, reference)
     scratch = configured_temp_directory()
     if scratch and Path(scratch).stat().st_dev != Path(outdir).stat().st_dev:
-        requirements = [(outdir, disk.output + fastq), (scratch, disk.spill)]
+        requirements = [(outdir, output + fastq), (scratch, spill)]
     else:
-        requirements = [(outdir, disk.spill + disk.output + fastq)]
+        requirements = [(outdir, spill + output + fastq)]
     for directory, needed in requirements:
         gigabytes = math.ceil(needed / GIB)
         logging.info(
@@ -255,6 +267,35 @@ def _preflight_long_read_disk_space(
                 f"(needs ~{gigabytes} GB). Free up space or rerun with "
                 "--no-preflight to override (not recommended)."
             )
+
+
+def _long_read_chunks(
+    job: RealignJob, selected_aligner: str, chunk_bytes: int
+) -> list[Chunk] | None:
+    """The chunks a long-read realignment aligns one at a time, or None to
+    align the input in one pass: chunking is off, the input is smaller than
+    a chunk, or it isn't a coordinate-sorted, indexed BAM/CRAM."""
+    if selected_aligner != "minimap2" or job.keep_fastq or not chunk_bytes:
+        return None
+    if Path(job.input).stat().st_size <= chunk_bytes:
+        return None
+    chunks = plan_chunks(job.input, get_bam_header(job.input), chunk_bytes)
+    if chunks is None:
+        logging.info(
+            "Aligning %s in one pass: chunks need a coordinate-sorted, indexed "
+            "BAM or CRAM.",
+            job.input,
+        )
+        return None
+    if len(chunks) < 2:
+        return None
+    logging.info(
+        "Aligning %s in %d chunks of about %s each.",
+        job.input,
+        len(chunks),
+        job.chunk_size,
+    )
+    return chunks
 
 
 def _input_cram_reference(job: RealignJob) -> list[str]:
@@ -419,6 +460,7 @@ def _check_long_read_options(job: RealignJob) -> None:
             "realign aligns long reads on the CPU with minimap2, keeping their "
             "MM/ML tags; drop --gpu."
         )
+    parse_size(job.chunk_size)
     if job.aligner == "auto":
         job.aligner = "minimap2"
 
@@ -486,11 +528,14 @@ def _align(
     journal: StepJournal,
     decision: Decision,
     run: Callable[[], None],
+    *,
+    keep_partial: bool = False,
 ) -> None:
     """Run the align step. Aligners index their output as they write it, so
-    that index is then recorded as the index step."""
+    that index is then recorded as the index step. ``keep_partial``: the
+    aligner resumes an interrupted attempt's work (a chunked alignment)."""
     out_path = str(decision.step.outputs[0])
-    aligning = journal.start(decision)
+    aligning = journal.start(decision, keep_partial=keep_partial)
     run()
     aligning.metrics["aligner"] = current_result().metrics.get("aligner")
     aligning.metrics.update(_native_aligner_metrics(current_result().metrics))
@@ -595,6 +640,8 @@ def _realign_long_reads(
         journal.decide(_index_step(out_path))
         return
     cram_opt = input_cram_opt or _input_cram_reference(job)
+    chunk_bytes = parse_size(job.chunk_size)
+    chunks = _long_read_chunks(job, selected_aligner, chunk_bytes)
     if not job.no_preflight:
         _preflight_long_read_disk_space(
             job.input,
@@ -603,10 +650,18 @@ def _realign_long_reads(
             extract=bool(extract_decision and extract_decision.run),
             threads=threads,
             memory=memory,
+            chunk_bytes=chunk_bytes if chunks else 0,
+            reference=target or job.ref,
         )
     # samtools fastq's -T lists tags; the reference needs --reference.
     decode = ["--reference", cram_opt[1]] if cram_opt else []
-    align_job = replace(job, r1=job.input, input_cram_opt=decode)
+    align_job = replace(
+        job,
+        r1=job.input,
+        input_cram_opt=decode,
+        chunks=chunks,
+        resume_chunks=decision.partial,
+    )
     if extract_decision is not None:
         if extract_decision.run:
             verify_dependencies(["samtools", "bgzip"])
@@ -629,7 +684,12 @@ def _realign_long_reads(
         align_job.read_group_description = align_cmd.read_group_descriptions(
             job.input, job.input_ref
         )
-    _align(journal, decision, lambda: align_cmd.run(align_job))
+    _align(
+        journal,
+        decision,
+        lambda: align_cmd.run(align_job),
+        keep_partial=bool(chunks) and decision.partial,
+    )
     if job.keep_fastq:
         current_result().add_output(fastq, "fastq_r1")
 
