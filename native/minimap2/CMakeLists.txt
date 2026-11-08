@@ -121,6 +121,8 @@ minimap2_seam(map_source "mm_tbuf_t *mm_tbuf_init(void)\n"
     "#include \"metal_ksw.h\"\nmm_tbuf_t *mm_tbuf_init(void)\n")
 minimap2_seam(map_source "\tif (b->km) {\n\t\tkm_stat(b->km, &kmst);"
     "\tif (b->km && wgse_ksw_km_check()) {\n\t\tkm_stat(b->km, &kmst);")
+minimap2_seam(map_source "\t\t\tkm_destroy(b->km);\n\t\t\tb->km = km_init();\n"
+    "\t\t\tkm_destroy(b->km);\n\t\t\tb->km = km_init();\n\t\t\twgse_ksw_km_reset(b->km);\n")
 minimap2_seam(map_source "\tmm_tbuf_t *b = s->buf[tid];\n\tassert(s->n_seg[i] <= MM_MAX_SEG);\n"
     "\tmm_tbuf_t *b = s->buf[tid];\n\tvoid *wgse_own_km = wgse_ksw_share_km(&b->km);\n\tassert(s->n_seg[i] <= MM_MAX_SEG);\n")
 minimap2_seam(map_source "\tfor (j = 0; j < s->n_seg[i]; ++j) // flip the query strand"

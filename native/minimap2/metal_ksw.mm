@@ -96,7 +96,7 @@ inline void fill(const Fill F, constant Scoring &S, device const uchar *seq, dev
                 d = b2 > z ? 4 : d; z = max(z, b2);
                 z = min(z, mch);
                 const int ui = (int)z - (int)vp, vi = (int)z - (int)ut;
-                if (j0 + k < Q) wrapped |= (ui + 128) >> 8 | (vi + 128) >> 8;
+                if (j0 + k < Q) wrapped |= ((uint)(ui + 128) | (uint)(vi + 128)) > 255u ? 1 : 0;
                 u = (char)ui; v[k] = (char)vi;
                 char tmp = z - q; a = a - tmp; b = b - tmp;
                 tmp = z - q2; a2 = a2 - tmp; b2 = b2 - tmp;
@@ -610,7 +610,7 @@ void Engine::dispatcher() {
             oldest_ = now();
             if (in_flight_++ == 0) busy_since_ = oldest_;
         }
-        run_batch(batch, buffers);
+        @autoreleasepool { run_batch(batch, buffers); }
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (--in_flight_ == 0) busy_ns_ += nanoseconds(now() - busy_since_);
@@ -678,6 +678,11 @@ void Engine::run_batch(std::vector<Pending> &batch, Buffers &b) {
             id<MTLCommandBuffer> command = [runtime_.queue() commandBuffer];
             id<MTLComputeCommandEncoder> encoder =
                 [command computeCommandEncoderWithDispatchType:MTLDispatchTypeConcurrent];
+            if (!command || !encoder) {
+                fail("Metal command allocation failed");
+                ok = false;
+                break;
+            }
             command.label = encoder.label = @"ksw_fill";
             [encoder setBytes:&scoring_ length:sizeof scoring_ atIndex:1];
             [encoder setBuffer:b.seq offset:0 atIndex:2];
@@ -805,6 +810,10 @@ void wgse_ksw_unshare_km(void **km, void *own) {
 
 int wgse_ksw_km_check(void) {
     return !current_fiber || current_fiber->read.owner->reading <= 1;
+}
+
+void wgse_ksw_km_reset(void *km) {
+    if (current_fiber) current_fiber->read.owner->km = km;
 }
 
 void wgse_ksw_for(int n_threads, void (*func)(void *, long, int), void *data, long n) {

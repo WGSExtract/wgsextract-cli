@@ -29,11 +29,13 @@ int wgse_ksw_workers(int n_threads);
 void wgse_ksw_for(int n_threads, void (*func)(void *, long, int), void *data, long n);
 // A read's kalloc arena is its thread's, shared by the thread's fibers: share
 // swaps it into *km and returns the read's own (NULL outside fibers), unshare
-// swaps back (keeping a reset arena), and minimap2's per-read arena check and
-// reset may run only when no other read on the thread holds memory in it.
+// swaps back, and minimap2's per-read arena check and reset may run only when no
+// other read on the thread holds memory in it. A reset arena replaces the
+// thread's at once (km_reset), before a later segment of the read can yield.
 void *wgse_ksw_share_km(void **km);
 void wgse_ksw_unshare_km(void **km, void *own);
 int wgse_ksw_km_check(void);
+void wgse_ksw_km_reset(void *km);
 
 // One read's fills, enumerated by the prefetch before the CPU code aligns it.
 // The scoring is set once per run.

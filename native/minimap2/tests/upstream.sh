@@ -160,5 +160,26 @@ for preset in map-hifi map-ont map-pb sr; do
     awk -F '\t' '!/^@/ && int($2 / 4) % 2 == 0 && $5 == 0 { n++ } END { exit !(n > 0) }' \
         "upstream.$preset.sam"
 done
+# PR #559 review: a read of independent segments whose first segment resets the
+# thread's arena (--cap-kalloc) must hand the new arena to the reads that start
+# while a later segment waits for the GPU.
+if $metal; then
+    "$upstream" -t 2 --pairing=no --cap-kalloc 1 -ax map-hifi reference.fa hifi.fq hifi.fq \
+        > upstream.km-reset.sam 2> upstream.km-reset.log
+    "$wgse" --metal --gpu-fibers 4 -t 2 --pairing=no --cap-kalloc 1 -ax map-hifi reference.fa \
+        hifi.fq hifi.fq > metal.km-reset.sam 2> metal.km-reset.log
+    records upstream.km-reset.sam
+    records metal.km-reset.sam
+    cmp upstream.km-reset.sam.records metal.km-reset.sam.records
+    # Fills whose int8 differences wrap (a match score this large) must be redone on the CPU.
+    "$upstream" -t 2 -ax map-hifi -A85 -B19 -O39,81 -E3,1 reference.fa hifi.fq \
+        > upstream.wrap.sam 2> upstream.wrap.log
+    "$wgse" --metal -t 2 -ax map-hifi -A85 -B19 -O39,81 -E3,1 reference.fa hifi.fq \
+        > metal.wrap.sam 2> metal.wrap.log
+    records upstream.wrap.sam
+    records metal.wrap.sam
+    cmp upstream.wrap.sam.records metal.wrap.sam.records
+    grep -Eq '[1-9][0-9]* redone on the CPU' metal.wrap.log
+fi
 echo "wgse-minimap2 matches upstream minimap2 for map-hifi, map-ont, map-pb and sr"
 if $metal; then echo "wgse-minimap2 --metal matches upstream minimap2 for map-hifi, map-ont, map-pb and sr"; fi
