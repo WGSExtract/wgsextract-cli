@@ -5,7 +5,7 @@ import logging
 import os
 import subprocess
 import tempfile
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, TypeVar
@@ -50,7 +50,11 @@ from wgsextract_cli.core.resource_estimates import (
     preflight_resources,
 )
 from wgsextract_cli.core.results import current_result
-from wgsextract_cli.core.samtools_commands import parse_memory
+from wgsextract_cli.core.samtools_commands import (
+    indexed_output,
+    parse_memory,
+    written_index,
+)
 from wgsextract_cli.core.sequencing import input_platform
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import (
@@ -145,9 +149,6 @@ class AlignJob:
     input_cram_opt: list[str] | None = None
     # Set once measured, so later stages don't read the reads again.
     input_reads: InputReads | None = None
-    # Told the aligner's name once the sorted output is complete (realign's
-    # step journal), before indexing starts.
-    on_written: Callable[[str], None] | None = None
     # The source BAM/CRAM's read-group DS, when realign aligns its FASTQ.
     read_group_description: str = ""
 
@@ -733,17 +734,19 @@ def duplicate_marker(paired: bool) -> str:
 def _sort_and_mark_stages(
     out_path: str, *, threads: str, memory: str, fmt: str, ref: str
 ) -> list[list[str]]:
-    """samtools fixmate | sort | markdup, writing out_path. The sorted stream
-    goes straight into markdup uncompressed, so the output is written once.
-    fixmate reads the aligner's output directly: it keeps mates together."""
+    """samtools fixmate | sort | markdup, writing and indexing out_path. The
+    sorted stream goes straight into markdup uncompressed, so the output is
+    written once. fixmate reads the aligner's output directly: it keeps mates
+    together."""
     directory = configured_temp_directory()
     tmp = str(Path(directory, "align")) if directory else f"{out_path}.tmp"
     out_fmt = ["-O", "CRAM", "--reference", ref] if fmt == "CRAM" else ["-O", "BAM"]
     return [
         ["samtools", "fixmate", "-m", "-u", "-", "-"],
         ["samtools", "sort", "-@", threads, "-m", memory, "-u", "-T", tmp, "-"],
-        ["samtools", "markdup", "-@", threads, "-T", tmp, *out_fmt, "-", out_path],
-    ]
+        ["samtools", "markdup", "-@", threads, "-T", tmp, *out_fmt, "--write-index",
+         "-", indexed_output(out_path)],
+    ]  # fmt: skip
 
 
 def _index_output(path: str, threads: str = "1") -> None:
@@ -758,13 +761,6 @@ def _index_output(path: str, threads: str = "1") -> None:
         run_command(command)
 
 
-def _written_hook(job: AlignJob, tool: str) -> Callable[[], None] | None:
-    """The caller's ``on_written(tool)`` callback (realign's step journal),
-    told when the sorted output is complete and indexing starts."""
-    hook = job.on_written
-    return (lambda: hook(tool)) if hook else None
-
-
 def run_streamed_alignment(
     align_cmd: Sequence[object],
     out_path: str,
@@ -776,20 +772,25 @@ def run_streamed_alignment(
     duplicates: str | None,
     upstream: list[Sequence[object]] | None = None,
     expected_reads: int | None = None,
-    on_written: Callable[[], None] | None = None,
 ) -> None:
     """Run the aligner (after any upstream stages feeding it), mark duplicates
     (with duplicate_marker's choice, or not at all for long reads: None), sort,
-    then index the output. ``on_written`` is called once the sorted output is
-    complete, before indexing."""
+    and write the output with its index (written_index): the last samtools
+    stage indexes as it writes, which saves reading the whole output again."""
     from wgsextract_cli.core.atomic_output import safe_output
 
-    partial = [out_path, out_path + ".bai", out_path + ".crai"]
+    partial = [out_path, written_index(out_path)]
     with cleanup_files(on_failure=partial, preserve_outputs=atomic_outputs_enabled()):
         with safe_output(out_path) as staged:
             stages: list[Sequence[object]] = [*(upstream or []), list(align_cmd)]
             sort = get_sam_sort_cmd(
-                staged, threads, memory, fmt=fmt, reference=ref, sam_input=True
+                staged,
+                threads,
+                memory,
+                fmt=fmt,
+                reference=ref,
+                sam_input=True,
+                write_index=True,
             )
             if duplicates == "samblaster":
                 logging.info("Using samblaster for marking duplicates...")
@@ -807,13 +808,6 @@ def run_streamed_alignment(
                 heartbeat=True,
                 expected_reads=expected_reads,
             )
-        if on_written:
-            on_written()
-    # A committed alignment survives a failed index, so a rerun only reindexes.
-    indexes = partial[1:] if on_written else partial
-    with cleanup_files(on_failure=indexes, preserve_outputs=atomic_outputs_enabled()):
-        logging.info(LOG_MESSAGES["indexing_output"])
-        _index_output(out_path, threads=threads)
 
 
 # SAM-spec @RG PL values for --platform.
@@ -1019,7 +1013,6 @@ def align_bwa(
             duplicates=duplicate_marker(paired=bool(job.r2)),
             upstream=list(upstream) if upstream else None,
             expected_reads=job.read_count,
-            on_written=_written_hook(job, tool),
         )
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
         raise WGSExtractError(f"{aligner.binary} alignment failed: {e}") from e
@@ -1521,7 +1514,6 @@ def align_minimap2(job: AlignJob) -> None:
             ref=setup.ref,
             duplicates=duplicates,
             upstream=upstream or None,
-            on_written=_written_hook(job, "minimap2"),
         )
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
         raise WGSExtractError(f"{aligner.binary} alignment failed: {e}") from e

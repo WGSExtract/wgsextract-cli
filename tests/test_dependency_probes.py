@@ -336,6 +336,18 @@ def test_verify_rejects_a_pre_1_0_samtools(host):
         verify_dependencies(["samtools", "bcftools"])
 
 
+@pytest.mark.parametrize("version, accepted", [("1.9", False), ("1.10", True)])
+def test_verify_requires_a_samtools_with_write_index(host, version, accepted):
+    """#545 review: align writes its index with samtools 1.10's --write-index."""
+    _tool(host, "samtools", f'print("samtools {version}")')
+
+    if accepted:
+        verify_dependencies(["samtools"])
+    else:
+        with pytest.raises(WGSExtractError, match=r"samtools 1\.9 is too old"):
+            verify_dependencies(["samtools"])
+
+
 def test_verify_rejects_a_samtools_that_crashes(host):
     _tool(host, "samtools", 'crash("SIGILL")')
 

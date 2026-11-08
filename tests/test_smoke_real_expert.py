@@ -76,12 +76,12 @@ class TestPerformanceBoostSmoke:
             ]
         )
         assert rc == 0
-        assert verify_bam(os.path.join(self.outdir, "fake_aligned.bam"))
+        bam = os.path.join(self.outdir, "fake_aligned.bam")
+        assert verify_bam(bam)
+        # #545: the sorter indexes as it writes, with no separate index pass.
+        assert os.path.exists(bam + ".bai")
 
         # Check for optimized tools in logs if they are installed
-        if check_tool("sambamba") and os.uname().sysname != "Darwin":
-            assert "sambamba index" in stdout or "sambamba index" in stderr
-
         if check_tool("samblaster"):
             assert "Using samblaster" in stdout or "Using samblaster" in stderr
 
