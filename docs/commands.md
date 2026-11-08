@@ -141,8 +141,8 @@ These still work for one more minor release, with a warning (`deprecated_command
 
 | Command | Use instead | Removed in |
 | --- | --- | --- |
-| `vep` without a subcommand | `vep run` | 0.8.0 |
-| `ref library-list` | `ref library --list` | 0.8.0 |
+| `vep` without a subcommand | `vep run` | 0.9.0 |
+| `ref library-list` | `ref library --list` | 0.9.0 |
 
 ## Help topics
 

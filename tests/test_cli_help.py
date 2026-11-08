@@ -324,7 +324,7 @@ def test_deprecated_commands_still_run_and_warn(tmp_path, capsys):
     assert [w["code"] for w in result["warnings"]] == ["deprecated_command"]
     assert result["warnings"][0]["details"] == {
         "replacement": "ref library --list",
-        "remove_in": "0.8.0",
+        "remove_in": "0.9.0",
     }
     assert "ref library --list" in captured.err
 

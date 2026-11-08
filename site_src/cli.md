@@ -145,8 +145,8 @@ Advanced subcommands of core groups: `extract bam-subset`, `vcf alphamissense`, 
 
 ::: card
 ### Deprecated
-- `ref library-list`: use `ref library --list`; removed in 0.8.0.
-- `vep` without a subcommand: use `vep run`; removed in 0.8.0.
+- `ref library-list`: use `ref library --list`; removed in 0.9.0.
+- `vep` without a subcommand: use `vep run`; removed in 0.9.0.
 :::
 
 :::
