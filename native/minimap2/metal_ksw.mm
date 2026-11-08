@@ -332,7 +332,7 @@ private:
     void run_batch(std::vector<Pending> &batch, Buffers &buffers);
     bool grow(__strong id<MTLBuffer> &buffer, size_t &size, size_t needed, bool private_storage);
     void fail(const std::string &reason);
-    static void finish(Read &read, size_t fills);
+    void finish(Read &read, size_t fills);
 
     wgse::metal::Runtime runtime_;
     id<MTLComputePipelineState> pipelines_[3] = {nil, nil, nil};
@@ -364,6 +364,7 @@ private:
     std::string failure_;
     std::atomic<size_t> gpu_fills_{0}, wrapped_{0}, batches_{0}, queued_total_{0}, helped_{0};
     std::atomic<uint64_t> gpu_ns_{0}, cells_{0}, busy_ns_{0}, idle_ns_{0}, buffer_bytes_{0};
+    std::atomic<int> finishing_{0}; // finish() calls that may still touch a read's owner
 };
 
 // Created by wgse_ksw_metal_start (--metal) only.
@@ -427,6 +428,7 @@ void Engine::run_for(int n_threads, For &job) {
     for (int t = 0; t < n_threads; ++t)
         pool.emplace_back([&, t] { thread_main(threads[t], &fibers[(size_t)t * n_fibers], n_fibers, job); });
     for (std::thread &t : pool) t.join();
+    while (finishing_.load() != 0) std::this_thread::yield();
     for (Fiber &f : fibers) munmap(f.stack, f.stack_size);
 }
 
@@ -510,8 +512,13 @@ bool Engine::help(void *km, ksw_extz_t &ez, bool tail) {
     return true;
 }
 
+// The owner may see remaining reach 0 and return from run_for before signal() returns,
+// so run_for waits for finishing_ to drain before it frees the threads and reads.
 void Engine::finish(Read &read, size_t fills) {
-    if (read.remaining.fetch_sub(fills, std::memory_order_acq_rel) == fills) read.owner->signal();
+    finishing_.fetch_add(1);
+    Thread *owner = read.owner;
+    if (read.remaining.fetch_sub(fills, std::memory_order_acq_rel) == fills) owner->signal();
+    finishing_.fetch_sub(1);
 }
 
 void Engine::set_scoring(int q, int e, int q2, int e2, const int8_t mat[25]) {
