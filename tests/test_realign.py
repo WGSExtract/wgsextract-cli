@@ -746,9 +746,23 @@ def test_whole_genome_input_streams_when_its_collate_bucket_fits_ram(
     assert len(fakes.aligned) == 1
 
 
+def test_ample_disk_space_is_not_reported_as_a_warning(
+    tmp_path, monkeypatch, source, roomy_disk, caplog
+):
+    """Issue #549: every realign warned "~N GB free space required" though
+    the disk had room; only a shortfall is worth a warning."""
+    _Fakes(monkeypatch)
+    monkeypatch.setattr(realign, "indexed_read_count", lambda *_a: 800_000_000)
+    with caplog.at_level(logging.INFO):
+        realign.run(_args(source, aligner="bwa", no_preflight=False))
+    disk = [r for r in caplog.records if _DISK.search(r.getMessage())]
+    assert disk and all(r.levelno < logging.WARNING for r in disk)
+
+
 def test_late_stream_memory_change_retries_file_extraction(
     tmp_path, monkeypatch, source, roomy_disk, caplog
 ):
+    caplog.set_level(logging.INFO)
     fakes = _Fakes(monkeypatch)
     monkeypatch.setattr(realign, "indexed_read_count", lambda *_a: 800_000_000)
 
@@ -768,6 +782,7 @@ def test_late_stream_memory_change_retries_file_extraction(
 def test_realign_uses_actual_input_count_before_extraction_for_memory_and_disk(
     tmp_path, monkeypatch, source, provided_fastqs, roomy_disk, caplog
 ):
+    caplog.set_level(logging.INFO)
     _Fakes(monkeypatch)
     ref = tmp_path / "ref.fa"
     ref.write_text(">c\nA\n")
@@ -813,6 +828,7 @@ def test_realign_uses_actual_input_count_before_extraction_for_memory_and_disk(
 def test_ultima_realign_counts_index_once_and_passes_through_unknown_counts(
     tmp_path, monkeypatch, source, no_preflight, reads, roomy_disk, caplog
 ):
+    caplog.set_level(logging.INFO)
     monkeypatch.setattr(platform, "machine", lambda: "x86_64")
     calls = []
 

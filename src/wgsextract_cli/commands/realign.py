@@ -185,7 +185,7 @@ def _preflight_disk_space(
             ),
         ]
         for directory, gigabytes in requirements:
-            logging.warning(
+            logging.info(
                 "Realign pre-flight: ~%d GB free space required at %s.",
                 gigabytes,
                 directory,
@@ -200,7 +200,7 @@ def _preflight_disk_space(
     # it drains while the sorter's spills grow. Streaming therefore peaks like
     # file extraction without the FASTQs between the two stages.
     total_gb = max(extract_temp_gb, extract_final_gb + align_temp_gb + align_final_gb)
-    logging.warning(
+    logging.info(
         "Realign pre-flight: ~%d GB free space required at %s "
         "(extract %d+%d, align %d+%d).",
         total_gb,
@@ -244,7 +244,7 @@ def _preflight_long_read_disk_space(
         requirements = [(outdir, disk.spill + disk.output + fastq)]
     for directory, needed in requirements:
         gigabytes = math.ceil(needed / GIB)
-        logging.warning(
+        logging.info(
             "Realign pre-flight: ~%d GB free space required at %s.",
             gigabytes,
             directory,
