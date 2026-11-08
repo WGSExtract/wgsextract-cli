@@ -107,9 +107,9 @@ test("PR #530 review and #528: WGSExtract's bug report preview and GitHub report
     const visible = section.actions.filter((action) => isActionVisible(action, context));
     assert.deepEqual(visible.map((action) => action.title), ["Preview Bug Report", "Open Bug Report on GitHub"]);
     assert.ok(visible.every(readsLastResultDocument));
-    // #528: opening the browser is only offered behind a confirmation that says nothing is uploaded.
+    // #528: opening the browser is only offered behind a confirmation saying that GitHub receives the report but no issue is created until the user submits it.
     assert.equal(visible[0].confirm, undefined);
-    assert.match(visible[1].confirm.message, /Nothing is uploaded/);
+    assert.match(visible[1].confirm.message, /GitHub receives the report text in the link\. No issue is created until/);
     const [preview, open] = visible.map((action) => displayCommand(action.command, context).replace(/^\S+ /, ""));
     // contract: --open is the CLI's only way to open the browser without its terminal prompt.
     assert.equal(open, preview.replace("--print", "--open"));

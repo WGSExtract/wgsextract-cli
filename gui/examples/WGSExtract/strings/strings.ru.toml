@@ -555,7 +555,7 @@
 "actions.annotate.v066.vcf-table.title" = "Таблица вариантов"  # i18n-source-hash:edf38ae9
 "actions.annotate.v066.vcf-table.tooltip" = "Экспорт по одной строке на вариант с аннотациями и генотипом в виде таблицы TSV и базы SQLite для запросов."  # i18n-source-hash:44465bc2
 "sections.settings.v066.report-issue.title" = "Сообщить о проблеме"  # i18n-source-hash:acbda9da
-"sections.settings.v066.report-issue.subtitle" = "Предпросмотр обезличенного отчёта об ошибке об этой установке и недавнем запуске или открытие его как заранее заполненной задачи GitHub. Ничего не загружается; вы отправляете его на GitHub сами."  # i18n-source-hash:0ff8e4ca
+"sections.settings.v066.report-issue.subtitle" = "Предпросмотр обезличенного отчёта об ошибке об этой установке и недавнем запуске или открытие его как заранее заполненной задачи GitHub. Задача не создаётся, пока вы сами не отправите её на GitHub."  # i18n-source-hash:3f42f4ed
 "controls.settings.v066.report-last-failed.label" = "Сообщить о последнем неудачном запуске"  # i18n-source-hash:a2dbb6f1
 "controls.settings.v066.report-last-failed.tooltip" = "Если не отмечено, отчёт о последнем запуске, независимо от результата."  # i18n-source-hash:bbbdcf7c
 "controls.settings.v066.report-description.label" = "Что произошло? (необязательно)"  # i18n-source-hash:9a81bdcf
@@ -565,6 +565,6 @@
 "actions.settings.v066.report-issue-open.title" = "Открыть отчёт об ошибке на GitHub"  # i18n-source-hash:4d0be68d
 "actions.settings.v066.report-issue-open.tooltip" = "Открыть заранее заполненный отчёт об ошибке на GitHub. Личные данные, такие как имена файлов, имена образцов и ваша домашняя папка, сначала удаляются; вы проверяете отчёт перед отправкой."  # i18n-source-hash:92149a68
 "actions.settings.v066.report-issue-open.confirm.title" = "Открыть отчёт об ошибке на GitHub?"  # i18n-source-hash:fc04d69d
-"actions.settings.v066.report-issue-open.confirm.message" = "Браузер откроет форму новой задачи GitHub, заполненную обезличенным отчётом. Ничего не загружается: проверьте отчёт там и отправьте его сами. Копия сохраняется в папке reports вашей папки данных."  # i18n-source-hash:7cc1851d
+"actions.settings.v066.report-issue-open.confirm.message" = "Браузер откроет форму новой задачи GitHub, заполненную обезличенным отчётом, поэтому GitHub получает текст отчёта в ссылке. Задача не создаётся, пока вы не проверите отчёт там и не отправите его сами. Копия сохраняется в папке reports вашей папки данных."  # i18n-source-hash:5aa07ec2
 "actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "Открыть в браузере"  # i18n-source-hash:56c8f9db
 "actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "Отмена"  # i18n-source-hash:77dfd213

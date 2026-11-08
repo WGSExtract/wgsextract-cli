@@ -555,7 +555,7 @@
 "actions.annotate.v066.vcf-table.title" = "ভ্যারিয়েন্ট টেবিল"  # i18n-source-hash:edf38ae9
 "actions.annotate.v066.vcf-table.tooltip" = "প্রতি ভ্যারিয়েন্টে এক সারি, অ্যানোটেশন ও জিনোটাইপসহ, TSV টেবিল ও কোয়েরিযোগ্য SQLite ডেটাবেস হিসেবে রপ্তানি করুন।"  # i18n-source-hash:44465bc2
 "sections.settings.v066.report-issue.title" = "সমস্যা জানান"  # i18n-source-hash:acbda9da
-"sections.settings.v066.report-issue.subtitle" = "এই ইনস্টলেশন ও সাম্প্রতিক রান সম্পর্কে সম্পাদিত বাগ রিপোর্টের পূর্বরূপ দেখুন, অথবা আগে থেকে পূরণ করা GitHub ইস্যু হিসেবে খুলুন। কিছুই আপলোড হয় না; আপনি নিজেই GitHub-এ জমা দেন।"  # i18n-source-hash:0ff8e4ca
+"sections.settings.v066.report-issue.subtitle" = "এই ইনস্টলেশন ও সাম্প্রতিক রান সম্পর্কে সম্পাদিত বাগ রিপোর্টের প্রিভিউ দেখুন, অথবা এটিকে আগে থেকে পূরণ করা GitHub ইস্যু হিসেবে খুলুন। আপনি নিজে GitHub-এ জমা না দেওয়া পর্যন্ত কোনো ইস্যু তৈরি হয় না।"  # i18n-source-hash:3f42f4ed
 "controls.settings.v066.report-last-failed.label" = "সর্বশেষ ব্যর্থ রান জানান"  # i18n-source-hash:a2dbb6f1
 "controls.settings.v066.report-last-failed.tooltip" = "টিক না দিলে সর্বশেষ রান জানানো হয়, ব্যর্থ হোক বা না হোক।"  # i18n-source-hash:bbbdcf7c
 "controls.settings.v066.report-description.label" = "কী ঘটেছিল? (ঐচ্ছিক)"  # i18n-source-hash:9a81bdcf
@@ -565,6 +565,6 @@
 "actions.settings.v066.report-issue-open.title" = "GitHub-এ বাগ রিপোর্ট খুলুন"  # i18n-source-hash:4d0be68d
 "actions.settings.v066.report-issue-open.tooltip" = "আগে থেকে পূরণ করা একটি GitHub বাগ রিপোর্ট খুলুন। ফাইলের নাম, নমুনার নাম ও আপনার হোম ফোল্ডারের মতো ব্যক্তিগত তথ্য আগে সরিয়ে ফেলা হয়; জমা দেওয়ার আগে আপনি তা পর্যালোচনা করেন।"  # i18n-source-hash:92149a68
 "actions.settings.v066.report-issue-open.confirm.title" = "GitHub-এ বাগ রিপোর্ট খুলবেন?"  # i18n-source-hash:fc04d69d
-"actions.settings.v066.report-issue-open.confirm.message" = "আপনার ব্রাউজার সম্পাদিত রিপোর্ট দিয়ে পূরণ করা GitHub-এর নতুন ইস্যু ফর্ম খুলবে। কিছুই আপলোড হয় না: সেখানে পর্যালোচনা করে নিজেই জমা দিন। একটি কপি আপনার ডেটা ফোল্ডারের reports ফোল্ডারে সংরক্ষিত হয়।"  # i18n-source-hash:7cc1851d
+"actions.settings.v066.report-issue-open.confirm.message" = "আপনার ব্রাউজার সম্পাদিত রিপোর্ট দিয়ে পূরণ করা GitHub-এর নতুন ইস্যু ফর্ম খোলে, তাই GitHub লিঙ্কের মধ্যে রিপোর্টের লেখা পায়। আপনি সেখানে পর্যালোচনা করে নিজে জমা না দেওয়া পর্যন্ত কোনো ইস্যু তৈরি হয় না। একটি কপি আপনার ডেটা ফোল্ডারের reports ফোল্ডারে সংরক্ষিত হয়।"  # i18n-source-hash:5aa07ec2
 "actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "ব্রাউজারে খুলুন"  # i18n-source-hash:56c8f9db
 "actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "বাতিল"  # i18n-source-hash:77dfd213

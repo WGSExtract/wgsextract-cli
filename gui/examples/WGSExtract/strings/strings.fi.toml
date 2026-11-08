@@ -555,7 +555,7 @@
 "actions.annotate.v066.vcf-table.title" = "Varianttitaulukko"  # i18n-source-hash:edf38ae9
 "actions.annotate.v066.vcf-table.tooltip" = "Vie yksi rivi varianttia kohden annotaatioineen ja genotyyppeineen TSV-taulukkona ja haettavana SQLite-tietokantana."  # i18n-source-hash:44465bc2
 "sections.settings.v066.report-issue.title" = "Ilmoita ongelmasta"  # i18n-source-hash:acbda9da
-"sections.settings.v066.report-issue.subtitle" = "Esikatsele sensuroitua virheraporttia tästä asennuksesta ja viimeaikaisesta ajosta tai avaa se valmiiksi täytettynä GitHub-ongelmana. Mitään ei ladata palvelimelle; lähetät sen itse GitHubissa."  # i18n-source-hash:0ff8e4ca
+"sections.settings.v066.report-issue.subtitle" = "Esikatsele sensuroitua virheraporttia tästä asennuksesta ja viimeaikaisesta ajosta tai avaa se valmiiksi täytettynä GitHub-ongelmana. Ongelmaa ei luoda ennen kuin lähetät sen itse GitHubissa."  # i18n-source-hash:3f42f4ed
 "controls.settings.v066.report-last-failed.label" = "Ilmoita viimeisin epäonnistunut ajo"  # i18n-source-hash:a2dbb6f1
 "controls.settings.v066.report-last-failed.tooltip" = "Valitsematta ilmoittaa viimeisimmän ajon, epäonnistui se tai ei."  # i18n-source-hash:bbbdcf7c
 "controls.settings.v066.report-description.label" = "Mitä tapahtui? (valinnainen)"  # i18n-source-hash:9a81bdcf
@@ -565,6 +565,6 @@
 "actions.settings.v066.report-issue-open.title" = "Avaa virheraportti GitHubissa"  # i18n-source-hash:4d0be68d
 "actions.settings.v066.report-issue-open.tooltip" = "Avaa valmiiksi täytetty GitHub-virheraportti. Henkilötiedot, kuten tiedostonimet, näytteiden nimet ja kotikansiosi, poistetaan ensin; tarkistat sen ennen lähettämistä."  # i18n-source-hash:92149a68
 "actions.settings.v066.report-issue-open.confirm.title" = "Avataanko virheraportti GitHubissa?"  # i18n-source-hash:fc04d69d
-"actions.settings.v066.report-issue-open.confirm.message" = "Selain avaa GitHubin uuden ongelman lomakkeen sensuroidulla raportilla täytettynä. Mitään ei ladata: tarkista raportti siellä ja lähetä se itse. Kopio tallennetaan datakansiosi reports-kansioon."  # i18n-source-hash:7cc1851d
+"actions.settings.v066.report-issue-open.confirm.message" = "Selain avaa GitHubin uuden ongelman lomakkeen sensuroidulla raportilla täytettynä, joten GitHub saa raportin tekstin linkissä. Ongelmaa ei luoda ennen kuin tarkistat raportin siellä ja lähetät sen itse. Kopio tallennetaan datakansiosi reports-kansioon."  # i18n-source-hash:5aa07ec2
 "actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "Avaa selaimessa"  # i18n-source-hash:56c8f9db
 "actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "Peruuta"  # i18n-source-hash:77dfd213

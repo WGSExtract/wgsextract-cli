@@ -555,7 +555,7 @@
 "actions.annotate.v066.vcf-table.title" = "變異表"  # i18n-source-hash:edf38ae9
 "actions.annotate.v066.vcf-table.tooltip" = "每個變異匯出一列，包含註解和基因型，產生 TSV 表和可查詢的 SQLite 資料庫。"  # i18n-source-hash:44465bc2
 "sections.settings.v066.report-issue.title" = "回報問題"  # i18n-source-hash:acbda9da
-"sections.settings.v066.report-issue.subtitle" = "預覽關於此安裝和最近一次執行的已去識別錯誤報告，或將其作為預先填寫的 GitHub 議題開啟。不會上傳任何內容；由您自行在 GitHub 上提交。"  # i18n-source-hash:0ff8e4ca
+"sections.settings.v066.report-issue.subtitle" = "預覽關於此安裝和最近一次執行的已去識別化錯誤報告，或將其作為預先填寫的 GitHub 議題開啟。在你自己於 GitHub 上提交之前，不會建立任何議題。"  # i18n-source-hash:3f42f4ed
 "controls.settings.v066.report-last-failed.label" = "回報上次失敗的執行"  # i18n-source-hash:a2dbb6f1
 "controls.settings.v066.report-last-failed.tooltip" = "未勾選時回報上一次執行，無論是否失敗。"  # i18n-source-hash:bbbdcf7c
 "controls.settings.v066.report-description.label" = "發生了什麼？（選用）"  # i18n-source-hash:9a81bdcf
@@ -565,6 +565,6 @@
 "actions.settings.v066.report-issue-open.title" = "在 GitHub 上開啟錯誤報告"  # i18n-source-hash:4d0be68d
 "actions.settings.v066.report-issue-open.tooltip" = "開啟預先填寫的 GitHub 錯誤報告。檔案名稱、樣本名稱和您的主資料夾等個人資料會先被移除；提交前由您檢閱。"  # i18n-source-hash:92149a68
 "actions.settings.v066.report-issue-open.confirm.title" = "在 GitHub 上開啟錯誤報告？"  # i18n-source-hash:fc04d69d
-"actions.settings.v066.report-issue-open.confirm.message" = "瀏覽器將開啟 GitHub 的新增議題表單，並填入已去識別的報告。不會上傳任何內容：請在該處檢閱並自行提交。副本儲存在資料夾的 reports 資料夾中。"  # i18n-source-hash:7cc1851d
+"actions.settings.v066.report-issue-open.confirm.message" = "瀏覽器會開啟 GitHub 的新增議題表單，並填入已去識別化的報告，因此 GitHub 會透過連結收到報告文字。在你於該頁面檢查並親自提交之前，不會建立任何議題。副本會儲存在資料資料夾的 reports 資料夾中。"  # i18n-source-hash:5aa07ec2
 "actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "在瀏覽器中開啟"  # i18n-source-hash:56c8f9db
 "actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "取消"  # i18n-source-hash:77dfd213

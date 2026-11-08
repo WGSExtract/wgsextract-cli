@@ -555,7 +555,7 @@
 "actions.annotate.v066.vcf-table.title" = "Varianttabell"  # i18n-source-hash:edf38ae9
 "actions.annotate.v066.vcf-table.tooltip" = "Exportera en rad per variant med annoteringar och genotyp, som TSV-tabell och SQLite-databas att söka i."  # i18n-source-hash:44465bc2
 "sections.settings.v066.report-issue.title" = "Rapportera ett problem"  # i18n-source-hash:acbda9da
-"sections.settings.v066.report-issue.subtitle" = "Förhandsgranska en maskerad felrapport om den här installationen och en nylig körning, eller öppna den som ett förifyllt GitHub-ärende. Inget laddas upp; du skickar in den själv på GitHub."  # i18n-source-hash:0ff8e4ca
+"sections.settings.v066.report-issue.subtitle" = "Förhandsgranska en maskerad felrapport om den här installationen och en nylig körning, eller öppna den som ett förifyllt GitHub-ärende. Inget ärende skapas förrän du skickar in det själv på GitHub."  # i18n-source-hash:3f42f4ed
 "controls.settings.v066.report-last-failed.label" = "Rapportera den senaste misslyckade körningen"  # i18n-source-hash:a2dbb6f1
 "controls.settings.v066.report-last-failed.tooltip" = "Omarkerat rapporterar den senaste körningen, oavsett om den misslyckades."  # i18n-source-hash:bbbdcf7c
 "controls.settings.v066.report-description.label" = "Vad hände? (valfritt)"  # i18n-source-hash:9a81bdcf
@@ -565,6 +565,6 @@
 "actions.settings.v066.report-issue-open.title" = "Öppna felrapport på GitHub"  # i18n-source-hash:4d0be68d
 "actions.settings.v066.report-issue-open.tooltip" = "Öppna en förifylld felrapport på GitHub. Personuppgifter som filnamn, provnamn och din hemmapp tas bort först; du granskar den innan du skickar in."  # i18n-source-hash:92149a68
 "actions.settings.v066.report-issue-open.confirm.title" = "Öppna felrapporten på GitHub?"  # i18n-source-hash:fc04d69d
-"actions.settings.v066.report-issue-open.confirm.message" = "Webbläsaren öppnar GitHubs formulär för nytt ärende, ifyllt med den maskerade rapporten. Inget laddas upp: granska den där och skicka in den själv. En kopia sparas i mappen reports i din datamapp."  # i18n-source-hash:7cc1851d
+"actions.settings.v066.report-issue-open.confirm.message" = "Webbläsaren öppnar GitHubs formulär för nytt ärende, ifyllt med den maskerade rapporten, så GitHub tar emot rapporttexten i länken. Inget ärende skapas förrän du har granskat den där och skickat in den själv. En kopia sparas i mappen reports i din datamapp."  # i18n-source-hash:5aa07ec2
 "actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "Öppna i webbläsaren"  # i18n-source-hash:56c8f9db
 "actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "Avbryt"  # i18n-source-hash:77dfd213

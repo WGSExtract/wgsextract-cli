@@ -44,7 +44,7 @@ test("#528: WGSExtract's Open Bug Report on GitHub asks first, and runs nothing 
   assert.equal(state.pendingConfirmation?.action, action);
   const dialog = renderConfirmationDialog();
   assert.match(dialog, /Open the bug report on GitHub\?/);
-  assert.match(dialog, /Nothing is uploaded: review it there and submit it yourself\./);
+  assert.match(dialog, /No issue is created until you review it there and submit it yourself\./);
   assert.match(dialog, /data-confirm-run[^>]*>Open in Browser</);
   assert.match(dialog, /data-confirm-cancel>Cancel</);
 });

@@ -555,7 +555,7 @@
 "actions.annotate.v066.vcf-table.title" = "Tabela wariantów"  # i18n-source-hash:edf38ae9
 "actions.annotate.v066.vcf-table.tooltip" = "Eksportuje jeden wiersz na wariant z adnotacjami i genotypem, jako tabelę TSV i bazę SQLite do zapytań."  # i18n-source-hash:44465bc2
 "sections.settings.v066.report-issue.title" = "Zgłoś problem"  # i18n-source-hash:acbda9da
-"sections.settings.v066.report-issue.subtitle" = "Podgląd zredagowanego raportu błędu dotyczącego tej instalacji i niedawnego uruchomienia lub otwarcie go jako wstępnie wypełnionego zgłoszenia GitHub. Nic nie jest przesyłane; zgłoszenie wysyłasz sam na GitHubie."  # i18n-source-hash:0ff8e4ca
+"sections.settings.v066.report-issue.subtitle" = "Podgląd zredagowanego raportu błędu dotyczącego tej instalacji i niedawnego uruchomienia lub otwarcie go jako wstępnie wypełnionego zgłoszenia GitHub. Zgłoszenie nie powstaje, dopóki sam go nie wyślesz na GitHubie."  # i18n-source-hash:3f42f4ed
 "controls.settings.v066.report-last-failed.label" = "Zgłoś ostatnie nieudane uruchomienie"  # i18n-source-hash:a2dbb6f1
 "controls.settings.v066.report-last-failed.tooltip" = "Niezaznaczone zgłasza ostatnie uruchomienie, niezależnie od wyniku."  # i18n-source-hash:bbbdcf7c
 "controls.settings.v066.report-description.label" = "Co się stało? (opcjonalnie)"  # i18n-source-hash:9a81bdcf
@@ -565,6 +565,6 @@
 "actions.settings.v066.report-issue-open.title" = "Otwórz raport błędu w GitHub"  # i18n-source-hash:4d0be68d
 "actions.settings.v066.report-issue-open.tooltip" = "Otwiera wstępnie wypełniony raport błędu w GitHub. Dane osobowe, takie jak nazwy plików, nazwy próbek i folder domowy, są najpierw usuwane; przeglądasz raport przed wysłaniem."  # i18n-source-hash:92149a68
 "actions.settings.v066.report-issue-open.confirm.title" = "Otworzyć raport błędu w GitHub?"  # i18n-source-hash:fc04d69d
-"actions.settings.v066.report-issue-open.confirm.message" = "Przeglądarka otworzy formularz nowego zgłoszenia GitHub wypełniony zredagowanym raportem. Nic nie jest przesyłane: przejrzyj go tam i wyślij samodzielnie. Kopia zostanie zapisana w folderze reports folderu danych."  # i18n-source-hash:7cc1851d
+"actions.settings.v066.report-issue-open.confirm.message" = "Przeglądarka otworzy formularz nowego zgłoszenia GitHub wypełniony zredagowanym raportem, więc GitHub otrzymuje tekst raportu w linku. Zgłoszenie nie powstaje, dopóki go tam nie przejrzysz i sam nie wyślesz. Kopia zostanie zapisana w folderze reports folderu danych."  # i18n-source-hash:5aa07ec2
 "actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "Otwórz w przeglądarce"  # i18n-source-hash:56c8f9db
 "actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "Anuluj"  # i18n-source-hash:77dfd213

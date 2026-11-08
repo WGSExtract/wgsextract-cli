@@ -555,7 +555,7 @@
 "actions.annotate.v066.vcf-table.title" = "バリアントテーブル"  # i18n-source-hash:edf38ae9
 "actions.annotate.v066.vcf-table.tooltip" = "バリアントごとに 1 行で注釈と遺伝子型を、TSV テーブルと検索用 SQLite データベースとして出力します。"  # i18n-source-hash:44465bc2
 "sections.settings.v066.report-issue.title" = "問題を報告"  # i18n-source-hash:acbda9da
-"sections.settings.v066.report-issue.subtitle" = "このインストールと最近の実行に関する、機密情報を除去したバグレポートをプレビューするか、入力済みの GitHub Issue として開きます。何もアップロードされず、送信はご自身で GitHub 上で行います。"  # i18n-source-hash:0ff8e4ca
+"sections.settings.v066.report-issue.subtitle" = "このインストールと最近の実行に関する、個人情報を除去したバグ報告をプレビューするか、記入済みの GitHub Issue として開きます。GitHub で自分で送信するまで Issue は作成されません。"  # i18n-source-hash:3f42f4ed
 "controls.settings.v066.report-last-failed.label" = "最後に失敗した実行を報告"  # i18n-source-hash:a2dbb6f1
 "controls.settings.v066.report-last-failed.tooltip" = "オフの場合は、失敗の有無にかかわらず最後の実行を報告します。"  # i18n-source-hash:bbbdcf7c
 "controls.settings.v066.report-description.label" = "何が起きましたか？（任意）"  # i18n-source-hash:9a81bdcf
@@ -565,6 +565,6 @@
 "actions.settings.v066.report-issue-open.title" = "GitHub でバグレポートを開く"  # i18n-source-hash:4d0be68d
 "actions.settings.v066.report-issue-open.tooltip" = "入力済みの GitHub バグレポートを開きます。ファイル名、サンプル名、ホームフォルダーなどの個人データは事前に除去され、送信前にご自身で確認できます。"  # i18n-source-hash:92149a68
 "actions.settings.v066.report-issue-open.confirm.title" = "GitHub でバグレポートを開きますか？"  # i18n-source-hash:fc04d69d
-"actions.settings.v066.report-issue-open.confirm.message" = "ブラウザーで GitHub の新規 Issue フォームが、機密情報を除去したレポートを入力した状態で開きます。何もアップロードされません。内容を確認してからご自身で送信してください。コピーはデータフォルダーの reports フォルダーに保存されます。"  # i18n-source-hash:7cc1851d
+"actions.settings.v066.report-issue-open.confirm.message" = "ブラウザーで、個人情報を除去した報告が記入された GitHub の新規 Issue フォームが開きます。そのため GitHub はリンクに含まれる報告の本文を受け取ります。そこで確認して自分で送信するまで Issue は作成されません。コピーはデータフォルダーの reports フォルダーに保存されます。"  # i18n-source-hash:5aa07ec2
 "actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "ブラウザーで開く"  # i18n-source-hash:56c8f9db
 "actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "キャンセル"  # i18n-source-hash:77dfd213

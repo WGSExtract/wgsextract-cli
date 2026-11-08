@@ -555,7 +555,7 @@
 "actions.annotate.v066.vcf-table.title" = "Table de variants"  # i18n-source-hash:edf38ae9
 "actions.annotate.v066.vcf-table.tooltip" = "Exporter une ligne par variant avec ses annotations et son génotype, sous forme de table TSV et de base SQLite à interroger."  # i18n-source-hash:44465bc2
 "sections.settings.v066.report-issue.title" = "Signaler un problème"  # i18n-source-hash:acbda9da
-"sections.settings.v066.report-issue.subtitle" = "Prévisualiser un rapport de bogue expurgé sur cette installation et une exécution récente, ou l’ouvrir comme ticket GitHub prérempli. Rien n’est envoyé ; c’est vous qui le soumettez sur GitHub."  # i18n-source-hash:0ff8e4ca
+"sections.settings.v066.report-issue.subtitle" = "Prévisualiser un rapport de bogue expurgé sur cette installation et une exécution récente, ou l’ouvrir comme ticket GitHub prérempli. Aucun ticket n’est créé tant que vous ne le soumettez pas vous-même sur GitHub."  # i18n-source-hash:3f42f4ed
 "controls.settings.v066.report-last-failed.label" = "Signaler la dernière exécution échouée"  # i18n-source-hash:a2dbb6f1
 "controls.settings.v066.report-last-failed.tooltip" = "Décoché signale la dernière exécution, qu’elle ait échoué ou non."  # i18n-source-hash:bbbdcf7c
 "controls.settings.v066.report-description.label" = "Que s’est-il passé ? (facultatif)"  # i18n-source-hash:9a81bdcf
@@ -565,6 +565,6 @@
 "actions.settings.v066.report-issue-open.title" = "Ouvrir le rapport de bogue sur GitHub"  # i18n-source-hash:4d0be68d
 "actions.settings.v066.report-issue-open.tooltip" = "Ouvrir un rapport de bogue GitHub prérempli. Les données personnelles, comme les noms de fichiers, les noms d’échantillons et votre dossier personnel, sont d’abord supprimées ; vous le relisez avant de le soumettre."  # i18n-source-hash:92149a68
 "actions.settings.v066.report-issue-open.confirm.title" = "Ouvrir le rapport de bogue sur GitHub ?"  # i18n-source-hash:fc04d69d
-"actions.settings.v066.report-issue-open.confirm.message" = "Votre navigateur ouvre le formulaire de nouveau ticket GitHub, rempli avec le rapport expurgé. Rien n’est envoyé : relisez-le sur GitHub et soumettez-le vous-même. Une copie est enregistrée dans le dossier reports de votre dossier de données."  # i18n-source-hash:7cc1851d
+"actions.settings.v066.report-issue-open.confirm.message" = "Votre navigateur ouvre le formulaire de nouveau ticket GitHub, rempli avec le rapport expurgé : GitHub reçoit donc le texte du rapport dans le lien. Aucun ticket n’est créé tant que vous ne l’avez pas relu et soumis vous-même. Une copie est enregistrée dans le dossier reports de votre dossier de données."  # i18n-source-hash:5aa07ec2
 "actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "Ouvrir dans le navigateur"  # i18n-source-hash:56c8f9db
 "actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "Annuler"  # i18n-source-hash:77dfd213
