@@ -9,17 +9,20 @@ they are qualified on full genomes (#364).
 | --- | --- | --- |
 | `wgse-bwa` | BWA 0.7.19 | Native arm64 build. CPU by default (unmodified upstream code); `--metal` is **experimental**. Low memory: about 6 GB for a human index. |
 | `wgse-bwa-mem2` | BWA-MEM2 2.3 | arm64 build through sse2neon. CPU by default; `--metal` is **experimental**. Needs much more memory than BWA (see below). |
+| `wgse-bwa-mem3` | bwa-mem3 0.16.0 | Self-contained arm64 build of bwa-mem3, a faster BWA-MEM2 descendant that reads the BWA-MEM2 index and can write BWA's or BWA-MEM2's exact records (`--compat`). CPU only; no `--metal` yet. |
 | `wgse-minimap2` | minimap2 2.31 | arm64 build through sse2neon, with faster index loading and building, seeding and anchor sorting on the CPU. `--metal` (long-read presets) is **experimental**. |
 
-All write the same alignments as their upstream release, with or without
-`--metal`; only the `@PG` version gains a `-wgse-<version>` suffix (and its
-command line records any backend option). Each package has its own version,
+All write the same alignments as their upstream release (in each of
+bwa-mem3's output modes), with or without `--metal`; only the `@PG` version
+gains a `-wgse-<version>` suffix (and its command line records any backend
+option). Each package has its own version,
 printed by `--version`.
 
 ## Installing
 
 The `macos-aligners-13` prerelease has `wgse-bwa` 0.7.1, `wgse-bwa-mem2`
-0.4.1 and `wgse-minimap2` 0.2.0, whose `--metal` runs gap fills on the GPU.
+0.4.1, `wgse-bwa-mem3` 0.1.0 and `wgse-minimap2` 0.2.0, whose `--metal` runs
+gap fills on the GPU.
 `wgse-bwa` 0.7.1 shares the updated
 mate-rescue kernel with `wgse-bwa-mem2` 0.4.0 and aligns exactly as 0.7.0
 does. `wgse-bwa --metal` and `wgse-bwa capabilities` need `wgse-bwa` 0.2.0 or
@@ -68,6 +71,7 @@ for dir in wgse-*-macos-arm64; do PATH="$PWD/$dir/bin:$PATH"; done
 export PATH
 wgse-bwa capabilities --json
 wgse-bwa-mem2 capabilities --json
+wgse-bwa-mem3 capabilities --json   # in macos-aligners-13 and later
 wgse-minimap2 capabilities --json
 ```
 
@@ -89,6 +93,11 @@ wgse-bwa-mem2 mem -t 9 hs38.fa R1.fastq.gz R2.fastq.gz > out.sam
 wgse-bwa-mem2 --metal mem -t 9 hs38.fa R1.fastq.gz R2.fastq.gz > out.sam
 wgse-bwa-mem2 capabilities --json
 
+wgse-bwa-mem3 index hs38.fa   # or reuse a BWA-MEM2 index; .0123 is not needed
+wgse-bwa-mem3 mem -t 9 hs38.fa R1.fastq.gz R2.fastq.gz > out.sam
+wgse-bwa-mem3 mem -t 9 --compat=bwa-mem hs38.fa R1.fastq.gz R2.fastq.gz > out.sam
+wgse-bwa-mem3 capabilities --json
+
 wgse-minimap2 -t 9 -ax map-hifi hs38.fa hifi.fastq.gz > out.sam
 wgse-minimap2 -x map-ont -d hs38.map-ont.mmi hs38.fa
 wgse-minimap2 -t 9 -ax map-ont hs38.map-ont.mmi ont.fastq.gz > out.sam
@@ -105,6 +114,16 @@ backend of `mem` (other commands ignore them):
   complete and correct);
 - `--backend auto`: like `--metal`, but falls back to the CPU in both cases
   with only a note on stderr.
+
+`wgse-bwa-mem3` accepts the same options, but has no Metal backend yet:
+`--metal` exits 1 and `--backend auto` runs on the CPU with a note on stderr.
+Its `mem` is upstream bwa-mem3's: by default it writes bwa-mem3's records
+(BWA-MEM2's, with different MAPQs and `MQ`/`HN` tags), `--compat=bwa-mem` and
+`--compat=bwa-mem2` write exactly BWA's and BWA-MEM2's records, and `--fast`
+trades alignments for speed. It is built with upstream's own dependencies
+(htslib, libsais, mimalloc, zlib-ng, libdeflate) linked in, so it needs no
+other libraries. Its `index` builds the suffix array on one thread (upstream
+uses OpenMP, which Apple clang lacks); the files are the same.
 
 What runs on the GPU:
 
@@ -297,6 +316,11 @@ hs38 on the CPU, 10.8 GB with `--metal`), plus 1 GiB, plus 24 bytes (CPU) or
 default). That fits the peaks above. The run then still goes ahead with the
 same `-K` and output, but expect heavy paging. For hs38 a 16 GB Mac gets the
 warning on the CPU but not with `--metal` and up to 8 threads.
+
+`wgse-bwa-mem3` reads the same index as `wgse-bwa-mem2`, without the 6.2 GB
+`.0123` file, and like Bioconda's bwa-mem3 0.16.0 peaked at about 10.9 GiB on
+hs38 with 9 threads and `-K 10000000`. Its denser suffix-array index
+(`bwa-mem3 re-sa -u 2`) peaked at 14.5 GiB and was slower on this Mac.
 
 `wgse-minimap2` uses within about 1 GiB of upstream minimap2's memory: with 9 threads on
 hs38 it peaked at 13–15 GiB for HiFi reads, 10–14 GiB for ONT reads and
@@ -588,6 +612,38 @@ thread on each read while its fills waited for the GPU. What paid off was:
 - many reads in flight per OS thread (16 fibers sharing one memory arena);
 - CPU threads taking queued fills when they ran out of reads.
 
+`wgse-bwa-mem3` 0.1.0 was measured against Bioconda's bwa-mem3 0.16.0 on hs38
+(the first 5M HG002 pairs above, 9 threads, `-K 10000000`) in interleaved
+rounds on AC power, with the machine shared with other work (load averages
+10–40). Each mode's runs wrote identical alignments (SHA-256 of the SAM
+without `@PG`, first 16 hex digits). Times are means of the clean runs; runs
+that overlapped other benchmarks were discarded:
+
+| Mode | Bioconda bwa-mem3 0.16.0 | `wgse-bwa-mem3` 0.1.0 | Peak RSS (Bioconda / 0.1.0) | Alignments |
+| --- | --- | --- | --- | --- |
+| plain (bwa-mem3's records) | 73.7 s (1 run) | 75.6 s (3 runs: 82.1, 71.3, 73.3) | 10.9 / 10.7 GiB | `895c361c65ceb365` |
+| `--compat=bwa-mem` | 74.3 s (76.8, 71.8) | 74.7 s (75.0, 74.4) | 10.9 / 10.7 GiB | `e2febf171215d840` |
+| `--compat=bwa-mem2` | 71.8 s (71.0, 72.5) | 71.4 s (69.6, 73.1) | 10.9 / 10.7 GiB | `dff39743a72242de` |
+| `--fast` | 34.7 s (32.8, 37.0, 34.2) | 35.0 s (33.7, 35.2, 36.1) | 10.7 / 10.5 GiB | `d27f9ccd7a921c97` |
+
+The `--compat` hashes are those of `wgse-bwa` and `wgse-bwa-mem2`. bwa-mem3
+already has NEON kernels for Apple Silicon, so 0.1.0 is upstream's code built
+with Apple clang, and as fast as Bioconda's build. Upstream's stage timer
+(wall seconds, plain mode, 73.3 s run) split the time into reading reads
+8.2 s, SMEM seeding 12.3 s, chaining 8.6 s, suffix-array lookup 8.5 s, banded
+Smith-Waterman seed extension (BSW) 23.5 s, and pairing, mate rescue and SAM
+formatting 23.9 s; `--fast` cut BSW to 5.2 s and the pairing step to 6.3 s.
+None of these changes was faster, with identical output, so 0.1.0 has none of
+them:
+
+- making the bundled mimalloc replace `malloc` (Bioconda's build notes that it
+  does not): 75.8 s plain and 33.5 s `--fast` over three rounds;
+- that plus link-time optimisation: 78.1 s plain;
+- profile-guided optimisation: no faster on chr1–3 in any mode;
+- `-mcpu=apple-m1`: the same code;
+- the denser suffix-array sample (`re-sa -u 2`): slower in every mode tried
+  (81–94 s, and 42 s with `--fast`), at 14.5 GiB.
+
 ### Energy
 
 Each aligner's energy was measured with `bench/bench.sh --power` on the same
@@ -647,7 +703,7 @@ cmake --install out/native --prefix out/native-prefix
 `-DBUILD_TESTING=OFF` builds the release executables without tests or the
 hidden GPU tuning flags. Metal tests are skipped when no Metal device is
 available. `.github/workflows/macos_aligners.yml` builds, tests and packages
-all three executables, and publishes them when run with a `macos-aligners-N` tag.
+all four executables, and publishes them when run with a `macos-aligners-N` tag.
 
 ## Benchmarking on GitHub runners
 
@@ -769,7 +825,11 @@ adapted from BWA's MIT-licensed `bwt.c`, `bwamem.c`, `bwamem_pair.c` and
 `ksw.c` (`METAL-SEEDING-LICENSE`).
 `wgse-bwa-mem2` combines BWA-MEM2 (MIT), sse2neon
 (MIT) and safestringlib (MIT) with the code in `bwa-mem2/` (GPL-3.0-or-later,
-like this repository). `wgse-minimap2` combines minimap2 (MIT) and sse2neon
+like this repository). `wgse-bwa-mem3` combines bwa-mem3 (MIT), sse2neon
+(MIT), libsais (Apache-2.0), mimalloc (MIT), zlib-ng (zlib), libdeflate (MIT)
+htslib (MIT/Expat and modified BSD) and htslib's bundled htscodecs (BSD) with
+the code in `bwa-mem3/` (GPL-3.0-or-later).
+`wgse-minimap2` combines minimap2 (MIT) and sse2neon
 (MIT) with the code in `minimap2/` (GPL-3.0-or-later). Its sketching code is
 adapted from minimap2's `sketch.c` (`MINIMAP2-LICENSE`) and its radix sort from
 minimap2's `ksort.h`, whose own MIT notice ships as `KSORT-LICENSE`. Each package

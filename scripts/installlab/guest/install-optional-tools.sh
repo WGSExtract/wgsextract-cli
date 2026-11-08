@@ -1,9 +1,16 @@
 #!/bin/sh
 # Explicit lab provisioning, equivalent to the user's optional install command.
+# Usage: install-optional-tools.sh DIR...
+# Each DIR is searched in order for the installed CLI (*/app/pixi.toml): apps
+# since PR #531 install it in the workspace, older apps in their app data.
 set -eu
-support="$1"
-manifest="$(find "$support" -path '*/app/pixi.toml' -type f | head -n 1)"
-[ -n "$manifest" ] || { echo "No installed CLI manifest under $support" >&2; exit 1; }
+manifest=""
+for support in "$@"; do
+    [ -d "$support" ] || continue
+    manifest="$(find "$support" -path '*/app/pixi.toml' -type f | head -n 1)"
+    [ -z "$manifest" ] || break
+done
+[ -n "$manifest" ] || { echo "No installed CLI manifest under: $*" >&2; exit 1; }
 install_dir="$(dirname "$(dirname "$manifest")")"
 pixi="$install_dir/.pixi/bin/pixi"
 if [ ! -x "$pixi" ]; then
