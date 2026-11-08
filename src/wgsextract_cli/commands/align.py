@@ -518,7 +518,8 @@ def native_short_read_aligner(
     needs bwa_metal_memory more: when the pipeline's estimate with it exceeds
     this Mac's RAM less headroom, sort memory is lowered (which leaves the
     output unchanged), and when even 256M doesn't fit wgse-bwa runs on the CPU.
-    wgse-bwa-mem2 --metal needs less than bwa-mem2, which doesn't load .0123.
+    wgse-bwa-mem2 keeps bwa-mem2's (CPU) estimate, which also covers its CPU
+    fallback when the GPU can't hold its index tables.
     """
     native = find_native_aligner(tool, job.native_aligners)
     if native is None:

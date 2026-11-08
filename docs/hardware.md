@@ -138,8 +138,10 @@ the check, or is older than the oldest supported release, raises the
   memory estimate with it exceeds the Mac's RAM less 2 GiB, the sort memory per
   thread is lowered (768M, 512M, 384M, then 256M; sorting more often doesn't
   change the output). If even 256M doesn't fit, `wgse-bwa` runs on the CPU. The
-  batch size (`-K`) never changes. `wgse-bwa-mem2` on the GPU needs less memory
-  than bwa-mem2.
+  batch size (`-K`) never changes. `wgse-bwa-mem2` is chosen only when
+  bwa-mem2's own (CPU) memory estimate fits, so a GPU too small for its index
+  tables, where it finishes on the CPU, still fits; this keeps it off 16 GB and
+  smaller Macs.
 - **Provenance.** The `@PG` header names the binary that ran and its version
   (for example `VN:0.7.19-r1273-wgse-0.7.1`). The result manifest lists it under
   `tools` and records the `native_aligner`, `native_aligner_version` and
