@@ -34720,7 +34720,7 @@
    }
   },
   "vcf indel": {
-   "help": "usage: wgsextract vcf indel [-h] [-r REGION] [--parallel] [--help-all]\n\noptions:\n  -h, --help           show this help message and exit\n  -r, --region REGION  Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --parallel           Call contigs in parallel with up to --threads workers. SNP calling then\n                       recalls the stretches with sites deeper than 255 reads in one stream,\n                       because bcftools subsamples them with one random stream per process, so the\n                       calls match the default single stream.\n  --help-all           Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n3 advanced options not shown; 'wgsextract vcf indel --help-all' lists them.\n\nexamples:\n  wgsextract vcf indel --input sample.cram\n\noutputs (in the output directory unless noted):\n  indels.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, samtools, tabix; hours on a 30x genome.\n",
+   "help": "usage: wgsextract vcf indel [-h] [-r REGION] [--parallel | --no-parallel] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --parallel, --no-parallel\n                        Call contigs in parallel with up to --threads workers (default: on with\n                        --threads above 1). SNP calling recalls the stretches with sites deeper\n                        than 255 reads in one stream, because bcftools subsamples them with one\n                        random stream per process, so the calls match a single stream.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n3 advanced options not shown; 'wgsextract vcf indel --help-all' lists them.\n\nexamples:\n  wgsextract vcf indel --input sample.cram\n\noutputs (in the output directory unless noted):\n  indels.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, samtools, tabix; hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -35053,16 +35053,17 @@
      },
      {
       "choices": null,
-      "class": "_StoreTrueAction",
-      "const": true,
-      "default": false,
+      "class": "BooleanOptionalAction",
+      "const": null,
+      "default": null,
       "dest": "parallel",
       "exclusive_group": null,
-      "help": "Call contigs in parallel with up to --threads workers. SNP calling then recalls the stretches with sites deeper than 255 reads in one stream, because bcftools subsamples them with one random stream per process, so the calls match the default single stream.",
+      "help": "Call contigs in parallel with up to --threads workers (default: on with --threads above 1). SNP calling recalls the stretches with sites deeper than 255 reads in one stream, because bcftools subsamples them with one random stream per process, so the calls match a single stream.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
-       "--parallel"
+       "--parallel",
+       "--no-parallel"
       ],
       "required": false,
       "type": null
@@ -36969,7 +36970,7 @@
    }
   },
   "vcf snp": {
-   "help": "usage: wgsextract vcf snp [-h] [-r REGION] [--parallel] [--help-all]\n\noptions:\n  -h, --help           show this help message and exit\n  -r, --region REGION  Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --parallel           Call contigs in parallel with up to --threads workers. SNP calling then\n                       recalls the stretches with sites deeper than 255 reads in one stream,\n                       because bcftools subsamples them with one random stream per process, so the\n                       calls match the default single stream.\n  --help-all           Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n3 advanced options not shown; 'wgsextract vcf snp --help-all' lists them.\n\nexamples:\n  wgsextract vcf snp --input sample.cram\n  wgsextract vcf snp --input sample.cram --region chrM\n\noutputs (in the output directory unless noted):\n  snps.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, samtools, tabix; hours on a 30x genome.\n",
+   "help": "usage: wgsextract vcf snp [-h] [-r REGION] [--parallel | --no-parallel] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --parallel, --no-parallel\n                        Call contigs in parallel with up to --threads workers (default: on with\n                        --threads above 1). SNP calling recalls the stretches with sites deeper\n                        than 255 reads in one stream, because bcftools subsamples them with one\n                        random stream per process, so the calls match a single stream.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n3 advanced options not shown; 'wgsextract vcf snp --help-all' lists them.\n\nexamples:\n  wgsextract vcf snp --input sample.cram\n  wgsextract vcf snp --input sample.cram --region chrM\n\noutputs (in the output directory unless noted):\n  snps.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, samtools, tabix; hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -37302,16 +37303,17 @@
      },
      {
       "choices": null,
-      "class": "_StoreTrueAction",
-      "const": true,
-      "default": false,
+      "class": "BooleanOptionalAction",
+      "const": null,
+      "default": null,
       "dest": "parallel",
       "exclusive_group": null,
-      "help": "Call contigs in parallel with up to --threads workers. SNP calling then recalls the stretches with sites deeper than 255 reads in one stream, because bcftools subsamples them with one random stream per process, so the calls match the default single stream.",
+      "help": "Call contigs in parallel with up to --threads workers (default: on with --threads above 1). SNP calling recalls the stretches with sites deeper than 255 reads in one stream, because bcftools subsamples them with one random stream per process, so the calls match a single stream.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
-       "--parallel"
+       "--parallel",
+       "--no-parallel"
       ],
       "required": false,
       "type": null
@@ -41193,7 +41195,7 @@
    "log_file": null,
    "memory": null,
    "outdir": null,
-   "parallel": false,
+   "parallel": null,
    "parent_pid": null,
    "ploidy": null,
    "ploidy_file": null,
@@ -45619,7 +45621,7 @@
    "log_file": null,
    "memory": null,
    "outdir": null,
-   "parallel": false,
+   "parallel": null,
    "parent_pid": null,
    "ploidy": null,
    "ploidy_file": null,
@@ -45878,7 +45880,7 @@
    "log_file": null,
    "memory": null,
    "outdir": "out",
-   "parallel": false,
+   "parallel": null,
    "parent_pid": null,
    "ploidy": "1",
    "ploidy_file": null,

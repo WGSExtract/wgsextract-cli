@@ -97,6 +97,25 @@ def test_parallel_calling_reports_each_finished_contig(
     assert events[-1].stage == "finish"
 
 
+@needs_htslib
+@pytest.mark.parametrize("parallel", [None, False])
+def test_more_than_one_thread_calls_contigs_in_parallel_unless_turned_off(
+    multicontig_sample: tuple[str, str], tmp_path: Path, parallel: bool | None
+) -> None:
+    """Issue #549: a 30x genome was called in one bcftools stream while the
+    M1's other cores sat idle; --no-parallel still calls it in one."""
+    bam, ref = multicontig_sample
+    events: list[api.ProgressEvent] = []
+    params = api.VcfSnpParams(
+        input=Path(bam), ref=Path(ref), outdir=tmp_path, threads=3,
+        parallel=parallel, ploidy="GRCh38",
+    )  # fmt: skip
+    api.vcf.snp(params, progress=events.append)
+    assert bool([event for event in events if event.stage == "contig"]) == (
+        parallel is None
+    )
+
+
 def _female(sample: tuple[str, str], root: Path) -> tuple[str, str]:
     """The sample with all but two of its chrY reads dropped: a woman's few
     mismapped chrY reads (its 48 chrY reads to 48 chrX make it a man)."""

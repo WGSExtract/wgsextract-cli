@@ -333,9 +333,10 @@ filesystem for reference-index storage.
   temporary storage remains a separate demand on the system temporary volume.
 - Sort RAM is threads × `--memory` plus 25% and 256 MiB overhead; conversion
   allows 64 MiB per codec thread plus 256 MiB overhead. bcftools allows 1 GiB per
-  active contig worker plus 256 MiB. Serial calling is the default; `--parallel`
-  (`parallel=True` in the API) enables multiple workers, capped by reference
-  contig count and one worker for an explicit region. GATK uses a **6 GiB
+  active contig worker plus 256 MiB. With more than one thread, contigs
+  are called in parallel workers by default (`--no-parallel`, `parallel=False`
+  in the API, calls them in one stream), capped by reference contig count and
+  one worker for an explicit region. GATK uses a **6 GiB
   heuristic per worker**, not a claim about its Java heap limit. The opt-in
   `vcf gatk --scatter` flow-mode path selects at most `--threads` workers and
   one worker per 6 GiB of currently available physical RAM, then supplies that
