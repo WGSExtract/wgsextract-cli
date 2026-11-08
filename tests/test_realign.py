@@ -895,8 +895,20 @@ def _dying_tools(tmp_path, log):
             f'die="$(cat "{tmp_path}/die" 2>/dev/null)"\n'
             f'if [ -n "$die" ] && [[ "{tool} $1" =~ ^($die)$ ]]; then\n'
             f'  rm -f "{tmp_path}/die"\n'
-            # Half an output stream, then the crash.
-            f'  "{real}" "$@" | head -c 4096\n'
+            # Half an output stream, then the crash. A tool writing -o FILE
+            # (sort) is left as a crash while writing would leave it: half
+            # the file and no index yet.
+            '  out=""; prev=""\n'
+            '  for a in "$@"; do [ "$prev" = -o ] && out="$a"; prev="$a"; done\n'
+            '  if [ -n "$out" ]; then\n'
+            f'    "{real}" "$@"\n'
+            '    file="${out%%##idx##*}"\n'
+            '    [[ "$out" == *"##idx##"* ]] && rm -f "${out#*##idx##}"\n'
+            '    head -c $(( $(wc -c < "$file") / 2 )) "$file" > "$file.cut"\n'
+            '    mv "$file.cut" "$file"\n'
+            "  else\n"
+            f'    "{real}" "$@" | head -c 4096\n'
+            "  fi\n"
             f'  sig="$(cat "{tmp_path}/signal" 2>/dev/null || echo 9)"\n'
             f'  kill -"$sig" -- "-$(cat "{tmp_path}/run.pid")"\n'
             "  kill -9 0\n"
@@ -982,7 +994,10 @@ def test_a_run_killed_mid_step_resumes_there_with_identical_output(
     assert "Running step align: an earlier run was interrupted" in resumed.stderr
     assert any(re.fullmatch(die, call) for call in calls)
     assert _records(bam) == _records(tmp_path / "clean" / "x_aligned.bam")
-    assert Path(str(bam) + ".bai").is_file()
+    reindexed = tmp_path / "reindexed.bai"
+    _view("index", "-b", "-o", str(reindexed), str(bam))
+    assert Path(str(bam) + ".bai").read_bytes() == reindexed.read_bytes()
+    assert not [p.name for p in out.iterdir() if "partial" in p.name]
 
     again, calls = realign_to(out)
     assert again.returncode == 0 and "bwa mem" not in calls

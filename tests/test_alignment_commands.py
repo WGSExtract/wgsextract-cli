@@ -149,7 +149,9 @@ def test_bwa_batch_size_does_not_depend_on_threads(tmp_path, threads):
 
 
 @needs_tools("bwa", "samtools")
-@pytest.mark.parametrize("samblaster", [True, False])
+@pytest.mark.parametrize(
+    "samblaster", [pytest.param(True, marks=needs_tools("samblaster")), False]
+)
 @pytest.mark.parametrize("atomic", [True, False])
 def test_aligned_bam_comes_with_the_index_samtools_index_writes(
     tmp_path, request, samblaster, atomic

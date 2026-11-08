@@ -56,6 +56,8 @@ def atomic_output(path: PathInput, *, retire_indexes: bool = True) -> Iterator[s
     staged = final.with_name(f".{base}.{uuid.uuid4().hex}.partial{suffix}")
     retired: list[tuple[Path, Path]] = []
     published: list[Path] = []
+    previous = Path(f"{staged}.previous")
+    replaced = False
     try:
         yield str(staged)
         if not staged.is_file():
@@ -68,16 +70,32 @@ def atomic_output(path: PathInput, *, retire_indexes: bool = True) -> Iterator[s
                     backup = Path(f"{staged}.previous-{number}{index.suffix}")
                     os.replace(index, backup)
                     retired.append((index, backup))
-            # An index the writer made as it wrote (samtools --write-index),
-            # published with it.
-            for ext in (".bai", ".crai", ".csi", ".tbi"):
-                if Path(str(staged) + ext).is_file():
-                    os.replace(str(staged) + ext, str(final) + ext)
-                    published.append(Path(str(final) + ext))
+            # An index the writer made as it wrote (samtools --write-index) is
+            # published after the data, so a crash can leave the new data
+            # unindexed but never an index beside data it does not describe.
+            written = [
+                ext
+                for ext in (".bai", ".crai", ".csi", ".tbi")
+                if Path(str(staged) + ext).is_file()
+            ]
+            if written and final.is_file():
+                with contextlib.suppress(OSError):
+                    os.link(final, previous)
             os.replace(staged, final)
+            replaced = True
+            for ext in written:
+                os.replace(str(staged) + ext, str(final) + ext)
+                published.append(Path(str(final) + ext))
         except BaseException:
             for index in published:
                 index.unlink(missing_ok=True)
+            if replaced and previous.exists():
+                os.replace(previous, final)
+            elif replaced:
+                # The old data is gone, so its indexes would describe the new.
+                for _, backup in retired:
+                    backup.unlink(missing_ok=True)
+                retired.clear()
             for index, backup in retired:
                 os.replace(backup, index)
             raise
@@ -86,6 +104,7 @@ def atomic_output(path: PathInput, *, retire_indexes: bool = True) -> Iterator[s
                 backup.unlink(missing_ok=True)
     finally:
         staged.unlink(missing_ok=True)
+        previous.unlink(missing_ok=True)
         for index in _indexes(staged):
             index.unlink(missing_ok=True)
 

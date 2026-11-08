@@ -123,6 +123,28 @@ def test_atomic_output_publishes_the_index_its_writer_wrote(tmp_path):
     assert set(tmp_path.iterdir()) == {output, index}
 
 
+def test_failed_index_publication_restores_the_previous_pair(tmp_path, monkeypatch):
+    """#545 review: the data and its index are published or restored together."""
+    output = tmp_path / "alignment.bam"
+    index = Path(str(output) + ".bai")
+    output.write_bytes(b"previous BAM")
+    index.write_bytes(b"previous index")
+    real_replace = os.replace
+
+    def failing_index_rename(src, dst):
+        if str(src).endswith(".partial.bam.bai"):
+            raise OSError("disk went away")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", failing_index_rename)
+    with pytest.raises(OSError), atomic_output(output) as staged:
+        Path(staged).write_bytes(b"new BAM")
+        Path(staged + ".bai").write_bytes(b"new index")
+    assert output.read_bytes() == b"previous BAM"
+    assert index.read_bytes() == b"previous index"
+    assert set(tmp_path.iterdir()) == {output, index}
+
+
 def test_atomic_alignment_retires_basename_index_and_config_leaves_neighbors(tmp_path):
     from wgsextract_cli.core.atomic_output import atomic_write
 
