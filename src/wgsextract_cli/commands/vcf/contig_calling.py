@@ -49,8 +49,10 @@ from wgsextract_cli.core.progress import ContigProgress
 from wgsextract_cli.core.reference_assets import read_fai_lengths
 from wgsextract_cli.core.reference_resolver import header_contig_lengths
 from wgsextract_cli.core.samtools_commands import alignment_index
-from wgsextract_cli.core.utils import run_command, run_pipeline
+from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 
+# Jobs per worker that small contigs are grouped into; see _batches.
+_JOBS_PER_WORKER = 16
 # htslib's errmod_cal shuffles (draws for) a column's bases above 255.
 _DRAW_DEPTH = 256
 # Below this many bases a column's alive reads stay under mpileup's -d 250
@@ -76,6 +78,41 @@ def _cram_contigs(index: str, names: list[str]) -> set[str]:
         return set(names)
 
 
+def _bam_contigs(alignment: str, names: list[str]) -> set[str]:
+    """Contigs with mapped reads, from the BAM index; all of them if unknown."""
+    try:
+        stats = run_command(["samtools", "idxstats", alignment], capture_output=True)
+        mapped = {
+            fields[0]
+            for line in stats.stdout.splitlines()
+            if len(fields := line.split("\t")) >= 3 and fields[2] != "0"
+        }
+    except (WGSExtractError, OSError) as error:
+        logging.debug("Calling every contig: idxstats failed: %s", error)
+        return set(names)
+    return mapped & set(names)
+
+
+def _batches(contigs: dict[str, int], workers: int) -> list[dict[str, int]]:
+    """Consecutive contigs grouped into jobs of at least 1/16 of a worker's
+    share of the bases, so thousands of small contigs (decoys, HLA, ALTs)
+    don't each start a pipeline. A contig that size or larger is its own job."""
+    limit = max(1, sum(contigs.values()) // (workers * _JOBS_PER_WORKER))
+    batches: list[dict[str, int]] = []
+    batch: dict[str, int] = {}
+    for name, length in contigs.items():
+        if length >= limit:
+            batches += [batch] if batch else []
+            batches.append({name: length})
+            batch = {}
+            continue
+        batch[name] = length
+        if sum(batch.values()) >= limit:
+            batches.append(batch)
+            batch = {}
+    return batches + ([batch] if batch else [])
+
+
 def _parallel_contigs(
     alignment: str, ref: str, threads: str, region: str | None
 ) -> dict[str, int]:
@@ -98,11 +135,15 @@ def _parallel_contigs(
             "(it differs from the reference index)."
         )
         return {}
-    if alignment.lower().endswith(".cram") and index.lower().endswith(".crai"):
-        populated = _cram_contigs(index, alignment_contigs)
-        contigs = {
-            name: length for name, length in contigs.items() if name in populated
-        }
+    if alignment.lower().endswith(".cram"):
+        populated = (
+            _cram_contigs(index, alignment_contigs)
+            if index.lower().endswith(".crai")
+            else set(alignment_contigs)
+        )
+    else:
+        populated = _bam_contigs(alignment, alignment_contigs)
+    contigs = {name: length for name, length in contigs.items() if name in populated}
     return contigs if len(contigs) > 1 else {}
 
 
@@ -443,7 +484,7 @@ class _ContigCaller:
 
     def match_one_stream(
         self,
-        contigs: dict[str, int],
+        batches: list[dict[str, int]],
         parts: list[str],
         listings: list[str],
         work: str,
@@ -454,6 +495,8 @@ class _ContigCaller:
         # A worker's stream is one stream's until a second contig draws.
         if len(drawing) < 2:
             return parts
+        contigs = {name: length for batch in batches for name, length in batch.items()}
+        parts = _split_batches(batches, parts, Path(work, "split"))
         spliced = self._replay(list(contigs), parts, stretches, Path(work, "windows"))
         if spliced is None:
             logging.warning(
@@ -536,11 +579,37 @@ class _ContigCaller:
         return spliced
 
 
+def _split_batches(
+    batches: list[dict[str, int]], parts: list[str], work: Path
+) -> list[str]:
+    """One part per contig, so deep-site calls can be spliced contig by contig."""
+    work.mkdir()
+    split: list[str] = []
+    for batch, part in zip(batches, parts, strict=True):
+        if len(batch) == 1:
+            split.append(part)
+            continue
+        header: list[bytes] = []
+        records: dict[str, list[bytes]] = {name: [] for name in batch}
+        with gzip.open(part, "rb") as source:
+            for line in source:
+                if line.startswith(b"#"):
+                    header.append(line)
+                else:
+                    records[line.split(b"\t", 1)[0].decode()].append(line)
+        for name in batch:
+            path = work / f"{len(split):06d}.vcf"
+            path.write_bytes(b"".join(header + records[name]))
+            split.append(str(path))
+    return split
+
+
 def _then_report(
-    task: Callable[[], None], progress: ContigProgress, contig: str
+    task: Callable[[], None], progress: ContigProgress, contigs: Sequence[str]
 ) -> None:
     task()
-    progress.done(contig)
+    for contig in contigs:
+        progress.done(contig)
 
 
 def _drop_band_header(merged: str, work: str) -> str:
@@ -582,21 +651,31 @@ def call_small_variants(
         return
 
     replays = caller.bands = not indels
-    caller.workers = min(int(threads), len(contigs))
+    workers = min(int(threads), len(contigs))
+    batches = _batches(contigs, workers)
+    caller.workers = min(workers, len(batches))
     caller.cancelled = Event()
-    logging.info(f"Calling {len(contigs)} contigs with {caller.workers} workers.")
+    logging.info(
+        f"Calling {len(contigs)} contigs in {len(batches)} jobs "
+        f"with {caller.workers} workers."
+    )
     with tempfile.TemporaryDirectory(
         dir=Path(output).parent, prefix=".wgse_call_"
     ) as work:
         parts, listings, tasks = [], [], []
         progress = ContigProgress(contigs, contigs)
-        for index, (contig, length) in enumerate(contigs.items()):
+        for index, batch in enumerate(batches):
             # A TSV keeps names such as HLA-A*01:01:01:01 literal; -r would
             # interpret the colon as a coordinate separator.
             request = Path(work, f"{index:06d}.regions.tsv")
             request.write_text(
-                f"{contig}\t1\t{length}\n", encoding="utf-8", newline="\n"
+                "".join(f"{name}\t1\t{length}\n" for name, length in batch.items()),
+                encoding="utf-8",
+                newline="\n",
             )
+            contig = next(iter(batch))
+            if len(batch) > 1:
+                contig += f" and {len(batch) - 1} more contigs"
             parts.append(str(Path(work, f"{index:06d}.vcf.gz")))
             listings.append(str(Path(work, f"{index:06d}.dense.tsv")))
             call = partial(
@@ -607,10 +686,10 @@ def call_small_variants(
                 "0",
                 listings[-1] if replays else None,
             )  # fmt: skip
-            tasks.append(partial(_then_report, call, progress, contig))
+            tasks.append(partial(_then_report, call, progress, list(batch)))
         caller.run_all(tasks)
         if replays:
-            parts = caller.match_one_stream(contigs, parts, listings, work)
+            parts = caller.match_one_stream(batches, parts, listings, work)
         # A file list avoids Windows' command-line length limit for references
         # with thousands of scaffolds. Parts stay in .fai order, not finish order.
         file_list = Path(work, "parts.txt")
