@@ -18,6 +18,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Bundle WGSExtract CLI `v0.6.3`: alignment output no longer depends on thread count, BWA-MEM2 sorts in less memory, alignment checks memory before starting and falls back to BWA when MEM2 won't fit, long jobs show memory and disk estimates up front, and SNP/indel calling can optionally run per chromosome in parallel. Native Windows is now validated on full genomes ([CLI release notes](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.6.3)).
 
 ### Fixed
+- WGSExtract **Run Yleaf** works again: it no longer sends `--yleaf-path`, which the CLI dropped when Yleaf became built in, and the dead Yleaf path settings are gone. Run Yleaf gains Y tree, ancient DNA and genotyped-positions-only options. CI now parses every bundle command with this repository's CLI, so a dropped or renamed flag fails CI ([#538](https://github.com/WGSExtract/wgsextract-cli/issues/538)).
 - The Web UI server rejects an invalid `--port` (not a decimal integer from 0 to 65535) with a clear error before it starts, instead of failing later inside Node.
 
 ## [0.6.2] - 2026-10-27

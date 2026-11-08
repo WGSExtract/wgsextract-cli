@@ -114,13 +114,6 @@
               "tooltip": "controls.settings.settings-paths.father_vcf_path.tooltip"
             },
             {
-              "id": "yleaf_path",
-              "key": "yleaf_executable",
-              "label": "controls.settings.settings-paths.yleaf_path.label",
-              "kind": "path",
-              "tooltip": "controls.settings.settings-paths.yleaf_path.tooltip"
-            },
-            {
               "id": "haplogrep_path",
               "key": "haplogrep_executable",
               "label": "controls.settings.settings-paths.haplogrep_path.label",

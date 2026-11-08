@@ -65,7 +65,7 @@ test("WGSExtract v0.6.6 controls start unset and platform-limited sections hide 
   const pages = bundle.manifest.pages;
   const sections = pages.flatMap((page) => page.sections ?? []);
   const controls = sections.flatMap((section) => section.controls ?? []);
-  for (const id of ["deepvariant_model", "sv_read_type", "methylation_context", "methylation_5hmc", "methylation_combine_strands", "y_str_panel"]) {
+  for (const id of ["deepvariant_model", "sv_read_type", "methylation_context", "methylation_5hmc", "methylation_combine_strands", "y_str_panel", "yleaf_tree"]) {
     const control = controls.find((candidate) => candidate.id === id);
     assert.ok(control, `${id} exists`);
     assert.equal(control.value, undefined, `${id} has no default value`);
