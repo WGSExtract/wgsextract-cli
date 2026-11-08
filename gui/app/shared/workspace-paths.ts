@@ -1,10 +1,24 @@
 export const workspaceToken = "{{bundleWorkspace}}";
 
+/** Forward slashes, with no `.` or `..` segments, repeated slashes or trailing slash. */
+function normalizePath(candidate: string) {
+    const [first = "", ...rest] = candidate.replaceAll("\\", "/").split("/");
+    const segments: string[] = [];
+    for (const segment of rest) {
+        if (segment === "..") {
+            segments.pop();
+        }
+        else if (segment && segment !== ".") {
+            segments.push(segment);
+        }
+    }
+    return [first, ...segments].join("/");
+}
+
 /** `value` relative to `root` with forward slashes: "" for the root itself, null when it is outside. */
 function pathRelativeToRoot(value: string, root: string): string | null {
-    const normalize = (candidate: string) => candidate.replaceAll("\\", "/").replace(/\/+$/, "");
-    const normalizedValue = normalize(value);
-    const normalizedRoot = normalize(root);
+    const normalizedValue = normalizePath(value);
+    const normalizedRoot = normalizePath(root);
     if (!normalizedRoot) {
         return null;
     }

@@ -73,6 +73,8 @@ export function createRequestHandler(context: RequestHandlerContext) {
     // Bundles can only be loaded from folders the user picked in a native dialog during this session.
     const pickedBundlePaths = new Set<string>();
     const resultPaths = new ResultPaths();
+    // While the workspace moves nothing may start a process or write to it, or the write would be lost with the old copy.
+    let workspaceMoving = false;
     const staticRoutes: Record<string, RouteHandler> = {
         "/": (response, headOnly) => serveIndex(path.join(context.webRoot, "index.html"), indexToken(context), response, headOnly),
         "/index.html": (response, headOnly) => serveIndex(path.join(context.webRoot, "index.html"), indexToken(context), response, headOnly),
@@ -153,7 +155,13 @@ export function createRequestHandler(context: RequestHandlerContext) {
             await streamNDJSON(
                 response,
                 async (emit, signal) => {
-                    await context.moveWorkspace(directory, emit, signal);
+                    workspaceMoving = true;
+                    try {
+                        await context.moveWorkspace(directory, emit, signal);
+                    }
+                    finally {
+                        workspaceMoving = false;
+                    }
                     await emit({ type: "complete" });
                 },
                 (error) => ({ type: "error", error }),
@@ -187,6 +195,9 @@ export function createRequestHandler(context: RequestHandlerContext) {
                 return;
             }
             const postRoute = postRoutes[url.pathname];
+            if (method === "POST" && postRoute && workspaceMoving && url.pathname !== "/api/shutdown") {
+                throw new HttpError(409, "The workspace is being moved. Try again when the move has finished.");
+            }
             if (method === "POST" && postRoute) {
                 await postRoute(request, response);
                 return;

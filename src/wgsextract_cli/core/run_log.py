@@ -1,6 +1,7 @@
 """Opt-in, exclusive run logs and small provenance files.
 
-A ``log_dir`` keeps the newest ``LOG_DIR_KEPT_RUNS`` runs; a ``--log-file`` is never pruned.
+A ``log_dir`` keeps the newest ``LOG_DIR_KEPT_RUNS`` runs, and any older run still writing to its
+log; a ``--log-file`` is never pruned.
 """
 
 import argparse
@@ -23,6 +24,9 @@ from wgsextract_cli.core.results import redact_argv
 # A log_dir keeps the newest runs' logs; only names it generated are ever removed.
 LOG_DIR_KEPT_RUNS = 100
 _GENERATED_LOG_NAME = re.compile(r"run-\d{8}T\d{6}-[0-9a-f]{32}\.log")
+# A run whose provenance still says "running" counts as going on while its log changed this recently;
+# after that it counts as a run that was killed before it could finish.
+_RUNNING_LOG_IDLE_SECONDS = 7 * 24 * 60 * 60
 
 _active: "RunLog | None" = None
 _tool_hook: Callable[[Sequence[str]], None] | None = None
@@ -170,6 +174,17 @@ class RunLog:
         }
 
 
+def _still_running(log: Path) -> bool:
+    try:
+        status = json.loads(
+            Path(str(log) + ".provenance.json").read_text(encoding="utf-8")
+        ).get("status")
+        idle = datetime.now(timezone.utc).timestamp() - log.stat().st_mtime
+    except (OSError, ValueError, AttributeError):
+        return False
+    return status == "running" and idle < _RUNNING_LOG_IDLE_SECONDS
+
+
 def _prune_log_dir(directory: Path) -> None:
     names = sorted(
         entry.name
@@ -177,6 +192,9 @@ def _prune_log_dir(directory: Path) -> None:
         if _GENERATED_LOG_NAME.fullmatch(entry.name)
     )
     for name in names[:-LOG_DIR_KEPT_RUNS]:
+        # Another process's run may still be writing to it.
+        if _still_running(directory / name):
+            continue
         for path in (directory / name, directory / (name + ".provenance.json")):
             try:
                 path.unlink(missing_ok=True)

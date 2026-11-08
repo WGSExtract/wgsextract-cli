@@ -191,6 +191,9 @@ test("paths in the workspace are shown with the token, and real paths reach the 
   assert.equal(displayWorkspacePath(`${workspace}-other`, workspace), `${workspace}-other`);
   assert.equal(displayWorkspacePath("C:\\Users\\Me\\WGS-Extract\\output", "c:\\users\\me\\wgs-extract"), "{{bundleWorkspace}}/output");
   assert.equal(relocatePath("/home/me/w/a/b", "/home/me/w", "D:\\w"), "D:\\w\\a\\b");
+  // PR #531 review: a sibling folder written through the workspace is outside it, so a move leaves it alone.
+  assert.equal(relocatePath("/home/me/w/../shared-reference", "/home/me/w", "/mnt/disk/w"), "/home/me/w/../shared-reference");
+  assert.equal(displayWorkspacePath(`${workspace}/./output/`, workspace), "{{bundleWorkspace}}/output");
 
   const { path: configFile } = await saveConfig(settingsControl, undefined, { output_directory: "{{bundleWorkspace}}/output", elsewhere: "" }, workspace);
   assert.match(await readFile(configFile, "utf8"), /output_directory = /);
@@ -233,4 +236,20 @@ test("uninstall deletes no workspace without being asked, wherever it is", async
   await assert.rejects(stat(path.dirname(appSettingsPath())), { code: "ENOENT" });
   assert.equal(await readFile(path.join(chosen, "keep.txt"), "utf8"), "not the app's");
   assert.equal((await runUninstallCli(source, "--print-workspace")).stdout, "");
+});
+
+test("PR #531 review: uninstall runs no steps from, and deletes nothing of, a folder that isn't the app's workspace", async (t) => {
+  const { root, source } = await fixture(t);
+  const unrelated = path.join(appDataWorkspacesDirectory(), "location.bundle");
+  await mkdir(unrelated, { recursive: true });
+  await writeFile(path.join(unrelated, "keep.txt"), "not the app's");
+  await saveWorkspacesDirectory(path.join(root, "chosen"));
+  const workspace = await prepareBundleWorkspace(manifest, source);
+
+  assert.deepEqual((await runUninstallCli(source, "--print-workspace")).stdout.trim().split(/\r?\n/), [workspace]);
+  const removed = await runUninstallCli(source, "--remove-workspace", "--remove-app-data");
+  assert.equal(removed.code, 0, `${removed.stdout}\n${removed.stderr}`);
+  await assert.rejects(stat(workspace), { code: "ENOENT" });
+  assert.equal(await readFile(path.join(unrelated, "keep.txt"), "utf8"), "not the app's");
+  await assert.rejects(stat(appSettingsPath()), { code: "ENOENT" });
 });

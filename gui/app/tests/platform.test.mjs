@@ -331,9 +331,9 @@ test("Tauri NSIS uninstall leaves deleting the app data to the uninstall steps, 
 
   assert.equal(config.bundle.windows.nsis.installerHooks, "nsis-hooks.nsh");
   assert.match(appDataBlock, /StrCpy \$3 "--remove-app-data"/);
-  // Otherwise Tauri's template deletes %LOCALAPPDATA%\<identifier> whole after this hook.
+  // Otherwise Tauri's template deletes %LOCALAPPDATA%\<identifier> and %APPDATA%\<identifier> whole after this hook.
   assert.match(appDataBlock, /StrCpy \$DeleteAppDataCheckboxState 0/);
-  assert.doesNotMatch(hooks, /RmDir \/r "\$LOCALAPPDATA\\\$\{BUNDLEID\}"/);
+  assert.doesNotMatch(hooks, /RmDir \/r "\$(LOCAL)?APPDATA\\\$\{BUNDLEID\}"/);
 });
 
 test("Tauri NSIS uninstall always removes the install dir and per-user productName leftover", async () => {

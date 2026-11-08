@@ -301,7 +301,7 @@ function Get-TargetProcesses {
         $_.CommandLine -and (
             $_.CommandLine -like "*WGSExtract*" -or
             $_.CommandLine -like "*gui-for-cli-webui-tauri*" -or
-            $_.CommandLine -like "*\\wgs-extract\\*" -or
+            $_.CommandLine -like "*\wgs-extract\*" -or
             $_.CommandLine -like "*/wgs-extract/*"
         )
     } | Select-Object ProcessId, ParentProcessId, Name, CommandLine

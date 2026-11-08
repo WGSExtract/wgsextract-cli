@@ -43,6 +43,9 @@ class AppPlatform:
     emptied_preferences: str = ""
 
 
+# The workspace setup makes: in the home folder since PR #531, in the app's data
+# before it.
+_WORKSPACE_MARKER = "/wgs-extract/.bundle-workspace"
 MACOS = AppPlatform(
     steps=[
         "download_dmg",
@@ -59,7 +62,7 @@ MACOS = AppPlatform(
     window_file="startup.txt",
     window_text="window_appeared_ms=",
     installed=["dir\t/Applications/WGSExtract.app"],
-    install_marker="/dev.guiforcli.embed.wgsextract/BundleWorkspaces",
+    install_marker=_WORKSPACE_MARKER,
     emptied_preferences="/Library/Preferences/dev.guiforcli.embed.wgsextract.plist",
 )
 MACOS_TAURI = replace(
@@ -67,7 +70,7 @@ MACOS_TAURI = replace(
     steps=[step for step in MACOS.steps if step != "runner"],
     window_file="app-stdout.txt",
     window_text="metric webAppRendered_ms=",
-    install_marker="/dev.guiforcli.web.embed.wgsextract/BundleWorkspaces",
+    install_marker=_WORKSPACE_MARKER,
     emptied_preferences="/Library/Preferences/dev.guiforcli.web.embed.wgsextract.plist",
 )
 _WIN_APP = "C:/Users/lab user/AppData/Local/WGSExtract"
@@ -91,7 +94,7 @@ WINDOWS = AppPlatform(
         "regkey\tHKEY_CURRENT_USER/Software/Microsoft/Windows/CurrentVersion/Uninstall/WGSExtract",
         "file\tC:/Users/lab user/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/WGSExtract.lnk",
     ],
-    install_marker="/dev.guiforcli.web.embed.wgsextract/BundleWorkspaces",
+    install_marker=_WORKSPACE_MARKER,
 )
 LINUX = AppPlatform(
     steps=["download_installer", "install_app", "setup", "actions", "uninstall"],
@@ -102,7 +105,7 @@ LINUX = AppPlatform(
     window_file="app-stdout.txt",
     window_text="metric webAppRendered_ms=",
     installed=["file\t/usr/share/applications/WGSExtract.desktop"],
-    install_marker="/dev.guiforcli.web.embed.wgsextract/BundleWorkspaces",
+    install_marker=_WORKSPACE_MARKER,
 )
 # What a shell prints when a command it ran was ended by that signal.
 SIGNAL_TEXT = {"Terminated": "SIGTERM", "Killed": "SIGKILL"}

@@ -441,6 +441,36 @@ test("POST /api/setup/stream emits setup completion", async (t) => {
   assert.equal(calls.runProcess.length, 1);
 });
 
+test("PR #531 review: nothing starts or writes while the workspace moves, so no change is lost with the old copy", async (t) => {
+  let finishMove;
+  const moving = new Promise((resolve) => {
+    finishMove = resolve;
+  });
+  let started;
+  const moveStarted = new Promise((resolve) => {
+    started = resolve;
+  });
+  const { baseURL, calls } = await withTestServer(t, {
+    async moveWorkspace() {
+      started();
+      await moving;
+    },
+  });
+
+  const move = apiFetch(baseURL, "/api/workspace-location/move", { body: { directory: "/elsewhere" } });
+  await moveStarted;
+  const blocked = await apiFetch(baseURL, "/api/setup/stream", { body: { locale: "en" } });
+  assert.equal(blocked.status, 409);
+  assert.match((await blocked.json()).error, /being moved/);
+  assert.equal(calls.runProcess.length, 0);
+
+  finishMove();
+  assert.equal((await readNDJSON(await move)).at(-1).type, "complete");
+  const after = await apiFetch(baseURL, "/api/setup/stream", { body: { locale: "en" } });
+  assert.equal((await readNDJSON(after)).at(-1).type, "complete");
+  assert.equal(calls.runProcess.length, 1);
+});
+
 test("disconnecting a setup stream cancels the running step and frees the workspace", async (t) => {
   const runs = [];
   const { baseURL } = await withTestServer(t, {

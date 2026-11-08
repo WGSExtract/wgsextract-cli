@@ -1,7 +1,8 @@
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import type { BundleManifest, WorkspaceLocationInfo } from "../../../shared/types.js";
+import { writeFileAtomically } from "./config-store.js";
 import { errnoCode, errorMessage } from "./errors.js";
 import { appSupportDirectory, safePathComponent } from "./paths.js";
 
@@ -99,6 +100,6 @@ export async function saveWorkspacesDirectory(directory: string | null) {
     else {
         settings.bundleWorkspacesDirectory = directory;
     }
-    await mkdir(appSupportDirectory(), { recursive: true });
-    await writeFile(appSettingsPath(), `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+    // The only record of a moved workspace: never left half-written.
+    await writeFileAtomically(appSettingsPath(), `${JSON.stringify(settings, null, 2)}\n`);
 }

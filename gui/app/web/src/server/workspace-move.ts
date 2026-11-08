@@ -1,4 +1,4 @@
-import { copyFile, lstat, mkdir, readFile, readdir, readlink, rename, rm, rmdir, statfs, symlink, utimes } from "node:fs/promises";
+import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, readlink, rename, rm, rmdir, statfs, symlink, utimes } from "node:fs/promises";
 import path from "node:path";
 import { configEditorControls, parseFlatToml, serializeFlatToml } from "../../../shared/rendering.js";
 import type { BundleManifest, ValueMap } from "../../../shared/types.js";
@@ -44,17 +44,22 @@ export async function moveWorkspace({ manifest, sourceRoot, workspaceRoot, direc
     if (!renamed) {
         await copyWorkspace(workspaceRoot, target, onProgress, signal);
     }
+    const rewritten: RewrittenFile[] = [];
     try {
-        await relocateWorkspacePaths(manifest, target, workspaceRoot, target);
+        await relocateWorkspacePaths(manifest, target, workspaceRoot, target, rewritten);
         await saveWorkspacesDirectory(directory == null ? null : path.resolve(directory));
     }
     catch (error) {
         if (renamed) {
             await rename(target, workspaceRoot);
-            await relocateWorkspacePaths(manifest, workspaceRoot, target, workspaceRoot);
+            await relocateWorkspacePaths(manifest, workspaceRoot, target, workspaceRoot, []);
         }
         else {
             await rm(target, { recursive: true, force: true });
+            // The original's own files were never touched, but settings files kept outside it were rewritten.
+            for (const file of rewritten.filter((entry) => !isSameOrInside(target, entry.filePath))) {
+                await writeFileAtomically(file.filePath, file.text);
+            }
         }
         throw error;
     }
@@ -112,9 +117,8 @@ async function renameIfSameVolume(from: string, to: string) {
 
 /** Copies through a staging folder renamed into place at the end, so the target is never partly there. */
 async function copyWorkspace(from: string, to: string, onProgress: WorkspaceMoveRequest["onProgress"], signal: AbortSignal) {
-    const staging = `${to}.moving`;
-    await rm(staging, { recursive: true, force: true });
-    await mkdir(staging, { recursive: true });
+    // Unique, so no folder already there is ever taken over or deleted.
+    const staging = await mkdtemp(path.join(path.dirname(to), `.${path.basename(to)}.moving-`));
     try {
         const files = await listCarriedFiles(from);
         const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
@@ -127,7 +131,7 @@ async function copyWorkspace(from: string, to: string, onProgress: WorkspaceMove
         let reportedPercent = 0;
         for (const file of files) {
             signal.throwIfAborted();
-            await copyEntry(from, staging, file.relative);
+            await copyEntry(from, staging, file);
             copiedBytes += file.size;
             const percent = totalBytes ? Math.floor(copiedBytes / totalBytes * 99) : 99;
             if (percent > reportedPercent) {
@@ -135,6 +139,7 @@ async function copyWorkspace(from: string, to: string, onProgress: WorkspaceMove
                 await onProgress(percent);
             }
         }
+        signal.throwIfAborted();
         await rename(staging, to);
     }
     catch (error) {
@@ -147,18 +152,25 @@ function formatGB(bytes: number) {
     return (bytes / 1024 ** 3).toFixed(1);
 }
 
-async function listCarriedFiles(root: string, relative = ""): Promise<Array<{ relative: string; size: number }>> {
-    const files: Array<{ relative: string; size: number }> = [];
+interface CarriedEntry {
+    relative: string;
+    size: number;
+    directory: boolean;
+}
+
+/** Files, and folders too, so that empty ones (a custom temp folder, say) still exist after the move. */
+async function listCarriedFiles(root: string, relative = ""): Promise<CarriedEntry[]> {
+    const files: CarriedEntry[] = [];
     for (const entry of await readdir(path.join(root, relative), { withFileTypes: true })) {
         const entryPath = path.join(relative, entry.name);
         if (isDiscardedRuntimePath(entryPath)) {
             continue;
         }
         if (entry.isDirectory()) {
-            files.push(...await listCarriedFiles(root, entryPath));
+            files.push({ relative: entryPath, size: 0, directory: true }, ...await listCarriedFiles(root, entryPath));
         }
         else {
-            files.push({ relative: entryPath, size: (await lstat(path.join(root, entryPath))).size });
+            files.push({ relative: entryPath, size: (await lstat(path.join(root, entryPath))).size, directory: false });
         }
     }
     return files;
@@ -170,9 +182,13 @@ function isDiscardedRuntimePath(relative: string) {
     return parts[0] === runtimeFolderName && parts.length >= 3 && !(parts.length === 3 && parts[2] === keptRuntimeFileName);
 }
 
-async function copyEntry(fromRoot: string, toRoot: string, relative: string) {
+async function copyEntry(fromRoot: string, toRoot: string, { relative, directory }: CarriedEntry) {
     const from = path.join(fromRoot, relative);
     const to = path.join(toRoot, relative);
+    if (directory) {
+        await mkdir(to, { recursive: true });
+        return;
+    }
     await mkdir(path.dirname(to), { recursive: true });
     const info = await lstat(from);
     if (info.isSymbolicLink()) {
@@ -196,7 +212,13 @@ async function discardRuntime(root: string) {
 }
 
 /** Saved absolute paths into the workspace follow it. Setup's saved run is cleared, since setup must run again. */
-async function relocateWorkspacePaths(manifest: BundleManifest, root: string, from: string, to: string) {
+interface RewrittenFile {
+    filePath: string;
+    text: string;
+}
+
+/** `rewritten` receives each settings file's path and text from before it was rewritten. */
+async function relocateWorkspacePaths(manifest: BundleManifest, root: string, from: string, to: string, rewritten: RewrittenFile[]) {
     const statePath = bundleStatePath(root);
     const savedState = await readFile(statePath, "utf8").then((text) => JSON.parse(text) as Record<string, unknown>).catch((error: unknown) => {
         if (errnoCode(error) === "ENOENT") {
@@ -208,7 +230,7 @@ async function relocateWorkspacePaths(manifest: BundleManifest, root: string, fr
     for (const control of configEditorControls(manifest)) {
         if (control.configFile) {
             const requested = configFilePaths[control.id];
-            await relocateConfigFile(configPath(control, requested ? relocatePath(requested, from, to) : undefined, root), from, to);
+            await relocateConfigFile(configPath(control, requested ? relocatePath(requested, from, to) : undefined, root), from, to, rewritten);
         }
     }
     if (savedState) {
@@ -217,12 +239,13 @@ async function relocateWorkspacePaths(manifest: BundleManifest, root: string, fr
     }
 }
 
-async function relocateConfigFile(filePath: string, from: string, to: string) {
+async function relocateConfigFile(filePath: string, from: string, to: string, rewritten: RewrittenFile[]) {
     const text = await readFile(filePath, "utf8").catch((error: unknown) => {
         ignoreMissing(error);
         return null;
     });
     if (text != null) {
+        rewritten.push({ filePath, text });
         await writeFileAtomically(filePath, serializeFlatToml(relocateStrings(parseFlatToml(text), from, to) as ValueMap));
     }
 }

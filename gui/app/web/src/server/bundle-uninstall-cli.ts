@@ -10,7 +10,7 @@
  * defaultWorkspace, in the app's data folder. They hold the user's libraries, settings and outputs, so
  * they are deleted only with --remove-workspace (ask the user first; --print-workspace only prints
  * their paths, one per line, or nothing if there are none). Unless a step failed, --remove-workspace
- * then deletes them and --remove-app-data the app's data folder, keeping any workspace in it.
+ * then deletes them and --remove-app-data the app's data folders, keeping any workspace in them.
  * GUI_FOR_CLI_UNINSTALL_RESULT_FILE, if set, receives the result as JSON (as from the macOS app).
  */
 import { existsSync } from "node:fs";
@@ -47,7 +47,8 @@ async function main(argv: string[]): Promise<number> {
     const { appSupportName, printWorkspace, removeWorkspace, removeAppData, bundle } = parseArgs(argv);
     process.env.GUI_FOR_CLI_APP_SUPPORT_NAME = appSupportName;
     const manifest = await loadManifestFromRoot(path.resolve(bundle));
-    const appData = appSupportDirectory();
+    // On Windows the app keeps data in both %LOCALAPPDATA% and %APPDATA%, and the uninstaller removes both here.
+    const appDataFolders = [appSupportDirectory(), ...(process.platform === "win32" && process.env.APPDATA ? [path.join(process.env.APPDATA, appSupportName)] : [])];
     // Where prepareBundleWorkspace keeps the workspace now, which can be outside the app's data folder, and where it is kept by default.
     const workspace = await resolveWorkspaceRoot(manifest);
     const appDataWorkspace = workspaceRootIn(appDataWorkspacesDirectory(), manifest.id);
@@ -69,11 +70,11 @@ async function main(argv: string[]): Promise<number> {
         console.log(line);
         result.log.push(line);
     };
-    const existing = workspaces.filter((root) => existsSync(root));
-    if (existing.length === 0) {
+    // Only the app's own workspaces have steps to run; a folder of the same name that isn't one is never touched.
+    if (managed.length === 0) {
         note(`No workspace at ${workspace}; setup never ran, nothing to remove.`);
     }
-    for (const root of existing) {
+    for (const root of managed) {
         if (result.status === "ok") {
             Object.assign(result, await runWorkspaceSteps(root));
         }
@@ -81,7 +82,7 @@ async function main(argv: string[]): Promise<number> {
     if (result.status !== "ok") {
         if (removeWorkspace || removeAppData) {
             // Kept so the user can retry or read what failed.
-            note(`Uninstall steps failed; kept ${[...existing, ...(removeAppData ? [appData] : [])].join(", ")}`);
+            note(`Uninstall steps failed; kept ${[...managed, ...(removeAppData ? appDataFolders : [])].join(", ")}`);
         }
     }
     else {
@@ -93,9 +94,12 @@ async function main(argv: string[]): Promise<number> {
             await rmdir(appDataWorkspacesDirectory()).catch(() => undefined);
         }
         if (removeAppData) {
-            const kept = removeWorkspace ? [] : existing;
-            await removeExcept(appData, kept);
-            note(kept.some((root) => isInside(appData, root)) ? `Removed ${appData}, except the workspace in it` : `Removed ${appData}`);
+            // Whatever is still there: every workspace unless the user chose to delete them, and any folder that isn't the app's.
+            const kept = workspaces.filter((root) => existsSync(root));
+            for (const appData of appDataFolders.filter((folder) => existsSync(folder))) {
+                await removeExcept(appData, kept);
+                note(kept.some((root) => isInside(appData, root)) ? `Removed ${appData}, except the workspace in it` : `Removed ${appData}`);
+            }
         }
     }
     await writeResult(result);

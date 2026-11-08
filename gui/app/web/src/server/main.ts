@@ -84,15 +84,20 @@ const requestContext: RequestHandlerContext = {
     }),
     moveWorkspace: (directory, emit, signal) => exclusively(async () => {
         await terminateAllProcesses();
-        await moveWorkspace({
-            manifest: bundleRuntime.manifest,
-            sourceRoot: bundleRuntime.sourceBundleRoot,
-            workspaceRoot: bundleRuntime.bundleRoot,
-            directory,
-            onProgress: (percent) => emit({ type: "progress", percent }),
-            signal,
-        });
-        useBundleRuntime(await loadBundleRuntime(bundleRuntime.sourceBundleRoot, false));
+        try {
+            await moveWorkspace({
+                manifest: bundleRuntime.manifest,
+                sourceRoot: bundleRuntime.sourceBundleRoot,
+                workspaceRoot: bundleRuntime.bundleRoot,
+                directory,
+                onProgress: (percent) => emit({ type: "progress", percent }),
+                signal,
+            });
+        }
+        finally {
+            // From wherever the workspace is recorded now, even when a step after the move itself failed.
+            useBundleRuntime(await loadBundleRuntime(bundleRuntime.sourceBundleRoot, false));
+        }
     }),
 };
 
