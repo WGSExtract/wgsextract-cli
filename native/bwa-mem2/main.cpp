@@ -14,7 +14,7 @@ void help() {
         "Usage: %s [--metal | --backend cpu|metal|auto] <command> [arguments]\n"
         "  index <reference.fa>      build a BWA-MEM2 index\n"
         "  mem [BWA options] <index> <R1.fastq[.gz]> [R2.fastq[.gz]]\n"
-        "  capabilities --json       report Metal availability\n"
+        "  capabilities --json [index]  report Metal availability and limits\n"
         "  --version                 print executable and engine version\n"
         "Options precede the command. The default CPU backend uses BWA-MEM2's own extension code.\n"
         "--metal (EXPERIMENTAL) offloads SMEM seeding, batched seed extension and\n"
@@ -23,6 +23,15 @@ void help() {
         "SAM is written to stdout; diagnostics to stderr.\n"
         "Not qualified for clinical use.\n",
         name, version, name);
+}
+
+std::string json(const std::string &text) {
+    std::string quoted = "\"";
+    for (unsigned char c : text) {
+        if (c == '"' || c == '\\') quoted += '\\';
+        if (c >= 0x20) quoted += char(c);
+    }
+    return quoted + "\"";
 }
 
 bool parse_backend(const char *value, Backend &backend) {
@@ -81,7 +90,9 @@ int main(int argc, char **argv) {
         || strcmp(argv[command_index], "--gpu-target-pairs") == 0
         || strcmp(argv[command_index], "--gpu-delay-us") == 0
         || strcmp(argv[command_index], "--gpu-queue-pairs") == 0
-        || strcmp(argv[command_index], "--gpu-min-pairs") == 0)) {
+        || strcmp(argv[command_index], "--gpu-min-pairs") == 0
+        || strcmp(argv[command_index], "--gpu-max-buffer") == 0
+        || strcmp(argv[command_index], "--physical-memory") == 0)) {
         std::string reason;
         if (strcmp(argv[command_index], "--gpu-rescue-verify") == 0
             || strcmp(argv[command_index], "--gpu-inject-rescue-failure") == 0
@@ -96,7 +107,15 @@ int main(int argc, char **argv) {
             continue;
         }
         if (argc <= command_index + 2) return 2;
-        if (strcmp(argv[command_index], "--gpu-rescue") == 0
+        if (strcmp(argv[command_index], "--gpu-max-buffer") == 0
+            || strcmp(argv[command_index], "--physical-memory") == 0) {
+            char *end = nullptr;
+            unsigned long long value = strtoull(argv[command_index + 1], &end, 10);
+            if (!end || end == argv[command_index + 1] || *end != '\0' || value == 0) return 2;
+            if (strcmp(argv[command_index], "--gpu-max-buffer") == 0)
+                wgse_set_max_buffer_bytes(value);
+            else wgse_set_physical_memory(value);
+        } else if (strcmp(argv[command_index], "--gpu-rescue") == 0
             || strcmp(argv[command_index], "--gpu-seed") == 0
             || strcmp(argv[command_index], "--gpu-overlap") == 0
             || strcmp(argv[command_index], "--cpu-rescue-batch") == 0) {
@@ -200,20 +219,45 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (command == "capabilities") {
-        if (argc != command_index + 2 || strcmp(argv[command_index + 1], "--json")) {
-            fprintf(stderr, "Usage: %s capabilities --json\n", name);
+        if (argc < command_index + 2 || argc > command_index + 3
+            || strcmp(argv[command_index + 1], "--json")) {
+            fprintf(stderr, "Usage: %s capabilities --json [index]\n", name);
             return 2;
+        }
+        const std::string prefix = argc == command_index + 3 ? argv[command_index + 2] : "";
+        const uint64_t table = prefix.empty() ? 0 : wgse_occurrence_table_bytes(prefix);
+        if (!prefix.empty() && !table) {
+            fprintf(stderr, "Cannot read the index %s.bwt.2bit.64\n", prefix.c_str());
+            return 1;
         }
         std::string reason;
         bool available = wgse_metal_available(reason);
         if (!available) fprintf(stderr, "Metal unavailable: %s\n", reason.c_str());
+        const WgseMetalLimits limits = wgse_metal_limits();
         printf("{\"schema_version\":1,\"version\":\"%s\","
             "\"engine\":\"bwa-mem2\",\"engine_version\":\"2.3\","
             "\"qualified\":false,\"metal_available\":%s,"
             "\"metal_hardware_supported\":%s,"
-            "\"cpu_available\":true,\"max_gpu_query_length\":256}\n",
+            "\"cpu_available\":true,\"max_gpu_query_length\":256,"
+            "\"physical_memory_bytes\":%llu,\"metal\":{\"device\":%s,"
+            "\"max_buffer_bytes\":%llu,\"recommended_max_working_set_bytes\":%llu}",
             version, available ? "true" : "false",
-            wgse_metal_hardware_supported() ? "true" : "false");
+            wgse_metal_hardware_supported() ? "true" : "false",
+            (unsigned long long)wgse_physical_memory(), json(limits.device).c_str(),
+            (unsigned long long)limits.max_buffer_bytes,
+            (unsigned long long)limits.recommended_working_set_bytes);
+        if (table) {
+            // Seeding is the one GPU stage that needs the whole table in one buffer.
+            const std::string limit = available ? wgse_gpu_seeding_limit(table) : reason;
+            printf(",\"index\":{\"occurrence_table_bytes\":%llu,"
+                "\"cpu_index_bytes\":%llu,\"metal_index_bytes\":%llu,"
+                "\"gpu_seeding\":%s,\"gpu_seeding_limit\":%s}",
+                (unsigned long long)table,
+                (unsigned long long)wgse_index_bytes(prefix, false),
+                (unsigned long long)wgse_index_bytes(prefix, true),
+                limit.empty() ? "true" : "false", json(limit).c_str());
+        }
+        printf("}\n");
         return 0;
     }
     if (command == "index")
