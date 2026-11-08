@@ -8,6 +8,11 @@
 #include <vector>
 
 extern "C" int wgse_minimap2_main(int argc, char *argv[]);
+// The command line minimap2 records as @PG CL, with the wrapper's options.
+extern "C" {
+int wgse_pg_argc = 0;
+char **wgse_pg_argv = nullptr;
+}
 
 namespace {
 constexpr const char *name = "wgse-minimap2";
@@ -113,9 +118,16 @@ int run(int argc, char **argv) {
         char *arguments[] = {argv[0], help_option, nullptr};
         return wgse_minimap2_main(2, arguments);
     }
+    std::vector<char *> command_line(argv, argv + argc + 1);
+    wgse_pg_argc = argc;
+    wgse_pg_argv = command_line.data();
     bool metal = false;
     const int status = parse_metal_options(argc, argv, metal);
     if (status >= 0) return status;
+    // Upstream's stderr CMD starts with argv[0]: fold the wrapper options into it.
+    std::string program = command_line[0];
+    for (int i = 1; i < wgse_pg_argc - argc + 1; ++i) program.append(" ").append(command_line[i]);
+    argv[0] = program.data();
     if (argc < 2) help(stderr);
     if (metal) {
         char reason[256] = "";

@@ -301,7 +301,10 @@ warning on the CPU but not with `--metal` and up to 8 threads.
 `wgse-minimap2` uses within about 1 GiB of upstream minimap2's memory: with 9 threads on
 hs38 it peaked at 13–15 GiB for HiFi reads, 10–14 GiB for ONT reads and
 11.3 GiB for short reads, whether it loaded a `.mmi` index or built one from
-the FASTA reference. `--metal` keeps under 0.5 GB of GPU buffers. With 9 threads,
+the FASTA reference. `--metal` allocated 370–560 MiB of GPU buffers in the full
+HiFi and ONT runs below. Its two batch buffer sets can grow to about 0.9 GiB in
+all: each holds backtrack matrices of up to 256 MiB, plus sequences and CIGARs,
+and grows half again beyond its largest batch. With 9 threads,
 its peak resident memory stayed in those ranges. Its peak footprint (resident
 plus compressed memory) was about 0.5 GB above the CPU build's for the full HiFi
 set (16.7–17.0 GB), and 1.3–2.1 GB above it for ONT (13.9–14.7 GB), whose

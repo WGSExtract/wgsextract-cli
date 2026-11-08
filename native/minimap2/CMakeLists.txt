@@ -28,14 +28,15 @@ function(minimap2_seam variable before after)
     string(REPLACE "${before}" "${after}" patched "${${variable}}")
     set(${variable} "${patched}" PARENT_SCOPE)
 endfunction()
-# main.c becomes a function of the wrapper, and @PG VN gains a -wgse-<version> suffix.
+# main.c becomes a function of the wrapper, @PG VN gains a -wgse-<version> suffix,
+# and @PG CL records the wrapper's command line, including --metal.
 file(READ "${minimap2_SOURCE_DIR}/main.c" main_source)
 minimap2_seam(main_source "int main(int argc, char *argv[])"
-    "int wgse_minimap2_main(int argc, char *argv[])")
+    "extern int wgse_pg_argc;\nextern char **wgse_pg_argv;\nint wgse_minimap2_main(int argc, char *argv[])")
 minimap2_seam(main_source "mm_write_sam_hdr(mi, rg, MM_VERSION, argc, argv)"
-    "mm_write_sam_hdr(mi, rg, WGSE_PG_VERSION, argc, argv)")
+    "mm_write_sam_hdr(mi, rg, WGSE_PG_VERSION, wgse_pg_argc, wgse_pg_argv)")
 minimap2_seam(main_source "mm_write_sam_hdr(0, rg, MM_VERSION, argc, argv)"
-    "mm_write_sam_hdr(0, rg, WGSE_PG_VERSION, argc, argv)")
+    "mm_write_sam_hdr(0, rg, WGSE_PG_VERSION, wgse_pg_argc, wgse_pg_argv)")
 file(WRITE "${generated}/main.c" "${main_source}")
 
 # Output-identical speedups (see wgse_index.inc and wgse_ksort.h).

@@ -119,6 +119,8 @@ if grep -q '"metal_available":true' capabilities.json; then
         records "$preset.metal.sam"
         cmp "$preset.sam.records" "$preset.metal.sam.records"
         grep -Eq 'on the GPU \([1-9][0-9]* used\)' "$preset.metal.log"
+        # @PG CL records that the GPU was used (PR #559 review).
+        grep -q "^@PG	ID:minimap2	.*	CL:minimap2 --metal -t 4 -ax $preset " "$preset.metal.sam"
     done
     echo "minimap2 --metal alignments verified"
 fi
