@@ -30,6 +30,23 @@ A command can describe its run as a JSON result document: the files it wrote, wa
 - An action that runs as a job on the bundle's [job server](job-server.md) gets its document from the job's `result`, whatever the mode.
 - **Open** and **Show in Folder** work only for the files a document listed, and for the document's own saved copy (`manifest`). A relative path is relative to the bundle workspace the action ran in.
 
+## The last run
+
+The app keeps a copy of the document of the last covered action run in the app, and of the last one that failed, in the bundle workspace. Commands and conditions can name them:
+
+- **`{{lastResultDocumentPath}}`** — the last run's document.
+- **`{{lastFailedResultDocumentPath}}`** — the last failed run's document.
+
+Each is empty until such a run happens, so put it in `optionalArguments`, or test it with `exists` in `visibleWhen`. Data sources and setup never replace them, and neither does an action whose command or conditions name either placeholder, so a bug-report action describes what the user last ran rather than a background check or itself:
+
+```jsonc
+"command": {
+  "executable": "{{bundleRoot}}/scripts/run-tool.sh",
+  "arguments": ["report-issue", "--print"],
+  "optionalArguments": [["--run", "{{lastResultDocumentPath}}"]]
+}
+```
+
 ## Failures
 
 The document's `error.kind` decides what the app shows next to the action's button until it runs again:

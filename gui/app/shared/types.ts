@@ -312,7 +312,14 @@ export interface CommandContext {
     placeholderLabels?: Labels;
     bundleRootPath?: string;
     homePath?: string;
+    lastResultDocumentPaths?: LastResultDocumentPaths;
     [key: string]: unknown;
+}
+
+/** Saved copies of the result documents of the last action, and the last failed action, run in the app. */
+export interface LastResultDocumentPaths {
+    last?: string;
+    lastFailed?: string;
 }
 
 export interface ProcessRunOptions {
@@ -428,6 +435,7 @@ export interface ManifestResponse {
     appVersion?: string;
     bundleRootPath: string;
     sourceRootPath: string;
+    lastResultDocumentPaths?: LastResultDocumentPaths;
     fieldValues?: ValueMap;
     checkedOptions?: Record<string, string[]>;
     configValues?: ValueMap;
@@ -515,6 +523,7 @@ export interface WebUIState {
     webUIFont: string;
     bundleRootPath: string;
     homePath?: string;
+    lastResultDocumentPaths: LastResultDocumentPaths;
     sourceRootPath: string;
     appVersion: string;
     activePageID: string;

@@ -11,6 +11,7 @@ import { validatePlatformScriptSets } from "./platform-scripts.js";
 import { validateManifest } from "./manifest-validator.js";
 import { bundleArchiveFormat, extractBundleArchive } from "./bundle-archive.js";
 import { errnoCode, errorMessage } from "./errors.js";
+import { lastResultDocumentPaths } from "./last-result-documents.js";
 
 const CHOOSE_BUNDLE_MESSAGE = "Choose a bundle folder, manifest.json file, or bundle archive (.zip, .tar, .tar.gz, .tgz).";
 
@@ -277,6 +278,7 @@ export async function loadLocalizedBundle(locale: string | undefined, repoRoot: 
         usingSystemDefaultLocale: !locale && !bundleState.localizationCode,
         bundleRootPath: bundleRoot,
         sourceRootPath: sourceBundleRoot,
+        lastResultDocumentPaths: await lastResultDocumentPaths(bundleRoot),
         bundleState,
         configFilePaths,
         configValues,

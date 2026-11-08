@@ -183,6 +183,12 @@
           "id": "report-issue",
           "title": "actions.settings.v066.report-issue.title",
           "tooltip": "actions.settings.v066.report-issue.tooltip",
+          "visibleWhen": [
+            {
+              "placeholder": "report_last_failed",
+              "notEquals": "--last-failed"
+            }
+          ],
           "command": {
             "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
@@ -191,7 +197,71 @@
             ],
             "optionalArguments": [
               [
-                "{{report_last_failed}}"
+                "--run",
+                "{{lastResultDocumentPath}}"
+              ],
+              [
+                "--description",
+                "{{report_description}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "report-issue-last-failed",
+          "title": "actions.settings.v066.report-issue.title",
+          "tooltip": "actions.settings.v066.report-issue.tooltip",
+          "visibleWhen": [
+            {
+              "placeholder": "report_last_failed",
+              "equals": "--last-failed"
+            },
+            {
+              "placeholder": "lastFailedResultDocumentPath",
+              "exists": true
+            }
+          ],
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "report-issue",
+              "--print"
+            ],
+            "optionalArguments": [
+              [
+                "--run",
+                "{{lastFailedResultDocumentPath}}"
+              ],
+              [
+                "--description",
+                "{{report_description}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "report-issue-cli-last-failed",
+          "title": "actions.settings.v066.report-issue.title",
+          "tooltip": "actions.settings.v066.report-issue.tooltip",
+          "visibleWhen": [
+            {
+              "placeholder": "report_last_failed",
+              "equals": "--last-failed"
+            },
+            {
+              "placeholder": "lastFailedResultDocumentPath",
+              "exists": false
+            }
+          ],
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "report-issue",
+              "--print"
+            ],
+            "optionalArguments": [
+              [
+                "--last-failed"
               ],
               [
                 "--description",

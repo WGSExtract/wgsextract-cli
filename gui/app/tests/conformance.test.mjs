@@ -4,7 +4,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
 import { parseJsonWithComments } from "../dist/shared/json-comments.js";
-import { conditionMatches, displayCommand, hydrateRows, isSectionVisible, missingPlaceholders } from "../dist/shared/rendering.js";
+import { conditionMatches, displayCommand, hydrateRows, isActionVisible, isSectionVisible, missingPlaceholders } from "../dist/shared/rendering.js";
+import { readsLastResultDocument } from "../dist/shared/last-result-documents.js";
 import { currentSetupPlatform } from "../dist/shared/setup-platforms.js";
 import { loadLocalizedBundle } from "../dist/web/src/server/bundle-loader.js";
 
@@ -95,6 +96,25 @@ test("WGSExtract v0.6.6 controls start unset and platform-limited sections hide 
   }
   assert.equal(isSectionVisible(calling, context), true);
   assert.equal(conditionMatches({ placeholder: "hostPlatform", equals: currentSetupPlatform() }, context), true);
+});
+
+test("PR #530 review: WGSExtract's bug report preview targets the app's last run, never itself", async () => {
+  const bundle = await loadLocalizedBundle("en", repoRoot, wgsExtractBundleRoot, wgsExtractBundleRoot);
+  const section = bundle.manifest.pages.flatMap((page) => page.sections ?? []).find((candidate) => candidate.id === "report-issue");
+  const paths = { last: "/w/.last-results/last.json", lastFailed: "/w/.last-results/last-failed.json" };
+  const shown = (lastFailedChecked, lastResultDocumentPaths) => {
+    const context = { fieldValues: {}, checkedOptions: { report_last_failed: lastFailedChecked ? "--last-failed" : "" }, configValues: {}, rowValues: {}, lastResultDocumentPaths };
+    const visible = section.actions.filter((action) => isActionVisible(action, context));
+    assert.equal(visible.length, 1);
+    assert.equal(readsLastResultDocument(visible[0]), true);
+    return displayCommand(visible[0].command, context).replace(/^\S+ /, "");
+  };
+
+  assert.equal(shown(false, paths), `report-issue --print --run ${paths.last}`);
+  assert.equal(shown(true, paths), `report-issue --print --run ${paths.lastFailed}`);
+  // Before the app has run anything, the CLI's own record is the only one.
+  assert.equal(shown(false, {}), "report-issue --print");
+  assert.equal(shown(true, {}), "report-issue --print --last-failed");
 });
 
 test("conformance bundle preserves shared runtime semantics in TypeScript", async () => {

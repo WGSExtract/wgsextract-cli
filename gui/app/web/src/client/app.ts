@@ -44,6 +44,7 @@ async function bootstrap(locale?: string) {
         state.exitCodeReference = new Map((bundle.manifest.exitCodeReference ?? []).map((entry) => [Number(entry.code), entry]));
         state.bundleRootPath = bundle.bundleRootPath;
         state.sourceRootPath = bundle.sourceRootPath;
+        state.lastResultDocumentPaths = bundle.lastResultDocumentPaths ?? {};
         ensureMainTerminal();
         if (bundle.stateWarning) {
             appendTerminal("error", "Saved state was reset", bundle.stateWarning);

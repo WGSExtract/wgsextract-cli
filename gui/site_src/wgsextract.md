@@ -69,7 +69,7 @@ Nanopore (ONT) reads are detected from `PL:ONT` read groups or UUID read names.
 - **Methylation Pileup:** a bedMethyl table and summary from MM/ML-tagged reads, with optional context, 5hmC and strand overrides. It is hidden on Windows, and you install modkit separately.
 - **Ancestry:** Y-STR repeat counts with FamilyTreeDNA, PowerPlex Y23 and Yfiler Plus panels.
 - **Annotate:** a variant table as TSV plus an SQLite database to query.
-- **Settings:** preview a redacted `report-issue` bug report. Nothing is uploaded, and the browser does not open.
+- **Settings:** preview a redacted `report-issue` bug report about the last action you ran in the app. Nothing is uploaded, and the browser does not open.
 
 ### CLI only for now
 

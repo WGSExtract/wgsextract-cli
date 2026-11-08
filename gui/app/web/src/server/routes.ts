@@ -11,6 +11,7 @@ import { findConfigEditorControl, locationKey, resolveActionReference, resolveDa
 import { streamNDJSON } from "./ndjson.js";
 import { runActionPreferringServer } from "./job-server-action.js";
 import type { ActionEvent } from "./action-runner.js";
+import { lastResultDocumentPaths, rememberLastResultDocument } from "./last-result-documents.js";
 import { openResultPath, ResultPaths, systemOpener } from "./result-paths.js";
 import { resultDocumentSpecFor } from "../../../shared/result-document.js";
 import type { JobServer } from "./job-server.js";
@@ -87,16 +88,18 @@ export function createRequestHandler(context: RequestHandlerContext) {
         "/api/run/stream": async (request, response) => {
             const body = await readBody(request, context);
             const action = resolveActionReference(context.manifest, parseActionReference(body.action), context.dynamicActions);
-            const actionContext = commandContext(body, context);
-            const resultSpec = resultDocumentSpecFor(context.manifest, action);
             const { bundleRoot } = context;
+            const actionContext = { ...commandContext(body, context), lastResultDocumentPaths: await lastResultDocumentPaths(bundleRoot) };
+            const resultSpec = resultDocumentSpecFor(context.manifest, action);
             await streamNDJSON(
                 response,
-                (emit, signal) => runActionPreferringServer(action, actionContext, signal, bundleRoot, context.runProcess, context.jobServer, (event: ActionEvent) => {
-                    if (event.type === "complete") {
-                        resultPaths.remember(event.result.resultDocument, bundleRoot);
+                (emit, signal) => runActionPreferringServer(action, actionContext, signal, bundleRoot, context.runProcess, context.jobServer, async (event: ActionEvent) => {
+                    if (event.type !== "complete") {
+                        return emit(event);
                     }
-                    return emit(event);
+                    resultPaths.remember(event.result.resultDocument, bundleRoot);
+                    await rememberLastResultDocument(bundleRoot, action, event.result);
+                    return emit({ ...event, result: { ...event.result, lastResultDocumentPaths: await lastResultDocumentPaths(bundleRoot) } });
                 }, resultSpec),
                 (error) => ({ type: "error", error }),
             );

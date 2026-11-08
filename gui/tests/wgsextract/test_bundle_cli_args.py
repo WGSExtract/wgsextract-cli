@@ -233,6 +233,8 @@ class BundleSandbox:
             "vcf_table_no_sqlite": "--no-sqlite",
             "report_last_failed": "--last-failed",
             "report_description": "It stopped",
+            "lastResultDocumentPath": str(self.bundle / ".last-results" / "last.json"),
+            "lastFailedResultDocumentPath": str(self.bundle / ".last-results" / "last-failed.json"),
         }
 
     def render(self, value: str) -> str:

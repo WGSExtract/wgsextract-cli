@@ -6,7 +6,7 @@ import { apiStream } from "./api.js";
 import { appendTerminal, appendTerminalOutput, runningActionControllers, terminalExitStatus, terminalProcessErrorStatus } from "./terminal.js";
 import { resultNotice, type ResultDocument } from "../../../shared/result-document.js";
 import { actionNoticeKey } from "./result-view.js";
-import type { ActionReference, ActionSpec, CommandContext, CommandSpec, TerminalEntry, ValueMap } from "../../../shared/types.js";
+import type { ActionReference, ActionSpec, CommandContext, CommandSpec, LastResultDocumentPaths, TerminalEntry, ValueMap } from "../../../shared/types.js";
 
 interface NoticeRun {
     key: string;
@@ -17,7 +17,7 @@ const latestNoticeRuns = new Map<string, NoticeRun>();
 type ActionStreamEvent =
     | { type: "start"; command: string }
     | { type: "output"; text?: string }
-    | { type: "complete"; result: { exitCode: number; command: string; stderr?: string; resultDocument?: ResultDocument | null } }
+    | { type: "complete"; result: { exitCode: number; command: string; stderr?: string; resultDocument?: ResultDocument | null; lastResultDocumentPaths?: LastResultDocumentPaths } }
     | { type: "error"; error?: string };
 
 export async function runAction(action: ActionSpec, context: CommandContext, reference: ActionReference) {
@@ -113,6 +113,9 @@ function applyActionEvent(event: ActionStreamEvent, action: ActionSpec, context:
             tab.body = [tab.body, `exit ${result.exitCode}`].filter(Boolean).join("\n");
             if (result.resultDocument !== undefined) {
                 applyResultDocument(tab, result.resultDocument, result.exitCode, result.stderr ?? "", noticeRun);
+            }
+            if (result.lastResultDocumentPaths) {
+                state.lastResultDocumentPaths = result.lastResultDocumentPaths;
             }
             break;
         }

@@ -16,7 +16,7 @@ globalThis.document = {
 
 const { createInitialState, state } = await import("../dist/web/src/client/state.js");
 const { ensureDataSource, openBundleWorkspace, retryDataSource, runAction, runSetup } = await import("../dist/web/src/client/operations.js");
-const { renderActions, renderConfigSetting, renderDropdownControl } = await import("../dist/web/src/client/view.js");
+const { renderActions, renderConfigSetting, renderDropdownControl, renderPage } = await import("../dist/web/src/client/view.js");
 
 function resetState() {
   Object.assign(state, createInitialState(), {
@@ -620,6 +620,35 @@ test("action terminal reports invalid stream JSON events clearly", async () => {
 
     assert.equal(state.terminalEntries[1].kind, "error");
     assert.match(state.terminalEntries[1].body, /Action stream returned invalid JSON event: \{not-json\}/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("PR #530 review: a section shown by a value from its own data source appears once the source loads", async () => {
+  resetState();
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = (path) => {
+    requests.push(path);
+    return Promise.resolve(new Response(JSON.stringify({ values: { methylationReady: "true" } }), { status: 200, headers: { "content-type": "application/json" } }));
+  };
+  const page = {
+    id: "vcf",
+    title: "VCF",
+    sections: [{
+      id: "methylation",
+      title: "Methylation pileup",
+      dataSource: { path: "scripts/state.sh" },
+      visibleWhen: [{ placeholder: "methylationReady", equals: "true" }],
+    }],
+  };
+
+  try {
+    assert.doesNotMatch(renderPage(page), /Methylation pileup/);
+    await waitUntil(() => state.dataSourcePayloads.has("section:methylation"));
+    assert.deepEqual(requests, ["/api/datasource"]);
+    assert.match(renderPage(page), /Methylation pileup/);
   } finally {
     globalThis.fetch = originalFetch;
   }

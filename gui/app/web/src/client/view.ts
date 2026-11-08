@@ -101,7 +101,7 @@ export function renderPage(page: BundlePage) {
       </header>
       ${page.id === "settings" ? `${renderSetupStatusSection()}${renderStandardOptionsAccessory()}` : ""}
       <div class="sections">
-        ${(page.sections ?? []).filter((section) => isSectionVisible(section, commandContext())).map((section) => renderSection(section, page)).join("")}
+        ${(page.sections ?? []).map((section) => renderSection(section, page)).join("")}
       </div>
     </article>
   `;
@@ -114,6 +114,10 @@ export function renderSection(section: PageSection, page: BundlePage) {
     }
     const sectionValues = state.dataSourcePayloads.get(key)?.values ?? {};
     const context = commandContext({}, sectionValues);
+    // Checked after the section's own data source starts, so visibleWhen can read the values it returns.
+    if (!isSectionVisible(section, context)) {
+        return "";
+    }
     return `
     <section class="card" aria-labelledby="section-${escapeAttribute(section.id)}">
       <header class="section-header">
