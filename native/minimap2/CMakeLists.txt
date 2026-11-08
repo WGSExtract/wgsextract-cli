@@ -13,7 +13,7 @@ FetchContent_Declare(neon
 FetchContent_MakeAvailable(minimap2 neon)
 
 # Bump when the wgse-minimap2 package changes; it is versioned separately from minimap2.
-set(WGSE_MINIMAP2_VERSION 0.1.0)
+set(WGSE_MINIMAP2_VERSION 0.2.0)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${generated}/intrinsics")
 foreach(header emmintrin.h smmintrin.h)
@@ -101,15 +101,46 @@ file(WRITE "${generated}/seed.c" "${seed_source}")
 # sketch.c: sketch part of a sequence, for index construction on several threads.
 file(READ "${minimap2_SOURCE_DIR}/sketch.c" sketch_source)
 file(WRITE "${generated}/sketch.c" "${sketch_source}\n#include \"wgse_sketch.inc\"\n")
+# --metal (metal_ksw.h): align.c queues each read's gap fills for the GPU before
+# aligning it and takes the results of identical fills; map.c runs several reads
+# per CPU thread as fibers, so reads waiting for the GPU leave their thread to others.
+file(READ "${minimap2_SOURCE_DIR}/align.c" align_source)
+minimap2_seam(align_source "#include \"ksw2.h\"\n"
+    "#include \"ksw2.h\"\n#include \"metal_ksw.h\"\n
+static void wgse_ksw_prefetch(void *km, const mm_mapopt_t *opt, const mm_idx_t *mi, int qlen,
+\tuint8_t *qseq0[2], int n_regs, const mm_reg1_t *regs, const mm128_t *a);
+")
+minimap2_seam(align_source "\t} else { // dual affine gap\n\t\tksw_extd2_sse("
+    "\t} else if (!wgse_ksw_take(km, qlen, qseq, tlen, tseq, w, ksw_flag, ez)) { // dual affine gap\n\t\tksw_extd2_sse(")
+minimap2_seam(align_source "\tmemset(&ez, 0, sizeof(ksw_extz_t));\n\tfor (i = 0; i < n_regs; ++i) {\n\t\tmm_reg1_t r2;"
+    "\tmemset(&ez, 0, sizeof(ksw_extz_t));\n\twgse_ksw_prefetch(km, opt, mi, qlen, qseq0, n_regs, regs, a);
+\tfor (i = 0; i < n_regs; ++i) {\n\t\tmm_reg1_t r2;")
+file(WRITE "${generated}/align.c" "${align_source}\n#include \"wgse_align.inc\"\n")
+file(READ "${minimap2_SOURCE_DIR}/map.c" map_source)
+minimap2_seam(map_source "mm_tbuf_t *mm_tbuf_init(void)\n"
+    "#include \"metal_ksw.h\"\nmm_tbuf_t *mm_tbuf_init(void)\n")
+minimap2_seam(map_source "\tif (b->km) {\n\t\tkm_stat(b->km, &kmst);"
+    "\tif (b->km && wgse_ksw_km_check()) {\n\t\tkm_stat(b->km, &kmst);")
+minimap2_seam(map_source "\tmm_tbuf_t *b = s->buf[tid];\n\tassert(s->n_seg[i] <= MM_MAX_SEG);\n"
+    "\tmm_tbuf_t *b = s->buf[tid];\n\tvoid *wgse_own_km = wgse_ksw_share_km(&b->km);\n\tassert(s->n_seg[i] <= MM_MAX_SEG);\n")
+minimap2_seam(map_source "\tfor (j = 0; j < s->n_seg[i]; ++j) // flip the query strand"
+    "\twgse_ksw_unshare_km(&b->km, wgse_own_km);\n\tfor (j = 0; j < s->n_seg[i]; ++j) // flip the query strand")
+minimap2_seam(map_source "\t\t\ts->buf = (mm_tbuf_t**)calloc(p->n_threads, sizeof(mm_tbuf_t*));\n\t\t\tfor (i = 0; i < p->n_threads; ++i)"
+    "\t\t\ts->buf = (mm_tbuf_t**)calloc(wgse_ksw_workers(p->n_threads), sizeof(mm_tbuf_t*));\n\t\t\tfor (i = 0; i < wgse_ksw_workers(p->n_threads); ++i)")
+minimap2_seam(map_source "\t\telse kt_for(p->n_threads, worker_for, in, ((step_t*)in)->n_frag);"
+    "\t\telse wgse_ksw_for(p->n_threads, worker_for, in, ((step_t*)in)->n_frag);")
+minimap2_seam(map_source "\t\tfor (i = 0; i < p->n_threads; ++i) mm_tbuf_destroy(s->buf[i]);"
+    "\t\tfor (i = 0; i < wgse_ksw_workers(p->n_threads); ++i) mm_tbuf_destroy(s->buf[i]);")
+file(WRITE "${generated}/map.c" "${map_source}")
 
 # Mirrors upstream's Makefile OBJS for an aarch64 (arm_neon) build, less the ksw2
 # extension kernels, which are built below.
 set(minimap2_names
-    kthread kalloc bseq sdust options lchain align hit jump
-    map format pe esterr splitidx ksw2_ll_sse)
+    kthread kalloc bseq sdust options lchain hit jump
+    format pe esterr splitidx ksw2_ll_sse)
 list(TRANSFORM minimap2_names PREPEND "${minimap2_SOURCE_DIR}/" OUTPUT_VARIABLE minimap2_common_sources)
 list(TRANSFORM minimap2_common_sources APPEND ".c")
-set(minimap2_seamed main index misc seed sketch)
+set(minimap2_seamed main index misc seed sketch align map)
 list(TRANSFORM minimap2_seamed PREPEND "${generated}/" OUTPUT_VARIABLE minimap2_sources)
 list(TRANSFORM minimap2_sources APPEND ".c")
 list(PREPEND minimap2_sources ${minimap2_common_sources})
@@ -147,14 +178,22 @@ function(minimap2_target_settings target)
 endfunction()
 
 function(wgse_minimap2_executable name core)
-    add_library(${core} STATIC ${minimap2_sources} $<TARGET_OBJECTS:wgse_minimap2_ksw2>)
+    add_library(${core} STATIC ${minimap2_sources} metal_ksw.mm
+        $<TARGET_OBJECTS:wgse_minimap2_ksw2>)
     minimap2_target_settings(${core})
     target_include_directories(${core} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(${core} PRIVATE wgse_metal_common)
+    set_source_files_properties(metal_ksw.mm PROPERTIES COMPILE_OPTIONS
+        "-fobjc-arc;-Wall;-Wextra;-Werror")
     target_compile_definitions(${core} PRIVATE
         WGSE_PG_VERSION="2.31-r1302-wgse-${WGSE_MINIMAP2_VERSION}")
 
     add_executable(${name} main.mm)
     target_compile_definitions(${name} PRIVATE WGSE_VERSION="${WGSE_MINIMAP2_VERSION}")
+    if(BUILD_TESTING)
+        # Hidden tuning and failure-injection flags for tests and benchmarks only.
+        target_compile_definitions(${name} PRIVATE WGSE_METAL_BENCHMARK_TOOLS=1)
+    endif()
     target_compile_options(${name} PRIVATE -fobjc-arc -Wall -Wextra -Werror)
     target_link_libraries(${name} PRIVATE ${core} wgse_metal_common)
 endfunction()
@@ -179,7 +218,8 @@ if(BUILD_TESTING)
     add_executable(minimap2-upstream
         ${minimap2_common_sources} "${minimap2_SOURCE_DIR}/main.c" "${minimap2_SOURCE_DIR}/index.c"
         "${minimap2_SOURCE_DIR}/misc.c" "${minimap2_SOURCE_DIR}/seed.c"
-        "${minimap2_SOURCE_DIR}/sketch.c" $<TARGET_OBJECTS:wgse_minimap2_ksw2>)
+        "${minimap2_SOURCE_DIR}/sketch.c" "${minimap2_SOURCE_DIR}/align.c"
+        "${minimap2_SOURCE_DIR}/map.c" $<TARGET_OBJECTS:wgse_minimap2_ksw2>)
     minimap2_target_settings(minimap2-upstream)
     add_test(NAME minimap2_upstream_parity COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
         $<TARGET_FILE:wgse-minimap2> $<TARGET_FILE:minimap2-upstream>
