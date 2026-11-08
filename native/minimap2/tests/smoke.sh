@@ -109,3 +109,18 @@ done
 "$binary" -t 4 -ax sr reference.fa reads_1.fq reads_2.fq > sr.sam 2> sr.log
 check sr.sam 2000
 echo "minimap2 alignments verified"
+
+# --metal must write the same alignments, with gap fills on the GPU, where Metal is usable.
+"$binary" capabilities --json > capabilities.json
+if grep -q '"metal_available":true' capabilities.json; then
+    for preset in map-hifi map-ont; do
+        "$binary" --metal -t 4 -ax "$preset" "$preset.mmi" "${preset#map-}.fq" \
+            > "$preset.metal.sam" 2> "$preset.metal.log"
+        records "$preset.metal.sam"
+        cmp "$preset.sam.records" "$preset.metal.sam.records"
+        grep -Eq 'on the GPU \([1-9][0-9]* used\)' "$preset.metal.log"
+        # @PG CL records that the GPU was used (PR #559 review).
+        grep -q "^@PG	ID:minimap2	.*	CL:minimap2 --metal -t 4 -ax $preset " "$preset.metal.sam"
+    done
+    echo "minimap2 --metal alignments verified"
+fi

@@ -32,7 +32,7 @@
 #            (wgse-bwa-mem3 or bwa-mem3, on the BWA-MEM2 index) or mm2
 #            (wgse-minimap2 or minimap2, -ax sr on <ref>.fa.sr.mmi); upstream
 #            executables (without wgse-) run only the cpu backend
-#   BACKEND  cpu, metal (--metal) or auto (--backend auto)
+#   BACKEND  cpu, metal (--metal) or auto (--backend auto); mem3 has only cpu
 #   tN       threads (default --threads, or every core)
 #   KN       -K N (default 10000000, or minimap2's own for mm2; K0 leaves -K out)
 #   probe    a failure (crash, kill, timeout) is reported, not failed
@@ -80,7 +80,9 @@ tool_files() {
     case $1:$2 in
         bwa:*) echo "amb ann bwt pac sa" ;;
         # --metal does not keep the .0123 in memory, but released builds still open it.
-        mem2:* | mem3:*) echo "amb ann bwt.2bit.64 pac 0123" ;;
+        mem2:*) echo "amb ann bwt.2bit.64 pac 0123" ;;
+        # bwa-mem3 reads the bwa-mem2 index but rebuilds the reference from the .pac.
+        mem3:*) echo "amb ann bwt.2bit.64 pac" ;;
         mm2:*) echo "sr.mmi" ;;
     esac
 }
@@ -116,6 +118,8 @@ parse_config() {
     tool_binary "$c_tool" > /dev/null
     [ "$c_tool" != mm2 ] || c_K=0
     case $c_backend in cpu | metal | auto) ;; *) die "unknown backend in $1" ;; esac
+    [ "$c_tool:$c_backend" != mem3:metal ] && [ "$c_tool:$c_backend" != mem3:auto ] ||
+        die "wgse-bwa-mem3 has no Metal backend (config $1)"
     for field in "${fields[@]:2}"; do
         case $field in
             t[0-9]*) c_threads=${field#t}; [[ $c_threads =~ ^[1-9][0-9]*$ ]] || die "bad threads $field in config $1" ;;
