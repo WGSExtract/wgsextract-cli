@@ -163,6 +163,20 @@ grep -q '"max_buffer_bytes":4096,' limited.json
 grep -q '"gpu_seeding":false,"gpu_seeding_limit":"the FM index' limited.json
 "$aligner" capabilities --json reference.fa > index.json
 grep -q '"gpu_seeding":true,"gpu_seeding_limit":""' index.json
+# An incomplete index is unusable: capabilities exits 1 naming the file.
+mkdir -p partial
+for suffix in .pac .ann .amb; do cp "reference.fa$suffix" "partial/reference.fa$suffix"; done
+head -c 48 reference.fa.bwt.2bit.64 > partial/reference.fa.bwt.2bit.64
+status=0
+"$aligner" capabilities --json partial/reference.fa > /dev/null 2> partial.log || status=$?
+test "$status" -eq 1
+grep -q 'Cannot read the index partial/reference.fa.bwt.2bit.64' partial.log
+cp reference.fa.bwt.2bit.64 partial/
+rm partial/reference.fa.ann
+status=0
+"$aligner" capabilities --json partial/reference.fa > /dev/null 2> partial.log || status=$?
+test "$status" -eq 1
+grep -q 'Cannot read the index partial/reference.fa.ann' partial.log
 # shellcheck disable=SC2086
 "$aligner" $gpu --gpu-max-buffer 4096 mem -t 4 reference.fa pairs-R1.fq pairs-R2.fq \
     > limited.sam 2> limited.log

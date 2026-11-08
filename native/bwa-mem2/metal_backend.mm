@@ -1715,8 +1715,16 @@ uint64_t wgse_occurrence_table_bytes(const std::string &prefix) {
     if (!file) return 0;
     const bool read = fread(&length, sizeof(length), 1, file) == 1;
     fclose(file);
-    if (!read || length <= 0) return 0;
-    return uint64_t((length >> CP_SHIFT) + 1) * sizeof(CP_OCC);
+    if (!read || length <= 0 || length > 0x7fffffffffL) return 0;
+    const uint64_t table = uint64_t((length >> CP_SHIFT) + 1) * sizeof(CP_OCC);
+    // FMI_search::load_index layout: length, 5 counts, occurrence table,
+    // sampled suffix array (1 + 4 bytes per entry), sentinel index.
+    const uint64_t expected = 6 * sizeof(int64_t) + table
+        + uint64_t((length >> SA_COMPX) + 1) * (sizeof(int8_t) + sizeof(uint32_t))
+        + sizeof(int64_t);
+    std::error_code error;
+    const uintmax_t size = std::filesystem::file_size(prefix + ".bwt.2bit.64", error);
+    return !error && size == expected ? table : 0;
 }
 
 uint64_t wgse_index_bytes(const std::string &prefix, bool metal) {

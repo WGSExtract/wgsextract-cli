@@ -230,6 +230,15 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Cannot read the index %s.bwt.2bit.64\n", prefix.c_str());
             return 1;
         }
+        if (!prefix.empty())
+            for (const char *suffix : {".pac", ".ann", ".amb"}) {
+                FILE *file = fopen((prefix + suffix).c_str(), "rb");
+                if (!file) {
+                    fprintf(stderr, "Cannot read the index %s%s\n", prefix.c_str(), suffix);
+                    return 1;
+                }
+                fclose(file);
+            }
         std::string reason;
         bool available = wgse_metal_available(reason);
         if (!available) fprintf(stderr, "Metal unavailable: %s\n", reason.c_str());
