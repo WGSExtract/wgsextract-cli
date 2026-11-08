@@ -71,6 +71,17 @@ bwa whenever less than that is free. Smaller inputs need less.
   threads use more memory; when it reports `LOW`, lower `--threads` or
   `--memory`, or use `--aligner bwa`. Threads are never lowered automatically.
 
+### Around the aligner
+
+Short reads stream from the aligner through samblaster into `samtools sort`
+(or through `samtools fixmate`, `sort` and `markdup` for single-end reads or
+when samblaster is missing). The last samtools stage writes the `.bai` or
+`.crai` as it writes the BAM or CRAM, so there is no separate pass that reads
+the whole output again to index it. The records are unchanged, and the index is
+the one `samtools index` writes (#545).
+
+<!-- 545-numbers -->
+
 ## NVIDIA GPUs (`--gpu`, Parabricks)
 
 `align --gpu` and `realign --gpu` run [NVIDIA Parabricks](https://docs.nvidia.com/clara/parabricks/):

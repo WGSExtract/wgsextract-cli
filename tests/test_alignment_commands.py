@@ -148,6 +148,28 @@ def test_bwa_batch_size_does_not_depend_on_threads(tmp_path, threads):
     assert f" -K 100000000 -t {threads} " in bwa
 
 
+@needs_tools("bwa", "samtools")
+@pytest.mark.parametrize("samblaster", [True, False])
+@pytest.mark.parametrize("atomic", [True, False])
+def test_aligned_bam_comes_with_the_index_samtools_index_writes(
+    tmp_path, request, samblaster, atomic
+):
+    """#545: the sorter (or markdup) indexes as it writes, in place of a
+    separate pass, and the index is the one `samtools index` would write."""
+    from wgsextract_cli.core.atomic_output import atomic_output_mode
+
+    if not samblaster:
+        only_tools(request, "bwa", "samtools")
+    out = tmp_path / "out"
+    with atomic_output_mode(atomic):
+        bam = _align(_short_reads(tmp_path), out)
+
+    reindexed = tmp_path / "reindexed.bai"
+    _samtools("index", "-b", "-o", str(reindexed), bam)
+    assert Path(bam + ".bai").read_bytes() == reindexed.read_bytes()
+    assert not [path.name for path in out.iterdir() if "partial" in path.name]
+
+
 @needs_tools("minimap2", "samtools")
 @pytest.mark.parametrize(
     ("options", "preset"),

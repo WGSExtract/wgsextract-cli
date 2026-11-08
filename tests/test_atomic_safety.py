@@ -101,10 +101,26 @@ def test_publication_failure_restores_the_previous_index(tmp_path, monkeypatch):
     monkeypatch.setattr(os, "replace", fail_output_publication)
     with pytest.raises(PermissionError), atomic_output(output) as staged:
         Path(staged).write_bytes(b"new BAM")
+        Path(staged + ".bai").write_bytes(b"new index")
+        Path(staged + ".csi").write_bytes(b"new CSI index")
     assert output.read_bytes() == b"previous BAM"
     assert index.read_bytes() == b"previous index"
     assert alternate.read_bytes() == b"alternate index"
     assert set(tmp_path.iterdir()) == {output, index, alternate}
+
+
+def test_atomic_output_publishes_the_index_its_writer_wrote(tmp_path):
+    """#545: samtools --write-index indexes the staged file as it writes it."""
+    output = tmp_path / "alignment.bam"
+    index = Path(str(output) + ".bai")
+    output.write_bytes(b"previous BAM")
+    index.write_bytes(b"previous index")
+    with atomic_output(output) as staged:
+        Path(staged).write_bytes(b"new BAM")
+        Path(staged + ".bai").write_bytes(b"new index")
+    assert output.read_bytes() == b"new BAM"
+    assert index.read_bytes() == b"new index"
+    assert set(tmp_path.iterdir()) == {output, index}
 
 
 def test_atomic_alignment_retires_basename_index_and_config_leaves_neighbors(tmp_path):
@@ -322,7 +338,9 @@ def test_atomic_alignment_failure_keeps_the_previous_bam(tmp_path, monkeypatch):
 
     def interrupted(stages, **kwargs):
         sort = stages[-1]
-        Path(sort[sort.index("-o") + 1]).write_bytes(b"interrupted BAM")
+        bam, _, bai = sort[sort.index("-o") + 1].partition("##idx##")
+        Path(bam).write_bytes(b"interrupted BAM")
+        Path(bai).write_bytes(b"interrupted index")
         raise RuntimeError("interrupted alignment")
 
     monkeypatch.setattr(align, "run_pipeline", interrupted)

@@ -55,6 +55,7 @@ def atomic_output(path: PathInput, *, retire_indexes: bool = True) -> Iterator[s
     base = final.name[: -len(suffix)] if suffix else final.name
     staged = final.with_name(f".{base}.{uuid.uuid4().hex}.partial{suffix}")
     retired: list[tuple[Path, Path]] = []
+    published: list[Path] = []
     try:
         yield str(staged)
         if not staged.is_file():
@@ -67,8 +68,16 @@ def atomic_output(path: PathInput, *, retire_indexes: bool = True) -> Iterator[s
                     backup = Path(f"{staged}.previous-{number}{index.suffix}")
                     os.replace(index, backup)
                     retired.append((index, backup))
+            # An index the writer made as it wrote (samtools --write-index),
+            # published with it.
+            for ext in (".bai", ".crai", ".csi", ".tbi"):
+                if Path(str(staged) + ext).is_file():
+                    os.replace(str(staged) + ext, str(final) + ext)
+                    published.append(Path(str(final) + ext))
             os.replace(staged, final)
         except BaseException:
+            for index in published:
+                index.unlink(missing_ok=True)
             for index, backup in retired:
                 os.replace(backup, index)
             raise
