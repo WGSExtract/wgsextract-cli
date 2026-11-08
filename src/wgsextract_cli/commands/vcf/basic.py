@@ -284,6 +284,7 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
     input_file = str(params.input)
     setup = setup_caller(params)
     threads, outdir, ref = setup.threads, setup.outdir, setup.ref
+    parallel = int(threads) > 1 if params.parallel is None else params.parallel
     preflight_resources(
         lambda: estimate_resources(
             task,
@@ -292,7 +293,7 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
             reference=ref,
             threads=threads,
             region=params.region,
-            parallel=params.parallel,
+            parallel=parallel,
         )
     )
     print_warning("ButtonInDelVCF" if indels else "ButtonSNPVCF", threads=threads)
@@ -322,7 +323,7 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
             region=params.region,
             profile=profile,
             call_args=[*ploidy, *sex_args, *prior],
-            parallel=params.parallel,
+            parallel=parallel,
             indels=indels,
         )
     ensure_vcf_indexed(out_vcf)

@@ -1,13 +1,16 @@
 import logging
+import subprocess
 import sys
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 
 from wgsextract_cli.api._runtime import ProgressEvent, _context_of
 from wgsextract_cli.core import utils
 from wgsextract_cli.core.progress import Heartbeat
+from wgsextract_cli.core.results import CommandResult, collecting
 
 
 def _wait_until(condition: Callable[[], bool], timeout: float = 5.0) -> None:
@@ -113,3 +116,179 @@ def test_heartbeat_sends_its_count_and_fraction_to_api_callers():
         ProgressEvent("heartbeat", "0/4 reads", 0.0),
         ProgressEvent("heartbeat", "3/4 reads", 0.75),
     ]
+
+
+def test_extraction_heartbeat_moves_before_samtools_reports_its_count(
+    tmp_path, caplog, monkeypatch
+):
+    # Issue #549: a 35x FASTQ extraction showed "0/835M reads (0.0%)" for 23
+    # minutes, because samtools fastq prints its count only when it finishes.
+    original = utils.Heartbeat
+    monkeypatch.setattr(
+        utils, "Heartbeat", lambda *a, **k: original(*a, interval=0.01, **k)
+    )
+    state = tmp_path / "state"
+    stage = [
+        sys.executable,
+        "-c",
+        "import pathlib,sys,time;state=pathlib.Path(sys.argv[1])\n"
+        "for shares in ('0.5 0','1 0','1 0.5'):\n"
+        "    state.write_text(shares);time.sleep(.2)\n"
+        "sys.stderr.write('[M::bam2fq_mainloop] processed 4 reads\\n')",
+        str(state),
+        "samtools",
+        "fastq",
+    ]
+
+    def estimate() -> tuple[float, float]:
+        read, written = (state.read_text() or "0 0").split()
+        return float(read), float(written)
+
+    state.write_text("0 0")
+    caplog.set_level(logging.INFO)
+    utils.run_pipeline(
+        [stage], stdout=subprocess.DEVNULL, heartbeat=True, expected_reads=4,
+        estimate=estimate,
+    )  # fmt: skip
+    assert "50% of the input read" in caplog.text
+    assert "100% of the input read, collating pairs" in caplog.text
+    assert "~2/4 reads written (50.0%)" in caplog.text
+    assert "4/4 reads (100.0%)" in caplog.text
+
+
+def test_write_time_left_comes_from_progress_since_writing_was_seen(
+    caplog, monkeypatch
+):
+    # #564 review: a first sample with output already written claimed "about
+    # 0s left to write" while half the output was still to come.
+    clock = iter([0.0, 60.0, 60.0, 120.0, 120.0])
+    monkeypatch.setattr(time, "monotonic", lambda: next(clock))
+    caplog.set_level(logging.INFO)
+    heartbeat = Heartbeat("Extraction", 100)
+    heartbeat.estimate(1, 0.4)
+    heartbeat.report()
+    assert "(40.0%), elapsed" in caplog.text
+    assert "left to write" not in caplog.text
+    heartbeat.estimate(1, 0.7)
+    heartbeat.report()
+    assert "(70.0%), about 60s left to write" in caplog.text
+
+
+def test_failing_estimate_keeps_the_tools_own_count(tmp_path, caplog, monkeypatch):
+    # #564 review: an estimator error disabled the whole scan, so samtools's
+    # final count was never read.
+    original = utils.Heartbeat
+    monkeypatch.setattr(
+        utils, "Heartbeat", lambda *a, **k: original(*a, interval=0.01, **k)
+    )
+    stage = [
+        sys.executable,
+        "-c",
+        "import sys,time;time.sleep(.1)\n"
+        "sys.stderr.write('[M::bam2fq_mainloop] processed 4 reads\\n')",
+        "samtools",
+        "fastq",
+    ]
+
+    def estimate() -> tuple[float, float]:
+        raise OSError("bucket vanished")
+
+    caplog.set_level(logging.INFO)
+    utils.run_pipeline(
+        [stage], stdout=subprocess.DEVNULL, heartbeat=True, expected_reads=4,
+        estimate=estimate,
+    )  # fmt: skip
+    assert "4/4 reads (100.0%)" in caplog.text
+    assert "Progress scan unavailable" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("work", "state"),
+    [
+        ("t=time.time()\nwhile time.time()-t<1.5: pass", "busy"),
+        ("time.sleep(1.5)", "stalled"),
+    ],
+)
+def test_quiet_aligner_heartbeat_tells_slow_batch_from_stall(
+    tmp_path, caplog, monkeypatch, work, state
+):
+    """#431: minimap2 spent hours on a batch of chr4 satellite ONT reads while
+    the heartbeat repeated the same read count, which looked like a hang."""
+    original = utils.Heartbeat
+    monkeypatch.setattr(
+        utils,
+        "Heartbeat",
+        lambda *a, **k: original(*a, interval=0.1, stall_after=0.5, **k),
+    )
+    stage = [
+        sys.executable,
+        "-c",
+        "import sys,time\nsys.stderr.write('[M::worker_pipeline] mapped 2 sequences\\n')\n"
+        f"sys.stderr.flush()\n{work}",
+        "minimap2",
+    ]
+    caplog.set_level(logging.INFO)
+    with collecting(result := CommandResult(command="align")):
+        with (tmp_path / "out").open("wb") as output:
+            utils.run_pipeline([stage], stdout=output, heartbeat=True)
+    assert f"{Path(sys.executable).stem} {state}: no progress for" in caplog.text
+    stalls = [w.code for w in result.warnings if w.code == "aligner_stalled"]
+    assert stalls == (["aligner_stalled"] if state == "stalled" else [])
+
+
+def test_aligner_waiting_on_busy_upstream_stage_is_not_stalled(tmp_path, monkeypatch):
+    """PR #576 review: samtools collate reads a whole 30x input before bwa gets
+    a read; bwa idling on its empty stdin meanwhile is no stall."""
+    original = utils.Heartbeat
+    monkeypatch.setattr(
+        utils,
+        "Heartbeat",
+        lambda *a, **k: original(*a, interval=0.1, stall_after=0.5, **k),
+    )
+    collate = [
+        sys.executable,
+        "-c",
+        "import time\nt=time.time()\nwhile time.time()-t<1.5: pass\nprint('r')",
+    ]
+    aligner = [
+        sys.executable,
+        "-c",
+        "import sys\nsys.stdin.read()\n"
+        "sys.stderr.write('[M::process] Processed 1 reads\\n')",
+        "bwa",
+    ]
+    with collecting(result := CommandResult(command="realign")):
+        with (tmp_path / "out").open("wb") as output:
+            utils.run_pipeline([collate, aligner], stdout=output, heartbeat=True)
+    assert [w.code for w in result.warnings] == []
+
+
+def test_sorting_after_the_aligner_exits_is_not_a_slow_batch(
+    tmp_path, caplog, monkeypatch
+):
+    """PR #576 review: samtools sort's final merge runs for many minutes after
+    bwa has exited; that is neither a slow aligner batch nor a stall."""
+    original = utils.Heartbeat
+    monkeypatch.setattr(
+        utils,
+        "Heartbeat",
+        lambda *a, **k: original(*a, interval=0.1, stall_after=0.5, **k),
+    )
+    aligner = [
+        sys.executable,
+        "-c",
+        "import sys\nsys.stderr.write('[M::process] Processed 1 reads\\n')\nprint('r')",
+        "bwa",
+    ]
+    sort = [
+        sys.executable,
+        "-c",
+        "import sys,time\nsys.stdin.read()\nt=time.time()\n"
+        "while time.time()-t<1.5: pass",
+    ]
+    caplog.set_level(logging.INFO)
+    with collecting(result := CommandResult(command="realign")):
+        with (tmp_path / "out").open("wb") as output:
+            utils.run_pipeline([aligner, sort], stdout=output, heartbeat=True)
+    assert "no progress for" not in caplog.text
+    assert [w.code for w in result.warnings] == []

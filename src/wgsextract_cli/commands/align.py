@@ -26,6 +26,7 @@ from wgsextract_cli.core.alignment_memory import (
 )
 from wgsextract_cli.core.alignment_metadata import cram_encoded_with, get_bam_header
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled, safe_output
+from wgsextract_cli.core.chunked_alignment import Chunk, ChunkedAlignment
 from wgsextract_cli.core.dependencies import get_tool_path as get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -151,6 +152,10 @@ class AlignJob:
     input_reads: InputReads | None = None
     # The source BAM/CRAM's read-group DS, when realign aligns its FASTQ.
     read_group_description: str = ""
+    # realign's chunks of a sorted long-read r1 (chunked_alignment), and
+    # whether an interrupted chunked run's work may be resumed.
+    chunks: list[Chunk] | None = None
+    resume_chunks: bool = False
 
     @classmethod
     def of(cls: type[_Job], params: Params) -> _Job:
@@ -1448,24 +1453,26 @@ def align_minimap2(job: AlignJob) -> None:
     read_length = job.input_reads.read_length if job.input_reads else None
     if read_length is None and preset != "sr" and input_bytes:
         read_length = _long_read_length(setup.r1, job.input_cram_opt or [])
-    preflight_resources(
-        lambda: estimate_resources(
-            "align",
-            input_paths=read_files,
-            output_dir=setup.outdir,
-            temp_dir=configured_temp_directory(),
-            reference=setup.ref,
-            threads=setup.threads,
-            memory=setup.memory,
-            aligner="minimap2",
-            preset=preset,
-            samblaster=duplicates == "samblaster",
-            reads=read_count,
-            platform=job.platform,
-            read_length=read_length,
-            output_format=job.format,
+    # realign checked a chunked alignment's disk space, chunk by chunk.
+    if not job.chunks:
+        preflight_resources(
+            lambda: estimate_resources(
+                "align",
+                input_paths=read_files,
+                output_dir=setup.outdir,
+                temp_dir=configured_temp_directory(),
+                reference=setup.ref,
+                threads=setup.threads,
+                memory=setup.memory,
+                aligner="minimap2",
+                preset=preset,
+                samblaster=duplicates == "samblaster",
+                reads=read_count,
+                platform=job.platform,
+                read_length=read_length,
+                output_format=job.format,
+            )
         )
-    )
     check_mapping_memory(
         setup.ref,
         "minimap2",
@@ -1511,9 +1518,29 @@ def align_minimap2(job: AlignJob) -> None:
     align_cmd += [
         "-R",
         read_group(setup.stem, job.sample, job.platform, description),
-        setup.ref,
-        reads,
     ]
+    if job.chunks and upstream and _is_alignment_file(setup.r1):
+        try:
+            ChunkedAlignment(
+                input=setup.r1,
+                output=out_bam,
+                chunks=job.chunks,
+                reference=setup.ref,
+                format=job.format,
+                threads=setup.threads,
+                memory=setup.memory,
+                mapper=align_cmd,
+                indexer=[*aligner.argv(), "-x", preset, "-t", setup.threads],
+                reads=["samtools", "fastq", "-n", "-T", LONG_READ_TAGS, "-"],
+                decode=job.input_cram_opt or [],
+                resume=job.resume_chunks,
+            ).run()
+            _index_output(out_bam, threads=setup.threads)
+        except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
+            raise WGSExtractError(f"{aligner.binary} alignment failed: {e}") from e
+        record_alignment(out_bam, "minimap2", setup.ref)
+        return
+    align_cmd += [setup.ref, reads]
     try:
         run_streamed_alignment(
             align_cmd + ([job.r2] if job.r2 else []),

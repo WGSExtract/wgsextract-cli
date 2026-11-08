@@ -38,7 +38,7 @@ set(SKIP_INSTALL_ALL ON)
 FetchContent_MakeAvailable(mem3 mem3_neon mem3_libsais mem3_mimalloc mem3_zlibng mem3_libdeflate)
 
 # Bump when the wgse-bwa-mem3 package changes; it is versioned separately from bwa-mem3.
-set(WGSE_BWA_MEM3_VERSION 0.1.0)
+set(WGSE_BWA_MEM3_VERSION 0.2.0)
 set(MEM3_VERSION 0.16.0)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 # src/ includes the vendored "../ext/pdqsort/pdqsort.h".
@@ -152,8 +152,34 @@ file(READ "${mem3_SOURCE_DIR}/src/main.cpp" main_source)
 mem3_seam(main_source "int main(int argc, char* argv[])"
     "extern \"C\" int wgse_bwamem3_main(int argc, char* argv[])")
 file(WRITE "${mem3_src}/main.cpp" "${main_source}")
-
-mem3_core(wgse_mem3_core "${mem3_src}" "${mem3_src}/main.cpp")
+# GPU seed extension (--metal): getScores8, the 8-bit banded SW tier, runs on wgse-bwa-mem2's
+# extend_batch kernel, which computes the scalar banded SW that upstream's NEON kernel matches.
+set(mem2_dir "${CMAKE_CURRENT_SOURCE_DIR}/../bwa-mem2")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${mem2_dir}/extension.metal")
+file(READ "${mem2_dir}/extension.metal" extension_source)
+configure_file(extension_source.h.in "${generated}/extension_source.h" @ONLY)
+set(neon_assert "static_assert(SIMD_WIDTH8 == 16 && SIMD_WIDTH16 == 8, \"SSE/NEON kernel requires 16x8-bit and 8x16-bit lanes\");")
+file(READ "${mem3_SOURCE_DIR}/src/bandedSWA.cpp" bsw_source)
+mem3_seam(bsw_source "${neon_assert}" "${neon_assert}
+    if (!cpg_ && m == 5 && !guard_overshoot_) {
+        const WgseBswScoring wgse_scoring{o_del, e_del, o_ins, e_ins, zdrop, end_bonus, mat};
+        if (wgse_mem3_bsw8(pairArray, seqBufRef, seqBufQer, numPairs, w, wgse_scoring)) return;
+    }")
+file(WRITE "${mem3_src}/bandedSWA.cpp" "#include \"metal_extension.h\"\n${bsw_source}")
+# While workers wait for the GPU, others use their cores: --metal runs more compute threads
+# (the reads per chunk, and so the output, do not depend on them).
+file(READ "${mem3_SOURCE_DIR}/src/fastmap.cpp" fastmap_source)
+mem3_seam(fastmap_source "    int32_t nthreads = opt->n_threads; // global variable for profiling!\n    w.nthreads = opt->n_threads;"
+    "    int32_t nthreads = wgse_mem3_compute_threads(opt->n_threads);\n    w.nthreads = nthreads;")
+# The same low-memory warning as wgse-bwa-mem2, before the index is loaded.
+mem3_seam(fastmap_source "    aux.fmi = new FMI_search(ref_prefix);"
+    "    wgse_mem3_memory_preflight(ref_prefix, fixed_chunk_size > 0 ? int64_t(fixed_chunk_size)\n        : int64_t(opt->chunk_size) * opt->n_threads);\n    aux.fmi = new FMI_search(ref_prefix);")
+file(WRITE "${mem3_src}/fastmap.cpp" "#include \"metal_extension.h\"\n${fastmap_source}")
+mem3_core(wgse_mem3_core "${mem3_src}" "${mem3_src}/main.cpp" metal_extension.mm)
+target_include_directories(wgse_mem3_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
+    PRIVATE "${generated}")
+set_source_files_properties(metal_extension.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+target_link_libraries(wgse_mem3_core PUBLIC wgse_metal_common)
 add_executable(wgse-bwa-mem3 main.mm)
 target_compile_definitions(wgse-bwa-mem3 PRIVATE WGSE_VERSION="${WGSE_BWA_MEM3_VERSION}"
     MEM3_VERSION="${MEM3_VERSION}")
@@ -163,17 +189,13 @@ target_link_libraries(wgse-bwa-mem3 PRIVATE wgse_mem3_core wgse_metal_common)
 if(BUILD_TESTING)
     add_test(NAME bwa_mem3_capabilities COMMAND wgse-bwa-mem3 capabilities --json)
     set_tests_properties(bwa_mem3_capabilities PROPERTIES
-        PASS_REGULAR_EXPRESSION "\"engine\":\"bwa-mem3\".*\"metal_hardware_supported\":")
+        PASS_REGULAR_EXPRESSION "\"engine\":\"bwa-mem3\".*\"metal_hardware_supported\":.*\"physical_memory_bytes\":[1-9]")
     # "version" prints one line, like --version and the other wrappers.
     add_test(NAME bwa_mem3_version COMMAND wgse-bwa-mem3 version)
     set_tests_properties(bwa_mem3_version PROPERTIES
         PASS_REGULAR_EXPRESSION "^wgse-bwa-mem3 [0-9.]+; bwa-mem3 [0-9.]+\n$")
-    # Without a Metal backend, --metal must fail rather than silently use the CPU.
-    add_test(NAME bwa_mem3_metal_refused COMMAND wgse-bwa-mem3 --metal mem)
-    set_tests_properties(bwa_mem3_metal_refused PROPERTIES
-        PASS_REGULAR_EXPRESSION "Metal unavailable: wgse-bwa-mem3 [^ ]+ has no Metal backend")
     add_test(NAME bwa_mem3_smoke COMMAND "${PROJECT_SOURCE_DIR}/tests/smoke.sh"
-        $<TARGET_FILE:wgse-bwa-mem3> "${CMAKE_CURRENT_BINARY_DIR}/smoke" cpu)
+        $<TARGET_FILE:wgse-bwa-mem3> "${CMAKE_CURRENT_BINARY_DIR}/smoke" metal)
     # Unmodified upstream sources, to check that wgse-bwa-mem3 changes no alignment.
     set(upstream_src "${generated}/upstream-src")
     file(COPY "${mem3_SOURCE_DIR}/src/" DESTINATION "${upstream_src}")
@@ -186,6 +208,22 @@ if(BUILD_TESTING)
     add_test(NAME bwa_mem3_upstream_parity COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
         $<TARGET_FILE:wgse-bwa-mem3> $<TARGET_FILE:bwa-mem3-upstream>
         "${CMAKE_CURRENT_BINARY_DIR}/upstream")
+    # Too little memory for the run is reported, and changes no alignment.
+    add_test(NAME bwa_mem3_low_memory_warning
+        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
+        $<TARGET_FILE:wgse-bwa-mem3> $<TARGET_FILE:bwa-mem3-upstream>
+        "${CMAKE_CURRENT_BINARY_DIR}/low-memory" --physical-memory 1048576)
+    # The GPU's seed extensions, including those committed again after an interruption, and
+    # the CPU's after a GPU failure, must leave every record unchanged.
+    add_test(NAME bwa_mem3_metal_parity COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
+        $<TARGET_FILE:wgse-bwa-mem3> $<TARGET_FILE:bwa-mem3-upstream>
+        "${CMAKE_CURRENT_BINARY_DIR}/metal" --metal --gpu-inject-interruptions 2)
+    add_test(NAME bwa_mem3_metal_failure_parity
+        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
+        $<TARGET_FILE:wgse-bwa-mem3> $<TARGET_FILE:bwa-mem3-upstream>
+        "${CMAKE_CURRENT_BINARY_DIR}/metal-failure" --metal --gpu-inject-extension-failure)
+    set_tests_properties(bwa_mem3_metal_parity bwa_mem3_metal_failure_parity
+        PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
 install(TARGETS wgse-bwa-mem3 RUNTIME DESTINATION bin)

@@ -9,7 +9,9 @@ import ntpath
 import os
 import shutil
 import signal
+import socket
 import sqlite3
+import struct
 import subprocess
 import sys
 import threading
@@ -172,6 +174,35 @@ def test_bad_lengths_are_refused_and_errors_close_the_connection(client):
     assert json.loads(response.read())["error"]["code"] == "bad_length"
     assert response.headers["Connection"] == "close"
     connection.close()
+
+
+def test_a_client_resetting_its_connection_prints_no_traceback(client, capfd):
+    # Issue #554: on Windows, PowerShell's Invoke-RestMethod resets its idle
+    # keep-alive connection, and `wgsextract serve` printed a ConnectionResetError
+    # traceback on stderr for each one.
+    host, port = client.url.removeprefix("http://").removesuffix("/v1").split(":")
+    before = set(threading.enumerate())
+
+    def handlers() -> set[threading.Thread]:
+        return {t for t in set(threading.enumerate()) - before if t.is_alive()}
+
+    with socket.create_connection((host, int(port)), timeout=30) as sock:
+        # An unfinished request line: its handler waits to read the rest.
+        sock.sendall(b"GET /v1/health HTTP/1.1")
+        deadline = time.monotonic() + 30
+        while not handlers() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert handlers(), "the server never picked up the connection"
+        # Linger 0: closing sends a reset, as Windows does.
+        linger = struct.pack("HH" if sys.platform == "win32" else "ii", 1, 0)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, linger)
+    deadline = time.monotonic() + 30
+    while handlers() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert not handlers(), "the reset connection's handler never finished"
+    stderr = capfd.readouterr().err
+    assert client.request("GET", "/health", token=None)[0] == 200
+    assert "Traceback" not in stderr
 
 
 def test_jobs_writing_to_one_folder_run_one_at_a_time(
