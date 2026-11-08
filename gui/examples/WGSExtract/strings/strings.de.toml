@@ -555,10 +555,16 @@
 "actions.annotate.v066.vcf-table.title" = "Variantentabelle"  # i18n-source-hash:edf38ae9
 "actions.annotate.v066.vcf-table.tooltip" = "Eine Zeile pro Variante mit Annotationen und Genotyp exportieren, als TSV-Tabelle und abfragbare SQLite-Datenbank."  # i18n-source-hash:44465bc2
 "sections.settings.v066.report-issue.title" = "Problem melden"  # i18n-source-hash:acbda9da
-"sections.settings.v066.report-issue.subtitle" = "Vorschau eines geschwärzten Fehlerberichts zu dieser Installation und einem aktuellen Lauf. Es wird nichts hochgeladen."  # i18n-source-hash:c7ef7e2a
+"sections.settings.v066.report-issue.subtitle" = "Vorschau eines geschwärzten Fehlerberichts zu dieser Installation und einem aktuellen Lauf, oder ihn als vorausgefülltes GitHub-Issue öffnen. Es wird nichts hochgeladen; Sie senden ihn selbst auf GitHub ab."  # i18n-source-hash:0ff8e4ca
 "controls.settings.v066.report-last-failed.label" = "Letzten fehlgeschlagenen Lauf melden"  # i18n-source-hash:a2dbb6f1
 "controls.settings.v066.report-last-failed.tooltip" = "Nicht aktiviert meldet den letzten Lauf, ob fehlgeschlagen oder nicht."  # i18n-source-hash:bbbdcf7c
 "controls.settings.v066.report-description.label" = "Was ist passiert? (optional)"  # i18n-source-hash:9a81bdcf
 "controls.settings.v066.report-description.tooltip" = "Ihre Beschreibung wird dem Bericht hinzugefügt. Lassen Sie Namen und andere persönliche Angaben weg."  # i18n-source-hash:35c2fba8
 "actions.settings.v066.report-issue.title" = "Fehlerbericht-Vorschau"  # i18n-source-hash:80fbe9f8
 "actions.settings.v066.report-issue.tooltip" = "Einen Bericht ohne Namen, Pfade, Reads, Genotypen und Geheimnisse ausgeben und speichern, dazu einen Link zu einem vorausgefüllten GitHub-Issue. Der Browser öffnet sich nicht, und nichts wird übermittelt, solange Sie den Link nicht selbst öffnen und absenden."  # i18n-source-hash:96a9ed2c
+"actions.settings.v066.report-issue-open.title" = "Fehlerbericht auf GitHub öffnen"  # i18n-source-hash:4d0be68d
+"actions.settings.v066.report-issue-open.tooltip" = "Einen vorausgefüllten GitHub-Fehlerbericht öffnen. Persönliche Daten wie Dateinamen, Probennamen und Ihr Benutzerordner werden vorher entfernt; Sie prüfen den Bericht vor dem Absenden."  # i18n-source-hash:92149a68
+"actions.settings.v066.report-issue-open.confirm.title" = "Fehlerbericht auf GitHub öffnen?"  # i18n-source-hash:fc04d69d
+"actions.settings.v066.report-issue-open.confirm.message" = "Ihr Browser öffnet das Formular für ein neues GitHub-Issue, ausgefüllt mit dem geschwärzten Bericht. Es wird nichts hochgeladen: Prüfen Sie ihn dort und senden Sie ihn selbst ab. Eine Kopie wird im Ordner „reports“ Ihres Datenordners gespeichert."  # i18n-source-hash:7cc1851d
+"actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "Im Browser öffnen"  # i18n-source-hash:56c8f9db
+"actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "Abbrechen"  # i18n-source-hash:77dfd213

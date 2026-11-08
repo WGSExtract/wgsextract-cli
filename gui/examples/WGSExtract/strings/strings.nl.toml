@@ -555,10 +555,16 @@
 "actions.annotate.v066.vcf-table.title" = "Varianttabel"  # i18n-source-hash:edf38ae9
 "actions.annotate.v066.vcf-table.tooltip" = "Exporteer één rij per variant met annotaties en genotype, als TSV-tabel en doorzoekbare SQLite-database."  # i18n-source-hash:44465bc2
 "sections.settings.v066.report-issue.title" = "Probleem melden"  # i18n-source-hash:acbda9da
-"sections.settings.v066.report-issue.subtitle" = "Bekijk een bugrapport zonder gevoelige gegevens over deze installatie en een recente run. Er wordt niets geüpload."  # i18n-source-hash:c7ef7e2a
+"sections.settings.v066.report-issue.subtitle" = "Bekijk een bugrapport zonder gevoelige gegevens over deze installatie en een recente run, of open het als vooraf ingevuld GitHub-issue. Er wordt niets geüpload; u dient het zelf in op GitHub."  # i18n-source-hash:0ff8e4ca
 "controls.settings.v066.report-last-failed.label" = "Laatste mislukte run melden"  # i18n-source-hash:a2dbb6f1
 "controls.settings.v066.report-last-failed.tooltip" = "Niet aangevinkt meldt de laatste run, ongeacht of die is mislukt."  # i18n-source-hash:bbbdcf7c
 "controls.settings.v066.report-description.label" = "Wat is er gebeurd? (optioneel)"  # i18n-source-hash:9a81bdcf
 "controls.settings.v066.report-description.tooltip" = "Uw beschrijving wordt aan het rapport toegevoegd. Laat namen en andere persoonlijke gegevens weg."  # i18n-source-hash:35c2fba8
 "actions.settings.v066.report-issue.title" = "Voorbeeld van bugrapport"  # i18n-source-hash:80fbe9f8
 "actions.settings.v066.report-issue.tooltip" = "Toon en bewaar een rapport zonder namen, paden, reads, genotypen en geheimen, met een link naar een vooraf ingevuld GitHub-issue. De browser opent niet en er wordt niets ingediend tenzij u de link opent en zelf indient."  # i18n-source-hash:96a9ed2c
+"actions.settings.v066.report-issue-open.title" = "Bugrapport openen op GitHub"  # i18n-source-hash:4d0be68d
+"actions.settings.v066.report-issue-open.tooltip" = "Open een vooraf ingevuld GitHub-bugrapport. Persoonlijke gegevens zoals bestandsnamen, monsternamen en uw thuismap worden eerst verwijderd; u controleert het voordat u het indient."  # i18n-source-hash:92149a68
+"actions.settings.v066.report-issue-open.confirm.title" = "Het bugrapport openen op GitHub?"  # i18n-source-hash:fc04d69d
+"actions.settings.v066.report-issue-open.confirm.message" = "Uw browser opent het formulier voor een nieuw GitHub-issue, ingevuld met het opgeschoonde rapport. Er wordt niets geüpload: controleer het daar en dien het zelf in. Een kopie wordt bewaard in de map reports van uw gegevensmap."  # i18n-source-hash:7cc1851d
+"actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "Openen in browser"  # i18n-source-hash:56c8f9db
+"actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "Annuleren"  # i18n-source-hash:77dfd213

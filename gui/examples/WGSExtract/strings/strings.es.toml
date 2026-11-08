@@ -555,10 +555,16 @@
 "actions.annotate.v066.vcf-table.title" = "Tabla de variantes"  # i18n-source-hash:edf38ae9
 "actions.annotate.v066.vcf-table.tooltip" = "Exporta una fila por variante con sus anotaciones y genotipo, como tabla TSV y base de datos SQLite para consultar."  # i18n-source-hash:44465bc2
 "sections.settings.v066.report-issue.title" = "Informar de un problema"  # i18n-source-hash:acbda9da
-"sections.settings.v066.report-issue.subtitle" = "Previsualiza un informe de errores censurado sobre esta instalación y una ejecución reciente. No se sube nada."  # i18n-source-hash:c7ef7e2a
+"sections.settings.v066.report-issue.subtitle" = "Previsualiza un informe de errores censurado sobre esta instalación y una ejecución reciente, o ábrelo como una incidencia de GitHub ya rellenada. No se sube nada; tú lo envías en GitHub."  # i18n-source-hash:0ff8e4ca
 "controls.settings.v066.report-last-failed.label" = "Informar de la última ejecución fallida"  # i18n-source-hash:a2dbb6f1
 "controls.settings.v066.report-last-failed.tooltip" = "Sin marcar informa de la última ejecución, haya fallado o no."  # i18n-source-hash:bbbdcf7c
 "controls.settings.v066.report-description.label" = "¿Qué ocurrió? (opcional)"  # i18n-source-hash:9a81bdcf
 "controls.settings.v066.report-description.tooltip" = "Su descripción se añade al informe. No incluya nombres ni otros datos personales."  # i18n-source-hash:35c2fba8
 "actions.settings.v066.report-issue.title" = "Previsualizar informe de errores"  # i18n-source-hash:80fbe9f8
 "actions.settings.v066.report-issue.tooltip" = "Imprime y guarda un informe sin nombres, rutas, lecturas, genotipos ni secretos, junto con un enlace a una incidencia de GitHub ya rellenada. El navegador no se abre y no se envía nada a menos que usted abra el enlace y lo envíe."  # i18n-source-hash:96a9ed2c
+"actions.settings.v066.report-issue-open.title" = "Abrir informe de errores en GitHub"  # i18n-source-hash:4d0be68d
+"actions.settings.v066.report-issue-open.tooltip" = "Abre un informe de errores de GitHub ya rellenado. Antes se eliminan los datos personales, como nombres de archivo, nombres de muestras y tu carpeta personal; lo revisas antes de enviarlo."  # i18n-source-hash:92149a68
+"actions.settings.v066.report-issue-open.confirm.title" = "¿Abrir el informe de errores en GitHub?"  # i18n-source-hash:fc04d69d
+"actions.settings.v066.report-issue-open.confirm.message" = "Tu navegador abre el formulario de nueva incidencia de GitHub, rellenado con el informe censurado. No se sube nada: revísalo allí y envíalo tú mismo. Se guarda una copia en la carpeta reports de tu carpeta de datos."  # i18n-source-hash:7cc1851d
+"actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "Abrir en el navegador"  # i18n-source-hash:56c8f9db
+"actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "Cancelar"  # i18n-source-hash:77dfd213

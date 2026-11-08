@@ -555,10 +555,16 @@
 "actions.annotate.v066.vcf-table.title" = "变异表"  # i18n-source-hash:edf38ae9
 "actions.annotate.v066.vcf-table.tooltip" = "每个变异导出一行，包含注释和基因型，生成 TSV 表和可查询的 SQLite 数据库。"  # i18n-source-hash:44465bc2
 "sections.settings.v066.report-issue.title" = "报告问题"  # i18n-source-hash:acbda9da
-"sections.settings.v066.report-issue.subtitle" = "预览关于此安装和最近一次运行的已脱敏错误报告。不会上传任何内容。"  # i18n-source-hash:c7ef7e2a
+"sections.settings.v066.report-issue.subtitle" = "预览关于此安装和最近一次运行的已脱敏错误报告，或将其作为预填的 GitHub 议题打开。不会上传任何内容；由您自行在 GitHub 上提交。"  # i18n-source-hash:0ff8e4ca
 "controls.settings.v066.report-last-failed.label" = "报告上次失败的运行"  # i18n-source-hash:a2dbb6f1
 "controls.settings.v066.report-last-failed.tooltip" = "未勾选时报告上一次运行，无论是否失败。"  # i18n-source-hash:bbbdcf7c
 "controls.settings.v066.report-description.label" = "发生了什么？（可选）"  # i18n-source-hash:9a81bdcf
 "controls.settings.v066.report-description.tooltip" = "您的描述会添加到报告中。请勿包含姓名和其他个人信息。"  # i18n-source-hash:35c2fba8
 "actions.settings.v066.report-issue.title" = "预览错误报告"  # i18n-source-hash:80fbe9f8
 "actions.settings.v066.report-issue.tooltip" = "打印并保存已移除姓名、路径、读段、基因型和密钥的报告，并提供预填的 GitHub 议题链接。不会打开浏览器，除非您自行打开链接并提交，否则不会提交任何内容。"  # i18n-source-hash:96a9ed2c
+"actions.settings.v066.report-issue-open.title" = "在 GitHub 上打开错误报告"  # i18n-source-hash:4d0be68d
+"actions.settings.v066.report-issue-open.tooltip" = "打开预填的 GitHub 错误报告。文件名、样本名和您的主文件夹等个人数据会先被移除；提交前由您审阅。"  # i18n-source-hash:92149a68
+"actions.settings.v066.report-issue-open.confirm.title" = "在 GitHub 上打开错误报告？"  # i18n-source-hash:fc04d69d
+"actions.settings.v066.report-issue-open.confirm.message" = "浏览器将打开 GitHub 的新建议题表单，并填入已脱敏的报告。不会上传任何内容：请在那里审阅并自行提交。副本保存在数据文件夹的 reports 文件夹中。"  # i18n-source-hash:7cc1851d
+"actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "在浏览器中打开"  # i18n-source-hash:56c8f9db
+"actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "取消"  # i18n-source-hash:77dfd213

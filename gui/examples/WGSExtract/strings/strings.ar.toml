@@ -555,10 +555,16 @@
 "actions.annotate.v066.vcf-table.title" = "جدول المتغيرات"  # i18n-source-hash:edf38ae9
 "actions.annotate.v066.vcf-table.tooltip" = "تصدير صف لكل متغير مع تعليقاته ونمطه الجيني، كجدول TSV وقاعدة بيانات SQLite قابلة للاستعلام."  # i18n-source-hash:44465bc2
 "sections.settings.v066.report-issue.title" = "الإبلاغ عن مشكلة"  # i18n-source-hash:acbda9da
-"sections.settings.v066.report-issue.subtitle" = "معاينة تقرير أخطاء منقّح عن هذا التثبيت وتشغيل حديث. لا يُرفع أي شيء."  # i18n-source-hash:c7ef7e2a
+"sections.settings.v066.report-issue.subtitle" = "معاينة تقرير أخطاء منقّح عن هذا التثبيت وتشغيل حديث، أو فتحه كمشكلة GitHub معبأة مسبقًا. لا يُرفع أي شيء؛ أنت من يرسله على GitHub."  # i18n-source-hash:0ff8e4ca
 "controls.settings.v066.report-last-failed.label" = "الإبلاغ عن آخر تشغيل فاشل"  # i18n-source-hash:a2dbb6f1
 "controls.settings.v066.report-last-failed.tooltip" = "عند عدم التحديد يُبلَّغ عن آخر تشغيل، سواء فشل أم لا."  # i18n-source-hash:bbbdcf7c
 "controls.settings.v066.report-description.label" = "ماذا حدث؟ (اختياري)"  # i18n-source-hash:9a81bdcf
 "controls.settings.v066.report-description.tooltip" = "يُضاف وصفك إلى التقرير. لا تذكر الأسماء أو التفاصيل الشخصية الأخرى."  # i18n-source-hash:35c2fba8
 "actions.settings.v066.report-issue.title" = "معاينة تقرير الأخطاء"  # i18n-source-hash:80fbe9f8
 "actions.settings.v066.report-issue.tooltip" = "طباعة وحفظ تقرير خالٍ من الأسماء والمسارات والقراءات والأنماط الجينية والأسرار، مع رابط إلى مشكلة GitHub معبأة مسبقًا. لا يُفتح المتصفح، ولا يُرسل شيء ما لم تفتح الرابط وترسله بنفسك."  # i18n-source-hash:96a9ed2c
+"actions.settings.v066.report-issue-open.title" = "فتح تقرير الخطأ على GitHub"  # i18n-source-hash:4d0be68d
+"actions.settings.v066.report-issue-open.tooltip" = "فتح تقرير خطأ معبأ مسبقًا على GitHub. تُزال البيانات الشخصية مثل أسماء الملفات وأسماء العينات ومجلد المنزل أولًا؛ وتراجعه قبل الإرسال."  # i18n-source-hash:92149a68
+"actions.settings.v066.report-issue-open.confirm.title" = "فتح تقرير الخطأ على GitHub؟"  # i18n-source-hash:fc04d69d
+"actions.settings.v066.report-issue-open.confirm.message" = "يفتح متصفحك نموذج مشكلة جديدة على GitHub معبأً بالتقرير المنقّح. لا يُرفع أي شيء: راجعه هناك وأرسله بنفسك. تُحفظ نسخة في مجلد reports داخل مجلد البيانات."  # i18n-source-hash:7cc1851d
+"actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "فتح في المتصفح"  # i18n-source-hash:56c8f9db
+"actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "إلغاء"  # i18n-source-hash:77dfd213

@@ -555,10 +555,16 @@
 "actions.annotate.v066.vcf-table.title" = "ویریئنٹ جدول"  # i18n-source-hash:edf38ae9
 "actions.annotate.v066.vcf-table.tooltip" = "فی ویریئنٹ ایک قطار، تشریحات اور جینو ٹائپ کے ساتھ، TSV جدول اور قابل استفسار SQLite ڈیٹابیس کے طور پر برآمد کریں۔"  # i18n-source-hash:44465bc2
 "sections.settings.v066.report-issue.title" = "مسئلے کی اطلاع دیں"  # i18n-source-hash:acbda9da
-"sections.settings.v066.report-issue.subtitle" = "اس انسٹالیشن اور حالیہ رن کے بارے میں مدون شدہ بگ رپورٹ کا پیش منظر دیکھیں۔ کچھ اپ لوڈ نہیں ہوتا۔"  # i18n-source-hash:c7ef7e2a
+"sections.settings.v066.report-issue.subtitle" = "اس انسٹالیشن اور حالیہ رن کے بارے میں مدون شدہ بگ رپورٹ کا پیش منظر دیکھیں، یا اسے پہلے سے بھرے GitHub ایشو کے طور پر کھولیں۔ کچھ اپ لوڈ نہیں ہوتا؛ آپ اسے خود GitHub پر جمع کرتے ہیں۔"  # i18n-source-hash:0ff8e4ca
 "controls.settings.v066.report-last-failed.label" = "آخری ناکام رن کی اطلاع دیں"  # i18n-source-hash:a2dbb6f1
 "controls.settings.v066.report-last-failed.tooltip" = "نشان نہ ہونے پر آخری رن کی اطلاع دی جاتی ہے، چاہے وہ ناکام ہوا ہو یا نہیں۔"  # i18n-source-hash:bbbdcf7c
 "controls.settings.v066.report-description.label" = "کیا ہوا؟ (اختیاری)"  # i18n-source-hash:9a81bdcf
 "controls.settings.v066.report-description.tooltip" = "آپ کی تفصیل رپورٹ میں شامل کی جاتی ہے۔ نام اور دیگر ذاتی تفصیلات شامل نہ کریں۔"  # i18n-source-hash:35c2fba8
 "actions.settings.v066.report-issue.title" = "بگ رپورٹ کا پیش منظر"  # i18n-source-hash:80fbe9f8
 "actions.settings.v066.report-issue.tooltip" = "نام، راستے، ریڈز، جینو ٹائپس اور راز ہٹا کر رپورٹ دکھائیں اور محفوظ کریں، ساتھ پہلے سے بھرے GitHub ایشو کا لنک۔ براؤزر نہیں کھلتا، اور جب تک آپ خود لنک کھول کر جمع نہ کرائیں کچھ جمع نہیں ہوتا۔"  # i18n-source-hash:96a9ed2c
+"actions.settings.v066.report-issue-open.title" = "GitHub پر بگ رپورٹ کھولیں"  # i18n-source-hash:4d0be68d
+"actions.settings.v066.report-issue-open.tooltip" = "پہلے سے بھری ہوئی GitHub بگ رپورٹ کھولیں۔ فائلوں کے نام، نمونوں کے نام اور آپ کا ہوم فولڈر جیسا ذاتی ڈیٹا پہلے ہٹا دیا جاتا ہے؛ جمع کرنے سے پہلے آپ اس کا جائزہ لیتے ہیں۔"  # i18n-source-hash:92149a68
+"actions.settings.v066.report-issue-open.confirm.title" = "GitHub پر بگ رپورٹ کھولیں؟"  # i18n-source-hash:fc04d69d
+"actions.settings.v066.report-issue-open.confirm.message" = "آپ کا براؤزر GitHub کا نیا ایشو فارم مدون شدہ رپورٹ سے بھرا ہوا کھولے گا۔ کچھ اپ لوڈ نہیں ہوتا: وہاں اس کا جائزہ لیں اور خود جمع کریں۔ ایک نقل آپ کے ڈیٹا فولڈر کے reports فولڈر میں محفوظ ہوتی ہے۔"  # i18n-source-hash:7cc1851d
+"actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "براؤزر میں کھولیں"  # i18n-source-hash:56c8f9db
+"actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "منسوخ کریں"  # i18n-source-hash:77dfd213

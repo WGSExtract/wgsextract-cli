@@ -555,10 +555,16 @@
 "actions.annotate.v066.vcf-table.title" = "변이 표"  # i18n-source-hash:edf38ae9
 "actions.annotate.v066.vcf-table.tooltip" = "변이당 한 행으로 주석과 유전자형을 TSV 표와 조회용 SQLite 데이터베이스로 내보냅니다."  # i18n-source-hash:44465bc2
 "sections.settings.v066.report-issue.title" = "문제 보고"  # i18n-source-hash:acbda9da
-"sections.settings.v066.report-issue.subtitle" = "이 설치와 최근 실행에 대해 민감한 정보를 제거한 버그 보고서를 미리 봅니다. 아무것도 업로드되지 않습니다."  # i18n-source-hash:c7ef7e2a
+"sections.settings.v066.report-issue.subtitle" = "이 설치와 최근 실행에 대해 민감한 정보를 제거한 버그 보고서를 미리 보거나, 미리 작성된 GitHub 이슈로 엽니다. 아무것도 업로드되지 않으며 GitHub에서 직접 제출합니다."  # i18n-source-hash:0ff8e4ca
 "controls.settings.v066.report-last-failed.label" = "마지막 실패 실행 보고"  # i18n-source-hash:a2dbb6f1
 "controls.settings.v066.report-last-failed.tooltip" = "선택하지 않으면 실패 여부와 관계없이 마지막 실행을 보고합니다."  # i18n-source-hash:bbbdcf7c
 "controls.settings.v066.report-description.label" = "무슨 일이 있었나요? (선택 사항)"  # i18n-source-hash:9a81bdcf
 "controls.settings.v066.report-description.tooltip" = "설명은 보고서에 추가됩니다. 이름 및 기타 개인 정보는 넣지 마세요."  # i18n-source-hash:35c2fba8
 "actions.settings.v066.report-issue.title" = "버그 보고서 미리 보기"  # i18n-source-hash:80fbe9f8
 "actions.settings.v066.report-issue.tooltip" = "이름, 경로, 리드, 유전자형, 비밀 정보를 제거한 보고서를 출력하고 저장하며, 미리 작성된 GitHub 이슈 링크를 제공합니다. 브라우저는 열리지 않으며 직접 링크를 열어 제출하지 않으면 아무것도 제출되지 않습니다."  # i18n-source-hash:96a9ed2c
+"actions.settings.v066.report-issue-open.title" = "GitHub에서 버그 보고서 열기"  # i18n-source-hash:4d0be68d
+"actions.settings.v066.report-issue-open.tooltip" = "미리 작성된 GitHub 버그 보고서를 엽니다. 파일 이름, 샘플 이름, 홈 폴더 같은 개인 정보는 먼저 제거되며, 제출하기 전에 직접 검토합니다."  # i18n-source-hash:92149a68
+"actions.settings.v066.report-issue-open.confirm.title" = "GitHub에서 버그 보고서를 열까요?"  # i18n-source-hash:fc04d69d
+"actions.settings.v066.report-issue-open.confirm.message" = "브라우저에서 민감한 정보를 제거한 보고서로 채워진 GitHub 새 이슈 양식이 열립니다. 아무것도 업로드되지 않습니다. 그곳에서 검토한 뒤 직접 제출하세요. 사본은 데이터 폴더의 reports 폴더에 저장됩니다."  # i18n-source-hash:7cc1851d
+"actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "브라우저에서 열기"  # i18n-source-hash:56c8f9db
+"actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "취소"  # i18n-source-hash:77dfd213
