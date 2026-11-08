@@ -99,10 +99,12 @@ expect() {
     local tier=$1 ref=$2 reads=$3 backend=$4 tool file
     for tool in wgse-bwa wgse-bwa-mem2; do
         file=$out/$tier.$tool.hash
+        [ -s "$file" ] && continue
         # shellcheck disable=SC2086
-        [ -s "$file" ] || "$bin/$tool" $backend mem -t "$threads" -K "$K" "$data/$ref/$ref.fa" \
+        "$bin/$tool" $backend mem -t "$threads" -K "$K" "$data/$ref/$ref.fa" \
             "$data/reads/${reads}_R1.fastq.gz" "$data/reads/${reads}_R2.fastq.gz" \
-            2> "$out/$tier.$tool.stderr" | sam_hash > "$file"
+            2> "$out/$tier.$tool.stderr" | sam_hash > "$file.partial"
+        mv "$file.partial" "$file"
     done
 }
 expect small chr20 chr20-hg002 ""

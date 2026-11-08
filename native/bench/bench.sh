@@ -150,6 +150,7 @@ fetch() {
         missing+=("$path	$sha	$assets")
     done
     [ ${#missing[@]} -gt 0 ] || { echo "fetch: $tier is already in $data"; return; }
+    case "${missing[*]}" in *.zst*) command -v zstd > /dev/null || die "fetch needs zstd" ;; esac
     local started=$SECONDS total=0 entry attempt part
     for entry in "${missing[@]}"; do
         IFS=$'\t' read -r path sha assets <<< "$entry"
