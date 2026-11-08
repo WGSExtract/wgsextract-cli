@@ -555,10 +555,16 @@
 "actions.annotate.v066.vcf-table.title" = "Таблиця варіантів"  # i18n-source-hash:edf38ae9
 "actions.annotate.v066.vcf-table.tooltip" = "Експорт по одному рядку на варіант з анотаціями та генотипом у вигляді таблиці TSV і бази SQLite для запитів."  # i18n-source-hash:44465bc2
 "sections.settings.v066.report-issue.title" = "Повідомити про проблему"  # i18n-source-hash:acbda9da
-"sections.settings.v066.report-issue.subtitle" = "Попередній перегляд знеособленого звіту про помилку щодо цього встановлення та нещодавнього запуску. Нічого не завантажується."  # i18n-source-hash:c7ef7e2a
+"sections.settings.v066.report-issue.subtitle" = "Попередній перегляд знеособленого звіту про помилку щодо цього встановлення та нещодавнього запуску або відкриття його як попередньо заповненої задачі GitHub. Задача не створюється, доки ви самі не надішлете її на GitHub."  # i18n-source-hash:3f42f4ed
 "controls.settings.v066.report-last-failed.label" = "Повідомити про останній невдалий запуск"  # i18n-source-hash:a2dbb6f1
 "controls.settings.v066.report-last-failed.tooltip" = "Якщо не позначено, звіт про останній запуск, незалежно від результату."  # i18n-source-hash:bbbdcf7c
 "controls.settings.v066.report-description.label" = "Що сталося? (необов’язково)"  # i18n-source-hash:9a81bdcf
 "controls.settings.v066.report-description.tooltip" = "Ваш опис додається до звіту. Не вказуйте імена та інші особисті дані."  # i18n-source-hash:35c2fba8
 "actions.settings.v066.report-issue.title" = "Попередній перегляд звіту про помилку"  # i18n-source-hash:80fbe9f8
 "actions.settings.v066.report-issue.tooltip" = "Вивести та зберегти звіт без імен, шляхів, прочитань, генотипів і секретів, а також посилання на попередньо заповнену задачу GitHub. Браузер не відкривається, і нічого не надсилається, доки ви самі не відкриєте посилання й не надішлете задачу."  # i18n-source-hash:96a9ed2c
+"actions.settings.v066.report-issue-open.title" = "Відкрити звіт про помилку на GitHub"  # i18n-source-hash:4d0be68d
+"actions.settings.v066.report-issue-open.tooltip" = "Відкрити попередньо заповнений звіт про помилку на GitHub. Особисті дані, як-от назви файлів, назви зразків і ваша домашня папка, спершу видаляються; ви переглядаєте звіт перед надсиланням."  # i18n-source-hash:92149a68
+"actions.settings.v066.report-issue-open.confirm.title" = "Відкрити звіт про помилку на GitHub?"  # i18n-source-hash:fc04d69d
+"actions.settings.v066.report-issue-open.confirm.message" = "Браузер відкриє форму нової задачі GitHub, заповнену знеособленим звітом, тож GitHub отримує текст звіту в посиланні. Задача не створюється, доки ви не перевірите звіт там і не надішлете його самі. Копію буде збережено в папці reports вашої папки даних."  # i18n-source-hash:5aa07ec2
+"actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "Відкрити в браузері"  # i18n-source-hash:56c8f9db
+"actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "Скасувати"  # i18n-source-hash:77dfd213

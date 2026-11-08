@@ -555,10 +555,16 @@
 "actions.annotate.v066.vcf-table.title" = "جدول واریانت"  # i18n-source-hash:edf38ae9
 "actions.annotate.v066.vcf-table.tooltip" = "صدور یک سطر برای هر واریانت با حاشیه‌نویسی و ژنوتیپ آن، به‌صورت جدول TSV و پایگاه دادهٔ SQLite قابل پرس‌وجو."  # i18n-source-hash:44465bc2
 "sections.settings.v066.report-issue.title" = "گزارش مشکل"  # i18n-source-hash:acbda9da
-"sections.settings.v066.report-issue.subtitle" = "پیش‌نمایش گزارش خطای پاک‌سازی‌شده دربارهٔ این نصب و یک اجرای اخیر. چیزی بارگذاری نمی‌شود."  # i18n-source-hash:c7ef7e2a
+"sections.settings.v066.report-issue.subtitle" = "پیش‌نمایش گزارش خطای پاک‌سازی‌شده دربارهٔ این نصب و یک اجرای اخیر، یا باز کردن آن به‌صورت یک issue از پیش پرشدهٔ GitHub. تا وقتی خودتان آن را در GitHub ارسال نکنید، هیچ issueای ساخته نمی‌شود."  # i18n-source-hash:3f42f4ed
 "controls.settings.v066.report-last-failed.label" = "گزارش آخرین اجرای ناموفق"  # i18n-source-hash:a2dbb6f1
 "controls.settings.v066.report-last-failed.tooltip" = "اگر انتخاب نشود، آخرین اجرا گزارش می‌شود، چه ناموفق بوده باشد چه نه."  # i18n-source-hash:bbbdcf7c
 "controls.settings.v066.report-description.label" = "چه اتفاقی افتاد؟ (اختیاری)"  # i18n-source-hash:9a81bdcf
 "controls.settings.v066.report-description.tooltip" = "توضیح شما به گزارش افزوده می‌شود. نام‌ها و دیگر جزئیات شخصی را ننویسید."  # i18n-source-hash:35c2fba8
 "actions.settings.v066.report-issue.title" = "پیش‌نمایش گزارش خطا"  # i18n-source-hash:80fbe9f8
 "actions.settings.v066.report-issue.tooltip" = "چاپ و ذخیرهٔ گزارشی بدون نام، مسیر، خوانش، ژنوتیپ و اسرار، همراه با پیوندی به یک issue از پیش پرشدهٔ GitHub. مرورگر باز نمی‌شود و تا خودتان پیوند را باز نکنید و ارسال نکنید چیزی ارسال نمی‌شود."  # i18n-source-hash:96a9ed2c
+"actions.settings.v066.report-issue-open.title" = "باز کردن گزارش خطا در GitHub"  # i18n-source-hash:4d0be68d
+"actions.settings.v066.report-issue-open.tooltip" = "یک گزارش خطای از پیش پرشده در GitHub باز می‌کند. داده‌های شخصی مانند نام فایل‌ها، نام نمونه‌ها و پوشهٔ خانگی شما ابتدا حذف می‌شوند؛ پیش از ارسال آن را بررسی می‌کنید."  # i18n-source-hash:92149a68
+"actions.settings.v066.report-issue-open.confirm.title" = "گزارش خطا در GitHub باز شود؟"  # i18n-source-hash:fc04d69d
+"actions.settings.v066.report-issue-open.confirm.message" = "مرورگر شما فرم issue جدید GitHub را با گزارش پاک‌سازی‌شده پر می‌کند و باز می‌کند، بنابراین GitHub متن گزارش را در پیوند دریافت می‌کند. تا وقتی آن را آنجا بررسی و خودتان ارسال نکنید، هیچ issueای ساخته نمی‌شود. یک نسخه در پوشهٔ reports در پوشهٔ داده‌های شما ذخیره می‌شود."  # i18n-source-hash:5aa07ec2
+"actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "باز کردن در مرورگر"  # i18n-source-hash:56c8f9db
+"actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "لغو"  # i18n-source-hash:77dfd213

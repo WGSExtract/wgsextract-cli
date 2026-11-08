@@ -555,10 +555,16 @@
 "actions.annotate.v066.vcf-table.title" = "טבלת וריאנטים"  # i18n-source-hash:edf38ae9
 "actions.annotate.v066.vcf-table.tooltip" = "ייצוא שורה לכל וריאנט עם הערותיו והגנוטיפ שלו, כטבלת TSV וכמסד נתונים SQLite לשאילתות."  # i18n-source-hash:44465bc2
 "sections.settings.v066.report-issue.title" = "דיווח על בעיה"  # i18n-source-hash:acbda9da
-"sections.settings.v066.report-issue.subtitle" = "תצוגה מקדימה של דוח באג מצונזר על התקנה זו והרצה אחרונה. שום דבר אינו מועלה."  # i18n-source-hash:c7ef7e2a
+"sections.settings.v066.report-issue.subtitle" = "תצוגה מקדימה של דוח באג מושחר על התקנה זו ועל הרצה אחרונה, או פתיחתו כ-issue ממולא מראש ב-GitHub. שום issue לא נוצר עד שתשלחו אותו בעצמכם ב-GitHub."  # i18n-source-hash:3f42f4ed
 "controls.settings.v066.report-last-failed.label" = "דיווח על ההרצה האחרונה שנכשלה"  # i18n-source-hash:a2dbb6f1
 "controls.settings.v066.report-last-failed.tooltip" = "ללא סימון מדווח על ההרצה האחרונה, בין אם נכשלה ובין אם לא."  # i18n-source-hash:bbbdcf7c
 "controls.settings.v066.report-description.label" = "מה קרה? (אופציונלי)"  # i18n-source-hash:9a81bdcf
 "controls.settings.v066.report-description.tooltip" = "התיאור שלך מתווסף לדוח. אין לכלול שמות או פרטים אישיים אחרים."  # i18n-source-hash:35c2fba8
 "actions.settings.v066.report-issue.title" = "תצוגה מקדימה של דוח באג"  # i18n-source-hash:80fbe9f8
 "actions.settings.v066.report-issue.tooltip" = "הדפסה ושמירה של דוח ללא שמות, נתיבים, קריאות, גנוטיפים וסודות, עם קישור ל-issue ממולא מראש ב-GitHub. הדפדפן אינו נפתח ושום דבר אינו נשלח, אלא אם תפתחו את הקישור ותשלחו בעצמכם."  # i18n-source-hash:96a9ed2c
+"actions.settings.v066.report-issue-open.title" = "פתיחת דוח באג ב-GitHub"  # i18n-source-hash:4d0be68d
+"actions.settings.v066.report-issue-open.tooltip" = "פותח דוח באג ממולא מראש ב-GitHub. מידע אישי כמו שמות קבצים, שמות דגימות ותיקיית הבית שלכם מוסר קודם; אתם בודקים אותו לפני השליחה."  # i18n-source-hash:92149a68
+"actions.settings.v066.report-issue-open.confirm.title" = "לפתוח את דוח הבאג ב-GitHub?"  # i18n-source-hash:fc04d69d
+"actions.settings.v066.report-issue-open.confirm.message" = "הדפדפן פותח את טופס ה-issue החדש של GitHub, ממולא בדוח המושחר, כך ש-GitHub מקבל את טקסט הדוח בקישור. שום issue לא נוצר עד שתבדקו אותו שם ותשלחו אותו בעצמכם. עותק נשמר בתיקייה reports שבתיקיית הנתונים שלכם."  # i18n-source-hash:5aa07ec2
+"actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "פתיחה בדפדפן"  # i18n-source-hash:56c8f9db
+"actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "ביטול"  # i18n-source-hash:77dfd213

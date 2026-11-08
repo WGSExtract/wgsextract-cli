@@ -555,10 +555,16 @@
 "actions.annotate.v066.vcf-table.title" = "Tabella varianti"  # i18n-source-hash:edf38ae9
 "actions.annotate.v066.vcf-table.tooltip" = "Esporta una riga per variante con annotazioni e genotipo, come tabella TSV e database SQLite da interrogare."  # i18n-source-hash:44465bc2
 "sections.settings.v066.report-issue.title" = "Segnala un problema"  # i18n-source-hash:acbda9da
-"sections.settings.v066.report-issue.subtitle" = "Anteprima di una segnalazione di bug oscurata su questa installazione e un'esecuzione recente. Non viene caricato nulla."  # i18n-source-hash:c7ef7e2a
+"sections.settings.v066.report-issue.subtitle" = "Anteprima di una segnalazione di bug oscurata su questa installazione e un'esecuzione recente, oppure aprila come issue GitHub precompilata. Nessuna issue viene creata finché non la invii tu su GitHub."  # i18n-source-hash:3f42f4ed
 "controls.settings.v066.report-last-failed.label" = "Segnala l'ultima esecuzione non riuscita"  # i18n-source-hash:a2dbb6f1
 "controls.settings.v066.report-last-failed.tooltip" = "Se deselezionato segnala l'ultima esecuzione, riuscita o meno."  # i18n-source-hash:bbbdcf7c
 "controls.settings.v066.report-description.label" = "Che cosa è successo? (facoltativo)"  # i18n-source-hash:9a81bdcf
 "controls.settings.v066.report-description.tooltip" = "La tua descrizione viene aggiunta alla segnalazione. Non includere nomi o altri dati personali."  # i18n-source-hash:35c2fba8
 "actions.settings.v066.report-issue.title" = "Anteprima segnalazione di bug"  # i18n-source-hash:80fbe9f8
 "actions.settings.v066.report-issue.tooltip" = "Stampa e salva una segnalazione priva di nomi, percorsi, letture, genotipi e segreti, con un link a una issue GitHub precompilata. Il browser non si apre e nulla viene inviato finché non apri il link e lo invii tu."  # i18n-source-hash:96a9ed2c
+"actions.settings.v066.report-issue-open.title" = "Apri segnalazione di bug su GitHub"  # i18n-source-hash:4d0be68d
+"actions.settings.v066.report-issue-open.tooltip" = "Apre una segnalazione di bug GitHub precompilata. I dati personali, come nomi di file, nomi dei campioni e la tua cartella home, vengono rimossi prima; la controlli prima di inviarla."  # i18n-source-hash:92149a68
+"actions.settings.v066.report-issue-open.confirm.title" = "Aprire la segnalazione di bug su GitHub?"  # i18n-source-hash:fc04d69d
+"actions.settings.v066.report-issue-open.confirm.message" = "Il browser apre il modulo per una nuova issue GitHub, compilato con la segnalazione oscurata, quindi GitHub riceve il testo della segnalazione nel link. Nessuna issue viene creata finché non la controlli lì e la invii tu. Una copia viene salvata nella cartella reports della cartella dati."  # i18n-source-hash:5aa07ec2
+"actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "Apri nel browser"  # i18n-source-hash:56c8f9db
+"actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "Annulla"  # i18n-source-hash:77dfd213

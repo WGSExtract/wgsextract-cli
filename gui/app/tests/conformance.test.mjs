@@ -98,23 +98,29 @@ test("WGSExtract v0.6.6 controls start unset and platform-limited sections hide 
   assert.equal(conditionMatches({ placeholder: "hostPlatform", equals: currentSetupPlatform() }, context), true);
 });
 
-test("PR #530 review: WGSExtract's bug report preview targets the app's last run, never itself", async () => {
+test("PR #530 review and #528: WGSExtract's bug report preview and GitHub report target the app's last run, never themselves", async () => {
   const bundle = await loadLocalizedBundle("en", repoRoot, wgsExtractBundleRoot, wgsExtractBundleRoot);
   const section = bundle.manifest.pages.flatMap((page) => page.sections ?? []).find((candidate) => candidate.id === "report-issue");
   const paths = { last: "/w/.last-results/last.json", lastFailed: "/w/.last-results/last-failed.json" };
   const shown = (lastFailedChecked, lastResultDocumentPaths) => {
-    const context = { fieldValues: {}, checkedOptions: { report_last_failed: lastFailedChecked ? "--last-failed" : "" }, configValues: {}, rowValues: {}, lastResultDocumentPaths };
+    const context = { fieldValues: { report_description: "Crashed" }, checkedOptions: { report_last_failed: lastFailedChecked ? "--last-failed" : "" }, configValues: {}, rowValues: {}, lastResultDocumentPaths };
     const visible = section.actions.filter((action) => isActionVisible(action, context));
-    assert.equal(visible.length, 1);
-    assert.equal(readsLastResultDocument(visible[0]), true);
-    return displayCommand(visible[0].command, context).replace(/^\S+ /, "");
+    assert.deepEqual(visible.map((action) => action.title), ["Preview Bug Report", "Open Bug Report on GitHub"]);
+    assert.ok(visible.every(readsLastResultDocument));
+    // #528: opening the browser is only offered behind a confirmation saying that GitHub receives the report but no issue is created until the user submits it.
+    assert.equal(visible[0].confirm, undefined);
+    assert.match(visible[1].confirm.message, /GitHub receives the report text in the link\. No issue is created until/);
+    const [preview, open] = visible.map((action) => displayCommand(action.command, context).replace(/^\S+ /, ""));
+    // contract: --open is the CLI's only way to open the browser without its terminal prompt.
+    assert.equal(open, preview.replace("--print", "--open"));
+    return preview;
   };
 
-  assert.equal(shown(false, paths), `report-issue --print --run ${paths.last}`);
-  assert.equal(shown(true, paths), `report-issue --print --run ${paths.lastFailed}`);
+  assert.equal(shown(false, paths), `report-issue --print --run ${paths.last} --description Crashed`);
+  assert.equal(shown(true, paths), `report-issue --print --run ${paths.lastFailed} --description Crashed`);
   // Before the app has run anything, the CLI's own record is the only one.
-  assert.equal(shown(false, {}), "report-issue --print");
-  assert.equal(shown(true, {}), "report-issue --print --last-failed");
+  assert.equal(shown(false, {}), "report-issue --print --description Crashed");
+  assert.equal(shown(true, {}), "report-issue --print --last-failed --description Crashed");
 });
 
 test("conformance bundle preserves shared runtime semantics in TypeScript", async () => {

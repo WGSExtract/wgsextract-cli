@@ -555,10 +555,16 @@
 "actions.annotate.v066.vcf-table.title" = "वेरिएंट तालिका"  # i18n-source-hash:edf38ae9
 "actions.annotate.v066.vcf-table.tooltip" = "प्रति वेरिएंट एक पंक्ति, एनोटेशन और जीनोटाइप सहित, TSV तालिका और क्वेरी योग्य SQLite डेटाबेस के रूप में निर्यात करें।"  # i18n-source-hash:44465bc2
 "sections.settings.v066.report-issue.title" = "समस्या की रिपोर्ट करें"  # i18n-source-hash:acbda9da
-"sections.settings.v066.report-issue.subtitle" = "इस इंस्टॉलेशन और हाल के रन की संपादित बग रिपोर्ट का पूर्वावलोकन करें। कुछ भी अपलोड नहीं होता।"  # i18n-source-hash:c7ef7e2a
+"sections.settings.v066.report-issue.subtitle" = "इस इंस्टॉलेशन और हाल के रन के बारे में संपादित बग रिपोर्ट का पूर्वावलोकन करें, या उसे पहले से भरे GitHub इश्यू के रूप में खोलें। जब तक आप स्वयं GitHub पर सबमिट नहीं करते, कोई इश्यू नहीं बनता।"  # i18n-source-hash:3f42f4ed
 "controls.settings.v066.report-last-failed.label" = "पिछला विफल रन रिपोर्ट करें"  # i18n-source-hash:a2dbb6f1
 "controls.settings.v066.report-last-failed.tooltip" = "अचिह्नित होने पर पिछला रन रिपोर्ट होता है, चाहे वह विफल हुआ हो या नहीं।"  # i18n-source-hash:bbbdcf7c
 "controls.settings.v066.report-description.label" = "क्या हुआ? (वैकल्पिक)"  # i18n-source-hash:9a81bdcf
 "controls.settings.v066.report-description.tooltip" = "आपका विवरण रिपोर्ट में जोड़ा जाता है। नाम और अन्य व्यक्तिगत जानकारी न लिखें।"  # i18n-source-hash:35c2fba8
 "actions.settings.v066.report-issue.title" = "बग रिपोर्ट का पूर्वावलोकन"  # i18n-source-hash:80fbe9f8
 "actions.settings.v066.report-issue.tooltip" = "नाम, पथ, रीड, जीनोटाइप और गोपनीय जानकारी हटाकर रिपोर्ट दिखाएँ और सहेजें, साथ ही पहले से भरे GitHub इश्यू का लिंक दें। ब्राउज़र नहीं खुलता, और जब तक आप स्वयं लिंक खोलकर सबमिट न करें, कुछ भी सबमिट नहीं होता।"  # i18n-source-hash:96a9ed2c
+"actions.settings.v066.report-issue-open.title" = "GitHub पर बग रिपोर्ट खोलें"  # i18n-source-hash:4d0be68d
+"actions.settings.v066.report-issue-open.tooltip" = "पहले से भरी GitHub बग रिपोर्ट खोलें। फ़ाइल नाम, सैंपल नाम और आपका होम फ़ोल्डर जैसा निजी डेटा पहले हटा दिया जाता है; सबमिट करने से पहले आप इसकी समीक्षा करते हैं।"  # i18n-source-hash:92149a68
+"actions.settings.v066.report-issue-open.confirm.title" = "GitHub पर बग रिपोर्ट खोलें?"  # i18n-source-hash:fc04d69d
+"actions.settings.v066.report-issue-open.confirm.message" = "आपका ब्राउज़र संपादित रिपोर्ट से भरा GitHub का नया-इश्यू फ़ॉर्म खोलता है, इसलिए GitHub को रिपोर्ट का टेक्स्ट लिंक में मिलता है। जब तक आप वहाँ उसकी समीक्षा करके स्वयं सबमिट नहीं करते, कोई इश्यू नहीं बनता। एक प्रति आपके डेटा फ़ोल्डर के reports फ़ोल्डर में सहेजी जाती है।"  # i18n-source-hash:5aa07ec2
+"actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "ब्राउज़र में खोलें"  # i18n-source-hash:56c8f9db
+"actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "रद्द करें"  # i18n-source-hash:77dfd213

@@ -262,6 +262,115 @@
               ]
             ]
           }
+        },
+        {
+          "id": "report-issue-open",
+          "title": "actions.settings.v066.report-issue-open.title",
+          "tooltip": "actions.settings.v066.report-issue-open.tooltip",
+          "confirm": {
+            "title": "actions.settings.v066.report-issue-open.confirm.title",
+            "message": "actions.settings.v066.report-issue-open.confirm.message",
+            "confirmButtonTitle": "actions.settings.v066.report-issue-open.confirm.confirmButtonTitle",
+            "cancelButtonTitle": "actions.settings.v066.report-issue-open.confirm.cancelButtonTitle"
+          },
+          "visibleWhen": [
+            {
+              "placeholder": "report_last_failed",
+              "notEquals": "--last-failed"
+            }
+          ],
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "report-issue",
+              "--open"
+            ],
+            "optionalArguments": [
+              [
+                "--run",
+                "{{lastResultDocumentPath}}"
+              ],
+              [
+                "--description",
+                "{{report_description}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "report-issue-open-last-failed",
+          "title": "actions.settings.v066.report-issue-open.title",
+          "tooltip": "actions.settings.v066.report-issue-open.tooltip",
+          "confirm": {
+            "title": "actions.settings.v066.report-issue-open.confirm.title",
+            "message": "actions.settings.v066.report-issue-open.confirm.message",
+            "confirmButtonTitle": "actions.settings.v066.report-issue-open.confirm.confirmButtonTitle",
+            "cancelButtonTitle": "actions.settings.v066.report-issue-open.confirm.cancelButtonTitle"
+          },
+          "visibleWhen": [
+            {
+              "placeholder": "report_last_failed",
+              "equals": "--last-failed"
+            },
+            {
+              "placeholder": "lastFailedResultDocumentPath",
+              "exists": true
+            }
+          ],
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "report-issue",
+              "--open"
+            ],
+            "optionalArguments": [
+              [
+                "--run",
+                "{{lastFailedResultDocumentPath}}"
+              ],
+              [
+                "--description",
+                "{{report_description}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "report-issue-open-cli-last-failed",
+          "title": "actions.settings.v066.report-issue-open.title",
+          "tooltip": "actions.settings.v066.report-issue-open.tooltip",
+          "confirm": {
+            "title": "actions.settings.v066.report-issue-open.confirm.title",
+            "message": "actions.settings.v066.report-issue-open.confirm.message",
+            "confirmButtonTitle": "actions.settings.v066.report-issue-open.confirm.confirmButtonTitle",
+            "cancelButtonTitle": "actions.settings.v066.report-issue-open.confirm.cancelButtonTitle"
+          },
+          "visibleWhen": [
+            {
+              "placeholder": "report_last_failed",
+              "equals": "--last-failed"
+            },
+            {
+              "placeholder": "lastFailedResultDocumentPath",
+              "exists": false
+            }
+          ],
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "report-issue",
+              "--open"
+            ],
+            "optionalArguments": [
+              [
+                "--last-failed"
+              ],
+              [
+                "--description",
+                "{{report_description}}"
+              ]
+            ]
+          }
         }
       ],
       "iconName": "precheck",
