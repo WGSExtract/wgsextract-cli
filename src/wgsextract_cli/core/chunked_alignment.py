@@ -395,6 +395,7 @@ class ChunkedAlignment:
                 [self.mapper[0], "--version"],
                 capture_output=True,
                 text=True,
+                errors="replace",
                 check=False,
             )
         except OSError:
