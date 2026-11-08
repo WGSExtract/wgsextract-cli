@@ -50,7 +50,6 @@
 "app.workspaceLocation.move.confirm" = "فضای کاری به {path} منتقل شود؟ اقدام‌های در حال اجرا متوقف می‌شوند و سپس راه‌اندازی، محیط اجرای CLI را در مکان جدید دوباره نصب می‌کند."  # i18n-source-hash:8aedca50
 "app.workspaceLocation.moving.format" = "در حال انتقال فضای کاری: {percent}%"  # i18n-source-hash:53d1ec3e
 "app.workspaceLocation.cancel.title" = "لغو"  # i18n-source-hash:77dfd213
-"app.workspaceLocation.environment.note" = "این پوشه با متغیر محیطی GUI_FOR_CLI_BUNDLE_WORKSPACES_DIR تنظیم شده است."  # i18n-source-hash:4589bf20
 "app.colorTheme.label" = "پوسته"  # i18n-source-hash:a797e309
 "app.colorTheme.system" = "سیستم"  # i18n-source-hash:bc0792d8
 "app.colorTheme.light" = "روشن"  # i18n-source-hash:a36ef8ab

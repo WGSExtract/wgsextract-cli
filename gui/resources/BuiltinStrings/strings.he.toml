@@ -50,7 +50,6 @@
 "app.workspaceLocation.move.confirm" = "להעביר את סביבת העבודה אל {path}? פעולות שרצות ייעצרו, ולאחר מכן ההתקנה תתקין מחדש את סביבת הריצה של CLI במיקום החדש."  # i18n-source-hash:8aedca50
 "app.workspaceLocation.moving.format" = "מעביר את סביבת העבודה: {percent}%"  # i18n-source-hash:53d1ec3e
 "app.workspaceLocation.cancel.title" = "ביטול"  # i18n-source-hash:77dfd213
-"app.workspaceLocation.environment.note" = "תיקייה זו מוגדרת על ידי משתנה הסביבה GUI_FOR_CLI_BUNDLE_WORKSPACES_DIR."  # i18n-source-hash:4589bf20
 "app.colorTheme.label" = "ערכת נושא"  # i18n-source-hash:a797e309
 "app.colorTheme.system" = "מערכת"  # i18n-source-hash:bc0792d8
 "app.colorTheme.light" = "בהירה"  # i18n-source-hash:a36ef8ab

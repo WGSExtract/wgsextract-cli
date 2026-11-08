@@ -6,7 +6,7 @@ import { relocatePath } from "../../../shared/workspace-paths.js";
 import { bundleStatePath, writeFileAtomically } from "./config-store.js";
 import { errnoCode, HttpError } from "./errors.js";
 import { configPath } from "./paths.js";
-import { defaultWorkspaceRoot, resolveWorkspaceRoot, saveWorkspacesDirectory, workspaceRootIn } from "./workspace-location.js";
+import { defaultWorkspaceRoot, saveWorkspacesDirectory, workspaceRootIn } from "./workspace-location.js";
 
 export interface WorkspaceMoveRequest {
     manifest: BundleManifest;
@@ -28,9 +28,6 @@ const keptRuntimeFileName = "install-manifest.json";
  * its environments and launchers hold absolute paths, so setup installs it again in the new location.
  */
 export async function moveWorkspace({ manifest, sourceRoot, workspaceRoot, directory, onProgress, signal }: WorkspaceMoveRequest): Promise<void> {
-    if ((await resolveWorkspaceRoot(manifest)).source === "environment") {
-        throw new HttpError(400, "The workspace folder is set by an environment variable.");
-    }
     if (directory != null && !path.isAbsolute(directory)) {
         throw new HttpError(400, `The workspaces folder must be an absolute path: ${directory}`);
     }

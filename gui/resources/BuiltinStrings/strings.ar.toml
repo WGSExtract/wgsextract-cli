@@ -50,7 +50,6 @@
 "app.workspaceLocation.move.confirm" = "هل تريد نقل مساحة العمل إلى {path}؟ ستتوقف الإجراءات قيد التشغيل، ثم يعيد الإعداد تثبيت بيئة تشغيل CLI في الموقع الجديد."  # i18n-source-hash:8aedca50
 "app.workspaceLocation.moving.format" = "جارٍ نقل مساحة العمل: {percent}%"  # i18n-source-hash:53d1ec3e
 "app.workspaceLocation.cancel.title" = "إلغاء"  # i18n-source-hash:77dfd213
-"app.workspaceLocation.environment.note" = "يتم تعيين هذا المجلد بواسطة متغير البيئة GUI_FOR_CLI_BUNDLE_WORKSPACES_DIR."  # i18n-source-hash:4589bf20
 "app.colorTheme.label" = "السمة"  # i18n-source-hash:a797e309
 "app.colorTheme.system" = "النظام"  # i18n-source-hash:bc0792d8
 "app.colorTheme.light" = "فاتح"  # i18n-source-hash:a36ef8ab

@@ -50,7 +50,6 @@
 "app.workspaceLocation.move.confirm" = "Перемістити робочу область до {path}? Запущені дії буде зупинено, а потім налаштування заново встановить середовище виконання CLI у новому місці."  # i18n-source-hash:8aedca50
 "app.workspaceLocation.moving.format" = "Перенесення робочої області: {percent}%"  # i18n-source-hash:53d1ec3e
 "app.workspaceLocation.cancel.title" = "Скасувати"  # i18n-source-hash:77dfd213
-"app.workspaceLocation.environment.note" = "Цю папку задано змінною середовища GUI_FOR_CLI_BUNDLE_WORKSPACES_DIR."  # i18n-source-hash:4589bf20
 "app.colorTheme.label" = "Тема"  # i18n-source-hash:a797e309
 "app.colorTheme.system" = "Системна"  # i18n-source-hash:bc0792d8
 "app.colorTheme.light" = "Світла"  # i18n-source-hash:a36ef8ab

@@ -27,7 +27,7 @@ const syncMetadataFileName = ".workspace-sync.json";
 const syncMetadataVersion = 1;
 
 export async function prepareBundleWorkspace(manifest: BundleManifest, sourceRoot: string, explicitWorkspaceRoot: string | undefined = undefined) {
-    const workspaceRoot = explicitWorkspaceRoot ? path.resolve(explicitWorkspaceRoot) : (await resolveWorkspaceRoot(manifest)).root;
+    const workspaceRoot = explicitWorkspaceRoot ? path.resolve(explicitWorkspaceRoot) : await resolveWorkspaceRoot(manifest);
     if (explicitWorkspaceRoot) {
         await assertSafeExplicitWorkspaceRoot(workspaceRoot, manifest, sourceRoot);
     }

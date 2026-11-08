@@ -96,9 +96,9 @@ The app's own settings are stored in the platform Application Support directory 
 
 The WGS Extract workspace, known as `{{bundleWorkspace}}`, defaults to `~/wgs-extract` (`%USERPROFILE%\wgs-extract` on Windows). It holds the settings file, outputs, Reference and Genome Libraries, temporary files, and logs. These folders can become very large, so they are kept visible and in the user's own space rather than hidden in application data. A bundle sets this with `defaultWorkspace` in its manifest; other bundles use the Application Support directory.
 
-To move the workspace, for example to a larger or faster drive, choose a **Workspaces Folder** on the Settings page and click **Move**. Its contents move with it, and paths shown under `{{bundleWorkspace}}` follow, while folders you set elsewhere stay where they are. Setup then reinstalls the CLI runtime in the new location, because the runtime holds absolute paths. `GUI_FOR_CLI_BUNDLE_WORKSPACES_DIR` overrides the location without moving anything.
+To move the workspace, for example to a larger or faster drive, choose a **Workspaces Folder** on the Settings page and click **Move**. Its contents move with it, and paths shown under `{{bundleWorkspace}}` follow, while folders you set elsewhere stay where they are. Setup then reinstalls the CLI runtime in the new location, because the runtime holds absolute paths.
 
-Uninstalling asks before deleting the workspace, wherever it is, since its Reference and Genome Libraries may be shared. A workspace left at the old location in the Application Support directory is always removed.
+Uninstalling asks before deleting the workspace, wherever it is, since its Reference and Genome Libraries may be shared. That includes a workspace in the Application Support directory, where bundles without a `defaultWorkspace` keep it: removing the app's data keeps it unless you chose to delete the workspace. A silent Windows uninstall keeps every workspace.
 
 ## Distribution
 

@@ -6,14 +6,15 @@
  * output; exits 1 if any step failed.
  *
  * Usage: bundle-uninstall-cli.js --app-support-name <app identifier> [--print-workspace] [--remove-workspace] [--remove-app-data] <bundle>
- * A workspace left at the old default location, inside the app's data folder, is always removed: the
- * user can't be expected to know about it. Unless a step failed, --remove-workspace then deletes the
- * bundle's workspace with its libraries, settings and outputs (ask the user first; --print-workspace
- * only prints its path, or nothing if there is none), and --remove-app-data the app's data folder.
+ * The bundle's workspaces are where it is now and, if it was moved or the bundle names no
+ * defaultWorkspace, in the app's data folder. They hold the user's libraries, settings and outputs, so
+ * they are deleted only with --remove-workspace (ask the user first; --print-workspace only prints
+ * their paths, one per line, or nothing if there are none). Unless a step failed, --remove-workspace
+ * then deletes them and --remove-app-data the app's data folder, keeping any workspace in it.
  * GUI_FOR_CLI_UNINSTALL_RESULT_FILE, if set, receives the result as JSON (as from the macOS app).
  */
 import { existsSync } from "node:fs";
-import { rm, rmdir, writeFile } from "node:fs/promises";
+import { readdir, rm, rmdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { loadManifestFromRoot } from "./bundle-loader.js";
 import { errorMessage } from "./errors.js";
@@ -47,53 +48,78 @@ async function main(argv: string[]): Promise<number> {
     process.env.GUI_FOR_CLI_APP_SUPPORT_NAME = appSupportName;
     const manifest = await loadManifestFromRoot(path.resolve(bundle));
     const appData = appSupportDirectory();
-    // Where prepareBundleWorkspace keeps the bundle's workspace; it can be outside the app's data folder.
-    const workspace = (await resolveWorkspaceRoot(manifest)).root;
+    // Where prepareBundleWorkspace keeps the workspace now, which can be outside the app's data folder, and where it is kept by default.
+    const workspace = await resolveWorkspaceRoot(manifest);
+    const appDataWorkspace = workspaceRootIn(appDataWorkspacesDirectory(), manifest.id);
+    const workspaces = [workspace, appDataWorkspace].filter((root, index) => index === 0 || path.relative(workspace, root) !== "");
+    const managed: string[] = [];
+    for (const root of workspaces) {
+        if (await isManagedWorkspace(root)) {
+            managed.push(root);
+        }
+    }
     if (printWorkspace) {
-        if (await isManagedWorkspace(workspace)) {
-            console.log(workspace);
+        for (const root of managed) {
+            console.log(root);
         }
         return 0;
     }
-    const oldWorkspace = workspaceRootIn(appDataWorkspacesDirectory(), manifest.id);
-    const hasOldWorkspace = path.relative(oldWorkspace, workspace) !== "" && existsSync(oldWorkspace);
     const result: UninstallResult = { status: "ok", results: [], log: [] };
     const note = (line: string) => {
         console.log(line);
         result.log.push(line);
     };
-    if (!existsSync(workspace)) {
+    const existing = workspaces.filter((root) => existsSync(root));
+    if (existing.length === 0) {
         note(`No workspace at ${workspace}; setup never ran, nothing to remove.`);
     }
-    else {
-        Object.assign(result, await runWorkspaceSteps(workspace));
-    }
-    if (hasOldWorkspace && result.status === "ok") {
-        Object.assign(result, await runWorkspaceSteps(oldWorkspace));
+    for (const root of existing) {
+        if (result.status === "ok") {
+            Object.assign(result, await runWorkspaceSteps(root));
+        }
     }
     if (result.status !== "ok") {
-        if (hasOldWorkspace || removeWorkspace || removeAppData) {
+        if (removeWorkspace || removeAppData) {
             // Kept so the user can retry or read what failed.
-            note(`Uninstall steps failed; kept ${removeAppData ? appData : workspace}`);
+            note(`Uninstall steps failed; kept ${[...existing, ...(removeAppData ? [appData] : [])].join(", ")}`);
         }
     }
     else {
-        if (hasOldWorkspace) {
-            await rm(oldWorkspace, { recursive: true, force: true });
-            await rmdir(path.dirname(oldWorkspace)).catch(() => undefined);
-            note(`Removed ${oldWorkspace}`);
-        }
-        if (removeWorkspace && await isManagedWorkspace(workspace)) {
-            await rm(workspace, { recursive: true, force: true });
-            note(`Removed ${workspace}`);
+        if (removeWorkspace) {
+            for (const root of managed) {
+                await rm(root, { recursive: true, force: true });
+                note(`Removed ${root}`);
+            }
+            await rmdir(appDataWorkspacesDirectory()).catch(() => undefined);
         }
         if (removeAppData) {
-            await rm(appData, { recursive: true, force: true });
-            note(`Removed ${appData}`);
+            const kept = removeWorkspace ? [] : existing;
+            await removeExcept(appData, kept);
+            note(kept.some((root) => isInside(appData, root)) ? `Removed ${appData}, except the workspace in it` : `Removed ${appData}`);
         }
     }
     await writeResult(result);
     return result.status === "ok" ? 0 : 1;
+}
+
+function isInside(directory: string, candidate: string) {
+    const relative = path.relative(directory, candidate);
+    return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}
+
+/** Deletes `directory` but none of the `kept` folders that are in it. */
+async function removeExcept(directory: string, kept: string[]) {
+    const inside = kept.filter((root) => isInside(directory, root));
+    if (inside.length === 0) {
+        await rm(directory, { recursive: true, force: true });
+        return;
+    }
+    if (inside.some((root) => path.relative(directory, root) === "")) {
+        return;
+    }
+    for (const entry of await readdir(directory)) {
+        await removeExcept(path.join(directory, entry), inside);
+    }
 }
 
 /** Runs the steps from the workspace's own copy of the bundle: the scripts setup ran. */

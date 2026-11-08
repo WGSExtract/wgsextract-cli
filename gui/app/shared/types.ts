@@ -40,7 +40,6 @@ export type LabelTextKey =
     | "workspaceLocationMoveConfirm"
     | "workspaceLocationMovingFormat"
     | "workspaceLocationCancelTitle"
-    | "workspaceLocationEnvironmentNote"
     | "terminalCopyTextLabel"
     | "terminalCopiedTextLabel"
     | "terminalCancelButtonTitle"
@@ -583,6 +582,5 @@ export interface WorkspaceLocationInfo {
     workspaceRoot: string;
     defaultDirectory: string;
     configuredDirectory: string | null;
-    environmentOverride: boolean;
     usingDefault: boolean;
 }

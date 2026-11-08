@@ -15,8 +15,23 @@
         StrCpy $2 "--remove-workspace"
       ${EndIf}
     ${EndIf}
+    StrCpy $3 ""
+    ${If} $DeleteAppDataCheckboxState = 1
+      ; After this hook Tauri deletes %LOCALAPPDATA%\<identifier> whole, with any workspace kept in it. The
+      ; uninstall steps delete it instead, keeping a workspace the user chose to keep, and do the rest of
+      ; Tauri's app data cleanup here.
+      StrCpy $3 "--remove-app-data"
+      StrCpy $DeleteAppDataCheckboxState 0
+      DeleteRegKey SHCTX "${MANUPRODUCTKEY}"
+      DeleteRegKey /ifempty SHCTX "${MANUKEY}"
+      DeleteRegValue HKCU "${MANUPRODUCTKEY}" "Installer Language"
+      DeleteRegKey /ifempty HKCU "${MANUPRODUCTKEY}"
+      DeleteRegKey /ifempty HKCU "${MANUKEY}"
+      SetShellVarContext current
+      RmDir /r "$APPDATA\${BUNDLEID}"
+    ${EndIf}
     DetailPrint "Removing what the app's setup installed..."
-    nsExec::ExecToLog '"$INSTDIR\node\node.exe" "$INSTDIR\app\dist\web\src\server\bundle-uninstall-cli.js" --app-support-name "${BUNDLEID}" $2 "$INSTDIR\examples\EmbeddedBundle"'
+    nsExec::ExecToLog '"$INSTDIR\node\node.exe" "$INSTDIR\app\dist\web\src\server\bundle-uninstall-cli.js" --app-support-name "${BUNDLEID}" $2 $3 "$INSTDIR\examples\EmbeddedBundle"'
     Pop $0
     ${If} $0 != 0
       DetailPrint "Removing what the app's setup installed failed ($0)."
@@ -34,10 +49,5 @@
     RmDir /REBOOTOK "$INSTDIR"
     RmDir /REBOOTOK "$LOCALAPPDATA\${PRODUCTNAME}"
     RmDir /REBOOTOK "$LOCALAPPDATA\Programs\${PRODUCTNAME}"
-
-    ${If} $DeleteAppDataCheckboxState = 1
-      ; The WebUI backend keeps its settings, and once kept bundle workspaces, in %LOCALAPPDATA%\<identifier>.
-      RmDir /r "$LOCALAPPDATA\${BUNDLEID}"
-    ${EndIf}
   ${EndIf}
 !macroend

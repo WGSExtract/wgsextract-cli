@@ -50,7 +50,6 @@
 "app.workspaceLocation.move.confirm" = "Przenieść obszar roboczy do {path}? Uruchomione działania zostaną zatrzymane, a konfiguracja zainstaluje następnie środowisko uruchomieniowe CLI w nowej lokalizacji."  # i18n-source-hash:8aedca50
 "app.workspaceLocation.moving.format" = "Przenoszenie obszaru roboczego: {percent}%"  # i18n-source-hash:53d1ec3e
 "app.workspaceLocation.cancel.title" = "Anuluj"  # i18n-source-hash:77dfd213
-"app.workspaceLocation.environment.note" = "Ten folder jest ustawiony przez zmienną środowiskową GUI_FOR_CLI_BUNDLE_WORKSPACES_DIR."  # i18n-source-hash:4589bf20
 "app.colorTheme.label" = "Motyw"  # i18n-source-hash:a797e309
 "app.colorTheme.system" = "Systemowy"  # i18n-source-hash:bc0792d8
 "app.colorTheme.light" = "Jasny"  # i18n-source-hash:a36ef8ab

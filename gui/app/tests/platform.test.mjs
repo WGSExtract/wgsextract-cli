@@ -323,13 +323,17 @@ test("render scroll state restores only matching containers", async () => {
   assert.deepEqual(replacement, { scrollLeft: 13, scrollTop: 377 });
 });
 
-test("Tauri NSIS uninstall app data cleanup removes the backend data directory", async () => {
+test("Tauri NSIS uninstall leaves deleting the app data to the uninstall steps, which keep a workspace in it", async () => {
   const config = JSON.parse(await readFile(new URL("../web/packagers/tauri/tauri.conf.json", import.meta.url), "utf8"));
   const hooks = await readFile(new URL("../web/packagers/tauri/nsis-hooks.nsh", import.meta.url), "utf8");
-  const appDataBlock = hooks.slice(hooks.indexOf("$DeleteAppDataCheckboxState = 1"));
+  const preUninstall = hooks.slice(hooks.indexOf("!macro NSIS_HOOK_PREUNINSTALL"), hooks.indexOf("!macro NSIS_HOOK_POSTUNINSTALL"));
+  const appDataBlock = preUninstall.slice(preUninstall.indexOf("${If} $DeleteAppDataCheckboxState = 1"));
 
   assert.equal(config.bundle.windows.nsis.installerHooks, "nsis-hooks.nsh");
-  assert.deepEqual(appDataBlock.match(/RmDir \/r "[^"]+"/g), ['RmDir /r "$LOCALAPPDATA\\${BUNDLEID}"']);
+  assert.match(appDataBlock, /StrCpy \$3 "--remove-app-data"/);
+  // Otherwise Tauri's template deletes %LOCALAPPDATA%\<identifier> whole after this hook.
+  assert.match(appDataBlock, /StrCpy \$DeleteAppDataCheckboxState 0/);
+  assert.doesNotMatch(hooks, /RmDir \/r "\$LOCALAPPDATA\\\$\{BUNDLEID\}"/);
 });
 
 test("Tauri NSIS uninstall always removes the install dir and per-user productName leftover", async () => {
@@ -340,13 +344,13 @@ test("Tauri NSIS uninstall always removes the install dir and per-user productNa
   assert.match(hooks, /RmDir \/REBOOTOK "\$LOCALAPPDATA\\\$\{PRODUCTNAME\}"/);
   assert.match(hooks, /RmDir \/REBOOTOK "\$LOCALAPPDATA\\Programs\\\$\{PRODUCTNAME\}"/);
 
-  const updateGuardIndex = hooks.indexOf("$UpdateMode <> 1");
-  const deleteAppDataGuardIndex = hooks.indexOf("$DeleteAppDataCheckboxState = 1");
-  const uninstallExeIndex = hooks.indexOf("Delete /REBOOTOK \"$INSTDIR\\uninstall.exe\"");
+  const postUninstall = hooks.slice(hooks.indexOf("!macro NSIS_HOOK_POSTUNINSTALL"));
+  const updateGuardIndex = postUninstall.indexOf("$UpdateMode <> 1");
+  const uninstallExeIndex = postUninstall.indexOf("Delete /REBOOTOK \"$INSTDIR\\uninstall.exe\"");
   assert.ok(updateGuardIndex >= 0 && uninstallExeIndex > updateGuardIndex,
     "install-dir cleanup must be guarded by $UpdateMode but not by $DeleteAppDataCheckboxState");
-  assert.ok(deleteAppDataGuardIndex < 0 || deleteAppDataGuardIndex > uninstallExeIndex,
-    "install-dir cleanup must run before the $DeleteAppDataCheckboxState branch");
+  assert.ok(!postUninstall.includes("$DeleteAppDataCheckboxState"),
+    "install-dir cleanup must not depend on the $DeleteAppDataCheckboxState branch");
 });
 
 test("platform script resolution rejects paths that escape the bundle root", async () => {

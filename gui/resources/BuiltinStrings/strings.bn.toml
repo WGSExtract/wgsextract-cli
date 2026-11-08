@@ -50,7 +50,6 @@
 "app.workspaceLocation.move.confirm" = "ওয়ার্কস্পেস {path}-এ সরাবেন? চলমান অ্যাকশনগুলো বন্ধ হবে, এবং এরপর সেটআপ নতুন অবস্থানে CLI রানটাইম আবার ইনস্টল করবে।"  # i18n-source-hash:8aedca50
 "app.workspaceLocation.moving.format" = "ওয়ার্কস্পেস সরানো হচ্ছে: {percent}%"  # i18n-source-hash:53d1ec3e
 "app.workspaceLocation.cancel.title" = "বাতিল"  # i18n-source-hash:77dfd213
-"app.workspaceLocation.environment.note" = "এই ফোল্ডারটি GUI_FOR_CLI_BUNDLE_WORKSPACES_DIR এনভায়রনমেন্ট ভেরিয়েবল দ্বারা সেট করা হয়েছে।"  # i18n-source-hash:4589bf20
 "app.colorTheme.label" = "থিম"  # i18n-source-hash:a797e309
 "app.colorTheme.system" = "সিস্টেম"  # i18n-source-hash:bc0792d8
 "app.colorTheme.light" = "হালকা"  # i18n-source-hash:a36ef8ab

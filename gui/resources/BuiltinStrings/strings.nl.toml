@@ -50,7 +50,6 @@
 "app.workspaceLocation.move.confirm" = "Werkruimte naar {path} verplaatsen? Lopende acties worden gestopt, en de installatie installeert daarna de CLI-runtime opnieuw op de nieuwe locatie."  # i18n-source-hash:8aedca50
 "app.workspaceLocation.moving.format" = "Werkruimte wordt verplaatst: {percent}%"  # i18n-source-hash:53d1ec3e
 "app.workspaceLocation.cancel.title" = "Annuleren"  # i18n-source-hash:77dfd213
-"app.workspaceLocation.environment.note" = "Deze map is ingesteld door de omgevingsvariabele GUI_FOR_CLI_BUNDLE_WORKSPACES_DIR."  # i18n-source-hash:4589bf20
 "app.colorTheme.label" = "Thema"  # i18n-source-hash:a797e309
 "app.colorTheme.system" = "Systeem"  # i18n-source-hash:bc0792d8
 "app.colorTheme.light" = "Licht"  # i18n-source-hash:a36ef8ab

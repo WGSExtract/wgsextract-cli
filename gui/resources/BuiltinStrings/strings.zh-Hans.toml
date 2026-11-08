@@ -50,7 +50,6 @@
 "app.workspaceLocation.move.confirm" = "要将工作区移动到 {path} 吗?正在运行的操作将被停止,然后设置会在新位置重新安装 CLI 运行时。"  # i18n-source-hash:8aedca50
 "app.workspaceLocation.moving.format" = "正在移动工作区:{percent}%"  # i18n-source-hash:53d1ec3e
 "app.workspaceLocation.cancel.title" = "取消"  # i18n-source-hash:77dfd213
-"app.workspaceLocation.environment.note" = "此文件夹由环境变量 GUI_FOR_CLI_BUNDLE_WORKSPACES_DIR 设置。"  # i18n-source-hash:4589bf20
 "app.colorTheme.label" = "主题"  # i18n-source-hash:a797e309
 "app.colorTheme.system" = "系统"  # i18n-source-hash:bc0792d8
 "app.colorTheme.light" = "浅色"  # i18n-source-hash:a36ef8ab

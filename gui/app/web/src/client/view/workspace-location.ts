@@ -8,7 +8,7 @@ export function renderWorkspaceLocationSection() {
         return "";
     }
     const busy = state.setupRun?.status === "running" || state.workspaceMove != null;
-    const locked = location.environmentOverride || busy ? "disabled" : "";
+    const locked = busy ? "disabled" : "";
     const label = state.labels.workspaceLocationFolderLabel;
     const draft = state.workspaceLocationDraft ?? location.configuredDirectory ?? "";
     return `
@@ -30,7 +30,7 @@ export function renderWorkspaceLocationSection() {
               <button type="button" class="secondary-button" data-workspace-location-move ${locked || !draft ? "disabled" : ""}>${escapeHTML(state.labels.workspaceLocationMoveTitle)}</button>
               <button type="button" class="secondary-button" data-workspace-location-reset ${locked || location.usingDefault ? "disabled" : ""}>${escapeHTML(state.labels.workspaceLocationUseDefaultTitle)}</button>
             </span>
-            <span class="field-note">${escapeHTML(location.environmentOverride ? state.labels.workspaceLocationEnvironmentNote : state.labels.workspaceLocationNote)}</span>
+            <span class="field-note">${escapeHTML(state.labels.workspaceLocationNote)}</span>
           </span>
         </label>
         ${renderWorkspaceMoveStatus()}

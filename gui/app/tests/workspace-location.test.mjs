@@ -39,7 +39,6 @@ function dataEnvironment(root) {
     XDG_DATA_HOME: path.join(root, "data"),
     LOCALAPPDATA: path.join(root, "data"),
     GUI_FOR_CLI_APP_SUPPORT_NAME: "test.app",
-    GUI_FOR_CLI_BUNDLE_WORKSPACES_DIR: undefined,
   };
 }
 
@@ -168,18 +167,6 @@ test("folders that are unsafe to move to are refused and nothing changes", async
   assert.equal(await readFile(path.join(occupied, "location.bundle", "keep.txt"), "utf8"), "someone else's");
 });
 
-test("the environment variable overrides the saved folder, and rules out moving", async (t) => {
-  const { root, source } = await fixture(t);
-  await saveWorkspacesDirectory(path.join(root, "saved"));
-  process.env.GUI_FOR_CLI_BUNDLE_WORKSPACES_DIR = path.join(root, "from-env");
-
-  const workspace = await prepareBundleWorkspace(manifest, source);
-
-  assert.equal(workspace, path.join(root, "from-env", "location.bundle"));
-  assert.equal((await workspaceLocationInfo(manifest, workspace)).environmentOverride, true);
-  await assert.rejects(move({ sourceRoot: source, workspaceRoot: workspace, directory: path.join(root, "chosen") }), /environment variable/);
-});
-
 test("a chosen folder keeps its workspace across a changed bundle source", async (t) => {
   const { root, source } = await fixture(t);
   await saveWorkspacesDirectory(path.join(root, "chosen"));
@@ -220,24 +207,26 @@ function runUninstallCli(source, ...flags) {
   });
 }
 
-test("uninstall keeps the workspace unless told to remove it, and always removes the old default location", async (t) => {
+test("uninstall deletes no workspace without being asked, wherever it is", async (t) => {
   const { root, source } = await fixture(t);
   const chosen = path.join(root, "chosen");
-  const oldWorkspace = await prepareBundleWorkspace(manifest, source);
+  const appDataWorkspace = await prepareBundleWorkspace(manifest, source);
   await saveWorkspacesDirectory(chosen);
   const workspace = await prepareBundleWorkspace(manifest, source);
   await writeFile(path.join(chosen, "keep.txt"), "not the app's");
 
   const printed = await runUninstallCli(source, "--print-workspace");
-  assert.equal(printed.stdout.trim(), workspace, printed.stderr);
-  await stat(oldWorkspace);
+  assert.deepEqual(printed.stdout.trim().split(/\r?\n/), [workspace, appDataWorkspace], printed.stderr);
 
-  const kept = await runUninstallCli(source);
-  assert.equal(kept.code, 0, `${kept.stdout}\n${kept.stderr}`);
-  await stat(path.join(workspace, "manifest.json"));
-  await assert.rejects(stat(oldWorkspace), { code: "ENOENT" });
-  await stat(appSettingsPath());
+  for (const flags of [[], ["--remove-app-data"]]) {
+    const kept = await runUninstallCli(source, ...flags);
+    assert.equal(kept.code, 0, `${kept.stdout}\n${kept.stderr}`);
+    await stat(path.join(workspace, "manifest.json"));
+    await stat(path.join(appDataWorkspace, "manifest.json"));
+  }
+  await assert.rejects(stat(appSettingsPath()), { code: "ENOENT" }, "the rest of the app's data is removed");
 
+  await saveWorkspacesDirectory(chosen);
   const removed = await runUninstallCli(source, "--remove-workspace", "--remove-app-data");
   assert.equal(removed.code, 0, `${removed.stdout}\n${removed.stderr}`);
   await assert.rejects(stat(workspace), { code: "ENOENT" });

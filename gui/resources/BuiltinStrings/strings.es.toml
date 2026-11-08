@@ -50,7 +50,6 @@
 "app.workspaceLocation.move.confirm" = "¿Mover el espacio de trabajo a {path}? Las acciones en curso se detendrán y luego la configuración reinstalará el entorno de ejecución de la CLI en la nueva ubicación."  # i18n-source-hash:8aedca50
 "app.workspaceLocation.moving.format" = "Moviendo el espacio de trabajo: {percent}%"  # i18n-source-hash:53d1ec3e
 "app.workspaceLocation.cancel.title" = "Cancelar"  # i18n-source-hash:77dfd213
-"app.workspaceLocation.environment.note" = "Esta carpeta la define la variable de entorno GUI_FOR_CLI_BUNDLE_WORKSPACES_DIR."  # i18n-source-hash:4589bf20
 "app.colorTheme.label" = "Tema"  # i18n-source-hash:a797e309
 "app.colorTheme.system" = "Sistema"  # i18n-source-hash:bc0792d8
 "app.colorTheme.light" = "Claro"  # i18n-source-hash:a36ef8ab

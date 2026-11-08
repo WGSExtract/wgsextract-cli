@@ -147,8 +147,6 @@ export function localizationLabels(table: StringMap = {}) {
             "Move the workspace to {path}? Running actions are stopped, and setup then reinstalls the CLI runtime in the new location.",
         workspaceLocationMovingFormat: table["app.workspaceLocation.moving.format"] ?? "Moving the workspace: {percent}%",
         workspaceLocationCancelTitle: table["app.workspaceLocation.cancel.title"] ?? "Cancel",
-        workspaceLocationEnvironmentNote: table["app.workspaceLocation.environment.note"] ??
-            "This folder is set by the GUI_FOR_CLI_BUNDLE_WORKSPACES_DIR environment variable.",
         terminalCopyTextLabel: table["app.terminal.copyText.label"] ?? "Copy terminal text",
         terminalCopiedTextLabel: table["app.terminal.copiedText.label"] ?? "Copied!",
         setupTitle: table["app.setup.status.title"] ?? "Setup",

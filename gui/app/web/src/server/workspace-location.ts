@@ -5,11 +5,8 @@ import type { BundleManifest, WorkspaceLocationInfo } from "../../../shared/type
 import { errnoCode, errorMessage } from "./errors.js";
 import { appSupportDirectory, safePathComponent } from "./paths.js";
 
-export const workspacesDirectoryEnvName = "GUI_FOR_CLI_BUNDLE_WORKSPACES_DIR";
 export const workspaceSentinelFileName = ".bundle-workspace";
 export const workspaceSentinelContents = "GUI for CLI bundle workspace\n";
-
-type WorkspaceRootSource = "environment" | "settings" | "default";
 
 /** App-wide settings. They live beside the app's data, not in the workspace, since they say where the workspace is. */
 export function appSettingsPath() {
@@ -52,16 +49,10 @@ async function configuredWorkspacesDirectory() {
     return typeof value === "string" && path.isAbsolute(value) ? value : null;
 }
 
-/** The bundle's workspace: in the environment override's folder, then the saved folder, then the default. */
-export async function resolveWorkspaceRoot(manifest: Pick<BundleManifest, "id" | "defaultWorkspace">): Promise<{ root: string; source: WorkspaceRootSource }> {
-    const fromEnvironment = process.env[workspacesDirectoryEnvName]?.trim();
-    if (fromEnvironment) {
-        return { root: workspaceRootIn(path.resolve(fromEnvironment), manifest.id), source: "environment" };
-    }
+/** The bundle's workspace: in the folder saved in the app's settings, else the default. */
+export async function resolveWorkspaceRoot(manifest: Pick<BundleManifest, "id" | "defaultWorkspace">): Promise<string> {
     const configured = await configuredWorkspacesDirectory();
-    return configured
-        ? { root: workspaceRootIn(configured, manifest.id), source: "settings" }
-        : { root: defaultWorkspaceRoot(manifest), source: "default" };
+    return configured ? workspaceRootIn(configured, manifest.id) : defaultWorkspaceRoot(manifest);
 }
 
 export function workspaceRootIn(directory: string, bundleID: unknown) {
@@ -95,7 +86,6 @@ export async function workspaceLocationInfo(manifest: BundleManifest, workspaceR
         workspaceRoot,
         defaultDirectory: path.dirname(defaultRoot),
         configuredDirectory: await configuredWorkspacesDirectory(),
-        environmentOverride: (await resolveWorkspaceRoot(manifest)).source === "environment",
         usingDefault: path.relative(defaultRoot, workspaceRoot) === "",
     };
 }

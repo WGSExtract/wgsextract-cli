@@ -50,7 +50,6 @@
 "app.workspaceLocation.move.confirm" = "Siirretäänkö työtila kohteeseen {path}? Käynnissä olevat toiminnot pysäytetään, ja asennus asentaa CLI-ajoympäristön sitten uudelleen uuteen sijaintiin."  # i18n-source-hash:8aedca50
 "app.workspaceLocation.moving.format" = "Siirretään työtilaa: {percent} %"  # i18n-source-hash:53d1ec3e
 "app.workspaceLocation.cancel.title" = "Peruuta"  # i18n-source-hash:77dfd213
-"app.workspaceLocation.environment.note" = "Tämän kansion määrittää ympäristömuuttuja GUI_FOR_CLI_BUNDLE_WORKSPACES_DIR."  # i18n-source-hash:4589bf20
 "app.colorTheme.label" = "Teema"  # i18n-source-hash:a797e309
 "app.colorTheme.system" = "Järjestelmä"  # i18n-source-hash:bc0792d8
 "app.colorTheme.light" = "Vaalea"  # i18n-source-hash:a36ef8ab

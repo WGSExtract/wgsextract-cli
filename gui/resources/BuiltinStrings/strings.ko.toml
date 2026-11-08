@@ -50,7 +50,6 @@
 "app.workspaceLocation.move.confirm" = "작업 공간을 {path}(으)로 이동할까요? 실행 중인 작업이 중지되고, 그런 다음 설정이 새 위치에 CLI 런타임을 다시 설치합니다."  # i18n-source-hash:8aedca50
 "app.workspaceLocation.moving.format" = "작업 공간 이동 중: {percent}%"  # i18n-source-hash:53d1ec3e
 "app.workspaceLocation.cancel.title" = "취소"  # i18n-source-hash:77dfd213
-"app.workspaceLocation.environment.note" = "이 폴더는 GUI_FOR_CLI_BUNDLE_WORKSPACES_DIR 환경 변수로 설정되어 있습니다."  # i18n-source-hash:4589bf20
 "app.colorTheme.label" = "테마"  # i18n-source-hash:a797e309
 "app.colorTheme.system" = "시스템"  # i18n-source-hash:bc0792d8
 "app.colorTheme.light" = "라이트"  # i18n-source-hash:a36ef8ab

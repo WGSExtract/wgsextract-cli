@@ -90,7 +90,7 @@ DEFAULT_CONFIG = """# WGS Extract Configuration
 # real_genome_test_path = "~/genomes/sample"
 # real_genome_tests_enabled = false
 
-# --- Persistent Run Logs (off by default) ---
+# --- Persistent Run Logs (off by default; a log_dir keeps the newest 100 runs) ---
 # log_dir = "~/wgse_logs"
 
 # --- Your own Y haplogroup trees (keep tables last in this file) ---

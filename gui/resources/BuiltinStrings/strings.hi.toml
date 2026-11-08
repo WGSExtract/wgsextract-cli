@@ -50,7 +50,6 @@
 "app.workspaceLocation.move.confirm" = "वर्कस्पेस को {path} में स्थानांतरित करें? चल रही क्रियाएँ रोक दी जाएँगी, और फिर सेटअप नए स्थान पर CLI रनटाइम को दोबारा इंस्टॉल करेगा।"  # i18n-source-hash:8aedca50
 "app.workspaceLocation.moving.format" = "वर्कस्पेस स्थानांतरित हो रहा है: {percent}%"  # i18n-source-hash:53d1ec3e
 "app.workspaceLocation.cancel.title" = "रद्द करें"  # i18n-source-hash:77dfd213
-"app.workspaceLocation.environment.note" = "यह फ़ोल्डर GUI_FOR_CLI_BUNDLE_WORKSPACES_DIR परिवेश चर द्वारा सेट किया गया है।"  # i18n-source-hash:4589bf20
 "app.colorTheme.label" = "थीम"  # i18n-source-hash:a797e309
 "app.colorTheme.system" = "सिस्टम"  # i18n-source-hash:bc0792d8
 "app.colorTheme.light" = "हल्का"  # i18n-source-hash:a36ef8ab
