@@ -87,14 +87,34 @@ def test_parallel_calling_reports_each_finished_contig(
     )  # fmt: skip
     api.vcf.snp(params, progress=events.append)
     reported = _contig_events(events)
-    names = {"chr20", "chr21", "empty", "chrX", "chrY", "chrM", "HLA-A*01:01:01:01"}
+    # The contig without reads is not called.
+    names = {"chr20", "chr21", "chrX", "chrY", "chrM", "HLA-A*01:01:01:01"}
     assert {message.split(" (")[0] for message, _ in reported} == names
     assert [message.split(" (")[1] for message, _ in reported] == [
-        f"{done}/7 contigs)" for done in range(1, 8)
+        f"{done}/6 contigs)" for done in range(1, 7)
     ]
     fractions = [fraction for _, fraction in reported]
     assert fractions == sorted(fractions) and fractions[-1] == 1.0
     assert events[-1].stage == "finish"
+
+
+@needs_htslib
+@pytest.mark.parametrize("parallel", [None, False])
+def test_more_than_one_thread_calls_contigs_in_parallel_unless_turned_off(
+    multicontig_sample: tuple[str, str], tmp_path: Path, parallel: bool | None
+) -> None:
+    """Issue #549: a 30x genome was called in one bcftools stream while the
+    M1's other cores sat idle; --no-parallel still calls it in one."""
+    bam, ref = multicontig_sample
+    events: list[api.ProgressEvent] = []
+    params = api.VcfSnpParams(
+        input=Path(bam), ref=Path(ref), outdir=tmp_path, threads=3,
+        parallel=parallel, ploidy="GRCh38",
+    )  # fmt: skip
+    api.vcf.snp(params, progress=events.append)
+    assert bool([event for event in events if event.stage == "contig"]) == (
+        parallel is None
+    )
 
 
 def _female(sample: tuple[str, str], root: Path) -> tuple[str, str]:
@@ -308,6 +328,66 @@ def test_several_samples_are_called_in_one_stream(
     assert ("chrA\t299\t" if indels else "chrC\t15450\t") in serial
     assert "Calling serially: with several samples" in caplog.text
     assert "contigs with" not in caplog.text
+
+
+def _decoy_heavy(root: Path) -> tuple[str, str]:
+    """A 120 kb contig, 40 small read-bearing contigs (two with 300-read deep
+    patches) and 3,000 empty 1 kb decoys, like hs38DH's header."""
+    rng = random.Random(3)
+    lengths = {"chrBig": 120_000}
+    lengths |= {f"chrUn_{i}": 1_500 for i in range(40)}
+    lengths |= {f"chrUn_{i}_decoy": 1_000 for i in range(3_000)}
+    sequences = {
+        name: "".join(rng.choice("ACGT") for _ in range(length))
+        for name, length in lengths.items()
+    }
+    ref = write_fasta(root / "reference.fa", sequences)
+    lines = ["@HD\tVN:1.6\tSO:coordinate"]
+    lines += [f"@SQ\tSN:{name}\tLN:{length}" for name, length in lengths.items()]
+    lines += ["@RG\tID:reads\tSM:sample"]
+    for chrom, length in lengths.items():
+        if chrom.endswith("_decoy"):
+            continue
+        seq = sequences[chrom]
+        reads = [(start, 100) for start in range(1, length - 99, 10)]
+        if chrom in {"chrUn_3", "chrUn_17"}:
+            reads += [(start, 300) for start in range(400, 1_000)]
+        snps = range(450, length, 500)
+        for name, (start, size) in enumerate(sorted(reads)):
+            bases = list(seq[start - 1 : start - 1 + size])
+            cigar = f"{size}M"
+            for snp in snps:
+                if start <= snp < start + size and rng.random() < 0.5:
+                    bases[snp - start] = "ACGT"[("ACGT".index(seq[snp - 1]) + 1) % 4]
+            if size == 100 and 210 < start < 290 and rng.random() < 0.5:
+                # Deletes the two bases after 300, before any SNP.
+                left = 300 - start + 1
+                bases = list(seq[start - 1 : 300] + seq[302 : start + 101])
+                cigar = f"{left}M2D{100 - left}M"
+            quals = "".join(chr(33 + rng.randint(15, 40)) for _ in bases)
+            lines.append(
+                f"r{chrom}_{name}\t0\t{chrom}\t{start}\t60\t{cigar}\t*\t0\t0"
+                f"\t{''.join(bases)}\t{quals}\tRG:Z:reads"
+            )
+    return sam_to_bam(lines, root / "sample.bam"), str(ref)
+
+
+@needs_htslib
+@pytest.mark.parametrize("indels", [False, True])
+def test_many_small_contigs_are_called_in_a_few_jobs(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, indels: bool
+) -> None:
+    # PR #560 review: one pipeline per contig made an hs38DH-style header
+    # (thousands of decoys) 14x slower in parallel than serially.
+    caplog.set_level(logging.INFO)
+    serial, parallel = _bodies(_decoy_heavy(tmp_path), tmp_path, indels=indels)
+    assert serial == parallel
+    assert "chrUn_3\t" in serial and "chrUn_39\t" in serial
+    jobs = re.search(r"Calling (\d+) contigs in (\d+) jobs", caplog.text)
+    assert jobs and jobs.group(1) == "41" and int(jobs.group(2)) <= 20
+    # chrUn_3's and chrUn_17's deep patches share jobs with other contigs; one
+    # sample's indel likelihoods never subsample, so only SNPs replay them.
+    assert ("deep stretches" in caplog.text) != indels
 
 
 @needs_htslib

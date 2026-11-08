@@ -814,7 +814,7 @@ library's ploidy file, else bcftools' built-in GRCh37/GRCh38 table.
 | `ploidy_file` | `Path \| None` | `None` | `--ploidy-file` | File defining ploidy per chromosome (auto-resolved from --ref if possible) |
 | `ploidy` | `str \| None` | `None` | `--ploidy` | Predefined ploidy name or value |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
-| `parallel` | `bool` | `False` | `--parallel` | Call contigs in parallel with up to --threads workers. SNP calling then recalls the stretches with sites deeper than 255 reads in one stream, because bcftools subsamples them with one random stream per process, so the calls match the default single stream. |
+| `parallel` | `bool \| None` | `None` | `--parallel` | Call contigs in parallel with up to --threads workers (default: on with --threads above 1). SNP calling recalls the stretches with sites deeper than 255 reads in one stream, because bcftools subsamples them with one random stream per process, so the calls match a single stream. |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 
 ### `api.vcf.indel(VcfIndelParams)`
@@ -834,7 +834,7 @@ Call indels; the `indels` output carries the record count in its metrics.
 | `ploidy_file` | `Path \| None` | `None` | `--ploidy-file` | File defining ploidy per chromosome (auto-resolved from --ref if possible) |
 | `ploidy` | `str \| None` | `None` | `--ploidy` | Predefined ploidy name or value |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
-| `parallel` | `bool` | `False` | `--parallel` | Call contigs in parallel with up to --threads workers. SNP calling then recalls the stretches with sites deeper than 255 reads in one stream, because bcftools subsamples them with one random stream per process, so the calls match the default single stream. |
+| `parallel` | `bool \| None` | `None` | `--parallel` | Call contigs in parallel with up to --threads workers (default: on with --threads above 1). SNP calling recalls the stretches with sites deeper than 255 reads in one stream, because bcftools subsamples them with one random stream per process, so the calls match a single stream. |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 
 ### `api.vcf.annotate(VcfAnnotateParams)`

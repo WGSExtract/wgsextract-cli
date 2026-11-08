@@ -61,13 +61,13 @@ class _SmallVariantParams(Params):
         help="Chromosomal region (e.g. chrM, chrY:10000-20000)",
         flags=("-r", "--region"),
     )
-    parallel: bool = param(
-        False,
-        help="Call contigs in parallel with up to --threads workers. SNP calling "
-        "then recalls the stretches with sites deeper than 255 reads in one "
-        "stream, because bcftools subsamples them with one random stream per "
-        "process, so the calls match the default single stream.",
-        action="store_true",
+    parallel: bool | None = param(
+        None,
+        help="Call contigs in parallel with up to --threads workers (default: on "
+        "with --threads above 1). SNP calling recalls the stretches with sites "
+        "deeper than 255 reads in one stream, because bcftools subsamples them "
+        "with one random stream per process, so the calls match a single stream.",
+        action="boolean_optional",
     )
     qc_min_depth: float | None = depth_param()
 

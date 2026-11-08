@@ -77,8 +77,9 @@ else
         grep -v '^@PG' cpu.sam > cpu.records
         grep -v '^@PG' metal.sam > metal.records
         cmp cpu.records metal.records
-        grep 'gpu_batches=' metal.log
-        if grep -q 'gpu_batches=0 ' metal.log; then
+        # wgse-bwa-mem3 offloads only seed extension, and counts its batches as such.
+        grep -E '(gpu|extension)_batches=' metal.log
+        if grep -Eq '(gpu|extension)_batches=0 ' metal.log; then
             if [ "$mode" = force-gpu ]; then
                 echo "force-gpu run dispatched no GPU batches" >&2
                 exit 1

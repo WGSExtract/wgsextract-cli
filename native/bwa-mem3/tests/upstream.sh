@@ -5,15 +5,44 @@
 # The indexes each builds must be byte-identical, and the SAM records (all but @PG) of paired
 # and single-end reads must be identical in each output mode: --compat=bwa-mem,
 # --compat=bwa-mem2, bwa-mem3's own records, and --fast.
-# Usage: upstream.sh <wgse-bwa-mem3> <bwa-mem3-upstream> <work-dir>
+# Options after the work directory go to wgse-bwa-mem3 before its command, for example
+# --metal; with --metal the GPU must have scored seed extensions (committing them again
+# when --gpu-inject-interruptions reports them interrupted), and with
+# --gpu-inject-extension-failure the CPU must report scoring them instead (and --metal must
+# then exit 1, with the same records). With --physical-memory below the run's needs, every
+# alignment must warn about memory.
+# Usage: upstream.sh <wgse-bwa-mem3> <bwa-mem3-upstream> <work-dir> [wgse-bwa-mem3 options]
 set -eu
 wgse=$1
 upstream=$2
 work=$3
+shift 3
+wgse_options="$*"
+
+# --metal exits 1 after a GPU failure; --backend auto does not.
+expected_status() {
+    case "$1: $wgse_options " in
+    wgse:*" --gpu-inject-extension-failure "*) case " $wgse_options " in
+        *" --metal "*) echo 1 ;;
+        *) echo 0 ;;
+        esac ;;
+    *) echo 0 ;;
+    esac
+}
 
 rm -rf "$work"
 mkdir -p "$work/upstream" "$work/wgse"
 cd "$work"
+
+# Skip (77) GPU runs only on machines without supported Metal hardware.
+case " $wgse_options " in
+*" --metal "* | *" --backend "*)
+    "$wgse" capabilities --json > capabilities.json
+    if ! grep -q '"metal_available":true' capabilities.json; then
+        grep -q '"metal_hardware_supported":true' capabilities.json && exit 1
+        exit 77
+    fi ;;
+esac
 
 awk 'BEGIN {
     srand(542)
@@ -99,14 +128,20 @@ for mode in bwa-mem bwa-mem2 plain fast; do
         *) options=--compat=$mode ;;
     esac
     for tool in upstream wgse; do
-        binary=$upstream
-        [ "$tool" = wgse ] && binary=$wgse
-        # shellcheck disable=SC2086 # $options holds zero or one option
-        "$binary" mem -t 4 $options "$tool/reference.fa" reads_1.fq reads_2.fq \
-            > "$tool.$mode.pe.sam" 2> "$tool.$mode.pe.log"
-        # shellcheck disable=SC2086
-        "$binary" mem -t 4 $options "$tool/reference.fa" reads_1.fq \
-            > "$tool.$mode.se.sam" 2> "$tool.$mode.se.log"
+        binary=$upstream backend=
+        [ "$tool" = wgse ] && binary=$wgse backend=$wgse_options
+        for ends in pe se; do
+            reads="reads_1.fq reads_2.fq"
+            [ $ends = se ] && reads=reads_1.fq
+            status=0
+            # shellcheck disable=SC2086 # $options holds zero or one option, $backend a few
+            "$binary" $backend mem -t 4 $options "$tool/reference.fa" $reads \
+                > "$tool.$mode.$ends.sam" 2> "$tool.$mode.$ends.log" || status=$?
+            [ "$status" -eq "$(expected_status "$tool")" ] || {
+                echo "$tool $mode $ends exited $status" >&2
+                exit 1
+            }
+        done
         records "$tool.$mode.pe.sam"
         records "$tool.$mode.se.sam"
     done
@@ -117,6 +152,22 @@ for mode in bwa-mem bwa-mem2 plain fast; do
         "upstream.$mode.pe.sam"
 done
 grep -q '^@PG	ID:bwa-mem3	PN:bwa-mem3	VN:[^	]*-wgse-' wgse.plain.pe.sam
+case " $wgse_options " in
+*" --physical-memory "*)
+    for log in wgse.*.log; do grep -q 'warning: this run needs about' "$log"; done ;;
+esac
+case " $wgse_options " in
+*" --gpu-inject-extension-failure "*)
+    for log in wgse.*.log; do grep -q 'CPU fallback: GPU seed extension failed' "$log"; done ;;
+*" --metal "*)
+    for log in wgse.*.log; do
+        grep -Eq 'extension_batches=[1-9][0-9]* extension_pairs=[1-9]' "$log"
+        if grep -q 'CPU fallback' "$log"; then exit 1; fi
+    done
+    case " $wgse_options " in
+    *" --gpu-inject-interruptions "*) grep -Eq 'extension_interruptions=[1-9]' wgse.plain.pe.log ;;
+    esac ;;
+esac
 # The @PG command line keeps the backend option; the records do not change.
 "$wgse" --backend auto mem -t 4 wgse/reference.fa reads_1.fq > wgse.auto.se.sam 2> wgse.auto.se.log
 grep -q '^@PG	ID:bwa-mem3	.*	CL:[^	]*wgse-bwa-mem3 --backend auto mem -t 4 ' wgse.auto.se.sam
