@@ -518,6 +518,50 @@ and chaining (about 70%) dominating ONT reads, and minimizer lookups and seed
 collection (about 58%) dominating short reads. 0.1.0 leaves that mostly
 unchanged, so those are the targets for GPU work.
 
+### Energy
+
+Each aligner's energy was measured with `bench/bench.sh --power` on the same
+M1 Pro, on the 5M hs38 pairs with 9 threads (`-K 10000000` for the BWA tools,
+minimap2's defaults with `-x sr` and its `.mmi`). The machine was on AC power
+with the battery charged, and no other benchmark or build was running. The
+tools ran in one session of two rounds, the second in reverse order, and every
+run wrote the expected alignments. Each row is the mean of two runs:
+
+| Aligner | Time | Mean power | CPU Wh | GPU Wh | Package Wh | Above idle Wh | Package Wh per 30x |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Bioconda bwa 0.7.19 | 470.5 s | 21.2 W | 2.76 | 0.00 | 2.77 | 2.55 | 172 |
+| `wgse-bwa` 0.7.1 | 479.6 s | 20.8 W | 2.77 | 0.00 | 2.77 | 2.62 | 172 |
+| `wgse-bwa --metal` 0.7.1 | 127.9 s | 38.4 W | 0.97 | 0.39 | 1.37 | 1.33 | 85 |
+| Bioconda bwa-mem2 2.3 | 381.1 s | 24.0 W | 2.52 | 0.00 | 2.53 | 2.43 | 157 |
+| `wgse-bwa-mem2` 0.4.0 | 459.8 s | 21.1 W | 2.61 | 0.00 | 2.64 | 2.53 | 164 |
+| `wgse-bwa-mem2 --metal` 0.4.0 | 117.7 s | 39.7 W | 0.98 | 0.32 | 1.30 | 1.27 | 80 |
+| Bioconda bwa-mem3 0.16.0 | 70.4 s | 31.4 W | 0.61 | 0.00 | 0.61 | 0.59 | 38 |
+| Bioconda minimap2 2.31 (`sr`) | 150.2 s | 26.8 W | 1.10 | 0.00 | 1.12 | 1.05 | 69 |
+| `wgse-minimap2` 0.1.0 (`sr`) | 118.8 s | 30.1 W | 0.98 | 0.00 | 0.99 | 0.93 | 62 |
+
+`--metal` roughly halves the energy of both BWA tools, less than it cuts their
+time (by about 73%): the GPU adds 0.3–0.4 Wh, and alongside it the CPU threads
+draw more power (27–30 W against 21 W) than when they align on their own.
+The two `wgse-bwa-mem2` CPU runs took 553.1 and 366.5 s (2.91 and 2.36 Wh):
+the first spent 610 s in the kernel, against 48 s, while other applications'
+memory was compressed and swapped to make room for its 16 GB. The Bioconda
+bwa-mem2 runs (415.4 and 346.8 s) varied the same way, less.
+
+Method: `bench/power.py` runs `powermetrics --samplers cpu_power,gpu_power -i
+1000 -f plist` for the whole run and sums the CPU, GPU and Neural Engine energy
+counters of each 1 s sample (prorated at the ends of the run). "Package" is
+their sum, which leaves out memory, SSD, display and the rest of the
+machine, so energy at the wall is higher. Before each run the sampler records
+60 s of idle; "above idle" subtracts that mean power over the run's time,
+leaving the aligner's own energy apart from background work (Photos and
+Spotlight indexing at times; the idle baseline ranged from 0.6 to 3.1 W). The
+Neural Engine counter only saw that background work (at most 0.03 Wh per run).
+"Per 30x" scales the package energy by 62: a 30x human genome is about 93 Gbp,
+and these 5M pairs of 150 bp reads are 1.5 Gbp. That slightly overstates it,
+since a whole genome loads the index once rather than 62 times. Each run's
+directory in the benchmark's output keeps its samples, idle baseline and load
+average (`power.txt`, `power-samples.tsv`).
+
 ## Building
 
 Requires Xcode command-line tools and CMake 3.24 or later. Upstream sources are
@@ -587,6 +631,39 @@ dispatched at once.
 native/bench/bench.sh fetch --data out/bench-data --tier small
 native/bench/bench.sh run --data out/bench-data --tier small --out out/bench \
     --bin main=out/native-prefix/bin --bin test=../other/out/native-prefix/bin --rounds 3
+```
+
+A `--bin` directory may also hold upstream executables (`bwa`, `bwa-mem2`,
+`bwa-mem3`, `minimap2`, for example from a Bioconda environment); they run the
+`cpu` configs of their tool. `mem3` runs BWA-MEM3 on the BWA-MEM2 index and
+`mm2` runs `minimap2 -ax sr` on `<ref>.fa.sr.mmi`, which the data release
+does not have: build it next to the other index files with
+`minimap2 -x sr -d <ref>.fa.sr.mmi <ref>.fa`.
+
+`--power` also measures each run's energy with `powermetrics`, which needs
+root: `--power-cmd` gives the command that runs it without a password prompt
+(by default `sudo -n powermetrics`). `bench/power.py` samples CPU, GPU and ANE
+energy every second, waits `--power-idle` seconds (default 60) before each run
+to measure the idle power, and writes `power.txt` beside the run's other
+files; `results.tsv` and the summary then have the idle power, the CPU, GPU
+and package energy of the run, and the package energy above idle. With
+`--power-quiet WATTS` it waits up to 30 minutes for an idle window whose mean
+package power is at most WATTS, so that other work on the machine does not
+count towards a run.
+
+The power command must keep working without a prompt for the whole bench,
+which can take hours. A cached `sudo` ticket expires after 5 minutes, so the
+check at the start can pass and later runs still fail. Use a sudoers rule
+instead, such as `you ALL=(root) NOPASSWD: /usr/bin/powermetrics`, or a helper
+that keeps a privileged session open. If sampling fails before a run, the
+aligner still runs: its row records power `failed`, the bench prints a
+warning, and the summary leaves the run out of the energy columns. For example:
+
+```bash
+native/bench/bench.sh run --data out/bench-data --tier full-5m --out out/energy \
+    --bin bioconda=.pixi/envs/default/bin --bin wgse=out/native-prefix/bin \
+    --configs bwa:cpu,bwa:metal,mem2:cpu,mem2:metal,mem3:cpu,mm2:cpu \
+    --threads 9 --rounds 2 --power
 ```
 
 `bench/make_data.sh` builds the datasets and expected hashes from hs38 and

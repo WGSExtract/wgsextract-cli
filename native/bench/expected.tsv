@@ -7,3 +7,6 @@ full	wgse-bwa	10000000	bf35bba2923cd0a0
 full	wgse-bwa-mem2	10000000	a8cd3fb9199db4be
 full-5m	wgse-bwa	10000000	e2febf171215d840
 full-5m	wgse-bwa-mem2	10000000	dff39743a72242de
+full-5m	wgse-bwa-mem3	10000000	895c361c65ceb365
+small	wgse-minimap2	0	aa763fa002bf46c5
+full-5m	wgse-minimap2	0	8d527463b1dad57d
