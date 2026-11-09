@@ -5,8 +5,18 @@
 #include "bwamem.h"
 #include "../bwa/ksw_batch.h"
 
-// Replaces kt_for(worker_bwt) (appended to bwamem.cpp).
-void wgse_kt_for_bwt(worker_t &w, int n);
+// kt_for() over units of `unit` reads (an even number, so pairs stay together),
+// each taken by the next free thread (mem_stages.cpp.in). Upstream's kt_for()
+// hands out units of BATCH_SIZE reads, so a -K chunk's last round leaves threads idle.
+void wgse_kt_for(void (*func)(void *, int, int, int), worker_t *w, int n, int unit);
+// The unit of worker_bwt and worker_aln on the CPU: the fewest rounds of at
+// most BATCH_SIZE reads per thread, split evenly between the threads.
+int wgse_cpu_unit(int n, int threads);
+// worker_sam's unit: pairing time varies most between reads, so the units are small.
+constexpr int wgse_sam_unit = 128;
+// Replaces kt_for(worker_bwt) (appended to bwamem.cpp). Returns its unit,
+// which worker_aln must use too: a chain's seqid counts from its unit's start.
+int wgse_kt_for_bwt(worker_t &w, int n);
 // Runs worker(data, unit, tid) for each unit of BATCH_SIZE reads, collecting
 // their SMEMs on the GPU too; returns 0 to leave the chunk to upstream.
 int wgse_metal_seed(FMI_search *fmi, const mem_opt_t *opt, bseq1_t *seqs, int n, int threads,
@@ -49,6 +59,10 @@ int wgse_metal_pair(const mem_opt_t *opt, const bntseq_t *bns, const uint8_t *pa
 // exactly these inputs, otherwise returns 0.
 int wgse_metal_matesw(const mem_opt_t *opt, const uint8_t *ms, uint8_t *seq, int l_ms,
     uint8_t *ref, int is_rev, int64_t rb, int64_t re, int xtra, kswr_t *aln);
+// mem_matesw()'s ksw_align2() on the rows of the window that bwa-mem3's exact
+// pruning keeps (wgse_rescue_prune.h); upstream's call with --cpu-upstream.
+kswr_t wgse_rescue_align(const mem_opt_t *opt, int l_ms, uint8_t *seq, int tlen, uint8_t *ref,
+    int xtra);
 // worker_sam()'s work for one pair (appended to bwamem.cpp).
 void wgse_worker_sam_pair(void *data, long pair, int tid);
 // Appended to bwamem_pair.cpp (native/bwa/rescue_oracle.c.in): reports each

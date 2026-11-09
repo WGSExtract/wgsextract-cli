@@ -69,6 +69,47 @@ awk 'BEGIN {
 }'
 "$aligner" index reference.fa > index.log 2>&1
 
+# The CPU backend's exact replacements of upstream code (balanced work units,
+# each pair's rescue windows aligned together, pointer sorts, reference windows
+# decoded from the .pac) must leave the SAM unchanged: --cpu-upstream runs
+# upstream's code. No Metal needed. The NEON band tests of the 128-bit extension
+# kernels (bsw_lanes.h) run either way, since a switch would sit in their inner
+# loops; they are exact by construction (see metal_backend.h).
+upstream_parity() {
+    name=$1
+    shift
+    "$aligner" --cpu-upstream mem "$@" > "upstream-$name.sam" 2> "upstream-$name.log"
+    "$aligner" mem "$@" > "default-$name.sam" 2> "default-$name.log"
+    same "upstream-$name.sam" "default-$name.sam"
+}
+upstream_parity t1 -t 1 reference.fa pairs-R1.fq pairs-R2.fq
+upstream_parity t4 -t 4 reference.fa pairs-R1.fq pairs-R2.fq
+upstream_parity chunks -t 3 -K 20000 reference.fa pairs-R1.fq pairs-R2.fq
+upstream_parity gaps -t 4 -O 4,8 -E 2,1 -L 3,7 -U 9 reference.fa pairs-R1.fq pairs-R2.fq
+upstream_parity nopair -t 4 -P reference.fa pairs-R1.fq pairs-R2.fq
+upstream_parity wide -t 4 -A 4 -B 8 reference.fa pairs-R1.fq pairs-R2.fq
+upstream_parity single -t 4 reference.fa pairs-R1.fq
+# Seeding options reach the lockstep SMEM passes and the prefix table (minimum
+# seed lengths below, at and above its 10 bases; re-seeding; the third pass on
+# and off), and the band, clipping and output options the other replacements see.
+upstream_parity k12 -t 4 -k 12 reference.fa pairs-R1.fq pairs-R2.fq
+upstream_parity k40 -t 4 -k 40 reference.fa pairs-R1.fq pairs-R2.fq
+upstream_parity k8 -t 4 -k 8 reference.fa pairs-R1.fq pairs-R2.fq
+upstream_parity reseed -t 4 -r 1.0 -c 50 reference.fa pairs-R1.fq pairs-R2.fq
+upstream_parity y5 -t 4 -y 5 reference.fa pairs-R1.fq pairs-R2.fq
+upstream_parity y0 -t 4 -y 0 reference.fa pairs-R1.fq pairs-R2.fq
+upstream_parity w10 -t 4 -w 10 reference.fa pairs-R1.fq pairs-R2.fq
+upstream_parity all -t 4 -a -M reference.fa pairs-R1.fq pairs-R2.fq
+# -B 6 makes rescue pruning use K-mers longer than 5 (here 7).
+upstream_parity b6 -t 4 -B 6 reference.fa pairs-R1.fq pairs-R2.fq
+# Reads shorter than the prefix table's 10 bases, and all N.
+{
+    head -n 40 pairs-R1.fq
+    printf '@short\nACGTACG\n+\nIIIIIII\n@n\nNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN\n+\n'
+    printf 'IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\n@one\nA\n+\nI\n'
+} > edge.fq
+upstream_parity edge -t 4 -k 5 reference.fa edge.fq
+
 # Skip (77) only on machines without supported Metal hardware.
 "$aligner" capabilities --json > capabilities.json
 if ! grep -q '"metal_available":true' capabilities.json; then
@@ -179,8 +220,15 @@ awk 'BEGIN {
 "$aligner" --metal --gpu-policy all mem -t 4 -k 160 -B 120 -I 400,40 reference.fa \
     sat-R1.fq sat-R2.fq > metal-saturate.sam 2> metal-saturate.log
 same cpu-saturate.sam metal-saturate.sam
-test "$(metric metal-saturate.log rescue_declined)" -eq 200
+# Rescue pruning proves those windows yield nothing kept; without it
+# (--cpu-upstream) the GPU declines them.
+test "$(metric metal-saturate.log rescue_pruned_dead)" -eq 200
 test "$(metric metal-saturate.log rescue_misses)" -eq 0
+"$aligner" --metal --cpu-upstream --gpu-policy all mem -t 4 -k 160 -B 120 -I 400,40 \
+    reference.fa sat-R1.fq sat-R2.fq > unpruned-saturate.sam 2> unpruned-saturate.log
+same cpu-saturate.sam unpruned-saturate.sam
+test "$(metric unpruned-saturate.log rescue_declined)" -eq 200
+test "$(metric unpruned-saturate.log rescue_misses)" -eq 0
 
 # A rescue batch that fails after the first one (while the next is packed) is
 # finished on the CPU, as is the rest. Explicit --metal still reports it.

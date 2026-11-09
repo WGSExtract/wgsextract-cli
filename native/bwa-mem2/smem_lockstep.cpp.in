@@ -1,0 +1,409 @@
+/* wgse: getSMEMsOnePosOneThread() and bwtSeedStrategyAllPosOneThread() for up
+ * to wgse_smem_slots reads at once. Each read's steps (one query position of
+ * its forward or backward search) are upstream's, in upstream's order, but the
+ * reads take turns step by step, so a step's occurrence-table lines, prefetched
+ * when the previous step ended, arrive while the other reads step. Each read's
+ * SMEMs are kept apart and written to matchArray in read order, as upstream
+ * writes them. Forward steps up to wgse_prefix_depth bases from their start
+ * take the interval from a table of every such string's, computed once with
+ * the same steps (the GPU kernel's seed_prefixes). Appended to the generated
+ * FMI_search.cpp. */
+#include <mutex>
+#include <vector>
+
+namespace {
+constexpr int wgse_smem_slots = 16;
+constexpr int wgse_prefix_depth = 10;
+
+// The interval of a string of 1..wgse_prefix_depth bases, padded to half a line.
+struct alignas(32) WgsePrefix {
+    int64_t k, l, s;
+};
+
+// Strings of d bases start at entry (4^d - 4) / 3, the first base most significant.
+inline uint32_t wgse_prefix_entry(int depth, uint32_t code)
+{
+    return ((1u << (2 * depth)) - 4) / 3 + code;
+}
+
+struct WgseSmemSlot {
+    enum Phase { idle, forward, backward } phase = idle;
+    int32_t i, rid, offset, readlength, min_intv, x, next_x, j, numPrev;
+    uint32_t code;
+    SMEM smem, *prev;
+    std::vector<SMEM> found;
+};
+
+struct WgseSmemScratch {
+    std::vector<SMEM> prev, out;
+    std::vector<int64_t> first;
+    std::vector<int32_t> count;
+    WgseSmemSlot slots[wgse_smem_slots];
+};
+
+// The lockstep state of bwtSeedStrategyAllPosOneThread() for one read.
+struct WgseSeedSlot {
+    enum Phase { idle, jump, walk } phase = idle;
+    int32_t i, offset, readlength, max_intv, x, next_x, j, depth;
+    uint32_t code;
+    SMEM smem;
+    std::vector<SMEM> found;
+};
+
+struct WgseSeedScratch {
+    std::vector<SMEM> out;
+    std::vector<int64_t> first;
+    std::vector<int32_t> count;
+    WgseSeedSlot slots[wgse_smem_slots];
+};
+}
+
+// The prefix table, from upstream's first step and forward steps.
+const void *FMI_search::wgse_prefixes()
+{
+    static std::once_flag once;
+    static std::vector<WgsePrefix> table;
+    std::call_once(once, [&] {
+        table.resize(wgse_prefix_entry(wgse_prefix_depth + 1, 0));
+        for (uint32_t a = 0; a < 4; a++)
+            table[wgse_prefix_entry(1, a)] = {count[a], count[3 - a], count[a + 1] - count[a]};
+        for (int depth = 2; depth <= wgse_prefix_depth; depth++) {
+            for (uint32_t code = 0; code < (1u << (2 * depth)); code++) {
+                const WgsePrefix &t = table[wgse_prefix_entry(depth - 1, code >> 2)];
+                SMEM smem_ = {};
+                smem_.k = t.l;
+                smem_.l = t.k;
+                smem_.s = t.s;
+                const SMEM next = backwardExt(smem_, 3 - (code & 3));
+                table[wgse_prefix_entry(depth, code)] = {next.l, next.k, next.s};
+            }
+        }
+    });
+    return table.data();
+}
+
+void FMI_search::wgse_getSMEMsOnePosLockstep(uint8_t *enc_qdb,
+                                             int16_t *query_pos_array,
+                                             int32_t *min_intv_array,
+                                             int32_t *rid_array,
+                                             int32_t numReads,
+                                             int32_t max_readlength,
+                                             int32_t minSeedLen,
+                                             SMEM *matchArray,
+                                             int64_t *__numTotalSmem,
+                                             const bseq1_t *seq_,
+                                             int32_t *query_cum_len_ar)
+{
+    static thread_local WgseSmemScratch scratch;
+    WgseSmemScratch &w = scratch;
+    const WgsePrefix *prefixes = (const WgsePrefix *)wgse_prefixes();
+    if (w.prev.size() < size_t(wgse_smem_slots) * size_t(max_readlength))
+        w.prev.resize(size_t(wgse_smem_slots) * size_t(max_readlength));
+    w.out.clear();
+    w.first.assign(numReads, 0);
+    w.count.assign(numReads, 0);
+    for (int s = 0; s < wgse_smem_slots; s++) {
+        w.slots[s].phase = WgseSmemSlot::idle;
+        w.slots[s].prev = w.prev.data() + size_t(s) * size_t(max_readlength);
+    }
+
+    // The read's SMEMs, from its slot, and its next query position.
+    auto finish = [&](WgseSmemSlot &t) {
+        w.first[t.i] = int64_t(w.out.size());
+        w.count[t.i] = int32_t(t.found.size());
+        w.out.insert(w.out.end(), t.found.begin(), t.found.end());
+        query_pos_array[t.i] = t.next_x;
+        t.phase = WgseSmemSlot::idle;
+    };
+    // After the forward search: upstream's last SMEM and reversal of prev.
+    auto begin_backward = [&](WgseSmemSlot &t) {
+        if (t.smem.s >= t.min_intv) t.prev[t.numPrev++] = t.smem;
+        for (int p = 0; p < t.numPrev / 2; p++) {
+            SMEM temp = t.prev[p];
+            t.prev[p] = t.prev[t.numPrev - p - 1];
+            t.prev[t.numPrev - p - 1] = temp;
+        }
+        t.j = t.x - 1;
+        t.phase = WgseSmemSlot::backward;
+        if (t.numPrev > 0 && t.j >= 0) {
+            _mm_prefetch((const char *)(&cp_occ[(t.prev[0].k) >> CP_SHIFT]), _MM_HINT_T0);
+            _mm_prefetch((const char *)(&cp_occ[(t.prev[0].k + t.prev[0].s) >> CP_SHIFT]), _MM_HINT_T0);
+        }
+    };
+    // What the next forward step reads: its prefix entry, or occurrence-table lines.
+    auto prefetch_forward = [&](const WgseSmemSlot &t) {
+        if (t.j - t.x < wgse_prefix_depth && t.j < t.readlength) {
+            const uint8_t a = enc_qdb[t.offset + t.j];
+            if (a < 4) {
+                _mm_prefetch((const char *)(&prefixes[wgse_prefix_entry(t.j - t.x + 1,
+                    t.code << 2 | a)]), _MM_HINT_T0);
+                return;
+            }
+        }
+        _mm_prefetch((const char *)(&cp_occ[(t.smem.l) >> CP_SHIFT]), _MM_HINT_T0);
+        _mm_prefetch((const char *)(&cp_occ[(t.smem.l + t.smem.s) >> CP_SHIFT]), _MM_HINT_T0);
+    };
+    // After the backward search: upstream's final SMEM.
+    auto end_backward = [&](WgseSmemSlot &t) {
+        if (t.numPrev != 0) {
+            SMEM smem = t.prev[0];
+            if ((smem.n - smem.m + 1) >= minSeedLen) t.found.push_back(smem);
+            t.numPrev = 0;
+        }
+        finish(t);
+    };
+    auto start = [&](WgseSmemSlot &t, int32_t i) {
+        t.i = i;
+        t.x = query_pos_array[i];
+        t.rid = rid_array[i];
+        t.next_x = t.x + 1;
+        t.readlength = seq_[t.rid].l_seq;
+        t.offset = query_cum_len_ar[t.rid];
+        t.min_intv = min_intv_array[i];
+        t.found.clear();
+        uint8_t a = enc_qdb[t.offset + t.x];
+        if (a >= 4) {
+            finish(t);
+            return;
+        }
+        t.smem.rid = t.rid;
+        t.smem.m = t.x;
+        t.smem.n = t.x;
+        t.smem.k = count[a];
+        t.smem.l = count[3 - a];
+        t.smem.s = count[a + 1] - count[a];
+        t.numPrev = 0;
+        t.j = t.x + 1;
+        t.code = a;
+        t.phase = WgseSmemSlot::forward;
+        prefetch_forward(t);
+    };
+    // One iteration of upstream's forward loop.
+    auto step_forward = [&](WgseSmemSlot &t) {
+        if (t.j >= t.readlength) {
+            begin_backward(t);
+            return;
+        }
+        uint8_t a = enc_qdb[t.offset + t.j];
+        t.next_x = t.j + 1;
+        if (a >= 4) {
+            begin_backward(t);
+            return;
+        }
+        SMEM newSmem = t.smem;
+        if (t.j - t.x < wgse_prefix_depth) {
+            t.code = t.code << 2 | a;
+            const WgsePrefix &p = prefixes[wgse_prefix_entry(t.j - t.x + 1, t.code)];
+            newSmem.k = p.k;
+            newSmem.l = p.l;
+            newSmem.s = p.s;
+        } else {
+            SMEM smem_ = t.smem;
+            // Forward extension is backward extension with the BWT of reverse complement
+            smem_.k = t.smem.l;
+            smem_.l = t.smem.k;
+            SMEM newSmem_ = backwardExt(smem_, 3 - a);
+            newSmem = newSmem_;
+            newSmem.k = newSmem_.l;
+            newSmem.l = newSmem_.k;
+        }
+        newSmem.n = t.j;
+        int32_t s_neq_mask = newSmem.s != t.smem.s;
+        t.prev[t.numPrev] = t.smem;
+        t.numPrev += s_neq_mask;
+        if (newSmem.s < t.min_intv) {
+            t.next_x = t.j;
+            begin_backward(t);
+            return;
+        }
+        t.smem = newSmem;
+        t.j++;
+        prefetch_forward(t);
+    };
+    // One iteration of upstream's backward loop.
+    auto step_backward = [&](WgseSmemSlot &t) {
+        if (t.j < 0) {
+            end_backward(t);
+            return;
+        }
+        int numCurr = 0;
+        int curr_s = -1;
+        uint8_t a = enc_qdb[t.offset + t.j];
+        if (a > 3) {
+            end_backward(t);
+            return;
+        }
+        SMEM *prev = t.prev;
+        int p;
+        for (p = 0; p < t.numPrev; p++) {
+            SMEM smem = prev[p];
+            SMEM newSmem = backwardExt(smem, a);
+            newSmem.m = t.j;
+            if ((newSmem.s < t.min_intv) && ((smem.n - smem.m + 1) >= minSeedLen)) {
+                t.found.push_back(smem);
+                break;
+            }
+            if ((newSmem.s >= t.min_intv) && (newSmem.s != curr_s)) {
+                curr_s = newSmem.s;
+                prev[numCurr++] = newSmem;
+                _mm_prefetch((const char *)(&cp_occ[(newSmem.k) >> CP_SHIFT]), _MM_HINT_T0);
+                _mm_prefetch((const char *)(&cp_occ[(newSmem.k + newSmem.s) >> CP_SHIFT]), _MM_HINT_T0);
+                break;
+            }
+        }
+        p++;
+        for (; p < t.numPrev; p++) {
+            SMEM smem = prev[p];
+            SMEM newSmem = backwardExt(smem, a);
+            newSmem.m = t.j;
+            if ((newSmem.s >= t.min_intv) && (newSmem.s != curr_s)) {
+                curr_s = newSmem.s;
+                prev[numCurr++] = newSmem;
+                _mm_prefetch((const char *)(&cp_occ[(newSmem.k) >> CP_SHIFT]), _MM_HINT_T0);
+                _mm_prefetch((const char *)(&cp_occ[(newSmem.k + newSmem.s) >> CP_SHIFT]), _MM_HINT_T0);
+            }
+        }
+        t.numPrev = numCurr;
+        if (numCurr == 0) {
+            end_backward(t);
+            return;
+        }
+        t.j--;
+    };
+
+    int32_t next = 0, active = 0;
+    do {
+        active = 0;
+        for (int s = 0; s < wgse_smem_slots; s++) {
+            WgseSmemSlot &t = w.slots[s];
+            // A read's first step waits a turn, for the lines its start prefetched.
+            if (t.phase == WgseSmemSlot::idle)
+                while (t.phase == WgseSmemSlot::idle && next < numReads) start(t, next++);
+            else if (t.phase == WgseSmemSlot::forward) step_forward(t);
+            else step_backward(t);
+            active += t.phase != WgseSmemSlot::idle;
+        }
+    } while (active > 0 || next < numReads);
+
+    int64_t numTotalSmem = *__numTotalSmem;
+    for (int32_t i = 0; i < numReads; i++)
+        for (int32_t c = 0; c < w.count[i]; c++)
+            matchArray[numTotalSmem++] = w.out[size_t(w.first[i] + c)];
+    *__numTotalSmem = numTotalSmem;
+}
+
+int64_t FMI_search::wgse_bwtSeedStrategyLockstep(uint8_t *enc_qdb,
+                                                 int32_t *max_intv_array,
+                                                 int32_t numReads,
+                                                 const bseq1_t *seq_,
+                                                 int32_t *query_cum_len_ar,
+                                                 int32_t minSeedLen,
+                                                 SMEM *matchArray)
+{
+    static thread_local WgseSeedScratch scratch;
+    WgseSeedScratch &w = scratch;
+    const WgsePrefix *prefixes = (const WgsePrefix *)wgse_prefixes();
+    // A walk stops only at minSeedLen bases or more, so it starts with the
+    // interval of its first bases up to that (or the first N, or the read's end).
+    const int jump = std::min(wgse_prefix_depth, minSeedLen - 1);
+    w.out.clear();
+    w.first.assign(numReads, 0);
+    w.count.assign(numReads, 0);
+    for (int s = 0; s < wgse_smem_slots; s++) w.slots[s].phase = WgseSeedSlot::idle;
+
+    // The walk from t.x, or the read's end; the first base is upstream's first step.
+    auto begin_walk = [&](WgseSeedSlot &t) {
+        for (; t.x < t.readlength; t.x = t.next_x) {
+            t.next_x = t.x + 1;
+            uint8_t a = enc_qdb[t.offset + t.x];
+            if (a >= 4) continue;
+            int d = 1;
+            t.code = a;
+            for (; d < jump && t.x + d < t.readlength; d++) {
+                a = enc_qdb[t.offset + t.x + d];
+                if (a >= 4) break;
+                t.code = t.code << 2 | a;
+            }
+            t.depth = d;
+            t.phase = WgseSeedSlot::jump;
+            _mm_prefetch((const char *)(&prefixes[wgse_prefix_entry(d, t.code)]), _MM_HINT_T0);
+            return;
+        }
+        w.first[t.i] = int64_t(w.out.size());
+        w.count[t.i] = int32_t(t.found.size());
+        w.out.insert(w.out.end(), t.found.begin(), t.found.end());
+        t.phase = WgseSeedSlot::idle;
+    };
+    // Upstream's steps up to t.depth bases, from the table: none can stop the walk.
+    auto take_prefix = [&](WgseSeedSlot &t) {
+        const WgsePrefix &p = prefixes[wgse_prefix_entry(t.depth, t.code)];
+        t.smem.rid = t.i;
+        t.smem.m = t.x;
+        t.smem.n = t.x + t.depth - 1;
+        t.smem.k = p.k;
+        t.smem.l = p.l;
+        t.smem.s = p.s;
+        t.j = t.x + t.depth;
+        t.next_x = t.x + t.depth;
+        t.phase = WgseSeedSlot::walk;
+        _mm_prefetch((const char *)(&cp_occ[(t.smem.l) >> CP_SHIFT]), _MM_HINT_T0);
+        _mm_prefetch((const char *)(&cp_occ[(t.smem.l + t.smem.s) >> CP_SHIFT]), _MM_HINT_T0);
+    };
+    // One iteration of upstream's forward loop.
+    auto step = [&](WgseSeedSlot &t) {
+        if (t.j < t.readlength) {
+            t.next_x = t.j + 1;
+            const uint8_t a = enc_qdb[t.offset + t.j];
+            if (a < 4) {
+                SMEM smem_ = t.smem;
+                // Forward extension is backward extension with the BWT of reverse complement
+                smem_.k = t.smem.l;
+                smem_.l = t.smem.k;
+                const SMEM newSmem_ = backwardExt(smem_, 3 - a);
+                SMEM newSmem = newSmem_;
+                newSmem.k = newSmem_.l;
+                newSmem.l = newSmem_.k;
+                newSmem.n = t.j;
+                t.smem = newSmem;
+                if (!((t.smem.s < t.max_intv) && ((t.smem.n - t.smem.m + 1) >= minSeedLen))) {
+                    t.j++;
+                    _mm_prefetch((const char *)(&cp_occ[(t.smem.l) >> CP_SHIFT]), _MM_HINT_T0);
+                    _mm_prefetch((const char *)(&cp_occ[(t.smem.l + t.smem.s) >> CP_SHIFT]),
+                        _MM_HINT_T0);
+                    return;
+                }
+                if (t.smem.s > 0) t.found.push_back(t.smem);
+            }
+        }
+        t.x = t.next_x;
+        begin_walk(t);
+    };
+
+    int32_t next = 0, active;
+    do {
+        active = 0;
+        for (int s = 0; s < wgse_smem_slots; s++) {
+            WgseSeedSlot &t = w.slots[s];
+            // A read's first step waits a turn, for the entry its start prefetched.
+            if (t.phase == WgseSeedSlot::idle)
+                while (t.phase == WgseSeedSlot::idle && next < numReads) {
+                    t.i = next++;
+                    t.readlength = seq_[t.i].l_seq;
+                    t.offset = query_cum_len_ar[t.i];
+                    t.max_intv = max_intv_array[t.i];
+                    t.x = 0;
+                    t.found.clear();
+                    begin_walk(t);
+                }
+            else if (t.phase == WgseSeedSlot::jump) take_prefix(t);
+            else if (t.phase == WgseSeedSlot::walk) step(t);
+            active += t.phase != WgseSeedSlot::idle;
+        }
+    } while (active > 0 || next < numReads);
+
+    int64_t numTotalSeed = 0;
+    for (int32_t i = 0; i < numReads; i++)
+        for (int32_t c = 0; c < w.count[i]; c++)
+            matchArray[numTotalSeed++] = w.out[size_t(w.first[i] + c)];
+    return numTotalSeed;
+}
