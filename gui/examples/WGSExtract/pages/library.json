@@ -1208,7 +1208,8 @@
               "size": "{{size}}",
               "code": "{{code}}",
               "final": "{{final}}",
-              "ref": "{{ref}}"
+              "ref": "{{ref}}",
+              "sn": "{{sn}}"
             },
             "tags": [
               {
