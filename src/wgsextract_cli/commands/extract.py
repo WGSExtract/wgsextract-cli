@@ -8,6 +8,7 @@ from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api.extract import (
     BamSubsetParams,
     CustomParams,
+    ExtractRegionParams,
     MitoFastaParams,
     MitoVcfParams,
     MtBamParams,
@@ -54,6 +55,7 @@ from ._extract_helpers import (
     derive_output_path,
     region_or_gene,
 )
+from ._extract_region import run_region
 
 _SAMTOOLS = ["samtools"]
 _CALLING_TOOLS = ["samtools", "bcftools", "tabix"]
@@ -77,6 +79,7 @@ def register(
         ("y-mt-extract", YMtExtractParams, cmd_y_mt_extract),
         ("unmapped", UnmappedParams, cmd_unmapped),
         ("custom", CustomParams, cmd_custom),
+        ("region", ExtractRegionParams, cmd_region),
     ):
         sub = ext_subs.add_parser(
             name, parents=[base_parser], help=CLI_HELP[f"cmd_{name}"]
@@ -526,3 +529,4 @@ cmd_ydna_vcf = cli_handler(YdnaVcfParams, run_ydna_vcf)
 cmd_y_mt_extract = cli_handler(YMtExtractParams, run_y_mt_extract)
 cmd_unmapped = cli_handler(UnmappedParams, run_unmapped)
 cmd_custom = cli_handler(CustomParams, run_custom)
+cmd_region = cli_handler(ExtractRegionParams, run_region)

@@ -155,6 +155,13 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract extract custom --input sample.cram --region chr17:43044295-43125483",
         "wgsextract extract custom --input sample.cram --gene BRCA1",
     ),
+    "extract region": _h(
+        "Per chosen format: <input stem>_mtDNA|Y|Y_MT|autosomes_X.bam (+ .bai), "
+        "<input stem>_MT|Y|Y_MT|autosomes_X.vcf.gz (+ .tbi) and .fasta.",
+        "wgsextract extract region --input sample.cram --target ymt --formats bam,vcf",
+        "wgsextract extract region --input sample.cram --target mt --formats fasta",
+        "wgsextract extract region --input sample.cram --target autox --formats vcf,fasta",
+    ),
     # realign / align
     "realign": _h(
         "<input stem>_aligned.bam or .cram (+ index); with --keep-fastq, also "

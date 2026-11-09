@@ -103,6 +103,7 @@ from .examples import ExampleGenomeDownloadParams, ExampleGenomeListParams
 from .extract import (
     BamSubsetParams,
     CustomParams,
+    ExtractRegionParams,
     MitoFastaParams,
     MitoVcfParams,
     MtBamParams,
@@ -209,6 +210,7 @@ __all__ = [
     "DepsCheckParams",
     "ExampleGenomeDownloadParams",
     "ExampleGenomeListParams",
+    "ExtractRegionParams",
     "FakeDataParams",
     "FastpParams",
     "FastqcParams",

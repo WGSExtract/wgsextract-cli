@@ -3,8 +3,8 @@ into smaller BAM, VCF or FASTA files.
 
 Outputs are named after the input (``sample.bam`` gives ``sample_Y.bam``) and
 written to ``outdir``, else beside the input. Calling and consensus commands
-(``mito_fasta``, ``mito_vcf``, ``ydna_vcf``) need the matching reference; the
-others use it only to decode a CRAM."""
+(``mito_fasta``, ``mito_vcf``, ``ydna_vcf``, and ``region`` with a VCF or
+FASTA) need the matching reference; the others use it only to decode a CRAM."""
 
 from __future__ import annotations
 
@@ -153,6 +153,89 @@ class CustomParams(_ExtractParams):
             raise UsageError("--region or --gene is required for custom extraction.")
 
 
+REGION_TARGETS = ("mt", "y", "ymt", "autox")
+REGION_FORMATS = ("fasta", "bam", "vcf")
+
+
+@dataclass(frozen=True, kw_only=True)
+class ExtractRegionParams(_ExtractParams):
+    """One region of the genome in each chosen format: ``target`` is ``mt``
+    (chrM), ``y`` (chrY), ``ymt`` (chrY and chrM) or ``autox`` (chromosomes
+    1-22 and X); ``formats`` lists one or more of ``fasta``, ``bam`` and ``vcf``
+    (comma-separated).
+
+    The BAM is ``<input>_mtDNA.bam``, ``<input>_Y.bam`` (``<input>_Y_poz.bam``
+    with ``poz``), ``<input>_Y_MT.bam`` or ``<input>_autosomes_X.bam``; the VCF
+    and FASTA are ``<input>_<MT|Y|Y_MT|autosomes_X>.vcf.gz`` and ``.fasta``.
+    chrM and chrY are called haploid with bcftools, indels included; autosomes
+    and X are SNPs called contig by contig with the sex-aware ploidy of
+    ``vcf snp``. The FASTA is the region's reference with those calls applied,
+    a heterozygous SNP as its IUPAC code. VCF and FASTA need the matching
+    reference. Warns when a Y target's sample appears female, whose chrY reads
+    are mismapped."""
+
+    COMMAND = "extract region"
+
+    target: str = param(
+        help="Region to extract: mt (chrM), y (chrY), ymt (chrY and chrM) or "
+        "autox (autosomes and chrX).",
+        choices=REGION_TARGETS,
+        required_message="--target is required.",
+    )
+    formats: str | None = param(
+        None,
+        help="Comma-separated formats to write: fasta (consensus sequence), bam "
+        "(reads) and vcf (variant calls), e.g. bam,vcf.",
+        metavar="LIST",
+    )
+    poz: bool = param(
+        False,
+        help="With --target y and the bam format: restrict the BAM's Y reads to the "
+        "bundled "
+        "CombBED/McDonald/Poznik union (GRCh37/38 only).",
+        action="store_true",
+    )
+    ybrowse: bool = param(
+        False,
+        help="With --target y and the vcf format: call installed, allele-annotated "
+        "yBrowse "
+        "SNP targets (GRCh38 only; no downloads) into <input>_Y_ybrowse.vcf.gz "
+        "instead.",
+        action="store_true",
+    )
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        chosen = self._chosen()
+        unknown = sorted(chosen - set(REGION_FORMATS))
+        if unknown or not chosen:
+            raise UsageError(
+                f"--formats takes one or more of {', '.join(REGION_FORMATS)}"
+                + (f", not {', '.join(unknown)}." if unknown else ".")
+            )
+        if self.poz and not (self.target == "y" and self.bam):
+            raise UsageError("--poz applies only to --target y with the bam format.")
+        if self.ybrowse and not (self.target == "y" and self.vcf):
+            raise UsageError(
+                "--ybrowse applies only to --target y with the vcf format."
+            )
+
+    def _chosen(self) -> set[str]:
+        return {f.strip().lower() for f in (self.formats or "").split(",") if f.strip()}
+
+    @property
+    def fasta(self) -> bool:
+        return "fasta" in self._chosen()
+
+    @property
+    def bam(self) -> bool:
+        return "bam" in self._chosen()
+
+    @property
+    def vcf(self) -> bool:
+        return "vcf" in self._chosen()
+
+
 def mito_fasta(
     params: MitoFastaParams,
     *,
@@ -281,12 +364,28 @@ def custom(
     return execute(params, run_custom, progress=progress, cancel=cancel, check=check)
 
 
+def region(
+    params: ExtractRegionParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Extract one region in each chosen format (output roles ``<t>_bam``,
+    ``<t>_vcf`` and ``<t>_fasta``, ``<t>`` being ``mt``, ``y``, ``y_mt`` or
+    ``autox``; the ``variants`` metric counts the VCF's calls)."""
+    from wgsextract_cli.commands._extract_region import run_region
+
+    return execute(params, run_region, progress=progress, cancel=cancel, check=check)
+
+
 __all__ = [
     "BamSubsetParams",
     "CustomParams",
     "MitoFastaParams",
     "MitoVcfParams",
     "MtBamParams",
+    "ExtractRegionParams",
     "UnmappedParams",
     "YMtExtractParams",
     "YdnaBamParams",
@@ -296,6 +395,7 @@ __all__ = [
     "mito_fasta",
     "mito_vcf",
     "mt_bam",
+    "region",
     "unmapped",
     "y_mt_extract",
     "ydna_bam",
