@@ -58,6 +58,15 @@ from wgsextract_cli.core.reference_assets import (
     input_stem,
     resolve_reference_library,
 )
+from wgsextract_cli.core.remote_input import (
+    check_url,
+    fetch_index,
+    index_files,
+    input_size,
+    is_url,
+    remote_file,
+    with_index,
+)
 from wgsextract_cli.core.resource_estimates import (
     GIB,
     PreflightEstimate,
@@ -247,7 +256,7 @@ def _preflight_long_read_disk_space(
     directory."""
     amount, unit = parse_memory(memory)
     sort_buffer = int(threads) * amount * (GIB if unit == "G" else 1024**2)
-    size = Path(input_path).stat().st_size
+    size = input_size(input_path)
     disk = long_read_disk(input_path, size, output_format, sort_buffer)
     fastq = disk.fastq if extract else 0
     spill, output = disk.spill, disk.output
@@ -294,19 +303,35 @@ def _tree_bytes(path: Path) -> int:
 
 
 def _long_read_chunks(
-    job: RealignJob, selected_aligner: str, chunk_bytes: int
-) -> ChunkPlan | None:
-    """The chunks a long-read realignment aligns one at a time, or None to
-    align the input in one pass: chunking is off, the input is smaller than
-    a chunk, or it isn't a coordinate-sorted, indexed BAM/CRAM. The sr preset
-    marks duplicates, which needs the whole alignment: one pass too."""
+    job: RealignJob, selected_aligner: str, chunk_bytes: int, outdir: str
+) -> tuple[ChunkPlan, str] | None:
+    """The chunks a long-read realignment aligns one at a time, and the
+    input the chunks read (a URL with its index, fetched into ``outdir``);
+    None to align the input in one pass: chunking is off, the input is
+    smaller than a chunk, or it isn't a coordinate-sorted, indexed BAM/CRAM.
+    The sr preset marks duplicates, which needs the whole alignment: one
+    pass too."""
     if selected_aligner != "minimap2" or job.keep_fastq or not chunk_bytes:
         return None
     if align_cmd._minimap2_preset(job) == "sr":
         return None
-    if Path(job.input).stat().st_size <= chunk_bytes:
+    size = input_size(job.input)
+    if size <= chunk_bytes:
         return None
-    plan = plan_chunks(job.input, get_bam_header(job.input), chunk_bytes)
+    source, index = job.input, None
+    if is_url(job.input):
+        index = fetch_index(job.input, outdir)
+        if index:
+            source = with_index(job.input, index)
+    plan = None
+    if index or not is_url(job.input):
+        plan = plan_chunks(
+            job.input,
+            get_bam_header(job.input),
+            chunk_bytes,
+            index=index,
+            input_bytes=size,
+        )
     if plan is None:
         logging.info(
             "Aligning %s in one pass: chunks need a coordinate-sorted, indexed "
@@ -322,7 +347,7 @@ def _long_read_chunks(
         len(plan.chunks),
         job.chunk_size,
     )
-    return plan
+    return plan, source
 
 
 def _input_cram_reference(job: RealignJob) -> list[str]:
@@ -388,7 +413,11 @@ def _single_end_pacbio(input_path: str, cram_opt: list[str]) -> str | None:
 
 def run(params: RealignParams) -> None:
     job = RealignJob.of(params)
-    verify_paths_exist({"--input": job.input})
+    if is_url(job.input):
+        check_url(job.input)
+        remote_file(job.input)  # Reachable, or an error naming it.
+    else:
+        verify_paths_exist({"--input": job.input})
     # The FASTA that decodes the CRAM, found to detect the platform.
     input_ref = job.input_ref
     input_cram_opt = None
@@ -406,6 +435,11 @@ def run(params: RealignParams) -> None:
     job.platform = detected or align_cmd.resolve_platform(
         job.platform, job.r1 or job.input, input_ref
     )
+    if is_url(job.input) and not (align_cmd.is_long_read(job) and not job.r1):
+        raise UsageError(
+            "realign streams an http(s) --input for ONT and PacBio reads only. "
+            "Download it first to realign other reads."
+        )
     if align_cmd.is_long_read(job) and not job.r1:
         _check_long_read_options(job)
     # Reject bad aligner/platform/preset combinations before hours of extraction.
@@ -425,8 +459,13 @@ def run(params: RealignParams) -> None:
         bwa_mem2.check_index(target)
 
     threads, memory = get_resource_defaults(job.threads, job.memory)
-    outdir = job.outdir or str(absolute_path(job.input).parent)
+    # A URL's output goes to the current directory unless --outdir says.
+    outdir = job.outdir or str(
+        Path.cwd() if is_url(job.input) else absolute_path(job.input).parent
+    )
     Path(outdir).mkdir(parents=True, exist_ok=True)
+    # The alignment writes here too, not beside a URL's path.
+    job.outdir = outdir
 
     policy = resume_policy(params)
     if job.r1:
@@ -670,7 +709,8 @@ def _realign_long_reads(
         return
     cram_opt = input_cram_opt or _input_cram_reference(job)
     chunk_bytes = parse_size(job.chunk_size)
-    plan = _long_read_chunks(job, selected_aligner, chunk_bytes)
+    chunking = _long_read_chunks(job, selected_aligner, chunk_bytes, outdir)
+    plan, chunk_input = chunking or (None, None)
     workdir = Path(out_path + ".chunks")
     if not plan and workdir.exists():
         logging.info("Removing %s, left by an interrupted chunked run.", workdir)
@@ -699,6 +739,7 @@ def _realign_long_reads(
         input_cram_opt=decode,
         chunks=plan.chunks if plan else None,
         resume_chunks=decision.partial,
+        chunk_input=chunk_input,
     )
     if extract_decision is not None:
         if extract_decision.run:
@@ -731,6 +772,10 @@ def _realign_long_reads(
     # Only now that the align step is recorded: a run killed before keeps
     # the chunks' finished state, so its rerun doesn't realign them.
     shutil.rmtree(workdir, ignore_errors=True)
+    if is_url(job.input):
+        # Downloaded by this run or an interrupted one, chunked or not.
+        for index in index_files(job.input, outdir):
+            index.unlink(missing_ok=True)
     if job.keep_fastq:
         current_result().add_output(fastq, "fastq_r1")
 

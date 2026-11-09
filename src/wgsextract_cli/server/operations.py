@@ -24,6 +24,7 @@ from wgsextract_cli.api._params import (
     json_schema,
     param_fields,
 )
+from wgsextract_cli.core.remote_input import is_url
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
 
@@ -241,6 +242,11 @@ def _coerce(item: ParamField, value: object) -> object:
     if item.spec.path or base is Path or base is str:
         if not isinstance(value, str):
             raise _type_error(item, "a string")
+        if item.spec.path and is_url(value):
+            # The server would fetch whatever a request names.
+            raise RequestError(
+                400, "usage", f"{item.name!r}: URLs are for the command line only."
+            )
         return _expand(item, value)
     if base is bool:
         if not isinstance(value, bool):

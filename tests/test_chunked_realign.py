@@ -1,7 +1,9 @@
 """#431: realign long reads in chunks of the input, resuming an interrupted
 run at its first unfinished chunk, with the records of a single pass."""
 
+import contextlib
 import gzip
+import json
 import os
 import platform
 import random
@@ -12,14 +14,16 @@ import stat
 import subprocess
 import sys
 import uuid
+from pathlib import Path
 
 import pytest
 
 from tests.htslib_helpers import needs_tools, run_wgsextract, sam_to_bam, write_fasta
+from tests.http_server import serving
 from wgsextract_cli.core import alignment_splice
 from wgsextract_cli.core.chunked_alignment import ChunkPlan, chunked_disk
 from wgsextract_cli.core.resource_estimates import GIB
-from wgsextract_cli.core.utils import run_command
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 
 COMP = str.maketrans("ACGT", "TGCA")
 MODS = "MM:Z:C+m?,0,1;\tML:B:C,250,10"
@@ -291,7 +295,7 @@ def _dying_tools(tmp_path, die, after):
     return shims, log
 
 
-def _realign_cli(tmp_path, shims, argv, die):
+def _realign_cli(tmp_path, shims, argv, die, cwd=None):
     (tmp_path / "count").unlink(missing_ok=True)
     if die:
         (tmp_path / "die").write_text("")
@@ -299,6 +303,7 @@ def _realign_cli(tmp_path, shims, argv, die):
     with subprocess.Popen(
         [sys.executable, "-m", "wgsextract_cli.main", "realign", *argv],
         env=env,
+        cwd=cwd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -474,3 +479,229 @@ def test_spliced_pieces_are_one_valid_file(tmp_path, ont, fmt):
         handle.write(data[:-10])
     with pytest.raises(alignment_splice.SpliceError, match="truncated"):
         alignment_splice.append(target, truncated, size)
+
+
+def _samtools_reads_urls():
+    path = shutil.which("samtools")
+    if path is None:
+        return False
+    done = subprocess.run([path, "--version"], capture_output=True, text=True,
+                          errors="replace", check=False)  # fmt: skip
+    return "libcurl=yes" in done.stdout
+
+
+# Windows' samtools is built without libcurl: realign says so (check_url).
+needs_url_samtools = pytest.mark.skipif(
+    not _samtools_reads_urls(), reason="samtools without http(s) support"
+)
+
+
+@contextlib.contextmanager
+def _serving(ont, source, *, etags=True):
+    """A server of ``ont[source]`` and its index, with ETags as S3 sends."""
+    local = Path(ont[source])
+    index = Path(str(local) + (".crai" if source == "cram" else ".bai"))
+    files = {local.name: local.read_bytes(), index.name: index.read_bytes()}
+    with serving(None, files) as server:
+        server.etags = etags
+        yield server, local, server.url_for(local.name)
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="bash PATH shims")
+@needs_tools("samtools", "minimap2")
+@needs_url_samtools
+@pytest.mark.parametrize("source", ["bam", "cram"])
+def test_a_url_realigns_in_chunks_like_the_local_file(tmp_path, ont, source):
+    """#431: the GIAB HG002 ONT CRAM is 104 GB, too big to keep beside its
+    realignment on the Mac that runs it. realign now reads it over https by
+    range, and resumes a run killed mid-chunk. Without --outdir the output
+    goes to the current folder; only the input's index is downloaded there,
+    and removed after."""
+    work = tmp_path / "work"
+    work.mkdir()
+    shims, _ = _dying_tools(tmp_path, MAPPING, 3)
+    with _serving(ont, source) as (server, local, url):
+        size = _chunk_size(str(local))
+        argv = ["--input", url, "--ref", ont["ref"], "--threads", "2",
+                "--memory", "256M", "--chunk-size", size, "--no-preflight"]  # fmt: skip
+        killed = _realign_cli(tmp_path, shims, argv, True, cwd=work)
+        resumed = _realign_cli(tmp_path, shims, argv, False, cwd=work)
+    assert killed.returncode != 0
+    assert resumed.returncode == 0, resumed.stderr
+    assert "Detected ont reads" in resumed.stderr
+    assert "Resuming the chunked alignment" in resumed.stderr
+
+    _realign(local, ont["ref"], tmp_path / "local", "--chunk-size", size)
+    assert _records(str(work / "x_aligned.bam"), ont["ref"]) == _records(
+        str(tmp_path / "local" / "x_aligned.bam"), ont["ref"]
+    )
+    manifest = json.loads((work / "x_aligned.bam.manifest.json").read_text())
+    assert [i["path"] for i in manifest["inputs"] if i["role"] == "input"] == [url]
+    assert sorted(p.name for p in work.iterdir() if not p.name.startswith(".x_")) == [
+        "x_aligned.bam", "x_aligned.bam.bai", "x_aligned.bam.manifest.json",
+        "x_aligned.bam.steps.json",
+    ]  # fmt: skip
+
+
+@needs_tools("samtools", "minimap2")
+@needs_url_samtools
+def test_a_changed_url_is_realigned_and_an_unchanged_one_is_not(tmp_path, ont):
+    """#431: the step journal fingerprints a URL by its HEAD (ETag, else
+    Last-Modified): a rerun skips an unchanged remote input and redoes a
+    changed one."""
+    out = tmp_path / "out"
+    with _serving(ont, "cram") as (server, local, url):
+        _realign(url, ont["ref"], out, "--chunk-size", _chunk_size(str(local)))
+        journal = out / "x_aligned.bam.steps.json"
+        first = json.loads(journal.read_text())["steps"]["align"]["run_id"]
+        _realign(url, ont["ref"], out, "--chunk-size", _chunk_size(str(local)))
+        assert json.loads(journal.read_text())["steps"]["align"]["run_id"] == first
+
+        fewer = tmp_path / "fewer.cram"
+        run_command(["samtools", "view", "-C", "-T", ont["ref"], "-o", fewer,
+                     str(local), "chr2"])  # fmt: skip
+        run_command(["samtools", "index", fewer])
+        server.files.update(
+            {local.name: fewer.read_bytes(),
+             local.name + ".crai": Path(f"{fewer}.crai").read_bytes()}
+        )  # fmt: skip
+        _realign(url, ont["ref"], out, "--chunk-size", "0")
+    assert json.loads(journal.read_text())["steps"]["align"]["run_id"] != first
+    chroms = {
+        r.split("\t")[2] for r in _view("view", str(out / "x_aligned.bam")).splitlines()
+    }
+    assert chroms <= {"chr2", "*"}
+
+
+@needs_tools("samtools", "minimap2")
+@needs_url_samtools
+def test_a_url_without_etag_or_date_is_never_assumed_unchanged(tmp_path, ont):
+    """#580 review: without a validator a URL was known by its size alone, so
+    a file replaced by one of the same length was skipped as done."""
+    out = tmp_path / "out"
+    with _serving(ont, "cram", etags=False) as (_, local, url):
+        _realign(url, ont["ref"], out, "--chunk-size", "0")
+        journal = out / "x_aligned.bam.steps.json"
+        first = json.loads(journal.read_text())["steps"]["align"]["run_id"]
+        _realign(url, ont["ref"], out, "--chunk-size", "0")
+    assert json.loads(journal.read_text())["steps"]["align"]["run_id"] != first
+
+
+@needs_tools("samtools", "minimap2")
+@needs_url_samtools
+@pytest.mark.parametrize("status", [404, 500])
+def test_only_a_missing_index_makes_a_url_align_in_one_pass(tmp_path, ont, status):
+    """#580 review: any failure fetching the index (a timeout, a 5xx) fell
+    back to one pass, losing the chunks' resume for a whole genome. Only a
+    missing index (404, or S3's 403) does; other failures stop the run."""
+    out = tmp_path / "out"
+    with _serving(ont, "cram") as (server, local, url):
+        server.statuses[local.name + ".crai"] = status
+        size = _chunk_size(str(local))
+        if status == 500:
+            with pytest.raises(WGSExtractError, match="Can't download"):
+                _realign(url, ont["ref"], out, "--chunk-size", size)
+            return
+        _realign(url, ont["ref"], out, "--chunk-size", size)
+    reads = int(_view("view", "-c", "-F", "0x900", str(out / "x_aligned.bam")))
+    assert reads == int(_view("view", "-c", "-F", "0x900", ont["bam"]))
+    assert not (out / "x_aligned.bam.chunks").exists()
+
+
+@needs_tools("samtools")
+@pytest.mark.parametrize(
+    "suffix", ["?X-Amz-Signature=abc", "#part"], ids=["query", "fragment"]
+)
+def test_a_url_with_a_query_or_credentials_is_refused(tmp_path, ont, suffix):
+    """#580 review: a signed URL's token would reach the manifest and
+    journal, and its query hid the file's format; only public URLs are
+    read."""
+    with _serving(ont, "cram") as (_, _local, url):
+        for address in (url + suffix, url.replace("://", "://user:pw@")):
+            with pytest.raises(UsageError, match="public http"):
+                run_wgsextract("realign", "--input", address, "--ref", ont["ref"],
+                               "--outdir", str(tmp_path / "out"))  # fmt: skip
+    assert not (tmp_path / "out").exists()
+
+
+@needs_tools("samtools")
+@needs_url_samtools
+def test_a_url_of_short_reads_is_refused(tmp_path, ont):
+    """#431: only long reads stream from a URL; short-read realign extracts
+    and collates its input, which needs a local file."""
+    with (
+        _serving(ont, "bam") as (_, _local, url),
+        pytest.raises(UsageError, match="ONT and PacBio"),
+    ):
+        run_wgsextract(
+            "realign", "--input", url, "--ref", ont["ref"],
+            "--outdir", str(tmp_path), "--platform", "illumina",
+        )  # fmt: skip
+    assert list(tmp_path.iterdir()) == []
+
+
+SECRET = "SECRETSIG"
+
+
+def _secret_urls(url):
+    return [f"{url}?X-Amz-Signature={SECRET}",
+            url.replace("://", f"://user:{SECRET}@")]  # fmt: skip
+
+
+def _files_mentioning(directory, text):
+    return [
+        str(path)
+        for path in Path(directory).rglob("*")
+        if path.is_file() and text.encode() in path.read_bytes()
+    ]
+
+
+@needs_tools("samtools")
+def test_a_signed_url_leaks_its_token_nowhere(tmp_path, ont):
+    """#580 review: the CLI recorded a signed URL as the run's input before
+    refusing it, so its token reached --json, the result file and the last
+    run's state; a URL with credentials printed them in "Can't reach". The
+    URL is now refused before anything records it."""
+    from wgsextract_cli import api
+    from wgsextract_cli.api._runtime import CommandFailed
+    from wgsextract_cli.core.last_run import state_directory
+
+    with _serving(ont, "cram") as (_, _local, url):
+        for address in _secret_urls(url):
+            result_file = tmp_path / "result.json"
+            done = subprocess.run(
+                [sys.executable, "-m", "wgsextract_cli.main", "--json",
+                 "--result-file", str(result_file), "realign", "--input", address,
+                 "--ref", ont["ref"], "--outdir", str(tmp_path / "out")],
+                capture_output=True, text=True, errors="replace", cwd=tmp_path,
+                check=False,
+            )  # fmt: skip
+            assert done.returncode != 0
+            assert "public http" in done.stdout + done.stderr
+            assert SECRET not in done.stdout + done.stderr
+            assert result_file.is_file()
+
+            params = api.RealignParams(input=address, ref=Path(ont["ref"]),
+                                       outdir=tmp_path / "out")  # fmt: skip
+            with pytest.raises(CommandFailed, match="public http") as failed:
+                api.align.realign(params)
+            assert SECRET not in failed.value.result.to_json()
+    assert _files_mentioning(tmp_path, SECRET) == []
+    assert _files_mentioning(state_directory(), SECRET) == []
+
+
+@needs_tools("samtools")
+@needs_url_samtools
+@pytest.mark.parametrize(
+    "url",
+    ["http://[::1]:9/x.cram", "http://127.0.0.1:99999/x.cram", "http://h:abc/x.cram"],
+    ids=["ipv6", "port-out-of-range", "port-not-a-number"],
+)
+def test_an_unreachable_url_is_named_as_written(tmp_path, ont, url):
+    """#580 review: the URL shown in records and errors was rebuilt from its
+    host and port, dropping an IPv6 host's brackets, and a malformed port
+    escaped as a bare ValueError instead of "Can't reach"."""
+    with pytest.raises(WGSExtractError) as error:
+        run_wgsextract("realign", "--input", url, "--ref", ont["ref"],
+                       "--outdir", str(tmp_path / "out"))  # fmt: skip
+    assert f"Can't reach {url}" in str(error.value)

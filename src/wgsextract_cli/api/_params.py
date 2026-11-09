@@ -15,6 +15,7 @@ from dataclasses import MISSING, dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Literal, TypeVar
 
+from wgsextract_cli.core.remote_input import is_url
 from wgsextract_cli.core.utils import UsageError
 
 PathKind = Literal["file", "directory", "file_or_directory"]
@@ -48,7 +49,9 @@ class ParamSpec:
     and the server checks every item. ``minimum`` is the least number a
     numeric field (or each element of a tuple one) may hold.
     ``expression`` text fields are bcftools expressions, which read the file
-    an ``@FILE`` operand names; the server refuses those.
+    an ``@FILE`` operand names; the server refuses those. A ``url`` path
+    field may instead hold an http(s) URL, kept as text; only the command
+    line and Python callers may pass one, never a server request.
     A true ``deletes`` field makes the command delete data it didn't make
     (gene maps, an index); a server refuses that unless allowed.
     A ``positional`` field is a positional CLI argument named by ``metavar``;
@@ -82,6 +85,7 @@ class ParamSpec:
     positional: bool = False
     group: tuple[str, str | None] | None = None
     hidden_flags: tuple[str, ...] = ()
+    url: bool = False
 
     @property
     def description(self) -> str:
@@ -116,6 +120,7 @@ def param(
     positional: bool = False,
     group: tuple[str, str | None] | None = None,
     hidden_flags: tuple[str, ...] = (),
+    url: bool = False,
 ) -> Any:
     """Declare a Params field; omit ``default`` for a required one.
 
@@ -147,6 +152,7 @@ def param(
         positional=positional,
         group=group,
         hidden_flags=hidden_flags,
+        url=url,
     )
     return dataclasses.field(default=default, metadata={_SPEC: spec})
 
@@ -252,7 +258,9 @@ class Params:
     def __post_init__(self) -> None:
         for item in param_fields(type(self)):
             value = getattr(self, item.name)
-            if item.spec.path and isinstance(value, (str, os.PathLike)):
+            if item.spec.url and isinstance(value, str) and is_url(value):
+                pass  # Path() would fold its "//".
+            elif item.spec.path and isinstance(value, (str, os.PathLike)):
                 value = Path(value) if os.fspath(value) else None
                 object.__setattr__(self, item.name, value)
             elif item.spec.path and isinstance(value, (tuple, list)):

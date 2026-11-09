@@ -16,13 +16,16 @@ from wgsextract_cli.core.table_writer import FORMATS, table_format_type
 from ._params import param
 
 
-def input_param(doc: str, required_message: str = "--input is required.") -> Any:
+def input_param(
+    doc: str, required_message: str = "--input is required.", *, url: bool = False
+) -> Any:
     return param(
         doc=doc,
         flags=("--input", "-i"),
         path="file",
         shared=True,
         required_message=required_message,
+        url=url,
     )
 
 

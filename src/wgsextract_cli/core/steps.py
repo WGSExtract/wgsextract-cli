@@ -41,10 +41,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from types import TracebackType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from wgsextract_cli.core.paths import PathInput, absolute_path
 from wgsextract_cli.core.utils import WGSExtractError
+
+if TYPE_CHECKING:
+    from wgsextract_cli.core.remote_input import RemoteFile
 
 SCHEMA = "wgsextract.steps/1"
 JOURNAL_SUFFIX = ".steps.json"
@@ -218,6 +221,7 @@ class StepJournal:
         self.plan: list[dict[str, str]] = []
         self._steps: dict[str, dict[str, Any]] = {}
         self._pending: dict[str, str] = {}  # output path -> step rerunning it
+        self._remote: dict[str, RemoteFile] = {}  # URL input -> its HEAD
         self._lock = contextlib.ExitStack()
         self._tag: str | None = None  # the environment's RUN_TAG before a step
 
@@ -390,6 +394,20 @@ class StepJournal:
         return None
 
     def _input(self, role: str, path: PathInput) -> dict[str, Any]:
+        from wgsextract_cli.core.remote_input import is_url, remote_file
+
+        if is_url(path):
+            # One look per run: a failed HEAD after the step mustn't undo it.
+            url = os.fspath(path)
+            remote = self._remote.get(url) or self._remote.setdefault(
+                url, remote_file(url)
+            )
+            return {
+                "role": role,
+                "path": remote.url,
+                "size": remote.size,
+                "fingerprint": remote.fingerprint,
+            }
         resolved = absolute_path(path)
         item: dict[str, Any] = {"role": role, "path": str(resolved)}
         producer = self._producer(resolved)

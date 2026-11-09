@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 from importlib import resources
 from pathlib import Path
 from typing import Any, Literal, TextIO
+from urllib.parse import urlsplit
 
 from wgsextract_cli import __version__
 
@@ -190,6 +191,19 @@ class FileRecord:
         kind: str | None = None,
         metrics: Mapping[str, Scalar] | None = None,
     ) -> FileRecord:
+        from wgsextract_cli.core.remote_input import is_url, remote_file
+
+        if is_url(path):
+            remote = remote_file(os.fspath(path))
+            return cls(
+                path=remote.url,
+                kind=kind or file_kind(Path(urlsplit(remote.url).path)),
+                role=role,
+                exists=True,
+                size_bytes=remote.size,
+                fingerprint=remote.fingerprint,
+                metrics=dict(metrics or {}),
+            )
         absolute = Path(path).expanduser().absolute()
         record = cls(
             path=str(absolute),
@@ -204,7 +218,10 @@ class FileRecord:
         """Re-read size, mtime, fingerprint and index from disk.
 
         Only regular files are opened; a FIFO or device (``/dev/stdin``, a
-        process substitution) is recorded without size or fingerprint."""
+        process substitution) is recorded without size or fingerprint. A
+        URL keeps what its HEAD request said."""
+        if "://" in self.path:
+            return
         path = Path(self.path)
         try:
             info = path.stat()
@@ -288,16 +305,26 @@ def _redact_strings(value: Any) -> Any:
 
 def params_from_args(args: argparse.Namespace) -> dict[str, Any]:
     """The effective options of a run, minus internals and secrets."""
-    params: dict[str, Any] = {}
-    for key, value in sorted(vars(args).items()):
-        if key.startswith("_") or key in {"func", "parent_pid"} or callable(value):
-            continue
-        params[key] = (
-            "<redacted>"
-            if _SECRET_NAME.search(key)
-            else _redact_strings(_json_safe(value))
-        )
-    return params
+    return redact_params(
+        {
+            key: value
+            for key, value in vars(args).items()
+            if not key.startswith("_")
+            and key not in {"func", "parent_pid"}
+            and not callable(value)
+        }
+    )
+
+
+def redact_params(values: Mapping[str, Any]) -> dict[str, Any]:
+    """Parameters safe to record: secret ones and URL credentials and
+    queries hidden."""
+    return {
+        key: "<redacted>"
+        if _SECRET_NAME.search(key)
+        else _redact_strings(_json_safe(value))
+        for key, value in sorted(values.items())
+    }
 
 
 def redact_argv(argv: Sequence[str]) -> list[str]:
