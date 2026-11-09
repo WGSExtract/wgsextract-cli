@@ -196,7 +196,9 @@ def save(
         document["autosomal"] = _tally_json(autosomal)
     tmp = unit.sidecar.with_name(unit.sidecar.name + ".tmp")
     try:
-        tmp.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+        tmp.write_text(
+            json.dumps(document, indent=2) + "\n", encoding="utf-8", newline="\n"
+        )
         tmp.replace(unit.sidecar)
     except OSError as e:
         logging.warning(f"Could not save {unit.sidecar}: {e}")
