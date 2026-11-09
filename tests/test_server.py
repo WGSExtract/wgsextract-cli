@@ -2040,6 +2040,7 @@ _BASE_REQUESTS: dict[str, dict[str, Any]] = {
     "example-genome/download": {"target_root": _DATA},
     "bam/to-ubam": {"input": _FILE},
     "extract/custom": {"region": "chrM"},
+    "extract/region": {"formats": "bam"},
     "info/chip": {"input": _FILE},
     "panel/bed": {"genes": ["BRCA1"]},
     "qc/vcf": {"input": _FILE},

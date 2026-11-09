@@ -38,7 +38,7 @@ test("WGSExtract new options do not change default argv or selected formats", ()
     "microarray", "--input", "sample.bam", "--ref", "ref.fa", "--formats", "23andme_v35,23andme_v5,all",
   ]);
   for (const [page, action, flag] of [
-    ["extract", "ydna-bam", "--poz"], ["extract", "ydna-vcf", "--ybrowse"],
+    ["extract", "region-y", "--poz"], ["extract", "region-y", "--ybrowse"],
     ["extract", "unmapped", "--fastq"], ["extract", "vcf-gatk", "--scatter"],
     ["extract", "realign", "--keep-fastq"], ["ancestry", "run-yleaf", "--tree-links"],
     ["fastq", "multiqc", "--force"],
@@ -92,13 +92,22 @@ test("WGSExtract opt-in policies render flags and preserve manifest paths with s
   assert.ok(!wgsCommand("microarray", "microarray-generate", { indel_manifest: "chip.csv" }).includes("--indel-manifest"));
 });
 
+test("WGSExtract region buttons write each checked format for their region", () => {
+  assert.deepEqual(wgsCommand("extract", "region-ymt"), [
+    "extract", "region", "--input", "sample.bam", "--target", "ymt", "--formats", "bam",
+  ]);
+  assert.deepEqual(wgsCommand("extract", "region-autox", { out_dir: "out" }, { extract_formats: ["vcf", "fasta", "bam"] }), [
+    "extract", "region", "--input", "sample.bam", "--target", "autox", "--formats", "bam,fasta,vcf", "--outdir", "out",
+  ]);
+});
+
 test("WGSExtract targeted opt-ins are restricted to the relevant commands", () => {
   const choices = {
     extract_poz: ["--poz"], extract_ybrowse: ["--ybrowse"], extract_unmapped_fastq: ["--fastq"],
     gatk_scatter: ["--scatter"], realign_keep_fastq: ["--keep-fastq"], lineage_tree_links: ["--tree-links"],
   };
   for (const [page, action, flag] of [
-    ["extract", "ydna-bam", "--poz"], ["extract", "ydna-vcf", "--ybrowse"],
+    ["extract", "region-y", "--poz"], ["extract", "region-y", "--ybrowse"],
     ["extract", "unmapped", "--fastq"], ["extract", "vcf-gatk", "--scatter"],
     ["extract", "realign", "--keep-fastq"], ["ancestry", "run-yleaf", "--tree-links"],
     ["ancestry", "run-haplogrep", "--tree-links"],
@@ -106,6 +115,10 @@ test("WGSExtract targeted opt-ins are restricted to the relevant commands", () =
     assert.ok(wgsCommand(page, action, {}, choices).includes(flag));
   }
   assert.ok(!wgsCommand("extract", "custom", {}, choices).some((arg) => ["--poz", "--ybrowse", "--fastq"].includes(arg)));
+  // --poz and --ybrowse apply only to Y-only; the CLI refuses them elsewhere.
+  for (const action of ["region-mt", "region-ymt", "region-autox"]) {
+    assert.ok(!wgsCommand("extract", action, {}, choices).some((arg) => ["--poz", "--ybrowse"].includes(arg)));
+  }
   assert.ok(!wgsCommand("extract", "vcf-snp", {}, choices).includes("--scatter"));
   assert.deepEqual(wgsCommand("fastq", "multiqc", {
     multiqc_input: "reports with spaces", out_dir: "new reports",
