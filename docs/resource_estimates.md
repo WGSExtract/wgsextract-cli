@@ -207,13 +207,18 @@ same host with the GPU free, ran fq2bam in its default mode with no warnings:
 `vcf deepvariant --gpu` on Ultima reads runs Google's DeepVariant 1.10 GPU image
 (`gh1100-ultima-gpu`) instead of Parabricks, and checks only that each GPU has
 7.3 GiB free before call_variants. On the same RTX 3090, chr20 of GIAB HG008
-Ultima reads at 30x (154,624 examples, 4 make_examples shards):
+Ultima reads at 30x (182,666 examples, 4 make_examples shards):
 
 | Run | Time | Result |
 | --- | ---: | --- |
 | call_variants on the GPU | 3 min | ok, also with 7.3 GiB free |
 | call_variants on the GPU, 6.3 GiB free | | out of memory |
-| call_variants in the CPU image, 4 CPUs | 33 min | same calls in GIAB's easy regions; 17 of 105,191 differ on all of chr20 |
+| call_variants in the CPU image, 4 CPUs | 16–33 min | same calls in GIAB's easy regions; 14 of about 103,570 PASS calls differ on all of chr20 |
+
+The example count is call_variants' final `Wrote N examples` line; its
+`Predicted N examples in M batches` lines are progress reports every 50 batches.
+The CPU call_variants took 33 min in one run and 16 min in another on the same
+examples, so it depends on other load on the host.
 
 TensorFlow takes most of the free GPU memory whatever it needs (22.7 GiB of
 the free 24 GiB GPU). make_examples and postprocess run on the CPU, as in the
