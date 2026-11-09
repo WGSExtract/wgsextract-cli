@@ -86,7 +86,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
 # page-aligned for Metal.
 file(READ "${mem2_SOURCE_DIR}/src/FMI_search.h" fmi_header)
 mem2_seam(fmi_header "    int64_t sentinel_index;\nprivate:"
-    "    int64_t sentinel_index;\n    const int64_t *wgse_count() const { return count; }\n    const CP_OCC *wgse_cp_occ() const { return cp_occ; }\n    void wgse_getSMEMsOnePosLockstep(uint8_t *enc_qdb, int16_t *query_pos_array,\n        int32_t *min_intv_array, int32_t *rid_array, int32_t numReads, int32_t max_readlength,\n        int32_t minSeedLen, SMEM *matchArray, int64_t *__numTotalSmem, const bseq1_t *seq_,\n        int32_t *query_cum_len_ar);\nprivate:")
+    "    int64_t sentinel_index;\n    const int64_t *wgse_count() const { return count; }\n    const CP_OCC *wgse_cp_occ() const { return cp_occ; }\n    void wgse_getSMEMsOnePosLockstep(uint8_t *enc_qdb, int16_t *query_pos_array,\n        int32_t *min_intv_array, int32_t *rid_array, int32_t numReads, int32_t max_readlength,\n        int32_t minSeedLen, SMEM *matchArray, int64_t *__numTotalSmem, const bseq1_t *seq_,\n        int32_t *query_cum_len_ar);\n    int64_t wgse_bwtSeedStrategyLockstep(uint8_t *enc_qdb, int32_t *max_intv_array,\n        int32_t numReads, const bseq1_t *seq_, int32_t *query_cum_len_ar, int32_t minSeedLen,\n        SMEM *matchArray);\n    const void *wgse_prefixes();\nprivate:")
 file(WRITE "${mem2_src}/FMI_search.h" "${fmi_header}")
 file(READ "${mem2_SOURCE_DIR}/src/FMI_search.cpp" fmi_source)
 mem2_seam(fmi_source "(CP_OCC *)_mm_malloc(cp_occ_size * sizeof(CP_OCC), 64)) == NULL"
@@ -99,7 +99,7 @@ mem2_seam(fmi_source "        mem_lim += smem.s;"
     "        mem_lim += smem.s < max_occ ? smem.s : max_occ;")
 mem2_seam(fmi_source "if (pos & SA_COMPX_MASK == 0) {" "if ((pos & SA_COMPX_MASK) == 0) {")
 mem2_seam(fmi_source "if (sp & SA_COMPX_MASK == 0) {" "if ((sp & SA_COMPX_MASK) == 0) {")
-# SMEM collection steps up to 16 reads in turn (smem_lockstep.cpp.in).
+# SMEM collection's three passes step up to 16 reads in turn (smem_lockstep.cpp.in).
 mem2_seam(fmi_source "        getSMEMsOnePosOneThread(enc_qdb,\n                                query_pos_array,"
     "        if (wgse_exact_cpu())\n            wgse_getSMEMsOnePosLockstep(enc_qdb, query_pos_array, min_intv_array, rid_array,\n                tail, max_readlength, minSeedLen, matchArray, __numTotalSmem, seq_,\n                query_cum_len_ar);\n        else getSMEMsOnePosOneThread(enc_qdb,\n                                query_pos_array,")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/smem_lockstep.cpp.in" smem_lockstep)
@@ -110,6 +110,10 @@ mem2_seam(bwamem_source "    kt_for(worker_bwt, &w, n_); // SMEMs (+SAL)"
     "    const int wgse_unit = wgse_kt_for_bwt(w, n_); // SMEMs (+SAL)")
 mem2_seam(bwamem_source "    kt_for(worker_aln, &w, n_); // BSW"
     "    wgse_kt_for(worker_aln, &w, n_, wgse_unit); // BSW")
+mem2_seam(bwamem_source "    fmi->getSMEMsOnePosOneThread(enc_qdb,\n                                 query_pos_ar,\n                                 min_intv_ar,\n                                 rid,\n                                 pos,\n                                 pos,\n                                 seq_,\n                                 query_cum_len_ar,\n                                 max_readlength,\n                                 opt->min_seed_len,\n                                 matchArray + num_smem1,\n                                 &num_smem2);"
+    "    if (wgse_exact_cpu())\n        fmi->wgse_getSMEMsOnePosLockstep(enc_qdb, query_pos_ar, min_intv_ar, rid, pos,\n            max_readlength, opt->min_seed_len, matchArray + num_smem1, &num_smem2, seq_,\n            query_cum_len_ar);\n    else fmi->getSMEMsOnePosOneThread(enc_qdb,\n                                 query_pos_ar,\n                                 min_intv_ar,\n                                 rid,\n                                 pos,\n                                 pos,\n                                 seq_,\n                                 query_cum_len_ar,\n                                 max_readlength,\n                                 opt->min_seed_len,\n                                 matchArray + num_smem1,\n                                 &num_smem2);")
+mem2_seam(bwamem_source "        num_smem3 = fmi->bwtSeedStrategyAllPosOneThread(enc_qdb, min_intv_ar,"
+    "        num_smem3 = (fmi->*(wgse_exact_cpu() ? &FMI_search::wgse_bwtSeedStrategyLockstep\n            : &FMI_search::bwtSeedStrategyAllPosOneThread))(enc_qdb, min_intv_ar,")
 mem2_seam(bwamem_source "    matchArray = mem_collect_smem(fmi, opt,"
     "    if (SMEM *gpu = wgse_metal_smems(fmi, opt, seq_, nseq, mmc, num_smem, tid)) matchArray = gpu;\n    else matchArray = mem_collect_smem(fmi, opt,")
 mem2_seam(bwamem_source "    kt_for(worker_sam, &w,  n_);   // SAM"
