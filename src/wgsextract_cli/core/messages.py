@@ -50,6 +50,7 @@ CLI_HELP = {
     "cmd_y-mt-extract": "Extract both Y-chromosome and Mitochondrial reads into a single, combined BAM file. Recommended for yFull (male-only) WGS uploads. (Format: .BAM)",
     "cmd_unmapped": "Extract reads that did not align to the reference. Often used to find viral contamination or non-human DNA using services like Kaiju and CosmosID.",
     "cmd_custom": "Extract reads from a specific chromosomal region or gene of interest.",
+    "cmd_region": "Extract the mtDNA, the Y chromosome, both, or the autosomes and X chromosome as any of a BAM, a VCF and a consensus FASTA. (Format: .BAM, .VCF, .FASTA)",
     "cmd_snp": "Call Single Nucleotide Polymorphisms (SNPs) using bcftools. Best for standard ancestry analysis and finding simple point mutations.",
     "cmd_indel": "Call Small Insertions and Deletions (InDels) using bcftools. Used to find small gaps or extra bases in the DNA sequence.",
     "cmd_sv": "Call Structural Variants (SVs) using Delly for short reads, Sniffles for Nanopore (ONT, auto-detected) or other long reads, or pbsv/Sniffles for PacBio. Identifies large-scale DNA changes (over 50bp).",

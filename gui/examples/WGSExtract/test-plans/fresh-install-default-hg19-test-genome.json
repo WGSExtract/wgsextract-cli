@@ -330,82 +330,63 @@
       "timeoutSeconds": 600
     },
     {
-      "id": "extract-mito-fasta",
+      "id": "extract-region-mt",
       "kind": "action",
       "pageID": "extract",
       "sectionID": "extract-inputs",
-      "actionID": "mito-fasta",
+      "actionID": "region-mt",
       "inputs": {
         "fieldValues": {
           "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
-        }
+        },
+        "checkedOptions": { "extract_formats": ["fasta", "bam", "vcf"] }
       },
+      "expectedResult": { "status": "ok", "outputs": ["mt_bam", "mt_vcf", "mt_fasta"] },
       "timeoutSeconds": 900
     },
     {
-      "id": "extract-mt-bam",
+      "id": "extract-region-y",
       "kind": "action",
       "pageID": "extract",
       "sectionID": "extract-inputs",
-      "actionID": "mt-bam",
+      "actionID": "region-y",
       "inputs": {
         "fieldValues": {
           "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
-        }
+        },
+        "checkedOptions": { "extract_formats": ["bam", "vcf"] }
       },
-      "expectedResult": { "status": "ok", "outputs": ["mt_bam"] },
-      "timeoutSeconds": 600
-    },
-    {
-      "id": "extract-mito-vcf",
-      "kind": "action",
-      "pageID": "extract",
-      "sectionID": "extract-inputs",
-      "actionID": "mito-vcf",
-      "inputs": {
-        "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
-        }
-      },
+      "expectedResult": { "status": "ok", "outputs": ["y_bam", "y_vcf"] },
       "timeoutSeconds": 900
     },
     {
-      "id": "extract-ydna-bam",
+      "id": "extract-region-ymt",
       "kind": "action",
       "pageID": "extract",
       "sectionID": "extract-inputs",
-      "actionID": "ydna-bam",
+      "actionID": "region-ymt",
       "inputs": {
         "fieldValues": {
           "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
-        }
+        },
+        "checkedOptions": { "extract_formats": ["bam"] }
       },
-      "timeoutSeconds": 600
-    },
-    {
-      "id": "extract-ydna-vcf",
-      "kind": "action",
-      "pageID": "extract",
-      "sectionID": "extract-inputs",
-      "actionID": "ydna-vcf",
-      "inputs": {
-        "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
-        }
-      },
+      "expectedResult": { "status": "ok", "outputs": ["y_mt_bam"] },
       "timeoutSeconds": 900
     },
     {
-      "id": "extract-y-mt",
+      "id": "extract-region-autox",
       "kind": "action",
       "pageID": "extract",
       "sectionID": "extract-inputs",
-      "actionID": "y-mt-extract",
+      "actionID": "region-autox",
       "inputs": {
         "fieldValues": {
           "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
-        }
+        },
+        "checkedOptions": { "extract_formats": ["bam"] }
       },
+      "expectedResult": { "status": "ok", "outputs": ["autox_bam"] },
       "timeoutSeconds": 900
     },
     {

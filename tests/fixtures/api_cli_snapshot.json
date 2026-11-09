@@ -8237,7 +8237,7 @@
    }
   },
   "extract": {
-   "help": "usage: wgsextract extract [-h] <command> ...\n\npositional arguments:\n  <command>\n    mito-fasta    Extract the Mitochondrial DNA (chrM) consensus sequence. Compatible with yFull\n                  (female-only mtDNA upload) and other sequence analysis tools. (Format: .FASTA)\n    mito-vcf      Call variants specifically for the mitochondrial DNA. Used by Mitoverse\n                  (Haplogrep) for haplogroup classification. (Format: .VCF)\n    mt-bam        Isolate all mitochondrial-related reads into a new, smaller BAM file. Used for\n                  high-resolution mtDNA analysis or maternal haplogroup prediction on services\n                  like Mitoverse (Haplogrep). (Format: .BAM)\n    ydna-bam      Extract all Y-chromosome reads into a separate BAM file. Compatible with yDNA\n                  Warehouse, yTree, and specialized paternal lineage tools. (Format: .BAM)\n    ydna-vcf      Call variants specifically for the Y-chromosome. Used by services like\n                  Cladefinder for haplogroup prediction. (Format: .VCF)\n    y-mt-extract  Extract both Y-chromosome and Mitochondrial reads into a single, combined BAM\n                  file. Recommended for yFull (male-only) WGS uploads. (Format: .BAM)\n    unmapped      Extract reads that did not align to the reference. Often used to find viral\n                  contamination or non-human DNA using services like Kaiju and CosmosID.\n    custom        Extract reads from a specific chromosomal region or gene of interest.\n    bam-subset    (advanced) Create a smaller version of your BAM file using a random fraction of\n                  reads (e.g. 0.1 for 10%). Useful for testing pipelines quickly.\n\noptions:\n  -h, --help      show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract extract [-h] <command> ...\n\npositional arguments:\n  <command>\n    mito-fasta    Extract the Mitochondrial DNA (chrM) consensus sequence. Compatible with yFull\n                  (female-only mtDNA upload) and other sequence analysis tools. (Format: .FASTA)\n    mito-vcf      Call variants specifically for the mitochondrial DNA. Used by Mitoverse\n                  (Haplogrep) for haplogroup classification. (Format: .VCF)\n    mt-bam        Isolate all mitochondrial-related reads into a new, smaller BAM file. Used for\n                  high-resolution mtDNA analysis or maternal haplogroup prediction on services\n                  like Mitoverse (Haplogrep). (Format: .BAM)\n    ydna-bam      Extract all Y-chromosome reads into a separate BAM file. Compatible with yDNA\n                  Warehouse, yTree, and specialized paternal lineage tools. (Format: .BAM)\n    ydna-vcf      Call variants specifically for the Y-chromosome. Used by services like\n                  Cladefinder for haplogroup prediction. (Format: .VCF)\n    y-mt-extract  Extract both Y-chromosome and Mitochondrial reads into a single, combined BAM\n                  file. Recommended for yFull (male-only) WGS uploads. (Format: .BAM)\n    unmapped      Extract reads that did not align to the reference. Often used to find viral\n                  contamination or non-human DNA using services like Kaiju and CosmosID.\n    custom        Extract reads from a specific chromosomal region or gene of interest.\n    region        Extract the mtDNA, the Y chromosome, both, or the autosomes and X chromosome as\n                  any of a BAM, a VCF and a consensus FASTA. (Format: .BAM, .VCF, .FASTA)\n    bam-subset    (advanced) Create a smaller version of your BAM file using a random fraction of\n                  reads (e.g. 0.1 for 10%). Useful for testing pipelines quickly.\n\noptions:\n  -h, --help      show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -8267,7 +8267,8 @@
        "ydna-vcf",
        "y-mt-extract",
        "unmapped",
-       "custom"
+       "custom",
+       "region"
       ],
       "help": [
        [
@@ -8301,6 +8302,10 @@
        [
         "custom",
         "Extract reads from a specific chromosomal region or gene of interest."
+       ],
+       [
+        "region",
+        "Extract the mtDNA, the Y chromosome, both, or the autosomes and X chromosome as any of a BAM, a VCF and a consensus FASTA. (Format: .BAM, .VCF, .FASTA)"
        ],
        [
         "bam-subset",
@@ -10223,6 +10228,384 @@
     "description": null,
     "formatter_class": "HelpFormatter",
     "prog": "wgsextract extract mt-bam"
+   }
+  },
+  "extract region": {
+   "help": "usage: wgsextract extract region [-h] --target {mt,y,ymt,autox} [--formats LIST] [--poz]\n                                 [--ybrowse]\n\noptions:\n  -h, --help            show this help message and exit\n  --target {mt,y,ymt,autox}\n                        Region to extract: mt (chrM), y (chrY), ymt (chrY and chrM) or autox\n                        (autosomes and chrX).\n  --formats LIST        Comma-separated formats to write: fasta (consensus sequence), bam (reads)\n                        and vcf (variant calls), e.g. bam,vcf.\n  --poz                 With --target y and the bam format: restrict the BAM's Y reads to the\n                        bundled CombBED/McDonald/Poznik union (GRCh37/38 only).\n  --ybrowse             With --target y and the vcf format: call installed, allele-annotated\n                        yBrowse SNP targets (GRCh38 only; no downloads) into\n                        <input>_Y_ybrowse.vcf.gz instead.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract extract region --input sample.cram --target ymt --formats bam,vcf\n  wgsextract extract region --input sample.cram --target mt --formats fasta\n  wgsextract extract region --input sample.cram --target autox --formats vcf,fasta\n\noutputs (in the output directory unless noted):\n  Per chosen format: <input stem>_mtDNA|Y|Y_MT|autosomes_X.bam (+ .bai),\n  <input stem>_MT|Y|Y_MT|autosomes_X.vcf.gz (+ .tbi) and .fasta.\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, bgzip, tabix;\n  hours on a 30x genome.\n",
+   "parser": {
+    "actions": [
+     {
+      "choices": null,
+      "class": "_HelpAction",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "help",
+      "exclusive_group": null,
+      "help": "show this help message and exit",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "input",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--input",
+       "-i"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "outdir",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--outdir",
+       "-o"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "genome",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--genome"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "ref",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--ref"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "threads",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "N|auto",
+      "nargs": null,
+      "option_strings": [
+       "--threads",
+       "-t"
+      ],
+      "required": false,
+      "type": "_thread_count_arg"
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "memory",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--memory",
+       "-m"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "tmp_dir",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "DIRECTORY",
+      "nargs": null,
+      "option_strings": [
+       "--tmp-dir"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "json",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "quiet",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--quiet"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "debug",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--debug"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "log_file",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "PATH",
+      "nargs": null,
+      "option_strings": [
+       "--log-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "keep_awake",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--keep-awake",
+       "--no-keep-awake"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "atomic_output",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--atomic-output",
+       "--no-atomic-output"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "config_path",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "FILE",
+      "nargs": null,
+      "option_strings": [
+       "--config"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_result_file",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "PATH",
+      "nargs": null,
+      "option_strings": [
+       "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "parent_pid",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--parent-pid"
+      ],
+      "required": false,
+      "type": "int"
+     },
+     {
+      "choices": [
+       "mt",
+       "y",
+       "ymt",
+       "autox"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "target",
+      "exclusive_group": null,
+      "help": "Region to extract: mt (chrM), y (chrY), ymt (chrY and chrM) or autox (autosomes and chrX).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--target"
+      ],
+      "required": true,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "formats",
+      "exclusive_group": null,
+      "help": "Comma-separated formats to write: fasta (consensus sequence), bam (reads) and vcf (variant calls), e.g. bam,vcf.",
+      "metavar": "LIST",
+      "nargs": null,
+      "option_strings": [
+       "--formats"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "poz",
+      "exclusive_group": null,
+      "help": "With --target y and the bam format: restrict the BAM's Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37/38 only).",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--poz"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "ybrowse",
+      "exclusive_group": null,
+      "help": "With --target y and the vcf format: call installed, allele-annotated yBrowse SNP targets (GRCh38 only; no downloads) into <input>_Y_ybrowse.vcf.gz instead.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--ybrowse"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_HelpAllAction",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "help_all",
+      "exclusive_group": null,
+      "help": "Show this help with the advanced options too, and exit.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--help-all"
+      ],
+      "required": false,
+      "type": null
+     }
+    ],
+    "defaults": {
+     "_command": "extract region",
+     "func": "cli_ExtractRegionParams"
+    },
+    "description": null,
+    "formatter_class": "HelpFormatter",
+    "prog": "wgsextract extract region"
    }
   },
   "extract unmapped": {
@@ -42765,6 +43148,69 @@
    "ref": null,
    "threads": null,
    "tmp_dir": null
+  },
+  "extract region -i x.bam --target y --formats bam --poz": {
+   "_command": "extract region",
+   "_explicit_dests": [
+    "formats",
+    "input",
+    "poz",
+    "target"
+   ],
+   "atomic_output": false,
+   "command": "extract",
+   "debug": false,
+   "ext_cmd": "region",
+   "formats": "bam",
+   "full_help": false,
+   "func": "cli_ExtractRegionParams",
+   "genome": null,
+   "input": "x.bam",
+   "json": false,
+   "keep_awake": false,
+   "log_dir": null,
+   "log_file": null,
+   "memory": null,
+   "outdir": null,
+   "parent_pid": null,
+   "poz": true,
+   "quiet": false,
+   "ref": null,
+   "target": "y",
+   "threads": null,
+   "tmp_dir": null,
+   "ybrowse": false
+  },
+  "extract region -i x.bam --target ymt --formats bam,vcf": {
+   "_command": "extract region",
+   "_explicit_dests": [
+    "formats",
+    "input",
+    "target"
+   ],
+   "atomic_output": false,
+   "command": "extract",
+   "debug": false,
+   "ext_cmd": "region",
+   "formats": "bam,vcf",
+   "full_help": false,
+   "func": "cli_ExtractRegionParams",
+   "genome": null,
+   "input": "x.bam",
+   "json": false,
+   "keep_awake": false,
+   "log_dir": null,
+   "log_file": null,
+   "memory": null,
+   "outdir": null,
+   "parent_pid": null,
+   "poz": false,
+   "quiet": false,
+   "ref": null,
+   "target": "ymt",
+   "threads": null,
+   "tmp_dir": null,
+   "ybrowse": false
   },
   "extract unmapped -i x.bam --fastq": {
    "_command": "extract unmapped",

@@ -31,22 +31,152 @@
       "title": "sections.extract.extract-inputs.title",
       "iconName": "extract",
       "textIcon": "✂️",
-      "controls": [
+      "actions": [
         {
-          "id": "extract_region",
-          "label": "controls.extract.extract-inputs.extract_region.label",
-          "kind": "text",
-          "placeholder": "controls.extract.extract-inputs.extract_region.placeholder",
-          "tooltip": "controls.extract.extract-inputs.extract_region.tooltip",
-          "advancedOnly": true
+          "id": "region-mt",
+          "title": "actions.extract.extract-inputs.region-mt.title",
+          "tooltip": "actions.extract.extract-inputs.region-mt.tooltip",
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "extract",
+              "region",
+              "--input",
+              "{{bam_path}}",
+              "--target",
+              "mt",
+              "--formats",
+              "{{extract_formats}}"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
         },
         {
-          "id": "extract_extra",
-          "label": "controls.extract.extract-inputs.extract_extra.label",
-          "kind": "text",
-          "placeholder": "controls.extract.extract-inputs.extract_extra.placeholder",
-          "tooltip": "controls.extract.extract-inputs.extract_extra.tooltip",
-          "advancedOnly": true
+          "id": "region-y",
+          "title": "actions.extract.extract-inputs.region-y.title",
+          "tooltip": "actions.extract.extract-inputs.region-y.tooltip",
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "extract",
+              "region",
+              "--input",
+              "{{bam_path}}",
+              "--target",
+              "y",
+              "--formats",
+              "{{extract_formats}}"
+            ],
+            "optionalArguments": [
+              [
+                "{{extract_poz}}"
+              ],
+              [
+                "{{extract_ybrowse}}"
+              ],
+              [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "region-ymt",
+          "title": "actions.extract.extract-inputs.region-ymt.title",
+          "tooltip": "actions.extract.extract-inputs.region-ymt.tooltip",
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "extract",
+              "region",
+              "--input",
+              "{{bam_path}}",
+              "--target",
+              "ymt",
+              "--formats",
+              "{{extract_formats}}"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "region-autox",
+          "title": "actions.extract.extract-inputs.region-autox.title",
+          "tooltip": "actions.extract.extract-inputs.region-autox.tooltip",
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "extract",
+              "region",
+              "--input",
+              "{{bam_path}}",
+              "--target",
+              "autox",
+              "--formats",
+              "{{extract_formats}}"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "extract-formats",
+      "subsection": true,
+      "controls": [
+        {
+          "id": "extract_formats",
+          "label": "controls.extract.extract-formats.extract_formats.label",
+          "kind": "checkboxGroup",
+          "layout": "rows",
+          "options": [
+            {
+              "id": "fasta",
+              "title": "options.extract.extract-formats.extract_formats.fasta.title"
+            },
+            {
+              "id": "bam",
+              "title": "options.extract.extract-formats.extract_formats.bam.title",
+              "selected": true
+            },
+            {
+              "id": "vcf",
+              "title": "options.extract.extract-formats.extract_formats.vcf.title"
+            }
+          ],
+          "tooltip": "controls.extract.extract-formats.extract_formats.tooltip"
         },
         {
           "id": "extract_poz",
@@ -73,6 +203,28 @@
           ],
           "tooltip": "controls.extract.post-v063.ybrowse.tooltip",
           "advancedOnly": true
+        }
+      ]
+    },
+    {
+      "id": "extract-more",
+      "subsection": true,
+      "controls": [
+        {
+          "id": "extract_region",
+          "label": "controls.extract.extract-inputs.extract_region.label",
+          "kind": "text",
+          "placeholder": "controls.extract.extract-inputs.extract_region.placeholder",
+          "tooltip": "controls.extract.extract-inputs.extract_region.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "extract_extra",
+          "label": "controls.extract.extract-inputs.extract_extra.label",
+          "kind": "text",
+          "placeholder": "controls.extract.extract-inputs.extract_extra.placeholder",
+          "tooltip": "controls.extract.extract-inputs.extract_extra.tooltip",
+          "advancedOnly": true
         },
         {
           "id": "extract_unmapped_fastq",
@@ -96,157 +248,6 @@
         }
       ],
       "actions": [
-        {
-          "id": "mito-fasta",
-          "title": "actions.extract.extract-inputs.mito-fasta.title",
-          "tooltip": "actions.extract.extract-inputs.mito-fasta.tooltip",
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "extract",
-              "mito-fasta",
-              "--input",
-              "{{bam_path}}"
-            ],
-            "optionalArguments": [
-              [
-                "--ref",
-                "{{ref_path}}"
-              ],
-              [
-                "--outdir",
-                "{{out_dir}}"
-              ]
-            ]
-          },
-          "advancedOnly": true
-        },
-        {
-          "id": "mt-bam",
-          "title": "actions.extract.extract-inputs.mt-bam.title",
-          "tooltip": "actions.extract.extract-inputs.mt-bam.tooltip",
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "extract",
-              "mt-bam",
-              "--input",
-              "{{bam_path}}"
-            ],
-            "optionalArguments": [
-              [
-                "--ref",
-                "{{ref_path}}"
-              ],
-              [
-                "--outdir",
-                "{{out_dir}}"
-              ]
-            ]
-          }
-        },
-        {
-          "id": "mito-vcf",
-          "title": "actions.extract.extract-inputs.mito-vcf.title",
-          "tooltip": "actions.extract.extract-inputs.mito-vcf.tooltip",
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "extract",
-              "mito-vcf",
-              "--input",
-              "{{bam_path}}"
-            ],
-            "optionalArguments": [
-              [
-                "--ref",
-                "{{ref_path}}"
-              ],
-              [
-                "--outdir",
-                "{{out_dir}}"
-              ]
-            ]
-          }
-        },
-        {
-          "id": "ydna-bam",
-          "title": "actions.extract.extract-inputs.ydna-bam.title",
-          "tooltip": "actions.extract.extract-inputs.ydna-bam.tooltip",
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "extract",
-              "ydna-bam",
-              "--input",
-              "{{bam_path}}"
-            ],
-            "optionalArguments": [
-              [
-                "{{extract_poz}}"
-              ],
-              [
-                "--ref",
-                "{{ref_path}}"
-              ],
-              [
-                "--outdir",
-                "{{out_dir}}"
-              ]
-            ]
-          }
-        },
-        {
-          "id": "ydna-vcf",
-          "title": "actions.extract.extract-inputs.ydna-vcf.title",
-          "tooltip": "actions.extract.extract-inputs.ydna-vcf.tooltip",
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "extract",
-              "ydna-vcf",
-              "--input",
-              "{{bam_path}}"
-            ],
-            "optionalArguments": [
-              [
-                "{{extract_ybrowse}}"
-              ],
-              [
-                "--ref",
-                "{{ref_path}}"
-              ],
-              [
-                "--outdir",
-                "{{out_dir}}"
-              ]
-            ]
-          }
-        },
-        {
-          "id": "y-mt-extract",
-          "title": "actions.extract.extract-inputs.y-mt-extract.title",
-          "tooltip": "actions.extract.extract-inputs.y-mt-extract.tooltip",
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "extract",
-              "y-mt-extract",
-              "--input",
-              "{{bam_path}}"
-            ],
-            "optionalArguments": [
-              [
-                "--ref",
-                "{{ref_path}}"
-              ],
-              [
-                "--outdir",
-                "{{out_dir}}"
-              ]
-            ]
-          }
-        },
         {
           "id": "bam-subset",
           "title": "actions.extract.extract-inputs.bam-subset.title",
@@ -329,7 +330,8 @@
           },
           "advancedOnly": true
         }
-      ]
+      ],
+      "advancedOnly": true
     },
     {
       "id": "fastq-align",

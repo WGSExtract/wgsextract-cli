@@ -165,8 +165,8 @@ into smaller BAM, VCF or FASTA files.
 
 Outputs are named after the input (`sample.bam` gives `sample_Y.bam`) and
 written to `outdir`, else beside the input. Calling and consensus commands
-(`mito_fasta`, `mito_vcf`, `ydna_vcf`) need the matching reference; the
-others use it only to decode a CRAM.
+(`mito_fasta`, `mito_vcf`, `ydna_vcf`, and `region` with a VCF or
+FASTA) need the matching reference; the others use it only to decode a CRAM.
 
 ### `api.extract.mito_fasta(MitoFastaParams)`
 
@@ -331,6 +331,41 @@ and holds each read once.
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Region (chrY:10000-20000), comma-separated regions, or a BED file. |
 | `gene` | `str \| None` | `None` | `--gene` | A gene name (e.g. BRCA1) to extract, looked up in the reference library's gene map (hg19/hg38 only); the region wins when both are set. |
+
+### `api.extract.region(ExtractRegionParams)`
+
+CLI: `wgsextract extract region`.
+
+Extract one region in each chosen format (output roles `<t>_bam`,
+`<t>_vcf` and `<t>_fasta`, `<t>` being `mt`, `y`, `y_mt` or
+`autox`; the `variants` metric counts the VCF's calls).
+
+`ExtractRegionParams`: One region of the genome in each chosen format: `target` is `mt`
+(chrM), `y` (chrY), `ymt` (chrY and chrM) or `autox` (chromosomes
+1-22 and X); `formats` lists one or more of `fasta`, `bam` and `vcf`
+(comma-separated).
+
+The BAM is `<input>_mtDNA.bam`, `<input>_Y.bam` (`<input>_Y_poz.bam`
+with `poz`), `<input>_Y_MT.bam` or `<input>_autosomes_X.bam`; the VCF
+and FASTA are `<input>_<MT|Y|Y_MT|autosomes_X>.vcf.gz` and `.fasta`.
+chrM and chrY are called haploid with bcftools, indels included; autosomes
+and X are SNPs called contig by contig with the sex-aware ploidy of
+`vcf snp`. The FASTA is the region's reference with those calls applied,
+a heterozygous SNP as its IUPAC code. VCF and FASTA need the matching
+reference. Warns when a Y target's sample appears female, whose chrY reads
+are mismapped.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to extract from. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `target` | `str` | required | `--target` | Region to extract: mt (chrM), y (chrY), ymt (chrY and chrM) or autox (autosomes and chrX). One of: `mt`, `y`, `ymt`, `autox` |
+| `formats` | `str \| None` | `None` | `--formats` | Comma-separated formats to write: fasta (consensus sequence), bam (reads) and vcf (variant calls), e.g. bam,vcf. |
+| `poz` | `bool` | `False` | `--poz` | With --target y and the bam format: restrict the BAM's Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37/38 only). |
+| `ybrowse` | `bool` | `False` | `--ybrowse` | With --target y and the vcf format: call installed, allele-annotated yBrowse SNP targets (GRCh38 only; no downloads) into <input>_Y_ybrowse.vcf.gz instead. |
 
 ## `api.bam`
 

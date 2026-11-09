@@ -105,6 +105,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "extract y-mt-extract": _n(MINUTES, *_SAM, optional="bcftools sambamba"),
     "extract unmapped": _n(MINUTES, *_SAM, optional="bcftools"),
     "extract custom": _n(MINUTES, *_SAM, optional="bcftools sambamba"),
+    "extract region": _n(HOURS, *_SAM, optional="bcftools bgzip tabix"),
     "extract bam-subset": _n(MINUTES, *_SAM, optional="bcftools"),
     "realign": _n(
         HOURS,
