@@ -40,18 +40,33 @@ def is_url(path: PathInput | None) -> bool:
     return urlsplit(fspath(path)).scheme.lower() in {"http", "https"}
 
 
-def check_url(url: str) -> None:
-    """Refuse a URL realign can't use: one with a query, fragment or
-    credentials, or not naming a BAM/CRAM, or when samtools can't read
-    http(s) (built without libcurl, as on Windows)."""
+def check_public(url: str) -> None:
+    """Refuse a URL with a query, fragment or credentials (a signed URL's
+    token), before anything records or reports it."""
     parts = urlsplit(url)
     if parts.query or parts.fragment or parts.username or parts.password:
         raise UsageError(
             "Give a public http(s) URL of the BAM/CRAM without a query string "
             "or credentials (signed URLs aren't supported)."
         )
-    if Path(parts.path).suffix.lower() not in _INDEX_SUFFIXES:
-        raise UsageError(f"{url} doesn't name a .bam or .cram file.")
+
+
+def shown(url: str) -> str:
+    """The URL without credentials, query or fragment, for records and
+    messages."""
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    port = f":{parts.port}" if parts.port else ""
+    return f"{parts.scheme}://{host}{port}{parts.path}"
+
+
+def check_url(url: str) -> None:
+    """Refuse a URL realign can't use: not public (check_public), not
+    naming a BAM/CRAM, or when samtools can't read http(s) (built without
+    libcurl, as on Windows)."""
+    check_public(url)
+    if Path(urlsplit(url).path).suffix.lower() not in _INDEX_SUFFIXES:
+        raise UsageError(f"{shown(url)} doesn't name a .bam or .cram file.")
     if not _samtools_reads_urls():
         raise WGSExtractError(
             "This samtools can't read http(s) URLs (its htslib was built "
@@ -82,7 +97,7 @@ def remote_file(url: str) -> RemoteFile:
         with urlopen(Request(url, method="HEAD"), timeout=_TIMEOUT) as response:
             headers = response.headers
     except (URLError, OSError, ValueError) as error:
-        raise WGSExtractError(f"Can't reach {url}: {error}") from error
+        raise WGSExtractError(f"Can't reach {shown(url)}: {error}") from error
     size = int(headers.get("Content-Length") or 0)
     validator = headers.get("ETag") or headers.get("Last-Modified")
     if validator:
@@ -91,10 +106,11 @@ def remote_file(url: str) -> RemoteFile:
         logging.warning(
             "%s has no ETag or Last-Modified: a rerun can't tell whether it "
             "changed, so it won't reuse work done on it.",
-            url,
+            shown(url),
         )
         identity = uuid.uuid4().hex
-    return RemoteFile(url, size, "url:" + hashlib.sha256(identity.encode()).hexdigest())
+    digest = hashlib.sha256(identity.encode()).hexdigest()
+    return RemoteFile(shown(url), size, f"url:{digest}")
 
 
 def input_size(path: str) -> int:

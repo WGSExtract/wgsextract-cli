@@ -11,7 +11,7 @@ from wgsextract_cli.core import live_status
 from wgsextract_cli.core.genome_library import apply_genome_selection
 from wgsextract_cli.core.keep_awake import keep_awake
 from wgsextract_cli.core.last_run import LogTail, record_last_run
-from wgsextract_cli.core.remote_input import is_url
+from wgsextract_cli.core.remote_input import check_public, is_url
 from wgsextract_cli.core.results import (
     CommandResult,
     collecting,
@@ -185,6 +185,7 @@ def _run_command(
         if isinstance(value, str) and value and Path(value).expanduser().exists():
             result.add_input(value, role)
         elif dest == "input" and is_url(value) and command_reads_urls(args):
+            check_public(str(value))  # Before a secret in it is recorded.
             result.add_input(value, role)
     input_path = getattr(args, "input", None)
     command = getattr(args, "command", None) or ""

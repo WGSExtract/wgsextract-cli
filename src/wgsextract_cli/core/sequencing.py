@@ -81,7 +81,7 @@ def input_platform(
         # A remote file has no sample workspace; its HEAD keys the cache.
         remote = remote_file(os.fspath(reads))
         return _input_platform(
-            remote.url,
+            os.fspath(reads),
             str(reference) if reference else None,
             remote.size,
             hash(remote.fingerprint),

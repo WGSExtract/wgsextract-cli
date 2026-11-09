@@ -305,16 +305,26 @@ def _redact_strings(value: Any) -> Any:
 
 def params_from_args(args: argparse.Namespace) -> dict[str, Any]:
     """The effective options of a run, minus internals and secrets."""
-    params: dict[str, Any] = {}
-    for key, value in sorted(vars(args).items()):
-        if key.startswith("_") or key in {"func", "parent_pid"} or callable(value):
-            continue
-        params[key] = (
-            "<redacted>"
-            if _SECRET_NAME.search(key)
-            else _redact_strings(_json_safe(value))
-        )
-    return params
+    return redact_params(
+        {
+            key: value
+            for key, value in vars(args).items()
+            if not key.startswith("_")
+            and key not in {"func", "parent_pid"}
+            and not callable(value)
+        }
+    )
+
+
+def redact_params(values: Mapping[str, Any]) -> dict[str, Any]:
+    """Parameters safe to record: secret ones and URL credentials and
+    queries hidden."""
+    return {
+        key: "<redacted>"
+        if _SECRET_NAME.search(key)
+        else _redact_strings(_json_safe(value))
+        for key, value in sorted(values.items())
+    }
 
 
 def redact_argv(argv: Sequence[str]) -> list[str]:

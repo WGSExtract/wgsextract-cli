@@ -638,3 +638,53 @@ def test_a_url_of_short_reads_is_refused(tmp_path, ont):
             "--outdir", str(tmp_path), "--platform", "illumina",
         )  # fmt: skip
     assert list(tmp_path.iterdir()) == []
+
+
+SECRET = "SECRETSIG"
+
+
+def _secret_urls(url):
+    return [f"{url}?X-Amz-Signature={SECRET}",
+            url.replace("://", f"://user:{SECRET}@")]  # fmt: skip
+
+
+def _files_mentioning(directory, text):
+    return [
+        str(path)
+        for path in Path(directory).rglob("*")
+        if path.is_file() and text.encode() in path.read_bytes()
+    ]
+
+
+@needs_tools("samtools")
+def test_a_signed_url_leaks_its_token_nowhere(tmp_path, ont):
+    """#580 review: the CLI recorded a signed URL as the run's input before
+    refusing it, so its token reached --json, the result file and the last
+    run's state; a URL with credentials printed them in "Can't reach". The
+    URL is now refused before anything records it."""
+    from wgsextract_cli import api
+    from wgsextract_cli.api._runtime import CommandFailed
+    from wgsextract_cli.core.last_run import state_directory
+
+    with _serving(ont, "cram") as (_, _local, url):
+        for address in _secret_urls(url):
+            result_file = tmp_path / "result.json"
+            done = subprocess.run(
+                [sys.executable, "-m", "wgsextract_cli.main", "--json",
+                 "--result-file", str(result_file), "realign", "--input", address,
+                 "--ref", ont["ref"], "--outdir", str(tmp_path / "out")],
+                capture_output=True, text=True, errors="replace", cwd=tmp_path,
+                check=False,
+            )  # fmt: skip
+            assert done.returncode != 0
+            assert "public http" in done.stdout + done.stderr
+            assert SECRET not in done.stdout + done.stderr
+            assert result_file.is_file()
+
+            params = api.RealignParams(input=address, ref=Path(ont["ref"]),
+                                       outdir=tmp_path / "out")  # fmt: skip
+            with pytest.raises(CommandFailed, match="public http") as failed:
+                api.align.realign(params)
+            assert SECRET not in failed.value.result.to_json()
+    assert _files_mentioning(tmp_path, SECRET) == []
+    assert _files_mentioning(state_directory(), SECRET) == []
