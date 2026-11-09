@@ -113,6 +113,38 @@ test "$(metric fast-capped.log rescue_cpu_hits)" -gt 0
     2> upstream-single.log
 same upstream-single.sam fast-single.sam
 test "$(metric fast-single.log cpu_located_rows)" -gt 0
+cpu_parity flags -t 4 -M -Y
+# Regression (PR #581 review): --cpu-rescue-batch off leaves rescue to upstream.
+"$aligner" --cpu-rescue-batch off mem -t 4 reference.fa pairs-R1.fq pairs-R2.fq \
+    > fast-nobatch.sam 2> fast-nobatch.log
+same upstream-t4.sam fast-nobatch.sam
+test "$(metric fast-nobatch.log rescue_cpu_jobs)" -eq 0
+# Interleaved pairs (-p).
+paste -d '\n' pairs-R1.fq pairs-R2.fq | paste - - - - - - - - \
+    | awk -F '\t' '{ for (i = 1; i <= 8; i += 2) print $i; for (i = 2; i <= 8; i += 2) print $i }' \
+    > pairs-interleaved.fq
+"$aligner" mem -t 4 -p reference.fa pairs-interleaved.fq > fast-interleaved.sam 2> fast-interleaved.log
+"$aligner" --cpu-upstream mem -t 4 -p reference.fa pairs-interleaved.fq \
+    > upstream-interleaved.sam 2> upstream-interleaved.log
+same upstream-interleaved.sam fast-interleaved.sam
+test "$(metric fast-interleaved.log rescue_cpu_hits)" -gt 1000
+# Regression (PR #581 review): aln, samse, sampe and bwasw also unpack the
+# reference with the CPU backend's NEON code.
+for mode in fast upstream; do
+    option=
+    test "$mode" = upstream && option=--cpu-upstream
+    "$aligner" $option aln -t 4 reference.fa pairs-R1.fq > "$mode-1.sai" 2> /dev/null
+    "$aligner" $option aln -t 4 reference.fa pairs-R2.fq > "$mode-2.sai" 2> /dev/null
+    "$aligner" $option samse reference.fa "$mode-1.sai" pairs-R1.fq > "$mode-samse.sam" 2> /dev/null
+    "$aligner" $option sampe reference.fa "$mode-1.sai" "$mode-2.sai" pairs-R1.fq pairs-R2.fq \
+        > "$mode-sampe.sam" 2> /dev/null
+    # Upstream bwasw breaks ties between repeat copies differently with threads.
+    "$aligner" $option bwasw -t 1 reference.fa pairs-R1.fq > "$mode-bwasw.sam" 2> /dev/null
+done
+for mode in samse sampe bwasw; do
+    same "upstream-$mode.sam" "fast-$mode.sam"
+    test "$(grep -vc '^@' "fast-$mode.sam")" -gt 1000
+done
 
 # Skip (77) only on machines without supported Metal hardware.
 "$aligner" capabilities --json > capabilities.json

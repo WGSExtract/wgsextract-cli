@@ -1375,7 +1375,8 @@ extern "C" int wgse_metal_pair(const mem_opt_t *opt, const bntseq_t *bns, const 
     void (*worker)(void *, long, int), void *data) {
     RescueParameters parameters;
     if (!enabled) {
-        if (cpu_upstream || !(opt->flag & MEM_F_PE) || (opt->flag & MEM_F_NO_RESCUE)) return 0;
+        if (cpu_upstream || !cpu_rescue_batching || !(opt->flag & MEM_F_PE)
+            || (opt->flag & MEM_F_NO_RESCUE)) return 0;
         CpuPair pair{opt, bns, pac, pes, seqs, regs, worker, data};
         kt_for(opt->n_threads, cpu_pair_worker, &pair, n >> 1);
         return 1;
