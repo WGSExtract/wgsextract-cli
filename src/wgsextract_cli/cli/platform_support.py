@@ -136,7 +136,7 @@ def verify_platform_support(args: argparse.Namespace) -> None:
         tool = "pbmm2"
         chosen_by_option = True
     if tool:
-        error = UsageError if chosen_by_option else WGSExtractError
-        raise error(
+        error_type = UsageError if chosen_by_option else WGSExtractError
+        raise error_type(
             f"{tool} is not supported on Windows; use this feature on Linux or macOS."
         )
