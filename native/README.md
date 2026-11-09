@@ -1,9 +1,10 @@
 # Apple Silicon aligner rebuilds
 
 Optional macOS arm64 (macOS 13+) rebuilds of the aligners WGS Extract uses,
-published as `macos-aligners-*` prereleases. The
-`wgsextract` CLI does not use them yet: they are offered for testing until
-they are qualified on full genomes (#364).
+published as `macos-aligners-*` prereleases. `wgsextract align` and `realign`
+run them in place of their upstream aligners when they're on `PATH`, and
+`wgse-bwa-mem3` with `--compat` in place of bwa or bwa-mem2 (see
+[hardware and acceleration](../docs/hardware.md#apple-silicon-metal)).
 
 | Executable | Upstream | Notes |
 | --- | --- | --- |

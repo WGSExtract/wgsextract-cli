@@ -82,7 +82,8 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `high_homozygosity`, `low_homozygosity`, `high_no_call_rate` | `microarray` | Genotype statistics outside the expected range. |
 | `alignment_memory` | `align`, `realign` | minimap2 is estimated to need more RAM than is available (`aligner`, `estimated_gib`, `available_gib`, and `suggested_threads`/`suggested_memory` that fit, or `null`). The run continues. |
 | `aligner_stalled` | `align`, `realign` | The aligner reported no progress, and no stage of its pipeline used CPU, for 15 minutes (`tool`, `minutes`): it is waiting on its input or output. A quiet aligner whose pipeline is busy (a slow batch of centromeric long reads, or samtools collate reading the whole input first) is not stalled. |
-| `native_aligner_unusable` | `align`, `realign` on Apple Silicon | A `wgse-bwa`, `wgse-bwa-mem2` or `wgse-minimap2` on `PATH` failed its `capabilities --json` check or is too old (`binary`, `path`, `aligner`); the upstream aligner ran instead. |
+| `native_aligner_unusable` | `align`, `realign` on Apple Silicon | A `wgse-bwa`, `wgse-bwa-mem2`, `wgse-bwa-mem3` or `wgse-minimap2` on `PATH` failed its `capabilities --json` check or is too old (`binary`, `path`, `aligner`); `aligner` ran instead. |
+| `bwa_mem3_fast` | `align`, `realign` with `--fast` | bwa-mem3's speed preset aligned the reads (`aligner`: the binary), so the alignments differ from BWA's, mostly in low-confidence reads. |
 | `short_read_phasing`, `no_variants_phased` | `vcf phase` | The reads are not Nanopore or PacBio (`platform`), so read-backed phasing links few variants; or no heterozygous variant (`heterozygous_variants`) was phased. |
 | `parabricks_low_memory` | `align`/`realign`/`vcf gatk` with `--gpu` | The GPU had too little free memory for the tool's default mode, so it ran with its low-memory option (`tool`, `option`, `gpu_free_gib`). |
 | `parabricks_host_memory` | `--gpu` commands | Less RAM is available than the Parabricks tool needs for a whole genome, though the computer has its minimum (`tool`, `needed_gib`, `available_gib`); the run continues and may be killed partway. |
@@ -184,9 +185,12 @@ These commands record full manifests: `info` (including `--detailed`),
 `analyze`, `pet`, `methylation`, `repair`, `benchmark`, `example-genome
 download`, `sign` and `report`.
 
-`align` and `realign` record the `aligner` (bwa, bwa-mem2, minimap2 or pbmm2)
-and the alignment's `records`. When an Apple Silicon build ran in the aligner's
-place they also record `native_aligner` (for example `wgse-bwa`),
+`align` and `realign` record the `aligner` (bwa, bwa-mem2, bwa-mem3, minimap2
+or pbmm2) and the alignment's `records`. When bwa-mem3 ran, `bwa_mem3_mode`
+records its output: `compat=bwa-mem` (bwa's records), `compat=bwa-mem2`
+(bwa-mem2's) or `fast`. When an Apple Silicon build ran in the aligner's
+place they also record `native_aligner` (for example `wgse-bwa`, or
+`wgse-bwa-mem3` standing in for bwa),
 `native_aligner_version` and `native_aligner_backend` (`metal` when it ran with
 `--backend auto`, which uses the GPU where it can and otherwise finishes on the
 CPU; `cpu` when it ran on the CPU only), and list the build under `tools`. For a

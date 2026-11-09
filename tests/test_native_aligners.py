@@ -1,10 +1,12 @@
 """``align`` and ``realign`` with WGS Extract's Apple Silicon aligner builds
-(wgse-bwa, wgse-minimap2) on PATH.
+(wgse-bwa, wgse-bwa-mem3, wgse-minimap2) on PATH, and with bwa-mem3.
 
 The builds are faked at their boundary: a ``wgse-bwa`` that answers
 ``capabilities --json`` and otherwise runs the real bwa under its own name,
 as the real build does (its ``@PG`` CL names ``wgse-bwa`` and its backend
-option). Apple Silicon, its GPU and the Mac's RAM are the mocked platform.
+option). The fake bwa-mem3 runs the real bwa or bwa-mem2 whose records its
+``--compat`` mode writes. Apple Silicon, its GPU and the Mac's RAM are the
+mocked platform.
 """
 
 import json
@@ -24,7 +26,7 @@ from wgsextract_cli.core.alignment_memory import (
     estimate_mapping_memory,
 )
 from wgsextract_cli.core.config import settings
-from wgsextract_cli.core.utils import UsageError
+from wgsextract_cli.core.utils import UsageError, WGSExtractError
 
 GIB = 1024**3
 
@@ -43,12 +45,16 @@ os.execv({real!r}, [" ".join([{name!r}, *backend]), *args[len(backend):]])
 def _capabilities(tool, **overrides):
     document = {
         "schema_version": 1,
-        "version": {"bwa": "0.7.1", "minimap2": "0.1.0"}[tool],
+        "version": {"bwa": "0.7.1", "bwa-mem3": "0.2.0", "minimap2": "0.1.0"}[tool],
         "engine": tool,
-        "engine_version": {"bwa": "0.7.19", "minimap2": "2.31-r1302"}[tool],
+        "engine_version": {
+            "bwa": "0.7.19",
+            "bwa-mem3": "0.16.0",
+            "minimap2": "2.31-r1302",
+        }[tool],
         "qualified": False,
-        "metal_available": tool == "bwa",
-        "metal_hardware_supported": tool == "bwa",
+        "metal_available": tool != "minimap2",
+        "metal_hardware_supported": tool != "minimap2",
         "cpu_available": True,
     }
     document.update(overrides)
@@ -113,10 +119,10 @@ def _sort_memory(bam):
     return words[words.index("-m") + 1]
 
 
-def _run_realign(source, ref, outdir):
+def _run_realign(source, ref, outdir, **options):
     result = results.CommandResult(command="realign")
     with results.collecting(result):
-        realign.run(_realign_args(source, ref=ref, outdir=str(outdir)))
+        realign.run(_realign_args(source, ref=ref, outdir=str(outdir), **options))
     result.finalize()
     return result
 
@@ -402,3 +408,235 @@ def test_realign_keeps_streaming_when_only_metal_would_not_fit(tmp_path, bwa_bin
     assert "extract" not in steps
     assert not list(outdir.glob("*.fastq.gz"))
     assert result.metrics["native_aligner_backend"] == "cpu"
+
+
+# bwa-mem3 (#542): a fake that runs the real aligner whose records its
+# --compat mode writes (bwa for --fast, whose own records differ).
+_FAKE_BWA_MEM3 = """\
+import os, sys
+
+args = sys.argv[1:]
+if args[:1] == ["capabilities"]:
+    sys.stdout.write({capabilities!r})
+    sys.exit(0)
+if args[:1] == ["version"]:
+    sys.exit(print("0.16.0"))
+backend = args[:2] if args[:1] == ["--backend"] else []
+mem, mode, *rest = args[len(backend):]
+real = {real!r}["bwa-mem2" if mode == "--compat=bwa-mem2" else "bwa"]
+os.execv(real, [" ".join([{name!r}, *backend, mem, mode]), mem, *rest])
+"""
+
+
+def _install_bwa_mem3(bindir, name="wgse-bwa-mem3", capabilities=None):
+    real = {tool: str((bindir / tool).resolve()) for tool in ("bwa", "bwa-mem2")}
+    source = _FAKE_BWA_MEM3.format(
+        capabilities=capabilities or _capabilities("bwa-mem3"), real=real, name=name
+    )
+    return python_tool(bindir, name, source)
+
+
+@pytest.fixture
+def mem3_bin(request):
+    return only_tools(request, "bwa", "bwa-mem2", "samtools")
+
+
+def _mem3_reads(tmp_path):
+    """Reads whose reference has bwa's index and bwa-mem2's, which bwa-mem3
+    maps with."""
+    reads = _short_reads(tmp_path)
+    for indexer in (["bwa", "index"], ["bwa-mem2", "index"]):
+        _run_tool([*indexer, reads.ref])
+    return reads
+
+
+def _run_tool(argv):
+    from wgsextract_cli.core.utils import run_command
+
+    run_command(argv, capture_output=True)
+
+
+@pytest.mark.usefixtures("apple_silicon")
+@pytest.mark.parametrize(
+    ("aligner", "compat"), [("bwa", "bwa-mem"), ("bwa-mem2", "bwa-mem2")]
+)
+def test_wgse_bwa_mem3_stands_in_with_the_requested_aligners_records(
+    tmp_path, mem3_bin, aligner, compat
+):
+    reads = _mem3_reads(tmp_path)
+    _install_bwa_mem3(mem3_bin)
+
+    native_bam, native = _align(reads, tmp_path / "auto", "--aligner", aligner)
+    upstream_bam, _ = _align(
+        reads, tmp_path / "off", "--aligner", aligner, "--native-aligners", "off"
+    )
+
+    # contract: --compat=<target> is what makes bwa-mem3 write the target's records.
+    assert _mapper(native_bam, aligner).startswith(
+        f"wgse-bwa-mem3 --backend auto mem --compat={compat} "
+    )
+    assert _samtools("view", native_bam) == _samtools("view", upstream_bam)
+    assert native.metrics["aligner"] == aligner
+    assert native.metrics["bwa_mem3_mode"] == f"compat={compat}"
+    assert _native(native) == {
+        "native_aligner": "wgse-bwa-mem3",
+        "native_aligner_version": "0.2.0",
+        "native_aligner_backend": "metal",
+    }
+    assert native.provenance.tools["wgse-bwa-mem3"] == "0.2.0"
+    assert not native.warnings
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_without_bwa_mem2s_index_wgse_bwa_aligns_in_bwas_place(tmp_path, mem3_bin):
+    reads = _short_reads(tmp_path)
+    _install_bwa_mem3(mem3_bin)
+    _install_build(mem3_bin, "bwa")
+
+    bam, result = _align(reads, tmp_path / "out", "--aligner", "bwa")
+
+    assert _mapper(bam).startswith("wgse-bwa --backend auto mem ")
+    assert result.metrics["native_aligner"] == "wgse-bwa"
+    assert "bwa_mem3_mode" not in result.metrics
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_a_mac_short_of_ram_for_bwa_mem3_aligns_with_bwa(tmp_path, mem3_bin, ram):
+    # bwa-mem3's index takes about twice bwa's memory: on a Mac where only
+    # bwa's pipeline fits, bwa aligns.
+    reads = _mem3_reads(tmp_path)
+    _install_bwa_mem3(mem3_bin)
+
+    def needed(engine, gpu_bytes=0):
+        return estimate_mapping_memory(
+            reads.ref, engine, threads="2", memory="1G", samblaster=False,
+            reads=2 * 140, read_length=100, gpu_bytes=gpu_bytes,
+        ).total  # fmt: skip
+
+    ram(2 * GIB + (needed("bwa") + needed("bwa-mem3", GIB // 4)) // 2)
+
+    bam, result = _align(reads, tmp_path / "out", "--aligner", "bwa")
+
+    assert _mapper(bam).startswith("bwa mem ")
+    assert _native(result) == {} and not result.warnings
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_an_unusable_wgse_bwa_mem3_warns_and_bwa_aligns(tmp_path, mem3_bin):
+    reads = _mem3_reads(tmp_path)
+    build = _install_bwa_mem3(
+        mem3_bin, capabilities=_capabilities("bwa-mem3", version="0.1.0")
+    )
+
+    bam, result = _align(reads, tmp_path / "out", "--aligner", "bwa")
+
+    assert _mapper(bam).startswith("bwa mem ")
+    (warning,) = result.warnings
+    assert warning.code == "native_aligner_unusable"
+    assert warning.details == {
+        "binary": "wgse-bwa-mem3",
+        "path": str(build),
+        "aligner": "bwa",
+    }
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_aligner_bwa_mem3_writes_bwas_records(tmp_path, mem3_bin):
+    reads = _mem3_reads(tmp_path)
+    _install_bwa_mem3(mem3_bin)
+
+    bam, result = _align(reads, tmp_path / "mem3", "--aligner", "bwa-mem3")
+    bwa_bam, _ = _align(
+        reads, tmp_path / "bwa", "--aligner", "bwa", "--native-aligners", "off"
+    )
+
+    # contract: bwa-mem3 stands for bwa's exact records unless --fast.
+    assert _mapper(bam).startswith("wgse-bwa-mem3 --backend auto mem --compat=bwa-mem ")
+    assert _samtools("view", bam) == _samtools("view", bwa_bam)
+    assert result.metrics["aligner"] == "bwa-mem3"
+    assert result.metrics["bwa_mem3_mode"] == "compat=bwa-mem"
+    assert not result.warnings
+
+
+@pytest.mark.parametrize("machine", [("Linux", "x86_64"), ("Darwin", "arm64")])
+def test_fast_aligns_with_bwa_mem3s_preset_and_warns(
+    tmp_path, mem3_bin, monkeypatch, ram, machine
+):
+    # Off Apple Silicon, or with native aligners off, bwa-mem3 from PATH runs.
+    reads = _mem3_reads(tmp_path)
+    _install_bwa_mem3(mem3_bin, name="bwa-mem3")
+    system, arch = machine
+    monkeypatch.setattr(
+        native_aligners,
+        "platform",
+        Namespace(system=lambda: system, machine=lambda: arch),
+    )
+    ram(64 * GIB)
+
+    bam, result = _align(reads, tmp_path / "out", "--fast", "--native-aligners", "off")
+
+    # contract: --fast is the opt-in that trades BWA's alignments for speed.
+    assert _mapper(bam).startswith("bwa-mem3 mem --fast ")
+    assert result.metrics["aligner"] == "bwa-mem3"
+    assert result.metrics["bwa_mem3_mode"] == "fast"
+    assert _native(result) == {}
+    assert result.provenance.tools["bwa-mem3"] == "0.16.0"
+    assert [w.code for w in result.warnings] == ["bwa_mem3_fast"]
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        ("--aligner", "bwa", "--fast"),
+        ("--aligner", "minimap2", "--fast"),
+        ("--long-read", "--fast"),
+    ],
+)
+def test_fast_is_refused_for_other_aligners(tmp_path, options):
+    reads = _short_reads(tmp_path)
+
+    with pytest.raises(UsageError, match="--fast is bwa-mem3's"):
+        _align(reads, tmp_path / "out", *options)
+
+
+def test_aligner_bwa_mem3_without_bwa_mem3_fails_clearly(tmp_path, mem3_bin):
+    reads = _mem3_reads(tmp_path)
+
+    with pytest.raises(WGSExtractError, match="needs wgse-bwa-mem3 .* or bwa-mem3"):
+        _align(reads, tmp_path / "out", "--aligner", "bwa-mem3")
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_aligner_bwa_mem3_without_bwa_mem2s_index_fails_clearly(tmp_path, mem3_bin):
+    reads = _short_reads(tmp_path)
+    _install_bwa_mem3(mem3_bin)
+
+    with pytest.raises(UsageError, match="ref index --aligner bwa-mem2"):
+        _align(reads, tmp_path / "out", "--aligner", "bwa-mem3")
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_realign_fast_streams_into_bwa_mem3_and_a_resumed_run_still_warns(
+    tmp_path, mem3_bin
+):
+    genome = _short_reads(tmp_path / "reads").genome[:6_000]
+    (tmp_path / "old").mkdir()
+    ref = str(write_fasta(tmp_path / "ref.fa", {"chr1": genome}))
+    for indexer in (["bwa", "index"], ["bwa-mem2", "index"]):
+        _run_tool([*indexer, ref])
+    source, _ = _old_alignment(tmp_path, genome)
+    _install_bwa_mem3(mem3_bin)
+    outdir = tmp_path / "out"
+
+    first = _run_realign(source, ref, outdir, fast=True)
+    bam = outdir / "x_aligned.bam"
+    written = bam.stat().st_mtime_ns
+    resumed = _run_realign(source, ref, outdir, fast=True)
+
+    assert _mapper(str(bam)).startswith("wgse-bwa-mem3 --backend auto mem --fast ")
+    assert " -p " in _mapper(str(bam))
+    assert bam.stat().st_mtime_ns == written
+    for result in (first, resumed):
+        assert result.metrics["bwa_mem3_mode"] == "fast"
+        assert result.metrics["native_aligner"] == "wgse-bwa-mem3"
+        assert [w.code for w in result.warnings] == ["bwa_mem3_fast"]

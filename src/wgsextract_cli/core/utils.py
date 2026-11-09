@@ -638,9 +638,11 @@ def run_pipeline(
             in {
                 "bwa",
                 "bwa-mem2",
+                "bwa-mem3",
                 "minimap2",
                 "wgse-bwa",
                 "wgse-bwa-mem2",
+                "wgse-bwa-mem3",
                 "wgse-minimap2",
             }
             for arg in args

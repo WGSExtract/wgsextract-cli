@@ -449,7 +449,7 @@ def run(params: RealignParams) -> None:
             "Native pbmm2's internal sorter does not support --tmp-dir. Use --aligner minimap2 or omit the temporary-directory setting."
         )
     signature = None
-    if selected_aligner in {"bwa", "bwa-mem2"} and not (
+    if selected_aligner in align_cmd.BWA_ALIGNERS and not (
         job.ref and Path(job.ref).is_file()
     ):
         signature = calculate_bam_md5(job.input, None)
@@ -457,6 +457,11 @@ def run(params: RealignParams) -> None:
     if job.aligner == "bwa-mem2" and target and Path(target).is_file():
         align_cmd.ensure_fasta_index(target)
         bwa_mem2.check_index(target)
+    if selected_aligner == "bwa-mem3" and not job.gpu:
+        # Before hours of extraction: the aligner and its index.
+        align_cmd.bwa_mem3_command(job)
+        if target and Path(target).is_file():
+            align_cmd.require_bwa_mem3_index(target)
 
     threads, memory = get_resource_defaults(job.threads, job.memory)
     # A URL's output goes to the current directory unless --outdir says.
@@ -538,6 +543,7 @@ def _align_tools(aligner: str, platform: str | None, gpu: bool) -> list[str]:
     tools = {
         "bwa": ["bwa", "bwa-mem2", "samblaster"],
         "bwa-mem2": ["bwa-mem2", "samblaster"],
+        "bwa-mem3": ["bwa-mem3", "samblaster"],
         "minimap2": ["minimap2"],
         "pbmm2": ["pbmm2"],
     }.get(aligner, [aligner])
@@ -572,6 +578,8 @@ def _align_step(
             "sample": job.sample,
             "gpu": bool(job.gpu),
             "ref": None if reference else job.ref,
+            # Only when set, so earlier runs' journals still match.
+            **({"fast": True} if job.fast else {}),
         },
         tools=_align_tools(aligner, job.platform, bool(job.gpu)),
     )
@@ -635,13 +643,18 @@ def _resume_alignment(
         current_result().record_tool_version(
             str(native["native_aligner"]), str(native["native_aligner_version"])
         )
+    if native.get("bwa_mem3_mode") == "fast":
+        align_cmd.warn_bwa_mem3_fast(str(native.get("native_aligner") or "bwa-mem3"))
 
 
 def _native_aligner_metrics(metrics: Mapping[str, Any]) -> dict[str, Any]:
     """The metrics naming the Apple Silicon aligner build that made an
-    alignment (AlignerCommand.record), kept in the journal for a resume."""
+    alignment, and bwa-mem3's output mode (AlignerCommand.record), kept in
+    the journal for a resume."""
     return {
-        key: value for key, value in metrics.items() if key.startswith("native_aligner")
+        key: value
+        for key, value in metrics.items()
+        if key.startswith("native_aligner") or key == "bwa_mem3_mode"
     }
 
 
@@ -934,7 +947,7 @@ def _run_steps(
     )
     streaming = (
         need_extract
-        and selected_aligner in {"bwa", "bwa-mem2"}
+        and selected_aligner in align_cmd.BWA_ALIGNERS
         and not job.keep_fastq
         and not job.gpu
         and not refresh_cached_fastqs
@@ -989,7 +1002,7 @@ def _run_steps(
                 align_cmd.duplicate_marker(paired=bool(r2_path)) == "samblaster"
             )
             tool = align_cmd.short_read_aligner(
-                job.aligner,
+                align_cmd.requested_aligner(job),
                 target,
                 threads=threads,
                 memory=memory,
@@ -1016,7 +1029,7 @@ def _run_steps(
             )
             streaming = False
             additional_ram_bytes = 0
-    if selected_aligner in {"bwa", "bwa-mem2"} and not job.gpu:
+    if selected_aligner in align_cmd.BWA_ALIGNERS and not job.gpu:
         _report_resource_estimates(
             job,
             target,
@@ -1242,10 +1255,10 @@ def _report_resource_estimates(
     def estimate() -> PreflightEstimate:
         samblaster = align_cmd.duplicate_marker(paired=paired) == "samblaster"
         resolved = reference if reference and Path(reference).is_file() else None
-        tool = "bwa" if job.aligner == "auto" else job.aligner
+        tool = align_cmd.short_read_tool(job)
         if resolved:
             tool = align_cmd.short_read_aligner(
-                job.aligner,
+                align_cmd.requested_aligner(job),
                 resolved,
                 threads=threads,
                 memory=memory,

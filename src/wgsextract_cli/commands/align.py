@@ -19,6 +19,7 @@ from wgsextract_cli.api.align import PLATFORMS as PLATFORMS
 from wgsextract_cli.api.align import AlignParams
 from wgsextract_cli.core import bwa_mem2, ultima
 from wgsextract_cli.core.alignment_memory import (
+    BWA_MEM3_METAL_BYTES,
     available_memory,
     bwa_metal_memory,
     check_mapping_memory,
@@ -34,7 +35,13 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.genome_library import pair_stem
 from wgsextract_cli.core.messages import CLI_HELP, LOG_MESSAGES
-from wgsextract_cli.core.native_aligners import AlignerCommand, find_native_aligner
+from wgsextract_cli.core.native_aligners import (
+    BWA_MEM3_COMPAT,
+    BWA_MEM3_FAST,
+    INSTALL_HINT,
+    AlignerCommand,
+    find_native_aligner,
+)
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.output_checks import record_alignment_output
 from wgsextract_cli.core.paths import absolute_path, java_local_path
@@ -51,7 +58,7 @@ from wgsextract_cli.core.resource_estimates import (
     estimate_resources,
     preflight_resources,
 )
-from wgsextract_cli.core.results import current_result
+from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.samtools_commands import (
     indexed_output,
     parse_memory,
@@ -97,7 +104,8 @@ _PBMM2_PRESETS = {
     "map-pb": "SUBREAD",
     "subread": "SUBREAD",
 }
-_BWA_ALIGNERS = {"bwa", "bwa-mem2"}
+# BWA-MEM and its descendants; bwa-mem3 can write either's exact records.
+BWA_ALIGNERS = frozenset({"bwa", "bwa-mem2", "bwa-mem3"})
 # BWA's default batch size depends on threads and changes pairing statistics.
 BWA_BATCH_BASES = "100000000"
 _READ_FILE_SUFFIXES = (
@@ -145,6 +153,8 @@ class AlignJob:
     sample: str | None = None
     long_read: bool = False
     format: str = "BAM"
+    # bwa-mem3's --fast speed preset, whose alignments differ from BWA's.
+    fast: bool = False
     # auto or off: WGS Extract's Apple Silicon aligner builds (native_aligners).
     native_aligners: str | None = None
     # samtools options decoding a CRAM r1 (realign's, or _cram_reference's).
@@ -232,9 +242,19 @@ def select_aligner(job: AlignJob) -> str:
             "ONT --gpu alignment is not qualified to preserve MM/ML methylation "
             "tags. Align without --gpu to keep them with samtools/minimap2."
         )
+    if job.fast and (aligner not in ("auto", "bwa-mem3") or long_read or job.preset):
+        raise UsageError(
+            "--fast is bwa-mem3's speed preset for short reads: use it with "
+            "--aligner bwa-mem3 (or auto)."
+        )
     if job.platform == "ultima":
         require_native_tool("gatk")
-        if aligner not in ("auto", *_BWA_ALIGNERS) or long_read or job.preset:
+        if (
+            aligner not in ("auto", "bwa", "bwa-mem2")
+            or long_read
+            or job.preset
+            or job.fast
+        ):
             raise UsageError(
                 "Ultima reads align with BWA-MEM (--aligner auto, bwa or bwa-mem2), "
                 "as Ultima's and Broad's pipelines do."
@@ -247,6 +267,8 @@ def select_aligner(job: AlignJob) -> str:
         if job.r2:
             raise UsageError("Ultima reads are single-end: drop --r2.")
         return "bwa" if aligner == "auto" else aligner
+    if aligner == "auto" and job.fast:
+        aligner = "bwa-mem3"
     if aligner == "auto":
         if (
             job.platform in PACBIO_PLATFORMS
@@ -259,7 +281,7 @@ def select_aligner(job: AlignJob) -> str:
         else:
             aligner = "bwa"
 
-    if aligner in _BWA_ALIGNERS:
+    if aligner in BWA_ALIGNERS:
         if long_read:
             raise UsageError(
                 "BWA-MEM is a short-read aligner; use --aligner minimap2 "
@@ -267,7 +289,7 @@ def select_aligner(job: AlignJob) -> str:
             )
         if job.preset:
             raise UsageError("--preset applies to minimap2 and pbmm2, not BWA.")
-        if aligner == "bwa-mem2" and job.gpu:
+        if aligner != "bwa" and job.gpu:
             raise UsageError(
                 "--gpu aligns with Parabricks' own BWA-MEM; use --aligner bwa or auto."
             )
@@ -409,6 +431,18 @@ def _refuse_short_read_alignment_file(job: AlignJob) -> None:
             )
 
 
+def requested_aligner(job: AlignJob) -> str:
+    """--aligner, with --fast's bwa-mem3 for auto (select_aligner refuses others)."""
+    return "bwa-mem3" if job.fast else job.aligner
+
+
+def short_read_tool(job: AlignJob) -> str:
+    """The BWA-MEM aligner asked for: bwa-mem3, bwa-mem2, or bwa (also for
+    auto, which short_read_aligner resolves)."""
+    requested = requested_aligner(job)
+    return requested if requested in BWA_ALIGNERS else "bwa"
+
+
 def short_read_aligner(
     requested: str,
     ref: str,
@@ -533,7 +567,23 @@ def native_short_read_aligner(
     to extracting FASTQs.
     wgse-bwa-mem2 keeps bwa-mem2's (CPU) estimate, which also covers its CPU
     fallback when the GPU can't hold its index tables.
+    wgse-bwa-mem3 writes either's exact records faster, so it runs in their
+    place when it fits (bwa_mem3_stand_in).
     """
+    stand_in = bwa_mem3_stand_in(
+        job,
+        tool,
+        ref,
+        threads=threads,
+        memory=memory,
+        samblaster=samblaster,
+        reads=reads,
+        read_length=read_length,
+        additional_ram_bytes=additional_ram_bytes,
+    )
+    if stand_in is not None:
+        stand_in.announce()
+        return stand_in, memory
     native = find_native_aligner(tool, job.native_aligners)
     if native is None:
         return AlignerCommand(tool), memory
@@ -543,9 +593,7 @@ def native_short_read_aligner(
         aligner = AlignerCommand(tool, native, metal=True)
     else:
         gpu = bwa_metal_memory(ref, reads)
-        budget = psutil.virtual_memory().total - _METAL_HEADROOM_BYTES
-        if additional_ram_bytes:
-            budget = min(budget, available_memory())
+        budget = _metal_budget(additional_ram_bytes)
         amount, unit = parse_memory(memory)
         mib = amount * (1024 if unit == "G" else 1)
         candidates = [memory] + [
@@ -594,6 +642,118 @@ def native_short_read_aligner(
             memory = fitting
     aligner.announce()
     return aligner, memory
+
+
+def _metal_budget(additional_ram_bytes: int) -> int:
+    """The RAM an aligner's Metal GPU backend may count on: this Mac's less
+    headroom, and for streaming realign (additional_ram_bytes) no more than is
+    available now."""
+    budget = psutil.virtual_memory().total - _METAL_HEADROOM_BYTES
+    if additional_ram_bytes:
+        budget = min(budget, available_memory())
+    return int(budget)
+
+
+def bwa_mem3_stand_in(
+    job: AlignJob,
+    tool: str,
+    ref: str,
+    *,
+    threads: str,
+    memory: str,
+    samblaster: bool,
+    reads: int | None,
+    read_length: float | None,
+    additional_ram_bytes: int = 0,
+) -> AlignerCommand | None:
+    """wgse-bwa-mem3 writing bwa's or bwa-mem2's exact records (--compat) in
+    place of ``tool``, or None. It needs the reference's bwa-mem2 index, and
+    more memory than bwa: its pipeline's estimate must fit this Mac's RAM less
+    headroom (as for wgse-bwa's GPU backend), unless it needs no more than the
+    run it replaces (bwa-mem2). Ultima reads keep BWA, which is qualified for
+    their flow tags."""
+    compat = BWA_MEM3_COMPAT.get(tool)
+    if compat is None or job.platform == "ultima":
+        return None
+    if not bwa_mem2.has_bwa_mem3_index(ref):
+        return None
+    native = find_native_aligner(
+        "bwa-mem3", job.native_aligners, quiet=True, instead=tool
+    )
+    if native is None:
+        return None
+    aligner = AlignerCommand(
+        tool, native, metal=native.metal_available, options=(f"--compat={compat}",)
+    )
+
+    def needed(engine: str, gpu_bytes: int = 0) -> int:
+        estimate = estimate_mapping_memory(
+            ref,
+            engine,
+            threads=threads,
+            memory=memory,
+            samblaster=samblaster,
+            reads=reads,
+            platform=job.platform,
+            read_length=read_length,
+            gpu_bytes=gpu_bytes,
+        )
+        return estimate.total + additional_ram_bytes
+
+    stand_in = needed("bwa-mem3", aligner_gpu_bytes(aligner, ref, reads))
+    budget = _metal_budget(additional_ram_bytes)
+    if stand_in > max(budget, needed(tool)):
+        logging.info(
+            f"Not using {native.binary} in place of {tool}: the alignment is "
+            f"estimated to need {stand_in / 1024**3:.1f} GiB with it, more than "
+            f"the {budget / 1024**3:.1f} GiB of RAM it can use."
+        )
+        return None
+    return aligner
+
+
+def aligner_gpu_bytes(aligner: AlignerCommand, ref: str, reads: int | None) -> int:
+    """What the aligner's Metal GPU backend needs beyond its CPU estimate."""
+    if not aligner.metal:
+        return 0
+    if aligner.engine == "bwa":
+        return bwa_metal_memory(ref, reads)
+    if aligner.engine == "bwa-mem3":
+        return BWA_MEM3_METAL_BYTES
+    return 0
+
+
+def bwa_mem3_command(job: AlignJob) -> AlignerCommand:
+    """How to run --aligner bwa-mem3: wgse-bwa-mem3 (on Apple Silicon), else
+    bwa-mem3 from PATH, writing bwa's records (--compat=bwa-mem) or, with
+    --fast, its faster preset's."""
+    options = (BWA_MEM3_FAST,) if job.fast else ("--compat=bwa-mem",)
+    native = find_native_aligner("bwa-mem3", job.native_aligners)
+    if native is not None:
+        return AlignerCommand(
+            "bwa-mem3", native, metal=native.metal_available, options=options
+        )
+    if get_tool_path("bwa-mem3") is None:
+        raise WGSExtractError(
+            "--aligner bwa-mem3 needs wgse-bwa-mem3 (Apple Silicon) or bwa-mem3 "
+            f"(Bioconda) on PATH; for wgse-bwa-mem3, {INSTALL_HINT}. Or align "
+            "with --aligner auto."
+        )
+    return AlignerCommand("bwa-mem3", options=options)
+
+
+def require_bwa_mem3_index(ref: str) -> None:
+    """bwa-mem3 maps with bwa-mem2's index, which it doesn't build here."""
+    if not bwa_mem2.has_bwa_mem3_index(ref):
+        missing = ", ".join(
+            s for s in bwa_mem2.BWA_MEM3_INDEX_SUFFIXES if not Path(ref + s).is_file()
+        )
+        raise UsageError(
+            f"bwa-mem3 maps with bwa-mem2's index, and {ref} has none "
+            f"({missing or 'its build is incomplete'}). Make it with "
+            f"`wgsextract ref index --aligner bwa-mem2 --ref {ref}` (or "
+            f"`wgse-bwa-mem3 index {ref}`), or align with --aligner bwa."
+        )
 
 
 def aligned_output_path(
@@ -879,11 +1039,16 @@ def _bwa_setup(
     read_paths: list[str] | None = None,
     additional_ram_bytes: int = 0,
 ) -> tuple[_AlignSetup, AlignerCommand]:
-    """The alignment setup and how to run bwa or bwa-mem2 (short_read_aligner's
-    choice, or its Apple Silicon build), with the reference's index and ALT
-    contig list in place."""
-    tool = "bwa-mem2" if job.aligner == "bwa-mem2" else "bwa"
-    setup = _prepare_alignment(job, [tool, "samtools"], task, read_paths=read_paths)
+    """The alignment setup and how to run bwa, bwa-mem2 (short_read_aligner's
+    choice, or an Apple Silicon build in its place) or bwa-mem3, with the
+    reference's index and ALT contig list in place."""
+    tool = short_read_tool(job)
+    tools = ["samtools"] if tool == "bwa-mem3" else [tool, "samtools"]
+    setup = _prepare_alignment(job, tools, task, read_paths=read_paths)
+    mem3 = None
+    if tool == "bwa-mem3":
+        mem3 = bwa_mem3_command(job)
+        require_bwa_mem3_index(setup.ref)
     samblaster = bool(job.r2) and get_tool_path("samblaster") is not None
     if job.input_reads is not None:
         reads, read_length = job.input_reads
@@ -894,34 +1059,38 @@ def _bwa_setup(
         statistics = fastq_input_statistics(setup.r1, job.r2)
         reads = statistics.reads if statistics is not None else None
         read_length = statistics.read_length if statistics is not None else None
-    tool = short_read_aligner(
-        job.aligner,
-        setup.ref,
-        threads=setup.threads,
-        memory=setup.memory,
-        samblaster=samblaster,
-        reads=reads,
-    )
-    if tool == "bwa-mem2":
-        ensure_fasta_index(setup.ref)
-    aligner, memory = native_short_read_aligner(
-        job,
-        tool,
-        setup.ref,
-        threads=setup.threads,
-        memory=short_read_sort_memory(tool, setup.memory),
-        samblaster=samblaster,
-        reads=reads,
-        read_length=read_length,
-        additional_ram_bytes=additional_ram_bytes,
-    )
-    setup = setup._replace(memory=memory)
-    gpu_bytes = (
-        bwa_metal_memory(setup.ref, reads) if aligner.metal and tool == "bwa" else 0
-    )
+    if mem3 is not None:
+        aligner = mem3
+        aligner.announce()
+    else:
+        tool = short_read_aligner(
+            requested_aligner(job),
+            setup.ref,
+            threads=setup.threads,
+            memory=setup.memory,
+            samblaster=samblaster,
+            reads=reads,
+        )
+        if tool == "bwa-mem2":
+            ensure_fasta_index(setup.ref)
+        aligner, memory = native_short_read_aligner(
+            job,
+            tool,
+            setup.ref,
+            threads=setup.threads,
+            memory=short_read_sort_memory(tool, setup.memory),
+            samblaster=samblaster,
+            reads=reads,
+            read_length=read_length,
+            additional_ram_bytes=additional_ram_bytes,
+        )
+        setup = setup._replace(memory=memory)
+    # The memory model of the aligner that runs (bwa-mem3 in another's place).
+    engine = aligner.engine
+    gpu_bytes = aligner_gpu_bytes(aligner, setup.ref, reads)
     if additional_ram_bytes and not streaming_mapping_fits(
         setup.ref,
-        tool,
+        engine,
         threads=setup.threads,
         memory=setup.memory,
         samblaster=samblaster,
@@ -943,7 +1112,7 @@ def _bwa_setup(
             reference=setup.ref,
             threads=setup.threads,
             memory=setup.memory,
-            aligner=tool,
+            aligner=engine,
             samblaster=samblaster,
             reads=reads,
             platform=job.platform,
@@ -961,7 +1130,7 @@ def _bwa_setup(
     try:
         check_mapping_memory(
             setup.ref,
-            tool,
+            engine,
             threads=setup.threads,
             memory=setup.memory,
             samblaster=samblaster,
@@ -977,13 +1146,23 @@ def _bwa_setup(
         raise
     warn_alignment_sort_space(configured_temp_directory() or setup.outdir, reads)
     job.input_reads = InputReads(reads, read_length)
-    if tool == "bwa-mem2":
+    if engine == "bwa-mem2":
         bwa_mem2.ensure_index(setup.ref, download=False)
-    else:
+    elif engine == "bwa":
         ensure_bwa_index(setup.ref)
     ensure_bwa_alt_file(setup.ref)
     print_warning("ButtonBWAAlign", threads=setup.threads)
     return setup, aligner
+
+
+def warn_bwa_mem3_fast(binary: str) -> None:
+    warn(
+        "bwa_mem3_fast",
+        f"Aligned with {binary} --fast: bwa-mem3's speed preset trades "
+        "alignments for speed, so this output differs from BWA's (mostly in "
+        "low-confidence reads). Drop --fast for BWA's exact alignments.",
+        aligner=binary,
+    )
 
 
 def align_bwa(
@@ -993,7 +1172,8 @@ def align_bwa(
     read_paths: list[str] | None = None,
     additional_ram_bytes: int = 0,
 ) -> None:
-    """BWA-MEM alignment with bwa or bwa-mem2 (short_read_aligner's choice)."""
+    """BWA-MEM alignment with bwa or bwa-mem2 (short_read_aligner's choice),
+    or bwa-mem3."""
     setup, aligner = _bwa_setup(
         job,
         "BWA alignment",
@@ -1013,8 +1193,10 @@ def align_bwa(
     )
     tool = aligner.tool
     aligner.record()
+    if aligner.bwa_mem3_mode == "fast":
+        warn_bwa_mem3_fast(aligner.binary)
     align_cmd = [
-        *aligner.argv(), "mem", "-K", BWA_BATCH_BASES, "-t", setup.threads,
+        *aligner.mem_argv(), "-K", BWA_BATCH_BASES, "-t", setup.threads,
         "-R", read_group(setup.stem, job.sample, job.platform),
     ]  # fmt: skip
     align_cmd += [setup.ref, setup.r1]
@@ -1084,7 +1266,7 @@ def align_ultima(job: AlignJob, cram_opt: list[str] | None = None) -> None:
         )
     )
     aligner.record()
-    bwa = [*aligner.argv(), "mem", "-K", BWA_BATCH_BASES, "-t", setup.threads, "-Y"]
+    bwa = [*aligner.mem_argv(), "-K", BWA_BATCH_BASES, "-t", setup.threads, "-Y"]
     with tempfile.TemporaryDirectory(
         dir=configured_temp_directory() or setup.outdir, prefix=".wgse_ug_"
     ) as tmp:

@@ -2,7 +2,7 @@
 and map reads to a reference as a sorted, indexed, duplicate-marked BAM or
 CRAM.
 
-Short reads go through bwa-mem2 or bwa and samblaster, long reads through
+Short reads go through bwa-mem2, bwa or bwa-mem3 and samblaster, long reads through
 pbmm2 (PacBio) or minimap2, and Ultima reads through their own pipeline. The
 output is named after the reads (``sample_R1.fastq.gz`` and
 ``sample_R2.fastq.gz`` give ``sample_aligned.bam``) and written to
@@ -36,7 +36,7 @@ from ._shared import (
 )
 
 PLATFORMS = ("illumina", "dnbseq", "ultima", "pacbio", "hifi", "clr", "ont", "nanopore")
-ALIGNERS = ("auto", "bwa", "bwa-mem2", "minimap2", "pbmm2")
+ALIGNERS = ("auto", "bwa", "bwa-mem2", "bwa-mem3", "minimap2", "pbmm2")
 PRESETS = ("sr", "map-pb", "map-hifi", "map-ont", "ccs", "subread")
 REALIGN_STEPS = ("extract", "align", "index")
 
@@ -45,10 +45,12 @@ def _native_aligners_param() -> Any:
     return param(
         None,
         help="On Apple Silicon, align with wgse-bwa, wgse-bwa-mem2 or "
-        "wgse-minimap2 in place of bwa, bwa-mem2 or minimap2 when they're on "
-        "PATH (auto; same alignments, faster, on the Metal GPU when it fits) "
-        "or never (off). Default: config native_aligners, else auto. Install "
-        "them as native/README.md describes.",
+        "wgse-minimap2 in place of bwa, bwa-mem2 or minimap2, and with "
+        "wgse-bwa-mem3 in place of bwa or bwa-mem2 when the reference has "
+        "bwa-mem2's index and it fits in RAM, when they're on PATH (auto; same "
+        "alignments, faster, on the Metal GPU when it fits) or never (off). "
+        "Default: config native_aligners, else auto. Install them as "
+        "native/README.md describes.",
         doc="auto (the default, or config native_aligners) uses WGS Extract's "
         "Apple Silicon aligner builds when installed on PATH; off never does.",
         choices=NATIVE_ALIGNER_SETTINGS,
@@ -62,6 +64,17 @@ GPU_HELP = (
     "alignment to retain MM/ML methylation tags."
 )
 _FORMAT_DOC = "Output format: BAM or CRAM (written with the target reference)."
+
+
+def _fast_param() -> Any:
+    return param(
+        False,
+        help="Align short reads with bwa-mem3's --fast speed preset (implies "
+        "--aligner bwa-mem3), about twice as fast. Its alignments differ "
+        "from BWA's, mostly in low-confidence reads; the run warns "
+        "(bwa_mem3_fast). Without it bwa-mem3 writes BWA's exact records.",
+        action="store_true",
+    )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -101,9 +114,12 @@ class AlignParams(Params):
         "auto",
         help="Aligner to use. Auto uses bwa-mem2 for short reads when the reference "
         "has its index (see `ref index`), else bwa; for long reads pbmm2 for PacBio "
-        "when installed, otherwise minimap2.",
+        "when installed, otherwise minimap2. bwa-mem3 (wgse-bwa-mem3 on Apple "
+        "Silicon, else bwa-mem3 on PATH) writes bwa's exact records faster, "
+        "from bwa-mem2's index.",
         choices=ALIGNERS,
     )
+    fast: bool = _fast_param()
     native_aligners: str | None = _native_aligners_param()
     gpu: bool = param(False, help=GPU_HELP, action="store_true")
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
@@ -171,9 +187,11 @@ class RealignParams(Params):
     aligner: str = param(
         "auto",
         help="Aligner to use (matches the 'align' command).",
-        doc="Aligner: auto, bwa, bwa-mem2, minimap2 or pbmm2, chosen as for align.",
+        doc="Aligner: auto, bwa, bwa-mem2, bwa-mem3, minimap2 or pbmm2, chosen "
+        "as for align.",
         choices=ALIGNERS,
     )
+    fast: bool = _fast_param()
     native_aligners: str | None = _native_aligners_param()
     gpu: bool = param(False, help=GPU_HELP, action="store_true")
     no_gpu_memory_check: bool = no_gpu_memory_check_param()

@@ -643,7 +643,7 @@ reference when there is one.
 and map reads to a reference as a sorted, indexed, duplicate-marked BAM or
 CRAM.
 
-Short reads go through bwa-mem2 or bwa and samblaster, long reads through
+Short reads go through bwa-mem2, bwa or bwa-mem3 and samblaster, long reads through
 pbmm2 (PacBio) or minimap2, and Ultima reads through their own pipeline. The
 output is named after the reads (`sample_R1.fastq.gz` and
 `sample_R2.fastq.gz` give `sample_aligned.bam`) and written to
@@ -692,7 +692,8 @@ workspace.
 | `r2` | `Path \| None` | `None` | `--r2` | Read 2 FASTQ, for pairs. |
 | `preset` | `str \| None` | `None` | `--preset` | minimap2 preset for non-BWA alignment. Defaults to map-hifi for PacBio and map-ont for ONT. One of: `sr`, `map-pb`, `map-hifi`, `map-ont`, `ccs`, `subread` |
 | `platform` | `str \| None` | `None` | `--platform` | Sequencing platform; selects platform-specific alignment tooling (default: detected from read groups or read names, else illumina). One of: `illumina`, `dnbseq`, `ultima`, `pacbio`, `hifi`, `clr`, `ont`, `nanopore` |
-| `aligner` | `str` | `'auto'` | `--aligner` | Aligner to use. Auto uses bwa-mem2 for short reads when the reference has its index (see `ref index`), else bwa; for long reads pbmm2 for PacBio when installed, otherwise minimap2. One of: `auto`, `bwa`, `bwa-mem2`, `minimap2`, `pbmm2` |
+| `aligner` | `str` | `'auto'` | `--aligner` | Aligner to use. Auto uses bwa-mem2 for short reads when the reference has its index (see `ref index`), else bwa; for long reads pbmm2 for PacBio when installed, otherwise minimap2. bwa-mem3 (wgse-bwa-mem3 on Apple Silicon, else bwa-mem3 on PATH) writes bwa's exact records faster, from bwa-mem2's index. One of: `auto`, `bwa`, `bwa-mem2`, `bwa-mem3`, `minimap2`, `pbmm2` |
+| `fast` | `bool` | `False` | `--fast` | Align short reads with bwa-mem3's --fast speed preset (implies --aligner bwa-mem3), about twice as fast. Its alignments differ from BWA's, mostly in low-confidence reads; the run warns (bwa_mem3_fast). Without it bwa-mem3 writes BWA's exact records. |
 | `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's Apple Silicon aligner builds when installed on PATH; off never does. One of: `auto`, `off` |
 | `gpu` | `bool` | `False` | `--gpu` | Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU alignment to retain MM/ML methylation tags. |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
@@ -728,7 +729,8 @@ settings and tools are unchanged.
 | --- | --- | --- | --- | --- |
 | `r1` | `Path \| None` | `None` | `--r1` | Read 1 FASTQ already extracted from the input, to align instead of extracting it. |
 | `r2` | `Path \| None` | `None` | `--r2` | Read 2 FASTQ, with r1. |
-| `aligner` | `str` | `'auto'` | `--aligner` | Aligner: auto, bwa, bwa-mem2, minimap2 or pbmm2, chosen as for align. One of: `auto`, `bwa`, `bwa-mem2`, `minimap2`, `pbmm2` |
+| `aligner` | `str` | `'auto'` | `--aligner` | Aligner: auto, bwa, bwa-mem2, bwa-mem3, minimap2 or pbmm2, chosen as for align. One of: `auto`, `bwa`, `bwa-mem2`, `bwa-mem3`, `minimap2`, `pbmm2` |
+| `fast` | `bool` | `False` | `--fast` | Align short reads with bwa-mem3's --fast speed preset (implies --aligner bwa-mem3), about twice as fast. Its alignments differ from BWA's, mostly in low-confidence reads; the run warns (bwa_mem3_fast). Without it bwa-mem3 writes BWA's exact records. |
 | `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's Apple Silicon aligner builds when installed on PATH; off never does. One of: `auto`, `off` |
 | `gpu` | `bool` | `False` | `--gpu` | Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU alignment to retain MM/ML methylation tags. |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
