@@ -17,6 +17,7 @@ from wgsextract_cli.core.reference_assets import (
     n_count_paths,
     read_fai_lengths,
     reference_dict_path,
+    reference_genomes_dir,
     verify_sequence_signature,
 )
 from wgsextract_cli.core.utils import (
@@ -118,7 +119,7 @@ def _remove_genome_files(base_path: str) -> None:
 
 
 def delete_genome(final_name: str, reflib_dir: str) -> bool:
-    base_path = str(Path(reflib_dir, "genomes", final_name))
+    base_path = str(Path(reference_genomes_dir(reflib_dir), final_name))
     _remove_genome_files(base_path)
     paths = [*n_count_paths(base_path)]
     paths.append(fasta_prefix(base_path) + ".wgse")
@@ -132,7 +133,7 @@ def has_ref_ns(final_name: str, reflib_dir: str) -> bool:
     """Checks if N-count files exist for a reference genome."""
     if not reflib_dir:
         return False
-    base_path = str(Path(reflib_dir, "genomes", final_name))
+    base_path = str(Path(reference_genomes_dir(reflib_dir), final_name))
     return any(Path(path).exists() for path in n_count_paths(base_path))
 
 
@@ -207,7 +208,7 @@ def download_and_process_genome(
     An already-installed genome is only re-indexed unless restart is set.
     """
     verify_dependencies(["samtools", "bgzip"])
-    target_dir = str(Path(reflib_dir, "genomes"))
+    target_dir = reference_genomes_dir(reflib_dir)
     Path(target_dir).mkdir(parents=True, exist_ok=True)
     final_path = str(Path(target_dir, genome_data["final"]))
 

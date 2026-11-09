@@ -13,8 +13,8 @@ def test_ref_status_reports_gui_library_values(tmp_path):
     reflib = tmp_path / "reference"
     ref_dir = reflib / "ref"
     maps_dir = reflib / "maps"
-    genome_library = tmp_path / "genomes"
-    test_genome = genome_library / "wgsextract-benchmark-hg19-mini"
+    datasets = tmp_path / "datasets"
+    test_genome = datasets / "wgsextract-benchmark-hg19-mini"
     ref_dir.mkdir(parents=True)
     maps_dir.mkdir()
     test_genome.mkdir(parents=True)
@@ -33,7 +33,7 @@ def test_ref_status_reports_gui_library_values(tmp_path):
     values = ref_status_values(
         _status(
             ref=reflib,
-            genome_library=genome_library,
+            dataset_library=datasets,
             input=tmp_path / "sample.hg19.vcf.gz",
         )
     )
@@ -55,7 +55,7 @@ def test_ref_status_uses_custom_annotation_vcf_for_readiness(tmp_path):
     custom_vcf.write_text("vcf\n", encoding="utf-8")
 
     status = _status(
-        ref=reflib, genome_library=tmp_path / "genomes", annotation_vcf=custom_vcf
+        ref=reflib, dataset_library=tmp_path / "datasets", annotation_vcf=custom_vcf
     )
 
     assert status["annotationVcf"]["installed"] is False
@@ -75,7 +75,7 @@ def test_ref_status_prefers_configured_library_over_default_ref_fasta(tmp_path):
     try:
         settings["reference_library"] = str(configured_reflib)
         settings["reference_fasta"] = str(fasta)
-        status = _status(genome_library=tmp_path / "genomes")
+        status = _status(dataset_library=tmp_path / "datasets")
     finally:
         for key, value in old.items():
             if value is None:
@@ -95,7 +95,7 @@ def test_ref_status_infers_library_from_reference_fasta(tmp_path):
     old_reflib = settings.get("reference_library")
     try:
         settings.pop("reference_library", None)
-        status = _status(ref=fasta, genome_library=tmp_path / "genomes")
+        status = _status(ref=fasta, dataset_library=tmp_path / "datasets")
     finally:
         if old_reflib is None:
             settings.pop("reference_library", None)
@@ -124,7 +124,7 @@ def test_ref_status_reports_every_annotation_vep_cache_and_genome(tmp_path, caps
     for ext in (".fai", ".amb", ".ann", ".bwt", ".pac", ".sa", ".0123", ".bwt.2bit.64"):
         (genomes / f"hg38.fa.gz{ext}").write_text("x", encoding="utf-8")
 
-    params = RefStatusParams(ref=reflib, genome_library=tmp_path / "g")
+    params = RefStatusParams(ref=reflib, dataset_library=tmp_path / "g")
     status = api.ref.status(params).details
 
     annotations = status["annotations"]

@@ -99,7 +99,7 @@ presets, the DeepVariant model), so it applies only where it is sure to be
 right:
 
 - **Sex, in a genome folder: folder-wide.** A genome folder (the `--genome`
-  folder, a genome-library entry or a folder with `genome-config.toml`) holds
+  folder, a dataset-library entry or a folder with `genome-config.toml`) holds
   one person's files, so `sample set --sex` there applies to all of them
   (`[override] sex = …`).
 - **Sex elsewhere, and the platform always: one file.** Any other folder, such

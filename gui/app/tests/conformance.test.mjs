@@ -198,7 +198,7 @@ test("conformance bundle applies requested localization overlays in TypeScript",
   assert.equal(bundle.manifest.summary, "Ejercita semánticas comunes de ejecución de paquetes.");
 });
 
-test("WGSExtract exposes genome library controls in TypeScript", async () => {
+test("WGSExtract exposes dataset and reference genome library controls in TypeScript", async () => {
   const bundle = await loadLocalizedBundle("en", repoRoot, wgsExtractBundleRoot, wgsExtractBundleRoot);
   const library = bundle.manifest.pages.find((page) => page.id === "library");
   const settingsPage = bundle.manifest.pages.find((page) => page.id === "settings");
@@ -224,15 +224,20 @@ test("WGSExtract exposes genome library controls in TypeScript", async () => {
   assert.ok(pageOrder.indexOf("annotate") < pageOrder.indexOf("workflows"), "Annotate sits above Workflows");
   const datasetPaths = datasets.sections.find((section) => section.id === "dataset-paths");
   assert.equal(datasetPaths.title, "Library Paths");
-  const genomeLibraryControl = datasetPaths.controls.find((control) => control.id === "genome_library");
-  assert.equal(genomeLibraryControl.label, "Dataset Library Path");
-  assert.ok(genomeLibraryControl, "genome library path control exists");
-  assert.equal(genomeLibraryControl.kind, "path");
+  const datasetLibraryControl = datasetPaths.controls.find((control) => control.id === "dataset_library");
+  assert.equal(datasetLibraryControl.label, "Dataset Library Path");
+  assert.equal(datasetLibraryControl.kind, "path");
+  const referenceGenomePaths = genomesPage.sections.find((section) => section.id === "reference-genome-paths");
+  assert.equal(referenceGenomePaths.advancedOnly, true);
+  assert.equal(referenceGenomePaths.controls[0].id, "reference_genome_library");
+  assert.equal(referenceGenomePaths.controls[0].label, "Reference Genomes Library Path");
+  const genomeTable = genomesPage.sections.find((section) => section.id === "genome-management").controls[0];
+  assert.deepEqual(genomeTable.dataSource.arguments, ["items", "{{ref_path}}", "{{reference_genome_library}}"]);
 
   const databaseTools = library.sections.find((section) => section.id === "databases-tools");
   assert.ok(databaseTools, "databases and tools section exists");
   assert.equal(databaseTools.dataSource.path, "scripts/library-state.sh");
-  assert.deepEqual(databaseTools.dataSource.arguments, ["{{ref_path}}", "{{genome_library}}"]);
+  assert.deepEqual(databaseTools.dataSource.arguments, ["{{ref_path}}", "{{dataset_library}}"]);
   assert.ok(databaseTools.actions.find((action) => action.id === "annotation-vcf-download"));
   assert.ok(databaseTools.actions.find((action) => action.id === "spliceai-download"));
   assert.ok(databaseTools.actions.find((action) => action.id === "alphamissense-download"));
@@ -249,13 +254,13 @@ test("WGSExtract exposes genome library controls in TypeScript", async () => {
   assert.ok(downloadAction, "test genome download action exists");
   assert.deepEqual(
     downloadAction.command.arguments,
-    ["download", "{{genome_library}}"],
+    ["download", "{{dataset_library}}"],
   );
   const deleteAction = testDataset.actions.find((action) => action.id === "test-dataset-delete");
   assert.ok(deleteAction, "test genome delete action exists");
   assert.deepEqual(
     deleteAction.command.arguments,
-    ["delete", "{{genome_library}}"],
+    ["delete", "{{dataset_library}}"],
   );
   assert.ok(deleteAction.confirm);
 
@@ -266,13 +271,16 @@ test("WGSExtract exposes genome library controls in TypeScript", async () => {
   assert.equal(bundle.manifest.setup.initialInstallSizeGB, 6);
 
   const settings = settingsPage.sections[0].controls[0];
-  const genomeLibrarySetting = settings.settings.find((setting) => setting.id === "genome_library");
-  assert.ok(genomeLibrarySetting, "genome library setting exists");
-  assert.equal(genomeLibrarySetting.key, "genome_library");
+  const datasetLibrarySetting = settings.settings.find((setting) => setting.id === "dataset_library");
+  assert.equal(datasetLibrarySetting.key, "dataset_library");
+  assert.ok(!settings.settings.some((setting) => setting.key === "genome_library"));
+  const referenceGenomeSetting = settings.settings.find((setting) => setting.id === "reference_genome_library");
+  assert.equal(referenceGenomeSetting.key, "reference_genome_library");
+  assert.equal(referenceGenomeSetting.label, "Reference Genomes Library");
   const bamPath = bundle.manifest.pages
     .find((page) => page.id === "info-bam")
     .sections[0].controls.find((control) => control.id === "bam_path");
-  assert.equal(bamPath.defaultDirectory, "{{genome_library}}");
+  assert.equal(bamPath.defaultDirectory, "{{dataset_library}}");
   const fastqAlign = bundle.manifest.pages
     .find((page) => page.id === "extract")
     .sections.find((section) => section.id === "fastq-align")
@@ -299,7 +307,7 @@ test("WGSExtract exposes genome library controls in TypeScript", async () => {
   assert.deepEqual(indelAction.command.arguments.slice(0, 2), ["indel", "--input"]);
   assert.equal(indelAction.estimatedDurationMinutes, 34);
   const defaultVcfPath = settings.settings.find((setting) => setting.id === "vcf_path");
-  assert.equal(defaultVcfPath.defaultDirectory, "{{genome_library}}");
+  assert.equal(defaultVcfPath.defaultDirectory, "{{dataset_library}}");
   const microarrayAction = bundle.manifest.pages
     .find((page) => page.id === "microarray")
     .sections.find((section) => section.id === "microarray-formats")
@@ -315,7 +323,7 @@ test("WGSExtract exposes genome library controls in TypeScript", async () => {
   assert.equal(microarrayRefControl.emptyText, "None loaded. See Reference Genomes page to add.");
   // The library folder, like the other reference dropdowns: the selected FASTA
   // is not a library, so with it the list emptied once a genome was chosen.
-  assert.deepEqual(microarrayRefControl.dataSource.arguments, ["options", "{{ref_path}}"]);
+  assert.deepEqual(microarrayRefControl.dataSource.arguments, ["options", "{{ref_path}}", "{{reference_genome_library}}"]);
   assert.equal(
     conditionMatches(microarrayAction.disabledWhen[0], {
       fieldValues: { bam_path: "sample.cram.crai" },
@@ -348,7 +356,7 @@ test("WGSExtract exposes genome library controls in TypeScript", async () => {
     .find((page) => page.id === "vcf")
     .sections.find((section) => section.id === "vcf-annotation");
   assert.equal(annotate.dataSource.path, "scripts/library-state.sh");
-  assert.deepEqual(annotate.dataSource.arguments, ["{{ref_path}}", "{{genome_library}}", "{{vcf_ann_vcf}}", "{{vcf_path}}"]);
+  assert.deepEqual(annotate.dataSource.arguments, ["{{ref_path}}", "{{dataset_library}}", "{{vcf_ann_vcf}}", "{{vcf_path}}"]);
   const annotateAction = annotate.actions.find((action) => action.id === "vcf-annotate");
   const spliceaiAction = annotate.actions.find((action) => action.id === "vcf-spliceai");
   const alphamissenseAction = annotate.actions.find((action) => action.id === "vcf-alphamissense");

@@ -403,8 +403,8 @@
 "rows.library.genome-management.reference_genomes.GRCh37.source" = "Genome Reference Consortium"  # i18n-ignore i18n-source-hash:7601c1c0
 "rows.library.genome-management.reference_genomes.T2T-CHM13.build" = "CHM13 v2"  # i18n-ignore i18n-source-hash:19f08799
 "rows.library.genome-management.reference_genomes.T2T-CHM13.source" = "Telomere-to-Telomere"  # i18n-ignore i18n-source-hash:cafdd528
-"controls.library.library-paths.genome_library.label" = "Caminho da biblioteca de conjuntos de dados"  # i18n-source-hash:c0ce24d4
-"controls.library.library-paths.genome_library.tooltip" = "Diretório dos conjuntos de dados do usuário, uma pasta por pessoa ou amostra, usado por wgsextract-cli --genome."  # i18n-source-hash:bebeaa4b
+"controls.datasets.dataset-paths.dataset_library.label" = "Caminho da biblioteca de conjuntos de dados"  # i18n-source-hash:c0ce24d4
+"controls.datasets.dataset-paths.dataset_library.tooltip" = "Diretório dos conjuntos de dados do usuário, uma pasta por pessoa ou amostra, usado por wgsextract-cli --genome. Os genomas de referência nunca vão para cá."  # i18n-source-hash:a5e2ea99
 "sections.datasets.test-dataset.title" = "Conjunto de dados de teste"  # i18n-source-hash:da935796
 "sections.datasets.test-dataset.summary" = "Baixar ou excluir o pequeno conjunto de dados de benchmark hospedado no GitHub, usado nos fluxos de trabalho de teste do WGS Extract."  # i18n-source-hash:3d75cbc7
 "actions.datasets.test-dataset.test-dataset-download.title" = "Baixar conjunto de dados de teste"  # i18n-source-hash:15909a2d
@@ -412,14 +412,18 @@
 "actions.datasets.test-dataset.test-dataset-delete.title" = "Excluir conjunto de dados de teste"  # i18n-source-hash:d68e9b63
 "actions.datasets.test-dataset.test-dataset-delete.tooltip" = "Excluir o mini conjunto de dados de benchmark hg19 instalado da biblioteca de conjuntos de dados configurada."  # i18n-source-hash:54497c5e
 "actions.datasets.test-dataset.test-dataset-delete.confirm.title" = "Excluir o conjunto de dados de teste?"  # i18n-source-hash:7327997c
-"actions.datasets.test-dataset.test-dataset-delete.confirm.message" = "Isto remove a pasta local do mini conjunto de dados de benchmark hg19 de {{genome_library}}. Ele pode ser baixado novamente depois."  # i18n-source-hash:32f38d20
+"actions.datasets.test-dataset.test-dataset-delete.confirm.message" = "Isto remove a pasta local do mini conjunto de dados de benchmark hg19 de {{dataset_library}}. Ele pode ser baixado novamente depois."  # i18n-source-hash:f419aea0
 "actions.datasets.test-dataset.test-dataset-delete.confirm.confirmButtonTitle" = "Excluir"  # i18n-source-hash:f6fdbe48
 "actions.datasets.test-dataset.test-dataset-delete.confirm.cancelButtonTitle" = "Cancelar"  # i18n-source-hash:77dfd213
 "actions.datasets.test-dataset.test-dataset-installed.title" = "Conjunto de dados de teste instalado"  # i18n-source-hash:b0e32a18
 "actions.datasets.test-dataset.test-dataset-installed.tooltip" = "O mini conjunto de dados de benchmark hg19 está instalado na biblioteca de conjuntos de dados configurada."  # i18n-source-hash:d394d3a4
 "actions.datasets.test-dataset.test-dataset-installed.disabledTooltip" = "O conjunto de dados de teste já está instalado."  # i18n-source-hash:fe494c82
-"controls.settings.settings-paths.genome_library.label" = "Biblioteca de conjuntos de dados"  # i18n-source-hash:a63500a0
-"controls.settings.settings-paths.genome_library.tooltip" = "Diretório padrão da biblioteca de conjuntos de dados, uma pasta por pessoa ou amostra, usado por wgsextract-cli --genome."  # i18n-source-hash:20587a3b
+"controls.settings.settings-paths.dataset_library.label" = "Biblioteca de conjuntos de dados"  # i18n-source-hash:a63500a0
+"controls.settings.settings-paths.dataset_library.tooltip" = "Diretório padrão da biblioteca de conjuntos de dados, uma pasta por pessoa ou amostra, usado por wgsextract-cli --genome. Os genomas de referência nunca vão para cá."  # i18n-source-hash:6c38f036
+"controls.settings.settings-paths.reference_genome_library.label" = "Biblioteca de genomas de referência"  # i18n-source-hash:de3aadd7
+"controls.settings.settings-paths.reference_genome_library.tooltip" = "Pasta que guarda apenas os genomas de referência baixados e os arquivos criados a partir deles (índices, contagens de N). Nada mais é gravado lá."  # i18n-source-hash:19981b40
+"controls.reference-genomes.reference-genome-paths.reference_genome_library.label" = "Caminho da biblioteca de genomas de referência"  # i18n-source-hash:77d6fac0
+"controls.reference-genomes.reference-genome-paths.reference_genome_library.tooltip" = "Pasta que guarda apenas os genomas de referência baixados e os arquivos criados a partir deles (índices, contagens de N). Nada mais é gravado lá."  # i18n-source-hash:19981b40
 
 # TODO: translate the CLI features added after v0.6.3.
 "controls.microarray.post-v063.min-gq.label" = "Minimum genotype quality (GQ)"  # i18n-ignore; TODO: translate

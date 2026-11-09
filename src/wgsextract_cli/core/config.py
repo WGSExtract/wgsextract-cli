@@ -36,8 +36,20 @@ KNOWN_SETTINGS = {
         "Publish completed main outputs by rename (changes tool provenance paths)",
     ),
     "reference_fasta": (None, "Path to the reference genome FASTA"),
-    "reference_library": (None, "Reference library directory (genomes/)"),
-    "genome_library": (None, "Directory containing per-person genome folders"),
+    "reference_library": (
+        None,
+        "Reference data directory (annotation data, gene maps, VEP caches)",
+    ),
+    "reference_genome_library": (
+        None,
+        "Folder holding only the reference genomes (FASTAs) and the files made "
+        "from them, for reference_library (default: genomes/ in it)",
+    ),
+    "dataset_library": (
+        None,
+        "Directory of user datasets, one folder per person or sample "
+        "(formerly genome_library)",
+    ),
     "cpu_threads": (
         "auto",
         "CPU threads: a positive integer, or auto (Apple Silicon performance "
@@ -66,8 +78,8 @@ KNOWN_SETTINGS = {
     "server_allowed_paths": (
         None,
         "Folders (a string or an array) `wgsextract serve` requests may read "
-        "and write, besides genome_library, reference_library and "
-        "output_directory",
+        "and write, besides dataset_library, reference_library, "
+        "reference_genome_library and output_directory",
     ),
     "server_mcp_transport": (
         "stdio",
@@ -279,7 +291,8 @@ PATH_SETTINGS = {
     "output_directory",
     "reference_fasta",
     "reference_library",
-    "genome_library",
+    "reference_genome_library",
+    "dataset_library",
     "haplogrep_executable",
     "haplocheck_executable",
     "dorado_executable",
@@ -331,7 +344,8 @@ CONFIG_ALIASES = {
     "outdir": "output_directory",
     "ref": "reference_fasta",
     "reflib": "reference_library",
-    "genomes": "genome_library",
+    "genome_library": "dataset_library",
+    "genomes": "dataset_library",
     "threads": "cpu_threads",
     "memory": "memory_limit",
     "haplogrep_path": "haplogrep_executable",
@@ -588,3 +602,10 @@ def get(key: str, default: T) -> object | T: ...
 def get(key: str, default: object | None = None) -> object | None:
     """Get a configuration value with an optional default."""
     return settings.get(key, default)
+
+
+def dataset_library() -> str | None:
+    """The dataset_library setting (one folder per person or sample), also read
+    from the old genome_library key when a host fills settings itself."""
+    value = settings.get("dataset_library") or settings.get("genome_library")
+    return str(value) if value else None

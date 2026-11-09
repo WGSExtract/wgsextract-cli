@@ -77,7 +77,7 @@ Commands are grouped by tier. The core tier is the usual path, in order: check a
 | `ref microarray-targets` | Build the genome-wide hg19 and hg38 microarray targets from the chip templates, or delete them. | Into the reference library (reflib): microarray/All_SNPs_hg19_ref.tab.gz and All_SNPs_hg38_ref.tab.gz (+ .tbi); --delete removes them. | no external tools; minutes on a 30x genome | `wgsextract ref microarray-targets` |
 | `deps check` | Verify that all required bioinformatics tools (samtools, bcftools, etc.) are installed and accessible in your system path. | Prints each tool's status; writes no files. | no external tools; seconds | `wgsextract deps check` |
 | `example-genome list` | List curated 1000 Genomes examples. | Prints the curated examples; writes no files. | no external tools; instant | `wgsextract example-genome list` |
-| `example-genome download` | Download curated 1000 Genomes examples into the genome library. | Into &lt;genome_library>/test-1000genomes/&lt;example id>/, with a genome config file. | no external tools; depending on options and inputs, also: curl; depends on download speed | `wgsextract example-genome download na12878-lowcov-bam` |
+| `example-genome download` | Download curated 1000 Genomes examples into the dataset library. | Into &lt;dataset_library>/test-1000genomes/&lt;example id>/, with a genome config file. | no external tools; depending on options and inputs, also: curl; depends on download speed | `wgsextract example-genome download na12878-lowcov-bam` |
 | `sample show` | Show the sample's overrides, the facts commands detected from each of its files (with method, confidence and date) and its recorded results. | Prints the sample's overrides, recorded facts and results; writes no files. | no external tools; instant | `wgsextract sample show --genome HG002` |
 | `sample set` | Set an override (--sex, --platform) that commands use instead of what they detect: a sex for the whole genome folder, else for --input alone. | wgsextract.sample.toml in the sample folder (the --genome folder, --workspace or the input's folder). | no external tools; instant | `wgsextract sample set --genome HG002 --sex Female` |
 | `sample unset` | Remove an override so commands detect that fact again: the folder-wide one and, with --input, that file's own. | wgsextract.sample.toml in the sample folder. | no external tools; instant | `wgsextract sample unset --genome HG002 --sex` |
@@ -144,7 +144,7 @@ Commands are grouped by tier. The core tier is the usual path, in order: check a
 
 - `references`: Reference genomes: what they are, where they come from.
 - `builds`: Genome builds (hg19, hg38, T2T) and moving between them.
-- `genome-library`: Keep each person's files in a folder; select it with --genome.
+- `dataset-library`: Keep each person's files in a folder; select it with --genome.
 - `coverage`: Coverage and depth, and the low-depth warnings.
 - `exit-codes`: What wgsextract's exit codes mean.
 - `manifests`: The result manifest each run writes, and --json.

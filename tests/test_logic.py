@@ -80,19 +80,21 @@ class TestExamplesDownload(unittest.TestCase):
             else:
                 settings["genome_library"] = old_value
 
-    def test_default_target_root_is_repo_genomes(self):
+    def test_default_target_root_is_repo_datasets(self):
         from wgsextract_cli.commands import _examples_catalog as examples
         from wgsextract_cli.core.config import settings
 
-        old_value = settings.get("genome_library")
-        settings.pop("genome_library", None)
+        saved = {
+            k: settings.pop(k)
+            for k in ("genome_library", "dataset_library")
+            if k in settings
+        }
         try:
             self.assertEqual(
-                examples._target_root(None), examples.runtime.repo_root() / "genomes"
+                examples._target_root(None), examples.runtime.repo_root() / "datasets"
             )
         finally:
-            if old_value is not None:
-                settings["genome_library"] = old_value
+            settings.update(saved)
 
     def test_dry_run_plans_downloads_without_creating_files(self):
         from wgsextract_cli import api

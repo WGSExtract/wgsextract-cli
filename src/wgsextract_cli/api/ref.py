@@ -86,8 +86,10 @@ class _InLibrary:
             yield "ref", _library_named(self.ref)
 
     def write_folders(self) -> Iterator[Path]:
+        from wgsextract_cli.core.reference_assets import reference_genomes_dir
+
         library = self.library()
-        yield from (library, library / "genomes")
+        yield from (library, Path(reference_genomes_dir(library)))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -271,12 +273,13 @@ class RefStatusParams(Params):
     input: Path | None = optional_input_param(
         "A BAM/CRAM or VCF whose build picks the annotation files to report."
     )
-    genome_library: Path | None = param(
+    dataset_library: Path | None = param(
         None,
-        help="Genome library directory used for test genome status.",
-        doc="Genome library folder for the test genome's status (default: "
-        "config genome_library, else ``genomes`` beside the reference library).",
+        help="Dataset library directory used for test dataset status.",
+        doc="Dataset library folder for the test dataset's status (default: "
+        "config dataset_library, else ``datasets`` beside the reference library).",
         path="directory",
+        hidden_flags=("--genome-library",),
     )
     annotation_vcf: Path | None = param(
         None,
@@ -285,18 +288,18 @@ class RefStatusParams(Params):
     )
 
     def implied_paths(self) -> Iterator[tuple[str, Path]]:
-        from wgsextract_cli.core.config import settings
+        from wgsextract_cli.core.config import dataset_library
 
         if self.ref is None:
             return
         library = _library_named(self.ref)
         yield "ref", library
         if (
-            self.genome_library is None
-            and not settings.get("genome_library")
+            self.dataset_library is None
+            and not dataset_library()
             and library.is_absolute()  # a relative ref is refused as it is
         ):
-            yield "ref", library.parent / "genomes"
+            yield "ref", library.parent / "datasets"
 
 
 @dataclass(frozen=True, kw_only=True)

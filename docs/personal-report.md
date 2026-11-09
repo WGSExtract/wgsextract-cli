@@ -10,7 +10,7 @@ single local report. It has three parts:
   `--format parquet`).
 
 ```sh
-wgsextract report --genome HG002            # a genome-library folder
+wgsextract report --genome HG002            # a dataset-library folder
 wgsextract report --input HG002/HG002.cram  # the input's folder
 wgsextract report --workspace HG002 --results ~/wgs-out/HG002
 ```

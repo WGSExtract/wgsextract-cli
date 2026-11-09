@@ -155,6 +155,6 @@ def app_data_root() -> Path:
 
 
 def repo_root() -> Path:
-    """Base for default data folders (reference/, genomes/, jartools/): the
+    """Base for default data folders (reference/, datasets/, jartools/): the
     source checkout when running from one, else the per-user data directory."""
     return source_checkout_root() or app_data_root()

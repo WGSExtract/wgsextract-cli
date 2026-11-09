@@ -22,6 +22,7 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.core.reference_assets import reference_genomes_dir
 from wgsextract_cli.core.results import current_result
 
 from .commands import (
@@ -68,7 +69,9 @@ def run_fake_data(params: FakeDataParams) -> None:
             # See if it's installed
             reflib_dir = settings.get("reference_library")
             if reflib_dir:
-                candidate = str(Path(reflib_dir, "genomes", genome_info["final"]))
+                candidate = str(
+                    Path(reference_genomes_dir(reflib_dir), genome_info["final"])
+                )
                 if Path(candidate).exists():
                     lib_ref = candidate
 

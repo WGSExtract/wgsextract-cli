@@ -55,20 +55,22 @@ its reads with 'realign' (--ref names the build to move to):
   wgsextract realign --input sample_hg19.bam --ref hs38.fa
 """,
     ),
-    "genome-library": HelpTopic(
+    "dataset-library": HelpTopic(
         "Keep each person's files in a folder; select it with --genome.",
         """\
-Set 'genome_library' in config.toml to a folder with one subfolder per
-person or sample. The subfolder name (or a nested path such as
-'family/joe') is the genome ID. With --genome ID, commands find their
-inputs in that folder and write their outputs there unless --outdir is given.
-If the folder holds several BAM/CRAM files, VCFs or FASTQ sets, the command
-stops rather than guessing: name the files to use in the genome-config.toml
-it creates in the folder.
+Set 'dataset_library' (formerly genome_library) in config.toml to a folder
+with one subfolder per person or sample. The subfolder name (or a nested
+path such as 'family/joe') is the genome ID. With --genome ID, commands
+find their inputs in that folder and write their outputs there unless
+--outdir is given. If the folder holds several BAM/CRAM files, VCFs or
+FASTQ sets, the command stops rather than guessing: name the files to use
+in the genome-config.toml it creates in the folder.
   wgsextract info --genome joe
   wgsextract microarray --genome joe --formats 23andme_v5
 
-'example-genome download' puts public practice genomes in the library.
+'example-genome download' puts public example datasets in the library.
+Reference genomes never go there: they live in reference_genome_library
+(default: genomes/ in the reference library).
 """,
     ),
     "coverage": HelpTopic(

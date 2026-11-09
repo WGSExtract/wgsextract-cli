@@ -8,7 +8,7 @@ from typing import Any
 
 import tomli_w
 
-from wgsextract_cli.core.config import read_toml, settings
+from wgsextract_cli.core.config import dataset_library, read_toml
 from wgsextract_cli.core.utils import WGSExtractError
 
 if sys.version_info >= (3, 11):
@@ -49,17 +49,17 @@ def apply_genome_selection(args: Namespace, explicit_dests: set[str]) -> None:
     if genome_id is None:
         return
 
-    root = settings.get("genome_library")
+    root = dataset_library()
     if not root:
         raise WGSExtractError(
-            "--genome requires genome_library to be set in config.toml."
+            "--genome requires dataset_library to be set in config.toml."
         )
 
     root_dir = Path(root).expanduser()
     genome_dir = _genome_folder(root_dir, str(genome_id))
     if not genome_dir.is_dir():
         raise WGSExtractError(
-            f"Genome '{genome_id}' not found in genome_library: {genome_dir}"
+            f"Genome '{genome_id}' not found in dataset_library: {genome_dir}"
         )
     _check_inside_library(root_dir, genome_dir, str(genome_id))
 
@@ -103,12 +103,12 @@ def _genome_folder(root_dir: Path, genome_id: str) -> Path:
         )
     if PurePosixPath(genome_id).is_absolute() or PureWindowsPath(genome_id).anchor:
         raise WGSExtractError(
-            f"Genome ID must be relative to genome_library, not absolute: {genome_id}"
+            f"Genome ID must be relative to dataset_library, not absolute: {genome_id}"
         )
     # A trailing '/' (from shell completion) is fine; '.', '..' and '//' are not.
     parts = genome_id.rstrip("/").split("/")
     if any(part in ("", ".", "..") for part in parts):
-        raise WGSExtractError(f"Genome ID cannot escape genome_library: {genome_id}")
+        raise WGSExtractError(f"Genome ID cannot escape dataset_library: {genome_id}")
     return root_dir.joinpath(*parts)
 
 
@@ -124,7 +124,7 @@ def _check_inside_library(root_dir: Path, genome_dir: Path, genome_id: str) -> N
     target = genome_dir.resolve()
     if not parent.is_relative_to(root) or root.is_relative_to(target):
         raise WGSExtractError(
-            f"Genome ID cannot escape genome_library: {genome_id} "
+            f"Genome ID cannot escape dataset_library: {genome_id} "
             f"(resolves to {target})"
         )
 

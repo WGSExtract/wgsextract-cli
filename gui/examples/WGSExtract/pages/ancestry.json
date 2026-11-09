@@ -14,7 +14,7 @@
           "id": "bam_path",
           "label": "controls.ancestry.ancestry-inputs.bam_path.label",
           "kind": "path",
-          "defaultDirectory": "{{genome_library}}",
+          "defaultDirectory": "{{dataset_library}}",
           "tooltip": "controls.ancestry.ancestry-inputs.bam_path.tooltip"
         },
         {

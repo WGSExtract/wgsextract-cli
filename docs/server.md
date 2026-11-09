@@ -44,8 +44,8 @@ you start yourself:
   inside an allowed folder as written (with `..` removed); only then are its
   symlinks resolved, and the result must lie inside one too. The
   allowed folders are those given with `--allow`, the `server_allowed_paths`
-  setting, and the `genome_library`, `reference_library` and
-  `output_directory` settings. Of the settings, only the folders that exist
+  setting, and the `dataset_library`, `reference_library`,
+  `reference_genome_library` and `output_directory` settings. Of the settings, only the folders that exist
   are allowed; a missing `--allow` folder stops the server. Folders a
   command derives from a path are checked too: a `ref` FASTA in a
   `genomes` folder names the library above it, which must also be allowed.

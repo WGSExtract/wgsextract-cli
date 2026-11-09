@@ -127,7 +127,9 @@ def get_genome_status(final_name: str, reflib_dir: str) -> str:
     """Returns 'installed', 'unindexed', 'incomplete', or 'missing'."""
     if not reflib_dir:
         return "missing"
-    target_dir = str(Path(reflib_dir, "genomes"))
+    from wgsextract_cli.core.reference_assets import reference_genomes_dir
+
+    target_dir = reference_genomes_dir(reflib_dir)
     final_path = str(Path(target_dir, final_name))
     partial_path = final_path + ".partial"
     fai_path = final_path + ".fai"

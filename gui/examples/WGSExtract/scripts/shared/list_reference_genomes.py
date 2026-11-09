@@ -19,14 +19,17 @@ Without it the script fails, so the Library page reports a missing runtime
 instead of showing a stale catalog.
 
 Usage:
-  list-reference-genomes.py [all|options|items] [<library>]   (scripts/posix, scripts/windows)
+  list-reference-genomes.py [all|options|items] [<library>] [<genomes folder>]
+  (scripts/posix, scripts/windows)
 
 The library directory defaults to $GUI_FOR_CLI_BUNDLE_WORKSPACE/reference,
-else $PWD/reference.
+else $PWD/reference. The genomes folder is the Reference Genomes Library
+(reference_genome_library), else genomes/ in the library.
 """
 from __future__ import annotations
 
 import csv
+import ftplib
 import json
 import os
 import sys
@@ -123,8 +126,25 @@ def save_size_cache(library: Path, cache: dict) -> None:
         pass
 
 
+def fetch_ftp_size(url: str) -> int | None:
+    """The file's size from an anonymous FTP server's SIZE reply."""
+    parsed = urlparse(url)
+    if not parsed.hostname or not parsed.path:
+        return None
+    try:
+        with ftplib.FTP(parsed.hostname, timeout=REMOTE_SIZE_HEAD_TIMEOUT) as ftp:
+            ftp.login()
+            ftp.voidcmd("TYPE I")  # SIZE is defined for binary transfers
+            return ftp.size(parsed.path)
+    except (*ftplib.all_errors, ValueError):
+        return None
+
+
 def fetch_remote_size(url: str) -> int | None:
-    if urlparse(url).scheme not in {"http", "https"}:
+    scheme = urlparse(url).scheme
+    if scheme == "ftp":
+        return fetch_ftp_size(url)
+    if scheme not in {"http", "https"}:
         return None
     try:
         request = Request(url, method="HEAD", headers={"User-Agent": "gui-for-cli/list-reference-genomes"})
@@ -235,7 +255,8 @@ def main(argv: list[str]) -> int:
     mode = argv[1] if len(argv) > 1 else "all"
     library_arg = argv[2] if len(argv) > 2 else ""
     library = library_arg or os.path.join(env("GUI_FOR_CLI_BUNDLE_WORKSPACE", os.getcwd()), "reference")
-    genomes_dir = Path(library) / "genomes"
+    genomes_arg = argv[3] if len(argv) > 3 else ""
+    genomes_dir = Path(genomes_arg) if genomes_arg else Path(library) / "genomes"
     records = list(load_records(find_catalog()))
 
     output: dict = {}

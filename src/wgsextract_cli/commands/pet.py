@@ -18,7 +18,7 @@ from wgsextract_cli.core.messages import CLI_HELP, LOG_MESSAGES
 from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.read_counts import fastq_input_reads
-from wgsextract_cli.core.reference_assets import is_fasta_path
+from wgsextract_cli.core.reference_assets import is_fasta_path, reference_genomes_dir
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -94,7 +94,9 @@ def run(job: PetJob) -> None:
         ref_file = job.ref
         hint = ""
     else:
-        ref_file = str(Path(job.ref, "genomes", _SPECIES_REFERENCES[job.species]))
+        ref_file = str(
+            Path(reference_genomes_dir(job.ref), _SPECIES_REFERENCES[job.species])
+        )
         hint = " Download it with `wgsextract ref library --install`."
     logging.debug(f"Resolved reference: {ref_file}")
     if not Path(ref_file).is_file():
