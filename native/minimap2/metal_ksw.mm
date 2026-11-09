@@ -51,71 +51,93 @@ inline void push_cigar(device uint *cigar, thread int &n, uint op, int len)
 // score walk telescopes to v(0,0) - qe + sum u(i,0) + sum v(T-1,j), which is
 // exact unless u or v wrap; a wrap returns INT_MIN and the CPU redoes the fill.
 // The backtrack is ksw_backtrack's (is_rot=0, no offsets), emitted in reverse.
-template <int C>
+//
+// T = char computes in int8 like the CPU. T = short (when Scoring::narrow) is
+// faster and equals it while no int8 value would wrap: for such scoring that
+// holds while every diagonal step z stays at most the match score before the cap
+// (so a, b, a2, b2 <= z) and u, v >= -(q+e), which the kernel checks.
+template <int C, typename T>
 inline void fill(const Fill F, constant Scoring &S, device const uchar *seq, device uchar *pbuf,
     device int *score, device uint *cigars, device int *n_cigar, uint fi, ushort lane)
 {
-    const int T = F.tlen, Q = F.qlen, stride = (Q + C - 1) / C * C;
-    const char qe = (char)(S.q + S.e), qe2 = (char)(S.q2 + S.e2), q = (char)S.q, q2 = (char)S.q2;
-    const char mch = (char)S.mch, mis = (char)S.mis, scN = (char)S.scN;
+    constexpr bool wide = is_same<T, short>::value;
+    const int Tl = F.tlen, Q = F.qlen, stride = (Q + C - 1) / C * C;
+    const T qe = (T)(S.q + S.e), qe2 = (T)(S.q2 + S.e2), q = (T)S.q, q2 = (T)S.q2;
+    const T mch = (T)S.mch, mis = (T)S.mis, scN = (T)S.scN;
     const int m1 = S.m1, lt = S.long_thres;
     device const uchar *qs = seq + F.qoff, *ts = seq + F.toff;
     device uchar *p = pbuf + F.poff;
     const int j0 = lane * C;
-    char x[C], v[C], x2[C];
+    T x[C], v[C], x2[C], lo[C], hi[C]; // lo, hi: min of u and v, max of z before the cap
     uchar qb[C];
     for (int k = 0; k < C; ++k) {
         const int r = j0 + k; // boundary (-1, j)
         x[k] = -qe; x2[k] = -qe2;
-        v[k] = r == 0 ? -qe : r < lt ? (char)-S.e : r == lt ? (char)S.long_diff : (char)-S.e2;
+        v[k] = r == 0 ? -qe : r < lt ? (T)-S.e : r == lt ? (T)S.long_diff : (T)-S.e2;
         qb[k] = r < Q ? qs[r] : (uchar)m1;
+        lo[k] = 0, hi[k] = mch;
     }
     uint carry = 0; // (u, y, y2) of (i, j0 - 1) from lane - 1's previous step
     int H = 0, wrapped = 0;
-    for (int s = 0; s < T + 31; ++s) {
+    for (int s = 0; s < Tl + 31; ++s) {
         const int i = s - lane;
         const uint in = simd_shuffle_up(carry, (ushort)1);
-        char u, y, y2;
+        T u, y, y2;
         if (lane == 0) {
-            u = i == 0 ? -qe : i < lt ? (char)-S.e : i == lt ? (char)S.long_diff : (char)-S.e2;
+            u = i == 0 ? -qe : i < lt ? (T)-S.e : i == lt ? (T)S.long_diff : (T)-S.e2;
             y = -qe; y2 = -qe2;
         } else {
-            u = (char)(in & 0xff); y = (char)(in >> 8 & 0xff); y2 = (char)(in >> 16 & 0xff);
+            u = (T)(char)(in & 0xff); y = (T)(char)(in >> 8 & 0xff); y2 = (T)(char)(in >> 16 & 0xff);
         }
-        if (i >= 0 && i < T) {
+        if (i >= 0 && i < Tl) {
             const int sb = ts[i];
             uchar dd[C];
             for (int k = 0; k < C; ++k) {
                 const int sq = qb[k];
-                char z = (sb == m1 || sq == m1) ? scN : (sb == sq ? mch : mis);
-                const char xp = x[k], vp = v[k], x2p = x2[k], ut = u, yt = y, y2t = y2;
-                char a = xp + vp, b = yt + ut, a2 = x2p + vp, b2 = y2t + ut;
+                T z = (sb == m1 || sq == m1) ? scN : (sb == sq ? mch : mis);
+                const T xp = x[k], vp = v[k], x2p = x2[k], ut = u, yt = y, y2t = y2;
+                T a = xp + vp, b = yt + ut, a2 = x2p + vp, b2 = y2t + ut;
                 uchar d = a > z ? 1 : 0; z = max(z, a);
                 d = b > z ? 2 : d; z = max(z, b);
                 d = a2 > z ? 3 : d; z = max(z, a2);
                 d = b2 > z ? 4 : d; z = max(z, b2);
+                if (wide) hi[k] = max(hi[k], z);
                 z = min(z, mch);
-                const int ui = (int)z - (int)vp, vi = (int)z - (int)ut;
-                if (j0 + k < Q) wrapped |= ((uint)(ui + 128) | (uint)(vi + 128)) > 255u ? 1 : 0;
-                u = (char)ui; v[k] = (char)vi;
-                char tmp = z - q; a = a - tmp; b = b - tmp;
+                if (wide) {
+                    u = z - vp; v[k] = z - ut;
+                    lo[k] = min(lo[k], min(u, v[k]));
+                } else {
+                    const int ui = (int)z - (int)vp, vi = (int)z - (int)ut;
+                    if (j0 + k < Q) wrapped |= ((uint)(ui + 128) | (uint)(vi + 128)) > 255u ? 1 : 0;
+                    u = (T)ui; v[k] = (T)vi;
+                }
+                T tmp = z - q; a = a - tmp; b = b - tmp;
                 tmp = z - q2; a2 = a2 - tmp; b2 = b2 - tmp;
-                x[k] = max(a, (char)0) - qe; d |= a > 0 ? 0x08 : 0;
-                y = max(b, (char)0) - qe; d |= b > 0 ? 0x10 : 0;
-                x2[k] = max(a2, (char)0) - qe2; d |= a2 > 0 ? 0x20 : 0;
-                y2 = max(b2, (char)0) - qe2; d |= b2 > 0 ? 0x40 : 0;
+                x[k] = max(a, (T)0) - qe; d |= a > 0 ? 0x08 : 0;
+                y = max(b, (T)0) - qe; d |= b > 0 ? 0x10 : 0;
+                x2[k] = max(a2, (T)0) - qe2; d |= a2 > 0 ? 0x20 : 0;
+                y2 = max(b2, (T)0) - qe2; d |= b2 > 0 ? 0x40 : 0;
                 dd[k] = d;
                 if (k == 0 && lane == 0) H += i == 0 ? (int)v[0] - (int)qe : (int)u;
-                if (i == T - 1 && j0 + k > 0 && j0 + k < Q) H += v[k];
             }
             if (j0 < Q) {
-                device uint *row = (device uint *)(p + (size_t)i * stride + j0);
-                for (int k = 0; k < C; k += 4)
-                    row[k >> 2] = (uint)dd[k] | (uint)dd[k + 1] << 8 | (uint)dd[k + 2] << 16 | (uint)dd[k + 3] << 24;
+                if (C % 4 == 0) {
+                    device uint *row = (device uint *)(p + (size_t)i * stride + j0);
+                    for (int k = 0; k < C; k += 4)
+                        row[k >> 2] = (uint)dd[k] | (uint)dd[k + 1] << 8 | (uint)dd[k + 2] << 16 | (uint)dd[k + 3] << 24;
+                } else {
+                    device uchar *row = p + (size_t)i * stride + j0;
+                    for (int k = 0; k < C; ++k) row[k] = dd[k];
+                }
             }
         }
         carry = (uint)(uchar)u | (uint)(uchar)y << 8 | (uint)(uchar)y2 << 16;
     }
+    for (int k = 0; k < C; ++k)
+        if (j0 + k < Q) {
+            if (wide) wrapped |= lo[k] < -qe || hi[k] > mch ? 1 : 0;
+            if (j0 + k > 0) H += v[k]; // v(T-1, j)
+        }
     H = simd_sum(H);
     wrapped = simd_max(wrapped);
     simdgroup_barrier(mem_flags::mem_device);
@@ -123,7 +145,7 @@ inline void fill(const Fill F, constant Scoring &S, device const uchar *seq, dev
     score[fi] = wrapped ? INT_MIN : H;
     if (wrapped) return;
     device uint *cigar = cigars + F.coff;
-    int n = 0, i = T - 1, j = Q - 1, state = 0;
+    int n = 0, i = Tl - 1, j = Q - 1, state = 0;
     while (i >= 0 && j >= 0) {
         const uint d = p[(size_t)i * stride + j];
         if (state == 0) state = d & 7;
@@ -138,20 +160,24 @@ inline void fill(const Fill F, constant Scoring &S, device const uchar *seq, dev
     n_cigar[fi] = n;
 }
 
-#define KSW_FILL(C) \
-kernel void ksw_fill##C(device const Fill *fills [[buffer(0)]], constant Scoring &S [[buffer(1)]], \
+#define KSW_FILL(C, T, name) \
+kernel void ksw_fill##C##name(device const Fill *fills [[buffer(0)]], constant Scoring &S [[buffer(1)]], \
     device const uchar *seq [[buffer(2)]], device uchar *p [[buffer(3)]], device int *score [[buffer(4)]], \
     device uint *cigars [[buffer(5)]], device int *n_cigar [[buffer(6)]], constant uint &n [[buffer(7)]], \
     uint gid [[thread_position_in_grid]], ushort lane [[thread_index_in_simdgroup]]) \
-{ const uint fi = gid / 32; if (fi < n) fill<C>(fills[fi], S, seq, p, score, cigars, n_cigar, fi, lane); }
-KSW_FILL(4)
-KSW_FILL(8)
-KSW_FILL(16)
+{ const uint fi = gid / 32; if (fi < n) fill<C, T>(fills[fi], S, seq, p, score, cigars, n_cigar, fi, lane); }
+#define KSW_FILLS(C) KSW_FILL(C, char, _8) KSW_FILL(C, short, _16)
+KSW_FILLS(4)
+KSW_FILLS(7)
+KSW_FILLS(8)
+KSW_FILLS(12)
+KSW_FILLS(16)
 )METAL";
 
-// Lanes per fill are 32, so query columns per lane C = 4, 8 or 16 cover 128,
-// 256 or 512 bases. Longer targets only grow the backtrack matrix.
-constexpr int widths[] = {4, 8, 16};
+// Query columns per lane C for the 32 lanes of a fill: 7 suits HiFi's typical
+// fills of 193-224 bases. Longer targets only grow the backtrack matrix.
+constexpr int n_widths = 5;
+constexpr int widths[n_widths] = {4, 7, 8, 12, 16};
 constexpr int max_qlen = 512, max_tlen = 4096;
 
 double now() {
@@ -338,7 +364,7 @@ private:
     void finish(Read &read, size_t fills);
 
     wgse::metal::Runtime runtime_;
-    id<MTLComputePipelineState> pipelines_[3] = {nil, nil, nil};
+    id<MTLComputePipelineState> pipelines_[2][n_widths] = {}; // [narrow][width]
     std::atomic<bool> enabled_{false};
     int fibers_per_thread_ = 16;
     bool fail_batches_ = false;
@@ -354,7 +380,7 @@ private:
     std::once_flag scoring_once_;
     Scoring scoring_{};
     int8_t mat_[25] = {};
-    bool scoring_ok_ = false;
+    bool scoring_ok_ = false, narrow_ = false;
 
     mutable std::mutex mutex_;
     std::condition_variable work_cv_;
@@ -382,21 +408,23 @@ bool Engine::start(std::string &reason) {
         return false;
     }
     id<MTLLibrary> library = runtime_.library(kernel_source);
-    for (int k = 0; k < 3; ++k) {
-        const std::string entry = "ksw_fill" + std::to_string(widths[k]);
-        pipelines_[k] = runtime_.pipeline(library, entry.c_str());
-    }
+    for (int t = 0; t < 2; ++t)
+        for (int k = 0; k < n_widths; ++k) {
+            const std::string entry = "ksw_fill" + std::to_string(widths[k]) + (t ? "_16" : "_8");
+            pipelines_[t][k] = runtime_.pipeline(library, entry.c_str());
+        }
     reason = runtime_.failure();
     if (!reason.empty()) return false;
     if (tune_fibers > 0) fibers_per_thread_ = tune_fibers;
     if (tune_batch > 0) target_fills_ = (size_t)tune_batch;
     if (tune_max_cost >= 0) max_cost_ = tune_max_cost;
     fail_batches_ = tune_fail != 0;
-    for (int k = 0; k < 3; ++k)
-        if (pipelines_[k].maxTotalThreadsPerThreadgroup < 64 || pipelines_[k].threadExecutionWidth != 32) {
-            reason = "unsupported Metal SIMD width";
-            return false;
-        }
+    for (auto &set : pipelines_)
+        for (id<MTLComputePipelineState> pipeline : set)
+            if (pipeline.maxTotalThreadsPerThreadgroup < 64 || pipeline.threadExecutionWidth != 32) {
+                reason = "unsupported Metal SIMD width";
+                return false;
+            }
     // One dispatcher packs a batch while the other's runs.
     for (int k = 0; k < dispatchers; ++k) std::thread([this] { dispatcher(); }).detach();
     enabled_ = true;
@@ -544,6 +572,15 @@ void Engine::set_scoring(int q, int e, int q2, int e2, const int8_t mat[25]) {
         scoring_ = {q, e, q2, e2, mat[0], mat[1], mat[24] == 0 ? -e2 : mat[24], 4, lt,
             lt * (e - e2) - (q2 - q) - e2};
         memcpy(mat_, mat, sizeof mat_);
+        // The 16-bit kernels equal int8 while z <= M before the cap and u, v >= -A
+        // (they check both): then x, y lie in [-A, -e], x2, y2 in [-A2, -e2] and u, v
+        // in [-A, M + A], with A = q + e, A2 = q2 + e2, M the match score. Every other
+        // value that is compared or kept (x + v, y + u, x2 + v, the gap scores after
+        // subtracting z - q) lies in int8 if these bounds and the boundary steps do.
+        const int A = q + e, A2 = q2 + e2, M = scoring_.mch, m = std::min(scoring_.mis, scoring_.scN);
+        const int ld = scoring_.long_diff;
+        narrow_ = scoring_ok_ && M + A <= 127 && 2 * A <= 128 && A + A2 <= 127 && m - q2 >= -128 && M - q <= 127
+            && -2 * A - M + q >= -128 && -A - A2 - M + q2 >= -128 && e2 <= A && ld >= -A && ld <= M + A;
     });
 }
 
@@ -695,12 +732,12 @@ void Engine::run_batch(std::vector<Pending> &batch, Buffers &b) {
             [encoder setBytes:&scoring_ length:sizeof scoring_ atIndex:1];
             [encoder setBuffer:b.seq offset:0 atIndex:2];
             [encoder setBuffer:b.matrix offset:0 atIndex:3];
-            for (size_t first = 0, k = 0; k < 3; ++k) {
+            for (size_t first = 0, k = 0; k < n_widths; ++k) {
                 size_t last = first;
                 while (last < n && refs[last].c == widths[k]) ++last;
                 const uint32_t count = (uint32_t)(last - first);
                 if (count) {
-                    [encoder setComputePipelineState:pipelines_[k]];
+                    [encoder setComputePipelineState:pipelines_[narrow_][k]];
                     [encoder setBuffer:b.fills offset:first * sizeof(Fill) atIndex:0];
                     [encoder setBuffer:b.score offset:first * 4 atIndex:4];
                     [encoder setBuffer:b.cigar offset:0 atIndex:5];
