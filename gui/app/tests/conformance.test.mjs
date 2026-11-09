@@ -215,7 +215,12 @@ test("WGSExtract exposes genome library controls in TypeScript", async () => {
   assert.equal(genomesPage.sidebarPlacement, "bottom");
   assert.ok(genomesPage.sections.find((section) => section.id === "genome-management"), "genome management moved to Reference Genomes");
   assert.ok(!library.sections.some((section) => section.id === "genome-management"));
-  const genomePaths = genomesPage.sections.find((section) => section.id === "genome-paths");
+  assert.ok(!genomesPage.sections.some((section) => section.id === "genome-paths"));
+  const userGenomes = bundle.manifest.pages.find((page) => page.id === "genomes");
+  assert.equal(bundle.manifest.pages[0].id, "genomes", "Genomes is the first page");
+  assert.equal(userGenomes.sidebarGroup, "Info");
+  assert.equal(userGenomes.advancedOnly, undefined);
+  const genomePaths = userGenomes.sections.find((section) => section.id === "genome-paths");
   assert.equal(genomePaths.title, "Library Paths");
   const genomeLibraryControl = genomePaths.controls.find((control) => control.id === "genome_library");
   assert.ok(genomeLibraryControl, "genome library path control exists");
@@ -233,13 +238,18 @@ test("WGSExtract exposes genome library controls in TypeScript", async () => {
     library.sections.some((section) => section.id === "test-genome-data"),
     false,
   );
-  const downloadAction = databaseTools.actions.find((action) => action.id === "test-genome-download");
+  const testGenomes = userGenomes.sections.find((section) => section.id === "test-genome-data");
+  assert.deepEqual(testGenomes.dataSource, databaseTools.dataSource);
+  assert.ok(!databaseTools.actions.some((action) => action.id.startsWith("test-genome-")));
+  assert.ok(userGenomes.sections.find((section) => section.id === "example-genomes"), "Example Genomes moved to Genomes");
+  assert.ok(!library.sections.some((section) => section.id === "example-genomes"));
+  const downloadAction = testGenomes.actions.find((action) => action.id === "test-genome-download");
   assert.ok(downloadAction, "test genome download action exists");
   assert.deepEqual(
     downloadAction.command.arguments,
     ["download", "{{genome_library}}"],
   );
-  const deleteAction = databaseTools.actions.find((action) => action.id === "test-genome-delete");
+  const deleteAction = testGenomes.actions.find((action) => action.id === "test-genome-delete");
   assert.ok(deleteAction, "test genome delete action exists");
   assert.deepEqual(
     deleteAction.command.arguments,

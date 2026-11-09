@@ -10,7 +10,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - WGSExtract: Advanced mode covers the CLI's remaining user options, with a new Workflows page. Detailed Coverage shows the depth bins; Extract has MT-only, Y-only, Y and MT, and Autosomes and X buttons; Library Install buttons turn into Delete.
 
 ### Changed
-- WGSExtract's Library page splits into Reference Data and Reference Genomes; "Genome Library" is now "Reference Genome Library".
+- WGSExtract's Library page splits into Reference Data and Reference Genomes, and a new Genomes page (first in Info) holds the User Genome Library (formerly Genome Library), the test genome and Example Genomes. Manage Reference Data's buttons show in Basic.
 - WGSExtract pages reorganised around Inputs sections; Align, Realign and Variant Calling move to Extract and VCF annotation to the VCF page.
 - Languages trimmed to English, French, German and Brazilian Portuguese (`pt-BR`); other Portuguese locales fall back to it.
 - Bump the bundled WGSExtract CLI installer target to `v0.8.6` ([release notes](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.6)).

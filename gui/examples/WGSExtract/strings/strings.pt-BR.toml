@@ -269,6 +269,8 @@
 "pages.library.summary" = "Gerencie dados de referência: índices, mapas de genes, conjuntos de dados de anotação e caches VEP usados por fluxos de trabalho de alinhamento e efeitos avançados de variantes."  # i18n-source-hash:dc6921dc
 "pages.reference-genomes.title" = "Genomas de referência"  # i18n-source-hash:90c45943
 "pages.reference-genomes.summary" = "Gerencie os genomas de referência de que a ferramenta precisa para alinhamento, decodificação de arquivos CRAM e interpretação e criação de arquivos VCF."  # i18n-source-hash:81e4f33f
+"pages.genomes.title" = "Genomas"  # i18n-source-hash:1db53492
+"pages.genomes.summary" = "Um lugar comum para baixar e gerenciar seus próprios arquivos de resultados de WGS, seja de um fornecedor de testes ou de amostras de pesquisa baixadas para usar com a ferramenta."  # i18n-source-hash:9642d79b
 "sections.library.library-paths.title" = "Caminhos da biblioteca"  # i18n-source-hash:ed1e39b6
 "controls.library.library-paths.ref_path.label" = "Caminho dos dados de referência"  # i18n-source-hash:5bb4450f
 "controls.library.library-paths.ref_path.tooltip" = "Caminho para armazenar genomas de referência e bancos de dados baixados."  # i18n-source-hash:315cd245
@@ -401,22 +403,22 @@
 "rows.library.genome-management.reference_genomes.GRCh37.source" = "Genome Reference Consortium"  # i18n-ignore i18n-source-hash:7601c1c0
 "rows.library.genome-management.reference_genomes.T2T-CHM13.build" = "CHM13 v2"  # i18n-ignore i18n-source-hash:19f08799
 "rows.library.genome-management.reference_genomes.T2T-CHM13.source" = "Telomere-to-Telomere"  # i18n-ignore i18n-source-hash:cafdd528
-"controls.library.library-paths.genome_library.label" = "Caminho da biblioteca de genomas de referência"  # i18n-source-hash:ce0ec1c8
+"controls.library.library-paths.genome_library.label" = "Caminho da biblioteca de genomas do usuário"  # i18n-source-hash:663d5530
 "controls.library.library-paths.genome_library.tooltip" = "Diretório com pastas de genoma por pessoa ou amostra usado por wgsextract-cli --genome."  # i18n-source-hash:a92500f2
 "sections.library.test-genome-data.title" = "Dados de genoma de teste"  # i18n-source-hash:c85983a9
 "sections.library.test-genome-data.summary" = "Baixe ou exclua o pequeno conjunto de dados de genoma de benchmark hospedado no GitHub usado nos fluxos de teste do WGS Extract."  # i18n-source-hash:3db8740c
 "actions.library.test-genome-data.test-genome-download.title" = "Baixar genoma de teste"  # i18n-source-hash:7565ed22
-"actions.library.test-genome-data.test-genome-download.tooltip" = "Baixe o mini genoma de benchmark hg19 hospedado no GitHub para a biblioteca de genomas de referência configurada."  # i18n-source-hash:4e044b8a
+"actions.library.test-genome-data.test-genome-download.tooltip" = "Baixe o mini genoma de benchmark hg19 hospedado no GitHub para a biblioteca de genomas do usuário configurada."  # i18n-source-hash:654075d5
 "actions.library.test-genome-data.test-genome-delete.title" = "Excluir genoma de teste"  # i18n-source-hash:fae50b61
-"actions.library.test-genome-data.test-genome-delete.tooltip" = "Exclua o mini genoma de benchmark hg19 instalado da biblioteca de genomas de referência configurada."  # i18n-source-hash:e7db5711
+"actions.library.test-genome-data.test-genome-delete.tooltip" = "Exclua o mini genoma de benchmark hg19 instalado da biblioteca de genomas do usuário configurada."  # i18n-source-hash:0f2fe6ec
 "actions.library.test-genome-data.test-genome-delete.confirm.title" = "Excluir dados do genoma de teste?"  # i18n-source-hash:827e2d75
 "actions.library.test-genome-data.test-genome-delete.confirm.message" = "Isso remove a pasta local do mini genoma de benchmark hg19 de {{genome_library}}. Ele pode ser baixado novamente depois."  # i18n-source-hash:fceff28e
 "actions.library.test-genome-data.test-genome-delete.confirm.confirmButtonTitle" = "Excluir"  # i18n-source-hash:f6fdbe48
 "actions.library.test-genome-data.test-genome-delete.confirm.cancelButtonTitle" = "Cancelar"  # i18n-source-hash:77dfd213
 "actions.library.test-genome-data.test-genome-installed.title" = "Genoma de teste instalado"  # i18n-source-hash:34db68dc
-"actions.library.test-genome-data.test-genome-installed.tooltip" = "O mini genoma de benchmark hg19 está instalado na biblioteca de genomas de referência configurada."  # i18n-source-hash:c6a0190d
+"actions.library.test-genome-data.test-genome-installed.tooltip" = "O mini genoma de benchmark hg19 está instalado na biblioteca de genomas do usuário configurada."  # i18n-source-hash:58781c54
 "actions.library.test-genome-data.test-genome-installed.disabledTooltip" = "O genoma de teste já está instalado."  # i18n-source-hash:6a74556f
-"controls.settings.settings-paths.genome_library.label" = "Biblioteca de genomas de referência"  # i18n-source-hash:44d2d866
+"controls.settings.settings-paths.genome_library.label" = "Biblioteca de genomas do usuário"  # i18n-source-hash:3c141cef
 "controls.settings.settings-paths.genome_library.tooltip" = "Diretório padrão da biblioteca de genomas por pessoa ou amostra usado por wgsextract-cli --genome."  # i18n-source-hash:2341c42a
 
 # TODO: translate the CLI features added after v0.6.3.
@@ -895,7 +897,7 @@
 "actions.cli.example-list.title" = "Listar genomas de exemplo"  # i18n-source-hash:35f029e7
 "actions.cli.example-list.tooltip" = "Listar os exemplos selecionados do 1000 Genomes."  # i18n-source-hash:3dd67e63
 "actions.cli.example-download.title" = "Baixar genomas de exemplo"  # i18n-source-hash:f8f40b78
-"actions.cli.example-download.tooltip" = "Baixar exemplos do 1000 Genomes (por etiqueta, ou todos) na biblioteca de genomas de referência."  # i18n-source-hash:06c57108
+"actions.cli.example-download.tooltip" = "Baixar exemplos do 1000 Genomes (por etiqueta, ou todos) na biblioteca de genomas do usuário."  # i18n-source-hash:90231d2c
 "actions.cli.analyze-comprehensive.title" = "Executar análise completa"  # i18n-source-hash:463e4e36
 "actions.cli.analyze-comprehensive.tooltip" = "QC, linhagem, chamada de variantes, anotação e filtragem de variantes significativas numa execução. Retoma de onde uma execução anterior parou."  # i18n-source-hash:67de9560
 "actions.cli.analyze-batch-gen.title" = "Gravar arquivo de lote"  # i18n-source-hash:3d088d25

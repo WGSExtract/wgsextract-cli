@@ -55,8 +55,7 @@
                 "{{ybrowse_snapshot}}"
               ]
             ]
-          },
-          "advancedOnly": true
+          }
         },
         {
           "id": "ybrowse-delete",
@@ -84,8 +83,7 @@
               "--ref",
               "{{ref_path}}"
             ]
-          },
-          "advancedOnly": true
+          }
         },
         {
           "id": "vep-download",
@@ -123,8 +121,7 @@
                 "{{vep_download_assembly}}"
               ]
             ]
-          },
-          "advancedOnly": true
+          }
         },
         {
           "id": "vep-verify",
@@ -158,8 +155,7 @@
                 "{{vep_download_assembly}}"
               ]
             ]
-          },
-          "advancedOnly": true
+          }
         },
         {
           "id": "vep-delete",
@@ -200,8 +196,7 @@
                 "{{vep_download_assembly}}"
               ]
             ]
-          },
-          "advancedOnly": true
+          }
         },
         {
           "id": "gene-map-download",
@@ -221,8 +216,7 @@
               "--ref",
               "{{ref_path}}"
             ]
-          },
-          "advancedOnly": true
+          }
         },
         {
           "id": "gene-map-delete",
@@ -250,8 +244,7 @@
               "--ref",
               "{{ref_path}}"
             ]
-          },
-          "advancedOnly": true
+          }
         },
         {
           "id": "annotation-vcf-download",
@@ -271,8 +264,7 @@
               "--ref",
               "{{ref_path}}"
             ]
-          },
-          "advancedOnly": true
+          }
         },
         {
           "id": "annotation-vcf-delete",
@@ -300,8 +292,7 @@
               "--ref",
               "{{ref_path}}"
             ]
-          },
-          "advancedOnly": true
+          }
         },
         {
           "id": "spliceai-download",
@@ -321,8 +312,7 @@
               "--ref",
               "{{ref_path}}"
             ]
-          },
-          "advancedOnly": true
+          }
         },
         {
           "id": "spliceai-delete",
@@ -350,8 +340,7 @@
               "--ref",
               "{{ref_path}}"
             ]
-          },
-          "advancedOnly": true
+          }
         },
         {
           "id": "alphamissense-download",
@@ -371,8 +360,7 @@
               "--ref",
               "{{ref_path}}"
             ]
-          },
-          "advancedOnly": true
+          }
         },
         {
           "id": "alphamissense-delete",
@@ -400,8 +388,7 @@
               "--ref",
               "{{ref_path}}"
             ]
-          },
-          "advancedOnly": true
+          }
         },
         {
           "id": "pharmgkb-download",
@@ -421,8 +408,7 @@
               "--ref",
               "{{ref_path}}"
             ]
-          },
-          "advancedOnly": true
+          }
         },
         {
           "id": "pharmgkb-delete",
@@ -450,8 +436,7 @@
               "--ref",
               "{{ref_path}}"
             ]
-          },
-          "advancedOnly": true
+          }
         },
         {
           "id": "bootstrap-library",
@@ -477,8 +462,7 @@
               "--ref",
               "{{ref_path}}"
             ]
-          },
-          "advancedOnly": true
+          }
         },
         {
           "id": "library-bootstrapped",
@@ -506,77 +490,6 @@
               "bootstrap",
               "--ref",
               "{{ref_path}}"
-            ]
-          },
-          "advancedOnly": true
-        },
-        {
-          "id": "test-genome-download",
-          "title": "actions.library.test-genome-data.test-genome-download.title",
-          "tooltip": "actions.library.test-genome-data.test-genome-download.tooltip",
-          "visibleWhen": [
-            {
-              "placeholder": "library.testGenomeInstalled",
-              "equals": "false"
-            }
-          ],
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/test-genome-library.py",
-            "arguments": [
-              "download",
-              "{{genome_library}}"
-            ]
-          }
-        },
-        {
-          "id": "test-genome-delete",
-          "title": "actions.library.test-genome-data.test-genome-delete.title",
-          "tooltip": "actions.library.test-genome-data.test-genome-delete.tooltip",
-          "role": "destructive",
-          "confirm": {
-            "title": "actions.library.test-genome-data.test-genome-delete.confirm.title",
-            "message": "actions.library.test-genome-data.test-genome-delete.confirm.message",
-            "confirmButtonTitle": "actions.library.test-genome-data.test-genome-delete.confirm.confirmButtonTitle",
-            "cancelButtonTitle": "actions.library.test-genome-data.test-genome-delete.confirm.cancelButtonTitle"
-          },
-          "visibleWhen": [
-            {
-              "placeholder": "library.testGenomeInstalled",
-              "equals": "true"
-            }
-          ],
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/test-genome-library.py",
-            "arguments": [
-              "delete",
-              "{{genome_library}}"
-            ]
-          }
-        },
-        {
-          "id": "test-genome-installed",
-          "title": "actions.library.test-genome-data.test-genome-installed.title",
-          "tooltip": "actions.library.test-genome-data.test-genome-installed.tooltip",
-          "disabledTooltip": "actions.library.test-genome-data.test-genome-installed.disabledTooltip",
-          "iconName": "success",
-          "textIcon": "✅",
-          "visibleWhen": [
-            {
-              "placeholder": "library.testGenomeInstalled",
-              "equals": "true"
-            }
-          ],
-          "disabledWhen": [
-            {
-              "placeholder": "library.testGenomeInstalled",
-              "equals": "true"
-            }
-          ],
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/test-genome-library.py",
-            "arguments": [
-              "state",
-              "{{genome_library}}"
             ]
           }
         }
@@ -843,142 +756,6 @@
               "{{ref_url}}",
               "--out",
               "{{ref_out}}"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "id": "example-genomes",
-      "title": "sections.cli.example-genomes.title",
-      "textIcon": "🧫",
-      "advancedOnly": true,
-      "controls": [
-        {
-          "id": "example_tag",
-          "label": "controls.cli.example_tag.label",
-          "kind": "text",
-          "tooltip": "controls.cli.example_tag.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "example_all",
-          "label": "controls.cli.example_all.label",
-          "kind": "checkboxGroup",
-          "options": [
-            {
-              "id": "--all",
-              "title": "controls.cli.example_all.label"
-            }
-          ],
-          "tooltip": "controls.cli.example_all.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "example_method",
-          "label": "controls.cli.example_method.label",
-          "kind": "dropdown",
-          "options": [
-            {
-              "id": "",
-              "title": "options.cli.default.title"
-            },
-            {
-              "id": "auto",
-              "title": "options.cli.value.auto.title"
-            },
-            {
-              "id": "https",
-              "title": "options.cli.value.https.title"
-            },
-            {
-              "id": "aspera",
-              "title": "options.cli.value.aspera.title"
-            }
-          ],
-          "tooltip": "controls.cli.example_method.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "example_aspera_key",
-          "label": "controls.cli.example_aspera_key.label",
-          "kind": "path",
-          "pathType": "file",
-          "tooltip": "controls.cli.example_aspera_key.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "example_force",
-          "label": "controls.cli.example_force.label",
-          "kind": "checkboxGroup",
-          "options": [
-            {
-              "id": "--force",
-              "title": "controls.cli.example_force.label"
-            }
-          ],
-          "tooltip": "controls.cli.example_force.tooltip",
-          "advancedOnly": true
-        }
-      ],
-      "actions": [
-        {
-          "id": "example-list",
-          "title": "actions.cli.example-list.title",
-          "tooltip": "actions.cli.example-list.tooltip",
-          "advancedOnly": true,
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "example-genome",
-              "list"
-            ],
-            "optionalArguments": [
-              [
-                "--target-root",
-                "{{genome_library}}"
-              ],
-              [
-                "--tag",
-                "{{example_tag}}"
-              ]
-            ]
-          }
-        },
-        {
-          "id": "example-download",
-          "title": "actions.cli.example-download.title",
-          "tooltip": "actions.cli.example-download.tooltip",
-          "advancedOnly": true,
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "example-genome",
-              "download"
-            ],
-            "optionalArguments": [
-              [
-                "--target-root",
-                "{{genome_library}}"
-              ],
-              [
-                "--tag",
-                "{{example_tag}}"
-              ],
-              [
-                "{{example_all}}"
-              ],
-              [
-                "--method",
-                "{{example_method}}"
-              ],
-              [
-                "--aspera-key",
-                "{{example_aspera_key}}"
-              ],
-              [
-                "{{example_force}}"
-              ]
             ]
           }
         }
