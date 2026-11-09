@@ -53,7 +53,7 @@ from wgsextract_cli.core.variant_files import (
 )
 from wgsextract_cli.core.warnings import print_warning
 
-from .contig_calling import call_small_variants, calling_contigs
+from .contig_calling import call_small_variants, calling_contigs, calling_jobs
 
 P = TypeVar("P", bound=Params)
 
@@ -298,7 +298,7 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
     )
     contigs = calling_contigs(input_file, ref, threads, params.region, parallel)
     # One bcftools stream uses one core however many threads were given (#583).
-    workers = min(int(threads), len(contigs))
+    _, workers = calling_jobs(contigs, threads)
     print_warning(
         "ButtonInDelVCF" if indels else "ButtonSNPVCF",
         threads=str(workers) if workers > 1 else None,

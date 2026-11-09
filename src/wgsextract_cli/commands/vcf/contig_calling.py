@@ -640,6 +640,18 @@ def calling_contigs(
     return contigs
 
 
+def calling_jobs(
+    contigs: dict[str, int], threads: str
+) -> tuple[list[dict[str, int]], int]:
+    """The jobs `call_small_variants` groups ``contigs`` into, and how many
+    workers run them (0 when it calls in one stream)."""
+    if not contigs:
+        return [], 0
+    workers = min(int(threads), len(contigs))
+    batches = _batches(contigs, workers)
+    return batches, min(workers, len(batches))
+
+
 def call_small_variants(
     alignment: str,
     ref: str,
@@ -660,9 +672,7 @@ def call_small_variants(
         return
 
     replays = caller.bands = not indels
-    workers = min(int(threads), len(contigs))
-    batches = _batches(contigs, workers)
-    caller.workers = min(workers, len(batches))
+    batches, caller.workers = calling_jobs(contigs, threads)
     caller.cancelled = Event()
     logging.info(
         f"Calling {len(contigs)} contigs in {len(batches)} jobs "

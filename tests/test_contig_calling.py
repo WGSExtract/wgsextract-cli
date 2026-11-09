@@ -151,6 +151,37 @@ def test_expected_wait_counts_threads_only_for_parallel_calling(
     assert f"Expected Wait is {wait} !!!" in caplog.text
 
 
+@needs_htslib
+def test_expected_wait_counts_workers_after_small_contigs_are_batched(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Issue #583 review: three small contigs share one job beside a large
+    one, so four threads run two workers; the wait must not count four."""
+    caplog.set_level(logging.INFO)
+    rng = random.Random(3)
+    lengths = {"chrBig": 100_000, "chrS1": 500, "chrS2": 500, "chrS3": 500}
+    seqs = {
+        n: "".join(rng.choice("ACGT") for _ in range(k)) for n, k in lengths.items()
+    }
+    ref = write_fasta(tmp_path / "ref.fa", seqs)
+    lines = ["@HD\tVN:1.6\tSO:coordinate", "@RG\tID:r\tSM:s"]
+    lines[1:1] = [f"@SQ\tSN:{name}\tLN:{length}" for name, length in lengths.items()]
+    for name, seq in seqs.items():
+        lines += [
+            f"{name}_{start}\t0\t{name}\t{start}\t60\t100M\t*\t0\t0"
+            f"\t{seq[start - 1 : start + 99]}\t{'I' * 100}\tRG:Z:r"
+            for start in range(1, 400, 20)
+        ]
+    bam = sam_to_bam(lines, tmp_path / "batched.bam")
+    params = api.VcfSnpParams(
+        input=Path(bam), ref=ref, outdir=tmp_path, threads=4, ploidy="GRCh38"
+    )
+    api.vcf.snp(params)
+    assert "Calling 4 contigs in 2 jobs with 2 workers." in caplog.text
+    # 150 minutes / 2 ** 0.7; four workers would give 56 minutes.
+    assert "Expected Wait is 1.5 hours !!!" in caplog.text
+
+
 def _female(sample: tuple[str, str], root: Path) -> tuple[str, str]:
     """The sample with all but two of its chrY reads dropped: a woman's few
     mismapped chrY reads (its 48 chrY reads to 48 chrX make it a man)."""
