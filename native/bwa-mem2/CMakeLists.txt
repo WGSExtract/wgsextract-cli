@@ -309,7 +309,7 @@ target_compile_options(metal_backend PRIVATE -fobjc-arc -Wall -Wextra -Werror)
 target_link_libraries(metal_backend PUBLIC mem2_core mem2_rescue_prune wgse_metal_common)
 add_executable(wgse-bwa-mem2 main.cpp)
 target_link_libraries(wgse-bwa-mem2 PRIVATE metal_backend)
-set(WGSE_BWA_MEM2_VERSION 0.4.1)
+set(WGSE_BWA_MEM2_VERSION 0.5.0)
 target_compile_definitions(wgse-bwa-mem2 PRIVATE WGSE_VERSION="${WGSE_BWA_MEM2_VERSION}")
 target_compile_options(wgse-bwa-mem2 PRIVATE -Wall -Wextra -Werror)
 
