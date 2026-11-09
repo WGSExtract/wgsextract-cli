@@ -19,7 +19,7 @@ test("hydrates whitespace-only row metadata as empty", () => {
   assert.equal(rows[0].status, undefined);
 });
 
-const wgsPages = ["microarray", "extract", "fastq", "info-bam", "ancestry", "vcf", "settings", "library"]
+const wgsPages = ["microarray", "extract", "fastq", "info-bam", "ancestry", "vcf", "settings", "library", "genomes"]
   .map((id) => JSON.parse(readFileSync(new URL(`../../examples/WGSExtract/pages/${id}.json`, import.meta.url), "utf8")));
 const wgsManifest = { pages: wgsPages };
 
@@ -189,7 +189,11 @@ test("WGSExtract Advanced CLI actions pass only the options that are set", () =>
 
 test("WGSExtract Library install buttons become confirmed deletes once installed", () => {
   const library = wgsPages.find((item) => item.id === "library");
-  const actions = library.sections.find((section) => section.id === "databases-tools").actions;
+  const genomes = wgsPages.find((item) => item.id === "genomes");
+  const actions = [
+    ...library.sections.find((section) => section.id === "databases-tools").actions,
+    ...genomes.sections.find((section) => section.id === "test-genome-data").actions,
+  ];
   const shownWhen = (action, value) => (action.visibleWhen ?? [])
     .filter((rule) => rule.equals === value).map((rule) => rule.placeholder);
   const installs = actions.filter((action) => /-(download|install)$/.test(action.id));
