@@ -215,14 +215,17 @@ test("WGSExtract exposes genome library controls in TypeScript", async () => {
   assert.equal(genomesPage.sidebarPlacement, "bottom");
   assert.ok(genomesPage.sections.find((section) => section.id === "genome-management"), "genome management moved to Reference Genomes");
   assert.ok(!library.sections.some((section) => section.id === "genome-management"));
-  assert.ok(!genomesPage.sections.some((section) => section.id === "genome-paths"));
-  const userGenomes = bundle.manifest.pages.find((page) => page.id === "genomes");
-  assert.equal(bundle.manifest.pages[0].id, "genomes", "Genomes is the first page");
-  assert.equal(userGenomes.sidebarGroup, "Info");
-  assert.equal(userGenomes.advancedOnly, undefined);
-  const genomePaths = userGenomes.sections.find((section) => section.id === "genome-paths");
-  assert.equal(genomePaths.title, "Library Paths");
-  const genomeLibraryControl = genomePaths.controls.find((control) => control.id === "genome_library");
+  const datasets = bundle.manifest.pages.find((page) => page.id === "datasets");
+  assert.equal(datasets.title, "Datasets");
+  assert.equal(datasets.sidebarPlacement, "bottom");
+  assert.equal(datasets.advancedOnly, undefined);
+  const pageOrder = bundle.manifest.pages.map((page) => page.id);
+  assert.equal(pageOrder.indexOf("datasets") + 1, pageOrder.indexOf("library"), "Datasets sits just above Reference Data");
+  assert.ok(pageOrder.indexOf("annotate") < pageOrder.indexOf("workflows"), "Annotate sits above Workflows");
+  const datasetPaths = datasets.sections.find((section) => section.id === "dataset-paths");
+  assert.equal(datasetPaths.title, "Library Paths");
+  const genomeLibraryControl = datasetPaths.controls.find((control) => control.id === "genome_library");
+  assert.equal(genomeLibraryControl.label, "Dataset Library Path");
   assert.ok(genomeLibraryControl, "genome library path control exists");
   assert.equal(genomeLibraryControl.kind, "path");
 
@@ -235,21 +238,20 @@ test("WGSExtract exposes genome library controls in TypeScript", async () => {
   assert.ok(databaseTools.actions.find((action) => action.id === "alphamissense-download"));
   assert.ok(databaseTools.actions.find((action) => action.id === "pharmgkb-download"));
   assert.equal(
-    library.sections.some((section) => section.id === "test-genome-data"),
+    library.sections.some((section) => section.id === "test-dataset"),
     false,
   );
-  const testGenomes = userGenomes.sections.find((section) => section.id === "test-genome-data");
-  assert.deepEqual(testGenomes.dataSource, databaseTools.dataSource);
-  assert.ok(!databaseTools.actions.some((action) => action.id.startsWith("test-genome-")));
-  assert.ok(userGenomes.sections.find((section) => section.id === "example-genomes"), "Example Genomes moved to Genomes");
-  assert.ok(!library.sections.some((section) => section.id === "example-genomes"));
-  const downloadAction = testGenomes.actions.find((action) => action.id === "test-genome-download");
+  const testDataset = datasets.sections.find((section) => section.id === "test-dataset");
+  assert.deepEqual(testDataset.dataSource, databaseTools.dataSource);
+  assert.ok(!databaseTools.actions.some((action) => action.id.startsWith("test-")));
+  assert.ok(datasets.sections.find((section) => section.id === "example-datasets"), "Example Datasets are on Datasets");
+  const downloadAction = testDataset.actions.find((action) => action.id === "test-dataset-download");
   assert.ok(downloadAction, "test genome download action exists");
   assert.deepEqual(
     downloadAction.command.arguments,
     ["download", "{{genome_library}}"],
   );
-  const deleteAction = testGenomes.actions.find((action) => action.id === "test-genome-delete");
+  const deleteAction = testDataset.actions.find((action) => action.id === "test-dataset-delete");
   assert.ok(deleteAction, "test genome delete action exists");
   assert.deepEqual(
     deleteAction.command.arguments,

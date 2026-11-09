@@ -321,7 +321,7 @@ if (Test-Path -LiteralPath (Join-Path $Workspace "lab-output")) {
     Copy-Item -Path (Join-Path $Workspace "lab-output\*") -Destination (Join-Path $R "workload") -Recurse -Force
 }
 New-Item -ItemType Directory -Force -Path (Join-Path $R "workload\info") | Out-Null
-foreach ($dir in "output", "genomes") {
+foreach ($dir in "output", "dataset") {
     Get-ChildItem -LiteralPath (Join-Path $Workspace $dir) -Recurse -Filter "*.wgse_info.json" -ErrorAction SilentlyContinue |
         Copy-Item -Destination (Join-Path $R "workload\info")
 }

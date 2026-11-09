@@ -124,15 +124,15 @@
     }
   },
   "pages": [
-    "genomes.json",
     "fastq.json",
     "info-bam.json",
     "vcf.json",
     "extract.json",
     "microarray.json",
     "ancestry.json",
-    "workflows.json",
     "annotate.json",
+    "workflows.json",
+    "datasets.json",
     "library.json",
     "reference-genomes.json",
     "settings.json"

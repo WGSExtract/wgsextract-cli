@@ -1,11 +1,11 @@
 {
-  "id": "genomes",
-  "title": "pages.genomes.title",
-  "summary": "pages.genomes.summary",
-  "sidebarGroup": "sidebar.groups.convert",
+  "id": "datasets",
+  "title": "pages.datasets.title",
+  "summary": "pages.datasets.summary",
+  "sidebarPlacement": "bottom",
   "sections": [
     {
-      "id": "genome-paths",
+      "id": "dataset-paths",
       "title": "sections.library.library-paths.title",
       "controls": [
         {
@@ -20,9 +20,9 @@
       "advancedOnly": true
     },
     {
-      "id": "test-genome-data",
-      "title": "sections.library.test-genome-data.title",
-      "subtitle": "sections.library.test-genome-data.summary",
+      "id": "test-dataset",
+      "title": "sections.datasets.test-dataset.title",
+      "subtitle": "sections.datasets.test-dataset.summary",
       "dataSource": {
         "path": "scripts/library-state.sh",
         "arguments": [
@@ -32,9 +32,9 @@
       },
       "actions": [
         {
-          "id": "test-genome-download",
-          "title": "actions.library.test-genome-data.test-genome-download.title",
-          "tooltip": "actions.library.test-genome-data.test-genome-download.tooltip",
+          "id": "test-dataset-download",
+          "title": "actions.datasets.test-dataset.test-dataset-download.title",
+          "tooltip": "actions.datasets.test-dataset.test-dataset-download.tooltip",
           "visibleWhen": [
             {
               "placeholder": "library.testGenomeInstalled",
@@ -50,15 +50,15 @@
           }
         },
         {
-          "id": "test-genome-delete",
-          "title": "actions.library.test-genome-data.test-genome-delete.title",
-          "tooltip": "actions.library.test-genome-data.test-genome-delete.tooltip",
+          "id": "test-dataset-delete",
+          "title": "actions.datasets.test-dataset.test-dataset-delete.title",
+          "tooltip": "actions.datasets.test-dataset.test-dataset-delete.tooltip",
           "role": "destructive",
           "confirm": {
-            "title": "actions.library.test-genome-data.test-genome-delete.confirm.title",
-            "message": "actions.library.test-genome-data.test-genome-delete.confirm.message",
-            "confirmButtonTitle": "actions.library.test-genome-data.test-genome-delete.confirm.confirmButtonTitle",
-            "cancelButtonTitle": "actions.library.test-genome-data.test-genome-delete.confirm.cancelButtonTitle"
+            "title": "actions.datasets.test-dataset.test-dataset-delete.confirm.title",
+            "message": "actions.datasets.test-dataset.test-dataset-delete.confirm.message",
+            "confirmButtonTitle": "actions.datasets.test-dataset.test-dataset-delete.confirm.confirmButtonTitle",
+            "cancelButtonTitle": "actions.datasets.test-dataset.test-dataset-delete.confirm.cancelButtonTitle"
           },
           "visibleWhen": [
             {
@@ -75,10 +75,10 @@
           }
         },
         {
-          "id": "test-genome-installed",
-          "title": "actions.library.test-genome-data.test-genome-installed.title",
-          "tooltip": "actions.library.test-genome-data.test-genome-installed.tooltip",
-          "disabledTooltip": "actions.library.test-genome-data.test-genome-installed.disabledTooltip",
+          "id": "test-dataset-installed",
+          "title": "actions.datasets.test-dataset.test-dataset-installed.title",
+          "tooltip": "actions.datasets.test-dataset.test-dataset-installed.tooltip",
+          "disabledTooltip": "actions.datasets.test-dataset.test-dataset-installed.disabledTooltip",
           "iconName": "success",
           "textIcon": "✅",
           "visibleWhen": [
@@ -106,8 +106,8 @@
       "textIcon": "🧪"
     },
     {
-      "id": "example-genomes",
-      "title": "sections.cli.example-genomes.title",
+      "id": "example-datasets",
+      "title": "sections.cli.example-datasets.title",
       "textIcon": "🧫",
       "advancedOnly": true,
       "controls": [
@@ -243,5 +243,5 @@
     }
   ],
   "iconName": "sequence-reads",
-  "textIcon": "👤"
+  "textIcon": "🗂️"
 }
