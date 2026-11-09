@@ -143,7 +143,12 @@ class AlignerCommand:
             output = f"bwa-mem3 {version} --fast's, which differ from BWA's"
         elif mode:
             targets = {f"compat={c}": t for t, c in BWA_MEM3_COMPAT.items()}
-            output = f"{targets.get(mode, f'bwa-mem3 {version}')}'s"
+            target = targets.get(mode)
+            output = (
+                f"{target}'s, from bwa-mem3 {version}"
+                if target
+                else f"bwa-mem3 {version}'s"
+            )
         else:
             output = f"{self.tool} {version}'s"
         options = "".join(f" {option}" for option in self.options)
@@ -270,6 +275,12 @@ def find_native_aligner(
     try:
         return _check(tool, binary, path)
     except (NativeAlignerUnusable, OSError) as error:
+        # Checks before an alignment ask again; one warning per run is enough.
+        if any(
+            w.code == "native_aligner_unusable" and w.details.get("path") == path
+            for w in current_result().warnings
+        ):
+            return None
         warn(
             "native_aligner_unusable",
             f"Not using {path}: {error}. Aligning with {instead or tool} instead.",

@@ -394,9 +394,12 @@ def check_mapping_memory(
     preset: str | None = None,
     input_bytes: int | None = None,
     gpu_bytes: int = 0,
+    required: bool = False,
+    label: str | None = None,
 ) -> None:
-    """Log the alignment's memory estimate, and warn (or for bwa-mem2, raise)
-    with settings that fit when it exceeds the available memory."""
+    """Log the alignment's memory estimate, and warn (or for bwa-mem2, or when
+    ``required``, raise) with settings that fit when it exceeds the available
+    memory. ``label`` names the aligner in messages (default ``aligner``)."""
 
     def estimate(threads: str, memory: str) -> MappingMemory:
         return estimate_mapping_memory(
@@ -424,9 +427,10 @@ def check_mapping_memory(
     total = requested.total + additional_ram_bytes
     # minimap2's estimate depends on the input's size only for samblaster.
     counted = aligner != "minimap2" or samblaster
+    shown = label or aligner
     logging.info(
         "%s alignment memory estimate: %.2f GiB%s (%s GiB).",
-        aligner,
+        shown,
         total / _GIB,
         (
             " for "
@@ -444,7 +448,7 @@ def check_mapping_memory(
     if total <= available:
         return
     message = (
-        f"{aligner} alignment is estimated to need {total / _GIB:.2f} GiB "
+        f"{shown} alignment is estimated to need {total / _GIB:.2f} GiB "
         f"but only {available / _GIB:.2f} GiB RAM is available "
         f"({components} GiB). Lower --memory (per sort thread) or --threads, "
         "or free memory."
@@ -454,7 +458,7 @@ def check_mapping_memory(
             " No reliable input read count was available; using a 680-million-read "
             "fallback. Larger inputs may need more."
         )
-    if aligner == "bwa-mem2":
+    if aligner == "bwa-mem2" or required:
         raise WGSExtractError(message + " Use --aligner bwa for its smaller index.")
     if aligner == "minimap2":
         message += (

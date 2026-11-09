@@ -142,9 +142,9 @@ WGS Extract publishes its own builds of four aligners for Apple Silicon Macs:
 `wgse-bwa` (bwa 0.7.19), `wgse-bwa-mem2` (bwa-mem2 2.3), `wgse-bwa-mem3`
 (bwa-mem3 0.16.0) and `wgse-minimap2` (minimap2 2.31). Each writes the same
 alignments as its upstream release and reads the same index files; `wgse-bwa`,
-`wgse-bwa-mem2` and `wgse-bwa-mem3` can run some of the work on the Metal GPU. Install them as the
-[Installing](../native/README.md#installing) section of `native/README.md`
-describes; WGS Extract doesn't install them.
+`wgse-bwa-mem2` and `wgse-bwa-mem3` can run some of the work on the Metal GPU.
+Install them as the [Installing](../native/README.md#installing) section of
+`native/README.md` describes; WGS Extract doesn't install them.
 
 When one is on `PATH`, `align` and `realign` run it in place of bwa, bwa-mem2
 or minimap2 (`native_aligners = "auto"`, the default; `--native-aligners off`
@@ -156,15 +156,23 @@ the check, or is older than the oldest supported release, raises the
 
 - **bwa-mem3.** bwa-mem3 writes bwa's exact records with `--compat=bwa-mem`
   and bwa-mem2's with `--compat=bwa-mem2` (`@PG` aside), from bwa-mem2's index
-  without its `.0123` file, about twice as fast as `wgse-bwa` and
-  `wgse-bwa-mem2` on the GPU. So when the reference has that index,
-  `wgse-bwa-mem3` runs in place of bwa or bwa-mem2 (whichever `--aligner` or
-  `auto` chose) in the matching `--compat` mode, if the alignment's memory
-  estimate with it fits the Mac's RAM less 2 GiB (when `realign` streams, also
-  the RAM available when it starts), or needs no more than the run it replaces
-  (bwa-mem2). Otherwise `wgse-bwa` or `wgse-bwa-mem2` runs as below. Ultima
-  reads keep BWA. The records are the same either way; see the parity results
-  below.
+  without its `.0123` file. On 5M read pairs on hs38 it was 1.8 times as fast
+  as `wgse-bwa` and 1.5 times as fast as `wgse-bwa-mem2` on the GPU, for about
+  11 GiB of memory against 6 and 11.5 GiB. So when the reference has that
+  index, `wgse-bwa-mem3` runs in place of bwa or bwa-mem2 (whichever
+  `--aligner` or `auto` chose) in the matching `--compat` mode, if its
+  pipeline fits:
+  - In bwa's place it needs more memory than bwa, so the alignment's memory
+    estimate with it must fit the RAM available when the run starts (and the
+    Mac's RAM less 2 GiB). On 8 to 16 GB Macs `wgse-bwa` usually runs instead.
+  - In bwa-mem2's place it needs less memory than bwa-mem2, so it runs when
+    its estimate fits the Mac's RAM less 2 GiB or is no more than bwa-mem2's.
+    An explicit `--aligner bwa-mem2` still stops before aligning (and before
+    `realign` extracts FASTQs) when that estimate doesn't fit the RAM
+    available, as bwa-mem2's own would.
+
+  Otherwise `wgse-bwa` or `wgse-bwa-mem2` runs as below. Ultima reads keep
+  BWA. The records are the same either way; see the parity results below.
 - **Metal.** `wgse-bwa`, `wgse-bwa-mem2` and `wgse-bwa-mem3` run with
   `--backend auto`, using the GPU when their capabilities report
   `metal_available`. If the GPU fails during
@@ -197,8 +205,10 @@ Silicon, else (or with `--native-aligners off`) `bwa-mem3` on `PATH`, for
 example from Bioconda on Linux; WGS Extract installs neither, and the run
 stops if neither is there or the reference lacks bwa-mem2's index. It writes
 bwa's records (`--compat=bwa-mem`). `--fast` (which implies `--aligner
-bwa-mem3`) runs bwa-mem3's speed preset instead, about twice as fast again;
-its alignments differ from BWA's, mostly in low-confidence reads, so it is
+bwa-mem3`) runs bwa-mem3's speed preset instead, about twice as fast again,
+whose alignments differ from BWA's: on 5M HG002 read pairs on hs38, 3.5% of
+primary records were placed differently (92% of them reads BWA gave a MAPQ
+below 20) and 2.1% more kept their place with a different MAPQ. So it is
 never chosen automatically and the run raises the `bwa_mem3_fast` warning.
 
 Parity on the M1 Pro (SHA-256 of the records, `@PG` aside): `wgsextract

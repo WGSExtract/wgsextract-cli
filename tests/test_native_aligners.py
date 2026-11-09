@@ -11,6 +11,7 @@ mocked platform.
 
 import json
 from argparse import Namespace
+from pathlib import Path
 
 import pytest
 
@@ -436,8 +437,11 @@ sys.exit(aligner.wait())
 """
 
 
-def _install_bwa_mem3(bindir, name="wgse-bwa-mem3", capabilities=None):
-    real = {tool: str((bindir / tool).resolve()) for tool in ("bwa", "bwa-mem2")}
+def _install_bwa_mem3(bindir, name="wgse-bwa-mem3", capabilities=None, mem2="bwa-mem2"):
+    """The fake; ``mem2`` names the real aligner for --compat=bwa-mem2 (bwa
+    when the test's bwa-mem2 index can't be loaded)."""
+    real = {"bwa": str((bindir / "bwa").resolve())}
+    real["bwa-mem2"] = str((bindir / mem2).resolve())
     source = _FAKE_BWA_MEM3.format(
         capabilities=capabilities or _capabilities("bwa-mem3"), real=real, name=name
     )
@@ -566,12 +570,17 @@ def test_aligner_bwa_mem3_writes_bwas_records(tmp_path, mem3_bin):
     assert not result.warnings
 
 
-@pytest.mark.parametrize("machine", [("Linux", "x86_64"), ("Darwin", "arm64")])
+@pytest.mark.parametrize(
+    ("machine", "options"),
+    [(("Linux", "x86_64"), ()), (("Darwin", "arm64"), ("--native-aligners", "off"))],
+)
 def test_fast_aligns_with_bwa_mem3s_preset_and_warns(
-    tmp_path, mem3_bin, monkeypatch, ram, machine
+    tmp_path, mem3_bin, monkeypatch, ram, machine, options
 ):
-    # Off Apple Silicon, or with native aligners off, bwa-mem3 from PATH runs.
+    # Off Apple Silicon, or with native aligners off, bwa-mem3 from PATH runs
+    # even with wgse-bwa-mem3 installed.
     reads = _mem3_reads(tmp_path)
+    _install_bwa_mem3(mem3_bin)
     _install_bwa_mem3(mem3_bin, name="bwa-mem3")
     system, arch = machine
     monkeypatch.setattr(
@@ -581,7 +590,7 @@ def test_fast_aligns_with_bwa_mem3s_preset_and_warns(
     )
     ram(64 * GIB)
 
-    bam, result = _align(reads, tmp_path / "out", "--fast", "--native-aligners", "off")
+    bam, result = _align(reads, tmp_path / "out", "--fast", *options)
 
     # contract: --fast is the opt-in that trades BWA's alignments for speed.
     assert _mapper(bam).startswith("bwa-mem3 mem --fast ")
@@ -598,20 +607,44 @@ def test_fast_aligns_with_bwa_mem3s_preset_and_warns(
         ("--aligner", "bwa", "--fast"),
         ("--aligner", "minimap2", "--fast"),
         ("--long-read", "--fast"),
+        ("--gpu", "--fast"),
+        ("--platform", "ultima", "--fast"),
     ],
 )
 def test_fast_is_refused_for_other_aligners(tmp_path, options):
     reads = _short_reads(tmp_path)
 
-    with pytest.raises(UsageError, match="--fast is bwa-mem3's"):
+    with pytest.raises(UsageError, match="--fast"):
         _align(reads, tmp_path / "out", *options)
 
 
-def test_aligner_bwa_mem3_without_bwa_mem3_fails_clearly(tmp_path, mem3_bin):
+@pytest.mark.parametrize(
+    ("options", "advice"),
+    [
+        (("--aligner", "bwa-mem3"), "Or align with --aligner auto."),
+        (("--fast",), "Or drop --fast."),
+        (("--aligner", "bwa-mem3", "--fast"), "--aligner auto without --fast."),
+    ],
+)
+def test_bwa_mem3_without_bwa_mem3_fails_clearly(tmp_path, mem3_bin, options, advice):
     reads = _mem3_reads(tmp_path)
 
-    with pytest.raises(WGSExtractError, match="needs wgse-bwa-mem3 .* or bwa-mem3"):
-        _align(reads, tmp_path / "out", "--aligner", "bwa-mem3")
+    with pytest.raises(WGSExtractError) as raised:
+        _align(reads, tmp_path / "out", *options)
+
+    message = str(raised.value)
+    assert "needs wgse-bwa-mem3 (Apple Silicon) or bwa-mem3" in message
+    assert message.endswith(advice)
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_native_aligners_off_names_the_installed_wgse_bwa_mem3(tmp_path, mem3_bin):
+    # #590 review: the error told the user to install what they already had.
+    reads = _mem3_reads(tmp_path)
+    _install_bwa_mem3(mem3_bin)
+
+    with pytest.raises(WGSExtractError, match="native_aligners is off"):
+        _align(reads, tmp_path / "out", "--fast", "--native-aligners", "off")
 
 
 @pytest.mark.usefixtures("apple_silicon")
@@ -648,3 +681,146 @@ def test_realign_fast_streams_into_bwa_mem3_and_a_resumed_run_still_warns(
         assert result.metrics["bwa_mem3_mode"] == "fast"
         assert result.metrics["native_aligner"] == "wgse-bwa-mem3"
         assert [w.code for w in result.warnings] == ["bwa_mem3_fast"]
+
+
+def _bloat_0123(ref):
+    """Make bwa-mem2's .0123 file a sparse 64 GiB (so bwa-mem2 can't load it)."""
+    with open(ref + ".0123", "r+b") as index:
+        index.truncate(64 * GIB)
+
+
+def _mem3_needed(reads, engine, available_reads=2 * 140, **options):
+    """The pipeline's memory estimate with ``engine`` (as _align runs it)."""
+    return estimate_mapping_memory(
+        reads.ref, engine, threads="2", samblaster=False, reads=available_reads,
+        read_length=100, **{"memory": "1G", **options},
+    ).total  # fmt: skip
+
+
+@pytest.mark.usefixtures("apple_silicon")
+@pytest.mark.parametrize("aligner", ["bwa", "auto"])
+def test_bwa_aligns_when_only_its_pipeline_fits_the_ram_available(
+    tmp_path, mem3_bin, ram, aligner
+):
+    # #590 review: the stand-in for bwa was checked against total RAM, so with
+    # too little available it took bwa's place (and auto, having dropped
+    # bwa-mem2 for low available RAM, picked the bigger stand-in). A sparse
+    # .0123 makes bwa-mem2's index hs38-sized next to bwa-mem3's.
+    reads = _mem3_reads(tmp_path)
+    _bloat_0123(reads.ref)
+    _install_bwa_mem3(mem3_bin)
+    bwa = _mem3_needed(reads, "bwa")
+    stand_in = _mem3_needed(reads, "bwa-mem3", gpu_bytes=GIB // 4)
+    ram(64 * GIB, available=(bwa + stand_in) // 2)
+
+    bam, result = _align(reads, tmp_path / "out", "--aligner", aligner)
+
+    assert _mapper(bam).startswith("bwa mem ")
+    assert "bwa_mem3_mode" not in result.metrics
+
+
+@pytest.mark.usefixtures("apple_silicon")
+@pytest.mark.parametrize("command", ["align", "realign"])
+def test_explicit_bwa_mem2_still_stops_when_its_stand_in_does_not_fit(
+    tmp_path, mem3_bin, ram, command
+):
+    # #590 review: with wgse-bwa-mem3 standing in, --aligner bwa-mem2 lost its
+    # hard memory check in align (realign still stopped).
+    reads = _mem3_reads(tmp_path)
+    _install_bwa_mem3(mem3_bin)
+    ram(64 * GIB, available=GIB)
+    outdir = tmp_path / "out"
+
+    with pytest.raises(WGSExtractError) as raised:
+        if command == "align":
+            _align(reads, outdir, "--aligner", "bwa-mem2")
+        else:
+            (tmp_path / "old").mkdir()
+            source, _ = _old_alignment(tmp_path, reads.genome[:6_000])
+            _run_realign(source, reads.ref, outdir, aligner="bwa-mem2")
+
+    message = str(raised.value)
+    assert "wgse-bwa-mem3 (in place of bwa-mem2) alignment is estimated" in message
+    assert "Use --aligner bwa" in message
+    assert not list(outdir.glob("*.bam")) and not list(outdir.glob("*.fastq.gz"))
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_the_stand_in_takes_bwa_mem2s_place_when_it_needs_less(tmp_path, mem3_bin, ram):
+    # A reference whose bwa-mem2 index (.0123) is far bigger than bwa-mem3
+    # needs, as hs38's is: on a Mac whose RAM less headroom is below the
+    # stand-in's estimate, the stand-in still beats bwa-mem2. The .0123 is
+    # sparse, so the fake writes bwa-mem2's records with bwa.
+    reads = _mem3_reads(tmp_path)
+    _install_bwa_mem3(mem3_bin, mem2="bwa")
+    _bloat_0123(reads.ref)
+    stand_in = _mem3_needed(reads, "bwa-mem3", memory="256M", gpu_bytes=GIB // 4)
+    ram(stand_in + GIB)
+
+    bam, result = _align(reads, tmp_path / "out", "--aligner", "bwa-mem2")
+
+    assert _mapper(bam, "bwa").startswith(
+        "wgse-bwa-mem3 --backend auto mem --compat=bwa-mem2 "
+    )
+    assert result.metrics["bwa_mem3_mode"] == "compat=bwa-mem2"
+
+
+def _mem3_realign_source(tmp_path):
+    genome = _short_reads(tmp_path / "reads").genome[:6_000]
+    (tmp_path / "old").mkdir()
+    ref = str(write_fasta(tmp_path / "ref.fa", {"chr1": genome}))
+    for indexer in (["bwa", "index"], ["bwa-mem2", "index"]):
+        _run_tool([*indexer, ref])
+    source, _ = _old_alignment(tmp_path, genome)
+    return source, ref
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_realign_streams_into_the_stand_in_with_bwa_mem2s_records(tmp_path, mem3_bin):
+    source, ref = _mem3_realign_source(tmp_path)
+    _install_bwa_mem3(mem3_bin)
+
+    result = _run_realign(source, ref, tmp_path / "out")
+    _run_realign(source, ref, tmp_path / "off", native_aligners="off")
+
+    bam = str(tmp_path / "out" / "x_aligned.bam")
+    assert _mapper(bam, "bwa-mem2").startswith(
+        "wgse-bwa-mem3 --backend auto mem --compat=bwa-mem2 "
+    )
+    assert " -p " in _mapper(bam, "bwa-mem2")
+    steps = json.loads((tmp_path / "out" / "x_aligned.bam.steps.json").read_text())
+    assert "extract" not in steps["steps"]
+    assert _samtools("view", bam) == _samtools(
+        "view", str(tmp_path / "off" / "x_aligned.bam")
+    )
+    assert result.metrics["bwa_mem3_mode"] == "compat=bwa-mem2"
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_realign_bwa_mem2_with_the_stand_in_needs_no_0123_file(tmp_path, mem3_bin):
+    # #590 review: the stand-in maps without bwa-mem2's .0123 file, so realign
+    # neither requires nor builds it (it refused before extraction when the
+    # build wouldn't fit the RAM).
+    source, ref = _mem3_realign_source(tmp_path)
+    Path(ref + ".0123").unlink()
+    _install_bwa_mem3(mem3_bin, mem2="bwa")
+
+    result = _run_realign(source, ref, tmp_path / "out", aligner="bwa-mem2")
+
+    assert result.metrics["bwa_mem3_mode"] == "compat=bwa-mem2"
+    assert (tmp_path / "out" / "x_aligned.bam").is_file()
+    assert not Path(ref + ".0123").exists()
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_realign_bwa_mem3_warns_once_about_an_unusable_build(tmp_path, mem3_bin):
+    # #590 review: the check before extraction and the alignment each warned.
+    source, ref = _mem3_realign_source(tmp_path)
+    _install_bwa_mem3(mem3_bin, capabilities=_capabilities("bwa-mem3", version="0.1.0"))
+    _install_bwa_mem3(mem3_bin, name="bwa-mem3")
+
+    result = _run_realign(source, ref, tmp_path / "out", aligner="bwa-mem3")
+
+    bam = str(tmp_path / "out" / "x_aligned.bam")
+    assert _mapper(bam, "bwa").startswith("bwa-mem3 mem --compat=bwa-mem ")
+    assert [w.code for w in result.warnings] == ["native_aligner_unusable"]

@@ -71,7 +71,7 @@ def _fast_param() -> Any:
         False,
         help="Align short reads with bwa-mem3's --fast speed preset (implies "
         "--aligner bwa-mem3), about twice as fast. Its alignments differ "
-        "from BWA's, mostly in low-confidence reads; the run warns "
+        "from BWA's (docs/hardware.md has a measurement); the run warns "
         "(bwa_mem3_fast). Without it bwa-mem3 writes BWA's exact records.",
         action="store_true",
     )
