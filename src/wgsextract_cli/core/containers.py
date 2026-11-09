@@ -59,7 +59,10 @@ def require_image(image: str, missing: str) -> None:
 
 def image_identity(image: str) -> str:
     """``image`` and the ID of the build it names, so results can tell when a
-    mutable tag such as 1.10.0 was replaced; just ``image`` when it's unknown."""
+    mutable tag such as 1.10.0 was replaced; just ``image`` when it's unknown
+    or ``image`` is already pinned to a digest (#597)."""
+    if "@" in image:
+        return image
     docker_path = get_tool_path("docker")
     if not docker_path:
         return image
