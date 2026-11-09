@@ -265,7 +265,7 @@ int main(int argc, char **argv) {
                 "\"cpu_index_bytes\":%llu,\"metal_index_bytes\":%llu,"
                 "\"gpu_seeding\":%s,\"gpu_seeding_limit\":%s}",
                 (unsigned long long)table,
-                (unsigned long long)wgse_index_bytes(prefix, false),
+                (unsigned long long)wgse_index_bytes(prefix, !wgse_exact_cpu()),
                 (unsigned long long)wgse_index_bytes(prefix, false),
                 limit.empty() ? "true" : "false", json(limit).c_str());
         }

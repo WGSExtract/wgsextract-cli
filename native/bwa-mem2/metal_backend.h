@@ -21,8 +21,12 @@ void wgse_set_backend(Backend backend);
 bool wgse_metal_active();
 // Whether the CPU threads take the exact replacements of upstream code (reference
 // windows from the .pac instead of the .0123, pointer sorts, NEON unpacking,
-// batched mate rescue), with either backend. Off only with the test option
-// --cpu-upstream, which runs upstream's code for comparison.
+// batched and pruned mate rescue, SMEMs in lockstep, balanced work units), with
+// either backend. Off only with the test option --cpu-upstream, which runs
+// upstream's code for comparison. The one exception is the 128-bit extension
+// kernels' NEON band tests (bsw_lanes.h): a runtime switch would cost a branch in
+// their inner loops, and the substitution is exact by construction (each mask is
+// only compared with zero or all lanes, which CMake checks when it patches them).
 bool wgse_exact_cpu();
 void wgse_set_upstream_cpu(bool upstream);
 void wgse_print_backend_metrics();

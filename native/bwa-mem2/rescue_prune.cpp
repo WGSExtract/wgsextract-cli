@@ -4,9 +4,9 @@
 #include "rescue_prune.h"  // bwa-mem3's, from its source directory
 
 namespace {
-// bwa-mem3's hit gate on aarch64 without its banded rescue kernel: denser
-// windows cost the filter more than the rows it saves.
-constexpr int max_hits = 400;
+// bwa-mem3's hit gate without its banded rescue kernel (BWA-MEM2 has none):
+// denser windows cost the filter more than the rows it saves.
+const int max_hits = rescue_prune_max_hits_default(false, false);
 }
 
 int wgse_rescue_prune(int a, int b, int o_del, int e_del, int o_ins, int e_ins, int minsc,

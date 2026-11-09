@@ -9,6 +9,11 @@
 
 void wgse_kt_for(void (*func)(void *, int, int, int), worker_t *w, int n, int unit)
 {
+    // --cpu-upstream: upstream's kt_for and its BATCH_SIZE units.
+    if (!wgse_exact_cpu()) {
+        kt_for(func, w, n);
+        return;
+    }
     std::atomic<int> next{0};
     auto work = [&](int tid) {
         for (int st; (st = next.fetch_add(unit, std::memory_order_relaxed)) < n;)

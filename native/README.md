@@ -146,7 +146,7 @@ bwa-mem3 proves cannot change the result, tests the band of its 128-bit
 extension kernels with NEON, splits each chunk's reads evenly between threads,
 sorts alignments by pointer and decodes reference windows from the `.pac`
 rather than loading the 6.2 GB `.0123` file. Each gives upstream's exact
-results; on the 5M HG002 pairs below they cut the time by 40–45% and the peak
+results; on the 5M HG002 pairs below they cut the time by 44% and the peak
 memory by a third. `--cpu-upstream` (a test option) runs upstream's code.
 
 What runs on the GPU:
@@ -349,8 +349,9 @@ Mac; it has not been tested on a 16 GB Mac. 0.4.0 adds a 34 MB table of
 index intervals; it peaked at 11.5 GiB with `-K 10000000`, like 0.3.0, and at
 15.1 GiB with `-K 100000000` (14.9 GiB for 0.3.0). With the default `-K`
 and 9 threads, the CPU backend peaked at 18.6 GiB. From 0.5.0 the CPU
-backend does not load the `.0123` file either: it peaked at 10.6 GiB with
-`-K 10000000`, like `--metal`.
+backend does not load the `.0123` file either: it peaked at 10.9 GiB with
+`-K 10000000`, like `--metal`. It adds a 45 MB table of the index intervals
+of every string of up to 10 bases, built once, for SMEM collection.
 From 0.4.1, `mem` warns on stderr when the Mac has less physical memory
 than its estimate of the run's peak: the index files it loads (17.0 GB for
 hs38 before 0.5.0 on the CPU, 10.8 GB with `--metal` and from 0.5.0 on the CPU), plus 1 GiB, plus 24 bytes (CPU) or
@@ -528,11 +529,11 @@ mate-rescue kernel, took 125.9 and 125.5 s against 130.5 and 129.2 s for
 `wgse-bwa-mem2` 0.5.0's CPU backend uses the exact replacements described
 under Usage. On the same data, with 9 threads and `-K 10000000`, three
 interleaved rounds on AC power took 219.0 s (219.0, 220.6 and 214.3 s) against
-519.0 s for 0.4.1 (394.9, 874.3 and 519.0 s), with 40% less CPU time (1716
-against 2843 s) and a 10.6 GiB peak against 16.6 GiB. Other agents kept the
-load average between 7 and 66 and the swap in use; 0.4.1, needing 6 GiB more,
-paged the most, so its fastest round (394.9 s, 45% slower than 0.5.0's
-slowest) is the fairer comparison. Without the SMEM changes 0.5.0 took 276.6 s.
+519.0 s for 0.4.1 (394.9, 874.3 and 519.0 s), with 47% less CPU time (1731
+against 3248 s) and a 10.9 GiB peak against 16.3 GiB. Other agents kept the
+load average between 11 and 66 and the swap in use; 0.4.1, needing 6 GiB more,
+paged the most, so its fastest round (394.9 s, like the 394.2 s of an earlier
+run under less load) is the fairer comparison: 0.5.0 took 44% less time. Without the SMEM changes 0.5.0 took 276.6 s.
 `--metal` is unchanged (122.1 s against 119.9 s for 0.4.1, within noise).
 
 Before the full index was available, BWA-MEM2 was measured with 10.6M read

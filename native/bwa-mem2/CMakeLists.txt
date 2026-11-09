@@ -154,6 +154,10 @@ int wgse_kt_for_bwt(worker_t &w, int n)
     wgse_bwt_t b = {&w, n};
     if (wgse_metal_seed(w.fmi, w.opt, w.seqs, n, w.nthreads, wgse_worker_bwt, &b))
         return BATCH_SIZE;
+    if (!wgse_exact_cpu()) {
+        kt_for(worker_bwt, &w, n);
+        return BATCH_SIZE;
+    }
     const int unit = wgse_cpu_unit(n, w.nthreads);
     wgse_kt_for(wgse_worker_bwt_unit, &w, n, unit);
     return unit;

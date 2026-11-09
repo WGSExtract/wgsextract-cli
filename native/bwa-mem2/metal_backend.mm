@@ -788,7 +788,7 @@ std::unique_ptr<GpuRescue> rescuer;
 std::mutex rescue_mutex;
 size_t rescue_batches = 0, rescue_gpu_pairs = 0, rescue_cpu_pairs = 0, rescue_wasted_pairs = 0;
 size_t rescue_jobs = 0, rescue_declined = 0, rescue_skipped = 0;
-size_t rescue_hits = 0, rescue_misses = 0, rescue_mismatches = 0;
+size_t rescue_hits = 0, rescue_misses = 0, rescue_mismatches = 0, rescue_unkept_differences = 0;
 size_t rescue_cpu_jobs = 0, rescue_cpu_hits = 0, rescue_cpu_skipped = 0;
 // Pruned windows: proved dead, and window rows before and after pruning.
 size_t prune_dead = 0, prune_rows = 0, prune_kept = 0;
@@ -862,7 +862,7 @@ struct RescueCurrent {
 thread_local RescueCurrent rescue_current;
 struct RescueTally {
     size_t hits = 0, misses = 0, mismatches = 0, cpu_jobs = 0, cpu_hits = 0, cpu_skipped = 0;
-    size_t dead = 0, rows = 0, kept = 0;
+    size_t dead = 0, rows = 0, kept = 0, unkept_differences = 0;
 };
 thread_local RescueTally rescue_tally;
 
@@ -955,6 +955,7 @@ void merge_rescue_tally() {
     rescue_hits += rescue_tally.hits;
     rescue_misses += rescue_tally.misses;
     rescue_mismatches += rescue_tally.mismatches;
+    rescue_unkept_differences += rescue_tally.unkept_differences;
     rescue_cpu_jobs += rescue_tally.cpu_jobs;
     rescue_cpu_hits += rescue_tally.cpu_hits;
     rescue_cpu_skipped += rescue_tally.cpu_skipped;
@@ -1205,9 +1206,12 @@ int wgse_metal_matesw(const mem_opt_t *opt, const uint8_t *ms, uint8_t *seq, int
             const kswr_t cpu = ksw_align2(l_ms, seq, int(re - rb), ref, 5, opt->mat, opt->o_del,
                 opt->e_del, opt->o_ins, opt->e_ins, xtra, 0);
             // mem_matesw() keeps nothing of an alignment below its threshold or
-            // without a start, and pruning may leave such a one different.
+            // without a start, and pruning may leave such a one different: those
+            // differences are counted apart (rescue_unkept_differences).
             auto kept = [&](const kswr_t &r) { return r.score >= opt->min_seed_len && r.qb >= 0; };
-            if ((kept(cpu) || kept(*aln)) && memcmp(&cpu, aln, sizeof(cpu)) != 0) {
+            if (!kept(cpu) && !kept(*aln) && memcmp(&cpu, aln, sizeof(cpu)) != 0)
+                ++rescue_tally.unkept_differences;
+            else if (memcmp(&cpu, aln, sizeof(cpu)) != 0) {
                 if (rescue_tally.mismatches++ < 3)
                     fprintf(stderr, "[wgse-bwa-mem2] rescue mismatch l_ms=%d tlen=%lld xtra=%#x "
                         "gpu=%d,%d,%d,%d,%d,%d,%d cpu=%d,%d,%d,%d,%d,%d,%d\n", l_ms,
@@ -2134,11 +2138,13 @@ void wgse_print_backend_metrics() {
         "rescue_wasted_pairs=%zu rescue_jobs=%zu rescue_declined=%zu rescue_skipped=%zu "
         "rescue_hits=%zu rescue_misses=%zu rescue_mismatches=%zu interruptions=%zu "
         "overlap=%d overlapped_chunks=%zu rescue_cpu_jobs=%zu rescue_cpu_hits=%zu "
-        "rescue_cpu_skipped=%zu rescue_pruned_dead=%zu rescue_rows=%zu rescue_rows_kept=%zu\n",
+        "rescue_cpu_skipped=%zu rescue_pruned_dead=%zu rescue_rows=%zu rescue_rows_kept=%zu "
+        "rescue_unkept_differences=%zu\n",
         rescue_batches, rescue_gpu_pairs, rescue_cpu_pairs, rescue_wasted_pairs, rescue_jobs,
         rescue_declined, rescue_skipped, rescue_hits, rescue_misses, rescue_mismatches,
         wgse::metal::Runtime::interruptions(), int(overlap_active.load()), overlapped_chunks.load(),
-        rescue_cpu_jobs, rescue_cpu_hits, rescue_cpu_skipped, prune_dead, prune_rows, prune_kept);
+        rescue_cpu_jobs, rescue_cpu_hits, rescue_cpu_skipped, prune_dead, prune_rows, prune_kept,
+        rescue_unkept_differences);
     fprintf(stderr, "[wgse-bwa-mem2] rescue seconds gpu=%.3f kernel=%.3f pair=%.3f cpu_wait=%.3f\n",
         rescue_gpu_seconds, rescue_kernel_seconds, rescue_seconds, rescue_wait_seconds);
     std::lock_guard<std::mutex> seed_lock(seed_mutex);
