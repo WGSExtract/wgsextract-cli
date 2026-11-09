@@ -18,6 +18,8 @@
 #include <sys/sysctl.h>
 #include <unistd.h>
 
+extern "C" void kt_for(int n_threads, void (*func)(void *, long, int), void *data, long n);
+
 namespace {
 using namespace wgse::seeding;
 using wgse::rescue::GpuRescue;
@@ -62,6 +64,8 @@ const uint32_t *dense_low = nullptr, *dense_high = nullptr;
 // Mate rescue (mem_matesw's ksw_align2) on the GPU too.
 bool rescue_enabled = true, inject_rescue_failure = false, verify_rescue = false;
 bool cpu_rescue_batching = true;
+// Test option: the CPU backend runs upstream's code for every step.
+bool cpu_upstream = false;
 // Bounds the mate and reference bases a CPU thread aligns together for one
 // pair (the batch also copies reversed prefixes); further windows use upstream.
 size_t cpu_rescue_bytes = size_t(4) << 20;
@@ -1075,6 +1079,88 @@ struct CpuRescue {
 };
 thread_local CpuRescue cpu_rescue;
 
+void emit_cpu(void *context, const uint8_t *ms, int l_ms, int is_rev, int64_t rb,
+    int64_t re, const uint8_t *ref, int xtra) {
+    auto &cpu = *static_cast<CpuRescue *>(context);
+    const int64_t tlen = re - rb;
+    // 16-bit windows gain nothing from the batch, so upstream aligns them
+    // only if mem_matesw() still asks.
+    if (!(xtra & KSW_XBYTE)
+        || cpu.bases.size() + size_t(l_ms) + size_t(tlen) > cpu_rescue_bytes) {
+        cpu.batch.keys.push_back({ms, rb, re, l_ms, is_rev, xtra, skipped_job});
+        ++rescue_tally.cpu_skipped;
+        return;
+    }
+    const size_t query = cpu.bases.size(), target = query + size_t(l_ms);
+    cpu.bases.resize(target + size_t(tlen));
+    uint8_t *bases = cpu.bases.data();
+    // mem_matesw()'s query: the mate, reverse-complemented if is_rev.
+    for (int i = 0; i < l_ms; ++i) {
+        if (is_rev) bases[query + size_t(l_ms - 1 - i)] = ms[i] < 4 ? 3 - ms[i] : 4;
+        else bases[query + size_t(i)] = ms[i];
+    }
+    memcpy(bases + target, ref, size_t(tlen));
+    cpu.batch.keys.push_back({ms, rb, re, l_ms, is_rev, xtra, uint32_t(cpu.tasks.size())});
+    cpu.tasks.push_back({l_ms, int(tlen), xtra, nullptr, nullptr, {}});
+    cpu.offsets.push_back(query);
+}
+
+// Aligns every window mem_sam_pe() may try for a pair a CPU thread finishes, in
+// one interleaved batch, unless there are too few to gain from interleaving.
+void align_on_cpu(const mem_opt_t *opt, const bntseq_t *bns, const uint8_t *pac,
+    const mem_pestat_t *pes, const bseq1_t *seqs, const mem_alnreg_v *regs, long pair) {
+    CpuRescue &cpu = cpu_rescue;
+    cpu.batch.keys.clear();
+    cpu.batch.results.clear();
+    cpu.bases.clear();
+    cpu.tasks.clear();
+    cpu.offsets.clear();
+    wgse_rescue_candidates(opt, bns, pac, pes, seqs + 2 * pair, regs + 2 * pair, emit_cpu, &cpu);
+    if (cpu.tasks.size() < 2) return;
+    for (size_t i = 0; i < cpu.tasks.size(); ++i) {
+        cpu.tasks[i].query = cpu.bases.data() + cpu.offsets[i];
+        cpu.tasks[i].target = cpu.tasks[i].query + cpu.tasks[i].qlen;
+    }
+    wgse_ksw_align2_batch(int(cpu.tasks.size()), cpu.tasks.data(), 5, opt->mat, opt->o_del,
+        opt->e_del, opt->o_ins, opt->e_ins);
+    cpu.batch.results.reserve(cpu.tasks.size());
+    for (const wgse_ksw_task_t &task : cpu.tasks) {
+        const kswr_t &r = task.r;
+        cpu.batch.results.push_back({r.score, r.te, r.qe, r.score2, r.te2, r.tb, r.qb,
+            rescue_ok});
+    }
+    rescue_tally.cpu_jobs += cpu.tasks.size();
+    rescue_current = {&cpu.batch, 0, uint32_t(cpu.batch.keys.size()), true};
+}
+
+// worker2 for the CPU backend: each thread aligns a pair's rescue windows
+// together before upstream's worker2 finishes the pair.
+struct CpuPair {
+    const mem_opt_t *opt;
+    const bntseq_t *bns;
+    const uint8_t *pac;
+    const mem_pestat_t *pes;
+    const bseq1_t *seqs;
+    const mem_alnreg_v *regs;
+    void (*worker)(void *, long, int);
+    void *data;
+};
+
+std::atomic<size_t> cpu_backend_jobs{0}, cpu_backend_hits{0}, cpu_backend_skipped{0};
+
+void cpu_pair_worker(void *context, long pair, int tid) {
+    const CpuPair &c = *static_cast<const CpuPair *>(context);
+    align_on_cpu(c.opt, c.bns, c.pac, c.pes, c.seqs, c.regs, pair);
+    c.worker(c.data, pair, tid);
+    rescue_current = {};
+    RescueTally &tally = rescue_tally;
+    if (tally.cpu_jobs) cpu_backend_jobs.fetch_add(tally.cpu_jobs, std::memory_order_relaxed);
+    if (tally.cpu_hits) cpu_backend_hits.fetch_add(tally.cpu_hits, std::memory_order_relaxed);
+    if (tally.cpu_skipped)
+        cpu_backend_skipped.fetch_add(tally.cpu_skipped, std::memory_order_relaxed);
+    tally = {};
+}
+
 // worker2 for paired-end chunks with GPU mate rescue: the GPU aligns every
 // rescue window mem_sam_pe() may try for its pairs, and mem_matesw() uses the
 // GPU's result for each window it actually tries.
@@ -1132,60 +1218,6 @@ private:
         batch.keys.push_back({ms, rb, re, l_ms, is_rev, xtra, uint32_t(batch.jobs.size() - 1)});
     }
 
-    static void emit_cpu(void *context, const uint8_t *ms, int l_ms, int is_rev, int64_t rb,
-        int64_t re, const uint8_t *ref, int xtra) {
-        auto &cpu = *static_cast<CpuRescue *>(context);
-        const int64_t tlen = re - rb;
-        // 16-bit windows gain nothing from the batch, so upstream aligns them
-        // only if mem_matesw() still asks.
-        if (!(xtra & KSW_XBYTE)
-            || cpu.bases.size() + size_t(l_ms) + size_t(tlen) > cpu_rescue_bytes) {
-            cpu.batch.keys.push_back({ms, rb, re, l_ms, is_rev, xtra, skipped_job});
-            ++rescue_tally.cpu_skipped;
-            return;
-        }
-        const size_t query = cpu.bases.size(), target = query + size_t(l_ms);
-        cpu.bases.resize(target + size_t(tlen));
-        uint8_t *bases = cpu.bases.data();
-        // mem_matesw()'s query: the mate, reverse-complemented if is_rev.
-        for (int i = 0; i < l_ms; ++i) {
-            if (is_rev) bases[query + size_t(l_ms - 1 - i)] = ms[i] < 4 ? 3 - ms[i] : 4;
-            else bases[query + size_t(i)] = ms[i];
-        }
-        memcpy(bases + target, ref, size_t(tlen));
-        cpu.batch.keys.push_back({ms, rb, re, l_ms, is_rev, xtra, uint32_t(cpu.tasks.size())});
-        cpu.tasks.push_back({l_ms, int(tlen), xtra, nullptr, nullptr, {}});
-        cpu.offsets.push_back(query);
-    }
-
-    // Aligns every window mem_sam_pe() may try for a pair the CPU took, in one
-    // interleaved batch, unless there are too few to gain from interleaving.
-    void align_on_cpu(long pair) {
-        CpuRescue &cpu = cpu_rescue;
-        cpu.batch.keys.clear();
-        cpu.batch.results.clear();
-        cpu.bases.clear();
-        cpu.tasks.clear();
-        cpu.offsets.clear();
-        wgse_rescue_candidates(opt_, bns_, pac_, pes_, seqs_ + 2 * pair, regs_ + 2 * pair,
-            emit_cpu, &cpu);
-        if (cpu.tasks.size() < 2) return;
-        for (size_t i = 0; i < cpu.tasks.size(); ++i) {
-            cpu.tasks[i].query = cpu.bases.data() + cpu.offsets[i];
-            cpu.tasks[i].target = cpu.tasks[i].query + cpu.tasks[i].qlen;
-        }
-        wgse_ksw_align2_batch(int(cpu.tasks.size()), cpu.tasks.data(), 5, opt_->mat,
-            opt_->o_del, opt_->e_del, opt_->o_ins, opt_->e_ins);
-        cpu.batch.results.reserve(cpu.tasks.size());
-        for (const wgse_ksw_task_t &task : cpu.tasks) {
-            const kswr_t &r = task.r;
-            cpu.batch.results.push_back({r.score, r.te, r.qe, r.score2, r.te2, r.tb, r.qb,
-                rescue_ok});
-        }
-        rescue_tally.cpu_jobs += cpu.tasks.size();
-        rescue_current = {&cpu.batch, 0, uint32_t(cpu.batch.keys.size()), true};
-    }
-
     void skip(RescueBatch &batch, const uint8_t *ms, int64_t rb, int64_t re, int l_ms,
         int is_rev, int xtra) {
         ++skipped;
@@ -1231,7 +1263,7 @@ private:
     void begin(long pair, BatchBase *base) override {
         rescue_current = {};
         if (!base) {
-            if (cpu_rescue_batching) align_on_cpu(pair);
+            if (cpu_rescue_batching) align_on_cpu(opt_, bns_, pac_, pes_, seqs_, regs_, pair);
             return;
         }
         const auto *batch = static_cast<const RescueBatch *>(base);
@@ -1288,6 +1320,10 @@ extern "C" int wgse_metal_enabled(void) {
     return enabled;
 }
 
+extern "C" int wgse_fast_cpu(void) {
+    return enabled || !cpu_upstream;
+}
+
 extern "C" int wgse_metal_map(const mem_opt_t *opt, const bwt_t *bwt, int n,
     bseq1_t *seqs, void (*worker)(void *, long, int), void *data) {
     if (!enabled || !usable) return 0;
@@ -1338,8 +1374,14 @@ extern "C" int wgse_metal_pair(const mem_opt_t *opt, const bntseq_t *bns, const 
     const mem_pestat_t pes[4], int n, bseq1_t *seqs, mem_alnreg_v *regs,
     void (*worker)(void *, long, int), void *data) {
     RescueParameters parameters;
-    if (enabled) ++pair_starts;
-    if (!enabled || !usable || !rescue_enabled || !(opt->flag & MEM_F_PE)
+    if (!enabled) {
+        if (cpu_upstream || !(opt->flag & MEM_F_PE) || (opt->flag & MEM_F_NO_RESCUE)) return 0;
+        CpuPair pair{opt, bns, pac, pes, seqs, regs, worker, data};
+        kt_for(opt->n_threads, cpu_pair_worker, &pair, n >> 1);
+        return 1;
+    }
+    ++pair_starts;
+    if (!usable || !rescue_enabled || !(opt->flag & MEM_F_PE)
         || (opt->flag & MEM_F_NO_RESCUE) || !wgse::rescue::parameters(*opt, parameters))
         return 0;
     @autoreleasepool {
@@ -1589,7 +1631,7 @@ extern "C" int wgse_metal_take(const mem_opt_t *opt, const bwt_t *bwt, const uin
 }
 
 extern "C" void wgse_metal_locate(const mem_opt_t *opt, const bwt_t *bwt, const bwtintv_v *mem) {
-    if (enabled) locate_on_cpu(bwt, opt, mem->a, mem->a + mem->n);
+    if (enabled || !cpu_upstream) locate_on_cpu(bwt, opt, mem->a, mem->a + mem->n);
 }
 
 extern "C" bwtint_t wgse_metal_sa(const bwt_t *bwt, bwtint_t k) {
@@ -1661,6 +1703,13 @@ void wgse_finish_backend() {
     gpu.reset();
 }
 
+void wgse_report_cpu_backend() {
+    fprintf(stderr, "[wgse-bwa] cpu_located_rows=%zu locate_misses=%zu rescue_cpu_jobs=%zu "
+        "rescue_cpu_hits=%zu rescue_cpu_skipped=%zu\n", cpu_located_rows.load(),
+        locate_misses.load(), cpu_backend_jobs.load(), cpu_backend_hits.load(),
+        cpu_backend_skipped.load());
+}
+
 void wgse_set_gpu_policy(bool all) {
     all_on_gpu = all;
 }
@@ -1708,6 +1757,10 @@ void wgse_set_gpu_rescue(bool enable) {
 
 void wgse_set_gpu_rescue_batch(size_t pairs) {
     rescue_batch_pairs = pairs;
+}
+
+void wgse_set_cpu_upstream() {
+    cpu_upstream = true;
 }
 
 void wgse_set_cpu_rescue_batching(bool enable) {

@@ -1,5 +1,7 @@
-# Generate copies of pinned upstream sources with narrow Metal seams. Each seam
-# is inert unless the Metal backend is enabled, so the CPU path stays upstream.
+# Generate copies of pinned upstream sources with narrow seams. The GPU seams are
+# inert unless the Metal backend is enabled; the CPU ones (wgse_fast_cpu()) swap
+# in exact replacements that give upstream's results, unless a test option asks
+# for upstream's code.
 function(seam_replace variable before after)
     string(FIND "${${variable}}" "${before}" position)
     if(position EQUAL -1)
@@ -38,9 +40,9 @@ seam_replace(mem_source "${right_call}"
     "if (!wgse_metal_extend(l_query - qe, query + qe, rmax[1] - rmax[0] - re, rseq + re, aw[1], opt->pen_clip3, sc0, &qle, &tle, &gtle, &gscore, &max_off[1], &a->score))\n\t\t\t\t\t${right_call}")
 # mem_sort_dedup_patch()'s sorts move pointers instead of regions (sort_oracle.c.in).
 seam_replace(mem_source "ks_introsort(mem_ars2, n, a); // sort by the END position, not START!"
-    "if (wgse_metal_enabled()) wgse_sort_alnreg_by_end(n, a);\n\telse ks_introsort(mem_ars2, n, a);")
+    "if (wgse_fast_cpu()) wgse_sort_alnreg_by_end(n, a);\n\telse ks_introsort(mem_ars2, n, a);")
 seam_replace(mem_source "\tks_introsort(mem_ars, n, a);\n\tfor (i = 1; i < n; ++i) { // mark identical hits"
-    "\tif (wgse_metal_enabled()) wgse_sort_alnreg_by_score(n, a);\n\telse ks_introsort(mem_ars, n, a);\n\tfor (i = 1; i < n; ++i) { // mark identical hits")
+    "\tif (wgse_fast_cpu()) wgse_sort_alnreg_by_score(n, a);\n\telse ks_introsort(mem_ars, n, a);\n\tfor (i = 1; i < n; ++i) { // mark identical hits")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/seed_oracle.c.in" oracle_source)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/extend_oracle.c.in" extend_oracle_source)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/mem_stages.c.in" mem_stages_source)
@@ -59,9 +61,9 @@ file(WRITE "${generated}/bwamem_pair.c"
 # bns_get_seq() unpacks a byte of bases at a time (pac_oracle.c.in).
 file(READ "${bwa_SOURCE_DIR}/bntseq.c" bntseq_source)
 seam_replace(bntseq_source "\t\t\tfor (k = end_f; k > beg_f; --k)\n\t\t\t\tseq[l++] = 3 - _get_pac(pac, k);"
-    "\t\t\tif (wgse_metal_enabled()) wgse_unpack_pac_reverse(pac, beg_f, end_f, seq);\n\t\t\telse for (k = end_f; k > beg_f; --k)\n\t\t\t\tseq[l++] = 3 - _get_pac(pac, k);")
+    "\t\t\tif (wgse_fast_cpu()) wgse_unpack_pac_reverse(pac, beg_f, end_f, seq);\n\t\t\telse for (k = end_f; k > beg_f; --k)\n\t\t\t\tseq[l++] = 3 - _get_pac(pac, k);")
 seam_replace(bntseq_source "\t\t\tfor (k = beg; k < end; ++k)\n\t\t\t\tseq[l++] = _get_pac(pac, k);"
-    "\t\t\tif (wgse_metal_enabled()) wgse_unpack_pac(pac, beg, end, seq);\n\t\t\telse for (k = beg; k < end; ++k)\n\t\t\t\tseq[l++] = _get_pac(pac, k);")
+    "\t\t\tif (wgse_fast_cpu()) wgse_unpack_pac(pac, beg, end, seq);\n\t\t\telse for (k = beg; k < end; ++k)\n\t\t\t\tseq[l++] = _get_pac(pac, k);")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/pac_oracle.c.in" pac_oracle_source)
 file(WRITE "${generated}/bntseq.c" "#include \"metal_backend.h\"\n${bntseq_source}\n${pac_oracle_source}")
 # Batched ksw_align2() for CPU threads' mate rescue (ksw_oracle.c.in); upstream code is unchanged.

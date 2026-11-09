@@ -18,7 +18,8 @@ void help() {
         "  <command>                 a BWA command such as index or mem (run %s alone to list them)\n"
         "  capabilities --json       report Metal availability\n"
         "  --version                 print executable and engine version\n"
-        "Options precede the command and affect only mem. The default CPU backend is unmodified BWA.\n"
+        "Options precede the command and affect only mem. The default CPU backend is BWA's\n"
+        "code, with some steps replaced by exact batched versions (identical output).\n"
         "--metal (EXPERIMENTAL) finds and locates the seeds of most reads, extends most\n"
         "seeds and aligns many mate-rescue windows on the GPU while the CPU does the\n"
         "rest, with identical output. It fails if Metal is\n"
@@ -142,6 +143,9 @@ int run(int argc, char **argv) {
             }
             wgse_set_gpu_rescue(strcmp(value, "on") == 0);
             command_index += 2;
+        } else if (strcmp(option, "--cpu-upstream") == 0) {
+            wgse_set_cpu_upstream();
+            ++command_index;
         } else if (strcmp(option, "--cpu-rescue-batch") == 0) {
             const char *value = argc > command_index + 1 ? argv[command_index + 1] : "";
             if (strcmp(value, "on") && strcmp(value, "off")) {
@@ -246,7 +250,13 @@ int run(int argc, char **argv) {
             static_cast<unsigned>(seed_max_length));
         return 0;
     }
-    if (command_index == 1) return wgse_bwa_main(argc, argv);
+    if (command_index == 1) {
+        const int result = wgse_bwa_main(argc, argv);
+#ifdef WGSE_METAL_BENCHMARK_TOOLS
+        if (command == "mem") wgse_report_cpu_backend();
+#endif
+        return result;
+    }
     if (command.empty()) {
         help();
         return 2;
@@ -268,6 +278,9 @@ int run(int argc, char **argv) {
     arguments.insert(arguments.end(), argv + command_index, argv + argc);
     arguments.push_back(nullptr);
     int result = wgse_bwa_main(static_cast<int>(arguments.size() - 1), arguments.data());
+#ifdef WGSE_METAL_BENCHMARK_TOOLS
+    if (!accelerated && command == "mem") wgse_report_cpu_backend();
+#endif
     if (!accelerated) return result;
     wgse_finish_backend();
     std::string failure;

@@ -10,14 +10,19 @@ extern "C" {
 #endif
 
 // Seams patched into the generated copies of upstream bwt.c, bwamem.c and bwamem_pair.c.
-// All are inert (upstream behaviour) unless the Metal backend is enabled.
+// The GPU ones are inert (upstream behaviour) unless the Metal backend is enabled.
 int wgse_metal_enabled(void);
+// Whether the exact CPU replacements (batched locate and mate rescue, pointer
+// sorts, NEON unpacking) run; always with Metal, and on the CPU unless a test
+// option asks for upstream's code.
+int wgse_fast_cpu(void);
 void *wgse_metal_calloc(size_t count, size_t size);
 int wgse_metal_map(const mem_opt_t *opt, const bwt_t *bwt, int n, bseq1_t *seqs,
     void (*worker)(void *, long, int), void *data);
 // The GPU's SMEM intervals for this read, if it seeded it.
 int wgse_metal_take(const mem_opt_t *opt, const bwt_t *bwt, const uint8_t *seq, bwtintv_v *out);
-// Locates the rows mem_chain() will look up for the CPU's intervals, in one batch.
+// Locates the rows mem_chain() will look up for the CPU's intervals, in one batch
+// (wgse_fast_cpu()).
 void wgse_metal_locate(const mem_opt_t *opt, const bwt_t *bwt, const bwtintv_v *mem);
 // mem_sort_dedup_patch()'s ks_introsort() calls with upstream's exact result (sort_oracle.c.in).
 void wgse_sort_alnreg_by_end(size_t n, mem_alnreg_t *a);
@@ -32,7 +37,8 @@ bwtint_t wgse_metal_sa(const bwt_t *bwt, bwtint_t k);
 void *wgse_mem_map(const mem_opt_t *opt, const bwt_t *bwt, const bntseq_t *bns, const uint8_t *pac,
     int64_t n_processed, int n, bseq1_t *seqs, const mem_pestat_t *pes0);
 void wgse_mem_pair(void *mapped);
-// Replaces worker2's kt_for for paired-end chunks: mate rescue on the GPU too.
+// Replaces worker2's kt_for for paired-end chunks: mate rescue on the GPU too, or
+// on the CPU with each pair's rescue windows aligned together (wgse_fast_cpu()).
 int wgse_metal_pair(const mem_opt_t *opt, const bntseq_t *bns, const uint8_t *pac,
     const mem_pestat_t pes[4], int n, bseq1_t *seqs, mem_alnreg_v *regs,
     void (*worker)(void *, long, int), void *data);
@@ -85,6 +91,8 @@ void wgse_set_backend(Backend backend);
 bool wgse_metal_execution_failed(std::string &reason);
 // Prints GPU/CPU read counts to stderr and releases the GPU buffers.
 void wgse_finish_backend();
+// Prints the CPU backend's batched work counts to stderr (test builds).
+void wgse_report_cpu_backend();
 // Test-only knobs, exposed on the command line only when BUILD_TESTING is on.
 // all: every eligible read is prepared on the GPU (CPU threads wait for it).
 void wgse_set_gpu_policy(bool all);
@@ -106,6 +114,9 @@ void wgse_set_gpu_rescue_batch(size_t pairs);
 void wgse_inject_rescue_failure();
 // Also run each GPU or batched CPU rescue alignment with ksw_align2() and count differences.
 void wgse_verify_gpu_rescue();
+// The CPU backend runs upstream's code for every step (default: the exact
+// batched replacements of wgse_fast_cpu()).
+void wgse_set_cpu_upstream();
 // Whether CPU threads align a taken pair's rescue windows in one batch (default on).
 void wgse_set_cpu_rescue_batching(bool enable);
 // Bases a CPU thread aligns together for one pair (default 4 MiB).
