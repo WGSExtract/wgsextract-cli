@@ -411,9 +411,11 @@ def test_realign_keeps_streaming_when_only_metal_would_not_fit(tmp_path, bwa_bin
 
 
 # bwa-mem3 (#542): a fake that runs the real aligner whose records its
-# --compat mode writes (bwa for --fast, whose own records differ).
+# --compat mode writes (bwa for --fast, whose own records differ). Linux's
+# bwa-mem2 finds its SIMD build from its argv[0], so the aligner keeps its own
+# name and the fake writes its command line into the @PG CL instead.
 _FAKE_BWA_MEM3 = """\
-import os, sys
+import subprocess, sys
 
 args = sys.argv[1:]
 if args[:1] == ["capabilities"]:
@@ -424,7 +426,13 @@ if args[:1] == ["version"]:
 backend = args[:2] if args[:1] == ["--backend"] else []
 mem, mode, *rest = args[len(backend):]
 real = {real!r}["bwa-mem2" if mode == "--compat=bwa-mem2" else "bwa"]
-os.execv(real, [" ".join([{name!r}, *backend, mem, mode]), mem, *rest])
+command_line = " ".join([{name!r}, *backend, mem, mode])
+aligner = subprocess.Popen([real, mem, *rest], stdout=subprocess.PIPE)
+for line in aligner.stdout:
+    if line.startswith(b"@PG"):
+        line = line.replace(b"CL:" + real.encode(), b"CL:" + command_line.encode(), 1)
+    sys.stdout.buffer.write(line)
+sys.exit(aligner.wait())
 """
 
 
