@@ -40,8 +40,15 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/rescue_types.h" "${CMAKE_CURRENT_SOURCE_DIR}/rescue.metal")
 configure_file(seeding_source.h.in "${generated}/seeding_source.h" @ONLY)
 
+# The CPU backend's interleaved seeding runs each read as a C++20 coroutine.
+add_library(wgse_bwa_smem OBJECT smem_batch.cpp)
+set_target_properties(wgse_bwa_smem PROPERTIES CXX_STANDARD 20)
+target_include_directories(wgse_bwa_smem PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${generated}")
+target_include_directories(wgse_bwa_smem SYSTEM PRIVATE "${bwa_SOURCE_DIR}")
+target_compile_options(wgse_bwa_smem PRIVATE -Wall -Wextra -Werror)
+
 # BWA plus the Metal seeding backend, shared by the executable and the tests.
-add_library(wgse_bwa_core STATIC ${bwa_sources} metal_backend.mm)
+add_library(wgse_bwa_core STATIC ${bwa_sources} metal_backend.mm $<TARGET_OBJECTS:wgse_bwa_smem>)
 target_include_directories(wgse_bwa_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" "${generated}")
 target_include_directories(wgse_bwa_core SYSTEM PUBLIC "${bwa_SOURCE_DIR}")
 target_compile_definitions(wgse_bwa_core PRIVATE

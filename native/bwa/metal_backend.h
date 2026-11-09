@@ -19,7 +19,9 @@ int wgse_fast_cpu(void);
 void *wgse_metal_calloc(size_t count, size_t size);
 int wgse_metal_map(const mem_opt_t *opt, const bwt_t *bwt, int n, bseq1_t *seqs,
     void (*worker)(void *, long, int), void *data);
-// The GPU's SMEM intervals for this read, if it seeded it.
+// mem_collect_intv()'s ks_introsort() of its intervals (mem_stages.c.in).
+void wgse_sort_intervals(size_t n, bwtintv_t *a);
+// The intervals seeded ahead for this read (by the GPU or a block of CPU work), if any.
 int wgse_metal_take(const mem_opt_t *opt, const bwt_t *bwt, const uint8_t *seq, bwtintv_v *out);
 // Locates the rows mem_chain() will look up for the CPU's intervals, in one batch
 // (wgse_fast_cpu()).

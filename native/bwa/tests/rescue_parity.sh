@@ -146,6 +146,47 @@ for mode in samse sampe bwasw; do
     test "$(grep -vc '^@' "fast-$mode.sam")" -gt 1000
 done
 
+# The CPU backend seeds blocks of reads with their FM-index walks interleaved
+# (smem_batch.cpp). Reads of 1 to 900 bp from the repeat copies, tandem and
+# homopolymer runs, with mismatches and Ns, through all three of
+# mem_collect_intv()'s passes (-y enables the third).
+awk 'BEGIN {
+    srand(543)
+    split("A C G T", base, " ")
+    getline < "reference.fa"
+    getline ref < "reference.fa"
+    for (i = 1; i <= 300; ++i) tandem = tandem "ACGT"
+    for (i = 1; i <= 1200; ++i) homo = homo "A"
+    split("1 18 19 20 31 32 33 76 151 250 511 900", lengths, " ")
+    for (r = 1; r <= 3000; ++r) {
+        n = lengths[1 + r % 12]
+        start = r % 4 == 0 ? 39000 + int(rand() * 6000) : 1 + int(rand() * (length(ref) - n))
+        seq = substr(ref, start, n)
+        if (r % 7 == 0) seq = substr(seq, 1, n / 2) substr(tandem, 1 + r % 4, n - int(n / 2))
+        if (r % 11 == 0) seq = substr(homo, 1, n / 3) substr(seq, 1, n - int(n / 3))
+        if (r % 3 == 0)
+            for (i = 15; i < n; i += 23) seq = substr(seq, 1, i - 1) base[int(rand() * 4) + 1] substr(seq, i + 1)
+        if (r % 5 == 0)
+            for (i = 1 + r % 17; i <= n; i += 37) seq = substr(seq, 1, i - 1) "N" substr(seq, i + 1)
+        qual = ""
+        for (i = 1; i <= length(seq); ++i) qual = qual "I"
+        printf "@read%d\n%s\n+\n%s\n", r, seq, qual > "seeds.fq"
+    }
+}'
+seed_parity() {
+    name=$1
+    shift
+    "$aligner" mem -t 4 "$@" reference.fa seeds.fq > "fast-seeds-$name.sam" 2> /dev/null
+    "$aligner" --cpu-upstream mem -t 4 "$@" reference.fa seeds.fq > "upstream-seeds-$name.sam" \
+        2> /dev/null
+    same "upstream-seeds-$name.sam" "fast-seeds-$name.sam"
+    test "$(grep -v '^@' "fast-seeds-$name.sam" | awk '$2 < 256 && $3 != "*"' | wc -l)" -gt 1000
+}
+seed_parity default
+seed_parity split -k 15 -r 0.6
+seed_parity third -k 17 -y 30
+seed_parity wide -k 25 -r 3 -c 50
+
 # Skip (77) only on machines without supported Metal hardware.
 "$aligner" capabilities --json > capabilities.json
 if ! grep -q '"metal_available":true' capabilities.json; then
