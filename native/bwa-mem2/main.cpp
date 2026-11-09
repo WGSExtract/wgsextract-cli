@@ -92,13 +92,16 @@ int main(int argc, char **argv) {
         || strcmp(argv[command_index], "--gpu-queue-pairs") == 0
         || strcmp(argv[command_index], "--gpu-min-pairs") == 0
         || strcmp(argv[command_index], "--gpu-max-buffer") == 0
-        || strcmp(argv[command_index], "--physical-memory") == 0)) {
+        || strcmp(argv[command_index], "--physical-memory") == 0
+        || strcmp(argv[command_index], "--cpu-upstream") == 0)) {
         std::string reason;
         if (strcmp(argv[command_index], "--gpu-rescue-verify") == 0
             || strcmp(argv[command_index], "--gpu-inject-rescue-failure") == 0
             || strcmp(argv[command_index], "--gpu-seed-verify") == 0
-            || strcmp(argv[command_index], "--gpu-inject-seed-failure") == 0) {
-            if (strcmp(argv[command_index], "--gpu-rescue-verify") == 0) wgse_verify_gpu_rescue();
+            || strcmp(argv[command_index], "--gpu-inject-seed-failure") == 0
+            || strcmp(argv[command_index], "--cpu-upstream") == 0) {
+            if (strcmp(argv[command_index], "--cpu-upstream") == 0) wgse_set_upstream_cpu(true);
+            else if (strcmp(argv[command_index], "--gpu-rescue-verify") == 0) wgse_verify_gpu_rescue();
             else if (strcmp(argv[command_index], "--gpu-inject-rescue-failure") == 0)
                 wgse_inject_rescue_failure();
             else if (strcmp(argv[command_index], "--gpu-seed-verify") == 0) wgse_verify_gpu_seeds();
@@ -263,7 +266,7 @@ int main(int argc, char **argv) {
                 "\"gpu_seeding\":%s,\"gpu_seeding_limit\":%s}",
                 (unsigned long long)table,
                 (unsigned long long)wgse_index_bytes(prefix, false),
-                (unsigned long long)wgse_index_bytes(prefix, true),
+                (unsigned long long)wgse_index_bytes(prefix, false),
                 limit.empty() ? "true" : "false", json(limit).c_str());
         }
         printf("}\n");

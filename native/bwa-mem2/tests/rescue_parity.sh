@@ -69,6 +69,25 @@ awk 'BEGIN {
 }'
 "$aligner" index reference.fa > index.log 2>&1
 
+# The CPU backend's exact replacements of upstream code (balanced work units,
+# each pair's rescue windows aligned together, pointer sorts, reference windows
+# decoded from the .pac) must leave the SAM unchanged: --cpu-upstream runs
+# upstream's code. No Metal needed.
+upstream_parity() {
+    name=$1
+    shift
+    "$aligner" --cpu-upstream mem "$@" > "upstream-$name.sam" 2> "upstream-$name.log"
+    "$aligner" mem "$@" > "default-$name.sam" 2> "default-$name.log"
+    same "upstream-$name.sam" "default-$name.sam"
+}
+upstream_parity t1 -t 1 reference.fa pairs-R1.fq pairs-R2.fq
+upstream_parity t4 -t 4 reference.fa pairs-R1.fq pairs-R2.fq
+upstream_parity chunks -t 3 -K 20000 reference.fa pairs-R1.fq pairs-R2.fq
+upstream_parity gaps -t 4 -O 4,8 -E 2,1 -L 3,7 -U 9 reference.fa pairs-R1.fq pairs-R2.fq
+upstream_parity nopair -t 4 -P reference.fa pairs-R1.fq pairs-R2.fq
+upstream_parity wide -t 4 -A 4 -B 8 reference.fa pairs-R1.fq pairs-R2.fq
+upstream_parity single -t 4 reference.fa pairs-R1.fq
+
 # Skip (77) only on machines without supported Metal hardware.
 "$aligner" capabilities --json > capabilities.json
 if ! grep -q '"metal_available":true' capabilities.json; then

@@ -17,9 +17,14 @@ bool wgse_metal_hardware_supported();
 // True after a GPU execution failure that was recovered on the CPU.
 bool wgse_metal_execution_failed(std::string &reason);
 void wgse_set_backend(Backend backend);
-// Whether the selected backend uses Metal: its CPU threads also take the exact
-// CPU-side replacements (reference windows from .pac, pointer sorts, batched rescue).
+// Whether the selected backend uses Metal.
 bool wgse_metal_active();
+// Whether the CPU threads take the exact replacements of upstream code (reference
+// windows from the .pac instead of the .0123, pointer sorts, NEON unpacking,
+// batched mate rescue), with either backend. Off only with the test option
+// --cpu-upstream, which runs upstream's code for comparison.
+bool wgse_exact_cpu();
+void wgse_set_upstream_cpu(bool upstream);
 void wgse_print_backend_metrics();
 uint64_t wgse_gpu_execution_ns();
 uint64_t wgse_gpu_dispatches();
@@ -51,8 +56,8 @@ WgseMetalLimits wgse_metal_limits();
 std::string wgse_gpu_seeding_limit(uint64_t bytes);
 // The size of the index's occurrence table (.bwt.2bit.64); 0 if it cannot be read.
 uint64_t wgse_occurrence_table_bytes(const std::string &prefix);
-// Index files a run loads: all of them on the CPU, all but the .0123 with Metal.
-uint64_t wgse_index_bytes(const std::string &prefix, bool metal);
+// Index files a run loads: all but the .0123, unless unpacked_reference.
+uint64_t wgse_index_bytes(const std::string &prefix, bool unpacked_reference);
 uint64_t wgse_physical_memory();
 // Warns if physical memory is below the run's estimated peak resident memory.
 void wgse_memory_preflight(const char *prefix, int64_t chunk_bases);

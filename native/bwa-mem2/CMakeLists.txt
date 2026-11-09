@@ -82,11 +82,13 @@ file(WRITE "${mem2_src}/FMI_search.cpp" "#include \"metal_backend.h\"\n${fmi_sou
 file(READ "${mem2_SOURCE_DIR}/src/bwamem.cpp" bwamem_source)
 include(extension_pipeline.cmake)
 mem2_seam(bwamem_source "    kt_for(worker_bwt, &w, n_); // SMEMs (+SAL)"
-    "    wgse_kt_for_bwt(w, n_); // SMEMs (+SAL)")
+    "    const int wgse_unit = wgse_kt_for_bwt(w, n_); // SMEMs (+SAL)")
+mem2_seam(bwamem_source "    kt_for(worker_aln, &w, n_); // BSW"
+    "    wgse_kt_for(worker_aln, &w, n_, wgse_unit); // BSW")
 mem2_seam(bwamem_source "    matchArray = mem_collect_smem(fmi, opt,"
     "    if (SMEM *gpu = wgse_metal_smems(fmi, opt, seq_, nseq, mmc, num_smem, tid)) matchArray = gpu;\n    else matchArray = mem_collect_smem(fmi, opt,")
 mem2_seam(bwamem_source "    kt_for(worker_sam, &w,  n_);   // SAM"
-    "    if (!wgse_metal_pair(opt, w.fmi->idx->bns, w.fmi->idx->pac, pes, n, seqs, w.regs,\n        w.nthreads, wgse_worker_sam_pair, &w))\n        kt_for(worker_sam, &w,  n_);   // SAM")
+    "    if (!wgse_metal_pair(opt, w.fmi->idx->bns, w.fmi->idx->pac, pes, n, seqs, w.regs,\n        w.nthreads, wgse_worker_sam_pair, &w))\n        wgse_kt_for(worker_sam, &w, n_, wgse_sam_unit);   // SAM")
 # worker_sam()'s paired-end loop body for one pair.
 string(APPEND bwamem_source "
 void wgse_worker_sam_pair(void *data, long pair, int)
@@ -99,6 +101,17 @@ void wgse_worker_sam_pair(void *data, long pair, int)
     free(w->regs[i+1].a);
 }
 
+// worker_bwt() for a unit of any size, with the unit's share of the seed
+// buffer (upstream's for all but a chunk's last unit, whose seeds may be
+// allocated as they grow).
+static void wgse_worker_bwt_unit(void *data, int seq_id, int batch_size, int tid)
+{
+    worker_t *w = (worker_t*) data;
+    mem_kernel1_core(w->fmi, w->opt, w->seqs + seq_id, batch_size, w->chain_ar + seq_id,
+                     w->seedBuf + (int64_t) seq_id * AVG_SEEDS_PER_READ,
+                     (int64_t) batch_size * AVG_SEEDS_PER_READ, &w->mmc, tid);
+}
+
 // kt_for(worker_bwt)'s units (BATCH_SIZE reads each), with SMEMs from the GPU.
 struct wgse_bwt_t { worker_t *w; int n; };
 static void wgse_worker_bwt(void *data, long unit, int tid)
@@ -107,11 +120,14 @@ static void wgse_worker_bwt(void *data, long unit, int tid)
     int st = unit * BATCH_SIZE;
     worker_bwt(b->w, st, b->n - st < BATCH_SIZE ? b->n - st : BATCH_SIZE, tid);
 }
-void wgse_kt_for_bwt(worker_t &w, int n)
+int wgse_kt_for_bwt(worker_t &w, int n)
 {
     wgse_bwt_t b = {&w, n};
-    if (!wgse_metal_seed(w.fmi, w.opt, w.seqs, n, w.nthreads, wgse_worker_bwt, &b))
-        kt_for(worker_bwt, &w, n);
+    if (wgse_metal_seed(w.fmi, w.opt, w.seqs, n, w.nthreads, wgse_worker_bwt, &b))
+        return BATCH_SIZE;
+    const int unit = wgse_cpu_unit(n, w.nthreads);
+    wgse_kt_for(wgse_worker_bwt_unit, &w, n, unit);
+    return unit;
 }
 ")
 # With Metal, fastmap.cpp does not load the .0123 file (the 2-bit .pac unpacked
@@ -124,9 +140,9 @@ mem2_seam(bwamem_source "${ref_window}"
     "#else\n            seq = ref_string ? ref_string + beg : wgse_ref_window(l_pac, pac, beg, end);\n#endif")
 # mem_sort_dedup_patch()'s sorts move pointers instead of regions (native/bwa/sort_oracle.c.in).
 mem2_seam(bwamem_source "    ks_introsort(mem_ars2, n, a); // sort by the END position, not START!"
-    "    if (wgse_metal_active()) wgse_sort_alnreg_by_end(n, a);\n    else ks_introsort(mem_ars2, n, a);")
+    "    if (wgse_exact_cpu()) wgse_sort_alnreg_by_end(n, a);\n    else ks_introsort(mem_ars2, n, a);")
 mem2_seam(bwamem_source "    n = m;\n    ks_introsort(mem_ars, n, a);"
-    "    n = m;\n    if (wgse_metal_active()) wgse_sort_alnreg_by_score(n, a);\n    else ks_introsort(mem_ars, n, a);")
+    "    n = m;\n    if (wgse_exact_cpu()) wgse_sort_alnreg_by_score(n, a);\n    else ks_introsort(mem_ars, n, a);")
 file(READ "${bwa_dir}/sort_oracle.c.in" sort_oracle)
 string(APPEND bwamem_source "${sort_oracle}")
 # mem_process_seqs() in two halves, so that with Metal the pipeline maps chunk
@@ -140,9 +156,9 @@ file(WRITE "${mem2_src}/bwamem.cpp"
 # decode with NEON (native/bwa/pac_oracle.c.in).
 file(READ "${mem2_SOURCE_DIR}/src/bntseq.cpp" bntseq_source)
 mem2_seam(bntseq_source "\t\t\tfor (k = end_f; k > beg_f; --k) {\n\t\t\t\tseq[l++] = 3 - _get_pac(pac, k);\n\t\t\t}"
-    "\t\t\tif (wgse_metal_active()) wgse_unpack_pac_reverse(pac, beg_f, end_f, seq);\n\t\t\telse for (k = end_f; k > beg_f; --k) {\n\t\t\t\tseq[l++] = 3 - _get_pac(pac, k);\n\t\t\t}")
+    "\t\t\tif (wgse_exact_cpu()) wgse_unpack_pac_reverse(pac, beg_f, end_f, seq);\n\t\t\telse for (k = end_f; k > beg_f; --k) {\n\t\t\t\tseq[l++] = 3 - _get_pac(pac, k);\n\t\t\t}")
 mem2_seam(bntseq_source "\t\t\tfor (k = beg; k < end; ++k) {\n\t\t\t\tseq[l++] = _get_pac(pac, k);\n\t\t\t}"
-    "\t\t\tif (wgse_metal_active()) wgse_unpack_pac(pac, beg, end, seq);\n\t\t\telse for (k = beg; k < end; ++k) {\n\t\t\t\tseq[l++] = _get_pac(pac, k);\n\t\t\t}")
+    "\t\t\tif (wgse_exact_cpu()) wgse_unpack_pac(pac, beg, end, seq);\n\t\t\telse for (k = beg; k < end; ++k) {\n\t\t\t\tseq[l++] = _get_pac(pac, k);\n\t\t\t}")
 file(READ "${bwa_dir}/pac_oracle.c.in" pac_oracle)
 file(WRITE "${mem2_src}/bntseq.cpp" "#include \"metal_backend.h\"
 #include \"rescue_backend.h\"
@@ -205,7 +221,7 @@ mem2_seam(fastmap_source "${process_call}" "            if (wgse_overlap)
             else
 ${process_call}")
 mem2_seam(fastmap_source "    FILE *fr = fopen(binary_seq_file, \"r\");\n"
-    "    ref_string = 0;\n    aux.ref_string = 0;\n    if (!wgse_metal_active()) {\n    FILE *fr = fopen(binary_seq_file, \"r\");\n")
+    "    ref_string = 0;\n    aux.ref_string = 0;\n    if (!wgse_exact_cpu()) {\n    FILE *fr = fopen(binary_seq_file, \"r\");\n")
 mem2_seam(fastmap_source "    fprintf(stderr, \"* Ref file: %s\\n\", argv[optind]);\n"
     "    wgse_memory_preflight(argv[optind], fixed_chunk_size > 0 ? int64_t(fixed_chunk_size)\n        : int64_t(opt->chunk_size) * opt->n_threads);\n    fprintf(stderr, \"* Ref file: %s\\n\", argv[optind]);\n")
 mem2_seam(fastmap_source "    fprintf(stderr, \"* Reference genome size: %ld bp\\n\", rlen);\n"
