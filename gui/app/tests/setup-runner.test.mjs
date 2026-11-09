@@ -334,7 +334,7 @@ test("WGSExtract Windows config bootstrap includes genome library default", asyn
     assert.equal(bootstrap.path, path.join(tempRoot, "settings", "config.toml"));
     assert.match(bootstrap.contents, new RegExp(`output_directory = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "output")))}"`));
     assert.match(bootstrap.contents, new RegExp(`reference_library = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "reference")))}"`));
-    assert.match(bootstrap.contents, new RegExp(`genome_library = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "genomes")))}"`));
+    assert.match(bootstrap.contents, new RegExp(`genome_library = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "dataset")))}"`));
   } finally {
     await processManager.terminateAllProcesses();
     setOrDeleteEnv("GUI_FOR_CLI_BUNDLE_WORKSPACE", previousWorkspace);

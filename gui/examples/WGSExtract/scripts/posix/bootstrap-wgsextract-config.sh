@@ -5,7 +5,7 @@ workspace="${GUI_FOR_CLI_BUNDLE_WORKSPACE:-$(pwd)}"
 config_path="${GUI_FOR_CLI_CONFIG_PATH:-$workspace/settings/config.toml}"
 output_path="$workspace/output"
 reference_path="$workspace/reference"
-genome_library_path="$workspace/genomes"
+genome_library_path="$workspace/dataset"
 temp_path="$workspace/temp"
 log_path="$workspace/logs"
 # The CLI requires its temporary directory to exist already.

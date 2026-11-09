@@ -2,26 +2,26 @@
   "name": "fresh install - default tools with hg19 and downloaded benchmark genome",
   "inputs": {
     "fieldValues": {
-      "bam_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.bam",
+      "bam_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.bam",
       "cram_version": "3.0",
       "extract_extra": "0.25",
       "extract_region": "20:1-250000",
       "fastq_output_format": "BAM",
-      "fastq_r1": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini_R1.fastq.gz",
-      "fastq_r2": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini_R2.fastq.gz",
-      "genome_library": "{{bundleWorkspace}}/genomes",
+      "fastq_r1": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini_R1.fastq.gz",
+      "fastq_r2": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini_R2.fastq.gz",
+      "genome_library": "{{bundleWorkspace}}/dataset",
       "haplogrep_path": "haplogrep",
       "out_dir": "{{bundleWorkspace}}/output",
-      "realign_bam": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.cram",
-      "realign_ref": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
-      "ref_fasta": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
+      "realign_bam": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.cram",
+      "realign_ref": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
+      "ref_fasta": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
       "ref_path": "{{bundleWorkspace}}/reference",
       "vcf_filter_expr": "QUAL>=0",
-      "vcf_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.vcf.gz",
+      "vcf_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.vcf.gz",
       "vcf_region": "20",
-      "vcf_child": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.vcf.gz",
-      "vcf_mother": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.vcf.gz",
-      "vcf_father": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.vcf.gz"
+      "vcf_child": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.vcf.gz",
+      "vcf_mother": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.vcf.gz",
+      "vcf_father": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.vcf.gz"
     },
     "checkedOptions": {
       "microarray_formats": [
@@ -41,9 +41,9 @@
     {
       "id": "download-test-genome",
       "kind": "action",
-      "pageID": "library",
-      "sectionID": "databases-tools",
-      "actionID": "test-genome-download",
+      "pageID": "datasets",
+      "sectionID": "test-dataset",
+      "actionID": "test-dataset-download",
       "inputs": {
         "fieldValues": {
           "library.testGenomeInstalled": "false"
@@ -182,7 +182,7 @@
       "actionID": "basic-info",
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
+          "ref_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
         }
       },
       "expectedResult": { "status": "ok" },
@@ -196,7 +196,7 @@
       "actionID": "detailed-info",
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
+          "ref_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
         }
       },
       "timeoutSeconds": 600
@@ -225,7 +225,7 @@
       "actionID": "bam-to-cram",
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
+          "ref_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
         }
       },
       "expectedResult": { "status": "ok", "outputs": ["alignment"] },
@@ -239,8 +239,8 @@
       "actionID": "cram-to-bam",
       "inputs": {
         "fieldValues": {
-          "bam_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.cram",
-          "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
+          "bam_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.cram",
+          "ref_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
         }
       },
       "timeoutSeconds": 900
@@ -262,7 +262,7 @@
       "inputs": {
         "fieldValues": {
           "bam_path": "{{bundleWorkspace}}/output/HG00096.hg19-mini_unsorted.bam",
-          "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
+          "ref_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
         }
       },
       "timeoutSeconds": 900
@@ -337,7 +337,7 @@
       "actionID": "region-mt",
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
+          "ref_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
         },
         "checkedOptions": { "extract_formats": ["fasta", "bam", "vcf"] }
       },
@@ -352,7 +352,7 @@
       "actionID": "region-y",
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
+          "ref_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
         },
         "checkedOptions": { "extract_formats": ["bam", "vcf"] }
       },
@@ -367,7 +367,7 @@
       "actionID": "region-ymt",
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
+          "ref_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
         },
         "checkedOptions": { "extract_formats": ["bam"] }
       },
@@ -382,7 +382,7 @@
       "actionID": "region-autox",
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
+          "ref_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
         },
         "checkedOptions": { "extract_formats": ["bam"] }
       },
@@ -421,7 +421,7 @@
       "actionID": "microarray-generate",
       "inputs": {
         "fieldValues": {
-          "bam_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.vcf.gz",
+          "bam_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.vcf.gz",
           "ref_path": "{{bundleWorkspace}}/reference"
         }
       },
@@ -435,7 +435,7 @@
       "actionID": "vcf-snp",
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
+          "ref_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
         }
       },
       "timeoutSeconds": 900
@@ -448,7 +448,7 @@
       "actionID": "vcf-indel",
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
+          "ref_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
         }
       },
       "timeoutSeconds": 900
@@ -461,7 +461,7 @@
       "actionID": "vcf-sv",
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
+          "ref_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
         }
       },
       "timeoutSeconds": 900
@@ -474,7 +474,7 @@
       "actionID": "vcf-cnv",
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
+          "ref_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
         }
       },
       "timeoutSeconds": 900
@@ -487,7 +487,7 @@
       "actionID": "vcf-freebayes",
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
+          "ref_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
         }
       },
       "timeoutSeconds": 900
@@ -500,7 +500,7 @@
       "actionID": "vcf-gatk",
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
+          "ref_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
         }
       },
       "timeoutSeconds": 1200
@@ -551,7 +551,7 @@
       "actionID": "run-haplogrep",
       "inputs": {
         "fieldValues": {
-          "bam_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.vcf.gz"
+          "bam_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.vcf.gz"
         }
       },
       "timeoutSeconds": 900
@@ -564,7 +564,7 @@
       "actionID": "bam-unindex",
       "inputs": {
         "fieldValues": {
-          "bam_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.bam"
+          "bam_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.bam"
         }
       },
       "timeoutSeconds": 300

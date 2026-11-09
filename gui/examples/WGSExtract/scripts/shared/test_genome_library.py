@@ -53,7 +53,7 @@ def main(argv: list[str]) -> int:
 def genome_library_root(argument: str) -> Path:
     if argument:
         return Path(argument).expanduser()
-    return Path(os.environ.get("GUI_FOR_CLI_BUNDLE_WORKSPACE") or os.getcwd()) / "genomes"
+    return Path(os.environ.get("GUI_FOR_CLI_BUNDLE_WORKSPACE") or os.getcwd()) / "dataset"
 
 
 def print_state(root: Path) -> None:

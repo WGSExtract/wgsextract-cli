@@ -4,7 +4,7 @@ $workspace = if ($env:GUI_FOR_CLI_BUNDLE_WORKSPACE) { $env:GUI_FOR_CLI_BUNDLE_WO
 $configPath = if ($env:GUI_FOR_CLI_CONFIG_PATH) { $env:GUI_FOR_CLI_CONFIG_PATH } else { Join-Path $workspace "settings\config.toml" }
 $outputPath = Join-Path $workspace "output"
 $referencePath = Join-Path $workspace "reference"
-$genomeLibraryPath = Join-Path $workspace "genomes"
+$genomeLibraryPath = Join-Path $workspace "dataset"
 $tempPath = Join-Path $workspace "temp"
 $logPath = Join-Path $workspace "logs"
 # The CLI requires its temporary directory to exist already.
