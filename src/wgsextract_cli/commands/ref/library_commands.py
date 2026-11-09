@@ -14,6 +14,7 @@ from wgsextract_cli.api.ref import (
     RefGerpParams,
     RefGnomadParams,
     RefLibraryParams,
+    RefMicroarrayTargetsParams,
     RefPharmgkbParams,
     RefPhylopParams,
     RefRevelParams,
@@ -21,6 +22,7 @@ from wgsextract_cli.api.ref import (
     RefYbrowseParams,
     _Resource,
 )
+from wgsextract_cli.core import library_removal
 from wgsextract_cli.core.aadr_resources import install_aadr_2m
 from wgsextract_cli.core.annotation_resources import (
     build_gnomad_af,
@@ -90,16 +92,49 @@ def _library(ref: Path | None) -> str:
 
 
 def run_aadr(params: RefAadrParams) -> None:
-    installed = install_aadr_2m(_library(params.ref))
+    reflib = _library(params.ref)
+    if params.delete:
+        _delete(
+            "AADR 2M SNP metadata",
+            library_removal.aadr_paths(reflib),
+            [Path(reflib, "aadr")],
+        )
+        return
+    _install_aadr(reflib)
+
+
+def _install_aadr(reflib: str) -> None:
+    """The panel, and the hg19ToHg38 chain that places it on GRCh38."""
+    from wgsextract_cli.core.microarray_targets import hg19_to_hg38_chain
+
+    installed = install_aadr_2m(reflib)
     current_result().add_output(installed, "reference_resource")
     logging.info("Installed CC0 AADR v66.p1 2M SNP metadata: %s", installed)
+    hg19_to_hg38_chain(reflib)
+
+
+def _delete(
+    resource_name: str, paths: Sequence[Path], made_folders: Sequence[Path] = ()
+) -> None:
+    """Delete an installed resource; one that isn't installed is no error."""
+    if library_removal.remove(paths, made_folders):
+        human_output(f"Deleted {resource_name}.")
+    else:
+        human_output(f"No {resource_name} installed; nothing to delete.")
 
 
 def run_ybrowse(params: RefYbrowseParams) -> None:
     from wgsextract_cli.core.ybrowse import install_snapshot
 
-    verify_dependencies(["bgzip", "tabix"])
     library = Path(_library(params.ref))
+    if params.delete:
+        _delete(
+            "yBrowse snapshots",
+            library_removal.ybrowse_paths(str(library)),
+            [library / "ybrowse"],
+        )
+        return
+    verify_dependencies(["bgzip", "tabix"])
     installed = install_snapshot(library, params.snapshot)
     _record_installed(installed)
     logging.info("Installed sites-only GRCh38 yBrowse resource: %s", installed)
@@ -319,15 +354,31 @@ def run_gnomad(params: RefGnomadParams) -> None:
         _run_downloader(reflib, "gnomAD", download_gnomad)
 
 
+def _delete_resource(reflib: str, key: str, resource_name: str) -> None:
+    _delete(
+        f"{resource_name} files",
+        library_removal.annotation_resource_paths(reflib, key),
+    )
+
+
 def run_spliceai(params: RefSpliceaiParams) -> None:
+    if params.delete:
+        _delete_resource(_library(params.ref), "spliceai", "SpliceAI")
+        return
     _run_downloader(_library(params.ref), "SpliceAI", download_spliceai)
 
 
 def run_alphamissense(params: RefAlphamissenseParams) -> None:
+    if params.delete:
+        _delete_resource(_library(params.ref), "alphamissense", "AlphaMissense")
+        return
     _run_downloader(_library(params.ref), "AlphaMissense", download_alphamissense)
 
 
 def run_pharmgkb(params: RefPharmgkbParams) -> None:
+    if params.delete:
+        _delete_resource(_library(params.ref), "pharmgkb", "PharmGKB")
+        return
     _run_downloader(_library(params.ref), "PharmGKB", download_pharmgkb, "download")
 
 
@@ -362,6 +413,9 @@ def run_bootstrap(params: RefBootstrapParams) -> None:
     before = file_snapshot(reflib)
     if not download_bootstrap(reflib):
         raise WGSExtractError("Reference library bootstrap failed.")
+    # The AADR 2M panel is part of every library, so microarray can always
+    # offer its AADR formats.
+    _install_aadr(reflib)
     record_changed_files(reflib, before, "reference_resource")
     current_result().set_manifest_stem(Path(reflib, "bootstrap"))
     if should_save_reflib:
@@ -372,11 +426,28 @@ def run_bootstrap(params: RefBootstrapParams) -> None:
     )
 
 
+def run_microarray_targets(params: RefMicroarrayTargetsParams) -> None:
+    from wgsextract_cli.commands.microarray import PACKAGED_ASSETS
+    from wgsextract_cli.core.microarray_targets import build_genome_wide_target
+
+    reflib = _library(params.ref)
+    if params.delete:
+        _delete("microarray targets", library_removal.microarray_target_paths(reflib))
+        return
+    for build in ("hg19", "hg38"):
+        target = build_genome_wide_target(
+            reflib, build, [reflib, str(PACKAGED_ASSETS)], [reflib]
+        )
+        current_result().add_output(target, "reference_resource")
+        current_result().add_output(target + ".tbi", "reference_resource")
+
+
 cmd_aadr = cli_handler(RefAadrParams, run_aadr)
 cmd_ybrowse = cli_handler(RefYbrowseParams, run_ybrowse)
 _cli_library = cli_handler(RefLibraryParams, run_library)
 cmd_gene_map = cli_handler(RefGeneMapParams, run_gene_map)
 cmd_bootstrap = cli_handler(RefBootstrapParams, run_bootstrap)
+cmd_microarray_targets = cli_handler(RefMicroarrayTargetsParams, run_microarray_targets)
 RESOURCE_COMMANDS: tuple[tuple[type[_Resource], Callable[..., None]], ...] = (
     (RefClinvarParams, run_clinvar),
     (RefRevelParams, run_revel),

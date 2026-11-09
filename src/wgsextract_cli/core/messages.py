@@ -75,6 +75,7 @@ CLI_HELP = {
     "cmd_vep-run": "Ensembl Variant Effect Predictor. Predicts the functional impact of your variants (e.g., if a mutation likely breaks a gene or causes a specific disease).",
     "cmd_vep-download": "Download the VEP cache (standard GRCh37/38) to your local machine for faster, offline annotation.",
     "cmd_vep-verify": "Check your existing VEP cache for missing files or corruption.",
+    "cmd_vep-delete": "Delete one release and assembly of your VEP cache.",
     "cmd_microarray": "Simulate a consumer microarray (like 23andMe or AncestryDNA) from your WGS data.",
     "cmd_pet-align": "Align raw FASTQ reads against a cat or dog reference genome and call variants to produce a VCF file.",
     "cmd_lineage-y-haplogroup": "Predict paternal haplogroups with native Yleaf-derived analysis (BAM/CRAM/VCF).",

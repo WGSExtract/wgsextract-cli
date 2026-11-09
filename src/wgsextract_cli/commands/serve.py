@@ -88,7 +88,7 @@ def register(
         "--allow-destructive",
         action="store_true",
         help="Also run requests that delete data a command didn't make: "
-        "bam unindex, sample unset and ref gene-map --delete.",
+        "bam unindex, sample unset, vep delete and the ref installers' --delete.",
     )
     parser.add_argument(
         "--ready-json",

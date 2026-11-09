@@ -6477,7 +6477,7 @@
     ],
     "defaults": {
      "_command": "benchmark",
-     "func": "run"
+     "func": "cli_BenchmarkParams"
     },
     "description": null,
     "formatter_class": "RawTextHelpFormatter",
@@ -7123,7 +7123,7 @@
     ],
     "defaults": {
      "_command": "deps check",
-     "func": "run"
+     "func": "cli_DepsCheckParams"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -7888,7 +7888,7 @@
     ],
     "defaults": {
      "_command": "example-genome download",
-     "func": "cmd_download"
+     "func": "cli_ExampleGenomeDownloadParams"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -8229,7 +8229,7 @@
     ],
     "defaults": {
      "_command": "example-genome list",
-     "func": "cmd_list"
+     "func": "cli_ExampleGenomeListParams"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -19052,7 +19052,7 @@
    }
   },
   "ref": {
-   "help": "usage: wgsextract ref [-h] <command> ...\n\npositional arguments:\n  <command>\n    aadr           Explicitly fetch the hash-pinned CC0 AADR v66.p1 2M SNP panel.\n    ybrowse        Explicitly install a hash-pinned, sites-only GRCh38 yBrowse snapshot.\n    download       Download a reference FASTA from a URL (--url) to a path (--out). For curated\n                   hg19/hg38/T2T genomes use 'ref library --install'.\n    index          Prepare a FASTA file for use by indexing it. This is required before you can\n                   align reads or call variants against it.\n    count-ns       Calculate the percentage of 'N' (unknown) bases in a genome. Useful for\n                   understanding the 'mappability' of different reference builds.\n    verify         Ensure your reference genome file isn't corrupted and has all the necessary\n                   companion files (indexes, dicts).\n    library        Opens the interactive reference manager to help you organize and download\n                   genomic data.\n    status         Report reference library asset status.\n    gene-map       Download or delete lightweight gene-to-coordinate mapping files (hg19/hg38),\n                   enabling you to filter VCFs by gene name (e.g. BRCA1).\n    clinvar        Download official ClinVar VCF for hg19 and hg38.\n    revel          Download REVEL pathogenicity scores for hg19 and hg38.\n    phylop         Download UCSC's PhyloP 100-way conservation scores (~10 GB bigWig).\n    gnomad         Download gnomAD population allele frequencies.\n    spliceai       Download SpliceAI scores for hg38 (Ensembl, MANE SNVs); index a manual hg19\n                   download.\n    alphamissense  Download AlphaMissense scores for hg19 and hg38.\n    pharmgkb       Download PharmGKB annotations.\n    cadd           Download CADD v1.7 deleteriousness scores (all possible SNVs plus gnomAD\n                   indels, ~85 GB per build) with their tabix indexes.\n    gerp           Download GERP++ conservation scores as a bigWig (hg38 from Ensembl, ~9.6 GB;\n                   hg19 from UCSC, ~7.6 GB).\n    bootstrap      Download and initialize the reference library bootstrap (liftover chains, chip\n                   templates, etc.).\n\noptions:\n  -h, --help       show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract ref [-h] <command> ...\n\npositional arguments:\n  <command>\n    aadr                Explicitly fetch the hash-pinned CC0 AADR v66.p1 2M SNP panel.\n    ybrowse             Explicitly install a hash-pinned, sites-only GRCh38 yBrowse snapshot.\n    download            Download a reference FASTA from a URL (--url) to a path (--out). For\n                        curated hg19/hg38/T2T genomes use 'ref library --install'.\n    index               Prepare a FASTA file for use by indexing it. This is required before you\n                        can align reads or call variants against it.\n    count-ns            Calculate the percentage of 'N' (unknown) bases in a genome. Useful for\n                        understanding the 'mappability' of different reference builds.\n    verify              Ensure your reference genome file isn't corrupted and has all the\n                        necessary companion files (indexes, dicts).\n    library             Opens the interactive reference manager to help you organize and download\n                        genomic data.\n    status              Report reference library asset status.\n    gene-map            Download or delete lightweight gene-to-coordinate mapping files\n                        (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1).\n    clinvar             Download official ClinVar VCF for hg19 and hg38.\n    revel               Download REVEL pathogenicity scores for hg19 and hg38.\n    phylop              Download UCSC's PhyloP 100-way conservation scores (~10 GB bigWig).\n    gnomad              Download gnomAD population allele frequencies.\n    spliceai            Download SpliceAI scores for hg38 (Ensembl, MANE SNVs); index a manual\n                        hg19 download.\n    alphamissense       Download AlphaMissense scores for hg19 and hg38.\n    pharmgkb            Download PharmGKB annotations.\n    cadd                Download CADD v1.7 deleteriousness scores (all possible SNVs plus gnomAD\n                        indels, ~85 GB per build) with their tabix indexes.\n    gerp                Download GERP++ conservation scores as a bigWig (hg38 from Ensembl, ~9.6\n                        GB; hg19 from UCSC, ~7.6 GB).\n    bootstrap           Download and initialize the reference library bootstrap (liftover chains,\n                        chip templates, the AADR 2M SNP panel, etc.).\n    microarray-targets  Build the genome-wide hg19 and hg38 microarray targets from the chip\n                        templates, or delete them.\n\noptions:\n  -h, --help            show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -19092,7 +19092,8 @@
        "pharmgkb",
        "cadd",
        "gerp",
-       "bootstrap"
+       "bootstrap",
+       "microarray-targets"
       ],
       "help": [
        [
@@ -19169,7 +19170,11 @@
        ],
        [
         "bootstrap",
-        "Download and initialize the reference library bootstrap (liftover chains, chip templates, etc.)."
+        "Download and initialize the reference library bootstrap (liftover chains, chip templates, the AADR 2M SNP panel, etc.)."
+       ],
+       [
+        "microarray-targets",
+        "Build the genome-wide hg19 and hg38 microarray targets from the chip templates, or delete them."
        ]
       ],
       "required": true,
@@ -19463,7 +19468,7 @@
    }
   },
   "ref aadr": {
-   "help": "usage: wgsextract ref aadr [-h] --install\n\noptions:\n  -h, --help  show this help message and exit\n  --install\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref aadr --install\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): the AADR 2M SNP panel.\n\nneeds:\n  no external tools; depending on options and inputs, also: curl; depends on\n  download speed.\n",
+   "help": "usage: wgsextract ref aadr [-h] [--install] [--delete]\n\noptions:\n  -h, --help  show this help message and exit\n  --install   Install it.\n  --delete    Delete the installed AADR 2M SNP panel\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref aadr --install\n  wgsextract ref aadr --delete\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): the AADR 2M SNP panel (--delete removes\n  it).\n\nneeds:\n  no external tools; depending on options and inputs, also: curl; depends on\n  download speed.\n",
    "parser": {
     "actions": [
      {
@@ -19752,13 +19757,29 @@
       "default": false,
       "dest": "install",
       "exclusive_group": null,
-      "help": null,
+      "help": "Install it.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
        "--install"
       ],
-      "required": true,
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "delete",
+      "exclusive_group": null,
+      "help": "Delete the installed AADR 2M SNP panel",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--delete"
+      ],
+      "required": false,
       "type": null
      },
      {
@@ -19780,7 +19801,7 @@
     ],
     "defaults": {
      "_command": "ref aadr",
-     "func": "cli_RefAadrParams"
+     "func": "_install_or_delete.<locals>.handler"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -19788,7 +19809,7 @@
    }
   },
   "ref alphamissense": {
-   "help": "usage: wgsextract ref alphamissense [-h]\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref alphamissense\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): AlphaMissense score files.\n\nneeds:\n  no external tools; depending on options and inputs, also: bgzip, curl,\n  tabix; depends on download speed.\n",
+   "help": "usage: wgsextract ref alphamissense [-h] [--delete]\n\noptions:\n  -h, --help  show this help message and exit\n  --delete    Delete the installed AlphaMissense score files\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref alphamissense\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): AlphaMissense score files (--delete\n  removes them).\n\nneeds:\n  no external tools; depending on options and inputs, also: bgzip, curl,\n  tabix; depends on download speed.\n",
    "parser": {
     "actions": [
      {
@@ -20072,6 +20093,22 @@
      },
      {
       "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "delete",
+      "exclusive_group": null,
+      "help": "Delete the installed AlphaMissense score files",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--delete"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_HelpAllAction",
       "const": null,
       "default": "==SUPPRESS==",
@@ -20097,7 +20134,7 @@
    }
   },
   "ref bootstrap": {
-   "help": "usage: wgsextract ref bootstrap [-h]\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref bootstrap\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): the bootstrap liftover chains, chip\n  templates and other small files.\n\nneeds:\n  no external tools; depends on download speed.\n",
+   "help": "usage: wgsextract ref bootstrap [-h]\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref bootstrap\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): the bootstrap liftover chains, chip\n  templates and other small files, and the AADR 2M SNP panel.\n\nneeds:\n  no external tools; depending on options and inputs, also: curl; depends on\n  download speed.\n",
    "parser": {
     "actions": [
      {
@@ -23343,7 +23380,7 @@
    }
   },
   "ref pharmgkb": {
-   "help": "usage: wgsextract ref pharmgkb [-h]\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref pharmgkb\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): PharmGKB annotation files.\n\nneeds:\n  no external tools; depending on options and inputs, also: bgzip, curl,\n  tabix; depends on download speed.\n",
+   "help": "usage: wgsextract ref pharmgkb [-h] [--delete]\n\noptions:\n  -h, --help  show this help message and exit\n  --delete    Delete the installed PharmGKB annotation files\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref pharmgkb\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): PharmGKB annotation files (--delete\n  removes them).\n\nneeds:\n  no external tools; depending on options and inputs, also: bgzip, curl,\n  tabix; depends on download speed.\n",
    "parser": {
     "actions": [
      {
@@ -23624,6 +23661,22 @@
       ],
       "required": false,
       "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "delete",
+      "exclusive_group": null,
+      "help": "Delete the installed PharmGKB annotation files",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--delete"
+      ],
+      "required": false,
+      "type": null
      },
      {
       "choices": null,
@@ -24289,7 +24342,7 @@
    }
   },
   "ref spliceai": {
-   "help": "usage: wgsextract ref spliceai [-h]\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref spliceai\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): SpliceAI score files.\n\nneeds:\n  no external tools; depending on options and inputs, also: bgzip, curl,\n  tabix; depends on download speed.\n",
+   "help": "usage: wgsextract ref spliceai [-h] [--delete]\n\noptions:\n  -h, --help  show this help message and exit\n  --delete    Delete the installed SpliceAI score files\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref spliceai\n  wgsextract ref spliceai --delete\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): SpliceAI score files (--delete removes\n  them).\n\nneeds:\n  no external tools; depending on options and inputs, also: bgzip, curl,\n  tabix; depends on download speed.\n",
    "parser": {
     "actions": [
      {
@@ -24570,6 +24623,22 @@
       ],
       "required": false,
       "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "delete",
+      "exclusive_group": null,
+      "help": "Delete the installed SpliceAI score files",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--delete"
+      ],
+      "required": false,
+      "type": null
      },
      {
       "choices": null,
@@ -25280,7 +25349,7 @@
    }
   },
   "ref ybrowse": {
-   "help": "usage: wgsextract ref ybrowse [-h] --install [--snapshot SNAPSHOT]\n\noptions:\n  -h, --help           show this help message and exit\n  --install\n  --snapshot SNAPSHOT  Use a local GRCh38 VCF(.gz), verifying its header instead of the upstream\n                       pin.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref ybrowse --install\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): the yBrowse GRCh38 SNP sites.\n\nneeds:\n  bgzip, tabix; depends on download speed.\n",
+   "help": "usage: wgsextract ref ybrowse [-h] [--install] [--delete] [--snapshot SNAPSHOT]\n\noptions:\n  -h, --help           show this help message and exit\n  --install            Install it.\n  --delete             Delete the installed yBrowse snapshots\n  --snapshot SNAPSHOT  Use a local GRCh38 VCF(.gz), verifying its header instead of the upstream\n                       pin.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref ybrowse --install\n  wgsextract ref ybrowse --delete\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): the yBrowse GRCh38 SNP sites (--delete\n  removes them).\n\nneeds:\n  bgzip, tabix; depends on download speed.\n",
    "parser": {
     "actions": [
      {
@@ -25569,13 +25638,29 @@
       "default": false,
       "dest": "install",
       "exclusive_group": null,
-      "help": null,
+      "help": "Install it.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
        "--install"
       ],
-      "required": true,
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "delete",
+      "exclusive_group": null,
+      "help": "Delete the installed yBrowse snapshots",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--delete"
+      ],
+      "required": false,
       "type": null
      },
      {
@@ -25613,7 +25698,7 @@
     ],
     "defaults": {
      "_command": "ref ybrowse",
-     "func": "cli_RefYbrowseParams"
+     "func": "_install_or_delete.<locals>.handler"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -27646,7 +27731,7 @@
     ],
     "defaults": {
      "_command": "sign create",
-     "func": "cmd_create"
+     "func": "cli_SignCreateParams"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -28033,7 +28118,7 @@
     ],
     "defaults": {
      "_command": "sign verify",
-     "func": "cmd_verify"
+     "func": "cli_SignVerifyParams"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -39492,7 +39577,7 @@
    }
   },
   "vep": {
-   "help": "usage: wgsextract vep [-h] <command> ...\n\npositional arguments:\n  <command>\n    download  Download the VEP cache (standard GRCh37/38) to your local machine for faster,\n              offline annotation.\n    verify    Check your existing VEP cache for missing files or corruption.\n    run       Ensembl Variant Effect Predictor. Predicts the functional impact of your variants\n              (e.g., if a mutation likely breaks a gene or causes a specific disease).\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract vep [-h] <command> ...\n\npositional arguments:\n  <command>\n    download  Download the VEP cache (standard GRCh37/38) to your local machine for faster,\n              offline annotation.\n    verify    Check your existing VEP cache for missing files or corruption.\n    delete    Delete one release and assembly of your VEP cache.\n    run       Ensembl Variant Effect Predictor. Predicts the functional impact of your variants\n              (e.g., if a mutation likely breaks a gene or causes a specific disease).\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -39516,6 +39601,7 @@
       "choices": [
        "download",
        "verify",
+       "delete",
        "run"
       ],
       "help": [
@@ -39526,6 +39612,10 @@
        [
         "verify",
         "Check your existing VEP cache for missing files or corruption."
+       ],
+       [
+        "delete",
+        "Delete one release and assembly of your VEP cache."
        ],
        [
         "run",
@@ -40210,7 +40300,7 @@
     ],
     "defaults": {
      "_command": "vep download",
-     "func": "cmd_vep_download"
+     "func": "cli_VepDownloadParams"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -41122,7 +41212,7 @@
     ],
     "defaults": {
      "_command": "vep verify",
-     "func": "cmd_vep_verify"
+     "func": "cli_VepVerifyParams"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -41151,7 +41241,7 @@
    "debug": true,
    "full_help": false,
    "full_size": false,
-   "func": "run",
+   "func": "cli_BenchmarkParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -41990,7 +42080,7 @@
    "debug": false,
    "full_help": false,
    "full_size": false,
-   "func": "run",
+   "func": "cli_BenchmarkParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -42029,7 +42119,7 @@
    "debug": false,
    "full_help": false,
    "full_size": false,
-   "func": "run",
+   "func": "cli_BenchmarkParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -42068,7 +42158,7 @@
    "debug": false,
    "full_help": false,
    "full_size": false,
-   "func": "run",
+   "func": "cli_BenchmarkParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -42107,7 +42197,7 @@
    "debug": false,
    "full_help": false,
    "full_size": false,
-   "func": "run",
+   "func": "cli_BenchmarkParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -42148,7 +42238,7 @@
    "debug": false,
    "full_help": false,
    "full_size": true,
-   "func": "run",
+   "func": "cli_BenchmarkParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -42188,7 +42278,7 @@
    "debug": false,
    "full_help": false,
    "full_size": false,
-   "func": "run",
+   "func": "cli_BenchmarkParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -42227,7 +42317,7 @@
    "debug": false,
    "full_help": false,
    "full_size": false,
-   "func": "run",
+   "func": "cli_BenchmarkParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -42267,7 +42357,7 @@
    "debug": false,
    "full_help": false,
    "full_size": false,
-   "func": "run",
+   "func": "cli_BenchmarkParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -42295,7 +42385,7 @@
    "command": "deps",
    "debug": false,
    "full_help": false,
-   "func": "run",
+   "func": "cli_DepsCheckParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -42322,7 +42412,7 @@
    "command": "deps",
    "debug": true,
    "full_help": false,
-   "func": "run",
+   "func": "cli_DepsCheckParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -42356,7 +42446,7 @@
    "examples_cmd": "download",
    "force": false,
    "full_help": false,
-   "func": "cmd_download",
+   "func": "cli_ExampleGenomeDownloadParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -42392,7 +42482,7 @@
    "examples_cmd": "download",
    "force": false,
    "full_help": false,
-   "func": "cmd_download",
+   "func": "cli_ExampleGenomeDownloadParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -42430,7 +42520,7 @@
    "examples_cmd": "download",
    "force": true,
    "full_help": false,
-   "func": "cmd_download",
+   "func": "cli_ExampleGenomeDownloadParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -42458,7 +42548,7 @@
    "debug": false,
    "examples_cmd": "list",
    "full_help": false,
-   "func": "cmd_list",
+   "func": "cli_ExampleGenomeListParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -43908,8 +43998,9 @@
    "atomic_output": false,
    "command": "ref",
    "debug": false,
+   "delete": false,
    "full_help": false,
-   "func": "cli_RefAadrParams",
+   "func": "_install_or_delete.<locals>.handler",
    "genome": null,
    "input": null,
    "install": true,
@@ -43932,6 +44023,7 @@
    "atomic_output": false,
    "command": "ref",
    "debug": false,
+   "delete": false,
    "full_help": false,
    "func": "cli_RefAlphamissenseParams",
    "genome": null,
@@ -44244,6 +44336,7 @@
    "atomic_output": false,
    "command": "ref",
    "debug": false,
+   "delete": false,
    "full_help": false,
    "func": "cli_RefPharmgkbParams",
    "genome": null,
@@ -44316,6 +44409,7 @@
    "atomic_output": false,
    "command": "ref",
    "debug": false,
+   "delete": false,
    "full_help": false,
    "func": "cli_RefSpliceaiParams",
    "genome": null,
@@ -44425,8 +44519,9 @@
    "atomic_output": false,
    "command": "ref",
    "debug": false,
+   "delete": false,
    "full_help": false,
-   "func": "cli_RefYbrowseParams",
+   "func": "_install_or_delete.<locals>.handler",
    "genome": null,
    "input": null,
    "install": true,
@@ -44596,7 +44691,7 @@
    "command": "sign",
    "debug": false,
    "full_help": false,
-   "func": "cmd_create",
+   "func": "cli_SignCreateParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -44630,7 +44725,7 @@
    "command": "sign",
    "debug": false,
    "full_help": false,
-   "func": "cmd_create",
+   "func": "cli_SignCreateParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -44663,7 +44758,7 @@
    "command": "sign",
    "debug": false,
    "full_help": false,
-   "func": "cmd_verify",
+   "func": "cli_SignVerifyParams",
    "genome": null,
    "identity": "me",
    "input": null,
@@ -44695,7 +44790,7 @@
    "command": "sign",
    "debug": false,
    "full_help": false,
-   "func": "cmd_verify",
+   "func": "cli_SignVerifyParams",
    "genome": null,
    "identity": null,
    "input": null,
@@ -44725,7 +44820,7 @@
    "command": "sign",
    "debug": false,
    "full_help": false,
-   "func": "cmd_verify",
+   "func": "cli_SignVerifyParams",
    "genome": null,
    "identity": null,
    "input": null,
@@ -46280,7 +46375,7 @@
    "command": "vep",
    "debug": false,
    "full_help": false,
-   "func": "cmd_vep_download",
+   "func": "cli_VepDownloadParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -46312,7 +46407,7 @@
    "command": "vep",
    "debug": false,
    "full_help": false,
-   "func": "cmd_vep_download",
+   "func": "cli_VepDownloadParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -46343,7 +46438,7 @@
    "command": "vep",
    "debug": false,
    "full_help": false,
-   "func": "cmd_vep_download",
+   "func": "cli_VepDownloadParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -46573,7 +46668,7 @@
    "command": "vep",
    "debug": false,
    "full_help": false,
-   "func": "cmd_vep_verify",
+   "func": "cli_VepVerifyParams",
    "genome": null,
    "input": null,
    "json": false,
@@ -46603,7 +46698,7 @@
    "command": "vep",
    "debug": false,
    "full_help": false,
-   "func": "cmd_vep_verify",
+   "func": "cli_VepVerifyParams",
    "genome": null,
    "input": null,
    "json": false,

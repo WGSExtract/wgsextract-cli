@@ -10,6 +10,7 @@ from typing import Any
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.ref import RefStatusParams
 from wgsextract_cli.core import bwa_mem2, sample_workspace
+from wgsextract_cli.core.aadr_resources import aadr_2m_path
 from wgsextract_cli.core.config import dataset_library, settings
 from wgsextract_cli.core.gene_map import are_gene_maps_installed
 from wgsextract_cli.core.paths import absolute_path
@@ -84,6 +85,8 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
     )
     annotation_argument = annotation_vcf or annotation_file
     test_genome = _test_genome_status(datasets)
+    aadr_file = aadr_2m_path(reflib)
+    aadr = {"installed": aadr_file.is_file(), "file": str(aadr_file)}
 
     return {
         "referenceLibrary": {
@@ -99,9 +102,13 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
             "exists": Path(datasets).is_dir(),
         },
         "build": build,
+        # `ref bootstrap` installs the AADR 2M panel too; a library set up
+        # before it did isn't complete until it is run again.
         "bootstrap": {
-            "installed": bootstrap_has_support_assets(reflib),
+            "installed": bootstrap_has_support_assets(reflib) and aadr["installed"],
         },
+        "aadr": aadr,
+        "ybrowse": _ybrowse_status(reflib),
         "geneMap": {
             "installed": are_gene_maps_installed(reflib),
         },
@@ -151,6 +158,8 @@ def ref_status_values(status: dict[str, Any]) -> dict[str, str]:
         "library.alphamissenseFile": status["alphamissense"]["file"],
         "library.pharmgkbInstalled": _json_bool(status["pharmgkb"]["installed"]),
         "library.pharmgkbFile": status["pharmgkb"]["file"],
+        "library.aadrInstalled": _json_bool(status["aadr"]["installed"]),
+        "library.ybrowseInstalled": _json_bool(status["ybrowse"]["installed"]),
         **{
             f"library.{key}Installed": _json_bool(
                 any(entry["installed"] for entry in builds.values())
@@ -175,6 +184,8 @@ def print_ref_status(status: dict[str, Any]) -> None:
         )
     human_output(f"Bootstrap assets: {_status_label(status['bootstrap']['installed'])}")
     human_output(f"Gene maps: {_status_label(status['geneMap']['installed'])}")
+    human_output(f"AADR 2M panel: {_path_status(status['aadr'])}")
+    human_output(f"yBrowse GRCh38: {_path_status(status['ybrowse'])}")
     human_output(f"Microarray targets: {_path_status(status['annotationVcf'])}")
     human_output(f"Test genome: {status['testGenome']['status']}")
     human_output()
@@ -240,6 +251,22 @@ def _annotation_status(reflib: str) -> dict[str, dict[str, dict[str, Any]]]:
             )
             status[key][build] = {"file": path, "installed": indexed}
     return status
+
+
+def _ybrowse_status(reflib: str) -> dict[str, Any]:
+    """The snapshot ``current.json`` points at, unverified (``ref ybrowse``
+    and the commands that read it check its hashes)."""
+    root = Path(reflib, "ybrowse", "hg38")
+    version: object = None
+    with contextlib.suppress(OSError, ValueError, TypeError, KeyError):
+        version = json.loads((root / "current.json").read_text(encoding="utf-8"))[
+            "version"
+        ]
+    if isinstance(version, str) and re.fullmatch(r"[a-f0-9]{64}", version):
+        directory = root / version
+        if (directory / "manifest.json").is_file():
+            return {"installed": True, "file": str(directory)}
+    return {"installed": False, "file": ""}
 
 
 def _vep_cache_status(lib: ReferenceLibrary, reflib: str) -> dict[str, Any]:

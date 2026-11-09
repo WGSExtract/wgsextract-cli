@@ -2,7 +2,7 @@ import gzip
 from pathlib import Path
 
 from wgsextract_cli.commands.microarray import (
-    _PACKAGED_ASSETS,
+    PACKAGED_ASSETS,
     _template_search_roots,
 )
 from wgsextract_cli.core.microarray_utils import (
@@ -11,7 +11,7 @@ from wgsextract_cli.core.microarray_utils import (
     resolve_format_key,
 )
 
-TEMPLATES = _PACKAGED_ASSETS / "microarray" / "raw_file_templates"
+TEMPLATES = PACKAGED_ASSETS / "microarray" / "raw_file_templates"
 
 
 def test_v1_and_v2_resolve_to_the_shipped_template():
@@ -38,14 +38,14 @@ def test_packaged_templates_are_searched_last(tmp_path):
         root = None
 
     roots = _template_search_roots(str(tmp_path / "ref.fa"), Lib())  # type: ignore[arg-type]
-    assert roots[-1] == str(_PACKAGED_ASSETS)
+    assert roots[-1] == str(PACKAGED_ASSETS)
 
 
 def test_conversion_reads_the_gzipped_body(tmp_path):
     kit = tmp_path / "kit_hg19.txt"
     kit.write_text("rs3094315\t1\t752566\tAG\nrs3934834\t1\t1005806\tCC\n")
     out = tmp_path / "out.txt"
-    roots = [str(tmp_path), str(_PACKAGED_ASSETS)]
+    roots = [str(tmp_path), str(PACKAGED_ASSETS)]
     tally = convert_to_vendor_format("23andMe_V2", str(kit), str(out), roots)
     # Every template site is tallied: two called (one het), the rest "--".
     assert tally.called == 2 and tally.het == 1
@@ -72,6 +72,6 @@ def test_a_library_template_wins_over_the_shipped_one(tmp_path):
     kit.write_text("rs1\t1\t100\tAA\n")
     out = tmp_path / "out.txt"
     convert_to_vendor_format(
-        "23andMe_V2", str(kit), str(out), [str(tmp_path), str(_PACKAGED_ASSETS)]
+        "23andMe_V2", str(kit), str(out), [str(tmp_path), str(PACKAGED_ASSETS)]
     )
     assert out.read_text() == "# library head\nrs1\t1\t100\tAA\n"

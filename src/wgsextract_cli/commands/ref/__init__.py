@@ -11,11 +11,13 @@ from wgsextract_cli.api.ref import (
     RefGeneMapParams,
     RefIndexParams,
     RefLibraryParams,
+    RefMicroarrayTargetsParams,
     RefStatusParams,
     RefVerifyParams,
     RefYbrowseParams,
 )
 from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.core.utils import UsageError
 
 from .core_commands import (
     cmd_count_ns,
@@ -29,11 +31,24 @@ from .library_commands import (
     cmd_bootstrap,
     cmd_gene_map,
     cmd_library,
+    cmd_microarray_targets,
     cmd_ybrowse,
 )
 from .status import cmd_ref_status
 
 Handler = Callable[[argparse.Namespace], None]
+
+
+def _install_or_delete(func: Handler) -> Handler:
+    """These downloads are asked for explicitly: --install, or --delete."""
+
+    def handler(args: argparse.Namespace) -> None:
+        if args.install == args.delete:
+            raise UsageError("Give one of --install or --delete.")
+        func(args)
+
+    return handler
+
 
 # Resource downloads whose help isn't in CLI_HELP.
 _RESOURCE_HELP = {
@@ -63,7 +78,8 @@ def register(
         sub = ref_subs.add_parser(name, parents=[base_parser], help=help)
         if name in ("aadr", "ybrowse"):
             # The CLI asks for these downloads explicitly; the API call is the ask.
-            sub.add_argument("--install", action="store_true", required=True)
+            sub.add_argument("--install", action="store_true", help="Install it.")
+            func = _install_or_delete(func)
         if cls is not None:
             add_arguments(sub, cls)
         sub.set_defaults(func=func)
@@ -110,5 +126,13 @@ def register(
         "bootstrap",
         RefBootstrapParams,
         cmd_bootstrap,
-        "Download and initialize the reference library bootstrap (liftover chains, chip templates, etc.).",
+        "Download and initialize the reference library bootstrap (liftover "
+        "chains, chip templates, the AADR 2M SNP panel, etc.).",
+    )
+    add(
+        "microarray-targets",
+        RefMicroarrayTargetsParams,
+        cmd_microarray_targets,
+        "Build the genome-wide hg19 and hg38 microarray targets from the chip "
+        "templates, or delete them.",
     )

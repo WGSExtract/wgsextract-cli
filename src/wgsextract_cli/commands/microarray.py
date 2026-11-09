@@ -100,7 +100,7 @@ from ._microarray_vcf import (
     _prepare_vcf_target_tab_for_input,
 )
 
-_PACKAGED_ASSETS = absolute_path(__file__).parents[1] / "assets"
+PACKAGED_ASSETS = absolute_path(__file__).parents[1] / "assets"
 
 
 _HG19_TO_HG38 = "hg19ToHg38.over.chain.gz"
@@ -113,7 +113,7 @@ def _template_search_roots(ref_fasta: str, lib: ReferenceLibrary) -> list[str]:
         roots.append(ref_dir)
     # Templates ship with the reference library (`ref bootstrap`); search it too
     # when --ref is a FASTA kept elsewhere. Last, the few the CLI ships itself.
-    for root in (lib.root, resolve_reference_library(), str(_PACKAGED_ASSETS)):
+    for root in (lib.root, resolve_reference_library(), str(PACKAGED_ASSETS)):
         if root and root not in roots:
             roots.append(root)
     return roots

@@ -181,7 +181,6 @@ class BundleSandbox:
             "out_dir": str(data / "output"),
             "dataset_library": str(data / "datasets"),
             "reference_genome_library": str(data / "reference" / "genomes"),
-            "vep_cache_path": str(data / "vep"),
             "vcf_path": vcf,
             "vcf_child": vcf,
             "vcf_mother": vcf,
