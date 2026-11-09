@@ -114,6 +114,8 @@ test "$(metric fast-capped.log rescue_cpu_hits)" -gt 0
 same upstream-single.sam fast-single.sam
 test "$(metric fast-single.log cpu_located_rows)" -gt 0
 cpu_parity flags -t 4 -M -Y
+# Asymmetric gaps, clipping penalties, band and z-drop (PR #596 review).
+cpu_parity scoring -t 4 -A 3 -B 5 -O 8,9 -E 2,1 -L 0,30 -w 20 -d 50
 # Regression (PR #581 review): --cpu-rescue-batch off leaves rescue to upstream.
 "$aligner" --cpu-rescue-batch off mem -t 4 reference.fa pairs-R1.fq pairs-R2.fq \
     > fast-nobatch.sam 2> fast-nobatch.log
@@ -128,6 +130,15 @@ paste -d '\n' pairs-R1.fq pairs-R2.fq | paste - - - - - - - - \
     > upstream-interleaved.sam 2> upstream-interleaved.log
 same upstream-interleaved.sam fast-interleaved.sam
 test "$(metric fast-interleaved.log rescue_cpu_hits)" -gt 1000
+# -p with some unpaired reads, which smart pairing maps as single-end (PR #596 review):
+# drop the second mate of every tenth pair.
+awk '/^@pair[0-9]*0\/2$/ { skip = 4 } skip { --skip; next } { print }' pairs-interleaved.fq \
+    > mixed-interleaved.fq
+"$aligner" mem -t 4 -p reference.fa mixed-interleaved.fq > fast-mixed.sam 2> /dev/null
+"$aligner" --cpu-upstream mem -t 4 -p reference.fa mixed-interleaved.fq > upstream-mixed.sam \
+    2> /dev/null
+same upstream-mixed.sam fast-mixed.sam
+test "$(grep -v '^@' fast-mixed.sam | awk '$2 % 2 == 0' | wc -l)" -gt 100
 # Regression (PR #581 review): aln, samse, sampe and bwasw also unpack the
 # reference with the CPU backend's NEON code.
 for mode in fast upstream; do
@@ -147,7 +158,7 @@ for mode in samse sampe bwasw; do
 done
 
 # The CPU backend seeds blocks of reads with their FM-index walks interleaved
-# (smem_batch.cpp). Reads of 1 to 900 bp from the repeat copies, tandem and
+# (smem_batch.cpp). Reads of 1 to 900 bp (and some of 5000) from the repeat copies, tandem and
 # homopolymer runs, with mismatches and Ns, through all three of
 # mem_collect_intv()'s passes (-y enables the third).
 awk 'BEGIN {
@@ -160,6 +171,8 @@ awk 'BEGIN {
     split("1 18 19 20 31 32 33 76 151 250 511 900", lengths, " ")
     for (r = 1; r <= 3000; ++r) {
         n = lengths[1 + r % 12]
+        # Longer than ksw_extend2()'s NEON limit (4096).
+        if (r % 250 == 0) n = 5000
         start = r % 4 == 0 ? 39000 + int(rand() * 6000) : 1 + int(rand() * (length(ref) - n))
         seq = substr(ref, start, n)
         if (r % 7 == 0) seq = substr(seq, 1, n / 2) substr(tandem, 1 + r % 4, n - int(n / 2))

@@ -8,7 +8,7 @@
 #include <arm_neon.h>
 
 /* Whether every H, E, F and M of the call fits int16 with room for the scan. */
-static int wgse_extend_fits(int qlen, int m, const int8_t *mat, int o_del, int e_del,
+int wgse_extend_fits(int qlen, int m, const int8_t *mat, int o_del, int e_del,
 	int o_ins, int e_ins, int h0)
 {
 	int i, max = 0;
