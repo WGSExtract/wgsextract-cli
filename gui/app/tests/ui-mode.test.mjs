@@ -163,3 +163,25 @@ test("every WGS Extract list with a row template fills each of its columns", () 
   }
   assert.deepEqual(missing, []);
 });
+
+test("WGS Extract asks before an Example Datasets download over 25 GB", async () => {
+  const { isActionVisible } = await import("../dist/shared/rendering-conditions.js");
+  const datasets = wgsExtractManifest().pages.find((page) => page.id === "datasets");
+  const actions = datasets.sections.find((section) => section.id === "example-datasets").actions
+    .filter((action) => action.command?.arguments?.includes("download"));
+  const shown = (example_all, example_tag) => actions.filter((action) => isActionVisible(action, {
+    fieldValues: { example_tag }, checkedOptions: { example_all },
+  }));
+  for (const [all, tag, id, confirms] of [
+    ["", "", "example-download", false],
+    ["", "smallest", "example-download", false],
+    ["", "fastq", "example-download", false],
+    ["--all", "", "example-download-all", true],
+    ["", "pacbio", "example-download-large-tag", true],
+    ["", "giab", "example-download-large-tag", true],
+  ]) {
+    const visible = shown(all, tag);
+    assert.deepEqual(visible.map((action) => action.id), [id], `${all} ${tag}`);
+    assert.equal(Boolean(visible[0].confirm), confirms, `${all} ${tag}`);
+  }
+});
