@@ -74,7 +74,7 @@ if ! grep -q '"metal_available":true' capabilities.json; then
     exit 77
 fi
 
-"$aligner" mem -t 4 reference.fa pairs-R1.fq pairs-R2.fq > cpu.sam 2> cpu.log
+"$aligner" --cpu-upstream mem -t 4 reference.fa pairs-R1.fq pairs-R2.fq > cpu.sam 2> cpu.log
 
 # Each GPU result is compared with upstream ksw_extend2 for the same inputs, over
 # many small batches. Calls for seeds other than each chain's first are not
@@ -93,7 +93,7 @@ test "$(metric verify.log extend_skipped)" -gt 0
 run() {
     name=$1
     shift
-    "$aligner" mem "$@" reference.fa pairs-R1.fq pairs-R2.fq > "cpu-$name.sam" 2> "cpu-$name.log"
+    "$aligner" --cpu-upstream mem "$@" reference.fa pairs-R1.fq pairs-R2.fq > "cpu-$name.sam" 2> "cpu-$name.log"
     "$aligner" --gpu-policy all --gpu-extend-pairs 64 --gpu-extend-batches 16 \
         --gpu-extend-verify --metal mem "$@" \
         reference.fa pairs-R1.fq pairs-R2.fq > "metal-$name.sam" 2> "metal-$name.log"
@@ -118,7 +118,7 @@ test "$(metric metal-wide.log extend_skipped)" -gt 100
 # rather than wrap around 16 bits.
 run deletion -t 4 -B 100 -O 32700,6 -E 1
 # Single-end reads.
-"$aligner" mem -t 4 reference.fa pairs-R1.fq > cpu-single.sam 2> cpu-single.log
+"$aligner" --cpu-upstream mem -t 4 reference.fa pairs-R1.fq > cpu-single.sam 2> cpu-single.log
 "$aligner" --gpu-extend-verify --metal mem -t 4 reference.fa pairs-R1.fq \
     > metal-single.sam 2> metal-single.log
 same cpu-single.sam metal-single.sam

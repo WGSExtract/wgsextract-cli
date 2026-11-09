@@ -92,7 +92,7 @@ awk 'BEGIN {
     }
 }' | cat tiny.fq - > chunks.fq
 tiny_bases=$(awk 'NR % 4 == 2 { n += length($0) } END { print n }' tiny.fq)
-"$aligner" mem -t 1 -K "$tiny_bases" tiny.fa chunks.fq > cpu-chunks.sam 2> cpu-chunks.log
+"$aligner" --cpu-upstream mem -t 1 -K "$tiny_bases" tiny.fa chunks.fq > cpu-chunks.sam 2> cpu-chunks.log
 "$aligner" --gpu-policy all --metal mem -t 1 -K "$tiny_bases" tiny.fa chunks.fq \
     > metal-chunks.sam 2> metal-chunks.log
 same cpu-chunks.sam metal-chunks.sam
@@ -108,7 +108,7 @@ grep -q 'concurrent_parity=exact' concurrent-parity.log
 
 # Regression: cached GPU intervals must preserve full SAM output, including
 # overlength/repetitive fallbacks, single-worker execution and partial chunks.
-"$aligner" mem -t 1 -K 10000 reference.fa reads.fq > cpu-edges.sam 2> cpu-edges.log
+"$aligner" --cpu-upstream mem -t 1 -K 10000 reference.fa reads.fq > cpu-edges.sam 2> cpu-edges.log
 "$aligner" --gpu-policy all --metal mem -t 1 -K 10000 reference.fa reads.fq \
     > metal-edges.sam 2> metal-edges.log
 same cpu-edges.sam metal-edges.sam
@@ -122,7 +122,7 @@ grep -Eq 'gpu_batches=[1-9][0-9]* .*located_rows=0 ' seeds-only.log
 
 # -c changes how many rows mem_chain visits and how it steps through repeats.
 for occ in 1 7 50; do
-    "$aligner" mem -t 2 -c "$occ" -K 20000 reference.fa reads.fq > "cpu-c$occ.sam" \
+    "$aligner" --cpu-upstream mem -t 2 -c "$occ" -K 20000 reference.fa reads.fq > "cpu-c$occ.sam" \
         2> "cpu-c$occ.log"
     "$aligner" --gpu-policy all --gpu-batch 300 --metal mem -t 2 -c "$occ" -K 20000 \
         reference.fa reads.fq > "metal-c$occ.sam" 2> "metal-c$occ.log"
@@ -177,7 +177,7 @@ awk 'BEGIN {
         printf "@pair%d/2\n%s\n+\n%s\n", p, mate, quality > "pairs-R2.fq"
     }
 }'
-"$aligner" mem -t 3 reference.fa pairs-R1.fq pairs-R2.fq > cpu-pairs.sam 2> cpu-pairs.log
+"$aligner" --cpu-upstream mem -t 3 reference.fa pairs-R1.fq pairs-R2.fq > cpu-pairs.sam 2> cpu-pairs.log
 "$aligner" --gpu-policy all --gpu-batch 64 --metal mem -t 3 reference.fa pairs-R1.fq \
     pairs-R2.fq > metal-pairs.sam 2> metal-pairs.log
 same cpu-pairs.sam metal-pairs.sam
@@ -189,7 +189,7 @@ grep -Eq 'located_rows=[1-9][0-9]* locate_misses=0( |$)' metal-pairs.log
 same cpu-pairs.sam metal-pairs-dense.sam
 grep -q 'locate_dense shift=4 built=1 ' metal-pairs-dense.log
 
-"$aligner" mem -t 3 -K 20000 -k 11 -r 1.1 -s 5 -y 0 reference.fa reads.fq \
+"$aligner" --cpu-upstream mem -t 3 -K 20000 -k 11 -r 1.1 -s 5 -y 0 reference.fa reads.fq \
     > cpu-options.sam 2> cpu-options.log
 "$aligner" --metal mem -t 3 -K 20000 -k 11 -r 1.1 -s 5 -y 0 reference.fa reads.fq \
     > metal-options.sam 2> metal-options.log
@@ -198,7 +198,7 @@ same cpu-options.sam metal-options.sam
 grep -Eq 'gpu_batches=[0-9]+ ' metal-options.log
 
 # A 64-bit -y value must use upstream collection, not silently narrow to 32 bits.
-"$aligner" mem -t 3 -y 2147483648 tiny.fa tiny.fq > cpu-wide.sam 2> cpu-wide.log
+"$aligner" --cpu-upstream mem -t 3 -y 2147483648 tiny.fa tiny.fq > cpu-wide.sam 2> cpu-wide.log
 "$aligner" --metal mem -t 3 -y 2147483648 tiny.fa tiny.fq \
     > metal-wide.sam 2> metal-wide.log
 same cpu-wide.sam metal-wide.sam
@@ -210,7 +210,7 @@ status=0
     > failed-metal.sam 2> failed-metal.log || status=$?
 test "$status" -eq 1
 grep -q 'Metal execution failed (alignments were completed on the CPU)' failed-metal.log
-"$aligner" mem -t 3 -K 20000 reference.fa reads.fq > cpu-default.sam 2> cpu-default.log
+"$aligner" --cpu-upstream mem -t 3 -K 20000 reference.fa reads.fq > cpu-default.sam 2> cpu-default.log
 same cpu-default.sam failed-metal.sam
 "$aligner" --gpu-inject-failure --backend auto mem -t 3 -K 20000 reference.fa reads.fq \
     > failed-auto.sam 2> failed-auto.log

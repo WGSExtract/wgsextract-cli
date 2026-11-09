@@ -156,7 +156,7 @@ fi
 run() {
     name=$1
     shift
-    "$aligner" mem "$@" reference.fa pairs-R1.fq pairs-R2.fq > "cpu-$name.sam" 2> "cpu-$name.log"
+    "$aligner" --cpu-upstream mem "$@" reference.fa pairs-R1.fq pairs-R2.fq > "cpu-$name.sam" 2> "cpu-$name.log"
     "$aligner" --gpu-policy all --gpu-rescue-batch 7 --metal mem "$@" reference.fa \
         pairs-R1.fq pairs-R2.fq > "metal-$name.sam" 2> "metal-$name.log"
     same "cpu-$name.sam" "metal-$name.sam"
@@ -166,7 +166,7 @@ run() {
 # Each GPU result is compared with upstream ksw_align2 for the same inputs.
 "$aligner" --gpu-policy all --gpu-rescue-batch 7 --gpu-rescue-verify --metal mem -t 4 \
     reference.fa pairs-R1.fq pairs-R2.fq > verify.sam 2> verify.log
-"$aligner" mem -t 4 reference.fa pairs-R1.fq pairs-R2.fq > cpu.sam 2> cpu.log
+"$aligner" --cpu-upstream mem -t 4 reference.fa pairs-R1.fq pairs-R2.fq > cpu.sam 2> cpu.log
 same cpu.sam verify.sam
 # Rescue windows cover every orientation BWA infers from the pairs.
 for orientation in FF FR RF; do
@@ -237,7 +237,7 @@ awk 'BEGIN {
         printf "@sat%d/2\n%s\n+\n%s\n", p, two, q2 > "sat-R2.fq"
     }
 }'
-"$aligner" mem -t 4 -k 160 -B 120 -I 400,40 reference.fa sat-R1.fq sat-R2.fq \
+"$aligner" --cpu-upstream mem -t 4 -k 160 -B 120 -I 400,40 reference.fa sat-R1.fq sat-R2.fq \
     > cpu-saturate.sam 2> cpu-saturate.log
 "$aligner" --gpu-policy all --metal mem -t 4 -k 160 -B 120 -I 400,40 reference.fa \
     sat-R1.fq sat-R2.fq > metal-saturate.sam 2> metal-saturate.log
