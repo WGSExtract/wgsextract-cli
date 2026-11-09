@@ -137,6 +137,15 @@ once), sorts alignments by pointer and unpacks reference bases with NEON. Each
 gives upstream's exact results; on the 5M HG002 pairs below they cut the time
 by a third.
 
+From 0.9.0, `wgse-bwa`'s CPU backend (and `--metal`'s CPU threads) extends seeds with a
+NEON version of `ksw_extend2` that gives upstream's exact results whenever the
+scores fit 16 bits (upstream's code runs otherwise). Its CPU backend also maps
+each chunk 8 pairs at a time: it collects the SMEM intervals of all their reads
+at once, each read's FM-index walk prefetching the occurrence blocks of its next
+step while the other reads step, then locates all their seeds in one
+interleaved suffix-array walk. Each read's seeds are upstream's, in upstream's
+order. On the 5M HG002 pairs below 0.9.0 takes 27% less time than 0.8.0.
+
 From 0.5.0, `wgse-bwa-mem2`'s CPU backend does the same with its own exact
 replacements: it collects each read's SMEMs in all three passes with up to 16
 reads stepping in turn (prefetching each step's occurrence-table lines, and
@@ -587,6 +596,16 @@ agents' builds kept the load average between 7 and 100 during both arms. A
 profile of 0.7.1 on the first 200k pairs had put 32% of the CPU time in mate
 rescue (28% in `ksw_u8`), 22% in suffix-array locate (`bwt_sa`), 19% in SMEM
 collection and 19% in seed extension (`ksw_extend2`).
+
+`wgse-bwa` 0.9.0's CPU backend adds the NEON seed extension and the
+interleaved seeding described under Usage. Three interleaved rounds on the same
+data (9 threads, `-K 10000000`, AC power, each run started after the machine
+had cooled to nominal thermal pressure, which then held throughout) took
+246.4 s (246.4, 245.1 and 246.9 s) against 339.2 s for 0.8.0 (339.3, 339.2 and
+336.5 s): 27.4% less, faster in each round, with 27% less CPU time (2157
+against 2949 s). The NEON extension alone took 286.2 s (15.6% less than 0.8.0).
+On one thread, collecting the SMEM intervals of 10,000 reads took 38% less time
+with the interleaved walks than with upstream's.
 
 On hs38 BWA's time splits roughly into SMEM collection (19%), suffix-array
 locate (23%) and extension with mate rescue (45%). `--metal` 0.2.0 moved only
