@@ -92,9 +92,16 @@ wgsextract realign \
   folder.
 - The output goes to the current folder unless `--outdir` says otherwise.
 - Chunks and resuming work as for a local file. The step journal recognises
-  the input by the server's `ETag` (or its size and `Last-Modified`), so a
-  rerun skips an unchanged input and redoes a changed one.
+  the input by the server's `ETag` or `Last-Modified`, so a rerun skips an
+  unchanged input and redoes a changed one. A server sending neither gets no
+  reuse: a rerun starts over.
 - A dropped connection fails the chunk it was in; rerun to resume there.
+  Failing to download the index stops the run too. Only a missing index
+  (404, or S3's 403) makes the run align in one pass.
+- The URL must be public: one with a query string or credentials (a signed
+  URL) is refused, so no token reaches the manifest, the journal or a log.
+- samtools must read http(s): its htslib needs libcurl, which the Windows
+  build lacks.
 - Short reads are refused: their realignment collates the input, which needs
   a local file. The local server (`wgsextract serve`) refuses URLs, which it
   would otherwise fetch on any caller's behalf.

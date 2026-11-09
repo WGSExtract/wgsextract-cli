@@ -59,7 +59,9 @@ from wgsextract_cli.core.reference_assets import (
     resolve_reference_library,
 )
 from wgsextract_cli.core.remote_input import (
+    check_url,
     fetch_index,
+    index_files,
     input_size,
     is_url,
     remote_file,
@@ -412,6 +414,7 @@ def _single_end_pacbio(input_path: str, cram_opt: list[str]) -> str | None:
 def run(params: RealignParams) -> None:
     job = RealignJob.of(params)
     if is_url(job.input):
+        check_url(job.input)
         remote_file(job.input)  # Reachable, or an error naming it.
     else:
         verify_paths_exist({"--input": job.input})
@@ -461,6 +464,8 @@ def run(params: RealignParams) -> None:
         Path.cwd() if is_url(job.input) else absolute_path(job.input).parent
     )
     Path(outdir).mkdir(parents=True, exist_ok=True)
+    # The alignment writes here too, not beside a URL's path.
+    job.outdir = outdir
 
     policy = resume_policy(params)
     if job.r1:
@@ -767,8 +772,10 @@ def _realign_long_reads(
     # Only now that the align step is recorded: a run killed before keeps
     # the chunks' finished state, so its rerun doesn't realign them.
     shutil.rmtree(workdir, ignore_errors=True)
-    if chunk_input and chunk_input != job.input:
-        Path(chunk_input.partition("##idx##")[2]).unlink(missing_ok=True)
+    if is_url(job.input):
+        # Downloaded by this run or an interrupted one, chunked or not.
+        for index in index_files(job.input, outdir):
+            index.unlink(missing_ok=True)
     if job.keep_fastq:
         current_result().add_output(fastq, "fastq_r1")
 

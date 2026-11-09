@@ -4,25 +4,33 @@ htslib reads a remote alignment by byte range, so realign can align a
 public whole-genome CRAM without a local copy. Only its index is downloaded,
 beside the output, and given to samtools as ``URL##idx##INDEX``: htslib
 would otherwise drop it into the current directory.
+
+URLs are public ones: a query string, fragment or credentials (a signed
+URL's token) is refused, so none reaches a manifest, a journal or a log, and
+the URL's path names the file's format.
 """
 
 from __future__ import annotations
 
 import hashlib
 import logging
+import uuid
 from dataclasses import dataclass
+from functools import lru_cache
 from os import fspath
 from pathlib import Path
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from wgsextract_cli.core.atomic_output import atomic_write
 from wgsextract_cli.core.paths import PathInput
-from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 
 _TIMEOUT = 60
 _INDEX_SUFFIXES = {".cram": (".crai",), ".bam": (".bai", ".csi")}
+# An index is a few MB even for a whole genome; more is the wrong file.
+_MAX_INDEX_BYTES = 256 * 1024**2
 
 
 def is_url(path: PathInput | None) -> bool:
@@ -32,10 +40,36 @@ def is_url(path: PathInput | None) -> bool:
     return urlsplit(fspath(path)).scheme.lower() in {"http", "https"}
 
 
+def check_url(url: str) -> None:
+    """Refuse a URL realign can't use: one with a query, fragment or
+    credentials, or not naming a BAM/CRAM, or when samtools can't read
+    http(s) (built without libcurl, as on Windows)."""
+    parts = urlsplit(url)
+    if parts.query or parts.fragment or parts.username or parts.password:
+        raise UsageError(
+            "Give a public http(s) URL of the BAM/CRAM without a query string "
+            "or credentials (signed URLs aren't supported)."
+        )
+    if Path(parts.path).suffix.lower() not in _INDEX_SUFFIXES:
+        raise UsageError(f"{url} doesn't name a .bam or .cram file.")
+    if not _samtools_reads_urls():
+        raise WGSExtractError(
+            "This samtools can't read http(s) URLs (its htslib was built "
+            "without libcurl). Download the file and realign the local copy."
+        )
+
+
+@lru_cache(maxsize=1)
+def _samtools_reads_urls() -> bool:
+    version = run_command(["samtools", "--version"], capture_output=True).stdout
+    return "libcurl=yes" in version
+
+
 @dataclass(frozen=True)
 class RemoteFile:
-    """A remote file's size and a fingerprint that changes with its content
-    (its ETag, else its size and modification time)."""
+    """A remote file's size and a fingerprint that changes with its content:
+    its ETag, else its size and modification time. Without either, every
+    look gets a new fingerprint: the file is never assumed unchanged."""
 
     url: str
     size: int
@@ -48,11 +82,19 @@ def remote_file(url: str) -> RemoteFile:
         with urlopen(Request(url, method="HEAD"), timeout=_TIMEOUT) as response:
             headers = response.headers
     except (URLError, OSError, ValueError) as error:
-        raise WGSExtractError(f"Can't reach {_shown(url)}: {error}") from error
+        raise WGSExtractError(f"Can't reach {url}: {error}") from error
     size = int(headers.get("Content-Length") or 0)
-    identity = headers.get("ETag") or f"{size}:{headers.get('Last-Modified', '')}"
-    digest = hashlib.sha256(f"{url}\n{identity}".encode()).hexdigest()
-    return RemoteFile(url, size, f"url:{digest}")
+    validator = headers.get("ETag") or headers.get("Last-Modified")
+    if validator:
+        identity = f"{url}\n{size}\n{validator}"
+    else:
+        logging.warning(
+            "%s has no ETag or Last-Modified: a rerun can't tell whether it "
+            "changed, so it won't reuse work done on it.",
+            url,
+        )
+        identity = uuid.uuid4().hex
+    return RemoteFile(url, size, "url:" + hashlib.sha256(identity.encode()).hexdigest())
 
 
 def input_size(path: str) -> int:
@@ -60,19 +102,31 @@ def input_size(path: str) -> int:
     return remote_file(path).size if is_url(path) else Path(path).stat().st_size
 
 
+def index_files(url: str, directory: PathInput) -> list[Path]:
+    """Where fetch_index may save the URL's index in ``directory``."""
+    path = Path(urlsplit(url).path)
+    suffixes = _INDEX_SUFFIXES.get(path.suffix.lower(), ())
+    return [Path(directory) / f".{path.name}{suffix}" for suffix in suffixes]
+
+
 def fetch_index(url: str, directory: PathInput) -> str | None:
     """Download the remote alignment's index (``URL.crai``, ``.bai`` or
-    ``.csi``) into ``directory``; None when it has none."""
-    suffix = Path(urlsplit(url).path).suffix.lower()
-    name = Path(urlsplit(url).path).name
-    for index in _INDEX_SUFFIXES.get(suffix, ()):
+    ``.csi``) into ``directory``; None when the server has none (404, or
+    S3's 403). Other failures raise: a rerun can still use the index."""
+    for local in index_files(url, directory):
+        address = url + local.name.removeprefix("." + Path(urlsplit(url).path).name)
         try:
-            with urlopen(url + index, timeout=_TIMEOUT) as response:
-                data = response.read()
+            with urlopen(address, timeout=_TIMEOUT) as response:
+                data = response.read(_MAX_INDEX_BYTES + 1)
+        except HTTPError as error:
+            if error.code in (403, 404):
+                logging.debug("No index at %s: %s", address, error)
+                continue
+            raise WGSExtractError(f"Can't download {address}: {error}") from error
         except (URLError, OSError, ValueError) as error:
-            logging.debug("No index at %s%s: %s", _shown(url), index, error)
-            continue
-        local = Path(directory) / f".{name}{index}"
+            raise WGSExtractError(f"Can't download {address}: {error}") from error
+        if len(data) > _MAX_INDEX_BYTES:
+            raise WGSExtractError(f"{address} is too large to be an index.")
         atomic_write(local, data)
         return str(local)
     return None
@@ -81,9 +135,3 @@ def fetch_index(url: str, directory: PathInput) -> str | None:
 def with_index(url: str, index: str) -> str:
     """The URL with its local index, as htslib opens it."""
     return f"{url}##idx##{index}"
-
-
-def _shown(url: str) -> str:
-    """The URL without query or credentials, for messages."""
-    parts = urlsplit(url)
-    return f"{parts.scheme}://{parts.hostname or ''}{parts.path}"
