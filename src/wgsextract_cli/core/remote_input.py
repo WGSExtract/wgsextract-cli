@@ -17,10 +17,11 @@ import logging
 import uuid
 from dataclasses import dataclass
 from functools import lru_cache
+from http.client import HTTPException
 from os import fspath
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from wgsextract_cli.core.atomic_output import atomic_write
@@ -55,9 +56,11 @@ def shown(url: str) -> str:
     """The URL without credentials, query or fragment, for records and
     messages."""
     parts = urlsplit(url)
-    host = parts.hostname or ""
-    port = f":{parts.port}" if parts.port else ""
-    return f"{parts.scheme}://{host}{port}{parts.path}"
+    # The netloc as written (an IPv6 host keeps its brackets; a bad port
+    # isn't parsed), minus any credentials.
+    return urlunsplit(
+        (parts.scheme, parts.netloc.rsplit("@", 1)[-1], parts.path, "", "")
+    )
 
 
 def check_url(url: str) -> None:
@@ -96,7 +99,7 @@ def remote_file(url: str) -> RemoteFile:
     try:
         with urlopen(Request(url, method="HEAD"), timeout=_TIMEOUT) as response:
             headers = response.headers
-    except (URLError, OSError, ValueError) as error:
+    except (URLError, OSError, ValueError, HTTPException) as error:
         raise WGSExtractError(f"Can't reach {shown(url)}: {error}") from error
     size = int(headers.get("Content-Length") or 0)
     validator = headers.get("ETag") or headers.get("Last-Modified")
@@ -139,7 +142,7 @@ def fetch_index(url: str, directory: PathInput) -> str | None:
                 logging.debug("No index at %s: %s", address, error)
                 continue
             raise WGSExtractError(f"Can't download {address}: {error}") from error
-        except (URLError, OSError, ValueError) as error:
+        except (URLError, OSError, ValueError, HTTPException) as error:
             raise WGSExtractError(f"Can't download {address}: {error}") from error
         if len(data) > _MAX_INDEX_BYTES:
             raise WGSExtractError(f"{address} is too large to be an index.")

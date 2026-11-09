@@ -688,3 +688,20 @@ def test_a_signed_url_leaks_its_token_nowhere(tmp_path, ont):
             assert SECRET not in failed.value.result.to_json()
     assert _files_mentioning(tmp_path, SECRET) == []
     assert _files_mentioning(state_directory(), SECRET) == []
+
+
+@needs_tools("samtools")
+@needs_url_samtools
+@pytest.mark.parametrize(
+    "url",
+    ["http://[::1]:9/x.cram", "http://127.0.0.1:99999/x.cram", "http://h:abc/x.cram"],
+    ids=["ipv6", "port-out-of-range", "port-not-a-number"],
+)
+def test_an_unreachable_url_is_named_as_written(tmp_path, ont, url):
+    """#580 review: the URL shown in records and errors was rebuilt from its
+    host and port, dropping an IPv6 host's brackets, and a malformed port
+    escaped as a bare ValueError instead of "Can't reach"."""
+    with pytest.raises(WGSExtractError) as error:
+        run_wgsextract("realign", "--input", url, "--ref", ont["ref"],
+                       "--outdir", str(tmp_path / "out"))  # fmt: skip
+    assert f"Can't reach {url}" in str(error.value)
