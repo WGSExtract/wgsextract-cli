@@ -209,7 +209,15 @@ test("WGSExtract exposes genome library controls in TypeScript", async () => {
   assert.equal(settingsPage.sidebarPlacement, "bottom");
   const libraryPaths = library.sections.find((section) => section.id === "library-paths");
   assert.ok(libraryPaths, "library paths section exists");
-  const genomeLibraryControl = libraryPaths.controls.find((control) => control.id === "genome_library");
+  assert.ok(libraryPaths.controls.find((control) => control.id === "ref_path"), "reference data path control exists");
+  const genomesPage = bundle.manifest.pages.find((page) => page.id === "reference-genomes");
+  assert.ok(genomesPage, "reference genomes page exists");
+  assert.equal(genomesPage.sidebarPlacement, "bottom");
+  assert.ok(genomesPage.sections.find((section) => section.id === "genome-management"), "genome management moved to Reference Genomes");
+  assert.ok(!library.sections.some((section) => section.id === "genome-management"));
+  const genomePaths = genomesPage.sections.find((section) => section.id === "genome-paths");
+  assert.equal(genomePaths.title, "Library Paths");
+  const genomeLibraryControl = genomePaths.controls.find((control) => control.id === "genome_library");
   assert.ok(genomeLibraryControl, "genome library path control exists");
   assert.equal(genomeLibraryControl.kind, "path");
 
@@ -292,7 +300,7 @@ test("WGSExtract exposes genome library controls in TypeScript", async () => {
     .sections.find((section) => section.id === "microarray-inputs")
     .controls.find((control) => control.id === "ref_fasta");
   assert.equal(microarrayRefControl.kind, "dropdown");
-  assert.equal(microarrayRefControl.emptyText, "None loaded. See Library page to add.");
+  assert.equal(microarrayRefControl.emptyText, "None loaded. See Reference Genomes page to add.");
   // The library folder, like the other reference dropdowns: the selected FASTA
   // is not a library, so with it the list emptied once a genome was chosen.
   assert.deepEqual(microarrayRefControl.dataSource.arguments, ["options", "{{ref_path}}"]);

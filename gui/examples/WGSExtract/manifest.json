@@ -133,6 +133,7 @@
     "workflows.json",
     "annotate.json",
     "library.json",
+    "reference-genomes.json",
     "settings.json"
   ]
 }
