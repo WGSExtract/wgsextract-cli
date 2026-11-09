@@ -157,6 +157,85 @@ Older Windows installs used a `tool_runtime` setting (`windows`, `pacman`,
 `wsl`, `cygwin` or `msys2`) and `pacman_ucrt64_bin`. The CLI now ignores these
 settings, and drops them from `config.toml` the next time it saves it. Rerun
 `install_windows.bat` to get the native tools.
+
+## Release test on Windows 11 (v0.8.5)
+
+v0.8.5 was tested end to end on a fresh Azure Windows 11 Pro 25H2 VM
+(build 26200, Standard_D16ads_v5: 16 vCPUs, 64 GiB RAM, local NVMe `D:`) in
+[#554](https://github.com/WGSExtract/wgsextract-cli/issues/554), as a standard
+user with no tools preinstalled.
+
+- **CLI install.** The release's source zip and `install_windows.bat` took 123 s
+  and exited 0.
+- **CLI smoke test.** 49 steps covering every command family on the small
+  `hg19-mini` HG00096 data: `info`, `extract`, `microarray`, `lineage`, `bam`,
+  `qc`, `align`, `realign`, `vcf snp`/`indel`/`gatk`/`annotate`/`filter`/`table`,
+  `report` and `report-issue`. All behaved as expected, including the documented
+  refusals of DeepVariant, FreeBayes and VEP on native Windows. Only
+  `lineage y-haplogroup` and `lineage y-str` failed, as they do on Linux: the
+  mini reference's 500 kb chrY has no Yleaf markers or Y-STRs.
+- **Server mode.** `wgsextract serve` answered `/v1/health`, refused requests
+  without the token (401) and paths outside `--allow` (403), and ran an `info`
+  job to completion.
+- **Desktop app.** The Install Lab installed the v0.8.5 app, ran first-run setup
+  by itself (87 s) and passed all 15 planned actions: mtDNA haplogroup H16a1 as
+  published, 88.3% recall of the published chr20 SNPs, 93.6% GATK precision and
+  99.81% of reads mapped by `align`. The *Report a problem* preview was redacted.
+  Uninstalling asked whether to delete the workspace: answering Yes removed it,
+  answering No kept it, and both removed the runtime and app data. The installer
+  is unsigned, as documented.
+- **Auto-update.** The v0.6.6 app found v0.8.5 through the bridge release in
+  `gui-for-cli-outdated`, verified its signature, installed it and relaunched as
+  0.8.5 within about 30 s. A silent uninstall (`/S`) kept the workspace.
+- **30x genome.** HG002 NovaSeq PCR-free 30x GRCh38 BAM (GIAB), realigned to
+  `hs38` with the default settings (16 threads):
+
+  | step | time |
+  | --- | --- |
+  | download the 30x BAM (curl) | 5 min |
+  | `ref library --install hs38` | 44 s |
+  | `realign` (builds the BWA index first: none ships for hs38) | 8 h 31 min |
+  | `info` on the realigned BAM | 2 s |
+  | `vcf snp` | 2 h 48 min |
+  | `vcf indel` | 3 h 3 min |
+
+  `realign` used `bwa`, because there is no bwa-mem2 index for hs38. Unpacking
+  the reads took 23 min and building the BWA index 58 min; aligning and sorting
+  took the remaining 7 h 10 min. 99.70% of the reads mapped and 97.76% were
+  properly paired.
+
+  Memory peaked at 35.8 GiB in use (the preflight estimate was 40.0 GiB), with
+  `samtools` the largest process at 23.2 GiB. At its lowest, `D:` had 198 GiB
+  less free space than before the download, counting the 40.7 GiB input BAM;
+  the `realign` preflight had estimated 210 GiB. The realigned BAM is 37.2 GiB.
+  The calling steps used under 6 GiB of memory.
+
+  `vcf snp` called 4.41 million SNPs (3.91 million with QUAL ≥ 30 and depth ≥ 10,
+  Ti/Tv 1.99) and `vcf indel` 0.92 million indels (0.84 million with
+  QUAL ≥ 30 and depth ≥ 10).
+
+  v0.8.5 called `vcf snp` and `vcf indel` in a single bcftools stream on one
+  core. After v0.8.5,
+  [#560](https://github.com/WGSExtract/wgsextract-cli/pull/560) made them call
+  contigs in parallel by default when `--threads` is above 1. The "Expected
+  Wait" warning said 21 minutes for each
+  ([#583](https://github.com/WGSExtract/wgsextract-cli/issues/583)).
+
+Bugs found and fixed:
+
+- [#558](https://github.com/WGSExtract/wgsextract-cli/pull/558): a
+  `config.toml` saved with a UTF-8 byte-order mark (as Windows PowerShell 5's
+  `Set-Content -Encoding utf8` writes it) was rejected as invalid TOML.
+- [#568](https://github.com/WGSExtract/wgsextract-cli/pull/568): `serve` printed
+  `ConnectionResetError` tracebacks when a client dropped a keep-alive
+  connection.
+- [#571](https://github.com/WGSExtract/wgsextract-cli/pull/571): the
+  `report-issue` preview redacted generic file names such as `result` and tool
+  names such as `gatk` as if they were sample names.
+- [#572](https://github.com/WGSExtract/wgsextract-cli/pull/572): the Install Lab
+  did not find the uninstaller's workspace question on Windows 11 25H2, which
+  shows it as a child window of the wizard.
+
 # Windows ARM64
 
 Native Windows ARM64 (`win-arm64`) is being qualified separately in
