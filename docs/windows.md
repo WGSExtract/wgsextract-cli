@@ -173,17 +173,22 @@ user with no tools preinstalled.
   `report` and `report-issue`. All behaved as expected, including the documented
   refusals of DeepVariant, FreeBayes and VEP on native Windows. Only
   `lineage y-haplogroup` and `lineage y-str` failed, as they do on Linux: the
-  mini reference's 500 kb chrY has no Yleaf markers or Y-STRs.
+  mini reference's chrY is a 500 kb slice renumbered from position 1, so the
+  hg19 positions these tools look up don't line up with it.
 - **Server mode.** `wgsextract serve` answered `/v1/health`, refused requests
   without the token (401) and paths outside `--allow` (403), and ran an `info`
   job to completion.
 - **Desktop app.** The Install Lab installed the v0.8.5 app, ran first-run setup
-  by itself (87 s) and passed all 15 planned actions: mtDNA haplogroup H16a1 as
-  published, 88.3% recall of the published chr20 SNPs, 93.6% GATK precision and
-  99.81% of reads mapped by `align`. The *Report a problem* preview was redacted.
+  by itself (87 s) and passed all 15 planned actions on the mini genome: mtDNA
+  haplogroup H16a1 as published, 88.3% recall of the published SNPs in its 1 Mb
+  chr20 slice, 93.6% GATK precision in the first 200 kb of that slice and 99.81%
+  of reads mapped by `align`. The *Report a problem* preview was redacted.
   Uninstalling asked whether to delete the workspace: answering Yes removed it,
   answering No kept it, and both removed the runtime and app data. The installer
-  is unsigned, as documented.
+  is unsigned, as documented. Each run passed 24 of 26 checks; the 2 failures
+  came from the test VM, not the app: pixi was already installed by the CLI
+  test, and Store-app folders that come with the Azure image were reported as
+  left behind.
 - **Auto-update.** The v0.6.6 app found v0.8.5 through the bridge release in
   `gui-for-cli-outdated`, verified its signature, installed it and relaunched as
   0.8.5 within about 30 s. A silent uninstall (`/S`) kept the workspace.
@@ -205,9 +210,9 @@ user with no tools preinstalled.
   properly paired.
 
   Memory peaked at 35.8 GiB in use (the preflight estimate was 40.0 GiB), with
-  `samtools` the largest process at 23.2 GiB. At its lowest, `D:` had 198 GiB
-  less free space than before the download, counting the 40.7 GiB input BAM;
-  the `realign` preflight had estimated 210 GiB. The realigned BAM is 37.2 GiB.
+  `samtools` the largest process at 23.2 GiB. `realign` used at most 157 GiB of
+  disk on top of its 40.7 GiB input BAM; its preflight, which leaves out
+  existing inputs, had estimated 210 GiB. The realigned BAM is 37.2 GiB.
   The calling steps used under 6 GiB of memory.
 
   `vcf snp` called 4.41 million SNPs (3.91 million with QUAL ≥ 30 and depth ≥ 10,
@@ -221,7 +226,7 @@ user with no tools preinstalled.
   Wait" warning said 21 minutes for each
   ([#583](https://github.com/WGSExtract/wgsextract-cli/issues/583)).
 
-Bugs found and fixed:
+Bugs found, fixed on `main` after v0.8.5:
 
 - [#558](https://github.com/WGSExtract/wgsextract-cli/pull/558): a
   `config.toml` saved with a UTF-8 byte-order mark (as Windows PowerShell 5's
