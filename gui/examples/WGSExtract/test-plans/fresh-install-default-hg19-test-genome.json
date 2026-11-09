@@ -57,7 +57,7 @@
     {
       "id": "download-hg19",
       "kind": "action",
-      "pageID": "library",
+      "pageID": "reference-genomes",
       "sectionID": "genome-management",
       "controlID": "reference_genomes",
       "actionID": "ref-download",
@@ -67,7 +67,7 @@
         "code": "hg19",
         "final": "hg19.fa.gz",
         "name": "hg19",
-        "ref": "{{bundleWorkspace}}/reference/genomes/hg19.fa.gz",
+        "ref": "{{bundleWorkspace}}/genomes/hg19.fa.gz",
         "source": "UCSC",
         "status": "missing"
       },
@@ -76,7 +76,7 @@
     {
       "id": "verify-hg19",
       "kind": "action",
-      "pageID": "library",
+      "pageID": "reference-genomes",
       "sectionID": "genome-management",
       "controlID": "reference_genomes",
       "actionID": "ref-verify",
@@ -86,7 +86,7 @@
         "code": "hg19",
         "final": "hg19.fa.gz",
         "name": "hg19",
-        "ref": "{{bundleWorkspace}}/reference/genomes/hg19.fa.gz",
+        "ref": "{{bundleWorkspace}}/genomes/hg19.fa.gz",
         "source": "UCSC",
         "status": "installed"
       },
@@ -150,7 +150,7 @@
     {
       "id": "count-hg19-ns",
       "kind": "action",
-      "pageID": "library",
+      "pageID": "reference-genomes",
       "sectionID": "genome-management",
       "controlID": "reference_genomes",
       "actionID": "ref-count-ns",
@@ -160,7 +160,7 @@
         "code": "hg19",
         "final": "hg19.fa.gz",
         "name": "hg19",
-        "ref": "{{bundleWorkspace}}/reference/genomes/hg19.fa.gz",
+        "ref": "{{bundleWorkspace}}/genomes/hg19.fa.gz",
         "source": "UCSC",
         "status": "installed"
       },
@@ -291,7 +291,7 @@
     {
       "id": "realign-cram",
       "kind": "action",
-      "pageID": "info-bam",
+      "pageID": "extract",
       "sectionID": "realign-commands",
       "actionID": "realign",
       "timeoutSeconds": 1800
@@ -299,15 +299,15 @@
     {
       "id": "align-fastq-from-info-page",
       "kind": "action",
-      "pageID": "info-bam",
-      "sectionID": "realign-commands",
+      "pageID": "extract",
+      "sectionID": "fastq-align",
       "actionID": "align",
       "timeoutSeconds": 1800
     },
     {
       "id": "align-fastq-page",
       "kind": "action",
-      "pageID": "fastq",
+      "pageID": "extract",
       "sectionID": "fastq-align",
       "actionID": "align",
       "timeoutSeconds": 1800
@@ -316,7 +316,7 @@
       "id": "fastqc",
       "kind": "action",
       "pageID": "fastq",
-      "sectionID": "fastq-align",
+      "sectionID": "fastq-inputs",
       "actionID": "fastqc",
       "expectedResult": { "status": "ok", "outputs": ["fastqc_report_html", "fastqc_report_zip"] },
       "timeoutSeconds": 600
@@ -325,7 +325,7 @@
       "id": "fastp",
       "kind": "action",
       "pageID": "fastq",
-      "sectionID": "fastq-align",
+      "sectionID": "fastq-inputs",
       "actionID": "fastp",
       "timeoutSeconds": 600
     },
@@ -393,7 +393,7 @@
       "id": "extract-bam-subset",
       "kind": "action",
       "pageID": "extract",
-      "sectionID": "extract-inputs",
+      "sectionID": "extract-more",
       "actionID": "bam-subset",
       "timeoutSeconds": 600
     },
@@ -401,7 +401,7 @@
       "id": "extract-unmapped",
       "kind": "action",
       "pageID": "extract",
-      "sectionID": "extract-inputs",
+      "sectionID": "extract-more",
       "actionID": "unmapped",
       "timeoutSeconds": 600
     },
@@ -409,7 +409,7 @@
       "id": "extract-custom-region",
       "kind": "action",
       "pageID": "extract",
-      "sectionID": "extract-inputs",
+      "sectionID": "extract-more",
       "actionID": "custom",
       "timeoutSeconds": 600
     },
@@ -430,7 +430,7 @@
     {
       "id": "vcf-snp",
       "kind": "action",
-      "pageID": "vcf",
+      "pageID": "extract",
       "sectionID": "variant-calling",
       "actionID": "vcf-snp",
       "inputs": {
@@ -443,7 +443,7 @@
     {
       "id": "vcf-indel",
       "kind": "action",
-      "pageID": "vcf",
+      "pageID": "extract",
       "sectionID": "variant-calling",
       "actionID": "vcf-indel",
       "inputs": {
@@ -456,7 +456,7 @@
     {
       "id": "vcf-sv",
       "kind": "action",
-      "pageID": "vcf",
+      "pageID": "extract",
       "sectionID": "variant-calling",
       "actionID": "vcf-sv",
       "inputs": {
@@ -469,7 +469,7 @@
     {
       "id": "vcf-cnv",
       "kind": "action",
-      "pageID": "vcf",
+      "pageID": "extract",
       "sectionID": "variant-calling",
       "actionID": "vcf-cnv",
       "inputs": {
@@ -482,7 +482,7 @@
     {
       "id": "vcf-freebayes",
       "kind": "action",
-      "pageID": "vcf",
+      "pageID": "extract",
       "sectionID": "variant-calling",
       "actionID": "vcf-freebayes",
       "inputs": {
@@ -495,7 +495,7 @@
     {
       "id": "vcf-gatk",
       "kind": "action",
-      "pageID": "vcf",
+      "pageID": "extract",
       "sectionID": "variant-calling",
       "actionID": "vcf-gatk",
       "inputs": {
@@ -508,7 +508,7 @@
     {
       "id": "vcf-filter",
       "kind": "action",
-      "pageID": "annotate",
+      "pageID": "vcf",
       "sectionID": "vcf-annotation",
       "actionID": "vcf-filter",
       "timeoutSeconds": 300
@@ -516,7 +516,7 @@
     {
       "id": "vcf-filter-gap-aware",
       "kind": "action",
-      "pageID": "annotate",
+      "pageID": "vcf",
       "sectionID": "vcf-annotation",
       "actionID": "vcf-filter-gap-aware",
       "inputs": {
@@ -530,7 +530,7 @@
     {
       "id": "vcf-qc",
       "kind": "action",
-      "pageID": "annotate",
+      "pageID": "vcf",
       "sectionID": "vcf-annotation",
       "actionID": "vcf-qc",
       "timeoutSeconds": 300

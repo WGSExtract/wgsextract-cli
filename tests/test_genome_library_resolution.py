@@ -358,7 +358,7 @@ def test_a_link_out_of_the_library_on_the_way_to_a_genome_is_refused(library, tm
     (outside / "ken" / "ken.bam").write_text("x")
     (library / "people").symlink_to(outside, target_is_directory=True)
 
-    with pytest.raises(WGSExtractError, match="cannot escape genome_library"):
+    with pytest.raises(WGSExtractError, match="cannot escape dataset_library"):
         _select("people/ken", command="info")
 
 
@@ -368,7 +368,7 @@ def test_a_genome_linked_to_the_library_or_above_is_refused(library, target):
     destination = library if target == "library" else library.parent
     (library / "loop").symlink_to(destination, target_is_directory=True)
 
-    with pytest.raises(WGSExtractError, match="cannot escape genome_library"):
+    with pytest.raises(WGSExtractError, match="cannot escape dataset_library"):
         _select("loop", command="info")
 
 

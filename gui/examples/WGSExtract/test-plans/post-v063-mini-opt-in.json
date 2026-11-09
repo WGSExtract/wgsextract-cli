@@ -2,11 +2,11 @@
   "name": "CLI v0.6.4 opt-in features - run after the baseline hg19 mini plan and bundle bump",
   "inputs": {
     "fieldValues": {
-      "bam_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.bam",
-      "ref_fasta": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
+      "bam_path": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.bam",
+      "ref_fasta": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
       "ref_path": "{{bundleWorkspace}}/reference",
       "out_dir": "{{bundleWorkspace}}/output/post-v063",
-      "fastq_r1": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini_R1.fastq.gz",
+      "fastq_r1": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini_R1.fastq.gz",
       "multiqc_directory": "{{bundleWorkspace}}/output"
     }
   },
@@ -16,10 +16,10 @@
       "kind": "action",
       "pageID": "info-bam",
       "sectionID": "info-commands",
-      "actionID": "coverage-bins",
+      "actionID": "calculate-coverage",
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
+          "ref_path": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
         }
       },
       "timeoutSeconds": 1800
@@ -28,7 +28,7 @@
       "id": "unmapped-with-fastqs",
       "kind": "action",
       "pageID": "extract",
-      "sectionID": "extract-inputs",
+      "sectionID": "extract-more",
       "actionID": "unmapped",
       "inputs": {
         "checkedOptions": {
@@ -41,7 +41,7 @@
       "id": "fastqc-for-aggregation",
       "kind": "action",
       "pageID": "fastq",
-      "sectionID": "fastq-align",
+      "sectionID": "fastq-inputs",
       "actionID": "fastqc",
       "timeoutSeconds": 1800
     },

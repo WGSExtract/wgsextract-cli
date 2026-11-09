@@ -161,6 +161,9 @@ class BundleSandbox:
         return str(path)
 
     def _representative_values(self) -> dict[str, str]:
+        return self._control_values() | self._explicit_values()
+
+    def _explicit_values(self) -> dict[str, str]:
         data = self.root / "data"
         fasta = self._file("reference/genomes/hs38.fa.gz")
         bam = self._file("genomes/sample/sample.bam")
@@ -247,9 +250,124 @@ class BundleSandbox:
             "vcf_table_no_sqlite": "--no-sqlite",
             "report_last_failed": "--last-failed",
             "report_description": "It stopped",
+            # The Advanced-mode options.
+            "align_platform": "illumina",
+            "alphamissense_min_score": "0.5",
+            "annotation_build": "hg38",
+            "bam_region": "chrM",
+            "batch_directory": str(data / "genomes"),
+            "cadd_file": self._file("reference/cadd.tsv.gz"),
+            "chain_annotations": "clinvar,revel",
+            "chip_file": self._file("manifests/chip.txt"),
+            "clinvar_file": self._file("reference/clinvar.vcf.gz"),
+            "cnv_ploidy": "2",
+            "comp_vcf_inputs": vcf,
+            "coverage_by": self._file("reference/targets.bed"),
+            "coverage_region": "chrY:10000-20000",
+            "deepvariant_no_resume": "--no-resume",
+            "deps_tool": "samtools",
+            "example_tag": "smallest",
+            "extract_gene": "BRCA1",
+            "fasta_region": "chrM",
+            "gatk_gpu": "--gpu",
+            "gerp_file": self._file("reference/gerp.bw"),
+            "gnomad_file": self._file("reference/gnomad.vcf.gz"),
+            "gnomad_release": "4.1",
+            "haplogrep_tree": "phylotree-rcrs",
+            "hla_index": self._file("reference/hla.idx"),
+            "info_table_format": "tsv",
+            "lineage_build": "hg38",
+            "methylation_format": "tsv",
+            "microarray_sample": "sample",
+            "panel_genes": "CYP2D6,HLA-A",
+            "pharmcat_dir": str(data / "tools" / "pharmcat"),
+            "phase_region": "chrM",
+            "phylop_file": self._file("reference/phylop.tsv.gz"),
+            "qc_min_depth": "10",
+            "realign_format": "CRAM",
+            "ref_index_aligner": "bwa",
+            "ref_url": "https://example.org/genome.fa.gz",
+            "repair_bam_output": str(data / "output" / "fixed.bam"),
+            "repair_vcf_output": str(data / "output" / "fixed.vcf.gz"),
+            "report_title": "It stopped early",
+            "report_workspace": str(data / "genomes" / "sample"),
+            "revel_file": self._file("reference/revel.tsv.gz"),
+            "sample_workspace": str(data / "genomes" / "sample"),
+            "sign_manifest": self._file("output/manifest.json"),
+            "sign_path": vcf,
+            "str_catalog": self._file("reference/str_catalog.json"),
+            "sv_caller": "delly",
+            "trio_mode": "denovo",
+            "trio_vcf_input": vcf,
+            "ubam_sample": "sample",
+            "vcf_annotate_cols": "ID,INFO/HG",
+            "vcf_table_format": "tsv",
+            "vep_assembly": "GRCh38",
+            "vep_species": "homo_sapiens",
+            "ybrowse_snapshot": self._file("reference/ybrowse.vcf.gz"),
+            "yleaf_base_majority": "90",
+            "yleaf_base_quality": "20",
+            "yleaf_min_reads": "10",
+            "yleaf_min_score": "0.95",
+            "ystr_min_fraction": "0.6",
+            "ystr_min_mapq": "20",
+            "ystr_min_reads": "2",
+            "trio_min_depth": "15",
+            "vep_cache_version": "116",
+            "vep_region": "chrM",
+            "vep_ploidy": "human",
+            "align_sample": "sample",
+            "realign_sample": "sample",
+            "deepvariant_batch_size": "256",
+            "panel_pad_kb": "100",
+            "ubam_library": "lib1",
+            "basecall_model": "sup",
+            "basecall_modified_bases": "5mCG_5hmCG",
+            "basecall_device": "cpu",
+            "coverage_min_depth": "30",
+            "bam_gene": "BRCA1",
+            "unalign_se": str(data / "output" / "single.fastq.gz"),
+            "merge_output": str(data / "output" / "merged.bam"),
+            "merge_sample": "sample",
+            "vep_version": "116",
+            "microarray_region": "chrM",
+            "report_log_lines": "40",
+            "report_max_url_length": "8000",
+            "gnomad_max_af": "0.01",
+            "revel_min_score": "0.5",
+            "cadd_min_score": "20",
+            "gerp_min_score": "2.0",
+            "phylop_min_score": "2.0",
+            "confidence_depth_low": "10",
+            "confidence_depth_high": "20",
+            "confidence_gq_low": "20",
+            "confidence_gq_high": "30",
+            "fasta_sample": "sample",
+            "report_gene_list": "acmg-sf-3.3",
+            "sign_identity": "user@example.org",
             "lastResultDocumentPath": str(self.bundle / ".last-results" / "last.json"),
             "lastFailedResultDocumentPath": str(self.bundle / ".last-results" / "last-failed.json"),
         }
+
+    def _control_values(self) -> dict[str, str]:
+        """A value for each dropdown, checkbox group and path the pages define:
+        a dropdown's first real option, a checkbox's first flag, and a file or
+        folder. Free-text fields need the explicit values above."""
+        values: dict[str, str] = {}
+        manifest = load_json(BUNDLE / "manifest.json")
+        for page_file in manifest["pages"]:
+            for control in _controls(load_json(BUNDLE / "pages" / page_file)):
+                name, kind = control["id"], control.get("kind")
+                options = [o["id"] for o in control.get("options", []) if o.get("id")]
+                if kind in ("dropdown", "checkboxGroup") and options:
+                    values.setdefault(name, options[0])
+                elif kind == "path" and control.get("pathType") == "directory":
+                    folder = self.root / "data" / "folders" / name
+                    folder.mkdir(parents=True, exist_ok=True)
+                    values.setdefault(name, str(folder))
+                elif kind == "path":
+                    values.setdefault(name, self._file(f"files/{name}.txt"))
+        return values
 
     def render(self, value: str) -> str:
         def replace(match: re.Match[str]) -> str:
@@ -297,14 +415,32 @@ def load_json(path: Path) -> dict:
     return loads_json_with_comments(path.read_text(encoding="utf-8"))
 
 
+def _controls(node: object) -> Iterator[dict]:
+    """Every control (and config setting) with an id and a kind, at any depth."""
+    if isinstance(node, dict):
+        if "id" in node and "kind" in node:
+            yield node
+        for value in node.values():
+            yield from _controls(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _controls(value)
+
+
 def script_name(path: str) -> str:
     return path.replace("{{bundleRoot}}/", "").removeprefix("scripts/")
+
+
+# Option pairs the CLI accepts only one of.
+EXCLUSIVE_FLAGS = (("--tree", "--tree-file"), ("--public-key", "--allowed-signers"))
 
 
 def bundle_commands() -> Iterator[tuple[str, str, list[str]]]:
     """Yield (label, script, arguments) for everything the bundle can run.
 
-    Optional argument groups are always included, so every flag is checked.
+    Optional argument groups are always included, so every flag is checked;
+    a command with both flags of a pair the CLI takes only one of is checked
+    once with each.
     """
     manifest = load_json(BUNDLE / "manifest.json")
     for phase in ("setup", "uninstall"):
@@ -343,16 +479,21 @@ def bundle_commands() -> Iterator[tuple[str, str, list[str]]]:
                 actions += control.get("rowActions", [])
             for action in actions:
                 command = action["command"]
-                arguments = command.get("arguments", []) + [
-                    argument
-                    for group in command.get("optionalArguments", [])
-                    for argument in group
-                ]
-                yield (
-                    f"{label}:{action['id']}",
-                    script_name(command["executable"]),
-                    arguments,
-                )
+                groups = command.get("optionalArguments", [])
+                flags = {group[0] for group in groups if group}
+                pairs = [pair for pair in EXCLUSIVE_FLAGS if set(pair) <= flags]
+                for left_out in [pair[i] for pair in pairs for i in (0, 1)] or [None]:
+                    arguments = command.get("arguments", []) + [
+                        argument
+                        for group in groups
+                        if not group or group[0] != left_out
+                        for argument in group
+                    ]
+                    yield (
+                        f"{label}:{action['id']}" + (f" without {left_out}" if left_out else ""),
+                        script_name(command["executable"]),
+                        arguments,
+                    )
 
 
 class BundleCommandTests(unittest.TestCase):
@@ -409,7 +550,7 @@ class BundleCommandTests(unittest.TestCase):
 
     def test_library_state_forwards_annotation_inputs(self) -> None:
         argv = self.sandbox.run_cli_script(
-            "library-state.sh", ["/ref", "/genomes", "/ann.vcf.gz", "/in.vcf.gz"]
+            "library-state.sh", ["/ref", "/datasets", "/ann.vcf.gz", "/in.vcf.gz"]
         )
         self.assertEqual(
             argv,
@@ -419,8 +560,8 @@ class BundleCommandTests(unittest.TestCase):
                 "--values",
                 "--ref",
                 "/ref",
-                "--genome-library",
-                "/genomes",
+                "--dataset-library",
+                "/datasets",
                 "--annotation-vcf",
                 "/ann.vcf.gz",
                 "--input",

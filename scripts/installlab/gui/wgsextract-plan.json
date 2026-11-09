@@ -38,7 +38,7 @@
     {
       "id": "download_reference",
       "kind": "action",
-      "pageID": "library",
+      "pageID": "reference-genomes",
       "sectionID": "genome-management",
       "controlID": "reference_genomes",
       "actionID": "ref-download",
@@ -48,7 +48,7 @@
         "code": "hs38",
         "final": "hs38.fa.gz",
         "name": "hs38 (Nebula)",
-        "ref": "{{bundleWorkspace}}/reference/genomes/hs38.fa.gz",
+        "ref": "{{bundleWorkspace}}/genomes/hs38.fa.gz",
         "source": "GitHub",
         "status": "missing"
       },
@@ -152,11 +152,16 @@
       "kind": "action",
       "pageID": "extract",
       "sectionID": "extract-inputs",
-      "actionID": "mt-bam",
+      "actionID": "region-mt",
       "timeoutSeconds": 3600,
       "inputs": {
         "fieldValues": {
           "out_dir": "{{bundleWorkspace}}/lab-output/mt_bam"
+        },
+        "checkedOptions": {
+          "extract_formats": [
+            "bam"
+          ]
         }
       }
     },
@@ -165,11 +170,16 @@
       "kind": "action",
       "pageID": "extract",
       "sectionID": "extract-inputs",
-      "actionID": "mito-vcf",
+      "actionID": "region-mt",
       "timeoutSeconds": 3600,
       "inputs": {
         "fieldValues": {
           "out_dir": "{{bundleWorkspace}}/lab-output/mito_vcf"
+        },
+        "checkedOptions": {
+          "extract_formats": [
+            "vcf"
+          ]
         }
       }
     },
@@ -189,7 +199,7 @@
     {
       "id": "snp",
       "kind": "action",
-      "pageID": "vcf",
+      "pageID": "extract",
       "sectionID": "variant-calling",
       "actionID": "vcf-snp",
       "timeoutSeconds": 3600,
@@ -216,7 +226,7 @@
     {
       "id": "align",
       "kind": "action",
-      "pageID": "fastq",
+      "pageID": "extract",
       "sectionID": "fastq-align",
       "actionID": "align",
       "timeoutSeconds": 3600,
@@ -229,7 +239,7 @@
     {
       "id": "gatk",
       "kind": "action",
-      "pageID": "vcf",
+      "pageID": "extract",
       "sectionID": "variant-calling",
       "actionID": "vcf-gatk",
       "timeoutSeconds": 3600,
