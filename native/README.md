@@ -7,7 +7,7 @@ they are qualified on full genomes (#364).
 
 | Executable | Upstream | Notes |
 | --- | --- | --- |
-| `wgse-bwa` | BWA 0.7.19 | Native arm64 build. CPU by default (unmodified upstream code); `--metal` is **experimental**. Low memory: about 6 GB for a human index. |
+| `wgse-bwa` | BWA 0.7.19 | Native arm64 build. CPU by default (upstream code, with some steps replaced by exact faster versions); `--metal` is **experimental**. Low memory: about 6 GB for a human index. |
 | `wgse-bwa-mem2` | BWA-MEM2 2.3 | arm64 build through sse2neon. CPU by default; `--metal` is **experimental**. Needs much more memory than BWA (see below). |
 | `wgse-bwa-mem3` | bwa-mem3 0.16.0 | Self-contained arm64 build of bwa-mem3, a faster BWA-MEM2 descendant that reads the BWA-MEM2 index and can write BWA's or BWA-MEM2's exact records (`--compat`). CPU by default; `--metal` is **experimental**. |
 | `wgse-minimap2` | minimap2 2.31 | arm64 build through sse2neon, with faster index loading and building, seeding and anchor sorting on the CPU. `--metal` (long-read presets) is **experimental**. |
@@ -111,7 +111,8 @@ wgse-minimap2 capabilities --json
 For `wgse-bwa`, `wgse-bwa-mem2` and `wgse-bwa-mem3`, options before the command select the
 backend of `mem` (other commands ignore them):
 
-- default (`--backend cpu`): the upstream CPU code, unchanged;
+- default (`--backend cpu`): the upstream CPU code (in `wgse-bwa` from 0.8.0
+  with some steps replaced by exact faster versions, described below);
 - `--metal` (`--backend metal`): fails if Metal is unusable, and exits 1 if a
   GPU batch fails (the CPU still completes the alignments, so the output is
   complete and correct);
@@ -125,6 +126,14 @@ trades alignments for speed. It is built with upstream's own dependencies
 (htslib, libsais, mimalloc, zlib-ng, libdeflate) linked in, so it needs no
 other libraries. Its `index` builds the suffix array on one thread (upstream
 uses OpenMP, which Apple clang lacks); the files are the same.
+
+From 0.8.0, `wgse-bwa`'s CPU backend also uses the exact replacements its
+`--metal` CPU threads have used since 0.7.0: it locates each read's seeds with
+16 interleaved suffix-array walks, aligns each pair's mate-rescue windows
+together (upstream's 8-bit kernel on up to four windows of the same length at
+once), sorts alignments by pointer and unpacks reference bases with NEON. Each
+gives upstream's exact results; on the 5M HG002 pairs below they cut the time
+by a third.
 
 What runs on the GPU:
 
@@ -536,11 +545,20 @@ machine `wgse-bwa --metal` 0.5.0 was aborted in about half of its full-genome
 runs and then finished on the CPU with exit status 1; 0.7.0 was not aborted in
 any of its 11. Building the hs38 BWA index with 0.5.0 took 41 minutes.
 
-On the CPU `wgse-bwa` matches the packaged build; its value is a
-self-contained, dependency-free macOS build. Compiler tuning does not help:
+On the CPU `wgse-bwa` 0.7.1 matches the packaged build. Compiler tuning does not help:
 Apple clang already targets `apple-m1`, and ThinLTO, full LTO, profile-guided
 optimization and mimalloc each changed the 200k-pair time by about 1% or less,
 and mimalloc changed the full-genome time by 0.4%.
+
+`wgse-bwa` 0.8.0's CPU backend uses the exact replacements described under
+Usage. On the same data, with 9 threads and `-K 10000000`, three interleaved
+rounds on AC power took 363.0 s (363.0, 367.9 and 349.7 s) against 530.5 s for
+0.7.1 (526.4, 547.6 and 530.5 s): 32.8% less, faster in each round, with 29%
+less CPU time (2976 against 4189 s) and the same peak RSS (5.5 GiB). Other
+agents' builds kept the load average between 7 and 100 during both arms. A
+profile of 0.7.1 on the first 200k pairs had put 32% of the CPU time in mate
+rescue (28% in `ksw_u8`), 22% in suffix-array locate (`bwt_sa`), 19% in SMEM
+collection and 19% in seed extension (`ksw_extend2`).
 
 On hs38 BWA's time splits roughly into SMEM collection (19%), suffix-array
 locate (23%) and extension with mate rescue (45%). `--metal` 0.2.0 moved only

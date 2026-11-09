@@ -69,6 +69,51 @@ awk 'BEGIN {
 }'
 "$aligner" index reference.fa > index.log 2>&1
 
+# The CPU backend replaces some of upstream's steps with exact batched versions
+# (suffix-array locate, each pair's rescue windows, region sorts, reference
+# unpacking); --cpu-upstream runs upstream's code. Their records must match.
+cpu_parity() {
+    name=$1
+    shift
+    "$aligner" mem "$@" reference.fa pairs-R1.fq pairs-R2.fq > "fast-$name.sam" 2> "fast-$name.log"
+    "$aligner" --cpu-upstream mem "$@" reference.fa pairs-R1.fq pairs-R2.fq \
+        > "upstream-$name.sam" 2> "upstream-$name.log"
+    same "upstream-$name.sam" "fast-$name.sam"
+    grep '^\[wgse-bwa\] cpu_located_rows' "fast-$name.log"
+}
+for threads in 1 4; do
+    cpu_parity "t$threads" -t "$threads"
+    test "$(metric "fast-t$threads.log" cpu_located_rows)" -gt 0
+    test "$(metric "fast-t$threads.log" locate_misses)" -eq 0
+    test "$(metric "fast-t$threads.log" rescue_cpu_hits)" -gt 1000
+    test "$(metric "upstream-t$threads.log" cpu_located_rows)" -eq 0
+    test "$(metric "upstream-t$threads.log" rescue_cpu_jobs)" -eq 0
+done
+cpu_parity chunks -t 4 -K 20000
+cpu_parity gaps -t 4 -O 4,8 -E 2,1 -L 3,7 -U 9
+test "$(metric fast-gaps.log rescue_cpu_hits)" -gt 0
+cpu_parity insert -t 4 -I 420,40
+cpu_parity nopair -t 4 -P
+test "$(metric fast-nopair.log rescue_cpu_hits)" -gt 0
+# 16-bit windows are left to upstream's ksw_align2.
+cpu_parity wide -t 4 -A 4 -B 8
+test "$(metric fast-wide.log rescue_cpu_jobs)" -eq 0
+test "$(metric fast-wide.log rescue_cpu_skipped)" -gt 0
+cpu_parity norescue -t 4 -S
+test "$(metric fast-norescue.log rescue_cpu_jobs)" -eq 0
+# A pair's windows beyond the byte bound are aligned by upstream on demand.
+"$aligner" --cpu-rescue-bytes 1200 mem -t 4 reference.fa pairs-R1.fq pairs-R2.fq \
+    > fast-capped.sam 2> fast-capped.log
+same upstream-t4.sam fast-capped.sam
+test "$(metric fast-capped.log rescue_cpu_skipped)" -gt 0
+test "$(metric fast-capped.log rescue_cpu_hits)" -gt 0
+# Single-end reads use the batched locate only.
+"$aligner" mem -t 4 reference.fa pairs-R1.fq > fast-single.sam 2> fast-single.log
+"$aligner" --cpu-upstream mem -t 4 reference.fa pairs-R1.fq > upstream-single.sam \
+    2> upstream-single.log
+same upstream-single.sam fast-single.sam
+test "$(metric fast-single.log cpu_located_rows)" -gt 0
+
 # Skip (77) only on machines without supported Metal hardware.
 "$aligner" capabilities --json > capabilities.json
 if ! grep -q '"metal_available":true' capabilities.json; then
