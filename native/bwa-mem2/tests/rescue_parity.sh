@@ -198,8 +198,15 @@ awk 'BEGIN {
 "$aligner" --metal --gpu-policy all mem -t 4 -k 160 -B 120 -I 400,40 reference.fa \
     sat-R1.fq sat-R2.fq > metal-saturate.sam 2> metal-saturate.log
 same cpu-saturate.sam metal-saturate.sam
-test "$(metric metal-saturate.log rescue_declined)" -eq 200
+# Rescue pruning proves those windows yield nothing kept; without it
+# (--cpu-upstream) the GPU declines them.
+test "$(metric metal-saturate.log rescue_pruned_dead)" -eq 200
 test "$(metric metal-saturate.log rescue_misses)" -eq 0
+"$aligner" --metal --cpu-upstream --gpu-policy all mem -t 4 -k 160 -B 120 -I 400,40 \
+    reference.fa sat-R1.fq sat-R2.fq > unpruned-saturate.sam 2> unpruned-saturate.log
+same cpu-saturate.sam unpruned-saturate.sam
+test "$(metric unpruned-saturate.log rescue_declined)" -eq 200
+test "$(metric unpruned-saturate.log rescue_misses)" -eq 0
 
 # A rescue batch that fails after the first one (while the next is packed) is
 # finished on the CPU, as is the rest. Explicit --metal still reports it.
