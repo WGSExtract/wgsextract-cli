@@ -50,8 +50,8 @@ def env(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
 
 
-# Library rows after this catalog entry (hg37 from YSEQ) are for the GUI's Advanced mode only.
-ADVANCED_AFTER_CODE = "hg37"
+# Library rows after this catalog entry (THGySeqp from YSEQ) are for the GUI's Advanced mode only.
+ADVANCED_AFTER_CODE = "THGySeqp"
 
 CATALOG_PATH = Path("runtime/wgsextract-cli/app/src/wgsextract_cli/assets/reference/seed_genomes.csv")
 
