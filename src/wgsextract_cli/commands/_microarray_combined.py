@@ -25,6 +25,8 @@ from wgsextract_cli.core.variant_files import (
     match_chromosome_name,
 )
 
+from ._microarray_reuse import SIDECAR_SUFFIX
+
 if TYPE_CHECKING:
     from wgsextract_cli.api.microarray import MicroarrayParams
 
@@ -556,7 +558,7 @@ def record_aadr(outdir: str, base_name: str, panel: str) -> None:
     """Register the PLINK/EIGENSTRAT files written for one AADR panel."""
     prefix = glob.escape(f"{base_name}_AADR_{panel}")
     for path in sorted(Path(outdir).glob(f"{prefix}.*")):
-        if path.is_file() and not path.name.endswith(MANIFEST_SUFFIX):
+        if path.is_file() and not path.name.endswith((MANIFEST_SUFFIX, SIDECAR_SUFFIX)):
             current_result().add_output(path, "aadr", metrics={"panel": panel})
 
 
