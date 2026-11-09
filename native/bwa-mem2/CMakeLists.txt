@@ -80,12 +80,13 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${bwa_dir}/pac_oracle.c.in" "${bwa_dir}/sort_oracle.c.in" "${bwa_dir}/ksw_oracle.c.in"
     "${CMAKE_CURRENT_SOURCE_DIR}/mem_stages.cpp.in"
     "${CMAKE_CURRENT_SOURCE_DIR}/fastmap_stages.cpp.in"
-    "${CMAKE_CURRENT_SOURCE_DIR}/seeding_types.h" "${CMAKE_CURRENT_SOURCE_DIR}/seeding.metal")
+    "${CMAKE_CURRENT_SOURCE_DIR}/seeding_types.h" "${CMAKE_CURRENT_SOURCE_DIR}/seeding.metal"
+    "${CMAKE_CURRENT_SOURCE_DIR}/smem_lockstep.cpp.in")
 # GPU SMEM collection reads FMI_search's checkpoints in place, so they are
 # page-aligned for Metal.
 file(READ "${mem2_SOURCE_DIR}/src/FMI_search.h" fmi_header)
 mem2_seam(fmi_header "    int64_t sentinel_index;\nprivate:"
-    "    int64_t sentinel_index;\n    const int64_t *wgse_count() const { return count; }\n    const CP_OCC *wgse_cp_occ() const { return cp_occ; }\nprivate:")
+    "    int64_t sentinel_index;\n    const int64_t *wgse_count() const { return count; }\n    const CP_OCC *wgse_cp_occ() const { return cp_occ; }\n    void wgse_getSMEMsOnePosLockstep(uint8_t *enc_qdb, int16_t *query_pos_array,\n        int32_t *min_intv_array, int32_t *rid_array, int32_t numReads, int32_t max_readlength,\n        int32_t minSeedLen, SMEM *matchArray, int64_t *__numTotalSmem, const bseq1_t *seq_,\n        int32_t *query_cum_len_ar);\nprivate:")
 file(WRITE "${mem2_src}/FMI_search.h" "${fmi_header}")
 file(READ "${mem2_SOURCE_DIR}/src/FMI_search.cpp" fmi_source)
 mem2_seam(fmi_source "(CP_OCC *)_mm_malloc(cp_occ_size * sizeof(CP_OCC), 64)) == NULL"
@@ -98,7 +99,11 @@ mem2_seam(fmi_source "        mem_lim += smem.s;"
     "        mem_lim += smem.s < max_occ ? smem.s : max_occ;")
 mem2_seam(fmi_source "if (pos & SA_COMPX_MASK == 0) {" "if ((pos & SA_COMPX_MASK) == 0) {")
 mem2_seam(fmi_source "if (sp & SA_COMPX_MASK == 0) {" "if ((sp & SA_COMPX_MASK) == 0) {")
-file(WRITE "${mem2_src}/FMI_search.cpp" "#include \"metal_backend.h\"\n${fmi_source}")
+# SMEM collection steps up to 16 reads in turn (smem_lockstep.cpp.in).
+mem2_seam(fmi_source "        getSMEMsOnePosOneThread(enc_qdb,\n                                query_pos_array,"
+    "        if (wgse_exact_cpu())\n            wgse_getSMEMsOnePosLockstep(enc_qdb, query_pos_array, min_intv_array, rid_array,\n                tail, max_readlength, minSeedLen, matchArray, __numTotalSmem, seq_,\n                query_cum_len_ar);\n        else getSMEMsOnePosOneThread(enc_qdb,\n                                query_pos_array,")
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/smem_lockstep.cpp.in" smem_lockstep)
+file(WRITE "${mem2_src}/FMI_search.cpp" "#include \"metal_backend.h\"\n${fmi_source}\n${smem_lockstep}")
 file(READ "${mem2_SOURCE_DIR}/src/bwamem.cpp" bwamem_source)
 include(extension_pipeline.cmake)
 mem2_seam(bwamem_source "    kt_for(worker_bwt, &w, n_); // SMEMs (+SAL)"

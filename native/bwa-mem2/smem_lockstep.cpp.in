@@ -1,0 +1,210 @@
+/* wgse: getSMEMsOnePosOneThread() for up to wgse_smem_slots reads at once.
+ * Each read's steps (one query position of its forward or backward search)
+ * are upstream's, in upstream's order, but the reads take turns step by step,
+ * so a step's occurrence-table lines, prefetched when the previous step ended,
+ * arrive while the other reads step. Each read's SMEMs are kept apart and
+ * written to matchArray in read order, as upstream writes them. Appended to
+ * the generated FMI_search.cpp. */
+#include <vector>
+
+namespace {
+constexpr int wgse_smem_slots = 16;
+
+struct WgseSmemSlot {
+    enum Phase { idle, forward, backward } phase = idle;
+    int32_t i, rid, offset, readlength, min_intv, x, next_x, j, numPrev;
+    SMEM smem, *prev;
+    std::vector<SMEM> found;
+};
+
+struct WgseSmemScratch {
+    std::vector<SMEM> prev, out;
+    std::vector<int64_t> first;
+    std::vector<int32_t> count;
+    WgseSmemSlot slots[wgse_smem_slots];
+};
+}
+
+void FMI_search::wgse_getSMEMsOnePosLockstep(uint8_t *enc_qdb,
+                                             int16_t *query_pos_array,
+                                             int32_t *min_intv_array,
+                                             int32_t *rid_array,
+                                             int32_t numReads,
+                                             int32_t max_readlength,
+                                             int32_t minSeedLen,
+                                             SMEM *matchArray,
+                                             int64_t *__numTotalSmem,
+                                             const bseq1_t *seq_,
+                                             int32_t *query_cum_len_ar)
+{
+    static thread_local WgseSmemScratch scratch;
+    WgseSmemScratch &w = scratch;
+    if (w.prev.size() < size_t(wgse_smem_slots) * size_t(max_readlength))
+        w.prev.resize(size_t(wgse_smem_slots) * size_t(max_readlength));
+    w.out.clear();
+    w.first.assign(numReads, 0);
+    w.count.assign(numReads, 0);
+    for (int s = 0; s < wgse_smem_slots; s++) {
+        w.slots[s].phase = WgseSmemSlot::idle;
+        w.slots[s].prev = w.prev.data() + size_t(s) * size_t(max_readlength);
+    }
+
+    // The read's SMEMs, from its slot, and its next query position.
+    auto finish = [&](WgseSmemSlot &t) {
+        w.first[t.i] = int64_t(w.out.size());
+        w.count[t.i] = int32_t(t.found.size());
+        w.out.insert(w.out.end(), t.found.begin(), t.found.end());
+        query_pos_array[t.i] = t.next_x;
+        t.phase = WgseSmemSlot::idle;
+    };
+    // After the forward search: upstream's last SMEM and reversal of prev.
+    auto begin_backward = [&](WgseSmemSlot &t) {
+        if (t.smem.s >= t.min_intv) t.prev[t.numPrev++] = t.smem;
+        for (int p = 0; p < t.numPrev / 2; p++) {
+            SMEM temp = t.prev[p];
+            t.prev[p] = t.prev[t.numPrev - p - 1];
+            t.prev[t.numPrev - p - 1] = temp;
+        }
+        t.j = t.x - 1;
+        t.phase = WgseSmemSlot::backward;
+    };
+    // After the backward search: upstream's final SMEM.
+    auto end_backward = [&](WgseSmemSlot &t) {
+        if (t.numPrev != 0) {
+            SMEM smem = t.prev[0];
+            if ((smem.n - smem.m + 1) >= minSeedLen) t.found.push_back(smem);
+            t.numPrev = 0;
+        }
+        finish(t);
+    };
+    auto start = [&](WgseSmemSlot &t, int32_t i) {
+        t.i = i;
+        t.x = query_pos_array[i];
+        t.rid = rid_array[i];
+        t.next_x = t.x + 1;
+        t.readlength = seq_[t.rid].l_seq;
+        t.offset = query_cum_len_ar[t.rid];
+        t.min_intv = min_intv_array[i];
+        t.found.clear();
+        uint8_t a = enc_qdb[t.offset + t.x];
+        if (a >= 4) {
+            finish(t);
+            return;
+        }
+        t.smem.rid = t.rid;
+        t.smem.m = t.x;
+        t.smem.n = t.x;
+        t.smem.k = count[a];
+        t.smem.l = count[3 - a];
+        t.smem.s = count[a + 1] - count[a];
+        t.numPrev = 0;
+        t.j = t.x + 1;
+        t.phase = WgseSmemSlot::forward;
+        _mm_prefetch((const char *)(&cp_occ[(t.smem.l) >> CP_SHIFT]), _MM_HINT_T0);
+        _mm_prefetch((const char *)(&cp_occ[(t.smem.l + t.smem.s) >> CP_SHIFT]), _MM_HINT_T0);
+    };
+    // One iteration of upstream's forward loop.
+    auto step_forward = [&](WgseSmemSlot &t) {
+        if (t.j >= t.readlength) {
+            begin_backward(t);
+            return;
+        }
+        uint8_t a = enc_qdb[t.offset + t.j];
+        t.next_x = t.j + 1;
+        if (a >= 4) {
+            begin_backward(t);
+            return;
+        }
+        SMEM smem_ = t.smem;
+        // Forward extension is backward extension with the BWT of reverse complement
+        smem_.k = t.smem.l;
+        smem_.l = t.smem.k;
+        SMEM newSmem_ = backwardExt(smem_, 3 - a);
+        SMEM newSmem = newSmem_;
+        newSmem.k = newSmem_.l;
+        newSmem.l = newSmem_.k;
+        newSmem.n = t.j;
+        int32_t s_neq_mask = newSmem.s != t.smem.s;
+        t.prev[t.numPrev] = t.smem;
+        t.numPrev += s_neq_mask;
+        if (newSmem.s < t.min_intv) {
+            t.next_x = t.j;
+            begin_backward(t);
+            return;
+        }
+        t.smem = newSmem;
+        t.j++;
+        _mm_prefetch((const char *)(&cp_occ[(t.smem.l) >> CP_SHIFT]), _MM_HINT_T0);
+        _mm_prefetch((const char *)(&cp_occ[(t.smem.l + t.smem.s) >> CP_SHIFT]), _MM_HINT_T0);
+    };
+    // One iteration of upstream's backward loop.
+    auto step_backward = [&](WgseSmemSlot &t) {
+        if (t.j < 0) {
+            end_backward(t);
+            return;
+        }
+        int numCurr = 0;
+        int curr_s = -1;
+        uint8_t a = enc_qdb[t.offset + t.j];
+        if (a > 3) {
+            end_backward(t);
+            return;
+        }
+        SMEM *prev = t.prev;
+        int p;
+        for (p = 0; p < t.numPrev; p++) {
+            SMEM smem = prev[p];
+            SMEM newSmem = backwardExt(smem, a);
+            newSmem.m = t.j;
+            if ((newSmem.s < t.min_intv) && ((smem.n - smem.m + 1) >= minSeedLen)) {
+                t.found.push_back(smem);
+                break;
+            }
+            if ((newSmem.s >= t.min_intv) && (newSmem.s != curr_s)) {
+                curr_s = newSmem.s;
+                prev[numCurr++] = newSmem;
+                _mm_prefetch((const char *)(&cp_occ[(newSmem.k) >> CP_SHIFT]), _MM_HINT_T0);
+                _mm_prefetch((const char *)(&cp_occ[(newSmem.k + newSmem.s) >> CP_SHIFT]), _MM_HINT_T0);
+                break;
+            }
+        }
+        p++;
+        for (; p < t.numPrev; p++) {
+            SMEM smem = prev[p];
+            SMEM newSmem = backwardExt(smem, a);
+            newSmem.m = t.j;
+            if ((newSmem.s >= t.min_intv) && (newSmem.s != curr_s)) {
+                curr_s = newSmem.s;
+                prev[numCurr++] = newSmem;
+                _mm_prefetch((const char *)(&cp_occ[(newSmem.k) >> CP_SHIFT]), _MM_HINT_T0);
+                _mm_prefetch((const char *)(&cp_occ[(newSmem.k + newSmem.s) >> CP_SHIFT]), _MM_HINT_T0);
+            }
+        }
+        t.numPrev = numCurr;
+        if (numCurr == 0) {
+            end_backward(t);
+            return;
+        }
+        t.j--;
+    };
+
+    int32_t next = 0, active = 0;
+    do {
+        active = 0;
+        for (int s = 0; s < wgse_smem_slots; s++) {
+            WgseSmemSlot &t = w.slots[s];
+            // A read's first step waits a turn, for the lines its start prefetched.
+            if (t.phase == WgseSmemSlot::idle)
+                while (t.phase == WgseSmemSlot::idle && next < numReads) start(t, next++);
+            else if (t.phase == WgseSmemSlot::forward) step_forward(t);
+            else step_backward(t);
+            active += t.phase != WgseSmemSlot::idle;
+        }
+    } while (active > 0 || next < numReads);
+
+    int64_t numTotalSmem = *__numTotalSmem;
+    for (int32_t i = 0; i < numReads; i++)
+        for (int32_t c = 0; c < w.count[i]; c++)
+            matchArray[numTotalSmem++] = w.out[size_t(w.first[i] + c)];
+    *__numTotalSmem = numTotalSmem;
+}
