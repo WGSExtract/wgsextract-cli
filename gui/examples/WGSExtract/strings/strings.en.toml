@@ -608,7 +608,7 @@
 "controls.cli.ubam_platform.label" = "Sequencing platform"
 "controls.cli.ubam_platform.tooltip" = "Platform (PL) for a new read group. Default: detected from the read names."
 "options.cli.value.ILLUMINA.title" = "ILLUMINA"
-"options.cli.value.DNBSEQ.title" = "DNBSEQ"
+"options.cli.value.DNBSEQ.title" = "MGI / Complete Genomics"
 "options.cli.value.ELEMENT.title" = "ELEMENT"
 "options.cli.value.ULTIMA.title" = "ULTIMA"
 "options.cli.value.PACBIO.title" = "PACBIO"

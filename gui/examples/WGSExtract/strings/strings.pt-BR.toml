@@ -613,7 +613,7 @@
 "controls.cli.ubam_platform.label" = "Plataforma de sequenciamento"  # i18n-source-hash:c279db97
 "controls.cli.ubam_platform.tooltip" = "Plataforma (PL) de um novo grupo de leitura. Padrão: detectada pelos nomes das leituras."  # i18n-source-hash:260396cd
 "options.cli.value.ILLUMINA.title" = "ILLUMINA"  # i18n-ignore i18n-source-hash:f9e297be
-"options.cli.value.DNBSEQ.title" = "DNBSEQ"  # i18n-ignore i18n-source-hash:337fb0c2
+"options.cli.value.DNBSEQ.title" = "MGI / Complete Genomics"  # i18n-ignore i18n-source-hash:08d37c32
 "options.cli.value.ELEMENT.title" = "ELEMENT"  # i18n-ignore i18n-source-hash:40ad668b
 "options.cli.value.ULTIMA.title" = "ULTIMA"  # i18n-ignore i18n-source-hash:1e2d6d8e
 "options.cli.value.PACBIO.title" = "PACBIO"  # i18n-ignore i18n-source-hash:1dc3d8ed
