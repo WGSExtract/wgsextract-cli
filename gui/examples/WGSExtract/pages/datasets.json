@@ -237,6 +237,136 @@
                 "{{example_force}}"
               ]
             ]
+          },
+          "visibleWhen": [
+            {
+              "placeholder": "example_all",
+              "notEquals": "--all"
+            },
+            {
+              "placeholder": "example_tag",
+              "notIn": [
+                "1000g",
+                "bam",
+                "cram",
+                "giab",
+                "hgsvc2",
+                "hifi",
+                "pacbio",
+                "ultima"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "example-download-all",
+          "title": "actions.cli.example-download-all.title",
+          "tooltip": "actions.cli.example-download-all.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "example-genome",
+              "download"
+            ],
+            "optionalArguments": [
+              [
+                "--target-root",
+                "{{dataset_library}}"
+              ],
+              [
+                "--tag",
+                "{{example_tag}}"
+              ],
+              [
+                "{{example_all}}"
+              ],
+              [
+                "--method",
+                "{{example_method}}"
+              ],
+              [
+                "--aspera-key",
+                "{{example_aspera_key}}"
+              ],
+              [
+                "{{example_force}}"
+              ]
+            ]
+          },
+          "visibleWhen": [
+            {
+              "placeholder": "example_all",
+              "equals": "--all"
+            }
+          ],
+          "confirm": {
+            "title": "actions.cli.example-download-all.confirm.title",
+            "message": "actions.cli.example-download-all.confirm.message",
+            "confirmButtonTitle": "actions.cli.example-download-all.confirm.confirmButtonTitle",
+            "cancelButtonTitle": "actions.cli.example-download-all.confirm.cancelButtonTitle"
+          }
+        },
+        {
+          "id": "example-download-large-tag",
+          "title": "actions.cli.example-download-large-tag.title",
+          "tooltip": "actions.cli.example-download-large-tag.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "example-genome",
+              "download"
+            ],
+            "optionalArguments": [
+              [
+                "--target-root",
+                "{{dataset_library}}"
+              ],
+              [
+                "--tag",
+                "{{example_tag}}"
+              ],
+              [
+                "{{example_all}}"
+              ],
+              [
+                "--method",
+                "{{example_method}}"
+              ],
+              [
+                "--aspera-key",
+                "{{example_aspera_key}}"
+              ],
+              [
+                "{{example_force}}"
+              ]
+            ]
+          },
+          "visibleWhen": [
+            {
+              "placeholder": "example_all",
+              "notEquals": "--all"
+            },
+            {
+              "placeholder": "example_tag",
+              "in": [
+                "1000g",
+                "bam",
+                "cram",
+                "giab",
+                "hgsvc2",
+                "hifi",
+                "pacbio",
+                "ultima"
+              ]
+            }
+          ],
+          "confirm": {
+            "title": "actions.cli.example-download-large-tag.confirm.title",
+            "message": "actions.cli.example-download-large-tag.confirm.message",
+            "confirmButtonTitle": "actions.cli.example-download-all.confirm.confirmButtonTitle",
+            "cancelButtonTitle": "actions.cli.example-download-all.confirm.cancelButtonTitle"
           }
         }
       ]
