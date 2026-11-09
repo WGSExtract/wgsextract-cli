@@ -80,6 +80,10 @@ if(BUILD_TESTING)
     target_compile_options(ksw_batch_check PRIVATE -Wall -Wextra -Werror)
     target_link_libraries(ksw_batch_check PRIVATE wgse_bwa_core)
     add_test(NAME bwa_ksw_batch COMMAND ksw_batch_check)
+    add_executable(extend_neon_check tests/extend_neon_check.c)
+    target_compile_options(extend_neon_check PRIVATE -Wall -Wextra -Werror)
+    target_link_libraries(extend_neon_check PRIVATE wgse_bwa_core)
+    add_test(NAME bwa_extend_neon COMMAND extend_neon_check)
     add_test(NAME bwa_metal_rescue_parity
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/rescue_parity.sh"
         $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/rescue-parity")
