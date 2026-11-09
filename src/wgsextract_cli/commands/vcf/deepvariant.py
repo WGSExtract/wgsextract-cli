@@ -800,9 +800,10 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                 journal, launcher, dv_args,
                 inputs=inputs,
                 params={
-                    "image": (
+                    "image": _recorded_image(
+                        journal,
                         image_identity(launcher.image)
-                        if launcher.image else local_dv
+                        if launcher.image else local_dv,
                     ),
                     "model_type": model_type,
                     "shards": shards,
@@ -834,6 +835,21 @@ _STAGE_BINARY = re.compile(r"/(make_examples|call_variants|postprocess_variants)
 _RESOURCE_FLAGS = re.compile(r'\s--(?:cpus|num_partitions|batch_size)[= ]"?\d+"?')
 _JOBLOG = ".make_examples.joblog"
 _DV_BIN = "/opt/deepvariant/bin"
+
+
+def _recorded_image(journal: StepJournal, image: str | None) -> str | None:
+    """``image``, or the ``ref@sha256:X@sha256:X`` form v0.8.5 recorded for a
+    digest-pinned ``image`` (#597) when an earlier run did, so its finished
+    stages are kept."""
+    if image is None:
+        return None
+    digest = image.rpartition("@")[2]
+    legacy = f"{image}@{digest}"
+    if digest.startswith("sha256:") and any(
+        journal.recorded_params(s).get("image") == legacy for s in STEPS
+    ):
+        return legacy
+    return image
 
 
 def _shard_count(journal: StepJournal, threads: int) -> int:

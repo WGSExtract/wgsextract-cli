@@ -6,6 +6,7 @@ reads with real samtools and bcftools.
 """
 
 import gzip
+import hashlib
 import json
 import os
 import re
@@ -964,6 +965,69 @@ def test_ultima_reads_call_on_the_gpu_in_googles_ultima_gpu_image(
         ("make_examples", None), ("call_variants", "all"),
         ("postprocess_variants", None),
     ]  # fmt: skip
+
+
+def pinned_ultima_gpu(dv):
+    """The ULTIMA GPU image as Docker reports it: its ID is its pinned digest."""
+    digest = deepvariant.DEFAULT_ULTIMA_GPU_IMAGE.rpartition("@")[2]
+    dv.docker.add_image(deepvariant.DEFAULT_ULTIMA_GPU_IMAGE, image_id=digest)
+    return digest
+
+
+def recorded_images(dv):
+    journal = json.loads((dv.out / "deepvariant.vcf.gz.steps.json").read_text())
+    return {
+        name: record["params"]["image"]
+        for name, record in journal["steps"].items()
+        if "image" in record.get("params", {})
+    }
+
+
+def test_step_record_keeps_a_digest_pinned_image_reference_valid_597(ultima_gpu):
+    pinned_ultima_gpu(ultima_gpu)
+    gpu_call(ultima_gpu)
+
+    # #597: v0.8.5 recorded ref@sha256:X@sha256:X, which Docker can't parse.
+    images = recorded_images(ultima_gpu)
+    assert set(images) == set(STAGES)
+    assert set(images.values()) == {deepvariant.DEFAULT_ULTIMA_GPU_IMAGE}
+
+
+def as_v085_journal(dv, digest):
+    """Rewrite the run's journal as v0.8.5 wrote it: the pinned image with its
+    digest appended again (#597), keyed as StepJournal keys its records."""
+    path = dv.out / "deepvariant.vcf.gz.steps.json"
+    journal = json.loads(path.read_text())
+    for name, record in journal["steps"].items():
+        if "image" not in record.get("params", {}):
+            continue
+        record["params"]["image"] += f"@{digest}"
+        payload = {
+            "workflow": journal["workflow"],
+            "step": name,
+            "version": record["version"],
+            "params": record["params"],
+            "tools": record.get("tools") or {},
+        }
+        text = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        record["key"] = hashlib.sha256(text.encode()).hexdigest()
+    path.write_text(json.dumps(journal))
+
+
+def test_v085_journal_with_doubled_image_digest_resumes_without_rerun_597(
+    ultima_gpu,
+):
+    digest = pinned_ultima_gpu(ultima_gpu)
+    gpu_call(ultima_gpu)
+    as_v085_journal(ultima_gpu, digest)
+    ultima_gpu.deepvariant.clear()
+    ultima_gpu.docker.clear()
+
+    gpu_call(ultima_gpu)
+
+    assert ultima_gpu.deepvariant.stages() == []
+    assert stage_runs(ultima_gpu) == []
+    assert vcf_calls(ultima_gpu.out / "deepvariant.vcf.gz") == ultima_gpu.ultima.calls
 
 
 @pytest.mark.parametrize(
