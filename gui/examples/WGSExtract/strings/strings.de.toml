@@ -388,8 +388,8 @@
 "rows.library.genome-management.reference_genomes.GRCh37.source" = "Genome Reference Consortium"  # i18n-ignore i18n-source-hash:7601c1c0
 "rows.library.genome-management.reference_genomes.T2T-CHM13.build" = "CHM13 v2"  # i18n-ignore i18n-source-hash:19f08799
 "rows.library.genome-management.reference_genomes.T2T-CHM13.source" = "Telomere-to-Telomere"  # i18n-ignore i18n-source-hash:cafdd528
-"controls.library.library-paths.genome_library.label" = "Pfad der Datensatz-Bibliothek"  # i18n-source-hash:c0ce24d4
-"controls.library.library-paths.genome_library.tooltip" = "Verzeichnis der Benutzer-Datensätze, ein Ordner pro Person oder Probe, verwendet von wgsextract-cli --genome."  # i18n-source-hash:bebeaa4b
+"controls.datasets.dataset-paths.dataset_library.label" = "Pfad der Datensatz-Bibliothek"  # i18n-source-hash:c0ce24d4
+"controls.datasets.dataset-paths.dataset_library.tooltip" = "Verzeichnis der Benutzer-Datensätze, ein Ordner pro Person oder Probe, verwendet von wgsextract-cli --genome. Referenzgenome kommen nie hierher."  # i18n-source-hash:a5e2ea99
 "sections.datasets.test-dataset.title" = "Testdatensatz"  # i18n-source-hash:da935796
 "sections.datasets.test-dataset.summary" = "Den kleinen, auf GitHub gehosteten Benchmark-Datensatz für WGS Extract-Testworkflows herunterladen oder löschen."  # i18n-source-hash:3d75cbc7
 "actions.datasets.test-dataset.test-dataset-download.title" = "Testdatensatz herunterladen"  # i18n-source-hash:15909a2d
@@ -397,14 +397,18 @@
 "actions.datasets.test-dataset.test-dataset-delete.title" = "Testdatensatz löschen"  # i18n-source-hash:d68e9b63
 "actions.datasets.test-dataset.test-dataset-delete.tooltip" = "Den installierten hg19-Mini-Benchmark-Datensatz aus der konfigurierten Datensatz-Bibliothek löschen."  # i18n-source-hash:54497c5e
 "actions.datasets.test-dataset.test-dataset-delete.confirm.title" = "Testdatensatz löschen?"  # i18n-source-hash:7327997c
-"actions.datasets.test-dataset.test-dataset-delete.confirm.message" = "Dadurch wird der lokale Ordner des hg19-Mini-Benchmark-Datensatzes aus {{genome_library}} entfernt. Er kann später erneut heruntergeladen werden."  # i18n-source-hash:32f38d20
+"actions.datasets.test-dataset.test-dataset-delete.confirm.message" = "Dadurch wird der lokale Ordner des hg19-Mini-Benchmark-Datensatzes aus {{dataset_library}} entfernt. Er kann später erneut heruntergeladen werden."  # i18n-source-hash:f419aea0
 "actions.datasets.test-dataset.test-dataset-delete.confirm.confirmButtonTitle" = "Löschen"  # i18n-source-hash:f6fdbe48
 "actions.datasets.test-dataset.test-dataset-delete.confirm.cancelButtonTitle" = "Abbrechen"  # i18n-source-hash:77dfd213
 "actions.datasets.test-dataset.test-dataset-installed.title" = "Testdatensatz installiert"  # i18n-source-hash:b0e32a18
 "actions.datasets.test-dataset.test-dataset-installed.tooltip" = "Der hg19-Mini-Benchmark-Datensatz ist in der konfigurierten Datensatz-Bibliothek installiert."  # i18n-source-hash:d394d3a4
 "actions.datasets.test-dataset.test-dataset-installed.disabledTooltip" = "Der Testdatensatz ist bereits installiert."  # i18n-source-hash:fe494c82
-"controls.settings.settings-paths.genome_library.label" = "Datensatz-Bibliothek"  # i18n-source-hash:a63500a0
-"controls.settings.settings-paths.genome_library.tooltip" = "Standardverzeichnis der Datensatz-Bibliothek, ein Ordner pro Person oder Probe, verwendet von wgsextract-cli --genome."  # i18n-source-hash:20587a3b
+"controls.settings.settings-paths.dataset_library.label" = "Datensatz-Bibliothek"  # i18n-source-hash:a63500a0
+"controls.settings.settings-paths.dataset_library.tooltip" = "Standardverzeichnis der Datensatz-Bibliothek, ein Ordner pro Person oder Probe, verwendet von wgsextract-cli --genome. Referenzgenome kommen nie hierher."  # i18n-source-hash:6c38f036
+"controls.settings.settings-paths.reference_genome_library.label" = "Referenzgenom-Bibliothek"  # i18n-source-hash:de3aadd7
+"controls.settings.settings-paths.reference_genome_library.tooltip" = "Ordner nur für die heruntergeladenen Referenzgenome und die daraus erstellten Dateien (Indizes, N-Zählungen). Nichts anderes wird dort gespeichert."  # i18n-source-hash:19981b40
+"controls.reference-genomes.reference-genome-paths.reference_genome_library.label" = "Pfad der Referenzgenom-Bibliothek"  # i18n-source-hash:77d6fac0
+"controls.reference-genomes.reference-genome-paths.reference_genome_library.tooltip" = "Ordner nur für die heruntergeladenen Referenzgenome und die daraus erstellten Dateien (Indizes, N-Zählungen). Nichts anderes wird dort gespeichert."  # i18n-source-hash:19981b40
 
 # TODO: translate the CLI features added after v0.6.3.
 "controls.microarray.post-v063.min-gq.label" = "Minimum genotype quality (GQ)"  # i18n-ignore; TODO: translate

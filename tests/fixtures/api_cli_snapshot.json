@@ -7131,7 +7131,7 @@
    }
   },
   "example-genome": {
-   "help": "usage: wgsextract example-genome [-h] <command> ...\n\npositional arguments:\n  <command>\n    list      List curated 1000 Genomes examples.\n    download  Download curated 1000 Genomes examples into the genome library.\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract example-genome [-h] <command> ...\n\npositional arguments:\n  <command>\n    list      List curated 1000 Genomes examples.\n    download  Download curated 1000 Genomes examples into the dataset library.\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -7163,7 +7163,7 @@
        ],
        [
         "download",
-        "Download curated 1000 Genomes examples into the genome library."
+        "Download curated 1000 Genomes examples into the dataset library."
        ]
       ],
       "required": true,
@@ -7457,7 +7457,7 @@
    }
   },
   "example-genome download": {
-   "help": "usage: wgsextract example-genome download [-h] [--tag TAG] [--all] [--method {auto,https,aspera}]\n                                          [--force] [--dry-run] [--help-all]\n                                          [EXAMPLE_ID ...]\n\npositional arguments:\n  EXAMPLE_ID            Example IDs to download. Defaults to a small starter set.\n\noptions:\n  -h, --help            show this help message and exit\n  --tag TAG             Download every example with this tag. May be repeated (e.g. --tag pacbio).\n  --all                 Download every curated example, including large full-genome data.\n  --method {auto,https,aspera}\n                        Transfer method. Auto is an alias for HTTPS and does not probe Aspera; use\n                        --method aspera explicitly for Aspera.\n  --force               Discard existing and partially downloaded files and download again.\n                        Without it, completed files are kept and interrupted downloads resume.\n  --dry-run             Print the planned downloads without creating files.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract example-genome download --help-all' lists them.\n\nexamples:\n  wgsextract example-genome download na12878-lowcov-bam\n  wgsextract example-genome download na12878-lowcov-bam --dry-run\n\noutputs (in the output directory unless noted):\n  Into <genome_library>/test-1000genomes/<example id>/, with a genome config\n  file.\n\nneeds:\n  no external tools; depending on options and inputs, also: curl; depends on\n  download speed.\n",
+   "help": "usage: wgsextract example-genome download [-h] [--tag TAG] [--all] [--method {auto,https,aspera}]\n                                          [--force] [--dry-run] [--help-all]\n                                          [EXAMPLE_ID ...]\n\npositional arguments:\n  EXAMPLE_ID            Example IDs to download. Defaults to a small starter set.\n\noptions:\n  -h, --help            show this help message and exit\n  --tag TAG             Download every example with this tag. May be repeated (e.g. --tag pacbio).\n  --all                 Download every curated example, including large full-genome data.\n  --method {auto,https,aspera}\n                        Transfer method. Auto is an alias for HTTPS and does not probe Aspera; use\n                        --method aspera explicitly for Aspera.\n  --force               Discard existing and partially downloaded files and download again.\n                        Without it, completed files are kept and interrupted downloads resume.\n  --dry-run             Print the planned downloads without creating files.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract example-genome download --help-all' lists them.\n\nexamples:\n  wgsextract example-genome download na12878-lowcov-bam\n  wgsextract example-genome download na12878-lowcov-bam --dry-run\n\noutputs (in the output directory unless noted):\n  Into <dataset_library>/test-1000genomes/<example id>/, with a genome config\n  file.\n\nneeds:\n  no external tools; depending on options and inputs, also: curl; depends on\n  download speed.\n",
    "parser": {
     "actions": [
      {
@@ -7828,7 +7828,7 @@
       "default": null,
       "dest": "target_root",
       "exclusive_group": null,
-      "help": "Genome library root. Defaults to config genome_library, or genomes/ in the source checkout (or user data directory) when unset.",
+      "help": "Dataset library root. Defaults to config dataset_library, or datasets/ in the source checkout (or user data directory) when unset.",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -7896,7 +7896,7 @@
    }
   },
   "example-genome list": {
-   "help": "usage: wgsextract example-genome list [-h] [--target-root TARGET_ROOT] [--tag TAG]\n\noptions:\n  -h, --help            show this help message and exit\n  --target-root TARGET_ROOT\n                        Genome library root. Defaults to config genome_library, or genomes/ in the\n                        source checkout (or user data directory) when unset.\n  --tag TAG             Only list examples with this tag. May be repeated (e.g. --tag pacbio).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract example-genome list\n  wgsextract example-genome list --tag pacbio\n\noutputs (in the output directory unless noted):\n  Prints the curated examples; writes no files.\n\nneeds:\n  no external tools; instant.\n",
+   "help": "usage: wgsextract example-genome list [-h] [--target-root TARGET_ROOT] [--tag TAG]\n\noptions:\n  -h, --help            show this help message and exit\n  --target-root TARGET_ROOT\n                        Dataset library root. Defaults to config dataset_library, or datasets/ in\n                        the source checkout (or user data directory) when unset.\n  --tag TAG             Only list examples with this tag. May be repeated (e.g. --tag pacbio).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract example-genome list\n  wgsextract example-genome list --tag pacbio\n\noutputs (in the output directory unless noted):\n  Prints the curated examples; writes no files.\n\nneeds:\n  no external tools; instant.\n",
    "parser": {
     "actions": [
      {
@@ -8185,7 +8185,7 @@
       "default": null,
       "dest": "target_root",
       "exclusive_group": null,
-      "help": "Genome library root. Defaults to config genome_library, or genomes/ in the source checkout (or user data directory) when unset.",
+      "help": "Dataset library root. Defaults to config dataset_library, or datasets/ in the source checkout (or user data directory) when unset.",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -24598,7 +24598,7 @@
    }
   },
   "ref status": {
-   "help": "usage: wgsextract ref status [-h] [--genome-library GENOME_LIBRARY]\n                             [--annotation-vcf ANNOTATION_VCF] [--values]\n\noptions:\n  -h, --help            show this help message and exit\n  --genome-library GENOME_LIBRARY\n                        Genome library directory used for test genome status.\n  --annotation-vcf ANNOTATION_VCF\n                        Custom annotation VCF path to include in readiness checks.\n  --values              Emit a compact values JSON object for GUI data-source consumers.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref status\n\noutputs (in the output directory unless noted):\n  Prints the reference library's status; writes no files.\n\nneeds:\n  no external tools; seconds.\n",
+   "help": "usage: wgsextract ref status [-h] [--dataset-library DATASET_LIBRARY]\n                             [--annotation-vcf ANNOTATION_VCF] [--values]\n\noptions:\n  -h, --help            show this help message and exit\n  --dataset-library DATASET_LIBRARY\n                        Dataset library directory used for test dataset status.\n  --annotation-vcf ANNOTATION_VCF\n                        Custom annotation VCF path to include in readiness checks.\n  --values              Emit a compact values JSON object for GUI data-source consumers.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref status\n\noutputs (in the output directory unless noted):\n  Prints the reference library's status; writes no files.\n\nneeds:\n  no external tools; seconds.\n",
    "parser": {
     "actions": [
      {
@@ -24885,9 +24885,25 @@
       "class": "_StoreAction",
       "const": null,
       "default": null,
-      "dest": "genome_library",
+      "dest": "dataset_library",
       "exclusive_group": null,
-      "help": "Genome library directory used for test genome status.",
+      "help": "Dataset library directory used for test dataset status.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--dataset-library"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "dataset_library",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -44321,16 +44337,16 @@
    "_command": "ref status",
    "_explicit_dests": [
     "annotation_vcf",
-    "genome_library"
+    "dataset_library"
    ],
    "annotation_vcf": "a.vcf.gz",
    "atomic_output": false,
    "command": "ref",
+   "dataset_library": "g",
    "debug": false,
    "full_help": false,
    "func": "cmd_ref_status",
    "genome": null,
-   "genome_library": "g",
    "input": null,
    "json": false,
    "keep_awake": false,
@@ -44355,11 +44371,11 @@
    "annotation_vcf": null,
    "atomic_output": false,
    "command": "ref",
+   "dataset_library": null,
    "debug": false,
    "full_help": false,
    "func": "cmd_ref_status",
    "genome": null,
-   "genome_library": null,
    "input": "x.bam",
    "json": false,
    "keep_awake": false,

@@ -48,6 +48,7 @@ from wgsextract_cli.core.ref_library.catalog import (
     get_genome_status,
 )
 from wgsextract_cli.core.reference_assets import (
+    reference_genomes_dir,
     reference_library_of,
     resolve_reference_library,
 )
@@ -231,9 +232,10 @@ def _install_from_mirrors(
                 f"Trying the next mirror: {genome.get('description', genome['url'])}"
             )
         Path(reflib_dir).mkdir(parents=True, exist_ok=True)
-        before = file_snapshot(Path(reflib_dir, "genomes"))
+        genomes_dir = reference_genomes_dir(reflib_dir)
+        before = file_snapshot(Path(genomes_dir))
         if download_and_process_genome(genome, reflib_dir, restart=i > 0):
-            _record_genome(str(Path(reflib_dir, "genomes", genome["final"])), before)
+            _record_genome(str(Path(genomes_dir, genome["final"])), before)
             return
     tried = f" from any of its {len(mirrors)} mirrors" if len(mirrors) > 1 else ""
     raise WGSExtractError(f"Failed to install genome {mirrors[0]['final']}{tried}.")
@@ -243,10 +245,11 @@ def _install_genome(
     genome: Mapping[str, str], reflib_dir: str, restart: bool = False
 ) -> None:
     Path(reflib_dir).mkdir(parents=True, exist_ok=True)
-    before = file_snapshot(Path(reflib_dir, "genomes"))
+    genomes_dir = reference_genomes_dir(reflib_dir)
+    before = file_snapshot(Path(genomes_dir))
     if not download_and_process_genome(genome, reflib_dir, restart=restart):
         raise WGSExtractError(f"Failed to install genome {genome['final']}.")
-    _record_genome(str(Path(reflib_dir, "genomes", genome["final"])), before)
+    _record_genome(str(Path(genomes_dir, genome["final"])), before)
 
 
 def run_gene_map(params: RefGeneMapParams) -> None:

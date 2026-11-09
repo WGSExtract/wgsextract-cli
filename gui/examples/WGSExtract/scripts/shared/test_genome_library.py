@@ -36,10 +36,10 @@ class HTTPSOnlyRedirectHandler(HTTPRedirectHandler):
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("state", "download", "delete"))
-    parser.add_argument("genome_library", nargs="?", default="")
+    parser.add_argument("dataset_library", nargs="?", default="")
     args = parser.parse_args(argv[1:])
 
-    root = genome_library_root(args.genome_library)
+    root = dataset_library_root(args.dataset_library)
     if args.command == "state":
         print_state(root)
         return 0
@@ -50,10 +50,10 @@ def main(argv: list[str]) -> int:
     return 0
 
 
-def genome_library_root(argument: str) -> Path:
+def dataset_library_root(argument: str) -> Path:
     if argument:
         return Path(argument).expanduser()
-    return Path(os.environ.get("GUI_FOR_CLI_BUNDLE_WORKSPACE") or os.getcwd()) / "dataset"
+    return Path(os.environ.get("GUI_FOR_CLI_BUNDLE_WORKSPACE") or os.getcwd()) / "datasets"
 
 
 def print_state(root: Path) -> None:

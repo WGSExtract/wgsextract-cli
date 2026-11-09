@@ -9,10 +9,10 @@
       "title": "sections.library.library-paths.title",
       "controls": [
         {
-          "id": "genome_library",
-          "label": "controls.library.library-paths.genome_library.label",
+          "id": "dataset_library",
+          "label": "controls.datasets.dataset-paths.dataset_library.label",
           "kind": "path",
-          "tooltip": "controls.library.library-paths.genome_library.tooltip"
+          "tooltip": "controls.datasets.dataset-paths.dataset_library.tooltip"
         }
       ],
       "iconName": "bundle-folder",
@@ -27,7 +27,7 @@
         "path": "scripts/library-state.sh",
         "arguments": [
           "{{ref_path}}",
-          "{{genome_library}}"
+          "{{dataset_library}}"
         ]
       },
       "actions": [
@@ -45,7 +45,7 @@
             "executable": "{{bundleRoot}}/scripts/test-genome-library.py",
             "arguments": [
               "download",
-              "{{genome_library}}"
+              "{{dataset_library}}"
             ]
           }
         },
@@ -70,7 +70,7 @@
             "executable": "{{bundleRoot}}/scripts/test-genome-library.py",
             "arguments": [
               "delete",
-              "{{genome_library}}"
+              "{{dataset_library}}"
             ]
           }
         },
@@ -97,7 +97,7 @@
             "executable": "{{bundleRoot}}/scripts/test-genome-library.py",
             "arguments": [
               "state",
-              "{{genome_library}}"
+              "{{dataset_library}}"
             ]
           }
         }
@@ -193,7 +193,7 @@
             "optionalArguments": [
               [
                 "--target-root",
-                "{{genome_library}}"
+                "{{dataset_library}}"
               ],
               [
                 "--tag",
@@ -216,7 +216,7 @@
             "optionalArguments": [
               [
                 "--target-root",
-                "{{genome_library}}"
+                "{{dataset_library}}"
               ],
               [
                 "--tag",

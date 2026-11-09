@@ -5,6 +5,21 @@
   "sidebarPlacement": "bottom",
   "sections": [
     {
+      "id": "reference-genome-paths",
+      "title": "sections.library.library-paths.title",
+      "controls": [
+        {
+          "id": "reference_genome_library",
+          "label": "controls.reference-genomes.reference-genome-paths.reference_genome_library.label",
+          "kind": "path",
+          "tooltip": "controls.reference-genomes.reference-genome-paths.reference_genome_library.tooltip"
+        }
+      ],
+      "iconName": "bundle-folder",
+      "textIcon": "📁",
+      "advancedOnly": true
+    },
+    {
       "id": "genome-management",
       "title": "sections.library.genome-management.title",
       "controls": [
@@ -17,7 +32,8 @@
             "path": "scripts/list-reference-genomes.py",
             "arguments": [
               "items",
-              "{{ref_path}}"
+              "{{ref_path}}",
+              "{{reference_genome_library}}"
             ]
           },
           "columns": [
@@ -162,7 +178,8 @@
                 "executable": "{{bundleRoot}}/scripts/delete-reference-genome.sh",
                 "arguments": [
                   "{{ref_path}}",
-                  "{{row.final}}"
+                  "{{row.final}}",
+                  "{{reference_genome_library}}"
                 ]
               },
               "iconName": "delete",

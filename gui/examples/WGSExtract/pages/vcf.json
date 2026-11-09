@@ -35,7 +35,7 @@
         "path": "scripts/library-state.sh",
         "arguments": [
           "{{ref_path}}",
-          "{{genome_library}}",
+          "{{dataset_library}}",
           "{{vcf_ann_vcf}}",
           "{{vcf_path}}"
         ]
@@ -45,7 +45,7 @@
           "id": "vcf_path",
           "label": "controls.vcf.vcf-inputs.vcf_path.label",
           "kind": "path",
-          "defaultDirectory": "{{genome_library}}",
+          "defaultDirectory": "{{dataset_library}}",
           "tooltip": "controls.vcf.vcf-inputs.vcf_path.tooltip"
         },
         {

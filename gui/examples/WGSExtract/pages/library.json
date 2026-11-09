@@ -32,7 +32,7 @@
         "path": "scripts/library-state.sh",
         "arguments": [
           "{{ref_path}}",
-          "{{genome_library}}"
+          "{{dataset_library}}"
         ]
       },
       "actions": [

@@ -27,7 +27,7 @@ UNRECORDED_COMMANDS = frozenset({"help", "config", "report-issue"})
 
 def state_directory() -> Path:
     """The ``state_directory`` setting, else ``state`` in the data folder (beside
-    reference/ and genomes/, so uninstalling removes it)."""
+    reference/ and datasets/, so uninstalling removes it)."""
     from wgsextract_cli.core.config import ensure_settings_loaded, settings
 
     ensure_settings_loaded()

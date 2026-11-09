@@ -48,6 +48,7 @@ from wgsextract_cli.core.read_counts import (
 from wgsextract_cli.core.reference_assets import (
     find_fasta_by_signature,
     input_stem,
+    reference_genomes_dir,
     resolve_reference_library,
 )
 from wgsextract_cli.core.resource_estimates import (
@@ -272,7 +273,7 @@ def _input_cram_reference(job: RealignJob) -> list[str]:
         fasta: str | None = target
     else:
         fasta = find_fasta_by_signature(
-            [reflib, str(Path(reflib, "genomes"))], signature
+            [reflib, reference_genomes_dir(reflib)], signature
         )
     if not fasta:
         raise WGSExtractError(

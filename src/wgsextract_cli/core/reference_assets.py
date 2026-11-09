@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from collections.abc import Iterable
 from fnmatch import fnmatch
@@ -95,14 +96,50 @@ def default_reference_library() -> str:
     return str(repo_root() / "reference")
 
 
+def _path_key(path: PathInput) -> str:
+    return os.path.normcase(str(absolute_path(expand_path(fspath(path)))))
+
+
+def reference_genomes_dir(reflib: PathInput) -> str:
+    """The folder holding a reference library's genomes and the files made from
+    them: the configured reference_genome_library for the configured library
+    (or for any library when reference_library is unset), else <reflib>/genomes.
+    Only reference genomes are ever written there."""
+    from wgsextract_cli.core.config import settings
+
+    configured = settings.get("reference_genome_library")
+    if isinstance(configured, str) and configured:
+        library = settings.get("reference_library")
+        if not library or _path_key(str(library)) == _path_key(reflib):
+            return str(absolute_path(expand_path(configured)))
+    return str(Path(reflib, "genomes"))
+
+
+def library_of_genomes_dir(folder: PathInput) -> str | None:
+    """The library whose genomes ``folder`` holds: the configured library for the
+    configured reference_genome_library, the parent of a ``genomes`` folder,
+    else None."""
+    from wgsextract_cli.core.config import settings
+
+    configured = settings.get("reference_genome_library")
+    if (
+        isinstance(configured, str)
+        and configured
+        and _path_key(folder) == _path_key(configured)
+    ):
+        return resolve_reference_library()
+    path = absolute_path(expand_path(fspath(folder)))
+    return str(path.parent) if path.name.lower() == "genomes" else None
+
+
 def reference_library_of(path: PathInput) -> str:
-    """The library a ``--ref`` names: a FASTA's folder (the folder above a
-    ``genomes`` one), else ``path`` itself."""
+    """The library a ``--ref`` names: a FASTA's folder (the library whose
+    genomes folder holds it), else ``path`` itself."""
     absolute = absolute_path(expand_path(fspath(path)))
     if not absolute.is_file():
         return str(absolute)
     folder = absolute.parent
-    return str(folder.parent if folder.name.lower() == "genomes" else folder)
+    return library_of_genomes_dir(folder) or str(folder)
 
 
 def resolve_reference_library(explicit: PathInput | None = None) -> str:
@@ -172,7 +209,7 @@ def find_fasta_by_signature(
 
 def find_reference_fasta(root: PathInput, *hints: PathInput | None) -> str:
     candidates = []
-    for directory in [Path(root), Path(root) / "genomes"]:
+    for directory in [Path(root), Path(reference_genomes_dir(root))]:
         candidates.extend(reference_fasta_candidates(directory))
     return select_reference_fasta(candidates, *hints)
 

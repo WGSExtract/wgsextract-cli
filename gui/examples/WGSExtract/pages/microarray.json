@@ -15,7 +15,7 @@
           "id": "bam_path",
           "label": "controls.microarray.microarray-inputs.bam_path.label",
           "kind": "path",
-          "defaultDirectory": "{{genome_library}}",
+          "defaultDirectory": "{{dataset_library}}",
           "tooltip": "controls.microarray.microarray-inputs.bam_path.tooltip"
         },
         {
@@ -27,7 +27,8 @@
             "path": "scripts/list-reference-genomes.py",
             "arguments": [
               "options",
-              "{{ref_path}}"
+              "{{ref_path}}",
+              "{{reference_genome_library}}"
             ]
           },
           "emptyText": "controls.reference-genome.emptyText"

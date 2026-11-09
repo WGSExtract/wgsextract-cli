@@ -388,8 +388,8 @@
 "rows.library.genome-management.reference_genomes.GRCh37.source" = "Genome Reference Consortium"  # i18n-ignore i18n-source-hash:7601c1c0
 "rows.library.genome-management.reference_genomes.T2T-CHM13.build" = "CHM13 v2"  # i18n-ignore i18n-source-hash:19f08799
 "rows.library.genome-management.reference_genomes.T2T-CHM13.source" = "Telomere-to-Telomere"  # i18n-ignore i18n-source-hash:cafdd528
-"controls.library.library-paths.genome_library.label" = "Chemin de la bibliothèque de jeux de données"  # i18n-source-hash:c0ce24d4
-"controls.library.library-paths.genome_library.tooltip" = "Répertoire des jeux de données utilisateur, un dossier par personne ou échantillon, utilisé par wgsextract-cli --genome."  # i18n-source-hash:bebeaa4b
+"controls.datasets.dataset-paths.dataset_library.label" = "Chemin de la bibliothèque de jeux de données"  # i18n-source-hash:c0ce24d4
+"controls.datasets.dataset-paths.dataset_library.tooltip" = "Répertoire des jeux de données utilisateur, un dossier par personne ou échantillon, utilisé par wgsextract-cli --genome. Les génomes de référence n’y vont jamais."  # i18n-source-hash:a5e2ea99
 "sections.datasets.test-dataset.title" = "Jeu de données de test"  # i18n-source-hash:da935796
 "sections.datasets.test-dataset.summary" = "Télécharger ou supprimer le petit jeu de données de benchmark hébergé sur GitHub, utilisé pour les workflows de test de WGS Extract."  # i18n-source-hash:3d75cbc7
 "actions.datasets.test-dataset.test-dataset-download.title" = "Télécharger le jeu de données de test"  # i18n-source-hash:15909a2d
@@ -397,14 +397,18 @@
 "actions.datasets.test-dataset.test-dataset-delete.title" = "Supprimer le jeu de données de test"  # i18n-source-hash:d68e9b63
 "actions.datasets.test-dataset.test-dataset-delete.tooltip" = "Supprimer le mini jeu de données de benchmark hg19 installé de la bibliothèque de jeux de données configurée."  # i18n-source-hash:54497c5e
 "actions.datasets.test-dataset.test-dataset-delete.confirm.title" = "Supprimer le jeu de données de test ?"  # i18n-source-hash:7327997c
-"actions.datasets.test-dataset.test-dataset-delete.confirm.message" = "Cela supprime le dossier local du mini jeu de données de benchmark hg19 de {{genome_library}}. Il pourra être téléchargé à nouveau plus tard."  # i18n-source-hash:32f38d20
+"actions.datasets.test-dataset.test-dataset-delete.confirm.message" = "Cela supprime le dossier local du mini jeu de données de benchmark hg19 de {{dataset_library}}. Il pourra être téléchargé à nouveau plus tard."  # i18n-source-hash:f419aea0
 "actions.datasets.test-dataset.test-dataset-delete.confirm.confirmButtonTitle" = "Supprimer"  # i18n-source-hash:f6fdbe48
 "actions.datasets.test-dataset.test-dataset-delete.confirm.cancelButtonTitle" = "Annuler"  # i18n-source-hash:77dfd213
 "actions.datasets.test-dataset.test-dataset-installed.title" = "Jeu de données de test installé"  # i18n-source-hash:b0e32a18
 "actions.datasets.test-dataset.test-dataset-installed.tooltip" = "Le mini jeu de données de benchmark hg19 est installé dans la bibliothèque de jeux de données configurée."  # i18n-source-hash:d394d3a4
 "actions.datasets.test-dataset.test-dataset-installed.disabledTooltip" = "Le jeu de données de test est déjà installé."  # i18n-source-hash:fe494c82
-"controls.settings.settings-paths.genome_library.label" = "Bibliothèque de jeux de données"  # i18n-source-hash:a63500a0
-"controls.settings.settings-paths.genome_library.tooltip" = "Répertoire par défaut de la bibliothèque de jeux de données, un dossier par personne ou échantillon, utilisé par wgsextract-cli --genome."  # i18n-source-hash:20587a3b
+"controls.settings.settings-paths.dataset_library.label" = "Bibliothèque de jeux de données"  # i18n-source-hash:a63500a0
+"controls.settings.settings-paths.dataset_library.tooltip" = "Répertoire par défaut de la bibliothèque de jeux de données, un dossier par personne ou échantillon, utilisé par wgsextract-cli --genome. Les génomes de référence n’y vont jamais."  # i18n-source-hash:6c38f036
+"controls.settings.settings-paths.reference_genome_library.label" = "Bibliothèque de génomes de référence"  # i18n-source-hash:de3aadd7
+"controls.settings.settings-paths.reference_genome_library.tooltip" = "Dossier contenant uniquement les génomes de référence téléchargés et les fichiers créés à partir d’eux (index, comptages de N). Rien d’autre n’y est écrit."  # i18n-source-hash:19981b40
+"controls.reference-genomes.reference-genome-paths.reference_genome_library.label" = "Chemin de la bibliothèque de génomes de référence"  # i18n-source-hash:77d6fac0
+"controls.reference-genomes.reference-genome-paths.reference_genome_library.tooltip" = "Dossier contenant uniquement les génomes de référence téléchargés et les fichiers créés à partir d’eux (index, comptages de N). Rien d’autre n’y est écrit."  # i18n-source-hash:19981b40
 
 # TODO: translate the CLI features added after v0.6.3.
 "controls.microarray.post-v063.min-gq.label" = "Minimum genotype quality (GQ)"  # i18n-ignore; TODO: translate

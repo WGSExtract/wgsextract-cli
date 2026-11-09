@@ -1694,7 +1694,7 @@ ploidy and mappability files, and the test genome.
 | --- | --- | --- | --- | --- |
 | `ref` | `Path \| None` | `None` | `--ref` | Reference library folder, or a FASTA in it (default: config reference_library, else reference_fasta's library, else the default library). |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | A BAM/CRAM or VCF whose build picks the annotation files to report. |
-| `genome_library` | `Path \| None` | `None` | `--genome-library` | Genome library folder for the test genome's status (default: config genome_library, else ``genomes`` beside the reference library). |
+| `dataset_library` | `Path \| None` | `None` | `--dataset-library` | Dataset library folder for the test dataset's status (default: config dataset_library, else ``datasets`` beside the reference library). |
 | `annotation_vcf` | `Path \| None` | `None` | `--annotation-vcf` | Custom annotation VCF path to include in readiness checks. |
 
 ### `api.ref.gene_map(RefGeneMapParams)`
@@ -2244,7 +2244,7 @@ tags and file count.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
-| `target_root` | `Path \| None` | `None` | `--target-root` | Genome library folder holding the test-1000genomes collection (default: config genome_library, else the genomes folder of the checkout or user data folder). |
+| `target_root` | `Path \| None` | `None` | `--target-root` | Dataset library folder holding the test-1000genomes collection (default: config dataset_library, else the datasets folder of the checkout or user data folder). |
 | `tag` | `tuple[str, ...] \| None` | `None` | `--tag` | Only examples carrying every one of these tags. |
 
 ### `api.examples.download(ExampleGenomeDownloadParams)`
@@ -2255,7 +2255,7 @@ Download example genomes (see `ExampleGenomeDownloadParams`); each file
 is an output with its catalog role (`bam`, `vcf`, `fastq_r1` ...),
 plus each example's `genome_config`.
 
-`ExampleGenomeDownloadParams`: Download curated examples into the genome library and write their
+`ExampleGenomeDownloadParams`: Download curated examples into the dataset library and write their
 genome configs. With no `example_ids`, `tag` or `all`, the small
 starter set (a chrMT VCF and a chr20 BAM) is downloaded.
 
@@ -2266,7 +2266,7 @@ starter set (a chrMT VCF and a chr20 BAM) is downloaded.
 | `all` | `bool` | `False` | `--all` | Download every curated example, including large full-genome data. |
 | `method` | `str` | `'auto'` | `--method` | Transfer method. Auto is an alias for HTTPS and does not probe Aspera; use --method aspera explicitly for Aspera. One of: `auto`, `https`, `aspera` |
 | `aspera_key` | `Path \| None` | `None` | `--aspera-key` | Private key for Aspera downloads (default: the Aspera Connect key, if installed). |
-| `target_root` | `Path \| None` | `None` | `--target-root` | Genome library folder holding the test-1000genomes collection (default: config genome_library, else the genomes folder of the checkout or user data folder). |
+| `target_root` | `Path \| None` | `None` | `--target-root` | Dataset library folder holding the test-1000genomes collection (default: config dataset_library, else the datasets folder of the checkout or user data folder). |
 | `force` | `bool` | `False` | `--force` | Discard existing and partially downloaded files and download again. Without it, completed files are kept and interrupted downloads resume. |
 | `dry_run` | `bool` | `False` | `--dry-run` | Plan the downloads (the result's details) without creating files. |
 

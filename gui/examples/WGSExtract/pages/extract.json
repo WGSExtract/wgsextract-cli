@@ -14,7 +14,7 @@
           "id": "bam_path",
           "label": "controls.extract.extract-inputs.bam_path.label",
           "kind": "path",
-          "defaultDirectory": "{{genome_library}}",
+          "defaultDirectory": "{{dataset_library}}",
           "tooltip": "controls.extract.extract-inputs.bam_path.tooltip"
         },
         {
@@ -341,14 +341,14 @@
           "id": "fastq_r1",
           "label": "controls.fastq.fastq-inputs.fastq_r1.label",
           "kind": "path",
-          "defaultDirectory": "{{genome_library}}",
+          "defaultDirectory": "{{dataset_library}}",
           "tooltip": "controls.fastq.fastq-inputs.fastq_r1.tooltip"
         },
         {
           "id": "fastq_r2",
           "label": "controls.fastq.fastq-inputs.fastq_r2.label",
           "kind": "path",
-          "defaultDirectory": "{{genome_library}}",
+          "defaultDirectory": "{{dataset_library}}",
           "tooltip": "controls.fastq.fastq-inputs.fastq_r2.tooltip"
         },
         {
@@ -360,7 +360,8 @@
             "path": "scripts/list-reference-genomes.py",
             "arguments": [
               "options",
-              "{{ref_path}}"
+              "{{ref_path}}",
+              "{{reference_genome_library}}"
             ]
           },
           "emptyText": "controls.reference-genome.emptyText"
@@ -642,7 +643,8 @@
             "path": "scripts/list-reference-genomes.py",
             "arguments": [
               "options",
-              "{{ref_path}}"
+              "{{ref_path}}",
+              "{{reference_genome_library}}"
             ]
           },
           "emptyText": "controls.reference-genome.emptyText"
@@ -1867,7 +1869,7 @@
           "id": "vcf_path",
           "label": "controls.vcf.vcf-inputs.vcf_path.label",
           "kind": "path",
-          "defaultDirectory": "{{genome_library}}",
+          "defaultDirectory": "{{dataset_library}}",
           "tooltip": "controls.vcf.vcf-inputs.vcf_path.tooltip",
           "advancedOnly": true
         },

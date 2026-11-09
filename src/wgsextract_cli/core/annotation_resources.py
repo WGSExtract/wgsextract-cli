@@ -51,7 +51,9 @@ def get_genome_size(final_name: str, reflib_dir: str) -> str:
     """Returns human-readable local size of the genome and its index files."""
     if not reflib_dir:
         return ""
-    base_path = str(Path(reflib_dir, "genomes", final_name))
+    from wgsextract_cli.core.reference_assets import reference_genomes_dir
+
+    base_path = str(Path(reference_genomes_dir(reflib_dir), final_name))
     total_bytes = 0
     # Include .partial, .fai, .gzi, .dict etc
     for ext in ["", ".partial", ".fai", ".gzi", ".dict"]:

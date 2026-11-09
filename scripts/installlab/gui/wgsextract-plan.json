@@ -2,14 +2,14 @@
   "name": "install lab - WGS Extract GUI on the HG00096 mini genome",
   "inputs": {
     "fieldValues": {
-      "bam_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.bam",
-      "ref_path": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
-      "ref_fasta": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
-      "realign_ref": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
-      "fastq_r1": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini_R1.fastq.gz",
-      "fastq_r2": "{{bundleWorkspace}}/dataset/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini_R2.fastq.gz",
+      "bam_path": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.bam",
+      "ref_path": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
+      "ref_fasta": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
+      "realign_ref": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
+      "fastq_r1": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini_R1.fastq.gz",
+      "fastq_r2": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini_R2.fastq.gz",
       "fastq_output_format": "BAM",
-      "genome_library": "{{bundleWorkspace}}/dataset",
+      "dataset_library": "{{bundleWorkspace}}/datasets",
       "haplogrep_path": "haplogrep3"
     },
     "checkedOptions": {

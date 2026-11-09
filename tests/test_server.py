@@ -1011,11 +1011,11 @@ def test_path_guard_checks_the_library_above_a_genomes_fasta(tmp_path, op):
     with pytest.raises(RequestError) as refused:
         PathGuard([genomes]).check(params)
     assert refused.value.code == "path_not_allowed"
-    # status also reads the genome library beside it.
+    # status also reads the dataset library beside it.
     if op == "ref/status":
         with pytest.raises(RequestError, match="outside the folders"):
             PathGuard([tmp_path / "library"]).check(params)
-    PathGuard([tmp_path / "library", tmp_path / "genomes"]).check(params)
+    PathGuard([tmp_path / "library", tmp_path / "datasets"]).check(params)
 
 
 @pytest.mark.parametrize("op", ["ref/clinvar", "ref/status", "ref/library-list"])

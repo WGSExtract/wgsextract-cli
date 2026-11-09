@@ -296,7 +296,7 @@ test("WGSExtract Windows library state delegates to CLI status", async (t) => {
     assert.equal(state.values["library.testGenomeStatus"], "from-cli");
     const call = await readFile(path.join(scriptRoot, "calls.log"), "utf8");
     assert.match(call, new RegExp(`ref\\|status\\|--values\\|--ref\\|${escapeRegExp(refPath)}`));
-    assert.match(call, new RegExp(`--genome-library\\|${escapeRegExp(genomeLibrary)}`));
+    assert.match(call, new RegExp(`--dataset-library\\|${escapeRegExp(genomeLibrary)}`));
     assert.match(call, new RegExp(`--annotation-vcf\\|${escapeRegExp(annotationVcf)}`));
     assert.match(call, new RegExp(`--input\\|${escapeRegExp(inputVcf)}`));
   } finally {
@@ -305,7 +305,7 @@ test("WGSExtract Windows library state delegates to CLI status", async (t) => {
   }
 });
 
-test("WGSExtract Windows config bootstrap includes genome library default", async (t) => {
+test("WGSExtract Windows config bootstrap includes the dataset and reference genome library defaults", async (t) => {
   if (process.platform !== "win32") {
     t.skip("Windows config bootstrap behavior is platform-specific.");
     return;
@@ -334,7 +334,9 @@ test("WGSExtract Windows config bootstrap includes genome library default", asyn
     assert.equal(bootstrap.path, path.join(tempRoot, "settings", "config.toml"));
     assert.match(bootstrap.contents, new RegExp(`output_directory = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "output")))}"`));
     assert.match(bootstrap.contents, new RegExp(`reference_library = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "reference")))}"`));
-    assert.match(bootstrap.contents, new RegExp(`genome_library = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "dataset")))}"`));
+    assert.match(bootstrap.contents, new RegExp(`dataset_library = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "datasets")))}"`));
+    assert.match(bootstrap.contents, new RegExp(`reference_genome_library = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "genomes")))}"`));
+    assert.doesNotMatch(bootstrap.contents, /^genome_library/m);
   } finally {
     await processManager.terminateAllProcesses();
     setOrDeleteEnv("GUI_FOR_CLI_BUNDLE_WORKSPACE", previousWorkspace);

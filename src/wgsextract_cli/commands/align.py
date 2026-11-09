@@ -43,7 +43,11 @@ from wgsextract_cli.core.read_counts import (
     fastq_input_statistics,
     fastq_statistics,
 )
-from wgsextract_cli.core.reference_assets import header_sequences, is_fasta_path
+from wgsextract_cli.core.reference_assets import (
+    header_sequences,
+    is_fasta_path,
+    reference_genomes_dir,
+)
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.resource_estimates import (
     estimate_resources,
@@ -620,7 +624,7 @@ def _require_unambiguous_library(ref: str | None, task: str) -> None:
         return
     fastas = sorted(
         str(Path(d, name))
-        for d in (root, str(Path(root, "genomes")))
+        for d in (root, reference_genomes_dir(root))
         if Path(d).is_dir()
         for name in os.listdir(d)
         if is_fasta_path(name)

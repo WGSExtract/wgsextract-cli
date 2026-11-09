@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from wgsextract_cli.core.file_lock import exclusive_lock
+from wgsextract_cli.core.reference_assets import reference_genomes_dir
 from wgsextract_cli.core.utils import WGSExtractError
 
 from .operations import (
@@ -353,10 +354,11 @@ class JobManager:
         if params is not None:
             folders.update(_folder_key(os.fspath(f)) for f in params.write_folders())
         if op.params.WRITES_BESIDE and not job.params.get("outdir"):
-            # A library folder given as the FASTA: it resolves to one in genomes/.
+            # A library folder given as the FASTA: it resolves to one in its
+            # reference genomes folder.
             beside = _beside_path(op, job.params)
             if _is_local_folder(beside):
-                folders.add(_folder_key(os.path.join(beside, "genomes")))
+                folders.add(_folder_key(reference_genomes_dir(beside)))
         for item in op.fields():
             value = job.params.get(item.name)
             if not isinstance(value, str) or not value:

@@ -24,8 +24,10 @@ from wgsextract_cli.core.reference_assets import (
     find_reference_fasta,
     find_reference_target_tab,
     is_fasta_path,
+    library_of_genomes_dir,
     read_fai_lengths,
     reference_dict_path,
+    reference_genomes_dir,
     resolve_input_reference_fasta,
     resolve_input_target_tab,
 )
@@ -81,10 +83,11 @@ def library_roots(root_path: PathInput | None) -> LibraryRoots:
     if not root or not (Path(root).is_file() and is_fasta_path(root)):
         return LibraryRoots(root)
     fasta_dir = Path(root).parent
-    # A FASTA in <library>/genomes/ belongs to that library, whose root holds
-    # the ploidy files, liftover chains and annotation data.
-    if fasta_dir.name == "genomes":
-        return LibraryRoots(str(fasta_dir.parent), root)
+    # A FASTA in a library's genomes folder belongs to that library, whose root
+    # holds the ploidy files, liftover chains and annotation data.
+    owner = library_of_genomes_dir(fasta_dir)
+    if owner:
+        return LibraryRoots(owner, root)
     # A FASTA kept outside any library chooses only the sequence.
     configured = settings.get("reference_library")
     if isinstance(configured, str) and configured:
@@ -189,7 +192,7 @@ class ReferenceLibrary:
 
     def _genome_dirs(self) -> list[str]:
         assert self.root is not None
-        return [self.root, str(Path(self.root, "genomes"))]
+        return [self.root, reference_genomes_dir(self.root)]
 
     def _fasta_matching_signature(self) -> str | None:
         """Pick the FASTA whose sequence dictionary matches the input's: from the

@@ -10,10 +10,9 @@ from typing import Any
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.ref import RefStatusParams
 from wgsextract_cli.core import bwa_mem2, sample_workspace
-from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.config import dataset_library, settings
 from wgsextract_cli.core.gene_map import are_gene_maps_installed
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.ref_library.catalog import get_genome_status
 from wgsextract_cli.core.reference_assets import (
     build_hint,
     default_reference_library,
@@ -21,6 +20,7 @@ from wgsextract_cli.core.reference_assets import (
     find_annotation_vcf,
     first_existing_file,
     is_fasta_path,
+    reference_genomes_dir,
     reference_library_of,
 )
 from wgsextract_cli.core.reference_processing import bootstrap_has_support_assets
@@ -67,7 +67,7 @@ def build_ref_status(params: RefStatusParams) -> dict[str, Any]:
 
 def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
     reflib = _resolve_reference_library(params.ref)
-    genome_library = _resolve_genome_library(params.genome_library, reflib)
+    datasets = _resolve_dataset_library(params.dataset_library, reflib)
     input_path = fspath(params.input) if params.input else None
     annotation_vcf = fspath(params.annotation_vcf) if params.annotation_vcf else ""
     lib = ReferenceLibrary(reflib, input_path=input_path)
@@ -83,16 +83,20 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
         reflib, "pharmgkb", build, [".vcf.gz", ".vcf.bgz", ".tsv.gz"]
     )
     annotation_argument = annotation_vcf or annotation_file
-    test_genome = _test_genome_status(genome_library)
+    test_genome = _test_genome_status(datasets)
 
     return {
         "referenceLibrary": {
             "path": reflib,
             "exists": Path(reflib).is_dir(),
         },
-        "genomeLibrary": {
-            "path": genome_library,
-            "exists": Path(genome_library).is_dir(),
+        "referenceGenomeLibrary": {
+            "path": reference_genomes_dir(reflib),
+            "exists": Path(reference_genomes_dir(reflib)).is_dir(),
+        },
+        "datasetLibrary": {
+            "path": datasets,
+            "exists": Path(datasets).is_dir(),
         },
         "build": build,
         "bootstrap": {
@@ -265,7 +269,7 @@ def _pharmcat_status(reflib: str) -> dict[str, Any]:
 
 
 def _genome_status(reflib: str) -> list[dict[str, Any]]:
-    genomes_dir = str(Path(reflib, "genomes"))
+    genomes_dir = reference_genomes_dir(reflib)
     if not Path(genomes_dir).is_dir():
         return []
     genomes = []
@@ -311,11 +315,11 @@ def _library_of(ref: str | os.PathLike[str]) -> str | None:
     return None
 
 
-def _resolve_genome_library(genome_library: Path | None, reflib: str) -> str:
-    genome_library = genome_library or settings.get("genome_library")
-    if genome_library:
-        return str(absolute_path(str(genome_library)))
-    return str(Path(reflib).parent / "genomes")
+def _resolve_dataset_library(datasets: Path | None, reflib: str) -> str:
+    library = datasets or dataset_library()
+    if library:
+        return str(absolute_path(str(library)))
+    return str(Path(reflib).parent / "datasets")
 
 
 def _ploidy_status(reflib: str) -> dict[str, Any]:
@@ -354,10 +358,10 @@ def _mappability_map_status(reflib: str) -> dict[str, Any]:
     }
 
 
-def _test_genome_status(genome_library: str) -> dict[str, Any]:
-    path = str(Path(genome_library, "wgsextract-benchmark-hg19-mini"))
+def _test_genome_status(datasets: str) -> dict[str, Any]:
+    path = str(Path(datasets, "wgsextract-benchmark-hg19-mini"))
     partial = str(
-        Path(genome_library, ".downloads", "wgsextract-benchmark-hg19-mini.zip.partial")
+        Path(datasets, ".downloads", "wgsextract-benchmark-hg19-mini.zip.partial")
     )
     installed = Path(path).is_dir() and Path(path, "genome-config.toml").is_file()
     if installed:
@@ -365,7 +369,7 @@ def _test_genome_status(genome_library: str) -> dict[str, Any]:
     elif Path(partial).is_file():
         status = "incomplete"
     else:
-        status = get_genome_status("wgsextract-benchmark-hg19-mini", genome_library)
+        status = "missing"
     return {
         "installed": installed,
         "status": status,

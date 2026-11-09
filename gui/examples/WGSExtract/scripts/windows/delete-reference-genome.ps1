@@ -11,7 +11,8 @@ if (-not $final -or $final.Contains("/") -or $final.Contains("\") -or $final.Con
     exit 2
 }
 
-$targetDir = Join-Path $library "genomes"
+# The Reference Genomes Library, else genomes\ in the reference library.
+$targetDir = if ($args.Count -gt 2 -and $args[2]) { $args[2] } else { Join-Path $library "genomes" }
 if (-not (Test-Path -LiteralPath $targetDir -PathType Container)) {
     Write-Error "Reference genome directory does not exist: $targetDir"
     exit 2

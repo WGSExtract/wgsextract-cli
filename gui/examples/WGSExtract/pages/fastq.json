@@ -14,14 +14,14 @@
           "id": "fastq_r1",
           "label": "controls.fastq.fastq-inputs.fastq_r1.label",
           "kind": "path",
-          "defaultDirectory": "{{genome_library}}",
+          "defaultDirectory": "{{dataset_library}}",
           "tooltip": "controls.fastq.fastq-inputs.fastq_r1.tooltip"
         },
         {
           "id": "fastq_r2",
           "label": "controls.fastq.fastq-inputs.fastq_r2.label",
           "kind": "path",
-          "defaultDirectory": "{{genome_library}}",
+          "defaultDirectory": "{{dataset_library}}",
           "tooltip": "controls.fastq.fastq-inputs.fastq_r2.tooltip"
         },
         {
@@ -471,14 +471,14 @@
           "id": "pet_fastq_r1",
           "label": "controls.pet-analysis.pet-inputs.pet_fastq_r1.label",
           "kind": "path",
-          "defaultDirectory": "{{genome_library}}",
+          "defaultDirectory": "{{dataset_library}}",
           "tooltip": "controls.pet-analysis.pet-inputs.pet_fastq_r1.tooltip"
         },
         {
           "id": "pet_fastq_r2",
           "label": "controls.pet-analysis.pet-inputs.pet_fastq_r2.label",
           "kind": "path",
-          "defaultDirectory": "{{genome_library}}",
+          "defaultDirectory": "{{dataset_library}}",
           "tooltip": "controls.pet-analysis.pet-inputs.pet_fastq_r2.tooltip"
         },
         {

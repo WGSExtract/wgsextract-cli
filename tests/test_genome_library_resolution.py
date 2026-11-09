@@ -49,12 +49,12 @@ def test_without_a_genome_nothing_changes(library):
 
 def test_genome_needs_genome_library_in_config(library):
     settings.pop("genome_library")
-    with pytest.raises(WGSExtractError, match="genome_library"):
+    with pytest.raises(WGSExtractError, match="dataset_library"):
         _select("ken", command="info")
 
 
 def test_unknown_genome_names_its_folder(library):
-    with pytest.raises(WGSExtractError, match="not found in genome_library"):
+    with pytest.raises(WGSExtractError, match="not found in dataset_library"):
         _select("nobody", command="info")
 
 
