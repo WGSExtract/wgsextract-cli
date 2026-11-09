@@ -30,6 +30,9 @@ def only_tools(request: pytest.FixtureRequest, *tools: str) -> Path:
         if not path:
             pytest.skip(f"{tool} missing")
         os.symlink(path, bindir / tool)
+        # bwa-mem2's Linux build runs bwa-mem2.<SIMD level> from beside itself.
+        for variant in Path(path).parent.glob(f"{tool}.*"):
+            os.symlink(variant, bindir / variant.name)
     return bindir
 
 
