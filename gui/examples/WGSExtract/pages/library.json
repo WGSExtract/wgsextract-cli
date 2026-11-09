@@ -70,6 +70,12 @@
               "--install",
               "--ref",
               "{{ref_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--snapshot",
+                "{{ybrowse_snapshot}}"
+              ]
             ]
           },
           "advancedOnly": true
@@ -85,6 +91,24 @@
               "download",
               "--vep-cache",
               "{{vep_cache_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--species",
+                "{{vep_species}}"
+              ],
+              [
+                "--vep-version",
+                "{{vep_version}}"
+              ],
+              [
+                "--mirror",
+                "{{vep_mirror}}"
+              ],
+              [
+                "--assembly",
+                "{{vep_download_assembly}}"
+              ]
             ]
           },
           "advancedOnly": true
@@ -100,6 +124,20 @@
               "verify",
               "--vep-cache",
               "{{vep_cache_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--species",
+                "{{vep_species}}"
+              ],
+              [
+                "--vep-version",
+                "{{vep_version}}"
+              ],
+              [
+                "--assembly",
+                "{{vep_download_assembly}}"
+              ]
             ]
           },
           "advancedOnly": true
@@ -487,7 +525,407 @@
         }
       ],
       "iconName": "reference-storage",
-      "textIcon": "💽"
+      "textIcon": "💽",
+      "controls": [
+        {
+          "id": "ybrowse_snapshot",
+          "label": "controls.cli.ybrowse_snapshot.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.ybrowse_snapshot.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "vep_species",
+          "label": "controls.cli.vep_species.label",
+          "kind": "text",
+          "tooltip": "controls.cli.vep_species.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "vep_version",
+          "label": "controls.cli.vep_version.label",
+          "kind": "text",
+          "tooltip": "controls.cli.vep_version.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "vep_mirror",
+          "label": "controls.cli.vep_mirror.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "ebi",
+              "title": "options.cli.value.ebi.title"
+            },
+            {
+              "id": "uk",
+              "title": "options.cli.value.uk.title"
+            }
+          ],
+          "tooltip": "controls.cli.vep_mirror.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "vep_download_assembly",
+          "label": "controls.cli.vep_download_assembly.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "GRCh37",
+              "title": "options.cli.value.GRCh37.title"
+            },
+            {
+              "id": "GRCh38",
+              "title": "options.cli.value.GRCh38.title"
+            }
+          ],
+          "tooltip": "controls.cli.vep_download_assembly.tooltip",
+          "advancedOnly": true
+        }
+      ]
+    },
+    {
+      "id": "annotation-downloads",
+      "title": "sections.cli.annotation-downloads.title",
+      "textIcon": "⬇️",
+      "advancedOnly": true,
+      "controls": [
+        {
+          "id": "annotation_build",
+          "label": "controls.cli.annotation_build.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "hg38",
+              "title": "options.cli.value.hg38.title"
+            },
+            {
+              "id": "hg19",
+              "title": "options.cli.value.hg19.title"
+            }
+          ],
+          "tooltip": "controls.cli.annotation_build.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "gnomad_release",
+          "label": "controls.cli.gnomad_release.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "2.1.1",
+              "title": "options.cli.value.2.1.1.title"
+            },
+            {
+              "id": "4.1",
+              "title": "options.cli.value.4.1.title"
+            }
+          ],
+          "tooltip": "controls.cli.gnomad_release.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "ref_url",
+          "label": "controls.cli.ref_url.label",
+          "kind": "text",
+          "tooltip": "controls.cli.ref_url.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "ref_out",
+          "label": "controls.cli.ref_out.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.ref_out.tooltip",
+          "advancedOnly": true
+        }
+      ],
+      "actions": [
+        {
+          "id": "ref-clinvar",
+          "title": "actions.cli.ref-clinvar.title",
+          "tooltip": "actions.cli.ref-clinvar.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "ref",
+              "clinvar",
+              "--ref",
+              "{{ref_path}}"
+            ]
+          }
+        },
+        {
+          "id": "ref-revel",
+          "title": "actions.cli.ref-revel.title",
+          "tooltip": "actions.cli.ref-revel.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "ref",
+              "revel",
+              "--ref",
+              "{{ref_path}}"
+            ]
+          }
+        },
+        {
+          "id": "ref-gnomad",
+          "title": "actions.cli.ref-gnomad.title",
+          "tooltip": "actions.cli.ref-gnomad.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "ref",
+              "gnomad",
+              "--ref",
+              "{{ref_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--release",
+                "{{gnomad_release}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "ref-cadd",
+          "title": "actions.cli.ref-cadd.title",
+          "tooltip": "actions.cli.ref-cadd.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "ref",
+              "cadd",
+              "--ref",
+              "{{ref_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--build",
+                "{{annotation_build}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "ref-gerp",
+          "title": "actions.cli.ref-gerp.title",
+          "tooltip": "actions.cli.ref-gerp.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "ref",
+              "gerp",
+              "--ref",
+              "{{ref_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--build",
+                "{{annotation_build}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "ref-phylop",
+          "title": "actions.cli.ref-phylop.title",
+          "tooltip": "actions.cli.ref-phylop.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "ref",
+              "phylop",
+              "--ref",
+              "{{ref_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--build",
+                "{{annotation_build}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "ref-download",
+          "title": "actions.cli.ref-download.title",
+          "tooltip": "actions.cli.ref-download.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "ref",
+              "download",
+              "--url",
+              "{{ref_url}}",
+              "--out",
+              "{{ref_out}}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "example-genomes",
+      "title": "sections.cli.example-genomes.title",
+      "textIcon": "🧫",
+      "advancedOnly": true,
+      "controls": [
+        {
+          "id": "example_tag",
+          "label": "controls.cli.example_tag.label",
+          "kind": "text",
+          "tooltip": "controls.cli.example_tag.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "example_all",
+          "label": "controls.cli.example_all.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--all",
+              "title": "controls.cli.example_all.label"
+            }
+          ],
+          "tooltip": "controls.cli.example_all.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "example_method",
+          "label": "controls.cli.example_method.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "auto",
+              "title": "options.cli.value.auto.title"
+            },
+            {
+              "id": "https",
+              "title": "options.cli.value.https.title"
+            },
+            {
+              "id": "aspera",
+              "title": "options.cli.value.aspera.title"
+            }
+          ],
+          "tooltip": "controls.cli.example_method.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "example_aspera_key",
+          "label": "controls.cli.example_aspera_key.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.example_aspera_key.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "example_force",
+          "label": "controls.cli.example_force.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--force",
+              "title": "controls.cli.example_force.label"
+            }
+          ],
+          "tooltip": "controls.cli.example_force.tooltip",
+          "advancedOnly": true
+        }
+      ],
+      "actions": [
+        {
+          "id": "example-list",
+          "title": "actions.cli.example-list.title",
+          "tooltip": "actions.cli.example-list.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "example-genome",
+              "list"
+            ],
+            "optionalArguments": [
+              [
+                "--target-root",
+                "{{genome_library}}"
+              ],
+              [
+                "--tag",
+                "{{example_tag}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "example-download",
+          "title": "actions.cli.example-download.title",
+          "tooltip": "actions.cli.example-download.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "example-genome",
+              "download"
+            ],
+            "optionalArguments": [
+              [
+                "--target-root",
+                "{{genome_library}}"
+              ],
+              [
+                "--tag",
+                "{{example_tag}}"
+              ],
+              [
+                "{{example_all}}"
+              ],
+              [
+                "--method",
+                "{{example_method}}"
+              ],
+              [
+                "--aspera-key",
+                "{{example_aspera_key}}"
+              ],
+              [
+                "{{example_force}}"
+              ]
+            ]
+          }
+        }
+      ]
     },
     {
       "id": "genome-management",
@@ -568,6 +1006,12 @@
                   "index",
                   "--ref",
                   "{{row.ref}}"
+                ],
+                "optionalArguments": [
+                  [
+                    "--aligner",
+                    "{{ref_index_aligner}}"
+                  ]
                 ]
               },
               "iconName": "index-reference",
@@ -711,6 +1155,27 @@
               }
             ]
           }
+        },
+        {
+          "id": "ref_index_aligner",
+          "label": "controls.cli.ref_index_aligner.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "bwa",
+              "title": "options.cli.value.bwa.title"
+            },
+            {
+              "id": "bwa-mem2",
+              "title": "options.cli.value.bwa-mem2.title"
+            }
+          ],
+          "tooltip": "controls.cli.ref_index_aligner.tooltip",
+          "advancedOnly": true
         }
       ],
       "iconName": "library",

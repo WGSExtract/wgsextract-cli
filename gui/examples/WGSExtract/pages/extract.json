@@ -86,6 +86,13 @@
           ],
           "tooltip": "controls.extract.post-v063.fastq.tooltip",
           "advancedOnly": true
+        },
+        {
+          "id": "extract_gene",
+          "label": "controls.cli.extract_gene.label",
+          "kind": "text",
+          "tooltip": "controls.cli.extract_gene.tooltip",
+          "advancedOnly": true
         }
       ],
       "actions": [
@@ -262,6 +269,10 @@
               [
                 "--outdir",
                 "{{out_dir}}"
+              ],
+              [
+                "--gene",
+                "{{extract_gene}}"
               ]
             ]
           },
@@ -309,6 +320,10 @@
               [
                 "--outdir",
                 "{{out_dir}}"
+              ],
+              [
+                "--gene",
+                "{{extract_gene}}"
               ]
             ]
           },
@@ -367,6 +382,183 @@
               "title": "options.fastq.fastq-inputs.fastq_output_format.CRAM.title"
             }
           ]
+        },
+        {
+          "id": "align_platform",
+          "label": "controls.cli.align_platform.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "illumina",
+              "title": "options.cli.value.illumina.title"
+            },
+            {
+              "id": "dnbseq",
+              "title": "options.cli.value.dnbseq.title"
+            },
+            {
+              "id": "ultima",
+              "title": "options.cli.value.ultima.title"
+            },
+            {
+              "id": "pacbio",
+              "title": "options.cli.value.pacbio.title"
+            },
+            {
+              "id": "hifi",
+              "title": "options.cli.value.hifi.title"
+            },
+            {
+              "id": "clr",
+              "title": "options.cli.value.clr.title"
+            },
+            {
+              "id": "ont",
+              "title": "options.cli.value.ont.title"
+            },
+            {
+              "id": "nanopore",
+              "title": "options.cli.value.nanopore.title"
+            }
+          ],
+          "tooltip": "controls.cli.align_platform.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "align_aligner",
+          "label": "controls.cli.align_aligner.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "auto",
+              "title": "options.cli.value.auto.title"
+            },
+            {
+              "id": "bwa",
+              "title": "options.cli.value.bwa.title"
+            },
+            {
+              "id": "bwa-mem2",
+              "title": "options.cli.value.bwa-mem2.title"
+            },
+            {
+              "id": "minimap2",
+              "title": "options.cli.value.minimap2.title"
+            },
+            {
+              "id": "pbmm2",
+              "title": "options.cli.value.pbmm2.title"
+            }
+          ],
+          "tooltip": "controls.cli.align_aligner.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "align_preset",
+          "label": "controls.cli.align_preset.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "sr",
+              "title": "options.cli.value.sr.title"
+            },
+            {
+              "id": "map-pb",
+              "title": "options.cli.value.map-pb.title"
+            },
+            {
+              "id": "map-hifi",
+              "title": "options.cli.value.map-hifi.title"
+            },
+            {
+              "id": "map-ont",
+              "title": "options.cli.value.map-ont.title"
+            },
+            {
+              "id": "ccs",
+              "title": "options.cli.value.ccs.title"
+            },
+            {
+              "id": "subread",
+              "title": "options.cli.value.subread.title"
+            }
+          ],
+          "tooltip": "controls.cli.align_preset.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "align_sample",
+          "label": "controls.cli.align_sample.label",
+          "kind": "text",
+          "tooltip": "controls.cli.align_sample.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "align_input_ref",
+          "label": "controls.cli.align_input_ref.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.align_input_ref.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "align_gpu",
+          "label": "controls.cli.align_gpu.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--gpu",
+              "title": "controls.cli.align_gpu.label"
+            }
+          ],
+          "tooltip": "controls.cli.align_gpu.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "align_native_aligners",
+          "label": "controls.cli.align_native_aligners.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "auto",
+              "title": "options.cli.value.auto.title"
+            },
+            {
+              "id": "off",
+              "title": "options.cli.value.off.title"
+            }
+          ],
+          "tooltip": "controls.cli.align_native_aligners.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "align_no_gpu_check",
+          "label": "controls.cli.align_no_gpu_check.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--no-gpu-memory-check",
+              "title": "controls.cli.align_no_gpu_check.label"
+            }
+          ],
+          "tooltip": "controls.cli.align_no_gpu_check.tooltip",
+          "advancedOnly": true
         }
       ],
       "actions": [
@@ -398,6 +590,36 @@
               [
                 "--r2",
                 "{{fastq_r2}}"
+              ],
+              [
+                "--platform",
+                "{{align_platform}}"
+              ],
+              [
+                "--aligner",
+                "{{align_aligner}}"
+              ],
+              [
+                "--preset",
+                "{{align_preset}}"
+              ],
+              [
+                "--sample",
+                "{{align_sample}}"
+              ],
+              [
+                "--input-ref",
+                "{{align_input_ref}}"
+              ],
+              [
+                "{{align_gpu}}"
+              ],
+              [
+                "--native-aligners",
+                "{{align_native_aligners}}"
+              ],
+              [
+                "{{align_no_gpu_check}}"
               ]
             ]
           }
@@ -436,6 +658,268 @@
             }
           ],
           "tooltip": "controls.info-bam.post-v063.keep-fastq.tooltip"
+        },
+        {
+          "id": "realign_format",
+          "label": "controls.cli.realign_format.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "BAM",
+              "title": "options.cli.value.BAM.title"
+            },
+            {
+              "id": "CRAM",
+              "title": "options.cli.value.CRAM.title"
+            }
+          ],
+          "tooltip": "controls.cli.realign_format.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "realign_platform",
+          "label": "controls.cli.realign_platform.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "illumina",
+              "title": "options.cli.value.illumina.title"
+            },
+            {
+              "id": "dnbseq",
+              "title": "options.cli.value.dnbseq.title"
+            },
+            {
+              "id": "ultima",
+              "title": "options.cli.value.ultima.title"
+            },
+            {
+              "id": "pacbio",
+              "title": "options.cli.value.pacbio.title"
+            },
+            {
+              "id": "hifi",
+              "title": "options.cli.value.hifi.title"
+            },
+            {
+              "id": "clr",
+              "title": "options.cli.value.clr.title"
+            },
+            {
+              "id": "ont",
+              "title": "options.cli.value.ont.title"
+            },
+            {
+              "id": "nanopore",
+              "title": "options.cli.value.nanopore.title"
+            }
+          ],
+          "tooltip": "controls.cli.realign_platform.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "realign_aligner",
+          "label": "controls.cli.realign_aligner.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "auto",
+              "title": "options.cli.value.auto.title"
+            },
+            {
+              "id": "bwa",
+              "title": "options.cli.value.bwa.title"
+            },
+            {
+              "id": "bwa-mem2",
+              "title": "options.cli.value.bwa-mem2.title"
+            },
+            {
+              "id": "minimap2",
+              "title": "options.cli.value.minimap2.title"
+            },
+            {
+              "id": "pbmm2",
+              "title": "options.cli.value.pbmm2.title"
+            }
+          ],
+          "tooltip": "controls.cli.realign_aligner.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "realign_preset",
+          "label": "controls.cli.realign_preset.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "sr",
+              "title": "options.cli.value.sr.title"
+            },
+            {
+              "id": "map-pb",
+              "title": "options.cli.value.map-pb.title"
+            },
+            {
+              "id": "map-hifi",
+              "title": "options.cli.value.map-hifi.title"
+            },
+            {
+              "id": "map-ont",
+              "title": "options.cli.value.map-ont.title"
+            },
+            {
+              "id": "ccs",
+              "title": "options.cli.value.ccs.title"
+            },
+            {
+              "id": "subread",
+              "title": "options.cli.value.subread.title"
+            }
+          ],
+          "tooltip": "controls.cli.realign_preset.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "realign_sample",
+          "label": "controls.cli.realign_sample.label",
+          "kind": "text",
+          "tooltip": "controls.cli.realign_sample.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "realign_input_ref",
+          "label": "controls.cli.realign_input_ref.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.realign_input_ref.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "realign_no_resume",
+          "label": "controls.cli.realign_no_resume.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--no-resume",
+              "title": "controls.cli.realign_no_resume.label"
+            }
+          ],
+          "tooltip": "controls.cli.realign_no_resume.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "realign_no_preflight",
+          "label": "controls.cli.realign_no_preflight.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--no-preflight",
+              "title": "controls.cli.realign_no_preflight.label"
+            }
+          ],
+          "tooltip": "controls.cli.realign_no_preflight.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "realign_force_extract",
+          "label": "controls.cli.realign_force_extract.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--force-extract",
+              "title": "controls.cli.realign_force_extract.label"
+            }
+          ],
+          "tooltip": "controls.cli.realign_force_extract.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "realign_gpu",
+          "label": "controls.cli.realign_gpu.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--gpu",
+              "title": "controls.cli.realign_gpu.label"
+            }
+          ],
+          "tooltip": "controls.cli.realign_gpu.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "realign_no_gpu_check",
+          "label": "controls.cli.realign_no_gpu_check.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--no-gpu-memory-check",
+              "title": "controls.cli.realign_no_gpu_check.label"
+            }
+          ],
+          "tooltip": "controls.cli.realign_no_gpu_check.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "realign_native_aligners",
+          "label": "controls.cli.realign_native_aligners.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "auto",
+              "title": "options.cli.value.auto.title"
+            },
+            {
+              "id": "off",
+              "title": "options.cli.value.off.title"
+            }
+          ],
+          "tooltip": "controls.cli.realign_native_aligners.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "realign_force_step",
+          "label": "controls.cli.realign_force_step.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "extract",
+              "title": "options.cli.value.extract.title"
+            },
+            {
+              "id": "align",
+              "title": "options.cli.value.align.title"
+            },
+            {
+              "id": "index",
+              "title": "options.cli.value.index.title"
+            }
+          ],
+          "tooltip": "controls.cli.realign_force_step.tooltip",
+          "advancedOnly": true
         }
       ],
       "actions": [
@@ -463,6 +947,53 @@
               [
                 "--outdir",
                 "{{out_dir}}"
+              ],
+              [
+                "--format",
+                "{{realign_format}}"
+              ],
+              [
+                "--platform",
+                "{{realign_platform}}"
+              ],
+              [
+                "--aligner",
+                "{{realign_aligner}}"
+              ],
+              [
+                "--preset",
+                "{{realign_preset}}"
+              ],
+              [
+                "--sample",
+                "{{realign_sample}}"
+              ],
+              [
+                "--input-ref",
+                "{{realign_input_ref}}"
+              ],
+              [
+                "{{realign_no_resume}}"
+              ],
+              [
+                "{{realign_no_preflight}}"
+              ],
+              [
+                "{{realign_force_extract}}"
+              ],
+              [
+                "{{realign_gpu}}"
+              ],
+              [
+                "{{realign_no_gpu_check}}"
+              ],
+              [
+                "--native-aligners",
+                "{{realign_native_aligners}}"
+              ],
+              [
+                "--force-step",
+                "{{realign_force_step}}"
               ]
             ]
           }
@@ -560,6 +1091,180 @@
           "kind": "path",
           "tooltip": "controls.vcf.v066.sv-tandem-repeats.tooltip",
           "advancedOnly": true
+        },
+        {
+          "id": "qc_min_depth",
+          "label": "controls.cli.qc_min_depth.label",
+          "kind": "text",
+          "tooltip": "controls.cli.qc_min_depth.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "sv_caller",
+          "label": "controls.cli.sv_caller.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "delly",
+              "title": "options.cli.value.delly.title"
+            },
+            {
+              "id": "pbsv",
+              "title": "options.cli.value.pbsv.title"
+            },
+            {
+              "id": "sniffles",
+              "title": "options.cli.value.sniffles.title"
+            }
+          ],
+          "tooltip": "controls.cli.sv_caller.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "sv_pacbio",
+          "label": "controls.cli.sv_pacbio.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--pacbio",
+              "title": "controls.cli.sv_pacbio.label"
+            }
+          ],
+          "tooltip": "controls.cli.sv_pacbio.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "sv_ccs",
+          "label": "controls.cli.sv_ccs.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--ccs",
+              "title": "controls.cli.sv_ccs.label"
+            }
+          ],
+          "tooltip": "controls.cli.sv_ccs.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "cnv_ploidy",
+          "label": "controls.cli.cnv_ploidy.label",
+          "kind": "text",
+          "tooltip": "controls.cli.cnv_ploidy.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "gatk_gpu",
+          "label": "controls.cli.gatk_gpu.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--gpu",
+              "title": "controls.cli.gatk_gpu.label"
+            }
+          ],
+          "tooltip": "controls.cli.gatk_gpu.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "deepvariant_no_resume",
+          "label": "controls.cli.deepvariant_no_resume.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--no-resume",
+              "title": "controls.cli.deepvariant_no_resume.label"
+            }
+          ],
+          "tooltip": "controls.cli.deepvariant_no_resume.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "gatk_no_gpu_check",
+          "label": "controls.cli.gatk_no_gpu_check.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--no-gpu-memory-check",
+              "title": "controls.cli.gatk_no_gpu_check.label"
+            }
+          ],
+          "tooltip": "controls.cli.gatk_no_gpu_check.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "deepvariant_gpu",
+          "label": "controls.cli.deepvariant_gpu.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--gpu",
+              "title": "controls.cli.deepvariant_gpu.label"
+            }
+          ],
+          "tooltip": "controls.cli.deepvariant_gpu.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "deepvariant_no_gpu_check",
+          "label": "controls.cli.deepvariant_no_gpu_check.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--no-gpu-memory-check",
+              "title": "controls.cli.deepvariant_no_gpu_check.label"
+            }
+          ],
+          "tooltip": "controls.cli.deepvariant_no_gpu_check.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "deepvariant_batch_size",
+          "label": "controls.cli.deepvariant_batch_size.label",
+          "kind": "text",
+          "tooltip": "controls.cli.deepvariant_batch_size.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "deepvariant_checkpoint",
+          "label": "controls.cli.deepvariant_checkpoint.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.deepvariant_checkpoint.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "deepvariant_force_step",
+          "label": "controls.cli.deepvariant_force_step.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "stage_reads",
+              "title": "options.cli.value.stage_reads.title"
+            },
+            {
+              "id": "make_examples",
+              "title": "options.cli.value.make_examples.title"
+            },
+            {
+              "id": "call_variants",
+              "title": "options.cli.value.call_variants.title"
+            },
+            {
+              "id": "postprocess_variants",
+              "title": "options.cli.value.postprocess_variants.title"
+            }
+          ],
+          "tooltip": "controls.cli.deepvariant_force_step.tooltip",
+          "advancedOnly": true
         }
       ],
       "actions": [
@@ -650,6 +1355,20 @@
               [
                 "--region",
                 "{{vcf_region}}"
+              ],
+              [
+                "--caller",
+                "{{sv_caller}}"
+              ],
+              [
+                "{{sv_pacbio}}"
+              ],
+              [
+                "{{sv_ccs}}"
+              ],
+              [
+                "--qc-min-depth",
+                "{{qc_min_depth}}"
               ]
             ]
           },
@@ -679,6 +1398,14 @@
               [
                 "--region",
                 "{{vcf_region}}"
+              ],
+              [
+                "--ploidy",
+                "{{cnv_ploidy}}"
+              ],
+              [
+                "--qc-min-depth",
+                "{{qc_min_depth}}"
               ]
             ]
           },
@@ -708,6 +1435,10 @@
               [
                 "--region",
                 "{{vcf_region}}"
+              ],
+              [
+                "--qc-min-depth",
+                "{{qc_min_depth}}"
               ]
             ]
           },
@@ -740,6 +1471,16 @@
               [
                 "--region",
                 "{{vcf_region}}"
+              ],
+              [
+                "{{gatk_gpu}}"
+              ],
+              [
+                "--qc-min-depth",
+                "{{qc_min_depth}}"
+              ],
+              [
+                "{{gatk_no_gpu_check}}"
               ]
             ]
           },
@@ -773,6 +1514,31 @@
               [
                 "--region",
                 "{{vcf_region}}"
+              ],
+              [
+                "{{deepvariant_no_resume}}"
+              ],
+              [
+                "--qc-min-depth",
+                "{{qc_min_depth}}"
+              ],
+              [
+                "{{deepvariant_gpu}}"
+              ],
+              [
+                "{{deepvariant_no_gpu_check}}"
+              ],
+              [
+                "--batch-size",
+                "{{deepvariant_batch_size}}"
+              ],
+              [
+                "--checkpoint",
+                "{{deepvariant_checkpoint}}"
+              ],
+              [
+                "--force-step",
+                "{{deepvariant_force_step}}"
               ]
             ]
           },
@@ -830,6 +1596,10 @@
               [
                 "--region",
                 "{{vcf_region}}"
+              ],
+              [
+                "--qc-min-depth",
+                "{{qc_min_depth}}"
               ]
             ]
           }
@@ -909,6 +1679,27 @@
               "title": "options.vcf.v066.methylation-combine.off.title"
             }
           ]
+        },
+        {
+          "id": "methylation_format",
+          "label": "controls.cli.methylation_format.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "tsv",
+              "title": "options.cli.value.tsv.title"
+            },
+            {
+              "id": "parquet",
+              "title": "options.cli.value.parquet.title"
+            }
+          ],
+          "tooltip": "controls.cli.methylation_format.tooltip",
+          "advancedOnly": true
         }
       ],
       "actions": [
@@ -946,12 +1737,365 @@
               [
                 "--region",
                 "{{vcf_region}}"
+              ],
+              [
+                "--format",
+                "{{methylation_format}}"
               ]
             ]
           }
         }
       ],
       "advancedOnly": true
+    },
+    {
+      "id": "typing",
+      "title": "sections.cli.typing.title",
+      "textIcon": "🧪",
+      "advancedOnly": true,
+      "controls": [
+        {
+          "id": "hla_index",
+          "label": "controls.cli.hla_index.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.hla_index.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "str_catalog",
+          "label": "controls.cli.str_catalog.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.str_catalog.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "str_sex",
+          "label": "controls.cli.str_sex.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "male",
+              "title": "options.cli.value.male.title"
+            },
+            {
+              "id": "female",
+              "title": "options.cli.value.female.title"
+            }
+          ],
+          "tooltip": "controls.cli.str_sex.tooltip",
+          "advancedOnly": true
+        }
+      ],
+      "actions": [
+        {
+          "id": "typing-hla",
+          "title": "actions.cli.typing-hla.title",
+          "tooltip": "actions.cli.typing-hla.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "typing",
+              "hla",
+              "--input",
+              "{{bam_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--hla-index",
+                "{{hla_index}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "typing-cyp2d6",
+          "title": "actions.cli.typing-cyp2d6.title",
+          "tooltip": "actions.cli.typing-cyp2d6.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "typing",
+              "cyp2d6",
+              "--input",
+              "{{bam_path}}"
+            ]
+          }
+        },
+        {
+          "id": "typing-str",
+          "title": "actions.cli.typing-str.title",
+          "tooltip": "actions.cli.typing-str.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "typing",
+              "str",
+              "--input",
+              "{{bam_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--catalog",
+                "{{str_catalog}}"
+              ],
+              [
+                "--sex",
+                "{{str_sex}}"
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "phasing",
+      "title": "sections.cli.phasing.title",
+      "subtitle": "sections.cli.phasing.subtitle",
+      "textIcon": "🧬",
+      "advancedOnly": true,
+      "controls": [
+        {
+          "id": "vcf_path",
+          "label": "controls.vcf.vcf-inputs.vcf_path.label",
+          "kind": "path",
+          "defaultDirectory": "{{genome_library}}",
+          "tooltip": "controls.vcf.vcf-inputs.vcf_path.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "phase_region",
+          "label": "controls.cli.phase_region.label",
+          "kind": "text",
+          "tooltip": "controls.cli.phase_region.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "phase_phaser",
+          "label": "controls.cli.phase_phaser.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "whatshap",
+              "title": "options.cli.value.whatshap.title"
+            },
+            {
+              "id": "longphase",
+              "title": "options.cli.value.longphase.title"
+            }
+          ],
+          "tooltip": "controls.cli.phase_phaser.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "phase_haplotag",
+          "label": "controls.cli.phase_haplotag.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--haplotag",
+              "title": "controls.cli.phase_haplotag.label"
+            }
+          ],
+          "tooltip": "controls.cli.phase_haplotag.tooltip",
+          "advancedOnly": true
+        }
+      ],
+      "actions": [
+        {
+          "id": "vcf-phase",
+          "title": "actions.cli.vcf-phase.title",
+          "tooltip": "actions.cli.vcf-phase.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "vcf",
+              "phase",
+              "--input",
+              "{{bam_path}}",
+              "--vcf-input",
+              "{{vcf_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--region",
+                "{{phase_region}}"
+              ],
+              [
+                "--phaser",
+                "{{phase_phaser}}"
+              ],
+              [
+                "{{phase_haplotag}}"
+              ],
+              [
+                "--qc-min-depth",
+                "{{qc_min_depth}}"
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "panel",
+      "title": "sections.cli.panel.title",
+      "textIcon": "🎯",
+      "advancedOnly": true,
+      "controls": [
+        {
+          "id": "panel_genes",
+          "label": "controls.cli.panel_genes.label",
+          "kind": "text",
+          "tooltip": "controls.cli.panel_genes.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "panel_gene_file",
+          "label": "controls.cli.panel_gene_file.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.panel_gene_file.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "panel_preset",
+          "label": "controls.cli.panel_preset.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "pharmacogenes",
+              "title": "options.cli.value.pharmacogenes.title"
+            },
+            {
+              "id": "hla",
+              "title": "options.cli.value.hla.title"
+            },
+            {
+              "id": "autoimmune",
+              "title": "options.cli.value.autoimmune.title"
+            },
+            {
+              "id": "acmg-sf",
+              "title": "options.cli.value.acmg-sf.title"
+            },
+            {
+              "id": "cardiac",
+              "title": "options.cli.value.cardiac.title"
+            }
+          ],
+          "tooltip": "controls.cli.panel_preset.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "panel_build",
+          "label": "controls.cli.panel_build.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "hg38",
+              "title": "options.cli.value.hg38.title"
+            },
+            {
+              "id": "t2t",
+              "title": "options.cli.value.t2t.title"
+            },
+            {
+              "id": "hg19",
+              "title": "options.cli.value.hg19.title"
+            }
+          ],
+          "tooltip": "controls.cli.panel_build.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "panel_pad_kb",
+          "label": "controls.cli.panel_pad_kb.label",
+          "kind": "text",
+          "tooltip": "controls.cli.panel_pad_kb.tooltip",
+          "advancedOnly": true
+        }
+      ],
+      "actions": [
+        {
+          "id": "panel-bed",
+          "title": "actions.cli.panel-bed.title",
+          "tooltip": "actions.cli.panel-bed.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "panel",
+              "bed"
+            ],
+            "optionalArguments": [
+              [
+                "--genes",
+                "{{panel_genes}}"
+              ],
+              [
+                "--gene-file",
+                "{{panel_gene_file}}"
+              ],
+              [
+                "--preset",
+                "{{panel_preset}}"
+              ],
+              [
+                "--build",
+                "{{panel_build}}"
+              ],
+              [
+                "--pad-kb",
+                "{{panel_pad_kb}}"
+              ],
+              [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "panel-list",
+          "title": "actions.cli.panel-list.title",
+          "tooltip": "actions.cli.panel-list.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "panel",
+              "bed",
+              "--list-presets"
+            ]
+          }
+        }
+      ]
     }
   ],
   "iconName": "extract",

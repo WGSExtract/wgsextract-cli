@@ -145,6 +145,77 @@
           "kind": "path",
           "tooltip": "controls.microarray.post-v063.indel-manifest.tooltip",
           "advancedOnly": true
+        },
+        {
+          "id": "microarray_sample",
+          "label": "controls.cli.microarray_sample.label",
+          "kind": "text",
+          "tooltip": "controls.cli.microarray_sample.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "microarray_region",
+          "label": "controls.cli.microarray_region.label",
+          "kind": "text",
+          "tooltip": "controls.cli.microarray_region.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "microarray_ploidy_file",
+          "label": "controls.cli.microarray_ploidy_file.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.microarray_ploidy_file.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "microarray_ref_vcf_tab",
+          "label": "controls.cli.microarray_ref_vcf_tab.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.microarray_ref_vcf_tab.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "microarray_quirks",
+          "label": "controls.cli.microarray_quirks.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "corrected",
+              "title": "options.cli.value.corrected.title"
+            },
+            {
+              "id": "vendor",
+              "title": "options.cli.value.vendor.title"
+            }
+          ],
+          "tooltip": "controls.cli.microarray_quirks.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "microarray_no_parallel",
+          "label": "controls.cli.microarray_no_parallel.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--no-parallel",
+              "title": "controls.cli.microarray_no_parallel.label"
+            }
+          ],
+          "tooltip": "controls.cli.microarray_no_parallel.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "qc_min_depth",
+          "label": "controls.cli.qc_min_depth.label",
+          "kind": "text",
+          "tooltip": "controls.cli.qc_min_depth.tooltip",
+          "advancedOnly": true
         }
       ]
     },
@@ -364,7 +435,81 @@
               [
                 "--indel-manifest",
                 "{{indel_format}}={{indel_manifest}}"
+              ],
+              [
+                "--sample",
+                "{{microarray_sample}}"
+              ],
+              [
+                "--region",
+                "{{microarray_region}}"
+              ],
+              [
+                "--ploidy-file",
+                "{{microarray_ploidy_file}}"
+              ],
+              [
+                "--ref-vcf-tab",
+                "{{microarray_ref_vcf_tab}}"
+              ],
+              [
+                "--quirks",
+                "{{microarray_quirks}}"
+              ],
+              [
+                "{{microarray_no_parallel}}"
+              ],
+              [
+                "--qc-min-depth",
+                "{{qc_min_depth}}"
               ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "chip",
+      "title": "sections.cli.chip.title",
+      "textIcon": "🔍",
+      "advancedOnly": true,
+      "controls": [
+        {
+          "id": "chip_file",
+          "label": "controls.cli.chip_file.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.chip_file.tooltip",
+          "advancedOnly": true
+        }
+      ],
+      "actions": [
+        {
+          "id": "info-chip",
+          "title": "actions.cli.info-chip.title",
+          "tooltip": "actions.cli.info-chip.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "info",
+              "chip",
+              "--input",
+              "{{chip_file}}"
+            ]
+          }
+        },
+        {
+          "id": "info-chip-list",
+          "title": "actions.cli.info-chip-list.title",
+          "tooltip": "actions.cli.info-chip-list.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "info",
+              "chip",
+              "--list"
             ]
           }
         }

@@ -55,7 +55,7 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     "info calculate-coverage": _h(
         "<input file name>_coverage.tsv, or with --bins <input file name>"
         "_coverage_bins.tsv (depth bands, or .parquet with --format parquet) "
-        "instead. With --by, <input>_<bed>_target_coverage.tsv (depth per "
+        "instead; with --with-bins both .tsv files. With --by, <input>_<bed>_target_coverage.tsv (depth per "
         "target) and <input>_<bed>_target_summary.txt (on- and off-target "
         "depth, enrichment and targets below --min-depth).",
         "wgsextract info calculate-coverage --input sample.cram",

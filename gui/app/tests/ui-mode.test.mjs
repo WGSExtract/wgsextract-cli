@@ -128,3 +128,22 @@ test("WGS Extract starts Basic with the common pages and keeps the expert ones f
   }
   assert.equal(visiblePages(manifest, "advanced").length, manifest.pages.length);
 });
+
+test("the CLI features added for Advanced mode stay out of Basic", () => {
+  const manifest = wgsExtractManifest();
+  const leaks = [];
+  for (const page of visiblePages(manifest, "basic")) {
+    for (const section of visibleSections(page, "basic")) {
+      for (const control of visibleControls(section, "basic")) {
+        if (String(control.label).startsWith("controls.cli.")) leaks.push(`${page.id}/${control.id}`);
+      }
+      for (const action of section.actions ?? []) {
+        if (action.advancedOnly !== true && String(action.title).startsWith("actions.cli.")) leaks.push(`${page.id}/${action.id}`);
+      }
+    }
+  }
+  assert.deepEqual(leaks, []);
+  const workflows = manifest.pages.find((page) => page.id === "workflows");
+  assert.equal(workflows.advancedOnly, true);
+  assert.ok(visiblePages(manifest, "advanced").some((page) => page.id === "workflows"));
+});

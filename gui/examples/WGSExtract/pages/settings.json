@@ -141,12 +141,27 @@
             "arguments": [
               "deps",
               "check"
+            ],
+            "optionalArguments": [
+              [
+                "--tool",
+                "{{deps_tool}}"
+              ]
             ]
           }
         }
       ],
       "iconName": "precheck",
-      "textIcon": "☑️"
+      "textIcon": "☑️",
+      "controls": [
+        {
+          "id": "deps_tool",
+          "label": "controls.cli.deps_tool.label",
+          "kind": "text",
+          "tooltip": "controls.cli.deps_tool.tooltip",
+          "advancedOnly": true
+        }
+      ]
     },
     {
       "id": "report-issue",
@@ -170,6 +185,27 @@
           "label": "controls.settings.v066.report-description.label",
           "kind": "text",
           "tooltip": "controls.settings.v066.report-description.tooltip"
+        },
+        {
+          "id": "report_title",
+          "label": "controls.cli.report_title.label",
+          "kind": "text",
+          "tooltip": "controls.cli.report_title.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "report_log_lines",
+          "label": "controls.cli.report_log_lines.label",
+          "kind": "text",
+          "tooltip": "controls.cli.report_log_lines.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "report_max_url_length",
+          "label": "controls.cli.report_max_url_length.label",
+          "kind": "text",
+          "tooltip": "controls.cli.report_max_url_length.tooltip",
+          "advancedOnly": true
         }
       ],
       "actions": [
@@ -197,6 +233,18 @@
               [
                 "--description",
                 "{{report_description}}"
+              ],
+              [
+                "--title",
+                "{{report_title}}"
+              ],
+              [
+                "--log-lines",
+                "{{report_log_lines}}"
+              ],
+              [
+                "--max-url-length",
+                "{{report_max_url_length}}"
               ]
             ]
           }
@@ -229,6 +277,18 @@
               [
                 "--description",
                 "{{report_description}}"
+              ],
+              [
+                "--title",
+                "{{report_title}}"
+              ],
+              [
+                "--log-lines",
+                "{{report_log_lines}}"
+              ],
+              [
+                "--max-url-length",
+                "{{report_max_url_length}}"
               ]
             ]
           }
@@ -260,6 +320,18 @@
               [
                 "--description",
                 "{{report_description}}"
+              ],
+              [
+                "--title",
+                "{{report_title}}"
+              ],
+              [
+                "--log-lines",
+                "{{report_log_lines}}"
+              ],
+              [
+                "--max-url-length",
+                "{{report_max_url_length}}"
               ]
             ]
           }
@@ -294,6 +366,18 @@
               [
                 "--description",
                 "{{report_description}}"
+              ],
+              [
+                "--title",
+                "{{report_title}}"
+              ],
+              [
+                "--log-lines",
+                "{{report_log_lines}}"
+              ],
+              [
+                "--max-url-length",
+                "{{report_max_url_length}}"
               ]
             ]
           }
@@ -332,6 +416,18 @@
               [
                 "--description",
                 "{{report_description}}"
+              ],
+              [
+                "--title",
+                "{{report_title}}"
+              ],
+              [
+                "--log-lines",
+                "{{report_log_lines}}"
+              ],
+              [
+                "--max-url-length",
+                "{{report_max_url_length}}"
               ]
             ]
           }
@@ -369,6 +465,18 @@
               [
                 "--description",
                 "{{report_description}}"
+              ],
+              [
+                "--title",
+                "{{report_title}}"
+              ],
+              [
+                "--log-lines",
+                "{{report_log_lines}}"
+              ],
+              [
+                "--max-url-length",
+                "{{report_max_url_length}}"
               ]
             ]
           }

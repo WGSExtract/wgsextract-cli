@@ -143,6 +143,141 @@
             }
           ],
           "advancedOnly": true
+        },
+        {
+          "id": "lineage_build",
+          "label": "controls.cli.lineage_build.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "hg19",
+              "title": "options.cli.value.hg19.title"
+            },
+            {
+              "id": "hg38",
+              "title": "options.cli.value.hg38.title"
+            },
+            {
+              "id": "t2t",
+              "title": "options.cli.value.t2t.title"
+            }
+          ],
+          "tooltip": "controls.cli.lineage_build.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "haplogrep_tree",
+          "label": "controls.cli.haplogrep_tree.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "phylotree-fu-rcrs",
+              "title": "options.cli.value.phylotree-fu-rcrs.title"
+            },
+            {
+              "id": "phylotree-rcrs",
+              "title": "options.cli.value.phylotree-rcrs.title"
+            },
+            {
+              "id": "mitotree-rcrs",
+              "title": "options.cli.value.mitotree-rcrs.title"
+            }
+          ],
+          "tooltip": "controls.cli.haplogrep_tree.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "haplogrep_contamination",
+          "label": "controls.cli.haplogrep_contamination.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--contamination",
+              "title": "controls.cli.haplogrep_contamination.label"
+            }
+          ],
+          "tooltip": "controls.cli.haplogrep_contamination.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "haplocheck_path",
+          "label": "controls.cli.haplocheck_path.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.haplocheck_path.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "yleaf_base_majority",
+          "label": "controls.cli.yleaf_base_majority.label",
+          "kind": "text",
+          "tooltip": "controls.cli.yleaf_base_majority.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "yleaf_base_quality",
+          "label": "controls.cli.yleaf_base_quality.label",
+          "kind": "text",
+          "tooltip": "controls.cli.yleaf_base_quality.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "yleaf_min_reads",
+          "label": "controls.cli.yleaf_min_reads.label",
+          "kind": "text",
+          "tooltip": "controls.cli.yleaf_min_reads.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "yleaf_min_score",
+          "label": "controls.cli.yleaf_min_score.label",
+          "kind": "text",
+          "tooltip": "controls.cli.yleaf_min_score.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "yleaf_tree_file",
+          "label": "controls.cli.yleaf_tree_file.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.yleaf_tree_file.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "ystr_min_fraction",
+          "label": "controls.cli.ystr_min_fraction.label",
+          "kind": "text",
+          "tooltip": "controls.cli.ystr_min_fraction.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "ystr_min_mapq",
+          "label": "controls.cli.ystr_min_mapq.label",
+          "kind": "text",
+          "tooltip": "controls.cli.ystr_min_mapq.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "ystr_min_reads",
+          "label": "controls.cli.ystr_min_reads.label",
+          "kind": "text",
+          "tooltip": "controls.cli.ystr_min_reads.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "qc_min_depth",
+          "label": "controls.cli.qc_min_depth.label",
+          "kind": "text",
+          "tooltip": "controls.cli.qc_min_depth.tooltip",
+          "advancedOnly": true
         }
       ],
       "actions": [
@@ -175,6 +310,34 @@
               ],
               [
                 "{{yleaf_no_ref_inference}}"
+              ],
+              [
+                "--build",
+                "{{lineage_build}}"
+              ],
+              [
+                "--base-majority",
+                "{{yleaf_base_majority}}"
+              ],
+              [
+                "--base-quality",
+                "{{yleaf_base_quality}}"
+              ],
+              [
+                "--min-reads",
+                "{{yleaf_min_reads}}"
+              ],
+              [
+                "--min-score",
+                "{{yleaf_min_score}}"
+              ],
+              [
+                "--tree-file",
+                "{{yleaf_tree_file}}"
+              ],
+              [
+                "--qc-min-depth",
+                "{{qc_min_depth}}"
               ]
             ]
           }
@@ -202,6 +365,21 @@
               [
                 "--outdir",
                 "{{out_dir}}"
+              ],
+              [
+                "--tree",
+                "{{haplogrep_tree}}"
+              ],
+              [
+                "{{haplogrep_contamination}}"
+              ],
+              [
+                "--haplocheck-path",
+                "{{haplocheck_path}}"
+              ],
+              [
+                "--qc-min-depth",
+                "{{qc_min_depth}}"
               ]
             ]
           }
@@ -230,6 +408,22 @@
               [
                 "--outdir",
                 "{{out_dir}}"
+              ],
+              [
+                "--build",
+                "{{lineage_build}}"
+              ],
+              [
+                "--min-fraction",
+                "{{ystr_min_fraction}}"
+              ],
+              [
+                "--min-mapq",
+                "{{ystr_min_mapq}}"
+              ],
+              [
+                "--min-reads",
+                "{{ystr_min_reads}}"
               ]
             ]
           },

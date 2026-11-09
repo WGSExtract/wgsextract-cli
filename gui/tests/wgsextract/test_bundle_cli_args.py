@@ -49,6 +49,7 @@ NON_CLI_SCRIPTS = {
     "bootstrap-wgsextract-config.sh",
     "check-preinstalled-pixi.sh",
     "check-xcode-command-line-tools.sh",
+    "coverage-state.py",
     "delete-reference-genome.sh",
     "list-reference-genomes.py",
     "setup-wgsextract-pixi.sh",

@@ -50,6 +50,71 @@
           "kind": "path",
           "defaultDirectory": "{{genome_library}}",
           "tooltip": "controls.vcf.trio-analysis.vcf_father.tooltip"
+        },
+        {
+          "id": "trio_mode",
+          "label": "controls.cli.trio_mode.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "denovo",
+              "title": "options.cli.value.denovo.title"
+            },
+            {
+              "id": "recessive",
+              "title": "options.cli.value.recessive.title"
+            },
+            {
+              "id": "comphet",
+              "title": "options.cli.value.comphet.title"
+            },
+            {
+              "id": "all",
+              "title": "options.cli.value.all.title"
+            }
+          ],
+          "tooltip": "controls.cli.trio_mode.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "trio_proband_sex",
+          "label": "controls.cli.trio_proband_sex.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "male",
+              "title": "options.cli.value.male.title"
+            },
+            {
+              "id": "female",
+              "title": "options.cli.value.female.title"
+            }
+          ],
+          "tooltip": "controls.cli.trio_proband_sex.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "trio_min_depth",
+          "label": "controls.cli.trio_min_depth.label",
+          "kind": "text",
+          "tooltip": "controls.cli.trio_min_depth.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "trio_vcf_input",
+          "label": "controls.cli.trio_vcf_input.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.trio_vcf_input.tooltip",
+          "advancedOnly": true
         }
       ],
       "actions": [
@@ -77,6 +142,51 @@
               [
                 "--region",
                 "{{vcf_region}}"
+              ],
+              [
+                "--mode",
+                "{{trio_mode}}"
+              ],
+              [
+                "--proband-sex",
+                "{{trio_proband_sex}}"
+              ],
+              [
+                "--min-depth",
+                "{{trio_min_depth}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "vcf-trio-joint",
+          "title": "actions.cli.vcf-trio-joint.title",
+          "tooltip": "actions.cli.vcf-trio-joint.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "vcf",
+              "trio",
+              "--vcf-input",
+              "{{trio_vcf_input}}"
+            ],
+            "optionalArguments": [
+              [
+                "--mode",
+                "{{trio_mode}}"
+              ],
+              [
+                "--proband-sex",
+                "{{trio_proband_sex}}"
+              ],
+              [
+                "--min-depth",
+                "{{trio_min_depth}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
               ]
             ]
           }
@@ -107,6 +217,144 @@
           "label": "controls.vcf.vep-analysis.vcf_vep_args.label",
           "kind": "text",
           "tooltip": "controls.vcf.vep-analysis.vcf_vep_args.tooltip"
+        },
+        {
+          "id": "vep_assembly",
+          "label": "controls.cli.vep_assembly.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "GRCh37",
+              "title": "options.cli.value.GRCh37.title"
+            },
+            {
+              "id": "GRCh38",
+              "title": "options.cli.value.GRCh38.title"
+            }
+          ],
+          "tooltip": "controls.cli.vep_assembly.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "vep_preset",
+          "label": "controls.cli.vep_preset.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "everything",
+              "title": "options.cli.value.everything.title"
+            },
+            {
+              "id": "fast",
+              "title": "options.cli.value.fast.title"
+            }
+          ],
+          "tooltip": "controls.cli.vep_preset.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "vep_vcf_type",
+          "label": "controls.cli.vep_vcf_type.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "auto",
+              "title": "options.cli.value.auto.title"
+            },
+            {
+              "id": "snp-indel",
+              "title": "options.cli.value.snp-indel.title"
+            },
+            {
+              "id": "sv",
+              "title": "options.cli.value.sv.title"
+            },
+            {
+              "id": "cnv",
+              "title": "options.cli.value.cnv.title"
+            }
+          ],
+          "tooltip": "controls.cli.vep_vcf_type.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "vep_cache_version",
+          "label": "controls.cli.vep_cache_version.label",
+          "kind": "text",
+          "tooltip": "controls.cli.vep_cache_version.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "vep_add_chr",
+          "label": "controls.cli.vep_add_chr.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--add-chr",
+              "title": "controls.cli.vep_add_chr.label"
+            }
+          ],
+          "tooltip": "controls.cli.vep_add_chr.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "vep_region",
+          "label": "controls.cli.vep_region.label",
+          "kind": "text",
+          "tooltip": "controls.cli.vep_region.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "vep_format",
+          "label": "controls.cli.vep_format.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "vcf",
+              "title": "options.cli.value.vcf.title"
+            },
+            {
+              "id": "tab",
+              "title": "options.cli.value.tab.title"
+            },
+            {
+              "id": "json",
+              "title": "options.cli.value.json.title"
+            }
+          ],
+          "tooltip": "controls.cli.vep_format.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "vep_ploidy",
+          "label": "controls.cli.vep_ploidy.label",
+          "kind": "text",
+          "tooltip": "controls.cli.vep_ploidy.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "vep_ploidy_file",
+          "label": "controls.cli.vep_ploidy_file.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.vep_ploidy_file.tooltip",
+          "advancedOnly": true
         }
       ],
       "actions": [
@@ -137,6 +385,41 @@
               [
                 "--outdir",
                 "{{out_dir}}"
+              ],
+              [
+                "--assembly",
+                "{{vep_assembly}}"
+              ],
+              [
+                "--preset",
+                "{{vep_preset}}"
+              ],
+              [
+                "--vcf-type",
+                "{{vep_vcf_type}}"
+              ],
+              [
+                "--vep-cache-version",
+                "{{vep_cache_version}}"
+              ],
+              [
+                "{{vep_add_chr}}"
+              ],
+              [
+                "--region",
+                "{{vep_region}}"
+              ],
+              [
+                "--format",
+                "{{vep_format}}"
+              ],
+              [
+                "--ploidy",
+                "{{vep_ploidy}}"
+              ],
+              [
+                "--ploidy-file",
+                "{{vep_ploidy_file}}"
               ]
             ]
           }

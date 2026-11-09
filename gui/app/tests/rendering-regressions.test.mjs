@@ -141,3 +141,45 @@ test("WGSExtract Realign re-aligns the BAM/CRAM chosen in Inputs", () => {
     "realign", "--input", "sample.bam", "--ref", "new.fa",
   ]);
 });
+
+test("WGSExtract Detailed Coverage adds the depth bins and, once run, only shows them again", async () => {
+  const { isActionVisible } = await import("../dist/shared/rendering.js");
+  const page = wgsPages.find((item) => item.id === "info-bam");
+  const section = page.sections.find((item) => item.id === "info-commands");
+  assert.deepEqual(section.dataSource, { path: "scripts/coverage-state.py", arguments: ["{{bam_path}}", "{{out_dir}}"] });
+  assert.deepEqual(section.actions.slice(0, 5).map((action) => action.id), [
+    "basic-info", "detailed-info", "coverage-sample", "calculate-coverage", "calculate-coverage-shown",
+  ]);
+  const [run, shown] = ["calculate-coverage", "calculate-coverage-shown"].map((id) => section.actions.find((action) => action.id === id));
+  for (const action of [run, shown]) {
+    assert.deepEqual(wgsCommand("info-bam", action.id), ["info", "calculate-coverage", "--with-bins", "--input", "sample.bam"]);
+    assert.equal(action.serverOperation.parameters.with_bins, true);
+  }
+  assert.equal(run.estimatedDurationMinutes, 120);
+  assert.equal(shown.estimatedDurationMinutes, undefined);
+  assert.notEqual(shown.tooltip, run.tooltip);
+
+  const visible = (done) => section.actions
+    .filter((action) => isActionVisible(action, { fieldValues: { coverage_done: done } }))
+    .map((action) => action.id)
+    .filter((id) => id.startsWith("calculate-coverage"));
+  assert.deepEqual(visible("false"), ["calculate-coverage"]);
+  assert.deepEqual(visible(""), ["calculate-coverage"]);
+  assert.deepEqual(visible("true"), ["calculate-coverage-shown"]);
+});
+
+test("WGSExtract Advanced CLI actions pass only the options that are set", () => {
+  assert.deepEqual(wgsCommand("info-bam", "bam-merge", { merge_input_1: "lane1.bam", merge_input_2: "lane2.bam" }), [
+    "bam", "merge", "lane1.bam", "lane2.bam",
+  ]);
+  assert.deepEqual(wgsCommand("info-bam", "bam-merge", { merge_input_1: "a.bam", merge_input_2: "b.bam", merge_input_3: "c.bam", merge_sample: "HG002" }, { merge_cram: ["--cram"] }), [
+    "bam", "merge", "a.bam", "b.bam", "c.bam", "--cram", "--sample", "HG002",
+  ]);
+  assert.deepEqual(wgsCommand("extract", "typing-str", { str_sex: "female" }), ["typing", "str", "--input", "sample.bam", "--sex", "female"]);
+  assert.deepEqual(wgsCommand("extract", "align", { fastq_r1: "r1.fq", align_platform: "ont" }, { align_gpu: ["--gpu"] }), [
+    "align", "--r1", "r1.fq", "--ref", "ref.fa", "--format", "BAM", "--platform", "ont", "--gpu",
+  ]);
+  assert.deepEqual(wgsCommand("ancestry", "run-haplogrep", { haplogrep_tree: "mitotree-rcrs", qc_min_depth: "5" }), [
+    "lineage", "mt-haplogroup", "--input", "sample.bam", "--tree", "mitotree-rcrs", "--qc-min-depth", "5",
+  ]);
+});

@@ -119,6 +119,56 @@
           ],
           "tooltip": "controls.annotate.v066.table-no-sqlite.tooltip",
           "advancedOnly": true
+        },
+        {
+          "id": "vcf_annotate_cols",
+          "label": "controls.cli.vcf_annotate_cols.label",
+          "kind": "text",
+          "tooltip": "controls.cli.vcf_annotate_cols.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "alphamissense_min_score",
+          "label": "controls.cli.alphamissense_min_score.label",
+          "kind": "text",
+          "tooltip": "controls.cli.alphamissense_min_score.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "vcf_table_format",
+          "label": "controls.cli.vcf_table_format.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "tsv",
+              "title": "options.cli.value.tsv.title"
+            },
+            {
+              "id": "parquet",
+              "title": "options.cli.value.parquet.title"
+            }
+          ],
+          "tooltip": "controls.cli.vcf_table_format.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "vcf_table_pharmcat",
+          "label": "controls.cli.vcf_table_pharmcat.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.vcf_table_pharmcat.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "repair_vcf_output",
+          "label": "controls.cli.repair_vcf_output.label",
+          "kind": "text",
+          "tooltip": "controls.cli.repair_vcf_output.tooltip",
+          "advancedOnly": true
         }
       ],
       "actions": [
@@ -153,6 +203,10 @@
               [
                 "--outdir",
                 "{{out_dir}}"
+              ],
+              [
+                "--cols",
+                "{{vcf_annotate_cols}}"
               ]
             ]
           },
@@ -225,6 +279,10 @@
               [
                 "--outdir",
                 "{{out_dir}}"
+              ],
+              [
+                "--min-score",
+                "{{alphamissense_min_score}}"
               ]
             ]
           },
@@ -381,6 +439,10 @@
               [
                 "--outdir",
                 "{{out_dir}}"
+              ],
+              [
+                "--output",
+                "{{repair_vcf_output}}"
               ]
             ]
           },
@@ -412,6 +474,662 @@
               [
                 "--region",
                 "{{vcf_region}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ],
+              [
+                "--format",
+                "{{vcf_table_format}}"
+              ],
+              [
+                "--pharmcat-json",
+                "{{vcf_table_pharmcat}}"
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "more-annotations",
+      "title": "sections.cli.more-annotations.title",
+      "subtitle": "sections.cli.more-annotations.subtitle",
+      "textIcon": "🏷️",
+      "advancedOnly": true,
+      "controls": [
+        {
+          "id": "clinvar_file",
+          "label": "controls.cli.clinvar_file.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.clinvar_file.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "gnomad_file",
+          "label": "controls.cli.gnomad_file.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.gnomad_file.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "gnomad_max_af",
+          "label": "controls.cli.gnomad_max_af.label",
+          "kind": "text",
+          "tooltip": "controls.cli.gnomad_max_af.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "revel_file",
+          "label": "controls.cli.revel_file.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.revel_file.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "revel_min_score",
+          "label": "controls.cli.revel_min_score.label",
+          "kind": "text",
+          "tooltip": "controls.cli.revel_min_score.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "cadd_file",
+          "label": "controls.cli.cadd_file.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.cadd_file.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "cadd_indel_file",
+          "label": "controls.cli.cadd_indel_file.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.cadd_indel_file.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "cadd_min_score",
+          "label": "controls.cli.cadd_min_score.label",
+          "kind": "text",
+          "tooltip": "controls.cli.cadd_min_score.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "gerp_file",
+          "label": "controls.cli.gerp_file.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.gerp_file.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "gerp_min_score",
+          "label": "controls.cli.gerp_min_score.label",
+          "kind": "text",
+          "tooltip": "controls.cli.gerp_min_score.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "phylop_file",
+          "label": "controls.cli.phylop_file.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.phylop_file.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "phylop_min_score",
+          "label": "controls.cli.phylop_min_score.label",
+          "kind": "text",
+          "tooltip": "controls.cli.phylop_min_score.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "chain_annotations",
+          "label": "controls.cli.chain_annotations.label",
+          "kind": "text",
+          "tooltip": "controls.cli.chain_annotations.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "chain_keep",
+          "label": "controls.cli.chain_keep.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--keep-intermediates",
+              "title": "controls.cli.chain_keep.label"
+            }
+          ],
+          "tooltip": "controls.cli.chain_keep.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "confidence_depth_low",
+          "label": "controls.cli.confidence_depth_low.label",
+          "kind": "text",
+          "tooltip": "controls.cli.confidence_depth_low.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "confidence_depth_high",
+          "label": "controls.cli.confidence_depth_high.label",
+          "kind": "text",
+          "tooltip": "controls.cli.confidence_depth_high.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "confidence_gq_low",
+          "label": "controls.cli.confidence_gq_low.label",
+          "kind": "text",
+          "tooltip": "controls.cli.confidence_gq_low.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "confidence_gq_high",
+          "label": "controls.cli.confidence_gq_high.label",
+          "kind": "text",
+          "tooltip": "controls.cli.confidence_gq_high.tooltip",
+          "advancedOnly": true
+        }
+      ],
+      "actions": [
+        {
+          "id": "vcf-clinvar",
+          "title": "actions.cli.vcf-clinvar.title",
+          "tooltip": "actions.cli.vcf-clinvar.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "vcf",
+              "clinvar",
+              "--vcf-input",
+              "{{vcf_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
+                "--clinvar-file",
+                "{{clinvar_file}}"
+              ],
+              [
+                "--confidence-depth",
+                "{{confidence_depth_low}}",
+                "{{confidence_depth_high}}"
+              ],
+              [
+                "--confidence-gq",
+                "{{confidence_gq_low}}",
+                "{{confidence_gq_high}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "vcf-gnomad",
+          "title": "actions.cli.vcf-gnomad.title",
+          "tooltip": "actions.cli.vcf-gnomad.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "vcf",
+              "gnomad",
+              "--vcf-input",
+              "{{vcf_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
+                "--gnomad-file",
+                "{{gnomad_file}}"
+              ],
+              [
+                "--max-af",
+                "{{gnomad_max_af}}"
+              ],
+              [
+                "--confidence-depth",
+                "{{confidence_depth_low}}",
+                "{{confidence_depth_high}}"
+              ],
+              [
+                "--confidence-gq",
+                "{{confidence_gq_low}}",
+                "{{confidence_gq_high}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "vcf-revel",
+          "title": "actions.cli.vcf-revel.title",
+          "tooltip": "actions.cli.vcf-revel.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "vcf",
+              "revel",
+              "--vcf-input",
+              "{{vcf_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
+                "--revel-file",
+                "{{revel_file}}"
+              ],
+              [
+                "--min-score",
+                "{{revel_min_score}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "vcf-cadd",
+          "title": "actions.cli.vcf-cadd.title",
+          "tooltip": "actions.cli.vcf-cadd.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "vcf",
+              "cadd",
+              "--vcf-input",
+              "{{vcf_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
+                "--cadd-file",
+                "{{cadd_file}}"
+              ],
+              [
+                "--cadd-indel-file",
+                "{{cadd_indel_file}}"
+              ],
+              [
+                "--min-score",
+                "{{cadd_min_score}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "vcf-gerp",
+          "title": "actions.cli.vcf-gerp.title",
+          "tooltip": "actions.cli.vcf-gerp.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "vcf",
+              "gerp",
+              "--vcf-input",
+              "{{vcf_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
+                "--gerp-file",
+                "{{gerp_file}}"
+              ],
+              [
+                "--min-score",
+                "{{gerp_min_score}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "vcf-phylop",
+          "title": "actions.cli.vcf-phylop.title",
+          "tooltip": "actions.cli.vcf-phylop.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "vcf",
+              "phylop",
+              "--vcf-input",
+              "{{vcf_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
+                "--phylop-file",
+                "{{phylop_file}}"
+              ],
+              [
+                "--min-score",
+                "{{phylop_min_score}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "vcf-chain-annotate",
+          "title": "actions.cli.vcf-chain-annotate.title",
+          "tooltip": "actions.cli.vcf-chain-annotate.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "vcf",
+              "chain-annotate",
+              "--vcf-input",
+              "{{vcf_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
+                "--annotations",
+                "{{chain_annotations}}"
+              ],
+              [
+                "{{chain_keep}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pharmacogenomics",
+      "title": "sections.cli.pharmacogenomics.title",
+      "textIcon": "💊",
+      "advancedOnly": true,
+      "controls": [
+        {
+          "id": "pharmcat_dir",
+          "label": "controls.cli.pharmcat_dir.label",
+          "kind": "path",
+          "pathType": "directory",
+          "tooltip": "controls.cli.pharmcat_dir.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "pharmcat_absent_to_ref",
+          "label": "controls.cli.pharmcat_absent_to_ref.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--absent-to-ref",
+              "title": "controls.cli.pharmcat_absent_to_ref.label"
+            }
+          ],
+          "tooltip": "controls.cli.pharmcat_absent_to_ref.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "pharmcat_outside_call",
+          "label": "controls.cli.pharmcat_outside_call.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.pharmcat_outside_call.tooltip",
+          "advancedOnly": true
+        }
+      ],
+      "actions": [
+        {
+          "id": "vcf-pharmcat",
+          "title": "actions.cli.vcf-pharmcat.title",
+          "tooltip": "actions.cli.vcf-pharmcat.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "vcf",
+              "pharmcat",
+              "--vcf-input",
+              "{{vcf_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
+                "--pharmcat-dir",
+                "{{pharmcat_dir}}"
+              ],
+              [
+                "{{pharmcat_absent_to_ref}}"
+              ],
+              [
+                "--outside-call",
+                "{{pharmcat_outside_call}}"
+              ],
+              [
+                "--confidence-depth",
+                "{{confidence_depth_low}}",
+                "{{confidence_depth_high}}"
+              ],
+              [
+                "--confidence-gq",
+                "{{confidence_gq_low}}",
+                "{{confidence_gq_high}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "consensus",
+      "title": "sections.cli.consensus.title",
+      "textIcon": "🧬",
+      "advancedOnly": true,
+      "controls": [
+        {
+          "id": "fasta_region",
+          "label": "controls.cli.fasta_region.label",
+          "kind": "text",
+          "tooltip": "controls.cli.fasta_region.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "fasta_sample",
+          "label": "controls.cli.fasta_sample.label",
+          "kind": "text",
+          "tooltip": "controls.cli.fasta_sample.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "fasta_haplotype",
+          "label": "controls.cli.fasta_haplotype.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "iupac",
+              "title": "options.cli.value.iupac.title"
+            },
+            {
+              "id": "alt",
+              "title": "options.cli.value.alt.title"
+            },
+            {
+              "id": "1",
+              "title": "options.cli.value.1.title"
+            },
+            {
+              "id": "2",
+              "title": "options.cli.value.2.title"
+            }
+          ],
+          "tooltip": "controls.cli.fasta_haplotype.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "fasta_uncalled",
+          "label": "controls.cli.fasta_uncalled.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "auto",
+              "title": "options.cli.value.auto.title"
+            },
+            {
+              "id": "n",
+              "title": "options.cli.value.n.title"
+            },
+            {
+              "id": "ref",
+              "title": "options.cli.value.ref.title"
+            }
+          ],
+          "tooltip": "controls.cli.fasta_uncalled.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "fasta_include_filtered",
+          "label": "controls.cli.fasta_include_filtered.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--include-filtered",
+              "title": "controls.cli.fasta_include_filtered.label"
+            }
+          ],
+          "tooltip": "controls.cli.fasta_include_filtered.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "fasta_mask",
+          "label": "controls.cli.fasta_mask.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.fasta_mask.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "fasta_chain",
+          "label": "controls.cli.fasta_chain.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--chain",
+              "title": "controls.cli.fasta_chain.label"
+            }
+          ],
+          "tooltip": "controls.cli.fasta_chain.tooltip",
+          "advancedOnly": true
+        }
+      ],
+      "actions": [
+        {
+          "id": "vcf-to-fasta",
+          "title": "actions.cli.vcf-to-fasta.title",
+          "tooltip": "actions.cli.vcf-to-fasta.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "vcf",
+              "to-fasta",
+              "--vcf-input",
+              "{{vcf_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
+                "--region",
+                "{{fasta_region}}"
+              ],
+              [
+                "--sample",
+                "{{fasta_sample}}"
+              ],
+              [
+                "--haplotype",
+                "{{fasta_haplotype}}"
+              ],
+              [
+                "--uncalled",
+                "{{fasta_uncalled}}"
+              ],
+              [
+                "{{fasta_include_filtered}}"
+              ],
+              [
+                "--mask",
+                "{{fasta_mask}}"
+              ],
+              [
+                "{{fasta_chain}}"
               ],
               [
                 "--outdir",

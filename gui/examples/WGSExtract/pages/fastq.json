@@ -172,10 +172,277 @@
               ]
             ]
           }
+        },
+        {
+          "id": "multiqc-metrics",
+          "title": "actions.cli.multiqc-metrics.title",
+          "tooltip": "actions.cli.multiqc-metrics.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "qc",
+              "multiqc-metrics",
+              "--input",
+              "{{multiqc_directory}}"
+            ],
+            "optionalArguments": [
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
         }
       ],
       "subsection": true,
       "advancedOnly": true
+    },
+    {
+      "id": "fastq-tools",
+      "title": "sections.cli.fastq-tools.title",
+      "textIcon": "📦",
+      "advancedOnly": true,
+      "controls": [
+        {
+          "id": "ubam_sample",
+          "label": "controls.cli.ubam_sample.label",
+          "kind": "text",
+          "tooltip": "controls.cli.ubam_sample.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "ubam_library",
+          "label": "controls.cli.ubam_library.label",
+          "kind": "text",
+          "tooltip": "controls.cli.ubam_library.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "ubam_platform",
+          "label": "controls.cli.ubam_platform.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "ILLUMINA",
+              "title": "options.cli.value.ILLUMINA.title"
+            },
+            {
+              "id": "DNBSEQ",
+              "title": "options.cli.value.DNBSEQ.title"
+            },
+            {
+              "id": "ELEMENT",
+              "title": "options.cli.value.ELEMENT.title"
+            },
+            {
+              "id": "ULTIMA",
+              "title": "options.cli.value.ULTIMA.title"
+            },
+            {
+              "id": "PACBIO",
+              "title": "options.cli.value.PACBIO.title"
+            },
+            {
+              "id": "ONT",
+              "title": "options.cli.value.ONT.title"
+            },
+            {
+              "id": "IONTORRENT",
+              "title": "options.cli.value.IONTORRENT.title"
+            },
+            {
+              "id": "LS454",
+              "title": "options.cli.value.LS454.title"
+            },
+            {
+              "id": "SOLID",
+              "title": "options.cli.value.SOLID.title"
+            },
+            {
+              "id": "CAPILLARY",
+              "title": "options.cli.value.CAPILLARY.title"
+            }
+          ],
+          "tooltip": "controls.cli.ubam_platform.tooltip",
+          "advancedOnly": true
+        }
+      ],
+      "actions": [
+        {
+          "id": "fastq-to-ubam",
+          "title": "actions.cli.fastq-to-ubam.title",
+          "tooltip": "actions.cli.fastq-to-ubam.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "bam",
+              "to-ubam",
+              "--r1",
+              "{{fastq_r1}}"
+            ],
+            "optionalArguments": [
+              [
+                "--r2",
+                "{{fastq_r2}}"
+              ],
+              [
+                "--sample",
+                "{{ubam_sample}}"
+              ],
+              [
+                "--library",
+                "{{ubam_library}}"
+              ],
+              [
+                "--platform",
+                "{{ubam_platform}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "basecall",
+      "title": "sections.cli.basecall.title",
+      "subtitle": "sections.cli.basecall.subtitle",
+      "textIcon": "🔬",
+      "advancedOnly": true,
+      "controls": [
+        {
+          "id": "pod5_input",
+          "label": "controls.cli.pod5_input.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.pod5_input.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "basecall_model",
+          "label": "controls.cli.basecall_model.label",
+          "kind": "text",
+          "tooltip": "controls.cli.basecall_model.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "basecall_modified_bases",
+          "label": "controls.cli.basecall_modified_bases.label",
+          "kind": "text",
+          "tooltip": "controls.cli.basecall_modified_bases.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "basecall_device",
+          "label": "controls.cli.basecall_device.label",
+          "kind": "text",
+          "tooltip": "controls.cli.basecall_device.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "basecall_read_ids",
+          "label": "controls.cli.basecall_read_ids.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.basecall_read_ids.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "basecall_regions_bed",
+          "label": "controls.cli.basecall_regions_bed.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.basecall_regions_bed.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "basecall_alignment",
+          "label": "controls.cli.basecall_alignment.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.basecall_alignment.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "basecall_models_dir",
+          "label": "controls.cli.basecall_models_dir.label",
+          "kind": "path",
+          "pathType": "directory",
+          "tooltip": "controls.cli.basecall_models_dir.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "dorado_path",
+          "label": "controls.cli.dorado_path.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.dorado_path.tooltip",
+          "advancedOnly": true
+        }
+      ],
+      "actions": [
+        {
+          "id": "basecall",
+          "title": "actions.cli.basecall.title",
+          "tooltip": "actions.cli.basecall.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "basecall",
+              "--input",
+              "{{pod5_input}}"
+            ],
+            "optionalArguments": [
+              [
+                "--model",
+                "{{basecall_model}}"
+              ],
+              [
+                "--modified-bases",
+                "{{basecall_modified_bases}}"
+              ],
+              [
+                "--device",
+                "{{basecall_device}}"
+              ],
+              [
+                "--read-ids",
+                "{{basecall_read_ids}}"
+              ],
+              [
+                "--regions-bed",
+                "{{basecall_regions_bed}}"
+              ],
+              [
+                "--alignment",
+                "{{basecall_alignment}}"
+              ],
+              [
+                "--models-dir",
+                "{{basecall_models_dir}}"
+              ],
+              [
+                "--dorado-path",
+                "{{dorado_path}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
+        }
+      ]
     },
     {
       "id": "pet-inputs",
