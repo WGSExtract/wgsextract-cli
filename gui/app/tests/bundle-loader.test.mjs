@@ -464,18 +464,20 @@ test("bundle loader localizes language options and marks AI-translated bundle st
     );
     await writeFile(path.join(directory, "strings", "strings.en.toml"), `"language.name" = "English"\n`);
     await writeFile(
-      path.join(directory, "strings", "strings.es.toml"),
-      `"language.aiTranslated" = "true"\n"language.name" = "Español"\n`
+      path.join(directory, "strings", "strings.fr.toml"),
+      `"language.aiTranslated" = "true"
+"language.name" = "Français"
+`
     );
 
     const { loadLocalizedBundle } = await import("../dist/web/src/server/bundle-loader.js");
-    const bundle = await loadLocalizedBundle("es", repoRoot, directory, directory);
+    const bundle = await loadLocalizedBundle("fr", repoRoot, directory, directory);
     const english = bundle.localizationOptions.find((option) => option.code === "en");
-    const spanish = bundle.localizationOptions.find((option) => option.code === "es");
+    const french = bundle.localizationOptions.find((option) => option.code === "fr");
 
-    assert.equal(english.displayName, "English (Inglés)");
-    assert.equal(spanish.displayName, "Español (Español)");
-    assert.equal(spanish.isAITranslated, true);
+    assert.equal(english.displayName, "English (Anglais)");
+    assert.equal(french.displayName, "Français (Français)");
+    assert.equal(french.isAITranslated, true);
   } finally {
     await rm(directory, { force: true, recursive: true });
   }

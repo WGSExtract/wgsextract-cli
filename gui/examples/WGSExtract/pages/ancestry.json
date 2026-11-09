@@ -11,18 +11,6 @@
       "textIcon": "🌳",
       "controls": [
         {
-          "id": "lineage_tree_links",
-          "label": "controls.ancestry.post-v063.tree-links.label",
-          "kind": "checkboxGroup",
-          "options": [
-            {
-              "id": "--tree-links",
-              "title": "controls.ancestry.post-v063.tree-links.label"
-            }
-          ],
-          "tooltip": "controls.ancestry.post-v063.tree-links.tooltip"
-        },
-        {
           "id": "bam_path",
           "label": "controls.ancestry.ancestry-inputs.bam_path.label",
           "kind": "path",
@@ -33,7 +21,8 @@
           "id": "yleaf_pos",
           "label": "controls.ancestry.ancestry-inputs.yleaf_pos.label",
           "kind": "path",
-          "tooltip": "controls.ancestry.ancestry-inputs.yleaf_pos.tooltip"
+          "tooltip": "controls.ancestry.ancestry-inputs.yleaf_pos.tooltip",
+          "advancedOnly": true
         },
         {
           "id": "yleaf_tree",
@@ -61,7 +50,21 @@
               "id": "isogg",
               "title": "options.ancestry.ancestry-inputs.yleaf_tree.isogg.title"
             }
-          ]
+          ],
+          "advancedOnly": true
+        },
+        {
+          "id": "lineage_tree_links",
+          "label": "controls.ancestry.post-v063.tree-links.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--tree-links",
+              "title": "controls.ancestry.post-v063.tree-links.label"
+            }
+          ],
+          "tooltip": "controls.ancestry.post-v063.tree-links.tooltip",
+          "advancedOnly": true
         },
         {
           "id": "yleaf_ancient",
@@ -73,7 +76,8 @@
               "title": "controls.ancestry.ancestry-inputs.yleaf_ancient.label"
             }
           ],
-          "tooltip": "controls.ancestry.ancestry-inputs.yleaf_ancient.tooltip"
+          "tooltip": "controls.ancestry.ancestry-inputs.yleaf_ancient.tooltip",
+          "advancedOnly": true
         },
         {
           "id": "yleaf_no_ref_inference",
@@ -85,13 +89,15 @@
               "title": "controls.ancestry.ancestry-inputs.yleaf_no_ref_inference.label"
             }
           ],
-          "tooltip": "controls.ancestry.ancestry-inputs.yleaf_no_ref_inference.tooltip"
+          "tooltip": "controls.ancestry.ancestry-inputs.yleaf_no_ref_inference.tooltip",
+          "advancedOnly": true
         },
         {
           "id": "haplogrep_path",
           "label": "controls.ancestry.ancestry-inputs.haplogrep_path.label",
           "kind": "path",
-          "tooltip": "controls.ancestry.ancestry-inputs.haplogrep_path.tooltip"
+          "tooltip": "controls.ancestry.ancestry-inputs.haplogrep_path.tooltip",
+          "advancedOnly": true
         },
         {
           "id": "y_str_panel",
@@ -135,7 +141,8 @@
               "id": "all",
               "title": "options.ancestry.v066.y-str-panel.all.title"
             }
-          ]
+          ],
+          "advancedOnly": true
         }
       ],
       "actions": [
@@ -182,11 +189,13 @@
               "lineage",
               "mt-haplogroup",
               "--input",
-              "{{bam_path}}",
-              "--haplogrep-path",
-              "{{haplogrep_path}}"
+              "{{bam_path}}"
             ],
             "optionalArguments": [
+              [
+                "--haplogrep-path",
+                "{{haplogrep_path}}"
+              ],
               [
                 "{{lineage_tree_links}}"
               ],
@@ -223,7 +232,8 @@
                 "{{out_dir}}"
               ]
             ]
-          }
+          },
+          "advancedOnly": true
         }
       ]
     }

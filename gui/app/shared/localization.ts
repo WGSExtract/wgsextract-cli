@@ -255,7 +255,7 @@ function localizeSection(section: PageSection, table: StringMap): PageSection {
 }
 function localizeControl(control: ControlSpec, table: StringMap): ControlSpec {
     const localizedControl: ControlSpec = {
-        ...localizeFields(control, table, ["label", "placeholder", "tooltip"]),
+        ...localizeFields(control, table, ["label", "placeholder", "tooltip", "emptyText"]),
         options: (control.options ?? []).map((option) => localizeOption(option, table)),
         columns: (control.columns ?? []).map((column) => localizeFields(column, table, ["title"])),
         rows: (control.rows ?? []).map((row) => localizeRow(row, table)),
@@ -291,7 +291,7 @@ function localizeSetting(setting: ConfigSetting, table: StringMap): ConfigSettin
     };
 }
 function localizeOption(option: ControlOption, table: StringMap): ControlOption {
-    return localizeFields(option, table, ["title", "group"]);
+    return localizeFields(option, table, ["title", "group", "category"]);
 }
 /** Replaces each string field that names a string-table key with its translation. */
 function localizeFields<Record extends object>(record: Record, table: StringMap, fields: readonly string[]): Record {

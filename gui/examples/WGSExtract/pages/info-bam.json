@@ -21,13 +21,15 @@
           "id": "ref_path",
           "label": "controls.info-bam.inputs.ref_path.label",
           "kind": "path",
-          "tooltip": "controls.info-bam.inputs.ref_path.tooltip"
+          "tooltip": "controls.info-bam.inputs.ref_path.tooltip",
+          "advancedOnly": true
         },
         {
           "id": "out_dir",
           "label": "controls.info-bam.inputs.out_dir.label",
           "kind": "path",
-          "tooltip": "controls.info-bam.inputs.out_dir.tooltip"
+          "tooltip": "controls.info-bam.inputs.out_dir.tooltip",
+          "advancedOnly": true
         },
         {
           "id": "cram_version",
@@ -49,7 +51,8 @@
               "id": "3.1",
               "title": "options.info-bam.inputs.cram_version.3.1.title"
             }
-          ]
+          ],
+          "advancedOnly": true
         }
       ]
     },
@@ -57,40 +60,6 @@
       "id": "info-commands",
       "title": "sections.info-bam.info-commands.title",
       "actions": [
-        {
-          "id": "coverage-bins",
-          "title": "actions.info-bam.post-v063.coverage-bins.title",
-          "tooltip": "actions.info-bam.post-v063.coverage-bins.tooltip",
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "info",
-              "calculate-coverage",
-              "--input",
-              "{{bam_path}}",
-              "--bins"
-            ],
-            "optionalArguments": [
-              [
-                "--ref",
-                "{{ref_path}}"
-              ],
-              [
-                "--outdir",
-                "{{out_dir}}"
-              ]
-            ]
-          },
-          "serverOperation": {
-            "operation": "info/calculate-coverage",
-            "parameters": {
-              "input": "{{bam_path}}",
-              "bins": true,
-              "ref": "{{ref_path}}",
-              "outdir": "{{out_dir}}"
-            }
-          }
-        },
         {
           "id": "basic-info",
           "title": "actions.info-bam.info-commands.basic-info.title",
@@ -131,6 +100,21 @@
           }
         },
         {
+          "id": "coverage-sample",
+          "title": "actions.info-bam.info-commands.coverage-sample.title",
+          "tooltip": "actions.info-bam.info-commands.coverage-sample.tooltip",
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "info",
+              "coverage-sample",
+              "--input",
+              "{{bam_path}}"
+            ]
+          },
+          "advancedOnly": true
+        },
+        {
           "id": "calculate-coverage",
           "title": "actions.info-bam.info-commands.calculate-coverage.title",
           "tooltip": "actions.info-bam.info-commands.calculate-coverage.tooltip",
@@ -149,20 +133,6 @@
             "parameters": {
               "input": "{{bam_path}}"
             }
-          }
-        },
-        {
-          "id": "coverage-sample",
-          "title": "actions.info-bam.info-commands.coverage-sample.title",
-          "tooltip": "actions.info-bam.info-commands.coverage-sample.tooltip",
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "info",
-              "coverage-sample",
-              "--input",
-              "{{bam_path}}"
-            ]
           }
         }
       ],
@@ -350,135 +320,6 @@
               [
                 "--outdir",
                 "{{out_dir}}"
-              ]
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "id": "realign-commands",
-      "title": "sections.info-bam.realign-commands.title",
-      "subtitle": "sections.info-bam.realign-commands.subtitle",
-      "iconName": "merge",
-      "textIcon": "🔀",
-      "controls": [
-        {
-          "id": "realign_keep_fastq",
-          "label": "controls.info-bam.post-v063.keep-fastq.label",
-          "kind": "checkboxGroup",
-          "options": [
-            {
-              "id": "--keep-fastq",
-              "title": "controls.info-bam.post-v063.keep-fastq.label"
-            }
-          ],
-          "tooltip": "controls.info-bam.post-v063.keep-fastq.tooltip"
-        },
-        {
-          "id": "realign_bam",
-          "label": "controls.info-bam.realign-commands.realign_bam.label",
-          "kind": "path",
-          "defaultDirectory": "{{genome_library}}",
-          "tooltip": "controls.info-bam.realign-commands.realign_bam.tooltip"
-        },
-        {
-          "id": "realign_ref",
-          "label": "controls.info-bam.realign-commands.realign_ref.label",
-          "kind": "dropdown",
-          "tooltip": "controls.info-bam.realign-commands.realign_ref.tooltip",
-          "dataSource": {
-            "path": "scripts/list-reference-genomes.py",
-            "arguments": [
-              "options",
-              "{{ref_path}}"
-            ]
-          }
-        },
-        {
-          "id": "fastq_r1",
-          "label": "controls.info-bam.inputs.fastq_r1.label",
-          "kind": "path",
-          "defaultDirectory": "{{genome_library}}",
-          "tooltip": "controls.info-bam.inputs.fastq_r1.tooltip"
-        },
-        {
-          "id": "fastq_r2",
-          "label": "controls.info-bam.inputs.fastq_r2.label",
-          "kind": "path",
-          "defaultDirectory": "{{genome_library}}",
-          "tooltip": "controls.info-bam.inputs.fastq_r2.tooltip"
-        }
-      ],
-      "actions": [
-        {
-          "id": "realign",
-          "title": "actions.info-bam.realign-commands.realign.title",
-          "tooltip": "actions.info-bam.realign-commands.realign.tooltip",
-          "precheck": {
-            "diskSpaceGB": "{{realign_bam.fileSizeGB}} * 6",
-            "diskSpacePath": "{{out_dir}}"
-          },
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "realign",
-              "--input",
-              "{{realign_bam}}",
-              "--ref",
-              "{{realign_ref}}"
-            ],
-            "optionalArguments": [
-              [
-                "{{realign_keep_fastq}}"
-              ],
-              [
-                "--outdir",
-                "{{out_dir}}"
-              ],
-              [
-                "--r1",
-                "{{fastq_r1}}"
-              ],
-              [
-                "--r2",
-                "{{fastq_r2}}"
-              ]
-            ]
-          }
-        },
-        {
-          "id": "align",
-          "title": "actions.info-bam.realign-commands.align.title",
-          "tooltip": "actions.info-bam.realign-commands.align.tooltip",
-          "estimatedDurationMinutes": 540,
-          "precheck": {
-            "diskSpaceGB": "{{fastq_r1.fileSizeGB}} * 8",
-            "diskSpacePath": "{{out_dir}}"
-          },
-          "visibleWhen": [
-            {
-              "placeholder": "fastq_r1",
-              "exists": true
-            }
-          ],
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "align",
-              "--ref",
-              "{{realign_ref}}",
-              "--r1",
-              "{{fastq_r1}}"
-            ],
-            "optionalArguments": [
-              [
-                "--outdir",
-                "{{out_dir}}"
-              ],
-              [
-                "--r2",
-                "{{fastq_r2}}"
               ]
             ]
           }

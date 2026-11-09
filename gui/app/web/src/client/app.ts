@@ -15,7 +15,7 @@ import { renderUpdatePopover } from "./view/update.js";
 import { renderBundleHeader, renderConfirmationDialog, renderNavigation, renderUIModeSwitch, renderPage, renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID } from "./view.js";
 import { renderAboutDialog } from "./view/about.js";
 import type { BundleManifest, ManifestResponse } from "../../../shared/types.js";
-import { normalizeUIMode } from "../../../shared/ui-mode.js";
+import { normalizeUIMode, visiblePages } from "../../../shared/ui-mode.js";
 const app: HTMLElement = (() => {
     const el = document.querySelector<HTMLElement>("#app");
     if (!el) {
@@ -116,7 +116,9 @@ function render() {
         renderError(new Error("Bundle manifest is not loaded."));
         return;
     }
-    const activePage = manifest.pages.find((page) => page.id === state.activePageID) ?? manifest.pages[0];
+    // A page Basic hides opens the first page Basic shows instead.
+    const pages = visiblePages(manifest, state.uiMode);
+    const activePage = pages.find((page) => page.id === state.activePageID) ?? pages[0];
     state.activePageID = activePage?.id ?? "";
     app.classList.toggle("terminal-hidden", !state.isTerminalVisible);
     app.classList.toggle("sidebar-hidden", !state.isSidebarVisible);

@@ -1,6 +1,7 @@
 import { allControls } from "./rendering-controls.js";
 import { lastResultDocumentPlaceholders } from "./last-result-documents.js";
 import { currentSetupPlatform } from "./setup-platforms.js";
+import { basicModeHiddenInputs, controlDefaultValue, normalizeUIMode } from "./ui-mode.js";
 import type { BundleManifest, CommandContext, Labels, LastResultDocumentPaths, LooseRecord, StateValue, StringMap, ValueMap } from "./types.js";
 
 type CheckedOptionsInput = Record<string, Set<string> | string[] | string | null | undefined>;
@@ -12,13 +13,15 @@ type StateLike = {
     manifest?: BundleManifest | null;
     homePath?: string;
     lastResultDocumentPaths?: LastResultDocumentPaths;
+    uiMode?: unknown;
 } & LooseRecord;
 
 export function commandContextFromState(state: StateLike, rowValues: ValueMap = {}, sectionValues: ValueMap = {}): CommandContext {
+    const { fieldValues, checkedOptions } = valuesForUIMode(state);
     const context: CommandContext = {
-        fieldValues: { ...(state.fieldValues ?? {}), ...sectionValues },
-        checkedOptions: checkedOptionsForContext(state.checkedOptions ?? {}),
-        configValues: { ...(state.configValues ?? {}), ...(state.fieldValues ?? {}), ...sectionValues },
+        fieldValues: { ...fieldValues, ...sectionValues },
+        checkedOptions,
+        configValues: { ...(state.configValues ?? {}), ...fieldValues, ...sectionValues },
         rowValues,
         placeholderLabels: placeholderLabelsFromManifest(state.manifest),
     };
@@ -32,6 +35,30 @@ export function commandContextFromState(state: StateLike, rowValues: ValueMap = 
         context.lastResultDocumentPaths = state.lastResultDocumentPaths;
     }
     return context;
+}
+/** Basic mode runs commands with the controls it hides at their defaults, and the options it hides unchecked. */
+function valuesForUIMode(state: StateLike): { fieldValues: ValueMap; checkedOptions: StringMap } {
+    const fieldValues: ValueMap = { ...(state.fieldValues ?? {}) };
+    const checked: CheckedOptionsInput = { ...(state.checkedOptions ?? {}) };
+    if (normalizeUIMode(state.uiMode) === "basic" && state.manifest) {
+        const hidden = basicModeHiddenInputs(state.manifest);
+        for (const [id, control] of hidden.controls) {
+            if (control.kind === "checkboxGroup") {
+                checked[id] = (control.options ?? []).filter((option) => option.selected).map((option) => option.id);
+            }
+            // Paths say where files are, not how a command runs, so a hidden one (the Reference Library) still applies.
+            else if (control.kind !== "path" && Object.hasOwn(fieldValues, id)) {
+                fieldValues[id] = controlDefaultValue(control);
+            }
+        }
+        for (const [id, hiddenOptions] of hidden.options) {
+            const selected = checked[id];
+            if (selected instanceof Set || Array.isArray(selected)) {
+                checked[id] = normalizeSelectedIDs(selected).filter((option) => !hiddenOptions.has(option));
+            }
+        }
+    }
+    return { fieldValues, checkedOptions: checkedOptionsForContext(checked) };
 }
 function placeholderLabelsFromManifest(manifest: BundleManifest | null | undefined): Labels {
     const labels: Labels = {};

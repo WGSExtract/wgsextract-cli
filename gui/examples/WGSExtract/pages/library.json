@@ -28,7 +28,8 @@
         }
       ],
       "iconName": "bundle-folder",
-      "textIcon": "📁"
+      "textIcon": "📁",
+      "advancedOnly": true
     },
     {
       "id": "databases-tools",
@@ -54,7 +55,8 @@
               "--ref",
               "{{ref_path}}"
             ]
-          }
+          },
+          "advancedOnly": true
         },
         {
           "id": "ybrowse-install",
@@ -69,7 +71,8 @@
               "--ref",
               "{{ref_path}}"
             ]
-          }
+          },
+          "advancedOnly": true
         },
         {
           "id": "vep-download",
@@ -83,7 +86,8 @@
               "--vep-cache",
               "{{vep_cache_path}}"
             ]
-          }
+          },
+          "advancedOnly": true
         },
         {
           "id": "vep-verify",
@@ -97,7 +101,8 @@
               "--vep-cache",
               "{{vep_cache_path}}"
             ]
-          }
+          },
+          "advancedOnly": true
         },
         {
           "id": "gene-map-download",
@@ -117,7 +122,8 @@
               "--ref",
               "{{ref_path}}"
             ]
-          }
+          },
+          "advancedOnly": true
         },
         {
           "id": "gene-map-delete",
@@ -145,7 +151,8 @@
               "--ref",
               "{{ref_path}}"
             ]
-          }
+          },
+          "advancedOnly": true
         },
         {
           "id": "annotation-vcf-download",
@@ -165,7 +172,8 @@
               "--ref",
               "{{ref_path}}"
             ]
-          }
+          },
+          "advancedOnly": true
         },
         {
           "id": "annotation-vcf-installed",
@@ -194,7 +202,8 @@
               "--ref",
               "{{ref_path}}"
             ]
-          }
+          },
+          "advancedOnly": true
         },
         {
           "id": "spliceai-download",
@@ -214,7 +223,8 @@
               "--ref",
               "{{ref_path}}"
             ]
-          }
+          },
+          "advancedOnly": true
         },
         {
           "id": "spliceai-installed",
@@ -243,7 +253,8 @@
               "--ref",
               "{{ref_path}}"
             ]
-          }
+          },
+          "advancedOnly": true
         },
         {
           "id": "alphamissense-download",
@@ -263,7 +274,8 @@
               "--ref",
               "{{ref_path}}"
             ]
-          }
+          },
+          "advancedOnly": true
         },
         {
           "id": "alphamissense-installed",
@@ -292,7 +304,8 @@
               "--ref",
               "{{ref_path}}"
             ]
-          }
+          },
+          "advancedOnly": true
         },
         {
           "id": "pharmgkb-download",
@@ -312,7 +325,8 @@
               "--ref",
               "{{ref_path}}"
             ]
-          }
+          },
+          "advancedOnly": true
         },
         {
           "id": "pharmgkb-installed",
@@ -341,7 +355,8 @@
               "--ref",
               "{{ref_path}}"
             ]
-          }
+          },
+          "advancedOnly": true
         },
         {
           "id": "bootstrap-library",
@@ -367,7 +382,8 @@
               "--ref",
               "{{ref_path}}"
             ]
-          }
+          },
+          "advancedOnly": true
         },
         {
           "id": "library-bootstrapped",
@@ -396,7 +412,8 @@
               "--ref",
               "{{ref_path}}"
             ]
-          }
+          },
+          "advancedOnly": true
         },
         {
           "id": "test-genome-download",
@@ -494,12 +511,20 @@
               "title": "columns.library.genome-management.reference_genomes.name.title"
             },
             {
+              "id": "code",
+              "title": "columns.library.genome-management.reference_genomes.code.title"
+            },
+            {
               "id": "build",
               "title": "columns.library.genome-management.reference_genomes.build.title"
             },
             {
               "id": "source",
               "title": "columns.library.genome-management.reference_genomes.source.title"
+            },
+            {
+              "id": "sn",
+              "title": "columns.library.genome-management.reference_genomes.sn.title"
             },
             {
               "id": "size",

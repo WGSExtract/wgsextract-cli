@@ -39,6 +39,7 @@ PLACEHOLDER = re.compile(r"\{\{([^}]+)\}\}")
 # Scripts that end in a `wgsextract` invocation, and scripts that never do.
 CLI_SCRIPTS = {
     "bootstrap-reference-library.sh",
+    "fastqc-reads.sh",
     "library-state.sh",
     "run-wgsextract-vcf.sh",
     "run-wgsextract.sh",

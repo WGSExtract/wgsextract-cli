@@ -29,6 +29,7 @@ const defaultTests = [
   "tests/result-document.test.mjs",
   "tests/conformance.test.mjs",
   "tests/action-confirmation.test.mjs",
+  "tests/ui-mode.test.mjs",
 ];
 
 const tests = process.argv.slice(2);

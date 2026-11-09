@@ -124,7 +124,8 @@
         }
       ],
       "iconName": "workspace",
-      "textIcon": "🗂️"
+      "textIcon": "🗂️",
+      "advancedOnly": true
     },
     {
       "id": "dependency-checks",
