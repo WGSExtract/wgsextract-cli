@@ -160,6 +160,7 @@
           "id": "extract_formats",
           "label": "controls.extract.extract-formats.extract_formats.label",
           "kind": "checkboxGroup",
+          "layout": "rows",
           "options": [
             {
               "id": "fasta",
