@@ -117,6 +117,71 @@ def test_more_than_one_thread_calls_contigs_in_parallel_unless_turned_off(
     )
 
 
+@needs_htslib
+@pytest.mark.parametrize(
+    ("parallel", "samples", "wait"),
+    [
+        (None, 1, "1.2 hours"),  # 3 workers: 150 minutes / 3 ** 0.7
+        (False, 1, "2.5 hours"),
+        (None, 2, "2.5 hours"),
+    ],
+)
+def test_expected_wait_counts_threads_only_for_parallel_calling(
+    multicontig_sample: tuple[str, str],
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    parallel: bool | None,
+    samples: int,
+    wait: str,
+) -> None:
+    """Issue #583: a 16-vCPU VM warned of a 21-minute wait for `vcf snp`, then
+    called in one bcftools stream for 2.8 hours. --no-parallel and several
+    samples call in one stream, which more threads don't speed up."""
+    bam, ref = multicontig_sample
+    if samples > 1:
+        sam = run_command(["samtools", "view", "-h", bam], capture_output=True)
+        lines = sam.stdout.splitlines()
+        lines.insert(lines.index("@RG\tID:reads\tSM:sample"), "@RG\tID:b\tSM:b")
+        bam = str(sam_to_bam(lines, tmp_path / "two samples.bam"))
+    params = api.VcfSnpParams(
+        input=Path(bam), ref=Path(ref), outdir=tmp_path, threads=3,
+        parallel=parallel, ploidy="GRCh38",
+    )  # fmt: skip
+    api.vcf.snp(params)
+    assert f"Expected Wait is {wait} !!!" in caplog.text
+
+
+@needs_htslib
+def test_expected_wait_counts_workers_after_small_contigs_are_batched(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Issue #583 review: three small contigs share one job beside a large
+    one, so four threads run two workers; the wait must not count four."""
+    caplog.set_level(logging.INFO)
+    rng = random.Random(3)
+    lengths = {"chrBig": 100_000, "chrS1": 500, "chrS2": 500, "chrS3": 500}
+    seqs = {
+        n: "".join(rng.choice("ACGT") for _ in range(k)) for n, k in lengths.items()
+    }
+    ref = write_fasta(tmp_path / "ref.fa", seqs)
+    lines = ["@HD\tVN:1.6\tSO:coordinate", "@RG\tID:r\tSM:s"]
+    lines[1:1] = [f"@SQ\tSN:{name}\tLN:{length}" for name, length in lengths.items()]
+    for name, seq in seqs.items():
+        lines += [
+            f"{name}_{start}\t0\t{name}\t{start}\t60\t100M\t*\t0\t0"
+            f"\t{seq[start - 1 : start + 99]}\t{'I' * 100}\tRG:Z:r"
+            for start in range(1, 400, 20)
+        ]
+    bam = sam_to_bam(lines, tmp_path / "batched.bam")
+    params = api.VcfSnpParams(
+        input=Path(bam), ref=ref, outdir=tmp_path, threads=4, ploidy="GRCh38"
+    )
+    api.vcf.snp(params)
+    assert "Calling 4 contigs in 2 jobs with 2 workers." in caplog.text
+    # 150 minutes / 2 ** 0.7; four workers would give 56 minutes.
+    assert "Expected Wait is 1.5 hours !!!" in caplog.text
+
+
 def _female(sample: tuple[str, str], root: Path) -> tuple[str, str]:
     """The sample with all but two of its chrY reads dropped: a woman's few
     mismapped chrY reads (its 48 chrY reads to 48 chrX make it a man)."""
@@ -207,7 +272,8 @@ def _bodies(
         output = str(tmp_path / f"calls-{threads}.vcf.gz")
         contig_calling.call_small_variants(
             bam, ref, output, threads=threads, region=None, profile=[],
-            call_args=["--ploidy", "2", "-P", "0"], indels=indels, parallel=True,
+            call_args=["--ploidy", "2", "-P", "0"], indels=indels,
+            contigs=contig_calling.calling_contigs(bam, ref, threads, None, True),
         )  # fmt: skip
         bodies.append(
             run_command(["bcftools", "view", "-H", output], capture_output=True).stdout
@@ -424,7 +490,8 @@ def test_iupac_indels_are_valid_without_changing_other_contigs(
         output = str(tmp_path / f"indels-{threads}.vcf.gz")
         contig_calling.call_small_variants(
             bam, ref, output, threads=threads, region=None,
-            profile=[], call_args=call_args, indels=True, parallel=True,
+            profile=[], call_args=call_args, indels=True,
+            contigs=contig_calling.calling_contigs(bam, ref, threads, None, True),
         )  # fmt: skip
         bodies.append(
             run_command(["bcftools", "view", "-H", output], capture_output=True).stdout
