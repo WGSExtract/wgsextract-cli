@@ -43,7 +43,21 @@ string(REGEX REPLACE
     "(void BandedPairWiseSW::getScores(8|16)\\([^{]+\\{)"
     "\\1\n    WgseExtensionScope wgse_scope(numPairs);\n    if (wgse_metal_extend(pairArray, seqBufRef, seqBufQer, numPairs, w,\n        o_del, e_del, o_ins, e_ins, zdrop, end_bonus, mat, \\2)) return;\n"
     banded_source "${banded_source}")
-file(WRITE "${mem2_src}/bandedSWA.cpp" "#include \"metal_backend.h\"\n${banded_source}")
+# The 128-bit kernels' band tests compare _mm_movemask_epi8() masks only with
+# zero or all lanes set (dmask16 is 0xAAAA, one bit per 16-bit lane): bsw_lanes.h.
+string(REGEX MATCHALL "_mm_movemask_epi8\\([a-z0-9_]+\\) & dmask16" lane16_tests "${banded_source}")
+string(REGEX MATCHALL "_mm_movemask_epi8\\(" lane_tests "${banded_source}")
+list(LENGTH lane16_tests lane16_count)
+list(LENGTH lane_tests lane_count)
+if(NOT lane16_count EQUAL 7 OR NOT lane_count EQUAL 15)
+    message(FATAL_ERROR "Unexpected upstream BWA-MEM2 band tests")
+endif()
+string(REGEX REPLACE "_mm_movemask_epi8\\(([a-z0-9_]+)\\) & dmask16" "wgse_lanes16(\\1)"
+    banded_source "${banded_source}")
+string(REGEX REPLACE "_mm_movemask_epi8\\(([a-z0-9_]+)\\)" "wgse_lanes8(\\1)"
+    banded_source "${banded_source}")
+file(WRITE "${mem2_src}/bandedSWA.cpp"
+    "#include \"metal_backend.h\"\n#include \"bsw_lanes.h\"\n${banded_source}")
 function(mem2_seam variable before after)
     string(FIND "${${variable}}" "${before}" position)
     if(position EQUAL -1)
