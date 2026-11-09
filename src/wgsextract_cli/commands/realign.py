@@ -47,6 +47,7 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.core.native_aligners import AlignerCommand
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.read_counts import (
     alignment_sample,
@@ -449,14 +450,21 @@ def run(params: RealignParams) -> None:
             "Native pbmm2's internal sorter does not support --tmp-dir. Use --aligner minimap2 or omit the temporary-directory setting."
         )
     signature = None
-    if selected_aligner in {"bwa", "bwa-mem2"} and not (
+    if selected_aligner in align_cmd.BWA_ALIGNERS and not (
         job.ref and Path(job.ref).is_file()
     ):
         signature = calculate_bam_md5(job.input, None)
     target = resolve_reference(job.ref, signature) if job.ref or signature else None
     if job.aligner == "bwa-mem2" and target and Path(target).is_file():
         align_cmd.ensure_fasta_index(target)
-        bwa_mem2.check_index(target)
+        # wgse-bwa-mem3 standing in maps without bwa-mem2's .0123 file.
+        if align_cmd.bwa_mem3_build(job, "bwa-mem2", target) is None:
+            bwa_mem2.check_index(target)
+    if selected_aligner == "bwa-mem3" and not job.gpu:
+        # Before hours of extraction: the aligner and its index.
+        align_cmd.bwa_mem3_command(job)
+        if target and Path(target).is_file():
+            align_cmd.require_bwa_mem3_index(target)
 
     threads, memory = get_resource_defaults(job.threads, job.memory)
     # A URL's output goes to the current directory unless --outdir says.
@@ -538,6 +546,7 @@ def _align_tools(aligner: str, platform: str | None, gpu: bool) -> list[str]:
     tools = {
         "bwa": ["bwa", "bwa-mem2", "samblaster"],
         "bwa-mem2": ["bwa-mem2", "samblaster"],
+        "bwa-mem3": ["bwa-mem3", "samblaster"],
         "minimap2": ["minimap2"],
         "pbmm2": ["pbmm2"],
     }.get(aligner, [aligner])
@@ -572,6 +581,8 @@ def _align_step(
             "sample": job.sample,
             "gpu": bool(job.gpu),
             "ref": None if reference else job.ref,
+            # Only when set, so earlier runs' journals still match.
+            **({"fast": True} if job.fast else {}),
         },
         tools=_align_tools(aligner, job.platform, bool(job.gpu)),
     )
@@ -635,13 +646,18 @@ def _resume_alignment(
         current_result().record_tool_version(
             str(native["native_aligner"]), str(native["native_aligner_version"])
         )
+    if native.get("bwa_mem3_mode") == "fast":
+        align_cmd.warn_bwa_mem3_fast(str(native.get("native_aligner") or "bwa-mem3"))
 
 
 def _native_aligner_metrics(metrics: Mapping[str, Any]) -> dict[str, Any]:
     """The metrics naming the Apple Silicon aligner build that made an
-    alignment (AlignerCommand.record), kept in the journal for a resume."""
+    alignment, and bwa-mem3's output mode (AlignerCommand.record), kept in
+    the journal for a resume."""
     return {
-        key: value for key, value in metrics.items() if key.startswith("native_aligner")
+        key: value
+        for key, value in metrics.items()
+        if key.startswith("native_aligner") or key == "bwa_mem3_mode"
     }
 
 
@@ -934,7 +950,7 @@ def _run_steps(
     )
     streaming = (
         need_extract
-        and selected_aligner in {"bwa", "bwa-mem2"}
+        and selected_aligner in align_cmd.BWA_ALIGNERS
         and not job.keep_fastq
         and not job.gpu
         and not refresh_cached_fastqs
@@ -988,24 +1004,27 @@ def _run_steps(
             samblaster = (
                 align_cmd.duplicate_marker(paired=bool(r2_path)) == "samblaster"
             )
-            tool = align_cmd.short_read_aligner(
-                job.aligner,
+            aligner, aligner_memory = _short_read_plan(
+                job,
                 target,
                 threads=threads,
                 memory=memory,
                 samblaster=samblaster,
                 reads=reads,
+                read_length=read_length,
+                additional_ram_bytes=additional_ram_bytes,
             )
             fits = align_cmd.streaming_mapping_fits(
                 target,
-                tool,
+                aligner.engine,
                 threads=threads,
-                memory=memory,
+                memory=aligner_memory,
                 samblaster=samblaster,
                 reads=reads,
                 platform=job.platform,
                 read_length=read_length,
                 additional_ram_bytes=additional_ram_bytes,
+                gpu_bytes=align_cmd.aligner_gpu_bytes(aligner, target, reads),
             )
         if not fits:
             logging.info(
@@ -1016,7 +1035,7 @@ def _run_steps(
             )
             streaming = False
             additional_ram_bytes = 0
-    if selected_aligner in {"bwa", "bwa-mem2"} and not job.gpu:
+    if selected_aligner in align_cmd.BWA_ALIGNERS and not job.gpu:
         _report_resource_estimates(
             job,
             target,
@@ -1031,16 +1050,30 @@ def _run_steps(
             additional_ram_bytes=additional_ram_bytes,
         )
     if job.aligner == "bwa-mem2" and target and Path(target).is_file():
+        # As align's: bwa-mem2, or wgse-bwa-mem3 in its place, must fit.
+        samblaster = align_cmd.duplicate_marker(paired=bool(r2_path)) == "samblaster"
+        aligner, aligner_memory = _short_read_plan(
+            job,
+            target,
+            threads=threads,
+            memory=memory,
+            samblaster=samblaster,
+            reads=reads,
+            read_length=read_length,
+        )
         check_mapping_memory(
             target,
-            "bwa-mem2",
+            aligner.engine,
             threads=threads,
-            memory=align_cmd.short_read_sort_memory("bwa-mem2", memory, log=False),
-            samblaster=align_cmd.duplicate_marker(paired=bool(r2_path)) == "samblaster",
+            memory=aligner_memory,
+            samblaster=samblaster,
             reads=reads,
             read_length=read_length,
             platform=job.platform,
             additional_ram_bytes=0,
+            gpu_bytes=align_cmd.aligner_gpu_bytes(aligner, target, reads),
+            required=True,
+            label=align_cmd.stand_in_label(aligner),
         )
 
     # 2. Disk-space pre-flight.
@@ -1225,6 +1258,34 @@ def _run_steps(
         current_result().add_input(r2_path, "fastq_r2")
 
 
+def _short_read_plan(
+    job: RealignJob,
+    ref: str,
+    *,
+    threads: str,
+    memory: str,
+    samblaster: bool,
+    reads: int | None,
+    read_length: float | None,
+    additional_ram_bytes: int = 0,
+) -> tuple[AlignerCommand, str]:
+    """How the alignment step will run BWA-MEM on ``ref`` (as _bwa_setup
+    chooses), and its sort memory per thread, for checks before extraction."""
+    if align_cmd.short_read_tool(job) == "bwa-mem3":
+        return align_cmd.bwa_mem3_command(job), memory
+    return align_cmd.short_read_command(
+        job,
+        ref,
+        threads=threads,
+        memory=memory,
+        samblaster=samblaster,
+        reads=reads,
+        read_length=read_length,
+        additional_ram_bytes=additional_ram_bytes,
+        announce=False,
+    )
+
+
 def _report_resource_estimates(
     job: RealignJob,
     reference: str | None,
@@ -1242,16 +1303,23 @@ def _report_resource_estimates(
     def estimate() -> PreflightEstimate:
         samblaster = align_cmd.duplicate_marker(paired=paired) == "samblaster"
         resolved = reference if reference and Path(reference).is_file() else None
-        tool = "bwa" if job.aligner == "auto" else job.aligner
+        tool = align_cmd.short_read_tool(job)
+        sort_memory = align_cmd.short_read_sort_memory(tool, memory, log=False)
+        gpu_bytes = 0
         if resolved:
-            tool = align_cmd.short_read_aligner(
-                job.aligner,
+            # The aligner that will run, bwa-mem3 standing in included.
+            aligner, sort_memory = _short_read_plan(
+                job,
                 resolved,
                 threads=threads,
                 memory=memory,
                 samblaster=samblaster,
                 reads=reads,
+                read_length=read_length,
+                additional_ram_bytes=additional_ram_bytes,
             )
+            tool = aligner.engine
+            gpu_bytes = align_cmd.aligner_gpu_bytes(aligner, resolved, reads)
         return estimate_resources(
             "realign",
             input_paths=[path for path in input_paths if path],
@@ -1259,13 +1327,14 @@ def _report_resource_estimates(
             temp_dir=configured_temp_directory(),
             reference=resolved,
             threads=threads,
-            memory=align_cmd.short_read_sort_memory(tool, memory, log=False),
+            memory=sort_memory,
             aligner=tool,
             samblaster=samblaster,
             reads=reads,
             platform=job.platform,
             read_length=read_length,
             additional_ram_bytes=additional_ram_bytes,
+            gpu_bytes=gpu_bytes,
             output_format=job.format,
             extract_fastq=need_extract,
             fastq_dir=outdir if job.keep_fastq else configured_temp_directory(),

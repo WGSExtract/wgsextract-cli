@@ -450,12 +450,13 @@ def estimate_resources(
                     else disk_reads * FASTQ_BYTES_PER_READ,
                 )
             )
-        if reference and aligner in {"bwa", "bwa-mem2"}:
-            suffixes = (
-                (".bwt", ".sa", ".pac", ".ann", ".amb")
-                if aligner == "bwa"
-                else (".0123", ".bwt.2bit.64", ".pac", ".ann", ".amb")
-            )
+        index_suffixes = {
+            "bwa": (".bwt", ".sa", ".pac", ".ann", ".amb"),
+            "bwa-mem2": (".0123", ".bwt.2bit.64", ".pac", ".ann", ".amb"),
+            "bwa-mem3": (".bwt.2bit.64", ".pac", ".ann", ".amb"),
+        }
+        if reference and aligner in index_suffixes:
+            suffixes = index_suffixes[aligner]
             if not all(Path(reference + suffix).is_file() for suffix in suffixes):
                 demands.append(
                     (

@@ -188,7 +188,7 @@ def _version_output(stdout: str, stderr: str) -> str:
 
 
 # Tools whose version isn't printed by --version (bwa-mem2 prints its usage).
-VERSION_ARGS = {"bwa-mem2": "version"}
+VERSION_ARGS = {"bwa-mem2": "version", "bwa-mem3": "version"}
 # samtools 1.10 added --write-index and the file##idx##index output name.
 MINIMUM_VERSIONS = {"bcftools": (1, 0), "samtools": (1, 10)}
 # Tools whose banner names them differently ("Haplogrep 3 3.2.2").

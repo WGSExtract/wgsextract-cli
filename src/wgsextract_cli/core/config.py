@@ -89,8 +89,9 @@ KNOWN_SETTINGS = {
     "dorado_executable": (None, "Path to ONT's dorado executable for `basecall`"),
     "native_aligners": (
         None,
-        "Apple Silicon: `align`/`realign` use wgse-bwa, wgse-bwa-mem2 and "
-        "wgse-minimap2 when on PATH (auto, the default) or never (off)",
+        "Apple Silicon: `align`/`realign` use wgse-bwa, wgse-bwa-mem2, "
+        "wgse-bwa-mem3 and wgse-minimap2 when on PATH (auto, the default) or "
+        "never (off)",
     ),
     "dorado_models_directory": (
         None,
