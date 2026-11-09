@@ -123,7 +123,7 @@ test("WGS Extract starts Basic with the common pages and keeps the expert ones f
   const manifest = wgsExtractManifest();
   const basicPages = visiblePages(manifest, "basic").map((page) => page.id);
   assert.ok(!basicPages.includes("annotate"));
-  for (const id of ["fastq", "info-bam", "vcf", "extract", "microarray", "ancestry", "library", "settings"]) {
+  for (const id of ["fastq", "info-bam", "vcf", "extract", "microarray", "ancestry", "library", "reference-genomes", "settings"]) {
     assert.ok(basicPages.includes(id), id);
   }
   assert.equal(visiblePages(manifest, "advanced").length, manifest.pages.length);
