@@ -626,6 +626,20 @@ def _drop_band_header(merged: str, work: str) -> str:
     return result
 
 
+def calling_contigs(
+    alignment: str, ref: str, threads: str, region: str | None, parallel: bool
+) -> dict[str, int]:
+    """Contigs to call in separate workers; empty to call in one stream."""
+    contigs = _parallel_contigs(alignment, ref, threads, region) if parallel else {}
+    if contigs and not _single_sample(alignment):
+        logging.info(
+            "Calling serially: with several samples, bcftools subsamples deep "
+            "SNP and indel sites in ways per-contig workers cannot reproduce."
+        )
+        return {}
+    return contigs
+
+
 def call_small_variants(
     alignment: str,
     ref: str,
@@ -635,16 +649,11 @@ def call_small_variants(
     region: str | None,
     profile: list[str],
     call_args: list[str],
+    contigs: dict[str, int],
     indels: bool = False,
-    parallel: bool = False,
 ) -> None:
-    contigs = _parallel_contigs(alignment, ref, threads, region) if parallel else {}
-    if contigs and not _single_sample(alignment):
-        logging.info(
-            "Calling serially: with several samples, bcftools subsamples deep "
-            "SNP and indel sites in ways per-contig workers cannot reproduce."
-        )
-        contigs = {}
+    """Call into ``output``: per-contig workers for ``contigs`` (from
+    `calling_contigs`), or one bcftools stream when it is empty."""
     caller = _ContigCaller(alignment, ref, profile, call_args, indels)
     if not contigs:
         caller.call(output, ["-r", region] if region else [], region, threads)

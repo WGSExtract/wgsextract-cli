@@ -117,6 +117,40 @@ def test_more_than_one_thread_calls_contigs_in_parallel_unless_turned_off(
     )
 
 
+@needs_htslib
+@pytest.mark.parametrize(
+    ("parallel", "samples", "wait"),
+    [
+        (None, 1, "1.2 hours"),  # 3 workers: 150 minutes / 3 ** 0.7
+        (False, 1, "2.5 hours"),
+        (None, 2, "2.5 hours"),
+    ],
+)
+def test_expected_wait_counts_threads_only_for_parallel_calling(
+    multicontig_sample: tuple[str, str],
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    parallel: bool | None,
+    samples: int,
+    wait: str,
+) -> None:
+    """Issue #583: a 16-vCPU VM warned of a 21-minute wait for `vcf snp`, then
+    called in one bcftools stream for 2.8 hours. --no-parallel and several
+    samples call in one stream, which more threads don't speed up."""
+    bam, ref = multicontig_sample
+    if samples > 1:
+        sam = run_command(["samtools", "view", "-h", bam], capture_output=True)
+        lines = sam.stdout.splitlines()
+        lines.insert(lines.index("@RG\tID:reads\tSM:sample"), "@RG\tID:b\tSM:b")
+        bam = str(sam_to_bam(lines, tmp_path / "two samples.bam"))
+    params = api.VcfSnpParams(
+        input=Path(bam), ref=Path(ref), outdir=tmp_path, threads=3,
+        parallel=parallel, ploidy="GRCh38",
+    )  # fmt: skip
+    api.vcf.snp(params)
+    assert f"Expected Wait is {wait} !!!" in caplog.text
+
+
 def _female(sample: tuple[str, str], root: Path) -> tuple[str, str]:
     """The sample with all but two of its chrY reads dropped: a woman's few
     mismapped chrY reads (its 48 chrY reads to 48 chrX make it a man)."""
@@ -207,7 +241,8 @@ def _bodies(
         output = str(tmp_path / f"calls-{threads}.vcf.gz")
         contig_calling.call_small_variants(
             bam, ref, output, threads=threads, region=None, profile=[],
-            call_args=["--ploidy", "2", "-P", "0"], indels=indels, parallel=True,
+            call_args=["--ploidy", "2", "-P", "0"], indels=indels,
+            contigs=contig_calling.calling_contigs(bam, ref, threads, None, True),
         )  # fmt: skip
         bodies.append(
             run_command(["bcftools", "view", "-H", output], capture_output=True).stdout
@@ -424,7 +459,8 @@ def test_iupac_indels_are_valid_without_changing_other_contigs(
         output = str(tmp_path / f"indels-{threads}.vcf.gz")
         contig_calling.call_small_variants(
             bam, ref, output, threads=threads, region=None,
-            profile=[], call_args=call_args, indels=True, parallel=True,
+            profile=[], call_args=call_args, indels=True,
+            contigs=contig_calling.calling_contigs(bam, ref, threads, None, True),
         )  # fmt: skip
         bodies.append(
             run_command(["bcftools", "view", "-H", output], capture_output=True).stdout
