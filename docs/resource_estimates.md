@@ -217,8 +217,8 @@ Ultima reads at 30x (182,666 examples, 4 make_examples shards):
 
 The example count is call_variants' final `Wrote N examples` line; its
 `Predicted N examples in M batches` lines are progress reports every 50 batches.
-The CPU call_variants took 33 min in one run and 16 min in another on the same
-examples, so it depends on other load on the host.
+CPU call_variants took 33 min in the #358 run and 16 min in #496; the cause of
+the difference is unknown.
 
 TensorFlow takes most of the free GPU memory whatever it needs (22.7 GiB of
 the free 24 GiB GPU). make_examples and postprocess run on the CPU, as in the
