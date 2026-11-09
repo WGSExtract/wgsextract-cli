@@ -190,7 +190,7 @@ def _call_diploid_snps(
     """Autosome and chrX SNPs, called contig by contig as ``vcf snp --parallel``
     does, chrX with the sample's sex-aware ploidy."""
     from .vcf.basic import caller_setup, ploidy_args
-    from .vcf.contig_calling import call_small_variants
+    from .vcf.contig_calling import call_small_variants, calling_contigs
 
     region = ",".join(contigs)
     setup = caller_setup(
@@ -216,7 +216,9 @@ def _call_diploid_snps(
             region=region,
             profile=profile,
             call_args=[*ploidy, *sex_args, *(["-P", "0"] if prior is None else prior)],
-            parallel=True,
+            contigs=calling_contigs(
+                input_path, ref, setup.threads, region, parallel=True
+            ),
         )
     ensure_vcf_indexed(out_vcf)
     _count(out_vcf, ref)
