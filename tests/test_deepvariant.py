@@ -993,15 +993,18 @@ def test_step_record_keeps_a_digest_pinned_image_reference_valid_597(ultima_gpu)
     assert set(images.values()) == {deepvariant.DEFAULT_ULTIMA_GPU_IMAGE}
 
 
-def as_v085_journal(dv, digest):
-    """Rewrite the run's journal as v0.8.5 wrote it: the pinned image with its
-    digest appended again (#597), keyed as StepJournal keys its records."""
+OTHER_DIGEST = "sha256:" + "b" * 64
+
+
+def as_v085_journal(dv, image_id):
+    """Rewrite the run's journal as v0.8.5 wrote it: the pinned image with
+    Docker's image ID appended (#597), keyed as StepJournal keys its records."""
     path = dv.out / "deepvariant.vcf.gz.steps.json"
     journal = json.loads(path.read_text())
     for name, record in journal["steps"].items():
         if "image" not in record.get("params", {}):
             continue
-        record["params"]["image"] += f"@{digest}"
+        record["params"]["image"] += f"@{image_id}"
         payload = {
             "workflow": journal["workflow"],
             "step": name,
@@ -1014,20 +1017,50 @@ def as_v085_journal(dv, digest):
     path.write_text(json.dumps(journal))
 
 
+def resume_v085(dv, image_id, *options):
+    """Run, turn the journal into v0.8.5's, and run again."""
+    digest = pinned_ultima_gpu(dv)
+    gpu_call(dv)
+    as_v085_journal(dv, image_id or digest)
+    dv.deepvariant.clear()
+    dv.docker.clear()
+    gpu_call(dv, *options)
+
+
+@pytest.mark.parametrize("image_id", [None, OTHER_DIGEST], ids=["A==B", "A!=B"])
 def test_v085_journal_with_doubled_image_digest_resumes_without_rerun_597(
-    ultima_gpu,
+    ultima_gpu, image_id
 ):
-    digest = pinned_ultima_gpu(ultima_gpu)
+    resume_v085(ultima_gpu, image_id)
+
+    assert ultima_gpu.deepvariant.stages() == []
+    assert stage_runs(ultima_gpu) == []
+    assert vcf_calls(ultima_gpu.out / "deepvariant.vcf.gz") == ultima_gpu.ultima.calls
+
+
+def test_forced_rerun_of_v085_journal_records_the_valid_image_597(ultima_gpu):
+    resume_v085(ultima_gpu, OTHER_DIGEST, "--force")
+
+    assert ultima_gpu.deepvariant.stages() == STAGES
+    images = recorded_images(ultima_gpu)
+    assert set(images) == set(STAGES)
+    assert set(images.values()) == {deepvariant.DEFAULT_ULTIMA_GPU_IMAGE}
+
+
+def test_v085_journal_of_another_pinned_image_reruns_597(ultima_gpu, monkeypatch):
+    pinned_ultima_gpu(ultima_gpu)
     gpu_call(ultima_gpu)
-    as_v085_journal(ultima_gpu, digest)
+    as_v085_journal(ultima_gpu, OTHER_DIGEST)
+    other = "google/deepvariant:gh1100-ultima-gpu@" + OTHER_DIGEST
+    ultima_gpu.docker.add_image(other, image_id=OTHER_DIGEST)
+    monkeypatch.setitem(deepvariant.settings, "deepvariant_ultima_gpu_image", other)
     ultima_gpu.deepvariant.clear()
     ultima_gpu.docker.clear()
 
     gpu_call(ultima_gpu)
 
-    assert ultima_gpu.deepvariant.stages() == []
-    assert stage_runs(ultima_gpu) == []
-    assert vcf_calls(ultima_gpu.out / "deepvariant.vcf.gz") == ultima_gpu.ultima.calls
+    assert ultima_gpu.deepvariant.stages() == STAGES
+    assert set(recorded_images(ultima_gpu).values()) == {other}
 
 
 @pytest.mark.parametrize(
