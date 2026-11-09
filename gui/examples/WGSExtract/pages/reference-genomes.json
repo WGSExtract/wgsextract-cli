@@ -5,21 +5,6 @@
   "sidebarPlacement": "bottom",
   "sections": [
     {
-      "id": "genome-paths",
-      "title": "sections.library.library-paths.title",
-      "controls": [
-        {
-          "id": "genome_library",
-          "label": "controls.library.library-paths.genome_library.label",
-          "kind": "path",
-          "tooltip": "controls.library.library-paths.genome_library.tooltip"
-        }
-      ],
-      "iconName": "bundle-folder",
-      "textIcon": "📁",
-      "advancedOnly": true
-    },
-    {
       "id": "genome-management",
       "title": "sections.library.genome-management.title",
       "controls": [

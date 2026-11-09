@@ -124,6 +124,7 @@
     }
   },
   "pages": [
+    "genomes.json",
     "fastq.json",
     "info-bam.json",
     "vcf.json",
