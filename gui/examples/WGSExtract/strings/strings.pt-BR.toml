@@ -99,7 +99,7 @@
 "actions.extract.extract-inputs.custom.title" = "Extração personalizada"  # i18n-source-hash:1a064911
 "actions.extract.extract-inputs.custom.tooltip" = "Extraia leituras de uma região cromossômica específica ou gene de interesse."  # i18n-source-hash:b084445f
 "pages.microarray.title" = "Microarranjo"  # i18n-source-hash:460d4369
-"pages.microarray.summary" = "Gere arquivos CombinedKit que simulam formatos de dados brutos de microarray de consumidores, como 23andMe, AncestryDNA e FTDNA, para upload em ferramentas e serviços como GEDmatch, Geneanet, MyHeritage, Promethease e Genvue."  # i18n-source-hash:96f962a2
+"pages.microarray.summary" = "Gere arquivos de genotipagem (dados brutos) em formatos compatíveis com os fornecedores, que simulam os arquivos de resultados de microarray de empresas como 23andMe, AncestryDNA e MyHeritage, para envio a ferramentas como GEDmatch, Genvue e outras."  # i18n-source-hash:4e0523e4
 "sections.microarray.microarray-inputs.title" = "Entradas"  # i18n-source-hash:bbcf64a3
 "controls.microarray.microarray-inputs.bam_path.label" = "Entrada BAM/CRAM"  # i18n-source-hash:d5294c18
 "controls.microarray.microarray-inputs.bam_path.tooltip" = "Arquivo BAM ou CRAM de entrada."  # i18n-source-hash:1165be08
@@ -468,7 +468,7 @@
 "controls.fastq.post-v063.multiqc-file.label" = "Existing FastQC report file"  # i18n-ignore; TODO: translate
 "controls.fastq.post-v063.multiqc-directory.label" = "Existing FastQC report directory"  # i18n-ignore; TODO: translate
 "actions.fastq.post-v063.multiqc-directory.title" = "Aggregate report directory"  # i18n-ignore; TODO: translate
-"sections.microarray.post-v063.aadr-2m.subtitle" = "AADR 2M: install metadata in Library; GRCh37/38 only (GRCh38 needs an installed forward chain). No CHM13; excluded from All."  # i18n-ignore; TODO: translate
+"sections.microarray.post-v063.aadr-2m.subtitle" = "Formatos de destino de arquivos de dados brutos de genótipo que podem ser extraídos de um arquivo BAM/CRAM. A maioria está, por definição, no Build 37. Alguns antigos usavam o Build 36 e alguns poucos estão no Build 38. Isso não é indicado nos arquivos. Os destinos AADR geram arquivos PLINK + EIGENSTRAT usados pelas ferramentas deles."  # i18n-source-hash:e4ea3c33
 "actions.library.post-v063.aadr-2m.title" = "Install AADR 2M metadata"  # i18n-ignore; TODO: translate
 "actions.library.post-v063.aadr-2m.tooltip" = "Explicitly download checksum-pinned CC0 AADR v66.p1 2M metadata (Reich Lab/Harvard Dataverse). Extraction never downloads it; GRCh38 also needs its forward chain installed."  # i18n-ignore; TODO: translate
 "options.vcf.v066.auto.title" = "Automático (detectar pelas leituras)"  # i18n-source-hash:00db55a1
