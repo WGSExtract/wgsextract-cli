@@ -150,9 +150,10 @@ Sources and their licenses:
   data release. You may register a Yleaf-format FTDNA tree that you made
   yourself, for your own use.
 * **ISOGG**: the built-in `isogg` tree comes from Yleaf's data release.
-* **theytree.com**: not redistributed or fetched, pending permission from its
-  maintainers. A tree file you obtained yourself can be registered like any
-  other.
+* **theytree.com**: not supported. WGS Extract doesn't fetch or redistribute
+  it, because it has no known export or license
+  ([#584](https://github.com/WGSExtract/wgsextract-cli/issues/584)). A tree
+  file you obtained yourself can be registered like any other.
 
 ### Refreshing the YFull tree
 
