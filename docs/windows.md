@@ -185,10 +185,12 @@ user with no tools preinstalled.
   of reads mapped by `align`. The *Report a problem* preview was redacted.
   Uninstalling asked whether to delete the workspace: answering Yes removed it,
   answering No kept it, and both removed the runtime and app data. The installer
-  is unsigned, as documented. Each run passed 24 of 26 checks; the 2 failures
-  came from the test VM, not the app: pixi was already installed by the CLI
-  test, and Store-app folders that come with the Azure image were reported as
-  left behind.
+  is unsigned, as documented. Each run passed 24 of 26 checks. In both runs one
+  failure was pixi, already installed by the CLI test. The other was the
+  uninstall check's list of files left behind: in the Yes run, Store-app folders
+  that come with the Azure image; in the No run, the workspace it kept on
+  purpose, plus App Installer and Credential Manager files that Windows wrote
+  (the app has no code that uses Credential Manager).
 - **Auto-update.** The v0.6.6 app found v0.8.5 through the bridge release in
   `gui-for-cli-outdated`, verified its signature, installed it and relaunched as
   0.8.5 within about 30 s. A silent uninstall (`/S`) kept the workspace.
@@ -224,7 +226,8 @@ user with no tools preinstalled.
   [#560](https://github.com/WGSExtract/wgsextract-cli/pull/560) made them call
   contigs in parallel by default when `--threads` is above 1. The "Expected
   Wait" warning said 21 minutes for each
-  ([#583](https://github.com/WGSExtract/wgsextract-cli/issues/583)).
+  ([#583](https://github.com/WGSExtract/wgsextract-cli/issues/583), fixed on
+  `main` by [#586](https://github.com/WGSExtract/wgsextract-cli/pull/586)).
 
 Bugs found, fixed on `main` after v0.8.5:
 
@@ -240,6 +243,9 @@ Bugs found, fixed on `main` after v0.8.5:
 - [#572](https://github.com/WGSExtract/wgsextract-cli/pull/572): the Install Lab
   did not find the uninstaller's workspace question on Windows 11 25H2, which
   shows it as a child window of the wizard.
+- [#586](https://github.com/WGSExtract/wgsextract-cli/pull/586): the `vcf snp`
+  and `vcf indel` "Expected Wait" was divided by the thread count even when
+  calling ran in one stream.
 
 # Windows ARM64
 
