@@ -312,9 +312,14 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "Prints what is missing or damaged; writes no files.",
         "wgsextract vep verify --assembly GRCh38",
     ),
+    "vep delete": _h(
+        "Deletes <cache>/<species>/<release>_<assembly>; writes no files.",
+        "wgsextract vep delete --assembly GRCh38",
+    ),
     # setup: ref, deps, example-genome
     "ref bootstrap": _h(
-        f"{_LIBRARY}: the bootstrap liftover chains, chip templates and other small files.",
+        f"{_LIBRARY}: the bootstrap liftover chains, chip templates and other "
+        "small files, and the AADR 2M SNP panel.",
         "wgsextract ref bootstrap",
     ),
     "ref library": _h(
@@ -345,6 +350,12 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "<reference stem>_ncnt.csv and <reference stem>_nbin.csv.",
         "wgsextract ref count-ns --ref hs38.fa",
     ),
+    "ref microarray-targets": _h(
+        f"{_LIBRARY}: microarray/All_SNPs_hg19_ref.tab.gz and "
+        "All_SNPs_hg38_ref.tab.gz (+ .tbi); --delete removes them.",
+        "wgsextract ref microarray-targets",
+        "wgsextract ref microarray-targets --delete",
+    ),
     "ref gene-map": _h(
         f"{_LIBRARY}: the hg19 and hg38 gene maps (--delete removes them).",
         "wgsextract ref gene-map",
@@ -359,7 +370,8 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     ),
     "ref revel": _h(f"{_LIBRARY}: REVEL score files.", "wgsextract ref revel"),
     "ref pharmgkb": _h(
-        f"{_LIBRARY}: PharmGKB annotation files.", "wgsextract ref pharmgkb"
+        f"{_LIBRARY}: PharmGKB annotation files (--delete removes them).",
+        "wgsextract ref pharmgkb",
     ),
     "ref phylop": _h(
         f"{_LIBRARY}: the PhyloP bigWig.", "wgsextract ref phylop --build hg38"
@@ -371,16 +383,24 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     "ref gerp": _h(
         f"{_LIBRARY}: the GERP++ bigWig.", "wgsextract ref gerp --build hg38"
     ),
-    "ref spliceai": _h(f"{_LIBRARY}: SpliceAI score files.", "wgsextract ref spliceai"),
+    "ref spliceai": _h(
+        f"{_LIBRARY}: SpliceAI score files (--delete removes them).",
+        "wgsextract ref spliceai",
+        "wgsextract ref spliceai --delete",
+    ),
     "ref alphamissense": _h(
-        f"{_LIBRARY}: AlphaMissense score files.", "wgsextract ref alphamissense"
+        f"{_LIBRARY}: AlphaMissense score files (--delete removes them).",
+        "wgsextract ref alphamissense",
     ),
     "ref aadr": _h(
-        f"{_LIBRARY}: the AADR 2M SNP panel.", "wgsextract ref aadr --install"
+        f"{_LIBRARY}: the AADR 2M SNP panel (--delete removes it).",
+        "wgsextract ref aadr --install",
+        "wgsextract ref aadr --delete",
     ),
     "ref ybrowse": _h(
-        f"{_LIBRARY}: the yBrowse GRCh38 SNP sites.",
+        f"{_LIBRARY}: the yBrowse GRCh38 SNP sites (--delete removes them).",
         "wgsextract ref ybrowse --install",
+        "wgsextract ref ybrowse --delete",
     ),
     "deps check": _h(
         "Prints each tool's status; writes no files.",

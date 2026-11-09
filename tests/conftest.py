@@ -258,3 +258,25 @@ def open_stdin() -> Iterator[None]:
     os.dup2(saved, 0)
     for fd in (read, write, saved):
         os.close(fd)
+
+
+@pytest.fixture
+def fake_aadr_download(monkeypatch: pytest.MonkeyPatch) -> bytes:
+    """Serve a stand-in AADR 2M panel (and the hg19ToHg38 chain installed with
+    it) instead of fetching them; returns the panel's bytes."""
+    import hashlib
+
+    from wgsextract_cli.core import aadr_resources, microarray_targets
+
+    data = b"rs1 1 0.001 100 A G\n"
+    monkeypatch.setattr(
+        aadr_resources, "AADR_2M_SHA256", hashlib.sha256(data).hexdigest()
+    )
+
+    def fetch(url: str, dest: str, **kwargs: Any) -> bool:
+        Path(dest).write_bytes(data)
+        return True
+
+    monkeypatch.setattr(aadr_resources, "download_file", fetch)
+    monkeypatch.setattr(microarray_targets, "download_file", fetch)
+    return data

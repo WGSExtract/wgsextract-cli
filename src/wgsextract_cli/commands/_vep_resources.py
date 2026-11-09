@@ -16,14 +16,18 @@ from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import PathInput, expand_path
 from wgsextract_cli.core.ref_library import download_file
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
-from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     run_command,
 )
 
 if TYPE_CHECKING:
-    from wgsextract_cli.api.vep import VepDownloadParams, VepVerifyParams
+    from wgsextract_cli.api.vep import (
+        VepDeleteParams,
+        VepDownloadParams,
+        VepVerifyParams,
+    )
 
 # Ensembl's useast/asia web mirrors do not serve /pub (HTTP 403).
 VEP_MIRRORS = {
@@ -175,6 +179,22 @@ def run_vep_download(params: VepDownloadParams) -> None:
     version_dir = params.version_dir()
     current_result().add_output(version_dir, "vep_cache", kind="directory")
     current_result().set_manifest_stem(version_dir)
+
+
+def run_vep_delete(params: VepDeleteParams) -> None:
+    from wgsextract_cli.core import library_removal
+
+    cache_root = params.cache_root()
+    paths = library_removal.vep_release_paths(
+        cache_root, params.species, params.vep_version, params.assembly
+    )
+    for path in paths:
+        _require_in_scope(path)
+    release = f"{params.species} {params.vep_version}_{params.assembly}"
+    if library_removal.remove(paths, [cache_root / params.species]):
+        human_output(f"Deleted the {release} VEP cache from {cache_root}.")
+    else:
+        human_output(f"No {release} VEP cache in {cache_root}; nothing to delete.")
 
 
 def _require_in_scope(path: PathInput) -> None:

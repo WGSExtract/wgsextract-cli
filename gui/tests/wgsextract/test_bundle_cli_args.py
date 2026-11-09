@@ -180,7 +180,6 @@ class BundleSandbox:
             "row.final": "hs38.fa.gz",
             "out_dir": str(data / "output"),
             "genome_library": str(data / "genomes"),
-            "vep_cache_path": str(data / "vep"),
             "vcf_path": vcf,
             "vcf_child": vcf,
             "vcf_mother": vcf,

@@ -1570,10 +1570,12 @@ CLI: `wgsextract ref aadr`.
 
 Install the panel; output role `reference_resource`.
 
-`RefAadrParams`: Install the hash-pinned CC0 AADR v66.p1 2M SNP panel into the library.
+`RefAadrParams`: Install the hash-pinned CC0 AADR v66.p1 2M SNP panel into the library
+(`ref bootstrap` installs it too), or delete it.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed AADR 2M SNP panel |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 
 ### `api.ref.ybrowse(RefYbrowseParams)`
@@ -1583,10 +1585,11 @@ CLI: `wgsextract ref ybrowse`.
 Install the snapshot; output role `reference_resource`.
 
 `RefYbrowseParams`: Install a hash-pinned, sites-only GRCh38 yBrowse snapshot into the
-library.
+library, or delete the installed snapshots.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed yBrowse snapshots |
 | `snapshot` | `Path \| None` | `None` | `--snapshot` | Use a local GRCh38 VCF(.gz), verifying its header instead of the upstream pin. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 
@@ -1769,11 +1772,12 @@ CLI: `wgsextract ref spliceai`.
 Download SpliceAI; output role `reference_resource` for each file.
 
 `RefSpliceaiParams`: Download SpliceAI scores for hg38 (Ensembl, MANE SNVs), or index a
-manual hg19 download.
+manual hg19 download; or delete the installed score files.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed SpliceAI score files |
 
 ### `api.ref.alphamissense(RefAlphamissenseParams)`
 
@@ -1781,11 +1785,12 @@ CLI: `wgsextract ref alphamissense`.
 
 Download AlphaMissense; output role `reference_resource` for each file.
 
-`RefAlphamissenseParams`: Download AlphaMissense scores for hg19 and hg38.
+`RefAlphamissenseParams`: Download AlphaMissense scores for hg19 and hg38, or delete them.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed AlphaMissense score files |
 
 ### `api.ref.pharmgkb(RefPharmgkbParams)`
 
@@ -1793,11 +1798,12 @@ CLI: `wgsextract ref pharmgkb`.
 
 Download PharmGKB; output role `reference_resource` for each file.
 
-`RefPharmgkbParams`: Download PharmGKB annotations.
+`RefPharmgkbParams`: Download PharmGKB annotations, or delete them.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed PharmGKB annotation files |
 
 ### `api.ref.cadd(RefCaddParams)`
 
@@ -1833,11 +1839,27 @@ Install the bootstrap; output role `reference_resource` for each file.
 Not offered by the server.
 
 `RefBootstrapParams`: Download the reference library bootstrap (liftover chains, chip
-templates, N counts and other support files). Saves the library's path as config.toml's
-`reference_library` when that is unset.
+templates, N counts and other support files) and the AADR 2M SNP panel.
+Saves the library's path as config.toml's `reference_library` when that
+is unset.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+
+### `api.ref.microarray_targets(RefMicroarrayTargetsParams)`
+
+CLI: `wgsextract ref microarray-targets`.
+
+Build (output role `reference_resource`) or delete the targets.
+
+`RefMicroarrayTargetsParams`: Build the genome-wide hg19 and hg38 microarray targets
+(`microarray/All_SNPs_<build>_ref.tab.gz`) from the bootstrap's chip
+templates, or delete them. `microarray` builds a missing one itself.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed microarray targets |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 
 ## `api.repair`
@@ -2285,7 +2307,8 @@ run.
 `download` fetches Ensembl's indexed cache for `species`, `vep_version`
 and `assembly`, checks it against Ensembl's CHECKSUMS and unpacks it into
 the cache folder; `verify` checks that an unpacked cache has its
-`info.txt` and chromosome folders. The cache folder is `vep_cache`, else
+`info.txt` and chromosome folders; `delete` removes one release and
+assembly from it. The cache folder is `vep_cache`, else
 config `vep_cache_directory`, else the `vep` folder of the reference
 library `ref` names, else `~/.vep`.
 
@@ -2347,6 +2370,23 @@ Check an unpacked VEP cache (see `VepVerifyParams`).
 missing `info.txt` or chromosome folder (metric `missing_chromosomes`)
 and fails when the folder, its `info.txt` or every chromosome is
 missing.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `species` | `str` | `'homo_sapiens'` | `--species` | Species name (default: homo_sapiens) |
+| `assembly` | `str` | `'GRCh38'` | `--assembly` | Assembly (default: GRCh38) One of: `GRCh37`, `GRCh38` |
+| `vep_version` | `str` | `'116'` | `--vep-version` | Ensembl release version (default: 116) |
+| `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the vep folder of the reference library ref names, else ~/.vep). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference library folder, or a FASTA in one, whose vep folder holds the cache when vep_cache isn't set (default: config reference_fasta's library, else reference_library). |
+
+### `api.vep.delete(VepDeleteParams)`
+
+CLI: `wgsextract vep delete`.
+
+Delete one release of the VEP cache (see `VepDeleteParams`).
+
+`VepDeleteParams`: Delete one release and assembly of an unpacked VEP cache (see the
+module docstring), with any download of it left in the cache folder.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |

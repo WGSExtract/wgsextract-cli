@@ -2,7 +2,9 @@ from wgsextract_cli import api
 from wgsextract_cli.core import config, reference_processing
 
 
-def test_bootstrap_saves_reference_library_when_unconfigured(tmp_path, monkeypatch):
+def test_bootstrap_saves_reference_library_when_unconfigured(
+    tmp_path, monkeypatch, fake_aadr_download
+):
     config_path = tmp_path / "config.toml"
     reflib = tmp_path / "reference"
 
@@ -18,7 +20,9 @@ def test_bootstrap_saves_reference_library_when_unconfigured(tmp_path, monkeypat
     assert config.settings["reference_library"] == str(reflib)
 
 
-def test_bootstrap_keeps_existing_reference_library(tmp_path, monkeypatch):
+def test_bootstrap_keeps_existing_reference_library(
+    tmp_path, monkeypatch, fake_aadr_download
+):
     config_path = tmp_path / "config.toml"
     existing_reflib = tmp_path / "existing-reference"
     requested_reflib = tmp_path / "requested-reference"

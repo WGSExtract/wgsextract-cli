@@ -66,7 +66,7 @@ test("WGSExtract opt-in policies render flags and preserve manifest paths with s
     microarray_exclude_filtered: ["--exclude-filtered"], microarray_call_reasons: ["--call-reasons"],
   });
 
-  test("WGSExtract AADR 2M extraction and metadata installation remain separate opt-ins", () => {
+  test("WGSExtract AADR 2M extraction is an opt-in and its metadata ships with the library", () => {
     const page = wgsPages.find((item) => item.id === "microarray");
     const formats = page.sections.flatMap((section) => section.controls ?? [])
       .find((control) => control.id === "microarray_formats");
@@ -76,9 +76,12 @@ test("WGSExtract opt-in policies render flags and preserve manifest paths with s
     }), [
       "microarray", "--input", "sample.bam", "--ref", "ref.fa", "--formats", "aadr_2m",
     ]);
-    assert.deepEqual(wgsCommand("library", "aadr-2m-install", { ref_path: "reference library" }), [
-      "ref", "aadr", "--install", "--ref", "reference library",
-    ]);
+    const library = wgsPages.find((item) => item.id === "library");
+    const libraryActions = library.sections.flatMap((section) => section.actions ?? []);
+    assert.ok(
+      !libraryActions.some((action) => action.command.arguments.includes("aadr")),
+      "ref bootstrap installs the AADR 2M metadata; no Library button does",
+    );
     assert.ok(!wgsCommand("microarray", "microarray-generate").includes("aadr_2m"));
   });
   assert.deepEqual(args.slice(5), [
@@ -182,4 +185,24 @@ test("WGSExtract Advanced CLI actions pass only the options that are set", () =>
   assert.deepEqual(wgsCommand("ancestry", "run-haplogrep", { haplogrep_tree: "mitotree-rcrs", qc_min_depth: "5" }), [
     "lineage", "mt-haplogroup", "--input", "sample.bam", "--tree", "mitotree-rcrs", "--qc-min-depth", "5",
   ]);
+});
+
+test("WGSExtract Library install buttons become confirmed deletes once installed", () => {
+  const library = wgsPages.find((item) => item.id === "library");
+  const actions = library.sections.find((section) => section.id === "databases-tools").actions;
+  const shownWhen = (action, value) => (action.visibleWhen ?? [])
+    .filter((rule) => rule.equals === value).map((rule) => rule.placeholder);
+  const installs = actions.filter((action) => /-(download|install)$/.test(action.id));
+  assert.ok(installs.length >= 8);
+  for (const install of installs) {
+    const [placeholder] = shownWhen(install, "false");
+    assert.ok(placeholder, `${install.id} hides once installed`);
+    const remove = actions.find((action) => shownWhen(action, "true").includes(placeholder)
+      && action.role === "destructive");
+    assert.ok(remove, `${install.id} has a delete for ${placeholder}`);
+    assert.ok(remove.confirm?.message, `${remove.id} asks first`);
+    assert.ok(remove.command.arguments.includes("--delete") || remove.command.arguments.includes("delete"),
+      `${remove.id} runs a delete`);
+  }
+  assert.ok(!JSON.stringify(wgsPages).includes("vep_cache_path"), "the VEP cache lives in the library");
 });

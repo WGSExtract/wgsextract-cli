@@ -2052,6 +2052,7 @@ _BASE_REQUESTS: dict[str, dict[str, Any]] = {
     # With no cache folder, the default one (~/.vep) is checked too.
     "vep/download": {"vep_cache": _DATA},
     "vep/verify": {"vep_cache": _DATA},
+    "vep/delete": {"vep_cache": _DATA},
 }
 _COMPANIONS: dict[tuple[str, str], dict[str, Any]] = {
     ("basecall", "regions_bed"): {"alignment": _FILE, "regions_bed": _FILE},
