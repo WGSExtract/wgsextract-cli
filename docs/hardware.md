@@ -181,6 +181,9 @@ the check, or is older than the oldest supported release, raises the
 
 The builds are `macos-aligners-N` prerelease assets; see
 [native/README.md](../native/README.md) for their measured speed.
+[A 30x genome on a 16 GB Apple M1](apple-silicon-16gb.md) measures every
+command, and a whole genome from `realign` to `report`, on the smallest Apple
+Silicon Mac.
 
 ## Other GPUs
 
