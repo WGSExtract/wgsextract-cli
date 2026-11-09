@@ -147,3 +147,19 @@ test("the CLI features added for Advanced mode stay out of Basic", () => {
   assert.equal(workflows.advancedOnly, true);
   assert.ok(visiblePages(manifest, "advanced").some((page) => page.id === "workflows"));
 });
+
+test("every WGS Extract list with a row template fills each of its columns", () => {
+  const missing = [];
+  for (const page of wgsExtractManifest().pages) {
+    for (const section of page.sections ?? []) {
+      for (const control of section.controls ?? []) {
+        const values = control.rowTemplate?.values;
+        if (!values) continue;
+        for (const column of control.columns ?? []) {
+          if (!["name", "status"].includes(column.id) && !(column.id in values)) missing.push(`${page.id}/${control.id}/${column.id}`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(missing, []);
+});
