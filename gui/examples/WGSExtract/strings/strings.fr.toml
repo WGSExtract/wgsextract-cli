@@ -100,7 +100,7 @@
 "actions.extract.extract-inputs.custom.title" = "Extraction personnalisée"  # i18n-source-hash:1a064911
 "actions.extract.extract-inputs.custom.tooltip" = "Extraire les lectures d’une région chromosomique spécifique ou d’un gène d’intérêt."  # i18n-source-hash:b084445f
 "pages.microarray.title" = "Puce à ADN"  # i18n-source-hash:460d4369
-"pages.microarray.summary" = "Générer des fichiers CombinedKit qui simulent les formats de données brutes microarray grand public comme 23andMe, AncestryDNA et FTDNA pour téléversement vers des outils et services tels que GEDmatch, Geneanet, MyHeritage, Promethease et Genvue."  # i18n-source-hash:96f962a2
+"pages.microarray.summary" = "Générer des fichiers de génotypage (données brutes) au format compatible des fournisseurs, qui simulent les fichiers de résultats de puces grand public d’entreprises comme 23andMe, AncestryDNA et MyHeritage, à téléverser vers des outils comme GEDmatch, Genvue ou d’autres."  # i18n-source-hash:4e0523e4
 "sections.microarray.microarray-inputs.title" = "Entrées"  # i18n-source-hash:bbcf64a3
 "controls.microarray.microarray-inputs.bam_path.label" = "Entrée BAM/CRAM"  # i18n-source-hash:d5294c18
 "controls.microarray.microarray-inputs.bam_path.tooltip" = "Fichier BAM ou CRAM d’entrée."  # i18n-source-hash:1165be08
@@ -489,7 +489,7 @@
 "controls.fastq.post-v063.multiqc-file.label" = "Existing FastQC report file"  # i18n-ignore; TODO: translate
 "controls.fastq.post-v063.multiqc-directory.label" = "Existing FastQC report directory"  # i18n-ignore; TODO: translate
 "actions.fastq.post-v063.multiqc-directory.title" = "Aggregate report directory"  # i18n-ignore; TODO: translate
-"sections.microarray.post-v063.aadr-2m.subtitle" = "AADR 2M : ses métadonnées sont fournies avec les données de référence ; GRCh37/38 uniquement. Pas de CHM13 ; exclu de Tous."  # i18n-source-hash:4f0bee45
+"sections.microarray.post-v063.aadr-2m.subtitle" = "Formats cibles de fichiers de données brutes de génotype pouvant être extraits d’un fichier BAM/CRAM. La plupart sont, par définition, en Build 37. Certains anciens utilisaient le Build 36 et quelques-uns sont en Build 38. Ce n’est pas indiqué dans les fichiers. Les cibles AADR produisent des fichiers PLINK + EIGENSTRAT utilisés par leurs outils."  # i18n-source-hash:e4ea3c33
 "options.vcf.v066.auto.title" = "Automatique (détecter d’après les lectures)"  # i18n-source-hash:00db55a1
 "options.vcf.v066.config-default.title" = "Utiliser la valeur de configuration"  # i18n-source-hash:53ab9256
 "controls.vcf.v066.deepvariant-model.label" = "Modèle DeepVariant"  # i18n-source-hash:b20e2fd3

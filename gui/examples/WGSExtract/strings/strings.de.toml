@@ -100,7 +100,7 @@
 "actions.extract.extract-inputs.custom.title" = "Benutzerdefinierte Extraktion"  # i18n-source-hash:1a064911
 "actions.extract.extract-inputs.custom.tooltip" = "Extrahieren Sie Reads aus einer bestimmten chromosomalen Region oder einem interessierenden Gen."  # i18n-source-hash:b084445f
 "pages.microarray.title" = "Mikroarray"  # i18n-source-hash:460d4369
-"pages.microarray.summary" = "Erzeugen Sie CombinedKit-Dateien, die Verbraucher-Mikroarray-Rohdatenformate wie 23andMe, AncestryDNA und FTDNA für den Upload zu Tools und Diensten wie GEDmatch, Geneanet, MyHeritage, Promethease und Genvue simulieren."  # i18n-source-hash:96f962a2
+"pages.microarray.summary" = "Erzeugen Sie Genotypisierungsdateien (Rohdaten) in herstellerkompatiblen Formaten, die die Mikroarray-Ergebnisdateien von Unternehmen wie 23andMe, AncestryDNA und MyHeritage nachbilden, zum Hochladen in Tools wie GEDmatch, Genvue und andere."  # i18n-source-hash:4e0523e4
 "sections.microarray.microarray-inputs.title" = "Eingaben"  # i18n-source-hash:bbcf64a3
 "controls.microarray.microarray-inputs.bam_path.label" = "BAM/CRAM-Eingabe"  # i18n-source-hash:d5294c18
 "controls.microarray.microarray-inputs.bam_path.tooltip" = "Eingabe-BAM- oder CRAM-Datei."  # i18n-source-hash:1165be08
@@ -489,7 +489,7 @@
 "controls.fastq.post-v063.multiqc-file.label" = "Existing FastQC report file"  # i18n-ignore; TODO: translate
 "controls.fastq.post-v063.multiqc-directory.label" = "Existing FastQC report directory"  # i18n-ignore; TODO: translate
 "actions.fastq.post-v063.multiqc-directory.title" = "Aggregate report directory"  # i18n-ignore; TODO: translate
-"sections.microarray.post-v063.aadr-2m.subtitle" = "AADR 2M: Die Metadaten sind Teil der Referenzdaten; nur GRCh37/38. Kein CHM13; nicht in Alle enthalten."  # i18n-source-hash:4f0bee45
+"sections.microarray.post-v063.aadr-2m.subtitle" = "Zielformate für Genotyp-Rohdatendateien, die aus einer BAM/CRAM-Datei extrahiert werden können. Die meisten sind per Definition in Build 37. Einige frühe verwendeten Build 36, einige wenige sind in Build 38. Dies ist in den Dateien nicht vermerkt. AADR-Ziele erzeugen PLINK- und EIGENSTRAT-Dateien für deren Werkzeuge."  # i18n-source-hash:e4ea3c33
 "options.vcf.v066.auto.title" = "Automatisch (aus Reads erkennen)"  # i18n-source-hash:00db55a1
 "options.vcf.v066.config-default.title" = "Konfigurationsstandard verwenden"  # i18n-source-hash:53ab9256
 "controls.vcf.v066.deepvariant-model.label" = "DeepVariant-Modell"  # i18n-source-hash:b20e2fd3
