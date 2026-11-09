@@ -126,6 +126,11 @@ export function localizationLabels(table: StringMap = {}) {
         webUIFontPickerLabel: table["app.webUIFont.label"] ?? "Web Font",
         webUIFontSystemLabel: table["app.webUIFont.system"] ?? "Current priority",
         webUIFontSFProLabel: table["app.webUIFont.sfPro"] ?? "SF Pro when available",
+        uiModeLabel: table["app.uiMode.label"] ?? "Mode",
+        uiModeBasicLabel: table["app.uiMode.basic"] ?? "Basic",
+        uiModeAdvancedLabel: table["app.uiMode.advanced"] ?? "Advanced",
+        uiModeBasicTooltip: table["app.uiMode.basic.tooltip"] ?? "Show the common tasks, with recommended settings chosen for you.",
+        uiModeAdvancedTooltip: table["app.uiMode.advanced.tooltip"] ?? "Show every feature and option.",
         layoutDirection: layoutDirection(table["language.layoutDirection"]),
         terminalMainTabTitle: table["app.terminal.mainTab.title"] ?? "Main",
         terminalCommandOutputLabel: table["app.terminal.commandOutput.label"] ?? "Command output",
@@ -250,7 +255,7 @@ function localizeSection(section: PageSection, table: StringMap): PageSection {
 }
 function localizeControl(control: ControlSpec, table: StringMap): ControlSpec {
     const localizedControl: ControlSpec = {
-        ...localizeFields(control, table, ["label", "placeholder", "tooltip"]),
+        ...localizeFields(control, table, ["label", "placeholder", "tooltip", "emptyText"]),
         options: (control.options ?? []).map((option) => localizeOption(option, table)),
         columns: (control.columns ?? []).map((column) => localizeFields(column, table, ["title"])),
         rows: (control.rows ?? []).map((row) => localizeRow(row, table)),
@@ -286,7 +291,7 @@ function localizeSetting(setting: ConfigSetting, table: StringMap): ConfigSettin
     };
 }
 function localizeOption(option: ControlOption, table: StringMap): ControlOption {
-    return localizeFields(option, table, ["title", "group"]);
+    return localizeFields(option, table, ["title", "group", "category"]);
 }
 /** Replaces each string field that names a string-table key with its translation. */
 function localizeFields<Record extends object>(record: Record, table: StringMap, fields: readonly string[]): Record {

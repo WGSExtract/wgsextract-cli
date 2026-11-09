@@ -130,6 +130,7 @@
     "extract.json",
     "microarray.json",
     "ancestry.json",
+    "workflows.json",
     "annotate.json",
     "library.json",
     "settings.json"

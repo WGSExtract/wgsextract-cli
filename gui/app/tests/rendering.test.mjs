@@ -684,3 +684,56 @@ test("path fields show workspace paths as {{bundleWorkspace}}", async () => {
   assert.match(config, /value="\{\{bundleWorkspace\}\}\/reference"/);
   assert.doesNotMatch(config, new RegExp(`value="${workspace}`));
 });
+
+test("renders the Basic / Advanced switch as a radio group with only the current mode checked", async () => {
+  globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+  globalThis.window = { innerHeight: 900 };
+  const { createInitialState, state } = await import("../dist/web/src/client/state.js");
+  const { renderUIModeSwitch } = await import("../dist/web/src/client/view.js");
+  Object.assign(state, createInitialState(), { labels: { uiModeBasicLabel: "Basic", uiModeAdvancedLabel: "Advanced" } });
+
+  assert.equal(state.uiMode, "basic");
+  let html = renderUIModeSwitch();
+  assert.match(html, /role="radiogroup"/);
+  assert.match(html, /data-ui-mode="basic"[^>]*>Basic</);
+  assert.match(html, /aria-checked="true"[^>]*\s+data-ui-mode="basic"/);
+  assert.match(html, /aria-checked="false"[^>]*\s+data-ui-mode="advanced"/);
+
+  state.uiMode = "advanced";
+  html = renderUIModeSwitch();
+  assert.match(html, /aria-checked="false"[^>]*\s+data-ui-mode="basic"/);
+  assert.match(html, /aria-checked="true"[^>]*\s+data-ui-mode="advanced"/);
+});
+
+test("renders a rows-layout checkbox group under category headings, with advanced options only in Advanced", async () => {
+  globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+  globalThis.window = { innerHeight: 900 };
+  const { createInitialState, state } = await import("../dist/web/src/client/state.js");
+  const { renderCheckboxGroup, renderDropdownControl } = await import("../dist/web/src/client/view.js");
+  Object.assign(state, createInitialState(), { labels: {} });
+  const control = {
+    id: "formats",
+    kind: "checkboxGroup",
+    label: "Formats",
+    layout: "rows",
+    options: [
+      { id: "all", title: "v3", group: "Combined", category: "WGSE", selected: true },
+      { id: "23andme_v3", title: "v3", group: "23andMe", category: "Consumer Tests" },
+      { id: "23andme_api", title: "API", group: "23andMe", category: "Consumer Tests" },
+      { id: "myheritage_gsa", title: "GSA 2025 (marker-only)", group: "MyHeritage", category: "Consumer Tests", advancedOnly: true },
+    ],
+  };
+
+  let html = renderCheckboxGroup(control);
+  assert.match(html, /<h4>WGSE<\/h4>[\s\S]*option-row-title">Combined<[\s\S]*<h4>Consumer Tests<\/h4>[\s\S]*option-row-title">23andMe</);
+  assert.match(html, /value="all" checked/);
+  assert.match(html, /value="23andme_api"/);
+  assert.doesNotMatch(html, /myheritage_gsa|MyHeritage/);
+
+  state.uiMode = "advanced";
+  html = renderCheckboxGroup(control);
+  assert.match(html, /option-row-title">MyHeritage<[\s\S]*option-columns wide[\s\S]*value="myheritage_gsa"/);
+
+  const dropdown = renderDropdownControl({ id: "ref_fasta", kind: "dropdown", label: "Reference Genome", options: [], emptyText: "None loaded. See Library page to add." });
+  assert.match(dropdown, /<option value="" selected disabled>None loaded\. See Library page to add\.<\/option>/);
+});

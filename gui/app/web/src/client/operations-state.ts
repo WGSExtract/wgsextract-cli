@@ -30,6 +30,7 @@ export async function persistBundleState(options: PersistBundleStateOptions = {}
                 iconSet: state.iconSet,
                 colorTheme: state.colorTheme,
                 webUIFont: state.webUIFont,
+                uiMode: state.uiMode,
                 ...(state.setupRun?.status === "running" ? {} : { setupRun: state.setupRun }),
             },
         },

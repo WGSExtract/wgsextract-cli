@@ -39,6 +39,7 @@ PLACEHOLDER = re.compile(r"\{\{([^}]+)\}\}")
 # Scripts that end in a `wgsextract` invocation, and scripts that never do.
 CLI_SCRIPTS = {
     "bootstrap-reference-library.sh",
+    "fastqc-reads.sh",
     "library-state.sh",
     "run-wgsextract-vcf.sh",
     "run-wgsextract.sh",
@@ -48,6 +49,7 @@ NON_CLI_SCRIPTS = {
     "bootstrap-wgsextract-config.sh",
     "check-preinstalled-pixi.sh",
     "check-xcode-command-line-tools.sh",
+    "coverage-state.py",
     "delete-reference-genome.sh",
     "list-reference-genomes.py",
     "setup-wgsextract-pixi.sh",

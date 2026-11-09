@@ -296,18 +296,14 @@ function matchLocalizationCode(preferences: readonly unknown[], options: readonl
         if (available.has(candidate)) {
             return candidate;
         }
-        const [primary, ...rest] = candidate.split("-");
+        const [primary] = candidate.split("-");
         if (primary && available.has(primary)) {
             return primary;
         }
-        if (primary === "zh") {
-            const region = rest.join("-").toLowerCase();
-            if (["cn", "sg", "hans"].some((part) => region.includes(part)) && available.has("zh-Hans")) {
-                return "zh-Hans";
-            }
-            if (["tw", "hk", "mo", "hant"].some((part) => region.includes(part)) && available.has("zh-Hant")) {
-                return "zh-Hant";
-            }
+        // A regional variant we don't ship still gets its language: pt-PT or pt picks pt-BR.
+        const sameLanguage = options.find((option) => option.code.split("-")[0] === primary);
+        if (sameLanguage) {
+            return sameLanguage.code;
         }
     }
     return undefined;

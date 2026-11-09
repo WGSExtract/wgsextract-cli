@@ -13,6 +13,7 @@ export interface BundleStatePatch {
     iconSet?: string;
     colorTheme?: string;
     webUIFont?: string;
+    uiMode?: string;
 }
 
 export function requestObject(value: unknown, name = "request body"): LooseRecord {
@@ -92,7 +93,7 @@ export function parseBundleStatePatch(value: unknown): BundleStatePatch {
             patch[key] = nullableString(record[key], key);
         }
     }
-    for (const key of ["iconSet", "colorTheme", "webUIFont"] as const) {
+    for (const key of ["iconSet", "colorTheme", "webUIFont", "uiMode"] as const) {
         const text = optionalString(record, key);
         if (text != null) {
             patch[key] = text;

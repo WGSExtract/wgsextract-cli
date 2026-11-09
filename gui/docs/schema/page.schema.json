@@ -12,6 +12,7 @@
     "summary": { "type": "string", "minLength": 1 },
     "iconName": { "type": "string" },
     "textIcon": { "$ref": "#/$defs/textIcon" },
+    "advancedOnly": { "$ref": "#/$defs/advancedOnly" },
     "sidebarGroup": {
       "type": "string",
       "description": "Optional sidebar section title or localization key used to group related pages."
@@ -34,9 +35,11 @@
       "required": ["id"],
       "additionalProperties": false,
       "properties": {
+        "advancedOnly": { "$ref": "#/$defs/advancedOnly" },
         "id": { "type": "string", "minLength": 1 },
         "title": { "type": "string" },
         "subtitle": { "type": "string" },
+        "subsection": { "type": "boolean", "default": false, "description": "Render as a continuation of the section above it, under a smaller heading." },
         "iconName": { "type": "string" },
         "textIcon": { "$ref": "#/$defs/textIcon" },
         "dataSource": { "$ref": "#/$defs/dataSource" },
@@ -63,6 +66,7 @@
       "required": ["id", "label", "kind"],
       "additionalProperties": false,
       "properties": {
+        "advancedOnly": { "$ref": "#/$defs/advancedOnly" },
         "id": { "type": "string", "minLength": 1 },
         "label": { "type": "string", "minLength": 1 },
         "kind": {
@@ -77,6 +81,8 @@
         },
         "placeholder": { "type": "string" },
         "tooltip": { "type": "string" },
+        "emptyText": { "type": "string", "description": "Dropdown text shown, disabled, when its data source returns no options." },
+        "layout": { "type": "string", "enum": ["grid", "rows"], "default": "grid", "description": "checkboxGroup layout. rows: a row per option group under category headings, versions in shared columns." },
         "options": {
           "type": "array",
           "items": { "$ref": "#/$defs/option" },
@@ -117,9 +123,12 @@
       "required": ["id", "title"],
       "additionalProperties": false,
       "properties": {
+        "advancedOnly": { "$ref": "#/$defs/advancedOnly" },
         "id": { "type": "string", "description": "Option value; an empty id is a dropdown's unset choice." },
         "title": { "type": "string", "minLength": 1 },
-        "selected": { "type": "boolean", "default": false }
+        "selected": { "type": "boolean", "default": false },
+        "group": { "type": "string", "description": "Checkbox group heading, or with layout rows the row title." },
+        "category": { "type": "string", "description": "With layout rows, the heading above a set of rows." }
       }
     },
     "column": {
@@ -127,6 +136,7 @@
       "required": ["id", "title"],
       "additionalProperties": false,
       "properties": {
+        "advancedOnly": { "$ref": "#/$defs/advancedOnly" },
         "id": { "type": "string", "minLength": 1 },
         "title": { "type": "string", "minLength": 1 }
       }
@@ -136,6 +146,7 @@
       "required": ["id"],
       "additionalProperties": false,
       "properties": {
+        "advancedOnly": { "$ref": "#/$defs/advancedOnly" },
         "id": { "type": "string", "minLength": 1 },
         "title": { "type": "string" },
         "values": {
@@ -290,6 +301,7 @@
       "required": ["id", "title", "command"],
       "additionalProperties": false,
       "properties": {
+        "advancedOnly": { "$ref": "#/$defs/advancedOnly" },
         "id": { "type": "string", "minLength": 1 },
         "title": { "type": "string", "minLength": 1 },
         "role": { "type": "string", "enum": ["primary", "secondary", "destructive"] },
@@ -408,6 +420,11 @@
           "default": []
         }
       }
+    },
+    "advancedOnly": {
+      "type": "boolean",
+      "default": false,
+      "description": "Show only in the GUI's Advanced mode. Basic hides it and runs commands as if it were left at its default (paths keep their value)."
     },
     "textIcon": {
       "description": "One or two user-visible Unicode characters used when text icons are preferred.",

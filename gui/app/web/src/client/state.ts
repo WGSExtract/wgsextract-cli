@@ -26,6 +26,7 @@ export function createInitialState(): WebUIState {
         iconSet: "platform",
         colorTheme: "system",
         webUIFont: "system",
+        uiMode: "basic",
         bundleRootPath: "",
         lastResultDocumentPaths: {},
         sourceRootPath: "",

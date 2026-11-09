@@ -132,9 +132,28 @@ def run_depth_bins(
     region: str | None = None,
     table_format: str = "tsv",
     metadata: Mapping[str, str] | None = None,
+    reuse: bool = False,
 ) -> Path:
-    """One samtools depth pass, default filters, both overlapping mates counted."""
+    """One samtools depth pass, default filters, both overlapping mates counted.
+
+    With ``reuse``, a whole-file TSV report written after the input last changed
+    is shown again instead (``--with-bins``: the coverage table it follows is
+    reused the same way). ``--bins`` alone always rescans.
+    """
+    from .render import _is_fresh_output, region_file_tag
+
     Path(outdir).mkdir(parents=True, exist_ok=True)
+    stem = Path(input_path).name + region_file_tag(region) + "_coverage_bins"
+    output = Path(table_path(Path(outdir, stem), table_format))
+    if (
+        reuse
+        and not region
+        and table_format == "tsv"
+        and _is_fresh_output(str(output), input_path)
+    ):
+        logging.info("Using existing depth-bin report %s", output)
+        human_output(output.read_text(encoding="utf-8"), end="")
+        return output
     selected = dict(lengths)
     command = ["samtools", "depth", *_cram_reference_opts(input_path, reference)]
     if region:
@@ -166,11 +185,6 @@ def run_depth_bins(
                     process.kill()
                     process.wait()
 
-    # No reuse of potentially stale region/reference/filter-specific results.
-    from .render import region_file_tag
-
-    stem = Path(input_path).name + region_file_tag(region) + "_coverage_bins"
-    output = Path(table_path(Path(outdir, stem), table_format))
     rows: list[tuple[Value, ...]] = [
         (
             name,

@@ -254,7 +254,7 @@ test("WGSExtract exposes genome library controls in TypeScript", async () => {
     .sections[0].controls.find((control) => control.id === "bam_path");
   assert.equal(bamPath.defaultDirectory, "{{genome_library}}");
   const fastqAlign = bundle.manifest.pages
-    .find((page) => page.id === "fastq")
+    .find((page) => page.id === "extract")
     .sections.find((section) => section.id === "fastq-align")
     .actions.find((action) => action.id === "align");
   assert.equal(fastqAlign.estimatedDurationMinutes, 540);
@@ -268,7 +268,7 @@ test("WGSExtract exposes genome library controls in TypeScript", async () => {
     .actions.find((action) => action.id === "calculate-coverage");
   assert.equal(calculateCoverage.estimatedDurationMinutes, 120);
   const variantCalling = bundle.manifest.pages
-    .find((page) => page.id === "vcf")
+    .find((page) => page.id === "extract")
     .sections.find((section) => section.id === "variant-calling");
   const snpAction = variantCalling.actions.find((action) => action.id === "vcf-snp");
   assert.equal(snpAction.command.executable, "{{bundleRoot}}/scripts/run-wgsextract-vcf.sh");
@@ -292,6 +292,7 @@ test("WGSExtract exposes genome library controls in TypeScript", async () => {
     .sections.find((section) => section.id === "microarray-inputs")
     .controls.find((control) => control.id === "ref_fasta");
   assert.equal(microarrayRefControl.kind, "dropdown");
+  assert.equal(microarrayRefControl.emptyText, "None loaded. See Library page to add.");
   // The library folder, like the other reference dropdowns: the selected FASTA
   // is not a library, so with it the list emptied once a genome was chosen.
   assert.deepEqual(microarrayRefControl.dataSource.arguments, ["options", "{{ref_path}}"]);
@@ -324,7 +325,7 @@ test("WGSExtract exposes genome library controls in TypeScript", async () => {
   assert.deepEqual(repairBamAction.command.optionalArguments[0], ["--outdir", "{{out_dir}}"]);
 
   const annotate = bundle.manifest.pages
-    .find((page) => page.id === "annotate")
+    .find((page) => page.id === "vcf")
     .sections.find((section) => section.id === "vcf-annotation");
   assert.equal(annotate.dataSource.path, "scripts/library-state.sh");
   assert.deepEqual(annotate.dataSource.arguments, ["{{ref_path}}", "{{genome_library}}", "{{vcf_ann_vcf}}", "{{vcf_path}}"]);

@@ -178,3 +178,35 @@ test("invalid saved scalars warn and use defaults without blocking bundle load o
   assert.deepEqual(quotedScalars.values, { atomic_outputs: false, workers: 4, label: "label" });
   assert.equal(quotedScalars.warnings.length, 2);
 });
+
+test("the GUI mode starts as Basic on a new install and restarts in the last mode chosen", async (t) => {
+  const bundleRoot = await tempDirectory(t);
+
+  assert.equal((await loadBundleState(bundleRoot)).uiMode, "basic");
+
+  await saveBundleState({ uiMode: "advanced" }, bundleRoot);
+  assert.equal((await loadBundleState(bundleRoot)).uiMode, "advanced");
+
+  // Saving another setting keeps the mode.
+  await saveBundleState({ selectedPageID: "vcf" }, bundleRoot);
+  assert.equal((await loadBundleState(bundleRoot)).uiMode, "advanced");
+
+  await saveBundleState({ uiMode: "basic" }, bundleRoot);
+  assert.equal((await loadBundleState(bundleRoot)).uiMode, "basic");
+});
+
+test("an unknown GUI mode in state.json falls back to Basic", async (t) => {
+  const bundleRoot = await tempDirectory(t);
+  await writeFile(path.join(bundleRoot, "state.json"), '{"uiMode": "expert"}');
+
+  assert.equal((await loadBundleState(bundleRoot)).uiMode, "basic");
+});
+
+test("the GUI mode is not written to the CLI settings file", async (t) => {
+  const bundleRoot = await tempDirectory(t);
+  await writeFile(path.join(bundleRoot, "config.toml"), 'threads = "4"\n');
+
+  await saveBundleState({ uiMode: "advanced" }, bundleRoot);
+
+  assert.equal(await readFile(path.join(bundleRoot, "config.toml"), "utf8"), 'threads = "4"\n');
+});
