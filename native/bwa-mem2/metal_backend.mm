@@ -8,6 +8,7 @@
 #include "rescue_backend.h"
 #include "seeding_types.h"
 #include "splitter.h"
+#include "wgse_rescue_prune.h"
 #include "../bwa/rescue_engine.h"
 
 #include <algorithm>
@@ -789,6 +790,8 @@ size_t rescue_batches = 0, rescue_gpu_pairs = 0, rescue_cpu_pairs = 0, rescue_wa
 size_t rescue_jobs = 0, rescue_declined = 0, rescue_skipped = 0;
 size_t rescue_hits = 0, rescue_misses = 0, rescue_mismatches = 0;
 size_t rescue_cpu_jobs = 0, rescue_cpu_hits = 0, rescue_cpu_skipped = 0;
+// Pruned windows: proved dead, and window rows before and after pruning.
+size_t prune_dead = 0, prune_rows = 0, prune_kept = 0;
 double rescue_gpu_seconds = 0, rescue_kernel_seconds = 0, rescue_seconds = 0,
     rescue_wait_seconds = 0;
 
@@ -797,10 +800,38 @@ struct RescueKey {
     const uint8_t *ms;
     int64_t rb, re;
     int l_ms, is_rev, xtra;
-    // Index into the batch's results, or skipped for windows left to the CPU.
+    // Index into the batch's results, skipped for windows left to the CPU, or
+    // dead for windows that pruning proved yield nothing mem_matesw() keeps.
     uint32_t result;
+    // The first window row aligned (rows before it were pruned).
+    int32_t shift = 0;
 };
-constexpr uint32_t skipped_job = UINT32_MAX;
+constexpr uint32_t skipped_job = UINT32_MAX, dead_job = UINT32_MAX - 1;
+// ksw_align2()'s result for a dead window: below every threshold, and no start.
+constexpr kswr_t dead_alignment = {0, -1, -1, -1, -1, -1, -1};
+
+// The rows [*hb, *he] of a rescue window that ksw_align2() must see, by
+// bwa-mem3's exact pruning (wgse_rescue_prune.h); returns wgse_prune_none if
+// it proved that no row yields an alignment mem_matesw() keeps.
+int prune_rescue(const mem_opt_t *opt, const uint8_t *query, int l_ms, const uint8_t *ref,
+    int tlen, int xtra, int *hb, int *he) {
+    int kind = wgse_prune_full;
+    // mem_matesw() keeps only alignments from ksw_align2() with a start, which
+    // it computes only for scores of at least the KSW_XSUBO threshold.
+    if (wgse_exact_cpu() && (xtra & KSW_XSUBO) && (xtra & KSW_XSTART))
+        kind = wgse_rescue_prune(opt->a, opt->b, opt->o_del, opt->e_del, opt->o_ins,
+            opt->e_ins, xtra & 0xffff, ref, tlen, query, l_ms, hb, he);
+    if (kind == wgse_prune_full) *hb = 0, *he = tlen - 1;
+    return kind;
+}
+
+// Window rows from rows of the window that starts at row shift.
+kswr_t unshift(kswr_t r, int shift) {
+    if (r.te >= 0) r.te += shift;
+    if (r.tb >= 0) r.tb += shift;
+    if (r.te2 >= 0) r.te2 += shift;
+    return r;
+}
 
 struct RescueBatch : BatchBase {
     long first = 0;
@@ -831,11 +862,13 @@ struct RescueCurrent {
 thread_local RescueCurrent rescue_current;
 struct RescueTally {
     size_t hits = 0, misses = 0, mismatches = 0, cpu_jobs = 0, cpu_hits = 0, cpu_skipped = 0;
+    size_t dead = 0, rows = 0, kept = 0;
 };
 thread_local RescueTally rescue_tally;
 
 // A CPU-taken pair's rescue windows, aligned together on its own thread.
 struct CpuRescue {
+    const mem_opt_t *opt = nullptr;
     RescueBatch batch;
     std::vector<uint8_t> bases;
     std::vector<wgse_ksw_task_t> tasks;
@@ -863,31 +896,50 @@ void emit_cpu(void *context, const uint8_t *ms, int l_ms, int is_rev, int64_t rb
         if (is_rev) bases[query + size_t(l_ms - 1 - i)] = ms[i] < 4 ? 3 - ms[i] : 4;
         else bases[query + size_t(i)] = ms[i];
     }
-    memcpy(bases + target, ref, size_t(tlen));
-    cpu.batch.keys.push_back({ms, rb, re, l_ms, is_rev, xtra, uint32_t(cpu.tasks.size())});
-    cpu.tasks.push_back({l_ms, int(tlen), xtra, nullptr, nullptr, {}});
+    int hb, he;
+    if (prune_rescue(cpu.opt, bases + query, l_ms, ref, int(tlen), xtra, &hb, &he)
+        == wgse_prune_none) {
+        cpu.bases.resize(query);
+        cpu.batch.keys.push_back({ms, rb, re, l_ms, is_rev, xtra, dead_job});
+        ++rescue_tally.dead;
+        rescue_tally.rows += size_t(tlen);
+        return;
+    }
+    const int rows = he - hb + 1;
+    rescue_tally.rows += size_t(tlen);
+    rescue_tally.kept += size_t(rows);
+    cpu.bases.resize(target + size_t(rows));
+    memcpy(cpu.bases.data() + target, ref + hb, size_t(rows));
+    cpu.batch.keys.push_back({ms, rb, re, l_ms, is_rev, xtra, uint32_t(cpu.tasks.size()), hb});
+    cpu.tasks.push_back({l_ms, rows, xtra, nullptr, nullptr, {}});
     cpu.offsets.push_back(query);
 }
 
-// Aligns every window mem_sam_pe() may try for a pair on this thread, in one
-// interleaved batch, unless there are too few to gain from interleaving;
+// Aligns every window mem_sam_pe() may try for a pair on this thread, the
+// rows pruning keeps, in one interleaved batch (one window alone, as upstream);
 // mem_matesw() then takes the results for exactly these inputs.
 void align_on_cpu(const mem_opt_t *opt, const bntseq_t *bns, const uint8_t *pac,
     const mem_pestat_t *pes, const bseq1_t *seqs, const mem_alnreg_v *regs) {
     CpuRescue &cpu = cpu_rescue;
+    cpu.opt = opt;
     cpu.batch.keys.clear();
     cpu.batch.results.clear();
     cpu.bases.clear();
     cpu.tasks.clear();
     cpu.offsets.clear();
     wgse_rescue_candidates(opt, bns, pac, pes, seqs, regs, emit_cpu, &cpu);
-    if (cpu.tasks.size() < 2) return;
+    if (cpu.batch.keys.empty()) return;
     for (size_t i = 0; i < cpu.tasks.size(); ++i) {
         cpu.tasks[i].query = cpu.bases.data() + cpu.offsets[i];
         cpu.tasks[i].target = cpu.tasks[i].query + cpu.tasks[i].qlen;
     }
-    wgse_ksw_align2_batch(int(cpu.tasks.size()), cpu.tasks.data(), 5, opt->mat,
-        opt->o_del, opt->e_del, opt->o_ins, opt->e_ins);
+    if (cpu.tasks.size() == 1) {
+        wgse_ksw_task_t &task = cpu.tasks[0];
+        task.r = ksw_align2(task.qlen, task.query, task.tlen, task.target, 5, opt->mat,
+            opt->o_del, opt->e_del, opt->o_ins, opt->e_ins, task.xtra, nullptr);
+    } else if (cpu.tasks.size() > 1)
+        wgse_ksw_align2_batch(int(cpu.tasks.size()), cpu.tasks.data(), 5, opt->mat,
+            opt->o_del, opt->e_del, opt->o_ins, opt->e_ins);
     cpu.batch.results.reserve(cpu.tasks.size());
     for (const wgse_ksw_task_t &task : cpu.tasks) {
         const kswr_t &r = task.r;
@@ -906,6 +958,9 @@ void merge_rescue_tally() {
     rescue_cpu_jobs += rescue_tally.cpu_jobs;
     rescue_cpu_hits += rescue_tally.cpu_hits;
     rescue_cpu_skipped += rescue_tally.cpu_skipped;
+    prune_dead += rescue_tally.dead;
+    prune_rows += rescue_tally.rows;
+    prune_kept += rescue_tally.kept;
     rescue_tally = {};
 }
 
@@ -914,7 +969,7 @@ void merge_rescue_tally() {
 // GPU's result for each window it actually tries.
 class RescueScheduler : public Splitter {
 public:
-    size_t jobs = 0, declined = 0, skipped = 0;
+    size_t jobs = 0, declined = 0, skipped = 0, pruned = 0, rows = 0, kept = 0;
 
     RescueScheduler(const mem_opt_t *opt, const bntseq_t *bns, const uint8_t *pac,
         const mem_pestat_t *pes, int n, bseq1_t *seqs, mem_alnreg_v *regs, int threads,
@@ -961,11 +1016,25 @@ private:
             self.skip(batch, ms, rb, re, l_ms, is_rev, xtra);
             return;
         }
-        memcpy(bases + target, ref, size_t(tlen));
+        int hb, he;
+        if (prune_rescue(self.opt_, bases + query, l_ms, ref, int(tlen), xtra, &hb, &he)
+            == wgse_prune_none) {
+            batch.bases.resize(query);
+            ++self.pruned;
+            self.rows += size_t(tlen);
+            batch.keys.push_back({ms, rb, re, l_ms, is_rev, xtra, dead_job});
+            return;
+        }
+        const int64_t rows = he - hb + 1;
+        self.rows += size_t(tlen);
+        self.kept += size_t(rows);
+        batch.bases.resize(target + size_t(rows));
+        memcpy(batch.bases.data() + target, ref + hb, size_t(rows));
         batch.jobs.push_back({uint32_t(query), uint32_t(target), uint32_t(batch.row_bytes),
-            uint32_t(l_ms), uint32_t(tlen), uint32_t(xtra)});
-        batch.row_bytes += size_t(tlen);
-        batch.keys.push_back({ms, rb, re, l_ms, is_rev, xtra, uint32_t(batch.jobs.size() - 1)});
+            uint32_t(l_ms), uint32_t(rows), uint32_t(xtra)});
+        batch.row_bytes += size_t(rows);
+        batch.keys.push_back({ms, rb, re, l_ms, is_rev, xtra, uint32_t(batch.jobs.size() - 1),
+            hb});
     }
 
     void skip(RescueBatch &batch, const uint8_t *ms, int64_t rb, int64_t re, int l_ms,
@@ -1086,6 +1155,9 @@ int wgse_metal_pair(const mem_opt_t *opt, const bntseq_t *bns, const uint8_t *pa
             rescue_jobs += scheduler.jobs;
             rescue_declined += scheduler.declined;
             rescue_skipped += scheduler.skipped;
+            prune_dead += scheduler.pruned;
+            prune_rows += scheduler.rows;
+            prune_kept += scheduler.kept;
             rescue_gpu_seconds += scheduler.gpu_time;
             rescue_kernel_seconds += rescuer->kernel_seconds - kernel_before;
             rescue_wait_seconds += scheduler.waited;
@@ -1100,6 +1172,20 @@ int wgse_metal_pair(const mem_opt_t *opt, const bntseq_t *bns, const uint8_t *pa
     return 1;
 }
 
+kswr_t wgse_rescue_align(const mem_opt_t *opt, int l_ms, uint8_t *seq, int tlen, uint8_t *ref,
+    int xtra) {
+    int hb, he;
+    const int kind = prune_rescue(opt, seq, l_ms, ref, tlen, xtra, &hb, &he);
+    rescue_tally.rows += size_t(tlen);
+    if (kind == wgse_prune_none) {
+        ++rescue_tally.dead;
+        return dead_alignment;
+    }
+    rescue_tally.kept += size_t(he - hb + 1);
+    return unshift(ksw_align2(l_ms, seq, he - hb + 1, ref + hb, 5, opt->mat, opt->o_del,
+        opt->e_del, opt->o_ins, opt->e_ins, xtra, nullptr), hb);
+}
+
 int wgse_metal_matesw(const mem_opt_t *opt, const uint8_t *ms, uint8_t *seq, int l_ms,
     uint8_t *ref, int is_rev, int64_t rb, int64_t re, int xtra, kswr_t *aln) {
     const RescueCurrent &pair = rescue_current;
@@ -1109,13 +1195,19 @@ int wgse_metal_matesw(const mem_opt_t *opt, const uint8_t *ms, uint8_t *seq, int
         if (key.ms != ms || key.rb != rb || key.re != re || key.l_ms != l_ms
             || key.is_rev != is_rev || key.xtra != xtra) continue;
         if (key.result == skipped_job) return 0;
-        const RescueResult &r = pair.batch->results[key.result];
-        if (r.status != rescue_ok) return 0;
-        *aln = {r.score, r.te, r.qe, r.score2, r.te2, r.tb, r.qb};
+        if (key.result == dead_job) *aln = dead_alignment;
+        else {
+            const RescueResult &r = pair.batch->results[key.result];
+            if (r.status != rescue_ok) return 0;
+            *aln = unshift({r.score, r.te, r.qe, r.score2, r.te2, r.tb, r.qb}, key.shift);
+        }
         if (verify_rescue) {
             const kswr_t cpu = ksw_align2(l_ms, seq, int(re - rb), ref, 5, opt->mat, opt->o_del,
                 opt->e_del, opt->o_ins, opt->e_ins, xtra, 0);
-            if (memcmp(&cpu, aln, sizeof(cpu))) {
+            // mem_matesw() keeps nothing of an alignment below its threshold or
+            // without a start, and pruning may leave such a one different.
+            auto kept = [&](const kswr_t &r) { return r.score >= opt->min_seed_len && r.qb >= 0; };
+            if ((kept(cpu) || kept(*aln)) && memcmp(&cpu, aln, sizeof(cpu)) != 0) {
                 if (rescue_tally.mismatches++ < 3)
                     fprintf(stderr, "[wgse-bwa-mem2] rescue mismatch l_ms=%d tlen=%lld xtra=%#x "
                         "gpu=%d,%d,%d,%d,%d,%d,%d cpu=%d,%d,%d,%d,%d,%d,%d\n", l_ms,
@@ -2042,11 +2134,11 @@ void wgse_print_backend_metrics() {
         "rescue_wasted_pairs=%zu rescue_jobs=%zu rescue_declined=%zu rescue_skipped=%zu "
         "rescue_hits=%zu rescue_misses=%zu rescue_mismatches=%zu interruptions=%zu "
         "overlap=%d overlapped_chunks=%zu rescue_cpu_jobs=%zu rescue_cpu_hits=%zu "
-        "rescue_cpu_skipped=%zu\n",
+        "rescue_cpu_skipped=%zu rescue_pruned_dead=%zu rescue_rows=%zu rescue_rows_kept=%zu\n",
         rescue_batches, rescue_gpu_pairs, rescue_cpu_pairs, rescue_wasted_pairs, rescue_jobs,
         rescue_declined, rescue_skipped, rescue_hits, rescue_misses, rescue_mismatches,
         wgse::metal::Runtime::interruptions(), int(overlap_active.load()), overlapped_chunks.load(),
-        rescue_cpu_jobs, rescue_cpu_hits, rescue_cpu_skipped);
+        rescue_cpu_jobs, rescue_cpu_hits, rescue_cpu_skipped, prune_dead, prune_rows, prune_kept);
     fprintf(stderr, "[wgse-bwa-mem2] rescue seconds gpu=%.3f kernel=%.3f pair=%.3f cpu_wait=%.3f\n",
         rescue_gpu_seconds, rescue_kernel_seconds, rescue_seconds, rescue_wait_seconds);
     std::lock_guard<std::mutex> seed_lock(seed_mutex);

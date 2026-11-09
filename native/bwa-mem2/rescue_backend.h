@@ -59,6 +59,10 @@ int wgse_metal_pair(const mem_opt_t *opt, const bntseq_t *bns, const uint8_t *pa
 // exactly these inputs, otherwise returns 0.
 int wgse_metal_matesw(const mem_opt_t *opt, const uint8_t *ms, uint8_t *seq, int l_ms,
     uint8_t *ref, int is_rev, int64_t rb, int64_t re, int xtra, kswr_t *aln);
+// mem_matesw()'s ksw_align2() on the rows of the window that bwa-mem3's exact
+// pruning keeps (wgse_rescue_prune.h); upstream's call with --cpu-upstream.
+kswr_t wgse_rescue_align(const mem_opt_t *opt, int l_ms, uint8_t *seq, int tlen, uint8_t *ref,
+    int xtra);
 // worker_sam()'s work for one pair (appended to bwamem.cpp).
 void wgse_worker_sam_pair(void *data, long pair, int tid);
 // Appended to bwamem_pair.cpp (native/bwa/rescue_oracle.c.in): reports each

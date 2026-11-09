@@ -12,7 +12,13 @@ FetchContent_Declare(neon
 FetchContent_Declare(safe
     URL https://github.com/intel/safestringlib/archive/245c4b8cff1d2e7338b7f3a82828fc8e72b29549.tar.gz
     URL_HASH SHA256=6dea4f4accdc14eea706c88bb11725e8c2cd69b0d8c5f5ee19a0669d1883a901)
-FetchContent_MakeAvailable(mem2 neon safe)
+# bwa-mem3 0.16.0 (as in ../bwa-mem3; the first declaration wins), for its
+# exact mate-rescue pruning headers.
+FetchContent_Declare(mem3
+    URL https://github.com/fg-labs/bwa-mem3/archive/refs/tags/v0.16.0.tar.gz
+    URL_HASH SHA256=28f7e4be7cf359e97b59f2925bb67b27905058c13e6c8af08507b13f2c10662c
+    SOURCE_SUBDIR unused)
+FetchContent_MakeAvailable(mem2 neon safe mem3)
 set_target_properties(safestring_shared PROPERTIES EXCLUDE_FROM_ALL TRUE)
 target_compile_options(safestring_objlib PRIVATE
     -include "${CMAKE_CURRENT_SOURCE_DIR}/safe_compat.h")
@@ -201,7 +207,7 @@ ${ksw_oracle}")
 file(READ "${mem2_SOURCE_DIR}/src/bwamem_pair.cpp" pair_source)
 set(rescue_call "aln = ksw_align2(l_ms, seq, re - rb, ref, 5,\n                             opt->mat, opt->o_del, opt->e_del,\n                             opt->o_ins, opt->e_ins, xtra, 0);")
 mem2_seam(pair_source "${rescue_call}"
-    "if (!wgse_metal_matesw(opt, ms, seq, l_ms, ref, is_rev, rb, re, xtra, &aln))\n                ${rescue_call}")
+    "if (!wgse_metal_matesw(opt, ms, seq, l_ms, ref, is_rev, rb, re, xtra, &aln))\n                aln = wgse_rescue_align(opt, l_ms, seq, re - rb, ref, xtra);")
 file(READ "${bwa_dir}/rescue_oracle.c.in" rescue_oracle)
 file(WRITE "${mem2_src}/bwamem_pair.cpp"
     "#include \"rescue_backend.h\"\n${pair_source}\n${rescue_oracle}")
@@ -284,10 +290,14 @@ target_compile_options(mem2_core PUBLIC
     -include "${CMAKE_CURRENT_SOURCE_DIR}/arm_compat.h" "-Wno-error=#warnings")
 target_link_libraries(mem2_core PUBLIC safestring_static ZLIB::ZLIB Threads::Threads)
 
+# Compiled apart from mem2_core: bwa-mem3's source directory has headers named like BWA-MEM2's.
+add_library(mem2_rescue_prune STATIC rescue_prune.cpp)
+target_include_directories(mem2_rescue_prune SYSTEM PRIVATE "${mem3_SOURCE_DIR}/src")
+target_compile_options(mem2_rescue_prune PRIVATE -Wall -Wextra -Werror)
 add_library(metal_backend STATIC metal_backend.mm)
 target_include_directories(metal_backend PRIVATE "${generated}")
 target_compile_options(metal_backend PRIVATE -fobjc-arc -Wall -Wextra -Werror)
-target_link_libraries(metal_backend PUBLIC mem2_core wgse_metal_common)
+target_link_libraries(metal_backend PUBLIC mem2_core mem2_rescue_prune wgse_metal_common)
 add_executable(wgse-bwa-mem2 main.cpp)
 target_link_libraries(wgse-bwa-mem2 PRIVATE metal_backend)
 set(WGSE_BWA_MEM2_VERSION 0.4.1)
@@ -342,3 +352,5 @@ install(FILES "${neon_SOURCE_DIR}/LICENSE" DESTINATION share/licenses/wgse-bwa-m
     RENAME sse2neon-LICENSE)
 install(FILES "${safe_SOURCE_DIR}/LICENSE" DESTINATION share/licenses/wgse-bwa-mem2
     RENAME safestringlib-LICENSE)
+install(FILES "${mem3_SOURCE_DIR}/LICENSE" DESTINATION share/licenses/wgse-bwa-mem2
+    RENAME BWA-MEM3-LICENSE)
