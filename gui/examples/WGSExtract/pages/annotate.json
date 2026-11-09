@@ -207,12 +207,6 @@
           "tooltip": "controls.vcf.vep-analysis.vep_input_vcf.tooltip"
         },
         {
-          "id": "vep_cache_path",
-          "label": "controls.vcf.vep-analysis.vep_cache_path.label",
-          "kind": "path",
-          "tooltip": "controls.vcf.vep-analysis.vep_cache_path.tooltip"
-        },
-        {
           "id": "vcf_vep_args",
           "label": "controls.vcf.vep-analysis.vcf_vep_args.label",
           "kind": "text",
@@ -374,10 +368,6 @@
               [
                 "--ref",
                 "{{ref_path}}"
-              ],
-              [
-                "--vep-cache",
-                "{{vep_cache_path}}"
               ],
               [
                 "--vep-args={{vcf_vep_args}}"

@@ -1,15 +1,21 @@
 import argparse
 
 from wgsextract_cli.api._cli import add_arguments, cli_handler
-from wgsextract_cli.api.vep import VepDownloadParams, VepRunParams, VepVerifyParams
+from wgsextract_cli.api.vep import (
+    VepDeleteParams,
+    VepDownloadParams,
+    VepRunParams,
+    VepVerifyParams,
+)
 from wgsextract_cli.core.messages import CLI_HELP
 
-from ._vep_resources import run_vep_download, run_vep_verify
+from ._vep_resources import run_vep_delete, run_vep_download, run_vep_verify
 from ._vep_run import run_vep
 
 cli_vep_run = cli_handler(VepRunParams, run_vep)
 cli_vep_download = cli_handler(VepDownloadParams, run_vep_download)
 cli_vep_verify = cli_handler(VepVerifyParams, run_vep_verify)
+cli_vep_delete = cli_handler(VepDeleteParams, run_vep_delete)
 
 
 def register(
@@ -30,6 +36,12 @@ def register(
     )
     add_arguments(verify_parser, VepVerifyParams, config_defaults=True)
     verify_parser.set_defaults(func=cli_vep_verify)
+
+    delete_parser = vep_subs.add_parser(
+        "delete", parents=[base_parser], help=CLI_HELP["cmd_vep-delete"]
+    )
+    add_arguments(delete_parser, VepDeleteParams, config_defaults=True)
+    delete_parser.set_defaults(func=cli_vep_delete)
 
     run_parser = vep_subs.add_parser(
         "run", parents=[base_parser], help=CLI_HELP["cmd_vep-run"]
