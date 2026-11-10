@@ -540,7 +540,11 @@ def populated_reference(fasta: str, contigs: Iterable[str], work: str) -> str:
     with open(f"{fasta}.fai") as f:
         entries = [line for line in f if line.split("\t", 1)[0] in keep]
     view = Path(work, Path(fasta).name)
-    view.symlink_to(absolute_path(fasta))
+    try:
+        view.symlink_to(absolute_path(fasta))
+    except OSError as e:
+        logging.debug(f"Tabulating all contigs; could not link {fasta}: {e}")
+        return fasta
     Path(f"{view}.fai").write_text("".join(entries), newline="\n")
     return str(view)
 
@@ -660,15 +664,16 @@ def run_pileup(params: MethylationPileupParams) -> None:
             with open(bed, "w", newline="\n") as f:
                 f.writelines(f"{c}\t{s}\t{e}\n" for c, s, e in intervals)
         else:
-            contigs = set(contigs_with_reads(input_path, ref)) & set(lengths)
+            contigs = set(contigs_with_reads(input_path, use_ref)) & set(lengths)
             if contigs and len(contigs) < len(lengths):
+                pileup_ref = populated_reference(use_ref, contigs, work)
+            if pileup_ref == use_ref:
+                contigs = set(lengths)
+            else:
                 logging.info(
                     f"Reads are on {len(contigs)} of the reference's "
                     f"{len(lengths)} contigs; tabulating only those."
                 )
-                pileup_ref = populated_reference(use_ref, contigs, work)
-            else:
-                contigs = set(lengths)
         metadata = provenance(
             [input_path],
             reference_build=lib.build,
