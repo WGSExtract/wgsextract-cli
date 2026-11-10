@@ -15,6 +15,7 @@ from typing import Any
 from wgsextract_cli.core.builds import BUILD_CHOICES
 from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.results import CommandResult
+from wgsextract_cli.core.table_writer import FORMATS, table_format_type
 from wgsextract_cli.core.utils import UsageError
 
 from ._params import Params, param
@@ -178,6 +179,79 @@ class QcContaminationParams(Params):
 
 
 @dataclass(frozen=True, kw_only=True)
+class RelateParams(Params):
+    """Sex, relatedness and continental ancestry with somalier.
+
+    Each BAM, CRAM or VCF is sketched at ~17,800 common SNPs (``somalier
+    extract``; the sketches are kept in ``<outdir>/somalier/`` and can be given
+    again as inputs, so a relative's kit can be compared later without its
+    BAM). The sketches are then compared pairwise (``somalier relate``) and,
+    when the 1000 Genomes sketches are installed (``ref somalier --install``),
+    placed in a superpopulation (``somalier ancestry``). Writes
+    ``relate.samples`` and ``relate.pairs`` tables (TSV or Parquet) and
+    somalier's HTML reports. Warns when the inferred sex disagrees with the
+    sample's recorded sex, when two inputs are one person, and, with ``ped``,
+    when a pair isn't related as the pedigree says (a swapped file). somalier
+    is optional (``pixi install -e somalier``) and unavailable on Windows."""
+
+    COMMAND = "qc relate"
+
+    inputs: tuple[Path, ...] = param(
+        help="BAM, CRAM or VCF files, or .somalier sketches from an earlier run.",
+        metavar="FILE",
+        path="file",
+        positional=True,
+        required_message="qc relate needs at least one input file.",
+        doc="BAM, CRAM or VCF files, or .somalier sketches from an earlier run.",
+    )
+    ref: Path | None = ref_param()
+    outdir: Path | None = outdir_param("the first input's folder")
+    threads: int | None = threads_param()
+    sites: Path | None = param(
+        None,
+        help="Sites VCF to genotype instead of somalier's own for the input's "
+        "build (default: from 'ref somalier --install').",
+        path="file",
+    )
+    ped: Path | None = param(
+        None,
+        help="PED/FAM file of the expected relationships and sexes; pairs or "
+        "sexes that disagree are flagged as possible sample swaps.",
+        path="file",
+    )
+    ancestry: bool | None = param(
+        None,
+        help="Predict the 1000 Genomes superpopulation (default: when 'ref "
+        "somalier --install' has installed the labelled sketches).",
+        action="boolean_optional",
+    )
+    table_format: str = param(
+        "tsv",
+        help="Table format: tsv, or parquet (needs pyarrow) (default: tsv)",
+        flags=("--format",),
+        choices=FORMATS,
+        cli_type=table_format_type(),
+    )
+
+    def default_outdir(self) -> Path:
+        """The first input's folder; for a sketch in an earlier run's
+        ``somalier/`` folder, that run's folder."""
+        first = self.inputs[0].expanduser().absolute()
+        folder = first.parent
+        if first.suffix == ".somalier" and folder.name == "somalier":
+            return folder.parent
+        return folder
+
+    def write_folders(self) -> Iterator[Path]:
+        outdir = self.outdir.expanduser() if self.outdir else self.default_outdir()
+        yield from (outdir, outdir / "somalier")
+        # An unindexed reference FASTA is indexed beside itself.
+        ref = self.ref.expanduser() if self.ref else None
+        if ref is not None and not ref.is_dir():
+            yield ref.absolute().parent
+
+
+@dataclass(frozen=True, kw_only=True)
 class FakeDataParams(Params):
     """Generate a small fake genome for tests: reference, reads and calls
     named ``fake*``, reproducible from ``seed``. Uses the build's installed
@@ -302,6 +376,21 @@ def contamination(
     )
 
 
+def relate(
+    params: RelateParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Compare the inputs (see ``RelateParams``); output roles
+    ``relate_samples``, ``relate_pairs``, ``somalier_sketch`` and
+    ``somalier_report``."""
+    from wgsextract_cli.commands.qc.relate import run_relate
+
+    return execute(params, run_relate, progress=progress, cancel=cancel, check=check)
+
+
 def fake_data(
     params: FakeDataParams,
     *,
@@ -324,11 +413,13 @@ __all__ = [
     "MultiqcParams",
     "QcContaminationParams",
     "QcVcfParams",
+    "RelateParams",
     "contamination",
     "fake_data",
     "fastp",
     "fastqc",
     "multiqc",
     "multiqc_metrics",
+    "relate",
     "vcf",
 ]

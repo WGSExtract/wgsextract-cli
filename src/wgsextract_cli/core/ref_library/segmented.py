@@ -19,6 +19,7 @@ from concurrent.futures import FIRST_EXCEPTION, Future, ThreadPoolExecutor, wait
 from http.client import HTTPException, IncompleteRead
 from pathlib import Path
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from wgsextract_cli.core.download_progress import (
@@ -38,6 +39,17 @@ USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 )
+# Hosts that refuse an outdated browser's User-Agent (403) but serve a tool's.
+_TOOL_AGENT_HOSTS = ("zenodo.org",)
+
+
+def user_agent(url: str) -> str:
+    host = (urlparse(url).hostname or "").lower()
+    if any(host == h or host.endswith(f".{h}") for h in _TOOL_AGENT_HOSTS):
+        return "wgsextract-cli"
+    return USER_AGENT
+
+
 _CHUNK = 1024**2
 _RESUMABLE = (DownloadIncomplete, IncompleteRead, TimeoutError, ConnectionError)
 
@@ -62,7 +74,7 @@ class RangesUnsupported(Exception):
 def ranged_size(url: str) -> int | None:
     """The file's size, if its server says it takes byte ranges."""
     try:
-        request = Request(url, method="HEAD", headers={"User-Agent": USER_AGENT})
+        request = Request(url, method="HEAD", headers={"User-Agent": user_agent(url)})
         with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
             headers = response.headers
     except (OSError, HTTPException):
@@ -140,7 +152,7 @@ def download_segmented(
                 request = Request(
                     url,
                     headers={
-                        "User-Agent": USER_AGENT,
+                        "User-Agent": user_agent(url),
                         "Range": f"bytes={pos}-{end - 1}",
                     },
                 )

@@ -151,6 +151,15 @@ platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
 [feature.modkit.dependencies]
 ont-modkit = ">=0.6.4,<0.7"
 
+# somalier sketches a BAM/CRAM/VCF at known common sites for sex, relatedness
+# and continental ancestry (`qc relate`). Opt-in environment
+# (`pixi install -e somalier`); Bioconda builds it for Linux and macOS only.
+[feature.somalier]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
+
+[feature.somalier.dependencies]
+somalier = ">=0.3.7,<0.4"
+
 # VerifyBamID2 estimates nuclear-DNA contamination (FREEMIX) from a GRCh37/38
 # BAM/CRAM (`qc contamination`) with the 1000 Genomes SVD resources its package
 # ships. Opt-in environment (`pixi install -e verifybamid2`) that the CLI runs
@@ -304,6 +313,7 @@ cyrius = { features = ["cyrius"], no-default-feature = true }
 clair3 = { features = ["clair3"], no-default-feature = true }
 modkit = { features = ["modkit"], no-default-feature = true }
 verifybamid2 = { features = ["verifybamid2"], no-default-feature = true }
+somalier = { features = ["somalier"], no-default-feature = true }
 phasing = { features = ["phasing"], no-default-feature = true }
 
 [pypi-dependencies]

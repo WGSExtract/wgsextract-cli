@@ -167,6 +167,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "ref status": _n(SECONDS, scale=""),
     "ref bootstrap": _n(DOWNLOAD, optional="curl"),
     "ref aadr": _n(DOWNLOAD, optional="curl"),
+    "ref somalier": _n(DOWNLOAD, optional="curl"),
     "ref ybrowse": _n(DOWNLOAD, "bgzip", "tabix"),
     "ref microarray-targets": _n(MINUTES),
     "ref gene-map": _n(DOWNLOAD, optional="curl"),
@@ -201,6 +202,9 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "qc multiqc": _n(SECONDS, "multiqc", optional="bcftools fastqc", scale=""),
     "qc multiqc-metrics": _n(SECONDS, scale=""),
     "qc vcf": _n(MINUTES, "bcftools"),
+    "qc relate": _n(
+        MINUTES, "bcftools", "samtools", "somalier", optional="bgzip tabix"
+    ),
     "qc contamination": _n(MINUTES, "samtools", "verifybamid2", optional="bcftools"),
     "qc fake-data": _n(
         SECONDS,

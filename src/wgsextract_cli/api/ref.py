@@ -104,6 +104,18 @@ class RefAadrParams(_InLibrary, Params):
 
 
 @dataclass(frozen=True, kw_only=True)
+class RefSomalierParams(_InLibrary, Params):
+    """Install somalier's hash-pinned sites files (MIT) and the labelled
+    1000 Genomes sketches (CC BY 4.0, Zenodo 3479773) that ``qc relate``
+    uses, about 85 MB, or delete them."""
+
+    COMMAND = "ref somalier"
+
+    delete: bool = _delete_param("somalier sites and 1000 Genomes sketches")
+    ref: Path | None = ref_param()
+
+
+@dataclass(frozen=True, kw_only=True)
 class RefYbrowseParams(_InLibrary, Params):
     """Install a hash-pinned, sites-only GRCh38 yBrowse snapshot into the
     library, or delete the installed snapshots."""
@@ -451,6 +463,19 @@ def aadr(
     from wgsextract_cli.commands.ref.library_commands import run_aadr
 
     return execute(params, run_aadr, progress=progress, cancel=cancel, check=check)
+
+
+def somalier(
+    params: RefSomalierParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Install the resources; output role ``reference_resource``."""
+    from wgsextract_cli.commands.ref.library_commands import run_somalier
+
+    return execute(params, run_somalier, progress=progress, cancel=cancel, check=check)
 
 
 def ybrowse(
