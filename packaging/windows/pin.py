@@ -4,9 +4,9 @@
     python packaging/windows/pin.py windows-tools-2
     pixi lock
 
-Rewrites the default Windows-tools block and, separately, the GATK Windows-tools
-block with each .conda asset's URL and GitHub's SHA-256 digest. A GKL-only
-release leaves the default tools untouched.
+Rewrites the default Windows-tools block, the GATK Windows-tools block (GKL) and
+the PharmCAT Windows-tools block (bcftools and htslib) with each .conda asset's
+URL and GitHub's SHA-256 digest. A GKL-only release leaves the others untouched.
 """
 
 from __future__ import annotations
@@ -23,6 +23,10 @@ BLOCK = re.compile(r"(# windows-tools-begin[^\n]*\n).*?(# windows-tools-end)", r
 GKL_BLOCK = re.compile(
     r"(# gatk-windows-tools-begin[^\n]*\n).*?(# gatk-windows-tools-end)", re.S
 )
+PHARMCAT_BLOCK = re.compile(
+    r"(# pharmcat-windows-tools-begin[^\n]*\n).*?(# pharmcat-windows-tools-end)", re.S
+)
+PHARMCAT_TOOLS = ("bcftools-", "htslib-")
 # <name>-<version>-<build>.conda; names may contain dashes (bwa-mem2).
 ASSET = re.compile(r"^(?P<name>.+)-(?P<version>[^-]+)-(?P<build>[^-]+)\.conda$")
 
@@ -63,6 +67,10 @@ def main() -> None:
     for block, selected in (
         (BLOCK, [asset for asset in assets if not asset["name"].startswith("gkl-")]),
         (GKL_BLOCK, [asset for asset in assets if asset["name"].startswith("gkl-")]),
+        (
+            PHARMCAT_BLOCK,
+            [asset for asset in assets if asset["name"].startswith(PHARMCAT_TOOLS)],
+        ),
     ):
         if not any(ASSET.match(asset["name"]) for asset in selected):
             continue

@@ -15,6 +15,7 @@ from wgsextract_cli.commands.vcf.pharmcat import (
     prepare_input,
     summarize,
 )
+from wgsextract_cli.core import runtime
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
@@ -220,6 +221,27 @@ def test_pharmcat_runs_its_pipeline_on_the_gene_regions_in_its_names(
 
 
 @needs_htslib
+def test_issue_622_windows_report_says_cyp2d6_not_called_with_spaced_paths(
+    tmp_path, pharmcat_env, monkeypatch, caplog
+):
+    # Windows has no `typing cyp2d6`, so without outside calls the run must say
+    # CYP2D6 wasn't called; paths with spaces reach the pipeline intact.
+    monkeypatch.setattr(runtime, "is_windows_host", lambda: True)
+    release = _release(tmp_path / "Pharm CAT" / "release 3.4")
+    vcf = _vcf(tmp_path / "my genome.vcf.gz", SNPS)
+    out = tmp_path / "My Results"
+    caplog.set_level(logging.INFO)
+    run_wgsextract("vcf", "pharmcat", "--vcf-input", vcf, "--pharmcat-dir",
+                   str(release), "--outdir", str(out))  # fmt: skip
+    assert (out / "my genome.phenotype.json").is_file()
+    assert json.loads((release / "run.json").read_text())["argv"][1:3] == [
+        "-o",
+        str(out),
+    ]
+    assert "CYP2D6 not called" in caplog.text
+
+
+@needs_htslib
 def test_pharmcat_takes_an_uncompressed_vcf(tmp_path, pharmcat_env):
     release = _release(tmp_path / "pharmcat")
     plain = tmp_path / "s.vcf"
@@ -342,7 +364,7 @@ def test_pharmcat_without_its_environment_says_how_to_install_it(tmp_path, monke
     monkeypatch.setattr(pharmcat, "pixi_env_tool", lambda _tool: None)
     release = _release(tmp_path / "pharmcat")
     vcf = _vcf(tmp_path / "s.vcf.gz", SNPS)
-    with pytest.raises(WGSExtractError, match="pixi install -e pharmcat"):
+    with pytest.raises(WGSExtractError, match="pixi install --locked -e pharmcat"):
         run_wgsextract("vcf", "pharmcat", "--vcf-input", vcf, "--pharmcat-dir",
                        str(release))  # fmt: skip
 

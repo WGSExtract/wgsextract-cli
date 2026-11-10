@@ -1,0 +1,111 @@
+name: PharmCAT Linux/Windows parity
+
+# `vcf pharmcat` on a GIAB HG002 VCF cut to PharmCAT's gene regions, natively on
+# Ubuntu and Windows, from the locked `pharmcat` Pixi environment and the
+# SHA-pinned PharmCAT pipeline release. Both phenotype.json files must match
+# except for their timestamp (#622).
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - pixi.toml
+      - pixi.lock
+      - src/wgsextract_cli/commands/vcf/pharmcat.py
+      - src/wgsextract_cli/core/pixi_tools.py
+      - tests/fixtures/pharmcat_hg002/**
+      - scripts/compare_pharmcat_phenotypes.py
+      - .github/workflows/pharmcat_e2e.yml
+  push:
+    branches: [main]
+    paths:
+      - pixi.toml
+      - pixi.lock
+      - src/wgsextract_cli/commands/vcf/pharmcat.py
+      - src/wgsextract_cli/core/pixi_tools.py
+      - tests/fixtures/pharmcat_hg002/**
+      - scripts/compare_pharmcat_phenotypes.py
+      - .github/workflows/pharmcat_e2e.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PHARMCAT_VERSION: 3.4.0
+  PHARMCAT_SHA256: 8b3f3fc559a80c00b2dc38ba1c9f617f2271060338a7ca550e4213381556e212
+
+jobs:
+  pharmcat:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+        with:
+          pixi-version: v0.82.0
+          locked: true
+          environments: >-
+            default
+            pharmcat
+      - name: Fetch the PharmCAT pipeline release (SHA-256 pinned)
+        shell: bash
+        run: |
+          dir="$RUNNER_TEMP/Pharm CAT"
+          mkdir -p "$dir"
+          curl -fsSL -o "$RUNNER_TEMP/pharmcat.tar.gz" \
+            "https://github.com/PharmGKB/PharmCAT/releases/download/v$PHARMCAT_VERSION/pharmcat-pipeline-$PHARMCAT_VERSION.tar.gz"
+          echo "$PHARMCAT_SHA256  $RUNNER_TEMP/pharmcat.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/pharmcat.tar.gz" -C "$dir"
+      # PharmCAT fetches its GRCh38 reference (about 1 GB) on first use.
+      - name: Cache PharmCAT's reference
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/Pharm CAT/reference.fna.bgz*
+          key: pharmcat-reference-zenodo-7288118-${{ runner.os }}
+      - name: Check tools
+        run: pixi run wgsextract deps check --tool pharmcat_python
+      - name: vcf pharmcat on HG002 (paths with spaces)
+        shell: bash
+        run: |
+          mkdir -p "out/pharmcat e2e/HG002 input"
+          cp tests/fixtures/pharmcat_hg002/hg002_pgx.vcf.gz "out/pharmcat e2e/HG002 input/"
+          pixi run wgsextract vcf pharmcat \
+            --vcf-input "out/pharmcat e2e/HG002 input/hg002_pgx.vcf.gz" \
+            --pharmcat-dir "$RUNNER_TEMP/Pharm CAT" \
+            --outdir "out/pharmcat e2e/My Results" 2>&1 | tee "out/pharmcat e2e/run.log"
+          test -s "out/pharmcat e2e/My Results/hg002_pgx.phenotype.json"
+          test -s "out/pharmcat e2e/My Results/hg002_pgx.report.html"
+      - name: Windows says CYP2D6 was not called
+        if: runner.os == 'Windows'
+        shell: bash
+        run: grep -q "CYP2D6 not called" "out/pharmcat e2e/run.log"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: pharmcat-${{ runner.os }}
+          path: out/pharmcat e2e/
+          if-no-files-found: error
+
+  parity:
+    needs: pharmcat
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: out/pharmcat
+      - name: Same phenotype.json on Linux and Windows (except the timestamp)
+        run: |
+          python3 scripts/compare_pharmcat_phenotypes.py \
+            "out/pharmcat/pharmcat-Linux/My Results/hg002_pgx.phenotype.json" \
+            "out/pharmcat/pharmcat-Windows/My Results/hg002_pgx.phenotype.json" \
+            | tee -a "$GITHUB_STEP_SUMMARY"

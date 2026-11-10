@@ -24,7 +24,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfPharmcatParams
-from wgsextract_cli.core import variant_confidence
+from wgsextract_cli.core import runtime, variant_confidence
 from wgsextract_cli.core.builds import build_from_chr1_length, build_from_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.paths import absolute_path
@@ -78,8 +78,7 @@ def _python(directory: str) -> list[str]:
     command = pixi_env_tool("pharmcat_python")
     if not command:
         raise WGSExtractError(
-            "PharmCAT's environment isn't available (it runs on macOS and Linux): "
-            "pixi install -e pharmcat"
+            "PharmCAT's environment isn't installed: pixi install --locked -e pharmcat"
         )
     return _tool_command_parts(command)
 
@@ -296,7 +295,13 @@ def run_pharmcat(params: VcfPharmcatParams) -> None:
     ):
         logging.info(f"  {gene:<9} {diplotype:<22} {phenotype}")
     logging.info(f"PharmCAT report: {report}")
-    if not used_outside_calls:
+    if not used_outside_calls and runtime.is_windows_host():
+        logging.info(
+            "CYP2D6 not called, nor HLA-A/HLA-B: PharmCAT can't call them from a "
+            "VCF, and `typing cyp2d6` / `typing hla` don't run on Windows. Pass "
+            "outside calls made elsewhere with --outside-call."
+        )
+    elif not used_outside_calls:
         logging.info(
             "CYP2D6 and HLA-A/HLA-B need calls PharmCAT can't make from a VCF: "
             "pass them with --outside-call (from `typing cyp2d6` / `typing hla`)."
