@@ -166,7 +166,9 @@ the check, or is older than the oldest supported release, raises the
     estimate with it must fit the RAM available when the run starts (and the
     Mac's RAM less 2 GiB). On 8 to 16 GB Macs `wgse-bwa` usually runs instead.
   - In bwa-mem2's place it needs less memory than bwa-mem2, so it runs when
-    its estimate fits the Mac's RAM less 2 GiB or is no more than bwa-mem2's.
+    its estimate fits the Mac's RAM less 2 GiB or is no more than that of the
+    bwa-mem2 that would run instead (`wgse-bwa-mem2` 0.5.0 and later, which
+    also leaves out the `.0123` file, may need less, and then runs).
     An explicit `--aligner bwa-mem2` still stops before aligning (and before
     `realign` extracts FASTQs) when that estimate doesn't fit the RAM
     available, as bwa-mem2's own would.
@@ -192,8 +194,12 @@ the check, or is older than the oldest supported release, raises the
   `wgse-bwa` runs on the CPU. The batch size (`-K`) never changes.
   `wgse-bwa-mem2` is chosen only when
   bwa-mem2's own (CPU) memory estimate fits, so a GPU too small for its index
-  tables, where it finishes on the CPU, still fits; this keeps it off 16 GB and
-  smaller Macs.
+  tables, where it finishes on the CPU, still fits. Before 0.5.0 that estimate
+  counts the 6.2 GB `.0123` file (hs38), which keeps it off 16 GB and smaller
+  Macs; from 0.5.0 neither backend loads that file (10.9 GiB peak for 5M read
+  pairs on hs38 at `-K 10000000`, against 16.3 GiB for 0.4.1), so the estimate
+  and the explicit `--aligner bwa-mem2` memory check leave it out, and the
+  reference needs no `.0123` file for it.
 - **Provenance.** The `@PG` header names the binary that ran and its version
   (for example `VN:0.7.19-r1273-wgse-0.7.1`). The result manifest lists it under
   `tools` and records the `native_aligner`, `native_aligner_version` and

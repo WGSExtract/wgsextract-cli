@@ -454,6 +454,7 @@ def estimate_resources(
             "bwa": (".bwt", ".sa", ".pac", ".ann", ".amb"),
             "bwa-mem2": (".0123", ".bwt.2bit.64", ".pac", ".ann", ".amb"),
             "bwa-mem3": (".bwt.2bit.64", ".pac", ".ann", ".amb"),
+            "wgse-bwa-mem2": (".bwt.2bit.64", ".pac", ".ann", ".amb"),
         }
         if reference and aligner in index_suffixes:
             suffixes = index_suffixes[aligner]
