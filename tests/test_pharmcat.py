@@ -179,8 +179,9 @@ def pharmcat_env(monkeypatch):
 
 @needs_htslib
 def test_pharmcat_runs_its_pipeline_on_the_gene_regions_in_its_names(
-    tmp_path, pharmcat_env, caplog
+    tmp_path, pharmcat_env, monkeypatch, caplog
 ):
+    monkeypatch.setattr(runtime, "is_windows_host", lambda: False)
     release = _release(tmp_path / "pharmcat")
     vcf = _vcf(tmp_path / "HG002.hard-filtered.vcf.gz", SNPS)
     out = tmp_path / "out"
