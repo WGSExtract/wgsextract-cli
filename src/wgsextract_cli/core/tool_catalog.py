@@ -42,6 +42,7 @@ OPTIONAL_TOOLS = [
     "haplogrep3",
     "haplocheck",
     "htsfile",
+    "pharmcat_python",
     "cyrius",
     "run-t1k",
     "ExpansionHunter",
@@ -158,6 +159,9 @@ PIXI_TOOL_ENVS = {
     "cyrius_python": "cyrius",
 }
 
+
+# Interpreters only their own Pixi environment provides (its packages matter).
+ENV_ONLY_TOOLS = frozenset({"pharmcat_python", "cyrius_python"})
 
 TOOL_EXECUTABLE_ALIASES = {
     "pharmcat_python": ("python",),
