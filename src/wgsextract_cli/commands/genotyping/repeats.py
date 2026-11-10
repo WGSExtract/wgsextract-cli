@@ -1,9 +1,11 @@
-"""`typing str`: repeat expansions with ExpansionHunter.
+"""`typing str`: repeat expansions with ExpansionHunter, LongTR or STRkit.
 
 ExpansionHunter (Illumina; Apache-2.0) sizes the 31 disease-causing short
-tandem repeats of its shipped catalog (HTT, FMR1, C9ORF72, ...) from a WGS
-BAM/CRAM, including expansions longer than a read. Each allele is then put in
-STRchive's normal, intermediate or pathogenic range for its disease.
+tandem repeats of its shipped catalog (HTT, FMR1, C9ORF72, ...) from short
+reads, including expansions longer than a read. Nanopore and PacBio reads go
+to LongTR (or STRkit), which size the same repeats from reads that span them
+(long_read_repeats.py). Each allele is then put in STRchive's normal,
+intermediate or pathogenic range for its disease.
 """
 
 from __future__ import annotations
@@ -20,9 +22,20 @@ from wgsextract_cli.commands.info.metrics import sample_sex
 from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.results import current_result, warn
-from wgsextract_cli.core.utils import WGSExtractError, run_command
+from wgsextract_cli.core.sequencing import input_platform
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
+from wgsextract_cli.core.variant_files import get_bam_header
 
-from .common import Alignment, env_tool, open_alignment
+from . import long_read_repeats
+from .common import Alignment, RepeatCall, env_tool, open_alignment
+
+LONG_READ_PLATFORMS = ("ont", "pacbio")
+LONG_READ_CALLERS = ("longtr", "strkit")
+TOOL_NAMES = {
+    "expansionhunter": "ExpansionHunter",
+    "longtr": "LongTR",
+    "strkit": "STRkit",
+}
 
 
 @dataclass(frozen=True)
@@ -75,16 +88,6 @@ THRESHOLDS = {
 MOTIF_UNCHECKED = {"RFC1"}
 
 
-@dataclass(frozen=True)
-class RepeatCall:
-    variant_id: str
-    repeat_unit: str
-    region: str
-    alleles: tuple[int, ...]
-    intervals: tuple[tuple[int, int], ...]
-    coverage: float
-
-
 def parse_expansionhunter(json_path: str) -> list[RepeatCall]:
     with open(json_path) as f:
         loci = json.load(f).get("LocusResults", {})
@@ -115,8 +118,16 @@ def classify(call: RepeatCall, threshold: Threshold | None) -> str:
     """normal, intermediate, premutation, carrier or pathogenic (or "-" for a
     repeat without thresholds), with a note when an allele's confidence
     interval reaches the pathogenic range but its call doesn't."""
+    clipped = (
+        f" ({call.clipped_reads} reads clipped at the repeat: an expansion may "
+        "be longer than called)"
+        if call.clipped_reads
+        else ""
+    )
+    if not call.alleles:
+        return "no call" + clipped
     if threshold is None:
-        return "-"
+        return "-" + clipped
     expanded = sum(a >= threshold.pathogenic_min for a in call.alleles)
     recessive = threshold.inheritance == "AR" or (
         threshold.inheritance == "XR" and len(call.alleles) > 1
@@ -137,12 +148,14 @@ def classify(call: RepeatCall, threshold: Threshold | None) -> str:
         status = "normal"
     if status != "pathogenic" and any(
         allele < threshold.pathogenic_min <= high
-        for allele, (_low, high) in zip(call.alleles, call.intervals, strict=True)
+        for allele, (_low, high) in zip(
+            call.alleles, call.intervals or (), strict=False
+        )
     ):
         status += " (CI reaches pathogenic)"
     if expanded and call.variant_id in MOTIF_UNCHECKED:
         status = f"{status}-length expansion, motif unchecked"
-    return status
+    return status + clipped
 
 
 def _catalog(aln: Alignment, catalog: Path | None) -> str:
@@ -188,8 +201,10 @@ def _sex(aln: Alignment, sex: str | None) -> str:
 
 def _format_alleles(call: RepeatCall) -> tuple[str, str]:
     return (
-        "/".join(map(str, call.alleles)),
-        "/".join(f"{low}-{high}" for low, high in call.intervals),
+        "/".join(map(str, call.alleles)) or "-",
+        "/".join(f"{low}-{high}" for low, high in call.intervals)
+        if call.intervals
+        else "-",
     )
 
 
@@ -228,30 +243,47 @@ def write_summary(path: str, calls: list[RepeatCall]) -> list[tuple[str, str]]:
                 )
                 + "\n"
             )
-            if status not in ("normal", "-"):
+            if status not in ("normal", "-", "no call"):
                 flagged.append(
                     (
                         call.variant_id,
                         f"{call.variant_id} ({known.disease}, {known.inheritance}): "
-                        f"{call.repeat_unit} {genotype} [CI {ci}] {status}",
+                        f"{call.repeat_unit} {genotype}"
+                        + (f" [CI {ci}]" if call.intervals else "")
+                        + f" {status}",
                     )
                 )
     return flagged
 
 
-def run_str(params: TypingStrParams, *, debug: bool = False) -> None:
-    aln = open_alignment(params)
-    reference = aln.require_reference()
-    expansion_hunter = env_tool("ExpansionHunter", "expansionhunter")
-    catalog = _catalog(aln, params.catalog)
-    sex = _sex(aln, params.sex)
+def choose_caller(choice: str | None, platform: str | None) -> str:
+    """``choice``, else LongTR for Nanopore and PacBio reads and
+    ExpansionHunter for others."""
+    long_reads = platform in LONG_READ_PLATFORMS
+    if choice == "expansionhunter" and long_reads:
+        raise UsageError(
+            f"ExpansionHunter sizes repeats from short reads, and these are "
+            f"{platform} reads. Use --caller longtr or --caller strkit."
+        )
+    if choice in LONG_READ_CALLERS and platform and not long_reads:
+        raise UsageError(
+            f"{TOOL_NAMES[choice]} sizes repeats from Nanopore or PacBio reads, "
+            f"and these are {platform} reads. Use --caller expansionhunter."
+        )
+    return choice or ("longtr" if long_reads else "expansionhunter")
 
-    prefix = str(Path(aln.outdir, f"{aln.stem}.str"))
+
+def _run_expansionhunter(
+    aln: Alignment, reference: str, catalog: Path | None, sex: str, prefix: str,
+    debug: bool,
+) -> list[RepeatCall]:  # fmt: skip
+    expansion_hunter = env_tool("ExpansionHunter", "expansionhunter")
+    catalog_path = _catalog(aln, catalog)
     logging.info("Sizing repeat expansions with ExpansionHunter...")
     try:
         run_command(
             [*expansion_hunter, "--reads", aln.path, "--reference", reference,
-             "--variant-catalog", catalog, "--output-prefix", prefix,
+             "--variant-catalog", catalog_path, "--output-prefix", prefix,
              "--sex", sex, "--threads", aln.threads],
             capture_output=not debug,
         )  # fmt: skip
@@ -261,11 +293,60 @@ def run_str(params: TypingStrParams, *, debug: bool = False) -> None:
             f"ExpansionHunter failed (exit {e.returncode})"
             + (f": {detail[0]}" if detail else ".")
         ) from e
+    result = current_result()
+    result.add_output(f"{prefix}.vcf", "repeat_calls")
+    result.add_output(f"{prefix}.json", "expansionhunter_report")
+    return parse_expansionhunter(f"{prefix}.json")
 
-    calls = parse_expansionhunter(f"{prefix}.json")
+
+def _run_long_reads(
+    aln: Alignment, reference: str, caller: str, catalog: Path | None, sex: str,
+    prefix: str, platform: str | None,
+) -> list[RepeatCall]:  # fmt: skip
+    rows = long_read_repeats.catalog_rows(aln, caller, catalog)
+    result = current_result()
+    if caller == "longtr":
+        vcf = long_read_repeats.run_longtr(aln, reference, rows, sex, prefix)
+        result.add_output(vcf, "repeat_calls")
+        calls = long_read_repeats.parse_longtr(vcf)
+    else:
+        vcf, report = long_read_repeats.run_strkit(
+            aln, reference, rows, sex, prefix, platform
+        )
+        result.add_output(vcf, "repeat_calls")
+        result.add_output(report, "strkit_report")
+        calls = long_read_repeats.parse_strkit(report)
+    return long_read_repeats.with_clipped_reads(
+        aln, rows, calls, 1 if caller == "longtr" else 0
+    )
+
+
+def run_str(params: TypingStrParams, *, debug: bool = False) -> None:
+    aln = open_alignment(params)
+    reference = aln.require_reference()
+    platform = input_platform(aln.path, reference)
+    caller = choose_caller(params.caller, platform)
+    if caller == "longtr" and long_read_repeats.is_r9(get_bam_header(aln.path) or ""):
+        warn(
+            "r9_reads",
+            "These look like Nanopore R9.4.1 reads, and LongTR drops reads "
+            "below mean quality 30, which leaves most R9 loci uncalled. "
+            "--caller strkit handles R9 reads better.",
+        )
+    sex = _sex(aln, params.sex)
+    tool = TOOL_NAMES[caller]
+
+    prefix = str(Path(aln.outdir, f"{aln.stem}.str"))
+    if caller == "expansionhunter":
+        calls = _run_expansionhunter(aln, reference, params.catalog, sex, prefix, debug)
+    else:
+        calls = _run_long_reads(
+            aln, reference, caller, params.catalog, sex, prefix, platform
+        )
+
     summary = f"{prefix}.tsv"
     flagged = write_summary(summary, calls)
-    classified = sum(1 for c in calls if c.variant_id in THRESHOLDS)
+    classified = sum(1 for c in calls if c.variant_id in THRESHOLDS and c.alleles)
     logging.info(
         f"{classified - len(flagged)} of {classified} disease repeats are in the "
         "normal range."
@@ -273,22 +354,21 @@ def run_str(params: TypingStrParams, *, debug: bool = False) -> None:
     result = current_result()
     result.set_reference(reference)
     result.add_output(summary, "repeat_summary")
-    result.add_output(f"{prefix}.vcf", "repeat_calls")
-    result.add_output(f"{prefix}.json", "expansionhunter_report")
     result.add_metrics(
-        sex=sex, disease_repeats=classified, flagged_repeats=len(flagged)
+        sex=sex,
+        repeat_caller=caller,
+        disease_repeats=classified,
+        flagged_repeats=len(flagged),
     )
     for locus, line in flagged:
         logging.warning(f"  {line}")
         result.warn("repeat_outside_normal_range", line, locus=locus)
     if flagged:
         logging.warning(
-            "Short-read sizing is approximate and isn't a diagnosis; confirm "
+            "Repeat sizing from sequencing reads isn't a diagnosis; confirm "
             "anything outside the normal range with a clinical test."
         )
-    logging.info(
-        f"Repeat calls: {summary} (ExpansionHunter: {prefix}.vcf, {prefix}.json)"
-    )
+    logging.info(f"Repeat calls: {summary} ({tool}: {prefix}.*)")
 
 
 cmd_str = cli_handler(TypingStrParams, run_str, debug="debug")

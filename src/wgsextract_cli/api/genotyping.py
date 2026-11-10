@@ -8,9 +8,12 @@ Each writes ``<input stem>.*`` files in ``outdir``, else beside the input:
   Cyrius's PolyForm Strict license allows noncommercial use only.
 * ``hla``: HLA class I and II alleles with T1K (``.t1k_genotype.tsv``,
   ``.t1k_allele.tsv``/``.vcf``), from the optional ``t1k`` environment.
-* ``repeats`` (``typing str``): disease repeat expansions with ExpansionHunter
-  (``.str.tsv``/``.vcf``/``.json``), from the optional ``expansionhunter``
-  environment; needs ``ref``.
+* ``repeats`` (``typing str``): disease repeat expansions (``.str.tsv``), with
+  ExpansionHunter for short reads (``.str.vcf``/``.json``, optional
+  ``expansionhunter`` environment) or LongTR for Nanopore and PacBio reads
+  (``.str.vcf.gz``, ``longtr`` environment; STRkit's ``.str.vcf`` and
+  ``.str.strkit.json`` with ``caller="strkit"``, ``strkit`` environment);
+  needs ``ref``.
 
 ``cyp2d6`` and ``hla`` also write a PharmCAT outside-call file
 (``.cyp2d6.pharmcat.tsv``, ``.hla.pharmcat.tsv``) for ``vcf pharmcat
@@ -104,19 +107,29 @@ class TypingHlaParams(_TypingParams):
 
 @dataclass(frozen=True, kw_only=True)
 class TypingStrParams(_TypingParams):
-    """Size the disease short tandem repeats (HTT, FMR1, C9ORF72, ...) with
-    ExpansionHunter and flag those outside the normal range. Short-read
-    sizing is approximate and isn't a diagnosis. Metrics: ``sex``,
-    ``disease_repeats`` and ``flagged_repeats``; each flagged repeat is also a
-    ``repeat_outside_normal_range`` warning."""
+    """Size the disease short tandem repeats (HTT, FMR1, C9ORF72, ...) and
+    flag those outside the normal range: with ExpansionHunter for short reads,
+    and LongTR (or STRkit) for Nanopore and PacBio reads, chosen by the reads'
+    platform. Sizing from reads isn't a diagnosis. Metrics: ``sex``,
+    ``repeat_caller``, ``disease_repeats`` and ``flagged_repeats``; each
+    flagged repeat is also a ``repeat_outside_normal_range`` warning."""
 
     COMMAND = "typing str"
 
+    caller: str | None = param(
+        None,
+        help="Repeat caller (default: longtr for Nanopore and PacBio reads, "
+        "expansionhunter for others). strkit suits Nanopore R9 reads and very "
+        "long alleles.",
+        choices=("expansionhunter", "longtr", "strkit"),
+    )
     catalog: Path | None = param(
         None,
-        help="ExpansionHunter variant catalog. Default: the one it ships for the "
-        "input's build.",
-        metavar="JSON",
+        help="Repeat catalog in the caller's format: an ExpansionHunter variant "
+        "catalog (JSON) or a LongTR or STRkit BED. Default: ExpansionHunter's "
+        "shipped catalog for the input's build, or its repeats bundled for "
+        "LongTR and STRkit.",
+        metavar="FILE",
         path="file",
     )
     sex: str | None = param(
@@ -160,8 +173,8 @@ def repeats(
     cancel: CancelToken | None = None,
     check: bool = True,
 ) -> CommandResult:
-    """Size disease repeats with ExpansionHunter (``typing str``; see
-    ``TypingStrParams``)."""
+    """Size disease repeats with ExpansionHunter, LongTR or STRkit (``typing
+    str``; see ``TypingStrParams``)."""
     from wgsextract_cli.commands.genotyping.repeats import run_str
 
     return execute(params, run_str, progress=progress, cancel=cancel, check=check)

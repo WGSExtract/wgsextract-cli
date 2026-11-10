@@ -2082,9 +2082,12 @@ Each writes `<input stem>.*` files in `outdir`, else beside the input:
   Cyrius's PolyForm Strict license allows noncommercial use only.
 * `hla`: HLA class I and II alleles with T1K (`.t1k_genotype.tsv`,
   `.t1k_allele.tsv`/`.vcf`), from the optional `t1k` environment.
-* `repeats` (`typing str`): disease repeat expansions with ExpansionHunter
-  (`.str.tsv`/`.vcf`/`.json`), from the optional `expansionhunter`
-  environment; needs `ref`.
+* `repeats` (`typing str`): disease repeat expansions (`.str.tsv`), with
+  ExpansionHunter for short reads (`.str.vcf`/`.json`, optional
+  `expansionhunter` environment) or LongTR for Nanopore and PacBio reads
+  (`.str.vcf.gz`, `longtr` environment; STRkit's `.str.vcf` and
+  `.str.strkit.json` with `caller="strkit"`, `strkit` environment);
+  needs `ref`.
 
 `cyp2d6` and `hla` also write a PharmCAT outside-call file
 (`.cyp2d6.pharmcat.tsv`, `.hla.pharmcat.tsv`) for `vcf pharmcat
@@ -2135,14 +2138,15 @@ confident call) and the IPD-IMGT/HLA release of the index
 
 CLI: `wgsextract typing str`.
 
-Size disease repeats with ExpansionHunter (`typing str`; see
-`TypingStrParams`).
+Size disease repeats with ExpansionHunter, LongTR or STRkit (`typing
+str`; see `TypingStrParams`).
 
-`TypingStrParams`: Size the disease short tandem repeats (HTT, FMR1, C9ORF72, ...) with
-ExpansionHunter and flag those outside the normal range. Short-read
-sizing is approximate and isn't a diagnosis. Metrics: `sex`,
-`disease_repeats` and `flagged_repeats`; each flagged repeat is also a
-`repeat_outside_normal_range` warning.
+`TypingStrParams`: Size the disease short tandem repeats (HTT, FMR1, C9ORF72, ...) and
+flag those outside the normal range: with ExpansionHunter for short reads,
+and LongTR (or STRkit) for Nanopore and PacBio reads, chosen by the reads'
+platform. Sizing from reads isn't a diagnosis. Metrics: `sex`,
+`repeat_caller`, `disease_repeats` and `flagged_repeats`; each
+flagged repeat is also a `repeat_outside_normal_range` warning.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -2150,7 +2154,8 @@ sizing is approximate and isn't a diagnosis. Metrics: `sex`,
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `catalog` | `Path \| None` | `None` | `--catalog` | ExpansionHunter variant catalog. Default: the one it ships for the input's build. |
+| `caller` | `str \| None` | `None` | `--caller` | Repeat caller (default: longtr for Nanopore and PacBio reads, expansionhunter for others). strkit suits Nanopore R9 reads and very long alleles. One of: `expansionhunter`, `longtr`, `strkit` |
+| `catalog` | `Path \| None` | `None` | `--catalog` | Repeat catalog in the caller's format: an ExpansionHunter variant catalog (JSON) or a LongTR or STRkit BED. Default: ExpansionHunter's shipped catalog for the input's build, or its repeats bundled for LongTR and STRkit. |
 | `sex` | `str \| None` | `None` | `--sex` | Sample sex (the number of chrX alleles). Default: inferred from chrX/chrY coverage. One of: `male`, `female` |
 
 ## `api.report`

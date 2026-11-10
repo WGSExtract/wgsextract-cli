@@ -135,6 +135,21 @@ def open_alignment(
     return aln
 
 
+@dataclass(frozen=True)
+class RepeatCall:
+    """A `typing str` call: repeat units per allele (none for a no-call),
+    with each allele's confidence interval when the caller gives one, and the
+    reads clipped at the repeat when they suggest an unsized expansion."""
+
+    variant_id: str
+    repeat_unit: str
+    region: str
+    alleles: tuple[int, ...]
+    intervals: tuple[tuple[int, int], ...] | None
+    coverage: float
+    clipped_reads: int = 0
+
+
 def env_tool(tool: str, env: str, note: str = "") -> list[str]:
     """Command running `tool` from its optional Pixi environment."""
     command = pixi_env_tool(tool)

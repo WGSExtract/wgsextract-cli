@@ -124,6 +124,25 @@ t1k = ">=1.0.10,<2"
 [feature.expansionhunter.target.unix.dependencies]
 expansionhunter = ">=5.0.0,<6"
 
+# Long-read repeat sizing (`typing str` on Nanopore and PacBio reads): LongTR
+# by default, STRkit with --caller strkit. Opt-in environments the CLI runs
+# automatically; Bioconda builds LongTR for Linux and macOS, and STRkit is
+# pure Python from PyPI with a Rust extension built for Linux and macOS.
+[feature.longtr]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
+
+[feature.longtr.dependencies]
+longtr = ">=1.2,<2"
+
+[feature.strkit]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
+
+[feature.strkit.dependencies]
+python = "3.13.*"
+
+[feature.strkit.pypi-dependencies]
+strkit = "==0.25.0"
+
 [feature.pacbio.dependencies]
 python = "3.13.*"
 
@@ -316,6 +335,8 @@ gatk = { features = ["gatk"], no-default-feature = true }
 freebayes = { features = ["freebayes"], no-default-feature = true }
 t1k = { features = ["t1k"], no-default-feature = true }
 expansionhunter = { features = ["expansionhunter"], no-default-feature = true }
+longtr = { features = ["longtr"], no-default-feature = true }
+strkit = { features = ["strkit"], no-default-feature = true }
 pacbio = { features = ["bio-tools", "pacbio"], no-default-feature = true, solve-group = "pacbio-unix" }
 vep = { features = ["vep"], no-default-feature = true }
 pharmcat = { features = ["pharmcat"], no-default-feature = true }
