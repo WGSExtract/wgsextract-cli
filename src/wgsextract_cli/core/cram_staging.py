@@ -4,7 +4,7 @@ Temporary CRAM 3.0 copies are for tools whose own htslib can't read CRAM 3.1.
 
 Old htscodecs (before 1.5.2, bundled with htslib before 1.19) has an SSE4 rANS
 decoder bug that fails on valid CRAM 3.1 blocks. Tools that ship or statically
-link such an htslib (DeepVariant's x86-64 images, Clair3's libclair3) get a
+link such an htslib (DeepVariant's x86-64 images, Clair3's libclair3 before 2.0.5) get a
 CRAM 3.0 copy instead; the host samtools decodes the original correctly.
 Tools that take no reference (pbsv) get a BAM copy, so their htslib never
 looks the reference up by itself (#636).

@@ -502,7 +502,7 @@
 "controls.vcf.v066.sv-tandem-repeats.label" = "Tandem-repeat BED (optional)"
 "controls.vcf.v066.sv-tandem-repeats.tooltip" = "Optional BED for long-read SV callers, which improves calls in repeats. Blank sends nothing."
 "sections.vcf.v066.clair3.title" = "Clair3 Small Variants (Optional)"
-"sections.vcf.v066.clair3.subtitle" = "Optional Nanopore caller, qualified on Linux x86-64 only; macOS and ARM are refused. It is not installed by setup: run pixi install -e clair3 in the WGS Extract runtime. DeepVariant stays the default Nanopore caller."
+"sections.vcf.v066.clair3.subtitle" = "Optional Nanopore caller: Clair3 2.0.5 on Linux (x86-64, ARM64) and Apple Silicon Macs; not on Windows or Intel Macs. It is not installed by setup: run pixi install -e clair3 in the WGS Extract runtime. DeepVariant stays the default Nanopore caller."
 "controls.vcf.v066.clair3-model.label" = "Clair3 model (optional)"
 "controls.vcf.v066.clair3-model.placeholder" = "r1041_e82_400bps_sup_v500"
 "controls.vcf.v066.clair3-model.tooltip" = "Model name or directory matching the reads' basecaller. Blank uses clair3_model from config.toml, then the basecaller named in the BAM/CRAM header; if neither names one, the run stops and asks for a model. HiFi, Illumina and *_with_mv models are refused."

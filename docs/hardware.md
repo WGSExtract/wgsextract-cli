@@ -223,6 +223,9 @@ The builds are `macos-aligners-N` prerelease assets; see
 command, and a whole genome from `realign` to `report`, on the smallest Apple
 Silicon Mac.
 
+`vcf clair3` runs on Apple Silicon on the CPU only: Clair3 2.0.5 has no Metal
+(MPS) path; see [docs/ont.md](ont.md#clair3-optional).
+
 ## Other GPUs
 
 WGS Extract has no GPU alignment for AMD (ROCm) or Intel (oneAPI) GPUs: we know
