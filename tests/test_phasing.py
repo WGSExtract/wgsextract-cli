@@ -245,8 +245,8 @@ def test_longphase_phases_and_tags_from_paths_with_spaces(
 @needs_htslib
 def test_longphase_links_go_in_the_chosen_temp_dir(aligned, tmp_path, monkeypatch):
     """#632/#633: a system temp folder with a space must not stop a run whose
-    chosen temporary directory has none; without one, the error says how to
-    choose it."""
+    paths have none, or whose chosen temporary directory has none; otherwise
+    the error says how to choose one."""
     bam, ref = aligned
     spaced_tmp = tmp_path / "Temp Files"
     spaced_tmp.mkdir()
@@ -258,6 +258,10 @@ def test_longphase_links_go_in_the_chosen_temp_dir(aligned, tmp_path, monkeypatc
     shutil.copy(bam, reads)
     _run("samtools", "index", str(reads))
 
+    # Space-free paths need no links, so the temp folder doesn't matter.
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert _phase(aligned, plain, phaser="longphase").metrics["phased_variants"] > 0
     with pytest.raises(api.CommandFailed, match="--tmp-dir"):
         _phase((reads, ref), home / "first", phaser="longphase")
     chosen = tmp_path / "chosen_tmp"

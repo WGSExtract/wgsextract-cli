@@ -33,12 +33,14 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
+from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.results import Scalar, current_result, warn
 from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.space_free_paths import (
     READS_INDEXES,
     REFERENCE_INDEXES,
     VCF_INDEXES,
+    has_space,
     restore_paths,
     space_free_folder,
     space_free_link,
@@ -262,6 +264,9 @@ def longphase_paths(
 ) -> Iterator[tuple[str, str, str, str]]:
     """Space-free links to the VCF, reads, reference and work folder: LongPhase
     splits its path options at spaces (#632)."""
+    if not any(has_space(absolute_path(p)) for p in (vcf, reads, ref, work)):
+        yield vcf, reads, ref, work
+        return
     with space_free_folder("LongPhase") as links:
         yield (
             space_free_link(vcf, links / "input.vcf.gz", VCF_INDEXES),
@@ -502,7 +507,13 @@ def _restore_cram_header(
     fixed = str(Path(work, "header.sam"))
     with open(fixed, "w", newline="\n") as f:
         f.write(restore_paths(header, links, paths))
-    run_command(["samtools", "reheader", "-i", fixed, cram])
+    # In place when the new header fits the CRAM's header container; else a
+    # rewritten copy (reheader -i fails, leaving the CRAM unchanged).
+    if run_command(["samtools", "reheader", "-i", fixed, cram], check=False).returncode:
+        copy = str(Path(work, "reheadered.cram"))
+        with open(copy, "wb") as out:
+            run_command(["samtools", "reheader", fixed, cram], stdout=out)
+        Path(copy).replace(cram)
 
 
 def haplotag(

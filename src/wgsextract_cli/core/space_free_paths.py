@@ -51,7 +51,7 @@ def space_free_link(target: PathInput, link: Path, indexes: Sequence[str] = ()) 
     link.symlink_to(path.absolute(), target_is_directory=path.is_dir())
     for ext in indexes:
         candidates = [Path(f"{path}{ext}")]
-        if ext in READS_INDEXES and path.suffix in (".bam", ".cram"):
+        if ext in READS_INDEXES and path.suffix.lower() in (".bam", ".cram"):
             candidates.append(path.with_suffix(ext))
         for index in candidates:
             if index.is_file():
