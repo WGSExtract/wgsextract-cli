@@ -138,8 +138,9 @@ def open_alignment(
 @dataclass(frozen=True)
 class RepeatCall:
     """A `typing str` call: repeat units per allele (none for a no-call),
-    with each allele's confidence interval when the caller gives one, and the
-    reads clipped at the repeat when they suggest an unsized expansion."""
+    with each allele's confidence interval and supporting reads when the
+    caller gives them, and the reads clipped at the repeat when they suggest
+    an unsized expansion."""
 
     variant_id: str
     repeat_unit: str
@@ -148,6 +149,7 @@ class RepeatCall:
     intervals: tuple[tuple[int, int], ...] | None
     coverage: float
     clipped_reads: int = 0
+    allele_reads: tuple[int, ...] | None = None
 
 
 def env_tool(tool: str, env: str, note: str = "") -> list[str]:

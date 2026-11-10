@@ -18,3 +18,6 @@ src/wgsextract_cli/assets/microarray/chm13/v1/* -text
 
 # Patches for upstream sources keep their exact bytes (some upstream files are CRLF).
 packaging/windows/recipes/**/*.patch -text -whitespace
+
+# Bundled catalogs are pinned by SHA-256 (provenance.json).
+src/wgsextract_cli/commands/genotyping/str_catalog/* text eol=lf

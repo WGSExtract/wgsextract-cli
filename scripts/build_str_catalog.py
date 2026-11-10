@@ -17,10 +17,15 @@ per VariantId, flanking repeats included), the script takes
    plain bases and not rotations of the unit (RFC1's AAGGG, ACAGG, ...), after
    ExpansionHunter's repeat unit, with IUPAC codes resolved by
    MOTIF_OVERRIDES. The first motif is the one whose length counts the repeat.
+   STRchive motifs on the other strand (rotations of the unit's reverse
+   complement) are left out: NIPA1's region is inverted between GRCh37 and
+   GRCh38, so its reference reads (CGC)n on hg19 and (GCG)n on hg38, and
+   STRchive's hg19 catalog carries over the hg38 strand's CGG.
 
 It writes, per build, ``<build>.longtr.bed`` (LongTR's 1-based start, end,
 comma-separated motifs, name) and ``<build>.strkit.bed`` (0-based BED with
-``ID=...;MOTIF=...``), plus provenance.json.
+``ID=...;MOTIF=...``, the motifs merged into one IUPAC motif), plus
+provenance.json.
 """
 
 from __future__ import annotations
@@ -84,6 +89,27 @@ def fetch(name: str, cache: Path) -> bytes:
     return data
 
 
+def _revcomp(motif: str) -> str:
+    return motif[::-1].translate(str.maketrans("ACGT", "TGCA"))
+
+
+_IUPAC = {
+    frozenset(bases): code
+    for code, bases in {
+        "A": "A", "C": "C", "G": "G", "T": "T", "R": "AG", "Y": "CT", "S": "CG",
+        "W": "AT", "K": "GT", "M": "AC", "B": "CGT", "D": "AGT", "H": "ACT",
+        "V": "ACG", "N": "ACGT",
+    }.items()
+}  # fmt: skip
+
+
+def iupac(motifs: list[str]) -> str:
+    """One motif matching every one of ``motifs`` (of equal length), for
+    STRkit, which takes a single motif per locus but reads IUPAC codes:
+    RFC1's AAAAG, AAGGG, ACAGG, ... become MMRRG."""
+    return "".join(_IUPAC[frozenset(column)] for column in zip(*motifs, strict=True))
+
+
 def _plain(motifs: list[str]) -> bool:
     return all(re.fullmatch("[ACGT]+", motif) for motif in motifs)
 
@@ -110,7 +136,9 @@ def build(build_name: str, cache: Path) -> list[tuple[str, int, int, list[str], 
                 if _plain(extra):
                     motifs += [
                         m for m in extra
-                        if len(m) == len(unit) and m not in (unit * 2)
+                        if len(m) == len(unit)
+                        and m not in unit * 2
+                        and _revcomp(m) not in unit * 2
                     ]  # fmt: skip
             if not _plain(motifs):
                 raise SystemExit(f"{variant_id}: motif {unit} needs an override")
@@ -130,7 +158,7 @@ def main() -> None:
                 f.write(f"{chrom}\t{start + 1}\t{end}\t{','.join(motifs)}\t{name}\n")
         with open(OUT / f"{build_name}.strkit.bed", "w", newline="\n") as f:
             for chrom, start, end, motifs, name in rows:
-                f.write(f"{chrom}\t{start}\t{end}\tID={name};MOTIF={motifs[0]}\n")
+                f.write(f"{chrom}\t{start}\t{end}\tID={name};MOTIF={iupac(motifs)}\n")
     provenance = {
         "generator": "scripts/build_str_catalog.py",
         "sources": SOURCES,

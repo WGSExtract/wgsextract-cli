@@ -41,7 +41,18 @@ def catalog_rows(aln: Alignment, caller: str, catalog: Path | None) -> list[str]
         path = expand_path(catalog)
         if not Path(path).is_file():
             raise WGSExtractError(f"Repeat catalog not found: {path}")
-        return Path(path).read_text().splitlines()
+        rows = [
+            line
+            for line in Path(path).read_text().splitlines()
+            if line.strip() and not line.startswith(("#", "track", "browser"))
+        ]
+        for line in rows:
+            if len(line.split("\t")) < 4:
+                raise WGSExtractError(
+                    f"Repeat catalog {path}: expected tab-separated contig, "
+                    f"start, end and motif or ID=...;MOTIF=... columns: {line!r}"
+                )
+        return rows
     text = CATALOG.joinpath(f"{aln.build}.{caller}.bed").read_text()
     rows = []
     for line in text.splitlines():
@@ -57,6 +68,17 @@ CLIP_WINDOW = 50
 CLIPPED_READS_MIN = 3
 CLIPPED_FRACTION_MIN = 0.05
 _CIGAR = re.compile(r"(\d+)([MIDNSHP=X])")
+
+
+def _clip(ops: list[tuple[int, str]]) -> int:
+    """Bases clipped at the end ``ops`` starts from (hard and soft together,
+    as in 10H100S)."""
+    total = 0
+    for n, op in ops:
+        if op not in "SH":
+            break
+        total += n
+    return total
 
 
 def clipped_reads(aln: Alignment, chrom: str, start: int, end: int) -> int:
@@ -78,10 +100,9 @@ def clipped_reads(aln: Alignment, chrom: str, start: int, end: int) -> int:
         left = int(fields[3]) - 1
         right = left + sum(n for n, op in ops if op in "MDN=X")
         if any(
-            op in "SH"
-            and n >= CLIP_MIN
+            _clip(end_ops) >= CLIP_MIN
             and start - CLIP_WINDOW <= at <= end + CLIP_WINDOW
-            for (n, op), at in ((ops[0], left), (ops[-1], right))
+            for end_ops, at in ((ops, left), (ops[::-1], right))
         ):
             clipped += 1
     if clipped >= CLIPPED_READS_MIN and clipped >= CLIPPED_FRACTION_MIN * reads:
@@ -138,6 +159,7 @@ def run_longtr(
         )
     haploid = [aln.contig("Y")] + ([aln.contig("X")] if sex == "male" else [])
     output = f"{prefix}.vcf.gz"
+    label = aln.stem.replace(",", "_")  # LongTR splits these at commas.
     workers = max(1, min(int(aln.threads), len(chroms)))
     with tempfile.TemporaryDirectory(prefix=".longtr_", dir=aln.outdir) as work:
         regions = Path(work, "regions.bed")
@@ -152,7 +174,7 @@ def run_longtr(
                 run_command(
                     [*longtr, "--bam-files", bams, "--fasta", reference,
                      "--regions", regions, "--tr-vcf", vcf, "--chrom", chrom,
-                     "--bam-samps", aln.stem, "--bam-libs", aln.stem,
+                     "--bam-samps", label, "--bam-libs", label,
                      "--haploid-chrs", ",".join(haploid), "--quiet"],
                     capture_output=True,
                 )  # fmt: skip
@@ -194,17 +216,27 @@ def parse_longtr(vcf: str) -> list[RepeatCall]:
                 continue
             start, end, period = (int(info[k]) for k in ("START", "END", "PERIOD"))
             length = end - start + 1
-            alleles = tuple(
-                sorted(round((length + int(d)) / period) for d in re.split("[|/]", gb))
-            )
+            diffs = sorted(int(d) for d in re.split("[|/]", gb))
+            # MALLREADS: each read's most likely bp difference, as diff|reads.
+            reads_at = {
+                int(diff): int(n)
+                for diff, n in (
+                    item.split("|")
+                    for item in sample.get("MALLREADS", "").split(";")
+                    if "|" in item
+                )
+            }
             calls.append(
                 RepeatCall(
                     variant_id=fields[2],
                     repeat_unit=info["MOTIF"].split(",")[0],
                     region=f"{fields[0]}:{start - 1}-{end}",
-                    alleles=alleles,
+                    alleles=tuple(round((length + d) / period) for d in diffs),
                     intervals=None,
                     coverage=float(sample.get("DP") or 0),
+                    allele_reads=tuple(reads_at.get(d, 0) for d in diffs)
+                    if reads_at
+                    else None,
                 )
             )
     return calls
@@ -250,6 +282,10 @@ def parse_strkit(report: str) -> list[RepeatCall]:
         call, cis = locus.get("call"), locus.get("call_95_cis")
         if not call or None in call:
             continue
+        # One peak for a homozygous call: both alleles share its reads.
+        peak_reads = (locus.get("peaks") or {}).get("n_reads") or []
+        if len(peak_reads) == 1:
+            peak_reads = peak_reads * len(call)
         calls.append(
             RepeatCall(
                 variant_id=locus["locus_id"],
@@ -258,6 +294,9 @@ def parse_strkit(report: str) -> list[RepeatCall]:
                 alleles=tuple(int(a) for a in call),
                 intervals=tuple((int(lo), int(hi)) for lo, hi in cis) if cis else None,
                 coverage=float(len(locus.get("reads") or {})),
+                allele_reads=tuple(int(n) for n in peak_reads)
+                if len(peak_reads) == len(call)
+                else None,
             )
         )
     return calls

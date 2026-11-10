@@ -450,7 +450,7 @@ LongPhase would take about 40 minutes on 4 cores.
 ## Repeat expansions
 
 `typing str` sizes the disease repeats of ExpansionHunter's catalog (HTT,
-FMR1, C9ORF72, ... 31 in all) and puts each allele in
+FMR1, C9ORF72, ... 31 on hg38, 30 on hg19) and puts each allele in
 [STRchive](https://strchive.org)'s normal, intermediate or pathogenic range.
 Nanopore and PacBio reads go to [LongTR](https://github.com/gymrek-lab/LongTR)
 (GPL-2.0 in its repository, BSD-2-Clause on Bioconda), short reads to
@@ -464,7 +464,8 @@ wgsextract typing str --input sample.cram --ref hs38.fa.gz
 
 - The output contract is the same for every caller: `<stem>.str.tsv` with one
   row per repeat, a `repeat_outside_normal_range` warning per flagged repeat
-  and the `repeat_caller` metric. LongTR writes `<stem>.str.vcf.gz`; STRkit
+  and the `repeat_caller` metric. GRCh37 has no NOTCH2NLC, so on hg19 its
+  row reads "not available on hg19" with a `repeat_unavailable` warning. LongTR writes `<stem>.str.vcf.gz`; STRkit
   `<stem>.str.vcf` and `<stem>.str.strkit.json`. LongTR gives no confidence
   interval, so its `ci` column is `-`.
 - The bundled catalog (`commands/genotyping/str_catalog/`, rebuilt by
@@ -472,7 +473,16 @@ wgsextract typing str --input sample.cram --ref hs38.fa.gz
   so counts are in the units of the STRchive thresholds, with STRchive's
   extra motifs (RFC1's AAGGG, ACAGG, ...). Its sources are pinned by commit
   and SHA-256 in `provenance.json`: ExpansionHunter v5.0.0 (Apache-2.0) and
-  STRchive v2.28.0 (MIT).
+  STRchive v2.28.0 (MIT). NIPA1's motif is CGC on hg19 and GCG on hg38:
+  GRCh38 inverted its region, and the motif follows the reference strand.
+- The `allele_reads` column has each allele's reads (LongTR's MALLREADS,
+  STRkit's peaks). An allele from a single read, under 10% of the repeat's
+  reads, is "low support": LongTR makes such alleles (HG002's DMPK 11/19,
+  truth 11/11). It doesn't count towards the status; when it alone would
+  change it, the status adds "unconfirmed: one read suggests ..." with a
+  `repeat_unconfirmed` warning. The limits are low because true expansions
+  are thinly read: on the PureTarget set below, STRkit read a 1.2 kb DMPK
+  expansion in 2 of 247 reads, and LongTR an FXN one in 1 of 1.
 - LongTR has no threads; `--threads` runs chromosomes in parallel. It drops
   reads below mean base quality 30, which leaves most ONT R9.4.1 loci
   uncalled; R9 reads (named in the header) get an `r9_reads` warning

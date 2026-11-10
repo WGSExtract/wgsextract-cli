@@ -27,9 +27,9 @@
     }
   },
   "files": {
-    "hg19.longtr.bed": "1d14ba493b9f652509877dcd75df8202fa27bdefa642d3af162966e72fad82bc",
-    "hg19.strkit.bed": "3dea70da5ef92847738c941f1f2c1820d2269a45916fbc68e5b50d2a9fe25ff1",
+    "hg19.longtr.bed": "830dc6fb087f2b242280fb3f1beed38aabb41a16d95d25c64c1abb50072b86a0",
+    "hg19.strkit.bed": "35b1e508506ff9a0cceec5798c7cc4c69c5695a5b900c08fd30a7dfecf1b2336",
     "hg38.longtr.bed": "d7f49b4b237a94fc32dd5a2db52feb4193d2445d324f9c9ca35e8585fe1fb213",
-    "hg38.strkit.bed": "fe30e6a98848ddb227d885ab067210cf3134cdecc0f792e5be6cf2392266e507"
+    "hg38.strkit.bed": "441bd151ea560078b7a194c1428125176f93e0ae568979e084e0535f6ca293b3"
   }
 }

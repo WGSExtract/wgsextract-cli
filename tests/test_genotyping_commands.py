@@ -18,7 +18,7 @@ from wgsextract_cli.commands.genotyping import common, hla, repeats
 from wgsextract_cli.commands.info.metrics import SEX_INFERENCE_VERSION
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.personal_report import build_report
-from wgsextract_cli.core.pixi_tools import _join_command
+from wgsextract_cli.core.pixi_tools import _join_command, pixi_env_prefix
 from wgsextract_cli.core.utils import WGSExtractError
 from wgsextract_cli.core.variant_files import calculate_bam_md5
 from wgsextract_cli.main import main
@@ -906,14 +906,14 @@ def test_str_sizes_repeats_and_flags_those_outside_the_normal_range(
     table = {row[0]: row[1:] for row in rows[1:]}
     assert table == {
         "ATXN8OS": ["SCA8", "AD", "CTG", "15/22", "15-15/22-22", "50", "71",
-                    "normal", "31.0"],
+                    "normal", "31.0", "-"],
         "C9ORF72": ["FTD/ALS", "AD", "GGCCCC", "2/8", "2-2/8-35", "23", "31",
-                    "normal (CI reaches pathogenic)", "29.0"],
-        "DIP2B": ["-", "-", "GGC", "7/9", "7-7/9-9", "-", "-", "-", "30.1"],
+                    "normal (CI reaches pathogenic)", "29.0", "-"],
+        "DIP2B": ["-", "-", "GGC", "7/9", "7-7/9-9", "-", "-", "-", "30.1", "-"],
         "FMR1": ["Fragile X", "XD", "GGC", "30", "30-30", "44", "201", "normal",
-                 "15.7"],
+                 "15.7", "-"],
         "HTT": ["Huntington disease", "AD", "CAG", "19/42", "19-19/39-45", "26",
-                "36", "pathogenic", "34.2"],
+                "36", "pathogenic", "34.2", "-"],
     }  # fmt: skip
     assert "2 of 4 disease repeats are in the normal range." in caplog.text
     assert (
@@ -940,6 +940,28 @@ def test_str_all_normal_has_no_warnings(tmp_path, eh, caplog):
                    "--catalog", str(eh.catalog), "--sex", "female")  # fmt: skip
     assert "1 of 1 disease repeats are in the normal range." in caplog.text
     assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+@pytest.mark.skipif(
+    not pixi_env_prefix("expansionhunter"), reason="pixi install -e expansionhunter"
+)
+def test_str_on_hg19_says_notch2nlc_is_unavailable(tmp_path, eh):
+    """#643 review: ExpansionHunter's hg19 catalog (and the bundled long-read
+    one) lack NOTCH2NLC, which GRCh37 doesn't hold."""
+    hg19 = {**HG38, "chr1": 249_250_621}
+    path = bam(tmp_path / "in" / "s.bam", _sex_reads(4, 0), contigs=hg19)
+    result = api.genotyping.repeats(
+        api.TypingStrParams(input=Path(path), ref=eh.ref, sex="female",
+                            outdir=tmp_path / "out", threads=1)
+    )  # fmt: skip
+    rows = {
+        line.split("\t")[0]: line.split("\t")
+        for line in (tmp_path / "out" / "s.str.tsv").read_text().splitlines()
+    }
+    assert rows["NOTCH2NL"][8].startswith("not available on hg19")
+    assert ("repeat_unavailable", "NOTCH2NL") in {
+        (w.code, w.details.get("locus")) for w in result.warnings
+    }
 
 
 @pytest.mark.parametrize(

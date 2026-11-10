@@ -2146,7 +2146,9 @@ flag those outside the normal range: with ExpansionHunter for short reads,
 and LongTR (or STRkit) for Nanopore and PacBio reads, chosen by the reads'
 platform. Sizing from reads isn't a diagnosis. Metrics: `sex`,
 `repeat_caller`, `disease_repeats` and `flagged_repeats`; each
-flagged repeat is also a `repeat_outside_normal_range` warning.
+flagged repeat is also a `repeat_outside_normal_range` warning (or
+`repeat_unconfirmed` when only a one-read allele flags it, and
+`repeat_unavailable` for NOTCH2NLC on hg19).
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
