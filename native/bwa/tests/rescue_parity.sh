@@ -171,7 +171,7 @@ awk 'BEGIN {
     split("1 18 19 20 31 32 33 76 151 250 511 900", lengths, " ")
     for (r = 1; r <= 3000; ++r) {
         n = lengths[1 + r % 12]
-        # Longer than ksw_extend2()'s NEON limit (4096).
+        # Longer than the NEON ksw_extend2 limit (4096 bp).
         if (r % 250 == 0) n = 5000
         start = r % 4 == 0 ? 39000 + int(rand() * 6000) : 1 + int(rand() * (length(ref) - n))
         seq = substr(ref, start, n)
