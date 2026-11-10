@@ -476,12 +476,29 @@ def _ancestry(
 
 
 def _recorded_sex(item: Input) -> str | None:
-    """The sex in effect for a BAM/CRAM: override, recorded or from its reads."""
+    """The sex in effect for a BAM/CRAM: override or recorded, else (as other
+    commands do) from a BAM's read counts. Counting a CRAM's reads takes
+    minutes on a 30x genome, so for a CRAM only a known sex or `info`'s
+    cached call is used."""
     if item.kind != "alignment":
         return None
-    from wgsextract_cli.commands.info.metrics import sample_sex
+    from wgsextract_cli.commands.info.metrics import (
+        SEX_INFERENCE_VERSION,
+        cached_info,
+        sample_sex,
+    )
 
-    sex = sample_sex(item.path)
+    if item.path.lower().endswith(".cram"):
+        fact = sample_workspace.known("sex", item.path)
+        info = cached_info(item.path)
+        if fact is not None:
+            sex = str(fact.value)
+        elif info and info.get("sex_inference_version") == SEX_INFERENCE_VERSION:
+            sex = str(info["gender"])
+        else:
+            return None
+    else:
+        sex = sample_sex(item.path)
     return sex if sex in sample_workspace.SEXES else None
 
 

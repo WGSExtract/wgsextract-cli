@@ -60,7 +60,7 @@ In `--outdir`, else beside the first input:
 
 | Code | Meaning |
 | :--- | :--- |
-| `sex_mismatch` | somalier's sex disagrees with the sex recorded for the file (your override, or chrX/chrY read counts) |
+| `sex_mismatch` | somalier's sex disagrees with the sex recorded for the file: your override, a sex detected earlier, or for a BAM its chrX/chrY read counts (a CRAM is compared only once `info` or another command has recorded its sex) |
 | `same_person` | Two inputs are the same person |
 | `relationship_mismatch` | With `--ped`: a pair is more than 0.1 away from the relatedness the pedigree implies, for example a swapped file |
 | `ped_sex_mismatch` | With `--ped`: a sample's sex disagrees with the pedigree |
