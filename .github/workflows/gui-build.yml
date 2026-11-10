@@ -16,13 +16,11 @@ on:
         required: false
         type: string
         default: ""
-      exclude:
-        description: >-
-          A JSON list of matrix entries to skip, such as
-          [{"artifact_name": "tauri-macos-x64"}]
+      targets:
+        description: A JSON list of the installers to build, by artifact name.
         required: false
         type: string
-        default: "[]"
+        default: '["tauri-linux", "tauri-macos-arm64", "tauri-macos-x64", "tauri-windows"]'
 
 permissions:
   contents: read
@@ -30,26 +28,12 @@ permissions:
 jobs:
   tauri:
     name: Tauri (${{ matrix.artifact_name }})
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ fromJSON('{"tauri-linux":"ubuntu-24.04","tauri-macos-arm64":"macos-latest","tauri-macos-x64":"macos-15-intel","tauri-windows":"windows-latest"}')[matrix.artifact_name] }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        artifact_name: [tauri-linux, tauri-macos-arm64, tauri-macos-x64, tauri-windows]
-        exclude: ${{ fromJSON(inputs.exclude) }}
-        include:
-          - artifact_name: tauri-linux
-            os: linux
-            runner: ubuntu-24.04
-          - artifact_name: tauri-macos-arm64
-            os: macos
-            runner: macos-latest
-          - artifact_name: tauri-macos-x64
-            os: macos
-            runner: macos-15-intel
-          - artifact_name: tauri-windows
-            os: windows
-            runner: windows-latest
+        artifact_name: ${{ fromJSON(inputs.targets) }}
     defaults:
       run:
         working-directory: gui
@@ -88,7 +72,7 @@ jobs:
           rustc --version
 
       - name: Install Linux system dependencies
-        if: matrix.os == 'linux'
+        if: matrix.artifact_name == 'tauri-linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -103,7 +87,7 @@ jobs:
       # Tauri signs and notarizes the macOS app when these variables are set:
       # https://v2.tauri.app/distribute/sign/macos/
       - name: Configure macOS signing and notarization
-        if: matrix.os == 'macos'
+        if: startsWith(matrix.artifact_name, 'tauri-macos')
         env:
           APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -120,7 +104,13 @@ jobs:
               echo "::error::Releases need APPLE_CERTIFICATE_P12 and APPLE_SIGNING_IDENTITY secrets."
               exit 1
             fi
-            echo "::warning::Apple signing secrets are not configured; the macOS app will be unsigned."
+            echo "::warning::Apple signing secrets are not configured; the macOS app will be ad-hoc signed (not notarized)."
+            # Ad hoc ("-"): Tauri seals the whole bundle, so codesign --verify
+            # --strict accepts it while Gatekeeper still refuses it. Without it,
+            # only the linker's signature on the binary remains, which fails
+            # that check ("code has no resources but signature indicates they
+            # must be present").
+            echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
             exit 0
           fi
           {

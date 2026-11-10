@@ -158,7 +158,7 @@ jobs:
     uses: ./.github/workflows/gui-build.yml
     with:
       ref: ${{ github.sha }}
-      exclude: '[{"artifact_name": "tauri-macos-x64"}]'
+      targets: '["tauri-linux", "tauri-macos-arm64", "tauri-windows"]'
 
   linux-app:
     needs: [app-source, app-build]
