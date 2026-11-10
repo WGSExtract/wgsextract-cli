@@ -265,7 +265,10 @@ def test_sections_follow_the_runs_and_missing_ones_say_how_to_run(sample):
         "microarray": "not_run",
     }
     hints = {n: [m["command"] for m in s["missing"]] for n, s in sections.items()}
-    assert hints["overview"] == ["wgsextract info --detailed -i HG002.cram"]
+    assert hints["overview"] == [
+        "wgsextract info --detailed -i HG002.cram",
+        "wgsextract qc contamination -i HG002.cram",  # #616
+    ]
     assert hints["lineage"] == ["wgsextract lineage y-haplogroup -i HG002.cram"]
     assert hints["pharmacogenomics"] == [
         "wgsextract vcf pharmcat --vcf-input HG002.vcf.gz",

@@ -93,6 +93,8 @@ MODERATE_REASONS = {
     "(a split multiallelic record's likelihoods no longer cover it)",
     "allele_balance_unknown": "the VCF has no allele counts for the call "
     "(a split multiallelic record's site counts mix every ALT)",
+    "sample_contaminated": "qc contamination found DNA from another person "
+    "in the sample (FREEMIX at or above qc_max_contamination)",
 }
 REASONS = {**LOW_REASONS, **MODERATE_REASONS}
 
@@ -300,6 +302,7 @@ def classify(
     mq_kind: str = "rms",
     caller: str = "unknown",
     samples: int = 1,
+    contaminated: bool = False,
 ) -> CallConfidence | None:
     """The confidence of ALT number ``alt`` (1-based), or None when the sample
     doesn't carry it."""
@@ -370,6 +373,9 @@ def classify(
     if qd is not None and qd < MIN_QD:
         low.append("low_qd")
 
+    if contaminated:
+        moderate.append("sample_contaminated")
+
     label = LOW if low else MODERATE if moderate else HIGH
     return CallConfidence(label, low + moderate, zygosity, depth, gq, fraction)
 
@@ -432,6 +438,7 @@ class ConfidenceSummary:
     caller: str
     thresholds: Thresholds
     sample: str | None = None
+    contamination: float | None = None
     records: int = 0
     counts: Counter[str] = field(default_factory=Counter)
     reasons: Counter[str] = field(default_factory=Counter)
@@ -457,6 +464,7 @@ class ConfidenceSummary:
             "sample": self.sample,
             "caller": self.caller,
             "thresholds": asdict(self.thresholds),
+            "contamination": self.contamination,
             "counts": {label: self.counts[label] for label in LABELS},
             "not_carried": self.not_carried,
             "reasons": dict(sorted(self.reasons.items())),
@@ -467,8 +475,11 @@ class ConfidenceSummary:
         }
 
 
-def _header_lines(thresholds: Thresholds, caller: str) -> list[str]:
+def _header_lines(
+    thresholds: Thresholds, caller: str, contamination: float | None = None
+) -> list[str]:
     t = thresholds
+    freemix = "" if contamination is None else f",Contamination={contamination:g}"
     return [
         f'##INFO=<ID={CONF_TAG},Number=A,Type=String,Description="wgsextract '
         f"confidence in the sample's call of this ALT: high, moderate or low "
@@ -477,7 +488,7 @@ def _header_lines(thresholds: Thresholds, caller: str) -> list[str]:
         f'behind {CONF_TAG}, joined by | ({GUIDE})">',
         f"##wgsextract_confidence=<Scheme={SCHEME},Caller={caller},"
         f"MinDepth={t.min_depth:g},HighDepth={t.high_depth:g},"
-        f"MinGQ={t.min_gq:g},HighGQ={t.high_gq:g}>",
+        f"MinGQ={t.min_gq:g},HighGQ={t.high_gq:g}{freemix}>",
     ]
 
 
@@ -512,8 +523,12 @@ def label_records(
     summary_columns: Sequence[str] = (),
     region_names: Sequence[tuple[str, int, int, str]] = (),
     keep_findings: bool = True,
+    contamination: float | None = None,
 ) -> Iterator[str | ConfidenceSummary]:
     """Label VCF text lines; yields output lines, then the summary last.
+
+    ``contamination`` is the sample's FREEMIX when it is at or above
+    ``qc_max_contamination``: every carried call is then at most moderate.
 
     ``summary_columns`` are INFO keys copied into each finding; region_names
     are (chrom, start0, end, name) intervals naming a finding's ``gene``.
@@ -532,7 +547,10 @@ def label_records(
             caller = detect_caller(header)
             mq_kind = mapping_quality_kind(header)
             summary = ConfidenceSummary(
-                caller, thresholds, sample=columns[9] if len(columns) > 9 else None
+                caller,
+                thresholds,
+                sample=columns[9] if len(columns) > 9 else None,
+                contamination=contamination,
             )
             if len(columns) > 10:
                 warn(
@@ -542,7 +560,7 @@ def label_records(
                     sample=columns[9],
                 )
             yield from header
-            yield from _header_lines(thresholds, caller)
+            yield from _header_lines(thresholds, caller, contamination)
             yield line
             continue
         if summary is None:
@@ -575,6 +593,7 @@ def label_records(
                     mq_kind=mq_kind,
                     caller=summary.caller,
                     samples=max(len(fields) - 9, 1),
+                    contaminated=contamination is not None,
                 )
             )
             if result is None:
@@ -658,7 +677,18 @@ def label_vcf(
 ) -> ConfidenceSummary:
     """Write source_vcf's records (those matching the bcftools ``include``
     expression, within ``regions_file``) with confidence labels to out_vcf,
-    bgzipped and indexed; with out_vcf None, only summarise them."""
+    bgzipped and indexed; with out_vcf None, only summarise them. A sample
+    that `qc contamination` found contaminated caps every label at moderate."""
+    from wgsextract_cli.core.contamination import contaminated, warn_if_contaminated
+
+    freemix = contaminated(source_vcf)
+    if freemix is None and out_vcf is not None:
+        freemix = contaminated(out_vcf)
+    if freemix is not None:
+        warn_if_contaminated(
+            source_vcf if contaminated(source_vcf) is not None else out_vcf,
+            "the calls labelled",
+        )
     view = ["bcftools", "view"]
     if include:
         view += ["-i", include]
@@ -672,6 +702,7 @@ def label_vcf(
         summary_columns=summary_columns,
         region_names=region_names,
         keep_findings=keep_findings,
+        contamination=freemix,
     )
 
     def reader_failed() -> bool:

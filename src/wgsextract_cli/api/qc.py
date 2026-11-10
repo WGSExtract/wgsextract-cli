@@ -130,6 +130,42 @@ class QcVcfParams(Params):
 
 
 @dataclass(frozen=True, kw_only=True)
+class QcContaminationParams(Params):
+    """Estimate how much of a BAM/CRAM's DNA comes from another person with
+    VerifyBamID2: the FREEMIX fraction, from reads at 1000 Genomes sites
+    (GRCh37/hg19 or GRCh38). Writes ``<stem>.contamination.selfSM`` and
+    ``.Ancestry``. Metrics: ``freemix``, ``freemix_sites``, ``freemix_depth``
+    and the ancestry PCs; the estimate is recorded as the sample's
+    ``contamination`` fact. VerifyBamID2 is optional (``pixi install -e
+    verifybamid2``) and unavailable on Windows."""
+
+    COMMAND = "qc contamination"
+
+    input: Path = input_param(
+        "Indexed BAM or CRAM aligned to GRCh37/hg19 or GRCh38.",
+        "--input (a BAM or CRAM file) is required.",
+    )
+    ref: Path | None = ref_param()
+    outdir: Path | None = outdir_param()
+    threads: int | None = threads_param()
+    sites: str = param(
+        "100k",
+        help="1000 Genomes marker set: 100k (default) or 10k, faster and "
+        "noisier, for low coverage",
+        choices=("100k", "10k"),
+    )
+    svd_prefix: str | None = param(
+        None,
+        help="Your own VerifyBamID2 resource prefix (<prefix>.UD, .mu, .bed, "
+        ".V), e.g. one built with --RefVCF for T2T; replaces --sites",
+        doc="Your own VerifyBamID2 resource prefix (``<prefix>.UD``, ``.mu``, "
+        "``.bed``, ``.V``); any build is then accepted. None uses the bundled "
+        "1000 Genomes resources for the input's build.",
+        metavar="PREFIX",
+    )
+
+
+@dataclass(frozen=True, kw_only=True)
 class FakeDataParams(Params):
     """Generate a small fake genome for tests: reference, reads and calls
     named ``fake*``, reproducible from ``seed``. Uses the build's installed
@@ -238,6 +274,22 @@ def vcf(
     return execute(params, run_vcf_qc, progress=progress, cancel=cancel, check=check)
 
 
+def contamination(
+    params: QcContaminationParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Estimate contamination (output roles ``contamination_report`` and
+    ``contamination_ancestry``)."""
+    from wgsextract_cli.commands.qc.contamination import run_contamination
+
+    return execute(
+        params, run_contamination, progress=progress, cancel=cancel, check=check
+    )
+
+
 def fake_data(
     params: FakeDataParams,
     *,
@@ -258,7 +310,9 @@ __all__ = [
     "FastqcParams",
     "MultiqcMetricsParams",
     "MultiqcParams",
+    "QcContaminationParams",
     "QcVcfParams",
+    "contamination",
     "fake_data",
     "fastp",
     "fastqc",

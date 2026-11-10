@@ -80,6 +80,7 @@ DEFAULT_CONFIG = """# WGS Extract Configuration
 # qc_min_autosomal_homozygosity = 0.6
 # qc_max_autosomal_homozygosity = 0.88
 # qc_max_no_call_rate = 0.1
+# qc_max_contamination = 0.03  # FREEMIX from `qc contamination` (docs/contamination.md)
 
 # --- Confidence labels on rare/clinical variants (docs/variant-confidence.md) ---
 # confidence_min_depth = 10.0  # below: low confidence (halved for haploid calls)

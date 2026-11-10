@@ -28,6 +28,7 @@ UNSUPPORTED = [
     (["typing", "cyp2d6"], "Cyrius"),
     (["typing", "hla"], "T1K"),
     (["typing", "str"], "ExpansionHunter"),
+    (["qc", "contamination"], "VerifyBamID2"),
     (["align", "--aligner", "pbmm2"], "pbmm2"),
     (["realign", "--aligner", "pbmm2"], "pbmm2"),
 ]

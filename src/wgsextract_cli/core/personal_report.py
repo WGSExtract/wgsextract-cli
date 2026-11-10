@@ -33,7 +33,12 @@ from typing import Any
 from urllib.parse import quote
 
 from wgsextract_cli import __version__
-from wgsextract_cli.core import gene_lists, read_scope, variant_confidence
+from wgsextract_cli.core import (
+    contamination,
+    gene_lists,
+    read_scope,
+    variant_confidence,
+)
 from wgsextract_cli.core.builds import (
     build_from_chr1_length,
     canonical_build,
@@ -91,6 +96,7 @@ _OVERVIEW_FACTS = (
     ("mean_coverage", "Mean coverage"),
     ("target_depths", "Depth by target"),
     ("read_length", "Read length"),
+    ("contamination", "Contamination (FREEMIX)"),
 )
 _INFO_FACTS = (
     ("sex", "sex"),
@@ -518,12 +524,19 @@ def _quality_label(
 ) -> tuple[str, list[str]]:
     if any(w["code"] == "low_coverage" for w in warnings):
         return variant_confidence.LOW, ["low_coverage"]
+    reasons = (
+        ["sample_contaminated"]
+        if any(w["code"] == contamination.WARNING for w in warnings)
+        else []
+    )
     if not isinstance(quality, (int, float)) or isinstance(quality, bool):
-        return variant_confidence.MODERATE, ["quality_unknown"]
+        return variant_confidence.MODERATE, ["quality_unknown", *reasons]
     if quality < LOW_QUALITY:
-        return variant_confidence.LOW, ["low_caller_quality"]
+        return variant_confidence.LOW, ["low_caller_quality", *reasons]
     if quality < HIGH_QUALITY:
-        return variant_confidence.MODERATE, ["moderate_caller_quality"]
+        return variant_confidence.MODERATE, ["moderate_caller_quality", *reasons]
+    if reasons:
+        return variant_confidence.MODERATE, reasons
     return variant_confidence.HIGH, []
 
 
@@ -570,6 +583,18 @@ def _overview(ctx: _Context) -> dict[str, Any]:
                 }
             )
     section["facts"] = facts
+    freemix = next((f["value"] for f in facts if f["name"] == "contamination"), None)
+    threshold = contamination.max_contamination()
+    if isinstance(freemix, (int, float)) and threshold and freemix >= threshold:
+        section["warnings"].append(
+            {
+                "code": contamination.WARNING,
+                "message": f"qc contamination estimated {freemix:.1%} of the "
+                "reads are another person's (FREEMIX, at or above "
+                f"qc_max_contamination {threshold:.1%}): every finding below "
+                f"may be affected. See {contamination.GUIDE}.",
+            }
+        )
     qc = []
     if info is not None and info.status == "ok":
         for key, label, unit in _QC_METRICS:
@@ -593,6 +618,12 @@ def _overview(ctx: _Context) -> dict[str, Any]:
             "QC metrics and sex (info --detailed)",
             ctx.command_for("info --detailed", ctx.alignment, "cram"),
         )
+    if ctx.alignment and freemix is None:
+        _missing(
+            section,
+            "DNA contamination check (qc contamination)",
+            ctx.command_for("qc contamination", ctx.alignment, "cram"),
+        )
     section["summary"] = (
         ", ".join(f"{f['label']} {f['text']}" for f in facts[:4])
         or "No facts recorded."
@@ -607,6 +638,8 @@ def _fact_text(name: str, value: Any) -> str:
         return _number(value, "x")
     if name == "read_length":
         return _number(value, " bp")
+    if name == "contamination" and isinstance(value, (int, float)):
+        return f"{value:.1%}"
     return str(value)
 
 

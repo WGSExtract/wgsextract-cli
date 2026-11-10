@@ -126,6 +126,10 @@ FACTS: dict[str, FactSpec] = {
             None,
             3,
         ),
+        FactSpec(
+            "contamination",
+            "Fraction of the reads from another person (VerifyBamID2 FREEMIX).",
+        ),
     )
 }
 OVERRIDABLE = tuple(name for name, spec in FACTS.items() if spec.overridable)
@@ -394,6 +398,16 @@ class SampleWorkspace:
         if current is None or entry.get("fingerprint") != current:
             return None
         return _detected_fact(name, key, entry["fingerprint"], fact)
+
+    def detected_facts(self, name: str) -> list[Fact]:
+        """``name`` as detected from each file still as it was, newest first."""
+        doc = self._load()
+        found = [
+            fact
+            for key in (doc.raw.get("detected") or {})
+            if (fact := self.detected(name, self.file_path(key), doc=doc))
+        ]
+        return sorted(found, key=lambda fact: fact.at or "", reverse=True)
 
     def fact(self, name: str, file: PathInput | None) -> Fact | None:
         """The fact in effect: the override, else ``file``'s current detection."""
@@ -750,6 +764,7 @@ _LABELS = {
     "read_length": "Read length",
     "mean_coverage": "Mean coverage",
     "target_depths": "Target depths",
+    "contamination": "Contamination",
 }
 _reported: set[tuple[str, str]] = set()
 

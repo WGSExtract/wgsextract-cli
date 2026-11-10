@@ -273,7 +273,7 @@ exposed as an application configuration setting.
 | `basecall` | Nanopore POD5 to an unaligned BAM with ONT's Dorado (optional, installed separately), with `MM`/`ML` modification tags for `align`; [docs](docs/ont.md#basecalling) |
 | `panel` | `bed`: genes and presets (pharmacogenes, HLA, autoimmune, ACMG SF, cardiac) to a padded, merged BED for Nanopore adaptive sampling ([docs](docs/ont.md#adaptive-sampling-targets)) |
 | `pet-align` | Align dog or cat FASTQs and call variants |
-| `qc` | `fastp`, `fastqc`, `multiqc` (FastQC, bcftools stats and our metrics in one report), `multiqc-metrics` (MultiQC custom content from manifests; [pipeline interop](docs/interop.md)), `vcf` (stats), `fake-data` (synthetic BAM/CRAM/VCF/FASTQ) |
+| `qc` | `fastp`, `fastqc`, `multiqc` (FastQC, bcftools stats and our metrics in one report), `multiqc-metrics` (MultiQC custom content from manifests; [pipeline interop](docs/interop.md)), `vcf` (stats), `contamination` (DNA from another person, VerifyBamID2; [docs](docs/contamination.md)), `fake-data` (synthetic BAM/CRAM/VCF/FASTQ) |
 | `repair` | `ftdna-bam`, `ftdna-vcf` |
 | `analyze` | `comprehensive` (QC, lineage, calling, annotation in one run), `batch-gen` |
 | `ref` | Library: `bootstrap`, `library` (`--list` to list), `status`, `download`, `index`, `verify`, `count-ns`, `gene-map`. Annotation data: `clinvar`, `gnomad`, `revel`, `phylop`, `cadd`, `gerp`, `spliceai`, `alphamissense`, `pharmgkb`, `ybrowse` (GRCh38 only) |
@@ -470,6 +470,7 @@ Some tools live in their own Pixi environment. Install optional environments exp
 | `cyrius`, `t1k`, `expansionhunter` | `typing cyp2d6`, `typing hla`, `typing str` (Linux and macOS) |
 | `pharmcat` | PharmCAT's Python runtime for `vcf pharmcat` (Linux and macOS) |
 | `modkit` | `methylation pileup` (Linux and macOS) |
+| `verifybamid2` | `qc contamination` (Linux and macOS) |
 | `parquet` | `pyarrow` for `--format parquet` tables: `pixi run -e parquet wgsextract vcf table ... --format parquet` (no Windows ARM64 build; [details](docs/parquet.md)) |
 | `dev` | Contributor tooling (pytest, ruff, mypy); selected automatically by the development tasks below |
 

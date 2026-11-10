@@ -86,6 +86,7 @@ MIGRATED = (
     ("qc", "multiqc"),
     ("qc", "multiqc-metrics"),
     ("qc", "vcf"),
+    ("qc", "contamination"),
     ("qc", "fake-data"),
     ("align",),
     ("realign",),
