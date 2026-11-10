@@ -14,7 +14,8 @@ Only catalog entries whose final file exists locally make it into the
 on-disk size for the library page table.
 
 The catalog is the one shipped with the CLI installed by setup at
-`<bundle>/runtime/wgsextract-cli/app/src/wgsextract_cli/assets/reference/`.
+`<app data>/runtime/wgsextract-cli/app/src/wgsextract_cli/assets/reference/`
+($WGSEXTRACT_GUI_APP_DATA; run outside the app, the bundle folder's own runtime).
 Without it the script fails, so the Library page reports a missing runtime
 instead of showing a stale catalog.
 
@@ -22,7 +23,7 @@ Usage:
   list-reference-genomes.py [all|options|items] [<library>] [<genomes folder>]
   (scripts/posix, scripts/windows)
 
-The library directory defaults to $GUI_FOR_CLI_BUNDLE_WORKSPACE/reference,
+The library directory defaults to $WGSEXTRACT_GUI_BUNDLE_WORKSPACE/reference,
 else $PWD/reference. The genomes folder is the Reference Genomes Library
 (reference_genome_library), else genomes/ in the library.
 """
@@ -60,7 +61,8 @@ CATALOG_PATH = Path("runtime/wgsextract-cli/app/src/wgsextract_cli/assets/refere
 
 
 def find_catalog() -> Path:
-    catalog = Path(__file__).resolve().parents[2] / CATALOG_PATH
+    runtime_root = env("WGSEXTRACT_GUI_APP_DATA") or Path(__file__).resolve().parents[2]
+    catalog = Path(runtime_root) / CATALOG_PATH
     if not catalog.is_file():
         sys.exit(
             f"WGS Extract reference catalog not found at {catalog}. "
@@ -174,7 +176,7 @@ def populate_remote_sizes(records: list[dict], cache: dict) -> dict:
                 continue
         pending.append((record["final"], url))
 
-    if not pending or env("GUI_FOR_CLI_OFFLINE") == "1":
+    if not pending or env("WGSEXTRACT_GUI_OFFLINE") == "1":
         return cache
 
     deadline = now + REMOTE_SIZE_BUDGET_SECONDS
@@ -254,7 +256,7 @@ def load_records(catalog: Path) -> Iterable[dict]:
 def main(argv: list[str]) -> int:
     mode = argv[1] if len(argv) > 1 else "all"
     library_arg = argv[2] if len(argv) > 2 else ""
-    library = library_arg or os.path.join(env("GUI_FOR_CLI_BUNDLE_WORKSPACE", os.getcwd()), "reference")
+    library = library_arg or os.path.join(env("WGSEXTRACT_GUI_BUNDLE_WORKSPACE", os.getcwd()), "reference")
     genomes_arg = argv[3] if len(argv) > 3 else ""
     genomes_dir = Path(genomes_arg) if genomes_arg else Path(library) / "genomes"
     records = list(load_records(find_catalog()))

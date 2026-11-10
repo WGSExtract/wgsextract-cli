@@ -53,7 +53,7 @@ def main(argv: list[str]) -> int:
 def dataset_library_root(argument: str) -> Path:
     if argument:
         return Path(argument).expanduser()
-    return Path(os.environ.get("GUI_FOR_CLI_BUNDLE_WORKSPACE") or os.getcwd()) / "datasets"
+    return Path(os.environ.get("WGSEXTRACT_GUI_BUNDLE_WORKSPACE") or os.getcwd()) / "datasets"
 
 
 def print_state(root: Path) -> None:

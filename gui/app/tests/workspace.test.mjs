@@ -6,8 +6,8 @@ import test from "node:test";
 
 test("bundle workspace sync keeps runtime, state, config and data, and drops what the bundle dropped", async () => {
   await withTemporaryHome("gui-for-cli-webui-workspace-", async (tempRoot) => {
-    const originalAppSupportName = process.env.GUI_FOR_CLI_APP_SUPPORT_NAME;
-    process.env.GUI_FOR_CLI_APP_SUPPORT_NAME = "dev.guiforcli.webui";
+    const originalAppSupportName = process.env.WGSEXTRACT_GUI_APP_DATA_NAME;
+    process.env.WGSEXTRACT_GUI_APP_DATA_NAME = "dev.guiforcli.webui";
 
     try {
       const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspace.js");
@@ -69,9 +69,9 @@ test("bundle workspace sync keeps runtime, state, config and data, and drops wha
       assert.equal(await readFile(path.join(workspaceRoot, "notes.txt"), "utf8"), "keep notes");
     } finally {
       if (originalAppSupportName == null) {
-        delete process.env.GUI_FOR_CLI_APP_SUPPORT_NAME;
+        delete process.env.WGSEXTRACT_GUI_APP_DATA_NAME;
       } else {
-        process.env.GUI_FOR_CLI_APP_SUPPORT_NAME = originalAppSupportName;
+        process.env.WGSEXTRACT_GUI_APP_DATA_NAME = originalAppSupportName;
       }
     }
   });

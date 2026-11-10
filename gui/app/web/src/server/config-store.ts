@@ -5,7 +5,7 @@ import { mkdir, readFile, realpath, rename, rm, rmdir, stat, writeFile } from "n
 import path from "node:path";
 import { allControls, configEditorControls, parseFlatToml, persistsFieldValue, serializeFlatToml } from "../../../shared/rendering.js";
 import type { BundleManifest, ConfigBootstrapScriptSpec, ConfigSetting, ControlSpec, LooseRecord, SetupRun, StateValue, StringMap, ValueMap } from "../../../shared/types.js";
-import { configPath, expandPathTokens, expandWorkspaceToken, isPreviousConfigPath, resolveUserPath } from "./paths.js";
+import { configPath, expandPathTokens, expandWorkspaceToken, isPreviousConfigPath, resolveUserPath, bundleEnvironment } from "./paths.js";
 import { resolvePlatformScriptPath } from "./platform-scripts.js";
 import { errnoCode, errorMessage } from "./errors.js";
 import { normalizeUIMode, type UIMode } from "../../../shared/ui-mode.js";
@@ -381,13 +381,12 @@ function bootstrapShell() {
 function scriptEnvironment(script: BootstrapScript, control: ControlSpec, bundleRoot: string, defaultURL: string): NodeJS.ProcessEnv {
     return {
         ...Object.fromEntries(inheritedBootstrapEnvironmentKeys.flatMap((key) => process.env[key] == null ? [] : [[key, process.env[key]]])),
-        GUI_FOR_CLI_BUNDLE_ROOT: bundleRoot,
-        GUI_FOR_CLI_BUNDLE_WORKSPACE: bundleRoot,
-        GUI_FOR_CLI_CONFIG_PATH: defaultURL,
-        GUI_FOR_CLI_CONFIG_DIR: path.dirname(defaultURL),
-        GUI_FOR_CLI_CONFIG_CONTROL_ID: control.id,
-        GUI_FOR_CLI_CONFIG_CONTROL_LABEL: control.label,
-        GUI_FOR_CLI_DRY_RUN: "0",
+        ...bundleEnvironment(bundleRoot),
+        WGSEXTRACT_GUI_CONFIG_PATH: defaultURL,
+        WGSEXTRACT_GUI_CONFIG_DIR: path.dirname(defaultURL),
+        WGSEXTRACT_GUI_CONFIG_CONTROL_ID: control.id,
+        WGSEXTRACT_GUI_CONFIG_CONTROL_LABEL: control.label,
+        WGSEXTRACT_GUI_DRY_RUN: "0",
         ...Object.fromEntries(Object.entries(script.environment ?? {}).map(([key, value]) => [
             key,
             expandConfigPath(value, bundleRoot, defaultURL),

@@ -1,10 +1,11 @@
-import { readFile, readdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { copyFile, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import type { BundleManifest, WorkspaceLocationInfo } from "../../../shared/types.js";
 import { writeFileAtomically } from "./config-store.js";
 import { errnoCode, errorMessage } from "./errors.js";
-import { appSupportDirectory, safePathComponent } from "./paths.js";
+import { applicationSupportDirectory, appSupportDirectory, safePathComponent } from "./paths.js";
 
 export const workspaceSentinelFileName = ".bundle-workspace";
 export const workspaceSentinelContents = "GUI for CLI bundle workspace\n";
@@ -12,6 +13,40 @@ export const workspaceSentinelContents = "GUI for CLI bundle workspace\n";
 /** App-wide settings. They live beside the app's data, not in the workspace, since they say where the workspace is. */
 export function appSettingsPath() {
     return path.join(appSupportDirectory(), "settings.json");
+}
+
+/** The data folder the desktop app used up to 0.8.6, named for its identifier then. */
+export const legacyAppDataName = "dev.guiforcli.web.embed.wgsextract";
+
+/**
+ * Brings the app-wide settings (where the workspace is) over from the data folder the app used up to 0.8.6,
+ * then removes that folder. One that still holds a workspace (from releases before workspaces moved to the
+ * home folder) is left in place. Only for the app's own data folder, not one a test or dev run names.
+ */
+export async function migrateLegacyAppData() {
+    if (process.env.WGSEXTRACT_GUI_APP_DATA_NAME) {
+        return;
+    }
+    const legacy = path.join(applicationSupportDirectory(), legacyAppDataName);
+    const legacySettings = path.join(legacy, "settings.json");
+    if (!existsSync(legacySettings) && !existsSync(legacy)) {
+        return;
+    }
+    try {
+        if (existsSync(legacySettings) && !existsSync(appSettingsPath())) {
+            await mkdir(appSupportDirectory(), { recursive: true });
+            await copyFile(legacySettings, appSettingsPath());
+        }
+        // Nor one the saved settings point into: a workspaces folder chosen in it.
+        const settings = existsSync(legacySettings) ? await readFile(legacySettings, "utf8") : "";
+        const pointedInto = settings.includes(JSON.stringify(legacy).slice(1, -1));
+        if (!pointedInto && !existsSync(path.join(legacy, "BundleWorkspaces"))) {
+            await rm(legacy, { recursive: true, force: true, maxRetries: 3 });
+        }
+    }
+    catch (error) {
+        console.error(`Could not move the app's settings from ${legacy}: ${errorMessage(error)}`);
+    }
 }
 
 /** Where a bundle that declares no defaultWorkspace keeps its workspace, and where every bundle's used to be. */

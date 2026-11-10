@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 const { expandPathTokens, parseArgs } = await import("../dist/web/src/server/paths.js");
 
 test("path token expansion preserves unset environment variables", () => {
-  const key = "GUI_FOR_CLI_MISSING_TEST_PATH_TOKEN";
+  const key = "WGSEXTRACT_GUI_MISSING_TEST_PATH_TOKEN";
   const previous = process.env[key];
   try {
     delete process.env[key];
@@ -24,7 +24,7 @@ test("path token expansion preserves unset environment variables", () => {
 });
 
 test("path token expansion resolves set environment variables", () => {
-  const key = "GUI_FOR_CLI_SET_TEST_PATH_TOKEN";
+  const key = "WGSEXTRACT_GUI_SET_TEST_PATH_TOKEN";
   const previous = process.env[key];
   try {
     process.env[key] = "/resolved";
@@ -87,4 +87,28 @@ test("--port accepts the boundary ports 0 and 65535 (#527)", () => {
 test("port validation keeps the omitted and missing --port behaviour (#527)", () => {
   assert.equal(parseArgs(["--bundle", "b"]).port, undefined);
   assert.throws(() => parseArgs(["--port"]), /Missing value for --port/);
+});
+
+test("{{appData}} and bundle scripts' WGSEXTRACT_GUI_APP_DATA are the app's data folder, WGSExtract-gui by default", async () => {
+  const { appSupportDirectory, applicationSupportDirectory, bundleEnvironment } = await import("../dist/web/src/server/paths.js");
+  const previous = process.env.WGSEXTRACT_GUI_APP_DATA_NAME;
+  delete process.env.WGSEXTRACT_GUI_APP_DATA_NAME;
+  try {
+    const appData = path.join(applicationSupportDirectory(), "WGSExtract-gui");
+    assert.equal(appSupportDirectory(), appData);
+    assert.equal(expandPathTokens("{{appData}}/runtime/wgsextract-cli/bin/wgsextract", "/bundle"), path.join(appData, "runtime", "wgsextract-cli", "bin", "wgsextract"));
+    assert.deepEqual(bundleEnvironment("/bundle"), {
+      WGSEXTRACT_GUI_BUNDLE_ROOT: "/bundle",
+      WGSEXTRACT_GUI_BUNDLE_WORKSPACE: "/bundle",
+      WGSEXTRACT_GUI_APP_DATA: appData,
+    });
+    process.env.WGSEXTRACT_GUI_APP_DATA_NAME = "test.app";
+    assert.equal(appSupportDirectory(), path.join(applicationSupportDirectory(), "test.app"));
+  } finally {
+    if (previous === undefined) {
+      delete process.env.WGSEXTRACT_GUI_APP_DATA_NAME;
+    } else {
+      process.env.WGSEXTRACT_GUI_APP_DATA_NAME = previous;
+    }
+  }
 });

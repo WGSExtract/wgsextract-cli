@@ -1146,7 +1146,7 @@ WINDOWS_GUI_MUTATIONS: dict[str, Callable[[Path], object]] = {
     **{name: GUI_MUTATIONS[name] for name in _WIN_COMMON},
     "leftover-state": lambda r: _append(
         r / "inventory-after_uninstall.txt",
-        f"dir\t{_WIN_HOME}/AppData/Local/dev.guiforcli.web.embed.wgsextract",
+        f"dir\t{_WIN_HOME}/AppData/Local/WGSExtract-gui",
     ),
     "apps-entry-left": lambda r: _append(
         r / "inventory-after_uninstall.txt",
@@ -1172,7 +1172,7 @@ LINUX_GUI_MUTATIONS: dict[str, Callable[[Path], object]] = {
     **{name: GUI_MUTATIONS[name] for name in _WIN_COMMON},
     "leftover-state": lambda r: _append(
         r / "inventory-after_uninstall.txt",
-        "dir\t/home/tester/.local/share/dev.guiforcli.web.embed.wgsextract",
+        "dir\t/home/tester/.local/share/WGSExtract-gui",
     ),
     "pixi-left": lambda r: _append(
         r / "inventory-after_uninstall.txt", "dir\t/home/tester/.pixi"

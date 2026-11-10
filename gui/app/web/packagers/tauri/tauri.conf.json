@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "GUI for CLI",
   "version": "0.1.0",
-  "identifier": "dev.guiforcli.web.embed.wgsextract",
+  "identifier": "dev.wgsextract-gui",
   "build": {
     "frontendDist": "../../../dist"
   },

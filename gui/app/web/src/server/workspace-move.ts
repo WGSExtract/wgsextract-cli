@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, readlink, rename, rm, rmdir, statfs, symlink, utimes } from "node:fs/promises";
 import path from "node:path";
 import { configEditorControls, parseFlatToml, serializeFlatToml } from "../../../shared/rendering.js";
@@ -24,8 +25,9 @@ const keptRuntimeFileName = "install-manifest.json";
 
 /**
  * Moves the workspace and everything in it, then records the new location. The original stays whole until
- * the new one is complete, so a failure or cancelled copy loses nothing. The CLI runtime isn't carried over:
- * its environments and launchers hold absolute paths, so setup installs it again in the new location.
+ * the new one is complete, so a failure or cancelled copy loses nothing. A CLI runtime that setup installed in
+ * the workspace (WGS Extract's, up to 0.8.6) isn't carried over: its environments and launchers hold absolute
+ * paths, so setup installs it again. One in the app's data folder stays where it is and keeps working.
  */
 export async function moveWorkspace({ manifest, sourceRoot, workspaceRoot, directory, onProgress, signal }: WorkspaceMoveRequest): Promise<void> {
     if (directory != null && !path.isAbsolute(directory)) {
@@ -37,6 +39,7 @@ export async function moveWorkspace({ manifest, sourceRoot, workspaceRoot, direc
         return;
     }
     await assertUsableTarget(target, sourceRoot, workspaceRoot);
+    const setupMustRunAgain = existsSync(path.join(workspaceRoot, runtimeFolderName));
     await mkdir(path.dirname(target), { recursive: true });
     await rmdir(target).catch(ignoreMissing);
 
@@ -46,13 +49,13 @@ export async function moveWorkspace({ manifest, sourceRoot, workspaceRoot, direc
     }
     const rewritten: RewrittenFile[] = [];
     try {
-        await relocateWorkspacePaths(manifest, target, workspaceRoot, target, rewritten);
+        await relocateWorkspacePaths(manifest, target, workspaceRoot, target, rewritten, setupMustRunAgain);
         await saveWorkspacesDirectory(directory == null ? null : path.resolve(directory));
     }
     catch (error) {
         if (renamed) {
             await rename(target, workspaceRoot);
-            await relocateWorkspacePaths(manifest, workspaceRoot, target, workspaceRoot, []);
+            await relocateWorkspacePaths(manifest, workspaceRoot, target, workspaceRoot, [], false);
         }
         else {
             await rm(target, { recursive: true, force: true });
@@ -211,14 +214,14 @@ async function discardRuntime(root: string) {
     }
 }
 
-/** Saved absolute paths into the workspace follow it. Setup's saved run is cleared, since setup must run again. */
+/** Saved absolute paths into the workspace follow it. Setup's saved run is cleared when setup must run again. */
 interface RewrittenFile {
     filePath: string;
     text: string;
 }
 
 /** `rewritten` receives each settings file's path and text from before it was rewritten. */
-async function relocateWorkspacePaths(manifest: BundleManifest, root: string, from: string, to: string, rewritten: RewrittenFile[]) {
+async function relocateWorkspacePaths(manifest: BundleManifest, root: string, from: string, to: string, rewritten: RewrittenFile[], forgetSetup: boolean) {
     const statePath = bundleStatePath(root);
     const savedState = await readFile(statePath, "utf8").then((text) => JSON.parse(text) as Record<string, unknown>).catch((error: unknown) => {
         if (errnoCode(error) === "ENOENT") {
@@ -235,7 +238,7 @@ async function relocateWorkspacePaths(manifest: BundleManifest, root: string, fr
     }
     if (savedState) {
         const relocated = relocateStrings(savedState, from, to) as Record<string, unknown>;
-        await writeFileAtomically(statePath, `${JSON.stringify({ ...relocated, setupRun: null }, null, 2)}\n`);
+        await writeFileAtomically(statePath, `${JSON.stringify(forgetSetup ? { ...relocated, setupRun: null } : relocated, null, 2)}\n`);
     }
 }
 

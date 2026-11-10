@@ -1,9 +1,11 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { commandLine, setupResultLine, shellQuote } from "../../../shared/rendering.js";
 import { setupStepsForPlatform } from "../../../shared/setup-platforms.js";
 import type { BundleManifest, Labels, ProcessResult, RunProcess, SetupRun, SetupStep, StringMap } from "../../../shared/types.js";
 import { evaluateSetupInstallSizePrecheck, type PrecheckEvaluation } from "./action-runner.js";
-import { expandPathTokens, resolveBundlePath } from "./paths.js";
+import { loadBundleState, saveBundleState } from "./config-store.js";
+import { expandPathTokens, resolveBundlePath, bundleEnvironment } from "./paths.js";
 import { platformCommand } from "./platform-command.js";
 import { resolvePlatformScriptPath } from "./platform-scripts.js";
 import { errorMessage } from "./errors.js";
@@ -153,6 +155,26 @@ async function runStepSet(steps: SetupStep[], bundleRoot: string, runProcess: Ru
     return summary;
 }
 
+/**
+ * Forgets a finished setup whose tools (its pathTool steps' files) are gone, so the app offers setup again
+ * instead of every command failing. That is the case after an upgrade from 0.8.6 or earlier, whose setup
+ * installed the CLI runtime in the workspace instead of the app's data folder, or once a user deleted it.
+ */
+export async function forgetSetupWithMissingTools(manifest: SetupManifest, bundleRoot: string): Promise<boolean> {
+    const { setupRun } = await loadBundleState(bundleRoot);
+    if (!setupRun || setupRun.status === "running") {
+        return false;
+    }
+    const missing = setupStepsForPlatform(manifest.setup?.steps ?? [])
+        .filter((step) => step.kind === "pathTool")
+        .map((step) => expandSetupValue(step.value, bundleRoot))
+        .some((tool) => path.isAbsolute(tool) && !existsSync(tool));
+    if (missing) {
+        await saveBundleState({ setupRun: null }, bundleRoot);
+    }
+    return missing;
+}
+
 export async function runInitialSetupIfNeeded(
     bundle: { manifest: SetupManifest; bundleState?: { setupRun?: SetupRun | null } | null },
     bundleRoot: string,
@@ -222,8 +244,7 @@ async function runSetupCommand(command: SetupCommand, bundleRoot: string, runPro
     const env: NodeJS.ProcessEnv = {
         ...process.env,
         ...command.environment,
-        GUI_FOR_CLI_BUNDLE_ROOT: bundleRoot,
-        GUI_FOR_CLI_BUNDLE_WORKSPACE: bundleRoot,
+        ...bundleEnvironment(bundleRoot),
     };
     if (command.requiresAdmin && process.platform === "win32") {
         return runProcess(command.executable, command.arguments, {
@@ -293,8 +314,7 @@ function elevatedCommandEnvironment(command: SetupCommand, bundleRoot: string): 
     return {
         PATH: process.env.PATH ?? "/usr/bin:/bin:/usr/sbin:/sbin",
         ...command.environment,
-        GUI_FOR_CLI_BUNDLE_ROOT: bundleRoot,
-        GUI_FOR_CLI_BUNDLE_WORKSPACE: bundleRoot,
+        ...bundleEnvironment(bundleRoot),
     };
 }
 

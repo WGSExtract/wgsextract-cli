@@ -8,7 +8,7 @@ so a flag the CLI dropped or renamed fails here instead of in the app.
 
 The parser check imports the CLI from this repository's `src/`, with the first
 interpreter that has the CLI's dependencies: this one, the repository's Pixi
-environment, the runtime setup installed into the bundle, or the one behind a
+environment, the runtime setup installed for a dev run of the bundle, or the one behind a
 `wgsextract` on PATH. Without one it is skipped locally and fails in CI.
 Run with `python -m unittest discover -s tests/wgsextract`.
 """
@@ -139,13 +139,15 @@ def find_cli_python() -> Path | None:
 
 
 class BundleSandbox:
-    """A copy of the bundle scripts with a fake installed runtime."""
+    """A copy of the bundle scripts with a fake runtime installed, as setup does, in the app's data folder."""
 
     def __init__(self, root: Path) -> None:
         self.root = root
         self.bundle = root / "bundle"
+        # Its name has a space, as in ~/Library/Application Support on macOS.
+        self.app_data = root / "App Data" / "WGSExtract-gui"
         shutil.copytree(BUNDLE / "scripts", self.bundle / "scripts")
-        runtime = self.bundle / "runtime" / "wgsextract-cli"
+        runtime = self.app_data / "runtime" / "wgsextract-cli"
         (runtime / "app").mkdir(parents=True)
         pixi = runtime / ".pixi" / "bin" / "pixi"
         pixi.parent.mkdir(parents=True)
@@ -384,7 +386,8 @@ class BundleSandbox:
         env = {
             "PATH": "/usr/bin:/bin",
             "HOME": str(self.root),
-            "GUI_FOR_CLI_BUNDLE_WORKSPACE": str(self.bundle),
+            "WGSEXTRACT_GUI_BUNDLE_WORKSPACE": str(self.bundle),
+            "WGSEXTRACT_GUI_APP_DATA": str(self.app_data),
         }
         result = subprocess.run(
             ["/bin/sh", str(self.bundle / "scripts" / "posix" / script), *args],

@@ -237,7 +237,7 @@ function setupStepAppliesToAnyPlatform(step: SetupStep, platforms: SetupPlatform
 }
 
 async function linuxDistroID(): Promise<string | undefined> {
-  const override = process.env.GUI_FOR_CLI_LINUX_DISTRO || process.env.ID;
+  const override = process.env.WGSEXTRACT_GUI_LINUX_DISTRO || process.env.ID;
   if (override?.trim()) {
     return sanitizeDistroID(override);
   }

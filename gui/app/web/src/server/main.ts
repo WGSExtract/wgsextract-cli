@@ -13,8 +13,10 @@ import { takeNativePickerEndpoint } from "./path-picker.js";
 import { createProcessManager } from "./process-runner.js";
 import { takeApiToken } from "./request-guard.js";
 import { createRequestHandler } from "./routes.js";
+import { forgetSetupWithMissingTools } from "./setup-runner.js";
 import { prepareBundleWorkspace } from "./workspace.js";
 import { moveWorkspace } from "./workspace-move.js";
+import { migrateLegacyAppData } from "./workspace-location.js";
 import { errorMessage } from "./errors.js";
 import { leaveAppImageEnvironment } from "./appimage-environment.js";
 
@@ -30,7 +32,7 @@ const sourceBundleRoot = path.resolve(args.bundle ?? path.join(repoRoot, "exampl
 const port = Number(args.port ?? process.env.PORT ?? 8787);
 const host = args.host ?? "127.0.0.1";
 const defaultLocale = args.locale;
-const appVersion = process.env.GUI_FOR_CLI_APPLICATION_VERSION?.trim() || "";
+const appVersion = process.env.WGSEXTRACT_GUI_APPLICATION_VERSION?.trim() || "";
 const enableDevReload = process.env.WEBUI_DEV_RELOAD === "1";
 const launcherProvidedToken = Boolean(process.env.GFC_API_TOKEN);
 const apiToken = takeApiToken();
@@ -39,6 +41,7 @@ const portFile = process.env.GFC_PORT_FILE;
 delete process.env.GFC_PORT_FILE;
 
 const { runProcess, terminateAllProcesses } = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
+await migrateLegacyAppData();
 let bundleRuntime = await loadBundleRuntime(sourceBundleRoot, Boolean(args.bundle));
 let server: Server | undefined;
 let bundleChangeInFlight = false;
@@ -135,6 +138,7 @@ async function loadBundleRuntime(requestedSource: string, preload: boolean) {
     const sourceManifest = await loadManifestFromRoot(resolvedSourceBundleRoot);
     const resolvedBundleRoot = await prepareBundleWorkspace(sourceManifest, resolvedSourceBundleRoot);
     const manifest = await loadManifestFromRoot(resolvedBundleRoot);
+    await forgetSetupWithMissingTools(manifest, resolvedBundleRoot);
     return {
         sourceBundleRoot: resolvedSourceBundleRoot,
         bundleRoot: resolvedBundleRoot,

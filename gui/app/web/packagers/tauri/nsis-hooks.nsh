@@ -3,6 +3,25 @@
   ; and retargets the shortcuts when installing over one, but only checks whether the new executable runs,
   ; so close the old one first or it stays behind, locked, next to the new one.
   !insertmacro CheckIfAppIsRunning "$INSTDIR\gui-for-cli-webui-tauri.exe" "${PRODUCTNAME}"
+
+  ; Releases up to 0.8.6 had another identifier, so their install folder is recorded under another
+  ; manufacturer key, which this installer doesn't read. Installed in another folder than this one, the old
+  ; app would stay there: remove it as an update does (its setup's tools and the user's data stay; the
+  ; app moves them itself), then its key.
+  ReadRegStr $R9 SHCTX "Software\guiforcli\${PRODUCTNAME}" ""
+  ${If} $R9 != ""
+  ${AndIf} $R9 != $INSTDIR
+  ${AndIf} ${FileExists} "$R9\uninstall.exe"
+    !insertmacro CheckIfAppIsRunning "$R9\gui-for-cli-webui-tauri.exe" "${PRODUCTNAME}"
+    DetailPrint "Removing the earlier version in $R9..."
+    ExecWait '"$R9\uninstall.exe" /S /UPDATE _?=$R9'
+    Delete "$R9\uninstall.exe"
+    RmDir "$R9"
+  ${EndIf}
+  DeleteRegKey SHCTX "Software\guiforcli\${PRODUCTNAME}"
+  DeleteRegKey /ifempty SHCTX "Software\guiforcli"
+  DeleteRegKey HKCU "Software\guiforcli\${PRODUCTNAME}"
+  DeleteRegKey /ifempty HKCU "Software\guiforcli"
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
@@ -12,7 +31,7 @@
     ; with the user's libraries and outputs, goes only if the user says so; a silent uninstall keeps it.
     ; Not while the app runs (Tauri checks this again right after the hook).
     !insertmacro CheckIfAppIsRunning "$INSTDIR\${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
-    nsExec::ExecToStack '"$INSTDIR\node\node.exe" "$INSTDIR\app\dist\web\src\server\bundle-uninstall-cli.js" --app-support-name "${BUNDLEID}" --print-workspace "$INSTDIR\examples\EmbeddedBundle"'
+    nsExec::ExecToStack '"$INSTDIR\node\node.exe" "$INSTDIR\app\dist\web\src\server\bundle-uninstall-cli.js" --print-workspace "$INSTDIR\examples\EmbeddedBundle"'
     Pop $0
     Pop $1
     StrCpy $2 ""
@@ -24,19 +43,12 @@
     ${EndIf}
     StrCpy $3 ""
     ${If} $DeleteAppDataCheckboxState = 1
-      ; After this hook Tauri deletes %LOCALAPPDATA%\<identifier> and %APPDATA%\<identifier> whole, with any
-      ; workspace kept in them. The uninstall steps delete them instead, keeping a workspace the user chose
-      ; to keep, and the rest of Tauri's app data cleanup is done here.
+      ; The app's data folder (%LOCALAPPDATA%\WGSExtract-gui: its settings, and any workspace the user keeps
+      ; there). After this hook Tauri deletes the webview's and the logs' folders, named for the identifier.
       StrCpy $3 "--remove-app-data"
-      StrCpy $DeleteAppDataCheckboxState 0
-      DeleteRegKey SHCTX "${MANUPRODUCTKEY}"
-      DeleteRegKey /ifempty SHCTX "${MANUKEY}"
-      DeleteRegValue HKCU "${MANUPRODUCTKEY}" "Installer Language"
-      DeleteRegKey /ifempty HKCU "${MANUPRODUCTKEY}"
-      DeleteRegKey /ifempty HKCU "${MANUKEY}"
     ${EndIf}
     DetailPrint "Removing what the app's setup installed..."
-    nsExec::ExecToLog '"$INSTDIR\node\node.exe" "$INSTDIR\app\dist\web\src\server\bundle-uninstall-cli.js" --app-support-name "${BUNDLEID}" $2 $3 "$INSTDIR\examples\EmbeddedBundle"'
+    nsExec::ExecToLog '"$INSTDIR\node\node.exe" "$INSTDIR\app\dist\web\src\server\bundle-uninstall-cli.js" $2 $3 "$INSTDIR\examples\EmbeddedBundle"'
     Pop $0
     ${If} $0 != 0
       DetailPrint "Removing what the app's setup installed failed ($0)."
