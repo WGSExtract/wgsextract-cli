@@ -99,6 +99,44 @@ function Invoke-ForwardedCommand {
     exit $LASTEXITCODE
 }
 
+# Setup keeps the Pixi environments outside the workspace, in the folder it
+# records as detached-environments in .pixi\config.toml (under %LOCALAPPDATA%).
+# The workspace can say setup is done while that folder is empty: setup ran in
+# another Windows account, or in an app sandbox (an MSIX app such as a store
+# app) whose AppData\Local writes Windows keeps apart, or the folder was removed.
+function Get-PixiEnvironmentsDirectory {
+    param([Parameter(Mandatory = $true)][string]$AppDir)
+    $config = Join-Path $AppDir ".pixi\config.toml"
+    if (Test-Path -LiteralPath $config -PathType Leaf) {
+        foreach ($line in Get-Content -LiteralPath $config) {
+            if ($line -match "^\s*detached-environments\s*=\s*(['""])(.+)\1\s*$") {
+                return $Matches[2]
+            }
+        }
+    }
+    return (Join-Path $AppDir ".pixi\envs")
+}
+
+function Test-PixiDefaultEnvironment {
+    param([Parameter(Mandatory = $true)][string]$AppDir, [Parameter(Mandatory = $true)][string]$EnvsDir)
+    if (Test-Path -LiteralPath (Join-Path $EnvsDir "default\conda-meta") -PathType Container) {
+        return $true
+    }
+    # Detached: <envs>\<project>-<hash>\envs\default, recording the manifest it was installed for.
+    $manifest = [System.IO.Path]::GetFullPath((Join-Path $AppDir "pixi.toml"))
+    foreach ($record in Get-ChildItem -Path (Join-Path $EnvsDir "*\envs\default\conda-meta\pixi") -File -ErrorAction SilentlyContinue) {
+        try {
+            $installedFor = (Get-Content -LiteralPath $record.FullName -Raw | ConvertFrom-Json).manifest_path
+        } catch {
+            return $true
+        }
+        if ($installedFor -and [string]::Equals([System.IO.Path]::GetFullPath($installedFor), $manifest, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+    return $false
+}
+
 if (-not (Test-Path -LiteralPath $appDir -PathType Container)) {
     [Console]::Error.WriteLine("WGS Extract bundle runtime is not installed at $appDir. Run setup before running commands.")
     exit 127
@@ -158,6 +196,11 @@ if ($env:GUI_FOR_CLI_DATA_SOURCE -eq "1") {
     $shim = Join-Path (Split-Path -Parent $appDir) "bin\wgsextract.cmd"
     if (-not (Test-Path -LiteralPath $shim -PathType Leaf)) {
         [Console]::Error.WriteLine("WGS Extract CLI setup has not finished ($shim is missing). Run the WGS Extract setup action again.")
+        exit 127
+    }
+    $envsDir = Get-PixiEnvironmentsDirectory -AppDir $appDir
+    if (-not (Test-PixiDefaultEnvironment -AppDir $appDir -EnvsDir $envsDir)) {
+        [Console]::Error.WriteLine("WGS Extract's tools are missing from $envsDir. Run Setup again on the Settings page to install them.")
         exit 127
     }
     $runArgs += "--no-install"
