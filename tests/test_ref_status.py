@@ -143,6 +143,7 @@ def test_ref_status_reports_every_annotation_vep_cache_and_genome(tmp_path, caps
     assert by_name["hg38.fa.gz"]["bwaIndex"] is True
     assert by_name["hg38.fa.gz"]["bwaMem2Index"] is True
     assert by_name["hg19.fa.gz"]["bwaMem2Index"] is False
+    assert by_name["hg19.fa.gz"]["bwaMem3Index"] is False
     assert by_name["hg19.fa.gz"]["faiIndex"] is False
 
     print_ref_status(status)
@@ -170,3 +171,25 @@ def test_ref_status_is_a_query_that_writes_nothing_beside_its_input(tmp_path):
 
     (genome / "broken.bam").write_text("not an alignment")
     assert _status(input=genome / "broken.bam", ref=tmp_path / "reference")
+
+
+def test_ref_status_reports_a_bwa_mem2_index_without_its_0123_file(tmp_path, capsys):
+    # #658 review: align maps with bwa-mem3 or wgse-bwa-mem2 0.5.0+ without
+    # the .0123 file, but status reported such a reference as not indexed.
+    reflib = tmp_path / "reference"
+    genomes = reflib / "genomes"
+    genomes.mkdir(parents=True)
+    (genomes / "hs38.fa").write_text(">chr1\nA\n", encoding="utf-8")
+    for ext in (".fai", ".amb", ".ann", ".pac", ".bwt.2bit.64"):
+        (genomes / f"hs38.fa{ext}").write_text("x", encoding="utf-8")
+
+    status = api.ref.status(
+        RefStatusParams(ref=reflib, dataset_library=tmp_path / "g")
+    ).details
+    print_ref_status(status)
+
+    (genome,) = status["genomes"]
+    assert genome["bwaMem2Index"] is False
+    assert genome["bwaMem3Index"] is True
+    printed = capsys.readouterr().out
+    assert "wgse-bwa-mem2 0.5.0+; bwa-mem2 needs .0123" in printed

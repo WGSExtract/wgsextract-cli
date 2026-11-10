@@ -46,10 +46,16 @@ os.execv({real!r}, [" ".join([{name!r}, *backend]), *args[len(backend):]])
 def _capabilities(tool, **overrides):
     document = {
         "schema_version": 1,
-        "version": {"bwa": "0.7.1", "bwa-mem3": "0.2.0", "minimap2": "0.1.0"}[tool],
+        "version": {
+            "bwa": "0.7.1",
+            "bwa-mem2": "0.5.0",
+            "bwa-mem3": "0.2.0",
+            "minimap2": "0.1.0",
+        }[tool],
         "engine": tool,
         "engine_version": {
             "bwa": "0.7.19",
+            "bwa-mem2": "2.3",
             "bwa-mem3": "0.16.0",
             "minimap2": "2.31-r1302",
         }[tool],
@@ -62,13 +68,13 @@ def _capabilities(tool, **overrides):
     return json.dumps(document) + "\n"
 
 
-def _install_build(bindir, engine, capabilities=None, status=0):
-    """A wgse-<engine> in bindir running the real ``engine``."""
+def _install_build(bindir, engine, capabilities=None, status=0, real=None):
+    """A wgse-<engine> in bindir running the real ``real`` (else ``engine``)."""
     name = f"wgse-{engine}"
     source = _FAKE_BUILD.format(
         capabilities=_capabilities(engine) if capabilities is None else capabilities,
         status=status,
-        real=str((bindir / engine).resolve()),
+        real=str((bindir / (real or engine)).resolve()),
         name=name,
     )
     return python_tool(bindir, name, source)
@@ -824,3 +830,126 @@ def test_realign_bwa_mem3_warns_once_about_an_unusable_build(tmp_path, mem3_bin)
     bam = str(tmp_path / "out" / "x_aligned.bam")
     assert _mapper(bam, "bwa").startswith("bwa-mem3 mem --compat=bwa-mem ")
     assert [w.code for w in result.warnings] == ["native_aligner_unusable"]
+
+
+def _install_wgse_bwa_mem2(bindir, version):
+    """wgse-bwa-mem2 ``version``, writing bwa's records with bwa: the test's
+    .0123 file is missing or too big for upstream bwa-mem2 to load."""
+    capabilities = _capabilities("bwa-mem2", version=version, metal_available=False)
+    _install_build(bindir, "bwa-mem2", capabilities, real="bwa")
+
+
+@pytest.mark.usefixtures("apple_silicon")
+@pytest.mark.parametrize("command", ["align", "realign"])
+@pytest.mark.parametrize(("version", "fits"), [("0.5.0", True), ("0.4.1", False)])
+def test_wgse_bwa_mem2_from_0_5_0_is_not_budgeted_its_0123_file(
+    tmp_path, mem3_bin, ram, caplog, command, version, fits
+):
+    # #595: wgse-bwa-mem2 0.5.0 maps without the .0123 file, but --aligner
+    # bwa-mem2's memory gate counted it (6.2 GB for hs38) and refused to run.
+    if command == "align":
+        reads = _mem3_reads(tmp_path)
+        ref = reads.ref
+    else:
+        source, ref = _mem3_realign_source(tmp_path)
+        reads = Namespace(ref=ref)
+    _bloat_0123(ref)
+    _install_wgse_bwa_mem2(mem3_bin, version)
+    without_0123 = _mem3_needed(reads, "wgse-bwa-mem2", memory="256M")
+    ram(64 * GIB, available=without_0123 + 2 * GIB)
+    outdir = tmp_path / "out"
+    caplog.set_level("INFO")
+
+    def run():
+        if command == "align":
+            return _align(reads, outdir, "--aligner", "bwa-mem2")[1]
+        return _run_realign(source, ref, outdir, aligner="bwa-mem2")
+
+    if not fits:
+        with pytest.raises(WGSExtractError, match="bwa-mem2 alignment is estimated"):
+            run()
+        assert not list(outdir.glob("*.bam"))
+        return
+    result = run()
+
+    assert result.metrics["native_aligner"] == "wgse-bwa-mem2"
+    assert result.metrics["native_aligner_version"] == "0.5.0"
+    assert "wgse-bwa-mem2 alignment memory estimate" in caplog.text
+
+
+@pytest.mark.usefixtures("apple_silicon")
+@pytest.mark.parametrize("command", ["align", "realign"])
+def test_wgse_bwa_mem2_from_0_5_0_needs_no_0123_file(tmp_path, mem3_bin, command):
+    # #595: neither wgse-bwa-mem2 0.5.0 backend reads the .0123 file, so it
+    # is neither required nor built.
+    if command == "align":
+        reads = _mem3_reads(tmp_path)
+        ref = reads.ref
+    else:
+        source, ref = _mem3_realign_source(tmp_path)
+    Path(ref + ".0123").unlink()
+    _install_wgse_bwa_mem2(mem3_bin, "0.5.0")
+    outdir = tmp_path / "out"
+
+    if command == "align":
+        _, result = _align(reads, outdir, "--aligner", "bwa-mem2")
+    else:
+        result = _run_realign(source, ref, outdir, aligner="bwa-mem2")
+
+    assert result.metrics["native_aligner"] == "wgse-bwa-mem2"
+    assert list(outdir.glob("*_aligned.bam"))
+    assert not Path(ref + ".0123").exists()
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_wgse_bwa_mem2_0_5_0_aligns_when_the_stand_in_needs_more(
+    tmp_path, mem3_bin, ram
+):
+    # #595: the stand-in was compared with bwa-mem2's estimate including the
+    # .0123 file, so it took the place of a wgse-bwa-mem2 that needs less.
+    reads = _mem3_reads(tmp_path)
+    _install_bwa_mem3(mem3_bin, mem2="bwa")
+    _install_wgse_bwa_mem2(mem3_bin, "0.5.0")
+    _bloat_0123(reads.ref)
+    stand_in = _mem3_needed(reads, "bwa-mem3", memory="256M", gpu_bytes=GIB // 4)
+    assert _mem3_needed(reads, "wgse-bwa-mem2", memory="256M") < stand_in - GIB
+    ram(stand_in + GIB)
+
+    bam, result = _align(reads, tmp_path / "out", "--aligner", "bwa-mem2")
+
+    assert _mapper(bam, "bwa").startswith("wgse-bwa-mem2 mem ")
+    assert "bwa_mem3_mode" not in result.metrics
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_native_aligners_off_still_budgets_bwa_mem2s_0123_file(tmp_path, mem3_bin, ram):
+    # #658 review: with wgse-bwa-mem2 0.5.0 installed but turned off, upstream
+    # bwa-mem2 runs, which loads the .0123 file, so the gate still counts it.
+    reads = _mem3_reads(tmp_path)
+    _bloat_0123(reads.ref)
+    _install_wgse_bwa_mem2(mem3_bin, "0.5.0")
+    without_0123 = _mem3_needed(reads, "wgse-bwa-mem2", memory="256M")
+    ram(64 * GIB, available=without_0123 + 2 * GIB)
+
+    with pytest.raises(WGSExtractError, match="bwa-mem2 alignment is estimated"):
+        _align(
+            reads, tmp_path / "out", "--aligner", "bwa-mem2",
+            "--native-aligners", "off",
+        )  # fmt: skip
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_native_aligners_off_still_needs_bwa_mem2s_0123_file(tmp_path, mem3_bin):
+    # #658 review: upstream bwa-mem2 reads the .0123 file, so with the
+    # installed wgse-bwa-mem2 0.5.0 turned off align builds it first.
+    reads = _mem3_reads(tmp_path)
+    Path(reads.ref + ".0123").unlink()
+    _install_wgse_bwa_mem2(mem3_bin, "0.5.0")
+
+    bam, result = _align(
+        reads, tmp_path / "out", "--aligner", "bwa-mem2", "--native-aligners", "off"
+    )
+
+    assert _mapper(bam, "bwa-mem2").startswith("bwa-mem2 mem ")
+    assert "native_aligner" not in result.metrics
+    assert Path(reads.ref + ".0123").is_file()

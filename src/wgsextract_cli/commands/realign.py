@@ -458,8 +458,13 @@ def run(params: RealignParams) -> None:
     target = resolve_reference(job.ref, signature) if job.ref or signature else None
     if job.aligner == "bwa-mem2" and target and Path(target).is_file():
         align_cmd.ensure_fasta_index(target)
-        # wgse-bwa-mem3 standing in maps without bwa-mem2's .0123 file.
-        if align_cmd.bwa_mem3_build(job, "bwa-mem2", target) is None:
+        # wgse-bwa-mem3 standing in, and wgse-bwa-mem2 0.5.0 and later, map
+        # without bwa-mem2's .0123 file.
+        if align_cmd.bwa_mem3_build(
+            job, "bwa-mem2", target
+        ) is None and not align_cmd.bwa_mem2_index_ready(
+            align_cmd.bwa_mem2_memory_model(job), target
+        ):
             bwa_mem2.check_index(target)
     if selected_aligner == "bwa-mem3" and not job.gpu:
         # Before hours of extraction: the aligner and its index.
@@ -1017,7 +1022,7 @@ def _run_steps(
             )
             fits = align_cmd.streaming_mapping_fits(
                 target,
-                aligner.engine,
+                aligner.memory_model,
                 threads=threads,
                 memory=aligner_memory,
                 samblaster=samblaster,
@@ -1064,7 +1069,7 @@ def _run_steps(
         )
         check_mapping_memory(
             target,
-            aligner.engine,
+            aligner.memory_model,
             threads=threads,
             memory=aligner_memory,
             samblaster=samblaster,

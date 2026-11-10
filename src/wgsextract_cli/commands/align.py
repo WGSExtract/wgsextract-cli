@@ -627,7 +627,9 @@ def native_short_read_aligner(
     available now, as streaming_mapping_fits checks, so Metal never pushes it
     to extracting FASTQs.
     wgse-bwa-mem2 keeps bwa-mem2's (CPU) estimate, which also covers its CPU
-    fallback when the GPU can't hold its index tables.
+    fallback when the GPU can't hold its index tables; from 0.5.0 that
+    estimate leaves out the .0123 file it no longer loads
+    (AlignerCommand.memory_model).
     wgse-bwa-mem3 writes either's exact records faster, so it runs in their
     place when it fits (bwa_mem3_stand_in).
     """
@@ -747,8 +749,9 @@ def bwa_mem3_stand_in(
 
     In bwa's place it needs more memory than bwa, so its estimate must fit
     the RAM available now; otherwise (on small Macs) wgse-bwa or bwa aligns.
-    In bwa-mem2's place it is taken when it needs no more than bwa-mem2, or
-    fits this Mac's RAM less headroom (as wgse-bwa's GPU backend must);
+    In bwa-mem2's place it is taken when it needs no more than the bwa-mem2
+    that would run instead (wgse-bwa-mem2 0.5.0 and later without the .0123
+    file), or fits this Mac's RAM less headroom (as wgse-bwa's GPU backend must);
     an explicit --aligner bwa-mem2 then still stops when it doesn't fit the
     RAM available (_bwa_setup's check_mapping_memory)."""
     native = bwa_mem3_build(job, tool, ref)
@@ -781,7 +784,7 @@ def bwa_mem3_stand_in(
         limit = min(budget, available_memory())
         room = f"the {limit / 1024**3:.1f} GiB of RAM available"
     else:
-        limit = max(budget, needed(tool))
+        limit = max(budget, needed(bwa_mem2_memory_model(job)))
         room = f"the {budget / 1024**3:.1f} GiB of RAM it can use"
     if stand_in > limit:
         logging.info(
@@ -791,6 +794,22 @@ def bwa_mem3_stand_in(
         )
         return None
     return aligner
+
+
+def bwa_mem2_memory_model(job: AlignJob) -> str:
+    """The memory model of bwa-mem2 for this run: its Apple Silicon build's
+    when that maps without the .0123 file (AlignerCommand.memory_model)."""
+    native = find_native_aligner("bwa-mem2", job.native_aligners, quiet=True)
+    return AlignerCommand("bwa-mem2", native).memory_model
+
+
+def bwa_mem2_index_ready(model: str, ref: str) -> bool:
+    """Whether ``ref`` has every index file that the aligner of memory
+    ``model`` (AlignerCommand.memory_model) reads: bwa-mem3 and wgse-bwa-mem2
+    0.5.0 and later don't read the .0123 file."""
+    if model in {"bwa-mem3", "wgse-bwa-mem2"}:
+        return bwa_mem2.has_bwa_mem3_index(ref)
+    return bwa_mem2.has_index(ref)
 
 
 def aligner_gpu_bytes(aligner: AlignerCommand, ref: str, reads: int | None) -> int:
@@ -1171,12 +1190,14 @@ def _bwa_setup(
             additional_ram_bytes=additional_ram_bytes,
         )
         setup = setup._replace(memory=memory)
-    # The memory model of the aligner that runs (bwa-mem3 in another's place).
+    # The memory model of the aligner that runs (bwa-mem3 in another's place,
+    # or wgse-bwa-mem2 without the .0123 file).
     engine = aligner.engine
+    model = aligner.memory_model
     gpu_bytes = aligner_gpu_bytes(aligner, setup.ref, reads)
     if additional_ram_bytes and not streaming_mapping_fits(
         setup.ref,
-        engine,
+        model,
         threads=setup.threads,
         memory=setup.memory,
         samblaster=samblaster,
@@ -1198,7 +1219,7 @@ def _bwa_setup(
             reference=setup.ref,
             threads=setup.threads,
             memory=setup.memory,
-            aligner=engine,
+            aligner=model,
             samblaster=samblaster,
             reads=reads,
             platform=job.platform,
@@ -1216,7 +1237,7 @@ def _bwa_setup(
     try:
         check_mapping_memory(
             setup.ref,
-            engine,
+            model,
             threads=setup.threads,
             memory=setup.memory,
             samblaster=samblaster,
@@ -1234,7 +1255,9 @@ def _bwa_setup(
         raise
     warn_alignment_sort_space(configured_temp_directory() or setup.outdir, reads)
     job.input_reads = InputReads(reads, read_length)
-    if engine == "bwa-mem2":
+    if engine == "bwa-mem2" and not bwa_mem2_index_ready(
+        aligner.memory_model, setup.ref
+    ):
         bwa_mem2.ensure_index(setup.ref, download=False)
     elif engine == "bwa":
         ensure_bwa_index(setup.ref)
