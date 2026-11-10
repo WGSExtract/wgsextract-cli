@@ -75,6 +75,11 @@ SKETCHES = Resource(
     "https://zenodo.org/records/3479773/files/1kg.somalier.tar.gz?download=1",
     "b2b7959cfd6d37d1ac7a96e03aeb13707cfe84e5c3a208329220712a935c5a1e",
 )
+# SHA-256 of the archive's "<name> <sha256>\n" lines, sorted by name: pins
+# each unpacked sketch independently of the marker written beside them.
+SKETCHES_CONTENT_SHA256 = (
+    "9184f5188e2897f1e5c96b8441e7cdbe50f6673a1adf6d82c59f0902a0fd201f"
+)
 SKETCH_DIR = "1kg-somalier"
 SKETCH_COUNT = 2504
 # Written once the sketches are unpacked from the verified archive: its digest
@@ -141,6 +146,11 @@ def require_ancestry(reflib: str | None = None) -> tuple[Path, list[Path]]:
     return labels, sorted(sketches.glob("*.somalier"))
 
 
+def content_digest(digests: dict[str, str]) -> str:
+    lines = "".join(f"{name} {digests[name]}\n" for name in sorted(digests))
+    return hashlib.sha256(lines.encode()).hexdigest()
+
+
 def _sketch_problem(sketches: Path) -> str | None:
     """Why the unpacked sketches can't be used, if they can't."""
     try:
@@ -148,6 +158,8 @@ def _sketch_problem(sketches: Path) -> str | None:
         digests: dict[str, str] = marker["files"]
         if marker["archive_sha256"] != SKETCHES.sha256:
             return "are from another archive"
+        if content_digest(digests) != SKETCHES_CONTENT_SHA256:
+            return "don't match the pinned 1000 Genomes sketches"
     except (OSError, ValueError, KeyError, TypeError):
         return "are missing or incomplete"
     found = {p.name for p in sketches.glob("*.somalier")}
@@ -209,6 +221,8 @@ def _unpack_sketches(archive: Path, target: Path) -> None:
                 digests[name] = _sha256(staging / name)
     except tarfile.TarError as e:
         raise WGSExtractError(f"Could not unpack {archive}: {e}") from e
+    if content_digest(digests) != SKETCHES_CONTENT_SHA256:
+        raise WGSExtractError(f"{archive.name} doesn't hold the pinned sketches.")
     if len(digests) != SKETCH_COUNT:
         raise WGSExtractError(
             f"{archive.name} held {len(digests)} sketches, not {SKETCH_COUNT}."

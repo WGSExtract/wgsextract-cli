@@ -4,6 +4,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from wgsextract_cli.api._cli import cli_handler
+from wgsextract_cli.api._runtime import cancel_event
 from wgsextract_cli.api.ref import (
     RefAadrParams,
     RefAlphamissenseParams,
@@ -120,7 +121,7 @@ def run_somalier(params: RefSomalierParams) -> None:
     if params.delete:
         _delete(name, [somalier_resources.folder(reflib)])
         return
-    for path in somalier_resources.install(reflib):
+    for path in somalier_resources.install(reflib, cancel=cancel_event()):
         current_result().add_output(path, "reference_resource")
     logging.info(f"Installed the {name} in {somalier_resources.folder(reflib)}")
 
