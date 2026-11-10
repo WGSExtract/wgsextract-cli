@@ -13,18 +13,35 @@ name: Install Lab
 # see which releases have had a full run; otherwise the event's default name.
 run-name: "${{ inputs.app_release && format('Install Lab: app {0}', inputs.app_release) || '' }}"
 
-# The desktop app (gui/) has its own CI (gui-*.yml); app-only changes skip this.
+# Changes that can't affect the app or the CLI skip this; see "In CI" in
+# docs/install_testing.md. Later patterns override earlier ones.
 on:
   pull_request:
     branches: [ main ]
-    paths-ignore:
-      - gui/**
-      - .github/workflows/gui-*.yml
+    paths:
+      - "**"
+      # Can't change the app or its actions (#625); all other gui/ changes run
+      # the tree jobs on an app built from the tree.
+      - "!gui/docs/**"
+      - "!gui/**/*.md"
+      - "!gui/app/tests/**"
+      - "!gui/tests/**"
+      - "!gui/tools/packaging/tests/**"
+      - "!.github/workflows/gui-*.yml"
+      - ".github/workflows/gui-build.yml"
   push:
     branches: [ main ]
-    paths-ignore:
-      - gui/**
-      - .github/workflows/gui-*.yml
+    paths:
+      - "**"
+      # Can't change the app or its actions (#625); all other gui/ changes run
+      # the tree jobs on an app built from the tree.
+      - "!gui/docs/**"
+      - "!gui/**/*.md"
+      - "!gui/app/tests/**"
+      - "!gui/tests/**"
+      - "!gui/tools/packaging/tests/**"
+      - "!.github/workflows/gui-*.yml"
+      - ".github/workflows/gui-build.yml"
   schedule:
     - cron: "17 6 * * 1"
   workflow_dispatch:
@@ -150,8 +167,9 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   # Unsigned, as a local build: the oracle then requires the platform's
-  # signature check to refuse it. Intel macOS isn't tested here. The app jobs
-  # run when this succeeded or wasn't needed.
+  # signature check to refuse it. Intel macOS isn't tested here. A platform
+  # whose build failed fails its own tree job (no artifact); the pinned jobs,
+  # which use the release, still run.
   app-build:
     needs: app-source
     if: needs.app-source.outputs.build == 'true'
@@ -162,7 +180,7 @@ jobs:
 
   linux-app:
     needs: [app-source, app-build]
-    if: ${{ !cancelled() && needs.app-source.result == 'success' && needs.app-build.result != 'failure' }}
+    if: ${{ !cancelled() && needs.app-source.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
@@ -259,7 +277,7 @@ jobs:
 
   macos-app:
     needs: [app-source, app-build]
-    if: ${{ !cancelled() && needs.app-source.result == 'success' && needs.app-build.result != 'failure' }}
+    if: ${{ !cancelled() && needs.app-source.result == 'success' }}
     runs-on: macos-latest
     timeout-minutes: 150
     strategy:
@@ -402,7 +420,7 @@ jobs:
 
   windows-app:
     needs: [app-source, app-build]
-    if: ${{ !cancelled() && needs.app-source.result == 'success' && needs.app-build.result != 'failure' }}
+    if: ${{ !cancelled() && needs.app-source.result == 'success' }}
     runs-on: windows-latest
     timeout-minutes: 150
     strategy:
