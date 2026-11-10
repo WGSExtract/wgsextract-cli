@@ -547,18 +547,20 @@ def modkit_failure(error: OSError | subprocess.SubprocessError, reads: str) -> s
     crashed = crash_description(returncode) if returncode is not None else None
     if not crashed:
         return f"modkit pileup failed: {error}"
-    output = getattr(error, "stderr", None) or ""
-    if isinstance(output, bytes):
-        output = output.decode(errors="replace")
-    tail = "\n".join(str(output).strip().splitlines()[-8:])
     message = f"modkit pileup {crashed}, exit {returncode}."
-    if tail:
-        message += f" modkit's output:\n{tail}"
+    for stream in ("stderr", "stdout"):
+        output = getattr(error, stream, None) or ""
+        if isinstance(output, bytes):
+            output = output.decode(errors="replace")
+        if tail := "\n".join(str(output).strip().splitlines()[-8:]):
+            message += f"\nmodkit's {stream}:\n{tail}"
     if reads.lower().endswith(".cram"):
+        from wgsextract_cli.cli.hints import quote
+
         # modkit itself warns that its CRAM reading "may be unstable".
         message += (
             f"\nmodkit reads CRAM less reliably than BAM. Convert the input with "
-            f"`wgsextract bam to-bam -i {reads}` and run on the BAM."
+            f"`wgsextract bam to-bam -i {quote(reads)}` and run on the BAM."
         )
     return message
 
@@ -662,7 +664,8 @@ def run_pileup(params: MethylationPileupParams) -> None:
                 input_path, staged_bed, use_ref, options, threads, intervals, bed
             )
             try:
-                run_command(command)
+                # Kept so a crash can quote diagnostics written to stdout too.
+                run_command(command, stdout=subprocess.PIPE)
             except (OSError, subprocess.SubprocessError) as e:
                 raise WGSExtractError(modkit_failure(e, input_path)) from e
             checkpoint()

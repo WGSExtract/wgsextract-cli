@@ -284,8 +284,10 @@ argv = sys.argv[1:]
 with open({log!r}, "a") as f:
     f.write(json.dumps(argv) + "\\n")
 if {crash}:
-    # modkit 0.6.4 segfaulting on a CRAM (#608).
+    # modkit 0.6.4 segfaulting on a CRAM (#608); "probabilites" (sic: modkit's spelling).
     print("> calculating threshold value with probabilites from reads", file=sys.stderr)
+    print("modkit wrapper: diagnostics on stdout")
+    sys.stdout.flush()
     sys.stderr.flush()
     os.kill(os.getpid(), signal.SIGSEGV)
 codes = ["m", "h"] if "5hmC" in argv else ["m"]
@@ -574,7 +576,8 @@ def test_a_modkit_crash_on_cram_names_the_signal_and_quotes_modkit(
 ):
     """#608: modkit segfaulting on a CRAM was reported as a bare exit code."""
     bam, ref = tagged
-    cram = bam.with_suffix(".cram")
+    cram = tmp_path / "my reads" / "reads.cram"
+    cram.parent.mkdir()
     subprocess.run(
         ["samtools", "view", "-C", "-T", str(ref), "-o", str(cram), str(bam)],
         check=True,
@@ -590,7 +593,8 @@ def test_a_modkit_crash_on_cram_names_the_signal_and_quotes_modkit(
     assert result.status == "failed"
     message = result.error.message
     assert "SIGSEGV" in message and "probabilites from reads" in message
-    assert "to-bam" in message
+    assert "stdout:\nmodkit wrapper: diagnostics on stdout" in message
+    assert f"to-bam -i {shlex.quote(str(cram))}`" in message
     assert not list(out.glob("reads.*"))
 
 
