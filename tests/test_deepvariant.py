@@ -1008,7 +1008,8 @@ def as_v085_journal(dv, image_id):
         payload = {
             "workflow": journal["workflow"],
             "step": name,
-            "version": record["version"],
+            # A running record holds neither; its stage's are 1 and none.
+            "version": record.get("version", 1),
             "params": record["params"],
             "tools": record.get("tools") or {},
         }
@@ -1047,6 +1048,23 @@ def test_forced_rerun_of_v085_journal_records_the_valid_image_597(ultima_gpu):
     assert set(images.values()) == {deepvariant.DEFAULT_ULTIMA_GPU_IMAGE}
 
 
+def test_v085_interrupted_make_examples_keeps_its_shards_597(ultima_gpu):
+    pinned_ultima_gpu(ultima_gpu)
+    ultima_gpu.deepvariant.fail("make_examples", task=2, write=False)
+    with pytest.raises(WGSExtractError):
+        gpu_call(ultima_gpu)
+    as_v085_journal(ultima_gpu, OTHER_DIGEST)
+    ultima_gpu.deepvariant.fail(None)
+    ultima_gpu.deepvariant.clear()
+    ultima_gpu.docker.clear()
+
+    gpu_call(ultima_gpu)
+
+    (examples,) = ultima_gpu.deepvariant.runs("parallel")
+    assert examples["tasks"][0] == "2"  # shards 0 and 1 are kept
+    assert vcf_calls(ultima_gpu.out / "deepvariant.vcf.gz") == ultima_gpu.ultima.calls
+
+
 def test_v085_journal_of_another_pinned_image_reruns_597(ultima_gpu, monkeypatch):
     pinned_ultima_gpu(ultima_gpu)
     gpu_call(ultima_gpu)
@@ -1061,6 +1079,133 @@ def test_v085_journal_of_another_pinned_image_reruns_597(ultima_gpu, monkeypatch
 
     assert ultima_gpu.deepvariant.stages() == STAGES
     assert set(recorded_images(ultima_gpu).values()) == {other}
+
+
+CPU_ID = "sha256:" + "c" * 64
+CPU_DIGEST = "google/deepvariant@sha256:" + "d" * 64
+
+
+def recorded_params(dv):
+    journal = json.loads((dv.out / "deepvariant.vcf.gz.steps.json").read_text())
+    return [
+        {k: v for k, v in record["params"].items() if k.startswith("image")}
+        for record in journal["steps"].values()
+        if "image" in record.get("params", {})
+    ]
+
+
+def test_step_record_names_a_pullable_image_and_its_build_601(dv):
+    dv.docker.add_image(
+        deepvariant.DEFAULT_IMAGE, image_id=CPU_ID, repo_digests=(CPU_DIGEST,)
+    )
+    call(dv)
+
+    # #601: the record said google/deepvariant:1.10.0@<image ID>, which
+    # Docker can't always pull; the image ID is now kept apart.
+    records = recorded_params(dv)
+    assert len(records) == len(STAGES)
+    assert all(r == {"image": CPU_DIGEST, "image_id": CPU_ID} for r in records)
+
+
+def test_locally_built_image_is_recorded_by_its_tag_and_build_601(dv):
+    dv.docker.add_image(deepvariant.DEFAULT_IMAGE, image_id=CPU_ID)
+    call(dv)
+
+    records = recorded_params(dv)
+    assert records
+    assert all(
+        r == {"image": deepvariant.DEFAULT_IMAGE, "image_id": CPU_ID} for r in records
+    )
+
+
+def as_pre601_journal(dv, image_id):
+    """Rewrite the run's journal as v0.8.5 to #601 wrote it for a tag: the tag
+    with Docker's image ID appended, keyed as StepJournal keys its records."""
+    path = dv.out / "deepvariant.vcf.gz.steps.json"
+    journal = json.loads(path.read_text())
+    for name, record in journal["steps"].items():
+        params = record.get("params", {})
+        if "image" not in params:
+            continue
+        params.pop("image_id", None)
+        params["image"] = f"{deepvariant.DEFAULT_IMAGE}@{image_id}"
+        payload = {
+            "workflow": journal["workflow"],
+            "step": name,
+            # A running record holds neither; its stage's are 1 and none.
+            "version": record.get("version", 1),
+            "params": params,
+            "tools": record.get("tools") or {},
+        }
+        text = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        record["key"] = hashlib.sha256(text.encode()).hexdigest()
+    path.write_text(json.dumps(journal))
+
+
+def test_pre601_journal_of_the_same_build_resumes_without_rerun_601(dv):
+    dv.docker.add_image(
+        deepvariant.DEFAULT_IMAGE, image_id=CPU_ID, repo_digests=(CPU_DIGEST,)
+    )
+    call(dv)
+    as_pre601_journal(dv, CPU_ID)
+    dv.deepvariant.clear()
+
+    rerun(dv)
+
+    assert dv.deepvariant.stages() == []
+
+
+@pytest.mark.parametrize(
+    ("old_id", "resumed"), [(CPU_ID, ["2", "3"]), ("sha256:" + "e" * 64, None)]
+)
+def test_pre601_interrupted_make_examples_keeps_its_shards_601(dv, old_id, resumed):
+    dv.docker.add_image(
+        deepvariant.DEFAULT_IMAGE, image_id=CPU_ID, repo_digests=(CPU_DIGEST,)
+    )
+    dv.deepvariant.fail("make_examples", task=2, write=False)
+    with pytest.raises(WGSExtractError):
+        call(dv)
+    as_pre601_journal(dv, old_id)
+
+    rerun(dv)
+
+    # Only a run of the same build may keep the finished shards.
+    (examples,) = dv.deepvariant.runs("parallel")
+    assert examples["tasks"] == (resumed or ["0", "1", "2", "3"])
+    assert vcf_calls(dv.out / "deepvariant.vcf.gz") == dv.sample.calls
+
+
+def test_pre601_journal_of_a_replaced_tag_reruns_601(dv):
+    dv.docker.add_image(
+        deepvariant.DEFAULT_IMAGE, image_id=CPU_ID, repo_digests=(CPU_DIGEST,)
+    )
+    call(dv)
+    as_pre601_journal(dv, "sha256:" + "e" * 64)
+    dv.deepvariant.clear()
+
+    rerun(dv)
+
+    assert dv.deepvariant.stages() == STAGES
+
+
+def test_replaced_tag_reruns_601(dv):
+    dv.docker.add_image(
+        deepvariant.DEFAULT_IMAGE, image_id=CPU_ID, repo_digests=(CPU_DIGEST,)
+    )
+    call(dv)
+    new_digest = "google/deepvariant@sha256:" + "f" * 64
+    dv.docker.add_image(
+        deepvariant.DEFAULT_IMAGE, image_id=OTHER_DIGEST, repo_digests=(new_digest,)
+    )
+    dv.deepvariant.clear()
+
+    rerun(dv)
+
+    assert dv.deepvariant.stages() == STAGES
+    assert all(
+        r == {"image": new_digest, "image_id": OTHER_DIGEST}
+        for r in recorded_params(dv)
+    )
 
 
 @pytest.mark.parametrize(

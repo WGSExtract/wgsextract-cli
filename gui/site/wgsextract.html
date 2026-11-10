@@ -3,12 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="WGSExtract v0.6.6 workflows and how the first real app shaped GUI for CLI." />
+    <meta name="description" content="WGSExtract v0.8.6 workflows and how the first real app shaped GUI for CLI." />
     <title>WGSExtract and GUI for CLI</title>
     <meta property="og:site_name" content="GUI for CLI" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="WGSExtract and GUI for CLI" />
-    <meta property="og:description" content="WGSExtract v0.6.6 workflows and how the first real app shaped GUI for CLI." />
+    <meta property="og:description" content="WGSExtract v0.8.6 workflows and how the first real app shaped GUI for CLI." />
     <meta property="og:url" content="https://wgsextract.github.io/wgsextract-cli/app/wgsextract.html" />
     <meta property="og:image" content="https://wgsextract.github.io/wgsextract-cli/app/assets/social-preview.webp" />
     <meta property="og:image:secure_url" content="https://wgsextract.github.io/wgsextract-cli/app/assets/social-preview.webp" />
@@ -72,23 +72,23 @@
 </section>
 <section>
 <div class="wrap">
-<h2>What v0.6.6 exposes</h2>
-<p>The desktop app bundles <strong>WGSExtract CLI v0.6.6</strong>. Nanopore reads work through the actions already in the app with no settings to change, and new opt-in controls cover the rest. They start blank or unchecked, so automatic detection and <code>config.toml</code> defaults keep applying.</p>
+<h2>What the app exposes</h2>
+<p>The desktop app bundles <strong>WGSExtract CLI v0.8.6</strong>. A <strong>Basic / Advanced</strong> switch in the sidebar keeps everyday controls up front; Advanced mode covers the CLI's remaining user options, and Basic runs commands with the hidden settings at their defaults. Nanopore reads work through the actions already in the app with no settings to change, and opt-in controls cover the rest. They start blank or unchecked, so automatic detection and <code>config.toml</code> defaults keep applying.</p>
 <h3>Oxford Nanopore in existing actions</h3>
 <p>Nanopore (ONT) reads are detected from <code>PL:ONT</code> read groups or UUID read names.</p>
 <ul>
-<li><strong>Align and Realign:</strong> use minimap2's <code>map-ont</code> preset and keep MM/ML methylation tags through alignment and sorting. Realign refuses its keep-FASTQ option for ONT input rather than lose those tags. FASTQs renamed without platform metadata, such as SRA downloads, are treated as Illumina, and the app has no platform override.</li>
+<li><strong>Align and Realign:</strong> use minimap2's <code>map-ont</code> preset and keep MM/ML methylation tags through alignment and sorting. Realign refuses its keep-FASTQ option for ONT input rather than lose those tags. FASTQs renamed without platform metadata, such as SRA downloads, are treated as Illumina unless you set <strong>Sequencing platform</strong> in Advanced mode.</li>
 <li><strong>DeepVariant:</strong> selects the ONT_R104 model. It supports R10.4.1 chemistry only and needs x86-64, so ONT calling is refused on Apple Silicon and ARM64. DeepVariant itself is still a separate install.</li>
 <li><strong>SV Call:</strong> runs Sniffles2 instead of Delly. App setup does not install Sniffles; install it separately before running this action on ONT data.</li>
 </ul>
-<h3>Other improvements in existing actions</h3>
+<h3>Improvements from CLI v0.6.6</h3>
 <ul>
 <li><strong>DeepVariant:</strong> CRAM 3.1 input is converted to a temporary CRAM 3.0 copy, and whole-genome postprocessing memory is estimated and capped.</li>
 <li><strong>Realign:</strong> paired reads stream through collation at whole-genome scale, and single-end input is refused before extraction instead of being dropped.</li>
 <li><strong>BAM Info:</strong> sex is inferred when chrX or chrY is missing, and depth binning is faster.</li>
 <li><strong>Microarray:</strong> coordinate projections and catalogues are cached for faster runs.</li>
 </ul>
-<h3>New opt-in controls</h3>
+<h3>Opt-in controls from CLI v0.6.6</h3>
 <ul>
 <li><strong>DeepVariant:</strong> a model dropdown that defaults to automatic. Its ONT_R104 choice supports R10.4.1 chemistry only and needs x86-64. DeepVariant does not run on native Windows.</li>
 <li><strong>SV Call:</strong> a long-read mode (Nanopore or any long-read data) and an optional tandem-repeat BED. The caller stays automatic, and pbsv is not offered for Nanopore. Sniffles does not run on native Windows.</li>
@@ -96,10 +96,10 @@
 <li><strong>Methylation Pileup:</strong> a bedMethyl table and summary from MM/ML-tagged reads, with optional context, 5hmC and strand overrides. It is hidden on Windows, and you install modkit separately.</li>
 <li><strong>Ancestry:</strong> Y-STR repeat counts with FamilyTreeDNA, PowerPlex Y23 and Yfiler Plus panels.</li>
 <li><strong>Annotate:</strong> a variant table as TSV plus an SQLite database to query.</li>
-<li><strong>Settings:</strong> preview a redacted <code>report-issue</code> bug report about the last action you ran in the app. Nothing is uploaded, and the browser does not open.</li>
+<li><strong>Settings:</strong> preview a redacted <code>report-issue</code> bug report about the last action you ran in the app, or, after a confirmation, open it in your browser as a pre-filled GitHub issue. The redacted report reaches GitHub in the link, but no issue is created until you review and submit it there yourself.</li>
 </ul>
 <h3>CLI only for now</h3>
-<p>Parquet table output, vendor chip detection, JSON result manifests, and the alignment platform override are not in the app, so run them from the CLI. Native Linux ARM64 DeepVariant is CLI only too, because Linux ARM64 desktop installers are not published.</p>
+<p>Native Linux ARM64 DeepVariant is CLI only, because Linux ARM64 desktop installers are not published.</p>
 <h3>Controls from earlier releases</h3>
 <p>These came with <a href="https://github.com/WGSExtract/gui-for-cli/pull/171">GUI #171</a>. They start unchecked or blank, inheriting CLI/config defaults rather than forcing them off.</p>
 <ul>
@@ -112,7 +112,7 @@
 </ul>
 <p>AADR 2M is excluded from <code>all</code>: explicitly install its pinned metadata from Library first. It supports GRCh37/38 only; GRCh38 also needs an already-installed forward chain. It does not support CHM13/T2T, and extraction never downloads missing metadata or chains. Use non-identifying AADR sample labels.</p>
 <p>CLI setup is native on Windows, without WSL or MSYS2, and GUI settings save real TOML booleans and numbers, including <code>false</code>. Earlier CLI releases also fixed fresh Windows installation, added warnings for invalid configuration values, and improved alignment reproducibility, memory preflight, and native Windows full-genome validation. Tool and platform requirements still vary by workflow.</p>
-<p><a href="index.html">Download v0.6.6</a>, read the <a href="https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.6.6">CLI v0.6.6 release notes</a> and <a href="https://github.com/WGSExtract/wgsextract-cli/blob/v0.6.6/docs/ont.md">ONT limitations</a>, or see the <a href="https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/docs/wgsextract-post-v063.md">workflow details and prerequisites</a>.</p>
+<p><a href="index.html">Download v0.8.6</a>, read the <a href="https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.6">v0.8.6 release notes</a> and <a href="https://github.com/WGSExtract/wgsextract-cli/blob/v0.8.6/docs/ont.md">ONT limitations</a>, or see the <a href="https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/docs/wgsextract-post-v063.md">workflow details and prerequisites</a>.</p>
 </div>
 </section>
 <section>
@@ -124,7 +124,7 @@
 <li>setup dry-runs and setup execution;</li>
 <li>dynamic page controls and action state;</li>
 <li>terminal output panes and process lifecycle handling;</li>
-<li>config storage in platform-standard Application Support paths;</li>
+<li>app settings in platform-standard Application Support paths, and your own data in a visible <code>wgs-extract</code> folder in your home folder that you can move to another disk;</li>
 <li>localized strings and semantic icon maps;</li>
 <li>bundle-specific packaging and app identity.</li>
 </ul>

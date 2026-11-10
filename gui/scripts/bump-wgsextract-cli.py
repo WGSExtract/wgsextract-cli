@@ -4,12 +4,15 @@
 Usage: scripts/bump-wgsextract-cli.py v0.4.4
 
 Updates the release tag setup installs, the bundle version that names the
-installers, the tests and docs that pin them, and adds a CHANGELOG entry.
+installers, the tests and docs that pin them, and the app site's download
+links and current-release text (then rebuilds site/), and adds a CHANGELOG
+entry.
 """
 
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -21,7 +24,15 @@ PINNED = [
     "examples/WGSExtract/manifest.json",
     "app/tests/conformance.test.mjs",
     "tools/packaging/tests/test_embedded_branding.py",
+    # The app site (https://wgsextract.github.io/wgsextract-cli/app/): its
+    # installer links and "current release" text. Every mention of the old
+    # version in these is replaced, so write past releases ("since v0.6.6")
+    # only as versions older than the current one.
+    "site_src/index.md",
+    "site_src/docs.md",
+    "site_src/wgsextract.md",
 ]
+BUILD_SITE = ROOT / "scripts/build_site.py"
 CHANGELOG = ROOT / "docs/CHANGELOG.md"
 RELEASES = "https://github.com/WGSExtract/wgsextract-cli/releases/tag"
 
@@ -56,6 +67,14 @@ def main(argv: list[str]) -> int:
     changes[TAG_FILE] = new_tag + "\n"
     for path, text in changes.items():
         path.write_text(text)
+    # site/ is committed as well as deployed; keep it in step with site_src/.
+    site = subprocess.run([sys.executable, str(BUILD_SITE)], cwd=ROOT)
+    if site.returncode:
+        print(
+            f"{BUILD_SITE.relative_to(ROOT)} failed; rerun it before committing.",
+            file=sys.stderr,
+        )
+        return 1
     print(f"Bundle now uses wgsextract-cli {new_tag} (was {old_tag}).")
     return 0
 
