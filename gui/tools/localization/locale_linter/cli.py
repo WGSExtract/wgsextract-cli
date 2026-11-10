@@ -39,7 +39,10 @@ def main() -> int:
     parser.add_argument(
         "--update-source-hashes",
         action="store_true",
-        help="Rewrite locale files in place, stamping each line with the current source hash.",
+        help=(
+            "After retranslating, refresh stale i18n-source-hash comments in place and "
+            "stamp new translations. i18n-ignore, TODO and verbatim lines are left alone."
+        ),
     )
     parser.add_argument(
         "paths", nargs="*", help="Bundle directories, strings folders, or strings.<code>.toml files."
