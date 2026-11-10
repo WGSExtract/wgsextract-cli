@@ -14,7 +14,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from wgsextract_cli.core.config import get_config_path, settings
+from wgsextract_cli.core.config import dataset_library, get_config_path, settings
 from wgsextract_cli.core.results import json_mode
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 
@@ -42,7 +42,8 @@ def register(
         "background jobs with progress, cancelling and result manifests. "
         "Requests may only name files inside the folders you allow: --allow, "
         "config server_allowed_paths, "
-        "genome_library, reference_library and output_directory.",
+        "dataset_library, reference_library, reference_genome_library and "
+        "output_directory.",
     )
     parser.add_argument(
         "--port",
@@ -87,7 +88,7 @@ def register(
         "--allow-destructive",
         action="store_true",
         help="Also run requests that delete data a command didn't make: "
-        "bam unindex, sample unset and ref gene-map --delete.",
+        "bam unindex, sample unset, vep delete and the ref installers' --delete.",
     )
     parser.add_argument(
         "--ready-json",
@@ -115,10 +116,16 @@ def allowed_roots(extra: Iterable[str]) -> list[Path]:
     for root in roots:
         if not root.is_dir():
             raise UsageError(f"Allowed folder {root} doesn't exist.")
-    for key in ("genome_library", "reference_library", "output_directory"):
-        if not settings.get(key):
+    configured_roots = {
+        "dataset_library": dataset_library(),
+        "reference_library": settings.get("reference_library"),
+        "reference_genome_library": settings.get("reference_genome_library"),
+        "output_directory": settings.get("output_directory"),
+    }
+    for key, value in configured_roots.items():
+        if not value:
             continue
-        root = Path(os.path.expanduser(str(settings[key])))
+        root = Path(os.path.expanduser(str(value)))
         if root.is_dir():
             roots.append(root)
         else:

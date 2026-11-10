@@ -294,7 +294,7 @@ macOS: `~/.config/wgsextract/config.toml` if `~/.config/` exists, otherwise `~/L
 
 ::: card
 ### Genome library
-Set `genome_library` to a folder with one subfolder per person or sample. Then `--genome sample-id` can resolve inputs and outputs from that folder.
+Set `dataset_library` (formerly `genome_library`) to a folder with one subfolder per person or sample. Then `--genome sample-id` can resolve inputs and outputs from that folder.
 :::
 :::
 :::
@@ -307,7 +307,7 @@ outdir = "/data/genomes/joe/out"
 ref = "/data/reference/genomes/hs38.fa.gz"
 # Reference library directory
 reflib = "/data/reference"
-genome_library = "/data/genome-library"
+dataset_library = "/data/datasets"
 # A number, or "auto"
 threads = "auto"
 memory = "auto"

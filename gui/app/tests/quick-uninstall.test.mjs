@@ -19,14 +19,16 @@ const pwsh = ["pwsh", "powershell.exe"].find((shell) => {
 });
 
 // Generates the release's quick-uninstall script with package_tauri.ps1's own function and runs it whole.
-// Get-CimInstance (finding the app's processes) exists only on Windows; there are none to stop here.
+// Get-CimInstance is stubbed out everywhere so the script finds no processes to stop. On Windows the real
+// one matches every command line containing "WGSExtract", which includes anything run from a
+// wgsextract-cli checkout: this test's own runner, the dev app and the developer's shell (and agent) sessions.
 const runner = `
 $ErrorActionPreference = "Stop"
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($env:PACKAGE_SCRIPT, [ref]$null, [ref]$null)
 foreach ($name in "ConvertTo-PowerShellLiteral", "New-QuickUninstallScript") {
     . ([scriptblock]::Create($ast.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }, $true).Extent.Text))
 }
-if (-not (Get-Command Get-CimInstance -ErrorAction SilentlyContinue)) { function Get-CimInstance { } }
+function Get-CimInstance { }
 $quick = New-QuickUninstallScript -InstallerName "WGSExtract_1.0.0_x64-setup.exe" -AppName "WGSExtract" -AppVersion "1.0.0" -AppIdentifier "test.quick.uninstall"
 & ([scriptblock]::Create($quick.contents))
 `;

@@ -69,11 +69,18 @@
               "tooltip": "controls.settings.settings-paths.ref_path.tooltip"
             },
             {
-              "id": "genome_library",
-              "key": "genome_library",
-              "label": "controls.settings.settings-paths.genome_library.label",
+              "id": "reference_genome_library",
+              "key": "reference_genome_library",
+              "label": "controls.settings.settings-paths.reference_genome_library.label",
               "kind": "path",
-              "tooltip": "controls.settings.settings-paths.genome_library.tooltip"
+              "tooltip": "controls.settings.settings-paths.reference_genome_library.tooltip"
+            },
+            {
+              "id": "dataset_library",
+              "key": "dataset_library",
+              "label": "controls.settings.settings-paths.dataset_library.label",
+              "kind": "path",
+              "tooltip": "controls.settings.settings-paths.dataset_library.tooltip"
             },
             {
               "id": "ref_fasta",
@@ -85,7 +92,8 @@
                 "path": "scripts/list-reference-genomes.py",
                 "arguments": [
                   "options",
-                  "{{ref_path}}"
+                  "{{ref_path}}",
+                  "{{reference_genome_library}}"
                 ]
               }
             },
@@ -94,7 +102,7 @@
               "key": "default_input_vcf",
               "label": "controls.settings.settings-paths.vcf_path.label",
               "kind": "path",
-              "defaultDirectory": "{{genome_library}}",
+              "defaultDirectory": "{{dataset_library}}",
               "tooltip": "controls.settings.settings-paths.vcf_path.tooltip"
             },
             {
@@ -102,7 +110,7 @@
               "key": "mother_vcf_path",
               "label": "controls.settings.settings-paths.mother_vcf_path.label",
               "kind": "path",
-              "defaultDirectory": "{{genome_library}}",
+              "defaultDirectory": "{{dataset_library}}",
               "tooltip": "controls.settings.settings-paths.mother_vcf_path.tooltip"
             },
             {
@@ -110,7 +118,7 @@
               "key": "father_vcf_path",
               "label": "controls.settings.settings-paths.father_vcf_path.label",
               "kind": "path",
-              "defaultDirectory": "{{genome_library}}",
+              "defaultDirectory": "{{dataset_library}}",
               "tooltip": "controls.settings.settings-paths.father_vcf_path.tooltip"
             },
             {
@@ -124,7 +132,8 @@
         }
       ],
       "iconName": "workspace",
-      "textIcon": "🗂️"
+      "textIcon": "🗂️",
+      "advancedOnly": true
     },
     {
       "id": "dependency-checks",
@@ -140,12 +149,27 @@
             "arguments": [
               "deps",
               "check"
+            ],
+            "optionalArguments": [
+              [
+                "--tool",
+                "{{deps_tool}}"
+              ]
             ]
           }
         }
       ],
       "iconName": "precheck",
-      "textIcon": "☑️"
+      "textIcon": "☑️",
+      "controls": [
+        {
+          "id": "deps_tool",
+          "label": "controls.cli.deps_tool.label",
+          "kind": "text",
+          "tooltip": "controls.cli.deps_tool.tooltip",
+          "advancedOnly": true
+        }
+      ]
     },
     {
       "id": "report-issue",
@@ -169,6 +193,27 @@
           "label": "controls.settings.v066.report-description.label",
           "kind": "text",
           "tooltip": "controls.settings.v066.report-description.tooltip"
+        },
+        {
+          "id": "report_title",
+          "label": "controls.cli.report_title.label",
+          "kind": "text",
+          "tooltip": "controls.cli.report_title.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "report_log_lines",
+          "label": "controls.cli.report_log_lines.label",
+          "kind": "text",
+          "tooltip": "controls.cli.report_log_lines.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "report_max_url_length",
+          "label": "controls.cli.report_max_url_length.label",
+          "kind": "text",
+          "tooltip": "controls.cli.report_max_url_length.tooltip",
+          "advancedOnly": true
         }
       ],
       "actions": [
@@ -196,6 +241,18 @@
               [
                 "--description",
                 "{{report_description}}"
+              ],
+              [
+                "--title",
+                "{{report_title}}"
+              ],
+              [
+                "--log-lines",
+                "{{report_log_lines}}"
+              ],
+              [
+                "--max-url-length",
+                "{{report_max_url_length}}"
               ]
             ]
           }
@@ -228,6 +285,18 @@
               [
                 "--description",
                 "{{report_description}}"
+              ],
+              [
+                "--title",
+                "{{report_title}}"
+              ],
+              [
+                "--log-lines",
+                "{{report_log_lines}}"
+              ],
+              [
+                "--max-url-length",
+                "{{report_max_url_length}}"
               ]
             ]
           }
@@ -259,6 +328,18 @@
               [
                 "--description",
                 "{{report_description}}"
+              ],
+              [
+                "--title",
+                "{{report_title}}"
+              ],
+              [
+                "--log-lines",
+                "{{report_log_lines}}"
+              ],
+              [
+                "--max-url-length",
+                "{{report_max_url_length}}"
               ]
             ]
           }
@@ -293,6 +374,18 @@
               [
                 "--description",
                 "{{report_description}}"
+              ],
+              [
+                "--title",
+                "{{report_title}}"
+              ],
+              [
+                "--log-lines",
+                "{{report_log_lines}}"
+              ],
+              [
+                "--max-url-length",
+                "{{report_max_url_length}}"
               ]
             ]
           }
@@ -331,6 +424,18 @@
               [
                 "--description",
                 "{{report_description}}"
+              ],
+              [
+                "--title",
+                "{{report_title}}"
+              ],
+              [
+                "--log-lines",
+                "{{report_log_lines}}"
+              ],
+              [
+                "--max-url-length",
+                "{{report_max_url_length}}"
               ]
             ]
           }
@@ -368,6 +473,18 @@
               [
                 "--description",
                 "{{report_description}}"
+              ],
+              [
+                "--title",
+                "{{report_title}}"
+              ],
+              [
+                "--log-lines",
+                "{{report_log_lines}}"
+              ],
+              [
+                "--max-url-length",
+                "{{report_max_url_length}}"
               ]
             ]
           }

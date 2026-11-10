@@ -216,3 +216,54 @@ def test_bins_parquet_holds_the_printed_table(tmp_path: Path, capsys):
     assert table.column("Depth 0 fraction").to_pylist() == [0.5, 1.0]
     assert [r[2:6] for r in printed[1:]] == [["2", "2", "0", "0"], ["3", "0", "0", "0"]]
     assert not list(out.glob("*.tsv"))
+
+
+@needs_samtools
+def test_with_bins_follows_the_coverage_table_and_reuses_both_reports(
+    tmp_path, capsys, monkeypatch
+):
+    from wgsextract_cli.commands.info import bins
+
+    lines = ["@SQ\tSN:chrY\tLN:10", "@SQ\tSN:chrM\tLN:3"]
+    for position, depth in enumerate([0, 1, 3, 4, 7, 8, 9, 0, 0, 0], 1):
+        for read in range(depth):
+            lines.append(
+                f"p{position}_{read}\t0\tchrY\t{position}\t60\t1M\t*\t0\t0\tA\tI"
+            )
+    bam = sam_to_bam(lines, tmp_path / "tiny.bam")
+    run_command(["samtools", "index", bam])
+    args = ["info", "calculate-coverage", "--with-bins", "--input", bam]
+    args += ["--outdir", str(tmp_path / "o")]
+
+    run_wgsextract(*args)
+    first = capsys.readouterr().out
+    assert first.index("Seq Name\tModel Len\tDepth 0 bases") > 0
+    bins_text = first[first.index("Seq Name\tModel Len\tDepth 0 bases") :]
+    y = next(csv.DictReader(io.StringIO(bins_text), delimiter="\t"))
+    assert [int(y[f"Depth {b} bases"]) for b in ("0", "1-3", "4-7", "8+")] == [
+        4,
+        2,
+        2,
+        2,
+    ]
+    assert len(list((tmp_path / "o").glob("*_coverage.tsv"))) == 1
+    assert len(list((tmp_path / "o").glob("*_coverage_bins.tsv"))) == 1
+
+    # Shown again from the saved report, without another samtools depth pass.
+    monkeypatch.setattr(
+        bins, "popen", Mock(side_effect=AssertionError("bins must be reused"))
+    )
+    run_wgsextract(*args)
+    assert capsys.readouterr().out.endswith(bins_text)
+
+
+@pytest.mark.parametrize("extra", [["--bins"], ["--by", "targets.bed"]])
+def test_with_bins_is_refused_with_bins_or_by(tmp_path, extra):
+    from wgsextract_cli.core.utils import UsageError
+
+    bam = tmp_path / "sample.bam"
+    bam.write_bytes(b"")
+    with pytest.raises(UsageError, match="--with-bins"):
+        run_wgsextract(
+            "info", "calculate-coverage", "--with-bins", *extra, "--input", str(bam)
+        )

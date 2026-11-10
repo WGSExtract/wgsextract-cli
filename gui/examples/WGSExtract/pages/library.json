@@ -13,22 +13,11 @@
           "label": "controls.library.library-paths.ref_path.label",
           "kind": "path",
           "tooltip": "controls.library.library-paths.ref_path.tooltip"
-        },
-        {
-          "id": "vep_cache_path",
-          "label": "controls.library.library-paths.vep_cache_path.label",
-          "kind": "path",
-          "tooltip": "controls.library.library-paths.vep_cache_path.tooltip"
-        },
-        {
-          "id": "genome_library",
-          "label": "controls.library.library-paths.genome_library.label",
-          "kind": "path",
-          "tooltip": "controls.library.library-paths.genome_library.tooltip"
         }
       ],
       "iconName": "bundle-folder",
-      "textIcon": "📁"
+      "textIcon": "📁",
+      "advancedOnly": true
     },
     {
       "id": "databases-tools",
@@ -37,35 +26,60 @@
         "path": "scripts/library-state.sh",
         "arguments": [
           "{{ref_path}}",
-          "{{genome_library}}"
+          "{{dataset_library}}"
         ]
       },
       "actions": [
         {
-          "id": "aadr-2m-install",
-          "title": "actions.library.post-v063.aadr-2m.title",
-          "tooltip": "actions.library.post-v063.aadr-2m.tooltip",
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "ref",
-              "aadr",
-              "--install",
-              "--ref",
-              "{{ref_path}}"
-            ]
-          }
-        },
-        {
           "id": "ybrowse-install",
           "title": "actions.library.post-v063.ybrowse.title",
           "tooltip": "actions.library.post-v063.ybrowse.tooltip",
+          "visibleWhen": [
+            {
+              "placeholder": "library.ybrowseInstalled",
+              "equals": "false"
+            }
+          ],
           "command": {
             "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
               "ref",
               "ybrowse",
               "--install",
+              "--ref",
+              "{{ref_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--snapshot",
+                "{{ybrowse_snapshot}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "ybrowse-delete",
+          "title": "actions.library.post-v063.ybrowse-delete.title",
+          "tooltip": "actions.library.post-v063.ybrowse-delete.tooltip",
+          "role": "destructive",
+          "confirm": {
+            "title": "actions.library.post-v063.ybrowse-delete.confirm.title",
+            "message": "actions.library.post-v063.ybrowse-delete.confirm.message",
+            "confirmButtonTitle": "actions.library.post-v063.ybrowse-delete.confirm.confirmButtonTitle",
+            "cancelButtonTitle": "actions.library.post-v063.ybrowse-delete.confirm.cancelButtonTitle"
+          },
+          "visibleWhen": [
+            {
+              "placeholder": "library.ybrowseInstalled",
+              "equals": "true"
+            }
+          ],
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "ref",
+              "ybrowse",
+              "--delete",
               "--ref",
               "{{ref_path}}"
             ]
@@ -75,13 +89,37 @@
           "id": "vep-download",
           "title": "actions.library.databases-tools.vep-download.title",
           "tooltip": "actions.library.databases-tools.vep-download.tooltip",
+          "visibleWhen": [
+            {
+              "placeholder": "library.vepCacheInstalled",
+              "equals": "false"
+            }
+          ],
           "command": {
             "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
               "vep",
               "download",
-              "--vep-cache",
-              "{{vep_cache_path}}"
+              "--ref",
+              "{{ref_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--species",
+                "{{vep_species}}"
+              ],
+              [
+                "--vep-version",
+                "{{vep_version}}"
+              ],
+              [
+                "--mirror",
+                "{{vep_mirror}}"
+              ],
+              [
+                "--assembly",
+                "{{vep_download_assembly}}"
+              ]
             ]
           }
         },
@@ -89,13 +127,74 @@
           "id": "vep-verify",
           "title": "actions.library.databases-tools.vep-verify.title",
           "tooltip": "actions.library.databases-tools.vep-verify.tooltip",
+          "visibleWhen": [
+            {
+              "placeholder": "library.vepCacheInstalled",
+              "equals": "true"
+            }
+          ],
           "command": {
             "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
               "vep",
               "verify",
-              "--vep-cache",
-              "{{vep_cache_path}}"
+              "--ref",
+              "{{ref_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--species",
+                "{{vep_species}}"
+              ],
+              [
+                "--vep-version",
+                "{{vep_version}}"
+              ],
+              [
+                "--assembly",
+                "{{vep_download_assembly}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "vep-delete",
+          "title": "actions.library.databases-tools.vep-delete.title",
+          "tooltip": "actions.library.databases-tools.vep-delete.tooltip",
+          "role": "destructive",
+          "confirm": {
+            "title": "actions.library.databases-tools.vep-delete.confirm.title",
+            "message": "actions.library.databases-tools.vep-delete.confirm.message",
+            "confirmButtonTitle": "actions.library.databases-tools.vep-delete.confirm.confirmButtonTitle",
+            "cancelButtonTitle": "actions.library.databases-tools.vep-delete.confirm.cancelButtonTitle"
+          },
+          "visibleWhen": [
+            {
+              "placeholder": "library.vepCacheInstalled",
+              "equals": "true"
+            }
+          ],
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "vep",
+              "delete",
+              "--ref",
+              "{{ref_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--species",
+                "{{vep_species}}"
+              ],
+              [
+                "--vep-version",
+                "{{vep_version}}"
+              ],
+              [
+                "--assembly",
+                "{{vep_download_assembly}}"
+              ]
             ]
           }
         },
@@ -161,26 +260,24 @@
             "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
               "ref",
-              "bootstrap",
+              "microarray-targets",
               "--ref",
               "{{ref_path}}"
             ]
           }
         },
         {
-          "id": "annotation-vcf-installed",
-          "title": "actions.library.databases-tools.annotation-vcf-installed.title",
-          "tooltip": "actions.library.databases-tools.annotation-vcf-installed.tooltip",
-          "disabledTooltip": "actions.library.databases-tools.annotation-vcf-installed.disabledTooltip",
-          "iconName": "success",
-          "textIcon": "✅",
+          "id": "annotation-vcf-delete",
+          "title": "actions.library.databases-tools.annotation-vcf-delete.title",
+          "tooltip": "actions.library.databases-tools.annotation-vcf-delete.tooltip",
+          "role": "destructive",
+          "confirm": {
+            "title": "actions.library.databases-tools.annotation-vcf-delete.confirm.title",
+            "message": "actions.library.databases-tools.annotation-vcf-delete.confirm.message",
+            "confirmButtonTitle": "actions.library.databases-tools.annotation-vcf-delete.confirm.confirmButtonTitle",
+            "cancelButtonTitle": "actions.library.databases-tools.annotation-vcf-delete.confirm.cancelButtonTitle"
+          },
           "visibleWhen": [
-            {
-              "placeholder": "library.annotationVcfInstalled",
-              "equals": "true"
-            }
-          ],
-          "disabledWhen": [
             {
               "placeholder": "library.annotationVcfInstalled",
               "equals": "true"
@@ -190,7 +287,8 @@
             "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
               "ref",
-              "bootstrap",
+              "microarray-targets",
+              "--delete",
               "--ref",
               "{{ref_path}}"
             ]
@@ -217,19 +315,17 @@
           }
         },
         {
-          "id": "spliceai-installed",
-          "title": "actions.library.databases-tools.spliceai-installed.title",
-          "tooltip": "actions.library.databases-tools.spliceai-installed.tooltip",
-          "disabledTooltip": "actions.library.databases-tools.spliceai-installed.disabledTooltip",
-          "iconName": "success",
-          "textIcon": "✅",
+          "id": "spliceai-delete",
+          "title": "actions.library.databases-tools.spliceai-delete.title",
+          "tooltip": "actions.library.databases-tools.spliceai-delete.tooltip",
+          "role": "destructive",
+          "confirm": {
+            "title": "actions.library.databases-tools.spliceai-delete.confirm.title",
+            "message": "actions.library.databases-tools.spliceai-delete.confirm.message",
+            "confirmButtonTitle": "actions.library.databases-tools.spliceai-delete.confirm.confirmButtonTitle",
+            "cancelButtonTitle": "actions.library.databases-tools.spliceai-delete.confirm.cancelButtonTitle"
+          },
           "visibleWhen": [
-            {
-              "placeholder": "library.spliceaiInstalled",
-              "equals": "true"
-            }
-          ],
-          "disabledWhen": [
             {
               "placeholder": "library.spliceaiInstalled",
               "equals": "true"
@@ -240,6 +336,7 @@
             "arguments": [
               "ref",
               "spliceai",
+              "--delete",
               "--ref",
               "{{ref_path}}"
             ]
@@ -266,19 +363,17 @@
           }
         },
         {
-          "id": "alphamissense-installed",
-          "title": "actions.library.databases-tools.alphamissense-installed.title",
-          "tooltip": "actions.library.databases-tools.alphamissense-installed.tooltip",
-          "disabledTooltip": "actions.library.databases-tools.alphamissense-installed.disabledTooltip",
-          "iconName": "success",
-          "textIcon": "✅",
+          "id": "alphamissense-delete",
+          "title": "actions.library.databases-tools.alphamissense-delete.title",
+          "tooltip": "actions.library.databases-tools.alphamissense-delete.tooltip",
+          "role": "destructive",
+          "confirm": {
+            "title": "actions.library.databases-tools.alphamissense-delete.confirm.title",
+            "message": "actions.library.databases-tools.alphamissense-delete.confirm.message",
+            "confirmButtonTitle": "actions.library.databases-tools.alphamissense-delete.confirm.confirmButtonTitle",
+            "cancelButtonTitle": "actions.library.databases-tools.alphamissense-delete.confirm.cancelButtonTitle"
+          },
           "visibleWhen": [
-            {
-              "placeholder": "library.alphamissenseInstalled",
-              "equals": "true"
-            }
-          ],
-          "disabledWhen": [
             {
               "placeholder": "library.alphamissenseInstalled",
               "equals": "true"
@@ -289,6 +384,7 @@
             "arguments": [
               "ref",
               "alphamissense",
+              "--delete",
               "--ref",
               "{{ref_path}}"
             ]
@@ -315,19 +411,17 @@
           }
         },
         {
-          "id": "pharmgkb-installed",
-          "title": "actions.library.databases-tools.pharmgkb-installed.title",
-          "tooltip": "actions.library.databases-tools.pharmgkb-installed.tooltip",
-          "disabledTooltip": "actions.library.databases-tools.pharmgkb-installed.disabledTooltip",
-          "iconName": "success",
-          "textIcon": "✅",
+          "id": "pharmgkb-delete",
+          "title": "actions.library.databases-tools.pharmgkb-delete.title",
+          "tooltip": "actions.library.databases-tools.pharmgkb-delete.tooltip",
+          "role": "destructive",
+          "confirm": {
+            "title": "actions.library.databases-tools.pharmgkb-delete.confirm.title",
+            "message": "actions.library.databases-tools.pharmgkb-delete.confirm.message",
+            "confirmButtonTitle": "actions.library.databases-tools.pharmgkb-delete.confirm.confirmButtonTitle",
+            "cancelButtonTitle": "actions.library.databases-tools.pharmgkb-delete.confirm.cancelButtonTitle"
+          },
           "visibleWhen": [
-            {
-              "placeholder": "library.pharmgkbInstalled",
-              "equals": "true"
-            }
-          ],
-          "disabledWhen": [
             {
               "placeholder": "library.pharmgkbInstalled",
               "equals": "true"
@@ -338,6 +432,7 @@
             "arguments": [
               "ref",
               "pharmgkb",
+              "--delete",
               "--ref",
               "{{ref_path}}"
             ]
@@ -397,299 +492,274 @@
               "{{ref_path}}"
             ]
           }
-        },
-        {
-          "id": "test-genome-download",
-          "title": "actions.library.test-genome-data.test-genome-download.title",
-          "tooltip": "actions.library.test-genome-data.test-genome-download.tooltip",
-          "visibleWhen": [
-            {
-              "placeholder": "library.testGenomeInstalled",
-              "equals": "false"
-            }
-          ],
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/test-genome-library.py",
-            "arguments": [
-              "download",
-              "{{genome_library}}"
-            ]
-          }
-        },
-        {
-          "id": "test-genome-delete",
-          "title": "actions.library.test-genome-data.test-genome-delete.title",
-          "tooltip": "actions.library.test-genome-data.test-genome-delete.tooltip",
-          "role": "destructive",
-          "confirm": {
-            "title": "actions.library.test-genome-data.test-genome-delete.confirm.title",
-            "message": "actions.library.test-genome-data.test-genome-delete.confirm.message",
-            "confirmButtonTitle": "actions.library.test-genome-data.test-genome-delete.confirm.confirmButtonTitle",
-            "cancelButtonTitle": "actions.library.test-genome-data.test-genome-delete.confirm.cancelButtonTitle"
-          },
-          "visibleWhen": [
-            {
-              "placeholder": "library.testGenomeInstalled",
-              "equals": "true"
-            }
-          ],
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/test-genome-library.py",
-            "arguments": [
-              "delete",
-              "{{genome_library}}"
-            ]
-          }
-        },
-        {
-          "id": "test-genome-installed",
-          "title": "actions.library.test-genome-data.test-genome-installed.title",
-          "tooltip": "actions.library.test-genome-data.test-genome-installed.tooltip",
-          "disabledTooltip": "actions.library.test-genome-data.test-genome-installed.disabledTooltip",
-          "iconName": "success",
-          "textIcon": "✅",
-          "visibleWhen": [
-            {
-              "placeholder": "library.testGenomeInstalled",
-              "equals": "true"
-            }
-          ],
-          "disabledWhen": [
-            {
-              "placeholder": "library.testGenomeInstalled",
-              "equals": "true"
-            }
-          ],
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/test-genome-library.py",
-            "arguments": [
-              "state",
-              "{{genome_library}}"
-            ]
-          }
         }
       ],
       "iconName": "reference-storage",
-      "textIcon": "💽"
-    },
-    {
-      "id": "genome-management",
-      "title": "sections.library.genome-management.title",
+      "textIcon": "💽",
       "controls": [
         {
-          "id": "reference_genomes",
-          "label": "controls.library.genome-management.reference_genomes.label",
-          "kind": "libraryList",
-          "tooltip": "controls.library.genome-management.reference_genomes.tooltip",
-          "dataSource": {
-            "path": "scripts/list-reference-genomes.py",
+          "id": "ybrowse_snapshot",
+          "label": "controls.cli.ybrowse_snapshot.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.ybrowse_snapshot.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "vep_species",
+          "label": "controls.cli.vep_species.label",
+          "kind": "text",
+          "tooltip": "controls.cli.vep_species.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "vep_version",
+          "label": "controls.cli.vep_version.label",
+          "kind": "text",
+          "tooltip": "controls.cli.vep_version.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "vep_mirror",
+          "label": "controls.cli.vep_mirror.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "ebi",
+              "title": "options.cli.value.ebi.title"
+            },
+            {
+              "id": "uk",
+              "title": "options.cli.value.uk.title"
+            }
+          ],
+          "tooltip": "controls.cli.vep_mirror.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "vep_download_assembly",
+          "label": "controls.cli.vep_download_assembly.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "GRCh37",
+              "title": "options.cli.value.GRCh37.title"
+            },
+            {
+              "id": "GRCh38",
+              "title": "options.cli.value.GRCh38.title"
+            }
+          ],
+          "tooltip": "controls.cli.vep_download_assembly.tooltip",
+          "advancedOnly": true
+        }
+      ]
+    },
+    {
+      "id": "annotation-downloads",
+      "title": "sections.cli.annotation-downloads.title",
+      "textIcon": "⬇️",
+      "advancedOnly": true,
+      "controls": [
+        {
+          "id": "annotation_build",
+          "label": "controls.cli.annotation_build.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "hg38",
+              "title": "options.cli.value.hg38.title"
+            },
+            {
+              "id": "hg19",
+              "title": "options.cli.value.hg19.title"
+            }
+          ],
+          "tooltip": "controls.cli.annotation_build.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "gnomad_release",
+          "label": "controls.cli.gnomad_release.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "2.1.1",
+              "title": "options.cli.value.2.1.1.title"
+            },
+            {
+              "id": "4.1",
+              "title": "options.cli.value.4.1.title"
+            }
+          ],
+          "tooltip": "controls.cli.gnomad_release.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "ref_url",
+          "label": "controls.cli.ref_url.label",
+          "kind": "text",
+          "tooltip": "controls.cli.ref_url.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "ref_out",
+          "label": "controls.cli.ref_out.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.ref_out.tooltip",
+          "advancedOnly": true
+        }
+      ],
+      "actions": [
+        {
+          "id": "ref-clinvar",
+          "title": "actions.cli.ref-clinvar.title",
+          "tooltip": "actions.cli.ref-clinvar.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
-              "items",
+              "ref",
+              "clinvar",
+              "--ref",
               "{{ref_path}}"
             ]
-          },
-          "columns": [
-            {
-              "id": "name",
-              "title": "columns.library.genome-management.reference_genomes.name.title"
-            },
-            {
-              "id": "build",
-              "title": "columns.library.genome-management.reference_genomes.build.title"
-            },
-            {
-              "id": "source",
-              "title": "columns.library.genome-management.reference_genomes.source.title"
-            },
-            {
-              "id": "size",
-              "title": "columns.library.genome-management.reference_genomes.size.title"
-            }
-          ],
-          "rowActions": [
-            {
-              "id": "ref-download",
-              "title": "actions.library.genome-management.ref-download.title",
-              "tooltip": "actions.library.genome-management.ref-download.tooltip",
-              "command": {
-                "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-                "arguments": [
-                  "ref",
-                  "library",
-                  "--install",
-                  "{{row.code}}",
-                  "--ref",
-                  "{{ref_path}}"
-                ]
-              },
-              "iconName": "download",
-              "textIcon": "⬇️",
-              "iconOnly": true,
-              "visibleWhen": [
-                {
-                  "placeholder": "row.status",
-                  "equals": "missing"
-                }
+          }
+        },
+        {
+          "id": "ref-revel",
+          "title": "actions.cli.ref-revel.title",
+          "tooltip": "actions.cli.ref-revel.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "ref",
+              "revel",
+              "--ref",
+              "{{ref_path}}"
+            ]
+          }
+        },
+        {
+          "id": "ref-gnomad",
+          "title": "actions.cli.ref-gnomad.title",
+          "tooltip": "actions.cli.ref-gnomad.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "ref",
+              "gnomad",
+              "--ref",
+              "{{ref_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--release",
+                "{{gnomad_release}}"
               ]
-            },
-            {
-              "id": "ref-index",
-              "title": "actions.library.genome-management.ref-index.title",
-              "tooltip": "actions.library.genome-management.ref-index.tooltip",
-              "command": {
-                "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-                "arguments": [
-                  "ref",
-                  "index",
-                  "--ref",
-                  "{{row.ref}}"
-                ]
-              },
-              "iconName": "index-reference",
-              "textIcon": "🔎",
-              "iconOnly": true,
-              "visibleWhen": [
-                {
-                  "placeholder": "row.status",
-                  "equals": "unindexed"
-                }
+            ]
+          }
+        },
+        {
+          "id": "ref-cadd",
+          "title": "actions.cli.ref-cadd.title",
+          "tooltip": "actions.cli.ref-cadd.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "ref",
+              "cadd",
+              "--ref",
+              "{{ref_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--build",
+                "{{annotation_build}}"
               ]
-            },
-            {
-              "id": "ref-verify",
-              "title": "actions.library.genome-management.ref-verify.title",
-              "tooltip": "actions.library.genome-management.ref-verify.tooltip",
-              "command": {
-                "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-                "arguments": [
-                  "ref",
-                  "verify",
-                  "--ref",
-                  "{{row.ref}}"
-                ]
-              },
-              "iconName": "verify-reference",
-              "textIcon": "✓",
-              "iconOnly": true,
-              "visibleWhen": [
-                {
-                  "placeholder": "row.status",
-                  "in": [
-                    "installed",
-                    "unindexed"
-                  ]
-                }
+            ]
+          }
+        },
+        {
+          "id": "ref-gerp",
+          "title": "actions.cli.ref-gerp.title",
+          "tooltip": "actions.cli.ref-gerp.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "ref",
+              "gerp",
+              "--ref",
+              "{{ref_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--build",
+                "{{annotation_build}}"
               ]
-            },
-            {
-              "id": "ref-count-ns",
-              "title": "actions.library.genome-management.ref-count-ns.title",
-              "tooltip": "actions.library.genome-management.ref-count-ns.tooltip",
-              "command": {
-                "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-                "arguments": [
-                  "ref",
-                  "count-ns",
-                  "--ref",
-                  "{{row.ref}}"
-                ]
-              },
-              "iconName": "number-sequence",
-              "textIcon": "#",
-              "iconOnly": true,
-              "visibleWhen": [
-                {
-                  "placeholder": "row.status",
-                  "in": [
-                    "installed",
-                    "unindexed"
-                  ]
-                }
+            ]
+          }
+        },
+        {
+          "id": "ref-phylop",
+          "title": "actions.cli.ref-phylop.title",
+          "tooltip": "actions.cli.ref-phylop.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "ref",
+              "phylop",
+              "--ref",
+              "{{ref_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--build",
+                "{{annotation_build}}"
               ]
-            },
-            {
-              "id": "ref-delete",
-              "title": "actions.library.genome-management.ref-delete.title",
-              "role": "destructive",
-              "tooltip": "actions.library.genome-management.ref-delete.tooltip",
-              "command": {
-                "executable": "{{bundleRoot}}/scripts/delete-reference-genome.sh",
-                "arguments": [
-                  "{{ref_path}}",
-                  "{{row.final}}"
-                ]
-              },
-              "iconName": "delete",
-              "textIcon": "🗑️",
-              "iconOnly": true,
-              "confirm": {
-                "title": "actions.library.genome-management.ref-delete.confirm.title",
-                "message": "actions.library.genome-management.ref-delete.confirm.message",
-                "confirmButtonTitle": "actions.library.genome-management.ref-delete.confirm.confirmButtonTitle",
-                "cancelButtonTitle": "actions.library.genome-management.ref-delete.confirm.cancelButtonTitle"
-              },
-              "visibleWhen": [
-                {
-                  "placeholder": "row.status",
-                  "in": [
-                    "installed",
-                    "unindexed",
-                    "incomplete"
-                  ]
-                }
-              ]
-            },
-            {
-              "id": "ref-resume",
-              "title": "actions.library.genome-management.ref-resume.title",
-              "tooltip": "actions.library.genome-management.ref-resume.tooltip",
-              "command": {
-                "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-                "arguments": [
-                  "ref",
-                  "library",
-                  "--install",
-                  "{{row.code}}",
-                  "--ref",
-                  "{{ref_path}}"
-                ]
-              },
-              "iconName": "refresh",
-              "textIcon": "🔄",
-              "iconOnly": true,
-              "visibleWhen": [
-                {
-                  "placeholder": "row.status",
-                  "equals": "incomplete"
-                }
-              ]
-            }
-          ],
-          "rowTemplate": {
-            "id": "{{id}}",
-            "title": "{{name}}",
-            "status": "{{status}}",
-            "values": {
-              "name": "{{name}}",
-              "build": "{{build}}",
-              "source": "{{source}}",
-              "size": "{{size}}",
-              "code": "{{code}}",
-              "final": "{{final}}",
-              "ref": "{{ref}}"
-            },
-            "tags": [
-              {
-                "id": "recommended",
-                "title": "{{recommended}}",
-                "style": "primary"
-              }
+            ]
+          }
+        },
+        {
+          "id": "ref-download",
+          "title": "actions.cli.ref-download.title",
+          "tooltip": "actions.cli.ref-download.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "ref",
+              "download",
+              "--url",
+              "{{ref_url}}",
+              "--out",
+              "{{ref_out}}"
             ]
           }
         }
-      ],
-      "iconName": "library",
-      "textIcon": "📚"
+      ]
     }
   ],
   "iconName": "library",

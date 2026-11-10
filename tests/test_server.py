@@ -1050,11 +1050,11 @@ def test_path_guard_checks_the_library_above_a_genomes_fasta(tmp_path, op):
     with pytest.raises(RequestError) as refused:
         PathGuard([genomes]).check(params)
     assert refused.value.code == "path_not_allowed"
-    # status also reads the genome library beside it.
+    # status also reads the dataset library beside it.
     if op == "ref/status":
         with pytest.raises(RequestError, match="outside the folders"):
             PathGuard([tmp_path / "library"]).check(params)
-    PathGuard([tmp_path / "library", tmp_path / "genomes"]).check(params)
+    PathGuard([tmp_path / "library", tmp_path / "datasets"]).check(params)
 
 
 @pytest.mark.parametrize("op", ["ref/clinvar", "ref/status", "ref/library-list"])
@@ -2079,6 +2079,7 @@ _BASE_REQUESTS: dict[str, dict[str, Any]] = {
     "example-genome/download": {"target_root": _DATA},
     "bam/to-ubam": {"input": _FILE},
     "extract/custom": {"region": "chrM"},
+    "extract/region": {"formats": "bam"},
     "info/chip": {"input": _FILE},
     "panel/bed": {"genes": ["BRCA1"]},
     "qc/vcf": {"input": _FILE},
@@ -2091,6 +2092,7 @@ _BASE_REQUESTS: dict[str, dict[str, Any]] = {
     # With no cache folder, the default one (~/.vep) is checked too.
     "vep/download": {"vep_cache": _DATA},
     "vep/verify": {"vep_cache": _DATA},
+    "vep/delete": {"vep_cache": _DATA},
 }
 _COMPANIONS: dict[tuple[str, str], dict[str, Any]] = {
     ("basecall", "regions_bed"): {"alignment": _FILE, "regions_bed": _FILE},

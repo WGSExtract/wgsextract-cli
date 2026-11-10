@@ -27,11 +27,11 @@ def _target_root_param() -> Any:
     return param(
         None,
         help=(
-            "Genome library root. Defaults to config genome_library, or genomes/ "
+            "Dataset library root. Defaults to config dataset_library, or datasets/ "
             "in the source checkout (or user data directory) when unset."
         ),
-        doc="Genome library folder holding the test-1000genomes collection "
-        "(default: config genome_library, else the genomes folder of the "
+        doc="Dataset library folder holding the test-1000genomes collection "
+        "(default: config dataset_library, else the datasets folder of the "
         "checkout or user data folder).",
         path="directory",
     )
@@ -55,7 +55,7 @@ class ExampleGenomeListParams(Params):
 
 @dataclass(frozen=True, kw_only=True)
 class ExampleGenomeDownloadParams(Params):
-    """Download curated examples into the genome library and write their
+    """Download curated examples into the dataset library and write their
     genome configs. With no ``example_ids``, ``tag`` or ``all``, the small
     starter set (a chrMT VCF and a chr20 BAM) is downloaded."""
 
@@ -115,11 +115,11 @@ class ExampleGenomeDownloadParams(Params):
         from wgsextract_cli.commands._examples_catalog import COLLECTION_DIR
         from wgsextract_cli.commands.examples import written_paths
         from wgsextract_cli.core import runtime
-        from wgsextract_cli.core.config import settings
+        from wgsextract_cli.core.config import dataset_library
 
-        root = self.target_root or settings.get("genome_library")
+        root = self.target_root or dataset_library()
         collection = (
-            Path(root).expanduser() if root else runtime.repo_root() / "genomes"
+            Path(root).expanduser() if root else runtime.repo_root() / "datasets"
         ) / COLLECTION_DIR
         yield "target_root", collection
         for folder, files in written_paths(self, collection).items():

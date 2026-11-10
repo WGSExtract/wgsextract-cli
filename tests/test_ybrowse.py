@@ -132,8 +132,16 @@ def synthetic_y(tmp_path, request):
 
 @needs_htslib
 @pytest.mark.parametrize("synthetic_y", ["chrY", "Y"], indirect=True)
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["ydna-vcf", "--ybrowse"],
+        # With a FASTA too, its calls stay temporary: the yBrowse VCF is the VCF.
+        ["region", "--target", "y", "--formats", "vcf,fasta", "--ybrowse"],
+    ],
+)
 def test_actual_targeted_call_preserves_called_gt_and_allele_specific_names(
-    tmp_path, synthetic_y, monkeypatch
+    tmp_path, synthetic_y, monkeypatch, command
 ):
     reference, bam, name = synthetic_y
     library = tmp_path / "library"
@@ -150,8 +158,7 @@ def test_actual_targeted_call_preserves_called_gt_and_allele_specific_names(
     out = tmp_path / "output"
     run_wgsextract(
         "extract",
-        "ydna-vcf",
-        "--ybrowse",
+        *command,
         "--input",
         bam,
         "--ref",

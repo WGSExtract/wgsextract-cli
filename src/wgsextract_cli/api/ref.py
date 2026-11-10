@@ -45,6 +45,15 @@ def _build_param(help: str) -> Any:
     return param("hg38", help=help, choices=BUILDS)
 
 
+def _delete_param(what: str) -> Any:
+    return param(
+        False,
+        help=f"Delete the installed {what}",
+        action="store_true",
+        deletes=True,
+    )
+
+
 def _library_named(ref: Path) -> Path:
     """The library ``ref`` names, ``~`` expanded and ``..`` collapsed as the
     command does: the one above a FASTA's ``genomes`` folder, else ``ref``
@@ -77,25 +86,31 @@ class _InLibrary:
             yield "ref", _library_named(self.ref)
 
     def write_folders(self) -> Iterator[Path]:
+        from wgsextract_cli.core.reference_assets import reference_genomes_dir
+
         library = self.library()
-        yield from (library, library / "genomes")
+        yield from (library, Path(reference_genomes_dir(library)))
 
 
 @dataclass(frozen=True, kw_only=True)
 class RefAadrParams(_InLibrary, Params):
-    """Install the hash-pinned CC0 AADR v66.p1 2M SNP panel into the library."""
+    """Install the hash-pinned CC0 AADR v66.p1 2M SNP panel into the library
+    (``ref bootstrap`` installs it too), or delete it."""
 
     COMMAND = "ref aadr"
 
+    delete: bool = _delete_param("AADR 2M SNP panel")
     ref: Path | None = ref_param()
 
 
 @dataclass(frozen=True, kw_only=True)
 class RefYbrowseParams(_InLibrary, Params):
     """Install a hash-pinned, sites-only GRCh38 yBrowse snapshot into the
-    library."""
+    library, or delete the installed snapshots."""
 
     COMMAND = "ref ybrowse"
+
+    delete: bool = _delete_param("yBrowse snapshots")
 
     snapshot: Path | None = param(
         None,
@@ -258,12 +273,13 @@ class RefStatusParams(Params):
     input: Path | None = optional_input_param(
         "A BAM/CRAM or VCF whose build picks the annotation files to report."
     )
-    genome_library: Path | None = param(
+    dataset_library: Path | None = param(
         None,
-        help="Genome library directory used for test genome status.",
-        doc="Genome library folder for the test genome's status (default: "
-        "config genome_library, else ``genomes`` beside the reference library).",
+        help="Dataset library directory used for test dataset status.",
+        doc="Dataset library folder for the test dataset's status (default: "
+        "config dataset_library, else ``datasets`` beside the reference library).",
         path="directory",
+        hidden_flags=("--genome-library",),
     )
     annotation_vcf: Path | None = param(
         None,
@@ -272,18 +288,18 @@ class RefStatusParams(Params):
     )
 
     def implied_paths(self) -> Iterator[tuple[str, Path]]:
-        from wgsextract_cli.core.config import settings
+        from wgsextract_cli.core.config import dataset_library
 
         if self.ref is None:
             return
         library = _library_named(self.ref)
         yield "ref", library
         if (
-            self.genome_library is None
-            and not settings.get("genome_library")
+            self.dataset_library is None
+            and not dataset_library()
             and library.is_absolute()  # a relative ref is refused as it is
         ):
-            yield "ref", library.parent / "genomes"
+            yield "ref", library.parent / "datasets"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -353,23 +369,29 @@ class RefGnomadParams(_Resource):
 @dataclass(frozen=True, kw_only=True)
 class RefSpliceaiParams(_Resource):
     """Download SpliceAI scores for hg38 (Ensembl, MANE SNVs), or index a
-    manual hg19 download."""
+    manual hg19 download; or delete the installed score files."""
 
     COMMAND = "ref spliceai"
+
+    delete: bool = _delete_param("SpliceAI score files")
 
 
 @dataclass(frozen=True, kw_only=True)
 class RefAlphamissenseParams(_Resource):
-    """Download AlphaMissense scores for hg19 and hg38."""
+    """Download AlphaMissense scores for hg19 and hg38, or delete them."""
 
     COMMAND = "ref alphamissense"
+
+    delete: bool = _delete_param("AlphaMissense score files")
 
 
 @dataclass(frozen=True, kw_only=True)
 class RefPharmgkbParams(_Resource):
-    """Download PharmGKB annotations."""
+    """Download PharmGKB annotations, or delete them."""
 
     COMMAND = "ref pharmgkb"
+
+    delete: bool = _delete_param("PharmGKB annotation files")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -395,13 +417,26 @@ class RefGerpParams(_Resource):
 @dataclass(frozen=True, kw_only=True)
 class RefBootstrapParams(_InLibrary, Params):
     """Download the reference library bootstrap (liftover chains, chip
-    templates, N counts and other support files). Saves the library's path as config.toml's
-    ``reference_library`` when that is unset."""
+    templates, N counts and other support files) and the AADR 2M SNP panel.
+    Saves the library's path as config.toml's ``reference_library`` when that
+    is unset."""
 
     COMMAND = "ref bootstrap"
     # It may save config.toml, which a server request must not change.
     LOCAL_ONLY = True
 
+    ref: Path | None = ref_param()
+
+
+@dataclass(frozen=True, kw_only=True)
+class RefMicroarrayTargetsParams(_InLibrary, Params):
+    """Build the genome-wide hg19 and hg38 microarray targets
+    (``microarray/All_SNPs_<build>_ref.tab.gz``) from the bootstrap's chip
+    templates, or delete them. ``microarray`` builds a missing one itself."""
+
+    COMMAND = "ref microarray-targets"
+
+    delete: bool = _delete_param("microarray targets")
     ref: Path | None = ref_param()
 
 
@@ -675,3 +710,18 @@ def bootstrap(
     from wgsextract_cli.commands.ref.library_commands import run_bootstrap
 
     return execute(params, run_bootstrap, progress=progress, cancel=cancel, check=check)
+
+
+def microarray_targets(
+    params: RefMicroarrayTargetsParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Build (output role ``reference_resource``) or delete the targets."""
+    from wgsextract_cli.commands.ref.library_commands import run_microarray_targets
+
+    return execute(
+        params, run_microarray_targets, progress=progress, cancel=cancel, check=check
+    )

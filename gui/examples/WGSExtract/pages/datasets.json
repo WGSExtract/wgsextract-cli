@@ -1,0 +1,377 @@
+{
+  "id": "datasets",
+  "title": "pages.datasets.title",
+  "summary": "pages.datasets.summary",
+  "sidebarPlacement": "bottom",
+  "sections": [
+    {
+      "id": "dataset-paths",
+      "title": "sections.library.library-paths.title",
+      "controls": [
+        {
+          "id": "dataset_library",
+          "label": "controls.datasets.dataset-paths.dataset_library.label",
+          "kind": "path",
+          "tooltip": "controls.datasets.dataset-paths.dataset_library.tooltip"
+        }
+      ],
+      "iconName": "bundle-folder",
+      "textIcon": "📁",
+      "advancedOnly": true
+    },
+    {
+      "id": "test-dataset",
+      "title": "sections.datasets.test-dataset.title",
+      "subtitle": "sections.datasets.test-dataset.summary",
+      "dataSource": {
+        "path": "scripts/library-state.sh",
+        "arguments": [
+          "{{ref_path}}",
+          "{{dataset_library}}"
+        ]
+      },
+      "actions": [
+        {
+          "id": "test-dataset-download",
+          "title": "actions.datasets.test-dataset.test-dataset-download.title",
+          "tooltip": "actions.datasets.test-dataset.test-dataset-download.tooltip",
+          "visibleWhen": [
+            {
+              "placeholder": "library.testGenomeInstalled",
+              "equals": "false"
+            }
+          ],
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/test-genome-library.py",
+            "arguments": [
+              "download",
+              "{{dataset_library}}"
+            ]
+          }
+        },
+        {
+          "id": "test-dataset-delete",
+          "title": "actions.datasets.test-dataset.test-dataset-delete.title",
+          "tooltip": "actions.datasets.test-dataset.test-dataset-delete.tooltip",
+          "role": "destructive",
+          "confirm": {
+            "title": "actions.datasets.test-dataset.test-dataset-delete.confirm.title",
+            "message": "actions.datasets.test-dataset.test-dataset-delete.confirm.message",
+            "confirmButtonTitle": "actions.datasets.test-dataset.test-dataset-delete.confirm.confirmButtonTitle",
+            "cancelButtonTitle": "actions.datasets.test-dataset.test-dataset-delete.confirm.cancelButtonTitle"
+          },
+          "visibleWhen": [
+            {
+              "placeholder": "library.testGenomeInstalled",
+              "equals": "true"
+            }
+          ],
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/test-genome-library.py",
+            "arguments": [
+              "delete",
+              "{{dataset_library}}"
+            ]
+          }
+        },
+        {
+          "id": "test-dataset-installed",
+          "title": "actions.datasets.test-dataset.test-dataset-installed.title",
+          "tooltip": "actions.datasets.test-dataset.test-dataset-installed.tooltip",
+          "disabledTooltip": "actions.datasets.test-dataset.test-dataset-installed.disabledTooltip",
+          "iconName": "success",
+          "textIcon": "✅",
+          "visibleWhen": [
+            {
+              "placeholder": "library.testGenomeInstalled",
+              "equals": "true"
+            }
+          ],
+          "disabledWhen": [
+            {
+              "placeholder": "library.testGenomeInstalled",
+              "equals": "true"
+            }
+          ],
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/test-genome-library.py",
+            "arguments": [
+              "state",
+              "{{dataset_library}}"
+            ]
+          }
+        }
+      ],
+      "iconName": "download",
+      "textIcon": "🧪"
+    },
+    {
+      "id": "example-datasets",
+      "title": "sections.cli.example-datasets.title",
+      "textIcon": "🧫",
+      "advancedOnly": true,
+      "controls": [
+        {
+          "id": "example_tag",
+          "label": "controls.cli.example_tag.label",
+          "kind": "text",
+          "tooltip": "controls.cli.example_tag.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "example_all",
+          "label": "controls.cli.example_all.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--all",
+              "title": "controls.cli.example_all.label"
+            }
+          ],
+          "tooltip": "controls.cli.example_all.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "example_method",
+          "label": "controls.cli.example_method.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "auto",
+              "title": "options.cli.value.auto.title"
+            },
+            {
+              "id": "https",
+              "title": "options.cli.value.https.title"
+            },
+            {
+              "id": "aspera",
+              "title": "options.cli.value.aspera.title"
+            }
+          ],
+          "tooltip": "controls.cli.example_method.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "example_aspera_key",
+          "label": "controls.cli.example_aspera_key.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.example_aspera_key.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "example_force",
+          "label": "controls.cli.example_force.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--force",
+              "title": "controls.cli.example_force.label"
+            }
+          ],
+          "tooltip": "controls.cli.example_force.tooltip",
+          "advancedOnly": true
+        }
+      ],
+      "actions": [
+        {
+          "id": "example-list",
+          "title": "actions.cli.example-list.title",
+          "tooltip": "actions.cli.example-list.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "example-genome",
+              "list"
+            ],
+            "optionalArguments": [
+              [
+                "--target-root",
+                "{{dataset_library}}"
+              ],
+              [
+                "--tag",
+                "{{example_tag}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "example-download",
+          "title": "actions.cli.example-download.title",
+          "tooltip": "actions.cli.example-download.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "example-genome",
+              "download"
+            ],
+            "optionalArguments": [
+              [
+                "--target-root",
+                "{{dataset_library}}"
+              ],
+              [
+                "--tag",
+                "{{example_tag}}"
+              ],
+              [
+                "{{example_all}}"
+              ],
+              [
+                "--method",
+                "{{example_method}}"
+              ],
+              [
+                "--aspera-key",
+                "{{example_aspera_key}}"
+              ],
+              [
+                "{{example_force}}"
+              ]
+            ]
+          },
+          "visibleWhen": [
+            {
+              "placeholder": "example_all",
+              "notEquals": "--all"
+            },
+            {
+              "placeholder": "example_tag",
+              "notIn": [
+                "1000g",
+                "bam",
+                "cram",
+                "giab",
+                "hgsvc2",
+                "hifi",
+                "pacbio",
+                "ultima"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "example-download-all",
+          "title": "actions.cli.example-download-all.title",
+          "tooltip": "actions.cli.example-download-all.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "example-genome",
+              "download"
+            ],
+            "optionalArguments": [
+              [
+                "--target-root",
+                "{{dataset_library}}"
+              ],
+              [
+                "--tag",
+                "{{example_tag}}"
+              ],
+              [
+                "{{example_all}}"
+              ],
+              [
+                "--method",
+                "{{example_method}}"
+              ],
+              [
+                "--aspera-key",
+                "{{example_aspera_key}}"
+              ],
+              [
+                "{{example_force}}"
+              ]
+            ]
+          },
+          "visibleWhen": [
+            {
+              "placeholder": "example_all",
+              "equals": "--all"
+            }
+          ],
+          "confirm": {
+            "title": "actions.cli.example-download-all.confirm.title",
+            "message": "actions.cli.example-download-all.confirm.message",
+            "confirmButtonTitle": "actions.cli.example-download-all.confirm.confirmButtonTitle",
+            "cancelButtonTitle": "actions.cli.example-download-all.confirm.cancelButtonTitle"
+          }
+        },
+        {
+          "id": "example-download-large-tag",
+          "title": "actions.cli.example-download-large-tag.title",
+          "tooltip": "actions.cli.example-download-large-tag.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "example-genome",
+              "download"
+            ],
+            "optionalArguments": [
+              [
+                "--target-root",
+                "{{dataset_library}}"
+              ],
+              [
+                "--tag",
+                "{{example_tag}}"
+              ],
+              [
+                "{{example_all}}"
+              ],
+              [
+                "--method",
+                "{{example_method}}"
+              ],
+              [
+                "--aspera-key",
+                "{{example_aspera_key}}"
+              ],
+              [
+                "{{example_force}}"
+              ]
+            ]
+          },
+          "visibleWhen": [
+            {
+              "placeholder": "example_all",
+              "notEquals": "--all"
+            },
+            {
+              "placeholder": "example_tag",
+              "in": [
+                "1000g",
+                "bam",
+                "cram",
+                "giab",
+                "hgsvc2",
+                "hifi",
+                "pacbio",
+                "ultima"
+              ]
+            }
+          ],
+          "confirm": {
+            "title": "actions.cli.example-download-large-tag.confirm.title",
+            "message": "actions.cli.example-download-large-tag.confirm.message",
+            "confirmButtonTitle": "actions.cli.example-download-all.confirm.confirmButtonTitle",
+            "cancelButtonTitle": "actions.cli.example-download-all.confirm.cancelButtonTitle"
+          }
+        }
+      ]
+    }
+  ],
+  "iconName": "sequence-reads",
+  "textIcon": "🗂️"
+}

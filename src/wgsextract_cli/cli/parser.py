@@ -41,8 +41,11 @@ DEFAULT_CONFIG = """# WGS Extract Configuration
 # Reference library directory (where multiple genomes are stored)
 # reflib = "~/wgse_reference"
 
-# Genome library directory, with one subfolder per person/sample.
-# genome_library = "~/wgse_genomes"
+# Folder for the reference genomes alone (default: genomes/ in reflib)
+# reference_genome_library = "~/wgse_reference/genomes"
+
+# Dataset library directory, with one subfolder per person/sample.
+# dataset_library = "~/wgse_datasets"
 
 # --- Analysis Settings ---
 # System resources
@@ -508,7 +511,7 @@ def add_shared_arguments(
     add(
         "--genome",
         help=(
-            "Genome ID: a folder in genome_library, such as joe or "
+            "Genome ID: a folder in dataset_library, such as joe or "
             "test-1000genomes/<id>. Uses that folder for inputs and outputs."
         ),
     )

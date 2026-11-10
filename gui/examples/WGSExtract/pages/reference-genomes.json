@@ -1,0 +1,282 @@
+{
+  "id": "reference-genomes",
+  "title": "pages.reference-genomes.title",
+  "summary": "pages.reference-genomes.summary",
+  "sidebarPlacement": "bottom",
+  "sections": [
+    {
+      "id": "reference-genome-paths",
+      "title": "sections.library.library-paths.title",
+      "controls": [
+        {
+          "id": "reference_genome_library",
+          "label": "controls.reference-genomes.reference-genome-paths.reference_genome_library.label",
+          "kind": "path",
+          "tooltip": "controls.reference-genomes.reference-genome-paths.reference_genome_library.tooltip"
+        }
+      ],
+      "iconName": "bundle-folder",
+      "textIcon": "📁",
+      "advancedOnly": true
+    },
+    {
+      "id": "genome-management",
+      "title": "sections.library.genome-management.title",
+      "controls": [
+        {
+          "id": "reference_genomes",
+          "label": "controls.library.genome-management.reference_genomes.label",
+          "kind": "libraryList",
+          "tooltip": "controls.library.genome-management.reference_genomes.tooltip",
+          "dataSource": {
+            "path": "scripts/list-reference-genomes.py",
+            "arguments": [
+              "items",
+              "{{ref_path}}",
+              "{{reference_genome_library}}"
+            ]
+          },
+          "columns": [
+            {
+              "id": "name",
+              "title": "columns.library.genome-management.reference_genomes.name.title"
+            },
+            {
+              "id": "code",
+              "title": "columns.library.genome-management.reference_genomes.code.title"
+            },
+            {
+              "id": "build",
+              "title": "columns.library.genome-management.reference_genomes.build.title"
+            },
+            {
+              "id": "source",
+              "title": "columns.library.genome-management.reference_genomes.source.title"
+            },
+            {
+              "id": "sn",
+              "title": "columns.library.genome-management.reference_genomes.sn.title"
+            },
+            {
+              "id": "size",
+              "title": "columns.library.genome-management.reference_genomes.size.title"
+            }
+          ],
+          "rowActions": [
+            {
+              "id": "ref-download",
+              "title": "actions.library.genome-management.ref-download.title",
+              "tooltip": "actions.library.genome-management.ref-download.tooltip",
+              "command": {
+                "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+                "arguments": [
+                  "ref",
+                  "library",
+                  "--install",
+                  "{{row.code}}",
+                  "--ref",
+                  "{{ref_path}}"
+                ]
+              },
+              "iconName": "download",
+              "textIcon": "⬇️",
+              "iconOnly": true,
+              "visibleWhen": [
+                {
+                  "placeholder": "row.status",
+                  "equals": "missing"
+                }
+              ]
+            },
+            {
+              "id": "ref-index",
+              "title": "actions.library.genome-management.ref-index.title",
+              "tooltip": "actions.library.genome-management.ref-index.tooltip",
+              "command": {
+                "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+                "arguments": [
+                  "ref",
+                  "index",
+                  "--ref",
+                  "{{row.ref}}"
+                ],
+                "optionalArguments": [
+                  [
+                    "--aligner",
+                    "{{ref_index_aligner}}"
+                  ]
+                ]
+              },
+              "iconName": "index-reference",
+              "textIcon": "🔎",
+              "iconOnly": true,
+              "visibleWhen": [
+                {
+                  "placeholder": "row.status",
+                  "equals": "unindexed"
+                }
+              ]
+            },
+            {
+              "id": "ref-verify",
+              "title": "actions.library.genome-management.ref-verify.title",
+              "tooltip": "actions.library.genome-management.ref-verify.tooltip",
+              "command": {
+                "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+                "arguments": [
+                  "ref",
+                  "verify",
+                  "--ref",
+                  "{{row.ref}}"
+                ]
+              },
+              "iconName": "verify-reference",
+              "textIcon": "✓",
+              "iconOnly": true,
+              "visibleWhen": [
+                {
+                  "placeholder": "row.status",
+                  "in": [
+                    "installed",
+                    "unindexed"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "ref-count-ns",
+              "title": "actions.library.genome-management.ref-count-ns.title",
+              "tooltip": "actions.library.genome-management.ref-count-ns.tooltip",
+              "command": {
+                "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+                "arguments": [
+                  "ref",
+                  "count-ns",
+                  "--ref",
+                  "{{row.ref}}"
+                ]
+              },
+              "iconName": "number-sequence",
+              "textIcon": "#",
+              "iconOnly": true,
+              "visibleWhen": [
+                {
+                  "placeholder": "row.status",
+                  "in": [
+                    "installed",
+                    "unindexed"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "ref-delete",
+              "title": "actions.library.genome-management.ref-delete.title",
+              "role": "destructive",
+              "tooltip": "actions.library.genome-management.ref-delete.tooltip",
+              "command": {
+                "executable": "{{bundleRoot}}/scripts/delete-reference-genome.sh",
+                "arguments": [
+                  "{{ref_path}}",
+                  "{{row.final}}",
+                  "{{reference_genome_library}}"
+                ]
+              },
+              "iconName": "delete",
+              "textIcon": "🗑️",
+              "iconOnly": true,
+              "confirm": {
+                "title": "actions.library.genome-management.ref-delete.confirm.title",
+                "message": "actions.library.genome-management.ref-delete.confirm.message",
+                "confirmButtonTitle": "actions.library.genome-management.ref-delete.confirm.confirmButtonTitle",
+                "cancelButtonTitle": "actions.library.genome-management.ref-delete.confirm.cancelButtonTitle"
+              },
+              "visibleWhen": [
+                {
+                  "placeholder": "row.status",
+                  "in": [
+                    "installed",
+                    "unindexed",
+                    "incomplete"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "ref-resume",
+              "title": "actions.library.genome-management.ref-resume.title",
+              "tooltip": "actions.library.genome-management.ref-resume.tooltip",
+              "command": {
+                "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+                "arguments": [
+                  "ref",
+                  "library",
+                  "--install",
+                  "{{row.code}}",
+                  "--ref",
+                  "{{ref_path}}"
+                ]
+              },
+              "iconName": "refresh",
+              "textIcon": "🔄",
+              "iconOnly": true,
+              "visibleWhen": [
+                {
+                  "placeholder": "row.status",
+                  "equals": "incomplete"
+                }
+              ]
+            }
+          ],
+          "rowTemplate": {
+            "id": "{{id}}",
+            "title": "{{name}}",
+            "status": "{{status}}",
+            "values": {
+              "name": "{{name}}",
+              "build": "{{build}}",
+              "source": "{{source}}",
+              "size": "{{size}}",
+              "code": "{{code}}",
+              "final": "{{final}}",
+              "ref": "{{ref}}",
+              "sn": "{{sn}}"
+            },
+            "tags": [
+              {
+                "id": "recommended",
+                "title": "{{recommended}}",
+                "style": "primary"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ref_index_aligner",
+          "label": "controls.cli.ref_index_aligner.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "bwa",
+              "title": "options.cli.value.bwa.title"
+            },
+            {
+              "id": "bwa-mem2",
+              "title": "options.cli.value.bwa-mem2.title"
+            }
+          ],
+          "tooltip": "controls.cli.ref_index_aligner.tooltip",
+          "advancedOnly": true
+        }
+      ],
+      "iconName": "library",
+      "textIcon": "📚"
+    }
+  ],
+  "iconName": "index-reference",
+  "textIcon": "🧬"
+}

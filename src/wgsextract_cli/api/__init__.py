@@ -103,6 +103,7 @@ from .examples import ExampleGenomeDownloadParams, ExampleGenomeListParams
 from .extract import (
     BamSubsetParams,
     CustomParams,
+    ExtractRegionParams,
     MitoFastaParams,
     MitoVcfParams,
     MtBamParams,
@@ -140,6 +141,7 @@ from .ref import (
     RefIndexParams,
     RefLibraryListParams,
     RefLibraryParams,
+    RefMicroarrayTargetsParams,
     RefPharmgkbParams,
     RefPhylopParams,
     RefRevelParams,
@@ -180,7 +182,7 @@ from .vcf import (
     VcfToFastaParams,
     VcfTrioParams,
 )
-from .vep import VepDownloadParams, VepRunParams, VepVerifyParams
+from .vep import VepDeleteParams, VepDownloadParams, VepRunParams, VepVerifyParams
 
 __all__ = [
     "AlignParams",
@@ -209,6 +211,7 @@ __all__ = [
     "DepsCheckParams",
     "ExampleGenomeDownloadParams",
     "ExampleGenomeListParams",
+    "ExtractRegionParams",
     "FakeDataParams",
     "FastpParams",
     "FastqcParams",
@@ -244,6 +247,7 @@ __all__ = [
     "RefIndexParams",
     "RefLibraryListParams",
     "RefLibraryParams",
+    "RefMicroarrayTargetsParams",
     "RefPharmgkbParams",
     "RefPhylopParams",
     "RefRevelParams",
@@ -292,6 +296,7 @@ __all__ = [
     "VcfTableParams",
     "VcfToFastaParams",
     "VcfTrioParams",
+    "VepDeleteParams",
     "VepDownloadParams",
     "VepRunParams",
     "VepVerifyParams",

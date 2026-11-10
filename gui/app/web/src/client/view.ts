@@ -11,6 +11,7 @@ import { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view
 import { renderWorkspaceLocationSection } from "./view/workspace-location.js";
 export { renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID, setupPromptMessage, } from "./view/setup.js";
 import { renderUpdateNavigationItem } from "./view/update.js";
+import { isShownInUIMode, visibleControls, visibleOptions, visiblePages, visibleRows, visibleSections, type UIMode } from "../../../shared/ui-mode.js";
 import type { BundleManifest, BundlePage, CommandContext, LocalizedOption, ControlOption, ControlSpec, ManifestLocation, PageSection, PendingConfirmation, RowColumnSpec, RowSpec, ConfigSetting } from "../../../shared/types.js";
 function requiredManifest(): BundleManifest {
     if (!state.manifest) {
@@ -32,6 +33,24 @@ export function renderBundleHeader() {
       <h1>${escapeHTML(manifest.displayName)}${renderTooltip(manifest.summary)}</h1>
       ${appVersion ? `<p class="app-version" data-app-version>${escapeHTML(appVersionLabel)} ${escapeHTML(appVersion)}</p>` : ""}
     </header>
+  `;
+}
+/** The Basic / Advanced switch at the top of the sidebar: a radio group, so exactly one mode is on. */
+export function renderUIModeSwitch() {
+    const modes: { mode: UIMode; label: string; tooltip: string }[] = [
+        { mode: "basic", label: state.labels.uiModeBasicLabel ?? "Basic", tooltip: state.labels.uiModeBasicTooltip ?? "" },
+        { mode: "advanced", label: state.labels.uiModeAdvancedLabel ?? "Advanced", tooltip: state.labels.uiModeAdvancedTooltip ?? "" },
+    ];
+    return `
+    <div class="ui-mode-switch" role="radiogroup" aria-label="${escapeAttribute(state.labels.uiModeLabel ?? "Mode")}">
+      ${modes
+        .map(({ mode, label, tooltip }) => {
+        const active = mode === state.uiMode;
+        return `<button type="button" role="radio" class="ui-mode-option ${active ? "active" : ""}" aria-checked="${active}" tabindex="${active ? 0 : -1}"
+          data-ui-mode="${mode}" title="${escapeAttribute(tooltip)}">${escapeHTML(label)}</button>`;
+    })
+        .join("")}
+    </div>
   `;
 }
 export function renderLanguagePicker() {
@@ -61,8 +80,9 @@ function languageOptionLabel(option: LocalizedOption) {
 }
 export function renderNavigation() {
     const manifest = requiredManifest();
-    const primaryPages = manifest.pages.filter((page) => page.sidebarPlacement !== "bottom");
-    const bottomPages = manifest.pages.filter((page) => page.sidebarPlacement === "bottom");
+    const pages = visiblePages(manifest, state.uiMode);
+    const primaryPages = pages.filter((page) => page.sidebarPlacement !== "bottom");
+    const bottomPages = pages.filter((page) => page.sidebarPlacement === "bottom");
     const updateItem = renderUpdateNavigationItem();
     return `
     <div class="nav-primary">${renderNavigationGroups(primaryPages)}</div>
@@ -101,9 +121,9 @@ export function renderPage(page: BundlePage) {
         <h2>${renderIconTitle(page.title, page.iconName, page.textIcon, "📄")}</h2>
         <p>${escapeHTML(page.summary)}</p>
       </header>
-      ${page.id === "settings" ? `${renderSetupStatusSection()}${renderWorkspaceLocationSection()}${renderStandardOptionsAccessory()}` : ""}
+      ${page.id === "settings" ? `${renderSetupStatusSection()}${state.uiMode === "advanced" ? renderWorkspaceLocationSection() : ""}${renderStandardOptionsAccessory()}` : ""}
       <div class="sections">
-        ${(page.sections ?? []).map((section) => renderSection(section, page)).join("")}
+        ${visibleSections(page, state.uiMode).map((section) => renderSection(section, page)).join("")}
       </div>
     </article>
   `;
@@ -120,8 +140,9 @@ export function renderSection(section: PageSection, page: BundlePage) {
     if (!isSectionVisible(section, context)) {
         return "";
     }
+    const sectionActions = (section.actions ?? []).filter((action) => isShownInUIMode(action, state.uiMode));
     return `
-    <section class="card" aria-labelledby="section-${escapeAttribute(section.id)}">
+    <section class="card${section.subsection === true ? " subsection" : ""}" aria-labelledby="section-${escapeAttribute(section.id)}">
       <header class="section-header">
         ${section.title
         ? `<h3 id="section-${escapeAttribute(section.id)}">${renderIconTitle(section.title, section.iconName, section.textIcon, "▦")}</h3>`
@@ -129,13 +150,13 @@ export function renderSection(section: PageSection, page: BundlePage) {
         ${section.subtitle ? `<p>${escapeHTML(section.subtitle)}</p>` : ""}
       </header>
       <div class="controls">
-        ${(section.controls ?? []).map((control) => renderControl(control, context, location)).join("")}
+        ${visibleControls(section, state.uiMode).map((control) => renderControl(control, context, location)).join("")}
       </div>
       ${state.loadingDataSources.has(key) ? renderLoadingBox(state.labels.loadingTitle) : ""}
       ${state.dataSourceErrors.has(key)
         ? renderInlineError(state.dataSourceErrors.get(key), `<button type="button" data-retry-source="${escapeAttribute(key)}">${escapeHTML(state.labels.retryButtonTitle)}</button>`)
         : ""}
-      ${(section.actions ?? []).length ? `<div class="action-row">${renderActions(section.actions ?? [], context, location)}</div>` : ""}
+      ${sectionActions.length ? `<div class="action-row">${renderActions(sectionActions, context, location)}</div>` : ""}
     </section>
   `;
 }
@@ -206,13 +227,18 @@ export function renderTextControl(control: ControlSpec) {
 }
 export function renderDropdownControl(control: ControlSpec) {
     const value = state.fieldValues[control.id] ?? control.value ?? control.options?.find((option) => option.selected)?.id ?? "";
+    const options = visibleOptions(control.options, state.uiMode);
+    // A list with nothing in it (no reference genome installed yet) says what to do instead of showing a blank menu.
+    const emptyText = options.length === 0 && typeof control.emptyText === "string" ? control.emptyText : "";
     return `
     <label class="form-row">
       <span class="row-label">${escapeHTML(control.label)}${renderTooltip(control.tooltip)}</span>
       <select data-field-id="${escapeAttribute(control.id)}">
-        ${(control.options ?? [])
-        .map((option) => `<option value="${escapeAttribute(option.id)}" ${option.id === String(value) ? "selected" : ""}>${escapeHTML(displayOption(option))}</option>`)
-        .join("")}
+        ${emptyText
+        ? `<option value="" selected disabled>${escapeHTML(emptyText)}</option>`
+        : options
+            .map((option) => `<option value="${escapeAttribute(option.id)}" ${option.id === String(value) ? "selected" : ""}>${escapeHTML(displayOption(option))}</option>`)
+            .join("")}
       </select>
     </label>
   `;
@@ -228,29 +254,74 @@ export function renderToggleControl(control: ControlSpec) {
 }
 export function renderCheckboxGroup(control: ControlSpec) {
     const selected = state.checkedOptions[control.id] ?? new Set((control.options ?? []).filter((option) => option.selected).map((option) => option.id));
-    const groups = groupedOptions(control.options ?? []);
+    const options = visibleOptions(control.options, state.uiMode);
     // A lone checkbox named like its group needs no heading: its own name says it, with the tooltip beside it.
     const onlyOption = control.options?.length === 1 ? control.options[0] : undefined;
     const optionNamesGroup = onlyOption != null && sameLabel(displayOption(onlyOption), control.label);
     const optionSuffix = optionNamesGroup ? renderTooltip(control.tooltip) : "";
-    return `
-    <fieldset class="checkbox-group">
-      ${optionNamesGroup ? "" : `<legend>${escapeHTML(control.label)}${renderTooltip(control.tooltip)}</legend>`}
-      ${groups
-        .map((group) => `
-        <div class="option-group">
-          ${group.title ? `<h4>${escapeHTML(group.title)}</h4>` : ""}
-          <div class="option-grid">
-            ${group.options.map((option) => `
+    const checkbox = (option: ControlOption) => `
               <label>
                 <input type="checkbox" data-check-group="${escapeAttribute(control.id)}" value="${escapeAttribute(option.id)}" ${selected.has(option.id) ? "checked" : ""}>
                 <span>${escapeHTML(displayOption(option))}${optionSuffix}</span>
-              </label>`).join("")}
-          </div>
+              </label>`;
+    const body = control.layout === "rows"
+        ? renderOptionRows(options, checkbox)
+        : groupedOptions(options)
+            .map((group) => `
+        <div class="option-group">
+          ${group.title ? `<h4>${escapeHTML(group.title)}</h4>` : ""}
+          <div class="option-grid">${group.options.map(checkbox).join("")}</div>
         </div>`)
-        .join("")}
+            .join("");
+    return `
+    <fieldset class="checkbox-group">
+      ${optionNamesGroup ? "" : `<legend>${escapeHTML(control.label)}${renderTooltip(control.tooltip)}</legend>`}
+      ${body}
     </fieldset>
   `;
+}
+/**
+ * Rows layout: options sorted under category headings, one row per group with its name on the left and its checkboxes
+ * in shared columns. Advanced-only options, whose names run longer, wrap onto a second line of the row.
+ */
+function renderOptionRows(options: ControlOption[], checkbox: (option: ControlOption) => string) {
+    const categories: { title: string; groups: OptionGroup[] }[] = [];
+    for (const option of options) {
+        const title = String(option.category ?? "");
+        let category = categories.find((candidate) => candidate.title === title);
+        if (!category) {
+            category = { title, groups: [] };
+            categories.push(category);
+        }
+        const groupTitle = String(option.group ?? "");
+        const group = category.groups.find((candidate) => candidate.title === groupTitle);
+        if (group) {
+            group.options.push(option);
+        }
+        else {
+            category.groups.push({ title: groupTitle, options: [option] });
+        }
+    }
+    return categories
+        .map((category) => `
+      <div class="option-category">
+        ${category.title ? `<h4>${escapeHTML(category.title)}</h4>` : ""}
+        ${category.groups
+        .map((group) => {
+        const common = group.options.filter((option) => option.advancedOnly !== true);
+        const advanced = group.options.filter((option) => option.advancedOnly === true);
+        return `
+          <div class="option-row">
+            <span class="option-row-title">${escapeHTML(group.title)}</span>
+            <div class="option-row-options">
+              ${common.length ? `<div class="option-columns">${common.map(checkbox).join("")}</div>` : ""}
+              ${advanced.length ? `<div class="option-columns wide">${advanced.map(checkbox).join("")}</div>` : ""}
+            </div>
+          </div>`;
+    })
+        .join("")}
+      </div>`)
+        .join("");
 }
 function sameLabel(left: string | undefined, right: string | undefined) {
     const normalize = (value: string | undefined) => (value ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
@@ -282,7 +353,8 @@ export function renderInfoGrid(control: ControlSpec) {
   `;
 }
 export function renderLibraryList(control: ControlSpec, context: CommandContext, location: ManifestLocation) {
-    const rows = hydrateRows(control);
+    const rows = visibleRows(hydrateRows(control), state.uiMode);
+    const columns = (control.columns ?? []).filter((column) => isShownInUIMode(column, state.uiMode));
     const key = `control:${control.id}`;
     if (state.loadingDataSources.has(key) && !state.dataSourcePayloads.has(key)) {
         return `
@@ -298,7 +370,7 @@ export function renderLibraryList(control: ControlSpec, context: CommandContext,
       ${rows.length
         ? `<div class="table-wrap"><table>
               <thead><tr>
-                ${(control.columns ?? []).map((column) => `<th>${escapeHTML(column.title)}</th>`).join("")}
+                ${columns.map((column) => `<th>${escapeHTML(column.title)}</th>`).join("")}
                 ${(control.rowActions ?? []).length ? `<th>${escapeHTML(state.labels.actionsColumnTitle)}</th>` : ""}
               </tr></thead>
               <tbody>
@@ -306,7 +378,7 @@ export function renderLibraryList(control: ControlSpec, context: CommandContext,
             .map((row) => {
             const contextForRow = rowContext(context, row);
             return `<tr>
-                      ${(control.columns ?? []).map((column) => `<td>${renderRowCell(row, column)}</td>`).join("")}
+                      ${columns.map((column) => `<td>${renderRowCell(row, column)}</td>`).join("")}
                       ${(control.rowActions ?? []).length
                 ? `<td><div class="row-actions">${renderActions(control.rowActions ?? [], contextForRow, location, true)}</div></td>`
                 : ""}

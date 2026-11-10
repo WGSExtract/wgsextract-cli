@@ -1,0 +1,624 @@
+{
+  "id": "workflows",
+  "title": "pages.workflows.title",
+  "summary": "pages.workflows.summary",
+  "sidebarGroup": "sidebar.groups.analyze",
+  "advancedOnly": true,
+  "sections": [
+    {
+      "id": "comprehensive",
+      "title": "sections.cli.comprehensive.title",
+      "textIcon": "🧭",
+      "advancedOnly": true,
+      "controls": [
+        {
+          "id": "bam_path",
+          "label": "controls.info-bam.inputs.bam_path.label",
+          "kind": "path",
+          "defaultDirectory": "{{dataset_library}}",
+          "tooltip": "controls.info-bam.inputs.bam_path.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "comp_vcf_inputs",
+          "label": "controls.cli.comp_vcf_inputs.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.comp_vcf_inputs.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "comp_skip_calling",
+          "label": "controls.cli.comp_skip_calling.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--skip-calling",
+              "title": "controls.cli.comp_skip_calling.label"
+            }
+          ],
+          "tooltip": "controls.cli.comp_skip_calling.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "comp_batch",
+          "label": "controls.cli.comp_batch.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.comp_batch.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "confidence_depth_low",
+          "label": "controls.cli.confidence_depth_low.label",
+          "kind": "text",
+          "tooltip": "controls.cli.confidence_depth_low.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "confidence_depth_high",
+          "label": "controls.cli.confidence_depth_high.label",
+          "kind": "text",
+          "tooltip": "controls.cli.confidence_depth_high.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "confidence_gq_low",
+          "label": "controls.cli.confidence_gq_low.label",
+          "kind": "text",
+          "tooltip": "controls.cli.confidence_gq_low.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "confidence_gq_high",
+          "label": "controls.cli.confidence_gq_high.label",
+          "kind": "text",
+          "tooltip": "controls.cli.confidence_gq_high.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "comp_no_resume",
+          "label": "controls.cli.comp_no_resume.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--no-resume",
+              "title": "controls.cli.comp_no_resume.label"
+            }
+          ],
+          "tooltip": "controls.cli.comp_no_resume.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "comp_force_step",
+          "label": "controls.cli.comp_force_step.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "info",
+              "title": "options.cli.value.info.title"
+            },
+            {
+              "id": "mt-haplogroup",
+              "title": "options.cli.value.mt-haplogroup.title"
+            },
+            {
+              "id": "y-haplogroup",
+              "title": "options.cli.value.y-haplogroup.title"
+            },
+            {
+              "id": "snp",
+              "title": "options.cli.value.snp.title"
+            },
+            {
+              "id": "indel",
+              "title": "options.cli.value.indel.title"
+            },
+            {
+              "id": "annotate",
+              "title": "options.cli.value.annotate.title"
+            },
+            {
+              "id": "discovery",
+              "title": "options.cli.value.discovery.title"
+            }
+          ],
+          "tooltip": "controls.cli.comp_force_step.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "comp_dry_run",
+          "label": "controls.cli.comp_dry_run.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--dry-run",
+              "title": "controls.cli.comp_dry_run.label"
+            }
+          ],
+          "tooltip": "controls.cli.comp_dry_run.tooltip",
+          "advancedOnly": true
+        }
+      ],
+      "actions": [
+        {
+          "id": "analyze-comprehensive",
+          "title": "actions.cli.analyze-comprehensive.title",
+          "tooltip": "actions.cli.analyze-comprehensive.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "analyze",
+              "comprehensive",
+              "--input",
+              "{{bam_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
+                "--vcf-inputs",
+                "{{comp_vcf_inputs}}"
+              ],
+              [
+                "{{comp_skip_calling}}"
+              ],
+              [
+                "--batch",
+                "{{comp_batch}}"
+              ],
+              [
+                "--confidence-depth",
+                "{{confidence_depth_low}}",
+                "{{confidence_depth_high}}"
+              ],
+              [
+                "--confidence-gq",
+                "{{confidence_gq_low}}",
+                "{{confidence_gq_high}}"
+              ],
+              [
+                "{{comp_no_resume}}"
+              ],
+              [
+                "--force-step",
+                "{{comp_force_step}}"
+              ],
+              [
+                "{{comp_dry_run}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "batch",
+      "title": "sections.cli.batch.title",
+      "textIcon": "🗂️",
+      "advancedOnly": true,
+      "controls": [
+        {
+          "id": "batch_directory",
+          "label": "controls.cli.batch_directory.label",
+          "kind": "path",
+          "pathType": "directory",
+          "tooltip": "controls.cli.batch_directory.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "batch_output",
+          "label": "controls.cli.batch_output.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.batch_output.tooltip",
+          "advancedOnly": true
+        }
+      ],
+      "actions": [
+        {
+          "id": "analyze-batch-gen",
+          "title": "actions.cli.analyze-batch-gen.title",
+          "tooltip": "actions.cli.analyze-batch-gen.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "analyze",
+              "batch-gen",
+              "--directory",
+              "{{batch_directory}}"
+            ],
+            "optionalArguments": [
+              [
+                "--output",
+                "{{batch_output}}"
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "personal-report",
+      "title": "sections.cli.personal-report.title",
+      "subtitle": "sections.cli.personal-report.subtitle",
+      "textIcon": "📝",
+      "advancedOnly": true,
+      "controls": [
+        {
+          "id": "report_workspace",
+          "label": "controls.cli.report_workspace.label",
+          "kind": "path",
+          "pathType": "directory",
+          "tooltip": "controls.cli.report_workspace.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "report_results",
+          "label": "controls.cli.report_results.label",
+          "kind": "path",
+          "pathType": "directory",
+          "tooltip": "controls.cli.report_results.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "report_format",
+          "label": "controls.cli.report_format.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "tsv",
+              "title": "options.cli.value.tsv.title"
+            },
+            {
+              "id": "parquet",
+              "title": "options.cli.value.parquet.title"
+            }
+          ],
+          "tooltip": "controls.cli.report_format.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "report_gene_list",
+          "label": "controls.cli.report_gene_list.label",
+          "kind": "text",
+          "tooltip": "controls.cli.report_gene_list.tooltip",
+          "advancedOnly": true
+        }
+      ],
+      "actions": [
+        {
+          "id": "report",
+          "title": "actions.cli.report.title",
+          "tooltip": "actions.cli.report.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "report",
+              "--input",
+              "{{bam_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--workspace",
+                "{{report_workspace}}"
+              ],
+              [
+                "--results",
+                "{{report_results}}"
+              ],
+              [
+                "--format",
+                "{{report_format}}"
+              ],
+              [
+                "--gene-list",
+                "{{report_gene_list}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "sample-overrides",
+      "title": "sections.cli.sample-overrides.title",
+      "textIcon": "🧑",
+      "advancedOnly": true,
+      "controls": [
+        {
+          "id": "sample_workspace",
+          "label": "controls.cli.sample_workspace.label",
+          "kind": "path",
+          "pathType": "directory",
+          "tooltip": "controls.cli.sample_workspace.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "sample_sex",
+          "label": "controls.cli.sample_sex.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "Male",
+              "title": "options.cli.value.Male.title"
+            },
+            {
+              "id": "Female",
+              "title": "options.cli.value.Female.title"
+            }
+          ],
+          "tooltip": "controls.cli.sample_sex.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "sample_platform",
+          "label": "controls.cli.sample_platform.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "illumina",
+              "title": "options.cli.value.illumina.title"
+            },
+            {
+              "id": "ont",
+              "title": "options.cli.value.ont.title"
+            },
+            {
+              "id": "pacbio",
+              "title": "options.cli.value.pacbio.title"
+            },
+            {
+              "id": "ultima",
+              "title": "options.cli.value.ultima.title"
+            },
+            {
+              "id": "dnbseq",
+              "title": "options.cli.value.dnbseq.title"
+            }
+          ],
+          "tooltip": "controls.cli.sample_platform.tooltip",
+          "advancedOnly": true
+        }
+      ],
+      "actions": [
+        {
+          "id": "sample-show",
+          "title": "actions.cli.sample-show.title",
+          "tooltip": "actions.cli.sample-show.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "sample",
+              "show",
+              "--input",
+              "{{bam_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--workspace",
+                "{{sample_workspace}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "sample-set",
+          "title": "actions.cli.sample-set.title",
+          "tooltip": "actions.cli.sample-set.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "sample",
+              "set",
+              "--input",
+              "{{bam_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--workspace",
+                "{{sample_workspace}}"
+              ],
+              [
+                "--sex",
+                "{{sample_sex}}"
+              ],
+              [
+                "--platform",
+                "{{sample_platform}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "sample-unset",
+          "title": "actions.cli.sample-unset.title",
+          "tooltip": "actions.cli.sample-unset.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "sample",
+              "unset",
+              "--input",
+              "{{bam_path}}",
+              "--sex",
+              "--platform"
+            ],
+            "optionalArguments": [
+              [
+                "--workspace",
+                "{{sample_workspace}}"
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "signatures",
+      "title": "sections.cli.signatures.title",
+      "textIcon": "✍️",
+      "advancedOnly": true,
+      "controls": [
+        {
+          "id": "sign_path",
+          "label": "controls.cli.sign_path.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.sign_path.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "sign_output",
+          "label": "controls.cli.sign_output.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.sign_output.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "sign_key",
+          "label": "controls.cli.sign_key.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.sign_key.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "sign_manifest",
+          "label": "controls.cli.sign_manifest.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.sign_manifest.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "sign_signature",
+          "label": "controls.cli.sign_signature.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.sign_signature.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "sign_public_key",
+          "label": "controls.cli.sign_public_key.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.sign_public_key.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "sign_allowed_signers",
+          "label": "controls.cli.sign_allowed_signers.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.sign_allowed_signers.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "sign_identity",
+          "label": "controls.cli.sign_identity.label",
+          "kind": "text",
+          "tooltip": "controls.cli.sign_identity.tooltip",
+          "advancedOnly": true
+        }
+      ],
+      "actions": [
+        {
+          "id": "sign-create",
+          "title": "actions.cli.sign-create.title",
+          "tooltip": "actions.cli.sign-create.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "sign",
+              "create",
+              "{{sign_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--output",
+                "{{sign_output}}"
+              ],
+              [
+                "--key",
+                "{{sign_key}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "sign-verify",
+          "title": "actions.cli.sign-verify.title",
+          "tooltip": "actions.cli.sign-verify.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "sign",
+              "verify",
+              "{{sign_manifest}}"
+            ],
+            "optionalArguments": [
+              [
+                "--signature",
+                "{{sign_signature}}"
+              ],
+              [
+                "--public-key",
+                "{{sign_public_key}}"
+              ],
+              [
+                "--allowed-signers",
+                "{{sign_allowed_signers}}"
+              ],
+              [
+                "--identity",
+                "{{sign_identity}}"
+              ]
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "textIcon": "🧭"
+}

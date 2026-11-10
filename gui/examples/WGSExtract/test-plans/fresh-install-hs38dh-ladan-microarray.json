@@ -3,7 +3,7 @@
   "inputs": {
     "fieldValues": {
       "bam_path": "${GFC_TEST_LADAN_CRAM}",
-      "genome_library": "${GFC_TEST_GENOME_LIBRARY}",
+      "dataset_library": "${GFC_TEST_GENOME_LIBRARY}",
       "out_dir": "{{bundleWorkspace}}/output/ladan-microarray",
       "ref_path": "{{bundleWorkspace}}/reference"
     },
@@ -22,7 +22,7 @@
     {
       "id": "download-hs38dh",
       "kind": "action",
-      "pageID": "library",
+      "pageID": "reference-genomes",
       "sectionID": "genome-management",
       "controlID": "reference_genomes",
       "actionID": "ref-download",

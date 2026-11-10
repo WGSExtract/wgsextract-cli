@@ -242,6 +242,7 @@ def test_sparse_vcf_2m_only_hit_does_not_reference_fill_legacy_panels(
     baseline = {
         path.name: path.read_bytes()
         for path in (tmp_path / "legacy").glob("input_AADR_*")
+        if not path.name.endswith(".inputs.json")  # run inputs, not panel data
     }
     args.formats = "aadr_2m,aadr_1240k,aadr_ho"
     args.outdir = str(tmp_path / "mixed")

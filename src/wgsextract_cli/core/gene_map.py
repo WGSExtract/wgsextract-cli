@@ -6,6 +6,7 @@ from pathlib import Path
 from wgsextract_cli.core.annotation_resources import CancelEvent
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.ref_library.downloads import download_file
+from wgsextract_cli.core.reference_assets import library_of_genomes_dir
 from wgsextract_cli.core.utils import WGSExtractError
 
 # Official UCSC RefGene database URLs
@@ -150,9 +151,9 @@ def resolve_gene_map_reflib(
     if resolved_ref:
         ref_parent = Path(resolved_ref).parent
         ref_grandparent = ref_parent.parent
-        inferred_reflib = (
+        inferred_reflib = library_of_genomes_dir(ref_parent) or (
             str(ref_grandparent)
-            if ref_parent.name in {"genomes", "ref", "microarray"}
+            if ref_parent.name in {"ref", "microarray"}
             else str(ref_parent)
         )
         for ref_candidate in (ref_parent, ref_grandparent):

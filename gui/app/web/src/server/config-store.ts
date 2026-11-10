@@ -8,6 +8,7 @@ import type { BundleManifest, ConfigBootstrapScriptSpec, ConfigSetting, ControlS
 import { configPath, expandPathTokens, expandWorkspaceToken } from "./paths.js";
 import { resolvePlatformScriptPath } from "./platform-scripts.js";
 import { errnoCode, errorMessage } from "./errors.js";
+import { normalizeUIMode, type UIMode } from "../../../shared/ui-mode.js";
 
 const bootstrapScriptTimeoutMs = 30_000;
 const inheritedBootstrapEnvironmentKeys = [
@@ -41,16 +42,18 @@ export type BundleState = {
     iconSet: "emoji" | "platform";
     colorTheme: "light" | "dark" | "system";
     webUIFont: "sfPro" | "system";
+    uiMode: UIMode;
 };
 
 /** A partial state update; appearance values are normalized and setup runs are stored as given. */
 export type BundleStateUpdate = {
-    [Key in Exclude<keyof BundleState, "iconSet" | "colorTheme" | "webUIFont" | "setupRun">]?: BundleState[Key];
+    [Key in Exclude<keyof BundleState, "iconSet" | "colorTheme" | "webUIFont" | "uiMode" | "setupRun">]?: BundleState[Key];
 } & {
     setupRun?: SetupRun | LooseRecord | null;
     iconSet?: unknown;
     colorTheme?: unknown;
     webUIFont?: unknown;
+    uiMode?: unknown;
 };
 
 type BootstrapScript = ConfigBootstrapScriptSpec;
@@ -84,6 +87,7 @@ export function emptyBundleState(): BundleState {
         iconSet: "platform",
         colorTheme: "system",
         webUIFont: "system",
+        uiMode: "basic",
     };
 }
 let saveBundleStateQueue: Promise<unknown> = Promise.resolve();
@@ -131,6 +135,7 @@ export async function loadBundleState(bundleRoot: string): Promise<BundleState> 
         iconSet: normalizeIconSet(state.iconSet),
         colorTheme: normalizeColorTheme(state.colorTheme),
         webUIFont: normalizeWebUIFont(state.webUIFont),
+        uiMode: normalizeUIMode(state.uiMode),
     };
 }
 export function takeBundleStateWarning(bundleRoot: string): string | undefined {
@@ -154,6 +159,7 @@ export async function saveBundleState(partialState: BundleStateUpdate, bundleRoo
                 ? normalizeColorTheme(partialState.colorTheme)
                 : current.colorTheme,
             webUIFont: Object.hasOwn(partialState, "webUIFont") ? normalizeWebUIFont(partialState.webUIFont) : current.webUIFont,
+            uiMode: Object.hasOwn(partialState, "uiMode") ? normalizeUIMode(partialState.uiMode) : current.uiMode,
         };
         await writeFileAtomically(bundleStatePath(bundleRoot), `${JSON.stringify(next, null, 2)}\n`);
         return next;

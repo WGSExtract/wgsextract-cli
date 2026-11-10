@@ -921,6 +921,20 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
     _print_detailed(data, as_csv, (input_file, header))
     if table_format:
         _export_tables(data, table_stem, table_format, metadata)
+    if isinstance(params, CalculateCoverageParams) and params.with_bins:
+        from .bins import run_depth_bins
+
+        bins_tsv = run_depth_bins(
+            input_file,
+            resolved_ref,
+            sequence_lengths(header),
+            outdir,
+            region,
+            "tsv",
+            metadata,
+            reuse=True,
+        )
+        current_result().add_output(bins_tsv, "coverage_bins")
     # A region-limited coverage table describes only part of the file, so it
     # must not replace the whole-file cache.
     if cache and not region and _save_cache(json_cache, data):

@@ -14,20 +14,22 @@
           "id": "bam_path",
           "label": "controls.info-bam.inputs.bam_path.label",
           "kind": "path",
-          "defaultDirectory": "{{genome_library}}",
+          "defaultDirectory": "{{dataset_library}}",
           "tooltip": "controls.info-bam.inputs.bam_path.tooltip"
         },
         {
           "id": "ref_path",
           "label": "controls.info-bam.inputs.ref_path.label",
           "kind": "path",
-          "tooltip": "controls.info-bam.inputs.ref_path.tooltip"
+          "tooltip": "controls.info-bam.inputs.ref_path.tooltip",
+          "advancedOnly": true
         },
         {
           "id": "out_dir",
           "label": "controls.info-bam.inputs.out_dir.label",
           "kind": "path",
-          "tooltip": "controls.info-bam.inputs.out_dir.tooltip"
+          "tooltip": "controls.info-bam.inputs.out_dir.tooltip",
+          "advancedOnly": true
         },
         {
           "id": "cram_version",
@@ -49,7 +51,8 @@
               "id": "3.1",
               "title": "options.info-bam.inputs.cram_version.3.1.title"
             }
-          ]
+          ],
+          "advancedOnly": true
         }
       ]
     },
@@ -57,40 +60,6 @@
       "id": "info-commands",
       "title": "sections.info-bam.info-commands.title",
       "actions": [
-        {
-          "id": "coverage-bins",
-          "title": "actions.info-bam.post-v063.coverage-bins.title",
-          "tooltip": "actions.info-bam.post-v063.coverage-bins.tooltip",
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "info",
-              "calculate-coverage",
-              "--input",
-              "{{bam_path}}",
-              "--bins"
-            ],
-            "optionalArguments": [
-              [
-                "--ref",
-                "{{ref_path}}"
-              ],
-              [
-                "--outdir",
-                "{{out_dir}}"
-              ]
-            ]
-          },
-          "serverOperation": {
-            "operation": "info/calculate-coverage",
-            "parameters": {
-              "input": "{{bam_path}}",
-              "bins": true,
-              "ref": "{{ref_path}}",
-              "outdir": "{{out_dir}}"
-            }
-          }
-        },
         {
           "id": "basic-info",
           "title": "actions.info-bam.info-commands.basic-info.title",
@@ -126,29 +95,12 @@
               [
                 "--ref",
                 "{{ref_path}}"
+              ],
+              [
+                "--format",
+                "{{info_table_format}}"
               ]
             ]
-          }
-        },
-        {
-          "id": "calculate-coverage",
-          "title": "actions.info-bam.info-commands.calculate-coverage.title",
-          "tooltip": "actions.info-bam.info-commands.calculate-coverage.tooltip",
-          "estimatedDurationMinutes": 120,
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "info",
-              "calculate-coverage",
-              "--input",
-              "{{bam_path}}"
-            ]
-          },
-          "serverOperation": {
-            "operation": "info/calculate-coverage",
-            "parameters": {
-              "input": "{{bam_path}}"
-            }
           }
         },
         {
@@ -162,12 +114,167 @@
               "coverage-sample",
               "--input",
               "{{bam_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--region",
+                "{{coverage_region}}"
+              ],
+              [
+                "--format",
+                "{{info_table_format}}"
+              ]
+            ]
+          },
+          "advancedOnly": true
+        },
+        {
+          "id": "calculate-coverage",
+          "title": "actions.info-bam.info-commands.calculate-coverage.title",
+          "tooltip": "actions.info-bam.info-commands.calculate-coverage.tooltip",
+          "estimatedDurationMinutes": 120,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "info",
+              "calculate-coverage",
+              "--with-bins",
+              "--input",
+              "{{bam_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--format",
+                "{{info_table_format}}"
+              ]
+            ]
+          },
+          "serverOperation": {
+            "operation": "info/calculate-coverage",
+            "parameters": {
+              "input": "{{bam_path}}",
+              "with_bins": true
+            }
+          },
+          "visibleWhen": [
+            {
+              "placeholder": "coverage_done",
+              "notEquals": "true"
+            }
+          ]
+        },
+        {
+          "id": "calculate-coverage-shown",
+          "title": "actions.info-bam.info-commands.calculate-coverage.title",
+          "tooltip": "actions.info-bam.info-commands.calculate-coverage.shownTooltip",
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "info",
+              "calculate-coverage",
+              "--with-bins",
+              "--input",
+              "{{bam_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--format",
+                "{{info_table_format}}"
+              ]
+            ]
+          },
+          "serverOperation": {
+            "operation": "info/calculate-coverage",
+            "parameters": {
+              "input": "{{bam_path}}",
+              "with_bins": true
+            }
+          },
+          "visibleWhen": [
+            {
+              "placeholder": "coverage_done",
+              "equals": "true"
+            }
+          ]
+        },
+        {
+          "id": "coverage-by-bed",
+          "title": "actions.cli.coverage-by-bed.title",
+          "tooltip": "actions.cli.coverage-by-bed.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "info",
+              "calculate-coverage",
+              "--input",
+              "{{bam_path}}",
+              "--by",
+              "{{coverage_by}}"
+            ],
+            "optionalArguments": [
+              [
+                "--min-depth",
+                "{{coverage_min_depth}}"
+              ]
             ]
           }
         }
       ],
       "iconName": "command-line",
-      "textIcon": "▸"
+      "textIcon": "▸",
+      "dataSource": {
+        "path": "scripts/coverage-state.py",
+        "arguments": [
+          "{{bam_path}}",
+          "{{out_dir}}"
+        ]
+      },
+      "controls": [
+        {
+          "id": "coverage_region",
+          "label": "controls.cli.coverage_region.label",
+          "kind": "text",
+          "tooltip": "controls.cli.coverage_region.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "coverage_by",
+          "label": "controls.cli.coverage_by.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.coverage_by.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "coverage_min_depth",
+          "label": "controls.cli.coverage_min_depth.label",
+          "kind": "text",
+          "tooltip": "controls.cli.coverage_min_depth.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "info_table_format",
+          "label": "controls.cli.info_table_format.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "tsv",
+              "title": "options.cli.value.tsv.title"
+            },
+            {
+              "id": "parquet",
+              "title": "options.cli.value.parquet.title"
+            }
+          ],
+          "tooltip": "controls.cli.info_table_format.tooltip",
+          "advancedOnly": true
+        }
+      ]
     },
     {
       "id": "bam-commands",
@@ -198,6 +305,14 @@
               [
                 "--outdir",
                 "{{out_dir}}"
+              ],
+              [
+                "--region",
+                "{{bam_region}}"
+              ],
+              [
+                "--gene",
+                "{{bam_gene}}"
               ]
             ]
           }
@@ -290,6 +405,14 @@
               [
                 "--ref",
                 "{{ref_path}}"
+              ],
+              [
+                "--region",
+                "{{bam_region}}"
+              ],
+              [
+                "--gene",
+                "{{bam_gene}}"
               ]
             ]
           }
@@ -317,6 +440,14 @@
               [
                 "--ref",
                 "{{ref_path}}"
+              ],
+              [
+                "--region",
+                "{{bam_region}}"
+              ],
+              [
+                "--gene",
+                "{{bam_gene}}"
               ]
             ]
           }
@@ -331,6 +462,20 @@
             "arguments": [
               "{{bam_path}}",
               "{{out_dir}}"
+            ],
+            "optionalArguments": [
+              [
+                "--region",
+                "{{bam_region}}"
+              ],
+              [
+                "--gene",
+                "{{bam_gene}}"
+              ],
+              [
+                "--se",
+                "{{unalign_se}}"
+              ]
             ]
           }
         },
@@ -350,135 +495,278 @@
               [
                 "--outdir",
                 "{{out_dir}}"
+              ],
+              [
+                "--output",
+                "{{repair_bam_output}}"
               ]
             ]
           }
+        }
+      ],
+      "controls": [
+        {
+          "id": "bam_region",
+          "label": "controls.cli.bam_region.label",
+          "kind": "text",
+          "tooltip": "controls.cli.bam_region.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "bam_gene",
+          "label": "controls.cli.bam_gene.label",
+          "kind": "text",
+          "tooltip": "controls.cli.bam_gene.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "unalign_se",
+          "label": "controls.cli.unalign_se.label",
+          "kind": "text",
+          "tooltip": "controls.cli.unalign_se.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "repair_bam_output",
+          "label": "controls.cli.repair_bam_output.label",
+          "kind": "text",
+          "tooltip": "controls.cli.repair_bam_output.tooltip",
+          "advancedOnly": true
         }
       ]
     },
     {
-      "id": "realign-commands",
-      "title": "sections.info-bam.realign-commands.title",
-      "subtitle": "sections.info-bam.realign-commands.subtitle",
-      "iconName": "merge",
-      "textIcon": "🔀",
+      "id": "bam-tools",
+      "title": "sections.cli.bam-tools.title",
+      "textIcon": "🧰",
+      "advancedOnly": true,
       "controls": [
         {
-          "id": "realign_keep_fastq",
-          "label": "controls.info-bam.post-v063.keep-fastq.label",
+          "id": "ubam_sample",
+          "label": "controls.cli.ubam_sample.label",
+          "kind": "text",
+          "tooltip": "controls.cli.ubam_sample.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "ubam_library",
+          "label": "controls.cli.ubam_library.label",
+          "kind": "text",
+          "tooltip": "controls.cli.ubam_library.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "ubam_platform",
+          "label": "controls.cli.ubam_platform.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "ILLUMINA",
+              "title": "options.cli.value.ILLUMINA.title"
+            },
+            {
+              "id": "DNBSEQ",
+              "title": "options.cli.value.DNBSEQ.title"
+            },
+            {
+              "id": "ELEMENT",
+              "title": "options.cli.value.ELEMENT.title"
+            },
+            {
+              "id": "ULTIMA",
+              "title": "options.cli.value.ULTIMA.title"
+            },
+            {
+              "id": "PACBIO",
+              "title": "options.cli.value.PACBIO.title"
+            },
+            {
+              "id": "ONT",
+              "title": "options.cli.value.ONT.title"
+            },
+            {
+              "id": "IONTORRENT",
+              "title": "options.cli.value.IONTORRENT.title"
+            },
+            {
+              "id": "LS454",
+              "title": "options.cli.value.LS454.title"
+            },
+            {
+              "id": "SOLID",
+              "title": "options.cli.value.SOLID.title"
+            },
+            {
+              "id": "CAPILLARY",
+              "title": "options.cli.value.CAPILLARY.title"
+            }
+          ],
+          "tooltip": "controls.cli.ubam_platform.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "merge_input_1",
+          "label": "controls.cli.merge_input_1.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.merge_input_1.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "merge_input_2",
+          "label": "controls.cli.merge_input_2.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.merge_input_2.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "merge_input_3",
+          "label": "controls.cli.merge_input_3.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.merge_input_3.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "merge_input_4",
+          "label": "controls.cli.merge_input_4.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.merge_input_4.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "merge_output",
+          "label": "controls.cli.merge_output.label",
+          "kind": "text",
+          "tooltip": "controls.cli.merge_output.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "merge_cram",
+          "label": "controls.cli.merge_cram.label",
           "kind": "checkboxGroup",
           "options": [
             {
-              "id": "--keep-fastq",
-              "title": "controls.info-bam.post-v063.keep-fastq.label"
+              "id": "--cram",
+              "title": "controls.cli.merge_cram.label"
             }
           ],
-          "tooltip": "controls.info-bam.post-v063.keep-fastq.tooltip"
+          "tooltip": "controls.cli.merge_cram.tooltip",
+          "advancedOnly": true
         },
         {
-          "id": "realign_bam",
-          "label": "controls.info-bam.realign-commands.realign_bam.label",
-          "kind": "path",
-          "defaultDirectory": "{{genome_library}}",
-          "tooltip": "controls.info-bam.realign-commands.realign_bam.tooltip"
+          "id": "merge_attach_rg",
+          "label": "controls.cli.merge_attach_rg.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--attach-rg",
+              "title": "controls.cli.merge_attach_rg.label"
+            }
+          ],
+          "tooltip": "controls.cli.merge_attach_rg.tooltip",
+          "advancedOnly": true
         },
         {
-          "id": "realign_ref",
-          "label": "controls.info-bam.realign-commands.realign_ref.label",
-          "kind": "dropdown",
-          "tooltip": "controls.info-bam.realign-commands.realign_ref.tooltip",
-          "dataSource": {
-            "path": "scripts/list-reference-genomes.py",
-            "arguments": [
-              "options",
-              "{{ref_path}}"
-            ]
-          }
-        },
-        {
-          "id": "fastq_r1",
-          "label": "controls.info-bam.inputs.fastq_r1.label",
-          "kind": "path",
-          "defaultDirectory": "{{genome_library}}",
-          "tooltip": "controls.info-bam.inputs.fastq_r1.tooltip"
-        },
-        {
-          "id": "fastq_r2",
-          "label": "controls.info-bam.inputs.fastq_r2.label",
-          "kind": "path",
-          "defaultDirectory": "{{genome_library}}",
-          "tooltip": "controls.info-bam.inputs.fastq_r2.tooltip"
+          "id": "merge_sample",
+          "label": "controls.cli.merge_sample.label",
+          "kind": "text",
+          "tooltip": "controls.cli.merge_sample.tooltip",
+          "advancedOnly": true
         }
       ],
       "actions": [
         {
-          "id": "realign",
-          "title": "actions.info-bam.realign-commands.realign.title",
-          "tooltip": "actions.info-bam.realign-commands.realign.tooltip",
-          "precheck": {
-            "diskSpaceGB": "{{realign_bam.fileSizeGB}} * 6",
-            "diskSpacePath": "{{out_dir}}"
-          },
+          "id": "bam-identify",
+          "title": "actions.cli.bam-identify.title",
+          "tooltip": "actions.cli.bam-identify.tooltip",
+          "advancedOnly": true,
           "command": {
             "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
-              "realign",
+              "bam",
+              "identify",
               "--input",
-              "{{realign_bam}}",
-              "--ref",
-              "{{realign_ref}}"
+              "{{bam_path}}"
+            ]
+          }
+        },
+        {
+          "id": "bam-to-ubam",
+          "title": "actions.cli.bam-to-ubam.title",
+          "tooltip": "actions.cli.bam-to-ubam.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "bam",
+              "to-ubam",
+              "--input",
+              "{{bam_path}}"
             ],
             "optionalArguments": [
               [
-                "{{realign_keep_fastq}}"
+                "--sample",
+                "{{ubam_sample}}"
+              ],
+              [
+                "--library",
+                "{{ubam_library}}"
+              ],
+              [
+                "--platform",
+                "{{ubam_platform}}"
               ],
               [
                 "--outdir",
                 "{{out_dir}}"
-              ],
-              [
-                "--r1",
-                "{{fastq_r1}}"
-              ],
-              [
-                "--r2",
-                "{{fastq_r2}}"
               ]
             ]
           }
         },
         {
-          "id": "align",
-          "title": "actions.info-bam.realign-commands.align.title",
-          "tooltip": "actions.info-bam.realign-commands.align.tooltip",
-          "estimatedDurationMinutes": 540,
-          "precheck": {
-            "diskSpaceGB": "{{fastq_r1.fileSizeGB}} * 8",
-            "diskSpacePath": "{{out_dir}}"
-          },
-          "visibleWhen": [
-            {
-              "placeholder": "fastq_r1",
-              "exists": true
-            }
-          ],
+          "id": "bam-merge",
+          "title": "actions.cli.bam-merge.title",
+          "tooltip": "actions.cli.bam-merge.tooltip",
+          "advancedOnly": true,
           "command": {
             "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
-              "align",
-              "--ref",
-              "{{realign_ref}}",
-              "--r1",
-              "{{fastq_r1}}"
+              "bam",
+              "merge",
+              "{{merge_input_1}}",
+              "{{merge_input_2}}"
             ],
             "optionalArguments": [
               [
-                "--outdir",
-                "{{out_dir}}"
+                "{{merge_input_3}}"
               ],
               [
-                "--r2",
-                "{{fastq_r2}}"
+                "{{merge_input_4}}"
+              ],
+              [
+                "--output",
+                "{{merge_output}}"
+              ],
+              [
+                "{{merge_cram}}"
+              ],
+              [
+                "{{merge_attach_rg}}"
+              ],
+              [
+                "--sample",
+                "{{merge_sample}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
               ]
             ]
           }

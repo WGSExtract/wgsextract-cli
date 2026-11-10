@@ -121,6 +121,7 @@ Exact coverage; outputs the coverage table (or the depth-bins TSV).
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
 | `bins` | `bool` | `False` | `--bins` | Report exact per-contig depth 0, 1-3, 4-7 and 8+ breadth in one streaming pass. |
+| `with_bins` | `bool` | `False` | `--with-bins` | After the coverage table, also report the --bins depth breadth; an up-to-date whole-file bins report is shown again instead of rescanned. |
 | `by` | `Path \| None` | `None` | `--by` | Report depth per target of this BED (e.g. from 'panel bed'): mean, median and the fraction at >=10x, 20x, 30x and --min-depth, plus the on- versus off-target enrichment |
 | `min_depth` | `int` | `30` | `--min-depth` | With --by, list targets whose mean depth is below this (default: 30) |
 | `table_format` | `str \| None` | `None` | `--format` | Also save the per-chromosome table and the QC stats as <input>_chromosomes and <input>_qc .tsv or .parquet (needs pyarrow); implies --detailed; None saves none. With bins or by, that table's format instead (None: tsv). One of: `tsv`, `parquet` |
@@ -164,8 +165,8 @@ into smaller BAM, VCF or FASTA files.
 
 Outputs are named after the input (`sample.bam` gives `sample_Y.bam`) and
 written to `outdir`, else beside the input. Calling and consensus commands
-(`mito_fasta`, `mito_vcf`, `ydna_vcf`) need the matching reference; the
-others use it only to decode a CRAM.
+(`mito_fasta`, `mito_vcf`, `ydna_vcf`, and `region` with a VCF or
+FASTA) need the matching reference; the others use it only to decode a CRAM.
 
 ### `api.extract.mito_fasta(MitoFastaParams)`
 
@@ -330,6 +331,41 @@ and holds each read once.
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Region (chrY:10000-20000), comma-separated regions, or a BED file. |
 | `gene` | `str \| None` | `None` | `--gene` | A gene name (e.g. BRCA1) to extract, looked up in the reference library's gene map (hg19/hg38 only); the region wins when both are set. |
+
+### `api.extract.region(ExtractRegionParams)`
+
+CLI: `wgsextract extract region`.
+
+Extract one region in each chosen format (output roles `<t>_bam`,
+`<t>_vcf` and `<t>_fasta`, `<t>` being `mt`, `y`, `y_mt` or
+`autox`; the `variants` metric counts the VCF's calls).
+
+`ExtractRegionParams`: One region of the genome in each chosen format: `target` is `mt`
+(chrM), `y` (chrY), `ymt` (chrY and chrM) or `autox` (chromosomes
+1-22 and X); `formats` lists one or more of `fasta`, `bam` and `vcf`
+(comma-separated).
+
+The BAM is `<input>_mtDNA.bam`, `<input>_Y.bam` (`<input>_Y_poz.bam`
+with `poz`), `<input>_Y_MT.bam` or `<input>_autosomes_X.bam`; the VCF
+and FASTA are `<input>_<MT|Y|Y_MT|autosomes_X>.vcf.gz` and `.fasta`.
+chrM and chrY are called haploid with bcftools, indels included; autosomes
+and X are SNPs called contig by contig with the sex-aware ploidy of
+`vcf snp`. The FASTA is the region's reference with those calls applied,
+a heterozygous SNP as its IUPAC code. VCF and FASTA need the matching
+reference. Warns when a Y target's sample appears female, whose chrY reads
+are mismapped.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to extract from. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `target` | `str` | required | `--target` | Region to extract: mt (chrM), y (chrY), ymt (chrY and chrM) or autox (autosomes and chrX). One of: `mt`, `y`, `ymt`, `autox` |
+| `formats` | `str \| None` | `None` | `--formats` | Comma-separated formats to write: fasta (consensus sequence), bam (reads) and vcf (variant calls), e.g. bam,vcf. |
+| `poz` | `bool` | `False` | `--poz` | With --target y and the bam format: restrict the BAM's Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37/38 only). |
+| `ybrowse` | `bool` | `False` | `--ybrowse` | With --target y and the vcf format: call installed, allele-annotated yBrowse SNP targets (GRCh38 only; no downloads) into <input>_Y_ybrowse.vcf.gz instead. |
 
 ## `api.bam`
 
@@ -1573,10 +1609,12 @@ CLI: `wgsextract ref aadr`.
 
 Install the panel; output role `reference_resource`.
 
-`RefAadrParams`: Install the hash-pinned CC0 AADR v66.p1 2M SNP panel into the library.
+`RefAadrParams`: Install the hash-pinned CC0 AADR v66.p1 2M SNP panel into the library
+(`ref bootstrap` installs it too), or delete it.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed AADR 2M SNP panel |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 
 ### `api.ref.ybrowse(RefYbrowseParams)`
@@ -1586,10 +1624,11 @@ CLI: `wgsextract ref ybrowse`.
 Install the snapshot; output role `reference_resource`.
 
 `RefYbrowseParams`: Install a hash-pinned, sites-only GRCh38 yBrowse snapshot into the
-library.
+library, or delete the installed snapshots.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed yBrowse snapshots |
 | `snapshot` | `Path \| None` | `None` | `--snapshot` | Use a local GRCh38 VCF(.gz), verifying its header instead of the upstream pin. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 
@@ -1697,7 +1736,7 @@ ploidy and mappability files, and the test genome.
 | --- | --- | --- | --- | --- |
 | `ref` | `Path \| None` | `None` | `--ref` | Reference library folder, or a FASTA in it (default: config reference_library, else reference_fasta's library, else the default library). |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | A BAM/CRAM or VCF whose build picks the annotation files to report. |
-| `genome_library` | `Path \| None` | `None` | `--genome-library` | Genome library folder for the test genome's status (default: config genome_library, else ``genomes`` beside the reference library). |
+| `dataset_library` | `Path \| None` | `None` | `--dataset-library` | Dataset library folder for the test dataset's status (default: config dataset_library, else ``datasets`` beside the reference library). |
 | `annotation_vcf` | `Path \| None` | `None` | `--annotation-vcf` | Custom annotation VCF path to include in readiness checks. |
 
 ### `api.ref.gene_map(RefGeneMapParams)`
@@ -1772,11 +1811,12 @@ CLI: `wgsextract ref spliceai`.
 Download SpliceAI; output role `reference_resource` for each file.
 
 `RefSpliceaiParams`: Download SpliceAI scores for hg38 (Ensembl, MANE SNVs), or index a
-manual hg19 download.
+manual hg19 download; or delete the installed score files.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed SpliceAI score files |
 
 ### `api.ref.alphamissense(RefAlphamissenseParams)`
 
@@ -1784,11 +1824,12 @@ CLI: `wgsextract ref alphamissense`.
 
 Download AlphaMissense; output role `reference_resource` for each file.
 
-`RefAlphamissenseParams`: Download AlphaMissense scores for hg19 and hg38.
+`RefAlphamissenseParams`: Download AlphaMissense scores for hg19 and hg38, or delete them.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed AlphaMissense score files |
 
 ### `api.ref.pharmgkb(RefPharmgkbParams)`
 
@@ -1796,11 +1837,12 @@ CLI: `wgsextract ref pharmgkb`.
 
 Download PharmGKB; output role `reference_resource` for each file.
 
-`RefPharmgkbParams`: Download PharmGKB annotations.
+`RefPharmgkbParams`: Download PharmGKB annotations, or delete them.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed PharmGKB annotation files |
 
 ### `api.ref.cadd(RefCaddParams)`
 
@@ -1836,11 +1878,27 @@ Install the bootstrap; output role `reference_resource` for each file.
 Not offered by the server.
 
 `RefBootstrapParams`: Download the reference library bootstrap (liftover chains, chip
-templates, N counts and other support files). Saves the library's path as config.toml's
-`reference_library` when that is unset.
+templates, N counts and other support files) and the AADR 2M SNP panel.
+Saves the library's path as config.toml's `reference_library` when that
+is unset.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+
+### `api.ref.microarray_targets(RefMicroarrayTargetsParams)`
+
+CLI: `wgsextract ref microarray-targets`.
+
+Build (output role `reference_resource`) or delete the targets.
+
+`RefMicroarrayTargetsParams`: Build the genome-wide hg19 and hg38 microarray targets
+(`microarray/All_SNPs_<build>_ref.tab.gz`) from the bootstrap's chip
+templates, or delete them. `microarray` builds a missing one itself.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed microarray targets |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 
 ## `api.repair`
@@ -2247,7 +2305,7 @@ tags and file count.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
-| `target_root` | `Path \| None` | `None` | `--target-root` | Genome library folder holding the test-1000genomes collection (default: config genome_library, else the genomes folder of the checkout or user data folder). |
+| `target_root` | `Path \| None` | `None` | `--target-root` | Dataset library folder holding the test-1000genomes collection (default: config dataset_library, else the datasets folder of the checkout or user data folder). |
 | `tag` | `tuple[str, ...] \| None` | `None` | `--tag` | Only examples carrying every one of these tags. |
 
 ### `api.examples.download(ExampleGenomeDownloadParams)`
@@ -2258,7 +2316,7 @@ Download example genomes (see `ExampleGenomeDownloadParams`); each file
 is an output with its catalog role (`bam`, `vcf`, `fastq_r1` ...),
 plus each example's `genome_config`.
 
-`ExampleGenomeDownloadParams`: Download curated examples into the genome library and write their
+`ExampleGenomeDownloadParams`: Download curated examples into the dataset library and write their
 genome configs. With no `example_ids`, `tag` or `all`, the small
 starter set (a chrMT VCF and a chr20 BAM) is downloaded.
 
@@ -2269,7 +2327,7 @@ starter set (a chrMT VCF and a chr20 BAM) is downloaded.
 | `all` | `bool` | `False` | `--all` | Download every curated example, including large full-genome data. |
 | `method` | `str` | `'auto'` | `--method` | Transfer method. Auto is an alias for HTTPS and does not probe Aspera; use --method aspera explicitly for Aspera. One of: `auto`, `https`, `aspera` |
 | `aspera_key` | `Path \| None` | `None` | `--aspera-key` | Private key for Aspera downloads (default: the Aspera Connect key, if installed). |
-| `target_root` | `Path \| None` | `None` | `--target-root` | Genome library folder holding the test-1000genomes collection (default: config genome_library, else the genomes folder of the checkout or user data folder). |
+| `target_root` | `Path \| None` | `None` | `--target-root` | Dataset library folder holding the test-1000genomes collection (default: config dataset_library, else the datasets folder of the checkout or user data folder). |
 | `force` | `bool` | `False` | `--force` | Discard existing and partially downloaded files and download again. Without it, completed files are kept and interrupted downloads resume. |
 | `dry_run` | `bool` | `False` | `--dry-run` | Plan the downloads (the result's details) without creating files. |
 
@@ -2288,7 +2346,8 @@ run.
 `download` fetches Ensembl's indexed cache for `species`, `vep_version`
 and `assembly`, checks it against Ensembl's CHECKSUMS and unpacks it into
 the cache folder; `verify` checks that an unpacked cache has its
-`info.txt` and chromosome folders. The cache folder is `vep_cache`, else
+`info.txt` and chromosome folders; `delete` removes one release and
+assembly from it. The cache folder is `vep_cache`, else
 config `vep_cache_directory`, else the `vep` folder of the reference
 library `ref` names, else `~/.vep`.
 
@@ -2350,6 +2409,23 @@ Check an unpacked VEP cache (see `VepVerifyParams`).
 missing `info.txt` or chromosome folder (metric `missing_chromosomes`)
 and fails when the folder, its `info.txt` or every chromosome is
 missing.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `species` | `str` | `'homo_sapiens'` | `--species` | Species name (default: homo_sapiens) |
+| `assembly` | `str` | `'GRCh38'` | `--assembly` | Assembly (default: GRCh38) One of: `GRCh37`, `GRCh38` |
+| `vep_version` | `str` | `'116'` | `--vep-version` | Ensembl release version (default: 116) |
+| `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the vep folder of the reference library ref names, else ~/.vep). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference library folder, or a FASTA in one, whose vep folder holds the cache when vep_cache isn't set (default: config reference_fasta's library, else reference_library). |
+
+### `api.vep.delete(VepDeleteParams)`
+
+CLI: `wgsextract vep delete`.
+
+Delete one release of the VEP cache (see `VepDeleteParams`).
+
+`VepDeleteParams`: Delete one release and assembly of an unpacked VEP cache (see the
+module docstring), with any download of it left in the cache folder.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |

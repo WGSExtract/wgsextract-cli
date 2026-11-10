@@ -71,6 +71,12 @@ class CalculateCoverageParams(Params):
         "streaming pass.",
         action="store_true",
     )
+    with_bins: bool = param(
+        False,
+        help="After the coverage table, also report the --bins depth breadth; "
+        "an up-to-date whole-file bins report is shown again instead of rescanned.",
+        action="store_true",
+    )
     by: Path | None = param(
         None,
         help="Report depth per target of this BED (e.g. from 'panel bed'): mean, "
@@ -99,6 +105,10 @@ class CalculateCoverageParams(Params):
             from wgsextract_cli.core.utils import UsageError
 
             raise UsageError("--by can't be combined with --bins or --region.")
+        if self.with_bins and (self.bins or self.by is not None):
+            from wgsextract_cli.core.utils import UsageError
+
+            raise UsageError("--with-bins can't be combined with --bins or --by.")
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -65,7 +65,7 @@ from wgsextract_cli.core.microarray_utils import (
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_assets import input_stem, resolve_reference_library
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
-from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.results import FileRecord, current_result, warn
 from wgsextract_cli.core.sample_ploidy import sex_samples_args
 from wgsextract_cli.core.table_writer import (
     Column,
@@ -86,6 +86,7 @@ from wgsextract_cli.core.variant_files import (
 )
 from wgsextract_cli.core.warnings import print_warning
 
+from . import _microarray_reuse as reuse
 from ._microarray_combined import (
     _write_microarray_combined_kit,
     record_aadr,
@@ -100,7 +101,7 @@ from ._microarray_vcf import (
     _prepare_vcf_target_tab_for_input,
 )
 
-_PACKAGED_ASSETS = absolute_path(__file__).parents[1] / "assets"
+PACKAGED_ASSETS = absolute_path(__file__).parents[1] / "assets"
 
 
 _HG19_TO_HG38 = "hg19ToHg38.over.chain.gz"
@@ -113,7 +114,7 @@ def _template_search_roots(ref_fasta: str, lib: ReferenceLibrary) -> list[str]:
         roots.append(ref_dir)
     # Templates ship with the reference library (`ref bootstrap`); search it too
     # when --ref is a FASTA kept elsewhere. Last, the few the CLI ships itself.
-    for root in (lib.root, resolve_reference_library(), str(_PACKAGED_ASSETS)):
+    for root in (lib.root, resolve_reference_library(), str(PACKAGED_ASSETS)):
         if root and root not in roots:
             roots.append(root)
     return roots
@@ -175,8 +176,10 @@ def _convert_microarray_outputs(
     aadr_workdir: str | None = None,
     indel_calls: IndelCalls | None = None,
     legacy_combined_kit_txt: str | None = None,
+    formats: list[str] | None = None,
 ) -> dict[str, GenotypeTally]:
-    """Write the requested outputs; return each vendor file's autosomal tally."""
+    """Write the requested outputs (``formats``, default all of
+    ``params.formats``); return each vendor file's autosomal tally."""
     from wgsextract_cli.core.microarray_utils import (
         convert_to_vendor_format,
         get_template_format,
@@ -192,7 +195,7 @@ def _convert_microarray_outputs(
         converter = functools.partial(converter, quirks=quirks)
 
     template_search_roots = _template_search_roots(ref_fasta, lib)
-    requested_formats = params.formats.split(",")
+    requested_formats = params.formats.split(",") if formats is None else formats
 
     # 3. Liftover if needed (vendor templates use hg19 coordinates)
     final_txt = legacy_combined_kit_txt or combined_kit_txt
@@ -412,19 +415,21 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
     if vcf_sample:
         base_name += "_" + re.sub(r"[^A-Za-z0-9._-]", "_", vcf_sample)
 
-    if not is_vcf:
-        warn_low_depth(
-            input_path,
-            region_targets(params.region),
-            outdir=outdir,
-            ref=ref_fasta,
-            min_depth=params.qc_min_depth,
-            region=params.region,
-        )
+    def check_depth() -> None:
+        if not is_vcf:
+            warn_low_depth(
+                input_path,
+                region_targets(params.region),
+                outdir=outdir,
+                ref=ref_fasta,
+                min_depth=params.qc_min_depth,
+                region=params.region,
+            )
 
     if lib.build and is_t2t_build(lib.build):
         from ._microarray_chm13 import run_chm13
 
+        check_depth()
         try:
             chm13_params = params
             if vcf_sample:
@@ -481,6 +486,66 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
             _template_search_roots(ref_fasta, lib),
             lib.resource_roots,
         )
+
+    # Reuse what an earlier run made from these same inputs (see
+    # _microarray_reuse); regenerate only what changed or is missing.
+    inputs = reuse.run_inputs(
+        params,
+        input_path=input_path,
+        ref_fasta=ref_fasta,
+        build=lib.build,
+        ref_vcf_tab=ref_vcf_tab,
+        ploidy_file=ploidy_file,
+        liftover_chain=lib.liftover_chain,
+        sample=vcf_sample,
+    )
+    units, unit_formats = _output_units(
+        params, outdir, base_name, indel_bindings, bool(aadr_panels), table_format
+    )
+    for unit in units.values():
+        reuse.check(unit, inputs)
+    stale = [key for key, unit in units.items() if not unit.fresh]
+    combined_unit = units.get(reuse.COMBINED)
+    kept_kit = (
+        combined_unit.output_with_role("combined_kit")
+        if combined_unit and combined_unit.fresh
+        else None
+    )
+    if not stale:
+        logging.info(
+            "Every requested microarray output is up to date (its inputs are "
+            "unchanged); reusing them. Delete an output's .inputs.json to "
+            "regenerate it."
+        )
+        _finish_run(params, units, inputs, outdir, base_name, kept_kit, vcf_sample)
+        return
+    if kept_kit and all(
+        key in unit_formats
+        and aadr_panel(unit_formats[key]) is None
+        and key not in indel_bindings
+        for key in stale
+    ):
+        # Only vendor kits are missing or stale: convert them from the kept
+        # combined kit instead of calling the genotypes again.
+        logging.info(
+            f"Reusing {Path(kept_kit).name} (its inputs are unchanged); "
+            f"generating {', '.join(stale)}"
+        )
+        tallies = _convert_microarray_outputs(
+            params=params,
+            outdir=outdir,
+            base_name=base_name,
+            lib=lib,
+            combined_kit_txt=kept_kit,
+            ref_fasta=ref_fasta,
+            start_total=time.time(),
+            formats=[unit_formats[key] for key in stale],
+        )
+        _finish_run(
+            params, units, inputs, outdir, base_name, kept_kit, vcf_sample, tallies
+        )
+        return
+    check_depth()
 
     legacy_target = None
     legacy_workdir = None
@@ -651,6 +716,8 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         aadr_workdir=calling_outdir if aadr_panels else None,
         indel_calls=indel_calls,
         legacy_combined_kit_txt=legacy_combined_kit_txt,
+        # The combined kit was just written; skip the up-to-date kits.
+        formats=[unit_formats[key] for key in stale if key in unit_formats],
     )
     if table_format:
         _export_genotypes(
@@ -663,15 +730,112 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
                 sorted_by="the combined target list's order",
             ),
         )
-    record_microarray_run(
+    if combined_unit:
+        combined_unit.recorded = None  # rewritten by this run, not reused
+    _finish_run(
+        params,
+        units,
+        inputs,
         outdir,
         base_name,
         combined_kit_txt,
-        warn_about_genotypes(
-            combined_kit_txt, tallies, check_no_calls=not params.region
-        ),
-        sample=vcf_sample,
+        vcf_sample,
+        tallies,
     )
+
+
+def _output_units(
+    params: MicroarrayParams,
+    outdir: str,
+    base_name: str,
+    indel_bindings: dict[str, str],
+    aadr: bool,
+    table_format: str | None,
+) -> tuple[dict[str, reuse.Unit], dict[str, str]]:
+    """The run's reusable outputs, by unit key, and the --formats item that
+    generates each vendor or AADR unit. The combined unit exists when the run
+    keeps something of its own: the combined kit (not kept beside AADR files,
+    which are called in a scratch directory) or the genotype table."""
+    from wgsextract_cli.core.microarray_utils import get_template_format
+
+    units: dict[str, reuse.Unit] = {}
+    formats: dict[str, str] = {}
+    if not aadr or table_format:
+        units[reuse.COMBINED] = reuse.Unit(
+            reuse.COMBINED,
+            Path(outdir, f"{base_name}_CombinedKit.txt{reuse.SIDECAR_SUFFIX}"),
+            {"table_format": table_format},
+        )
+    for item in params.formats.split(","):
+        if panel := aadr_panel(item):
+            key = f"aadr_{panel}"
+            sidecar = Path(outdir, f"{base_name}_AADR_{panel}{reuse.SIDECAR_SUFFIX}")
+            extra: dict[str, object] = {
+                "aadr_sample_id": params.aadr_sample_id,
+                "aadr_sex": params.aadr_sex,
+            }
+        elif real := resolve_format_key(item):
+            info = get_template_format(real)
+            suffix = info["suffix"] if info else ".txt"
+            key = real
+            sidecar = Path(outdir, f"{base_name}_{real}{suffix}{reuse.SIDECAR_SUFFIX}")
+            extra = {"indel_manifest": reuse.file_identity(indel_bindings.get(real))}
+        else:
+            continue
+        if key not in units:
+            units[key] = reuse.Unit(key, sidecar, dict(extra))
+            formats[key] = item
+    return units, formats
+
+
+def _unit_of(record: FileRecord) -> str:
+    if record.role == "vendor_kit":
+        return str(record.metrics.get("format"))
+    if record.role == "aadr":
+        return f"aadr_{record.metrics.get('panel')}"
+    return reuse.COMBINED
+
+
+def _finish_run(
+    params: MicroarrayParams,
+    units: dict[str, reuse.Unit],
+    inputs: dict[str, object],
+    outdir: str,
+    base_name: str,
+    combined_kit: str | None,
+    sample: str | None,
+    tallies: dict[str, GenotypeTally] | None = None,
+) -> None:
+    """Register the reused units' files, check the genotypes, record the run
+    and save each unit's inputs sidecar."""
+    tallies = dict(tallies or {})
+    autosomal = None
+    for unit in units.values():
+        if unit.fresh:
+            reuse.replay(unit)
+            if (tally := unit.tally()) is not None:
+                tallies.setdefault(unit.key, tally)
+            autosomal = autosomal or unit.autosomal()
+    if combined_kit and Path(combined_kit).is_file():
+        autosomal = warn_about_genotypes(
+            combined_kit, tallies, check_no_calls=not params.region
+        )
+    record_microarray_run(
+        outdir,
+        base_name,
+        combined_kit or "",
+        autosomal or GenotypeTally(),
+        sample=sample,
+    )
+    outputs = current_result().outputs
+    for key, unit in units.items():
+        reuse.save(
+            unit,
+            inputs,
+            [record for record in outputs if _unit_of(record) == key],
+            tally=tallies.get(key),
+            autosomal=autosomal,
+        )
 
 
 GENOTYPE_TABLE = (

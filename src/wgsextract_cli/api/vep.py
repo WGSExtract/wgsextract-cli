@@ -11,7 +11,8 @@ run.
 ``download`` fetches Ensembl's indexed cache for ``species``, ``vep_version``
 and ``assembly``, checks it against Ensembl's CHECKSUMS and unpacks it into
 the cache folder; ``verify`` checks that an unpacked cache has its
-``info.txt`` and chromosome folders. The cache folder is ``vep_cache``, else
+``info.txt`` and chromosome folders; ``delete`` removes one release and
+assembly from it. The cache folder is ``vep_cache``, else
 config ``vep_cache_directory``, else the ``vep`` folder of the reference
 library ``ref`` names, else ``~/.vep``.
 """
@@ -220,6 +221,18 @@ class VepVerifyParams(_VepCacheParams):
     COMMAND = "vep verify"
 
 
+@dataclass(frozen=True, kw_only=True)
+class VepDeleteParams(_VepCacheParams):
+    """Delete one release and assembly of an unpacked VEP cache (see the
+    module docstring), with any download of it left in the cache folder."""
+
+    COMMAND = "vep delete"
+    DELETES = True
+
+    def write_folders(self) -> Iterator[Path]:
+        yield self.cache_root()
+
+
 def download(
     params: VepDownloadParams,
     *,
@@ -250,10 +263,27 @@ def verify(
     )
 
 
+def delete(
+    params: VepDeleteParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Delete one release of the VEP cache (see ``VepDeleteParams``)."""
+    from wgsextract_cli.commands._vep_resources import run_vep_delete
+
+    return execute(
+        params, run_vep_delete, progress=progress, cancel=cancel, check=check
+    )
+
+
 __all__ = [
+    "VepDeleteParams",
     "VepDownloadParams",
     "VepRunParams",
     "VepVerifyParams",
+    "delete",
     "download",
     "run",
     "verify",

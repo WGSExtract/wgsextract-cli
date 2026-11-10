@@ -36,6 +36,7 @@ export function hydrateRows(control: ControlSpec | LooseRecord): RowSpec[] {
             status: status ?? nonEmpty(item.status),
             tags: mergeTags(templateTags, arrayOfTags(item.tags)),
             tooltip: tooltip ?? nonEmpty(item.tooltip),
+            ...(item.advancedOnly === true ? { advancedOnly: true } : {}),
         };
     });
 }

@@ -18,8 +18,12 @@ from wgsextract_cli.core.utils import WGSExtractError, run_command
         ("Y", 59_373_566, 2_649_599, 2_917_999),
     ],
 )
+@pytest.mark.parametrize(
+    "command",
+    [["ydna-bam", "--poz"], ["region", "--target", "y", "--formats", "bam", "--poz"]],
+)
 def test_poz_keeps_overlapping_reads_not_other_y_or_mt(
-    tmp_path, name, length, left, right
+    tmp_path, name, length, left, right, command
 ):
     lines = [f"@SQ\tSN:{name}\tLN:{length}", "@SQ\tSN:chrM\tLN:16569"]
     for label, pos, cigar, seq in [
@@ -37,8 +41,7 @@ def test_poz_keeps_overlapping_reads_not_other_y_or_mt(
     out = tmp_path / "o"
     run_wgsextract(
         "extract",
-        "ydna-bam",
-        "--poz",
+        *command,
         "--input",
         bam,
         "--outdir",

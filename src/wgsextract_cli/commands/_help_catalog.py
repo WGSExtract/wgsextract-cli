@@ -55,7 +55,7 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     "info calculate-coverage": _h(
         "<input file name>_coverage.tsv, or with --bins <input file name>"
         "_coverage_bins.tsv (depth bands, or .parquet with --format parquet) "
-        "instead. With --by, <input>_<bed>_target_coverage.tsv (depth per "
+        "instead; with --with-bins both .tsv files. With --by, <input>_<bed>_target_coverage.tsv (depth per "
         "target) and <input>_<bed>_target_summary.txt (on- and off-target "
         "depth, enrichment and targets below --min-depth).",
         "wgsextract info calculate-coverage --input sample.cram",
@@ -94,7 +94,9 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     "microarray": _h(
         "<input stem>_<format>.txt (or the vendor's extension) per format, "
         "such as sample_23andMe_V5.txt, and <input stem>_CombinedKit.txt; with "
-        "--format also <input stem>_genotypes.tsv or .parquet.",
+        "--format also <input stem>_genotypes.tsv or .parquet. Each output "
+        "gets an <output>.inputs.json of the inputs and options that made it; "
+        "a rerun reuses outputs whose inputs are unchanged.",
         "wgsextract microarray --input sample.cram --formats 23andme_v5",
         "wgsextract microarray --input sample.cram --formats 23andme_v5,ancestry_v2",
     ),
@@ -154,6 +156,13 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "<input stem>_<region>.bam (+ .bai).",
         "wgsextract extract custom --input sample.cram --region chr17:43044295-43125483",
         "wgsextract extract custom --input sample.cram --gene BRCA1",
+    ),
+    "extract region": _h(
+        "Per chosen format: <input stem>_mtDNA|Y|Y_MT|autosomes_X.bam (+ .bai), "
+        "<input stem>_MT|Y|Y_MT|autosomes_X.vcf.gz (+ .tbi) and .fasta.",
+        "wgsextract extract region --input sample.cram --target ymt --formats bam,vcf",
+        "wgsextract extract region --input sample.cram --target mt --formats fasta",
+        "wgsextract extract region --input sample.cram --target autox --formats vcf,fasta",
     ),
     # realign / align
     "realign": _h(
@@ -312,9 +321,14 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "Prints what is missing or damaged; writes no files.",
         "wgsextract vep verify --assembly GRCh38",
     ),
+    "vep delete": _h(
+        "Deletes <cache>/<species>/<release>_<assembly>; writes no files.",
+        "wgsextract vep delete --assembly GRCh38",
+    ),
     # setup: ref, deps, example-genome
     "ref bootstrap": _h(
-        f"{_LIBRARY}: the bootstrap liftover chains, chip templates and other small files.",
+        f"{_LIBRARY}: the bootstrap liftover chains, chip templates and other "
+        "small files, and the AADR 2M SNP panel.",
         "wgsextract ref bootstrap",
     ),
     "ref library": _h(
@@ -345,6 +359,12 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "<reference stem>_ncnt.csv and <reference stem>_nbin.csv.",
         "wgsextract ref count-ns --ref hs38.fa",
     ),
+    "ref microarray-targets": _h(
+        f"{_LIBRARY}: microarray/All_SNPs_hg19_ref.tab.gz and "
+        "All_SNPs_hg38_ref.tab.gz (+ .tbi); --delete removes them.",
+        "wgsextract ref microarray-targets",
+        "wgsextract ref microarray-targets --delete",
+    ),
     "ref gene-map": _h(
         f"{_LIBRARY}: the hg19 and hg38 gene maps (--delete removes them).",
         "wgsextract ref gene-map",
@@ -359,7 +379,8 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     ),
     "ref revel": _h(f"{_LIBRARY}: REVEL score files.", "wgsextract ref revel"),
     "ref pharmgkb": _h(
-        f"{_LIBRARY}: PharmGKB annotation files.", "wgsextract ref pharmgkb"
+        f"{_LIBRARY}: PharmGKB annotation files (--delete removes them).",
+        "wgsextract ref pharmgkb",
     ),
     "ref phylop": _h(
         f"{_LIBRARY}: the PhyloP bigWig.", "wgsextract ref phylop --build hg38"
@@ -371,16 +392,24 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     "ref gerp": _h(
         f"{_LIBRARY}: the GERP++ bigWig.", "wgsextract ref gerp --build hg38"
     ),
-    "ref spliceai": _h(f"{_LIBRARY}: SpliceAI score files.", "wgsextract ref spliceai"),
+    "ref spliceai": _h(
+        f"{_LIBRARY}: SpliceAI score files (--delete removes them).",
+        "wgsextract ref spliceai",
+        "wgsextract ref spliceai --delete",
+    ),
     "ref alphamissense": _h(
-        f"{_LIBRARY}: AlphaMissense score files.", "wgsextract ref alphamissense"
+        f"{_LIBRARY}: AlphaMissense score files (--delete removes them).",
+        "wgsextract ref alphamissense",
     ),
     "ref aadr": _h(
-        f"{_LIBRARY}: the AADR 2M SNP panel.", "wgsextract ref aadr --install"
+        f"{_LIBRARY}: the AADR 2M SNP panel (--delete removes it).",
+        "wgsextract ref aadr --install",
+        "wgsextract ref aadr --delete",
     ),
     "ref ybrowse": _h(
-        f"{_LIBRARY}: the yBrowse GRCh38 SNP sites.",
+        f"{_LIBRARY}: the yBrowse GRCh38 SNP sites (--delete removes them).",
         "wgsextract ref ybrowse --install",
+        "wgsextract ref ybrowse --delete",
     ),
     "deps check": _h(
         "Prints each tool's status; writes no files.",
@@ -432,7 +461,7 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         f"wgsextract example-genome list --tag {_PACBIO_TAG}",
     ),
     "example-genome download": _h(
-        "Into <genome_library>/test-1000genomes/<example id>/, with a genome "
+        "Into <dataset_library>/test-1000genomes/<example id>/, with a genome "
         "config file.",
         f"wgsextract example-genome download {_STARTER_EXAMPLE}",
         f"wgsextract example-genome download {_STARTER_EXAMPLE} --dry-run",

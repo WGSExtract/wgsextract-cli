@@ -19,14 +19,17 @@ Without it the script fails, so the Library page reports a missing runtime
 instead of showing a stale catalog.
 
 Usage:
-  list-reference-genomes.py [all|options|items] [<library>]   (scripts/posix, scripts/windows)
+  list-reference-genomes.py [all|options|items] [<library>] [<genomes folder>]
+  (scripts/posix, scripts/windows)
 
 The library directory defaults to $GUI_FOR_CLI_BUNDLE_WORKSPACE/reference,
-else $PWD/reference.
+else $PWD/reference. The genomes folder is the Reference Genomes Library
+(reference_genome_library), else genomes/ in the library.
 """
 from __future__ import annotations
 
 import csv
+import ftplib
 import json
 import os
 import sys
@@ -49,6 +52,9 @@ REMOTE_SIZE_MAX_WORKERS = 8
 def env(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
 
+
+# Library rows after this catalog entry (THGySeqp from YSEQ) are for the GUI's Advanced mode only.
+ADVANCED_AFTER_CODE = "THGySeqp"
 
 CATALOG_PATH = Path("runtime/wgsextract-cli/app/src/wgsextract_cli/assets/reference/seed_genomes.csv")
 
@@ -120,8 +126,25 @@ def save_size_cache(library: Path, cache: dict) -> None:
         pass
 
 
+def fetch_ftp_size(url: str) -> int | None:
+    """The file's size from an anonymous FTP server's SIZE reply."""
+    parsed = urlparse(url)
+    if not parsed.hostname or not parsed.path:
+        return None
+    try:
+        with ftplib.FTP(parsed.hostname, timeout=REMOTE_SIZE_HEAD_TIMEOUT) as ftp:
+            ftp.login()
+            ftp.voidcmd("TYPE I")  # SIZE is defined for binary transfers
+            return ftp.size(parsed.path)
+    except (*ftplib.all_errors, ValueError):
+        return None
+
+
 def fetch_remote_size(url: str) -> int | None:
-    if urlparse(url).scheme not in {"http", "https"}:
+    scheme = urlparse(url).scheme
+    if scheme == "ftp":
+        return fetch_ftp_size(url)
+    if scheme not in {"http", "https"}:
         return None
     try:
         request = Request(url, method="HEAD", headers={"User-Agent": "gui-for-cli/list-reference-genomes"})
@@ -203,6 +226,8 @@ def clean_label(label: str, source: str) -> str:
         if not token or token == "()":
             continue
         label = label.replace(token, "")
+    # The species' common name says enough; the subspecies only crowds the table.
+    label = label.replace("Canis lupus familiaris", "Canis lupus")
     while "  " in label:
         label = label.replace("  ", " ")
     return label.strip()
@@ -217,11 +242,12 @@ def load_records(catalog: Path) -> Iterable[dict]:
             label = (row.get("Library Menu Label") or "").strip()
             description = (row.get("Description") or "").strip()
             url = (row.get("URL") or "").strip()
+            sn_count = (row.get("SN Count") or "").strip()
             if not code or not source or not final or not label:
                 continue
             yield {
                 "code": code, "source": source, "final": final,
-                "label": label, "description": description, "url": url,
+                "label": label, "description": description, "url": url, "sn_count": sn_count,
             }
 
 
@@ -229,7 +255,8 @@ def main(argv: list[str]) -> int:
     mode = argv[1] if len(argv) > 1 else "all"
     library_arg = argv[2] if len(argv) > 2 else ""
     library = library_arg or os.path.join(env("GUI_FOR_CLI_BUNDLE_WORKSPACE", os.getcwd()), "reference")
-    genomes_dir = Path(library) / "genomes"
+    genomes_arg = argv[3] if len(argv) > 3 else ""
+    genomes_dir = Path(genomes_arg) if genomes_arg else Path(library) / "genomes"
     records = list(load_records(find_catalog()))
 
     output: dict = {}
@@ -262,6 +289,8 @@ def main(argv: list[str]) -> int:
             save_size_cache(Path(library), size_cache)
 
         items: list[dict] = []
+        # The catalog lists the common genomes first; those after the YSEQ hg37 show only in the GUI's Advanced mode.
+        advanced = False
         for record in records:
             final = record["final"]
             genome_file = genomes_dir / final
@@ -275,7 +304,7 @@ def main(argv: list[str]) -> int:
                 cached = size_cache.get(record.get("url") or "")
                 cached_bytes = cached.get("bytes") if isinstance(cached, dict) else None
                 size_value = human_bytes(cached_bytes) if isinstance(cached_bytes, int) else ""
-            items.append({
+            item = {
                 "id": row_id,
                 "title": display_label,
                 "status": status,
@@ -290,8 +319,14 @@ def main(argv: list[str]) -> int:
                     "ref": str(genome_file),
                     "size": size_value,
                     "description": record["description"],
+                    "sn": record["sn_count"],
                 },
-            })
+            }
+            if advanced:
+                item["advancedOnly"] = True
+            items.append(item)
+            if record["code"] == ADVANCED_AFTER_CODE:
+                advanced = True
         output["items"] = items
 
     json.dump(output, sys.stdout, ensure_ascii=False)

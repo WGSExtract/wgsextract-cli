@@ -211,13 +211,7 @@ def build_genome_wide_target(
         )
         if target_build == "hg38":
             markers = _lift_to_hg38(
-                markers,
-                _chain(
-                    reflib_dir,
-                    "hg19ToHg38.over.chain.gz",
-                    HG19_TO_HG38_CHAIN_URL,
-                    chain_roots,
-                ),
+                markers, hg19_to_hg38_chain(reflib_dir, chain_roots)
             )
         _write_target(markers, out)
     logging.info(f"Saved the {target_build} microarray target: {out}")
@@ -229,6 +223,14 @@ def ncbi36_chain(reflib_dir: str, search: Sequence[str] = ()) -> str:
     library when it's missing."""
     return _chain(
         reflib_dir, "hg18ToHg19.over.chain.gz", HG18_TO_HG19_CHAIN_URL, search
+    )
+
+
+def hg19_to_hg38_chain(reflib_dir: str, search: Sequence[str] = ()) -> str:
+    """The hg19ToHg38 chain from search or the library, downloaded into the
+    library when it's missing."""
+    return _chain(
+        reflib_dir, "hg19ToHg38.over.chain.gz", HG19_TO_HG38_CHAIN_URL, search
     )
 
 

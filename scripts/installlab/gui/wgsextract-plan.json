@@ -2,14 +2,14 @@
   "name": "install lab - WGS Extract GUI on the HG00096 mini genome",
   "inputs": {
     "fieldValues": {
-      "bam_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.bam",
-      "ref_path": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
-      "ref_fasta": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
-      "realign_ref": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
-      "fastq_r1": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini_R1.fastq.gz",
-      "fastq_r2": "{{bundleWorkspace}}/genomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini_R2.fastq.gz",
+      "bam_path": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.bam",
+      "ref_path": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
+      "ref_fasta": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
+      "realign_ref": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
+      "fastq_r1": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini_R1.fastq.gz",
+      "fastq_r2": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini_R2.fastq.gz",
       "fastq_output_format": "BAM",
-      "genome_library": "{{bundleWorkspace}}/genomes",
+      "dataset_library": "{{bundleWorkspace}}/datasets",
       "haplogrep_path": "haplogrep3"
     },
     "checkedOptions": {
@@ -22,9 +22,9 @@
     {
       "id": "download_test_genome",
       "kind": "action",
-      "pageID": "library",
-      "sectionID": "databases-tools",
-      "actionID": "test-genome-download",
+      "pageID": "datasets",
+      "sectionID": "test-dataset",
+      "actionID": "test-dataset-download",
       "timeoutSeconds": 1800,
       "inputs": {
         "fieldValues": {
@@ -38,7 +38,7 @@
     {
       "id": "download_reference",
       "kind": "action",
-      "pageID": "library",
+      "pageID": "reference-genomes",
       "sectionID": "genome-management",
       "controlID": "reference_genomes",
       "actionID": "ref-download",
@@ -48,7 +48,7 @@
         "code": "hs38",
         "final": "hs38.fa.gz",
         "name": "hs38 (Nebula)",
-        "ref": "{{bundleWorkspace}}/reference/genomes/hs38.fa.gz",
+        "ref": "{{bundleWorkspace}}/genomes/hs38.fa.gz",
         "source": "GitHub",
         "status": "missing"
       },
@@ -62,7 +62,7 @@
     {
       "id": "ref_dropdown_fastq",
       "kind": "dataSource",
-      "pageID": "fastq",
+      "pageID": "extract",
       "sectionID": "fastq-align",
       "controlID": "ref_fasta",
       "inputs": {
@@ -78,7 +78,7 @@
     {
       "id": "ref_dropdown_realign",
       "kind": "dataSource",
-      "pageID": "info-bam",
+      "pageID": "extract",
       "sectionID": "realign-commands",
       "controlID": "realign_ref",
       "inputs": {
@@ -127,7 +127,7 @@
     {
       "id": "ref_library_list",
       "kind": "dataSource",
-      "pageID": "library",
+      "pageID": "reference-genomes",
       "sectionID": "genome-management",
       "controlID": "reference_genomes",
       "inputs": {
@@ -152,11 +152,16 @@
       "kind": "action",
       "pageID": "extract",
       "sectionID": "extract-inputs",
-      "actionID": "mt-bam",
+      "actionID": "region-mt",
       "timeoutSeconds": 3600,
       "inputs": {
         "fieldValues": {
           "out_dir": "{{bundleWorkspace}}/lab-output/mt_bam"
+        },
+        "checkedOptions": {
+          "extract_formats": [
+            "bam"
+          ]
         }
       }
     },
@@ -165,11 +170,16 @@
       "kind": "action",
       "pageID": "extract",
       "sectionID": "extract-inputs",
-      "actionID": "mito-vcf",
+      "actionID": "region-mt",
       "timeoutSeconds": 3600,
       "inputs": {
         "fieldValues": {
           "out_dir": "{{bundleWorkspace}}/lab-output/mito_vcf"
+        },
+        "checkedOptions": {
+          "extract_formats": [
+            "vcf"
+          ]
         }
       }
     },
@@ -189,7 +199,7 @@
     {
       "id": "snp",
       "kind": "action",
-      "pageID": "vcf",
+      "pageID": "extract",
       "sectionID": "variant-calling",
       "actionID": "vcf-snp",
       "timeoutSeconds": 3600,
@@ -216,7 +226,7 @@
     {
       "id": "align",
       "kind": "action",
-      "pageID": "fastq",
+      "pageID": "extract",
       "sectionID": "fastq-align",
       "actionID": "align",
       "timeoutSeconds": 3600,
@@ -229,7 +239,7 @@
     {
       "id": "gatk",
       "kind": "action",
-      "pageID": "vcf",
+      "pageID": "extract",
       "sectionID": "variant-calling",
       "actionID": "vcf-gatk",
       "timeoutSeconds": 3600,
