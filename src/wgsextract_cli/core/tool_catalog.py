@@ -1,6 +1,8 @@
 """The external tools the CLI uses, and where Pixi provides them."""
 
+import platform
 import sys
+from collections.abc import Callable
 
 MANDATORY_TOOLS = [
     "samtools",
@@ -70,7 +72,6 @@ PLATFORM_ONLY_TOOLS = {
     "cyrius": ("linux", "darwin"),
     "run-t1k": ("linux", "darwin"),
     "ExpansionHunter": ("linux", "darwin"),
-    "run_clair3.sh": ("linux", "darwin"),
     "modkit": ("linux", "darwin"),
     "verifybamid2": ("linux", "darwin"),
     "somalier": ("linux", "darwin"),
@@ -79,22 +80,41 @@ PLATFORM_ONLY_TOOLS = {
 }
 
 
-def platform_unavailable_tools() -> list[str]:
-    """The optional tools that aren't built for this platform."""
-    return [
-        tool
-        for tool in OPTIONAL_TOOLS
-        if not sys.platform.startswith(PLATFORM_ONLY_TOOLS.get(tool, ("",)))
-    ]
+# Hosts (OS, CPU) with a Bioconda Clair3 2.0.5+ build.
+CLAIR3_HOSTS = {("linux", "x86_64"), ("linux", "aarch64"), ("darwin", "arm64")}
+
+
+def clair3_host_supported() -> bool:
+    """Whether this OS and CPU can run Clair3 (`vcf clair3`, `deps check`)."""
+    system = "linux" if sys.platform.startswith("linux") else sys.platform
+    machine = platform.machine().lower()
+    machine = {"amd64": "x86_64"}.get(machine, machine)
+    if system == "linux" and machine == "arm64":
+        machine = "aarch64"
+    return (system, machine) in CLAIR3_HOSTS
+
+
+# Optional tools that need a particular OS and CPU.
+HOST_ONLY_TOOLS: dict[str, Callable[[], bool]] = {
+    "run_clair3.sh": clair3_host_supported,
+}
+
+
+def _built_for_host(tool: str) -> bool:
+    return (
+        sys.platform.startswith(PLATFORM_ONLY_TOOLS.get(tool, ("",)))
+        and HOST_ONLY_TOOLS.get(tool, lambda: True)()
+    )
 
 
 def optional_dependency_tools() -> list[str]:
     """Return the optional dependency tools that apply to this platform."""
-    return [
-        tool
-        for tool in OPTIONAL_TOOLS
-        if sys.platform.startswith(PLATFORM_ONLY_TOOLS.get(tool, ("",)))
-    ]
+    return [tool for tool in OPTIONAL_TOOLS if _built_for_host(tool)]
+
+
+def platform_unavailable_tools() -> list[str]:
+    """The optional tools that aren't built for this platform."""
+    return [tool for tool in OPTIONAL_TOOLS if not _built_for_host(tool)]
 
 
 PIXI_TOOL_ENVS = {

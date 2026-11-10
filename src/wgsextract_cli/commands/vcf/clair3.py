@@ -4,7 +4,6 @@ import hashlib
 import json
 import logging
 import os
-import platform
 import re
 import subprocess
 import sys
@@ -38,6 +37,7 @@ from wgsextract_cli.core.space_free_paths import (
     restore_vcf_paths,
     space_free_paths,
 )
+from wgsextract_cli.core.tool_catalog import clair3_host_supported
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
@@ -51,12 +51,6 @@ WINDOWS_UNSUPPORTED = (
     "Clair3 is not available on Windows (Bioconda builds it for Linux and macOS "
     "only). Run `vcf clair3` on Linux, for example under WSL2."
 )
-# Bioconda's Clair3 2.0.5+ builds.
-SUPPORTED_PLATFORMS = {
-    ("linux", "x86_64"),
-    ("linux", "aarch64"),
-    ("darwin", "arm64"),
-}
 # Before 2.0.5, libclair3 linked its own htslib, whose CRAM 3.1 decoder fails
 # on valid blocks (#604) that the host samtools reads; 2.0.5 bundles htslib
 # 1.24, which reads them.
@@ -179,12 +173,7 @@ def pinned_models() -> dict[str, dict[str, object]]:
 def require_supported_platform() -> None:
     if sys.platform == "win32":
         raise WGSExtractError(WINDOWS_UNSUPPORTED)
-    system = "linux" if sys.platform.startswith("linux") else sys.platform
-    machine = platform.machine().lower()
-    machine = {"amd64": "x86_64"}.get(machine, machine)
-    if system == "linux" and machine == "arm64":
-        machine = "aarch64"
-    if (system, machine) not in SUPPORTED_PLATFORMS:
+    if not clair3_host_supported():
         raise WGSExtractError(
             "Clair3 runs on Linux (x86-64, ARM64) and Apple Silicon macOS only; "
             "Bioconda has no Clair3 2.x build for this host. Use `vcf deepvariant` "
