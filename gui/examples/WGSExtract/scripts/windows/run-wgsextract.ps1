@@ -75,7 +75,7 @@ if ($args.Count -gt 0 -and [string]$args[0] -eq "microarray") {
 # (ref bootstrap's reference_library, for one) stays in the workspace instead of
 # the user's own CLI config, and leaves with the app.
 $workspace = if ($env:GUI_FOR_CLI_BUNDLE_WORKSPACE) { $env:GUI_FOR_CLI_BUNDLE_WORKSPACE } else { Split-Path -Parent (Split-Path -Parent $scriptDir) }
-$configPath = if ($env:GUI_FOR_CLI_CONFIG_PATH) { $env:GUI_FOR_CLI_CONFIG_PATH } else { Join-Path $workspace "settings\config.toml" }
+$configPath = if ($env:GUI_FOR_CLI_CONFIG_PATH) { $env:GUI_FOR_CLI_CONFIG_PATH } else { Join-Path $workspace "config.toml" }
 if ($env:WGSEXTRACT_FORWARD_STDIN -eq "1") {
     $input | & $runtime wgsextract --config $configPath @args
 } else {

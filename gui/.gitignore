@@ -27,6 +27,7 @@ examples/*/genomes/
 examples/*/output/
 examples/*/reference/
 examples/*/settings/
+examples/*/config.toml
 tests/conformance/*/settings/
 
 # TypeScript build outputs and dependencies
