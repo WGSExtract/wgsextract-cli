@@ -7,8 +7,9 @@
 | What it is | [Ensembl VEP](https://www.ensembl.org/info/docs/tools/vep/) 116, Perl | [vep-rs](https://github.com/natera-open-source/vep-rs) 0.5, a Rust reimplementation of Ensembl VEP 116 |
 | Platforms | Linux, macOS | Linux, macOS, **native Windows** |
 | Pixi environment | `vep` | `vep-rs` |
-| Cache | Ensembl's indexed cache, `vep download` (26 GB for GRCh38) | its own JSON cache, built from Ensembl's files by `vep download --engine vep-rs` (6 GB without known variants) |
-| Speed on a 30x genome | hours | minutes |
+| Cache | Ensembl's indexed cache, `vep download` (26 GB for GRCh38) | its own JSON cache, built from Ensembl's files by `vep download --engine vep-rs` (about 6 GB, plus 6–8 GB with known variants) |
+| Speed on a 30x genome (6 threads) | about 3.5 hours | about 3 minutes |
+| Memory | about 1.5 GB | about 8 GB |
 
 Choose the engine per run with `--engine`, or for every run with `vep_engine` in
 `config.toml`:
@@ -41,10 +42,12 @@ builder wrote.
 
 ## Where vep-rs differs
 
-On the same transcripts, vep-rs matched Ensembl VEP on every consequence,
-impact, gene, HGVS and MANE value of HG002's chr22 (1.3 million
-variant-transcript pairs; see [#602](https://github.com/WGSExtract/wgsextract-cli/issues/602)
-for the full comparison). The differences are in what the cache holds and what
+On a whole HG002 genome (61 million variant-transcript pairs), vep-rs with a
+`vep download` cache matched Ensembl VEP on 99.9999% or more of consequences,
+impacts, genes, HGVS and MANE values, and took 3 minutes where Ensembl VEP
+took 3.5 hours on 6 threads; see
+[#602](https://github.com/WGSExtract/wgsextract-cli/issues/602) for the full
+comparison. The differences are in what the cache holds and what
 vep-rs implements:
 
 - **SIFT and PolyPhen** are empty: a cache built by `vep download` has no
