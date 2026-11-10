@@ -33,7 +33,7 @@ from wgsextract_cli.core.reference_assets import is_fasta_path
 from wgsextract_cli.core.reference_models import identify_reference, sequence_lengths
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.samtools_commands import alignment_index
-from wgsextract_cli.core.sequencing import platform_from_metadata
+from wgsextract_cli.core.sequencing import platform_from_metadata, read_group_platforms
 from wgsextract_cli.core.table_writer import (
     Column,
     check_format,
@@ -126,6 +126,7 @@ def _save_cache(path: str, data: dict[str, Any]) -> bool:
 def _print_detailed(
     data: dict[str, Any], as_csv: bool, sample: tuple[str, str]
 ) -> None:
+    _note_mixed_platforms(data, *sample)
     _record_info(data)
     _record_facts(data, *sample)
     if as_csv:
@@ -267,6 +268,7 @@ def _export_chromosomes(
 
 
 def _print_fast(data: dict[str, Any], sample: tuple[str, str]) -> None:
+    _note_mixed_platforms(data, *sample)
     _record_info(data)
     _record_facts(data, *sample)
     human_output(render_info(data, detailed=False))
@@ -281,6 +283,22 @@ _PRIVATE_KEYS = {
     "first_qname",
     "sex_call",
 }
+
+
+def _note_mixed_platforms(data: dict[str, Any], input_file: str, header: str) -> None:
+    """Report the platforms of an input whose read groups mix them; platform-aware
+    commands refuse it or warn unless told which platform to use."""
+    platforms = read_group_platforms(header)
+    if len(platforms) < 2:
+        return
+    data["platforms"] = platforms
+    warn(
+        "mixed_platforms",
+        f"{input_file} mixes reads from several sequencing platforms "
+        f"({', '.join(platforms)}) in its read groups; platform-aware commands "
+        "refuse it or warn unless --platform, --model-type or --caller chooses.",
+        platforms=",".join(platforms),
+    )
 
 
 def _record_facts(data: dict[str, Any], input_file: str, header: str) -> None:
@@ -359,6 +377,8 @@ def _record_info(data: dict[str, Any]) -> None:
         duplicate_pct=health.get("duplicate_pct"),
         alt_aware=health.get("alt_aware"),
     )
+    if data.get("platforms"):
+        result.add_metrics(platforms=",".join(data["platforms"]))
     _record_long_read_qc(data.get("read_lengths"))
     if "gender" in data:
         result.add_metrics(sex=data["gender"], **data.get("metrics", {}))

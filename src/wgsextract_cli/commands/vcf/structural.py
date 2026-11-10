@@ -21,7 +21,7 @@ from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count, warn_if_no_variants
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result
-from wgsextract_cli.core.sequencing import input_platform
+from wgsextract_cli.core.sequencing import input_platform, refuse_mixed_platforms
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -333,17 +333,23 @@ def run_sv_sniffles(params: VcfSvParams) -> None:
     _record_calls(out_vcf, "structural_variants", ref, region)
 
 
-def _detected_platform(params: VcfSvParams) -> str | None:
-    """Platform of the input alignment, decoding CRAM with the resolved --ref."""
+def _detected_ref(params: VcfSvParams) -> str | None:
+    """The resolved --ref that decodes the input CRAM."""
     input_file = str(params.input)
-    if not Path(input_file).is_file():
-        return None
     lib = ReferenceLibrary(
         str(params.ref) if params.ref else None,
         calculate_bam_md5(input_file, None),
         input_path=input_file,
     )
-    return input_platform(input_file, lib.fasta)
+    return lib.fasta
+
+
+def _detected_platform(params: VcfSvParams) -> str | None:
+    """Platform of the input alignment, decoding CRAM with the resolved --ref."""
+    input_file = str(params.input)
+    if not Path(input_file).is_file():
+        return None
+    return input_platform(input_file, _detected_ref(params))
 
 
 def _select_sv_caller(params: VcfSvParams) -> VcfSvParams:
@@ -381,6 +387,10 @@ def _sv_caller(params: VcfSvParams) -> str:
         raise pbsv_ont_error
     if ont or long_read:
         return caller or "sniffles"
+    if not caller and detected is None:
+        refuse_mixed_platforms(
+            params.input, _detected_ref(params), "--caller (or --ont/--pacbio)"
+        )
     if caller:
         if caller == "delly" and detected == "ont":
             logging.warning(

@@ -39,7 +39,7 @@ from wgsextract_cli.core.reference_assets import input_stem, read_fai_lengths
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.samtools_commands import alignment_index
-from wgsextract_cli.core.sequencing import input_platform
+from wgsextract_cli.core.sequencing import input_platform, warn_mixed_platforms
 from wgsextract_cli.core.table_writer import (
     Column,
     TableWriter,
@@ -621,6 +621,9 @@ def run_pileup(params: MethylationPileupParams) -> None:
 
     platform = input_platform(input_path, ref)
     require_modification_platform(platform)
+    warn_mixed_platforms(
+        input_path, ref, "only reads carrying MM/ML modification tags are summarized."
+    )
     if platform == "pacbio" and options.hydroxymethyl:
         warn(
             "pacbio_5hmc_limited",

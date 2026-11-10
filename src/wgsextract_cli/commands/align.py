@@ -219,13 +219,13 @@ def resolve_platform(
     """Keep existing defaults except ONT and the existing Ultima RG case."""
     if platform:
         return platform
+    detected = input_platform(reads, input_ref, strict=True)
     if reads and reads.lower().endswith((".bam", ".cram")) and Path(reads).is_file():
         if ultima.is_ultima_header(get_bam_header(reads, input_ref)):
             logging.info(
                 "%s has an Ultima read group: retaining Ultima defaults.", reads
             )
             return "ultima"
-    detected = input_platform(reads, input_ref, strict=True)
     if detected == "ont":
         logging.info(
             "Detected %s reads: selecting platform-specific alignment defaults.",

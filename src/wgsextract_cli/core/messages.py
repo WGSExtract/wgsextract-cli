@@ -170,6 +170,7 @@ LOG_MESSAGES = {
     "info_file_content": "File Content",
     "info_bio_gender": "Bio Gender",
     "info_sequencer": "Sequencer",
+    "info_platforms": "Platforms",
     "info_file_stats": "File Stats",
     "info_could_not_compute": "Could not compute",
     "info_metrics_cached": "(Metrics cached to {path} for future runs)",

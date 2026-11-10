@@ -12,8 +12,9 @@ from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.constants import SEQUENCERS
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.remote_input import is_url, remote_file
+from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.ultima import read_groups
-from wgsextract_cli.core.utils import WGSExtractError, run_command
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 
 _READ_GROUPS = "read-group PL tag"
 _READ_NAME = "first read name pattern"
@@ -32,11 +33,10 @@ def platform_from_metadata(
     header: str = "", qname: str | None = None, sequencer: str | None = None
 ) -> str | None:
     """Read groups take precedence; mixed platforms must not select one model."""
-    platforms = {
-        group["PL"].upper() for group in read_groups(header) if group.get("PL")
-    }
+    platforms = read_group_platforms(header)
     if platforms:
-        return _PLATFORMS.get(next(iter(platforms))) if len(platforms) == 1 else None
+        known = len(platforms) == 1 and platforms[0] in _PLATFORMS.values()
+        return platforms[0] if known else None
     names = [sequencer] if sequencer else []
     if qname:
         names += [
@@ -60,6 +60,70 @@ def platform_from_metadata(
     return None
 
 
+def read_group_platforms(header: str) -> list[str]:
+    """The distinct platforms the read groups' PL tags name (DNBSEQ and BGISEQ
+    are one), sorted; a PL this module doesn't know is kept, lower-cased."""
+    return sorted(
+        {
+            _PLATFORMS.get(pl.upper(), pl.lower())
+            for group in read_groups(header)
+            if (pl := group.get("PL"))
+        }
+    )
+
+
+def mixed_platforms(
+    reads: PathInput | None, reference: PathInput | None = None
+) -> list[str]:
+    """The platforms of a BAM/CRAM/SAM whose read groups name more than one
+    (such as ONT and Illumina reads merged), else []."""
+    if reads is None or not str(reads).lower().endswith((".bam", ".cram", ".sam")):
+        return []
+    if not is_url(reads) and not Path(reads).is_file():
+        return []
+    header = get_bam_header(os.fspath(reads), str(reference) if reference else None)
+    platforms = read_group_platforms(header)
+    return platforms if len(platforms) > 1 else []
+
+
+def _mixed_message(reads: PathInput, platforms: list[str]) -> str:
+    return (
+        f"{reads} mixes reads from several sequencing platforms "
+        f"({', '.join(platforms)}) in its read groups"
+    )
+
+
+def refuse_mixed_platforms(
+    reads: PathInput | None, reference: PathInput | None, choice: str
+) -> None:
+    """Refuse a mixed-platform input where the platform picks a model or preset
+    that would silently degrade the other platform's reads; ``choice`` names
+    the option that picks one explicitly."""
+    if reads is not None and (platforms := mixed_platforms(reads, reference)):
+        raise UsageError(
+            f"{_mixed_message(reads, platforms)}, and this command's defaults "
+            f"depend on the platform. Pass {choice} to choose explicitly, or split "
+            "the reads by read group (`samtools split`) and run each platform "
+            "separately."
+        )
+
+
+def warn_mixed_platforms(
+    reads: PathInput | None, reference: PathInput | None, consequence: str
+) -> list[str]:
+    """Warn (on the result manifest too) about a mixed-platform input where
+    that is harmless, saying what this command does with it; returns its
+    platforms, or [] when it isn't mixed."""
+    if reads is None or not (platforms := mixed_platforms(reads, reference)):
+        return []
+    warn(
+        "mixed_platforms",
+        f"{_mixed_message(reads, platforms)}; {consequence}",
+        platforms=",".join(platforms),
+    )
+    return platforms
+
+
 def input_platform(
     reads: PathInput | None,
     reference: PathInput | None = None,
@@ -73,11 +137,14 @@ def input_platform(
     path (outputs can be replaced in place).
 
     With ``strict``, an undecodable CRAM read-name probe is an error rather than
-    "unknown", so alignment never silently falls back to short-read defaults.
+    "unknown", so alignment never silently falls back to short-read defaults,
+    and so is a BAM/CRAM whose read groups mix platforms.
     """
     if reads is None:
         return None
     if is_url(reads):
+        if strict:
+            refuse_mixed_platforms(reads, reference, "--platform")
         # A remote file has no sample workspace; its HEAD keys the cache.
         remote = remote_file(os.fspath(reads))
         return _input_platform(
@@ -91,6 +158,8 @@ def input_platform(
     # With an override, an undecodable probe only skips the check of it
     fact = sample_workspace.known("platform", reads)
     strict = strict and (fact is None or fact.source != "override")
+    if strict:
+        refuse_mixed_platforms(reads, reference, "--platform")
     platform: str | None = sample_workspace.resolve(
         "platform", reads, lambda: _detect_platform(reads, reference, strict)
     )
