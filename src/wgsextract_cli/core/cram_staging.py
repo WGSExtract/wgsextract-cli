@@ -58,13 +58,17 @@ def _reference_lengths(ref: str) -> dict[str, int]:
 
 
 def _transcode_regions(
-    region: str | None, ref: str, work: str, tool: str
+    region: str | Intervals | None, ref: str, work: str, tool: str
 ) -> tuple[list[str], Intervals]:
     if not region:
         return [], {}
-    # Whitespace-separated literals and BED/BED.gz/BEDPE files.
+    # Whitespace-separated literals and BED/BED.gz/BEDPE files, or intervals.
     # One BED + the multi-region iterator preserves their union without duplicates.
-    merged = region_intervals(region, _reference_lengths(ref), tool)
+    merged = (
+        region
+        if isinstance(region, dict)
+        else region_intervals(region, _reference_lengths(ref), tool)
+    )
     bed = Path(work, "regions.bed")
     with bed.open("w", newline="\n") as destination:
         for chrom, ranges in merged.items():
@@ -126,13 +130,16 @@ def stage_cram30(
     ref: str,
     work: str,
     threads: str,
-    region: str | None,
+    region: str | Intervals | None,
     *,
     tool: str,
     why: str,
 ) -> str:
     """``alignment``, or for CRAM 3.1+ an indexed CRAM 3.0 copy in ``work``
-    (only the ``region`` selection, when given) that ``tool`` can read."""
+    (only the ``region`` selection, when given) that ``tool`` can read.
+
+    ``region`` is DeepVariant-style text (whitespace-separated literals and
+    BED files) or already merged, sorted, non-overlapping intervals."""
     version = cram_version(alignment)
     if version is None or version < (3, 1):
         return alignment

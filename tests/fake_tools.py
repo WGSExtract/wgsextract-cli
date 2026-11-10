@@ -355,19 +355,22 @@ for name in ("pileup.pt", "full_alignment.pt"):
         sys.exit(f"[ERROR] {{name}} not found in {{opts['model_path']}}")
 out = opts["output"]
 os.makedirs(out)
-errors = []
+failure = {{"errors": [], "log": "log/1_call_var_bam_pileup.log", "stderr": ""}}
 if record["cram_version"] and record["cram_version"] >= [3, 1]:
     # libclair3's bundled htslib can't decode some valid CRAM 3.1 blocks.
-    errors = ["[E::cram_next_slice] Failure to decode slice",
-              "[ERROR] Failed to read alignment record (BAM/CRAM decode error)."]
+    failure["errors"] = ["[E::cram_next_slice] Failure to decode slice",
+                         "[ERROR] Failed to read alignment record (BAM/CRAM decode error)."]
 elif os.path.exists({failure!r}):
-    errors = open({failure!r}).read().splitlines()
-if errors:
-    # Clair3 reports on stdout, tee'd to its step logs; parallel exits quietly.
-    os.makedirs(os.path.join(out, "log"))
-    with open(os.path.join(out, "log", "1_call_var_bam_pileup.log"), "w") as step:
-        step.write("Calling variants ...\\n" + "\\n".join(errors) + "\\n")
-    print("\\n".join(errors))
+    failure = json.load(open({failure!r}))
+if failure["errors"]:
+    # Clair3 reports on stdout, tee'd to run_clair3.log or a step log;
+    # parallel exits quietly.
+    log = os.path.join(out, failure["log"])
+    os.makedirs(os.path.dirname(log), exist_ok=True)
+    with open(log, "w") as step:
+        step.write("Calling variants ...\\n" + "\\n".join(failure["errors"]) + "\\n")
+    print("\\n".join(failure["errors"]))
+    sys.stderr.write(failure["stderr"])
     sys.exit(8)
 regions = ["-R", opts["bed_fn"]] if "bed_fn" in opts else []
 calls = os.path.join(out, "calls.vcf.gz")
@@ -402,14 +405,22 @@ class FakeClair3:
         self.log = bindir / "clair3-runs.jsonl"
         self.models = bindir / "models"
         self.models.mkdir(parents=True)
-        self.failure = bindir / "clair3-failure.txt"
+        self.failure = bindir / "clair3-failure.json"
         python_tool(bindir, "run_clair3.sh", _FAKE_CLAIR3.format(
             log=str(self.log), bcftools=bcftools, failure=str(self.failure)
         ))  # fmt: skip
 
-    def fail(self, *errors: str) -> None:
-        """Fail later runs with these error lines on stdout and in the logs."""
-        self.failure.write_text("\n".join(errors) + "\n")
+    def fail(
+        self,
+        *errors: str,
+        log: str = "log/1_call_var_bam_pileup.log",
+        stderr: str = "",
+    ) -> None:
+        """Fail later runs with these error lines on stdout and in ``log``
+        (relative to Clair3's output folder), and ``stderr`` on stderr."""
+        self.failure.write_text(
+            json.dumps({"errors": list(errors), "log": log, "stderr": stderr})
+        )
 
     def runs(self) -> list[dict]:
         if not self.log.exists():

@@ -29,6 +29,7 @@ from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.reference_assets import read_fai_lengths
+from wgsextract_cli.core.region_selection import selected_intervals
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
@@ -383,11 +384,13 @@ def _clair3_env() -> dict[str, str]:
 
 
 def clair3_errors(output: Path, limit: int = 8) -> str:
-    """Distinct error lines from Clair3's step logs: it reports them on stdout
-    (tee'd to ``output/log``), so they never reach the failed command's stderr."""
+    """Distinct error lines from Clair3's logs: it reports them on stdout
+    (tee'd to ``output/run_clair3.log`` and the step logs in ``output/log``),
+    so they never reach the failed command's stderr."""
     seen: dict[str, None] = {}
-    for log in sorted(output.glob("log/*.log")):
-        if log.name.startswith("parallel_"):
+    logs = [output / "run_clair3.log", *sorted(output.glob("log/*.log"))]
+    for log in logs:
+        if not log.is_file() or log.name.startswith("parallel_"):
             continue  # GNU parallel job tables.
         for line in log.read_text(errors="replace").splitlines():
             line = line.strip()
@@ -421,14 +424,21 @@ def run_clair3(params: VcfClair3Params) -> None:
         plain_reference(ref, outdir) as use_ref,
         tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_clair3_") as work,
     ):
-        bed = None
+        bed, intervals = None, None
         if region:
+            lengths = read_fai_lengths(use_ref)
             bed = str(Path(work, "regions.bed"))
-            write_region_bed(region, read_fai_lengths(use_ref), bed)
+            write_region_bed(region, lengths, bed)
+            try:
+                intervals = selected_intervals(region, lengths, commas=True)
+            except (ValueError, OSError) as error:
+                raise WGSExtractError(
+                    f"Invalid Clair3 region selection: {region}: {error}"
+                ) from error
         staging = Path(work, "reads")
         staging.mkdir()
         reads = stage_cram30(
-            input_file, use_ref, str(staging), threads, bed,
+            input_file, use_ref, str(staging), threads, intervals,
             tool="Clair3", why=_CRAM31_BUG,
         )  # fmt: skip
         output = str(Path(work, "clair3"))
@@ -443,8 +453,15 @@ def run_clair3(params: VcfClair3Params) -> None:
             errors = clair3_errors(Path(output))
             if not errors or not isinstance(e, subprocess.CalledProcessError):
                 raise WGSExtractError(f"Clair3 failed: {e}") from e
+            stderr = (
+                e.stderr.decode(errors="replace")
+                if isinstance(e.stderr, bytes)
+                else (e.stderr or "")
+            )
+            # Clair3's stderr (when any) as run_command reports it, then its logs.
+            reported = f"{e}\n" if stderr.strip() else f"exit {e.returncode}; "
             raise WGSExtractError(
-                f"Clair3 failed (exit {e.returncode}):\n{errors}"
+                f"Clair3 failed: {reported}Clair3's log errors:\n{errors}"
             ) from e
         merged = Path(output, "merge_output.vcf.gz")
         if not merged.is_file():

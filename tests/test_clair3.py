@@ -260,7 +260,8 @@ def test_clair3_reads_cram_31_through_a_cram_30_copy(
     model = make_model(tmp_path, "my_r1041_model")
     cram = as_cram(reads, version, tmp_path / f"v{version}.cram")
     before = Path(cram).read_bytes()
-    outdir = tmp_path / "out"
+    # A spaced output folder must not split the staged region (Copilot on #607).
+    outdir = tmp_path / "out dir"
     with caplog.at_level("INFO"):
         run_wgsextract(
             "vcf", "clair3", "--input", cram, "--ref", reads.ref,
@@ -279,21 +280,38 @@ def test_clair3_reads_cram_31_through_a_cram_30_copy(
 
 
 @needs_tools("samtools", "bcftools", "tabix")
-def test_clair3_failure_reports_clair3s_own_errors(tmp_path, linux_x86, fake_clair3):
+@pytest.mark.parametrize(
+    ("log", "stderr"),
+    [
+        ("log/1_call_var_bam_pileup.log", ""),
+        # CheckEnvs and SortVcf write only to the top-level log.
+        ("run_clair3.log", ""),
+        ("log/1_call_var_bam_pileup.log", "parallel: Warning: job killed"),
+    ],
+)
+def test_clair3_failure_reports_clair3s_own_errors(
+    tmp_path, linux_x86, fake_clair3, log, stderr
+):
     """#604: Clair3 reports errors on stdout and in its logs, not stderr; the
-    failure must show them instead of "no error output"."""
+    failure must show them instead of "no error output", and keep any stderr."""
     require_runnable("samtools", "bcftools", "tabix")
     reads = snp_sample(tmp_path, DORADO_RG)
     model = make_model(tmp_path, "my_r1041_model")
-    fake_clair3.fail("[ERROR] Failed to read alignment record (BAM/CRAM decode error).")
+    fake_clair3.fail(
+        "[ERROR] Failed to read alignment record (BAM/CRAM decode error).",
+        log=log,
+        stderr=stderr,
+    )
     outdir = tmp_path / "out"
     with pytest.raises(WGSExtractError) as failure:
         run_wgsextract(
             "vcf", "clair3", "--input", reads.bam, "--ref", reads.ref,
             "--outdir", str(outdir), "--model", str(model),
         )  # fmt: skip
-    assert "Failed to read alignment record" in str(failure.value)
-    assert "no error output" not in str(failure.value)
+    message = str(failure.value)
+    assert "Failed to read alignment record" in message
+    assert "no error output" not in message
+    assert stderr in message
     assert list(outdir.iterdir()) == []
 
 
