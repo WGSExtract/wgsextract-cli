@@ -1,12 +1,12 @@
 import { checkedOptionsForContext, configValueKey } from "../../../shared/rendering.js";
 import { runDataSourceScript } from "./action-runner.js";
-import { errorMessage } from "./errors.js";
+import { errorMessage, HttpError } from "./errors.js";
 import { findConfigEditorControl, resolveDataSource } from "./manifest-lookup.js";
 import { resolvePlatformScriptPath } from "./platform-scripts.js";
 import { expandInputs } from "./bundle-test-runtime.js";
-import { makeReport, outputExpectationFailure } from "./bundle-test-report.js";
+import { makeReport, outputExpectationFailure, planMismatch } from "./bundle-test-report.js";
 import { timeoutRunProcess } from "./bundle-test-timeout.js";
-import type { BundleManifest, CommandContext, DataSourcePayload } from "../../../shared/types.js";
+import type { BundleManifest, CommandContext, DataSourcePayload, ManifestLocation } from "../../../shared/types.js";
 import type { BundleTestRuntime, BundleTestStep, BundleTestStepOptions, BundleTestStepReport } from "./bundle-test-types.js";
 
 const defaultTimeoutSeconds = 15;
@@ -31,7 +31,7 @@ export async function runDataSourceTestStep(
         if (!step.pageID || !step.sectionID || !step.controlID) {
             throw new Error("Data source steps must include pageID, sectionID and controlID.");
         }
-        const dataSource = resolveDataSource(manifest, {
+        const dataSource = planDataSource(manifest, step, {
             pageID: step.pageID,
             sectionID: step.sectionID,
             controlID: step.controlID,
@@ -92,6 +92,19 @@ function offeredOptions(payload: DataSourcePayload): number {
         throw new Error("The data source's options are not a list.");
     }
     return payload.options.length;
+}
+
+/** The data source a step names; a location this bundle doesn't declare means
+ *  the plan is for another app version. */
+function planDataSource(manifest: BundleManifest, step: BundleTestStep, location: ManifestLocation) {
+    try {
+        return resolveDataSource(manifest, location);
+    } catch (error) {
+        if (error instanceof HttpError && error.status === 404) {
+            throw new Error(planMismatch(manifest, "data source", step, error.message));
+        }
+        throw error;
+    }
 }
 
 /** The context the app gives this data source: an ordinary control sees fields

@@ -405,7 +405,12 @@ that release (`-f app_release=<tag>`; the run is named after it):
 
 Every passing run is then corrupted (`lab.py mutate`) and every corruption must
 fail. The app jobs test the latest app release, as users get it, with
-`--cli-from-tree`, so the app sets up the CLI under test. Weekly runs also test
+`--cli-from-tree`, so the app sets up the CLI under test. The tree's plan
+(`scripts/installlab/gui/wgsextract-plan.json`) names the app's actions, so when
+the tree's `gui/` or plan differs from that release's, the tree jobs test an
+unsigned app built from the tree instead (`gui-build.yml`, about 20 runner
+minutes on Linux, macOS and Windows). A plan step the app lacks fails as "the
+test plan expects action X, which this app version doesn't have". Weekly runs also test
 the release with the CLI release it pins, exactly as on a user's machine. A
 sabotaged run's evidence (`--sabotage --no-judge`) is judged as a negative
 control: `lab.py judge` passes it only if it fails on the checks the sabotage
