@@ -215,6 +215,47 @@ def test_a_plain_text_crai_plans_chunks(tmp_path, ont):
 
 
 @needs_tools("samtools", "minimap2")
+@pytest.mark.parametrize("multi_ref", ["0", "1"])
+def test_a_cram_with_unplaced_reads_in_several_containers_keeps_them_all(
+    tmp_path, ont, multi_ref
+):
+    """#655: chunked realign read a CRAM's unplaced reads with region ``*``,
+    which htslib 1.24 answers from its index wrongly, missing containers of
+    them (2 of the 6 here). Every unmapped read must reach the output."""
+    ref = ont["ref"]
+    cram = str(tmp_path / "x.cram")
+    run_command(["samtools", "view", "-C", "-T", ref,
+                 "--output-fmt-option", "seqs_per_slice=2",
+                 "--output-fmt-option", f"multi_seq_per_slice={multi_ref}",
+                 "-o", cram, ont["bam"]])  # fmt: skip
+    run_command(["samtools", "index", cram])
+    _realign(cram, ref, tmp_path / "out", "--chunk-size", _chunk_size(cram))
+
+    aligned = str(tmp_path / "out" / "x_aligned.bam")
+    for flags in (["-F", "0x900"], ["-f", "4"]):
+        source = int(_view("view", "-c", *flags, "-T", ref, cram))
+        assert int(_view("view", "-c", *flags, aligned)) == source
+
+
+@needs_tools("samtools", "minimap2")
+def test_an_index_missing_unplaced_containers_fails_loudly(tmp_path, ont):
+    """#655: unplaced reads the index doesn't lead to stop the realign."""
+    ref = ont["ref"]
+    cram = str(tmp_path / "x.cram")
+    run_command(["samtools", "view", "-C", "-T", ref,
+                 "--output-fmt-option", "seqs_per_slice=2",
+                 "-o", cram, ont["bam"]])  # fmt: skip
+    run_command(["samtools", "index", cram])
+    with gzip.open(cram + ".crai", "rt") as handle:
+        rows = handle.read().splitlines(keepends=True)
+    first = next(i for i, row in enumerate(rows) if row.startswith("-1\t"))
+    with gzip.open(cram + ".crai", "wt") as handle:
+        handle.write("".join(rows[:first] + rows[first + 1 :]))
+    with pytest.raises(WGSExtractError, match="has 6 unplaced unmapped reads"):
+        _realign(cram, ref, tmp_path / "out", "--chunk-size", _chunk_size(cram))
+
+
+@needs_tools("samtools", "minimap2")
 def test_the_sr_preset_still_marks_duplicates(tmp_path, ont):
     """#578 review: with --preset sr minimap2 output has its duplicates
     marked in one pass; the chunks didn't. sr now aligns in one pass."""

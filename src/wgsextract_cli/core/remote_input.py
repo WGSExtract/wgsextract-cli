@@ -14,12 +14,14 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import shutil
 import uuid
 from dataclasses import dataclass
 from functools import lru_cache
 from http.client import HTTPException
 from os import fspath
 from pathlib import Path
+from typing import BinaryIO
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
@@ -32,6 +34,7 @@ _TIMEOUT = 60
 _INDEX_SUFFIXES = {".cram": (".crai",), ".bam": (".bai", ".csi")}
 # An index is a few MB even for a whole genome; more is the wrong file.
 _MAX_INDEX_BYTES = 256 * 1024**2
+_COPY_BUFFER = 8 * 1024 * 1024
 
 
 def is_url(path: PathInput | None) -> bool:
@@ -149,6 +152,38 @@ def fetch_index(url: str, directory: PathInput) -> str | None:
         atomic_write(local, data)
         return str(local)
     return None
+
+
+def copy_range(path: str, start: int, end: int | None, output: BinaryIO) -> None:
+    """Copy bytes ``start`` to ``end`` (None: to the end) of a local file or
+    a URL (by an HTTP range request) into ``output``."""
+    if is_url(path):
+        span = f"bytes={start}-{'' if end is None else end - 1}"
+        try:
+            with urlopen(
+                Request(path, headers={"Range": span}), timeout=_TIMEOUT
+            ) as response:
+                if response.status != 206:
+                    raise WGSExtractError(
+                        f"{shown(path)} ignored a range request (HTTP "
+                        f"{response.status})."
+                    )
+                shutil.copyfileobj(response, output, _COPY_BUFFER)
+        except (URLError, OSError, ValueError, HTTPException) as error:
+            raise WGSExtractError(f"Can't read {shown(path)}: {error}") from error
+        return
+    with open(path, "rb") as handle:
+        handle.seek(start)
+        remaining = None if end is None else end - start
+        while remaining is None or remaining > 0:
+            block = handle.read(
+                _COPY_BUFFER if remaining is None else min(_COPY_BUFFER, remaining)
+            )
+            if not block:
+                break
+            output.write(block)
+            if remaining is not None:
+                remaining -= len(block)
 
 
 def with_index(url: str, index: str) -> str:

@@ -135,7 +135,9 @@ def unpaired_sample(
     records and, when indexed, the first ``limit`` unplaced unmapped ones (a
     cheap seek). Coordinate-sorted input mixes read groups from its first
     records, so this misses only rare READ_OTHER records or ones concatenated
-    after the sampled ones in unsorted input.
+    after the sampled ones in unsorted input. htslib before 1.25 misses some
+    of a CRAM's unplaced containers when reading ``*`` (#655); a sample of
+    the rest is as good, so this doesn't work around it.
     """
     from wgsextract_cli.core.samtools_commands import alignment_index
 
