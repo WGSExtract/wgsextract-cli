@@ -686,24 +686,33 @@ def _check_pair(row: dict[str, str], uncertain: set[str]) -> Pair:
 
 
 def _warn_partial_vcfs(items: list[Input]) -> None:
+    """Warn for each variants-only VCF sample whose missing sites weren't
+    filled: it is compared on its variant sites alone, and its pairs are
+    labelled uncertain. An all-sites VCF's hom-ref calls are real, so it is
+    compared like a BAM with gaps, without a warning."""
     for item in items:
         for c in item.coverage:
-            if c.filled:
+            if c.filled or not c.variants_only:
                 continue
             share = (
                 f"{c.ratio:.0%} of" if c.ratio is not None else "an unknown share of"
+            )
+            density = (
+                f"{c.density:,.0f}" if c.density is not None else "an unknown number of"
             )
             warn(
                 "vcf_called_sites_only",
                 f"{Path(item.path).name} doesn't look like a whole-genome variant "
                 f"VCF for {item.prefix}{c.sample} (it has {share} the variant sites "
-                f"a genome would, on {c.autosomes:.0%} of the autosomes): its "
-                "missing sites stay unknown, so its relatedness rests on its "
-                "called sites alone and is reported as uncertain.",
+                f"a genome would, on {c.autosomes:.0%} of the autosomes, and "
+                f"{density} records per autosomal megabase): its missing sites "
+                "stay unknown, so its relatedness rests on its variant sites alone "
+                "and its pairs are reported as uncertain.",
                 sample=item.prefix + c.sample,
                 file=item.path,
                 site_ratio=None if c.ratio is None else round(c.ratio, 3),
                 autosomes=round(c.autosomes, 3),
+                records_per_mb=None if c.density is None else round(c.density, 1),
             )
 
 
@@ -781,7 +790,17 @@ def run_relate(params: RelateParams) -> None:
     for name, item, sketch in published:
         sample = Sample(name, item, sketch, stats.get(name, {}))
         sample.sex, sample.sex_confidence = infer_sex(sample.stats)
-        sample.called_only = called_sites_only(sample.stats)
+        # A fresh VCF's coverage decides; a reused sketch is judged by its
+        # hom-ref calls.
+        unfilled = {
+            item.prefix + c.sample
+            for c in item.coverage
+            if c.variants_only and not c.filled
+        }
+        if item.kind == "vcf":
+            sample.called_only = name in unfilled
+        else:
+            sample.called_only = called_sites_only(sample.stats)
         sample.recorded_sex = _recorded_sex(item)
         prediction = predictions.get(name, {})
         sample.superpopulation = prediction.get("predicted_ancestry") or None

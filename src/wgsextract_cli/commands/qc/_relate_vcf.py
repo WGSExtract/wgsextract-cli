@@ -32,6 +32,12 @@ from wgsextract_cli.core.utils import WGSExtractError, popen, run_command
 WGS_MIN_RATIO = 0.8
 # Share of the sites' autosomes on which it has non-reference calls.
 WGS_MIN_AUTOSOMES = 0.95
+# Records per autosomal megabase of the whole file. somalier's sites are
+# chosen to work on exomes, so an exome VCF reaches the site ratio (GIAB HG002
+# v4.2.1 in the xGen exome +-100 bp: 0.90 on 22/22 autosomes) and only the
+# rest of the genome tells it apart: HG002's whole benchmark VCF has 1,408
+# records/Mb, the same in the xGen exome 25/Mb, chr20 alone 30/Mb.
+WGS_MIN_DENSITY = 400.0
 # Share of the records at the sites that may be reference-only calls.
 VARIANTS_ONLY_MAX_REF_RECORDS = 0.05
 _REF_ONLY_ALTS = (".", "<*>", "<NON_REF>")
@@ -56,6 +62,11 @@ class Coverage:
     sample: str
     ratio: float | None
     autosomes: float
+    # Records per autosomal megabase in the whole file (None: unknown).
+    density: float | None
+    # Missing sites mean "not a variant", not "not looked at": an all-sites
+    # VCF's hom-ref calls are real, and its missing sites stay unknown.
+    variants_only: bool
     filled: bool
 
 
@@ -141,6 +152,38 @@ def _query(vcf: str, header: str, sites: str) -> str:
     return run_command(command, capture_output=True).stdout
 
 
+def _autosome(contig: str) -> bool:
+    name = contig.removeprefix("chr")
+    return name.isdigit() and 1 <= int(name) <= 22
+
+
+def record_density(vcf: str, header: str) -> float | None:
+    """Records per megabase of the autosomes the header lists with lengths,
+    from the index's counts (else by reading the records)."""
+    from wgsextract_cli.core.reference_resolver import header_contig_lengths
+
+    lengths = {c: n for c, n in header_contig_lengths(header).items() if _autosome(c)}
+    if not lengths:
+        return None
+    counts: dict[str, int] = {}
+    stats = run_command(
+        ["bcftools", "index", "-s", vcf], capture_output=True, check=False
+    )
+    if stats.returncode == 0 and stats.stdout.strip():
+        for line in stats.stdout.splitlines():
+            fields = line.split("\t")
+            if len(fields) >= 3 and fields[2].isdigit():
+                counts[fields[0]] = int(fields[2])
+    else:
+        names = run_command(
+            ["bcftools", "query", "-f", "%CHROM\n", vcf], capture_output=True
+        ).stdout
+        for contig in names.splitlines():
+            counts[contig] = counts.get(contig, 0) + 1
+    records = sum(n for c, n in counts.items() if c in lengths)
+    return records / (sum(lengths.values()) / 1e6)
+
+
 def prepare(
     vcf: str, header: str, sites_path: str, folder: Path, names: list[str]
 ) -> tuple[str, list[Coverage]]:
@@ -213,6 +256,7 @@ def prepare(
         if afs and None not in afs
         else None
     )
+    density = record_density(vcf, header) if variants_only else None
     coverage = []
     for i, name in enumerate(names):
         nonref = [s for s in autosomal if _alt_reads(calls.get(s), i)]
@@ -223,8 +267,10 @@ def prepare(
             and ratio is not None
             and ratio >= WGS_MIN_RATIO
             and on >= WGS_MIN_AUTOSOMES
+            and density is not None
+            and density >= WGS_MIN_DENSITY
         )
-        coverage.append(Coverage(name, ratio, on, filled))
+        coverage.append(Coverage(name, ratio, on, density, variants_only, filled))
 
     out = folder / "calls.vcf"
     with out.open("w", newline="\n") as f:

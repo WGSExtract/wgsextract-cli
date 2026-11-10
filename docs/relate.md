@@ -44,14 +44,20 @@ homozygous reference, but only in a whole-genome call set:
   joint-called), missing autosomal sites are written into its sketch as
   homozygous reference. Such a sketch can be reused, or compared with BAMs,
   without changing the result. "Whole genome" means non-reference calls on at
-  least 95% of the autosomes and at least 80% of the variant sites the sites'
-  allele frequencies predict. Whole-genome VCFs reach 89-100% (GIAB
+  least 95% of the autosomes, at least 80% of the variant sites the sites'
+  allele frequencies predict, and at least 400 records per autosomal megabase
+  in the whole file. Whole-genome VCFs reach 89-100% of the sites (GIAB
   HG002/HG003/HG004 v4.2.1 98%, 1000 Genomes NA19240 89% and HG00513 92%);
-  HG002's chromosomes 1-6 alone reach 38% and its chr20 3%.
-- Otherwise (one chromosome, an exome or panel, an all-sites VCF), missing
-  sites stay unknown. The sample's relatedness then rests on its variant
-  sites alone, so its pairs are reported as `uncertain`, with a
+  HG002's chromosomes 1-6 alone reach 38% and its chr20 3%. somalier's sites
+  suit exomes, so HG002 in the xGen exome (+-100 bp) still reaches 90%; its
+  25 records per megabase, against 1,408 for the whole VCF, tell it apart.
+- For any other variants-only VCF (one chromosome, an exome or panel),
+  missing sites stay unknown. The sample's relatedness then rests on its
+  variant sites alone, so its pairs are reported as `uncertain`, with a
   `vcf_called_sites_only` warning.
+- An all-sites VCF writes its hom-ref calls out, so they are used as they
+  are, and its missing sites stay unknown, as a BAM's uncovered sites do;
+  no warning.
 
 chrX and chrY are never filled, so the sex reads only real calls. gVCFs are
 refused: their no-call blocks can't be told from reference blocks.

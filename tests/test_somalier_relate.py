@@ -730,3 +730,63 @@ def test_a_few_chrx_calls_dont_decide_the_sex():
         "Y_depth_mean": "0",
     }
     assert infer_sex(sparse) == ("Unknown", "low")
+
+
+def _with_header(vcf, out, old, new):
+    """``vcf`` with one header line changed, bgzipped and indexed."""
+    text = run_command(
+        [get_tool_path("bcftools"), "view", str(vcf)], capture_output=True
+    ).stdout
+    assert old in text
+    plain = out.with_suffix("")
+    plain.write_text(text.replace(old, new, 1))
+    return bgzip_index(plain, out)
+
+
+@needs_somalier
+def test_an_exome_like_vcf_is_not_filled(family, tmp_path):
+    """#614 final review: an exome VCF reaches somalier's (exome-friendly)
+    sites but has few records across the genome; its missing sites aren't
+    made hom-ref and its pairs are uncertain."""
+    vcf = _variants_vcf(family, tmp_path, "dad")
+    # The same calls in a genome whose chr1 is human-sized: ~6 records/Mb.
+    exome = _with_header(
+        vcf,
+        tmp_path / "dad_exome.vcf.gz",
+        "##contig=<ID=chr1,length=400000>",
+        "##contig=<ID=chr1,length=248956422>",
+    )
+
+    result = _relate(family, tmp_path / "out", exome, "kid.bam")
+
+    [warning] = [w for w in result.warnings if w.code == "vcf_called_sites_only"]
+    assert warning.details["records_per_mb"] < 100
+    assert warning.details["site_ratio"] > 0.8
+    pair = _pairs(result)[frozenset(("dad", "kid"))]
+    assert pair["relationship"] == UNCERTAIN
+
+
+@needs_somalier
+def test_an_all_sites_vcf_keeps_its_calls_without_a_warning(family, tmp_path):
+    """#614 final review: an all-sites VCF (hom-ref calls written out) isn't
+    filled, but its hom-ref calls are real: no called-sites-only warning, and
+    its pairs aren't labelled uncertain."""
+    vcf = tmp_path / "dad_all.vcf.gz"
+    bcftools = get_tool_path("bcftools")
+    run_command(
+        [
+            "sh",
+            "-c",
+            f"{bcftools} mpileup -f {family / 'ref.fa'} -T {family / 'sites.vcf.gz'}"
+            f" -a AD,DP -Ou {family / 'dad.bam'} | {bcftools} call -m -Oz -o {vcf}",
+        ]
+    )
+    run_command([get_tool_path("tabix"), "-p", "vcf", str(vcf)])
+
+    result = _relate(family, tmp_path / "out", vcf, "kid.bam", "stranger.bam")
+
+    assert not [w for w in result.warnings if w.code == "vcf_called_sites_only"]
+    rows = {r["sample"]: r for r in _table(_output(result, "relate_samples"))}
+    assert rows["dad"]["called_sites_only"] == "false"
+    assert _pairs(result)[frozenset(("dad", "kid"))]["relationship"] == "parent-child"
+    assert _pairs(result)[frozenset(("dad", "stranger"))]["relationship"] == "unrelated"
