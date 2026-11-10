@@ -35,16 +35,32 @@ names (hg38, hg19/GRCh37 and T2T-CHM13). Kits on different builds can be
 compared. `--sites` uses your own sites VCF instead, for example for an
 exome.
 
-A BAM or CRAM gives the most accurate results. A VCF from a provider lists
-only variants, so an autosomal site it lacks is written into its sketch as
-homozygous reference, at the VCF's typical depth. Its sketch can then be
-reused, or compared with BAMs, without changing the result. chrX and chrY
-sites are left as called, so the sex reads only real calls.
+A BAM or CRAM gives the most accurate results. A VCF's genotypes are used
+as called (REF and the site's ALT only; filtered, missing or other-allele
+calls are unknown). A VCF lists only variants, so a site it lacks is usually
+homozygous reference, but only in a whole-genome call set:
 
-Sample names come from the read group (SM) or the VCF header, and for a
-sketch from the name stored inside it, so a renamed `.somalier` file still
-matches its pedigree row. When two inputs have the same sample name, each is
-prefixed with its file name.
+- For a sample of a **whole-genome, variants-only** VCF (single-sample or
+  joint-called), missing autosomal sites are written into its sketch as
+  homozygous reference. Such a sketch can be reused, or compared with BAMs,
+  without changing the result. "Whole genome" means non-reference calls on at
+  least 95% of the autosomes and at least 80% of the variant sites the sites'
+  allele frequencies predict. Whole-genome VCFs reach 89-100% (GIAB
+  HG002/HG003/HG004 v4.2.1 98%, 1000 Genomes NA19240 89% and HG00513 92%);
+  HG002's chromosomes 1-6 alone reach 38% and its chr20 3%.
+- Otherwise (one chromosome, an exome or panel, an all-sites VCF), missing
+  sites stay unknown. The sample's relatedness then rests on its variant
+  sites alone, so its pairs are reported as `uncertain`, with a
+  `vcf_called_sites_only` warning.
+
+chrX and chrY are never filled, so the sex reads only real calls. gVCFs are
+refused: their no-call blocks can't be told from reference blocks.
+
+Sample names come from the read group (SM; else the file name) or the VCF
+header, and for a sketch from the name stored inside it, so a renamed
+`.somalier` file still matches its pedigree row. A BAM/CRAM of several
+samples, and names with path separators, are refused. When a BAM, CRAM or VCF
+has the sample name of another input, it is prefixed with its file name.
 
 ## Outputs
 
@@ -66,6 +82,7 @@ In `--outdir`, else beside the first input (for sketches in an earlier run's
 | Code | Meaning |
 | :--- | :--- |
 | `sex_mismatch` | somalier's sex disagrees with the sex recorded for the file: your override, a sex detected earlier, or for a BAM its chrX/chrY read counts (a CRAM is compared only once `info` or another command has recorded its sex) |
+| `vcf_called_sites_only` | A VCF sample isn't a whole-genome variant call set: its pairs are `uncertain` |
 | `same_person` | Two inputs are the same person |
 | `relationship_mismatch` | With `--ped`: a pair is more than 0.1 away from the relatedness the pedigree implies, for example a swapped file |
 | `ped_sex_mismatch` | With `--ped`: a sample's sex disagrees with the pedigree |
@@ -91,7 +108,8 @@ digests:
 
 They go in `<library>/somalier/`. Each sketch's SHA-256 is recorded when the
 archive is unpacked and checked before every use (well under a second); `ref somalier --delete` removes them.
-Ancestry runs when they are installed (`--no-ancestry` skips it).
+Ancestry runs when they are installed, unless `--sites` gives another panel
+(`--no-ancestry` skips it).
 
 ## Platforms
 

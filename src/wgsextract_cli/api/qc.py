@@ -186,7 +186,18 @@ class RelateParams(Params):
         cli_type=table_format_type(),
     )
 
+    def default_outdir(self) -> Path:
+        """The first input's folder; for a sketch in an earlier run's
+        ``somalier/`` folder, that run's folder."""
+        first = self.inputs[0].expanduser().absolute()
+        folder = first.parent
+        if first.suffix == ".somalier" and folder.name == "somalier":
+            return folder.parent
+        return folder
+
     def write_folders(self) -> Iterator[Path]:
+        outdir = self.outdir.expanduser() if self.outdir else self.default_outdir()
+        yield from (outdir, outdir / "somalier")
         # An unindexed reference FASTA is indexed beside itself.
         ref = self.ref.expanduser() if self.ref else None
         if ref is not None and not ref.is_dir():

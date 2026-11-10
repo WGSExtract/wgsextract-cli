@@ -14,8 +14,15 @@ from pathlib import Path
 
 import pytest
 
-from tests.htslib_helpers import needs_htslib, needs_tools, sam_to_bam, write_fasta
+from tests.htslib_helpers import (
+    bgzip_index,
+    needs_htslib,
+    needs_tools,
+    sam_to_bam,
+    write_fasta,
+)
 from wgsextract_cli import api
+from wgsextract_cli.commands.qc.relate import UNCERTAIN, infer_sex
 from wgsextract_cli.core import somalier_resources
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import WGSExtractError, run_command
@@ -350,7 +357,6 @@ def test_ancestry_without_the_1kg_sketches_says_how_to_install_them(family, tmp_
             inputs=(family / "dad.bam",),
             ref=family / "ref.fa",
             outdir=tmp_path,
-            sites=family / "sites.vcf.gz",
             ancestry=True,
         ),
         check=False,
@@ -401,6 +407,15 @@ def fake_somalier_downloads(monkeypatch):
         monkeypatch.setattr(somalier_resources, "LABELS", pin(labels, b"labels"))
         sketches = pin(somalier_resources.SKETCHES, buffer.getvalue())
         monkeypatch.setattr(somalier_resources, "SKETCHES", sketches)
+        content = {
+            name.rpartition("/")[2]: hashlib.sha256(data).hexdigest()
+            for name, data in members.items()
+        }
+        monkeypatch.setattr(
+            somalier_resources,
+            "SKETCHES_CONTENT_SHA256",
+            somalier_resources.content_digest(content),
+        )
 
     def fetch(url, dest, *args, expected_sha256=None, **kwargs):
         data = payloads[url]
@@ -474,3 +489,243 @@ def test_deps_check_says_somalier_is_unavailable_on_windows(monkeypatch):
     assert "somalier" not in platform_unavailable_tools()
     monkeypatch.setattr(sys, "platform", "win32")
     assert "somalier" in platform_unavailable_tools()
+
+
+# --- review of 160a0850: VCF coverage, names and publishing ----------------
+
+
+def _region_vcf(family, folder, name, region, out_name):
+    """A provider VCF of ``name``'s variants in ``region`` only."""
+    (folder / "full").mkdir(exist_ok=True)
+    full = _variants_vcf(family, folder / "full", name)
+    vcf = folder / out_name
+    bcftools = get_tool_path("bcftools")
+    run_command([bcftools, "view", "-r", region, "-Oz", "-o", str(vcf), str(full)])
+    run_command([get_tool_path("tabix"), "-p", "vcf", str(vcf)])
+    return vcf
+
+
+@needs_somalier
+def test_a_one_region_vcf_is_not_filled_and_claims_no_relationship(family, tmp_path):
+    """#614 re-review: a VCF of one region against the same person's and the
+    son's genome BAMs: its missing sites aren't made hom-ref, no relationship
+    is claimed from its called sites, and it is warned about."""
+    vcf = _region_vcf(family, tmp_path, "dad", "chr1:1-60000", "dad_part.vcf.gz")
+
+    result = _relate(family, tmp_path / "out", vcf, "dad.bam", "kid.bam")
+
+    [warning] = [w for w in result.warnings if w.code == "vcf_called_sites_only"]
+    assert warning.details["sample"] == "dad_part_dad"
+    assert warning.details["site_ratio"] < 0.3
+    pairs = _pairs(result)
+    for other in ("dad_dad", "kid"):
+        pair = pairs[frozenset(("dad_part_dad", other))]
+        assert pair["relationship"] in ("too few shared sites", UNCERTAIN)
+        assert pair["flagged"] == "false"
+    assert not [w for w in result.warnings if w.code == "same_person"]
+    rows = {r["sample"]: r for r in _table(_output(result, "relate_samples"))}
+    assert rows["dad_part_dad"]["called_sites_only"] == "true"
+    assert rows["dad_dad"]["called_sites_only"] == "false"
+
+
+@needs_somalier
+def test_a_gvcf_is_refused(family, tmp_path):
+    """#614 re-review: gVCF no-call blocks can't be told from reference."""
+    gvcf = tmp_path / "dad.g.vcf.gz"
+    bcftools = get_tool_path("bcftools")
+    run_command(
+        [
+            "sh",
+            "-c",
+            f"{bcftools} mpileup -f {family / 'ref.fa'} -a AD,DP -Ou "
+            f"{family / 'dad.bam'} | {bcftools} call -m --gvcf 0 -Oz -o {gvcf}",
+        ]
+    )
+    run_command([get_tool_path("tabix"), "-p", "vcf", str(gvcf)])
+
+    result = api.qc.relate(
+        api.RelateParams(
+            inputs=(gvcf,),
+            ref=family / "ref.fa",
+            outdir=tmp_path / "out",
+            sites=family / "sites.vcf.gz",
+            ancestry=False,
+        ),
+        check=False,
+    )
+
+    assert result.status == "failed"
+    assert "gVCF" in result.error.message
+
+
+@needs_somalier
+def test_another_record_at_a_site_doesnt_hide_its_snp(family, tmp_path):
+    """#614 re-review: a second record at a site's position (another ALT,
+    as in split multiallelics) doesn't replace the record of the site's SNP."""
+    vcf = _variants_vcf(family, tmp_path, "dad")
+    plain = tmp_path / "decoyed.vcf"
+    lines = []
+    text = run_command(
+        [get_tool_path("bcftools"), "view", str(vcf)], capture_output=True
+    ).stdout
+    for line in text.splitlines():
+        if line.startswith("#"):
+            lines.append(line)
+            continue
+        fields = line.split("\t")
+        lines.append(line)
+        decoy = [c for c in "ACGT" if c not in (fields[3], fields[4])][0]
+        lines.append(
+            "\t".join(
+                [
+                    *fields[:4],
+                    decoy,
+                    *fields[5:9],
+                    "0/0:30,0" if fields[8] == "GT:AD" else fields[9],
+                ]
+            )
+        )
+    plain.write_text("\n".join(lines) + "\n")
+    decoyed = bgzip_index(plain)
+
+    first = _relate(family, tmp_path / "a", vcf, "kid.bam")
+    second = _relate(family, tmp_path / "b", decoyed, "kid.bam")
+
+    assert _relatedness(second, "dad", "kid") == _relatedness(first, "dad", "kid")
+    assert not [w for w in second.warnings if w.code == "vcf_called_sites_only"]
+
+
+@needs_somalier
+def test_a_bam_of_a_sketched_sample_is_compared_with_the_sketch(family, tmp_path):
+    """#614 review: a second kit of a person whose sketch is given is
+    prefixed rather than refused, and found to be the same person."""
+    first = _relate(family, tmp_path / "a", "dad.bam", "kid.bam")
+    [dad] = [Path(o.path) for o in first.outputs if Path(o.path).name == "dad.somalier"]
+
+    result = _relate(family, tmp_path / "b", dad, "dad.bam")
+
+    [warning] = [w for w in result.warnings if w.code == "same_person"]
+    assert {warning.details["sample_a"], warning.details["sample_b"]} == {
+        "dad",
+        "dad_dad",
+    }
+
+
+def _reheader(family, tmp_path, name, rg_lines):
+    """dad.bam with its @RG lines replaced by ``rg_lines``."""
+    samtools = get_tool_path("samtools")
+    header = run_command(
+        [samtools, "view", "-H", str(family / "dad.bam")], capture_output=True
+    ).stdout
+    kept = [line for line in header.splitlines() if not line.startswith("@RG")]
+    (tmp_path / "h.sam").write_text("\n".join([*kept, *rg_lines]) + "\n")
+    bam = tmp_path / name
+    with open(bam, "wb") as out:
+        run_command(
+            [samtools, "reheader", str(tmp_path / "h.sam"), str(family / "dad.bam")],
+            stdout=out,
+        )
+    run_command([samtools, "index", str(bam)])
+    return bam
+
+
+@needs_somalier
+def test_a_bam_without_a_sample_name_is_named_after_its_file(family, tmp_path):
+    """#614 review: somalier is told the name chosen for a BAM without SM."""
+    bam = _reheader(family, tmp_path, "nameless.bam", ["@RG\tID:rg"])
+
+    result = _relate(family, tmp_path / "out", bam, "kid.bam")
+
+    assert (
+        _pairs(result)[frozenset(("nameless", "kid"))]["relationship"] == "parent-child"
+    )
+
+
+@pytest.mark.parametrize(
+    ("rg_lines", "message"),
+    [
+        (["@RG\tID:rg\tSM:a", "@RG\tID:rg2\tSM:b"], "several samples"),
+        (["@RG\tID:rg\tSM:../../escape"], "path separators"),
+    ],
+)
+def test_ambiguous_or_unsafe_sample_names_are_refused(
+    family, tmp_path, rg_lines, message
+):
+    """#614 review: a BAM of several samples, or a sample name that would
+    place somalier's sketch file elsewhere, is refused before sketching."""
+    bam = _reheader(family, tmp_path, "odd.bam", rg_lines)
+
+    result = api.qc.relate(
+        api.RelateParams(
+            inputs=(bam,),
+            ref=family / "ref.fa",
+            outdir=tmp_path / "out",
+            sites=family / "sites.vcf.gz",
+            ancestry=False,
+        ),
+        check=False,
+    )
+
+    assert result.status == "failed"
+    assert message in result.error.message
+    assert not list(tmp_path.rglob("escape.somalier"))
+
+
+@needs_somalier
+def test_sketches_swapped_by_name_are_refused_before_any_is_overwritten(
+    family, tmp_path
+):
+    """#614 review: one.somalier holding sample two and two.somalier holding
+    one would overwrite each other in somalier/."""
+    first = _relate(family, tmp_path / "a", "dad.bam", "kid.bam")
+    sketches = {
+        Path(o.path).stem: Path(o.path)
+        for o in first.outputs
+        if o.role == "somalier_sketch"
+    }
+    folder = tmp_path / "run" / "somalier"
+    folder.mkdir(parents=True)
+    (folder / "kid.somalier").write_bytes(sketches["dad"].read_bytes())
+    (folder / "dad.somalier").write_bytes(sketches["kid"].read_bytes())
+    before = {p.name: p.read_bytes() for p in folder.iterdir()}
+
+    result = api.qc.relate(
+        api.RelateParams(
+            inputs=tuple(sorted(folder.iterdir())),
+            sites=family / "sites.vcf.gz",
+            ancestry=False,
+        ),
+        check=False,
+    )
+
+    assert result.status == "failed"
+    assert "would be saved as" in result.error.message
+    assert {p.name: p.read_bytes() for p in folder.iterdir()} == before
+
+
+def test_ancestry_with_custom_sites_is_refused(family, tmp_path):
+    """#614 review: the 1000 Genomes sketches are of somalier's own sites."""
+    result = api.qc.relate(
+        api.RelateParams(
+            inputs=(family / "dad.bam",),
+            outdir=tmp_path,
+            sites=family / "sites.vcf.gz",
+            ancestry=True,
+        ),
+        check=False,
+    )
+
+    assert result.status == "failed"
+    assert "--sites" in result.error.message
+
+
+def test_a_few_chrx_calls_dont_decide_the_sex():
+    """#614 review: one chrX call isn't enough to call the sex."""
+    sparse = {
+        "X_hom_ref": "0",
+        "X_het": "1",
+        "X_hom_alt": "0",
+        "gt_depth_mean": "30",
+        "Y_depth_mean": "0",
+    }
+    assert infer_sex(sparse) == ("Unknown", "low")
