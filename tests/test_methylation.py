@@ -653,3 +653,69 @@ def test_real_modkit_gives_the_same_calls_from_cram_as_from_bam(tmp_path, no_con
             bedmethyl[fmt] = f.read()
     assert bedmethyl["bam"].count("\n") > 50
     assert bedmethyl["cram"] == bedmethyl["bam"]
+
+
+def _modkit_sample(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """chr20 with 5mC-tagged ONT reads between two contigs without reads, as a
+    reference, a BAM and a CRAM."""
+    import random
+
+    from tests.htslib_helpers import sam_to_bam, write_fasta
+
+    rng = random.Random(611)
+    seqs = {
+        name: "".join(rng.choice("ACGT") for _ in range(3000)) + "CG" * 500
+        for name in ("chr1", "chr20", "chrUn")
+    }
+    ref = write_fasta(tmp_path / "ref" / "ref.fa", seqs)
+    lines = ["@HD\tVN:1.6\tSO:coordinate", "@RG\tID:a\tPL:ONT"]
+    lines[1:1] = [f"@SQ\tSN:{name}\tLN:{len(seq)}" for name, seq in seqs.items()]
+    for i in range(37):
+        start = 100 * i
+        seq = seqs["chr20"][start : start + 300]
+        calls = seq.count("C")
+        probs = ",".join(str(rng.randrange(256)) for _ in range(calls))
+        lines.append(
+            f"r{i}\t0\tchr20\t{start + 1}\t60\t300M\t*\t0\t0\t{seq}\t*\tRG:Z:a"
+            f"\tMM:Z:C+m?{',0' * calls};\tML:B:C,{probs}"
+        )
+    reads = tmp_path / "reads"
+    reads.mkdir()
+    bam = Path(sam_to_bam(lines, reads / "sample.bam"))
+    cram = reads / "sample.cram"
+    samtools = get_tool_path("samtools")
+    subprocess.run(
+        [samtools, "view", "-C", "-T", ref, "-o", cram, "--write-index", bam],
+        check=True,
+    )
+    return ref, bam, cram
+
+
+@needs_samtools
+@pytest.mark.skipif(
+    sys.platform == "win32" or not get_tool_path("modkit"),
+    reason="modkit's Pixi environment is not installed",
+)
+def test_cram_without_region_matches_bam_and_skips_empty_contigs(tmp_path, no_config):
+    """#611: on CRAM, modkit walked every reference contig, reads or not."""
+    ref, bam, cram = _modkit_sample(tmp_path)
+
+    results = {
+        path.suffix: api.methylation.pileup(
+            MethylationPileupParams(
+                input=path, ref=ref, outdir=tmp_path / path.suffix[1:]
+            )
+        )
+        for path in (bam, cram)
+    }
+
+    beds = {}
+    for suffix, result in results.items():
+        assert result.status == "ok"
+        assert result.metrics["contigs"] == 1
+        [bed] = [o.path for o in result.outputs if o.role == "bedmethyl"]
+        with gzip.open(bed, "rt") as f:
+            beds[suffix] = f.read()
+    assert beds[".cram"] == beds[".bam"]
+    rows = beds[".bam"].splitlines()
+    assert rows and {row.split("\t")[0] for row in rows} == {"chr20"}

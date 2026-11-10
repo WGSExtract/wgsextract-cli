@@ -32,6 +32,7 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
+from wgsextract_cli.core.genotype_qc import contigs_with_reads
 from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.reference_assets import input_stem, read_fai_lengths
@@ -529,6 +530,21 @@ def bedmethyl_to_parquet(bed: str, path: str, metadata: dict[str, str]) -> int:
     return writer.rows
 
 
+def populated_reference(fasta: str, contigs: Iterable[str], work: str) -> str:
+    """`fasta` as seen through a .fai listing only `contigs`, without copying it.
+
+    With CRAM input modkit walks every contig of the reference, empty or not:
+    minutes and gigabytes for a single chromosome's reads (#611). Restricting
+    the .fai leaves its read sampling and output unchanged."""
+    keep = set(contigs)
+    with open(f"{fasta}.fai") as f:
+        entries = [line for line in f if line.split("\t", 1)[0] in keep]
+    view = Path(work, Path(fasta).name)
+    view.symlink_to(absolute_path(fasta))
+    Path(f"{view}.fai").write_text("".join(entries), newline="\n")
+    return str(view)
+
+
 def index_fasta(fasta: str) -> None:
     """modkit and --region both need the reference's .fai."""
     if Path(f"{fasta}.fai").is_file():
@@ -634,12 +650,25 @@ def run_pileup(params: MethylationPileupParams) -> None:
         tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_modkit_") as work,
     ):
         index_fasta(use_ref)
+        lengths = read_fai_lengths(use_ref)
         intervals = bed = None
+        pileup_ref = use_ref
         if region:
-            intervals = region_intervals(region, read_fai_lengths(use_ref))
+            intervals = region_intervals(region, lengths)
+            contigs = {c for c, _, _ in intervals}
             bed = str(Path(work, "regions.bed"))
             with open(bed, "w", newline="\n") as f:
                 f.writelines(f"{c}\t{s}\t{e}\n" for c, s, e in intervals)
+        else:
+            contigs = set(contigs_with_reads(input_path, ref)) & set(lengths)
+            if contigs and len(contigs) < len(lengths):
+                logging.info(
+                    f"Reads are on {len(contigs)} of the reference's "
+                    f"{len(lengths)} contigs; tabulating only those."
+                )
+                pileup_ref = populated_reference(use_ref, contigs, work)
+            else:
+                contigs = set(lengths)
         metadata = provenance(
             [input_path],
             reference_build=lib.build,
@@ -661,7 +690,7 @@ def run_pileup(params: MethylationPileupParams) -> None:
                 staging.enter_context(safe_output(out_table)) if parquet else ""
             )
             command = modkit_command(
-                input_path, staged_bed, use_ref, options, threads, intervals, bed
+                input_path, staged_bed, pileup_ref, options, threads, intervals, bed
             )
             try:
                 # Kept so a crash can quote diagnostics written to stdout too.
@@ -690,6 +719,7 @@ def run_pileup(params: MethylationPileupParams) -> None:
     result.add_metrics(
         platform=platform,
         context=options.context,
+        contigs=len(contigs),
         **{
             f"{summary.modification}_{name}": value
             for summary in summaries
