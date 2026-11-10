@@ -80,6 +80,7 @@ def parse_toml_file(path: Path) -> ParsedFile:
                 "i18n-ignore" in comment.lower(),
                 extract_source_hash(comment),
                 todo=is_todo_comment(comment),
+                bare_literal=True,
             )
             continue
         if not (value_literal.startswith('"') and value_literal.endswith('"') and len(value_literal) >= 2):
@@ -111,6 +112,7 @@ def _record(
     *,
     todo: bool = False,
     multiline: bool = False,
+    bare_literal: bool = False,
 ) -> None:
     if key in parsed.key_index:
         prev = parsed.entries[parsed.key_index[key]].line
@@ -125,6 +127,7 @@ def _record(
             recorded_source_hash=recorded_source_hash,
             todo=todo,
             multiline=multiline,
+            bare_literal=bare_literal,
         )
     )
 
@@ -132,8 +135,12 @@ def _record(
 _SOURCE_HASH_RE = re.compile(r"i18n-source-hash:([0-9a-fA-F]+)", re.IGNORECASE)
 
 
+_TODO_MARKER_RE = re.compile(r"\bTODO\b")
+
+
 def is_todo_comment(comment: str) -> bool:
-    return "todo" in comment.lower()
+    """Match the `TODO` marker (e.g. `# TODO: translate`), not words like "todos"."""
+    return _TODO_MARKER_RE.search(comment) is not None
 
 
 def extract_source_hash(comment: str) -> Optional[str]:

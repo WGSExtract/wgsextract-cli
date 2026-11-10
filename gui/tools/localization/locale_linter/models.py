@@ -16,6 +16,7 @@ class ParsedEntry:
     recorded_source_hash: Optional[str]
     todo: bool = False
     multiline: bool = False
+    bare_literal: bool = False
 
 
 @dataclass

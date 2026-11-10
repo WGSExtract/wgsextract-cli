@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from .constants import BUILTIN_REQUIRED_KEYS, VALID_LAYOUT_DIRECTIONS
+from .constants import BUILTIN_REQUIRED_KEYS, LOCALE_METADATA_KEYS, VALID_LAYOUT_DIRECTIONS
 from .models import Finding, LocaleReport, ParsedEntry, ParsedFile
 from .parser import extract_source_hash, parse_toml_file, split_value_and_comment, unquote_key
 
@@ -197,7 +197,9 @@ def short_source_hash(value: str) -> str:
 def is_translated(entry: ParsedEntry, source_value: str) -> bool:
     """A real translation: not ignored, not a TODO, non-empty and not a verbatim copy."""
     return (
-        not entry.ignore_untranslated
+        entry.key not in LOCALE_METADATA_KEYS
+        and not entry.bare_literal
+        and not entry.ignore_untranslated
         and not entry.todo
         and bool(entry.value.strip())
         and entry.value != source_value
