@@ -406,6 +406,12 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract ref aadr --install",
         "wgsextract ref aadr --delete",
     ),
+    "ref somalier": _h(
+        f"{_LIBRARY}: somalier's sites files and the 1000 Genomes sketches "
+        "(--delete removes them).",
+        "wgsextract ref somalier --install",
+        "wgsextract ref somalier --delete",
+    ),
     "ref ybrowse": _h(
         f"{_LIBRARY}: the yBrowse GRCh38 SNP sites (--delete removes them).",
         "wgsextract ref ybrowse --install",
@@ -535,6 +541,14 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "<input file name>.vcfstats.txt (e.g. sample.vcf.gz.vcfstats.txt), in "
         "--outdir, else beside the input.",
         f"wgsextract qc vcf {_VCF_IN}",
+    ),
+    "qc relate": _h(
+        "relate.samples.tsv (sex, superpopulation), relate.pairs.tsv "
+        "(relatedness), relate.html and the sketches in somalier/, in --outdir, "
+        "else beside the first input.",
+        "wgsextract qc relate me.cram",
+        "wgsextract qc relate child.cram mother.cram father.cram --ped trio.ped",
+        "wgsextract qc relate me.cram somalier/cousin.somalier --no-ancestry",
     ),
     "qc fake-data": _h(
         "fake.cram, fake.bam, fake.vcf or fake_R1/_R2.fastq.gz, and the fake "

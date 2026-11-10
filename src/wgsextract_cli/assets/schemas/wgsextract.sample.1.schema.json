@@ -64,6 +64,11 @@
           }
         },
         "build": { "$ref": "#/$defs/fact", "properties": { "value": { "type": "string" } } },
+        "somalier_sex": { "$ref": "#/$defs/fact", "properties": { "value": { "enum": ["Male", "Female"] } } },
+        "superpopulation": {
+          "$ref": "#/$defs/fact",
+          "properties": { "value": { "enum": ["AFR", "AMR", "EAS", "EUR", "SAS"] } }
+        },
         "read_length": { "$ref": "#/$defs/fact", "properties": { "value": { "type": "number", "minimum": 0 } } },
         "mean_coverage": { "$ref": "#/$defs/fact", "properties": { "value": { "type": "number", "minimum": 0 } } },
         "target_depths": {

@@ -18,11 +18,12 @@ from wgsextract_cli.api.ref import (
     RefPharmgkbParams,
     RefPhylopParams,
     RefRevelParams,
+    RefSomalierParams,
     RefSpliceaiParams,
     RefYbrowseParams,
     _Resource,
 )
-from wgsextract_cli.core import library_removal
+from wgsextract_cli.core import library_removal, somalier_resources
 from wgsextract_cli.core.aadr_resources import install_aadr_2m
 from wgsextract_cli.core.annotation_resources import (
     build_gnomad_af,
@@ -111,6 +112,17 @@ def _install_aadr(reflib: str) -> None:
     current_result().add_output(installed, "reference_resource")
     logging.info("Installed CC0 AADR v66.p1 2M SNP metadata: %s", installed)
     hg19_to_hg38_chain(reflib)
+
+
+def run_somalier(params: RefSomalierParams) -> None:
+    reflib = _library(params.ref)
+    name = "somalier sites and 1000 Genomes sketches"
+    if params.delete:
+        _delete(name, [somalier_resources.folder(reflib)])
+        return
+    for path in somalier_resources.install(reflib):
+        current_result().add_output(path, "reference_resource")
+    logging.info(f"Installed the {name} in {somalier_resources.folder(reflib)}")
 
 
 def _delete(
@@ -444,6 +456,7 @@ def run_microarray_targets(params: RefMicroarrayTargetsParams) -> None:
 
 cmd_aadr = cli_handler(RefAadrParams, run_aadr)
 cmd_ybrowse = cli_handler(RefYbrowseParams, run_ybrowse)
+cmd_somalier = cli_handler(RefSomalierParams, run_somalier)
 _cli_library = cli_handler(RefLibraryParams, run_library)
 cmd_gene_map = cli_handler(RefGeneMapParams, run_gene_map)
 cmd_bootstrap = cli_handler(RefBootstrapParams, run_bootstrap)

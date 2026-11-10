@@ -7,6 +7,7 @@ from wgsextract_cli.core.dependency_checks import check_all_dependencies
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.pixi_tools import pixi_install_command
 from wgsextract_cli.core.results import current_result, human_output
+from wgsextract_cli.core.tool_catalog import platform_unavailable_tools
 from wgsextract_cli.core.utils import MissingDependencyError
 
 
@@ -73,8 +74,10 @@ def run(params: DepsCheckParams, *, debug: bool = False) -> None:
 
     logging.info("Verifying bioinformatics tool installations...")
     results = check_all_dependencies()
+    unavailable = platform_unavailable_tools()
     result.set_details(
         {group: [_row(tool) for tool in results[group]] for group in results}
+        | {"unavailable_on_platform": unavailable}
     )
 
     human_output("\nMandatory Tools:")
@@ -94,6 +97,9 @@ def run(params: DepsCheckParams, *, debug: bool = False) -> None:
         source = _tool_source(tool)
         version = f" ({tool['version']})" if tool["version"] else ""
         human_output(f"{status} {tool['name']:<20} {source}{version}")
+
+    if unavailable:
+        human_output(f"\nNot available on {sys.platform}: {', '.join(unavailable)}")
 
     human_output("\n" + "=" * 60)
     missing = [tool["name"] for tool in results["mandatory"] if not tool["path"]]
