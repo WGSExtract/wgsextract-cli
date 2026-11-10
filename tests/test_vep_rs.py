@@ -36,23 +36,22 @@ _VCF = (
 
 def _build_cache(cache_root: Path) -> Path:
     """A vep-rs cache of the fixture gene, as vep-cache-builder makes it."""
-    import subprocess
+    from wgsextract_cli.core.utils import run_command
 
     version_dir = cache_root / "vep-rs" / "homo_sapiens" / "116_GRCh38"
     cache_root.mkdir(parents=True)
     genome = cache_root.parent / "genome.fa"
     shutil.copy(FIXTURES / "genome.fa", genome)
-    subprocess.run([get_tool_path("samtools"), "faidx", str(genome)], check=True)
-    subprocess.run(
+    run_command(["samtools", "faidx", str(genome)])
+    run_command(
         [
-            get_tool_path("vep-cache-builder"),
+            get_tool_path("vep-cache-builder") or "vep-cache-builder",
             "--release", "116", "--assembly", "GRCh38",
             "--gff3", str(FIXTURES / "genes.gff3"),
             "--fasta", str(FIXTURES / "protein.fa"),
             "--genome-fasta", str(genome),
             "--output-dir", str(version_dir),
         ],
-        check=True,
         capture_output=True,
     )  # fmt: skip
     return version_dir

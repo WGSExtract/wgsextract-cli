@@ -28,7 +28,6 @@ OPTIONAL_TOOLS = [
     "freebayes",
     "vep",
     "vep-rs",
-    "vep-cache-builder",
     "gatk",
     "run_deepvariant",
     "run_clair3.sh",
