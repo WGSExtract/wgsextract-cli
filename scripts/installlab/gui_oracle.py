@@ -135,6 +135,23 @@ def describe(event: str) -> str:
     return f"the lab harness ({kind}: {rest})"
 
 
+def first_failure(report: dict[str, Any]) -> str:
+    """Why the first failed step failed, naming a plan/app version mismatch (#625).
+
+    Apps before #625 report a plan step they lack as a bare "Unknown action"."""
+    failed = next((s for s in report["steps"] if s["status"] == "failed"), None)
+    if failed is None:
+        return ""
+    error = str(failed.get("error") or "")
+    if error.startswith("Unknown action: "):
+        error = (
+            f"the test plan expects action {failed.get('actionID')}, which this app "
+            f"version ({report.get('bundleID')} {report.get('bundleVersion')}) "
+            "doesn't have"
+        )
+    return f"; {failed.get('id')}: {error[:300]}"
+
+
 class GuiOracle(Oracle):
     def __init__(
         self, results: Path, nonce: str, tools: dict[str, str], signed: bool
@@ -212,7 +229,8 @@ class GuiOracle(Oracle):
                 "app.actions",
                 not not_passed,
                 f"{len(planned) - len(not_passed)}/{len(planned)} planned actions passed"
-                + (f"; {', '.join(not_passed)}" if not_passed else ""),
+                + (f"; {', '.join(not_passed)}" if not_passed else "")
+                + first_failure(report),
             )
         except (OSError, ValueError, KeyError) as e:
             self.record("app.actions", False, f"no bundle report: {e!r}")

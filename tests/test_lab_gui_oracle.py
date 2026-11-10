@@ -389,3 +389,33 @@ def test_optional_tools_install_into_the_workspace_runtime(tmp_path: Path) -> No
     ]
     assert missing.returncode == 1
     assert "No installed CLI manifest" in missing.stderr
+
+
+# Issue #625: the tree's plan ran against the released v0.8.5 app, whose bundle
+# lacked the renamed action; the judge said only "download_test_genome=failed",
+# which read like a broken download.
+def test_a_plan_action_the_released_app_lacks_is_named_as_a_version_mismatch(oracle):
+    _linux_run(oracle.results, None, "")
+    (oracle.results / "bundle-report.json").write_text(
+        json.dumps(
+            {
+                "bundleID": "wgs-extract",
+                "bundleVersion": "0.8.5",
+                "steps": [
+                    {
+                        "id": "download_test_genome",
+                        "actionID": "test-dataset-download",
+                        "status": "failed",
+                        "error": "Unknown action: test-dataset-download",
+                    },
+                    {"id": "download_reference", "status": "skipped"},
+                ],
+            }
+        )
+    )
+    actions = _linux_checks(oracle.results)["app.actions"]
+    assert actions.startswith("FAIL")
+    assert (
+        "download_test_genome: the test plan expects action test-dataset-download, "
+        "which this app version (wgs-extract 0.8.5) doesn't have"
+    ) in actions

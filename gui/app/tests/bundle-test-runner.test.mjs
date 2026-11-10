@@ -130,20 +130,22 @@ test("web bundle test runner reports command failures", async () => {
   );
 });
 
-test("web bundle test runner reports invalid action ids", async () => {
+// #625: a plan from another app version failed with a bare "Unknown action", which looked like a broken download.
+test("web bundle test runner names a plan action this app version doesn't have", async () => {
   await withWebBundleTestFixture("console.log(`action:${process.argv[2]}`);\n", async ({ bundleRoot, workspaceRoot }) => {
     const events = [];
 
     const report = await runBundleTest(
       bundleRoot,
-      { steps: [{ kind: "action", actionID: "missing-action" }] },
+      { steps: [{ kind: "action", pageID: "main", sectionID: "inputs", actionID: "missing-action" }] },
       { workspaceURL: workspaceRoot, progressHandler: (event) => events.push(event) },
     );
 
     assert.equal(report.status, "failed");
     assert.equal(report.summary.failed, 1);
-    assert.match(report.steps[0].error, /Unknown action: missing-action/);
-    assert(events.some((event) => event.type === "message" && /Unknown action: missing-action/.test(event.text)));
+    const mismatch = /plan expects action main\/inputs\/missing-action, which this app version \(dev\.guiforcli\.web-bundle-test-fixture 1\.2\.3\) doesn't have/;
+    assert.match(report.steps[0].error, mismatch);
+    assert(events.some((event) => event.type === "message" && mismatch.test(event.text)));
   });
 });
 
@@ -278,6 +280,7 @@ async function withWebBundleTestFixture(actionScript, callback) {
     path.join(bundleRoot, "manifest.json"),
     JSON.stringify({
       id: "dev.guiforcli.web-bundle-test-fixture",
+      version: "1.2.3",
       displayName: "Web Bundle Test Fixture",
       summary: "Fixture bundle.",
       setup: {
@@ -417,7 +420,7 @@ test("web bundle test runner loads data sources as the app does", async () => {
     assert.deepEqual(report.steps.map((step) => step.status), ["passed", "passed", "failed", "failed"]);
     assert.match(report.steps[0].command, /list\.py$/);
     assert.match(report.steps[2].error, /at least 2 options but the data source offered 1/);
-    assert.match(report.steps[3].error, /missing/);
+    assert.match(report.steps[3].error, /plan expects data source main\/inputs\/missing, which this app version .* doesn't have/);
   }
   finally {
     await rm(root, { recursive: true, force: true });
