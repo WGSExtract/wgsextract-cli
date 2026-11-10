@@ -103,9 +103,11 @@ def _resolve_pixi_command() -> str | None:
 
 def _pixi_home_executables() -> list[str]:
     """Pixi in its home folder: PIXI_HOME, Pixi's own setting for where it is
-    installed (for example D:\\Tools\\pixi), else ~/.pixi."""
-    home = os.environ.get("PIXI_HOME") or "~/.pixi"
-    return [str(Path(home, "bin", name)) for name in ("pixi", "pixi.exe")]
+    installed (for example D:\\Tools\\pixi), then ~/.pixi."""
+    homes = [home for home in (os.environ.get("PIXI_HOME"), "~/.pixi") if home]
+    return [
+        str(Path(home, "bin", name)) for home in homes for name in ("pixi", "pixi.exe")
+    ]
 
 
 def _pixi_manifest_args() -> list[str]:

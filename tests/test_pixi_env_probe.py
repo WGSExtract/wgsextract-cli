@@ -289,6 +289,23 @@ def test_pixi_installed_in_its_own_home_folder_is_found(tmp_path, monkeypatch):
     assert command is not None and shlex.split(command)[0] == str(own.exe)
 
 
+@posix_pixi
+def test_pixi_in_its_default_home_is_found_when_pixi_home_names_another(
+    tmp_path, monkeypatch
+):
+    """PIXI_HOME naming a folder without Pixi doesn't hide the one in ~/.pixi."""
+    if any(Path(p).exists() for p in ("/opt/homebrew/bin/pixi", "/usr/local/bin/pixi")):
+        pytest.skip("a system pixi is installed")
+    monkeypatch.setenv("PIXI_HOME", str(tmp_path / "WGSE Tools" / "pixi"))
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    monkeypatch.setattr(runtime, "source_checkout_root", lambda: None)
+
+    own = FakePixi(tmp_path / "own", None, Path.home() / ".pixi" / "bin")
+    own.env("gatk", locked=("gatk4",), installed=False)
+    command = pixi_tools.pixi_install_command("gatk")
+    assert command is not None and shlex.split(command)[0] == str(own.exe)
+
+
 def test_the_repair_command_installs_from_any_directory(tmp_path, monkeypatch):
     """It names the app's manifest when the app runs from a checkout."""
     app = tmp_path / "app"

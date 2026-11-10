@@ -104,34 +104,51 @@ function Invoke-ForwardedCommand {
 # The workspace can say setup is done while that folder is empty: setup ran in
 # another Windows account, or in an app sandbox (an MSIX app such as a store
 # app) whose AppData\Local writes Windows keeps apart, or the folder was removed.
+# Returns $null when config.toml sets that folder in a way this can't read; data
+# sources then leave finding the environment to Pixi.
 function Get-PixiEnvironmentsDirectory {
     param([Parameter(Mandatory = $true)][string]$AppDir)
     $config = Join-Path $AppDir ".pixi\config.toml"
-    if (Test-Path -LiteralPath $config -PathType Leaf) {
-        foreach ($line in Get-Content -LiteralPath $config) {
-            if ($line -match "^\s*detached-environments\s*=\s*(['""])(.+)\1\s*$") {
-                return $Matches[2]
-            }
+    if (-not (Test-Path -LiteralPath $config -PathType Leaf)) {
+        return (Join-Path $AppDir ".pixi\envs")
+    }
+    foreach ($line in Get-Content -LiteralPath $config -Encoding UTF8) {
+        if ($line -notmatch '^\s*detached-environments\s*=') {
+            continue
         }
+        # A TOML literal string, as Pixi writes a Windows path: no escapes.
+        if ($line -match "^\s*detached-environments\s*=\s*'([^']+)'\s*(#.*)?$") {
+            return $Matches[1]
+        }
+        # A TOML basic string, whose escapes are JSON's.
+        if ($line -match '^\s*detached-environments\s*=\s*("(?:[^"\\]|\\.)+")\s*(#.*)?$') {
+            try { return ($Matches[1] | ConvertFrom-Json) } catch { return $null }
+        }
+        return $null
     }
     return (Join-Path $AppDir ".pixi\envs")
 }
 
+# Pixi writes conda-meta\pixi once an environment is completely installed.
 function Test-PixiDefaultEnvironment {
     param([Parameter(Mandatory = $true)][string]$AppDir, [Parameter(Mandatory = $true)][string]$EnvsDir)
-    if (Test-Path -LiteralPath (Join-Path $EnvsDir "default\conda-meta") -PathType Container) {
+    if (Test-Path -LiteralPath (Join-Path $EnvsDir "default\conda-meta\pixi") -PathType Leaf) {
         return $true
     }
     # Detached: <envs>\<project>-<hash>\envs\default, recording the manifest it was installed for.
     $manifest = [System.IO.Path]::GetFullPath((Join-Path $AppDir "pixi.toml"))
-    foreach ($record in Get-ChildItem -Path (Join-Path $EnvsDir "*\envs\default\conda-meta\pixi") -File -ErrorAction SilentlyContinue) {
-        try {
-            $installedFor = (Get-Content -LiteralPath $record.FullName -Raw | ConvertFrom-Json).manifest_path
-        } catch {
-            return $true
+    foreach ($project in Get-ChildItem -LiteralPath $EnvsDir -Directory -Force -ErrorAction SilentlyContinue) {
+        $record = Join-Path $project.FullName "envs\default\conda-meta\pixi"
+        if (-not (Test-Path -LiteralPath $record -PathType Leaf)) {
+            continue
         }
-        if ($installedFor -and [string]::Equals([System.IO.Path]::GetFullPath($installedFor), $manifest, [System.StringComparison]::OrdinalIgnoreCase)) {
-            return $true
+        try {
+            $installedFor = (Get-Content -LiteralPath $record -Raw -Encoding UTF8 | ConvertFrom-Json).manifest_path
+            if ($installedFor -and [string]::Equals([System.IO.Path]::GetFullPath($installedFor), $manifest, [System.StringComparison]::OrdinalIgnoreCase)) {
+                return $true
+            }
+        } catch {
+            # Another checkout's unreadable record says nothing about this one.
         }
     }
     return $false
@@ -171,10 +188,13 @@ if (-not $pixi) {
     }
 }
 if (-not $pixi) {
-    $pixiHome = if ($env:PIXI_HOME) { $env:PIXI_HOME } else { Join-Path $HOME ".pixi" }
-    $homePixi = Join-Path $pixiHome "bin\pixi.exe"
-    if (Test-Path -LiteralPath $homePixi -PathType Leaf) {
-        $pixi = $homePixi
+    foreach ($pixiHome in @($env:PIXI_HOME, (Join-Path $HOME ".pixi"))) {
+        if (-not $pixiHome) { continue }
+        $homePixi = Join-Path $pixiHome "bin\pixi.exe"
+        if (Test-Path -LiteralPath $homePixi -PathType Leaf) {
+            $pixi = $homePixi
+            break
+        }
     }
 }
 if (-not $pixi) {
@@ -199,7 +219,7 @@ if ($env:GUI_FOR_CLI_DATA_SOURCE -eq "1") {
         exit 127
     }
     $envsDir = Get-PixiEnvironmentsDirectory -AppDir $appDir
-    if (-not (Test-PixiDefaultEnvironment -AppDir $appDir -EnvsDir $envsDir)) {
+    if ($envsDir -and -not (Test-PixiDefaultEnvironment -AppDir $appDir -EnvsDir $envsDir)) {
         [Console]::Error.WriteLine("WGS Extract's tools are missing from $envsDir. Run Setup again on the Settings page to install them.")
         exit 127
     }

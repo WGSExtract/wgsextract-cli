@@ -1,5 +1,12 @@
 @echo off
-setlocal EnableExtensions EnableDelayedExpansion
+setlocal EnableExtensions DisableDelayedExpansion
+rem Delayed expansion reads "!" in a path as a variable reference, so this would
+rem check and remove other folders than the ones named.
+for %%V in ("%~dp0" "%USERPROFILE%" "%LOCALAPPDATA%" "%APPDATA%" "%PIXI_HOME%") do (
+    set "WGSE_PATH_CHECK=%%~V"
+    call :reject_exclamation_mark || exit /b 1
+)
+setlocal EnableDelayedExpansion
 
 set "SCRIPT_DIR=%~dp0"
 cd /d "%SCRIPT_DIR%" || exit /b 1
@@ -170,10 +177,21 @@ if "%REMOVE_PIXI_CACHE%"=="1" (
 )
 
 if "%REMOVE_PIXI%"=="1" (
-    rem PIXI_HOME may name any folder; remove it only if it is Pixi's.
+    rem PIXI_HOME may name any folder, shared with other files: remove it whole
+    rem only if it holds nothing but Pixi's own, and otherwise only pixi.exe.
     if exist "%PIXI_BIN%\pixi.exe" (
-        call :remove_dir "%PIXI_HOME%"
-        if errorlevel 1 exit /b 1
+        call :find_non_pixi_entry
+        if defined NON_PIXI_ENTRY (
+            echo "!PIXI_HOME!" also holds "!NON_PIXI_ENTRY!"; removing only pixi.exe from it.
+            del /f /q "%PIXI_BIN%\pixi.exe"
+            if exist "%PIXI_BIN%\pixi.exe" (
+                echo ERROR: Could not remove "!PIXI_BIN!\pixi.exe"; close programs using it and rerun.
+                exit /b 1
+            )
+        ) else (
+            call :remove_dir "%PIXI_HOME%"
+            if errorlevel 1 exit /b 1
+        )
     ) else (
         echo No pixi.exe in "%PIXI_BIN%"; keeping "%PIXI_HOME%".
     )
@@ -309,3 +327,19 @@ exit /b 2
 echo ERROR: Unknown option: %~1
 echo Run uninstall_windows.bat --help for usage.
 exit /b 2
+
+:find_non_pixi_entry
+rem The first entry in PIXI_HOME that isn't one Pixi makes, if any.
+set "NON_PIXI_ENTRY="
+for /f "delims=" %%E in ('dir /b /a "%PIXI_HOME%" 2^>nul') do (
+    set "IS_PIXI_ENTRY=0"
+    for %%K in (bin envs manifests completions config.toml) do if /I "%%E"=="%%K" set "IS_PIXI_ENTRY=1"
+    if "!IS_PIXI_ENTRY!"=="0" if not defined NON_PIXI_ENTRY set "NON_PIXI_ENTRY=%%E"
+)
+exit /b 0
+
+:reject_exclamation_mark
+if not defined WGSE_PATH_CHECK exit /b 0
+if "%WGSE_PATH_CHECK:!=%"=="%WGSE_PATH_CHECK%" exit /b 0
+echo ERROR: Paths containing "!" are not supported: "%WGSE_PATH_CHECK%"
+exit /b 1

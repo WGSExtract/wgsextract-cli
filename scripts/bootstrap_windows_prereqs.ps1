@@ -199,6 +199,8 @@ function Ensure-Pixi {
         return
     }
 
+    # A Pixi already in ~\.pixi still counts when PIXI_HOME names another folder.
+    Add-PathForCurrentProcess (Join-Path $env:USERPROFILE ".pixi\bin")
     Add-PathForCurrentProcess (Get-PixiBinDirectory)
     $pixi = Get-Command pixi -ErrorAction SilentlyContinue
     if ($pixi) {
