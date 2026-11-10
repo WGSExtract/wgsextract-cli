@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import sys
 from argparse import Namespace
 from pathlib import Path
@@ -240,6 +241,21 @@ def test_issue_622_windows_report_says_cyp2d6_not_called_with_spaced_paths(
         str(out),
     ]
     assert "CYP2D6 not called" in caplog.text
+
+
+@needs_htslib
+def test_issue_622_windows_process_count_stays_within_61_on_many_cores(
+    tmp_path, pharmcat_env, monkeypatch
+):
+    monkeypatch.setattr(runtime, "is_windows_host", lambda: True)
+    monkeypatch.setattr(os, "cpu_count", lambda: 128)
+    release = _release(tmp_path / "pharmcat")
+    vcf = _vcf(tmp_path / "s.vcf.gz", SNPS)
+    run_wgsextract("vcf", "pharmcat", "--vcf-input", vcf, "--pharmcat-dir",
+                   str(release))  # fmt: skip
+    argv = json.loads((release / "run.json").read_text())["argv"]
+    # contract: Python's ProcessPoolExecutor on Windows allows at most 61 workers.
+    assert argv[argv.index("-cp") + 1] == "61"
 
 
 @needs_htslib

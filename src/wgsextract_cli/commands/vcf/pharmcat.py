@@ -262,9 +262,9 @@ def run_pharmcat(params: VcfPharmcatParams) -> None:
             command.append("--absent-to-ref")
         if runtime.is_windows_host():
             # PharmCAT 3.4.0 compares the unset process count with Windows'
-            # limit of 61 and fails; pass its own default explicitly.
+            # limit of 61 and fails; pass its own default, within that limit.
             cpus = os.cpu_count() or 1
-            command += ["-cp", str(1 if cpus < 3 else max(2, cpus - 2))]
+            command += ["-cp", str(1 if cpus < 3 else min(61, max(2, cpus - 2)))]
         # The pipeline has no outside-call flag: it uses `<base name>.outside.tsv`
         # beside its preprocessed VCF, which it writes to the output directory.
         outside = str(Path(outdir, f"{stem}.outside.tsv"))
