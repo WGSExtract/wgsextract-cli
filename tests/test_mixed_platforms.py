@@ -3,6 +3,7 @@ not silently take one platform's defaults: commands whose model, preset or
 caller depends on the platform refuse it unless told which to use, and the
 others warn."""
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -95,3 +96,23 @@ def test_alignment_refuses_to_pick_a_preset(reads, tmp_path, command):
             "--outdir", str(tmp_path),
         )  # fmt: skip
     assert "illumina, ont" in str(error.value)
+
+
+def test_read_groups_differing_only_in_pl_case_are_one_platform(tmp_path):
+    sample = snp_sample(
+        tmp_path, "@RG\tID:rg\tSM:S\tPL:PacBio\n@RG\tID:b\tSM:S\tPL:PACBIO"
+    )
+    result = api.info.info(
+        api.InfoParams(input=Path(sample.bam), ref=Path(sample.ref), outdir=tmp_path)
+    )
+    assert "platforms" not in result.metrics
+    assert "mixed_platforms" not in warning_codes(result)
+
+
+def test_sv_calling_on_a_missing_input_gives_the_missing_path_error(tmp_path, caplog):
+    """The mixed-platform check must not read a missing file's header first."""
+    caplog.set_level(logging.DEBUG)
+    missing = tmp_path / "missing.bam"
+    result = api.vcf.sv(api.VcfSvParams(input=missing, outdir=tmp_path), check=False)
+    assert result.exit_code and "missing.bam" in result.error.message
+    assert "Failed to fetch BAM header" not in caplog.text

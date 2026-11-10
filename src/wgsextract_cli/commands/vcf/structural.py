@@ -333,23 +333,21 @@ def run_sv_sniffles(params: VcfSvParams) -> None:
     _record_calls(out_vcf, "structural_variants", ref, region)
 
 
-def _detected_ref(params: VcfSvParams) -> str | None:
-    """The resolved --ref that decodes the input CRAM."""
+def _detected_platform(params: VcfSvParams, choice: str | None = None) -> str | None:
+    """Platform of the input alignment, decoding CRAM with the resolved --ref;
+    with ``choice`` (the option that picks a caller), mixed platforms refuse."""
     input_file = str(params.input)
+    if not Path(input_file).is_file():
+        return None
     lib = ReferenceLibrary(
         str(params.ref) if params.ref else None,
         calculate_bam_md5(input_file, None),
         input_path=input_file,
     )
-    return lib.fasta
-
-
-def _detected_platform(params: VcfSvParams) -> str | None:
-    """Platform of the input alignment, decoding CRAM with the resolved --ref."""
-    input_file = str(params.input)
-    if not Path(input_file).is_file():
-        return None
-    return input_platform(input_file, _detected_ref(params))
+    platform = input_platform(input_file, lib.fasta)
+    if platform is None and choice:
+        refuse_mixed_platforms(input_file, lib.fasta, choice)
+    return platform
 
 
 def _select_sv_caller(params: VcfSvParams) -> VcfSvParams:
@@ -382,15 +380,13 @@ def _sv_caller(params: VcfSvParams) -> str:
         return caller
     detected = None
     if not ont and (caller in ("pbsv", "delly") or (not caller and not long_read)):
-        detected = _detected_platform(params)
+        detected = _detected_platform(
+            params, None if caller else "--caller (or --ont/--pacbio)"
+        )
     if caller == "pbsv" and (ont or detected == "ont"):
         raise pbsv_ont_error
     if ont or long_read:
         return caller or "sniffles"
-    if not caller and detected is None:
-        refuse_mixed_platforms(
-            params.input, _detected_ref(params), "--caller (or --ont/--pacbio)"
-        )
     if caller:
         if caller == "delly" and detected == "ont":
             logging.warning(

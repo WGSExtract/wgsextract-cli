@@ -719,3 +719,24 @@ def test_cram_without_region_matches_bam_and_skips_empty_contigs(tmp_path, no_co
     assert beds[".cram"] == beds[".bam"]
     rows = beds[".bam"].splitlines()
     assert rows and {row.split("\t")[0] for row in rows} == {"chr20"}
+
+
+@needs_samtools
+def test_api_pileup_warns_about_mixed_platform_reads(tmp_path, fake_modkit, no_config):
+    """#652: ONT reads merged with Illumina ones are summarized with a warning."""
+    ref = tmp_path / "ref.fa"
+    ref.write_text(">chr20\n" + "ACGT" * 250 + "\n")
+    sam = write_sam(
+        tmp_path / "reads.sam",
+        ["MM:Z:C+m?,0;\tML:B:C,230"] * 3,
+        platform="ONT\n@RG\tID:b\tPL:ILLUMINA",
+    )
+    bam = tmp_path / "reads.bam"
+    subprocess.run(["samtools", "sort", "-o", str(bam), str(sam)], check=True)
+    subprocess.run(["samtools", "index", str(bam)], check=True)
+    result = api.methylation.pileup(
+        MethylationPileupParams(input=bam, ref=ref, outdir=tmp_path / "out")
+    )
+    assert result.status == "ok"
+    [warning] = [w for w in result.warnings if w.code == "mixed_platforms"]
+    assert warning.details["platforms"] == "illumina,ont"
