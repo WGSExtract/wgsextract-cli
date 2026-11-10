@@ -11,6 +11,7 @@ from wgsextract_cli.core import live_status
 from wgsextract_cli.core.genome_library import apply_genome_selection
 from wgsextract_cli.core.keep_awake import keep_awake
 from wgsextract_cli.core.last_run import LogTail, record_last_run
+from wgsextract_cli.core.reference_lookup import local_reference_lookup
 from wgsextract_cli.core.remote_input import check_public, is_url
 from wgsextract_cli.core.results import (
     CommandResult,
@@ -84,6 +85,7 @@ def dispatch_command(args: argparse.Namespace, explicit_dests: set[str]) -> None
             with (
                 _progress_line(args, result.command) as line,
                 _rendering_progress(line),
+                local_reference_lookup(),
             ):
                 _run(args, explicit_dests, result)
         finally:

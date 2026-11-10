@@ -11,6 +11,7 @@ from typing import IO
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import VcfCnvParams, VcfSvParams
 from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.cram_staging import stage_bam
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -249,7 +250,8 @@ def run_sv_pbsv(params: VcfSvParams) -> None:
             discover_cmd.extend(["--tandem-repeats", tandem_repeats])
         if params.ccs:
             discover_cmd.append("--hifi")
-        discover_cmd.extend([str(params.input), svsig])
+        reads = stage_bam(str(params.input), ref, work, threads, region, tool="pbsv")
+        discover_cmd.extend([reads, svsig])
 
         call_cmd = ["pbsv", "call", "-j", threads]
         if region:

@@ -145,9 +145,10 @@ def get_sam_view_cmd(
     cmd = ["samtools", "view", "-@", threads]
     if fmt == "CRAM":
         cmd += ["-O", "CRAM"]
-        if reference:
-            cmd += ["-T", fspath(reference)]
     elif fmt == "BAM":
         cmd += ["-b"]
+    if reference:
+        # Also decodes CRAM input with it.
+        cmd += ["-T", fspath(reference)]
 
     return cmd
