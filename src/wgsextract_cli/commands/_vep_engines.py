@@ -90,15 +90,6 @@ def vep_engine(name: str | None) -> VepEngine:
         ) from None
 
 
-def require_engine_here(engine: VepEngine) -> None:
-    if not engine.supported_here():
-        others = [e.name for e in ENGINES.values() if e.supported_here()]
-        raise WGSExtractError(
-            f"{engine.label} is not supported on this platform; use "
-            f"--engine {' or '.join(others)} (or set vep_engine in config.toml)."
-        )
-
-
 def refuse_unsupported_args(engine: VepEngine, vep_args: str | None) -> None:
     """Refuse --vep-args options ``engine`` would ignore or can't honour."""
     if not vep_args or not engine.refused_args:

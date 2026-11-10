@@ -39,7 +39,6 @@ from ._analyze_workflows import detect_vcf_type
 from ._vep_engines import (
     VepEngine,
     refuse_unsupported_args,
-    require_engine_here,
     vep_engine,
 )
 from ._vep_resources import preprocess_vcf_chr_prefix
@@ -423,7 +422,6 @@ def run_vep(params: VepRunParams) -> None:
             current_result().add_input(path, "batch_input")
 
     engine = vep_engine(params.engine)
-    require_engine_here(engine)
     refuse_unsupported_args(engine, params.vep_args)
     tool = "vep-rs" if engine.name == "vep-rs" else "vep"
     verify_dependencies([tool, "tabix", "bcftools"])
