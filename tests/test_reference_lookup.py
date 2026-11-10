@@ -6,7 +6,6 @@ server. A local HTTP server stands in for EBI's.
 """
 
 import hashlib
-import sys
 import threading
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -19,6 +18,7 @@ from tests.htslib_helpers import needs_htslib, write_fasta
 from wgsextract_cli import api
 from wgsextract_cli.core import containers
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.reference_lookup import local_ref_path
 from wgsextract_cli.core.utils import run_command
 from wgsextract_cli.main import main
 
@@ -49,6 +49,7 @@ def reference_server() -> Iterator[_ReferenceServer]:
     thread.start()
     yield server
     server.shutdown()
+    thread.join(timeout=10)
     server.server_close()
 
 
@@ -130,32 +131,36 @@ def test_a_local_reference_cache_in_ref_path_still_decodes(
     assert reference_server.requests == []
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="REF_PATH splits on ';'")
-@pytest.mark.parametrize(
-    ("host", "container"),
-    [
-        ("http://refs.example:8080/%s:/srv/refs/%2s/%s", "/srv/refs/%2s/%s"),
-        ("https://www.ebi.ac.uk/ena/cram/md5/%s", "{cache}/hts-ref/%2s/%2s/%s"),
-        (None, "{cache}/hts-ref/%2s/%2s/%s"),
-    ],
-)
-def test_containers_get_a_local_only_ref_path(tmp_path, monkeypatch, host, container):
+@pytest.mark.parametrize("host", ["http://refs.example:8080/%s:/srv/refs/%s", None])
+def test_containers_get_a_local_ref_path_of_their_own(tmp_path, monkeypatch, host):
+    # #636: the image's htslib may be old enough to ask EBI when REF_PATH is
+    # unset; the host's REF_PATH entries don't belong in the container.
     (tmp_path / "bin").mkdir()
     docker = FakeDocker(tmp_path / "bin", tmp_path / "dv")
     docker.add_image("image")
     monkeypatch.setattr(
         containers, "get_tool_path", lambda _tool: str(tmp_path / "bin" / "docker")
     )
-    cache = tmp_path / "xdg-cache"
-    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
     if host is None:
         monkeypatch.delenv("REF_PATH", raising=False)
     else:
         monkeypatch.setenv("REF_PATH", host)
 
-    shown = containers.run_container(
-        "image", ["/bin/sh", "-c", 'echo "$REF_PATH"'], [str(tmp_path)],
-        capture_output=True,
-    )  # fmt: skip
+    containers.run_container("image", ["/bin/true"], [str(tmp_path)])
 
-    assert shown.stdout.strip() == container.format(cache=cache)
+    ref_path = docker.runs()[-1]["env"]["REF_PATH"]
+    assert ref_path and "://" not in ref_path
+    assert not ref_path.startswith((str(tmp_path), "/srv"))
+
+
+@pytest.mark.parametrize(
+    ("ref_path", "sep", "local"),
+    [
+        ("https://www.ebi.ac.uk/ena/cram/md5/%s:/srv/a::b/%s", ":", "/srv/a::b/%s"),
+        ("https://www.ebi.ac.uk/ena/cram/md5/%s;C:\\refs\\a::b\\%s", ";",
+         "C:\\refs\\a::b\\%s"),
+    ],
+)  # fmt: skip
+def test_ref_path_keeps_local_entries_as_written(ref_path, sep, local):
+    # #636: '::' escapes a colon only where ':' separates entries.
+    assert local_ref_path(ref_path, sep) == local

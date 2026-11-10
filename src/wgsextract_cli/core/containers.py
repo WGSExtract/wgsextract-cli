@@ -18,7 +18,7 @@ from contextlib import contextmanager, suppress
 from pathlib import Path
 
 from wgsextract_cli.core.dependencies import get_tool_path
-from wgsextract_cli.core.reference_lookup import REF_PATH, local_ref_path
+from wgsextract_cli.core.reference_lookup import REF_PATH
 from wgsextract_cli.core.steps import RUN_TAG
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
@@ -31,6 +31,8 @@ from wgsextract_cli.core.utils import (
 OOM_EVENT_GRACE = 5.0
 # Labels each container with the step run (RUN_TAG) that started it.
 STEP_LABEL = "wgsextract.step"
+# A container's REF_PATH: set and local, so htslib never asks a server.
+CONTAINER_REF_PATH = "/tmp/hts-ref/%2s/%2s/%s"
 
 
 def docker(setup: str) -> str:
@@ -146,8 +148,9 @@ def run_container(
     if temporary_directory:
         cmd += ["-e", f"TMPDIR={home}"]
     # The image's htslib may be old enough to fetch a reference it can't find
-    # from EBI; the host's local cache folders aren't mounted, so it fails.
-    cmd += ["-e", f"{REF_PATH}={local_ref_path(os.environ.get(REF_PATH))}"]
+    # from EBI unless REF_PATH is set; the host's caches aren't mounted, so it
+    # gets an empty folder of its own (#636).
+    cmd += ["-e", f"{REF_PATH}={CONTAINER_REF_PATH}"]
     for mount in mounts:
         cmd += ["-v", f"{mount}:{mount}"]
     name = f"wgsextract-{uuid.uuid4().hex[:12]}"

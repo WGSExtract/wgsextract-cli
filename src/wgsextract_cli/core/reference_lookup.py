@@ -42,7 +42,7 @@ def _entries(value: str, sep: str) -> list[str]:
     current: list[str] = []
     i = 0
     while i < len(value):
-        if value.startswith("::", i):
+        if sep == ":" and value.startswith("::", i):
             current.append(":")
             i += 2
             continue
@@ -68,10 +68,11 @@ def _default_cache() -> str:
     return str(Path(base, "hts-ref")) + "/%2s/%2s/%s"
 
 
-def local_ref_path(value: str | None) -> str:
-    """``value`` (a ``REF_PATH``) without remote locations; htslib's default
-    cache when none is left, never empty (empty means EBI to older htslib)."""
-    sep = _separator()
+def local_ref_path(value: str | None, sep: str | None = None) -> str:
+    """``value`` (a ``REF_PATH``, split on ``sep``, the platform's by default)
+    without remote locations; htslib's default cache when none is left, never
+    empty (empty means EBI to older htslib)."""
+    sep = sep or _separator()
     local = [entry for entry in _entries(value or "", sep) if not _REMOTE.match(entry)]
     if not local:
         local = [_default_cache()]
