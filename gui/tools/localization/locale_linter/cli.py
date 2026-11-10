@@ -40,8 +40,8 @@ def main() -> int:
         "--update-source-hashes",
         action="store_true",
         help=(
-            "After retranslating, refresh stale i18n-source-hash comments in place. "
-            "Lines without a recorded hash (TODO, i18n-ignore) are left alone."
+            "After retranslating, refresh stale i18n-source-hash comments in place and "
+            "stamp new translations. i18n-ignore, TODO and verbatim lines are left alone."
         ),
     )
     parser.add_argument(

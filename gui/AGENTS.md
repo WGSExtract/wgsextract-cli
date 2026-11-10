@@ -59,7 +59,7 @@ benchmarks) live on the `old-experimental` branch; do not reintroduce them here.
 - Use Node's built-in test runner (`node:test`) for tests under `app/tests`, and add new test files to `scripts/run-node-tests.mjs`.
 - Prefer explicit error handling over non-null assertions and unchecked casts.
 - Every user-visible string goes through the localization tables in `resources/BuiltinStrings`.
-- After changing an English string, update its translations, then run `python tools/localization/lint_locales.py --update-source-hashes` from `gui/`. It only refreshes `i18n-source-hash` comments that are stale, so the diff should be one line per changed key per locale.
+- After changing an English string, update its translations, then run `python tools/localization/lint_locales.py --update-source-hashes` from `gui/`. It refreshes stale `i18n-source-hash` comments and adds one to new translations, but leaves `i18n-ignore`, TODO and verbatim-English lines alone, so the diff should be one line per changed or newly translated key per locale. The linter warns `missing-source-hash` for a translated line without a hash.
 
 ## App Behavior
 

@@ -122,7 +122,9 @@ class LocaleLinterRuleTests(unittest.TestCase):
                 '"changed" = "New source"\n'
                 '"stable" = "Stable"\n'
                 '"brand" = "WGS Extract"\n'
-                '"todo" = "Not yet translated"\n',
+                '"todo" = "Not yet translated"\n'
+                '"fresh" = "Fresh"\n'
+                '"copied" = "Copied"\n',
                 encoding="utf-8",
             )
             target = directory / "strings.fr.toml"
@@ -131,16 +133,43 @@ class LocaleLinterRuleTests(unittest.TestCase):
                 f'"stable" = "Stable FR"  # i18n-source-hash:{short_source_hash("Stable")}',
                 '"brand" = "WGS Extract"  # i18n-ignore',
                 '"todo" = "Not yet translated"  # i18n-ignore; TODO: translate',
+                '"fresh" = "Nouveau"',
+                '"copied" = "Copied"',
             ]
             target.write_text("\n".join(original_lines) + "\n", encoding="utf-8")
 
             updated = update_source_hashes(parse_toml_file(source_path), target)
             rewritten = target.read_text(encoding="utf-8").splitlines()
 
-            self.assertEqual(updated, 1)
+            self.assertEqual(updated, 2)
             changed = [i for i, (a, b) in enumerate(zip(original_lines, rewritten)) if a != b]
-            self.assertEqual(changed, [0])
+            self.assertEqual(changed, [0, 4])
             self.assertIn(f"i18n-source-hash:{short_source_hash('New source')}", rewritten[0])
+            self.assertIn(f"i18n-source-hash:{short_source_hash('Fresh')}", rewritten[4])
+
+    def test_translated_line_without_hash_is_flagged_and_stamped_once(self) -> None:
+        # Review of #653: a new translation must get a first hash, or later
+        # source changes are never reported.
+        source = parsed_file([entry("title", "Hello", 1), entry("brand", "WGS", 2)])
+        target = parsed_file(
+            [entry("title", "Bonjour", 1), entry("brand", "WGS", 2, ignore_untranslated=True)]
+        )
+
+        report = lint_locale(source, target, "Bundle", "fr", requires_builtin=False)
+
+        self.assertEqual(
+            [(f.code, f.key) for f in report.findings if f.code == "missing-source-hash"],
+            [("missing-source-hash", "title")],
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "strings.fr.toml"
+            path.write_text('"title" = "Bonjour"\n"brand" = "WGS"  # i18n-ignore\n', encoding="utf-8")
+
+            self.assertEqual(update_source_hashes(source, path), 1)
+            self.assertEqual(update_source_hashes(source, path), 0)
+            restamped = parse_toml_file(path)
+            self.assertEqual(restamped.entries[0].recorded_source_hash, short_source_hash("Hello"))
+            self.assertIsNone(restamped.entries[1].recorded_source_hash)
 
     def test_parser_tracks_duplicate_keys_and_comments(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

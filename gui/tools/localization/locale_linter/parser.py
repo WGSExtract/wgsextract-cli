@@ -66,7 +66,7 @@ def parse_toml_file(path: Path) -> ParsedFile:
                 collected.pop(0)
             if collected and collected[-1] == "":
                 collected.pop()
-            _record(parsed, key, "\n".join(collected), line_number, False, None)
+            _record(parsed, key, "\n".join(collected), line_number, False, None, multiline=True)
             continue
 
         value_literal, comment = split_value_and_comment(raw_value_and_comment)
@@ -79,6 +79,7 @@ def parse_toml_file(path: Path) -> ParsedFile:
                 line_number,
                 "i18n-ignore" in comment.lower(),
                 extract_source_hash(comment),
+                todo=is_todo_comment(comment),
             )
             continue
         if not (value_literal.startswith('"') and value_literal.endswith('"') and len(value_literal) >= 2):
@@ -94,6 +95,7 @@ def parse_toml_file(path: Path) -> ParsedFile:
             line_number,
             "i18n-ignore" in comment.lower(),
             extract_source_hash(comment),
+            todo=is_todo_comment(comment),
         )
 
     return parsed
@@ -106,6 +108,9 @@ def _record(
     line: int,
     ignore_untranslated: bool,
     recorded_source_hash: Optional[str],
+    *,
+    todo: bool = False,
+    multiline: bool = False,
 ) -> None:
     if key in parsed.key_index:
         prev = parsed.entries[parsed.key_index[key]].line
@@ -118,11 +123,17 @@ def _record(
             line=line,
             ignore_untranslated=ignore_untranslated,
             recorded_source_hash=recorded_source_hash,
+            todo=todo,
+            multiline=multiline,
         )
     )
 
 
 _SOURCE_HASH_RE = re.compile(r"i18n-source-hash:([0-9a-fA-F]+)", re.IGNORECASE)
+
+
+def is_todo_comment(comment: str) -> bool:
+    return "todo" in comment.lower()
 
 
 def extract_source_hash(comment: str) -> Optional[str]:
