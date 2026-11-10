@@ -507,7 +507,7 @@
 "controls.vcf.v066.sv-tandem-repeats.label" = "Tandem-Repeat-BED (optional)"  # i18n-source-hash:c23b21dd
 "controls.vcf.v066.sv-tandem-repeats.tooltip" = "Optionale BED-Datei für Long-Read-SV-Caller, die Aufrufe in Repeats verbessert. Leer sendet nichts."  # i18n-source-hash:adff7504
 "sections.vcf.v066.clair3.title" = "Clair3-Kleinvarianten (optional)"  # i18n-source-hash:94e06e63
-"sections.vcf.v066.clair3.subtitle" = "Optionaler Nanopore-Caller, nur auf Linux x86-64 qualifiziert; macOS und ARM werden abgelehnt. Das Setup installiert ihn nicht: Führen Sie pixi install -e clair3 in der WGS-Extract-Laufzeit aus. DeepVariant bleibt der Standard-Caller für Nanopore."  # i18n-source-hash:6d372cce
+"sections.vcf.v066.clair3.subtitle" = "Optionaler Nanopore-Caller: Clair3 2.0.5 unter Linux (x86-64, ARM64) und auf Apple-Silicon-Macs; nicht unter Windows oder auf Intel-Macs. Das Setup installiert ihn nicht: Führen Sie pixi install -e clair3 in der WGS-Extract-Laufzeit aus. DeepVariant bleibt der Standard-Caller für Nanopore."  # i18n-source-hash:9f4ed6c8
 "controls.vcf.v066.clair3-model.label" = "Clair3-Modell (optional)"  # i18n-source-hash:497f8013
 "controls.vcf.v066.clair3-model.placeholder" = "r1041_e82_400bps_sup_v500"  # i18n-ignore
 "controls.vcf.v066.clair3-model.tooltip" = "Modellname oder -verzeichnis passend zum Basecaller der Reads. Leer verwendet clair3_model aus config.toml, dann den im BAM/CRAM-Header genannten Basecaller; nennt keines davon einen, stoppt der Lauf und fragt nach einem Modell. HiFi-, Illumina- und *_with_mv-Modelle werden abgelehnt."  # i18n-source-hash:5c437be9

@@ -507,7 +507,7 @@
 "controls.vcf.v066.sv-tandem-repeats.label" = "BED de répétitions en tandem (facultatif)"  # i18n-source-hash:c23b21dd
 "controls.vcf.v066.sv-tandem-repeats.tooltip" = "BED facultatif pour les appeleurs de SV à lectures longues, qui améliore les appels dans les répétitions. Vide n’envoie rien."  # i18n-source-hash:adff7504
 "sections.vcf.v066.clair3.title" = "Petits variants Clair3 (facultatif)"  # i18n-source-hash:94e06e63
-"sections.vcf.v066.clair3.subtitle" = "Appeleur Nanopore facultatif, qualifié uniquement sur Linux x86-64 ; macOS et ARM sont refusés. L’installation ne l’inclut pas : exécutez pixi install -e clair3 dans l’environnement WGS Extract. DeepVariant reste l’appeleur Nanopore par défaut."  # i18n-source-hash:6d372cce
+"sections.vcf.v066.clair3.subtitle" = "Appeleur Nanopore facultatif : Clair3 2.0.5 sous Linux (x86-64, ARM64) et sur les Mac Apple Silicon ; pas sous Windows ni sur les Mac Intel. L’installation ne l’inclut pas : exécutez pixi install -e clair3 dans l’environnement WGS Extract. DeepVariant reste l’appeleur Nanopore par défaut."  # i18n-source-hash:9f4ed6c8
 "controls.vcf.v066.clair3-model.label" = "Modèle Clair3 (facultatif)"  # i18n-source-hash:497f8013
 "controls.vcf.v066.clair3-model.placeholder" = "r1041_e82_400bps_sup_v500"  # i18n-ignore
 "controls.vcf.v066.clair3-model.tooltip" = "Nom ou répertoire du modèle correspondant au basecaller des lectures. Vide utilise clair3_model de config.toml, puis le basecaller indiqué dans l’en-tête BAM/CRAM ; si aucun n’en indique, l’exécution s’arrête et demande un modèle. Les modèles HiFi, Illumina et *_with_mv sont refusés."  # i18n-source-hash:5c437be9

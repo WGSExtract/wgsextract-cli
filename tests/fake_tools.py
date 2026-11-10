@@ -426,7 +426,8 @@ class FakeClair3:
         python_tool(bindir, "run_clair3.sh", _FAKE_CLAIR3.format(
             log=str(self.log), bcftools=bcftools, failure=str(self.failure),
             version=version,
-            old_htslib=tuple(map(int, version.split("."))) < (2, 0, 5),
+            old_htslib=not version[:1].isdigit()
+            or tuple(map(int, version.split("."))) < (2, 0, 5),
         ))  # fmt: skip
 
     def fail(

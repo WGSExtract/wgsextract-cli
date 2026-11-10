@@ -253,7 +253,13 @@ def as_cram(reads, version: str, path: Path) -> str:
 @needs_tools("samtools", "bcftools", "tabix")
 @pytest.mark.parametrize(
     ("fake_clair3", "version", "staged"),
-    [("2.0.3", "3.0", False), ("2.0.3", "3.1", True), ("2.0.5", "3.1", False)],
+    [
+        ("2.0.3", "3.0", False),
+        ("2.0.3", "3.1", True),
+        ("2.0.5", "3.1", False),
+        # An unreadable version may be an old htslib: stage to be safe.
+        ("unknown", "3.1", True),
+    ],
     indirect=["fake_clair3"],
 )
 def test_clair3_reads_cram_31(
