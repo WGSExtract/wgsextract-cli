@@ -168,6 +168,7 @@ def test_a_comma_in_the_name_and_catalog_comments_are_handled(tmp_path, ref):
     assert (row[0], row[4], row[8]) == ("HTT", "20/20", "normal")
 
 
+@needs_longtr
 def test_a_bad_catalog_fails_before_sex_inference(tmp_path, ref, caplog):
     bam = _sample(tmp_path, [_read("r", 20)])
     with pytest.raises(api.CommandFailed, match="Repeat catalog not found"):
