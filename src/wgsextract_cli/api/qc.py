@@ -7,6 +7,7 @@ input."""
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -129,6 +130,10 @@ class QcVcfParams(Params):
             raise UsageError("--input is required.")
 
 
+# The files of a VerifyBamID2 panel (``--svd-prefix``); .V is optional.
+SVD_PANEL_SUFFIXES = (".UD", ".mu", ".bed", ".V")
+
+
 @dataclass(frozen=True, kw_only=True)
 class QcContaminationParams(Params):
     """Estimate how much of a BAM/CRAM's DNA comes from another person with
@@ -163,6 +168,13 @@ class QcContaminationParams(Params):
         "1000 Genomes resources for the input's build.",
         metavar="PREFIX",
     )
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        # The panel files the prefix names; the server checks each one,
+        # following symlinks, as it checks path fields.
+        if self.svd_prefix:
+            for suffix in SVD_PANEL_SUFFIXES:
+                yield "svd_prefix", Path(self.svd_prefix + suffix)
 
 
 @dataclass(frozen=True, kw_only=True)

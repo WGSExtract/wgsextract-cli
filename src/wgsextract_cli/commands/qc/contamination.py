@@ -12,6 +12,7 @@ own (``--svd-prefix``). See docs/contamination.md.
 from __future__ import annotations
 
 import logging
+import math
 import re
 import shutil
 import tempfile
@@ -84,19 +85,20 @@ def _panel_prefix(
     return prefix
 
 
-def _rename(name: str, chr_prefix: bool) -> str:
-    bare = name.removeprefix("chr")
-    return f"chr{bare}" if chr_prefix else bare
+def _other_naming(name: str) -> str:
+    """chr20 as 20, and 20 as chr20."""
+    return name[3:] if name.startswith("chr") else f"chr{name}"
 
 
 def _matching_panel(prefix: str, aln: Alignment, work: str) -> str:
-    """The panel with its contigs named as the alignment's (chr1 or 1): the
-    1000 Genomes GRCh37 panel names them 1, the GRCh38 one chr1."""
+    """The panel with its contigs named as the alignment's (chr20 or 20): the
+    1000 Genomes GRCh37 panel names them 20, the GRCh38 one chr20. Decided by
+    the contigs both have, so a one-chromosome alignment matches too."""
     with open(prefix + ".bed") as f:
         contigs = {line.split("\t", 1)[0] for line in f if line.strip()}
     if contigs & aln.lengths.keys():
         return prefix
-    renamed = {c: _rename(c, aln.chr_prefix) for c in contigs}
+    renamed = {c: _other_naming(c) for c in contigs}
     if not set(renamed.values()) & aln.lengths.keys():
         raise WGSExtractError(
             "None of the contigs of the VerifyBamID2 panel are in the input "
@@ -156,6 +158,12 @@ def _run(command: list[str], args: list[str], sanity_check: bool) -> tuple[int, 
     return done.returncode, (done.stdout or "") + (done.stderr or "")
 
 
+def _covered_markers(log: str) -> int | None:
+    """Panel sites with reads, as VerifyBamID2's pileup counts them."""
+    found = _MARKERS.search(log)
+    return int(found[1]) if found else None
+
+
 def _estimate(
     command: list[str], aln: Alignment, panel: str, work: str
 ) -> tuple[Estimate, str, bool]:
@@ -166,6 +174,14 @@ def _estimate(
             "--BamFile", aln.path, "--Output", output, "--NumThread", aln.threads]  # fmt: skip
     status, log = _run(command, args, sanity_check=True)
     relaxed = status != 0 and _INSUFFICIENT in log
+    if relaxed and _covered_markers(log) == 0:
+        # Without the check VerifyBamID2 would still report a FREEMIX, from
+        # no reads at all (an mtDNA-only extract, say).
+        raise WGSExtractError(
+            f"{Path(aln.path).name} has no reads at any of the panel's sites "
+            "(is it a subset without the autosomes?); contamination can't be "
+            "estimated from it."
+        )
     if relaxed:
         # A region subset or low coverage covers too few markers for the
         # check; the estimate is still made, with a warning.
@@ -176,14 +192,19 @@ def _estimate(
             f"VerifyBamID2 failed (exit {status}): {tail[-1500:].strip()}"
         )
     freemix, reads, depth = parse_self_sm(output + ".selfSM")
-    markers = _MARKERS.search(log)
+    covered = _covered_markers(log)
+    if covered == 0 or reads == 0 or not math.isfinite(freemix + depth):
+        raise WGSExtractError(
+            f"VerifyBamID2 found no reads at the panel's sites in "
+            f"{Path(aln.path).name}; contamination can't be estimated from it."
+        )
     pcs = (
         parse_ancestry(output + ".Ancestry")
         if Path(output + ".Ancestry").is_file()
         else {}
     )
     return (
-        Estimate(freemix, reads, depth, int(markers[1]) if markers else None, pcs),
+        Estimate(freemix, reads, depth, covered, pcs),
         log,
         relaxed,
     )

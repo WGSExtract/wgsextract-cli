@@ -674,21 +674,22 @@ def label_vcf(
     summary_columns: Sequence[str] = (),
     region_names: Sequence[tuple[str, int, int, str]] = (),
     keep_findings: bool = True,
+    samples: Sequence[PathInput | None] = (),
 ) -> ConfidenceSummary:
     """Write source_vcf's records (those matching the bcftools ``include``
     expression, within ``regions_file``) with confidence labels to out_vcf,
     bgzipped and indexed; with out_vcf None, only summarise them. A sample
-    that `qc contamination` found contaminated caps every label at moderate."""
+    that `qc contamination` found contaminated caps every label at moderate:
+    its estimate is looked up for ``samples`` (the sample's own input files,
+    as source_vcf may be an intermediate written elsewhere), then source_vcf
+    and out_vcf."""
     from wgsextract_cli.core.contamination import contaminated, warn_if_contaminated
 
-    freemix = contaminated(source_vcf)
-    if freemix is None and out_vcf is not None:
-        freemix = contaminated(out_vcf)
-    if freemix is not None:
-        warn_if_contaminated(
-            source_vcf if contaminated(source_vcf) is not None else out_vcf,
-            "the calls labelled",
-        )
+    freemix = None
+    for file in (*samples, source_vcf, out_vcf):
+        if file is not None and (freemix := contaminated(file)) is not None:
+            warn_if_contaminated(file, "the calls labelled")
+            break
     view = ["bcftools", "view"]
     if include:
         view += ["-i", include]

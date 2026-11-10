@@ -1254,3 +1254,53 @@ def test_report_from_an_alignment_needs_no_samtools(sample, monkeypatch):
     assert code == 0, out
     result = api.report.build(api.ReportParams(input=cram, outdir=sample / "out2"))
     assert result.exit_code == 0
+
+
+def _overview_contamination(report: dict) -> tuple[Any, set[str]]:
+    overview = report["sections"]["overview"]
+    value = next(
+        (f["value"] for f in overview["facts"] if f["name"] == "contamination"), None
+    )
+    return value, {w["code"] for w in overview["warnings"]}
+
+
+def test_report_shows_only_the_selected_files_contamination(tmp_path):
+    """PR #631 review: in a shared folder that isn't one person's genome
+    folder, Bob's FREEMIX must not be reported (or warned about) for Alice."""
+    folder = tmp_path / "shared"
+    folder.mkdir()
+    alice = _touch(folder / "Alice.bam")
+    bob = _touch(folder / "Bob.bam", "y")
+    workspace = SampleWorkspace(folder)
+    workspace.record("contamination", bob, 0.08, method="VB2", confidence="high")
+
+    value, codes = _overview_contamination(pr.build_report(folder, input_file=alice))
+    assert value is None
+    assert "sample_contamination" not in codes
+
+    value, codes = _overview_contamination(pr.build_report(folder, input_file=bob))
+    assert value == 0.08
+    assert "sample_contamination" in codes
+
+
+def test_report_falls_back_to_the_contamination_run_without_a_workspace(tmp_path):
+    """PR #631 review: without a sample workspace FREEMIX is only in the run's
+    manifest; the report shows it and doesn't ask for the check again."""
+    folder = tmp_path / "loose"
+    folder.mkdir()
+    bam = _touch(folder / "sample.bam")
+    _manifest(
+        folder,
+        "sample.contamination",
+        "qc contamination",
+        inputs=((bam, "input"),),
+        metrics={"freemix": 0.05, "freemix_confidence": "high"},
+        warnings=(("sample_contamination", "About 5.0% ..."),),
+    )
+    report = pr.build_report(folder, input_file=bam)
+    value, codes = _overview_contamination(report)
+    assert value == 0.05
+    assert "sample_contamination" in codes
+    overview = report["sections"]["overview"]
+    assert "qc contamination" in {s["command"] for s in overview["sources"]}
+    assert not any("qc contamination" in m["command"] for m in overview["missing"])

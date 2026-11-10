@@ -159,6 +159,7 @@ def run_gnomad(params: VcfGnomadParams) -> None:
             variant_confidence.thresholds_from(params),
             include=f"GNOMAD_AF < {params.max_af} || GNOMAD_AF='.'",
             summary_columns=GNOMAD_COLUMNS,
+            samples=(input_file,),
         )
     except (OSError, subprocess.SubprocessError) as e:
         raise WGSExtractError(f"gnomAD filtering failed: {e}") from e

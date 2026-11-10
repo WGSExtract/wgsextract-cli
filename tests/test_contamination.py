@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.contamination_helpers import READ as READ_LEN
 from tests.contamination_helpers import build_panel, population, reads_bam
 from tests.htslib_helpers import needs_htslib, sam_to_bam
 from wgsextract_cli import api
@@ -49,6 +50,26 @@ def test_contaminated_sample_caps_its_findings_at_moderate(tmp_path, freemix, la
     assert _labels(folder / "gnomad_af_lt_0.01.vcf.gz") == [f"100:{label}:{reasons}"]
     codes = {w["code"] for w in document["warnings"]}
     assert (contamination.WARNING in codes) == (label == "moderate")
+
+
+@needs_htslib
+def test_findings_written_outside_the_genome_folder_are_capped_too(tmp_path):
+    """PR #631 review: `vcf gnomad --outdir elsewhere` labels intermediates
+    outside the genome folder; the input's estimate still applies."""
+    folder, _bam = _genome_folder(tmp_path, 0.08)
+    sample = _vcf(folder / "s.vcf.gz", CALLS[:1])
+    gnomad = _vcf(
+        tmp_path / "gnomad.vcf.gz",
+        ["100 . C T . . AF=0.0001 GT 0/1"],
+        header='##INFO=<ID=AF,Number=A,Type=Float,Description="AF">\n',
+    )
+    out = tmp_path / "elsewhere"
+    document = _run(tmp_path, "vcf", "gnomad", "--vcf-input", sample, "--gnomad-file",
+                    gnomad, "--max-af", "0.01", "--outdir", str(out))  # fmt: skip
+    assert _labels(out / "gnomad_af_lt_0.01.vcf.gz") == [
+        "100:moderate:sample_contaminated"
+    ]
+    assert contamination.WARNING in {w["code"] for w in document["warnings"]}
 
 
 @needs_htslib
@@ -137,3 +158,68 @@ def test_a_missing_svd_panel_is_a_usage_error(tmp_path, panel, caplog):
         )
     assert result.exit_code == 2
     assert ".UD" in result.error.message
+
+
+def _renamed_panel(prefix: str, folder: Path, rename) -> str:
+    """A copy of the panel with its contigs renamed (chr20 to 20, say)."""
+    import shutil
+
+    folder.mkdir()
+    local = str(folder / "panel")
+    for suffix, sep in ((".bed", "\t"), (".mu", ":")):
+        lines = Path(prefix + suffix).read_text().splitlines(keepends=True)
+        Path(local + suffix).write_text(
+            "".join(
+                rename(ln.partition(sep)[0]) + sep + ln.partition(sep)[2]
+                for ln in lines
+            )
+        )
+    for suffix in (".UD", ".V"):
+        if Path(prefix + suffix).is_file():
+            shutil.copyfile(prefix + suffix, local + suffix)
+    return local
+
+
+@needs_htslib
+def test_a_chromosome_only_bam_matches_a_panel_named_without_chr(tmp_path, panel):
+    """PR #631 review: a chr20-only BAM (no chr1 to tell its naming) against
+    a panel naming the contig 20."""
+    pop, prefix = panel
+    numeric = _renamed_panel(
+        prefix, tmp_path / "numeric", lambda c: c.removeprefix("chr")
+    )
+    bam = reads_bam(pop, tmp_path / "s.bam", 0, 1, 0.10)
+    result = api.qc.contamination(
+        api.QcContaminationParams(
+            input=bam, ref=pop["fasta"], svd_prefix=numeric, threads=1
+        )
+    )
+    assert 0.07 <= result.metrics["freemix"] <= 0.13
+
+
+@needs_htslib
+def test_no_reads_at_panel_sites_records_no_estimate(tmp_path, panel):
+    """PR #631 review: an extract with no reads at any panel site (mtDNA only,
+    full sequence dictionary) must not record a meaningless FREEMIX."""
+    pop, prefix = panel
+    folder = tmp_path / "genome"
+    folder.mkdir()
+    (folder / "genome-config.toml").write_text("")
+    seq = pop["seq"][:READ_LEN]
+    bam = Path(sam_to_bam(
+        ["@SQ\tSN:chr20\tLN:1200000", "@SQ\tSN:chrM\tLN:16569",
+         f"r1\t0\tchrM\t1\t60\t{READ_LEN}M\t*\t0\t0\t{seq}\t{'I' * READ_LEN}"],
+        folder / "mt.bam",
+    ))  # fmt: skip
+    result = api.qc.contamination(
+        api.QcContaminationParams(
+            input=bam, ref=pop["fasta"], svd_prefix=prefix, threads=1
+        ),
+        check=False,
+    )
+    assert result.exit_code == 1
+    assert "no reads" in result.error.message
+    assert "freemix" not in result.metrics
+    assert (
+        sample_workspace.SampleWorkspace(folder).fact(contamination.FACT, bam) is None
+    )

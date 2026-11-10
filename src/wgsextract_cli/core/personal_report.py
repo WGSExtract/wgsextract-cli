@@ -96,8 +96,8 @@ _OVERVIEW_FACTS = (
     ("mean_coverage", "Mean coverage"),
     ("target_depths", "Depth by target"),
     ("read_length", "Read length"),
-    ("contamination", "Contamination (FREEMIX)"),
 )
+CONTAMINATION_LABEL = "Contamination (FREEMIX)"
 _INFO_FACTS = (
     ("sex", "sex"),
     ("mean_coverage", "ard_mapped"),
@@ -542,7 +542,9 @@ def _quality_label(
 
 def _overview(ctx: _Context) -> dict[str, Any]:
     info = latest(ctx.sources, _command("info"))
-    section = _section("overview", [info], ctx)
+    run = latest(ctx.sources, _command("qc contamination"))
+    run = run if run is not None and run.status == "ok" else None
+    section = _section("overview", [info, run], ctx)
     facts = []
     for name, label in _OVERVIEW_FACTS:
         fact = ctx.fact(name)
@@ -582,10 +584,19 @@ def _overview(ctx: _Context) -> dict[str, Any]:
                     "at": info.finished or None,
                 }
             )
+    estimate = _contamination_fact(ctx, run)
+    if estimate is not None:
+        facts.append(estimate)
     section["facts"] = facts
-    freemix = next((f["value"] for f in facts if f["name"] == "contamination"), None)
+    freemix = estimate["value"] if estimate else None
     threshold = contamination.max_contamination()
-    if isinstance(freemix, (int, float)) and threshold and freemix >= threshold:
+    warned = any(w["code"] == contamination.WARNING for w in section["warnings"])
+    if (
+        isinstance(freemix, (int, float))
+        and threshold
+        and freemix >= threshold
+        and not warned
+    ):
         section["warnings"].append(
             {
                 "code": contamination.WARNING,
@@ -629,6 +640,42 @@ def _overview(ctx: _Context) -> dict[str, Any]:
         or "No facts recorded."
     )
     return section
+
+
+def _contamination_fact(ctx: _Context, run: Source | None) -> dict[str, Any] | None:
+    """The selected alignment's contamination estimate: from the sample
+    workspace (only that file's, or the genome folder's), else from its
+    newest successful `qc contamination` run."""
+    path = ctx.folder / ctx.alignment if ctx.alignment else None
+    fact = contamination.sample_contamination(path) if path else None
+    if fact is not None:
+        found = fact.to_dict()
+        value = found.get("value")
+        return {
+            "name": contamination.FACT,
+            "label": CONTAMINATION_LABEL,
+            "value": value,
+            "text": _fact_text(contamination.FACT, value),
+            "source": found.get("source"),
+            "method": found.get("method"),
+            "confidence": found.get("confidence"),
+            "file": found.get("file"),
+            "at": found.get("at"),
+        }
+    value = run.metrics.get("freemix") if run is not None else None
+    if run is None or not isinstance(value, (int, float)):
+        return None
+    return {
+        "name": contamination.FACT,
+        "label": CONTAMINATION_LABEL,
+        "value": value,
+        "text": _fact_text(contamination.FACT, value),
+        "source": "qc contamination",
+        "method": "qc contamination metrics (no sample workspace)",
+        "confidence": run.metrics.get("freemix_confidence"),
+        "file": next(iter(map(ctx.rel, run.files("inputs"))), None),
+        "at": run.finished or None,
+    }
 
 
 def _fact_text(name: str, value: Any) -> str:
