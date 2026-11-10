@@ -919,3 +919,37 @@ def test_wgse_bwa_mem2_0_5_0_aligns_when_the_stand_in_needs_more(
 
     assert _mapper(bam, "bwa").startswith("wgse-bwa-mem2 mem ")
     assert "bwa_mem3_mode" not in result.metrics
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_native_aligners_off_still_budgets_bwa_mem2s_0123_file(tmp_path, mem3_bin, ram):
+    # #658 review: with wgse-bwa-mem2 0.5.0 installed but turned off, upstream
+    # bwa-mem2 runs, which loads the .0123 file, so the gate still counts it.
+    reads = _mem3_reads(tmp_path)
+    _bloat_0123(reads.ref)
+    _install_wgse_bwa_mem2(mem3_bin, "0.5.0")
+    without_0123 = _mem3_needed(reads, "wgse-bwa-mem2", memory="256M")
+    ram(64 * GIB, available=without_0123 + 2 * GIB)
+
+    with pytest.raises(WGSExtractError, match="bwa-mem2 alignment is estimated"):
+        _align(
+            reads, tmp_path / "out", "--aligner", "bwa-mem2",
+            "--native-aligners", "off",
+        )  # fmt: skip
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_native_aligners_off_still_needs_bwa_mem2s_0123_file(tmp_path, mem3_bin):
+    # #658 review: upstream bwa-mem2 reads the .0123 file, so with the
+    # installed wgse-bwa-mem2 0.5.0 turned off align builds it first.
+    reads = _mem3_reads(tmp_path)
+    Path(reads.ref + ".0123").unlink()
+    _install_wgse_bwa_mem2(mem3_bin, "0.5.0")
+
+    bam, result = _align(
+        reads, tmp_path / "out", "--aligner", "bwa-mem2", "--native-aligners", "off"
+    )
+
+    assert _mapper(bam, "bwa-mem2").startswith("bwa-mem2 mem ")
+    assert "native_aligner" not in result.metrics
+    assert Path(reads.ref + ".0123").is_file()

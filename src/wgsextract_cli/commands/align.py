@@ -585,7 +585,7 @@ def reads_stem(path: str) -> str:
 
 def short_read_sort_memory(aligner: str, memory: str, *, log: bool = True) -> str:
     """Keep more memory for MEM2's index without exceeding the user's budget."""
-    if aligner not in {"bwa-mem2", "wgse-bwa-mem2"}:
+    if aligner != "bwa-mem2":
         return memory
     amount, unit = parse_memory(memory)
     if amount * (1024 if unit == "G" else 1) > 256:

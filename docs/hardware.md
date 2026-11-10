@@ -16,7 +16,7 @@ these hold, and with bwa otherwise:
 
 - bwa-mem2 is installed (it is in the default environment on Linux, macOS and
   Windows);
-- the reference already has a bwa-mem2 index;
+- the reference already has a full bwa-mem2 index, including its `.0123` file;
 - the estimated alignment pipeline fits in the RAM available now.
 
 Auto never downloads or builds the index. When the index is missing but would
@@ -57,6 +57,12 @@ estimate for this input, reference and settings with the RAM available at the
 time. As guidance only, a whole human genome needs a computer with 32 GB or
 more for bwa-mem2; since the 30x estimate at 6 threads is ~29 GiB, auto picks
 bwa whenever less than that is free. Smaller inputs need less.
+
+For now auto asks this of upstream bwa-mem2, even on a Mac with `wgse-bwa-mem2`
+0.5.0 or later, which maps without the `.0123` file and needs about 6 GiB less
+for hs38: auto still wants the `.0123` file and counts it, and picks bwa
+otherwise (where `wgse-bwa-mem3` may then stand in). `--aligner bwa-mem2` uses
+`wgse-bwa-mem2`'s own needs (see [Apple Silicon](#apple-silicon-metal)).
 
 ### Threads and memory
 

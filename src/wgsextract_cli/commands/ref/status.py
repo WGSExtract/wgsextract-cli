@@ -222,6 +222,8 @@ def print_ref_status(status: dict[str, Any]) -> None:
             for name, key in (("bwa", "bwaIndex"), ("bwa-mem2", "bwaMem2Index"))
             if genome[key]
         ]
+        if genome["bwaMem3Index"] and not genome["bwaMem2Index"]:
+            aligners.append("bwa-mem3 and wgse-bwa-mem2 0.5.0+; bwa-mem2 needs .0123")
         ready = (
             f"aligner index ({', '.join(aligners)})"
             if aligners
@@ -320,6 +322,9 @@ def _genome_status(reflib: str) -> list[dict[str, Any]]:
                     for ext in (".amb", ".ann", ".bwt", ".pac", ".sa")
                 ),
                 "bwaMem2Index": bwa_mem2.has_index(path),
+                # bwa-mem2's index without its .0123 file, which bwa-mem3 and
+                # wgse-bwa-mem2 0.5.0 and later map with.
+                "bwaMem3Index": bwa_mem2.has_bwa_mem3_index(path),
             }
         )
     return genomes
