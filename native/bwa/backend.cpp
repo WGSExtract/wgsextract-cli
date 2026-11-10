@@ -278,6 +278,11 @@ protected:
         worker_(data_, pair, tid);
         end();
     }
+    // How many unprepared pairs a CPU thread takes from the back at once, and the
+    // work to do on them before mapping each with a null batch (and then on an
+    // empty range, to drop it).
+    virtual long steal_block() const { return 1; }
+    virtual void prepare_stolen(long, long, int) {}
     // With mutex_ held: takes other work, which CPU threads do before mapping pairs.
     virtual bool claim(Work &) { return false; }
     virtual void perform(const Work &, int) {}
@@ -318,7 +323,7 @@ private:
         double wait_time = 0;
         size_t accelerated_pairs = 0, unprepared_pairs = 0, wasted_pairs = 0;
         for (;;) {
-            long pair = -1;
+            long pair = -1, stolen = 0;
             BatchBase *batch = nullptr;
             Work work;
             {
@@ -332,9 +337,12 @@ private:
                         break;
                     }
                     const bool steal = gpu_stopped_ || !all_on_gpu;
-                    if (steal && back_ > (packing_ ? claimed_ : front_)) {
-                        pair = --back_;
-                        if (pair < claimed_) ++wasted_pairs;
+                    const long limit = packing_ ? claimed_ : front_;
+                    if (steal && back_ > limit) {
+                        stolen = std::min(steal_block(), back_ - limit);
+                        back_ -= stolen;
+                        pair = back_;
+                        wasted_pairs += size_t(std::max(0L, std::min(claimed_, back_ + stolen) - back_));
                         break;
                     }
                     const bool busy = idle(tid);
@@ -354,6 +362,13 @@ private:
             }
             if (pair < 0) {
                 perform(work, tid);
+                continue;
+            }
+            if (stolen) {
+                unprepared_pairs += size_t(stolen);
+                prepare_stolen(pair, pair + stolen, tid);
+                for (long p = pair; p < pair + stolen; ++p) map(p, nullptr, tid);
+                prepare_stolen(0, 0, tid);
                 continue;
             }
             if (batch) ++accelerated_pairs;
@@ -647,17 +662,24 @@ inline int stride(const mem_opt_t *opt) {
 // its own queue, and CPU threads finish those pairs, using the GPU's result for
 // each extension whose inputs match exactly. Finishing pairs comes before
 // mapping new ones.
+const Prepared *seed_block(const mem_opt_t *opt, const bwt_t *bwt, bseq1_t *seqs, int stride,
+    long first, long last);
+void use_seeded(const Prepared *prepared, bseq1_t *seqs, int stride, long first, long pair);
+// The block of unprepared pairs this CPU thread stole and seeded, if any.
+thread_local const Prepared *stolen_seeds = nullptr;
+thread_local long stolen_first = 0, stolen_last = 0;
+
 class SeedScheduler : public Splitter {
 public:
     std::atomic<size_t> missing{0};
     size_t extended_batches = 0, extended_jobs = 0;
     double extend_time = 0, extend_kernel_time = 0;
 
-    SeedScheduler(const mem_opt_t *opt, int n, bseq1_t *seqs,
+    SeedScheduler(const mem_opt_t *opt, const bwt_t *bwt, int n, bseq1_t *seqs,
         void (*worker)(void *, long, int), void *data, const ExtendParameters *extension)
         : Splitter(opt->n_threads, n / stride(opt), long(device->seed_capacity()) / stride(opt), false,
               inject_failure ? "injected GPU failure (test)" : nullptr, worker, data),
-          opt_(opt), seqs_(seqs), stride_(stride(opt)),
+          opt_(opt), bwt_(bwt), seqs_(seqs), stride_(stride(opt)),
           prepared_(size_t(n / stride_) * stride_, nullptr), extend_(extension != nullptr) {
         if (!extend_) return;
         parameters_ = *extension;
@@ -691,6 +713,7 @@ public:
 
 private:
     const mem_opt_t *opt_;
+    const bwt_t *bwt_;
     bseq1_t *seqs_;
     const int stride_;
     std::vector<const Prepared *> prepared_;
@@ -930,9 +953,22 @@ private:
         std::vector<long>().swap(batch.slots);
     }
 
+    long steal_block() const override { return bwa_verbose >= 4 ? 1 : 8; }
+
+    void prepare_stolen(long first, long last, int) override {
+        stolen_seeds = first < last && bwa_verbose < 4
+            ? seed_block(opt_, bwt_, seqs_, stride_, first, last) : nullptr;
+        stolen_first = first;
+        stolen_last = last;
+    }
+
     void begin(long pair, BatchBase *batch) override {
         current = {};
-        if (!batch) return;
+        if (!batch) {
+            if (stolen_seeds && pair >= stolen_first && pair < stolen_last)
+                use_seeded(stolen_seeds, seqs_, stride_, stolen_first, pair);
+            return;
+        }
         for (int mate = 0; mate < stride_; ++mate) {
             const Prepared *entry = prepared_[size_t(pair) * stride_ + mate];
             current.seq[mate] = entry ? reinterpret_cast<const uint8_t *>(
@@ -1321,7 +1357,7 @@ extern "C" int wgse_metal_map(const mem_opt_t *opt, const bwt_t *bwt, int n,
         const bool extend = extend_enabled && bwa_verbose < 4
             && extend_parameters(*opt, extension);
         if (extend) prepare_extension();
-        SeedScheduler scheduler(opt, n, seqs, worker, data, extend ? &extension : nullptr);
+        SeedScheduler scheduler(opt, bwt, n, seqs, worker, data, extend ? &extension : nullptr);
         scheduler.align();
         const size_t reads = size_t(stride(opt));
         std::lock_guard<std::mutex> lock(totals_mutex);
@@ -1606,19 +1642,21 @@ struct CpuMapScratch {
 };
 thread_local CpuMapScratch cpu_map_scratch;
 
-void cpu_map_worker(void *context, long block, int tid) {
-    const CpuMap &m = *static_cast<const CpuMap *>(context);
+// Seeds every read of pairs [first, last) and locates all their rows in one
+// interleaved walk, into this thread's scratch; returns each read's entry
+// (null intervals when mem_chain() seeds nothing), valid until the next call.
+const Prepared *seed_block(const mem_opt_t *opt, const bwt_t *bwt, bseq1_t *seqs, int stride,
+    long first, long last) {
     CpuMapScratch &s = cpu_map_scratch;
-    const long first = block * cpu_map_block, last = std::min(m.items, first + cpu_map_block);
-    const size_t reads = size_t(last - first) * size_t(m.stride);
+    const size_t reads = size_t(last - first) * size_t(stride);
     s.intervals.resize(reads);
     s.prepared.assign(reads, Prepared{nullptr, nullptr, nullptr, 0});
     s.rows.clear();
     s.walks.clear();
     for (size_t r = 0; r < reads; ++r) {
-        bseq1_t &seq = m.seqs[size_t(first) * size_t(m.stride) + r];
+        bseq1_t &seq = seqs[size_t(first) * size_t(stride) + r];
         // mem_chain() seeds nothing for these.
-        if (seq.l_seq < m.opt->min_seed_len) continue;
+        if (seq.l_seq < opt->min_seed_len) continue;
         // In place, as mem_align1_core() does.
         uint8_t *bases = reinterpret_cast<uint8_t *>(seq.seq);
         for (int i = 0; i < seq.l_seq; ++i)
@@ -1626,20 +1664,20 @@ void cpu_map_worker(void *context, long block, int tid) {
         s.walks.push_back({bases, seq.l_seq, &s.intervals[r]});
         s.prepared[r].intervals = &s.intervals[r];
     }
-    wgse::smem::collect(m.opt, m.bwt, s.walks.data(), s.walks.size());
+    wgse::smem::collect(opt, bwt, s.walks.data(), s.walks.size());
     std::vector<size_t> &offsets = s.offsets;
     offsets.assign(reads + 1, 0);
     for (size_t r = 0; r < reads; ++r) {
         offsets[r] = s.rows.size();
         if (!s.prepared[r].intervals) continue;
         const bwtintv_t *p = s.intervals[r].data(), *end = p + s.intervals[r].size();
-        const size_t bound = row_count(p, end, m.opt->max_occ);
-        if (m.opt->max_occ > 0 && bound && bound <= cpu_locate_max_rows)
-            append_rows(p, end, m.opt->max_occ, s.rows);
+        const size_t bound = row_count(p, end, opt->max_occ);
+        if (opt->max_occ > 0 && bound && bound <= cpu_locate_max_rows)
+            append_rows(p, end, opt->max_occ, s.rows);
     }
     offsets[reads] = s.rows.size();
     s.positions.resize(s.rows.size());
-    locate_rows(m.bwt, s.rows.data(), s.positions.data(), s.rows.size());
+    locate_rows(bwt, s.rows.data(), s.positions.data(), s.rows.size());
     cpu_located_rows.fetch_add(s.rows.size(), std::memory_order_relaxed);
     for (size_t r = 0; r < reads; ++r) {
         if (offsets[r + 1] == offsets[r]) continue;
@@ -1647,15 +1685,26 @@ void cpu_map_worker(void *context, long block, int tid) {
         s.prepared[r].positions = s.positions.data() + offsets[r];
         s.prepared[r].count = offsets[r + 1] - offsets[r];
     }
+    return s.prepared.data();
+}
+
+// Points current at pair's entries from seed_block(pairs from first).
+void use_seeded(const Prepared *prepared, bseq1_t *seqs, int stride, long first, long pair) {
+    current = {};
+    for (int mate = 0; mate < stride; ++mate) {
+        const Prepared &entry = prepared[size_t(pair - first) * size_t(stride) + size_t(mate)];
+        if (!entry.intervals) continue;
+        current.seq[mate] = reinterpret_cast<const uint8_t *>(seqs[size_t(pair) * size_t(stride) + size_t(mate)].seq);
+        current.prepared[mate] = &entry;
+    }
+}
+
+void cpu_map_worker(void *context, long block, int tid) {
+    const CpuMap &m = *static_cast<const CpuMap *>(context);
+    const long first = block * cpu_map_block, last = std::min(m.items, first + cpu_map_block);
+    const Prepared *prepared = seed_block(m.opt, m.bwt, m.seqs, m.stride, first, last);
     for (long item = first; item < last; ++item) {
-        current = {};
-        for (int mate = 0; mate < m.stride; ++mate) {
-            const size_t r = size_t(item - first) * size_t(m.stride) + size_t(mate);
-            if (!s.prepared[r].intervals) continue;
-            current.seq[mate] = reinterpret_cast<const uint8_t *>(
-                m.seqs[size_t(item) * size_t(m.stride) + size_t(mate)].seq);
-            current.prepared[mate] = &s.prepared[r];
-        }
+        use_seeded(prepared, m.seqs, m.stride, first, item);
         m.worker(m.data, item, tid);
         finish_cursor();
     }
