@@ -97,6 +97,16 @@ def arm64(dv, monkeypatch):
     return dv
 
 
+@pytest.fixture
+def apple(dv, monkeypatch):
+    """An Apple Silicon Mac: Docker Desktop's Linux VM is aarch64, and only
+    Google's amd64 image is pulled."""
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(deepvariant.platform, "machine", lambda: "arm64")
+    dv.docker.set(arch="aarch64")
+    return dv
+
+
 def call(dv, *options, reads=None, out=None, threads="4"):
     run_wgsextract(
         "vcf", "deepvariant", "--input", str(reads or dv.sample.bam),
@@ -290,15 +300,12 @@ def test_ont_conflicts_with_other_model_options(dv):
 
 
 @pytest.mark.parametrize("selection", [[], ["--ont"], ["--model-type", "ONT_R104"]])
-def test_apple_arm_refuses_ont_including_automatic_selection(
-    dv, monkeypatch, selection
-):
-    reads = other_sample(dv, ONT)
-    monkeypatch.setattr(deepvariant.platform, "machine", lambda: "arm64")
-    monkeypatch.setattr(sys, "platform", "darwin")
+def test_apple_arm_refuses_ont_including_automatic_selection(apple, selection):
+    apple.docker.add_image(deepvariant.DEFAULT_ARM64_IMAGE, platform="linux/arm64")
+    reads = other_sample(apple, ONT)
     with pytest.raises(WGSExtractError, match="ONT_R104.*not qualified on ARM64"):
-        call(dv, *selection, reads=reads.bam)
-    assert dv.docker.runs() == []
+        call(apple, *selection, reads=reads.bam)
+    assert apple.docker.runs() == []
 
 
 # CRAM 3.1 staging -----------------------------------------------------------
@@ -561,6 +568,42 @@ def test_staged_reads_are_kept_for_a_rerun_and_removed_after_success(
     assert visible(dv.out) == ["deepvariant.vcf.gz", "deepvariant.vcf.gz.tbi"]
 
 
+# Apple Silicon (#665) ---------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("configured", "message"),
+    [
+        (None, "Native DeepVariant image isn't installed"),
+        (deepvariant.DEFAULT_IMAGE, "is linux/amd64.*AVX.*exit 134"),
+    ],
+    ids=["default", "configured-google-image"],
+)
+def test_apple_silicon_refuses_googles_amd64_image_before_any_container(
+    apple, monkeypatch, configured, message
+):
+    """Google's amd64 image aborts under Docker Desktop's emulation (no AVX):
+    refuse up front and name what does run on a Mac."""
+    if configured:
+        monkeypatch.setitem(deepvariant.settings, "deepvariant_image", configured)
+    with pytest.raises(WGSExtractError, match=message) as error:
+        call(apple)
+    for alternative in ("vcf clair3", "vcf snp", "x86-64 host", "build.sh"):
+        assert alternative in str(error.value)
+    assert "docker pull" not in str(error.value)
+    assert apple.docker.runs() == []
+    assert not apple.out.exists() or visible(apple.out) == []
+
+
+def test_apple_silicon_runs_the_native_arm64_image(apple):
+    apple.docker.add_image(deepvariant.DEFAULT_ARM64_IMAGE, platform="linux/arm64")
+    call(apple)
+    assert {r["image"] for r in apple.docker.runs()} == {
+        deepvariant.DEFAULT_ARM64_IMAGE
+    }
+    assert visible(apple.out) == ["deepvariant.vcf.gz", "deepvariant.vcf.gz.tbi"]
+
+
 # Linux ARM64 ------------------------------------------------------------------
 
 
@@ -568,7 +611,7 @@ def test_staged_reads_are_kept_for_a_rerun_and_removed_after_success(
     ("engine", "image", "message"),
     [
         ("x86_64", "linux/arm64", "native ARM64 Docker engine"),
-        ("aarch64", "linux/amd64", "must be linux/arm64"),
+        ("aarch64", "linux/amd64", "is linux/amd64.*AVX"),
         ("aarch64", "", "must be linux/arm64"),
     ],
 )

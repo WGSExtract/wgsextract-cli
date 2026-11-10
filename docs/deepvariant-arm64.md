@@ -59,6 +59,25 @@ packaged for checksum auditing, not enabled: each requires its own real-data
 qualification before a future implementation can permit it. Parabricks
 `--gpu` remains unavailable.
 
+## Apple Silicon Macs
+
+Docker Desktop on Apple Silicon runs a Linux aarch64 VM, so `vcf deepvariant`
+takes the same native path there: the default image is the one above, and the
+engine and image architectures are checked the same way. Google's
+`google/deepvariant` image is linux/amd64 only; under Docker Desktop's x86-64
+emulation (QEMU or Rosetta) TensorFlow finds no AVX and aborts (exit 134) in
+the first stage, so an amd64 image is refused before any input is prepared.
+Without a native image, use `vcf clair3` for ONT reads, `vcf snp`/`vcf indel`
+for short reads, or an x86-64 host.
+
+`build.sh` runs only on Linux aarch64: build there and move the image with
+`docker save` / `docker load`. The image uses generic AArch64 code (TensorFlow
+and oneDNN choose kernels at run time, and the build adds no `-march`), which
+the Apple M-series cores run; this has not yet been run on a Mac. Give Docker
+Desktop's VM enough memory for `call_variants` (about 27 GB at the default
+batch size; see `--batch-size` below), since the CLI caps its plan by the VM's
+memory, not the Mac's. Native Apple-GPU options are researched in #647.
+
 ## Source and numerical provenance
 
 - Official scientific source: Google `v1.10.0`,
@@ -87,7 +106,7 @@ TensorFlow libraries, and the ELF modules inside all three Bazel ZIPs using
 Do not substitute the community image on the strength of its F1 claims: its
 scientific changes are not equivalent to this source build.
 
-x64/Linux and macOS defaults and commands are unchanged. Qualification evidence,
+x64 Linux and Intel macOS defaults and commands are unchanged. Qualification evidence,
 unnormalized VCF differences, matched-vCPU timings and cloud cost are recorded
 in the task's `out/arm64/deepvariant/report.md`; a draft PR does not by itself
 establish full-genome or performance qualification.

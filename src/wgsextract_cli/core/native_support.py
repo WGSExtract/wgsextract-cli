@@ -13,6 +13,14 @@ def is_linux_arm64() -> bool:
     }
 
 
+def is_arm64_docker_host() -> bool:
+    """Linux ARM64, or an Apple Silicon Mac: Docker Desktop's Linux VM there
+    is aarch64 too, so x86-64 images run only under emulation."""
+    return is_linux_arm64() or (
+        sys.platform == "darwin" and platform.machine().lower() in {"arm64", "aarch64"}
+    )
+
+
 def tool_unsupported_reason(tool: str) -> str | None:
     if not is_linux_arm64():
         return None

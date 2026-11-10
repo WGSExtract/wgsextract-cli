@@ -99,9 +99,18 @@ def clair3_host_supported() -> bool:
     return (system, machine) in CLAIR3_HOSTS
 
 
+def _x86_deepvariant_host() -> bool:
+    """Whether Google's run_deepvariant (x86-64) can be used: ARM64 hosts
+    run the native image instead (`vcf deepvariant`, `deps check`)."""
+    from wgsextract_cli.core.native_support import is_arm64_docker_host
+
+    return not is_arm64_docker_host()
+
+
 # Optional tools that need a particular OS and CPU.
 HOST_ONLY_TOOLS: dict[str, Callable[[], bool]] = {
     "run_clair3.sh": clair3_host_supported,
+    "run_deepvariant": _x86_deepvariant_host,
 }
 
 
