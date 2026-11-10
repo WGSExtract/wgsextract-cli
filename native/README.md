@@ -21,6 +21,9 @@ printed by `--version`.
 
 ## Installing
 
+The `macos-aligners-14` prerelease has `wgse-bwa` 0.9.0 and `wgse-bwa-mem2`
+0.5.0, whose CPU backends are faster and align exactly as before, with the
+same `wgse-bwa-mem3` 0.2.0 and `wgse-minimap2` 0.2.0 as `macos-aligners-13`.
 The `macos-aligners-13` prerelease has `wgse-bwa` 0.7.1, `wgse-bwa-mem2`
 0.4.1, `wgse-bwa-mem3` 0.2.0, whose `--metal` scores seed extensions on the
 GPU, and `wgse-minimap2` 0.2.0, whose `--metal` runs gap fills on the GPU.
@@ -57,8 +60,8 @@ publishes for each release asset:
 
 ```bash
 mkdir wgse-aligners && cd wgse-aligners
-gh release download macos-aligners-13 -R WGSExtract/wgsextract-cli
-gh release view macos-aligners-13 -R WGSExtract/wgsextract-cli --json assets \
+gh release download macos-aligners-14 -R WGSExtract/wgsextract-cli
+gh release view macos-aligners-14 -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
   shasum -a 256 -c
 ```
