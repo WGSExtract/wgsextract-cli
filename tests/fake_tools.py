@@ -388,9 +388,18 @@ mpileup = subprocess.Popen(
 subprocess.run([{bcftools!r}, "call", "-mv", "-Oz", "-o", calls], stdin=mpileup.stdout, check=True)
 with open(os.path.join(out, "sample.txt"), "w") as names:
     names.write(opts["sample_name"] + "\\n")
+# Like Clair3, name its inputs in the header.
+with open(os.path.join(out, "header.txt"), "w") as lines:
+    lines.write("##cmdline=run_clair3.py " + " ".join(sys.argv[1:]) + "\\n")
+    lines.write("##reference=" + opts["ref_fn"] + "\\n")
+named = os.path.join(out, "named.vcf.gz")
+subprocess.run(
+    [{bcftools!r}, "annotate", "-h", lines.name, "-Oz", "-o", named, calls],
+    check=True,
+)
 subprocess.run(
     [{bcftools!r}, "reheader", "-s", names.name, "-o",
-     os.path.join(out, "merge_output.vcf.gz"), calls],
+     os.path.join(out, "merge_output.vcf.gz"), named],
     check=True,
 )
 """
