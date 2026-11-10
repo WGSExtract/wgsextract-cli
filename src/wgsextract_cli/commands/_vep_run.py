@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import shlex
@@ -21,7 +22,7 @@ from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
-from wgsextract_cli.core.results import current_result, human_output
+from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.sample_ploidy import sex_samples_args
 from wgsextract_cli.core.utils import (
     WGSExtractError,
@@ -35,6 +36,12 @@ from wgsextract_cli.core.variant_files import (
 )
 
 from ._analyze_workflows import detect_vcf_type
+from ._vep_engines import (
+    VepEngine,
+    refuse_unsupported_args,
+    require_engine_here,
+    vep_engine,
+)
 from ._vep_resources import preprocess_vcf_chr_prefix
 
 GENOMIC_SUFFIXES = (".vcf", ".vcf.gz", ".bcf", ".bam", ".cram")
@@ -174,9 +181,10 @@ def _build_vep_command(
     lib: ReferenceLibrary,
     threads: str,
 ) -> list[str]:
+    engine = vep_engine(params.engine)
     # One element: run_command splits wrapper commands itself and keeps a path
     # with spaces whole.
-    vep_cmd = [get_tool_path("vep") or "vep"]
+    vep_cmd = [get_tool_path(engine.tool) or engine.tool]
     vep_cmd += ["-i", vep_input_vcf, "-o", output_file, "--fork", threads]
     vep_cmd.append({"vcf": "--vcf", "json": "--json", "tab": "--tab"}[params.format])
 
@@ -192,16 +200,22 @@ def _build_vep_command(
 
     # The first cache that exists: --vep-cache (or the configured one), the
     # reference library's, then VEP's default.
-    candidates = [params.vep_cache, lib.vep_cache, expand_path("~/.vep")]
-    cache_dir = next(
-        (str(c) for c in candidates if c and Path(c).is_dir()),
-        str(params.vep_cache or lib.vep_cache or candidates[-1]),
-    )
+    candidates = [
+        str(engine.cache_root(Path(c)))
+        for c in (params.vep_cache, lib.vep_cache, expand_path("~/.vep"))
+        if c
+    ]
+    cache_dir = next((c for c in candidates if Path(c).is_dir()), candidates[0])
     vep_cmd += ["--dir_cache", cache_dir, "--cache_version", params.vep_cache_version]
     if Path(cache_dir).exists():
         vep_cmd.append("--offline")
         logging.info(LOG_MESSAGES["vep_using_cache"].format(path=cache_dir))
-        _warn_if_cache_version_missing(cache_dir, params.vep_cache_version, vep_cmd)
+        _check_cache_version(engine, cache_dir, params.vep_cache_version, vep_cmd)
+    elif not engine.database_fallback:
+        raise WGSExtractError(
+            f"No {engine.label} cache in {cache_dir}; build it with "
+            f"'wgsextract vep download --engine {engine.name}'."
+        )
     else:
         logging.warning(LOG_MESSAGES["vep_no_cache_warn"].format(path=cache_dir))
         vep_cmd.append("--database")
@@ -216,22 +230,60 @@ def _build_vep_command(
     return vep_cmd
 
 
-def _warn_if_cache_version_missing(
-    cache_dir: str, version: str, vep_cmd: list[str]
+def _check_cache_version(
+    engine: VepEngine, cache_dir: str, version: str, vep_cmd: list[str]
 ) -> None:
-    assembly = (
-        vep_cmd[vep_cmd.index("--assembly") + 1] if "--assembly" in vep_cmd else None
-    )
-    if not assembly:
-        return
+    """Warn (Ensembl VEP) or fail (vep-rs, which has no fallback) when the
+    release and assembly to annotate with isn't in the cache."""
     species = "homo_sapiens"
+    if "--assembly" in vep_cmd:
+        assembly = vep_cmd[vep_cmd.index("--assembly") + 1]
+    else:
+        # Without an assembly, VEP takes the release's only one.
+        found = sorted(Path(cache_dir, species).glob(f"{version}_*"))
+        if len(found) != 1:
+            return
+        assembly = found[0].name.split("_", 1)[1]
     version_dir = Path(cache_dir, species, f"{version}_{assembly}")
-    if not version_dir.is_dir():
-        logging.warning(
-            f"{version_dir} is missing, so VEP will find no cache. Download it "
-            f"with 'wgsextract vep download --vep-version {version} "
-            f"--assembly {assembly}', or pass the installed release with "
-            "--vep-cache-version."
+    if version_dir.is_dir():
+        if engine.name == "vep-rs":
+            _warn_about_cache_gaps(version_dir)
+        return
+    download = (
+        f"'wgsextract vep download{'' if engine.name == 'ensembl' else ' --engine ' + engine.name}"
+        f" --vep-version {version} --assembly {assembly}'"
+    )
+    if not engine.database_fallback:
+        raise WGSExtractError(
+            f"{version_dir} is missing, so {engine.label} has no cache. Build it "
+            f"with {download}, or pass the installed release with --vep-cache-version."
+        )
+    logging.warning(
+        f"{version_dir} is missing, so VEP will find no cache. Download it "
+        f"with {download}, or pass the installed release with "
+        "--vep-cache-version."
+    )
+
+
+def _warn_about_cache_gaps(version_dir: Path) -> None:
+    """Say which columns a vep-rs cache leaves empty that Ensembl VEP's
+    cache fills: known variants without its variations, SIFT and PolyPhen
+    without their prediction matrices."""
+    try:
+        info = json.loads(Path(version_dir, "info.json").read_text())
+    except (OSError, ValueError):
+        info = {}
+    gaps = []
+    if not Path(version_dir, "variations").is_dir():
+        gaps.append("Existing_variation and the frequency columns")
+    if not (info.get("sift") and info.get("polyphen")):
+        gaps.append("SIFT and PolyPhen")
+    if gaps:
+        warn(
+            "vep_cache_gaps",
+            f"The vep-rs cache in {version_dir} has no data for "
+            f"{' or '.join(gaps)}; those columns stay empty.",
+            path=str(version_dir),
         )
 
 
@@ -370,8 +422,13 @@ def run_vep(params: VepRunParams) -> None:
         for path in input_files:
             current_result().add_input(path, "batch_input")
 
-    verify_dependencies(["vep", "tabix", "bcftools"])
-    log_dependency_info(["vep", "tabix", "bcftools"])
+    engine = vep_engine(params.engine)
+    require_engine_here(engine)
+    refuse_unsupported_args(engine, params.vep_args)
+    tool = "vep-rs" if engine.name == "vep-rs" else "vep"
+    verify_dependencies([tool, "tabix", "bcftools"])
+    log_dependency_info([tool, "tabix", "bcftools"])
+    current_result().add_metrics(engine=engine.name)
     threads, _ = get_resource_defaults(params.threads, None)
 
     batch_stats = []

@@ -267,7 +267,7 @@ exposed as an application configuration setting.
 | `typing` | From a WGS BAM/CRAM: `cyp2d6` (Cyrius), `hla` (T1K), `str` (ExpansionHunter repeat expansions) |
 | `methylation` | `pileup`: CpG 5mC (optionally 5hmC) bedMethyl and summary from Nanopore/PacBio MM/ML tags (modkit) |
 | `gatk`, `freebayes` | Used by `vcf gatk` / `vcf freebayes` from optional environments; [Windows GATK](docs/windows.md#gatk-on-native-windows) is prepared at setup, not during calling |
-| `vep` | `run`, `download`, `verify` (Ensembl Variant Effect Predictor) |
+| `vep` | `run`, `download`, `verify` (Ensembl Variant Effect Predictor, or the faster vep-rs with `--engine vep-rs`, [docs](docs/vep-engines.md)) |
 | `align` | Align FASTQ reads with bwa, bwa-mem2, minimap2, or pbmm2, or on an NVIDIA GPU with `--gpu` |
 | `realign` | Re-align an existing BAM/CRAM to another reference, streaming paired reads into BWA or reusing FASTQs |
 | `basecall` | Nanopore POD5 to an unaligned BAM with ONT's Dorado (optional, installed separately), with `MM`/`ML` modification tags for `align`; [docs](docs/ont.md#basecalling) |
@@ -467,6 +467,7 @@ Some tools live in their own Pixi environment. Install optional environments exp
 | `default` | All standard commands |
 | `pacbio` | `pbmm2`, `pbsv`, `sniffles`: `pixi run -e pacbio wgsextract vcf sv --pacbio` |
 | `vep` | `pixi run -e vep wgsextract vep run` (not native Windows) |
+| `vep-rs` | `vep run --engine vep-rs` and its cache builder (all platforms, [docs](docs/vep-engines.md)) |
 | `cyrius`, `t1k`, `expansionhunter` | `typing cyp2d6`, `typing hla`, `typing str` (Linux and macOS) |
 | `pharmcat` | PharmCAT's Python runtime for `vcf pharmcat` (Linux and macOS) |
 | `modkit` | `methylation pileup` (Linux and macOS) |

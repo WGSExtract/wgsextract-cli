@@ -1,0 +1,65 @@
+context:
+  version: "0.5.0"
+
+package:
+  name: vep-rs
+  version: ${{ version }}
+
+source:
+  url: https://github.com/natera-open-source/vep-rs/releases/download/v${{ version }}/vep-rs-${{ version }}.tar.gz
+  sha256: 3ac0ab1e9af04691fa0ed1c19b6a1512180755fc383f4e2fcbfd800b6530926b
+
+build:
+  number: 1
+  string: wgse_${{ build_number }}
+  script:
+    - if: win
+      then:
+        - call "%RECIPE_DIR%\build.bat"
+      else:
+        - bash "$RECIPE_DIR/build.sh"
+
+requirements:
+  build:
+    - ${{ compiler('rust') }}
+    - ${{ compiler('c') }}
+    - ${{ stdlib('c') }}
+    - if: linux
+      then:
+        - pkg-config
+  host:
+    # reqwest's native-tls: OpenSSL on Linux, the OS's own TLS on macOS and Windows.
+    - if: linux
+      then:
+        - openssl >=3.5,<4
+
+tests:
+  - script:
+      - vep-rs --version
+      - vep-cache-builder --help
+  - files:
+      source:
+        - tests/golden/116/GRCh37/
+      recipe:
+        - check_vcf.py
+    script:
+      - if: win
+        then:
+          - vep-rs --assembly GRCh37 --json_cache tests\golden\116\GRCh37\json_cache --format vcf -i tests\golden\116\GRCh37\variants.vcf --no_stats --offline --vcf --fork 2 -o out.vcf
+        else:
+          - vep-rs --assembly GRCh37 --json_cache tests/golden/116/GRCh37/json_cache --format vcf -i tests/golden/116/GRCh37/variants.vcf --no_stats --offline --vcf --fork 2 -o out.vcf
+      - python check_vcf.py out.vcf
+    requirements:
+      run:
+        - python >=3.10
+
+about:
+  homepage: https://github.com/natera-open-source/vep-rs
+  license: Apache-2.0
+  license_file:
+    - LICENSE
+    - NOTICE
+  summary: >-
+    vep-rs, a Rust reimplementation of Ensembl VEP, built by WGS Extract for
+    Linux, macOS and Windows. The annotator is installed as vep-rs (upstream
+    calls it vep) so it can sit beside Ensembl VEP.

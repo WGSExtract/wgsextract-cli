@@ -133,6 +133,10 @@ KNOWN_SETTINGS = {
     ),
     "jar_directory": (None, "Directory for JAR tools"),
     "vep_cache_directory": (None, "Path to VEP cache"),
+    "vep_engine": (
+        None,
+        "Engine `vep run` annotates with: ensembl (default) or vep-rs",
+    ),
     "pharmcat_directory": (None, "Extracted PharmCAT pipeline release"),
     "parabricks_image": (
         None,

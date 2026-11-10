@@ -15,6 +15,14 @@ the cache folder; ``verify`` checks that an unpacked cache has its
 assembly from it. The cache folder is ``vep_cache``, else
 config ``vep_cache_directory``, else the ``vep`` folder of the reference
 library ``ref`` names, else ``~/.vep``.
+
+``engine`` picks the annotator: Ensembl VEP (``ensembl``, the default) or
+vep-rs (``vep-rs``, which also runs on Windows). vep-rs has its own cache in
+the cache folder's ``vep-rs`` folder, which ``download`` builds from Ensembl's
+gene set, sequences and table dumps (with ``variations``, its known variants)
+and ``verify`` checks against the builder's checksums. A vep-rs run refuses
+options it would ignore (``--custom``, ``--database``) and has no database
+fallback. See docs/vep-engines.md.
 """
 
 from __future__ import annotations
@@ -23,6 +31,7 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.results import CommandResult
@@ -30,6 +39,19 @@ from wgsextract_cli.core.results import CommandResult
 from ._params import Params, param
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import outdir_param, ref_param, threads_param
+
+
+def engine_param() -> Any:
+    return param(
+        None,
+        help="Annotation engine: 'ensembl' (Ensembl VEP, the default) or "
+        "'vep-rs' (a faster Rust reimplementation that also runs on Windows; "
+        "its own cache, built by 'vep download --engine vep-rs')",
+        doc="Annotation engine, 'ensembl' or 'vep-rs' (default: config "
+        "vep_engine, else 'ensembl').",
+        choices=("ensembl", "vep-rs"),
+        config_key="vep_engine",
+    )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -49,6 +71,7 @@ class VepRunParams(Params):
     ref: Path | None = ref_param()
     outdir: Path | None = outdir_param()
     threads: int | None = threads_param()
+    engine: str | None = engine_param()
     vep_cache: Path | None = param(
         None,
         help="Path to VEP cache directory (e.g., $HOME/.vep)",
@@ -139,6 +162,7 @@ def run(
 
 @dataclass(frozen=True, kw_only=True)
 class _VepCacheParams(Params):
+    engine: str | None = engine_param()
     species: str = param("homo_sapiens", help="Species name (default: homo_sapiens)")
     assembly: str = param(
         "GRCh38", help="Assembly (default: GRCh38)", choices=("GRCh37", "GRCh38")
@@ -183,9 +207,23 @@ class _VepCacheParams(Params):
         filled = with_config_defaults(self)
         return Path(vep_cache_root(filled.vep_cache, filled.ref))
 
+    def engine_cache_root(self) -> Path:
+        """The folder holding the engine's caches: the cache folder itself for
+        Ensembl VEP, its ``vep-rs`` folder for vep-rs."""
+        from wgsextract_cli.commands._vep_engines import vep_engine
+
+        from ._params import with_config_defaults
+
+        engine = vep_engine(with_config_defaults(self).engine)
+        return engine.cache_root(self.cache_root())
+
     def version_dir(self) -> Path:
         """The folder of this species, release and assembly in the cache."""
-        return self.cache_root() / self.species / f"{self.vep_version}_{self.assembly}"
+        return (
+            self.engine_cache_root()
+            / self.species
+            / f"{self.vep_version}_{self.assembly}"
+        )
 
     def implied_paths(self) -> Iterator[tuple[str, Path]]:
         yield "vep_cache", self.cache_root()
@@ -205,6 +243,14 @@ class VepDownloadParams(_VepCacheParams):
         "uk",
         help="Ensembl FTP mirror to use (default: uk)",
         choices=("ebi", "uk"),
+    )
+    variations: bool = param(
+        True,
+        help="With --engine vep-rs, include Ensembl's known variants "
+        "(Existing_variation and frequencies; a ~15 GB download; default: on)",
+        doc="With engine 'vep-rs': include Ensembl's known variants "
+        "(Existing_variation and 1000 Genomes frequencies; a ~15 GB download).",
+        action="boolean_optional",
     )
 
     def write_folders(self) -> Iterator[Path]:
