@@ -12,7 +12,13 @@ FetchContent_Declare(neon
 FetchContent_Declare(safe
     URL https://github.com/intel/safestringlib/archive/245c4b8cff1d2e7338b7f3a82828fc8e72b29549.tar.gz
     URL_HASH SHA256=6dea4f4accdc14eea706c88bb11725e8c2cd69b0d8c5f5ee19a0669d1883a901)
-FetchContent_MakeAvailable(mem2 neon safe)
+# bwa-mem3 0.16.0 (as in ../bwa-mem3; the first declaration wins), for its
+# exact mate-rescue pruning headers.
+FetchContent_Declare(mem3
+    URL https://github.com/fg-labs/bwa-mem3/archive/refs/tags/v0.16.0.tar.gz
+    URL_HASH SHA256=28f7e4be7cf359e97b59f2925bb67b27905058c13e6c8af08507b13f2c10662c
+    SOURCE_SUBDIR unused)
+FetchContent_MakeAvailable(mem2 neon safe mem3)
 set_target_properties(safestring_shared PROPERTIES EXCLUDE_FROM_ALL TRUE)
 target_compile_options(safestring_objlib PRIVATE
     -include "${CMAKE_CURRENT_SOURCE_DIR}/safe_compat.h")
@@ -43,7 +49,21 @@ string(REGEX REPLACE
     "(void BandedPairWiseSW::getScores(8|16)\\([^{]+\\{)"
     "\\1\n    WgseExtensionScope wgse_scope(numPairs);\n    if (wgse_metal_extend(pairArray, seqBufRef, seqBufQer, numPairs, w,\n        o_del, e_del, o_ins, e_ins, zdrop, end_bonus, mat, \\2)) return;\n"
     banded_source "${banded_source}")
-file(WRITE "${mem2_src}/bandedSWA.cpp" "#include \"metal_backend.h\"\n${banded_source}")
+# The 128-bit kernels' band tests compare _mm_movemask_epi8() masks only with
+# zero or all lanes set (dmask16 is 0xAAAA, one bit per 16-bit lane): bsw_lanes.h.
+string(REGEX MATCHALL "_mm_movemask_epi8\\([a-z0-9_]+\\) & dmask16" lane16_tests "${banded_source}")
+string(REGEX MATCHALL "_mm_movemask_epi8\\(" lane_tests "${banded_source}")
+list(LENGTH lane16_tests lane16_count)
+list(LENGTH lane_tests lane_count)
+if(NOT lane16_count EQUAL 7 OR NOT lane_count EQUAL 15)
+    message(FATAL_ERROR "Unexpected upstream BWA-MEM2 band tests")
+endif()
+string(REGEX REPLACE "_mm_movemask_epi8\\(([a-z0-9_]+)\\) & dmask16" "wgse_lanes16(\\1)"
+    banded_source "${banded_source}")
+string(REGEX REPLACE "_mm_movemask_epi8\\(([a-z0-9_]+)\\)" "wgse_lanes8(\\1)"
+    banded_source "${banded_source}")
+file(WRITE "${mem2_src}/bandedSWA.cpp"
+    "#include \"metal_backend.h\"\n#include \"bsw_lanes.h\"\n${banded_source}")
 function(mem2_seam variable before after)
     string(FIND "${${variable}}" "${before}" position)
     if(position EQUAL -1)
@@ -60,12 +80,13 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${bwa_dir}/pac_oracle.c.in" "${bwa_dir}/sort_oracle.c.in" "${bwa_dir}/ksw_oracle.c.in"
     "${CMAKE_CURRENT_SOURCE_DIR}/mem_stages.cpp.in"
     "${CMAKE_CURRENT_SOURCE_DIR}/fastmap_stages.cpp.in"
-    "${CMAKE_CURRENT_SOURCE_DIR}/seeding_types.h" "${CMAKE_CURRENT_SOURCE_DIR}/seeding.metal")
+    "${CMAKE_CURRENT_SOURCE_DIR}/seeding_types.h" "${CMAKE_CURRENT_SOURCE_DIR}/seeding.metal"
+    "${CMAKE_CURRENT_SOURCE_DIR}/smem_lockstep.cpp.in")
 # GPU SMEM collection reads FMI_search's checkpoints in place, so they are
 # page-aligned for Metal.
 file(READ "${mem2_SOURCE_DIR}/src/FMI_search.h" fmi_header)
 mem2_seam(fmi_header "    int64_t sentinel_index;\nprivate:"
-    "    int64_t sentinel_index;\n    const int64_t *wgse_count() const { return count; }\n    const CP_OCC *wgse_cp_occ() const { return cp_occ; }\nprivate:")
+    "    int64_t sentinel_index;\n    const int64_t *wgse_count() const { return count; }\n    const CP_OCC *wgse_cp_occ() const { return cp_occ; }\n    void wgse_getSMEMsOnePosLockstep(uint8_t *enc_qdb, int16_t *query_pos_array,\n        int32_t *min_intv_array, int32_t *rid_array, int32_t numReads, int32_t max_readlength,\n        int32_t minSeedLen, SMEM *matchArray, int64_t *__numTotalSmem, const bseq1_t *seq_,\n        int32_t *query_cum_len_ar);\n    int64_t wgse_bwtSeedStrategyLockstep(uint8_t *enc_qdb, int32_t *max_intv_array,\n        int32_t numReads, const bseq1_t *seq_, int32_t *query_cum_len_ar, int32_t minSeedLen,\n        SMEM *matchArray);\n    const void *wgse_prefixes();\nprivate:")
 file(WRITE "${mem2_src}/FMI_search.h" "${fmi_header}")
 file(READ "${mem2_SOURCE_DIR}/src/FMI_search.cpp" fmi_source)
 mem2_seam(fmi_source "(CP_OCC *)_mm_malloc(cp_occ_size * sizeof(CP_OCC), 64)) == NULL"
@@ -78,15 +99,25 @@ mem2_seam(fmi_source "        mem_lim += smem.s;"
     "        mem_lim += smem.s < max_occ ? smem.s : max_occ;")
 mem2_seam(fmi_source "if (pos & SA_COMPX_MASK == 0) {" "if ((pos & SA_COMPX_MASK) == 0) {")
 mem2_seam(fmi_source "if (sp & SA_COMPX_MASK == 0) {" "if ((sp & SA_COMPX_MASK) == 0) {")
-file(WRITE "${mem2_src}/FMI_search.cpp" "#include \"metal_backend.h\"\n${fmi_source}")
+# SMEM collection's three passes step up to 16 reads in turn (smem_lockstep.cpp.in).
+mem2_seam(fmi_source "        getSMEMsOnePosOneThread(enc_qdb,\n                                query_pos_array,"
+    "        if (wgse_exact_cpu())\n            wgse_getSMEMsOnePosLockstep(enc_qdb, query_pos_array, min_intv_array, rid_array,\n                tail, max_readlength, minSeedLen, matchArray, __numTotalSmem, seq_,\n                query_cum_len_ar);\n        else getSMEMsOnePosOneThread(enc_qdb,\n                                query_pos_array,")
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/smem_lockstep.cpp.in" smem_lockstep)
+file(WRITE "${mem2_src}/FMI_search.cpp" "#include \"metal_backend.h\"\n${fmi_source}\n${smem_lockstep}")
 file(READ "${mem2_SOURCE_DIR}/src/bwamem.cpp" bwamem_source)
 include(extension_pipeline.cmake)
 mem2_seam(bwamem_source "    kt_for(worker_bwt, &w, n_); // SMEMs (+SAL)"
-    "    wgse_kt_for_bwt(w, n_); // SMEMs (+SAL)")
+    "    const int wgse_unit = wgse_kt_for_bwt(w, n_); // SMEMs (+SAL)")
+mem2_seam(bwamem_source "    kt_for(worker_aln, &w, n_); // BSW"
+    "    wgse_kt_for(worker_aln, &w, n_, wgse_unit); // BSW")
+mem2_seam(bwamem_source "    fmi->getSMEMsOnePosOneThread(enc_qdb,\n                                 query_pos_ar,\n                                 min_intv_ar,\n                                 rid,\n                                 pos,\n                                 pos,\n                                 seq_,\n                                 query_cum_len_ar,\n                                 max_readlength,\n                                 opt->min_seed_len,\n                                 matchArray + num_smem1,\n                                 &num_smem2);"
+    "    if (wgse_exact_cpu())\n        fmi->wgse_getSMEMsOnePosLockstep(enc_qdb, query_pos_ar, min_intv_ar, rid, pos,\n            max_readlength, opt->min_seed_len, matchArray + num_smem1, &num_smem2, seq_,\n            query_cum_len_ar);\n    else fmi->getSMEMsOnePosOneThread(enc_qdb,\n                                 query_pos_ar,\n                                 min_intv_ar,\n                                 rid,\n                                 pos,\n                                 pos,\n                                 seq_,\n                                 query_cum_len_ar,\n                                 max_readlength,\n                                 opt->min_seed_len,\n                                 matchArray + num_smem1,\n                                 &num_smem2);")
+mem2_seam(bwamem_source "        num_smem3 = fmi->bwtSeedStrategyAllPosOneThread(enc_qdb, min_intv_ar,"
+    "        num_smem3 = (fmi->*(wgse_exact_cpu() ? &FMI_search::wgse_bwtSeedStrategyLockstep\n            : &FMI_search::bwtSeedStrategyAllPosOneThread))(enc_qdb, min_intv_ar,")
 mem2_seam(bwamem_source "    matchArray = mem_collect_smem(fmi, opt,"
     "    if (SMEM *gpu = wgse_metal_smems(fmi, opt, seq_, nseq, mmc, num_smem, tid)) matchArray = gpu;\n    else matchArray = mem_collect_smem(fmi, opt,")
 mem2_seam(bwamem_source "    kt_for(worker_sam, &w,  n_);   // SAM"
-    "    if (!wgse_metal_pair(opt, w.fmi->idx->bns, w.fmi->idx->pac, pes, n, seqs, w.regs,\n        w.nthreads, wgse_worker_sam_pair, &w))\n        kt_for(worker_sam, &w,  n_);   // SAM")
+    "    if (!wgse_metal_pair(opt, w.fmi->idx->bns, w.fmi->idx->pac, pes, n, seqs, w.regs,\n        w.nthreads, wgse_worker_sam_pair, &w))\n        wgse_kt_for(worker_sam, &w, n_, wgse_sam_unit);   // SAM")
 # worker_sam()'s paired-end loop body for one pair.
 string(APPEND bwamem_source "
 void wgse_worker_sam_pair(void *data, long pair, int)
@@ -99,6 +130,17 @@ void wgse_worker_sam_pair(void *data, long pair, int)
     free(w->regs[i+1].a);
 }
 
+// worker_bwt() for a unit of any size, with the unit's share of the seed
+// buffer (upstream's for all but a chunk's last unit, whose seeds may be
+// allocated as they grow).
+static void wgse_worker_bwt_unit(void *data, int seq_id, int batch_size, int tid)
+{
+    worker_t *w = (worker_t*) data;
+    mem_kernel1_core(w->fmi, w->opt, w->seqs + seq_id, batch_size, w->chain_ar + seq_id,
+                     w->seedBuf + (int64_t) seq_id * AVG_SEEDS_PER_READ,
+                     (int64_t) batch_size * AVG_SEEDS_PER_READ, &w->mmc, tid);
+}
+
 // kt_for(worker_bwt)'s units (BATCH_SIZE reads each), with SMEMs from the GPU.
 struct wgse_bwt_t { worker_t *w; int n; };
 static void wgse_worker_bwt(void *data, long unit, int tid)
@@ -107,11 +149,18 @@ static void wgse_worker_bwt(void *data, long unit, int tid)
     int st = unit * BATCH_SIZE;
     worker_bwt(b->w, st, b->n - st < BATCH_SIZE ? b->n - st : BATCH_SIZE, tid);
 }
-void wgse_kt_for_bwt(worker_t &w, int n)
+int wgse_kt_for_bwt(worker_t &w, int n)
 {
     wgse_bwt_t b = {&w, n};
-    if (!wgse_metal_seed(w.fmi, w.opt, w.seqs, n, w.nthreads, wgse_worker_bwt, &b))
+    if (wgse_metal_seed(w.fmi, w.opt, w.seqs, n, w.nthreads, wgse_worker_bwt, &b))
+        return BATCH_SIZE;
+    if (!wgse_exact_cpu()) {
         kt_for(worker_bwt, &w, n);
+        return BATCH_SIZE;
+    }
+    const int unit = wgse_cpu_unit(n, w.nthreads);
+    wgse_kt_for(wgse_worker_bwt_unit, &w, n, unit);
+    return unit;
 }
 ")
 # With Metal, fastmap.cpp does not load the .0123 file (the 2-bit .pac unpacked
@@ -124,9 +173,9 @@ mem2_seam(bwamem_source "${ref_window}"
     "#else\n            seq = ref_string ? ref_string + beg : wgse_ref_window(l_pac, pac, beg, end);\n#endif")
 # mem_sort_dedup_patch()'s sorts move pointers instead of regions (native/bwa/sort_oracle.c.in).
 mem2_seam(bwamem_source "    ks_introsort(mem_ars2, n, a); // sort by the END position, not START!"
-    "    if (wgse_metal_active()) wgse_sort_alnreg_by_end(n, a);\n    else ks_introsort(mem_ars2, n, a);")
+    "    if (wgse_exact_cpu()) wgse_sort_alnreg_by_end(n, a);\n    else ks_introsort(mem_ars2, n, a);")
 mem2_seam(bwamem_source "    n = m;\n    ks_introsort(mem_ars, n, a);"
-    "    n = m;\n    if (wgse_metal_active()) wgse_sort_alnreg_by_score(n, a);\n    else ks_introsort(mem_ars, n, a);")
+    "    n = m;\n    if (wgse_exact_cpu()) wgse_sort_alnreg_by_score(n, a);\n    else ks_introsort(mem_ars, n, a);")
 file(READ "${bwa_dir}/sort_oracle.c.in" sort_oracle)
 string(APPEND bwamem_source "${sort_oracle}")
 # mem_process_seqs() in two halves, so that with Metal the pipeline maps chunk
@@ -140,9 +189,9 @@ file(WRITE "${mem2_src}/bwamem.cpp"
 # decode with NEON (native/bwa/pac_oracle.c.in).
 file(READ "${mem2_SOURCE_DIR}/src/bntseq.cpp" bntseq_source)
 mem2_seam(bntseq_source "\t\t\tfor (k = end_f; k > beg_f; --k) {\n\t\t\t\tseq[l++] = 3 - _get_pac(pac, k);\n\t\t\t}"
-    "\t\t\tif (wgse_metal_active()) wgse_unpack_pac_reverse(pac, beg_f, end_f, seq);\n\t\t\telse for (k = end_f; k > beg_f; --k) {\n\t\t\t\tseq[l++] = 3 - _get_pac(pac, k);\n\t\t\t}")
+    "\t\t\tif (wgse_exact_cpu()) wgse_unpack_pac_reverse(pac, beg_f, end_f, seq);\n\t\t\telse for (k = end_f; k > beg_f; --k) {\n\t\t\t\tseq[l++] = 3 - _get_pac(pac, k);\n\t\t\t}")
 mem2_seam(bntseq_source "\t\t\tfor (k = beg; k < end; ++k) {\n\t\t\t\tseq[l++] = _get_pac(pac, k);\n\t\t\t}"
-    "\t\t\tif (wgse_metal_active()) wgse_unpack_pac(pac, beg, end, seq);\n\t\t\telse for (k = beg; k < end; ++k) {\n\t\t\t\tseq[l++] = _get_pac(pac, k);\n\t\t\t}")
+    "\t\t\tif (wgse_exact_cpu()) wgse_unpack_pac(pac, beg, end, seq);\n\t\t\telse for (k = beg; k < end; ++k) {\n\t\t\t\tseq[l++] = _get_pac(pac, k);\n\t\t\t}")
 file(READ "${bwa_dir}/pac_oracle.c.in" pac_oracle)
 file(WRITE "${mem2_src}/bntseq.cpp" "#include \"metal_backend.h\"
 #include \"rescue_backend.h\"
@@ -171,7 +220,7 @@ ${ksw_oracle}")
 file(READ "${mem2_SOURCE_DIR}/src/bwamem_pair.cpp" pair_source)
 set(rescue_call "aln = ksw_align2(l_ms, seq, re - rb, ref, 5,\n                             opt->mat, opt->o_del, opt->e_del,\n                             opt->o_ins, opt->e_ins, xtra, 0);")
 mem2_seam(pair_source "${rescue_call}"
-    "if (!wgse_metal_matesw(opt, ms, seq, l_ms, ref, is_rev, rb, re, xtra, &aln))\n                ${rescue_call}")
+    "if (!wgse_metal_matesw(opt, ms, seq, l_ms, ref, is_rev, rb, re, xtra, &aln))\n                aln = wgse_rescue_align(opt, l_ms, seq, re - rb, ref, xtra);")
 file(READ "${bwa_dir}/rescue_oracle.c.in" rescue_oracle)
 file(WRITE "${mem2_src}/bwamem_pair.cpp"
     "#include \"rescue_backend.h\"\n${pair_source}\n${rescue_oracle}")
@@ -205,7 +254,7 @@ mem2_seam(fastmap_source "${process_call}" "            if (wgse_overlap)
             else
 ${process_call}")
 mem2_seam(fastmap_source "    FILE *fr = fopen(binary_seq_file, \"r\");\n"
-    "    ref_string = 0;\n    aux.ref_string = 0;\n    if (!wgse_metal_active()) {\n    FILE *fr = fopen(binary_seq_file, \"r\");\n")
+    "    ref_string = 0;\n    aux.ref_string = 0;\n    if (!wgse_exact_cpu()) {\n    FILE *fr = fopen(binary_seq_file, \"r\");\n")
 mem2_seam(fastmap_source "    fprintf(stderr, \"* Ref file: %s\\n\", argv[optind]);\n"
     "    wgse_memory_preflight(argv[optind], fixed_chunk_size > 0 ? int64_t(fixed_chunk_size)\n        : int64_t(opt->chunk_size) * opt->n_threads);\n    fprintf(stderr, \"* Ref file: %s\\n\", argv[optind]);\n")
 mem2_seam(fastmap_source "    fprintf(stderr, \"* Reference genome size: %ld bp\\n\", rlen);\n"
@@ -254,13 +303,17 @@ target_compile_options(mem2_core PUBLIC
     -include "${CMAKE_CURRENT_SOURCE_DIR}/arm_compat.h" "-Wno-error=#warnings")
 target_link_libraries(mem2_core PUBLIC safestring_static ZLIB::ZLIB Threads::Threads)
 
+# Compiled apart from mem2_core: bwa-mem3's source directory has headers named like BWA-MEM2's.
+add_library(mem2_rescue_prune STATIC rescue_prune.cpp)
+target_include_directories(mem2_rescue_prune SYSTEM PRIVATE "${mem3_SOURCE_DIR}/src")
+target_compile_options(mem2_rescue_prune PRIVATE -Wall -Wextra -Werror)
 add_library(metal_backend STATIC metal_backend.mm)
 target_include_directories(metal_backend PRIVATE "${generated}")
 target_compile_options(metal_backend PRIVATE -fobjc-arc -Wall -Wextra -Werror)
-target_link_libraries(metal_backend PUBLIC mem2_core wgse_metal_common)
+target_link_libraries(metal_backend PUBLIC mem2_core mem2_rescue_prune wgse_metal_common)
 add_executable(wgse-bwa-mem2 main.cpp)
 target_link_libraries(wgse-bwa-mem2 PRIVATE metal_backend)
-set(WGSE_BWA_MEM2_VERSION 0.4.1)
+set(WGSE_BWA_MEM2_VERSION 0.5.0)
 target_compile_definitions(wgse-bwa-mem2 PRIVATE WGSE_VERSION="${WGSE_BWA_MEM2_VERSION}")
 target_compile_options(wgse-bwa-mem2 PRIVATE -Wall -Wextra -Werror)
 
@@ -312,3 +365,5 @@ install(FILES "${neon_SOURCE_DIR}/LICENSE" DESTINATION share/licenses/wgse-bwa-m
     RENAME sse2neon-LICENSE)
 install(FILES "${safe_SOURCE_DIR}/LICENSE" DESTINATION share/licenses/wgse-bwa-mem2
     RENAME safestringlib-LICENSE)
+install(FILES "${mem3_SOURCE_DIR}/LICENSE" DESTINATION share/licenses/wgse-bwa-mem2
+    RENAME BWA-MEM3-LICENSE)

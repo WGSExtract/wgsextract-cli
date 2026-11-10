@@ -794,16 +794,15 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                     available_ram=available,
                 )
             )
+        recorded_image = image_identity(launcher.image) if launcher.image else local_dv
+        _migrate_pinned_image(journal, recorded_image)
         logging.info(LOG_MESSAGES["vcf_calling_deepvariant"].format(output=out_vcf))
         try:
             done = _run_stages(
                 journal, launcher, dv_args,
                 inputs=inputs,
                 params={
-                    "image": (
-                        image_identity(launcher.image)
-                        if launcher.image else local_dv
-                    ),
+                    "image": recorded_image,
                     "model_type": model_type,
                     "shards": shards,
                 },
@@ -834,6 +833,23 @@ _STAGE_BINARY = re.compile(r"/(make_examples|call_variants|postprocess_variants)
 _RESOURCE_FLAGS = re.compile(r'\s--(?:cpus|num_partitions|batch_size)[= ]"?\d+"?')
 _JOBLOG = ".make_examples.joblog"
 _DV_BIN = "/opt/deepvariant/bin"
+
+
+def _migrate_pinned_image(journal: StepJournal, image: str | None) -> None:
+    """Read v0.8.5's records of a digest-pinned ``image`` (#597), which
+    appended Docker's image ID to it (``ref@sha256:A@sha256:B``), as ``image``,
+    so their finished stages are kept and reruns record ``image``."""
+    if not image or "@" not in image:
+        return
+    legacy = re.compile(re.escape(image) + r"@sha256:[0-9a-f]{64}")
+
+    def migrate(params: dict[str, Any]) -> dict[str, Any]:
+        if legacy.fullmatch(str(params.get("image", ""))):
+            params["image"] = image
+        return params
+
+    for stage in STEPS:
+        journal.migrate_params(stage, migrate)
 
 
 def _shard_count(journal: StepJournal, threads: int) -> int:

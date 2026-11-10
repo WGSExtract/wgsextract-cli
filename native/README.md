@@ -1,14 +1,15 @@
 # Apple Silicon aligner rebuilds
 
 Optional macOS arm64 (macOS 13+) rebuilds of the aligners WGS Extract uses,
-published as `macos-aligners-*` prereleases. The
-`wgsextract` CLI does not use them yet: they are offered for testing until
-they are qualified on full genomes (#364).
+published as `macos-aligners-*` prereleases. `wgsextract align` and `realign`
+run them in place of their upstream aligners when they're on `PATH`, and
+`wgse-bwa-mem3` with `--compat` in place of bwa or bwa-mem2 (see
+[hardware and acceleration](../docs/hardware.md#apple-silicon-metal)).
 
 | Executable | Upstream | Notes |
 | --- | --- | --- |
 | `wgse-bwa` | BWA 0.7.19 | Native arm64 build. CPU by default (upstream code, with some steps replaced by exact faster versions); `--metal` is **experimental**. Low memory: about 6 GB for a human index. |
-| `wgse-bwa-mem2` | BWA-MEM2 2.3 | arm64 build through sse2neon. CPU by default; `--metal` is **experimental**. Needs much more memory than BWA (see below). |
+| `wgse-bwa-mem2` | BWA-MEM2 2.3 | arm64 build through sse2neon. CPU by default (upstream code, with some steps replaced by exact faster versions); `--metal` is **experimental**. Needs much more memory than BWA (see below). |
 | `wgse-bwa-mem3` | bwa-mem3 0.16.0 | Self-contained arm64 build of bwa-mem3, a faster BWA-MEM2 descendant that reads the BWA-MEM2 index and can write BWA's or BWA-MEM2's exact records (`--compat`). CPU by default; `--metal` is **experimental**. |
 | `wgse-minimap2` | minimap2 2.31 | arm64 build through sse2neon, with faster index loading and building, seeding and anchor sorting on the CPU. `--metal` (long-read presets) is **experimental**. |
 
@@ -112,7 +113,8 @@ For `wgse-bwa`, `wgse-bwa-mem2` and `wgse-bwa-mem3`, options before the command 
 backend of `mem` (other commands ignore them):
 
 - default (`--backend cpu`): the upstream CPU code (in `wgse-bwa` from 0.8.0
-  with some steps replaced by exact faster versions, described below);
+  and `wgse-bwa-mem2` from 0.5.0 with some steps replaced by exact faster
+  versions, described below);
 - `--metal` (`--backend metal`): fails if Metal is unusable, and exits 1 if a
   GPU batch fails (the CPU still completes the alignments, so the output is
   complete and correct);
@@ -134,6 +136,18 @@ together (upstream's 8-bit kernel on up to four windows of the same length at
 once), sorts alignments by pointer and unpacks reference bases with NEON. Each
 gives upstream's exact results; on the 5M HG002 pairs below they cut the time
 by a third.
+
+From 0.5.0, `wgse-bwa-mem2`'s CPU backend does the same with its own exact
+replacements: it collects each read's SMEMs in all three passes with up to 16
+reads stepping in turn (prefetching each step's occurrence-table lines, and
+taking intervals of strings up to 10 bases from a precomputed table), aligns
+each pair's mate-rescue windows together with NEON and skips the windows
+bwa-mem3 proves cannot change the result, tests the band of its 128-bit
+extension kernels with NEON, splits each chunk's reads evenly between threads,
+sorts alignments by pointer and decodes reference windows from the `.pac`
+rather than loading the 6.2 GB `.0123` file. Each gives upstream's exact
+results; on the 5M HG002 pairs below they cut the time by 44% and the peak
+memory by a third. `--cpu-upstream` (a test option) runs upstream's code.
 
 What runs on the GPU:
 
@@ -334,14 +348,18 @@ two chunks ahead. That leaves more room for other applications on a 32 GB
 Mac; it has not been tested on a 16 GB Mac. 0.4.0 adds a 34 MB table of
 index intervals; it peaked at 11.5 GiB with `-K 10000000`, like 0.3.0, and at
 15.1 GiB with `-K 100000000` (14.9 GiB for 0.3.0). With the default `-K`
-and 9 threads, the CPU backend peaked at 18.6 GiB.
+and 9 threads, the CPU backend peaked at 18.6 GiB. From 0.5.0 the CPU
+backend does not load the `.0123` file either: it peaked at 10.9 GiB with
+`-K 10000000`, like `--metal`. It adds a 45 MB table of the index intervals
+of every string of up to 10 bases, built once, for SMEM collection.
 From 0.4.1, `mem` warns on stderr when the Mac has less physical memory
 than its estimate of the run's peak: the index files it loads (17.0 GB for
-hs38 on the CPU, 10.8 GB with `--metal`), plus 1 GiB, plus 24 bytes (CPU) or
+hs38 before 0.5.0 on the CPU, 10.8 GB with `--metal` and from 0.5.0 on the CPU), plus 1 GiB, plus 24 bytes (CPU) or
 45 bytes (`--metal`) per base of a chunk (`-K`, or 10M bases per thread by
 default). That fits the peaks above. The run then still goes ahead with the
-same `-K` and output, but expect heavy paging. For hs38 a 16 GB Mac gets the
-warning on the CPU but not with `--metal` and up to 8 threads.
+same `-K` and output, but expect heavy paging. For hs38 a 16 GB Mac got the
+warning on the CPU before 0.5.0, but not with `--metal` (or the 0.5.0 CPU
+backend) and up to 8 threads.
 
 `wgse-bwa-mem3` reads the same index as `wgse-bwa-mem2`, without the 6.2 GB
 `.0123` file, and like Bioconda's bwa-mem3 0.16.0 peaked at about 10.9 GiB on
@@ -507,6 +525,16 @@ GPU may be faster.
 On the same data, `wgse-bwa --metal` 0.7.1, which shares the updated
 mate-rescue kernel, took 125.9 and 125.5 s against 130.5 and 129.2 s for
 0.7.0 in two interleaved rounds, with identical alignments.
+
+`wgse-bwa-mem2` 0.5.0's CPU backend uses the exact replacements described
+under Usage. On the same data, with 9 threads and `-K 10000000`, three
+interleaved rounds on AC power took 219.0 s (219.0, 220.6 and 214.3 s) against
+519.0 s for 0.4.1 (394.9, 874.3 and 519.0 s), with 47% less CPU time (1731
+against 3248 s) and a 10.9 GiB peak against 16.3 GiB. Other agents kept the
+load average between 11 and 66 and the swap in use; 0.4.1, needing 6 GiB more,
+paged the most, so its fastest round (394.9 s, like the 394.2 s of an earlier
+run under less load) is the fairer comparison: 0.5.0 took 44% less time. Without the SMEM changes 0.5.0 took 276.6 s.
+`--metal` is unchanged (122.1 s against 119.9 s for 0.4.1, within noise).
 
 Before the full index was available, BWA-MEM2 was measured with 10.6M read
 pairs against a small reference (chr20 fragment, Y, MT) whose whole index fits

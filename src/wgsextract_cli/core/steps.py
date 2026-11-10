@@ -36,7 +36,7 @@ import logging
 import os
 import time
 import uuid
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -243,6 +243,23 @@ class StepJournal:
         """The settings the last run of ``step``, finished or not, used."""
         return dict(self._steps.get(step, {}).get("params") or {})
 
+    def migrate_params(
+        self, step: str, migrate: Callable[[dict[str, Any]], dict[str, Any]]
+    ) -> None:
+        """Rewrite an earlier wgsextract's record of ``step`` with
+        ``migrate(params)``, re-keyed as if this version had written it, so a
+        setting recorded in an older form doesn't force a rerun."""
+        record = self._steps.get(step)
+        if record is None:
+            return
+        old = dict(record.get("params") or {})
+        params = _json_value(migrate(dict(old)))
+        if params == old:
+            return
+        if record.get("key") == self._record_key(step, record, old):
+            record["key"] = self._record_key(step, record, params)
+        record["params"] = params
+
     # --- lifecycle -------------------------------------------------------
 
     def __enter__(self) -> StepJournal:
@@ -424,11 +441,25 @@ class StepJournal:
         return item
 
     def _key(self, step: Step, tools: Mapping[str, str | None]) -> str:
+        return self._payload_key(
+            step.name, step.version, _json_value(step.params), tools
+        )
+
+    def _record_key(
+        self, step: str, record: Mapping[str, Any], params: Mapping[str, Any]
+    ) -> str:
+        return self._payload_key(
+            step, record.get("version"), params, record.get("tools") or {}
+        )
+
+    def _payload_key(
+        self, step: str, version: Any, params: Any, tools: Mapping[str, Any]
+    ) -> str:
         payload = {
             "workflow": self.workflow,
-            "step": step.name,
-            "version": step.version,
-            "params": _json_value(step.params),
+            "step": step,
+            "version": version,
+            "params": params,
             "tools": tools,
         }
         text = json.dumps(payload, sort_keys=True, separators=(",", ":"))

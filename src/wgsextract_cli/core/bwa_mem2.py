@@ -31,6 +31,8 @@ from wgsextract_cli.core.reference_assets import sequence_dictionary
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 INDEX_SUFFIXES = (".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac")
+# bwa-mem3 maps with the same index, without the .0123 file.
+BWA_MEM3_INDEX_SUFFIXES = (".amb", ".ann", ".bwt.2bit.64", ".pac")
 # bwa-mem2's documented indexing requirement; chr20 measured 24 bytes per base.
 BUILD_BYTES_PER_BASE = 28
 
@@ -76,6 +78,12 @@ PREBUILT_INDEXES = {
 
 def has_index(ref: str) -> bool:
     return bwa_index.has_index(ref, INDEX_SUFFIXES, "bwa-mem2")
+
+
+def has_bwa_mem3_index(ref: str) -> bool:
+    """Whether bwa-mem3 can map to ``ref``: it has bwa-mem2's index, at least
+    the files bwa-mem3 reads."""
+    return bwa_index.has_index(ref, BWA_MEM3_INDEX_SUFFIXES, "bwa-mem2")
 
 
 def _total_memory() -> int:
