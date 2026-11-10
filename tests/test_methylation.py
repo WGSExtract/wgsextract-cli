@@ -3,6 +3,7 @@ import gzip
 import json
 import logging
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -278,10 +279,15 @@ def test_coverage_median_from_counts(counts, median):
 # samtools reads the tags, and tabix indexes what the fake writes.
 
 _FAKE_MODKIT = """\
-import json, subprocess, sys, time
+import json, os, signal, subprocess, sys, time
 argv = sys.argv[1:]
 with open({log!r}, "a") as f:
     f.write(json.dumps(argv) + "\\n")
+if {crash}:
+    # modkit 0.6.4 segfaulting on a CRAM (#608).
+    print("> calculating threshold value with probabilites from reads", file=sys.stderr)
+    sys.stderr.flush()
+    os.kill(os.getpid(), signal.SIGSEGV)
 codes = ["m", "h"] if "5hmC" in argv else ["m"]
 rows = "".join(
     f"chr20\\t{{pos}}\\t{{pos + 1}}\\t{{code}}\\t10\\t.\\t{{pos}}\\t{{pos + 1}}\\t255,0,0"
@@ -299,16 +305,18 @@ time.sleep({sleep})
 @pytest.fixture
 def fake_modkit(tmp_path, monkeypatch):
     """Install a fake `modkit` on PATH; returns a function giving its logged
-    command lines. ``fake_modkit.install(sleep=...)`` reinstalls it."""
+    command lines. ``fake_modkit.install(sleep=..., crash=...)`` reinstalls it."""
     if sys.platform == "win32":
         pytest.skip("modkit runs on Linux and macOS only")
     log = tmp_path / "modkit_calls.jsonl"
     bindir = tmp_path / "fakebin"
 
-    def install(sleep: float = 0) -> None:
+    def install(sleep: float = 0, crash: bool = False) -> None:
         clear_tool_caches()
         bgzip = get_tool_path("bgzip")
-        source = _FAKE_MODKIT.format(log=str(log), bgzip=bgzip, sleep=sleep)
+        source = _FAKE_MODKIT.format(
+            log=str(log), bgzip=bgzip, sleep=sleep, crash=crash
+        )
         python_tool(bindir, "modkit", source)
         clear_tool_caches()
 
@@ -558,3 +566,86 @@ def test_a_server_job_does_not_follow_a_reference_sibling_out_of_scope(
     [command] = fake_modkit()
     used = Path(command[command.index("--ref") + 1])
     assert allows(str(used)) and not Path(f"{outside}.fai").exists()
+
+
+@needs_samtools
+def test_a_modkit_crash_on_cram_names_the_signal_and_quotes_modkit(
+    tmp_path, fake_modkit, tagged
+):
+    """#608: modkit segfaulting on a CRAM was reported as a bare exit code."""
+    bam, ref = tagged
+    cram = bam.with_suffix(".cram")
+    subprocess.run(
+        ["samtools", "view", "-C", "-T", str(ref), "-o", str(cram), str(bam)],
+        check=True,
+    )
+    subprocess.run(["samtools", "index", str(cram)], check=True)
+    fake_modkit.install(crash=True)
+    out = tmp_path / "out"
+
+    result = api.methylation.pileup(
+        MethylationPileupParams(input=cram, ref=ref, outdir=out), check=False
+    )
+
+    assert result.status == "failed"
+    message = result.error.message
+    assert "SIGSEGV" in message and "probabilites from reads" in message
+    assert "to-bam" in message
+    assert not list(out.glob("reads.*"))
+
+
+def _real_modkit() -> bool:
+    clear_tool_caches()
+    try:
+        command = get_tool_path(methylation.MODKIT)
+        return (
+            bool(command)
+            and subprocess.run(
+                [*shlex.split(command), "--version"], capture_output=True
+            ).returncode
+            == 0
+        )
+    except (OSError, WGSExtractError):
+        return False
+
+
+@needs_samtools
+@pytest.mark.skipif(sys.platform == "win32", reason="modkit runs on Linux and macOS")
+def test_real_modkit_gives_the_same_calls_from_cram_as_from_bam(tmp_path, no_config):
+    """#608: modkit 0.6.4 segfaulted on ONT CRAMs on one code path; the
+    pileup wgsextract runs must give the BAM's calls from a CRAM."""
+    if not _real_modkit():
+        pytest.skip("modkit's Pixi environment is not installed")
+    ref = tmp_path / "ref.fa"
+    ref.write_text(">chr20\n" + "ACGT" * 250 + "\n")
+    # 40 bp reads of the (palindromic) reference, 10 Cs each, on both strands.
+    mm = "MM:Z:C+m?," + ",".join(["0"] * 10) + ";"
+    reads = [
+        f"r{i}\t{16 * (i % 2)}\tchr20\t{4 * i + 1}\t60\t40M\t*\t0\t0\t"
+        f"{'ACGT' * 10}\t{'I' * 40}\tRG:Z:a\t{mm}\t"
+        f"ML:B:C,{','.join(str((i * 37 + j * 53) % 256) for j in range(10))}"
+        for i in range(40)
+    ]
+    sam = tmp_path / "reads.sam"
+    header = "@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr20\tLN:1000\n@RG\tID:a\tPL:ONT\n"
+    sam.write_text(header + "\n".join(reads) + "\n")
+    bedmethyl = {}
+    for fmt in ("bam", "cram"):
+        path = tmp_path / f"reads.{fmt}"
+        subprocess.run(
+            ["samtools", "sort", f"--output-fmt={fmt}", "--reference", str(ref),
+             "-o", str(path), str(sam)],
+            check=True,
+        )  # fmt: skip
+        subprocess.run(["samtools", "index", str(path)], check=True)
+        out = tmp_path / fmt
+        result = api.methylation.pileup(
+            MethylationPileupParams(
+                input=path, ref=ref, outdir=out, context="all", threads=2
+            )
+        )
+        assert result.status == "ok"
+        with gzip.open(out / "reads.all.bedmethyl.gz", "rt") as f:
+            bedmethyl[fmt] = f.read()
+    assert bedmethyl["bam"].count("\n") > 50
+    assert bedmethyl["cram"] == bedmethyl["bam"]

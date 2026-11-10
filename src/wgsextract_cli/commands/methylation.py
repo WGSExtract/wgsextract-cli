@@ -28,6 +28,7 @@ from wgsextract_cli.commands.vcf.basic import plain_reference
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled, safe_output
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependency_checks import (
+    crash_description,
     log_dependency_info,
     verify_dependencies,
 )
@@ -540,6 +541,28 @@ def index_fasta(fasta: str) -> None:
         ) from e
 
 
+def modkit_failure(error: OSError | subprocess.SubprocessError, reads: str) -> str:
+    """Say how modkit pileup failed, with modkit's own last lines (#608)."""
+    returncode = getattr(error, "returncode", None)
+    crashed = crash_description(returncode) if returncode is not None else None
+    if not crashed:
+        return f"modkit pileup failed: {error}"
+    output = getattr(error, "stderr", None) or ""
+    if isinstance(output, bytes):
+        output = output.decode(errors="replace")
+    tail = "\n".join(str(output).strip().splitlines()[-8:])
+    message = f"modkit pileup {crashed}, exit {returncode}."
+    if tail:
+        message += f" modkit's output:\n{tail}"
+    if reads.lower().endswith(".cram"):
+        # modkit itself warns that its CRAM reading "may be unstable".
+        message += (
+            f"\nmodkit reads CRAM less reliably than BAM. Convert the input with "
+            f"`wgsextract bam to-bam -i {reads}` and run on the BAM."
+        )
+    return message
+
+
 def run_pileup(params: MethylationPileupParams) -> None:
     require_supported_platform()
     options = pileup_options(params)
@@ -641,7 +664,7 @@ def run_pileup(params: MethylationPileupParams) -> None:
             try:
                 run_command(command)
             except (OSError, subprocess.SubprocessError) as e:
-                raise WGSExtractError(f"modkit pileup failed: {e}") from e
+                raise WGSExtractError(modkit_failure(e, input_path)) from e
             checkpoint()
             run_command(["tabix", "-f", "-p", "bed", staged_bed])
             if staged_bed != out_bed:
