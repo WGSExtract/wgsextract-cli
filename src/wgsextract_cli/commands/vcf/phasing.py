@@ -33,13 +33,13 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.results import Scalar, current_result, warn
 from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.space_free_paths import (
     READS_INDEXES,
     REFERENCE_INDEXES,
     VCF_INDEXES,
+    restore_paths,
     space_free_folder,
     space_free_link,
 )
@@ -276,7 +276,9 @@ def run_longphase(
     work: str, out: str,
 ) -> None:  # fmt: skip
     prefix = str(Path(work, "longphase"))
-    with longphase_paths(vcf, reads, ref, work) as (lp_vcf, lp_reads, lp_ref, lp_work):
+    paths = (vcf, reads, ref, work)
+    with longphase_paths(*paths) as links:
+        lp_vcf, lp_reads, lp_ref, lp_work = links
         run_command(
             longphase_phase_command(
                 lp_vcf,
@@ -286,12 +288,22 @@ def run_longphase(
                 platform,
                 threads,
                 str(Path(lp_work, "longphase")),
-            ),
+            ),  # fmt: skip
             stdin=subprocess.DEVNULL,
         )
     produced = prefix + ".vcf"
     if not Path(produced).is_file():
         raise WGSExtractError("LongPhase failed to produce a phased VCF.")
+    # Its ##commandline names the links; record the real paths (#632).
+    header = run_command(["bcftools", "view", "-h", produced], capture_output=True)
+    restored = restore_paths(header.stdout, links, paths)
+    if restored != header.stdout:
+        header_file = str(Path(work, "header.vcf"))
+        with open(header_file, "w", newline="\n") as f:
+            f.write(restored)
+        fixed = prefix + ".restored.vcf"
+        run_command(["bcftools", "reheader", "-h", header_file, "-o", fixed, produced])
+        produced = fixed
     run_command(["bcftools", "view", "-Oz", "-o", out, produced])
 
 
@@ -480,21 +492,16 @@ def _missing_contig_lines(vcf: str, header: str) -> list[str]:
     return lines
 
 
-def _restore_reference_url(cram: str, link: str, ref: str, work: str) -> None:
-    """Point the CRAM's @SQ UR at the real reference rather than the deleted
-    space-free link, so readers don't fall back to fetching it by M5 (#632)."""
+def _restore_cram_header(
+    cram: str, links: Sequence[str], paths: Sequence[str], work: str
+) -> None:
+    """Put the real paths back for the space-free links LongPhase recorded in
+    the CRAM's header: @SQ UR, else readers without -T fetch the reference
+    by M5 from EBI, and @PG CL (#632). Rewritten in place, as CRAM allows."""
     header = run_command(["samtools", "view", "-H", cram], capture_output=True).stdout
-    real = str(absolute_path(ref))
-    lines = [
-        "\t".join(
-            f"UR:{real}" if line.startswith("@SQ") and f == f"UR:{link}" else f
-            for f in line.split("\t")
-        )
-        for line in header.splitlines()
-    ]
     fixed = str(Path(work, "header.sam"))
     with open(fixed, "w", newline="\n") as f:
-        f.write("\n".join(lines) + "\n")
+        f.write(restore_paths(header, links, paths))
     run_command(["samtools", "reheader", "-i", fixed, cram])
 
 
@@ -538,7 +545,8 @@ def haplotag(
         paths = (slim, reads, ref, work)
         with (
             longphase_paths(*paths) if phaser == "longphase" else nullcontext(paths)
-        ) as (tool_vcf, tool_reads, tool_ref, tool_work):
+        ) as links:
+            tool_vcf, tool_reads, tool_ref, tool_work = links
             run_command(
                 haplotag_command(
                     phaser,
@@ -555,8 +563,10 @@ def haplotag(
             )
         if not Path(staged).is_file():
             raise WGSExtractError(f"{phaser} haplotag produced no {suffix[1:]} file.")
-        if suffix == ".cram" and tool_ref != ref:
-            _restore_reference_url(staged, tool_ref, ref, work)
+        # A BAM keeps its input's @SQ UR; only its @PG CL names the links, and
+        # BAM can't be reheadered without rewriting every read, so it is left.
+        if suffix == ".cram" and links != paths:
+            _restore_cram_header(staged, links, paths, work)
         with safe_output(output) as final:
             Path(staged).replace(final)
     run_command(["samtools", "index", output])

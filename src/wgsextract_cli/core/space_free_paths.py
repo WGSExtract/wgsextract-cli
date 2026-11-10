@@ -12,7 +12,8 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 
-from wgsextract_cli.core.paths import PathInput
+from wgsextract_cli.core.paths import PathInput, absolute_path
+from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import WGSExtractError
 
 READS_INDEXES = (".bai", ".csi", ".crai")
@@ -26,12 +27,16 @@ def has_space(path: PathInput) -> bool:
 
 @contextmanager
 def space_free_folder(tool: str) -> Iterator[Path]:
-    """A temporary folder, without spaces in its path, for ``tool``'s links."""
-    with tempfile.TemporaryDirectory(prefix=f"wgse_{tool.lower()}_") as folder:
+    """A temporary folder, without spaces in its path, for ``tool``'s links,
+    in the run's temporary directory (--tmp-dir or ``temp_directory``)."""
+    with tempfile.TemporaryDirectory(
+        prefix=f"wgse_{tool.lower()}_", dir=configured_temp_directory()
+    ) as folder:
         if has_space(folder):
             raise WGSExtractError(
                 f"{tool} can't use paths with spaces, and the temporary folder "
-                f"{folder} has one. Set TMPDIR to a folder without spaces."
+                f"{folder} has one. Choose a temporary folder without spaces "
+                "with --tmp-dir or the temp_directory setting in config.toml."
             )
         yield Path(folder)
 
@@ -53,3 +58,12 @@ def space_free_link(target: PathInput, link: Path, indexes: Sequence[str] = ()) 
                 Path(f"{link}{ext}").symlink_to(index.absolute())
                 break
     return str(link)
+
+
+def restore_paths(text: str, links: Sequence[str], targets: Sequence[str]) -> str:
+    """``text`` (a tool's output header) with each of ``links`` that differs
+    from its target replaced by the target's absolute path."""
+    for link, target in zip(links, targets, strict=True):
+        if link != target:
+            text = text.replace(link, str(absolute_path(target)))
+    return text
