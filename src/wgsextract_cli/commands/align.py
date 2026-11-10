@@ -467,15 +467,14 @@ def short_read_aligner(
     native_aligners: str | None = "off",
 ) -> str:
     """bwa or bwa-mem2 for --aligner bwa, bwa-mem2 or auto. Auto takes bwa-mem2,
-    whose alignments are bwa's in less time, when it will run (upstream
-    bwa-mem2, or with ``native_aligners`` wgse-bwa-mem2 0.5.0 and later, which
-    needs no upstream bwa-mem2) and the reference has the index it reads that
-    fits in this computer's memory (that build's estimate leaves out the .0123
-    file; AlignerCommand.memory_model)."""
+    which is faster than bwa but writes different records, when it will run
+    (upstream bwa-mem2, or with ``native_aligners`` wgse-bwa-mem2 0.5.0 and
+    later, which needs no upstream bwa-mem2) and the reference has the index
+    it reads that fits in this computer's memory (that build's estimate leaves
+    out the .0123 file; AlignerCommand.memory_model)."""
     if requested != "auto":
         return requested
-    native = find_native_aligner("bwa-mem2", native_aligners, quiet=True)
-    model = AlignerCommand("bwa-mem2", native).memory_model
+    model = bwa_mem2_memory_model(native_aligners)
     if model == "bwa-mem2" and get_tool_path("bwa-mem2") is None:
         return "bwa"
     memory = short_read_sort_memory("bwa-mem2", memory, log=False)
@@ -490,6 +489,13 @@ def short_read_aligner(
     fits = available_memory() >= needed
     if bwa_mem2_index_ready(model, ref):
         if fits:
+            if model == "wgse-bwa-mem2":
+                logging.info(
+                    "Auto chose bwa-mem2 (records differ from bwa's): "
+                    "wgse-bwa-mem2 0.5.0 or later maps without the .0123 file "
+                    f"and fits in {needed / 1024**3:.1f} GiB. Use --aligner bwa "
+                    "to keep bwa's records."
+                )
             return "bwa-mem2"
         logging.info(
             f"Not using {model}: the alignment pipeline needs about "
@@ -793,7 +799,7 @@ def bwa_mem3_stand_in(
         limit = min(budget, available_memory())
         room = f"the {limit / 1024**3:.1f} GiB of RAM available"
     else:
-        limit = max(budget, needed(bwa_mem2_memory_model(job)))
+        limit = max(budget, needed(bwa_mem2_memory_model(job.native_aligners)))
         room = f"the {budget / 1024**3:.1f} GiB of RAM it can use"
     if stand_in > limit:
         logging.info(
@@ -805,10 +811,11 @@ def bwa_mem3_stand_in(
     return aligner
 
 
-def bwa_mem2_memory_model(job: AlignJob) -> str:
-    """The memory model of bwa-mem2 for this run: its Apple Silicon build's
-    when that maps without the .0123 file (AlignerCommand.memory_model)."""
-    native = find_native_aligner("bwa-mem2", job.native_aligners, quiet=True)
+def bwa_mem2_memory_model(native_aligners: str | None) -> str:
+    """The memory model of bwa-mem2 for a run with this native_aligners
+    setting: its Apple Silicon build's when that maps without the .0123 file
+    (AlignerCommand.memory_model)."""
+    native = find_native_aligner("bwa-mem2", native_aligners, quiet=True)
     return AlignerCommand("bwa-mem2", native).memory_model
 
 

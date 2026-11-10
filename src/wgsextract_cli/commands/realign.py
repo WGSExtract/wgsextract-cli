@@ -464,7 +464,7 @@ def run(params: RealignParams) -> None:
         if align_cmd.bwa_mem3_build(
             job, "bwa-mem2", target
         ) is None and not align_cmd.bwa_mem2_index_ready(
-            align_cmd.bwa_mem2_memory_model(job), target
+            align_cmd.bwa_mem2_memory_model(job.native_aligners), target
         ):
             bwa_mem2.check_index(target)
     if selected_aligner == "bwa-mem3" and not job.gpu:
