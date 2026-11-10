@@ -1,7 +1,7 @@
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ResultDocument } from "../../../shared/result-document.js";
-import type { LooseRecord } from "../../../shared/types.js";
+import type { BundleManifest, LooseRecord } from "../../../shared/types.js";
 import type { BundleTestEmit, BundleTestStep, BundleTestStepReport, BundleTestStepStatus } from "./bundle-test-types.js";
 
 type ReportValues = {
@@ -19,6 +19,13 @@ export async function writeBundleTestReport(report: unknown, reportPath: string 
     await mkdir(path.dirname(outputPath), { recursive: true });
     await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
     return outputPath;
+}
+
+/** A plan step that names something this bundle doesn't declare: the plan and the app are from different versions. */
+export function planMismatch(manifest: BundleManifest, kind: string, step: BundleTestStep, detail?: string): string {
+    const location = [step.pageID, step.sectionID, step.controlID, step.settingID, step.actionID].filter(Boolean).join("/");
+    const app = `${manifest.id ?? "bundle"} ${manifest.version ?? "(no version)"}`;
+    return `The test plan expects ${kind} ${location}, which this app version (${app}) doesn't have${detail ? ` (${detail})` : ""}.`;
 }
 
 export function outputExpectationFailure(output: string, step: BundleTestStep): string | null {

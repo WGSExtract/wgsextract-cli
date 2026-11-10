@@ -194,6 +194,7 @@ def run_discovery_filter(
     v_type: str,
     out_vcf: str,
     thresholds: variant_confidence.Thresholds | None = None,
+    samples: Sequence[str | None] = (),
 ) -> int:
     """Dynamically builds filter based on type and headers."""
     try:
@@ -278,6 +279,7 @@ def run_discovery_filter(
             thresholds or variant_confidence.thresholds_from(),
             include=filter_expr,
             summary_columns=columns,
+            samples=samples,
         )
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
         raise WGSExtractError(f"Discovery filter failed for {v_type}: {e}") from e
@@ -523,7 +525,13 @@ def run_vcf_workflow(
         return None
 
     def discover(handle: StepRun) -> None:
-        count = run_discovery_filter(actual_ann_vcf, v_type, discovery_vcf, thresholds)
+        count = run_discovery_filter(
+            actual_ann_vcf,
+            v_type,
+            discovery_vcf,
+            thresholds,
+            samples=(job.input, vcf_path),
+        )
         handle.metrics["variants"] = count
         for index in (".tbi", ".csi"):
             if Path(discovery_vcf + index).exists():

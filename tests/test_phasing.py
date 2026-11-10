@@ -11,6 +11,7 @@ WhatsHap and LongPhase run for real.
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
 from wgsextract_cli.core.dependency_checks import MissingDependencyError
 from wgsextract_cli.core.results import CommandResult
+from wgsextract_cli.core.temp_directory import run_temporary_directory
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 
 FIXTURE = Path(__file__).parent / "fixtures" / "ont_hg002_phasing"
@@ -168,6 +170,124 @@ def test_a_cram_region_is_phased_and_tagged_as_cram(aligned, tmp_path, phaser):
     assert tagged.name == "haplotagged.cram"
     reads = _run("samtools", "view", "-T", str(ref), str(tagged))
     assert "\tHP:i:1" in reads and "\tHP:i:2" in reads
+
+
+def _phase_and_tag(
+    reads: Path, ref: Path, folder: Path
+) -> tuple[str, str, set[str], str]:
+    """Phased GT:PS, the reads' haplotype tags, the tagged reads' @SQ UR
+    values and both outputs' headers, from LongPhase."""
+    result = _phase(
+        (reads, ref), folder, phaser="longphase", haplotag=True,
+        vcf_input=_write_calls(folder / f"{folder.name} calls.vcf"),
+    )  # fmt: skip
+    outputs = {record.role: Path(record.path) for record in result.outputs}
+    phased = _run("bcftools", "query", "-f", "%POS[\t%GT\t%PS]\n",
+                  str(outputs["phased_variants"]))  # fmt: skip
+    tags = _run(
+        "samtools", "view", "-T", str(ref), "--keep-tag", "HP,PS",
+        str(outputs["haplotagged_alignments"]),
+    )  # fmt: skip
+    header = _run("samtools", "view", "-H", str(outputs["haplotagged_alignments"]))
+    urls = {
+        field
+        for line in header.splitlines()
+        if line.startswith("@SQ")
+        for field in line.split("\t")
+        if field.startswith("UR:")
+    }
+    vcf_header = _run("bcftools", "view", "-h", str(outputs["phased_variants"]))
+    return phased, "\n".join(sorted(tags.splitlines())), urls, vcf_header + header
+
+
+@needs_tools("longphase", "minimap2")
+@needs_htslib
+@pytest.mark.parametrize("reads_format", ["bam", "cram"])
+def test_longphase_phases_and_tags_from_paths_with_spaces(
+    aligned, tmp_path, reads_format
+):
+    """#632: LongPhase splits its -s, -b, -r and -o paths at spaces and fails;
+    reads, reference, VCF and output in folders with spaces must phase and tag
+    as they do without them."""
+    bam, ref = aligned
+    runs = []
+    for space in ("_", " "):
+        home = tmp_path / f"John{space}Smith"
+        (home / f"my{space}out").mkdir(parents=True)
+        (home / f"my{space}ref").mkdir()
+        home_ref = home / f"my{space}ref" / f"my{space}ref.fa"
+        shutil.copy(ref, home_ref)
+        reads = home / f"my{space}reads.{reads_format}"
+        if reads_format == "cram":
+            _run("samtools", "view", "-C", "-T", str(ref), "-o", str(reads), str(bam))
+        else:
+            shutil.copy(bam, reads)
+        _run("samtools", "index", str(reads))
+        phased, tags, urls, headers = _phase_and_tag(
+            reads, home_ref, home / f"my{space}out"
+        )
+        runs.append((phased, tags))
+        # The headers name the user's files, not deleted temporary links.
+        assert f"-r {home_ref} " in headers
+        if reads_format == "cram":
+            # Else htslib would fetch the reference from EBI by M5.
+            assert urls == {f"UR:{home_ref}"}
+            assert "wgse_longphase_" not in headers
+        else:
+            assert "wgse_longphase_" not in headers.split("\n@")[0]
+
+    plain, spaced = runs
+    assert spaced == plain
+    assert "\tHP:i:1" in spaced[1] and "\tHP:i:2" in spaced[1]
+
+
+@needs_tools("longphase", "minimap2")
+@needs_htslib
+@pytest.mark.parametrize("space", ["_", " "])
+def test_longphase_cram_names_the_reference_given_as_a_relative_path(
+    aligned, tmp_path, monkeypatch, space
+):
+    """#635: a relative reference must not be pasted onto LongPhase's own
+    absolute UR (``/cwd//cwd/ref.fa``), with or without links."""
+    bam, ref = aligned
+    home = tmp_path / f"John{space}Smith"
+    home.mkdir()
+    shutil.copy(ref, home / "ref.fa")
+    _run("samtools", "view", "-C", "-T", str(ref), "-o", str(home / "r.cram"), str(bam))
+    _run("samtools", "index", str(home / "r.cram"))
+    monkeypatch.chdir(home)
+    *_rest, urls, _headers = _phase_and_tag(Path("r.cram"), Path("ref.fa"), home)
+    assert urls == {f"UR:{home / 'ref.fa'}"}
+
+
+@needs_tools("longphase", "minimap2")
+@needs_htslib
+def test_longphase_links_go_in_the_chosen_temp_dir(aligned, tmp_path, monkeypatch):
+    """#632/#633: a system temp folder with a space must not stop a run whose
+    paths have none, or whose chosen temporary directory has none; otherwise
+    the error says how to choose one."""
+    bam, ref = aligned
+    spaced_tmp = tmp_path / "Temp Files"
+    spaced_tmp.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(spaced_tmp))
+    home = tmp_path / "John Smith"
+    for run in ("first", "second"):
+        (home / run).mkdir(parents=True)
+    reads = home / "my reads.bam"
+    shutil.copy(bam, reads)
+    _run("samtools", "index", str(reads))
+
+    # Space-free paths need no links, so the temp folder doesn't matter.
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert _phase(aligned, plain, phaser="longphase").metrics["phased_variants"] > 0
+    with pytest.raises(api.CommandFailed, match="--tmp-dir"):
+        _phase((reads, ref), home / "first", phaser="longphase")
+    chosen = tmp_path / "chosen_tmp"
+    chosen.mkdir()
+    with run_temporary_directory(chosen):
+        result = _phase((reads, ref), home / "second", phaser="longphase")
+    assert result.metrics["phased_variants"] > 0
 
 
 @needs_tools("longphase", "minimap2")

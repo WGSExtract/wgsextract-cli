@@ -227,6 +227,11 @@ KNOWN_SETTINGS = {
         0.1,
         "Warn when a microarray output has more autosomal no-calls than this",
     ),
+    "qc_max_contamination": (
+        0.03,
+        "Warn, and cap confidence labels at moderate, when `qc contamination` "
+        "estimates more of the reads (FREEMIX) come from another person",
+    ),
     "confidence_min_depth": (
         10.0,
         "Label rare/clinical variant calls below this read depth low confidence "
@@ -285,6 +290,7 @@ FRACTION_SETTINGS = frozenset(
         "qc_min_autosomal_homozygosity",
         "qc_max_autosomal_homozygosity",
         "qc_max_no_call_rate",
+        "qc_max_contamination",
     }
 )
 

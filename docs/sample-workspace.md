@@ -74,6 +74,7 @@ at = "2026-11-04T22:31:02+00:00"
 | `build` | header contig MD5s or lengths | reference resolution for every command |
 | `target_depths` | `info --detailed`, else a read count on first use | the low-depth warning of `vcf snp`/`indel`, `microarray` and `lineage` |
 | `read_length`, `mean_coverage` | `info` | `target_depths`; shown by `sample show` |
+| `contamination` | `qc contamination` (VerifyBamID2 FREEMIX) | the contamination warning of `vcf snp`/`indel`, `microarray` and `lineage`; confidence labels of rare and clinical findings in the genome folder; the personal report |
 
 ## Commands
 

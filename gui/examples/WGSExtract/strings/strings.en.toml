@@ -43,7 +43,7 @@
 "actions.info-bam.info-commands.calculate-coverage.title" = "Detailed Coverage"
 "actions.info-bam.info-commands.calculate-coverage.tooltip" = "Generate a full breadth-of-coverage report, then the depth bins (0, 1-3, 4-7 and 8+ reads) per chromosome. This accurately calculates how much of the genome was successfully sequenced. Time: 1-3 hours; space: 1-2 GB."
 "actions.info-bam.info-commands.coverage-sample.title" = "Sample Coverage"
-"actions.info-bam.info-commands.coverage-sample.tooltip" = "Estimate breadth of coverage using random sampling. Fast, approximate, and currently marked discontinued in wgsextract-cli."
+"actions.info-bam.info-commands.coverage-sample.tooltip" = "Estimate breadth of coverage using random sampling. Fast and approximate; use Detailed Coverage for exact figures."
 "sections.info-bam.bam-commands.title" = "BAM / CRAM Management"
 "actions.info-bam.bam-commands.bam-sort.title" = "Sort"
 "actions.info-bam.bam-commands.bam-sort.tooltip" = "Sort alignments by genomic coordinates. Required by most downstream tools, including variant callers."

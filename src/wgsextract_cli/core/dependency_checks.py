@@ -107,7 +107,7 @@ _NTSTATUS_CRASHES = {
 }
 
 
-def _crash_description(returncode: int) -> str | None:
+def crash_description(returncode: int) -> str | None:
     """Describe a death by signal (negative code, or 128+N from a wrapper shell),
     or on Windows by an NTSTATUS error."""
     if returncode >= 0xC0000000:
@@ -258,7 +258,7 @@ def _probe_version_in(tool: str, full_cmd: list[str], cwd: str | None) -> str:
         # 1. Try --version first (standard)
         version_arg = VERSION_ARGS.get(tool, "--version")
         res = _run_probe(tool, full_cmd + [version_arg], cwd)
-        if crashed := _crash_description(res.returncode):
+        if crashed := crash_description(res.returncode):
             return f"Error: {tool} {crashed}"
         output = _version_output(res.stdout, res.stderr)
         if failure := _launch_failure(tool, res.returncode, output):
@@ -271,7 +271,7 @@ def _probe_version_in(tool: str, full_cmd: list[str], cwd: str | None) -> str:
 
         # 2. Fallback for tools that use bare command or --help
         res = _run_probe(tool, full_cmd, cwd)
-        if crashed := _crash_description(res.returncode):
+        if crashed := crash_description(res.returncode):
             return f"Error: {tool} {crashed}"
         output = _version_output(res.stdout, res.stderr)
 

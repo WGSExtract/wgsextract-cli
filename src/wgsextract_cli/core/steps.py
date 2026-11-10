@@ -244,11 +244,20 @@ class StepJournal:
         return dict(self._steps.get(step, {}).get("params") or {})
 
     def migrate_params(
-        self, step: str, migrate: Callable[[dict[str, Any]], dict[str, Any]]
+        self,
+        step: str,
+        migrate: Callable[[dict[str, Any]], dict[str, Any]],
+        *,
+        version: int = 1,
+        tools: Sequence[str] = (),
     ) -> None:
         """Rewrite an earlier wgsextract's record of ``step`` with
         ``migrate(params)``, re-keyed as if this version had written it, so a
-        setting recorded in an older form doesn't force a rerun."""
+        setting recorded in an older form doesn't force a rerun.
+
+        An interrupted (running) record holds no version or tools, so it is
+        keyed with the step's ``version`` and ``tools``; it is re-keyed only
+        if they match it, so a resume can keep its partial work."""
         record = self._steps.get(step)
         if record is None:
             return
@@ -256,8 +265,10 @@ class StepJournal:
         params = _json_value(migrate(dict(old)))
         if params == old:
             return
-        if record.get("key") == self._record_key(step, record, old):
-            record["key"] = self._record_key(step, record, params)
+        known = {"version": version, "tools": _tool_versions(tools)}
+        keyed = {**known, **{k: record[k] for k in known if k in record}}
+        if record.get("key") == self._record_key(step, keyed, old):
+            record["key"] = self._record_key(step, keyed, params)
         record["params"] = params
 
     # --- lifecycle -------------------------------------------------------

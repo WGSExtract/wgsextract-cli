@@ -13,18 +13,35 @@ name: Install Lab
 # see which releases have had a full run; otherwise the event's default name.
 run-name: "${{ inputs.app_release && format('Install Lab: app {0}', inputs.app_release) || '' }}"
 
-# The desktop app (gui/) has its own CI (gui-*.yml); app-only changes skip this.
+# Changes that can't affect the app or the CLI skip this; see "In CI" in
+# docs/install_testing.md. Later patterns override earlier ones.
 on:
   pull_request:
     branches: [ main ]
-    paths-ignore:
-      - gui/**
-      - .github/workflows/gui-*.yml
+    paths:
+      - "**"
+      # Can't change the app or its actions (#625); all other gui/ changes run
+      # the tree jobs on an app built from the tree.
+      - "!gui/docs/**"
+      - "!gui/**/*.md"
+      - "!gui/app/tests/**"
+      - "!gui/tests/**"
+      - "!gui/tools/packaging/tests/**"
+      - "!.github/workflows/gui-*.yml"
+      - ".github/workflows/gui-build.yml"
   push:
     branches: [ main ]
-    paths-ignore:
-      - gui/**
-      - .github/workflows/gui-*.yml
+    paths:
+      - "**"
+      # Can't change the app or its actions (#625); all other gui/ changes run
+      # the tree jobs on an app built from the tree.
+      - "!gui/docs/**"
+      - "!gui/**/*.md"
+      - "!gui/app/tests/**"
+      - "!gui/tests/**"
+      - "!gui/tools/packaging/tests/**"
+      - "!.github/workflows/gui-*.yml"
+      - ".github/workflows/gui-build.yml"
   schedule:
     - cron: "17 6 * * 1"
   workflow_dispatch:
@@ -93,6 +110,11 @@ jobs:
   # given as app_release), or the builds of the GUI distribution run given as
   # app_run. Releases after v0.6.6 carry the app; older ones are on the app's
   # former repository, WGSExtract/gui-for-cli.
+  #
+  # The tree jobs drive the app with this tree's plan (scripts/installlab/gui),
+  # which names the app's actions. When this tree's app or plan differs from
+  # the release's, they test an app built from this tree instead (app-build),
+  # so a renamed action doesn't fail every run until it is released (#625).
   app-source:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -100,7 +122,11 @@ jobs:
       repo: ${{ steps.resolve.outputs.repo }}
       release: ${{ steps.resolve.outputs.release }}
       source: ${{ steps.resolve.outputs.source }}
+      build: ${{ steps.resolve.outputs.build }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Find the app's release
         id: resolve
         env:
@@ -122,15 +148,39 @@ jobs:
           # The app's source: gui/ in this repository, the root in the old one.
           source=out/app-src
           if [ "$repo" = "$GITHUB_REPOSITORY" ]; then source=out/app-src/gui; fi
+          build=false
+          if [ -z "$APP_RUN$APP_RELEASE" ] && [ "$repo" = "$GITHUB_REPOSITORY" ]; then
+            git fetch --quiet --depth=1 origin tag "$release"
+            if ! git diff --quiet "$release" HEAD -- gui scripts/installlab/gui; then
+              build=true
+            fi
+          fi
           echo "App from $repo ${release:-run $APP_RUN}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$build" = true ]; then
+            echo "Tree jobs: an app built from this tree (its gui/ or plan differs from $release)" >> "$GITHUB_STEP_SUMMARY"
+          fi
           {
             echo "repo=$repo"
             echo "release=$release"
             echo "source=$source"
+            echo "build=$build"
           } >> "$GITHUB_OUTPUT"
 
-  linux-app:
+  # Unsigned, as a local build: the oracle then requires the platform's
+  # signature check to refuse it. Intel macOS isn't tested here. A platform
+  # whose build failed fails its own tree job (no artifact); the pinned jobs,
+  # which use the release, still run.
+  app-build:
     needs: app-source
+    if: needs.app-source.outputs.build == 'true'
+    uses: ./.github/workflows/gui-build.yml
+    with:
+      ref: ${{ github.sha }}
+      targets: '["tauri-linux", "tauri-macos-arm64", "tauri-windows"]'
+
+  linux-app:
+    needs: [app-source, app-build]
+    if: ${{ !cancelled() && needs.app-source.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
@@ -147,13 +197,23 @@ jobs:
           pixi-version: v0.82.0
           locked: true
           environments: default
+      - name: Get the app built from this tree
+        if: matrix.cli == 'tree' && needs.app-source.outputs.build == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: tauri-linux
+          path: out/app-run
       - name: Download the app's .deb
         env:
           GH_TOKEN: ${{ github.token }}
           GUI_REPO: ${{ needs.app-source.outputs.repo }}
           APP_RELEASE: ${{ needs.app-source.outputs.release }}
+          TREE_BUILD: ${{ matrix.cli == 'tree' && needs.app-source.outputs.build == 'true' }}
         run: |
-          if [ -n "$APP_RUN" ]; then
+          if [ "$TREE_BUILD" = true ]; then
+            mkdir -p out/app
+            find out/app-run -name '*_amd64.deb' -exec mv {} out/app/ \;
+          elif [ -n "$APP_RUN" ]; then
             gh run download "$APP_RUN" -R "$GUI_REPO" -n tauri-linux -D out/app-run
             mkdir -p out/app
             find out/app-run -name '*_amd64.deb' -exec mv {} out/app/ \;
@@ -216,7 +276,8 @@ jobs:
           retention-days: 14
 
   macos-app:
-    needs: app-source
+    needs: [app-source, app-build]
+    if: ${{ !cancelled() && needs.app-source.result == 'success' }}
     runs-on: macos-latest
     timeout-minutes: 150
     strategy:
@@ -240,14 +301,25 @@ jobs:
           latest=$(find /Applications -maxdepth 1 -name 'Xcode_*.app' | sort -V | tail -n 1)
           sudo xcode-select -s "$latest/Contents/Developer"
           xcodebuild -version
+      - name: Get the app built from this tree
+        if: matrix.cli == 'tree' && needs.app-source.outputs.build == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: tauri-macos-arm64
+          path: out/app-run
       - name: Download the app's DMG
         id: app
         env:
           GH_TOKEN: ${{ github.token }}
           GUI_REPO: ${{ needs.app-source.outputs.repo }}
           APP_RELEASE: ${{ needs.app-source.outputs.release }}
+          TREE_BUILD: ${{ matrix.cli == 'tree' && needs.app-source.outputs.build == 'true' }}
         run: |
-          if [ -n "$APP_RUN" ]; then
+          if [ "$TREE_BUILD" = true ]; then
+            ref=$GITHUB_SHA
+            mkdir -p out/app
+            find out/app-run -name '*.dmg' -exec mv {} out/app/ \;
+          elif [ -n "$APP_RUN" ]; then
             ref=$(gh run view "$APP_RUN" -R "$GUI_REPO" --json headSha -q .headSha)
             gh run download "$APP_RUN" -R "$GUI_REPO" -n tauri-macos-arm64 -D out/app-run
             mkdir -p out/app
@@ -347,7 +419,8 @@ jobs:
           retention-days: 14
 
   windows-app:
-    needs: app-source
+    needs: [app-source, app-build]
+    if: ${{ !cancelled() && needs.app-source.result == 'success' }}
     runs-on: windows-latest
     timeout-minutes: 150
     strategy:
@@ -358,13 +431,23 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Get the app built from this tree
+        if: matrix.cli == 'tree' && needs.app-source.outputs.build == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: tauri-windows
+          path: out/app-run
       - name: Download the app's installer
         env:
           GH_TOKEN: ${{ github.token }}
           GUI_REPO: ${{ needs.app-source.outputs.repo }}
           APP_RELEASE: ${{ needs.app-source.outputs.release }}
+          TREE_BUILD: ${{ matrix.cli == 'tree' && needs.app-source.outputs.build == 'true' }}
         run: |
-          if ($env:APP_RUN) {
+          if ($env:TREE_BUILD -eq "true") {
+            New-Item -ItemType Directory -Force out/app | Out-Null
+            Get-ChildItem -Recurse out/app-run -Filter *_x64-setup.exe | Move-Item -Destination out/app
+          } elseif ($env:APP_RUN) {
             gh run download $env:APP_RUN -R $env:GUI_REPO -n tauri-windows -D out/app-run
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
             New-Item -ItemType Directory -Force out/app | Out-Null

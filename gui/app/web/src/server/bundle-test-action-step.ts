@@ -6,7 +6,7 @@ import { manifestActionCandidates } from "./manifest-lookup.js";
 import { platformCommand } from "./platform-command.js";
 import { isPlatformScriptReference, resolvePlatformScriptPath } from "./platform-scripts.js";
 import { expandInputs, expandValueRecord } from "./bundle-test-runtime.js";
-import { makeReport, outputExpectationFailure, resultExpectationFailure } from "./bundle-test-report.js";
+import { makeReport, outputExpectationFailure, planMismatch, resultExpectationFailure } from "./bundle-test-report.js";
 import { timeoutRunProcess } from "./bundle-test-timeout.js";
 import type { ActionSpec, BundleManifest, CommandContext, ControlSpec, RowSpec } from "../../../shared/types.js";
 import type { BundleTestRuntime, BundleTestStep, BundleTestStepOptions, BundleTestStepReport } from "./bundle-test-types.js";
@@ -114,14 +114,14 @@ async function resolveAction(step: BundleTestStep, manifest: BundleManifest, bas
     }
     const matches = candidates.filter((candidate) => candidate.action.id === step.actionID);
     if (matches.length === 0) {
-        throw new Error(`Unknown action: ${step.actionID}`);
+        throw new Error(planMismatch(manifest, "action", step));
     }
     if (matches.length > 1) {
         throw new Error(`Action id is ambiguous, add pageID/sectionID/controlID: ${step.actionID}`);
     }
     const match = matches[0];
     if (!match) {
-        throw new Error(`Unknown action: ${step.actionID}`);
+        throw new Error(planMismatch(manifest, "action", step));
     }
     const inputs = expandInputs(step.inputs ?? {}, workspaceRoot);
     const context = {

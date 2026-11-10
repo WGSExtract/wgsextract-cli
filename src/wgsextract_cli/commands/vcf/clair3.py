@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -18,6 +19,7 @@ from wgsextract_cli.api.vcf import VcfClair3Params
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.cram_staging import stage_cram30
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -25,9 +27,16 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import warn_if_no_variants
-from wgsextract_cli.core.paths import expand_path
+from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.reference_assets import read_fai_lengths
+from wgsextract_cli.core.region_selection import selected_intervals
+from wgsextract_cli.core.space_free_paths import (
+    READS_INDEXES,
+    REFERENCE_INDEXES,
+    restore_vcf_paths,
+    space_free_paths,
+)
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
@@ -41,6 +50,10 @@ WINDOWS_UNSUPPORTED = (
     "Clair3 is not available on Windows (Bioconda builds it for Linux only). "
     "Run `vcf clair3` on Linux x86-64, for example under WSL2."
 )
+# libclair3 links its own htslib, whose CRAM 3.1 decoder fails on valid
+# blocks (#604) that the host samtools reads.
+_CRAM31_BUG = "Clair3's bundled htslib can fail to decode valid CRAM 3.1 blocks (#604)."
+_ERROR_LINE = re.compile(r"^\[E::|\[ERROR\]|^Traceback|^[\w.]*(Error|Exception):")
 _FETCH = (
     "Download a model directory (pileup.pt and full_alignment.pt) from "
     "https://www.bio8.cs.hku.hk/clair3/clair3_models_rerio_pytorch/ and pass "
@@ -195,7 +208,8 @@ def _fetch_hint(name: str) -> str:
 
 def resolve_model(value: str, bundled: Path | None) -> Path:
     """A model directory, or the name of one Clair3 bundles."""
-    path = Path(expand_path(value))
+    # Normalised, so "." and ".." name the real model folder.
+    path = Path(os.path.abspath(expand_path(value)))
     if path.is_dir():
         model = path
     elif bundled and "/" not in value and (bundled / value).is_dir():
@@ -369,12 +383,47 @@ def clair3_command(
     return command
 
 
+def space_free_run_paths(
+    reads: str, ref: str, model: Path, work: str
+) -> AbstractContextManager[list[str]]:
+    """The reads, reference, model and work folder, as space-free links where
+    they have spaces: Clair3's shell and GNU parallel steps split paths at
+    spaces (#623). Clair3 reads the model's chemistry from its folder name,
+    which the link keeps."""
+    model_name = re.sub(r"\s", "_", model.name) or "model"
+    return space_free_paths(
+        "Clair3",
+        [
+            (reads, f"reads{''.join(Path(reads).suffixes[-1:])}", READS_INDEXES),
+            (ref, "ref.fa", REFERENCE_INDEXES),
+            (model, f"model/{model_name}", ()),
+            (work, "work", ()),
+        ],
+    )
+
+
 def _clair3_env() -> dict[str, str]:
     # Clair3 runs its own Python; don't leak ours into it.
     env = dict(os.environ)
     for var in ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV"):
         env.pop(var, None)
     return env
+
+
+def clair3_errors(output: Path, limit: int = 8) -> str:
+    """Distinct error lines from Clair3's logs: it reports them on stdout
+    (tee'd to ``output/run_clair3.log`` and the step logs in ``output/log``),
+    so they never reach the failed command's stderr."""
+    seen: dict[str, None] = {}
+    logs = [output / "run_clair3.log", *sorted(output.glob("log/*.log"))]
+    for log in logs:
+        if not log.is_file() or log.name.startswith("parallel_"):
+            continue  # GNU parallel job tables.
+        for line in log.read_text(errors="replace").splitlines():
+            line = line.strip()
+            if _ERROR_LINE.search(line):
+                seen.setdefault(line, None)
+    return "\n".join(list(seen)[:limit])
 
 
 def run_clair3(params: VcfClair3Params) -> None:
@@ -402,27 +451,63 @@ def run_clair3(params: VcfClair3Params) -> None:
         plain_reference(ref, outdir) as use_ref,
         tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_clair3_") as work,
     ):
-        bed = None
+        bed, intervals = None, None
         if region:
+            lengths = read_fai_lengths(use_ref)
             bed = str(Path(work, "regions.bed"))
-            write_region_bed(region, read_fai_lengths(use_ref), bed)
+            write_region_bed(region, lengths, bed)
+            try:
+                intervals = selected_intervals(region, lengths, commas=True)
+            except (ValueError, OSError) as error:
+                raise WGSExtractError(
+                    f"Invalid Clair3 region selection: {region}: {error}"
+                ) from error
+        staging = Path(work, "reads")
+        staging.mkdir()
+        reads = stage_cram30(
+            input_file, use_ref, str(staging), threads, intervals,
+            tool="Clair3", why=_CRAM31_BUG,
+        )  # fmt: skip
         output = str(Path(work, "clair3"))
-        try:
-            # stdin closed: Clair3's GNU parallel would read it otherwise.
-            run_command(
-                clair3_command(
-                    input_file, use_ref, model, threads, output, bed, sample
-                ),
-                env=_clair3_env(),
-                stdin=subprocess.DEVNULL,
-            )
-        except (OSError, subprocess.SubprocessError) as e:
-            raise WGSExtractError(f"Clair3 failed: {e}") from e
+        # Absolute, so the header's paths can be told apart and restored.
+        abs_reads, abs_ref, abs_work = (
+            str(absolute_path(p)) for p in (reads, use_ref, work)
+        )
+        with space_free_run_paths(abs_reads, abs_ref, model, abs_work) as links:
+            run_reads, run_ref, run_model, run_work = links
+            command = clair3_command(
+                run_reads, run_ref, Path(run_model), threads,
+                str(Path(run_work, "clair3")),
+                str(Path(run_work, "regions.bed")) if bed else None, sample,
+            )  # fmt: skip
+            try:
+                # stdin closed: Clair3's GNU parallel would read it otherwise.
+                run_command(command, env=_clair3_env(), stdin=subprocess.DEVNULL)
+            except (OSError, subprocess.SubprocessError) as e:
+                errors = clair3_errors(Path(output))
+                if not errors or not isinstance(e, subprocess.CalledProcessError):
+                    raise WGSExtractError(f"Clair3 failed: {e}") from e
+                stderr = (
+                    e.stderr.decode(errors="replace")
+                    if isinstance(e.stderr, bytes)
+                    else (e.stderr or "")
+                )
+                # Clair3's stderr (when any) as run_command reports it, then its logs.
+                reported = f"{e}\n" if stderr.strip() else f"exit {e.returncode}; "
+                raise WGSExtractError(
+                    f"Clair3 failed: {reported}Clair3's log errors:\n{errors}"
+                ) from e
         merged = Path(output, "merge_output.vcf.gz")
         if not merged.is_file():
             raise WGSExtractError("Clair3 failed to produce merge_output.vcf.gz.")
+        # Name the user's files, not the deleted links, in the header.
+        real_paths = {
+            run_reads: input_file, run_ref: ref, run_model: str(model),
+            run_work: work,
+        }  # fmt: skip
+        named = restore_vcf_paths(str(merged), real_paths, work)
         with safe_output(out_vcf) as staged:
-            run_command(["bcftools", "view", "-Oz", "-o", staged, str(merged)])
+            run_command(["bcftools", "view", "-Oz", "-o", staged, named])
     ensure_vcf_indexed(out_vcf)
     record_variants(out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region))
 

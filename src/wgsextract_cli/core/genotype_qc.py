@@ -17,6 +17,7 @@ from pathlib import Path
 
 from wgsextract_cli.core import sample_workspace
 from wgsextract_cli.core.config import KNOWN_SETTINGS, settings
+from wgsextract_cli.core.contamination import warn_if_contaminated
 from wgsextract_cli.core.cram_counts import cram_container_totals, multi_ref_contigs
 from wgsextract_cli.core.microarray_utils import GenotypeTally, is_autosome
 from wgsextract_cli.core.paths import PathInput
@@ -396,7 +397,7 @@ def _region_intervals(region: str, lengths: Mapping[str, int]) -> list[Interval]
     return intervals
 
 
-def _contigs_with_reads(alignment: str, ref: str | None) -> dict[str, int]:
+def contigs_with_reads(alignment: str, ref: str | None) -> dict[str, int]:
     """Length of each contig the index places mapped reads on."""
     from wgsextract_cli.commands.info.metrics import parse_idxstats
     from wgsextract_cli.core.alignment_metadata import get_bam_header
@@ -462,7 +463,7 @@ def covered_depths(
         lengths = sequence_lengths(get_bam_header(alignment, ref))
         intervals = _region_intervals(region, lengths)
     else:
-        intervals = [(c, 1, n) for c, n in _contigs_with_reads(alignment, ref).items()]
+        intervals = [(c, 1, n) for c, n in contigs_with_reads(alignment, ref).items()]
     intervals = [i for i in intervals if contig_target(i[0]) in wanted]
     if not intervals:
         return {}
@@ -494,10 +495,12 @@ def warn_low_depth(
 ) -> dict[str, float] | None:
     """Warn about each of `targets` that low_depth_targets finds too shallow:
     over `region` when given, else over the whole input, re-checked over the
-    bases its reads cover before warning."""
+    bases its reads cover before warning. Also warn when `qc contamination`
+    recorded the sample as contaminated."""
     targets = [t for t in TARGETS if t in set(targets)]
     if not targets or not alignment.lower().endswith((".bam", ".cram")):
         return None
+    warn_if_contaminated(alignment)
     if not _setting("qc_min_diploid_depth", min_depth) and not _setting(
         "qc_min_haploid_depth", min_depth
     ):

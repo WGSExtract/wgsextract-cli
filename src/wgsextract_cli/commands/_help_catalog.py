@@ -536,6 +536,11 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "--outdir, else beside the input.",
         f"wgsextract qc vcf {_VCF_IN}",
     ),
+    "qc contamination": _h(
+        "<stem>.contamination.selfSM (FREEMIX) and <stem>.contamination.Ancestry.",
+        "wgsextract qc contamination --input sample.cram",
+        "wgsextract qc contamination --input sample.bam --sites 10k",
+    ),
     "qc fake-data": _h(
         "fake.cram, fake.bam, fake.vcf or fake_R1/_R2.fastq.gz, and the fake "
         "reference.",

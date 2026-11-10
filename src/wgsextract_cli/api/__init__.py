@@ -125,6 +125,7 @@ from .qc import (
     FastqcParams,
     MultiqcMetricsParams,
     MultiqcParams,
+    QcContaminationParams,
     QcVcfParams,
 )
 from .ref import (
@@ -232,6 +233,7 @@ __all__ = [
     "PetAlignParams",
     "ProgressCallback",
     "ProgressEvent",
+    "QcContaminationParams",
     "QcVcfParams",
     "RealignParams",
     "RefAadrParams",

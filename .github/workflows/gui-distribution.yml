@@ -15,6 +15,7 @@ on:
   pull_request:
     branches: [ main ]
     paths:
+      - ".github/workflows/gui-build.yml"
       - ".github/workflows/gui-distribution.yml"
       - "gui/app/web/packagers/**"
       - "gui/tools/packaging/**"
@@ -43,135 +44,11 @@ permissions:
 
 jobs:
   tauri:
-    name: Tauri (${{ matrix.artifact_name }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: linux
-            runner: ubuntu-24.04
-            artifact_name: tauri-linux
-          - os: macos
-            runner: macos-latest
-            artifact_name: tauri-macos-arm64
-          - os: macos
-            runner: macos-15-intel
-            artifact_name: tauri-macos-x64
-          - os: windows
-            runner: windows-latest
-            artifact_name: tauri-windows
-    defaults:
-      run:
-        working-directory: gui
-    env:
-      PYTHON: python3
-      RELEASE_TAG: ${{ inputs.tag }}
-      TAURI_UPDATER_PUBKEY: ${{ vars.TAURI_UPDATER_PUBKEY || secrets.TAURI_UPDATER_PUBKEY }}
-      TAURI_UPDATER_ENDPOINTS: ${{ vars.TAURI_UPDATER_ENDPOINTS }}
-      TAURI_UPDATER_ENDPOINT: ${{ vars.TAURI_UPDATER_ENDPOINT }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-      PACKAGE_REQUIRE_MACOS_SIGNING: ${{ inputs.tag != '' && '1' || '' }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ inputs.ref || inputs.tag }}
-          persist-credentials: false
-
-      - name: Configure release version
-        if: env.RELEASE_TAG != ''
-        shell: bash
-        run: echo "PACKAGE_APP_VERSION=${RELEASE_TAG#v}" >> "$GITHUB_ENV"
-
-      - name: Setup Node
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "24"
-
-      # The hosted runners ship rustup; Tauri builds with the current stable.
-      - name: Setup Rust
-        shell: bash
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
-          rustc --version
-
-      - name: Install Linux system dependencies
-        if: matrix.os == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libgtk-3-dev \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            rpm \
-            zstd
-
-      # Tauri signs and notarizes the macOS app when these variables are set:
-      # https://v2.tauri.app/distribute/sign/macos/
-      - name: Configure macOS signing and notarization
-        if: matrix.os == 'macos'
-        env:
-          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          if [ -z "$APPLE_CERTIFICATE_P12" ] || [ -z "$APPLE_SIGNING_IDENTITY" ]; then
-            if [ -n "$PACKAGE_REQUIRE_MACOS_SIGNING" ]; then
-              echo "::error::Releases need APPLE_CERTIFICATE_P12 and APPLE_SIGNING_IDENTITY secrets."
-              exit 1
-            fi
-            echo "::warning::Apple signing secrets are not configured; the macOS app will be unsigned."
-            exit 0
-          fi
-          {
-            echo "APPLE_CERTIFICATE=$APPLE_CERTIFICATE_P12"
-            echo "APPLE_CERTIFICATE_PASSWORD=$APPLE_CERTIFICATE_PASSWORD"
-            echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY"
-          } >> "$GITHUB_ENV"
-          # Preferred: an App Store Connect API key (no Apple ID password or 2FA).
-          if [ -n "$APPLE_API_KEY_P8" ] && [ -n "$APPLE_API_KEY_ID" ] && [ -n "$APPLE_API_ISSUER_ID" ]; then
-            key="$RUNNER_TEMP/AuthKey_$APPLE_API_KEY_ID.p8"
-            printf '%s' "$APPLE_API_KEY_P8" > "$key"
-            {
-              echo "APPLE_API_KEY=$APPLE_API_KEY_ID"
-              echo "APPLE_API_ISSUER=$APPLE_API_ISSUER_ID"
-              echo "APPLE_API_KEY_PATH=$key"
-            } >> "$GITHUB_ENV"
-          elif [ -n "$APPLE_ID" ] && [ -n "$APPLE_APP_SPECIFIC_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]; then
-            {
-              echo "APPLE_ID=$APPLE_ID"
-              echo "APPLE_PASSWORD=$APPLE_APP_SPECIFIC_PASSWORD"
-              echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
-            } >> "$GITHUB_ENV"
-          elif [ -n "$PACKAGE_REQUIRE_MACOS_SIGNING" ]; then
-            echo "::error::Releases need notarization credentials (App Store Connect API key or Apple ID)."
-            exit 1
-          fi
-
-      - name: Install dependencies
-        run: npm ci --prefix app
-
-      - name: Package Tauri app
-        run: python3 tools/tasks.py package tauri
-
-      - name: Upload Tauri artifacts
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ${{ matrix.artifact_name }}
-          path: gui/out/release/tauri/*
-          if-no-files-found: error
+    uses: ./.github/workflows/gui-build.yml
+    with:
+      ref: ${{ inputs.ref || inputs.tag || github.sha }}
+      tag: ${{ inputs.tag }}
+    secrets: inherit
 
   publish:
     name: Add the app to the release

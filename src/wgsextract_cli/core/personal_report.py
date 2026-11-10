@@ -33,7 +33,12 @@ from typing import Any
 from urllib.parse import quote
 
 from wgsextract_cli import __version__
-from wgsextract_cli.core import gene_lists, read_scope, variant_confidence
+from wgsextract_cli.core import (
+    contamination,
+    gene_lists,
+    read_scope,
+    variant_confidence,
+)
 from wgsextract_cli.core.builds import (
     build_from_chr1_length,
     canonical_build,
@@ -92,6 +97,7 @@ _OVERVIEW_FACTS = (
     ("target_depths", "Depth by target"),
     ("read_length", "Read length"),
 )
+CONTAMINATION_LABEL = "Contamination (FREEMIX)"
 _INFO_FACTS = (
     ("sex", "sex"),
     ("mean_coverage", "ard_mapped"),
@@ -518,18 +524,27 @@ def _quality_label(
 ) -> tuple[str, list[str]]:
     if any(w["code"] == "low_coverage" for w in warnings):
         return variant_confidence.LOW, ["low_coverage"]
+    reasons = (
+        ["sample_contaminated"]
+        if any(w["code"] == contamination.WARNING for w in warnings)
+        else []
+    )
     if not isinstance(quality, (int, float)) or isinstance(quality, bool):
-        return variant_confidence.MODERATE, ["quality_unknown"]
+        return variant_confidence.MODERATE, ["quality_unknown", *reasons]
     if quality < LOW_QUALITY:
-        return variant_confidence.LOW, ["low_caller_quality"]
+        return variant_confidence.LOW, ["low_caller_quality", *reasons]
     if quality < HIGH_QUALITY:
-        return variant_confidence.MODERATE, ["moderate_caller_quality"]
+        return variant_confidence.MODERATE, ["moderate_caller_quality", *reasons]
+    if reasons:
+        return variant_confidence.MODERATE, reasons
     return variant_confidence.HIGH, []
 
 
 def _overview(ctx: _Context) -> dict[str, Any]:
     info = latest(ctx.sources, _command("info"))
-    section = _section("overview", [info], ctx)
+    run = latest(ctx.sources, _command("qc contamination"))
+    run = run if run is not None and run.status == "ok" else None
+    section = _section("overview", [info, run], ctx)
     facts = []
     for name, label in _OVERVIEW_FACTS:
         fact = ctx.fact(name)
@@ -569,7 +584,28 @@ def _overview(ctx: _Context) -> dict[str, Any]:
                     "at": info.finished or None,
                 }
             )
+    estimate = _contamination_fact(ctx, run)
+    if estimate is not None:
+        facts.append(estimate)
     section["facts"] = facts
+    freemix = estimate["value"] if estimate else None
+    threshold = contamination.max_contamination()
+    warned = any(w["code"] == contamination.WARNING for w in section["warnings"])
+    if (
+        isinstance(freemix, (int, float))
+        and threshold
+        and freemix >= threshold
+        and not warned
+    ):
+        section["warnings"].append(
+            {
+                "code": contamination.WARNING,
+                "message": f"qc contamination estimated {freemix:.1%} of the "
+                "reads are another person's (FREEMIX, at or above "
+                f"qc_max_contamination {threshold:.1%}): every finding below "
+                f"may be affected. See {contamination.GUIDE}.",
+            }
+        )
     qc = []
     if info is not None and info.status == "ok":
         for key, label, unit in _QC_METRICS:
@@ -593,11 +629,53 @@ def _overview(ctx: _Context) -> dict[str, Any]:
             "QC metrics and sex (info --detailed)",
             ctx.command_for("info --detailed", ctx.alignment, "cram"),
         )
+    if ctx.alignment and freemix is None:
+        _missing(
+            section,
+            "DNA contamination check (qc contamination)",
+            ctx.command_for("qc contamination", ctx.alignment, "cram"),
+        )
     section["summary"] = (
         ", ".join(f"{f['label']} {f['text']}" for f in facts[:4])
         or "No facts recorded."
     )
     return section
+
+
+def _contamination_fact(ctx: _Context, run: Source | None) -> dict[str, Any] | None:
+    """The selected alignment's contamination estimate: from the sample
+    workspace (only that file's, or the genome folder's), else from its
+    newest successful `qc contamination` run."""
+    path = ctx.folder / ctx.alignment if ctx.alignment else None
+    fact = contamination.sample_contamination(path) if path else None
+    if fact is not None:
+        found = fact.to_dict()
+        value = found.get("value")
+        return {
+            "name": contamination.FACT,
+            "label": CONTAMINATION_LABEL,
+            "value": value,
+            "text": _fact_text(contamination.FACT, value),
+            "source": found.get("source"),
+            "method": found.get("method"),
+            "confidence": found.get("confidence"),
+            "file": found.get("file"),
+            "at": found.get("at"),
+        }
+    value = run.metrics.get("freemix") if run is not None else None
+    if run is None or not isinstance(value, (int, float)):
+        return None
+    return {
+        "name": contamination.FACT,
+        "label": CONTAMINATION_LABEL,
+        "value": value,
+        "text": _fact_text(contamination.FACT, value),
+        "source": "qc contamination",
+        "method": "qc contamination metrics (no sample workspace)",
+        "confidence": run.metrics.get("freemix_confidence"),
+        "file": next(iter(map(ctx.rel, run.files("inputs"))), None),
+        "at": run.finished or None,
+    }
 
 
 def _fact_text(name: str, value: Any) -> str:
@@ -607,6 +685,8 @@ def _fact_text(name: str, value: Any) -> str:
         return _number(value, "x")
     if name == "read_length":
         return _number(value, " bp")
+    if name == "contamination" and isinstance(value, (int, float)):
+        return f"{value:.1%}"
     return str(value)
 
 

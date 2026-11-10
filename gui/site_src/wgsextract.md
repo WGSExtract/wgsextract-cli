@@ -1,7 +1,7 @@
 ---
 output: 'wgsextract.html'
 title: 'WGSExtract and GUI for CLI'
-description: 'WGSExtract v0.6.6 workflows and how the first real app shaped GUI for CLI.'
+description: 'WGSExtract v0.8.6 workflows and how the first real app shaped GUI for CLI.'
 eyebrow: 'First real app'
 heading: 'WGSExtract made GUI for CLI prove itself.'
 lede: 'The WGSExtract bundle is the first real application built through GUI for CLI. It pushed the project beyond demo controls into setup, command execution, data state, localization, and packaged releases.'
@@ -42,26 +42,26 @@ WGSExtract exercises data sources, state-dependent actions, persisted settings, 
 
 ::: section
 ::: wrap
-## What v0.6.6 exposes
+## What the app exposes
 
-The desktop app bundles **WGSExtract CLI v0.6.6**. Nanopore reads work through the actions already in the app with no settings to change, and new opt-in controls cover the rest. They start blank or unchecked, so automatic detection and `config.toml` defaults keep applying.
+The desktop app bundles **WGSExtract CLI v0.8.6**. A **Basic / Advanced** switch in the sidebar keeps everyday controls up front; Advanced mode covers the CLI's remaining user options, and Basic runs commands with the hidden settings at their defaults. Nanopore reads work through the actions already in the app with no settings to change, and opt-in controls cover the rest. They start blank or unchecked, so automatic detection and `config.toml` defaults keep applying.
 
 ### Oxford Nanopore in existing actions
 
 Nanopore (ONT) reads are detected from `PL:ONT` read groups or UUID read names.
 
-- **Align and Realign:** use minimap2's `map-ont` preset and keep MM/ML methylation tags through alignment and sorting. Realign refuses its keep-FASTQ option for ONT input rather than lose those tags. FASTQs renamed without platform metadata, such as SRA downloads, are treated as Illumina, and the app has no platform override.
+- **Align and Realign:** use minimap2's `map-ont` preset and keep MM/ML methylation tags through alignment and sorting. Realign refuses its keep-FASTQ option for ONT input rather than lose those tags. FASTQs renamed without platform metadata, such as SRA downloads, are treated as Illumina unless you set **Sequencing platform** in Advanced mode.
 - **DeepVariant:** selects the ONT_R104 model. It supports R10.4.1 chemistry only and needs x86-64, so ONT calling is refused on Apple Silicon and ARM64. DeepVariant itself is still a separate install.
 - **SV Call:** runs Sniffles2 instead of Delly. App setup does not install Sniffles; install it separately before running this action on ONT data.
 
-### Other improvements in existing actions
+### Improvements from CLI v0.6.6
 
 - **DeepVariant:** CRAM 3.1 input is converted to a temporary CRAM 3.0 copy, and whole-genome postprocessing memory is estimated and capped.
 - **Realign:** paired reads stream through collation at whole-genome scale, and single-end input is refused before extraction instead of being dropped.
 - **BAM Info:** sex is inferred when chrX or chrY is missing, and depth binning is faster.
 - **Microarray:** coordinate projections and catalogues are cached for faster runs.
 
-### New opt-in controls
+### Opt-in controls from CLI v0.6.6
 
 - **DeepVariant:** a model dropdown that defaults to automatic. Its ONT_R104 choice supports R10.4.1 chemistry only and needs x86-64. DeepVariant does not run on native Windows.
 - **SV Call:** a long-read mode (Nanopore or any long-read data) and an optional tandem-repeat BED. The caller stays automatic, and pbsv is not offered for Nanopore. Sniffles does not run on native Windows.
@@ -73,7 +73,7 @@ Nanopore (ONT) reads are detected from `PL:ONT` read groups or UUID read names.
 
 ### CLI only for now
 
-Parquet table output, vendor chip detection, JSON result manifests, and the alignment platform override are not in the app, so run them from the CLI. Native Linux ARM64 DeepVariant is CLI only too, because Linux ARM64 desktop installers are not published.
+Native Linux ARM64 DeepVariant is CLI only, because Linux ARM64 desktop installers are not published.
 
 ### Controls from earlier releases
 
@@ -90,7 +90,7 @@ AADR 2M is excluded from `all`: explicitly install its pinned metadata from Libr
 
 CLI setup is native on Windows, without WSL or MSYS2, and GUI settings save real TOML booleans and numbers, including `false`. Earlier CLI releases also fixed fresh Windows installation, added warnings for invalid configuration values, and improved alignment reproducibility, memory preflight, and native Windows full-genome validation. Tool and platform requirements still vary by workflow.
 
-[Download v0.6.6](index.html), read the [CLI v0.6.6 release notes](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.6.6) and [ONT limitations](https://github.com/WGSExtract/wgsextract-cli/blob/v0.6.6/docs/ont.md), or see the [workflow details and prerequisites](https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/docs/wgsextract-post-v063.md).
+[Download v0.8.6](index.html), read the [v0.8.6 release notes](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.6) and [ONT limitations](https://github.com/WGSExtract/wgsextract-cli/blob/v0.8.6/docs/ont.md), or see the [workflow details and prerequisites](https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/docs/wgsextract-post-v063.md).
 :::
 :::
 
