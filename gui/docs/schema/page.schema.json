@@ -128,7 +128,9 @@
         "title": { "type": "string", "minLength": 1 },
         "selected": { "type": "boolean", "default": false },
         "group": { "type": "string", "description": "Checkbox group heading, or with layout rows the row title." },
-        "category": { "type": "string", "description": "With layout rows, the heading above a set of rows." }
+        "category": { "type": "string", "description": "With layout rows, the heading above a set of rows." },
+        "groupTooltip": { "type": "string", "description": "Tooltip beside the group's heading or row title; the first option in the group that gives one sets it." },
+        "categoryTooltip": { "type": "string", "description": "With layout rows, tooltip beside the category heading; the first option in the category that gives one sets it." }
       }
     },
     "column": {

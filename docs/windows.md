@@ -22,6 +22,11 @@ user PATH.
 pixi run wgsextract --help
 ```
 
+The folder can be anywhere: another drive (`D:\WGSE`), or a path with spaces,
+parentheses or `&` in it. Pixi goes in `%USERPROFILE%\.pixi`, or under
+`PIXI_HOME` if you have set Pixi's own `PIXI_HOME`; the installers and the CLI
+look for it there even when it is not on PATH.
+
 `uninstall_windows.bat` removes the environments and clears old runtime
 settings from `config.toml`; `--remove-prerequisites` also removes Pixi.
 Installers before this one set up MSYS2 (by default at `C:\msys64`) for their

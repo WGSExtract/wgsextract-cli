@@ -34,8 +34,12 @@ function Find-Pixi {
     $command = Get-Command pixi -ErrorAction SilentlyContinue
     if ($command -and $command.Path) { return $command.Path }
     if ($command -and $command.Source) { return $command.Source }
-    $homePixi = Join-Path $HOME ".pixi\bin\pixi.exe"
-    if (Test-Path -LiteralPath $homePixi -PathType Leaf) { return $homePixi }
+    # Pixi's home: PIXI_HOME (Pixi's own setting), then ~\.pixi.
+    foreach ($pixiHome in @($env:PIXI_HOME, (Join-Path $HOME ".pixi"))) {
+        if (-not $pixiHome) { continue }
+        $homePixi = Join-Path $pixiHome "bin\pixi.exe"
+        if (Test-Path -LiteralPath $homePixi -PathType Leaf) { return $homePixi }
+    }
     return $null
 }
 
@@ -130,6 +134,10 @@ function Restore-AppSource {
 # Pre-state snapshot so the manifest records who owns each prerequisite.
 $msys2PreInstalled = Test-MsysInstall -Root $msys2Root
 $pixiPreInstalled = ($null -ne (Find-Pixi))
+# Where install_windows.bat installs Pixi. A PIXI_HOME that already holds
+# anything may be shared with other files, so it is never the app's to remove.
+$pixiHomeBefore = if ($env:PIXI_HOME) { $env:PIXI_HOME } else { Join-Path $HOME ".pixi" }
+$pixiHomeExisted = (Test-Path -LiteralPath $pixiHomeBefore) -and ($null -ne (Get-ChildItem -LiteralPath $pixiHomeBefore -Force -ErrorAction SilentlyContinue | Select-Object -First 1))
 # The app's own folder for MSYS2 when %LOCALAPPDATA% can't hold it (see wgsextract-msys2.ps1).
 $userFolder = Get-WGSExtractUserFolder
 $msys2InUserFolder = $msys2Root.StartsWith("$userFolder\", [System.StringComparison]::OrdinalIgnoreCase)
@@ -266,7 +274,7 @@ try {
     if (-not $pixiPreInstalled) {
         $pixiBinDir = Split-Path -Parent $pixi
         $pixiInstallRoot = Split-Path -Parent $pixiBinDir
-        if ($pixiInstallRoot) {
+        if ($pixiInstallRoot -and -not $pixiHomeExisted) {
             $manifestItems.Add(@{ type = "directory"; path = $pixiInstallRoot; ownedBy = "install_windows.bat" })
         }
         if ($pixiBinDir) {

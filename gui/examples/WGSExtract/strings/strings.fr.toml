@@ -489,7 +489,7 @@
 "controls.fastq.post-v063.multiqc-file.label" = "Existing FastQC report file"  # i18n-ignore; TODO: translate
 "controls.fastq.post-v063.multiqc-directory.label" = "Existing FastQC report directory"  # i18n-ignore; TODO: translate
 "actions.fastq.post-v063.multiqc-directory.title" = "Aggregate report directory"  # i18n-ignore; TODO: translate
-"sections.microarray.post-v063.aadr-2m.subtitle" = "Formats cibles de fichiers de données brutes de génotype pouvant être extraits d’un fichier BAM/CRAM. La plupart sont, par définition, en Build 37. Certains anciens utilisaient le Build 36 et quelques-uns sont en Build 38. Ce n’est pas indiqué dans les fichiers. Les cibles AADR produisent des fichiers PLINK + EIGENSTRAT utilisés par leurs outils."  # i18n-source-hash:e4ea3c33
+"sections.microarray.post-v063.aadr-2m.subtitle" = "Formats cibles de fichiers de données brutes de génotype pouvant être extraits d’un fichier BAM/CRAM. La plupart sont, par définition, en Build 37. Certains anciens utilisaient le Build 36 et quelques-uns sont en Build 38. Ce n’est pas indiqué dans les fichiers."  # i18n-source-hash:5e7d6a50
 "options.vcf.v066.auto.title" = "Automatique (détecter d’après les lectures)"  # i18n-source-hash:00db55a1
 "options.vcf.v066.config-default.title" = "Utiliser la valeur de configuration"  # i18n-source-hash:53ab9256
 "controls.vcf.v066.deepvariant-model.label" = "Modèle DeepVariant"  # i18n-source-hash:b20e2fd3
@@ -574,6 +574,9 @@
 "options.microarray.formats.category.reich" = "Reich Lab"  # i18n-ignore i18n-source-hash:6c06efe5
 "options.microarray.formats.group.combined" = "Combiné"  # i18n-source-hash:b6c533b5
 "options.microarray.formats.group.aadr" = "AADR"  # i18n-ignore i18n-source-hash:1f4edff5
+"options.microarray.formats.category.consumer.tooltip" = "Génère des fichiers de données RAW de puces à ADN (génotypage)."  # i18n-source-hash:c526755d
+"options.microarray.formats.category.reich.tooltip" = "Les cibles AADR produisent des fichiers PLINK + EIGENSTRAT utilisés par leurs outils."  # i18n-source-hash:ca2f7e6d
+"options.microarray.formats.group.aadr.tooltip" = "Chaque fichier suivant est un sur-ensemble du précédent."  # i18n-source-hash:06c8fd9e
 "options.microarray.formats.v1.title" = "v1"  # i18n-ignore i18n-source-hash:5a6df720
 "options.microarray.formats.v2.title" = "v2"  # i18n-ignore i18n-source-hash:a1047eab
 "options.microarray.formats.v3.title" = "v3"  # i18n-ignore i18n-source-hash:c5e31d59

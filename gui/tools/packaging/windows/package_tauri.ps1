@@ -219,6 +219,19 @@ function Remove-InstallerShortcuts {
 Write-Host "Quick-uninstalling `$AppName `$AppVersion installed by `$InstallerName"
 Stop-WGSExtractProcesses
 
+# Where the installer put the app: the folder chosen in its wizard (D:\Apps\WGSExtract, say), as
+# recorded in its Apps entry, then the wizard's default, %LOCALAPPDATA%\<name>.
+function Get-RegisteredInstallDirectories {
+    foreach (`$hive in "HKCU:", "HKLM:") {
+        foreach (`$name in @(`$AppName, "`$AppName Web") | Select-Object -Unique) {
+            `$key = Get-ItemProperty -LiteralPath "`$hive\Software\Microsoft\Windows\CurrentVersion\Uninstall\`$name" -ErrorAction SilentlyContinue
+            if (`$key -and `$key.InstallLocation) {
+                `$key.InstallLocation.Trim().Trim('"')
+            }
+        }
+    }
+}
+
 `$installDirectories = @()
 if (`$env:LOCALAPPDATA) {
     `$installDirectories += (Join-Path `$env:LOCALAPPDATA `$AppName)
@@ -227,7 +240,9 @@ if (`$env:LOCALAPPDATA) {
     }
 }
 
-foreach (`$installDirectory in (`$installDirectories | Select-Object -Unique)) {
+# A chosen folder is left to the app's own uninstaller, which removes what it installed: it may
+# hold the user's other files, or be a drive's root.
+foreach (`$installDirectory in ((@(Get-RegisteredInstallDirectories) + `$installDirectories) | Where-Object { `$_ } | Select-Object -Unique)) {
     Invoke-SilentUninstaller -InstallDirectory `$installDirectory | Out-Null
 }
 
