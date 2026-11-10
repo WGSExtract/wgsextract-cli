@@ -223,7 +223,7 @@ app_actions() {
     fi
     mkdir -p "$R/workload/info"
     # info has no --outdir; it writes to the configured output directory.
-    find "$WORKSPACE/output" "$WORKSPACE/genomes" -name '*.wgse_info.json' \
+    find "$WORKSPACE/output" "$WORKSPACE/datasets" -name '*.wgse_info.json' \
         -exec cp {} "$R/workload/info/" \; 2>/dev/null
     return $rc
 }

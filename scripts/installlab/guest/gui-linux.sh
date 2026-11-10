@@ -108,7 +108,7 @@ app_actions() {
         cp -R "$WORKSPACE/lab-output/." "$R/workload/"
     fi
     mkdir -p "$R/workload/info"
-    find "$WORKSPACE/output" "$WORKSPACE/genomes" -name '*.wgse_info.json' \
+    find "$WORKSPACE/output" "$WORKSPACE/datasets" -name '*.wgse_info.json' \
         -exec cp {} "$R/workload/info/" \; 2>/dev/null
     return $rc
 }
