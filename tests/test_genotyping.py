@@ -9,6 +9,7 @@ from wgsextract_cli.commands.genotyping.repeats import (
     THRESHOLDS,
     RepeatCall,
     classify,
+    write_summary,
 )
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -121,3 +122,29 @@ def _repeat(locus: str, *alleles: int, high: int | None = None) -> RepeatCall:
 )
 def test_repeat_classification(call, status):
     assert classify(call, THRESHOLDS.get(call.variant_id)) == status
+
+
+def _supported(locus, alleles, reads, coverage):
+    return RepeatCall(locus, "CTG", "", alleles, None, coverage, allele_reads=reads)
+
+
+@pytest.mark.parametrize(
+    ("call", "status"),
+    [
+        # #643 review: LongTR's HG002 DMPK 11/19, the 19 from one read of 28.
+        (_supported("DMPK", (11, 60), (27, 1), 28),
+         "normal (unconfirmed: one read suggests an allele of 60, pathogenic)"),
+        # Thin but true expansions of the PureTarget set (out/615/support.md).
+        (_supported("DMPK", (12, 463), (245, 2), 247), "pathogenic"),
+        (_supported("FXN", (304, 304), (1, 1), 1), "pathogenic"),
+    ],
+)  # fmt: skip
+def test_low_support_alleles_alone_dont_make_a_repeat_pathogenic(
+    tmp_path, call, status
+):
+    assert classify(call, THRESHOLDS[call.variant_id]) == status
+    [(code, _locus, _line)] = write_summary(str(tmp_path / "s.tsv"), [call])
+    assert code == (
+        "repeat_unconfirmed" if "unconfirmed" in status
+        else "repeat_outside_normal_range"
+    )  # fmt: skip
