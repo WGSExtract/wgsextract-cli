@@ -1454,7 +1454,7 @@ _EXAMPLE_PATHS = [
 
 _TYPING_PATHS = [
     (op, item)
-    for op in ("typing/cyp2d6", "typing/hla", "typing/str")
+    for op in ("typing/cyp2d6", "typing/hla", "typing/smn", "typing/str")
     for item in find(op).fields()
     if item.spec.path or item.spec.may_name_file
 ]
@@ -1518,7 +1518,7 @@ def test_path_guard_covers_every_typing_path(op, field, value):
 
 def test_typing_paths_cover_every_file():
     assert {(op, item.name) for op, item in _TYPING_PATHS} == {
-        *((f"typing/{name}", f) for name in ("cyp2d6", "hla", "str")
+        *((f"typing/{name}", f) for name in ("cyp2d6", "hla", "smn", "str")
           for f in ("input", "ref", "outdir")),
         ("typing/hla", "hla_index"), ("typing/str", "catalog"),
     }  # fmt: skip

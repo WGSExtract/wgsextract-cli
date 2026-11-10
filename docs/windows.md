@@ -62,7 +62,7 @@ launching Java so GATK does not mistake `R:` for a URI provider. Explicit URIs
 are preserved.
 
 Commands needing pyBigWig (bigWig-backed `vcf phylop`, `vcf gerp` and their
-reference downloads), VEP, DeepVariant, Delly, FreeBayes, Cyrius,
+reference downloads), VEP, DeepVariant, Delly, FreeBayes, Cyrius, SMNCopyNumberCaller,
 T1K, ExpansionHunter, VerifyBamID2 (`qc contamination`), somalier (`qc relate`) or PacBio tools are not supported on Windows. They fail
 before processing inputs or creating output folders, naming the unavailable
 tool. PhyloP TSV/VCF resources remain supported. Parabricks `--gpu` modes

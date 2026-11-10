@@ -69,7 +69,7 @@ GPU alignment/realignment also fails before preparing inputs or inspecting
 Docker: the Parabricks image is not qualified natively on ARM64. Use the
 native CPU aligners; x86 containers are not an ARM64 fallback.
 
-PharmCAT, Cyrius, T1K, ExpansionHunter and PacBio-specific binaries are not
+PharmCAT, Cyrius, SMNCopyNumberCaller, T1K, ExpansionHunter and PacBio-specific binaries are not
 qualified as part of phase 1. Their existing platform restrictions are not a
 promise of ARM64 support. Native GKL and DeepVariant are separate #236 phase-2
 work; a Java JIT or an ARM TensorFlow package alone does not satisfy that gate.
