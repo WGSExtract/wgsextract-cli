@@ -348,9 +348,9 @@
 "actions.library.databases-tools.pharmgkb-delete.confirm.confirmButtonTitle" = "Löschen"  # i18n-source-hash:f6fdbe48
 "actions.library.databases-tools.pharmgkb-delete.confirm.cancelButtonTitle" = "Abbrechen"  # i18n-source-hash:77dfd213
 "actions.library.databases-tools.bootstrap-library.title" = "Bibliothek bootstrappen"  # i18n-source-hash:6f253a73
-"actions.library.databases-tools.bootstrap-library.tooltip" = "Laden und initialisieren Sie die Bootstrap-Ressourcen der Referenzdaten wie Chains, Chip-Vorlagen und Hilfsdaten sowie die AADR-2M-SNP-Metadaten."  # i18n-source-hash:c77d54fd
+"actions.library.databases-tools.bootstrap-library.tooltip" = "Laden und initialisieren Sie die Bootstrap-Ressourcen der Referenzdaten wie Chains, Chip-Vorlagen und Hilfsdaten. Das AADR-2M-SNP-Panel ist ein separater Download auf dieser Seite."  # i18n-source-hash:217673ee
 "actions.library.databases-tools.bootstrap-library.confirm.title" = "Referenzdaten bootstrappen?"  # i18n-source-hash:41c5652a
-"actions.library.databases-tools.bootstrap-library.confirm.message" = "Dies lädt die Hilfsdateien der WGS-Extract-Referenzdaten einschließlich der AADR-2M-SNP-Metadaten in die ausgewählten Referenzdaten herunter und initialisiert sie."  # i18n-source-hash:76c26791
+"actions.library.databases-tools.bootstrap-library.confirm.message" = "Dies lädt die Hilfsdateien der WGS-Extract-Referenzdaten in die ausgewählten Referenzdaten herunter und initialisiert sie."  # i18n-source-hash:9cdb14de
 "actions.library.databases-tools.bootstrap-library.confirm.confirmButtonTitle" = "Bootstrappen"  # i18n-source-hash:89ec4ec2
 "actions.library.databases-tools.bootstrap-library.confirm.cancelButtonTitle" = "Abbrechen"  # i18n-source-hash:77dfd213
 "actions.library.databases-tools.library-bootstrapped.title" = "Bibliothek gebootstrappt"  # i18n-source-hash:c926a113
@@ -471,6 +471,14 @@
 "sections.microarray.post-v063.builds.subtitle" = "AADR exports require GRCh37 or GRCh38. For native CHM13 calling, select the CLI-supported pinned CHM13 reference; no generic liftover or extra mode flag is used. Consumer layouts are marker-only unless a matching sequence-defined indel manifest is supplied through the advanced CLI."  # i18n-ignore; TODO: translate
 
 # TODO: translate the CLI features added after v0.6.3.
+"actions.library.post-v063.aadr-2m.title" = "AADR-2M-SNP-Panel installieren"  # i18n-source-hash:0b64da16
+"actions.library.post-v063.aadr-2m.tooltip" = "Lädt die prüfsummenfixierten CC0-SNP-Metadaten AADR v66.p1 2M (Reich Lab, Harvard Dataverse) ausdrücklich in die Referenzdaten herunter und prüft sie. Die Datei ist etwa 135 MB groß und der Server oft langsam, daher kann dies lange dauern. Das AADR-2M-Format der Microarray-Seite benötigt sie."  # i18n-source-hash:064d2934
+"actions.library.post-v063.aadr-2m-delete.title" = "AADR-2M-SNP-Panel löschen"  # i18n-source-hash:b040e5f1
+"actions.library.post-v063.aadr-2m-delete.tooltip" = "Löschen Sie die installierten AADR-2M-SNP-Metadaten aus den Referenzdaten."  # i18n-source-hash:531d657b
+"actions.library.post-v063.aadr-2m-delete.confirm.title" = "AADR-2M-SNP-Panel löschen?"  # i18n-source-hash:792556f7
+"actions.library.post-v063.aadr-2m-delete.confirm.message" = "Dies entfernt die installierten AADR-v66.p1-2M-SNP-Metadaten aus den ausgewählten Referenzdaten. Das 2M-Format der Microarray-Seite ist erst nach einer erneuten Installation wieder verfügbar."  # i18n-source-hash:269adbe7
+"actions.library.post-v063.aadr-2m-delete.confirm.confirmButtonTitle" = "Löschen"  # i18n-source-hash:f6fdbe48
+"actions.library.post-v063.aadr-2m-delete.confirm.cancelButtonTitle" = "Abbrechen"  # i18n-source-hash:77dfd213
 "actions.library.post-v063.ybrowse.title" = "Install GRCh38 yBrowse Y-SNP targets"  # i18n-ignore; TODO: translate
 "actions.library.post-v063.ybrowse.tooltip" = "Lädt den hash-fixierten GRCh38-yBrowse-Snapshot (nur Positionen) der CLI ausdrücklich in die Referenzdaten herunter und prüft ihn. Andere Builds werden abgelehnt. Ohne diese Aktion wird nichts installiert."  # i18n-source-hash:b41dd549
 "actions.library.post-v063.ybrowse-delete.title" = "GRCh38-yBrowse-Y-SNP-Ziele löschen"  # i18n-source-hash:af222487
@@ -584,6 +592,7 @@
 "options.microarray.formats.hov1.title" = "HOv1"  # i18n-ignore i18n-source-hash:fb8ee498
 "options.microarray.formats.1240k.title" = "1240K"  # i18n-ignore i18n-source-hash:33c9e2aa
 "options.microarray.formats.2m.title" = "2M"  # i18n-ignore i18n-source-hash:dcfb6936
+"options.microarray.formats.2m.disabledTooltip" = "Benötigt das AADR-2M-SNP-Panel. Installieren Sie es zuerst auf der Seite „Referenzdaten“."  # i18n-source-hash:e33521c6
 "options.microarray.formats.ancestry-v2-2021.title" = "v2 2021 (nur Marker)"  # i18n-source-hash:10ee4392
 "options.microarray.formats.ancestry-v2-2024.title" = "v2 2024 (nur Marker)"  # i18n-source-hash:ad98eced
 "options.microarray.formats.myheritage-gsa-2025.title" = "GSA 2025 (nur Marker)"  # i18n-source-hash:16c9f3b1

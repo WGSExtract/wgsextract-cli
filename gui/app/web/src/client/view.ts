@@ -1,5 +1,5 @@
 import { displayWorkspacePath } from "../../../shared/workspace-paths.js";
-import { applyDataSourcePayload, configValueKey, hydrateRows, isSectionVisible, rowContext, } from "../../../shared/rendering.js";
+import { applyDataSourcePayload, configValueKey, hydrateRows, isSectionVisible, optionDisabledReason, rowContext, withoutDisabledOptions, } from "../../../shared/rendering.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
 import { buildTagStyle, commandContext, configDataSourceContext, displayOption, localizedStatus, localizedTag, renderIcon, renderIconTitle, renderInlineError, renderLoadingBox, renderLoadingInline, renderTooltip, resolveText, tagStyle, } from "./model.js";
 import { ensureDataSource } from "./operations.js";
@@ -135,7 +135,8 @@ export function renderSection(section: PageSection, page: BundlePage) {
         ensureDataSource(key, location, commandContext());
     }
     const sectionValues = state.dataSourcePayloads.get(key)?.values ?? {};
-    const context = commandContext({}, sectionValues);
+    // A checkbox option disabled by the section's values (a missing download) is never passed to its actions.
+    const context = withoutDisabledOptions(commandContext({}, sectionValues), section.controls ?? []);
     // Checked after the section's own data source starts, so visibleWhen can read the values it returns.
     if (!isSectionVisible(section, context)) {
         return "";
@@ -186,7 +187,7 @@ export function renderControl(control: ControlSpec, sectionContext: CommandConte
             body = renderToggleControl(renderedControl);
             break;
         case "checkboxGroup":
-            body = renderCheckboxGroup(renderedControl);
+            body = renderCheckboxGroup(renderedControl, sectionContext);
             break;
         case "infoGrid":
             body = renderInfoGrid(renderedControl);
@@ -252,18 +253,22 @@ export function renderToggleControl(control: ControlSpec) {
     </label>
   `;
 }
-export function renderCheckboxGroup(control: ControlSpec) {
+export function renderCheckboxGroup(control: ControlSpec, context: CommandContext = commandContext()) {
     const selected = state.checkedOptions[control.id] ?? new Set((control.options ?? []).filter((option) => option.selected).map((option) => option.id));
     const options = visibleOptions(control.options, state.uiMode);
     // A lone checkbox named like its group needs no heading: its own name says it, with the tooltip beside it.
     const onlyOption = control.options?.length === 1 ? control.options[0] : undefined;
     const optionNamesGroup = onlyOption != null && sameLabel(displayOption(onlyOption), control.label);
     const optionSuffix = optionNamesGroup ? renderTooltip(control.tooltip) : "";
-    const checkbox = (option: ControlOption) => `
-              <label>
-                <input type="checkbox" data-check-group="${escapeAttribute(control.id)}" value="${escapeAttribute(option.id)}" ${selected.has(option.id) ? "checked" : ""}>
+    const checkbox = (option: ControlOption) => {
+        // A disabled option shows unchecked and says on hover what makes it available.
+        const disabled = optionDisabledReason(option, context, state.labels.actionUnavailableTitle);
+        return `
+              <label${disabled ? ` class="disabled" data-tooltip="${escapeAttribute(disabled)}"` : ""}>
+                <input type="checkbox" data-check-group="${escapeAttribute(control.id)}" value="${escapeAttribute(option.id)}" ${selected.has(option.id) && !disabled ? "checked" : ""}${disabled ? " disabled" : ""}>
                 <span>${escapeHTML(displayOption(option))}${optionSuffix}</span>
               </label>`;
+    };
     const body = control.layout === "rows"
         ? renderOptionRows(options, checkbox)
         : groupedOptions(options)

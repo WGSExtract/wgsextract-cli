@@ -1,5 +1,13 @@
+from pathlib import Path
+
 from wgsextract_cli import api
 from wgsextract_cli.core import config, reference_processing
+
+
+def _bootstrap(path: str) -> bool:
+    """The archive's download is tested elsewhere; it leaves the library."""
+    Path(path).mkdir(parents=True, exist_ok=True)
+    return True
 
 
 def test_bootstrap_saves_reference_library_when_unconfigured(
@@ -11,7 +19,7 @@ def test_bootstrap_saves_reference_library_when_unconfigured(
     monkeypatch.setattr(config, "get_config_path", lambda: config_path)
     config.settings.clear()
     monkeypatch.setattr(
-        "wgsextract_cli.core.reference_processing.download_bootstrap", lambda path: True
+        "wgsextract_cli.core.reference_processing.download_bootstrap", _bootstrap
     )
 
     api.ref.bootstrap(api.RefBootstrapParams(ref=reflib))
@@ -31,7 +39,7 @@ def test_bootstrap_keeps_existing_reference_library(
     config.settings.clear()
     config.save_config({"reference_library": str(existing_reflib)})
     monkeypatch.setattr(
-        "wgsextract_cli.core.reference_processing.download_bootstrap", lambda path: True
+        "wgsextract_cli.core.reference_processing.download_bootstrap", _bootstrap
     )
 
     api.ref.bootstrap(api.RefBootstrapParams(ref=requested_reflib))

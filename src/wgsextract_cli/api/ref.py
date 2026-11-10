@@ -94,8 +94,9 @@ class _InLibrary:
 
 @dataclass(frozen=True, kw_only=True)
 class RefAadrParams(_InLibrary, Params):
-    """Install the hash-pinned CC0 AADR v66.p1 2M SNP panel into the library
-    (``ref bootstrap`` installs it too), or delete it."""
+    """Install the hash-pinned CC0 AADR v66.p1 2M SNP panel into the library,
+    or delete it. ``ref bootstrap`` does not install it: the Harvard Dataverse
+    server is slow, so the panel is only downloaded on request."""
 
     COMMAND = "ref aadr"
 
@@ -429,8 +430,8 @@ class RefGerpParams(_Resource):
 @dataclass(frozen=True, kw_only=True)
 class RefBootstrapParams(_InLibrary, Params):
     """Download the reference library bootstrap (liftover chains, chip
-    templates, N counts and other support files) and the AADR 2M SNP panel.
-    Saves the library's path as config.toml's ``reference_library`` when that
+    templates, N counts and other support files). The AADR 2M SNP panel is a
+    separate download (``ref aadr --install``). Saves the library's path as config.toml's ``reference_library`` when that
     is unset."""
 
     COMMAND = "ref bootstrap"

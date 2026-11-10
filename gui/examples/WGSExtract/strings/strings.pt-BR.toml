@@ -348,9 +348,9 @@
 "actions.library.databases-tools.pharmgkb-delete.confirm.confirmButtonTitle" = "Excluir"  # i18n-source-hash:f6fdbe48
 "actions.library.databases-tools.pharmgkb-delete.confirm.cancelButtonTitle" = "Cancelar"  # i18n-source-hash:77dfd213
 "actions.library.databases-tools.bootstrap-library.title" = "Inicializar biblioteca"  # i18n-source-hash:6f253a73
-"actions.library.databases-tools.bootstrap-library.tooltip" = "Baixe e inicialize os recursos de bootstrap dos dados de referência, como chains, modelos de chip e dados de suporte, além dos metadados SNP AADR 2M."  # i18n-source-hash:c77d54fd
+"actions.library.databases-tools.bootstrap-library.tooltip" = "Baixe e inicialize os recursos de bootstrap dos dados de referência, como chains, modelos de chip e dados de suporte. O painel de SNPs AADR 2M é um download separado nesta página."  # i18n-source-hash:217673ee
 "actions.library.databases-tools.bootstrap-library.confirm.title" = "Inicializar dados de referência?"  # i18n-source-hash:41c5652a
-"actions.library.databases-tools.bootstrap-library.confirm.message" = "Isto baixa e inicializa os arquivos de suporte dos dados de referência do WGS Extract, incluindo os metadados SNP AADR 2M, nos dados de referência selecionados."  # i18n-source-hash:76c26791
+"actions.library.databases-tools.bootstrap-library.confirm.message" = "Isto baixa e inicializa os arquivos de suporte dos dados de referência do WGS Extract nos dados de referência selecionados."  # i18n-source-hash:9cdb14de
 "actions.library.databases-tools.bootstrap-library.confirm.confirmButtonTitle" = "Inicializar"  # i18n-source-hash:89ec4ec2
 "actions.library.databases-tools.bootstrap-library.confirm.cancelButtonTitle" = "Cancelar"  # i18n-source-hash:77dfd213
 "actions.library.databases-tools.library-bootstrapped.title" = "Biblioteca inicializada"  # i18n-source-hash:c926a113
@@ -471,6 +471,14 @@
 "sections.microarray.post-v063.builds.subtitle" = "AADR exports require GRCh37 or GRCh38. For native CHM13 calling, select the CLI-supported pinned CHM13 reference; no generic liftover or extra mode flag is used. Consumer layouts are marker-only unless a matching sequence-defined indel manifest is supplied through the advanced CLI."  # i18n-ignore; TODO: translate
 
 # TODO: translate the CLI features added after v0.6.3.
+"actions.library.post-v063.aadr-2m.title" = "Instalar o painel de SNPs AADR 2M"  # i18n-source-hash:0b64da16
+"actions.library.post-v063.aadr-2m.tooltip" = "Baixa e verifica explicitamente os metadados de SNPs CC0 AADR v66.p1 2M, fixados por checksum (Reich Lab, Harvard Dataverse), nos dados de referência. O arquivo tem cerca de 135 MB e o servidor costuma ser lento, então isso pode demorar bastante. O formato AADR 2M da página Microarray precisa dele."  # i18n-source-hash:064d2934
+"actions.library.post-v063.aadr-2m-delete.title" = "Excluir o painel de SNPs AADR 2M"  # i18n-source-hash:b040e5f1
+"actions.library.post-v063.aadr-2m-delete.tooltip" = "Exclua os metadados de SNPs AADR 2M instalados dos dados de referência."  # i18n-source-hash:531d657b
+"actions.library.post-v063.aadr-2m-delete.confirm.title" = "Excluir o painel de SNPs AADR 2M?"  # i18n-source-hash:792556f7
+"actions.library.post-v063.aadr-2m-delete.confirm.message" = "Isto remove os metadados de SNPs AADR v66.p1 2M instalados dos dados de referência selecionados. O formato 2M da página Microarray fica indisponível até ser instalado novamente."  # i18n-source-hash:269adbe7
+"actions.library.post-v063.aadr-2m-delete.confirm.confirmButtonTitle" = "Excluir"  # i18n-source-hash:f6fdbe48
+"actions.library.post-v063.aadr-2m-delete.confirm.cancelButtonTitle" = "Cancelar"  # i18n-source-hash:77dfd213
 "actions.library.post-v063.ybrowse.title" = "Install GRCh38 yBrowse Y-SNP targets"  # i18n-ignore; TODO: translate
 "actions.library.post-v063.ybrowse.tooltip" = "Baixa e verifica explicitamente o snapshot yBrowse GRCh38 (somente sites), fixado por hash pela CLI, nos dados de referência. Outros builds são rejeitados. Nada é instalado sem executar esta ação."  # i18n-source-hash:b41dd549
 "actions.library.post-v063.ybrowse-delete.title" = "Excluir alvos Y-SNP yBrowse GRCh38"  # i18n-source-hash:af222487
@@ -584,6 +592,7 @@
 "options.microarray.formats.hov1.title" = "HOv1"  # i18n-ignore i18n-source-hash:fb8ee498
 "options.microarray.formats.1240k.title" = "1240K"  # i18n-ignore i18n-source-hash:33c9e2aa
 "options.microarray.formats.2m.title" = "2M"  # i18n-ignore i18n-source-hash:dcfb6936
+"options.microarray.formats.2m.disabledTooltip" = "Precisa do painel de SNPs AADR 2M. Instale-o primeiro na página Dados de referência."  # i18n-source-hash:e33521c6
 "options.microarray.formats.ancestry-v2-2021.title" = "v2 2021 (somente marcadores)"  # i18n-source-hash:10ee4392
 "options.microarray.formats.ancestry-v2-2024.title" = "v2 2024 (somente marcadores)"  # i18n-source-hash:ad98eced
 "options.microarray.formats.myheritage-gsa-2025.title" = "GSA 2025 (somente marcadores)"  # i18n-source-hash:16c9f3b1

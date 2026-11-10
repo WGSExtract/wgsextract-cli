@@ -1,6 +1,6 @@
 import { contextValue } from "./rendering-context.js";
 import { interpolate, placeholdersIn } from "./rendering-placeholders.js";
-import type { ActionSpec, CommandContext, ConditionSpec, LooseRecord, PageSection } from "./types.js";
+import type { ActionSpec, CommandContext, ConditionSpec, ControlOption, ControlSpec, LooseRecord, PageSection } from "./types.js";
 
 export function isPrecheckReady(precheck: LooseRecord | null | undefined, context: CommandContext): boolean {
     if (!precheck?.diskSpaceGB) {
@@ -25,6 +25,31 @@ export function disabledReason(action: ActionSpec, context: CommandContext, fall
         return undefined;
     }
     return action.disabledTooltip ? interpolate(action.disabledTooltip, context) : fallback;
+}
+/** Why a checkbox option can't be chosen now, or undefined when it can. */
+export function optionDisabledReason(option: ControlOption, context: CommandContext, fallback = "This option is not available."): string | undefined {
+    if (!(option.disabledWhen ?? []).some((condition) => conditionMatches(condition, context))) {
+        return undefined;
+    }
+    return option.disabledTooltip ? interpolate(option.disabledTooltip, context) : fallback;
+}
+/** The context with the disabled options of these checkbox groups unchecked, so no command passes one. */
+export function withoutDisabledOptions(context: CommandContext, controls: ControlSpec[]): CommandContext {
+    const original = context.checkedOptions ?? {};
+    let checkedOptions = original;
+    for (const control of controls) {
+        if (control.kind !== "checkboxGroup") {
+            continue;
+        }
+        const disabled = new Set((control.options ?? [])
+            .filter((option) => optionDisabledReason(option, context) != null)
+            .map((option) => option.id));
+        const selected = String(checkedOptions[control.id] ?? "").split(",").filter(Boolean);
+        if (selected.some((id) => disabled.has(id))) {
+            checkedOptions = { ...checkedOptions, [control.id]: selected.filter((id) => !disabled.has(id)).join(",") };
+        }
+    }
+    return checkedOptions === original ? context : { ...context, checkedOptions };
 }
 export function conditionMatches(condition: ConditionSpec, context: CommandContext): boolean {
     const rawValue = contextValue(context, condition.placeholder) ?? "";

@@ -128,7 +128,14 @@
         "title": { "type": "string", "minLength": 1 },
         "selected": { "type": "boolean", "default": false },
         "group": { "type": "string", "description": "Checkbox group heading, or with layout rows the row title." },
-        "category": { "type": "string", "description": "With layout rows, the heading above a set of rows." }
+        "category": { "type": "string", "description": "With layout rows, the heading above a set of rows." },
+        "disabledWhen": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/actionCondition" },
+          "default": [],
+          "description": "A checkbox option can't be chosen while any condition matches (it reads the section's data source values); commands see it unchecked."
+        },
+        "disabledTooltip": { "type": "string", "description": "Shown on the disabled option: what makes it available." }
       }
     },
     "column": {

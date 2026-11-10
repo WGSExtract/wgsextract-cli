@@ -42,6 +42,9 @@ export function validateControl(control: ControlSpec, sectionPath: string): void
     requireNonEmpty(control.id, `${basePath}.id`);
     requireNonEmpty(control.label, `${basePath}.label`);
     validateUniqueIDs(control.options, `${basePath}.options`);
+    for (const option of control.options ?? []) {
+        validateConditions(option.disabledWhen, `${basePath}.options.${option.id}.disabledWhen`);
+    }
     validateUniqueIDs(control.columns, `${basePath}.columns`);
     validateUniqueIDs(control.rows, `${basePath}.rows`);
     validateUniqueIDs(control.rowActions, `${basePath}.rowActions`);

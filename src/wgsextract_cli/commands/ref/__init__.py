@@ -136,7 +136,7 @@ def register(
         RefBootstrapParams,
         cmd_bootstrap,
         "Download and initialize the reference library bootstrap (liftover "
-        "chains, chip templates, the AADR 2M SNP panel, etc.).",
+        "chains, chip templates, etc.).",
     )
     add(
         "microarray-targets",
