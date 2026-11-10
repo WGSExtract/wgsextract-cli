@@ -201,6 +201,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "qc multiqc": _n(SECONDS, "multiqc", optional="bcftools fastqc", scale=""),
     "qc multiqc-metrics": _n(SECONDS, scale=""),
     "qc vcf": _n(MINUTES, "bcftools"),
+    "qc contamination": _n(MINUTES, "samtools", "verifybamid2", optional="bcftools"),
     "qc fake-data": _n(
         SECONDS,
         "bcftools",

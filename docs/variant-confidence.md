@@ -71,6 +71,14 @@ reason makes it `moderate`; otherwise it is `high`.
 | Strand bias (INFO/FS or SOR; else SOR from FORMAT/SB or INFO/DP4) | FS above 60 or SOR above 3 (indels: 200 and 10) | | `strand_bias` |
 | Quality by depth (INFO/QD, GATK calls only) | below 2 | | `low_qd` |
 | A measure missing from the VCF | no depth, GQ or allele counts at all (`no_call_metrics`) | any one missing | `depth_unknown`, `gq_unknown`, `allele_balance_unknown` |
+| Sample contamination ([`qc contamination`](contamination.md) FREEMIX) | | at or above `qc_max_contamination` (3%) | `sample_contaminated` |
+
+Contamination applies to the whole sample, not one call: another person's
+reads can turn a homozygous site heterozygous or add an allele the sample
+doesn't carry. The estimate is read from the sample workspace, so it applies
+when the VCF is in a genome folder (one person's files) where
+`qc contamination` has run on one of its alignments. The header line
+`##wgsextract_confidence` then records `Contamination=<FREEMIX>`.
 
 Haploid calls (a man's chrX and chrY, mtDNA, `GT=1`) use half the depth
 thresholds: there is no second allele to find.

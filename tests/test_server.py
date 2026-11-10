@@ -808,6 +808,19 @@ def test_info_query_waits_and_reports_failures_as_failed_jobs(client, work, fake
             400,
             "usage",
         ),
+        # PR #631 review: --svd-prefix names panel files the guard must see.
+        (
+            "qc/contamination",
+            {"input": "{work}/a.bam", "svd_prefix": "{outside}/panel"},
+            403,
+            "path_not_allowed",
+        ),
+        (
+            "qc/contamination",
+            {"input": "{work}/a.bam", "svd_prefix": "{work}/escape/panel"},
+            403,
+            "path_not_allowed",
+        ),
         ("nope", {}, 404, "unknown_op"),
         # PR #422 review: these were 500 "internal" errors, or jobs with
         # values the schema forbids.

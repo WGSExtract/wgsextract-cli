@@ -76,6 +76,15 @@ so the depth shown is somewhat high: a 2% subsample (about 1x) of a 52x ONT
 HG002 chr20 is reported as about 1.5x, and very sparse inputs approach 1x
 however few reads they have.
 
+### Before: contamination
+
+The same commands also warn (`sample_contamination`) when
+[`qc contamination`](contamination.md) has recorded that more than 3% of the
+sample's reads (`qc_max_contamination`) are another person's. Another
+person's reads turn homozygous sites heterozygous, so genotypes, microarray
+kits and haplogroups can be wrong. The estimate comes from the sample
+workspace; nothing is measured unless you run `qc contamination`.
+
 ## After: genotype rates
 
 After `microarray` writes its files, the autosomal genotypes are checked:
@@ -103,6 +112,7 @@ qc_min_haploid_depth = 3.0         # 0 disables
 qc_min_autosomal_homozygosity = 0.6
 qc_max_autosomal_homozygosity = 0.88
 qc_max_no_call_rate = 0.1
+qc_max_contamination = 0.03        # FREEMIX; 0 disables
 ```
 
 `--qc-min-depth DEPTH` overrides both depth thresholds for one run of a

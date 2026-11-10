@@ -66,6 +66,10 @@
         "build": { "$ref": "#/$defs/fact", "properties": { "value": { "type": "string" } } },
         "read_length": { "$ref": "#/$defs/fact", "properties": { "value": { "type": "number", "minimum": 0 } } },
         "mean_coverage": { "$ref": "#/$defs/fact", "properties": { "value": { "type": "number", "minimum": 0 } } },
+        "contamination": {
+          "$ref": "#/$defs/fact",
+          "properties": { "value": { "type": "number", "minimum": 0, "maximum": 1 } }
+        },
         "target_depths": {
           "$ref": "#/$defs/fact",
           "properties": {

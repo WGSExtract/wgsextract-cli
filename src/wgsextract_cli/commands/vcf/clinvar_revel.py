@@ -78,6 +78,7 @@ def run_clinvar(params: VcfClinvarParams) -> None:
             variant_confidence.thresholds_from(params),
             include='CLNSIG ~ "Pathogenic" || CLNSIG ~ "Likely_pathogenic"',
             summary_columns=CLINVAR_TABLE_COLUMNS,
+            samples=(input_file,),
         )
     except (OSError, subprocess.SubprocessError) as e:
         raise WGSExtractError(f"ClinVar filtering failed: {e}") from e
