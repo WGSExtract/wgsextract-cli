@@ -47,6 +47,10 @@ from wgsextract_cli.core.gene_map import (
     download_gene_maps,
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES
+
+# Module level so the per-command dependency scan sees the chain download
+# (curl, optionally) that `ref bootstrap` and `ref aadr` make.
+from wgsextract_cli.core.microarray_targets import hg19_to_hg38_chain
 from wgsextract_cli.core.ref_library.catalog import (
     get_available_genomes,
     get_genome_status,
@@ -103,8 +107,6 @@ def run_aadr(params: RefAadrParams) -> None:
         )
         return
     # The panel, and the hg19ToHg38 chain that places it on GRCh38.
-    from wgsextract_cli.core.microarray_targets import hg19_to_hg38_chain
-
     installed = install_aadr_2m(reflib)
     current_result().add_output(installed, "reference_resource")
     logging.info("Installed CC0 AADR v66.p1 2M SNP metadata: %s", installed)
@@ -413,7 +415,6 @@ def run_gerp(params: RefGerpParams) -> None:
 
 def run_bootstrap(params: RefBootstrapParams) -> None:
     from wgsextract_cli.core.config import save_config, settings
-    from wgsextract_cli.core.microarray_targets import hg19_to_hg38_chain
     from wgsextract_cli.core.reference_processing import download_bootstrap
 
     should_save_reflib = not settings.get("reference_library")
