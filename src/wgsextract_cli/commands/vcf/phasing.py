@@ -33,6 +33,7 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
+from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.results import Scalar, current_result, warn
 from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.space_free_paths import (
@@ -479,6 +480,24 @@ def _missing_contig_lines(vcf: str, header: str) -> list[str]:
     return lines
 
 
+def _restore_reference_url(cram: str, link: str, ref: str, work: str) -> None:
+    """Point the CRAM's @SQ UR at the real reference rather than the deleted
+    space-free link, so readers don't fall back to fetching it by M5 (#632)."""
+    header = run_command(["samtools", "view", "-H", cram], capture_output=True).stdout
+    real = str(absolute_path(ref))
+    lines = [
+        "\t".join(
+            f"UR:{real}" if line.startswith("@SQ") and f == f"UR:{link}" else f
+            for f in line.split("\t")
+        )
+        for line in header.splitlines()
+    ]
+    fixed = str(Path(work, "header.sam"))
+    with open(fixed, "w", newline="\n") as f:
+        f.write("\n".join(lines) + "\n")
+    run_command(["samtools", "reheader", "-i", fixed, cram])
+
+
 def haplotag(
     phaser: str, vcf: str, reads: str, ref: str, sample: str, threads: int,
     outdir: str, region: str | None,
@@ -536,6 +555,8 @@ def haplotag(
             )
         if not Path(staged).is_file():
             raise WGSExtractError(f"{phaser} haplotag produced no {suffix[1:]} file.")
+        if suffix == ".cram" and tool_ref != ref:
+            _restore_reference_url(staged, tool_ref, ref, work)
         with safe_output(output) as final:
             Path(staged).replace(final)
     run_command(["samtools", "index", output])

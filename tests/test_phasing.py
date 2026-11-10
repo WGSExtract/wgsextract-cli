@@ -170,8 +170,9 @@ def test_a_cram_region_is_phased_and_tagged_as_cram(aligned, tmp_path, phaser):
     assert "\tHP:i:1" in reads and "\tHP:i:2" in reads
 
 
-def _phase_and_tag(reads: Path, ref: Path, folder: Path) -> tuple[str, str]:
-    """Phased GT:PS and the reads' haplotype tags, from LongPhase."""
+def _phase_and_tag(reads: Path, ref: Path, folder: Path) -> tuple[str, str, set[str]]:
+    """Phased GT:PS, the reads' haplotype tags and the tagged reads' @SQ UR
+    values, from LongPhase."""
     result = _phase(
         (reads, ref), folder, phaser="longphase", haplotag=True,
         vcf_input=_write_calls(folder / f"{folder.name} calls.vcf"),
@@ -183,7 +184,15 @@ def _phase_and_tag(reads: Path, ref: Path, folder: Path) -> tuple[str, str]:
         "samtools", "view", "-T", str(ref), "--keep-tag", "HP,PS",
         str(outputs["haplotagged_alignments"]),
     )  # fmt: skip
-    return phased, "\n".join(sorted(tags.splitlines()))
+    header = _run("samtools", "view", "-H", str(outputs["haplotagged_alignments"]))
+    urls = {
+        field
+        for line in header.splitlines()
+        if line.startswith("@SQ")
+        for field in line.split("\t")
+        if field.startswith("UR:")
+    }
+    return phased, "\n".join(sorted(tags.splitlines())), urls
 
 
 @needs_tools("longphase", "minimap2")
@@ -209,7 +218,12 @@ def test_longphase_phases_and_tags_from_paths_with_spaces(
         else:
             shutil.copy(bam, reads)
         _run("samtools", "index", str(reads))
-        runs.append(_phase_and_tag(reads, home_ref, home / f"my{space}out"))
+        phased, tags, urls = _phase_and_tag(reads, home_ref, home / f"my{space}out")
+        runs.append((phased, tags))
+        if reads_format == "cram":
+            # The CRAM names the user's reference, not a deleted temporary
+            # link (htslib would then fetch the reference from EBI by M5).
+            assert urls == {f"UR:{home_ref}"}
 
     plain, spaced = runs
     assert spaced == plain

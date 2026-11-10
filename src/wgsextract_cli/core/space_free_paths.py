@@ -39,13 +39,16 @@ def space_free_folder(tool: str) -> Iterator[Path]:
 def space_free_link(target: PathInput, link: Path, indexes: Sequence[str] = ()) -> str:
     """``target`` itself when its path has no space; else ``link``, linked to
     ``target``, with ``link`` + ext linked to each of ``target``'s ``indexes``
-    found (``x.bam.bai`` or ``x.bai``)."""
+    found (``x.bam.bai``, or ``x.bai`` for reads)."""
     path = Path(target)
     if not has_space(path.absolute()):
         return str(target)
     link.symlink_to(path.absolute(), target_is_directory=path.is_dir())
     for ext in indexes:
-        for index in (Path(f"{path}{ext}"), path.with_suffix(ext)):
+        candidates = [Path(f"{path}{ext}")]
+        if ext in READS_INDEXES and path.suffix in (".bam", ".cram"):
+            candidates.append(path.with_suffix(ext))
+        for index in candidates:
             if index.is_file():
                 Path(f"{link}{ext}").symlink_to(index.absolute())
                 break
