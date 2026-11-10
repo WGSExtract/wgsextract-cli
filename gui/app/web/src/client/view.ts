@@ -1,5 +1,5 @@
 import { displayWorkspacePath } from "../../../shared/workspace-paths.js";
-import { applyDataSourcePayload, configValueKey, hydrateRows, isSectionVisible, rowContext, } from "../../../shared/rendering.js";
+import { applyDataSourcePayload, configValueKey, hydrateRows, isSectionVisible, optionDisabledReason, rowContext, withoutDisabledOptions, } from "../../../shared/rendering.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
 import { buildTagStyle, commandContext, configDataSourceContext, displayOption, localizedStatus, localizedTag, renderIcon, renderIconTitle, renderInlineError, renderLoadingBox, renderLoadingInline, renderTooltip, resolveText, tagStyle, } from "./model.js";
 import { ensureDataSource } from "./operations.js";
@@ -12,7 +12,7 @@ import { renderWorkspaceLocationSection } from "./view/workspace-location.js";
 export { renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID, setupPromptMessage, } from "./view/setup.js";
 import { renderUpdateNavigationItem } from "./view/update.js";
 import { isShownInUIMode, visibleControls, visibleOptions, visiblePages, visibleRows, visibleSections, type UIMode } from "../../../shared/ui-mode.js";
-import type { BundleManifest, BundlePage, CommandContext, LocalizedOption, ControlOption, ControlSpec, ManifestLocation, PageSection, PendingConfirmation, RowColumnSpec, RowSpec, ConfigSetting } from "../../../shared/types.js";
+import type { BundleManifest, BundlePage, CommandContext, LocalizedOption, ControlOption, ControlSpec, ManifestLocation, PageSection, PendingConfirmation, RowColumnSpec, RowSpec, ConfigSetting, ValueMap } from "../../../shared/types.js";
 function requiredManifest(): BundleManifest {
     if (!state.manifest) {
         throw new Error("Bundle manifest is not loaded.");
@@ -128,14 +128,28 @@ export function renderPage(page: BundlePage) {
     </article>
   `;
 }
+/** Each section data source's last values, shown while it reloads. */
+const lastSectionValues = new Map<string, ValueMap>();
 export function renderSection(section: PageSection, page: BundlePage) {
     const key = `section:${section.id}`;
     const location: ManifestLocation = { pageID: page.id, sectionID: String(section.id ?? "") };
     if (section.dataSource) {
         ensureDataSource(key, location, commandContext());
     }
-    const sectionValues = state.dataSourcePayloads.get(key)?.values ?? {};
-    const context = commandContext({}, sectionValues);
+    const payloadValues = state.dataSourcePayloads.get(key)?.values;
+    if (payloadValues) {
+        lastSectionValues.set(key, payloadValues);
+    }
+    // While the section's data source reloads (after any field change), keep its last values, so an option
+    // they enable (2M once its panel is installed) isn't dropped from a command run in the meantime.
+    const sectionValues = payloadValues ?? (state.loadingDataSources.has(key) ? lastSectionValues.get(key) : undefined) ?? {};
+    // A checkbox option disabled by the section's values (a missing download) is never passed to its actions,
+    // judged on the options the controls show, including those their own data sources supply.
+    const shownControls = (section.controls ?? []).map((control) => {
+        const payload = control.dataSource ? state.dataSourcePayloads.get(`control:${control.id}`) : undefined;
+        return payload ? applyDataSourcePayload(control, payload) : control;
+    });
+    const context = withoutDisabledOptions(commandContext({}, sectionValues), shownControls);
     // Checked after the section's own data source starts, so visibleWhen can read the values it returns.
     if (!isSectionVisible(section, context)) {
         return "";
@@ -186,7 +200,7 @@ export function renderControl(control: ControlSpec, sectionContext: CommandConte
             body = renderToggleControl(renderedControl);
             break;
         case "checkboxGroup":
-            body = renderCheckboxGroup(renderedControl);
+            body = renderCheckboxGroup(renderedControl, sectionContext);
             break;
         case "infoGrid":
             body = renderInfoGrid(renderedControl);
@@ -252,18 +266,22 @@ export function renderToggleControl(control: ControlSpec) {
     </label>
   `;
 }
-export function renderCheckboxGroup(control: ControlSpec) {
+export function renderCheckboxGroup(control: ControlSpec, context: CommandContext = commandContext()) {
     const selected = state.checkedOptions[control.id] ?? new Set((control.options ?? []).filter((option) => option.selected).map((option) => option.id));
     const options = visibleOptions(control.options, state.uiMode);
     // A lone checkbox named like its group needs no heading: its own name says it, with the tooltip beside it.
     const onlyOption = control.options?.length === 1 ? control.options[0] : undefined;
     const optionNamesGroup = onlyOption != null && sameLabel(displayOption(onlyOption), control.label);
     const optionSuffix = optionNamesGroup ? renderTooltip(control.tooltip) : "";
-    const checkbox = (option: ControlOption) => `
-              <label>
-                <input type="checkbox" data-check-group="${escapeAttribute(control.id)}" value="${escapeAttribute(option.id)}" ${selected.has(option.id) ? "checked" : ""}>
+    const checkbox = (option: ControlOption) => {
+        // A disabled option shows unchecked and says on hover what makes it available.
+        const disabled = optionDisabledReason(option, context, state.labels.actionUnavailableTitle);
+        return `
+              <label${disabled ? ` class="disabled" data-tooltip="${escapeAttribute(disabled)}" tabindex="0"` : ""}>
+                <input type="checkbox" data-check-group="${escapeAttribute(control.id)}" value="${escapeAttribute(option.id)}" ${selected.has(option.id) && !disabled ? "checked" : ""}${disabled ? " disabled" : ""}>
                 <span>${escapeHTML(displayOption(option))}${optionSuffix}</span>
               </label>`;
+    };
     const body = control.layout === "rows"
         ? renderOptionRows(options, checkbox)
         : groupedOptions(options)

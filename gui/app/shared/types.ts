@@ -128,6 +128,9 @@ export interface ControlOption {
     title?: string;
     label?: string;
     selected?: boolean;
+    /** A checkbox option can't be chosen while any of these match, and commands see it unchecked. */
+    disabledWhen?: ConditionSpec[];
+    disabledTooltip?: string;
     [key: string]: unknown;
 }
 

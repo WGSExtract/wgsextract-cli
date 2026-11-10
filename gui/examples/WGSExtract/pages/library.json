@@ -31,6 +31,55 @@
       },
       "actions": [
         {
+          "id": "aadr-2m-install",
+          "title": "actions.library.post-v063.aadr-2m.title",
+          "tooltip": "actions.library.post-v063.aadr-2m.tooltip",
+          "visibleWhen": [
+            {
+              "placeholder": "library.aadrInstalled",
+              "equals": "false"
+            }
+          ],
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "ref",
+              "aadr",
+              "--install",
+              "--ref",
+              "{{ref_path}}"
+            ]
+          }
+        },
+        {
+          "id": "aadr-2m-delete",
+          "title": "actions.library.post-v063.aadr-2m-delete.title",
+          "tooltip": "actions.library.post-v063.aadr-2m-delete.tooltip",
+          "role": "destructive",
+          "confirm": {
+            "title": "actions.library.post-v063.aadr-2m-delete.confirm.title",
+            "message": "actions.library.post-v063.aadr-2m-delete.confirm.message",
+            "confirmButtonTitle": "actions.library.post-v063.aadr-2m-delete.confirm.confirmButtonTitle",
+            "cancelButtonTitle": "actions.library.post-v063.aadr-2m-delete.confirm.cancelButtonTitle"
+          },
+          "visibleWhen": [
+            {
+              "placeholder": "library.aadrInstalled",
+              "equals": "true"
+            }
+          ],
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "ref",
+              "aadr",
+              "--delete",
+              "--ref",
+              "{{ref_path}}"
+            ]
+          }
+        },
+        {
           "id": "ybrowse-install",
           "title": "actions.library.post-v063.ybrowse.title",
           "tooltip": "actions.library.post-v063.ybrowse.tooltip",

@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import {
   checkedOptionsForContext, hydrateRows, initialCheckedOptions, initialFieldValues,
-  parseFlatToml, renderedCommand,
+  optionDisabledReason, parseFlatToml, renderedCommand, withoutDisabledOptions,
 } from "../dist/shared/rendering.js";
 
 test("parses flat TOML inline comments outside quoted strings", () => {
@@ -66,11 +66,22 @@ test("WGSExtract opt-in policies render flags and preserve manifest paths with s
     microarray_exclude_filtered: ["--exclude-filtered"], microarray_call_reasons: ["--call-reasons"],
   });
 
-  test("WGSExtract AADR 2M extraction is an opt-in and its metadata ships with the library", () => {
+  test("WGSExtract AADR 2M is a Reference Data download that unlocks the 2M format", () => {
     const page = wgsPages.find((item) => item.id === "microarray");
-    const formats = page.sections.flatMap((section) => section.controls ?? [])
-      .find((control) => control.id === "microarray_formats");
-    assert.ok(formats.options.some((option) => option.id === "aadr_2m"), "2M is selectable");
+    const section = page.sections.find((item) => item.id === "microarray-formats");
+    assert.match(section.dataSource.path, /library-state/, "the section reads library.aadrInstalled");
+    const formats = section.controls.find((control) => control.id === "microarray_formats");
+    const twoM = formats.options.find((option) => option.id === "aadr_2m");
+    assert.ok(twoM.disabledTooltip, "a disabled 2M says why");
+    const withPanel = (installed) => ({
+      fieldValues: { "library.aadrInstalled": installed }, configValues: {}, rowValues: {},
+      checkedOptions: { microarray_formats: "aadr_1240k,aadr_2m" },
+    });
+    assert.ok(optionDisabledReason(twoM, withPanel("false")), "2M is disabled without the panel");
+    assert.ok(optionDisabledReason(twoM, withPanel("")), "2M is disabled until the status is known");
+    assert.equal(optionDisabledReason(twoM, withPanel("true")), undefined, "2M is selectable once installed");
+    assert.equal(withoutDisabledOptions(withPanel("false"), [formats]).checkedOptions.microarray_formats, "aadr_1240k");
+    assert.equal(withoutDisabledOptions(withPanel("true"), [formats]).checkedOptions.microarray_formats, "aadr_1240k,aadr_2m");
     assert.deepEqual(wgsCommand("microarray", "microarray-generate", {}, {
       microarray_formats: ["aadr_2m"],
     }), [
@@ -78,10 +89,10 @@ test("WGSExtract opt-in policies render flags and preserve manifest paths with s
     ]);
     const library = wgsPages.find((item) => item.id === "library");
     const libraryActions = library.sections.flatMap((section) => section.actions ?? []);
-    assert.ok(
-      !libraryActions.some((action) => action.command.arguments.includes("aadr")),
-      "ref bootstrap installs the AADR 2M metadata; no Library button does",
-    );
+    const aadrArgs = libraryActions
+      .filter((action) => action.command.arguments.includes("aadr"))
+      .map((action) => action.command.arguments.slice(0, 3));
+    assert.deepEqual(aadrArgs, [["ref", "aadr", "--install"], ["ref", "aadr", "--delete"]]);
     assert.ok(!wgsCommand("microarray", "microarray-generate").includes("aadr_2m"));
   });
   assert.deepEqual(args.slice(5), [

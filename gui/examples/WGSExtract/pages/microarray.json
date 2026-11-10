@@ -226,6 +226,13 @@
       "subtitle": "sections.microarray.post-v063.aadr-2m.subtitle",
       "iconName": "microarray-grid",
       "textIcon": "▦",
+      "dataSource": {
+        "path": "scripts/library-state.sh",
+        "arguments": [
+          "{{ref_path}}",
+          "{{dataset_library}}"
+        ]
+      },
       "controls": [
         {
           "id": "microarray_formats",
@@ -367,7 +374,14 @@
               "id": "aadr_2m",
               "title": "options.microarray.formats.2m.title",
               "group": "options.microarray.formats.group.aadr",
-              "category": "options.microarray.formats.category.reich"
+              "category": "options.microarray.formats.category.reich",
+              "disabledWhen": [
+                {
+                  "placeholder": "library.aadrInstalled",
+                  "notEquals": "true"
+                }
+              ],
+              "disabledTooltip": "options.microarray.formats.2m.disabledTooltip"
             }
           ],
           "layout": "rows"

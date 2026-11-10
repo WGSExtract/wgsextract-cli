@@ -102,11 +102,8 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
             "exists": Path(datasets).is_dir(),
         },
         "build": build,
-        # `ref bootstrap` installs the AADR 2M panel too; a library set up
-        # before it did isn't complete until it is run again.
-        "bootstrap": {
-            "installed": bootstrap_has_support_assets(reflib) and aadr["installed"],
-        },
+        # The AADR 2M panel is an optional download, not part of the bootstrap.
+        "bootstrap": {"installed": bootstrap_has_support_assets(reflib)},
         "aadr": aadr,
         "somalier": {
             "installed": somalier_resources.installed(reflib),

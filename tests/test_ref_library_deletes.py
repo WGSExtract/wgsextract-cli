@@ -60,7 +60,7 @@ def test_annotation_resource_delete_removes_files_and_indexes(
     assert _values(reflib)[value] == "false"
 
 
-def test_aadr_delete_and_bootstrap_reinstalls_it(
+def test_bootstrap_skips_aadr_and_its_install_and_delete_toggle(
     tmp_path, monkeypatch, fake_aadr_download
 ):
     reflib = tmp_path / "reference"
@@ -73,21 +73,23 @@ def test_aadr_delete_and_bootstrap_reinstalls_it(
         "wgsextract_cli.core.reference_processing.download_bootstrap", bootstrap
     )
     api.ref.bootstrap(api.RefBootstrapParams(ref=reflib))
-    assert (reflib / AADR).read_bytes() == fake_aadr_download
-    # GRCh38 exports place the panel with the forward chain.
+    # The AADR 2M server is slow: the panel is an optional Reference Data
+    # download, not part of the bootstrap. The small forward chain is.
+    assert not (reflib / AADR).exists()
     assert (reflib / "hg19ToHg38.over.chain.gz").is_file()
+    values = _values(reflib)
+    assert values["library.aadrInstalled"] == "false"
+    assert values["library.isBootstrapped"] == "true"
+
+    run_wgsextract("ref", "aadr", "--install", "--ref", str(reflib))
+    assert (reflib / AADR).read_bytes() == fake_aadr_download
     assert _values(reflib)["library.aadrInstalled"] == "true"
-    assert _values(reflib)["library.isBootstrapped"] == "true"
 
     run_wgsextract("ref", "aadr", "--delete", "--ref", str(reflib))
     assert not (reflib / "aadr").exists()
     values = _values(reflib)
     assert values["library.aadrInstalled"] == "false"
-    # A library without the panel isn't fully bootstrapped: offer it again.
-    assert values["library.isBootstrapped"] == "false"
-
-    api.ref.bootstrap(api.RefBootstrapParams(ref=reflib))
-    assert (reflib / AADR).is_file()
+    assert values["library.isBootstrapped"] == "true"
 
 
 @pytest.mark.parametrize("command", ["aadr", "ybrowse"])

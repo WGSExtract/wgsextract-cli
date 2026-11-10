@@ -47,6 +47,10 @@ from wgsextract_cli.core.gene_map import (
     download_gene_maps,
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES
+
+# Module level so the per-command dependency scan sees the chain download
+# (curl, optionally) that `ref bootstrap` and `ref aadr` make.
+from wgsextract_cli.core.microarray_targets import hg19_to_hg38_chain
 from wgsextract_cli.core.ref_library.catalog import (
     get_available_genomes,
     get_genome_status,
@@ -102,13 +106,7 @@ def run_aadr(params: RefAadrParams) -> None:
             [Path(reflib, "aadr")],
         )
         return
-    _install_aadr(reflib)
-
-
-def _install_aadr(reflib: str) -> None:
-    """The panel, and the hg19ToHg38 chain that places it on GRCh38."""
-    from wgsextract_cli.core.microarray_targets import hg19_to_hg38_chain
-
+    # The panel, and the hg19ToHg38 chain that places it on GRCh38.
     installed = install_aadr_2m(reflib)
     current_result().add_output(installed, "reference_resource")
     logging.info("Installed CC0 AADR v66.p1 2M SNP metadata: %s", installed)
@@ -426,9 +424,10 @@ def run_bootstrap(params: RefBootstrapParams) -> None:
     before = file_snapshot(reflib)
     if not download_bootstrap(reflib):
         raise WGSExtractError("Reference library bootstrap failed.")
-    # The AADR 2M panel is part of every library, so microarray can always
-    # offer its AADR formats.
-    _install_aadr(reflib)
+    # GRCh38 microarray targets and AADR exports lift with this chain. The
+    # AADR 2M panel itself is not part of the bootstrap: its server is slow,
+    # so it is an explicit 'ref aadr --install'.
+    hg19_to_hg38_chain(reflib)
     record_changed_files(reflib, before, "reference_resource")
     current_result().set_manifest_stem(Path(reflib, "bootstrap"))
     if should_save_reflib:
