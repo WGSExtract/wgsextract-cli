@@ -42,7 +42,6 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
   2. the "Up next" list at the top of the roadmap tracking issue (label `roadmap`), in the order listed; it overrides milestones
   3. the oldest open milestone
   4. the rest of the roadmap tracking issue
-  5. within each step, `bug` before `enhancement`
 - **Keep going.** When given a queue of work (such as a list of GitHub issues), keep working through it without stopping to ask for confirmation between items.
   - When an item is blocked on something only the user can provide, or needs owner sign-off first, note it and move on to other work in the queue that isn't blocked.
   - Stop only when the queue is empty or every remaining item is blocked.
