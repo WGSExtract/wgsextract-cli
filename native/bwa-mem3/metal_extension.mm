@@ -199,6 +199,7 @@ private:
             std::copy(slot.inputs.begin(), slot.inputs.end(),
                 static_cast<WgseBswJob *>(slot.pairs.contents));
         slot.command = [runtime.queue() commandBufferWithUnretainedReferences];
+        slot.command.label = @"extend";
         id<MTLComputeCommandEncoder> encoder = [slot.command computeCommandEncoder];
         if (!slot.command || !encoder) {
             slot.failure = "Metal command allocation failed";
@@ -222,12 +223,11 @@ private:
         }
         [encoder endEncoding];
         Slot *finished = &slot;
-        [slot.command addCompletedHandler:^(id<MTLCommandBuffer>) {
+        wgse::metal::Runtime::commit(slot.command, ^(id<MTLCommandBuffer>) {
             std::lock_guard<std::mutex> lock(mutex);
             finished->status = Slot::completed;
             changed.notify_one();
-        }];
-        wgse::metal::Runtime::commit(slot.command);
+        });
     }
 
     // Stores the results, or commits the slot again after an interruption.
@@ -243,8 +243,7 @@ private:
             return;
         }
         if (slot.failure.empty() && slot.command.status != MTLCommandBufferStatusCompleted)
-            slot.failure = slot.command.error ? slot.command.error.localizedDescription.UTF8String
-                : "Metal command did not complete";
+            slot.failure = wgse::metal::Runtime::describe(slot.command);
         if (slot.failure.empty() && inject_failure)
             slot.failure = "injected GPU extension failure (test)";
         if (slot.failure.empty()) {

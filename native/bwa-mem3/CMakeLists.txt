@@ -38,7 +38,7 @@ set(SKIP_INSTALL_ALL ON)
 FetchContent_MakeAvailable(mem3 mem3_neon mem3_libsais mem3_mimalloc mem3_zlibng mem3_libdeflate)
 
 # Bump when the wgse-bwa-mem3 package changes; it is versioned separately from bwa-mem3.
-set(WGSE_BWA_MEM3_VERSION 0.2.0)
+set(WGSE_BWA_MEM3_VERSION 0.2.1)
 set(MEM3_VERSION 0.16.0)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 # src/ includes the vendored "../ext/pdqsort/pdqsort.h".
@@ -222,8 +222,13 @@ if(BUILD_TESTING)
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
         $<TARGET_FILE:wgse-bwa-mem3> $<TARGET_FILE:bwa-mem3-upstream>
         "${CMAKE_CURRENT_BINARY_DIR}/metal-failure" --metal --gpu-inject-extension-failure)
+    # Regression (#548): a GPU command that never completes is given up by the watchdog.
+    add_test(NAME bwa_mem3_metal_watchdog
+        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
+        $<TARGET_FILE:wgse-bwa-mem3> $<TARGET_FILE:bwa-mem3-upstream>
+        "${CMAKE_CURRENT_BINARY_DIR}/metal-watchdog" --metal --gpu-inject-hang extend)
     set_tests_properties(bwa_mem3_metal_parity bwa_mem3_metal_failure_parity
-        PROPERTIES SKIP_RETURN_CODE 77)
+        bwa_mem3_metal_watchdog PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
 install(TARGETS wgse-bwa-mem3 RUNTIME DESTINATION bin)

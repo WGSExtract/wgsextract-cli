@@ -470,6 +470,7 @@ class Aggregator {
         auto kernel = slot.kernel;
         bool tiled = kernel != ExtensionKernel::row;
         slot.command = [metal.queue commandBufferWithUnretainedReferences];
+        slot.command.label = @"extend";
         id<MTLComputeCommandEncoder> encoder = [slot.command computeCommandEncoder];
         if (!slot.command || !encoder) {
             slot.failure = "Metal command allocation failed";
@@ -497,12 +498,11 @@ class Aggregator {
         }
         // The submitter finishes the slot, so only it touches slot.command.
         Slot *completed_slot = &slot;
-        [slot.command addCompletedHandler:^(id<MTLCommandBuffer>) {
+        wgse::metal::Runtime::commit(slot.command, ^(id<MTLCommandBuffer>) {
             std::lock_guard<std::mutex> lock(mutex);
             completed_slot->status = Slot::completed;
             changed.notify_one();
-        }];
-        wgse::metal::Runtime::commit(slot.command);
+        });
     }
 
     void finish(Slot &slot) {
@@ -516,8 +516,7 @@ class Aggregator {
             return;
         }
         if (slot.failure.empty() && slot.command.status != MTLCommandBufferStatusCompleted)
-            slot.failure = slot.command.error ? slot.command.error.localizedDescription.UTF8String
-                : "Metal command did not complete";
+            slot.failure = wgse::metal::Runtime::describe(slot.command);
         if (slot.failure.empty()) {
             double start = slot.command.GPUStartTime, end = slot.command.GPUEndTime;
             if (first_gpu_start == 0) first_gpu_start = start;
@@ -1917,6 +1916,7 @@ void wgse_verify_gpu_rescue() { verify_rescue = true; }
 void wgse_inject_gpu_interruptions(size_t every) {
     wgse::metal::Runtime::inject_interruptions(every);
 }
+void wgse_inject_gpu_hang(const char *label) { wgse::metal::Runtime::inject_hang(label, 2); }
 
 bool wgse_metal_available(std::string &reason) {
     reason = state().failure;

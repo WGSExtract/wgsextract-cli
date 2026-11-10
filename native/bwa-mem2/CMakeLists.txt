@@ -313,7 +313,7 @@ target_compile_options(metal_backend PRIVATE -fobjc-arc -Wall -Wextra -Werror)
 target_link_libraries(metal_backend PUBLIC mem2_core mem2_rescue_prune wgse_metal_common)
 add_executable(wgse-bwa-mem2 main.cpp)
 target_link_libraries(wgse-bwa-mem2 PRIVATE metal_backend)
-set(WGSE_BWA_MEM2_VERSION 0.5.0)
+set(WGSE_BWA_MEM2_VERSION 0.5.1)
 target_compile_definitions(wgse-bwa-mem2 PRIVATE WGSE_VERSION="${WGSE_BWA_MEM2_VERSION}")
 target_compile_options(wgse-bwa-mem2 PRIVATE -Wall -Wextra -Werror)
 
@@ -331,6 +331,9 @@ if(BUILD_TESTING)
     add_test(NAME bwa_mem2_rescue_parity
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/rescue_parity.sh"
         $<TARGET_FILE:wgse-bwa-mem2> "${CMAKE_CURRENT_BINARY_DIR}/rescue-parity")
+    add_test(NAME bwa_mem2_watchdog
+        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/rescue_parity.sh"
+        $<TARGET_FILE:wgse-bwa-mem2> "${CMAKE_CURRENT_BINARY_DIR}/watchdog" watchdog)
     add_test(NAME bwa_mem2_seed_parity
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/seed_parity.sh"
         $<TARGET_FILE:wgse-bwa-mem2> "${CMAKE_CURRENT_BINARY_DIR}/seed-parity")

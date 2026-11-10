@@ -30,7 +30,26 @@ public:
     // Commits command once fewer than gpu_slots command buffers of this process
     // are running. Every command buffer goes through here: with more running at
     // once, macOS aborts some (ImpactingInteractivity) to keep the display responsive.
-    static void commit(id<MTLCommandBuffer> command);
+    //
+    // GPU watchdog: once a committed command has not completed for
+    // watchdog_seconds() (macOS reported no error, as on a hung paravirtual GPU),
+    // the runtime gives up on the GPU for the rest of the process. done then runs
+    // for every command in flight, whose status is not Completed, and later
+    // commits do not commit: done runs at once. So done always runs exactly
+    // once, and callers waiting for it finish their work on the CPU.
+    static void commit(id<MTLCommandBuffer> command,
+        void (^done)(id<MTLCommandBuffer>) = nil);
+    // Commits command and blocks until its done would run (completion or watchdog).
+    static void run(id<MTLCommandBuffer> command);
+    // Why the watchdog gave up on the GPU, or empty. Also describes a command
+    // that did not complete for another reason.
+    static std::string hang();
+    static std::string describe(id<MTLCommandBuffer> command);
+    // Generous: 60 s, or 20 times the slowest command so far if longer.
+    static double watchdog_seconds();
+    // Test hook: withholds the first command whose label starts with label
+    // (any command if empty), so it never completes, and gives up after seconds.
+    static void inject_hang(const std::string &label, double seconds);
     // Whether macOS aborted command, the attempt'th commit of its work, to keep
     // the display responsive (ImpactingInteractivity), for example while another
     // process uses the GPU. Its kernels ran partly or not at all; committing them

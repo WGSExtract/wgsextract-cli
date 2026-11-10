@@ -69,6 +69,36 @@ awk 'BEGIN {
 }'
 "$aligner" index reference.fa > index.log 2>&1
 
+# Regression (#548): a GPU command that never completes and that macOS reports
+# no error for (as on a hung paravirtual GPU) is given up by the watchdog; the
+# run finishes on the CPU with the same records. --gpu-inject-hang withholds
+# the first command of a stage and gives up after 2 s.
+if [ "${3:-}" = watchdog ]; then
+    "$aligner" capabilities --json > capabilities.json
+    if ! grep -q '"metal_available":true' capabilities.json; then
+        grep -q '"metal_hardware_supported":true' capabilities.json && exit 1
+        exit 77
+    fi
+    "$aligner" mem -t 4 -K 20000 reference.fa pairs-R1.fq pairs-R2.fq > cpu-hang.sam \
+        2> cpu-hang.log
+    for stage in seed_prefixes collect_smems rescue_align extend; do
+        status=0
+        "$aligner" --metal --gpu-inject-hang "$stage" --gpu-policy all --gpu-rescue-batch 7 \
+            mem -t 4 -K 20000 reference.fa pairs-R1.fq pairs-R2.fq > "hang-$stage.sam" \
+            2> "hang-$stage.log" || status=$?
+        test "$status" -eq 1
+        grep -q "GPU watchdog: a Metal command ($stage" "hang-$stage.log"
+        grep -q 'Metal execution failed (alignments were completed on the CPU)' "hang-$stage.log"
+        same cpu-hang.sam "hang-$stage.sam"
+        "$aligner" --backend auto --gpu-inject-hang "$stage" --gpu-policy all \
+            --gpu-rescue-batch 7 mem -t 4 -K 20000 reference.fa pairs-R1.fq pairs-R2.fq \
+            > "hang-auto-$stage.sam" 2> "hang-auto-$stage.log"
+        grep -q "GPU watchdog: a Metal command ($stage" "hang-auto-$stage.log"
+        same cpu-hang.sam "hang-auto-$stage.sam"
+    done
+    exit 0
+fi
+
 # The CPU backend's exact replacements of upstream code (balanced work units,
 # each pair's rescue windows aligned together, pointer sorts, reference windows
 # decoded from the .pac) must leave the SAM unchanged: --cpu-upstream runs

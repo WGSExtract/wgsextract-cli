@@ -87,6 +87,9 @@ void wgse_inject_rescue_failure();
 void wgse_verify_gpu_rescue();
 // Report the first commit of every nth piece of GPU work as interrupted.
 void wgse_inject_gpu_interruptions(size_t every);
+// Withholds the first GPU command whose label starts with label, as a hung GPU
+// would, so the watchdog gives up on the GPU after 2 s.
+void wgse_inject_gpu_hang(const char *label);
 struct WgseExtensionScratch {
     dnaSeqPair *pairs, *aux;
     int32_t *hist;

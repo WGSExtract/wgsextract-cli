@@ -1826,6 +1826,10 @@ void wgse_inject_gpu_interruptions(size_t every) {
     wgse::metal::Runtime::inject_interruptions(every);
 }
 
+void wgse_inject_gpu_hang(const char *label) {
+    wgse::metal::Runtime::inject_hang(label, 2);
+}
+
 void wgse_set_gpu_locate_rows(size_t rows) {
     locate_rows_per_batch = rows;
 }

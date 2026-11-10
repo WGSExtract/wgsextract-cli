@@ -89,6 +89,15 @@ int run(int argc, char **argv) {
             if (threads) wgse_mem3_bsw_set_threads(int(number));
             else wgse::metal::Runtime::inject_interruptions(size_t(number));
             command_index += 2;
+        } else if (strcmp(option, "--gpu-inject-hang") == 0) {
+            // Withholds the first GPU command whose label starts with value, as
+            // a hung GPU would; the watchdog gives up on the GPU after 2 s.
+            if (!has_value) {
+                fprintf(stderr, "--gpu-inject-hang requires a command label prefix\n");
+                return 2;
+            }
+            wgse::metal::Runtime::inject_hang(value, 2);
+            command_index += 2;
         } else {
             break;
         }
