@@ -641,6 +641,7 @@ def test_a_bam_without_a_sample_name_is_named_after_its_file(family, tmp_path):
     )
 
 
+@needs_somalier
 @pytest.mark.parametrize(
     ("rg_lines", "message"),
     [

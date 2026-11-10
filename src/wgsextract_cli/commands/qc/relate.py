@@ -714,6 +714,11 @@ def run_relate(params: RelateParams) -> None:
     sites = expand_path(params.sites) if params.sites else None
     ped = expand_path(params.ped) if params.ped else None
     verify_paths_exist({k: v for k, v in (("--sites", sites), ("--ped", ped)) if v})
+    if params.ancestry and sites:
+        raise UsageError(
+            "--ancestry compares with 1000 Genomes sketches of somalier's own "
+            "sites; it can't use --sites."
+        )
     verify_dependencies([SOMALIER, "samtools", "bcftools"])
     check_format(params.table_format)
     log_dependency_info([SOMALIER])
@@ -728,11 +733,6 @@ def run_relate(params: RelateParams) -> None:
     root = library_roots(expand_path(params.ref) if params.ref else None)
     reflib = resolve_reference_library(root.resource_root(somalier_resources.FOLDER))
     ancestry = params.ancestry
-    if ancestry and sites:
-        raise UsageError(
-            "--ancestry compares with 1000 Genomes sketches of somalier's own "
-            "sites; it can't use --sites."
-        )
     if ancestry is None:
         ancestry = not sites and somalier_resources.installed(reflib)
         if not ancestry:
