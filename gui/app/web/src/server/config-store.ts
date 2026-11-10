@@ -1,11 +1,11 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { allControls, configEditorControls, parseFlatToml, persistsFieldValue, serializeFlatToml } from "../../../shared/rendering.js";
 import type { BundleManifest, ConfigBootstrapScriptSpec, ConfigSetting, ControlSpec, LooseRecord, SetupRun, StateValue, StringMap, ValueMap } from "../../../shared/types.js";
-import { configPath, expandPathTokens, expandWorkspaceToken } from "./paths.js";
+import { configPath, expandPathTokens, expandWorkspaceToken, isPreviousConfigPath, resolveUserPath } from "./paths.js";
 import { resolvePlatformScriptPath } from "./platform-scripts.js";
 import { errnoCode, errorMessage } from "./errors.js";
 import { normalizeUIMode, type UIMode } from "../../../shared/ui-mode.js";
@@ -199,7 +199,7 @@ export function initialConfigFilePaths(manifest: BundleManifest, bundleState: Pi
         const defaultPath = control.configFile.path;
         return [[
             control.id,
-            persistedPath && isAllowedConfigPath(control, persistedPath, bundleRoot)
+            persistedPath && !isPreviousConfigPath(control, persistedPath, bundleRoot) && isAllowedConfigPath(control, persistedPath, bundleRoot)
                 ? persistedPath
                 : defaultPath,
         ]];
@@ -235,6 +235,7 @@ export function bootstrapConfigFiles(manifest: BundleManifest, bundleRoot: strin
 }
 async function bootstrapConfigFilesNow(manifest: BundleManifest, bundleRoot: string, configFilePaths: StringMap) {
     for (const control of configEditorControls(manifest)) {
+        await movePreviousConfigFile(control, bundleRoot);
         const configFile = control.configFile;
         const bootstrap = configFile?.bootstrap;
         if (!configFile || !bootstrap || bootstrap.mode === "none") {
@@ -249,6 +250,35 @@ async function bootstrapConfigFilesNow(manifest: BundleManifest, bundleRoot: str
             continue;
         }
         await bootstrapToml(mode, document.url, defaults);
+    }
+}
+/**
+ * Moves the settings file from where an earlier version kept it (configFile.previousPaths) to its declared
+ * path, unless that already exists, then removes the old folder if that leaves it empty.
+ */
+async function movePreviousConfigFile(control: ControlSpec, bundleRoot: string) {
+    const declaredPath = control.configFile?.path;
+    if (!declaredPath) {
+        return;
+    }
+    const target = resolveUserPath(declaredPath, bundleRoot);
+    if (existsSync(target)) {
+        return;
+    }
+    for (const previousPath of control.configFile?.previousPaths ?? []) {
+        const previous = resolveUserPath(previousPath, bundleRoot);
+        if (!existsSync(previous)) {
+            continue;
+        }
+        await mkdir(path.dirname(target), { recursive: true });
+        await rename(previous, target);
+        const folder = path.dirname(previous);
+        const relative = path.relative(bundleRoot, folder);
+        if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
+            // rmdir only removes an empty folder; anything the user put beside the file stays.
+            await rmdir(folder).catch(() => undefined);
+        }
+        return;
     }
 }
 function shouldSkipBootstrap(mode: string, existing: ValueMap | null, defaultKeys: string[]) {

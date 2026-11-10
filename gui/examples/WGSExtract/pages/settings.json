@@ -14,7 +14,8 @@
           "kind": "configEditor",
           "tooltip": "controls.settings.settings-paths.wgs_settings.tooltip",
           "configFile": {
-            "path": "{{bundleWorkspace}}/settings/config.toml",
+            "path": "{{bundleWorkspace}}/config.toml",
+            "previousPaths": ["{{bundleWorkspace}}/settings/config.toml"],
             "format": "toml",
             "bootstrap": {
               "mode": "mergeMissing",
