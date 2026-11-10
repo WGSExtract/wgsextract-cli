@@ -239,6 +239,64 @@ def test_clair3_calls_the_region_for_the_reads_sample(
     assert (run["opts"]["platform"], run["opts"]["model_path"]) == ("ont", str(model))
 
 
+def as_cram(reads, version: str, path: Path) -> str:
+    run_command(
+        ["samtools", "view", "-C", "--output-fmt-option", f"version={version}",
+         "-T", reads.ref, "-o", str(path), reads.bam]
+    )  # fmt: skip
+    run_command(["samtools", "index", str(path)])
+    return str(path)
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+@pytest.mark.parametrize("version", ["3.0", "3.1"])
+def test_clair3_reads_cram_31_through_a_cram_30_copy(
+    tmp_path, linux_x86, fake_clair3, caplog, version
+):
+    """#604: Clair3's bundled htslib fails on CRAM 3.1, so those reads are
+    called from a temporary CRAM 3.0 copy, with the same calls as the BAM."""
+    require_runnable("samtools", "bcftools", "tabix")
+    reads = snp_sample(tmp_path, DORADO_RG)
+    model = make_model(tmp_path, "my_r1041_model")
+    cram = as_cram(reads, version, tmp_path / f"v{version}.cram")
+    before = Path(cram).read_bytes()
+    outdir = tmp_path / "out"
+    with caplog.at_level("INFO"):
+        run_wgsextract(
+            "vcf", "clair3", "--input", cram, "--ref", reads.ref,
+            "--outdir", str(outdir), "--model", str(model), "-r", "chr1:900-1100",
+        )  # fmt: skip
+
+    (run,) = fake_clair3.runs()
+    assert run["cram_version"] == [3, 0]
+    assert ("Transcoding CRAM" in caplog.text) == (version == "3.1")
+    assert vcf_calls(outdir / "clair3.vcf.gz") == reads.calls[:1]
+    assert sorted(p.name for p in outdir.iterdir()) == [
+        "clair3.vcf.gz",
+        "clair3.vcf.gz.tbi",
+    ]
+    assert Path(cram).read_bytes() == before
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+def test_clair3_failure_reports_clair3s_own_errors(tmp_path, linux_x86, fake_clair3):
+    """#604: Clair3 reports errors on stdout and in its logs, not stderr; the
+    failure must show them instead of "no error output"."""
+    require_runnable("samtools", "bcftools", "tabix")
+    reads = snp_sample(tmp_path, DORADO_RG)
+    model = make_model(tmp_path, "my_r1041_model")
+    fake_clair3.fail("[ERROR] Failed to read alignment record (BAM/CRAM decode error).")
+    outdir = tmp_path / "out"
+    with pytest.raises(WGSExtractError) as failure:
+        run_wgsextract(
+            "vcf", "clair3", "--input", reads.bam, "--ref", reads.ref,
+            "--outdir", str(outdir), "--model", str(model),
+        )  # fmt: skip
+    assert "Failed to read alignment record" in str(failure.value)
+    assert "no error output" not in str(failure.value)
+    assert list(outdir.iterdir()) == []
+
+
 @needs_tools("samtools")
 def test_non_ont_input_is_refused(tmp_path, linux_x86, fake_clair3):
     require_runnable("samtools", "bcftools", "tabix")

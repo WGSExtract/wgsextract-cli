@@ -335,8 +335,11 @@ if sys.argv[1:] in ([], ["--version"], ["-h"], ["--help"]):
 opts = dict(arg[2:].split("=", 1) for arg in sys.argv[1:])
 # Clair3's GNU parallel reads stdin: it must be closed, or the run waits on it.
 ready, _, _ = select.select([0], [], [], 0.5)
+with open(opts["bam_fn"], "rb") as reads:
+    head = reads.read(6)
 record = {{
     "opts": opts,
+    "cram_version": list(head[4:6]) if head[:4] == b"CRAM" else None,
     "bed": open(opts["bed_fn"]).read() if "bed_fn" in opts else None,
     "stdin_closed": bool(ready) and os.read(0, 1) == b"",
     "pythonpath": os.environ.get("PYTHONPATH"),
@@ -352,6 +355,20 @@ for name in ("pileup.pt", "full_alignment.pt"):
         sys.exit(f"[ERROR] {{name}} not found in {{opts['model_path']}}")
 out = opts["output"]
 os.makedirs(out)
+errors = []
+if record["cram_version"] and record["cram_version"] >= [3, 1]:
+    # libclair3's bundled htslib can't decode some valid CRAM 3.1 blocks.
+    errors = ["[E::cram_next_slice] Failure to decode slice",
+              "[ERROR] Failed to read alignment record (BAM/CRAM decode error)."]
+elif os.path.exists({failure!r}):
+    errors = open({failure!r}).read().splitlines()
+if errors:
+    # Clair3 reports on stdout, tee'd to its step logs; parallel exits quietly.
+    os.makedirs(os.path.join(out, "log"))
+    with open(os.path.join(out, "log", "1_call_var_bam_pileup.log"), "w") as step:
+        step.write("Calling variants ...\\n" + "\\n".join(errors) + "\\n")
+    print("\\n".join(errors))
+    sys.exit(8)
 regions = ["-R", opts["bed_fn"]] if "bed_fn" in opts else []
 calls = os.path.join(out, "calls.vcf.gz")
 mpileup = subprocess.Popen(
@@ -375,16 +392,24 @@ class FakeClair3:
 
     Like Clair3 it needs the model's weights, runs its own Python (it fails
     if PYTHONPATH leaks in) and waits on an open stdin (it fails instead).
-    Each run's options, region BED, stdin state and PYTHONPATH go to ``runs``.
+    Like Clair3's bundled htslib it fails on CRAM 3.1 reads, reporting only
+    on stdout and in its step logs; ``fail`` makes it fail that way on any
+    reads. Each run's options, reads' CRAM version, region BED, stdin state
+    and PYTHONPATH go to ``runs``.
     """
 
     def __init__(self, bindir: Path, bcftools: str) -> None:
         self.log = bindir / "clair3-runs.jsonl"
         self.models = bindir / "models"
         self.models.mkdir(parents=True)
+        self.failure = bindir / "clair3-failure.txt"
         python_tool(bindir, "run_clair3.sh", _FAKE_CLAIR3.format(
-            log=str(self.log), bcftools=bcftools
+            log=str(self.log), bcftools=bcftools, failure=str(self.failure)
         ))  # fmt: skip
+
+    def fail(self, *errors: str) -> None:
+        """Fail later runs with these error lines on stdout and in the logs."""
+        self.failure.write_text("\n".join(errors) + "\n")
 
     def runs(self) -> list[dict]:
         if not self.log.exists():
