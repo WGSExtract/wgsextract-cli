@@ -139,6 +139,8 @@ platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
 
 [feature.strkit.dependencies]
 python = "3.13.*"
+# Prebuilt, so PyPI's parasail sdist isn't compiled on ARM.
+parasail-python = ">=1.3.4,<1.4"
 
 [feature.strkit.pypi-dependencies]
 strkit = "==0.25.0"
