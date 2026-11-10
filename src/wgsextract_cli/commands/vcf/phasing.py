@@ -17,8 +17,9 @@ import subprocess
 import sys
 import tempfile
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
@@ -34,6 +35,13 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.results import Scalar, current_result, warn
 from wgsextract_cli.core.samtools_commands import alignment_index
+from wgsextract_cli.core.space_free_paths import (
+    READS_INDEXES,
+    REFERENCE_INDEXES,
+    VCF_INDEXES,
+    space_free_folder,
+    space_free_link,
+)
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -242,15 +250,44 @@ def longphase_phase_command(
     ]  # fmt: skip
 
 
+def _fasta_suffix(ref: str) -> str:
+    suffixes = Path(ref).suffixes
+    return "".join(suffixes[-2:] if suffixes[-1:] == [".gz"] else suffixes[-1:])
+
+
+@contextmanager
+def longphase_paths(
+    vcf: str, reads: str, ref: str, work: str
+) -> Iterator[tuple[str, str, str, str]]:
+    """Space-free links to the VCF, reads, reference and work folder: LongPhase
+    splits its path options at spaces (#632)."""
+    with space_free_folder("LongPhase") as links:
+        yield (
+            space_free_link(vcf, links / "input.vcf.gz", VCF_INDEXES),
+            space_free_link(reads, links / f"reads{Path(reads).suffix}", READS_INDEXES),
+            space_free_link(ref, links / f"ref{_fasta_suffix(ref)}", REFERENCE_INDEXES),
+            space_free_link(work, links / "work"),
+        )
+
+
 def run_longphase(
     vcf: str, reads: str, ref: str, sample: str, platform: str, threads: int,
     work: str, out: str,
 ) -> None:  # fmt: skip
     prefix = str(Path(work, "longphase"))
-    run_command(
-        longphase_phase_command(vcf, reads, ref, sample, platform, threads, prefix),
-        stdin=subprocess.DEVNULL,
-    )
+    with longphase_paths(vcf, reads, ref, work) as (lp_vcf, lp_reads, lp_ref, lp_work):
+        run_command(
+            longphase_phase_command(
+                lp_vcf,
+                lp_reads,
+                lp_ref,
+                sample,
+                platform,
+                threads,
+                str(Path(lp_work, "longphase")),
+            ),
+            stdin=subprocess.DEVNULL,
+        )
     produced = prefix + ".vcf"
     if not Path(produced).is_file():
         raise WGSExtractError("LongPhase failed to produce a phased VCF.")
@@ -479,13 +516,24 @@ def haplotag(
             run_command(["samtools", "index", subset])
             reads, regions = subset, []
         staged = str(Path(work, f"haplotagged{suffix}"))
-        run_command(
-            haplotag_command(
-                phaser, slim, reads, ref, sample, threads, staged, regions
-            ),
-            env=_tool_env(),
-            stdin=subprocess.DEVNULL,
-        )
+        paths = (slim, reads, ref, work)
+        with (
+            longphase_paths(*paths) if phaser == "longphase" else nullcontext(paths)
+        ) as (tool_vcf, tool_reads, tool_ref, tool_work):
+            run_command(
+                haplotag_command(
+                    phaser,
+                    tool_vcf,
+                    tool_reads,
+                    tool_ref,
+                    sample,
+                    threads,
+                    str(Path(tool_work, f"haplotagged{suffix}")),
+                    regions,
+                ),
+                env=_tool_env(),
+                stdin=subprocess.DEVNULL,
+            )
         if not Path(staged).is_file():
             raise WGSExtractError(f"{phaser} haplotag produced no {suffix[1:]} file.")
         with safe_output(output) as final:

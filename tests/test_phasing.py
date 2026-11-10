@@ -170,6 +170,52 @@ def test_a_cram_region_is_phased_and_tagged_as_cram(aligned, tmp_path, phaser):
     assert "\tHP:i:1" in reads and "\tHP:i:2" in reads
 
 
+def _phase_and_tag(reads: Path, ref: Path, folder: Path) -> tuple[str, str]:
+    """Phased GT:PS and the reads' haplotype tags, from LongPhase."""
+    result = _phase(
+        (reads, ref), folder, phaser="longphase", haplotag=True,
+        vcf_input=_write_calls(folder / f"{folder.name} calls.vcf"),
+    )  # fmt: skip
+    outputs = {record.role: Path(record.path) for record in result.outputs}
+    phased = _run("bcftools", "query", "-f", "%POS[\t%GT\t%PS]\n",
+                  str(outputs["phased_variants"]))  # fmt: skip
+    tags = _run(
+        "samtools", "view", "-T", str(ref), "--keep-tag", "HP,PS",
+        str(outputs["haplotagged_alignments"]),
+    )  # fmt: skip
+    return phased, "\n".join(sorted(tags.splitlines()))
+
+
+@needs_tools("longphase", "minimap2")
+@needs_htslib
+@pytest.mark.parametrize("reads_format", ["bam", "cram"])
+def test_longphase_phases_and_tags_from_paths_with_spaces(
+    aligned, tmp_path, reads_format
+):
+    """#632: LongPhase splits its -s, -b, -r and -o paths at spaces and fails;
+    reads, reference, VCF and output in folders with spaces must phase and tag
+    as they do without them."""
+    bam, ref = aligned
+    runs = []
+    for space in ("_", " "):
+        home = tmp_path / f"John{space}Smith"
+        (home / f"my{space}out").mkdir(parents=True)
+        (home / f"my{space}ref").mkdir()
+        home_ref = home / f"my{space}ref" / f"my{space}ref.fa"
+        shutil.copy(ref, home_ref)
+        reads = home / f"my{space}reads.{reads_format}"
+        if reads_format == "cram":
+            _run("samtools", "view", "-C", "-T", str(ref), "-o", str(reads), str(bam))
+        else:
+            shutil.copy(bam, reads)
+        _run("samtools", "index", str(reads))
+        runs.append(_phase_and_tag(reads, home_ref, home / f"my{space}out"))
+
+    plain, spaced = runs
+    assert spaced == plain
+    assert "\tHP:i:1" in spaced[1] and "\tHP:i:2" in spaced[1]
+
+
 @needs_tools("longphase", "minimap2")
 @needs_htslib
 def test_nanopore_reads_are_phased_with_longphase_by_default(aligned, tmp_path):
