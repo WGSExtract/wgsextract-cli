@@ -1,0 +1,13 @@
+{
+  "sample": "HG002 (GIAB NA24385)",
+  "source": {
+    "url": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz",
+    "sha256": "adb4d4a50048aa13353a06b84fcfcbca09a5d17525efaa4cea44f8822e81175c",
+    "license": "Public domain (NIST Genome in a Bottle)"
+  },
+  "selection": "bcftools view -R pharmcat_regions.bed (PharmCAT 3.4.0 pipeline release, sha256 9755c524125481c6140e9996e9569b8fb01544322ee704e854f2f7c6eaf4e14a) -Oz",
+  "use": "vcf pharmcat Linux/Windows parity (.github/workflows/pharmcat_e2e.yml); its phenotype.json geneReports match the whole benchmark VCF's",
+  "sha256": {
+    "hg002_pgx.vcf.gz": "f9ba90db6a935e7f97d52ad7d09c1c5251de6fd89b5478cf252e933b5a027ea0"
+  }
+}

@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import re
 import subprocess
 import tempfile
@@ -24,7 +25,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfPharmcatParams
-from wgsextract_cli.core import variant_confidence
+from wgsextract_cli.core import runtime, variant_confidence
 from wgsextract_cli.core.builds import build_from_chr1_length, build_from_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.paths import absolute_path
@@ -33,7 +34,7 @@ from wgsextract_cli.core.reference_resolver import (
     ReferenceLibrary,
     header_contig_lengths,
 )
-from wgsextract_cli.core.results import current_result
+from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.tool_commands import _tool_command_parts
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import (
@@ -78,8 +79,7 @@ def _python(directory: str) -> list[str]:
     command = pixi_env_tool("pharmcat_python")
     if not command:
         raise WGSExtractError(
-            "PharmCAT's environment isn't available (it runs on macOS and Linux): "
-            "pixi install -e pharmcat"
+            "PharmCAT's environment isn't installed: pixi install --locked -e pharmcat"
         )
     return _tool_command_parts(command)
 
@@ -260,6 +260,11 @@ def run_pharmcat(params: VcfPharmcatParams) -> None:
         ]  # fmt: skip
         if params.absent_to_ref:
             command.append("--absent-to-ref")
+        if runtime.is_windows_host():
+            # PharmCAT 3.4.0 compares the unset process count with Windows'
+            # limit of 61 and fails; pass its own default, within that limit.
+            cpus = os.cpu_count() or 1
+            command += ["-cp", str(1 if cpus < 3 else min(61, max(2, cpus - 2)))]
         # The pipeline has no outside-call flag: it uses `<base name>.outside.tsv`
         # beside its preprocessed VCF, which it writes to the output directory.
         outside = str(Path(outdir, f"{stem}.outside.tsv"))
@@ -296,7 +301,15 @@ def run_pharmcat(params: VcfPharmcatParams) -> None:
     ):
         logging.info(f"  {gene:<9} {diplotype:<22} {phenotype}")
     logging.info(f"PharmCAT report: {report}")
-    if not used_outside_calls:
+    if not used_outside_calls and runtime.is_windows_host():
+        warn(
+            "no_call",
+            "CYP2D6 not called, nor HLA-A/HLA-B: PharmCAT can't call them from a "
+            "VCF, and `typing cyp2d6` / `typing hla` don't run on Windows. Pass "
+            "outside calls made elsewhere with --outside-call.",
+            gene="CYP2D6",
+        )
+    elif not used_outside_calls:
         logging.info(
             "CYP2D6 and HLA-A/HLA-B need calls PharmCAT can't make from a VCF: "
             "pass them with --outside-call (from `typing cyp2d6` / `typing hla`)."

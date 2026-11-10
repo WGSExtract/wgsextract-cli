@@ -12,6 +12,7 @@ from wgsextract_cli.core.pixi_tools import (
     pixi_env_tool,
 )
 from wgsextract_cli.core.tool_catalog import (
+    ENV_ONLY_TOOLS,
     MANDATORY_TOOLS,
     OPTIONAL_TOOLS,
     PIXI_TOOL_ENVS,
@@ -85,6 +86,8 @@ def clear_tool_caches() -> None:
 
 @lru_cache(maxsize=256)
 def _resolve_tool_path(tool: str) -> str | None:
+    if tool in ENV_ONLY_TOOLS:
+        return _host_pixi_tool_command(tool)
     return _which_tool(tool) or _host_pixi_tool_command(tool)
 
 

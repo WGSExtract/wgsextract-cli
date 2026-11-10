@@ -38,9 +38,10 @@ gkl = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/wi
 
 # PharmCAT's pipeline is a release download the user extracts (see
 # `vcf pharmcat`); it needs Python with these packages, Java 17 and
-# bcftools/bgzip 1.18. No Windows bcftools build, so macOS and Linux.
+# bcftools/bgzip 1.18. On Windows, bcftools and htslib are the Windows Tools
+# builds the default environment uses (pin.py keeps both blocks in step).
 [feature.pharmcat]
-platforms = ["linux-64", "osx-64", "osx-arm64"]
+platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
 
 [feature.pharmcat.dependencies]
 python = "3.12.*"
@@ -48,8 +49,16 @@ pandas = ">=2.3.3"
 colorama = ">=0.4.6"
 packaging = ">=24.1"
 openjdk = "17.*"
+
+[feature.pharmcat.target.unix.dependencies]
 bcftools = ">=1.18"
 htslib = ">=1.18"
+
+[feature.pharmcat.target.win-64.dependencies]
+# pharmcat-windows-tools-begin
+bcftools = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-8/bcftools-1.24-wgse_3.conda", sha256 = "c6c2d65cb85851a7518cc607c86994a5a8679a57c6bc3d288104e43edd7db476" }
+htslib = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-8/htslib-1.24-wgse_2.conda", sha256 = "b50f7db30db61457651e0290b49b021d6a0f5031c7f3016a7086ff7a6ecf4812" }
+# pharmcat-windows-tools-end
 
 [feature.bio-tools.target.unix.dependencies]
 samtools = ">=1.24,<2"
