@@ -1008,7 +1008,8 @@ def as_v085_journal(dv, image_id):
         payload = {
             "workflow": journal["workflow"],
             "step": name,
-            "version": record["version"],
+            # A running record holds neither; its stage's are 1 and none.
+            "version": record.get("version", 1),
             "params": record["params"],
             "tools": record.get("tools") or {},
         }
@@ -1045,6 +1046,23 @@ def test_forced_rerun_of_v085_journal_records_the_valid_image_597(ultima_gpu):
     images = recorded_images(ultima_gpu)
     assert set(images) == set(STAGES)
     assert set(images.values()) == {deepvariant.DEFAULT_ULTIMA_GPU_IMAGE}
+
+
+def test_v085_interrupted_make_examples_keeps_its_shards_597(ultima_gpu):
+    pinned_ultima_gpu(ultima_gpu)
+    ultima_gpu.deepvariant.fail("make_examples", task=2, write=False)
+    with pytest.raises(WGSExtractError):
+        gpu_call(ultima_gpu)
+    as_v085_journal(ultima_gpu, OTHER_DIGEST)
+    ultima_gpu.deepvariant.fail(None)
+    ultima_gpu.deepvariant.clear()
+    ultima_gpu.docker.clear()
+
+    gpu_call(ultima_gpu)
+
+    (examples,) = ultima_gpu.deepvariant.runs("parallel")
+    assert examples["tasks"][0] == "2"  # shards 0 and 1 are kept
+    assert vcf_calls(ultima_gpu.out / "deepvariant.vcf.gz") == ultima_gpu.ultima.calls
 
 
 def test_v085_journal_of_another_pinned_image_reruns_597(ultima_gpu, monkeypatch):
@@ -1114,7 +1132,8 @@ def as_pre601_journal(dv, image_id):
         payload = {
             "workflow": journal["workflow"],
             "step": name,
-            "version": record["version"],
+            # A running record holds neither; its stage's are 1 and none.
+            "version": record.get("version", 1),
             "params": params,
             "tools": record.get("tools") or {},
         }
@@ -1134,6 +1153,26 @@ def test_pre601_journal_of_the_same_build_resumes_without_rerun_601(dv):
     rerun(dv)
 
     assert dv.deepvariant.stages() == []
+
+
+@pytest.mark.parametrize(
+    ("old_id", "resumed"), [(CPU_ID, ["2", "3"]), ("sha256:" + "e" * 64, None)]
+)
+def test_pre601_interrupted_make_examples_keeps_its_shards_601(dv, old_id, resumed):
+    dv.docker.add_image(
+        deepvariant.DEFAULT_IMAGE, image_id=CPU_ID, repo_digests=(CPU_DIGEST,)
+    )
+    dv.deepvariant.fail("make_examples", task=2, write=False)
+    with pytest.raises(WGSExtractError):
+        call(dv)
+    as_pre601_journal(dv, old_id)
+
+    rerun(dv)
+
+    # Only a run of the same build may keep the finished shards.
+    (examples,) = dv.deepvariant.runs("parallel")
+    assert examples["tasks"] == (resumed or ["0", "1", "2", "3"])
+    assert vcf_calls(dv.out / "deepvariant.vcf.gz") == dv.sample.calls
 
 
 def test_pre601_journal_of_a_replaced_tag_reruns_601(dv):
