@@ -241,6 +241,12 @@ if(BUILD_TESTING)
         endforeach()
         add_test(NAME minimap2_ksw2_fuzz COMMAND minimap2-ksw2-fuzz 20000 1)
     endif()
+    # The anchor sort against upstream's in-place radix sort, including the order of equal keys.
+    add_executable(minimap2-sort128-fuzz tests/sort128_fuzz.c)
+    target_include_directories(minimap2-sort128-fuzz PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_include_directories(minimap2-sort128-fuzz SYSTEM PRIVATE "${minimap2_SOURCE_DIR}")
+    target_compile_options(minimap2-sort128-fuzz PRIVATE -UNDEBUG -Wno-unused-function)
+    add_test(NAME minimap2_sort128_fuzz COMMAND minimap2-sort128-fuzz 3000 1)
     # Unmodified upstream sources, to check that the seams and the NEON ksw_extd2 change
     # no index or alignment.
     if(WGSE_MINIMAP2_KSW2 STREQUAL "neon")

@@ -407,7 +407,11 @@ capabilities --json` reports `physical_memory_bytes` and the GPU's limits
 `wgse-minimap2` uses within about 1 GiB of upstream minimap2's memory: with 9 threads on
 hs38 it peaked at 13–15 GiB for HiFi reads, 10–14 GiB for ONT reads and
 11.3 GiB for short reads, whether it loaded a `.mmi` index or built one from
-the FASTA reference. `--metal` allocated 370–560 MiB of GPU buffers in the full
+the FASTA reference. Since 0.3.0 each mapping thread keeps scratch for sorting
+anchors out of place: 21 bytes per anchor of the largest array it sorted, at
+most 88 MiB (arrays of more than 4M anchors are sorted in place), so at most
+about 0.8 GiB with 9 threads; in the full HiFi and ONT runs peak RSS rose by
+at most 0.3 GiB. `--metal` allocated 370–560 MiB of GPU buffers in the full
 HiFi and ONT runs below. Its two batch buffer sets can grow to about 0.9 GiB in
 all: each holds backtrack matrices of up to 256 MiB, plus sequences and CIGARs,
 and grows half again beyond its largest batch. With 9 threads,

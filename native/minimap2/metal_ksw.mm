@@ -573,14 +573,21 @@ void Engine::set_scoring(int q, int e, int q2, int e2, const int8_t mat[25]) {
             lt * (e - e2) - (q2 - q) - e2};
         memcpy(mat_, mat, sizeof mat_);
         // The 16-bit kernels equal int8 while z <= M before the cap and u, v >= -A
-        // (they check both): then x, y lie in [-A, -e], x2, y2 in [-A2, -e2] and u, v
-        // in [-A, M + A], with A = q + e, A2 = q2 + e2, M the match score. Every other
-        // value that is compared or kept (x + v, y + u, x2 + v, the gap scores after
-        // subtracting z - q) lies in int8 if these bounds and the boundary steps do.
+        // (they check both). Then, with A = q + e, A2 = q2 + e2, M the match score and
+        // m the lowest score (z lies in [m, M]), whatever the order of q and q2:
+        //   x, y in [-A, -e], x2, y2 in [-A2, -e2], u, v in [-A, M + A];
+        //   a = x + v, b = y + u in [-2A, M + A - e]; a2, b2 in [-A - A2, M + A - e2];
+        //   z - q in [m - q, M - q], z - q2 in [m - q2, M - q2];
+        //   a - (z - q) in [-2A - M + q, q], a2 - (z - q2) in [-A - A2 - M + q2, q2];
+        //   the boundary u, v: -A, -e, long_diff, -e2.
+        // narrow_ requires all of these to lie in int8, where both kernels agree.
         const int A = q + e, A2 = q2 + e2, M = scoring_.mch, m = std::min(scoring_.mis, scoring_.scN);
         const int ld = scoring_.long_diff;
-        narrow_ = scoring_ok_ && M + A <= 127 && 2 * A <= 128 && A + A2 <= 127 && m - q2 >= -128 && M - q <= 127
-            && -2 * A - M + q >= -128 && -A - A2 - M + q2 >= -128 && e2 <= A && ld >= -A && ld <= M + A;
+        const auto in8 = [](int lo, int hi) { return lo >= -128 && hi <= 127; };
+        narrow_ = scoring_ok_ && in8(-A, M + A) && in8(-A2, -e2) && in8(-2 * A, M + A - e)
+            && in8(-A - A2, M + A - e2) && in8(m - q, M - q) && in8(m - q2, M - q2)
+            && in8(-2 * A - M + q, q) && in8(-A - A2 - M + q2, q2) && in8(ld, ld) && ld >= -A && ld <= M + A
+            && A + A2 <= 127 && e2 <= A;
     });
 }
 
@@ -805,10 +812,10 @@ void Engine::print_metrics() const {
     const double gpu = gpu_ns_.load() * 1e-9;
     const size_t batches = batches_.load();
     fprintf(stderr, "[wgse-minimap2] Metal gap fills: %zu queued, %zu on the GPU (%zu used), "
-        "%zu by idle CPU threads, %zu redone on the CPU (int8 overflow); %zu batches of %.0f fills, "
+        "%zu by idle CPU threads, %zu redone on the CPU (int8 overflow); %s kernels; %zu batches of %.0f fills, "
         "GPU %.2f s (%.2f G cells/s), batches in flight %.2f s, threads idle %.2f s; "
         "%.0f MB of GPU buffers; %zu Metal interruptions; %zu arena drains\n",
-        queued_total_.load(), gpu_fills_.load(), taken.load(), helped_.load(), wrapped_.load(), batches,
+        queued_total_.load(), gpu_fills_.load(), taken.load(), helped_.load(), wrapped_.load(), narrow_ ? "16-bit" : "8-bit", batches,
         batches ? (double)gpu_fills_.load() / batches : 0.0, gpu,
         gpu > 0 ? cells_.load() / gpu / 1e9 : 0.0, busy_ns_.load() * 1e-9, idle_ns_.load() * 1e-9,
         buffer_bytes_.load() / 1048576.0, wgse::metal::Runtime::interruptions(), drains.load());

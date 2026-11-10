@@ -188,6 +188,21 @@ if $metal; then
     records metal.wrap.sam
     cmp upstream.wrap.sam.records metal.wrap.sam.records
     grep -Eq '[1-9][0-9]* redone on the CPU' metal.wrap.log
+    # PR #657 review: scorings at the edges of the 16-bit kernels' bounds (each pair is just
+    # inside and just outside one bound) must give upstream's records with the kernels named.
+    for scoring in "16-bit -A104 -B40 -O20,40 -E2,1" "8-bit -A105 -B40 -O20,40 -E2,1" \
+        "16-bit -A10 -B60 -O30,68 -E4,1" "8-bit -A10 -B60 -O30,69 -E4,1" "16-bit -A20 -B6 -O2,10 -E2,1"; do
+        set -- $scoring
+        kernels=$1; shift
+        name=scoring$(echo "$*" | tr -d ' ,-')
+        "$upstream" -t 2 -ax map-hifi "$@" reference.fa hifi.fq > "upstream.$name.sam" 2> "upstream.$name.log"
+        "$wgse" --metal -t 2 -ax map-hifi "$@" reference.fa hifi.fq > "metal.$name.sam" 2> "metal.$name.log"
+        records "upstream.$name.sam"
+        records "metal.$name.sam"
+        cmp "upstream.$name.sam.records" "metal.$name.sam.records"
+        grep -q "; $kernels kernels;" "metal.$name.log"
+        grep -Eq 'on the GPU \([1-9][0-9]* used\)' "metal.$name.log"
+    done
 fi
 echo "wgse-minimap2 matches upstream minimap2 for map-hifi, map-ont, map-pb and sr"
 if $metal; then echo "wgse-minimap2 --metal matches upstream minimap2 for map-hifi, map-ont, map-pb and sr"; fi

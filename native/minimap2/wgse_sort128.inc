@@ -63,6 +63,7 @@ static wgse_rs_t *wgse_rs_scratch(int64_t n)
 	}
 	if (n > w->cap) {
 		int64_t cap = n > w->cap * 3 / 2? n : w->cap * 3 / 2;
+		if (cap > WGSE_RS_MAX) cap = WGSE_RS_MAX; /* n <= WGSE_RS_MAX */
 		free(w->B); free(w->D); free(w->P);
 		w->B = (mm128_t*)malloc(cap * sizeof(mm128_t));
 		w->D = (uint8_t*)malloc(cap);

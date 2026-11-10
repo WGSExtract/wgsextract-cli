@@ -33,6 +33,9 @@ int main(int argc, char **argv)
 	memset(&ea, 0, sizeof ea); memset(&eb, 0, sizeof eb);
 	for (i = 0; i < n; ++i) {
 		int qlen = 1 + rnd(rnd(4) ? 300 : 1500), tlen = 1 + rnd(rnd(4) ? 300 : 1500), k, j, flag = 0;
+		int m = rnd(100) == 0 ? (int)rnd(2) : 5; /* m <= 1 and empty sequences return early */
+		if (rnd(100) == 0) qlen = 0;
+		if (rnd(100) == 0) tlen = 0;
 		int a = 1 + rnd(10), b = 1 + rnd(12), q = rnd(40), e = 1 + rnd(10), q2 = rnd(60), e2 = 1 + rnd(6), amb = rnd(3);
 		int w = rnd(3) ? -1 : (int)rnd(400), zdrop = rnd(2) ? -1 : (int)rnd(400), end_bonus = rnd(20), div = rnd(4);
 		uint8_t *qs = malloc(qlen), *ts = malloc(tlen);
@@ -54,9 +57,9 @@ int main(int argc, char **argv)
 		if (rnd(4) == 0) flag |= KSW_EZ_APPROX_DROP;
 		for (k = 0; k < tlen; ++k) ts[k] = rnd(50) == 0 ? 4 : rnd(4);
 		for (k = 0; k < qlen; ++k) /* random, or a mutated copy of the target */
-			qs[k] = div == 0 || rnd(div * 8) == 0 ? rnd(5) : ts[(long)k * tlen / qlen];
-		upstream_ksw_extd2(km, qlen, qs, tlen, ts, 5, mat, q, e, q2, e2, w, zdrop, end_bonus, flag, &ea);
-		ksw_extd2_sse(km, qlen, qs, tlen, ts, 5, mat, q, e, q2, e2, w, zdrop, end_bonus, flag, &eb);
+			qs[k] = tlen == 0 || div == 0 || rnd(div * 8) == 0 ? rnd(5) : ts[(long)k * tlen / qlen];
+		upstream_ksw_extd2(km, qlen, qs, tlen, ts, m, mat, q, e, q2, e2, w, zdrop, end_bonus, flag, &ea);
+		ksw_extd2_sse(km, qlen, qs, tlen, ts, m, mat, q, e, q2, e2, w, zdrop, end_bonus, flag, &eb);
 		if (!same(&ea, &eb) && bad++ < 10)
 			fprintf(stderr, "call %ld differs: qlen=%d tlen=%d a=%d b=%d q=%d e=%d q2=%d e2=%d w=%d zdrop=%d end_bonus=%d flag=%d\n",
 					i, qlen, tlen, a, b, q, e, q2, e2, w, zdrop, end_bonus, flag);
