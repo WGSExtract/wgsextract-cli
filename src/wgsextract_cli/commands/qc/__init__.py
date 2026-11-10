@@ -15,6 +15,7 @@ from wgsextract_cli.api.qc import (
     MultiqcParams,
     QcContaminationParams,
     QcVcfParams,
+    RelateParams,
 )
 from wgsextract_cli.core.builds import fake_data_library_code
 from wgsextract_cli.core.config import settings
@@ -37,6 +38,7 @@ from .contamination import cmd_contamination
 from .fake_data import (
     generate_fake_genomics_data,
 )
+from .relate import run_relate
 
 
 def run_fake_data(params: FakeDataParams) -> None:
@@ -128,6 +130,7 @@ def register(
             "result manifests; MultiQC isn't needed.",
         ),
         ("vcf", QcVcfParams, cmd_vcf_qc, CLI_HELP["cmd_vcf-qc"]),
+        ("relate", RelateParams, cmd_relate, CLI_HELP["cmd_qc-relate"]),
         (
             "contamination",
             QcContaminationParams,
@@ -143,3 +146,4 @@ def register(
 
 
 cmd_fake_data = cli_handler(FakeDataParams, run_fake_data)
+cmd_relate = cli_handler(RelateParams, run_relate)

@@ -127,6 +127,7 @@ from .qc import (
     MultiqcParams,
     QcContaminationParams,
     QcVcfParams,
+    RelateParams,
 )
 from .ref import (
     RefAadrParams,
@@ -146,6 +147,7 @@ from .ref import (
     RefPharmgkbParams,
     RefPhylopParams,
     RefRevelParams,
+    RefSomalierParams,
     RefSpliceaiParams,
     RefStatusParams,
     RefVerifyParams,
@@ -236,6 +238,7 @@ __all__ = [
     "QcContaminationParams",
     "QcVcfParams",
     "RealignParams",
+    "RelateParams",
     "RefAadrParams",
     "RefAlphamissenseParams",
     "RefBootstrapParams",
@@ -253,6 +256,7 @@ __all__ = [
     "RefPharmgkbParams",
     "RefPhylopParams",
     "RefRevelParams",
+    "RefSomalierParams",
     "RefSpliceaiParams",
     "RefStatusParams",
     "RefVerifyParams",

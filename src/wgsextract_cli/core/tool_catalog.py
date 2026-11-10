@@ -32,6 +32,7 @@ OPTIONAL_TOOLS = [
     "run_clair3.sh",
     "modkit",
     "verifybamid2",
+    "somalier",
     "whatshap",
     "longphase",
     "curl",
@@ -72,9 +73,19 @@ PLATFORM_ONLY_TOOLS = {
     "run_clair3.sh": ("linux",),
     "modkit": ("linux", "darwin"),
     "verifybamid2": ("linux", "darwin"),
+    "somalier": ("linux", "darwin"),
     "whatshap": ("linux", "darwin"),
     "longphase": ("linux", "darwin"),
 }
+
+
+def platform_unavailable_tools() -> list[str]:
+    """The optional tools that aren't built for this platform."""
+    return [
+        tool
+        for tool in OPTIONAL_TOOLS
+        if not sys.platform.startswith(PLATFORM_ONLY_TOOLS.get(tool, ("",)))
+    ]
 
 
 def optional_dependency_tools() -> list[str]:
@@ -119,6 +130,7 @@ PIXI_TOOL_ENVS = {
     "run_clair3.sh": "clair3",
     "modkit": "modkit",
     "verifybamid2": "verifybamid2",
+    "somalier": "somalier",
     "whatshap": "phasing",
     "longphase": "phasing",
     # Only through their own environments (never a `python` on PATH): pixi_env_tool.

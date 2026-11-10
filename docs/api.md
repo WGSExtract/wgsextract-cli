@@ -675,6 +675,39 @@ verifybamid2`) and unavailable on Windows.
 | `sites` | `str` | `'100k'` | `--sites` | 1000 Genomes marker set: 100k (default) or 10k, faster and noisier, for low coverage. One of: `100k`, `10k` |
 | `svd_prefix` | `str \| None` | `None` | `--svd-prefix` | Your own VerifyBamID2 resource prefix (``<prefix>.UD``, ``.mu``, ``.bed``, ``.V``); any build is then accepted. None uses the bundled 1000 Genomes resources for the input's build. |
 
+### `api.qc.relate(RelateParams)`
+
+CLI: `wgsextract qc relate`.
+
+Compare the inputs (see `RelateParams`); output roles
+`relate_samples`, `relate_pairs`, `somalier_sketch` and
+`somalier_report`.
+
+`RelateParams`: Sex, relatedness and continental ancestry with somalier.
+
+Each BAM, CRAM or VCF is sketched at ~17,800 common SNPs (`somalier
+extract`; the sketches are kept in `<outdir>/somalier/` and can be given
+again as inputs, so a relative's kit can be compared later without its
+BAM). The sketches are then compared pairwise (`somalier relate`) and,
+when the 1000 Genomes sketches are installed (`ref somalier --install`),
+placed in a superpopulation (`somalier ancestry`). Writes
+`relate.samples` and `relate.pairs` tables (TSV or Parquet) and
+somalier's HTML reports. Warns when the inferred sex disagrees with the
+sample's recorded sex, when two inputs are one person, and, with `ped`,
+when a pair isn't related as the pedigree says (a swapped file). somalier
+is optional (`pixi install -e somalier`) and unavailable on Windows.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `inputs` | `tuple[Path, ...]` | required | `FILE` | BAM, CRAM or VCF files, or .somalier sketches from an earlier run. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the first input's folder). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `sites` | `Path \| None` | `None` | `--sites` | Sites VCF to genotype instead of somalier's own for the input's build (default: from 'ref somalier --install'). |
+| `ped` | `Path \| None` | `None` | `--ped` | PED/FAM file of the expected relationships and sexes; pairs or sexes that disagree are flagged as possible sample swaps. |
+| `ancestry` | `bool \| None` | `None` | `--ancestry` | Predict the 1000 Genomes superpopulation (default: when 'ref somalier --install' has installed the labelled sketches). |
+| `table_format` | `str` | `'tsv'` | `--format` | Table format: tsv, or parquet (needs pyarrow) (default: tsv) One of: `tsv`, `parquet` |
+
 ### `api.qc.fake_data(FakeDataParams)`
 
 CLI: `wgsextract qc fake-data`.
@@ -1639,6 +1672,21 @@ Install the panel; output role `reference_resource`.
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `delete` | `bool` | `False` | `--delete` | Delete the installed AADR 2M SNP panel |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+
+### `api.ref.somalier(RefSomalierParams)`
+
+CLI: `wgsextract ref somalier`.
+
+Install the resources; output role `reference_resource`.
+
+`RefSomalierParams`: Install somalier's hash-pinned sites files (MIT) and the labelled
+1000 Genomes sketches (CC BY 4.0, Zenodo 3479773) that `qc relate`
+uses, about 85 MB, or delete them.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed somalier sites and 1000 Genomes sketches |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 
 ### `api.ref.ybrowse(RefYbrowseParams)`
