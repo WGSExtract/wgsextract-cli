@@ -274,7 +274,7 @@ export function renderCheckboxGroup(control: ControlSpec, context: CommandContex
         : groupedOptions(options)
             .map((group) => `
         <div class="option-group">
-          ${group.title ? `<h4>${escapeHTML(group.title)}</h4>` : ""}
+          ${group.title ? `<h4>${escapeHTML(group.title)}${renderTooltip(optionTooltip(group.options, "groupTooltip"))}</h4>` : ""}
           <div class="option-grid">${group.options.map(checkbox).join("")}</div>
         </div>`)
             .join("");
@@ -310,14 +310,14 @@ function renderOptionRows(options: ControlOption[], checkbox: (option: ControlOp
     return categories
         .map((category) => `
       <div class="option-category">
-        ${category.title ? `<h4>${escapeHTML(category.title)}</h4>` : ""}
+        ${category.title ? `<h4>${escapeHTML(category.title)}${renderTooltip(optionTooltip(category.groups.flatMap((group) => group.options), "categoryTooltip"))}</h4>` : ""}
         ${category.groups
         .map((group) => {
         const common = group.options.filter((option) => option.advancedOnly !== true);
         const advanced = group.options.filter((option) => option.advancedOnly === true);
         return `
           <div class="option-row">
-            <span class="option-row-title">${escapeHTML(group.title)}</span>
+            <span class="option-row-title">${escapeHTML(group.title)}${renderTooltip(optionTooltip(group.options, "groupTooltip"))}</span>
             <div class="option-row-options">
               ${common.length ? `<div class="option-columns">${common.map(checkbox).join("")}</div>` : ""}
               ${advanced.length ? `<div class="option-columns wide">${advanced.map(checkbox).join("")}</div>` : ""}
@@ -327,6 +327,10 @@ function renderOptionRows(options: ControlOption[], checkbox: (option: ControlOp
         .join("")}
       </div>`)
         .join("");
+}
+/** A group's or category's tooltip: the first one its options give. */
+function optionTooltip(options: ControlOption[], key: "groupTooltip" | "categoryTooltip") {
+    return options.map((option) => option[key]).find((tooltip) => typeof tooltip === "string" && tooltip !== "");
 }
 function sameLabel(left: string | undefined, right: string | undefined) {
     const normalize = (value: string | undefined) => (value ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase();

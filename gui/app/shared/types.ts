@@ -156,6 +156,8 @@ export interface ConfigBootstrapScriptSpec {
 
 export interface ConfigFileSpec {
     path: string;
+    /** Where earlier versions kept the file; the app moves it to path and drops these from saved state. */
+    previousPaths?: string[];
     bootstrap?: { mode?: string; script?: ConfigBootstrapScriptSpec };
     [key: string]: unknown;
 }

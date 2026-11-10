@@ -22,6 +22,11 @@ user PATH.
 pixi run wgsextract --help
 ```
 
+The folder can be anywhere: another drive (`D:\WGSE`), or a path with spaces,
+parentheses or `&` in it. Pixi goes in `%USERPROFILE%\.pixi`, or under
+`PIXI_HOME` if you have set Pixi's own `PIXI_HOME`; the installers and the CLI
+look for it there even when it is not on PATH.
+
 `uninstall_windows.bat` removes the environments and clears old runtime
 settings from `config.toml`; `--remove-prerequisites` also removes Pixi.
 Installers before this one set up MSYS2 (by default at `C:\msys64`) for their
@@ -57,11 +62,32 @@ launching Java so GATK does not mistake `R:` for a URI provider. Explicit URIs
 are preserved.
 
 Commands needing pyBigWig (bigWig-backed `vcf phylop`, `vcf gerp` and their
-reference downloads), VEP, DeepVariant, Delly, FreeBayes, PharmCAT, Cyrius,
+reference downloads), VEP, DeepVariant, Delly, FreeBayes, Cyrius,
 T1K, ExpansionHunter, VerifyBamID2 (`qc contamination`), somalier (`qc relate`) or PacBio tools are not supported on Windows. They fail
 before processing inputs or creating output folders, naming the unavailable
 tool. PhyloP TSV/VCF resources remain supported. Parabricks `--gpu` modes
 require Linux with an NVIDIA GPU.
+
+## PharmCAT on native Windows
+
+`vcf pharmcat` runs natively. The `pharmcat` Pixi environment supplies Python,
+conda-forge's Java 17 and the same Windows Tools bcftools/htslib builds as the
+default environment; PharmCAT itself is its pipeline release, extracted as on
+the other platforms (see `vcf pharmcat`). The CLI runs the pipeline's Python
+script and PharmCAT's `java -jar` through that environment, with no shell
+wrappers, so paths with spaces work. Install the runtime and check it with:
+
+```bat
+pixi install --locked -e pharmcat
+pixi run wgsextract deps check --tool pharmcat_python
+```
+
+`typing cyp2d6` and `typing hla` don't run on Windows, so without
+`--outside-call` files made elsewhere the run logs "CYP2D6 not called" and the
+report has no CYP2D6 or HLA-A/HLA-B calls. The
+[PharmCAT parity CI](../.github/workflows/pharmcat_e2e.yml) checks that a GIAB
+HG002 VCF gives the same `phenotype.json` on Windows and Linux, except for its
+timestamp.
 
 ## GATK on native Windows
 

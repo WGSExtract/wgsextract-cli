@@ -41,18 +41,19 @@ def make_model(root: Path, name: str, content: bytes = b"weights") -> Path:
 
 @pytest.fixture
 def linux_x86(monkeypatch):
-    """Clair3 is qualified on Linux x86-64 only."""
+    """A host Clair3 supports."""
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(platform, "machine", lambda: "x86_64")
 
 
 @pytest.fixture
-def fake_clair3(tmp_path, monkeypatch) -> FakeClair3:
-    """Clair3 on PATH with an empty bundled models folder, and no clair3_model
-    in config.toml."""
+def fake_clair3(request, tmp_path, monkeypatch) -> FakeClair3:
+    """Clair3 (2.0.5, or the version given by indirect parametrization) on PATH
+    with an empty bundled models folder, and no clair3_model in config.toml."""
     require_bare_name_fakes()
     bindir = tmp_path / "clair3" / "bin"
-    fake = FakeClair3(bindir, shutil.which("bcftools") or "bcftools")
+    version = getattr(request, "param", "2.0.5")
+    fake = FakeClair3(bindir, shutil.which("bcftools") or "bcftools", version)
     monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.delitem(clair3.settings, "clair3_model", raising=False)
     clear_tool_caches()
@@ -250,12 +251,23 @@ def as_cram(reads, version: str, path: Path) -> str:
 
 
 @needs_tools("samtools", "bcftools", "tabix")
-@pytest.mark.parametrize("version", ["3.0", "3.1"])
-def test_clair3_reads_cram_31_through_a_cram_30_copy(
-    tmp_path, linux_x86, fake_clair3, caplog, version
+@pytest.mark.parametrize(
+    ("fake_clair3", "version", "staged"),
+    [
+        ("2.0.3", "3.0", False),
+        ("2.0.3", "3.1", True),
+        ("2.0.5", "3.1", False),
+        # An unreadable version may be an old htslib: stage to be safe.
+        ("unknown", "3.1", True),
+    ],
+    indirect=["fake_clair3"],
+)
+def test_clair3_reads_cram_31(
+    tmp_path, linux_x86, fake_clair3, caplog, version, staged
 ):
-    """#604: Clair3's bundled htslib fails on CRAM 3.1, so those reads are
-    called from a temporary CRAM 3.0 copy, with the same calls as the BAM."""
+    """#604: before 2.0.5, Clair3's bundled htslib fails on CRAM 3.1, so those
+    reads are called from a temporary CRAM 3.0 copy; 2.0.5 reads CRAM 3.1
+    itself (#613). Either way the calls match the BAM's."""
     require_runnable("samtools", "bcftools", "tabix")
     reads = snp_sample(tmp_path, DORADO_RG)
     model = make_model(tmp_path, "my_r1041_model")
@@ -270,8 +282,8 @@ def test_clair3_reads_cram_31_through_a_cram_30_copy(
         )  # fmt: skip
 
     (run,) = fake_clair3.runs()
-    assert run["cram_version"] == [3, 0]
-    assert ("Transcoding CRAM" in caplog.text) == (version == "3.1")
+    assert run["cram_version"] == ([3, 0] if staged else [3, int(version[-1])])
+    assert ("Transcoding CRAM" in caplog.text) == staged
     assert vcf_calls(outdir / "clair3.vcf.gz") == reads.calls[:1]
     assert sorted(p.name for p in outdir.iterdir()) == [
         "clair3.vcf.gz",
@@ -480,10 +492,22 @@ def test_windows_is_refused_before_inputs_are_resolved(monkeypatch):
 
 @pytest.mark.parametrize(
     ("host", "machine"),
-    [("linux", "aarch64"), ("darwin", "arm64"), ("darwin", "x86_64")],
+    [
+        ("linux", "x86_64"),
+        ("linux", "aarch64"),
+        ("linux", "arm64"),
+        ("darwin", "arm64"),
+    ],
 )
-def test_only_linux_x86_64_is_qualified(monkeypatch, host, machine):
+def test_bioconda_clair3_platforms_are_allowed(monkeypatch, host, machine):
+    """#613: Clair3 2.0.5 is built for Linux x86-64 and ARM64 and Apple Silicon."""
     monkeypatch.setattr(sys, "platform", host)
     monkeypatch.setattr(platform, "machine", lambda: machine)
-    with pytest.raises(WGSExtractError, match="Linux x86-64 only"):
+    clair3.require_supported_platform()
+
+
+def test_intel_macos_is_refused(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    with pytest.raises(WGSExtractError, match="no Clair3 2.x build"):
         clair3.require_supported_platform()

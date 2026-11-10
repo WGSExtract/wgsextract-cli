@@ -65,7 +65,7 @@ Nanopore (ONT) reads are detected from `PL:ONT` read groups or UUID read names.
 
 - **DeepVariant:** a model dropdown that defaults to automatic. Its ONT_R104 choice supports R10.4.1 chemistry only and needs x86-64. DeepVariant does not run on native Windows.
 - **SV Call:** a long-read mode (Nanopore or any long-read data) and an optional tandem-repeat BED. The caller stays automatic, and pbsv is not offered for Nanopore. Sniffles does not run on native Windows.
-- **Clair3:** an optional Nanopore caller with an optional model override, qualified on Linux x86-64 only. It is hidden on Windows, and you install it separately.
+- **Clair3:** an optional Nanopore caller with an optional model override, Clair3 2.0.5 on Linux (x86-64, ARM64) and Apple Silicon Macs. It is hidden on Windows, is not available on Intel Macs, and you install it separately.
 - **Methylation Pileup:** a bedMethyl table and summary from MM/ML-tagged reads, with optional context, 5hmC and strand overrides. It is hidden on Windows, and you install modkit separately.
 - **Ancestry:** Y-STR repeat counts with FamilyTreeDNA, PowerPlex Y23 and Yfiler Plus panels.
 - **Annotate:** a variant table as TSV plus an SQLite database to query.

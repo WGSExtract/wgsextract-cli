@@ -129,6 +129,8 @@
         "selected": { "type": "boolean", "default": false },
         "group": { "type": "string", "description": "Checkbox group heading, or with layout rows the row title." },
         "category": { "type": "string", "description": "With layout rows, the heading above a set of rows." },
+        "groupTooltip": { "type": "string", "description": "Tooltip beside the group's heading or row title; the first option in the group that gives one sets it." },
+        "categoryTooltip": { "type": "string", "description": "With layout rows, tooltip beside the category heading; the first option in the category that gives one sets it." },
         "disabledWhen": {
           "type": "array",
           "items": { "$ref": "#/$defs/actionCondition" },
@@ -207,6 +209,11 @@
       "additionalProperties": false,
       "properties": {
         "path": { "type": "string", "minLength": 1 },
+        "previousPaths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Where earlier versions kept the file. On load the app moves the first that exists to path when path doesn't exist yet, and a saved choice of one of these means path."
+        },
         "format": { "type": "string", "enum": ["toml"], "default": "toml" },
         "bootstrap": {
           "oneOf": [

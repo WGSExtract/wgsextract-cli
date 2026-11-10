@@ -497,7 +497,7 @@
 "controls.fastq.post-v063.multiqc-file.label" = "Existing FastQC report file"  # i18n-ignore; TODO: translate
 "controls.fastq.post-v063.multiqc-directory.label" = "Existing FastQC report directory"  # i18n-ignore; TODO: translate
 "actions.fastq.post-v063.multiqc-directory.title" = "Aggregate report directory"  # i18n-ignore; TODO: translate
-"sections.microarray.post-v063.aadr-2m.subtitle" = "Formatos de destino de arquivos de dados brutos de genótipo que podem ser extraídos de um arquivo BAM/CRAM. A maioria está, por definição, no Build 37. Alguns antigos usavam o Build 36 e alguns poucos estão no Build 38. Isso não é indicado nos arquivos. Os destinos AADR geram arquivos PLINK + EIGENSTRAT usados pelas ferramentas deles."  # i18n-source-hash:e4ea3c33
+"sections.microarray.post-v063.aadr-2m.subtitle" = "Formatos de destino de arquivos de dados brutos de genótipo que podem ser extraídos de um arquivo BAM/CRAM. A maioria está, por definição, no Build 37. Alguns antigos usavam o Build 36 e alguns poucos estão no Build 38. Isso não é indicado nos arquivos."  # i18n-source-hash:5e7d6a50
 "options.vcf.v066.auto.title" = "Automático (detectar pelas leituras)"  # i18n-source-hash:00db55a1
 "options.vcf.v066.config-default.title" = "Usar o padrão da configuração"  # i18n-source-hash:53ab9256
 "controls.vcf.v066.deepvariant-model.label" = "Modelo do DeepVariant"  # i18n-source-hash:b20e2fd3
@@ -515,7 +515,7 @@
 "controls.vcf.v066.sv-tandem-repeats.label" = "BED de repetições em tandem (opcional)"  # i18n-source-hash:c23b21dd
 "controls.vcf.v066.sv-tandem-repeats.tooltip" = "BED opcional para chamadores de SV de leituras longas, que melhora as chamadas em repetições. Em branco não envia nada."  # i18n-source-hash:adff7504
 "sections.vcf.v066.clair3.title" = "Pequenas variantes com Clair3 (opcional)"  # i18n-source-hash:94e06e63
-"sections.vcf.v066.clair3.subtitle" = "Chamador opcional para Nanopore, qualificado apenas em Linux x86-64; macOS e ARM são recusados. A instalação não o inclui: execute pixi install -e clair3 no ambiente do WGS Extract. O DeepVariant continua sendo o chamador padrão para Nanopore."  # i18n-source-hash:6d372cce
+"sections.vcf.v066.clair3.subtitle" = "Chamador opcional para Nanopore: Clair3 2.0.5 no Linux (x86-64, ARM64) e em Macs com Apple Silicon; não no Windows nem em Macs Intel. A instalação não o inclui: execute pixi install -e clair3 no ambiente do WGS Extract. O DeepVariant continua sendo o chamador padrão para Nanopore."  # i18n-source-hash:9f4ed6c8
 "controls.vcf.v066.clair3-model.label" = "Modelo do Clair3 (opcional)"  # i18n-source-hash:497f8013
 "controls.vcf.v066.clair3-model.placeholder" = "r1041_e82_400bps_sup_v500"  # i18n-ignore
 "controls.vcf.v066.clair3-model.tooltip" = "Nome ou diretório do modelo correspondente ao basecaller das leituras. Em branco usa clair3_model de config.toml e depois o basecaller indicado no cabeçalho BAM/CRAM; se nenhum indicar, a execução para e pede um modelo. Modelos HiFi, Illumina e *_with_mv são recusados."  # i18n-source-hash:5c437be9
@@ -582,6 +582,9 @@
 "options.microarray.formats.category.reich" = "Reich Lab"  # i18n-ignore i18n-source-hash:6c06efe5
 "options.microarray.formats.group.combined" = "Combinado"  # i18n-source-hash:b6c533b5
 "options.microarray.formats.group.aadr" = "AADR"  # i18n-ignore i18n-source-hash:1f4edff5
+"options.microarray.formats.category.consumer.tooltip" = "Gera arquivos de dados RAW de microarray em chip (genotipagem)."  # i18n-source-hash:c526755d
+"options.microarray.formats.category.reich.tooltip" = "Os destinos AADR geram arquivos PLINK + EIGENSTRAT usados pelas ferramentas deles."  # i18n-source-hash:ca2f7e6d
+"options.microarray.formats.group.aadr.tooltip" = "Cada arquivo seguinte é um superconjunto do anterior."  # i18n-source-hash:06c8fd9e
 "options.microarray.formats.v1.title" = "v1"  # i18n-ignore i18n-source-hash:5a6df720
 "options.microarray.formats.v2.title" = "v2"  # i18n-ignore i18n-source-hash:a1047eab
 "options.microarray.formats.v3.title" = "v3"  # i18n-ignore i18n-source-hash:c5e31d59

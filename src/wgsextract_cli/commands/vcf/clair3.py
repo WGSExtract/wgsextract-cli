@@ -4,7 +4,6 @@ import hashlib
 import json
 import logging
 import os
-import platform
 import re
 import subprocess
 import sys
@@ -22,6 +21,7 @@ from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.cram_staging import stage_cram30
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
+    get_tool_version,
     log_dependency_info,
     verify_dependencies,
 )
@@ -37,6 +37,7 @@ from wgsextract_cli.core.space_free_paths import (
     restore_vcf_paths,
     space_free_paths,
 )
+from wgsextract_cli.core.tool_catalog import clair3_host_supported
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
@@ -47,11 +48,13 @@ from .callers import write_region_bed
 CLAIR3 = "run_clair3.sh"
 MODEL_FILES = ("pileup.pt", "full_alignment.pt")
 WINDOWS_UNSUPPORTED = (
-    "Clair3 is not available on Windows (Bioconda builds it for Linux only). "
-    "Run `vcf clair3` on Linux x86-64, for example under WSL2."
+    "Clair3 is not available on Windows (Bioconda builds it for Linux and macOS "
+    "only). Run `vcf clair3` on Linux, for example under WSL2."
 )
-# libclair3 links its own htslib, whose CRAM 3.1 decoder fails on valid
-# blocks (#604) that the host samtools reads.
+# Before 2.0.5, libclair3 linked its own htslib, whose CRAM 3.1 decoder fails
+# on valid blocks (#604) that the host samtools reads; 2.0.5 bundles htslib
+# 1.24, which reads them.
+CRAM31_NATIVE = (2, 0, 5)
 _CRAM31_BUG = "Clair3's bundled htslib can fail to decode valid CRAM 3.1 blocks (#604)."
 _ERROR_LINE = re.compile(r"^\[E::|\[ERROR\]|^Traceback|^[\w.]*(Error|Exception):")
 _FETCH = (
@@ -170,15 +173,23 @@ def pinned_models() -> dict[str, dict[str, object]]:
 def require_supported_platform() -> None:
     if sys.platform == "win32":
         raise WGSExtractError(WINDOWS_UNSUPPORTED)
-    if not sys.platform.startswith("linux") or platform.machine().lower() not in {
-        "x86_64",
-        "amd64",
-    }:
+    if not clair3_host_supported():
         raise WGSExtractError(
-            "Clair3 is qualified on Linux x86-64 only; Bioconda's builds for other "
-            "platforms are not validated here. Use `vcf deepvariant` (the ONT "
-            "default) on this host."
+            "Clair3 runs on Linux (x86-64, ARM64) and Apple Silicon macOS only; "
+            "Bioconda has no Clair3 2.x build for this host. Use `vcf deepvariant` "
+            "(the ONT default) here."
         )
+
+
+def clair3_version() -> tuple[int, ...] | None:
+    """The installed Clair3's version (``Clair3 v2.0.5``), or None if unknown."""
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", get_tool_version(CLAIR3) or "")
+    return tuple(int(part) for part in match.groups()) if match else None
+
+
+def needs_cram30_staging(version: tuple[int, ...] | None) -> bool:
+    """Older (or unidentified) Clair3 builds get a CRAM 3.0 copy of CRAM 3.1."""
+    return version is None or version < CRAM31_NATIVE
 
 
 def bundled_models_dir() -> Path | None:
@@ -462,12 +473,14 @@ def run_clair3(params: VcfClair3Params) -> None:
                 raise WGSExtractError(
                     f"Invalid Clair3 region selection: {region}: {error}"
                 ) from error
-        staging = Path(work, "reads")
-        staging.mkdir()
-        reads = stage_cram30(
-            input_file, use_ref, str(staging), threads, intervals,
-            tool="Clair3", why=_CRAM31_BUG,
-        )  # fmt: skip
+        reads = input_file
+        if needs_cram30_staging(clair3_version()):
+            staging = Path(work, "reads")
+            staging.mkdir()
+            reads = stage_cram30(
+                input_file, use_ref, str(staging), threads, intervals,
+                tool="Clair3", why=_CRAM31_BUG,
+            )  # fmt: skip
         output = str(Path(work, "clair3"))
         # Absolute, so the header's paths can be told apart and restored.
         abs_reads, abs_ref, abs_work = (
