@@ -21,8 +21,10 @@ it.
    release with `gui/scripts/bump-wgsextract-cli.py vX.Y.Z` (the tag file
    `gui/examples/WGSExtract/scripts/wgsextract-release-tag.txt`, the bundle
    version that names the installers, and an entry in `gui/docs/CHANGELOG.md`).
-   The release workflow checks all four versions against the tag. The same
-   script points the [app site](https://wgsextract.github.io/wgsextract-cli/app/)
+   The release workflow checks all four versions against the tag. It also
+   moves the [CLI site](https://wgsextract.github.io/wgsextract-cli/)'s
+   current release (`site_src/index.md` and `install.md`) to the new version,
+   and the same script points the [app site](https://wgsextract.github.io/wgsextract-cli/app/)
    (`gui/site_src/index.md`, `docs.md` and `wgsextract.md`) at the new
    release's installers and rebuilds `gui/site/`. The site deploys when the
    release PR merges, so its download links fail until the release's app
