@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .constants import BUILTIN_REQUIRED_KEYS, VALID_LAYOUT_DIRECTIONS
 from .models import Finding, LocaleReport, ParsedFile
-from .parser import split_value_and_comment, unquote_key
+from .parser import extract_source_hash, split_value_and_comment, unquote_key
 
 
 def lint_locale(
@@ -214,7 +214,13 @@ def update_source_hashes(source: ParsedFile, target_path: Path) -> int:
         value_part, comment_part = split_value_and_comment(line)
         if not value_part.strip().endswith('"'):
             continue
-        new_comment = merge_source_hash(comment_part, short_source_hash(source_value))
+        # Only refresh hashes that a translator recorded; hashless entries
+        # (TODO placeholders, verbatim copies) are not tracked translations.
+        recorded = extract_source_hash(comment_part)
+        source_hash = short_source_hash(source_value)
+        if recorded is None or recorded == source_hash:
+            continue
+        new_comment = merge_source_hash(comment_part, source_hash)
         stripped_value = value_part.rstrip(" \t")
         rebuilt = stripped_value if not new_comment else f"{stripped_value}  {new_comment}"
         if rebuilt != line:

@@ -59,6 +59,7 @@ benchmarks) live on the `old-experimental` branch; do not reintroduce them here.
 - Use Node's built-in test runner (`node:test`) for tests under `app/tests`, and add new test files to `scripts/run-node-tests.mjs`.
 - Prefer explicit error handling over non-null assertions and unchecked casts.
 - Every user-visible string goes through the localization tables in `resources/BuiltinStrings`.
+- After changing an English string, update its translations, then run `python tools/localization/lint_locales.py --update-source-hashes` from `gui/`. It only refreshes `i18n-source-hash` comments that are stale, so the diff should be one line per changed key per locale.
 
 ## App Behavior
 

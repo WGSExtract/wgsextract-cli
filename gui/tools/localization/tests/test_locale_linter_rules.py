@@ -112,6 +112,36 @@ class LocaleLinterRuleTests(unittest.TestCase):
             self.assertIn("not_a_key = still body", rewritten)
             self.assertIn(short_source_hash("Hello"), rewritten)
 
+    def test_update_source_hashes_only_rewrites_changed_translated_key_issue_641(self) -> None:
+        # Regression for #641: one changed English string rewrote hundreds of
+        # unrelated lines by adding hashes to i18n-ignore and TODO entries.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            directory = Path(temp_dir)
+            source_path = directory / "strings.en.toml"
+            source_path.write_text(
+                '"changed" = "New source"\n'
+                '"stable" = "Stable"\n'
+                '"brand" = "WGS Extract"\n'
+                '"todo" = "Not yet translated"\n',
+                encoding="utf-8",
+            )
+            target = directory / "strings.fr.toml"
+            original_lines = [
+                '"changed" = "Traduit"  # i18n-source-hash:deadbeef',
+                f'"stable" = "Stable FR"  # i18n-source-hash:{short_source_hash("Stable")}',
+                '"brand" = "WGS Extract"  # i18n-ignore',
+                '"todo" = "Not yet translated"  # i18n-ignore; TODO: translate',
+            ]
+            target.write_text("\n".join(original_lines) + "\n", encoding="utf-8")
+
+            updated = update_source_hashes(parse_toml_file(source_path), target)
+            rewritten = target.read_text(encoding="utf-8").splitlines()
+
+            self.assertEqual(updated, 1)
+            changed = [i for i, (a, b) in enumerate(zip(original_lines, rewritten)) if a != b]
+            self.assertEqual(changed, [0])
+            self.assertIn(f"i18n-source-hash:{short_source_hash('New source')}", rewritten[0])
+
     def test_parser_tracks_duplicate_keys_and_comments(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "strings.fr.toml"
