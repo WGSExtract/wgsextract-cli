@@ -25,7 +25,7 @@ from wgsextract_cli.core.containers import (
     docker,
     docker_info,
     host_path,
-    image_identity,
+    image_record,
     require_image,
     run_container,
 )
@@ -794,15 +794,17 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                     available_ram=available,
                 )
             )
-        recorded_image = image_identity(launcher.image) if launcher.image else local_dv
-        _migrate_pinned_image(journal, recorded_image)
+        recorded_image: dict[str, str | None] = {"image": local_dv}
+        if launcher.image:
+            recorded_image = dict(image_record(launcher.image))
+            _migrate_image(journal, launcher.image, recorded_image)
         logging.info(LOG_MESSAGES["vcf_calling_deepvariant"].format(output=out_vcf))
         try:
             done = _run_stages(
                 journal, launcher, dv_args,
                 inputs=inputs,
                 params={
-                    "image": recorded_image,
+                    **recorded_image,
                     "model_type": model_type,
                     "shards": shards,
                 },
@@ -835,17 +837,23 @@ _JOBLOG = ".make_examples.joblog"
 _DV_BIN = "/opt/deepvariant/bin"
 
 
-def _migrate_pinned_image(journal: StepJournal, image: str | None) -> None:
-    """Read v0.8.5's records of a digest-pinned ``image`` (#597), which
-    appended Docker's image ID to it (``ref@sha256:A@sha256:B``), as ``image``,
-    so their finished stages are kept and reruns record ``image``."""
-    if not image or "@" not in image:
-        return
-    legacy = re.compile(re.escape(image) + r"@sha256:[0-9a-f]{64}")
+def _migrate_image(
+    journal: StepJournal, image: str, recorded: dict[str, str | None]
+) -> None:
+    """Read records of ``image`` from v0.8.5 to the release before #601, which
+    appended Docker's image ID to it (``image@sha256:ID``), as ``recorded``,
+    so their finished stages are kept. A tag whose ID has since changed was
+    replaced, so its stages still rerun; a digest pin names its build (#597)."""
+    legacy = re.compile(re.escape(image) + r"@(sha256:[0-9a-f]{64})")
+    current_id = recorded.get("image_id")
 
     def migrate(params: dict[str, Any]) -> dict[str, Any]:
-        if legacy.fullmatch(str(params.get("image", ""))):
-            params["image"] = image
+        match = legacy.fullmatch(str(params.get("image", "")))
+        if match and "image_id" not in params:
+            if current_id is None and "@" not in image:
+                return params
+            if current_id is None or match.group(1) == current_id:
+                params.update(recorded)
         return params
 
     for stage in STEPS:

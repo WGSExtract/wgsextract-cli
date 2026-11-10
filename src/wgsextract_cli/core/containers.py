@@ -6,6 +6,7 @@ writes at their own paths, as the calling user, so paths in arguments need no
 translation and outputs aren't owned by root.
 """
 
+import json
 import logging
 import os
 import subprocess
@@ -57,22 +58,48 @@ def require_image(image: str, missing: str) -> None:
         raise MissingDependencyError(missing)
 
 
-def image_identity(image: str) -> str:
-    """``image`` and the ID of the build it names, so results can tell when a
-    mutable tag such as 1.10.0 was replaced; just ``image`` when it's unknown
-    or ``image`` is already pinned to a digest (#597)."""
+def image_record(image: str) -> dict[str, str]:
+    """What a step record says ran: ``image``, a reference Docker can pull,
+    and for a tag ``image_id``, the local ID of the build the tag named, so a
+    replaced tag reruns (#601).
+
+    ``image`` is the tag's registry digest (``repo@sha256:...``) when Docker
+    has one, else the tag itself, as for a locally built image. A reference
+    already pinned to a digest (#597), or one Docker can't inspect, is kept.
+    """
     if "@" in image:
-        return image
+        return {"image": image}
     docker_path = get_tool_path("docker")
     if not docker_path:
-        return image
+        return {"image": image}
     inspected = run_command(
-        [docker_path, "image", "inspect", "--format", "{{.Id}}", image],
-        capture_output=True,
-        check=False,
+        [docker_path, "image", "inspect", image], capture_output=True, check=False
     )
-    identity = (inspected.stdout or "").strip() if inspected.returncode == 0 else ""
-    return f"{image}@{identity}" if identity else image
+    try:
+        found = (
+            json.loads(inspected.stdout or "")[0] if inspected.returncode == 0 else {}
+        )
+    except (ValueError, IndexError, TypeError):
+        found = {}
+    image_id = found.get("Id") if isinstance(found, dict) else None
+    if not image_id:
+        return {"image": image}
+    return {
+        "image": _pull_reference(image, found.get("RepoDigests") or []),
+        "image_id": image_id,
+    }
+
+
+def _pull_reference(image: str, repo_digests: list[str]) -> str:
+    """``image``'s repo pinned to the digest Docker pulled it by, else ``image``."""
+    name, _, tag = image.rpartition(":")
+    repo = name if name and "/" not in tag else image
+    short = repo.removeprefix("docker.io/").removeprefix("library/")
+    for digest in repo_digests:
+        digest_repo = digest.partition("@")[0]
+        if digest_repo.removeprefix("docker.io/").removeprefix("library/") == short:
+            return digest
+    return image
 
 
 def host_path(path: str) -> str:
