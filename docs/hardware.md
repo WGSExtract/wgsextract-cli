@@ -14,9 +14,13 @@ For memory and disk planning, see [resource estimates](resource_estimates.md).
 `--aligner auto` (the default) aligns short reads with bwa-mem2 when all of
 these hold, and with bwa otherwise:
 
-- bwa-mem2 is installed (it is in the default environment on Linux, macOS and
-  Windows);
-- the reference already has a full bwa-mem2 index, including its `.0123` file;
+- bwa-mem2 will run: upstream bwa-mem2 is installed (it is in the default
+  environment on Linux, macOS and Windows), or, on Apple Silicon with native
+  aligners on, `wgse-bwa-mem2` 0.5.0 or later is (upstream bwa-mem2 isn't
+  needed then);
+- the reference already has the bwa-mem2 index that aligner reads: the full
+  index for upstream bwa-mem2 (and `wgse-bwa-mem2` before 0.5.0), without the
+  `.0123` file for `wgse-bwa-mem2` 0.5.0 and later;
 - the estimated alignment pipeline fits in the RAM available now.
 
 Auto never downloads or builds the index. When the index is missing but would
@@ -58,13 +62,19 @@ time. As guidance only, a whole human genome needs a computer with 32 GB or
 more for bwa-mem2; since the 30x estimate at 6 threads is ~29 GiB, auto picks
 bwa whenever less than that is free. Smaller inputs need less.
 
-For now auto asks this of upstream bwa-mem2, even on a Mac with `wgse-bwa-mem2`
-0.5.0 or later, which maps without the `.0123` file and needs about 6 GiB less
-for hs38: auto still wants the `.0123` file and counts it, and picks bwa
-otherwise (where `wgse-bwa-mem3` may then stand in). `--aligner bwa-mem2` uses
-`wgse-bwa-mem2`'s own needs (see [Apple Silicon](#apple-silicon-metal)).
+With `wgse-bwa-mem2` 0.5.0 or later installed (and native aligners on), auto
+uses its estimate, which leaves out the `.0123` file it doesn't load (about
+6 GiB less for hs38; see [Apple Silicon](#apple-silicon-metal)), and the
+reference needs no `.0123` file. On a 16 GB Mac a 30x genome still doesn't fit,
+so auto keeps bwa there (`wgse-bwa`). `wgse-bwa-mem3` alone doesn't make auto
+pick bwa-mem2: it already stands in for bwa with bwa's records.
 
-### Threads and memory
+Records: bwa and bwa-mem2 write the same alignments, but the `@PG` header and
+the result manifest name the aligner that ran, so a Mac that gains
+`wgse-bwa-mem2` 0.5.0 (or a reference without `.0123` next to it) can now
+align with bwa-mem2 where auto used to pick bwa. `--aligner bwa` keeps bwa.
+
+## Threads and memory
 
 - `--threads` (or `threads` in `config.toml`) defaults to `auto`: all cores, or
   the performance cores on Apple Silicon.

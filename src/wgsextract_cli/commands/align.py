@@ -464,29 +464,37 @@ def short_read_aligner(
     memory: str = "512M",
     samblaster: bool = True,
     reads: int | None = None,
+    native_aligners: str | None = "off",
 ) -> str:
     """bwa or bwa-mem2 for --aligner bwa, bwa-mem2 or auto. Auto takes bwa-mem2,
-    whose alignments are bwa's in less time, when it's installed and the
-    reference has its index that fits in this computer's memory."""
+    whose alignments are bwa's in less time, when it will run (upstream
+    bwa-mem2, or with ``native_aligners`` wgse-bwa-mem2 0.5.0 and later, which
+    needs no upstream bwa-mem2) and the reference has the index it reads that
+    fits in this computer's memory (that build's estimate leaves out the .0123
+    file; AlignerCommand.memory_model)."""
     if requested != "auto":
         return requested
-    if get_tool_path("bwa-mem2") is None:
+    native = find_native_aligner("bwa-mem2", native_aligners, quiet=True)
+    model = AlignerCommand("bwa-mem2", native).memory_model
+    if model == "bwa-mem2" and get_tool_path("bwa-mem2") is None:
         return "bwa"
     memory = short_read_sort_memory("bwa-mem2", memory, log=False)
-    fits = bwa_mem2.can_map(
+    needed = estimate_mapping_memory(
         ref,
+        model,
         threads=threads,
         memory=memory,
         samblaster=samblaster,
         reads=reads,
-    )
-    if bwa_mem2.has_index(ref):
+    ).total
+    fits = available_memory() >= needed
+    if bwa_mem2_index_ready(model, ref):
         if fits:
             return "bwa-mem2"
         logging.info(
-            f"Not using bwa-mem2: the alignment pipeline needs about "
-            f"{bwa_mem2.mapping_memory(ref, threads=threads, memory=memory, samblaster=samblaster, reads=reads) / 1024**3:.1f} "
-            "GiB of available RAM. Use --aligner bwa or lower --memory."
+            f"Not using {model}: the alignment pipeline needs about "
+            f"{needed / 1024**3:.1f} GiB of available RAM. Use --aligner bwa "
+            "or lower --memory."
         )
     elif fits:
         logging.info(
@@ -519,6 +527,7 @@ def short_read_command(
         memory=memory,
         samblaster=samblaster,
         reads=reads,
+        native_aligners=job.native_aligners,
     )
     if tool == "bwa-mem2":
         ensure_fasta_index(ref)
