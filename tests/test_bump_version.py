@@ -17,7 +17,14 @@ GUI_FILES = [
     "gui/app/tests/conformance.test.mjs",
     "gui/tools/packaging/tests/test_embedded_branding.py",
     "gui/docs/CHANGELOG.md",
+    "gui/scripts/build_site.py",
+    *(
+        f"gui/scripts/{path.name}"
+        for path in (SCRIPT.parents[1] / "gui/scripts").glob("site_*.py")
+    ),
 ]
+# The app site's sources and the committed build the bump regenerates.
+GUI_DIRS = ["gui/site_src", "gui/site"]
 
 
 @pytest.fixture
@@ -25,6 +32,8 @@ def bump(tmp_path, monkeypatch):
     for name in FILES + GUI_FILES:
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(SCRIPT.parents[1] / name, tmp_path / name)
+    for name in GUI_DIRS:
+        shutil.copytree(SCRIPT.parents[1] / name, tmp_path / name)
     spec = importlib.util.spec_from_file_location("bump_version", SCRIPT)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader
@@ -39,6 +48,13 @@ def test_bumps_all_three(bump, tmp_path):
         assert '"9.8.7"' in (tmp_path / name).read_text()
     # Issue #510: the app ships in the same release, so it bundles this CLI.
     assert (tmp_path / GUI_TAG).read_text() == "v9.8.7\n"
+    # The app site offers that release's installers from this repository.
+    download = (
+        "https://github.com/WGSExtract/wgsextract-cli/releases/download/"
+        "v9.8.7/WGSExtract_9.8.7_x64-setup.exe"
+    )
+    assert download in (tmp_path / "gui/site_src/index.md").read_text()
+    assert download in (tmp_path / "gui/site/index.html").read_text()
 
 
 def test_a_failed_app_bump_changes_nothing(bump, tmp_path):

@@ -21,7 +21,17 @@ it.
    release with `gui/scripts/bump-wgsextract-cli.py vX.Y.Z` (the tag file
    `gui/examples/WGSExtract/scripts/wgsextract-release-tag.txt`, the bundle
    version that names the installers, and an entry in `gui/docs/CHANGELOG.md`).
-   The release workflow checks all four versions against the tag.
+   The release workflow checks all four versions against the tag. The same
+   script points the [app site](https://wgsextract.github.io/wgsextract-cli/app/)
+   (`gui/site_src/index.md`, `docs.md` and `wgsextract.md`) at the new
+   release's installers and rebuilds `gui/site/`. The site deploys when the
+   release PR merges, so its download links fail until the release's app
+   build (below) adds the installers. Those pages say what the release adds only through the
+   release notes link, so they need no other edit. The v6 row of
+   [wgsextract.github.io](https://wgsextract.github.io/), which sends new
+   users to the app site, moves to the release on its own within the hour
+   once the release carries the app (the *App release watch* workflow; see
+   below).
 
 2. **Write the release notes** in `docs/release-notes/vX.Y.Z.md`, in the same
    PR: what users get, under `## New` and `## Fixes` (see v0.4.2 and v0.4.3),
@@ -89,6 +99,21 @@ if the tagged commit has one.
   `gh workflow run gui-distribution.yml --ref BRANCH`) builds unsigned
   installers as run artifacts without releasing anything; the Install Lab can
   test them (section 3).
+- **The main site's deploy key.** The *App release watch* workflow updates
+  the v6 row of `README.md` in
+  [WGSExtract/wgsextract.github.io](https://github.com/WGSExtract/wgsextract.github.io)
+  with `MAIN_SITE_DEPLOY_KEY`, a secret of the `main-site` environment (limit
+  that environment to `main`). Without it the workflow warns and the row
+  stays put. To set it up (the first two commands, once) or replace it:
+
+  ```bash
+  gh api -X PUT repos/WGSExtract/wgsextract-cli/environments/main-site -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'
+  gh api -X POST repos/WGSExtract/wgsextract-cli/environments/main-site/deployment-branch-policies -f name=main -f type=branch
+  ssh-keygen -t ed25519 -N "" -C "wgsextract-cli main-site" -f main-site-key
+  gh repo deploy-key add main-site-key.pub -R WGSExtract/wgsextract.github.io --allow-write -t "wgsextract-cli release watch"
+  gh secret set MAIN_SITE_DEPLOY_KEY --env main-site < main-site-key
+  rm main-site-key main-site-key.pub
+  ```
 
 ### Tags and earlier app releases
 
