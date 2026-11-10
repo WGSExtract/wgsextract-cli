@@ -297,13 +297,18 @@ def _vep_cache(genome: dict[str, str], reflib_dir: str) -> str | None:
         species = "felis_catus"
     else:
         return None
-    vep_path = Path(reflib_dir, "vep", species)
-    if not vep_path.exists():
+    # Ensembl VEP's cache, or vep-rs's in its own folder.
+    paths = [
+        Path(reflib_dir, "vep", species),
+        Path(reflib_dir, "vep", "vep-rs", species),
+    ]
+    paths = [p for p in paths if p.is_dir()]
+    if not paths:
         return None
     if not assembly:
         return "VEP-Cache"
     # Any [version]_[assembly] folder.
-    if vep_path.is_dir() and any(assembly in d for d in os.listdir(vep_path)):
+    if any(assembly in d for p in paths for d in os.listdir(p)):
         return f"VEP-{assembly}"
     return None
 

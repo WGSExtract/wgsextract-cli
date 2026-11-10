@@ -193,6 +193,8 @@ class FakeSteps:
             self.settings[key] = str(data / ann)
         (data / "vep").mkdir()
         self.settings["vep_cache_directory"] = str(data / "vep")
+        # A stand-in Ensembl VEP; vep-rs's own runs are in test_vep_rs.
+        self.settings["vep_engine"] = "ensembl"
         python_tool(home / "tools", "vep", "")
         monkeypatch.setenv("PATH", f"{home / 'tools'}{os.pathsep}{os.environ['PATH']}")
         clear_tool_caches()

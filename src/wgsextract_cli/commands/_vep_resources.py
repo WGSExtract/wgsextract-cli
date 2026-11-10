@@ -22,7 +22,6 @@ from wgsextract_cli.core.utils import (
     run_command,
 )
 
-from ._vep_engines import vep_engine
 from ._vep_rs_cache import build_vep_rs_cache, verify_vep_rs_cache
 
 if TYPE_CHECKING:
@@ -144,7 +143,7 @@ def _verify_vep_tarball(base_url: str, target_path: str, filename: str) -> None:
 
 
 def run_vep_download(params: VepDownloadParams) -> None:
-    engine = vep_engine(params.engine)
+    engine = params.resolved_engine()
     if engine.name == "vep-rs":
         build_vep_rs_cache(params, VEP_MIRRORS[params.mirror])
         return
@@ -309,7 +308,7 @@ def _prefix_contig_header_line(line: str) -> str:
 
 
 def run_vep_verify(params: VepVerifyParams) -> None:
-    if vep_engine(params.engine).name == "vep-rs":
+    if params.resolved_engine().name == "vep-rs":
         verify_vep_rs_cache(params)
         return
     vep_version, species, assembly = (

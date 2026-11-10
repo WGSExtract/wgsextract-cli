@@ -10,6 +10,7 @@ import logging
 import os
 import shutil
 import tempfile
+import threading
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -128,51 +129,74 @@ def _sources(
     return inputs, sources
 
 
+# Files fetched at once: Ensembl's FTP serves each connection at about
+# 0.5 MB/s, and download_file splits only files over 1 GiB into ranges.
+_PARALLEL_DOWNLOADS = 6
+
+
 def _fetch(sources: list[_Source]) -> None:
-    """Download each file not already complete, resuming a partial one, and
-    check it against its folder's Ensembl CHECKSUMS. A file is checked while
-    the next downloads (the checksum is slow without a native ``sum``)."""
-    from concurrent.futures import Future, ThreadPoolExecutor
+    """Download each file not already complete, several at a time, resuming a
+    partial one, and check each against its folder's Ensembl CHECKSUMS."""
+    from concurrent.futures import ThreadPoolExecutor
 
     from ._vep_resources import _require_in_scope
 
     checksums: dict[str, dict[str, tuple[int, int]]] = {}
     cancel = cancel_event()
-    checks: list[Future[None]] = []
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        for source in sources:
-            checkpoint()
-            folder, filename = source.url.rsplit("/", 1)
-            listing = _expected_sums(folder, checksums)
-            url, dest = source.url, source.dest
-            if filename not in listing and source.table and filename[:-3] in listing:
-                url, dest = url[:-3], dest.with_suffix("")
-                filename = filename[:-3]
-            for path in (dest, *(Path(f"{dest}{x}") for x in _SIDECARS)):
-                _require_in_scope(path)
-            if Path(f"{dest}.ok").exists() and dest.exists():
-                continue
-            expected = listing.get(filename)
-            if expected is None:
-                if source.optional:
-                    warn(
-                        "vep_source_missing",
-                        f"{url} isn't published; the cache is built without it.",
-                        url=url,
-                    )
-                    continue
-                raise WGSExtractError(
-                    f"{filename} is not listed in {folder}/CHECKSUMS; Ensembl "
-                    f"doesn't publish it for this release and assembly."
+    todo: list[tuple[str, Path, tuple[int, int]]] = []
+    for source in sources:
+        checkpoint()
+        folder, filename = source.url.rsplit("/", 1)
+        listing = _expected_sums(folder, checksums)
+        url, dest = source.url, source.dest
+        if filename not in listing and source.table and filename[:-3] in listing:
+            url, dest = url[:-3], dest.with_suffix("")
+            filename = filename[:-3]
+        for path in (dest, *(Path(f"{dest}{x}") for x in _SIDECARS)):
+            _require_in_scope(path)
+        if Path(f"{dest}.ok").exists() and dest.exists():
+            continue
+        expected = listing.get(filename)
+        if expected is None:
+            if source.optional:
+                warn(
+                    "vep_source_missing",
+                    f"{url} isn't published; the cache is built without it.",
+                    url=url,
                 )
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            logging.info(f"Downloading {url}")
-            if not download_file(url, str(dest), None, cancel):
-                checkpoint()
+                continue
+            raise WGSExtractError(
+                f"{filename} is not listed in {folder}/CHECKSUMS; Ensembl "
+                f"doesn't publish it for this release and assembly."
+            )
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        todo.append((url, dest, expected))
+
+    failed = threading.Event()
+
+    class _Stop:
+        """Stops the other downloads when the run is cancelled or one fails."""
+
+        def is_set(self) -> bool:
+            return failed.is_set() or bool(cancel and cancel.is_set())
+
+    def fetch(url: str, dest: Path, expected: tuple[int, int]) -> None:
+        if failed.is_set():
+            return
+        logging.info(f"Downloading {url}")
+        try:
+            if not download_file(url, str(dest), None, _Stop()):
                 raise WGSExtractError(f"Download failed: {url}")
-            checks.append(pool.submit(_check_download, dest, expected))
-        for check in checks:
-            check.result()
+            _check_download(dest, expected)
+        except BaseException:
+            failed.set()
+            raise
+
+    with ThreadPoolExecutor(max_workers=_PARALLEL_DOWNLOADS) as pool:
+        futures = [pool.submit(fetch, *item) for item in todo]
+    checkpoint()
+    for future in futures:
+        future.result()
 
 
 # Files download_file keeps beside a download, and the completion marker.

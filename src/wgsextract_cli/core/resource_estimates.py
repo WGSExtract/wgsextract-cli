@@ -867,8 +867,9 @@ def report_resources(estimate: PreflightEstimate) -> None:
 # builder reads, the cache itself, and vep-cache-builder's peak memory.
 VEP_RS_DOWNLOAD_BYTES = {False: int(1.6 * GIB), True: int(17.5 * GIB)}
 VEP_RS_GENOME_BYTES = int(3.0 * GIB)
-VEP_RS_CACHE_BYTES = {False: int(5.7 * GIB), True: int(13.5 * GIB)}
-VEP_RS_BUILD_MEMORY = 9 * GIB
+VEP_RS_CACHE_BYTES = {False: int(5.7 * GIB), True: 17 * GIB}
+# vep-cache-builder peaked at 8.5 GB RSS without variations, 11 GB with.
+VEP_RS_BUILD_MEMORY = 12 * GIB
 # Peak memory of `vep run` on a whole genome: vep-rs on its built cache (6
 # threads, HG002), Ensembl VEP (6 forks).
 VEP_RUN_MEMORY = {"vep-rs": 8 * GIB, "ensembl": int(1.5 * GIB)}

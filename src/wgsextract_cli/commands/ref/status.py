@@ -270,14 +270,18 @@ def _ybrowse_status(reflib: str) -> dict[str, Any]:
 
 
 def _vep_cache_status(lib: ReferenceLibrary, reflib: str) -> dict[str, Any]:
+    from wgsextract_cli.commands._vep_engines import configured_engine
+
     path = lib.vep_cache or str(Path(reflib, "vep"))
-    species = str(Path(path, "homo_sapiens"))
+    # The cache of the engine `vep run`, `verify` and `delete` would use.
+    engine = configured_engine([Path(path)])
+    species = str(Path(engine.cache_root(Path(path)), "homo_sapiens"))
     versions = (
         sorted(name for name in os.listdir(species) if Path(species, name).is_dir())
         if Path(species).is_dir()
         else []
     )
-    return {"path": path, "versions": versions}
+    return {"path": path, "engine": engine.name, "versions": versions}
 
 
 def _pharmcat_status(reflib: str) -> dict[str, Any]:

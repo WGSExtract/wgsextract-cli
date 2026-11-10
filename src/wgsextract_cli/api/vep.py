@@ -34,9 +34,12 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from wgsextract_cli.core.messages import LOG_MESSAGES
+
+if TYPE_CHECKING:
+    from wgsextract_cli.commands._vep_engines import VepEngine
 from wgsextract_cli.core.results import CommandResult
 
 from ._params import Params, param
@@ -212,15 +215,23 @@ class _VepCacheParams(Params):
         filled = with_config_defaults(self)
         return Path(vep_cache_root(filled.vep_cache, filled.ref))
 
-    def engine_cache_root(self) -> Path:
-        """The folder holding the engine's caches: the cache folder itself for
-        Ensembl VEP, its ``vep-rs`` folder for vep-rs."""
-        from wgsextract_cli.commands._vep_engines import vep_engine
+    def resolved_engine(self) -> VepEngine:
+        """The engine whose cache this command uses. ``download`` builds the
+        default's; ``verify`` and ``delete`` follow ``vep run``, so a setup
+        with only an Ensembl VEP cache works on that one."""
+        from wgsextract_cli.commands._vep_engines import resolve_engine, vep_engine
 
         from ._params import with_config_defaults
 
-        engine = vep_engine(with_config_defaults(self).engine)
-        return engine.cache_root(self.cache_root())
+        chosen = with_config_defaults(self).engine
+        if self.COMMAND == "vep download":
+            return vep_engine(chosen)
+        return resolve_engine(chosen, [self.cache_root()])[0]
+
+    def engine_cache_root(self) -> Path:
+        """The folder holding the engine's caches: the cache folder itself for
+        Ensembl VEP, its ``vep-rs`` folder for vep-rs."""
+        return self.resolved_engine().cache_root(self.cache_root())
 
     def version_dir(self) -> Path:
         """The folder of this species, release and assembly in the cache."""

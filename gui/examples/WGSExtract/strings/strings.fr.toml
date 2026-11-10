@@ -298,7 +298,7 @@
 "actions.library.genome-management.ref-resume.tooltip" = "Reprendre un téléchargement de référence interrompu."  # i18n-source-hash:9a29349f
 "sections.library.databases-tools.title" = "Gérer les données de référence"  # i18n-source-hash:7bf78801
 "actions.library.databases-tools.vep-download.title" = "Télécharger le cache VEP"  # i18n-source-hash:37dd3b06
-"actions.library.databases-tools.vep-download.tooltip" = "Construire le cache VEP (celui de vep-rs par défaut) de la release et de l’assemblage choisis ci-dessus (vide : 116, GRCh38) dans le dossier vep des données de référence pour l’annotation hors ligne. Cela télécharge environ 17 Go depuis Ensembl et demande environ 20 Go libres pendant la construction."  # i18n-source-hash:f0084e67
+"actions.library.databases-tools.vep-download.tooltip" = "Construire le cache VEP (celui de vep-rs par défaut) de la release et de l’assemblage choisis ci-dessus (vide : 116, GRCh38) dans le dossier vep des données de référence pour l’annotation hors ligne. Cela télécharge environ 17 Go depuis Ensembl et demande environ 40 Go libres pendant la construction ; le cache terminé occupe 17 Go."  # i18n-source-hash:1338313c
 "actions.library.databases-tools.vep-verify.title" = "Vérifier le cache VEP"  # i18n-source-hash:11b16aeb
 "actions.library.databases-tools.vep-verify.tooltip" = "Vérifier que le cache VEP des données de référence ne contient ni fichiers manquants ni corruption."  # i18n-source-hash:dc7f97b8
 "actions.library.databases-tools.vep-delete.title" = "Supprimer le cache VEP"  # i18n-source-hash:4f39c38c

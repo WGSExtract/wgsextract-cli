@@ -298,7 +298,7 @@
 "actions.library.genome-management.ref-resume.tooltip" = "Setzen Sie einen unterbrochenen Referenzdownload fort."  # i18n-source-hash:9a29349f
 "sections.library.databases-tools.title" = "Referenzdaten verwalten"  # i18n-source-hash:7bf78801
 "actions.library.databases-tools.vep-download.title" = "VEP-Cache herunterladen"  # i18n-source-hash:37dd3b06
-"actions.library.databases-tools.vep-download.tooltip" = "Erstellen Sie den VEP-Cache (standardmäßig den von vep-rs) für das oben gewählte Release und Assembly (leer: 116, GRCh38) im vep-Ordner der Referenzdaten für die Offline-Annotation. Dafür werden etwa 17 GB von Ensembl heruntergeladen, und während des Aufbaus werden etwa 20 GB freier Speicher benötigt."  # i18n-source-hash:f0084e67
+"actions.library.databases-tools.vep-download.tooltip" = "Erstellen Sie den VEP-Cache (standardmäßig den von vep-rs) für das oben gewählte Release und Assembly (leer: 116, GRCh38) im vep-Ordner der Referenzdaten für die Offline-Annotation. Dafür werden etwa 17 GB von Ensembl heruntergeladen, und während des Aufbaus werden etwa 40 GB freier Speicher benötigt; der fertige Cache belegt 17 GB."  # i18n-source-hash:1338313c
 "actions.library.databases-tools.vep-verify.title" = "VEP-Cache prüfen"  # i18n-source-hash:11b16aeb
 "actions.library.databases-tools.vep-verify.tooltip" = "Prüfen Sie den VEP-Cache in den Referenzdaten auf fehlende Dateien oder Beschädigungen."  # i18n-source-hash:dc7f97b8
 "actions.library.databases-tools.vep-delete.title" = "VEP-Cache löschen"  # i18n-source-hash:4f39c38c

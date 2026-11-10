@@ -298,7 +298,7 @@
 "actions.library.genome-management.ref-resume.tooltip" = "Resume an interrupted reference download."
 "sections.library.databases-tools.title" = "Manage Reference Data"
 "actions.library.databases-tools.vep-download.title" = "Download VEP Cache"
-"actions.library.databases-tools.vep-download.tooltip" = "Build the VEP cache (vep-rs's, by default) for the release and assembly chosen above (blank: 116, GRCh38) in the vep folder of the reference data for offline annotation. It downloads about 17 GB from Ensembl and needs about 20 GB free while it builds."
+"actions.library.databases-tools.vep-download.tooltip" = "Build the VEP cache (vep-rs's, by default) for the release and assembly chosen above (blank: 116, GRCh38) in the vep folder of the reference data for offline annotation. It downloads about 17 GB from Ensembl and needs about 40 GB free while it builds; the finished cache takes 17 GB."
 "actions.library.databases-tools.vep-verify.title" = "Verify VEP Cache"
 "actions.library.databases-tools.vep-verify.tooltip" = "Verify the VEP cache in the reference data for missing files or corruption."
 "actions.library.databases-tools.vep-delete.title" = "Delete VEP Cache"
