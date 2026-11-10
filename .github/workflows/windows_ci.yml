@@ -61,6 +61,10 @@ jobs:
           path: |
             out/coverage.xml
             out/pytest.xml
+      - name: Annotate with vep-rs end to end (no skips)
+        run: |
+          pixi run python -c "from wgsextract_cli.core.dependencies import get_tool_path as g; assert g('vep-rs') and g('vep-cache-builder'), 'vep-rs environment missing'"
+          pixi run pytest tests/test_vep_rs.py -p no:randomly -rs -o addopts=""
       - name: Run end-to-end tests on generated data
         run: pixi run test-e2e-fake
       - name: Build and Smoke Test Package
