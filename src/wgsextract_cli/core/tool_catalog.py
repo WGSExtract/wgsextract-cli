@@ -70,7 +70,7 @@ PLATFORM_ONLY_TOOLS = {
     "cyrius": ("linux", "darwin"),
     "run-t1k": ("linux", "darwin"),
     "ExpansionHunter": ("linux", "darwin"),
-    "run_clair3.sh": ("linux",),
+    "run_clair3.sh": ("linux", "darwin"),
     "modkit": ("linux", "darwin"),
     "verifybamid2": ("linux", "darwin"),
     "somalier": ("linux", "darwin"),

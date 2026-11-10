@@ -216,11 +216,29 @@ directory and are removed after the run.
 
 `vcf clair3` runs [Clair3](https://github.com/HKU-BAL/Clair3) 2.x, an
 ONT-trained small-variant caller. It is optional, and DeepVariant remains the
-default ONT caller. Clair3 is qualified on **Linux x86-64 only**. It is not
-available on Windows (use WSL2), and Bioconda's macOS and ARM builds are
-refused because they have not been validated here. Install it into its own
-Pixi environment with `pixi install -e clair3`. The CLI checks for it but
+default ONT caller. The Pixi environment pins Clair3 2.0.5 or newer, which
+Bioconda builds for **Linux x86-64, Linux ARM64 and Apple Silicon macOS**.
+It is not available on Windows (use WSL2) or Intel Macs. Install it into its
+own Pixi environment with `pixi install -e clair3`. The CLI checks for it but
 never installs it.
+
+Clair3 2.0.5 bundles htslib 1.24 and reads CRAM 3.1 itself. Older Clair3
+builds on `PATH` can't decode some CRAM 3.1 blocks (#604), so for them the
+command calls from a temporary CRAM 3.0 copy.
+
+Clair3 runs on the CPU. Its `--use_gpu` mode needs CUDA, but Bioconda's Linux
+builds depend on CPU-only PyTorch, and Clair3 2.0.5 has no Apple GPU (MPS)
+path, although the macOS PyTorch has MPS. The command therefore has no
+`--gpu` option.
+
+On the HG002 chr20:10-11 Mb slice (R10.4.1 sup v4.0.0 reads, model
+`r1041_e82_400bps_sup_v400`, 4 threads), Clair3 2.0.5 on Linux x86-64 gave
+the same records as 2.0.3, from CRAM 3.1, CRAM 3.0 and BAM input (vcfeval F1
+0.979 against GIAB v4.2.1). On an Apple M1 it took 44 s, and 1,786 of its
+1,827 calls matched the 1,829 Linux calls in alleles and genotype. The rest
+were mostly multi-allelic homopolymer indels, and qualities differ slightly,
+because CPU floating-point results differ between ARM64 and x86-64. Its F1 was
+0.978. Linux ARM64 has not been run here.
 
 ```sh
 wgsextract vcf clair3 -i hg002-ont.bam --ref chr20.fa \
@@ -383,7 +401,7 @@ The same reads realigned with `wgsextract realign` gave the same result, so the
 tags survive realignment.
 
 Platform detection, tagged CPU alignment/realignment, x86-64 DeepVariant
-ONT_R104 calling, optional Linux x86-64 Clair3 calling, Sniffles SV calling,
+ONT_R104 calling, optional Clair3 calling (Linux and Apple Silicon), Sniffles SV calling,
 optional modkit CpG methylation and optional read-backed phasing are supported.
 
 ## Phasing
