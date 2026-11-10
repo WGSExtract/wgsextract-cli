@@ -343,6 +343,7 @@ record = {{
     "bed": open(opts["bed_fn"]).read() if "bed_fn" in opts else None,
     "stdin_closed": bool(ready) and os.read(0, 1) == b"",
     "pythonpath": os.environ.get("PYTHONPATH"),
+    "model": os.path.realpath(opts["model_path"]),
 }}
 with open({log!r}, "a") as log:
     log.write(json.dumps(record) + "\\n")
@@ -355,6 +356,12 @@ for name in ("pileup.pt", "full_alignment.pt"):
         sys.exit(f"[ERROR] {{name}} not found in {{opts['model_path']}}")
 out = opts["output"]
 os.makedirs(out)
+paths = ("bam_fn", "ref_fn", "model_path", "output", "bed_fn")
+if any(any(c.isspace() for c in opts.get(name, "")) for name in paths):
+    # Clair3's shell steps and GNU parallel split paths at spaces (#623): it
+    # finds no contigs to call, writes no merge_output.vcf.gz and exits 0.
+    print("[WARNING] No contig intersection found, output header only")
+    sys.exit(0)
 failure = {{"errors": [], "log": "log/1_call_var_bam_pileup.log", "stderr": ""}}
 if record["cram_version"] and record["cram_version"] >= [3, 1]:
     # libclair3's bundled htslib can't decode some valid CRAM 3.1 blocks.
@@ -397,8 +404,9 @@ class FakeClair3:
     if PYTHONPATH leaks in) and waits on an open stdin (it fails instead).
     Like Clair3's bundled htslib it fails on CRAM 3.1 reads, reporting only
     on stdout and in its step logs; ``fail`` makes it fail that way on any
-    reads. Each run's options, reads' CRAM version, region BED, stdin state
-    and PYTHONPATH go to ``runs``.
+    reads. Like Clair3 it calls nothing, yet exits 0, when a path it is
+    given contains a space. Each run's options, resolved model, reads' CRAM
+    version, region BED, stdin state and PYTHONPATH go to ``runs``.
     """
 
     def __init__(self, bindir: Path, bcftools: str) -> None:

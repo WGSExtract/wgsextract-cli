@@ -375,6 +375,43 @@ def clair3_command(
     return command
 
 
+def _link(target: Path, link: Path) -> str:
+    link.symlink_to(target.absolute(), target_is_directory=target.is_dir())
+    return str(link)
+
+
+def space_free_paths(
+    links: Path, reads: str, ref: str, model: Path, work: Path
+) -> tuple[str, str, Path, Path]:
+    """Space-free symlinks in ``links`` to the reads, reference, model and work
+    folder (with their indexes), since Clair3's shell and GNU parallel steps
+    split paths at spaces (#623). The data stays where it is."""
+    if re.search(r"\s", str(links)):
+        raise WGSExtractError(
+            f"Clair3 can't use paths with spaces, and the temporary folder {links} "
+            "has one. Set TMPDIR to a folder without spaces."
+        )
+    reads_path, ref_path = Path(reads), Path(ref)
+    suffix = "".join(reads_path.suffixes[-1:])
+    reads_link = _link(reads_path, links / f"reads{suffix}")
+    for ext in (".bai", ".csi", ".crai"):
+        for index in (Path(reads + ext), reads_path.with_suffix(ext)):
+            if index.is_file():
+                _link(index, links / f"reads{suffix}{ext}")
+                break
+    ref_link = _link(ref_path, links / "ref.fa")
+    for ext in (".fai", ".gzi"):
+        if Path(ref + ext).is_file():
+            _link(Path(ref + ext), links / f"ref.fa{ext}")
+    # Clair3 reads the model's chemistry from its folder name.
+    (links / "model").mkdir()
+    model_link = links / "model" / re.sub(r"\s", "_", model.name)
+    _link(model, model_link)
+    work_link = links / "work"
+    _link(work, work_link)
+    return reads_link, ref_link, model_link, work_link
+
+
 def _clair3_env() -> dict[str, str]:
     # Clair3 runs its own Python; don't leak ours into it.
     env = dict(os.environ)
@@ -423,6 +460,7 @@ def run_clair3(params: VcfClair3Params) -> None:
     with (
         plain_reference(ref, outdir) as use_ref,
         tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_clair3_") as work,
+        tempfile.TemporaryDirectory(prefix="wgse_clair3_") as links,
     ):
         bed, intervals = None, None
         if region:
@@ -442,13 +480,16 @@ def run_clair3(params: VcfClair3Params) -> None:
             tool="Clair3", why=_CRAM31_BUG,
         )  # fmt: skip
         output = str(Path(work, "clair3"))
+        run_reads, run_ref, run_model, run_work = space_free_paths(
+            Path(links), reads, use_ref, model, Path(work)
+        )
+        command = clair3_command(
+            run_reads, run_ref, run_model, threads, str(run_work / "clair3"),
+            str(run_work / "regions.bed") if bed else None, sample,
+        )  # fmt: skip
         try:
             # stdin closed: Clair3's GNU parallel would read it otherwise.
-            run_command(
-                clair3_command(reads, use_ref, model, threads, output, bed, sample),
-                env=_clair3_env(),
-                stdin=subprocess.DEVNULL,
-            )
+            run_command(command, env=_clair3_env(), stdin=subprocess.DEVNULL)
         except (OSError, subprocess.SubprocessError) as e:
             errors = clair3_errors(Path(output))
             if not errors or not isinstance(e, subprocess.CalledProcessError):
