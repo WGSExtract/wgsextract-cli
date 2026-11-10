@@ -3,8 +3,9 @@
 
 Usage: python scripts/bump_version.py 0.4.4
 
-Updates pyproject.toml, pixi.toml and src/wgsextract_cli/__init__.py, then
-points the desktop app's bundle at the same CLI release with
+Updates pyproject.toml, pixi.toml and src/wgsextract_cli/__init__.py, the CLI
+site's current-release text (site_src/), then points the desktop app's bundle
+and its site at the same CLI release with
 gui/scripts/bump-wgsextract-cli.py; release.yml compares all of them with the
 vX.Y.Z tag (see docs/releasing.md).
 """
@@ -23,6 +24,11 @@ VERSIONS = [
     ("pixi.toml", r'^version = "([^"]+)"$'),
     ("src/wgsextract_cli/__init__.py", r'^__version__ = "([^"]+)"$'),
 ]
+# CLI site pages that name the current release
+# (https://wgsextract.github.io/wgsextract-cli/). Every mention of the old
+# version in these is replaced, so write past releases ("since v0.6.6") only as
+# versions older than the current one.
+SITE = ["site_src/index.md", "site_src/install.md"]
 GUI_BUMP = "gui/scripts/bump-wgsextract-cli.py"
 
 
@@ -44,6 +50,19 @@ def main(argv: list[str]) -> int:
         old.add(match[1])
         start, end = match.span(1)
         changes[path] = text[:start] + new + text[end:]
+    for current in old - {new}:
+        # The version alone, not inside another (10.4.3, 0.4.30).
+        version = re.compile(rf"(?<![\d.]){re.escape(current)}(?!\.?\d)")
+        for name in SITE:
+            path = ROOT / name
+            text, count = version.subn(new, changes.get(path, path.read_text()))
+            if not count:
+                print(
+                    f"{name} doesn't mention {current}; update it by hand.",
+                    file=sys.stderr,
+                )
+                return 1
+            changes[path] = text
     # Write each to a temporary file first and rename them all into place; if
     # anything fails, put back the files already replaced.
     originals = {path: path.read_text() for path in changes}

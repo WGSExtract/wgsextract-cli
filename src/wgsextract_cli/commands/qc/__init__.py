@@ -13,6 +13,7 @@ from wgsextract_cli.api.qc import (
     FastqcParams,
     MultiqcMetricsParams,
     MultiqcParams,
+    QcContaminationParams,
     QcVcfParams,
     RelateParams,
 )
@@ -33,6 +34,7 @@ from .commands import (
     cmd_multiqc_metrics,
     cmd_vcf_qc,
 )
+from .contamination import cmd_contamination
 from .fake_data import (
     generate_fake_genomics_data,
 )
@@ -129,6 +131,12 @@ def register(
         ),
         ("vcf", QcVcfParams, cmd_vcf_qc, CLI_HELP["cmd_vcf-qc"]),
         ("relate", RelateParams, cmd_relate, CLI_HELP["cmd_qc-relate"]),
+        (
+            "contamination",
+            QcContaminationParams,
+            cmd_contamination,
+            CLI_HELP["cmd_qc-contamination"],
+        ),
         ("fake-data", FakeDataParams, cmd_fake_data, CLI_HELP["cmd_fake-data"]),
     )
     for name, cls, func, help_text in commands:

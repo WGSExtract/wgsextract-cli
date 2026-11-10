@@ -4,6 +4,7 @@ name: App release watch
 # matrix: pinned CLI and negative controls included) within the hour, not at the
 # next weekly run. The app joins the release after release.yml publishes it (or
 # when a maintainer publishes its draft), so this checks for that by the hour.
+# The same check moves https://wgsextract.github.io/'s v6 row to that release.
 on:
   schedule:
     - cron: "37 * * * *"
@@ -40,3 +41,92 @@ jobs:
           fi
           gh workflow run install_lab.yml -R "$GITHUB_REPOSITORY" --ref main -f app_release="$tag"
           echo "Started the Install Lab for app $tag." >> "$GITHUB_STEP_SUMMARY"
+
+  # https://wgsextract.github.io/ lists the latest v6 release, linking new
+  # users to the app site for its installers. Once the latest release carries
+  # them, point that row at it (scripts/update_main_site.py; never backwards).
+  main-site-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+      date: ${{ steps.check.outputs.date }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: scripts/update_main_site.py
+          sparse-checkout-cone-mode: false
+      - name: Is the main site's v6 row behind the latest app release?
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          read -r tag published < <(gh release view -R "$GITHUB_REPOSITORY" \
+            --json tagName,publishedAt -q '.tagName + " " + .publishedAt')
+          assets=$(gh release view "$tag" -R "$GITHUB_REPOSITORY" --json assets -q '.assets[].name')
+          if ! grep -q '_amd64\.deb$' <<< "$assets"; then
+            echo "Release $tag doesn't carry the app (yet)."
+            exit 0
+          fi
+          day=${published%%T*}
+          gh api repos/WGSExtract/wgsextract.github.io/contents/README.md \
+            -H "Accept: application/vnd.github.raw" > README.md
+          cp README.md README.before.md
+          python3 scripts/update_main_site.py README.md "$tag" "$day"
+          if ! cmp -s README.md README.before.md; then
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+            echo "date=$day" >> "$GITHUB_OUTPUT"
+          fi
+
+  # The workflow token can't push to WGSExtract/wgsextract.github.io, so this
+  # pushes with MAIN_SITE_DEPLOY_KEY: a write deploy key on that repository,
+  # kept as a secret of the main-site environment, which only main can use.
+  main-site:
+    needs: main-site-check
+    if: needs.main-site-check.outputs.tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: main-site
+    permissions:
+      contents: read
+    steps:
+      - name: Is the deploy key set?
+        id: key
+        env:
+          DEPLOY_KEY: ${{ secrets.MAIN_SITE_DEPLOY_KEY }}
+        run: |
+          if [ -z "$DEPLOY_KEY" ]; then
+            echo "::warning::MAIN_SITE_DEPLOY_KEY isn't set in the main-site environment, so wgsextract.github.io still lists an older v6 release."
+            exit 0
+          fi
+          echo "set=true" >> "$GITHUB_OUTPUT"
+      - if: steps.key.outputs.set
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: cli
+          sparse-checkout: scripts/update_main_site.py
+          sparse-checkout-cone-mode: false
+      - if: steps.key.outputs.set
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: WGSExtract/wgsextract.github.io
+          path: main-site
+          ssh-key: ${{ secrets.MAIN_SITE_DEPLOY_KEY }}
+      - name: Point the v6 row at the release
+        if: steps.key.outputs.set
+        working-directory: main-site
+        env:
+          TAG: ${{ needs.main-site-check.outputs.tag }}
+          DAY: ${{ needs.main-site-check.outputs.date }}
+        run: |
+          python3 ../cli/scripts/update_main_site.py README.md "$TAG" "$DAY"
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -qam "README: v6 is ${TAG#v} ($GITHUB_REPOSITORY release)"
+          git push origin HEAD
+          echo "wgsextract.github.io now lists v6 ${TAG#v}." >> "$GITHUB_STEP_SUMMARY"

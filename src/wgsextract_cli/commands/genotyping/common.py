@@ -32,6 +32,7 @@ from wgsextract_cli.core.variant_files import (
 
 if TYPE_CHECKING:
     from wgsextract_cli.api.genotyping import _TypingParams
+    from wgsextract_cli.api.qc import QcContaminationParams
 
 _ALT_CONTIG = re.compile(r"^(?:chr)?(?P<chrom>[0-9XY]+)_\w+_alt$")
 
@@ -48,7 +49,7 @@ def require_index(path: str) -> None:
 class Alignment:
     path: str
     lengths: dict[str, int]
-    build: str  # "hg19" or "hg38"
+    build: str  # "hg19" or "hg38" ("" or another build only with any_build)
     chr_prefix: bool
     reference: str | None
     stem: str
@@ -82,8 +83,15 @@ class Alignment:
         ]
 
 
-def open_alignment(params: _TypingParams) -> Alignment:
-    """The BAM/CRAM in ``input`` with its build, contig names and reference."""
+def open_alignment(
+    params: _TypingParams | QcContaminationParams,
+    *,
+    purpose: str = "typing",
+    any_build: bool = False,
+) -> Alignment:
+    """The BAM/CRAM in ``input`` with its build, contig names and reference.
+    The build must be GRCh37/hg19 or GRCh38 unless ``any_build`` (then it is
+    "" when unknown); ``purpose`` names the command in that error."""
     path = expand_path(params.input)
     verify_paths_exist({"--input": path})
     if not path.lower().endswith((".bam", ".cram")):
@@ -95,11 +103,11 @@ def open_alignment(params: _TypingParams) -> Alignment:
     if not header:
         raise WGSExtractError(f"Could not read the header of {path}.")
     lengths = header_contig_lengths(header)
-    build = build_from_chr1_length(lengths)
-    if build not in ("hg19", "hg38"):
+    build = build_from_chr1_length(lengths) or ""
+    if build not in ("hg19", "hg38") and not any_build:
         raise WGSExtractError(
             f"{path} isn't aligned to GRCh37/hg19 or GRCh38 (detected: "
-            f"{build or 'unknown'}); typing needs one of those."
+            f"{build or 'unknown'}); {purpose} needs one of those."
         )
 
     ref = expand_path(params.ref) if params.ref else None

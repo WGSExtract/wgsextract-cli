@@ -18,6 +18,7 @@ from wgsextract_cli.api.vcf import VcfClair3Params
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.cram_staging import stage_cram30
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -28,6 +29,7 @@ from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.reference_assets import read_fai_lengths
+from wgsextract_cli.core.region_selection import selected_intervals
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
@@ -41,6 +43,10 @@ WINDOWS_UNSUPPORTED = (
     "Clair3 is not available on Windows (Bioconda builds it for Linux only). "
     "Run `vcf clair3` on Linux x86-64, for example under WSL2."
 )
+# libclair3 links its own htslib, whose CRAM 3.1 decoder fails on valid
+# blocks (#604) that the host samtools reads.
+_CRAM31_BUG = "Clair3's bundled htslib can fail to decode valid CRAM 3.1 blocks (#604)."
+_ERROR_LINE = re.compile(r"^\[E::|\[ERROR\]|^Traceback|^[\w.]*(Error|Exception):")
 _FETCH = (
     "Download a model directory (pileup.pt and full_alignment.pt) from "
     "https://www.bio8.cs.hku.hk/clair3/clair3_models_rerio_pytorch/ and pass "
@@ -377,6 +383,22 @@ def _clair3_env() -> dict[str, str]:
     return env
 
 
+def clair3_errors(output: Path, limit: int = 8) -> str:
+    """Distinct error lines from Clair3's logs: it reports them on stdout
+    (tee'd to ``output/run_clair3.log`` and the step logs in ``output/log``),
+    so they never reach the failed command's stderr."""
+    seen: dict[str, None] = {}
+    logs = [output / "run_clair3.log", *sorted(output.glob("log/*.log"))]
+    for log in logs:
+        if not log.is_file() or log.name.startswith("parallel_"):
+            continue  # GNU parallel job tables.
+        for line in log.read_text(errors="replace").splitlines():
+            line = line.strip()
+            if _ERROR_LINE.search(line):
+                seen.setdefault(line, None)
+    return "\n".join(list(seen)[:limit])
+
+
 def run_clair3(params: VcfClair3Params) -> None:
     """``vcf clair3``: Clair3 on Nanopore reads into ``clair3.vcf.gz``."""
     require_supported_platform()
@@ -402,22 +424,45 @@ def run_clair3(params: VcfClair3Params) -> None:
         plain_reference(ref, outdir) as use_ref,
         tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_clair3_") as work,
     ):
-        bed = None
+        bed, intervals = None, None
         if region:
+            lengths = read_fai_lengths(use_ref)
             bed = str(Path(work, "regions.bed"))
-            write_region_bed(region, read_fai_lengths(use_ref), bed)
+            write_region_bed(region, lengths, bed)
+            try:
+                intervals = selected_intervals(region, lengths, commas=True)
+            except (ValueError, OSError) as error:
+                raise WGSExtractError(
+                    f"Invalid Clair3 region selection: {region}: {error}"
+                ) from error
+        staging = Path(work, "reads")
+        staging.mkdir()
+        reads = stage_cram30(
+            input_file, use_ref, str(staging), threads, intervals,
+            tool="Clair3", why=_CRAM31_BUG,
+        )  # fmt: skip
         output = str(Path(work, "clair3"))
         try:
             # stdin closed: Clair3's GNU parallel would read it otherwise.
             run_command(
-                clair3_command(
-                    input_file, use_ref, model, threads, output, bed, sample
-                ),
+                clair3_command(reads, use_ref, model, threads, output, bed, sample),
                 env=_clair3_env(),
                 stdin=subprocess.DEVNULL,
             )
         except (OSError, subprocess.SubprocessError) as e:
-            raise WGSExtractError(f"Clair3 failed: {e}") from e
+            errors = clair3_errors(Path(output))
+            if not errors or not isinstance(e, subprocess.CalledProcessError):
+                raise WGSExtractError(f"Clair3 failed: {e}") from e
+            stderr = (
+                e.stderr.decode(errors="replace")
+                if isinstance(e.stderr, bytes)
+                else (e.stderr or "")
+            )
+            # Clair3's stderr (when any) as run_command reports it, then its logs.
+            reported = f"{e}\n" if stderr.strip() else f"exit {e.returncode}; "
+            raise WGSExtractError(
+                f"Clair3 failed: {reported}Clair3's log errors:\n{errors}"
+            ) from e
         merged = Path(output, "merge_output.vcf.gz")
         if not merged.is_file():
             raise WGSExtractError("Clair3 failed to produce merge_output.vcf.gz.")

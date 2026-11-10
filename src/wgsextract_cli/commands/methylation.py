@@ -28,9 +28,11 @@ from wgsextract_cli.commands.vcf.basic import plain_reference
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled, safe_output
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependency_checks import (
+    crash_description,
     log_dependency_info,
     verify_dependencies,
 )
+from wgsextract_cli.core.genotype_qc import contigs_with_reads
 from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.reference_assets import input_stem, read_fai_lengths
@@ -528,6 +530,25 @@ def bedmethyl_to_parquet(bed: str, path: str, metadata: dict[str, str]) -> int:
     return writer.rows
 
 
+def populated_reference(fasta: str, contigs: Iterable[str], work: str) -> str:
+    """`fasta` as seen through a .fai listing only `contigs`, without copying it.
+
+    With CRAM input modkit walks every contig of the reference, empty or not:
+    minutes and gigabytes for a single chromosome's reads (#611). Restricting
+    the .fai leaves its read sampling and output unchanged."""
+    keep = set(contigs)
+    with open(f"{fasta}.fai") as f:
+        entries = [line for line in f if line.split("\t", 1)[0] in keep]
+    view = Path(work, Path(fasta).name)
+    try:
+        view.symlink_to(absolute_path(fasta))
+    except OSError as e:
+        logging.debug(f"Tabulating all contigs; could not link {fasta}: {e}")
+        return fasta
+    Path(f"{view}.fai").write_text("".join(entries), newline="\n")
+    return str(view)
+
+
 def index_fasta(fasta: str) -> None:
     """modkit and --region both need the reference's .fai."""
     if Path(f"{fasta}.fai").is_file():
@@ -538,6 +559,30 @@ def index_fasta(fasta: str) -> None:
         raise WGSExtractError(
             f"Could not index {fasta}: {e}. Run samtools faidx on it first."
         ) from e
+
+
+def modkit_failure(error: OSError | subprocess.SubprocessError, reads: str) -> str:
+    """Say how modkit pileup failed, with modkit's own last lines (#608)."""
+    returncode = getattr(error, "returncode", None)
+    crashed = crash_description(returncode) if returncode is not None else None
+    if not crashed:
+        return f"modkit pileup failed: {error}"
+    message = f"modkit pileup {crashed}, exit {returncode}."
+    for stream in ("stderr", "stdout"):
+        output = getattr(error, stream, None) or ""
+        if isinstance(output, bytes):
+            output = output.decode(errors="replace")
+        if tail := "\n".join(str(output).strip().splitlines()[-8:]):
+            message += f"\nmodkit's {stream}:\n{tail}"
+    if reads.lower().endswith(".cram"):
+        from wgsextract_cli.cli.hints import quote
+
+        # modkit itself warns that its CRAM reading "may be unstable".
+        message += (
+            f"\nmodkit reads CRAM less reliably than BAM. Convert the input with "
+            f"`wgsextract bam to-bam -i {quote(reads)}` and run on the BAM."
+        )
+    return message
 
 
 def run_pileup(params: MethylationPileupParams) -> None:
@@ -609,12 +654,26 @@ def run_pileup(params: MethylationPileupParams) -> None:
         tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_modkit_") as work,
     ):
         index_fasta(use_ref)
+        lengths = read_fai_lengths(use_ref)
         intervals = bed = None
+        pileup_ref = use_ref
         if region:
-            intervals = region_intervals(region, read_fai_lengths(use_ref))
+            intervals = region_intervals(region, lengths)
+            contigs = {c for c, _, _ in intervals}
             bed = str(Path(work, "regions.bed"))
             with open(bed, "w", newline="\n") as f:
                 f.writelines(f"{c}\t{s}\t{e}\n" for c, s, e in intervals)
+        else:
+            contigs = set(contigs_with_reads(input_path, use_ref)) & set(lengths)
+            if contigs and len(contigs) < len(lengths):
+                pileup_ref = populated_reference(use_ref, contigs, work)
+            if pileup_ref == use_ref:
+                contigs = set(lengths)
+            else:
+                logging.info(
+                    f"Reads are on {len(contigs)} of the reference's "
+                    f"{len(lengths)} contigs; tabulating only those."
+                )
         metadata = provenance(
             [input_path],
             reference_build=lib.build,
@@ -636,12 +695,13 @@ def run_pileup(params: MethylationPileupParams) -> None:
                 staging.enter_context(safe_output(out_table)) if parquet else ""
             )
             command = modkit_command(
-                input_path, staged_bed, use_ref, options, threads, intervals, bed
+                input_path, staged_bed, pileup_ref, options, threads, intervals, bed
             )
             try:
-                run_command(command)
+                # Kept so a crash can quote diagnostics written to stdout too.
+                run_command(command, stdout=subprocess.PIPE)
             except (OSError, subprocess.SubprocessError) as e:
-                raise WGSExtractError(f"modkit pileup failed: {e}") from e
+                raise WGSExtractError(modkit_failure(e, input_path)) from e
             checkpoint()
             run_command(["tabix", "-f", "-p", "bed", staged_bed])
             if staged_bed != out_bed:
@@ -664,6 +724,7 @@ def run_pileup(params: MethylationPileupParams) -> None:
     result.add_metrics(
         platform=platform,
         context=options.context,
+        contigs=len(contigs),
         **{
             f"{summary.modification}_{name}": value
             for summary in summaries

@@ -134,6 +134,8 @@ def verify_platform_support(args: argparse.Namespace) -> None:
                 if getattr(args, "ont", False) or getattr(args, "long_read", False)
                 else "delly"
             )
+    elif command == "qc" and getattr(args, "qc_cmd", None) == "contamination":
+        tool = "VerifyBamID2"
     elif command == "typing":
         tool = _WINDOWS_TYPING_TOOLS.get(getattr(args, "typing_cmd", "") or "")
     elif command == "ref" and getattr(args, "ref_cmd", None) in ("phylop", "gerp"):

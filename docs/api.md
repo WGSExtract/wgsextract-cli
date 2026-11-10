@@ -651,6 +651,30 @@ latter wins.
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | VCF file. |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 
+### `api.qc.contamination(QcContaminationParams)`
+
+CLI: `wgsextract qc contamination`.
+
+Estimate contamination (output roles `contamination_report` and
+`contamination_ancestry`).
+
+`QcContaminationParams`: Estimate how much of a BAM/CRAM's DNA comes from another person with
+VerifyBamID2: the FREEMIX fraction, from reads at 1000 Genomes sites
+(GRCh37/hg19 or GRCh38). Writes `<stem>.contamination.selfSM` and
+`.Ancestry`. Metrics: `freemix`, `freemix_sites`, `freemix_depth`
+and the ancestry PCs; the estimate is recorded as the sample's
+`contamination` fact. VerifyBamID2 is optional (`pixi install -e
+verifybamid2`) and unavailable on Windows.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | Indexed BAM or CRAM aligned to GRCh37/hg19 or GRCh38. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `sites` | `str` | `'100k'` | `--sites` | 1000 Genomes marker set: 100k (default) or 10k, faster and noisier, for low coverage. One of: `100k`, `10k` |
+| `svd_prefix` | `str \| None` | `None` | `--svd-prefix` | Your own VerifyBamID2 resource prefix (``<prefix>.UD``, ``.mu``, ``.bed``, ``.V``); any build is then accepted. None uses the bundled 1000 Genomes resources for the input's build. |
+
 ### `api.qc.relate(RelateParams)`
 
 CLI: `wgsextract qc relate`.

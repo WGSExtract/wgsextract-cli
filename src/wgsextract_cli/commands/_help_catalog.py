@@ -550,6 +550,11 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract qc relate child.cram mother.cram father.cram --ped trio.ped",
         "wgsextract qc relate me.cram somalier/cousin.somalier --no-ancestry",
     ),
+    "qc contamination": _h(
+        "<stem>.contamination.selfSM (FREEMIX) and <stem>.contamination.Ancestry.",
+        "wgsextract qc contamination --input sample.cram",
+        "wgsextract qc contamination --input sample.bam --sites 10k",
+    ),
     "qc fake-data": _h(
         "fake.cram, fake.bam, fake.vcf or fake_R1/_R2.fastq.gz, and the fake "
         "reference.",
