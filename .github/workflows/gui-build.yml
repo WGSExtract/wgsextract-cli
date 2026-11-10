@@ -35,20 +35,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        artifact_name: [tauri-linux, tauri-macos-arm64, tauri-macos-x64, tauri-windows]
         exclude: ${{ fromJSON(inputs.exclude) }}
         include:
-          - os: linux
+          - artifact_name: tauri-linux
+            os: linux
             runner: ubuntu-24.04
-            artifact_name: tauri-linux
-          - os: macos
+          - artifact_name: tauri-macos-arm64
+            os: macos
             runner: macos-latest
-            artifact_name: tauri-macos-arm64
-          - os: macos
+          - artifact_name: tauri-macos-x64
+            os: macos
             runner: macos-15-intel
-            artifact_name: tauri-macos-x64
-          - os: windows
+          - artifact_name: tauri-windows
+            os: windows
             runner: windows-latest
-            artifact_name: tauri-windows
     defaults:
       run:
         working-directory: gui
