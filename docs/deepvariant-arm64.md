@@ -74,7 +74,7 @@ for short reads, or an x86-64 host.
 `docker save` / `docker load`. The image uses generic AArch64 code (TensorFlow
 and oneDNN choose kernels at run time, and the build adds no `-march`), which
 the Apple M-series cores run; this has not yet been run on a Mac. Give Docker
-Desktop's VM enough memory for `call_variants` (about 27 GB at the default
+Desktop's VM enough memory for `call_variants` (about 26 GiB at the default
 batch size; see `--batch-size` below), since the CLI caps its plan by the VM's
 memory, not the Mac's. Native Apple-GPU options are researched in #647.
 
