@@ -1,0 +1,174 @@
+
+/* wgse: ksw_extend2() with each row's cells computed eight at a time in 16-bit
+ * NEON lanes, with upstream's exact results. Within a row only F carries from
+ * one cell to the next, F(j+1) = max(F(j) - e_ins, max(M(j) - oe_ins, 0)), which
+ * is solved as a max-plus prefix scan; the band, the first column, the row's
+ * maximum and the last column reaching it, and z-drop are upstream's code.
+ * Calls whose scores could exceed 16 bits use upstream's code. */
+#include <arm_neon.h>
+
+/* Whether every H, E, F and M of the call fits int16 with room for the scan. */
+int wgse_extend_fits(int qlen, int m, const int8_t *mat, int o_del, int e_del,
+	int o_ins, int e_ins, int h0)
+{
+	int i, max = 0;
+	if (qlen < 16 || qlen > 4096 || m < 1 || m > 16 || h0 <= 0) return 0;
+	if (o_del < 0 || o_ins < 0 || e_del <= 0 || e_ins <= 0 || o_del + e_del > 2000
+		|| o_ins + e_ins > 2000 || e_del > 2000 || e_ins > 2000) return 0;
+	for (i = 0; i < m * m; ++i) max = max > mat[i]? max : mat[i];
+	/* H never exceeds h0 plus a match score per query base. */
+	return (int64_t)h0 + (int64_t)qlen * max <= 16000;
+}
+
+static int wgse_ksw_extend2_neon(int qlen, const uint8_t *query, int tlen, const uint8_t *target,
+	int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus,
+	int zdrop, int h0, int *_qle, int *_tle, int *_gtle, int *_gscore, int *_max_off)
+{
+	enum { stack_qlen = 512 };
+	int16_t stack_qp[5 * stack_qlen], stack_h[stack_qlen + 1], stack_e[stack_qlen + 1];
+	int16_t *qp = stack_qp, *H = stack_h, *E = stack_e;
+	int i, j, k, oe_del = o_del + e_del, oe_ins = o_ins + e_ins, beg, end, max, max_i, max_j,
+		max_ins, max_del, max_ie, gscore, max_off;
+	const int16x8_t zero = vdupq_n_s16(0), floor_ = vdupq_n_s16(INT16_MIN);
+	const int16x8_t v_e_del = vdupq_n_s16(e_del), v_oe_del = vdupq_n_s16(oe_del);
+	const int16x8_t v_oe_ins = vdupq_n_s16(oe_ins), v_e1 = vdupq_n_s16(e_ins);
+	const int16x8_t v_e2 = vdupq_n_s16(2 * e_ins), v_e4 = vdupq_n_s16(4 * e_ins);
+	const int16x8_t v_e8 = vdupq_n_s16(8 * e_ins);
+	const int16x8_t lanes = {0, 1, 2, 3, 4, 5, 6, 7}, decay = vmulq_n_s16(lanes, e_ins);
+	if (qlen > stack_qlen || m > 5) {
+		qp = malloc((size_t)qlen * m * sizeof(int16_t));
+		H = malloc((size_t)(qlen + 1) * sizeof(int16_t));
+		E = malloc((size_t)(qlen + 1) * sizeof(int16_t));
+	}
+	/* the query profile */
+	for (k = i = 0; k < m; ++k) {
+		const int8_t *p = &mat[k * m];
+		for (j = 0; j < qlen; ++j) qp[i++] = p[query[j]];
+	}
+	/* the first row */
+	memset(H, 0, (size_t)(qlen + 1) * sizeof(int16_t));
+	memset(E, 0, (size_t)(qlen + 1) * sizeof(int16_t));
+	H[0] = h0; H[1] = h0 > oe_ins? h0 - oe_ins : 0;
+	for (j = 2; j <= qlen && H[j-1] > e_ins; ++j)
+		H[j] = H[j-1] - e_ins;
+	/* adjust $w if it is too large */
+	k = m * m;
+	for (i = 0, max = 0; i < k; ++i)
+		max = max > mat[i]? max : mat[i];
+	max_ins = (int)((double)(qlen * max + end_bonus - o_ins) / e_ins + 1.);
+	max_ins = max_ins > 1? max_ins : 1;
+	w = w < max_ins? w : max_ins;
+	max_del = (int)((double)(qlen * max + end_bonus - o_del) / e_del + 1.);
+	max_del = max_del > 1? max_del : 1;
+	w = w < max_del? w : max_del;
+	/* DP loop */
+	max = h0, max_i = max_j = -1; max_ie = -1, gscore = -1;
+	max_off = 0;
+	beg = 0, end = qlen;
+	for (i = 0; i < tlen; ++i) {
+		int t, f = 0, h1, mrow = 0, mj = -1;
+		const int16_t *q = &qp[target[i] * qlen];
+		if (beg < i - w) beg = i - w;
+		if (end > i + w + 1) end = i + w + 1;
+		if (end > qlen) end = qlen;
+		if (beg == 0) {
+			h1 = h0 - (o_del + e_del * (i + 1));
+			if (h1 < 0) h1 = 0;
+		} else h1 = 0;
+		j = beg;
+		if (end - beg >= 8) {
+			int16x8_t last = vdupq_n_s16((int16_t)h1), vmax = zero, vidx = vdupq_n_s16(-1);
+			/* F at the first column of the next eight, in every lane */
+			int16x8_t carry = zero;
+			int16x8_t column = vaddq_s16(vdupq_n_s16((int16_t)beg), lanes);
+			for (; j + 8 <= end; j += 8) {
+				const int16x8_t hp = vld1q_s16(H + j), e = vld1q_s16(E + j);
+				/* M = H(i-1,j-1)? H(i-1,j-1) + S(i,j) : 0 */
+				const int16x8_t M = vandq_s16(vaddq_s16(hp, vld1q_s16(q + j)),
+					vreinterpretq_s16_u16(vtstq_s16(hp, hp)));
+				const int16x8_t tins = vmaxq_s16(vsubq_s16(M, v_oe_ins), zero);
+				/* F of these eight cells: the max-plus prefix scan of the earlier
+				 * cells' max(M - oe_ins, 0), then the decayed F carried in */
+				int16x8_t scan = vextq_s16(floor_, tins, 7);
+				scan = vmaxq_s16(scan, vqsubq_s16(vextq_s16(floor_, scan, 7), v_e1));
+				scan = vmaxq_s16(scan, vqsubq_s16(vextq_s16(floor_, scan, 6), v_e2));
+				scan = vmaxq_s16(scan, vqsubq_s16(vextq_s16(floor_, scan, 4), v_e4));
+				const int16x8_t fv = vmaxq_s16(scan, vsubq_s16(carry, decay));
+				const int16x8_t h = vmaxq_s16(vmaxq_s16(M, e), fv);
+				carry = vmaxq_s16(vdupq_laneq_s16(vmaxq_s16(vqsubq_s16(scan, v_e1), tins), 7),
+					vsubq_s16(carry, v_e8));
+				/* H(i,j-1) for the next row, and E(i+1,j) */
+				vst1q_s16(H + j, vextq_s16(last, h, 7));
+				last = h;
+				vst1q_s16(E + j, vmaxq_s16(vsubq_s16(e, v_e_del),
+					vmaxq_s16(vsubq_s16(M, v_oe_del), zero)));
+				/* each lane's maximum and the last column reaching it */
+				vidx = vbslq_s16(vcgeq_s16(h, vmax), column, vidx);
+				vmax = vmaxq_s16(vmax, h);
+				column = vaddq_s16(column, vdupq_n_s16(8));
+			}
+			h1 = vgetq_lane_s16(last, 7);
+			f = vgetq_lane_s16(carry, 0);
+			mrow = vmaxvq_s16(vmax);
+			mj = vmaxvq_s16(vbslq_s16(vceqq_s16(vmax, vdupq_n_s16((int16_t)mrow)), vidx,
+				vdupq_n_s16(-1)));
+		}
+		for (; j < end; ++j) {
+			int h, M = H[j], e = E[j];
+			H[j] = h1;
+			M = M? M + q[j] : 0;
+			h = M > e? M : e;
+			h = h > f? h : f;
+			h1 = h;
+			mj = mrow > h? mj : j;
+			mrow = mrow > h? mrow : h;
+			t = M - oe_del;
+			t = t > 0? t : 0;
+			e -= e_del;
+			e = e > t? e : t;
+			E[j] = e;
+			t = M - oe_ins;
+			t = t > 0? t : 0;
+			f -= e_ins;
+			f = f > t? f : t;
+		}
+		H[end] = h1; E[end] = 0;
+		if (j == qlen) {
+			max_ie = gscore > h1? max_ie : i;
+			gscore = gscore > h1? gscore : h1;
+		}
+		if (mrow == 0) break;
+		if (mrow > max) {
+			max = mrow, max_i = i, max_j = mj;
+			max_off = max_off > abs(mj - i)? max_off : abs(mj - i);
+		} else if (zdrop > 0) {
+			if (i - max_i > mj - max_j) {
+				if (max - mrow - ((i - max_i) - (mj - max_j)) * e_del > zdrop) break;
+			} else {
+				if (max - mrow - ((mj - max_j) - (i - max_i)) * e_ins > zdrop) break;
+			}
+		}
+		for (j = beg; j < end && H[j] == 0 && E[j] == 0; ++j);
+		beg = j;
+		for (j = end; j >= beg && H[j] == 0 && E[j] == 0; --j);
+		end = j + 2 < qlen? j + 2 : qlen;
+	}
+	if (qp != stack_qp) free(qp), free(H), free(E);
+	if (_qle) *_qle = max_j + 1;
+	if (_tle) *_tle = max_i + 1;
+	if (_gtle) *_gtle = max_ie + 1;
+	if (_gscore) *_gscore = gscore;
+	if (_max_off) *_max_off = max_off;
+	return max;
+}
+
+int ksw_extend2(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m,
+	const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int zdrop,
+	int h0, int *qle, int *tle, int *gtle, int *gscore, int *max_off)
+{
+	if (wgse_fast_cpu() && wgse_extend_fits(qlen, m, mat, o_del, e_del, o_ins, e_ins, h0))
+		return wgse_ksw_extend2_neon(qlen, query, tlen, target, m, mat, o_del, e_del, o_ins,
+			e_ins, w, end_bonus, zdrop, h0, qle, tle, gtle, gscore, max_off);
+	return wgse_ksw_extend2_upstream(qlen, query, tlen, target, m, mat, o_del, e_del, o_ins,
+		e_ins, w, end_bonus, zdrop, h0, qle, tle, gtle, gscore, max_off);
+}

@@ -2,6 +2,7 @@
 #include "extend_engine.h"
 #include "rescue_engine.h"
 #include "seeding_engine.h"
+#include "smem_batch.h"
 
 #include <algorithm>
 #include <atomic>
@@ -1324,9 +1325,15 @@ extern "C" int wgse_fast_cpu(void) {
     return enabled || !cpu_upstream;
 }
 
+namespace {
+int map_on_cpu(const mem_opt_t *opt, const bwt_t *bwt, int n, bseq1_t *seqs,
+    void (*worker)(void *, long, int), void *data);
+} // namespace
+
 extern "C" int wgse_metal_map(const mem_opt_t *opt, const bwt_t *bwt, int n,
     bseq1_t *seqs, void (*worker)(void *, long, int), void *data) {
-    if (!enabled || !usable) return 0;
+    if (!enabled) return map_on_cpu(opt, bwt, n, seqs, worker, data);
+    if (!usable) return 0;
     // Upstream accepts wider or negative seeding parameters than the GPU's
     // 32-bit representation. Keep their CPU semantics instead of narrowing them.
     double split = double(opt->min_seed_len) * opt->split_factor + .499;
@@ -1375,7 +1382,8 @@ extern "C" int wgse_metal_pair(const mem_opt_t *opt, const bntseq_t *bns, const 
     void (*worker)(void *, long, int), void *data) {
     RescueParameters parameters;
     if (!enabled) {
-        if (cpu_upstream || !(opt->flag & MEM_F_PE) || (opt->flag & MEM_F_NO_RESCUE)) return 0;
+        if (cpu_upstream || !cpu_rescue_batching || !(opt->flag & MEM_F_PE)
+            || (opt->flag & MEM_F_NO_RESCUE)) return 0;
         CpuPair pair{opt, bns, pac, pes, seqs, regs, worker, data};
         kt_for(opt->n_threads, cpu_pair_worker, &pair, n >> 1);
         return 1;
@@ -1606,6 +1614,94 @@ void locate_on_cpu(const bwt_t *bwt, const mem_opt_t *opt, const bwtintv_t *begi
     locate_rows(bwt, cpu_rows.data(), cpu_positions.data(), count);
     cpu_located_rows.fetch_add(count, std::memory_order_relaxed);
     cursor = {cpu_rows.data(), cpu_positions.data(), 0, count};
+}
+
+// worker1 for the CPU backend, a block of pairs (or single reads) at a time:
+// seeds every read of the block, locates all their rows in one interleaved
+// walk, then runs upstream's worker1 on each pair with those intervals and
+// positions (wgse_metal_take()), as with GPU seeding.
+struct CpuMap {
+    const mem_opt_t *opt;
+    const bwt_t *bwt;
+    bseq1_t *seqs;
+    void (*worker)(void *, long, int);
+    void *data;
+    long items;
+    int stride;
+};
+constexpr long cpu_map_block = 8;
+
+struct CpuMapScratch {
+    std::vector<Intervals> intervals;
+    std::vector<Prepared> prepared;
+    std::vector<uint64_t> rows, positions;
+    std::vector<size_t> offsets;
+    std::vector<wgse::smem::Read> walks;
+};
+thread_local CpuMapScratch cpu_map_scratch;
+
+void cpu_map_worker(void *context, long block, int tid) {
+    const CpuMap &m = *static_cast<const CpuMap *>(context);
+    CpuMapScratch &s = cpu_map_scratch;
+    const long first = block * cpu_map_block, last = std::min(m.items, first + cpu_map_block);
+    const size_t reads = size_t(last - first) * size_t(m.stride);
+    s.intervals.resize(reads);
+    s.prepared.assign(reads, Prepared{nullptr, nullptr, nullptr, 0});
+    s.rows.clear();
+    s.walks.clear();
+    for (size_t r = 0; r < reads; ++r) {
+        bseq1_t &seq = m.seqs[size_t(first) * size_t(m.stride) + r];
+        // mem_chain() seeds nothing for these.
+        if (seq.l_seq < m.opt->min_seed_len) continue;
+        // In place, as mem_align1_core() does.
+        uint8_t *bases = reinterpret_cast<uint8_t *>(seq.seq);
+        for (int i = 0; i < seq.l_seq; ++i)
+            bases[i] = bases[i] < 4 ? bases[i] : nst_nt4_table[bases[i]];
+        s.walks.push_back({bases, seq.l_seq, &s.intervals[r]});
+        s.prepared[r].intervals = &s.intervals[r];
+    }
+    wgse::smem::collect(m.opt, m.bwt, s.walks.data(), s.walks.size());
+    std::vector<size_t> &offsets = s.offsets;
+    offsets.assign(reads + 1, 0);
+    for (size_t r = 0; r < reads; ++r) {
+        offsets[r] = s.rows.size();
+        if (!s.prepared[r].intervals) continue;
+        const bwtintv_t *p = s.intervals[r].data(), *end = p + s.intervals[r].size();
+        const size_t bound = row_count(p, end, m.opt->max_occ);
+        if (m.opt->max_occ > 0 && bound && bound <= cpu_locate_max_rows)
+            append_rows(p, end, m.opt->max_occ, s.rows);
+    }
+    offsets[reads] = s.rows.size();
+    s.positions.resize(s.rows.size());
+    locate_rows(m.bwt, s.rows.data(), s.positions.data(), s.rows.size());
+    cpu_located_rows.fetch_add(s.rows.size(), std::memory_order_relaxed);
+    for (size_t r = 0; r < reads; ++r) {
+        if (offsets[r + 1] == offsets[r]) continue;
+        s.prepared[r].rows = s.rows.data() + offsets[r];
+        s.prepared[r].positions = s.positions.data() + offsets[r];
+        s.prepared[r].count = offsets[r + 1] - offsets[r];
+    }
+    for (long item = first; item < last; ++item) {
+        current = {};
+        for (int mate = 0; mate < m.stride; ++mate) {
+            const size_t r = size_t(item - first) * size_t(m.stride) + size_t(mate);
+            if (!s.prepared[r].intervals) continue;
+            current.seq[mate] = reinterpret_cast<const uint8_t *>(
+                m.seqs[size_t(item) * size_t(m.stride) + size_t(mate)].seq);
+            current.prepared[mate] = &s.prepared[r];
+        }
+        m.worker(m.data, item, tid);
+        finish_cursor();
+    }
+    current = {};
+}
+
+int map_on_cpu(const mem_opt_t *opt, const bwt_t *bwt, int n, bseq1_t *seqs,
+    void (*worker)(void *, long, int), void *data) {
+    if (cpu_upstream || bwa_verbose >= 4) return 0;
+    CpuMap m{opt, bwt, seqs, worker, data, long(n / stride(opt)), stride(opt)};
+    kt_for(opt->n_threads, cpu_map_worker, &m, (m.items + cpu_map_block - 1) / cpu_map_block);
+    return 1;
 }
 } // namespace
 

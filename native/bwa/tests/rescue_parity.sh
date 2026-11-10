@@ -113,6 +113,92 @@ test "$(metric fast-capped.log rescue_cpu_hits)" -gt 0
     2> upstream-single.log
 same upstream-single.sam fast-single.sam
 test "$(metric fast-single.log cpu_located_rows)" -gt 0
+cpu_parity flags -t 4 -M -Y
+# Asymmetric gaps, clipping penalties, band and z-drop (PR #596 review).
+cpu_parity scoring -t 4 -A 3 -B 5 -O 8,9 -E 2,1 -L 0,30 -w 20 -d 50
+# Regression (PR #581 review): --cpu-rescue-batch off leaves rescue to upstream.
+"$aligner" --cpu-rescue-batch off mem -t 4 reference.fa pairs-R1.fq pairs-R2.fq \
+    > fast-nobatch.sam 2> fast-nobatch.log
+same upstream-t4.sam fast-nobatch.sam
+test "$(metric fast-nobatch.log rescue_cpu_jobs)" -eq 0
+# Interleaved pairs (-p).
+paste -d '\n' pairs-R1.fq pairs-R2.fq | paste - - - - - - - - \
+    | awk -F '\t' '{ for (i = 1; i <= 8; i += 2) print $i; for (i = 2; i <= 8; i += 2) print $i }' \
+    > pairs-interleaved.fq
+"$aligner" mem -t 4 -p reference.fa pairs-interleaved.fq > fast-interleaved.sam 2> fast-interleaved.log
+"$aligner" --cpu-upstream mem -t 4 -p reference.fa pairs-interleaved.fq \
+    > upstream-interleaved.sam 2> upstream-interleaved.log
+same upstream-interleaved.sam fast-interleaved.sam
+test "$(metric fast-interleaved.log rescue_cpu_hits)" -gt 1000
+# -p with some unpaired reads, which smart pairing maps as single-end (PR #596 review):
+# drop the second mate of every tenth pair.
+awk '/^@pair[0-9]*0\/2$/ { skip = 4 } skip { --skip; next } { print }' pairs-interleaved.fq \
+    > mixed-interleaved.fq
+"$aligner" mem -t 4 -p reference.fa mixed-interleaved.fq > fast-mixed.sam 2> /dev/null
+"$aligner" --cpu-upstream mem -t 4 -p reference.fa mixed-interleaved.fq > upstream-mixed.sam \
+    2> /dev/null
+same upstream-mixed.sam fast-mixed.sam
+test "$(grep -v '^@' fast-mixed.sam | awk '$2 % 2 == 0' | wc -l)" -gt 100
+# Regression (PR #581 review): aln, samse, sampe and bwasw also unpack the
+# reference with the CPU backend's NEON code.
+for mode in fast upstream; do
+    option=
+    test "$mode" = upstream && option=--cpu-upstream
+    "$aligner" $option aln -t 4 reference.fa pairs-R1.fq > "$mode-1.sai" 2> /dev/null
+    "$aligner" $option aln -t 4 reference.fa pairs-R2.fq > "$mode-2.sai" 2> /dev/null
+    "$aligner" $option samse reference.fa "$mode-1.sai" pairs-R1.fq > "$mode-samse.sam" 2> /dev/null
+    "$aligner" $option sampe reference.fa "$mode-1.sai" "$mode-2.sai" pairs-R1.fq pairs-R2.fq \
+        > "$mode-sampe.sam" 2> /dev/null
+    # Upstream bwasw breaks ties between repeat copies differently with threads.
+    "$aligner" $option bwasw -t 1 reference.fa pairs-R1.fq > "$mode-bwasw.sam" 2> /dev/null
+done
+for mode in samse sampe bwasw; do
+    same "upstream-$mode.sam" "fast-$mode.sam"
+    test "$(grep -vc '^@' "fast-$mode.sam")" -gt 1000
+done
+
+# The CPU backend seeds blocks of reads with their FM-index walks interleaved
+# (smem_batch.cpp). Reads of 1 to 900 bp (and some of 5000) from the repeat copies, tandem and
+# homopolymer runs, with mismatches and Ns, through all three of
+# mem_collect_intv()'s passes (-y enables the third).
+awk 'BEGIN {
+    srand(543)
+    split("A C G T", base, " ")
+    getline < "reference.fa"
+    getline ref < "reference.fa"
+    for (i = 1; i <= 300; ++i) tandem = tandem "ACGT"
+    for (i = 1; i <= 1200; ++i) homo = homo "A"
+    split("1 18 19 20 31 32 33 76 151 250 511 900", lengths, " ")
+    for (r = 1; r <= 3000; ++r) {
+        n = lengths[1 + r % 12]
+        # Longer than the NEON ksw_extend2 limit (4096 bp).
+        if (r % 250 == 0) n = 5000
+        start = r % 4 == 0 ? 39000 + int(rand() * 6000) : 1 + int(rand() * (length(ref) - n))
+        seq = substr(ref, start, n)
+        if (r % 7 == 0) seq = substr(seq, 1, n / 2) substr(tandem, 1 + r % 4, n - int(n / 2))
+        if (r % 11 == 0) seq = substr(homo, 1, n / 3) substr(seq, 1, n - int(n / 3))
+        if (r % 3 == 0)
+            for (i = 15; i < n; i += 23) seq = substr(seq, 1, i - 1) base[int(rand() * 4) + 1] substr(seq, i + 1)
+        if (r % 5 == 0)
+            for (i = 1 + r % 17; i <= n; i += 37) seq = substr(seq, 1, i - 1) "N" substr(seq, i + 1)
+        qual = ""
+        for (i = 1; i <= length(seq); ++i) qual = qual "I"
+        printf "@read%d\n%s\n+\n%s\n", r, seq, qual > "seeds.fq"
+    }
+}'
+seed_parity() {
+    name=$1
+    shift
+    "$aligner" mem -t 4 "$@" reference.fa seeds.fq > "fast-seeds-$name.sam" 2> /dev/null
+    "$aligner" --cpu-upstream mem -t 4 "$@" reference.fa seeds.fq > "upstream-seeds-$name.sam" \
+        2> /dev/null
+    same "upstream-seeds-$name.sam" "fast-seeds-$name.sam"
+    test "$(grep -v '^@' "fast-seeds-$name.sam" | awk '$2 < 256 && $3 != "*"' | wc -l)" -gt 1000
+}
+seed_parity default
+seed_parity split -k 15 -r 0.6
+seed_parity third -k 17 -y 30
+seed_parity wide -k 25 -r 3 -c 50
 
 # Skip (77) only on machines without supported Metal hardware.
 "$aligner" capabilities --json > capabilities.json
@@ -124,7 +210,7 @@ fi
 run() {
     name=$1
     shift
-    "$aligner" mem "$@" reference.fa pairs-R1.fq pairs-R2.fq > "cpu-$name.sam" 2> "cpu-$name.log"
+    "$aligner" --cpu-upstream mem "$@" reference.fa pairs-R1.fq pairs-R2.fq > "cpu-$name.sam" 2> "cpu-$name.log"
     "$aligner" --gpu-policy all --gpu-rescue-batch 7 --metal mem "$@" reference.fa \
         pairs-R1.fq pairs-R2.fq > "metal-$name.sam" 2> "metal-$name.log"
     same "cpu-$name.sam" "metal-$name.sam"
@@ -134,7 +220,7 @@ run() {
 # Each GPU result is compared with upstream ksw_align2 for the same inputs.
 "$aligner" --gpu-policy all --gpu-rescue-batch 7 --gpu-rescue-verify --metal mem -t 4 \
     reference.fa pairs-R1.fq pairs-R2.fq > verify.sam 2> verify.log
-"$aligner" mem -t 4 reference.fa pairs-R1.fq pairs-R2.fq > cpu.sam 2> cpu.log
+"$aligner" --cpu-upstream mem -t 4 reference.fa pairs-R1.fq pairs-R2.fq > cpu.sam 2> cpu.log
 same cpu.sam verify.sam
 # Rescue windows cover every orientation BWA infers from the pairs.
 for orientation in FF FR RF; do
@@ -205,7 +291,7 @@ awk 'BEGIN {
         printf "@sat%d/2\n%s\n+\n%s\n", p, two, q2 > "sat-R2.fq"
     }
 }'
-"$aligner" mem -t 4 -k 160 -B 120 -I 400,40 reference.fa sat-R1.fq sat-R2.fq \
+"$aligner" --cpu-upstream mem -t 4 -k 160 -B 120 -I 400,40 reference.fa sat-R1.fq sat-R2.fq \
     > cpu-saturate.sam 2> cpu-saturate.log
 "$aligner" --gpu-policy all --metal mem -t 4 -k 160 -B 120 -I 400,40 reference.fa \
     sat-R1.fq sat-R2.fq > metal-saturate.sam 2> metal-saturate.log

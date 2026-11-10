@@ -8,7 +8,7 @@ FetchContent_Declare(bwa
 FetchContent_MakeAvailable(bwa)
 
 # Bump when the wgse-bwa package changes; it is versioned separately from BWA.
-set(WGSE_BWA_VERSION 0.8.0)
+set(WGSE_BWA_VERSION 0.9.0)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${generated}")
 include("${CMAKE_CURRENT_SOURCE_DIR}/upstream_seams.cmake")
@@ -40,8 +40,15 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/rescue_types.h" "${CMAKE_CURRENT_SOURCE_DIR}/rescue.metal")
 configure_file(seeding_source.h.in "${generated}/seeding_source.h" @ONLY)
 
+# The CPU backend's interleaved seeding runs each read as a C++20 coroutine.
+add_library(wgse_bwa_smem OBJECT smem_batch.cpp)
+set_target_properties(wgse_bwa_smem PROPERTIES CXX_STANDARD 20)
+target_include_directories(wgse_bwa_smem PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${generated}")
+target_include_directories(wgse_bwa_smem SYSTEM PRIVATE "${bwa_SOURCE_DIR}")
+target_compile_options(wgse_bwa_smem PRIVATE -Wall -Wextra -Werror)
+
 # BWA plus the Metal seeding backend, shared by the executable and the tests.
-add_library(wgse_bwa_core STATIC ${bwa_sources} metal_backend.mm)
+add_library(wgse_bwa_core STATIC ${bwa_sources} metal_backend.mm $<TARGET_OBJECTS:wgse_bwa_smem>)
 target_include_directories(wgse_bwa_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" "${generated}")
 target_include_directories(wgse_bwa_core SYSTEM PUBLIC "${bwa_SOURCE_DIR}")
 target_compile_definitions(wgse_bwa_core PRIVATE
@@ -80,6 +87,10 @@ if(BUILD_TESTING)
     target_compile_options(ksw_batch_check PRIVATE -Wall -Wextra -Werror)
     target_link_libraries(ksw_batch_check PRIVATE wgse_bwa_core)
     add_test(NAME bwa_ksw_batch COMMAND ksw_batch_check)
+    add_executable(extend_neon_check tests/extend_neon_check.c)
+    target_compile_options(extend_neon_check PRIVATE -Wall -Wextra -Werror)
+    target_link_libraries(extend_neon_check PRIVATE wgse_bwa_core)
+    add_test(NAME bwa_extend_neon COMMAND extend_neon_check 200000)
     add_test(NAME bwa_metal_rescue_parity
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/rescue_parity.sh"
         $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/rescue-parity")

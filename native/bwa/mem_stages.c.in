@@ -53,3 +53,9 @@ void wgse_mem_pair(void *mapped)
 		fprintf(stderr, "[M::%s] Processed %d reads in %.3f CPU sec, %.3f real sec\n", "mem_process_seqs", n, cputime() - m->ctime, realtime() - m->rtime);
 	free(m);
 }
+
+/* wgse: mem_collect_intv()'s final sort, for the interleaved CPU seeding (smem_batch.cpp). */
+void wgse_sort_intervals(size_t n, bwtintv_t *a)
+{
+	ks_introsort(mem_intv, n, a);
+}
