@@ -14,12 +14,14 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import uuid
 from dataclasses import dataclass
 from functools import lru_cache
 from http.client import HTTPException
 from os import fspath
 from pathlib import Path
+from typing import BinaryIO
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
@@ -32,6 +34,7 @@ _TIMEOUT = 60
 _INDEX_SUFFIXES = {".cram": (".crai",), ".bam": (".bai", ".csi")}
 # An index is a few MB even for a whole genome; more is the wrong file.
 _MAX_INDEX_BYTES = 256 * 1024**2
+_COPY_BUFFER = 8 * 1024 * 1024
 
 
 def is_url(path: PathInput | None) -> bool:
@@ -149,6 +152,66 @@ def fetch_index(url: str, directory: PathInput) -> str | None:
         atomic_write(local, data)
         return str(local)
     return None
+
+
+def copy_range(path: str, start: int, end: int | None, output: BinaryIO) -> None:
+    """Copy bytes ``start`` to ``end`` (None: to the end) of a local file or
+    a URL (by an HTTP range request) into ``output``, failing unless all of
+    them arrive: the range the server says it sends (Content-Range) must be
+    the one asked for, and must arrive whole."""
+    if not is_url(path):
+        with open(path, "rb") as handle:
+            handle.seek(start)
+            copied = _copy(handle, output, None if end is None else end - start)
+        if end is not None and copied != end - start:
+            raise WGSExtractError(f"{path} ended {end - start - copied} bytes early.")
+        return
+    span = f"bytes={start}-{'' if end is None else end - 1}"
+    try:
+        with urlopen(
+            Request(path, headers={"Range": span}), timeout=_TIMEOUT
+        ) as response:
+            sent = _content_range(response.headers.get("Content-Range"))
+            if response.status != 206 or sent is None:
+                raise WGSExtractError(
+                    f"{shown(path)} didn't answer a range request with the "
+                    f"range (HTTP {response.status})."
+                )
+            first, last, total = sent
+            if first != start or last != (total if end is None else end) - 1:
+                raise WGSExtractError(
+                    f"{shown(path)} sent bytes {first}-{last} of {total}, "
+                    f"not the {span} asked for."
+                )
+            copied = _copy(response, output, last - first + 1)
+    except (URLError, OSError, ValueError, HTTPException) as error:
+        raise WGSExtractError(f"Can't read {shown(path)}: {error}") from error
+    if copied != last - first + 1:
+        raise WGSExtractError(
+            f"{shown(path)} sent {copied} of the {last - first + 1} bytes asked for."
+        )
+
+
+def _content_range(header: str | None) -> tuple[int, int, int] | None:
+    """(first, last, total) of a ``bytes FIRST-LAST/TOTAL`` Content-Range."""
+    match = re.fullmatch(r"\s*bytes\s+(\d+)-(\d+)/(\d+)\s*", header or "")
+    if not match:
+        return None
+    first, last, total = (int(group) for group in match.groups())
+    return first, last, total
+
+
+def _copy(source: BinaryIO, output: BinaryIO, limit: int | None) -> int:
+    """Copy up to ``limit`` bytes (None: all); the bytes copied."""
+    copied = 0
+    while limit is None or copied < limit:
+        want = _COPY_BUFFER if limit is None else min(_COPY_BUFFER, limit - copied)
+        block = source.read(want)
+        if not block:
+            break
+        output.write(block)
+        copied += len(block)
+    return copied
 
 
 def with_index(url: str, index: str) -> str:

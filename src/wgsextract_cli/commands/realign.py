@@ -28,6 +28,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urlsplit
 
 from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api.align import RealignParams
@@ -591,7 +592,13 @@ def _align_step(
             **({"fast": True} if job.fast else {}),
         },
         tools=_align_tools(aligner, job.platform, bool(job.gpu)),
+        # 2: a CRAM's chunked realign could drop unplaced reads (#655).
+        version=2 if aligner == "minimap2" and _is_cram(job.input) else 1,
     )
+
+
+def _is_cram(path: str) -> bool:
+    return urlsplit(path).path.lower().endswith(".cram")
 
 
 def _index_path(out_path: str) -> str:

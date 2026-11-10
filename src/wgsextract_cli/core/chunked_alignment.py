@@ -40,6 +40,7 @@ from typing import Any
 from wgsextract_cli.core import alignment_splice
 from wgsextract_cli.core.atomic_output import atomic_write
 from wgsextract_cli.core.reference_assets import header_sequences
+from wgsextract_cli.core.remote_input import copy_range, is_url
 from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import (
@@ -49,7 +50,7 @@ from wgsextract_cli.core.utils import (
     run_pipeline,
 )
 
-SCHEMA = "wgsextract.chunked-alignment/2"
+SCHEMA = "wgsextract.chunked-alignment/3"
 DEFAULT_CHUNK_SIZE = "4G"
 # The output's contigs are split into about this many groups (and one of
 # the unmapped reads): the largest, sorted beside the output, bounds the
@@ -85,6 +86,17 @@ class Region:
 
 
 Chunk = tuple[Region, ...]
+# samtools filter expression for the unplaced reads.
+_UNPLACED = 'rname=="*"'
+
+
+def _idxstats_unplaced(path: str, threads: str) -> int:
+    """The alignment's unplaced reads, as samtools idxstats counts them."""
+    lines = run_command(
+        ["samtools", "idxstats", "-@", threads, path], capture_output=True
+    ).stdout.splitlines()
+    rows = [line.split("\t") for line in lines]
+    return sum(int(row[3]) for row in rows if len(row) == 4 and row[0] == "*")
 
 
 def chunk_filter(chunk: Chunk) -> list[str]:
@@ -106,6 +118,26 @@ def describe(chunk: Chunk) -> str:
 Segments = dict[str, list[tuple[int, int]]]
 
 
+def _crai_rows(index: str) -> list[list[int]]:
+    with open(index, "rb") as handle:
+        data = handle.read()
+    text = gzip.decompress(data) if data[:2] == b"\x1f\x8b" else data
+    lines = [line.split() for line in text.decode().splitlines()]
+    return [[int(field) for field in line[:6]] for line in lines if len(line) >= 6]
+
+
+def crai_unplaced(index: str) -> tuple[int, int] | None:
+    """Where a coordinate-sorted CRAM's records start (its first container)
+    and the first container holding unplaced reads, from its index; None
+    when it has none. Every container from there to the end holds only
+    unplaced reads, but the first may also hold the last contig's."""
+    rows = _crai_rows(index)
+    unplaced = [row[3] for row in rows if row[0] < 0]
+    if not unplaced:
+        return None
+    return min(row[3] for row in rows), min(unplaced)
+
+
 def _crai_segments(index: str, names: Sequence[str]) -> tuple[Segments, int] | None:
     """Each contig's (position, bytes) slices, and the unmapped reads' bytes,
     from a CRAM index (gzipped or not): one line per slice and reference,
@@ -113,11 +145,7 @@ def _crai_segments(index: str, names: Sequence[str]) -> tuple[Segments, int] | N
     offset, slice offset and slice size. None when the slices are out of
     coordinate order, whatever the header says: reading such a CRAM by
     region misses reads."""
-    with open(index, "rb") as handle:
-        data = handle.read()
-    text = gzip.decompress(data) if data[:2] == b"\x1f\x8b" else data
-    lines = [line.split() for line in text.decode().splitlines()]
-    rows = [[int(field) for field in line[:6]] for line in lines if len(line) >= 6]
+    rows = _crai_rows(index)
     # A slice holding several references has a row for each, each with the
     # whole slice's size.
     shared: dict[tuple[int, int], int] = {}
@@ -403,6 +431,7 @@ class ChunkedAlignment:
         state = self._state(groups)
         if not state.get("done"):
             if len(state["chunks"]) < len(self.chunks):
+                self._preflight()
                 index = self._index(state)
                 for number, chunk in enumerate(self.chunks):
                     self._align_chunk(state, number, chunk, groups, index)
@@ -548,6 +577,87 @@ class ChunkedAlignment:
             stale.unlink(missing_ok=True)
         return path
 
+    def _cram_source(self) -> tuple[str, str] | None:
+        """A CRAM input's path or URL and its index; None for a BAM."""
+        source, _, index = self.input.partition("##idx##")
+        if not source.lower().endswith(".cram"):
+            return None
+        return source, index or alignment_index(source) or ""
+
+    def _stage_unplaced(self, name: str) -> Path | None:
+        """A CRAM of the CRAM input's header and its containers from the
+        first holding unplaced reads to its end (#655); None when its index
+        lists none. htslib before 1.25 reads ``*`` from a CRAM by its index
+        wrongly, missing whole containers of them; this needs no query. Its
+        first container may also hold the last contig's reads: read it with
+        ``rname=="*"``."""
+        cram = self._cram_source()
+        if cram is None:
+            return None
+        source, index = cram
+        layout = crai_unplaced(index) if index.endswith(".crai") else None
+        if layout is None:
+            return None
+        records, unplaced = layout
+        path = self._temp(name)
+        with open(path, "wb") as output:
+            copy_range(source, 0, records, output)
+            copy_range(source, unplaced, None, output)
+        return path
+
+    def _check_unplaced(self, staged: Path | None) -> None:
+        """Fail unless the unplaced reads ``staged`` holds (from the index)
+        are all a local CRAM input's (samtools idxstats): also when its index
+        lists none, and no chunk would read them."""
+        cram = self._cram_source()
+        if cram is None or is_url(cram[0]):
+            return
+        found = 0
+        if staged is not None:
+            found = int(
+                run_command(
+                    [
+                        "samtools",
+                        "view",
+                        "-c",
+                        *self.decode,
+                        "-e",
+                        _UNPLACED,
+                        str(staged),
+                    ],
+                    capture_output=True,
+                ).stdout  # fmt: skip
+            )
+        expected = _idxstats_unplaced(self.input, self.threads)
+        if found != expected:
+            raise WGSExtractError(
+                f"{cram[0]} has {expected} unplaced unmapped reads "
+                f"(samtools idxstats), but its index finds {found}."
+            )
+
+    def _preflight(self) -> None:
+        """Check a local CRAM input's unplaced reads before hours of
+        alignment, rather than at their chunk, aligned last."""
+        cram = self._cram_source()
+        if cram is None or is_url(cram[0]):
+            return
+        staged = self._stage_unplaced("preflight.unplaced.cram")
+        try:
+            self._check_unplaced(staged)
+        finally:
+            if staged is not None:
+                staged.unlink(missing_ok=True)
+
+    def _unplaced_cram(self, chunk: Chunk, number: int) -> Path | None:
+        """The unplaced chunk's reads of a CRAM input (_stage_unplaced),
+        checked again (_check_unplaced)."""
+        if chunk != (Region("*"),):
+            return None
+        path = self._stage_unplaced(f"chunk-{number:05d}.unplaced.cram")
+        if path is not None:
+            self._check_unplaced(path)
+        return path
+
     def _view(
         self, options: list[str], path: str, regions: Chunk, name: str
     ) -> list[str]:
@@ -600,9 +710,12 @@ class ChunkedAlignment:
         sorted_chunk = self._temp(f"chunk-{number:05d}.bam")
         sort_prefix = self._temp(f"chunk-{number:05d}.sort")
         view = ["-u", "-F", "0x900", *chunk_filter(chunk), *self.decode]
+        unplaced = self._unplaced_cram(chunk, number)
         run_pipeline(
             [
-                self._view(view, self.input, chunk, f"chunk-{number:05d}"),
+                self._view(view, self.input, chunk, f"chunk-{number:05d}")
+                if unplaced is None
+                else ["samtools", "view", *view, "-e", _UNPLACED, str(unplaced)],
                 self.reads,
                 [*self.mapper, index, "-"],
                 [
@@ -640,6 +753,8 @@ class ChunkedAlignment:
             sizes.append(path.stat().st_size)
         sorted_chunk.unlink()
         Path(f"{sorted_chunk}.csi").unlink(missing_ok=True)
+        if unplaced is not None:
+            unplaced.unlink()
         state["chunks"][str(number)] = sizes
         self._save(state)
 
