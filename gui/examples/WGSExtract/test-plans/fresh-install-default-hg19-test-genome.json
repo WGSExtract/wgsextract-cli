@@ -95,7 +95,7 @@
     {
       "id": "reference-dropdown-fastq",
       "kind": "dataSource",
-      "pageID": "fastq",
+      "pageID": "extract",
       "sectionID": "fastq-align",
       "controlID": "ref_fasta",
       "minimumOptions": 1,
@@ -106,7 +106,7 @@
     {
       "id": "reference-dropdown-realign",
       "kind": "dataSource",
-      "pageID": "info-bam",
+      "pageID": "extract",
       "sectionID": "realign-commands",
       "controlID": "realign_ref",
       "minimumOptions": 1,
@@ -140,7 +140,7 @@
     {
       "id": "reference-library-list",
       "kind": "dataSource",
-      "pageID": "library",
+      "pageID": "reference-genomes",
       "sectionID": "genome-management",
       "controlID": "reference_genomes",
       "requiredOutput": [
