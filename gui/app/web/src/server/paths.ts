@@ -220,12 +220,19 @@ export function configPath(control: ControlSpec | undefined, requestedPath: stri
         throw new HttpError(400, `${control?.label ?? control?.id ?? "This settings editor"} does not declare a settings file.`);
     }
     const declared = resolveUserPath(declaredPath, bundleRoot);
-    const requested = requestedPath?.trim() ? resolveUserPath(requestedPath, bundleRoot) : declared;
+    const requested = requestedPath?.trim() && !isPreviousConfigPath(control, requestedPath, bundleRoot)
+        ? resolveUserPath(requestedPath, bundleRoot)
+        : declared;
     const extension = path.extname(declared).toLowerCase();
     if (requested !== declared && (!extension || path.extname(requested).toLowerCase() !== extension)) {
         throw new HttpError(400, `Settings file must be a ${extension || "bundle-declared"} file: ${requested}`);
     }
     return requested;
+}
+/** A path the bundle used for this settings file before; a saved choice of one means the current path. */
+export function isPreviousConfigPath(control: ControlSpec | undefined, requestedPath: string, bundleRoot: string): boolean {
+    const requested = resolveUserPath(requestedPath, bundleRoot);
+    return (control?.configFile?.previousPaths ?? []).some((previous) => resolveUserPath(previous, bundleRoot) === requested);
 }
 export function distModulePath(pathname: string, distRoot: string): string | undefined {
     const match = /^\/(client|shared)\/([A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*\.js)$/.exec(pathname);
