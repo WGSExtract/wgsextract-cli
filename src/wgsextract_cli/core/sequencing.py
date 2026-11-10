@@ -72,6 +72,29 @@ def read_group_platforms(header: str) -> list[str]:
     )
 
 
+@lru_cache(maxsize=128)
+def _header_platforms(
+    path: str, reference: str | None, size: int, mtime: int, ctime: int
+) -> tuple[str, ...]:
+    """read_group_platforms of an alignment's header, read once per file
+    revision (a URL's is keyed by its HEAD)."""
+    return tuple(read_group_platforms(get_bam_header(path, reference)))
+
+
+def _alignment_platforms(reads: PathInput, reference: PathInput | None) -> list[str]:
+    ref = str(reference) if reference else None
+    if is_url(reads):
+        remote = remote_file(os.fspath(reads))
+        key = (os.fspath(reads), ref, remote.size, hash(remote.fingerprint), 0)
+    else:
+        stat = Path(reads).stat()
+        key = (
+            str(Path(reads).resolve()), ref, stat.st_size, stat.st_mtime_ns,
+            stat.st_ctime_ns,
+        )  # fmt: skip
+    return list(_header_platforms(*key))
+
+
 def mixed_platforms(
     reads: PathInput | None, reference: PathInput | None = None
 ) -> list[str]:
@@ -81,12 +104,12 @@ def mixed_platforms(
         return []
     if not is_url(reads) and not Path(reads).is_file():
         return []
-    header = get_bam_header(os.fspath(reads), str(reference) if reference else None)
-    platforms = read_group_platforms(header)
+    platforms = _alignment_platforms(reads, reference)
     return platforms if len(platforms) > 1 else []
 
 
-def _mixed_message(reads: PathInput, platforms: list[str]) -> str:
+def mixed_platforms_message(reads: PathInput, platforms: list[str]) -> str:
+    """What a mixed-platform input is, for warnings and errors to build on."""
     return (
         f"{reads} mixes reads from several sequencing platforms "
         f"({', '.join(platforms)}) in its read groups"
@@ -101,7 +124,7 @@ def refuse_mixed_platforms(
     the option that picks one explicitly."""
     if reads is not None and (platforms := mixed_platforms(reads, reference)):
         raise UsageError(
-            f"{_mixed_message(reads, platforms)}, and this command's defaults "
+            f"{mixed_platforms_message(reads, platforms)}, and this command's defaults "
             f"depend on the platform. Pass {choice} to choose explicitly, or split "
             "the reads by read group (`samtools split`) and run each platform "
             "separately."
@@ -118,7 +141,7 @@ def warn_mixed_platforms(
         return []
     warn(
         "mixed_platforms",
-        f"{_mixed_message(reads, platforms)}; {consequence}",
+        f"{mixed_platforms_message(reads, platforms)}; {consequence}",
         platforms=",".join(platforms),
     )
     return platforms
@@ -204,9 +227,9 @@ def _input_platform(
 ) -> tuple[str | None, str | None]:
     """(platform, how it was found)."""
     if path.lower().endswith((".bam", ".cram", ".sam")):
-        header = get_bam_header(path, reference)
-        if any(group.get("PL") for group in read_groups(header)):
-            return platform_from_metadata(header), _READ_GROUPS
+        if platforms := _header_platforms(path, reference, size, mtime, ctime):
+            known = len(platforms) == 1 and platforms[0] in _PLATFORMS.values()
+            return platforms[0] if known else None, _READ_GROUPS
         try:
             result = run_command(
                 [
@@ -236,7 +259,7 @@ def _input_platform(
                     "paired short-read defaults."
                 ) from error
             return None, None
-        return platform_from_metadata(header, qname), _READ_NAME
+        return platform_from_metadata(qname=qname), _READ_NAME
     if path.lower().endswith(
         (".fq", ".fastq", ".fq.gz", ".fastq.gz", ".fq.bgz", ".fastq.bgz")
     ):

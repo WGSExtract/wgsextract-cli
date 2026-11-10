@@ -33,7 +33,11 @@ from wgsextract_cli.core.reference_assets import is_fasta_path
 from wgsextract_cli.core.reference_models import identify_reference, sequence_lengths
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.samtools_commands import alignment_index
-from wgsextract_cli.core.sequencing import platform_from_metadata, read_group_platforms
+from wgsextract_cli.core.sequencing import (
+    mixed_platforms_message,
+    platform_from_metadata,
+    read_group_platforms,
+)
 from wgsextract_cli.core.table_writer import (
     Column,
     check_format,
@@ -294,8 +298,7 @@ def _note_mixed_platforms(data: dict[str, Any], input_file: str, header: str) ->
     data["platforms"] = platforms
     warn(
         "mixed_platforms",
-        f"{input_file} mixes reads from several sequencing platforms "
-        f"({', '.join(platforms)}) in its read groups; platform-aware commands "
+        f"{mixed_platforms_message(input_file, platforms)}; platform-aware commands "
         "refuse it or warn unless --platform, --model-type or --caller chooses.",
         platforms=",".join(platforms),
     )
