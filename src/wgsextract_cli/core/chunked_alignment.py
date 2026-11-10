@@ -50,7 +50,7 @@ from wgsextract_cli.core.utils import (
     run_pipeline,
 )
 
-SCHEMA = "wgsextract.chunked-alignment/2"
+SCHEMA = "wgsextract.chunked-alignment/3"
 DEFAULT_CHUNK_SIZE = "4G"
 # The output's contigs are split into about this many groups (and one of
 # the unmapped reads): the largest, sorted beside the output, bounds the
@@ -431,6 +431,7 @@ class ChunkedAlignment:
         state = self._state(groups)
         if not state.get("done"):
             if len(state["chunks"]) < len(self.chunks):
+                self._preflight()
                 index = self._index(state)
                 for number, chunk in enumerate(self.chunks):
                     self._align_chunk(state, number, chunk, groups, index)
@@ -576,29 +577,43 @@ class ChunkedAlignment:
             stale.unlink(missing_ok=True)
         return path
 
-    def _unplaced_cram(self, chunk: Chunk, number: int) -> Path | None:
-        """For the unplaced reads of a CRAM input: a CRAM of its header and
-        its containers from the first holding unplaced reads to its end
-        (#655). htslib before 1.25 reads ``*`` from a CRAM by its index
-        wrongly, missing whole containers of them; this needs no query. The
-        file holds only unplaced reads after its first container's; those
-        are read with ``rname=="*"``. A local input's count of them
-        (samtools idxstats) must match."""
-        if chunk != (Region("*"),):
-            return None
+    def _cram_source(self) -> tuple[str, str] | None:
+        """A CRAM input's path or URL and its index; None for a BAM."""
         source, _, index = self.input.partition("##idx##")
         if not source.lower().endswith(".cram"):
             return None
-        index = index or alignment_index(source) or ""
+        return source, index or alignment_index(source) or ""
+
+    def _stage_unplaced(self, name: str) -> Path | None:
+        """A CRAM of the CRAM input's header and its containers from the
+        first holding unplaced reads to its end (#655); None when its index
+        lists none. htslib before 1.25 reads ``*`` from a CRAM by its index
+        wrongly, missing whole containers of them; this needs no query. Its
+        first container may also hold the last contig's reads: read it with
+        ``rname=="*"``."""
+        cram = self._cram_source()
+        if cram is None:
+            return None
+        source, index = cram
         layout = crai_unplaced(index) if index.endswith(".crai") else None
         if layout is None:
             return None
         records, unplaced = layout
-        path = self._temp(f"chunk-{number:05d}.unplaced.cram")
+        path = self._temp(name)
         with open(path, "wb") as output:
             copy_range(source, 0, records, output)
             copy_range(source, unplaced, None, output)
-        if not is_url(source):
+        return path
+
+    def _check_unplaced(self, staged: Path | None) -> None:
+        """Fail unless the unplaced reads ``staged`` holds (from the index)
+        are all a local CRAM input's (samtools idxstats): also when its index
+        lists none, and no chunk would read them."""
+        cram = self._cram_source()
+        if cram is None or is_url(cram[0]):
+            return
+        found = 0
+        if staged is not None:
             found = int(
                 run_command(
                     [
@@ -608,17 +623,39 @@ class ChunkedAlignment:
                         *self.decode,
                         "-e",
                         _UNPLACED,
-                        str(path),
+                        str(staged),
                     ],
                     capture_output=True,
                 ).stdout  # fmt: skip
             )
-            expected = _idxstats_unplaced(self.input, self.threads)
-            if found != expected:
-                raise WGSExtractError(
-                    f"{source} has {expected} unplaced unmapped reads "
-                    f"(samtools idxstats), but its index finds {found}."
-                )
+        expected = _idxstats_unplaced(self.input, self.threads)
+        if found != expected:
+            raise WGSExtractError(
+                f"{cram[0]} has {expected} unplaced unmapped reads "
+                f"(samtools idxstats), but its index finds {found}."
+            )
+
+    def _preflight(self) -> None:
+        """Check a local CRAM input's unplaced reads before hours of
+        alignment, rather than at their chunk, aligned last."""
+        cram = self._cram_source()
+        if cram is None or is_url(cram[0]):
+            return
+        staged = self._stage_unplaced("preflight.unplaced.cram")
+        try:
+            self._check_unplaced(staged)
+        finally:
+            if staged is not None:
+                staged.unlink(missing_ok=True)
+
+    def _unplaced_cram(self, chunk: Chunk, number: int) -> Path | None:
+        """The unplaced chunk's reads of a CRAM input (_stage_unplaced),
+        checked again (_check_unplaced)."""
+        if chunk != (Region("*"),):
+            return None
+        path = self._stage_unplaced(f"chunk-{number:05d}.unplaced.cram")
+        if path is not None:
+            self._check_unplaced(path)
         return path
 
     def _view(
