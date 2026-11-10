@@ -737,3 +737,26 @@ test("renders a rows-layout checkbox group under category headings, with advance
   const dropdown = renderDropdownControl({ id: "ref_fasta", kind: "dropdown", label: "Reference Genome", options: [], emptyText: "None loaded. See Library page to add." });
   assert.match(dropdown, /<option value="" selected disabled>None loaded\. See Library page to add\.<\/option>/);
 });
+
+test("rows-layout category and group headings show the tooltips their options give", async () => {
+  globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+  globalThis.window = { innerHeight: 900 };
+  const { createInitialState, state } = await import("../dist/web/src/client/state.js");
+  const { renderCheckboxGroup } = await import("../dist/web/src/client/view.js");
+  Object.assign(state, createInitialState(), { labels: {} });
+  const options = [
+    { id: "23andme_v3", title: "v3", group: "23andMe", category: "Consumer Tests", categoryTooltip: "Generate RAW files." },
+    { id: "aadr_ho", title: "HOv1", group: "AADR", category: "Reich Lab" },
+    { id: "aadr_1240k", title: "1240K", group: "AADR", category: "Reich Lab", groupTooltip: "Each is a superset.", categoryTooltip: "PLINK + EIGENSTRAT." },
+  ];
+
+  let html = renderCheckboxGroup({ id: "formats", kind: "checkboxGroup", label: "Formats", layout: "rows", options });
+  assert.match(html, /<h4>Consumer Tests<span class="tooltip"[^>]*data-tooltip="Generate RAW files\.">i<\/span><\/h4>/);
+  assert.match(html, /<h4>Reich Lab<span class="tooltip"[^>]*data-tooltip="PLINK \+ EIGENSTRAT\.">i<\/span><\/h4>/);
+  assert.match(html, /option-row-title">AADR<span class="tooltip"[^>]*data-tooltip="Each is a superset\.">i<\/span><\/span>/);
+  assert.match(html, /option-row-title">23andMe<\/span>/);
+
+  html = renderCheckboxGroup({ id: "formats", kind: "checkboxGroup", label: "Formats", options });
+  assert.match(html, /<h4>AADR<span class="tooltip"[^>]*data-tooltip="Each is a superset\.">i<\/span><\/h4>/);
+  assert.match(html, /<h4>23andMe<\/h4>/);
+});
