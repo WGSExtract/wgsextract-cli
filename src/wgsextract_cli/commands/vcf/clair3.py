@@ -534,7 +534,7 @@ def run_clair3(params: VcfClair3Params) -> None:
             str(run_work): work,
         }  # fmt: skip
         vcf_header = Path(work, "header.vcf")
-        vcf_header.write_text(restore_header_paths(merged, real_paths))
+        vcf_header.write_text(restore_header_paths(merged, real_paths), newline="\n")
         named = Path(work, "named.vcf.gz")
         run_command(
             [
