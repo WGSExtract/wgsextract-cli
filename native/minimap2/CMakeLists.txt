@@ -13,7 +13,7 @@ FetchContent_Declare(neon
 FetchContent_MakeAvailable(minimap2 neon)
 
 # Bump when the wgse-minimap2 package changes; it is versioned separately from minimap2.
-set(WGSE_MINIMAP2_VERSION 0.2.1)
+set(WGSE_MINIMAP2_VERSION 0.3.0)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${generated}/intrinsics")
 foreach(header emmintrin.h smmintrin.h)
