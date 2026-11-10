@@ -434,7 +434,7 @@ def _relate(
     if ped_rows is not None:
         # somalier reads only tab-separated pedigrees.
         ped = work / "expected.ped"
-        ped.write_text("".join("\t".join(row) + "\n" for row in ped_rows))
+        ped.write_text("".join("\t".join(row) + "\n" for row in ped_rows), newline="\n")
         command += ["--ped", str(ped)]
     if all(item.kind == "vcf" for _name, item, _sketch in published):
         # A single-sample VCF lists only variants: a site it lacks is hom-ref.

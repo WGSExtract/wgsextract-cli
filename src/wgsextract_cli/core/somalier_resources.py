@@ -198,7 +198,7 @@ def _unpack_sketches(archive: Path, target: Path) -> None:
         raise WGSExtractError(
             f"{archive.name} held {count} sketches, not {SKETCH_COUNT}."
         )
-    (staging / _SKETCH_MARKER).write_text(SKETCHES.sha256 + "\n")
+    (staging / _SKETCH_MARKER).write_text(SKETCHES.sha256 + "\n", newline="\n")
     shutil.rmtree(target, ignore_errors=True)
     staging.rename(target)
 
