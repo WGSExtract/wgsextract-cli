@@ -50,7 +50,7 @@ from wgsextract_cli.core.resource_estimates import (
     preflight_resources,
 )
 from wgsextract_cli.core.results import warn
-from wgsextract_cli.core.sequencing import input_platform
+from wgsextract_cli.core.sequencing import input_platform, refuse_mixed_platforms
 from wgsextract_cli.core.steps import Decision, Step, StepJournal, resume_policy
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
@@ -166,6 +166,8 @@ def _model_type(
     detected = platform
     if detected is None and ref:
         detected = input_platform(input_file, ref)
+        if detected is None:
+            refuse_mixed_platforms(input_file, ref, "--model-type (or --ont/--pacbio)")
     if detected == "ont":
         logging.info(
             "ONT reads: calling with DeepVariant's ONT_R104 model (R10.4.1 only)."

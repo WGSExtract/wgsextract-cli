@@ -5,6 +5,18 @@ BAM/CRAM/FASTQ (including gzipped FASTQ). Read groups take precedence; mixed
 platforms are not assigned one platform. An explicit `--platform` overrides
 detection. Unknown input still defaults to Illumina. SRA-renamed FASTQs without
 platform metadata need `--platform ont`.
+
+A BAM/CRAM whose read groups name several platforms (ONT and Illumina reads
+merged, say) is reported by `info` (the `Platforms` line, `platforms` in the
+manifest's metrics and details, warning `mixed_platforms`). Commands whose
+defaults depend on the platform refuse it unless an option chooses:
+`align`/`realign` (`--platform`), `vcf deepvariant` (`--model-type`, `--ont`
+or `--pacbio`), `vcf sv` (`--caller`, `--ont` or `--pacbio`) and `typing str`
+(`--caller`); `vcf clair3` calls `PL:ONT` read groups only. Other callers
+(`vcf snp`, `vcf indel`, `vcf phase` and the like) and `methylation pileup`
+warn `mixed_platforms` and carry on. Or split the reads by read group with `samtools split` and process
+each platform separately.
+
 Only ONT gains new automatic alignment defaults, and `realign` of single-end
 PacBio BAM/CRAM. Revio/PacBio-, Ultima- and MGI-named FASTQs, paired
 `PL:PACBIO` and `PL:DNBSEQ` BAMs retain the previous Illumina alignment

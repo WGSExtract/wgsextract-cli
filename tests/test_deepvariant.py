@@ -272,6 +272,17 @@ def test_detected_ultima_reads_run_the_ultima_image(dv):
     assert {r["image"] for r in dv.docker.runs()} == {deepvariant.DEFAULT_ULTIMA_IMAGE}
 
 
+def test_mixed_platform_reads_need_an_explicit_model(dv):
+    """#652: ONT and Illumina read groups in one BAM fell back to the WGS model."""
+    mixed = other_sample(dv, f"{ONT}\n@RG\tID:ill\tSM:S\tPL:ILLUMINA")
+    with pytest.raises(UsageError, match="--model-type"):
+        call(dv, reads=mixed.bam)
+    assert dv.docker.runs() == []
+    call(dv, "--model-type", "WGS", reads=mixed.bam)
+    # contract: the explicitly chosen model.
+    assert dv_flags(dv)["model_type"] == "WGS"
+
+
 def test_ont_conflicts_with_other_model_options(dv):
     with pytest.raises(WGSExtractError, match="cannot be combined"):
         call(dv, "--ont", "--wes")

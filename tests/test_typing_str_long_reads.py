@@ -202,6 +202,24 @@ def test_a_caller_for_the_other_read_type_is_a_usage_error(
     assert not list((tmp_path / "in dir").glob("s.str.*"))
 
 
+def test_mixed_platform_reads_need_an_explicit_caller(tmp_path, ref, catalog):
+    """#652: ONT and Illumina read groups in one BAM defaulted to ExpansionHunter."""
+    mixed = "ONT\n@RG\tID:ill\tSM:s\tLB:s\tPL:ILLUMINA"
+    bam = _sample(tmp_path, [_read("r", 20)], platform=mixed)
+    with pytest.raises(UsageError, match="--caller") as error:
+        run_wgsextract("typing", "str", "-i", str(bam), "--ref", str(ref),
+                       "--catalog", str(catalog))  # fmt: skip
+    assert "illumina, ont" in str(error.value)
+    result = api.genotyping.repeats(
+        api.TypingStrParams(
+            input=bam, ref=ref, catalog=catalog, outdir=tmp_path / "out",
+            sex="female", caller="expansionhunter",
+        ),
+        check=False,
+    )  # fmt: skip
+    assert result.error is None or "platforms" not in result.error.message
+
+
 CATALOGS = files("wgsextract_cli.commands.genotyping").joinpath("str_catalog")
 
 
