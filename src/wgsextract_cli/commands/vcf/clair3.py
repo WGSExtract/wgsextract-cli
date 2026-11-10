@@ -30,6 +30,7 @@ from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.reference_assets import read_fai_lengths
 from wgsextract_cli.core.region_selection import selected_intervals
+from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
@@ -201,7 +202,8 @@ def _fetch_hint(name: str) -> str:
 
 def resolve_model(value: str, bundled: Path | None) -> Path:
     """A model directory, or the name of one Clair3 bundles."""
-    path = Path(expand_path(value))
+    # Normalised, so "." and ".." name the real model folder.
+    path = Path(os.path.abspath(expand_path(value)))
     if path.is_dir():
         model = path
     elif bundled and "/" not in value and (bundled / value).is_dir():
@@ -375,6 +377,60 @@ def clair3_command(
     return command
 
 
+def _link(target: Path, link: Path) -> str:
+    link.symlink_to(target.absolute(), target_is_directory=target.is_dir())
+    return str(link)
+
+
+def space_free_paths(
+    links: Path, reads: str, ref: str, model: Path, work: Path
+) -> tuple[str, str, Path, Path]:
+    """Space-free symlinks in ``links`` to the reads, reference, model and work
+    folder (with their indexes), since Clair3's shell and GNU parallel steps
+    split paths at spaces (#623). The data stays where it is."""
+    if re.search(r"\s", str(links)):
+        raise WGSExtractError(
+            f"Clair3 can't use paths with spaces, and the temporary folder {links} "
+            "has one. Choose one without spaces with --tmp-dir or the "
+            "temp_directory setting in config.toml."
+        )
+    reads_path, ref_path = Path(reads), Path(ref)
+    suffix = "".join(reads_path.suffixes[-1:])
+    reads_link = _link(reads_path, links / f"reads{suffix}")
+    for ext in (".bai", ".csi", ".crai"):
+        for index in (Path(reads + ext), reads_path.with_suffix(ext)):
+            if index.is_file():
+                _link(index, links / f"reads{suffix}{ext}")
+                break
+    ref_link = _link(ref_path, links / "ref.fa")
+    for ext in (".fai", ".gzi"):
+        if Path(ref + ext).is_file():
+            _link(Path(ref + ext), links / f"ref.fa{ext}")
+    # Clair3 reads the model's chemistry from its folder name.
+    (links / "model").mkdir()
+    model_link = links / "model" / (re.sub(r"\s", "_", model.name) or "model")
+    _link(model, model_link)
+    work_link = links / "work"
+    _link(work, work_link)
+    return reads_link, ref_link, model_link, work_link
+
+
+def restore_header_paths(vcf: Path, real_paths: dict[str, str]) -> str:
+    """``vcf``'s header with each link path in ``##`` lines replaced by the
+    path it stands for."""
+    header = run_command(
+        ["bcftools", "view", "-h", str(vcf)], capture_output=True
+    ).stdout
+    links = sorted(real_paths, key=len, reverse=True)
+    pattern = re.compile("|".join(re.escape(link) for link in links))
+    return "".join(
+        pattern.sub(lambda m: real_paths[m.group()], line)
+        if line.startswith("##")
+        else line
+        for line in header.splitlines(keepends=True)
+    )
+
+
 def _clair3_env() -> dict[str, str]:
     # Clair3 runs its own Python; don't leak ours into it.
     env = dict(os.environ)
@@ -423,6 +479,9 @@ def run_clair3(params: VcfClair3Params) -> None:
     with (
         plain_reference(ref, outdir) as use_ref,
         tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_clair3_") as work,
+        tempfile.TemporaryDirectory(
+            prefix="wgse_clair3_", dir=configured_temp_directory()
+        ) as links,
     ):
         bed, intervals = None, None
         if region:
@@ -442,13 +501,16 @@ def run_clair3(params: VcfClair3Params) -> None:
             tool="Clair3", why=_CRAM31_BUG,
         )  # fmt: skip
         output = str(Path(work, "clair3"))
+        run_reads, run_ref, run_model, run_work = space_free_paths(
+            Path(links), reads, use_ref, model, Path(work)
+        )
+        command = clair3_command(
+            run_reads, run_ref, run_model, threads, str(run_work / "clair3"),
+            str(run_work / "regions.bed") if bed else None, sample,
+        )  # fmt: skip
         try:
             # stdin closed: Clair3's GNU parallel would read it otherwise.
-            run_command(
-                clair3_command(reads, use_ref, model, threads, output, bed, sample),
-                env=_clair3_env(),
-                stdin=subprocess.DEVNULL,
-            )
+            run_command(command, env=_clair3_env(), stdin=subprocess.DEVNULL)
         except (OSError, subprocess.SubprocessError) as e:
             errors = clair3_errors(Path(output))
             if not errors or not isinstance(e, subprocess.CalledProcessError):
@@ -466,8 +528,27 @@ def run_clair3(params: VcfClair3Params) -> None:
         merged = Path(output, "merge_output.vcf.gz")
         if not merged.is_file():
             raise WGSExtractError("Clair3 failed to produce merge_output.vcf.gz.")
+        # Name the user's files, not the deleted links, in the header.
+        real_paths = {
+            run_reads: input_file, run_ref: ref, str(run_model): str(model),
+            str(run_work): work,
+        }  # fmt: skip
+        vcf_header = Path(work, "header.vcf")
+        vcf_header.write_text(restore_header_paths(merged, real_paths), newline="\n")
+        named = Path(work, "named.vcf.gz")
+        run_command(
+            [
+                "bcftools",
+                "reheader",
+                "-h",
+                str(vcf_header),
+                "-o",
+                str(named),
+                str(merged),
+            ]
+        )
         with safe_output(out_vcf) as staged:
-            run_command(["bcftools", "view", "-Oz", "-o", staged, str(merged)])
+            run_command(["bcftools", "view", "-Oz", "-o", staged, str(named)])
     ensure_vcf_indexed(out_vcf)
     record_variants(out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region))
 

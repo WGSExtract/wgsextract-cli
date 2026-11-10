@@ -3,6 +3,7 @@ import os
 import platform
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -236,7 +237,7 @@ def test_clair3_calls_the_region_for_the_reads_sample(
     (run,) = fake_clair3.runs()
     assert run["bed"] == "chr1\t899\t1100\n"
     # contract: Nanopore reads called with the chosen model.
-    assert (run["opts"]["platform"], run["opts"]["model_path"]) == ("ont", str(model))
+    assert (run["opts"]["platform"], run["model"]) == ("ont", str(model.resolve()))
 
 
 def as_cram(reads, version: str, path: Path) -> str:
@@ -277,6 +278,102 @@ def test_clair3_reads_cram_31_through_a_cram_30_copy(
         "clair3.vcf.gz.tbi",
     ]
     assert Path(cram).read_bytes() == before
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+@pytest.mark.parametrize("reads_format", ["bam", "cram"])
+def test_clair3_calls_from_paths_with_spaces(
+    tmp_path, linux_x86, fake_clair3, reads_format
+):
+    """#623: Clair3 splits paths at spaces and then calls nothing; reads,
+    reference, model and output under a user folder with a space must still
+    give the same calls as without it."""
+    require_runnable("samtools", "bcftools", "tabix")
+    home = tmp_path / "John Smith"
+    home.mkdir()
+    reads = snp_sample(home, DORADO_RG)
+    model = make_model(home / "clair3 models", "my r1041 model")
+    source = reads.bam
+    if reads_format == "cram":
+        source = as_cram(reads, "3.0", home / "my reads.cram")
+    outdir = home / "wgse out"
+    run_wgsextract(
+        "vcf", "clair3", "--input", source, "--ref", reads.ref,
+        "--outdir", str(outdir), "--model", str(model), "-r", "chr1:900-1100",
+    )  # fmt: skip
+
+    assert vcf_calls(outdir / "clair3.vcf.gz") == reads.calls[:1]
+    assert sorted(p.name for p in outdir.iterdir()) == [
+        "clair3.vcf.gz",
+        "clair3.vcf.gz.tbi",
+    ]
+    # The header names the user's files, not Clair3's deleted links (#633).
+    header = header_lines(outdir / "clair3.vcf.gz")
+    assert f"##reference={reads.ref}" in header
+    (cmdline,) = [line for line in header if line.startswith("##cmdline=")]
+    for option in (f"--bam_fn={source}", f"--ref_fn={reads.ref}",
+                   f"--model_path={model}"):  # fmt: skip
+        assert option in cmdline
+    assert "wgse_clair3_" not in cmdline.split("--output=")[0]
+
+
+def header_lines(vcf: Path) -> list[str]:
+    result = run_command(["bcftools", "view", "-h", str(vcf)], capture_output=True)
+    return result.stdout.splitlines()
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+@pytest.mark.parametrize("relative", [".", ".."])
+def test_clair3_model_given_as_dot_or_dotdot(
+    tmp_path, monkeypatch, linux_x86, fake_clair3, relative
+):
+    """#633 review: --model . or .. names the real model folder, whose name
+    Clair3 reads, instead of failing on an empty link name."""
+    require_runnable("samtools", "bcftools", "tabix")
+    reads = snp_sample(tmp_path, DORADO_RG)
+    model = make_model(tmp_path, "my_r1041_model")
+    (model / "sub").mkdir()
+    monkeypatch.chdir(model if relative == "." else model / "sub")
+    outdir = tmp_path / "out"
+    run_wgsextract(
+        "vcf", "clair3", "--input", reads.bam, "--ref", reads.ref,
+        "--outdir", str(outdir), "--model", relative, "-r", "chr1:900-1100",
+    )  # fmt: skip
+
+    assert vcf_calls(outdir / "clair3.vcf.gz") == reads.calls[:1]
+    (run,) = fake_clair3.runs()
+    assert Path(run["opts"]["model_path"]).name == "my_r1041_model"
+    assert run["model"] == str(model.resolve())
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+def test_clair3_links_go_in_the_configured_temp_directory(
+    tmp_path, monkeypatch, linux_x86, fake_clair3
+):
+    """#633 review: Clair3's space-free links follow temp_directory in
+    config.toml, not the system temp folder, and a spaced one is refused with
+    advice on choosing another."""
+    require_runnable("samtools", "bcftools", "tabix")
+    reads = snp_sample(tmp_path, DORADO_RG)
+    model = make_model(tmp_path, "my_r1041_model")
+    spaced = tmp_path / "system temp"
+    spaced.mkdir()
+    monkeypatch.setenv("TMPDIR", str(spaced))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+    chosen = tmp_path / "scratch"
+    chosen.mkdir()
+    monkeypatch.setitem(clair3.settings, "temp_directory", str(chosen))
+    args = ("vcf", "clair3", "--input", reads.bam, "--ref", reads.ref,
+            "--model", str(model), "-r", "chr1:900-1100")  # fmt: skip
+    run_wgsextract(*args, "--outdir", str(tmp_path / "out"))
+    (run,) = fake_clair3.runs()
+    assert run["opts"]["bam_fn"].startswith(str(chosen))
+    assert vcf_calls(tmp_path / "out" / "clair3.vcf.gz") == reads.calls[:1]
+
+    monkeypatch.setitem(clair3.settings, "temp_directory", str(spaced))
+    with pytest.raises(WGSExtractError, match="temp_directory"):
+        run_wgsextract(*args, "--outdir", str(tmp_path / "out2"))
+    assert len(fake_clair3.runs()) == 1
 
 
 @needs_tools("samtools", "bcftools", "tabix")
