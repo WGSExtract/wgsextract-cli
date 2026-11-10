@@ -6,6 +6,7 @@ server. A local HTTP server stands in for EBI's.
 """
 
 import hashlib
+import os
 import threading
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -13,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.fake_tools import FakeDocker
+from tests.fake_tools import FakeDocker, require_bare_name_fakes
 from tests.htslib_helpers import needs_htslib, write_fasta
 from wgsextract_cli import api
 from wgsextract_cli.core import containers
@@ -118,7 +119,7 @@ def test_a_local_reference_cache_in_ref_path_still_decodes(
     md5 = hashlib.md5(SEQUENCE.encode()).hexdigest()
     (cache / md5).write_text(SEQUENCE)
     remote = _server_url(reference_server)
-    monkeypatch.setenv("REF_PATH", f"{remote}:{cache}/%s")
+    monkeypatch.setenv("REF_PATH", f"{remote}{os.pathsep}{cache}/%s")
 
     out = tmp_path / "out"
     main(["bam", "to-bam", "-i", str(orphan_cram), "-o", str(out)])
@@ -135,6 +136,7 @@ def test_a_local_reference_cache_in_ref_path_still_decodes(
 def test_containers_get_a_local_ref_path_of_their_own(tmp_path, monkeypatch, host):
     # #636: the image's htslib may be old enough to ask EBI when REF_PATH is
     # unset; the host's REF_PATH entries don't belong in the container.
+    require_bare_name_fakes()  # Windows can't start the fake docker's launcher
     (tmp_path / "bin").mkdir()
     docker = FakeDocker(tmp_path / "bin", tmp_path / "dv")
     docker.add_image("image")
@@ -146,7 +148,7 @@ def test_containers_get_a_local_ref_path_of_their_own(tmp_path, monkeypatch, hos
     else:
         monkeypatch.setenv("REF_PATH", host)
 
-    containers.run_container("image", ["/bin/true"], [str(tmp_path)])
+    containers.run_container("image", ["/usr/bin/true"], [str(tmp_path)])
 
     ref_path = docker.runs()[-1]["env"]["REF_PATH"]
     assert ref_path and "://" not in ref_path
