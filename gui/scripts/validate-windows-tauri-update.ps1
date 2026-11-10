@@ -36,6 +36,7 @@ $script:UpdaterPublicKeyResolved = ""
 $script:quickUninstallPath = ""
 $script:appName = "WGSExtract"
 $script:appIdentifier = "dev.guiforcli.web.embed.wgsextract"
+$MainBinaryName = "wgsextract-gui.exe"
 $script:appState = $null
 $script:videoProcess = $null
 $WorkDirectory = (New-Item -ItemType Directory -Force -Path $WorkDirectory).FullName
@@ -303,7 +304,7 @@ function Resolve-UpdaterPublicKey {
 function Get-TargetProcesses {
     param([string]$AppName = "", [string]$AppIdentifier = "")
 
-    $needles = @($AppName, $AppIdentifier, "gui-for-cli-webui-tauri", "\wgs-extract\", "/wgs-extract/") |
+    $needles = @($AppName, $AppIdentifier, "wgsextract-gui","\wgs-extract\", "/wgs-extract/") |
         Where-Object { $_ } |
         Select-Object -Unique
     Get-CimInstance Win32_Process | Where-Object {
@@ -369,29 +370,30 @@ function Resolve-InstalledApp {
     param([string]$AppName)
 
     $names = @($AppName, "WGSExtract", "WGSExtract Web", "WGSExtract Windows WebUI") | Where-Object { $_ } | Select-Object -Unique
-    # The folder chosen in the installer's wizard, from its Apps entry, then the default under LOCALAPPDATA.
+    # The folder chosen in the installer's wizard and the executable the installer recorded, from its Apps
+    # entry (the installed release may predate the executable's current name), then the default under LOCALAPPDATA.
     $candidates = @()
     foreach ($hive in "HKCU:", "HKLM:") {
         foreach ($name in $names) {
             $key = Get-ItemProperty -LiteralPath "$hive\Software\Microsoft\Windows\CurrentVersion\Uninstall\$name" -ErrorAction SilentlyContinue
             if ($key -and $key.InstallLocation) {
-                $candidates += $key.InstallLocation.Trim().Trim('"')
+                $binary = if ($key.PSObject.Properties["MainBinaryName"] -and $key.MainBinaryName) { $key.MainBinaryName } else { $MainBinaryName }
+                $candidates += Join-Path $key.InstallLocation.Trim().Trim('"') $binary
             }
         }
     }
     if ($env:LOCALAPPDATA) {
         foreach ($name in $names) {
-            $candidates += Join-Path $env:LOCALAPPDATA $name
+            $candidates += Join-Path (Join-Path $env:LOCALAPPDATA $name) $MainBinaryName
         }
     }
-    foreach ($directory in $candidates) {
-        $exe = Join-Path $directory "gui-for-cli-webui-tauri.exe"
+    foreach ($exe in $candidates) {
         if (Test-Path -LiteralPath $exe -PathType Leaf) {
-            return [ordered]@{ installDirectory = $directory; executable = $exe }
+            return [ordered]@{ installDirectory = (Split-Path -Parent $exe); executable = $exe }
         }
     }
     if ($env:LOCALAPPDATA) {
-        $found = Get-ChildItem -LiteralPath $env:LOCALAPPDATA -Filter "gui-for-cli-webui-tauri.exe" -File -Recurse -ErrorAction SilentlyContinue |
+        $found = Get-ChildItem -LiteralPath $env:LOCALAPPDATA -Filter $MainBinaryName -File -Recurse -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTimeUtc -Descending |
             Select-Object -First 1
         if ($found) {

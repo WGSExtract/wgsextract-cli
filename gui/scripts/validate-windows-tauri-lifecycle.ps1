@@ -300,7 +300,7 @@ function Get-TargetProcesses {
         -not $skip.Contains([int]$_.ProcessId) -and
         $_.CommandLine -and (
             $_.CommandLine -like "*WGSExtract*" -or
-            $_.CommandLine -like "*gui-for-cli-webui-tauri*" -or
+            $_.CommandLine -like "*wgsextract-gui*" -or
             $_.CommandLine -like "*\wgs-extract\*" -or
             $_.CommandLine -like "*/wgs-extract/*"
         )
@@ -366,7 +366,7 @@ function Install-App {
     Invoke-External -FilePath $resolvedInstaller -Arguments @("/S") -TimeoutSeconds $InstallTimeoutSeconds -Name "install" | Out-Null
     Assert-Exists -Paths @(
         $InstallDirectory,
-        (Join-Path $InstallDirectory "gui-for-cli-webui-tauri.exe"),
+        (Join-Path $InstallDirectory "wgsextract-gui.exe"),
         (Join-Path $InstallDirectory "uninstall.exe"),
         (Join-Path $InstallDirectory "node\node.exe"),
         (Join-Path $InstallDirectory "examples\EmbeddedBundle")
@@ -397,7 +397,7 @@ function Start-InstalledApp {
     Remove-Item -LiteralPath $TokenFile -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $SetupLog -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $SetupSummary -ErrorAction SilentlyContinue
-    $appPath = Join-Path $InstallDirectory "gui-for-cli-webui-tauri.exe"
+    $appPath = Join-Path $InstallDirectory "wgsextract-gui.exe"
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $appPath
     $psi.WorkingDirectory = $InstallDirectory
