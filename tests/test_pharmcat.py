@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from tests.htslib_helpers import bgzip_index, needs_htslib, run_wgsextract, write_fasta
+from wgsextract_cli import api
 from wgsextract_cli.commands.vcf import pharmcat
 from wgsextract_cli.commands.vcf.pharmcat import (
     REFERENCE_FASTA,
@@ -233,14 +234,18 @@ def test_issue_622_windows_report_says_cyp2d6_not_called_with_spaced_paths(
     vcf = _vcf(tmp_path / "my genome.vcf.gz", SNPS)
     out = tmp_path / "My Results"
     caplog.set_level(logging.INFO)
-    run_wgsextract("vcf", "pharmcat", "--vcf-input", vcf, "--pharmcat-dir",
-                   str(release), "--outdir", str(out))  # fmt: skip
+    result = api.vcf.pharmcat(
+        api.VcfPharmcatParams(vcf_input=Path(vcf), pharmcat_dir=release, outdir=out)
+    )
     assert (out / "my genome.phenotype.json").is_file()
     assert json.loads((release / "run.json").read_text())["argv"][1:3] == [
         "-o",
         str(out),
     ]
     assert "CYP2D6 not called" in caplog.text
+    assert [w.details["gene"] for w in result.warnings if w.code == "no_call"] == [
+        "CYP2D6"
+    ]
 
 
 @needs_htslib

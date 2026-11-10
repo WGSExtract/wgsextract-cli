@@ -4,6 +4,7 @@ import importlib.util
 from pathlib import Path
 
 import pytest
+import tomllib
 
 
 @pytest.mark.parametrize("complete", [True, False])
@@ -63,8 +64,9 @@ def test_pharmcat_windows_pins_follow_bcftools_and_htslib(tmp_path, monkeypatch)
         "# windows-tools-begin\n# windows-tools-end\n"
         "# gatk-windows-tools-begin\n# gatk-windows-tools-end\n"
         "[feature.pharmcat.target.win-64.dependencies]\n"
+        "# pharmcat-windows-tools-begin\n"
         'bcftools = {url = "old", sha256 = "old"}\n'
-        "# pharmcat-windows-tools-begin\n# pharmcat-windows-tools-end\n"
+        "# pharmcat-windows-tools-end\n"
     )
     assets = [
         {
@@ -78,6 +80,10 @@ def test_pharmcat_windows_pins_follow_bcftools_and_htslib(tmp_path, monkeypatch)
     monkeypatch.setattr(module, "release_assets", lambda _: assets)
     monkeypatch.setattr(module.sys, "argv", ["pin.py", "windows-tools-test"])
     module.main()
+    document = tomllib.loads(manifest.read_text())
+    pins = document["feature"]["pharmcat"]["target"]["win-64"]["dependencies"]
+    assert sorted(pins) == ["bcftools", "htslib"]
+    assert pins["bcftools"]["url"] == "https://example.invalid/bcftools"
     pharmcat = manifest.read_text().split("[feature.pharmcat.target.win-64")[1]
     assert "example.invalid/bcftools" in pharmcat
     assert "example.invalid/htslib" in pharmcat

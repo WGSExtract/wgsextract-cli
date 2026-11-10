@@ -127,6 +127,7 @@ jobs:
         with:
           path: out/pharmcat
       - name: Same phenotype.json on Linux and Windows (except the timestamp)
+        shell: bash
         run: |
           python3 scripts/compare_pharmcat_phenotypes.py \
             "out/pharmcat/pharmcat-Linux/My Results/hg002_pgx.phenotype.json" \

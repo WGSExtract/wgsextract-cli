@@ -34,7 +34,7 @@ from wgsextract_cli.core.reference_resolver import (
     ReferenceLibrary,
     header_contig_lengths,
 )
-from wgsextract_cli.core.results import current_result
+from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.tool_commands import _tool_command_parts
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import (
@@ -302,10 +302,12 @@ def run_pharmcat(params: VcfPharmcatParams) -> None:
         logging.info(f"  {gene:<9} {diplotype:<22} {phenotype}")
     logging.info(f"PharmCAT report: {report}")
     if not used_outside_calls and runtime.is_windows_host():
-        logging.info(
+        warn(
+            "no_call",
             "CYP2D6 not called, nor HLA-A/HLA-B: PharmCAT can't call them from a "
             "VCF, and `typing cyp2d6` / `typing hla` don't run on Windows. Pass "
-            "outside calls made elsewhere with --outside-call."
+            "outside calls made elsewhere with --outside-call.",
+            gene="CYP2D6",
         )
     elif not used_outside_calls:
         logging.info(
