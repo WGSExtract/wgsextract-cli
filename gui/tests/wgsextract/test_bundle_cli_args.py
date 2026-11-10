@@ -405,7 +405,7 @@ class BundleSandbox:
                 f"{script} ran `pixi {' '.join(call)}`, not wgsextract"
             )
         # The runtime must use the workspace's settings, never the user's config.
-        config = ["--config", str(self.bundle / "settings" / "config.toml")]
+        config = ["--config", str(self.bundle / "config.toml")]
         if call[2:4] != config:
             raise AssertionError(f"{script} did not pass {' '.join(config)}: {call}")
         return call[4:]
