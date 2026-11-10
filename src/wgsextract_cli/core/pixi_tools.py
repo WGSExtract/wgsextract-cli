@@ -29,7 +29,9 @@ def is_pixi_tool_command(path: str) -> bool:
         return False
     if not command:
         return False
-    executable = Path(command[0]).name.lower()
+    # Non-POSIX splitting keeps the quotes around a path with spaces
+    # ("D:\WGSE App\.pixi\bin\pixi.exe").
+    executable = Path(command[0].strip('"')).name.lower()
     # Windows package managers may install pixi as a .cmd or .bat shim.
     pixi_names = {"pixi", "pixi.exe", "pixi.cmd", "pixi.bat"}
     return executable in pixi_names and "run" in command[1:]
@@ -91,13 +93,21 @@ def _resolve_pixi_command() -> str | None:
     for path in [
         "/opt/homebrew/bin/pixi",
         "/usr/local/bin/pixi",
-        "~/.pixi/bin/pixi",
-        "~/.pixi/bin/pixi.exe",
+        *_pixi_home_executables(),
     ]:
         expanded = expand_path(path)
         if Path(expanded).exists():
             return expanded
     return None
+
+
+def _pixi_home_executables() -> list[str]:
+    """Pixi in its home folder: PIXI_HOME, Pixi's own setting for where it is
+    installed (for example D:\\Tools\\pixi), then ~/.pixi."""
+    homes = [home for home in (os.environ.get("PIXI_HOME"), "~/.pixi") if home]
+    return [
+        str(Path(home, "bin", name)) for home in homes for name in ("pixi", "pixi.exe")
+    ]
 
 
 def _pixi_manifest_args() -> list[str]:
