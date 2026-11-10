@@ -56,14 +56,17 @@ def region_items(region: str, *, commas: bool) -> list[str]:
     return region.split()
 
 
-def selected_intervals(region: str, lengths: dict[str, int]) -> Intervals:
-    """Union of whitespace-separated literals and BED/BED.gz/BEDPE files.
+def selected_intervals(
+    region: str, lengths: dict[str, int], *, commas: bool = False
+) -> Intervals:
+    """Union of whitespace- (or, with ``commas``, comma-) separated literals
+    and BED/BED.gz/BEDPE files.
 
     Rows on contigs absent from ``lengths`` are dropped and intervals are
     clipped to the contig; raises ValueError when nothing remains.
     """
     intervals: Intervals = {}
-    for selection in region_items(region, commas=False):
+    for selection in region_items(region, commas=commas):
         if selection.lower().endswith((".bed", ".bed.gz", ".bedpe")):
             rows = _bed_intervals(selection)
         else:

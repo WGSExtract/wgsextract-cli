@@ -1,6 +1,5 @@
 import contextlib
 import glob
-import gzip
 import logging
 import os
 import platform
@@ -9,8 +8,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import zlib
-from bisect import bisect_left
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -29,6 +26,11 @@ from wgsextract_cli.core.containers import (
     require_image,
     run_container,
 )
+from wgsextract_cli.core.cram_staging import (
+    needs_cram30,
+    region_intervals,
+    stage_cram30,
+)
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.messages import LOG_MESSAGES
@@ -37,9 +39,7 @@ from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_assets import read_fai_lengths
 from wgsextract_cli.core.region_selection import (
-    Intervals,
     region_items,
-    selected_intervals,
 )
 from wgsextract_cli.core.resource_estimates import (
     GIB,
@@ -50,16 +50,10 @@ from wgsextract_cli.core.resource_estimates import (
     preflight_resources,
 )
 from wgsextract_cli.core.results import warn
-from wgsextract_cli.core.samtools_commands import (
-    alignment_index,
-    get_sam_index_cmd,
-    get_sam_view_cmd,
-)
 from wgsextract_cli.core.sequencing import input_platform
 from wgsextract_cli.core.steps import Decision, Step, StepJournal, resume_policy
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
-from wgsextract_cli.core.warnings import GB, check_free_space, get_free_space_needed
 
 from .basic import CallerSetup, record_variants, setup_caller
 
@@ -74,6 +68,13 @@ DEFAULT_ULTIMA_IMAGE = "google/deepvariant:gh1100-ultima"
 DEFAULT_ULTIMA_GPU_IMAGE = (
     "google/deepvariant:gh1100-ultima-gpu"
     "@sha256:f5572ef9b996c619c9e73a3f3391f894af72bf868d27578d9a4985298e75a1f7"
+)
+# Gate/remove this workaround when supported DV images ship htslib >=1.19
+# (htscodecs >=1.5.2); a host-samtools decode cannot detect their SSE4 bug.
+_CRAM31_BUG = (
+    "DeepVariant's x86-64 images (htslib 1.18 / htscodecs 1.5.1) have an SSE4 "
+    "rANS decoder bug that can fail on valid CRAM 3.1 blocks; staging applies "
+    "to every image."
 )
 _SETUP = (
     "DeepVariant runs from Google's Docker image on Linux and macOS (Apple "
@@ -241,148 +242,12 @@ def _dv_env() -> dict[str, str]:
     return env
 
 
-def _cram_version(path: str) -> tuple[int, int] | None:
-    """Read the CRAM file definition, independently of the filename."""
-    with open(path, "rb") as source:
-        definition = source.read(6)
-    if len(definition) != 6 or definition[:4] != b"CRAM":
-        return None
-    return definition[4], definition[5]
-
-
-def _reference_lengths(ref: str) -> dict[str, int]:
-    lengths = read_fai_lengths(ref)
-    if not lengths:
-        run_command(["samtools", "faidx", ref])
-        lengths = read_fai_lengths(ref)
-    return lengths
-
-
-def _selected_intervals(region: str, lengths: dict[str, int]) -> Intervals:
-    try:
-        return selected_intervals(region, lengths)
-    except (ValueError, OSError) as error:
-        raise WGSExtractError(
-            f"Invalid DeepVariant region selection: {region}: {error}"
-        ) from error
-
-
 def _container_regions(region: str) -> str:
     """``region`` with its BED files at the paths mounted in the container."""
     return " ".join(
         host_path(p) if Path(p).is_file() else p
         for p in region_items(region, commas=False)
     )
-
-
-def _transcode_regions(
-    region: str | None, ref: str, work: str
-) -> tuple[list[str], Intervals]:
-    if not region:
-        return [], {}
-    # DV accepts whitespace-separated literals and BED/BED.gz/BEDPE files.
-    # One BED + the multi-region iterator preserves their union without duplicates.
-    merged = _selected_intervals(region, _reference_lengths(ref))
-    bed = Path(work, "regions.bed")
-    with bed.open("w", newline="\n") as destination:
-        for chrom, ranges in merged.items():
-            for start, end in ranges:
-                destination.write(f"{chrom}\t{start}\t{end}\n")
-    return ["-M", "-L", str(bed)], merged
-
-
-def _indexed_slice_bytes(
-    alignment: str, ref: str, intervals: dict[str, list[tuple[int, int]]]
-) -> int | None:
-    """CRAI slice sizes reflect capture depth; reference-base fractions do not."""
-    index = alignment_index(alignment)
-    if not index or not index.endswith(".crai"):
-        return None
-    try:
-        names = [
-            next(field[3:] for field in line.split("\t") if field.startswith("SN:"))
-            for line in get_bam_header(alignment, ref).splitlines()
-            if line.startswith("@SQ\t")
-        ]
-        if not names or not all(names) or len(set(names)) != len(names):
-            return None
-        with open(index, "rb") as signature:
-            compressed = signature.read(2) == b"\x1f\x8b"
-        opener = gzip.open if compressed else open
-        seen: dict[tuple[int, int], int] = {}
-        selected: set[tuple[int, int]] = set()
-        with opener(index, "rt") as source:
-            for line in source:
-                rid, start, span, container, offset, size = map(int, line.split())
-                if (
-                    rid < -1
-                    or rid >= len(names)
-                    or min(container, offset) < 0
-                    or size <= 0
-                    or (rid >= 0 and (start < 1 or span < 1))
-                ):
-                    return None
-                key = (container, offset)
-                if key in seen and seen[key] != size:
-                    return None
-                seen[key] = size
-                if rid == -1:
-                    continue
-                ranges = intervals.get(names[rid], [])
-                start -= 1  # CRAI is 1-based; the staging BED is 0-based.
-                hit = bisect_left(ranges, (start + span, 0)) - 1
-                if hit >= 0 and ranges[hit][1] > start:
-                    # A multi-reference slice has one CRAI row per reference.
-                    selected.add(key)
-        return sum(seen[key] for key in selected) if seen else None
-    except (OSError, EOFError, ValueError, StopIteration, zlib.error):
-        return None
-
-
-def _compatible_reads(
-    alignment: str, ref: str, work: str, threads: str, region: str | None
-) -> str:
-    version = _cram_version(alignment)
-    if version is None or version < (3, 1):
-        return alignment
-    # Gate/remove this workaround when supported DV images ship htslib >=1.19
-    # (htscodecs >=1.5.2); a host-samtools decode cannot detect their SSE4 bug.
-    selection, intervals = _transcode_regions(region, ref, work)
-    _, final_gb = get_free_space_needed(Path(alignment).stat().st_size, is_cram=True)
-    required_gb = final_gb + 1  # Round up the CRAM expansion estimate; allow its index.
-    selected_bytes = _indexed_slice_bytes(alignment, ref, intervals) if region else None
-    # Round the existing ~1.95x CRAM expansion allowance up to 2x for slices.
-    required_bytes = (
-        max(64 * 1024**2, 2 * selected_bytes)
-        if selected_bytes is not None
-        else required_gb * GB
-    )
-    enough_space = (
-        shutil.disk_usage(work).free >= required_bytes
-        if region
-        else check_free_space(work, required_gb)
-    )
-    if not enough_space:
-        raise WGSExtractError(
-            f"Insufficient free disk space for DeepVariant CRAM 3.0 staging "
-            f"at {work} (needs ~{required_bytes / GB:.2f} GiB)."
-        )
-    logging.info(
-        "Transcoding CRAM %s.%s to temporary CRAM 3.0: DeepVariant's x86-64 "
-        "images (htslib 1.18 / htscodecs 1.5.1) have an SSE4 rANS decoder bug "
-        "that can fail on valid CRAM 3.1 blocks; staging applies to every image.",
-        *version,
-    )
-    compatible = str(Path(work, "reads.cram"))
-    run_command(
-        [
-            *get_sam_view_cmd(threads, fmt="CRAM", reference=ref),
-            "--output-fmt-option", "version=3.0",
-            "--no-PG", *selection, "-o", compatible, alignment,
-        ]
-    )  # fmt: skip
-    run_command(get_sam_index_cmd(compatible, threads))
-    return compatible
 
 
 def _available_memory(setup: str | None) -> int | None:
@@ -457,7 +322,9 @@ def _postprocess_plan(
         )
         return None
     if region:
-        _selected_intervals(region, lengths)  # Report bad selections clearly.
+        region_intervals(
+            region, lengths, "DeepVariant"
+        )  # Report bad selections clearly.
     regions = dv_calling_regions(lengths, region)
     assert regions is not None
     plan = plan_dv_postprocess(regions, threads, available)
@@ -736,7 +603,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
     out_vcf = str(Path(outdir, "deepvariant.vcf.gz"))
     # Absolute, like the journal's paths, so stage files match their records.
     work = absolute_path(Path(outdir, WORK_DIRECTORY))
-    staged_reads = _needs_staging(input_file)
+    staged_reads = needs_cram30(input_file)
     reads = str(work / "reads" / "reads.cram") if staged_reads else input_file
     region_files = [
         p for p in region_items(region or "", commas=False) if Path(p).is_file()
@@ -809,8 +676,9 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                 region=region,
                 jobs=int(threads),
                 staging=(
-                    (lambda: _compatible_reads(
-                        input_file, ref, str(work / "reads"), threads, region
+                    (lambda: stage_cram30(
+                        input_file, ref, str(work / "reads"), threads, region,
+                        tool="DeepVariant", why=_CRAM31_BUG,
                     )) if staged_reads else None
                 ),
                 out_vcf=out_vcf,
@@ -883,11 +751,6 @@ def _checkpoint_files(checkpoint: str | None) -> dict[str, str]:
         for p in sorted(set(files))
         if p.is_file()
     }
-
-
-def _needs_staging(alignment: str) -> bool:
-    version = _cram_version(alignment)
-    return version is not None and version >= (3, 1)
 
 
 class _Launcher:
