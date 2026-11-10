@@ -29650,7 +29650,7 @@
    }
   },
   "typing": {
-   "help": "usage: wgsextract typing [-h] <command> ...\n\npositional arguments:\n  <command>\n    cyp2d6    Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius, and\n              write a PharmCAT outside call. Cyrius is for noncommercial use only.\n    hla       Call HLA class I and II alleles with T1K from reads in the MHC, and write a PharmCAT\n              outside call for HLA-A/HLA-B. The first run downloads 45 MB.\n    str       Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72,\n              ...) and flag those outside STRchive's normal range.\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract typing [-h] <command> ...\n\npositional arguments:\n  <command>\n    cyp2d6    Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius, and\n              write a PharmCAT outside call. Cyrius is for noncommercial use only.\n    hla       Call HLA class I and II alleles with T1K from reads in the MHC, and write a PharmCAT\n              outside call for HLA-A/HLA-B. The first run downloads 45 MB.\n    str       Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72,\n              ...) with ExpansionHunter, or LongTR for Nanopore and PacBio reads, and flag those\n              outside STRchive's normal range.\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -29687,7 +29687,7 @@
        ],
        [
         "str",
-        "Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72, ...) and flag those outside STRchive's normal range."
+        "Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72, ...) with ExpansionHunter, or LongTR for Nanopore and PacBio reads, and flag those outside STRchive's normal range."
        ]
       ],
       "required": true,
@@ -30615,7 +30615,7 @@
    }
   },
   "typing str": {
-   "help": "usage: wgsextract typing str [-h] [--catalog JSON] [--sex {male,female}]\n\noptions:\n  -h, --help           show this help message and exit\n  --catalog JSON       ExpansionHunter variant catalog. Default: the one it ships for the input's\n                       build.\n  --sex {male,female}  Sample sex (the number of chrX alleles). Default: inferred from chrX/chrY\n                       coverage.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract typing str --input sample.cram\n\noutputs (in the output directory unless noted):\n  ExpansionHunter's <stem>.str.vcf/.json and a flagged-repeat summary.\n\nneeds:\n  ExpansionHunter, samtools; depending on options and inputs, also: bcftools;\n  minutes on a 30x genome.\n",
+   "help": "usage: wgsextract typing str [-h] [--caller {expansionhunter,longtr,strkit}] [--catalog FILE]\n                             [--sex {male,female}]\n\noptions:\n  -h, --help            show this help message and exit\n  --caller {expansionhunter,longtr,strkit}\n                        Repeat caller (default: longtr for Nanopore and PacBio reads,\n                        expansionhunter for others). strkit suits Nanopore R9 reads and very long\n                        alleles.\n  --catalog FILE        Repeat catalog in the caller's format: an ExpansionHunter variant catalog\n                        (JSON) or a LongTR or STRkit BED. Default: ExpansionHunter's shipped\n                        catalog for the input's build, or its repeats bundled for LongTR and\n                        STRkit.\n  --sex {male,female}   Sample sex (the number of chrX alleles). Default: inferred from chrX/chrY\n                        coverage.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract typing str --input sample.cram\n\noutputs (in the output directory unless noted):\n  <stem>.str.tsv, a flagged-repeat summary, and the caller's calls:\n  ExpansionHunter's <stem>.str.vcf/.json, LongTR's <stem>.str.vcf.gz or\n  STRkit's <stem>.str.vcf and <stem>.str.strkit.json.\n\nneeds:\n  samtools; depending on options and inputs, also: ExpansionHunter, LongTR,\n  strkit, bcftools; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -30898,14 +30898,34 @@
       "type": "int"
      },
      {
+      "choices": [
+       "expansionhunter",
+       "longtr",
+       "strkit"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "caller",
+      "exclusive_group": null,
+      "help": "Repeat caller (default: longtr for Nanopore and PacBio reads, expansionhunter for others). strkit suits Nanopore R9 reads and very long alleles.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--caller"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
       "choices": null,
       "class": "_StoreAction",
       "const": null,
       "default": null,
       "dest": "catalog",
       "exclusive_group": null,
-      "help": "ExpansionHunter variant catalog. Default: the one it ships for the input's build.",
-      "metavar": "JSON",
+      "help": "Repeat catalog in the caller's format: an ExpansionHunter variant catalog (JSON) or a LongTR or STRkit BED. Default: ExpansionHunter's shipped catalog for the input's build, or its repeats bundled for LongTR and STRkit.",
+      "metavar": "FILE",
       "nargs": null,
       "option_strings": [
        "--catalog"
@@ -46568,6 +46588,7 @@
     "sex"
    ],
    "atomic_output": false,
+   "caller": null,
    "catalog": "c.json",
    "command": "typing",
    "debug": false,

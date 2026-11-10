@@ -1,9 +1,11 @@
-"""`typing str`: repeat expansions with ExpansionHunter.
+"""`typing str`: repeat expansions with ExpansionHunter, LongTR or STRkit.
 
 ExpansionHunter (Illumina; Apache-2.0) sizes the 31 disease-causing short
-tandem repeats of its shipped catalog (HTT, FMR1, C9ORF72, ...) from a WGS
-BAM/CRAM, including expansions longer than a read. Each allele is then put in
-STRchive's normal, intermediate or pathogenic range for its disease.
+tandem repeats of its shipped catalog (HTT, FMR1, C9ORF72, ...) from short
+reads, including expansions longer than a read. Nanopore and PacBio reads go
+to LongTR (or STRkit), which size the same repeats from reads that span them
+(long_read_repeats.py). Each allele is then put in STRchive's normal,
+intermediate or pathogenic range for its disease.
 """
 
 from __future__ import annotations
@@ -20,9 +22,20 @@ from wgsextract_cli.commands.info.metrics import sample_sex
 from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.results import current_result, warn
-from wgsextract_cli.core.utils import WGSExtractError, run_command
+from wgsextract_cli.core.sequencing import input_platform
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
+from wgsextract_cli.core.variant_files import get_bam_header
 
-from .common import Alignment, env_tool, open_alignment
+from . import long_read_repeats
+from .common import Alignment, RepeatCall, env_tool, open_alignment
+
+LONG_READ_PLATFORMS = ("ont", "pacbio")
+LONG_READ_CALLERS = ("longtr", "strkit")
+TOOL_NAMES = {
+    "expansionhunter": "ExpansionHunter",
+    "longtr": "LongTR",
+    "strkit": "STRkit",
+}
 
 
 @dataclass(frozen=True)
@@ -75,16 +88,6 @@ THRESHOLDS = {
 MOTIF_UNCHECKED = {"RFC1"}
 
 
-@dataclass(frozen=True)
-class RepeatCall:
-    variant_id: str
-    repeat_unit: str
-    region: str
-    alleles: tuple[int, ...]
-    intervals: tuple[tuple[int, int], ...]
-    coverage: float
-
-
 def parse_expansionhunter(json_path: str) -> list[RepeatCall]:
     with open(json_path) as f:
         loci = json.load(f).get("LocusResults", {})
@@ -111,38 +114,102 @@ def parse_expansionhunter(json_path: str) -> list[RepeatCall]:
     return calls
 
 
+# An allele read in fewer reads than this, and in under ALLELE_FRACTION_MIN of
+# the locus's reads, is "low support": LongTR makes alleles of single reads
+# (HG002's DMPK 11/19, truth 11/11). True expansions can be thinly read, so
+# both limits are low: of the PacBio PureTarget expansions of #615, STRkit read
+# NA03697B2's DMPK expansion in 2 of 247 reads and LongTR NA15850L1's FXN in 1
+# of 1 (out/615/support.md).
+ALLELE_READS_MIN = 2
+ALLELE_FRACTION_MIN = 0.10
+
+
+def low_support(call: RepeatCall) -> tuple[bool, ...]:
+    """Per allele, whether too few reads support it (all False when the
+    caller doesn't count them)."""
+    if not call.allele_reads:
+        return tuple(False for _ in call.alleles)
+    return tuple(
+        reads < ALLELE_READS_MIN and reads < ALLELE_FRACTION_MIN * call.coverage
+        for reads in call.allele_reads
+    )
+
+
+def _grade(alleles: list[int], copies: int, threshold: Threshold) -> str:
+    expanded = sum(a >= threshold.pathogenic_min for a in alleles)
+    recessive = threshold.inheritance == "AR" or (
+        threshold.inheritance == "XR" and copies > 1
+    )
+    if expanded and recessive and expanded < copies:
+        return "carrier"
+    if expanded:
+        return "pathogenic"
+    if threshold.premutation_min is not None and any(
+        a >= threshold.premutation_min for a in alleles
+    ):
+        return "premutation"
+    if threshold.benign_max is not None and any(
+        a > threshold.benign_max for a in alleles
+    ):
+        return "intermediate"
+    return "normal"
+
+
+def unconfirmed(call: RepeatCall, threshold: Threshold | None) -> str:
+    """A note when low-support alleles alone would change the grade, else ""."""
+    weak = low_support(call)
+    if threshold is None or not any(weak) or all(weak):
+        return ""
+    copies = len(call.alleles)
+    confirmed = [a for a, w in zip(call.alleles, weak, strict=True) if not w]
+    status = _grade(list(call.alleles), copies, threshold)
+    if status == _grade(confirmed, copies, threshold):
+        return ""
+    allele, reads = next(
+        (a, n)
+        for a, n, w in zip(call.alleles, call.allele_reads or (), weak, strict=True)
+        if w
+    )
+    return (
+        f" (unconfirmed: {'one read suggests' if reads == 1 else 'no read supports'}"
+        f" an allele of {allele}, {status})"
+    )
+
+
 def classify(call: RepeatCall, threshold: Threshold | None) -> str:
     """normal, intermediate, premutation, carrier or pathogenic (or "-" for a
     repeat without thresholds), with a note when an allele's confidence
-    interval reaches the pathogenic range but its call doesn't."""
-    if threshold is None:
-        return "-"
-    expanded = sum(a >= threshold.pathogenic_min for a in call.alleles)
-    recessive = threshold.inheritance == "AR" or (
-        threshold.inheritance == "XR" and len(call.alleles) > 1
+    interval reaches the pathogenic range but its call doesn't. Low-support
+    alleles (``low_support``) don't count towards the grade; a note says what
+    they suggest."""
+    clipped = (
+        f" ({call.clipped_reads} reads clipped at the repeat: an expansion may "
+        "be longer than called)"
+        if call.clipped_reads
+        else ""
     )
-    if expanded and recessive and expanded < len(call.alleles):
-        status = "carrier"
-    elif expanded:
-        status = "pathogenic"
-    elif threshold.premutation_min is not None and any(
-        a >= threshold.premutation_min for a in call.alleles
-    ):
-        status = "premutation"
-    elif threshold.benign_max is not None and any(
-        a > threshold.benign_max for a in call.alleles
-    ):
-        status = "intermediate"
-    else:
-        status = "normal"
+    if not call.alleles:
+        return "no call" + clipped
+    if threshold is None:
+        return "-" + clipped
+    note = unconfirmed(call, threshold)
+    alleles = list(call.alleles)
+    if note:
+        alleles = [
+            a for a, w in zip(call.alleles, low_support(call), strict=True) if not w
+        ]
+    status = _grade(alleles, len(call.alleles), threshold)
+    expanded = status in ("carrier", "pathogenic")
     if status != "pathogenic" and any(
         allele < threshold.pathogenic_min <= high
-        for allele, (_low, high) in zip(call.alleles, call.intervals, strict=True)
+        for allele, (_low, high) in zip(
+            call.alleles, call.intervals or (), strict=False
+        )
     ):
         status += " (CI reaches pathogenic)"
     if expanded and call.variant_id in MOTIF_UNCHECKED:
         status = f"{status}-length expansion, motif unchecked"
-    return status
+    return status + clipped + note
 
 
 def _catalog(aln: Alignment, catalog: Path | None) -> str:
@@ -188,26 +255,44 @@ def _sex(aln: Alignment, sex: str | None) -> str:
 
 def _format_alleles(call: RepeatCall) -> tuple[str, str]:
     return (
-        "/".join(map(str, call.alleles)),
-        "/".join(f"{low}-{high}" for low, high in call.intervals),
+        "/".join(map(str, call.alleles)) or "-",
+        "/".join(f"{low}-{high}" for low, high in call.intervals)
+        if call.intervals
+        else "-",
     )
 
 
-def write_summary(path: str, calls: list[RepeatCall]) -> list[tuple[str, str]]:
-    """A TSV of each pathogenic repeat's call and range; returns the
-    (locus, line) of every one that isn't normal."""
+def _format_reads(call: RepeatCall) -> str:
+    if not call.allele_reads:
+        return "-"
+    weak = any(low_support(call))
+    return "/".join(map(str, call.allele_reads)) + (" (low support)" if weak else "")
+
+
+def write_summary(
+    path: str, calls: list[RepeatCall], unavailable: dict[str, str] | None = None
+) -> list[tuple[str, str, str]]:
+    """A TSV of each pathogenic repeat's call and range, with a row for each
+    repeat of ``unavailable`` (locus: why); returns the (warning code, locus,
+    line) of every one that isn't normal or rests on low-support alleles."""
     flagged = []
+    unavailable = unavailable or {}
+    rows = {call.variant_id: call for call in calls}
+    for locus in unavailable:
+        rows.setdefault(locus, RepeatCall(locus, "-", "", (), None, 0.0))
     with open(path, "w", newline="\n") as f:
         f.write(
             "locus\tdisease\tinheritance\trepeat_unit\tgenotype\tci\t"
-            "normal_max\tpathogenic_min\tstatus\tcoverage\n"
+            "normal_max\tpathogenic_min\tstatus\tcoverage\tallele_reads\n"
         )
-        for call in sorted(calls, key=lambda c: c.variant_id):
+        for variant_id in sorted(rows):
+            call = rows[variant_id]
             threshold = THRESHOLDS.get(call.variant_id)
             known = threshold or Threshold("-", "-", 0, 0)
-            if threshold is None and "_" in call.variant_id:
+            if threshold is None and call.variant_id.split("_")[0] in THRESHOLDS:
                 continue  # A flanking repeat of a catalog locus.
-            status = classify(call, threshold)
+            why = unavailable.get(variant_id, "")
+            status = why or classify(call, threshold)
             genotype, ci = _format_alleles(call)
             f.write(
                 "\t".join(
@@ -224,34 +309,72 @@ def write_summary(path: str, calls: list[RepeatCall]) -> list[tuple[str, str]]:
                         str(known.pathogenic_min) if threshold else "-",
                         status,
                         f"{call.coverage:.1f}",
+                        _format_reads(call),
                     ]
                 )
                 + "\n"
             )
-            if status not in ("normal", "-"):
-                flagged.append(
-                    (
-                        call.variant_id,
-                        f"{call.variant_id} ({known.disease}, {known.inheritance}): "
-                        f"{call.repeat_unit} {genotype} [CI {ci}] {status}",
-                    )
-                )
+            line = (
+                f"{call.variant_id} ({known.disease}, {known.inheritance}): "
+                f"{call.repeat_unit} {genotype}"
+                + (f" [CI {ci}]" if call.intervals else "")
+                + f" {status}"
+            )
+            note = unconfirmed(call, threshold)
+            if why:
+                line = f"{variant_id} ({known.disease}, {known.inheritance}): {why}"
+                flagged.append(("repeat_unavailable", variant_id, line))
+            elif status.removesuffix(note) not in ("normal", "-", "no call"):
+                flagged.append(("repeat_outside_normal_range", variant_id, line))
+            elif note:
+                flagged.append(("repeat_unconfirmed", variant_id, line))
     return flagged
 
 
-def run_str(params: TypingStrParams, *, debug: bool = False) -> None:
-    aln = open_alignment(params)
-    reference = aln.require_reference()
-    expansion_hunter = env_tool("ExpansionHunter", "expansionhunter")
-    catalog = _catalog(aln, params.catalog)
-    sex = _sex(aln, params.sex)
+def catalog_loci(aln: Alignment, caller: str) -> set[str]:
+    """The repeats of the bundled (or ExpansionHunter's shipped) catalog for
+    the input's build."""
+    if caller != "expansionhunter":
+        rows = long_read_repeats.catalog_rows(aln, caller, None)
+        if caller == "longtr":
+            return {row.rsplit("\t", 1)[-1] for row in rows}
+        return {row.split("ID=")[1].split(";")[0] for row in rows}
+    with open(_catalog(aln, None)) as f:
+        return {
+            variant_id
+            for locus in json.load(f)
+            for variant_id in locus.get("VariantId") or [locus["LocusId"]]
+        }
 
-    prefix = str(Path(aln.outdir, f"{aln.stem}.str"))
+
+def choose_caller(choice: str | None, platform: str | None) -> str:
+    """``choice``, else LongTR for Nanopore and PacBio reads and
+    ExpansionHunter for others."""
+    long_reads = platform in LONG_READ_PLATFORMS
+    if choice == "expansionhunter" and long_reads:
+        raise UsageError(
+            f"ExpansionHunter sizes repeats from short reads, and these are "
+            f"{platform} reads. Use --caller longtr or --caller strkit."
+        )
+    if choice in LONG_READ_CALLERS and platform and not long_reads:
+        raise UsageError(
+            f"{TOOL_NAMES[choice]} sizes repeats from Nanopore or PacBio reads, "
+            f"and these are {platform} reads. Use --caller expansionhunter."
+        )
+    return choice or ("longtr" if long_reads else "expansionhunter")
+
+
+def _run_expansionhunter(
+    aln: Alignment, reference: str, catalog: Path | None, sex: str, prefix: str,
+    debug: bool,
+) -> list[RepeatCall]:  # fmt: skip
+    expansion_hunter = env_tool("ExpansionHunter", "expansionhunter")
+    catalog_path = _catalog(aln, catalog)
     logging.info("Sizing repeat expansions with ExpansionHunter...")
     try:
         run_command(
             [*expansion_hunter, "--reads", aln.path, "--reference", reference,
-             "--variant-catalog", catalog, "--output-prefix", prefix,
+             "--variant-catalog", catalog_path, "--output-prefix", prefix,
              "--sex", sex, "--threads", aln.threads],
             capture_output=not debug,
         )  # fmt: skip
@@ -261,11 +384,75 @@ def run_str(params: TypingStrParams, *, debug: bool = False) -> None:
             f"ExpansionHunter failed (exit {e.returncode})"
             + (f": {detail[0]}" if detail else ".")
         ) from e
+    result = current_result()
+    result.add_output(f"{prefix}.vcf", "repeat_calls")
+    result.add_output(f"{prefix}.json", "expansionhunter_report")
+    return parse_expansionhunter(f"{prefix}.json")
 
-    calls = parse_expansionhunter(f"{prefix}.json")
+
+def _run_long_reads(
+    aln: Alignment, reference: str, caller: str, catalog: Path | None, sex: str,
+    prefix: str, platform: str | None,
+) -> list[RepeatCall]:  # fmt: skip
+    rows = long_read_repeats.catalog_rows(aln, caller, catalog)
+    result = current_result()
+    if caller == "longtr":
+        vcf = long_read_repeats.run_longtr(aln, reference, rows, sex, prefix)
+        result.add_output(vcf, "repeat_calls")
+        calls = long_read_repeats.parse_longtr(vcf)
+    else:
+        vcf, report = long_read_repeats.run_strkit(
+            aln, reference, rows, sex, prefix, platform
+        )
+        result.add_output(vcf, "repeat_calls")
+        result.add_output(report, "strkit_report")
+        calls = long_read_repeats.parse_strkit(report)
+    return long_read_repeats.with_clipped_reads(
+        aln, rows, calls, 1 if caller == "longtr" else 0
+    )
+
+
+def run_str(params: TypingStrParams, *, debug: bool = False) -> None:
+    aln = open_alignment(params)
+    reference = aln.require_reference()
+    platform = input_platform(aln.path, reference)
+    caller = choose_caller(params.caller, platform)
+    if caller == "longtr" and long_read_repeats.is_r9(get_bam_header(aln.path) or ""):
+        warn(
+            "r9_reads",
+            "These look like Nanopore R9.4.1 reads, and LongTR drops reads "
+            "below mean quality 30, which leaves most R9 loci uncalled. "
+            "--caller strkit handles R9 reads better.",
+        )
+    # Fail on a missing environment or catalog before minutes of sex inference.
+    if caller == "expansionhunter":
+        env_tool("ExpansionHunter", "expansionhunter")
+        _catalog(aln, params.catalog)
+    else:
+        env_tool({"longtr": "LongTR", "strkit": "strkit"}[caller], caller)
+        long_read_repeats.catalog_rows(aln, caller, params.catalog)
+    sex = _sex(aln, params.sex)
+    tool = TOOL_NAMES[caller]
+
+    prefix = str(Path(aln.outdir, f"{aln.stem}.str"))
+    if caller == "expansionhunter":
+        calls = _run_expansionhunter(aln, reference, params.catalog, sex, prefix, debug)
+    else:
+        calls = _run_long_reads(
+            aln, reference, caller, params.catalog, sex, prefix, platform
+        )
+
     summary = f"{prefix}.tsv"
-    flagged = write_summary(summary, calls)
-    classified = sum(1 for c in calls if c.variant_id in THRESHOLDS)
+    unavailable = {}
+    if params.catalog is None:
+        catalog_ids = {c.variant_id for c in calls} | catalog_loci(aln, caller)
+        unavailable = dict.fromkeys(
+            sorted(set(THRESHOLDS) - catalog_ids),
+            f"not available on {aln.build}: the bundled catalog lacks it",
+        )
+    warnings = write_summary(summary, calls, unavailable)
+    flagged = [w for w in warnings if w[0] == "repeat_outside_normal_range"]
+    classified = sum(1 for c in calls if c.variant_id in THRESHOLDS and c.alleles)
     logging.info(
         f"{classified - len(flagged)} of {classified} disease repeats are in the "
         "normal range."
@@ -273,22 +460,21 @@ def run_str(params: TypingStrParams, *, debug: bool = False) -> None:
     result = current_result()
     result.set_reference(reference)
     result.add_output(summary, "repeat_summary")
-    result.add_output(f"{prefix}.vcf", "repeat_calls")
-    result.add_output(f"{prefix}.json", "expansionhunter_report")
     result.add_metrics(
-        sex=sex, disease_repeats=classified, flagged_repeats=len(flagged)
+        sex=sex,
+        repeat_caller=caller,
+        disease_repeats=classified,
+        flagged_repeats=len(flagged),
     )
-    for locus, line in flagged:
+    for code, locus, line in warnings:
         logging.warning(f"  {line}")
-        result.warn("repeat_outside_normal_range", line, locus=locus)
+        result.warn(code, line, locus=locus)
     if flagged:
         logging.warning(
-            "Short-read sizing is approximate and isn't a diagnosis; confirm "
+            "Repeat sizing from sequencing reads isn't a diagnosis; confirm "
             "anything outside the normal range with a clinical test."
         )
-    logging.info(
-        f"Repeat calls: {summary} (ExpansionHunter: {prefix}.vcf, {prefix}.json)"
-    )
+    logging.info(f"Repeat calls: {summary} ({tool}: {prefix}.*)")
 
 
 cmd_str = cli_handler(TypingStrParams, run_str, debug="debug")

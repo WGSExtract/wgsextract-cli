@@ -46,6 +46,8 @@ OPTIONAL_TOOLS = [
     "cyrius",
     "run-t1k",
     "ExpansionHunter",
+    "LongTR",
+    "strkit",
     "dorado",
 ]
 
@@ -73,6 +75,8 @@ PLATFORM_ONLY_TOOLS = {
     "cyrius": ("linux", "darwin"),
     "run-t1k": ("linux", "darwin"),
     "ExpansionHunter": ("linux", "darwin"),
+    "LongTR": ("linux", "darwin"),
+    "strkit": ("linux", "darwin"),
     "modkit": ("linux", "darwin"),
     "verifybamid2": ("linux", "darwin"),
     "somalier": ("linux", "darwin"),
@@ -148,6 +152,8 @@ PIXI_TOOL_ENVS = {
     "run-t1k": "t1k",
     "t1k-build.pl": "t1k",
     "ExpansionHunter": "expansionhunter",
+    "LongTR": "longtr",
+    "strkit": "strkit",
     "run_clair3.sh": "clair3",
     "modkit": "modkit",
     "verifybamid2": "verifybamid2",
@@ -188,6 +194,7 @@ PIXI_TOOL_PACKAGES = {
     "run-t1k": "t1k",
     "t1k-build.pl": "t1k",
     "ExpansionHunter": "expansionhunter",
+    "LongTR": "longtr",
     "run_clair3.sh": "clair3",
     "modkit": "ont-modkit",
 }

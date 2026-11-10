@@ -223,7 +223,11 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "typing hla": _n(
         MINUTES, "run-t1k", "samtools", "t1k-build.pl", optional="bcftools"
     ),
-    "typing str": _n(MINUTES, "ExpansionHunter", "samtools", optional="bcftools"),
+    "typing str": _n(
+        MINUTES,
+        "samtools",
+        optional="ExpansionHunter LongTR strkit bcftools",
+    ),
     "methylation pileup": _n(HOURS, "modkit", "samtools", "tabix", optional="bcftools"),
     "pet-align": _n(
         HOURS, "bcftools", "bwa", "samtools", optional="bwa-mem2 sambamba samblaster"
