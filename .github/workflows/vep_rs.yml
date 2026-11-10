@@ -72,10 +72,7 @@ jobs:
         run: |
           case "$TAG" in vep-rs-*) ;; *) echo "Tag must start with vep-rs-" >&2; exit 1 ;; esac
           mkdir -p assets
-          for d in vep-rs/vep-rs-*; do
-            platform=${d#vep-rs/vep-rs-}
-            for f in "$d"/*.conda; do cp "$f" "assets/${platform}-$(basename "$f")"; done
-          done
+          cp vep-rs/*/*.conda assets/
           {
             echo "vep-rs (natera-open-source/vep-rs) as conda packages that Pixi installs, for each platform."
             echo "Built from packaging/vep-rs at ${GITHUB_SHA} by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
