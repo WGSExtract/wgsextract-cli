@@ -352,9 +352,11 @@ def test_clair3_links_go_in_the_configured_temp_directory(
 ):
     """#633 review: Clair3's space-free links follow temp_directory in
     config.toml, not the system temp folder, and a spaced one is refused with
-    advice on choosing another."""
+    advice on choosing another. Paths without spaces need no links (#635)."""
     require_runnable("samtools", "bcftools", "tabix")
-    reads = snp_sample(tmp_path, DORADO_RG)
+    home = tmp_path / "John Smith"
+    home.mkdir()
+    reads = snp_sample(home, DORADO_RG)
     model = make_model(tmp_path, "my_r1041_model")
     spaced = tmp_path / "system temp"
     spaced.mkdir()
@@ -363,17 +365,25 @@ def test_clair3_links_go_in_the_configured_temp_directory(
     chosen = tmp_path / "scratch"
     chosen.mkdir()
     monkeypatch.setitem(clair3.settings, "temp_directory", str(chosen))
-    args = ("vcf", "clair3", "--input", reads.bam, "--ref", reads.ref,
-            "--model", str(model), "-r", "chr1:900-1100")  # fmt: skip
-    run_wgsextract(*args, "--outdir", str(tmp_path / "out"))
+    args = ("vcf", "clair3", "--ref", reads.ref, "--model", str(model),
+            "-r", "chr1:900-1100")  # fmt: skip
+    run_wgsextract(*args, "--input", reads.bam, "--outdir", str(tmp_path / "out"))
     (run,) = fake_clair3.runs()
     assert run["opts"]["bam_fn"].startswith(str(chosen))
     assert vcf_calls(tmp_path / "out" / "clair3.vcf.gz") == reads.calls[:1]
 
     monkeypatch.setitem(clair3.settings, "temp_directory", str(spaced))
     with pytest.raises(WGSExtractError, match="temp_directory"):
-        run_wgsextract(*args, "--outdir", str(tmp_path / "out2"))
+        run_wgsextract(*args, "--input", reads.bam, "--outdir", str(tmp_path / "o2"))
     assert len(fake_clair3.runs()) == 1
+
+    plain = snp_sample(tmp_path, DORADO_RG)
+    run_wgsextract(
+        "vcf", "clair3", "--ref", plain.ref, "--model", str(model),
+        "-r", "chr1:900-1100", "--input", plain.bam,
+        "--outdir", str(tmp_path / "o3"),
+    )  # fmt: skip
+    assert vcf_calls(tmp_path / "o3" / "clair3.vcf.gz") == plain.calls[:1]
 
 
 @needs_tools("samtools", "bcftools", "tabix")

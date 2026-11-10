@@ -19,6 +19,7 @@ import tempfile
 from collections import defaultdict
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
@@ -34,6 +35,14 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.results import Scalar, current_result, warn
 from wgsextract_cli.core.samtools_commands import alignment_index
+from wgsextract_cli.core.space_free_paths import (
+    READS_INDEXES,
+    REFERENCE_INDEXES,
+    VCF_INDEXES,
+    restore_cram_paths,
+    restore_vcf_paths,
+    space_free_paths,
+)
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -242,18 +251,56 @@ def longphase_phase_command(
     ]  # fmt: skip
 
 
+def _fasta_suffix(ref: str) -> str:
+    suffixes = Path(ref).suffixes
+    return "".join(suffixes[-2:] if suffixes[-1:] == [".gz"] else suffixes[-1:])
+
+
+def longphase_paths(
+    vcf: str, reads: str, ref: str, work: str
+) -> AbstractContextManager[list[str]]:
+    """The VCF, reads, reference and work folder, as space-free links where
+    they have spaces: LongPhase splits its path options at spaces (#632)."""
+    return space_free_paths(
+        "LongPhase",
+        [
+            (vcf, "input.vcf.gz", VCF_INDEXES),
+            (reads, f"reads{Path(reads).suffix}", READS_INDEXES),
+            (ref, f"ref{_fasta_suffix(ref)}", REFERENCE_INDEXES),
+            (work, "work", ()),
+        ],
+    )
+
+
+def real_paths(links: Sequence[str], paths: Sequence[str]) -> dict[str, str]:
+    return dict(zip(links, paths, strict=True))
+
+
 def run_longphase(
     vcf: str, reads: str, ref: str, sample: str, platform: str, threads: int,
     work: str, out: str,
 ) -> None:  # fmt: skip
     prefix = str(Path(work, "longphase"))
-    run_command(
-        longphase_phase_command(vcf, reads, ref, sample, platform, threads, prefix),
-        stdin=subprocess.DEVNULL,
-    )
+    paths = (vcf, reads, ref, work)
+    with longphase_paths(*paths) as links:
+        lp_vcf, lp_reads, lp_ref, lp_work = links
+        run_command(
+            longphase_phase_command(
+                lp_vcf,
+                lp_reads,
+                lp_ref,
+                sample,
+                platform,
+                threads,
+                str(Path(lp_work, "longphase")),
+            ),
+            stdin=subprocess.DEVNULL,
+        )
     produced = prefix + ".vcf"
     if not Path(produced).is_file():
         raise WGSExtractError("LongPhase failed to produce a phased VCF.")
+    # Its ##commandline names the links; record the real paths (#632).
+    produced = restore_vcf_paths(produced, real_paths(links, paths), work)
     run_command(["bcftools", "view", "-Oz", "-o", out, produced])
 
 
@@ -479,15 +526,33 @@ def haplotag(
             run_command(["samtools", "index", subset])
             reads, regions = subset, []
         staged = str(Path(work, f"haplotagged{suffix}"))
-        run_command(
-            haplotag_command(
-                phaser, slim, reads, ref, sample, threads, staged, regions
-            ),
-            env=_tool_env(),
-            stdin=subprocess.DEVNULL,
-        )
+        paths = (slim, reads, ref, work)
+        with (
+            longphase_paths(*paths)
+            if phaser == "longphase"
+            else nullcontext(list(paths))
+        ) as links:
+            tool_vcf, tool_reads, tool_ref, tool_work = links
+            run_command(
+                haplotag_command(
+                    phaser,
+                    tool_vcf,
+                    tool_reads,
+                    tool_ref,
+                    sample,
+                    threads,
+                    str(Path(tool_work, f"haplotagged{suffix}")),
+                    regions,
+                ),
+                env=_tool_env(),
+                stdin=subprocess.DEVNULL,
+            )
         if not Path(staged).is_file():
             raise WGSExtractError(f"{phaser} haplotag produced no {suffix[1:]} file.")
+        # A BAM keeps its input's @SQ UR; only its @PG CL names the links, and
+        # BAM can't be reheadered without rewriting every read, so it is left.
+        if suffix == ".cram":
+            restore_cram_paths(staged, real_paths(links, paths), work)
         with safe_output(output) as final:
             Path(staged).replace(final)
     run_command(["samtools", "index", output])

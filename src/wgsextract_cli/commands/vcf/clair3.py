@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -26,11 +27,16 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import warn_if_no_variants
-from wgsextract_cli.core.paths import expand_path
+from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.reference_assets import read_fai_lengths
 from wgsextract_cli.core.region_selection import selected_intervals
-from wgsextract_cli.core.temp_directory import configured_temp_directory
+from wgsextract_cli.core.space_free_paths import (
+    READS_INDEXES,
+    REFERENCE_INDEXES,
+    restore_vcf_paths,
+    space_free_paths,
+)
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
@@ -377,57 +383,22 @@ def clair3_command(
     return command
 
 
-def _link(target: Path, link: Path) -> str:
-    link.symlink_to(target.absolute(), target_is_directory=target.is_dir())
-    return str(link)
-
-
-def space_free_paths(
-    links: Path, reads: str, ref: str, model: Path, work: Path
-) -> tuple[str, str, Path, Path]:
-    """Space-free symlinks in ``links`` to the reads, reference, model and work
-    folder (with their indexes), since Clair3's shell and GNU parallel steps
-    split paths at spaces (#623). The data stays where it is."""
-    if re.search(r"\s", str(links)):
-        raise WGSExtractError(
-            f"Clair3 can't use paths with spaces, and the temporary folder {links} "
-            "has one. Choose one without spaces with --tmp-dir or the "
-            "temp_directory setting in config.toml."
-        )
-    reads_path, ref_path = Path(reads), Path(ref)
-    suffix = "".join(reads_path.suffixes[-1:])
-    reads_link = _link(reads_path, links / f"reads{suffix}")
-    for ext in (".bai", ".csi", ".crai"):
-        for index in (Path(reads + ext), reads_path.with_suffix(ext)):
-            if index.is_file():
-                _link(index, links / f"reads{suffix}{ext}")
-                break
-    ref_link = _link(ref_path, links / "ref.fa")
-    for ext in (".fai", ".gzi"):
-        if Path(ref + ext).is_file():
-            _link(Path(ref + ext), links / f"ref.fa{ext}")
-    # Clair3 reads the model's chemistry from its folder name.
-    (links / "model").mkdir()
-    model_link = links / "model" / (re.sub(r"\s", "_", model.name) or "model")
-    _link(model, model_link)
-    work_link = links / "work"
-    _link(work, work_link)
-    return reads_link, ref_link, model_link, work_link
-
-
-def restore_header_paths(vcf: Path, real_paths: dict[str, str]) -> str:
-    """``vcf``'s header with each link path in ``##`` lines replaced by the
-    path it stands for."""
-    header = run_command(
-        ["bcftools", "view", "-h", str(vcf)], capture_output=True
-    ).stdout
-    links = sorted(real_paths, key=len, reverse=True)
-    pattern = re.compile("|".join(re.escape(link) for link in links))
-    return "".join(
-        pattern.sub(lambda m: real_paths[m.group()], line)
-        if line.startswith("##")
-        else line
-        for line in header.splitlines(keepends=True)
+def space_free_run_paths(
+    reads: str, ref: str, model: Path, work: str
+) -> AbstractContextManager[list[str]]:
+    """The reads, reference, model and work folder, as space-free links where
+    they have spaces: Clair3's shell and GNU parallel steps split paths at
+    spaces (#623). Clair3 reads the model's chemistry from its folder name,
+    which the link keeps."""
+    model_name = re.sub(r"\s", "_", model.name) or "model"
+    return space_free_paths(
+        "Clair3",
+        [
+            (reads, f"reads{''.join(Path(reads).suffixes[-1:])}", READS_INDEXES),
+            (ref, "ref.fa", REFERENCE_INDEXES),
+            (model, f"model/{model_name}", ()),
+            (work, "work", ()),
+        ],
     )
 
 
@@ -479,9 +450,6 @@ def run_clair3(params: VcfClair3Params) -> None:
     with (
         plain_reference(ref, outdir) as use_ref,
         tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_clair3_") as work,
-        tempfile.TemporaryDirectory(
-            prefix="wgse_clair3_", dir=configured_temp_directory()
-        ) as links,
     ):
         bed, intervals = None, None
         if region:
@@ -501,54 +469,45 @@ def run_clair3(params: VcfClair3Params) -> None:
             tool="Clair3", why=_CRAM31_BUG,
         )  # fmt: skip
         output = str(Path(work, "clair3"))
-        run_reads, run_ref, run_model, run_work = space_free_paths(
-            Path(links), reads, use_ref, model, Path(work)
+        # Absolute, so the header's paths can be told apart and restored.
+        abs_reads, abs_ref, abs_work = (
+            str(absolute_path(p)) for p in (reads, use_ref, work)
         )
-        command = clair3_command(
-            run_reads, run_ref, run_model, threads, str(run_work / "clair3"),
-            str(run_work / "regions.bed") if bed else None, sample,
-        )  # fmt: skip
-        try:
-            # stdin closed: Clair3's GNU parallel would read it otherwise.
-            run_command(command, env=_clair3_env(), stdin=subprocess.DEVNULL)
-        except (OSError, subprocess.SubprocessError) as e:
-            errors = clair3_errors(Path(output))
-            if not errors or not isinstance(e, subprocess.CalledProcessError):
-                raise WGSExtractError(f"Clair3 failed: {e}") from e
-            stderr = (
-                e.stderr.decode(errors="replace")
-                if isinstance(e.stderr, bytes)
-                else (e.stderr or "")
-            )
-            # Clair3's stderr (when any) as run_command reports it, then its logs.
-            reported = f"{e}\n" if stderr.strip() else f"exit {e.returncode}; "
-            raise WGSExtractError(
-                f"Clair3 failed: {reported}Clair3's log errors:\n{errors}"
-            ) from e
+        with space_free_run_paths(abs_reads, abs_ref, model, abs_work) as links:
+            run_reads, run_ref, run_model, run_work = links
+            command = clair3_command(
+                run_reads, run_ref, Path(run_model), threads,
+                str(Path(run_work, "clair3")),
+                str(Path(run_work, "regions.bed")) if bed else None, sample,
+            )  # fmt: skip
+            try:
+                # stdin closed: Clair3's GNU parallel would read it otherwise.
+                run_command(command, env=_clair3_env(), stdin=subprocess.DEVNULL)
+            except (OSError, subprocess.SubprocessError) as e:
+                errors = clair3_errors(Path(output))
+                if not errors or not isinstance(e, subprocess.CalledProcessError):
+                    raise WGSExtractError(f"Clair3 failed: {e}") from e
+                stderr = (
+                    e.stderr.decode(errors="replace")
+                    if isinstance(e.stderr, bytes)
+                    else (e.stderr or "")
+                )
+                # Clair3's stderr (when any) as run_command reports it, then its logs.
+                reported = f"{e}\n" if stderr.strip() else f"exit {e.returncode}; "
+                raise WGSExtractError(
+                    f"Clair3 failed: {reported}Clair3's log errors:\n{errors}"
+                ) from e
         merged = Path(output, "merge_output.vcf.gz")
         if not merged.is_file():
             raise WGSExtractError("Clair3 failed to produce merge_output.vcf.gz.")
         # Name the user's files, not the deleted links, in the header.
         real_paths = {
-            run_reads: input_file, run_ref: ref, str(run_model): str(model),
-            str(run_work): work,
+            run_reads: input_file, run_ref: ref, run_model: str(model),
+            run_work: work,
         }  # fmt: skip
-        vcf_header = Path(work, "header.vcf")
-        vcf_header.write_text(restore_header_paths(merged, real_paths), newline="\n")
-        named = Path(work, "named.vcf.gz")
-        run_command(
-            [
-                "bcftools",
-                "reheader",
-                "-h",
-                str(vcf_header),
-                "-o",
-                str(named),
-                str(merged),
-            ]
-        )
+        named = restore_vcf_paths(str(merged), real_paths, work)
         with safe_output(out_vcf) as staged:
-            run_command(["bcftools", "view", "-Oz", "-o", staged, str(named)])
+            run_command(["bcftools", "view", "-Oz", "-o", staged, named])
     ensure_vcf_indexed(out_vcf)
     record_variants(out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region))
 
