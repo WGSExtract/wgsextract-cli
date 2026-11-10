@@ -34,7 +34,9 @@ function Find-Pixi {
     $command = Get-Command pixi -ErrorAction SilentlyContinue
     if ($command -and $command.Path) { return $command.Path }
     if ($command -and $command.Source) { return $command.Source }
-    $homePixi = Join-Path $HOME ".pixi\bin\pixi.exe"
+    # Pixi's home: PIXI_HOME (Pixi's own setting), else ~\.pixi.
+    $pixiHome = if ($env:PIXI_HOME) { $env:PIXI_HOME } else { Join-Path $HOME ".pixi" }
+    $homePixi = Join-Path $pixiHome "bin\pixi.exe"
     if (Test-Path -LiteralPath $homePixi -PathType Leaf) { return $homePixi }
     return $null
 }

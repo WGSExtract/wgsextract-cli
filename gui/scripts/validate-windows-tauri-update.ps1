@@ -368,9 +368,19 @@ function Invoke-QuickUninstall {
 function Resolve-InstalledApp {
     param([string]$AppName)
 
+    $names = @($AppName, "WGSExtract", "WGSExtract Web", "WGSExtract Windows WebUI") | Where-Object { $_ } | Select-Object -Unique
+    # The folder chosen in the installer's wizard, from its Apps entry, then the default under LOCALAPPDATA.
     $candidates = @()
+    foreach ($hive in "HKCU:", "HKLM:") {
+        foreach ($name in $names) {
+            $key = Get-ItemProperty -LiteralPath "$hive\Software\Microsoft\Windows\CurrentVersion\Uninstall\$name" -ErrorAction SilentlyContinue
+            if ($key -and $key.InstallLocation) {
+                $candidates += $key.InstallLocation.Trim().Trim('"')
+            }
+        }
+    }
     if ($env:LOCALAPPDATA) {
-        foreach ($name in @($AppName, "WGSExtract", "WGSExtract Web", "WGSExtract Windows WebUI") | Where-Object { $_ } | Select-Object -Unique) {
+        foreach ($name in $names) {
             $candidates += Join-Path $env:LOCALAPPDATA $name
         }
     }
@@ -388,7 +398,7 @@ function Resolve-InstalledApp {
             return [ordered]@{ installDirectory = $found.DirectoryName; executable = $found.FullName }
         }
     }
-    throw "Installed Tauri executable was not found under LOCALAPPDATA."
+    throw "Installed Tauri executable was not found in the app's Apps entry or under LOCALAPPDATA."
 }
 
 function Get-InstalledVersion {

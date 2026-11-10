@@ -133,9 +133,18 @@ function Copy-GitHubReleaseAsset {
 function Add-PathForCurrentProcess {
     param([string]$PathToAdd)
 
-    if ((Test-Path -LiteralPath $PathToAdd) -and ($env:Path -notlike "*$PathToAdd*")) {
+    # Compared entry by entry: -like would read [ ] in a folder name as a wildcard.
+    $entries = @($env:Path -split ";" | ForEach-Object { $_.TrimEnd('\') })
+    if ((Test-Path -LiteralPath $PathToAdd) -and ($entries -notcontains $PathToAdd.TrimEnd('\'))) {
         $env:Path = "$PathToAdd;$env:Path"
     }
+}
+
+# Pixi's bin folder: under PIXI_HOME, Pixi's own setting for where it lives (for
+# example D:\Tools\pixi), else under ~\.pixi, where Pixi's installer puts it.
+function Get-PixiBinDirectory {
+    $pixiHome = if ($env:PIXI_HOME) { $env:PIXI_HOME } else { Join-Path $env:USERPROFILE ".pixi" }
+    return Join-Path $pixiHome "bin"
 }
 
 function Assert-FileSha256 {
@@ -190,7 +199,7 @@ function Ensure-Pixi {
         return
     }
 
-    Add-PathForCurrentProcess (Join-Path $env:USERPROFILE ".pixi\bin")
+    Add-PathForCurrentProcess (Get-PixiBinDirectory)
     $pixi = Get-Command pixi -ErrorAction SilentlyContinue
     if ($pixi) {
         Write-Step "Pixi found: $($pixi.Source)"
@@ -215,7 +224,7 @@ function Ensure-Pixi {
     }
     $url = if ($PixiInstallUrl) { $PixiInstallUrl } else { "https://github.com/prefix-dev/pixi/releases/download/v0.82.0/$asset" }
     if ($PixiInstallSha256) { $expected = $PixiInstallSha256 }
-    $bin = Join-Path $env:USERPROFILE ".pixi\bin"
+    $bin = Get-PixiBinDirectory
     New-Item -ItemType Directory -Path $bin -Force | Out-Null
     $download = Join-Path $bin ("pixi-download-{0}.exe" -f ([guid]::NewGuid()))
     try {

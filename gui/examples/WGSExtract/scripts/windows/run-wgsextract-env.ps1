@@ -118,8 +118,9 @@ if ($commandName -notin @("wgsextract", "python")) {
     }
 }
 
-# Pixi resolution: an explicit $env:PIXI, then the Pixi on PATH or in ~\.pixi,
-# where install_windows.bat installs it (Windows setup does not embed Pixi).
+# Pixi resolution: an explicit $env:PIXI, then the Pixi on PATH or in Pixi's
+# home (PIXI_HOME, else ~\.pixi), where install_windows.bat installs it
+# (Windows setup does not embed Pixi).
 $pixi = $env:PIXI
 if ($pixi -and -not (Test-Path -LiteralPath $pixi -PathType Leaf)) {
     Write-Error "PIXI is set but is not executable: $pixi"
@@ -132,7 +133,8 @@ if (-not $pixi) {
     }
 }
 if (-not $pixi) {
-    $homePixi = Join-Path $HOME ".pixi\bin\pixi.exe"
+    $pixiHome = if ($env:PIXI_HOME) { $env:PIXI_HOME } else { Join-Path $HOME ".pixi" }
+    $homePixi = Join-Path $pixiHome "bin\pixi.exe"
     if (Test-Path -LiteralPath $homePixi -PathType Leaf) {
         $pixi = $homePixi
     }

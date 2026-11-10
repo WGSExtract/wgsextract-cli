@@ -261,11 +261,29 @@ def test_embedded_pixi_is_used_only_in_an_install_layout(
 def test_without_another_pixi_the_users_own_is_used(tmp_path, monkeypatch):
     if any(Path(p).exists() for p in ("/opt/homebrew/bin/pixi", "/usr/local/bin/pixi")):
         pytest.skip("a system pixi is installed")
+    monkeypatch.delenv("PIXI_HOME", raising=False)
     monkeypatch.setenv("PATH", str(tmp_path / "empty"))
     monkeypatch.setattr(runtime, "source_checkout_root", lambda: None)
     assert pixi_tools.pixi_env_prefix("gatk") is None
 
     own = FakePixi(tmp_path / "own", None, Path.home() / ".pixi" / "bin")
+    own.env("gatk", locked=("gatk4",), installed=False)
+    command = pixi_tools.pixi_install_command("gatk")
+    assert command is not None and shlex.split(command)[0] == str(own.exe)
+
+
+@posix_pixi
+def test_pixi_installed_in_its_own_home_folder_is_found(tmp_path, monkeypatch):
+    """Pixi installed with PIXI_HOME (another drive or folder, not ~/.pixi)
+    and not on PATH: the repair command used to fall back to a bare `pixi`."""
+    if any(Path(p).exists() for p in ("/opt/homebrew/bin/pixi", "/usr/local/bin/pixi")):
+        pytest.skip("a system pixi is installed")
+    home = tmp_path / "WGSE Tools" / "pixi"
+    monkeypatch.setenv("PIXI_HOME", str(home))
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    monkeypatch.setattr(runtime, "source_checkout_root", lambda: None)
+
+    own = FakePixi(tmp_path / "own", None, home / "bin")
     own.env("gatk", locked=("gatk4",), installed=False)
     command = pixi_tools.pixi_install_command("gatk")
     assert command is not None and shlex.split(command)[0] == str(own.exe)

@@ -17,11 +17,12 @@ function Report-Pixi {
         Write-Host "Setup will reuse the Pixi on PATH: $($command.Source)"
         return
     }
-    $homePixi = Join-Path $HOME ".pixi\bin\pixi.exe"
+    $pixiHome = if ($env:PIXI_HOME) { $env:PIXI_HOME } else { Join-Path $HOME ".pixi" }
+    $homePixi = Join-Path $pixiHome "bin\pixi.exe"
     if (Test-Path -LiteralPath $homePixi -PathType Leaf) {
-        Write-Host "Setup will reuse the Pixi in ~\.pixi: $homePixi"
+        Write-Host "Setup will reuse the Pixi in ${pixiHome}: $homePixi"
     } else {
-        Write-Host "Pixi is not pre-installed; setup will install it into ~\.pixi."
+        Write-Host "Pixi is not pre-installed; setup will install it into $pixiHome."
     }
 }
 

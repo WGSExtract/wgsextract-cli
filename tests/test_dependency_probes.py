@@ -542,6 +542,18 @@ def test_is_pixi_tool_command(command, expected):
     assert pixi_tools.is_pixi_tool_command(command) is expected
 
 
+def test_pixi_installed_in_a_folder_with_spaces_is_the_tools_runtime(monkeypatch):
+    """A Windows install outside the default folders (here D:\\WGSE App) quotes
+    Pixi's path; deps check reported those tools as native, not from Pixi."""
+    from wgsextract_cli.core import runtime
+    from wgsextract_cli.core.dependencies import get_tool_runtime
+
+    monkeypatch.setattr(runtime, "is_windows_host", lambda: True)
+    command = '"D:/WGSE App/.pixi/bin/pixi.exe" run --no-install -e default samtools'
+
+    assert get_tool_runtime(command) == "pixi"
+
+
 def test_is_pixi_tool_path_needs_an_active_pixi_env(tmp_path, monkeypatch):
     env = tmp_path / "env"
     (env / "bin").mkdir(parents=True)

@@ -94,7 +94,8 @@ goto parse_args
 set "PIXI_CACHE_DIR=%CD%\tmp\pixi-cache\windows"
 set "PIXI_PROJECT_ENVIRONMENT_DIR=%CD%\tmp\pixi-envs\windows"
 set "SHARED_PIXI_ENVS=%CD%\.pixi\envs"
-set "PIXI_HOME=%USERPROFILE%\.pixi"
+rem Pixi's own PIXI_HOME setting, where install_windows.bat installs it, else ~\.pixi.
+if not defined PIXI_HOME set "PIXI_HOME=%USERPROFILE%\.pixi"
 set "PIXI_BIN=%PIXI_HOME%\bin"
 set "PIXI_DEFAULT_CACHE=%LOCALAPPDATA%\rattler\cache"
 if defined LOCALAPPDATA (
@@ -105,15 +106,15 @@ if defined LOCALAPPDATA (
 set "LEGACY_CONFIG_FILE=%APPDATA%\wgsextract\wgsextract\config.toml"
 
 echo --- WGS Extract CLI: Windows uninstaller ---
-echo Repository:        %CD%
-echo Pixi envs:         %PIXI_PROJECT_ENVIRONMENT_DIR%
-echo Shared Pixi envs:  %SHARED_PIXI_ENVS%
-echo Pixi cache:        %PIXI_CACHE_DIR%
-echo Config file:       %CONFIG_FILE%
-echo Legacy config:     %LEGACY_CONFIG_FILE%
-echo Pixi install:      %PIXI_HOME%
-echo Pixi default cache: %PIXI_DEFAULT_CACHE%
-if "%REMOVE_MSYS2%"=="1" echo MSYS2 root:        %WGSE_MSYS2_ROOT%
+echo Repository:        !CD!
+echo Pixi envs:         !PIXI_PROJECT_ENVIRONMENT_DIR!
+echo Shared Pixi envs:  !SHARED_PIXI_ENVS!
+echo Pixi cache:        !PIXI_CACHE_DIR!
+echo Config file:       !CONFIG_FILE!
+echo Legacy config:     !LEGACY_CONFIG_FILE!
+echo Pixi install:      !PIXI_HOME!
+echo Pixi default cache: !PIXI_DEFAULT_CACHE!
+if "%REMOVE_MSYS2%"=="1" echo MSYS2 root:        !WGSE_MSYS2_ROOT!
 echo.
 echo This removes local project Pixi environments and clears old runtime settings.
 echo Pixi is removed only if explicitly requested or confirmed below.
@@ -169,8 +170,13 @@ if "%REMOVE_PIXI_CACHE%"=="1" (
 )
 
 if "%REMOVE_PIXI%"=="1" (
-    call :remove_dir "%PIXI_HOME%"
-    if errorlevel 1 exit /b 1
+    rem PIXI_HOME may name any folder; remove it only if it is Pixi's.
+    if exist "%PIXI_BIN%\pixi.exe" (
+        call :remove_dir "%PIXI_HOME%"
+        if errorlevel 1 exit /b 1
+    ) else (
+        echo No pixi.exe in "%PIXI_BIN%"; keeping "%PIXI_HOME%".
+    )
     call :remove_user_path_entries "%PIXI_BIN%"
     if errorlevel 1 exit /b 1
     rem Pixi's own package cache: "pixi run" outside this installer, and the first
@@ -202,7 +208,7 @@ rem Settings of the old WSL/MSYS2 tool runtimes, which earlier installers wrote.
 set "TARGET_CONFIG=%~1"
 if "%TARGET_CONFIG%"=="" exit /b 0
 if not exist "%TARGET_CONFIG%" (
-    echo Config file not found; nothing to clear: %TARGET_CONFIG%
+    echo Config file not found; nothing to clear: !TARGET_CONFIG!
     exit /b 0
 )
 set "CONFIG_TMP=%TARGET_CONFIG%.tmp"
@@ -212,7 +218,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$configPath = $env:C
 if errorlevel 1 exit /b 1
 move /y "%CONFIG_TMP%" "%TARGET_CONFIG%" >nul
 if errorlevel 1 exit /b 1
-echo Cleared old runtime settings from config: %TARGET_CONFIG%
+echo Cleared old runtime settings from config: !TARGET_CONFIG!
 rem A config that held only those defaults was the installer's; remove it.
 findstr /r /c:"[^ 	]" "%TARGET_CONFIG%" >nul 2>nul
 if errorlevel 1 call :remove_config_file "%TARGET_CONFIG%"
@@ -222,10 +228,10 @@ exit /b 0
 set "TARGET_CONFIG=%~1"
 if "%TARGET_CONFIG%"=="" exit /b 0
 if not exist "%TARGET_CONFIG%" exit /b 0
-echo Removing config: %TARGET_CONFIG%
+echo Removing config: !TARGET_CONFIG!
 del /f /q "%TARGET_CONFIG%"
 if exist "%TARGET_CONFIG%" (
-    echo ERROR: Could not remove %TARGET_CONFIG%
+    echo ERROR: Could not remove !TARGET_CONFIG!
     exit /b 1
 )
 rem Its folders, if nothing else is in them: ...\wgsextract and the vendor folder.
@@ -236,14 +242,14 @@ exit /b 0
 :remove_dir
 set "TARGET_DIR=%~1"
 if not exist "%TARGET_DIR%" (
-    echo Not found: %TARGET_DIR%
+    echo Not found: !TARGET_DIR!
     exit /b 0
 )
-echo Removing: %TARGET_DIR%
+echo Removing: !TARGET_DIR!
 rmdir /s /q "%TARGET_DIR%"
 rem rmdir reports success even when files in use were left behind.
 if exist "%TARGET_DIR%" (
-    echo ERROR: Could not completely remove %TARGET_DIR%; close programs using it and rerun.
+    echo ERROR: Could not completely remove !TARGET_DIR!; close programs using it and rerun.
     exit /b 1
 )
 exit /b 0
@@ -288,7 +294,7 @@ echo   --remove-config       Delete WGS Extract config.toml, including your othe
 echo   --keep-pixi-envs      Leave local Pixi environments in place.
 echo   --keep-pixi-cache     Leave the local Windows Pixi cache in place.
 echo   --remove-prerequisites Remove the Pixi install used by the Windows installer.
-echo   --remove-pixi         Remove %%USERPROFILE%%\.pixi and its user PATH entry.
+echo   --remove-pixi         Remove Pixi (%%PIXI_HOME%%, by default %%USERPROFILE%%\.pixi) and its user PATH entry.
 echo   --remove-msys2        Legacy: remove the MSYS2 that earlier installers set up.
 echo   --msys2-root PATH     MSYS2 root for --remove-msys2. Defaults to %%MSYS2_ROOT%% or C:\msys64.
 echo   --dry-run             Print resolved paths and exit without changing anything.

@@ -85,9 +85,9 @@ if not defined PIXI_CACHE_DIR set "PIXI_CACHE_DIR=%CD%\tmp\pixi-cache\windows"
 if not defined PIXI_PROJECT_ENVIRONMENT_DIR set "PIXI_PROJECT_ENVIRONMENT_DIR=%CD%\tmp\pixi-envs\windows"
 
 echo --- WGS Extract CLI: Windows installer ---
-echo Repository:        %CD%
-echo Pixi cache:        %PIXI_CACHE_DIR%
-echo Pixi envs:         %PIXI_PROJECT_ENVIRONMENT_DIR%
+echo Repository:        !CD!
+echo Pixi cache:        !PIXI_CACHE_DIR!
+echo Pixi envs:         !PIXI_PROJECT_ENVIRONMENT_DIR!
 if defined IGNORED_ARGS echo Ignored (no longer needed; tools come from Pixi):!IGNORED_ARGS!
 echo.
 
@@ -109,7 +109,10 @@ echo Ensuring Pixi is installed...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%scripts\bootstrap_windows_prereqs.ps1" !BOOTSTRAP_PREREQ_ARGS!
 if errorlevel 1 exit /b 1
 
-set "PATH=%USERPROFILE%\.pixi\bin;%PATH%"
+rem Where Pixi is: PIXI_HOME (Pixi's own setting) or Pixi's default, ~\.pixi.
+set "WGSE_PIXI_BIN=%USERPROFILE%\.pixi\bin"
+if defined PIXI_HOME set "WGSE_PIXI_BIN=%PIXI_HOME%\bin"
+set "PATH=%WGSE_PIXI_BIN%;%PATH%"
 where pixi >nul 2>nul
 if errorlevel 1 (
     echo ERROR: Pixi was not found on PATH.
