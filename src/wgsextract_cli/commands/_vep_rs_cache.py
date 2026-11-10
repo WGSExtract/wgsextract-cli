@@ -57,6 +57,8 @@ class _Source:
     dest: Path
     # Optional files (absent for some releases or assemblies) only warn.
     optional: bool = False
+    # A table dump Ensembl may publish uncompressed (some GRCh37 ones).
+    table: bool = False
 
 
 def _sources(
@@ -81,13 +83,19 @@ def _sources(
     ]
     core, variation = work / "core_dumps", work / "variation_dumps"
     sources += [
-        _Source(f"{base}/mysql/{species}_core_{db}/{t}.txt.gz", core / f"{t}.txt.gz")
+        _Source(
+            f"{base}/mysql/{species}_core_{db}/{t}.txt.gz",
+            core / f"{t}.txt.gz",
+            table=True,
+        )
         for t in _CORE_TABLES
     ]
     # The gene phenotype counts (GENE_PHENO) come from the variation tables.
     sources += [
         _Source(
-            f"{base}/mysql/{species}_variation_{db}/{t}.txt.gz", core / f"{t}.txt.gz"
+            f"{base}/mysql/{species}_variation_{db}/{t}.txt.gz",
+            core / f"{t}.txt.gz",
+            table=True,
         )
         for t in ("phenotype", "phenotype_feature")
     ]
@@ -97,6 +105,7 @@ def _sources(
             _Source(
                 f"{base}/mysql/{species}_variation_{db}/{t}.txt.gz",
                 variation / f"{t}.txt.gz",
+                table=True,
             )
             for t in _VARIATION_TABLES
         ]
@@ -104,8 +113,10 @@ def _sources(
         names = [f"{species}-chr{c}.vcf.gz" for c in _CHROMOSOMES]
         names += [n.format(species=species) for n in _GENOME_WIDE_VCFS]
         for vcf in names:
-            optional = not vcf.startswith(f"{species}-chr")
-            for file in (vcf, vcf + ".csi"):
+            # A chromosome's VCF is required; the builder reads it without
+            # its index, and the genome-wide files are extras.
+            required = vcf.startswith(f"{species}-chr")
+            for file, optional in ((vcf, not required), (vcf + ".csi", True)):
                 url = f"{base}/variation/vcf/{species}/{file}"
                 sources.append(_Source(url, vcfs / file, optional))
         inputs |= {"variation": variation, "vcfs": vcfs}
@@ -114,49 +125,73 @@ def _sources(
 
 def _fetch(sources: list[_Source]) -> None:
     """Download each file not already complete, resuming a partial one, and
-    check it against its folder's Ensembl CHECKSUMS."""
-    from ._vep_resources import calculate_bsd_sum
+    check it against its folder's Ensembl CHECKSUMS. A file is checked while
+    the next downloads (the checksum is slow without a native ``sum``)."""
+    from concurrent.futures import Future, ThreadPoolExecutor
+
+    from ._vep_resources import _require_in_scope
 
     checksums: dict[str, dict[str, tuple[int, int]]] = {}
     cancel = cancel_event()
-    for source in sources:
-        checkpoint()
-        folder, filename = source.url.rsplit("/", 1)
-        done = Path(f"{source.dest}.ok")
-        if done.exists() and source.dest.exists():
-            continue
-        source.dest.parent.mkdir(parents=True, exist_ok=True)
-        expected = _expected_sums(folder, checksums).get(filename)
-        if expected is None and source.optional:
-            warn(
-                "vep_source_missing",
-                f"{source.url} isn't published; the cache is built without it.",
-                url=source.url,
-            )
-            continue
-        logging.info(f"Downloading {source.url}")
-        if not download_file(source.url, str(source.dest), None, cancel):
+    checks: list[Future[None]] = []
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        for source in sources:
             checkpoint()
-            raise WGSExtractError(f"Download failed: {source.url}")
-        if expected is None:
-            warn(
-                "vep_checksum_unlisted",
-                f"{filename} is not listed in {folder}/CHECKSUMS; not verified.",
-                url=source.url,
-            )
-        elif (actual := calculate_bsd_sum(str(source.dest))) != expected:
-            source.dest.unlink()
-            raise WGSExtractError(
-                f"{filename} failed its checksum (expected {expected}, got "
-                f"{actual}); run the download again."
-            )
-        done.touch()
+            folder, filename = source.url.rsplit("/", 1)
+            listing = _expected_sums(folder, checksums)
+            url, dest = source.url, source.dest
+            if filename not in listing and source.table and filename[:-3] in listing:
+                url, dest = url[:-3], dest.with_suffix("")
+                filename = filename[:-3]
+            for path in (dest, *(Path(f"{dest}{x}") for x in _SIDECARS)):
+                _require_in_scope(path)
+            if Path(f"{dest}.ok").exists() and dest.exists():
+                continue
+            expected = listing.get(filename)
+            if expected is None:
+                if source.optional:
+                    warn(
+                        "vep_source_missing",
+                        f"{url} isn't published; the cache is built without it.",
+                        url=url,
+                    )
+                    continue
+                raise WGSExtractError(
+                    f"{filename} is not listed in {folder}/CHECKSUMS; Ensembl "
+                    f"doesn't publish it for this release and assembly."
+                )
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            logging.info(f"Downloading {url}")
+            if not download_file(url, str(dest), None, cancel):
+                checkpoint()
+                raise WGSExtractError(f"Download failed: {url}")
+            checks.append(pool.submit(_check_download, dest, expected))
+        for check in checks:
+            check.result()
+
+
+# Files download_file keeps beside a download, and the completion marker.
+_SIDECARS = (".ok", ".partial", ".partial.segments", ".partial.source")
+
+
+def _check_download(dest: Path, expected: tuple[int, int]) -> None:
+    from ._vep_resources import calculate_bsd_sum
+
+    actual = calculate_bsd_sum(str(dest))
+    if actual != expected:
+        dest.unlink()
+        raise WGSExtractError(
+            f"{dest.name} failed its checksum (expected {expected}, got "
+            f"{actual}); run the download again."
+        )
+    Path(f"{dest}.ok").touch()
 
 
 def _expected_sums(
     folder: str, cache: dict[str, dict[str, tuple[int, int]]]
 ) -> dict[str, tuple[int, int]]:
-    """``folder``'s Ensembl CHECKSUMS (BSD sum and blocks by file name)."""
+    """``folder``'s Ensembl CHECKSUMS (BSD sum and blocks by file name). An
+    unreadable listing fails: it can't tell a missing file from a lost one."""
     if folder not in cache:
         sums: dict[str, tuple[int, int]] = {}
         try:
@@ -166,7 +201,12 @@ def _expected_sums(
                     if len(parts) >= 3:
                         sums[parts[-1]] = (int(parts[0]), int(parts[1]))
         except (OSError, ValueError) as e:
-            logging.warning(f"Could not read {folder}/CHECKSUMS: {e}")
+            raise WGSExtractError(
+                f"Could not read {folder}/CHECKSUMS ({e}); try again, or use "
+                "the other --mirror."
+            ) from e
+        if not sums:
+            raise WGSExtractError(f"{folder}/CHECKSUMS lists no files.")
         cache[folder] = sums
     return cache[folder]
 
@@ -198,6 +238,8 @@ def build_vep_rs_cache(params: VepDownloadParams, mirror_root: str) -> None:
     inputs, sources = _sources(mirror_root, params, work)
     _fetch(sources)
     genome = work / "genome.fa"
+    for path in (genome, Path(f"{genome}.fai")):
+        _require_in_scope(path)
     if not Path(f"{genome}.fai").exists():
         _gunzip(inputs["genome"], genome)
         run_command(["samtools", "faidx", str(genome)])
@@ -295,6 +337,10 @@ def verify_vep_rs_cache(params: VepVerifyParams) -> None:
 
 
 def _checksum_failures(version_dir: Path) -> list[str]:
+    """Files of the builder's manifest that are missing or changed. A
+    manifest naming nothing, or a file outside the cache, fails."""
+    from wgsextract_cli.core import read_scope
+
     manifest = version_dir / "CHECKSUMS.sha256"
     if not manifest.is_file():
         warn(
@@ -303,13 +349,31 @@ def _checksum_failures(version_dir: Path) -> list[str]:
             path=str(manifest),
         )
         return []
-    bad = []
+    entries = []
     for line in manifest.read_text().splitlines():
-        expected, _, name = line.partition("  ")
-        if not name:
+        if not line.strip():
             continue
+        expected, sep, name = line.partition("  ")
+        rel = Path(name)
+        if (
+            not sep
+            or len(expected) != 64
+            or rel.is_absolute()
+            or rel.drive
+            or ".." in rel.parts
+        ):
+            raise WGSExtractError(f"{manifest} has a malformed entry: {line!r}.")
+        entries.append((expected, name))
+    if not entries:
+        raise WGSExtractError(f"{manifest} lists no files; build the cache again.")
+    bad = []
+    for expected, name in entries:
         checkpoint()
         path = version_dir / name
+        if not read_scope.may_follow(path):
+            raise WGSExtractError(
+                f"{path} leads outside the folders this server may use."
+            )
         digest = hashlib.sha256()
         try:
             with open(path, "rb") as f:

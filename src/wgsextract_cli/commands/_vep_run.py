@@ -239,7 +239,9 @@ def _check_cache_version(
         assembly = vep_cmd[vep_cmd.index("--assembly") + 1]
     else:
         # Without an assembly, VEP takes the release's only one.
-        found = sorted(Path(cache_dir, species).glob(f"{version}_*"))
+        found = sorted(
+            p for p in Path(cache_dir, species).glob(f"{version}_*") if p.is_dir()
+        )
         if len(found) != 1:
             return
         assembly = found[0].name.split("_", 1)[1]

@@ -15,6 +15,7 @@ from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import calculate_bam_md5, ensure_vcf_prepared
 
+from .._vep_engines import configured_engine
 from .._vep_run import vep_output_paths
 from .basic import record_variants, require_vcf_input, vcf_input_handler
 from .clinvar_revel import CLINVAR_ANNOTATED, REVEL_ANNOTATED
@@ -51,14 +52,19 @@ def _step_output(ann: str, step_input: str, step_outdir: str) -> str:
 def dataset(ann: str, lib: ReferenceLibrary) -> str | None:
     """The reference data an annotation step reads: a file, or VEP's cache
     directory; None when it isn't installed."""
-    # chain-annotate is meant to run offline, so VEP also needs its cache.
-    attr = "vep_cache" if ann == "vep" else _VCF_STEPS[ann][0]
-    return getattr(lib, attr, None) or None
+    # chain-annotate is meant to run offline, so VEP also needs its cache: the
+    # configured engine's (vep-rs keeps its own in the cache's vep-rs folder).
+    if ann == "vep":
+        if not lib.vep_cache:
+            return None
+        cache = configured_engine().cache_root(Path(lib.vep_cache))
+        return str(cache) if cache.is_dir() else None
+    return getattr(lib, _VCF_STEPS[ann][0], None) or None
 
 
 def skip_reason(ann: str, lib: ReferenceLibrary) -> str | None:
     """Why an annotation step can't run here, or None if it can."""
-    tool = "vep" if ann == "vep" else "bcftools"
+    tool = configured_engine().tool if ann == "vep" else "bcftools"
     if not get_tool_path(tool):
         return f"{tool} is not installed."
     if not dataset(ann, lib):

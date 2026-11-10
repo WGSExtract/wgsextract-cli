@@ -90,17 +90,36 @@ def vep_engine(name: str | None) -> VepEngine:
         ) from None
 
 
+def configured_engine() -> VepEngine:
+    """The engine config.toml's ``vep_engine`` names (default Ensembl VEP)."""
+    from wgsextract_cli.core.config import settings
+
+    return vep_engine(settings.get("vep_engine"))
+
+
+def _refuses(engine: VepEngine, token: str) -> bool:
+    """Whether ``token`` names an option ``engine`` refuses. vep-rs, like
+    Ensembl VEP's Getopt, takes one or two dashes, any case and unambiguous
+    abbreviations (``-CUST``), so those count too."""
+    if not token.startswith("-"):
+        return False
+    name = token.lstrip("-").split("=", 1)[0].lower()
+    if not name:
+        return False
+    for refused in engine.refused_args:
+        full = refused.lstrip("-")
+        if name == full or name.startswith(f"{full}_"):
+            return True
+        if len(name) >= 3 and full.startswith(name):
+            return True
+    return False
+
+
 def refuse_unsupported_args(engine: VepEngine, vep_args: str | None) -> None:
     """Refuse --vep-args options ``engine`` would ignore or can't honour."""
     if not vep_args or not engine.refused_args:
         return
-    given = {arg.split("=", 1)[0] for arg in shlex.split(vep_args)}
-    refused = sorted(
-        arg
-        for arg in given
-        if arg in engine.refused_args
-        or any(arg.startswith(f"{r}_") for r in engine.refused_args)
-    )
+    refused = sorted({t for t in shlex.split(vep_args) if _refuses(engine, t)})
     if refused:
         raise WGSExtractError(
             f"{engine.label} does not support {', '.join(refused)}; "

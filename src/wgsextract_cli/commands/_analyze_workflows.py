@@ -27,6 +27,8 @@ from wgsextract_cli.core.variant_files import (
     ensure_vcf_indexed,
 )
 
+from ._vep_engines import configured_engine
+
 
 def _safe_console_text(value: object) -> str:
     text = str(value)
@@ -492,7 +494,7 @@ def run_vcf_workflow(
         f"annotate:{tag}",
         inputs=inputs,
         params={**_step_params(job, command), "caches": caches},
-        tools=["bcftools", *(["vep"] if "vep" in available else [])],
+        tools=["bcftools", *([configured_engine().tool] if "vep" in available else [])],
     )
     annotated, _ = run_step(
         journal, annotate_step, annotate, after=after, clean=[work_dir]

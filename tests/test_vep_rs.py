@@ -153,7 +153,10 @@ def test_vep_rs_without_its_cache_names_the_download(tmp_path):
     assert not (tmp_path / "in_vep.vcf.gz").exists()
 
 
-@pytest.mark.parametrize("arg", ["--custom file.vcf.gz,X,vcf", "--database"])
+@pytest.mark.parametrize(
+    "arg",
+    ["--custom file.vcf.gz,X,vcf", "--database", "-CUST file.vcf.gz,X,vcf"],
+)
 def test_vep_rs_refuses_options_it_would_ignore(tmp_path, arg):
     vcf = _input(tmp_path)
 
@@ -195,6 +198,23 @@ def test_verify_accepts_a_built_cache_and_catches_a_changed_file(
     assert result.metrics["damaged_files"] == 1
 
 
+@needs_vep_rs
+@pytest.mark.parametrize("manifest", ["", "0" * 64 + "  ../../outside.txt\n"])
+def test_verify_fails_on_an_empty_or_escaping_manifest(
+    tmp_path, vep_rs_cache, manifest
+):
+    """Copilot review on #626: a truncated or hostile CHECKSUMS.sha256 must not
+    pass as a verified cache."""
+    (vep_rs_cache / "CHECKSUMS.sha256").write_text(manifest)
+
+    result = api.vep.verify(
+        VepVerifyParams(engine="vep-rs", vep_cache=vep_rs_cache.parents[2]),
+        check=False,
+    )
+
+    assert result.status != "ok"
+
+
 # --- vep download --engine vep-rs ----------------------------------------------
 # The Ensembl files download for real (download_file) from a local HTTP
 # server; only the mirror table is pointed at it.
@@ -227,6 +247,25 @@ def _ensembl_files() -> dict[str, bytes]:
         files[f"release-116/mysql/homo_sapiens_variation_116_38/{table}.txt.gz"] = _gz(
             b""
         )
+    return _with_checksums(files)
+
+
+def _with_checksums(files: dict[str, bytes]) -> dict[str, bytes]:
+    """Add each folder's CHECKSUMS, with the BSD sums Ensembl lists."""
+    import collections
+    import tempfile
+
+    from wgsextract_cli.commands import _vep_resources as vr
+
+    listings: dict[str, list[str]] = collections.defaultdict(list)
+    with tempfile.TemporaryDirectory() as tmp:
+        for path, data in files.items():
+            folder, name = path.rsplit("/", 1)
+            Path(tmp, "f").write_bytes(data)
+            total, blocks = vr.calculate_bsd_sum(str(Path(tmp, "f")))
+            listings[folder].append(f"{total:05d} {blocks} {name}")
+    for folder, lines in listings.items():
+        files[f"{folder}/CHECKSUMS"] = ("\n".join(lines) + "\n").encode()
     return files
 
 
@@ -255,3 +294,54 @@ def test_download_builds_the_vep_rs_cache_from_ensembl_files(tmp_path, monkeypat
         VepVerifyParams(engine="vep-rs", vep_cache=tmp_path / "c"), check=False
     )
     assert verified.metrics["damaged_files"] == 0
+
+
+@needs_vep_rs
+def test_download_fails_when_ensembl_checksums_are_unreadable(tmp_path, monkeypatch):
+    """Copilot review on #626: without the listing a missing file can't be
+    told from a lost one, so nothing is built."""
+    from wgsextract_cli.commands import _vep_resources as vr
+
+    files = {k: v for k, v in _ensembl_files().items() if not k.endswith("CHECKSUMS")}
+    with serving(None, files) as srv:
+        for mirror in vr.VEP_MIRRORS:
+            monkeypatch.setitem(vr.VEP_MIRRORS, mirror, srv.base)
+        result = api.vep.download(
+            VepDownloadParams(
+                engine="vep-rs", vep_cache=tmp_path / "c", variations=False
+            ),
+            check=False,
+        )
+
+    assert result.status != "ok"
+    assert not (tmp_path / "c" / "vep-rs" / "homo_sapiens").exists()
+
+
+def test_delete_removes_an_unfinished_vep_rs_download(tmp_path):
+    work = tmp_path / "vep-rs" / ".download-homo_sapiens-116_GRCh38"
+    (work / "core_dumps").mkdir(parents=True)
+    (work / "core_dumps" / "gene.txt.gz.partial").write_bytes(b"x")
+
+    api.vep.delete(api.VepDeleteParams(engine="vep-rs", vep_cache=tmp_path))
+
+    assert not work.exists()
+
+
+@needs_vep_rs
+def test_chain_annotate_runs_vep_with_the_configured_vep_rs(
+    tmp_path, vep_rs_cache, monkeypatch
+):
+    """Copilot review on #626: with vep_engine = "vep-rs" and only vep-rs's
+    cache, chain-annotate's VEP step isn't skipped as missing Ensembl VEP."""
+    from types import SimpleNamespace
+
+    from wgsextract_cli.commands.vcf import chain
+    from wgsextract_cli.core.config import settings
+
+    monkeypatch.setitem(settings, "vep_engine", "vep-rs")
+    lib = SimpleNamespace(vep_cache=str(vep_rs_cache.parents[2]))
+
+    assert chain.skip_reason("vep", lib) is None  # type: ignore[arg-type]
+    monkeypatch.setitem(settings, "vep_engine", "ensembl")
+    if get_tool_path("vep") is None:
+        assert "vep is not installed" in chain.skip_reason("vep", lib)  # type: ignore[arg-type]

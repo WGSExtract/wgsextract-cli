@@ -195,6 +195,11 @@ def run_vep_delete(params: VepDeleteParams) -> None:
     paths = library_removal.vep_release_paths(
         cache_root, params.species, params.vep_version, params.assembly
     )
+    # vep-rs's resumable downloads of the release.
+    paths.append(
+        cache_root
+        / f".download-{params.species}-{params.vep_version}_{params.assembly}"
+    )
     for path in paths:
         _require_in_scope(path)
     release = f"{params.species} {params.vep_version}_{params.assembly}"
