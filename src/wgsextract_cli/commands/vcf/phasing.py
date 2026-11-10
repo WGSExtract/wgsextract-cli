@@ -17,9 +17,9 @@ import subprocess
 import sys
 import tempfile
 from collections import defaultdict
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from contextlib import contextmanager, nullcontext
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
@@ -33,17 +33,15 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.results import Scalar, current_result, warn
 from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.space_free_paths import (
     READS_INDEXES,
     REFERENCE_INDEXES,
     VCF_INDEXES,
-    has_space,
-    restore_paths,
-    space_free_folder,
-    space_free_link,
+    restore_cram_paths,
+    restore_vcf_paths,
+    space_free_paths,
 )
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import (
@@ -258,22 +256,24 @@ def _fasta_suffix(ref: str) -> str:
     return "".join(suffixes[-2:] if suffixes[-1:] == [".gz"] else suffixes[-1:])
 
 
-@contextmanager
 def longphase_paths(
     vcf: str, reads: str, ref: str, work: str
-) -> Iterator[tuple[str, str, str, str]]:
-    """Space-free links to the VCF, reads, reference and work folder: LongPhase
-    splits its path options at spaces (#632)."""
-    if not any(has_space(absolute_path(p)) for p in (vcf, reads, ref, work)):
-        yield vcf, reads, ref, work
-        return
-    with space_free_folder("LongPhase") as links:
-        yield (
-            space_free_link(vcf, links / "input.vcf.gz", VCF_INDEXES),
-            space_free_link(reads, links / f"reads{Path(reads).suffix}", READS_INDEXES),
-            space_free_link(ref, links / f"ref{_fasta_suffix(ref)}", REFERENCE_INDEXES),
-            space_free_link(work, links / "work"),
-        )
+) -> AbstractContextManager[list[str]]:
+    """The VCF, reads, reference and work folder, as space-free links where
+    they have spaces: LongPhase splits its path options at spaces (#632)."""
+    return space_free_paths(
+        "LongPhase",
+        [
+            (vcf, "input.vcf.gz", VCF_INDEXES),
+            (reads, f"reads{Path(reads).suffix}", READS_INDEXES),
+            (ref, f"ref{_fasta_suffix(ref)}", REFERENCE_INDEXES),
+            (work, "work", ()),
+        ],
+    )
+
+
+def real_paths(links: Sequence[str], paths: Sequence[str]) -> dict[str, str]:
+    return dict(zip(links, paths, strict=True))
 
 
 def run_longphase(
@@ -293,22 +293,14 @@ def run_longphase(
                 platform,
                 threads,
                 str(Path(lp_work, "longphase")),
-            ),  # fmt: skip
+            ),
             stdin=subprocess.DEVNULL,
         )
     produced = prefix + ".vcf"
     if not Path(produced).is_file():
         raise WGSExtractError("LongPhase failed to produce a phased VCF.")
     # Its ##commandline names the links; record the real paths (#632).
-    header = run_command(["bcftools", "view", "-h", produced], capture_output=True)
-    restored = restore_paths(header.stdout, links, paths)
-    if restored != header.stdout:
-        header_file = str(Path(work, "header.vcf"))
-        with open(header_file, "w", newline="\n") as f:
-            f.write(restored)
-        fixed = prefix + ".restored.vcf"
-        run_command(["bcftools", "reheader", "-h", header_file, "-o", fixed, produced])
-        produced = fixed
+    produced = restore_vcf_paths(produced, real_paths(links, paths), work)
     run_command(["bcftools", "view", "-Oz", "-o", out, produced])
 
 
@@ -497,25 +489,6 @@ def _missing_contig_lines(vcf: str, header: str) -> list[str]:
     return lines
 
 
-def _restore_cram_header(
-    cram: str, links: Sequence[str], paths: Sequence[str], work: str
-) -> None:
-    """Put the real paths back for the space-free links LongPhase recorded in
-    the CRAM's header: @SQ UR, else readers without -T fetch the reference
-    by M5 from EBI, and @PG CL (#632). Rewritten in place, as CRAM allows."""
-    header = run_command(["samtools", "view", "-H", cram], capture_output=True).stdout
-    fixed = str(Path(work, "header.sam"))
-    with open(fixed, "w", newline="\n") as f:
-        f.write(restore_paths(header, links, paths))
-    # In place when the new header fits the CRAM's header container; else a
-    # rewritten copy (reheader -i fails, leaving the CRAM unchanged).
-    if run_command(["samtools", "reheader", "-i", fixed, cram], check=False).returncode:
-        copy = str(Path(work, "reheadered.cram"))
-        with open(copy, "wb") as out:
-            run_command(["samtools", "reheader", fixed, cram], stdout=out)
-        Path(copy).replace(cram)
-
-
 def haplotag(
     phaser: str, vcf: str, reads: str, ref: str, sample: str, threads: int,
     outdir: str, region: str | None,
@@ -555,7 +528,9 @@ def haplotag(
         staged = str(Path(work, f"haplotagged{suffix}"))
         paths = (slim, reads, ref, work)
         with (
-            longphase_paths(*paths) if phaser == "longphase" else nullcontext(paths)
+            longphase_paths(*paths)
+            if phaser == "longphase"
+            else nullcontext(list(paths))
         ) as links:
             tool_vcf, tool_reads, tool_ref, tool_work = links
             run_command(
@@ -576,8 +551,8 @@ def haplotag(
             raise WGSExtractError(f"{phaser} haplotag produced no {suffix[1:]} file.")
         # A BAM keeps its input's @SQ UR; only its @PG CL names the links, and
         # BAM can't be reheadered without rewriting every read, so it is left.
-        if suffix == ".cram" and links != paths:
-            _restore_cram_header(staged, links, paths, work)
+        if suffix == ".cram":
+            restore_cram_paths(staged, real_paths(links, paths), work)
         with safe_output(output) as final:
             Path(staged).replace(final)
     run_command(["samtools", "index", output])

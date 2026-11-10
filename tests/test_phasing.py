@@ -243,6 +243,25 @@ def test_longphase_phases_and_tags_from_paths_with_spaces(
 
 @needs_tools("longphase", "minimap2")
 @needs_htslib
+@pytest.mark.parametrize("space", ["_", " "])
+def test_longphase_cram_names_the_reference_given_as_a_relative_path(
+    aligned, tmp_path, monkeypatch, space
+):
+    """#635: a relative reference must not be pasted onto LongPhase's own
+    absolute UR (``/cwd//cwd/ref.fa``), with or without links."""
+    bam, ref = aligned
+    home = tmp_path / f"John{space}Smith"
+    home.mkdir()
+    shutil.copy(ref, home / "ref.fa")
+    _run("samtools", "view", "-C", "-T", str(ref), "-o", str(home / "r.cram"), str(bam))
+    _run("samtools", "index", str(home / "r.cram"))
+    monkeypatch.chdir(home)
+    *_rest, urls, _headers = _phase_and_tag(Path("r.cram"), Path("ref.fa"), home)
+    assert urls == {f"UR:{home / 'ref.fa'}"}
+
+
+@needs_tools("longphase", "minimap2")
+@needs_htslib
 def test_longphase_links_go_in_the_chosen_temp_dir(aligned, tmp_path, monkeypatch):
     """#632/#633: a system temp folder with a space must not stop a run whose
     paths have none, or whose chosen temporary directory has none; otherwise
