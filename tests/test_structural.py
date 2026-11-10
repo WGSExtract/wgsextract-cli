@@ -244,7 +244,7 @@ SV_VCF = (
 
 
 _FAKE_CALLER = """\
-import json, sys
+import gzip, json, sys
 name, args = {name!r}, sys.argv[1:]
 if args in (["--version"], ["--help"]):
     print(name, "2.0.0")
@@ -255,6 +255,8 @@ if "--regions" in args:
     record["bed"] = open(args[args.index("--regions") + 1]).read()
 if args[:1] == ["call"]:
     record["reference"] = open(args[-3], "rb").read(1).decode()
+if args[:1] == ["discover"]:
+    record["reads"] = gzip.open(args[-2]).read(3).decode()
 with open(state["log"], "a") as log:
     log.write(json.dumps(record) + "\\n")
 if name == state["fail"]:
@@ -387,6 +389,27 @@ def test_pbsv_calls_a_region_against_an_uncompressed_reference(tmp_path, long_re
     assert call["reference"] == ">"
     assert not Path(call["argv"][-3]).exists()
     assert sorted(p.name for p in out.iterdir()) == ["pbsv.vcf.gz", "pbsv.vcf.gz.tbi"]
+
+
+@needs_htslib
+def test_pbsv_reads_a_cram_decoded_with_the_given_reference(tmp_path, long_read):
+    # #636: pbsv takes no reference, so its htslib would look the CRAM's up
+    # by itself: at a stale UR: path, or on a reference server.
+    callers, bam, ref = long_read
+    cram = tmp_path / "hifi.cram"
+    samtools = get_tool_path("samtools")
+    run_command([samtools, "view", "-C", "-T", ref, "-o", str(cram), bam])
+    moved = write_fasta(tmp_path / "moved" / "ref.fa", {"chr1": "ACGT" * 15_000})
+    for path in Path(ref).parent.glob("ref.fa*"):
+        path.unlink()
+    out = tmp_path / "out"
+
+    _run("sv", str(cram), str(moved), out, "--pacbio")
+
+    discover = callers.runs[0]
+    assert discover["reads"] == "BAM"
+    assert not Path(discover["argv"][-2]).exists()
+    assert _records(out / "pbsv.vcf.gz") == [("chr1", "30000", "32000")]
 
 
 @needs_htslib

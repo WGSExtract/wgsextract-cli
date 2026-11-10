@@ -134,7 +134,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf to-fasta": _n(MINUTES, "bcftools", "bgzip", "samtools", "tabix"),
     "vcf trio": _n(MINUTES, *_CALL, optional="bgzip"),
     "vcf cnv": _n(HOURS, "bcftools", "delly", "samtools", "tabix"),
-    "vcf sv": _n(HOURS, *_CALL, optional="delly pbsv sniffles"),
+    "vcf sv": _n(HOURS, *_CALL, optional="delly pbsv sambamba sniffles"),
     "vcf freebayes": _n(HOURS, "bcftools", "freebayes", "samtools", "tabix"),
     "vcf gatk": _n(HOURS, "gatk", "samtools", "tabix", optional="bcftools"),
     "vcf deepvariant": _n(

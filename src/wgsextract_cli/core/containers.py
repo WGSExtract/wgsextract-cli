@@ -18,6 +18,7 @@ from contextlib import contextmanager, suppress
 from pathlib import Path
 
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.reference_lookup import REF_PATH, local_ref_path
 from wgsextract_cli.core.steps import RUN_TAG
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
@@ -144,6 +145,9 @@ def run_container(
     cmd += ["-e", f"HOME={home}"]
     if temporary_directory:
         cmd += ["-e", f"TMPDIR={home}"]
+    # The image's htslib may be old enough to fetch a reference it can't find
+    # from EBI; the host's local cache folders aren't mounted, so it fails.
+    cmd += ["-e", f"{REF_PATH}={local_ref_path(os.environ.get(REF_PATH))}"]
     for mount in mounts:
         cmd += ["-v", f"{mount}:{mount}"]
     name = f"wgsextract-{uuid.uuid4().hex[:12]}"
