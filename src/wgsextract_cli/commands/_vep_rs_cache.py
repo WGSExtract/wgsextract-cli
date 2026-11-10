@@ -19,6 +19,11 @@ from wgsextract_cli.api._runtime import cancel_event, checkpoint
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.ref_library import download_file
+from wgsextract_cli.core.resource_estimates import (
+    GIB,
+    estimate_vep_download,
+    preflight_resources,
+)
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
@@ -235,6 +240,17 @@ def build_vep_rs_cache(params: VepDownloadParams, mirror_root: str) -> None:
         _require_in_scope(path)
     work.mkdir(parents=True, exist_ok=True)
 
+    estimate = estimate_vep_download(str(engine_root), params.variations)
+    preflight_resources(lambda: estimate)
+    disk = estimate.resources[0]
+    if disk.status == "LOW" and not (version_dir.exists() or any(work.iterdir())):
+        raise WGSExtractError(
+            f"Building the vep-rs cache needs about "
+            f"{(disk.estimated_bytes or 0) / GIB:.0f} GiB free in {engine_root} "
+            f"(downloads, genome and cache), but only "
+            f"{(disk.available_bytes or 0) / GIB:.0f} GiB is free. Free some "
+            "space, choose another --vep-cache, or use --no-variations."
+        )
     inputs, sources = _sources(mirror_root, params, work)
     _fetch(sources)
     genome = work / "genome.fa"

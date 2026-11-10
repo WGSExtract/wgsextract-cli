@@ -216,11 +216,11 @@
 "actions.vcf.trio-analysis.vcf-trio.tooltip" = "Compare VCFs de filho e pais para identificar mutações de novo ou condições herdadas."  # i18n-source-hash:2c8eed87
 "sections.vcf.vep-analysis.title" = "Análise VEP"  # i18n-source-hash:6688a989
 "controls.vcf.vep-analysis.vep_input_vcf.label" = "VCF de entrada VEP"  # i18n-source-hash:8c50fc69
-"controls.vcf.vep-analysis.vep_input_vcf.tooltip" = "Arquivo VCF de entrada para anotar com Ensembl Variant Effect Predictor."  # i18n-source-hash:39409e9c
+"controls.vcf.vep-analysis.vep_input_vcf.tooltip" = "Arquivo VCF de entrada para anotar com VEP (vep-rs por padrão, ou Ensembl VEP)."  # i18n-source-hash:955e5cc8
 "controls.vcf.vep-analysis.vcf_vep_args.label" = "Args VEP extras"  # i18n-source-hash:bf32c5c5
 "controls.vcf.vep-analysis.vcf_vep_args.tooltip" = "Argumentos brutos adicionais de linha de comando para passar ao VEP."  # i18n-source-hash:46f56b5b
 "actions.vcf.vep-analysis.vcf-vep-run.title" = "Executar anotação VEP"  # i18n-source-hash:a79370af
-"actions.vcf.vep-analysis.vcf-vep-run.tooltip" = "Execute Ensembl Variant Effect Predictor para prever impacto funcional, como interrupção de genes ou relevância para doenças."  # i18n-source-hash:c3b53dc6
+"actions.vcf.vep-analysis.vcf-vep-run.tooltip" = "Preveja o impacto funcional de cada variante, como interrupção de genes ou relevância para doenças, com VEP: vep-rs por padrão, ou Ensembl VEP com --engine ensembl nos argumentos extras do VEP."  # i18n-source-hash:17a838ee
 "pages.fastq.title" = "FASTQ"  # i18n-ignore i18n-source-hash:e2a6bd3c
 "pages.fastq.summary" = "Arquivos FASTQ contêm leituras brutas do sequenciador antes do alinhamento. Use esta página para analisar arquivos FASTQ com ferramentas como FastQC ou FastP."  # i18n-source-hash:251046f6
 "sections.fastq.fastq-align.title" = "Alinhar FASTQ"  # i18n-source-hash:8ccaa8ac
@@ -298,7 +298,7 @@
 "actions.library.genome-management.ref-resume.tooltip" = "Retome um download de referência interrompido."  # i18n-source-hash:9a29349f
 "sections.library.databases-tools.title" = "Gerenciar dados de referência"  # i18n-source-hash:7bf78801
 "actions.library.databases-tools.vep-download.title" = "Baixar cache VEP"  # i18n-source-hash:37dd3b06
-"actions.library.databases-tools.vep-download.tooltip" = "Baixe o cache VEP da release e do assembly escolhidos acima (vazio: 116, GRCh38) na pasta vep dos dados de referência para anotação offline."  # i18n-source-hash:c32215d7
+"actions.library.databases-tools.vep-download.tooltip" = "Crie o cache VEP (o do vep-rs, por padrão) da release e do assembly escolhidos acima (vazio: 116, GRCh38) na pasta vep dos dados de referência para anotação offline. Ele baixa cerca de 17 GB do Ensembl e precisa de cerca de 20 GB livres durante a criação."  # i18n-source-hash:f0084e67
 "actions.library.databases-tools.vep-verify.title" = "Verificar cache VEP"  # i18n-source-hash:11b16aeb
 "actions.library.databases-tools.vep-verify.tooltip" = "Verifique se o cache VEP dos dados de referência tem arquivos ausentes ou corrompidos."  # i18n-source-hash:dc7f97b8
 "actions.library.databases-tools.vep-delete.title" = "Excluir cache VEP"  # i18n-source-hash:4f39c38c

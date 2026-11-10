@@ -80,21 +80,54 @@ ENGINES = {
 }
 
 
+DEFAULT_ENGINE = "vep-rs"
+
+
 def vep_engine(name: str | None) -> VepEngine:
-    """The engine called ``name`` (default Ensembl VEP)."""
+    """The engine called ``name`` (default vep-rs)."""
     try:
-        return ENGINES[name or "ensembl"]
+        return ENGINES[name or DEFAULT_ENGINE]
     except KeyError:
         raise WGSExtractError(
             f"Unknown VEP engine {name!r}; choose one of {', '.join(ENGINE_NAMES)}."
         ) from None
 
 
-def configured_engine() -> VepEngine:
-    """The engine config.toml's ``vep_engine`` names (default Ensembl VEP)."""
+def configured_engine(cache_roots: list[Path] | None = None) -> VepEngine:
+    """The engine config.toml's ``vep_engine`` names, else the one
+    ``resolve_engine`` picks for ``cache_roots``."""
     from wgsextract_cli.core.config import settings
 
-    return vep_engine(settings.get("vep_engine"))
+    return resolve_engine(settings.get("vep_engine"), cache_roots or [])[0]
+
+
+def resolve_engine(
+    chosen: str | None, cache_roots: list[Path]
+) -> tuple[VepEngine, str | None]:
+    """The engine to annotate with, and a notice when it isn't the default.
+
+    An engine chosen with --engine or config ``vep_engine`` is used as is.
+    Otherwise it's vep-rs, except for a setup from before vep-rs became the
+    default: an Ensembl VEP cache in one of ``cache_roots`` but no vep-rs
+    cache, with Ensembl VEP installed. That keeps annotating with Ensembl VEP
+    and says how to switch."""
+    if chosen:
+        return vep_engine(chosen), None
+    default, ensembl = ENGINES[DEFAULT_ENGINE], ENGINES["ensembl"]
+    if any((default.cache_root(r) / "homo_sapiens").is_dir() for r in cache_roots):
+        return default, None
+    from wgsextract_cli.core.dependencies import get_tool_path
+
+    old = next((r for r in cache_roots if (r / "homo_sapiens").is_dir()), None)
+    if old is not None and ensembl.supported_here() and get_tool_path(ensembl.tool):
+        return ensembl, (
+            f"There's no vep-rs cache yet, so this run uses Ensembl VEP and its "
+            f"cache in {old}. vep-rs is now the default and about 70 times "
+            "faster: build its cache with 'wgsextract vep download', or keep "
+            'Ensembl VEP with --engine ensembl or vep_engine = "ensembl" in '
+            "config.toml."
+        )
+    return default, None
 
 
 def _refuses(engine: VepEngine, token: str) -> bool:

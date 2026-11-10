@@ -135,7 +135,7 @@ KNOWN_SETTINGS = {
     "vep_cache_directory": (None, "Path to VEP cache"),
     "vep_engine": (
         None,
-        "Engine `vep run` annotates with: ensembl (default) or vep-rs",
+        "Engine `vep run` annotates with: vep-rs (default) or ensembl",
     ),
     "pharmcat_directory": (None, "Extracted PharmCAT pipeline release"),
     "parabricks_image": (

@@ -22,6 +22,10 @@ from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.resource_estimates import (
+    estimate_vep_run,
+    preflight_resources,
+)
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.sample_ploidy import sex_samples_args
 from wgsextract_cli.core.utils import (
@@ -39,6 +43,7 @@ from ._analyze_workflows import detect_vcf_type
 from ._vep_engines import (
     VepEngine,
     refuse_unsupported_args,
+    resolve_engine,
     vep_engine,
 )
 from ._vep_resources import preprocess_vcf_chr_prefix
@@ -415,6 +420,15 @@ def _expanded(params: VepRunParams) -> VepRunParams:
     return replace(params, **paths)
 
 
+def _cache_roots(params: VepRunParams) -> list[Path]:
+    """VEP cache folders a run may use: --vep-cache (or the configured one),
+    the reference library's, then ~/.vep."""
+    from ._vep_resources import vep_cache_root
+
+    roots = [params.vep_cache, vep_cache_root(None, params.ref), "~/.vep"]
+    return [Path(expand_path(r)) for r in roots if r]
+
+
 def run_vep(params: VepRunParams) -> None:
     params = _expanded(params)
     input_files = _vep_input_files(str(params.input))
@@ -423,8 +437,13 @@ def run_vep(params: VepRunParams) -> None:
         for path in input_files:
             current_result().add_input(path, "batch_input")
 
-    engine = vep_engine(params.engine)
+    engine, notice = resolve_engine(params.engine, _cache_roots(params))
+    if notice:
+        logging.warning(notice)
+        current_result().warn("vep_engine_fallback", notice, engine=engine.name)
+    params = replace(params, engine=engine.name)
     refuse_unsupported_args(engine, params.vep_args)
+    preflight_resources(lambda: estimate_vep_run(engine.name))
     tool = "vep-rs" if engine.name == "vep-rs" else "vep"
     verify_dependencies([tool, "tabix", "bcftools"])
     log_dependency_info([tool, "tabix", "bcftools"])

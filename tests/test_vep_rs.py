@@ -119,6 +119,25 @@ def test_vep_rs_annotates_and_feeds_the_variant_table(tmp_path, vep_rs_cache):
 
 
 @needs_vep_rs
+def test_vep_rs_is_the_default_engine(tmp_path, vep_rs_cache, monkeypatch):
+    """#602: with no --engine or vep_engine, vep run annotates with vep-rs."""
+    from wgsextract_cli.core.config import settings
+
+    monkeypatch.delitem(settings, "vep_engine", raising=False)
+    result = api.vep.run(
+        VepRunParams(
+            input=Path(_input(tmp_path)),
+            vep_cache=vep_rs_cache.parents[2],
+            ref=tmp_path / "genome.fa",
+            outdir=tmp_path / "o",
+        )
+    )
+
+    assert result.metrics["engine"] == "vep-rs"
+    assert _csq(str(tmp_path / "o" / "in_vep.vcf.gz"))[1014]["SYMBOL"] == "TINY1"
+
+
+@needs_vep_rs
 def test_vep_rs_engine_comes_from_config(tmp_path, vep_rs_cache, monkeypatch):
     from wgsextract_cli.core.config import settings
 
@@ -271,8 +290,11 @@ def _with_checksums(files: dict[str, bytes]) -> dict[str, bytes]:
 
 @needs_vep_rs
 def test_download_builds_the_vep_rs_cache_from_ensembl_files(tmp_path, monkeypatch):
+    from tests.disk_volumes import Volumes
     from wgsextract_cli.commands import _vep_resources as vr
 
+    # Room for a real build, whatever the test machine has.
+    Volumes(monkeypatch).free[tmp_path] = 100
     monkeypatch.setattr(sys.stderr, "isatty", lambda: False)
     with serving(None, _ensembl_files()) as srv:
         for mirror in vr.VEP_MIRRORS:
@@ -345,3 +367,28 @@ def test_chain_annotate_runs_vep_with_the_configured_vep_rs(
     monkeypatch.setitem(settings, "vep_engine", "ensembl")
     if get_tool_path("vep") is None:
         assert "vep is not installed" in chain.skip_reason("vep", lib)  # type: ignore[arg-type]
+
+
+@needs_vep_rs
+def test_download_refuses_a_cache_folder_without_room_for_the_build(
+    tmp_path, monkeypatch
+):
+    """#626 review: the vep-rs build downloads ~17 GB and keeps it until the
+    cache is complete, so a folder without room is refused before any
+    download."""
+    from tests.disk_volumes import Volumes
+    from wgsextract_cli.commands import _vep_resources as vr
+
+    volumes = Volumes(monkeypatch)
+    volumes.free[tmp_path] = 5
+    with serving(None, _ensembl_files()) as srv:
+        for mirror in vr.VEP_MIRRORS:
+            monkeypatch.setitem(vr.VEP_MIRRORS, mirror, srv.base)
+        result = api.vep.download(
+            VepDownloadParams(engine="vep-rs", vep_cache=tmp_path / "c"),
+            check=False,
+        )
+
+    assert result.status != "ok"
+    assert "GiB free" in (str(result.error) or "")
+    assert srv.paths == []

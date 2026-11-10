@@ -1,4 +1,5 @@
-"""``vep``: annotate variants with the Ensembl Variant Effect Predictor (VEP).
+"""``vep``: annotate variants with a Variant Effect Predictor (VEP): vep-rs, or
+Ensembl VEP.
 
 ``run`` annotates a VCF, BCF, BAM or CRAM, or every such file in a folder.
 A BAM or CRAM is first called with bcftools against ``ref``. Each input
@@ -8,16 +9,18 @@ already exists is skipped unless ``force``. The result's metrics count the
 inputs and how many succeeded, were skipped or failed; any failure fails the
 run.
 
-``download`` fetches Ensembl's indexed cache for ``species``, ``vep_version``
-and ``assembly``, checks it against Ensembl's CHECKSUMS and unpacks it into
-the cache folder; ``verify`` checks that an unpacked cache has its
+``download`` builds the engine's cache for ``species``, ``vep_version`` and
+``assembly``: vep-rs's from Ensembl's files, or Ensembl VEP's indexed cache,
+checked against Ensembl's CHECKSUMS and unpacked into the cache folder; ``verify`` checks that an unpacked cache has its
 ``info.txt`` and chromosome folders; ``delete`` removes one release and
 assembly from it. The cache folder is ``vep_cache``, else
 config ``vep_cache_directory``, else the ``vep`` folder of the reference
 library ``ref`` names, else ``~/.vep``.
 
-``engine`` picks the annotator: Ensembl VEP (``ensembl``, the default) or
-vep-rs (``vep-rs``, which also runs on Windows). vep-rs has its own cache in
+``engine`` picks the annotator: vep-rs (``vep-rs``, the default, which also
+runs on Windows) or Ensembl VEP (``ensembl``). Without an engine chosen, a
+run that finds only an Ensembl VEP cache keeps using Ensembl VEP and warns
+``vep_engine_fallback``. vep-rs has its own cache in
 the cache folder's ``vep-rs`` folder, which ``download`` builds from Ensembl's
 gene set, sequences and table dumps (with ``variations``, its known variants)
 and ``verify`` checks against the builder's checksums. A vep-rs run refuses
@@ -44,11 +47,13 @@ from ._shared import outdir_param, ref_param, threads_param
 def engine_param() -> Any:
     return param(
         None,
-        help="Annotation engine: 'ensembl' (Ensembl VEP, the default) or "
-        "'vep-rs' (a faster Rust reimplementation that also runs on Windows; "
-        "its own cache, built by 'vep download --engine vep-rs')",
-        doc="Annotation engine, 'ensembl' or 'vep-rs' (default: config "
-        "vep_engine, else 'ensembl').",
+        help="Annotation engine: 'vep-rs' (the default: a fast Rust "
+        "reimplementation of Ensembl VEP, on every platform) or 'ensembl' "
+        "(Ensembl VEP; Linux and macOS). Each has its own cache, built by "
+        "'vep download --engine <engine>'",
+        doc="Annotation engine, 'vep-rs' or 'ensembl' (default: config "
+        "vep_engine, else 'vep-rs'; a run with only an Ensembl VEP cache keeps "
+        "using Ensembl VEP and warns vep_engine_fallback).",
         choices=("ensembl", "vep-rs"),
         config_key="vep_engine",
     )

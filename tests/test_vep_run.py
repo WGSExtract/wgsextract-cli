@@ -57,6 +57,10 @@ def fake_vep(tmp_path, monkeypatch):
     """Install a fake `vep`; returns a function giving the logged command lines.
     ``fake_vep.install(exit_code=..., dirname=..., sleep=...)`` reinstalls it;
     with ``sleep`` it waits that many seconds after writing its outputs."""
+    from wgsextract_cli.core.config import settings
+
+    # These are Ensembl VEP's command lines; vep-rs has its own tests.
+    monkeypatch.setitem(settings, "vep_engine", "ensembl")
     log = tmp_path / "vep_calls.jsonl"
 
     def install(exit_code: int = 0, dirname: str = "fakebin", sleep: int = 0) -> None:
@@ -120,6 +124,29 @@ def test_vcf_run_writes_indexed_output_and_moves_report(tmp_path, fake_vep):
     assert _value(cmd, "--compress_output") == "bgzip"
     assert {"--vcf", "--offline", "--everything"} <= set(cmd)
     assert "--database" not in cmd and "--overlaps" not in cmd
+
+
+def test_ensembl_only_setup_keeps_ensembl_vep_and_says_how_to_switch(
+    tmp_path, fake_vep, monkeypatch
+):
+    """vep-rs is the default engine (#602); a setup from before, with only
+    Ensembl VEP's cache, keeps working and is told how to switch."""
+    from wgsextract_cli.core.config import settings
+
+    monkeypatch.delitem(settings, "vep_engine", raising=False)
+    vcf = _vcf(tmp_path / "s.vcf.gz")
+    cache = tmp_path / "cache"
+    (cache / "homo_sapiens" / "116_GRCh38").mkdir(parents=True)
+
+    result = api.vep.run(
+        VepRunParams(input=Path(vcf), vep_cache=cache, vep_assembly="GRCh38")
+    )
+
+    assert len(fake_vep()) == 1
+    assert result.metrics["engine"] == "ensembl"
+    [notice] = [w for w in result.warnings if w.code == "vep_engine_fallback"]
+    assert "--engine ensembl" in notice.message
+    assert "vep download" in notice.message
 
 
 def test_existing_output_is_skipped_unless_forced(tmp_path, fake_vep):
@@ -521,7 +548,11 @@ def test_api_reads_a_home_relative_bam(tmp_path, fake_vep, monkeypatch):
 def _command(lib, **overrides):
     from wgsextract_cli.commands._vep_run import _build_vep_command
 
-    fields = {"input": Path("in.vcf.gz"), "vep_cache": Path("/no/such/cache")}
+    fields = {
+        "input": Path("in.vcf.gz"),
+        "vep_cache": Path("/no/such/cache"),
+        "engine": "ensembl",
+    }
     params = VepRunParams(**{**fields, **overrides})
     return _build_vep_command(params, "in.vcf.gz", "out.vcf", "snp-indel", lib, "2")
 
