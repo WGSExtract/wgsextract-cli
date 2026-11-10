@@ -16,6 +16,7 @@ import os
 import subprocess
 import tempfile
 from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from pyliftover import LiftOver
@@ -34,11 +35,29 @@ from wgsextract_cli.core.microarray_utils import (
 from wgsextract_cli.core.ref_library.downloads import download_file
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
-HG19_TO_HG38_CHAIN_URL = (
-    "https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/hg19ToHg38.over.chain.gz"
+
+@dataclass(frozen=True)
+class ChainSource:
+    """A UCSC liftOver chain: its library file name, its URLs (UCSC first, then
+    mirrors, tried in order) and the SHA-256 every copy must have."""
+
+    name: str
+    urls: tuple[str, ...]
+    sha256: str
+
+
+# UCSC chain files are free for non-commercial use under UCSC's EULA; a mirror
+# must ship UCSC's liftOver README (its licence terms) beside the chain.
+_UCSC_LIFTOVER = "https://hgdownload.soe.ucsc.edu/goldenPath/{}/liftOver/{}"
+HG19_TO_HG38_CHAIN = ChainSource(
+    "hg19ToHg38.over.chain.gz",
+    (_UCSC_LIFTOVER.format("hg19", "hg19ToHg38.over.chain.gz"),),
+    "5c0598e500ceb5a78c73086929e8ef993aec309bcafb595139b53d440b125a1d",
 )
-HG18_TO_HG19_CHAIN_URL = (
-    "https://hgdownload.soe.ucsc.edu/goldenPath/hg18/liftOver/hg18ToHg19.over.chain.gz"
+HG18_TO_HG19_CHAIN = ChainSource(
+    "hg18ToHg19.over.chain.gz",
+    (_UCSC_LIFTOVER.format("hg18", "hg18ToHg19.over.chain.gz"),),
+    "f1e57673d8f306ea4ed1553ea5fc2001b3cc3d149eef501fc97305b3b3e2a9d6",
 )
 # Bump when the builder's output changes, so libraries rebuild their target.
 TARGET_VERSION = 3
@@ -221,28 +240,36 @@ def build_genome_wide_target(
 def ncbi36_chain(reflib_dir: str, search: Sequence[str] = ()) -> str:
     """The hg18ToHg19 chain from search or the library, downloaded into the
     library when it's missing."""
-    return _chain(
-        reflib_dir, "hg18ToHg19.over.chain.gz", HG18_TO_HG19_CHAIN_URL, search
-    )
+    return _chain(reflib_dir, HG18_TO_HG19_CHAIN, search)
 
 
 def hg19_to_hg38_chain(reflib_dir: str, search: Sequence[str] = ()) -> str:
     """The hg19ToHg38 chain from search or the library, downloaded into the
     library when it's missing."""
-    return _chain(
-        reflib_dir, "hg19ToHg38.over.chain.gz", HG19_TO_HG38_CHAIN_URL, search
+    return _chain(reflib_dir, HG19_TO_HG38_CHAIN, search)
+
+
+def download_chain(source: ChainSource, dest: str) -> bool:
+    """Download source to dest from the first of its URLs that serves a copy
+    with its SHA-256."""
+    for url in source.urls:
+        if download_file(url, dest, expected_sha256=source.sha256):
+            return True
+        logging.warning(f"Could not get {source.name} from {url}.")
+    return False
+
+
+def _chain(reflib_dir: str, source: ChainSource, search: Sequence[str] = ()) -> str:
+    found = next(
+        (c for d in search if Path(c := str(Path(d, source.name))).is_file()), None
     )
-
-
-def _chain(reflib_dir: str, name: str, url: str, search: Sequence[str] = ()) -> str:
-    found = next((c for d in search if Path(c := str(Path(d, name))).is_file()), None)
     if found:
         return found
-    chain = str(Path(reflib_dir, name))
-    if not Path(chain).is_file() and not download_file(url, chain):
+    chain = str(Path(reflib_dir, source.name))
+    if not Path(chain).is_file() and not download_chain(source, chain):
         raise WGSExtractError(
-            f"Could not download {url}, needed to place the chip markers on "
-            "another genome build."
+            f"Could not download {source.name} (tried {', '.join(source.urls)}), "
+            "needed to place the chip markers on another genome build."
         )
     return chain
 

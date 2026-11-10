@@ -39,6 +39,25 @@ jobs:
         run: scripts/test_install_sh.sh
       - name: Verify Tools
         run: chmod +x scripts/verify_tools.sh && pixi run scripts/verify_tools.sh
+      # UCSC is often unresolvable from runners (#667). Bootstrap keeps a chain
+      # already in the library, so restore it, checked against the pinned SHA-256.
+      - name: Pinned hg19ToHg38 chain checksum
+        id: chain
+        run: pixi run python -c 'import os; from wgsextract_cli.core.microarray_targets import HG19_TO_HG38_CHAIN as c; open(os.environ["GITHUB_OUTPUT"], "a").write(f"sha256={c.sha256}\n")'
+      - name: Cache the hg19ToHg38 liftOver chain
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: reference/hg19ToHg38.over.chain.gz
+          key: ucsc-hg19ToHg38-${{ steps.chain.outputs.sha256 }}
+      - name: Drop a cached chain that fails its checksum
+        env:
+          CHAIN_SHA256: ${{ steps.chain.outputs.sha256 }}
+        run: |
+          chain=reference/hg19ToHg38.over.chain.gz
+          if [ -f "$chain" ] && ! echo "$CHAIN_SHA256  $chain" | shasum -a 256 -c --status; then
+            echo "::warning::Cached $chain failed its SHA-256; downloading it again."
+            rm -f "$chain"
+          fi
       - name: Configure and Bootstrap Library
         env:
           GITHUB_TOKEN: ${{ github.token }}
