@@ -35,16 +35,21 @@ names (hg38, hg19/GRCh37 and T2T-CHM13). Kits on different builds can be
 compared. `--sites` uses your own sites VCF instead, for example for an
 exome.
 
-A BAM or CRAM gives the most accurate results. A single-sample VCF from a
-provider lists only variants; when every input is a VCF, absent sites are read
-as homozygous reference.
+A BAM or CRAM gives the most accurate results. A VCF from a provider lists
+only variants, so an autosomal site it lacks is written into its sketch as
+homozygous reference, at the VCF's typical depth. Its sketch can then be
+reused, or compared with BAMs, without changing the result. chrX and chrY
+sites are left as called, so the sex reads only real calls.
 
-Sample names come from the read group (SM) or the VCF header. When two inputs
-have the same sample name, each is prefixed with its file name.
+Sample names come from the read group (SM) or the VCF header, and for a
+sketch from the name stored inside it, so a renamed `.somalier` file still
+matches its pedigree row. When two inputs have the same sample name, each is
+prefixed with its file name.
 
 ## Outputs
 
-In `--outdir`, else beside the first input:
+In `--outdir`, else beside the first input (for sketches in an earlier run's
+`somalier/` folder, in that run's folder):
 
 | File | Contents |
 | :--- | :--- |
@@ -84,7 +89,8 @@ digests:
   [Zenodo record 3479773](https://zenodo.org/records/3479773) (CC BY 4.0,
   Brent Pedersen).
 
-They go in `<library>/somalier/`; `ref somalier --delete` removes them.
+They go in `<library>/somalier/`. Each sketch's SHA-256 is recorded when the
+archive is unpacked and checked before every use (well under a second); `ref somalier --delete` removes them.
 Ancestry runs when they are installed (`--no-ancestry` skips it).
 
 ## Platforms

@@ -11,10 +11,13 @@ from __future__ import annotations
 
 import contextlib
 import csv
+import gzip
 import logging
 import math
 import os
+import re
 import shutil
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -34,7 +37,7 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.paths import absolute_path, expand_path
+from wgsextract_cli.core.paths import PathInput, absolute_path, expand_path
 from wgsextract_cli.core.reference_assets import (
     input_stem,
     reference_library_of,
@@ -141,11 +144,32 @@ def _kind(path: str) -> str:
     )
 
 
+# somalier's sketch format: a version byte, the sample name's length (one
+# byte) and the name, then the site counts.
+SKETCH_FORMAT = 2
+
+
+def sketch_sample(path: PathInput) -> str:
+    """The sample name stored in a .somalier sketch, whatever its file name."""
+    try:
+        with open(path, "rb") as f:
+            version, length = f.read(2)
+            name = f.read(length)
+    except (OSError, ValueError) as e:
+        raise WGSExtractError(f"{path} isn't a readable somalier sketch.") from e
+    if version != SKETCH_FORMAT or len(name) != length:
+        raise WGSExtractError(
+            f"{path} isn't a somalier sketch of format {SKETCH_FORMAT} "
+            f"(somalier 0.3); sketch the BAM, CRAM or VCF again."
+        )
+    return name.decode("utf-8", "replace")
+
+
 def _sample_names(path: str, kind: str, header: str) -> list[str]:
     """The sample name(s) somalier stores: the first SM (else the file name)
-    for reads, the header's samples for a VCF, the file name for a sketch."""
+    for reads, the header's samples for a VCF, the name inside a sketch."""
     if kind == "sketch":
-        return [Path(path).name[: -len(SKETCH_SUFFIX)]]
+        return [sketch_sample(path)]
     if kind == "vcf":
         line = next((x for x in header.splitlines() if x.startswith("#CHROM")), "")
         return line.rstrip("\n").split("\t")[9:]
@@ -219,15 +243,112 @@ def _reference(
     return fasta
 
 
+def _read_sites(sites: str) -> list[tuple[str, int, str, str]]:
+    with gzip.open(sites, "rt") if sites.endswith(".gz") else open(sites) as f:
+        rows = (line.split("\t", 5) for line in f if not line.startswith("#"))
+        return [(r[0], int(r[1]), r[3], r[4]) for r in rows]
+
+
+def _depths(ad: str, gt: str, k: int, depth: int) -> tuple[int, int] | None:
+    """A sample's (ref, alt) read counts at a site whose alt is allele ``k``:
+    from AD, else from the genotype at ``depth``; None when not called."""
+    counts = ad.split(",")
+    if len(counts) > k and counts[0] not in (".", "") and counts[k] != ".":
+        return int(counts[0]), int(counts[k])
+    alleles = gt.replace("|", "/").split("/")
+    if not alleles or "." in alleles:
+        return None
+    n_alt = sum(a == str(k) for a in alleles)
+    n_ref = sum(a == "0" for a in alleles)
+    if n_alt + n_ref != len(alleles):
+        return None
+    return depth * n_ref // len(alleles), depth * n_alt // len(alleles)
+
+
+def _hom_ref_filled(vcf: str, sites: str, folder: Path, names: list[str]) -> str:
+    """The VCF at somalier's sites, a missing autosomal site written as a
+    hom-ref call: a VCF lists only variants, so a site it lacks is hom-ref
+    (somalier relate's --unknown, but in the sketch, so it holds when the
+    sketch is reused or compared with a BAM's). chrX and chrY sites are left
+    as they are, so the sex reads only real calls."""
+    bcftools = "bcftools"
+    has_ad = "##FORMAT=<ID=AD," in get_bam_header(vcf)
+    fmt = (
+        "%CHROM\t%POS\t%REF\t%ALT\t%FILTER[\t%GT\t" + ("%AD" if has_ad else ".") + "]\n"
+    )
+    query = run_command(
+        [bcftools, "query", "-T", sites, "-f", fmt, vcf], capture_output=True
+    ).stdout
+    records = {}
+    for line in query.splitlines():
+        fields = line.split("\t")
+        records[fields[0], int(fields[1])] = fields
+    depth = []
+    for fields in records.values():
+        for ad in fields[6::2]:
+            if ad not in (".", ""):
+                depth.append(sum(int(x) for x in ad.split(",") if x.isdigit()))
+    typical = max(10, int(statistics.median(depth))) if depth else 20
+    out = folder / "filled.vcf"
+    site_rows = _read_sites(sites)
+    with out.open("w", newline="\n") as f:
+        f.write("##fileformat=VCFv4.2\n")
+        f.write('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n')
+        f.write('##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Depths">\n')
+        for contig in dict.fromkeys(c for c, *_ in site_rows):
+            f.write(f"##contig=<ID={contig}>\n")
+        f.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t")
+        f.write("\t".join(names) + "\n")
+        for contig, pos, ref, alt in site_rows:
+            record = records.get((contig, pos))
+            calls: list[tuple[int, int] | None]
+            if record is None:
+                if _is_sex_contig(contig):
+                    continue
+                calls = [(typical, 0)] * len(names)
+                filt = "PASS"
+            else:
+                alts = record[3].split(",")
+                if record[2] != ref or alt not in alts:
+                    continue
+                k = alts.index(alt) + 1
+                calls = [
+                    _depths(ad, gt, k, typical)
+                    for gt, ad in zip(record[5::2], record[6::2], strict=True)
+                ]
+                filt = "PASS" if record[4] in (".", "PASS") else record[4]
+            cells = []
+            for call in calls:
+                if call is None:
+                    cells.append("./.:.")
+                else:
+                    gt = "0/1" if all(call) else "1/1" if call[1] else "0/0"
+                    cells.append(f"{gt}:{call[0]},{call[1]}")
+            f.write(f"{contig}\t{pos}\t.\t{ref}\t{alt}\t.\t{filt}\t.\tGT:AD\t")
+            f.write("\t".join(cells) + "\n")
+    gz = f"{out}.gz"
+    with open(gz, "wb") as dest:
+        run_command(["bgzip", "-c", str(out)], stdout=dest)
+    run_command(["tabix", "-f", "-p", "vcf", gz])
+    return gz
+
+
+def _is_sex_contig(contig: str) -> bool:
+    return contig.removeprefix("chr") in ("X", "Y")
+
+
 def _extract(item: Input, sites: str, ref: str | None, work: Path) -> list[Path]:
     folder = Path(tempfile.mkdtemp(dir=work, prefix="extract_"))
+    source = item.path
+    if item.kind == "vcf":
+        source = _hom_ref_filled(item.path, sites, folder, item.names)
     command = [SOMALIER, "extract", "-d", str(folder), "-s", sites]
     if ref:
         command += ["-f", ref]
     if item.prefix:
         command += ["--sample-prefix", item.prefix]
     try:
-        run_command([*command, item.path], capture_output=True)
+        run_command([*command, source], capture_output=True)
     except (OSError, subprocess.SubprocessError) as e:
         raise WGSExtractError(f"somalier extract failed on {item.path}: {e}") from e
     found = sorted(folder.glob(f"*{SKETCH_SUFFIX}"))
@@ -274,12 +395,14 @@ def _publish(items: list[Input], sketch_dir: Path) -> list[tuple[str, Input, Pat
     published = []
     for item in items:
         for sketch in item.sketches:
-            target = sketch_dir / sketch.name
+            name = sketch_sample(sketch)
+            safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)
+            target = sketch_dir / f"{safe}{SKETCH_SUFFIX}"
             if item.kind != "sketch":
                 os.replace(sketch, target)
             elif absolute_path(sketch) != absolute_path(target):
                 shutil.copyfile(sketch, target)
-            published.append((sketch.name[: -len(SKETCH_SUFFIX)], item, target))
+            published.append((name, item, target))
     return published
 
 
@@ -436,9 +559,6 @@ def _relate(
         ped = work / "expected.ped"
         ped.write_text("".join("\t".join(row) + "\n" for row in ped_rows), newline="\n")
         command += ["--ped", str(ped)]
-    if all(item.kind == "vcf" for _name, item, _sketch in published):
-        # A single-sample VCF lists only variants: a site it lacks is hom-ref.
-        command.append("--unknown")
     try:
         run_command(
             [*command, *(str(sketch) for *_rest, sketch in published)],
@@ -587,6 +707,15 @@ def _check_pair(row: dict[str, str]) -> Pair:
     return pair
 
 
+def _default_outdir(first: str) -> Path:
+    """The first input's folder; for a sketch in a run's somalier/ folder,
+    that run's folder, so its results aren't nested inside."""
+    folder = absolute_path(first).parent
+    if _kind(first) == "sketch" and folder.name == "somalier":
+        return folder.parent
+    return folder
+
+
 def run_relate(params: RelateParams) -> None:
     require_supported_platform()
     paths = [expand_path(p) for p in params.inputs]
@@ -599,8 +728,8 @@ def run_relate(params: RelateParams) -> None:
     log_dependency_info([SOMALIER])
     threads = int(get_resource_defaults(params.threads, None)[0])
     ped_rows = _ped_rows(ped) if ped else None
-    outdir = Path(
-        expand_path(params.outdir) if params.outdir else absolute_path(paths[0]).parent
+    outdir = (
+        Path(expand_path(params.outdir)) if params.outdir else _default_outdir(paths[0])
     )
     outdir.mkdir(parents=True, exist_ok=True)
     reflib = resolve_reference_library(

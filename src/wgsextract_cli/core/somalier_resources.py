@@ -13,6 +13,7 @@ checked against pinned SHA-256 digests before every use.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import shutil
 import tarfile
@@ -76,8 +77,9 @@ SKETCHES = Resource(
 )
 SKETCH_DIR = "1kg-somalier"
 SKETCH_COUNT = 2504
-# Written once the sketches are unpacked: the archive's digest.
-_SKETCH_MARKER = ".installed"
+# Written once the sketches are unpacked from the verified archive: its digest
+# and each sketch's, checked before every use (~2.5 s for the 519 MB).
+_SKETCH_MARKER = ".installed.json"
 _SKETCH_NAME = re.compile(r"[A-Za-z0-9_.-]+\.somalier")
 
 
@@ -130,18 +132,31 @@ def require_ancestry(reflib: str | None = None) -> tuple[Path, list[Path]]:
     base = folder(reflib)
     labels = _verified(base / LABELS.name, LABELS, "1000 Genomes ancestry labels")
     sketches = base / SKETCH_DIR
-    marker = sketches / _SKETCH_MARKER
-    found = sorted(sketches.glob("*.somalier"))
-    if (
-        not marker.is_file()
-        or marker.read_text().strip() != SKETCHES.sha256
-        or len(found) != SKETCH_COUNT
-    ):
+    problem = _sketch_problem(sketches)
+    if problem:
         raise WGSExtractError(
-            f"The 1000 Genomes somalier sketches are missing or incomplete in "
-            f"{sketches}. {_hint(base.parent)}"
+            f"The 1000 Genomes somalier sketches in {sketches} {problem}. "
+            f"{_hint(base.parent)}"
         )
-    return labels, found
+    return labels, sorted(sketches.glob("*.somalier"))
+
+
+def _sketch_problem(sketches: Path) -> str | None:
+    """Why the unpacked sketches can't be used, if they can't."""
+    try:
+        marker = json.loads((sketches / _SKETCH_MARKER).read_text())
+        digests: dict[str, str] = marker["files"]
+        if marker["archive_sha256"] != SKETCHES.sha256:
+            return "are from another archive"
+    except (OSError, ValueError, KeyError, TypeError):
+        return "are missing or incomplete"
+    found = {p.name for p in sketches.glob("*.somalier")}
+    if found != set(digests) or len(found) != SKETCH_COUNT:
+        return "are incomplete or have extra files"
+    for name in sorted(found):
+        if _sha256(sketches / name) != digests[name]:
+            return f"have a changed file, {name}"
+    return None
 
 
 def installed(reflib: str | None = None) -> bool:
@@ -176,7 +191,7 @@ def _unpack_sketches(archive: Path, target: Path) -> None:
     staging = target.with_name(f".{target.name}.partial")
     shutil.rmtree(staging, ignore_errors=True)
     staging.mkdir(parents=True)
-    count = 0
+    digests: dict[str, str] = {}
     try:
         with tarfile.open(archive, "r:gz") as tar:
             for member in tar:
@@ -191,14 +206,15 @@ def _unpack_sketches(archive: Path, target: Path) -> None:
                 assert source is not None
                 with source, (staging / name).open("wb") as out:
                     shutil.copyfileobj(source, out)
-                count += 1
+                digests[name] = _sha256(staging / name)
     except tarfile.TarError as e:
         raise WGSExtractError(f"Could not unpack {archive}: {e}") from e
-    if count != SKETCH_COUNT:
+    if len(digests) != SKETCH_COUNT:
         raise WGSExtractError(
-            f"{archive.name} held {count} sketches, not {SKETCH_COUNT}."
+            f"{archive.name} held {len(digests)} sketches, not {SKETCH_COUNT}."
         )
-    (staging / _SKETCH_MARKER).write_text(SKETCHES.sha256 + "\n", newline="\n")
+    marker = {"archive_sha256": SKETCHES.sha256, "files": digests}
+    (staging / _SKETCH_MARKER).write_text(json.dumps(marker, indent=1), newline="\n")
     shutil.rmtree(target, ignore_errors=True)
     staging.rename(target)
 

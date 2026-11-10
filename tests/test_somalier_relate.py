@@ -248,28 +248,99 @@ def test_a_sex_override_that_the_reads_contradict_is_flagged(family, tmp_path):
     assert "somalier_sex" in str(shown) and "Male" in str(shown)
 
 
+def _variants_vcf(family, folder, name):
+    """A provider-style VCF of the person's variants only (bcftools call -v)."""
+    vcf = folder / f"{name}.vcf.gz"
+    bcftools = get_tool_path("bcftools")
+    run_command(
+        [
+            "sh",
+            "-c",
+            f"{bcftools} mpileup -f {family / 'ref.fa'} -T {family / 'sites.vcf.gz'}"
+            f" -a AD,DP -Ou {family / f'{name}.bam'} | {bcftools} call -mv -Oz"
+            f" -o {vcf}",
+        ]
+    )
+    run_command([get_tool_path("tabix"), "-p", "vcf", str(vcf)])
+    return vcf
+
+
+def _relatedness(result, a, b):
+    return float(_pairs(result)[frozenset((a, b))]["relatedness"])
+
+
 @needs_somalier
-def test_vcf_inputs_relate_too(family, tmp_path):
-    """#614: VCFs from a provider are sketched (without a reference) and related."""
-    vcfs = []
-    for name in ("dad", "kid"):
-        vcf = tmp_path / f"{name}.vcf.gz"
-        run_command(
-            [
-                "sh",
-                "-c",
-                f"{get_tool_path('bcftools')} mpileup -f {family / 'ref.fa'} "
-                f"-T {family / 'sites.vcf.gz'} -a AD,DP -Ou {family / f'{name}.bam'}"
-                f" | {get_tool_path('bcftools')} call -m -Oz -o {vcf}",
-            ]
+def test_variant_only_vcfs_relate_and_their_sketches_reuse_the_same(family, tmp_path):
+    """#614 review: a VCF lists only variants, so its missing sites are
+    hom-ref; a sketch reused from that run gives the same relatedness."""
+    vcfs = [_variants_vcf(family, tmp_path, n) for n in ("dad", "kid", "stranger")]
+
+    first = _relate(family, tmp_path / "vcf", *vcfs)
+    sketches = [o.path for o in first.outputs if o.role == "somalier_sketch"]
+    again = _relate(family, tmp_path / "again", *map(Path, sketches))
+
+    assert _relatedness(first, "dad", "kid") == pytest.approx(0.5, abs=0.1)
+    assert _pairs(first)[frozenset(("dad", "kid"))]["relationship"] == "parent-child"
+    assert abs(_relatedness(first, "kid", "stranger")) < 0.1
+    for pair in (("dad", "kid"), ("kid", "stranger"), ("dad", "stranger")):
+        assert _relatedness(again, *pair) == _relatedness(first, *pair)
+    sexes = {r["sample"]: r["sex"] for r in _table(_output(first, "relate_samples"))}
+    assert sexes == {"dad": "Male", "kid": "Male", "stranger": "Female"}
+
+
+@needs_somalier
+def test_a_vcf_and_a_bam_relate(family, tmp_path):
+    """#614 review: a parent's VCF against a child's BAM is still ~0.5."""
+    vcf = _variants_vcf(family, tmp_path, "dad")
+
+    result = _relate(family, tmp_path / "out", vcf, "kid.bam", "stranger.bam")
+
+    assert _relatedness(result, "dad", "kid") == pytest.approx(0.5, abs=0.1)
+    assert abs(_relatedness(result, "dad", "stranger")) < 0.1
+
+
+@needs_somalier
+def test_a_renamed_sketch_keeps_its_sample(family, tmp_path):
+    """#614 review: a .somalier file renamed by its user is matched by the
+    sample inside it: sex and the PED check still apply."""
+    first = _relate(family, tmp_path / "a", "dad.bam", "kid.bam")
+    sketches = {
+        Path(o.path).stem: Path(o.path)
+        for o in first.outputs
+        if o.role == "somalier_sketch"
+    }
+    renamed = tmp_path / "from-uncle-bob.somalier"
+    renamed.write_bytes(sketches["dad"].read_bytes())
+    ped = tmp_path / "f.ped"
+    ped.write_text("f dad 0 0 2 -9\nf kid dad 0 1 -9\n")
+
+    result = _relate(family, tmp_path / "b", renamed, sketches["kid"], ped=ped)
+
+    rows = {r["sample"]: r for r in _table(_output(result, "relate_samples"))}
+    assert rows["dad"]["sex"] == "Male"
+    assert rows["dad"]["input"] == str(renamed)
+    assert [
+        w.details["sample"] for w in result.warnings if w.code == "ped_sex_mismatch"
+    ] == ["dad"]
+    assert _pairs(result)[frozenset(("dad", "kid"))]["expected_relatedness"] == "0.500"
+
+
+@needs_somalier
+def test_sketches_from_a_run_put_results_beside_it(family, tmp_path):
+    """#614 review: rerunning on <run>/somalier/*.somalier writes into <run>,
+    not <run>/somalier."""
+    _relate(family, tmp_path, "dad.bam", "kid.bam")
+    sketches = sorted((tmp_path / "somalier").glob("*.somalier"))
+
+    result = api.qc.relate(
+        api.RelateParams(
+            inputs=tuple(sketches), sites=family / "sites.vcf.gz", ancestry=False
         )
-        run_command([get_tool_path("tabix"), "-p", "vcf", str(vcf)])
-        vcfs.append(vcf)
+    )
 
-    result = _relate(family, tmp_path / "out", *vcfs)
-
-    pair = _pairs(result)[frozenset(("dad", "kid"))]
-    assert pair["relationship"] == "parent-child"
+    assert Path(_output(result, "relate_pairs")).parent == tmp_path
+    assert not (tmp_path / "somalier" / "relate.pairs.tsv").exists()
+    assert not (tmp_path / "somalier" / "somalier").exists()
 
 
 @needs_somalier
@@ -383,6 +454,17 @@ def test_a_modified_sites_file_is_refused(tmp_path, fake_somalier_downloads):
 
     with pytest.raises(WGSExtractError, match="SHA256 mismatch"):
         somalier_resources.require(str(tmp_path), resource)
+
+
+def test_a_changed_1kg_sketch_is_refused(tmp_path, fake_somalier_downloads):
+    """#614 review: the labelled sketches are checked on every use."""
+    fake_somalier_downloads()
+    api.ref.somalier(api.RefSomalierParams(ref=tmp_path))
+    somalier_resources.require_ancestry(str(tmp_path))
+    (tmp_path / "somalier" / "1kg-somalier" / "S1.somalier").write_bytes(b"changed")
+
+    with pytest.raises(WGSExtractError, match="changed file, S1.somalier"):
+        somalier_resources.require_ancestry(str(tmp_path))
 
 
 def test_deps_check_says_somalier_is_unavailable_on_windows(monkeypatch):
