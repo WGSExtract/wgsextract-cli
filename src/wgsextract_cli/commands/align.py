@@ -818,7 +818,7 @@ def bwa_mem2_index_ready(model: str, ref: str) -> bool:
 
 
 def aligner_gpu_bytes(aligner: AlignerCommand, ref: str, reads: int | None) -> int:
-    """What the aligner's Metal GPU backend needs beyond its CPU estimate."""
+    """What the aligner's GPU backend (Metal or CUDA) needs beyond its CPU estimate."""
     if not aligner.gpu:
         return 0
     if aligner.engine == "bwa":

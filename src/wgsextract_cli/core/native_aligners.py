@@ -207,7 +207,10 @@ def native_setting(value: str | None) -> str:
 
 
 def apple_silicon() -> bool:
-    return platform.system() == "Darwin" and platform.machine() in {"arm64", "aarch64"}
+    return platform.system() == "Darwin" and platform.machine().lower() in {
+        "arm64",
+        "aarch64",
+    }
 
 
 def platform_binaries() -> dict[str, str]:
@@ -318,7 +321,9 @@ def find_native_aligner(
     if path is None:
         if quiet:
             return None
-        logging.info(
+        # No Linux package is published yet, so only Macs get the hint.
+        log = logging.info if apple_silicon() else logging.debug
+        log(
             f"Aligning with {tool}: {binary}, which writes the same alignments "
             f"faster, isn't installed ({INSTALL_HINT})."
         )
