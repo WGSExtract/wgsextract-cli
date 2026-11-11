@@ -1165,6 +1165,38 @@ Annotate with gnomAD; output roles `annotated_vcf` and, with `max_af`,
 | `confidence_depth` | `tuple[float, float] \| None` | `None` | `--confidence-depth` | (LOW, HIGH): read depth below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
 | `confidence_gq` | `tuple[float, float] \| None` | `None` | `--confidence-gq` | (LOW, HIGH): genotype quality below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
 
+### `api.vcf.sv_freq(VcfSvFreqParams)`
+
+CLI: `wgsextract vcf sv-freq`.
+
+Annotate SVs with gnomAD-SV/gnomAD-LR frequencies; output roles
+`annotated_vcf` and `sv_frequencies` (the table), with the counts per
+frequency class in the metrics.
+
+`VcfSvFreqParams`: Population frequencies of structural variants (SV_AF, SV_POPMAX_AF,
+SV_FREQ, SV_COMMON, ...) from gnomAD-SV and gnomAD-LR as
+`sv_freq_annotated.vcf.gz`, and one row per SV in `sv_freq.tsv`.
+
+For the SV calls of `vcf sv` (Delly, Sniffles, pbsv) and `vcf cnv`,
+or any VCF of SVs. A call matches a gnomAD SV of a compatible type by
+reciprocal overlap (deletions, duplications, inversions, CNVs) or by
+breakpoint distance and size similarity (insertions).
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
+| `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `gnomad_sv_file` | `Path \| None` | `None` (config `gnomad_sv_path`) | `--gnomad-sv-file` | gnomAD-SV table (default: the library's, from 'ref gnomad-sv'). |
+| `gnomad_lr_file` | `Path \| None` | `None` (config `gnomad_lr_sv_path`) | `--gnomad-lr-file` | gnomAD-LR table (default: the library's; GRCh38). |
+| `min_overlap` | `float` | `0.5` | `--min-overlap` | Minimum reciprocal overlap for DEL/DUP/INV/CNV (default 0.5). |
+| `max_distance` | `int` | `500` | `--max-distance` | Maximum insertion breakpoint distance, bp (default 500). |
+| `min_size_similarity` | `float` | `0.5` | `--min-size-similarity` | Minimum insertion size similarity (default 0.5). |
+| `common_af` | `float` | `0.01` | `--common-af` | AF from which an SV is common (default 0.01). |
+| `rare_af` | `float` | `0.001` | `--rare-af` | AF below which an SV is rare (default 0.001). |
+
 ### `api.vcf.spliceai(VcfSpliceaiParams)`
 
 CLI: `wgsextract vcf spliceai`.
@@ -1688,6 +1720,29 @@ uses, about 85 MB, or delete them.
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `delete` | `bool` | `False` | `--delete` | Delete the installed somalier sites and 1000 Genomes sketches |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+
+### `api.ref.gnomad_sv(RefGnomadSvParams)`
+
+CLI: `wgsextract ref gnomad-sv`.
+
+Install the tables; output role `reference_resource`.
+
+`RefGnomadSvParams`: Install the gnomAD structural-variant sites tables that `vcf sv-freq`
+matches SV calls against, or delete them. Each sites VCF is checked
+against a pinned SHA-256, reduced to a small table and deleted. gnomAD
+data have no use restriction.
+
+`sr`: gnomAD-SV v4.1 for GRCh38 (1.7 GB download) and v2.1 for GRCh37
+(141 MB). `lr`: the gnomAD-LR 0.1 beta long-read SVs, GRCh38 only,
+streamed out of 53 GB of sites VCFs (one chromosome, up to 4.3 GB, at
+a time).
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `source` | `str` | `'sr'` | `--source` | sr: gnomAD-SV (GRCh38, GRCh37). lr: gnomAD-LR (GRCh38, 53 GB). One of: `sr`, `lr` |
+| `build` | `str \| None` | `None` | `--build` | Only this build (default: all). One of: `hg38`, `hg19` |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed gnomAD SV tables |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 
 ### `api.ref.ybrowse(RefYbrowseParams)`
