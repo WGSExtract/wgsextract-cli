@@ -63,6 +63,8 @@ export function createInitialState(): WebUIState {
         isTerminalVisible: true,
         isSidebarVisible: localStorage.getItem("guiForCLI.sidebarVisible") !== "false",
         pendingConfirmation: null,
+        pendingPrerequisites: null,
+        checkingPrerequisites: false,
         sidebarWidth: Number(localStorage.getItem("guiForCLI.sidebarWidth")) || 220,
         terminalHeight: Number(localStorage.getItem("guiForCLI.terminalHeight")) ||
             Math.round(window.innerHeight * 0.2),

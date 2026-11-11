@@ -23,6 +23,8 @@ from wgsextract_cli.core.results import redact_argv
 
 # A log_dir keeps the newest runs' logs; only names it generated are ever removed.
 LOG_DIR_KEPT_RUNS = 100
+# Commands that never get a log_dir log (an explicit --log-file still writes).
+UNLOGGED_COMMANDS = frozenset({"ref needs"})
 _GENERATED_LOG_NAME = re.compile(r"run-\d{8}T\d{6}-[0-9a-f]{32}\.log")
 # A run whose provenance still says "running" counts as going on while its log changed this recently;
 # after that it counts as a run that was killed before it could finish.
@@ -207,6 +209,10 @@ def run_logging(args: argparse.Namespace, argv: Sequence[str]) -> Iterator[None]
     global _active
     path = getattr(args, "log_file", None)
     directory = getattr(args, "log_dir", None)
+    # The app's pre-run check runs before every action: a log_dir log of it
+    # would only push real runs' logs out of the kept history.
+    if getattr(args, "_command", "") in UNLOGGED_COMMANDS:
+        directory = None
     if not path and not directory:
         yield
         return

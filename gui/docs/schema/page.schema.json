@@ -342,7 +342,12 @@
         "precheck": { "$ref": "#/$defs/actionPrecheck" },
         "confirm": { "$ref": "#/$defs/actionConfirmation" },
         "command": { "$ref": "#/$defs/command" },
-        "serverOperation": { "$ref": "#/$defs/serverOperation" }
+        "serverOperation": { "$ref": "#/$defs/serverOperation" },
+        "prerequisiteArguments": {
+          "description": "The command line the manifest's prerequisite check is given for this action, interpolated like command arguments, when its executable is a wrapper the check can't read. See docs/prerequisites.md.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
       }
     },
     "serverOperation": {

@@ -36,6 +36,7 @@ export function validateManifest(manifest: BundleManifest): void {
     validateExitCodeReference(manifest);
     validateJobServer(manifest);
     validateResultDocument(manifest);
+    validatePrerequisites(manifest);
     validateSetupSteps(manifest.setup?.steps, "setup.steps");
     validateSetupSteps(manifest.uninstall?.steps, "uninstall.steps");
     for (const page of manifest.pages) {
@@ -83,6 +84,33 @@ function validateResultDocument(manifest: BundleManifest): void {
     if (spec.arguments != null && !(Array.isArray(spec.arguments) && spec.arguments.every((argument) => typeof argument === "string"))) {
         throw new BundleValidationError("Invalid resultDocument.arguments: expected an array of strings.");
     }
+}
+
+function validatePrerequisites(manifest: BundleManifest): void {
+    const spec = manifest.prerequisites;
+    if (spec == null) {
+        return;
+    }
+    requireNonEmpty(spec.command?.executable, "prerequisites.command.executable");
+    if (!isStringArray(spec.command.arguments ?? [])) {
+        throw new BundleValidationError("Invalid prerequisites.command.arguments: expected an array of strings.");
+    }
+    const executables = spec.executables;
+    if (executables == null || typeof executables !== "object" || Array.isArray(executables) || Object.keys(executables).length === 0) {
+        throw new BundleValidationError("Invalid prerequisites.executables: expected an object naming at least one executable.");
+    }
+    for (const [executable, prefix] of Object.entries(executables)) {
+        if (!isStringArray(prefix)) {
+            throw new BundleValidationError(`Invalid prerequisites.executables.${executable}: expected an array of strings.`);
+        }
+    }
+    for (const [kind, label] of Object.entries(spec.kindLabels ?? {})) {
+        requireNonEmpty(label, `prerequisites.kindLabels.${kind}`);
+    }
+}
+
+function isStringArray(value: unknown): value is string[] {
+    return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
 function validateSetupSteps(steps: SetupStep[] | undefined, scope: string): void {

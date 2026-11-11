@@ -30,8 +30,7 @@ from wgsextract_cli.core.output_checks import (
     warn_if_no_reads,
     warn_if_no_variants,
 )
-from wgsextract_cli.core.ref_library.catalog import get_available_genomes
-from wgsextract_cli.core.reference_models import identify_reference
+from wgsextract_cli.core.ref_library.catalog import catalog_genome_for
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -115,19 +114,7 @@ def require_reference(
         if input_path:
             header = get_bam_header(input_path) or ""
             signature = calculate_bam_md5(input_path, header=header)
-            genomes = get_available_genomes()
-            genome = next((g for g in genomes if g["md5"] == signature), None)
-            model = identify_reference(header, signature)
-            if not genome and model and model.fasta:
-                genome = next(
-                    (
-                        g
-                        for g in genomes
-                        if g["final"] == model.fasta
-                        or g["url"].rsplit("/", 1)[-1] == model.fasta
-                    ),
-                    None,
-                )
+            genome = catalog_genome_for(header, signature)
             if genome:
                 hint = f" Install the matching reference explicitly: wgsextract ref library --install {genome['code']}"
         if not hint:
