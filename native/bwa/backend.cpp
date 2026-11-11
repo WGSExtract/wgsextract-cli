@@ -653,11 +653,11 @@ public:
     size_t extended_batches = 0, extended_jobs = 0;
     double extend_time = 0, extend_kernel_time = 0;
 
-    SeedScheduler(const mem_opt_t *opt, const bwt_t *bwt, int n, bseq1_t *seqs,
+    SeedScheduler(const mem_opt_t *opt, int n, bseq1_t *seqs,
         void (*worker)(void *, long, int), void *data, const ExtendParameters *extension)
         : Splitter(opt->n_threads, n / stride(opt), long(device->seed_capacity()) / stride(opt), false,
               inject_failure ? "injected GPU failure (test)" : nullptr, worker, data),
-          opt_(opt), bwt_(bwt), seqs_(seqs), stride_(stride(opt)),
+          opt_(opt), seqs_(seqs), stride_(stride(opt)),
           prepared_(size_t(n / stride_) * stride_, nullptr), extend_(extension != nullptr) {
         if (!extend_) return;
         parameters_ = *extension;
@@ -691,7 +691,6 @@ public:
 
 private:
     const mem_opt_t *opt_;
-    const bwt_t *bwt_;
     bseq1_t *seqs_;
     const int stride_;
     std::vector<const Prepared *> prepared_;
@@ -1318,7 +1317,7 @@ extern "C" int wgse_metal_map(const mem_opt_t *opt, const bwt_t *bwt, int n,
         const bool extend = extend_enabled && bwa_verbose < 4
             && extend_parameters(*opt, extension);
         if (extend) prepare_extension();
-        SeedScheduler scheduler(opt, bwt, n, seqs, worker, data, extend ? &extension : nullptr);
+        SeedScheduler scheduler(opt, n, seqs, worker, data, extend ? &extension : nullptr);
         scheduler.align();
         const size_t reads = size_t(stride(opt));
         std::lock_guard<std::mutex> lock(totals_mutex);
