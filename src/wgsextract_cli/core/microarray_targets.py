@@ -49,14 +49,24 @@ class ChainSource:
 # UCSC chain files are free for non-commercial use under UCSC's EULA; a mirror
 # must ship UCSC's liftOver README (its licence terms) beside the chain.
 _UCSC_LIFTOVER = "https://hgdownload.soe.ucsc.edu/goldenPath/{}/liftOver/{}"
+_MIRROR = (
+    "https://github.com/WGSExtract/wgsextract-cli/releases/download/"
+    "ucsc-liftover-chains-1/{}"
+)
 HG19_TO_HG38_CHAIN = ChainSource(
     "hg19ToHg38.over.chain.gz",
-    (_UCSC_LIFTOVER.format("hg19", "hg19ToHg38.over.chain.gz"),),
+    (
+        _UCSC_LIFTOVER.format("hg19", "hg19ToHg38.over.chain.gz"),
+        _MIRROR.format("hg19ToHg38.over.chain.gz"),
+    ),
     "5c0598e500ceb5a78c73086929e8ef993aec309bcafb595139b53d440b125a1d",
 )
 HG18_TO_HG19_CHAIN = ChainSource(
     "hg18ToHg19.over.chain.gz",
-    (_UCSC_LIFTOVER.format("hg18", "hg18ToHg19.over.chain.gz"),),
+    (
+        _UCSC_LIFTOVER.format("hg18", "hg18ToHg19.over.chain.gz"),
+        _MIRROR.format("hg18ToHg19.over.chain.gz"),
+    ),
     "f1e57673d8f306ea4ed1553ea5fc2001b3cc3d149eef501fc97305b3b3e2a9d6",
 )
 # Bump when the builder's output changes, so libraries rebuild their target.
