@@ -256,10 +256,11 @@ What runs on the GPU:
   run. Whether the process then exits promptly with a command still stuck on
   the GPU is up to the Metal driver, and is untested: CI's injected hang
   never reaches the GPU.
-- `wgse-bwa-mem3` (from 0.2.0): seed extension only, in every output mode.
+- `wgse-bwa-mem3` (from 0.2.0): seed extension, and from 0.3.0 SMEM
+  seeding, in every output mode.
   bwa-mem3 extends seeds in batches, scoring each batch first with 8-bit
   scores and then, for the extensions that overflow, with 16-bit scores; the
-  GPU scores whole 8-bit batches with `wgse-bwa-mem2`'s extension kernel,
+  GPU scores whole 8-bit batches with its own banded Smith-Waterman kernel,
   which gives the same results as upstream's NEON kernel, and the 16-bit
   batches stay on the CPU. A batch with a query over 256 bases or a base
   other than A, C, G, T and N is scored by upstream's code; on HG002 none
@@ -269,9 +270,24 @@ What runs on the GPU:
   output does not change). A GPU command buffer that macOS aborts to keep the
   display responsive is run again, up to four times; any other GPU error,
   such as a GPU hang, sends that batch and every later one to the CPU (and
-  `--metal` exits 1). The GPU saves 7–10% of the time in the modes that use
-  upstream's full seed extension and nothing with `--fast` (see
-  Performance).
+  `--metal` exits 1).
+  From 0.3.0 the GPU also collects each read's SMEMs (upstream's three
+  passes) with `wgse-bwa-mem2`'s seeding kernel, reading the index's
+  occurrence table in place, while the previous chunk of reads maps; reads
+  over 512 bases or with more than 128 SMEMs, and any batch not finished when
+  its reads map, are seeded by upstream's code, and the SMEMs are then sorted,
+  deduplicated and resolved as upstream does (a GPU SMEM does not carry the
+  CPU's unique-match tag, so its suffix-array lookup walks to a sampled row
+  for the same coordinate). With the CPU threads freed from seeding, they
+  score a batch of seed extensions themselves while more than 4096 pairs wait
+  for the GPU (`--gpu-backlog PAIRS`; 0 never does). `--gpu-seed off` seeds on
+  the CPU as 0.2.0 did (and then `--gpu-backlog` defaults to 0). If GPU
+  seeding fails, the CPU seeds the rest and the run goes on. Long extensions
+  (over 30,000 band cells) are scored by a SIMD group each instead of one GPU
+  thread. Seeding and seed extension share the process's two GPU command
+  buffers in flight (`metal-common`), so a seeding batch waits while two
+  extension batches run, and the reverse. The GPU saves about 10% of the time
+  in the modes that use upstream's full seed extension (see Performance).
 
 With a Metal backend all three print GPU and CPU work counts to stderr.
 `wgse-bwa-mem2 capabilities --json [index]` (0.4.1) also reports the Mac's
@@ -394,7 +410,9 @@ backend) and up to 8 threads.
 
 `wgse-bwa-mem3` reads the same index as `wgse-bwa-mem2`, without the 6.2 GB
 `.0123` file, and like Bioconda's bwa-mem3 0.16.0 peaked at about 10.9 GiB on
-hs38 with 9 threads and `-K 10000000`; `--metal` adds about 0.2 GiB. Its
+hs38 with 9 threads and `-K 10000000`; `--metal` adds about 0.2 GiB, and
+0.5 GiB from 0.3.0 (11.2 GiB), whose GPU seeding reads the 5.8 GiB occurrence
+table in place: on a GPU whose largest buffer is smaller it seeds on the CPU. Its
 denser suffix-array index (`bwa-mem3 re-sa -u 2`) peaked at 14.5 GiB and was
 slower on this Mac. From 0.2.0, `mem` warns on stderr, as `wgse-bwa-mem2`
 0.4.1 does, when the Mac has less physical memory than its estimate of the
@@ -818,6 +836,30 @@ the `medium` bench tier (500k pairs on chr1–3), where loading the index
 takes much of the time, the gain was within the noise. Rescuing mates on the
 GPU with `wgse-bwa`'s kernel was also tried; it was no faster on `medium`, so
 0.2.0 does not do it.
+
+`wgse-bwa-mem3` 0.3.0 `--metal` (GPU seeding) was measured against 0.2.0
+`--metal` on the same 5M pairs, `-t 9`, in interleaved rounds on AC power,
+each run started at thermal pressure 0 (load averages 1.8–5.7 from other
+work). Every run of a mode wrote the alignments above:
+
+| Mode | 0.2.0 `--metal` | 0.3.0 `--metal` | Change | CPU, `-t 9` | Peak RSS (0.2.0 / 0.3.0 `--metal`) |
+| --- | --- | --- | --- | --- | --- |
+| plain | 63.2 s (65.1, 62.5, 62.1) | 57.6 s (56.7, 60.4, 55.8) | −8.9% | 68.0 s (68.9, 67.1) | 10.9 / 11.2 GiB |
+| `--compat=bwa-mem` | 65.1 s | 61.9 s | −5.0% | | 10.9 / 11.2 GiB |
+| `--compat=bwa-mem2` | 67.0 s | 59.1 s | −11.7% | | 10.9 / 11.2 GiB |
+
+The GPU seeded 9.92M of the 9.93M reads (the CPU the rest) in 42–45 s of GPU
+time, so with seed extension the GPU is now busy for most of the run, and
+the CPU threads, which spent about 18% of their time seeding, score
+extensions when the GPU falls behind. Each change alone gained little: GPU
+seeding with every extension on the GPU took 63.4 s (64.6, 63.0, 62.6), and
+the CPU taking extensions without GPU seeding 63.2 s (64.0, 62.4).
+`--fast` gains nothing measurable: in one interleaved round (load averages
+2–3.3), 0.3.0 `--metal` took 42.9 s, 0.2.0 `--metal` 44.2 s, the CPU 43.8 s
+and 0.3.0 with `--gpu-seed off` 45.3 s, all writing `d27f9ccd7a921c97`.
+Also tried, and not faster: four or eight command buffers in flight for seed
+extension (the buffers slowed each other), and one GPU thread per extension
+with interleaved bases (wgse-bwa-mem2's layout; the same time).
 
 ### Energy
 
