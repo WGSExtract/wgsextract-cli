@@ -16,9 +16,11 @@ SOCIAL_IMAGE_HEIGHT = 630
 
 NAV_ITEMS = (
     ("index.html", "Home"),
-    ("architecture.html", "Architecture"),
+    ("architecture.html", "GUI Architecture"),
     ("wgsextract.html", "WGSExtract"),
     ("docs.html", "Docs"),
+    ("https://wgsextract.github.io/wgsextract-cli/", "WGSExtract CLI"),
+    ("whats-different.html", "What's Different"),
 )
 
 

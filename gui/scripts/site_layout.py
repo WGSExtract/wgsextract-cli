@@ -45,7 +45,7 @@ def render_page(page: Page) -> str:
             '    <meta name="viewport" content="width=device-width, initial-scale=1" />',
             f'    <meta name="description" content="{escape_attr(page.description)}" />',
             f"    <title>{escape_text(page.title)}</title>",
-            '    <meta property="og:site_name" content="GUI for CLI" />',
+            '    <meta property="og:site_name" content="WGS Extract GUI" />',
             '    <meta property="og:type" content="website" />',
             f'    <meta property="og:title" content="{escape_attr(page.title)}" />',
             f'    <meta property="og:description" content="{escape_attr(page.description)}" />',
@@ -111,7 +111,7 @@ def render_nav(active_output: str) -> str:
         [
             '    <nav class="nav" aria-label="Primary navigation">',
             '      <div class="wrap nav-inner">',
-            '        <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true"></span><span>GUI for CLI</span></a>',
+            '        <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true"></span><span>WGS Extract GUI</span></a>',
             f'        <div class="nav-links">{"".join(links)}</div>',
             "      </div>",
             "    </nav>",
