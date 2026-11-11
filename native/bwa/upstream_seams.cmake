@@ -84,6 +84,9 @@ seam_replace(bwt_source "calloc(bwt->bwt_size, 4)"
 seam_replace(bwt_source
     "bwt->sa = (bwtint_t*)calloc(bwt->n_sa, sizeof(bwtint_t));\n\tbwt->sa[0] = -1;"
     "bwt->sa = (bwtint_t*)(wgse_metal_enabled() ? wgse_metal_calloc(bwt->n_sa, sizeof(bwtint_t)) : calloc(bwt->n_sa, sizeof(bwtint_t)));\n\tbwt->sa[0] = -1;")
+# An abandoned GPU command (watchdog) may still read the shared index.
+seam_replace(bwt_source "free(bwt->sa); free(bwt->bwt);"
+    "wgse_metal_free(bwt->sa); wgse_metal_free(bwt->bwt);")
 file(WRITE "${generated}/bwt.c" "#include \"metal_backend.h\"\n${bwt_source}")
 
 # With Metal, map the next chunk while this one pairs (fastmap_stages.c.in).

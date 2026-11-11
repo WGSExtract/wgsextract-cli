@@ -16,10 +16,10 @@ from pyliftover import LiftOver
 from wgsextract_cli.core.aadr_resources import require_aadr_2m
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.microarray_targets import (
-    HG19_TO_HG38_CHAIN_URL,
+    HG19_TO_HG38_CHAIN,
     _write_target,
+    download_chain,
 )
-from wgsextract_cli.core.ref_library.downloads import download_file
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 AADR_FORMATS = {
@@ -103,7 +103,7 @@ def aadr_lifter(
             "in the reference library; use 'wgsextract ref download' explicitly."
         )
     chain = Path(outdir, "hg19ToHg38.over.chain.gz")
-    if not chain.is_file() and not download_file(HG19_TO_HG38_CHAIN_URL, str(chain)):
+    if not chain.is_file() and not download_chain(HG19_TO_HG38_CHAIN, str(chain)):
         raise WGSExtractError("Could not download the GRCh37-to-GRCh38 AADR chain.")
     return LiftOver(str(chain))
 

@@ -69,6 +69,13 @@ int run(int argc, char **argv) {
             }
             wgse_inject_gpu_interruptions(static_cast<size_t>(every));
             command_index += 2;
+        } else if (strcmp(option, "--gpu-inject-hang") == 0) {
+            if (argc <= command_index + 1) {
+                fprintf(stderr, "--gpu-inject-hang requires a command label prefix\n");
+                return 2;
+            }
+            wgse_inject_gpu_hang(argv[command_index + 1]);
+            command_index += 2;
         } else if (strcmp(option, "--gpu-locate") == 0) {
             const char *value = argc > command_index + 1 ? argv[command_index + 1] : "";
             if (strcmp(value, "on") && strcmp(value, "off")) {
