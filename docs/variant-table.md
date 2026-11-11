@@ -51,6 +51,7 @@ above works.
 | `confidence_reasons` | text | The reason codes behind that label, `\|`-separated (`INFO/WGSE_CONF_REASONS`), for example `low_depth\|strand_bias`. |
 | `pharmgkb_level`, `pharmgkb_drugs` | text | Best PharmGKB level of evidence (1A, 1B, 2A, 2B, 3, 4) and the drugs, from `vcf pharmgkb`. |
 | `pharmcat_diplotype`, `pharmcat_phenotype` | text | PharmCAT's call for the row's gene, with `--pharmcat-json <stem>.phenotype.json` from `vcf pharmcat`. |
+| `sv_af`, `sv_freq` | real, text | A structural variant's population frequency and its class (`common`, `low`, `rare` or `novel`), from [`vcf sv-freq`](sv-frequency.md). |
 
 The TSV has a header row and leaves missing values empty. The SQLite database
 has the table `variants` with these columns, `columns` (each column's type and

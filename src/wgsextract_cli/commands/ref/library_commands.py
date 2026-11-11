@@ -14,6 +14,7 @@ from wgsextract_cli.api.ref import (
     RefGeneMapParams,
     RefGerpParams,
     RefGnomadParams,
+    RefGnomadSvParams,
     RefLibraryParams,
     RefMicroarrayTargetsParams,
     RefPharmgkbParams,
@@ -24,7 +25,7 @@ from wgsextract_cli.api.ref import (
     RefYbrowseParams,
     _Resource,
 )
-from wgsextract_cli.core import library_removal, somalier_resources
+from wgsextract_cli.core import gnomad_sv, library_removal, somalier_resources
 from wgsextract_cli.core.aadr_resources import install_aadr_2m
 from wgsextract_cli.core.annotation_resources import (
     build_gnomad_af,
@@ -122,6 +123,30 @@ def run_somalier(params: RefSomalierParams) -> None:
     for path in somalier_resources.install(reflib, cancel=cancel_event()):
         current_result().add_output(path, "reference_resource")
     logging.info(f"Installed the {name} in {somalier_resources.folder(reflib)}")
+
+
+def run_gnomad_sv(params: RefGnomadSvParams) -> None:
+    reflib = _library(params.ref)
+    builds = [params.build] if params.build else ["hg38", "hg19"]
+    catalogues = [cat for b in builds if (cat := gnomad_sv.catalogue(params.source, b))]
+    if not catalogues:
+        raise UsageError(
+            f"gnomAD has no {params.source} SV catalogue for {params.build}; "
+            "gnomAD-LR (--source lr) is GRCh38 only."
+        )
+    name = ", ".join(f"{c.label} ({c.build})" for c in catalogues)
+    if params.delete:
+        _delete(
+            f"{name} tables",
+            [p for c in catalogues for p in gnomad_sv.delete(reflib, c)],
+        )
+        return
+    verify_dependencies(["bcftools", "bgzip", "tabix"])
+    for cat in catalogues:
+        logging.info(f"{cat.label}: {cat.licence}.")
+        table = gnomad_sv.install(reflib, cat, cancel=cancel_event())
+        current_result().add_output(table, "reference_resource")
+    logging.info(f"Installed {name} in {gnomad_sv.folder(reflib)}")
 
 
 def _delete(
@@ -457,6 +482,7 @@ def run_microarray_targets(params: RefMicroarrayTargetsParams) -> None:
 cmd_aadr = cli_handler(RefAadrParams, run_aadr)
 cmd_ybrowse = cli_handler(RefYbrowseParams, run_ybrowse)
 cmd_somalier = cli_handler(RefSomalierParams, run_somalier)
+cmd_gnomad_sv = cli_handler(RefGnomadSvParams, run_gnomad_sv)
 _cli_library = cli_handler(RefLibraryParams, run_library)
 cmd_gene_map = cli_handler(RefGeneMapParams, run_gene_map)
 cmd_bootstrap = cli_handler(RefBootstrapParams, run_bootstrap)

@@ -10,6 +10,8 @@ values. The annotations come from the INFO fields our own commands write:
 - ``CLNSIG``/``CLNDN`` (`vcf clinvar`), ``GNOMAD_AF`` (`vcf gnomad`),
   ``PHARMGKB`` (`vcf pharmgkb`) and ``WGSE_CONF``/``WGSE_CONF_REASONS`` (depth-aware
   confidence labels, `vcf clinvar`/`vcf gnomad`/`vcf pharmcat`).
+- ``SV_AF``/``SV_FREQ`` (`vcf sv-freq`): structural variants' population
+  frequency and class (common, low, rare or novel).
 
 An annotation the VCF lacks leaves its column empty. Records are parsed one at
 a time, so a whole genome streams through in constant memory.
@@ -98,6 +100,16 @@ COLUMNS: tuple[Column, ...] = (
         TEXT,
         "PharmCAT's phenotype for this row's gene (with --pharmcat-json).",
     ),
+    Column(
+        "sv_af",
+        REAL,
+        "Population allele frequency of the matching gnomAD SV (SV_AF, `vcf sv-freq`).",
+    ),
+    Column(
+        "sv_freq",
+        TEXT,
+        "SV frequency class: common, low, rare or novel (SV_FREQ, `vcf sv-freq`).",
+    ),
 )
 COLUMN_NAMES = tuple(column.name for column in COLUMNS)
 Row = tuple[str | int | float | None, ...]
@@ -168,6 +180,7 @@ class VcfHeader:
             ("gnomad", "GNOMAD_AF"),
             ("pharmgkb", "PHARMGKB"),
             ("confidence", "WGSE_CONF"),
+            ("sv_freq", "SV_FREQ"),
         ):
             if key in self.info_number:
                 found.append(name)
@@ -536,4 +549,6 @@ def variant_rows(
                 pgx_drugs,
                 diplotype,
                 phenotype,
+                _to_float(info.get("SV_AF")),
+                _value(info.get("SV_FREQ")),
             )

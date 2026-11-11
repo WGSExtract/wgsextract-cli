@@ -1304,6 +1304,10 @@ void prepare_extension() {
 }
 } // namespace
 
+extern "C" void wgse_metal_free(void *memory) {
+    if (!wgse::metal::Runtime::unsettled()) free(memory);
+}
+
 extern "C" void *wgse_metal_calloc(size_t count, size_t size) {
     // Page-aligned so Metal can use the index in place; contents as calloc's.
     const size_t page = static_cast<size_t>(getpagesize());
@@ -1768,9 +1772,10 @@ bool wgse_metal_execution_failed(std::string &reason) {
 void wgse_finish_backend() {
     fprintf(stderr, "[wgse-bwa] gpu_batches=%zu gpu_reads=%zu cpu_reads=%zu fallback_reads=%zu "
         "wasted_reads=%zu unlocated_reads=%zu located_rows=%zu locate_misses=%zu "
-        "cpu_located_rows=%zu overlapped_chunks=%zu interruptions=%zu\n", gpu_batches, gpu_reads,
-        cpu_reads, fallback_reads, wasted_reads, unlocated_reads, located_rows,
-        locate_misses.load(), cpu_located_rows.load(), overlapped_chunks, wgse::metal::Runtime::interruptions());
+        "cpu_located_rows=%zu overlapped_chunks=%zu interruptions=%zu watchdog_threads=%zu\n",
+        gpu_batches, gpu_reads, cpu_reads, fallback_reads, wasted_reads, unlocated_reads,
+        located_rows, locate_misses.load(), cpu_located_rows.load(), overlapped_chunks,
+        wgse::metal::Runtime::interruptions(), wgse::metal::Runtime::watchdog_threads());
     fprintf(stderr, "[wgse-bwa] seconds gpu=%.3f locate=%.3f map=%.3f cpu_wait=%.3f\n",
         gpu_seconds, locate_seconds, map_seconds, cpu_wait_seconds);
     if (dense_tried)
@@ -1824,6 +1829,10 @@ void wgse_inject_locate_failure() {
 
 void wgse_inject_gpu_interruptions(size_t every) {
     wgse::metal::Runtime::inject_interruptions(every);
+}
+
+void wgse_inject_gpu_hang(const char *label) {
+    wgse::metal::Runtime::inject_hang(label, 2);
 }
 
 void wgse_set_gpu_locate_rows(size_t rows) {
