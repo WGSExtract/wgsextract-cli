@@ -113,9 +113,11 @@ function Get-AppProcesses {
     # Everything the app started: its window, the Node backend and anything they run.
     $install = (Get-ItemProperty -LiteralPath $UninstallKey -ErrorAction SilentlyContinue).InstallLocation
     Get-Process -ErrorAction SilentlyContinue | Where-Object {
-        $_.Path -and (($install -and $_.Path.StartsWith($install.Trim('"'), "OrdinalIgnoreCase")) -or
-            $_.Path.StartsWith("$Workspace\", "OrdinalIgnoreCase") -or
-            $_.Path.StartsWith("$OldWorkspace\", "OrdinalIgnoreCase"))
+        # Read Path once: a process can exit between reads, and then Path is null.
+        $path = $_.Path
+        $path -and (($install -and $path.StartsWith($install.Trim('"'), "OrdinalIgnoreCase")) -or
+            $path.StartsWith("$Workspace\", "OrdinalIgnoreCase") -or
+            $path.StartsWith("$OldWorkspace\", "OrdinalIgnoreCase"))
     }
 }
 
