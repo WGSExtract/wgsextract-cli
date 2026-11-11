@@ -50,13 +50,11 @@ from ._shared import outdir_param, ref_param, threads_param
 def engine_param() -> Any:
     return param(
         None,
-        help="Annotation engine: 'vep-rs' (the default: a fast Rust "
-        "reimplementation of Ensembl VEP, on every platform) or 'ensembl' "
-        "(Ensembl VEP; Linux and macOS). Each has its own cache, built by "
-        "'vep download --engine <engine>'",
-        doc="Annotation engine, 'vep-rs' or 'ensembl' (default: config "
-        "vep_engine, else 'vep-rs'; a run with only an Ensembl VEP cache keeps "
-        "using Ensembl VEP and warns vep_engine_fallback).",
+        help="Engine: 'vep-rs' (default; fast Rust VEP, every platform) or "
+        "'ensembl' (Linux, macOS); each has its own cache",
+        doc="Engine, 'vep-rs' or 'ensembl' (default: config vep_engine, else "
+        "'vep-rs'; with only an Ensembl VEP cache, Ensembl VEP, warning "
+        "vep_engine_fallback).",
         choices=("ensembl", "vep-rs"),
         config_key="vep_engine",
     )
@@ -262,10 +260,10 @@ class VepDownloadParams(_VepCacheParams):
     )
     variations: bool = param(
         True,
-        help="With --engine vep-rs, include Ensembl's known variants "
-        "(Existing_variation and frequencies; a ~15 GB download; default: on)",
-        doc="With engine 'vep-rs': include Ensembl's known variants "
-        "(Existing_variation and 1000 Genomes frequencies; a ~15 GB download).",
+        help="vep-rs: include known variants (Existing_variation, frequencies; "
+        "~15 GB; default: on)",
+        doc="vep-rs: include Ensembl's known variants (Existing_variation, "
+        "1000 Genomes frequencies; ~15 GB).",
         action="boolean_optional",
     )
 
