@@ -24,6 +24,16 @@
   --button-danger-border: #d18f89;
   --button-danger-text: #111113;
   --control-height: 30px;
+  /* Spacing scale: inside a card rows sit --space-3 apart; cards sit --space-4 apart. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  /* Descriptive text fills its container and wraps only past a comfortable line length on very wide windows. */
+  --prose-max: 120ch;
+  --label-column: clamp(200px, 24%, 280px);
+  --focus-ring: 0 0 0 2px var(--panel), 0 0 0 4px color-mix(in srgb, var(--accent) 70%, transparent);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
 }
 
@@ -51,6 +61,9 @@
     --border: rgb(245 245 247 / 16%);
     --separator: rgb(245 245 247 / 24%);
     --accent-soft: rgb(10 132 255 / 22%);
+    --danger: #f97066;
+    --success: #32d583;
+    --warning: #fdb022;
     --terminal-bg: #15161a;
     --button-bg: #3a3b42;
     --button-bg-hover: #45464e;
@@ -74,6 +87,9 @@
   --border: rgb(245 245 247 / 16%);
   --separator: rgb(245 245 247 / 24%);
   --accent-soft: rgb(10 132 255 / 22%);
+  --danger: #f97066;
+  --success: #32d583;
+  --warning: #fdb022;
   --terminal-bg: #15161a;
   --button-bg: #3a3b42;
   --button-bg-hover: #45464e;
@@ -116,9 +132,24 @@ button:hover:not(:disabled) {
   background: var(--button-bg-hover);
 }
 
+button:active:not(:disabled) {
+  filter: brightness(0.94);
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.48;
+}
+
+/* One keyboard focus ring for every control; mouse clicks don't show it. */
+:is(button, select, input, summary, a, [tabindex="0"]):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+:is(input[type="text"], select):focus {
+  border-color: var(--accent);
+  outline: none;
 }
 
 .app-shell {
@@ -585,7 +616,7 @@ body.resizing-terminal * {
 }
 
 .page-header {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-4);
 }
 
 .page-header h2 {
@@ -603,9 +634,20 @@ body.resizing-terminal * {
 }
 
 .page-header p {
-  max-width: 860px;
   margin: 0;
   line-height: 1.45;
+}
+
+.page-header p,
+.section-header p,
+.field-note,
+.inline-error,
+.empty,
+.precheck-banner,
+.setup-status-header p,
+.result-summary .result-error,
+.confirmation-modal p {
+  max-width: var(--prose-max);
 }
 
 .field-note {
@@ -616,19 +658,19 @@ body.resizing-terminal * {
 
 .sections {
   display: grid;
-  gap: 20px;
+  gap: var(--space-4);
 }
 
 .card {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel);
-  padding: 14px 16px 16px;
+  padding: var(--space-3) var(--space-4) var(--space-4);
 }
 
 /* A subsection continues the card above it: no gap, joined borders, a smaller heading. */
 .card.subsection {
-  margin-top: -21px;
+  margin-top: calc(-1 * var(--space-4) - 1px);
   border-top-style: dashed;
   border-top-left-radius: 0;
   border-top-right-radius: 0;
@@ -640,7 +682,7 @@ body.resizing-terminal * {
 
 /* Cards a page renders above its manifest sections (Setup, Standard Options) keep the sections' spacing. */
 .page-panel article > .card {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-4);
 }
 
 .setup-status-card {
@@ -650,9 +692,15 @@ body.resizing-terminal * {
 
 .setup-status-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-2) var(--space-4);
+}
+
+.setup-status-header > div:first-child {
+  flex: 1 1 260px;
+  min-width: 0;
 }
 
 .setup-actions {
@@ -751,7 +799,7 @@ body.resizing-terminal * {
 }
 
 .section-header {
-  margin-bottom: 14px;
+  margin-bottom: var(--space-3);
 }
 
 .section-header h3 {
@@ -761,12 +809,13 @@ body.resizing-terminal * {
 }
 
 .section-header p {
-  margin: 8px 0 0;
+  margin: var(--space-1) 0 0;
+  line-height: 1.4;
 }
 
 .controls {
   display: grid;
-  gap: 14px;
+  gap: var(--space-3);
 }
 
 .control {
@@ -776,9 +825,9 @@ body.resizing-terminal * {
 .form-row,
 .toggle-row {
   display: grid;
-  grid-template-columns: 200px minmax(220px, 1fr);
+  grid-template-columns: var(--label-column) minmax(220px, 1fr);
   align-items: first baseline;
-  gap: 16px;
+  gap: var(--space-4);
   width: 100%;
 }
 
@@ -839,6 +888,11 @@ input[type="checkbox"] {
   align-items: center;
 }
 
+[data-workspace-location-current] {
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+
 .workspace-location-row {
   grid-template-columns: minmax(180px, 1fr) auto auto auto;
 }
@@ -895,8 +949,9 @@ input[type="checkbox"] {
 
 .option-row {
   display: grid;
-  grid-template-columns: 9rem 1fr;
-  gap: 8px;
+  /* Same label column as the form rows, so checkboxes line up with the fields above them. */
+  grid-template-columns: var(--label-column) minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
   align-items: start;
   padding: 4px 0;
 }
@@ -999,11 +1054,21 @@ tbody tr + tr {
 .row-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 16px;
+  gap: var(--space-2) 10px;
+  margin-top: var(--space-3);
 }
 
 .action-row > .action-stack {
+  min-width: 160px;
+}
+
+/* An action with a disk estimate takes the whole row: the estimate reads across the card, its button keeps its size. */
+.action-row > .action-stack.has-precheck {
+  flex-basis: 100%;
+  justify-items: start;
+}
+
+.action-row > .action-stack.has-precheck > .action-button {
   min-width: 160px;
 }
 
@@ -1017,12 +1082,15 @@ tbody tr + tr {
   align-content: start;
 }
 
+.action-stack {
+  border-radius: 7px;
+}
+
 .action-stack.compact {
   gap: 4px;
 }
 
 .precheck-banner {
-  max-width: 360px;
   display: flex;
   align-items: flex-start;
   gap: 6px;
@@ -1684,13 +1752,40 @@ tbody tr + tr {
     display: none;
   }
 
+  /* The sidebar becomes a top bar: bundle name, mode switch and hide button on one row, then the pages. */
   .sidebar {
     position: relative;
     z-index: auto;
     height: auto;
     max-height: none;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "header mode toggle"
+      "nav nav nav";
+    align-items: center;
+    column-gap: var(--space-3);
     border-inline-end: 0;
     border-bottom: 1px solid var(--separator);
+  }
+
+  .sidebar .bundle-header {
+    grid-area: header;
+  }
+
+  .sidebar .ui-mode-switch {
+    grid-area: mode;
+    justify-self: start;
+  }
+
+  .sidebar .sidebar-toggle-inside {
+    grid-area: toggle;
+    position: static;
+    margin-inline-end: 10px;
+  }
+
+  .sidebar .page-nav {
+    grid-area: nav;
   }
 
   .bundle-header {
@@ -1698,15 +1793,15 @@ tbody tr + tr {
     justify-content: flex-start;
     align-items: center;
     gap: 8px;
-    padding: 8px 12px 6px;
+    padding: 6px 0 6px 12px;
   }
 
   .bundle-icon,
   .bundle-emoji {
-    width: 34px;
-    height: 34px;
-    border-radius: 9px;
-    font-size: 20px;
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    font-size: 17px;
   }
 
   .bundle-header h1 {
@@ -1720,9 +1815,9 @@ tbody tr + tr {
     flex: none;
     flex-direction: row;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: 2px;
     overflow: visible;
-    padding: 0 8px 8px;
+    padding: 0 8px 6px;
   }
 
   .nav-primary,
@@ -1745,10 +1840,17 @@ tbody tr + tr {
     width: auto;
     min-width: 0;
     max-width: 100%;
-    grid-template-columns: 22px minmax(0, auto);
+    grid-template-columns: auto minmax(0, auto);
+    gap: 6px;
+    min-height: 28px;
     margin: 0;
-    padding: 5px 10px;
+    padding: 3px 8px;
     white-space: normal;
+  }
+
+  .nav-icon {
+    width: auto;
+    min-width: 16px;
   }
 
   .nav-item span:last-child {
@@ -1810,8 +1912,12 @@ tbody tr + tr {
   }
 
   .ui-mode-switch {
-    width: 240px;
-    margin-inline: 12px;
+    width: 200px;
+    margin: 0;
+  }
+
+  .option-row {
+    grid-template-columns: 9rem minmax(0, 1fr);
   }
 }
 

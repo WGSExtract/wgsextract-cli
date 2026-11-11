@@ -78,5 +78,24 @@ test("an action without a disk estimate shows no empty precheck banner", async (
   assert.doesNotMatch(render(), /precheck-banner/);
 
   state.actionPrechecks.set(key, { severity: "info", title: "Disk space estimate", message: "Estimated 10 GB needed." });
-  assert.match(render(), /class="precheck-banner info"[\s\S]*Estimated 10 GB needed\./);
+  assert.match(render(), /class="action-stack has-precheck"[\s\S]*class="precheck-banner info"[\s\S]*Estimated 10 GB needed\./);
+});
+
+test("descriptive text widths follow the window, not a fixed pixel cap", () => {
+  // Owner report: explanatory text stayed a fixed width when the window was widened.
+  const css = readFileSync(new URL("../web/styles.css", import.meta.url), "utf8");
+  const rules = css.replace(/@media[^{]*\{/g, "");
+  assert.deepEqual(rules.match(/max-(?:width|inline-size):\s*\d+px/g) ?? [], []);
+});
+
+test("a path field shows its full path on hover", async () => {
+  // Polish pass: a long BAM path was cut off in its field with no way to read it.
+  const { state, renderTextControl } = await clientView();
+  const path = "/data/samples/run-2026/very/long/folder/HG00096.hg19-mini_aligned.bam";
+  state.fieldValues = { bam_path: path };
+  const html = renderTextControl({ id: "bam_path", kind: "path", label: "BAM/CRAM" });
+  assert.match(html, new RegExp(`value="${path}" title="${path}"`));
+
+  state.fieldValues = { bam_path: "" };
+  assert.doesNotMatch(renderTextControl({ id: "bam_path", kind: "path", label: "BAM/CRAM" }), /title=/);
 });

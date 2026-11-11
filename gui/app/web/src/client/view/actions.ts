@@ -25,9 +25,10 @@ export function renderActions(actions: ActionSpec[], context: CommandContext, ow
       const command = displayCommand(action.command, resolvedContext);
       const tooltipText = actionTooltipText(action.tooltip ?? command, disabledText ?? (isLoadingPrecheck ? state.labels.refreshingTitle : ""));
       const roleClass = action.role === "destructive" ? "danger" : action.role === "secondary" ? "secondary" : "primary";
+      const showsPrecheck = Boolean(precheck?.message);
       return `
-        <span class="action-stack ${compact ? "compact" : ""}" data-tooltip="${escapeAttribute(tooltipText)}" ${disabledText || isLoadingPrecheck ? 'tabindex="0"' : ""}>
-          ${precheck?.message ? renderPrecheckBanner(precheck) : isLoadingPrecheck ? renderLoadingInline(state.labels.refreshingTitle) : ""}
+        <span class="action-stack${compact ? " compact" : ""}${showsPrecheck ? " has-precheck" : ""}" data-tooltip="${escapeAttribute(tooltipText)}" ${disabledText || isLoadingPrecheck ? 'tabindex="0"' : ""}>
+          ${showsPrecheck && precheck ? renderPrecheckBanner(precheck) : isLoadingPrecheck ? renderLoadingInline(state.labels.refreshingTitle) : ""}
           ${state.actionPrecheckErrors.has(precheckKey)
             ? renderInlineError(state.actionPrecheckErrors.get(precheckKey), `<button type="button" data-retry-precheck="${escapeAttribute(precheckKey)}">${escapeHTML(state.labels.retryButtonTitle)}</button>`)
             : ""}

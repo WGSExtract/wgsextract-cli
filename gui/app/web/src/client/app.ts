@@ -15,6 +15,7 @@ import { renderUpdatePopover } from "./view/update.js";
 import { renderPrerequisitesDialog } from "./view/prerequisites.js";
 import { renderBundleHeader, renderConfirmationDialog, renderNavigation, renderUIModeSwitch, renderPage, renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID } from "./view.js";
 import { renderAboutDialog } from "./view/about.js";
+import { revealPathInputEnds } from "./view/path-input.js";
 import type { BundleManifest, ManifestResponse } from "../../../shared/types.js";
 import { normalizeUIMode, visiblePages } from "../../../shared/ui-mode.js";
 const app: HTMLElement = (() => {
@@ -28,6 +29,7 @@ let bindEventsModulePromise: Promise<typeof import("./events.js")> | null = null
 let renderSerial = 0;
 let autoRunSetupTriggered = false;
 setRender(render);
+window.addEventListener("resize", () => revealPathInputEnds(app));
 await bootstrap();
 async function bootstrap(locale?: string) {
     try {
@@ -155,6 +157,7 @@ function render() {
   `;
     restoreRenderScrollSnapshot(scrollSnapshot, activePage?.id, activeTerminalID);
     restoreFocus(app, focus);
+    revealPathInputEnds(app);
     app.dataset.state = "ready";
     window.dispatchEvent(new Event("gui-for-cli-rendered"));
     bindEventsAfterFirstPaint(serial);
