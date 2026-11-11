@@ -11,6 +11,7 @@ older version of this builder.
 """
 
 import gzip
+import hashlib
 import logging
 import os
 import subprocess
@@ -261,9 +262,12 @@ def hg19_to_hg38_chain(reflib_dir: str, search: Sequence[str] = ()) -> str:
 
 def download_chain(source: ChainSource, dest: str) -> bool:
     """Download source to dest from the first of its URLs that serves a copy
-    with its SHA-256."""
+    with its SHA-256. Each URL stages into its own file, so trying one source
+    never discards another's resumable partial download."""
     for url in source.urls:
-        if download_file(url, dest, expected_sha256=source.sha256):
+        staged = f"{dest}.{hashlib.sha256(url.encode()).hexdigest()[:12]}"
+        if download_file(url, staged, expected_sha256=source.sha256):
+            Path(staged).replace(dest)
             return True
         logging.warning(f"Could not get {source.name} from {url}.")
     return False

@@ -292,3 +292,28 @@ def test_no_chain_is_installed_when_no_source_has_the_pinned_checksum(
     with pytest.raises(mt.WGSExtractError, match="Could not download"):
         mt.hg19_to_hg38_chain(str(tmp_path))
     assert sorted(p.name for p in tmp_path.iterdir()) == []
+
+
+def test_each_source_keeps_its_own_resumable_partial(tmp_path, chain_servers):
+    """PR #669 review: UCSC and the mirror shared one partial file, so trying
+    the mirror threw away UCSC's resumable download."""
+    primary, mirror, data = chain_servers
+    half = len(data) // 2
+    primary.drops = 1
+    # Every resume is cut too, so UCSC fails with a partial left behind.
+    primary.drop_starts = set(range(half, len(data)))
+    chain = Path(mt.hg19_to_hg38_chain(str(tmp_path)))
+    assert chain.read_bytes() == data
+    assert mirror.gets() == [None]
+
+    (partial,) = tmp_path.glob("*.partial")
+    kept = partial.stat().st_size
+    assert 0 < kept < len(data)
+
+    chain.unlink()
+    primary.requests.clear()
+    primary.drop_starts.clear()
+    mirror.requests.clear()
+    assert Path(mt.hg19_to_hg38_chain(str(tmp_path))).read_bytes() == data
+    assert primary.gets() == [f"bytes={kept}-"]
+    assert not mirror.requests
