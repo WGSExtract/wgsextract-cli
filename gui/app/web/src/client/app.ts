@@ -2,7 +2,7 @@ import { configEditorControls, initialCheckedOptions, initialConfigValues, initi
 import { api } from "./api.js";
 import { clamp, escapeAttribute, escapeHTML } from "./dom.js";
 import { normalizeColorTheme, normalizeIconSet } from "./icons.js";
-import { errorMessage } from "./model.js";
+import { errorMessage, renderIcon } from "./model.js";
 import { effectiveWebUIFont, shouldRenderInPageBundleLoader } from "./platform.js";
 import { setRender } from "./rerender.js";
 import { captureFocus, restoreFocus } from "./focus-state.js";
@@ -10,7 +10,7 @@ import { captureScrollState, restoreScrollState, type ScrollSnapshot } from "./s
 import { runSetup } from "./operations-setup.js";
 import { state } from "./state.js";
 import { initializeTauriUpdater } from "./tauri-updater.js";
-import { appendTerminal, discardPendingTerminalOutput, ensureMainTerminal, renderTerminalPane, terminalTabs, terminalToggleTitle } from "./terminal.js";
+import { appendTerminal, discardPendingTerminalOutput, ensureMainTerminal, renderTerminalPane, renderTerminalToggle, terminalTabs } from "./terminal.js";
 import { renderUpdatePopover } from "./view/update.js";
 import { renderBundleHeader, renderConfirmationDialog, renderNavigation, renderUIModeSwitch, renderPage, renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID } from "./view.js";
 import { renderAboutDialog } from "./view/about.js";
@@ -130,7 +130,7 @@ function render() {
     app.innerHTML = `
     ${state.isSidebarVisible
         ? `<aside class="sidebar">
-      <button type="button" class="sidebar-toggle sidebar-toggle-inside" data-sidebar-toggle title="${escapeAttribute(sidebarToggleTitle())}" aria-label="${escapeAttribute(sidebarToggleTitle())}">◀</button>
+      <button type="button" class="sidebar-toggle sidebar-toggle-inside" data-sidebar-toggle title="${escapeAttribute(sidebarToggleTitle())}" aria-label="${escapeAttribute(sidebarToggleTitle())}">${renderIcon("sidebar.left", undefined, "◀")}</button>
       ${renderBundleHeader()}
       ${renderUIModeSwitch()}
       <nav class="page-nav" aria-label="Pages">${renderNavigation()}</nav>
@@ -143,9 +143,9 @@ function render() {
       <main class="page-panel" data-page-panel-id="${escapeAttribute(activePage?.id ?? "")}">${activePage ? renderPage(activePage) : ""}</main>
       ${state.isTerminalVisible ? `<div class="terminal-resizer" data-terminal-resizer role="separator" aria-orientation="horizontal" aria-label="Resize command output" tabindex="0"></div>` : ""}
       ${state.isTerminalVisible ? renderTerminalPane() : ""}
-      <button type="button" class="terminal-toggle" data-terminal-toggle title="${escapeAttribute(terminalToggleTitle())}" aria-label="${escapeAttribute(terminalToggleTitle())}">▭</button>
+      ${state.isTerminalVisible ? "" : renderTerminalToggle()}
     </div>
-    ${state.isSidebarVisible ? "" : `<button type="button" class="sidebar-toggle sidebar-toggle-floating" data-sidebar-toggle title="${escapeAttribute(sidebarToggleTitle())}" aria-label="${escapeAttribute(sidebarToggleTitle())}">▶</button>`}
+    ${state.isSidebarVisible ? "" : `<button type="button" class="sidebar-toggle sidebar-toggle-floating" data-sidebar-toggle title="${escapeAttribute(sidebarToggleTitle())}" aria-label="${escapeAttribute(sidebarToggleTitle())}">${renderIcon("sidebar.left", undefined, "▶")}</button>`}
     ${renderUpdatePopover()}
     ${state.pendingConfirmation ? renderConfirmationDialog() : ""}
     ${renderSetupPromptDialog()}

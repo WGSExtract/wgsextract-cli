@@ -155,17 +155,23 @@ export function renderSection(section: PageSection, page: BundlePage) {
         return "";
     }
     const sectionActions = (section.actions ?? []).filter((action) => isShownInUIMode(action, state.uiMode));
+    const controls = visibleControls(section, state.uiMode);
+    // Empty header and controls blocks would still add their margins: a blank band above the first row.
     return `
     <section class="card${section.subsection === true ? " subsection" : ""}" aria-labelledby="section-${escapeAttribute(section.id)}">
-      <header class="section-header">
+      ${section.title || section.subtitle
+        ? `<header class="section-header">
         ${section.title
-        ? `<h3 id="section-${escapeAttribute(section.id)}">${renderIconTitle(section.title, section.iconName, section.textIcon, "▦")}</h3>`
-        : ""}
+            ? `<h3 id="section-${escapeAttribute(section.id)}">${renderIconTitle(section.title, section.iconName, section.textIcon, "▦")}</h3>`
+            : ""}
         ${section.subtitle ? `<p>${escapeHTML(section.subtitle)}</p>` : ""}
-      </header>
-      <div class="controls">
-        ${visibleControls(section, state.uiMode).map((control) => renderControl(control, context, location)).join("")}
-      </div>
+      </header>`
+        : ""}
+      ${controls.length
+        ? `<div class="controls">
+        ${controls.map((control) => renderControl(control, context, location)).join("")}
+      </div>`
+        : ""}
       ${state.loadingDataSources.has(key) ? renderLoadingBox(state.labels.loadingTitle) : ""}
       ${state.dataSourceErrors.has(key)
         ? renderInlineError(state.dataSourceErrors.get(key), `<button type="button" data-retry-source="${escapeAttribute(key)}">${escapeHTML(state.labels.retryButtonTitle)}</button>`)
@@ -329,8 +335,8 @@ function renderOptionRows(options: ControlOption[], checkbox: (option: ControlOp
         const common = group.options.filter((option) => option.advancedOnly !== true);
         const advanced = group.options.filter((option) => option.advancedOnly === true);
         return `
-          <div class="option-row">
-            <span class="option-row-title">${escapeHTML(group.title)}${renderTooltip(optionTooltip(group.options, "groupTooltip"))}</span>
+          <div class="option-row${group.title ? "" : " untitled"}">
+            ${group.title ? `<span class="option-row-title">${escapeHTML(group.title)}${renderTooltip(optionTooltip(group.options, "groupTooltip"))}</span>` : ""}
             <div class="option-row-options">
               ${common.length ? `<div class="option-columns">${common.map(checkbox).join("")}</div>` : ""}
               ${advanced.length ? `<div class="option-columns wide">${advanced.map(checkbox).join("")}</div>` : ""}

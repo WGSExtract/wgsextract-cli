@@ -285,7 +285,8 @@ button:disabled {
   text-align: start;
 }
 
-.nav-item.active {
+.nav-item.active,
+.nav-item.active:hover:not(:disabled) {
   background: var(--accent-soft);
   color: color-mix(in srgb, var(--accent) 78%, var(--text));
 }
@@ -637,10 +638,14 @@ body.resizing-terminal * {
   font-size: 0.95rem;
 }
 
+/* Cards a page renders above its manifest sections (Setup, Standard Options) keep the sections' spacing. */
+.page-panel article > .card {
+  margin-bottom: 20px;
+}
+
 .setup-status-card {
   display: grid;
   gap: 12px;
-  margin-bottom: 20px;
 }
 
 .setup-status-header {
@@ -673,7 +678,7 @@ body.resizing-terminal * {
 
 .setup-step-list {
   display: grid;
-  gap: 8px;
+  gap: 4px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -684,7 +689,7 @@ body.resizing-terminal * {
   grid-template-columns: auto minmax(140px, 1fr) auto auto auto;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 5px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel-subtle);
@@ -771,7 +776,7 @@ body.resizing-terminal * {
 .form-row,
 .toggle-row {
   display: grid;
-  grid-template-columns: 190px minmax(220px, 1fr) minmax(0, 0);
+  grid-template-columns: 200px minmax(220px, 1fr);
   align-items: first baseline;
   gap: 16px;
   width: 100%;
@@ -782,15 +787,27 @@ body.resizing-terminal * {
   gap: 6px;
 }
 
-.row-label,
-.control-label,
-.checkbox-group legend,
 .language-picker span {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-weight: 650;
   line-height: 1.25;
+}
+
+/* Labels flow as text, so a label that wraps keeps its info button right after its last word. */
+.row-label,
+.control-label,
+.checkbox-group legend {
+  display: block;
+  padding: 0;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+:is(.row-label, .control-label, .checkbox-group legend, .option-group h4, .option-category h4, .option-row-title) > .tooltip {
+  margin-inline-start: 6px;
+  vertical-align: text-bottom;
 }
 
 input[type="text"],
@@ -812,6 +829,7 @@ select {
 input[type="checkbox"] {
   inline-size: 16px;
   block-size: 16px;
+  margin: 0;
 }
 
 .input-button-row {
@@ -822,7 +840,7 @@ input[type="checkbox"] {
 }
 
 .workspace-location-row {
-  grid-template-columns: minmax(180px, 1fr) auto auto;
+  grid-template-columns: minmax(180px, 1fr) auto auto auto;
 }
 
 .secondary-button {
@@ -839,11 +857,18 @@ input[type="checkbox"] {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 8px;
-  margin-top: 8px;
 }
 
 .option-group {
   margin-top: 12px;
+}
+
+.checkbox-group > .option-group:first-child {
+  margin-top: 0;
+}
+
+.option-group h4 + .option-grid {
+  margin-top: 8px;
 }
 
 .option-group h4 {
@@ -874,6 +899,10 @@ input[type="checkbox"] {
   gap: 8px;
   align-items: start;
   padding: 4px 0;
+}
+
+.option-row.untitled {
+  grid-template-columns: 1fr;
 }
 
 .option-row-title {
@@ -965,14 +994,21 @@ tbody tr + tr {
   border-top: 1px solid var(--border);
 }
 
+/* Buttons size to their titles (at least 160px), so a long title stays on one line instead of wrapping in a fixed column. */
 .action-row,
-.row-actions,
-.button-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, max-content));
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 16px;
-  justify-content: start;
+}
+
+.action-row > .action-stack {
+  min-width: 160px;
+}
+
+.section-header + .action-row {
+  margin-top: 0;
 }
 
 .action-stack {
@@ -1014,8 +1050,8 @@ tbody tr + tr {
 }
 
 .row-actions {
-  display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  gap: 6px;
   margin-top: 0;
 }
 
@@ -1143,6 +1179,8 @@ tbody tr + tr {
 }
 
 .pill {
+  display: inline-block;
+  white-space: nowrap;
   border-radius: 999px;
   padding: 2px 7px 3px;
   font-size: 0.68rem;
@@ -1180,6 +1218,11 @@ tbody tr + tr {
   margin-top: 8px;
   color: var(--warning);
   font-size: 0.86rem;
+}
+
+.config-editor {
+  display: grid;
+  gap: 10px;
 }
 
 .loading-inline,
@@ -1270,7 +1313,7 @@ tbody tr + tr {
   line-height: 1;
 }
 
-.terminal-copy {
+.terminal-icon-button {
   min-height: 26px;
   inline-size: 30px;
   display: inline-grid;
@@ -1292,8 +1335,8 @@ tbody tr + tr {
 
 .terminal-tab-close:hover,
 .terminal-tab-close:focus-visible,
-.terminal-copy:hover,
-.terminal-copy:focus-visible {
+.terminal-icon-button:hover,
+.terminal-icon-button:focus-visible {
   background: color-mix(in srgb, var(--text) 14%, transparent);
   color: var(--text);
 }
@@ -1458,8 +1501,17 @@ tbody tr + tr {
   inset-inline-start: 12px;
 }
 
-.language-card {
-  margin-bottom: 20px;
+/* Leave room for the floating toggles, so they never cover a button or the end of the page. */
+.app-shell.sidebar-hidden :is(.bundle-action-bar, .setup-global-banner) {
+  padding-inline-start: 56px;
+}
+
+.app-shell.terminal-hidden .page-panel article {
+  padding-bottom: 56px;
+}
+
+.app-shell.sidebar-hidden:not(.bundle-action-visible, .setup-needed) .page-header {
+  padding-inline-start: 36px;
 }
 
 .modal-backdrop {
@@ -1720,10 +1772,20 @@ tbody tr + tr {
     min-height: 160px;
   }
 
-  .form-row,
-  .toggle-row {
+  .form-row {
     grid-template-columns: 1fr;
     gap: 6px;
+  }
+
+  .toggle-row {
+    grid-template-columns: minmax(0, max-content) auto;
+    justify-content: start;
+    gap: 10px;
+  }
+
+  .ui-mode-switch {
+    width: 240px;
+    margin-inline: 12px;
   }
 }
 

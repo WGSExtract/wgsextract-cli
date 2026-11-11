@@ -489,6 +489,7 @@
     {
       "id": "chip",
       "title": "sections.cli.chip.title",
+      "iconName": "chip",
       "textIcon": "🔍",
       "advancedOnly": true,
       "controls": [

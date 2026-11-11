@@ -1,0 +1,82 @@
+import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
+import test from "node:test";
+import { parseIconMapToml } from "../dist/shared/icon-map.js";
+import { parseJsonWithComments } from "../dist/shared/json-comments.js";
+
+async function clientView() {
+  globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+  globalThis.window = { innerHeight: 900 };
+  const { createInitialState, state } = await import("../dist/web/src/client/state.js");
+  Object.assign(state, createInitialState(), { labels: { chooseButtonTitle: "Choose..." } });
+  return { state, ...(await import("../dist/web/src/client/view.js")), ...(await import("../dist/web/src/client/terminal.js")) };
+}
+
+test("every WGSExtract page and titled section has a Bootstrap icon", () => {
+  // UI audit: Workflows and several Advanced sections fell back to emoji while the app showed Bootstrap Icons.
+  const bundle = new URL("../../examples/WGSExtract/", import.meta.url);
+  const bootstrap = parseIconMapToml(readFileSync(new URL("iconmap.toml", bundle), "utf8")).bootstrap;
+  const missing = [];
+  for (const file of readdirSync(new URL("pages/", bundle))) {
+    const page = parseJsonWithComments(readFileSync(new URL(`pages/${file}`, bundle), "utf8"));
+    for (const item of [page, ...(page.sections ?? []).filter((section) => section.title)]) {
+      if (!bootstrap[item.iconName]) {
+        missing.push(`${page.id}/${item.id}`);
+      }
+    }
+  }
+  assert.deepEqual(missing, []);
+});
+
+test("a section with only actions has no blank header or controls band", async () => {
+  // UI audit: BAM "Info Commands" and Extract "Subset" showed an empty band above their buttons.
+  const { state, renderSection } = await clientView();
+  const section = { id: "commands", title: "Commands", actions: [{ id: "run", title: "Run", command: { executable: "tool" } }] };
+  const untitled = { id: "formats", subsection: true, controls: [{ id: "name", kind: "text", label: "Name" }] };
+  const page = { id: "page", title: "Page", sections: [section, untitled] };
+  state.manifest = { id: "demo", pages: [page] };
+
+  const commands = renderSection(section, page);
+  assert.match(commands, /data-action-id="run"/);
+  assert.doesNotMatch(commands, /class="controls"/);
+  assert.doesNotMatch(renderSection(untitled, page), /section-header/);
+});
+
+test("a rows checkbox group without a group name does not indent its options", async () => {
+  // UI audit: Extract's Formats checkboxes sat behind an empty name column, out of line with the other fields.
+  const { renderCheckboxGroup } = await clientView();
+  const html = renderCheckboxGroup({
+    id: "formats", kind: "checkboxGroup", label: "Formats", layout: "rows",
+    options: [{ id: "bam", title: "BAM" }, { id: "v5", title: "v5", group: "23andMe" }],
+  });
+
+  assert.equal(html.match(/class="option-row untitled"/g)?.length, 1);
+  assert.equal(html.match(/class="option-row-title"/g)?.length, 1);
+  assert.match(html, /class="option-row-title">23andMe</);
+});
+
+test("the command output toggle never floats over the output", async () => {
+  // UI audit: the show/hide button sat on top of the last lines of output and the result summary.
+  const { state, renderTerminalPane, renderTerminalToggle } = await clientView();
+  state.isTerminalVisible = true;
+  assert.match(renderTerminalPane(), /<header class="terminal-header">[\s\S]*data-terminal-toggle[\s\S]*<\/header>/);
+
+  state.isTerminalVisible = false;
+  assert.match(renderTerminalToggle(), /class="terminal-toggle" data-terminal-toggle/);
+});
+
+test("an action without a disk estimate shows no empty precheck banner", async () => {
+  // UI audit: Extract's Realign showed a blank blue box when the server had no disk estimate for the chosen BAM.
+  const { state, renderActions } = await clientView();
+  const { actionPrecheckKey, contextWithFileState } = await import("../dist/web/src/client/operations.js");
+  const action = { id: "realign", title: "Realign", precheck: { diskSpaceGB: "10" }, command: { executable: "tool" } };
+  const context = { fieldValues: {}, checkedOptions: {}, configValues: {}, rowValues: {} };
+  const key = actionPrecheckKey(action, contextWithFileState(context));
+  const render = () => renderActions([action], context, { pageID: "extract", sectionID: "realign" });
+
+  state.actionPrechecks.set(key, {});
+  assert.doesNotMatch(render(), /precheck-banner/);
+
+  state.actionPrechecks.set(key, { severity: "info", title: "Disk space estimate", message: "Estimated 10 GB needed." });
+  assert.match(render(), /class="precheck-banner info"[\s\S]*Estimated 10 GB needed\./);
+});

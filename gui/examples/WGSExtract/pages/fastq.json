@@ -98,6 +98,7 @@
     {
       "id": "multiqc",
       "title": "sections.fastq.post-v063.multiqc.title",
+      "iconName": "merge",
       "controls": [
         {
           "id": "multiqc_input",
@@ -201,6 +202,7 @@
     {
       "id": "fastq-tools",
       "title": "sections.cli.fastq-tools.title",
+      "iconName": "convert",
       "textIcon": "📦",
       "advancedOnly": true,
       "controls": [
@@ -316,6 +318,7 @@
       "id": "basecall",
       "title": "sections.cli.basecall.title",
       "subtitle": "sections.cli.basecall.subtitle",
+      "iconName": "basecall",
       "textIcon": "🔬",
       "advancedOnly": true,
       "controls": [
