@@ -3,6 +3,12 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## New
 
+- `--aligner auto` on Apple Silicon can now pick bwa-mem2 when
+  `wgse-bwa-mem2` 0.5.0 or later is installed, without upstream bwa-mem2 or
+  the reference's `.0123` file, using its smaller memory estimate. bwa-mem2's
+  records differ from bwa's, so a run that used to align with bwa (or
+  `wgse-bwa`) may now give a different BAM; pass `--aligner bwa` to keep bwa.
+
 ## Fixes
 
 - `ref bootstrap` no longer downloads the AADR v66.p1 2M SNP panel: the Harvard
