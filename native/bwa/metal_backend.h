@@ -86,13 +86,17 @@ int wgse_bwa_main(int argc, char *argv[]);
 
 #include <string>
 
-enum class Backend { cpu, metal, automatic };
+enum class Backend { cpu, metal, cuda, automatic };
 
-bool wgse_metal_available(std::string &reason);
-bool wgse_metal_hardware_supported();
-// Must precede alignment; selecting metal or auto requires an available device.
+// Whether the GPU backend's device can run the kernels (automatic: this
+// build's GPU, Metal on macOS and CUDA elsewhere), with the reason if not.
+bool wgse_gpu_available(Backend backend, std::string &reason);
+bool wgse_gpu_hardware_supported(Backend backend);
+// "Metal" or "CUDA": the selected device, or the backend's.
+const char *wgse_gpu_name(Backend backend);
+// Must precede alignment; a GPU backend without a usable device leaves the CPU's.
 void wgse_set_backend(Backend backend);
-bool wgse_metal_execution_failed(std::string &reason);
+bool wgse_gpu_execution_failed(std::string &reason);
 // Prints GPU/CPU read counts to stderr and releases the GPU buffers.
 void wgse_finish_backend();
 // Prints the CPU backend's batched work counts to stderr (test builds).

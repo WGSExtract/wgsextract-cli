@@ -149,6 +149,10 @@ step while the other reads step, then locates all their seeds in one
 interleaved suffix-array walk. Each read's seeds are upstream's, in upstream's
 order. On the 5M HG002 pairs below 0.9.0 takes 27% less time than 0.8.0.
 
+`wgse-bwa` 0.9.2 aligns exactly as 0.9.1. Its GPU scheduling no longer depends
+on Metal (the Metal kernels sit behind a device interface, for the CUDA
+backend), and it also builds on Linux x86-64, on the CPU.
+
 From 0.5.0, `wgse-bwa-mem2`'s CPU backend does the same with its own exact
 replacements: it collects each read's SMEMs in all three passes with up to 16
 reads stepping in turn (prefetching each step's occurrence-table lines, and
