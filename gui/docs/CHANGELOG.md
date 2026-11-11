@@ -19,6 +19,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Languages trimmed to English, French, German and Brazilian Portuguese (`pt-BR`); other Portuguese locales fall back to it.
 - Bump the bundled WGSExtract CLI installer target to `v0.8.6` ([release notes](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.6)).
 
+### Fixed
+- Linux AppImage: setup, actions and uninstall no longer run with the AppImage's library and tool paths (`LD_LIBRARY_PATH`, `PATH`, `PYTHONHOME` and the like). The system's programs loaded the image's older libraries instead of their own, so setup failed on newer systems such as Ubuntu 26.04 (`libcrypto.so.3: version 'OPENSSL_3.3.0' not found`).
+
 ## [0.8.5] - 2026-11-07
 
 ### Added
