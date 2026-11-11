@@ -1,4 +1,8 @@
-# Apple Silicon aligner rebuilds
+# WGS Extract's aligner rebuilds
+
+These builds are for Apple Silicon. `wgse-bwa` is also built for Linux x86-64,
+with an experimental NVIDIA GPU backend (see
+[Linux x86-64 and NVIDIA GPUs](#linux-x86-64-and-nvidia-gpus-cuda)).
 
 Optional macOS arm64 (macOS 13+) rebuilds of the aligners WGS Extract uses,
 published as `macos-aligners-*` prereleases. `wgsextract align` and `realign`
@@ -811,6 +815,51 @@ since a whole genome loads the index once rather than 62 times. Each run's
 directory in the benchmark's output keeps its samples, idle baseline and load
 average (`power.txt`, `power-samples.tsv`).
 
+## Linux x86-64 and NVIDIA GPUs (CUDA)
+
+`wgse-bwa` 0.10.0 also builds for Linux x86-64, as a conda package
+(`packaging/wgse-bwa`, built by `.github/workflows/linux_aligners.yml` and
+published as `linux-aligners-*` prereleases).
+
+- **CPU backend:** upstream BWA's code. The NEON replacements are Apple-only,
+  so on x86-64 it runs upstream's `ksw_extend2`; it keeps the other exact
+  batched steps.
+- **`--cuda` (`--backend cuda`, experimental):** runs the Metal backend's
+  kernels on an NVIDIA GPU. The kernels are ported to CUDA from one source
+  that HIP can also compile (`native/gpu-common`, `native/bwa/*.cuh`). They
+  cover SMEM seeding, suffix-array locate, mate rescue and seed extension, with
+  the same scheduling and the same exact-input matching as `--metal`.
+- **`--backend auto`:** uses CUDA in this build, and falls back to the CPU as
+  on macOS.
+
+Unlike Apple's unified memory, a discrete GPU has its own:
+
+- **Index:** the BWT and the sampled suffix array (about 4.7 GiB for hs38) are
+  uploaded once per run.
+- **Batches:** each batch's reads, rescue windows and extension jobs cross
+  PCIe through pinned buffers. Only compact results come back.
+- **GPU memory:** before each upload `--cuda` checks the GPU's free memory,
+  keeping 1 GiB spare, because the GPU may be shared. If the index doesn't fit,
+  it seeds on the CPU (or locates on the CPU, if only the suffix array doesn't
+  fit).
+- **Host memory:** the pinned batch buffers add about 0.7 GiB.
+- **Runtime:** the CUDA runtime is linked statically, so the package needs only
+  the NVIDIA driver, and only for `--cuda`. Without a usable driver or GPU,
+  `capabilities --json` reports `cuda_available: false`.
+- **Watchdog:** every wait for the GPU is bounded, by the larger of 60 s and 20
+  times that stage's slowest batch so far. A batch that overruns (a hung GPU)
+  is finished on the CPU with the same output. `--cuda` then exits 1, and
+  `--backend auto` exits 0.
+
+On an RTX 3090 with a Ryzen 5 5600X, at 2 threads (while another job held the
+other 10 cores), with output identical to upstream BWA (the `expected.tsv`
+hashes):
+
+| Tier | CPU | `--cuda` |
+| --- | --- | --- |
+| small (chr20) | 46.7 s | 28.3 s |
+| full (hs38, 200k pairs) | 105.2 s, 5.3 GiB | 25.0 s, 6.1 GiB |
+
 ## Building
 
 Requires Xcode command-line tools and CMake 3.24 or later. Upstream sources are
@@ -822,6 +871,13 @@ cmake --build out/native -j
 ctest --test-dir out/native --output-on-failure
 cmake --install out/native --prefix out/native-prefix
 ```
+
+On Linux the same commands build `wgse-bwa` with a C/C++ compiler, CMake and
+zlib. `-DWGSE_CUDA=ON` adds the CUDA backend, which needs the CUDA toolkit
+(`nvcc` and the static runtime, for example conda-forge's `cuda-nvcc` and
+`cuda-cudart-static`). It builds for Turing to Hopper GPUs, plus PTX for newer
+ones; `-DCMAKE_CUDA_ARCHITECTURES` overrides this. The GPU parity tests run with
+whichever GPU backend the build and machine have.
 
 `-DBUILD_TESTING=OFF` builds the release executables without tests or the
 hidden GPU tuning flags. Metal tests are skipped when no Metal device is
