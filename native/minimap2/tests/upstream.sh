@@ -203,6 +203,14 @@ if $metal; then
         grep -q "; $kernels kernels;" "metal.$name.log"
         grep -Eq 'on the GPU \([1-9][0-9]* used\)' "metal.$name.log"
     done
+    # PR #657 review: scorings with q > q2 cannot reach the kernels: minimap2 requires E1 > E2 and
+    # O1 + E1 < O2 + E2, which imply q2 > q, and rejects any other dual-gap scoring before mapping.
+    for gaps in "-O50,10 -E4,44" "-O12,8 -E4,2" "-O30,10 -E2,1"; do
+        status=0
+        "$wgse" --metal -t 2 -ax map-hifi -B80 $gaps reference.fa hifi.fq > /dev/null 2> metal.qgtq2.log || status=$?
+        [ "$status" -ne 0 ]
+        grep -q 'dual gap penalties violating' metal.qgtq2.log
+    done
 fi
 echo "wgse-minimap2 matches upstream minimap2 for map-hifi, map-ont, map-pb and sr"
 if $metal; then echo "wgse-minimap2 --metal matches upstream minimap2 for map-hifi, map-ont, map-pb and sr"; fi
