@@ -118,7 +118,7 @@ cmake --install out/dv-build --prefix out/dv-prefix
 native/deepvariant/tests/smoke.sh "$PWD/out/dv-prefix/bin/wgse-deepvariant" <weights> out/dv-smoke
 ```
 
-It needs Xcode's command-line tools, CMake 3.27+ and Ninja; the smoke test
+It needs the macOS 26 SDK (Xcode 26 or its command-line tools), CMake 3.27+ and Ninja; the smoke test
 needs samtools. The macOS DeepVariant workflow
 (`.github/workflows/macos_deepvariant.yml`) converts the weights in Google's
 image, builds and smoke-tests the binary and, when run with a release tag,
