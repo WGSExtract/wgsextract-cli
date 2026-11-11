@@ -173,6 +173,8 @@ def _fetch(sources: list[_Source]) -> None:
         todo.append((url, dest, expected))
 
     failed = threading.Event()
+    lock = threading.Lock()
+    first_error: list[BaseException] = []
 
     class _Stop:
         """Stops the other downloads when the run is cancelled or one fails."""
@@ -188,13 +190,20 @@ def _fetch(sources: list[_Source]) -> None:
             if not download_file(url, str(dest), None, _Stop()):
                 raise WGSExtractError(f"Download failed: {url}")
             _check_download(dest, expected)
-        except BaseException:
-            failed.set()
+        except BaseException as e:
+            # A download stopped because another failed fails too; only the
+            # first failure is the one to report.
+            with lock:
+                if not failed.is_set():
+                    first_error.append(e)
+                    failed.set()
             raise
 
     with ThreadPoolExecutor(max_workers=_PARALLEL_DOWNLOADS) as pool:
         futures = [pool.submit(fetch, *item) for item in todo]
     checkpoint()
+    if first_error:
+        raise first_error[0]
     for future in futures:
         future.result()
 

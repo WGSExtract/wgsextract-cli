@@ -392,3 +392,31 @@ def test_download_refuses_a_cache_folder_without_room_for_the_build(
     assert result.status != "ok"
     assert "GiB free" in (str(result.error) or "")
     assert srv.paths == []
+
+
+@needs_vep_rs
+def test_a_failed_download_is_reported_not_the_ones_it_stopped(tmp_path, monkeypatch):
+    """#626 review: when a later file fails its checksum, the downloads it
+    stops must not be reported in its place."""
+    from tests.disk_volumes import Volumes
+    from wgsextract_cli.commands import _vep_resources as vr
+
+    Volumes(monkeypatch).free[tmp_path] = 100
+    files = _ensembl_files()
+    bad = "release-116/mysql/homo_sapiens_variation_116_38/phenotype_feature.txt.gz"
+    files[bad] = _gz(b"not what CHECKSUMS lists")
+    with serving(None, files) as srv:
+        # Still downloading the gene set when the bad file is checked.
+        srv.delays["release-116/gff3/homo_sapiens/Homo_sapiens.GRCh38.116.gff3.gz"] = 2
+        for mirror in vr.VEP_MIRRORS:
+            monkeypatch.setitem(vr.VEP_MIRRORS, mirror, srv.base)
+        result = api.vep.download(
+            VepDownloadParams(
+                engine="vep-rs", vep_cache=tmp_path / "c", variations=False
+            ),
+            check=False,
+        )
+
+    assert result.status != "ok"
+    assert "phenotype_feature.txt.gz failed its checksum" in str(result.error)
+    assert "gff3" not in str(result.error)

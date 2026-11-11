@@ -220,7 +220,7 @@
 "controls.vcf.vep-analysis.vcf_vep_args.label" = "Args VEP supplémentaires"  # i18n-source-hash:bf32c5c5
 "controls.vcf.vep-analysis.vcf_vep_args.tooltip" = "Arguments bruts de ligne de commande supplémentaires à transmettre à VEP."  # i18n-source-hash:46f56b5b
 "actions.vcf.vep-analysis.vcf-vep-run.title" = "Exécuter l’annotation VEP"  # i18n-source-hash:a79370af
-"actions.vcf.vep-analysis.vcf-vep-run.tooltip" = "Prédire l’impact fonctionnel de chaque variant, comme la perturbation de gènes ou la pertinence pour une maladie, avec VEP : vep-rs par défaut, ou Ensembl VEP avec --engine ensembl dans les arguments VEP supplémentaires."  # i18n-source-hash:17a838ee
+"actions.vcf.vep-analysis.vcf-vep-run.tooltip" = "Prédire l’impact fonctionnel de chaque variant, comme la perturbation de gènes ou la pertinence pour une maladie, avec VEP : vep-rs par défaut, ou Ensembl VEP (à choisir dans Moteur VEP)."  # i18n-source-hash:e7aafd9a
 "pages.fastq.title" = "FASTQ"  # i18n-ignore i18n-source-hash:e2a6bd3c
 "pages.fastq.summary" = "Les fichiers FASTQ contiennent les lectures brutes du séquenceur avant l’alignement. Utilisez cette page pour analyser les fichiers FASTQ avec des outils comme FastQC ou FastP."  # i18n-source-hash:251046f6
 "sections.fastq.fastq-align.title" = "Aligner FASTQ"  # i18n-source-hash:8ccaa8ac
@@ -1037,6 +1037,10 @@
 "controls.cli.vep_preset.tooltip" = "everything (par défaut), ou fast : environ deux fois plus rapide, sans fréquences de population ni HGVS."  # i18n-source-hash:804e943a
 "options.cli.value.everything.title" = "everything"  # i18n-ignore i18n-source-hash:d5a63c95
 "options.cli.value.fast.title" = "fast"  # i18n-ignore i18n-source-hash:0afde566
+"controls.cli.vep_engine.label" = "Moteur VEP"  # i18n-source-hash:af8dd0c9
+"controls.cli.vep_engine.tooltip" = "vep-rs (par défaut) : rapide, et fonctionne sous Windows ; ou Ensembl VEP (Linux et macOS). Chacun a besoin de son propre cache, via Télécharger le cache VEP. Vide : le réglage vep_engine, sinon vep-rs."  # i18n-source-hash:12bd9de2
+"options.cli.value.vep-rs.title" = "vep-rs"  # i18n-ignore
+"options.cli.value.ensembl.title" = "Ensembl VEP"  # i18n-ignore
 "controls.cli.vep_vcf_type.label" = "Type de variants"  # i18n-source-hash:d907d5ef
 "controls.cli.vep_vcf_type.tooltip" = "Type de variants, qui change les arguments de VEP. Vide : auto."  # i18n-source-hash:7be8d55c
 "options.cli.value.snp-indel.title" = "snp-indel"  # i18n-ignore i18n-source-hash:0722368d
