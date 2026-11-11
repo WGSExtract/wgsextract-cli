@@ -348,6 +348,10 @@ class Aggregator {
     }
 
     bool pack(Slot &slot) {
+        // Once the watchdog gives up, an abandoned command may still use this
+        // slot's buffers: fail the requests to the CPU without packing.
+        slot.failure = wgse::metal::Runtime::hang();
+        if (!slot.failure.empty()) return false;
         auto &metal = state();
         auto &work = slot.work;
         int32_t count = slot.parameters.count;
@@ -470,6 +474,7 @@ class Aggregator {
         auto kernel = slot.kernel;
         bool tiled = kernel != ExtensionKernel::row;
         slot.command = [metal.queue commandBufferWithUnretainedReferences];
+        slot.command.label = @"extend";
         id<MTLComputeCommandEncoder> encoder = [slot.command computeCommandEncoder];
         if (!slot.command || !encoder) {
             slot.failure = "Metal command allocation failed";
@@ -497,12 +502,14 @@ class Aggregator {
         }
         // The submitter finishes the slot, so only it touches slot.command.
         Slot *completed_slot = &slot;
-        [slot.command addCompletedHandler:^(id<MTLCommandBuffer>) {
+        NSMutableArray *keep = [NSMutableArray arrayWithObjects:slot.work.pairs, slot.reference,
+            slot.query, nil];
+        if (tiled && slot.work.scratch) [keep addObject:slot.work.scratch];
+        wgse::metal::Runtime::commit(slot.command, ^(id<MTLCommandBuffer>) {
             std::lock_guard<std::mutex> lock(mutex);
             completed_slot->status = Slot::completed;
             changed.notify_one();
-        }];
-        wgse::metal::Runtime::commit(slot.command);
+        }, keep);
     }
 
     void finish(Slot &slot) {
@@ -516,8 +523,7 @@ class Aggregator {
             return;
         }
         if (slot.failure.empty() && slot.command.status != MTLCommandBufferStatusCompleted)
-            slot.failure = slot.command.error ? slot.command.error.localizedDescription.UTF8String
-                : "Metal command did not complete";
+            slot.failure = wgse::metal::Runtime::describe(slot.command);
         if (slot.failure.empty()) {
             double start = slot.command.GPUStartTime, end = slot.command.GPUEndTime;
             if (first_gpu_start == 0) first_gpu_start = start;
@@ -1800,6 +1806,10 @@ SMEM *wgse_metal_smems(FMI_search *fmi, const mem_opt_t *opt, const bseq1_t *seq
     return mmc->matchArray[tid];
 }
 
+void wgse_metal_index_free(void *memory) {
+    if (!wgse::metal::Runtime::unsettled()) free(memory);
+}
+
 void *wgse_metal_index_alloc(size_t bytes) {
     const size_t page = static_cast<size_t>(getpagesize());
     void *memory = nullptr;
@@ -1917,6 +1927,7 @@ void wgse_verify_gpu_rescue() { verify_rescue = true; }
 void wgse_inject_gpu_interruptions(size_t every) {
     wgse::metal::Runtime::inject_interruptions(every);
 }
+void wgse_inject_gpu_hang(const char *label) { wgse::metal::Runtime::inject_hang(label, 2); }
 
 bool wgse_metal_available(std::string &reason) {
     reason = state().failure;
@@ -2139,12 +2150,12 @@ void wgse_print_backend_metrics() {
         "rescue_hits=%zu rescue_misses=%zu rescue_mismatches=%zu interruptions=%zu "
         "overlap=%d overlapped_chunks=%zu rescue_cpu_jobs=%zu rescue_cpu_hits=%zu "
         "rescue_cpu_skipped=%zu rescue_pruned_dead=%zu rescue_rows=%zu rescue_rows_kept=%zu "
-        "rescue_unkept_differences=%zu\n",
+        "rescue_unkept_differences=%zu watchdog_threads=%zu\n",
         rescue_batches, rescue_gpu_pairs, rescue_cpu_pairs, rescue_wasted_pairs, rescue_jobs,
         rescue_declined, rescue_skipped, rescue_hits, rescue_misses, rescue_mismatches,
         wgse::metal::Runtime::interruptions(), int(overlap_active.load()), overlapped_chunks.load(),
         rescue_cpu_jobs, rescue_cpu_hits, rescue_cpu_skipped, prune_dead, prune_rows, prune_kept,
-        rescue_unkept_differences);
+        rescue_unkept_differences, wgse::metal::Runtime::watchdog_threads());
     fprintf(stderr, "[wgse-bwa-mem2] rescue seconds gpu=%.3f kernel=%.3f pair=%.3f cpu_wait=%.3f\n",
         rescue_gpu_seconds, rescue_kernel_seconds, rescue_seconds, rescue_wait_seconds);
     std::lock_guard<std::mutex> seed_lock(seed_mutex);
