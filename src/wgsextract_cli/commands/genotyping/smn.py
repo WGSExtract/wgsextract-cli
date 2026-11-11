@@ -26,7 +26,13 @@ from wgsextract_cli.commands.info.metrics import is_long_read_library
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.results import current_result, warn
-from wgsextract_cli.core.utils import WGSExtractError, run_command
+from wgsextract_cli.core.sequencing import (
+    mixed_platforms,
+    mixed_platforms_message,
+    read_group_platforms,
+)
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
+from wgsextract_cli.core.variant_files import get_bam_header
 
 from .common import Alignment, env_tool, illumina_genome, open_alignment
 
@@ -46,7 +52,7 @@ _SMN_EXON78 = {
     "hg38": ("70948274-70954173", "70072856-70078755"),
     "hg19": ("70244101-70250000", "69368683-69374582"),
 }
-_LONG_READ_PLATFORMS = ("ONT", "NANOPORE", "PACBIO")
+_LONG_READ_PLATFORMS = ("ont", "pacbio")
 
 
 # Aligners SMNCopyNumberCaller was calibrated or tested on (its README: BWA and
@@ -112,22 +118,28 @@ def parse_smn(json_path: str) -> SmnCall:
     )
 
 
-def refuse_long_reads(aln: Alignment, header: str) -> None:
-    """SMNCopyNumberCaller's model is for short reads: refuse input with any
-    long-read read group, or whose SMN reads are long or absent."""
-    platforms = {
-        tag[3:].upper()
-        for line in header.splitlines()
-        if line.startswith("@RG")
-        for tag in line.split("\t")
-        if tag.startswith("PL:")
-    }
-    if platforms & set(_LONG_READ_PLATFORMS):
-        raise WGSExtractError(
-            "typing smn needs short-read (Illumina-style) WGS: SMNCopyNumberCaller "
-            "is calibrated on ~30x short reads, and this input has long-read "
-            f"read groups ({', '.join(sorted(platforms))})."
+def refuse_other_platforms(reads: str, reference: str | None) -> None:
+    """SMNCopyNumberCaller is calibrated on short reads alone: refuse a BAM/CRAM
+    whose read groups mix platforms (#652) or name only long reads."""
+    message = (
+        "typing smn needs short-read (Illumina-style) WGS only: "
+        "SMNCopyNumberCaller is calibrated on ~30x short reads"
+    )
+    if platforms := mixed_platforms(reads, reference):
+        raise UsageError(
+            f"{mixed_platforms_message(reads, platforms)}. {message}, and other "
+            "reads would skew its depths. Split the reads by read group "
+            "(`samtools split`) and run it on the short-read group."
         )
+    header = get_bam_header(reads, reference) or ""
+    if set(read_group_platforms(header)) & set(_LONG_READ_PLATFORMS):
+        raise WGSExtractError(
+            f"{message}, and this input's read groups are long reads."
+        )
+
+
+def refuse_long_reads(aln: Alignment, header: str) -> None:
+    """Refuse input whose SMN reads are long or absent."""
     regions = [f"{aln.contig('5')}:{r}" for r in _SMN_EXON78[aln.build]]
     reads = run_command(
         ["samtools", "view", "-F", "0x904", *aln.ref_opt, aln.path, *regions],
@@ -167,6 +179,10 @@ def caller_version(caller: list[str]) -> str | None:
 
 
 def run_smn(params: TypingSmnParams) -> None:
+    if params.input and Path(params.input).is_file():
+        refuse_other_platforms(
+            str(params.input), str(params.ref) if params.ref else None
+        )
     aln = open_alignment(params)
     genome = illumina_genome(aln, "SMNCopyNumberCaller")
     caller = env_tool("smn_caller.py", "smn")
