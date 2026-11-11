@@ -82,6 +82,11 @@ def plan(only: list[str], uploaded: set[str]) -> list[dict[str, str]]:
 
     genomes = get_available_genomes()
     mirrored = {g["final"] for g in genomes if g["source"] == GITHUB}
+    if not mirrored:
+        # Without seed_genomes.csv the package falls back to a short built-in list.
+        raise SystemExit(
+            "The catalog (seed_genomes.csv) wasn't found; install with -e."
+        )
     seen: set[str] = set()
     # A file two catalog names share (HPPv1 is HPPv11's) is mirrored once.
     urls: set[str] = set()
