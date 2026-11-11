@@ -82,7 +82,7 @@ test("PR #531 review: the quick uninstall deletes the app's data but keeps a wor
   const notWorkspace = path.join(appData, "BundleWorkspaces", "spoofed");
   await mkdir(path.join(workspace, "reference"), { recursive: true });
   await writeFile(path.join(workspace, ".bundle-workspace"), "WGS Extract GUI workspace\n");
-  // One made by a release up to 0.8.6, with the older marker.
+  // One made by a release up to 0.8.7, with the older marker.
   const oldWorkspace = path.join(appData, "BundleWorkspaces", "older");
   await mkdir(oldWorkspace, { recursive: true });
   await writeFile(path.join(oldWorkspace, ".bundle-workspace"), "GUI for CLI bundle workspace\n");

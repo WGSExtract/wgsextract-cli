@@ -9,7 +9,7 @@ import { applicationSupportDirectory, appSupportContainerName, appSupportDirecto
 
 export const workspaceSentinelFileName = ".bundle-workspace";
 export const workspaceSentinelContents = "WGS Extract GUI workspace\n";
-/** What workspaces made by releases up to 0.8.6 hold. They are still this app's; preparing one rewrites it. */
+/** What workspaces made by releases up to 0.8.7 hold. They are still this app's; preparing one rewrites it. */
 const legacyWorkspaceSentinelContents = "GUI for CLI bundle workspace\n";
 
 export function isWorkspaceSentinel(contents: string | null) {

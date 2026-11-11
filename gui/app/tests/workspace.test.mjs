@@ -102,7 +102,7 @@ test("bundle workspace sync metadata resyncs changed source files", async () => 
   });
 });
 
-test("a workspace marked by a release up to 0.8.6 is still the app's, and preparing it updates the marker", async () => {
+test("a workspace marked by a release up to 0.8.7 is still the app's, and preparing it updates the marker", async () => {
   await withTemporaryHome("wgsextract-gui-workspace-old-marker-", async (tempRoot) => {
     const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspace.js");
     const { isManagedWorkspace } = await import("../dist/web/src/server/workspace-location.js");

@@ -86,7 +86,7 @@ function Test-ManagedWorkspace([string]$LiteralPath) {
     if (-not (Test-Path -LiteralPath $sentinel -PathType Leaf)) {
         return $false
     }
-    # Workspaces made by releases up to 0.8.6 hold the older text.
+    # Workspaces made by releases up to 0.8.7 hold the older text.
     return [System.IO.File]::ReadAllText($sentinel) -in @("WGS Extract GUI workspace`n", "GUI for CLI bundle workspace`n")
 }
 
