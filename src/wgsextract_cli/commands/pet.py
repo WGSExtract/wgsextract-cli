@@ -104,6 +104,8 @@ def run(job: PetJob) -> None:
             f"Reference genome for {job.species} not found at {ref_file}.{hint}"
         )
     # bwa-mem2 when the reference has its index (`ref index --aligner bwa-mem2`).
+    # Upstream bwa-mem2 only (native_aligners stays off): pet runs the upstream
+    # binary, which loads the .0123 file, never an Apple Silicon build.
     samblaster = duplicate_marker(paired=bool(job.r2)) == "samblaster"
     reads = fastq_input_reads(job.r1, job.r2)
     aligner = short_read_aligner(
