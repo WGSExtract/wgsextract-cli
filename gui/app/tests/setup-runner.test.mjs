@@ -669,13 +669,11 @@ test("runs WGSExtract POSIX setup scripts from nested script folders", async (t)
   const sourceBundleRoot = path.join(repoRoot, "examples", "WGSExtract");
   const tempRoot = await mkdtemp(path.join(tmpdir(), "gui-for-cli-wgsextract-posix-setup-"));
   const bundleRoot = path.join(tempRoot, "WGSExtract");
-  // Setup installs the CLI in the app's data folder, which this test keeps in its own temporary folder.
-  const dataHome = path.join(tempRoot, "data");
-  const appDir = path.join(dataHome, "WGSExtract-gui", "runtime", "wgsextract-cli", "app");
+  // The CLI setup installed, wherever the app's data folder is on this platform.
+  const appDir = path.join(tempRoot, "runtime", "wgsextract-cli", "app");
   const fakePixi = path.join(tempRoot, "pixi");
   const previousPixi = process.env.PIXI;
-  const previousDataHome = process.env.XDG_DATA_HOME;
-  const previousAppDataName = process.env.WGSEXTRACT_GUI_APP_DATA_NAME;
+  const previousAppDir = process.env.WGSEXTRACT_APP_DIR;
   const processManager = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
 
   try {
@@ -685,8 +683,7 @@ test("runs WGSExtract POSIX setup scripts from nested script folders", async (t)
     await writeFile(fakePixi, "#!/bin/sh\necho fake pixi \"$@\"\nexit 0\n");
     await chmod(fakePixi, 0o755);
     process.env.PIXI = fakePixi;
-    process.env.XDG_DATA_HOME = dataHome;
-    delete process.env.WGSEXTRACT_GUI_APP_DATA_NAME;
+    process.env.WGSEXTRACT_APP_DIR = appDir;
 
     const { loadManifestFromRoot } = await import("../dist/web/src/server/bundle-loader.js");
     const manifest = await loadManifestFromRoot(bundleRoot);
@@ -703,8 +700,7 @@ test("runs WGSExtract POSIX setup scripts from nested script folders", async (t)
   } finally {
     await processManager.terminateAllProcesses();
     setOrDeleteEnv("PIXI", previousPixi);
-    setOrDeleteEnv("XDG_DATA_HOME", previousDataHome);
-    setOrDeleteEnv("WGSEXTRACT_GUI_APP_DATA_NAME", previousAppDataName);
+    setOrDeleteEnv("WGSEXTRACT_APP_DIR", previousAppDir);
     await rm(tempRoot, { force: true, recursive: true });
   }
 });
