@@ -73,6 +73,12 @@ int parse_metal_options(int &argc, char **&argv, bool &metal) {
         } else if (strcmp(argv[index], "--gpu-inject-interruptions") == 0) {
             if (!count_option(argc, argv, index, interruptions)) return 2;
             wgse::metal::Runtime::inject_interruptions((size_t)interruptions);
+        } else if (strcmp(argv[index], "--gpu-inject-hang") == 0) {
+            // Withholds the first GPU command whose label starts with the value,
+            // as a hung GPU would; the watchdog gives up on the GPU after 2 s.
+            if (index + 1 >= argc) return 2;
+            wgse::metal::Runtime::inject_hang(argv[index + 1], 2);
+            index += 2;
         } else if (strcmp(argv[index], "--gpu-inject-failure") == 0) {
             fail = 1;
             ++index;

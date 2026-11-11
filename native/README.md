@@ -243,6 +243,19 @@ What runs on the GPU:
   the CPU, while the GPU still extends seeds and rescues mates, and exits 0;
   earlier versions did the same after a "CPU fallback" message and then
   exited 1 with `--metal`.
+- GPU watchdog (`wgse-bwa` 0.9.1, `wgse-bwa-mem2` 0.5.1, `wgse-bwa-mem3`
+  0.2.1, `wgse-minimap2` 0.2.1): a GPU command that has run for too long
+  with no error from macOS, as on a hung virtual GPU, makes the aligner stop
+  using the GPU for the rest of the run. Too long means 180 s until any
+  command has completed (the first may page in a large index), then 60 s or
+  20 times the slowest command so far, if longer, counted from when macOS
+  scheduled the command, in uptime (so a sleeping Mac does not trip it). The
+  work in flight finishes on the CPU with the same results; `--backend auto`
+  exits 0 and `--metal` exits 1. Earlier versions waited forever. Buffers
+  and the shared index stay allocated while an abandoned command might still
+  run. Whether the process then exits promptly with a command still stuck on
+  the GPU is up to the Metal driver, and is untested: CI's injected hang
+  never reaches the GPU.
 - `wgse-bwa-mem3` (from 0.2.0): seed extension only, in every output mode.
   bwa-mem3 extends seeds in batches, scoring each batch first with 8-bit
   scores and then, for the extensions that overflow, with 16-bit scores; the
