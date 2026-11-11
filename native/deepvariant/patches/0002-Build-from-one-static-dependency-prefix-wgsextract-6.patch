@@ -1,7 +1,7 @@
 From 287a1f8f66dd32dd91f1a8a4c4e65d42c26d3cb3 Mon Sep 17 00:00:00 2001
 From: WGS Extract AI <223556219+Copilot@users.noreply.github.com>
 Date: Wed, 11 Nov 2026 12:43:33 -0800
-Subject: [PATCH 2/4] Build from one static dependency prefix (wgsextract #647)
+Subject: [PATCH 2/5] Build from one static dependency prefix (wgsextract #647)
 
 WGSE_DEPS_PREFIX takes static htslib (libdeflate, liblzma), abseil,
 protobuf, re2 and Boost headers from one prefix instead of Homebrew, for
@@ -26,7 +26,7 @@ index e8aaa20..3c51212 100644
 +option(BUILD_TESTING "Build the native tests (fetches GoogleTest)" ON)
  include(deps)    # FetchContent / find_package for htslib, abseil, protobuf, ssw
  include(protos)  # compile DeepVariant + nucleus + TF-example protos
-
+ 
 @@ -71,6 +72,8 @@ add_subdirectory(deepvariant/native)   # runtime binary (Phase 2+)
  # ---------------------------------------------------------------------------
  # Tests (Phase 1 gate: ctest -V must pass)
@@ -46,7 +46,7 @@ index 0fa86cb..f9104c1 100644
 @@ -15,6 +15,38 @@ include(FetchContent)
  set(FETCHCONTENT_QUIET OFF)
  set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
-
+ 
 +# ---------------------------------------------------------------------------
 +# WGSE_DEPS_PREFIX: static htslib, abseil, protobuf, re2 and Boost headers
 +# installed into one prefix (wgsextract-cli native/deepvariant superbuild),
@@ -85,7 +85,7 @@ index 0fa86cb..f9104c1 100644
 @@ -75,6 +107,41 @@ message(STATUS "protobuf: ${PROTOBUF_PREFIX}")
  find_program(PROTOC protoc HINTS "${PROTOBUF_PREFIX}/bin" REQUIRED)
  message(STATUS "protoc: ${PROTOC}")
-
+ 
 +# ---------------------------------------------------------------------------
 +# re2 — Homebrew
 +# ---------------------------------------------------------------------------
@@ -127,7 +127,7 @@ index 0fa86cb..f9104c1 100644
 @@ -117,39 +184,7 @@ target_include_directories(ssw PUBLIC "${libssw_SOURCE_DIR}")
  # arm64 does not have SSE2; the fallback scalar path is used automatically.
  set(DV_LIBSSW_DIR "${libssw_SOURCE_DIR}" CACHE INTERNAL "libssw source root")
-
+ 
 -# ---------------------------------------------------------------------------
 -# re2 — Homebrew
 -# ---------------------------------------------------------------------------
@@ -168,7 +168,7 @@ index 0fa86cb..f9104c1 100644
 @@ -162,6 +197,8 @@ set(INSTALL_GTEST OFF)
  FetchContent_MakeAvailable(googletest)
  set(GTEST_PREFIX "${googletest_SOURCE_DIR}" CACHE INTERNAL "")
-
+ 
 +endif()
 +
  # ---------------------------------------------------------------------------

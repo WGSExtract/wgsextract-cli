@@ -1,7 +1,7 @@
 From aff5ac2fbf95fbc426f9a9d42da2b19b4d1d5699 Mon Sep 17 00:00:00 2001
 From: WGS Extract AI <223556219+Copilot@users.noreply.github.com>
 Date: Wed, 11 Nov 2026 12:51:39 -0800
-Subject: [PATCH 3/4] run --dry_run=true prints its stages as commands
+Subject: [PATCH 3/5] run --dry_run=true prints its stages as commands
  (wgsextract #647)
 
 Like run_deepvariant --dry_run, so a caller can run and resume
@@ -22,7 +22,7 @@ index d732adc..69e0a67 100644
 --- a/deepvariant/native/cli.cc
 +++ b/deepvariant/native/cli.cc
 @@ -2,6 +2,10 @@
-
+ 
  #include <algorithm>
  #include <cstdio>
 +#include <cstring>
@@ -45,7 +45,7 @@ index d732adc..69e0a67 100644
 @@ -170,6 +177,41 @@ std::vector<char*> MakeArgv(const std::string& prog,
    return argv;
  }
-
+ 
 +int RunStage(int (*stage)(int, char**), const std::string& prog,
 +             const std::vector<std::string>& args) {
 +  auto argv = MakeArgv(prog, args);
@@ -108,7 +108,7 @@ index d732adc..69e0a67 100644
 -      return rc;
 -    }
    }
-
+ 
    // ── Stage 2: call_variants ────────────────────────────────────────────────
 -  LOG(INFO) << "Stage 2: call_variants";
 +  std::vector<std::string> cv_args;
@@ -130,7 +130,7 @@ index d732adc..69e0a67 100644
 -      return rc;
 -    }
    }
-
+ 
 -  // ── Stage 2.5: merge small_cvo + big_cvo into a single file ──────────────
 -  // postprocess takes one --infile so we concatenate the (already valid)
 -  // TFRecord files. TFRecord allows naive byte copy since each record is
@@ -182,7 +182,7 @@ index d732adc..69e0a67 100644
 +  const std::string postprocess_input =
 +      small_model_path.empty() ? cvo_pattern
 +                               : absl::StrCat(small_cvo_path, ",", cvo_pattern);
-
+ 
    // ── Stage 3: postprocess_variants ────────────────────────────────────────
 -  LOG(INFO) << "Stage 3: postprocess_variants";
 +  std::vector<std::string> pp_args;
@@ -203,7 +203,7 @@ index d732adc..69e0a67 100644
 -      return rc;
 -    }
    }
-
+ 
 +  // --dry_run prints each stage as a command (run_deepvariant's format), so a
 +  // caller can run, and resume, them one by one.
 +  if (absl::GetFlag(FLAGS_dry_run)) {
@@ -238,7 +238,7 @@ index ca68b83..8dfcaf1 100644
 +++ b/deepvariant/native/postprocess_main.cc
 @@ -484,13 +484,19 @@ int RunPostprocessVariants(int argc, char** argv) {
    }
-
+ 
    // ── Read all CallVariantsOutput protos ────────────────────────────────────
 -  const std::vector<std::string> shard_paths = ExpandShards(infile);
 +  // --infile: comma-separated files or "name@N" shard specs, read in order.
@@ -261,7 +261,7 @@ index ca68b83..8dfcaf1 100644
        CallVariantsOutput cvo;
 @@ -535,7 +541,16 @@ int RunPostprocessVariants(int argc, char** argv) {
              });
-
+ 
    // ── Open VCF writer ───────────────────────────────────────────────────────
 +  // As upstream: --sample_name, else the call set make_examples named in the
 +  // CVOs (the reads' SM tag), so a postprocess_variants run on its own (not

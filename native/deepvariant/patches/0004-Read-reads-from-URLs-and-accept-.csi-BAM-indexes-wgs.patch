@@ -1,7 +1,7 @@
 From b2b504e0d0a94cb520bc250785e623245d8fa826 Mon Sep 17 00:00:00 2001
 From: WGS Extract AI <223556219+Copilot@users.noreply.github.com>
 Date: Wed, 11 Nov 2026 13:49:40 -0800
-Subject: [PATCH 4/4] Read --reads from URLs and accept .csi BAM indexes
+Subject: [PATCH 4/5] Read --reads from URLs and accept .csi BAM indexes
  (wgsextract #647)
 
 htslib reads http(s) and ftp URLs, and their indexes, itself: skip the

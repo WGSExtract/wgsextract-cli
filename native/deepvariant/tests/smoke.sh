@@ -12,35 +12,40 @@ rm -rf "$work"
 mkdir -p "$work"
 cd "$work"
 
-# 60 kb reference; 30x of 2x150 bp pairs; a het and a hom-alt SNP every 6 kb.
+# Two 30 kb contigs; 30x of 2x150 bp pairs; a het and a hom-alt SNP every 3 kb.
 awk 'BEGIN {
     srand(647)
     split("A C G T", base, " ")
-    n = 60000; read = 150; insert = 400; depth = 30
-    for (i = 1; i <= n; i++) ref[i] = base[int(rand() * 4) + 1]
-    print ">chr1" > "reference.fa"
-    line = ""
-    for (i = 1; i <= n; i++) { line = line ref[i]; if (i % 60 == 0) { print line > "reference.fa"; line = "" } }
-    for (i = 3000; i < n - 1000; i += 3000) {
-        alt[i] = ref[i] == "A" ? "G" : "A"
-        hom[i] = (i / 3000) % 2 == 0
-        printf "chr1\t%d\t%s\t%s\t%s\n", i, ref[i], alt[i], hom[i] ? "1/1" : "0/1" > "truth.tsv"
-    }
+    contigs = 2; n = 30000; read = 150; insert = 400; depth = 30
+    printf "@HD\tVN:1.6\tSO:unsorted\n" > "reads.sam"
+    for (c = 1; c <= contigs; c++) printf "@SQ\tSN:chr%d\tLN:%d\n", c, n > "reads.sam"
+    printf "@RG\tID:rg\tSM:smoke\n" > "reads.sam"
     quality = ""
     for (i = 0; i < read; i++) quality = quality "F"
-    printf "@HD\tVN:1.6\tSO:unsorted\n@SQ\tSN:chr1\tLN:%d\n@RG\tID:rg\tSM:smoke\n", n > "reads.sam"
-    pairs = int(n * depth / (2 * read))
-    for (p = 0; p < pairs; p++) {
-        start = int(rand() * (n - insert - 2)) + 1
-        hap = int(rand() * 2)
-        for (m = 0; m < 2; m++) {
-            pos = m == 0 ? start : start + insert - read
-            s = ""
-            for (i = pos; i < pos + read; i++) s = s ((i in alt) && (hom[i] || hap) ? alt[i] : ref[i])
-            flag = m == 0 ? 99 : 147
-            mpos = m == 0 ? start + insert - read : start
-            tlen = m == 0 ? insert : -insert
-            printf "p%d\t%d\tchr1\t%d\t60\t%dM\t=\t%d\t%d\t%s\t%s\tRG:Z:rg\n", p, flag, pos, read, mpos, tlen, s, quality > "reads.sam"
+    for (c = 1; c <= contigs; c++) {
+        delete ref; delete alt; delete hom
+        for (i = 1; i <= n; i++) ref[i] = base[int(rand() * 4) + 1]
+        print ">chr" c > "reference.fa"
+        line = ""
+        for (i = 1; i <= n; i++) { line = line ref[i]; if (i % 60 == 0) { print line > "reference.fa"; line = "" } }
+        for (i = 3000; i < n - 1000; i += 3000) {
+            alt[i] = ref[i] == "A" ? "G" : "A"
+            hom[i] = (i / 3000) % 2 == 0
+            printf "chr%d\t%d\t%s\t%s\t%s\n", c, i, ref[i], alt[i], hom[i] ? "1/1" : "0/1" > "truth.tsv"
+        }
+        pairs = int(n * depth / (2 * read))
+        for (p = 0; p < pairs; p++) {
+            start = int(rand() * (n - insert - 2)) + 1
+            hap = int(rand() * 2)
+            for (m = 0; m < 2; m++) {
+                pos = m == 0 ? start : start + insert - read
+                s = ""
+                for (i = pos; i < pos + read; i++) s = s ((i in alt) && (hom[i] || hap) ? alt[i] : ref[i])
+                flag = m == 0 ? 99 : 147
+                mpos = m == 0 ? start + insert - read : start
+                tlen = m == 0 ? insert : -insert
+                printf "c%dp%d\t%d\tchr%d\t%d\t60\t%dM\t=\t%d\t%d\t%s\t%s\tRG:Z:rg\n", c, p, flag, c, pos, read, mpos, tlen, s, quality > "reads.sam"
+            }
         }
     }
 }'
