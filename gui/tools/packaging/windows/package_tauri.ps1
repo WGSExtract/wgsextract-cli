@@ -152,7 +152,7 @@ function Stop-WGSExtractProcesses {
     `$needles = @(
         `$AppName,
         `$AppIdentifier,
-        "gui-for-cli-webui-tauri",
+        "wgsextract-gui",
         "\wgs-extract\",
         "/wgs-extract/"
     ) | Where-Object { `$_ }

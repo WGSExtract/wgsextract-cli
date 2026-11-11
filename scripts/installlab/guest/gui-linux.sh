@@ -23,7 +23,7 @@ MODE="${LAB_MODE:-install}"
 DEB="$HOME/Downloads/${LAB_GUI_INSTALLER_NAME:-WGSExtract.deb}"
 PACKAGE="wgs-extract"
 APP_DIR="/usr/lib/WGSExtract"
-APP_BIN="/usr/bin/gui-for-cli-webui-tauri"
+APP_BIN="/usr/bin/wgsextract-gui"
 APP_ID="dev.guiforcli.web.embed.wgsextract"
 # Apps since PR #531 keep the workspace in the home folder; released apps
 # before it keep it in their app data (OLD_WORKSPACE). app_actions uses the

@@ -1,3 +1,10 @@
+!macro NSIS_HOOK_PREINSTALL
+  ; Releases up to 0.8.6 named the app's executable gui-for-cli-webui-tauri.exe. Tauri deletes that file
+  ; and retargets the shortcuts when installing over one, but only checks whether the new executable runs,
+  ; so close the old one first or it stays behind, locked, next to the new one.
+  !insertmacro CheckIfAppIsRunning "$INSTDIR\gui-for-cli-webui-tauri.exe" "${PRODUCTNAME}"
+!macroend
+
 !macro NSIS_HOOK_PREUNINSTALL
   ${If} $UpdateMode <> 1
     ; Remove what the app's setup installed (for WGSExtract: its CLI runtime, and the Pixi and MSYS2 it

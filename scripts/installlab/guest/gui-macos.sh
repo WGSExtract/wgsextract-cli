@@ -171,7 +171,7 @@ app_setup() {
 tauri_setup() {
     env GUI_FOR_CLI_AUTO_RUN_SETUP=1 GUI_FOR_CLI_SETUP_EVENTS_LOG="$events" \
         ${LAB_ARCHIVE_URL:+WGSEXTRACT_ARCHIVE_URL="$CLI_ARCHIVE"} \
-        "$APP/Contents/MacOS/gui-for-cli-webui-tauri" > "$R/app-stdout.txt" 2> "$R/app-stderr.txt" &
+        "$APP/Contents/MacOS/wgsextract-gui" > "$R/app-stdout.txt" 2> "$R/app-stderr.txt" &
     app_pid=$!
     app_launched
     await_setup 7200 || return 1
@@ -232,7 +232,7 @@ app_uninstall() {
     rm -f "$R/uninstall-result.json"
     if is_tauri; then
         env GUI_FOR_CLI_AUTO_RUN_UNINSTALL=1 GUI_FOR_CLI_UNINSTALL_RESULT_FILE="$R/uninstall-result.json" \
-            "$APP/Contents/MacOS/gui-for-cli-webui-tauri" > "$R/app-uninstall-stdout.txt" 2>&1 || return 1
+            "$APP/Contents/MacOS/wgsextract-gui" > "$R/app-uninstall-stdout.txt" 2>&1 || return 1
     else
         launch_app --env GUI_FOR_CLI_AUTO_RUN_UNINSTALL=1 \
         --env "GUI_FOR_CLI_TERMINAL_LOG_FILE=$R/app-uninstall-terminal.log" \

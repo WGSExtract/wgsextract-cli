@@ -31,7 +31,7 @@ $Installer = Join-Path $Downloads $lab.LAB_GUI_INSTALLER_NAME
 $ProductName = "WGSExtract"
 $UninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$ProductName"
 $AppIdentifier = "dev.guiforcli.web.embed.wgsextract"
-$AppProcess = "gui-for-cli-webui-tauri"
+$AppProcess = "wgsextract-gui"
 # Apps since PR #531 keep the workspace in the home folder; released apps
 # before it keep it in their app data. The actions use the one setup made.
 $Workspace = Join-Path $env:USERPROFILE "wgs-extract"
