@@ -58,7 +58,7 @@ test("one-shot bundle preload is skipped when no bundle was explicitly requested
 });
 
 test("bundle source resolver accepts bundle directories and manifest files", async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), "gui-for-cli-source-root-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-source-root-"));
   try {
     const manifestPath = path.join(directory, "manifest.json");
     await writeFile(
@@ -81,7 +81,7 @@ test("bundle source resolver accepts bundle directories and manifest files", asy
 });
 
 test("bundle source resolver rejects non-manifest files", async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), "gui-for-cli-source-root-invalid-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-source-root-invalid-"));
   try {
     const filePath = path.join(directory, "bundle.txt");
     await writeFile(filePath, "not a bundle");
@@ -100,13 +100,13 @@ test("bundle source resolver normalizes missing path errors", async () => {
   const { resolveBundleSourceRoot } = await import("../dist/web/src/server/bundle-loader.js");
 
   await assert.rejects(
-    () => resolveBundleSourceRoot(path.join(tmpdir(), "gui-for-cli-missing-bundle")),
+    () => resolveBundleSourceRoot(path.join(tmpdir(), "wgsextract-gui-missing-bundle")),
     /Choose a bundle folder, manifest\.json file, or bundle archive/,
   );
 });
 
 test("bundle loader accepts comments in bundle JSON files", async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), "gui-for-cli-json-comments-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-json-comments-"));
   try {
     await mkdir(path.join(directory, "pages"), { recursive: true });
     await writeFile(
@@ -178,7 +178,7 @@ test("icon map TOML rejects malformed content", async () => {
 
 test("bundle loader merges built-in and bundle icon maps", async () => {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-  const directory = await mkdtemp(path.join(tmpdir(), "gui-for-cli-icon-map-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-icon-map-"));
   try {
     await writeFile(
       path.join(directory, "manifest.json"),
@@ -216,7 +216,7 @@ test("bundle loader merges built-in and bundle icon maps", async () => {
 
 test("bundle loader reports setup tool version file context", async () => {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-  const directory = await mkdtemp(path.join(tmpdir(), "gui-for-cli-tool-version-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-tool-version-"));
   try {
     await writeFile(
       path.join(directory, "manifest.json"),
@@ -254,7 +254,7 @@ test("bundle loader reports setup tool version file context", async () => {
 
 test("bundle loader surfaces invalid bundle icon map errors", async () => {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-  const directory = await mkdtemp(path.join(tmpdir(), "gui-for-cli-icon-map-invalid-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-icon-map-invalid-"));
   try {
     await writeFile(
       path.join(directory, "manifest.json"),
@@ -279,7 +279,7 @@ test("bundle loader surfaces invalid bundle icon map errors", async () => {
 });
 
 test("bundle loader rejects incomplete platform script folders", async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), "gui-for-cli-script-platforms-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-script-platforms-"));
   try {
     await mkdir(path.join(directory, "scripts", "windows"), { recursive: true });
     await writeFile(
@@ -310,7 +310,7 @@ test("bundle loader rejects incomplete platform script folders", async () => {
 });
 
 test("bundle loader accepts platform-specific setup scripts", async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), "gui-for-cli-script-platforms-conditional-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-script-platforms-conditional-"));
   try {
     await mkdir(path.join(directory, "scripts", "windows"), { recursive: true });
     await mkdir(path.join(directory, "scripts", "posix"), { recursive: true });
@@ -346,7 +346,7 @@ test("bundle loader accepts platform-specific setup scripts", async () => {
 });
 
 test("bundle loader validates macOS setup scripts in nested POSIX script folders", async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), "gui-for-cli-script-platforms-posix-missing-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-script-platforms-posix-missing-"));
   try {
     await mkdir(path.join(directory, "scripts", "posix", "tools"), { recursive: true });
     await writeFile(
@@ -381,7 +381,7 @@ test("bundle loader validates macOS setup scripts in nested POSIX script folders
 });
 
 test("bundle loader rejects unsupported setup platforms", async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), "gui-for-cli-script-platforms-invalid-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-script-platforms-invalid-"));
   try {
     await writeFile(
       path.join(directory, "manifest.json"),
@@ -415,7 +415,7 @@ test("bundle loader rejects unsupported setup platforms", async () => {
 });
 
 test("bundle loader rejects non-boolean setup admin flags", async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), "gui-for-cli-setup-admin-invalid-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-setup-admin-invalid-"));
   try {
     await writeFile(
       path.join(directory, "manifest.json"),
@@ -450,7 +450,7 @@ test("bundle loader rejects non-boolean setup admin flags", async () => {
 
 test("bundle loader localizes language options and marks AI-translated bundle strings", async () => {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-  const directory = await mkdtemp(path.join(tmpdir(), "gui-for-cli-locales-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-locales-"));
   try {
     await mkdir(path.join(directory, "strings"), { recursive: true });
     await writeFile(
@@ -485,7 +485,7 @@ test("bundle loader localizes language options and marks AI-translated bundle st
 
 test("bundle loader bootstraps first-run config defaults before returning state", async () => {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-  const directory = await mkdtemp(path.join(tmpdir(), "gui-for-cli-config-bootstrap-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-config-bootstrap-"));
   try {
     await mkdir(path.join(directory, "scripts"), { recursive: true });
     await writeFile(
@@ -559,7 +559,7 @@ test("concurrent first-run loads bootstrap the config file once instead of racin
   // find no config file and rename a temp file onto it at once, which Windows refuses (EPERM), so the
   // app's first launch failed with "Could not load Web UI".
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-  const directory = await mkdtemp(path.join(tmpdir(), "gui-for-cli-config-bootstrap-concurrent-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-config-bootstrap-concurrent-"));
   const require = createRequire(import.meta.url);
   const fsPromises = require("node:fs/promises");
   const originalRename = fsPromises.rename;
@@ -622,7 +622,7 @@ test("concurrent first-run loads bootstrap the config file once instead of racin
 
 test("script bootstrap skip checks generated defaults and caches the script result", async () => {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-  const directory = await mkdtemp(path.join(tmpdir(), "gui-for-cli-config-bootstrap-generated-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-config-bootstrap-generated-"));
   try {
     await mkdir(path.join(directory, "scripts"), { recursive: true });
     await mkdir(path.join(directory, "settings"), { recursive: true });
@@ -695,7 +695,7 @@ printf '{"values":{"secondary":"script"}}\\n'
 
 async function loadWithPreviousConfig(prepare) {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-  const directory = await mkdtemp(path.join(tmpdir(), "gui-for-cli-config-previous-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-config-previous-"));
   await writeFile(
     path.join(directory, "manifest.json"),
     JSON.stringify({

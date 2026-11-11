@@ -25,7 +25,7 @@ export async function missingPrerequisites(
         return await checkPrerequisites(manifest, action, context, bundleRoot, runProcess);
     }
     catch (error) {
-        console.warn(`[gui-for-cli] Prerequisite check for action ${action.id ?? action.title ?? ""} failed; running it anyway: ${errorMessage(error)}`);
+        console.warn(`[wgsextract-gui] Prerequisite check for action ${action.id ?? action.title ?? ""} failed; running it anyway: ${errorMessage(error)}`);
         return [];
     }
 }

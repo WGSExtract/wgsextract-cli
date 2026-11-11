@@ -504,7 +504,7 @@ fn emit_update_progress<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event: Upd
 }
 
 fn write_downloaded_update(bytes: &[u8]) -> Result<DownloadedUpdate, String> {
-    let directory = env::temp_dir().join("gui-for-cli-updates");
+    let directory = env::temp_dir().join("wgsextract-gui-updates");
     fs::create_dir_all(&directory)
         .map_err(|error| format!("Could not create update download cache: {error}"))?;
     let timestamp = SystemTime::now()

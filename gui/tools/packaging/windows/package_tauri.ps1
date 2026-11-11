@@ -86,7 +86,8 @@ function Test-ManagedWorkspace([string]$LiteralPath) {
     if (-not (Test-Path -LiteralPath $sentinel -PathType Leaf)) {
         return $false
     }
-    return [System.IO.File]::ReadAllText($sentinel) -eq "GUI for CLI bundle workspace`n"
+    # Workspaces made by releases up to 0.8.6 hold the older text.
+    return [System.IO.File]::ReadAllText($sentinel) -in @("WGS Extract GUI workspace`n", "GUI for CLI bundle workspace`n")
 }
 
 # Deletes an app data folder except any bundle workspace in it: those hold the user's libraries and

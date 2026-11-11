@@ -43,7 +43,7 @@ function dataEnvironment(root) {
 }
 
 async function fixture(t, fixtureManifest = manifest) {
-  const root = await mkdtemp(path.join(tmpdir(), "gui-for-cli-workspace-location-"));
+  const root = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-workspace-location-"));
   const original = {};
   for (const [key, value] of Object.entries(dataEnvironment(root))) {
     original[key] = process.env[key];

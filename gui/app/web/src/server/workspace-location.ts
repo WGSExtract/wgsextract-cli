@@ -8,7 +8,13 @@ import { errnoCode, errorMessage } from "./errors.js";
 import { applicationSupportDirectory, appSupportContainerName, appSupportDirectory, defaultAppDataName, safePathComponent } from "./paths.js";
 
 export const workspaceSentinelFileName = ".bundle-workspace";
-export const workspaceSentinelContents = "GUI for CLI bundle workspace\n";
+export const workspaceSentinelContents = "WGS Extract GUI workspace\n";
+/** What workspaces made by releases up to 0.8.6 hold. They are still this app's; preparing one rewrites it. */
+const legacyWorkspaceSentinelContents = "GUI for CLI bundle workspace\n";
+
+export function isWorkspaceSentinel(contents: string | null) {
+    return contents === workspaceSentinelContents || contents === legacyWorkspaceSentinelContents;
+}
 
 /** App-wide settings. They live beside the app's data, not in the workspace, since they say where the workspace is. */
 export function appSettingsPath() {
@@ -178,7 +184,7 @@ async function isAdoptableWorkspaceRoot(workspaceRoot: string) {
 
 export async function isManagedWorkspace(workspaceRoot: string) {
     const sentinel = await readFile(path.join(workspaceRoot, workspaceSentinelFileName), "utf8").catch(() => null);
-    return sentinel === workspaceSentinelContents;
+    return isWorkspaceSentinel(sentinel);
 }
 
 export async function workspaceLocationInfo(manifest: BundleManifest, workspaceRoot: string): Promise<WorkspaceLocationInfo> {

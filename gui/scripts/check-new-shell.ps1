@@ -1,7 +1,7 @@
 # CI entry point runs as a real new PowerShell 5.1 process, without -Command quoting.
 $ErrorActionPreference = "Stop"
 Set-Location (Split-Path $PSScriptRoot -Parent)
-$nodeRoot = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".local\share\gui-for-cli\node"
+$nodeRoot = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".local\share\wgsextract-gui-dev\node"
 $node = Get-Command node
 if (-not $node.Source.StartsWith("$nodeRoot\", [StringComparison]::OrdinalIgnoreCase)) {
     throw "Hosted Node shadowed setup Node: $($node.Source)"

@@ -55,7 +55,7 @@ const prelude = fullCSS
   .replace(
     /\/\*![\s\S]*?\*\//,
     `/*!
- * Bootstrap Icons v${packageJSON.version} critical subset for GUI for CLI.
+ * Bootstrap Icons v${packageJSON.version} critical subset for WGS Extract GUI.
  * Copyright 2019-2024 The Bootstrap Authors
  * Licensed under MIT (https://github.com/twbs/icons/blob/main/LICENSE)
  */`,

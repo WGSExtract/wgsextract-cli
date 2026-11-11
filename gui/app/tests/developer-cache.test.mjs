@@ -11,11 +11,11 @@ test("developer cache is the per-user platform cache, outside any checkout", () 
       env: { LOCALAPPDATA: "C:\\Users\\dev\\AppData\\Local" },
       homedir: "C:\\Users\\dev",
     }),
-    "C:\\Users\\dev\\AppData\\Local\\gui-for-cli-dev\\Cache\\tauri-node",
+    "C:\\Users\\dev\\AppData\\Local\\wgsextract-gui-dev\\Cache\\tauri-node",
   );
   assert.equal(
     developerCacheDir("tauri-node", { platform: "darwin", env: {}, homedir: "/Users/dev" }),
-    "/Users/dev/Library/Caches/gui-for-cli-dev/tauri-node",
+    "/Users/dev/Library/Caches/wgsextract-gui-dev/tauri-node",
   );
   assert.equal(
     developerCacheDir("tauri-node", {
@@ -23,14 +23,14 @@ test("developer cache is the per-user platform cache, outside any checkout", () 
       env: { XDG_CACHE_HOME: "/var/cache/dev" },
       homedir: "/home/dev",
     }),
-    "/var/cache/dev/gui-for-cli-dev/tauri-node",
+    "/var/cache/dev/wgsextract-gui-dev/tauri-node",
   );
 });
 
 test("developer cache falls back when the platform cache variable is unset or relative", () => {
   assert.equal(
     developerCacheDir("tauri-node", { platform: "win32", env: {}, homedir: "C:\\Users\\dev" }),
-    "C:\\Users\\dev\\AppData\\Local\\gui-for-cli-dev\\Cache\\tauri-node",
+    "C:\\Users\\dev\\AppData\\Local\\wgsextract-gui-dev\\Cache\\tauri-node",
   );
   for (const XDG_CACHE_HOME of [undefined, "", "relative/cache"]) {
     assert.equal(
@@ -39,7 +39,7 @@ test("developer cache falls back when the platform cache variable is unset or re
         env: { XDG_CACHE_HOME },
         homedir: "/home/dev",
       }),
-      "/home/dev/.cache/gui-for-cli-dev/tauri-node",
+      "/home/dev/.cache/wgsextract-gui-dev/tauri-node",
     );
   }
 });

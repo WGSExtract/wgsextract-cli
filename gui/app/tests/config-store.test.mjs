@@ -11,7 +11,7 @@ const { bootstrapConfigFiles, loadBundleState, loadConfig, saveBundleState, save
 const { loadLocalizedBundle } = await import("../dist/web/src/server/bundle-loader.js");
 
 async function tempDirectory(t) {
-  const directory = await mkdtemp(path.join(tmpdir(), "gui-for-cli-config-store-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-config-store-"));
   t.after(() => rm(directory, { force: true, recursive: true }));
   return directory;
 }

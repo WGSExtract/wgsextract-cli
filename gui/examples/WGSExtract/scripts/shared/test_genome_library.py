@@ -128,7 +128,7 @@ def download_file(url: str, destination: Path) -> None:
     parsed = urlparse(url)
     if parsed.scheme != "https":
         raise SystemExit(f"Unsupported URL scheme for dataset download: {parsed.scheme or 'none'}")
-    request = Request(url, headers={"User-Agent": "gui-for-cli/wgsextract-test-genome"})
+    request = Request(url, headers={"User-Agent": "wgsextract-gui/wgsextract-test-genome"})
     opener = build_opener(HTTPSOnlyRedirectHandler)
     print(f"Downloading {url}")
     try:
@@ -220,7 +220,7 @@ def write_genome_config(dataset_dir: Path) -> None:
 
     lines = [
         "# WGS Extract per-genome configuration",
-        f"# Downloaded by GUI for CLI from {DATASET_URL}",
+        f"# Downloaded by WGS Extract GUI from {DATASET_URL}",
         f"# Dataset: {manifest.get('dataset_id') or DATASET_ID}",
         "",
     ]

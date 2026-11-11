@@ -1,4 +1,4 @@
-const bundlePickerLastDirectoryKey = "guiForCLI.bundlePicker.lastDirectory";
+const bundlePickerLastDirectoryKey = "wgsextractGui.bundlePicker.lastDirectory";
 type BundlePickerStorage = Pick<Storage, "getItem" | "setItem"> | undefined;
 
 export function bundlePickerDefaultPath(fallbackPath = "", storage: BundlePickerStorage = globalThis.localStorage) {

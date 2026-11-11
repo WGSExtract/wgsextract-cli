@@ -149,7 +149,7 @@ def fetch_remote_size(url: str) -> int | None:
     if scheme not in {"http", "https"}:
         return None
     try:
-        request = Request(url, method="HEAD", headers={"User-Agent": "gui-for-cli/list-reference-genomes"})
+        request = Request(url, method="HEAD", headers={"User-Agent": "wgsextract-gui/list-reference-genomes"})
         with urlopen(request, timeout=REMOTE_SIZE_HEAD_TIMEOUT) as response:
             length = response.headers.get("Content-Length")
             if length and length.isdigit():

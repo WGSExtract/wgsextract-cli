@@ -61,12 +61,12 @@ export function createInitialState(): WebUIState {
         activeTerminalIndex: 0,
         aboutDialogVisible: false,
         isTerminalVisible: true,
-        isSidebarVisible: localStorage.getItem("guiForCLI.sidebarVisible") !== "false",
+        isSidebarVisible: localStorage.getItem("wgsextractGui.sidebarVisible") !== "false",
         pendingConfirmation: null,
         pendingPrerequisites: null,
         checkingPrerequisites: false,
-        sidebarWidth: Number(localStorage.getItem("guiForCLI.sidebarWidth")) || 220,
-        terminalHeight: Number(localStorage.getItem("guiForCLI.terminalHeight")) ||
+        sidebarWidth: Number(localStorage.getItem("wgsextractGui.sidebarWidth")) || 220,
+        terminalHeight: Number(localStorage.getItem("wgsextractGui.terminalHeight")) ||
             Math.round(window.innerHeight * 0.2),
     };
 }
