@@ -67,11 +67,96 @@ class Download:
 # chrX needs each sample's ploidy, which `vcf impute` doesn't handle yet.
 AUTOSOMES = tuple(f"chr{i}" for i in range(1, 23))
 
-# Panel VCF per chromosome: size in bytes and SHA-256.
+# Panel VCF per chromosome: size in bytes and SHA-256 (each download's MD5
+# matched EBI's 20220804_manifest.txt).
 _PANEL: dict[str, tuple[int, str]] = {
+    "chr1": (
+        2390515911,
+        "c15bb52b8ee1fe0835d11634631e2fe1b259b5ed7bb5615536641919596e7819",
+    ),
+    "chr2": (
+        2506332497,
+        "9c82055d2a5dde853ea379fa1c2ccbb467639abd6fcd8b96b3a138d05e39cab7",
+    ),
+    "chr3": (
+        2097106049,
+        "624cb7ac0c5117b6041921d3da7401da1b5b08828276459dde7a8326844238a5",
+    ),
+    "chr4": (
+        2086491071,
+        "fbe81919abe7926eb7373e279cb7af61b4aea97e8be4f5b318cf2876636675f7",
+    ),
+    "chr5": (
+        1899165551,
+        "b8f2c4544bf3aea8e95646da34ab15f70ffa63346258c064ab9ffe2d8857d171",
+    ),
+    "chr6": (
+        1878333223,
+        "8b761f32e24e82b6187c66101a47d75e15801552f4b7ef23a18e17ec51dd1cc2",
+    ),
+    "chr7": (
+        1751799644,
+        "bfaf20414a76c87520ce197a4eee8c2337713f5c5ffacc71a7a2bf5a8e185af5",
+    ),
+    "chr8": (
+        1617138777,
+        "9469031c040de1f774ecc65e5fc131085aeed7d2540b839ef44e57f66c4db29f",
+    ),
+    "chr9": (
+        1320051150,
+        "ea3b97faf0f82be27adf146e92fba95616f12b5970dba4fff6d0606832409d1f",
+    ),
+    "chr10": (
+        1493904721,
+        "a8f71fc684ad36a1aca61d96c5b3d411029f578c73dc60a40dd1c4c30955a645",
+    ),
+    "chr11": (
+        1444152921,
+        "2b007f3b59e7d096632cefb9518eab12444e410279a75691779496ae37d3e499",
+    ),
+    "chr12": (
+        1418304697,
+        "1211d02bb26e876d6ec21b9fd13cfc0975eba4562b6d4c5ae33a87a330799597",
+    ),
+    "chr13": (
+        1073594120,
+        "0ea9353951c3b3cc8edf28386b6050afbf8ecbc48c78d373992434a53a85e95d",
+    ),
+    "chr14": (
+        966241761,
+        "877eed07dc2d988dd883daf6476108cdac18b219f8f47150f0db2c2a01d9051e",
+    ),
+    "chr15": (
+        885687136,
+        "724edc6ee7d7a832a9b7ed224505f665e2d4c06232b51a7d6b6bae65a236ed6e",
+    ),
+    "chr16": (
+        961378545,
+        "d8ee737d7ab9cbfc85a50b29e6ff08e3756780bffdd82b1d70fe9223cc65757b",
+    ),
+    "chr17": (
+        861943967,
+        "51d25cabdce17a60db619e994197eb9e9d3dda1528ad5b55723d177c7a991fe4",
+    ),
+    "chr18": (
+        834387264,
+        "337c1b1711f52fb5865bf607957ca3be297651dc3f72332e2e5c8b07d83d26d7",
+    ),
+    "chr19": (
+        717737562,
+        "ae75ed16f47a26e8d6058c47eab4ea9a3ea3785b0d619e21a46889cbcbbc61aa",
+    ),
     "chr20": (
         687320087,
         "9e936fdf434a4aa4ff1d37c0d386a13a43a7211d4f09fb5da811ed6eb5125626",
+    ),
+    "chr21": (
+        427136458,
+        "a925c112a1085faf01332bef0707b7f0304079fbd974a82de402d248037ea48b",
+    ),
+    "chr22": (
+        445701977,
+        "91aeaf0d1e805cf4223c5cbf12e22afc28db1709054c42bd668337219f8fddcc",
     ),
 }
 
@@ -100,9 +185,10 @@ _MAPS = {
     "chr22": "c23663c6e65274bc15fc44facf26535e8d59f3200af4b6e7d347890ecb7a58da",
 }
 
-# The installed files take about this share of the panel download, and the
-# install needs the download and them at once (measured on chr20).
-INSTALLED_SHARE = 1.0
+# Peak free space an install needs, as a share of the panel download: on
+# chr20 the SNP panel is 0.65 and GLIMPSE2's binary chunks 1.6 times the
+# download, which is deleted before the chunks are written.
+PEAK_SHARE = 2.5
 
 
 def panel_download(chrom: str) -> Download:
@@ -251,9 +337,7 @@ def needed_bytes(chroms: list[str], reflib: str | None = None) -> int:
     """Free space an install of ``chroms`` needs at its peak."""
     base = folder(reflib)
     return sum(
-        int(_PANEL[c][0] * (1 + INSTALLED_SHARE))
-        for c in chroms
-        if not _panel_ready(base / c, c)
+        int(_PANEL[c][0] * PEAK_SHARE) for c in chroms if not _panel_ready(base / c, c)
     )
 
 

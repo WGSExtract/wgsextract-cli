@@ -217,7 +217,7 @@ def test_ref_imputation_checks_free_space_before_downloading(
     usage = shutil.disk_usage(tmp_path)
     monkeypatch.setattr(shutil, "disk_usage", lambda path: usage._replace(free=10**9))
 
-    with pytest.raises(api.CommandFailed, match=r"needs about 1\.4 GB free"):
+    with pytest.raises(api.CommandFailed, match=r"needs about 1\.7 GB free"):
         api.ref.imputation(api.RefImputationParams(chromosomes="chr20", ref=tmp_path))
     assert panel_downloads == []
 
