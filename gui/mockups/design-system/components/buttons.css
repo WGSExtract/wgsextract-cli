@@ -11,7 +11,7 @@
   gap: var(--sp-2);
   min-height: var(--control-h);
   min-width: var(--touch-min);
-  padding: 0 var(--sp-3);
+  padding: 0 var(--sp-4);
   border: 1px solid var(--btn-border);
   border-radius: var(--r-md);
   background: var(--btn-bg);
@@ -95,8 +95,9 @@
 }
 
 .btn--sm {
+  gap: 6px;
   min-height: var(--control-h-sm);
-  padding: 0 var(--sp-2);
+  padding: 0 var(--sp-3);
   font-size: var(--fs-sm);
   border-radius: var(--r-sm);
 }

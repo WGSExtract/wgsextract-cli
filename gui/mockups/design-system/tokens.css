@@ -123,7 +123,7 @@
 
   /* Density: desktop is compact; phone layouts raise these to touch size */
   --control-h: 32px;
-  --control-h-sm: 26px;
+  --control-h-sm: 28px;
   --control-h-lg: 40px;
   --touch-min: 24px;
   --row-h: 36px;
