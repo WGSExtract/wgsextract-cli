@@ -12,7 +12,7 @@ from scripts.microarray_aadr_markers import build_markers
 from tests.htslib_helpers import needs_tools, run_wgsextract
 from tests.microarray_helpers import microarray_params
 from wgsextract_cli.commands import microarray
-from wgsextract_cli.core import aadr_resources
+from wgsextract_cli.core import aadr_resources, microarray_targets
 from wgsextract_cli.core import microarray_aadr as aadr
 from wgsextract_cli.core.results import CommandResult, collecting
 from wgsextract_cli.core.utils import WGSExtractError, run_command
@@ -157,7 +157,9 @@ def test_2m_grch38_requires_an_installed_chain_without_auto_fetch(
         gzip.compress(b"chain 1000 chr1 1000 + 0 500 chr1 1100 + 100 600 1\n500\n\n")
     )
     monkeypatch.setattr(
-        aadr, "download_file", lambda *a, **kw: pytest.fail("runtime chain download")
+        microarray_targets,
+        "download_file",
+        lambda *a, **kw: pytest.fail("runtime chain download"),
     )
     with pytest.raises(WGSExtractError, match="installed hg19ToHg38"):
         aadr.aadr_lifter("hg38", str(tmp_path), allow_download=False)
@@ -187,7 +189,9 @@ def test_mixed_2m_vendor_preflights_chain_before_consumer_target_build(
     fasta = _fasta(installed_2m / "genomes" / "hg38.fa")
     vcf = _plain_vcf(tmp_path / "input.vcf")
     monkeypatch.setattr(
-        aadr, "download_file", lambda *a, **kw: pytest.fail("runtime chain download")
+        microarray_targets,
+        "download_file",
+        lambda *a, **kw: pytest.fail("runtime chain download"),
     )
     output = tmp_path / "not_created"
     with pytest.raises(WGSExtractError, match="installed hg19ToHg38"):
@@ -380,7 +384,7 @@ def test_installed_chain_is_reused_read_only_without_a_download(
         gzip.compress(b"chain 1000 chr1 1000 + 0 500 chr1 1100 + 100 600 1\n500\n\n")
     )
     monkeypatch.setattr(
-        aadr, "download_file", lambda *_: pytest.fail("must not download")
+        microarray_targets, "download_file", lambda *_: pytest.fail("must not download")
     )
     out = tmp_path / "not_created"
     lifter = aadr.aadr_lifter("hg38", str(out), str(library))
