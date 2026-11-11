@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="t">
+  <title id="t">WGS Extract logomark option C: aligned reads funnelling onto a reference</title>
+  <defs>
+    <linearGradient id="c-reads" gradientUnits="userSpaceOnUse" x1="20" y1="0" x2="108" y2="0">
+      <stop offset="0" stop-color="#2ec5e6"/>
+      <stop offset="1" stop-color="#c13bd4"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="#111a2e"/>
+  <g stroke="url(#c-reads)" stroke-width="11" stroke-linecap="round">
+    <path d="M24 34h22"/>
+    <path d="M82 34h22"/>
+    <path d="M30 52h24"/>
+    <path d="M74 52h24"/>
+    <path d="M36 70h56"/>
+    <path d="M44 88h40"/>
+  </g>
+  <path d="M22 106h84" stroke="#ffffff" stroke-opacity="0.7" stroke-width="5" stroke-linecap="round"/>
+</svg>

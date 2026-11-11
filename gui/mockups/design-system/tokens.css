@@ -1,0 +1,200 @@
+/*
+ * WGS Extract design tokens.
+ * Every colour, size and duration the components use comes from here, so a
+ * theme is a set of overrides of these properties and nothing else.
+ * Light is the default; [data-theme="dark"] switches to dark. The "system"
+ * choice is resolved to one of the two by shared/theme.js.
+ */
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* Brand: navy, helix blue and helix magenta, from the app icon */
+  --brand-navy: #111a2e;
+  --brand-cyan: #2ec5e6;
+  --brand-magenta: #c13bd4;
+
+  /* Neutrals */
+  --c-bg: #f5f6fa;
+  --c-surface: #ffffff;
+  --c-surface-2: #f0f2f7;
+  --c-surface-3: #e5e9f1;
+  --c-overlay: rgb(17 26 46 / 0.45);
+  --c-border: #d8dde8;
+  --c-border-strong: #b4bccd;
+  --c-text: #131a29;
+  --c-text-2: #3d475b;
+  --c-text-3: #576178;
+  --c-text-disabled: #8a93a6;
+
+  /* Action and accent */
+  --c-primary: #1d5bd0;
+  --c-primary-hover: #174bb0;
+  --c-primary-active: #123c8f;
+  --c-primary-soft: #e7eefc;
+  --c-primary-soft-text: #17489f;
+  --c-on-primary: #ffffff;
+  --c-accent: #a3238f;
+  --c-accent-soft: #fae8f6;
+  --c-focus: #1d5bd0;
+
+  /* Semantic */
+  --c-success: #146c43;
+  --c-success-soft: #e2f3e9;
+  --c-warn: #8f5300;
+  --c-warn-soft: #fdf0d9;
+  --c-warn-border: #f0c77d;
+  --c-danger: #b8232b;
+  --c-danger-soft: #fde7e7;
+  --c-info: #0a6791;
+  --c-info-soft: #e0f1f9;
+
+  /* File types: one hue each, used for badges, icons and chart series */
+  --ft-bam: #2257d6;
+  --ft-cram: #0b7a7a;
+  --ft-fastq: #a24a07;
+  --ft-vcf: #6d32d9;
+  --ft-raw: #14743a;
+  --ft-fasta: #4a5568;
+
+  /* Chart series (ancestry components, K=7), colour-blind friendly order */
+  --chart-1: #1d5bd0;
+  --chart-2: #d1495b;
+  --chart-3: #e8a33d;
+  --chart-4: #1f9e89;
+  --chart-5: #8a5cd1;
+  --chart-6: #6b7a90;
+  --chart-7: #c7579f;
+
+  /* Typography: system fonts only (offline, private, native per platform) */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans",
+    "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono",
+    Menlo, Consolas, "Liberation Mono", monospace;
+  --fs-2xs: 11px;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 18px;
+  --fs-2xl: 22px;
+  --fs-3xl: 28px;
+  --fs-4xl: 34px;
+  --lh-tight: 1.2;
+  --lh: 1.45;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  /* Spacing: 4px grid */
+  --sp-0: 0;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+
+  /* Radii */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-pill: 999px;
+
+  /* Elevation */
+  --shadow-1: 0 1px 2px rgb(17 26 46 / 0.06), 0 1px 1px rgb(17 26 46 / 0.04);
+  --shadow-2: 0 4px 12px rgb(17 26 46 / 0.08), 0 1px 3px rgb(17 26 46 / 0.06);
+  --shadow-3: 0 16px 40px rgb(17 26 46 / 0.18), 0 4px 12px rgb(17 26 46 / 0.08);
+
+  /* Motion */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 320ms;
+
+  /* Density: desktop is compact; phone layouts raise these to touch size */
+  --control-h: 32px;
+  --control-h-sm: 26px;
+  --control-h-lg: 40px;
+  --touch-min: 24px;
+  --row-h: 36px;
+  --icon-stroke: 1.75;
+  --sidebar-w: 232px;
+  --topbar-h: 52px;
+}
+
+@media (pointer: coarse) {
+  :root {
+    --control-h: 44px;
+    --control-h-sm: 36px;
+    --touch-min: 44px;
+    --row-h: 48px;
+  }
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --c-bg: #0a101d;
+  --c-surface: #111a2c;
+  --c-surface-2: #16213a;
+  --c-surface-3: #1e2b48;
+  --c-overlay: rgb(2 6 15 / 0.66);
+  --c-border: #27344f;
+  --c-border-strong: #3b4a6b;
+  --c-text: #e9eef8;
+  --c-text-2: #b8c3d8;
+  --c-text-3: #93a0ba;
+  --c-text-disabled: #627089;
+  --c-primary: #6aaeff;
+  --c-primary-hover: #8cc1ff;
+  --c-primary-active: #a9d1ff;
+  --c-primary-soft: rgb(106 174 255 / 0.14);
+  --c-primary-soft-text: #a9d1ff;
+  --c-on-primary: #061024;
+  --c-accent: #ef7fdc;
+  --c-accent-soft: rgb(239 127 220 / 0.14);
+  --c-focus: #8cc1ff;
+  --c-success: #52d18f;
+  --c-success-soft: rgb(82 209 143 / 0.13);
+  --c-warn: #f2b84f;
+  --c-warn-soft: rgb(242 184 79 / 0.13);
+  --c-warn-border: rgb(242 184 79 / 0.45);
+  --c-danger: #ff8389;
+  --c-danger-soft: rgb(255 131 137 / 0.13);
+  --c-info: #5ec8f2;
+  --c-info-soft: rgb(94 200 242 / 0.13);
+  --ft-bam: #7aa7ff;
+  --ft-cram: #3fd0c9;
+  --ft-fastq: #f3a35b;
+  --ft-vcf: #b493ff;
+  --ft-raw: #5fd88b;
+  --ft-fasta: #a6b2c6;
+  --chart-1: #6aaeff;
+  --chart-2: #ff7d8c;
+  --chart-3: #f4be5e;
+  --chart-4: #43d1b4;
+  --chart-5: #b493ff;
+  --chart-6: #9fadc2;
+  --chart-7: #f08bd0;
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-2: 0 4px 14px rgb(0 0 0 / 0.45);
+  --shadow-3: 0 18px 48px rgb(0 0 0 / 0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+    --dur-slow: 0ms;
+  }
+}
