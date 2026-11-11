@@ -216,11 +216,11 @@
 "actions.vcf.trio-analysis.vcf-trio.tooltip" = "Vergleichen Sie Kind- und Eltern-VCFs, um de-novo-Mutationen oder vererbte Erkrankungen zu identifizieren."  # i18n-source-hash:2c8eed87
 "sections.vcf.vep-analysis.title" = "VEP-Analyse"  # i18n-source-hash:6688a989
 "controls.vcf.vep-analysis.vep_input_vcf.label" = "VEP-Eingabe-VCF"  # i18n-source-hash:8c50fc69
-"controls.vcf.vep-analysis.vep_input_vcf.tooltip" = "VCF-Datei, die an Ensembl VEP zur Annotation übergeben wird."  # i18n-source-hash:39409e9c
+"controls.vcf.vep-analysis.vep_input_vcf.tooltip" = "VCF-Datei, die mit VEP annotiert wird (standardmäßig vep-rs, oder Ensembl VEP)."  # i18n-source-hash:955e5cc8
 "controls.vcf.vep-analysis.vcf_vep_args.label" = "Zusätzliche VEP-Args"  # i18n-source-hash:bf32c5c5
 "controls.vcf.vep-analysis.vcf_vep_args.tooltip" = "Zusätzliche rohe Befehlszeilenargumente, die an VEP übergeben werden."  # i18n-source-hash:46f56b5b
 "actions.vcf.vep-analysis.vcf-vep-run.title" = "VEP-Annotation ausführen"  # i18n-source-hash:a79370af
-"actions.vcf.vep-analysis.vcf-vep-run.tooltip" = "Führen Sie Ensembl Variant Effect Predictor aus, um funktionelle Auswirkungen wie Genunterbrechung oder Krankheitsrelevanz vorherzusagen."  # i18n-source-hash:c3b53dc6
+"actions.vcf.vep-analysis.vcf-vep-run.tooltip" = "Sagen Sie mit VEP die funktionelle Auswirkung jeder Variante vorher, etwa Genunterbrechung oder Krankheitsrelevanz: standardmäßig mit vep-rs, oder mit Ensembl VEP (unter VEP-Engine wählen)."  # i18n-source-hash:e7aafd9a
 "pages.fastq.title" = "FASTQ"  # i18n-ignore i18n-source-hash:e2a6bd3c
 "pages.fastq.summary" = "FASTQ-Dateien enthalten rohe Sequencer-Reads vor der Ausrichtung. Verwenden Sie diese Seite, um FASTQ-Dateien mit Werkzeugen wie FastQC oder FastP zu analysieren."  # i18n-source-hash:251046f6
 "sections.fastq.fastq-align.title" = "FASTQ ausrichten"  # i18n-source-hash:8ccaa8ac
@@ -298,7 +298,7 @@
 "actions.library.genome-management.ref-resume.tooltip" = "Setzen Sie einen unterbrochenen Referenzdownload fort."  # i18n-source-hash:9a29349f
 "sections.library.databases-tools.title" = "Referenzdaten verwalten"  # i18n-source-hash:7bf78801
 "actions.library.databases-tools.vep-download.title" = "VEP-Cache herunterladen"  # i18n-source-hash:37dd3b06
-"actions.library.databases-tools.vep-download.tooltip" = "Laden Sie den VEP-Cache für das oben gewählte Release und Assembly (leer: 116, GRCh38) für die Offline-Annotation in den vep-Ordner der Referenzdaten herunter."  # i18n-source-hash:c32215d7
+"actions.library.databases-tools.vep-download.tooltip" = "Erstellen Sie den VEP-Cache (standardmäßig den von vep-rs) für das oben gewählte Release und Assembly (leer: 116, GRCh38) im vep-Ordner der Referenzdaten für die Offline-Annotation. Dafür werden etwa 17 GB von Ensembl heruntergeladen, und während des Aufbaus werden etwa 40 GB freier Speicher benötigt; der fertige Cache belegt 17 GB."  # i18n-source-hash:1338313c
 "actions.library.databases-tools.vep-verify.title" = "VEP-Cache prüfen"  # i18n-source-hash:11b16aeb
 "actions.library.databases-tools.vep-verify.tooltip" = "Prüfen Sie den VEP-Cache in den Referenzdaten auf fehlende Dateien oder Beschädigungen."  # i18n-source-hash:dc7f97b8
 "actions.library.databases-tools.vep-delete.title" = "VEP-Cache löschen"  # i18n-source-hash:4f39c38c
@@ -1037,6 +1037,10 @@
 "controls.cli.vep_preset.tooltip" = "everything (Standard) oder fast: etwa doppelt so schnell, ohne Populationsfrequenzen und HGVS."  # i18n-source-hash:804e943a
 "options.cli.value.everything.title" = "everything"  # i18n-ignore i18n-source-hash:d5a63c95
 "options.cli.value.fast.title" = "fast"  # i18n-ignore i18n-source-hash:0afde566
+"controls.cli.vep_engine.label" = "VEP-Engine"  # i18n-source-hash:af8dd0c9
+"controls.cli.vep_engine.tooltip" = "vep-rs (Standard): schnell und läuft unter Windows; oder Ensembl VEP (Linux und macOS). Jede braucht ihren eigenen Cache. „VEP-Cache herunterladen“ baut den vep-rs-Cache; für den Ensembl-VEP-Cache zuerst vep_engine in den Einstellungen auf ensembl setzen oder wgsextract vep download --engine ensembl ausführen. Leer: die Einstellung vep_engine, sonst vep-rs."  # i18n-source-hash:4fcba11c
+"options.cli.value.vep-rs.title" = "vep-rs"  # i18n-ignore
+"options.cli.value.ensembl.title" = "Ensembl VEP"  # i18n-ignore
 "controls.cli.vep_vcf_type.label" = "Variantentyp"  # i18n-source-hash:d907d5ef
 "controls.cli.vep_vcf_type.tooltip" = "Variantentyp, der die VEP-Argumente ändert. Leer: auto."  # i18n-source-hash:7be8d55c
 "options.cli.value.snp-indel.title" = "snp-indel"  # i18n-ignore i18n-source-hash:0722368d
