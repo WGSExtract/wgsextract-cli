@@ -58,7 +58,7 @@ export async function runAction(
         throw new Error("Missing action command.");
     }
     const resolvedContext = await contextWithFileState(context, bundleRoot);
-    const documentDirectory = resultSpec && resultDocumentInFile(resultSpec) ? await mkdtemp(path.join(tmpdir(), "gui-for-cli-result-")) : undefined;
+    const documentDirectory = resultSpec && resultDocumentInFile(resultSpec) ? await mkdtemp(path.join(tmpdir(), "wgsextract-gui-result-")) : undefined;
     const documentPath = documentDirectory ? path.join(documentDirectory, "result.json") : "";
     try {
         const rendered = renderedCommand(commandWithResultArguments(action.command, resultSpec, documentPath), resolvedContext);

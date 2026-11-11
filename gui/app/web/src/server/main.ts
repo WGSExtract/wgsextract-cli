@@ -120,7 +120,7 @@ server = listeningServer;
 listeningServer.listen(port, host, () => {
     const address = listeningServer.address();
     const boundPort = typeof address === "object" && address ? address.port : port;
-    console.log(`GUI for CLI Web UI: http://${host}:${boundPort}/`);
+    console.log(`WGS Extract GUI Web UI: http://${host}:${boundPort}/`);
     console.log(`Bundle source: ${bundleRuntime.sourceBundleRoot}`);
     console.log(`Bundle workspace: ${bundleRuntime.bundleRoot}`);
     if (portFile) {

@@ -1,5 +1,5 @@
 {
-  "name": "gui-for-cli-webui",
+  "name": "wgsextract-gui",
   "private": true,
   "type": "module",
   "scripts": {

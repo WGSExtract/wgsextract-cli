@@ -14,7 +14,7 @@ param(
     [switch]$DriveUI,
     [string]$UIPages = "settings,fastq,library,extract",
     [int]$UISetupTimeoutSeconds = 1800,
-    [string]$AdminTaskName = "GUIForCLIWindowsAdminBroker",
+    [string]$AdminTaskName = "WGSExtractGUIWindowsAdminBroker",
     [string]$AdminQueueDirectory = "tmp\windows-admin-broker",
     [switch]$KeepInstalled
 )

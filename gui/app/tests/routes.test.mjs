@@ -49,7 +49,7 @@ function testManifest() {
 }
 
 async function withTestServer(t, overrides = {}) {
-  const tempRoot = await mkdtemp(path.join(tmpdir(), "gui-for-cli-routes-"));
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-routes-"));
   t.after(async () => {
     await rm(tempRoot, { force: true, recursive: true });
   });

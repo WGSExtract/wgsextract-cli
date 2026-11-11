@@ -94,7 +94,7 @@ server.listen(0, "127.0.0.1", () => {
 `;
 
 async function withBundle(t) {
-  const bundleRoot = await mkdtemp(path.join(tmpdir(), "gui-for-cli-job-server-"));
+  const bundleRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-job-server-"));
   const manager = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
   // Windows can't remove the folder while the server still runs in it.
   t.after(async () => {

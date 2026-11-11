@@ -1,10 +1,10 @@
-# GUI for CLI
+# WGS Extract GUI
 
-GUI for CLI turns a portable CLI-tool bundle into an installable desktop app for Windows, macOS, and Linux. It is one TypeScript app: a Web UI and a local Node backend, packaged as a native desktop app with [Tauri](https://tauri.app).
+WGS Extract GUI turns a portable CLI-tool bundle into an installable desktop app for Windows, macOS, and Linux. It is one TypeScript app: a Web UI and a local Node backend, packaged as a native desktop app with [Tauri](https://tauri.app).
 
-![GUI for CLI running the WGS Extract example bundle (Extract page, dark mode)](docs/readme-screenshot.png)
+![WGS Extract GUI running the WGS Extract example bundle (Extract page, dark mode)](docs/readme-screenshot.png)
 
-The first real app built with GUI for CLI is the WGSExtract interface in `examples/WGSExtract`. It exercises setup steps, long-running commands, dynamic data sources, localization, configuration, terminal output, file pickers, and release packaging against a realistic genomics workflow.
+The first real app built with WGS Extract GUI is the WGSExtract interface in `examples/WGSExtract`. It exercises setup steps, long-running commands, dynamic data sources, localization, configuration, terminal output, file pickers, and release packaging against a realistic genomics workflow.
 
 This folder is part of the [wgsextract-cli](../README.md) repository: the app ships in the same `vX.Y.Z` release as the CLI it bundles (see [releasing](../docs/releasing.md)), and the root's `just gui-*` recipes run the commands below from anywhere in the repository. Its history up to the move is in the former [gui-for-cli](https://github.com/WGSExtract/gui-for-cli) repository too, with app releases up to v0.6.6.
 

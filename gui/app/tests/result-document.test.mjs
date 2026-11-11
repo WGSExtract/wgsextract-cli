@@ -44,7 +44,7 @@ async function withResultBundle(t, resultArguments = ["--result-file", "{{result
   await mkdir(path.join(bundleRoot, "scripts"), { recursive: true });
   await writeFile(path.join(bundleRoot, "scripts", "cli.mjs"), fakeCli, "utf8");
   await writeFile(path.join(bundleRoot, "manifest.json"), JSON.stringify({
-    id: "dev.guiforcli.result-document-fixture",
+    id: "dev.wgsextract-gui.result-document-fixture",
     displayName: "Result Document Fixture",
     summary: "Fixture bundle.",
     resultDocument: { format: "wgsextract.result/1", executables: [process.execPath], arguments: resultArguments },

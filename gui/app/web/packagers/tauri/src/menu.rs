@@ -3,7 +3,7 @@ use tauri::Manager;
 
 pub(crate) const CHECK_FOR_UPDATES_MENU_ID: &str = "check-for-updates";
 pub(crate) const LOAD_BUNDLE_MENU_ID: &str = "load-bundle";
-pub(crate) const ABOUT_MENU_ID: &str = "about-gui-for-cli";
+pub(crate) const ABOUT_MENU_ID: &str = "about-wgsextract-gui";
 
 pub(crate) fn app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Menu<R>> {
     let menu = Menu::default(app)?;
@@ -159,7 +159,7 @@ fn find_submenu_by_text<R: tauri::Runtime>(
 
 pub(crate) fn request_about<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
-        if let Err(error) = window.eval("window.dispatchEvent(new Event('gui-for-cli-show-about'))")
+        if let Err(error) = window.eval("window.dispatchEvent(new Event('wgsextract-gui-show-about'))")
         {
             eprintln!("Failed to dispatch about event: {error}");
         }
@@ -169,7 +169,7 @@ pub(crate) fn request_about<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 pub(crate) fn request_load_bundle<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
         if let Err(error) =
-            window.eval("window.dispatchEvent(new Event('gui-for-cli-load-bundle'))")
+            window.eval("window.dispatchEvent(new Event('wgsextract-gui-load-bundle'))")
         {
             eprintln!("Failed to dispatch load bundle event: {error}");
         }
@@ -180,5 +180,5 @@ pub(crate) fn app_name<R: tauri::Runtime, M: Manager<R>>(app: &M) -> String {
     app.config()
         .product_name
         .clone()
-        .unwrap_or_else(|| "GUI for CLI".to_string())
+        .unwrap_or_else(|| "WGS Extract GUI".to_string())
 }

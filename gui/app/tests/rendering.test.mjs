@@ -704,7 +704,7 @@ test("path fields show workspace paths as {{bundleWorkspace}}", async () => {
   globalThis.localStorage = { getItem() { return null; }, setItem() {} };
   globalThis.window = { innerHeight: 900 };
 
-  const workspace = "/home/me/gui-for-cli/BundleWorkspaces/wgs-extract";
+  const workspace = "/home/me/wgsextract-gui/BundleWorkspaces/wgs-extract";
   const { createInitialState, state } = await import("../dist/web/src/client/state.js");
   const { renderConfigEditor, renderTextControl } = await import("../dist/web/src/client/view.js");
   Object.assign(state, createInitialState(), {

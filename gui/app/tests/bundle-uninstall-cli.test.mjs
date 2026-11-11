@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist/web/src/server/bundle-uninstall-cli.js");
 
 async function fixture(t, script) {
-  const root = await mkdtemp(path.join(tmpdir(), "gui-for-cli-bundle-uninstall-"));
+  const root = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-bundle-uninstall-"));
   t.after(() => rm(root, { force: true, recursive: true }));
   const bundle = path.join(root, "bundle");
   await mkdir(path.join(bundle, "scripts"), { recursive: true });
@@ -30,7 +30,7 @@ async function fixture(t, script) {
 /** The workspace as setup leaves it: the bundle's copy, marked as the app's. */
 async function setUp(paths) {
   await cp(paths.bundle, paths.workspace, { recursive: true });
-  await writeFile(path.join(paths.workspace, ".bundle-workspace"), "GUI for CLI bundle workspace\n");
+  await writeFile(path.join(paths.workspace, ".bundle-workspace"), "WGS Extract GUI workspace\n");
 }
 
 function runCli(paths, ...flags) {

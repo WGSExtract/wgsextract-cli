@@ -25,7 +25,7 @@ param(
     [string]$PixiBaseDir = "$env:LOCALAPPDATA\WGSExtractPixi",
     [string]$WorkspaceDirectory = "$HOME\wgs-extract",
     [string]$InstallDirectory = "$env:LOCALAPPDATA\WGSExtract",
-    [string]$AdminTaskName = "GUIForCLIWindowsAdminBroker",
+    [string]$AdminTaskName = "WGSExtractGUIWindowsAdminBroker",
     [string]$AdminQueueDirectory = "tmp\windows-admin-broker",
     [switch]$SkipPreCleanup,
     [switch]$KeepInstalled,

@@ -175,7 +175,7 @@ fn main() {
                     subtree: true,
                     attributeFilter: ["data-state"]
                   }});
-                  window.addEventListener("gui-for-cli-rendered", notify);
+                  window.addEventListener("wgsextract-gui-rendered", notify);
                   document.addEventListener("DOMContentLoaded", notify);
                   window.addEventListener("load", notify);
                 }})();
@@ -221,7 +221,7 @@ fn main() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("failed to run GUI for CLI Tauri app");
+        .expect("failed to run WGS Extract GUI Tauri app");
 }
 
 /// Test harnesses (the Windows lifecycle/update scripts) set GFC_PORT_FILE to learn the backend port.

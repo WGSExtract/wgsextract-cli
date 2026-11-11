@@ -2,7 +2,7 @@ import type { Dirent } from "node:fs";
 import { chmod, cp, mkdir, open, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { relativeTopLevelName, resolveUserPath } from "./paths.js";
-import { claimWorkspaceRoot, workspaceSentinelContents, workspaceSentinelFileName } from "./workspace-location.js";
+import { claimWorkspaceRoot, isWorkspaceSentinel, workspaceSentinelContents, workspaceSentinelFileName } from "./workspace-location.js";
 import { configEditorControls } from "../../../shared/rendering.js";
 import type { BundleManifest, ControlSpec } from "../../../shared/types.js";
 import { errnoCode } from "./errors.js";
@@ -107,7 +107,7 @@ async function assertSafeExplicitWorkspaceRoot(workspaceRoot: string, manifest: 
     }
     const metadata = await readWorkspaceSyncMetadata(workspaceRoot).catch(() => null);
     const sentinel = await readFile(path.join(workspaceRoot, workspaceSentinelFileName), "utf8").catch(() => null);
-    const managed = sentinel === workspaceSentinelContents &&
+    const managed = isWorkspaceSentinel(sentinel) &&
         metadata?.version === syncMetadataVersion &&
         metadata?.manifestID === manifest.id &&
         metadata?.sourceRoot === path.resolve(sourceRoot);

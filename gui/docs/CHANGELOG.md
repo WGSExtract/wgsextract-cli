@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Changed
+- The rest of the GUI for CLI name goes: the app and its docs call themselves WGS Extract GUI, and internal names (window events, temporary folders, browser storage keys, the npm and Python package names) use `wgsextract-gui`. The workspace marker reads `WGS Extract GUI workspace`; workspaces marked by earlier releases are still recognised and get the new marker on the next start. The window layout (sidebar and terminal sizes) is remembered under new keys, so it resets once. Developer tools keep Node in `~/.local/share/wgsextract-gui-dev` and their caches in `wgsextract-gui-dev`, so `make setup` downloads Node again once.
+
 ## [0.8.7] - 2026-11-11
 
 ### Added

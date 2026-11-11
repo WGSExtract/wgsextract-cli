@@ -159,7 +159,7 @@ function render() {
     restoreFocus(app, focus);
     revealPathInputEnds(app);
     app.dataset.state = "ready";
-    window.dispatchEvent(new Event("gui-for-cli-rendered"));
+    window.dispatchEvent(new Event("wgsextract-gui-rendered"));
     bindEventsAfterFirstPaint(serial);
 }
 function renderBundleActionBar() {
@@ -221,7 +221,7 @@ function updateDocumentMetadata() {
     favicon.href = `/favicon.ico?bundle=${version}`;
 }
 function appWindowTitle() {
-    const appName = "GUI for CLI";
+    const appName = "WGS Extract GUI";
     const bundleName = String(state.manifest?.displayName ?? "").trim();
     const appVersion = String(state.appVersion ?? "").trim();
     const baseTitle = bundleName ? `${bundleName} - ${appName}` : appName;
