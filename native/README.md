@@ -243,6 +243,19 @@ What runs on the GPU:
   the CPU, while the GPU still extends seeds and rescues mates, and exits 0;
   earlier versions did the same after a "CPU fallback" message and then
   exited 1 with `--metal`.
+- GPU watchdog (`wgse-bwa` 0.9.1, `wgse-bwa-mem2` 0.5.1, `wgse-bwa-mem3`
+  0.2.1, `wgse-minimap2` 0.2.1): a GPU command that has run for too long
+  with no error from macOS, as on a hung virtual GPU, makes the aligner stop
+  using the GPU for the rest of the run. Too long means 180 s until any
+  command has completed (the first may page in a large index), then 60 s or
+  20 times the slowest command so far, if longer, counted from when macOS
+  scheduled the command, in uptime (so a sleeping Mac does not trip it). The
+  work in flight finishes on the CPU with the same results; `--backend auto`
+  exits 0 and `--metal` exits 1. Earlier versions waited forever. Buffers
+  and the shared index stay allocated while an abandoned command might still
+  run. Whether the process then exits promptly with a command still stuck on
+  the GPU is up to the Metal driver, and is untested: CI's injected hang
+  never reaches the GPU.
 - `wgse-bwa-mem3` (from 0.2.0): seed extension only, in every output mode.
   bwa-mem3 extends seeds in batches, scoring each batch first with 8-bit
   scores and then, for the extensions that overflow, with 16-bit scores; the
@@ -870,7 +883,7 @@ the same round, with their range: runs on hosted runners vary by 5–20%, so
 compare variants in one job with three or more rounds. Several runs can be
 dispatched at once.
 
-`bench/bench.sh` also runs locally:
+`bench/bench.sh` also runs locally, on macOS or Linux:
 
 ```bash
 native/bench/bench.sh fetch --data out/bench-data --tier small
@@ -884,6 +897,13 @@ A `--bin` directory may also hold upstream executables (`bwa`, `bwa-mem2`,
 `mm2` runs `minimap2 -ax sr` on `<ref>.fa.sr.mmi`, which the data release
 does not have: build it next to the other index files with
 `minimap2 -x sr -d <ref>.fa.sr.mmi <ref>.fa`.
+
+On Linux the memory columns come from `/proc`: "Pressure" is the kernel's
+memory pressure (PSI "some", 10-second average), "Min free" is
+`MemAvailable`, the compressor is zswap's pool and a run the OOM killer
+ended counts as jetsam (its log needs read access to the kernel journal).
+Linux has no footprint or page-in counters, so those columns are empty, and
+`--power` is macOS only.
 
 `--power` also measures each run's energy with `powermetrics`, which needs
 root: `--power-cmd` gives the command that runs it without a password prompt

@@ -1,0 +1,65 @@
+name: Linux bwa-mem3 parity
+
+# Checks that Bioconda's bwa-mem3 (the `bwa-mem3` Pixi environment), which
+# `align` and `realign` run in place of bwa and bwa-mem2 on Linux (#672),
+# writes their exact records: on the first 5M HG002 pairs on hs38, its
+# --compat=bwa-mem and --compat=bwa-mem2 output must hash to expected.tsv's
+# wgse-bwa and wgse-bwa-mem2 rows, which upstream bwa 0.7.19 and bwa-mem2 2.3
+# also give. Runs when this workflow changes, or from Actions > Run workflow
+# (after a bwa-mem3 update in pixi.lock).
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/linux_bwa_mem3.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  parity:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up the bwa-mem3 environment
+        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+        with:
+          pixi-version: v0.82.0
+          locked: true
+          environments: bwa-mem3
+      - name: Fetch hs38's bwa-mem2 index and the 5M HG002 pairs
+        run: |
+          # The largest free file system: the index and reads take about 12 GiB.
+          data=$(df -k --output=avail,target / /mnt 2> /dev/null | tail -n +2 | sort -n | tail -1 | awk '{ print $2 }')/bench-data
+          sudo mkdir -p "$data" && sudo chown "$USER" "$data"
+          echo "DATA=$data" >> "$GITHUB_ENV"
+          native/bench/bench.sh fetch --data "$data" --tier full-5m --configs mem3:cpu
+      - name: Compare bwa-mem3's records with bwa's and bwa-mem2's
+        run: |
+          bwa_mem3=.pixi/envs/bwa-mem3/bin/bwa-mem3
+          "$bwa_mem3" version
+          expected() {
+            awk -F '\t' -v tool="$1" '$1 == "full-5m" && $2 == tool && $3 == 10000000 { print $4 }' native/bench/expected.tsv
+          }
+          status=0
+          for pair in bwa-mem:wgse-bwa bwa-mem2:wgse-bwa-mem2; do
+            compat=${pair%:*} tool=${pair#*:}
+            /usr/bin/time -f "%e s, %M KiB" "$bwa_mem3" mem --compat="$compat" -t "$(nproc)" -K 10000000 \
+              "$DATA/hs38/hs38.fa" "$DATA"/reads/hg002-5m_R{1,2}.fastq.gz 2> "stderr-$compat.txt" |
+              grep -v '^@PG' | sha256sum | cut -c1-16 > "hash-$compat.txt"
+            tail -n 1 "stderr-$compat.txt"
+            echo "--compat=$compat: $(cat "hash-$compat.txt"), expected $(expected "$tool") ($tool)" | tee -a "$GITHUB_STEP_SUMMARY"
+            [ "$(cat "hash-$compat.txt")" = "$(expected "$tool")" ] || status=1
+          done
+          exit $status

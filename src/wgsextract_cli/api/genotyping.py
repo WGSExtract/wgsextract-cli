@@ -6,6 +6,9 @@ Each writes ``<input stem>.*`` files in ``outdir``, else beside the input:
 * ``cyp2d6``: CYP2D6 star alleles, copy number and hybrids with Cyrius
   (``.cyrius.tsv``/``.json``), from the optional ``cyrius`` Pixi environment.
   Cyrius's PolyForm Strict license allows noncommercial use only.
+* ``smn``: SMN1/SMN2 copy number and SMA carrier status with
+  SMNCopyNumberCaller (``.smn.tsv``/``.json``), from the optional ``smn``
+  environment. A screening estimate, not a diagnosis.
 * ``hla``: HLA class I and II alleles with T1K (``.t1k_genotype.tsv``,
   ``.t1k_allele.tsv``/``.vcf``), from the optional ``t1k`` environment.
 * ``repeats`` (``typing str``): disease repeat expansions (``.str.tsv``), with
@@ -56,6 +59,24 @@ class TypingCyp2d6Params(_TypingParams):
     ``median_depth``."""
 
     COMMAND = "typing cyp2d6"
+
+
+@dataclass(frozen=True, kw_only=True)
+class TypingSmnParams(_TypingParams):
+    """Call the copy number of SMN1, SMN2 and SMN2Δ7–8 with SMNCopyNumberCaller
+    for spinal muscular atrophy (SMA) carrier screening: one SMN1 copy is a
+    carrier, none is SMA-affected. Two copies can still be a "2+0" silent
+    carrier; g.27134T>G, associated with that, is counted. Short-read WGS of
+    at least 30x only: long reads are refused, and below 30x median depth no
+    calls are reported (the caller's files are kept as
+    ``<stem>.smn.below_min_depth.*``). A non-bwa-like aligner in the header
+    (Novoalign, Bowtie 2, ...) gets an ``aligner_not_calibrated`` warning. Not
+    a diagnosis. Metrics: ``smn1_copy_number``,
+    ``smn2_copy_number``, ``smn2_delta78_copy_number``, ``sma_carrier``,
+    ``sma_affected``, ``g27134tg_copy_number``, ``smn_filter``,
+    ``median_depth`` and ``coverage_mad``."""
+
+    COMMAND = "typing smn"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -155,6 +176,20 @@ def cyp2d6(
     return execute(params, run_cyp2d6, progress=progress, cancel=cancel, check=check)
 
 
+def smn(
+    params: TypingSmnParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Call SMN1/SMN2 copy number with SMNCopyNumberCaller (see
+    ``TypingSmnParams``)."""
+    from wgsextract_cli.commands.genotyping.smn import run_smn
+
+    return execute(params, run_smn, progress=progress, cancel=cancel, check=check)
+
+
 def hla(
     params: TypingHlaParams,
     *,
@@ -185,8 +220,10 @@ def repeats(
 __all__ = [
     "TypingCyp2d6Params",
     "TypingHlaParams",
+    "TypingSmnParams",
     "TypingStrParams",
     "cyp2d6",
     "hla",
     "repeats",
+    "smn",
 ]

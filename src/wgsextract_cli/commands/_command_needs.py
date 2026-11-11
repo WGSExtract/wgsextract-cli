@@ -111,7 +111,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
         HOURS,
         *_SAM,
         optional=(
-            "bcftools bgzip bwa bwa-mem2 curl gatk minimap2 pbmm2 sambamba samblaster"
+            "bcftools bgzip bwa bwa-mem2 bwa-mem3 curl gatk minimap2 pbmm2 sambamba samblaster"
         ),
     ),
     "basecall": _n(
@@ -120,7 +120,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "align": _n(
         HOURS,
         *_SAM,
-        optional="bcftools bwa bwa-mem2 curl gatk minimap2 pbmm2 sambamba samblaster",
+        optional="bcftools bwa bwa-mem2 bwa-mem3 curl gatk minimap2 pbmm2 sambamba samblaster",
     ),
     "vcf snp": _n(HOURS, *_CALL),
     "vcf indel": _n(HOURS, *_CALL),
@@ -220,6 +220,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "analyze comprehensive": _n(HOURS, *_CALL),
     "analyze batch-gen": _n(INSTANT),
     "typing cyp2d6": _n(MINUTES, "cyrius", "minimap2", "samtools", optional="bcftools"),
+    "typing smn": _n(MINUTES, "smn_caller.py", "samtools", optional="bcftools"),
     "typing hla": _n(
         MINUTES, "run-t1k", "samtools", "t1k-build.pl", optional="bcftools"
     ),

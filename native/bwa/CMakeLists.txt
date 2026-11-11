@@ -8,7 +8,7 @@ FetchContent_Declare(bwa
 FetchContent_MakeAvailable(bwa)
 
 # Bump when the wgse-bwa package changes; it is versioned separately from BWA.
-set(WGSE_BWA_VERSION 0.9.0)
+set(WGSE_BWA_VERSION 0.9.1)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${generated}")
 include("${CMAKE_CURRENT_SOURCE_DIR}/upstream_seams.cmake")
@@ -94,12 +94,15 @@ if(BUILD_TESTING)
     add_test(NAME bwa_metal_rescue_parity
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/rescue_parity.sh"
         $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/rescue-parity")
+    add_test(NAME bwa_metal_watchdog
+        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/rescue_parity.sh"
+        $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/watchdog" watchdog)
     add_test(NAME bwa_metal_extend_parity
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/extend_parity.sh"
         $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/extend-parity")
     # Exit 77 means the machine has no unified-memory Metal device.
     set_tests_properties(bwa_smoke bwa_metal_seeding_parity bwa_metal_rescue_parity
-        bwa_metal_extend_parity PROPERTIES SKIP_RETURN_CODE 77)
+        bwa_metal_watchdog bwa_metal_extend_parity PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
 install(TARGETS wgse-bwa RUNTIME DESTINATION bin)

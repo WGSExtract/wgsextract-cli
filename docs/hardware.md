@@ -14,9 +14,13 @@ For memory and disk planning, see [resource estimates](resource_estimates.md).
 `--aligner auto` (the default) aligns short reads with bwa-mem2 when all of
 these hold, and with bwa otherwise:
 
-- bwa-mem2 is installed (it is in the default environment on Linux, macOS and
-  Windows);
-- the reference already has a full bwa-mem2 index, including its `.0123` file;
+- bwa-mem2 will run: upstream bwa-mem2 is installed (it is in the default
+  environment on Linux, macOS and Windows), or, on Apple Silicon with native
+  aligners on, `wgse-bwa-mem2` 0.5.0 or later is (upstream bwa-mem2 isn't
+  needed then);
+- the reference already has the bwa-mem2 index that aligner reads: the full
+  index for upstream bwa-mem2 (and `wgse-bwa-mem2` before 0.5.0), without the
+  `.0123` file for `wgse-bwa-mem2` 0.5.0 and later;
 - the estimated alignment pipeline fits in the RAM available now.
 
 Auto never downloads or builds the index. When the index is missing but would
@@ -37,8 +41,12 @@ Few computers can build the bwa-mem2 index, so
 `wgsextract ref index --aligner bwa-mem2 --ref REF` downloads the published
 one (17 GB) for hs38DH and Broad's GRCh38, whose sequences are the same. For
 other references it builds the index only when the computer has the memory.
-The alignments are identical to bwa's, so the choice affects time and memory
-only.
+bwa-mem2 is a reimplementation of bwa's algorithm, but its records are not
+identical to bwa's: on 5M HG002 read pairs on hs38 the record hashes differ
+(bwa family `e2febf171215d840`, bwa-mem2 family `dff39743a72242de`). Each
+family is reproducible: `wgse-bwa` and `wgse-bwa-mem3 --compat=bwa-mem` write
+bwa's records, `wgse-bwa-mem2` and `wgse-bwa-mem3 --compat=bwa-mem2` write
+bwa-mem2's.
 
 The ~1.3× speedup is what we measured. bwa-mem2's authors **published** up to
 3.5× on one thread and 2.4× on one socket of an Intel Xeon Skylake with
@@ -58,11 +66,57 @@ time. As guidance only, a whole human genome needs a computer with 32 GB or
 more for bwa-mem2; since the 30x estimate at 6 threads is ~29 GiB, auto picks
 bwa whenever less than that is free. Smaller inputs need less.
 
-For now auto asks this of upstream bwa-mem2, even on a Mac with `wgse-bwa-mem2`
-0.5.0 or later, which maps without the `.0123` file and needs about 6 GiB less
-for hs38: auto still wants the `.0123` file and counts it, and picks bwa
-otherwise (where `wgse-bwa-mem3` may then stand in). `--aligner bwa-mem2` uses
-`wgse-bwa-mem2`'s own needs (see [Apple Silicon](#apple-silicon-metal)).
+With `wgse-bwa-mem2` 0.5.0 or later installed (and native aligners on), auto
+uses its estimate, which leaves out the `.0123` file it doesn't load (about
+6 GiB less for hs38; see [Apple Silicon](#apple-silicon-metal)), and the
+reference needs no `.0123` file. On a 16 GB Mac a 30x genome still doesn't fit,
+so auto keeps bwa there (`wgse-bwa`). `wgse-bwa-mem3` alone doesn't make auto
+pick bwa-mem2: it already stands in for bwa with bwa's records. When auto
+picks bwa-mem2, `wgse-bwa-mem3` stands in for it only when its own estimate
+also fits the RAM available; otherwise `wgse-bwa-mem2` aligns.
+
+Records: because bwa and bwa-mem2 write different records, a change in
+auto's choice changes the BAM, not just its `@PG` header and the result
+manifest. On a Mac that gains `wgse-bwa-mem2` 0.5.0 or later, or with a
+reference that has bwa-mem2's index without `.0123`, auto can now pick
+bwa-mem2 where it used to pick bwa, and a re-run gives a different BAM; it
+logs when it does. To compare runs, pin the aligner with `--aligner bwa` (or
+`--aligner bwa-mem2`).
+
+### bwa-mem3 on Linux
+
+[bwa-mem3](https://github.com/fulcrumgenomics/bwa-mem3) writes bwa's exact
+records with `--compat=bwa-mem` and bwa-mem2's with `--compat=bwa-mem2`, from
+bwa-mem2's index without its `.0123` file, several times faster. Bioconda's
+build needs a newer htslib than the default environment's samtools, so it has
+its own environment; install it with `pixi install --locked -e bwa-mem3` (Linux
+and macOS). On Linux, when it is installed and the reference has bwa-mem2's
+index, `align` and `realign` run it in place of bwa or bwa-mem2 (whichever
+`--aligner` or `auto` chose), under the same memory rules as `wgse-bwa-mem3` on
+a Mac ([Apple Silicon](#apple-silicon-metal)): in bwa's place its pipeline must
+fit the RAM available, so on 16 GB computers bwa usually runs. Ultima reads keep
+BWA. `--native-aligners off` (or `native_aligners = "off"`) turns this off. A
+bwa-mem3 older than 0.16.0, or one whose `bwa-mem3 version` fails, raises the
+`native_aligner_unusable` warning and bwa or bwa-mem2 runs. The result manifest
+records `native_aligner` `bwa-mem3` and `bwa_mem3_mode`, as on a Mac.
+
+**Measured** with `wgsextract align` on the first 5M HG002 read pairs (30x
+NovaSeq) on hs38, 16 threads, BAM output, two rounds in reversed order, on
+Azure 16-vCPU, 64 GiB VMs with Ubuntu 24.04. The records were the same with and
+without bwa-mem3 (SHA-256 of `samtools view`, 10,062,598 records):
+
+| Computer | `--aligner bwa` | with bwa-mem3 | `--aligner bwa-mem2` | with bwa-mem3 |
+| :--- | ---: | ---: | ---: | ---: |
+| ARM64: Cobalt 100 (Neoverse N2), D16pds_v6 | 295 s, 287 s | 52 s, 51 s (−82%) | 245 s, 243 s | 53 s, 53 s (−78%) |
+| x86-64: AMD EPYC 9V74 (Zen 4), D16ads_v6 | 342 s, 334 s | 55 s, 56 s (−84%) | 181 s, 181 s | 57 s, 57 s (−69%) |
+
+Peak memory was 14.7 GiB with bwa-mem3, against 6.6 GiB with bwa and 18.7 GiB
+with bwa-mem2. The `Linux bwa-mem3 parity` workflow checks Bioconda's build
+against bwa's and bwa-mem2's records on GitHub's x86-64 and ARM64 runners.
+
+Bioconda's x86-64 bwa-mem3 0.16.0 crashes at startup (in its bundled
+allocator) on glibc 2.44, as on current Arch Linux; it ran on Ubuntu 24.04's
+2.39. The CLI's version check catches that, warns and aligns with bwa.
 
 ### Threads and memory
 
@@ -154,6 +208,10 @@ It writes bwa's exact alignments and is **experimental**.
   It uses the GPU when its capabilities report `cuda_available`, and otherwise
   aligns on the CPU. If the GPU fails during a run, it finishes on the CPU with
   the same alignments.
+- **Order on Linux (bwa's records):** `wgse-bwa` on the GPU when it fits in
+  RAM; otherwise [bwa-mem3](#bwa-mem3-on-linux) `--compat=bwa-mem` when it's
+  installed and fits; otherwise `wgse-bwa` on the CPU; otherwise bwa. All write
+  the same records.
 - **What it needs:** only the NVIDIA driver; no Docker and no Parabricks
   licence. It checks the GPU's free memory before uploading the index (about
   4.7 GiB for hs38). It needs about 0.75 GiB more RAM than bwa, and the same

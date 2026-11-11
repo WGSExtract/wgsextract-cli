@@ -109,6 +109,7 @@ COMMANDS: list[tuple[str, list[str]]] = [
     ("sign create", ["sign", "create", "{bam}"]),
     ("sign verify", ["sign", "verify", "{dir}/SHA256SUMS"]),
     ("typing cyp2d6", ["typing", "cyp2d6", "--input", "{bam}"]),
+    ("typing smn", ["typing", "smn", "--input", "{bam}"]),
     ("typing hla", ["typing", "hla", "--input", "{bam}", "--hla-index", "x.fa"]),
     ("typing str", ["typing", "str", "--input", "{bam}", "--sex", "male"]),
 ]

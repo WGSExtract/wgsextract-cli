@@ -28,7 +28,10 @@ Y-DNA analysis (reference tables download on demand). This covers `align`,
 `realign`, BAM/CRAM sorting/indexing/conversion, bcftools calling, microarray
 export, `info`/coverage and Y/mtDNA lineage commands. BWA uses NEON KSW;
 bwa-mem2's native ARM build uses sse2neon (an intrinsics translation library,
-not an x86 emulator); minimap2 uses its NEON backend.
+not an x86 emulator); minimap2 uses its NEON backend. With the optional
+`bwa-mem3` environment (`pixi install --locked -e bwa-mem3`), bwa-mem3 writes
+bwa's or bwa-mem2's exact records about five times as fast, in their place
+([bwa-mem3 on Linux](hardware.md#bwa-mem3-on-linux)).
 
 VEP is available separately: run `pixi install --locked -e vep` before
 annotation, just as on Linux x86_64. The CLI only validates that the environment
@@ -69,7 +72,7 @@ GPU alignment/realignment also fails before preparing inputs or inspecting
 Docker: the Parabricks image is not qualified natively on ARM64. Use the
 native CPU aligners; x86 containers are not an ARM64 fallback.
 
-PharmCAT, Cyrius, T1K, ExpansionHunter and PacBio-specific binaries are not
+PharmCAT, Cyrius, SMNCopyNumberCaller, T1K, ExpansionHunter and PacBio-specific binaries are not
 qualified as part of phase 1. Their existing platform restrictions are not a
 promise of ARM64 support. Native GKL and DeepVariant are separate #236 phase-2
 work; a Java JIT or an ARM TensorFlow package alone does not satisfy that gate.

@@ -53,6 +53,7 @@
         },
         "lineage": {"$ref": "#/$defs/section"},
         "pharmacogenomics": {"$ref": "#/$defs/section"},
+        "carrier_screening": {"$ref": "#/$defs/section"},
         "clinvar": {
           "allOf": [{"$ref": "#/$defs/section"}],
           "required": ["gene_list"],
@@ -191,7 +192,7 @@
       ],
       "additionalProperties": false,
       "properties": {
-        "section": {"enum": ["lineage", "pharmacogenomics", "clinvar"]},
+        "section": {"enum": ["lineage", "pharmacogenomics", "carrier_screening", "clinvar"]},
         "label": {"type": "string", "minLength": 1},
         "value": {"type": "string"},
         "detail": {"type": ["string", "null"]},

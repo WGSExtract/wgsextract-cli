@@ -27,6 +27,11 @@
 #   bench.sh hwinfo --out DIR
 #       Print the machine's memory, CPU, swap, power and Metal device.
 #
+# It runs on macOS and Linux. On Linux the memory columns come from /proc:
+# pressure is PSI's "some avg10" (%), min free is MemAvailable (%), the
+# compressor is zswap's pool, jetsam means the kernel's OOM killer, and the
+# footprint and pageins columns are empty; --power needs macOS.
+#
 # A config is TOOL:BACKEND[:tN][:KN][:probe][:+ARG...]
 #   TOOL     bwa (wgse-bwa or bwa), mem2 (wgse-bwa-mem2 or bwa-mem2), mem3
 #            (wgse-bwa-mem3 or bwa-mem3, on the BWA-MEM2 index) or mm2
@@ -140,8 +145,22 @@ tier_field() {
         END { exit !found }' "$here/tiers.tsv" || die "unknown tier $1 (see tiers.tsv)"
 }
 
-sha256() { shasum -a 256 "$1" | cut -d' ' -f1; }
-file_bytes() { stat -L -f %z "$1" 2> /dev/null || stat -L -c %s "$1"; }
+linux=0
+[ "$(uname -s)" != Linux ] || linux=1
+# GNU stat's -f reports the file system, so each system gets its own syntax.
+if [ $linux = 1 ]; then
+    sha256_stdin() { sha256sum | cut -d' ' -f1; }
+    file_bytes() { stat -L -c %s "$1"; }
+    memory_bytes() { awk '/^MemTotal:/ { print $2 * 1024 }' /proc/meminfo; }
+    load1() { cut -d' ' -f1 /proc/loadavg; }
+else
+    sha256_stdin() { shasum -a 256 | cut -d' ' -f1; }
+    file_bytes() { stat -L -f %z "$1"; }
+    memory_bytes() { sysctl -n hw.memsize; }
+    load1() { sysctl -n vm.loadavg | awk '{ print $2 }'; }
+fi
+sha256() { sha256_stdin < "$1"; }
+page_bytes() { getconf PAGESIZE; }
 
 # The data files a tier and its configs need, relative to the data directory.
 tier_paths() {
@@ -242,6 +261,10 @@ hwinfo() {
     done
     [ -n "$out" ] || usage
     build_helpers "$out/helpers"
+    if [ $linux = 1 ]; then
+        hwinfo_linux "$out"
+        return
+    fi
     echo "os=$(sw_vers -productVersion) ($(sw_vers -buildVersion))"
     for name in hw.model machdep.cpu.brand_string hw.ncpu hw.perflevel0.logicalcpu \
         hw.perflevel1.logicalcpu hw.memsize vm.swapusage vm.user_wire_limit \
@@ -254,12 +277,42 @@ hwinfo() {
     [ -x "$out/helpers/metal_info" ] && "$out/helpers/metal_info" || echo "metal_device=unknown"
 }
 
+hwinfo_linux() {
+    local out=$1 file
+    echo "os=$(sed -n 's/^PRETTY_NAME="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' /etc/os-release) (Linux $(uname -r))"
+    echo "machine=$(uname -m)"
+    echo "cpu=$(lscpu 2> /dev/null | sed -n 's/^Model name: *//p' | head -1)"
+    echo "ncpu=$(getconf _NPROCESSORS_ONLN)"
+    echo "cpu_flags=$(grep -m 1 -i '^\(flags\|features\)' /proc/cpuinfo | cut -d: -f2 | tr ' ' '\n' |
+        grep -x 'asimd\|asimddp\|sve\|sve2\|avx2\|avx512f\|avx512bw' | tr '\n' ' ' | sed 's/ $//')"
+    echo "memsize=$(memory_bytes)"
+    echo "swap_total_kib=$(awk '/^SwapTotal:/ { print $2 }' /proc/meminfo)"
+    file=/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+    echo "governor=$([ -r "$file" ] && cat "$file" || echo -)"
+    echo "disk_free_gib=$(df -k "$out" | awk 'NR == 2 { printf "%.1f", $4 / 1048576 }')"
+    echo "load1=$(load1)"
+}
+
 # The background memory sampler: time, swap used (MiB), pressure level
 # (1 normal, 2 warning, 4 critical), memorystatus level (% free) and the
-# compressor's size (MiB), every two seconds.
+# compressor's size (MiB), every two seconds. On Linux: swap used, PSI's
+# memory "some avg10", MemAvailable (%) and zswap's pool (MiB).
 sampler() {
     local page
-    page=$(sysctl -n hw.pagesize)
+    if [ $linux = 1 ]; then
+        local psi=()
+        [ ! -r /proc/pressure/memory ] || psi=(/proc/pressure/memory)
+        while :; do
+            awk -v now="$(date +%s)" '
+                FILENAME ~ /pressure/ { if ($1 == "some") { split($2, f, "="); psi = f[2] } next }
+                /^SwapTotal:/ { st = $2 } /^SwapFree:/ { sf = $2 } /^MemTotal:/ { mt = $2 }
+                /^MemAvailable:/ { ma = $2 } /^Zswap:/ { z = $2 }
+                END { printf "%s\t%.0f\t%s\t%.0f\t%.0f\n", now, (st - sf) / 1024, psi + 0, ma * 100 / mt, z / 1024 }
+            ' /proc/meminfo ${psi[@]+"${psi[@]}"}
+            sleep 2
+        done
+    fi
+    page=$(page_bytes)
     while :; do
         printf '%s\t%s\t%s\t%s\t%s\n' "$(date +%s)" \
             "$(sysctl -n vm.swapusage | awk '{ for (i = 1; i < NF; i++) if ($i == "used") {
@@ -270,7 +323,13 @@ sampler() {
     done
 }
 
+# The swap and paging counters, named as vm_stat names them (in pages).
 vm_counters() {
+    if [ $linux = 1 ]; then
+        awk '$1 == "pswpin" { print "Swapins=" $2 } $1 == "pswpout" { print "Swapouts=" $2 }
+            $1 == "pgmajfault" { print "Pageins=" $2 }' /proc/vmstat
+        return
+    fi
     vm_stat | awk '/^(Swapins|Swapouts|Pageouts|Pageins|Compressions|Decompressions):/ {
         sub(/:/, "", $1); sub(/\./, "", $2); print $1 "=" $2 }'
 }
@@ -282,7 +341,7 @@ warm() {
     for ext in $(tool_files "$c_tool" "$c_backend"); do files+=("$ref_fa.$ext"); done
     files+=("$data/reads/${reads}_R1.fastq.gz" "$data/reads/${reads}_R2.fastq.gz")
     for file in "${files[@]}"; do total=$((total + $(file_bytes "$file"))); done
-    [ "$total" -lt $((($(sysctl -n hw.memsize) - balloon * 1048576) / 2)) ] && cat "${files[@]}" > /dev/null || true
+    [ "$total" -lt $((($(memory_bytes) - balloon * 1048576) / 2)) ] && cat "${files[@]}" > /dev/null || true
 }
 
 # One run: writes $dir/runstat.txt, stderr.txt, samples.tsv, vm_*.txt, hash
@@ -302,7 +361,7 @@ run_one() {
     sync
     vm_counters > "$dir/vm_before.txt"
     date '+%Y-%m-%d %H:%M:%S' > "$dir/started.txt"
-    sysctl -n vm.loadavg | awk '{ print $2 }' > "$dir/load.txt"
+    load1 > "$dir/load.txt"
     # power.py measures the idle power first, then runs runstat, which times only the aligner.
     [ -z "$power_cmd" ] || power=(python3 "$here/power.py" run --cmd "$power_cmd" --idle "$power_idle"
         ${power_quiet:+--quiet "$power_quiet"} --out "$dir" --)
@@ -310,7 +369,7 @@ run_one() {
     sampler_pid=$!
     set +e
     ${power[@]+"${power[@]}"} "$helpers/runstat" -t "$timeout" "$dir/runstat.txt" "${cmd[@]}" 2> "$dir/stderr.txt" |
-        grep -v '^@PG' | shasum -a 256 | cut -c1-16 > "$dir/hash"
+        grep -v '^@PG' | sha256_stdin | cut -c1-16 > "$dir/hash"
     rc=${PIPESTATUS[0]}
     set -e
     kill "$sampler_pid" 2> /dev/null || true
@@ -344,6 +403,12 @@ run_one() {
 # crash or jetsam reports.
 diagnose() {
     local dir=$1 report
+    if [ $linux = 1 ]; then
+        # The kernel log needs the systemd-journal group or root; without it the log stays empty.
+        journalctl -k -q --since "$(cat "$dir/started.txt")" 2> /dev/null |
+            grep -i 'out of memory\|oom-kill\|killed process' | tail -200 > "$dir/memorystatus.log" || true
+        return
+    fi
     log show --style compact --start "$(cat "$dir/started.txt")" \
         --predicate 'eventMessage CONTAINS[c] "memorystatus" OR eventMessage CONTAINS[c] "jetsam" OR eventMessage CONTAINS[c] "low swap"' \
         2> /dev/null | tail -200 > "$dir/memorystatus.log" || true
@@ -368,7 +433,7 @@ row() {
         runstat=/dev/null
         note="the aligner did not run${note:+; $note}"
     fi
-    if [ -s "$dir/memorystatus.log" ] && grep -qi "killing.*wgse\|wgse.*kill" "$dir/memorystatus.log"; then
+    if [ -s "$dir/memorystatus.log" ] && grep -qi "killing.*wgse\|wgse.*kill\|killed process" "$dir/memorystatus.log"; then
         jetsam=1
     fi
     ls "$dir"/JetsamEvent* > /dev/null 2>&1 && jetsam=1
@@ -376,9 +441,9 @@ row() {
     [ "$resets" = 0 ] || note="$resets GPU resets${note:+; $note}"
     awk -F '=' -v OFS='\t' -v name="$name" -v tier="$tier" -v label="$label" -v config="$config" \
         -v round="$round" -v rc="$rc" -v hash="$hash" -v expected="$expected" -v status="$status" \
-        -v note="${note:--}" -v jetsam="$jetsam" -v page="$(sysctl -n hw.pagesize)" \
+        -v note="${note:--}" -v jetsam="$jetsam" -v page="$(page_bytes)" \
         -v samples="$dir/samples.tsv" -v before="$dir/vm_before.txt" -v after="$dir/vm_after.txt" \
-        -v stderr="$dir/stderr.txt" -v load="$(cat "$dir/load.txt")" -v power="$power_file" '
+        -v stderr="$dir/stderr.txt" -v load_avg="$(cat "$dir/load.txt")" -v power="$power_file" '
         BEGIN { free_min = 100 }
         FILENAME == power { p[$1] = substr($0, length($1) + 2); next }
         FILENAME == before { vm0[$1] = $2; next }
@@ -398,10 +463,10 @@ row() {
             if (rc != 0 && hash == expected) note = (note == "-" ? "" : note "; ") "the alignments are complete and match"
             print name, tier, label, config, round, rc, r["signal"] + 0, r["timed_out"] + 0,
                 r["real_s"], r["user_s"], r["sys_s"],
-                sprintf("%.0f", r["max_rss_bytes"] / 1048576), sprintf("%.0f", r["peak_footprint_bytes"] / 1048576),
-                r["page_faults"] + 0, r["pageins"] + 0, swap + 0, sprintf("%.0f", (vm1["Swapouts"] - vm0["Swapouts"]) * page / 1048576),
+                sprintf("%.0f", r["max_rss_bytes"] / 1048576), ("peak_footprint_bytes" in r) ? sprintf("%.0f", r["peak_footprint_bytes"] / 1048576) : "-",
+                r["page_faults"] + 0, ("pageins" in r) ? r["pageins"] : "-", swap + 0, sprintf("%.0f", (vm1["Swapouts"] - vm0["Swapouts"]) * page / 1048576),
                 compressor + 0, pressure + 0, sampled ? free_min : "-", gpu + 0, fallback + 0, failed + 0, interruptions + 0,
-                jetsam, hash, expected, status, note, ("load1" in p) ? p["load1"] : load,
+                jetsam, hash, expected, status, note, ("load1" in p) ? p["load1"] : load_avg,
                 ("status" in p) ? p["status"] : "-", f(p["idle_cpu_w"]), f(p["idle_gpu_w"]), f(p["idle_package_w"]),
                 f(p["cpu_wh"]), f(p["gpu_wh"]), f(p["package_wh"]), f(p["net_cpu_wh"]), f(p["net_gpu_wh"]), f(p["net_package_wh"]) }
         function f(value) { return value == "" ? "-" : value }
@@ -410,7 +475,7 @@ row() {
 
 run() {
     local out="" configs="" rounds=1 labels=() bins=() spec
-    data="" tier="" timeout=7200 threads=$(sysctl -n hw.ncpu) name=$(hostname -s) balloon=0
+    data="" tier="" timeout=7200 threads=$(getconf _NPROCESSORS_ONLN) name=$(hostname -s) balloon=0
     power_cmd="" power_idle=60 power_quiet=""
     while [ $# -gt 0 ]; do
         case $1 in
@@ -439,6 +504,7 @@ run() {
     [[ $power_idle =~ ^[0-9]+$ ]] || die "--power-idle needs a whole number of seconds, not $power_idle"
     [ -z "$power_quiet" ] || [[ $power_quiet =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "--power-quiet needs watts, not $power_quiet"
     if [ -n "$power_cmd" ]; then
+        [ $linux = 0 ] || die "--power needs macOS (powermetrics)"
         command -v python3 > /dev/null || die "--power needs python3"
         python3 "$here/power.py" check --cmd "$power_cmd" || die "--power: $power_cmd cannot run powermetrics"
     fi
@@ -556,10 +622,10 @@ summary() {
             statuses[key] = statuses[key] (index(" " statuses[key] " ", " " $28 " ") ? "" : (statuses[key] == "" ? "" : " ") $28)
             if ($6 == 0) { real[key] = real[key] " " $9; cpu[key] = cpu[key] " " ($10 + $11)
                 round_real[key, $5] = $9; rounds[key] = rounds[key] " " $5
-                rss[key] = rss[key] " " $12; foot[key] = foot[key] " " $13
+                rss[key] = rss[key] " " $12; if ($13 != "-") foot[key] = foot[key] " " $13
                 if ($31 != "" && $31 != "-") energy = 1
                 # Runs whose sampler failed (power "failed") have no energy.
-                if (energy && $35 != "-") { load[key] = load[key] " " $30
+                if (energy && $35 != "-") { load_avg[key] = load_avg[key] " " $30
                     cpu_wh[key] = cpu_wh[key] " " $35; gpu_wh[key] = gpu_wh[key] " " $36
                     package_wh[key] = package_wh[key] " " $37
                     if ($34 != "-") { idle[key] = idle[key] " " $34; net_wh[key] = net_wh[key] " " $40 } } }
@@ -567,6 +633,8 @@ summary() {
             if ($16 > swap[key]) swap[key] = $16
             if ($17 > swapout[key]) swapout[key] = $17
             if ($19 > pressure[key]) pressure[key] = $19
+            # Linux rows (no footprint) record PSI rather than macOS levels.
+            if ($13 == "-") psi[key] = 1
             if ($20 != "-" && (!(key in freemin) || $20 < freemin[key])) freemin[key] = $20
             gpu[key] += $21; fallback[key] += $22 + $23; interruptions[key] += $24
             if ($6 == 0) { if (!(key in okhash)) okhash[key] = $26; else if (okhash[key] != $26) several[key] = 1
@@ -602,6 +670,7 @@ summary() {
                 level = "normal"
                 if (pressure[key] >= 2) level = "warning"
                 if (pressure[key] >= 4) level = "critical"
+                if (key in psi) level = sprintf("PSI %.1f%%", pressure[key])
                 notes = failures[key]
                 if (notes != "" && note[key] != "") notes = notes "; "
                 notes = notes note[key]
@@ -612,7 +681,7 @@ summary() {
                     fmt(median(foot[key]), "%.2f", 1024), swap[key] / 1024, swapout[key] / 1024, level,
                     (key in freemin) ? freemin[key] "%" : "-", gpu[key], fallback[key], (key in hash) ? "`" hash[key] "`" : "-", notes
                 # Energy: the medians of the runs, in Wh per run; above idle subtracts the idle power.
-                if (energy) printf " %s | %s | %s | %s | %s | %s |", fmt(median(load[key]), "%.1f", 1),
+                if (energy) printf " %s | %s | %s | %s | %s | %s |", fmt(median(load_avg[key]), "%.1f", 1),
                     fmt(median(idle[key]), "%.2f", 1), fmt(median(cpu_wh[key]), "%.3f", 1), fmt(median(gpu_wh[key]), "%.3f", 1),
                     fmt(median(package_wh[key]), "%.3f", 1), fmt(median(net_wh[key]), "%.3f", 1)
                 printf "\n"

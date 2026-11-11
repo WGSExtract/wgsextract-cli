@@ -50,11 +50,13 @@ def _native_aligners_param() -> Any:
         "bwa-mem2's index and it fits in RAM; on Linux x86-64, with wgse-bwa in "
         "place of bwa. Used when they're on PATH (auto; same alignments, "
         "faster, on the Metal or NVIDIA GPU when it fits) or never (off). "
-        "Default: config native_aligners, else auto. Install them as "
-        "native/README.md describes.",
+        "On Linux, auto also uses Bioconda's bwa-mem3 (`pixi install -e "
+        "bwa-mem3`) after wgse-bwa's GPU. Default: config native_aligners, else "
+        "auto. Install the builds as native/README.md describes.",
         doc="auto (the default, or config native_aligners) uses WGS Extract's "
         "aligner builds (Apple Silicon; wgse-bwa on Linux x86-64) when "
-        "installed on PATH; off never does.",
+        "installed on PATH, and on Linux Bioconda's bwa-mem3 in place of bwa "
+        "or bwa-mem2; off never does.",
         choices=NATIVE_ALIGNER_SETTINGS,
         config_key="native_aligners",
     )
@@ -117,7 +119,7 @@ class AlignParams(Params):
         help="Aligner to use. Auto uses bwa-mem2 for short reads when the reference "
         "has its index (see `ref index`), else bwa; for long reads pbmm2 for PacBio "
         "when installed, otherwise minimap2. bwa-mem3 (wgse-bwa-mem3 on Apple "
-        "Silicon, else bwa-mem3 on PATH) writes bwa's exact records faster, "
+        "Silicon, else bwa-mem3 from PATH or its Pixi environment) writes bwa's exact records faster, "
         "from bwa-mem2's index.",
         choices=ALIGNERS,
     )

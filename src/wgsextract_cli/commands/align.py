@@ -43,8 +43,10 @@ from wgsextract_cli.core.native_aligners import (
     AlignerCommand,
     NativeAligner,
     apple_silicon,
+    find_bwa_mem3,
     find_native_aligner,
     native_setting,
+    on_linux,
 )
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.output_checks import record_alignment_output
@@ -464,29 +466,43 @@ def short_read_aligner(
     memory: str = "512M",
     samblaster: bool = True,
     reads: int | None = None,
+    native_aligners: str | None = "off",
 ) -> str:
     """bwa or bwa-mem2 for --aligner bwa, bwa-mem2 or auto. Auto takes bwa-mem2,
-    whose alignments are bwa's in less time, when it's installed and the
-    reference has its index that fits in this computer's memory."""
+    which is faster than bwa but writes different records, when it will run
+    (upstream bwa-mem2, or with ``native_aligners`` wgse-bwa-mem2 0.5.0 and
+    later, which needs no upstream bwa-mem2) and the reference has the index
+    it reads that fits in this computer's memory (that build's estimate leaves
+    out the .0123 file; AlignerCommand.memory_model)."""
     if requested != "auto":
         return requested
-    if get_tool_path("bwa-mem2") is None:
+    model = bwa_mem2_memory_model(native_aligners)
+    if model == "bwa-mem2" and get_tool_path("bwa-mem2") is None:
         return "bwa"
     memory = short_read_sort_memory("bwa-mem2", memory, log=False)
-    fits = bwa_mem2.can_map(
+    needed = estimate_mapping_memory(
         ref,
+        model,
         threads=threads,
         memory=memory,
         samblaster=samblaster,
         reads=reads,
-    )
-    if bwa_mem2.has_index(ref):
+    ).total
+    fits = available_memory() >= needed
+    if bwa_mem2_index_ready(model, ref):
         if fits:
+            if model == "wgse-bwa-mem2":
+                logging.info(
+                    "Auto chose bwa-mem2 (records differ from bwa's): "
+                    "wgse-bwa-mem2 0.5.0 or later maps without the .0123 file "
+                    f"and fits in {needed / 1024**3:.1f} GiB. Use --aligner bwa "
+                    "to keep bwa's records."
+                )
             return "bwa-mem2"
         logging.info(
-            f"Not using bwa-mem2: the alignment pipeline needs about "
-            f"{bwa_mem2.mapping_memory(ref, threads=threads, memory=memory, samblaster=samblaster, reads=reads) / 1024**3:.1f} "
-            "GiB of available RAM. Use --aligner bwa or lower --memory."
+            f"Not using {model}: the alignment pipeline needs about "
+            f"{needed / 1024**3:.1f} GiB of available RAM. Use --aligner bwa "
+            "or lower --memory."
         )
     elif fits:
         logging.info(
@@ -519,6 +535,7 @@ def short_read_command(
         memory=memory,
         samblaster=samblaster,
         reads=reads,
+        native_aligners=job.native_aligners,
     )
     if tool == "bwa-mem2":
         ensure_fasta_index(ref)
@@ -634,6 +651,34 @@ def native_short_read_aligner(
     wgse-bwa-mem3 writes either's exact records faster, so it runs in their
     place when it fits (bwa_mem3_stand_in).
     """
+
+    def gpu_fit(
+        native: NativeAligner, quiet: bool = False
+    ) -> tuple[AlignerCommand, str]:
+        return _bwa_gpu_fit(
+            job,
+            native,
+            ref,
+            threads=threads,
+            memory=memory,
+            samblaster=samblaster,
+            reads=reads,
+            read_length=read_length,
+            additional_ram_bytes=additional_ram_bytes,
+            quiet=quiet,
+        )
+
+    # On Linux, wgse-bwa on an NVIDIA GPU beats bwa-mem3 on the CPU (#674), so
+    # it goes first when its GPU backend fits; then bwa-mem3, then the builds
+    # on the CPU, then upstream.
+    if on_linux() and tool == "bwa":
+        native = find_native_aligner(tool, job.native_aligners, probe=True)
+        if native is not None and native.gpu == "cuda":
+            if gpu_fit(native, quiet=True)[0].gpu:
+                aligner, fitted = gpu_fit(native)
+                if announce:
+                    aligner.announce()
+                return aligner, fitted
     stand_in = bwa_mem3_stand_in(
         job,
         tool,
@@ -657,56 +702,79 @@ def native_short_read_aligner(
     elif tool != "bwa":
         aligner = AlignerCommand(tool, native, gpu=True)
     else:
-        gpu = bwa_gpu_memory(ref, reads)
-        budget = _gpu_budget(additional_ram_bytes)
-        amount, unit = parse_memory(memory)
-        mib = amount * (1024 if unit == "G" else 1)
-        candidates = [memory] + [
-            f"{step}M" for step in _GPU_SORT_MEMORY_STEPS_MIB if step < mib
-        ]
-
-        def needed(sort_memory: str, gpu_bytes: int = gpu) -> int:
-            estimate = estimate_mapping_memory(
-                ref,
-                tool,
-                threads=threads,
-                memory=sort_memory,
-                samblaster=samblaster,
-                reads=reads,
-                platform=job.platform,
-                read_length=read_length,
-                gpu_bytes=gpu_bytes,
-            )
-            return estimate.total + additional_ram_bytes
-
-        # The GPU never needs more than the CPU run it replaces, which goes
-        # ahead (with a LOW preflight) even when it doesn't fit.
-        cpu = needed(memory, 0)
-        limit = max(budget, cpu)
-        fitting = next((m for m in candidates if needed(m) <= limit), None)
-        if fitting is None:
-            room = (
-                f"the {budget / 1024**3:.1f} GiB of RAM it can use"
-                if limit == budget
-                else f"the {cpu / 1024**3:.1f} GiB it needs on the CPU"
-            )
-            logging.info(
-                f"Running {native.binary} on the CPU: with its {_gpu_name(native)} GPU backend "
-                f"the alignment is estimated to need {needed(candidates[-1]) / 1024**3:.1f} "
-                f"GiB, more than {room}."
-            )
-            aligner = AlignerCommand(tool, native)
-        else:
-            if fitting != memory:
-                logging.info(
-                    f"Sorting with {fitting} per thread (not {memory}) to leave "
-                    f"room for {native.binary}'s {_gpu_name(native)} GPU backend; the output "
-                    "is the same."
-                )
-            aligner = AlignerCommand(tool, native, gpu=True)
-            memory = fitting
+        aligner, memory = gpu_fit(native)
     if announce:
         aligner.announce()
+    return aligner, memory
+
+
+def _bwa_gpu_fit(
+    job: AlignJob,
+    native: NativeAligner,
+    ref: str,
+    *,
+    threads: str,
+    memory: str,
+    samblaster: bool,
+    reads: int | None,
+    read_length: float | None,
+    additional_ram_bytes: int,
+    quiet: bool = False,
+) -> tuple[AlignerCommand, str]:
+    """wgse-bwa on its GPU with the sort memory per thread that lets it fit
+    (see native_short_read_aligner), else on the CPU with ``memory``; ``quiet``
+    logs neither choice (a probe before bwa-mem3 is considered)."""
+    tool = "bwa"
+    gpu = bwa_gpu_memory(ref, reads)
+    budget = _gpu_budget(additional_ram_bytes)
+    amount, unit = parse_memory(memory)
+    mib = amount * (1024 if unit == "G" else 1)
+    candidates = [memory] + [
+        f"{step}M" for step in _GPU_SORT_MEMORY_STEPS_MIB if step < mib
+    ]
+
+    def needed(sort_memory: str, gpu_bytes: int = gpu) -> int:
+        estimate = estimate_mapping_memory(
+            ref,
+            tool,
+            threads=threads,
+            memory=sort_memory,
+            samblaster=samblaster,
+            reads=reads,
+            platform=job.platform,
+            read_length=read_length,
+            gpu_bytes=gpu_bytes,
+        )
+        return estimate.total + additional_ram_bytes
+
+    # The GPU never needs more than the CPU run it replaces, which goes
+    # ahead (with a LOW preflight) even when it doesn't fit.
+    cpu = needed(memory, 0)
+    limit = max(budget, cpu)
+    fitting = next((m for m in candidates if needed(m) <= limit), None)
+    if fitting is None:
+        if quiet:
+            return AlignerCommand(tool, native), memory
+        room = (
+            f"the {budget / 1024**3:.1f} GiB of RAM it can use"
+            if limit == budget
+            else f"the {cpu / 1024**3:.1f} GiB it needs on the CPU"
+        )
+        logging.info(
+            f"Running {native.binary} on the CPU: with its {_gpu_name(native)} GPU backend "
+            f"the alignment is estimated to need {needed(candidates[-1]) / 1024**3:.1f} "
+            f"GiB, more than {room}."
+        )
+        aligner = AlignerCommand(tool, native)
+    else:
+        if fitting != memory and not quiet:
+            logging.info(
+                f"Sorting with {fitting} per thread (not {memory}) to leave "
+                f"room for {native.binary}'s {_gpu_name(native)} GPU backend; the output "
+                "is the same."
+            )
+        aligner = AlignerCommand(tool, native, gpu=True)
+        memory = fitting
     return aligner, memory
 
 
@@ -725,16 +793,15 @@ def _gpu_budget(additional_ram_bytes: int) -> int:
 
 
 def bwa_mem3_build(job: AlignJob, tool: str, ref: str) -> NativeAligner | None:
-    """The wgse-bwa-mem3 that can write ``tool``'s exact records (--compat)
-    for this run, memory aside, or None. It needs the reference's bwa-mem2
-    index. Ultima reads keep BWA, which is qualified for their flow tags."""
+    """The bwa-mem3 (wgse-bwa-mem3 on Apple Silicon, Bioconda's on Linux:
+    find_bwa_mem3) that can write ``tool``'s exact records (--compat) for this
+    run, memory aside, or None. It needs the reference's bwa-mem2 index.
+    Ultima reads keep BWA, which is qualified for their flow tags."""
     if tool not in BWA_MEM3_COMPAT or job.platform == "ultima":
         return None
     if not bwa_mem2.has_bwa_mem3_index(ref):
         return None
-    return find_native_aligner(
-        "bwa-mem3", job.native_aligners, quiet=True, instead=tool
-    )
+    return find_bwa_mem3(job.native_aligners, instead=tool)
 
 
 def bwa_mem3_stand_in(
@@ -749,7 +816,7 @@ def bwa_mem3_stand_in(
     read_length: float | None,
     additional_ram_bytes: int = 0,
 ) -> AlignerCommand | None:
-    """wgse-bwa-mem3 writing bwa's or bwa-mem2's exact records (--compat) in
+    """bwa-mem3 writing bwa's or bwa-mem2's exact records (--compat) in
     place of ``tool`` (bwa_mem3_build), or None when its pipeline won't fit.
 
     In bwa's place it needs more memory than bwa, so its estimate must fit
@@ -758,7 +825,8 @@ def bwa_mem3_stand_in(
     that would run instead (wgse-bwa-mem2 0.5.0 and later without the .0123
     file), or fits this Mac's RAM less headroom (as wgse-bwa's GPU backend must);
     an explicit --aligner bwa-mem2 then still stops when it doesn't fit the
-    RAM available (_bwa_setup's check_mapping_memory)."""
+    RAM available (_bwa_setup's check_mapping_memory). When auto chose
+    bwa-mem2 it must fit the RAM available, as auto's choice did."""
     native = bwa_mem3_build(job, tool, ref)
     if native is None:
         return None
@@ -788,8 +856,12 @@ def bwa_mem3_stand_in(
     if tool == "bwa":
         limit = min(budget, available_memory())
         room = f"the {limit / 1024**3:.1f} GiB of RAM available"
+    elif requested_aligner(job) == "auto":
+        # Auto chose bwa-mem2 because it fits the RAM available now.
+        limit = available_memory()
+        room = f"the {limit / 1024**3:.1f} GiB of RAM available"
     else:
-        limit = max(budget, needed(bwa_mem2_memory_model(job)))
+        limit = max(budget, needed(bwa_mem2_memory_model(job.native_aligners)))
         room = f"the {budget / 1024**3:.1f} GiB of RAM it can use"
     if stand_in > limit:
         logging.info(
@@ -801,10 +873,11 @@ def bwa_mem3_stand_in(
     return aligner
 
 
-def bwa_mem2_memory_model(job: AlignJob) -> str:
-    """The memory model of bwa-mem2 for this run: its Apple Silicon build's
-    when that maps without the .0123 file (AlignerCommand.memory_model)."""
-    native = find_native_aligner("bwa-mem2", job.native_aligners, quiet=True)
+def bwa_mem2_memory_model(native_aligners: str | None) -> str:
+    """The memory model of bwa-mem2 for a run with this native_aligners
+    setting: its Apple Silicon build's when that maps without the .0123 file
+    (AlignerCommand.memory_model)."""
+    native = find_native_aligner("bwa-mem2", native_aligners, probe=True)
     return AlignerCommand("bwa-mem2", native).memory_model
 
 
@@ -830,7 +903,7 @@ def aligner_gpu_bytes(aligner: AlignerCommand, ref: str, reads: int | None) -> i
 
 def bwa_mem3_command(job: AlignJob) -> AlignerCommand:
     """How to run --aligner bwa-mem3: wgse-bwa-mem3 (on Apple Silicon), else
-    bwa-mem3 from PATH, writing bwa's records (--compat=bwa-mem) or, with
+    bwa-mem3 from PATH or its Pixi environment, writing bwa's records (--compat=bwa-mem) or, with
     --fast, its faster preset's."""
     options = (BWA_MEM3_FAST,) if job.fast else ("--compat=bwa-mem",)
     native = find_native_aligner("bwa-mem3", job.native_aligners)
@@ -853,12 +926,12 @@ def bwa_mem3_command(job: AlignJob) -> AlignerCommand:
             raise WGSExtractError(
                 f"{option} needs bwa-mem3: wgse-bwa-mem3 is installed, but "
                 "native_aligners is off (use --native-aligners auto), and "
-                f"bwa-mem3 isn't on PATH. Or {otherwise}."
+                f"bwa-mem3 isn't installed. Or {otherwise}."
             )
         raise WGSExtractError(
             f"{option} needs wgse-bwa-mem3 (Apple Silicon) or bwa-mem3 "
-            f"(Bioconda) on PATH; for wgse-bwa-mem3, {INSTALL_HINT}. Or "
-            f"{otherwise}."
+            f"(Bioconda: `pixi install --locked -e bwa-mem3`); for "
+            f"wgse-bwa-mem3, {INSTALL_HINT}. Or {otherwise}."
         )
     return AlignerCommand("bwa-mem3", options=options)
 

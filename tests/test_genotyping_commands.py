@@ -1057,3 +1057,233 @@ def test_str_default_catalog_matches_build_and_names(
     monkeypatch.setattr(repeats, "pixi_env_prefix", lambda env: None)
     with pytest.raises(WGSExtractError, match="pixi install -e expansionhunter"):
         repeats._catalog(aln, None)
+
+
+# --- typing smn ---------------------------------------------------------------
+
+SMN_CONTIGS = {**HG38, "chr5": 181_538_259}
+SMN1_EXON7 = 70_951_900
+
+FAKE_SMN_CALLER = """\
+work, prefix = opt("--outDir"), opt("--prefix")
+[reads] = pathlib.Path(opt("--manifest")).read_text().split()
+result = json.loads(pathlib.Path({result!r}).read_text())
+pathlib.Path(work, prefix + ".json").write_text(json.dumps({{"NA12878": result}}))
+pathlib.Path(work, prefix + ".tsv").write_text("Sample\\tresult\\n" + str(result))
+"""
+
+# SMNCopyNumberCaller's JSON for NA12878 (SMN_1kGP_results.tsv: 2 + 2 copies).
+SMN_RESULT = {
+    "Coverage_MAD": 0.07,
+    "Median_depth": 33.4,
+    "Full_length_CN_raw": 3.77,
+    "Total_CN_raw": 4.01,
+    "SMN1": 2,
+    "SMN2": 2,
+    "SMN2delta78": 0,
+    "isCarrier": False,
+    "isSMA": False,
+    "Info": "PASS:Majority",
+    "g27134TG_raw": 0.0,
+    "g27134TG_CN": 0,
+}
+
+
+@pytest.fixture
+def smn(tmp_path, monkeypatch):
+    result = tmp_path / "smn_result.json"
+    result.write_text(json.dumps(SMN_RESULT))
+    calls = fake_tools(
+        monkeypatch,
+        tmp_path,
+        {"smn_caller.py": FAKE_SMN_CALLER.format(result=str(result))},
+    )
+
+    def set_result(**fields):
+        result.write_text(json.dumps({**SMN_RESULT, **fields}))
+
+    return Namespace(calls=calls, set_result=set_result)
+
+
+def smn_bam(tmp_path, seq=SEQ, name="NA12878.bam"):
+    return bam(tmp_path / "in" / name, pair("p", "chr5", SMN1_EXON7, seq=seq),
+               SMN_CONTIGS)  # fmt: skip
+
+
+def manifest_warnings(result):
+    return {w["code"]: w for w in result.to_dict()["warnings"]}
+
+
+def test_smn_reports_copy_numbers_and_says_it_is_not_a_diagnosis(tmp_path, smn, caplog):
+    caplog.set_level(logging.INFO)
+    out = tmp_path / "out"
+    result = api.genotyping.smn(
+        api.TypingSmnParams(input=Path(smn_bam(tmp_path)), outdir=out)
+    )
+
+    [command] = smn.calls("smn_caller.py")
+    assert command[command.index("--genome") + 1] == "38"
+    assert outputs(out) == {
+        "NA12878.smn.tsv",
+        "NA12878.smn.json",
+        "NA12878.smn.tsv.manifest.json",
+    }
+    assert {o["role"] for o in result.to_dict()["outputs"]} == {
+        "smn_calls",
+        "smn_report",
+    }
+    assert result.metrics["smn1_copy_number"] == 2
+    assert result.metrics["smn2_copy_number"] == 2
+    assert result.metrics["sma_carrier"] is False
+    assert result.metrics["sma_affected"] is False
+    assert "SMN1: 2 copies, SMN2: 2 copies" in caplog.text
+    assert "not a diagnosis" in caplog.text
+    assert "2+0" in caplog.text
+    assert manifest_warnings(result) == {}
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="SMNCopyNumberCaller is not supported on Windows"
+)
+def test_smn_reports_a_carrier_and_its_report_finding(tmp_path, smn):
+    smn.set_result(SMN1=1, SMN2=3, isCarrier=True)
+    out = tmp_path / "out"
+    main(["typing", "smn", "-i", smn_bam(tmp_path), "-o", str(out),
+          "--config", str(tmp_path / "config.toml")])  # fmt: skip
+
+    section = build_report(out)["sections"]["carrier_screening"]
+    [finding] = section["findings"]
+    assert finding["value"] == "1 SMN1 copy: SMA carrier"
+    assert finding["confidence"] == "high"
+    assert "SMN2 3" in finding["detail"]
+    assert "not a diagnosis" in finding["note"]
+    assert finding["evidence"]["file"] == "NA12878.smn.tsv"
+
+
+def test_smn_flags_a_possible_silent_carrier(tmp_path, smn):
+    smn.set_result(g27134TG_CN=1)
+    result = api.genotyping.smn(
+        api.TypingSmnParams(input=Path(smn_bam(tmp_path)), outdir=tmp_path / "out")
+    )
+    warning = manifest_warnings(result)["possible_silent_carrier"]
+    assert "g.27134T>G" in warning["message"]
+    assert result.metrics["g27134tg_copy_number"] == 1
+
+
+@pytest.mark.parametrize(
+    ("depth", "reported"),
+    [(12.0, False), (29.9, False), (float("nan"), False), (30.0, True)],
+)
+def test_smn_withholds_calls_below_30x(tmp_path, smn, depth, reported):
+    # #619 asks for a 30x minimum; NaN (an empty sampling region) is no depth.
+    smn.set_result(Median_depth=depth)
+    out = tmp_path / "out"
+    result = api.genotyping.smn(api.TypingSmnParams(input=Path(smn_bam(tmp_path)),
+                                                    outdir=out))  # fmt: skip
+    assert (result.metrics["smn1_copy_number"] == 2) is reported
+    if reported:
+        assert "low_coverage" not in manifest_warnings(result)
+        return
+    details = manifest_warnings(result)["low_coverage"]["details"]
+    assert details["threshold"] == 30.0
+    # The caller's own files, which still hold its calls, aren't published as
+    # the calls.
+    assert not (out / "NA12878.smn.tsv").exists()
+    assert (out / "NA12878.smn.below_min_depth.json").exists()
+    [finding] = build_report(out)["sections"]["carrier_screening"]["findings"]
+    assert (finding["value"], finding["confidence"]) == ("no call", "low")
+
+
+def test_smn_rerun_with_unreadable_output_keeps_the_previous_calls(tmp_path, smn):
+    # PR #663 review: a failed rerun mustn't replace the evidence of the last run.
+    out = tmp_path / "out"
+    path = smn_bam(tmp_path)
+    api.genotyping.smn(api.TypingSmnParams(input=Path(path), outdir=out))
+    before = (out / "NA12878.smn.tsv").read_text()
+    (tmp_path / "smn_result.json").write_text('"not an object"')
+    with pytest.raises(WGSExtractError, match="unreadable"):
+        run_wgsextract("typing", "smn", "-i", path, "-o", str(out))
+    assert (out / "NA12878.smn.tsv").read_text() == before
+
+
+def test_smn_report_labels_a_caller_filter_low(tmp_path, smn):
+    # The caller can call SMN1 0 with FLCNnoCall when its full-length model fails.
+    smn.set_result(SMN1=0, SMN2="2-3", isSMA=True, Info="FLCNnoCall")
+    out = tmp_path / "out"
+    api.genotyping.smn(api.TypingSmnParams(input=Path(smn_bam(tmp_path)), outdir=out))
+    [finding] = build_report(out)["sections"]["carrier_screening"]["findings"]
+    assert finding["value"] == "0 SMN1 copies: consistent with SMA"
+    assert (finding["confidence"], finding["confidence_reasons"]) == (
+        "low",
+        ["caller_filter"],
+    )
+
+
+def test_smn_warns_when_the_caller_makes_no_call(tmp_path, smn):
+    smn.set_result(SMN1=None, isCarrier=None, isSMA=None, Info="Ambiguous")
+    result = api.genotyping.smn(
+        api.TypingSmnParams(input=Path(smn_bam(tmp_path)), outdir=tmp_path / "out")
+    )
+    assert manifest_warnings(result)["no_call"]["details"]["filter"] == "Ambiguous"
+
+
+@pytest.mark.parametrize("case", ["long_reads", "ont_read_group", "no_reads"])
+def test_smn_refuses_non_short_read_wgs_before_running_the_caller(tmp_path, smn, case):
+    header = ["@HD\tVN:1.6\tSO:coordinate"]
+    header += [f"@SQ\tSN:{n}\tLN:{length}" for n, length in SMN_CONTIGS.items()]
+    seq, pos = SEQ, SMN1_EXON7
+    if case == "long_reads":
+        seq = "".join(_RNG.choice("ACGT") for _ in range(5000))
+    elif case == "ont_read_group":
+        # Mixed: short reads at SMN, but an ONT read group in the file.
+        header += ["@RG\tID:a\tPL:ILLUMINA", "@RG\tID:b\tPL:ONT"]
+    else:
+        pos = 1_000_000
+    path = sam_to_bam(header + pair("p", "chr5", pos, seq=seq), tmp_path / "s.bam")
+    with pytest.raises(WGSExtractError, match="short-read|no reads at SMN"):
+        run_wgsextract("typing", "smn", "-i", path)
+    assert smn.calls("smn_caller.py") == []
+
+
+def test_smn_needs_chr_names_on_grch38(tmp_path, smn):
+    contigs = {k.removeprefix("chr"): v for k, v in SMN_CONTIGS.items()}
+    path = bam(tmp_path / "s.bam", pair("p", "5", SMN1_EXON7), contigs)
+    with pytest.raises(WGSExtractError, match="SMNCopyNumberCaller needs GRCh38"):
+        run_wgsextract("typing", "smn", "-i", path)
+
+
+def test_smn_without_its_environment_says_how_to_install_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(common, "pixi_env_tool", lambda tool: None)
+    with pytest.raises(WGSExtractError, match="pixi install -e smn"):
+        run_wgsextract("typing", "smn", "-i", smn_bam(tmp_path))
+
+
+def test_smn_report_names_one_copy_a_carrier_even_when_status_is_uncertain(
+    tmp_path, smn
+):
+    # PR #663 review: an unsettled isCarrier must not read "not a carrier".
+    smn.set_result(SMN1=1, SMN2=2, isCarrier=None)
+    out = tmp_path / "out"
+    api.genotyping.smn(api.TypingSmnParams(input=Path(smn_bam(tmp_path)), outdir=out))
+    [finding] = build_report(out)["sections"]["carrier_screening"]["findings"]
+    assert finding["value"] == "1 SMN1 copy: SMA carrier (status uncertain)"
+    assert finding["confidence_reasons"] == ["status_uncertain"]
+
+
+@pytest.mark.parametrize(
+    ("program", "warned"),
+    [("novoalign\tVN:V3.02.07", True), ("bwa\tVN:0.7.17", False), (None, False)],
+)
+def test_smn_warns_when_the_aligner_is_not_bwa_like(tmp_path, smn, program, warned):
+    # #619: GIAB's HG002 Novoalign BAM gave SMN1 1/SMN2 1; its bwa BAM the
+    # truth, 2/2.
+    header = ["@HD\tVN:1.6\tSO:coordinate"]
+    header += [f"@SQ\tSN:{n}\tLN:{length}" for n, length in SMN_CONTIGS.items()]
+    if program:
+        header.append(f"@PG\tID:{program.split()[0]}\tPN:{program}")
+    path = sam_to_bam(header + pair("p", "chr5", SMN1_EXON7), tmp_path / "s.bam")
+    out = tmp_path / "out"
+    result = api.genotyping.smn(api.TypingSmnParams(input=Path(path), outdir=out))
+    assert ("aligner_not_calibrated" in manifest_warnings(result)) is warned
+    [finding] = build_report(out)["sections"]["carrier_screening"]["findings"]
+    assert (finding["confidence"] == "low") is warned

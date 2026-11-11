@@ -112,7 +112,12 @@ from .extract import (
     YdnaVcfParams,
     YMtExtractParams,
 )
-from .genotyping import TypingCyp2d6Params, TypingHlaParams, TypingStrParams
+from .genotyping import (
+    TypingCyp2d6Params,
+    TypingHlaParams,
+    TypingSmnParams,
+    TypingStrParams,
+)
 from .info import CalculateCoverageParams, ChipParams, CoverageSampleParams, InfoParams
 from .lineage import MtHaplogroupParams, YHaplogroupParams, YStrParams
 from .methylation import MethylationPileupParams
@@ -274,6 +279,7 @@ __all__ = [
     "SignVerifyParams",
     "UnmappedParams",
     "TypingCyp2d6Params",
+    "TypingSmnParams",
     "TypingHlaParams",
     "TypingStrParams",
     "UsageError",

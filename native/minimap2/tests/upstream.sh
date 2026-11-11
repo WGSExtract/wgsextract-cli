@@ -155,6 +155,11 @@ for preset in map-hifi map-ont map-pb sr; do
         grep -Eq '[1-9][0-9]* Metal interruptions' "metal.$preset.interrupted.log"
         metal_run "$preset" failed 1 --gpu-inject-failure -t 2
         grep -q 'a GPU batch failed (injected GPU failure)' "metal.$preset.failed.log"
+        # Regression (#548): a GPU command that never completes, with no error
+        # from macOS, is given up by the watchdog and its fills run on the CPU.
+        metal_run "$preset" hang 1 --gpu-inject-hang ksw_fill -t 2
+        grep -q 'a GPU batch failed (GPU watchdog: a Metal command (ksw_fill' \
+            "metal.$preset.hang.log"
     fi
     # The repeats must give ambiguous alignments (secondary, or primary with MAPQ 0).
     awk -F '\t' '!/^@/ && int($2 / 4) % 2 == 0 && $5 == 0 { n++ } END { exit !(n > 0) }' \

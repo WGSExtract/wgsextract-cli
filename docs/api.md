@@ -785,9 +785,9 @@ workspace.
 | `r2` | `Path \| None` | `None` | `--r2` | Read 2 FASTQ, for pairs. |
 | `preset` | `str \| None` | `None` | `--preset` | minimap2 preset for non-BWA alignment. Defaults to map-hifi for PacBio and map-ont for ONT. One of: `sr`, `map-pb`, `map-hifi`, `map-ont`, `ccs`, `subread` |
 | `platform` | `str \| None` | `None` | `--platform` | Sequencing platform; selects platform-specific alignment tooling (default: detected from read groups or read names, else illumina). One of: `illumina`, `dnbseq`, `ultima`, `pacbio`, `hifi`, `clr`, `ont`, `nanopore` |
-| `aligner` | `str` | `'auto'` | `--aligner` | Aligner to use. Auto uses bwa-mem2 for short reads when the reference has its index (see `ref index`), else bwa; for long reads pbmm2 for PacBio when installed, otherwise minimap2. bwa-mem3 (wgse-bwa-mem3 on Apple Silicon, else bwa-mem3 on PATH) writes bwa's exact records faster, from bwa-mem2's index. One of: `auto`, `bwa`, `bwa-mem2`, `bwa-mem3`, `minimap2`, `pbmm2` |
+| `aligner` | `str` | `'auto'` | `--aligner` | Aligner to use. Auto uses bwa-mem2 for short reads when the reference has its index (see `ref index`), else bwa; for long reads pbmm2 for PacBio when installed, otherwise minimap2. bwa-mem3 (wgse-bwa-mem3 on Apple Silicon, else bwa-mem3 from PATH or its Pixi environment) writes bwa's exact records faster, from bwa-mem2's index. One of: `auto`, `bwa`, `bwa-mem2`, `bwa-mem3`, `minimap2`, `pbmm2` |
 | `fast` | `bool` | `False` | `--fast` | Align short reads with bwa-mem3's --fast speed preset (implies --aligner bwa-mem3), about twice as fast. Its alignments differ from BWA's (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast). Without it bwa-mem3 writes BWA's exact records. |
-| `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux x86-64) when installed on PATH; off never does. One of: `auto`, `off` |
+| `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux x86-64) when installed on PATH, and on Linux Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
 | `gpu` | `bool` | `False` | `--gpu` | Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU alignment to retain MM/ML methylation tags. |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `sample` | `str \| None` | `None` | `--sample` | Sample name for the read group (default: the reads' file name). |
@@ -824,7 +824,7 @@ settings and tools are unchanged.
 | `r2` | `Path \| None` | `None` | `--r2` | Read 2 FASTQ, with r1. |
 | `aligner` | `str` | `'auto'` | `--aligner` | Aligner: auto, bwa, bwa-mem2, bwa-mem3, minimap2 or pbmm2, chosen as for align. One of: `auto`, `bwa`, `bwa-mem2`, `bwa-mem3`, `minimap2`, `pbmm2` |
 | `fast` | `bool` | `False` | `--fast` | Align short reads with bwa-mem3's --fast speed preset (implies --aligner bwa-mem3), about twice as fast. Its alignments differ from BWA's (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast). Without it bwa-mem3 writes BWA's exact records. |
-| `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux x86-64) when installed on PATH; off never does. One of: `auto`, `off` |
+| `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux x86-64) when installed on PATH, and on Linux Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
 | `gpu` | `bool` | `False` | `--gpu` | Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU alignment to retain MM/ML methylation tags. |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `platform` | `str \| None` | `None` | `--platform` | Sequencing platform (default: detected from read groups or read names, else illumina). One of: `illumina`, `dnbseq`, `ultima`, `pacbio`, `hifi`, `clr`, `ont`, `nanopore` |
@@ -2081,6 +2081,9 @@ Each writes `<input stem>.*` files in `outdir`, else beside the input:
 * `cyp2d6`: CYP2D6 star alleles, copy number and hybrids with Cyrius
   (`.cyrius.tsv`/`.json`), from the optional `cyrius` Pixi environment.
   Cyrius's PolyForm Strict license allows noncommercial use only.
+* `smn`: SMN1/SMN2 copy number and SMA carrier status with
+  SMNCopyNumberCaller (`.smn.tsv`/`.json`), from the optional `smn`
+  environment. A screening estimate, not a diagnosis.
 * `hla`: HLA class I and II alleles with T1K (`.t1k_genotype.tsv`,
   `.t1k_allele.tsv`/`.vcf`), from the optional `t1k` environment.
 * `repeats` (`typing str`): disease repeat expansions (`.str.tsv`), with
@@ -2107,6 +2110,33 @@ GRCh38 reference with chr22 ALT contigs, the locus's reads are first
 realigned to primary chr22 (needs `ref` and minimap2). Metrics:
 `cyp2d6_genotype`, `cyp2d6_filter`, `cyp2d6_copy_number` and
 `median_depth`.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | Indexed BAM or CRAM aligned to GRCh37/hg19 or GRCh38. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+
+### `api.genotyping.smn(TypingSmnParams)`
+
+CLI: `wgsextract typing smn`.
+
+Call SMN1/SMN2 copy number with SMNCopyNumberCaller (see
+`TypingSmnParams`).
+
+`TypingSmnParams`: Call the copy number of SMN1, SMN2 and SMN2Δ7–8 with SMNCopyNumberCaller
+for spinal muscular atrophy (SMA) carrier screening: one SMN1 copy is a
+carrier, none is SMA-affected. Two copies can still be a "2+0" silent
+carrier; g.27134T>G, associated with that, is counted. Short-read WGS of
+at least 30x only: long reads are refused, and below 30x median depth no
+calls are reported (the caller's files are kept as
+`<stem>.smn.below_min_depth.*`). A non-bwa-like aligner in the header
+(Novoalign, Bowtie 2, ...) gets an `aligner_not_calibrated` warning. Not
+a diagnosis. Metrics: `smn1_copy_number`,
+`smn2_copy_number`, `smn2_delta78_copy_number`, `sma_carrier`,
+`sma_affected`, `g27134tg_copy_number`, `smn_filter`,
+`median_depth` and `coverage_mad`.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |

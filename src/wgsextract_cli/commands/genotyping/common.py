@@ -152,6 +152,19 @@ class RepeatCall:
     allele_reads: tuple[int, ...] | None = None
 
 
+def illumina_genome(aln: Alignment, tool: str) -> str:
+    """The -g/--genome of Illumina's Cyrius and SMNCopyNumberCaller: 38, or
+    19/37 for GRCh37 with/without "chr" names."""
+    if aln.build == "hg38":
+        if not aln.chr_prefix:
+            raise WGSExtractError(
+                f"{tool} needs GRCh38 contigs named chr1, chr2, ... (its region "
+                "files use them); this input names them 1, 2, ..."
+            )
+        return "38"
+    return "19" if aln.chr_prefix else "37"
+
+
 def env_tool(tool: str, env: str, note: str = "") -> list[str]:
     """Command running `tool` from its optional Pixi environment."""
     command = pixi_env_tool(tool)

@@ -72,7 +72,10 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 
 | Code | Raised by | Meaning |
 | --- | --- | --- |
-| `low_coverage` | `info --detailed`, variant calling, lineage, `microarray`, `methylation` | Depth is below a threshold (`depth`, `threshold`). |
+| `low_coverage` | `info --detailed`, variant calling, lineage, `microarray`, `methylation`, `typing smn` | Depth is below a threshold (`depth`, `threshold`). |
+| `aligner_not_calibrated` | `typing smn` | The @PG aligner isn't bwa-like (BWA, DRAGEN, Isaac), which SMNCopyNumberCaller is calibrated on (`aligner`). |
+| `possible_silent_carrier` | `typing smn` | Two SMN1 copies with g.27134T>G, associated with a 2+0 silent carrier (`g27134tg_copy_number`). |
+| `uneven_coverage`, `status_uncertain` | `typing smn` | Coverage MAD above 0.11 (`coverage_mad`); the caller couldn't settle carrier/affected status. |
 | `sex_unknown` | `info --detailed`, `typing repeats` | The sex could not be inferred from X/Y coverage. |
 | `long_reads` | `info --detailed` | Long-read data; the short-read tools give poor results. |
 | `short_read_n50` | `info` | Long reads' N50 is under 3 kb, which suggests degraded DNA or a failed library (`read_n50`, `exact`, `threshold`). |
@@ -221,7 +224,8 @@ Other commands' metrics:
 - `methylation` records sites, median coverage and weighted percent modified
   per modification (and, with `--format parquet`, the `rows` of the
   `bedmethyl_table`); `typing` the called genotypes (`cyp2d6_genotype`, one
-  diplotype per HLA gene, flagged repeats); `repair` the records read and
+  diplotype per HLA gene, flagged repeats, SMN1/SMN2 copy numbers with
+  `sma_carrier` and `sma_affected`); `repair` the records read and
   repaired.
 - `vep` records `inputs`, `succeeded`, `skipped` and `failed`, and `variants`
   per annotated VCF; a directory of inputs writes `vep.manifest.json`.
