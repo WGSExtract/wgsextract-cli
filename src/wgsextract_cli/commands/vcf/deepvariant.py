@@ -34,7 +34,7 @@ from wgsextract_cli.core.cram_staging import (
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.messages import LOG_MESSAGES
-from wgsextract_cli.core.native_support import is_linux_arm64, require_native_tool
+from wgsextract_cli.core.native_support import is_arm64_docker_host, require_native_tool
 from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_assets import read_fai_lengths
@@ -77,8 +77,8 @@ _CRAM31_BUG = (
     "to every image."
 )
 _SETUP = (
-    "DeepVariant runs from Google's Docker image on Linux and macOS (Apple "
-    "Silicon emulates it, slowly): install Docker, then docker pull {image}. "
+    "DeepVariant runs from Google's Docker image on x86-64 Linux and Intel "
+    "Macs: install Docker, then docker pull {image}. "
     "Or put Google's run_deepvariant on PATH."
 )
 
@@ -90,16 +90,21 @@ def deepvariant_image(model_type: str = "WGS", gpu: bool = False) -> str:
         )
     if model_type == "ULTIMA":
         return str(settings.get("deepvariant_ultima_image") or DEFAULT_ULTIMA_IMAGE)
-    default = DEFAULT_ARM64_IMAGE if is_linux_arm64() else DEFAULT_IMAGE
+    default = DEFAULT_ARM64_IMAGE if is_arm64_docker_host() else DEFAULT_IMAGE
     return str(settings.get("deepvariant_image") or default)
 
 
 _ARM64_SETUP = (
-    "Build the native CPU DeepVariant 1.10.0 image with "
-    "packaging/deepvariant-arm64/build.sh (see docs/deepvariant-arm64.md); "
+    "Build the native CPU DeepVariant 1.10.0 image on Linux ARM64 with "
+    "packaging/deepvariant-arm64/build.sh (on a Mac, build it there and move "
+    "it with docker save / docker load; see docs/deepvariant-arm64.md); "
     "set deepvariant_image in config.toml if you "
     "use another local tag. Dependencies and images must already be installed. "
     "Google's x86 image, emulation and unaudited PATH launchers are not supported."
+)
+_ARM64_ALTERNATIVES = (
+    "Otherwise call variants with vcf clair3 (ONT reads), vcf snp and vcf indel "
+    "(bcftools, short reads), or run DeepVariant on an x86-64 host."
 )
 
 
@@ -107,8 +112,8 @@ def _require_arm64_wgs(model_type: str, checkpoint: str | None = None) -> None:
     if model_type != "WGS" or checkpoint:
         selection = "--checkpoint" if checkpoint else f"model {model_type}"
         raise WGSExtractError(
-            f"DeepVariant {selection} is not qualified on Linux ARM64; "
-            f"only the default WGS model is qualified. {_ARM64_SETUP}"
+            f"DeepVariant {selection} is not qualified on ARM64; "
+            f"only the default WGS model is qualified. {_ARM64_ALTERNATIVES}"
         )
 
 
@@ -118,25 +123,46 @@ def _verify_arm64_image(model_type: str = "WGS", checkpoint: str | None = None) 
     architecture = docker_info(_ARM64_SETUP, "{{.Architecture}}").strip().lower()
     if architecture not in {"aarch64", "arm64"}:
         raise WGSExtractError(
-            "DeepVariant requires a native ARM64 Docker engine on Linux ARM64; "
+            "DeepVariant requires a native ARM64 Docker engine on ARM64; "
             "an x64 engine or emulation is not supported."
         )
     image = deepvariant_image(model_type)
     require_image(
-        image, f"Native DeepVariant image isn't installed: {image}. {_ARM64_SETUP}"
+        image,
+        f"Native DeepVariant image isn't installed: {image}. {_ARM64_SETUP} "
+        f"{_ARM64_ALTERNATIVES}",
     )
-    inspected = run_command(
-        [docker(_ARM64_SETUP), "image", "inspect", "--format",
-         "{{.Os}}/{{.Architecture}}", image],
-        capture_output=True,
-        check=False,
-    )  # fmt: skip
-    if inspected.returncode or (inspected.stdout or "").strip() != "linux/arm64":
+    found = _image_platform(image, _ARM64_SETUP)
+    _refuse_emulated_amd64(image, architecture, found)
+    if found != "linux/arm64":
         raise WGSExtractError(
             f"DeepVariant image {image} must be linux/arm64; "
             "x86 images and emulation are not supported."
         )
     return image
+
+
+def _image_platform(image: str, setup: str) -> str:
+    """The image's ``os/architecture`` (``linux/amd64``), or "" if unknown."""
+    inspected = run_command(
+        [docker(setup), "image", "inspect", "--format",
+         "{{.Os}}/{{.Architecture}}", image],
+        capture_output=True,
+        check=False,
+    )  # fmt: skip
+    return (inspected.stdout or "").strip() if not inspected.returncode else ""
+
+
+def _refuse_emulated_amd64(image: str, engine: str, found: str) -> None:
+    """An amd64 image on an ARM64 engine aborts in its first stage (#665)."""
+    if engine in {"aarch64", "arm64"} and found == "linux/amd64":
+        raise WGSExtractError(
+            f"DeepVariant image {image} is linux/amd64 and can't run on this "
+            "ARM64 Docker engine: Google publishes DeepVariant for x86-64 only, "
+            "and Docker's x86-64 emulation (including Docker Desktop on Apple "
+            "Silicon) lacks the AVX instructions its TensorFlow needs, so it "
+            f"aborts (exit 134). {_ARM64_SETUP} {_ARM64_ALTERNATIVES}"
+        )
 
 
 def _model_type(
@@ -186,7 +212,7 @@ def _require_ont_x86(model_type: str) -> None:
     }:
         raise WGSExtractError(
             "DeepVariant ONT_R104 requires x86-64; it is not qualified on ARM64, "
-            "including Apple Silicon emulation. Use an x86-64 host."
+            "including Apple Silicon. Use vcf clair3, or an x86-64 host."
         )
 
 
@@ -233,6 +259,9 @@ def _verify_docker_image(model_type: str, gpu: bool = False) -> str:
         f"The DeepVariant image isn't downloaded: docker pull {image} "
         f"(set {setting} in config.toml for another version).",
     )
+    setup = _SETUP.format(image=image)
+    engine = docker_info(setup, "{{.Architecture}}").strip().lower()
+    _refuse_emulated_amd64(image, engine, _image_platform(image, setup))
     return image
 
 
@@ -567,7 +596,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
     checkpoint = str(params.checkpoint) if params.checkpoint else None
     arm64_image = (
         _verify_arm64_image(_model_type(params), checkpoint)
-        if is_linux_arm64() and not gpu
+        if is_arm64_docker_host() and not gpu
         else None
     )
     if not arm64_image:

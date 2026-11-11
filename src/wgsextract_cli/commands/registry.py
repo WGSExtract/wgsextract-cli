@@ -151,7 +151,9 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
         "analyze", ADVANCED, "Run several analyses in one go, for one or many genomes."
     ),
     CommandTier(
-        "typing", ADVANCED, "Genotype CYP2D6, HLA and repeat expansions (30x WGS)."
+        "typing",
+        ADVANCED,
+        "CYP2D6, SMN1/2, HLA and repeat expansions (30x WGS).",
     ),
     CommandTier(
         "methylation",

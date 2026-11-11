@@ -155,8 +155,8 @@ VEP annotations add consequences, genes, transcripts, impact, and plugin/cache-d
 :::
 
 ::: card
-### Cyrius / T1K / ExpansionHunter / PharmCAT
-Genotyping that a VCF can't capture: CYP2D6 star alleles with copy-number changes and hybrids (Cyrius), HLA alleles (T1K), and repeat expansions (ExpansionHunter), all from a whole-genome BAM/CRAM. PharmCAT turns VCF calls plus the CYP2D6 and HLA results into drug-response phenotypes.
+### Cyrius / SMNCopyNumberCaller / T1K / ExpansionHunter / PharmCAT
+Genotyping that a VCF can't capture: CYP2D6 star alleles with copy-number changes and hybrids (Cyrius), SMN1/SMN2 copy number for SMA carrier status (SMNCopyNumberCaller), HLA alleles (T1K), and repeat expansions (ExpansionHunter), all from a whole-genome BAM/CRAM. PharmCAT turns VCF calls plus the CYP2D6 and HLA results into drug-response phenotypes.
 :::
 :::
 :::

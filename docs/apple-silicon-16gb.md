@@ -113,8 +113,10 @@ Experiments that left the defaults alone:
 - **Variant caller.** `bcftools` is the caller to use on a Mac.
   - GATK HaplotypeCaller runs on one core on arm64: chr20 was not half done
     after 44 minutes, which would be days for a genome.
-  - DeepVariant needs Docker, and on a Mac it runs the x86-64 image under
-    emulation.
+  - Google's DeepVariant image is x86-64 only and can't run on Apple Silicon:
+    Docker Desktop's emulation lacks the AVX instructions its TensorFlow
+    needs. `vcf deepvariant` refuses it, and uses only the native ARM64 image
+    ([deepvariant-arm64.md](deepvariant-arm64.md#apple-silicon-macs)).
 
 ## A whole genome (HG002 at 35x)
 
@@ -183,8 +185,8 @@ reports them.
 | Indels | 0.9518 | 0.9533 | 0.9526 | 500,090 | 25,307 | 24,403 |
 
 They are close to the chr20-only result on the same Mac (SNPs 0.9932 recall,
-0.9746 precision; indels 0.9498 and 0.9496). DeepVariant would need Docker and
-x86-64 emulation on a Mac (see above).
+0.9746 precision; indels 0.9498 and 0.9496). Google's DeepVariant image can't
+run on a Mac (see above).
 
 ## `wgse-bwa` or `wgse-bwa-mem3`
 
