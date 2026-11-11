@@ -261,6 +261,7 @@ def test_sections_follow_the_runs_and_missing_ones_say_how_to_run(sample):
         "overview": "ok",  # workspace facts, though info has not run
         "lineage": "ok",
         "pharmacogenomics": "ok",
+        "carrier_screening": "not_run",
         "clinvar": "ok",
         "microarray": "not_run",
     }
@@ -274,6 +275,7 @@ def test_sections_follow_the_runs_and_missing_ones_say_how_to_run(sample):
         "wgsextract vcf pharmcat --vcf-input HG002.vcf.gz",
         "wgsextract typing hla -i HG002.cram",
     ]
+    assert hints["carrier_screening"] == ["wgsextract typing smn -i HG002.cram"]
     assert hints["microarray"] == ["wgsextract microarray -i HG002.cram"]
     assert hints["clinvar"] == []
     sex = next(f for f in sections["overview"]["facts"] if f["name"] == "sex")

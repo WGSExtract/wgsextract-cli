@@ -584,6 +584,11 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "Cyrius's <stem>.json/.tsv and <stem>.cyp2d6.pharmcat.tsv.",
         "wgsextract typing cyp2d6 --input sample.cram",
     ),
+    "typing smn": _h(
+        "SMNCopyNumberCaller's <stem>.smn.tsv/.json; copy numbers and carrier "
+        "status in the result's metrics.",
+        "wgsextract typing smn --input sample.cram",
+    ),
     "typing hla": _h(
         "<stem>.t1k_genotype.tsv (and T1K's other files) and <stem>.hla.pharmcat.tsv.",
         "wgsextract typing hla --input sample.cram",
