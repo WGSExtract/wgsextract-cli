@@ -3,7 +3,7 @@ import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, wri
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parseFlatToml } from "../dist/shared/rendering.js";
 
@@ -64,6 +64,25 @@ test("atomic writes follow symlinks and keep file permissions", { skip: process.
   assert.equal(await readFile(target, "utf8"), "new\n");
   assert.equal((await stat(target)).mode & 0o777, 0o600);
   assert.ok((await lstat(link)).isSymbolicLink());
+});
+
+test("on Windows, saving waits out another process briefly holding the file open", { skip: process.platform !== "win32" && "Windows file sharing" }, async (t) => {
+  const directory = await tempDirectory(t);
+  const target = path.join(directory, "config.toml");
+  await writeFile(target, "old\n");
+  // Opened without delete sharing, as a reader or virus scanner may, which makes a rename over it fail.
+  const holder = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+    `$f = [IO.File]::Open('${target.replaceAll("'", "''")}', 'Open', 'Read', 'Read'); 'locked'; Start-Sleep -Milliseconds 250; $f.Close()`]);
+  t.after(() => holder.kill());
+  await new Promise((resolve, reject) => {
+    holder.stdout.on("data", (data) => String(data).includes("locked") && resolve());
+    holder.on("exit", (code) => reject(new Error(`the lock holder exited (${code}) before taking the lock`)));
+  });
+
+  await writeFileAtomically(target, "new\n");
+
+  assert.equal(await readFile(target, "utf8"), "new\n");
+  assert.deepEqual((await readdir(directory)).filter((name) => name.endsWith(".tmp")), []);
 });
 
 function parseSavedToml(text) {

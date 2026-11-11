@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import test from "node:test";
+import { exampleBundleCopy } from "./example-bundle.mjs";
 import { currentSetupPlatform } from "../dist/shared/setup-platforms.js";
 import { runInitialSetupIfNeeded, runSetup, runSetupStep, runUninstall } from "../dist/web/src/server/setup-runner.js";
 import { createProcessManager } from "../dist/web/src/server/process-runner.js";
@@ -707,8 +708,8 @@ test("runs WGSExtract platform setup scripts from nested script folders", async 
     return;
   }
 
-  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-  const bundleRoot = path.join(repoRoot, "examples", "WGSExtract");
+  // The bootstrap script writes the bundle's config.toml, so it runs in a copy.
+  const bundleRoot = await exampleBundleCopy(t);
   const tempRoot = await mkdtemp(path.join(tmpdir(), "gui-for-cli-wgsextract-setup-"));
   const appDir = path.join(tempRoot, "runtime", "wgsextract-cli", "app");
   const referenceLibrary = path.join(tempRoot, "reference");

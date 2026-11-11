@@ -21,6 +21,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 - Linux AppImage: setup, actions and uninstall no longer run with the AppImage's library and tool paths (`LD_LIBRARY_PATH`, `PATH`, `PYTHONHOME` and the like). The system's programs loaded the image's older libraries instead of their own, so setup failed on newer systems such as Ubuntu 26.04 (`libcrypto.so.3: version 'OPENSSL_3.3.0' not found`).
+- Windows: saving settings no longer fails with `EPERM` when another program has the file open for a moment, such as the CLI reading its `config.toml` or a virus scanner. The save retries for up to about half a second.
 
 ## [0.8.5] - 2026-11-07
 
