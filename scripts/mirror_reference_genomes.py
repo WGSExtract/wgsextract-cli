@@ -18,12 +18,19 @@ runs this script:
   notes RECORD.json...
       The release notes: each file, where it came from, its terms and its
       SHA-256.
+  catalog TAG RECORD.json...
+      Rewrite seed_genomes.csv: each mirrored genome's GitHub row takes its
+      first row's place, and its original source follows as an -Alt row (in
+      the Advanced block for a genome the GUI shows by default). GitHub rows
+      already there are pinned to GitHub's SHA-256 digests.
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
+import io
 import json
 import logging
 import shutil
@@ -34,6 +41,13 @@ from typing import Any
 
 GITHUB = "GitHub"
 REPO = "WGSExtract/wgsextract-cli"
+CATALOG = (
+    Path(__file__).resolve().parents[1]
+    / "src/wgsextract_cli/assets/reference/seed_genomes.csv"
+)
+# The GUI shows the catalog rows up to this one; later rows are Advanced only
+# (gui/examples/WGSExtract/scripts/shared/list_reference_genomes.py).
+LAST_BASIC_CODE = "THGySeqp"
 # GitHub's limit on one release asset is 2 GiB.
 MAX_ASSET_BYTES = 2 * 1024**3 - 1
 # Genomes not mirrored: their terms don't clearly allow redistribution (#701).
@@ -157,6 +171,60 @@ def notes(records: list[dict[str, Any]]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def catalog(tag: str, records: list[dict[str, Any]]) -> str:
+    """seed_genomes.csv with the mirrored genomes' GitHub rows."""
+    from wgsextract_cli.core.ref_library.downloads import (
+        resolve_github_release_asset_sha256,
+    )
+
+    with CATALOG.open(encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        fields = list(reader.fieldnames or [])
+        rows = list(reader)
+    if "SHA256" not in fields:
+        fields.append("SHA256")
+    by_url = {r["url"].strip(): r for r in records}
+    by_final = {r["final"]: r for r in records}
+    # The basic genomes' original sources join the Advanced block's -Alt rows.
+    last_alt = max(i for i, r in enumerate(rows) if r["Source"].endswith("-Alt"))
+    basic = True
+    anchor = 0
+    out: list[dict[str, str]] = []
+    moved: list[dict[str, str]] = []
+    done: set[str] = set()
+    for i, row in enumerate(rows):
+        final = row["Final File Name"]
+        record = by_final.get(final) or by_url.get(row["URL"].strip())
+        if row["Source"] == GITHUB:
+            if not row.get("SHA256"):
+                row["SHA256"] = resolve_github_release_asset_sha256(row["URL"]) or ""
+            out.append(row)
+        elif record and final not in done:
+            done.add(final)
+            url = f"https://github.com/{REPO}/releases/download/{tag}/{record['final']}"
+            out.append(row | {"Source": GITHUB, "URL": url, "SHA256": record["sha256"]})
+            alt = row | {"Source": _alt(row["Source"]), "SHA256": ""}
+            (moved if basic else out).append(alt)
+        elif record:
+            out.append(row | {"Source": _alt(row["Source"])})
+        else:
+            out.append(row)
+        if row["Pyth Code"] == LAST_BASIC_CODE:
+            basic = False
+        if i == last_alt:
+            anchor = len(out)
+    out[anchor:anchor] = moved
+    text = io.StringIO()
+    writer = csv.DictWriter(text, fields, lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(out)
+    return text.getvalue()
+
+
+def _alt(source: str) -> str:
+    return source if source.endswith("-Alt") else f"{source}-Alt"
+
+
 def _uploaded(tag: str) -> set[str]:
     listed = subprocess.run(
         ["gh", "release", "view", tag, "--repo", REPO, "--json", "assets",
@@ -177,6 +245,9 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--out", type=Path, required=True)
     n = sub.add_parser("notes")
     n.add_argument("records", nargs="+", type=Path)
+    c = sub.add_parser("catalog")
+    c.add_argument("tag")
+    c.add_argument("records", nargs="+", type=Path)
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -189,7 +260,10 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(build(args.final, args.out)))
     else:
         records = [json.loads(p.read_text(encoding="utf-8")) for p in args.records]
-        sys.stdout.write(notes(records))
+        if args.cmd == "notes":
+            sys.stdout.write(notes(records))
+        else:
+            CATALOG.write_text(catalog(args.tag, records), encoding="utf-8", newline="")
     return 0
 
 
