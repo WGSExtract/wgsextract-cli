@@ -452,6 +452,62 @@ class VcfGnomadParams(_AnnotatorParams):
 
 
 @dataclass(frozen=True, kw_only=True)
+class VcfSvFreqParams(_AnnotatorParams):
+    """Population frequencies of structural variants (SV_AF, SV_POPMAX_AF,
+    SV_FREQ, SV_COMMON, ...) from gnomAD-SV and gnomAD-LR as
+    ``sv_freq_annotated.vcf.gz``, and one row per SV in ``sv_freq.tsv``.
+
+    For the SV calls of ``vcf sv`` (Delly, Sniffles, pbsv) and ``vcf cnv``,
+    or any VCF of SVs. A call matches a gnomAD SV of a compatible type by
+    reciprocal overlap (deletions, duplications, inversions, CNVs) or by
+    breakpoint distance and size similarity (insertions)."""
+
+    COMMAND = "vcf sv-freq"
+
+    gnomad_sv_file: Path | None = _resource_param(
+        "gnomAD-SV table (default: the library's, from 'ref gnomad-sv').",
+        "gnomad_sv_path",
+    )
+    gnomad_lr_file: Path | None = _resource_param(
+        "gnomAD-LR table (default: the library's; GRCh38).",
+        "gnomad_lr_sv_path",
+    )
+    min_overlap: float = param(
+        0.5,
+        help="Minimum reciprocal overlap for DEL/DUP/INV/CNV (default 0.5).",
+    )
+    max_distance: int = param(
+        500,
+        help="Maximum insertion breakpoint distance, bp (default 500).",
+    )
+    min_size_similarity: float = param(
+        0.5,
+        help="Minimum insertion size similarity (default 0.5).",
+    )
+    common_af: float = param(
+        0.01,
+        help="AF from which an SV is common (default 0.01).",
+    )
+    rare_af: float = param(
+        0.001,
+        help="AF below which an SV is rare (default 0.001).",
+    )
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if not 0 < self.min_overlap <= 1:
+            raise UsageError("--min-overlap must be above 0 and at most 1.")
+        if not 0 <= self.min_size_similarity <= 1:
+            raise UsageError("--min-size-similarity must be between 0 and 1.")
+        if self.max_distance < 0:
+            raise UsageError("--max-distance must be at least 0.")
+        if not 0 < self.rare_af <= self.common_af <= 1:
+            raise UsageError(
+                "--rare-af and --common-af must satisfy 0 < rare <= common <= 1."
+            )
+
+
+@dataclass(frozen=True, kw_only=True)
 class VcfSpliceaiParams(_AnnotatorParams):
     """SpliceAI splicing scores as ``spliceai_annotated.vcf.gz``."""
 
@@ -715,6 +771,21 @@ def gnomad(
     from wgsextract_cli.commands.vcf.population import run_gnomad
 
     return _run_on_vcf(params, run_gnomad, progress, cancel, check)
+
+
+def sv_freq(
+    params: VcfSvFreqParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Annotate SVs with gnomAD-SV/gnomAD-LR frequencies; output roles
+    ``annotated_vcf`` and ``sv_frequencies`` (the table), with the counts per
+    frequency class in the metrics."""
+    from wgsextract_cli.commands.vcf.sv_frequency import run_sv_freq
+
+    return _run_on_vcf(params, run_sv_freq, progress, cancel, check)
 
 
 def spliceai(

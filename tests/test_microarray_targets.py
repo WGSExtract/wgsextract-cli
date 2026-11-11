@@ -224,3 +224,108 @@ def test_a_current_target_in_a_read_only_library_is_used(tmp_path):
         )
     finally:
         microarray_dir.chmod(0o755)
+
+
+@pytest.fixture
+def chain_servers(monkeypatch):
+    """A primary (UCSC) and a mirror server for the hg19ToHg38 chain, each
+    serving the genuine bytes until a test breaks one of them."""
+    import hashlib
+
+    from tests.http_server import RangeServer
+    from wgsextract_cli.core.ref_library import downloads
+
+    data = gzip.compress(_CHAIN.encode())
+    name = mt.HG19_TO_HG38_CHAIN.name
+    primary = RangeServer(None, {name: data})
+    mirror = RangeServer(None, {name: data})
+    monkeypatch.setattr(downloads, "curl_progress_args", lambda: ["--silent"])
+    monkeypatch.setattr(downloads.time, "sleep", lambda s: None)
+    monkeypatch.setattr(
+        mt,
+        "HG19_TO_HG38_CHAIN",
+        mt.ChainSource(
+            name,
+            (primary.url_for(name), mirror.url_for(name)),
+            hashlib.sha256(data).hexdigest(),
+        ),
+    )
+    yield primary, mirror, data
+    primary.close()
+    mirror.close()
+
+
+def test_chain_comes_from_ucsc_first_without_touching_the_mirror(
+    tmp_path, chain_servers
+):
+    primary, mirror, data = chain_servers
+    chain = mt.hg19_to_hg38_chain(str(tmp_path))
+    assert Path(chain).read_bytes() == data
+    assert primary.gets() and not mirror.requests
+
+
+def test_issue_667_chain_falls_back_to_the_mirror_when_ucsc_fails(
+    tmp_path, chain_servers
+):
+    primary, mirror, data = chain_servers
+    primary.statuses[mt.HG19_TO_HG38_CHAIN.name] = 503
+    chain = mt.hg19_to_hg38_chain(str(tmp_path))
+    assert Path(chain).read_bytes() == data
+    assert mirror.gets()
+
+
+def test_a_chain_with_the_wrong_checksum_is_rejected_for_the_mirrors(
+    tmp_path, chain_servers
+):
+    primary, mirror, data = chain_servers
+    primary.files[mt.HG19_TO_HG38_CHAIN.name] = gzip.compress(b"tampered\n")
+    chain = mt.hg19_to_hg38_chain(str(tmp_path))
+    assert Path(chain).read_bytes() == data
+
+
+def test_no_chain_is_installed_when_no_source_has_the_pinned_checksum(
+    tmp_path, chain_servers
+):
+    primary, mirror, _ = chain_servers
+    name = mt.HG19_TO_HG38_CHAIN.name
+    primary.files[name] = mirror.files[name] = gzip.compress(b"tampered\n")
+    with pytest.raises(mt.WGSExtractError, match="Could not download"):
+        mt.hg19_to_hg38_chain(str(tmp_path))
+    assert sorted(p.name for p in tmp_path.iterdir()) == []
+
+
+def _cut_off_with_a_partial(server, data: bytes) -> None:
+    """Every GET and every resume is cut off half-way, leaving a partial."""
+    server.drops = 1
+    server.drop_starts = set(range(len(data) // 2, len(data)))
+
+
+def test_a_mirror_download_leaves_no_staging_files(tmp_path, chain_servers):
+    """PR #669 review: UCSC and the mirror shared one partial file; with
+    separate ones, none may outlive a completed chain."""
+    primary, mirror, data = chain_servers
+    _cut_off_with_a_partial(primary, data)
+    chain = mt.hg19_to_hg38_chain(str(tmp_path))
+    assert Path(chain).read_bytes() == data
+    assert mirror.gets() == [None]
+    assert [p.name for p in tmp_path.iterdir()] == [mt.HG19_TO_HG38_CHAIN.name]
+
+
+def test_each_source_keeps_its_own_resumable_partial(tmp_path, chain_servers):
+    """PR #669 review: trying the mirror threw away UCSC's resumable download."""
+    primary, mirror, data = chain_servers
+    _cut_off_with_a_partial(primary, data)
+    mirror.statuses[mt.HG19_TO_HG38_CHAIN.name] = 503
+    with pytest.raises(mt.WGSExtractError, match="Could not download"):
+        mt.hg19_to_hg38_chain(str(tmp_path))
+    (partial,) = tmp_path.glob("*.partial")
+    kept = partial.stat().st_size
+    assert 0 < kept < len(data)
+
+    primary.requests.clear()
+    primary.drop_starts.clear()
+    mirror.requests.clear()
+    assert Path(mt.hg19_to_hg38_chain(str(tmp_path))).read_bytes() == data
+    assert primary.gets() == [f"bytes={kept}-"]
+    assert not mirror.requests
+    assert [p.name for p in tmp_path.iterdir()] == [mt.HG19_TO_HG38_CHAIN.name]

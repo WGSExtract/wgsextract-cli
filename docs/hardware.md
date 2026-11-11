@@ -14,9 +14,13 @@ For memory and disk planning, see [resource estimates](resource_estimates.md).
 `--aligner auto` (the default) aligns short reads with bwa-mem2 when all of
 these hold, and with bwa otherwise:
 
-- bwa-mem2 is installed (it is in the default environment on Linux, macOS and
-  Windows);
-- the reference already has a full bwa-mem2 index, including its `.0123` file;
+- bwa-mem2 will run: upstream bwa-mem2 is installed (it is in the default
+  environment on Linux, macOS and Windows), or, on Apple Silicon with native
+  aligners on, `wgse-bwa-mem2` 0.5.0 or later is (upstream bwa-mem2 isn't
+  needed then);
+- the reference already has the bwa-mem2 index that aligner reads: the full
+  index for upstream bwa-mem2 (and `wgse-bwa-mem2` before 0.5.0), without the
+  `.0123` file for `wgse-bwa-mem2` 0.5.0 and later;
 - the estimated alignment pipeline fits in the RAM available now.
 
 Auto never downloads or builds the index. When the index is missing but would
@@ -37,8 +41,12 @@ Few computers can build the bwa-mem2 index, so
 `wgsextract ref index --aligner bwa-mem2 --ref REF` downloads the published
 one (17 GB) for hs38DH and Broad's GRCh38, whose sequences are the same. For
 other references it builds the index only when the computer has the memory.
-The alignments are identical to bwa's, so the choice affects time and memory
-only.
+bwa-mem2 is a reimplementation of bwa's algorithm, but its records are not
+identical to bwa's: on 5M HG002 read pairs on hs38 the record hashes differ
+(bwa family `e2febf171215d840`, bwa-mem2 family `dff39743a72242de`). Each
+family is reproducible: `wgse-bwa` and `wgse-bwa-mem3 --compat=bwa-mem` write
+bwa's records, `wgse-bwa-mem2` and `wgse-bwa-mem3 --compat=bwa-mem2` write
+bwa-mem2's.
 
 The ~1.3× speedup is what we measured. bwa-mem2's authors **published** up to
 3.5× on one thread and 2.4× on one socket of an Intel Xeon Skylake with
@@ -58,11 +66,22 @@ time. As guidance only, a whole human genome needs a computer with 32 GB or
 more for bwa-mem2; since the 30x estimate at 6 threads is ~29 GiB, auto picks
 bwa whenever less than that is free. Smaller inputs need less.
 
-For now auto asks this of upstream bwa-mem2, even on a Mac with `wgse-bwa-mem2`
-0.5.0 or later, which maps without the `.0123` file and needs about 6 GiB less
-for hs38: auto still wants the `.0123` file and counts it, and picks bwa
-otherwise (where `wgse-bwa-mem3` may then stand in). `--aligner bwa-mem2` uses
-`wgse-bwa-mem2`'s own needs (see [Apple Silicon](#apple-silicon-metal)).
+With `wgse-bwa-mem2` 0.5.0 or later installed (and native aligners on), auto
+uses its estimate, which leaves out the `.0123` file it doesn't load (about
+6 GiB less for hs38; see [Apple Silicon](#apple-silicon-metal)), and the
+reference needs no `.0123` file. On a 16 GB Mac a 30x genome still doesn't fit,
+so auto keeps bwa there (`wgse-bwa`). `wgse-bwa-mem3` alone doesn't make auto
+pick bwa-mem2: it already stands in for bwa with bwa's records. When auto
+picks bwa-mem2, `wgse-bwa-mem3` stands in for it only when its own estimate
+also fits the RAM available; otherwise `wgse-bwa-mem2` aligns.
+
+Records: because bwa and bwa-mem2 write different records, a change in
+auto's choice changes the BAM, not just its `@PG` header and the result
+manifest. On a Mac that gains `wgse-bwa-mem2` 0.5.0 or later, or with a
+reference that has bwa-mem2's index without `.0123`, auto can now pick
+bwa-mem2 where it used to pick bwa, and a re-run gives a different BAM; it
+logs when it does. To compare runs, pin the aligner with `--aligner bwa` (or
+`--aligner bwa-mem2`).
 
 ### Threads and memory
 

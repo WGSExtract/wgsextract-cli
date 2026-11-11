@@ -235,10 +235,18 @@ struct DeviceOptions {
     // Test hook (Metal): report the first submission of every nth piece of work
     // as interrupted even if it completed, so its kernels run twice.
     size_t interrupt_every = 0;
+    // Test hook (Metal): withhold the first command whose label starts with
+    // this, as a hung GPU would, so the watchdog gives up after 2 s.
+    std::string hang_label;
 };
 std::unique_ptr<Device> make_metal_device(const DeviceOptions &options, std::string &reason);
 std::unique_ptr<Device> make_cuda_device(const DeviceOptions &options, std::string &reason);
 // Whether the machine has the device at all (capabilities' *_hardware_supported).
 bool metal_hardware_supported();
 bool cuda_hardware_supported();
+// The Metal watchdog: whether a GPU command it gave up on may still read host
+// memory (so the index must not be freed), and the watchdog threads it has run.
+// Without Metal, false and 0. They outlive the device, which a failure drops.
+bool memory_unsettled();
+size_t watchdog_threads();
 } // namespace wgse::gpu

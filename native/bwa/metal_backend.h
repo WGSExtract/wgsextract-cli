@@ -17,6 +17,8 @@ int wgse_metal_enabled(void);
 // option asks for upstream's code.
 int wgse_fast_cpu(void);
 void *wgse_metal_calloc(size_t count, size_t size);
+// free(), except while a GPU command the watchdog abandoned may still read it.
+void wgse_metal_free(void *memory);
 int wgse_metal_map(const mem_opt_t *opt, const bwt_t *bwt, int n, bseq1_t *seqs,
     void (*worker)(void *, long, int), void *data);
 // mem_collect_intv()'s ks_introsort() of its intervals (mem_stages.c.in).
@@ -108,6 +110,9 @@ void wgse_inject_locate_failure();
 // Reports the first commit of every nth piece of GPU work as interrupted by
 // macOS, so it is committed again.
 void wgse_inject_gpu_interruptions(size_t every);
+// Withholds the first GPU command whose label starts with label, as a hung GPU
+// would, so the watchdog gives up on the GPU after 2 s.
+void wgse_inject_gpu_hang(const char *label);
 void wgse_set_gpu_locate(bool enable);
 void wgse_set_gpu_locate_dense(unsigned shift);
 void wgse_set_gpu_locate_dense_after(size_t reads);

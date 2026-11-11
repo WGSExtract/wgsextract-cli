@@ -155,6 +155,11 @@ for preset in map-hifi map-ont map-pb sr; do
         grep -Eq '[1-9][0-9]* Metal interruptions' "metal.$preset.interrupted.log"
         metal_run "$preset" failed 1 --gpu-inject-failure -t 2
         grep -q 'a GPU batch failed (injected GPU failure)' "metal.$preset.failed.log"
+        # Regression (#548): a GPU command that never completes, with no error
+        # from macOS, is given up by the watchdog and its fills run on the CPU.
+        metal_run "$preset" hang 1 --gpu-inject-hang ksw_fill -t 2
+        grep -q 'a GPU batch failed (GPU watchdog: a Metal command (ksw_fill' \
+            "metal.$preset.hang.log"
     fi
     # The repeats must give ambiguous alignments (secondary, or primary with MAPQ 0).
     awk -F '\t' '!/^@/ && int($2 / 4) % 2 == 0 && $5 == 0 { n++ } END { exit !(n > 0) }' \
@@ -183,6 +188,29 @@ if $metal; then
     records metal.wrap.sam
     cmp upstream.wrap.sam.records metal.wrap.sam.records
     grep -Eq '[1-9][0-9]* redone on the CPU' metal.wrap.log
+    # PR #657 review: scorings at the edges of the 16-bit kernels' bounds (each pair is just
+    # inside and just outside one bound) must give upstream's records with the kernels named.
+    for scoring in "16-bit -A104 -B40 -O20,40 -E2,1" "8-bit -A105 -B40 -O20,40 -E2,1" \
+        "16-bit -A10 -B60 -O30,68 -E4,1" "8-bit -A10 -B60 -O30,69 -E4,1" "16-bit -A20 -B6 -O2,10 -E2,1"; do
+        set -- $scoring
+        kernels=$1; shift
+        name=scoring$(echo "$*" | tr -d ' ,-')
+        "$upstream" -t 2 -ax map-hifi "$@" reference.fa hifi.fq > "upstream.$name.sam" 2> "upstream.$name.log"
+        "$wgse" --metal -t 2 -ax map-hifi "$@" reference.fa hifi.fq > "metal.$name.sam" 2> "metal.$name.log"
+        records "upstream.$name.sam"
+        records "metal.$name.sam"
+        cmp "upstream.$name.sam.records" "metal.$name.sam.records"
+        grep -q "; $kernels kernels;" "metal.$name.log"
+        grep -Eq 'on the GPU \([1-9][0-9]* used\)' "metal.$name.log"
+    done
+    # PR #657 review: scorings with q > q2 cannot reach the kernels: minimap2 requires E1 > E2 and
+    # O1 + E1 < O2 + E2, which imply q2 > q, and rejects any other dual-gap scoring before mapping.
+    for gaps in "-O50,10 -E4,44" "-O12,8 -E4,2" "-O30,10 -E2,1"; do
+        status=0
+        "$wgse" --metal -t 2 -ax map-hifi -B80 $gaps reference.fa hifi.fq > /dev/null 2> metal.qgtq2.log || status=$?
+        [ "$status" -ne 0 ]
+        grep -q 'dual gap penalties violating' metal.qgtq2.log
+    done
 fi
 echo "wgse-minimap2 matches upstream minimap2 for map-hifi, map-ont, map-pb and sr"
 if $metal; then echo "wgse-minimap2 --metal matches upstream minimap2 for map-hifi, map-ont, map-pb and sr"; fi

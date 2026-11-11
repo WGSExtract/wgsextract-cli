@@ -524,6 +524,32 @@ def test_deps_check_lists_clair3_only_where_it_runs(host, monkeypatch, machine, 
     assert ("run_clair3.sh" in rows.get("available", "")) != listed
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX fake tools")
+@pytest.mark.parametrize(
+    ("system", "machine", "listed"),
+    [
+        ("linux", "x86_64", True),
+        ("darwin", "arm64", False),
+        ("linux", "aarch64", False),
+    ],
+    ids=["linux-x86", "apple-silicon", "linux-arm"],
+)
+def test_deps_check_lists_run_deepvariant_only_where_it_is_used(
+    host, monkeypatch, system, machine, listed
+):
+    """#665: ARM64 hosts, Apple Silicon too, run only the native image, never
+    Google's x86-64 run_deepvariant, so `deps check` names it unavailable."""
+    _mandatory_tools(host)
+    _tool(host, "run_deepvariant", 'print("1.10.0")')
+    monkeypatch.setattr(sys, "platform", system)
+    monkeypatch.setattr(platform, "machine", lambda: machine)
+
+    rows, _ = _report(monkeypatch, "utf-8")
+
+    assert ("run_deepvariant" in rows) == listed
+    assert ("run_deepvariant" in rows.get("available", "")) != listed
+
+
 @posix_pixi
 @pytest.mark.parametrize(
     ("encoding", "marker"), [("utf-8", "🔵"), ("ascii", "ALT")], ids=["utf-8", "ascii"]

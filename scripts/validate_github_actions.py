@@ -21,6 +21,8 @@ VERSION_RE = re.compile(r"^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 # duplicate table. Adding a new action source still requires an explicit review.
 ALLOWED_ACTIONS = {
     "actions/cache",
+    "actions/cache/restore",
+    "actions/cache/save",
     "actions/checkout",
     "actions/configure-pages",
     "actions/deploy-pages",

@@ -30,7 +30,14 @@ from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 
-from .common import Alignment, env_tool, open_alignment, write_bed, write_outside_calls
+from .common import (
+    Alignment,
+    env_tool,
+    illumina_genome,
+    open_alignment,
+    write_bed,
+    write_outside_calls,
+)
 
 LICENSE_NOTE = " (Cyrius's PolyForm Strict license allows noncommercial use only)"
 # CYP2D6 through CYP2D7 (GRCh38 chr22:42123192-42145745) with 40 kb either side,
@@ -86,14 +93,7 @@ def parse_cyrius(json_path: str) -> CyriusCall:
 
 def cyrius_genome(aln: Alignment) -> str:
     """Cyrius's -g: 38, or 19/37 for GRCh37 with/without "chr" names."""
-    if aln.build == "hg38":
-        if not aln.chr_prefix:
-            raise WGSExtractError(
-                "Cyrius needs GRCh38 contigs named chr1, chr2, ... (its region "
-                "files use them); this input names them 1, 2, ..."
-            )
-        return "38"
-    return "19" if aln.chr_prefix else "37"
+    return illumina_genome(aln, "Cyrius")
 
 
 def _region_bed(genome: str) -> str:
