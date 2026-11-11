@@ -11,6 +11,16 @@ screen → API mapping, remote-access security, the build plan) is in
 
 ## Open it
 
+**Online, nothing to install:**
+<https://wgsextract.github.io/wgsextract-cli/app/mockups/> (published by the
+GitHub Pages workflow from `main`). There, notes are saved in your browser:
+Export the JSON from the Notes panel and commit it to
+`gui/mockups/feedback/`, or open the mockups locally (below) to save notes
+straight into the repo. Notes already committed are shown on the published
+pages too.
+
+**Locally:**
+
 ```sh
 just mockups                        # from anywhere in the repo
 python3 gui/mockups/serve.py        # the same, without just
@@ -68,8 +78,10 @@ feedback file, keep both sides’ notes, then run
 `python3 gui/mockups/serve.py --check`, which validates and tidies every
 feedback file.
 
-Without the server (a page opened from disk), notes live in the browser’s
-local storage, and a yellow banner in the Notes panel says so. Use **Export
+Without the server (the published site, or a page opened from disk), notes
+live in the browser’s local storage, and a yellow banner in the Notes panel
+says so. The published site also shows the notes committed in `feedback/`
+(the Pages workflow lists them in `feedback/_pages.json`). Use **Export
 JSON** and save the file as `gui/mockups/feedback/<page-id>.json`; **Import
 JSON** merges a committed file into the browser so you can see others’ notes.
 

@@ -70,6 +70,27 @@
     });
   }
 
+  function fetchJson(path) {
+    return fetch(WGSM.link(path), { cache: "no-store" }).then(function (r) {
+      return r.ok ? r.json() : null;
+    });
+  }
+
+  /* Every committed feedback file listed in feedback/_pages.json */
+  function committedDocs() {
+    return fetchJson("feedback/_pages.json").then(function (pages) {
+      return Promise.all((pages || []).map(function (page) {
+        return fetchJson("feedback/" + page + ".json");
+      }));
+    }).then(function (docs) {
+      return docs.filter(function (doc) {
+        return doc && doc.notes;
+      });
+    }, function () {
+      return [];
+    });
+  }
+
   function readLocal() {
     try {
       return JSON.parse(localStorage.getItem(LOCAL_KEY)) || emptyDoc();
@@ -83,8 +104,14 @@
     doc: emptyDoc(),
     error: null,
 
+    /* The copy on GitHub Pages has no notes API; it reads the committed
+     * notes listed in feedback/_pages.json (made by the Pages workflow). */
+    published: /\.github\.io$/.test(location.hostname) || WGSM.params.has("published"),
+
     init: function () {
-      var probe = /^https?:$/.test(location.protocol)
+      var probe = store.published
+        ? Promise.resolve("local")
+        : /^https?:$/.test(location.protocol)
         ? api("health").then(function (health) {
             return health.ok ? "server" : "local";
           }, function () {
@@ -93,10 +120,27 @@
         : Promise.resolve("local");
       return probe.then(function (mode) {
         store.mode = mode;
+        return store.published ? store.loadCommitted() : null;
+      }).then(function () {
         return store.load();
       }).then(function (doc) {
         WGSM.emit("notes-ready", store.mode);
         return doc;
+      });
+    },
+
+    /* Merge the committed notes into this browser's copy; notes changed
+     * here since keep the newer version (as Import does) */
+    loadCommitted: function () {
+      return fetchJson("feedback/_pages.json").then(function (pages) {
+        if (!pages || pages.indexOf(WGSM.page.id) < 0) return null;
+        return fetchJson("feedback/" + WGSM.page.id + ".json").then(function (doc) {
+          if (!doc || !doc.notes) return null;
+          localStorage.setItem(LOCAL_KEY, JSON.stringify(applyOp(readLocal(), { op: "merge", notes: doc.notes })));
+          return null;
+        });
+      }).catch(function () {
+        return null;
       });
     },
 
@@ -151,32 +195,39 @@
       });
     },
 
+    /* Open/resolved counts per page: from serve.py, else from this
+     * browser's notes plus (when published) the committed ones */
     summary: function () {
       if (store.mode === "server") return api("feedback");
-      var pages = [];
+      var docs = {};
       for (var i = 0; i < localStorage.length; i++) {
         var key = localStorage.key(i);
         if (key.indexOf("wgsm.notes.") !== 0) continue;
         try {
           var doc = JSON.parse(localStorage.getItem(key));
-          var notes = Object.keys(doc.notes || {}).map(function (id) {
-            return doc.notes[id];
-          });
-          pages.push({
-            page: doc.page,
-            title: doc.title,
-            open: notes.filter(function (n) {
-              return n.status !== "resolved";
-            }).length,
-            resolved: notes.filter(function (n) {
-              return n.status === "resolved";
-            }).length,
-          });
+          docs[doc.page] = doc;
         } catch (err) {
           continue;
         }
       }
-      return Promise.resolve({ pages: pages });
+      var committed = store.published ? committedDocs() : Promise.resolve([]);
+      return committed.then(function (list) {
+        list.forEach(function (doc) {
+          docs[doc.page] = applyOp(docs[doc.page] || { notes: {}, page: doc.page, title: doc.title }, { op: "merge", notes: doc.notes });
+          docs[doc.page].title = docs[doc.page].title || doc.title;
+        });
+        return {
+          pages: Object.keys(docs).sort().map(function (page) {
+            var notes = Object.keys(docs[page].notes || {}).map(function (id) {
+              return docs[page].notes[id];
+            });
+            var resolved = notes.filter(function (n) {
+              return n.status === "resolved";
+            }).length;
+            return { page: page, title: docs[page].title, open: notes.length - resolved, resolved: resolved };
+          }),
+        };
+      });
     },
 
     exportFile: function () {

@@ -49,7 +49,7 @@
         el.replaceChildren(
           h("p.small.muted", mode === "server"
             ? "Notes are saved in gui/mockups/feedback/ by serve.py; commit them to share."
-            : "Notes are saved in this browser only (opened without serve.py). Use Export on each page, or run python3 gui/mockups/serve.py."),
+            : "Notes are saved in this browser. Export and commit the JSON to gui/mockups/feedback/ (or open locally with just mockups to save directly)."),
           pages.length
             ? h(
                 "div.table-wrap",

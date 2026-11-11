@@ -29,7 +29,7 @@
   }
 
   function storageStatus() {
-    var file = "feedback/" + WGSM.page.id + ".json";
+    var file = "gui/mockups/feedback/" + WGSM.page.id + ".json";
     var io = h(
       "div.an-row",
       h("button.an-btn", { type: "button", onclick: function () {
@@ -52,8 +52,11 @@
     }
     return h(
       "div.an-store.an-store--local",
-      h("strong", "Notes are only in this browser."),
-      h("span", "To share them, run ", h("code", "python3 gui/mockups/serve.py"), " and open the page from it, or Export JSON and save it as ", h("code", file), " in the repo. Import the committed file to see others' notes."),
+      h("strong", "Notes are saved in this browser."),
+      h("span", "Export and commit the JSON to ", h("code", file), " (or open the mockups locally with ", h("code", "just mockups"), " to save directly)."),
+      h("span", WGSM.notes.published
+        ? "Notes already committed to the repo are shown here too."
+        : "Import a committed file to see others’ notes."),
       io
     );
   }
