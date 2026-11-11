@@ -223,11 +223,15 @@ run with `-K 10000000` wrote the same records, from either aligner.
 
 ### The whole genome again, with `macos-aligners-14`
 
+`macos-aligners-14` is the aligner release with `wgse-bwa` 0.9.0
+([Installing](../native/README.md#installing)).
+
 The same 35x HG002 BAM was realigned to hs38 again with the defaults
 ([#609](https://github.com/WGSExtract/wgsextract-cli/issues/609)): WGS Extract
 0.8.6 from main, with `wgse-bwa` 0.9.0 and `wgse-bwa-mem3` 0.2.0 on `PATH` and
-bwa-mem2's index (without `.0123`) beside hs38. About 8.4 GiB of RAM was
-available at the start.
+bwa-mem2's index (without `.0123`) beside hs38. The hs38 copy differed from
+#549's, whose reference library had been deleted, but had the same sequences.
+`realign`'s pre-flight found about 8.4 GiB of RAM available at the start.
 
 | Step | #549 (`wgse-bwa` 0.7.1) | #609 (`wgse-bwa` 0.9.0) |
 | :--- | ---: | ---: |
@@ -237,18 +241,23 @@ available at the start.
 | peak memory (largest process) | 8.40 GiB | 8.41 GiB |
 | all processes together | 10.42 GiB | 10.24 GiB |
 | swap | 1.5 to 4.8 GiB | 1.1 to 4.9 GiB |
+| lowest free memory | 16% | 18% |
 | disk above the input | 166 GiB | 164 GiB |
 | `vcf snp` | 31 min | 31.5 min |
 | `vcf indel` | 37 min | 36 min |
 
 - **`realign` chose `wgse-bwa` on the GPU.** It estimated 29.6 GiB for
-  `wgse-bwa-mem3` against 9.7 GiB available, so it didn't use it. It
+  `wgse-bwa-mem3` against the 9.7 GiB available when alignment began, after extraction,
+  so it didn't use it. It
   sorted with 512M a thread and extracted FASTQs, because holding a collate
   bucket beside the aligner didn't fit.
 - **The record counts matched #549's**: 835,260,415, of which 832,735,204
-  mapped. Free memory never fell below 18%.
-- **`wgse-bwa` 0.9.0's faster CPU code barely matters here.** On the GPU the
-  run is paced by the GPU, as before.
+  mapped.
+- **The time barely changed.** On the GPU the run took about as long as
+  with 0.7.1; the GPU still sets the pace.
+- **The pre-flight warned and the run still finished.** It reported memory
+  (22.0 GiB estimated against 8.4 available) and disk (230 GiB against 223
+  free) as LOW, then completed within 164 GiB of extra disk.
 
 ## Advice for 16 GB Macs
 
