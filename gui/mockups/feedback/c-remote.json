@@ -1,0 +1,27 @@
+{
+  "notes": {
+    "n155c67015b": {
+      "anchor": {
+        "annot": "security",
+        "label": "security",
+        "path": "",
+        "x": 0.01,
+        "y": 0.02
+      },
+      "author": "AI",
+      "context": {
+        "depth": "basic",
+        "theme": "light",
+        "viewport": "fit"
+      },
+      "created": "2026-11-11T17:08:06Z",
+      "id": "n155c67015b",
+      "replies": [],
+      "status": "open",
+      "text": "(AI): Local network only with per-device keys: enough? Or should we document Tailscale, or offer a relay? Today's server listens on 127.0.0.1 only, so this needs a new gateway (DESIGN.md §7).",
+      "updated": "2026-11-11T17:08:06Z"
+    }
+  },
+  "page": "c-remote",
+  "title": "Phone access"
+}

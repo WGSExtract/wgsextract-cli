@@ -1,0 +1,27 @@
+{
+  "notes": {
+    "n2fc3b68fb7": {
+      "anchor": {
+        "annot": "op-form",
+        "label": "op-form",
+        "path": "",
+        "x": 0.01,
+        "y": 0.02
+      },
+      "author": "AI",
+      "context": {
+        "depth": "advanced",
+        "theme": "light",
+        "viewport": "fit"
+      },
+      "created": "2026-11-11T17:08:06Z",
+      "id": "n2fc3b68fb7",
+      "replies": [],
+      "status": "open",
+      "text": "(AI): These forms would be generated from each operation's JSON Schema (GET /v1/ops/{op}), with the parameter name under each label. OK, or hand-designed forms for the main tools?",
+      "updated": "2026-11-11T17:08:06Z"
+    }
+  },
+  "page": "c-advanced",
+  "title": "Advanced tools"
+}

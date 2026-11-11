@@ -1,0 +1,27 @@
+{
+  "notes": {
+    "n807f755d06": {
+      "anchor": {
+        "annot": "bulk",
+        "label": "bulk",
+        "path": "",
+        "x": 0.01,
+        "y": 0.02
+      },
+      "author": "AI",
+      "context": {
+        "depth": "basic",
+        "theme": "light",
+        "viewport": "fit"
+      },
+      "created": "2026-11-11T17:08:06Z",
+      "id": "n807f755d06",
+      "replies": [],
+      "status": "open",
+      "text": "(AI): Direction B: batch actions on several samples. Should C's library table get these too (select rows, then run)?",
+      "updated": "2026-11-11T17:08:06Z"
+    }
+  },
+  "page": "b-home",
+  "title": "Dashboard"
+}

@@ -1,0 +1,48 @@
+{
+  "notes": {
+    "nb220e0eb2d": {
+      "anchor": {
+        "annot": "how-to-review",
+        "label": "how-to-review",
+        "path": "",
+        "x": 0.01,
+        "y": 0.02
+      },
+      "author": "AI",
+      "context": {
+        "depth": "basic",
+        "theme": "light",
+        "viewport": "fit"
+      },
+      "created": "2026-11-11T17:08:06Z",
+      "id": "nb220e0eb2d",
+      "replies": [],
+      "status": "open",
+      "text": "(AI): Is this review workflow OK for you both? Notes save to gui/mockups/feedback/*.json with `just mockups`; commit them like code.",
+      "updated": "2026-11-11T17:08:06Z"
+    },
+    "nf31d9e2801": {
+      "anchor": {
+        "annot": "dir-c",
+        "label": "dir-c",
+        "path": "",
+        "x": 0.01,
+        "y": 0.02
+      },
+      "author": "AI",
+      "context": {
+        "depth": "basic",
+        "theme": "light",
+        "viewport": "fit"
+      },
+      "created": "2026-11-11T17:08:06Z",
+      "id": "nf31d9e2801",
+      "replies": [],
+      "status": "open",
+      "text": "(AI): Which direction should we build? Reply with A, B or C (or a mix: e.g. C with B's batch actions) and why. Details in DESIGN.md §5.",
+      "updated": "2026-11-11T17:08:06Z"
+    }
+  },
+  "page": "index",
+  "title": "Overview"
+}

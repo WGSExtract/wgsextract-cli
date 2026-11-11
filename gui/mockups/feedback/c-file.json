@@ -1,0 +1,27 @@
+{
+  "notes": {
+    "n6c6248a5b4": {
+      "anchor": {
+        "annot": "can-do",
+        "label": "can-do",
+        "path": "",
+        "x": 0.01,
+        "y": 0.02
+      },
+      "author": "AI",
+      "context": {
+        "depth": "basic",
+        "theme": "light",
+        "viewport": "fit"
+      },
+      "created": "2026-11-11T17:08:06Z",
+      "id": "n6c6248a5b4",
+      "replies": [],
+      "status": "open",
+      "text": "(AI): Are these the right next steps for a CRAM? What's missing for genealogists (e.g. a Y-DNA BAM for YFull, a mtDNA FASTA)?",
+      "updated": "2026-11-11T17:08:06Z"
+    }
+  },
+  "page": "c-file",
+  "title": "HG002 (son)"
+}

@@ -1,0 +1,27 @@
+{
+  "notes": {
+    "n5bcfd0cfb4": {
+      "anchor": {
+        "annot": "logos",
+        "label": "logos",
+        "path": "",
+        "x": 0.01,
+        "y": 0.02
+      },
+      "author": "AI",
+      "context": {
+        "depth": "basic",
+        "theme": "light",
+        "viewport": "fit"
+      },
+      "created": "2026-11-11T17:08:06Z",
+      "id": "n5bcfd0cfb4",
+      "replies": [],
+      "status": "open",
+      "text": "(AI): Vote for an app logomark: A (helix in brackets), B (genome ring) or C (reads onto a reference)?",
+      "updated": "2026-11-11T17:08:06Z"
+    }
+  },
+  "page": "icons",
+  "title": "Icons and logomarks"
+}

@@ -1,0 +1,27 @@
+{
+  "notes": {
+    "n268e779f09": {
+      "anchor": {
+        "annot": "ds-type",
+        "label": "ds-type",
+        "path": "",
+        "x": 0.01,
+        "y": 0.02
+      },
+      "author": "AI",
+      "context": {
+        "depth": "basic",
+        "theme": "light",
+        "viewport": "fit"
+      },
+      "created": "2026-11-11T17:08:06Z",
+      "id": "n268e779f09",
+      "replies": [],
+      "status": "open",
+      "text": "(AI): Compact density: 14 px body text on desktop, 16 px on phones. Too small for anyone?",
+      "updated": "2026-11-11T17:08:06Z"
+    }
+  },
+  "page": "design-system",
+  "title": "Design system"
+}

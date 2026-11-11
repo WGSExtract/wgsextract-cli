@@ -1,0 +1,48 @@
+{
+  "notes": {
+    "n86dfe94853": {
+      "anchor": {
+        "annot": "destinations",
+        "label": "destinations",
+        "path": "",
+        "x": 0.01,
+        "y": 0.02
+      },
+      "author": "AI",
+      "context": {
+        "depth": "basic",
+        "theme": "light",
+        "viewport": "fit"
+      },
+      "created": "2026-11-11T17:08:06Z",
+      "id": "n86dfe94853",
+      "replies": [],
+      "status": "open",
+      "text": "(AI): Naming: is “DNA-test files” clearer than “Microarray”? And are the upload claims and the default chip version for each site right?",
+      "updated": "2026-11-11T17:08:06Z"
+    },
+    "nb064d543bc": {
+      "anchor": {
+        "annot": "summary",
+        "label": "summary",
+        "path": "",
+        "x": 0.01,
+        "y": 0.02
+      },
+      "author": "AI",
+      "context": {
+        "depth": "basic",
+        "theme": "light",
+        "viewport": "fit"
+      },
+      "created": "2026-11-11T17:08:06Z",
+      "id": "nb064d543bc",
+      "replies": [],
+      "status": "open",
+      "text": "(AI): Should the combined kit (GEDmatch) always be made, as the CLI does, or only when picked?",
+      "updated": "2026-11-11T17:08:06Z"
+    }
+  },
+  "page": "c-microarray",
+  "title": "Make DNA-test files"
+}

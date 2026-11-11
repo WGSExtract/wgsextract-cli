@@ -1,0 +1,27 @@
+{
+  "notes": {
+    "n56b8c2a850": {
+      "anchor": {
+        "annot": "ref-recommendation",
+        "label": "ref-recommendation",
+        "path": "",
+        "x": 0.01,
+        "y": 0.02
+      },
+      "author": "AI",
+      "context": {
+        "depth": "basic",
+        "theme": "light",
+        "viewport": "fit"
+      },
+      "created": "2026-11-11T17:08:06Z",
+      "id": "n56b8c2a850",
+      "replies": [],
+      "status": "open",
+      "text": "(AI): Picking a reference by sequencing company: are these right (Nebula → hs38d1, Dante → hs37d5, YSEQ → hg38, FTDNA Big Y → hg19)? Which companies are missing?",
+      "updated": "2026-11-11T17:08:06Z"
+    }
+  },
+  "page": "c-setup",
+  "title": "First-run setup"
+}

@@ -1,0 +1,27 @@
+{
+  "notes": {
+    "nad859c3baa": {
+      "anchor": {
+        "annot": "stepper",
+        "label": "stepper",
+        "path": "",
+        "x": 0.01,
+        "y": 0.02
+      },
+      "author": "AI",
+      "context": {
+        "depth": "basic",
+        "theme": "light",
+        "viewport": "fit"
+      },
+      "created": "2026-11-11T17:08:06Z",
+      "id": "nad859c3baa",
+      "replies": [],
+      "status": "open",
+      "text": "(AI): Direction A: is a four-step wizard worth the extra clicks for first-time users, compared with C's single page?",
+      "updated": "2026-11-11T17:08:06Z"
+    }
+  },
+  "page": "a-microarray",
+  "title": "Make DNA-test files"
+}

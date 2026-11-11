@@ -1,0 +1,27 @@
+{
+  "notes": {
+    "n4723a00a5f": {
+      "anchor": {
+        "annot": "job-settings",
+        "label": "job-settings",
+        "path": "",
+        "x": 0.01,
+        "y": 0.02
+      },
+      "author": "AI",
+      "context": {
+        "depth": "basic",
+        "theme": "light",
+        "viewport": "fit"
+      },
+      "created": "2026-11-11T17:08:06Z",
+      "id": "n4723a00a5f",
+      "replies": [],
+      "status": "open",
+      "text": "(AI): Run one job at a time by default? Should the app keep running in the menu bar / tray when its window closes, so jobs continue?",
+      "updated": "2026-11-11T17:08:06Z"
+    }
+  },
+  "page": "c-jobs",
+  "title": "Jobs"
+}

@@ -1,0 +1,48 @@
+{
+  "notes": {
+    "n0266edc456": {
+      "anchor": {
+        "annot": "attention",
+        "label": "attention",
+        "path": "",
+        "x": 0.01,
+        "y": 0.02
+      },
+      "author": "AI",
+      "context": {
+        "depth": "basic",
+        "theme": "light",
+        "viewport": "fit"
+      },
+      "created": "2026-11-11T17:08:06Z",
+      "id": "n0266edc456",
+      "replies": [],
+      "status": "open",
+      "text": "(AI): Problems as a fix-it card on the home page, or only as a badge on the file's row? Cards are hard to miss but could pile up with many files.",
+      "updated": "2026-11-11T17:08:06Z"
+    },
+    "n89719f71b6": {
+      "anchor": {
+        "annot": "library",
+        "label": "library",
+        "path": "",
+        "x": 0.01,
+        "y": 0.02
+      },
+      "author": "AI",
+      "context": {
+        "depth": "basic",
+        "theme": "light",
+        "viewport": "fit"
+      },
+      "created": "2026-11-11T17:08:06Z",
+      "id": "n89719f71b6",
+      "replies": [],
+      "status": "open",
+      "text": "(AI): Table on desktop, cards on phone. Which columns matter most to you? Is anything missing (date added, sample owner, source company)?",
+      "updated": "2026-11-11T17:08:06Z"
+    }
+  },
+  "page": "c-home",
+  "title": "My genomes"
+}

@@ -1,0 +1,48 @@
+{
+  "notes": {
+    "n95fb652bf3": {
+      "anchor": {
+        "annot": "y-card",
+        "label": "y-card",
+        "path": "",
+        "x": 0.01,
+        "y": 0.02
+      },
+      "author": "AI",
+      "context": {
+        "depth": "basic",
+        "theme": "light",
+        "viewport": "fit"
+      },
+      "created": "2026-11-11T17:08:06Z",
+      "id": "n95fb652bf3",
+      "replies": [],
+      "status": "open",
+      "text": "(AI): The path from the root of the tree: useful for basic users, or show just the result with a “show path” link?",
+      "updated": "2026-11-11T17:08:06Z"
+    },
+    "ndd26ed53b0": {
+      "anchor": {
+        "annot": "admixture",
+        "label": "admixture",
+        "path": "",
+        "x": 0.01,
+        "y": 0.02
+      },
+      "author": "AI",
+      "context": {
+        "depth": "basic",
+        "theme": "light",
+        "viewport": "fit"
+      },
+      "created": "2026-11-11T17:08:06Z",
+      "id": "ndd26ed53b0",
+      "replies": [],
+      "status": "open",
+      "text": "(AI): Show only the continental view (K=7) in Basic and the regional one (K=12) in Advanced? Is the “not an ethnicity” note prominent enough?",
+      "updated": "2026-11-11T17:08:06Z"
+    }
+  },
+  "page": "c-ancestry",
+  "title": "Ancestry & lineage"
+}
