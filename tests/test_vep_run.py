@@ -126,6 +126,9 @@ def test_vcf_run_writes_indexed_output_and_moves_report(tmp_path, fake_vep):
     assert "--database" not in cmd and "--overlaps" not in cmd
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Ensembl VEP doesn't run on Windows"
+)
 def test_ensembl_only_setup_keeps_ensembl_vep_and_says_how_to_switch(
     tmp_path, fake_vep, monkeypatch
 ):

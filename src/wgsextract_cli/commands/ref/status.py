@@ -279,7 +279,7 @@ def _vep_cache_status(lib: ReferenceLibrary, reflib: str) -> dict[str, Any]:
 
     path = lib.vep_cache or str(Path(reflib, "vep"))
     # The cache of the engine `vep run`, `verify` and `delete` would use.
-    engine = configured_engine([Path(path)])
+    engine = configured_engine([Path(path)], to_run=False)
     species = str(Path(engine.cache_root(Path(path)), "homo_sapiens"))
     versions = (
         sorted(name for name in os.listdir(species) if Path(species, name).is_dir())

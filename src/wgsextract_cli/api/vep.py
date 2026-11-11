@@ -226,7 +226,7 @@ class _VepCacheParams(Params):
         chosen = with_config_defaults(self).engine
         if self.COMMAND == "vep download":
             return vep_engine(chosen)
-        return resolve_engine(chosen, [self.cache_root()])[0]
+        return resolve_engine(chosen, [self.cache_root()], to_run=False)[0]
 
     def engine_cache_root(self) -> Path:
         """The folder holding the engine's caches: the cache folder itself for

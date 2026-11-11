@@ -93,16 +93,20 @@ def vep_engine(name: str | None) -> VepEngine:
         ) from None
 
 
-def configured_engine(cache_roots: list[Path] | None = None) -> VepEngine:
+def configured_engine(
+    cache_roots: list[Path] | None = None, *, to_run: bool = True
+) -> VepEngine:
     """The engine config.toml's ``vep_engine`` names, else the one
     ``resolve_engine`` picks for ``cache_roots``."""
     from wgsextract_cli.core.config import settings
 
-    return resolve_engine(settings.get("vep_engine"), cache_roots or [])[0]
+    return resolve_engine(settings.get("vep_engine"), cache_roots or [], to_run=to_run)[
+        0
+    ]
 
 
 def resolve_engine(
-    chosen: str | None, cache_roots: list[Path]
+    chosen: str | None, cache_roots: list[Path], *, to_run: bool = True
 ) -> tuple[VepEngine, str | None]:
     """The engine to annotate with, and a notice when it isn't the default.
 
@@ -110,7 +114,8 @@ def resolve_engine(
     Otherwise it's vep-rs, except for a setup from before vep-rs became the
     default: an Ensembl VEP cache in one of ``cache_roots`` but no vep-rs
     cache, with Ensembl VEP installed. That keeps annotating with Ensembl VEP
-    and says how to switch."""
+    and says how to switch. ``to_run=False`` (to show, check or delete a
+    cache) doesn't need Ensembl VEP to be installed or to run here."""
     if chosen:
         return vep_engine(chosen), None
     default, ensembl = ENGINES[DEFAULT_ENGINE], ENGINES["ensembl"]
@@ -119,7 +124,8 @@ def resolve_engine(
     from wgsextract_cli.core.dependencies import get_tool_path
 
     old = next((r for r in cache_roots if (r / "homo_sapiens").is_dir()), None)
-    if old is not None and ensembl.supported_here() and get_tool_path(ensembl.tool):
+    runnable = not to_run or (ensembl.supported_here() and get_tool_path(ensembl.tool))
+    if old is not None and runnable:
         return ensembl, (
             f"There's no vep-rs cache yet, so this run uses Ensembl VEP and its "
             f"cache in {old}. vep-rs is now the default and about 70 times "
