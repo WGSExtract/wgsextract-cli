@@ -191,6 +191,16 @@ def test_ref_gnomad_sv_deletes(library):
     assert not list((library / "gnomad-sv").glob("gnomad_sv_*"))
 
 
+def test_ref_status_reports_an_unfinished_install_as_not_installed(library):
+    def gnomad(lib):
+        return api.ref.status(api.RefStatusParams(ref=lib)).details["gnomadSv"]
+
+    assert gnomad(library)["sr_hg38"] is True
+    # #688 review: a table left without its index counted as installed.
+    (library / "gnomad-sv" / "gnomad_sv_v4.1_hg38.tsv.gz.tbi").unlink()
+    assert gnomad(library)["sr_hg38"] is False
+
+
 def test_sv_calls_get_their_population_frequency(library, calls, tmp_path):
     result = _sv_freq(calls, library, tmp_path / "out")
     records = _records(_output(result, "annotated_vcf"))

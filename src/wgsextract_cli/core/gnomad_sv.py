@@ -31,6 +31,7 @@ import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from wgsextract_cli.core.download_progress import CancelEvent, ProgressCallback
 from wgsextract_cli.core.ref_library.downloads import download_file
@@ -246,23 +247,37 @@ def _marker(table: Path) -> Path:
     return table.with_name(f".{table.name}{_MARKER}")
 
 
+def _complete(table: Path, cat: Catalogue) -> dict[str, Any] | None:
+    """The table's install marker, if the install finished from the pinned
+    sources and left its index; None otherwise."""
+    try:
+        marker: dict[str, Any] = json.loads(_marker(table).read_text())
+        if marker["sources"] != [f.sha256 for f in cat.files]:
+            return None
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if not table.is_file() or not Path(f"{table}.tbi").is_file():
+        return None
+    return marker
+
+
 def installed_table(reflib: str | None, cat: Catalogue) -> Path | None:
     """The catalogue's table if it is installed and unchanged since."""
     table = folder(reflib) / cat.table
+    marker = _complete(table, cat)
     try:
-        marker = json.loads(_marker(table).read_text())
-        if marker["sources"] != [f.sha256 for f in cat.files]:
+        if marker is None or _sha256(table) != marker["sha256"]:
             return None
-        if not Path(f"{table}.tbi").is_file() or _sha256(table) != marker["sha256"]:
-            return None
-    except (OSError, ValueError, KeyError, TypeError):
+    except (OSError, KeyError):
         return None
     return table
 
 
 def installed(reflib: str | None, source: str, build: str) -> bool:
+    """Whether the install finished (without rehashing the table; a table
+    changed since is refused when used)."""
     cat = catalogue(source, build)
-    return bool(cat and (folder(reflib) / cat.table).is_file())
+    return bool(cat and _complete(folder(reflib) / cat.table, cat))
 
 
 def _normalise(fields: Sequence[str], source: str) -> str | None:

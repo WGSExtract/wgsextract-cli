@@ -145,7 +145,7 @@ def call_from_record(
         return SvCall("INS", pos, pos, length)
     if end is None or end <= pos:
         if length is None and sequence:
-            length = len(ref) - 1
+            length = len(ref) - len(first_alt)
         if not length:
             return None
         end = pos + length
@@ -194,6 +194,7 @@ class SitesTable:
     def _load(self, name: str) -> _Contig:
         if name == self._name:
             return self._data
+        rows: list[tuple[int, int, str, int | None, float | None, float | None, str]]
         rows = []
         query = popen(["tabix", self.path, name], stdout=subprocess.PIPE, text=True)
         assert query.stdout is not None
@@ -201,18 +202,11 @@ class SitesTable:
             f = line.rstrip("\n").split("\t")
             # A site no one carries (AF 0, e.g. a gnomAD-LR site seen only in
             # the other cohort) says nothing about frequency: not a match.
-            if len(f) < 8 or not _float(f[5]):
+            af = _float(f[5]) if len(f) >= 8 else None
+            if not af:
                 continue
             rows.append(
-                (
-                    int(f[1]),
-                    int(f[2]),
-                    f[3],
-                    _int(f[4]),
-                    _float(f[5]),
-                    _float(f[6]),
-                    f[7],
-                )
+                (int(f[1]), int(f[2]), f[3], _int(f[4]), af, _float(f[6]), f[7])
             )
         if query.wait() != 0:
             raise WGSExtractError(f"Reading {name} from {self.path} failed.")
