@@ -54,12 +54,15 @@ jobs:
           rm -f site/app/.nojekyll
 
       # Static files as they are. Without serve.py, notes stay in the browser;
-      # _pages.json lists the committed feedback files for the pages to show.
+      # _pages.json lists the committed feedback files for the pages to show,
+      # and version.js the commit, shown in the mockups index footer.
       - name: Add the UI mockups under app/mockups/
         run: |
           rm -rf site/app/mockups
           cp -R gui/mockups site/app/mockups
           find site/app/mockups -name __pycache__ -prune -exec rm -rf {} +
+          printf 'window.WGSM_VERSION = { source: "pages", sha: "%s", date: "%s" };\n' \
+            "$GITHUB_SHA" "$(git log -1 --format=%cI "$GITHUB_SHA")" > site/app/mockups/shared/version.js
           python3 -c 'import json, pathlib; d = pathlib.Path("site/app/mockups/feedback"); d.mkdir(exist_ok=True); (d / "_pages.json").write_text(json.dumps(sorted(p.stem for p in d.glob("*.json") if not p.stem.startswith("_"))))'
 
       - name: Upload site artifact

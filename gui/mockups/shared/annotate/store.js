@@ -195,10 +195,9 @@
       });
     },
 
-    /* Open/resolved counts per page: from serve.py, else from this
-     * browser's notes plus (when published) the committed ones */
-    summary: function () {
-      if (store.mode === "server") return api("feedback");
+    /* Every page's notes this browser can see: its own, plus (when
+     * published) the committed ones. Not used with serve.py. */
+    allDocs: function () {
       var docs = {};
       for (var i = 0; i < localStorage.length; i++) {
         var key = localStorage.key(i);
@@ -216,22 +215,33 @@
           docs[doc.page] = applyOp(docs[doc.page] || { notes: {}, page: doc.page, title: doc.title }, { op: "merge", notes: doc.notes });
           docs[doc.page].title = docs[doc.page].title || doc.title;
         });
+        return Object.keys(docs).sort().map(function (page) {
+          return docs[page];
+        });
+      });
+    },
+
+    /* Open/resolved counts per page */
+    summary: function () {
+      if (store.mode === "server") return api("feedback");
+      return store.allDocs().then(function (docs) {
         return {
-          pages: Object.keys(docs).sort().map(function (page) {
-            var notes = Object.keys(docs[page].notes || {}).map(function (id) {
-              return docs[page].notes[id];
+          pages: docs.map(function (doc) {
+            var notes = Object.keys(doc.notes || {}).map(function (id) {
+              return doc.notes[id];
             });
             var resolved = notes.filter(function (n) {
               return n.status === "resolved";
             }).length;
-            return { page: page, title: docs[page].title, open: notes.length - resolved, resolved: resolved };
+            return { page: doc.page, title: doc.title, open: notes.length - resolved, resolved: resolved };
           }),
         };
       });
     },
 
     exportFile: function () {
-      var blob = new Blob([JSON.stringify(sortKeys(store.doc), null, 2) + "\n"], { type: "application/json" });
+      var doc = Object.assign({}, store.doc, { about: window.WGSM_ABOUT });
+      var blob = new Blob([JSON.stringify(sortKeys(doc), null, 2) + "\n"], { type: "application/json" });
       var a = WGSM.h("a", { href: URL.createObjectURL(blob), download: WGSM.page.id + ".json" });
       document.body.appendChild(a);
       a.click();

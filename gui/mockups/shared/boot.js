@@ -12,6 +12,7 @@
   var SCRIPTS = [
     "icons/icons.js",
     "shared/core.js",
+    "shared/version.js",
     "shared/icons.js",
     "shared/theme.js",
     "shared/data/genomes.js",
@@ -25,6 +26,7 @@
     "shared/chrome.js",
     "shared/ui.js",
     "shared/palette.js",
+    "shared/annotate/about.js",
     "shared/annotate/store.js",
     "shared/annotate/anchor.js",
     "shared/annotate/pins.js",

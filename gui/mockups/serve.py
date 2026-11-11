@@ -40,6 +40,7 @@ from urllib.parse import urlsplit
 
 HERE = Path(__file__).resolve().parent
 FEEDBACK = HERE / "feedback"
+ABOUT_JS = HERE / "shared" / "annotate" / "about.js"
 PAGE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 ITEM_ID = re.compile(r"^[a-z][a-z0-9-]{3,40}$")
 MAX_BODY = 512 * 1024
@@ -54,6 +55,21 @@ class BadRequest(Exception):
     def __init__(self, status: HTTPStatus, message: str) -> None:
         super().__init__(message)
         self.status = status
+
+
+def read_about() -> str:
+    """The "about" text every feedback file starts with; shared with the
+    browser's Export, so it lives in about.js as one JSON string literal."""
+    match = re.search(
+        r"^window\.WGSM_ABOUT = (\".*\");\s*$", ABOUT_JS.read_text("utf-8"), re.MULTILINE
+    )
+    if not match:
+        raise SystemExit(f"{ABOUT_JS}: no window.WGSM_ABOUT string")
+    about: str = json.loads(match.group(1))
+    return about
+
+
+ABOUT = read_about()
 
 
 def now() -> str:
@@ -93,6 +109,8 @@ def load(page: str) -> dict[str, Any]:
 
 
 def dump(doc: dict[str, Any]) -> str:
+    """Canonical file text: the about text first (sorted keys put it there)."""
+    doc = {**doc, "about": ABOUT}
     return json.dumps(doc, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
 
 

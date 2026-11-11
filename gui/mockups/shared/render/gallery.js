@@ -73,6 +73,20 @@
     });
   };
 
+  /* Which iteration this is: the published copy names its commit */
+  blocks.version = function (el) {
+    var v = window.WGSM_VERSION || {};
+    if (v.source !== "pages" || !v.sha) {
+      el.append("Local copy of the mockups (your checkout). The published site shows the commit it was built from here.");
+      return;
+    }
+    el.append(
+      "Published from commit ",
+      h("a", { href: "https://github.com/WGSExtract/wgsextract-cli/commit/" + v.sha }, h("code", v.sha.slice(0, 7))),
+      " of main, " + v.date.replace("T", " ").replace(/([+-]\d\d:\d\d|Z)$/, " $1") + "."
+    );
+  };
+
   /* Page ids are "<direction>-<file>" for mockups, else the page itself */
   function pagePath(id) {
     var match = /^([abc])-(.+)$/.exec(id);

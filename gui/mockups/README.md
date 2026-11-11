@@ -85,6 +85,20 @@ says so. The published site also shows the notes committed in `feedback/`
 JSON** and save the file as `gui/mockups/feedback/<page-id>.json`; **Import
 JSON** merges a committed file into the browser so you can see others’ notes.
 
+### Handing notes to an AI agent
+
+Every feedback file starts with an `"about"` field: a fixed paragraph that
+tells any AI agent what the file is (review notes on these mockups, in this
+repository and branch), what the fields mean, and how to act on them (read
+this README and DESIGN.md, change the mockups for each open note, keep the
+design system consistent, reply in the thread and mark it resolved). It is
+written by `serve.py` and by **Export JSON**, and it is the same in every
+file, so it never shows up in diffs. Import ignores it.
+
+So Randy (or anyone) can annotate on the published site, press **Export
+JSON**, and give the downloaded file to their agent with “apply these notes”;
+the file explains itself. The text lives in `shared/annotate/about.js`.
+
 A note looks like this:
 
 ```json
@@ -104,6 +118,23 @@ A note looks like this:
 `anchor.annot` is the nearest `data-annot-id` on the page, `path` a CSS path
 below it, and `x`/`y` (and `w`/`h` for a box) fractions of that element. Notes
 by “AI” are questions from the designer about decisions to make.
+
+## The iteration loop
+
+1. **Annotate** on the published site or locally (`just mockups`).
+2. **Save the notes to the repo:** locally they are already in
+   `gui/mockups/feedback/`; from the published site, Export JSON and commit it
+   there (or hand it straight to an agent, above).
+3. **An agent or a person applies the changes on a branch**, replying in each
+   note’s thread, and opens a PR.
+4. **Merge the PR.** The GitHub Pages workflow (`.github/workflows/pages.yml`)
+   runs on every push to `main` that touches `gui/mockups/**`, rebuilds the
+   site and republishes the mockups. If it didn’t run, start it by hand:
+   `gh workflow run pages.yml --ref main`.
+5. **Check which iteration you’re looking at:** the footer of the mockups
+   index names the commit and date it was published from (a checkout says
+   “Local copy”). The workflow writes that into `shared/version.js` in the
+   published copy only.
 
 ## Folder layout
 
@@ -130,10 +161,11 @@ gui/mockups/
   shared/
     boot.js             loads the runtime below in order
     core.js theme.js icons.js ui.js palette.js chrome.js start.js
+    version.js          “local”; the Pages build stamps the commit here
     data/               illustrative genomes, jobs, catalogs
     render/             data-driven blocks (tables, jobs, charts, shell)
     shells/             each direction’s navigation
-    annotate/           the notes tool (store, anchors, pins, panel)
+    annotate/           the notes tool (store, anchors, pins, panel, about.js)
     mockup.css docs.css
   thumbs/               small screenshots for the index
 ```
