@@ -412,6 +412,10 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract ref somalier --install",
         "wgsextract ref somalier --delete",
     ),
+    "ref ancestry": _h(
+        f"{_LIBRARY}: the HGDP+1KG ancestry reference (--delete removes it).",
+        "wgsextract ref ancestry --install",
+    ),
     "ref ybrowse": _h(
         f"{_LIBRARY}: the yBrowse GRCh38 SNP sites (--delete removes them).",
         "wgsextract ref ybrowse --install",

@@ -16796,7 +16796,7 @@
    }
   },
   "qc ancestry": {
-   "help": "usage: wgsextract qc ancestry [-h] [--sample NAME]\n                              [--build {grch38,hg38,hs38,hs38d1,hs38d1v0,hs38dh,GRCh38,hs38DH,grch37,hg19,hg37,hs37,hs37d5,GRCh37,chm13,chm13v2,chm13v2.0,t2t,t2tv2,t2tv2.0,t2tv20,T2Tv20,T2Tv2,T2Tv2.0,CHM13,CHM13v2.0}]\n                              [--bootstrap N]\n\noptions:\n  -h, --help            show this help message and exit\n  --sample NAME         The sample to use from a multi-sample VCF (default: the only one)\n  --build {grch38,hg38,hs38,hs38d1,hs38d1v0,hs38dh,GRCh38,hs38DH,grch37,hg19,hg37,hs37,hs37d5,GRCh37,chm13,chm13v2,chm13v2.0,t2t,t2tv2,t2tv2.0,t2tv20,T2Tv20,T2Tv2,T2Tv2.0,CHM13,CHM13v2.0}\n                        The input's reference build, when its header doesn't tell (a VCF without\n                        contig lengths, say); a microarray file's is found from its positions\n  --bootstrap N         Bootstrap replicates for the 95% intervals; 0 skips them (default: 100)\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract qc ancestry --input sample.cram\n  wgsextract qc ancestry --input genome.vcf.gz --sample NA12878\n  wgsextract qc ancestry --input 23andme_raw.txt\n\noutputs (in the output directory unless noted):\n  <stem>.ancestry.tsv: K=7 and K=12 proportions with confidence intervals.\n\nneeds:\n  bcftools; depending on options and inputs, also: samtools; minutes on a 30x\n  genome.\n",
+   "help": "usage: wgsextract qc ancestry [-h] [--sample NAME] [--build {hg19,hg38,t2t}] [--bootstrap N]\n\noptions:\n  -h, --help            show this help message and exit\n  --sample NAME         The sample of a multi-sample VCF\n  --build {hg19,hg38,t2t}\n                        The input's build, when its header doesn't tell\n  --bootstrap N         Bootstrap replicates for the 95% intervals; 0 skips them\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract qc ancestry --input sample.cram\n  wgsextract qc ancestry --input genome.vcf.gz --sample NA12878\n  wgsextract qc ancestry --input 23andme_raw.txt\n\noutputs (in the output directory unless noted):\n  <stem>.ancestry.tsv: K=7 and K=12 proportions with confidence intervals.\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, curl; minutes on\n  a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -17085,7 +17085,7 @@
       "default": null,
       "dest": "sample",
       "exclusive_group": null,
-      "help": "The sample to use from a multi-sample VCF (default: the only one)",
+      "help": "The sample of a multi-sample VCF",
       "metavar": "NAME",
       "nargs": null,
       "option_strings": [
@@ -17096,39 +17096,16 @@
      },
      {
       "choices": [
-       "grch38",
-       "hg38",
-       "hs38",
-       "hs38d1",
-       "hs38d1v0",
-       "hs38dh",
-       "GRCh38",
-       "hs38DH",
-       "grch37",
        "hg19",
-       "hg37",
-       "hs37",
-       "hs37d5",
-       "GRCh37",
-       "chm13",
-       "chm13v2",
-       "chm13v2.0",
-       "t2t",
-       "t2tv2",
-       "t2tv2.0",
-       "t2tv20",
-       "T2Tv20",
-       "T2Tv2",
-       "T2Tv2.0",
-       "CHM13",
-       "CHM13v2.0"
+       "hg38",
+       "t2t"
       ],
       "class": "_StoreAction",
       "const": null,
       "default": null,
       "dest": "build",
       "exclusive_group": null,
-      "help": "The input's reference build, when its header doesn't tell (a VCF without contig lengths, say); a microarray file's is found from its positions",
+      "help": "The input's build, when its header doesn't tell",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -17144,7 +17121,7 @@
       "default": 100,
       "dest": "bootstrap",
       "exclusive_group": null,
-      "help": "Bootstrap replicates for the 95%% intervals; 0 skips them (default: 100)",
+      "help": "Bootstrap replicates for the 95%% intervals; 0 skips them",
       "metavar": "N",
       "nargs": null,
       "option_strings": [
@@ -21711,7 +21688,7 @@
    }
   },
   "ref ancestry": {
-   "help": "usage: wgsextract ref ancestry [-h] [--install] [--delete]\n\noptions:\n  -h, --help  show this help message and exit\n  --install   Install it.\n  --delete    Delete the installed ancestry reference\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract ref ancestry [-h] [--install] [--delete]\n\noptions:\n  -h, --help  show this help message and exit\n  --install   Install it.\n  --delete    Delete the installed ancestry reference\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref ancestry --install\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): the HGDP+1KG ancestry reference\n  (--delete removes it).\n\nneeds:\n  no external tools; depending on options and inputs, also: curl; depends on\n  download speed.\n",
    "parser": {
     "actions": [
      {

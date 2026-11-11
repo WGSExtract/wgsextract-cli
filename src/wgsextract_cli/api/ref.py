@@ -119,7 +119,7 @@ class RefSomalierParams(_InLibrary, Params):
 @dataclass(frozen=True, kw_only=True)
 class RefAncestryParams(_InLibrary, Params):
     """Install the hash-pinned ancestry reference that ``qc ancestry`` uses
-    (about 20 MB; HGDP+1KG allele frequencies from gnomAD v3.1, CC0), or
+    (16 MB; HGDP+1KG allele frequencies from gnomAD v3.1, CC0), or
     delete it. ``qc ancestry`` also downloads it on first use."""
 
     COMMAND = "ref ancestry"

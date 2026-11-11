@@ -175,3 +175,34 @@ def test_reference_not_matching_its_pin_is_refused(tmp_path, sample, monkeypatch
     result = _run(sample, bam)
     assert result.exit_code == 1
     assert "SHA-256" in result.error.message
+
+
+@needs_htslib
+def test_reference_is_downloaded_on_first_use_and_deleted_on_request(
+    tmp_path, sample, monkeypatch
+):
+    library = tmp_path / "library"
+    published = sample["reflib"] / "ancestry" / ancestry_reference.NAME
+    fetched = []
+
+    def download(url, dest, *_args, expected_sha256=None, **_kwargs):
+        # The network boundary: GitHub serves the published file.
+        fetched.append(url)
+        assert expected_sha256 == sample["sha256"]
+        Path(dest).write_bytes(published.read_bytes())
+        return True
+
+    monkeypatch.setattr(ancestry_reference, "download_file", download)
+    raw = raw_23andme(sample, tmp_path / "kit.txt")
+    result = _run(sample, raw, build=None, ref=library)
+    assert result.exit_code == 0, result.error
+    assert fetched == [ancestry_reference.URL]
+    assert (library / "ancestry" / ancestry_reference.NAME).is_file()
+
+    # Installed: no second download.
+    assert _run(sample, raw, build=None, ref=library).exit_code == 0
+    assert len(fetched) == 1
+
+    deleted = api.ref.ancestry(api.RefAncestryParams(ref=library, delete=True))
+    assert deleted.exit_code == 0
+    assert not (library / "ancestry").exists()

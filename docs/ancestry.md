@@ -84,7 +84,7 @@ PHASE0_ACCURACY
 
 | Code | Meaning |
 | :--- | :--- |
-| `ancestry_few_sites` | Fewer than 20,000 sites have data: the proportions are rough (see their intervals) |
+| `ancestry_few_sites` | Fewer than 10,000 sites have data: the proportions are rough (see their intervals) |
 
 Fewer than 2,000 sites with data is an error: a region subset, or a file
 from another species or build.

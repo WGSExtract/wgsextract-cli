@@ -24,7 +24,7 @@ import logging
 import re
 import subprocess
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -72,7 +72,7 @@ GUIDE = "docs/ancestry.md"
 # Sites with data below which the proportions are refused, and below which
 # they are reported with a warning (docs/ancestry.md, measured in #620).
 MIN_SITES = 2_000
-WARN_SITES = 20_000
+WARN_SITES = 10_000
 _VCF_SUFFIXES = (".vcf", ".vcf.gz", ".vcf.bgz", ".bcf")
 _PASSING = (".", "PASS")
 _SLUG = re.compile(r"[^a-z0-9]+")
@@ -101,6 +101,16 @@ def _input_kind(path: str) -> str:
     if lower.endswith(_VCF_SUFFIXES):
         return "vcf"
     return "microarray"
+
+
+def _index(
+    items: Iterable[tuple[tuple[str, int], int]],
+) -> dict[tuple[str, int], list[int]]:
+    """Site rows by (contig, position); a few positions have two SNPs."""
+    index: dict[tuple[str, int], list[int]] = {}
+    for key, row in items:
+        index.setdefault(key, []).append(row)
+    return index
 
 
 def _given_build(params: QcAncestryParams) -> str | None:
@@ -164,29 +174,29 @@ def _alignment_genotypes(
         with (work / f"sites.{n}.tsv").open("w", newline="\n") as f:
             f.writelines(f"{contig}\t{sites.pos[i]}\n" for i in rows)
     regions = {contig: work / f"sites.{n}.tsv" for n, contig in enumerate(by_contig)}
-    lookup = {
-        (contig, int(sites.pos[i])): i
+    lookup = _index(
+        ((contig, int(sites.pos[i])), i)
         for contig, rows in by_contig.items()
         for i in rows
-    }
+    )
+    available = sum(len(rows) for rows in by_contig.values())
     counts: dict[int, tuple[int, int]] = {}
 
     def one(contig: str) -> list[tuple[int, int, int]]:
         found = []
         for pos, ref, alts, ad in _pileup(aln.path, fasta, regions[contig], contig):
-            i = lookup.get((contig, pos))
-            if i is None or ref.upper() != sites.ref[i]:
-                continue
             names = alts.split(",")
-            alt_reads = (
-                ad[names.index(sites.alt[i]) + 1] if sites.alt[i] in names else 0
-            )
-            if ad[0] + alt_reads:
-                found.append((i, ad[0], alt_reads))
+            for i in lookup.get((contig, pos), ()):
+                if ref.upper() != sites.ref[i]:
+                    continue
+                alt = sites.alt[i]
+                alt_reads = ad[names.index(alt) + 1] if alt in names else 0
+                if ad[0] + alt_reads:
+                    found.append((i, ad[0], alt_reads))
         return found
 
     logging.info(
-        f"Reading {Path(aln.path).name} at {len(lookup):,} ancestry sites ({build})..."
+        f"Reading {Path(aln.path).name} at {available:,} ancestry sites ({build})..."
     )
     workers = max(1, min(int(aln.threads), len(by_contig)))
     cancel = cancel_event()
@@ -203,7 +213,7 @@ def _alignment_genotypes(
         likelihoods=ancestry.genotype_likelihoods(ref_reads, alt_reads),
         build=build,
         method="read counts at the sites (bcftools mpileup), as genotype likelihoods",
-        sites_available=len(lookup),
+        sites_available=available,
         depth=float((ref_reads + alt_reads).mean()) if order else 0.0,
     )
     return genotypes, aln.path, fasta
@@ -269,10 +279,10 @@ def _vcf_genotypes(
             f"{_contig(int(c), chr_prefix)}\t{p}\n"
             for c, p in zip(sites.chrom, sites.pos, strict=True)
         )
-    lookup = {
-        (_contig(int(c), chr_prefix), int(p)): i
+    lookup = _index(
+        ((_contig(int(c), chr_prefix), int(p)), i)
         for i, (c, p) in enumerate(zip(sites.chrom, sites.pos, strict=True))
-    }
+    )
     query = ["bcftools", "query", "-T", str(regions), "-s", sample,
              "-f", "%CHROM\t%POS\t%REF\t%ALT\t%FILTER[\t%GT]\n", vcf]  # fmt: skip
     called: dict[int, int] = {}
@@ -280,23 +290,20 @@ def _vcf_genotypes(
     ref_only = passing = 0
     for line in run_command(query, capture_output=True).stdout.splitlines():
         contig, pos, ref, alts, filt, gt = line.split("\t")
-        i = lookup.get((contig, int(pos)))
-        if i is None or ref.upper() != sites.ref[i] or i in called:
-            continue
         names = alts.split(",")
-        k = names.index(sites.alt[i]) + 1 if sites.alt[i] in names else None
-        if k is None and not set(names) <= {".", "<*>", "<NON_REF>"}:
-            continue
-        if filt not in _PASSING:
-            unknown.add(i)
-            continue
-        dosage = _dosage(gt, k)
-        if dosage is None:
-            unknown.add(i)
-            continue
-        passing += 1
-        ref_only += dosage == 0
-        called[i] = dosage
+        for i in lookup.get((contig, int(pos)), ()):
+            if ref.upper() != sites.ref[i] or i in called:
+                continue
+            k = names.index(sites.alt[i]) + 1 if sites.alt[i] in names else None
+            if k is None and not set(names) <= {".", "<*>", "<NON_REF>"}:
+                continue
+            dosage = _dosage(gt, k) if filt in _PASSING else None
+            if dosage is None:
+                unknown.add(i)
+                continue
+            passing += 1
+            ref_only += dosage == 0
+            called[i] = dosage
     variants_only = passing > 0 and ref_only <= VARIANTS_ONLY_MAX_REF_RECORDS * passing
     filled = 0
     if variants_only:
@@ -384,16 +391,15 @@ def _microarray_genotypes(
     given = _given_build(params)
     for build in (given,) if given else ("hg19", "hg38"):
         sites = reference.sites(build)
-        lookup = {
-            (str(c), int(p)): i
+        lookup = _index(
+            ((str(c), int(p)), i)
             for i, (c, p) in enumerate(zip(sites.chrom, sites.pos, strict=True))
-        }
+        )
         dosages: dict[int, int] = {}
         for chrom, pos, genotype in calls:
-            i = lookup.get((chrom, pos))
-            if i is None or not set(genotype) <= {sites.ref[i], sites.alt[i]}:
-                continue
-            dosages[i] = genotype.count(sites.alt[i])
+            for i in lookup.get((chrom, pos), ()):
+                if set(genotype) <= {sites.ref[i], sites.alt[i]}:
+                    dosages[i] = genotype.count(sites.alt[i])
         if best is None or len(dosages) > best[0]:
             best = (len(dosages), build, dosages, len(sites.pos))
     assert best is not None
@@ -436,9 +442,13 @@ def run_ancestry(params: QcAncestryParams) -> None:
     outdir.mkdir(parents=True, exist_ok=True)
     result = current_result()
     with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_ancestry_") as tmp:
-        reader = {"alignment": _alignment_genotypes, "vcf": _vcf_genotypes,
-                  "microarray": _microarray_genotypes}[kind]  # fmt: skip
-        genotypes, source, fasta = reader(params, reference, Path(tmp))
+        work = Path(tmp)
+        if kind == "alignment":
+            genotypes, source, fasta = _alignment_genotypes(params, reference, work)
+        elif kind == "vcf":
+            genotypes, source, fasta = _vcf_genotypes(params, reference, work)
+        else:
+            genotypes, source, fasta = _microarray_genotypes(params, reference, work)
     result.add_input(source, "input")
     result.add_input(reference.path, "ancestry_reference")
     if fasta:

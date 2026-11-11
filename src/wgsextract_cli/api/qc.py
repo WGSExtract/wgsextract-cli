@@ -253,25 +253,20 @@ class RelateParams(Params):
 
 @dataclass(frozen=True, kw_only=True)
 class QcAncestryParams(Params):
-    """Ancestry proportions, admixture-style: the shares of the sample's
-    genome best explained by each of 7 continental and 12 sub-continental
-    reference components, trained with ADAMIXTURE on the HGDP + 1000 Genomes
-    samples of gnomAD v3.1. Each share has a 95% interval from a block
-    bootstrap over sites. These are proportions of reference populations, not
-    an ethnicity. Genotypes come from the reads of a BAM/CRAM (genotype
-    likelihoods, so low coverage widens the intervals rather than biasing
-    them), the calls of a VCF, or a microarray raw-data file; GRCh37/hg19,
-    GRCh38 and T2T-CHM13. Writes ``<stem>.ancestry.tsv``; metrics
-    ``ancestry_k7``/``ancestry_k12`` (name: proportion), ``ancestry_sites``,
-    ``ancestry_depth``; the K=7 result is recorded as the sample's
-    ``ancestry`` fact. The reference (~20 MB) is downloaded into the library
-    on first use."""
+    """Admixture-style ancestry proportions: the shares of 7 continental and
+    12 sub-continental reference components learned with ADAMIXTURE from the
+    HGDP + 1000 Genomes samples of gnomAD v3.1, each with a 95% block-bootstrap
+    interval. They are reference proportions, not an ethnicity. From a
+    BAM/CRAM (genotype likelihoods), a VCF or a microarray raw-data file, on
+    GRCh37, GRCh38 or T2T-CHM13. Writes ``<stem>.ancestry.tsv``; metrics
+    ``ancestry_k7_<component>`` (and ``k12``, ``_lower``, ``_upper``),
+    ``ancestry_sites``; records the ``ancestry`` fact. The 16 MB reference is
+    downloaded on first use."""
 
     COMMAND = "qc ancestry"
 
     input: Path = input_param(
-        "Indexed BAM or CRAM, VCF, or microarray raw-data file (23andMe, "
-        "AncestryDNA, FTDNA, MyHeritage; .txt, .csv, .zip or .gz).",
+        "Indexed BAM or CRAM, VCF, or microarray raw-data file.",
         "--input (a BAM, CRAM, VCF or microarray file) is required.",
     )
     ref: Path | None = ref_param()
@@ -279,19 +274,17 @@ class QcAncestryParams(Params):
     threads: int | None = threads_param()
     sample: str | None = param(
         None,
-        help="The sample to use from a multi-sample VCF (default: the only one)",
+        help="The sample of a multi-sample VCF",
         metavar="NAME",
     )
     build: str | None = param(
         None,
-        help="The input's reference build, when its header doesn't tell "
-        "(a VCF without contig lengths, say); a microarray file's is found "
-        "from its positions",
-        choices=tuple(BUILD_CHOICES),
+        help="The input's build, when its header doesn't tell",
+        choices=("hg19", "hg38", "t2t"),
     )
     bootstrap: int = param(
         100,
-        help="Bootstrap replicates for the 95%% intervals; 0 skips them (default: 100)",
+        help="Bootstrap replicates for the 95%% intervals; 0 skips them",
         metavar="N",
     )
 
