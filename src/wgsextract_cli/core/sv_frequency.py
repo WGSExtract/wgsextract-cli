@@ -30,6 +30,7 @@ from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.table_writer import Column
 from wgsextract_cli.core.utils import WGSExtractError, popen, run_command
 
@@ -171,6 +172,8 @@ class SitesTable:
         header = run_command(["tabix", "-H", path], capture_output=True).stdout
         named = re.search(r"^##source=(\S+)", header, re.MULTILINE)
         self.source = source or (named.group(1) if named else Path(path).name)
+        built = re.search(r"^##build=(\S+)", header, re.MULTILINE)
+        self.build = canonical_build(built.group(1)) if built else None
         listed = run_command(["tabix", "-l", path], capture_output=True).stdout
         self.contigs = set(listed.split())
         self._name = ""

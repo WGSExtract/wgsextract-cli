@@ -46,6 +46,12 @@ def _tables(
     library = {cat.source: path for path, cat in gnomad_sv.tables_for(root, build)}
     chosen = [given[s] or library.get(s) for s in gnomad_sv.SOURCES]
     tables = [svf.SitesTable(os.fspath(path)) for path in chosen if path]
+    for table in tables:
+        if build and table.build and table.build != build:
+            raise UsageError(
+                f"{table.path} is a {table.build} table but this VCF is {build}; "
+                "give a table for the VCF's build."
+            )
     if not tables:
         raise WGSExtractError(
             f"REQUIRED DATA MISSING: no gnomAD SV table for {build} in the "

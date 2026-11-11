@@ -248,22 +248,44 @@ def test_sequence_resolved_long_read_calls_match(library, tmp_path):
     assert records["ins_dup"]["SV_AF_ID"] == "gDUP"
 
 
-def test_a_grch37_table_with_bare_contig_names_matches_chr_named_calls(calls, tmp_path):
-    table = tmp_path / "v2.tsv.gz"
-    table.with_suffix("").write_text(
-        "##source=gnomAD-SV_v2.1\n#CHROM\tPOS\tEND\tSVTYPE\tSVLEN\tAF\tPOPMAX_AF\tID\n"
-        "1\t10000\t12000\tDEL\t2000\t0.2\t0.3\tv2DEL\n"
+def _bare_table(path, source, build):
+    path.with_suffix("").write_text(
+        f"##source={source}\n##build={build}\n"
+        "#CHROM\tPOS\tEND\tSVTYPE\tSVLEN\tAF\tPOPMAX_AF\tID\n"
+        "1\t10000\t12000\tDEL\t2000\t0.2\t0.3\tbareDEL\n"
         # No one carries it (#618: gnomAD-LR lists such sites): not a match.
-        "1\t20100\t20100\tINS\t300\t0\t0\tnobody\n"
+        "1\t20100\t20100\tINS\t300\t0\t0\tnobody\n",
+        newline="\n",
     )
-    subprocess.run(["bgzip", "-f", str(table.with_suffix(""))], check=True)
-    subprocess.run(["tabix", "-s1", "-b2", "-e3", str(table)], check=True)
+    subprocess.run(["bgzip", "-f", str(path.with_suffix(""))], check=True)
+    subprocess.run(["tabix", "-s1", "-b2", "-e3", str(path)], check=True)
+    return path
+
+
+def test_a_table_with_bare_contig_names_matches_chr_named_calls(calls, tmp_path):
+    table = _bare_table(tmp_path / "bare.tsv.gz", "custom-SV", "hg38")
     result = _sv_freq(calls, None, tmp_path / "o", gnomad_sv_file=table)
     records = _records(_output(result, "annotated_vcf"))
 
-    assert records["del_common"]["SV_AF_SOURCE"] == "gnomAD-SV_v2.1"
+    assert records["del_common"]["SV_AF_SOURCE"] == "custom-SV"
     assert records["del_common"]["SV_AF"] == "0.2"
     assert records["ins_rare"]["SV_FREQ"] == "novel"
+
+
+def test_a_table_for_another_build_is_refused(library, calls, tmp_path):
+    """#688 review: a GRCh37 gnomAD-SV v2.1 table silently annotated GRCh38
+    calls with GRCh37 coordinates' frequencies."""
+    table = _bare_table(tmp_path / "v2.tsv.gz", "gnomAD-SV_v2.1", "hg19")
+    result = api.vcf.sv_freq(
+        api.VcfSvFreqParams(
+            input=calls, ref=library, outdir=tmp_path / "o", gnomad_sv_file=table
+        ),
+        check=False,
+    )
+
+    assert result.status == "failed"
+    assert "hg19" in result.error.message and "hg38" in result.error.message
+    assert not (tmp_path / "o" / "sv_freq_annotated.vcf.gz").exists()
 
 
 def test_a_changed_table_is_not_used(library, calls, tmp_path):

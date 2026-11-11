@@ -39,6 +39,8 @@ insertions and tandem duplications), not its tandem-repeat alleles.
 **GRCh37.** gnomAD-SV v2.1 is native GRCh37, so no liftover is needed.
 gnomAD-LR is GRCh38 only; a GRCh37 VCF is annotated with gnomAD-SV v2.1
 alone. T2T-CHM13 is not supported (`--gnomad-sv-file` takes your own table).
+A table whose `##build=` header names a different build from the VCF's is
+refused.
 
 **gnomAD-LR caveats.** It is a beta. Its All of Us participants
 self-identified as Black or African American, so its frequencies describe

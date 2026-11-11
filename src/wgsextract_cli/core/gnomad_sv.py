@@ -393,7 +393,7 @@ def install(
         if cancel and cancel.is_set():
             raise WGSExtractError("Cancelled.")
         download.unlink()
-        stamp.write_text(source.sha256)
+        stamp.write_text(source.sha256, newline="\n")
         logging.info(f"{cat.label}: {rows:,} SVs from {name}")
     dest = base / cat.table
     _write_table(parts, dest, cat)
