@@ -1142,6 +1142,9 @@ def test_smn_reports_copy_numbers_and_says_it_is_not_a_diagnosis(tmp_path, smn, 
     assert manifest_warnings(result) == {}
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="SMNCopyNumberCaller is not supported on Windows"
+)
 def test_smn_reports_a_carrier_and_its_report_finding(tmp_path, smn):
     smn.set_result(SMN1=1, SMN2=3, isCarrier=True)
     out = tmp_path / "out"
