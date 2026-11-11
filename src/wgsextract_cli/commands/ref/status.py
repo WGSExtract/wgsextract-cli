@@ -9,7 +9,12 @@ from typing import Any
 
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.ref import RefStatusParams
-from wgsextract_cli.core import bwa_mem2, sample_workspace, somalier_resources
+from wgsextract_cli.core import (
+    bwa_mem2,
+    gnomad_sv,
+    sample_workspace,
+    somalier_resources,
+)
 from wgsextract_cli.core.aadr_resources import aadr_2m_path
 from wgsextract_cli.core.config import dataset_library, settings
 from wgsextract_cli.core.gene_map import are_gene_maps_installed
@@ -109,6 +114,10 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
             "installed": somalier_resources.installed(reflib),
             "file": str(somalier_resources.folder(reflib)),
         },
+        "gnomadSv": {
+            f"{source}_{build}": gnomad_sv.installed(reflib, source, build)
+            for source, build in gnomad_sv.CATALOGUES
+        },
         "ybrowse": _ybrowse_status(reflib),
         "geneMap": {
             "installed": are_gene_maps_installed(reflib),
@@ -161,6 +170,10 @@ def ref_status_values(status: dict[str, Any]) -> dict[str, str]:
         "library.pharmgkbFile": status["pharmgkb"]["file"],
         "library.aadrInstalled": _json_bool(status["aadr"]["installed"]),
         "library.somalierInstalled": _json_bool(status["somalier"]["installed"]),
+        **{
+            f"library.gnomadSv_{key}Installed": _json_bool(value)
+            for key, value in status["gnomadSv"].items()
+        },
         "library.ybrowseInstalled": _json_bool(status["ybrowse"]["installed"]),
         **{
             f"library.{key}Installed": _json_bool(
@@ -188,6 +201,8 @@ def print_ref_status(status: dict[str, Any]) -> None:
     human_output(f"Gene maps: {_status_label(status['geneMap']['installed'])}")
     human_output(f"AADR 2M panel: {_path_status(status['aadr'])}")
     human_output(f"somalier sites/1KG: {_path_status(status['somalier'])}")
+    sv_tables = [k for k, v in status["gnomadSv"].items() if v]
+    human_output(f"gnomAD SV tables: {', '.join(sv_tables) or 'not installed'}")
     human_output(f"yBrowse GRCh38: {_path_status(status['ybrowse'])}")
     human_output(f"Microarray targets: {_path_status(status['annotationVcf'])}")
     human_output(f"Test genome: {status['testGenome']['status']}")

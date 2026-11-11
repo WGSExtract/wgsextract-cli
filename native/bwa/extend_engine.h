@@ -172,16 +172,14 @@ public:
                 }
                 [encoder endEncoding];
             }
-            [command addCompletedHandler:done];
-            wgse::metal::Runtime::commit(command);
+            wgse::metal::Runtime::commit(command, done);
         }
     }
 
     // A completed command buffer's GPU time, or a failure.
     static double finished(id<MTLCommandBuffer> command) {
         if (command.status != MTLCommandBufferStatusCompleted)
-            throw std::runtime_error(std::string("GPU extension: ") + (command.error
-                ? command.error.localizedDescription.UTF8String : "Metal command failed"));
+            throw std::runtime_error("GPU extension: " + wgse::metal::Runtime::describe(command));
         return std::max(0.0, command.GPUEndTime - command.GPUStartTime);
     }
 };

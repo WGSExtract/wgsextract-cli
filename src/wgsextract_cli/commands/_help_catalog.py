@@ -260,6 +260,10 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         ".confidence.tsv table.",
         f"wgsextract vcf gnomad {_VCF_IN} --max-af 0.01",
     ),
+    "vcf sv-freq": _h(
+        "sv_freq_annotated.vcf.gz (+ .tbi) and sv_freq.tsv.",
+        "wgsextract vcf sv-freq --vcf-input sniffles.vcf.gz",
+    ),
     "vcf revel": _h(
         _SCORED.format(name="revel"),
         f"wgsextract vcf revel {_VCF_IN}",
@@ -411,6 +415,10 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "(--delete removes them).",
         "wgsextract ref somalier --install",
         "wgsextract ref somalier --delete",
+    ),
+    "ref gnomad-sv": _h(
+        f"{_LIBRARY}: gnomAD SV tables in gnomad-sv/ (--delete removes them).",
+        "wgsextract ref gnomad-sv --install --source lr",
     ),
     "ref ybrowse": _h(
         f"{_LIBRARY}: the yBrowse GRCh38 SNP sites (--delete removes them).",
