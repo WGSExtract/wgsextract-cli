@@ -125,14 +125,14 @@ if(BUILD_TESTING)
     target_compile_options(extend_neon_check PRIVATE -Wall -Wextra -Werror)
     target_link_libraries(extend_neon_check PRIVATE wgse_bwa_core)
     add_test(NAME bwa_extend_neon COMMAND extend_neon_check 200000)
-    add_test(NAME bwa_metal_rescue_parity
+    add_test(NAME bwa_gpu_rescue_parity
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/rescue_parity.sh"
         $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/rescue-parity")
-    add_test(NAME bwa_metal_extend_parity
+    add_test(NAME bwa_gpu_extend_parity
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/extend_parity.sh"
         $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/extend-parity")
     # Exit 77 means the machine has no unified-memory Metal device.
-    set_tests_properties(bwa_smoke bwa_metal_rescue_parity bwa_metal_extend_parity
+    set_tests_properties(bwa_smoke bwa_gpu_rescue_parity bwa_gpu_extend_parity
         PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
