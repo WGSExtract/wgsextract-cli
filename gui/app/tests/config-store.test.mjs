@@ -71,15 +71,28 @@ test("on Windows, saving waits out another process briefly holding the file open
   const target = path.join(directory, "config.toml");
   await writeFile(target, "old\n");
   // Opened without delete sharing, as a reader or virus scanner may, which makes a rename over it fail.
+  // It lets go when told on stdin, so the test doesn't depend on how fast a busy runner schedules it.
   const holder = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-    `$f = [IO.File]::Open('${target.replaceAll("'", "''")}', 'Open', 'Read', 'Read'); 'locked'; Start-Sleep -Milliseconds 250; $f.Close()`]);
+    `$f = [IO.File]::Open('${target.replaceAll("'", "''")}', 'Open', 'Read', 'Read'); 'locked'; [void][Console]::In.ReadLine(); $f.Close(); 'released'`]);
   t.after(() => holder.kill());
-  await new Promise((resolve, reject) => {
-    holder.stdout.on("data", (data) => String(data).includes("locked") && resolve());
-    holder.on("exit", (code) => reject(new Error(`the lock holder exited (${code}) before taking the lock`)));
+  let output = "";
+  const said = (word) => new Promise((resolve, reject) => {
+    const check = () => output.includes(word) && resolve();
+    holder.stdout.on("data", (data) => {
+      output += String(data);
+      check();
+    });
+    holder.on("exit", (code) => reject(new Error(`the lock holder exited (${code}) before saying ${word}: ${output}`)));
+    check();
   });
+  await said("locked");
 
-  await writeFileAtomically(target, "new\n");
+  // The first renames fail while the file is held; the save is still retrying when it's let go.
+  const saving = writeFileAtomically(target, "new\n");
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  holder.stdin.write("\n");
+  await said("released");
+  await saving;
 
   assert.equal(await readFile(target, "utf8"), "new\n");
   assert.deepEqual((await readdir(directory)).filter((name) => name.endsWith(".tmp")), []);
