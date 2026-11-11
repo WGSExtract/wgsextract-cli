@@ -40,6 +40,8 @@ jobs:
             dev
             gatk
             vep-rs
+          # PR runs restore main's environment; writing their own crowds it out.
+          cache-write: ${{ github.ref == 'refs/heads/main' }}
       - name: Validate installer arguments
         shell: cmd
         run: install_windows.bat --dry-run --msys2-root C:\msys64 --skip-pacman-setup
