@@ -5,6 +5,7 @@ import math
 import os
 import re
 import subprocess
+import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, NamedTuple, TypedDict
@@ -113,9 +114,33 @@ class BodySample(NamedTuple):
     lengths: tuple[int, ...] = ()
     # The sample reached the end of the file, so it holds every read.
     complete: bool = False
+    # Why no reads could be sampled (samtools' last error lines), or None.
+    error: str | None = None
 
 
 BODY_SAMPLE_RECORDS = 20000
+# samtools' stderr lines kept to explain a sample that found no reads.
+_ERROR_TAIL_LINES = 6
+
+
+def _error_tail(stderr: Any) -> str:
+    """The last few lines samtools wrote to ``stderr`` (a temporary file)."""
+    try:
+        stderr.seek(0)
+        lines = stderr.read().decode("utf-8", "replace").splitlines()
+    except (OSError, ValueError):
+        return ""
+    return "\n".join(line for line in lines[-_ERROR_TAIL_LINES:] if line.strip())
+
+
+def is_missing_cram_reference(error: str | None) -> bool:
+    """samtools could not decode a CRAM because its reference wasn't found."""
+    if not error:
+        return False
+    return any(
+        marker in error
+        for marker in ("cram_get_ref", "refs_load_fai", "Unable to fetch reference")
+    )
 
 
 def run_body_sample(filepath: str, cram_opt: Sequence[str]) -> BodySample:
@@ -129,14 +154,18 @@ def run_body_sample(filepath: str, cram_opt: Sequence[str]) -> BodySample:
     primary_lengths = []
     first_qname = None
     complete = False
+    error = None
 
     proc = None
+    # A file, not a pipe: samtools may write many warnings while we read only
+    # stdout, and a full stderr pipe would stall it.
+    stderr = tempfile.TemporaryFile()
     try:
         proc = popen(
             cmd,
             stdout=subprocess.PIPE,
             text=True,
-            stderr=subprocess.DEVNULL,
+            stderr=stderr,
         )
         assert proc.stdout is not None
         for _ in range(BODY_SAMPLE_RECORDS):
@@ -188,6 +217,13 @@ def run_body_sample(filepath: str, cram_opt: Sequence[str]) -> BodySample:
             if proc.stdout:
                 proc.stdout.close()
             proc.wait()
+        if count == 0:
+            error = _error_tail(stderr) or None
+            if error is None and proc is not None and proc.returncode:
+                error = f"samtools view exited with status {proc.returncode}"
+        stderr.close()
+    if error:
+        logging.debug(f"No reads sampled from {filepath}: {error}")
 
     avg_len = total_len / count if count > 0 else 0
     avg_tlen = sum(tlen_values) / len(tlen_values) if len(tlen_values) > 0 else 0
@@ -213,6 +249,7 @@ def run_body_sample(filepath: str, cram_opt: Sequence[str]) -> BodySample:
         first_qname,
         tuple(primary_lengths),
         complete,
+        error,
     )
 
 
