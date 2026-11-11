@@ -1,7 +1,7 @@
+// wgse-bwa's GPU scheduling and its exact CPU replacements, independent of the
+// GPU API: the device (gpu_device.h) runs the kernels.
 #include "metal_backend.h"
-#include "extend_engine.h"
-#include "rescue_engine.h"
-#include "seeding_engine.h"
+#include "gpu_device.h"
 #include "smem_batch.h"
 
 #include <algorithm>
@@ -10,24 +10,25 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <condition_variable>
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <system_error>
 #include <thread>
-#include <sys/sysctl.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <sys/sysctl.h>
+#endif
 
 extern "C" void kt_for(int n_threads, void (*func)(void *, long, int), void *data, long n);
 
 namespace {
-using namespace wgse::seeding;
-using wgse::rescue::GpuRescue;
-using wgse::extend::GpuExtend;
+using namespace wgse::gpu;
 
-constexpr size_t threadgroup_size = 64;
-constexpr size_t locate_rows_per_dispatch = size_t(1) << 21;
 // Prepared batches whose pairs are not all mapped yet; bounds memory for large -K.
 constexpr size_t max_outstanding_batches = 3;
 
@@ -41,10 +42,9 @@ bool locate_enabled = true;
 bool all_on_gpu = false;
 // Reads per GPU batch: smaller batches finish a chunk sooner, larger ones keep
 // more of the GPU busy.
-size_t gpu_batch_reads = 16384;
 // Rows one batch may locate on the GPU (bounds its host buffers at large -c);
 // the remaining reads' rows use upstream bwt_sa().
-size_t locate_rows_per_batch = locate_rows_per_dispatch;
+size_t locate_rows_per_batch = size_t(1) << 21;
 // Derive suffix-array samples every 1 << shift rows (shift 4: about 0.8 GiB
 // for hs38) once a run has mapped enough reads to repay their fixed GPU build
 // (about 19 s, repaid after about 14M more reads); only on Macs with at least
@@ -87,11 +87,12 @@ constexpr size_t extend_in_flight = 2;
 constexpr size_t extend_jobs_per_pair = 24, extend_bases_per_pair = 8192;
 std::mutex failure_mutex;
 std::string execution_failure;
-std::unique_ptr<GpuSeeds> gpu;
-std::unique_ptr<GpuLocate> locator;
-std::unique_ptr<GpuRescue> rescuer;
-std::unique_ptr<GpuExtend> extender;
-const uint32_t *shared_bwt = nullptr;
+// The selected device (wgse_set_backend), and its failure or why none is usable.
+std::unique_ptr<Device> device;
+std::string device_reason;
+DeviceOptions device_options;
+// Whether the device locates with the attached index's samples.
+bool locator = false;
 const uint64_t *shared_sa = nullptr;
 
 // GPU results for one read: its SMEM intervals and the positions of the
@@ -142,9 +143,15 @@ double extend_gpu_seconds = 0, extend_kernel_seconds = 0;
 size_t overlapped_chunks = 0;
 std::atomic<size_t> pair_starts{0}, pairs_running{0};
 
-SeedKernel &kernel() {
-    static SeedKernel value;
-    return value;
+uint64_t physical_memory() {
+#ifdef __APPLE__
+    uint64_t memory = 0;
+    size_t size = sizeof(memory);
+    return sysctlbyname("hw.memsize", &memory, &size, nullptr, 0) == 0 ? memory : 0;
+#else
+    const long pages = sysconf(_SC_PHYS_PAGES), page = sysconf(_SC_PAGESIZE);
+    return pages > 0 && page > 0 ? uint64_t(pages) * uint64_t(page) : 0;
+#endif
 }
 
 void record_failure(const std::string &reason) {
@@ -157,49 +164,22 @@ void record_failure(const std::string &reason) {
 
 // reads_before: reads of the earlier chunks.
 void attach(const bwt_t *bwt, const mem_opt_t *opt, size_t reads_before) {
-    if (!gpu) gpu = std::make_unique<GpuSeeds>(kernel(), gpu_batch_reads);
-    if (shared_bwt != bwt->bwt) {
-        const size_t page = static_cast<size_t>(getpagesize());
-        if (reinterpret_cast<uintptr_t>(bwt->bwt) % page)
-            throw std::runtime_error("Metal needs a disk-loaded index, not a shared-memory one");
-        size_t bytes = (bwt->bwt_size * sizeof(uint32_t) + page - 1) / page * page;
-        // The C index keeps ownership; no GPU command outlives mem_process_seqs.
-        gpu->index = [gpu->runtime.device() newBufferWithBytesNoCopy:bwt->bwt length:bytes
-            options:MTLResourceStorageModeShared deallocator:nil];
-        if (!gpu->index) throw std::runtime_error("cannot share the BWT with Metal");
-        shared_bwt = bwt->bwt;
-    }
-    gpu->configure(*bwt, *opt, seed_scratch_capacity, seed_output_capacity);
+    device->attach(*bwt, *opt);
     if (locate_enabled && shared_sa != bwt->sa) {
-        const size_t page = static_cast<size_t>(getpagesize());
-        locator.reset();
+        locator = false;
         dense_low = dense_high = nullptr;
         dense_tried = dense_built = false;
         shared_sa = bwt->sa;
-        // Without a shareable sampled suffix array only seeding uses the GPU.
-        if (!GpuLocate::supported(*bwt) || reinterpret_cast<uintptr_t>(bwt->sa) % page) return;
-        auto shared = std::make_unique<GpuLocate>(kernel(), locate_rows_per_dispatch);
-        size_t bytes = (bwt->n_sa * sizeof(uint64_t) + page - 1) / page * page;
-        shared->sa = [gpu->runtime.device() newBufferWithBytesNoCopy:bwt->sa length:bytes
-            options:MTLResourceStorageModeShared deallocator:nil];
-        if (!shared->sa) return;
-        shared->configure(*bwt);
-        locator = std::move(shared);
+        // Without usable suffix-array samples only seeding uses the GPU.
+        locator = device->attach_sa(*bwt);
     }
     // The denser samples cost a fixed build, repaid only by long runs.
     if (!locator || dense_tried || !locate_dense_shift || reads_before < locate_dense_after)
         return;
     dense_tried = true;
-    if (!locate_dense_forced) {
-        uint64_t memory = 0;
-        size_t size = sizeof(memory);
-        if (sysctlbyname("hw.memsize", &memory, &size, nullptr, 0) != 0
-            || memory < locate_dense_min_memory) return;
-    }
+    if (!locate_dense_forced && physical_memory() < locate_dense_min_memory) return;
     auto start = Clock::now();
-    if (locator->densify(gpu->index, locate_dense_shift, locate_dense_slice, threadgroup_size)) {
-        dense_low = static_cast<const uint32_t *>(locator->low.contents);
-        dense_high = static_cast<const uint32_t *>(locator->high.contents);
+    if (device->densify(locate_dense_shift, locate_dense_slice, &dense_low, &dense_high)) {
         dense_built = true;
         locate_dense_seconds = seconds(start);
     }
@@ -544,7 +524,7 @@ struct ExtendBatch {
         // The pair's jobs.
         uint32_t first, last;
     };
-    id<MTLBuffer> bases = nil, jobs = nil, results = nil, order = nil;
+    std::unique_ptr<ExtendBuffers> buffers;
     // Capacities, and the space reserved by staged pairs.
     size_t base_capacity = 0, job_capacity = 0, base_count = 0, job_count = 0;
     std::vector<Pair> pairs;
@@ -675,7 +655,7 @@ public:
 
     SeedScheduler(const mem_opt_t *opt, const bwt_t *bwt, int n, bseq1_t *seqs,
         void (*worker)(void *, long, int), void *data, const ExtendParameters *extension)
-        : Splitter(opt->n_threads, n / stride(opt), long(gpu->capacity) / stride(opt), false,
+        : Splitter(opt->n_threads, n / stride(opt), long(device->seed_capacity()) / stride(opt), false,
               inject_failure ? "injected GPU failure (test)" : nullptr, worker, data),
           opt_(opt), bwt_(bwt), seqs_(seqs), stride_(stride(opt)),
           prepared_(size_t(n / stride_) * stride_, nullptr), extend_(extension != nullptr) {
@@ -752,9 +732,8 @@ private:
             finish(pair, chains, nullptr, 0, 0);
             return;
         }
-        memcpy(static_cast<uint8_t *>(target->bases.contents) + base_offset, stage.bases.data(),
-            stage.bases.size());
-        auto *jobs = static_cast<ExtendJob *>(target->jobs.contents) + job_offset;
+        memcpy(target->buffers->bases + base_offset, stage.bases.data(), stage.bases.size());
+        ExtendJob *jobs = target->buffers->jobs + job_offset;
         for (ExtendJob job : stage.jobs) {
             job.left_query += uint32_t(base_offset);
             job.left_target += uint32_t(base_offset);
@@ -842,18 +821,14 @@ private:
             if (inject_extend_failure)
                 throw std::runtime_error("injected GPU extension failure (test)");
             const auto start = Clock::now();
-            extender->submit(parameters_, batch->bases, batch->jobs, batch->results, batch->order,
-                batch->job_count, batch->job_capacity, ^(id<MTLCommandBuffer> command) {
-                    if (retry(batch, command)) return;
-                    double kernel = 0;
-                    bool extended = false;
-                    try {
-                        kernel = GpuExtend::finished(command);
-                        extended = true;
-                    } catch (const std::exception &error) {
-                        record_failure(error.what());
+            device->extend(parameters_, *batch->buffers, batch->job_count, ++batch->attempts,
+                [this, batch, start](Outcome outcome, double kernel, const std::string &error) {
+                    if (outcome == Outcome::interrupted) {
+                        retry(batch);
+                        return;
                     }
-                    complete(batch, extended, seconds(start), kernel);
+                    if (outcome == Outcome::failed) record_failure(error);
+                    complete(batch, outcome == Outcome::done, seconds(start), kernel);
                 });
         } catch (const std::exception &error) {
             if (*error.what()) record_failure(error.what());
@@ -861,17 +836,13 @@ private:
         }
     }
 
-    // On the GPU's completion thread: queues an interrupted batch to be committed
+    // On the GPU's completion thread: queues an interrupted batch to be submitted
     // again first (the kernels rewrite the results from the unchanged jobs).
-    bool retry(ExtendBatch *batch, id<MTLCommandBuffer> command) {
+    void retry(ExtendBatch *batch) {
         std::lock_guard<std::mutex> lock(mutex_);
-        const int attempt = ++batch->attempts;
-        if (attempt == wgse::metal::Runtime::attempts
-            || !wgse::metal::Runtime::interrupted(command, attempt)) return false;
         queued_.push_front(batch);
         --in_flight_;
         extend_changed_.notify_one();
-        return true;
     }
 
     // On the GPU's completion thread (or extend_loop's after a failure).
@@ -982,11 +953,12 @@ private:
     // keep a null entry and use the CPU.
     void locate(SeedBatch &batch, long first) {
         batch.output.resize(batch.input.reads.size());
-        gpu->run(batch.input, batch.output, threadgroup_size, 0, bwt_, opt_);
+        std::vector<long> failed;
+        device->seed(batch.input, batch.output, failed);
         // Skip locating a batch the CPU threads have already mapped.
         if (taken(first)) return;
         std::vector<char> usable_read(batch.output.size(), 1);
-        for (long i : gpu->failed) usable_read[size_t(i)] = 0;
+        for (long i : failed) usable_read[size_t(i)] = 0;
         std::vector<size_t> offsets(batch.output.size() + 1, 0);
         std::vector<char> located(batch.output.size(), 0);
         const bool locate = locator && opt_->max_occ > 0;
@@ -1010,7 +982,7 @@ private:
             }
             if (inject_locate_failure)
                 throw std::runtime_error("injected GPU locate failure (test)");
-            locator->run(gpu->index, batch.rows, batch.positions, threadgroup_size);
+            device->locate(batch.rows, batch.positions);
             locate_seconds += seconds(phase);
             located_rows += batch.rows.size();
         }
@@ -1248,8 +1220,7 @@ private:
         if (inject_rescue_failure && batches > 0)
             throw std::runtime_error("injected GPU rescue failure (test)");
         if (!taken(first)) {
-            rescuer->run(parameters_, batch.bases, batch.jobs, batch.row_bytes, batch.results,
-                threadgroup_size);
+            device->rescue(parameters_, batch.bases, batch.jobs, batch.row_bytes, batch.results);
             jobs += batch.jobs.size();
             for (const RescueResult &result : batch.results) {
                 if (result.status != rescue_ok && result.status != rescue_cpu)
@@ -1289,15 +1260,12 @@ private:
 };
 // The extension kernel and its batches for opt->n_threads CPU threads.
 void prepare_extension() {
-    if (!extender)
-        extender = std::make_unique<GpuExtend>(kernel().extend_runtime, kernel().extend);
     const size_t pairs = extend_batch_pairs;
     while (extend_pool.size() < extend_batch_count) {
         auto batch = std::make_unique<ExtendBatch>();
         batch->base_capacity = pairs * extend_bases_per_pair;
         batch->job_capacity = pairs * extend_jobs_per_pair;
-        extender->allocate(batch->base_capacity, batch->job_capacity, batch->bases, batch->jobs,
-            batch->results, batch->order);
+        batch->buffers = device->extend_buffers(batch->base_capacity, batch->job_capacity);
         batch->pairs.reserve(pairs);
         extend_pool.push_back(std::move(batch));
     }
@@ -1305,7 +1273,7 @@ void prepare_extension() {
 } // namespace
 
 extern "C" void *wgse_metal_calloc(size_t count, size_t size) {
-    // Page-aligned so Metal can use the index in place; contents as calloc's.
+    // Page-aligned so a GPU can use the index in place; contents as calloc's.
     const size_t page = static_cast<size_t>(getpagesize());
     void *memory = nullptr;
     if ((size && count > (SIZE_MAX - page) / size)
@@ -1341,38 +1309,36 @@ extern "C" int wgse_metal_map(const mem_opt_t *opt, const bwt_t *bwt, int n,
         || !std::isfinite(split) || split < 0 || split > INT_MAX) return 0;
     const size_t pairs_before = pair_starts.load();
     const bool paired_at_start = pairs_running.load() != 0;
-    @autoreleasepool {
-        try {
-            attach(bwt, opt, mapped_reads);
-            mapped_reads += size_t(n);
-            auto start = Clock::now();
-            // bwa_verbose >= 4 prints each extension as mem_chain2aln runs it.
-            ExtendParameters extension;
-            const bool extend = extend_enabled && bwa_verbose < 4
-                && wgse::extend::parameters(*opt, extension);
-            if (extend) prepare_extension();
-            SeedScheduler scheduler(opt, bwt, n, seqs, worker, data, extend ? &extension : nullptr);
-            scheduler.align();
-            const size_t reads = size_t(stride(opt));
-            std::lock_guard<std::mutex> lock(totals_mutex);
-            gpu_reads += scheduler.prepared * reads;
-            cpu_reads += scheduler.unprepared * reads;
-            wasted_reads += scheduler.wasted * reads;
-            fallback_reads += scheduler.missing.load();
-            gpu_batches += scheduler.batches;
-            gpu_seconds += scheduler.gpu_time;
-            cpu_wait_seconds += scheduler.waited;
-            map_seconds += seconds(start);
-            extend_batches += scheduler.extended_batches;
-            extend_jobs += scheduler.extended_jobs;
-            extend_kernel_seconds += scheduler.extend_kernel_time;
-            extend_gpu_seconds += scheduler.extend_time;
-            if (paired_at_start || pairs_running.load() || pair_starts.load() != pairs_before)
-                ++overlapped_chunks;
-        } catch (const std::exception &error) {
-            record_failure(error.what());
-            return 0;
-        }
+    try {
+        attach(bwt, opt, mapped_reads);
+        mapped_reads += size_t(n);
+        auto start = Clock::now();
+        // bwa_verbose >= 4 prints each extension as mem_chain2aln runs it.
+        ExtendParameters extension;
+        const bool extend = extend_enabled && bwa_verbose < 4
+            && extend_parameters(*opt, extension);
+        if (extend) prepare_extension();
+        SeedScheduler scheduler(opt, bwt, n, seqs, worker, data, extend ? &extension : nullptr);
+        scheduler.align();
+        const size_t reads = size_t(stride(opt));
+        std::lock_guard<std::mutex> lock(totals_mutex);
+        gpu_reads += scheduler.prepared * reads;
+        cpu_reads += scheduler.unprepared * reads;
+        wasted_reads += scheduler.wasted * reads;
+        fallback_reads += scheduler.missing.load();
+        gpu_batches += scheduler.batches;
+        gpu_seconds += scheduler.gpu_time;
+        cpu_wait_seconds += scheduler.waited;
+        map_seconds += seconds(start);
+        extend_batches += scheduler.extended_batches;
+        extend_jobs += scheduler.extended_jobs;
+        extend_kernel_seconds += scheduler.extend_kernel_time;
+        extend_gpu_seconds += scheduler.extend_time;
+        if (paired_at_start || pairs_running.load() || pair_starts.load() != pairs_before)
+            ++overlapped_chunks;
+    } catch (const std::exception &error) {
+        record_failure(error.what());
+        return 0;
     }
     return 1;
 }
@@ -1390,35 +1356,32 @@ extern "C" int wgse_metal_pair(const mem_opt_t *opt, const bntseq_t *bns, const 
     }
     ++pair_starts;
     if (!usable || !rescue_enabled || !(opt->flag & MEM_F_PE)
-        || (opt->flag & MEM_F_NO_RESCUE) || !wgse::rescue::parameters(*opt, parameters))
+        || (opt->flag & MEM_F_NO_RESCUE) || !rescue_parameters(*opt, parameters))
         return 0;
-    @autoreleasepool {
-        try {
-            if (!rescuer) rescuer = std::make_unique<GpuRescue>(kernel().runtime, kernel().rescue);
-            auto start = Clock::now();
-            const double kernel_before = rescuer->kernel_seconds;
-            RescueScheduler scheduler(opt, bns, pac, pes, n, seqs, regs, parameters, worker, data);
-            struct Running {
-                Running() { ++pairs_running; }
-                ~Running() { --pairs_running; }
-            } running;
-            scheduler.run();
-            std::lock_guard<std::mutex> lock(totals_mutex);
-            rescue_batches += scheduler.batches;
-            rescue_gpu_pairs += scheduler.prepared;
-            rescue_cpu_pairs += scheduler.unprepared;
-            rescue_wasted_pairs += scheduler.wasted;
-            rescue_jobs += scheduler.jobs;
-            rescue_declined += scheduler.declined;
-            rescue_skipped += scheduler.skipped;
-            rescue_gpu_seconds += scheduler.gpu_time;
-            rescue_kernel_seconds += rescuer->kernel_seconds - kernel_before;
-            rescue_wait_seconds += scheduler.waited;
-            rescue_seconds += seconds(start);
-        } catch (const std::exception &error) {
-            record_failure(error.what());
-            return 0;
-        }
+    try {
+        auto start = Clock::now();
+        const double kernel_before = device->rescue_kernel_seconds();
+        RescueScheduler scheduler(opt, bns, pac, pes, n, seqs, regs, parameters, worker, data);
+        struct Running {
+            Running() { ++pairs_running; }
+            ~Running() { --pairs_running; }
+        } running;
+        scheduler.run();
+        std::lock_guard<std::mutex> lock(totals_mutex);
+        rescue_batches += scheduler.batches;
+        rescue_gpu_pairs += scheduler.prepared;
+        rescue_cpu_pairs += scheduler.unprepared;
+        rescue_wasted_pairs += scheduler.wasted;
+        rescue_jobs += scheduler.jobs;
+        rescue_declined += scheduler.declined;
+        rescue_skipped += scheduler.skipped;
+        rescue_gpu_seconds += scheduler.gpu_time;
+        rescue_kernel_seconds += device->rescue_kernel_seconds() - kernel_before;
+        rescue_wait_seconds += scheduler.waited;
+        rescue_seconds += seconds(start);
+    } catch (const std::exception &error) {
+        record_failure(error.what());
+        return 0;
     }
     return 1;
 }
@@ -1461,9 +1424,9 @@ extern "C" int wgse_metal_extend(int qlen, const uint8_t *query, int tlen, const
     ExtendCurrent &pair = extend_current;
     if (!pair.batch) return 0;
     const ExtendParameters &p = *pair.parameters;
-    const auto *jobs = static_cast<const ExtendJob *>(pair.batch->jobs.contents);
-    const auto *results = static_cast<const ExtendResult *>(pair.batch->results.contents);
-    const auto *bases = static_cast<const uint8_t *>(pair.batch->bases.contents);
+    const ExtendJob *jobs = pair.batch->buffers->jobs;
+    const ExtendResult *results = pair.batch->buffers->results;
+    const uint8_t *bases = pair.batch->buffers->bases;
     auto same = [](const uint8_t *a, const uint8_t *b, int length) {
         return length == 0 || memcmp(a, b, size_t(length)) == 0;
     };
@@ -1745,22 +1708,48 @@ extern "C" bwtint_t wgse_metal_sa(const bwt_t *bwt, bwtint_t k) {
     return steps + sampled_position(bwt, k);
 }
 
-bool wgse_metal_available(std::string &reason) {
-    return kernel().available(reason);
+bool wgse_gpu_hardware_supported(Backend backend) {
+    return backend == Backend::metal ? metal_hardware_supported() : cuda_hardware_supported();
 }
 
-bool wgse_metal_hardware_supported() {
-    return kernel().hardware_supported();
+namespace {
+// The device for a GPU backend; automatic picks the one this build has.
+std::unique_ptr<Device> make_device(Backend backend, std::string &reason) {
+    if (backend == Backend::automatic)
+#ifdef __APPLE__
+        backend = Backend::metal;
+#else
+        backend = Backend::cuda;
+#endif
+    return backend == Backend::metal ? make_metal_device(device_options, reason)
+        : make_cuda_device(device_options, reason);
+}
+} // namespace
+
+bool wgse_gpu_available(Backend backend, std::string &reason) {
+    // The device is kept for wgse_set_backend, so its kernels build once.
+    if (!device) device = make_device(backend, device_reason);
+    reason = device ? "" : device_reason;
+    return device != nullptr;
+}
+
+const char *wgse_gpu_name(Backend backend) {
+    if (device) return device->name();
+#ifdef __APPLE__
+    return backend == Backend::cuda ? "CUDA" : "Metal";
+#else
+    return backend == Backend::metal ? "Metal" : "CUDA";
+#endif
 }
 
 void wgse_set_backend(Backend backend) {
     if (backend == Backend::cpu) return;
     std::string reason;
-    if (wgse_metal_available(reason)) enabled = true;
+    if (wgse_gpu_available(backend, reason)) enabled = true;
     else fprintf(stderr, "[wgse-bwa] CPU fallback: %s\n", reason.c_str());
 }
 
-bool wgse_metal_execution_failed(std::string &reason) {
+bool wgse_gpu_execution_failed(std::string &reason) {
     reason = execution_failure;
     return !reason.empty();
 }
@@ -1770,7 +1759,8 @@ void wgse_finish_backend() {
         "wasted_reads=%zu unlocated_reads=%zu located_rows=%zu locate_misses=%zu "
         "cpu_located_rows=%zu overlapped_chunks=%zu interruptions=%zu\n", gpu_batches, gpu_reads,
         cpu_reads, fallback_reads, wasted_reads, unlocated_reads, located_rows,
-        locate_misses.load(), cpu_located_rows.load(), overlapped_chunks, wgse::metal::Runtime::interruptions());
+        locate_misses.load(), cpu_located_rows.load(), overlapped_chunks,
+        device ? device->interruptions() : size_t(0));
     fprintf(stderr, "[wgse-bwa] seconds gpu=%.3f locate=%.3f map=%.3f cpu_wait=%.3f\n",
         gpu_seconds, locate_seconds, map_seconds, cpu_wait_seconds);
     if (dense_tried)
@@ -1793,10 +1783,9 @@ void wgse_finish_backend() {
     fprintf(stderr, "[wgse-bwa] extend seconds gpu=%.3f kernel=%.3f\n", extend_gpu_seconds,
         extend_kernel_seconds);
     extend_pool.clear();
-    extender.reset();
-    rescuer.reset();
-    locator.reset();
-    gpu.reset();
+    locator = false;
+    shared_sa = nullptr;
+    device.reset();
 }
 
 void wgse_report_cpu_backend() {
@@ -1811,7 +1800,7 @@ void wgse_set_gpu_policy(bool all) {
 }
 
 void wgse_set_gpu_batch(size_t reads) {
-    gpu_batch_reads = reads;
+    device_options.seed_batch = reads;
 }
 
 void wgse_inject_gpu_failure() {
@@ -1823,7 +1812,7 @@ void wgse_inject_locate_failure() {
 }
 
 void wgse_inject_gpu_interruptions(size_t every) {
-    wgse::metal::Runtime::inject_interruptions(every);
+    device_options.interrupt_every = every;
 }
 
 void wgse_set_gpu_locate_rows(size_t rows) {
@@ -1898,3 +1887,27 @@ void wgse_inject_extend_failure() {
 void wgse_verify_gpu_extend() {
     verify_extend = true;
 }
+
+// Builds without a device report it as unavailable.
+namespace wgse::gpu {
+#ifndef WGSE_HAVE_METAL
+std::unique_ptr<Device> make_metal_device(const DeviceOptions &, std::string &reason) {
+    reason = "this build has no Metal backend";
+    return nullptr;
+}
+
+bool metal_hardware_supported() {
+    return false;
+}
+#endif
+#ifndef WGSE_HAVE_CUDA
+std::unique_ptr<Device> make_cuda_device(const DeviceOptions &, std::string &reason) {
+    reason = "this build has no CUDA backend";
+    return nullptr;
+}
+
+bool cuda_hardware_supported() {
+    return false;
+}
+#endif
+} // namespace wgse::gpu
