@@ -31,7 +31,7 @@
  * identical to KRADIX_SORT_INIT's. */
 #include "ksort.h"
 
-#define WGSE_KRADIX_SORT_INIT(name, rstype_t, rskey, sizeof_key) \
+#define WGSE_KRADIX_SORT_BASE(name, rstype_t, rskey) \
 	typedef struct { \
 		rstype_t *b, *e; \
 	} rsbucket_##name##_t; \
@@ -86,7 +86,10 @@
 				if (k->e - k->b > RS_MIN_SIZE) rs_sort_##name(k->b, k->e, n_bits, s); \
 				else if (k->e - k->b > 1) rs_insertsort_##name(k->b, k->e); \
 		} \
-	} \
+	}
+
+#define WGSE_KRADIX_SORT_INIT(name, rstype_t, rskey, sizeof_key) \
+	WGSE_KRADIX_SORT_BASE(name, rstype_t, rskey) \
 	void radix_sort_##name(rstype_t *beg, rstype_t *end) \
 	{ \
 		if (end - beg <= RS_MIN_SIZE) rs_insertsort_##name(beg, end); \

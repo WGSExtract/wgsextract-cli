@@ -25,6 +25,7 @@ from wgsextract_cli.api.vcf import (
     VcfRevelParams,
     VcfSnpParams,
     VcfSpliceaiParams,
+    VcfSvFreqParams,
     VcfSvParams,
     VcfTableParams,
     VcfToFastaParams,
@@ -72,6 +73,7 @@ from .structural import (
     cmd_cnv,
     cmd_sv,
 )
+from .sv_frequency import cmd_sv_freq
 from .table import cmd_table
 
 
@@ -188,6 +190,8 @@ def register(
          VcfGerpParams, cmd_gerp),
         ("gnomad", "Annotate VCF with gnomAD population frequencies.",
          VcfGnomadParams, cmd_gnomad),
+        ("sv-freq", "Annotate SVs with gnomAD-SV/gnomAD-LR frequencies.",
+         VcfSvFreqParams, cmd_sv_freq),
         ("spliceai", "Annotate VCF with SpliceAI splicing scores.",
          VcfSpliceaiParams, cmd_spliceai),
         ("alphamissense", "Annotate VCF with AlphaMissense pathogenicity scores.",

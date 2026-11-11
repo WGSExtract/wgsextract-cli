@@ -3,12 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="WGSExtract v0.8.6 workflows and how the first real app shaped GUI for CLI." />
-    <title>WGSExtract and GUI for CLI</title>
-    <meta property="og:site_name" content="GUI for CLI" />
+    <meta name="description" content="WGSExtract v0.8.6 workflows and how the first real app shaped WGS Extract GUI." />
+    <title>WGSExtract and WGS Extract GUI</title>
+    <meta property="og:site_name" content="WGS Extract GUI" />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="WGSExtract and GUI for CLI" />
-    <meta property="og:description" content="WGSExtract v0.8.6 workflows and how the first real app shaped GUI for CLI." />
+    <meta property="og:title" content="WGSExtract and WGS Extract GUI" />
+    <meta property="og:description" content="WGSExtract v0.8.6 workflows and how the first real app shaped WGS Extract GUI." />
     <meta property="og:url" content="https://wgsextract.github.io/wgsextract-cli/app/wgsextract.html" />
     <meta property="og:image" content="https://wgsextract.github.io/wgsextract-cli/app/assets/social-preview.webp" />
     <meta property="og:image:secure_url" content="https://wgsextract.github.io/wgsextract-cli/app/assets/social-preview.webp" />
@@ -32,24 +32,24 @@
     </details>
     <nav class="nav" aria-label="Primary navigation">
       <div class="wrap nav-inner">
-        <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true"></span><span>GUI for CLI</span></a>
-        <div class="nav-links"><a href="index.html">Home</a><a href="architecture.html">Architecture</a><a class="active" href="wgsextract.html">WGSExtract</a><a href="docs.html">Docs</a><a href="https://github.com/WGSExtract/wgsextract-cli" target="_blank" rel="noopener noreferrer">GitHub</a></div>
+        <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true"></span><span>WGS Extract GUI</span></a>
+        <div class="nav-links"><a href="index.html">Home</a><a href="architecture.html">GUI Architecture</a><a class="active" href="wgsextract.html">WGSExtract</a><a href="docs.html">Docs</a><a href="https://wgsextract.github.io/wgsextract-cli/">WGSExtract CLI</a><a href="whats-different.html">What's Different</a><a href="https://github.com/WGSExtract/wgsextract-cli" target="_blank" rel="noopener noreferrer">GitHub</a></div>
       </div>
     </nav>
     <main>
       <header class="page-hero">
         <div class="wrap">
           <p class="eyebrow"><span class="pulse" aria-hidden="true"></span> First real app</p>
-          <h1>WGSExtract made GUI for CLI prove itself.</h1>
-          <p class="lede">The WGSExtract bundle is the first real application built through GUI for CLI. It pushed the project beyond demo controls into setup, command execution, data state, localization, and packaged releases.</p>
-          <div class="actions"><a class="btn" href="architecture.html">Architecture</a><a class="btn" href="docs.html">Documentation</a></div>
+          <h1>WGSExtract made WGS Extract GUI prove itself.</h1>
+          <p class="lede">The WGSExtract bundle is the first real application built through WGS Extract GUI. It pushed the project beyond demo controls into setup, command execution, data state, localization, and packaged releases.</p>
+          <div class="actions"><a class="btn" href="architecture.html">GUI Architecture</a><a class="btn" href="docs.html">Documentation</a></div>
         </div>
       </header>
 <section>
 <div class="wrap">
 <div class="section-head">
 <h2>Why this bundle mattered</h2>
-<p>WGSExtract gave GUI for CLI a real target: a genomics workflow with long-running tools, user-selected files, setup state, reference data, and packaging expectations.</p>
+<p>WGSExtract gave WGS Extract GUI a real target: a genomics workflow with long-running tools, user-selected files, setup state, reference data, and packaging expectations.</p>
 </div>
 <div class="grid three">
 <article class="card">
@@ -92,7 +92,7 @@
 <ul>
 <li><strong>DeepVariant:</strong> a model dropdown that defaults to automatic. Its ONT_R104 choice supports R10.4.1 chemistry only and needs x86-64. DeepVariant does not run on native Windows.</li>
 <li><strong>SV Call:</strong> a long-read mode (Nanopore or any long-read data) and an optional tandem-repeat BED. The caller stays automatic, and pbsv is not offered for Nanopore. Sniffles does not run on native Windows.</li>
-<li><strong>Clair3:</strong> an optional Nanopore caller with an optional model override, qualified on Linux x86-64 only. It is hidden on Windows, and you install it separately.</li>
+<li><strong>Clair3:</strong> an optional Nanopore caller with an optional model override, Clair3 2.0.5 on Linux (x86-64, ARM64) and Apple Silicon Macs. It is hidden on Windows, is not available on Intel Macs, and you install it separately.</li>
 <li><strong>Methylation Pileup:</strong> a bedMethyl table and summary from MM/ML-tagged reads, with optional context, 5hmC and strand overrides. It is hidden on Windows, and you install modkit separately.</li>
 <li><strong>Ancestry:</strong> Y-STR repeat counts with FamilyTreeDNA, PowerPlex Y23 and Yfiler Plus panels.</li>
 <li><strong>Annotate:</strong> a variant table as TSV plus an SQLite database to query.</li>
@@ -128,7 +128,7 @@
 <li>localized strings and semantic icon maps;</li>
 <li>bundle-specific packaging and app identity.</li>
 </ul>
-<p>Those requirements are generic. The WGSExtract app is concrete, but the runtime behavior belongs to GUI for CLI so another CLI tool can reuse the same shell.</p>
+<p>Those requirements are generic. The WGSExtract app is concrete, but the runtime behavior belongs to WGS Extract GUI so another CLI tool can reuse the same shell.</p>
 </div>
 </section>
 <section>

@@ -17,6 +17,7 @@ import { existsSync } from "node:fs";
 import { readdir, rm, rmdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { loadManifestFromRoot } from "./bundle-loader.js";
+import { leaveAppImageEnvironment } from "./appimage-environment.js";
 import { errorMessage } from "./errors.js";
 import { appSupportDirectory } from "./paths.js";
 import { createProcessManager } from "./process-runner.js";
@@ -44,6 +45,8 @@ function parseArgs(argv: string[]) {
 }
 
 async function main(argv: string[]): Promise<number> {
+    // The uninstall steps run the system's programs, not the AppImage's.
+    leaveAppImageEnvironment();
     const { appSupportName, printWorkspace, removeWorkspace, removeAppData, bundle } = parseArgs(argv);
     process.env.GUI_FOR_CLI_APP_SUPPORT_NAME = appSupportName;
     const manifest = await loadManifestFromRoot(path.resolve(bundle));

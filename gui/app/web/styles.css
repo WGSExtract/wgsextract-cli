@@ -1497,6 +1497,32 @@ tbody tr + tr {
   width: min(460px, calc(100vw - 32px));
 }
 
+.prerequisites-modal {
+  width: min(480px, calc(100vw - 32px));
+}
+
+.prerequisites-list {
+  margin: 0;
+  padding-inline-start: 20px;
+  font-weight: 650;
+}
+
+.confirmation-modal .prerequisites-still-missing {
+  color: var(--warning);
+}
+
+.prerequisites-checking {
+  position: fixed;
+  inset-block-end: 16px;
+  inset-inline-end: 16px;
+  z-index: 40;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
+}
+
 .about-license {
   font-weight: 650;
 }

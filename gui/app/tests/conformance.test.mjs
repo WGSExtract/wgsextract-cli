@@ -314,7 +314,8 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
     .actions.find((action) => action.id === "microarray-generate");
   assert.equal(microarrayAction.command.executable, "{{bundleRoot}}/scripts/run-wgsextract.sh");
   assert.deepEqual(microarrayAction.command.arguments.slice(0, 3), ["microarray", "--input", "{{bam_path}}"]);
-  assert.deepEqual(microarrayAction.command.arguments.slice(3, 5), ["--ref", "{{ref_fasta}}"]);
+  // Left out until a genome is chosen: the CLI then uses the installed one matching the input.
+  assert.deepEqual(microarrayAction.command.optionalArguments[0], ["--ref", "{{ref_fasta}}"]);
   const microarrayRefControl = bundle.manifest.pages
     .find((page) => page.id === "microarray")
     .sections.find((section) => section.id === "microarray-inputs")

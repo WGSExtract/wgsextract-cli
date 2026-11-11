@@ -408,12 +408,14 @@
               "microarray",
               "--input",
               "{{bam_path}}",
-              "--ref",
-              "{{ref_fasta}}",
               "--formats",
               "{{microarray_formats}}"
             ],
             "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_fasta}}"
+              ],
               [
                 "--outdir",
                 "{{out_dir}}"
