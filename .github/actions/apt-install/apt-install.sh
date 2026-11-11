@@ -14,9 +14,10 @@
 # - `apt-get update` fails if any index can't be fetched, instead of warning
 #   and carrying on into a misleading "Unable to locate package".
 # - With --cache-dir, package lists and downloaded .debs live in DIR (for a CI
-#   cache). Cached lists are used only if they match a Release file signed by
-#   Ubuntu's archive key. If no mirror answers, the packages are installed from
-#   DIR's lists and .debs, apt checking each .deb against those lists.
+#   cache). Cached lists are kept only if they match a Release file signed by
+#   Ubuntu's archive key, and cached .debs only if they match the SHA256 in
+#   those lists; anything else is deleted before apt runs. If no mirror
+#   answers, the packages are installed from what is left.
 #
 # Exit status 75 (EX_TEMPFAIL): no mirror could be reached. It comes with a
 # GitHub "Upstream package mirror unreachable" error annotation, which
@@ -142,11 +143,12 @@ apt_opts=(
   -o APT::Get::List-Cleanup=false
   -o DPkg::Lock::Timeout=120
 )
-# A restored cache is not trusted: apt neither re-checks the lists it already
-# has on `update` (when their Release entry is unchanged) nor at all with
-# --no-download. So every cached list must match the hashes in a Release file
-# signed by Ubuntu's archive key, or the lists are discarded. The .debs are
-# then checked by apt against these lists.
+# A restored cache is not trusted. apt doesn't re-check lists it already has
+# (on `update` when their Release entry is unchanged, nor with --no-download),
+# and it takes a .deb already in Dir::Cache::Archives if only its size
+# matches; dpkg checks nothing. So every cached list must match the hashes in
+# a Release file signed by Ubuntu's archive key, and every cached .deb the
+# SHA256 those lists give it.
 verify_cached_lists() {
   local lists=$cache_dir/lists release prefix file path expected
   local -A verified=()
@@ -175,11 +177,49 @@ verify_cached_lists() {
   done
 }
 
+# Deletes each cached .deb whose SHA256 isn't the one the (verified) lists
+# give its package, version and architecture, and anything else there.
+verify_cached_debs() {
+  local archives=$cache_dir/archives file name expected rejected=0
+  local -A sha256=()
+  [ -d "$archives" ] || return 0
+  # apt names a download <package>_<version, ':' as %3a>_<architecture>.deb.
+  while read -r name expected; do
+    sha256[$name]=$expected
+  done < <(
+    for file in "$cache_dir"/lists/*_Packages*; do
+      [ -e "$file" ] && /usr/lib/apt/apt-helper cat-file "$file"
+    done | awk '
+      function flush() {
+        if (p != "" && h != "") { gsub(":", "%3a", v); print p "_" v "_" a ".deb", h }
+        p = v = a = h = ""
+      }
+      /^Package: / { flush(); p = $2 }
+      /^Version: / { v = $2 }
+      /^Architecture: / { a = $2 }
+      /^SHA256: / { h = $2 }
+      /^$/ { flush() }
+      END { flush() }'
+  )
+  for file in "$archives"/*; do
+    [ -f "$file" ] && [ "${file##*/}" != lock ] || continue
+    expected=${sha256[${file##*/}]:-}
+    if [ -z "$expected" ] || [ "$(sha256sum < "$file" | cut -d' ' -f1)" != "$expected" ]; then
+      rm -f "$file"
+      rejected=$((rejected + 1))
+    fi
+  done
+  if [ "$rejected" -gt 0 ]; then
+    echo "::warning::Deleted $rejected cached file(s) in $archives that the verified package lists don't vouch for."
+  fi
+}
+
 if [ -n "$cache_dir" ]; then
   if ! verify_cached_lists; then
     echo "::warning::Cached package lists in $cache_dir failed verification; discarding them."
     rm -rf "$cache_dir/lists"
   fi
+  verify_cached_debs
   mkdir -p "$cache_dir/lists/partial" "$cache_dir/archives/partial"
   apt_opts+=(
     -o "Dir::State::Lists=$cache_dir/lists"

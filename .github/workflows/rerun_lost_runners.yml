@@ -38,6 +38,7 @@ jobs:
           WORKFLOW_ID: ${{ github.event.workflow_run.workflow_id }}
           BRANCH: ${{ github.event.workflow_run.head_branch }}
           EVENT: ${{ github.event.workflow_run.event }}
+          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
         run: |
           set -euo pipefail
           jobs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/attempts/$ATTEMPT/jobs" \
@@ -56,9 +57,11 @@ jobs:
             echo "Job $outage couldn't reach the package mirrors; rerunning the failed jobs of run $RUN_ID in 10 minutes."
             sleep 600
             # A newer run (a push meanwhile) would be cancelled by this one's
-            # rerun, in workflows that cancel superseded runs.
+            # rerun, in workflows that cancel superseded runs. Forks reuse
+            # branch names (main, patch-1), so match the head repository too.
             latest=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$WORKFLOW_ID/runs" -X GET \
-              -f branch="$BRANCH" -f event="$EVENT" -f per_page=1 -q '.workflow_runs[0].id')
+              -f branch="$BRANCH" -f event="$EVENT" -f per_page=100 \
+              -q "[.workflow_runs[] | select(.head_repository.full_name == \"$HEAD_REPO\")][0].id")
             if [ "$latest" != "$RUN_ID" ]; then
               echo "Run $latest superseded run $RUN_ID; not rerunning."
               exit 0
