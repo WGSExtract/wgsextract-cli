@@ -328,17 +328,23 @@ def find_bwa_mem3(setting: str | None, *, instead: str) -> NativeAligner | None:
 
 
 def find_native_aligner(
-    tool: str, setting: str | None, *, quiet: bool = False, instead: str | None = None
+    tool: str,
+    setting: str | None,
+    *,
+    quiet: bool = False,
+    instead: str | None = None,
+    probe: bool = False,
 ) -> NativeAligner | None:
     """The build that can replace upstream ``tool`` in this run, or None:
     off, not Apple Silicon, not installed (logged unless ``quiet``), or
-    unusable (with a warning that ``instead``, else ``tool``, aligns)."""
+    unusable (with a warning that ``instead``, else ``tool``, aligns). A
+    ``probe`` before the aligner is chosen logs nothing."""
     binary = BINARIES.get(tool)
     if binary is None or native_setting(setting) == "off" or not apple_silicon():
         return None
     path = shutil.which(binary)
     if path is None:
-        if quiet:
+        if quiet or probe:
             return None
         logging.info(
             f"Aligning with {tool}: {binary}, which writes the same alignments "
@@ -348,6 +354,8 @@ def find_native_aligner(
     try:
         return _check(tool, binary, path)
     except (NativeAlignerUnusable, OSError) as error:
+        if probe:
+            return None
         # Checks before an alignment ask again; one warning per run is enough.
         if any(
             w.code == "native_aligner_unusable" and w.details.get("path") == path

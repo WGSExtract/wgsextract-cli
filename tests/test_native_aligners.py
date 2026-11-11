@@ -1040,3 +1040,136 @@ def test_linux_bwa_mem3_that_fails_its_check_warns_and_bwa_aligns(
     assert warning.code == "native_aligner_unusable"
     assert problem in warning.message
     assert warning.details["aligner"] == "bwa"
+
+
+@pytest.mark.usefixtures("apple_silicon")
+@pytest.mark.parametrize("command", ["align", "realign"])
+def test_auto_aligns_with_wgse_bwa_mem2_0_5_0_without_upstream_or_0123(
+    tmp_path, mem3_bin, caplog, command
+):
+    # #660: auto took bwa-mem2 only with upstream bwa-mem2 on PATH and the
+    # .0123 file, neither of which wgse-bwa-mem2 0.5.0 needs. #664 review:
+    # realign's preflight still reported the .0123 file missing.
+    if command == "align":
+        reads = _mem3_reads(tmp_path)
+        ref = reads.ref
+    else:
+        source, ref = _mem3_realign_source(tmp_path)
+    Path(ref + ".0123").unlink()
+    (mem3_bin / "bwa-mem2").unlink()
+    _install_wgse_bwa_mem2(mem3_bin, "0.5.0")
+    outdir = tmp_path / "out"
+    caplog.set_level("INFO")
+
+    if command == "align":
+        bam, result = _align(reads, outdir)
+    else:
+        result = _run_realign(source, ref, outdir)
+        bam = str(outdir / "x_aligned.bam")
+
+    assert _mapper(bam, "bwa").startswith("wgse-bwa-mem2 mem ")
+    assert result.metrics["native_aligner"] == "wgse-bwa-mem2"
+    assert not Path(ref + ".0123").exists()
+    assert "Missing reference indexes" not in caplog.text
+
+
+@pytest.mark.usefixtures("apple_silicon")
+@pytest.mark.parametrize(
+    ("version", "options", "mapper"),
+    [
+        ("0.5.0", (), "wgse-bwa-mem2 mem "),
+        ("0.4.1", (), "wgse-bwa "),
+        ("0.5.0", ("--native-aligners", "off"), "bwa mem "),
+    ],
+)
+def test_auto_budgets_wgse_bwa_mem2_0_5_0_without_its_0123_file(
+    tmp_path, mem3_bin, ram, version, options, mapper
+):
+    # #660: auto counted the .0123 file that wgse-bwa-mem2 0.5.0 doesn't load,
+    # and picked bwa when only that build fit. Builds that load it, and
+    # upstream bwa-mem2, still count it.
+    reads = _mem3_reads(tmp_path)
+    _bloat_0123(reads.ref)
+    _install_wgse_bwa_mem2(mem3_bin, version)
+    _install_build(mem3_bin, "bwa", _capabilities("bwa", metal_available=False))
+    without_0123 = _mem3_needed(reads, "wgse-bwa-mem2", memory="256M")
+    ram(64 * GIB, available=without_0123 + 2 * GIB)
+
+    bam, _ = _align(reads, tmp_path / "out", *options)
+
+    assert _mapper(bam, "bwa").startswith(mapper)
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_auto_keeps_wgse_bwa_when_wgse_bwa_mem2_does_not_fit(tmp_path, mem3_bin, ram):
+    # #660: a 16 GB Mac whose available RAM can't hold even wgse-bwa-mem2
+    # 0.5.0's pipeline still aligns with wgse-bwa.
+    reads = _mem3_reads(tmp_path)
+    _install_wgse_bwa_mem2(mem3_bin, "0.5.0")
+    _install_build(mem3_bin, "bwa", _capabilities("bwa", metal_available=False))
+    ram(16 * GIB, available=_mem3_needed(reads, "wgse-bwa-mem2", memory="256M") // 2)
+
+    bam, result = _align(reads, tmp_path / "out")
+
+    assert _mapper(bam, "bwa").startswith("wgse-bwa ")
+    assert result.metrics["native_aligner"] == "wgse-bwa"
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_auto_keeps_wgse_bwa_mem2_when_only_it_fits_the_ram_available(
+    tmp_path, mem3_bin, ram
+):
+    # #664 review: auto chose bwa-mem2 because wgse-bwa-mem2 fit the RAM
+    # available, then the bigger wgse-bwa-mem3 stood in, checked only against
+    # this Mac's RAM less headroom, and started over budget.
+    reads = _mem3_reads(tmp_path)
+    Path(reads.ref + ".0123").unlink()
+    _install_bwa_mem3(mem3_bin, mem2="bwa")
+    _install_wgse_bwa_mem2(mem3_bin, "0.5.0")
+    mem2 = _mem3_needed(reads, "wgse-bwa-mem2", memory="256M")
+    stand_in = _mem3_needed(reads, "bwa-mem3", memory="256M", gpu_bytes=GIB // 4)
+    ram(64 * GIB, available=(mem2 + stand_in) // 2)
+
+    bam, result = _align(reads, tmp_path / "out")
+
+    assert _mapper(bam, "bwa").startswith("wgse-bwa-mem2 mem ")
+    assert "bwa_mem3_mode" not in result.metrics
+
+
+@pytest.mark.usefixtures("apple_silicon")
+@pytest.mark.parametrize("upstream", [True, False])
+def test_auto_names_the_aligner_it_uses_for_an_unusable_wgse_bwa_mem2(
+    tmp_path, mem3_bin, upstream
+):
+    # #664 review: auto's look at an unusable wgse-bwa-mem2 warned "Aligning
+    # with bwa-mem2 instead" when, without upstream bwa-mem2, bwa aligned.
+    reads = _mem3_reads(tmp_path)
+    if not upstream:
+        (mem3_bin / "bwa-mem2").unlink()
+    _install_build(mem3_bin, "bwa-mem2", status=1)
+
+    bam, result = _align(reads, tmp_path / "out")
+
+    if upstream:
+        assert _mapper(bam, "bwa-mem2").startswith("bwa-mem2 mem ")
+        (warning,) = result.warnings
+        assert warning.details["aligner"] == "bwa-mem2"
+    else:
+        assert _mapper(bam).startswith("bwa mem ")
+        assert not result.warnings
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_auto_with_only_wgse_bwa_mem3_keeps_bwas_records(tmp_path, mem3_bin):
+    # #660 owner rule: wgse-bwa-mem3 alone (no .0123 file, no upstream
+    # bwa-mem2) stands in for bwa with bwa's records; auto doesn't switch to
+    # bwa-mem2's.
+    reads = _mem3_reads(tmp_path)
+    Path(reads.ref + ".0123").unlink()
+    (mem3_bin / "bwa-mem2").unlink()
+    _install_bwa_mem3(mem3_bin, mem2="bwa")
+
+    _, result = _align(reads, tmp_path / "out")
+
+    assert result.metrics["aligner"] == "bwa"
+    assert result.metrics["bwa_mem3_mode"] == "compat=bwa-mem"
