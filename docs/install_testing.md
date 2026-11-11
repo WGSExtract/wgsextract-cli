@@ -422,6 +422,13 @@ exactly as on a user's machine. A sabotaged run's evidence (`--sabotage --no-jud
 control: `lab.py judge` passes it only if it fails on the checks the sabotage
 breaks.
 
+The `linux` jobs' container installs its prerequisites (`curl`,
+`ca-certificates` and, for the app, `sudo`, Xvfb and the rest) with
+`.github/actions/apt-install/apt-install.sh`: official Ubuntu mirrors in turn,
+bounded time, and an `Upstream package mirror unreachable` failure if none
+answers, rather than apt's misleading "Unable to locate package curl". The
+container's apt then uses the same mirrors for the app's own `.deb`.
+
 To try an app fix before releasing it, run the *GUI distribution* workflow
 (`gui-distribution.yml`) on its branch, then this workflow with that run's ID:
 `gh workflow run install_lab.yml -f app_run=<run id>`. The app jobs then test

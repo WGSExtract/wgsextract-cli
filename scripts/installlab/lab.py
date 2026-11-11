@@ -77,6 +77,7 @@ DATASET_SHA256 = "ad0f8070dc5ca35c4a6de540493a81df082d160417f747ae68d9c098c110a9
 MACOS_VANILLA = "ghcr.io/cirruslabs/macos-tahoe-vanilla:latest"
 MACOS_BASE = "wgse-lab-macos-base"
 LINUX_IMAGE = "ubuntu:24.04"
+APT_INSTALL = REPO / ".github" / "actions" / "apt-install" / "apt-install.sh"
 SABOTAGES = {
     # name: checks that must fail when the sabotage is applied
     # The installer "succeeds" without doing anything, so step.install passes;
@@ -419,8 +420,18 @@ class DockerMachine(Machine):
             ],  # fmt: skip
             stdout=subprocess.DEVNULL,
         )
-        # The documented prerequisites a fresh Ubuntu user must install, and a
-        # normal (non-root) user account to install as.
+        # The documented prerequisites a fresh Ubuntu user must install, with
+        # mirror fallback and a clear failure if no Ubuntu mirror answers.
+        with APT_INSTALL.open() as script:
+            apt = subprocess.run(
+                [self.docker, "exec", "-i", self.name, "bash", "-s", "--",
+                 "curl", "ca-certificates", *self.prerequisites],
+                stdin=script, capture_output=True, text=True,
+            )  # fmt: skip
+        if apt.returncode:
+            print(apt.stdout + apt.stderr, flush=True)
+            raise SystemExit(f"Installing the prerequisites failed ({apt.returncode}).")
+        # A normal (non-root) user account to install as.
         run(
             [
                 self.docker,
@@ -428,9 +439,7 @@ class DockerMachine(Machine):
                 self.name,
                 "sh",
                 "-c",
-                "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install "
-                f"-y -qq curl ca-certificates {' '.join(self.prerequisites)} >/dev/null "
-                "&& useradd -m -s /bin/bash tester && chown tester /results"
+                "useradd -m -s /bin/bash tester && chown tester /results"
                 + (
                     # An Ubuntu desktop's first user, who may install packages.
                     " && echo 'tester ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/tester"
