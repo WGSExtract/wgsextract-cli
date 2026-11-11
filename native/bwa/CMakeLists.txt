@@ -11,6 +11,9 @@ FetchContent_MakeAvailable(bwa)
 set(WGSE_BWA_VERSION 0.9.0)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${generated}")
+# x86-64: extend_neon.c.in's NEON runs through SIMDe's SSE/AVX translations
+# (WGSE_BWA_EXTEND=simde), or ksw_extend2() stays upstream's (upstream).
+set(WGSE_BWA_EXTEND simde CACHE STRING "x86-64 ksw_extend2: simde or upstream")
 include("${CMAKE_CURRENT_SOURCE_DIR}/upstream_seams.cmake")
 
 # Mirrors upstream's Makefile LOBJS, AOBJS and main.o.
@@ -47,25 +50,68 @@ target_include_directories(wgse_bwa_smem PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "
 target_include_directories(wgse_bwa_smem SYSTEM PRIVATE "${bwa_SOURCE_DIR}")
 target_compile_options(wgse_bwa_smem PRIVATE -Wall -Wextra -Werror)
 
-# BWA plus the Metal seeding backend, shared by the executable and the tests.
-add_library(wgse_bwa_core STATIC ${bwa_sources} metal_backend.mm $<TARGET_OBJECTS:wgse_bwa_smem>)
-target_include_directories(wgse_bwa_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" "${generated}")
-target_include_directories(wgse_bwa_core SYSTEM PUBLIC "${bwa_SOURCE_DIR}")
-target_compile_definitions(wgse_bwa_core PRIVATE
-    $<$<COMPILE_LANGUAGE:C>:HAVE_PTHREAD USE_MALLOC_WRAPPERS
-    PACKAGE_VERSION="0.7.19-r1273-wgse-${WGSE_BWA_VERSION}">)
-target_compile_options(wgse_bwa_core PRIVATE
-    $<$<COMPILE_LANGUAGE:C>:-Wno-unused-function -Wno-unused-but-set-variable
-    -Wno-deprecated-non-prototype>
-    $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc -Wall -Wextra -Werror>)
-target_link_libraries(wgse_bwa_core PUBLIC wgse_metal_common ZLIB::ZLIB Threads::Threads m)
+if(WGSE_METAL)
+    # BWA plus the Metal seeding backend, shared by the executable and the tests.
+    add_library(wgse_bwa_core STATIC ${bwa_sources} metal_backend.mm $<TARGET_OBJECTS:wgse_bwa_smem>)
+    target_include_directories(wgse_bwa_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" "${generated}")
+    target_include_directories(wgse_bwa_core SYSTEM PUBLIC "${bwa_SOURCE_DIR}")
+    target_compile_definitions(wgse_bwa_core PRIVATE
+        $<$<COMPILE_LANGUAGE:C>:HAVE_PTHREAD USE_MALLOC_WRAPPERS
+        PACKAGE_VERSION="0.7.19-r1273-wgse-${WGSE_BWA_VERSION}">)
+    target_compile_options(wgse_bwa_core PRIVATE
+        $<$<COMPILE_LANGUAGE:C>:-Wno-unused-function -Wno-unused-but-set-variable
+        -Wno-deprecated-non-prototype>
+        $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc -Wall -Wextra -Werror>)
+    target_link_libraries(wgse_bwa_core PUBLIC wgse_metal_common ZLIB::ZLIB Threads::Threads m)
 
-add_executable(wgse-bwa main.mm)
-target_compile_definitions(wgse-bwa PRIVATE WGSE_VERSION="${WGSE_BWA_VERSION}")
-target_compile_options(wgse-bwa PRIVATE -fobjc-arc -Wall -Wextra -Werror)
-target_link_libraries(wgse-bwa PRIVATE wgse_bwa_core)
+    add_executable(wgse-bwa main.mm)
+    target_compile_definitions(wgse-bwa PRIVATE WGSE_VERSION="${WGSE_BWA_VERSION}")
+    target_compile_options(wgse-bwa PRIVATE -fobjc-arc -Wall -Wextra -Werror)
+    target_link_libraries(wgse-bwa PRIVATE wgse_bwa_core)
 
-if(BUILD_TESTING)
+else()
+    add_library(wgse_bwa_core STATIC ${bwa_sources} cpu_backend.cpp $<TARGET_OBJECTS:wgse_bwa_smem>)
+    target_include_directories(wgse_bwa_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" "${generated}")
+    target_include_directories(wgse_bwa_core SYSTEM PUBLIC "${bwa_SOURCE_DIR}")
+    if(WGSE_BWA_EXTEND STREQUAL "simde")
+        FetchContent_Declare(simde
+            URL https://github.com/simd-everywhere/simde/archive/refs/tags/v0.8.2.tar.gz
+            URL_HASH SHA256=ed2a3268658f2f2a9b5367628a85ccd4cf9516460ed8604eed369653d49b25fb
+            SOURCE_SUBDIR unused)
+        FetchContent_MakeAvailable(simde)
+        file(WRITE "${generated}/neon/arm_neon.h"
+            "#define SIMDE_ENABLE_NATIVE_ALIASES\n#include <simde/arm/neon.h>\n")
+        target_include_directories(wgse_bwa_core SYSTEM PRIVATE "${generated}/neon" "${simde_SOURCE_DIR}")
+    endif()
+    target_compile_definitions(wgse_bwa_core PRIVATE
+        $<$<COMPILE_LANGUAGE:C>:HAVE_PTHREAD USE_MALLOC_WRAPPERS
+        PACKAGE_VERSION="0.7.19-r1273-wgse-${WGSE_BWA_VERSION}">)
+    target_compile_options(wgse_bwa_core PRIVATE
+        $<$<COMPILE_LANGUAGE:C>:-Wno-unused-function -Wno-unused-but-set-variable
+        -Wno-deprecated-non-prototype -Wno-unknown-warning-option>
+        $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Werror>)
+    target_link_libraries(wgse_bwa_core PUBLIC ZLIB::ZLIB Threads::Threads m)
+
+    # main.mm without its Objective-C autorelease pool.
+    file(READ main.mm main_source)
+    string(REPLACE "@autoreleasepool {" "{" main_source "${main_source}")
+    file(WRITE "${generated}/main.cpp" "${main_source}")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/main.mm")
+    add_executable(wgse-bwa "${generated}/main.cpp")
+    target_compile_definitions(wgse-bwa PRIVATE WGSE_VERSION="${WGSE_BWA_VERSION}")
+    target_compile_options(wgse-bwa PRIVATE -Wall -Wextra -Werror)
+    target_link_libraries(wgse-bwa PRIVATE wgse_bwa_core)
+endif()
+
+if(BUILD_TESTING AND NOT WGSE_METAL)
+    target_compile_definitions(wgse-bwa PRIVATE WGSE_METAL_BENCHMARK_TOOLS=1)
+    add_executable(ksw_batch_check tests/ksw_batch_check.c)
+    target_link_libraries(ksw_batch_check PRIVATE wgse_bwa_core)
+    add_test(NAME bwa_ksw_batch COMMAND ksw_batch_check)
+    add_executable(extend_neon_check tests/extend_neon_check.c)
+    target_link_libraries(extend_neon_check PRIVATE wgse_bwa_core)
+    add_test(NAME bwa_extend_neon COMMAND extend_neon_check 200000)
+elseif(BUILD_TESTING)
     # Hidden routing and failure-injection flags for tests and benchmarks only.
     target_compile_definitions(wgse-bwa PRIVATE WGSE_METAL_BENCHMARK_TOOLS=1)
     # Bounds-checked libc++ containers make out-of-range indexing in the backend trap.
@@ -107,5 +153,7 @@ install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../../LICENSE" DESTINATION share/lice
     RENAME WGSE-LICENSE)
 install(FILES "${bwa_SOURCE_DIR}/COPYING" DESTINATION share/licenses/wgse-bwa
     RENAME BWA-LICENSE)
+if(WGSE_METAL)
 install(FILES SEEDING-LICENSE DESTINATION share/licenses/wgse-bwa
     RENAME METAL-SEEDING-LICENSE)
+endif()

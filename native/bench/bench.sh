@@ -141,7 +141,8 @@ tier_field() {
 }
 
 sha256() { shasum -a 256 "$1" | cut -d' ' -f1; }
-file_bytes() { stat -L -f %z "$1" 2> /dev/null || stat -L -c %s "$1"; }
+# GNU stat first: its -f prints file-system status (and succeeds) instead of failing.
+file_bytes() { stat -L -c %s "$1" 2> /dev/null || stat -L -f %z "$1"; }
 
 # The data files a tier and its configs need, relative to the data directory.
 tier_paths() {

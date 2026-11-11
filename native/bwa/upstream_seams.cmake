@@ -73,7 +73,16 @@ file(READ "${bwa_SOURCE_DIR}/ksw.c" ksw_source)
 seam_replace(ksw_source "int ksw_extend2(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int zdrop, int h0, int *_qle, int *_tle, int *_gtle, int *_gscore, int *_max_off)\n{"
     "int wgse_ksw_extend2_upstream(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int zdrop, int h0, int *_qle, int *_tle, int *_gtle, int *_gscore, int *_max_off)\n{")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/ksw_oracle.c.in" ksw_oracle_source)
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/extend_neon.c.in" extend_neon_source)
+if(WGSE_METAL OR WGSE_BWA_EXTEND STREQUAL "simde")
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/extend_neon.c.in" extend_neon_source)
+else()
+    set(extend_neon_source "
+int wgse_extend_fits(int qlen, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int h0)
+{ (void)qlen; (void)m; (void)mat; (void)o_del; (void)e_del; (void)o_ins; (void)e_ins; (void)h0; return 0; }
+int ksw_extend2(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int zdrop, int h0, int *qle, int *tle, int *gtle, int *gscore, int *max_off)
+{ return wgse_ksw_extend2_upstream(qlen, query, tlen, target, m, mat, o_del, e_del, o_ins, e_ins, w, end_bonus, zdrop, h0, qle, tle, gtle, gscore, max_off); }
+")
+endif()
 file(WRITE "${generated}/ksw.c" "#include \"metal_backend.h\"\n${ksw_source}\n${ksw_oracle_source}\n${extend_neon_source}")
 
 # Metal shares the BWT and the restored (not the index-time) suffix array in
