@@ -4,10 +4,13 @@
  * Writes key=value lines to <report-file> and exits with the command's status
  * (128 + signal if it was killed). SIGTERM and SIGINT are forwarded to it.
  * With -t, the command gets SIGTERM after that many seconds, and SIGKILL 30
- * seconds later if it is still running; the report then has timed_out=1. */
+ * seconds later if it is still running; the report then has timed_out=1.
+ * Linux has no footprint or pageins counters, so those lines are left out. */
 #include <errno.h>
 #include <stdlib.h>
+#ifdef __APPLE__
 #include <libproc.h>
+#endif
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
@@ -78,8 +81,10 @@ int main(int argc, char **argv) {
     clock_gettime(CLOCK_MONOTONIC, &end);
     alarm(0);
     /* The exited child keeps its accounting until it is reaped. */
+#ifdef __APPLE__
     struct rusage_info_v4 usage;
     int have_usage = proc_pid_rusage(pid, RUSAGE_INFO_V4, (rusage_info_t *)&usage) == 0;
+#endif
     int status;
     struct rusage rusage;
     while (wait4(pid, &status, 0, &rusage) < 0)
@@ -101,14 +106,20 @@ int main(int argc, char **argv) {
             (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9);
     fprintf(report, "user_s=%.3f\n", seconds(rusage.ru_utime));
     fprintf(report, "sys_s=%.3f\n", seconds(rusage.ru_stime));
+#ifdef __APPLE__
     fprintf(report, "max_rss_bytes=%ld\n", rusage.ru_maxrss); /* bytes on macOS */
+#else
+    fprintf(report, "max_rss_bytes=%ld\n", rusage.ru_maxrss * 1024L); /* KiB on Linux */
+#endif
     fprintf(report, "page_reclaims=%ld\n", rusage.ru_minflt);
     fprintf(report, "page_faults=%ld\n", rusage.ru_majflt);
     fprintf(report, "involuntary_switches=%ld\n", rusage.ru_nivcsw);
+#ifdef __APPLE__
     if (have_usage) {
         fprintf(report, "peak_footprint_bytes=%llu\n", usage.ri_lifetime_max_phys_footprint);
         fprintf(report, "pageins=%llu\n", usage.ri_pageins);
     }
+#endif
     fclose(report);
     return code;
 }
