@@ -95,8 +95,9 @@ def deepvariant_image(model_type: str = "WGS", gpu: bool = False) -> str:
 
 
 _ARM64_SETUP = (
-    "Build the native CPU DeepVariant 1.10.0 image with "
-    "packaging/deepvariant-arm64/build.sh (see docs/deepvariant-arm64.md); "
+    "Build the native CPU DeepVariant 1.10.0 image on Linux ARM64 with "
+    "packaging/deepvariant-arm64/build.sh (on a Mac, build it there and move "
+    "it with docker save / docker load; see docs/deepvariant-arm64.md); "
     "set deepvariant_image in config.toml if you "
     "use another local tag. Dependencies and images must already be installed. "
     "Google's x86 image, emulation and unaudited PATH launchers are not supported."
@@ -131,27 +132,37 @@ def _verify_arm64_image(model_type: str = "WGS", checkpoint: str | None = None) 
         f"Native DeepVariant image isn't installed: {image}. {_ARM64_SETUP} "
         f"{_ARM64_ALTERNATIVES}",
     )
-    inspected = run_command(
-        [docker(_ARM64_SETUP), "image", "inspect", "--format",
-         "{{.Os}}/{{.Architecture}}", image],
-        capture_output=True,
-        check=False,
-    )  # fmt: skip
-    found = (inspected.stdout or "").strip() if not inspected.returncode else ""
-    if found == "linux/amd64":
-        raise WGSExtractError(
-            f"DeepVariant image {image} is linux/amd64 and can't run on this "
-            "ARM64 host: Google publishes DeepVariant for x86-64 only, and "
-            "Docker's x86-64 emulation (including Docker Desktop on Apple "
-            "Silicon) lacks the AVX instructions its TensorFlow needs, so it "
-            f"aborts (exit 134). {_ARM64_SETUP} {_ARM64_ALTERNATIVES}"
-        )
+    found = _image_platform(image, _ARM64_SETUP)
+    _refuse_emulated_amd64(image, architecture, found)
     if found != "linux/arm64":
         raise WGSExtractError(
             f"DeepVariant image {image} must be linux/arm64; "
             "x86 images and emulation are not supported."
         )
     return image
+
+
+def _image_platform(image: str, setup: str) -> str:
+    """The image's ``os/architecture`` (``linux/amd64``), or "" if unknown."""
+    inspected = run_command(
+        [docker(setup), "image", "inspect", "--format",
+         "{{.Os}}/{{.Architecture}}", image],
+        capture_output=True,
+        check=False,
+    )  # fmt: skip
+    return (inspected.stdout or "").strip() if not inspected.returncode else ""
+
+
+def _refuse_emulated_amd64(image: str, engine: str, found: str) -> None:
+    """An amd64 image on an ARM64 engine aborts in its first stage (#665)."""
+    if engine in {"aarch64", "arm64"} and found == "linux/amd64":
+        raise WGSExtractError(
+            f"DeepVariant image {image} is linux/amd64 and can't run on this "
+            "ARM64 Docker engine: Google publishes DeepVariant for x86-64 only, "
+            "and Docker's x86-64 emulation (including Docker Desktop on Apple "
+            "Silicon) lacks the AVX instructions its TensorFlow needs, so it "
+            f"aborts (exit 134). {_ARM64_SETUP} {_ARM64_ALTERNATIVES}"
+        )
 
 
 def _model_type(
@@ -248,6 +259,9 @@ def _verify_docker_image(model_type: str, gpu: bool = False) -> str:
         f"The DeepVariant image isn't downloaded: docker pull {image} "
         f"(set {setting} in config.toml for another version).",
     )
+    setup = _SETUP.format(image=image)
+    engine = docker_info(setup, "{{.Architecture}}").strip().lower()
+    _refuse_emulated_amd64(image, engine, _image_platform(image, setup))
     return image
 
 

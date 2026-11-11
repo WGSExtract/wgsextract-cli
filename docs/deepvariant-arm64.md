@@ -67,6 +67,9 @@ engine and image architectures are checked the same way. Google's
 `google/deepvariant` image is linux/amd64 only; under Docker Desktop's x86-64
 emulation (QEMU or Rosetta) TensorFlow finds no AVX and aborts (exit 134) in
 the first stage, so an amd64 image is refused before any input is prepared.
+This holds under Rosetta too: Apple Silicon is detected from the Mac
+(`sysctl hw.optional.arm64`), and on every path the image's architecture is
+checked against the Docker engine's.
 Without a native image, use `vcf clair3` for ONT reads, `vcf snp`/`vcf indel`
 for short reads, or an x86-64 host.
 

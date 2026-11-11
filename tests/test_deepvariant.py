@@ -22,6 +22,7 @@ from tests.fake_tools import (
     FakeDeepVariant,
     FakeDocker,
     fake_nvidia_smi,
+    python_tool,
     require_bare_name_fakes,
     set_gpus,
 )
@@ -602,6 +603,52 @@ def test_apple_silicon_runs_the_native_arm64_image(apple):
         deepvariant.DEFAULT_ARM64_IMAGE
     }
     assert visible(apple.out) == ["deepvariant.vcf.gz", "deepvariant.vcf.gz.tbi"]
+
+
+def _mac_sysctl(dv, arm64: str) -> None:
+    """The Mac's sysctl: hw.optional.arm64 is 1 on Apple Silicon, 0 on Intel."""
+    body = f"import sys\nif sys.argv[1:] != ['-n', 'hw.optional.arm64']: sys.exit(1)\nprint({arm64!r})\n"
+    python_tool(dv.docker.root.parent / "bin", "sysctl", body)
+
+
+@pytest.fixture
+def rosetta(apple, monkeypatch):
+    """x86-64 Python under Rosetta on Apple Silicon: it reports x86_64."""
+    monkeypatch.setattr(deepvariant.platform, "machine", lambda: "x86_64")
+    _mac_sysctl(apple, "1")
+    return apple
+
+
+def test_rosetta_python_still_refuses_googles_amd64_image(rosetta, monkeypatch):
+    monkeypatch.setitem(
+        deepvariant.settings, "deepvariant_image", deepvariant.DEFAULT_IMAGE
+    )
+    with pytest.raises(WGSExtractError, match="is linux/amd64.*AVX"):
+        call(rosetta)
+    assert rosetta.docker.runs() == []
+
+
+def test_rosetta_python_runs_the_native_arm64_image(rosetta):
+    rosetta.docker.add_image(deepvariant.DEFAULT_ARM64_IMAGE, platform="linux/arm64")
+    call(rosetta)
+    assert {r["image"] for r in rosetta.docker.runs()} == {
+        deepvariant.DEFAULT_ARM64_IMAGE
+    }
+
+
+def test_an_amd64_image_on_an_arm64_engine_is_refused_whatever_the_host_says(dv):
+    """The engine/image pair is checked on the x86-64 path too (#665)."""
+    dv.docker.set(arch="aarch64")
+    with pytest.raises(WGSExtractError, match="is linux/amd64.*AVX"):
+        call(dv)
+    assert dv.docker.runs() == []
+
+
+def test_intel_mac_runs_googles_image(dv, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    _mac_sysctl(dv, "0")
+    call(dv)
+    assert {r["image"] for r in dv.docker.runs()} == {deepvariant.DEFAULT_IMAGE}
 
 
 # Linux ARM64 ------------------------------------------------------------------

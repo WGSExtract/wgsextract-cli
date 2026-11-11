@@ -121,9 +121,10 @@ def _print_report(mode: str, results: list[E2EResult]) -> None:
 
 @pytest.mark.real_config
 def _deepvariant_image() -> bool:
-    """Whether Docker has a DeepVariant image this host can run: on ARM64
-    (Apple Silicon too) only a linux/arm64 one, as Google's amd64 image
-    aborts under emulation (#665)."""
+    """Whether Docker has a DeepVariant image this host can run: on an ARM64
+    host or engine (Apple Silicon too, even under Rosetta) only a linux/arm64
+    one on an ARM64 engine, as Google's amd64 image aborts under emulation
+    (#665)."""
     import subprocess
 
     from wgsextract_cli.commands.vcf.deepvariant import deepvariant_image
@@ -136,7 +137,12 @@ def _deepvariant_image() -> bool:
     found = subprocess.run(inspect, capture_output=True, text=True)
     if found.returncode:
         return False
-    return not is_arm64_docker_host() or found.stdout.strip() == "linux/arm64"
+    info = [docker, "info", "--format", "{{.Architecture}}"]
+    engine = subprocess.run(info, capture_output=True, text=True).stdout.strip()
+    arm64_engine = engine.lower() in {"aarch64", "arm64"}
+    if arm64_engine or is_arm64_docker_host():
+        return arm64_engine and found.stdout.strip() == "linux/arm64"
+    return True
 
 
 class E2EBase:
