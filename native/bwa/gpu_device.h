@@ -181,8 +181,13 @@ enum class Outcome {
 class Device {
 public:
     virtual ~Device() = default;
-    // "Metal" or "CUDA", for messages.
+    // "Metal", "CUDA" or "Vulkan", for messages.
     virtual const char *name() const = 0;
+    // Whether the device seeds and locates (attach, seed, attach_sa, locate,
+    // densify) and rescues mates. A device that does neither only extends
+    // seeds; the CPU then seeds, locates and rescues as its backend does.
+    virtual bool seeds() const { return true; }
+    virtual bool rescues() const { return true; }
 
     // Seeding: reads per seed() batch.
     virtual size_t seed_capacity() const = 0;
@@ -236,7 +241,7 @@ struct DeviceOptions {
     // as interrupted even if it completed, so its kernels run twice.
     size_t interrupt_every = 0;
     // The watchdog's floor: a wait for the GPU fails after the larger of this
-    // and 20 times the slowest batch of its stage (CUDA).
+    // and 20 times the slowest batch of its stage (CUDA and Vulkan).
     double watchdog_seconds = 60;
     // Test hook (CUDA): occupy the GPU before the first rescue batch for twice
     // the watchdog's limit, as a hung kernel would.
@@ -244,7 +249,9 @@ struct DeviceOptions {
 };
 std::unique_ptr<Device> make_metal_device(const DeviceOptions &options, std::string &reason);
 std::unique_ptr<Device> make_cuda_device(const DeviceOptions &options, std::string &reason);
+std::unique_ptr<Device> make_vulkan_device(const DeviceOptions &options, std::string &reason);
 // Whether the machine has the device at all (capabilities' *_hardware_supported).
 bool metal_hardware_supported();
 bool cuda_hardware_supported();
+bool vulkan_hardware_supported();
 } // namespace wgse::gpu

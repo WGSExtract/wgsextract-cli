@@ -45,6 +45,8 @@ awk 'BEGIN {
 gpu=""
 gpu_name=""
 # shellcheck source=native/bwa/tests/gpu_backend.sh disable=SC1091
+export gpu_needs=all
+# shellcheck source=native/bwa/tests/gpu_backend.sh disable=SC1091
 . "$(dirname "$0")/gpu_backend.sh"
 # The kernel-level checks use the Metal seeding benchmark; with "-" (CUDA) only
 # the aligner's output is checked.

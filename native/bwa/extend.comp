@@ -1,0 +1,227 @@
+#version 450
+// Seed extension for Vulkan: a port of extend.metal (and extend.cuh), BWA
+// 0.7.19's ksw_extend2 with mem_chain2aln's band retry, for the first seed of
+// each chain. Adapted from ksw.c (Attractive Chaos, MIT; see SEEDING-LICENSE).
+// Each job uses a segment of 16 lanes of a subgroup, so the subgroup size must
+// be a multiple of 16 (vulkan_device.cpp checks it or requires it). The query
+// length class's T and C (extend_class_caps = T * 16 * C) are specialization
+// constants. Cells are ints holding the values extend.metal keeps in shorts:
+// the host stages only calls whose scores fit 16 bits, so they are equal.
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_vote : require
+#extension GL_KHR_shader_subgroup_shuffle : require
+#extension GL_KHR_shader_subgroup_shuffle_relative : require
+
+layout(constant_id = 0) const int T = 1;
+layout(constant_id = 1) const int C = 1;
+layout(local_size_x_id = 2) in;
+
+const int lanes = 16;
+const int tries_max = 2;
+
+struct Job {
+    uint left_query, left_target, left_qlen, left_tlen, left_h0;
+    uint right_query, right_target, right_qlen, right_tlen;
+};
+struct Call {
+    int score, qle, tle, gtle, gscore, max_off;
+};
+struct Result {
+    Call calls[2 * tries_max];
+    int right_h0, left_tries, right_tries, pad;
+};
+
+layout(std430, binding = 0) readonly buffer Bases { uint bases[]; };
+layout(std430, binding = 1) readonly buffer Jobs { Job jobs[]; };
+layout(std430, binding = 2) buffer Results { Result results[]; };
+layout(std430, binding = 3) readonly buffer Order { uint order[]; };
+
+// ExtendParameters, then the side and the class's slice of `order`.
+layout(push_constant) uniform Parameters {
+    uint count;
+    int o_del, e_del, o_ins, e_ins, zdrop, w;
+    int match_score, mismatch, ambiguous, max_score;
+    int left_bonus, right_bonus;
+    uint right, first;
+} p;
+
+int base_at(uint i) {
+    return int((bases[i >> 2] >> ((i & 3u) * 8u)) & 0xffu);
+}
+
+uint segment_base;
+
+int up(int v, int d) { return subgroupShuffleUp(v, uint(d)); }
+int at(int v, int lane) { return subgroupShuffle(v, segment_base + uint(lane)); }
+int across(int v, int d) { return subgroupShuffleXor(v, uint(d)); }
+
+Call extend(bool run, int lane, uint query, int qlen, uint target, int tlen, int requested_w,
+    int end_bonus, int h0)
+{
+    int H[T][C], E[T][C], Q[T][C], JE[T][C];
+    for (int t = 0; t < T; ++t)
+        for (int k = 0; k < C; ++k) {
+            const int j = lanes * C * t + lane * C + k;
+            H[t][k] = j == 0 ? h0 : max(0, h0 - p.o_ins - p.e_ins * j);
+            E[t][k] = 0;
+            Q[t][k] = run && j < qlen ? base_at(query + uint(j)) : 0;
+            JE[t][k] = j * p.e_ins;
+        }
+    // ksw_extend2 narrows the band to the longest gap that can still score.
+    int w = min(requested_w, max(1, (qlen * p.max_score + end_bonus - p.o_ins) / p.e_ins + 1));
+    w = min(w, max(1, (qlen * p.max_score + end_bonus - p.o_del) / p.e_del + 1));
+    int best = h0, best_i = -1, best_j = -1, gscore = -1, gend = -1, max_off = 0;
+    int beg = 0, end_ = qlen;
+    const int oe_del = p.o_del + p.e_del;
+    bool live = run;
+    for (int i = 0;; ++i) {
+        live = live && i < tlen;
+        if (!subgroupAny(live)) break;
+        int previous = 0, carry = 0, h1_init = 0;
+        int row_best = 0, first = 1 << 20, last = -1, base = 0;
+        if (live) {
+            beg = max(beg, i - w);
+            end_ = min(end_, min(qlen, i + w + 1));
+            h1_init = beg == 0 ? max(0, h0 - oe_del - p.e_del * i) : 0;
+            previous = h1_init;
+            base = base_at(target + uint(i));
+        }
+        for (int t = 0; t < T; ++t) {
+            const int tile = lanes * C * t;
+            const bool on = live && tile <= end_ && tile + lanes * C > beg;
+            if (!subgroupAny(on)) continue;
+            const int j0 = tile + lane * C;
+            int match_[C];
+            int prefix = 0;
+            for (int k = 0; k < C; ++k) {
+                const int j = j0 + k;
+                const bool valid = on && j >= beg && j < end_;
+                const int diagonal = H[t][k];
+                const int q = Q[t][k];
+                const int score = base == 4 || q == 4 ? p.ambiguous
+                    : base == q ? p.match_score : p.mismatch;
+                // H(i-1,j-1) == 0 starts no match (no cigar like 100M3I3D20M).
+                match_[k] = !valid || diagonal == 0 ? 0 : diagonal + score;
+                if (valid) prefix = max(prefix, match_[k] + JE[t][k]);
+            }
+            // F(i,j) = max over j' < j of M(i,j') - o_ins - (j - j') * e_ins, floored at 0.
+            for (int d = 1; d < lanes; d *= 2) {
+                const int shifted = up(prefix, d);
+                if (lane >= d) prefix = max(prefix, shifted);
+            }
+            prefix = max(prefix, carry);
+            int x = up(prefix, 1);
+            if (lane == 0) x = carry;
+            int value[C];
+            for (int k = 0; k < C; ++k) {
+                value[k] = max(match_[k], max(E[t][k], max(0, x - p.o_ins - JE[t][k])));
+                x = max(x, match_[k] + JE[t][k]);
+            }
+            int last_value = value[0];
+            for (int k = 1; k < C; ++k)
+                if (j0 + k < end_) last_value = value[k];
+            int preceding = up(last_value, 1);
+            if (lane == 0) preceding = previous;
+            for (int k = 0; k < C; ++k) {
+                const int j = j0 + k;
+                if (!on || j < beg || j > end_) continue;
+                // eh[j] = { H(i,j-1), E(i+1,j) }; eh[end] = { H(i,end-1), 0 }.
+                const int before = j == beg ? h1_init : k == 0 ? preceding : value[k - 1];
+                const int next_e = j == end_ ? 0 : max(E[t][k] - p.e_del, max(0, match_[k] - oe_del));
+                H[t][k] = before;
+                E[t][k] = next_e;
+                if (j < end_) {
+                    if (before != 0 || next_e != 0) {
+                        first = min(first, j);
+                        last = max(last, j);
+                    }
+                    // The rightmost column wins ties, as ksw_extend2's mj does.
+                    row_best = max(row_best, value[k] * 512 + j + 1);
+                }
+            }
+            const bool any_ = on && tile < end_ && tile + lanes * C > beg;
+            const int next_previous = at(last_value, min(lanes - 1, max(0, (end_ - tile - 1) / C)));
+            const int next_carry = at(prefix, lanes - 1);
+            if (any_) {
+                previous = next_previous;
+                carry = next_carry;
+            }
+        }
+        for (int d = lanes / 2; d > 0; d /= 2) {
+            row_best = max(row_best, across(row_best, d));
+            first = min(first, across(first, d));
+            last = max(last, across(last, d));
+        }
+        if (live) {
+            if (previous != 0) last = max(last, end_);
+            if (first == (1 << 20)) first = end_;
+            const int m = row_best >> 9, mj = (row_best & 511) - 1;
+            if (max(beg, end_) == qlen && previous >= gscore) {
+                gscore = previous;
+                gend = i;
+            }
+            if (m == 0) {
+                live = false;
+            } else if (m > best) {
+                best = m;
+                best_i = i;
+                best_j = mj;
+                max_off = max(max_off, abs(mj - i));
+            } else if (p.zdrop > 0) {
+                const int drift = (i - best_i) - (mj - best_j);
+                const int penalty = drift > 0 ? drift * p.e_del : -drift * p.e_ins;
+                if (best - m - penalty > p.zdrop) live = false;
+            }
+            // The next row spans the columns whose H or E is nonzero.
+            beg = first;
+            end_ = min(qlen, max(last, beg - 1) + 2);
+        }
+    }
+    return Call(best, best_j + 1, best_i + 1, gend + 1, gscore, max_off);
+}
+
+// One side of each job in order[first, first + count): the left side's tries,
+// or the right side's, which start from the left side's final score.
+void main()
+{
+    const bool right = p.right != 0u;
+    const int lane = int(gl_SubgroupInvocationID) % lanes;
+    segment_base = gl_SubgroupInvocationID - uint(lane);
+    const uint slot = gl_GlobalInvocationID.x / uint(lanes);
+    const bool valid = slot < p.count;
+    const uint index = valid ? order[p.first + slot] : 0u;
+    Job job = Job(0u, 0u, 0u, 0u, 1u, 0u, 0u, 0u, 0u);
+    if (valid) job = jobs[index];
+    int h0 = int(job.left_h0);
+    if (right && valid && job.left_qlen > 0u) h0 = results[index].calls[results[index].left_tries - 1].score;
+    const uint query = right ? job.right_query : job.left_query;
+    const uint target = right ? job.right_target : job.left_target;
+    const int qlen = int(right ? job.right_qlen : job.left_qlen);
+    const int tlen = int(right ? job.right_tlen : job.left_tlen);
+    const int bonus = right ? p.right_bonus : p.left_bonus;
+    // mem_chain2aln: retry with a doubled band unless the score is unchanged or
+    // the alignment stayed well inside the band.
+    int score = right ? h0 : -1, tries = 0;
+    bool more = valid && qlen > 0;
+    Call calls[tries_max];
+    for (int t = 0; t < tries_max; ++t) {
+        if (!subgroupAny(more)) break;
+        const int w = p.w << t;
+        const Call call = extend(more, lane, query, qlen, target, tlen, w, bonus, h0);
+        if (more) {
+            calls[t] = call;
+            tries = t + 1;
+            more = !(call.score == score || call.max_off < (w >> 1) + (w >> 2));
+            score = call.score;
+        }
+    }
+    if (!valid || lane != 0) return;
+    const int offset = right ? tries_max : 0;
+    for (int t = 0; t < tries; ++t) results[index].calls[offset + t] = calls[t];
+    if (right) {
+        results[index].right_h0 = h0;
+        results[index].right_tries = tries;
+    } else {
+        results[index].left_tries = tries;
+    }
+}

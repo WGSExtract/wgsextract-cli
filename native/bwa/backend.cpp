@@ -225,12 +225,13 @@ public:
     double waited = 0, gpu_time = 0;
 
     // With overlap, the next batch is packed while the GPU runs the previous
-    // one; that pays only when packing is slow.
+    // one; that pays only when packing is slow. Without a GPU (gpu false),
+    // CPU threads map every pair, taking `block` pairs at a time (map_block).
     Splitter(int threads, long pairs, long pairs_per_batch, bool overlap, const char *injected,
-        void (*worker)(void *, long, int), void *data)
+        void (*worker)(void *, long, int), void *data, bool gpu = true, long block = 1)
         : worker_(worker), data_(data), threads_(threads),
           per_batch_(std::max<long>(1, pairs_per_batch)), overlap_(overlap), injected_(injected),
-          back_(pairs),
+          gpu_(gpu), block_(gpu ? 1 : std::max<long>(1, block)), back_(pairs),
           owner_(size_t(pairs)) {}
     virtual ~Splitter() = default;
 
@@ -244,7 +245,7 @@ public:
             // Map with the threads that started; this thread covers a missing tid.
         }
         // The GPU waits for workers to drain its batches, so it needs at least one.
-        if (threads.empty()) stop_gpu();
+        if (threads.empty() || !gpu_) stop_gpu();
         else gpu_loop();
         if (threads.size() < size_t(threads_)) cpu(static_cast<int>(threads.size()));
         for (auto &thread : threads) thread.join();
@@ -278,6 +279,10 @@ protected:
         worker_(data_, pair, tid);
         end();
     }
+    // Maps the unprepared pairs [first, last) on CPU thread tid.
+    virtual void map_block(long first, long last, int tid) {
+        for (long pair = last; pair-- > first;) map(pair, nullptr, tid);
+    }
     // With mutex_ held: takes other work, which CPU threads do before mapping pairs.
     virtual bool claim(Work &) { return false; }
     virtual void perform(const Work &, int) {}
@@ -296,6 +301,8 @@ private:
     const long per_batch_;
     const bool overlap_;
     const char *injected_;
+    const bool gpu_;
+    const long block_;
     std::condition_variable drained_;
     // Pairs [0, front_) and [back_, n) are taken; [0, ready_) are prepared or
     // were given up by the GPU; [ready_, next_) are packed or being prepared, and
@@ -318,7 +325,7 @@ private:
         double wait_time = 0;
         size_t accelerated_pairs = 0, unprepared_pairs = 0, wasted_pairs = 0;
         for (;;) {
-            long pair = -1;
+            long pair = -1, block_first = -1;
             BatchBase *batch = nullptr;
             Work work;
             {
@@ -332,9 +339,14 @@ private:
                         break;
                     }
                     const bool steal = gpu_stopped_ || !all_on_gpu;
-                    if (steal && back_ > (packing_ ? claimed_ : front_)) {
+                    const long floor = packing_ ? claimed_ : front_;
+                    if (steal && back_ > floor) {
                         pair = --back_;
                         if (pair < claimed_) ++wasted_pairs;
+                        if (block_ > 1) {
+                            block_first = std::max(floor, pair + 1 - block_);
+                            back_ = block_first;
+                        }
                         break;
                     }
                     const bool busy = idle(tid);
@@ -354,6 +366,11 @@ private:
             }
             if (pair < 0) {
                 perform(work, tid);
+                continue;
+            }
+            if (block_first >= 0) {
+                unprepared_pairs += size_t(pair + 1 - block_first);
+                map_block(block_first, pair + 1, tid);
                 continue;
             }
             if (batch) ++accelerated_pairs;
@@ -640,8 +657,15 @@ inline int stride(const mem_opt_t *opt) {
     return (opt->flag & MEM_F_PE) ? 2 : 1;
 }
 
-// worker1 with GPU seeding and suffix-array locate, and with GPU seed
-// extension if `extension` is given. Then a CPU thread chains each pair and
+constexpr long cpu_map_pairs = 8;
+// The CPU backend's seeding and locate of the pairs [first, last), interleaved
+// across their reads; then map(pair) for each, with the pair's seeds current.
+void cpu_map_block(const mem_opt_t *opt, const bwt_t *bwt, bseq1_t *seqs, int stride, long first,
+    long last, const std::function<void(long)> &map);
+
+// worker1 with GPU seeding and suffix-array locate (or, for a device that does
+// not seed, the CPU backend's), and with GPU seed extension if `extension` is
+// given. Then a CPU thread chains each pair and
 // stages the first extension of each chain in the shared extension batch; the
 // GPU extends full batches (and partial ones when threads run out of work) on
 // its own queue, and CPU threads finish those pairs, using the GPU's result for
@@ -653,11 +677,12 @@ public:
     size_t extended_batches = 0, extended_jobs = 0;
     double extend_time = 0, extend_kernel_time = 0;
 
-    SeedScheduler(const mem_opt_t *opt, int n, bseq1_t *seqs,
+    SeedScheduler(const mem_opt_t *opt, const bwt_t *bwt, int n, bseq1_t *seqs,
         void (*worker)(void *, long, int), void *data, const ExtendParameters *extension)
         : Splitter(opt->n_threads, n / stride(opt), long(device->seed_capacity()) / stride(opt), false,
-              inject_failure ? "injected GPU failure (test)" : nullptr, worker, data),
-          opt_(opt), seqs_(seqs), stride_(stride(opt)),
+              inject_failure ? "injected GPU failure (test)" : nullptr, worker, data,
+              device->seeds(), cpu_map_pairs),
+          opt_(opt), bwt_(bwt), seqs_(seqs), stride_(stride(opt)),
           prepared_(size_t(n / stride_) * stride_, nullptr), extend_(extension != nullptr) {
         if (!extend_) return;
         parameters_ = *extension;
@@ -691,6 +716,7 @@ public:
 
 private:
     const mem_opt_t *opt_;
+    const bwt_t *bwt_;
     bseq1_t *seqs_;
     const int stride_;
     std::vector<const Prepared *> prepared_;
@@ -711,11 +737,28 @@ private:
             Splitter::map(pair, batch, tid);
             return;
         }
+        begin(pair, batch);
+        chain(pair, tid);
+    }
+
+    void map_block(long first, long last, int tid) override {
+        cpu_map_block(opt_, bwt_, seqs_, stride_, first, last, [&](long pair) {
+            if (extend_) {
+                chain(pair, tid);
+            } else {
+                worker_(data_, pair, tid);
+                end();
+            }
+        });
+    }
+
+    // Chains the pair whose seeds are current, staging its extensions, then
+    // finishes it now or once its batch is extended.
+    void chain(long pair, int tid) {
         ExtendStage &stage = stages_[size_t(tid)];
         stage.bases.clear();
         stage.jobs.clear();
         stage.failed = false;
-        begin(pair, batch);
         void *chains = wgse_worker1_chain(data_, pair, tid, stage_extension, &stage);
         // Out of memory before chaining: upstream's worker1 maps the pair instead.
         if (!chains) worker_(data_, pair, tid);
@@ -1309,7 +1352,7 @@ extern "C" int wgse_metal_map(const mem_opt_t *opt, const bwt_t *bwt, int n,
     const size_t pairs_before = pair_starts.load();
     const bool paired_at_start = pairs_running.load() != 0;
     try {
-        attach(bwt, opt, mapped_reads);
+        if (device->seeds()) attach(bwt, opt, mapped_reads);
         mapped_reads += size_t(n);
         auto start = Clock::now();
         // bwa_verbose >= 4 prints each extension as mem_chain2aln runs it.
@@ -1317,7 +1360,7 @@ extern "C" int wgse_metal_map(const mem_opt_t *opt, const bwt_t *bwt, int n,
         const bool extend = extend_enabled && bwa_verbose < 4
             && extend_parameters(*opt, extension);
         if (extend) prepare_extension();
-        SeedScheduler scheduler(opt, n, seqs, worker, data, extend ? &extension : nullptr);
+        SeedScheduler scheduler(opt, bwt, n, seqs, worker, data, extend ? &extension : nullptr);
         scheduler.align();
         const size_t reads = size_t(stride(opt));
         std::lock_guard<std::mutex> lock(totals_mutex);
@@ -1346,7 +1389,8 @@ extern "C" int wgse_metal_pair(const mem_opt_t *opt, const bntseq_t *bns, const 
     const mem_pestat_t pes[4], int n, bseq1_t *seqs, mem_alnreg_v *regs,
     void (*worker)(void *, long, int), void *data) {
     RescueParameters parameters;
-    if (!enabled) {
+    // A device that does not rescue leaves it to the CPU backend's batching.
+    if (!enabled || !device->rescues()) {
         if (cpu_upstream || !cpu_rescue_batching || !(opt->flag & MEM_F_PE)
             || (opt->flag & MEM_F_NO_RESCUE)) return 0;
         CpuPair pair{opt, bns, pac, pes, seqs, regs, worker, data};
@@ -1591,8 +1635,6 @@ struct CpuMap {
     long items;
     int stride;
 };
-constexpr long cpu_map_block = 8;
-
 struct CpuMapScratch {
     std::vector<Intervals> intervals;
     std::vector<Prepared> prepared;
@@ -1604,8 +1646,20 @@ thread_local CpuMapScratch cpu_map_scratch;
 
 void cpu_map_worker(void *context, long block, int tid) {
     const CpuMap &m = *static_cast<const CpuMap *>(context);
+    const long first = block * cpu_map_pairs, last = std::min(m.items, first + cpu_map_pairs);
+    cpu_map_block(m.opt, m.bwt, m.seqs, m.stride, first, last,
+        [&](long item) { m.worker(m.data, item, tid); });
+}
+
+void cpu_map_block(const mem_opt_t *opt, const bwt_t *bwt, bseq1_t *seqs, int stride, long first,
+    long last, const std::function<void(long)> &map) {
+    const struct {
+        const mem_opt_t *opt;
+        const bwt_t *bwt;
+        bseq1_t *seqs;
+        int stride;
+    } m{opt, bwt, seqs, stride};
     CpuMapScratch &s = cpu_map_scratch;
-    const long first = block * cpu_map_block, last = std::min(m.items, first + cpu_map_block);
     const size_t reads = size_t(last - first) * size_t(m.stride);
     s.intervals.resize(reads);
     s.prepared.assign(reads, Prepared{nullptr, nullptr, nullptr, 0});
@@ -1652,7 +1706,7 @@ void cpu_map_worker(void *context, long block, int tid) {
                 m.seqs[size_t(item) * size_t(m.stride) + size_t(mate)].seq);
             current.prepared[mate] = &s.prepared[r];
         }
-        m.worker(m.data, item, tid);
+        map(item);
         finish_cursor();
     }
     current = {};
@@ -1662,7 +1716,7 @@ int map_on_cpu(const mem_opt_t *opt, const bwt_t *bwt, int n, bseq1_t *seqs,
     void (*worker)(void *, long, int), void *data) {
     if (cpu_upstream || bwa_verbose >= 4) return 0;
     CpuMap m{opt, bwt, seqs, worker, data, long(n / stride(opt)), stride(opt)};
-    kt_for(opt->n_threads, cpu_map_worker, &m, (m.items + cpu_map_block - 1) / cpu_map_block);
+    kt_for(opt->n_threads, cpu_map_worker, &m, (m.items + cpu_map_pairs - 1) / cpu_map_pairs);
     return 1;
 }
 } // namespace
@@ -1708,22 +1762,44 @@ extern "C" bwtint_t wgse_metal_sa(const bwt_t *bwt, bwtint_t k) {
 }
 
 bool wgse_gpu_hardware_supported(Backend backend) {
-    return backend == Backend::metal ? metal_hardware_supported() : cuda_hardware_supported();
+    switch (backend) {
+    case Backend::metal: return metal_hardware_supported();
+    case Backend::cuda: return cuda_hardware_supported();
+    case Backend::vulkan: return vulkan_hardware_supported();
+    default: return false;
+    }
 }
 
 namespace {
-// The device for a GPU backend; automatic picks the one this build has.
 std::unique_ptr<Device> make_device(Backend backend, std::string &reason) {
-    if (backend == Backend::automatic)
+    switch (backend) {
+    case Backend::metal: return make_metal_device(device_options, reason);
+    case Backend::cuda: return make_cuda_device(device_options, reason);
+    case Backend::vulkan: return make_vulkan_device(device_options, reason);
+    case Backend::automatic: {
+        // This build's GPUs in order of preference; the first usable one.
 #ifdef __APPLE__
-        backend = Backend::metal;
+        const Backend order[] = {Backend::metal};
 #else
-        backend = Backend::cuda;
+        const Backend order[] = {Backend::cuda, Backend::vulkan};
 #endif
-    return backend == Backend::metal ? make_metal_device(device_options, reason)
-        : make_cuda_device(device_options, reason);
+        std::string reasons;
+        for (Backend candidate : order) {
+            std::string why;
+            if (auto device = make_device(candidate, why)) return device;
+            reasons += (reasons.empty() ? "" : "; ") + why;
+        }
+        reason = reasons;
+        return nullptr;
+    }
+    default: return nullptr;
+    }
 }
 } // namespace
+
+bool wgse_gpu_probe(Backend backend, std::string &reason) {
+    return make_device(backend, reason) != nullptr;
+}
 
 bool wgse_gpu_available(Backend backend, std::string &reason) {
     // The device is kept for wgse_set_backend, so its kernels build once.
@@ -1734,11 +1810,17 @@ bool wgse_gpu_available(Backend backend, std::string &reason) {
 
 const char *wgse_gpu_name(Backend backend) {
     if (device) return device->name();
+    switch (backend) {
+    case Backend::cuda: return "CUDA";
+    case Backend::vulkan: return "Vulkan";
+    case Backend::metal: return "Metal";
+    default:
 #ifdef __APPLE__
-    return backend == Backend::cuda ? "CUDA" : "Metal";
+        return "Metal";
 #else
-    return backend == Backend::metal ? "Metal" : "CUDA";
+        return "GPU";
 #endif
+    }
 }
 
 void wgse_set_backend(Backend backend) {
@@ -1896,6 +1978,16 @@ std::unique_ptr<Device> make_metal_device(const DeviceOptions &, std::string &re
 }
 
 bool metal_hardware_supported() {
+    return false;
+}
+#endif
+#ifndef WGSE_HAVE_VULKAN
+std::unique_ptr<Device> make_vulkan_device(const DeviceOptions &, std::string &reason) {
+    reason = "this build has no Vulkan backend";
+    return nullptr;
+}
+
+bool vulkan_hardware_supported() {
     return false;
 }
 #endif

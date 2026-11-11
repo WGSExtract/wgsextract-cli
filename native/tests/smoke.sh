@@ -74,7 +74,12 @@ else
         gpu=--metal
     elif grep -q '"cuda_available":true' capabilities.json; then
         gpu=--cuda
+    elif grep -q '"vulkan_available":true' capabilities.json; then
+        gpu=--vulkan
     fi
+    # The Vulkan backend only extends seeds; the CPU seeds, locates and rescues.
+    seeds_on_gpu=true
+    [ "$gpu" = --vulkan ] && seeds_on_gpu=false
     if [ -n "$gpu" ]; then
         # shellcheck disable=SC2086
         "$binary" $gpu $gpu_options mem -t 4 reference.fa reads_1.fq reads_2.fq \
@@ -85,7 +90,8 @@ else
         cmp cpu.records metal.records
         # wgse-bwa-mem3 offloads only seed extension, and counts its batches as such.
         grep -E '(gpu|extension)_batches=' metal.log
-        if grep -Eq '(gpu|extension)_batches=0 ' metal.log; then
+        if grep -Eq '(gpu|extension)_batches=0 ' metal.log \
+            && ! grep -Eq 'extend_batches=[1-9]' metal.log; then
             if [ "$mode" = force-gpu ]; then
                 echo "force-gpu run dispatched no GPU batches" >&2
                 exit 1
@@ -93,12 +99,12 @@ else
             echo "Routing kept every batch on the CPU; GPU output matches CPU"
         else
             # wgse-bwa also locates seeds on the GPU; mem_chain must use every row.
-            if grep -q 'locate_misses=' metal.log; then
+            if [ "$seeds_on_gpu" = true ] && grep -q 'locate_misses=' metal.log; then
                 grep -Eq 'locate_misses=0( |$)' metal.log
                 [ "$mode" != force-gpu ] || grep -Eq 'located_rows=[1-9]' metal.log
             fi
             # ...and prepares mate rescue on the GPU; every prepared window must be used.
-            if grep -q 'rescue_misses=' metal.log; then
+            if [ "$seeds_on_gpu" = true ] && grep -q 'rescue_misses=' metal.log; then
                 grep -q 'rescue_misses=0 ' metal.log
                 [ "$mode" != force-gpu ] || grep -Eq 'rescue_gpu_pairs=[1-9]' metal.log
             fi
@@ -109,7 +115,7 @@ else
             fi
             echo "GPU alignments match CPU"
         fi
-    elif grep -Eq '"(metal|cuda)_hardware_supported":true' capabilities.json; then
+    elif grep -Eq '"(metal|cuda|vulkan)_hardware_supported":true' capabilities.json; then
         cat capabilities.log >&2
         echo "GPU hardware is present but its backend failed to initialize" >&2
         exit 1

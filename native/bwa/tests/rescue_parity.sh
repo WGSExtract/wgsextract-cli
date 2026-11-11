@@ -204,6 +204,8 @@ seed_parity wide -k 25 -r 3 -c 50
 gpu=""
 gpu_name=""
 # shellcheck source=native/bwa/tests/gpu_backend.sh disable=SC1091
+export gpu_needs=all
+# shellcheck source=native/bwa/tests/gpu_backend.sh disable=SC1091
 . "$(dirname "$0")/gpu_backend.sh"
 
 run() {

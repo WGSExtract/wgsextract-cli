@@ -54,6 +54,19 @@ if(APPLE)
 elseif(WGSE_CUDA)
     list(APPEND device_sources cuda_device.cu)
 endif()
+if(WGSE_VULKAN)
+    # extend.comp as SPIR-V words in a header (extend_spv.h).
+    add_custom_command(OUTPUT "${generated}/extend.spv"
+        COMMAND Vulkan::glslc --target-env=vulkan1.1 -O
+            "${CMAKE_CURRENT_SOURCE_DIR}/extend.comp" -o "${generated}/extend.spv"
+        DEPENDS extend.comp VERBATIM)
+    add_custom_command(OUTPUT "${generated}/extend_spv.h"
+        COMMAND "${CMAKE_COMMAND}" -DINPUT=${generated}/extend.spv
+            -DOUTPUT=${generated}/extend_spv.h -DNAME=extend_spv
+            -P "${PROJECT_SOURCE_DIR}/cmake/embed_spirv.cmake"
+        DEPENDS "${generated}/extend.spv" "${PROJECT_SOURCE_DIR}/cmake/embed_spirv.cmake" VERBATIM)
+    list(APPEND device_sources vulkan_device.cpp "${generated}/extend_spv.h")
+endif()
 add_library(wgse_bwa_core STATIC ${bwa_sources} backend.cpp ${device_sources}
     $<TARGET_OBJECTS:wgse_bwa_smem>)
 target_include_directories(wgse_bwa_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" "${generated}")
@@ -82,6 +95,10 @@ elseif(WGSE_CUDA)
     # The static runtime needs only the NVIDIA driver at run time; without one,
     # the CUDA backend reports itself unavailable.
     target_link_libraries(wgse_bwa_core PUBLIC CUDA::cudart_static)
+endif()
+if(WGSE_VULKAN)
+    target_compile_definitions(wgse_bwa_core PRIVATE WGSE_HAVE_VULKAN=1)
+    target_link_libraries(wgse_bwa_core PRIVATE Vulkan::Headers ${CMAKE_DL_LIBS})
 endif()
 
 add_executable(wgse-bwa main.cpp)
@@ -131,6 +148,12 @@ if(BUILD_TESTING)
     add_test(NAME bwa_gpu_extend_parity
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/extend_parity.sh"
         $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/extend-parity")
+    if(WGSE_VULKAN)
+        add_test(NAME bwa_vulkan_extend_parity
+            COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/extend_parity.sh"
+            $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/vulkan-extend-parity" --vulkan)
+        set_tests_properties(bwa_vulkan_extend_parity PROPERTIES SKIP_RETURN_CODE 77)
+    endif()
     # Exit 77 means the machine has no unified-memory Metal device.
     set_tests_properties(bwa_smoke bwa_gpu_rescue_parity bwa_gpu_extend_parity
         PROPERTIES SKIP_RETURN_CODE 77)

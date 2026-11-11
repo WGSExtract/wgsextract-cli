@@ -1,8 +1,10 @@
 #!/bin/sh
 # GPU seed extension (mem_chain2aln's ksw_extend2) must leave the SAM unchanged.
 set -eu
+# Usage: extend_parity.sh <aligner> <work-dir> [--metal|--cuda|--vulkan]
 aligner=$1
 work=$2
+gpu_request=${3:-}
 mkdir -p "$work"
 cd "$work"
 

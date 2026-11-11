@@ -14,7 +14,8 @@ constexpr const char *engine_version = "0.7.19";
 
 void help() {
     printf("%s %s (BWA %s rebuilt)\n"
-        "Usage: %s [--metal | --cuda | --backend cpu|metal|cuda|auto] <command> [arguments]\n"
+        "Usage: %s [--metal | --cuda | --vulkan | --backend cpu|metal|cuda|vulkan|auto] <command>\n"
+        "       [arguments]\n"
         "  <command>                 a BWA command such as index or mem (run %s alone to list them)\n"
         "  capabilities --json       report GPU availability\n"
         "  --version                 print executable and engine version\n"
@@ -22,10 +23,12 @@ void help() {
         "code, with some steps replaced by exact batched versions (identical output).\n"
         "--metal (Apple Silicon) and --cuda (NVIDIA) are EXPERIMENTAL: they find and\n"
         "locate the seeds of most reads, extend most seeds and align many mate-rescue\n"
-        "windows on the GPU while the CPU does the rest, with identical output. Each\n"
-        "fails if its GPU is unavailable, and exits 1 after finishing on the CPU if a\n"
-        "GPU batch fails; --backend auto uses this build's GPU (Metal on macOS, CUDA\n"
-        "elsewhere) and falls back to the CPU in both cases.\n"
+        "windows on the GPU while the CPU does the rest, with identical output.\n"
+        "--vulkan (AMD, Intel or NVIDIA GPUs) is EXPERIMENTAL too and extends most\n"
+        "seeds on the GPU. Each fails if its GPU is unavailable, and exits 1 after\n"
+        "finishing on the CPU if a GPU batch fails; --backend auto uses this build's\n"
+        "GPU (Metal on macOS, else CUDA, then Vulkan) and falls back to the CPU in\n"
+        "both cases.\n"
         "SAM is written to stdout; diagnostics to stderr.\n"
         "Not qualified for clinical use.\n",
         name, version, engine_version, name, name);
@@ -35,6 +38,7 @@ bool parse_backend(const char *value, Backend &backend) {
     if (strcmp(value, "cpu") == 0) backend = Backend::cpu;
     else if (strcmp(value, "metal") == 0) backend = Backend::metal;
     else if (strcmp(value, "cuda") == 0) backend = Backend::cuda;
+    else if (strcmp(value, "vulkan") == 0) backend = Backend::vulkan;
     else if (strcmp(value, "auto") == 0) backend = Backend::automatic;
     else return false;
     return true;
@@ -51,9 +55,12 @@ int run(int argc, char **argv) {
         } else if (strcmp(option, "--cuda") == 0) {
             backend = Backend::cuda;
             ++command_index;
+        } else if (strcmp(option, "--vulkan") == 0) {
+            backend = Backend::vulkan;
+            ++command_index;
         } else if (strcmp(option, "--backend") == 0) {
             if (argc <= command_index + 1 || !parse_backend(argv[command_index + 1], backend)) {
-                fprintf(stderr, "--backend requires cpu, metal, cuda or auto\n");
+                fprintf(stderr, "--backend requires cpu, metal, cuda, vulkan or auto\n");
                 return 2;
             }
             command_index += 2;
@@ -255,25 +262,32 @@ int run(int argc, char **argv) {
             fprintf(stderr, "Usage: %s capabilities --json\n", name);
             return 2;
         }
-        // Each GPU this build has is reported; the other is unavailable.
-        std::string metal_reason, cuda_reason;
+        // Each GPU this build has is reported; the others are unavailable.
+        auto probe = [](Backend backend) {
+            std::string reason;
+            const bool usable = wgse_gpu_probe(backend, reason);
+            if (!usable)
+                fprintf(stderr, "%s unavailable: %s\n", wgse_gpu_name(backend), reason.c_str());
+            return usable;
+        };
 #ifdef __APPLE__
-        const bool metal = wgse_gpu_available(Backend::metal, metal_reason), cuda = false;
-        if (!metal) fprintf(stderr, "Metal unavailable: %s\n", metal_reason.c_str());
+        const bool metal = probe(Backend::metal), cuda = false, vulkan = false;
 #else
-        const bool metal = false, cuda = wgse_gpu_available(Backend::cuda, cuda_reason);
-        if (!cuda) fprintf(stderr, "CUDA unavailable: %s\n", cuda_reason.c_str());
+        const bool metal = false, cuda = probe(Backend::cuda), vulkan = probe(Backend::vulkan);
 #endif
         printf("{\"schema_version\":1,\"version\":\"%s\","
             "\"engine\":\"bwa\",\"engine_version\":\"%s\","
             "\"qualified\":false,\"metal_available\":%s,"
             "\"metal_hardware_supported\":%s,\"cuda_available\":%s,"
-            "\"cuda_hardware_supported\":%s,"
+            "\"cuda_hardware_supported\":%s,\"vulkan_available\":%s,"
+            "\"vulkan_hardware_supported\":%s,"
             "\"cpu_available\":true,\"max_gpu_query_length\":%u}\n",
             version, engine_version, metal ? "true" : "false",
             wgse_gpu_hardware_supported(Backend::metal) ? "true" : "false",
             cuda ? "true" : "false",
             wgse_gpu_hardware_supported(Backend::cuda) ? "true" : "false",
+            vulkan ? "true" : "false",
+            wgse_gpu_hardware_supported(Backend::vulkan) ? "true" : "false",
             static_cast<unsigned>(seed_max_length));
         return 0;
     }

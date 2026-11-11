@@ -84,13 +84,16 @@ int wgse_bwa_main(int argc, char *argv[]);
 
 #include <string>
 
-enum class Backend { cpu, metal, cuda, automatic };
+enum class Backend { cpu, metal, cuda, vulkan, automatic };
 
 // Whether the GPU backend's device can run the kernels (automatic: this
-// build's GPU, Metal on macOS and CUDA elsewhere), with the reason if not.
+// build's GPU, Metal on macOS, elsewhere CUDA and then Vulkan), with the
+// reason if not.
 bool wgse_gpu_available(Backend backend, std::string &reason);
 bool wgse_gpu_hardware_supported(Backend backend);
-// "Metal" or "CUDA": the selected device, or the backend's.
+// Like wgse_gpu_available, but starts and releases a device of its own.
+bool wgse_gpu_probe(Backend backend, std::string &reason);
+// "Metal", "CUDA" or "Vulkan": the selected device, or the backend's.
 const char *wgse_gpu_name(Backend backend);
 // Must precede alignment; a GPU backend without a usable device leaves the CPU's.
 void wgse_set_backend(Backend backend);
@@ -108,7 +111,7 @@ void wgse_inject_locate_failure();
 // Reports the first commit of every nth piece of GPU work as interrupted by
 // macOS, so it is committed again.
 void wgse_inject_gpu_interruptions(size_t every);
-// The GPU watchdog's floor in seconds (CUDA).
+// The GPU watchdog's floor in seconds (CUDA and Vulkan).
 void wgse_set_gpu_watchdog_seconds(double seconds);
 // Occupies the GPU past the watchdog's limit before the first rescue batch (CUDA).
 void wgse_inject_gpu_hang();
