@@ -25,6 +25,9 @@ google/deepvariant#1085) with the patches in [`patches/`](patches):
 - **0003** adds `run --dry_run=true`, which prints the make_examples,
   call_variants and postprocess_variants commands in run_deepvariant's format,
   so `vcf deepvariant` runs and resumes them one by one as it does Google's.
+- **0004** reads `--reads` from https URLs and accepts `.csi` BAM indexes.
+- **0005** makes postprocess_variants call one contig at a time: it held every
+  site of the run in memory, tens of GB for a whole genome.
 
 ## Same results as Google's image
 
