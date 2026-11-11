@@ -89,6 +89,7 @@ jobs:
         timeout-minutes: 30
         uses: ./gui/out/ci-helpers/.github/actions/apt-install
         with:
+          cache: ${{ inputs.tag == '' }}
           packages: >-
             libgtk-3-dev
             libwebkit2gtk-4.1-dev

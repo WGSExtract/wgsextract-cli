@@ -14,8 +14,9 @@
 # - `apt-get update` fails if any index can't be fetched, instead of warning
 #   and carrying on into a misleading "Unable to locate package".
 # - With --cache-dir, package lists and downloaded .debs live in DIR (for a CI
-#   cache). If no mirror answers, the packages are installed from DIR's lists
-#   and .debs; apt checks each .deb against the hashes in those signed lists.
+#   cache). Cached lists are used only if they match a Release file signed by
+#   Ubuntu's archive key. If no mirror answers, the packages are installed from
+#   DIR's lists and .debs, apt checking each .deb against those lists.
 #
 # Exit status 75 (EX_TEMPFAIL): no mirror could be reached. It comes with a
 # GitHub "Upstream package mirror unreachable" error annotation, which
@@ -24,6 +25,7 @@ set -euo pipefail
 
 OUTAGE_TITLE="Upstream package mirror unreachable"
 EX_TEMPFAIL=75
+KEYRING=/usr/share/keyrings/ubuntu-archive-keyring.gpg
 PROBE_SECONDS=20
 UPDATE_SECONDS=480
 INSTALL_SECONDS=900
@@ -116,7 +118,8 @@ sources="Types: deb
 URIs: mirror+file:$mirror_list
 Suites: $VERSION_CODENAME $VERSION_CODENAME-updates $VERSION_CODENAME-backports $VERSION_CODENAME-security
 Components: main restricted universe multiverse
-Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+Targets: Packages
+Signed-By: $KEYRING
 "
 # The machine's Ubuntu sources become the mirror list, so later apt commands
 # (an installer under test, say) use the lists fetched here. This script's own
@@ -139,7 +142,44 @@ apt_opts=(
   -o APT::Get::List-Cleanup=false
   -o DPkg::Lock::Timeout=120
 )
+# A restored cache is not trusted: apt neither re-checks the lists it already
+# has on `update` (when their Release entry is unchanged) nor at all with
+# --no-download. So every cached list must match the hashes in a Release file
+# signed by Ubuntu's archive key, or the lists are discarded. The .debs are
+# then checked by apt against these lists.
+verify_cached_lists() {
+  local lists=$cache_dir/lists release prefix file path expected
+  local -A verified=()
+  for release in "$lists"/*_InRelease; do
+    [ -e "$release" ] || continue
+    gpgv --keyring "$KEYRING" --output "$work/Release" "$release" 2> /dev/null || return 1
+    prefix=${release%InRelease}
+    verified[$release]=1
+    for file in "$prefix"*; do
+      [ "$file" != "$release" ] || continue
+      path=${file#"$prefix"}
+      path=${path%.lz4}
+      path=${path%.gz}
+      path=${path%.xz}
+      path=${path//_//}
+      # The SHA256 entry for the uncompressed index: " <hash> <size> <path>".
+      expected=$(awk -v p="$path" '/^[^ ]/ { s = ($1 == "SHA256:") } s && $3 == p { print $1 }' "$work/Release")
+      [ -n "$expected" ] || return 1
+      [ "$(/usr/lib/apt/apt-helper cat-file "$file" | sha256sum | cut -d' ' -f1)" = "$expected" ] || return 1
+      verified[$file]=1
+    done
+  done
+  for file in "$lists"/*; do
+    [ -f "$file" ] && [ "${file##*/}" != lock ] || continue
+    [ -n "${verified[$file]:-}" ] || return 1
+  done
+}
+
 if [ -n "$cache_dir" ]; then
+  if ! verify_cached_lists; then
+    echo "::warning::Cached package lists in $cache_dir failed verification; discarding them."
+    rm -rf "$cache_dir/lists"
+  fi
   mkdir -p "$cache_dir/lists/partial" "$cache_dir/archives/partial"
   apt_opts+=(
     -o "Dir::State::Lists=$cache_dir/lists"
