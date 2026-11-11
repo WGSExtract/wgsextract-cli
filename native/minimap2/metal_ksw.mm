@@ -712,8 +712,7 @@ void Engine::run_batch(std::vector<Pending> &batch, Buffers &b) {
                 first = last;
             }
             [encoder endEncoding];
-            wgse::metal::Runtime::commit(command);
-            [command waitUntilCompleted];
+            wgse::metal::Runtime::run(command);
             if (attempt < wgse::metal::Runtime::attempts
                 && wgse::metal::Runtime::interrupted(command, attempt))
                 continue;
@@ -722,8 +721,8 @@ void Engine::run_batch(std::vector<Pending> &batch, Buffers &b) {
                 cells_ += cells;
                 ++batches_;
             } else {
-                fail(command.error ? command.error.localizedDescription.UTF8String
-                    : fail_batches_ ? "injected GPU failure" : "Metal command failed");
+                fail(fail_batches_ ? std::string("injected GPU failure")
+                    : wgse::metal::Runtime::describe(command));
                 ok = false;
             }
             break;
