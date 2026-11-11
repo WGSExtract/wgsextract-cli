@@ -19,6 +19,7 @@ Usage: powershell -ExecutionPolicy Bypass -File .\make.ps1 <target> [NAME=value 
   run                Build and serve the Web UI (BUNDLE=path PORT=port).
   dev                Serve the Web UI with watch and reload.
   tauri              Run the Tauri desktop app.
+  mockups            Serve the UI redesign mockups (mockups/README.md).
   build              Compile the Web UI.
   build-tauri        Build the Tauri desktop app.
   lint               Typecheck, validate bundles/locales, check duplication.
@@ -67,6 +68,11 @@ switch ($Action) {
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
     "precheck" { Invoke-PythonTool @("tools/precheck.py") }
+    "mockups" {
+        # Standard library only, so any Python 3 works; no uv environment needed.
+        & python mockups/serve.py @RunnerArgs
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
     default {
         if (-not $targets.ContainsKey($Action)) {
             Write-Host "Unknown target: $Action"
