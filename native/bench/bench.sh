@@ -28,9 +28,12 @@
 #       Print the machine's memory, CPU, swap, power and Metal device.
 #
 # It runs on macOS and Linux. On Linux the memory columns come from /proc:
-# pressure is PSI's "some avg10" (%), min free is MemAvailable (%), the
-# compressor is zswap's pool, jetsam means the kernel's OOM killer, and the
-# footprint and pageins columns are empty; --power needs macOS.
+# pressure is PSI's "some avg10" (%, "-" without /proc/pressure; the
+# pressure_unit column says psi or level), min free is MemAvailable (%), the
+# compressor is zswap's pool, jetsam means the kernel's OOM killer killed the
+# aligner, and the footprint and pageins columns are empty; --power needs macOS.
+# A run during which the --balloon process died is marked balloon-died, and
+# the bench stops.
 #
 # A config is TOOL:BACKEND[:tN][:KN][:probe][:+ARG...]
 #   TOOL     bwa (wgse-bwa or bwa), mem2 (wgse-bwa-mem2 or bwa-mem2), mem3
@@ -296,7 +299,8 @@ hwinfo_linux() {
 # The background memory sampler: time, swap used (MiB), pressure level
 # (1 normal, 2 warning, 4 critical), memorystatus level (% free) and the
 # compressor's size (MiB), every two seconds. On Linux: swap used, PSI's
-# memory "some avg10", MemAvailable (%) and zswap's pool (MiB).
+# memory "some avg10" ("-" without /proc/pressure), MemAvailable (%) and
+# zswap's pool (MiB).
 sampler() {
     local page
     if [ $linux = 1 ]; then
@@ -307,7 +311,7 @@ sampler() {
                 FILENAME ~ /pressure/ { if ($1 == "some") { split($2, f, "="); psi = f[2] } next }
                 /^SwapTotal:/ { st = $2 } /^SwapFree:/ { sf = $2 } /^MemTotal:/ { mt = $2 }
                 /^MemAvailable:/ { ma = $2 } /^Zswap:/ { z = $2 }
-                END { printf "%s\t%.0f\t%s\t%.0f\t%.0f\n", now, (st - sf) / 1024, psi + 0, ma * 100 / mt, z / 1024 }
+                END { printf "%s\t%.0f\t%s\t%.0f\t%.0f\n", now, (st - sf) / 1024, psi == "" ? "-" : psi + 0, ma * 100 / mt, z / 1024 }
             ' /proc/meminfo ${psi[@]+"${psi[@]}"}
             sleep 2
         done
@@ -391,6 +395,9 @@ run_one() {
     elif [ "$rc" != 0 ]; then
         diagnose "$dir"
         if [ "$c_probe" = 1 ]; then status=probe-failed; else status=failed; fi
+    elif [ -n "$balloon_pid" ] && ! kill -0 "$balloon_pid" 2> /dev/null; then
+        # The run may have had the balloon's memory too.
+        status="balloon-died"
     elif [ -n "$expected" ] && [ "$hash" != "$expected" ]; then
         status=mismatch
     else
@@ -418,11 +425,11 @@ diagnose() {
 }
 
 results_header() {
-    printf 'name\ttier\tlabel\tconfig\tround\texit\tsignal\ttimed_out\treal_s\tuser_s\tsys_s\tmax_rss_mib\tfootprint_mib\tpage_faults\tpageins\tswap_max_mib\tswapout_mib\tcompressor_max_mib\tpressure_max\tfree_min_pct\tgpu_batches\tcpu_fallback\tmetal_failed\tinterruptions\tjetsam\thash\texpected\tstatus\tnote\tload1\tpower\tidle_cpu_w\tidle_gpu_w\tidle_package_w\tcpu_wh\tgpu_wh\tpackage_wh\tnet_cpu_wh\tnet_gpu_wh\tnet_package_wh\n'
+    printf 'name\ttier\tlabel\tconfig\tround\texit\tsignal\ttimed_out\treal_s\tuser_s\tsys_s\tmax_rss_mib\tfootprint_mib\tpage_faults\tpageins\tswap_max_mib\tswapout_mib\tcompressor_max_mib\tpressure_max\tfree_min_pct\tgpu_batches\tcpu_fallback\tmetal_failed\tinterruptions\tjetsam\thash\texpected\tstatus\tnote\tload1\tpower\tidle_cpu_w\tidle_gpu_w\tidle_package_w\tcpu_wh\tgpu_wh\tpackage_wh\tnet_cpu_wh\tnet_gpu_wh\tnet_package_wh\tpressure_unit\n'
 }
 
 row() {
-    local dir=$1 label=$2 config=$3 round=$4 rc=$5 hash=$6 expected=$7 status=$8 note jetsam=0 resets
+    local dir=$1 label=$2 config=$3 round=$4 rc=$5 hash=$6 expected=$7 status=$8 note jetsam=0 resets pid
     local power_file=/dev/null runstat=$dir/runstat.txt
     [ ! -f "$dir/power.txt" ] || power_file=$dir/power.txt
     note=$(grep -m 1 -o 'CPU fallback: .*\|Metal execution failed.*\|[Ee]rror[: ].*\|[Ff]ailed.*' "$dir/stderr.txt" |
@@ -433,7 +440,12 @@ row() {
         runstat=/dev/null
         note="the aligner did not run${note:+; $note}"
     fi
-    if [ -s "$dir/memorystatus.log" ] && grep -qi "killing.*wgse\|wgse.*kill\|killed process" "$dir/memorystatus.log"; then
+    if [ $linux = 1 ]; then
+        # Only the OOM killer's SIGKILL of this aligner, not of another process.
+        pid=$(sed -n 's/^pid=//p' "$runstat")
+        [ -n "$pid" ] && grep -q '^signal=9$' "$runstat" &&
+            grep -qiE "killed process $pid([^0-9]|$)" "$dir/memorystatus.log" 2> /dev/null && jetsam=1
+    elif [ -s "$dir/memorystatus.log" ] && grep -qi "killing.*wgse\|wgse.*kill" "$dir/memorystatus.log"; then
         jetsam=1
     fi
     ls "$dir"/JetsamEvent* > /dev/null 2>&1 && jetsam=1
@@ -441,7 +453,7 @@ row() {
     [ "$resets" = 0 ] || note="$resets GPU resets${note:+; $note}"
     awk -F '=' -v OFS='\t' -v name="$name" -v tier="$tier" -v label="$label" -v config="$config" \
         -v round="$round" -v rc="$rc" -v hash="$hash" -v expected="$expected" -v status="$status" \
-        -v note="${note:--}" -v jetsam="$jetsam" -v page="$(page_bytes)" \
+        -v note="${note:--}" -v jetsam="$jetsam" -v page="$(page_bytes)" -v linux="$linux" \
         -v samples="$dir/samples.tsv" -v before="$dir/vm_before.txt" -v after="$dir/vm_after.txt" \
         -v stderr="$dir/stderr.txt" -v load_avg="$(cat "$dir/load.txt")" -v power="$power_file" '
         BEGIN { free_min = 100 }
@@ -449,7 +461,7 @@ row() {
         FILENAME == before { vm0[$1] = $2; next }
         FILENAME == after { vm1[$1] = $2; next }
         FILENAME == samples { split($0, s, "\t"); sampled++; if (s[2] > swap) swap = s[2]
-            if (s[3] > pressure) pressure = s[3]; if (s[4] != "" && s[4] < free_min) free_min = s[4]
+            if (s[3] != "-" && (pressure == "" || s[3] + 0 > pressure + 0)) pressure = s[3]; if (s[4] != "" && s[4] < free_min) free_min = s[4]
             if (s[5] > compressor) compressor = s[5]; next }
         FILENAME == stderr { line = $0
             while (match(line, /(gpu|seed|rescue|extend|extension)_batches=[0-9]+/)) {
@@ -465,10 +477,11 @@ row() {
                 r["real_s"], r["user_s"], r["sys_s"],
                 sprintf("%.0f", r["max_rss_bytes"] / 1048576), ("peak_footprint_bytes" in r) ? sprintf("%.0f", r["peak_footprint_bytes"] / 1048576) : "-",
                 r["page_faults"] + 0, ("pageins" in r) ? r["pageins"] : "-", swap + 0, sprintf("%.0f", (vm1["Swapouts"] - vm0["Swapouts"]) * page / 1048576),
-                compressor + 0, pressure + 0, sampled ? free_min : "-", gpu + 0, fallback + 0, failed + 0, interruptions + 0,
+                compressor + 0, pressure == "" ? "-" : pressure + 0, sampled ? free_min : "-", gpu + 0, fallback + 0, failed + 0, interruptions + 0,
                 jetsam, hash, expected, status, note, ("load1" in p) ? p["load1"] : load_avg,
                 ("status" in p) ? p["status"] : "-", f(p["idle_cpu_w"]), f(p["idle_gpu_w"]), f(p["idle_package_w"]),
-                f(p["cpu_wh"]), f(p["gpu_wh"]), f(p["package_wh"]), f(p["net_cpu_wh"]), f(p["net_gpu_wh"]), f(p["net_package_wh"]) }
+                f(p["cpu_wh"]), f(p["gpu_wh"]), f(p["package_wh"]), f(p["net_cpu_wh"]), f(p["net_gpu_wh"]), f(p["net_package_wh"]),
+                linux ? "psi" : "level" }
         function f(value) { return value == "" ? "-" : value }
     ' "$runstat" "$dir/vm_before.txt" "$dir/vm_after.txt" "$dir/samples.tsv" "$dir/stderr.txt" "$power_file"
 }
@@ -573,6 +586,9 @@ run() {
             echo "== $name $tier round $round: $label $config"
             run_one "$out/runs/$slug" "$label" "${bins[$i]}" "$config" "$round" | tee -a "$out/results.tsv" |
                 awk -F '\t' '{ printf "   %s s, max RSS %s MiB, swap %s MiB, exit %s, %s %s\n", $9, $12, $16, $6, $28, $26 }'
+            if [ -n "$balloon_pid" ] && ! kill -0 "$balloon_pid" 2> /dev/null; then
+                die "the balloon died (the OOM killer?); later runs would have more than --balloon leaves. Results so far: $out/results.tsv"
+            fi
         done
     done
     if [ -n "$balloon_pid" ]; then
@@ -632,9 +648,9 @@ summary() {
             else { failures[key] = failures[key] (failures[key] == "" ? "" : "; ") (($8 ? "timeout" : ($7 ? "signal " $7 : "exit " $6)) ($25 ? " (jetsam)" : "")) }
             if ($16 > swap[key]) swap[key] = $16
             if ($17 > swapout[key]) swapout[key] = $17
-            if ($19 > pressure[key]) pressure[key] = $19
-            # Linux rows (no footprint) record PSI rather than macOS levels.
-            if ($13 == "-") psi[key] = 1
+            if ($19 != "-" && (!(key in pressure) || $19 + 0 > pressure[key])) pressure[key] = $19 + 0
+            # Linux rows record PSI (%) rather than macOS pressure levels.
+            if ($41 == "psi") psi[key] = 1
             if ($20 != "-" && (!(key in freemin) || $20 < freemin[key])) freemin[key] = $20
             gpu[key] += $21; fallback[key] += $22 + $23; interruptions[key] += $24
             if ($6 == 0) { if (!(key in okhash)) okhash[key] = $26; else if (okhash[key] != $26) several[key] = 1
@@ -667,10 +683,9 @@ summary() {
                         if (lo != hi) vs = vs sprintf(" (%+.0f%% to %+.0f%%)", (lo - 1) * 100, (hi - 1) * 100)
                     }
                 }
-                level = "normal"
-                if (pressure[key] >= 2) level = "warning"
-                if (pressure[key] >= 4) level = "critical"
-                if (key in psi) level = sprintf("PSI %.1f%%", pressure[key])
+                if (!(key in pressure)) level = "-"
+                else if (key in psi) level = sprintf("PSI %.1f%%", pressure[key])
+                else level = pressure[key] >= 4 ? "critical" : pressure[key] >= 2 ? "warning" : "normal"
                 notes = failures[key]
                 if (notes != "" && note[key] != "") notes = notes "; "
                 notes = notes note[key]
