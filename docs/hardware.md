@@ -142,6 +142,26 @@ What `--gpu` refuses:
 - **PacBio CLR/subreads**: there is no GPU preset.
 - **`--aligner bwa-mem2`**: Parabricks runs its own BWA-MEM; use `auto` or `bwa`.
 
+## NVIDIA GPUs without Parabricks (`wgse-bwa --cuda`)
+
+On Linux x86-64, WGS Extract's `wgse-bwa` 0.10.0 or later (bwa 0.7.19) can run
+on an NVIDIA GPU, as `wgse-bwa --metal` does on a Mac
+([native/README.md](../native/README.md#linux-x86-64-and-nvidia-gpus-cuda)).
+It writes bwa's exact alignments and is **experimental**.
+
+- **When it runs:** with `native_aligners = "auto"` (the default), `align` and
+  `realign` run `wgse-bwa --backend auto` in place of bwa when it's on `PATH`.
+  It uses the GPU when its capabilities report `cuda_available`, and otherwise
+  aligns on the CPU. If the GPU fails during a run, it finishes on the CPU with
+  the same alignments.
+- **What it needs:** only the NVIDIA driver; no Docker and no Parabricks
+  licence. It checks the GPU's free memory before uploading the index (about
+  4.7 GiB for hs38). It needs about 0.75 GiB more RAM than bwa, and the same
+  sort-memory reduction as on a Mac applies.
+- **Provenance:** the result manifest records `native_aligner_backend` as `cuda`.
+- **`--gpu`:** still means Parabricks, which also sorts and marks duplicates on
+  the GPU.
+
 ## Apple Silicon (Metal)
 
 WGS Extract publishes its own builds of four aligners for Apple Silicon Macs:
