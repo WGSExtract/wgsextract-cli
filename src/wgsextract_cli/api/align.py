@@ -47,12 +47,14 @@ def _native_aligners_param() -> Any:
         help="On Apple Silicon, align with wgse-bwa, wgse-bwa-mem2 or "
         "wgse-minimap2 in place of bwa, bwa-mem2 or minimap2, and with "
         "wgse-bwa-mem3 in place of bwa or bwa-mem2 when the reference has "
-        "bwa-mem2's index and it fits in RAM, when they're on PATH (auto; same "
-        "alignments, faster, on the Metal GPU when it fits) or never (off). "
+        "bwa-mem2's index and it fits in RAM; on Linux x86-64, with wgse-bwa in "
+        "place of bwa. Used when they're on PATH (auto; same alignments, "
+        "faster, on the Metal or NVIDIA GPU when it fits) or never (off). "
         "Default: config native_aligners, else auto. Install them as "
         "native/README.md describes.",
         doc="auto (the default, or config native_aligners) uses WGS Extract's "
-        "Apple Silicon aligner builds when installed on PATH; off never does.",
+        "aligner builds (Apple Silicon; wgse-bwa on Linux x86-64) when "
+        "installed on PATH; off never does.",
         choices=NATIVE_ALIGNER_SETTINGS,
         config_key="native_aligners",
     )

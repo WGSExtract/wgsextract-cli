@@ -1,9 +1,10 @@
-"""WGS Extract's Apple Silicon aligner builds (native/README.md): wgse-bwa,
-wgse-bwa-mem2 and wgse-minimap2 write their upstream aligner's alignments,
-faster. wgse-bwa-mem3 (bwa-mem3) writes bwa's or bwa-mem2's exact records with
-``--compat``, faster still, and so can stand in for either. All but
-wgse-minimap2 can also run on the Metal GPU. They are used when installed on
-PATH; they are never installed here.
+"""WGS Extract's aligner builds (native/README.md): wgse-bwa, wgse-bwa-mem2
+and wgse-minimap2 write their upstream aligner's alignments, faster.
+wgse-bwa-mem3 (bwa-mem3) writes bwa's or bwa-mem2's exact records with
+``--compat``, faster still, and so can stand in for either. On Apple Silicon
+all of them are built, and all but wgse-minimap2 can also run on the Metal GPU;
+on Linux x86-64, wgse-bwa is, and can also run on an NVIDIA GPU (CUDA). They
+are used when installed on PATH; they are never installed here.
 
 Each tool is asked once per process what it can do (``capabilities --json``),
 and anything unexpected falls back to the upstream aligner.
@@ -36,6 +37,8 @@ BINARIES = {
     "bwa-mem3": "wgse-bwa-mem3",
     "minimap2": "wgse-minimap2",
 }
+# The builds for Linux x86-64 (from wgse-bwa 0.10.0, with CUDA).
+LINUX_X86_64_BINARIES = {"bwa": "wgse-bwa"}
 MINIMUM_VERSIONS = {
     "wgse-bwa": (0, 7, 0),
     "wgse-bwa-mem2": (0, 4, 0),
@@ -69,6 +72,14 @@ class NativeAligner:
     version: str
     engine_version: str
     metal_available: bool
+    cuda_available: bool = False
+
+    @property
+    def gpu(self) -> str | None:
+        """The GPU backend it can run on (metal or cuda), if any."""
+        if self.metal_available:
+            return "metal"
+        return "cuda" if self.cuda_available else None
 
     @property
     def reads_0123(self) -> bool:
@@ -83,13 +94,13 @@ class NativeAligner:
 
 @dataclass(frozen=True)
 class AlignerCommand:
-    """How to run an aligner: upstream ``tool`` itself, or ``native`` (on the
-    Metal GPU when ``metal``) in its place. ``options`` are bwa-mem3's ``mem``
-    options that choose its output: ``--compat=<target>`` or ``--fast``."""
+    """How to run an aligner: upstream ``tool`` itself, or ``native`` (on its
+    GPU, Metal or CUDA, when ``gpu``) in its place. ``options`` are bwa-mem3's
+    ``mem`` options that choose its output: ``--compat=<target>`` or ``--fast``."""
 
     tool: str
     native: NativeAligner | None = None
-    metal: bool = False
+    gpu: bool = False
     options: tuple[str, ...] = ()
 
     @property
@@ -127,11 +138,11 @@ class AlignerCommand:
 
     def argv(self) -> list[str]:
         """The executable and backend option to put before the subcommand.
-        ``--backend auto`` rather than ``--metal``: a GPU failure then
-        finishes on the CPU (same alignments) instead of failing the run."""
+        ``--backend auto`` rather than ``--metal`` or ``--cuda``: a GPU failure
+        then finishes on the CPU (same alignments) instead of failing the run."""
         if self.native is None:
             return [self.tool]
-        return [self.native.command, *(["--backend", "auto"] if self.metal else [])]
+        return [self.native.command, *(["--backend", "auto"] if self.gpu else [])]
 
     def record(self) -> None:
         """Name the build that ran on the result: its version under the
@@ -151,13 +162,17 @@ class AlignerCommand:
 
     @property
     def backend(self) -> str:
-        return "metal" if self.metal else "cpu"
+        """cpu, or the GPU backend (metal or cuda) it runs on."""
+        return (self.native.gpu or "cpu") if self.gpu and self.native else "cpu"
 
     def announce(self) -> None:
         """Log which build runs, and where."""
         if self.native is None:
             return
-        backend = "the Metal GPU, falling back to the CPU" if self.metal else "the CPU"
+        backend = {
+            "metal": "the Metal GPU, falling back to the CPU",
+            "cuda": "the NVIDIA GPU (CUDA), falling back to the CPU",
+        }.get(self.backend, "the CPU")
         mode = self.bwa_mem3_mode
         version = self.native.engine_version
         if mode == "fast":
@@ -193,6 +208,19 @@ def native_setting(value: str | None) -> str:
 
 def apple_silicon() -> bool:
     return platform.system() == "Darwin" and platform.machine() in {"arm64", "aarch64"}
+
+
+def platform_binaries() -> dict[str, str]:
+    """The builds for this machine (BINARIES on Apple Silicon), by the upstream
+    aligner each replaces."""
+    if apple_silicon():
+        return BINARIES
+    if platform.system() == "Linux" and platform.machine().lower() in {
+        "x86_64",
+        "amd64",
+    }:
+        return LINUX_X86_64_BINARIES
+    return {}
 
 
 def _version_tuple(version: object) -> tuple[int, int, int] | None:
@@ -272,6 +300,7 @@ def _check(tool: str, binary: str, path: str) -> NativeAligner:
         version=str(version),
         engine_version=str(document.get("engine_version") or ""),
         metal_available=document.get("metal_available") is True,
+        cuda_available=document.get("cuda_available") is True,
     )
 
 
@@ -279,10 +308,11 @@ def find_native_aligner(
     tool: str, setting: str | None, *, quiet: bool = False, instead: str | None = None
 ) -> NativeAligner | None:
     """The build that can replace upstream ``tool`` in this run, or None:
-    off, not Apple Silicon, not installed (logged unless ``quiet``), or
-    unusable (with a warning that ``instead``, else ``tool``, aligns)."""
-    binary = BINARIES.get(tool)
-    if binary is None or native_setting(setting) == "off" or not apple_silicon():
+    off, none for this machine (platform_binaries), not installed (logged
+    unless ``quiet``), or unusable (with a warning that ``instead``, else
+    ``tool``, aligns)."""
+    binary = platform_binaries().get(tool)
+    if binary is None or native_setting(setting) == "off":
         return None
     path = shutil.which(binary)
     if path is None:
@@ -290,7 +320,7 @@ def find_native_aligner(
             return None
         logging.info(
             f"Aligning with {tool}: {binary}, which writes the same alignments "
-            f"faster on Apple Silicon, isn't installed ({INSTALL_HINT})."
+            f"faster, isn't installed ({INSTALL_HINT})."
         )
         return None
     try:

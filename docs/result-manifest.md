@@ -189,12 +189,12 @@ download`, `sign` and `report`.
 `align` and `realign` record the `aligner` (bwa, bwa-mem2, bwa-mem3, minimap2
 or pbmm2) and the alignment's `records`. When bwa-mem3 ran, `bwa_mem3_mode`
 records its output: `compat=bwa-mem` (bwa's records), `compat=bwa-mem2`
-(bwa-mem2's) or `fast`. When an Apple Silicon build ran in the aligner's
-place they also record `native_aligner` (for example `wgse-bwa`, or
+(bwa-mem2's) or `fast`. When one of WGS Extract's aligner builds ran in the
+aligner's place they also record `native_aligner` (for example `wgse-bwa`, or
 `wgse-bwa-mem3` standing in for bwa),
-`native_aligner_version` and `native_aligner_backend` (`metal` when it ran with
-`--backend auto`, which uses the GPU where it can and otherwise finishes on the
-CPU; `cpu` when it ran on the CPU only), and list the build under `tools`. For a
+`native_aligner_version` and `native_aligner_backend` (`metal` or `cuda`
+when it ran with `--backend auto` on that GPU, which it uses where it can and
+otherwise finishes on the CPU; `cpu` when it ran on the CPU only), and list the build under `tools`. For a
 BAM also `mapped_records` and `unmapped_records` (from the index, without
 decoding reads). CRAM counts come from container headers, which also count
 unmapped reads placed beside their mates, so a CRAM reports `records` only.

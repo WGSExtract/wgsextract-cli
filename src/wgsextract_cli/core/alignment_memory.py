@@ -48,9 +48,10 @@ _BWA_BATCH_BASES = 100_000_000
 # at 8.76 GB RSS against Bioconda bwa's 7.96 GB: its GPU buffers and a second
 # chunk of reads in flight. After 20M reads (on Macs with 16 GiB or more) it
 # adds a denser suffix-array sample, one 33-bit entry per 32 of the 2n+1 rows
-# (0.76 GiB for hs38; native/README.md, Memory).
-_BWA_METAL_BYTES = 3 * _GIB // 4
-_BWA_METAL_DENSE_SA_AFTER_READS = 20_000_000
+# (0.76 GiB for hs38; native/README.md, Memory). wgse-bwa --cuda 0.10.0 adds
+# about as much host memory (pinned batch buffers and the same samples).
+_BWA_GPU_BYTES = 3 * _GIB // 4
+_BWA_GPU_DENSE_SA_AFTER_READS = 20_000_000
 # bwa-mem3 estimates its own peak as its index plus 1 GiB plus 24 bytes per
 # base of a batch (native/README.md, Memory); --metal adds about 0.2 GiB.
 _BWA_MEM3_WORKING_BYTES = _GIB + 24 * _BWA_BATCH_BASES
@@ -293,12 +294,13 @@ def reference_bases(ref: str | None) -> int:
         return 0
 
 
-def bwa_metal_memory(ref: str | None, reads: int | None) -> int:
-    """What ``wgse-bwa --metal`` needs beyond bwa's estimate."""
-    if reads is not None and reads <= _BWA_METAL_DENSE_SA_AFTER_READS:
-        return _BWA_METAL_BYTES
+def bwa_gpu_memory(ref: str | None, reads: int | None) -> int:
+    """What wgse-bwa's GPU backend (``--metal`` or ``--cuda``) needs in RAM
+    beyond bwa's estimate."""
+    if reads is not None and reads <= _BWA_GPU_DENSE_SA_AFTER_READS:
+        return _BWA_GPU_BYTES
     bases = reference_bases(ref) or _HUMAN_REFERENCE_BASES
-    return _BWA_METAL_BYTES + math.ceil((2 * bases + 1) * 33 / (32 * 8))
+    return _BWA_GPU_BYTES + math.ceil((2 * bases + 1) * 33 / (32 * 8))
 
 
 def estimate_mapping_memory(
@@ -317,7 +319,7 @@ def estimate_mapping_memory(
 ) -> MappingMemory:
     """Peak memory of the alignment pipeline. ``preset`` is minimap2's, and
     ``input_bytes`` (the read files' size) bounds its batches. ``gpu_bytes``
-    (an aligner's GPU backend: bwa_metal_memory) counts as working memory."""
+    (an aligner's GPU backend: bwa_gpu_memory) counts as working memory."""
     bases = (
         reference_bases(ref)
         or (_fasta_bases_bound(ref) if aligner == "minimap2" else 0)

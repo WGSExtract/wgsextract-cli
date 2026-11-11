@@ -209,7 +209,7 @@ the check, or is older than the oldest supported release, raises the
 - **Provenance.** The `@PG` header names the binary that ran and its version
   (for example `VN:0.7.19-r1273-wgse-0.7.1`). The result manifest lists it under
   `tools` and records the `native_aligner`, `native_aligner_version` and
-  `native_aligner_backend` (`metal` or `cpu`) metrics; bwa-mem3 runs also
+  `native_aligner_backend` (`metal`, `cuda` on Linux, or `cpu`) metrics; bwa-mem3 runs also
   record `bwa_mem3_mode` (`compat=bwa-mem`, `compat=bwa-mem2` or `fast`).
 
 `--aligner bwa-mem3` asks for bwa-mem3 itself: `wgse-bwa-mem3` on Apple
