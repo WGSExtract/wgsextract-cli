@@ -60,13 +60,14 @@
     return h("div.job__actions", a);
   }
 
-  WGSM.render.jobRow = function (job) {
+  /* idPrefix keeps note anchors unique when one page lists a job twice */
+  WGSM.render.jobRow = function (job, idPrefix) {
     var genome = WGSM.data.genome(job.genome);
     var status = STATUS[job.status];
     var showBar = job.status === "running" || job.status === "interrupted";
     return h(
       "div.job",
-      { dataset: { status: job.status, annotId: "job-" + job.op.replace(/\//g, "-") } },
+      { dataset: { status: job.status, annotId: (idPrefix || "job-") + job.op.replace(/\//g, "-") } },
       h("div.job__icon", WGSM.icon(job.icon)),
       h(
         "div.job__main",
@@ -104,7 +105,7 @@
     if (opts.limit) jobs = jobs.slice(0, Number(opts.limit));
     el.classList.add("card", "card--flush");
     jobs.forEach(function (job) {
-      el.appendChild(WGSM.render.jobRow(job));
+      el.appendChild(WGSM.render.jobRow(job, "job-" + (opts.filter || "all") + "-"));
     });
   };
 })();

@@ -71,7 +71,16 @@ def load(page: str) -> dict[str, Any]:
     path = feedback_path(page)
     if not path.exists():
         return {"notes": {}, "page": page, "title": ""}
-    doc: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        doc: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as err:
+        raise BadRequest(
+            HTTPStatus.CONFLICT,
+            f"feedback/{page}.json isn't valid JSON ({err}); fix it, e.g. after a git merge, "
+            "and run serve.py --check",
+        ) from err
+    if not isinstance(doc, dict) or not isinstance(doc.get("notes", {}), dict):
+        raise BadRequest(HTTPStatus.CONFLICT, f"feedback/{page}.json has no notes object")
     doc.setdefault("notes", {})
     doc["page"] = page
     return doc
@@ -113,7 +122,7 @@ def clean_note(raw: Any) -> dict[str, Any]:
         "author": text_field(raw.get("author"), "author", MAX_AUTHOR),
         "context": raw.get("context") if isinstance(raw.get("context"), dict) else {},
         "id": item_id(raw.get("id")),
-        "replies": [clean_reply(r) for r in raw.get("replies", [])],
+        "replies": [clean_reply(r) for r in replies_list(raw.get("replies", []))],
         "status": raw.get("status", "open"),
         "text": text_field(raw.get("text"), "text", MAX_TEXT),
     }
@@ -123,6 +132,12 @@ def clean_note(raw: Any) -> dict[str, Any]:
         if isinstance(raw.get(stamp), str):
             note[stamp] = raw[stamp]
     return note
+
+
+def replies_list(value: Any) -> list[Any]:
+    if not isinstance(value, list):
+        raise BadRequest(HTTPStatus.BAD_REQUEST, "replies must be a list")
+    return value
 
 
 def clean_reply(raw: Any) -> dict[str, Any]:
@@ -188,8 +203,12 @@ def apply_op(doc: dict[str, Any], change: Any) -> dict[str, Any]:
 def summary() -> dict[str, Any]:
     pages = []
     for path in sorted(FEEDBACK.glob("*.json")):
-        doc = json.loads(path.read_text(encoding="utf-8"))
-        notes = list(doc.get("notes", {}).values())
+        try:
+            doc = load(path.stem)
+        except BadRequest as err:
+            pages.append({"error": str(err), "open": 0, "page": path.stem, "resolved": 0})
+            continue
+        notes = list(doc["notes"].values())
         resolved = sum(1 for n in notes if n.get("status") == "resolved")
         pages.append(
             {
@@ -242,12 +261,15 @@ class Handler(SimpleHTTPRequestHandler):
     def read_json(self) -> Any:
         if (self.headers.get("Content-Type") or "").split(";")[0] != "application/json":
             raise BadRequest(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "send application/json")
-        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
         if length <= 0 or length > MAX_BODY:
             raise BadRequest(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "body missing or too large")
         try:
             return json.loads(self.rfile.read(length))
-        except json.JSONDecodeError as err:
+        except ValueError as err:  # also covers JSONDecodeError and bad UTF-8
             raise BadRequest(HTTPStatus.BAD_REQUEST, f"bad JSON: {err}") from err
 
     def api(self, method: str) -> None:
@@ -272,6 +294,12 @@ class Handler(SimpleHTTPRequestHandler):
                 raise BadRequest(HTTPStatus.NOT_FOUND, "no such endpoint")
         except BadRequest as err:
             self.reply({"error": {"message": str(err)}}, err.status)
+        # A bug, not a bad request: answer rather than drop the connection.
+        except Exception as err:  # noqa: BLE001
+            self.log_error("notes API error: %r", err)
+            self.reply(
+                {"error": {"message": f"server error: {err}"}}, HTTPStatus.INTERNAL_SERVER_ERROR
+            )
 
     def reply(self, body: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
@@ -316,7 +344,7 @@ def check() -> int:
                 print(f"tidied  {path.name}")
             else:
                 print(f"ok      {path.name} ({len(doc['notes'])} notes)")
-        except (json.JSONDecodeError, BadRequest) as err:
+        except (ValueError, AttributeError, BadRequest) as err:
             failures += 1
             print(f"INVALID {path.name}: {err}", file=sys.stderr)
     return 1 if failures else 0

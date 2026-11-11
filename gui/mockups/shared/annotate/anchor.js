@@ -106,16 +106,21 @@
       return anchor;
     },
 
+    /* The anchored element; when an id appears more than once (the same
+     * block rendered in several tabs), the first visible copy */
     resolve: function (anchor) {
       if (!anchor || !anchor.annot) return null;
-      var base = document.querySelector('[data-annot-id="' + CSS.escape(anchor.annot) + '"]');
-      if (!base) return null;
-      if (!anchor.path) return base;
-      try {
-        return base.querySelector(anchor.path) || base;
-      } catch (err) {
-        return base;
-      }
+      var found = WGSM.qsa('[data-annot-id="' + CSS.escape(anchor.annot) + '"]').map(function (base) {
+        if (!anchor.path) return base;
+        try {
+          return base.querySelector(anchor.path) || base;
+        } catch (err) {
+          return base;
+        }
+      });
+      return found.filter(function (el) {
+        return visibleRect(el);
+      })[0] || found[0] || null;
     },
 
     /* Client position of the anchor point (and region box) or null */

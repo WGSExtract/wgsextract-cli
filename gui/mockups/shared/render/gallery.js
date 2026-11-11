@@ -44,7 +44,7 @@
     WGSM.on("notes-ready", function (mode) {
       WGSM.notes.summary().then(function (data) {
         var pages = (data.pages || []).filter(function (p) {
-          return p.open + p.resolved > 0;
+          return p.error || p.open + p.resolved > 0;
         });
         el.replaceChildren(
           h("p.small.muted", mode === "server"
@@ -58,7 +58,12 @@
                   { "aria-label": "Notes per page" },
                   h("thead", h("tr", h("th", "Page"), h("th.num", "Open"), h("th.num", "Resolved"))),
                   h("tbody", pages.map(function (p) {
-                    return h("tr", h("td", h("a", { href: WGSM.keepParams(WGSM.link(pagePath(p.page)) + "?notes=1") }, p.title || p.page)), h("td.num", String(p.open)), h("td.num", String(p.resolved)));
+                    return h(
+                      "tr",
+                      h("td", h("a", { href: WGSM.keepParams(WGSM.link(pagePath(p.page)) + "?notes=1") }, p.title || p.page), h("code.xsmall.subtle", " " + p.page), p.error ? h("div.field__error", p.error) : null),
+                      h("td.num", String(p.open)),
+                      h("td.num", String(p.resolved))
+                    );
                   }))
                 )
               )

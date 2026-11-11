@@ -108,6 +108,11 @@
       return api("feedback/" + WGSM.page.id).then(function (doc) {
         store.doc = doc;
         return doc;
+      }, function (err) {
+        /* e.g. a feedback file left broken by a merge: show why, keep going */
+        store.error = err.message;
+        store.doc = emptyDoc();
+        return store.doc;
       });
     },
 
