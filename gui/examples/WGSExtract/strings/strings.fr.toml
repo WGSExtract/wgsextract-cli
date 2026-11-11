@@ -1181,3 +1181,5 @@
 "controls.cli.confidence_gq_low.tooltip" = "Une qualité de génotype inférieure marque un appel de faible confiance. À renseigner avec la valeur moyenne, ou laisser les deux vides pour la configuration."  # i18n-source-hash:3b32c3cc
 "controls.cli.confidence_gq_high.label" = "Confiance moyenne sous le GQ"  # i18n-source-hash:c287f5c8
 "controls.cli.confidence_gq_high.tooltip" = "Une qualité de génotype inférieure (et au moins égale à la valeur faible) marque un appel de confiance moyenne."  # i18n-source-hash:b7c21f65
+"prerequisites.kinds.genome" = "génome de référence %{name}"  # i18n-source-hash:1e7c594d
+"prerequisites.kinds.annotation" = "données d'annotation %{name}"  # i18n-source-hash:91bbec91

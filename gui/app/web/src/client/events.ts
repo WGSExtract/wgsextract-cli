@@ -5,6 +5,7 @@ import { clamp } from "./dom.js";
 import { normalizeColorTheme, normalizeIconSet } from "./icons.js";
 import { elements, errorMessage, findControl, resolveText } from "./model.js";
 import { checkedOptionsChanged, configSettingChanged, fieldValueChanged, loadConfig, cancelSetup, openBundleWorkspace, persistBundleState, retryActionPrecheck, retryDataSource, runAction, runSetup, saveConfig } from "./operations.js";
+import { cancelPendingPrerequisites, continuePendingPrerequisites, installPendingPrerequisites } from "./operations-prerequisites-dialog.js";
 import { pathPickerDefaultPath, type PathPickerSpec } from "./path-picker-defaults.js";
 import { nextFrame, scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
@@ -286,6 +287,9 @@ export function bindEvents(bootstrap: Bootstrap) {
         const { confirm: _confirm, ...action } = pending.action;
         await runAction(action, pending.context, pending.reference);
     });
+    app.querySelector("[data-prerequisites-cancel]")?.addEventListener("click", cancelPendingPrerequisites);
+    app.querySelector("[data-prerequisites-continue]")?.addEventListener("click", () => void continuePendingPrerequisites());
+    app.querySelector("[data-prerequisites-install]")?.addEventListener("click", () => void installPendingPrerequisites());
     app.querySelector("[data-about-close]")?.addEventListener("click", closeAboutDialog);
     app.querySelector("[data-about-backdrop]")?.addEventListener("click", (event) => {
         if (event.target === event.currentTarget) {
@@ -437,6 +441,7 @@ function resetBundleClientState() {
     state.setupPromptDismissed = false;
     state.aboutDialogVisible = false;
     state.pendingConfirmation = null;
+    state.pendingPrerequisites = null;
     resetTerminalEntries();
 }
 

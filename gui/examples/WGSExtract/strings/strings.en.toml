@@ -1176,3 +1176,5 @@
 "controls.cli.confidence_gq_low.tooltip" = "Genotype quality below this labels a call low confidence. Set it with the moderate value, or leave both blank for the config defaults."
 "controls.cli.confidence_gq_high.label" = "Moderate-confidence GQ below"
 "controls.cli.confidence_gq_high.tooltip" = "Genotype quality below this (and at least the low value) labels a call moderate confidence."
+"prerequisites.kinds.genome" = "%{name} reference genome"
+"prerequisites.kinds.annotation" = "%{name} annotation data"

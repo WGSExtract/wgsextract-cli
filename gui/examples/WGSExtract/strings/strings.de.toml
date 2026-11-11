@@ -1181,3 +1181,5 @@
 "controls.cli.confidence_gq_low.tooltip" = "Eine geringere Genotypqualität kennzeichnet einen Aufruf als wenig verlässlich. Zusammen mit dem mittleren Wert setzen oder beide leer lassen für die Konfiguration."  # i18n-source-hash:3b32c3cc
 "controls.cli.confidence_gq_high.label" = "Mittlere Konfidenz unter GQ"  # i18n-source-hash:c287f5c8
 "controls.cli.confidence_gq_high.tooltip" = "Eine geringere Genotypqualität (mindestens der niedrige Wert) kennzeichnet einen Aufruf als mittel verlässlich."  # i18n-source-hash:b7c21f65
+"prerequisites.kinds.genome" = "Referenzgenom %{name}"  # i18n-source-hash:1e7c594d
+"prerequisites.kinds.annotation" = "Annotationsdaten %{name}"  # i18n-source-hash:91bbec91
