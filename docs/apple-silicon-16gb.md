@@ -115,8 +115,10 @@ Experiments that left the defaults alone:
     after 44 minutes, which would be days for a genome.
   - Google's DeepVariant image is x86-64 only and can't run on Apple Silicon:
     Docker Desktop's emulation lacks the AVX instructions its TensorFlow
-    needs. `vcf deepvariant` refuses it, and uses only the native ARM64 image
-    ([deepvariant-arm64.md](deepvariant-arm64.md#apple-silicon-macs)).
+    needs. `vcf deepvariant` refuses it. It runs
+    [wgse-deepvariant](../native/deepvariant/README.md) when that is on
+    `PATH` (no Docker; call_variants on the GPU), else only the native ARM64
+    image ([deepvariant-arm64.md](deepvariant-arm64.md#apple-silicon-macs)).
 
 ## A whole genome (HG002 at 35x)
 

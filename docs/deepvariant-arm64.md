@@ -61,7 +61,14 @@ qualification before a future implementation can permit it. Parabricks
 
 ## Apple Silicon Macs
 
-Docker Desktop on Apple Silicon runs a Linux aarch64 VM, so `vcf deepvariant`
+On a Mac, prefer `wgse-deepvariant`, WGS Extract's native Apple Silicon build
+of DeepVariant 1.10.0 ([native/deepvariant](../native/deepvariant/README.md)):
+it needs no Docker, runs call_variants on the GPU and calls the same sites,
+genotypes and filters as Google's image. When it is on `PATH`, `vcf
+deepvariant` uses it, with the weights the `deepvariant_weights` setting
+names, and the Docker path below is not used.
+
+Without it, Docker Desktop on Apple Silicon runs a Linux aarch64 VM, so `vcf deepvariant`
 takes the same native path there: the default image is the one above, and the
 engine and image architectures are checked the same way. Google's
 `google/deepvariant` image is linux/amd64 only; under Docker Desktop's x86-64
@@ -70,7 +77,7 @@ the first stage, so an amd64 image is refused before any input is prepared.
 This holds under Rosetta too: Apple Silicon is detected from the Mac
 (`sysctl hw.optional.arm64`), and on every path the image's architecture is
 checked against the Docker engine's.
-Without a native image, use `vcf clair3` for ONT reads, `vcf snp`/`vcf indel`
+Without `wgse-deepvariant` or a native image, use `vcf clair3` for ONT reads, `vcf snp`/`vcf indel`
 for short reads, or an x86-64 host.
 
 `build.sh` runs only on Linux aarch64: build there and move the image with

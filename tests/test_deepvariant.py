@@ -36,7 +36,7 @@ from tests.htslib_helpers import (
 )
 from wgsextract_cli import api
 from wgsextract_cli.commands.vcf import deepvariant
-from wgsextract_cli.core import alignment_memory, containers
+from wgsextract_cli.core import alignment_memory, containers, native_deepvariant
 from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
@@ -603,6 +603,115 @@ def test_apple_silicon_runs_the_native_arm64_image(apple):
         deepvariant.DEFAULT_ARM64_IMAGE
     }
     assert visible(apple.out) == ["deepvariant.vcf.gz", "deepvariant.vcf.gz.tbi"]
+
+
+@pytest.fixture
+def mac_native(apple, monkeypatch):
+    """An Apple Silicon Mac with wgse-deepvariant on PATH and its weights
+    (stand-ins, whose hashes stand for the published ones) in config.toml."""
+    weights = apple.tmp / "weights"
+    (weights / "wgs_small_weights").mkdir(parents=True)
+    published = {}
+    for name in native_deepvariant.WEIGHTS_SHA256:
+        (weights / name).write_bytes(name.encode())
+        published[name] = hashlib.sha256(name.encode()).hexdigest()
+    monkeypatch.setattr(native_deepvariant, "WEIGHTS_SHA256", published)
+    monkeypatch.setitem(deepvariant.settings, "deepvariant_weights", str(weights))
+    monkeypatch.setenv(
+        "PATH", f"{apple.deepvariant.native_bin}{os.pathsep}{os.environ['PATH']}"
+    )
+    clear_tool_caches()
+    apple.weights = weights
+    return apple
+
+
+def test_apple_silicon_calls_with_wgse_deepvariant_without_docker_647(mac_native):
+    call(mac_native)
+    assert mac_native.docker.runs() == []
+    assert mac_native.deepvariant.stages() == STAGES
+    out = mac_native.out
+    assert visible(out) == ["deepvariant.vcf.gz", "deepvariant.vcf.gz.tbi"]
+    assert vcf_calls(out / "deepvariant.vcf.gz") == mac_native.sample.calls
+
+
+def test_wgse_deepvariant_resumes_after_a_failed_stage_647(mac_native):
+    mac_native.deepvariant.fail("call_variants")
+    with pytest.raises(WGSExtractError, match="rerun the same command to resume"):
+        call(mac_native)
+    rerun(mac_native)
+    assert mac_native.deepvariant.stages() == ["call_variants", "postprocess_variants"]
+    assert vcf_calls(mac_native.out / "deepvariant.vcf.gz") == mac_native.sample.calls
+
+
+def test_wgse_deepvariant_takes_a_bed_selection_as_its_intervals_647(mac_native):
+    bed = mac_native.tmp / "panel.bed"
+    bed.write_text("chr1\t899\t1100\n")
+    call(mac_native, "-r", str(bed))
+    examples = mac_native.deepvariant.runs("wgse-deepvariant make_examples")[0]
+    # contract: wgse-deepvariant reads no BED files; it calls the BED's 1-based intervals.
+    assert examples["opts"]["regions"] == "chr1:900-1100"
+    assert (mac_native.out / "deepvariant.vcf.gz").exists()
+
+
+def test_wgse_deepvariant_reads_cram_31_without_staging_647(mac_native):
+    cram = as_cram(mac_native.sample, "3.1")
+    call(mac_native, reads=cram)
+    reads = mac_native.deepvariant.runs("wgse-deepvariant make_examples")[0]["opts"]
+    assert reads["reads"] == cram
+    assert vcf_calls(mac_native.out / "deepvariant.vcf.gz") == mac_native.sample.calls
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ("unset", "deepvariant_weights isn't set"),
+        ("missing", "wgs.dvw is missing"),
+        ("changed", "isn't the published one"),
+    ],
+)
+def test_wgse_deepvariant_needs_its_published_weights_647(
+    mac_native, monkeypatch, change, message
+):
+    if change == "unset":
+        monkeypatch.setitem(deepvariant.settings, "deepvariant_weights", None)
+    elif change == "missing":
+        (mac_native.weights / "wgs.dvw").unlink()
+    else:
+        (mac_native.weights / "wgs_small_weights" / "layer_2_bias.npy").write_text("x")
+    with pytest.raises(WGSExtractError, match=message) as error:
+        call(mac_native)
+    assert "native/deepvariant/README.md" in str(error.value)
+    assert mac_native.deepvariant.stages() == []
+
+
+@pytest.mark.parametrize(
+    "selection", [("--wes",), ("--pacbio",), ("--checkpoint", "x")]
+)
+def test_wgse_deepvariant_refuses_unqualified_models_647(mac_native, selection):
+    with pytest.raises(WGSExtractError, match="only the WGS model"):
+        call(mac_native, *selection)
+    assert mac_native.deepvariant.stages() == []
+    assert mac_native.docker.runs() == []
+
+
+def test_wgse_deepvariant_fits_a_16_gb_mac_647(mac_native, monkeypatch):
+    """The Linux ARM64 image's TensorFlow call_variants needs ~27 GiB; the
+    Mac build's GPU batch follows the Mac's memory and fits 16 GB."""
+    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 10 * GIB)
+    total = SimpleNamespace(total=16 * GIB, available=10 * GIB)
+    monkeypatch.setattr(native_deepvariant.psutil, "virtual_memory", lambda: total)
+    call(mac_native)
+    planned = mac_native.deepvariant.runs("wgse-deepvariant call_variants")[0]
+    assert planned["opts"]["batch_size"] == "512"
+    assert (mac_native.out / "deepvariant.vcf.gz").exists()
+
+
+def test_an_old_wgse_deepvariant_is_refused_647(mac_native):
+    state = json.loads((mac_native.deepvariant.root / "state.json").read_text())
+    state["wgse_version"] = "0.0.9"
+    (mac_native.deepvariant.root / "state.json").write_text(json.dumps(state))
+    with pytest.raises(WGSExtractError, match="0.0.9 is too old"):
+        call(mac_native)
 
 
 def _mac_sysctl(dv, arm64: str) -> None:

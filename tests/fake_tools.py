@@ -651,6 +651,86 @@ write()
 """
 
 
+_DV_WGSE = r"""
+argv = sys.argv[1:]
+if argv == ["--version"]:
+    print(f"wgse-deepvariant {state().get('wgse_version', '0.1.0')} (DeepVariant 1.10.0, build fake)")
+    sys.exit(0)
+command, opts = argv[0], options([a for a in argv[1:] if a != "--dry_run=true"])
+log({"tool": f"wgse-deepvariant {command}", "opts": opts})
+own_python()
+self = os.path.abspath(sys.argv[0])
+if command == "run":
+    if "--dry_run=true" not in argv:
+        sys.exit("this fake only plans: give --dry_run=true")
+    for flag in ("checkpoint", "small_model_path"):
+        if not os.path.exists(opts[flag]):
+            sys.exit(f"--{flag}: {opts[flag]} not found")
+    work, shards = opts["intermediate_results_dir"], int(opts["num_shards"])
+    examples, small = f"{work}/examples.tfrecord@{shards}.gz", f"{work}/small_cvo.tfrecord@{shards}"
+    regions = f" '--regions={opts['regions']}'" if "regions" in opts else ""
+    batch = f" --batch_size={opts['batch_size']}" if "batch_size" in opts else ""
+    commands = [
+        f"{self} make_examples --reads={opts['reads']} --ref={opts['ref']} --examples={examples} "
+        f"--threads={shards} --small_model={opts['small_model_path']} --small_model_cvo_outfile={small}{regions}",
+        f"{self} call_variants --examples={examples} --outfile={work}/cvo.tfrecord "
+        f"--checkpoint={opts['checkpoint']}{batch}",
+        f"{self} postprocess_variants --infile={small},{work}/cvo.tfrecord --ref={opts['ref']} "
+        f"--output_vcf_outfile={opts['output_vcf']}",
+    ]
+    print("".join(f"\n***** Running the command:*****\n{c}\n\n" for c in commands))
+elif command == "make_examples":
+    reads, ref = opts["reads"], opts["ref"]
+    if not any(os.path.exists(reads + s) for s in (".bai", ".crai", ".csi")):
+        sys.exit(f"[E::idx_find_and_load] Could not retrieve index file for '{reads}'")
+    for selection in (opts.get("regions") or "").split():
+        if not re.fullmatch(r"\S+:\d+-\d+", selection):
+            sys.exit(f"make_examples: can't parse region {selection}")
+
+
+    def write():
+        for shard in shard_names(opts["examples"]):
+            with open(shard, "w") as out:
+                json.dump({"ref": ref, "reads": reads}, out)
+        stem, n = opts["small_model_cvo_outfile"].split("@")
+        for i in range(int(n)):
+            open(f"{stem}-{i:05d}-of-{int(n):05d}", "w").close()
+
+
+    fail_here("make_examples", None, write)
+    write()
+elif command == "call_variants":
+    shards = shard_names(opts["examples"])
+    if not all(os.path.exists(s) for s in shards):
+        sys.exit(f"call_variants: missing examples {opts['examples']}")
+
+
+    def write():
+        with open(shards[0]) as source, open(opts["outfile"], "w") as out:
+            out.write(source.read())
+
+
+    fail_here("call_variants", None, write)
+    write()
+elif command == "postprocess_variants":
+    with open(opts["infile"].split(",")[-1]) as source:
+        called = json.load(source)
+
+
+    def write():
+        mpileup = subprocess.Popen(
+            [BCFTOOLS, "mpileup", "-f", called["ref"], "-Ou", called["reads"]], stdout=subprocess.PIPE
+        )
+        subprocess.run([BCFTOOLS, "call", "-mv", "-Oz", "-o", opts["output_vcf_outfile"]], stdin=mpileup.stdout, check=True)
+
+
+    fail_here("postprocess_variants", None, write)
+    write()
+else:
+    sys.exit(f"wgse-deepvariant: unknown command {command}")
+"""
+
+
 class FakeDeepVariant:
     """DeepVariant's run_deepvariant and stage tools in ``root/bin``, as a
     local install has them and its image runs them (see FakeDocker).
@@ -680,6 +760,11 @@ class FakeDeepVariant:
             ("postprocess_variants", _DV_POSTPROCESS_VARIANTS),
         ):
             python_tool(self.bin, name, header + body)
+        # WGS Extract's Apple Silicon build, in its own folder: on PATH only
+        # where a test puts it there.
+        self.native_bin = root / "native-bin"
+        self.native_bin.mkdir()
+        python_tool(self.native_bin, "wgse-deepvariant", header + _DV_WGSE)
 
     def _save(self) -> None:
         (self.root / "state.json").write_text(json.dumps(self._state))
@@ -720,7 +805,9 @@ class FakeDeepVariant:
     def stages(self) -> list[str]:
         """The stages that started, in order (make_examples once per run)."""
         stage = {"parallel": "make_examples", "call_variants": "call_variants",
-                 "postprocess_variants": "postprocess_variants"}  # fmt: skip
+                 "postprocess_variants": "postprocess_variants",
+                 **{f"wgse-deepvariant {s}": s for s in
+                    ("make_examples", "call_variants", "postprocess_variants")}}  # fmt: skip
         return [stage[r["tool"]] for r in self.runs() if r["tool"] in stage]
 
     def clear(self) -> None:

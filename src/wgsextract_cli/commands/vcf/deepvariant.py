@@ -15,7 +15,7 @@ from typing import Any
 
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import DEEPVARIANT_STEPS, VcfDeepvariantParams
-from wgsextract_cli.core import alignment_memory, ultima
+from wgsextract_cli.core import alignment_memory, native_deepvariant, ultima
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.containers import (
@@ -557,6 +557,83 @@ def _deepvariant_parabricks(
     record_variants(out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region))
 
 
+def _require_native_wgs(model_type: str, checkpoint: str | None) -> None:
+    if model_type != "WGS" or checkpoint:
+        selection = "--checkpoint" if checkpoint else f"model {model_type}"
+        raise WGSExtractError(
+            f"wgse-deepvariant runs only the WGS model; DeepVariant {selection} "
+            f"isn't qualified on Apple Silicon. {_ARM64_ALTERNATIVES}"
+        )
+
+
+def _docker_args(
+    model_type: str,
+    ref: str,
+    reads: str,
+    vcf: str,
+    shards: int,
+    work: Path,
+    region: str | None,
+    checkpoint: str | None,
+    batch_size: int | None,
+    postprocess: PostprocessPlan | None,
+    threads: int,
+) -> list[str]:
+    """run_deepvariant's options, with the paths an image sees."""
+    args = [
+        "--model_type", model_type,
+        "--ref", host_path(ref),
+        "--reads", host_path(reads),
+        "--output_vcf", host_path(vcf),
+        "--num_shards", str(shards),
+        "--intermediate_results_dir", host_path(str(work)),
+        *(["--regions", _container_regions(region)] if region else []),
+    ]  # fmt: skip
+    if checkpoint:
+        args += ["--customized_model", host_path(checkpoint)]
+    if batch_size is not None:
+        args += ["--call_variants_extra_args", f"batch_size={batch_size}"]
+    return args + _postprocess_args(postprocess, threads)
+
+
+def _native_args(
+    native: native_deepvariant.NativeDeepVariant,
+    ref: str,
+    reads: str,
+    vcf: str,
+    shards: int,
+    work: Path,
+    region: str | None,
+    batch_size: int | None,
+) -> list[str]:
+    """wgse-deepvariant run's options. It takes no BED files: a selection is
+    passed as the intervals it covers."""
+    args = [
+        "run",
+        "--model_type=WGS",
+        f"--ref={ref}",
+        f"--reads={reads}",
+        f"--output_vcf={vcf}",
+        f"--num_shards={shards}",
+        f"--intermediate_results_dir={work}",
+        f"--checkpoint={native.checkpoint}",
+        f"--small_model_path={native.small_model}",
+    ]
+    if region:
+        intervals = region_intervals(region, read_fai_lengths(ref), "DeepVariant")
+        args.append(
+            "--regions="
+            + " ".join(
+                f"{chrom}:{start + 1}-{end}"
+                for chrom, spans in intervals.items()
+                for start, end in spans
+            )
+        )
+    if batch_size is not None:
+        args.append(f"--batch_size={batch_size}")
+    return args
+
+
 def run_deepvariant(params: VcfDeepvariantParams) -> None:
     """``vcf deepvariant``: DeepVariant into ``deepvariant.vcf.gz``, in
     resumable stages, or Parabricks."""
@@ -594,14 +671,25 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                 params, region=" ".join(region_items(params.region, commas=True))
             )
     checkpoint = str(params.checkpoint) if params.checkpoint else None
+    native_path = None if gpu else native_deepvariant.installed()
+    native = None
+    if native_path:
+        _require_native_wgs(_model_type(params), checkpoint)
+        native = native_deepvariant.require(native_path)
     arm64_image = (
         _verify_arm64_image(_model_type(params), checkpoint)
-        if is_arm64_docker_host() and not gpu
+        if is_arm64_docker_host() and not gpu and not native
         else None
     )
     if not arm64_image:
         _require_ont_x86(_model_type(params))
-    local_dv = None if arm64_image or gpu else get_tool_path("run_deepvariant")
+    local_dv = (
+        native.path
+        if native
+        else None
+        if arm64_image or gpu
+        else get_tool_path("run_deepvariant")
+    )
     if not local_dv and not arm64_image and not gpu:
         _verify_docker()
     verify_dependencies(["samtools", "tabix"])
@@ -611,6 +699,8 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
     model_type = _model_type(params, ref, caller.platform)
     if arm64_image:
         _require_arm64_wgs(model_type, checkpoint)
+    if native:
+        _require_native_wgs(model_type, checkpoint)
     _require_ont_x86(model_type)
     if model_type == "ONT_R104":
         _warn_ont_chemistry(input_file, ref)
@@ -627,14 +717,20 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
         else None
     )
     available = _available_memory(setup)
-    postprocess = _postprocess_plan(
-        model_type, ref, region, int(threads), available,
-        lambda: _supports_num_partitions(image, local_dv, setup),
+    # wgse-deepvariant's postprocess_variants is one process (estimate_resources).
+    postprocess = (
+        None
+        if native
+        else _postprocess_plan(
+            model_type, ref, region, int(threads), available,
+            lambda: _supports_num_partitions(image, local_dv, setup),
+        )
     )  # fmt: skip
     out_vcf = str(Path(outdir, "deepvariant.vcf.gz"))
     # Absolute, like the journal's paths, so stage files match their records.
     work = absolute_path(Path(outdir, WORK_DIRECTORY))
-    staged_reads = needs_cram30(input_file)
+    # wgse-deepvariant's htslib (1.25, ARM) decodes CRAM 3.1 correctly.
+    staged_reads = not native and needs_cram30(input_file)
     reads = str(work / "reads" / "reads.cram") if staged_reads else input_file
     region_files = [
         p for p in region_items(region or "", commas=False) if Path(p).is_file()
@@ -657,26 +753,24 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
         "launcher": local_dv if launcher.image is None else None,
         **{f"regions:{i}": path for i, path in enumerate(region_files)},
         **_checkpoint_files(checkpoint),
+        **(native.weight_files() if native else {}),
     }
 
     with StepJournal.for_output(
         out_vcf, "deepvariant", resume_policy(params)
     ) as journal:
         shards = _shard_count(journal, int(threads))
-        dv_args = [
-            "--model_type", model_type,
-            "--ref", host_path(ref),
-            "--reads", host_path(reads),
-            "--output_vcf", host_path(str(work / Path(out_vcf).name)),
-            "--num_shards", str(shards),
-            "--intermediate_results_dir", host_path(str(work)),
-            *(["--regions", _container_regions(region)] if region else []),
-        ]  # fmt: skip
-        if checkpoint:
-            dv_args += ["--customized_model", host_path(checkpoint)]
-        if batch_size is not None:
-            dv_args += ["--call_variants_extra_args", f"batch_size={batch_size}"]
-        dv_args += _postprocess_args(postprocess, int(threads))
+        if native:
+            batch_size = batch_size or native_deepvariant.default_batch_size()
+            dv_args = _native_args(
+                native, ref, reads, str(work / Path(out_vcf).name), shards, work,
+                region, batch_size,
+            )  # fmt: skip
+        else:
+            dv_args = _docker_args(
+                model_type, ref, reads, str(work / Path(out_vcf).name), shards, work,
+                region, checkpoint, batch_size, postprocess, int(threads),
+            )  # fmt: skip
         if not journal.dry_run and not any(journal.recorded(s) for s in STEPS):
             preflight_resources(
                 lambda: estimate_resources(
@@ -690,9 +784,12 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                     deepvariant_model=model_type,
                     postprocess_plan=postprocess,
                     available_ram=available,
+                    deepvariant_native=bool(native),
                 )
             )
         recorded_image: dict[str, str | None] = {"image": local_dv}
+        if native:
+            recorded_image["version"] = native.version
         if launcher.image:
             recorded_image = dict(image_record(launcher.image))
             _migrate_image(journal, launcher.image, recorded_image)
@@ -729,7 +826,9 @@ cmd_deepvariant = cli_handler(VcfDeepvariantParams, run_deepvariant)
 STEPS = DEEPVARIANT_STEPS
 WORK_DIRECTORY = ".deepvariant.work"
 _COMMAND_MARK = "***** Running the command:*****"
-_STAGE_BINARY = re.compile(r"/(make_examples|call_variants|postprocess_variants)\s")
+# Google's stage tools (/opt/deepvariant/bin/make_examples) or wgse-deepvariant's
+# stage subcommands (wgse-deepvariant make_examples).
+_STAGE_BINARY = re.compile(r"[/ ](make_examples|call_variants|postprocess_variants)\s")
 # Settings that bound a stage's memory or CPU use but not what it writes.
 _RESOURCE_FLAGS = re.compile(r'\s--(?:cpus|num_partitions|batch_size)[= ]"?\d+"?')
 _JOBLOG = ".make_examples.joblog"

@@ -149,6 +149,12 @@ KNOWN_SETTINGS = {
         "google/deepvariant:1.10.0 on x64; local "
         "localhost/wgsextract-deepvariant:1.10.0-arm64 on Linux ARM64)",
     ),
+    "deepvariant_weights": (
+        None,
+        "Apple Silicon: folder of the WGS weights wgse-deepvariant calls with "
+        "(from a macos-deepvariant release); `vcf deepvariant` runs "
+        "wgse-deepvariant when it is on PATH",
+    ),
     "deepvariant_ultima_image": (
         None,
         "DeepVariant Docker image with the ULTIMA model, for Ultima reads "
@@ -313,6 +319,7 @@ PATH_SETTINGS = {
     "haplocheck_executable",
     "dorado_executable",
     "dorado_models_directory",
+    "deepvariant_weights",
     "jar_directory",
     "vep_cache_directory",
     "pharmcat_directory",
