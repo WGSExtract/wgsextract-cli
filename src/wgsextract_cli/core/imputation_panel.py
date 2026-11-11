@@ -338,18 +338,22 @@ def install_chromosome(
         _fetch(panel_download(chrom), raw, progress, cancel)
         logging.info(f"Keeping the biallelic SNPs of the {chrom} panel")
         staged = base / "panel.partial.vcf.gz"
+        samples = base / "samples.txt"
+        listed = run_command(["bcftools", "query", "-l", raw], capture_output=True)
+        samples.write_text(listed.stdout, newline="\n")
         run_pipeline(
             [
                 ["bcftools", "norm", "-m", "-any", "--threads", str(threads),
                  "-Ou", raw],
-                ["bcftools", "view", "-m2", "-M2", "-v", "snps", "--threads",
-                 str(threads), "-Ou"],
-                # GLIMPSE2 reads AC/AN; splitting leaves the panel's stale.
-                ["bcftools", "+fill-tags", "-Oz", "-o", staged, "--", "-t",
-                 "AN,AC"],
+                # Naming every sample makes bcftools recount AC/AN, which
+                # GLIMPSE2 reads and the split leaves stale (no plugin needed,
+                # as Windows' static bcftools has none).
+                ["bcftools", "view", "-m2", "-M2", "-v", "snps", "-S", samples,
+                 "--threads", str(threads), "-Oz", "-o", staged],
             ],
             description=f"Preparing the {chrom} panel",
         )  # fmt: skip
+        samples.unlink()
         run_command(["bcftools", "index", "-f", "-t", staged])
         staged.replace(base / "panel.vcf.gz")
         Path(f"{staged}.tbi").replace(base / "panel.vcf.gz.tbi")
