@@ -61,7 +61,7 @@ test("WGSExtract release conformance rejects unsupported features without blocki
   assert.doesNotThrow(() => assertWgsExtractReleaseCompatible("v0.7.0", pages));
 });
 
-test("WGSExtract v0.8.6 controls start unset and platform-limited sections hide on Windows", async (t) => {
+test("WGSExtract v0.8.7 controls start unset and platform-limited sections hide on Windows", async (t) => {
   const copy = await exampleBundleCopy(t);
   const bundle = await loadLocalizedBundle("en", repoRoot, copy, copy);
   const pages = bundle.manifest.pages;
@@ -270,7 +270,7 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
 
   const installStep = bundle.manifest.setup.steps.find((step) => step.id === "install-wgsextract");
   assert.equal(installStep.toolName, "WGS Extract CLI");
-  assert.equal(installStep.toolVersion, "v0.8.6");
+  assert.equal(installStep.toolVersion, "v0.8.7");
   assert.equal(installStep.toolVersionFile, "scripts/wgsextract-release-tag.txt");
   assert.equal(bundle.manifest.setup.initialInstallSizeGB, 6);
 

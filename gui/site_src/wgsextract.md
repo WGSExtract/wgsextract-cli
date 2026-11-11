@@ -1,7 +1,7 @@
 ---
 output: 'wgsextract.html'
 title: 'WGSExtract and WGS Extract GUI'
-description: 'WGSExtract v0.8.6 workflows and how the first real app shaped WGS Extract GUI.'
+description: 'WGSExtract v0.8.7 workflows and how the first real app shaped WGS Extract GUI.'
 eyebrow: 'First real app'
 heading: 'WGSExtract made WGS Extract GUI prove itself.'
 lede: 'The WGSExtract bundle is the first real application built through WGS Extract GUI. It pushed the project beyond demo controls into setup, command execution, data state, localization, and packaged releases.'
@@ -44,7 +44,7 @@ WGSExtract exercises data sources, state-dependent actions, persisted settings, 
 ::: wrap
 ## What the app exposes
 
-The desktop app bundles **WGSExtract CLI v0.8.6**. A **Basic / Advanced** switch in the sidebar keeps everyday controls up front; Advanced mode covers the CLI's remaining user options, and Basic runs commands with the hidden settings at their defaults. Nanopore reads work through the actions already in the app with no settings to change, and opt-in controls cover the rest. They start blank or unchecked, so automatic detection and `config.toml` defaults keep applying.
+The desktop app bundles **WGSExtract CLI v0.8.7**. A **Basic / Advanced** switch in the sidebar keeps everyday controls up front; Advanced mode covers the CLI's remaining user options, and Basic runs commands with the hidden settings at their defaults. Nanopore reads work through the actions already in the app with no settings to change, and opt-in controls cover the rest. They start blank or unchecked, so automatic detection and `config.toml` defaults keep applying.
 
 ### Oxford Nanopore in existing actions
 
@@ -90,7 +90,7 @@ AADR 2M is excluded from `all`: explicitly install its pinned metadata from Libr
 
 CLI setup is native on Windows, without WSL or MSYS2, and GUI settings save real TOML booleans and numbers, including `false`. Earlier CLI releases also fixed fresh Windows installation, added warnings for invalid configuration values, and improved alignment reproducibility, memory preflight, and native Windows full-genome validation. Tool and platform requirements still vary by workflow.
 
-[Download v0.8.6](index.html), read the [v0.8.6 release notes](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.6) and [ONT limitations](https://github.com/WGSExtract/wgsextract-cli/blob/v0.8.6/docs/ont.md), or see the [workflow details and prerequisites](https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/docs/wgsextract-post-v063.md).
+[Download v0.8.7](index.html), read the [v0.8.7 release notes](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.7) and [ONT limitations](https://github.com/WGSExtract/wgsextract-cli/blob/v0.8.7/docs/ont.md), or see the [workflow details and prerequisites](https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/docs/wgsextract-post-v063.md).
 :::
 :::
 
