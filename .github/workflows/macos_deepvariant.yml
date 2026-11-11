@@ -60,8 +60,8 @@ jobs:
           name: deepvariant-weights
           path: out/weights
 
-      - name: Install build and test tools
-        run: brew install ninja samtools
+      - name: Install the smoke test's samtools
+        run: brew install samtools
 
       - name: Build
         run: |

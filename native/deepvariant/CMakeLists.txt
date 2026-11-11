@@ -13,6 +13,7 @@ if(NOT APPLE OR NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
     message(FATAL_ERROR "wgse-deepvariant requires Apple Silicon macOS")
 endif()
 include(ExternalProject)
+cmake_host_system_information(RESULT cores QUERY NUMBER_OF_LOGICAL_CORES)
 
 # Bump when the wgse-deepvariant package changes; versioned separately from DeepVariant.
 set(WGSE_DEEPVARIANT_VERSION 0.1.0)
@@ -115,11 +116,10 @@ ExternalProject_Add(port
     SOURCE_DIR ${CMAKE_BINARY_DIR}/port-src-${patch_hash}
     BINARY_DIR ${CMAKE_BINARY_DIR}/port-build-${patch_hash}
     PATCH_COMMAND ${apply_patches}
-    CMAKE_GENERATOR Ninja
     CMAKE_ARGS ${common_args} -DWGSE_DEPS_PREFIX=${deps}
         -DDV_VERSION=${WGSE_DEEPVARIANT_VERSION} -DDV_SOURCE_ID=${PORT_COMMIT}+wgse
         -DFETCHCONTENT_BASE_DIR=${CMAKE_BINARY_DIR}/port-deps
-    BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target deepvariant
+    BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target deepvariant --parallel ${cores}
     INSTALL_COMMAND ""
     DEPENDS abseil protobuf re2 htslib boost)
 ExternalProject_Get_Property(port SOURCE_DIR BINARY_DIR)
