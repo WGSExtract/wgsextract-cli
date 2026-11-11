@@ -69,6 +69,8 @@ export type LabelTextKey =
     | "setupStepOkTitle"
     | "setupStepWarningTitle"
     | "setupStepFailedTitle"
+    | "setupStepKindScriptLabel"
+    | "setupStepKindPathToolLabel"
     | "chooseButtonTitle"
     | "pathPickerErrorTitle"
     | "settingsFileLabel"

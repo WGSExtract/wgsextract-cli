@@ -77,6 +77,8 @@
 "app.setup.step.ok" = "Concluído"  # i18n-source-hash:9ce3bd42
 "app.setup.step.warning" = "Aviso"  # i18n-source-hash:e9c45563
 "app.setup.step.failed" = "Falhou"  # i18n-source-hash:09fef5d8
+"app.setup.step.kind.script" = "Script"  # i18n-ignore
+"app.setup.step.kind.pathTool" = "Ferramenta no PATH"  # i18n-source-hash:7fbaeb9b
 "app.pathPicker.chooseButton.title" = "Escolher..."  # i18n-source-hash:1f77e839
 "app.pathPicker.error.title" = "Não foi possível escolher o caminho"  # i18n-source-hash:fa84a44d
 "app.settingsFile.label" = "Arquivo de configurações"  # i18n-source-hash:a05c5b26

@@ -53,11 +53,24 @@ function renderSetupStepStatus(step: SetupStep, result: SetupStepResult | undefi
       <span class="setup-step-main">
         <span class="setup-step-title">${escapeHTML(step.label)}</span>
       </span>
-      <span class="setup-step-kind">${escapeHTML(step.kind)}</span>
+      <span class="setup-step-kind">${escapeHTML(setupStepKindLabel(step.kind))}</span>
       <span class="setup-step-duration">${escapeHTML(duration)}</span>
       <span class="setup-step-label">${escapeHTML(statusLabel)}</span>
     </li>
   `;
+}
+
+/** What kind of step this is, in words; a kind the app has no name for shows nothing rather than its manifest id. */
+function setupStepKindLabel(kind: string) {
+  switch (kind) {
+    case "setupScript":
+    case "bundledScript":
+      return state.labels.setupStepKindScriptLabel ?? "Script";
+    case "pathTool":
+      return state.labels.setupStepKindPathToolLabel ?? "Tool on PATH";
+    default:
+      return "";
+  }
 }
 
 function setupHeaderToolSummary(steps: SetupStep[]) {

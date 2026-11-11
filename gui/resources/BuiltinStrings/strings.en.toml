@@ -77,6 +77,8 @@
 "app.setup.step.ok" = "OK"
 "app.setup.step.warning" = "Warning"
 "app.setup.step.failed" = "Failed"
+"app.setup.step.kind.script" = "Script"
+"app.setup.step.kind.pathTool" = "Tool on PATH"
 "app.pathPicker.chooseButton.title" = "Choose..."
 "app.pathPicker.error.title" = "Could not choose path"
 "app.settingsFile.label" = "Settings File"

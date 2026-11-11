@@ -99,3 +99,19 @@ test("a path field shows its full path on hover", async () => {
   state.fieldValues = { bam_path: "" };
   assert.doesNotMatch(renderTextControl({ id: "bam_path", kind: "path", label: "BAM/CRAM" }), /title=/);
 });
+
+test("setup steps name their kind in words, never the manifest id", async () => {
+  // Owner request: Settings showed internal step kinds such as "setupScript" and "pathTool".
+  const { state, renderSetupStatusSection } = await clientView();
+  state.labels = { setupStepKindScriptLabel: "Skript", setupStepKindPathToolLabel: "Werkzeug im PATH" };
+  state.manifest = {
+    id: "demo", pages: [],
+    setup: { steps: [
+      { id: "install", kind: "setupScript", label: "Install", value: "install.sh" },
+      { id: "check", kind: "pathTool", label: "Check", value: "tool" },
+      { id: "future", kind: "futureKind", label: "Future" },
+    ] },
+  };
+  const kinds = [...renderSetupStatusSection().matchAll(/class="setup-step-kind">([^<]*)</g)].map((match) => match[1]);
+  assert.deepEqual(kinds, ["Skript", "Werkzeug im PATH", ""]);
+});

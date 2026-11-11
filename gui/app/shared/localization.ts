@@ -177,6 +177,8 @@ export function localizationLabels(table: StringMap = {}) {
         setupStepOkTitle: table["app.setup.step.ok"] ?? "OK",
         setupStepWarningTitle: table["app.setup.step.warning"] ?? "Warning",
         setupStepFailedTitle: table["app.setup.step.failed"] ?? "Failed",
+        setupStepKindScriptLabel: table["app.setup.step.kind.script"] ?? "Script",
+        setupStepKindPathToolLabel: table["app.setup.step.kind.pathTool"] ?? "Tool on PATH",
         chooseButtonTitle: table["app.pathPicker.chooseButton.title"] ?? "Choose...",
         pathPickerErrorTitle: table["app.pathPicker.error.title"] ?? "Could not choose path",
         settingsFileLabel: table["app.settingsFile.label"] ?? "Settings File",
