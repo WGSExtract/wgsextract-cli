@@ -101,7 +101,11 @@ def require(path: str) -> NativeDeepVariant:
     weights that are missing or not the published ones."""
     try:
         probe = subprocess.run(
-            [path, "--version"], capture_output=True, text=True, timeout=30
+            [path, "--version"],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=30,
         )
     except (OSError, subprocess.SubprocessError) as e:
         raise WGSExtractError(f"{BINARY} ({path}) doesn't run: {e}") from e
