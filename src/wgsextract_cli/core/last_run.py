@@ -23,6 +23,9 @@ LOG_TAIL_LINES = 200
 # Commands that never replace the record: reporting on the last run must not
 # report on itself, and help/config don't run anything worth reporting.
 UNRECORDED_COMMANDS = frozenset({"help", "config", "report-issue"})
+# Subcommands that never replace it either: the app's pre-run check (`ref
+# needs`) runs before every action, so recording it would hide the real run.
+UNRECORDED_SUBCOMMANDS = frozenset({"ref needs"})
 
 
 def state_directory() -> Path:
@@ -67,7 +70,10 @@ def record_last_run(
     """Save ``result`` as the last run (and last failed run, if it failed).
 
     Never fails the command: an unwritable data folder is logged at debug."""
-    if result.command.split(" ", 1)[0] in UNRECORDED_COMMANDS:
+    if (
+        result.command.split(" ", 1)[0] in UNRECORDED_COMMANDS
+        or result.command in UNRECORDED_SUBCOMMANDS
+    ):
         return
     from wgsextract_cli.core.atomic_output import atomic_write
 

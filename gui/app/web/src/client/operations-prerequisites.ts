@@ -23,11 +23,25 @@ export async function missingPrerequisites(context: CommandContext, reference: A
 }
 
 /**
+ * Runs `step` and returns its result, or null when another bundle was loaded meanwhile: the action and context it
+ * was started for belong to the old bundle, and the server would resolve the reference against the new one.
+ */
+export async function inSameBundle<T>(step: () => Promise<T>): Promise<T | null> {
+    const manifest = state.manifest;
+    const result = await step();
+    return state.manifest === manifest ? result : null;
+}
+
+/**
  * Whether the action may run now: true when it needs nothing that is missing. Otherwise it is held back and the
- * prerequisites dialog asks the user to install what it needs, or to cancel.
+ * prerequisites dialog asks the user to install what it needs, or to cancel. False, with no dialog, when another
+ * bundle was loaded during the check.
  */
 export async function prerequisitesInstalled(action: ActionSpec, context: CommandContext, reference: ActionReference): Promise<boolean> {
-    const missing = await missingPrerequisites(context, reference);
+    const missing = await inSameBundle(() => missingPrerequisites(context, reference));
+    if (!missing) {
+        return false;
+    }
     if (missing.length === 0) {
         return true;
     }

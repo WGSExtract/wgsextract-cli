@@ -20,7 +20,7 @@ export function renderPrerequisitesDialog(): string {
     const items = pending.missing.map((item) => `<li>${escapeHTML(prerequisiteDescription(item))}</li>`).join("");
     return `
     <div class="modal-backdrop" role="presentation">
-      <section class="confirmation-modal prerequisites-modal" role="alertdialog" aria-modal="true" aria-labelledby="prerequisites-title">
+      <section class="confirmation-modal prerequisites-modal" role="alertdialog" aria-modal="true" aria-labelledby="prerequisites-title" tabindex="-1" data-prerequisites-dialog>
         <h2 id="prerequisites-title">${escapeHTML(labels.prerequisitesTitle)}</h2>
         <p>${escapeHTML(labels.prerequisitesMessage)}</p>
         <ul class="prerequisites-list">${items}</ul>

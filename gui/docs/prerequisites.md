@@ -2,7 +2,7 @@
 
 Some actions need data that the user installs separately, such as a reference genome. A bundle can declare a check that the app runs before such an action. If the check reports that something is missing, the action doesn't start. Instead a dialog names what is missing and offers three choices:
 
-- **Install and Continue**: the app installs each missing item, showing each install in its own terminal tab, then runs the action. If an install fails, the action doesn't run.
+- **Install and Continue**: the app checks again, installs each item that is still missing, showing each install in its own terminal tab, then runs the action. An item installed while the dialog was open is skipped. If an install fails, the action doesn't run.
 - **Continue**: the user has installed it themselves. The app checks again, and runs the action only if nothing is missing any more; otherwise the dialog stays and says so.
 - **Cancel**: nothing runs.
 
@@ -42,6 +42,8 @@ The app runs `command` with the command line appended, in the bundle workspace. 
 
 An empty list means the action can run. So does a check that exits non-zero, prints no such report, or takes longer than a minute. The app logs why on its console and runs the action, which then reports the problem itself.
 
-To install an item, the app runs the check again on the server and takes the arguments from that report. The page only names the item, so it can't run arbitrary commands.
+To install an item, the app runs the check again on the server and takes the arguments from that report. The page only names the item, so it can't run arbitrary commands. If that report no longer lists the item, it was installed meanwhile, and the install finishes at once with exit code 0. If that check fails, the install fails.
+
+If another bundle is loaded while a check or install is under way, the held-back action is dropped: it belongs to the old bundle.
 
 The WGSExtract bundle checks its `wgsextract` actions with [`wgsextract ref needs`](../../docs/commands.md). It reports the reference genome that a BAM or CRAM input was aligned to when the command decodes a CRAM's reads or calls variants, and the annotation data that the `vcf` annotation commands need.

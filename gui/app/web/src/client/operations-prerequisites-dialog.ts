@@ -1,17 +1,24 @@
 import type { PendingPrerequisites } from "../../../shared/types.js";
 import { runAction, streamCommand } from "./operations-actions.js";
 import { formatLabel } from "./model.js";
-import { missingPrerequisites } from "./operations-prerequisites.js";
+import { inSameBundle, missingPrerequisites } from "./operations-prerequisites.js";
 import { scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
 
-/** The dialog's "Install and Continue": installs each missing item in turn, then runs the action once nothing is missing. */
+/**
+ * The dialog's "Install and Continue": installs each item that is still missing, then runs the action once nothing
+ * is. An item installed meanwhile (by the user, or another install) is skipped rather than reinstalled.
+ */
 export async function installPendingPrerequisites() {
     const pending = takePending();
     if (!pending) {
         return;
     }
-    for (const item of pending.missing) {
+    const stillMissing = await inSameBundle(() => missingPrerequisites(pending.context, pending.reference));
+    if (!stillMissing) {
+        return;
+    }
+    for (const item of stillMissing) {
         if (!item.installArguments) {
             continue;
         }
@@ -19,7 +26,7 @@ export async function installPendingPrerequisites() {
             title: formatLabel(state.labels.prerequisitesInstallTitleFormat, { name: item.name }),
             command: { executable: state.manifest?.prerequisites?.command.executable ?? "", arguments: item.installArguments },
         };
-        const exitCode = await streamCommand(installAction, pending.context, "/api/prerequisites/install/stream", { action: pending.reference, context: pending.context, id: item.id });
+        const exitCode = await inSameBundle(() => streamCommand(installAction, pending.context, "/api/prerequisites/install/stream", { action: pending.reference, context: pending.context, id: item.id }));
         if (exitCode !== 0) {
             return; // The install's terminal tab says what went wrong; the action doesn't run without its data.
         }
@@ -48,7 +55,10 @@ function takePending(): PendingPrerequisites | null {
 }
 
 async function runIfInstalled(pending: PendingPrerequisites) {
-    const missing = await missingPrerequisites(pending.context, pending.reference);
+    const missing = await inSameBundle(() => missingPrerequisites(pending.context, pending.reference));
+    if (!missing) {
+        return;
+    }
     if (missing.length > 0) {
         state.pendingPrerequisites = { ...pending, missing, stillMissing: true };
         scheduleRender();

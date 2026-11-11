@@ -34,13 +34,36 @@ def library(tmp_path):
     return lib
 
 
-def _install_fasta(library: Path, name: str, contigs) -> Path:
+def _install_fasta(
+    library: Path, name: str, contigs, *, like: str | None = None, m5: str = ""
+) -> Path:
     """An indexed FASTA in the library with these sequence lengths (the
-    sequence itself is never read)."""
+    sequence itself is never read), and a .dict like an installed genome's:
+    the M5 checksums of the alignment file ``like``, or ``m5`` for every
+    sequence (a different genome's sequences)."""
+    from wgsextract_cli.core.alignment_metadata import get_bam_header
+    from wgsextract_cli.core.reference_assets import (
+        header_sequences,
+        reference_dict_path,
+    )
+
     fasta = library / "genomes" / name
+    fasta.parent.mkdir(parents=True, exist_ok=True)
     fasta.write_text(">c0\nACGT\n")
     Path(f"{fasta}.fai").write_text(
         "".join(f"{n}\t{ln}\t0\t60\t61\n" for n, ln in contigs)
+    )
+    recorded = header_sequences(get_bam_header(like) or "") if like else []
+    sums = {sq["SN"]: sq.get("M5", "") for sq in recorded}
+    Path(reference_dict_path(fasta)).write_text(
+        "\n".join(
+            ["@HD\tVN:1.0"]
+            + [
+                f"@SQ\tSN:{n}\tLN:{ln}\tM5:{m5 or sums.get(n) or '0' * 32}"
+                for n, ln in contigs
+            ]
+        )
+        + "\n"
     )
     return fasta
 
@@ -87,8 +110,86 @@ def test_info_on_a_cram_whose_reference_is_missing_names_its_install(
 
 def test_the_installed_reference_satisfies_a_cram(tmp_path, library, capsys):
     cram = _cram(tmp_path, HS37D5_LIKE)
-    _install_fasta(library, "hs37d5.fa.gz", HS37D5_LIKE)
+    _install_fasta(library, "hs37d5.fa.gz", HS37D5_LIKE, like=cram)
 
+    assert _needs(capsys, library, "info", "--input", cram) == []
+
+
+def test_same_names_and_lengths_with_other_sequences_cannot_decode_a_cram(
+    tmp_path, library, capsys
+):
+    cram = _cram(tmp_path, HS37D5_LIKE)
+    _install_fasta(library, "hs37d5.fa.gz", HS37D5_LIKE, m5="f" * 32)
+
+    assert [m["id"] for m in _needs(capsys, library, "info", "--input", cram)] == [
+        "hs37d5"
+    ]
+
+
+def test_a_bam_needs_a_reference_holding_its_contigs(tmp_path, library, capsys):
+    bam = sam_to_bam(_header(HS37D5_LIKE) + [READ], tmp_path / "sample.bam")
+    # Same build, other contig names: bcftools can't call this BAM against it.
+    _install_fasta(library, "hg19.fa.gz", [("chr1", 249250621), ("chrM", 16571)])
+
+    calls = _needs(capsys, library, "vcf", "snp", "--input", bam)
+
+    assert [m["id"] for m in calls] == ["hs37d5"]
+
+
+def test_mt_haplogroup_on_a_bam_needs_the_reference(tmp_path, library, capsys):
+    bam = sam_to_bam(_header(HS37D5_LIKE) + [READ], tmp_path / "sample.bam")
+
+    missing = _needs(capsys, library, "lineage", "mt-haplogroup", "--input", bam)
+
+    assert [m["id"] for m in missing] == ["hs37d5"]
+
+
+def test_realign_decodes_a_cram_with_a_matching_target(tmp_path, library, capsys):
+    cram = _cram(tmp_path, HS37D5_LIKE)
+    target = _install_fasta(tmp_path / "elsewhere", "target.fa", HS37D5_LIKE, like=cram)
+
+    missing = _needs(capsys, library, "realign", "--input", cram, "--ref", str(target))
+
+    assert missing == []
+
+
+def test_a_new_library_folder_is_where_the_install_goes(tmp_path, library, capsys):
+    cram = _cram(tmp_path, HS37D5_LIKE)
+    new = tmp_path / "new-library"
+
+    missing = _needs(capsys, library, "info", "--input", cram, "--ref", str(new))
+
+    assert missing[0]["installArguments"] == [
+        "ref",
+        "library",
+        "--install",
+        "hs37d5",
+        "--ref",
+        str(new),
+    ]
+
+
+def test_the_commands_own_config_chooses_the_library(tmp_path, library, capsys):
+    cram = _cram(tmp_path, HS37D5_LIKE)
+    _install_fasta(library, "hs37d5.fa.gz", HS37D5_LIKE, like=cram)
+    other = tmp_path / "other"
+    (other / "genomes").mkdir(parents=True)
+    other_config = tmp_path / "other.toml"
+    other_config.write_text(f"reference_library = {json.dumps(str(other))}\n")
+
+    missing = _needs(
+        capsys, library, "info", "--config", str(other_config), "--input", cram
+    )
+
+    assert missing[0]["installArguments"] == [
+        "--config",
+        str(other_config.resolve()),
+        "ref",
+        "library",
+        "--install",
+        "hs37d5",
+    ]
+    # The outer settings are back once the check is done.
     assert _needs(capsys, library, "info", "--input", cram) == []
 
 
@@ -142,6 +243,56 @@ def test_missing_annotation_data_names_its_download(tmp_path, library, capsys):
 
     assert [(m["kind"], m["id"]) for m in missing] == [("annotation", "clinvar")]
     assert missing[0]["installArguments"][:2] == ["ref", "clinvar"]
+
+
+def _vcf(tmp_path: Path) -> str:
+    vcf = tmp_path / "calls.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=248956422>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+    )
+    return str(vcf)
+
+
+def test_annotation_reads_the_vcf_the_command_would(tmp_path, library, capsys):
+    vcf = _vcf(tmp_path)
+
+    by_input = _needs(capsys, library, "vcf", "clinvar", "--input", vcf)
+
+    assert [m["id"] for m in by_input] == ["clinvar"]
+
+
+def test_annotation_reads_the_configured_default_vcf(tmp_path, library, capsys):
+    vcf = _vcf(tmp_path)
+    cram = _cram(tmp_path, HS37D5_LIKE)
+    config = tmp_path / "defaults.toml"
+    config.write_text(
+        f"reference_library = {json.dumps(str(library))}\n"
+        f"default_input_vcf = {json.dumps(vcf)}\n"
+        f"input_path = {json.dumps(cram)}\n"
+    )
+
+    missing = _needs(capsys, library, "vcf", "clinvar", "--config", str(config))
+
+    # The configured CRAM isn't read, so its genome isn't needed.
+    assert [m["id"] for m in missing] == ["clinvar"]
+
+
+def test_the_check_is_not_recorded_as_the_last_run(tmp_path, library, capsys):
+    from wgsextract_cli.core.last_run import last_run_path
+
+    state = tmp_path / "state"
+    logs = tmp_path / "logs"
+    config = library.parent / "config.toml"
+    config.write_text(
+        f"reference_library = {json.dumps(str(library))}\n"
+        f"state_directory = {json.dumps(str(state))}\n"
+        f"log_dir = {json.dumps(str(logs))}\n"
+    )
+    main(["--config", str(config), "ref", "needs", "--", "info", "--input", "x.bam"])
+
+    assert not last_run_path().exists()
+    assert not logs.exists() or not any(logs.iterdir())
 
 
 def test_report_json_prints_only_the_missing_list(tmp_path, library, capsys):

@@ -82,10 +82,28 @@ test("an install runs the arguments the check reports now, never ones the page s
 
   assert.equal(result.exitCode, 0);
   assert.deepEqual(calls.at(-1), ["tool", "ref", "library", "--install", "hs37d5"]);
-  missing.current = [];
+});
+
+test("an item installed meanwhile completes at once; a failing check or an uninstallable item is an error", async () => {
+  const missing = { current: [] };
+  const { calls, runProcess } = fakeProcesses(missing);
+  const action = { id: "info", title: "Info", command: { executable: "tool", arguments: ["info", "--input", "{{bam_path}}"] } };
+  const events = [];
+
+  const result = await installPrerequisite(manifest(), action, "hs37d5", context, undefined, tmpdir(), runProcess, (event) => events.push(event), () => undefined);
+
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(events.map((event) => event.type), ["complete"]);
+  assert.equal(calls.length, 1, "only the check ran");
+  const failing = async () => ({ exitCode: 1, stdout: "", stderr: "boom" });
+  await assert.rejects(
+    installPrerequisite(manifest(), action, "hs37d5", context, undefined, tmpdir(), failing, () => {}, () => undefined),
+    /exited 1: boom/,
+  );
+  missing.current = [{ ...hs37d5, installArguments: null }];
   await assert.rejects(
     installPrerequisite(manifest(), action, "hs37d5", context, undefined, tmpdir(), runProcess, () => {}, () => undefined),
-    /Nothing to install for hs37d5/,
+    /can't install hs37d5/,
   );
 });
 
@@ -110,15 +128,39 @@ test("WGSExtract checks its wgsextract actions with `ref needs`, and Unalign thr
   assert.equal(bundle.manifest.prerequisites.kindLabels.genome, "%{name} reference genome");
 });
 
-/** Answers the client's requests: the check reports `missing.current`; runs and installs finish with exit 0. */
-function fakeServer(t, missing) {
+test("WGSExtract's Microarray leaves --ref out until a genome is chosen, so it runs with one installed after the page loaded", async (t) => {
+  const workspace = await mkdtemp(path.join(tmpdir(), "gui-for-cli-prerequisites-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const bundle = await loadLocalizedBundle("en", repoRoot, wgsExtractBundleRoot, workspace);
+  const actions = bundle.manifest.pages.flatMap((page) => page.sections ?? []).flatMap((section) => section.actions ?? []);
+  const generate = actions.find((action) => action.id === "microarray-generate");
+  const { calls, runProcess } = fakeProcesses({ current: [] });
+  const fields = { bam_path: cram, microarray_formats: "23andme_v5" };
+
+  await missingPrerequisites(bundle.manifest, generate, { ...context, fieldValues: { ...fields, ref_fasta: "" }, bundleRootPath: workspace }, workspace, runProcess);
+  await missingPrerequisites(bundle.manifest, generate, { ...context, fieldValues: { ...fields, ref_fasta: "/ref/hs37d5.fa.gz" }, bundleRootPath: workspace }, workspace, runProcess);
+
+  const [unchosen, chosen] = calls.map((call) => call.slice(1));
+  assert.equal(unchosen.includes("--ref"), false);
+  assert.deepEqual(chosen.slice(chosen.indexOf("--ref"), chosen.indexOf("--ref") + 2), ["--ref", "/ref/hs37d5.fa.gz"]);
+});
+
+/**
+ * Answers the client's requests: the check reports `missing.current` (after `onCheck`, which may change the
+ * world meanwhile); an install installs everything; runs and installs finish with exit 0.
+ */
+function fakeServer(t, missing, onCheck = () => {}) {
   const requests = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
     const body = JSON.parse(init.body ?? "{}");
     requests.push({ url, body });
     if (url === "/api/prerequisites") {
+      onCheck();
       return new Response(JSON.stringify({ missing: missing.current }));
+    }
+    if (url === "/api/prerequisites/install/stream") {
+      missing.current = [];
     }
     const lines = [{ type: "start", command: url }, { type: "complete", result: { exitCode: 0, command: url } }];
     return new Response(lines.map((line) => JSON.stringify(line)).join("\n"));
@@ -129,9 +171,9 @@ function fakeServer(t, missing) {
   return requests;
 }
 
-function holdBack(t, missing) {
+function holdBack(t, missing, onCheck) {
   Object.assign(state, createInitialState(), { manifest: manifest(), labels: englishLabels });
-  const requests = fakeServer(t, missing);
+  const requests = fakeServer(t, missing, onCheck);
   const action = { id: "info", title: "Info", command: { executable: "tool", arguments: ["info", "--input", "{{bam_path}}"] } };
   const reference = { pageID: "main", sectionID: "info", actionID: "info" };
   return { action, reference, requests, urls: () => requests.map((request) => request.url) };
@@ -159,12 +201,34 @@ test("Install and Continue installs the genome, then runs the action", async (t)
   const missing = { current: [hs37d5] };
   const { action, reference, requests, urls } = holdBack(t, missing);
   await runAction(action, context, reference);
+
+  await installPendingPrerequisites();
+
+  assert.deepEqual(urls(), ["/api/prerequisites", "/api/prerequisites", "/api/prerequisites/install/stream", "/api/prerequisites", "/api/run/stream"]);
+  assert.equal(requests[2].body.id, "hs37d5");
+  assert.equal(state.pendingPrerequisites, null);
+});
+
+test("Install and Continue skips what was installed while the dialog was open, and runs the action", async (t) => {
+  const missing = { current: [hs37d5] };
+  const { action, reference, urls } = holdBack(t, missing);
+  await runAction(action, context, reference);
   missing.current = [];
 
   await installPendingPrerequisites();
 
-  assert.deepEqual(urls(), ["/api/prerequisites", "/api/prerequisites/install/stream", "/api/prerequisites", "/api/run/stream"]);
-  assert.equal(requests[1].body.id, "hs37d5");
+  assert.deepEqual(urls(), ["/api/prerequisites", "/api/prerequisites", "/api/prerequisites", "/api/run/stream"]);
+});
+
+test("a check that finishes after another bundle was loaded neither runs the action nor opens the dialog", async (t) => {
+  const missing = { current: [] };
+  const { action, reference, urls } = holdBack(t, missing, () => {
+    state.manifest = manifest();
+  });
+
+  await runAction(action, context, reference);
+
+  assert.deepEqual(urls(), ["/api/prerequisites"]);
   assert.equal(state.pendingPrerequisites, null);
 });
 

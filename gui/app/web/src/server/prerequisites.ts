@@ -20,6 +20,23 @@ export async function missingPrerequisites(
     bundleRoot: string,
     runProcess: RunProcess,
 ): Promise<MissingPrerequisite[]> {
+    try {
+        return await checkPrerequisites(manifest, action, context, bundleRoot, runProcess);
+    }
+    catch (error) {
+        console.warn(`[gui-for-cli] Prerequisite check for action ${action.id ?? action.title ?? ""} failed; running it anyway: ${errorMessage(error)}`);
+        return [];
+    }
+}
+
+/** What `action` needs that isn't installed; throws when the check fails. */
+async function checkPrerequisites(
+    manifest: BundleManifest,
+    action: ActionSpec,
+    context: CommandContext,
+    bundleRoot: string,
+    runProcess: RunProcess,
+): Promise<MissingPrerequisite[]> {
     const spec = manifest.prerequisites;
     if (!spec || !action.command) {
         return [];
@@ -31,26 +48,22 @@ export async function missingPrerequisites(
     }
     const check = renderedCommand(spec.command, resolvedContext);
     const executable = await scriptPath(check.executable, bundleRoot);
-    try {
-        const result = await runProcess(executable, [...(check.arguments ?? []), ...commandLine], {
-            cwd: bundleRoot,
-            env: { ...process.env, GUI_FOR_CLI_BUNDLE_ROOT: bundleRoot, GUI_FOR_CLI_BUNDLE_WORKSPACE: bundleRoot },
-            timeoutMs: checkTimeoutMs,
-        });
-        if (result.exitCode !== 0) {
-            throw new Error(`exited ${result.exitCode}: ${result.stderr.trim().slice(-500) || "no stderr"}`);
-        }
-        return parseMissing(result.stdout);
+    const result = await runProcess(executable, [...(check.arguments ?? []), ...commandLine], {
+        cwd: bundleRoot,
+        env: { ...process.env, GUI_FOR_CLI_BUNDLE_ROOT: bundleRoot, GUI_FOR_CLI_BUNDLE_WORKSPACE: bundleRoot },
+        timeoutMs: checkTimeoutMs,
+    });
+    if (result.exitCode !== 0) {
+        throw new Error(`exited ${result.exitCode}: ${result.stderr.trim().slice(-500) || "no stderr"}`);
     }
-    catch (error) {
-        console.warn(`[gui-for-cli] Prerequisite check for action ${action.id ?? action.title ?? ""} failed; running it anyway: ${errorMessage(error)}`);
-        return [];
-    }
+    return parseMissing(result.stdout);
 }
 
 /**
  * Installs the missing item `id` of `action`, as the check reports it now, with the check's executable. The
- * client names only the item, so it can't run arbitrary arguments.
+ * client names only the item, so it can't run arbitrary arguments. An item the check no longer reports was
+ * installed meanwhile: that completes at once with exit code 0, so the client goes on to run the action. A check
+ * that fails, or an item the app can't install, is an error.
  */
 export async function installPrerequisite(
     manifest: BundleManifest,
@@ -64,10 +77,19 @@ export async function installPrerequisite(
     resultSpecFor: (installAction: ActionSpec) => ResultDocumentSpec | undefined,
 ): Promise<ActionRunResult> {
     const spec = manifest.prerequisites;
-    const missing = await missingPrerequisites(manifest, action, context, bundleRoot, runProcess);
+    if (!spec) {
+        throw new Error("This bundle declares no prerequisite check.");
+    }
+    const missing = await checkPrerequisites(manifest, action, context, bundleRoot, runProcess);
     const item = missing.find((candidate) => candidate.id === id);
-    if (!spec || !item?.installArguments) {
-        throw new Error(`Nothing to install for ${id}: it is installed already, or can't be installed by the app.`);
+    if (!item) {
+        const now = new Date().toISOString();
+        const result: ActionRunResult = { exitCode: 0, stdout: "", stderr: "", startedAt: now, finishedAt: now, command: "" };
+        await emit({ type: "complete", result });
+        return result;
+    }
+    if (!item.installArguments) {
+        throw new Error(`The app can't install ${item.name}.`);
     }
     const installAction: ActionSpec = {
         id: `install-${item.id}`,

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from wgsextract_cli.core.paths import expand_path
-from wgsextract_cli.core.reference_assets import fasta_signature, is_fasta_path
+from wgsextract_cli.core.reference_assets import is_fasta_path, read_fai_lengths
 
 # Commands that read the reference sequence even for a BAM: variant calling,
 # consensus sequences, typing and the like.
@@ -32,6 +32,7 @@ GENOME_COMMANDS = frozenset(
         "extract mito-fasta",
         "extract mito-vcf",
         "extract ydna-vcf",
+        "lineage mt-haplogroup",
         "methylation pileup",
         "microarray",
         "qc contamination",
@@ -129,11 +130,19 @@ def missing_references(args: argparse.Namespace) -> list[MissingReference]:
     return missing
 
 
-def _library_option(ref: str | None) -> list[str]:
-    """``--ref`` naming the library a command looks in, for its install."""
-    if ref and Path(ref).is_dir():
-        return ["--ref", ref]
+def _library_option(library: str | None) -> list[str]:
+    """``--ref`` naming the library a command looks in, for its install. A
+    library folder that doesn't exist yet is kept: the install creates it,
+    and that is where the command will look."""
+    if library and not is_fasta_path(library):
+        return ["--ref", library]
     return []
+
+
+def _explicit_library(ref: str | None) -> str | None:
+    """The library folder an explicit ``--ref`` names (existing or not), or
+    None for no ``--ref`` or a FASTA."""
+    return ref if ref and not is_fasta_path(ref) else None
 
 
 def _given_path(args: argparse.Namespace, dest: str) -> str | None:
@@ -154,6 +163,54 @@ def _needs_genome(command: str, args: argparse.Namespace, input_path: str) -> st
     return ""
 
 
+def _reads_vcf(command: str, args: argparse.Namespace) -> bool:
+    """Whether ``command`` reads a VCF rather than its BAM/CRAM ``--input``:
+    a VCF command (it has --vcf-input) that doesn't call variants."""
+    return hasattr(args, "vcf_input") and command not in GENOME_COMMANDS
+
+
+def _selected_vcf(args: argparse.Namespace) -> str | None:
+    """The VCF a VCF command reads, chosen as its handler chooses it
+    (``vcf_input_handler``): --vcf-input or config default_input_vcf, or
+    --input."""
+    from wgsextract_cli.commands.vcf.basic import _select_vcf_input
+    from wgsextract_cli.core.config import settings
+
+    view = argparse.Namespace(**vars(args))
+    explicit: set[str] = getattr(args, "_explicit_dests", set())
+    if getattr(view, "vcf_input", None) is None and "vcf_input" not in explicit:
+        view.vcf_input = settings.get("default_input_vcf")
+    selected = _select_vcf_input(view)
+    return expand_path(selected) if selected else None
+
+
+def _fits_bam(fasta: str, header: str) -> bool:
+    """Whether every @SQ of a BAM header is in ``fasta`` with the same length
+    (from its .fai; a FASTA without one is given the benefit of the doubt)."""
+    from wgsextract_cli.core.reference_assets import header_sequences
+
+    lengths = read_fai_lengths(fasta)
+    if not lengths:
+        return True
+    return all(
+        str(lengths.get(sq.get("SN", ""), "")) == sq.get("LN")
+        for sq in header_sequences(header)
+    )
+
+
+def _usable_fasta(fasta: str | None, input_path: str, header: str) -> bool:
+    """Whether the command can use ``fasta`` with this input: decoding a CRAM
+    takes the very sequences it was written against (names, lengths and the
+    recorded M5 checksums); a BAM needs its contigs in the FASTA."""
+    if not fasta or not Path(fasta).is_file():
+        return False
+    if input_path.lower().endswith(".cram"):
+        from wgsextract_cli.core.alignment_metadata import cram_encoded_with
+
+        return cram_encoded_with(fasta, input_path)
+    return _fits_bam(fasta, header)
+
+
 def _missing_genome(command: str, args: argparse.Namespace) -> MissingReference | None:
     input_path = _given_path(args, "input")
     if (
@@ -161,6 +218,7 @@ def _missing_genome(command: str, args: argparse.Namespace) -> MissingReference 
         or not input_path.lower().endswith((".bam", ".cram"))
         or not Path(input_path).is_file()
         or command.split()[0] in {"ref", "help", "deps", "serve"}
+        or _reads_vcf(command, args)
     ):
         return None
     reason = _needs_genome(command, args, input_path)
@@ -168,10 +226,13 @@ def _missing_genome(command: str, args: argparse.Namespace) -> MissingReference 
         return None
     # realign and align name the target genome with --ref; the input's own
     # reference is --input-ref.
-    ref = _given_path(args, "input_ref" if hasattr(args, "input_ref") else "ref")
-    if ref and Path(ref).is_file() and is_fasta_path(ref):
-        return None  # A FASTA the user chose is theirs to vouch for.
-    library = ref if ref and Path(ref).is_dir() else None
+    realigns = hasattr(args, "input_ref")
+    ref = _given_path(args, "input_ref" if realigns else "ref")
+    if ref and is_fasta_path(ref):
+        # A FASTA the user chose is theirs to vouch for; a missing one is the
+        # command's own error, which nothing here installs.
+        return None
+    library = _explicit_library(ref)
 
     from wgsextract_cli.core.alignment_metadata import get_bam_header
     from wgsextract_cli.core.ref_library.catalog import catalog_genome_for
@@ -182,19 +243,16 @@ def _missing_genome(command: str, args: argparse.Namespace) -> MissingReference 
     header = get_bam_header(input_path) or ""
     if not header:
         return None  # The command itself reports an unreadable input.
+    target = _given_path(args, "ref") if realigns else None
+    if target and _usable_fasta(target, input_path, header):
+        return None  # realign decodes with a --ref target that fits the input.
     signature = calculate_bam_md5(input_path, header=header)
     lib = ReferenceLibrary(
         library, signature, skip_full_search=True, input_path=input_path
     )
-    fasta = lib.fasta if lib.fasta and Path(lib.fasta).is_file() else None
-    genome = catalog_genome_for(header, signature)
-    if fasta and (
-        # Decoding a CRAM takes the very sequences it was written against.
-        not input_path.lower().endswith(".cram")
-        or not genome
-        or fasta_signature(fasta) == signature
-    ):
+    if _usable_fasta(lib.fasta, input_path, header):
         return None
+    genome = catalog_genome_for(header, signature)
     if genome:
         return MissingReference(
             id=str(genome["code"]),
@@ -220,8 +278,10 @@ def _missing_annotation(
     command: str, args: argparse.Namespace
 ) -> MissingReference | None:
     annotation = ANNOTATION_COMMANDS.get(command)
-    vcf = _given_path(args, "vcf_input")
-    if not annotation or not vcf or not Path(vcf).is_file():
+    if not annotation:
+        return None
+    vcf = _selected_vcf(args)
+    if not vcf or not Path(vcf).is_file():
         return None
     if getattr(args, annotation.option, None):
         return None
@@ -229,6 +289,8 @@ def _missing_annotation(
     from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 
     ref = _given_path(args, "ref")
+    if ref and is_fasta_path(ref) and not Path(ref).is_file():
+        return None  # The command reports the missing FASTA itself.
     lib = ReferenceLibrary(ref, None, input_path=vcf)
     if getattr(lib, annotation.attribute, None):
         return None
