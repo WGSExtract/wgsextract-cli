@@ -458,3 +458,53 @@ def test_file_version_reads_htsfile_output_after_the_path(path, monkeypatch):
 
     monkeypatch.setattr(variant_files, "run_command", fake_run)
     assert variant_files.get_file_version(path) == "CRAM version 3.1 compressed"
+
+
+CRAM_REF_ERROR = (
+    "[E::refs_load_fai] Failed to open reference file '/mnt/x/hg38.fa.gz'\n"
+    '[W::cram_get_ref] Failed to populate reference "1"\n'
+    "samtools view: retrieval of region #0 failed"
+)
+
+
+def _run_info_json(sample: Path, capsys) -> dict:
+    argv = ["wgsextract-cli", "info", "--json", "--input", str(sample)]
+    with patch.object(sys, "argv", argv):
+        main()
+    return json.loads(capsys.readouterr().out)
+
+
+@pytest.mark.parametrize(
+    ("error", "code"),
+    [
+        (CRAM_REF_ERROR, "cram_reference_missing"),
+        ("[E::hts_open_format] Failed to open file", "reads_unreadable"),
+    ],
+)
+def test_unreadable_reads_warn_and_report_unknown_not_zero(
+    info_env, monkeypatch, capsys, error, code
+):
+    # A CRAM whose reference isn't installed decodes no reads: its read
+    # metrics are unknown, not 0 bp single-end from an "Unknown" sequencer.
+    sample, _calls = info_env
+    unread = metrics.BodySample(0, 0, 0, 0, 0, False, None, error=error)
+    monkeypatch.setattr(runner, "run_body_sample", lambda *_a, **_k: unread)
+
+    result = _run_info_json(sample, capsys)
+
+    metrics_out = result["metrics"]
+    for key in ("avg_read_len", "is_paired", "avg_insert_size", "sequencer"):
+        assert metrics_out[key] is None, key
+    assert result["details"]["avg_read_len"] is None
+    assert "read_sample_error" not in result["details"]
+    warning = next(w for w in result["warnings"] if w["code"] == code)
+    assert "Could not read the reads in sample.bam" in warning["message"]
+    if code == "cram_reference_missing":
+        assert "the hg38 reference is not installed" in warning["message"]
+        assert "ref library --install hg38" in warning["message"]
+
+
+def test_readable_reads_do_not_warn_about_unreadable_reads(info_env, capsys):
+    sample, _calls = info_env
+    codes = {w["code"] for w in _run_info_json(sample, capsys)["warnings"]}
+    assert not codes & {"cram_reference_missing", "reads_unreadable"}

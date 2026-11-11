@@ -17,6 +17,8 @@ int wgse_metal_enabled(void);
 // option asks for upstream's code.
 int wgse_fast_cpu(void);
 void *wgse_metal_calloc(size_t count, size_t size);
+// free(), except while a GPU command the watchdog abandoned may still read it.
+void wgse_metal_free(void *memory);
 int wgse_metal_map(const mem_opt_t *opt, const bwt_t *bwt, int n, bseq1_t *seqs,
     void (*worker)(void *, long, int), void *data);
 // mem_collect_intv()'s ks_introsort() of its intervals (mem_stages.c.in).
@@ -110,8 +112,8 @@ void wgse_inject_locate_failure();
 void wgse_inject_gpu_interruptions(size_t every);
 // The GPU watchdog's floor in seconds (CUDA).
 void wgse_set_gpu_watchdog_seconds(double seconds);
-// Occupies the GPU past the watchdog's limit before the first rescue batch (CUDA).
-void wgse_inject_gpu_hang();
+// Hangs the first GPU work of the stage label names (see DeviceOptions::hang_label).
+void wgse_inject_gpu_hang(const char *label);
 void wgse_set_gpu_locate(bool enable);
 void wgse_set_gpu_locate_dense(unsigned shift);
 void wgse_set_gpu_locate_dense_after(size_t reads);

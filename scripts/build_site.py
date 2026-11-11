@@ -27,7 +27,7 @@ SOCIAL_IMAGE_HEIGHT = 630
 
 NAV_ITEMS = [
     ("index.html", "Home"),
-    ("install.html", "Install"),
+    ("install.html", "Install CLI"),
     ("gui.html", "GUI"),
     ("cli.html", "CLI"),
     ("workflows.html", "Workflows"),

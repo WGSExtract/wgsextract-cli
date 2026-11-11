@@ -1271,6 +1271,10 @@ void prepare_extension() {
 }
 } // namespace
 
+extern "C" void wgse_metal_free(void *memory) {
+    if (!wgse::gpu::memory_unsettled()) free(memory);
+}
+
 extern "C" void *wgse_metal_calloc(size_t count, size_t size) {
     // Page-aligned so a GPU can use the index in place; contents as calloc's.
     const size_t page = static_cast<size_t>(getpagesize());
@@ -1756,10 +1760,10 @@ bool wgse_gpu_execution_failed(std::string &reason) {
 void wgse_finish_backend() {
     fprintf(stderr, "[wgse-bwa] gpu_batches=%zu gpu_reads=%zu cpu_reads=%zu fallback_reads=%zu "
         "wasted_reads=%zu unlocated_reads=%zu located_rows=%zu locate_misses=%zu "
-        "cpu_located_rows=%zu overlapped_chunks=%zu interruptions=%zu\n", gpu_batches, gpu_reads,
-        cpu_reads, fallback_reads, wasted_reads, unlocated_reads, located_rows,
-        locate_misses.load(), cpu_located_rows.load(), overlapped_chunks,
-        device ? device->interruptions() : size_t(0));
+        "cpu_located_rows=%zu overlapped_chunks=%zu interruptions=%zu watchdog_threads=%zu\n",
+        gpu_batches, gpu_reads, cpu_reads, fallback_reads, wasted_reads, unlocated_reads,
+        located_rows, locate_misses.load(), cpu_located_rows.load(), overlapped_chunks,
+        device ? device->interruptions() : size_t(0), wgse::gpu::watchdog_threads());
     fprintf(stderr, "[wgse-bwa] seconds gpu=%.3f locate=%.3f map=%.3f cpu_wait=%.3f\n",
         gpu_seconds, locate_seconds, map_seconds, cpu_wait_seconds);
     if (dense_tried)
@@ -1812,6 +1816,10 @@ void wgse_inject_locate_failure() {
 
 void wgse_inject_gpu_interruptions(size_t every) {
     device_options.interrupt_every = every;
+}
+
+void wgse_inject_gpu_hang(const char *label) {
+    device_options.hang_label = label;
 }
 
 void wgse_set_gpu_locate_rows(size_t rows) {
@@ -1898,6 +1906,14 @@ std::unique_ptr<Device> make_metal_device(const DeviceOptions &, std::string &re
 bool metal_hardware_supported() {
     return false;
 }
+
+bool memory_unsettled() {
+    return false;
+}
+
+size_t watchdog_threads() {
+    return 0;
+}
 #endif
 #ifndef WGSE_HAVE_CUDA
 std::unique_ptr<Device> make_cuda_device(const DeviceOptions &, std::string &reason) {
@@ -1913,8 +1929,4 @@ bool cuda_hardware_supported() {
 
 void wgse_set_gpu_watchdog_seconds(double seconds) {
     device_options.watchdog_seconds = seconds;
-}
-
-void wgse_inject_gpu_hang() {
-    device_options.inject_hang = true;
 }

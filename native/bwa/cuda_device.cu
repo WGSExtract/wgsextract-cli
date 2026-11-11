@@ -378,8 +378,9 @@ public:
             jobs.size() * sizeof(RescueJob), WGSE_GPU(MemcpyHostToDevice), stream), "rescue upload");
         check(WGSE_GPU(MemcpyAsync)(rescue_order_.data(), rescue_host_order_.data(),
             jobs.size() * sizeof(uint32_t), WGSE_GPU(MemcpyHostToDevice), stream), "rescue upload");
-        if (options_.inject_hang) {
-            options_.inject_hang = false;
+        if (!options_.hang_label.empty()
+            && std::string("rescue_align").rfind(options_.hang_label, 0) == 0) {
+            options_.hang_label.clear();
             spin<<<1, 1, 0, stream>>>(uint64_t(watchdog_.limit(Watchdog::rescue) * 2e9));
         }
         for (size_t s = 1; s <= rescue_max_segments; ++s) {

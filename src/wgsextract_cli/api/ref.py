@@ -117,6 +117,34 @@ class RefSomalierParams(_InLibrary, Params):
 
 
 @dataclass(frozen=True, kw_only=True)
+class RefGnomadSvParams(_InLibrary, Params):
+    """Install the gnomAD structural-variant sites tables that ``vcf sv-freq``
+    matches SV calls against, or delete them. Each sites VCF is checked
+    against a pinned SHA-256, reduced to a small table and deleted. gnomAD
+    data have no use restriction.
+
+    ``sr``: gnomAD-SV v4.1 for GRCh38 (1.7 GB download) and v2.1 for GRCh37
+    (141 MB). ``lr``: the gnomAD-LR 0.1 beta long-read SVs, GRCh38 only,
+    streamed out of 53 GB of sites VCFs (one chromosome, up to 4.3 GB, at
+    a time)."""
+
+    COMMAND = "ref gnomad-sv"
+
+    source: str = param(
+        "sr",
+        help="sr: gnomAD-SV (GRCh38, GRCh37). lr: gnomAD-LR (GRCh38, 53 GB).",
+        choices=("sr", "lr"),
+    )
+    build: str | None = param(
+        None,
+        help="Only this build (default: all).",
+        choices=("hg38", "hg19"),
+    )
+    delete: bool = _delete_param("gnomAD SV tables")
+    ref: Path | None = ref_param()
+
+
+@dataclass(frozen=True, kw_only=True)
 class RefYbrowseParams(_InLibrary, Params):
     """Install a hash-pinned, sites-only GRCh38 yBrowse snapshot into the
     library, or delete the installed snapshots."""
@@ -477,6 +505,19 @@ def somalier(
     from wgsextract_cli.commands.ref.library_commands import run_somalier
 
     return execute(params, run_somalier, progress=progress, cancel=cancel, check=check)
+
+
+def gnomad_sv(
+    params: RefGnomadSvParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Install the tables; output role ``reference_resource``."""
+    from wgsextract_cli.commands.ref.library_commands import run_gnomad_sv
+
+    return execute(params, run_gnomad_sv, progress=progress, cancel=cancel, check=check)
 
 
 def ybrowse(

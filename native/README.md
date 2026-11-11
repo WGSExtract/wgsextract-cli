@@ -15,7 +15,7 @@ run them in place of their upstream aligners when they're on `PATH`, and
 | `wgse-bwa` | BWA 0.7.19 | Native arm64 build. CPU by default (upstream code, with some steps replaced by exact faster versions); `--metal` is **experimental**. Low memory: about 6 GB for a human index. |
 | `wgse-bwa-mem2` | BWA-MEM2 2.3 | arm64 build through sse2neon. CPU by default (upstream code, with some steps replaced by exact faster versions); `--metal` is **experimental**. Needs much more memory than BWA (see below). |
 | `wgse-bwa-mem3` | bwa-mem3 0.16.0 | Self-contained arm64 build of bwa-mem3, a faster BWA-MEM2 descendant that reads the BWA-MEM2 index and can write BWA's or BWA-MEM2's exact records (`--compat`). CPU by default; `--metal` is **experimental**. |
-| `wgse-minimap2` | minimap2 2.31 | arm64 build through sse2neon, with faster index loading and building, seeding and anchor sorting on the CPU. `--metal` (long-read presets) is **experimental**. |
+| `wgse-minimap2` | minimap2 2.31 | arm64 build with a NEON base-level alignment kernel and faster index loading and building, seeding and anchor sorting on the CPU. `--metal` (long-read presets) is **experimental**. |
 
 All write the same alignments as their upstream release (in each of
 bwa-mem3's output modes), with or without `--metal`; only the `@PG` version
@@ -153,7 +153,7 @@ step while the other reads step, then locates all their seeds in one
 interleaved suffix-array walk. Each read's seeds are upstream's, in upstream's
 order. On the 5M HG002 pairs below 0.9.0 takes 27% less time than 0.8.0.
 
-`wgse-bwa` 0.9.1 aligns exactly as 0.9.0. Its GPU scheduling no longer depends
+`wgse-bwa` 0.9.2 aligns exactly as 0.9.1. Its GPU scheduling no longer depends
 on Metal (the Metal kernels sit behind a device interface, for the CUDA
 backend), and it also builds on Linux x86-64, on the CPU.
 
@@ -251,6 +251,19 @@ What runs on the GPU:
   the CPU, while the GPU still extends seeds and rescues mates, and exits 0;
   earlier versions did the same after a "CPU fallback" message and then
   exited 1 with `--metal`.
+- GPU watchdog (`wgse-bwa` 0.9.1, `wgse-bwa-mem2` 0.5.1, `wgse-bwa-mem3`
+  0.2.1, `wgse-minimap2` 0.2.1): a GPU command that has run for too long
+  with no error from macOS, as on a hung virtual GPU, makes the aligner stop
+  using the GPU for the rest of the run. Too long means 180 s until any
+  command has completed (the first may page in a large index), then 60 s or
+  20 times the slowest command so far, if longer, counted from when macOS
+  scheduled the command, in uptime (so a sleeping Mac does not trip it). The
+  work in flight finishes on the CPU with the same results; `--backend auto`
+  exits 0 and `--metal` exits 1. Earlier versions waited forever. Buffers
+  and the shared index stay allocated while an abandoned command might still
+  run. Whether the process then exits promptly with a command still stuck on
+  the GPU is up to the Metal driver, and is untested: CI's injected hang
+  never reaches the GPU.
 - `wgse-bwa-mem3` (from 0.2.0): seed extension only, in every output mode.
   bwa-mem3 extends seeds in batches, scoring each batch first with 8-bit
   scores and then, for the extensions that overflow, with 16-bit scores; the
@@ -293,9 +306,14 @@ changes to upstream's code (none changes any output):
 - the in-place radix sort of anchors and chains skips byte passes in which
   all keys are equal, which leave the order unchanged;
 - seed collection prefetches the hash slots and positions of the minimizers
-  ahead.
+  ahead;
+- (0.3.0) the anchor radix sort replays each pass of upstream's in-place sort
+  out of place, which keeps its order of equal keys (chaining depends on it);
+- (0.3.0) base-level alignment (`ksw_extd2`) is written for NEON instead of
+  going through sse2neon.
 
-`--metal` (0.2.0, experimental; given before minimap2's options) runs most
+`--metal` (0.2.0, experimental; given before minimap2's options; 16-bit
+GPU kernels since 0.3.0) runs most
 base-level gap fills on the GPU, for presets whose alignment uses two affine
 gap costs (`map-hifi`, `map-ont`, `map-pb` and `asm*`). Before a read is
 aligned, the gap fills between its chained anchors are queued for a Metal
@@ -316,9 +334,10 @@ Metal is unavailable, and exits 1 if a GPU batch fails (its fills then run on
 the CPU, so the output is complete and correct). It prints GPU and CPU fill
 counts to stderr.
 
-`-DWGSE_MINIMAP2_KSW2=sse2` builds upstream's SSE2-only base-level alignment
-(as Bioconda does) instead of the default SSE4.1 kernels; both give the same
-alignments. The tests build unmodified upstream minimap2 2.31 and require
+`-DWGSE_MINIMAP2_KSW2=sse41` or `sse2` builds upstream's SSE4.1 or SSE2-only
+(as Bioconda does) base-level alignment through sse2neon instead of the
+default NEON `ksw_extd2`; all give the same alignments, and a fuzz test
+compares the NEON kernel with upstream's on random inputs. The tests build unmodified upstream minimap2 2.31 and require
 identical indexes and SAM records (apart from `@PG`) for map-hifi, map-ont,
 map-pb and sr on a synthetic genome with segmental duplications and tandem
 repeats. On a Mac with Metal they also require the same records from
@@ -396,7 +415,11 @@ capabilities --json` reports `physical_memory_bytes` and the GPU's limits
 `wgse-minimap2` uses within about 1 GiB of upstream minimap2's memory: with 9 threads on
 hs38 it peaked at 13–15 GiB for HiFi reads, 10–14 GiB for ONT reads and
 11.3 GiB for short reads, whether it loaded a `.mmi` index or built one from
-the FASTA reference. `--metal` allocated 370–560 MiB of GPU buffers in the full
+the FASTA reference. Since 0.3.0 each mapping thread keeps scratch for sorting
+anchors out of place: 21 bytes per anchor of the largest array it sorted, at
+most 88 MiB (arrays of more than 4M anchors are sorted in place), so at most
+about 0.8 GiB with 9 threads; in the full HiFi and ONT runs peak RSS rose by
+at most 0.3 GiB. `--metal` allocated 370–560 MiB of GPU buffers in the full
 HiFi and ONT runs below. Its two batch buffer sets can grow to about 0.9 GiB in
 all: each holds backtrack matrices of up to 256 MiB, plus sequences and CIGARs,
 and grows half again beyond its largest batch. With 9 threads,
@@ -711,6 +734,39 @@ thread on each read while its fills waited for the GPU. What paid off was:
 - batches of about 1,300 fills of similar size;
 - many reads in flight per OS thread (16 fibers sharing one memory arena);
 - CPU threads taking queued fills when they ran out of reads.
+
+`wgse-minimap2` 0.3.0 was measured against 0.2.0 in three or four interleaved rounds
+on the same data, with 9 threads, `.mmi` indexes and AC power, each run
+started at thermal pressure 0 and a 1-minute load average below 2 (some
+below 3.5, when the shared machine's idle load stayed above 2). Medians:
+
+| Reads | 0.2.0 | 0.3.0 | 0.2.0 `--metal` | 0.3.0 `--metal` | Alignments |
+| --- | --- | --- | --- | --- | --- |
+| HiFi, 145k reads, 2.5 Gbp (`map-hifi`) | 77.8 s | 71.1 s (−8.7%) | 62.8 s | 50.6 s (−19.3%) | `bf2671dae7d3260e` |
+| ONT, 45.6k reads, 0.88 Gbp (`map-ont`) | 117.5 s | 106.6 s (−9.3%) | 109.0 s | 97.1 s (−10.9%) | `3a4c91aa2339b70f` |
+| 1M 150 bp pairs (`sr`) | 29.1 s | 26.8 s (−7.9%) | — | — | `5f521317c321d233` |
+
+Three changes, each exact:
+
+- The anchor sort replays upstream's in-place radix sort out of place: one
+  in-place pass of the American-flag sort is a walk that takes the next
+  element of the current bucket's region, delivers it to its digit's bucket
+  and continues in that bucket. Replaying that walk on the digits alone and
+  then gathering the elements gives upstream's order exactly, including that
+  of equal keys, which chaining depends on (most ONT reads have anchors with
+  equal keys), so a stable sort would change the output. It cut the sort's
+  cycles by about 28%.
+- `ksw_extd2` is written for NEON (`EXT` for the shifted column, bit-select
+  for the backtrack flags) instead of going through sse2neon: about 9% faster
+  on HiFi fills.
+- The Metal gap-fill kernels compute in 16 bits instead of 32 when the
+  scoring keeps every cell in range (checked from the scoring and each fill),
+  with lane widths matched to the fill sizes: about 1.8 times the cells per
+  second.
+
+Rejected for 0.3.0, as each gained less than 5%: scoring chaining
+predecessors four at a time with NEON (exact, but slower: the scalar loop is
+bound by instructions, not branches).
 
 `wgse-bwa-mem3` 0.1.0 was measured against Bioconda's bwa-mem3 0.16.0 on hs38
 (the first 5M HG002 pairs above, 9 threads, `-K 10000000`) in interleaved

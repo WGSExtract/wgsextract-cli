@@ -145,10 +145,20 @@ private:
 std::unique_ptr<Device> make_metal_device(const DeviceOptions &options, std::string &reason) {
     @autoreleasepool {
         wgse::metal::Runtime::inject_interruptions(options.interrupt_every);
+        if (!options.hang_label.empty())
+            wgse::metal::Runtime::inject_hang(options.hang_label, 2);
         auto device = std::make_unique<MetalDevice>(options);
         if (!device->kernel.available(reason)) return nullptr;
         return device;
     }
+}
+
+bool memory_unsettled() {
+    return wgse::metal::Runtime::unsettled() != 0;
+}
+
+size_t watchdog_threads() {
+    return wgse::metal::Runtime::watchdog_threads();
 }
 
 bool metal_hardware_supported() {

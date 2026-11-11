@@ -1165,6 +1165,38 @@ Annotate with gnomAD; output roles `annotated_vcf` and, with `max_af`,
 | `confidence_depth` | `tuple[float, float] \| None` | `None` | `--confidence-depth` | (LOW, HIGH): read depth below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
 | `confidence_gq` | `tuple[float, float] \| None` | `None` | `--confidence-gq` | (LOW, HIGH): genotype quality below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
 
+### `api.vcf.sv_freq(VcfSvFreqParams)`
+
+CLI: `wgsextract vcf sv-freq`.
+
+Annotate SVs with gnomAD-SV/gnomAD-LR frequencies; output roles
+`annotated_vcf` and `sv_frequencies` (the table), with the counts per
+frequency class in the metrics.
+
+`VcfSvFreqParams`: Population frequencies of structural variants (SV_AF, SV_POPMAX_AF,
+SV_FREQ, SV_COMMON, ...) from gnomAD-SV and gnomAD-LR as
+`sv_freq_annotated.vcf.gz`, and one row per SV in `sv_freq.tsv`.
+
+For the SV calls of `vcf sv` (Delly, Sniffles, pbsv) and `vcf cnv`,
+or any VCF of SVs. A call matches a gnomAD SV of a compatible type by
+reciprocal overlap (deletions, duplications, inversions, CNVs) or by
+breakpoint distance and size similarity (insertions).
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
+| `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `gnomad_sv_file` | `Path \| None` | `None` (config `gnomad_sv_path`) | `--gnomad-sv-file` | gnomAD-SV table (default: the library's, from 'ref gnomad-sv'). |
+| `gnomad_lr_file` | `Path \| None` | `None` (config `gnomad_lr_sv_path`) | `--gnomad-lr-file` | gnomAD-LR table (default: the library's; GRCh38). |
+| `min_overlap` | `float` | `0.5` | `--min-overlap` | Minimum reciprocal overlap for DEL/DUP/INV/CNV (default 0.5). |
+| `max_distance` | `int` | `500` | `--max-distance` | Maximum insertion breakpoint distance, bp (default 500). |
+| `min_size_similarity` | `float` | `0.5` | `--min-size-similarity` | Minimum insertion size similarity (default 0.5). |
+| `common_af` | `float` | `0.01` | `--common-af` | AF from which an SV is common (default 0.01). |
+| `rare_af` | `float` | `0.001` | `--rare-af` | AF below which an SV is rare (default 0.001). |
+
 ### `api.vcf.spliceai(VcfSpliceaiParams)`
 
 CLI: `wgsextract vcf spliceai`.
@@ -1690,6 +1722,29 @@ uses, about 85 MB, or delete them.
 | `delete` | `bool` | `False` | `--delete` | Delete the installed somalier sites and 1000 Genomes sketches |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 
+### `api.ref.gnomad_sv(RefGnomadSvParams)`
+
+CLI: `wgsextract ref gnomad-sv`.
+
+Install the tables; output role `reference_resource`.
+
+`RefGnomadSvParams`: Install the gnomAD structural-variant sites tables that `vcf sv-freq`
+matches SV calls against, or delete them. Each sites VCF is checked
+against a pinned SHA-256, reduced to a small table and deleted. gnomAD
+data have no use restriction.
+
+`sr`: gnomAD-SV v4.1 for GRCh38 (1.7 GB download) and v2.1 for GRCh37
+(141 MB). `lr`: the gnomAD-LR 0.1 beta long-read SVs, GRCh38 only,
+streamed out of 53 GB of sites VCFs (one chromosome, up to 4.3 GB, at
+a time).
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `source` | `str` | `'sr'` | `--source` | sr: gnomAD-SV (GRCh38, GRCh37). lr: gnomAD-LR (GRCh38, 53 GB). One of: `sr`, `lr` |
+| `build` | `str \| None` | `None` | `--build` | Only this build (default: all). One of: `hg38`, `hg19` |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed gnomAD SV tables |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+
 ### `api.ref.ybrowse(RefYbrowseParams)`
 
 CLI: `wgsextract ref ybrowse`.
@@ -2081,6 +2136,9 @@ Each writes `<input stem>.*` files in `outdir`, else beside the input:
 * `cyp2d6`: CYP2D6 star alleles, copy number and hybrids with Cyrius
   (`.cyrius.tsv`/`.json`), from the optional `cyrius` Pixi environment.
   Cyrius's PolyForm Strict license allows noncommercial use only.
+* `smn`: SMN1/SMN2 copy number and SMA carrier status with
+  SMNCopyNumberCaller (`.smn.tsv`/`.json`), from the optional `smn`
+  environment. A screening estimate, not a diagnosis.
 * `hla`: HLA class I and II alleles with T1K (`.t1k_genotype.tsv`,
   `.t1k_allele.tsv`/`.vcf`), from the optional `t1k` environment.
 * `repeats` (`typing str`): disease repeat expansions (`.str.tsv`), with
@@ -2107,6 +2165,33 @@ GRCh38 reference with chr22 ALT contigs, the locus's reads are first
 realigned to primary chr22 (needs `ref` and minimap2). Metrics:
 `cyp2d6_genotype`, `cyp2d6_filter`, `cyp2d6_copy_number` and
 `median_depth`.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | Indexed BAM or CRAM aligned to GRCh37/hg19 or GRCh38. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+
+### `api.genotyping.smn(TypingSmnParams)`
+
+CLI: `wgsextract typing smn`.
+
+Call SMN1/SMN2 copy number with SMNCopyNumberCaller (see
+`TypingSmnParams`).
+
+`TypingSmnParams`: Call the copy number of SMN1, SMN2 and SMN2Δ7–8 with SMNCopyNumberCaller
+for spinal muscular atrophy (SMA) carrier screening: one SMN1 copy is a
+carrier, none is SMA-affected. Two copies can still be a "2+0" silent
+carrier; g.27134T>G, associated with that, is counted. Short-read WGS of
+at least 30x only: long reads are refused, and below 30x median depth no
+calls are reported (the caller's files are kept as
+`<stem>.smn.below_min_depth.*`). A non-bwa-like aligner in the header
+(Novoalign, Bowtie 2, ...) gets an `aligner_not_calibrated` warning. Not
+a diagnosis. Metrics: `smn1_copy_number`,
+`smn2_copy_number`, `smn2_delta78_copy_number`, `sma_carrier`,
+`sma_affected`, `g27134tg_copy_number`, `smn_filter`,
+`median_depth` and `coverage_mad`.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |

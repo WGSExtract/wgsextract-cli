@@ -44,6 +44,7 @@ OPTIONAL_TOOLS = [
     "htsfile",
     "pharmcat_python",
     "cyrius",
+    "smn_caller.py",
     "run-t1k",
     "ExpansionHunter",
     "LongTR",
@@ -73,6 +74,7 @@ PLATFORM_ONLY_TOOLS = {
     "bwa-mem2": ("linux", "darwin", "win32"),
     "sambamba": ("linux",),
     "cyrius": ("linux", "darwin"),
+    "smn_caller.py": ("linux", "darwin"),
     "run-t1k": ("linux", "darwin"),
     "ExpansionHunter": ("linux", "darwin"),
     "LongTR": ("linux", "darwin"),
@@ -99,9 +101,18 @@ def clair3_host_supported() -> bool:
     return (system, machine) in CLAIR3_HOSTS
 
 
+def _x86_deepvariant_host() -> bool:
+    """Whether Google's run_deepvariant (x86-64) can be used: ARM64 hosts
+    run the native image instead (`vcf deepvariant`, `deps check`)."""
+    from wgsextract_cli.core.native_support import is_arm64_docker_host
+
+    return not is_arm64_docker_host()
+
+
 # Optional tools that need a particular OS and CPU.
 HOST_ONLY_TOOLS: dict[str, Callable[[], bool]] = {
     "run_clair3.sh": clair3_host_supported,
+    "run_deepvariant": _x86_deepvariant_host,
 }
 
 
@@ -149,6 +160,7 @@ PIXI_TOOL_ENVS = {
     "sniffles": "pacbio",
     "htsfile": "default",
     "cyrius": "cyrius",
+    "smn_caller.py": "smn",
     "run-t1k": "t1k",
     "t1k-build.pl": "t1k",
     "ExpansionHunter": "expansionhunter",
@@ -191,6 +203,7 @@ PIXI_TOOL_PACKAGES = {
     "vep": "ensembl-vep",
     "pharmcat_python": "pandas",
     "cyrius_python": "cyrius",
+    "smn_caller.py": "smncopynumbercaller",
     "run-t1k": "t1k",
     "t1k-build.pl": "t1k",
     "ExpansionHunter": "expansionhunter",

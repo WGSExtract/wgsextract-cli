@@ -113,8 +113,10 @@ Experiments that left the defaults alone:
 - **Variant caller.** `bcftools` is the caller to use on a Mac.
   - GATK HaplotypeCaller runs on one core on arm64: chr20 was not half done
     after 44 minutes, which would be days for a genome.
-  - DeepVariant needs Docker, and on a Mac it runs the x86-64 image under
-    emulation.
+  - Google's DeepVariant image is x86-64 only and can't run on Apple Silicon:
+    Docker Desktop's emulation lacks the AVX instructions its TensorFlow
+    needs. `vcf deepvariant` refuses it, and uses only the native ARM64 image
+    ([deepvariant-arm64.md](deepvariant-arm64.md#apple-silicon-macs)).
 
 ## A whole genome (HG002 at 35x)
 
@@ -183,8 +185,8 @@ reports them.
 | Indels | 0.9518 | 0.9533 | 0.9526 | 500,090 | 25,307 | 24,403 |
 
 They are close to the chr20-only result on the same Mac (SNPs 0.9932 recall,
-0.9746 precision; indels 0.9498 and 0.9496). DeepVariant would need Docker and
-x86-64 emulation on a Mac (see above).
+0.9746 precision; indels 0.9498 and 0.9496). Google's DeepVariant image can't
+run on a Mac (see above).
 
 ## `wgse-bwa` or `wgse-bwa-mem3`
 
@@ -220,6 +222,45 @@ run with `-K 10000000` wrote the same records, from either aligner.
   `wgse-bwa-mem3` against 12.0–13.0 GiB available, kept `wgse-bwa` on the GPU, and
   took 209–211 s. Forced with `--aligner bwa-mem3` it took 2,144 s (ten times as
   long), swap grew from 1.8 to 5.0 GiB, and the records were the same.
+
+### The whole genome again, with `macos-aligners-14`
+
+`macos-aligners-14` is the aligner release with `wgse-bwa` 0.9.0
+([Installing](../native/README.md#installing)).
+
+The same 35x HG002 BAM was realigned to hs38 again with the defaults
+([#609](https://github.com/WGSExtract/wgsextract-cli/issues/609)): WGS Extract
+0.8.6 from main, with `wgse-bwa` 0.9.0 and `wgse-bwa-mem3` 0.2.0 on `PATH` and
+bwa-mem2's index (without `.0123`) beside hs38. #549's reference library had
+been deleted, so hs38 was an uncompressed copy instead of its bgzipped one,
+with the same BWA index files.
+`realign`'s pre-flight found about 8.4 GiB of RAM available at the start.
+
+| Step | #549 (`wgse-bwa` 0.7.1) | #609 (`wgse-bwa` 0.9.0) |
+| :--- | ---: | ---: |
+| `realign` | 6 h 2 min | 5 h 52 min |
+| extract FASTQs | 23 min | 22.5 min |
+| align and sort | 5 h 39 min | 5 h 29 min |
+| peak memory (largest process) | 8.40 GiB | 8.41 GiB |
+| all processes together | 10.42 GiB | 10.24 GiB |
+| swap | 1.5 to 4.8 GiB | 1.1 to 4.9 GiB |
+| lowest free memory | 16% | 18% |
+| disk above the input | 166 GiB | 164 GiB |
+| `vcf snp` | 31 min | 31.5 min |
+| `vcf indel` | 37 min | 36 min |
+
+- **`realign` chose `wgse-bwa` on the GPU.** It estimated 29.6 GiB for
+  `wgse-bwa-mem3` against the 9.7 GiB available when alignment began, after extraction,
+  so it didn't use it. It
+  sorted with 512M a thread and extracted FASTQs, because holding a collate
+  bucket beside the aligner didn't fit.
+- **The record counts matched #549's**: 835,260,415, of which 832,735,204
+  mapped.
+- **The time barely changed.** On the GPU the run took about as long as
+  with 0.7.1; the GPU still sets the pace.
+- **The pre-flight warned and the run still finished.** It reported memory
+  (22.0 GiB estimated against 8.4 available) and disk (230 GiB against 223
+  free) as LOW, then completed within 164 GiB of extra disk.
 
 ## Advice for 16 GB Macs
 

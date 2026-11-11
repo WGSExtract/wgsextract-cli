@@ -238,13 +238,20 @@ struct DeviceOptions {
     // The watchdog's floor: a wait for the GPU fails after the larger of this
     // and 20 times the slowest batch of its stage (CUDA).
     double watchdog_seconds = 60;
-    // Test hook (CUDA): occupy the GPU before the first rescue batch for twice
-    // the watchdog's limit, as a hung kernel would.
-    bool inject_hang = false;
+    // Test hook: hang the first GPU work of the stage this names (a prefix of
+    // collect_seeds, locate_rows, rescue_align or extend) as a hung GPU would.
+    // Metal withholds the command and gives up after 2 s; CUDA, which hangs only
+    // rescue_align, occupies the GPU for twice the watchdog's limit.
+    std::string hang_label;
 };
 std::unique_ptr<Device> make_metal_device(const DeviceOptions &options, std::string &reason);
 std::unique_ptr<Device> make_cuda_device(const DeviceOptions &options, std::string &reason);
 // Whether the machine has the device at all (capabilities' *_hardware_supported).
 bool metal_hardware_supported();
 bool cuda_hardware_supported();
+// The Metal watchdog: whether a GPU command it gave up on may still read host
+// memory (so the index must not be freed), and the watchdog threads it has run.
+// Without Metal, false and 0. They outlive the device, which a failure drops.
+bool memory_unsettled();
+size_t watchdog_threads();
 } // namespace wgse::gpu

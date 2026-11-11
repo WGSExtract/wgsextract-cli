@@ -1,11 +1,11 @@
 ---
 output: 'wgsextract.html'
-title: 'WGSExtract and GUI for CLI'
-description: 'WGSExtract v0.8.6 workflows and how the first real app shaped GUI for CLI.'
+title: 'WGSExtract and WGS Extract GUI'
+description: 'WGSExtract v0.8.6 workflows and how the first real app shaped WGS Extract GUI.'
 eyebrow: 'First real app'
-heading: 'WGSExtract made GUI for CLI prove itself.'
-lede: 'The WGSExtract bundle is the first real application built through GUI for CLI. It pushed the project beyond demo controls into setup, command execution, data state, localization, and packaged releases.'
-actions: 'Architecture|architecture.html; Documentation|docs.html'
+heading: 'WGSExtract made WGS Extract GUI prove itself.'
+lede: 'The WGSExtract bundle is the first real application built through WGS Extract GUI. It pushed the project beyond demo controls into setup, command execution, data state, localization, and packaged releases.'
+actions: 'GUI Architecture|architecture.html; Documentation|docs.html'
 footer_title: 'WGSExtract'
 footer_text: 'A real workflow drove the generic app shell.'
 ---
@@ -15,7 +15,7 @@ footer_text: 'A real workflow drove the generic app shell.'
 ::: section-head
 ## Why this bundle mattered
 
-WGSExtract gave GUI for CLI a real target: a genomics workflow with long-running tools, user-selected files, setup state, reference data, and packaging expectations.
+WGSExtract gave WGS Extract GUI a real target: a genomics workflow with long-running tools, user-selected files, setup state, reference data, and packaging expectations.
 :::
 
 ::: grid three
@@ -107,7 +107,7 @@ CLI setup is native on Windows, without WSL or MSYS2, and GUI settings save real
 - localized strings and semantic icon maps;
 - bundle-specific packaging and app identity.
 
-Those requirements are generic. The WGSExtract app is concrete, but the runtime behavior belongs to GUI for CLI so another CLI tool can reuse the same shell.
+Those requirements are generic. The WGSExtract app is concrete, but the runtime behavior belongs to WGS Extract GUI so another CLI tool can reuse the same shell.
 :::
 :::
 

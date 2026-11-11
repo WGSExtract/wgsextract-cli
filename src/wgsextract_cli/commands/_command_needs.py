@@ -130,6 +130,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf clinvar": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf revel": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf gnomad": _n(MINUTES, *_VCF, optional="bgzip samtools"),
+    "vcf sv-freq": _n(MINUTES, "bcftools", "bgzip", "tabix", optional="samtools"),
     "vcf pharmgkb": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf to-fasta": _n(MINUTES, "bcftools", "bgzip", "samtools", "tabix"),
     "vcf trio": _n(MINUTES, *_CALL, optional="bgzip"),
@@ -168,6 +169,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "ref bootstrap": _n(DOWNLOAD, optional="curl"),
     "ref aadr": _n(DOWNLOAD, optional="curl"),
     "ref somalier": _n(DOWNLOAD, optional="curl"),
+    "ref gnomad-sv": _n(DOWNLOAD, "bcftools", "bgzip", "tabix", optional="curl"),
     "ref ybrowse": _n(DOWNLOAD, "bgzip", "tabix"),
     "ref microarray-targets": _n(MINUTES),
     "ref gene-map": _n(DOWNLOAD, optional="curl"),
@@ -220,6 +222,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "analyze comprehensive": _n(HOURS, *_CALL),
     "analyze batch-gen": _n(INSTANT),
     "typing cyp2d6": _n(MINUTES, "cyrius", "minimap2", "samtools", optional="bcftools"),
+    "typing smn": _n(MINUTES, "smn_caller.py", "samtools", optional="bcftools"),
     "typing hla": _n(
         MINUTES, "run-t1k", "samtools", "t1k-build.pl", optional="bcftools"
     ),

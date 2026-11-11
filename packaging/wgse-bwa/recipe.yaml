@@ -30,11 +30,6 @@ build:
   dynamic_linking:
     missing_dso_allowlist:
       - libcuda.so.1
-  ignore_run_exports:
-    from_package:
-      - ${{ compiler('cuda') }}
-    by_name:
-      - cuda-version
 
 requirements:
   build:
@@ -49,6 +44,11 @@ requirements:
     - cuda-cudart-dev
     - cuda-cudart-static
     - zlib
+  ignore_run_exports:
+    from_package:
+      - ${{ compiler('cuda') }}
+    by_name:
+      - cuda-version
 
 tests:
   - script:

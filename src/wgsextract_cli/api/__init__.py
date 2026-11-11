@@ -112,7 +112,12 @@ from .extract import (
     YdnaVcfParams,
     YMtExtractParams,
 )
-from .genotyping import TypingCyp2d6Params, TypingHlaParams, TypingStrParams
+from .genotyping import (
+    TypingCyp2d6Params,
+    TypingHlaParams,
+    TypingSmnParams,
+    TypingStrParams,
+)
 from .info import CalculateCoverageParams, ChipParams, CoverageSampleParams, InfoParams
 from .lineage import MtHaplogroupParams, YHaplogroupParams, YStrParams
 from .methylation import MethylationPileupParams
@@ -140,6 +145,7 @@ from .ref import (
     RefGeneMapParams,
     RefGerpParams,
     RefGnomadParams,
+    RefGnomadSvParams,
     RefIndexParams,
     RefLibraryListParams,
     RefLibraryParams,
@@ -180,6 +186,7 @@ from .vcf import (
     VcfRevelParams,
     VcfSnpParams,
     VcfSpliceaiParams,
+    VcfSvFreqParams,
     VcfSvParams,
     VcfTableParams,
     VcfToFastaParams,
@@ -249,6 +256,7 @@ __all__ = [
     "RefGeneMapParams",
     "RefGerpParams",
     "RefGnomadParams",
+    "RefGnomadSvParams",
     "RefIndexParams",
     "RefLibraryListParams",
     "RefLibraryParams",
@@ -274,6 +282,7 @@ __all__ = [
     "SignVerifyParams",
     "UnmappedParams",
     "TypingCyp2d6Params",
+    "TypingSmnParams",
     "TypingHlaParams",
     "TypingStrParams",
     "UsageError",
@@ -290,6 +299,7 @@ __all__ = [
     "VcfGatkParams",
     "VcfGerpParams",
     "VcfGnomadParams",
+    "VcfSvFreqParams",
     "VcfIndelParams",
     "VcfPharmcatParams",
     "VcfPharmgkbParams",

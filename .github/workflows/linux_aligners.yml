@@ -9,9 +9,6 @@ name: Linux Aligners
 # unavailable rather than failing.
 
 on:
-  # TEMPORARY (#679 review): build the stacked PR's branch; remove before merging.
-  push:
-    branches: [ perf/674-cuda ]
   pull_request:
     branches: [ main ]
     paths:
