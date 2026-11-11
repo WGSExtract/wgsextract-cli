@@ -64,6 +64,41 @@ for hs38: auto still wants the `.0123` file and counts it, and picks bwa
 otherwise (where `wgse-bwa-mem3` may then stand in). `--aligner bwa-mem2` uses
 `wgse-bwa-mem2`'s own needs (see [Apple Silicon](#apple-silicon-metal)).
 
+### bwa-mem3 on Linux
+
+[bwa-mem3](https://github.com/fulcrumgenomics/bwa-mem3) writes bwa's exact
+records with `--compat=bwa-mem` and bwa-mem2's with `--compat=bwa-mem2`, from
+bwa-mem2's index without its `.0123` file, several times faster. Bioconda's
+build needs a newer htslib than the default environment's samtools, so it has
+its own environment; install it with `pixi install --locked -e bwa-mem3` (Linux
+and macOS). On Linux, when it is installed and the reference has bwa-mem2's
+index, `align` and `realign` run it in place of bwa or bwa-mem2 (whichever
+`--aligner` or `auto` chose), under the same memory rules as `wgse-bwa-mem3` on
+a Mac ([Apple Silicon](#apple-silicon-metal)): in bwa's place its pipeline must
+fit the RAM available, so on 16 GB computers bwa usually runs. Ultima reads keep
+BWA. `--native-aligners off` (or `native_aligners = "off"`) turns this off. A
+bwa-mem3 older than 0.16.0, or one whose `bwa-mem3 version` fails, raises the
+`native_aligner_unusable` warning and bwa or bwa-mem2 runs. The result manifest
+records `native_aligner` `bwa-mem3` and `bwa_mem3_mode`, as on a Mac.
+
+**Measured** with `wgsextract align` on the first 5M HG002 read pairs (30x
+NovaSeq) on hs38, 16 threads, BAM output, two rounds in reversed order, on
+Azure 16-vCPU, 64 GiB VMs with Ubuntu 24.04. The records were the same with and
+without bwa-mem3 (SHA-256 of `samtools view`, 10,062,598 records):
+
+| Computer | `--aligner bwa` | with bwa-mem3 | `--aligner bwa-mem2` | with bwa-mem3 |
+| :--- | ---: | ---: | ---: | ---: |
+| ARM64: Cobalt 100 (Neoverse N2), D16pds_v6 | 295 s, 287 s | 52 s, 51 s (−82%) | 245 s, 243 s | 53 s, 53 s (−78%) |
+| x86-64: AMD EPYC 9V74 (Zen 4), D16ads_v6 | 342 s, 334 s | 55 s, 56 s (−84%) | 181 s, 181 s | 57 s, 57 s (−69%) |
+
+Peak memory was 14.7 GiB with bwa-mem3, against 6.6 GiB with bwa and 18.7 GiB
+with bwa-mem2. The `Linux bwa-mem3 parity` workflow checks Bioconda's build
+against bwa's and bwa-mem2's records on GitHub's x86-64 and ARM64 runners.
+
+Bioconda's x86-64 bwa-mem3 0.16.0 crashes at startup (in its bundled
+allocator) on glibc 2.44, as on current Arch Linux; it ran on Ubuntu 24.04's
+2.39. The CLI's version check catches that, warns and aligns with bwa.
+
 ### Threads and memory
 
 - `--threads` (or `threads` in `config.toml`) defaults to `auto`: all cores, or
