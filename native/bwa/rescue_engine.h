@@ -1,7 +1,8 @@
 #pragma once
 
-#include "runtime.h"
+#include "rescue_parameters.h"
 #include "rescue_types.h"
+#include "runtime.h"
 
 #include "bwamem.h"
 

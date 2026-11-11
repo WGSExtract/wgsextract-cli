@@ -1355,7 +1355,7 @@ extern "C" int wgse_metal_pair(const mem_opt_t *opt, const bntseq_t *bns, const 
     }
     ++pair_starts;
     if (!usable || !rescue_enabled || !(opt->flag & MEM_F_PE)
-        || (opt->flag & MEM_F_NO_RESCUE) || !rescue_parameters(*opt, parameters))
+        || (opt->flag & MEM_F_NO_RESCUE) || !wgse::rescue::parameters(*opt, parameters))
         return 0;
     try {
         auto start = Clock::now();
