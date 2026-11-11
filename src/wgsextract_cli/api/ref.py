@@ -126,6 +126,12 @@ class RefAncestryParams(_InLibrary, Params):
     delete: bool = _delete_param("ancestry reference")
     ref: Path | None = ref_param()
 
+    def write_folders(self) -> Iterator[Path]:
+        from wgsextract_cli.core import ancestry_reference
+
+        yield from super().write_folders()
+        yield ancestry_reference.folder(os.fspath(self.library()))
+
 
 @dataclass(frozen=True, kw_only=True)
 class RefYbrowseParams(_InLibrary, Params):

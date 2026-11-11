@@ -391,6 +391,34 @@ def test_hla_typing_building_its_library_index_waits_for_a_busy_library(
         assert (first["status"], second["status"]) == ("running", "queued")
 
 
+def test_qc_ancestry_fetching_its_library_reference_waits_for_a_busy_folder(
+    tmp_path, work, fake_data, slow_coverage
+):
+    # #683 review: the first `qc ancestry` downloads its reference into
+    # <library>/ancestry; two such jobs at once raced on one .partial file.
+    bam, ref = fake_data
+    library = work / "library"
+    (library / "ancestry").mkdir(parents=True)
+    (library / "genomes").mkdir()
+    shutil.copy(ref, library / "genomes" / "ref.fa")
+    other = tmp_path / "other"
+    other.mkdir()
+    with _serve(tmp_path, [work, other, FAKE_DIR], max_jobs=2) as client:
+        busy = {"input": str(bam), "ref": str(ref), "outdir": str(library / "ancestry")}
+        first = client.request("POST", "/ops/info/calculate-coverage", busy)[1]
+        status, second = client.request(
+            "POST",
+            "/ops/qc/ancestry",
+            {
+                "input": str(bam),
+                "ref": str(library / "genomes" / "ref.fa"),
+                "outdir": str(other),
+            },
+        )
+        assert status == 202, second
+        assert (first["status"], second["status"]) == ("running", "queued")
+
+
 def test_a_methylation_run_waits_while_its_reference_folder_is_busy(
     tmp_path, work, fake_data, slow_coverage
 ):

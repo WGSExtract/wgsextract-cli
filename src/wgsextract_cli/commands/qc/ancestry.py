@@ -42,11 +42,9 @@ from wgsextract_cli.core.microarray_revisions import decode_text, read_raw_bytes
 from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.reference_assets import (
     input_stem,
-    resolve_reference_library,
 )
 from wgsextract_cli.core.reference_resolver import (
     header_contig_lengths,
-    library_roots,
 )
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.utils import (
@@ -433,10 +431,9 @@ def run_ancestry(params: QcAncestryParams) -> None:
     path = expand_path(params.input)
     verify_paths_exist({"--input": path})
     kind = _input_kind(path)
-    # An external FASTA chooses only the sequence; the reference is in the
-    # configured library (or the library the FASTA is in).
-    root = library_roots(expand_path(params.ref) if params.ref else None)
-    reflib = resolve_reference_library(root.resource_root(ancestry_reference.FOLDER))
+    reflib = ancestry_reference.library_for(
+        expand_path(params.ref) if params.ref else None
+    )
     reference = ancestry_reference.load(reflib, cancel=cancel_event())
     outdir = Path(expand_path(params.outdir or absolute_path(path).parent))
     outdir.mkdir(parents=True, exist_ok=True)

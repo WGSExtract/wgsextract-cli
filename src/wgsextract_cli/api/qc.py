@@ -288,6 +288,17 @@ class QcAncestryParams(Params):
         if self.bootstrap < 0:
             raise UsageError("--bootstrap must be 0 or more.")
 
+    def write_folders(self) -> Iterator[Path]:
+        # The first run downloads the reference into the library.
+        from wgsextract_cli.core import ancestry_reference
+        from wgsextract_cli.core.paths import expand_path
+
+        from ._params import with_config_defaults
+
+        ref = with_config_defaults(self).ref
+        library = ancestry_reference.library_for(expand_path(ref) if ref else None)
+        yield ancestry_reference.folder(library)
+
 
 @dataclass(frozen=True, kw_only=True)
 class FakeDataParams(Params):

@@ -115,6 +115,15 @@ class AncestryReference:
         }
 
 
+def library_for(ref: str | None) -> str:
+    """The library whose reference ``qc ancestry --ref ref`` uses: an external
+    FASTA chooses only the sequence; the reference is in the configured
+    library (or the library the FASTA is in)."""
+    from wgsextract_cli.core.reference_resolver import library_roots
+
+    return resolve_reference_library(library_roots(ref).resource_root(FOLDER))
+
+
 def folder(reflib: str | None = None) -> Path:
     return Path(resolve_reference_library(reflib), FOLDER)
 
