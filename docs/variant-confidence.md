@@ -73,6 +73,14 @@ reason makes it `moderate`; otherwise it is `high`.
 | A measure missing from the VCF | no depth, GQ or allele counts at all (`no_call_metrics`) | any one missing | `depth_unknown`, `gq_unknown`, `allele_balance_unknown` |
 | Sample contamination ([`qc contamination`](contamination.md) FREEMIX) | | at or above `qc_max_contamination` (3%) | `sample_contaminated` |
 
+An imputed genotype (`INFO/IMP`, from [`vcf impute`](imputation.md)) has no
+reads behind it to judge, so it is always `low`, reason `imputed` (with
+`filtered` when it is `ImpLowConf`). An imputed allele rarer than 1% in the
+panel (GLIMPSE2's `INFO/RAF`, else `INFO/AF`) is never counted or listed as a
+finding at all: imputation cannot see a rare allele the reads don't show, so
+it would be a guess. The labelled VCF keeps it; the manifest counts them
+(`rare_imputed_not_listed`) and warns.
+
 Contamination applies to the whole sample, not one call: another person's
 reads can turn a homozygous site heterozygous or add an allele the sample
 doesn't carry. The estimate is read from the sample workspace, so it applies

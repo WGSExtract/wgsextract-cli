@@ -32,6 +32,7 @@ from typing import IO, Any
 
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.config import KNOWN_SETTINGS, settings
+from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.results import Scalar, current_result, warn
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen
@@ -69,6 +70,9 @@ MIN_QD = 2.0
 MAX_FS = {"snv": 60.0, "indel": 200.0}  # INFO/FS above: low (GATK hard filter)
 MAX_SOR = {"snv": 3.0, "indel": 10.0}  # SOR above: low (GATK hard filter)
 SYMBOLIC_REFERENCE_ALTS = {"<*>", "<NON_REF>", "<X>"}
+# Imputed rarer than this in the panel is never listed as a finding: imputation
+# can't see a rare allele the reads don't show (#621).
+RARE_IMPUTED_AF = 0.01
 # INFO tag marking one ALT split from a multiallelic record (bcftools norm -m
 # --old-rec-tag, vt decompose). Its PL is trimmed to REF/this ALT, dropping a
 # called 1/2, and site-level DP4/SB still count every ALT's reads.
@@ -83,6 +87,8 @@ LOW_REASONS = {
     "strand_bias": "alt reads come mostly from one strand",
     "low_qd": "variant quality is low for its depth (QD below 2)",
     "no_call_metrics": "no depth, genotype quality or allele counts to judge by",
+    "imputed": "the genotype was imputed from a reference panel (`vcf impute`), "
+    "not read from the sample",
 }
 MODERATE_REASONS = {
     "moderate_depth": "read depth below the high-confidence level",
@@ -318,6 +324,9 @@ def classify(
 
     if filters not in {"PASS", "."}:
         low.append("filtered")
+    if IMPUTED_TAG in info:
+        # No reads behind it to judge: its own probability is in FORMAT/GP.
+        return CallConfidence(LOW, [*low, "imputed"], zygosity, None, None, None)
 
     split = SPLIT_TAG in info
     # INFO/DP and DP4 pool every sample's reads: they are this call's evidence
@@ -427,6 +436,19 @@ class Finding:
         }
 
 
+def rare_imputed(info: Mapping[str, str], alt: int) -> bool:
+    """An imputed ALT (INFO/IMP) whose panel frequency (GLIMPSE2's RAF, else
+    AF) is below RARE_IMPUTED_AF, or unknown."""
+    if IMPUTED_TAG not in info:
+        return False
+    for key in ("RAF", "AF"):
+        values = _numbers(info.get(key))
+        if len(values) >= alt and values[alt - 1] is not None:
+            frequency = values[alt - 1]
+            return frequency is None or frequency < RARE_IMPUTED_AF
+    return True
+
+
 def _format(value: float | None, digits: int = 0) -> str:
     if value is None:
         return ""
@@ -443,6 +465,7 @@ class ConfidenceSummary:
     counts: Counter[str] = field(default_factory=Counter)
     reasons: Counter[str] = field(default_factory=Counter)
     not_carried: int = 0
+    rare_imputed: int = 0
     findings: list[Finding] = field(default_factory=list)
 
     @property
@@ -467,6 +490,7 @@ class ConfidenceSummary:
             "contamination": self.contamination,
             "counts": {label: self.counts[label] for label in LABELS},
             "not_carried": self.not_carried,
+            "rare_imputed_not_listed": self.rare_imputed,
             "reasons": dict(sorted(self.reasons.items())),
             "findings": [finding.manifest() for finding in listed],
             "findings_truncated": len(self.findings) > len(listed),
@@ -604,6 +628,10 @@ def label_records(
                 continue
             labels.append(result.label)
             reasons.append("|".join(result.reasons) or ".")
+            if rare_imputed(info, index):
+                # Labelled in the VCF, but never counted or listed as a finding.
+                summary.rare_imputed += 1
+                continue
             summary.counts[result.label] += 1
             summary.reasons.update(result.reasons)
             if keep_findings:
@@ -856,6 +884,14 @@ def record(
     )]  # fmt: skip
     result.set_details(details)
 
+    if summary.rare_imputed:
+        warn(
+            "rare_imputed_not_listed",
+            f"{summary.rare_imputed} imputed {what} with a panel frequency "
+            f"under {RARE_IMPUTED_AF:.0%} are not listed: imputation cannot "
+            "detect rare variants reliably. Sequence the sample to look for them.",
+            count=summary.rare_imputed,
+        )
     if not summary.carried:
         logging.info(f"No {what} are carried by the sample.")
         return

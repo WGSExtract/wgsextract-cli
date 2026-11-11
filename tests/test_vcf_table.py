@@ -443,3 +443,22 @@ def test_vcf_table_parquet_holds_the_tsv_rows(annotated_vcf, tmp_path, monkeypat
     assert metadata[b"input"] == str(Path(annotated_vcf).absolute()).encode()
     assert b"sorted_by" in metadata
     assert len(metadata[b"source_sha256"]) == 64
+
+
+def test_imputed_genotypes_are_marked_with_their_probability():
+    # #621: imputed rows must be told apart from sequenced ones.
+    imputed = _record(
+        "chr1", "800", ".", "C", "T", ".", "ImpLowConf", "IMP;RAF=0.3",
+        "GT:DS:GP", "0/1:0.8:0.25,0.7,0.05",
+    )  # fmt: skip
+    called = _record("chr1", "900", ".", "G", "A", "30", "PASS", ".", "GT", "1/1")
+    rows = _rows([imputed, called])
+    assert (
+        rows[("800", "T")]["imputed"],
+        rows[("800", "T")]["genotype_probability"],
+    ) == (1, 0.7)
+    assert rows[("800", "T")]["filter"] == "ImpLowConf"
+    assert (
+        rows[("900", "A")]["imputed"],
+        rows[("900", "A")]["genotype_probability"],
+    ) == (0, None)
