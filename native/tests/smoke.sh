@@ -69,9 +69,15 @@ if [ "$mode" = cpu ]; then
     echo "CPU alignment verified"
 else
     "$binary" capabilities --json > capabilities.json 2> capabilities.log
+    gpu=""
     if grep -q '"metal_available":true' capabilities.json; then
+        gpu=--metal
+    elif grep -q '"cuda_available":true' capabilities.json; then
+        gpu=--cuda
+    fi
+    if [ -n "$gpu" ]; then
         # shellcheck disable=SC2086
-        "$binary" --metal $gpu_options mem -t 4 reference.fa reads_1.fq reads_2.fq \
+        "$binary" $gpu $gpu_options mem -t 4 reference.fa reads_1.fq reads_2.fq \
             > metal.sam 2> metal.log
         # Only the @PG command line may differ (it records the backend option).
         grep -v '^@PG' cpu.sam > cpu.records
@@ -84,7 +90,7 @@ else
                 echo "force-gpu run dispatched no GPU batches" >&2
                 exit 1
             fi
-            echo "Routing kept every batch on the CPU; Metal output matches CPU"
+            echo "Routing kept every batch on the CPU; GPU output matches CPU"
         else
             # wgse-bwa also locates seeds on the GPU; mem_chain must use every row.
             if grep -q 'locate_misses=' metal.log; then
@@ -101,13 +107,13 @@ else
                 grep 'extend_batches=' metal.log
                 [ "$mode" != force-gpu ] || grep -Eq 'extend_hits=[1-9]' metal.log
             fi
-            echo "Metal alignments match CPU"
+            echo "GPU alignments match CPU"
         fi
-    elif grep -q '"metal_hardware_supported":true' capabilities.json; then
+    elif grep -Eq '"(metal|cuda)_hardware_supported":true' capabilities.json; then
         cat capabilities.log >&2
-        echo "Metal hardware is present but the backend failed to initialize" >&2
+        echo "GPU hardware is present but its backend failed to initialize" >&2
         exit 1
     else
-        echo "Metal unsupported on this machine; CPU alignment verified"
+        echo "No supported GPU on this machine; CPU alignment verified"
     fi
 fi

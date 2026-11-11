@@ -110,6 +110,12 @@ if(BUILD_TESTING)
             $<TARGET_FILE:wgse-bwa> $<TARGET_FILE:seeding_benchmark>
             "${CMAKE_CURRENT_BINARY_DIR}/seeding-parity")
         set_tests_properties(bwa_metal_seeding_parity PROPERTIES SKIP_RETURN_CODE 77)
+    else()
+        # Without the Metal benchmark ("-"), the aligner's output is checked.
+        add_test(NAME bwa_gpu_seeding_parity
+            COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/seeding_parity.sh"
+            $<TARGET_FILE:wgse-bwa> - "${CMAKE_CURRENT_BINARY_DIR}/seeding-parity")
+        set_tests_properties(bwa_gpu_seeding_parity PROPERTIES SKIP_RETURN_CODE 77)
     endif()
     add_executable(ksw_batch_check tests/ksw_batch_check.c)
     target_compile_options(ksw_batch_check PRIVATE -Wall -Wextra -Werror)
