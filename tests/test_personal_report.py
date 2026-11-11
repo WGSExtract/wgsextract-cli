@@ -264,6 +264,7 @@ def test_sections_follow_the_runs_and_missing_ones_say_how_to_run(sample):
         "pharmacogenomics": "ok",
         "carrier_screening": "not_run",
         "clinvar": "ok",
+        "structural_variants": "not_run",
         "microarray": "not_run",
     }
     hints = {n: [m["command"] for m in s["missing"]] for n, s in sections.items()}
@@ -279,6 +280,10 @@ def test_sections_follow_the_runs_and_missing_ones_say_how_to_run(sample):
     assert hints["carrier_screening"] == ["wgsextract typing smn -i HG002.cram"]
     assert hints["microarray"] == ["wgsextract microarray -i HG002.cram"]
     assert hints["clinvar"] == []
+    assert hints["structural_variants"] == [  # #618
+        "wgsextract vcf sv -i HG002.cram, then "
+        "wgsextract vcf sv-freq --vcf-input sv.vcf.gz"
+    ]
     sex = next(f for f in sections["overview"]["facts"] if f["name"] == "sex")
     assert (sex["value"], sex["method"], sex["confidence"]) == (
         "Male",

@@ -54,6 +54,7 @@ CRAM `--input`.
 | Pharmacogenomics | `vcf pharmcat`, `typing cyp2d6` (Cyrius), `typing hla` (T1K) | one per PharmCAT gene (diplotype and phenotype); the CYP2D6 diplotype; the HLA-A and HLA-B alleles |
 | Carrier screening by copy number | `typing smn` (SMNCopyNumberCaller) | SMA carrier status from the SMN1 copy number, with SMN2 and g.27134T>G; two SMN1 copies carry the silent (2+0) carrier caveat |
 | ClinVar | `vcf clinvar` | each carried ClinVar pathogenic or likely-pathogenic call in a gene of the gene list (default ACMG SF v3.3), and per gene the calls by zygosity, with recessive genes marked carrier or (possibly) biallelic |
+| Rare structural variants | `vcf sv-freq` | each carried PASS SV whose matching gnomAD SV has AF below 0.1% (`--rare-af`), labelled "rare (AF < 0.001)", rarest first (up to 100; the rest in `sv_freq.tsv`), and counts of common, low-frequency, rare and novel SVs. Confidence is `not_assessed`: the frequency comes from the gnomAD match, not the call's read support |
 | Microarray export | `microarray` | none: the files produced, with sites, called sites and no-call rate |
 
 Warnings the source runs recorded (low coverage, high no-call rates, ...) are

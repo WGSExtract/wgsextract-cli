@@ -508,9 +508,8 @@ def test_help_stays_token_efficient(capsys):
     main(["help", "--all"])
     assert len(capsys.readouterr().out) <= 12_000
     main(["help", "--all", "--json"])
-    # Grows with each command group moved onto typed Params (input_schema)
-    # and each new command (300k reached with qc ancestry, #620).
-    assert len(capsys.readouterr().out) <= 320_000
+    # Grows with each command group moved onto typed Params (input_schema).
+    assert len(capsys.readouterr().out) <= 310_000
     main(["help", "microarray", "--json"])
     assert len(capsys.readouterr().out) <= 15_000
 

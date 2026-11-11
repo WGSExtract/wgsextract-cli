@@ -10,6 +10,7 @@ from wgsextract_cli.api.ref import (
     RefCountNsParams,
     RefDownloadParams,
     RefGeneMapParams,
+    RefGnomadSvParams,
     RefIndexParams,
     RefLibraryParams,
     RefMicroarrayTargetsParams,
@@ -33,6 +34,7 @@ from .library_commands import (
     cmd_ancestry_reference,
     cmd_bootstrap,
     cmd_gene_map,
+    cmd_gnomad_sv,
     cmd_library,
     cmd_microarray_targets,
     cmd_somalier,
@@ -80,7 +82,7 @@ def register(
         name: str, cls: type[Params] | None, func: Handler, help: str
     ) -> argparse.ArgumentParser:
         sub = ref_subs.add_parser(name, parents=[base_parser], help=help)
-        if name in ("aadr", "ybrowse", "somalier", "ancestry"):
+        if name in ("aadr", "ybrowse", "somalier", "ancestry", "gnomad-sv"):
             # The CLI asks for these downloads explicitly; the API call is the ask.
             sub.add_argument("--install", action="store_true", help="Install it.")
             func = _install_or_delete(func)
@@ -113,6 +115,12 @@ def register(
         RefAncestryParams,
         cmd_ancestry_reference,
         "Fetch the hash-pinned ancestry reference for qc ancestry.",
+    )
+    add(
+        "gnomad-sv",
+        RefGnomadSvParams,
+        cmd_gnomad_sv,
+        "Explicitly fetch hash-pinned gnomAD SV tables for vcf sv-freq.",
     )
     add("download", RefDownloadParams, cmd_download, CLI_HELP["cmd_ref-download"])
     add("index", RefIndexParams, cmd_index, CLI_HELP["cmd_ref-index"])
