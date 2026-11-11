@@ -310,7 +310,8 @@ test("PR #531 review: uninstall runs no steps from, and deletes nothing of, a fo
 test("the settings of an app up to 0.8.6 come over from its identifier's folder, which is removed", async (t) => {
   const { root } = await fixture(t);
   const { migrateLegacyAppData, legacyAppDataName } = await import("../dist/web/src/server/workspace-location.js");
-  delete process.env.WGSEXTRACT_GUI_APP_DATA_NAME;
+  // As the desktop app starts its backend: naming its own data folder explicitly.
+  process.env.WGSEXTRACT_GUI_APP_DATA_NAME = "WGSExtract-gui";
   const data = path.join(root, "data");
   const legacy = path.join(data, legacyAppDataName);
   await mkdir(path.join(legacy, "EBWebView"), { recursive: true });

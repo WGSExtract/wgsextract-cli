@@ -5,7 +5,7 @@ import path from "node:path";
 import type { BundleManifest, WorkspaceLocationInfo } from "../../../shared/types.js";
 import { writeFileAtomically } from "./config-store.js";
 import { errnoCode, errorMessage } from "./errors.js";
-import { applicationSupportDirectory, appSupportDirectory, safePathComponent } from "./paths.js";
+import { applicationSupportDirectory, appSupportContainerName, appSupportDirectory, defaultAppDataName, safePathComponent } from "./paths.js";
 
 export const workspaceSentinelFileName = ".bundle-workspace";
 export const workspaceSentinelContents = "GUI for CLI bundle workspace\n";
@@ -24,7 +24,8 @@ export const legacyAppDataName = "dev.guiforcli.web.embed.wgsextract";
  * home folder) is left in place. Only for the app's own data folder, not one a test or dev run names.
  */
 export async function migrateLegacyAppData() {
-    if (process.env.WGSEXTRACT_GUI_APP_DATA_NAME) {
+    // The desktop app names its data folder explicitly too, so compare the name rather than whether one is set.
+    if (appSupportContainerName() !== defaultAppDataName) {
         return;
     }
     const legacy = path.join(applicationSupportDirectory(), legacyAppDataName);
