@@ -153,6 +153,24 @@ order. On the 5M HG002 pairs below 0.9.0 takes 27% less time than 0.8.0.
 on Metal (the Metal kernels sit behind a device interface, for the CUDA
 backend), and it also builds on Linux x86-64, on the CPU.
 
+From 0.11.0, an optional side file speeds up locate: nothing creates it
+automatically, and `mem` aligns exactly as before without it.
+`wgse-bwa densify-sa <index>` writes `<index>.wgse-sa16`, the
+suffix-array position of every 16th row (derived from the index's own samples;
+0.80 GB for hs38, `-i` picks another power of two). `mem` then locates seeds
+with walks of at most 15 steps instead of 31, on the CPU and the GPU, if the
+machine has at least 16 GiB and the file takes at most an eighth of it; it
+checks the file against the index and otherwise ignores it. `--dense-sa off`
+ignores it, `--dense-sa force` skips the memory check, and
+`capabilities --json <index>` lists the files and the one `mem` would read (it
+checks each file's header and checksum; only `mem` also spot-checks 1024
+samples against the index). Mate rescue also steps the lazy-F loops of the
+windows it aligns together in turn, and `--metal`'s CPU threads seed the pairs
+they take from the GPU's queue 8 at a time with the CPU backend's interleaved
+walks. Each gives upstream's exact results. WGS Extract does not write or use the
+file yet; opt-in support (a setting, a run flag and a reference-library command
+showing its disk and memory cost) will follow.
+
 From 0.5.0, `wgse-bwa-mem2`'s CPU backend does the same with its own exact
 replacements: it collects each read's SMEMs in all three passes with up to 16
 reads stepping in turn (prefetching each step's occurrence-table lines, and
@@ -654,6 +672,15 @@ had cooled to nominal thermal pressure, which then held throughout) took
 against 2949 s). The NEON extension alone took 286.2 s (15.6% less than 0.8.0).
 On one thread, collecting the SMEM intervals of 10,000 reads took 38% less time
 with the interleaved walks than with upstream's.
+
+`wgse-bwa` 0.11.0 was measured against 0.9.0 on the same data in interleaved
+rounds at nominal thermal pressure, while other work kept the load average at
+3 to 10 (so both took longer than above). With `hs38.fa.wgse-sa16` its CPU
+backend took 266.4 s against 301.1 s (11.5% less, faster in both rounds, 11%
+less CPU time) and `--metal` 125.7 s against 136.1 s (7.7% less, faster in all
+three rounds, 7% less CPU time); the file raised the peak RSS by 0.75 GiB (to
+6.2 GiB on the CPU and 7.0 GiB with `--metal`). With `--dense-sa off` 0.11.0
+took 5.8% less time than 0.9.0 on the CPU and 1.5% less with `--metal`.
 
 On hs38 BWA's time splits roughly into SMEM collection (19%), suffix-array
 locate (23%) and extension with mate rescue (45%). `--metal` 0.2.0 moved only
