@@ -492,8 +492,8 @@ test("bundle loader bootstraps first-run config defaults before returning state"
       path.join(directory, "scripts", "bootstrap-config.sh"),
       `#!/bin/sh
 set -eu
-escaped_workspace="$(printf '%s' "$GUI_FOR_CLI_BUNDLE_WORKSPACE" | sed 's/\\\\/\\\\\\\\/g; s/"/\\\\"/g')"
-count_file="$GUI_FOR_CLI_BUNDLE_WORKSPACE/bootstrap.count"
+escaped_workspace="$(printf '%s' "$WGSEXTRACT_GUI_BUNDLE_WORKSPACE" | sed 's/\\\\/\\\\\\\\/g; s/"/\\\\"/g')"
+count_file="$WGSEXTRACT_GUI_BUNDLE_WORKSPACE/bootstrap.count"
 count=0
 if [ -f "$count_file" ]; then count="$(cat "$count_file")"; fi
 printf '%s\n' "$((count + 1))" > "$count_file"
@@ -631,7 +631,7 @@ test("script bootstrap skip checks generated defaults and caches the script resu
       path.join(directory, "scripts", "bootstrap-config.sh"),
       `#!/bin/sh
 set -eu
-count_file="$GUI_FOR_CLI_BUNDLE_WORKSPACE/bootstrap.count"
+count_file="$WGSEXTRACT_GUI_BUNDLE_WORKSPACE/bootstrap.count"
 count=0
 if [ -f "$count_file" ]; then count="$(cat "$count_file")"; fi
 printf '%s\n' "$((count + 1))" > "$count_file"

@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist/web/src/server/bundle-uninstall-cli.js");
 const { saveConfig } = await import("../dist/web/src/server/config-store.js");
-const { normalizeContext } = await import("../dist/web/src/server/paths.js");
+const { applicationSupportDirectory, normalizeContext } = await import("../dist/web/src/server/paths.js");
 const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspace.js");
 const { appDataWorkspacesDirectory, appSettingsPath, defaultWorkspaceRoot, saveWorkspacesDirectory, workspaceLocationInfo } =
   await import("../dist/web/src/server/workspace-location.js");
@@ -38,7 +38,7 @@ function dataEnvironment(root) {
     USERPROFILE: root,
     XDG_DATA_HOME: path.join(root, "data"),
     LOCALAPPDATA: path.join(root, "data"),
-    GUI_FOR_CLI_APP_SUPPORT_NAME: "test.app",
+    WGSEXTRACT_GUI_APP_DATA_NAME: "test.app",
   };
 }
 
@@ -133,6 +133,18 @@ test("a folder chosen in Settings that isn't a workspace fails saying how to rec
   assert.equal(await readFile(path.join(root, "chosen", "location.bundle", "notes.txt"), "utf8"), "mine");
 });
 
+test("moving keeps setup's run when its runtime is outside the workspace, in the app's data folder", async (t) => {
+  const { root, source } = await fixture(t);
+  const current = await prepareBundleWorkspace(manifest, source);
+  await writeFile(path.join(current, "state.json"), JSON.stringify({ setupRun: { status: "ok" } }));
+
+  const chosen = path.join(root, "big drive");
+  await move({ sourceRoot: source, workspaceRoot: current, directory: chosen });
+
+  const state = JSON.parse(await readFile(path.join(chosen, "location.bundle", "state.json"), "utf8"));
+  assert.deepEqual(state.setupRun, { status: "ok" });
+});
+
 test("moving takes the contents along, and saved paths follow unless set elsewhere", async (t) => {
   const { root, source } = await fixture(t);
   const current = await prepareBundleWorkspace(manifest, source);
@@ -144,6 +156,8 @@ test("moving takes the contents along, and saved paths follow unless set elsewhe
     fieldValues: { bam: path.join(current, "genomes", "a.bam"), other: elsewhere },
     setupRun: { status: "ok" },
   }));
+  // A CLI runtime setup installed in the workspace (WGS Extract's, up to 0.8.6) holds absolute paths.
+  await mkdir(path.join(current, "runtime", "tool", "bin"), { recursive: true });
 
   const chosen = path.join(root, "big drive");
   await move({ sourceRoot: source, workspaceRoot: current, directory: chosen });
@@ -244,7 +258,7 @@ test("paths in the workspace are shown with the token, and real paths reach the 
 
 function runUninstallCli(source, ...flags) {
   return new Promise((resolve) => {
-    execFile(process.execPath, [cli, "--app-support-name", "test.app", ...flags, source], { env: process.env },
+    execFile(process.execPath, [cli, "--app-data-name", "test.app", ...flags, source], { env: process.env },
       (error, stdout, stderr) => resolve({ code: error ? error.code : 0, stdout, stderr }));
   });
 }
@@ -291,4 +305,64 @@ test("PR #531 review: uninstall runs no steps from, and deletes nothing of, a fo
   await assert.rejects(stat(workspace), { code: "ENOENT" });
   assert.equal(await readFile(path.join(unrelated, "keep.txt"), "utf8"), "not the app's");
   await assert.rejects(stat(appSettingsPath()), { code: "ENOENT" });
+});
+
+test("the settings of an app up to 0.8.6 come over from its identifier's folder, which is removed", async (t) => {
+  await fixture(t);
+  const { migrateLegacyAppData, legacyAppDataName } = await import("../dist/web/src/server/workspace-location.js");
+  // As the desktop app starts its backend: naming its own data folder explicitly.
+  process.env.WGSEXTRACT_GUI_APP_DATA_NAME = "WGSExtract-gui";
+  const data = applicationSupportDirectory();
+  const legacy = path.join(data, legacyAppDataName);
+  await mkdir(path.join(legacy, "EBWebView"), { recursive: true });
+  await writeFile(path.join(legacy, "settings.json"), '{"bundleWorkspacesDirectory":"D:\\Genomes"}\n');
+
+  await migrateLegacyAppData();
+
+  assert.equal(await readFile(path.join(data, "WGSExtract-gui", "settings.json"), "utf8"), '{"bundleWorkspacesDirectory":"D:\\Genomes"}\n');
+  await assert.rejects(stat(legacy), { code: "ENOENT" });
+});
+
+test("migrating keeps settings already in the app's data folder, and an old folder that still holds a workspace", async (t) => {
+  await fixture(t);
+  const { migrateLegacyAppData, legacyAppDataName } = await import("../dist/web/src/server/workspace-location.js");
+  delete process.env.WGSEXTRACT_GUI_APP_DATA_NAME;
+  const data = applicationSupportDirectory();
+  const legacy = path.join(data, legacyAppDataName);
+  await mkdir(path.join(legacy, "BundleWorkspaces", "wgs-extract"), { recursive: true });
+  await writeFile(path.join(legacy, "settings.json"), "{\"old\":true}\n");
+  await mkdir(path.join(data, "WGSExtract-gui"), { recursive: true });
+  await writeFile(path.join(data, "WGSExtract-gui", "settings.json"), "{\"new\":true}\n");
+
+  await migrateLegacyAppData();
+
+  assert.equal(await readFile(path.join(data, "WGSExtract-gui", "settings.json"), "utf8"), "{\"new\":true}\n");
+  assert.equal(await readFile(path.join(legacy, "settings.json"), "utf8"), "{\"old\":true}\n");
+});
+
+test("a test's or dev run's own data folder name is never migrated into", async (t) => {
+  await fixture(t);
+  const { migrateLegacyAppData, legacyAppDataName } = await import("../dist/web/src/server/workspace-location.js");
+  const legacy = path.join(applicationSupportDirectory(), legacyAppDataName);
+  await mkdir(legacy, { recursive: true });
+  await writeFile(path.join(legacy, "settings.json"), "{}\n");
+
+  await migrateLegacyAppData();
+
+  assert.equal(await readFile(path.join(legacy, "settings.json"), "utf8"), "{}\n");
+  await assert.rejects(stat(path.join(applicationSupportDirectory(), "test.app")), { code: "ENOENT" });
+});
+
+test("migrating keeps an old data folder that the saved settings put the workspace in", async (t) => {
+  await fixture(t);
+  const { migrateLegacyAppData, legacyAppDataName } = await import("../dist/web/src/server/workspace-location.js");
+  delete process.env.WGSEXTRACT_GUI_APP_DATA_NAME;
+  const legacy = path.join(applicationSupportDirectory(), legacyAppDataName);
+  await mkdir(path.join(legacy, "mine"), { recursive: true });
+  await writeFile(path.join(legacy, "settings.json"), JSON.stringify({ bundleWorkspacesDirectory: path.join(legacy, "mine") }));
+
+  await migrateLegacyAppData();
+
+  await stat(path.join(legacy, "mine"));
+  assert.match(await readFile(path.join(applicationSupportDirectory(), "WGSExtract-gui", "settings.json"), "utf8"), /mine/);
 });

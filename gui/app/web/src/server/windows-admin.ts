@@ -5,10 +5,10 @@ import type { ProcessRunOptions } from "../../../shared/types.js";
 import { errorMessage } from "./errors.js";
 import { powerShellSingleQuotedString } from "./platform-command.js";
 
-const windowsAdminModeEnvironmentKey = "GUI_FOR_CLI_WINDOWS_ADMIN_MODE";
+const windowsAdminModeEnvironmentKey = "WGSEXTRACT_GUI_WINDOWS_ADMIN_MODE";
 const windowsAdminScheduledTaskMode = "scheduled-task";
-const windowsAdminTaskEnvironmentKey = "GUI_FOR_CLI_WINDOWS_ADMIN_TASK";
-const windowsAdminQueueEnvironmentKey = "GUI_FOR_CLI_WINDOWS_ADMIN_QUEUE";
+const windowsAdminTaskEnvironmentKey = "WGSEXTRACT_GUI_WINDOWS_ADMIN_TASK";
+const windowsAdminQueueEnvironmentKey = "WGSEXTRACT_GUI_WINDOWS_ADMIN_QUEUE";
 
 interface WindowsAdminSettings {
     mode: "uac" | "scheduled-task";

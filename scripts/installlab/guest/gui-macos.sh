@@ -34,6 +34,10 @@ BUNDLE_ID="dev.guiforcli.embed.wgsextract"
 # the one setup made.
 WORKSPACE="$HOME/wgs-extract"
 OLD_WORKSPACE="$HOME/Library/Application Support/$BUNDLE_ID/BundleWorkspaces/wgs-extract"
+# Apps after 0.8.6 install the CLI runtime in their data folder and read
+# WGSEXTRACT_GUI_* variables; released apps up to 0.8.6 read GUI_FOR_CLI_*. The
+# lab passes both.
+APP_DATA="$HOME/Library/Application Support/WGSExtract-gui"
 # The test runner is lab tooling, not the product: it lives outside $HOME and
 # keeps its own app data under a name the product never uses.
 RUNNER_DIR="$R/runner"
@@ -45,7 +49,7 @@ export GUI_FOR_CLI_APP_SUPPORT_NAME_RUNNER="lab-bundle-runner"
 # The app's own processes, and everything it starts: setup's scripts and
 # downloads run from the workspace (set again once the bundle ID is known).
 APP_MAIN="$APP/Contents/MacOS/"
-APP_TREE="$APP_MAIN|$WORKSPACE/|$OLD_WORKSPACE/"
+APP_TREE="$APP_MAIN|$APP_DATA/|$WORKSPACE/|$OLD_WORKSPACE/"
 # shellcheck source=scripts/installlab/guest/app-lifecycle.sh
 . "$HERE/app-lifecycle.sh"
 
@@ -110,7 +114,7 @@ install_app() {
     codesign --verify --deep --strict --verbose=2 "$APP" || rc=1
     BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Contents/Info.plist") || return 1
     OLD_WORKSPACE="$HOME/Library/Application Support/$BUNDLE_ID/BundleWorkspaces/wgs-extract"
-    APP_TREE="$APP_MAIN|$WORKSPACE/|$OLD_WORKSPACE/"
+    APP_TREE="$APP_MAIN|$APP_DATA/|$WORKSPACE/|$OLD_WORKSPACE/"
     return $rc
 }
 
@@ -170,6 +174,7 @@ app_setup() {
 
 tauri_setup() {
     env GUI_FOR_CLI_AUTO_RUN_SETUP=1 GUI_FOR_CLI_SETUP_EVENTS_LOG="$events" \
+        WGSEXTRACT_GUI_AUTO_RUN_SETUP=1 WGSEXTRACT_GUI_SETUP_EVENTS_LOG="$events" \
         ${LAB_ARCHIVE_URL:+WGSEXTRACT_ARCHIVE_URL="$CLI_ARCHIVE"} \
         "$APP/Contents/MacOS/wgsextract-gui" > "$R/app-stdout.txt" 2> "$R/app-stderr.txt" &
     app_pid=$!
@@ -232,6 +237,7 @@ app_uninstall() {
     rm -f "$R/uninstall-result.json"
     if is_tauri; then
         env GUI_FOR_CLI_AUTO_RUN_UNINSTALL=1 GUI_FOR_CLI_UNINSTALL_RESULT_FILE="$R/uninstall-result.json" \
+            WGSEXTRACT_GUI_AUTO_RUN_UNINSTALL=1 WGSEXTRACT_GUI_UNINSTALL_RESULT_FILE="$R/uninstall-result.json" \
             "$APP/Contents/MacOS/wgsextract-gui" > "$R/app-uninstall-stdout.txt" 2>&1 || return 1
     else
         launch_app --env GUI_FOR_CLI_AUTO_RUN_UNINSTALL=1 \
@@ -288,7 +294,7 @@ step install_app install_app
 step gatekeeper gatekeeper
 approve_first_launch
 step setup app_setup
-step optional_tools sh "$HERE/install-optional-tools.sh" "$WORKSPACE" "$HOME/Library/Application Support/$BUNDLE_ID"
+step optional_tools sh "$HERE/install-optional-tools.sh" "$APP_DATA" "$WORKSPACE" "$HOME/Library/Application Support/$BUNDLE_ID"
 if ! is_tauri; then step runner install_runner; fi
 step actions app_actions
 snapshot after_install

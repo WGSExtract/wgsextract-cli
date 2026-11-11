@@ -294,7 +294,8 @@ function Get-CleanupAdminScriptBody {
     $workspaceDirectoryLiteral = Format-PowerShellSingleQuotedString -Value $WorkspaceDirectory
     $pixiBaseDirLiteral = Format-PowerShellSingleQuotedString -Value $PixiBaseDir
     $installDirectoryLiteral = Format-PowerShellSingleQuotedString -Value $InstallDirectory
-    $webViewDataDirectoryLiteral = Format-PowerShellSingleQuotedString -Value (Join-Path $script:UserLocalAppData "GUI for CLI WebUI")
+    $webViewDataDirectoryLiteral = Format-PowerShellSingleQuotedString -Value (Join-Path $script:UserLocalAppData "dev.wgsextract-gui")
+    $appDataDirectoryLiteral = Format-PowerShellSingleQuotedString -Value (Join-Path $script:UserLocalAppData "WGSExtract-gui")
     @"
 `$ErrorActionPreference = 'Stop'
 function Stop-MsysProcs {
@@ -321,7 +322,7 @@ if (Test-Path -LiteralPath $msys2RootLiteral) {
     }
     Remove-TreeRetry -Path $msys2RootLiteral
 }
-foreach (`$p in @($workspaceDirectoryLiteral, $pixiBaseDirLiteral, $webViewDataDirectoryLiteral, $installDirectoryLiteral)) {
+foreach (`$p in @($workspaceDirectoryLiteral, $pixiBaseDirLiteral, $webViewDataDirectoryLiteral, $appDataDirectoryLiteral, $installDirectoryLiteral)) {
     if (Test-Path -LiteralPath `$p) { Remove-TreeRetry -Path `$p }
 }
 exit 0
@@ -337,7 +338,7 @@ function Pre-Cleanup {
         Stop-MsysProcesses
         Invoke-Msys2Purge
         Remove-PixiInstall
-        foreach ($path in @($WorkspaceDirectory, $PixiBaseDir, "$env:LOCALAPPDATA\GUI for CLI WebUI")) {
+        foreach ($path in @($WorkspaceDirectory, $PixiBaseDir, "$env:LOCALAPPDATA\dev.wgsextract-gui", "$env:LOCALAPPDATA\WGSExtract-gui")) {
             if (Test-Path -LiteralPath $path) {
                 Write-Stage "Removing $path"
                 Remove-TreeWithRetry -Path $path
@@ -353,8 +354,10 @@ function Assert-CleanState {
     if (Test-Path -LiteralPath $Msys2Root) { $issues += "MSYS2 root still present: $Msys2Root" }
     if (Test-Path -LiteralPath $PixiRoot) { $issues += "Pixi root still present: $PixiRoot" }
     if (Test-Path -LiteralPath $PixiBaseDir) { $issues += "Pixi base dir still present: $PixiBaseDir" }
-    if (Test-Path -LiteralPath (Join-Path $WorkspaceDirectory "runtime\wgsextract-cli\app")) {
-        $issues += "Bundle runtime still present: $WorkspaceDirectory\runtime\wgsextract-cli\app"
+    foreach ($runtimeRoot in @("$env:LOCALAPPDATA\WGSExtract-gui", $WorkspaceDirectory)) {
+        if (Test-Path -LiteralPath (Join-Path $runtimeRoot "runtime\wgsextract-cli\app")) {
+            $issues += "Bundle runtime still present: $runtimeRoot\runtime\wgsextract-cli\app"
+        }
     }
     $bioTools = @("samtools", "bcftools", "tabix", "bgzip", "bwa", "htsfile") | ForEach-Object {
         $c = Get-Command $_ -ErrorAction SilentlyContinue

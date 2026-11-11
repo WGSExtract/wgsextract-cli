@@ -92,7 +92,9 @@ npm --prefix app run bundle:test -- --help
 
 ## Configuration
 
-The app's own settings are stored in the platform Application Support directory (`~/Library/Application Support` on macOS, `%LOCALAPPDATA%` on Windows, `$XDG_DATA_HOME` on Linux). Set `GUI_FOR_CLI_APP_SUPPORT_NAME` to use a different folder name under that directory for isolated tests or scripts.
+The app keeps its own data in a `WGSExtract-gui` folder in the platform Application Support directory: `~/Library/Application Support/WGSExtract-gui` on macOS, `%LOCALAPPDATA%\WGSExtract-gui` on Windows, `~/.local/share/WGSExtract-gui` (or under `$XDG_DATA_HOME`) on Linux. Bundles reach it as `{{appData}}`, and their scripts as `$WGSEXTRACT_GUI_APP_DATA`. It holds the app's `settings.json` and the WGS Extract CLI that setup installs (`runtime/wgsextract-cli`, with its `bin/wgsextract` launcher). The CLI stays there wherever the app itself is installed, since the app's install folder is replaced on every update and often isn't writable. Set `WGSEXTRACT_GUI_APP_DATA_NAME` to use a different folder name for isolated tests or scripts. The desktop app's webview data and logs are in a separate folder named for its identifier, `dev.wgsextract-gui`.
+
+Apps up to 0.8.6 kept their settings in a `dev.guiforcli.web.embed.wgsextract` folder and the CLI in the workspace's `runtime` folder. On its first launch, a newer app moves the settings over, removes that folder, and offers setup again. Once setup has installed the CLI in the new place, it deletes the copy in the workspace.
 
 The WGS Extract workspace, known as `{{bundleWorkspace}}`, defaults to `~/wgs-extract` (`%USERPROFILE%\wgs-extract` on Windows). It holds the settings file, outputs, Reference and Genome Libraries, temporary files, and logs. These folders can become very large, so they are kept visible and in the user's own space rather than hidden in application data. A bundle sets this with `defaultWorkspace` in its manifest; other bundles use the Application Support directory.
 
@@ -100,7 +102,7 @@ On Windows, setup installs WGS Extract's tools (its Pixi environments) for the c
 
 The app never takes over a folder of yours. If `~/wgs-extract` already exists and isn't a WGS Extract workspace (or is a file, or a folder the app can't read), the app uses `~/wgs-extract-2` instead, or the next free name. It records that folder in its `settings.json`, so the workspace stays there. If the Workspaces Folder chosen in Settings holds such a folder, the app doesn't start. It reports the folder: move that folder away, or remove `bundleWorkspacesDirectory` from the app's `settings.json` to go back to the default location.
 
-To move the workspace, for example to a larger or faster drive, choose a **Workspaces Folder** on the Settings page and click **Move**. Its contents move with it, and paths shown under `{{bundleWorkspace}}` follow, while folders you set elsewhere stay where they are. Setup then reinstalls the CLI runtime in the new location, because the runtime holds absolute paths.
+To move the workspace, for example to a larger or faster drive, choose a **Workspaces Folder** on the Settings page and click **Move**. Its contents move with it, and paths shown under `{{bundleWorkspace}}` follow, while folders you set elsewhere stay where they are. The CLI stays in the app's data folder and keeps working.
 
 Uninstalling asks before deleting the workspace, wherever it is, since its Reference and Genome Libraries may be shared. That includes a workspace in the Application Support directory, where bundles without a `defaultWorkspace` keep it: removing the app's data keeps it unless you chose to delete the workspace. A silent Windows uninstall keeps every workspace. So does the quick-uninstall script published with each Windows release.
 

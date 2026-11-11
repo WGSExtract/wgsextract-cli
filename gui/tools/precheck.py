@@ -110,7 +110,7 @@ def nearest_existing_parent(path: Path) -> Path:
 
 
 def app_support_dir() -> Path:
-    override = os.environ.get("GUI_FOR_CLI_APP_SUPPORT_NAME")
+    override = os.environ.get("WGSEXTRACT_GUI_APP_DATA_NAME")
     name = safe_path_component(override) if override else "gui-for-cli"
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / name

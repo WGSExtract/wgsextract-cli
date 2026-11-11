@@ -68,12 +68,12 @@ impl BackendProcess {
             .env("GFC_PORT_FILE", &port_file)
             .env("GFC_PARENT_PID", std::process::id().to_string())
             .env(
-                "GUI_FOR_CLI_APP_SUPPORT_NAME",
-                &launch.paths.app_support_name,
+                "WGSEXTRACT_GUI_APP_DATA_NAME",
+                &launch.paths.app_data_name,
             )
-            .env("GUI_FOR_CLI_APPLICATION_NAME", launch.application_name)
+            .env("WGSEXTRACT_GUI_APPLICATION_NAME", launch.application_name)
             .env(
-                "GUI_FOR_CLI_APPLICATION_VERSION",
+                "WGSEXTRACT_GUI_APPLICATION_VERSION",
                 launch.application_version,
             )
             .env("GFC_NATIVE_PICKER_PORT", launch.picker_port.to_string())

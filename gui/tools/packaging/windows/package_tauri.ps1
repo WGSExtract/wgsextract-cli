@@ -251,7 +251,9 @@ Remove-InstallerShortcuts
 
 `$dataDirectories = @()
 foreach (`$root in Get-ApplicationSupportRoots) {
+    # The webview's and logs' folder, and the app's data folder with its settings and the CLI runtime.
     `$dataDirectories += (Join-Path `$root `$AppIdentifier)
+    `$dataDirectories += (Join-Path `$root "WGSExtract-gui")
 }
 if (`$env:LOCALAPPDATA) {
     `$dataDirectories += (Join-Path `$env:LOCALAPPDATA `$AppName)

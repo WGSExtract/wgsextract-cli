@@ -34,7 +34,10 @@ $SetupLog = Join-Path $LogDirectory "installed-setup.ndjson"
 $SetupSummary = Join-Path $LogDirectory "installed-setup-summary.json"
 $UninstallLog = Join-Path $LogDirectory "installed-uninstall.ndjson"
 $UninstallSummary = Join-Path $LogDirectory "installed-uninstall-summary.json"
-$WebViewDataDirectory = "$env:LOCALAPPDATA\dev.guiforcli.web.embed.wgsextract"
+$WebViewDataDirectory = "$env:LOCALAPPDATA\dev.wgsextract-gui"
+# The app's own data: its settings and the CLI runtime that setup installs (not in the workspace).
+$AppDataDirectory = "$env:LOCALAPPDATA\WGSExtract-gui"
+$Runtime = Join-Path $AppDataDirectory "runtime\wgsextract-cli"
 $script:AdminBroker = $null
 
 function Resolve-InstallerPath {
@@ -384,11 +387,23 @@ function Uninstall-App {
     return $InstallDirectory
 }
 
+# Setup installs the CLI runtime in the app's data folder, and nothing of it in the workspace.
+function Assert-RuntimeInstalled {
+    Assert-Exists -Paths @(
+        $WorkspaceDirectory,
+        $Runtime,
+        (Join-Path $Runtime "app"),
+        (Join-Path $Runtime "bin"),
+        (Join-Path $Runtime "bin\wgsextract.cmd")
+    )
+    Assert-NotExists -Paths @((Join-Path $WorkspaceDirectory "runtime"))
+}
+
 function Clear-InstallData {
-    foreach ($path in @($InstallDirectory, "$env:LOCALAPPDATA\GUI for CLI WebUI", $WebViewDataDirectory, $WorkspaceDirectory)) {
+    foreach ($path in @($InstallDirectory, $AppDataDirectory, $WebViewDataDirectory, $WorkspaceDirectory)) {
         Remove-Tree -LiteralPath $path
     }
-    Assert-NotExists -Paths @($InstallDirectory, "$env:LOCALAPPDATA\GUI for CLI WebUI", $WebViewDataDirectory, $WorkspaceDirectory)
+    Assert-NotExists -Paths @($InstallDirectory, $AppDataDirectory, $WebViewDataDirectory, $WorkspaceDirectory)
     return "cleared"
 }
 
@@ -405,21 +420,21 @@ function Start-InstalledApp {
     $psi.CreateNoWindow = $true
     if ($null -ne $psi.Environment) {
         $psi.Environment["GFC_PORT_FILE"] = $PortFile
-        $psi.Environment["GUI_FOR_CLI_AUTO_RUN_SETUP"] = "1"
-        $psi.Environment["GUI_FOR_CLI_SETUP_EVENTS_LOG"] = $SetupLog
+        $psi.Environment["WGSEXTRACT_GUI_AUTO_RUN_SETUP"] = "1"
+        $psi.Environment["WGSEXTRACT_GUI_SETUP_EVENTS_LOG"] = $SetupLog
         if ($AutomatedAdmin) {
-            $psi.Environment["GUI_FOR_CLI_WINDOWS_ADMIN_MODE"] = "scheduled-task"
-            $psi.Environment["GUI_FOR_CLI_WINDOWS_ADMIN_TASK"] = [string]$script:AdminBroker.taskName
-            $psi.Environment["GUI_FOR_CLI_WINDOWS_ADMIN_QUEUE"] = [string]$script:AdminBroker.queueDirectory
+            $psi.Environment["WGSEXTRACT_GUI_WINDOWS_ADMIN_MODE"] = "scheduled-task"
+            $psi.Environment["WGSEXTRACT_GUI_WINDOWS_ADMIN_TASK"] = [string]$script:AdminBroker.taskName
+            $psi.Environment["WGSEXTRACT_GUI_WINDOWS_ADMIN_QUEUE"] = [string]$script:AdminBroker.queueDirectory
         }
     } else {
         $psi.EnvironmentVariables["GFC_PORT_FILE"] = $PortFile
-        $psi.EnvironmentVariables["GUI_FOR_CLI_AUTO_RUN_SETUP"] = "1"
-        $psi.EnvironmentVariables["GUI_FOR_CLI_SETUP_EVENTS_LOG"] = $SetupLog
+        $psi.EnvironmentVariables["WGSEXTRACT_GUI_AUTO_RUN_SETUP"] = "1"
+        $psi.EnvironmentVariables["WGSEXTRACT_GUI_SETUP_EVENTS_LOG"] = $SetupLog
         if ($AutomatedAdmin) {
-            $psi.EnvironmentVariables["GUI_FOR_CLI_WINDOWS_ADMIN_MODE"] = "scheduled-task"
-            $psi.EnvironmentVariables["GUI_FOR_CLI_WINDOWS_ADMIN_TASK"] = [string]$script:AdminBroker.taskName
-            $psi.EnvironmentVariables["GUI_FOR_CLI_WINDOWS_ADMIN_QUEUE"] = [string]$script:AdminBroker.queueDirectory
+            $psi.EnvironmentVariables["WGSEXTRACT_GUI_WINDOWS_ADMIN_MODE"] = "scheduled-task"
+            $psi.EnvironmentVariables["WGSEXTRACT_GUI_WINDOWS_ADMIN_TASK"] = [string]$script:AdminBroker.taskName
+            $psi.EnvironmentVariables["WGSEXTRACT_GUI_WINDOWS_ADMIN_QUEUE"] = [string]$script:AdminBroker.queueDirectory
         }
     }
     $process = [System.Diagnostics.Process]::Start($psi)
@@ -490,14 +505,7 @@ function Invoke-UISetupValidation {
         Remove-Item Env:UI_SETUP_TIMEOUT_SECONDS -ErrorAction SilentlyContinue
     }
 
-    $runtime = Join-Path $WorkspaceDirectory "runtime\wgsextract-cli"
-    Assert-Exists -Paths @(
-        $WorkspaceDirectory,
-        $runtime,
-        (Join-Path $runtime "app"),
-        (Join-Path $runtime "bin"),
-        (Join-Path $runtime "bin\wgsextract.cmd")
-    )
+    Assert-RuntimeInstalled
     return "ui setup ok"
 }
 
@@ -508,8 +516,8 @@ function Invoke-SetupValidation {
         return "skipped"
     }
 
-    # The installed app's client auto-runs setup on launch (GUI_FOR_CLI_AUTO_RUN_SETUP=1).
-    # The server writes every event to $SetupLog via GUI_FOR_CLI_SETUP_EVENTS_LOG.
+    # The installed app's client auto-runs setup on launch (WGSEXTRACT_GUI_AUTO_RUN_SETUP=1).
+    # The server writes every event to $SetupLog via WGSEXTRACT_GUI_SETUP_EVENTS_LOG.
     # We act as a pure observer: tail the file, echo each event live, and wait for
     # the terminal "complete" event before returning.
     Write-Host "  setup observer: tailing $SetupLog (server-driven by app auto-run)"
@@ -572,14 +580,7 @@ function Invoke-SetupValidation {
         throw "setup status=$($complete.status); failed=$details (log: $SetupLog)"
     }
 
-    $runtime = Join-Path $WorkspaceDirectory "runtime\wgsextract-cli"
-    Assert-Exists -Paths @(
-        $WorkspaceDirectory,
-        $runtime,
-        (Join-Path $runtime "app"),
-        (Join-Path $runtime "bin"),
-        (Join-Path $runtime "bin\wgsextract.cmd")
-    )
+    Assert-RuntimeInstalled
     return "setup ok"
 }
 
@@ -661,6 +662,7 @@ try {
         -Name "uninstall-stream" | Out-Null
 
     Assert-NotExists -Paths @(
+        $Runtime,
         (Join-Path $WorkspaceDirectory "runtime\wgsextract-cli")
     )
     return "bundle uninstall ok"

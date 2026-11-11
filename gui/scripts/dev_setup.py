@@ -253,7 +253,7 @@ def smoke(command: list[str] | None = None) -> None:
         data_root.mkdir()
         child_env = {
             **os.environ,
-            "GUI_FOR_CLI_APP_SUPPORT_NAME": f"gui-for-cli-{private_root.name}",
+            "WGSEXTRACT_GUI_APP_DATA_NAME": f"gui-for-cli-{private_root.name}",
         }
         if sys.platform == "win32":
             child_env["LOCALAPPDATA"] = str(data_root)

@@ -35,14 +35,14 @@ async function setUp(paths) {
 
 function runCli(paths, ...flags) {
   return new Promise((resolve) => {
-    execFile(process.execPath, [cli, "--app-support-name", "test.app", ...flags, paths.bundle], {
-      env: { ...process.env, HOME: paths.root, XDG_DATA_HOME: path.join(paths.root, "data"), GUI_FOR_CLI_UNINSTALL_RESULT_FILE: paths.result },
+    execFile(process.execPath, [cli, "--app-data-name", "test.app", ...flags, paths.bundle], {
+      env: { ...process.env, HOME: paths.root, XDG_DATA_HOME: path.join(paths.root, "data"), WGSEXTRACT_GUI_UNINSTALL_RESULT_FILE: paths.result },
     }, (error, stdout, stderr) => resolve({ code: error ? error.code : 0, stdout, stderr }));
   });
 }
 
 test("runs the bundle's uninstall steps on the app's workspace and reports the result", { skip: process.platform === "win32" }, async (t) => {
-  const paths = await fixture(t, '#!/bin/sh\necho "removing runtime"\nrm -rf "$GUI_FOR_CLI_BUNDLE_WORKSPACE/runtime"\n');
+  const paths = await fixture(t, '#!/bin/sh\necho "removing runtime"\nrm -rf "$WGSEXTRACT_GUI_BUNDLE_WORKSPACE/runtime"\n');
   await setUp(paths);
   await mkdir(path.join(paths.workspace, "runtime"));
 

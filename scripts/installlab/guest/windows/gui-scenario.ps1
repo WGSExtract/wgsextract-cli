@@ -30,7 +30,10 @@ $Downloads = Join-Path $env:USERPROFILE "Downloads"
 $Installer = Join-Path $Downloads $lab.LAB_GUI_INSTALLER_NAME
 $ProductName = "WGSExtract"
 $UninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$ProductName"
+# Released apps up to 0.8.6 had this identifier and read GUI_FOR_CLI_* variables; newer ones have
+# dev.wgsextract-gui, read WGSEXTRACT_GUI_*, and install the CLI runtime in $AppData. The lab passes both.
 $AppIdentifier = "dev.guiforcli.web.embed.wgsextract"
+$AppData = Join-Path $env:LOCALAPPDATA "WGSExtract-gui"
 $AppProcess = "wgsextract-gui"
 # Apps since PR #531 keep the workspace in the home folder; released apps
 # before it keep it in their app data. The actions use the one setup made.
@@ -116,6 +119,7 @@ function Get-AppProcesses {
         # Read Path once: a process can exit between reads, and then Path is null.
         $path = $_.Path
         $path -and (($install -and $path.StartsWith($install.Trim('"'), "OrdinalIgnoreCase")) -or
+            $path.StartsWith("$AppData\", "OrdinalIgnoreCase") -or
             $path.StartsWith("$Workspace\", "OrdinalIgnoreCase") -or
             $path.StartsWith("$OldWorkspace\", "OrdinalIgnoreCase"))
     }
@@ -250,6 +254,8 @@ PsStep "setup" {
     $appEnv = @{
         GUI_FOR_CLI_AUTO_RUN_SETUP = "1"
         GUI_FOR_CLI_SETUP_EVENTS_LOG = $events
+        WGSEXTRACT_GUI_AUTO_RUN_SETUP = "1"
+        WGSEXTRACT_GUI_SETUP_EVENTS_LOG = $events
     }
     if ($lab.LAB_CLI_ARCHIVE_URL) { $appEnv.WGSEXTRACT_ARCHIVE_URL = $lab.LAB_CLI_ARCHIVE_URL }
     $why = "setup complete"
@@ -296,8 +302,10 @@ PsStep "setup" {
     }
 }
 
-Copy-Item -LiteralPath (Join-Path $env:LOCALAPPDATA "$AppIdentifier\logs\backend.log") `
-    -Destination (Join-Path $R "app-backend.log") -ErrorAction SilentlyContinue
+foreach ($identifier in "dev.wgsextract-gui", $AppIdentifier) {
+    Copy-Item -LiteralPath (Join-Path $env:LOCALAPPDATA "$identifier\logs\backend.log") `
+        -Destination (Join-Path $R "app-backend.log") -ErrorAction SilentlyContinue
+}
 
 # The real actions through the app's own runtime: its bundled Node and its
 # bundle-test runner, on its bundle and workspace. Clicking isn't simulated;
@@ -335,7 +343,10 @@ if ($Sabotage -ne "skip-uninstall") {
         Invoke-InSession "uninstall" @{
             uninstallString = $key.UninstallString; displayName = $key.DisplayName
             deleteAppDataLabel = "Delete the application data"
-            env = @{ GUI_FOR_CLI_UNINSTALL_RESULT_FILE = (Join-Path $R "uninstall-result.json") }
+            env = @{
+                GUI_FOR_CLI_UNINSTALL_RESULT_FILE = (Join-Path $R "uninstall-result.json")
+                WGSEXTRACT_GUI_UNINSTALL_RESULT_FILE = (Join-Path $R "uninstall-result.json")
+            }
         } 7200
         if (Test-Path -LiteralPath $UninstallKey) { throw "the Apps entry is still registered" }
         $left = @(Get-AppProcesses)

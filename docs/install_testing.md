@@ -115,7 +115,7 @@ be what passes. In the VM:
    Gatekeeper must accept a Developer ID build and must reject a local ad-hoc
    one (the base image has standard Gatekeeper policy, and every run records its status).
 2. The app is copied to `/Applications` as a drag install would, then
-   launched; it runs its own setup (`GUI_FOR_CLI_AUTO_RUN_SETUP`) and writes the
+   launched; it runs its own setup (`WGSEXTRACT_GUI_AUTO_RUN_SETUP`) and writes the
    result. Setup installs the CLI release the app pins, or this CLI tree with
    `--cli-from-tree`.
 3. The real actions run on the HG00096 mini genome through the same
@@ -128,7 +128,7 @@ be what passes. In the VM:
    list catalog genomes and the mini genome isn't one, so the plan first
    downloads hs38 (755 MB, from this repo's release) with the Library page's
    own download action, and each dropdown must then offer it.
-4. The app's own **Uninstall** (`GUI_FOR_CLI_AUTO_RUN_UNINSTALL`) runs the bundle's
+4. The app's own **Uninstall** (`WGSEXTRACT_GUI_AUTO_RUN_UNINSTALL`) runs the bundle's
    uninstall steps, removes the app's data and moves it to the Trash; the Trash
    is emptied and the machine must match the baseline. One exception: macOS's
    preferences daemon (cfprefsd) writes the app's deleted preferences file
@@ -227,7 +227,7 @@ the standard user Lab User:
    closed again.
 3. The app is opened on Lab User's desktop (through a scheduled task that only
    runs in their signed-in session) and runs its own setup
-   (`GUI_FOR_CLI_AUTO_RUN_SETUP`); the setup events it logs are the evidence.
+   (`WGSEXTRACT_GUI_AUTO_RUN_SETUP`); the setup events it logs are the evidence.
    The window must report that the page drew (`webAppRendered`). Then the
    window is closed, and nothing the app started may still run.
 4. The real actions run through the app's own runtime: its bundled Node and
@@ -268,7 +268,7 @@ way `make package PLATFORM=tauri` does, in an `amd64` `ubuntu:24.04` container
 user who may use `sudo`, as Ubuntu's first user can, with Xvfb as the display:
 `sudo apt install ./WGSExtract.deb`, the app runs its own setup, the plan's
 actions run through the app's bundled Node and runner, then the app's own
-**Uninstall** (File menu; `GUI_FOR_CLI_AUTO_RUN_UNINSTALL`), since a package
+**Uninstall** (File menu; `WGSEXTRACT_GUI_AUTO_RUN_UNINSTALL`), since a package
 manager can't remove what setup put in the user's home, and finally
 `sudo apt remove --autoremove`. The desktop entry must have been installed,
 and the home folder must end as it started.
