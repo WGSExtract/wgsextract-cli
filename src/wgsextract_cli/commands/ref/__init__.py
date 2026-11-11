@@ -5,6 +5,7 @@ from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api._params import Params
 from wgsextract_cli.api.ref import (
     RefAadrParams,
+    RefAncestryParams,
     RefBootstrapParams,
     RefCountNsParams,
     RefDownloadParams,
@@ -29,6 +30,7 @@ from .core_commands import (
 from .library_commands import (
     RESOURCE_COMMANDS,
     cmd_aadr,
+    cmd_ancestry_reference,
     cmd_bootstrap,
     cmd_gene_map,
     cmd_library,
@@ -78,7 +80,7 @@ def register(
         name: str, cls: type[Params] | None, func: Handler, help: str
     ) -> argparse.ArgumentParser:
         sub = ref_subs.add_parser(name, parents=[base_parser], help=help)
-        if name in ("aadr", "ybrowse", "somalier"):
+        if name in ("aadr", "ybrowse", "somalier", "ancestry"):
             # The CLI asks for these downloads explicitly; the API call is the ask.
             sub.add_argument("--install", action="store_true", help="Install it.")
             func = _install_or_delete(func)
@@ -105,6 +107,13 @@ def register(
         cmd_somalier,
         "Explicitly fetch somalier's hash-pinned sites and 1000 Genomes "
         "sketches for qc relate.",
+    )
+    add(
+        "ancestry",
+        RefAncestryParams,
+        cmd_ancestry_reference,
+        "Explicitly fetch the hash-pinned HGDP+1KG ancestry reference for qc "
+        "ancestry (it is also fetched on first use).",
     )
     add("download", RefDownloadParams, cmd_download, CLI_HELP["cmd_ref-download"])
     add("index", RefIndexParams, cmd_index, CLI_HELP["cmd_ref-index"])

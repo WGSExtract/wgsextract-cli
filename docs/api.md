@@ -708,6 +708,36 @@ is optional (`pixi install -e somalier`) and unavailable on Windows.
 | `ancestry` | `bool \| None` | `None` | `--ancestry` | Predict the 1000 Genomes superpopulation (default: when 'ref somalier --install' has installed the labelled sketches). |
 | `table_format` | `str` | `'tsv'` | `--format` | Table format: tsv, or parquet (needs pyarrow) (default: tsv) One of: `tsv`, `parquet` |
 
+### `api.qc.ancestry(QcAncestryParams)`
+
+CLI: `wgsextract qc ancestry`.
+
+Estimate ancestry proportions (output role `ancestry_table`).
+
+`QcAncestryParams`: Ancestry proportions, admixture-style: the shares of the sample's
+genome best explained by each of 7 continental and 12 sub-continental
+reference components, trained with ADAMIXTURE on the HGDP + 1000 Genomes
+samples of gnomAD v3.1. Each share has a 95% interval from a block
+bootstrap over sites. These are proportions of reference populations, not
+an ethnicity. Genotypes come from the reads of a BAM/CRAM (genotype
+likelihoods, so low coverage widens the intervals rather than biasing
+them), the calls of a VCF, or a microarray raw-data file; GRCh37/hg19,
+GRCh38 and T2T-CHM13. Writes `<stem>.ancestry.tsv`; metrics
+`ancestry_k7`/`ancestry_k12` (name: proportion), `ancestry_sites`,
+`ancestry_depth`; the K=7 result is recorded as the sample's
+`ancestry` fact. The reference (~20 MB) is downloaded into the library
+on first use.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | Indexed BAM or CRAM, VCF, or microarray raw-data file (23andMe, AncestryDNA, FTDNA, MyHeritage; .txt, .csv, .zip or .gz). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `sample` | `str \| None` | `None` | `--sample` | The sample to use from a multi-sample VCF (default: the only one) |
+| `build` | `str \| None` | `None` | `--build` | The input's reference build, when its header doesn't tell (a VCF without contig lengths, say); a microarray file's is found from its positions. One of: `grch38`, `hg38`, `hs38`, `hs38d1`, `hs38d1v0`, `hs38dh`, `GRCh38`, `hs38DH`, `grch37`, `hg19`, `hg37`, `hs37`, `hs37d5`, `GRCh37`, `chm13`, `chm13v2`, `chm13v2.0`, `t2t`, `t2tv2`, `t2tv2.0`, `t2tv20`, `T2Tv20`, `T2Tv2`, `T2Tv2.0`, `CHM13`, `CHM13v2.0` |
+| `bootstrap` | `int` | `100` | `--bootstrap` | Bootstrap replicates for the 95% intervals; 0 skips them (default: 100) |
+
 ### `api.qc.fake_data(FakeDataParams)`
 
 CLI: `wgsextract qc fake-data`.
@@ -1688,6 +1718,21 @@ uses, about 85 MB, or delete them.
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `delete` | `bool` | `False` | `--delete` | Delete the installed somalier sites and 1000 Genomes sketches |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+
+### `api.ref.ancestry(RefAncestryParams)`
+
+CLI: `wgsextract ref ancestry`.
+
+Install the resources; output role `reference_resource`.
+
+`RefAncestryParams`: Install the hash-pinned ancestry reference that `qc ancestry` uses
+(about 20 MB; HGDP+1KG allele frequencies from gnomAD v3.1, CC0), or
+delete it. `qc ancestry` also downloads it on first use.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed ancestry reference |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 
 ### `api.ref.ybrowse(RefYbrowseParams)`

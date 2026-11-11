@@ -8,6 +8,7 @@ from wgsextract_cli.api._runtime import cancel_event
 from wgsextract_cli.api.ref import (
     RefAadrParams,
     RefAlphamissenseParams,
+    RefAncestryParams,
     RefBootstrapParams,
     RefCaddParams,
     RefClinvarParams,
@@ -24,7 +25,7 @@ from wgsextract_cli.api.ref import (
     RefYbrowseParams,
     _Resource,
 )
-from wgsextract_cli.core import library_removal, somalier_resources
+from wgsextract_cli.core import ancestry_reference, library_removal, somalier_resources
 from wgsextract_cli.core.aadr_resources import install_aadr_2m
 from wgsextract_cli.core.annotation_resources import (
     build_gnomad_af,
@@ -122,6 +123,17 @@ def run_somalier(params: RefSomalierParams) -> None:
     for path in somalier_resources.install(reflib, cancel=cancel_event()):
         current_result().add_output(path, "reference_resource")
     logging.info(f"Installed the {name} in {somalier_resources.folder(reflib)}")
+
+
+def run_ancestry_reference(params: RefAncestryParams) -> None:
+    reflib = _library(params.ref)
+    name = "ancestry reference (HGDP+1KG)"
+    if params.delete:
+        _delete(name, [ancestry_reference.folder(reflib)])
+        return
+    path = ancestry_reference.install(reflib, cancel=cancel_event())
+    current_result().add_output(path, "reference_resource")
+    logging.info(f"Installed the {name}: {path}")
 
 
 def _delete(
@@ -457,6 +469,7 @@ def run_microarray_targets(params: RefMicroarrayTargetsParams) -> None:
 cmd_aadr = cli_handler(RefAadrParams, run_aadr)
 cmd_ybrowse = cli_handler(RefYbrowseParams, run_ybrowse)
 cmd_somalier = cli_handler(RefSomalierParams, run_somalier)
+cmd_ancestry_reference = cli_handler(RefAncestryParams, run_ancestry_reference)
 _cli_library = cli_handler(RefLibraryParams, run_library)
 cmd_gene_map = cli_handler(RefGeneMapParams, run_gene_map)
 cmd_bootstrap = cli_handler(RefBootstrapParams, run_bootstrap)

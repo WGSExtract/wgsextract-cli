@@ -86,6 +86,7 @@ REASONS = {
 SECTIONS = {
     "overview": "Sample overview",
     "lineage": "Lineage",
+    "ancestry": "Ancestry proportions",
     "pharmacogenomics": "Pharmacogenomics",
     "carrier_screening": "Carrier screening by copy number",
     "clinvar": "ClinVar pathogenic / likely pathogenic in {gene_list} genes",
@@ -757,6 +758,61 @@ def _lineage(ctx: _Context) -> dict[str, Any]:
             x for x in (summary, "Y-DNA: none (recorded sex Female)") if x
         )
     section["summary"] = summary
+    return section
+
+
+ANCESTRY_NOTE = (
+    "Shares of the sample's genome best matched by reference components "
+    "learned from the HGDP and 1000 Genomes samples. Each is named after the "
+    "reference groups that carry it most; they are not ethnicities, and a "
+    "component is shared by many present-day populations."
+)
+
+
+def _ancestry(ctx: _Context) -> dict[str, Any]:
+    source = latest(ctx.sources, _command("qc ancestry"))
+    section = _section("ancestry", [source], ctx)
+    section["note"] = ANCESTRY_NOTE
+    section["components"] = []
+    if source is None or source.status != "ok":
+        _missing(
+            section,
+            "Ancestry proportions (qc ancestry)",
+            ctx.command_for("qc ancestry", ctx.alignment or ctx.vcf, "cram"),
+        )
+        return section
+    table = source.output("ancestry_table")
+    try:
+        with open(table or "", encoding="utf-8", newline="") as stream:
+            rows = list(csv.DictReader(stream, delimiter="\t"))
+    except (OSError, csv.Error):
+        rows = []
+    for row in rows:
+        try:
+            section["components"].append(
+                {
+                    "k": int(row["k"]),
+                    "name": row["component"],
+                    "region": row["region"],
+                    "proportion": float(row["proportion"]),
+                    "lower": float(row["lower_95"]),
+                    "upper": float(row["upper_95"]),
+                    "reference_populations": row["reference_populations"],
+                }
+            )
+        except (KeyError, ValueError):
+            continue
+    section["metrics"] = {
+        k: source.metrics[k]
+        for k in ("ancestry_sites", "ancestry_depth", "ancestry_confidence")
+        if k in source.metrics
+    }
+    section["evidence"] = ctx.rel(table)
+    top = [c for c in section["components"] if c["k"] == 7 and c["proportion"] >= 0.01]
+    section["summary"] = (
+        ", ".join(f"{c['name']} {c['proportion']:.0%}" for c in top[:4])
+        or "No proportions recorded."
+    )
     return section
 
 
@@ -1504,6 +1560,7 @@ def build_report(
     sections = {
         "overview": _overview(ctx),
         "lineage": _lineage(ctx),
+        "ancestry": _ancestry(ctx),
         "pharmacogenomics": _pharmacogenomics(ctx),
         "carrier_screening": _carrier_screening(ctx),
         "clinvar": _clinvar(ctx),
@@ -1744,6 +1801,26 @@ def _html_section_body(name: str, section: Mapping[str, Any], base: str) -> list
                     + "</td></tr>"
                 )
             out.append("</table>")
+    elif name == "ancestry" and section["components"]:
+        out.append(f'<p class="muted">{_h(section["note"])}</p>')
+        for k in sorted({c["k"] for c in section["components"]}):
+            out.append(
+                f"<h3>{'Continental' if k == 7 else 'Sub-continental'} (K={k})</h3>"
+                "<table><tr><th>Component</th><th>Share</th><th>95% interval</th>"
+                "<th></th><th>Most common in</th></tr>"
+            )
+            for c in section["components"]:
+                if c["k"] != k or c["upper"] < 0.005:
+                    continue
+                width = round(100 * c["proportion"])
+                out.append(
+                    f"<tr><td>{_h(c['name'])}</td>"
+                    f'<td class="n">{c["proportion"]:.1%}</td>'
+                    f'<td class="n">{c["lower"]:.1%}-{c["upper"]:.1%}</td>'
+                    f'<td><div style="background:#4a7;height:0.8em;width:{width}px">'
+                    f"</div></td><td>{_h(c['reference_populations'])}</td></tr>"
+                )
+            out.append("</table>")
     elif name == "microarray" and section["files"]:
         out.append("<table><tr><th>File</th><th>Format</th><th>Sites</th>"
                    "<th>Called</th><th>No-call rate</th></tr>")  # fmt: skip
@@ -1901,6 +1978,23 @@ def render_markdown(report: Mapping[str, Any], base: str = ".") -> str:
                         )
                         + " |"
                     )
+        if name == "ancestry" and section["components"]:
+            out += ["", f"_{_md(section['note'])}_"]
+            for k in sorted({c["k"] for c in section["components"]}):
+                out += [
+                    "",
+                    f"K={k}:",
+                    "",
+                    "| Component | Share | 95% interval | Most common in |",
+                    "|---|---|---|---|",
+                ]
+                out += [
+                    f"| {_md(c['name'])} | {c['proportion']:.1%} | "
+                    f"{c['lower']:.1%}-{c['upper']:.1%} | "
+                    f"{_md(c['reference_populations'])} |"
+                    for c in section["components"]
+                    if c["k"] == k and c["upper"] >= 0.005
+                ]
         if name == "microarray" and section["files"]:
             out += [
                 "",

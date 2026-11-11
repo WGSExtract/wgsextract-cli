@@ -138,6 +138,11 @@ FACTS: dict[str, FactSpec] = {
             "contamination",
             "Fraction of the reads from another person (VerifyBamID2 FREEMIX).",
         ),
+        FactSpec(
+            "ancestry",
+            "Shares of the 7 continental HGDP+1KG reference components "
+            "(qc ancestry; reference proportions, not ethnicity).",
+        ),
     )
 }
 OVERRIDABLE = tuple(name for name, spec in FACTS.items() if spec.overridable)
@@ -775,6 +780,7 @@ _LABELS = {
     "mean_coverage": "Mean coverage",
     "target_depths": "Target depths",
     "contamination": "Contamination",
+    "ancestry": "Ancestry (K=7)",
 }
 _reported: set[tuple[str, str]] = set()
 

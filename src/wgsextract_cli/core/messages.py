@@ -140,7 +140,8 @@ Available formats:
     "arg_long_read": "Use minimap2 for long-read alignment",
     "cmd_bam_mgmt": "BAM/CRAM management commands.",
     "cmd_deps": "Manage system dependencies.",
-    "cmd_qc": "Quality control for raw reads, alignments and VCFs (fastp, FastQC, contamination, VCF stats) and test data generation.",
+    "cmd_qc": "Quality control for raw reads, alignments and VCFs (fastp, FastQC, contamination, ancestry, VCF stats) and test data generation.",
+    "cmd_qc-ancestry": "Estimate admixture-style ancestry proportions (7 continental and 12 sub-continental HGDP+1000 Genomes reference components, with confidence intervals) from a BAM/CRAM, VCF or microarray file. Reference proportions, not ethnicity.",
     "cmd_qc-contamination": "Estimate how much of a GRCh37/38 BAM/CRAM's DNA comes from another person (VerifyBamID2 FREEMIX). Optional: Linux and macOS, install with `pixi install -e verifybamid2`.",
     "cmd_vcf": "Variant calling (bcftools, freebayes, GATK, DeepVariant, Clair3, Delly, pbsv, Sniffles), annotation, filtering, and trio analysis.",
 }

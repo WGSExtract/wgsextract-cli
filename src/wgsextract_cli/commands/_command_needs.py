@@ -205,6 +205,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "qc relate": _n(
         MINUTES, "bcftools", "samtools", "somalier", optional="bgzip tabix"
     ),
+    "qc ancestry": _n(MINUTES, "bcftools", optional="samtools"),
     "qc contamination": _n(MINUTES, "samtools", "verifybamid2", optional="bcftools"),
     "qc fake-data": _n(
         SECONDS,

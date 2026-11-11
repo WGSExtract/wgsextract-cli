@@ -117,6 +117,18 @@ class RefSomalierParams(_InLibrary, Params):
 
 
 @dataclass(frozen=True, kw_only=True)
+class RefAncestryParams(_InLibrary, Params):
+    """Install the hash-pinned ancestry reference that ``qc ancestry`` uses
+    (about 20 MB; HGDP+1KG allele frequencies from gnomAD v3.1, CC0), or
+    delete it. ``qc ancestry`` also downloads it on first use."""
+
+    COMMAND = "ref ancestry"
+
+    delete: bool = _delete_param("ancestry reference")
+    ref: Path | None = ref_param()
+
+
+@dataclass(frozen=True, kw_only=True)
 class RefYbrowseParams(_InLibrary, Params):
     """Install a hash-pinned, sites-only GRCh38 yBrowse snapshot into the
     library, or delete the installed snapshots."""
@@ -477,6 +489,21 @@ def somalier(
     from wgsextract_cli.commands.ref.library_commands import run_somalier
 
     return execute(params, run_somalier, progress=progress, cancel=cancel, check=check)
+
+
+def ancestry(
+    params: RefAncestryParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Install the resources; output role ``reference_resource``."""
+    from wgsextract_cli.commands.ref.library_commands import run_ancestry_reference
+
+    return execute(
+        params, run_ancestry_reference, progress=progress, cancel=cancel, check=check
+    )
 
 
 def ybrowse(

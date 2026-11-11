@@ -252,6 +252,56 @@ class RelateParams(Params):
 
 
 @dataclass(frozen=True, kw_only=True)
+class QcAncestryParams(Params):
+    """Ancestry proportions, admixture-style: the shares of the sample's
+    genome best explained by each of 7 continental and 12 sub-continental
+    reference components, trained with ADAMIXTURE on the HGDP + 1000 Genomes
+    samples of gnomAD v3.1. Each share has a 95% interval from a block
+    bootstrap over sites. These are proportions of reference populations, not
+    an ethnicity. Genotypes come from the reads of a BAM/CRAM (genotype
+    likelihoods, so low coverage widens the intervals rather than biasing
+    them), the calls of a VCF, or a microarray raw-data file; GRCh37/hg19,
+    GRCh38 and T2T-CHM13. Writes ``<stem>.ancestry.tsv``; metrics
+    ``ancestry_k7``/``ancestry_k12`` (name: proportion), ``ancestry_sites``,
+    ``ancestry_depth``; the K=7 result is recorded as the sample's
+    ``ancestry`` fact. The reference (~20 MB) is downloaded into the library
+    on first use."""
+
+    COMMAND = "qc ancestry"
+
+    input: Path = input_param(
+        "Indexed BAM or CRAM, VCF, or microarray raw-data file (23andMe, "
+        "AncestryDNA, FTDNA, MyHeritage; .txt, .csv, .zip or .gz).",
+        "--input (a BAM, CRAM, VCF or microarray file) is required.",
+    )
+    ref: Path | None = ref_param()
+    outdir: Path | None = outdir_param()
+    threads: int | None = threads_param()
+    sample: str | None = param(
+        None,
+        help="The sample to use from a multi-sample VCF (default: the only one)",
+        metavar="NAME",
+    )
+    build: str | None = param(
+        None,
+        help="The input's reference build, when its header doesn't tell "
+        "(a VCF without contig lengths, say); a microarray file's is found "
+        "from its positions",
+        choices=tuple(BUILD_CHOICES),
+    )
+    bootstrap: int = param(
+        100,
+        help="Bootstrap replicates for the 95%% intervals; 0 skips them (default: 100)",
+        metavar="N",
+    )
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.bootstrap < 0:
+            raise UsageError("--bootstrap must be 0 or more.")
+
+
+@dataclass(frozen=True, kw_only=True)
 class FakeDataParams(Params):
     """Generate a small fake genome for tests: reference, reads and calls
     named ``fake*``, reproducible from ``seed``. Uses the build's installed
@@ -391,6 +441,19 @@ def relate(
     return execute(params, run_relate, progress=progress, cancel=cancel, check=check)
 
 
+def ancestry(
+    params: QcAncestryParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Estimate ancestry proportions (output role ``ancestry_table``)."""
+    from wgsextract_cli.commands.qc.ancestry import run_ancestry
+
+    return execute(params, run_ancestry, progress=progress, cancel=cancel, check=check)
+
+
 def fake_data(
     params: FakeDataParams,
     *,
@@ -411,9 +474,11 @@ __all__ = [
     "FastqcParams",
     "MultiqcMetricsParams",
     "MultiqcParams",
+    "QcAncestryParams",
     "QcContaminationParams",
     "QcVcfParams",
     "RelateParams",
+    "ancestry",
     "contamination",
     "fake_data",
     "fastp",
