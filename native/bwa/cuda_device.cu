@@ -157,8 +157,7 @@ public:
                 + capacity * (seed_scratch_capacity * 3 + seed_output_capacity) * sizeof(SeedInterval),
                 "index");
             index_.reserve(bwt.bwt_size);
-            check(WGSE_GPU(Memcpy)(index_.data(), bwt.bwt, bwt.bwt_size * sizeof(uint32_t),
-                WGSE_GPU(MemcpyHostToDevice)), "index upload");
+                upload(index_.data(), bwt.bwt, bwt.bwt_size * sizeof(uint32_t), "index upload");
             scratch_.reserve(capacity * seed_scratch_capacity * 3);
             output_.reserve(capacity * seed_output_capacity);
             results_.reserve(capacity);
@@ -260,8 +259,7 @@ public:
             return false;
         }
         sa_.reserve(bwt.n_sa);
-        check(WGSE_GPU(Memcpy)(sa_.data(), bwt.sa, bwt.n_sa * sizeof(uint64_t),
-            WGSE_GPU(MemcpyHostToDevice)), "suffix array upload");
+        upload(sa_.data(), bwt.sa, bwt.n_sa * sizeof(uint64_t), "suffix array upload");
         rows_.reserve(rows);
         positions_.reserve(rows);
         host_rows_.reserve(rows);
@@ -334,10 +332,10 @@ public:
                 dense_high_.data());
             seed_queue_.finish(watchdog_, Watchdog::locate, "dense samples");
         }
-        check(WGSE_GPU(Memcpy)(host_dense_low_.data(), dense_low_.data(), entries * sizeof(uint32_t),
-            WGSE_GPU(MemcpyDeviceToHost)), "dense samples");
-        check(WGSE_GPU(Memcpy)(host_dense_high_.data(), dense_high_.data(), words * sizeof(uint32_t),
-            WGSE_GPU(MemcpyDeviceToHost)), "dense samples");
+        download(host_dense_low_.data(), dense_low_.data(), entries * sizeof(uint32_t),
+            "dense samples");
+        download(host_dense_high_.data(), dense_high_.data(), words * sizeof(uint32_t),
+            "dense samples");
         *low = host_dense_low_.data();
         *high = host_dense_high_.data();
         return true;
@@ -496,6 +494,7 @@ private:
     LocateParameters locate_parameters_{};
     DeviceBuffer<uint64_t> sa_, rows_, positions_;
     PinnedBuffer<uint64_t> host_rows_, host_positions_;
+    PinnedBuffer<uint8_t> bounce_;
     DeviceBuffer<uint32_t> dense_low_, dense_high_;
     std::vector<uint32_t> host_dense_low_, host_dense_high_;
     DeviceBuffer<uint8_t> rescue_bases_, rescue_rows_;
@@ -515,6 +514,33 @@ private:
     std::thread completer_;
 
     void select() const { check(WGSE_GPU(SetDevice)(ordinal_), "device selection"); }
+
+    // Bulk copies (the index, the dense samples) through a pinned bounce buffer
+    // in pieces, each an asynchronous copy with a watchdog-bounded wait: a
+    // synchronous copy from pageable memory could block on a hung GPU.
+    static constexpr size_t bounce_bytes = size_t(64) << 20;
+
+    void upload(void *device, const void *host, size_t bytes, const char *what) {
+        bounce_.reserve(bounce_bytes);
+        for (size_t done = 0; done < bytes; done += bounce_bytes) {
+            const size_t n = std::min(bounce_bytes, bytes - done);
+            memcpy(bounce_.data(), static_cast<const uint8_t *>(host) + done, n);
+            check(WGSE_GPU(MemcpyAsync)(static_cast<uint8_t *>(device) + done, bounce_.data(), n,
+                WGSE_GPU(MemcpyHostToDevice), seed_queue_.stream), what);
+            seed_queue_.finish(watchdog_, Watchdog::locate, what);
+        }
+    }
+
+    void download(void *host, const void *device, size_t bytes, const char *what) {
+        bounce_.reserve(bounce_bytes);
+        for (size_t done = 0; done < bytes; done += bounce_bytes) {
+            const size_t n = std::min(bounce_bytes, bytes - done);
+            check(WGSE_GPU(MemcpyAsync)(bounce_.data(), static_cast<const uint8_t *>(device) + done,
+                n, WGSE_GPU(MemcpyDeviceToHost), seed_queue_.stream), what);
+            seed_queue_.finish(watchdog_, Watchdog::locate, what);
+            memcpy(static_cast<uint8_t *>(host) + done, bounce_.data(), n);
+        }
+    }
 
     // Throws unless `bytes` more device memory are free, with a margin for the
     // other buffers and other programs: the GPU may be shared.
