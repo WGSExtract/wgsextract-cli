@@ -223,7 +223,10 @@ It writes bwa's exact alignments and is **experimental**.
 On Linux ARM64 (for example Graviton, Ampere or Cobalt), the linux-aarch64
 `wgse-bwa` package has no GPU backend; its CPU backend runs bwa's steps with
 the same exact NEON replacements as on a Mac, and `align` and `realign` run it
-in place of bwa the same way (`native_aligner_backend` is `cpu`).
+in place of bwa the same way (`native_aligner_backend` is `cpu`). On a 16-vCPU Cobalt 100 (Neoverse N2), wgse-bwa 0.10.0
+aligned the first 5M HG002 pairs on hs38 in 224 s against Bioconda bwa's 282 s
+(−20%, median of three interleaved rounds, 16 threads, `-K 10000000`), with
+the same alignments (**measured**, `native/bench/bench.sh`).
 
 ## Apple Silicon (Metal)
 
