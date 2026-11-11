@@ -32,6 +32,7 @@ def _apple_silicon() -> bool:
             [sysctl, "-n", "hw.optional.arm64"],
             capture_output=True,
             text=True,
+            errors="replace",
             check=False,
         )
     except OSError:
