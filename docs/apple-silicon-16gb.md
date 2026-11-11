@@ -229,8 +229,9 @@ run with `-K 10000000` wrote the same records, from either aligner.
 The same 35x HG002 BAM was realigned to hs38 again with the defaults
 ([#609](https://github.com/WGSExtract/wgsextract-cli/issues/609)): WGS Extract
 0.8.6 from main, with `wgse-bwa` 0.9.0 and `wgse-bwa-mem3` 0.2.0 on `PATH` and
-bwa-mem2's index (without `.0123`) beside hs38. The hs38 copy differed from
-#549's, whose reference library had been deleted, but had the same sequences.
+bwa-mem2's index (without `.0123`) beside hs38. #549's reference library had
+been deleted, so hs38 was an uncompressed copy instead of its bgzipped one,
+with the same BWA index files.
 `realign`'s pre-flight found about 8.4 GiB of RAM available at the start.
 
 | Step | #549 (`wgse-bwa` 0.7.1) | #609 (`wgse-bwa` 0.9.0) |
