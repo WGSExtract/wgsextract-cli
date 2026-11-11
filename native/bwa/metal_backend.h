@@ -108,6 +108,10 @@ void wgse_inject_locate_failure();
 // Reports the first commit of every nth piece of GPU work as interrupted by
 // macOS, so it is committed again.
 void wgse_inject_gpu_interruptions(size_t every);
+// The GPU watchdog's floor in seconds (CUDA).
+void wgse_set_gpu_watchdog_seconds(double seconds);
+// Occupies the GPU past the watchdog's limit before the first rescue batch (CUDA).
+void wgse_inject_gpu_hang();
 void wgse_set_gpu_locate(bool enable);
 void wgse_set_gpu_locate_dense(unsigned shift);
 void wgse_set_gpu_locate_dense_after(size_t reads);

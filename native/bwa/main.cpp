@@ -74,6 +74,19 @@ int run(int argc, char **argv) {
             }
             wgse_inject_gpu_interruptions(static_cast<size_t>(every));
             command_index += 2;
+        } else if (strcmp(option, "--gpu-inject-hang") == 0) {
+            wgse_inject_gpu_hang();
+            ++command_index;
+        } else if (strcmp(option, "--gpu-watchdog-seconds") == 0) {
+            const char *value = argc > command_index + 1 ? argv[command_index + 1] : "";
+            char *end = nullptr;
+            const double seconds = strtod(value, &end);
+            if (end == value || *end || !(seconds > 0) || seconds > 86400) {
+                fprintf(stderr, "--gpu-watchdog-seconds requires 0 < seconds <= 86400\n");
+                return 2;
+            }
+            wgse_set_gpu_watchdog_seconds(seconds);
+            command_index += 2;
         } else if (strcmp(option, "--gpu-locate") == 0) {
             const char *value = argc > command_index + 1 ? argv[command_index + 1] : "";
             if (strcmp(value, "on") && strcmp(value, "off")) {

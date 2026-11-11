@@ -51,6 +51,8 @@ target_compile_options(wgse_bwa_smem PRIVATE -Wall -Wextra -Werror)
 set(device_sources)
 if(APPLE)
     list(APPEND device_sources metal_device.mm)
+elseif(WGSE_CUDA)
+    list(APPEND device_sources cuda_device.cu)
 endif()
 add_library(wgse_bwa_core STATIC ${bwa_sources} backend.cpp ${device_sources}
     $<TARGET_OBJECTS:wgse_bwa_smem>)
@@ -72,6 +74,14 @@ endif()
 if(APPLE)
     target_compile_definitions(wgse_bwa_core PRIVATE WGSE_HAVE_METAL=1)
     target_link_libraries(wgse_bwa_core PUBLIC wgse_metal_common)
+elseif(WGSE_CUDA)
+    target_compile_definitions(wgse_bwa_core PRIVATE WGSE_HAVE_CUDA=1)
+    target_include_directories(wgse_bwa_core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../gpu-common")
+    target_compile_options(wgse_bwa_core PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:--Werror=all-warnings -Xcompiler=-Wall,-Wextra>)
+    # The static runtime needs only the NVIDIA driver at run time; without one,
+    # the CUDA backend reports itself unavailable.
+    target_link_libraries(wgse_bwa_core PUBLIC CUDA::cudart_static)
 endif()
 
 add_executable(wgse-bwa main.cpp)
