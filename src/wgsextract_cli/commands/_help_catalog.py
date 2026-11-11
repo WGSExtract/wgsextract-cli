@@ -361,6 +361,13 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract ref index --ref hs38.fa",
         "wgsextract ref index --ref hs38.fa --aligner bwa-mem2",
     ),
+    "ref dense-sa": _h(
+        "Beside the FASTA: <FASTA>.wgse-sa16, wgse-bwa's optional dense "
+        "suffix-array file (0.8 GB for hs38); --list prints the FASTA's files, "
+        "--delete removes them.",
+        "wgsextract ref dense-sa --ref hs38.fa",
+        "wgsextract ref dense-sa --ref hs38.fa --list",
+    ),
     "ref verify": _h(
         "Prints what is missing or damaged; creates a missing .fai (and .gzi for "
         "a compressed FASTA) beside the FASTA.",

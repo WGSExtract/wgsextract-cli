@@ -165,6 +165,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "ref download": _n(DOWNLOAD, optional="curl"),
     "ref index": _n(HOURS, *_SAM, optional="bwa bwa-mem2 curl", scale=REFERENCE),
     "ref count-ns": _n(MINUTES, scale=REFERENCE),
+    "ref dense-sa": _n(MINUTES, scale=REFERENCE),
     "ref verify": _n(MINUTES, *_SAM, scale=REFERENCE),
     "ref library": _n(
         DOWNLOAD, "bcftools", "bgzip", "curl", "htsfile", "samtools", "tabix"
