@@ -150,8 +150,11 @@ def _maximise(
     return q, model.log_likelihood(q), iterations
 
 
-def _blocks(n: int, block_size: int) -> list[np.ndarray]:
-    return [np.arange(i, min(i + block_size, n)) for i in range(0, n, block_size)]
+def _block_sizes(n: int, block_size: int) -> np.ndarray:
+    """Sizes of the consecutive blocks of ``block_size`` sites covering n."""
+    sizes = np.full(-(-n // block_size), block_size)
+    sizes[-1] = n - block_size * (len(sizes) - 1)
+    return sizes
 
 
 def project(
@@ -172,18 +175,17 @@ def project(
     if n == 0:
         raise ValueError("no sites to project")
     q, log_likelihood, iterations = _maximise(p, likelihoods, np.full(k, 1.0 / k), None)
-    lower = upper = q
+    lower, upper = q.copy(), q.copy()
     if bootstrap:
-        blocks = _blocks(n, block_size)
+        sizes = _block_sizes(n, block_size)
         rng = np.random.default_rng(seed)
         draws = np.empty((bootstrap, k))
         start = np.clip(q, 1e-3, None)
         start = start / start.sum()
         for b in range(bootstrap):
-            picked = rng.integers(0, len(blocks), len(blocks))
-            weights = np.bincount(
-                np.concatenate([blocks[i] for i in picked]), minlength=n
-            ).astype(np.float64)
+            picked = rng.integers(0, len(sizes), len(sizes))
+            counts = np.bincount(picked, minlength=len(sizes))
+            weights = np.repeat(counts, sizes).astype(np.float64)
             draws[b], _, _ = _maximise(p, likelihoods, start, weights)
         lower, upper = np.percentile(draws, [2.5, 97.5], axis=0)
         lower = np.minimum(lower, q)

@@ -49,7 +49,6 @@ from wgsextract_cli.core.reference_resolver import (
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.utils import (
     WGSExtractError,
-    get_resource_defaults,
     popen,
     run_command,
 )
@@ -145,7 +144,7 @@ def _pileup(
         _, error = pile.communicate()
         if pile.returncode:
             raise WGSExtractError(
-                f"bcftools mpileup failed on {contig}: {error.decode()[-800:]}"
+                f"bcftools mpileup failed on {contig}: {error.decode(errors='replace')[-800:]}"
             )
 
 
@@ -459,7 +458,6 @@ def run_ancestry(params: QcAncestryParams) -> None:
         )
     stem = f"{input_stem(source)}.ancestry"
     table = outdir / f"{stem}.tsv"
-    threads, _ = get_resource_defaults(params.threads, None)
     projections = {}
     for k in ancestry_reference.KS:
         logging.info(f"Estimating proportions at K={k} from {n:,} sites...")
