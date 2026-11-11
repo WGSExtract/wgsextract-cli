@@ -50,6 +50,8 @@ void wgse_note_overlapped_chunk();
 // Page-aligned memory for the FM index checkpoints, so Metal can use them in place.
 // With Metal, warns and leaves seeding to the CPU if the GPU cannot map them.
 void *wgse_metal_index_alloc(size_t bytes);
+// free(), except while a GPU command the watchdog abandoned may still read it.
+void wgse_metal_index_free(void *memory);
 // The default device's name and limits; empty and zero without a device.
 struct WgseMetalLimits {
     std::string device;

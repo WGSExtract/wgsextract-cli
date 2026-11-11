@@ -31,22 +31,32 @@ public:
     // are running. Every command buffer goes through here: with more running at
     // once, macOS aborts some (ImpactingInteractivity) to keep the display responsive.
     //
-    // GPU watchdog: once a committed command has not completed for
-    // watchdog_seconds() (macOS reported no error, as on a hung paravirtual GPU),
+    // GPU watchdog: once a command has run on the GPU for longer than
+    // watchdog_seconds() with no word from macOS (as on a hung paravirtual GPU),
     // the runtime gives up on the GPU for the rest of the process. done then runs
     // for every command in flight, whose status is not Completed, and later
-    // commits do not commit: done runs at once. So done always runs exactly
-    // once, and callers waiting for it finish their work on the CPU.
+    // commits do not commit: done runs at once. So done always runs exactly once,
+    // and callers waiting for it finish their work on the CPU. Every GPU command
+    // must go through here (or run()) to be covered.
+    // keep: buffers a command made with unretained references uses; they stay
+    // alive until Metal completes the command, even after it is abandoned.
     static void commit(id<MTLCommandBuffer> command,
-        void (^done)(id<MTLCommandBuffer>) = nil);
+        void (^done)(id<MTLCommandBuffer>) = nil, NSArray *keep = nil);
     // Commits command and blocks until its done would run (completion or watchdog).
     static void run(id<MTLCommandBuffer> command);
-    // Why the watchdog gave up on the GPU, or empty. Also describes a command
-    // that did not complete for another reason.
+    // Why the watchdog gave up on the GPU, or empty. describe() also describes a
+    // command that did not complete for another reason.
     static std::string hang();
     static std::string describe(id<MTLCommandBuffer> command);
-    // Generous: 60 s, or 20 times the slowest command so far if longer.
+    // The time a command may run since macOS scheduled it: 180 s until one has
+    // completed, then 60 s or 20 times the slowest so far, if longer. Uptime, so
+    // system sleep does not count.
     static double watchdog_seconds();
+    // Abandoned commands that may still run on the GPU. Host memory they read
+    // (an index wrapped without copying) must not be freed while this is nonzero.
+    static size_t unsettled();
+    // Watchdog threads started so far: one per stretch of GPU work, not per command.
+    static size_t watchdog_threads();
     // Test hook: withholds the first command whose label starts with label
     // (any command if empty), so it never completes, and gives up after seconds.
     static void inject_hang(const std::string &label, double seconds);

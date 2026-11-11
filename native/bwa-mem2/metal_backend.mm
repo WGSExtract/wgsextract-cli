@@ -498,11 +498,14 @@ class Aggregator {
         }
         // The submitter finishes the slot, so only it touches slot.command.
         Slot *completed_slot = &slot;
+        NSMutableArray *keep = [NSMutableArray arrayWithObjects:slot.work.pairs, slot.reference,
+            slot.query, nil];
+        if (tiled && slot.work.scratch) [keep addObject:slot.work.scratch];
         wgse::metal::Runtime::commit(slot.command, ^(id<MTLCommandBuffer>) {
             std::lock_guard<std::mutex> lock(mutex);
             completed_slot->status = Slot::completed;
             changed.notify_one();
-        });
+        }, keep);
     }
 
     void finish(Slot &slot) {
@@ -1799,6 +1802,10 @@ SMEM *wgse_metal_smems(FMI_search *fmi, const mem_opt_t *opt, const bseq1_t *seq
     return mmc->matchArray[tid];
 }
 
+void wgse_metal_index_free(void *memory) {
+    if (!wgse::metal::Runtime::unsettled()) free(memory);
+}
+
 void *wgse_metal_index_alloc(size_t bytes) {
     const size_t page = static_cast<size_t>(getpagesize());
     void *memory = nullptr;
@@ -2139,12 +2146,12 @@ void wgse_print_backend_metrics() {
         "rescue_hits=%zu rescue_misses=%zu rescue_mismatches=%zu interruptions=%zu "
         "overlap=%d overlapped_chunks=%zu rescue_cpu_jobs=%zu rescue_cpu_hits=%zu "
         "rescue_cpu_skipped=%zu rescue_pruned_dead=%zu rescue_rows=%zu rescue_rows_kept=%zu "
-        "rescue_unkept_differences=%zu\n",
+        "rescue_unkept_differences=%zu watchdog_threads=%zu\n",
         rescue_batches, rescue_gpu_pairs, rescue_cpu_pairs, rescue_wasted_pairs, rescue_jobs,
         rescue_declined, rescue_skipped, rescue_hits, rescue_misses, rescue_mismatches,
         wgse::metal::Runtime::interruptions(), int(overlap_active.load()), overlapped_chunks.load(),
         rescue_cpu_jobs, rescue_cpu_hits, rescue_cpu_skipped, prune_dead, prune_rows, prune_kept,
-        rescue_unkept_differences);
+        rescue_unkept_differences, wgse::metal::Runtime::watchdog_threads());
     fprintf(stderr, "[wgse-bwa-mem2] rescue seconds gpu=%.3f kernel=%.3f pair=%.3f cpu_wait=%.3f\n",
         rescue_gpu_seconds, rescue_kernel_seconds, rescue_seconds, rescue_wait_seconds);
     std::lock_guard<std::mutex> seed_lock(seed_mutex);

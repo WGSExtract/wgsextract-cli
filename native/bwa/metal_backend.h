@@ -17,6 +17,8 @@ int wgse_metal_enabled(void);
 // option asks for upstream's code.
 int wgse_fast_cpu(void);
 void *wgse_metal_calloc(size_t count, size_t size);
+// free(), except while a GPU command the watchdog abandoned may still read it.
+void wgse_metal_free(void *memory);
 int wgse_metal_map(const mem_opt_t *opt, const bwt_t *bwt, int n, bseq1_t *seqs,
     void (*worker)(void *, long, int), void *data);
 // mem_collect_intv()'s ks_introsort() of its intervals (mem_stages.c.in).

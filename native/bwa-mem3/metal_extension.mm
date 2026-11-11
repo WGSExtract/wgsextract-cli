@@ -227,7 +227,7 @@ private:
             std::lock_guard<std::mutex> lock(mutex);
             finished->status = Slot::completed;
             changed.notify_one();
-        });
+        }, @[slot.pairs, slot.reference, slot.query]);
     }
 
     // Stores the results, or commits the slot again after an interruption.

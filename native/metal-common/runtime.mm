@@ -21,44 +21,68 @@ dispatch_semaphore_t gpu_slot() {
     return slot;
 }
 
-using Clock = std::chrono::steady_clock;
+// Nanoseconds of uptime, which (unlike steady_clock, which counts system sleep
+// on macOS) stops while the Mac sleeps, so a closed lid does not age commands.
+uint64_t uptime_ns() {
+    return clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+}
 
-// A committed command whose done has not run yet.
+// A committed command whose done has not run yet. Metal's completion handler
+// owns it too, so keep (the buffers of a command without retained references)
+// lives until the GPU is really done, even after the watchdog abandons it.
 struct InFlight {
     id<MTLCommandBuffer> command;
     void (^done)(id<MTLCommandBuffer>);
-    Clock::time_point committed;
+    NSArray *keep;
+    uint64_t committed = 0, started = 0; // started: when the GPU scheduled it
+    bool abandoned = false;              // guarded by the watchdog's mutex
     std::atomic<bool> finished{false};
     void finish() {
         if (!finished.exchange(true) && done) done(command);
     }
 };
 
+// Gives up on the GPU once a command has run for longer than limit() since
+// macOS scheduled it (or 2 * limit() since its commit, if never scheduled). The
+// limit is generous: until a command has completed, first_floor_ (a first
+// command may compile or page in a large index); then max(floor_, 20 times the
+// slowest command so far). One thread watches while commands are in flight; it
+// exits when none are, and for good once it gives up.
 class Watchdog {
 public:
-    // Registers command; false (without registering) once the GPU is given up.
+    // Registers entry; false (without registering) once the GPU is given up.
     bool track(const std::shared_ptr<InFlight> &entry) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!hang_.empty()) return false;
-        if (!thread_.joinable()) {
+        entry->committed = uptime_ns();
+        in_flight_[(__bridge void *)entry->command] = entry; // the entry retains the command
+        if (!watching_) {
             try {
-                thread_ = std::thread(&Watchdog::watch, this);
-                thread_.detach();
+                std::thread(&Watchdog::watch, this).detach();
+                watching_ = true;
+                ++threads_started_;
             } catch (const std::system_error &) {
                 // Without the watchdog commands are unbounded, as before.
             }
         }
-        entry->committed = Clock::now();
-        in_flight_[(__bridge void *)entry->command] = entry;
         return true;
     }
 
+    void scheduled(InFlight &entry) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!entry.started) entry.started = uptime_ns();
+    }
+
+    // On Metal's completion of a committed command.
     void completed(InFlight &entry) {
         {
             std::lock_guard<std::mutex> lock(mutex_);
             in_flight_.erase((__bridge void *)entry.command);
-            slowest_ = std::max(slowest_,
-                std::chrono::duration<double>(Clock::now() - entry.committed).count());
+            if (entry.abandoned) --unsettled_;
+            else if (entry.started) {
+                slowest_ = std::max(slowest_, (uptime_ns() - entry.started) * 1e-9);
+                any_completed_ = true;
+            }
         }
         entry.finish();
     }
@@ -73,47 +97,70 @@ public:
         return limit_locked();
     }
 
+    size_t unsettled() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return unsettled_;
+    }
+
+    size_t threads_started() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return threads_started_;
+    }
+
     void inject(const std::string &label, double seconds) {
         std::lock_guard<std::mutex> lock(mutex_);
         injected_label_ = label;
         injected_ = true;
-        base_ = seconds;
+        floor_ = first_floor_ = seconds;
         poll_ = std::min(poll_, seconds / 4);
     }
 
-    // Whether to withhold command (the test hook); at most once.
-    bool withhold(id<MTLCommandBuffer> command) {
+    // Whether to withhold command (the test hook), at most once; a withheld
+    // command counts as scheduled, as a hung one would be.
+    bool withhold(InFlight &entry) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!injected_) return false;
-        NSString *label = command.label ?: @"";
+        NSString *label = entry.command.label ?: @"";
         if (![label hasPrefix:[NSString stringWithUTF8String:injected_label_.c_str()]])
             return false;
         injected_ = false;
+        entry.started = uptime_ns();
+        ++unsettled_; // it never completes
         return true;
     }
 
 private:
     std::mutex mutex_;
-    std::thread thread_;
     std::unordered_map<void *, std::shared_ptr<InFlight>> in_flight_;
     std::string hang_, injected_label_;
-    bool injected_ = false;
-    double base_ = 60, slowest_ = 0, poll_ = 1;
+    bool injected_ = false, watching_ = false, any_completed_ = false;
+    double floor_ = 60, first_floor_ = 180, slowest_ = 0, poll_ = 1;
+    size_t unsettled_ = 0, threads_started_ = 0;
 
-    double limit_locked() const { return std::max(base_, 20 * slowest_); }
+    double limit_locked() const {
+        return any_completed_ ? std::max(floor_, 20 * slowest_) : first_floor_;
+    }
 
     void watch() {
         for (;;) {
-            std::vector<std::shared_ptr<InFlight>> abandoned;
             double poll;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 poll = poll_;
+            }
+            std::this_thread::sleep_for(std::chrono::duration<double>(poll));
+            std::vector<std::shared_ptr<InFlight>> abandoned;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                if (in_flight_.empty()) {
+                    watching_ = false;
+                    return;
+                }
                 const double limit = limit_locked();
-                const auto now = Clock::now();
+                const uint64_t now = uptime_ns();
                 for (const auto &[key, entry] : in_flight_) {
-                    const double age =
-                        std::chrono::duration<double>(now - entry->committed).count();
+                    const double age = entry->started ? (now - entry->started) * 1e-9
+                                                      : (now - entry->committed) * 1e-9 / 2;
                     if (age <= limit) continue;
                     char reason[200];
                     snprintf(reason, sizeof reason,
@@ -124,17 +171,19 @@ private:
                     hang_ = reason;
                     break;
                 }
-                if (!hang_.empty()) {
-                    // Commands queued behind a hung one cannot finish either.
-                    for (auto &[key, entry] : in_flight_) abandoned.push_back(entry);
-                    in_flight_.clear();
+                if (hang_.empty()) continue;
+                // Commands queued behind a hung one cannot finish either.
+                for (auto &[key, entry] : in_flight_) {
+                    if (!entry->abandoned) {
+                        entry->abandoned = true;
+                        ++unsettled_;
+                    }
+                    abandoned.push_back(entry);
                 }
+                in_flight_.clear();
             }
-            if (!abandoned.empty()) {
-                for (auto &entry : abandoned) entry->finish();
-                return;
-            }
-            std::this_thread::sleep_for(std::chrono::duration<double>(poll));
+            for (auto &entry : abandoned) entry->finish();
+            return;
         }
     }
 };
@@ -145,25 +194,30 @@ Watchdog &watchdog() {
 }
 } // namespace
 
-void Runtime::commit(id<MTLCommandBuffer> command, void (^done)(id<MTLCommandBuffer>)) {
+void Runtime::commit(id<MTLCommandBuffer> command, void (^done)(id<MTLCommandBuffer>),
+    NSArray *keep) {
     Watchdog &dog = watchdog();
     auto entry = std::make_shared<InFlight>();
     entry->command = command;
     entry->done = done;
+    entry->keep = keep;
     dispatch_semaphore_t slot = gpu_slot();
     // A hung command keeps its slot; waiting for one is bounded by the watchdog.
-    while (dispatch_semaphore_wait(slot, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 10))) {
+    for (;;) {
         if (!dog.hang().empty()) {
             entry->finish();
             return;
         }
+        if (!dispatch_semaphore_wait(slot, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 10)))
+            break;
     }
     if (!dog.track(entry)) {
         dispatch_semaphore_signal(slot);
         entry->finish();
         return;
     }
-    if (dog.withhold(command)) return;
+    if (dog.withhold(*entry)) return;
+    [command addScheduledHandler:^(id<MTLCommandBuffer>) { watchdog().scheduled(*entry); }];
     [command addCompletedHandler:^(id<MTLCommandBuffer>) {
         dispatch_semaphore_signal(slot);
         watchdog().completed(*entry);
@@ -190,6 +244,14 @@ std::string Runtime::describe(id<MTLCommandBuffer> command) {
 
 double Runtime::watchdog_seconds() {
     return watchdog().limit();
+}
+
+size_t Runtime::unsettled() {
+    return watchdog().unsettled();
+}
+
+size_t Runtime::watchdog_threads() {
+    return watchdog().threads_started();
 }
 
 void Runtime::inject_hang(const std::string &label, double seconds) {

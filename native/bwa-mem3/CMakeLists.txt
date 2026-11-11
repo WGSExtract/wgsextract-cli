@@ -227,8 +227,12 @@ if(BUILD_TESTING)
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
         $<TARGET_FILE:wgse-bwa-mem3> $<TARGET_FILE:bwa-mem3-upstream>
         "${CMAKE_CURRENT_BINARY_DIR}/metal-watchdog" --metal --gpu-inject-hang extend)
+    add_test(NAME bwa_mem3_auto_watchdog
+        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
+        $<TARGET_FILE:wgse-bwa-mem3> $<TARGET_FILE:bwa-mem3-upstream>
+        "${CMAKE_CURRENT_BINARY_DIR}/auto-watchdog" --backend auto --gpu-inject-hang extend)
     set_tests_properties(bwa_mem3_metal_parity bwa_mem3_metal_failure_parity
-        bwa_mem3_metal_watchdog PROPERTIES SKIP_RETURN_CODE 77)
+        bwa_mem3_metal_watchdog bwa_mem3_auto_watchdog PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
 install(TARGETS wgse-bwa-mem3 RUNTIME DESTINATION bin)
