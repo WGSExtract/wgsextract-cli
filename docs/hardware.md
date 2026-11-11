@@ -265,6 +265,29 @@ the check, or is older than the oldest supported release, raises the
   `tools` and records the `native_aligner`, `native_aligner_version` and
   `native_aligner_backend` (`metal` or `cpu`) metrics; bwa-mem3 runs also
   record `bwa_mem3_mode` (`compat=bwa-mem`, `compat=bwa-mem2` or `fast`).
+- **Dense suffix-array file (optional).** `wgse-bwa` 0.11.0 and later can
+  read a side file beside the reference's BWA index that holds the
+  suffix-array position of every 16th row, so it locates seeds with shorter
+  walks: the same alignments, 11.5% faster on the CPU and 7.7% faster on the
+  GPU for 5M read pairs on hs38. The file takes 0.80 GB on disk for hs38 and
+  as much RAM while aligning. It is opt-in and never built or used
+  automatically:
+  - `wgsextract ref dense-sa --ref <fasta>` builds it with `wgse-bwa
+    densify-sa` (it shows the disk it will take first; `--interval 8`, `4` or
+    `2` makes a larger, faster file), `--list` shows the FASTA's files and the
+    one `wgse-bwa` would read here, and `--delete` removes them.
+  - `align` and `realign` read it with `--dense-suffix-array`, or
+    `dense_suffix_array = true` in `config.toml` (`--no-dense-suffix-array`
+    turns that off for a run). Otherwise they run `wgse-bwa --dense-sa off`,
+    so a file left beside the index isn't read. The memory estimate counts the
+    file as index memory (with the GPU it replaces the denser sample the GPU
+    would build after 20M reads), and the manifest records
+    `dense_suffix_array_interval`.
+  - Asked to use it, a run that can't (no file, `wgse-bwa` not aligning or
+    older than 0.11.0, or a file `wgse-bwa` won't read: it needs 16 GiB of RAM
+    or more, a file of at most an eighth of it, and an intact file made from
+    this index) raises the `dense_suffix_array_unused` warning and aligns
+    without it.
 
 `--aligner bwa-mem3` asks for bwa-mem3 itself: `wgse-bwa-mem3` on Apple
 Silicon, else (or with `--native-aligners off`) `bwa-mem3` on `PATH`, for

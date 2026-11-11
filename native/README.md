@@ -181,9 +181,10 @@ checks each file's header and checksum; only `mem` also spot-checks 1024
 samples against the index). Mate rescue also steps the lazy-F loops of the
 windows it aligns together in turn, and `--metal`'s CPU threads seed the pairs
 they take from the GPU's queue 8 at a time with the CPU backend's interleaved
-walks. Each gives upstream's exact results. WGS Extract does not write or use the
-file yet; opt-in support (a setting, a run flag and a reference-library command
-showing its disk and memory cost) will follow.
+walks. Each gives upstream's exact results. WGS Extract builds the file only
+with `wgsextract ref dense-sa`, and its `align` and `realign` read it only with
+`--dense-suffix-array` (or `dense_suffix_array = true` in `config.toml`);
+otherwise they pass `--dense-sa off` (docs/hardware.md).
 
 From 0.5.0, `wgse-bwa-mem2`'s CPU backend does the same with its own exact
 replacements: it collects each read's SMEMs in all three passes with up to 16
