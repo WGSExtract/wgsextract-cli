@@ -262,12 +262,19 @@ def hg19_to_hg38_chain(reflib_dir: str, search: Sequence[str] = ()) -> str:
 
 def download_chain(source: ChainSource, dest: str) -> bool:
     """Download source to dest from the first of its URLs that serves a copy
-    with its SHA-256. Each URL stages into its own file, so trying one source
-    never discards another's resumable partial download."""
-    for url in source.urls:
-        staged = f"{dest}.{hashlib.sha256(url.encode()).hexdigest()[:12]}"
-        if download_file(url, staged, expected_sha256=source.sha256):
-            Path(staged).replace(dest)
+    with its SHA-256. Each URL stages into its own file, so while dest is
+    missing, trying one source never discards another's resumable partial
+    download; once dest is in place, every source's staging files are removed."""
+    staged = {
+        url: f"{dest}.{hashlib.sha256(url.encode()).hexdigest()[:12]}"
+        for url in source.urls
+    }
+    for url, stage in staged.items():
+        if download_file(url, stage, expected_sha256=source.sha256):
+            Path(stage).replace(dest)
+            for leftover in staged.values():
+                for suffix in ("", ".partial", ".partial.source", ".partial.segments"):
+                    Path(leftover + suffix).unlink(missing_ok=True)
             return True
         logging.warning(f"Could not get {source.name} from {url}.")
     return False
