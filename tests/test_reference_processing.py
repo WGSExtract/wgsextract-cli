@@ -14,6 +14,7 @@ import subprocess
 import tarfile
 import threading
 import zipfile
+import zlib
 from pathlib import Path
 
 import pytest
@@ -44,7 +45,22 @@ def _bgzip(data: bytes) -> bytes:
     return subprocess.run(bgzip, input=data, capture_output=True, check=True).stdout
 
 
+def _razf(data: bytes) -> bytes:
+    """data as RAZF, laid out as NIH serves hs37d5: a gzip header whose extra
+    field is "RAZF" and a block size, then the deflate data and gzip trailer,
+    then RAZF's block index."""
+    deflater = zlib.compressobj(9, zlib.DEFLATED, -zlib.MAX_WBITS)
+    body = deflater.compress(data) + deflater.flush()
+    extra = b"RAZF" + struct.pack(">H", 0x8000)
+    header = b"\x1f\x8b\x08\x04" + bytes(6) + struct.pack("<H", len(extra))
+    trailer = struct.pack("<II", zlib.crc32(data), len(data))
+    index = struct.pack(">IIQQ", 1, 0, len(header + extra), len(data))
+    return header + extra + body + trailer + index
+
+
 def _compress(kind: str, data: bytes) -> bytes:
+    if kind == "razf":
+        return _razf(data)
     return _bgzip(data) if kind == "bgzf" else gzip.compress(data)
 
 
@@ -94,7 +110,7 @@ def _assert_installed(lib: Path, final: str) -> Path:
 
 
 @needs_htslib
-@pytest.mark.parametrize("kind", ["gzip", "bgzf"])
+@pytest.mark.parametrize("kind", ["gzip", "bgzf", "razf"])
 def test_download_installs_an_indexed_bgzf_genome(tmp_path, monkeypatch, kind):
     payload = _compress(kind, FASTA)
     _fake_download(monkeypatch, {_genome()["url"]: payload})
@@ -259,6 +275,37 @@ def test_corrupt_download_falls_through_to_the_next_mirror(tmp_path, monkeypatch
     )
     library_commands._install_from_mirrors([first, second], str(tmp_path))
     _assert_installed(tmp_path, "hs38.fa.gz")
+
+
+# --- is_bgzf ------------------------------------------------------------------
+
+
+@needs_htslib
+def test_only_a_bc_extra_field_is_bgzf(tmp_path):
+    gzip_with_extra = gzip.compress(FASTA)
+    # Same bytes up to the extra field as BGZF: 1f 8b 08 04.
+    gzip_with_extra = (
+        gzip_with_extra[:3]
+        + b"\x04"
+        + gzip_with_extra[4:10]
+        + struct.pack("<H", 6)
+        + b"XY\x02\x00ab"
+        + gzip_with_extra[10:]
+    )
+    files = {
+        "bgzf": _bgzip(FASTA),
+        "razf": _razf(FASTA),
+        "gzip": gzip.compress(FASTA),
+        "other-extra": gzip_with_extra,
+        "plain": FASTA,
+        "empty": b"",
+    }
+    found = {}
+    for name, data in files.items():
+        path = tmp_path / name
+        path.write_bytes(data)
+        found[name] = is_bgzf(str(path))
+    assert found == {name: name == "bgzf" for name in files}
 
 
 # --- process_reference_file ---------------------------------------------------
