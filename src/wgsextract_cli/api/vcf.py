@@ -1193,8 +1193,7 @@ class VcfImputeParams(Params):
     )
     vcf_input: Path | None = param(
         None,
-        help="Genotype-only VCF to impute with Beagle (e.g. microarray calls), "
-        "instead of --input.",
+        help="Genotype-only VCF (e.g. chip calls) to impute with Beagle instead.",
         path="file",
     )
     ref: Path | None = ref_param()
@@ -1203,19 +1202,16 @@ class VcfImputeParams(Params):
     memory: str | None = memory_param()
     chromosomes: str | None = param(
         None,
-        help="Chromosomes to impute, e.g. chr20 or chr1-22 (default: every "
-        "chromosome whose panel is installed).",
+        help="Chromosomes, e.g. chr20 or chr1-22 (default: every installed one).",
     )
     min_gp: float = param(
         0.9,
-        help="Mark imputed genotypes whose probability (max GP) is below this "
-        "ImpLowConf.",
+        help="FILTER genotypes with a lower max GP ImpLowConf.",
         minimum=0.0,
     )
     min_info: float = param(
         0.8,
-        help="Mark imputed sites whose INFO score (GLIMPSE2 INFO, Beagle DR2) "
-        "is below this ImpLowConf.",
+        help="FILTER sites with a lower INFO score (Beagle: DR2) ImpLowConf.",
         minimum=0.0,
     )
 

@@ -131,7 +131,7 @@ def register(
         "imputation",
         RefImputationParams,
         cmd_imputation,
-        "Install the hash-pinned GRCh38 1000 Genomes 30x imputation panel per chromosome.",
+        "Explicitly install the hash-pinned GRCh38 imputation panel, per chromosome.",
     )
     add("download", RefDownloadParams, cmd_download, CLI_HELP["cmd_ref-download"])
     add("index", RefIndexParams, cmd_index, CLI_HELP["cmd_ref-index"])

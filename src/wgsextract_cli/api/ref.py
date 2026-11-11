@@ -126,8 +126,7 @@ class RefImputationParams(_InLibrary, Params):
     delete: bool = _delete_param("imputation panel chromosomes")
     chromosomes: str | None = param(
         None,
-        help="Chromosomes to install or delete: chr20, chr1-22 or all "
-        "(chr1-chr22; chrX is not supported yet).",
+        help="Chromosomes: chr20, chr1-22 or all (autosomes only).",
     )
     ref: Path | None = ref_param()
     threads: int | None = threads_param()

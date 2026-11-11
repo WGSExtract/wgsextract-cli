@@ -444,6 +444,12 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         f"{_LIBRARY}: gnomAD SV tables in gnomad-sv/ (--delete removes them).",
         "wgsextract ref gnomad-sv --install --source lr",
     ),
+    "ref imputation": _h(
+        f"{_LIBRARY}: the imputation panel's chromosomes, prepared for GLIMPSE2 "
+        "(--delete removes them).",
+        "wgsextract ref imputation --install --chromosomes chr20",
+        "wgsextract ref imputation --delete --chromosomes all",
+    ),
     "ref ybrowse": _h(
         f"{_LIBRARY}: the yBrowse GRCh38 SNP sites (--delete removes them).",
         "wgsextract ref ybrowse --install",

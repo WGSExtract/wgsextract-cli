@@ -2122,6 +2122,7 @@ _BASE_REQUESTS: dict[str, dict[str, Any]] = {
     "extract/custom": {"region": "chrM"},
     "extract/region": {"formats": "bam"},
     "info/chip": {"input": _FILE},
+    "vcf/impute": {"input": _FILE},
     "panel/bed": {"genes": ["BRCA1"]},
     "qc/vcf": {"input": _FILE},
     "ref/library": {"install": "hs38"},
@@ -2140,6 +2141,7 @@ _COMPANIONS: dict[tuple[str, str], dict[str, Any]] = {
     ("basecall", "alignment"): {"alignment": _FILE, "regions_bed": _FILE},
     ("bam/to-ubam", "r1"): {"input": None, "r1": _FILE},
     ("bam/to-ubam", "r2"): {"input": None, "r1": _FILE},
+    ("vcf/impute", "vcf_input"): {"input": None, "vcf_input": _FILE},
 }
 
 
