@@ -16,6 +16,7 @@ from wgsextract_cli.api.ref import (
     RefGerpParams,
     RefGnomadParams,
     RefGnomadSvParams,
+    RefImputationParams,
     RefLibraryParams,
     RefMicroarrayTargetsParams,
     RefPharmgkbParams,
@@ -80,7 +81,7 @@ from wgsextract_cli.core.results import (
     manifest_path_for,
     record_changed_files,
 )
-from wgsextract_cli.core.utils import UsageError, WGSExtractError
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, get_resource_defaults
 
 from .core_commands import (
     cmd_library_list,
@@ -174,6 +175,36 @@ def _delete(
         human_output(f"Deleted {resource_name}.")
     else:
         human_output(f"No {resource_name} installed; nothing to delete.")
+
+
+def run_imputation(params: RefImputationParams) -> None:
+    from wgsextract_cli.core import imputation_panel
+
+    reflib = _library(params.ref)
+    base = imputation_panel.folder(reflib)
+    if params.delete:
+        chroms = (
+            imputation_panel.chromosomes(params.chromosomes)
+            if params.chromosomes
+            else list(imputation_panel.AUTOSOMES)
+        )
+        _delete(
+            f"imputation panel ({', '.join(chroms)})",
+            [base / c for c in chroms if (base / c).exists()],
+            [base, base.parent],
+        )
+        return
+    chroms = imputation_panel.chromosomes(params.chromosomes)
+    verify_dependencies(["bcftools", "tabix", "GLIMPSE2_chunk",
+                         "GLIMPSE2_split_reference", "GLIMPSE2_phase"])  # fmt: skip
+    imputation_panel.check_disk(chroms, reflib)
+    threads, _memory = get_resource_defaults(params.threads, None)
+    for chrom in chroms:
+        path = imputation_panel.install_chromosome(
+            chrom, reflib, int(threads), cancel=cancel_event()
+        )
+        current_result().add_output(path, "reference_resource")
+        logging.info(f"Installed the {chrom} imputation panel in {path}")
 
 
 def run_ybrowse(params: RefYbrowseParams) -> None:
@@ -501,6 +532,7 @@ cmd_ybrowse = cli_handler(RefYbrowseParams, run_ybrowse)
 cmd_somalier = cli_handler(RefSomalierParams, run_somalier)
 cmd_ancestry_reference = cli_handler(RefAncestryParams, run_ancestry_reference)
 cmd_gnomad_sv = cli_handler(RefGnomadSvParams, run_gnomad_sv)
+cmd_imputation = cli_handler(RefImputationParams, run_imputation)
 _cli_library = cli_handler(RefLibraryParams, run_library)
 cmd_gene_map = cli_handler(RefGeneMapParams, run_gene_map)
 cmd_bootstrap = cli_handler(RefBootstrapParams, run_bootstrap)

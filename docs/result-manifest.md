@@ -89,6 +89,8 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `native_aligner_unusable` | `align`, `realign` on Apple Silicon | A `wgse-bwa`, `wgse-bwa-mem2`, `wgse-bwa-mem3` or `wgse-minimap2` on `PATH` failed its `capabilities --json` check or is too old (`binary`, `path`, `aligner`); `aligner` ran instead. |
 | `bwa_mem3_fast` | `align`, `realign` with `--fast` | bwa-mem3's speed preset aligned the reads (`aligner`: the binary), so the alignments differ from BWA's (on 5M HG002 pairs, 3.5% of primary records were placed differently). |
 | `short_read_phasing`, `no_variants_phased` | `vcf phase` | The reads are not Nanopore or PacBio (`platform`), so read-backed phasing links few variants; or no heterozygous variant (`heterozygous_variants`) was phased. |
+| `high_depth_imputation` | `vcf impute` | The reads average more than 8x on the autosomes (`depth`): calling them directly is as accurate and keeps rare variants. |
+| `imputed_vcf` | `qc vcf` | The VCF was written by `vcf impute` (`tool`, `panel`): its genotypes are predicted from a reference panel, not read from the sample. |
 | `parabricks_low_memory` | `align`/`realign`/`vcf gatk` with `--gpu` | The GPU had too little free memory for the tool's default mode, so it ran with its low-memory option (`tool`, `option`, `gpu_free_gib`). |
 | `parabricks_host_memory` | `--gpu` commands | Less RAM is available than the Parabricks tool needs for a whole genome, though the computer has its minimum (`tool`, `needed_gib`, `available_gib`); the run continues and may be killed partway. |
 | `parabricks_memory` | `--gpu` commands with `--no-gpu-memory-check` | The GPU or host memory is below what the tool needs (`tool`); the run continues and may fail. |

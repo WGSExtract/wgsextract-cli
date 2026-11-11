@@ -41,6 +41,10 @@ OPTIONAL_TOOLS = [
     "somalier",
     "whatshap",
     "longphase",
+    "GLIMPSE2_phase",
+    "GLIMPSE2_ligate",
+    "GLIMPSE2_chunk",
+    "GLIMPSE2_split_reference",
     "curl",
     "java",
     "haplogrep3",
@@ -93,6 +97,10 @@ PLATFORM_ONLY_TOOLS = {
     "somalier": ("linux", "darwin"),
     "whatshap": ("linux", "darwin"),
     "longphase": ("linux", "darwin"),
+    "GLIMPSE2_phase": ("linux", "darwin"),
+    "GLIMPSE2_ligate": ("linux", "darwin"),
+    "GLIMPSE2_chunk": ("linux", "darwin"),
+    "GLIMPSE2_split_reference": ("linux", "darwin"),
 }
 
 
@@ -192,6 +200,10 @@ PIXI_TOOL_ENVS = {
     "somalier": "somalier",
     "whatshap": "phasing",
     "longphase": "phasing",
+    "GLIMPSE2_phase": "imputation",
+    "GLIMPSE2_ligate": "imputation",
+    "GLIMPSE2_chunk": "imputation",
+    "GLIMPSE2_split_reference": "imputation",
     # Only through their own environments (never a `python` on PATH): pixi_env_tool.
     "pharmcat_python": "pharmcat",
     "cyrius_python": "cyrius",
@@ -231,6 +243,10 @@ PIXI_TOOL_PACKAGES = {
     "LongTR": "longtr",
     "run_clair3.sh": "clair3",
     "modkit": "ont-modkit",
+    "GLIMPSE2_phase": "glimpse-bio",
+    "GLIMPSE2_ligate": "glimpse-bio",
+    "GLIMPSE2_chunk": "glimpse-bio",
+    "GLIMPSE2_split_reference": "glimpse-bio",
 }
 
 

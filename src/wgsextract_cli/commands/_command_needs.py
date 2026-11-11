@@ -147,6 +147,13 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf clair3": _n(
         HOURS, "bcftools", "run_clair3.sh", "samtools", "tabix", optional="sambamba"
     ),
+    "vcf impute": _n(
+        HOURS,
+        "bcftools",
+        "bgzip",
+        "tabix",
+        optional="GLIMPSE2_phase GLIMPSE2_ligate java",
+    ),  # fmt: skip
     "vcf phase": _n(
         HOURS, "bcftools", "samtools", "tabix", optional="longphase whatshap"
     ),

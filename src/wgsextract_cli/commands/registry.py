@@ -190,6 +190,7 @@ ADVANCED_SUBCOMMANDS = frozenset(
         "vcf deepvariant",
         "vcf clair3",
         "vcf phase",
+        "vcf impute",
         "vcf cnv",
         "vcf sv",
         "vcf trio",

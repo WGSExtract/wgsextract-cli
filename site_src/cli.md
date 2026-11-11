@@ -140,7 +140,7 @@ Pick the line that matches your file and run its commands in order. Each command
 - `benchmark`: Time the main workflows on test data.
 - `serve`: Local HTTP/JSON and MCP server for apps and AI agents.
 
-Advanced subcommands of core groups: `extract bam-subset`, `vcf alphamissense`, `vcf cadd`, `vcf chain-annotate`, `vcf clair3`, `vcf cnv`, `vcf deepvariant`, `vcf freebayes`, `vcf gatk`, `vcf gerp`, `vcf pharmcat`, `vcf phase`, `vcf phylop`, `vcf spliceai`, `vcf sv`, `vcf to-fasta`, `vcf trio`.
+Advanced subcommands of core groups: `extract bam-subset`, `vcf alphamissense`, `vcf cadd`, `vcf chain-annotate`, `vcf clair3`, `vcf cnv`, `vcf deepvariant`, `vcf freebayes`, `vcf gatk`, `vcf gerp`, `vcf impute`, `vcf pharmcat`, `vcf phase`, `vcf phylop`, `vcf spliceai`, `vcf sv`, `vcf to-fasta`, `vcf trio`.
 :::
 
 :::

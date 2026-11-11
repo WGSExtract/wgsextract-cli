@@ -33,6 +33,7 @@ from ._shared import (
     dry_run_param,
     force_steps_param,
     input_param,
+    memory_param,
     no_gpu_memory_check_param,
     optional_input_param,
     outdir_param,
@@ -1172,6 +1173,67 @@ class VcfPhaseParams(_CallerParams):
             yield Path(self.input).expanduser().absolute().parent
 
 
+@dataclass(frozen=True, kw_only=True)
+class VcfImputeParams(Params):
+    """Impute one GRCh38 sample's genotypes from the 1000 Genomes 30x panel
+    into ``imputed.vcf.gz``: low-coverage reads (``input``) with GLIMPSE2, or
+    a genotype-only VCF such as microarray calls (``vcf_input``) with Beagle 5.
+
+    Every imputed record carries INFO/IMP, the header a
+    ``##wgsextract_imputation`` line, and records whose most likely genotype
+    has GP below ``min_gp`` or whose INFO score (GLIMPSE2 INFO, Beagle DR2) is
+    below ``min_info`` are FILTERed ``ImpLowConf``. Install the panel's
+    chromosomes first with ``ref imputation``.
+    """
+
+    COMMAND = "vcf impute"
+
+    input: Path | None = optional_input_param(
+        "Low-coverage BAM or CRAM to impute with GLIMPSE2 (about 0.5-8x)."
+    )
+    vcf_input: Path | None = param(
+        None,
+        help="Genotype-only VCF to impute with Beagle (e.g. microarray calls), "
+        "instead of --input.",
+        path="file",
+    )
+    ref: Path | None = ref_param()
+    outdir: Path | None = outdir_param()
+    threads: int | None = threads_param()
+    memory: str | None = memory_param()
+    chromosomes: str | None = param(
+        None,
+        help="Chromosomes to impute, e.g. chr20 or chr1-22 (default: every "
+        "chromosome whose panel is installed).",
+    )
+    min_gp: float = param(
+        0.9,
+        help="Mark imputed genotypes whose probability (max GP) is below this "
+        "ImpLowConf.",
+        minimum=0.0,
+    )
+    min_info: float = param(
+        0.8,
+        help="Mark imputed sites whose INFO score (GLIMPSE2 INFO, Beagle DR2) "
+        "is below this ImpLowConf.",
+        minimum=0.0,
+    )
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if (self.input is None) == (self.vcf_input is None):
+            raise UsageError(
+                "Give either --input (low-coverage reads) or --vcf-input "
+                "(genotype-only VCF) to impute."
+            )
+
+    def write_folders(self) -> Iterator[Path]:
+        if self.outdir is None:
+            source = self.input or self.vcf_input
+            assert source is not None
+            yield Path(source).expanduser().absolute().parent
+
+
 def cnv(
     params: VcfCnvParams,
     *,
@@ -1265,3 +1327,16 @@ def phase(
     from wgsextract_cli.commands.vcf.phasing import run_phase
 
     return execute(params, run_phase, progress=progress, cancel=cancel, check=check)
+
+
+def impute(
+    params: VcfImputeParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Impute a sample's genotypes; output role ``imputed_variants``."""
+    from wgsextract_cli.commands.vcf.imputation import run_impute
+
+    return execute(params, run_impute, progress=progress, cancel=cancel, check=check)

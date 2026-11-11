@@ -217,6 +217,12 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "clair3.vcf.gz (+ .tbi).",
         "wgsextract vcf clair3 --input ont.bam",
     ),
+    "vcf impute": _h(
+        "imputed.vcf.gz (+ .tbi): every imputed record marked INFO/IMP, "
+        "low-confidence ones FILTERed ImpLowConf.",
+        "wgsextract vcf impute --input lowpass.bam --chromosomes chr20",
+        "wgsextract vcf impute --vcf-input chip.vcf.gz",
+    ),
     "vcf phase": _h(
         "phased.vcf.gz (+ .tbi) and phased.blocks.tsv; with --haplotag, "
         "haplotagged.bam or .cram (+ index).",

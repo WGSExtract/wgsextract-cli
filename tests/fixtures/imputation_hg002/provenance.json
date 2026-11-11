@@ -1,0 +1,35 @@
+{
+  "sample": "HG002 (GIAB NA24385)",
+  "window": "GRCh38 chr20:10000000-10300000",
+  "reads": {
+    "source": "gs://deepvariant/case-study-testdata/HG002.novaseq.pcr-free.35x.dedup.grch38_no_alt.chr20.bam",
+    "license": "Public GIAB HG002 data (Google DeepVariant case-study test data)",
+    "selection": "samtools view -s 7.0286 (2.86% of the 35x reads, about 1x) of the window"
+  },
+  "panel": {
+    "source": "https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000G_2504_high_coverage/working/20220422_3202_phased_SNV_INDEL_SV/1kGP_high_coverage_Illumina.chr20.filtered.SNV_INDEL_SV_phased_panel.vcf.gz",
+    "license": "1000 Genomes / IGSR: free to use without restriction",
+    "selection": "the window's biallelic SNPs with minor allele frequency >= 1%, all 3,202 samples; ID, QUAL, INFO and every FORMAT but GT dropped"
+  },
+  "map": {
+    "source": "https://raw.githubusercontent.com/odelaneau/GLIMPSE/6fe2552121e88ae84d699227d97d6c6716718b94/maps/genetic_maps.b38/chr20.b38.gmap.gz",
+    "license": "MIT (GLIMPSE)",
+    "selection": "positions 9,900,000-10,400,000"
+  },
+  "truth": {
+    "source": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz (+ _noinconsistent.bed)",
+    "license": "Public domain (NIST GIAB)",
+    "selection": "the window; INFO and every FORMAT but GT dropped; BED clipped to it"
+  },
+  "chip": {
+    "selection": "23andMe v5 (2025) template chr20 positions, lifted to GRCh38 with UCSC hg19ToHg38, at the panel's sites inside the confident BED: GIAB genotype, else 0/0; contig named 20"
+  },
+  "sha256": {
+    "chip.vcf.gz": "b72620f5825eee03634a5cf7f588d48ebd231a05e4ed19a7b7f57dd435de534a",
+    "chr20.b38.gmap.gz": "ce46ee540cb48e28e26cc4120b31d1a3a7968069679ce4364d8b39d4249dd790",
+    "panel.vcf.gz": "7bf6dc900cedf676b7863e3e8a29baa71b7b351582f618102e079653e193f4d2",
+    "reads.bam": "76d9ef550f775e145cdaa43d5999d2f60cc85b4603209f6c9f33868cbf6ea280",
+    "truth.bed": "5ebb94dc8048c0b6b25eeb72496f35fff1faf3b6b758d98def06b5a34b5bb68d",
+    "truth.vcf.gz": "24118381a82c941d9c7f168e5d88b5304fe728a9c1ccdcc877e779ec64f13c6d"
+  }
+}
