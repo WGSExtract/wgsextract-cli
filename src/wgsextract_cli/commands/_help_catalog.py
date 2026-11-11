@@ -340,6 +340,13 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "Prints the reference library's status; writes no files.",
         "wgsextract ref status",
     ),
+    "ref needs": _h(
+        "Prints the missing reference genome or annotation data and the command "
+        "that installs each; writes no files. With --json, the result's "
+        "details.missing lists them.",
+        "wgsextract ref needs -- info --input sample.cram",
+        "wgsextract --json ref needs -- vcf snp --input sample.bam",
+    ),
     "ref download": _h(
         "The FASTA at --out.",
         "wgsextract ref download --url https://example.org/genome.fa.gz "

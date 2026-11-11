@@ -165,6 +165,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
         DOWNLOAD, "bcftools", "bgzip", "curl", "htsfile", "samtools", "tabix"
     ),
     "ref status": _n(SECONDS, scale=""),
+    "ref needs": _n(SECONDS, scale=""),
     "ref bootstrap": _n(DOWNLOAD, optional="curl"),
     "ref aadr": _n(DOWNLOAD, optional="curl"),
     "ref somalier": _n(DOWNLOAD, optional="curl"),
