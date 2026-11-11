@@ -19,6 +19,7 @@ _WINDOWS_VCF_TOOLS = {
 }
 _WINDOWS_TYPING_TOOLS = {
     "cyp2d6": "Cyrius",
+    "smn": "SMNCopyNumberCaller",
     "hla": "T1K",
     "str": "ExpansionHunter",
 }

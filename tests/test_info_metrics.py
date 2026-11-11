@@ -326,6 +326,35 @@ def test_body_sample_of_unreadable_file_returns_nothing(tmp_path):
     assert metrics.run_body_sample(str(bad), [])[:7] == (0, 0, 0, 0, 0, False, None)
 
 
+@needs_htslib
+def test_body_sample_of_unreadable_file_keeps_samtools_error(tmp_path):
+    bad = tmp_path / "bad.bam"
+    bad.write_bytes(b"junk")
+    assert metrics.run_body_sample(str(bad), []).error
+
+
+@needs_htslib
+def test_body_sample_of_readable_file_has_no_error(tmp_path):
+    seq = "ACGT" * 25
+    read = f"a	0	c	1	60	100M	*	0	0	{seq}	{'I' * 100}"
+    bam = sam_to_bam(["@SQ	SN:c	LN:1000", read], tmp_path / "b.bam")
+    assert metrics.run_body_sample(bam, []).error is None
+
+
+@pytest.mark.parametrize(
+    ("error", "missing"),
+    [
+        ('[W::cram_get_ref] Failed to populate reference "1"', True),
+        ("[E::refs_load_fai] Failed to open reference file 'x.fa'", True),
+        ("[E::cram_decode_slice] Unable to fetch reference 1:1-2", True),
+        ("[E::hts_open_format] Failed to open file bad.bam", False),
+        (None, False),
+    ],
+)
+def test_is_missing_cram_reference(error, missing):
+    assert metrics.is_missing_cram_reference(error) is missing
+
+
 @pytest.mark.parametrize(
     ("index", "indexed"),
     [

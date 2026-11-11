@@ -70,8 +70,9 @@ are preserved.
 
 Commands needing pyBigWig (bigWig-backed `vcf phylop`, `vcf gerp` and their
 reference downloads), Ensembl VEP (`--engine ensembl`; the default vep-rs works), DeepVariant, Delly,
-FreeBayes, Cyrius, T1K, ExpansionHunter, VerifyBamID2 (`qc contamination`),
-somalier (`qc relate`) or PacBio tools are not supported on Windows. They fail
+FreeBayes, Cyrius, SMNCopyNumberCaller, T1K, ExpansionHunter, VerifyBamID2
+(`qc contamination`), somalier (`qc relate`) or PacBio tools are not supported
+on Windows. They fail
 before processing inputs or creating output folders, naming the unavailable
 tool. PhyloP TSV/VCF resources remain supported. Parabricks `--gpu` modes
 require Linux with an NVIDIA GPU.

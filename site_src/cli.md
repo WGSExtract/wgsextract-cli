@@ -131,7 +131,7 @@ Pick the line that matches your file and run its commands in order. Each command
 - `qc`: Read and VCF quality reports; fake test data.
 - `repair`: Fix FTDNA BAM/VCF formatting problems.
 - `analyze`: Run several analyses in one go, for one or many genomes.
-- `typing`: Genotype CYP2D6, HLA and repeat expansions (30x WGS).
+- `typing`: CYP2D6, SMN1/2, HLA and repeat expansions (30x WGS).
 - `methylation`: 5mC/5hmC methylation from Nanopore and PacBio reads.
 - `basecall`: Nanopore POD5 signal to reads with Dorado (optional).
 - `panel`: Gene lists to BED targets for Nanopore adaptive sampling.

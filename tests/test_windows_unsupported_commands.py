@@ -26,6 +26,7 @@ UNSUPPORTED = [
     (["vep", "verify", "--engine", "ensembl"], "Ensembl VEP"),
     (["typing", "cyp2d6"], "Cyrius"),
     (["typing", "hla"], "T1K"),
+    (["typing", "smn"], "SMNCopyNumberCaller"),
     (["typing", "str"], "ExpansionHunter"),
     (["qc", "contamination"], "VerifyBamID2"),
     (["align", "--aligner", "pbmm2"], "pbmm2"),

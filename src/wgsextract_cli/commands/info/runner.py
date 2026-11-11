@@ -69,6 +69,7 @@ from .metrics import (
     get_file_stats,
     infer_sex_call,
     is_long_read_library,
+    is_missing_cram_reference,
     load_n_counts,
     long_read_lengths,
     long_read_mapped_pct,
@@ -286,6 +287,8 @@ _PRIVATE_KEYS = {
     "input_signature",
     "first_qname",
     "sex_call",
+    # samtools' raw error names local paths; the warning explains it instead.
+    "read_sample_error",
 }
 
 
@@ -360,6 +363,8 @@ def _record_info(data: dict[str, Any]) -> None:
     """Put the metrics `info` reports on the result manifest."""
     result = current_result()
     details = {k: v for k, v in data.items() if k not in _PRIVATE_KEYS}
+    if "avg_read_len" in details:
+        details["avg_read_len"] = details["avg_read_len"] or None
     if data.get("chrom_table_csv"):
         details["chromosomes"] = list(
             csv.DictReader(io.StringIO(data["chrom_table_csv"]))
@@ -370,7 +375,8 @@ def _record_info(data: dict[str, Any]) -> None:
     result.add_metrics(
         reference_model=data.get("ref_model_str"),
         sequencer=data.get("sequencer"),
-        avg_read_len=data.get("avg_read_len"),
+        # 0 means no reads were sampled, so the length is unknown.
+        avg_read_len=data.get("avg_read_len") or None,
         is_paired=data.get("is_paired"),
         avg_insert_size=data.get("avg_insert_size"),
         size_gb=stats.get("size_gb"),
@@ -383,6 +389,7 @@ def _record_info(data: dict[str, Any]) -> None:
     if data.get("platforms"):
         result.add_metrics(platforms=",".join(data["platforms"]))
     _record_long_read_qc(data.get("read_lengths"))
+    _record_unread_reads(data)
     if "gender" in data:
         result.add_metrics(sex=data["gender"], **data.get("metrics", {}))
         if data["gender"] == "Unknown":
@@ -405,6 +412,50 @@ def _record_info(data: dict[str, Any]) -> None:
                 depth=round(ard, 3),
                 threshold=10,
             )
+
+
+def _catalog_code(md5_sig: str | None, fasta_name: str | None) -> str | None:
+    """The reference catalog's install code for the input's genome, if listed."""
+    from wgsextract_cli.core.ref_library.catalog import get_available_genomes
+
+    genomes = get_available_genomes()
+    for genome in genomes:
+        if md5_sig and genome.get("md5") == md5_sig:
+            return genome.get("code") or None
+    for genome in genomes:
+        if fasta_name and genome.get("final") == fasta_name:
+            return genome.get("code") or None
+    return None
+
+
+def _record_unread_reads(data: dict[str, Any]) -> None:
+    """Say why the read length, pairing, insert size, sequencer and duplicates
+    are missing when no reads could be sampled."""
+    if data.get("avg_read_len"):
+        return
+    error = data.get("read_sample_error")
+    name = data.get("filename") or "the input"
+    if is_missing_cram_reference(error):
+        model = reference_model_name(data.get("ref_model_str") or "")
+        known = bool(model) and model != "Unknown"
+        needed = f"the {model} reference" if known else "its reference genome"
+        code = _catalog_code(data.get("md5_signature"), data.get("suggested_ref_file"))
+        install = f"ref library --install {code}" if code else "ref library"
+        warn(
+            "cram_reference_missing",
+            f"Could not read the reads in {name}: {needed} is not installed. "
+            f"Install it from Reference Data (wgsextract {install}) or pass "
+            "--ref with its FASTA. Read length, pairing, insert size, "
+            "sequencer and duplicates are unknown until then.",
+            reference_model=model if known else None,
+        )
+        return
+    detail = f": {error.splitlines()[-1]}" if error else ""
+    warn(
+        "reads_unreadable",
+        f"Could not read the reads in {name}{detail}. Read length, pairing, "
+        "insert size, sequencer and duplicates are unknown.",
+    )
 
 
 def _record_long_read_qc(lengths: dict[str, Any] | None) -> None:
@@ -484,6 +535,10 @@ def _fast_metrics(
     sample = run_body_sample(input_p, cram_opt)
     logging.debug(f"Body sampling took {time.time() - t0:.3f}s")
     avg_len, first_qname = sample.avg_len, sample.first_qname
+    # No reads could be read (a CRAM without its reference, say): what they
+    # would have told us is unknown, not zero or single-end.
+    unread = sample.reads == 0
+    sequencer = determine_sequencer(first_qname, header)
 
     return {
         "filename": Path(input_p).name,
@@ -497,14 +552,15 @@ def _fast_metrics(
         "ref_model_str": ref_model_str,
         "suggested_ref_file": ref_fname,
         "avg_read_len": avg_len,
-        "std_read_len": sample.std_len,
-        "is_paired": sample.is_paired,
-        "avg_insert_size": sample.avg_tlen,
-        "std_insert_size": sample.std_tlen,
+        "std_read_len": None if unread else sample.std_len,
+        "is_paired": None if unread else sample.is_paired,
+        "avg_insert_size": None if unread else sample.avg_tlen,
+        "std_insert_size": None if unread else sample.std_tlen,
         "read_lengths": long_read_lengths(sample)
-        if is_long_read_library(avg_len, header, first_qname)
+        if not unread and is_long_read_library(avg_len, header, first_qname)
         else None,
-        "sequencer": determine_sequencer(first_qname, header),
+        "sequencer": None if unread and sequencer == "Unknown" else sequencer,
+        "read_sample_error": sample.error if unread else None,
         "first_qname": first_qname,
         "alignment_health": alignment_health(
             input_p, cram_opt[1] if cram_opt else None
@@ -742,7 +798,15 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
 
     md5_sig = calculate_bam_md5(input_file, header=header)
     resolved_ref = resolve_reference(ref, md5_sig)
-    logging.debug(f"MD5 signature: {md5_sig}; resolved reference: {resolved_ref}")
+    # resolve_reference hands back a --ref folder as is when no FASTA in it
+    # matches; only a file is a resolved reference.
+    if resolved_ref and Path(resolved_ref).is_file():
+        ref_note = resolved_ref
+    elif resolved_ref:
+        ref_note = f"none (no matching FASTA in {resolved_ref})"
+    else:
+        ref_note = "none"
+    logging.debug(f"MD5 signature: {md5_sig}; resolved reference: {ref_note}")
     build = build_from_chr1_length(sequence_lengths(header))
     if resolved_ref and Path(resolved_ref).is_file():
         build = build or build_from_path(Path(resolved_ref).name)

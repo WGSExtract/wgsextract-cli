@@ -77,11 +77,17 @@ REASONS = {
     "evidence_mismatch": "the evidence file no longer matches the run's result",
     "no_labelled_calls": "the gene has no labelled variant calls; a reference "
     "(*1) allele rests on coverage alone",
+    "uneven_coverage": "coverage is uneven, so copy-number calls may be unreliable",
+    "status_uncertain": "the caller couldn't settle the carrier/affected status",
+    "aligner_not_calibrated": "the input's aligner isn't one the caller is "
+    "calibrated on (bwa-like)",
+    "below_target_depth": "median depth is below the ~30x the caller is calibrated on",
 }
 SECTIONS = {
     "overview": "Sample overview",
     "lineage": "Lineage",
     "pharmacogenomics": "Pharmacogenomics",
+    "carrier_screening": "Carrier screening by copy number",
     "clinvar": "ClinVar pathogenic / likely pathogenic in {gene_list} genes",
     "microarray": "Microarray export",
 }
@@ -914,6 +920,104 @@ def _cyrius_finding(section: dict[str, Any], source: Source, ctx: _Context) -> N
     )
 
 
+def _carrier_screening(ctx: _Context) -> dict[str, Any]:
+    smn = latest(ctx.sources, _command("typing smn"))
+    section = _section("carrier_screening", [smn], ctx)
+    if smn is not None and smn.status == "ok":
+        _smn_finding(section, smn, ctx)
+    else:
+        _missing(
+            section,
+            "SMN1/SMN2 copy number for SMA carrier status (SMNCopyNumberCaller, "
+            "~30x short-read WGS)",
+            ctx.command_for("typing smn", ctx.alignment, "cram"),
+        )
+    if section["findings"]:
+        section["summary"] = f"{section['findings'][0]['value']}."
+    return section
+
+
+def _smn_finding(section: dict[str, Any], source: Source, ctx: _Context) -> None:
+    from wgsextract_cli.commands.genotyping.smn import (
+        MAX_COVERAGE_MAD,
+        MIN_DEPTH,
+    )
+    from wgsextract_cli.commands.genotyping.smn import (
+        NOT_DIAGNOSIS as SMN_NOT_DIAGNOSIS,
+    )
+
+    metrics = source.metrics
+    smn1 = metrics.get("smn1_copy_number")
+    depth = metrics.get("median_depth")
+    mad = metrics.get("coverage_mad")
+    carrier, affected = metrics.get("sma_carrier"), metrics.get("sma_affected")
+    if smn1 is None:
+        label, reasons = variant_confidence.LOW, ["no_call"]
+        if any(w.get("code") == "low_coverage" for w in source.warnings()):
+            reasons = ["low_coverage"]
+    elif carrier is None or affected is None:
+        label, reasons = variant_confidence.LOW, ["status_uncertain"]
+    elif not str(metrics.get("smn_filter") or "").startswith("PASS"):
+        label, reasons = variant_confidence.LOW, ["caller_filter"]
+    elif any(w.get("code") == "aligner_not_calibrated" for w in source.warnings()):
+        label, reasons = variant_confidence.LOW, ["aligner_not_calibrated"]
+    elif isinstance(mad, (int, float)) and mad > MAX_COVERAGE_MAD:
+        label, reasons = variant_confidence.LOW, ["uneven_coverage"]
+    elif not isinstance(depth, (int, float)):
+        label, reasons = variant_confidence.MODERATE, ["depth_unknown"]
+    elif depth < MIN_DEPTH:
+        label, reasons = variant_confidence.LOW, ["low_depth"]
+    else:
+        label, reasons = variant_confidence.HIGH, []
+    if smn1 is None:
+        value = "no call"
+    elif smn1 == 0:
+        value = "0 SMN1 copies: consistent with SMA" + (
+            "" if affected else " (status uncertain)"
+        )
+    elif smn1 == 1:
+        value = "1 SMN1 copy: SMA carrier" + ("" if carrier else " (status uncertain)")
+    else:
+        value = f"{smn1} SMN1 copies: not a carrier by copy number"
+    g27134 = metrics.get("g27134tg_copy_number")
+    detail = ", ".join(
+        x
+        for x in (
+            f"SMN1 {smn1}" if smn1 is not None else "",
+            f"SMN2 {metrics.get('smn2_copy_number')}" if smn1 is not None else "",
+            f"g.27134T>G {g27134}" if g27134 is not None else "",
+            f"filter {metrics.get('smn_filter')}" if metrics.get("smn_filter") else "",
+            f"median depth {_number(depth, 'x')}" if depth is not None else "",
+        )
+        if x
+    )
+    note = SMN_NOT_DIAGNOSIS
+    if smn1 == 2:
+        note = (
+            "Two SMN1 copies can still be a silent (2+0) carrier, with both on one "
+            "chromosome"
+            + (", which g.27134T>G here makes more likely" if g27134 else "")
+            + ". "
+            + note
+        )
+    section["findings"].append(
+        _finding(
+            "carrier_screening",
+            "SMA carrier status (SMN1 copy number, SMNCopyNumberCaller)",
+            value,
+            detail=detail or None,
+            gene="SMN1",
+            note=note,
+            confidence=label,
+            reasons=reasons,
+            basis="SMNCopyNumberCaller filter, status and median depth vs. ~30x",
+            evidence=ctx.rel(source.output("smn_calls", "smn_report")),
+            region="genes SMN1, SMN2",
+            manifest=ctx.rel(source.manifest),
+        )
+    )
+
+
 def _hla_findings(section: dict[str, Any], source: Source, ctx: _Context) -> None:
     """The HLA-A and HLA-B diplotypes ``typing hla`` called (those PharmCAT
     takes), labelled by T1K's allele qualities."""
@@ -1401,6 +1505,7 @@ def build_report(
         "overview": _overview(ctx),
         "lineage": _lineage(ctx),
         "pharmacogenomics": _pharmacogenomics(ctx),
+        "carrier_screening": _carrier_screening(ctx),
         "clinvar": _clinvar(ctx),
         "microarray": _microarray(ctx),
     }

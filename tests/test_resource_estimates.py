@@ -5,6 +5,7 @@ import logging
 import platform as host_platform
 import random
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -24,7 +25,8 @@ H2_READS = 679_639_896
 def test_arm_deepvariant_inference_floor_survives_fewer_shards_and_small_regions(
     source, tmp_path, monkeypatch, caplog
 ):
-    monkeypatch.setattr(resources, "is_linux_arm64", lambda: True)
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(host_platform, "machine", lambda: "aarch64")
     monkeypatch.setattr(alignment_memory, "available_memory", lambda: 24 * GIB)
     options = {
         "input_paths": [str(source)],
@@ -82,7 +84,8 @@ def test_dv_partitions_reproduce_the_173_whole_genome_run(tmp_path):
 def test_whole_genome_deepvariant_budgets_postprocess_on_x86(
     source, tmp_path, monkeypatch
 ):
-    monkeypatch.setattr(resources, "is_linux_arm64", lambda: False)
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(host_platform, "machine", lambda: "x86_64")
     monkeypatch.setattr(alignment_memory, "available_memory", lambda: 64 * GIB)
     _regions, ref = _whole_genome(tmp_path)
     options = {

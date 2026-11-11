@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Literal
 
 from . import alignment_memory
-from .native_support import is_linux_arm64
+from .native_support import is_arm64_docker_host
 from .reference_assets import read_fai_lengths
 from .region_selection import selected_intervals
 from .samtools_commands import parse_memory
@@ -489,7 +489,7 @@ def estimate_resources(
             * (CRAM_BYTES_PER_READ if operation == "to-cram" else BAM_BYTES_PER_READ)
         )
     elif operation == "deepvariant":
-        arm64 = is_linux_arm64()
+        arm64 = is_arm64_docker_host()
         inference = 2 * GIB + math.ceil(
             (30 if arm64 else 14) * GIB * inference_batch_size / 1024
         )
