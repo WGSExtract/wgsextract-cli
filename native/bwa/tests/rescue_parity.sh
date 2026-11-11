@@ -268,10 +268,13 @@ for threads in 1 4; do
     test "$(metric "metal-t$threads.log" rescue_hits)" -gt 1000
 done
 # Regression (PR #684 review): one watchdog thread per stretch of GPU work, not
-# one per command (hundreds of rescue batches of 7 pairs here).
+# one per command (hundreds of rescue batches of 7 pairs here). Metal only:
+# CUDA's waits time themselves, with no watchdog thread.
 test "$(metric metal-t4.log rescue_batches)" -gt 100
-test "$(metric metal-t4.log watchdog_threads)" -ge 1
-test "$(metric metal-t4.log watchdog_threads)" -le 3
+if [ "$gpu" = --metal ]; then
+    test "$(metric metal-t4.log watchdog_threads)" -ge 1
+    test "$(metric metal-t4.log watchdog_threads)" -le 3
+fi
 # Small chunks: Metal maps each chunk while the previous one pairs.
 run chunks -t 4 -K 20000
 test "$(metric metal-chunks.log rescue_hits)" -gt 0
