@@ -1,0 +1,129 @@
+name: macOS DeepVariant
+
+# Builds wgse-deepvariant, a self-contained Apple Silicon build of DeepVariant
+# 1.10.0 (native/deepvariant), and its WGS model weights converted from
+# Google's image, on every change to them, and publishes both to a prerelease
+# when asked: Actions > macOS DeepVariant > Run workflow, with a new tag such
+# as macos-deepvariant-1.
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - native/deepvariant/**
+      - .github/workflows/macos_deepvariant.yml
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: New release tag to publish the packages under (empty builds only).
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  # The image docs/deepvariant-arm64.md checks the Linux ARM64 build's models against.
+  DEEPVARIANT_IMAGE: google/deepvariant:1.10.0@sha256:962e5a83b1d76aae6990625d47102785f791603f2138aa1fa9aa4fb6a2eecbe6
+
+jobs:
+  weights:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Convert the WGS models
+        run: |
+          mkdir -p out/weights
+          docker run --rm --network none -v "$PWD:/w" "$DEEPVARIANT_IMAGE" \
+            python3 /w/native/deepvariant/convert_weights.py /w/out/weights
+          (cd out/weights && sha256sum -c ../../native/deepvariant/weights-sha256.txt)
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: deepvariant-weights
+          path: out/weights
+          if-no-files-found: error
+
+  build:
+    needs: weights
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: deepvariant-weights
+          path: out/weights
+
+      - name: Install build and test tools
+        run: brew install ninja samtools
+
+      - name: Build
+        run: |
+          cmake -S native/deepvariant -B out/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build out/build -j "$(sysctl -n hw.ncpu)"
+          cmake --install out/build --prefix out/prefix
+
+      - name: Test and package
+        run: |
+          binary=out/prefix/bin/wgse-deepvariant
+          otool -L "$binary"
+          if otool -L "$binary" | tail -n +2 | grep -Ev '^\s+(/usr/lib/|/System/Library/)'; then
+            echo "wgse-deepvariant links a non-system library" >&2
+            exit 1
+          fi
+          native/deepvariant/tests/smoke.sh "$PWD/$binary" "$PWD/out/weights" "$PWD/out/smoke"
+          # "wgse-deepvariant 0.1.0 (DeepVariant 1.10.0, build ...)"
+          version=$("$binary" --version | sed -n '1s/^[^ ]* \([^ ]*\) .*/\1/p')
+          test -n "$version"
+          mkdir -p out/packages
+          package="wgse-deepvariant-$version-macos-arm64"
+          mkdir -p "out/stage/$package"
+          cp -R out/prefix/bin out/prefix/share "out/stage/$package/"
+          tar -C out/stage -czf "out/packages/$package.tar.gz" "$package"
+          # Google distributes the models under DeepVariant's BSD-3-Clause licence.
+          weights=wgse-deepvariant-weights-1.10.0-wgs
+          mkdir -p "out/stage/$weights"
+          cp -R out/weights/. "out/stage/$weights/"
+          cp out/prefix/share/licenses/wgse-deepvariant/DeepVariant-LICENSE "out/stage/$weights/LICENSE"
+          tar -C out/stage -czf "out/packages/$weights.tar.gz" "$weights"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-deepvariant
+          path: out/packages/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: macos-deepvariant
+          path: macos-deepvariant
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          case "$TAG" in macos-deepvariant-*) ;; *) echo "Tag must start with macos-deepvariant-" >&2; exit 1 ;; esac
+          (cd macos-deepvariant && sha256sum ./*.tar.gz | sed "s| ./| |" > SHA256SUMS)
+          {
+            echo "wgse-deepvariant: DeepVariant 1.10.0 for Apple Silicon (macOS 14+, arm64), with call_variants on the GPU, and its WGS model weights converted from google/deepvariant:1.10.0."
+            echo "Built from native/deepvariant at ${GITHUB_SHA} by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
+            echo "See native/deepvariant/README.md for installation, validation and licences."
+            echo
+            echo "| Package | SHA-256 |"
+            echo "| --- | --- |"
+            for f in macos-deepvariant/*.tar.gz; do echo "| $(basename "$f") | \`$(sha256sum "$f" | cut -d' ' -f1)\` |"; done
+          } > notes.md
+          gh release create "$TAG" macos-deepvariant/*.tar.gz macos-deepvariant/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "macOS DeepVariant $TAG" \
+            --notes-file notes.md --prerelease --latest=false

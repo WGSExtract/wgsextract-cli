@@ -1,0 +1,713 @@
+From 70eda3d4a5537fe538a01272ac468a71d333268c Mon Sep 17 00:00:00 2001
+From: WGS Extract AI <223556219+Copilot@users.noreply.github.com>
+Date: Wed, 11 Nov 2026 12:40:13 -0800
+Subject: [PATCH 1/4] Match google/deepvariant:1.10.0 make_examples on WGS
+ (wgsextract #647)
+
+- RealignerOptions.normalize_reads follows upstream's --normalize_reads
+  default (false; true only for pangenome). Forcing it true moved reads
+  Docker leaves at their original alignment.
+- Count alleles only over realigned reads that still overlap the region,
+  as upstream's in_memory_sam_reader.query(region); pileups keep all.
+- libstdc++-compatible std::sort for FastPassAligner's haplotype order.
+- gzip-compressed examples (examples.tfrecord@N.gz), read transparently;
+  nucleus-style 'name@N.gz' shard specs; truncated records are fatal.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+---
+ deepvariant/native/cli.cc                  |   6 +-
+ deepvariant/native/libstdcxx_sort.h        | 173 +++++++++++++++++
+ deepvariant/native/make_examples_main.cc   |  33 ++--
+ deepvariant/native/postprocess_main.cc     |  14 --
+ deepvariant/native/tfrecord.cc             | 216 +++++++++++++--------
+ deepvariant/native/tfrecord.h              |  16 +-
+ deepvariant/realigner/fast_pass_aligner.cc |   6 +-
+ 7 files changed, 348 insertions(+), 116 deletions(-)
+ create mode 100644 deepvariant/native/libstdcxx_sort.h
+
+diff --git a/deepvariant/native/cli.cc b/deepvariant/native/cli.cc
+index 9c1c983..d732adc 100644
+--- a/deepvariant/native/cli.cc
++++ b/deepvariant/native/cli.cc
+@@ -940,11 +940,13 @@ int RunAll(int argc, char** argv) {
+   // files), one call_variants call (sharded examples in, single cvo out),
+   // one postprocess.
+   const int n_threads = std::max(1, num_shards);
++  // gzip-compressed, as upstream writes them: uncompressed pileup examples
++  // take ~25x the disk (about 12 GB for chr20 alone).
+   const std::string examples_base =
+       absl::StrCat(tmp_dir, "/examples.tfrecord");
+   const std::string examples_pattern =
+-      n_threads > 1 ? absl::StrCat(examples_base, "@", n_threads)
+-                    : examples_base;
++      n_threads > 1 ? absl::StrCat(examples_base, "@", n_threads, ".gz")
++                    : absl::StrCat(examples_base, ".gz");
+   const std::string cvo_pattern    = absl::StrCat(tmp_dir, "/cvo.tfrecord");
+   const std::string small_cvo_base = absl::StrCat(tmp_dir, "/small_cvo.tfrecord");
+   const std::string small_cvo_path =
+diff --git a/deepvariant/native/libstdcxx_sort.h b/deepvariant/native/libstdcxx_sort.h
+new file mode 100644
+index 0000000..1869bfa
+--- /dev/null
++++ b/deepvariant/native/libstdcxx_sort.h
+@@ -0,0 +1,173 @@
++// libstdc++-compatible std::sort.
++//
++// std::sort is not stable, and where it leaves equal elements is
++// implementation-defined: libc++ (Apple Clang) and libstdc++ (GCC 11.4, which
++// builds google/deepvariant:1.10.0) order ties differently. Upstream code that
++// sorts with ties (e.g. FastPassAligner's haplotypes by supporting-read score)
++// then realigns some reads to different haplotypes, changing candidates and
++// examples.
++//
++// Sort() reproduces libstdc++'s introsort (stl_algo.h / stl_heap.h:
++// __introsort_loop, __move_median_to_first, __unguarded_partition,
++// __final_insertion_sort with threshold 16, heap-sort fallback), so equal
++// elements end up exactly where GCC's std::sort puts them.
++
++#pragma once
++
++#include <algorithm>
++#include <functional>
++#include <iterator>
++#include <utility>
++
++namespace deepvariant {
++namespace dv_sort {
++namespace internal {
++
++constexpr long kThreshold = 16;
++
++template <typename It, typename Dist, typename T, typename Comp>
++void PushHeap(It first, Dist hole, Dist top, T value, Comp& comp) {
++  Dist parent = (hole - 1) / 2;
++  while (hole > top && comp(*(first + parent), value)) {
++    *(first + hole) = std::move(*(first + parent));
++    hole = parent;
++    parent = (hole - 1) / 2;
++  }
++  *(first + hole) = std::move(value);
++}
++
++template <typename It, typename Dist, typename T, typename Comp>
++void AdjustHeap(It first, Dist hole, Dist len, T value, Comp& comp) {
++  const Dist top = hole;
++  Dist child = hole;
++  while (child < (len - 1) / 2) {
++    child = 2 * (child + 1);
++    if (comp(*(first + child), *(first + (child - 1)))) child--;
++    *(first + hole) = std::move(*(first + child));
++    hole = child;
++  }
++  if ((len & 1) == 0 && child == (len - 2) / 2) {
++    child = 2 * (child + 1);
++    *(first + hole) = std::move(*(first + (child - 1)));
++    hole = child - 1;
++  }
++  PushHeap(first, hole, top, std::move(value), comp);
++}
++
++// __partial_sort(first, last, last): __make_heap then __sort_heap.
++template <typename It, typename Comp>
++void HeapSort(It first, It last, Comp& comp) {
++  using Dist = typename std::iterator_traits<It>::difference_type;
++  const Dist len = last - first;
++  if (len >= 2) {
++    for (Dist parent = (len - 2) / 2;; parent--) {
++      auto value = std::move(*(first + parent));
++      AdjustHeap(first, parent, len, std::move(value), comp);
++      if (parent == 0) break;
++    }
++  }
++  while (last - first > 1) {
++    --last;
++    auto value = std::move(*last);
++    *last = std::move(*first);
++    AdjustHeap(first, Dist(0), Dist(last - first), std::move(value), comp);
++  }
++}
++
++template <typename It, typename Comp>
++void MoveMedianToFirst(It result, It a, It b, It c, Comp& comp) {
++  if (comp(*a, *b)) {
++    if (comp(*b, *c))
++      std::iter_swap(result, b);
++    else if (comp(*a, *c))
++      std::iter_swap(result, c);
++    else
++      std::iter_swap(result, a);
++  } else if (comp(*a, *c)) {
++    std::iter_swap(result, a);
++  } else if (comp(*b, *c)) {
++    std::iter_swap(result, c);
++  } else {
++    std::iter_swap(result, b);
++  }
++}
++
++template <typename It, typename Comp>
++It UnguardedPartition(It first, It last, It pivot, Comp& comp) {
++  while (true) {
++    while (comp(*first, *pivot)) ++first;
++    --last;
++    while (comp(*pivot, *last)) --last;
++    if (!(first < last)) return first;
++    std::iter_swap(first, last);
++    ++first;
++  }
++}
++
++template <typename It, typename Comp>
++void IntrosortLoop(It first, It last, long depth_limit, Comp& comp) {
++  while (last - first > kThreshold) {
++    if (depth_limit == 0) {
++      HeapSort(first, last, comp);
++      return;
++    }
++    --depth_limit;
++    MoveMedianToFirst(first, first + 1, first + (last - first) / 2, last - 1,
++                      comp);
++    It cut = UnguardedPartition(first + 1, last, first, comp);
++    IntrosortLoop(cut, last, depth_limit, comp);
++    last = cut;
++  }
++}
++
++template <typename It, typename Comp>
++void UnguardedLinearInsert(It last, Comp& comp) {
++  auto value = std::move(*last);
++  It next = last;
++  --next;
++  while (comp(value, *next)) {
++    *last = std::move(*next);
++    last = next;
++    --next;
++  }
++  *last = std::move(value);
++}
++
++template <typename It, typename Comp>
++void InsertionSort(It first, It last, Comp& comp) {
++  if (first == last) return;
++  for (It i = first + 1; i != last; ++i) {
++    if (comp(*i, *first)) {
++      auto value = std::move(*i);
++      std::move_backward(first, i, i + 1);
++      *first = std::move(value);
++    } else {
++      UnguardedLinearInsert(i, comp);
++    }
++  }
++}
++
++}  // namespace internal
++
++template <typename It, typename Comp>
++void Sort(It first, It last, Comp comp) {
++  if (first == last) return;
++  const auto n = static_cast<unsigned long>(last - first);
++  const long lg = static_cast<long>(sizeof(n) * 8 - 1 - __builtin_clzl(n));
++  internal::IntrosortLoop(first, last, lg * 2, comp);
++  if (last - first > internal::kThreshold) {
++    internal::InsertionSort(first, first + internal::kThreshold, comp);
++    for (It i = first + internal::kThreshold; i != last; ++i)
++      internal::UnguardedLinearInsert(i, comp);
++  } else {
++    internal::InsertionSort(first, last, comp);
++  }
++}
++
++template <typename It>
++void Sort(It first, It last) {
++  Sort(first, last, std::less<>());
++}
++
++}  // namespace dv_sort
++}  // namespace deepvariant
+diff --git a/deepvariant/native/make_examples_main.cc b/deepvariant/native/make_examples_main.cc
+index e897431..913a88b 100644
+--- a/deepvariant/native/make_examples_main.cc
++++ b/deepvariant/native/make_examples_main.cc
+@@ -958,18 +958,14 @@ RealignerOptionsFromFlags() {
+   opts.mutable_aln_config()->set_mismatch(absl::GetFlag(FLAGS_aln_mismatch));
+   opts.mutable_aln_config()->set_gap_open(absl::GetFlag(FLAGS_aln_gap_open));
+   opts.mutable_aln_config()->set_gap_extend(absl::GetFlag(FLAGS_aln_gap_extend));
+-  // BUG FIX (Path D Site 1, chr12:62946475 1-read-off, 2026-05-23):
+-  // Mirror upstream `realigner.py:_realigner_options` (lines 420-429):
+-  // when --normalize_reads is true (we hardcode this true on
+-  // AlleleCounterOptions at line ~821), the RealignerOptions.normalize_reads
+-  // must also be true so FastPassAligner does NOT discard realigned
+-  // alignments whose CIGAR is not left-normalized. Without this, reads
+-  // in T-homopolymer regions (e.g. chr12:62946475 GTTTT>G in a 16-T run)
+-  // whose realigned CIGAR has any shiftable indel get thrown out by
+-  // `fast_pass_aligner.cc:557-568 IsAlignmentNormalized()` check,
+-  // leaving them at their original POS — losing the +1 DP contribution
+-  // that Docker counts (DP=27 vs ours DP=26 at this site WG-wide).
+-  opts.set_normalize_reads(true);
++  // Mirror upstream realigner.py:_realigner_options: RealignerOptions.
++  // normalize_reads follows --normalize_reads, which defaults to false and is
++  // only set (true) by the pangenome-aware model's flags_for_calling. With it
++  // false, FastPassAligner keeps a read's original alignment when the
++  // realigned CIGAR is not left-normalized, exactly as Docker's WGS/WES/
++  // PacBio/ONT runs do. Forcing it true for every mode moved reads Docker
++  // leaves alone and changed candidates in ~400 chr20 windows (HG002 NovaSeq).
++  opts.set_normalize_reads(IsPangenomeMode());
+   if (absl::GetFlag(FLAGS_dbg_disable_graph_pruning)) {
+     // Match upstream make_examples_core.py: dbg_disable_graph_pruning=true
+     // dispatches to PruneLite() (debruijn_graph.cc:257-258), which only
+@@ -2176,7 +2172,14 @@ int RunMakeExamples(int argc, char** argv) {
+     DV_SIGNPOST_INTERVAL_BEGIN(AlleleCounterProbe, region_str.c_str());
+     AlleleCounter probe(ref_reader.get(), region, {},
+                         opts.allele_counter_options());
+-    for (const auto& r : working_reads) probe.Add(r, sample_name);
++    // Upstream counts alleles over in_memory_sam_reader.query(region): the
++    // realigned reads that still overlap the region. A read the realigner
++    // moved past the region's end (e.g. to a leading insertion just after
++    // it) is left out of the counts but stays in the pileups, which take
++    // every realigned read (in_memory_sam_reader.iterate()).
++    for (const auto& r : working_reads) {
++      if (nucleus::ReadOverlapsRegion(r, region)) probe.Add(r, sample_name);
++    }
+     DV_SIGNPOST_INTERVAL_END(AlleleCounterProbe);
+
+     // Phase 9 / Step 3 — gVCF non-variant TFRecord emission. Per-position
+@@ -2219,7 +2222,9 @@ int RunMakeExamples(int argc, char** argv) {
+     DV_SIGNPOST_INTERVAL_BEGIN(AlleleCounterMain, region_str.c_str());
+     AlleleCounter counter(ref_reader.get(), region, candidate_positions,
+                           opts.allele_counter_options());
+-    for (const auto& r : working_reads) counter.Add(r, sample_name);
++    for (const auto& r : working_reads) {
++      if (nucleus::ReadOverlapsRegion(r, region)) counter.Add(r, sample_name);
++    }
+     DV_SIGNPOST_INTERVAL_END(AlleleCounterMain);
+
+     std::vector<DeepVariantCall> candidates =
+diff --git a/deepvariant/native/postprocess_main.cc b/deepvariant/native/postprocess_main.cc
+index 740e17b..ca68b83 100644
+--- a/deepvariant/native/postprocess_main.cc
++++ b/deepvariant/native/postprocess_main.cc
+@@ -109,20 +109,6 @@ namespace {
+
+ constexpr int kMaxPhred = 99;
+
+-std::vector<std::string> ExpandShards(const std::string& spec) {
+-  auto at = spec.find('@');
+-  if (at == std::string::npos) return {spec};
+-  const std::string prefix = spec.substr(0, at);
+-  int n;
+-  if (!absl::SimpleAtoi(spec.substr(at + 1), &n) || n <= 0) return {spec};
+-  std::vector<std::string> paths;
+-  for (int i = 0; i < n; ++i) {
+-    paths.push_back(absl::StrCat(prefix, "-", absl::Dec(i, absl::kZeroPad5),
+-                                  "-of-", absl::Dec(n, absl::kZeroPad5)));
+-  }
+-  return paths;
+-}
+-
+ // Mirror of nucleus/util/variant_utils.py:simplify_alleles — strips
+ // the longest common POSTFIX shared by all (ref, alts), leaving at
+ // least 1 base on every allele. Then updates variant.reference_bases,
+diff --git a/deepvariant/native/tfrecord.cc b/deepvariant/native/tfrecord.cc
+index 8459b83..6c191b0 100644
+--- a/deepvariant/native/tfrecord.cc
++++ b/deepvariant/native/tfrecord.cc
+@@ -3,6 +3,7 @@
+
+ #include "deepvariant/native/tfrecord.h"
+
++#include <algorithm>
+ #include <cstdint>
+ #include <cstring>
+ #include <fstream>
+@@ -14,7 +15,11 @@
+ #include <unistd.h>
+ #include <sys/types.h>
+
++#include <zlib.h>
++
+ #include "absl/crc/crc32c.h"
++#include "absl/log/log.h"
++#include "absl/strings/match.h"
+ #include "absl/strings/numbers.h"
+ #include "absl/strings/str_cat.h"
+
+@@ -28,60 +33,85 @@ uint32_t MaskedCrc32c(const char* data, size_t n) {
+   return ((crc >> 15) | (crc << 17)) + kMaskDelta;
+ }
+
+-// Expand `prefix@N` to {prefix-00000-of-NNNNN, ..., prefix-(N-1)-of-NNNNN}.
+-// Plain paths (no `@`) pass through as a single-element list.
+-std::vector<std::string> ExpandShards(const std::string& spec) {
+-  auto at = spec.find('@');
+-  if (at == std::string::npos) return {spec};
+-  const std::string prefix = spec.substr(0, at);
+-  int n = 0;
+-  if (!absl::SimpleAtoi(spec.substr(at + 1), &n) || n <= 0) return {spec};
+-  std::vector<std::string> paths;
+-  paths.reserve(n);
+-  for (int i = 0; i < n; ++i) {
+-    paths.push_back(absl::StrCat(prefix, "-",
+-                                  absl::Dec(i, absl::kZeroPad5),
+-                                  "-of-", absl::Dec(n, absl::kZeroPad5)));
+-  }
+-  return paths;
++// Splits "prefix@N[suffix]" into its parts; false for a plain path.
++bool ParseShardSpec(const std::string& spec, std::string* prefix, int* n,
++                    std::string* suffix) {
++  const auto at = spec.find('@');
++  if (at == std::string::npos) return false;
++  size_t end = at + 1;
++  while (end < spec.size() && spec[end] >= '0' && spec[end] <= '9') ++end;
++  if (!absl::SimpleAtoi(spec.substr(at + 1, end - at - 1), n) || *n <= 0)
++    return false;
++  *prefix = spec.substr(0, at);
++  *suffix = spec.substr(end);
++  return true;
++}
++
++std::string ShardPath(const std::string& prefix, int i, int n,
++                      const std::string& suffix) {
++  return absl::StrCat(prefix, "-", absl::Dec(i, absl::kZeroPad5), "-of-",
++                      absl::Dec(n, absl::kZeroPad5), suffix);
+ }
+ }  // namespace
+
+ std::string ShardName(const std::string& spec, int task_id) {
+-  auto at = spec.find('@');
+-  if (at == std::string::npos) return spec;
+-  const std::string prefix = spec.substr(0, at);
++  std::string prefix, suffix;
+   int n = 0;
+-  if (!absl::SimpleAtoi(spec.substr(at + 1), &n) || n <= 0) return spec;
+-  return absl::StrCat(prefix, "-", absl::Dec(task_id, absl::kZeroPad5),
+-                       "-of-", absl::Dec(n, absl::kZeroPad5));
++  if (!ParseShardSpec(spec, &prefix, &n, &suffix)) return spec;
++  return ShardPath(prefix, task_id, n, suffix);
++}
++
++std::vector<std::string> ExpandShards(const std::string& spec) {
++  std::string prefix, suffix;
++  int n = 0;
++  if (!ParseShardSpec(spec, &prefix, &n, &suffix)) return {spec};
++  std::vector<std::string> paths;
++  paths.reserve(n);
++  for (int i = 0; i < n; ++i) paths.push_back(ShardPath(prefix, i, n, suffix));
++  return paths;
+ }
+
+ // ---------------------------------------------------------------------------
+ // TFRecordReader
+ // ---------------------------------------------------------------------------
+
++// gzread() reads plain files transparently, so one path serves both forms.
+ struct TFRecordReader::Impl {
+   std::vector<std::string> paths;
+   size_t current_index = 0;
+-  std::ifstream stream;
++  gzFile file = nullptr;
++
++  explicit Impl(const std::string& spec) : paths(ExpandShards(spec)) {}
++  ~Impl() { CloseFile(); }
+
+-  explicit Impl(const std::string& spec) : paths(ExpandShards(spec)) {
+-    if (!paths.empty()) stream.open(paths[0], std::ios::binary);
++  bool Open(size_t index) {
++    CloseFile();
++    current_index = index;
++    file = gzopen(paths[index].c_str(), "rb");
++    if (file) gzbuffer(file, 1 << 20);
++    return file != nullptr;
++  }
++  void CloseFile() {
++    if (file) gzclose(file);
++    file = nullptr;
+   }
+
+-  // Advance to the next shard if the current one is exhausted; returns true
+-  // if a stream is currently open and ready for reading.
+-  bool EnsureOpen() {
+-    if (stream.is_open() && stream.good()) return true;
+-    while (current_index + 1 < paths.size()) {
+-      stream.close();
+-      ++current_index;
+-      stream.clear();
+-      stream.open(paths[current_index], std::ios::binary);
+-      if (stream.is_open() && stream.good()) return true;
++  // Reads exactly n bytes; returns the number read (n, or fewer at EOF).
++  size_t Read(char* out, size_t n) {
++    size_t got = 0;
++    while (got < n) {
++      const unsigned chunk = static_cast<unsigned>(
++          std::min<size_t>(n - got, 1u << 30));
++      const int r = gzread(file, out + got, chunk);
++      if (r < 0) {
++        int err = 0;
++        LOG(FATAL) << "TFRecord read error in " << paths[current_index]
++                   << ": " << gzerror(file, &err);
++      }
++      if (r == 0) break;
++      got += static_cast<size_t>(r);
+     }
+-    return false;
++    return got;
+   }
+ };
+
+@@ -91,64 +121,48 @@ TFRecordReader::~TFRecordReader() = default;
+ std::unique_ptr<TFRecordReader> TFRecordReader::New(
+     const std::string& path, const std::string& /*compression_type*/) {
+   auto impl = std::make_unique<Impl>(path);
+-  if (impl->paths.empty()) return nullptr;
+-  if (!impl->stream.is_open()) return nullptr;
++  if (impl->paths.empty() || !impl->Open(0)) return nullptr;
+   auto r = std::unique_ptr<TFRecordReader>(new TFRecordReader());
+   r->impl_ = std::move(impl);
+   return r;
+ }
+
+ bool TFRecordReader::GetNext() {
+-  if (!impl_) return false;
++  if (!impl_ || !impl_->file) return false;
+   while (true) {
+-    auto& s = impl_->stream;
+-    if (s.good()) {
++    char header[12];
++    const size_t got = impl_->Read(header, sizeof(header));
++    if (got == sizeof(header)) {
+       uint64_t length = 0;
+-      s.read(reinterpret_cast<char*>(&length), 8);
+-      if (s.gcount() == 8) {
+-        s.seekg(4, std::ios::cur);  // skip length CRC (not verified)
+-
+-        record_.resize(length);
+-        s.read(record_.data(), static_cast<std::streamsize>(length));
+-        if (static_cast<uint64_t>(s.gcount()) != length) {
+-          // BUG FIX (2026-05-10): the previous `return false` here would
+-          // ABANDON all remaining shards in a multi-shard read whenever
+-          // the LAST record of any shard was truncated. On a 14-shard
+-          // WG run this caused 13/14 shards (~95 % of examples) to be
+-          // silently dropped: call_variants only saw 69k of 954k
+-          // examples → 947k PASS calls missing in the final VCF.
+-          //
+-          // Truncation cause: upstream's ExamplesGenerator destructor
+-          // closes the writer without an explicit flush — the last
+-          // partial-buffer write (1 record per shard, ≈10-150 KB out
+-          // of 1 MiB buffer) is dropped on close.
+-          //
+-          // Fix: treat partial-payload same as EOF — fall through to
+-          // shard-advance code. Loses the 1 truncated record per shard
+-          // (unrecoverable since it was never written to disk) but
+-          // preserves all following shards. WG impact: 14 lost records
+-          // out of 954k = 0.0015 % vs 100 % loss before the fix.
+-          // Fall through to shard-advance code below.
+-        } else {
+-          s.seekg(4, std::ios::cur);  // skip payload CRC
+-          offset_ += 8 + 4 + length + 4;
+-          return true;
+-        }
++      std::memcpy(&length, header, 8);
++      record_.resize(length);
++      char footer[4];
++      if (impl_->Read(record_.data(), length) != length ||
++          impl_->Read(footer, 4) != 4) {
++        LOG(FATAL) << "Truncated TFRecord in "
++                   << impl_->paths[impl_->current_index] << " at offset "
++                   << offset_;
+       }
++      offset_ += 12 + length + 4;
++      return true;
+     }
+-    // Current shard exhausted (or read failed at boundary). Try next shard.
++    if (got != 0) {
++      LOG(FATAL) << "Truncated TFRecord header in "
++                 << impl_->paths[impl_->current_index] << " at offset "
++                 << offset_;
++    }
++    // This shard is exhausted: continue with the next one.
+     if (impl_->current_index + 1 >= impl_->paths.size()) return false;
+-    impl_->stream.close();
+-    ++impl_->current_index;
+-    impl_->stream.clear();
+-    impl_->stream.open(impl_->paths[impl_->current_index], std::ios::binary);
+-    if (!impl_->stream.is_open()) return false;
++    if (!impl_->Open(impl_->current_index + 1)) {
++      LOG(FATAL) << "Cannot open TFRecord shard "
++                 << impl_->paths[impl_->current_index];
++    }
+     offset_ = 0;
+   }
+ }
+
+ void TFRecordReader::Close() {
+-  if (impl_) impl_->stream.close();
++  if (impl_) impl_->CloseFile();
+ }
+
+ // ---------------------------------------------------------------------------
+@@ -170,6 +184,7 @@ constexpr size_t kBufBytes = 1 << 20;  // 1 MiB write coalescing buffer
+ }
+
+ struct TFRecordWriter::Impl {
++  gzFile gz = nullptr;  // gzip output; otherwise the raw fd path below.
+   int fd = -1;
+   std::vector<char> buf;
+   size_t buf_used = 0;
+@@ -188,11 +203,26 @@ struct TFRecordWriter::Impl {
+     ok = true;
+   }
+
++  Impl() = default;
++
+   ~Impl() {
++    if (gz) {
++      gzclose(gz);
++      return;
++    }
+     FlushBuf();
+     if (fd >= 0) ::close(fd);
+   }
+
++  // gzip level 1: a pileup example compresses ~25x even so, and higher
++  // levels cost make_examples far more CPU than they save in disk.
++  bool OpenGzip(const std::string& path) {
++    gz = gzopen(path.c_str(), "wb1");
++    if (gz) gzbuffer(gz, 1 << 20);
++    ok = gz != nullptr;
++    return ok;
++  }
++
+   bool FlushBuf() {
+     if (!ok || buf_used == 0) return ok;
+     // BUG FIX (2026-05-10): F_NOCACHE on macOS silently truncates writes
+@@ -230,6 +260,19 @@ struct TFRecordWriter::Impl {
+
+   bool Append(const char* data, size_t n) {
+     if (!ok) return false;
++    if (gz) {
++      while (n > 0) {
++        const unsigned chunk =
++            static_cast<unsigned>(std::min<size_t>(n, 1u << 30));
++        if (gzwrite(gz, data, chunk) != static_cast<int>(chunk)) {
++          ok = false;
++          return false;
++        }
++        data += chunk;
++        n -= chunk;
++      }
++      return true;
++    }
+     while (n > 0) {
+       const size_t room = buf.size() - buf_used;
+       const size_t take = std::min(n, room);
+@@ -249,8 +292,14 @@ TFRecordWriter::TFRecordWriter() = default;
+ TFRecordWriter::~TFRecordWriter() = default;
+
+ std::unique_ptr<TFRecordWriter> TFRecordWriter::New(
+-    const std::string& path, const std::string& /*compression_type*/) {
+-  auto impl = std::make_unique<Impl>(path);
++    const std::string& path, const std::string& compression_type) {
++  std::unique_ptr<Impl> impl;
++  if (compression_type == "GZIP" || absl::EndsWith(path, ".gz")) {
++    impl = std::make_unique<Impl>();
++    impl->OpenGzip(path);
++  } else {
++    impl = std::make_unique<Impl>(path);
++  }
+   if (!impl->ok) return nullptr;
+   auto w = std::unique_ptr<TFRecordWriter>(new TFRecordWriter());
+   w->impl_ = std::move(impl);
+@@ -272,11 +321,18 @@ bool TFRecordWriter::WriteRecord(const std::string& payload) {
+
+ bool TFRecordWriter::Flush() {
+   if (!impl_) return false;
++  if (impl_->gz) return gzflush(impl_->gz, Z_SYNC_FLUSH) == Z_OK;
+   return impl_->FlushBuf();
+ }
+
+ bool TFRecordWriter::Close() {
+   if (!impl_) return true;
++  if (impl_->gz) {
++    const bool ok = impl_->ok && gzclose(impl_->gz) == Z_OK;
++    impl_->gz = nullptr;
++    impl_->ok = false;
++    return ok;
++  }
+   bool ok = impl_->FlushBuf();
+   if (impl_->fd >= 0) {
+     ::close(impl_->fd);
+diff --git a/deepvariant/native/tfrecord.h b/deepvariant/native/tfrecord.h
+index d3da9c1..1b18766 100644
+--- a/deepvariant/native/tfrecord.h
++++ b/deepvariant/native/tfrecord.h
+@@ -1,19 +1,26 @@
+ // TFRecord reader/writer for the deepvariant native runtime.
+ // Binary format: [uint64_le length][uint32_le masked_crc32c(len)]
+ //                [bytes payload][uint32_le masked_crc32c(payload)]
++// A file whose name ends in ".gz" is one gzip stream of those records, like
++// TensorFlow's GZIP TFRecords (and upstream DeepVariant's *.tfrecord.gz).
+ // No TF types in this interface — pure C++ with std::string.
+ #pragma once
+
+ #include <cstdint>
+ #include <memory>
+ #include <string>
++#include <vector>
+
+ namespace deepvariant {
+
+-// Render `spec` ("name@N") to the per-shard filename for `task_id`:
+-// "name-NNNNN-of-NNNNN". Plain paths (no '@') pass through unchanged.
++// Render `spec` ("name@N" or "name@N.gz", nucleus' sharded-file convention)
++// to the per-shard filename for `task_id`: "name-NNNNN-of-NNNNN[.gz]".
++// Plain paths (no '@') pass through unchanged.
+ std::string ShardName(const std::string& spec, int task_id);
+
++// Every shard filename of `spec`, in order; a plain path is its own list.
++std::vector<std::string> ExpandShards(const std::string& spec);
++
+ // Read TFRecord files sequentially.  One instance is NOT thread-safe.
+ //
+ // The path passed to New() may be a plain file or a "name@N" shard spec.
+@@ -22,7 +29,8 @@ std::string ShardName(const std::string& spec, int task_id);
+ // boundaries.
+ class TFRecordReader {
+  public:
+-  // Valid compression_type: "" (none). GZIP/ZLIB not supported.
++  // Reads plain and gzip-compressed files alike (detected from the data).
++  // A record cut short (a truncated or corrupt file) is fatal.
+   static std::unique_ptr<TFRecordReader> New(
+       const std::string& path, const std::string& compression_type = "");
+
+@@ -50,7 +58,7 @@ class TFRecordReader {
+ // Write TFRecord files.  One instance is NOT thread-safe.
+ class TFRecordWriter {
+  public:
+-  // Valid compression_type: "" (none).
++  // Writes gzip ("GZIP", or a path ending in ".gz") or plain ("") records.
+   static std::unique_ptr<TFRecordWriter> New(
+       const std::string& path, const std::string& compression_type = "");
+
+diff --git a/deepvariant/realigner/fast_pass_aligner.cc b/deepvariant/realigner/fast_pass_aligner.cc
+index 7546b38..a9682c2 100644
+--- a/deepvariant/realigner/fast_pass_aligner.cc
++++ b/deepvariant/realigner/fast_pass_aligner.cc
+@@ -30,6 +30,7 @@
+  */
+
+ #include "deepvariant/realigner/fast_pass_aligner.h"
++#include "deepvariant/native/libstdcxx_sort.h"
+
+ #include <algorithm>
+ #include <cstddef>
+@@ -159,8 +160,9 @@ FastPassAligner::AlignReads(
+
+   // Sort haplotypes by number of supporting reads. First haplotype is the one
+   // that has fewer supporting reads.
+-  std::sort(read_to_haplotype_alignments_.begin(),
+-            read_to_haplotype_alignments_.end());
++  // libstdc++'s tie order (Docker is built with GCC): see libstdcxx_sort.h.
++  ::deepvariant::dv_sort::Sort(read_to_haplotype_alignments_.begin(),
++                read_to_haplotype_alignments_.end());
+
+   // Realign reads that we could successfully realign in previous steps back to
+   // reference. From all read to haplotype alignments the best one is picked.
