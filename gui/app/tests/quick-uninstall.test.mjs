@@ -29,9 +29,49 @@ foreach ($name in "ConvertTo-PowerShellLiteral", "New-QuickUninstallScript") {
     . ([scriptblock]::Create($ast.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }, $true).Extent.Text))
 }
 function Get-CimInstance { }
+# The machine's own Apps entries and uninstallers are never read or run: TEST_REGISTERED_INSTALL stands
+# for the folder a user chose in the installer, and each uninstaller run is logged to TEST_UNINSTALL_LOG.
+function Get-ItemProperty {
+    [CmdletBinding()] param([string]$LiteralPath)
+    if ($env:TEST_REGISTERED_INSTALL -and $LiteralPath -eq "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\WGSExtract") {
+        [pscustomobject]@{ InstallLocation = '"' + $env:TEST_REGISTERED_INSTALL + '"' }
+    }
+}
+function Start-Process {
+    [CmdletBinding()] param([string]$FilePath, [string[]]$ArgumentList, [switch]$Wait, [switch]$PassThru, [string]$WindowStyle)
+    if ($env:TEST_UNINSTALL_LOG) { Add-Content -LiteralPath $env:TEST_UNINSTALL_LOG -Value $FilePath }
+    [pscustomobject]@{ ExitCode = 0 }
+}
 $quick = New-QuickUninstallScript -InstallerName "WGSExtract_1.0.0_x64-setup.exe" -AppName "WGSExtract" -AppVersion "1.0.0" -AppIdentifier "test.quick.uninstall"
 & ([scriptblock]::Create($quick.contents))
 `;
+
+/** Runs the quick uninstall with a home, app data and Apps entries all under root. */
+function runQuickUninstall(root, env = {}) {
+  return new Promise((resolve) => {
+    execFile(pwsh, ["-NoProfile", "-NonInteractive", "-Command", runner], {
+      env: { ...process.env, PACKAGE_SCRIPT: packageScript, HOME: root, LOCALAPPDATA: path.join(root, "LocalAppData"), XDG_DATA_HOME: path.join(root, "data"), APPDATA: path.join(root, "Roaming"), PUBLIC: path.join(root, "Public"), TEST_REGISTERED_INSTALL: "", TEST_UNINSTALL_LOG: path.join(root, "uninstallers.log"), ...env },
+    }, (error, stdout, stderr) => resolve({ error, output: `${stdout}${stderr}` }));
+  });
+}
+
+test("the quick uninstall runs the uninstaller of an app installed outside AppData", { skip: !pwsh && "needs PowerShell" }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "gui-for-cli-quick-uninstall-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  // The folder a user chose in the installer's wizard, on another drive and with a space in it.
+  const installed = path.join(root, "D drive", "My Apps", "WGSExtract");
+  await mkdir(installed, { recursive: true });
+  await writeFile(path.join(installed, "uninstall.exe"), "");
+  await writeFile(path.join(installed, "notes.txt"), "the user's own file");
+
+  const result = await runQuickUninstall(root, { TEST_REGISTERED_INSTALL: installed });
+
+  assert.equal(result.error, null, result.output);
+  const ran = (await readFile(path.join(root, "uninstallers.log"), "utf8")).trim().split(/\r?\n/);
+  assert.deepEqual(ran, [path.join(installed, "uninstall.exe")]);
+  // Only the app's own uninstaller removes a chosen folder, as it may hold other files.
+  assert.equal(await readFile(path.join(installed, "notes.txt"), "utf8"), "the user's own file");
+});
 
 test("PR #531 review: the quick uninstall deletes the app's data but keeps a workspace in it", { skip: !pwsh && "needs PowerShell" }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "gui-for-cli-quick-uninstall-"));
@@ -49,11 +89,7 @@ test("PR #531 review: the quick uninstall deletes the app's data but keeps a wor
   await mkdir(path.join(appData, "EBWebView"), { recursive: true });
   await mkdir(path.join(localAppData, "WGSExtract"), { recursive: true });
 
-  const result = await new Promise((resolve) => {
-    execFile(pwsh, ["-NoProfile", "-NonInteractive", "-Command", runner], {
-      env: { ...process.env, PACKAGE_SCRIPT: packageScript, HOME: root, LOCALAPPDATA: localAppData, XDG_DATA_HOME: path.join(root, "data"), APPDATA: path.join(root, "Roaming"), PUBLIC: path.join(root, "Public") },
-    }, (error, stdout, stderr) => resolve({ error, output: `${stdout}${stderr}` }));
-  });
+  const result = await runQuickUninstall(root);
 
   assert.equal(result.error, null, result.output);
   assert.match(result.output, /Quick uninstall complete/);

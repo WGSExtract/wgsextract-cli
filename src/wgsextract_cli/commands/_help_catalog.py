@@ -328,7 +328,7 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     # setup: ref, deps, example-genome
     "ref bootstrap": _h(
         f"{_LIBRARY}: the bootstrap liftover chains, chip templates and other "
-        "small files, and the AADR 2M SNP panel.",
+        "small files.",
         "wgsextract ref bootstrap",
     ),
     "ref library": _h(
@@ -405,6 +405,12 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         f"{_LIBRARY}: the AADR 2M SNP panel (--delete removes it).",
         "wgsextract ref aadr --install",
         "wgsextract ref aadr --delete",
+    ),
+    "ref somalier": _h(
+        f"{_LIBRARY}: somalier's sites files and the 1000 Genomes sketches "
+        "(--delete removes them).",
+        "wgsextract ref somalier --install",
+        "wgsextract ref somalier --delete",
     ),
     "ref ybrowse": _h(
         f"{_LIBRARY}: the yBrowse GRCh38 SNP sites (--delete removes them).",
@@ -536,6 +542,14 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "--outdir, else beside the input.",
         f"wgsextract qc vcf {_VCF_IN}",
     ),
+    "qc relate": _h(
+        "relate.samples.tsv (sex, superpopulation), relate.pairs.tsv "
+        "(relatedness), relate.html and the sketches in somalier/, in --outdir, "
+        "else beside the first input.",
+        "wgsextract qc relate me.cram",
+        "wgsextract qc relate child.cram mother.cram father.cram --ped trio.ped",
+        "wgsextract qc relate me.cram somalier/cousin.somalier --no-ancestry",
+    ),
     "qc contamination": _h(
         "<stem>.contamination.selfSM (FREEMIX) and <stem>.contamination.Ancestry.",
         "wgsextract qc contamination --input sample.cram",
@@ -575,7 +589,9 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract typing hla --input sample.cram",
     ),
     "typing str": _h(
-        "ExpansionHunter's <stem>.str.vcf/.json and a flagged-repeat summary.",
+        "<stem>.str.tsv, a flagged-repeat summary, and the caller's calls: "
+        "ExpansionHunter's <stem>.str.vcf/.json, LongTR's <stem>.str.vcf.gz or "
+        "STRkit's <stem>.str.vcf and <stem>.str.strkit.json.",
         "wgsextract typing str --input sample.cram",
     ),
     "methylation pileup": _h(

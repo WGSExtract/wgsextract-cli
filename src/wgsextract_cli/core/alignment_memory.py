@@ -31,6 +31,8 @@ _HUMAN_REFERENCE_BASES = 3_217_346_917
 _INDEX_PARTS = {
     "bwa": ((".bwt", ".sa", ".pac"), 1.75),
     "bwa-mem2": ((".0123", ".bwt.2bit.64", ".pac"), 5.5),
+    # wgse-bwa-mem2 0.5.0 and later map without the .0123 file, as bwa-mem3 does.
+    "wgse-bwa-mem2": ((".bwt.2bit.64", ".pac"), 3.5),
     # bwa-mem3 maps with bwa-mem2's index but without its .0123 file.
     "bwa-mem3": ((".bwt.2bit.64", ".pac"), 3.5),
 }
@@ -458,7 +460,7 @@ def check_mapping_memory(
             " No reliable input read count was available; using a 680-million-read "
             "fallback. Larger inputs may need more."
         )
-    if aligner == "bwa-mem2" or required:
+    if aligner in {"bwa-mem2", "wgse-bwa-mem2"} or required:
         raise WGSExtractError(message + " Use --aligner bwa for its smaller index.")
     if aligner == "minimap2":
         message += (

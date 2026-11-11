@@ -16,7 +16,6 @@ _WINDOWS_VCF_TOOLS = {
     "cnv": "delly",
     "freebayes": "FreeBayes",
     "deepvariant": "DeepVariant",
-    "pharmcat": "PharmCAT",
 }
 _WINDOWS_TYPING_TOOLS = {
     "cyp2d6": "Cyrius",
@@ -80,6 +79,12 @@ def verify_platform_support(args: argparse.Namespace) -> None:
             )
 
             require_phasing_platform()
+    if command == "qc" and getattr(args, "qc_cmd", None) == "relate":
+        from wgsextract_cli.commands.qc.relate import (
+            require_supported_platform as require_somalier_platform,
+        )
+
+        require_somalier_platform()
     if command == "methylation":
         from wgsextract_cli.commands.methylation import (
             require_supported_platform as require_modkit_platform,

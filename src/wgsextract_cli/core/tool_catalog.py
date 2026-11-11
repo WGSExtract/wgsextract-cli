@@ -1,6 +1,8 @@
 """The external tools the CLI uses, and where Pixi provides them."""
 
+import platform
 import sys
+from collections.abc import Callable
 
 MANDATORY_TOOLS = [
     "samtools",
@@ -34,6 +36,7 @@ OPTIONAL_TOOLS = [
     "run_clair3.sh",
     "modkit",
     "verifybamid2",
+    "somalier",
     "whatshap",
     "longphase",
     "curl",
@@ -41,9 +44,12 @@ OPTIONAL_TOOLS = [
     "haplogrep3",
     "haplocheck",
     "htsfile",
+    "pharmcat_python",
     "cyrius",
     "run-t1k",
     "ExpansionHunter",
+    "LongTR",
+    "strkit",
     "dorado",
 ]
 
@@ -71,21 +77,51 @@ PLATFORM_ONLY_TOOLS = {
     "cyrius": ("linux", "darwin"),
     "run-t1k": ("linux", "darwin"),
     "ExpansionHunter": ("linux", "darwin"),
-    "run_clair3.sh": ("linux",),
+    "LongTR": ("linux", "darwin"),
+    "strkit": ("linux", "darwin"),
     "modkit": ("linux", "darwin"),
     "verifybamid2": ("linux", "darwin"),
+    "somalier": ("linux", "darwin"),
     "whatshap": ("linux", "darwin"),
     "longphase": ("linux", "darwin"),
 }
 
 
+# Hosts (OS, CPU) with a Bioconda Clair3 2.0.5+ build.
+CLAIR3_HOSTS = {("linux", "x86_64"), ("linux", "aarch64"), ("darwin", "arm64")}
+
+
+def clair3_host_supported() -> bool:
+    """Whether this OS and CPU can run Clair3 (`vcf clair3`, `deps check`)."""
+    system = "linux" if sys.platform.startswith("linux") else sys.platform
+    machine = platform.machine().lower()
+    machine = {"amd64": "x86_64"}.get(machine, machine)
+    if system == "linux" and machine == "arm64":
+        machine = "aarch64"
+    return (system, machine) in CLAIR3_HOSTS
+
+
+# Optional tools that need a particular OS and CPU.
+HOST_ONLY_TOOLS: dict[str, Callable[[], bool]] = {
+    "run_clair3.sh": clair3_host_supported,
+}
+
+
+def _built_for_host(tool: str) -> bool:
+    return (
+        sys.platform.startswith(PLATFORM_ONLY_TOOLS.get(tool, ("",)))
+        and HOST_ONLY_TOOLS.get(tool, lambda: True)()
+    )
+
+
 def optional_dependency_tools() -> list[str]:
     """Return the optional dependency tools that apply to this platform."""
-    return [
-        tool
-        for tool in OPTIONAL_TOOLS
-        if sys.platform.startswith(PLATFORM_ONLY_TOOLS.get(tool, ("",)))
-    ]
+    return [tool for tool in OPTIONAL_TOOLS if _built_for_host(tool)]
+
+
+def platform_unavailable_tools() -> list[str]:
+    """The optional tools that aren't built for this platform."""
+    return [tool for tool in OPTIONAL_TOOLS if not _built_for_host(tool)]
 
 
 PIXI_TOOL_ENVS = {
@@ -120,9 +156,12 @@ PIXI_TOOL_ENVS = {
     "run-t1k": "t1k",
     "t1k-build.pl": "t1k",
     "ExpansionHunter": "expansionhunter",
+    "LongTR": "longtr",
+    "strkit": "strkit",
     "run_clair3.sh": "clair3",
     "modkit": "modkit",
     "verifybamid2": "verifybamid2",
+    "somalier": "somalier",
     "whatshap": "phasing",
     "longphase": "phasing",
     # Only through their own environments (never a `python` on PATH): pixi_env_tool.
@@ -130,6 +169,9 @@ PIXI_TOOL_ENVS = {
     "cyrius_python": "cyrius",
 }
 
+
+# Interpreters only their own Pixi environment provides (its packages matter).
+ENV_ONLY_TOOLS = frozenset({"pharmcat_python", "cyrius_python"})
 
 TOOL_EXECUTABLE_ALIASES = {
     "pharmcat_python": ("python",),
@@ -157,6 +199,7 @@ PIXI_TOOL_PACKAGES = {
     "run-t1k": "t1k",
     "t1k-build.pl": "t1k",
     "ExpansionHunter": "expansionhunter",
+    "LongTR": "longtr",
     "run_clair3.sh": "clair3",
     "modkit": "ont-modkit",
 }

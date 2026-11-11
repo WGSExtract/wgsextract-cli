@@ -5,9 +5,9 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from .constants import BUILTIN_REQUIRED_KEYS, VALID_LAYOUT_DIRECTIONS
-from .models import Finding, LocaleReport, ParsedFile
-from .parser import split_value_and_comment, unquote_key
+from .constants import BUILTIN_REQUIRED_KEYS, LOCALE_METADATA_KEYS, VALID_LAYOUT_DIRECTIONS
+from .models import Finding, LocaleReport, ParsedEntry, ParsedFile
+from .parser import extract_source_hash, parse_toml_file, split_value_and_comment, unquote_key
 
 
 def lint_locale(
@@ -105,6 +105,22 @@ def lint_locale(
 
         if (
             source_value is not None
+            and entry.recorded_source_hash is None
+            and not entry.multiline
+            and is_translated(entry, source_value)
+        ):
+            findings.append(
+                Finding(
+                    "warning",
+                    "missing-source-hash",
+                    entry.line,
+                    entry.key,
+                    "Translated value has no i18n-source-hash; run --update-source-hashes",
+                )
+            )
+
+        if (
+            source_value is not None
             and entry.recorded_source_hash is not None
             and entry.recorded_source_hash != short_source_hash(source_value)
         ):
@@ -178,6 +194,18 @@ def short_source_hash(value: str) -> str:
     return hashlib.sha1(value.encode("utf-8"), usedforsecurity=False).hexdigest()[:8]
 
 
+def is_translated(entry: ParsedEntry, source_value: str) -> bool:
+    """A real translation: not ignored, not a TODO, non-empty and not a verbatim copy."""
+    return (
+        entry.key not in LOCALE_METADATA_KEYS
+        and not entry.bare_literal
+        and not entry.ignore_untranslated
+        and not entry.todo
+        and bool(entry.value.strip())
+        and entry.value != source_value
+    )
+
+
 def update_source_hashes(source: ParsedFile, target_path: Path) -> int:
     try:
         raw = target_path.read_text(encoding="utf-8")
@@ -188,6 +216,7 @@ def update_source_hashes(source: ParsedFile, target_path: Path) -> int:
     if original_ends_with_newline and lines and lines[-1] == "":
         lines.pop()
 
+    entries_by_line = {entry.line: entry for entry in parse_toml_file(target_path).entries}
     updated = 0
     multiline_delimiter = ""
     for idx, line in enumerate(lines):
@@ -214,7 +243,16 @@ def update_source_hashes(source: ParsedFile, target_path: Path) -> int:
         value_part, comment_part = split_value_and_comment(line)
         if not value_part.strip().endswith('"'):
             continue
-        new_comment = merge_source_hash(comment_part, short_source_hash(source_value))
+        recorded = extract_source_hash(comment_part)
+        source_hash = short_source_hash(source_value)
+        if recorded == source_hash:
+            continue
+        # Existing hashes are refreshed; a hashless line is only stamped when it
+        # is a real translation, never an i18n-ignore, TODO or verbatim copy.
+        entry = entries_by_line.get(idx + 1)
+        if recorded is None and (entry is None or not is_translated(entry, source_value)):
+            continue
+        new_comment = merge_source_hash(comment_part, source_hash)
         stripped_value = value_part.rstrip(" \t")
         rebuilt = stripped_value if not new_comment else f"{stripped_value}  {new_comment}"
         if rebuilt != line:

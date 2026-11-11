@@ -134,7 +134,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf to-fasta": _n(MINUTES, "bcftools", "bgzip", "samtools", "tabix"),
     "vcf trio": _n(MINUTES, *_CALL, optional="bgzip"),
     "vcf cnv": _n(HOURS, "bcftools", "delly", "samtools", "tabix"),
-    "vcf sv": _n(HOURS, *_CALL, optional="delly pbsv sniffles"),
+    "vcf sv": _n(HOURS, *_CALL, optional="delly pbsv sambamba sniffles"),
     "vcf freebayes": _n(HOURS, "bcftools", "freebayes", "samtools", "tabix"),
     "vcf gatk": _n(HOURS, "gatk", "samtools", "tabix", optional="bcftools"),
     "vcf deepvariant": _n(
@@ -168,6 +168,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "ref status": _n(SECONDS, scale=""),
     "ref bootstrap": _n(DOWNLOAD, optional="curl"),
     "ref aadr": _n(DOWNLOAD, optional="curl"),
+    "ref somalier": _n(DOWNLOAD, optional="curl"),
     "ref ybrowse": _n(DOWNLOAD, "bgzip", "tabix"),
     "ref microarray-targets": _n(MINUTES),
     "ref gene-map": _n(DOWNLOAD, optional="curl"),
@@ -202,6 +203,9 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "qc multiqc": _n(SECONDS, "multiqc", optional="bcftools fastqc", scale=""),
     "qc multiqc-metrics": _n(SECONDS, scale=""),
     "qc vcf": _n(MINUTES, "bcftools"),
+    "qc relate": _n(
+        MINUTES, "bcftools", "samtools", "somalier", optional="bgzip tabix"
+    ),
     "qc contamination": _n(MINUTES, "samtools", "verifybamid2", optional="bcftools"),
     "qc fake-data": _n(
         SECONDS,
@@ -220,7 +224,11 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "typing hla": _n(
         MINUTES, "run-t1k", "samtools", "t1k-build.pl", optional="bcftools"
     ),
-    "typing str": _n(MINUTES, "ExpansionHunter", "samtools", optional="bcftools"),
+    "typing str": _n(
+        MINUTES,
+        "samtools",
+        optional="ExpansionHunter LongTR strkit bcftools",
+    ),
     "methylation pileup": _n(HOURS, "modkit", "samtools", "tabix", optional="bcftools"),
     "pet-align": _n(
         HOURS, "bcftools", "bwa", "samtools", optional="bwa-mem2 sambamba samblaster"

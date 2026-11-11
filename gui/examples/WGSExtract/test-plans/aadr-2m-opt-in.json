@@ -1,5 +1,5 @@
 {
-  "name": "AADR 2M opt-in - requires explicitly installed metadata and real bam_path/ref_fasta overrides",
+  "name": "AADR 2M opt-in - installs the panel from Reference Data, then exports; requires real bam_path/ref_fasta overrides",
   "inputs": {
     "fieldValues": {
       "bam_path": "",
@@ -14,6 +14,19 @@
     }
   },
   "steps": [
+    {
+      "id": "aadr-2m-install",
+      "kind": "action",
+      "pageID": "library",
+      "sectionID": "databases-tools",
+      "actionID": "aadr-2m-install",
+      "inputs": {
+        "fieldValues": {
+          "library.aadrInstalled": "false"
+        }
+      },
+      "timeoutSeconds": 7200
+    },
     {
       "id": "aadr-2m-export",
       "kind": "action",

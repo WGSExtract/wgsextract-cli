@@ -226,6 +226,13 @@
       "subtitle": "sections.microarray.post-v063.aadr-2m.subtitle",
       "iconName": "microarray-grid",
       "textIcon": "▦",
+      "dataSource": {
+        "path": "scripts/library-state.sh",
+        "arguments": [
+          "{{ref_path}}",
+          "{{dataset_library}}"
+        ]
+      },
       "controls": [
         {
           "id": "microarray_formats",
@@ -244,7 +251,8 @@
               "id": "23andme_v3",
               "title": "options.microarray.formats.v3.title",
               "group": "23andMe",
-              "category": "options.microarray.formats.category.consumer"
+              "category": "options.microarray.formats.category.consumer",
+              "categoryTooltip": "options.microarray.formats.category.consumer.tooltip"
             },
             {
               "id": "23andme_v4",
@@ -352,7 +360,9 @@
               "id": "aadr_ho",
               "title": "options.microarray.formats.hov1.title",
               "group": "options.microarray.formats.group.aadr",
-              "category": "options.microarray.formats.category.reich"
+              "category": "options.microarray.formats.category.reich",
+              "groupTooltip": "options.microarray.formats.group.aadr.tooltip",
+              "categoryTooltip": "options.microarray.formats.category.reich.tooltip"
             },
             {
               "id": "aadr_1240k",
@@ -364,7 +374,14 @@
               "id": "aadr_2m",
               "title": "options.microarray.formats.2m.title",
               "group": "options.microarray.formats.group.aadr",
-              "category": "options.microarray.formats.category.reich"
+              "category": "options.microarray.formats.category.reich",
+              "disabledWhen": [
+                {
+                  "placeholder": "library.aadrInstalled",
+                  "notEquals": "true"
+                }
+              ],
+              "disabledTooltip": "options.microarray.formats.2m.disabledTooltip"
             }
           ],
           "layout": "rows"

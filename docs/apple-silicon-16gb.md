@@ -186,6 +186,41 @@ They are close to the chr20-only result on the same Mac (SNPs 0.9932 recall,
 0.9746 precision; indels 0.9498 and 0.9496). DeepVariant would need Docker and
 x86-64 emulation on a Mac (see above).
 
+## `wgse-bwa` or `wgse-bwa-mem3`
+
+On Macs with room for it, `wgse-bwa-mem3` aligns 1.8 times as fast as
+`wgse-bwa`, for about 11 GiB of memory against 6
+([Apple Silicon](hardware.md#apple-silicon-metal)). On the same 16 GB M1, with its
+owner's desktop session open (12–13 GiB available), it doesn't fit
+([#609](https://github.com/WGSExtract/wgsextract-cli/issues/609)). Both aligners
+were from `macos-aligners-14` (`wgse-bwa` 0.9.0, `wgse-bwa-mem3` 0.2.0
+`--compat=bwa-mem`), aligning 5 million HG002 read pairs to hs38. Every completed
+run with `-K 10000000` wrote the same records, from either aligner.
+
+| Aligner, backend, threads (`-K 10000000`) | Time | Peak memory |
+| :--- | ---: | ---: |
+| `wgse-bwa --metal`, 8 threads | 201–202 s | 6.2 GiB |
+| `wgse-bwa --metal`, 4 threads | 205 s | 6.3 GiB |
+| `wgse-bwa` on the CPU, 8 threads | 360–363 s | 5.5 GiB |
+| `wgse-bwa` on the CPU, 4 threads | 490–492 s | 5.5 GiB |
+| `wgse-bwa-mem3 --metal`, 8 threads | 668 s; over 900 s | 10.8 GiB |
+| `wgse-bwa-mem3 --metal`, 4 threads | 721 s | 10.6 GiB |
+| `wgse-bwa-mem3` on the CPU, 8 threads | 797 s; over 900 s | 10.6 GiB |
+| `wgse-bwa-mem3` on the CPU, 4 threads | over 900 s | 10.5 GiB |
+
+- **`wgse-bwa-mem3` thrashed.** macOS compressed memory to make room, free
+  memory fell to 36–39%, and the load average was seen at about 50. The Mac
+  stopped answering SSH for about 25 minutes.
+- **With the default batch size it was worse.** No run finished in 900 s, and
+  `--metal` at 8 threads got through only a tenth of the reads. `wgse-bwa`
+  with its default batch size took the same time as with `-K 10000000`.
+- **`wgse-bwa` is the aligner to use here.** On the GPU it was 3.3 to
+  3.5 times as fast as `wgse-bwa-mem3`, at any thread count.
+- **`align` picks it.** With the defaults, `align` estimated 19.2 GiB for
+  `wgse-bwa-mem3` against 12.0–13.0 GiB available, kept `wgse-bwa` on the GPU, and
+  took 209–211 s. Forced with `--aligner bwa-mem3` it took 2,144 s (ten times as
+  long), swap grew from 1.8 to 5.0 GiB, and the records were the same.
+
 ## Advice for 16 GB Macs
 
 - **Close what you can before `realign`,** and leave the Mac on overnight.

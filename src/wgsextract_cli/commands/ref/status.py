@@ -9,7 +9,7 @@ from typing import Any
 
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.ref import RefStatusParams
-from wgsextract_cli.core import bwa_mem2, sample_workspace
+from wgsextract_cli.core import bwa_mem2, sample_workspace, somalier_resources
 from wgsextract_cli.core.aadr_resources import aadr_2m_path
 from wgsextract_cli.core.config import dataset_library, settings
 from wgsextract_cli.core.gene_map import are_gene_maps_installed
@@ -102,12 +102,13 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
             "exists": Path(datasets).is_dir(),
         },
         "build": build,
-        # `ref bootstrap` installs the AADR 2M panel too; a library set up
-        # before it did isn't complete until it is run again.
-        "bootstrap": {
-            "installed": bootstrap_has_support_assets(reflib) and aadr["installed"],
-        },
+        # The AADR 2M panel is an optional download, not part of the bootstrap.
+        "bootstrap": {"installed": bootstrap_has_support_assets(reflib)},
         "aadr": aadr,
+        "somalier": {
+            "installed": somalier_resources.installed(reflib),
+            "file": str(somalier_resources.folder(reflib)),
+        },
         "ybrowse": _ybrowse_status(reflib),
         "geneMap": {
             "installed": are_gene_maps_installed(reflib),
@@ -159,6 +160,7 @@ def ref_status_values(status: dict[str, Any]) -> dict[str, str]:
         "library.pharmgkbInstalled": _json_bool(status["pharmgkb"]["installed"]),
         "library.pharmgkbFile": status["pharmgkb"]["file"],
         "library.aadrInstalled": _json_bool(status["aadr"]["installed"]),
+        "library.somalierInstalled": _json_bool(status["somalier"]["installed"]),
         "library.ybrowseInstalled": _json_bool(status["ybrowse"]["installed"]),
         **{
             f"library.{key}Installed": _json_bool(
@@ -185,6 +187,7 @@ def print_ref_status(status: dict[str, Any]) -> None:
     human_output(f"Bootstrap assets: {_status_label(status['bootstrap']['installed'])}")
     human_output(f"Gene maps: {_status_label(status['geneMap']['installed'])}")
     human_output(f"AADR 2M panel: {_path_status(status['aadr'])}")
+    human_output(f"somalier sites/1KG: {_path_status(status['somalier'])}")
     human_output(f"yBrowse GRCh38: {_path_status(status['ybrowse'])}")
     human_output(f"Microarray targets: {_path_status(status['annotationVcf'])}")
     human_output(f"Test genome: {status['testGenome']['status']}")
@@ -216,6 +219,8 @@ def print_ref_status(status: dict[str, Any]) -> None:
             for name, key in (("bwa", "bwaIndex"), ("bwa-mem2", "bwaMem2Index"))
             if genome[key]
         ]
+        if genome["bwaMem3Index"] and not genome["bwaMem2Index"]:
+            aligners.append("bwa-mem3 and wgse-bwa-mem2 0.5.0+; bwa-mem2 needs .0123")
         ready = (
             f"aligner index ({', '.join(aligners)})"
             if aligners
@@ -318,6 +323,9 @@ def _genome_status(reflib: str) -> list[dict[str, Any]]:
                     for ext in (".amb", ".ann", ".bwt", ".pac", ".sa")
                 ),
                 "bwaMem2Index": bwa_mem2.has_index(path),
+                # bwa-mem2's index without its .0123 file, which bwa-mem3 and
+                # wgse-bwa-mem2 0.5.0 and later map with.
+                "bwaMem3Index": bwa_mem2.has_bwa_mem3_index(path),
             }
         )
     return genomes

@@ -21,7 +21,6 @@ UNSUPPORTED = [
     (["vcf", "sv", "--pacbio"], "pbsv/sniffles"),
     (["vcf", "freebayes"], "FreeBayes"),
     (["vcf", "deepvariant"], "DeepVariant"),
-    (["vcf", "pharmcat"], "PharmCAT"),
     (["vep", "run", "--engine", "ensembl"], "Ensembl VEP"),
     (["vep", "download", "--engine", "ensembl"], "Ensembl VEP"),
     (["vep", "verify", "--engine", "ensembl"], "Ensembl VEP"),

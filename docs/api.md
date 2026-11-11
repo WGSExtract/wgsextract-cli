@@ -675,6 +675,39 @@ verifybamid2`) and unavailable on Windows.
 | `sites` | `str` | `'100k'` | `--sites` | 1000 Genomes marker set: 100k (default) or 10k, faster and noisier, for low coverage. One of: `100k`, `10k` |
 | `svd_prefix` | `str \| None` | `None` | `--svd-prefix` | Your own VerifyBamID2 resource prefix (``<prefix>.UD``, ``.mu``, ``.bed``, ``.V``); any build is then accepted. None uses the bundled 1000 Genomes resources for the input's build. |
 
+### `api.qc.relate(RelateParams)`
+
+CLI: `wgsextract qc relate`.
+
+Compare the inputs (see `RelateParams`); output roles
+`relate_samples`, `relate_pairs`, `somalier_sketch` and
+`somalier_report`.
+
+`RelateParams`: Sex, relatedness and continental ancestry with somalier.
+
+Each BAM, CRAM or VCF is sketched at ~17,800 common SNPs (`somalier
+extract`; the sketches are kept in `<outdir>/somalier/` and can be given
+again as inputs, so a relative's kit can be compared later without its
+BAM). The sketches are then compared pairwise (`somalier relate`) and,
+when the 1000 Genomes sketches are installed (`ref somalier --install`),
+placed in a superpopulation (`somalier ancestry`). Writes
+`relate.samples` and `relate.pairs` tables (TSV or Parquet) and
+somalier's HTML reports. Warns when the inferred sex disagrees with the
+sample's recorded sex, when two inputs are one person, and, with `ped`,
+when a pair isn't related as the pedigree says (a swapped file). somalier
+is optional (`pixi install -e somalier`) and unavailable on Windows.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `inputs` | `tuple[Path, ...]` | required | `FILE` | BAM, CRAM or VCF files, or .somalier sketches from an earlier run. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the first input's folder). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `sites` | `Path \| None` | `None` | `--sites` | Sites VCF to genotype instead of somalier's own for the input's build (default: from 'ref somalier --install'). |
+| `ped` | `Path \| None` | `None` | `--ped` | PED/FAM file of the expected relationships and sexes; pairs or sexes that disagree are flagged as possible sample swaps. |
+| `ancestry` | `bool \| None` | `None` | `--ancestry` | Predict the 1000 Genomes superpopulation (default: when 'ref somalier --install' has installed the labelled sketches). |
+| `table_format` | `str` | `'tsv'` | `--format` | Table format: tsv, or parquet (needs pyarrow) (default: tsv) One of: `tsv`, `parquet` |
+
 ### `api.qc.fake_data(FakeDataParams)`
 
 CLI: `wgsextract qc fake-data`.
@@ -1633,12 +1666,28 @@ CLI: `wgsextract ref aadr`.
 
 Install the panel; output role `reference_resource`.
 
-`RefAadrParams`: Install the hash-pinned CC0 AADR v66.p1 2M SNP panel into the library
-(`ref bootstrap` installs it too), or delete it.
+`RefAadrParams`: Install the hash-pinned CC0 AADR v66.p1 2M SNP panel into the library,
+or delete it. `ref bootstrap` does not install it: the Harvard Dataverse
+server is slow, so the panel is only downloaded on request.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `delete` | `bool` | `False` | `--delete` | Delete the installed AADR 2M SNP panel |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+
+### `api.ref.somalier(RefSomalierParams)`
+
+CLI: `wgsextract ref somalier`.
+
+Install the resources; output role `reference_resource`.
+
+`RefSomalierParams`: Install somalier's hash-pinned sites files (MIT) and the labelled
+1000 Genomes sketches (CC BY 4.0, Zenodo 3479773) that `qc relate`
+uses, about 85 MB, or delete them.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed somalier sites and 1000 Genomes sketches |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 
 ### `api.ref.ybrowse(RefYbrowseParams)`
@@ -1902,8 +1951,8 @@ Install the bootstrap; output role `reference_resource` for each file.
 Not offered by the server.
 
 `RefBootstrapParams`: Download the reference library bootstrap (liftover chains, chip
-templates, N counts and other support files) and the AADR 2M SNP panel.
-Saves the library's path as config.toml's `reference_library` when that
+templates, N counts and other support files). The AADR 2M SNP panel is a
+separate download (`ref aadr --install`). Saves the library's path as config.toml's `reference_library` when that
 is unset.
 
 | Field | Type | Default | CLI | Description |
@@ -2034,9 +2083,12 @@ Each writes `<input stem>.*` files in `outdir`, else beside the input:
   Cyrius's PolyForm Strict license allows noncommercial use only.
 * `hla`: HLA class I and II alleles with T1K (`.t1k_genotype.tsv`,
   `.t1k_allele.tsv`/`.vcf`), from the optional `t1k` environment.
-* `repeats` (`typing str`): disease repeat expansions with ExpansionHunter
-  (`.str.tsv`/`.vcf`/`.json`), from the optional `expansionhunter`
-  environment; needs `ref`.
+* `repeats` (`typing str`): disease repeat expansions (`.str.tsv`), with
+  ExpansionHunter for short reads (`.str.vcf`/`.json`, optional
+  `expansionhunter` environment) or LongTR for Nanopore and PacBio reads
+  (`.str.vcf.gz`, `longtr` environment; STRkit's `.str.vcf` and
+  `.str.strkit.json` with `caller="strkit"`, `strkit` environment);
+  needs `ref`.
 
 `cyp2d6` and `hla` also write a PharmCAT outside-call file
 (`.cyp2d6.pharmcat.tsv`, `.hla.pharmcat.tsv`) for `vcf pharmcat
@@ -2087,14 +2139,17 @@ confident call) and the IPD-IMGT/HLA release of the index
 
 CLI: `wgsextract typing str`.
 
-Size disease repeats with ExpansionHunter (`typing str`; see
-`TypingStrParams`).
+Size disease repeats with ExpansionHunter, LongTR or STRkit (`typing
+str`; see `TypingStrParams`).
 
-`TypingStrParams`: Size the disease short tandem repeats (HTT, FMR1, C9ORF72, ...) with
-ExpansionHunter and flag those outside the normal range. Short-read
-sizing is approximate and isn't a diagnosis. Metrics: `sex`,
-`disease_repeats` and `flagged_repeats`; each flagged repeat is also a
-`repeat_outside_normal_range` warning.
+`TypingStrParams`: Size the disease short tandem repeats (HTT, FMR1, C9ORF72, ...) and
+flag those outside the normal range: with ExpansionHunter for short reads,
+and LongTR (or STRkit) for Nanopore and PacBio reads, chosen by the reads'
+platform. Sizing from reads isn't a diagnosis. Metrics: `sex`,
+`repeat_caller`, `disease_repeats` and `flagged_repeats`; each
+flagged repeat is also a `repeat_outside_normal_range` warning (or
+`repeat_unconfirmed` when only a one-read allele flags it, and
+`repeat_unavailable` for NOTCH2NLC on hg19).
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -2102,7 +2157,8 @@ sizing is approximate and isn't a diagnosis. Metrics: `sex`,
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `catalog` | `Path \| None` | `None` | `--catalog` | ExpansionHunter variant catalog. Default: the one it ships for the input's build. |
+| `caller` | `str \| None` | `None` | `--caller` | Repeat caller (default: longtr for Nanopore and PacBio reads, expansionhunter for others). strkit suits Nanopore R9 reads and very long alleles. One of: `expansionhunter`, `longtr`, `strkit` |
+| `catalog` | `Path \| None` | `None` | `--catalog` | Repeat catalog in the caller's format: an ExpansionHunter variant catalog (JSON) or a LongTR or STRkit BED. Default: ExpansionHunter's shipped catalog for the input's build, or its repeats bundled for LongTR and STRkit. |
 | `sex` | `str \| None` | `None` | `--sex` | Sample sex (the number of chrX alleles). Default: inferred from chrX/chrY coverage. One of: `male`, `female` |
 
 ## `api.report`

@@ -115,6 +115,14 @@ FACTS: dict[str, FactSpec] = {
             PLATFORMS,
         ),
         FactSpec("build", "Reference build the file is aligned to."),
+        FactSpec(
+            "somalier_sex",
+            "Male or Female, from chrX heterozygosity and chrY depth (qc relate).",
+        ),
+        FactSpec(
+            "superpopulation",
+            "1000 Genomes superpopulation (AFR, AMR, EAS, EUR, SAS; qc relate).",
+        ),
         FactSpec("read_length", "Mean read length in bases."),
         # Version 2: long reads' depth is sampled, not counted (#427).
         FactSpec("mean_coverage", "Mean mapped read depth over the genome.", None, 2),
@@ -761,6 +769,8 @@ _LABELS = {
     "sex": "Sex",
     "platform": "Platform",
     "build": "Build",
+    "somalier_sex": "Sex (somalier)",
+    "superpopulation": "Superpopulation",
     "read_length": "Read length",
     "mean_coverage": "Mean coverage",
     "target_depths": "Target depths",

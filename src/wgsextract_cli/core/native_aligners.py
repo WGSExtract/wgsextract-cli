@@ -46,6 +46,9 @@ MINIMUM_VERSIONS = {
 # (@PG aside; native/README.md).
 BWA_MEM3_COMPAT = {"bwa": "bwa-mem", "bwa-mem2": "bwa-mem2"}
 BWA_MEM3_FAST = "--fast"
+# From this release wgse-bwa-mem2 maps (CPU and --metal) without bwa-mem2's
+# 6.2 GB .0123 file (native/README.md, Memory).
+BWA_MEM2_WITHOUT_0123 = (0, 5, 0)
 CAPABILITIES_SCHEMA = 1
 _PROBE_TIMEOUT_SECONDS = 30
 _VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
@@ -67,6 +70,16 @@ class NativeAligner:
     engine_version: str
     metal_available: bool
 
+    @property
+    def reads_0123(self) -> bool:
+        """Whether this bwa-mem2 build loads (and needs) the index's .0123 file."""
+        version = _version_tuple(self.version)
+        return not (
+            self.binary == "wgse-bwa-mem2"
+            and version is not None
+            and version >= BWA_MEM2_WITHOUT_0123
+        )
+
 
 @dataclass(frozen=True)
 class AlignerCommand:
@@ -87,6 +100,14 @@ class AlignerCommand:
     def engine(self) -> str:
         """The aligner that runs: ``tool``, or bwa-mem3 standing in for it."""
         return self.native.tool if self.native else self.tool
+
+    @property
+    def memory_model(self) -> str:
+        """The aligner whose memory estimate (alignment_memory) applies:
+        ``engine``, or wgse-bwa-mem2 when it maps without the .0123 file."""
+        if self.engine == "bwa-mem2" and self.native and not self.native.reads_0123:
+            return "wgse-bwa-mem2"
+        return self.engine
 
     @property
     def bwa_mem3_mode(self) -> str | None:

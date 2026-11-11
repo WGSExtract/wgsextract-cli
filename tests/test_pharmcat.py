@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import sys
 from argparse import Namespace
 from pathlib import Path
@@ -7,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from tests.htslib_helpers import bgzip_index, needs_htslib, run_wgsextract, write_fasta
+from wgsextract_cli import api
 from wgsextract_cli.commands.vcf import pharmcat
 from wgsextract_cli.commands.vcf.pharmcat import (
     REFERENCE_FASTA,
@@ -15,6 +17,7 @@ from wgsextract_cli.commands.vcf.pharmcat import (
     prepare_input,
     summarize,
 )
+from wgsextract_cli.core import runtime
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
@@ -178,8 +181,9 @@ def pharmcat_env(monkeypatch):
 
 @needs_htslib
 def test_pharmcat_runs_its_pipeline_on_the_gene_regions_in_its_names(
-    tmp_path, pharmcat_env, caplog
+    tmp_path, pharmcat_env, monkeypatch, caplog
 ):
+    monkeypatch.setattr(runtime, "is_windows_host", lambda: False)
     release = _release(tmp_path / "pharmcat")
     vcf = _vcf(tmp_path / "HG002.hard-filtered.vcf.gz", SNPS)
     out = tmp_path / "out"
@@ -217,6 +221,46 @@ def test_pharmcat_runs_its_pipeline_on_the_gene_regions_in_its_names(
     assert "CYP2C19   *1/*17" in caplog.text and "Rapid Metabolizer" in caplog.text
     assert f"PharmCAT report: {out / 'HG002.hard-filtered.report.html'}" in caplog.text
     assert "pass them with --outside-call" in caplog.text
+
+
+@needs_htslib
+def test_issue_622_windows_report_says_cyp2d6_not_called_with_spaced_paths(
+    tmp_path, pharmcat_env, monkeypatch, caplog
+):
+    # Windows has no `typing cyp2d6`, so without outside calls the run must say
+    # CYP2D6 wasn't called; paths with spaces reach the pipeline intact.
+    monkeypatch.setattr(runtime, "is_windows_host", lambda: True)
+    release = _release(tmp_path / "Pharm CAT" / "release 3.4")
+    vcf = _vcf(tmp_path / "my genome.vcf.gz", SNPS)
+    out = tmp_path / "My Results"
+    caplog.set_level(logging.INFO)
+    result = api.vcf.pharmcat(
+        api.VcfPharmcatParams(vcf_input=Path(vcf), pharmcat_dir=release, outdir=out)
+    )
+    assert (out / "my genome.phenotype.json").is_file()
+    assert json.loads((release / "run.json").read_text())["argv"][1:3] == [
+        "-o",
+        str(out),
+    ]
+    assert "CYP2D6 not called" in caplog.text
+    assert [w.details["gene"] for w in result.warnings if w.code == "no_call"] == [
+        "CYP2D6"
+    ]
+
+
+@needs_htslib
+def test_issue_622_windows_process_count_stays_within_61_on_many_cores(
+    tmp_path, pharmcat_env, monkeypatch
+):
+    monkeypatch.setattr(runtime, "is_windows_host", lambda: True)
+    monkeypatch.setattr(os, "cpu_count", lambda: 128)
+    release = _release(tmp_path / "pharmcat")
+    vcf = _vcf(tmp_path / "s.vcf.gz", SNPS)
+    run_wgsextract("vcf", "pharmcat", "--vcf-input", vcf, "--pharmcat-dir",
+                   str(release))  # fmt: skip
+    argv = json.loads((release / "run.json").read_text())["argv"]
+    # contract: Python's ProcessPoolExecutor on Windows allows at most 61 workers.
+    assert argv[argv.index("-cp") + 1] == "61"
 
 
 @needs_htslib
@@ -342,7 +386,7 @@ def test_pharmcat_without_its_environment_says_how_to_install_it(tmp_path, monke
     monkeypatch.setattr(pharmcat, "pixi_env_tool", lambda _tool: None)
     release = _release(tmp_path / "pharmcat")
     vcf = _vcf(tmp_path / "s.vcf.gz", SNPS)
-    with pytest.raises(WGSExtractError, match="pixi install -e pharmcat"):
+    with pytest.raises(WGSExtractError, match="pixi install --locked -e pharmcat"):
         run_wgsextract("vcf", "pharmcat", "--vcf-input", vcf, "--pharmcat-dir",
                        str(release))  # fmt: skip
 

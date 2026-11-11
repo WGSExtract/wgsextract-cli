@@ -42,6 +42,9 @@ export function validateControl(control: ControlSpec, sectionPath: string): void
     requireNonEmpty(control.id, `${basePath}.id`);
     requireNonEmpty(control.label, `${basePath}.label`);
     validateUniqueIDs(control.options, `${basePath}.options`);
+    for (const option of control.options ?? []) {
+        validateConditions(option.disabledWhen, `${basePath}.options.${option.id}.disabledWhen`);
+    }
     validateUniqueIDs(control.columns, `${basePath}.columns`);
     validateUniqueIDs(control.rows, `${basePath}.rows`);
     validateUniqueIDs(control.rowActions, `${basePath}.rowActions`);
@@ -69,6 +72,15 @@ export function validateControl(control: ControlSpec, sectionPath: string): void
 function validateConfigFile(configFile: ConfigFileSpec, basePath: string): void {
     requireNonEmpty(configFile.path, `${basePath}.configFile.path`);
     validateConfigFilePath(configFile.path, `${basePath}.configFile.path`);
+    if (configFile.previousPaths != null) {
+        if (!Array.isArray(configFile.previousPaths)) {
+            throw new BundleValidationError(`${basePath}.configFile.previousPaths must be an array of paths.`);
+        }
+        configFile.previousPaths.forEach((previous, index) => {
+            requireNonEmpty(previous, `${basePath}.configFile.previousPaths.${index}`);
+            validateConfigFilePath(previous, `${basePath}.configFile.previousPaths.${index}`);
+        });
+    }
     const script = configFile.bootstrap?.script;
     if (script == null) {
         return;

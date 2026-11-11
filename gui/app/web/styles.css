@@ -904,6 +904,12 @@ input[type="checkbox"] {
   gap: 8px;
 }
 
+/* An option waiting on something (a download) reads as unavailable; its label carries the tooltip. */
+.checkbox-group label.disabled {
+  color: var(--muted);
+  cursor: help;
+}
+
 .option-grid label > span {
   display: inline-flex;
   align-items: center;

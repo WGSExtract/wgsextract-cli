@@ -5,6 +5,18 @@ BAM/CRAM/FASTQ (including gzipped FASTQ). Read groups take precedence; mixed
 platforms are not assigned one platform. An explicit `--platform` overrides
 detection. Unknown input still defaults to Illumina. SRA-renamed FASTQs without
 platform metadata need `--platform ont`.
+
+A BAM/CRAM whose read groups name several platforms (ONT and Illumina reads
+merged, say) is reported by `info` (the `Platforms` line, `platforms` in the
+manifest's metrics and details, warning `mixed_platforms`). Commands whose
+defaults depend on the platform refuse it unless an option chooses:
+`align`/`realign` (`--platform`), `vcf deepvariant` (`--model-type`, `--ont`
+or `--pacbio`), `vcf sv` (`--caller`, `--ont` or `--pacbio`) and `typing str`
+(`--caller`); `vcf clair3` calls `PL:ONT` read groups only. Other callers
+(`vcf snp`, `vcf indel`, `vcf phase` and the like) and `methylation pileup`
+warn `mixed_platforms` and carry on. Or split the reads by read group with `samtools split` and process
+each platform separately.
+
 Only ONT gains new automatic alignment defaults, and `realign` of single-end
 PacBio BAM/CRAM. Revio/PacBio-, Ultima- and MGI-named FASTQs, paired
 `PL:PACBIO` and `PL:DNBSEQ` BAMs retain the previous Illumina alignment
@@ -216,11 +228,29 @@ directory and are removed after the run.
 
 `vcf clair3` runs [Clair3](https://github.com/HKU-BAL/Clair3) 2.x, an
 ONT-trained small-variant caller. It is optional, and DeepVariant remains the
-default ONT caller. Clair3 is qualified on **Linux x86-64 only**. It is not
-available on Windows (use WSL2), and Bioconda's macOS and ARM builds are
-refused because they have not been validated here. Install it into its own
-Pixi environment with `pixi install -e clair3`. The CLI checks for it but
+default ONT caller. The Pixi environment pins Clair3 2.0.5 or newer, which
+Bioconda builds for **Linux x86-64, Linux ARM64 and Apple Silicon macOS**.
+It is not available on Windows (use WSL2) or Intel Macs. Install it into its
+own Pixi environment with `pixi install -e clair3`. The CLI checks for it but
 never installs it.
+
+Clair3 2.0.5 bundles htslib 1.24 and reads CRAM 3.1 itself. Older Clair3
+builds on `PATH` can't decode some CRAM 3.1 blocks (#604), so for them the
+command calls from a temporary CRAM 3.0 copy.
+
+Clair3 runs on the CPU. Its `--use_gpu` mode needs CUDA, but Bioconda's Linux
+builds depend on CPU-only PyTorch, and Clair3 2.0.5 has no Apple GPU (MPS)
+path, although the macOS PyTorch has MPS. The command therefore has no
+`--gpu` option.
+
+On the HG002 chr20:10-11 Mb slice (R10.4.1 sup v4.0.0 reads, model
+`r1041_e82_400bps_sup_v400`, 4 threads), Clair3 2.0.5 on Linux x86-64 gave
+the same records as 2.0.3, from CRAM 3.1, CRAM 3.0 and BAM input (vcfeval F1
+0.979 against GIAB v4.2.1). On an Apple M1 it took 44 s, and 1,786 of its
+1,827 calls matched the 1,829 Linux calls in alleles and genotype. The rest
+were mostly multi-allelic homopolymer indels, and qualities differ slightly,
+because CPU floating-point results differ between ARM64 and x86-64. Its F1 was
+0.978. Linux ARM64 has not been run here.
 
 ```sh
 wgsextract vcf clair3 -i hg002-ont.bam --ref chr20.fa \
@@ -383,7 +413,7 @@ The same reads realigned with `wgsextract realign` gave the same result, so the
 tags survive realignment.
 
 Platform detection, tagged CPU alignment/realignment, x86-64 DeepVariant
-ONT_R104 calling, optional Linux x86-64 Clair3 calling, Sniffles SV calling,
+ONT_R104 calling, optional Clair3 calling (Linux and Apple Silicon), Sniffles SV calling,
 optional modkit CpG methylation and optional read-backed phasing are supported.
 
 ## Phasing
@@ -428,6 +458,69 @@ low-quality ones; WhatsHap's block-wise Hamming distance on chr20 was 5.4%
 against LongPhase's 0.8%. No whole-genome phasing run was made: it needs a
 whole-genome call set (#431). Scaling the chr20 time (about 2% of the genome),
 LongPhase would take about 40 minutes on 4 cores.
+
+## Repeat expansions
+
+`typing str` sizes the disease repeats of ExpansionHunter's catalog (HTT,
+FMR1, C9ORF72, ... 31 on hg38, 30 on hg19) and puts each allele in
+[STRchive](https://strchive.org)'s normal, intermediate or pathogenic range.
+Nanopore and PacBio reads go to [LongTR](https://github.com/gymrek-lab/LongTR)
+(GPL-2.0 in its repository, BSD-2-Clause on Bioconda), short reads to
+ExpansionHunter, by the reads' platform. `--caller strkit` uses
+[STRkit](https://github.com/davidlougheed/strkit) (GPL-3.0) instead.
+
+```bash
+pixi install -e longtr           # or -e strkit; checked, not installed
+wgsextract typing str --input sample.cram --ref hs38.fa.gz
+```
+
+- The output contract is the same for every caller: `<stem>.str.tsv` with one
+  row per repeat, a `repeat_outside_normal_range` warning per flagged repeat
+  and the `repeat_caller` metric. GRCh37 has no NOTCH2NLC, so on hg19 its
+  row reads "not available on hg19" with a `repeat_unavailable` warning. LongTR writes `<stem>.str.vcf.gz`; STRkit
+  `<stem>.str.vcf` and `<stem>.str.strkit.json`. LongTR gives no confidence
+  interval, so its `ci` column is `-`.
+- The bundled catalog (`commands/genotyping/str_catalog/`, rebuilt by
+  `scripts/build_str_catalog.py`) uses ExpansionHunter's reference regions,
+  so counts are in the units of the STRchive thresholds, with STRchive's
+  extra motifs (RFC1's AAGGG, ACAGG, ...). Its sources are pinned by commit
+  and SHA-256 in `provenance.json`: ExpansionHunter v5.0.0 (Apache-2.0) and
+  STRchive v2.28.0 (MIT). NIPA1's motif is CGC on hg19 and GCG on hg38:
+  GRCh38 inverted its region, and the motif follows the reference strand.
+- The `allele_reads` column has each allele's reads (LongTR's MALLREADS,
+  STRkit's peaks). An allele from a single read, under 10% of the repeat's
+  reads, is "low support": LongTR makes such alleles (HG002's DMPK 11/19,
+  truth 11/11). It doesn't count towards the status; when it alone would
+  change it, the status adds "unconfirmed: one read suggests ..." with a
+  `repeat_unconfirmed` warning. The limits are low because true expansions
+  are thinly read: on the PureTarget set below, STRkit read a 1.2 kb DMPK
+  expansion in 2 of 247 reads, and LongTR an FXN one in 1 of 1.
+- LongTR has no threads; `--threads` runs chromosomes in parallel. It drops
+  reads below mean base quality 30, which leaves most ONT R9.4.1 loci
+  uncalled; R9 reads (named in the header) get an `r9_reads` warning
+  suggesting `--caller strkit`.
+- Aligners soft-clip expansions much longer than about 1 kb, and neither
+  caller sizes clipped reads. When at least 3 reads (and 5% of them) are
+  clipped by 100 bases or more at a repeat, its status says so and it is
+  flagged, even as a no-call. STRkit realigns clipped PacBio HiFi reads and
+  then sizes those expansions (it recommends that for HiFi only).
+- TRGT refuses Nanopore reads and is PacBio-licensed, so it isn't wrapped.
+
+Measured on HG002 ONT R10.4.1 (~51x, the #431 CRAM), 4 cores: about 10 s for
+either caller after sex inference (2.5 minutes for this CRAM; `--sex` skips
+it). Against the GIAB HG002 tandem-repeat benchmark v1.0.1 (assembly-based),
+LongTR was within one repeat unit at 26 of the 27 repeats inside its
+benchmark regions (96%) and STRkit at 24. The miss was DMPK, where LongTR
+made a one-read allele of 19 units (truth 11/11). Outside the benchmark
+regions, both read 24 CAGs on one HTT allele where the benchmark VCF has 19;
+the reads agree with the callers.
+
+On PacBio PureTarget data of 19 Coriell cell lines with known expansions,
+every expansion under about 1 kb (HTT, ATN1, ATXN1, ATXN3, DMPK, AR, FMR1
+premutation, PABPN1 with LongTR) was called pathogenic or premutation, at
+TRGT's sizes once its wider regions are allowed for (STRkit missed the
+PABPN1 one); the 1-3 kb ones (DMPK, FMR1 full mutations, FXN, RFC1)
+were flagged by their clipped reads, and STRkit sized most of them.
 
 ## Adaptive sampling targets
 

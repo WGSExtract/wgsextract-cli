@@ -12,6 +12,7 @@ from wgsextract_cli.api.ref import (
     RefIndexParams,
     RefLibraryParams,
     RefMicroarrayTargetsParams,
+    RefSomalierParams,
     RefStatusParams,
     RefVerifyParams,
     RefYbrowseParams,
@@ -32,6 +33,7 @@ from .library_commands import (
     cmd_gene_map,
     cmd_library,
     cmd_microarray_targets,
+    cmd_somalier,
     cmd_ybrowse,
 )
 from .status import cmd_ref_status
@@ -76,7 +78,7 @@ def register(
         name: str, cls: type[Params] | None, func: Handler, help: str
     ) -> argparse.ArgumentParser:
         sub = ref_subs.add_parser(name, parents=[base_parser], help=help)
-        if name in ("aadr", "ybrowse"):
+        if name in ("aadr", "ybrowse", "somalier"):
             # The CLI asks for these downloads explicitly; the API call is the ask.
             sub.add_argument("--install", action="store_true", help="Install it.")
             func = _install_or_delete(func)
@@ -96,6 +98,13 @@ def register(
         RefYbrowseParams,
         cmd_ybrowse,
         "Explicitly install a hash-pinned, sites-only GRCh38 yBrowse snapshot.",
+    )
+    add(
+        "somalier",
+        RefSomalierParams,
+        cmd_somalier,
+        "Explicitly fetch somalier's hash-pinned sites and 1000 Genomes "
+        "sketches for qc relate.",
     )
     add("download", RefDownloadParams, cmd_download, CLI_HELP["cmd_ref-download"])
     add("index", RefIndexParams, cmd_index, CLI_HELP["cmd_ref-index"])
@@ -127,7 +136,7 @@ def register(
         RefBootstrapParams,
         cmd_bootstrap,
         "Download and initialize the reference library bootstrap (liftover "
-        "chains, chip templates, the AADR 2M SNP panel, etc.).",
+        "chains, chip templates, etc.).",
     )
     add(
         "microarray-targets",

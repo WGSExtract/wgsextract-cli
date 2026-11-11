@@ -626,6 +626,54 @@ test("a lone checkbox named like its group shows its name once", async () => {
   assert.match(visibleText(named), /^Formats 23andMe v5$/);
 });
 
+test("a checkbox option disabled by its section's status keeps its choice while the status reloads", async () => {
+  // Review of #650: a field change reloads `ref status`; meanwhile a ticked 2M must not drop out of Generate,
+  // options a control's own data source supplies are filtered too, and the disabled option's tooltip is focusable.
+  globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+  globalThis.window = { innerHeight: 900 };
+
+  const { createInitialState, state } = await import("../dist/web/src/client/state.js");
+  const { renderSection } = await import("../dist/web/src/client/view.js");
+  const option = (id) => ({
+    id, title: id, disabledWhen: [{ placeholder: "library.aadrInstalled", notEquals: "true" }], disabledTooltip: "Install it first.",
+  });
+  const section = {
+    id: "formats-section",
+    dataSource: { path: "scripts/library-state.sh" },
+    controls: [
+      { id: "formats", kind: "checkboxGroup", label: "Formats", options: [{ id: "a", title: "A" }, option("b")] },
+      { id: "extra", kind: "checkboxGroup", label: "Extra", dataSource: { path: "scripts/extra.sh" }, options: [] },
+    ],
+    actions: [{ id: "run", title: "Run", command: { executable: "tool", arguments: ["{{formats}}", "{{extra}}"] } }],
+  };
+  const page = { id: "page", title: "Page", sections: [section] };
+  Object.assign(state, createInitialState(), {
+    labels: {}, manifest: { id: "demo", pages: [page] },
+    checkedOptions: { formats: new Set(["a", "b"]), extra: new Set(["c"]) },
+  });
+  state.dataSourcePayloads.set("control:extra", { options: [option("c")] });
+  const runFormats = (html) => {
+    const encoded = html.match(/data-action-context="([^"]*)"/)?.[1] ?? "";
+    const context = JSON.parse(encoded.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"));
+    return [context.checkedOptions.formats, context.checkedOptions.extra];
+  };
+
+  state.loadingDataSources.add("section:formats-section");
+  let html = renderSection(section, page);
+  assert.deepEqual(runFormats(html), ["a", ""], "unknown status: b and the data source's c are disabled");
+  assert.match(html, /class="disabled" data-tooltip="Install it first\." tabindex="0"/);
+
+  state.loadingDataSources.delete("section:formats-section");
+  state.dataSourcePayloads.set("section:formats-section", { values: { "library.aadrInstalled": "true" } });
+  assert.deepEqual(runFormats(renderSection(section, page)), ["a,b", "c"]);
+
+  state.dataSourcePayloads.delete("section:formats-section");
+  state.loadingDataSources.add("section:formats-section");
+  assert.deepEqual(runFormats(renderSection(section, page)), ["a,b", "c"], "a reload keeps the last status");
+  state.loadingDataSources.clear();
+  state.dataSourcePayloads.clear();
+});
+
 test("a control's help shows only in its info tooltip, not also as a native title", async () => {
   // Regression: hovering an info circle on Windows showed the app's tooltip and an unwrapped native one.
   globalThis.localStorage = { getItem() { return null; }, setItem() {} };
@@ -736,4 +784,27 @@ test("renders a rows-layout checkbox group under category headings, with advance
 
   const dropdown = renderDropdownControl({ id: "ref_fasta", kind: "dropdown", label: "Reference Genome", options: [], emptyText: "None loaded. See Library page to add." });
   assert.match(dropdown, /<option value="" selected disabled>None loaded\. See Library page to add\.<\/option>/);
+});
+
+test("rows-layout category and group headings show the tooltips their options give", async () => {
+  globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+  globalThis.window = { innerHeight: 900 };
+  const { createInitialState, state } = await import("../dist/web/src/client/state.js");
+  const { renderCheckboxGroup } = await import("../dist/web/src/client/view.js");
+  Object.assign(state, createInitialState(), { labels: {} });
+  const options = [
+    { id: "23andme_v3", title: "v3", group: "23andMe", category: "Consumer Tests", categoryTooltip: "Generate RAW files." },
+    { id: "aadr_ho", title: "HOv1", group: "AADR", category: "Reich Lab" },
+    { id: "aadr_1240k", title: "1240K", group: "AADR", category: "Reich Lab", groupTooltip: "Each is a superset.", categoryTooltip: "PLINK + EIGENSTRAT." },
+  ];
+
+  let html = renderCheckboxGroup({ id: "formats", kind: "checkboxGroup", label: "Formats", layout: "rows", options });
+  assert.match(html, /<h4>Consumer Tests<span class="tooltip"[^>]*data-tooltip="Generate RAW files\.">i<\/span><\/h4>/);
+  assert.match(html, /<h4>Reich Lab<span class="tooltip"[^>]*data-tooltip="PLINK \+ EIGENSTRAT\.">i<\/span><\/h4>/);
+  assert.match(html, /option-row-title">AADR<span class="tooltip"[^>]*data-tooltip="Each is a superset\.">i<\/span><\/span>/);
+  assert.match(html, /option-row-title">23andMe<\/span>/);
+
+  html = renderCheckboxGroup({ id: "formats", kind: "checkboxGroup", label: "Formats", options });
+  assert.match(html, /<h4>AADR<span class="tooltip"[^>]*data-tooltip="Each is a superset\.">i<\/span><\/h4>/);
+  assert.match(html, /<h4>23andMe<\/h4>/);
 });

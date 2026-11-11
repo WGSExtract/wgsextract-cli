@@ -2,7 +2,7 @@
 set -eu
 
 workspace="${GUI_FOR_CLI_BUNDLE_WORKSPACE:-$(pwd)}"
-config_path="${GUI_FOR_CLI_CONFIG_PATH:-$workspace/settings/config.toml}"
+config_path="${GUI_FOR_CLI_CONFIG_PATH:-$workspace/config.toml}"
 output_path="$workspace/output"
 reference_path="$workspace/reference"
 # New installs keep datasets in datasets/ and reference genomes in genomes/.

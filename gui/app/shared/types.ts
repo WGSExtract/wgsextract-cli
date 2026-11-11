@@ -128,6 +128,9 @@ export interface ControlOption {
     title?: string;
     label?: string;
     selected?: boolean;
+    /** A checkbox option can't be chosen while any of these match, and commands see it unchecked. */
+    disabledWhen?: ConditionSpec[];
+    disabledTooltip?: string;
     [key: string]: unknown;
 }
 
@@ -153,6 +156,8 @@ export interface ConfigBootstrapScriptSpec {
 
 export interface ConfigFileSpec {
     path: string;
+    /** Where earlier versions kept the file; the app moves it to path and drops these from saved state. */
+    previousPaths?: string[];
     bootstrap?: { mode?: string; script?: ConfigBootstrapScriptSpec };
     [key: string]: unknown;
 }

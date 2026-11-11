@@ -215,6 +215,72 @@ def test_a_plain_text_crai_plans_chunks(tmp_path, ont):
 
 
 @needs_tools("samtools", "minimap2")
+@pytest.mark.parametrize("multi_ref", ["0", "1"])
+def test_a_cram_with_unplaced_reads_in_several_containers_keeps_them_all(
+    tmp_path, ont, multi_ref
+):
+    """#655: chunked realign read a CRAM's unplaced reads with region ``*``,
+    which htslib 1.24 answers from its index wrongly, missing containers of
+    them (2 of the 6 here). Every unmapped read must reach the output."""
+    ref = ont["ref"]
+    cram = str(tmp_path / "x.cram")
+    run_command(["samtools", "view", "-C", "-T", ref,
+                 "--output-fmt-option", "seqs_per_slice=2",
+                 "--output-fmt-option", f"multi_seq_per_slice={multi_ref}",
+                 "-o", cram, ont["bam"]])  # fmt: skip
+    run_command(["samtools", "index", cram])
+    _realign(cram, ref, tmp_path / "out", "--chunk-size", _chunk_size(cram))
+
+    aligned = str(tmp_path / "out" / "x_aligned.bam")
+    for flags in (["-F", "0x900"], ["-f", "4"]):
+        source = int(_view("view", "-c", *flags, "-T", ref, cram))
+        assert int(_view("view", "-c", *flags, aligned)) == source
+
+
+@needs_tools("samtools", "minimap2")
+@pytest.mark.parametrize("dropped", ["first", "all"])
+def test_an_index_missing_unplaced_containers_fails_before_aligning(
+    tmp_path, ont, dropped
+):
+    """#655: unplaced reads the index doesn't lead to stop the realign, also
+    when it lists none of them (no chunk would read them), and before any
+    chunk is aligned rather than after the mapped ones' hours."""
+    ref = ont["ref"]
+    cram = str(tmp_path / "x.cram")
+    run_command(["samtools", "view", "-C", "-T", ref,
+                 "--output-fmt-option", "seqs_per_slice=2",
+                 "-o", cram, ont["bam"]])  # fmt: skip
+    run_command(["samtools", "index", cram])
+    with gzip.open(cram + ".crai", "rt") as handle:
+        rows = handle.read().splitlines(keepends=True)
+    unplaced = [i for i, row in enumerate(rows) if row.startswith("-1\t")]
+    gone = set(unplaced[:1] if dropped == "first" else unplaced)
+    with gzip.open(cram + ".crai", "wt") as handle:
+        handle.write("".join(r for i, r in enumerate(rows) if i not in gone))
+    with pytest.raises(WGSExtractError, match="has 6 unplaced unmapped reads"):
+        _realign(cram, ref, tmp_path / "out", "--chunk-size", _chunk_size(cram))
+    state = json.loads((tmp_path / "out/x_aligned.bam.chunks/state.json").read_text())
+    assert state["chunks"] == {}
+
+
+@needs_tools("samtools", "minimap2")
+def test_a_realign_journalled_before_the_unplaced_fix_reruns(tmp_path, ont, caplog):
+    """#655 review: a CRAM realigned before the fix may lack unplaced reads;
+    its journal must not let a rerun skip the alignment."""
+    ref, out = ont["ref"], tmp_path / "out"
+    argv = ("--chunk-size", _chunk_size(ont["cram"]))
+    _realign(ont["cram"], ref, out, *argv)
+    journal = out / "x_aligned.bam.steps.json"
+    steps = json.loads(journal.read_text())
+    # As the release before the fix wrote it: version 1, keyed with it.
+    steps["steps"]["align"].update(version=1, key="0" * 64)
+    journal.write_text(json.dumps(steps))
+    with caplog.at_level("INFO"):
+        _realign(ont["cram"], ref, out, *argv)
+    assert "Running step align: the step's definition changed" in caplog.text
+
+
+@needs_tools("samtools", "minimap2")
 def test_the_sr_preset_still_marks_duplicates(tmp_path, ont):
     """#578 review: with --preset sr minimap2 output has its duplicates
     marked in one pass; the chunks didn't. sr now aligns in one pass."""

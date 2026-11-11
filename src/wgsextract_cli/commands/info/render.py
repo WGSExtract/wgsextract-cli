@@ -162,6 +162,10 @@ def render_info(data: Mapping[str, Any], detailed: bool = False) -> str:
                 f"{LOG_MESSAGES['info_sequencer']:<28}Unknown: {data['first_qname']}"
             )
 
+    if data.get("platforms"):
+        output_lines.append(
+            f"{LOG_MESSAGES['info_platforms']:<28}Mixed: {', '.join(data['platforms'])}"
+        )
     output_lines.extend(_health_lines(data.get("alignment_health") or {}))
 
     fstats = data.get("file_stats", {})

@@ -330,7 +330,7 @@ _FAKE_CLAIR3 = """\
 import json, os, select, subprocess, sys
 
 if sys.argv[1:] in ([], ["--version"], ["-h"], ["--help"]):
-    print("Clair3 v2.0.0")
+    print("Clair3 v{version}")
     sys.exit(0)
 opts = dict(arg[2:].split("=", 1) for arg in sys.argv[1:])
 # Clair3's GNU parallel reads stdin: it must be closed, or the run waits on it.
@@ -363,8 +363,8 @@ if any(any(c.isspace() for c in opts.get(name, "")) for name in paths):
     print("[WARNING] No contig intersection found, output header only")
     sys.exit(0)
 failure = {{"errors": [], "log": "log/1_call_var_bam_pileup.log", "stderr": ""}}
-if record["cram_version"] and record["cram_version"] >= [3, 1]:
-    # libclair3's bundled htslib can't decode some valid CRAM 3.1 blocks.
+if record["cram_version"] and record["cram_version"] >= [3, 1] and {old_htslib!r}:
+    # Before 2.0.5, libclair3's bundled htslib can't decode some valid CRAM 3.1 blocks.
     failure["errors"] = ["[E::cram_next_slice] Failure to decode slice",
                          "[ERROR] Failed to read alignment record (BAM/CRAM decode error)."]
 elif os.path.exists({failure!r}):
@@ -411,20 +411,23 @@ class FakeClair3:
 
     Like Clair3 it needs the model's weights, runs its own Python (it fails
     if PYTHONPATH leaks in) and waits on an open stdin (it fails instead).
-    Like Clair3's bundled htslib it fails on CRAM 3.1 reads, reporting only
-    on stdout and in its step logs; ``fail`` makes it fail that way on any
+    Like the bundled htslib of Clair3 before 2.0.5 (``version``) it fails on
+    CRAM 3.1 reads, reporting only on stdout and in its step logs; ``fail`` makes it fail that way on any
     reads. Like Clair3 it calls nothing, yet exits 0, when a path it is
     given contains a space. Each run's options, resolved model, reads' CRAM
     version, region BED, stdin state and PYTHONPATH go to ``runs``.
     """
 
-    def __init__(self, bindir: Path, bcftools: str) -> None:
+    def __init__(self, bindir: Path, bcftools: str, version: str = "2.0.5") -> None:
         self.log = bindir / "clair3-runs.jsonl"
         self.models = bindir / "models"
         self.models.mkdir(parents=True)
         self.failure = bindir / "clair3-failure.json"
         python_tool(bindir, "run_clair3.sh", _FAKE_CLAIR3.format(
-            log=str(self.log), bcftools=bcftools, failure=str(self.failure)
+            log=str(self.log), bcftools=bcftools, failure=str(self.failure),
+            version=version,
+            old_htslib=not version[:1].isdigit()
+            or tuple(map(int, version.split("."))) < (2, 0, 5),
         ))  # fmt: skip
 
     def fail(

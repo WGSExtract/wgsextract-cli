@@ -77,3 +77,11 @@ BUILTIN_REQUIRED_KEYS: list[str] = [
 ]
 
 VALID_LAYOUT_DIRECTIONS: set[str] = {"ltr", "rtl"}
+
+# Per-locale metadata, not translated text: excluded from source-hash tracking.
+LOCALE_METADATA_KEYS: set[str] = {
+    "language.code",
+    "language.name",
+    "language.layoutDirection",
+    "language.aiTranslated",
+}

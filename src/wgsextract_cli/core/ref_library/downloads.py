@@ -42,10 +42,6 @@ ProgressCallback = Callable[[int, int, float], None]
 DOWNLOAD_TIMEOUT_SECONDS = 60
 # Attempts at one URL: an interrupted transfer resumes where it stopped.
 DOWNLOAD_ATTEMPTS = 5
-_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-)
 # Failures that leave a usable .partial behind.
 _RESUMABLE = (DownloadIncomplete, IncompleteRead, TimeoutError, ConnectionError)
 
@@ -308,7 +304,7 @@ def _urllib_download(
     """One attempt; an interrupted transfer raises one of _RESUMABLE and leaves
     dest.partial for the next attempt to resume."""
     partial_dest = dest + ".partial"
-    headers = {"User-Agent": _USER_AGENT}
+    headers = {"User-Agent": segmented.user_agent(url)}
     initial_size = 0
     mode: Literal["ab", "wb"] = "wb"
 
@@ -404,7 +400,9 @@ def _partial_is_complete(
     if match:
         return int(match.group(1)) == partial_size
     try:
-        request = Request(url, method="HEAD", headers={"User-Agent": _USER_AGENT})
+        request = Request(
+            url, method="HEAD", headers={"User-Agent": segmented.user_agent(url)}
+        )
         with urlopen(request, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
             length = response.headers.get("Content-Length")
     except (OSError, HTTPException):

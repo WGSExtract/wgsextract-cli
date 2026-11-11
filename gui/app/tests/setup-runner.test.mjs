@@ -331,7 +331,7 @@ test("WGSExtract Windows config bootstrap includes the dataset and reference gen
     assert.equal(result.exitCode, 0, result.stderr);
     const bootstrap = JSON.parse(result.stdout);
 
-    assert.equal(bootstrap.path, path.join(tempRoot, "settings", "config.toml"));
+    assert.equal(bootstrap.path, path.join(tempRoot, "config.toml"));
     assert.match(bootstrap.contents, new RegExp(`output_directory = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "output")))}"`));
     assert.match(bootstrap.contents, new RegExp(`reference_library = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "reference")))}"`));
     assert.match(bootstrap.contents, new RegExp(`dataset_library = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "datasets")))}"`));
@@ -693,7 +693,7 @@ test("runs WGSExtract POSIX setup scripts from nested script folders", async (t)
 
     assert.equal(result.status, "ok", [result.stdout, result.stderr].filter(Boolean).join("\n"));
     assert.match(result.command, /scripts\/posix\/bootstrap-reference-library\.sh/);
-    assert.match(result.stdout, /fake pixi run wgsextract --config .*settings[\\/]config\.toml ref bootstrap --ref /);
+    assert.match(result.stdout, /fake pixi run wgsextract --config .*WGSExtract[\\/]config\.toml ref bootstrap --ref /);
   } finally {
     await processManager.terminateAllProcesses();
     setOrDeleteEnv("PIXI", previousPixi);
@@ -742,7 +742,7 @@ test("runs WGSExtract platform setup scripts from nested script folders", async 
 
     assert.equal(result.status, "ok", [result.stdout, result.stderr].filter(Boolean).join("\n"));
     assert.match(result.command, /scripts\\windows\\bootstrap-reference-library\.ps1/);
-    assert.match(result.stdout, /fake pixi run wgsextract --config .*settings[\\/]config\.toml ref bootstrap --ref /);
+    assert.match(result.stdout, /fake pixi run wgsextract --config .*WGSExtract[\\/]config\.toml ref bootstrap --ref /);
   } finally {
     await processManager.terminateAllProcesses();
     setOrDeleteEnv("PIXI", previousPixi);

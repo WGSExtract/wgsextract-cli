@@ -291,7 +291,7 @@ function localizeSetting(setting: ConfigSetting, table: StringMap): ConfigSettin
     };
 }
 function localizeOption(option: ControlOption, table: StringMap): ControlOption {
-    return localizeFields(option, table, ["title", "group", "category"]);
+    return localizeFields(option, table, ["title", "group", "category", "groupTooltip", "categoryTooltip", "disabledTooltip"]);
 }
 /** Replaces each string field that names a string-table key with its translation. */
 function localizeFields<Record extends object>(record: Record, table: StringMap, fields: readonly string[]): Record {

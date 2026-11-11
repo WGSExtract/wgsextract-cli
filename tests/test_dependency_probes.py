@@ -5,6 +5,7 @@ tests/fake_tools.py."""
 import io
 import logging
 import os
+import platform
 import sys
 from pathlib import Path
 
@@ -505,6 +506,24 @@ def test_deps_check_report(host, monkeypatch, encoding, found, warning, missing)
     )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX fake tools")
+@pytest.mark.parametrize(
+    ("machine", "listed"), [("x86_64", False), ("arm64", True)], ids=["intel", "arm"]
+)
+def test_deps_check_lists_clair3_only_where_it_runs(host, monkeypatch, machine, listed):
+    """#640: Bioconda has no Clair3 2.x for Intel macOS and `vcf clair3`
+    refuses it there, so `deps check` names it unavailable, not an old one on PATH."""
+    _mandatory_tools(host)
+    _tool(host, "run_clair3.sh", 'print("Clair3 v1.0.10")')
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(platform, "machine", lambda: machine)
+
+    rows, _ = _report(monkeypatch, "utf-8")
+
+    assert ("run_clair3.sh" in rows) == listed
+    assert ("run_clair3.sh" in rows.get("available", "")) != listed
+
+
 @posix_pixi
 @pytest.mark.parametrize(
     ("encoding", "marker"), [("utf-8", "🔵"), ("ascii", "ALT")], ids=["utf-8", "ascii"]
@@ -540,6 +559,18 @@ def test_deps_check_report_marks_a_tool_from_another_environment(
 )
 def test_is_pixi_tool_command(command, expected):
     assert pixi_tools.is_pixi_tool_command(command) is expected
+
+
+def test_pixi_installed_in_a_folder_with_spaces_is_the_tools_runtime(monkeypatch):
+    """A Windows install outside the default folders (here D:\\WGSE App) quotes
+    Pixi's path; deps check reported those tools as native, not from Pixi."""
+    from wgsextract_cli.core import runtime
+    from wgsextract_cli.core.dependencies import get_tool_runtime
+
+    monkeypatch.setattr(runtime, "is_windows_host", lambda: True)
+    command = '"D:/WGSE App/.pixi/bin/pixi.exe" run --no-install -e default samtools'
+
+    assert get_tool_runtime(command) == "pixi"
 
 
 def test_is_pixi_tool_path_needs_an_active_pixi_env(tmp_path, monkeypatch):

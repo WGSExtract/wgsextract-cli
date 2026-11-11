@@ -24,7 +24,9 @@ false. All operations remain explicit user actions.
   repeated bindings remain advanced CLI use. CHM13 uses the supported pinned
   reference selected in the existing dropdown, not an invented mode flag.
   The 2M panel is excluded from `all` and requires explicitly installed metadata
-  from Library's **Install AADR 2M metadata** action. It supports GRCh37/38 only;
+  from Reference Data's **Install AADR 2M SNP panel** action (not part of the
+  bootstrap: the Harvard server is slow). Until it is installed the Microarray
+  page's **2M** checkbox is disabled, with a tooltip saying so. It supports GRCh37/38 only;
   GRCh38 needs an already-installed forward chain, and CHM13/T2T is rejected.
   Metadata is checksum-pinned CC0 with Reich Lab/Harvard Dataverse attribution.
   Extraction never installs it or downloads a missing chain.

@@ -348,9 +348,9 @@
 "actions.library.databases-tools.pharmgkb-delete.confirm.confirmButtonTitle" = "Löschen"  # i18n-source-hash:f6fdbe48
 "actions.library.databases-tools.pharmgkb-delete.confirm.cancelButtonTitle" = "Abbrechen"  # i18n-source-hash:77dfd213
 "actions.library.databases-tools.bootstrap-library.title" = "Bibliothek bootstrappen"  # i18n-source-hash:6f253a73
-"actions.library.databases-tools.bootstrap-library.tooltip" = "Laden und initialisieren Sie die Bootstrap-Ressourcen der Referenzdaten wie Chains, Chip-Vorlagen und Hilfsdaten sowie die AADR-2M-SNP-Metadaten."  # i18n-source-hash:c77d54fd
+"actions.library.databases-tools.bootstrap-library.tooltip" = "Laden und initialisieren Sie die Bootstrap-Ressourcen der Referenzdaten wie Chains, Chip-Vorlagen und Hilfsdaten. Das AADR-2M-SNP-Panel ist ein separater Download auf dieser Seite."  # i18n-source-hash:217673ee
 "actions.library.databases-tools.bootstrap-library.confirm.title" = "Referenzdaten bootstrappen?"  # i18n-source-hash:41c5652a
-"actions.library.databases-tools.bootstrap-library.confirm.message" = "Dies lädt die Hilfsdateien der WGS-Extract-Referenzdaten einschließlich der AADR-2M-SNP-Metadaten in die ausgewählten Referenzdaten herunter und initialisiert sie."  # i18n-source-hash:76c26791
+"actions.library.databases-tools.bootstrap-library.confirm.message" = "Dies lädt die Hilfsdateien der WGS-Extract-Referenzdaten in die ausgewählten Referenzdaten herunter und initialisiert sie."  # i18n-source-hash:9cdb14de
 "actions.library.databases-tools.bootstrap-library.confirm.confirmButtonTitle" = "Bootstrappen"  # i18n-source-hash:89ec4ec2
 "actions.library.databases-tools.bootstrap-library.confirm.cancelButtonTitle" = "Abbrechen"  # i18n-source-hash:77dfd213
 "actions.library.databases-tools.library-bootstrapped.title" = "Bibliothek gebootstrappt"  # i18n-source-hash:c926a113
@@ -471,6 +471,14 @@
 "sections.microarray.post-v063.builds.subtitle" = "AADR exports require GRCh37 or GRCh38. For native CHM13 calling, select the CLI-supported pinned CHM13 reference; no generic liftover or extra mode flag is used. Consumer layouts are marker-only unless a matching sequence-defined indel manifest is supplied through the advanced CLI."  # i18n-ignore; TODO: translate
 
 # TODO: translate the CLI features added after v0.6.3.
+"actions.library.post-v063.aadr-2m.title" = "AADR-2M-SNP-Panel installieren"  # i18n-source-hash:0b64da16
+"actions.library.post-v063.aadr-2m.tooltip" = "Lädt die prüfsummenfixierten CC0-SNP-Metadaten AADR v66.p1 2M (Reich Lab, Harvard Dataverse) ausdrücklich in die Referenzdaten herunter und prüft sie. Die Datei ist etwa 135 MB groß und der Server oft langsam, daher kann dies lange dauern. Das AADR-2M-Format der Microarray-Seite benötigt sie."  # i18n-source-hash:064d2934
+"actions.library.post-v063.aadr-2m-delete.title" = "AADR-2M-SNP-Panel löschen"  # i18n-source-hash:b040e5f1
+"actions.library.post-v063.aadr-2m-delete.tooltip" = "Löschen Sie die installierten AADR-2M-SNP-Metadaten aus den Referenzdaten."  # i18n-source-hash:531d657b
+"actions.library.post-v063.aadr-2m-delete.confirm.title" = "AADR-2M-SNP-Panel löschen?"  # i18n-source-hash:792556f7
+"actions.library.post-v063.aadr-2m-delete.confirm.message" = "Dies entfernt die installierten AADR-v66.p1-2M-SNP-Metadaten aus den ausgewählten Referenzdaten. Das 2M-Format der Microarray-Seite ist erst nach einer erneuten Installation wieder verfügbar."  # i18n-source-hash:269adbe7
+"actions.library.post-v063.aadr-2m-delete.confirm.confirmButtonTitle" = "Löschen"  # i18n-source-hash:f6fdbe48
+"actions.library.post-v063.aadr-2m-delete.confirm.cancelButtonTitle" = "Abbrechen"  # i18n-source-hash:77dfd213
 "actions.library.post-v063.ybrowse.title" = "Install GRCh38 yBrowse Y-SNP targets"  # i18n-ignore; TODO: translate
 "actions.library.post-v063.ybrowse.tooltip" = "Lädt den hash-fixierten GRCh38-yBrowse-Snapshot (nur Positionen) der CLI ausdrücklich in die Referenzdaten herunter und prüft ihn. Andere Builds werden abgelehnt. Ohne diese Aktion wird nichts installiert."  # i18n-source-hash:b41dd549
 "actions.library.post-v063.ybrowse-delete.title" = "GRCh38-yBrowse-Y-SNP-Ziele löschen"  # i18n-source-hash:af222487
@@ -489,7 +497,7 @@
 "controls.fastq.post-v063.multiqc-file.label" = "Existing FastQC report file"  # i18n-ignore; TODO: translate
 "controls.fastq.post-v063.multiqc-directory.label" = "Existing FastQC report directory"  # i18n-ignore; TODO: translate
 "actions.fastq.post-v063.multiqc-directory.title" = "Aggregate report directory"  # i18n-ignore; TODO: translate
-"sections.microarray.post-v063.aadr-2m.subtitle" = "Zielformate für Genotyp-Rohdatendateien, die aus einer BAM/CRAM-Datei extrahiert werden können. Die meisten sind per Definition in Build 37. Einige frühe verwendeten Build 36, einige wenige sind in Build 38. Dies ist in den Dateien nicht vermerkt. AADR-Ziele erzeugen PLINK- und EIGENSTRAT-Dateien für deren Werkzeuge."  # i18n-source-hash:e4ea3c33
+"sections.microarray.post-v063.aadr-2m.subtitle" = "Zielformate für Genotyp-Rohdatendateien, die aus einer BAM/CRAM-Datei extrahiert werden können. Die meisten sind per Definition in Build 37. Einige frühe verwendeten Build 36, einige wenige sind in Build 38. Dies ist in den Dateien nicht vermerkt."  # i18n-source-hash:5e7d6a50
 "options.vcf.v066.auto.title" = "Automatisch (aus Reads erkennen)"  # i18n-source-hash:00db55a1
 "options.vcf.v066.config-default.title" = "Konfigurationsstandard verwenden"  # i18n-source-hash:53ab9256
 "controls.vcf.v066.deepvariant-model.label" = "DeepVariant-Modell"  # i18n-source-hash:b20e2fd3
@@ -507,7 +515,7 @@
 "controls.vcf.v066.sv-tandem-repeats.label" = "Tandem-Repeat-BED (optional)"  # i18n-source-hash:c23b21dd
 "controls.vcf.v066.sv-tandem-repeats.tooltip" = "Optionale BED-Datei für Long-Read-SV-Caller, die Aufrufe in Repeats verbessert. Leer sendet nichts."  # i18n-source-hash:adff7504
 "sections.vcf.v066.clair3.title" = "Clair3-Kleinvarianten (optional)"  # i18n-source-hash:94e06e63
-"sections.vcf.v066.clair3.subtitle" = "Optionaler Nanopore-Caller, nur auf Linux x86-64 qualifiziert; macOS und ARM werden abgelehnt. Das Setup installiert ihn nicht: Führen Sie pixi install -e clair3 in der WGS-Extract-Laufzeit aus. DeepVariant bleibt der Standard-Caller für Nanopore."  # i18n-source-hash:6d372cce
+"sections.vcf.v066.clair3.subtitle" = "Optionaler Nanopore-Caller: Clair3 2.0.5 unter Linux (x86-64, ARM64) und auf Apple-Silicon-Macs; nicht unter Windows oder auf Intel-Macs. Das Setup installiert ihn nicht: Führen Sie pixi install -e clair3 in der WGS-Extract-Laufzeit aus. DeepVariant bleibt der Standard-Caller für Nanopore."  # i18n-source-hash:9f4ed6c8
 "controls.vcf.v066.clair3-model.label" = "Clair3-Modell (optional)"  # i18n-source-hash:497f8013
 "controls.vcf.v066.clair3-model.placeholder" = "r1041_e82_400bps_sup_v500"  # i18n-ignore
 "controls.vcf.v066.clair3-model.tooltip" = "Modellname oder -verzeichnis passend zum Basecaller der Reads. Leer verwendet clair3_model aus config.toml, dann den im BAM/CRAM-Header genannten Basecaller; nennt keines davon einen, stoppt der Lauf und fragt nach einem Modell. HiFi-, Illumina- und *_with_mv-Modelle werden abgelehnt."  # i18n-source-hash:5c437be9
@@ -574,6 +582,9 @@
 "options.microarray.formats.category.reich" = "Reich Lab"  # i18n-ignore i18n-source-hash:6c06efe5
 "options.microarray.formats.group.combined" = "Kombiniert"  # i18n-source-hash:b6c533b5
 "options.microarray.formats.group.aadr" = "AADR"  # i18n-ignore i18n-source-hash:1f4edff5
+"options.microarray.formats.category.consumer.tooltip" = "Erzeugt RAW-Datendateien von Chip-Microarrays (Genotypisierung)."  # i18n-source-hash:c526755d
+"options.microarray.formats.category.reich.tooltip" = "AADR-Ziele erzeugen PLINK- und EIGENSTRAT-Dateien für deren Werkzeuge."  # i18n-source-hash:ca2f7e6d
+"options.microarray.formats.group.aadr.tooltip" = "Jede spätere Datei ist eine Obermenge der vorherigen."  # i18n-source-hash:06c8fd9e
 "options.microarray.formats.v1.title" = "v1"  # i18n-ignore i18n-source-hash:5a6df720
 "options.microarray.formats.v2.title" = "v2"  # i18n-ignore i18n-source-hash:a1047eab
 "options.microarray.formats.v3.title" = "v3"  # i18n-ignore i18n-source-hash:c5e31d59
@@ -584,6 +595,7 @@
 "options.microarray.formats.hov1.title" = "HOv1"  # i18n-ignore i18n-source-hash:fb8ee498
 "options.microarray.formats.1240k.title" = "1240K"  # i18n-ignore i18n-source-hash:33c9e2aa
 "options.microarray.formats.2m.title" = "2M"  # i18n-ignore i18n-source-hash:dcfb6936
+"options.microarray.formats.2m.disabledTooltip" = "Benötigt das AADR-2M-SNP-Panel. Installieren Sie es zuerst auf der Seite „Referenzdaten“."  # i18n-source-hash:e33521c6
 "options.microarray.formats.ancestry-v2-2021.title" = "v2 2021 (nur Marker)"  # i18n-source-hash:10ee4392
 "options.microarray.formats.ancestry-v2-2024.title" = "v2 2024 (nur Marker)"  # i18n-source-hash:ad98eced
 "options.microarray.formats.myheritage-gsa-2025.title" = "GSA 2025 (nur Marker)"  # i18n-source-hash:16c9f3b1

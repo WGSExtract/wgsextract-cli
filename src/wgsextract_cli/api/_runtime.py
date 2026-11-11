@@ -229,6 +229,7 @@ def execute(
     from wgsextract_cli.core.atomic_output import atomic_output_mode
     from wgsextract_cli.core.config import ensure_settings_loaded, settings
     from wgsextract_cli.core.process_registry import proc_registry
+    from wgsextract_cli.core.reference_lookup import local_reference_lookup
     from wgsextract_cli.core.run_log import tool_hook
     from wgsextract_cli.core.temp_directory import run_temporary_directory
     from wgsextract_cli.core.utils import child_stdout_to_stderr
@@ -245,6 +246,7 @@ def execute(
             collecting(result, as_json=True),
             _context_of(progress, cancel),
             tool_hook(_before_tool),
+            local_reference_lookup(),
         ):
             try:
                 checkpoint()

@@ -11,6 +11,7 @@ from typing import IO
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import VcfCnvParams, VcfSvParams
 from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.cram_staging import stage_bam
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -20,7 +21,7 @@ from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count, warn_if_no_variants
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result
-from wgsextract_cli.core.sequencing import input_platform
+from wgsextract_cli.core.sequencing import input_platform, refuse_mixed_platforms
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -249,7 +250,8 @@ def run_sv_pbsv(params: VcfSvParams) -> None:
             discover_cmd.extend(["--tandem-repeats", tandem_repeats])
         if params.ccs:
             discover_cmd.append("--hifi")
-        discover_cmd.extend([str(params.input), svsig])
+        reads = stage_bam(str(params.input), ref, work, threads, region, tool="pbsv")
+        discover_cmd.extend([reads, svsig])
 
         call_cmd = ["pbsv", "call", "-j", threads]
         if region:
@@ -331,8 +333,9 @@ def run_sv_sniffles(params: VcfSvParams) -> None:
     _record_calls(out_vcf, "structural_variants", ref, region)
 
 
-def _detected_platform(params: VcfSvParams) -> str | None:
-    """Platform of the input alignment, decoding CRAM with the resolved --ref."""
+def _detected_platform(params: VcfSvParams, choice: str | None = None) -> str | None:
+    """Platform of the input alignment, decoding CRAM with the resolved --ref;
+    with ``choice`` (the option that picks a caller), mixed platforms refuse."""
     input_file = str(params.input)
     if not Path(input_file).is_file():
         return None
@@ -341,7 +344,10 @@ def _detected_platform(params: VcfSvParams) -> str | None:
         calculate_bam_md5(input_file, None),
         input_path=input_file,
     )
-    return input_platform(input_file, lib.fasta)
+    platform = input_platform(input_file, lib.fasta)
+    if platform is None and choice:
+        refuse_mixed_platforms(input_file, lib.fasta, choice)
+    return platform
 
 
 def _select_sv_caller(params: VcfSvParams) -> VcfSvParams:
@@ -374,7 +380,9 @@ def _sv_caller(params: VcfSvParams) -> str:
         return caller
     detected = None
     if not ont and (caller in ("pbsv", "delly") or (not caller and not long_read)):
-        detected = _detected_platform(params)
+        detected = _detected_platform(
+            params, None if caller else "--caller (or --ont/--pacbio)"
+        )
     if caller == "pbsv" and (ont or detected == "ont"):
         raise pbsv_ont_error
     if ont or long_read:
