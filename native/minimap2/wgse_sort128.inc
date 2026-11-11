@@ -41,6 +41,7 @@ typedef struct {
 
 static pthread_key_t wgse_rs_key;
 static pthread_once_t wgse_rs_once = PTHREAD_ONCE_INIT;
+static int wgse_rs_key_ok;
 
 static void wgse_rs_free(void *p)
 {
@@ -49,17 +50,18 @@ static void wgse_rs_free(void *p)
 	free(w->B); free(w->D); free(w->P); free(w);
 }
 
-static void wgse_rs_key_init(void) { pthread_key_create(&wgse_rs_key, wgse_rs_free); }
+static void wgse_rs_key_init(void) { wgse_rs_key_ok = pthread_key_create(&wgse_rs_key, wgse_rs_free) == 0; }
 
 /* The calling thread's scratch for n elements, or NULL. */
 static wgse_rs_t *wgse_rs_scratch(int64_t n)
 {
 	wgse_rs_t *w;
 	pthread_once(&wgse_rs_once, wgse_rs_key_init);
+	if (!wgse_rs_key_ok) return 0; /* no key: callers use the in-place sort */
 	w = (wgse_rs_t*)pthread_getspecific(wgse_rs_key);
 	if (w == 0) {
 		if ((w = (wgse_rs_t*)calloc(1, sizeof(wgse_rs_t))) == 0) return 0;
-		pthread_setspecific(wgse_rs_key, w);
+		if (pthread_setspecific(wgse_rs_key, w) != 0) { free(w); return 0; }
 	}
 	if (n > w->cap) {
 		int64_t cap = n > w->cap * 3 / 2? n : w->cap * 3 / 2;
