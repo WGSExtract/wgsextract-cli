@@ -220,6 +220,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "analyze comprehensive": _n(HOURS, *_CALL),
     "analyze batch-gen": _n(INSTANT),
     "typing cyp2d6": _n(MINUTES, "cyrius", "minimap2", "samtools", optional="bcftools"),
+    "typing smn": _n(MINUTES, "smn_caller.py", "samtools", optional="bcftools"),
     "typing hla": _n(
         MINUTES, "run-t1k", "samtools", "t1k-build.pl", optional="bcftools"
     ),

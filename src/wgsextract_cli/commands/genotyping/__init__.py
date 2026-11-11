@@ -6,6 +6,7 @@ from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.genotyping import (
     TypingCyp2d6Params,
     TypingHlaParams,
+    TypingSmnParams,
     TypingStrParams,
 )
 from wgsextract_cli.core.messages import CLI_HELP
@@ -13,6 +14,7 @@ from wgsextract_cli.core.messages import CLI_HELP
 from .cyp2d6 import cmd_cyp2d6
 from .hla import cmd_hla
 from .repeats import cmd_str
+from .smn import cmd_smn
 
 
 def register(
@@ -31,6 +33,10 @@ def register(
     hla = subs.add_parser("hla", parents=[base_parser], help=CLI_HELP["cmd_typing-hla"])
     add_arguments(hla, TypingHlaParams)
     hla.set_defaults(func=cmd_hla)
+
+    smn = subs.add_parser("smn", parents=[base_parser], help=CLI_HELP["cmd_typing-smn"])
+    add_arguments(smn, TypingSmnParams)
+    smn.set_defaults(func=cmd_smn)
 
     repeats = subs.add_parser(
         "str", parents=[base_parser], help=CLI_HELP["cmd_typing-str"]

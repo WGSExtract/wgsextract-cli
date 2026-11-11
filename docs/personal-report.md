@@ -51,6 +51,7 @@ CRAM `--input`.
 | Sample overview | workspace facts (sex, platform, build, coverage, depth by target, read length, each with its method and confidence); `info --detailed` (QC metrics, plus sex, coverage and read length with confidence "not recorded" when the folder has no workspace) | none: facts and QC tables |
 | Lineage | `lineage y-haplogroup`, `lineage mt-haplogroup` | the Y and mtDNA haplogroups, with tree links (YFull, FTDNA). Y-DNA is not asked for when the recorded sex is Female. |
 | Pharmacogenomics | `vcf pharmcat`, `typing cyp2d6` (Cyrius), `typing hla` (T1K) | one per PharmCAT gene (diplotype and phenotype); the CYP2D6 diplotype; the HLA-A and HLA-B alleles |
+| Carrier screening by copy number | `typing smn` (SMNCopyNumberCaller) | SMA carrier status from the SMN1 copy number, with SMN2 and g.27134T>G; two SMN1 copies carry the silent (2+0) carrier caveat |
 | ClinVar | `vcf clinvar` | each carried ClinVar pathogenic or likely-pathogenic call in a gene of the gene list (default ACMG SF v3.3), and per gene the calls by zygosity, with recessive genes marked carrier or (possibly) biallelic |
 | Microarray export | `microarray` | none: the files produced, with sites, called sites and no-call rate |
 
@@ -157,6 +158,12 @@ reason codes. The JSON document explains each code in `confidence_reasons`.
   pass; otherwise the median depth against the `confidence_min_depth` and
   `confidence_high_depth` settings (`low` below the minimum, `moderate`
   below the high threshold, `high` above it).
+- **SMA carrier status (SMNCopyNumberCaller)**: `low` when there is no SMN1
+  call (including below 30x, where `typing smn` withholds calls), the
+  carrier/affected status is uncertain, the caller's filter isn't PASS, the
+  input's aligner isn't bwa-like (`aligner_not_calibrated`), or coverage is
+  uneven (MAD above 0.11); `moderate` when the depth is unknown; otherwise
+  `high`.
 - **Haplogroups**: the caller's quality score (Yleaf QC-score, Haplogrep
   3 quality): `high` from 0.9, `moderate` from 0.7, `low` below 0.7. A run that
   warned of low coverage is `low`.
@@ -164,7 +171,7 @@ reason codes. The JSON document explains each code in `confidence_reasons`.
 ## Evidence and privacy
 
 Each finding names its evidence: a file, relative to the sample folder (the
-ClinVar VCF, the haplogroup report, the PharmCAT report, the Cyrius calls, the
+ClinVar VCF, the haplogroup report, the PharmCAT report, the Cyrius and SMNCopyNumberCaller calls, the
 T1K genotypes), the region (`chrom:pos`, the chromosome, or `gene SYMBOL`), and the run's
 result manifest. In the HTML and Markdown these are links, relative to the
 report's folder, so the report keeps working when the sample folder is moved
