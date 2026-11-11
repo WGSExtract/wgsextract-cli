@@ -220,6 +220,11 @@ It writes bwa's exact alignments and is **experimental**.
 - **`--gpu`:** still means Parabricks, which also sorts and marks duplicates on
   the GPU.
 
+On Linux ARM64 (for example Graviton, Ampere or Cobalt), the linux-aarch64
+`wgse-bwa` package has no GPU backend; its CPU backend runs bwa's steps with
+the same exact NEON replacements as on a Mac, and `align` and `realign` run it
+in place of bwa the same way (`native_aligner_backend` is `cpu`).
+
 ## Apple Silicon (Metal)
 
 WGS Extract publishes its own builds of four aligners for Apple Silicon Macs:
