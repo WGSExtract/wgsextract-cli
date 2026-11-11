@@ -65,6 +65,10 @@ target_compile_options(wgse_bwa_core PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Werror>
     $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc -Wall -Wextra -Werror>)
 target_link_libraries(wgse_bwa_core PUBLIC ZLIB::ZLIB Threads::Threads m)
+if(NOT APPLE)
+    # shm_open, as upstream's Makefile links on Linux (older glibc keeps it in librt).
+    target_link_libraries(wgse_bwa_core PUBLIC rt)
+endif()
 if(APPLE)
     target_compile_definitions(wgse_bwa_core PRIVATE WGSE_HAVE_METAL=1)
     target_link_libraries(wgse_bwa_core PUBLIC wgse_metal_common)
