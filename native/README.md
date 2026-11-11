@@ -972,7 +972,7 @@ the same round, with their range: runs on hosted runners vary by 5–20%, so
 compare variants in one job with three or more rounds. Several runs can be
 dispatched at once.
 
-`bench/bench.sh` also runs locally:
+`bench/bench.sh` also runs locally, on macOS or Linux:
 
 ```bash
 native/bench/bench.sh fetch --data out/bench-data --tier small
@@ -986,6 +986,13 @@ A `--bin` directory may also hold upstream executables (`bwa`, `bwa-mem2`,
 `mm2` runs `minimap2 -ax sr` on `<ref>.fa.sr.mmi`, which the data release
 does not have: build it next to the other index files with
 `minimap2 -x sr -d <ref>.fa.sr.mmi <ref>.fa`.
+
+On Linux the memory columns come from `/proc`: "Pressure" is the kernel's
+memory pressure (PSI "some", 10-second average), "Min free" is
+`MemAvailable`, the compressor is zswap's pool and a run the OOM killer
+ended counts as jetsam (its log needs read access to the kernel journal).
+Linux has no footprint or page-in counters, so those columns are empty, and
+`--power` is macOS only.
 
 `--power` also measures each run's energy with `powermetrics`, which needs
 root: `--power-cmd` gives the command that runs it without a password prompt
