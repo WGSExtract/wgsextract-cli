@@ -1,0 +1,442 @@
+/* Navigation: sidebar, top bar, bottom tab bar, tabs, stepper, breadcrumbs. */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-height: 0;
+  padding: var(--sp-3) var(--sp-2);
+  border-right: 1px solid var(--c-border);
+  background: var(--c-surface);
+  overflow-y: auto;
+}
+
+.sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2) var(--sp-3);
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-md);
+  color: var(--c-text);
+  text-decoration: none;
+}
+
+.sidebar__brand svg {
+  width: 28px;
+  height: 28px;
+  flex: none;
+}
+
+.sidebar__group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: var(--sp-2);
+}
+
+.sidebar__heading {
+  padding: var(--sp-2) var(--sp-3) var(--sp-1);
+}
+
+.sidebar__spacer {
+  flex: 1;
+}
+
+.nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 34px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-md);
+  color: var(--c-text-2);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.nav-item:hover {
+  background: var(--c-surface-2);
+  color: var(--c-text);
+}
+
+.nav-item[aria-current="page"] {
+  background: var(--c-primary-soft);
+  color: var(--c-primary-soft-text);
+}
+
+.nav-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--c-primary);
+}
+
+.nav-item__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav-item .badge {
+  margin-left: auto;
+}
+
+/* Small running-job card pinned to the bottom of the sidebar */
+.sidebar__job {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: var(--sp-2) 0 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background: var(--c-surface-2);
+  font-size: var(--fs-xs);
+  color: var(--c-text-2);
+  text-decoration: none;
+}
+
+/* Icon rail: the sidebar without labels. The shell sets .app--rail on
+ * tablets (viewport 1080px or less) and in layouts that always use a rail. */
+.app--rail {
+  --sidebar-w: 68px;
+}
+
+.app--rail .sidebar {
+  align-items: center;
+  padding-inline: var(--sp-1);
+}
+
+.app--rail .sidebar__brand span,
+.app--rail .sidebar__heading,
+.app--rail .sidebar .nav-item__label,
+.app--rail .sidebar .nav-item .badge,
+.app--rail .sidebar__job,
+.app--rail .sidebar .seg {
+  display: none;
+}
+
+.app--rail .sidebar .nav-item {
+  justify-content: center;
+  width: 48px;
+  height: 44px;
+  padding: 0;
+}
+
+.app--rail .sidebar .nav-item[aria-current="page"]::before {
+  left: -4px;
+}
+
+/* Top navigation instead of a sidebar (Direction A) */
+.app--topnav {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "top"
+    "main";
+}
+
+.app--topnav > .sidebar {
+  display: none;
+}
+
+.topnav {
+  display: flex;
+  gap: var(--sp-1);
+}
+
+.topnav .nav-item[aria-current="page"]::before {
+  left: var(--sp-3);
+  right: var(--sp-3);
+  top: auto;
+  bottom: -9px;
+  width: auto;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+}
+
+@container app (max-width: 720px) {
+  .topnav {
+    display: none;
+  }
+
+  .app.app--topnav {
+    grid-template-rows: var(--topbar-h) minmax(0, 1fr) auto;
+    grid-template-areas:
+      "top"
+      "main"
+      "tab";
+  }
+}
+
+/* Top bar */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+  padding: 0 var(--sp-6);
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-surface);
+}
+
+.topbar__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: var(--fw-semibold);
+}
+
+.topbar__search {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: min(360px, 40%);
+  min-height: var(--control-h);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background: var(--c-surface-2);
+  color: var(--c-text-3);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.topbar__search span {
+  flex: 1;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-pill);
+  background: var(--c-surface-2);
+  color: var(--c-text-2);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+
+@container app (max-width: 720px) {
+  .topbar {
+    padding: 0 var(--sp-3);
+    gap: var(--sp-2);
+  }
+
+  .topbar__search {
+    width: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    min-width: var(--touch-min);
+    justify-content: center;
+  }
+
+  .topbar__search span,
+  .topbar__search kbd,
+  .conn__label {
+    display: none;
+  }
+
+  .topbar__title {
+    font-size: var(--fs-lg);
+  }
+}
+
+/* Bottom tab bar (phone) */
+.tabbar {
+  align-items: stretch;
+  justify-content: space-around;
+  padding: var(--sp-1) var(--sp-1) max(var(--sp-2), env(safe-area-inset-bottom));
+  border-top: 1px solid var(--c-border);
+  background: var(--c-surface);
+}
+
+.tabbar__item {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 52px;
+  border-radius: var(--r-md);
+  color: var(--c-text-3);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-medium);
+  text-decoration: none;
+}
+
+.tabbar__item .icon {
+  width: 24px;
+  height: 24px;
+}
+
+.tabbar__item[aria-current="page"] {
+  color: var(--c-primary);
+}
+
+.tabbar__item .badge {
+  position: absolute;
+  top: 4px;
+  left: calc(50% + 6px);
+  height: 16px;
+  padding: 0 5px;
+  background: var(--c-primary);
+  color: var(--c-on-primary);
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: var(--sp-1);
+  border-bottom: 1px solid var(--c-border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--control-h-lg);
+  padding: 0 var(--sp-3);
+  border: 0;
+  background: none;
+  color: var(--c-text-2);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--c-text);
+}
+
+.tab[aria-selected="true"] {
+  color: var(--c-text);
+}
+
+.tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: var(--sp-2);
+  right: var(--sp-2);
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--c-primary);
+}
+
+/* Stepper */
+.stepper {
+  display: flex;
+  gap: var(--sp-2);
+  counter-reset: step;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.stepper__item {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  color: var(--c-text-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  counter-increment: step;
+}
+
+.stepper__item::before {
+  content: counter(step);
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1.5px solid var(--c-border-strong);
+  border-radius: 50%;
+  font-size: var(--fs-xs);
+  flex: none;
+}
+
+.stepper__item::after {
+  content: "";
+  flex: 1;
+  height: 1.5px;
+  min-width: var(--sp-4);
+  background: var(--c-border);
+}
+
+.stepper__item:last-child::after {
+  display: none;
+}
+
+.stepper__item[aria-current="step"] {
+  color: var(--c-text);
+}
+
+.stepper__item[aria-current="step"]::before {
+  border-color: var(--c-primary);
+  background: var(--c-primary);
+  color: var(--c-on-primary);
+}
+
+.stepper__item[data-state="done"]::before {
+  content: "✓";
+  border-color: var(--c-success);
+  background: var(--c-success-soft);
+  color: var(--c-success);
+}
+
+@container app (max-width: 720px) {
+  .stepper__label {
+    display: none;
+  }
+
+  .stepper__item[aria-current="step"] .stepper__label {
+    display: inline;
+  }
+
+  .stepper__item[aria-current="step"] {
+    flex: 2 0 auto;
+  }
+}
+
+/* Breadcrumbs */
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+  color: var(--c-text-3);
+}
+
+.crumbs a {
+  color: var(--c-text-2);
+  text-decoration: none;
+}
+
+.crumbs a:hover {
+  text-decoration: underline;
+}

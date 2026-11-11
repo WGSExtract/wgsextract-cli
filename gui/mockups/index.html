@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WGS Extract redesign mockups</title>
+<link rel="stylesheet" href="design-system/wgse.css">
+<link rel="stylesheet" href="shared/mockup.css">
+<link rel="stylesheet" href="shared/docs.css">
+<script src="shared/boot.js" defer></script>
+</head>
+<body data-page-id="index" data-shell="none" data-title="WGS Extract redesign mockups">
+<div class="doc" data-annot-id="doc">
+  <header class="doc__hero" data-annot-id="hero">
+    <span class="eyebrow">Exploration · not shipping code</span>
+    <h1>A cleaner WGS Extract</h1>
+    <p>Mockups for a new app built on the server API instead of wrapping command-line scripts: one design that works as the desktop app and, from the same pages, on a phone or tablet. Three directions to compare, one recommended and worked through every screen, plus a design system and icons. Click around; nothing here touches your files.</p>
+  </header>
+
+  <section class="card" data-annot-id="how-to-review">
+    <h2 class="card__title">How to review</h2>
+    <ol class="stack stack--sm" style="padding-left: var(--sp-5); margin: 0">
+      <li>Run <code>just mockups</code> (or <code>python3 gui/mockups/serve.py</code>) and open the address it prints. Opened as a file, everything works but notes stay in your browser.</li>
+      <li>Use the bar at the top: <strong>Phone / Tablet / Desktop</strong> sizes, the theme button, and <strong>Basic / Advanced</strong> in each app’s sidebar or settings.</li>
+      <li>Press <kbd>A</kbd> (or <strong>Annotate</strong>) and click anything, or drag a box, to leave a note. <kbd>N</kbd> lists the notes on the page, where you can reply and resolve.</li>
+      <li>Notes are saved to <code>gui/mockups/feedback/&lt;page&gt;.json</code>. Commit and push them; the other person pulls and sees them in place.</li>
+    </ol>
+    <p class="small muted">Questions from the designer are already pinned on pages as notes by “AI”. Overall thoughts and your vote for a direction: add a page note here.</p>
+  </section>
+
+  <section class="doc-section" data-annot-id="directions">
+    <h2>Three directions</h2>
+    <p>Same product, same data, different shape. They share the design system, so compare structure, not colours.</p>
+    <div class="dir-grid">
+      <article class="card dir-card" data-annot-id="dir-a">
+        <div class="row"><span class="dir-card__badge" style="background: #3d6fd8">A</span><div><h3>Guided</h3><span class="small muted">Task first, one step at a time</span></div></div>
+        <img class="thumb" src="thumbs/a-home.png" alt="Direction A start page: four large task tiles and the file list" loading="lazy">
+        <p class="small">Opens on “What would you like to do?” with four big tasks; each is a wizard with plain-language steps. Top navigation, no sidebar.</p>
+        <p class="small"><strong>Good:</strong> nothing to learn for a first-timer. <strong>Weak:</strong> slow for repeat use; advanced options have nowhere natural to live.</p>
+        <ul class="screen-list"><li><a href="directions/a/home.html"><i data-icon="house"></i>Start</a></li><li><a href="directions/a/microarray.html"><i data-icon="chip"></i>DNA-test files wizard</a></li></ul>
+      </article>
+      <article class="card dir-card" data-annot-id="dir-b">
+        <div class="row"><span class="dir-card__badge" style="background: #8a4fd6">B</span><div><h3>Console</h3><span class="small muted">Dashboard, command palette, batch</span></div></div>
+        <img class="thumb" src="thumbs/b-home.png" alt="Direction B dashboard: system tiles, selectable samples table and job queue" loading="lazy">
+        <p class="small">A dense dashboard: machine status, a selectable sample table with bulk actions, the queue and a live log. Every operation is a form with all its options and the command it runs.</p>
+        <p class="small"><strong>Good:</strong> fast and complete for experts; batch work. <strong>Weak:</strong> intimidating for the many people who only want their kit files.</p>
+        <ul class="screen-list"><li><a href="directions/b/home.html"><i data-icon="layout-grid"></i>Dashboard</a></li><li><a href="directions/b/home.html?palette=1"><i data-icon="command"></i>Dashboard with the command palette</a></li><li><a href="directions/b/microarray.html"><i data-icon="chip"></i>Microarray, batch form</a></li></ul>
+      </article>
+      <article class="card dir-card" style="border-color: #138a72; box-shadow: 0 0 0 1px #138a72" data-annot-id="dir-c">
+        <div class="row"><span class="dir-card__badge" style="background: #138a72">C</span><div><h3>Genome hub <span class="badge badge--success">Recommended</span></h3><span class="small muted">Your files are home; tasks are one click from each</span></div></div>
+        <img class="thumb" src="thumbs/c-home.png" alt="Direction C: sidebar, fix-it card, stats and the genome library table" loading="lazy">
+        <p class="small">The library of your genomes is home. Each file shows what it is, what was found, and what you can do next. Tasks are short single pages with good defaults; <strong>Advanced</strong> adds depth to the same pages instead of a second app.</p>
+        <p class="small"><strong>Good:</strong> fits both groups; jobs, results and fixes all hang off the file. <strong>Weak:</strong> more screens to build than A.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="doc-section" data-annot-id="c-screens">
+    <h2>Direction C, every screen</h2>
+    <div class="grid" style="--grid-min: 260px">
+      <ul class="screen-list card">
+        <li class="eyebrow" style="padding: 0 var(--sp-2)">Basic flows</li>
+        <li><a href="directions/c/setup.html"><i data-icon="sparkles"></i>First-run setup</a></li>
+        <li><a href="directions/c/home.html"><i data-icon="library-big"></i>My genomes (home)</a></li>
+        <li><a href="directions/c/add-file.html"><i data-icon="file-up"></i>Add files, auto-detect</a></li>
+        <li><a href="directions/c/file.html"><i data-icon="file-cram"></i>File detail</a></li>
+        <li><a href="directions/c/microarray.html"><i data-icon="chip"></i>DNA-test files</a></li>
+        <li><a href="directions/c/ancestry.html"><i data-icon="haplotree"></i>Ancestry &amp; lineage</a></li>
+        <li><a href="directions/c/convert.html"><i data-icon="convert"></i>Convert</a></li>
+      </ul>
+      <ul class="screen-list card">
+        <li class="eyebrow" style="padding: 0 var(--sp-2)">Running and managing</li>
+        <li><a href="directions/c/jobs.html"><i data-icon="jobs"></i>Jobs</a></li>
+        <li><a href="directions/c/references.html"><i data-icon="reference"></i>Reference genomes</a></li>
+        <li><a href="directions/c/settings.html"><i data-icon="settings"></i>Settings</a></li>
+        <li><a href="directions/c/remote.html"><i data-icon="remote"></i>Phone access and pairing</a></li>
+        <li><a href="directions/c/tasks.html"><i data-icon="layout-grid"></i>Tasks (phone tab)</a></li>
+        <li><a href="directions/c/states.html"><i data-icon="triangle-alert"></i>Empty, loading, error states</a></li>
+      </ul>
+      <ul class="screen-list card">
+        <li class="eyebrow" style="padding: 0 var(--sp-2)">Advanced</li>
+        <li><a href="directions/c/advanced.html?depth=advanced"><i data-icon="sliders-horizontal"></i>Advanced tools (realign)</a></li>
+        <li><a href="directions/c/file.html?depth=advanced"><i data-icon="file-cram"></i>File detail, advanced</a></li>
+        <li><a href="directions/c/microarray.html?depth=advanced"><i data-icon="chip"></i>DNA-test files, advanced</a></li>
+        <li><a href="directions/c/home.html?palette=1"><i data-icon="command"></i>Command palette</a></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="doc-section" data-annot-id="reference">
+    <h2>Reference</h2>
+    <div class="grid" style="--grid-min: 240px">
+      <a class="action" href="design-system/design-system.html"><span class="action__icon"><i data-icon="layout-grid"></i></span><span><span class="action__title">Design system</span><br><span class="action__desc">Tokens and every component</span></span><i data-icon="chevron-right"></i></a>
+      <a class="action" href="icons/icons.html"><span class="action__icon"><i data-icon="helix"></i></span><span><span class="action__title">Icons and logomarks</span><br><span class="action__desc">Domain icons, UI icons, 3 app icons</span></span><i data-icon="chevron-right"></i></a>
+      <a class="action" href="https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/mockups/DESIGN.md"><span class="action__icon"><i data-icon="book-open"></i></span><span><span class="action__title">DESIGN.md</span><br><span class="action__desc">Research, IA, API mapping, plan</span></span><i data-icon="chevron-right"></i></a>
+      <a class="action" href="https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/mockups/README.md"><span class="action__icon"><i data-icon="info"></i></span><span><span class="action__title">README.md</span><br><span class="action__desc">How the mockups and notes work</span></span><i data-icon="chevron-right"></i></a>
+    </div>
+  </section>
+
+  <section class="doc-section" data-annot-id="feedback">
+    <h2>Notes so far</h2>
+    <div data-render="feedback-summary"></div>
+  </section>
+
+  <footer class="small subtle" data-render="version" data-annot-id="version"></footer>
+</div>
+</body>
+</html>

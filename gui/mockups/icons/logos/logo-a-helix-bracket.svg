@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="t">
+  <title id="t">WGS Extract logomark option A: helix with extraction brackets</title>
+  <defs>
+    <linearGradient id="a-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1a2643"/>
+      <stop offset="1" stop-color="#0b1222"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#a-bg)"/>
+  <g fill="none" stroke-linecap="round" stroke-width="9">
+    <path d="M46 20c0 26 36 22 36 44s-36 18-36 44" stroke="#2ec5e6"/>
+    <path d="M82 20c0 26-36 22-36 44s36 18 36 44" stroke="#c13bd4"/>
+  </g>
+  <g stroke="#ffffff" stroke-opacity="0.55" stroke-width="5" stroke-linecap="round">
+    <path d="M54 29h20"/>
+    <path d="M54 64h20"/>
+    <path d="M54 99h20"/>
+  </g>
+  <g fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M30 46h-8v36h8"/>
+    <path d="M98 46h8v36h-8"/>
+  </g>
+</svg>

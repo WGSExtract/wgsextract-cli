@@ -22,6 +22,7 @@ Earlier work, including the SwiftUI macOS app, the Swift CLI, Electron and a doz
 | `resources/` | Built-in localized strings and icon map. |
 | `docs/schema/` | JSON Schemas for `manifest.json` and pages. |
 | `tools/`, `scripts/` | Python repo tooling: task runner, packaging, localization lint, site builder. |
+| `mockups/` | Redesign mockups, design system and icons for review (`make mockups`); not part of the app. See `mockups/README.md`. |
 
 ## Requirements
 
