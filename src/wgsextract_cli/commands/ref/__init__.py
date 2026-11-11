@@ -112,8 +112,7 @@ def register(
         "ancestry",
         RefAncestryParams,
         cmd_ancestry_reference,
-        "Explicitly fetch the hash-pinned HGDP+1KG ancestry reference for qc "
-        "ancestry (it is also fetched on first use).",
+        "Fetch the hash-pinned ancestry reference for qc ancestry.",
     )
     add("download", RefDownloadParams, cmd_download, CLI_HELP["cmd_ref-download"])
     add("index", RefIndexParams, cmd_index, CLI_HELP["cmd_ref-index"])

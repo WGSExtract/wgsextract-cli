@@ -557,7 +557,6 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     "qc ancestry": _h(
         "<stem>.ancestry.tsv: K=7 and K=12 proportions with confidence intervals.",
         "wgsextract qc ancestry --input sample.cram",
-        "wgsextract qc ancestry --input genome.vcf.gz --sample NA12878",
         "wgsextract qc ancestry --input 23andme_raw.txt",
     ),
     "qc contamination": _h(

@@ -253,15 +253,10 @@ class RelateParams(Params):
 
 @dataclass(frozen=True, kw_only=True)
 class QcAncestryParams(Params):
-    """Admixture-style ancestry proportions: the shares of 7 continental and
-    12 sub-continental reference components learned with ADAMIXTURE from the
-    HGDP + 1000 Genomes samples of gnomAD v3.1, each with a 95% block-bootstrap
-    interval. They are reference proportions, not an ethnicity. From a
-    BAM/CRAM (genotype likelihoods), a VCF or a microarray raw-data file, on
-    GRCh37, GRCh38 or T2T-CHM13. Writes ``<stem>.ancestry.tsv``; metrics
-    ``ancestry_k7_<component>`` (and ``k12``, ``_lower``, ``_upper``),
-    ``ancestry_sites``; records the ``ancestry`` fact. The 16 MB reference is
-    downloaded on first use."""
+    """Admixture-style proportions of 7 continental and 12 sub-continental
+    HGDP+1KG reference components (not an ethnicity), with 95% intervals,
+    from a BAM/CRAM, VCF or microarray file. Writes ``<stem>.ancestry.tsv``
+    and the ``ancestry`` fact; see docs/ancestry.md."""
 
     COMMAND = "qc ancestry"
 

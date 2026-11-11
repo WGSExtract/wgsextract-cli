@@ -714,15 +714,10 @@ CLI: `wgsextract qc ancestry`.
 
 Estimate ancestry proportions (output role `ancestry_table`).
 
-`QcAncestryParams`: Admixture-style ancestry proportions: the shares of 7 continental and
-12 sub-continental reference components learned with ADAMIXTURE from the
-HGDP + 1000 Genomes samples of gnomAD v3.1, each with a 95% block-bootstrap
-interval. They are reference proportions, not an ethnicity. From a
-BAM/CRAM (genotype likelihoods), a VCF or a microarray raw-data file, on
-GRCh37, GRCh38 or T2T-CHM13. Writes `<stem>.ancestry.tsv`; metrics
-`ancestry_k7_<component>` (and `k12`, `_lower`, `_upper`),
-`ancestry_sites`; records the `ancestry` fact. The 16 MB reference is
-downloaded on first use.
+`QcAncestryParams`: Admixture-style proportions of 7 continental and 12 sub-continental
+HGDP+1KG reference components (not an ethnicity), with 95% intervals,
+from a BAM/CRAM, VCF or microarray file. Writes `<stem>.ancestry.tsv`
+and the `ancestry` fact; see docs/ancestry.md.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -1722,9 +1717,8 @@ CLI: `wgsextract ref ancestry`.
 
 Install the resources; output role `reference_resource`.
 
-`RefAncestryParams`: Install the hash-pinned ancestry reference that `qc ancestry` uses
-(16 MB; HGDP+1KG allele frequencies from gnomAD v3.1, CC0), or
-delete it. `qc ancestry` also downloads it on first use.
+`RefAncestryParams`: Install the hash-pinned ancestry reference of `qc ancestry`, or
+delete it.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
