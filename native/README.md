@@ -835,9 +835,9 @@ Unlike Apple's unified memory, a discrete GPU has its own:
 - **Batches:** each batch's reads, rescue windows and extension jobs cross
   PCIe through pinned buffers. Only compact results come back.
 - **GPU memory:** before each upload `--cuda` checks the GPU's free memory,
-  keeping 1 GiB spare, because the GPU may be shared. If the index doesn't fit,
-  it seeds on the CPU (or locates on the CPU, if only the suffix array doesn't
-  fit).
+  keeping 1 GiB spare, because the GPU may be shared. If the BWT doesn't fit,
+  the run aligns on the CPU, as after a GPU failure. If only the suffix array
+  doesn't fit, the CPU locates seeds and the GPU does the rest.
 - **Host memory:** the pinned batch buffers add about 0.7 GiB.
 - **Runtime:** the CUDA runtime is linked statically, so the package needs only
   the NVIDIA driver, and only for `--cuda`. Without a usable driver or GPU,
