@@ -188,6 +188,8 @@ fn main() {
             let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
                 .title(window_title(&application_name, &application_version))
                 .inner_size(1200.0, 800.0)
+                // Below this the Web UI's narrow layout no longer fits its controls.
+                .min_inner_size(640.0, 480.0)
                 .initialization_script(&init_script)
                 .on_document_title_changed(|window, title| {
                     let _ = window.set_title(&title);

@@ -48,15 +48,16 @@ test("single-value TOML boolean parsing follows TOML casing", () => {
   assert.equal(parseTomlStringValue(`ai_translated = True`, "ai_translated"), undefined);
 });
 
-test("critical Bootstrap Icons stylesheet covers every WebUI icon", () => {
-  const iconMap = parseIconMapToml(
-    readFileSync(
-      new URL("../../resources/BuiltinIconMap/iconmap.toml", import.meta.url),
-      "utf8"
-    )
-  );
-  const iconNames = new Set(Object.values(iconMap.bootstrap ?? {}));
-  assert.ok(iconNames.size > 0, "No Bootstrap icons found in built-in iconmap.toml");
+test("critical Bootstrap Icons stylesheet covers every WebUI and shipped bundle icon", () => {
+  // Regression: the Web UI loads only the critical subset, so a bundle icon missing from it showed nothing.
+  const iconNames = new Set();
+  for (const iconMapPath of ["../../resources/BuiltinIconMap/iconmap.toml", "../../examples/WGSExtract/iconmap.toml"]) {
+    const iconMap = parseIconMapToml(readFileSync(new URL(iconMapPath, import.meta.url), "utf8"));
+    assert.ok(Object.keys(iconMap.bootstrap ?? {}).length > 0, `No Bootstrap icons found in ${iconMapPath}`);
+    for (const name of Object.values(iconMap.bootstrap)) {
+      iconNames.add(name);
+    }
+  }
   iconNames.add("copy");
   const criticalCSS = readFileSync(new URL("../web/vendor/bootstrap-icons/bootstrap-icons-critical.css", import.meta.url), "utf8");
 

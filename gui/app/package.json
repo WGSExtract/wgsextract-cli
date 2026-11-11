@@ -11,7 +11,7 @@
     "tauri:build": "npm run tauri:prepare-node && npm run build && node scripts/run-tauri.mjs build",
     "tauri:dist": "npm run tauri:prepare-node && npm run build && node scripts/tauri-build-dist.mjs",
     "tauri:dev": "npm run tauri:prepare-node && npm run build && node scripts/run-tauri.mjs dev",
-    "vendor-icons": "node scripts/update-bootstrap-icons.mjs",
+    "vendor-icons": "npm run build && node scripts/update-bootstrap-icons.mjs",
     "dev": "npm run build && node scripts/dev.mjs",
     "start": "npm run build && node dist/web/src/server/main.js",
     "bundle:test": "npm run build && node dist/web/src/server/bundle-test-cli.js",

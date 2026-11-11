@@ -124,15 +124,12 @@ export function renderStandardOptionsAccessory() {
         ${state.localizationOptions.length > 1
           ? `<label class="form-row">
                 <span class="row-label">${escapeHTML(state.labels.languagePickerLabel)}</span>
-                <span>
-                  <select data-locale-picker aria-label="${escapeAttribute(state.labels.languagePickerLabel)}">
-                    <option value="__system__" ${state.usingSystemDefaultLocale ? "selected" : ""}>${escapeHTML(systemLabel)}</option>
-                    ${state.localizationOptions
+                <select data-locale-picker aria-label="${escapeAttribute(state.labels.languagePickerLabel)}">
+                  <option value="__system__" ${state.usingSystemDefaultLocale ? "selected" : ""}>${escapeHTML(systemLabel)}</option>
+                  ${state.localizationOptions
               .map((option) => `<option value="${escapeAttribute(option.code)}" ${!state.usingSystemDefaultLocale && option.code === state.localizationCode ? "selected" : ""}>${escapeHTML(languageOptionLabel(option))}</option>`)
               .join("")}
-                  </select>
-                  <span class="field-note">${escapeHTML(state.usingSystemDefaultLocale ? systemLabel : currentName)}</span>
-                </span>
+                </select>
               </label>`
           : ""}
         <label class="form-row">
