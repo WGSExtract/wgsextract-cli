@@ -235,6 +235,12 @@ struct DeviceOptions {
     // Test hook (Metal): report the first submission of every nth piece of work
     // as interrupted even if it completed, so its kernels run twice.
     size_t interrupt_every = 0;
+    // The watchdog's floor: a wait for the GPU fails after the larger of this
+    // and 20 times the slowest batch of its stage (CUDA).
+    double watchdog_seconds = 60;
+    // Test hook (CUDA): occupy the GPU before the first rescue batch for twice
+    // the watchdog's limit, as a hung kernel would.
+    bool inject_hang = false;
 };
 std::unique_ptr<Device> make_metal_device(const DeviceOptions &options, std::string &reason);
 std::unique_ptr<Device> make_cuda_device(const DeviceOptions &options, std::string &reason);

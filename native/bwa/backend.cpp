@@ -1910,3 +1910,11 @@ bool cuda_hardware_supported() {
 }
 #endif
 } // namespace wgse::gpu
+
+void wgse_set_gpu_watchdog_seconds(double seconds) {
+    device_options.watchdog_seconds = seconds;
+}
+
+void wgse_inject_gpu_hang() {
+    device_options.inject_hang = true;
+}
