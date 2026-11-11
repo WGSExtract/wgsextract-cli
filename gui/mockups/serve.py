@@ -62,9 +62,15 @@ def now() -> str:
 
 
 def feedback_path(page: str) -> Path:
+    """feedback/<page>.json; the id pattern already rules out separators, and
+    the containment check makes sure nothing resolves outside feedback/."""
     if not PAGE_ID.match(page):
         raise BadRequest(HTTPStatus.BAD_REQUEST, f"bad page id: {page!r}")
-    return FEEDBACK / f"{page}.json"
+    base = os.path.realpath(FEEDBACK)
+    full = os.path.realpath(os.path.join(base, page + ".json"))
+    if not full.startswith(base + os.sep):
+        raise BadRequest(HTTPStatus.BAD_REQUEST, f"bad page id: {page!r}")
+    return Path(full)
 
 
 def load(page: str) -> dict[str, Any]:
@@ -93,7 +99,7 @@ def dump(doc: dict[str, Any]) -> str:
 def save(page: str, doc: dict[str, Any]) -> None:
     path = feedback_path(page)
     path.parent.mkdir(exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{page}.", suffix=".tmp")
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.stem}.", suffix=".tmp")
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
         handle.write(dump(doc))
     os.replace(tmp, path)
