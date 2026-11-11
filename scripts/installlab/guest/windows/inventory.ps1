@@ -86,8 +86,11 @@ Get-ScheduledTask | ForEach-Object { Add-Line "task" ($_.TaskPath + $_.TaskName)
 # Programs left running (an installer's background agent locks its files and
 # outlives the uninstall). Windows' own are skipped; others' paths aren't
 # visible to this user anyway.
-Get-Process | Where-Object { $path = $_.Path; $path -and -not $path.StartsWith($env:SystemRoot, "OrdinalIgnoreCase") } |
-    ForEach-Object { Add-Line "proc" $_.Path }
+Get-Process | ForEach-Object {
+    # Read Path once: a process can exit between reads, and then Path is null.
+    $path = $_.Path
+    if ($path -and -not $path.StartsWith($env:SystemRoot, "OrdinalIgnoreCase")) { Add-Line "proc" $path }
+}
 
 # Shell startup files: content matters, not just existence.
 foreach ($profilePath in @($PROFILE.AllUsersAllHosts, $PROFILE.AllUsersCurrentHost,
