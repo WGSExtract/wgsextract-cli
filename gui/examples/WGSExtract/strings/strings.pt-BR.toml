@@ -1038,7 +1038,7 @@
 "options.cli.value.everything.title" = "everything"  # i18n-ignore i18n-source-hash:d5a63c95
 "options.cli.value.fast.title" = "fast"  # i18n-ignore i18n-source-hash:0afde566
 "controls.cli.vep_engine.label" = "Motor do VEP"  # i18n-source-hash:af8dd0c9
-"controls.cli.vep_engine.tooltip" = "vep-rs (padrão): rápido e funciona no Windows; ou Ensembl VEP (Linux e macOS). Cada um precisa do próprio cache, em Baixar cache VEP. Vazio: a configuração vep_engine, ou então vep-rs."  # i18n-source-hash:12bd9de2
+"controls.cli.vep_engine.tooltip" = "vep-rs (padrão): rápido e funciona no Windows; ou Ensembl VEP (Linux e macOS). Cada um precisa do próprio cache. Baixar cache VEP cria o do vep-rs; para o do Ensembl VEP, defina antes vep_engine como ensembl nas Configurações, ou execute wgsextract vep download --engine ensembl. Vazio: a configuração vep_engine, ou então vep-rs."  # i18n-source-hash:4fcba11c
 "options.cli.value.vep-rs.title" = "vep-rs"  # i18n-ignore
 "options.cli.value.ensembl.title" = "Ensembl VEP"  # i18n-ignore
 "controls.cli.vep_vcf_type.label" = "Tipo de variante"  # i18n-source-hash:d907d5ef

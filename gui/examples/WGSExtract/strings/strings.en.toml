@@ -1033,7 +1033,7 @@
 "options.cli.value.everything.title" = "everything"
 "options.cli.value.fast.title" = "fast"
 "controls.cli.vep_engine.label" = "VEP engine"
-"controls.cli.vep_engine.tooltip" = "vep-rs (default): fast, and runs on Windows; or Ensembl VEP (Linux and macOS). Each needs its own cache from Download VEP Cache. Blank: the vep_engine setting, else vep-rs."
+"controls.cli.vep_engine.tooltip" = "vep-rs (default): fast, and runs on Windows; or Ensembl VEP (Linux and macOS). Each needs its own cache. Download VEP Cache builds the vep-rs cache; for the Ensembl VEP cache, set vep_engine to ensembl in Settings first, or run wgsextract vep download --engine ensembl. Blank: the vep_engine setting, else vep-rs."
 "options.cli.value.vep-rs.title" = "vep-rs"
 "options.cli.value.ensembl.title" = "Ensembl VEP"
 "controls.cli.vep_vcf_type.label" = "Variant type"
