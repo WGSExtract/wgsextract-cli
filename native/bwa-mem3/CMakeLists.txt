@@ -38,7 +38,7 @@ set(SKIP_INSTALL_ALL ON)
 FetchContent_MakeAvailable(mem3 mem3_neon mem3_libsais mem3_mimalloc mem3_zlibng mem3_libdeflate)
 
 # Bump when the wgse-bwa-mem3 package changes; it is versioned separately from bwa-mem3.
-set(WGSE_BWA_MEM3_VERSION 0.2.1)
+set(WGSE_BWA_MEM3_VERSION 0.3.0)
 set(MEM3_VERSION 0.16.0)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 # src/ includes the vendored "../ext/pdqsort/pdqsort.h".
@@ -152,11 +152,10 @@ file(READ "${mem3_SOURCE_DIR}/src/main.cpp" main_source)
 mem3_seam(main_source "int main(int argc, char* argv[])"
     "extern \"C\" int wgse_bwamem3_main(int argc, char* argv[])")
 file(WRITE "${mem3_src}/main.cpp" "${main_source}")
-# GPU seed extension (--metal): getScores8, the 8-bit banded SW tier, runs on wgse-bwa-mem2's
-# extend_batch kernel, which computes the scalar banded SW that upstream's NEON kernel matches.
-set(mem2_dir "${CMAKE_CURRENT_SOURCE_DIR}/../bwa-mem2")
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${mem2_dir}/extension.metal")
-file(READ "${mem2_dir}/extension.metal" extension_source)
+# GPU seed extension (--metal): getScores8, the 8-bit banded SW tier, runs on extension.metal,
+# which computes the scalar banded SW that upstream's NEON kernel matches.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/extension.metal")
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/extension.metal" extension_source)
 configure_file(extension_source.h.in "${generated}/extension_source.h" @ONLY)
 set(neon_assert "static_assert(SIMD_WIDTH8 == 16 && SIMD_WIDTH16 == 8, \"SSE/NEON kernel requires 16x8-bit and 8x16-bit lanes\");")
 file(READ "${mem3_SOURCE_DIR}/src/bandedSWA.cpp" bsw_source)
@@ -166,6 +165,37 @@ mem3_seam(bsw_source "${neon_assert}" "${neon_assert}
         if (wgse_mem3_bsw8(pairArray, seqBufRef, seqBufQer, numPairs, w, wgse_scoring)) return;
     }")
 file(WRITE "${mem3_src}/bandedSWA.cpp" "#include \"metal_extension.h\"\n${bsw_source}")
+# GPU seeding (--metal): wgse-bwa-mem2's seeding.metal collects mem_collect_smem's SMEMs on the
+# GPU, from the occurrence table in place (so it is allocated page-aligned).
+set(mem2_dir "${CMAKE_CURRENT_SOURCE_DIR}/../bwa-mem2")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${mem2_dir}/seeding_types.h" "${mem2_dir}/seeding.metal")
+file(READ "${mem2_dir}/seeding_types.h" seeding_types)
+file(READ "${mem2_dir}/seeding.metal" seeding_source)
+configure_file(seeding_source.h.in "${generated}/seeding_source.h" @ONLY)
+configure_file("${mem2_dir}/seeding_types.h" "${generated}/seeding_types.h" COPYONLY)
+file(READ "${mem3_SOURCE_DIR}/src/FMI_search.h" fmi_header)
+mem3_seam(fmi_header "    public:\n    FMI_search(const char *fname);"
+    "    public:\n    const CP_OCC *wgse_cp_occ() const { return cp_occ; }\n    const int64_t *wgse_count() const { return count; }\n    FMI_search(const char *fname);")
+file(WRITE "${mem3_src}/FMI_search.h" "${fmi_header}")
+file(READ "${mem3_SOURCE_DIR}/src/FMI_search.cpp" fmi_source)
+mem3_seam(fmi_source "    cp_occ = (CP_OCC *)_mm_malloc(cp_occ_bytes, 64);"
+    "    cp_occ = (CP_OCC *)_mm_malloc((cp_occ_bytes + 16383) / 16384 * 16384, 16384);")
+# The GPU seeder reads cp_occ in place, so it stops before the index is freed; after the GPU
+# watchdog gives up, a command may still read it, and the index is left to the process's exit.
+mem3_seam(fmi_source "FMI_search::~FMI_search()\n{\n"
+    "FMI_search::~FMI_search()\n{\n    if (wgse_mem3_seed_release(this)) return;\n")
+file(WRITE "${mem3_src}/FMI_search.cpp"
+    "class FMI_search;\nbool wgse_mem3_seed_release(const FMI_search *fmi);\n${fmi_source}")
+file(READ "${mem3_SOURCE_DIR}/src/bwamem.cpp" bwamem_source)
+mem3_seam(bwamem_source "                       int64_t &tot_smem,\n                       int tid)\n{\n"
+    "                       int64_t &tot_smem,\n                       int tid)\n{\n    {\n        SMEM *wgse_smems = nullptr;\n        if (wgse_mem3_seed_collect(fmi, opt, seq_, nseq, mmc, tot_smem, tid, wgse_smems))\n            return wgse_smems;\n    }\n")
+mem3_seam(bwamem_source "    kt_for(worker_bwt_aln, &w, n_); // SMEMs (+SAL) then BSW, fused\n"
+    "    wgse_mem3_seed_chunk(w.fmi, opt, seqs, n_);\n    kt_for(worker_bwt_aln, &w, n_); // SMEMs (+SAL) then BSW, fused\n    wgse_mem3_seed_chunk_done(seqs);\n")
+mem3_seam(bwamem_source "    uint64_t tim = __rdtsc();\n    kt_for(worker_bwt_aln, &w, n);\n"
+    "    uint64_t tim = __rdtsc();\n    wgse_mem3_seed_chunk(w.fmi, opt, seqs, n);\n    kt_for(worker_bwt_aln, &w, n);\n    wgse_mem3_seed_chunk_done(seqs);\n")
+mem3_seam(bwamem_source "#include \"smem_dedup.h\"\n" "#include \"smem_dedup.h\"\n#include \"metal_seeding.h\"\n")
+file(WRITE "${mem3_src}/bwamem.cpp" "${bwamem_source}")
 # While workers wait for the GPU, others use their cores: --metal runs more compute threads
 # (the reads per chunk, and so the output, do not depend on them).
 file(READ "${mem3_SOURCE_DIR}/src/fastmap.cpp" fastmap_source)
@@ -174,11 +204,17 @@ mem3_seam(fastmap_source "    int32_t nthreads = opt->n_threads; // global varia
 # The same low-memory warning as wgse-bwa-mem2, before the index is loaded.
 mem3_seam(fastmap_source "    aux.fmi = new FMI_search(ref_prefix);"
     "    wgse_mem3_memory_preflight(ref_prefix, fixed_chunk_size > 0 ? int64_t(fixed_chunk_size)\n        : int64_t(opt->chunk_size) * opt->n_threads);\n    aux.fmi = new FMI_search(ref_prefix);")
+# The GPU seeds each chunk that maps whole while the previous one maps.
+mem3_seam(fastmap_source "#include \"rescue_band.h\"\n" "#include \"rescue_band.h\"\n#include \"metal_seeding.h\"\n")
+mem3_seam(fastmap_source "        return ret;\n    } // Step 0\n"
+    "        if (ret->cohort_complete && !mid_cohort && !(aux->opt->flag & MEM_F_SMARTPE))\n            wgse_mem3_seed_preseed(aux->fmi, aux->opt, ret->seqs, ret->n_seqs);\n        return ret;\n    } // Step 0\n")
+mem3_seam(fastmap_source "        read_arena_destroy(ret->read_arena);\n        free(ret->seqs);\n"
+    "        wgse_mem3_seed_forget(ret->seqs);\n        read_arena_destroy(ret->read_arena);\n        free(ret->seqs);\n")
 file(WRITE "${mem3_src}/fastmap.cpp" "#include \"metal_extension.h\"\n${fastmap_source}")
-mem3_core(wgse_mem3_core "${mem3_src}" "${mem3_src}/main.cpp" metal_extension.mm)
+mem3_core(wgse_mem3_core "${mem3_src}" "${mem3_src}/main.cpp" metal_extension.mm metal_seeding.mm)
 target_include_directories(wgse_mem3_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
     PRIVATE "${generated}")
-set_source_files_properties(metal_extension.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+set_source_files_properties(metal_extension.mm metal_seeding.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 target_link_libraries(wgse_mem3_core PUBLIC wgse_metal_common)
 add_executable(wgse-bwa-mem3 main.mm)
 target_compile_definitions(wgse-bwa-mem3 PRIVATE WGSE_VERSION="${WGSE_BWA_MEM3_VERSION}"
@@ -215,11 +251,20 @@ if(BUILD_TESTING)
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
         $<TARGET_FILE:wgse-bwa-mem3> $<TARGET_FILE:bwa-mem3-upstream>
         "${CMAKE_CURRENT_BINARY_DIR}/low-memory" --physical-memory 1048576)
-    # The GPU's seed extensions, including those committed again after an interruption, and
-    # the CPU's after a GPU failure, must leave every record unchanged.
+    # The GPU's SMEMs and seed extensions, including those committed again after an
+    # interruption, and the CPU's after a GPU failure, must leave every record unchanged.
+    # --gpu-seed-wait has each chunk use its GPU SMEMs, which --gpu-verify-seeds compares
+    # with upstream's.
     add_test(NAME bwa_mem3_metal_parity COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
         $<TARGET_FILE:wgse-bwa-mem3> $<TARGET_FILE:bwa-mem3-upstream>
-        "${CMAKE_CURRENT_BINARY_DIR}/metal" --metal --gpu-inject-interruptions 2)
+        "${CMAKE_CURRENT_BINARY_DIR}/metal" --metal --gpu-seed-wait --gpu-inject-interruptions 2)
+    add_test(NAME bwa_mem3_metal_seed_verify COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
+        $<TARGET_FILE:wgse-bwa-mem3> $<TARGET_FILE:bwa-mem3-upstream>
+        "${CMAKE_CURRENT_BINARY_DIR}/metal-seed-verify" --metal --gpu-seed-wait --gpu-verify-seeds)
+    # Seed extension on the GPU without GPU seeding, as in 0.2.0.
+    add_test(NAME bwa_mem3_metal_cpu_seeding_parity COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
+        $<TARGET_FILE:wgse-bwa-mem3> $<TARGET_FILE:bwa-mem3-upstream>
+        "${CMAKE_CURRENT_BINARY_DIR}/metal-cpu-seeding" --metal --gpu-seed off)
     add_test(NAME bwa_mem3_metal_failure_parity
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
         $<TARGET_FILE:wgse-bwa-mem3> $<TARGET_FILE:bwa-mem3-upstream>
@@ -233,8 +278,15 @@ if(BUILD_TESTING)
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
         $<TARGET_FILE:wgse-bwa-mem3> $<TARGET_FILE:bwa-mem3-upstream>
         "${CMAKE_CURRENT_BINARY_DIR}/auto-watchdog" --backend auto --gpu-inject-hang extend)
-    set_tests_properties(bwa_mem3_metal_parity bwa_mem3_metal_failure_parity
-        bwa_mem3_metal_watchdog bwa_mem3_auto_watchdog PROPERTIES SKIP_RETURN_CODE 77)
+    # A hung GPU seeding command: the chunk waits for it, then the run goes on on the CPU.
+    add_test(NAME bwa_mem3_metal_seed_watchdog
+        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
+        $<TARGET_FILE:wgse-bwa-mem3> $<TARGET_FILE:bwa-mem3-upstream>
+        "${CMAKE_CURRENT_BINARY_DIR}/metal-seed-watchdog" --metal --gpu-seed-wait
+        --gpu-inject-hang collect_smems)
+    set_tests_properties(bwa_mem3_metal_parity bwa_mem3_metal_seed_verify
+        bwa_mem3_metal_cpu_seeding_parity bwa_mem3_metal_failure_parity bwa_mem3_metal_watchdog
+        bwa_mem3_auto_watchdog bwa_mem3_metal_seed_watchdog PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
 install(TARGETS wgse-bwa-mem3 RUNTIME DESTINATION bin)
