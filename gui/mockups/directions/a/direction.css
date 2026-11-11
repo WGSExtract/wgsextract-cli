@@ -1,0 +1,28 @@
+/* Direction A only: large task tiles and the "continue" strip. */
+.a-task {
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-5);
+  min-height: 190px;
+}
+
+.a-task__icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+  color: var(--tone);
+}
+
+.a-task__title {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+}
+
+.a-continue {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+}

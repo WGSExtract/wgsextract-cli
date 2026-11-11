@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Empty, loading and error states · Direction C · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="c-states" data-direction="C" data-shell="c" data-nav="states" data-title="Empty, loading and error states">
+<div class="page" data-annot-id="page">
+  <header class="page-header" data-annot-id="header">
+    <div class="page-header__text">
+      <h1>Empty, loading and error states</h1>
+      <p class="page-header__lead">How each screen behaves before there’s data, while it loads, and when something goes wrong. Every error says what happened, why it matters and what to do, with the fix one click away.</p>
+    </div>
+  </header>
+
+  <div class="grid" style="--grid-min: 340px">
+    <section class="card" data-annot-id="state-empty">
+      <h2 class="eyebrow">Empty library (first visit)</h2>
+      <div class="empty">
+        <span class="empty__art"><i data-icon="helix"></i></span>
+        <span class="empty__title">Add your first genome</span>
+        <p class="small">Drop a BAM, CRAM, FASTQ, VCF or a raw-data file from 23andMe, AncestryDNA and similar. No file yet? Try a small example.</p>
+        <div class="btn-group" style="justify-content: center"><a class="btn btn--primary" href="add-file.html"><i data-icon="plus"></i>Add files</a><button class="btn" type="button" data-toast="Downloading the example set (0.6 GB)">Try an example</button></div>
+      </div>
+    </section>
+
+    <section class="card" data-annot-id="state-loading">
+      <h2 class="eyebrow">Loading</h2>
+      <div class="stack">
+        <div class="row"><span class="skeleton" style="--w: 32px; --h: 32px"></span><div class="stack stack--xs grow"><span class="skeleton" style="--w: 60%"></span><span class="skeleton" style="--w: 40%; --h: 10px"></span></div></div>
+        <div class="row"><span class="skeleton" style="--w: 32px; --h: 32px"></span><div class="stack stack--xs grow"><span class="skeleton" style="--w: 70%"></span><span class="skeleton" style="--w: 35%; --h: 10px"></span></div></div>
+        <div class="row small muted"><span class="spinner" aria-hidden="true"></span>Reading the header of HG003.hs37d5.38x.bam…</div>
+        <div class="progress progress--indeterminate" role="progressbar" aria-label="Loading"><div class="progress__fill"></div></div>
+      </div>
+    </section>
+
+    <section class="card card--flush" data-annot-id="state-offline">
+      <div class="banner" role="status"><i data-icon="wifi"></i><span class="grow">Lost the connection to <strong>mac-studio</strong>. Reconnecting… Jobs keep running there.</span><span class="spinner" aria-hidden="true"></span></div>
+      <div class="card__body small muted">Shown on a paired phone when the computer sleeps or leaves the network. Last-known job progress stays visible, marked as stale.</div>
+    </section>
+
+    <section class="fixit fixit--danger" data-annot-id="state-path">
+      <span class="fixit__icon"><i data-icon="lock"></i></span>
+      <div class="fixit__title">WGS Extract isn’t allowed to open this folder</div>
+      <div class="fixit__body"><code>/Users/alex/Desktop/genome.cram</code> isn’t in a folder you’ve let WGS Extract use. (Server error <code>path_not_allowed</code>.)</div>
+      <div class="fixit__actions"><button class="btn btn--sm btn--primary" type="button" data-toast="Added ~/Desktop to allowed folders">Allow ~/Desktop</button><button class="btn btn--sm btn--ghost" type="button">Choose another file</button></div>
+    </section>
+
+    <section class="fixit fixit--danger" data-annot-id="state-disk">
+      <span class="fixit__icon"><i data-icon="hard-drive"></i></span>
+      <div class="fixit__title">Not enough space to realign</div>
+      <div class="fixit__body">Needs about 94 GB on Macintosh HD; 21 GB is free. Nothing was started.</div>
+      <div class="fixit__actions"><button class="btn btn--sm btn--primary" type="button">Save to /Volumes/Genomes (1.1 TB free)</button><button class="btn btn--sm btn--ghost" type="button">Why so much?</button></div>
+    </section>
+
+    <section class="fixit" data-annot-id="state-reference">
+      <span class="fixit__icon"><i data-icon="reference"></i></span>
+      <div class="fixit__title">This CRAM needs the hs38d1 reference</div>
+      <div class="fixit__body">A CRAM stores only differences from its reference, so it can’t be read without it. 0.9 GB download, about 4 minutes.</div>
+      <div class="fixit__actions"><button class="btn btn--sm btn--primary" type="button" data-toast="Installing hs38d1 — see Jobs">Install hs38d1</button><button class="btn btn--sm btn--ghost" type="button">I have it already</button></div>
+    </section>
+
+    <section class="card card--flush" data-annot-id="state-failed-job">
+      <div data-render="jobs" data-filter="failed" data-limit="1"></div>
+    </section>
+
+    <section class="fixit fixit--info" data-annot-id="state-runtime">
+      <span class="fixit__icon"><i data-icon="terminal"></i></span>
+      <div class="fixit__title">Finish setting up WGS Extract</div>
+      <div class="fixit__body">The analysis tools aren’t installed yet (about 1.2 GB). Until then you can browse, but not run anything.</div>
+      <div class="fixit__actions"><a class="btn btn--sm btn--primary" href="setup.html">Set up now</a></div>
+    </section>
+
+    <section class="card card--flush" data-annot-id="state-readonly">
+      <div class="banner" style="background: var(--c-info-soft); border-color: transparent"><i data-icon="eye"></i><span class="grow">View-only phone. Ask on the computer to allow starting jobs from this device.</span></div>
+      <div class="card__body small muted">Shown on a paired device without the “start jobs” permission; Start buttons are replaced by “Ask on computer”.</div>
+    </section>
+
+    <section class="card" data-annot-id="state-confirm">
+      <h2 class="eyebrow">Delete needs approval on the computer</h2>
+      <div class="callout callout--warn"><i data-icon="shield-check"></i><div><strong>Approve on mac-studio?</strong> Mac’s iPhone wants to remove ClinVar (160 MB). <div class="btn-group" style="margin-top: var(--sp-2)"><button class="btn btn--sm" type="button">Decline</button><button class="btn btn--sm btn--danger" type="button">Allow once</button></div></div></div>
+    </section>
+  </div>
+</div>
+</body>
+</html>

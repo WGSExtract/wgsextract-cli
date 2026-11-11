@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>My genomes · Direction C · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="c-home" data-direction="C" data-shell="c" data-nav="home" data-title="My genomes">
+<div class="page" data-annot-id="page">
+  <header class="page-header" data-annot-id="header">
+    <div class="page-header__text">
+      <h1>My genomes</h1>
+      <p class="page-header__lead">6 files, 289 GB, in your workspace and on <span class="mono">/Volumes/Genomes</span>. Open one to see what you can do with it.</p>
+    </div>
+    <div class="btn-group">
+      <a class="btn btn--primary" href="add-file.html"><i data-icon="plus"></i>Add files</a>
+      <button class="btn btn--ghost hide-phone" type="button" data-palette><i data-icon="command"></i>Find a tool</button>
+    </div>
+  </header>
+
+  <section class="fixit" data-annot-id="attention" aria-label="Needs attention">
+    <span class="fixit__icon"><i data-icon="wrench"></i></span>
+    <div class="fixit__title">Alex — Nebula 30x isn’t ready yet</div>
+    <div class="fixit__body">It has no index, and it was aligned to hs38d1, which isn’t in your reference library. Both are fixed for you: about 0.9 GB to download and 9 minutes on this Mac.</div>
+    <div class="fixit__actions">
+      <button class="btn btn--primary btn--sm" type="button" data-toast="Downloading hs38d1 and indexing the BAM — see Jobs">Fix both</button>
+      <a class="btn btn--sm btn--ghost" href="file.html?g=nebula">Details</a>
+    </div>
+  </section>
+
+  <div class="stats" data-annot-id="stats">
+    <div class="stat"><span class="stat__label">Genome files</span><span class="stat__value">6</span><span class="stat__delta">3 aligned · 1 VCF · 1 FASTQ pair · 1 kit</span></div>
+    <div class="stat"><span class="stat__label">Jobs</span><span class="stat__value">1 <small>running</small></span><span class="stat__delta">1 queued · realign 47%</span></div>
+    <div class="stat"><span class="stat__label">Results</span><span class="stat__value">4</span><span class="stat__delta">haplogroups, ancestry, DNA-test files</span></div>
+    <div class="stat"><span class="stat__label">Free disk</span><span class="stat__value">412 <small>GB</small></span><span class="stat__delta">Macintosh HD · workspace</span></div>
+  </div>
+
+  <section class="section" data-annot-id="library">
+    <div class="section__head">
+      <h2>Library</h2>
+      <div class="row row--wrap">
+        <div class="row row--wrap" data-seg="type" role="group" aria-label="Show file types">
+          <button class="chip" type="button" value="all" aria-pressed="true">All <span class="chip__count">6</span></button>
+          <button class="chip" type="button" value="aligned">BAM / CRAM <span class="chip__count">3</span></button>
+          <button class="chip" type="button" value="vcf">VCF <span class="chip__count">1</span></button>
+          <button class="chip" type="button" value="fastq">FASTQ <span class="chip__count">1</span></button>
+          <button class="chip" type="button" value="raw">Raw data <span class="chip__count">1</span></button>
+        </div>
+      </div>
+    </div>
+    <div data-render="library-table"></div>
+  </section>
+
+  <div class="split split--even">
+    <section class="section" data-annot-id="next-steps">
+      <div class="section__head"><h2>Suggested next</h2></div>
+      <div class="stack stack--sm">
+        <a class="action" href="microarray.html" data-annot-id="suggest-microarray">
+          <span class="action__icon"><i data-icon="chip"></i></span>
+          <span><span class="action__title">Make DNA-test files from HG002</span><br><span class="action__desc">Upload to GEDmatch or MyHeritage to find relatives · about 12 min</span></span>
+          <i data-icon="chevron-right"></i>
+        </a>
+        <a class="action" href="ancestry.html" data-annot-id="suggest-ancestry" style="--tone: var(--c-accent); --tone-soft: var(--c-accent-soft)">
+          <span class="action__icon"><i data-icon="haplotree"></i></span>
+          <span><span class="action__title">See HG002’s haplogroups and ancestry</span><br><span class="action__desc">J-ZS241 paternal · K1a1b1a maternal · new results</span></span>
+          <i data-icon="chevron-right"></i>
+        </a>
+        <a class="action" href="convert.html" data-annot-id="suggest-convert" style="--tone: var(--ft-cram); --tone-soft: color-mix(in srgb, var(--ft-cram) 14%, transparent)">
+          <span class="action__icon"><i data-icon="convert"></i></span>
+          <span><span class="action__title">Shrink HG003 to CRAM</span><br><span class="action__desc">92 GB BAM → about 34 GB CRAM, same reads · about 45 min</span></span>
+          <i data-icon="chevron-right"></i>
+        </a>
+      </div>
+    </section>
+    <section class="section" data-annot-id="home-jobs">
+      <div class="section__head"><h2>Jobs</h2><a class="small" href="jobs.html">All jobs</a></div>
+      <div data-render="jobs" data-filter="active" data-limit="2"></div>
+    </section>
+  </div>
+</div>
+</body>
+</html>
