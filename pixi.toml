@@ -115,6 +115,16 @@ samtools = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/downlo
 [feature.freebayes.target.unix.dependencies]
 freebayes = ">=1.3.10,<2"
 
+# Bioconda's bwa-mem3 writes bwa's or bwa-mem2's exact records (--compat)
+# several times faster (#672). Its builds need htslib 1.25, which conflicts with
+# the qualified samtools/bcftools 1.24, so it gets its own environment (#591);
+# the CLI runs it there automatically. 0.16 is the release checked for parity.
+[feature.bwa-mem3]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
+
+[feature.bwa-mem3.dependencies]
+bwa-mem3 = "0.16.*"
+
 # HLA typing with T1K (`typing hla`) and repeat expansions with ExpansionHunter
 # (`typing str`). T1K's package pins samtools 0.1 and ExpansionHunter's (on macOS)
 # htslib 1.22, so each gets its own environment; the CLI runs them there.
@@ -350,6 +360,7 @@ parquet = { features = ["bio-tools", "pysam", "parquet"], solve-group = "default
 mcp = { features = ["bio-tools", "pysam", "mcp"], solve-group = "default" }
 gatk = { features = ["gatk"], no-default-feature = true }
 freebayes = { features = ["freebayes"], no-default-feature = true }
+bwa-mem3 = { features = ["bwa-mem3"], no-default-feature = true }
 t1k = { features = ["t1k"], no-default-feature = true }
 expansionhunter = { features = ["expansionhunter"], no-default-feature = true }
 longtr = { features = ["longtr"], no-default-feature = true }

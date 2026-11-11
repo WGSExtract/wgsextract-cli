@@ -46,6 +46,9 @@ MINIMUM_VERSIONS = {
 # (@PG aside; native/README.md).
 BWA_MEM3_COMPAT = {"bwa": "bwa-mem", "bwa-mem2": "bwa-mem2"}
 BWA_MEM3_FAST = "--fast"
+# The oldest Bioconda bwa-mem3 that stands in on Linux (find_bwa_mem3): the
+# release whose --compat records were checked against bwa's and bwa-mem2's.
+BIOCONDA_BWA_MEM3_MINIMUM = (0, 16, 0)
 # From this release wgse-bwa-mem2 maps (CPU and --metal) without bwa-mem2's
 # 6.2 GB .0123 file (native/README.md, Memory).
 BWA_MEM2_WITHOUT_0123 = (0, 5, 0)
@@ -272,6 +275,55 @@ def _check(tool: str, binary: str, path: str) -> NativeAligner:
         version=str(version),
         engine_version=str(document.get("engine_version") or ""),
         metal_available=document.get("metal_available") is True,
+    )
+
+
+def find_bwa_mem3(setting: str | None, *, instead: str) -> NativeAligner | None:
+    """The bwa-mem3 that can stand in for upstream ``instead`` (bwa or
+    bwa-mem2) with ``--compat``, or None: wgse-bwa-mem3 on Apple Silicon
+    (find_native_aligner), and on Linux Bioconda's bwa-mem3 (its own Pixi
+    environment, #591), which has the same output modes (#672). Off with
+    native_aligners off, like the builds."""
+    if platform.system() != "Linux":
+        return find_native_aligner("bwa-mem3", setting, quiet=True, instead=instead)
+    if native_setting(setting) == "off":
+        return None
+    from wgsextract_cli.core.dependencies import get_tool_path
+    from wgsextract_cli.core.dependency_checks import get_tool_version
+
+    path = get_tool_path("bwa-mem3")
+    if path is None:
+        return None
+    version = get_tool_version("bwa-mem3")
+    parsed = _version_tuple(version)
+    if parsed is None or parsed < BIOCONDA_BWA_MEM3_MINIMUM:
+        if not any(
+            w.code == "native_aligner_unusable" and w.details.get("path") == path
+            for w in current_result().warnings
+        ):
+            minimum = ".".join(map(str, BIOCONDA_BWA_MEM3_MINIMUM))
+            problem = (
+                f"its version {version!r} isn't {minimum} or later"
+                if parsed
+                else f"`bwa-mem3 version` failed ({version or 'no output'})"
+            )
+            warn(
+                "native_aligner_unusable",
+                f"Not using bwa-mem3 ({path}): {problem}. Aligning with "
+                f"{instead} instead.",
+                binary="bwa-mem3",
+                path=path,
+                aligner=instead,
+            )
+        return None
+    return NativeAligner(
+        tool="bwa-mem3",
+        binary="bwa-mem3",
+        command="bwa-mem3",
+        path=path,
+        version=str(version),
+        engine_version=str(version),
+        metal_available=False,
     )
 
 

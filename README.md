@@ -268,7 +268,7 @@ exposed as an application configuration setting.
 | `methylation` | `pileup`: CpG 5mC (optionally 5hmC) bedMethyl and summary from Nanopore/PacBio MM/ML tags (modkit) |
 | `gatk`, `freebayes` | Used by `vcf gatk` / `vcf freebayes` from optional environments; [Windows GATK](docs/windows.md#gatk-on-native-windows) is prepared at setup, not during calling |
 | `vep` | `run`, `download`, `verify` (Ensembl Variant Effect Predictor) |
-| `align` | Align FASTQ reads with bwa, bwa-mem2, minimap2, or pbmm2, or on an NVIDIA GPU with `--gpu` |
+| `align` | Align FASTQ reads with bwa, bwa-mem2, bwa-mem3, minimap2, or pbmm2, or on an NVIDIA GPU with `--gpu`. On Linux, `pixi install -e bwa-mem3` lets bwa-mem3 write bwa's or bwa-mem2's exact records several times faster ([details](docs/hardware.md#bwa-mem3-on-linux)) |
 | `realign` | Re-align an existing BAM/CRAM to another reference, streaming paired reads into BWA or reusing FASTQs |
 | `basecall` | Nanopore POD5 to an unaligned BAM with ONT's Dorado (optional, installed separately), with `MM`/`ML` modification tags for `align`; [docs](docs/ont.md#basecalling) |
 | `panel` | `bed`: genes and presets (pharmacogenes, HLA, autoimmune, ACMG SF, cardiac) to a padded, merged BED for Nanopore adaptive sampling ([docs](docs/ont.md#adaptive-sampling-targets)) |
