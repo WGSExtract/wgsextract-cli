@@ -768,7 +768,8 @@ def bwa_mem3_stand_in(
     that would run instead (wgse-bwa-mem2 0.5.0 and later without the .0123
     file), or fits this Mac's RAM less headroom (as wgse-bwa's GPU backend must);
     an explicit --aligner bwa-mem2 then still stops when it doesn't fit the
-    RAM available (_bwa_setup's check_mapping_memory)."""
+    RAM available (_bwa_setup's check_mapping_memory). When auto chose
+    bwa-mem2 it must fit the RAM available, as auto's choice did."""
     native = bwa_mem3_build(job, tool, ref)
     if native is None:
         return None
@@ -798,6 +799,10 @@ def bwa_mem3_stand_in(
     if tool == "bwa":
         limit = min(budget, available_memory())
         room = f"the {limit / 1024**3:.1f} GiB of RAM available"
+    elif requested_aligner(job) == "auto":
+        # Auto chose bwa-mem2 because it fits the RAM available now.
+        limit = available_memory()
+        room = f"the {limit / 1024**3:.1f} GiB of RAM available"
     else:
         limit = max(budget, needed(bwa_mem2_memory_model(job.native_aligners)))
         room = f"the {budget / 1024**3:.1f} GiB of RAM it can use"
@@ -815,7 +820,7 @@ def bwa_mem2_memory_model(native_aligners: str | None) -> str:
     """The memory model of bwa-mem2 for a run with this native_aligners
     setting: its Apple Silicon build's when that maps without the .0123 file
     (AlignerCommand.memory_model)."""
-    native = find_native_aligner("bwa-mem2", native_aligners, quiet=True)
+    native = find_native_aligner("bwa-mem2", native_aligners, probe=True)
     return AlignerCommand("bwa-mem2", native).memory_model
 
 

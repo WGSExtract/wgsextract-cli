@@ -1331,7 +1331,7 @@ def _report_resource_estimates(
                 read_length=read_length,
                 additional_ram_bytes=additional_ram_bytes,
             )
-            tool = aligner.engine
+            tool = aligner.memory_model
             gpu_bytes = align_cmd.aligner_gpu_bytes(aligner, resolved, reads)
         return estimate_resources(
             "realign",

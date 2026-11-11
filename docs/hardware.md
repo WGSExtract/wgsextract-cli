@@ -71,7 +71,9 @@ uses its estimate, which leaves out the `.0123` file it doesn't load (about
 6 GiB less for hs38; see [Apple Silicon](#apple-silicon-metal)), and the
 reference needs no `.0123` file. On a 16 GB Mac a 30x genome still doesn't fit,
 so auto keeps bwa there (`wgse-bwa`). `wgse-bwa-mem3` alone doesn't make auto
-pick bwa-mem2: it already stands in for bwa with bwa's records.
+pick bwa-mem2: it already stands in for bwa with bwa's records. When auto
+picks bwa-mem2, `wgse-bwa-mem3` stands in for it only when its own estimate
+also fits the RAM available; otherwise `wgse-bwa-mem2` aligns.
 
 Records: because bwa and bwa-mem2 write different records, a change in
 auto's choice changes the BAM, not just its `@PG` header and the result
