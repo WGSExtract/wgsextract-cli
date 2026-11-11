@@ -8,6 +8,7 @@ import { conditionMatches, displayCommand, hydrateRows, isActionVisible, isSecti
 import { readsLastResultDocument } from "../dist/shared/last-result-documents.js";
 import { currentSetupPlatform } from "../dist/shared/setup-platforms.js";
 import { loadLocalizedBundle } from "../dist/web/src/server/bundle-loader.js";
+import { exampleBundleCopy } from "./example-bundle.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const conformanceBundleRoot = path.join(repoRoot, "tests/conformance/basic-bundle");
@@ -60,8 +61,9 @@ test("WGSExtract release conformance rejects unsupported features without blocki
   assert.doesNotThrow(() => assertWgsExtractReleaseCompatible("v0.7.0", pages));
 });
 
-test("WGSExtract v0.8.6 controls start unset and platform-limited sections hide on Windows", async () => {
-  const bundle = await loadLocalizedBundle("en", repoRoot, wgsExtractBundleRoot, wgsExtractBundleRoot);
+test("WGSExtract v0.8.6 controls start unset and platform-limited sections hide on Windows", async (t) => {
+  const copy = await exampleBundleCopy(t);
+  const bundle = await loadLocalizedBundle("en", repoRoot, copy, copy);
   const pages = bundle.manifest.pages;
   const sections = pages.flatMap((page) => page.sections ?? []);
   const controls = sections.flatMap((section) => section.controls ?? []);
@@ -98,8 +100,9 @@ test("WGSExtract v0.8.6 controls start unset and platform-limited sections hide 
   assert.equal(conditionMatches({ placeholder: "hostPlatform", equals: currentSetupPlatform() }, context), true);
 });
 
-test("PR #530 review and #528: WGSExtract's bug report preview and GitHub report target the app's last run, never themselves", async () => {
-  const bundle = await loadLocalizedBundle("en", repoRoot, wgsExtractBundleRoot, wgsExtractBundleRoot);
+test("PR #530 review and #528: WGSExtract's bug report preview and GitHub report target the app's last run, never themselves", async (t) => {
+  const copy = await exampleBundleCopy(t);
+  const bundle = await loadLocalizedBundle("en", repoRoot, copy, copy);
   const section = bundle.manifest.pages.flatMap((page) => page.sections ?? []).find((candidate) => candidate.id === "report-issue");
   const paths = { last: "/w/.last-results/last.json", lastFailed: "/w/.last-results/last-failed.json" };
   const shown = (lastFailedChecked, lastResultDocumentPaths) => {
@@ -198,8 +201,9 @@ test("conformance bundle applies requested localization overlays in TypeScript",
   assert.equal(bundle.manifest.summary, "Ejercita semánticas comunes de ejecución de paquetes.");
 });
 
-test("WGSExtract exposes dataset and reference genome library controls in TypeScript", async () => {
-  const bundle = await loadLocalizedBundle("en", repoRoot, wgsExtractBundleRoot, wgsExtractBundleRoot);
+test("WGSExtract exposes dataset and reference genome library controls in TypeScript", async (t) => {
+  const copy = await exampleBundleCopy(t);
+  const bundle = await loadLocalizedBundle("en", repoRoot, copy, copy);
   const library = bundle.manifest.pages.find((page) => page.id === "library");
   const settingsPage = bundle.manifest.pages.find((page) => page.id === "settings");
 
