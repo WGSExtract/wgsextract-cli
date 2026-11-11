@@ -142,3 +142,25 @@ def get_genome_status(final_name: str, reflib_dir: str) -> str:
     if Path(partial_path).exists():
         return "incomplete"
     return "missing"
+
+
+def catalog_genome_for(header: str, signature: str) -> dict[str, Any] | None:
+    """The catalog genome an alignment was made against: the one whose
+    sequence-dictionary signature matches, else the FASTA its header names."""
+    from wgsextract_cli.core.reference_models import identify_reference
+
+    genomes = get_available_genomes()
+    genome = next((g for g in genomes if g["md5"] == signature), None)
+    if genome:
+        return genome
+    model = identify_reference(header, signature)
+    if not model or not model.fasta:
+        return None
+    return next(
+        (
+            g
+            for g in genomes
+            if g["final"] == model.fasta or g["url"].rsplit("/", 1)[-1] == model.fasta
+        ),
+        None,
+    )

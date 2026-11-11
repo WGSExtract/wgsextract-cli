@@ -118,6 +118,15 @@
 "app.result.usage.title" = "Vérifiez les options sélectionnées"  # i18n-source-hash:fe89b952
 "app.result.missingDependency.title" = "Un outil requis n’est pas installé"  # i18n-source-hash:1f5dd223
 "app.result.openSetup.title" = "Ouvrir la configuration"  # i18n-source-hash:0ddb2086
+"app.prerequisites.title" = "Des données requises sont manquantes"  # i18n-source-hash:a96c1dde
+"app.prerequisites.message" = "Cette commande a besoin de données qui ne sont pas encore installées :"  # i18n-source-hash:5c2ec892
+"app.prerequisites.stillMissing" = "Elles ne sont toujours pas installées. Installez-les, ou téléchargez-les vous-même et cliquez de nouveau sur Continuer."  # i18n-source-hash:620e1770
+"app.prerequisites.manualNote" = "Pour les télécharger vous-même, installez-les depuis les pages de bibliothèque, puis cliquez sur Continuer."  # i18n-source-hash:44b5da7f
+"app.prerequisites.install" = "Installer et continuer"  # i18n-source-hash:153ec292
+"app.prerequisites.continue" = "Continuer"  # i18n-source-hash:2e026239
+"app.prerequisites.cancel" = "Annuler"  # i18n-source-hash:77dfd213
+"app.prerequisites.checking" = "Vérification des données requises…"  # i18n-source-hash:7717482c
+"app.prerequisites.installTitleFormat" = "Installer %{name}"  # i18n-source-hash:f218798b
 "exitCodes.default.1.title" = "Échec général de la commande"  # i18n-source-hash:87ab6134
 "exitCodes.default.1.summary" = "La commande a signalé un échec générique. Consultez la sortie ci-dessus pour l’erreur WGS Extract ou outil spécifique."  # i18n-source-hash:ebe2ed7e
 "exitCodes.default.2.title" = "Erreur d’utilisation de la ligne de commande"  # i18n-source-hash:4beae94c

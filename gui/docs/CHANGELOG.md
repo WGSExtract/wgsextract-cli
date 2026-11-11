@@ -6,6 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- Bundles can declare a `prerequisites` check that runs before an action. When the action needs data that isn't installed, it doesn't start; a dialog names what is missing and offers **Install and Continue**, **Continue** (after installing it yourself; the app checks again) or **Cancel** ([docs/prerequisites.md](prerequisites.md)). WGSExtract checks with `wgsextract ref needs`, so running Info, variant calling, extraction and the rest on a CRAM whose reference genome (for example hs37d5) isn't installed offers to install it first, as the old WGS Extract did. The VCF annotation commands do the same for their annotation data.
 - Options can give `groupTooltip` and `categoryTooltip`, shown beside their group's heading or row title and their category's heading. WGSExtract's Microarray formats use them for Consumer Tests, Reich Lab and AADR; the AADR file-format note moves from the section description to Reich Lab.
 - A Basic / Advanced mode switch in the sidebar, saved with the app's state. Pages, sections, controls, options, actions, columns and library rows can be marked `advancedOnly`; Basic runs commands with hidden settings at their defaults. Sections can be `subsection`s, dropdowns take `emptyText`, and checkbox groups can lay options out in vendor rows (`layout: "rows"`).
 - A settings file (`configFile`) can list `previousPaths`. On load the app moves the file from the first that exists to its declared path, removes the old folder if that leaves it empty, and treats a saved choice of an old path as the declared one.
@@ -17,6 +18,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - WGSExtract pages reorganised around Inputs sections; Align, Realign and Variant Calling move to Extract and VCF annotation to the VCF page.
 - Languages trimmed to English, French, German and Brazilian Portuguese (`pt-BR`); other Portuguese locales fall back to it.
 - Bump the bundled WGSExtract CLI installer target to `v0.8.6` ([release notes](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.6)).
+
+### Fixed
+- Linux AppImage: setup, actions and uninstall no longer run with the AppImage's library and tool paths (`LD_LIBRARY_PATH`, `PATH`, `PYTHONHOME` and the like). The system's programs loaded the image's older libraries instead of their own, so setup failed on newer systems such as Ubuntu 26.04 (`libcrypto.so.3: version 'OPENSSL_3.3.0' not found`).
 
 ## [0.8.5] - 2026-11-07
 

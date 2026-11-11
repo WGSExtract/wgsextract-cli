@@ -263,11 +263,11 @@ exposed as an application configuration setting.
 | `microarray` | Simulate 23andMe, AncestryDNA, FTDNA, Living DNA, MyHeritage, and combined (`all`) raw-data files |
 | `microarray --formats aadr_1240k,aadr_ho,aadr_1240k+ho` | Export pinned AADR research panels as PLINK and EIGENSTRAT ([conventions and validation](docs/aadr.md)) |
 | `lineage` | `y-haplogroup` (Yleaf), `y-str` (genealogy Y-STR panels), `mt-haplogroup` (Haplogrep 3, optional haplocheck contamination check) |
-| `vcf` | Calling: `snp`, `indel`, `freebayes`, `gatk`, `deepvariant`, `clair3`, `sv`, `cnv`. Annotation: `annotate`, `chain-annotate`, `clinvar`, `gnomad`, `revel`, `phylop`, `cadd`, `gerp`, `spliceai`, `alphamissense`, `pharmgkb`, `pharmcat`. Other: `table` (one row per variant as TSV or Parquet + SQLite, [docs](docs/variant-table.md)), `filter`, `trio`, `to-fasta` (personal consensus genome), `phase` (read-backed phasing, [docs](docs/ont.md#phasing)) |
+| `vcf` | Calling: `snp`, `indel`, `freebayes`, `gatk`, `deepvariant`, `clair3`, `sv`, `cnv`. Annotation: `annotate`, `chain-annotate`, `clinvar`, `gnomad`, `sv-freq` (SV population frequencies, [docs](docs/sv-frequency.md)), `revel`, `phylop`, `cadd`, `gerp`, `spliceai`, `alphamissense`, `pharmgkb`, `pharmcat`. Other: `table` (one row per variant as TSV or Parquet + SQLite, [docs](docs/variant-table.md)), `filter`, `trio`, `to-fasta` (personal consensus genome), `phase` (read-backed phasing, [docs](docs/ont.md#phasing)) |
 | `typing` | From a WGS BAM/CRAM: `cyp2d6` (Cyrius), `smn` (SMNCopyNumberCaller, SMA carrier status), `hla` (T1K), `str` (ExpansionHunter repeat expansions) |
 | `methylation` | `pileup`: CpG 5mC (optionally 5hmC) bedMethyl and summary from Nanopore/PacBio MM/ML tags (modkit) |
 | `gatk`, `freebayes` | Used by `vcf gatk` / `vcf freebayes` from optional environments; [Windows GATK](docs/windows.md#gatk-on-native-windows) is prepared at setup, not during calling |
-| `vep` | `run`, `download`, `verify` (Ensembl Variant Effect Predictor) |
+| `vep` | `run`, `download`, `verify`, `delete` (Variant Effect Predictor: vep-rs by default, or Ensembl VEP with `--engine ensembl`, [docs](docs/vep-engines.md)) |
 | `align` | Align FASTQ reads with bwa, bwa-mem2, bwa-mem3, minimap2, or pbmm2, or on an NVIDIA GPU with `--gpu`. On Linux, `pixi install -e bwa-mem3` lets bwa-mem3 write bwa's or bwa-mem2's exact records several times faster ([details](docs/hardware.md#bwa-mem3-on-linux)) |
 | `realign` | Re-align an existing BAM/CRAM to another reference, streaming paired reads into BWA or reusing FASTQs |
 | `basecall` | Nanopore POD5 to an unaligned BAM with ONT's Dorado (optional, installed separately), with `MM`/`ML` modification tags for `align`; [docs](docs/ont.md#basecalling) |
@@ -276,7 +276,7 @@ exposed as an application configuration setting.
 | `qc` | `fastp`, `fastqc`, `multiqc` (FastQC, bcftools stats and our metrics in one report), `multiqc-metrics` (MultiQC custom content from manifests; [pipeline interop](docs/interop.md)), `vcf` (stats), `relate` (sex, relatedness and continental ancestry with somalier; Linux and macOS, `pixi install -e somalier`; [docs](docs/relate.md)), `contamination` (DNA from another person, VerifyBamID2; [docs](docs/contamination.md)), `fake-data` (synthetic BAM/CRAM/VCF/FASTQ) |
 | `repair` | `ftdna-bam`, `ftdna-vcf` |
 | `analyze` | `comprehensive` (QC, lineage, calling, annotation in one run), `batch-gen` |
-| `ref` | Library: `bootstrap`, `library` (`--list` to list), `status`, `download`, `index`, `verify`, `count-ns`, `gene-map`. Annotation data: `clinvar`, `gnomad`, `revel`, `phylop`, `cadd`, `gerp`, `spliceai`, `alphamissense`, `pharmgkb`, `ybrowse` (GRCh38 only), `somalier` (sites and 1000 Genomes sketches for `qc relate`) |
+| `ref` | Library: `bootstrap`, `library` (`--list` to list), `status`, `download`, `index`, `verify`, `count-ns`, `gene-map`. Annotation data: `clinvar`, `gnomad`, `revel`, `phylop`, `cadd`, `gerp`, `spliceai`, `alphamissense`, `pharmgkb`, `ybrowse` (GRCh38 only), `somalier` (sites and 1000 Genomes sketches for `qc relate`), `gnomad-sv` (gnomAD-SV and gnomAD-LR SV tables for `vcf sv-freq`) |
 | `sign` | `create` (SHA256SUMS manifest, optionally signed with an OpenSSH key), `verify` |
 | `example-genome` | `list`, `download` curated 1000 Genomes / HGSVC2 datasets |
 | `deps` | `check` |
@@ -467,7 +467,8 @@ Some tools live in their own Pixi environment. Install optional environments exp
 | :--- | :--- |
 | `default` | All standard commands |
 | `pacbio` | `pbmm2`, `pbsv`, `sniffles`: `pixi run -e pacbio wgsextract vcf sv --pacbio` |
-| `vep` | `pixi run -e vep wgsextract vep run` (not native Windows) |
+| `vep-rs` | `vep run` and `vep download`, with vep-rs (the default engine; all platforms, [docs](docs/vep-engines.md)) |
+| `vep` | `vep run --engine ensembl` (Ensembl VEP; not native Windows) |
 | `cyrius`, `smn`, `t1k`, `expansionhunter`, `longtr`, `strkit` | `typing cyp2d6`, `typing smn`, `typing hla`, `typing str` (Linux and macOS) |
 | `pharmcat` | PharmCAT's Python, Java and bcftools runtime for `vcf pharmcat` |
 | `modkit` | `methylation pileup` (Linux and macOS) |
@@ -557,7 +558,7 @@ y_tree = "yfull"                       # or yfull_v10, ftdna, isogg, a [y_trees]
 vep_cache = "~/.vep"
 ```
 
-The short keys above are aliases; `wgsextract config` shows the canonical names (`input_path`, `output_directory`, `reference_fasta`, `reference_library`, `cpu_threads`, `memory_limit`, and so on). Either form works. Command-line options override config values for a single run. Other settings cover annotation data paths (`clinvar_vcf_path`, `gnomad_vcf_path`, `revel_tsv_path`, ...), default trio VCFs (`mother_vcf`, `father_vcf`), and the developer settings listed under [Development](#development).
+The short keys above are aliases; `wgsextract config` shows the canonical names (`input_path`, `output_directory`, `reference_fasta`, `reference_library`, `cpu_threads`, `memory_limit`, and so on). Either form works. Command-line options override config values for a single run. Other settings cover annotation data paths (`clinvar_vcf_path`, `gnomad_vcf_path`, `gnomad_sv_path`, `gnomad_lr_sv_path`, `revel_tsv_path`, ...), default trio VCFs (`mother_vcf`, `father_vcf`), and the developer settings listed under [Development](#development).
 
 A `--ref` FASTA chooses the genome sequence. If it sits in a library's reference genomes folder (`reference_genome_library` for the configured library, else its `genomes/` folder), that library supplies the other files. Only reference genomes and the files made from them are written to that folder; datasets go in `dataset_library`. Otherwise the files in the FASTA's folder are used first, then the configured `reference_library`'s. Those files include liftover chains, ploidy files, chip templates and annotation data. An error about a missing library file names the folders searched.
 

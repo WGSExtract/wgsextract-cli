@@ -51,12 +51,8 @@ for ($index = 0; $index -lt $args.Count; $index += 1) {
     }
 }
 
-if ($args.Count -gt 0 -and [string]$args[0] -eq "microarray") {
-    if (-not $microarrayRefPath) {
-        [Console]::Error.WriteLine("Reference genome is required before generating microarray kits.")
-        [Console]::Error.WriteLine("Install/download the reference library from the Library page or rerun setup, then choose an existing reference FASTA.")
-        exit 2
-    }
+# Without --ref, microarray uses the library genome matching the input.
+if ($args.Count -gt 0 -and [string]$args[0] -eq "microarray" -and $microarrayRefPath) {
     if (Test-Path -LiteralPath $microarrayRefPath -PathType Container) {
         [Console]::Error.WriteLine("Reference genome must be a FASTA file, not the reference library directory: $microarrayRefPath")
         [Console]::Error.WriteLine("Choose an installed reference FASTA from the Reference genome dropdown on the Microarray page.")

@@ -25,6 +25,8 @@ Operation = Literal[
     "indel",
     "gatk",
     "deepvariant",
+    "vep-download",
+    "vep",
 ]
 GIB = 1024**3
 GATK_WORKER_BYTES = 6 * GIB
@@ -859,3 +861,53 @@ def report_resources(estimate: PreflightEstimate) -> None:
         )
     for note in estimate.notes:
         logging.info("Preflight: %s", note)
+
+
+# vep-rs's GRCh38 cache, built by `vep download --engine vep-rs` (#602, measured
+# on Ensembl release 116): Ensembl's files, the unpacked genome FASTA the
+# builder reads, the cache itself, and vep-cache-builder's peak memory.
+VEP_RS_DOWNLOAD_BYTES = {False: int(1.6 * GIB), True: int(17.5 * GIB)}
+VEP_RS_GENOME_BYTES = int(3.0 * GIB)
+VEP_RS_CACHE_BYTES = {False: int(5.7 * GIB), True: 17 * GIB}
+# vep-cache-builder peaked at 8.5 GB RSS without variations, 11 GB with.
+VEP_RS_BUILD_MEMORY = 12 * GIB
+# Peak memory of `vep run` on a whole genome: vep-rs on its built cache (6
+# threads, HG002), Ensembl VEP (6 forks).
+VEP_RUN_MEMORY = {"vep-rs": 8 * GIB, "ensembl": int(1.5 * GIB)}
+
+
+def estimate_vep_download(cache_dir: str, variations: bool) -> PreflightEstimate:
+    """Disk and memory a vep-rs cache build needs: the downloads and the
+    unpacked genome stay until the cache beside them is complete."""
+    _, free = _disk_space(cache_dir)
+    components = {
+        "downloads": VEP_RS_DOWNLOAD_BYTES[variations],
+        "genome": VEP_RS_GENOME_BYTES,
+        "cache": VEP_RS_CACHE_BYTES[variations],
+    }
+    return PreflightEstimate(
+        "vep-download",
+        (
+            ResourceEstimate(
+                "disk", sum(components.values()), free, components, (cache_dir,)
+            ),
+            ResourceEstimate("memory", VEP_RS_BUILD_MEMORY, _available_memory(), {}),
+        ),
+        (),
+    )
+
+
+def estimate_vep_run(engine: str) -> PreflightEstimate:
+    """Memory `vep run` needs for a whole genome with ``engine``."""
+    return PreflightEstimate(
+        "vep",
+        (ResourceEstimate("memory", VEP_RUN_MEMORY[engine], _available_memory(), {}),),
+        (),
+    )
+
+
+def _available_memory() -> int | None:
+    try:
+        return alignment_memory.available_memory()
+    except (OSError, ValueError):
+        return None

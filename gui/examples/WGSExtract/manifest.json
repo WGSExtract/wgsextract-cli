@@ -123,6 +123,30 @@
       ]
     }
   },
+  // Before an action runs, `wgsextract ref needs` names the reference genome or annotation data its command line needs
+  // that isn't installed; the app then offers to install it (`wgsextract ref library --install <code>` and the like).
+  "prerequisites": {
+    "command": {
+      "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+      "arguments": [
+        "ref",
+        "needs",
+        "--report-json",
+        "--"
+      ]
+    },
+    "executables": {
+      "{{bundleRoot}}/scripts/run-wgsextract.sh": [],
+      // Runs `wgsextract vcf snp|indel ...`.
+      "{{bundleRoot}}/scripts/run-wgsextract-vcf.sh": [
+        "vcf"
+      ]
+    },
+    "kindLabels": {
+      "genome": "prerequisites.kinds.genome",
+      "annotation": "prerequisites.kinds.annotation"
+    }
+  },
   "pages": [
     "fastq.json",
     "info-bam.json",

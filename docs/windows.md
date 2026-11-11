@@ -52,8 +52,15 @@ below.
 haplocheck 1.3.3 can't load its HTML report template on Windows, so
 `lineage mt-haplogroup --contamination` writes only its text reports there
 and warns `haplocheck_no_html`.
-`deps check` lists what isn't available on Windows (for example VEP,
+`deps check` lists what isn't available on Windows (for example Ensembl VEP,
 DeepVariant, Delly and FreeBayes).
+
+Variant effect prediction runs on Windows with vep-rs, the default VEP
+engine everywhere: install its environment
+(`pixi install --locked -e vep-rs`), build its cache with
+`wgsextract vep download`, and annotate with `wgsextract vep run`. Ensembl
+VEP (`--engine ensembl`) isn't available on Windows. See
+[VEP engines](vep-engines.md).
 
 Local paths passed to Java tools use native Windows separators, including
 references, inputs, outputs, interval files and temporary directories. You can
@@ -62,8 +69,10 @@ launching Java so GATK does not mistake `R:` for a URI provider. Explicit URIs
 are preserved.
 
 Commands needing pyBigWig (bigWig-backed `vcf phylop`, `vcf gerp` and their
-reference downloads), VEP, DeepVariant, Delly, FreeBayes, Cyrius, SMNCopyNumberCaller,
-T1K, ExpansionHunter, VerifyBamID2 (`qc contamination`), somalier (`qc relate`) or PacBio tools are not supported on Windows. They fail
+reference downloads), Ensembl VEP (`--engine ensembl`; the default vep-rs works), DeepVariant, Delly,
+FreeBayes, Cyrius, SMNCopyNumberCaller, T1K, ExpansionHunter, VerifyBamID2
+(`qc contamination`), somalier (`qc relate`) or PacBio tools are not supported
+on Windows. They fail
 before processing inputs or creating output folders, naming the unavailable
 tool. PhyloP TSV/VCF resources remain supported. Parabricks `--gpu` modes
 require Linux with an NVIDIA GPU.

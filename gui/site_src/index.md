@@ -4,7 +4,7 @@ title: 'WGSExtract v6 Alpha'
 description: 'Download WGSExtract v6 Alpha v0.8.6 for Windows, macOS, and Linux, bundling WGSExtract CLI v0.8.6.'
 eyebrow: 'Simple desktop downloads'
 heading: 'WGSExtract v6 Alpha'
-lede: 'A preview desktop app for working with whole-genome sequencing files. Pick your platform and install the latest alpha build.'
+lede: 'A desktop app for the back-end CLI for working with whole-genome sequencing files. Pick your platform and install the latest alpha build.'
 footer_title: 'WGSExtract v6 Alpha'
 footer_text: 'Simple alpha downloads for the WGSExtract desktop app.'
 auto_hero: false
@@ -15,9 +15,9 @@ auto_hero: false
   <div class="wrap">
     <p class="eyebrow"><span class="pulse" aria-hidden="true"></span> Simple desktop downloads</p>
     <h1>WGSExtract v6 Alpha</h1>
-    <p class="lede">A preview desktop app for working with whole-genome sequencing files. Pick your platform and install the latest alpha build.</p>
+    <p class="lede">A desktop app for the back-end CLI for working with whole-genome sequencing files. Pick your platform and install the latest alpha build.</p>
     <figure class="hero-screenshot">
-      <img src="assets/gui-screenshot.webp" alt="Earlier WGSExtract alpha desktop app showing the FASTQ workflow in GUI for CLI." width="2648" height="2122" fetchpriority="high" />
+      <img src="assets/gui-screenshot.webp" alt="Earlier WGSExtract alpha desktop app showing the FASTQ workflow in WGS Extract GUI." width="2648" height="2122" fetchpriority="high" />
       <figcaption class="release-note">Earlier alpha interface shown; the current release includes the workflows described below.</figcaption>
     </figure>
     <div class="download-grid" aria-label="Primary downloads">
@@ -119,10 +119,12 @@ This site and the [WGSExtract CLI website](https://wgsextract.github.io/wgsextra
 ::: wrap
 ## More information
 
-The download page stays intentionally small. The GUI for CLI project background, architecture notes, and documentation map live on the other pages.
+The download page stays intentionally small. The WGS Extract GUI project background, architecture notes, and documentation map live on the other pages.
 
-{{ button: WGSExtract story|wgsextract.html|primary }}
-{{ button: Architecture|architecture.html }}
+{{ button: WGS Extract GUI story|wgsextract.html|primary }}
+{{ button: GUI Architecture|architecture.html }}
 {{ button: Documentation|docs.html }}
+{{ button: WGSExtract CLI|https://wgsextract.github.io/wgsextract-cli/ }}
+{{ button: What's Different|whats-different.html }}
 :::
 :::

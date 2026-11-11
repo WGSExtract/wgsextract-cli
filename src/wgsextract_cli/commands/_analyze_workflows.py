@@ -448,7 +448,7 @@ def run_vcf_workflow(
         anns = "clinvar,gnomad"
 
     # Imported here: vcf.chain -> _vep_run imports detect_vcf_type from this module.
-    from wgsextract_cli.commands.vcf.chain import dataset, skip_reason
+    from wgsextract_cli.commands.vcf.chain import dataset, skip_reason, vep_step_engine
 
     lib = ReferenceLibrary(job.ref, None, input_path=vcf_path)
     available = [a for a in anns.split(",") if not skip_reason(a, lib)]
@@ -494,7 +494,10 @@ def run_vcf_workflow(
         f"annotate:{tag}",
         inputs=inputs,
         params={**_step_params(job, command), "caches": caches},
-        tools=["bcftools", *(["vep"] if "vep" in available else [])],
+        tools=[
+            "bcftools",
+            *([vep_step_engine(lib).tool] if "vep" in available else []),
+        ],
     )
     annotated, _ = run_step(
         journal, annotate_step, annotate, after=after, clean=[work_dir]

@@ -9,6 +9,7 @@ from wgsextract_cli.api.ref import (
     RefCountNsParams,
     RefDownloadParams,
     RefGeneMapParams,
+    RefGnomadSvParams,
     RefIndexParams,
     RefLibraryParams,
     RefMicroarrayTargetsParams,
@@ -31,11 +32,13 @@ from .library_commands import (
     cmd_aadr,
     cmd_bootstrap,
     cmd_gene_map,
+    cmd_gnomad_sv,
     cmd_library,
     cmd_microarray_targets,
     cmd_somalier,
     cmd_ybrowse,
 )
+from .needs import cmd_ref_needs
 from .status import cmd_ref_status
 
 Handler = Callable[[argparse.Namespace], None]
@@ -78,7 +81,7 @@ def register(
         name: str, cls: type[Params] | None, func: Handler, help: str
     ) -> argparse.ArgumentParser:
         sub = ref_subs.add_parser(name, parents=[base_parser], help=help)
-        if name in ("aadr", "ybrowse", "somalier"):
+        if name in ("aadr", "ybrowse", "somalier", "gnomad-sv"):
             # The CLI asks for these downloads explicitly; the API call is the ask.
             sub.add_argument("--install", action="store_true", help="Install it.")
             func = _install_or_delete(func)
@@ -106,6 +109,12 @@ def register(
         "Explicitly fetch somalier's hash-pinned sites and 1000 Genomes "
         "sketches for qc relate.",
     )
+    add(
+        "gnomad-sv",
+        RefGnomadSvParams,
+        cmd_gnomad_sv,
+        "Explicitly fetch hash-pinned gnomAD SV tables for vcf sv-freq.",
+    )
     add("download", RefDownloadParams, cmd_download, CLI_HELP["cmd_ref-download"])
     add("index", RefIndexParams, cmd_index, CLI_HELP["cmd_ref-index"])
     add("count-ns", RefCountNsParams, cmd_count_ns, CLI_HELP["cmd_ref-count-ns"])
@@ -126,6 +135,24 @@ def register(
         "--values",
         action="store_true",
         help="Emit a compact values JSON object for GUI data-source consumers.",
+    )
+    needs = add(
+        "needs",
+        None,
+        cmd_ref_needs,
+        "Report the reference genome or annotation data a command line needs "
+        "that isn't installed, and how to install it.",
+    )
+    needs.add_argument(
+        "--report-json",
+        action="store_true",
+        help='Print only {"missing": [...]} as JSON, for the desktop app.',
+    )
+    needs.add_argument(
+        "command_line",
+        nargs=argparse.REMAINDER,
+        metavar="-- COMMAND ...",
+        help="The wgsextract command line to check, after --.",
     )
     add("gene-map", RefGeneMapParams, cmd_gene_map, CLI_HELP["cmd_ref-gene-map"])
     for cls, run in RESOURCE_COMMANDS:

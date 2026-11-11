@@ -13,6 +13,7 @@ import { runActionPreferringServer } from "./job-server-action.js";
 import type { ActionEvent } from "./action-runner.js";
 import { lastResultDocumentPaths, rememberLastResultDocument } from "./last-result-documents.js";
 import { openResultPath, ResultPaths, systemOpener } from "./result-paths.js";
+import { installPrerequisite, missingPrerequisites } from "./prerequisites.js";
 import { resultDocumentSpecFor } from "../../../shared/result-document.js";
 import type { JobServer } from "./job-server.js";
 import { configPath, distModulePath, normalizeContext } from "./paths.js";
@@ -121,6 +122,29 @@ export function createRequestHandler(context: RequestHandlerContext) {
             const action = resolveActionReference(context.manifest, target, context.dynamicActions);
             return evaluatePrecheck(action.precheck, commandContext(body, context), labels, context.bundleRoot, context.runProcess);
         }),
+        "/api/prerequisites": jsonRoute(context, async (body) => {
+            const action = resolveActionReference(context.manifest, parseActionReference(body.action), context.dynamicActions);
+            return { missing: await missingPrerequisites(context.manifest, action, commandContext(body, context), context.bundleRoot, context.runProcess) };
+        }),
+        "/api/prerequisites/install/stream": async (request, response) => {
+            const body = await readBody(request, context);
+            const action = resolveActionReference(context.manifest, parseActionReference(body.action), context.dynamicActions);
+            const id = requiredString(body, "id");
+            await streamNDJSON(
+                response,
+                (emit, signal) => installPrerequisite(
+                    context.manifest, action, id, commandContext(body, context), signal, context.bundleRoot, context.runProcess,
+                    (event: ActionEvent) => {
+                        if (event.type === "complete") {
+                            resultPaths.remember(event.result.resultDocument, context.bundleRoot);
+                        }
+                        return emit(event);
+                    },
+                    (installAction) => resultDocumentSpecFor(context.manifest, installAction),
+                ),
+                (error) => ({ type: "error", error }),
+            );
+        },
         "/api/file-state": jsonRoute(context, async (body) => ({ values: await fileStateValues(commandContext(body, context), context.bundleRoot) })),
         "/api/setup/stream": (request, response) => handleStepStream(request, response, context, runSetup),
         "/api/uninstall/stream": (request, response) => handleStepStream(request, response, context, runUninstall),

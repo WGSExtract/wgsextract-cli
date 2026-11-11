@@ -216,11 +216,11 @@
 "actions.vcf.trio-analysis.vcf-trio.tooltip" = "Comparer les VCF de l’enfant et des parents afin d’identifier les mutations de novo ou les affections héritées."  # i18n-source-hash:2c8eed87
 "sections.vcf.vep-analysis.title" = "Analyse VEP"  # i18n-source-hash:6688a989
 "controls.vcf.vep-analysis.vep_input_vcf.label" = "VCF d’entrée VEP"  # i18n-source-hash:8c50fc69
-"controls.vcf.vep-analysis.vep_input_vcf.tooltip" = "Fichier VCF d’entrée à annoter avec Ensembl Variant Effect Predictor."  # i18n-source-hash:39409e9c
+"controls.vcf.vep-analysis.vep_input_vcf.tooltip" = "Fichier VCF d’entrée à annoter avec VEP (vep-rs par défaut, ou Ensembl VEP)."  # i18n-source-hash:955e5cc8
 "controls.vcf.vep-analysis.vcf_vep_args.label" = "Args VEP supplémentaires"  # i18n-source-hash:bf32c5c5
 "controls.vcf.vep-analysis.vcf_vep_args.tooltip" = "Arguments bruts de ligne de commande supplémentaires à transmettre à VEP."  # i18n-source-hash:46f56b5b
 "actions.vcf.vep-analysis.vcf-vep-run.title" = "Exécuter l’annotation VEP"  # i18n-source-hash:a79370af
-"actions.vcf.vep-analysis.vcf-vep-run.tooltip" = "Exécuter Ensembl Variant Effect Predictor pour prédire l’impact fonctionnel, comme la perturbation de gènes ou la pertinence pour une maladie."  # i18n-source-hash:c3b53dc6
+"actions.vcf.vep-analysis.vcf-vep-run.tooltip" = "Prédire l’impact fonctionnel de chaque variant, comme la perturbation de gènes ou la pertinence pour une maladie, avec VEP : vep-rs par défaut, ou Ensembl VEP (à choisir dans Moteur VEP)."  # i18n-source-hash:e7aafd9a
 "pages.fastq.title" = "FASTQ"  # i18n-ignore i18n-source-hash:e2a6bd3c
 "pages.fastq.summary" = "Les fichiers FASTQ contiennent les lectures brutes du séquenceur avant l’alignement. Utilisez cette page pour analyser les fichiers FASTQ avec des outils comme FastQC ou FastP."  # i18n-source-hash:251046f6
 "sections.fastq.fastq-align.title" = "Aligner FASTQ"  # i18n-source-hash:8ccaa8ac
@@ -298,7 +298,7 @@
 "actions.library.genome-management.ref-resume.tooltip" = "Reprendre un téléchargement de référence interrompu."  # i18n-source-hash:9a29349f
 "sections.library.databases-tools.title" = "Gérer les données de référence"  # i18n-source-hash:7bf78801
 "actions.library.databases-tools.vep-download.title" = "Télécharger le cache VEP"  # i18n-source-hash:37dd3b06
-"actions.library.databases-tools.vep-download.tooltip" = "Télécharger le cache VEP de la release et de l’assemblage choisis ci-dessus (vide : 116, GRCh38) dans le dossier vep des données de référence pour l’annotation hors ligne."  # i18n-source-hash:c32215d7
+"actions.library.databases-tools.vep-download.tooltip" = "Construire le cache VEP (celui de vep-rs par défaut) de la release et de l’assemblage choisis ci-dessus (vide : 116, GRCh38) dans le dossier vep des données de référence pour l’annotation hors ligne. Cela télécharge environ 17 Go depuis Ensembl et demande environ 40 Go libres pendant la construction ; le cache terminé occupe 17 Go."  # i18n-source-hash:1338313c
 "actions.library.databases-tools.vep-verify.title" = "Vérifier le cache VEP"  # i18n-source-hash:11b16aeb
 "actions.library.databases-tools.vep-verify.tooltip" = "Vérifier que le cache VEP des données de référence ne contient ni fichiers manquants ni corruption."  # i18n-source-hash:dc7f97b8
 "actions.library.databases-tools.vep-delete.title" = "Supprimer le cache VEP"  # i18n-source-hash:4f39c38c
@@ -1037,6 +1037,10 @@
 "controls.cli.vep_preset.tooltip" = "everything (par défaut), ou fast : environ deux fois plus rapide, sans fréquences de population ni HGVS."  # i18n-source-hash:804e943a
 "options.cli.value.everything.title" = "everything"  # i18n-ignore i18n-source-hash:d5a63c95
 "options.cli.value.fast.title" = "fast"  # i18n-ignore i18n-source-hash:0afde566
+"controls.cli.vep_engine.label" = "Moteur VEP"  # i18n-source-hash:af8dd0c9
+"controls.cli.vep_engine.tooltip" = "vep-rs (par défaut) : rapide, et fonctionne sous Windows ; ou Ensembl VEP (Linux et macOS). Chacun a besoin de son propre cache. Télécharger le cache VEP construit celui de vep-rs ; pour celui d’Ensembl VEP, réglez d’abord vep_engine sur ensembl dans les Paramètres, ou lancez wgsextract vep download --engine ensembl. Vide : le réglage vep_engine, sinon vep-rs."  # i18n-source-hash:4fcba11c
+"options.cli.value.vep-rs.title" = "vep-rs"  # i18n-ignore
+"options.cli.value.ensembl.title" = "Ensembl VEP"  # i18n-ignore
 "controls.cli.vep_vcf_type.label" = "Type de variants"  # i18n-source-hash:d907d5ef
 "controls.cli.vep_vcf_type.tooltip" = "Type de variants, qui change les arguments de VEP. Vide : auto."  # i18n-source-hash:7be8d55c
 "options.cli.value.snp-indel.title" = "snp-indel"  # i18n-ignore i18n-source-hash:0722368d
@@ -1181,3 +1185,5 @@
 "controls.cli.confidence_gq_low.tooltip" = "Une qualité de génotype inférieure marque un appel de faible confiance. À renseigner avec la valeur moyenne, ou laisser les deux vides pour la configuration."  # i18n-source-hash:3b32c3cc
 "controls.cli.confidence_gq_high.label" = "Confiance moyenne sous le GQ"  # i18n-source-hash:c287f5c8
 "controls.cli.confidence_gq_high.tooltip" = "Une qualité de génotype inférieure (et au moins égale à la valeur faible) marque un appel de confiance moyenne."  # i18n-source-hash:b7c21f65
+"prerequisites.kinds.genome" = "génome de référence %{name}"  # i18n-source-hash:1e7c594d
+"prerequisites.kinds.annotation" = "données d'annotation %{name}"  # i18n-source-hash:91bbec91

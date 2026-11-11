@@ -40,7 +40,7 @@
     },
     "sections": {
       "type": "object",
-      "required": ["overview", "lineage", "pharmacogenomics", "clinvar", "microarray"],
+      "required": ["overview", "lineage", "pharmacogenomics", "clinvar", "structural_variants", "microarray"],
       "additionalProperties": false,
       "properties": {
         "overview": {
@@ -96,6 +96,25 @@
                   "status_text": {"type": "string", "description": "The status explained; empty when status is null."}
                 }
               }
+            }
+          }
+        },
+        "structural_variants": {
+          "allOf": [{"$ref": "#/$defs/section"}],
+          "properties": {
+            "all_svs": {"type": ["string", "null"], "description": "Every SV with its frequency class (sv_freq.tsv), relative to the folder."},
+            "sources": {"type": "array"},
+            "thresholds": {
+              "type": "object",
+              "properties": {
+                "common_af": {"type": "number"},
+                "rare_af": {"type": "number"}
+              }
+            },
+            "counts": {
+              "type": "object",
+              "description": "Carried SVs by frequency class (common, low, rare, novel), and listed: the rare SVs shown as findings.",
+              "additionalProperties": {"type": "integer", "minimum": 0}
             }
           }
         },
@@ -192,7 +211,7 @@
       ],
       "additionalProperties": false,
       "properties": {
-        "section": {"enum": ["lineage", "pharmacogenomics", "carrier_screening", "clinvar"]},
+        "section": {"enum": ["lineage", "pharmacogenomics", "carrier_screening", "clinvar", "structural_variants"]},
         "label": {"type": "string", "minLength": 1},
         "value": {"type": "string"},
         "detail": {"type": ["string", "null"]},

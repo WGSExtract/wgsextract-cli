@@ -1062,7 +1062,7 @@ def test_vep_fast_preset_replaces_everything(tmp_path):
     def command(preset):
         params = api.VepRunParams(
             input=Path("in.vcf.gz"), vep_assembly="GRCh38", vep_cache=tmp_path,
-            preset=preset,
+            preset=preset, engine="ensembl",
         )  # fmt: skip
         lib = SimpleNamespace(build="hg38", fasta=None, vep_cache=None)
         return _build_vep_command(params, "in.vcf.gz", "out.vcf", "snp-indel", lib, "4")

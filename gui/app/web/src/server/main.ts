@@ -16,6 +16,7 @@ import { createRequestHandler } from "./routes.js";
 import { prepareBundleWorkspace } from "./workspace.js";
 import { moveWorkspace } from "./workspace-move.js";
 import { errorMessage } from "./errors.js";
+import { leaveAppImageEnvironment } from "./appimage-environment.js";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const distRoot = path.resolve(serverDir, "../../..");
@@ -23,6 +24,8 @@ const packageRoot = path.resolve(distRoot, "..");
 const webRoot = path.join(packageRoot, "web");
 const repoRoot = path.resolve(packageRoot, "..");
 const args = parseArgs(process.argv.slice(2));
+// Before anything starts a program: the programs setup and actions run are the system's, not the AppImage's.
+leaveAppImageEnvironment();
 const sourceBundleRoot = path.resolve(args.bundle ?? path.join(repoRoot, "examples", "WGSExtract"));
 const port = Number(args.port ?? process.env.PORT ?? 8787);
 const host = args.host ?? "127.0.0.1";

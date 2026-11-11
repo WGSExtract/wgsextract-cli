@@ -75,6 +75,7 @@ jobs:
           environments: >-
             default
             dev
+            vep-rs
       - name: Test installer
         run: scripts/test_install_sh.sh
       - name: Verify Tools

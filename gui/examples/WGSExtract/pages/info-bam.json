@@ -477,7 +477,13 @@
                 "{{unalign_se}}"
               ]
             ]
-          }
+          },
+          "prerequisiteArguments": [
+            "bam",
+            "unalign",
+            "--input",
+            "{{bam_path}}"
+          ]
         },
         {
           "id": "repair-ftdna-bam",

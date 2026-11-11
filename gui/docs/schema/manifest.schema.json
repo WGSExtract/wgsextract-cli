@@ -75,6 +75,29 @@
         "startupTimeoutSeconds": { "type": "number", "exclusiveMinimum": 0, "default": 60 }
       }
     },
+    "prerequisites": {
+      "description": "Checks, before an action runs, for data it needs that isn't installed, and offers to install it. See docs/prerequisites.md.",
+      "type": "object",
+      "required": ["command", "executables"],
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "description": "Gets the action's command line appended and prints {\"missing\": [{\"id\", \"kind\", \"name\", \"installArguments\"}]} as JSON on its last stdout line. installArguments are run with this executable to install an item.",
+          "$ref": "page.schema.json#/$defs/command"
+        },
+        "executables": {
+          "description": "The executables whose actions are checked, each mapped to the arguments put before the action's own.",
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "array", "items": { "type": "string" } }
+        },
+        "kindLabels": {
+          "description": "A string-table key per item kind; its text formats %{name} into what the dialog lists.",
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "pages": {
       "description": "Ordered page file names in the bundle pages/ directory, or legacy inline page objects.",
       "oneOf": [

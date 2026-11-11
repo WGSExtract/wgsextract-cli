@@ -133,6 +133,10 @@ KNOWN_SETTINGS = {
     ),
     "jar_directory": (None, "Directory for JAR tools"),
     "vep_cache_directory": (None, "Path to VEP cache"),
+    "vep_engine": (
+        None,
+        "Engine `vep run` annotates with: vep-rs (default) or ensembl",
+    ),
     "pharmcat_directory": (None, "Extracted PharmCAT pipeline release"),
     "parabricks_image": (
         None,
@@ -258,6 +262,11 @@ KNOWN_SETTINGS = {
     "cadd_indel_tsv_path": (None, "Path to CADD indel TSV data"),
     "gerp_bigwig_path": (None, "Path to GERP++ RS bigWig data"),
     "gnomad_vcf_path": (None, "Path to gnomAD VCF data"),
+    "gnomad_sv_path": (None, "Path to a gnomAD-SV sites table (ref gnomad-sv)"),
+    "gnomad_lr_sv_path": (
+        None,
+        "Path to a gnomAD-LR SV sites table (ref gnomad-sv --source lr)",
+    ),
     "spliceai_vcf_path": (None, "Path to SpliceAI VCF data"),
     "alphamissense_vcf_path": (None, "Path to AlphaMissense VCF data"),
     "pharmgkb_vcf_path": (None, "Path to PharmGKB data"),
@@ -320,6 +329,8 @@ PATH_SETTINGS = {
     "cadd_indel_tsv_path",
     "gerp_bigwig_path",
     "gnomad_vcf_path",
+    "gnomad_sv_path",
+    "gnomad_lr_sv_path",
     "spliceai_vcf_path",
     "alphamissense_vcf_path",
     "pharmgkb_vcf_path",
