@@ -4,6 +4,7 @@ import { state } from "../state.js";
 import { setupToolSummary } from "./setup-tool-summary.js";
 import { formatDurationMs } from "../../../../shared/rendering.js";
 import { setupStepsForPlatform } from "../../../../shared/setup-platforms.js";
+import { isSetupStepKind, setupStepKindLabelKeys } from "../../../../shared/setup-step-kinds.js";
 import type { LocalizedOption, SetupRun, SetupStep, SetupStepResult } from "../../../../shared/types.js";
 
 export function renderSetupStatusSection() {
@@ -60,17 +61,9 @@ function renderSetupStepStatus(step: SetupStep, result: SetupStepResult | undefi
   `;
 }
 
-/** What kind of step this is, in words; a kind the app has no name for shows nothing rather than its manifest id. */
+/** What kind of step this is, in words, never its manifest id. */
 function setupStepKindLabel(kind: string) {
-  switch (kind) {
-    case "setupScript":
-    case "bundledScript":
-      return state.labels.setupStepKindScriptLabel ?? "Script";
-    case "pathTool":
-      return state.labels.setupStepKindPathToolLabel ?? "Tool on PATH";
-    default:
-      return "";
-  }
+  return isSetupStepKind(kind) ? state.labels[setupStepKindLabelKeys[kind]] ?? "" : "";
 }
 
 function setupHeaderToolSummary(steps: SetupStep[]) {

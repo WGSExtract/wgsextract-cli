@@ -6,7 +6,7 @@ import { errorMessage, renderIcon } from "./model.js";
 import { effectiveWebUIFont, shouldRenderInPageBundleLoader } from "./platform.js";
 import { setRender } from "./rerender.js";
 import { captureFocus, restoreFocus } from "./focus-state.js";
-import { captureScrollState, restoreScrollState, type ScrollSnapshot } from "./scroll-state.js";
+import { captureKeyedScrollStates, captureScrollState, restoreKeyedScrollStates, restoreScrollState, type ScrollSnapshot } from "./scroll-state.js";
 import { runSetup } from "./operations-setup.js";
 import { state } from "./state.js";
 import { initializeTauriUpdater } from "./tauri-updater.js";
@@ -177,6 +177,7 @@ type RenderScrollSnapshot = {
     windowY: number;
     page: ScrollSnapshot | null;
     terminal: ScrollSnapshot | null;
+    keyed: ScrollSnapshot[];
 };
 function captureRenderScrollSnapshot(): RenderScrollSnapshot {
     const pagePanel = app.querySelector<HTMLElement>(".page-panel");
@@ -186,11 +187,14 @@ function captureRenderScrollSnapshot(): RenderScrollSnapshot {
         windowY: window.scrollY ?? 0,
         page: captureScrollState(pagePanel, pagePanel?.dataset.pagePanelId),
         terminal: captureScrollState(terminalLog, terminalLog?.dataset.terminalLogId),
+        keyed: captureKeyedScrollStates<HTMLElement>(app),
     };
 }
 function restoreRenderScrollSnapshot(snapshot: RenderScrollSnapshot, activePageID: string | undefined, activeTerminalID: string | undefined) {
     const restoredPage = restoreScrollState(app.querySelector<HTMLElement>(".page-panel"), snapshot.page, activePageID);
     restoreScrollState(app.querySelector<HTMLElement>(".terminal-log"), snapshot.terminal, activeTerminalID);
+    // Before focus is restored, so a focused row button inside a scrolled table is back in view.
+    restoreKeyedScrollStates<HTMLElement>(app, snapshot.keyed);
     if (restoredPage && typeof window.scrollTo === "function") {
         window.scrollTo(snapshot.windowX, snapshot.windowY);
     }

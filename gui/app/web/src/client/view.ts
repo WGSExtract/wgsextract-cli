@@ -396,7 +396,7 @@ export function renderLibraryList(control: ControlSpec, context: CommandContext,
     <div class="library-list">
       <div class="control-label">${escapeHTML(control.label)}${renderTooltip(control.tooltip)}</div>
       ${rows.length
-        ? `<div class="table-wrap"><table>
+        ? `<div class="table-wrap" data-scroll-key="${escapeAttribute(key)}" tabindex="0" role="region" aria-label="${escapeAttribute(control.label)}"><table>
               <thead><tr>
                 ${columns.map((column) => `<th>${escapeHTML(column.title)}</th>`).join("")}
                 ${(control.rowActions ?? []).length ? `<th>${escapeHTML(state.labels.actionsColumnTitle)}</th>` : ""}

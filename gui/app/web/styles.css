@@ -33,7 +33,7 @@
   /* Descriptive text fills its container and wraps only past a comfortable line length on very wide windows. */
   --prose-max: 120ch;
   --label-column: clamp(200px, 24%, 280px);
-  --focus-ring: 0 0 0 2px var(--panel), 0 0 0 4px color-mix(in srgb, var(--accent) 70%, transparent);
+  --focus-ring-color: color-mix(in srgb, var(--accent) 80%, transparent);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
 }
 
@@ -141,15 +141,14 @@ button:disabled {
   opacity: 0.48;
 }
 
-/* One keyboard focus ring for every control; mouse clicks don't show it. */
+/* One keyboard focus ring for every control. An outline, not a box-shadow: WebKit draws no shadow on native checkboxes. */
 :is(button, select, input, summary, a, [tabindex="0"]):focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
+  outline: 2px solid var(--focus-ring-color);
+  outline-offset: 2px;
 }
 
 :is(input[type="text"], select):focus {
   border-color: var(--accent);
-  outline: none;
 }
 
 .app-shell {
@@ -549,7 +548,11 @@ button:disabled {
 .setup-global-banner:hover,
 .setup-global-banner:focus-visible {
   background: color-mix(in srgb, var(--warning) 18%, var(--panel));
-  outline: none;
+}
+
+/* Full-width bar: draw the focus ring inside it, where it can't be clipped. */
+.setup-global-banner:focus-visible {
+  outline-offset: -3px;
 }
 
 .setup-global-icon {

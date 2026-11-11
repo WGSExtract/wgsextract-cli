@@ -79,6 +79,9 @@
 "app.setup.step.failed" = "Falhou"  # i18n-source-hash:09fef5d8
 "app.setup.step.kind.script" = "Script"  # i18n-ignore
 "app.setup.step.kind.pathTool" = "Ferramenta no PATH"  # i18n-source-hash:7fbaeb9b
+"app.setup.step.kind.homebrewPackage" = "Pacote Homebrew"  # i18n-source-hash:6572cfdd
+"app.setup.step.kind.pixiInstall" = "Instalação do Pixi"  # i18n-source-hash:be8e57bc
+"app.setup.step.kind.pixiRun" = "Comando do Pixi"  # i18n-source-hash:da734b12
 "app.pathPicker.chooseButton.title" = "Escolher..."  # i18n-source-hash:1f77e839
 "app.pathPicker.error.title" = "Não foi possível escolher o caminho"  # i18n-source-hash:fa84a44d
 "app.settingsFile.label" = "Arquivo de configurações"  # i18n-source-hash:a05c5b26

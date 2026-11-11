@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { commandLine, setupResultLine, shellQuote } from "../../../shared/rendering.js";
 import { setupStepsForPlatform } from "../../../shared/setup-platforms.js";
+import { isSetupStepKind, type SetupStepKind } from "../../../shared/setup-step-kinds.js";
 import type { BundleManifest, Labels, ProcessResult, RunProcess, SetupRun, SetupStep, StringMap } from "../../../shared/types.js";
 import { evaluateSetupInstallSizePrecheck, type PrecheckEvaluation } from "./action-runner.js";
 import { loadBundleState, saveBundleState } from "./config-store.js";
@@ -68,7 +69,11 @@ export async function setupCommandForStep(step: SetupStep, bundleRoot: string): 
     const environment = Object.fromEntries(Object.entries(step.environment ?? {}).map(([key, value]) => [key, expandSetupValue(value, bundleRoot)]));
     const value = expandSetupValue(step.value, bundleRoot);
     const args = (step.arguments ?? []).map((argument) => expandSetupValue(argument, bundleRoot));
-    switch (step.kind) {
+    if (!isSetupStepKind(step.kind)) {
+        throw new Error(`Unsupported setup step kind: ${step.kind}`);
+    }
+    const kind: SetupStepKind = step.kind;
+    switch (kind) {
         case "pathTool":
             return setupCommand(step, "/usr/bin/env", ["which", value], workingDirectory, environment);
         case "homebrewPackage":
@@ -80,8 +85,6 @@ export async function setupCommandForStep(step: SetupStep, bundleRoot: string): 
             return setupCommand(step, "/usr/bin/env", ["pixi", "install", ...args], workingDirectory, environment);
         case "pixiRun":
             return setupCommand(step, "/usr/bin/env", ["pixi", "run", value, ...args], workingDirectory, environment);
-        default:
-            throw new Error(`Unsupported setup step kind: ${step.kind}`);
     }
 }
 
