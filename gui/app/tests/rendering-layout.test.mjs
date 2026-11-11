@@ -115,3 +115,19 @@ test("setup steps name their kind in words, never the manifest id", async () => 
   const kinds = [...renderSetupStatusSection().matchAll(/class="setup-step-kind">([^<]*)</g)].map((match) => match[1]);
   assert.deepEqual(kinds, ["Skript", "Werkzeug im PATH", ""]);
 });
+
+test("a long library table scrolls under a header row that stays in view", async () => {
+  // Owner request: Reference Genomes' column names scrolled away with its many rows.
+  const { state, renderLibraryList } = await clientView();
+  state.labels = { actionsColumnTitle: "Actions" };
+  const html = renderLibraryList(
+    { id: "genomes", kind: "libraryList", label: "Genomes", columns: [{ id: "name", title: "Name" }], rowTemplate: { id: "{{id}}" }, items: [{ id: "hs38" }] },
+    { fieldValues: {}, checkedOptions: {}, configValues: {}, rowValues: {} },
+    { pageID: "genomes", sectionID: "list", controlID: "genomes" },
+  );
+  assert.match(html, /class="table-wrap"><table>\s*<thead><tr>\s*<th>Name<\/th>/);
+
+  const css = readFileSync(new URL("../web/styles.css", import.meta.url), "utf8");
+  assert.match(css, /\.table-wrap \{[^}]*max-height:[^}]*overflow: auto;/);
+  assert.match(css, /\.table-wrap thead th \{[^}]*position: sticky;[^}]*top: 0;/);
+});
