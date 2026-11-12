@@ -28,6 +28,7 @@ Operation = Literal[
     "deepvariant",
     "vep-download",
     "vep",
+    "impute",
 ]
 GIB = 1024**3
 GATK_WORKER_BYTES = 6 * GIB
@@ -1067,6 +1068,29 @@ def estimate_vep_run(engine: str) -> PreflightEstimate:
         "vep",
         (ResourceEstimate("memory", VEP_RUN_MEMORY[engine], _available_memory(), {}),),
         (),
+    )
+
+
+def estimate_imputation(*, reads: bool, threads: int, bases: int) -> PreflightEstimate:
+    """HG002 chr20 measurements (#621), scaled by selected reference bases.
+
+    Sequential chunks keep memory roughly constant; thread scaling of time
+    and extrapolation beyond chr20 are estimates, not measured genome runs.
+    """
+    fraction = bases / 64_444_167
+    seconds = (450 if reads else 60) * fraction * 4 / max(1, threads)
+    tool = "GLIMPSE2" if reads else "Beagle"
+    memory = 4 * GIB if reads else 8 * GIB
+    return PreflightEstimate(
+        "impute",
+        (ResourceEstimate("memory", memory, _available_memory(), {}),),
+        (
+            f"{tool}: estimated {seconds / 3600:.2f} h at {threads} threads "
+            f"for {bases:,} reference bases (HG002 chr20 extrapolation).",
+            "Excludes one-time panel preparation (~10 min for chr20); "
+            "GLIMPSE2 whole autosomes ~5.5 h at 4 threads, ~2.8 h at 8. "
+            "Actual runtime depends on depth, hardware and panel.",
+        ),
     )
 
 

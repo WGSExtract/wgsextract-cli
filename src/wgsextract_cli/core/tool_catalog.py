@@ -42,6 +42,10 @@ OPTIONAL_TOOLS = [
     "plink2",
     "whatshap",
     "longphase",
+    "GLIMPSE2_phase",
+    "GLIMPSE2_ligate",
+    "GLIMPSE2_chunk",
+    "GLIMPSE2_split_reference",
     "curl",
     "java",
     "haplogrep3",
@@ -97,6 +101,10 @@ PLATFORM_ONLY_TOOLS = {
     "somalier": ("linux", "darwin"),
     "whatshap": ("linux", "darwin"),
     "longphase": ("linux", "darwin"),
+    "GLIMPSE2_phase": ("linux", "darwin"),
+    "GLIMPSE2_ligate": ("linux", "darwin"),
+    "GLIMPSE2_chunk": ("linux", "darwin"),
+    "GLIMPSE2_split_reference": ("linux", "darwin"),
 }
 
 
@@ -112,6 +120,15 @@ def clair3_host_supported() -> bool:
     if system == "linux" and machine == "arm64":
         machine = "aarch64"
     return (system, machine) in CLAIR3_HOSTS
+
+
+def imputation_host_supported() -> bool:
+    """Hosts with the opt-in GLIMPSE2/Beagle environment."""
+    system = "linux" if sys.platform.startswith("linux") else sys.platform
+    return system in {"linux", "darwin"} and platform.machine().lower() in {
+        "x86_64",
+        "amd64",
+    }
 
 
 def _x86_deepvariant_host() -> bool:
@@ -134,6 +151,10 @@ HOST_ONLY_TOOLS: dict[str, Callable[[], bool]] = {
     "run_clair3.sh": clair3_host_supported,
     "run_deepvariant": _x86_deepvariant_host,
     "wgse-deepvariant": _apple_silicon_host,
+    "GLIMPSE2_phase": imputation_host_supported,
+    "GLIMPSE2_ligate": imputation_host_supported,
+    "GLIMPSE2_chunk": imputation_host_supported,
+    "GLIMPSE2_split_reference": imputation_host_supported,
 }
 
 
@@ -196,6 +217,10 @@ PIXI_TOOL_ENVS = {
     "somalier": "somalier",
     "whatshap": "phasing",
     "longphase": "phasing",
+    "GLIMPSE2_phase": "imputation",
+    "GLIMPSE2_ligate": "imputation",
+    "GLIMPSE2_chunk": "imputation",
+    "GLIMPSE2_split_reference": "imputation",
     # Only through their own environments (never a `python` on PATH): pixi_env_tool.
     "pharmcat_python": "pharmcat",
     "cyrius_python": "cyrius",
@@ -235,6 +260,10 @@ PIXI_TOOL_PACKAGES = {
     "LongTR": "longtr",
     "run_clair3.sh": "clair3",
     "modkit": "ont-modkit",
+    "GLIMPSE2_phase": "glimpse-bio",
+    "GLIMPSE2_ligate": "glimpse-bio",
+    "GLIMPSE2_chunk": "glimpse-bio",
+    "GLIMPSE2_split_reference": "glimpse-bio",
 }
 
 

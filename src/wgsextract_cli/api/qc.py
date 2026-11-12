@@ -137,13 +137,12 @@ SVD_PANEL_SUFFIXES = (".UD", ".mu", ".bed", ".V")
 
 @dataclass(frozen=True, kw_only=True)
 class QcContaminationParams(Params):
-    """Estimate how much of a BAM/CRAM's DNA comes from another person with
-    VerifyBamID2: the FREEMIX fraction, from reads at 1000 Genomes sites
-    (GRCh37/hg19 or GRCh38). Writes ``<stem>.contamination.selfSM`` and
-    ``.Ancestry``. Metrics: ``freemix``, ``freemix_sites``, ``freemix_depth``
-    and the ancestry PCs; the estimate is recorded as the sample's
-    ``contamination`` fact. VerifyBamID2 is optional (``pixi install -e
-    verifybamid2``) and unavailable on Windows."""
+    """Estimate how much of a BAM/CRAM's DNA comes from another person
+    (FREEMIX) with VerifyBamID2 at 1000 Genomes sites (GRCh37/hg19 or
+    GRCh38). Writes ``<stem>.contamination.selfSM`` and ``.Ancestry``.
+    Metrics: ``freemix``, ``freemix_sites``, ``freemix_depth`` and the
+    ancestry PCs; recorded as the sample's ``contamination`` fact. Optional
+    (``pixi install -e verifybamid2``); not on Windows."""
 
     COMMAND = "qc contamination"
 

@@ -33,6 +33,7 @@ from ._shared import (
     dry_run_param,
     force_steps_param,
     input_param,
+    memory_param,
     no_gpu_memory_check_param,
     optional_input_param,
     outdir_param,
@@ -1178,6 +1179,92 @@ class VcfPhaseParams(_CallerParams):
             yield Path(self.input).expanduser().absolute().parent
 
 
+@dataclass(frozen=True, kw_only=True)
+class VcfImputeParams(Params):
+    """Impute one GRCh38 sample's genotypes from the 1000 Genomes 30x panel
+    into ``imputed.vcf.gz``: low-coverage reads (``input``) with GLIMPSE2, or
+    a genotype-only VCF such as microarray calls (``vcf_input``) with Beagle 5.
+
+    Every imputed record carries INFO/IMP, the header a
+    ``##wgsextract_imputation`` line, and records whose most likely genotype
+    has GP below ``min_gp`` (GLIMPSE2: 0.9, Beagle: 0.95) are FILTERed
+    ``ImpLowConf``. Site INFO/DR2 is not a single-sample confidence measure:
+    ``min_info`` is an explicit opt-in site filter, meaningful only for
+    multi-sample cohorts. Install panel chromosomes with ``ref imputation``.
+    """
+
+    COMMAND = "vcf impute"
+
+    input: Path | None = optional_input_param(
+        "Low-coverage BAM or CRAM to impute with GLIMPSE2 (about 0.5-8x)."
+    )
+    vcf_input: Path | None = param(
+        None,
+        help="Genotype-only VCF (e.g. chip calls) to impute with Beagle instead.",
+        path="file",
+    )
+    ref: Path | None = ref_param()
+    outdir: Path | None = outdir_param()
+    threads: int | None = threads_param()
+    memory: str | None = memory_param()
+    chromosomes: str | None = param(
+        None,
+        help="Chromosomes, e.g. chr20 or chr1-22 (default: every installed one).",
+    )
+    min_gp: float | None = param(
+        None,
+        help="Minimum max GP (default: GLIMPSE2 0.9; Beagle 0.95).",
+        minimum=0.0,
+    )
+    min_info: float | None = param(
+        None,
+        help="Opt-in INFO/DR2 site filter; meaningful only for multi-sample cohorts.",
+        minimum=0.0,
+    )
+
+    @property
+    def gp_threshold(self) -> float:
+        """Effective per-genotype threshold, including explicit zero."""
+        if self.min_gp is not None:
+            return self.min_gp
+        return 0.9 if self.input is not None else 0.95
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if (self.input is None) == (self.vcf_input is None):
+            raise UsageError(
+                "Give either --input (low-coverage reads) or --vcf-input "
+                "(genotype-only VCF) to impute."
+            )
+
+    def write_folders(self) -> Iterator[Path]:
+        if self.outdir is None:
+            source = self.input or self.vcf_input
+            assert source is not None
+            yield Path(source).expanduser().absolute().parent
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        from wgsextract_cli.core import imputation_panel
+        from wgsextract_cli.core.reference_assets import (
+            resolve_reference_library,
+        )
+
+        from ._params import with_config_defaults
+        from .ref import _library_named
+
+        ref = with_config_defaults(self).ref
+        if ref is not None:
+            yield "ref", ref.expanduser()
+        library = (
+            _library_named(ref)
+            if ref is not None
+            else Path(resolve_reference_library())
+        )
+        yield "ref", library
+        for path in imputation_panel.guarded_paths(str(library), self.chromosomes):
+            yield "ref", path
+
+
 def cnv(
     params: VcfCnvParams,
     *,
@@ -1271,3 +1358,16 @@ def phase(
     from wgsextract_cli.commands.vcf.phasing import run_phase
 
     return execute(params, run_phase, progress=progress, cancel=cancel, check=check)
+
+
+def impute(
+    params: VcfImputeParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Impute a sample's genotypes; output role ``imputed_variants``."""
+    from wgsextract_cli.commands.vcf.imputation import run_impute
+
+    return execute(params, run_impute, progress=progress, cancel=cancel, check=check)

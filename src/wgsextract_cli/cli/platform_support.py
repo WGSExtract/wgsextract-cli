@@ -74,6 +74,12 @@ def verify_platform_support(args: argparse.Namespace) -> None:
             from wgsextract_cli.commands.vcf.clair3 import require_supported_platform
 
             require_supported_platform()
+        elif subcommand == "impute":
+            from wgsextract_cli.commands.vcf.imputation import (
+                require_supported_platform as require_imputation_platform,
+            )
+
+            require_imputation_platform()
         elif subcommand == "phase":
             from wgsextract_cli.commands.vcf.phasing import (
                 require_supported_platform as require_phasing_platform,
