@@ -245,7 +245,9 @@ runs call_variants on an NVIDIA GPU through CUDA, or on the CPU.
   HG002 chr20, and the same GIAB v4.2.1 counts; QUAL differs by at most 0.5
   and GQ by 1 at a few thousand of 210,390 sites, as on a Mac.
 - **What it needs:** the NVIDIA driver; no Docker and no Parabricks licence.
-  Before call_variants, `--gpu` checks that each GPU has 3 GiB free
+  Before its first stage, `--gpu` checks that the build has CUDA (the cuda129
+  package) and that `nvidia-smi` sees a GPU; before call_variants, that GPU 0
+  has 3 GiB free
   (`--no-gpu-memory-check` overrides it): it used 2.3 GiB at its default batch
   of 256 on an RTX 3090. `--gpu` never falls back to the CPU: a GPU that fails
   stops the run, which resumes from its finished stages.

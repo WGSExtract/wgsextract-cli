@@ -19,6 +19,8 @@ elseif(NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 include(ExternalProject)
 cmake_host_system_information(RESULT cores QUERY NUMBER_OF_LOGICAL_CORES)
+# Parallel compile jobs for the port (conda builds pass CPU_COUNT).
+set(WGSE_BUILD_JOBS ${cores} CACHE STRING "Parallel jobs for the port's build")
 
 # Bump when the wgse-deepvariant package changes; versioned separately from DeepVariant.
 set(WGSE_DEEPVARIANT_VERSION 0.2.0)
@@ -140,7 +142,7 @@ ExternalProject_Add(port
     CMAKE_ARGS ${port_args}
         -DDV_VERSION=${WGSE_DEEPVARIANT_VERSION} -DDV_SOURCE_ID=${PORT_COMMIT}+wgse
         -DFETCHCONTENT_BASE_DIR=${CMAKE_BINARY_DIR}/port-deps
-    BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target deepvariant --parallel ${cores}
+    BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target deepvariant --parallel ${WGSE_BUILD_JOBS}
     INSTALL_COMMAND ""
     DEPENDS ${port_depends})
 ExternalProject_Get_Property(port SOURCE_DIR BINARY_DIR)

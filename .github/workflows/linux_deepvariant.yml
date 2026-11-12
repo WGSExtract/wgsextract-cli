@@ -136,7 +136,7 @@ jobs:
         run: |
           case "$TAG" in linux-deepvariant-*) ;; *) echo "Tag must start with linux-deepvariant-" >&2; exit 1 ;; esac
           mkdir -p assets
-          find linux-deepvariant \( -name '*.conda' -o -name '*.tar.gz' \) -exec cp {} assets/ +
+          find linux-deepvariant \( -name '*.conda' -o -name '*.tar.gz' \) -exec cp -t assets/ {} +
           (cd assets && sha256sum ./* | sed "s| ./| |" > SHA256SUMS)
           {
             echo "wgse-deepvariant: DeepVariant 1.10.0 for Linux x86-64 as conda packages (CUDA 12.9 or CPU-only call_variants), and its WGS model weights converted from google/deepvariant:1.10.0."

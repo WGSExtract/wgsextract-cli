@@ -85,6 +85,8 @@ class NativeDeepVariant:
     version: str
     weights: Path | None
     model_type: str = "WGS"
+    # Linux: whether its ONNX Runtime has CUDA (the cuda129 package, not cpu).
+    cuda: bool = False
 
     def _checked(self) -> Path:
         assert self.weights is not None, "weights not checked yet"
@@ -172,11 +174,15 @@ def require(
             f"{BINARY} {'.'.join(map(str, version))} is too old; "
             f"{'.'.join(map(str, minimum))} or later is needed. {INSTALL_HINT}"
         )
+    # "native port — x86_64, Linux (call_variants: ONNX Runtime 1.31.1, CUDA or CPU)"
+    lines = (probe.stdout or "").splitlines()
+    cuda = len(lines) > 1 and "CUDA" in lines[1]
     return NativeDeepVariant(
         path,
         ".".join(map(str, version)),
         _checked_weights(model_type) if weights else None,
         model_type,
+        cuda,
     )
 
 

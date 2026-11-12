@@ -493,14 +493,15 @@ def _check_gpu_free(
     batch_size: int | None,
     need: int = ULTIMA_GPU_MIN_FREE,
     default_batch: int = CALL_VARIANTS_BATCH,
+    device: int | None = None,
 ) -> None:
     """Refuse (unless not ``check``) when a GPU lacks the ``need`` bytes
     call_variants needs at its ``default_batch``; just before it runs, so
-    plans and finished reruns don't need one. Every GPU is checked: the
-    container gets them all, and wgse-deepvariant may use any."""
+    plans and finished reruns don't need one. Every GPU is checked (the
+    container gets them all), or only ``device`` (wgse-deepvariant's)."""
     from wgsextract_cli.core.parabricks import gpu_memory
 
-    gpus = gpu_memory()
+    gpus = [g for g in gpu_memory() if device is None or g.index == device]
     free = [gpu.free_bytes for gpu in gpus if gpu.free_bytes is not None]
     if not free:
         logging.warning("GPU memory is unknown; running call_variants anyway.")
@@ -518,7 +519,12 @@ def _check_gpu_free(
         return
     message = (
         f"DeepVariant call_variants needs ~{need / GIB:.1f} GiB of "
-        f"free memory on each GPU, but one has {least / GIB:.1f} GiB free "
+        + (
+            "free memory on each GPU, but one"
+            if device is None
+            else f"free memory on GPU {device}, but it"
+        )
+        + f" has {least / GIB:.1f} GiB free "
         "(other programs are using it)."
     )
     if check:
@@ -565,6 +571,26 @@ def _deepvariant_parabricks(
     )  # fmt: skip
     ensure_vcf_indexed(out_vcf)
     record_variants(out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region))
+
+
+def _native_gpu_preflight(native: native_deepvariant.NativeDeepVariant | None) -> None:
+    """Before --gpu's first unfinished stage: the build has CUDA and the
+    driver sees a GPU, so make_examples doesn't run for a GPU that isn't
+    there. Plans and finished reruns don't need one."""
+    from wgsextract_cli.core.parabricks import gpu_memory
+
+    if native is None:
+        return
+    if not native.cuda:
+        raise WGSExtractError(
+            f"--gpu: wgse-deepvariant ({native.path}) is the CPU-only build. "
+            "Install its cuda129 package, or call without --gpu."
+        )
+    if not any(gpu.index == 0 for gpu in gpu_memory()):
+        raise WGSExtractError(
+            "--gpu: nvidia-smi reports no NVIDIA GPU; install the NVIDIA "
+            "driver, or call without --gpu."
+        )
 
 
 def _native_model(model_type: str, checkpoint: str | None) -> bool:
@@ -622,6 +648,7 @@ def _native_args(
     region: str | None,
     batch_size: int | None,
     gpu: bool,
+    threads: int,
 ) -> list[str]:
     """wgse-deepvariant run's options. On Linux call_variants runs on the CPU,
     or with ``gpu`` (--gpu) on an NVIDIA GPU, never silently on the CPU
@@ -655,7 +682,11 @@ def _native_args(
     if batch_size is not None:
         args.append(f"--batch_size={batch_size}")
     if sys.platform != "darwin":
-        args.append(f"--inference_backend={'cuda' if gpu else 'cpu'}")
+        # This run's threads: the shard count a resumed run keeps may differ.
+        args += [
+            f"--inference_backend={'cuda' if gpu else 'cpu'}",
+            f"--cpu_threads={threads}",
+        ]
     return args
 
 
@@ -708,9 +739,17 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
     checkpoint = str(params.checkpoint) if params.checkpoint else None
     native_path = native_deepvariant.installed() if native_gpu or not gpu else None
     native = None
-    if native_path and _native_model(_model_type(params), checkpoint):
+    early_model = _model_type(params)
+    if native_path and sys.platform != "darwin" and not _model_chosen(params):
+        # On Linux the reads choose between wgse-deepvariant and the image,
+        # before the build is checked.
+        caller = caller or setup_caller(params)
+        early_model = _model_type(params, caller.ref, caller.platform)
+    if native_path and _native_model(early_model, checkpoint):
         native = native_deepvariant.require(
-            native_path, _model_type(params), weights=_model_chosen(params)
+            native_path,
+            early_model,
+            weights=_model_chosen(params) or sys.platform != "darwin",
         )
     # The GPU image (Ultima) or Parabricks.
     gpu_image = gpu and not native
@@ -788,6 +827,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
         bool(arm64_image),
         [ref, input_file, out_vcf, str(work), checkpoint, *region_files],
         work,
+        preflight=(lambda: _native_gpu_preflight(native)) if native_gpu else None,
         gpu_check=(
             (
                 lambda: _check_gpu_free(
@@ -795,6 +835,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                     batch_size,
                     NATIVE_CUDA_MIN_FREE,
                     native_deepvariant.default_batch_size(),
+                    device=0,
                 )
             )
             if native_gpu
@@ -820,7 +861,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
             batch_size = batch_size or native_deepvariant.default_batch_size()
             dv_args = _native_args(
                 native, ref, reads, str(work / Path(out_vcf).name), shards, work,
-                region, batch_size, native_gpu,
+                region, batch_size, native_gpu, int(threads),
             )  # fmt: skip
         else:
             dv_args = _docker_args(
@@ -963,6 +1004,7 @@ class _Launcher:
         paths: list[str | None],
         work: Path,
         gpu_check: Callable[[], None] | None = None,
+        preflight: Callable[[], None] | None = None,
     ):
         self.local = local
         self.image = image
@@ -971,6 +1013,14 @@ class _Launcher:
         self.work = work
         # A GPU image's check of the GPU, before the first stage that uses it.
         self.gpu_check = gpu_check
+        # A check before the first stage that runs.
+        self.preflight = preflight
+
+    def ready(self) -> None:
+        """Run the preflight check once, before a stage runs."""
+        if self.preflight is not None:
+            check, self.preflight = self.preflight, None
+            check()
 
     def launcher(self) -> str:
         return str(self.local) if not self.image else f"{_DV_BIN}/run_deepvariant"
@@ -1144,6 +1194,7 @@ def _run_stages(
                 stale.unlink()
             with contextlib.suppress(FileNotFoundError):
                 (work / _JOBLOG).unlink()
+        run.ready()
         with journal.running(decision, keep_partial=resume) as handle:
             if name == "stage_reads":
                 assert staging is not None

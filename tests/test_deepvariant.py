@@ -842,7 +842,7 @@ def test_gpu_with_deepvariant_native_off_runs_parabricks_719(
 
 def test_a_busy_gpu_stops_wgse_deepvariant_before_call_variants_719(linux_native):
     set_gpus(linux_native.gpus, (24_576, 24_576 - 2_048))
-    with pytest.raises(WGSExtractError, match="free memory on each GPU"):
+    with pytest.raises(WGSExtractError, match="free memory on GPU 0"):
         call(linux_native, "--gpu")
     assert linux_native.deepvariant.stages() == ["make_examples"]
 
@@ -879,6 +879,47 @@ def test_ont_reads_keep_googles_image_and_parabricks_719(
 def test_linux_leaves_other_models_to_googles_image_719(linux_native):
     call(linux_native, "--wes")
     assert linux_native.deepvariant.runs("wgse-deepvariant run") == []
+    assert {r["image"] for r in linux_native.docker.runs()} == {
+        deepvariant.DEFAULT_IMAGE
+    }
+
+
+@pytest.mark.parametrize(
+    ("problem", "message"),
+    [("cpu build", "CPU-only build"), ("no gpu", "no NVIDIA GPU")],
+)
+def test_gpu_without_cuda_stops_before_make_examples_719(
+    linux_native, problem, message
+):
+    """#733 review: a CPU-only package or a missing driver was found only at
+    call_variants, after make_examples had run."""
+    if problem == "cpu build":
+        linux_native.deepvariant.set_native_version("0.2.0", "CPU only")
+    else:
+        set_gpus(linux_native.gpus, error="couldn't communicate with the NVIDIA driver")
+    with pytest.raises(WGSExtractError, match=message):
+        call(linux_native, "--gpu")
+    assert linux_native.deepvariant.stages() == []
+    # A plan needs no GPU.
+    call(linux_native, "--gpu", "--dry-run")
+
+
+def test_resumed_cpu_inference_uses_this_runs_threads_719(linux_native):
+    """#733 review: a resumed run kept its first run's shard count, and
+    CPU inference took that many threads instead of this run's."""
+    linux_native.deepvariant.fail("call_variants")
+    with pytest.raises(WGSExtractError, match="resume"):
+        call(linux_native, threads="4")
+    rerun(linux_native, threads="2")
+    assert native_inference(linux_native)["cpu_threads"] == "2"
+
+
+def test_an_old_build_doesnt_stop_ont_reads_using_googles_image_719(linux_native):
+    """#733 review: the build was checked as if for WGS before the reads
+    chose ONT_R104, which it doesn't call."""
+    linux_native.deepvariant.set_native_version("0.1.0")
+    reads = other_sample(linux_native, ONT)
+    call(linux_native, reads=reads.bam)
     assert {r["image"] for r in linux_native.docker.runs()} == {
         deepvariant.DEFAULT_IMAGE
     }

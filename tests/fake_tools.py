@@ -666,6 +666,7 @@ _DV_WGSE = r"""
 argv = sys.argv[1:]
 if argv == ["--version"]:
     print(f"wgse-deepvariant {state().get('wgse_version', '0.1.0')} (DeepVariant 1.10.0, build fake)")
+    print(f"native port — x86_64, Linux (call_variants: ONNX Runtime 1.31.1, {state().get('wgse_backends', 'CUDA or CPU')})")
     sys.exit(0)
 command, opts = argv[0], options([a for a in argv[1:] if a != "--dry_run=true"])
 log({"tool": f"wgse-deepvariant {command}", "opts": opts,
@@ -682,8 +683,9 @@ if command == "run":
     examples, small = f"{work}/examples.tfrecord@{shards}.gz", f"{work}/small_cvo.tfrecord@{shards}"
     regions = f" '--regions={opts['regions']}'" if "regions" in opts else ""
     batch = f" --batch_size={opts['batch_size']}" if "batch_size" in opts else ""
-    if "inference_backend" in opts:
-        batch += f" --inference_backend={opts['inference_backend']}"
+    for flag in ("inference_backend", "cpu_threads"):
+        if flag in opts:
+            batch += f" --{flag}={opts[flag]}"
     commands = [
         f"{self} make_examples --reads={opts['reads']} --ref={opts['ref']} --examples={examples} "
         f"--threads={shards} --small_model={opts['small_model_path']} --small_model_cvo_outfile={small}{regions}",
@@ -805,9 +807,11 @@ class FakeDeepVariant:
         }  # fmt: skip
         self._save()
 
-    def set_native_version(self, version: str) -> None:
-        """The version wgse-deepvariant --version reports."""
+    def set_native_version(self, version: str, backends: str = "CUDA or CPU") -> None:
+        """The version wgse-deepvariant --version reports, and its Linux
+        build's call_variants backends ("CPU only" for the cpu package)."""
         self._state["wgse_version"] = version
+        self._state["wgse_backends"] = backends
         self._save()
 
     def set_helpfull(self, text: str) -> None:

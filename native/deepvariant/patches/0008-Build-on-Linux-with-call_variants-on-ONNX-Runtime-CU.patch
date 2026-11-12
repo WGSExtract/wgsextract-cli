@@ -1,4 +1,4 @@
-From 588795145de618002b66d59bf67d80d811051479 Mon Sep 17 00:00:00 2001
+From a58069accbb0e95fa1fb27ed41e4f547f5f7b36a Mon Sep 17 00:00:00 2001
 From: WGS Extract AI <223556219+Copilot@users.noreply.github.com>
 Date: Thu, 12 Nov 2026 01:28:23 -0800
 Subject: [PATCH 8/8] Build on Linux, with call_variants on ONNX Runtime (CUDA or
@@ -31,12 +31,12 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
  cmake/deps.cmake                         |  25 +-
  deepvariant/CMakeLists.txt               |   4 +
  deepvariant/native/CMakeLists.txt        |  41 ++-
- deepvariant/native/call_variants_main.cc |  90 ++++-
- deepvariant/native/cli.cc                |  35 +-
- deepvariant/native/onnx_inference.cc     | 400 +++++++++++++++++++++++
- deepvariant/native/onnx_inference.h      |  47 +++
+ deepvariant/native/call_variants_main.cc |  98 +++++-
+ deepvariant/native/cli.cc                |  71 +++-
+ deepvariant/native/onnx_inference.cc     | 412 +++++++++++++++++++++++
+ deepvariant/native/onnx_inference.h      |  51 +++
  deepvariant/native/tfrecord.cc           |   6 +
- 9 files changed, 655 insertions(+), 17 deletions(-)
+ 9 files changed, 701 insertions(+), 31 deletions(-)
  create mode 100644 deepvariant/native/onnx_inference.cc
  create mode 100644 deepvariant/native/onnx_inference.h
 
@@ -232,7 +232,7 @@ index 4172407..2d39acc 100644
  # deepvariant — main binary (CLI dispatcher)
  # ---------------------------------------------------------------------------
 diff --git a/deepvariant/native/call_variants_main.cc b/deepvariant/native/call_variants_main.cc
-index 6fe9fff..57b2a68 100644
+index 6fe9fff..d5a3e25 100644
 --- a/deepvariant/native/call_variants_main.cc
 +++ b/deepvariant/native/call_variants_main.cc
 @@ -38,10 +38,14 @@
@@ -251,7 +251,18 @@ index 6fe9fff..57b2a68 100644
  #include "deepvariant/native/tfrecord.h"
  #include "deepvariant/protos/deepvariant.pb.h"
  #include "third_party/nucleus/protos/struct.pb.h"
-@@ -67,12 +71,22 @@ ABSL_FLAG(int, input_channels, 7,
+@@ -54,7 +58,9 @@ ABSL_FLAG(std::string, checkpoint, "",
+           ".mlpackage. With --inference_backend=metal, a .dvw weight "
+           "bundle (see tools/conversion/extract_weights.py).");
+ ABSL_FLAG(std::string, outfile,   "", "Output TFRecord file for CallVariantsOutput.");
+-ABSL_FLAG(int,    batch_size, 128, "Inference batch size.");
++ABSL_FLAG(int,    batch_size, 0,
++          "Inference batch size (0: run picks it for the machine; 128 when "
++          "call_variants runs alone).");
+ ABSL_FLAG(std::string, compute_units, "all",
+           "Core ML compute units: all (default), cpu_gpu, cpu_only. "
+           "Only applies when --inference_backend=coreml.");
+@@ -67,12 +73,22 @@ ABSL_FLAG(int, input_channels, 7,
  ABSL_FLAG(int, input_width, 221,
            "Pileup-image width for the Metal backend. WGS/WES/MaSeq=221, "
            "PacBio=147, ONT=199.");
@@ -274,7 +285,7 @@ index 6fe9fff..57b2a68 100644
  ABSL_FLAG(std::string, ane_speculate_metal_checkpoint, "",
            "When --inference_backend=ane_speculate, the .dvw bundle for "
            "the GPU FP32 rerun on borderline-confidence sites. Required.");
-@@ -231,11 +245,13 @@ static ExampleFeatures ParseExample(const std::string& payload) {
+@@ -231,11 +247,13 @@ static ExampleFeatures ParseExample(const std::string& payload) {
    return out;
  }
  
@@ -288,10 +299,14 @@ index 6fe9fff..57b2a68 100644
  
  }  // namespace
  
-@@ -246,14 +262,17 @@ int RunCallVariants(int argc, char** argv) {
+@@ -245,15 +263,20 @@ int RunCallVariants(int argc, char** argv) {
+   const std::string examples_path  = absl::GetFlag(FLAGS_examples);
    const std::string checkpoint_path = absl::GetFlag(FLAGS_checkpoint);
    const std::string outfile_path   = absl::GetFlag(FLAGS_outfile);
-   const int batch_size             = absl::GetFlag(FLAGS_batch_size);
+-  const int batch_size             = absl::GetFlag(FLAGS_batch_size);
++  const int batch_size = absl::GetFlag(FLAGS_batch_size) > 0
++                             ? absl::GetFlag(FLAGS_batch_size)
++                             : 128;
 +#if defined(__APPLE__)
    const ComputeUnits compute_units =
        ParseComputeUnits(absl::GetFlag(FLAGS_compute_units));
@@ -306,7 +321,7 @@ index 6fe9fff..57b2a68 100644
    // Pick inference backend.
    const std::string backend = absl::GetFlag(FLAGS_inference_backend);
    std::unique_ptr<CoreMLModel> coreml_model;
-@@ -332,6 +351,33 @@ int RunCallVariants(int argc, char** argv) {
+@@ -332,6 +355,33 @@ int RunCallVariants(int argc, char** argv) {
                 << " (expected 'coreml', 'metal' or 'ane_speculate')";
      return 2;
    }
@@ -340,7 +355,7 @@ index 6fe9fff..57b2a68 100644
    LOG(INFO) << "Model input (" << H << "," << W << "," << C
              << ") → " << K << " classes  [backend=" << backend << "]";
  
-@@ -393,6 +439,23 @@ int RunCallVariants(int argc, char** argv) {
+@@ -393,6 +443,23 @@ int RunCallVariants(int argc, char** argv) {
      }
    });
  
@@ -364,7 +379,7 @@ index 6fe9fff..57b2a68 100644
    auto enqueue_write = [&](std::string&& payload) -> bool {
      if (writer_failed.load()) return false;
      std::unique_lock<std::mutex> lk(wq_mu);
-@@ -422,8 +485,14 @@ int RunCallVariants(int argc, char** argv) {
+@@ -422,8 +489,14 @@ int RunCallVariants(int argc, char** argv) {
    // batch on M4 Max). Allocate once at full capacity, reuse across
    // batches. The MPSGraph input wrapper reads only `n × elem` bytes
    // so the trailing slack is harmless.
@@ -379,7 +394,7 @@ index 6fe9fff..57b2a68 100644
    std::vector<float> probs(static_cast<size_t>(batch_size) *
                               static_cast<size_t>(K));
  
-@@ -432,6 +501,7 @@ int RunCallVariants(int argc, char** argv) {
+@@ -432,6 +505,7 @@ int RunCallVariants(int argc, char** argv) {
      const int n = static_cast<int>(batch.size());
      const int64_t elem = H * W * C;
      DV_SIGNPOST_INTERVAL_BEGIN(FlushBatch, "");
@@ -387,7 +402,7 @@ index 6fe9fff..57b2a68 100644
      DV_SIGNPOST_INTERVAL_BEGIN(Normalize, "");
      for (int i = 0; i < n; ++i) {
        const std::string& img = batch[i].features.image_encoded;
-@@ -490,11 +560,24 @@ int RunCallVariants(int argc, char** argv) {
+@@ -490,11 +564,24 @@ int RunCallVariants(int argc, char** argv) {
      }
  
      DV_SIGNPOST_INTERVAL_END(Normalize);
@@ -412,7 +427,7 @@ index 6fe9fff..57b2a68 100644
      const bool ane_speculate_mode =
          (coreml_model && metal_model && metal_finalize);
      if (ane_speculate_mode) {
-@@ -608,6 +691,9 @@ int RunCallVariants(int argc, char** argv) {
+@@ -608,6 +695,9 @@ int RunCallVariants(int argc, char** argv) {
          DV_SIGNPOST_INTERVAL_END(BnnsFinalize);
        }
      }
@@ -422,7 +437,7 @@ index 6fe9fff..57b2a68 100644
      DV_SIGNPOST_INTERVAL_END(Inference);
      if (!ok) {
        LOG(ERROR) << "Inference failed on batch " << total_batches;
-@@ -744,7 +830,7 @@ int RunCallVariants(int argc, char** argv) {
+@@ -744,7 +834,7 @@ int RunCallVariants(int argc, char** argv) {
      writer_done = true;
    }
    wq_nonempty.notify_all();
@@ -432,10 +447,17 @@ index 6fe9fff..57b2a68 100644
      LOG(ERROR) << "Async writer thread failed during run";
      return 1;
 diff --git a/deepvariant/native/cli.cc b/deepvariant/native/cli.cc
-index b8edc4b..68ac07b 100644
+index b8edc4b..b806f42 100644
 --- a/deepvariant/native/cli.cc
 +++ b/deepvariant/native/cli.cc
-@@ -5,7 +5,12 @@
+@@ -1,11 +1,19 @@
+ #include "deepvariant/native/cli.h"
++#if !defined(__APPLE__)
++#include "deepvariant/native/onnx_inference.h"
++#endif
+ 
+ #include <algorithm>
+ #include <cstdio>
  #include <cstring>
  #include <filesystem>
  #include <system_error>
@@ -448,7 +470,7 @@ index b8edc4b..68ac07b 100644
  #include <cstdint>
  #include <fstream>
  #include <string>
-@@ -19,7 +24,6 @@
+@@ -19,7 +27,6 @@
  #include "absl/flags/reflection.h"
  #include "absl/flags/usage.h"
  #include "absl/flags/usage_config.h"
@@ -456,7 +478,7 @@ index b8edc4b..68ac07b 100644
  #include "absl/log/globals.h"
  #include "absl/log/initialize.h"
  #include "absl/log/log.h"
-@@ -44,7 +48,8 @@ ABSL_FLAG(bool, include_alt_contigs, false,
+@@ -44,7 +51,8 @@ ABSL_FLAG(bool, include_alt_contigs, false,
            "FILTER parity at WG scale.");
  
  ABSL_FLAG(std::string, model_type, "WGS",
@@ -466,7 +488,18 @@ index b8edc4b..68ac07b 100644
  ABSL_FLAG(std::string, output_vcf, "", "Output VCF path (run mode).");
  ABSL_FLAG(std::string, output_gvcf, "",
            "Output gVCF path (run mode, optional).");
-@@ -184,11 +189,18 @@ int RunStage(int (*stage)(int, char**), const std::string& prog,
+@@ -62,6 +70,10 @@ ABSL_DECLARE_FLAG(std::string, ref);
+ ABSL_DECLARE_FLAG(std::string, regions);
+ ABSL_DECLARE_FLAG(int, num_shards);
+ ABSL_DECLARE_FLAG(int, batch_size);
++#if !defined(__APPLE__)
++ABSL_DECLARE_FLAG(int, cpu_threads);
++ABSL_DECLARE_FLAG(int, cuda_device);
++#endif
+ ABSL_DECLARE_FLAG(std::string, inference_backend);
+ ABSL_DECLARE_FLAG(std::string, ane_speculate_metal_checkpoint);
+ ABSL_DECLARE_FLAG(std::string, ane_speculate_metal_checkpoint_child);
+@@ -184,11 +196,18 @@ int RunStage(int (*stage)(int, char**), const std::string& prog,
  }
  
  std::string ExecutablePath() {
@@ -485,7 +518,7 @@ index b8edc4b..68ac07b 100644
    std::error_code ec;
    auto canonical = std::filesystem::weakly_canonical(path, ec);
    return ec ? path : canonical.string();
-@@ -375,6 +387,11 @@ std::string EffectiveRegions(const std::string& user_regions,
+@@ -375,6 +394,11 @@ std::string EffectiveRegions(const std::string& user_regions,
  // We read RAM via sysctl(hw.memsize) which is the physical RAM in
  // bytes — works on every Mac since macOS 10.0, no entitlements.
  int AutoBatchSize() {
@@ -497,7 +530,7 @@ index b8edc4b..68ac07b 100644
    uint64_t mem_bytes = 0;
    size_t len = sizeof(mem_bytes);
    // sysctlbyname is the macOS-portable way; #include <sys/sysctl.h> at
-@@ -388,6 +405,7 @@ int AutoBatchSize() {
+@@ -388,20 +412,14 @@ int AutoBatchSize() {
    if (mem_gb < 32) return 512;
    if (mem_gb < 64) return 1024;
    return 2048;
@@ -505,6 +538,24 @@ index b8edc4b..68ac07b 100644
  }
  
  int EffectiveBatchSize() {
+-  // Distinguish "user passed --batch_size on cmdline" from "default
+-  // value from the proto" via DefaultValue / CurrentValue string
+-  // comparison. (`IsSpecifiedOnCommandLine` is private in this abseil
+-  // version.) Edge case: a user passing exactly the default value
+-  // (128) gets the auto-detect path. Acceptable since 128 is the
+-  // smallest non-trivial value and AutoBatchSize ≥ 128 by design.
+-  if (auto* f = absl::FindCommandLineFlag("batch_size");
+-      f && f->CurrentValue() != f->DefaultValue()) {
+-    return absl::GetFlag(FLAGS_batch_size);
+-  }
+-  return AutoBatchSize();
++  // --batch_size defaults to 0 (automatic), so any batch a user asks for,
++  // 128 included, is kept.
++  const int requested = absl::GetFlag(FLAGS_batch_size);
++  return requested > 0 ? requested : AutoBatchSize();
+ }
+ 
+ std::string ModelPath(const std::string& model_type) {
 @@ -957,7 +975,11 @@ int RunAll(int argc, char** argv) {
      return RunAllPangenome(argc, argv);
    }
@@ -518,38 +569,56 @@ index b8edc4b..68ac07b 100644
    const std::string reads_flag = absl::GetFlag(FLAGS_reads);
    const std::string ref_flag = absl::GetFlag(FLAGS_ref);
    const std::string output_vcf_flag = absl::GetFlag(FLAGS_output_vcf);
-@@ -1110,6 +1132,9 @@ int RunAll(int argc, char** argv) {
+@@ -1110,6 +1132,17 @@ int RunAll(int argc, char** argv) {
      };
      AppendAneSpeculateArgs(cv_args, inference_backend,
                             absl::GetFlag(FLAGS_ane_speculate_metal_checkpoint));
 +#if !defined(__APPLE__)
-+    cv_args.push_back(absl::StrCat("--cpu_threads=", n_threads));
++    // An explicit --cpu_threads (the current run's budget) wins over the
++    // shard count, which a resumed run keeps from its first run.
++    const int cpu_threads = absl::GetFlag(FLAGS_cpu_threads);
++    cv_args.push_back(absl::StrCat("--cpu_threads=",
++                                   cpu_threads > 0 ? cpu_threads : n_threads));
++    if (absl::GetFlag(FLAGS_cuda_device) != 0) {
++      cv_args.push_back(
++          absl::StrCat("--cuda_device=", absl::GetFlag(FLAGS_cuda_device)));
++    }
 +#endif
    }
  
    // postprocess_variants reads the small model's CVOs, then call_variants'.
-@@ -2066,7 +2091,11 @@ static void PrintVersion() {
+@@ -2066,11 +2099,19 @@ static void PrintVersion() {
  #endif
    std::printf(
        "%s %s (DeepVariant %s, build %s %s)\n"
 +#if defined(__APPLE__)
        "Apple Silicon native port — %s, macOS\n",
 +#else
-+      "native port — %s, Linux (call_variants: ONNX Runtime, CUDA or CPU)\n",
++      "native port — %s, Linux (call_variants: %s)\n",
 +#endif
        g_multicall_tool.c_str(),
        DV_VERSION, DV_UPSTREAM_VERSION,
        DV_GIT_SHA, DV_BUILD_DATE,
+-      kArch);
++      kArch
++#if !defined(__APPLE__)
++      , deepvariant::OnnxInception::Describe().c_str()
++#endif
++      );
+ }
+ 
+ // DetectMultiCall — return the subcommand name to inject when the binary
 diff --git a/deepvariant/native/onnx_inference.cc b/deepvariant/native/onnx_inference.cc
 new file mode 100644
-index 0000000..ad0ab60
+index 0000000..8334042
 --- /dev/null
 +++ b/deepvariant/native/onnx_inference.cc
-@@ -0,0 +1,400 @@
+@@ -0,0 +1,412 @@
 +#include "deepvariant/native/onnx_inference.h"
 +
 +#include <algorithm>
 +#include <cmath>
++#include <cstdlib>
 +#include <cstring>
 +#include <exception>
 +#include <string>
@@ -762,6 +831,12 @@ index 0000000..ad0ab60
 +  return Ort::ValueInfo(name, info.GetConst());
 +}
 +
++bool CudaBuilt() {
++  const auto providers = Ort::GetAvailableProviders();
++  return std::find(providers.begin(), providers.end(),
++                   "CUDAExecutionProvider") != providers.end();
++}
++
 +Ort::Env& Environment() {
 +  // Fatal only: cuDNN's exhaustive algorithm search logs every convolution
 +  // plan it can't use as an error. Real failures reach us as exceptions.
@@ -782,6 +857,11 @@ index 0000000..ad0ab60
 +OnnxInception::~OnnxInception() = default;
 +
 +bool OnnxInception::UsesCuda() const { return impl_->cuda; }
++
++std::string OnnxInception::Describe() {
++  return absl::StrCat("ONNX Runtime ", Ort::GetVersionString(),
++                      CudaBuilt() ? ", CUDA or CPU" : ", CPU only");
++}
 +
 +std::unique_ptr<OnnxInception> OnnxInception::Create(
 +    const std::string& dvw_path, int height, int width, int channels,
@@ -880,10 +960,10 @@ index 0000000..ad0ab60
 +                &output, 1);
 +  };
 +
-+  const auto providers = Ort::GetAvailableProviders();
-+  const bool cuda_built =
-+      std::find(providers.begin(), providers.end(), "CUDAExecutionProvider") !=
-+      providers.end();
++  const bool cuda_built = CudaBuilt();
++  // CUDA devices numbered as nvidia-smi numbers them (by PCI bus), not
++  // fastest first, unless the environment already says otherwise.
++  setenv("CUDA_DEVICE_ORDER", "PCI_BUS_ID", /*overwrite=*/0);
 +  if (device == Device::kCuda && !cuda_built) {
 +    LOG(ERROR) << "call_variants can't use CUDA: this ONNX Runtime is a "
 +                  "CPU-only build.";
@@ -948,10 +1028,10 @@ index 0000000..ad0ab60
 +}  // namespace deepvariant
 diff --git a/deepvariant/native/onnx_inference.h b/deepvariant/native/onnx_inference.h
 new file mode 100644
-index 0000000..bba2192
+index 0000000..09c04e5
 --- /dev/null
 +++ b/deepvariant/native/onnx_inference.h
-@@ -0,0 +1,47 @@
+@@ -0,0 +1,51 @@
 +// call_variants' Linux backend: DeepVariant's Inception-v3 built from a .dvw
 +// weight bundle with ONNX Runtime's model editor API (no .onnx file), run on
 +// an NVIDIA GPU through the CUDA execution provider or on the CPU.
@@ -988,6 +1068,10 @@ index 0000000..bba2192
 +  bool Predict(const uint8_t* images, int n, float* probs);
 +
 +  bool UsesCuda() const;
++
++  // "ONNX Runtime <version>, CUDA or CPU" when this ONNX Runtime has the
++  // CUDA execution provider, else "ONNX Runtime <version>, CPU only".
++  static std::string Describe();
 +
 +  OnnxInception(const OnnxInception&) = delete;
 +  OnnxInception& operator=(const OnnxInception&) = delete;

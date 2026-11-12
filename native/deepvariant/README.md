@@ -109,7 +109,9 @@ The Linux build is conda packages (`packaging/wgse-deepvariant`, built by
 
 `--inference_backend=auto` (the default) uses the GPU when a probe run on it
 succeeds and the CPU otherwise; `cuda` fails rather than fall back; `cpu` never
-touches the GPU. The batch defaults to 256 examples on Linux (`--batch_size`).
+touches the GPU (`--cuda_device` picks a GPU, numbered as `nvidia-smi` numbers
+them). The batch defaults to 256 examples on Linux (`--batch_size`), and
+`--version` says whether the build has CUDA.
 
 On HG002 chr20 (the case-study BAM), against `google/deepvariant:1.10.0` on
 the same machine (Ryzen 5 5600X, RTX 3090), 4 threads:
