@@ -38,7 +38,7 @@ set(SKIP_INSTALL_ALL ON)
 FetchContent_MakeAvailable(mem3 mem3_neon mem3_libsais mem3_mimalloc mem3_zlibng mem3_libdeflate)
 
 # Bump when the wgse-bwa-mem3 package changes; it is versioned separately from bwa-mem3.
-set(WGSE_BWA_MEM3_VERSION 0.3.0)
+set(WGSE_BWA_MEM3_VERSION 0.3.1)
 set(MEM3_VERSION 0.16.0)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 # src/ includes the vendored "../ext/pdqsort/pdqsort.h".
@@ -269,6 +269,11 @@ if(BUILD_TESTING)
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
         $<TARGET_FILE:wgse-bwa-mem3> $<TARGET_FILE:bwa-mem3-upstream>
         "${CMAKE_CURRENT_BINARY_DIR}/metal-failure" --metal --gpu-inject-extension-failure)
+    # A failed GPU seeding batch: the CPU seeds, and --metal exits 1.
+    add_test(NAME bwa_mem3_metal_seed_failure_parity
+        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
+        $<TARGET_FILE:wgse-bwa-mem3> $<TARGET_FILE:bwa-mem3-upstream>
+        "${CMAKE_CURRENT_BINARY_DIR}/metal-seed-failure" --metal --gpu-seed-wait --gpu-inject-seed-failure)
     # Regression (#548): a GPU command that never completes is given up by the watchdog.
     add_test(NAME bwa_mem3_metal_watchdog
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
@@ -286,7 +291,7 @@ if(BUILD_TESTING)
         --gpu-inject-hang collect_smems)
     set_tests_properties(bwa_mem3_metal_parity bwa_mem3_metal_seed_verify
         bwa_mem3_metal_cpu_seeding_parity bwa_mem3_metal_failure_parity bwa_mem3_metal_watchdog
-        bwa_mem3_auto_watchdog bwa_mem3_metal_seed_watchdog PROPERTIES SKIP_RETURN_CODE 77)
+        bwa_mem3_auto_watchdog bwa_mem3_metal_seed_watchdog bwa_mem3_metal_seed_failure_parity PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
 install(TARGETS wgse-bwa-mem3 RUNTIME DESTINATION bin)

@@ -42,16 +42,21 @@ constexpr size_t group = 64;
 
 using Clock = std::chrono::steady_clock;
 
-std::atomic<bool> enabled{false}, usable{true}, verify{false}, wait_for_batches{false};
+std::atomic<bool> enabled{false}, usable{true}, verify{false}, wait_for_batches{false},
+    inject_failure{false};
 std::mutex stats_mutex;
 std::string failure_reason;
+// A batch failed on the GPU (not setup, such as an index larger than the GPU's buffers).
+bool batch_failed = false;
 uint64_t chunks = 0, reads_total = 0, gpu_reads = 0, cpu_reads = 0, long_reads = 0, overflow_reads = 0,
     hits = 0, misses = 0, mismatches = 0, batches_run = 0, batches_late = 0;
 double gpu_seconds = 0;
 
-void fail(const std::string &reason) {
+void fail(const std::string &reason, bool batch) {
     std::lock_guard<std::mutex> lock(stats_mutex);
-    if (usable.exchange(false)) failure_reason = reason;
+    if (!usable.exchange(false)) return;
+    failure_reason = reason;
+    batch_failed = batch;
 }
 
 // Read i of a batch: its SMEMs are smems[offsets[i]..] if counts[i].status == seed_ok.
@@ -197,7 +202,7 @@ private:
             try {
                 @autoreleasepool { run(*chunk, b); }
             } catch (const std::exception &error) {
-                fail(error.what());
+                fail(error.what(), true);
             }
             {
                 std::lock_guard<std::mutex> lock(mutex_);
@@ -222,6 +227,7 @@ private:
         // Once the watchdog gives up, the GPU is not used again.
         const std::string hang = wgse::metal::Runtime::hang();
         if (!hang.empty()) throw std::runtime_error(hang);
+        if (inject_failure) throw std::runtime_error("injected GPU seeding failure (test)");
         std::vector<uint8_t> declined(count);
         uint32_t longest = 1;
         size_t total_bases = 0;
@@ -353,6 +359,7 @@ bool same_smem(const SMEM &a, const SMEM &b) {
 void wgse_mem3_seed_set_enabled(bool value) { enabled = value; }
 void wgse_mem3_seed_set_verify(bool value) { verify = value; }
 void wgse_mem3_seed_set_wait(bool value) { wait_for_batches = value; }
+void wgse_mem3_seed_inject_failure() { inject_failure = true; }
 
 void wgse_mem3_seed_preseed(FMI_search *fmi, const mem_opt_t *opt, const bseq1_t *seqs, int n) {
     if (!enabled || !usable || n <= 0 || opt->meth_mode) return;
@@ -365,7 +372,7 @@ void wgse_mem3_seed_preseed(FMI_search *fmi, const mem_opt_t *opt, const bseq1_t
         }
         s = seeder.get();
     } catch (const std::exception &error) {
-        fail(error.what());
+        fail(error.what(), false);
         return;
     }
     auto chunk = std::make_shared<Chunk>();
@@ -529,13 +536,13 @@ bool wgse_mem3_seed_collect(FMI_search *fmi, const mem_opt_t *opt, const bseq1_t
     return true;
 }
 
-void wgse_mem3_seed_finish() {
+bool wgse_mem3_seed_finish() {
     {
         std::lock_guard<std::mutex> lock(seeder_mutex);
         seeder.reset();
     }
     std::lock_guard<std::mutex> lock(stats_mutex);
-    if (!chunks && usable) return;
+    if (!chunks && usable) return false;
     fprintf(stderr, "[wgse-bwa-mem3] seed_chunks=%llu seed_reads=%llu seed_gpu_reads=%llu "
         "seed_cpu_reads=%llu seed_long_reads=%llu seed_overflow_reads=%llu seed_hits=%llu seed_misses=%llu seed_mismatches=%llu seed_batches=%llu "
         "seed_late_batches=%llu seed_gpu_s=%.2f\n",
@@ -545,6 +552,8 @@ void wgse_mem3_seed_finish() {
         (unsigned long long)mismatches, (unsigned long long)batches_run,
         (unsigned long long)batches_late, gpu_seconds);
     if (!usable)
-        fprintf(stderr, "[wgse-bwa-mem3] GPU seeding is off: %s; seeding ran on the CPU\n",
+        fprintf(stderr, "[wgse-bwa-mem3] %s: %s; seeding ran on the CPU\n",
+            batch_failed ? "CPU fallback: GPU seeding failed" : "GPU seeding is off",
             failure_reason.c_str());
+    return batch_failed;
 }
