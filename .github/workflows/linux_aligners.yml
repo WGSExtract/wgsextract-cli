@@ -77,7 +77,7 @@ jobs:
 
   publish:
     if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
-    needs: build
+    needs: [ build, test ]
     runs-on: ubuntu-latest
     permissions:
       contents: write
