@@ -4,6 +4,7 @@ import logging
 import os
 import platform
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -60,6 +61,9 @@ def test_off_calls_with_the_system_allocator(
 
 
 @needs_htslib
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="the env/bin symlink needs a Unix bcftools"
+)
 def test_a_library_bcftools_cannot_load_falls_back_with_the_same_records(
     multicontig_sample: Sample,  # noqa: F811
     tmp_path: Path,
