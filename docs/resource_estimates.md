@@ -334,6 +334,8 @@ filesystem for reference-index storage.
   and **0.4 for indels**, at least 64 KiB. Without a supplied read count, BAM
   and CRAM bytes are normalized using the existing 80/12 bytes-per-read
   fallback, so input compression does not directly set the VCF budget.
+  The CLI supplies the cheap indexed BAM count; CRAM keeps the fallback
+  rather than decoding the file for preflight.
   Temporary space allows twice that output plus 16 KiB per contig part's
   header (one part without contig parallelism). On #722's nominal-30x HG002
   slice, the 670.5 MB BAM produced 2.95 MB SNP and 0.80 MB indel VCF.gz files;
