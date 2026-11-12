@@ -60,8 +60,9 @@ jobs:
 
       - name: Build with -DWGSE_CUDA=ON
         run: |
+          # zlib's headers too: CMake finds the environment's libz before the system's.
           pixi exec --spec "cuda-nvcc 12.9.*" --spec "cuda-cudart-dev 12.9.*" \
-            --spec "cuda-cudart-static 12.9.*" -- bash -euo pipefail -c '
+            --spec "cuda-cudart-static 12.9.*" --spec zlib -- bash -euo pipefail -c '
               nvcc --version | tail -1
               cmake -S native -B out/build-cuda -DCMAKE_BUILD_TYPE=Release -DWGSE_CUDA=ON \
                 -DCMAKE_CUDA_COMPILER="$(command -v nvcc)" -DCMAKE_CUDA_HOST_COMPILER=g++ \
