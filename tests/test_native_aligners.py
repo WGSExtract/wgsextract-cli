@@ -443,11 +443,15 @@ sys.exit(aligner.wait())
 """
 
 
-def _install_bwa_mem3(bindir, name="wgse-bwa-mem3", capabilities=None, mem2="bwa-mem2"):
+def _install_bwa_mem3(
+    bindir, name="wgse-bwa-mem3", capabilities=None, mem2="bwa-mem2", real_bin=None
+):
     """The fake; ``mem2`` names the real aligner for --compat=bwa-mem2 (bwa
-    when the test's bwa-mem2 index can't be loaded)."""
-    real = {"bwa": str((bindir / "bwa").resolve())}
-    real["bwa-mem2"] = str((bindir / mem2).resolve())
+    when the test's bwa-mem2 index can't be loaded), in ``real_bin`` (else
+    ``bindir``)."""
+    real_bin = real_bin or bindir
+    real = {"bwa": str((real_bin / "bwa").resolve())}
+    real["bwa-mem2"] = str((real_bin / mem2).resolve())
     source = _FAKE_BWA_MEM3.format(
         capabilities=capabilities or _capabilities("bwa-mem3"), real=real, name=name
     )
@@ -953,6 +957,89 @@ def test_native_aligners_off_still_needs_bwa_mem2s_0123_file(tmp_path, mem3_bin)
     assert _mapper(bam, "bwa-mem2").startswith("bwa-mem2 mem ")
     assert "native_aligner" not in result.metrics
     assert Path(reads.ref + ".0123").is_file()
+
+
+# #672: on Linux, Bioconda's bwa-mem3 (its own Pixi environment, #591) stands
+# in for bwa and bwa-mem2 with --compat, as wgse-bwa-mem3 does on Apple Silicon.
+@pytest.fixture(params=["x86_64", "aarch64"])
+def linux(request, monkeypatch, ram):
+    """A Linux computer (x86-64 or ARM64) with 64 GiB of RAM."""
+    monkeypatch.setattr(
+        native_aligners,
+        "platform",
+        Namespace(system=lambda: "Linux", machine=lambda: request.param),
+    )
+    ram(64 * GIB)
+
+
+def _env_bwa_mem3(fake_pixi, mem3_bin, source=None):
+    """Bioconda's bwa-mem3, faked, in the installed bwa-mem3 environment."""
+    bindir = fake_pixi.env("bwa-mem3", locked=("bwa-mem3",)) / "bin"
+    if source is None:
+        return _install_bwa_mem3(bindir, name="bwa-mem3", real_bin=mem3_bin)
+    return python_tool(bindir, "bwa-mem3", source)
+
+
+@pytest.mark.usefixtures("linux")
+@pytest.mark.parametrize(
+    ("aligner", "compat"), [("bwa", "bwa-mem"), ("bwa-mem2", "bwa-mem2")]
+)
+def test_linux_bwa_mem3_from_its_environment_stands_in_with_the_same_records(
+    tmp_path, mem3_bin, fake_pixi, aligner, compat
+):
+    reads = _mem3_reads(tmp_path)
+    _env_bwa_mem3(fake_pixi, mem3_bin)
+
+    bam, result = _align(reads, tmp_path / "auto", "--aligner", aligner)
+    upstream_bam, upstream = _align(
+        reads, tmp_path / "off", "--aligner", aligner, "--native-aligners", "off"
+    )
+
+    # contract: --compat=<target> is what makes bwa-mem3 write the target's records.
+    assert _mapper(bam, aligner).startswith(f"bwa-mem3 mem --compat={compat} ")
+    assert _mapper(upstream_bam, aligner).startswith(f"{aligner} mem ")
+    assert _samtools("view", bam) == _samtools("view", upstream_bam)
+    assert result.metrics["aligner"] == aligner
+    assert result.metrics["bwa_mem3_mode"] == f"compat={compat}"
+    assert _native(result) == {
+        "native_aligner": "bwa-mem3",
+        "native_aligner_version": "0.16.0",
+        "native_aligner_backend": "cpu",
+    }
+    assert result.provenance.tools["bwa-mem3"] == "0.16.0"
+    assert "bwa_mem3_mode" not in upstream.metrics
+    assert not result.warnings
+
+
+_CRASHING_BWA_MEM3 = """\
+import os, signal
+
+os.kill(os.getpid(), signal.SIGSEGV)
+"""
+
+
+@pytest.mark.usefixtures("linux")
+@pytest.mark.parametrize(
+    ("source", "problem"),
+    [
+        # Bioconda's x86-64 build crashed at startup on glibc 2.44 (#672).
+        (_CRASHING_BWA_MEM3, "crashed (SIGSEGV)"),
+        ("print('0.15.0')\n", "its version '0.15.0' isn't 0.16.0 or later"),
+    ],
+)
+def test_linux_bwa_mem3_that_fails_its_check_warns_and_bwa_aligns(
+    tmp_path, mem3_bin, fake_pixi, source, problem
+):
+    reads = _mem3_reads(tmp_path)
+    _env_bwa_mem3(fake_pixi, mem3_bin, source)
+
+    bam, result = _align(reads, tmp_path / "out", "--aligner", "bwa")
+
+    assert _mapper(bam).startswith("bwa mem ")
+    (warning,) = result.warnings
+    assert warning.code == "native_aligner_unusable"
+    assert problem in warning.message
+    assert warning.details["aligner"] == "bwa"
 
 
 @pytest.mark.usefixtures("apple_silicon")

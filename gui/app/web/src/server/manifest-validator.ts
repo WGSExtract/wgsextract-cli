@@ -1,5 +1,6 @@
 import { resultDocumentFormats } from "../../../shared/result-document.js";
 import { setupPlatformAlias } from "../../../shared/setup-platforms.js";
+import { isSetupStepKind, scriptSetupStepKinds, setupStepKinds } from "../../../shared/setup-step-kinds.js";
 import type { BundleManifest, BundlePage, PageSection, SetupStep } from "../../../shared/types.js";
 import {
     BundleValidationError,
@@ -13,7 +14,6 @@ import {
 } from "./manifest-validation.js";
 import { validateAction, validateControl } from "./manifest-validator-controls.js";
 
-const SCRIPT_STEP_KINDS = new Set(["bundledScript", "setupScript"]);
 
 /** Checks a loaded manifest (with page files already inlined) against the rules in docs/schema. */
 export function validateManifest(manifest: BundleManifest): void {
@@ -121,7 +121,10 @@ function validateSetupSteps(steps: SetupStep[] | undefined, scope: string): void
         requireNonEmpty(step.id, `${base}.id`);
         requireNonEmpty(step.label, `${base}.label`);
         requireNonEmpty(step.value, `${base}.value`);
-        if (SCRIPT_STEP_KINDS.has(step.kind)) {
+        if (!isSetupStepKind(step.kind)) {
+            throw new BundleValidationError(`Invalid ${base}.kind: expected one of ${setupStepKinds.join(", ")}.`);
+        }
+        if (scriptSetupStepKinds.has(step.kind)) {
             validateRelativePath(step.value, `${base}.value`);
         }
         if (step.workingDirectory != null) {

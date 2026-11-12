@@ -111,7 +111,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
         HOURS,
         *_SAM,
         optional=(
-            "bcftools bgzip bwa bwa-mem2 curl gatk minimap2 pbmm2 sambamba samblaster"
+            "bcftools bgzip bwa bwa-mem2 bwa-mem3 curl gatk minimap2 pbmm2 sambamba samblaster"
         ),
     ),
     "basecall": _n(
@@ -120,7 +120,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "align": _n(
         HOURS,
         *_SAM,
-        optional="bcftools bwa bwa-mem2 curl gatk minimap2 pbmm2 sambamba samblaster",
+        optional="bcftools bwa bwa-mem2 bwa-mem3 curl gatk minimap2 pbmm2 sambamba samblaster",
     ),
     "vcf snp": _n(HOURS, *_CALL),
     "vcf indel": _n(HOURS, *_CALL),
@@ -139,7 +139,10 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf freebayes": _n(HOURS, "bcftools", "freebayes", "samtools", "tabix"),
     "vcf gatk": _n(HOURS, "gatk", "samtools", "tabix", optional="bcftools"),
     "vcf deepvariant": _n(
-        HOURS, "samtools", "tabix", optional="bcftools docker run_deepvariant sambamba"
+        HOURS,
+        "samtools",
+        "tabix",
+        optional="bcftools docker run_deepvariant wgse-deepvariant sambamba",
     ),
     "vcf clair3": _n(
         HOURS, "bcftools", "run_clair3.sh", "samtools", "tabix", optional="sambamba"

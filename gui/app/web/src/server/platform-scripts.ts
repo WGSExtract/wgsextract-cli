@@ -4,6 +4,7 @@ import path from "node:path";
 import type { BundleManifest, LooseRecord, SetupStep } from "../../../shared/types.js";
 import { setupStepAppliesToPlatform, type SetupPlatform } from "../../../shared/setup-platforms.js";
 import { resolveBundlePath } from "./paths.js";
+import { scriptSetupStepKinds } from "../../../shared/setup-step-kinds.js";
 
 const scriptRootName = "scripts";
 const platformFolderNames = new Set(["windows", "posix", "macos", "linux"]);
@@ -135,7 +136,7 @@ function* referencedScriptPaths(manifest: BundleManifest, platforms?: SetupPlatf
   for (const steps of [manifest.setup?.steps ?? [], manifest.uninstall?.steps ?? []]) {
     for (const step of steps) {
       if (
-        (step.kind === "setupScript" || step.kind === "bundledScript") &&
+        scriptSetupStepKinds.has(step.kind) &&
         isBundleScriptPath(step.value) &&
         (platforms == null || setupStepAppliesToAnyPlatform(step, platforms))
       ) {
@@ -237,7 +238,7 @@ function setupStepAppliesToAnyPlatform(step: SetupStep, platforms: SetupPlatform
 }
 
 async function linuxDistroID(): Promise<string | undefined> {
-  const override = process.env.GUI_FOR_CLI_LINUX_DISTRO || process.env.ID;
+  const override = process.env.WGSEXTRACT_GUI_LINUX_DISTRO || process.env.ID;
   if (override?.trim()) {
     return sanitizeDistroID(override);
   }

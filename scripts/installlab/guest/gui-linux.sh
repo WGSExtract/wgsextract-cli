@@ -24,7 +24,11 @@ DEB="$HOME/Downloads/${LAB_GUI_INSTALLER_NAME:-WGSExtract.deb}"
 PACKAGE="wgs-extract"
 APP_DIR="/usr/lib/WGSExtract"
 APP_BIN="/usr/bin/wgsextract-gui"
+# Released apps up to 0.8.6 keep their data under this identifier and read
+# GUI_FOR_CLI_* variables; newer ones read WGSEXTRACT_GUI_* and keep their data,
+# with the CLI runtime, in APP_DATA. The lab passes both.
 APP_ID="dev.guiforcli.web.embed.wgsextract"
+APP_DATA="$HOME/.local/share/WGSExtract-gui"
 # Apps since PR #531 keep the workspace in the home folder; released apps
 # before it keep it in their app data (OLD_WORKSPACE). app_actions uses the
 # one setup made.
@@ -39,7 +43,7 @@ mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
 # The app's main process (its xvfb-run is app_pid), and everything it starts:
 # its backend, and setup's scripts and downloads, which run from the workspace.
 APP_MAIN="^$APP_BIN"
-APP_TREE="$APP_DIR/|$APP_BIN|$WORKSPACE/|$OLD_WORKSPACE/"
+APP_TREE="$APP_DIR/|$APP_BIN|$APP_DATA/|$WORKSPACE/|$OLD_WORKSPACE/"
 # shellcheck source=scripts/installlab/guest/app-lifecycle.sh
 . "$HERE/app-lifecycle.sh"
 
@@ -74,6 +78,7 @@ app_setup() {
     events="$R/setup-events.ndjson"
     # Opening the app; it runs its own setup.
     env GUI_FOR_CLI_AUTO_RUN_SETUP=1 GUI_FOR_CLI_SETUP_EVENTS_LOG="$events" \
+        WGSEXTRACT_GUI_AUTO_RUN_SETUP=1 WGSEXTRACT_GUI_SETUP_EVENTS_LOG="$events" \
         ${LAB_CLI_ARCHIVE_URL:+WGSEXTRACT_ARCHIVE_URL="$LAB_CLI_ARCHIVE_URL"} \
         xvfb-run -a -s "-screen 0 1280x800x24" "$APP_BIN" > "$R/app-stdout.txt" 2> "$R/app-stderr.txt" &
     app_pid=$!
@@ -117,6 +122,7 @@ app_uninstall() {
     # The app's own Uninstall (File > Uninstall WGSExtract...; the package
     # manager can't remove what setup put in the home folder), which quits the app...
     env GUI_FOR_CLI_AUTO_RUN_UNINSTALL=1 GUI_FOR_CLI_UNINSTALL_RESULT_FILE="$R/uninstall-result.json" \
+        WGSEXTRACT_GUI_AUTO_RUN_UNINSTALL=1 WGSEXTRACT_GUI_UNINSTALL_RESULT_FILE="$R/uninstall-result.json" \
         xvfb-run -a -s "-screen 0 1280x800x24" "$APP_BIN" > "$R/app-uninstall-stdout.txt" 2>&1
     rc=$?
     cat "$R/uninstall-result.json"
@@ -155,7 +161,7 @@ fi
 step download_installer download_installer
 step install_app install_app
 step setup app_setup
-step optional_tools sh "$HERE/install-optional-tools.sh" "$WORKSPACE" "$HOME/.local/share/$APP_ID"
+step optional_tools sh "$HERE/install-optional-tools.sh" "$APP_DATA" "$WORKSPACE" "$HOME/.local/share/$APP_ID"
 step actions app_actions
 snapshot after_install
 step uninstall app_uninstall

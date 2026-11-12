@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Jobs · Direction C · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="c-jobs" data-direction="C" data-shell="c" data-nav="jobs" data-title="Jobs">
+<div class="page" data-annot-id="page">
+  <header class="page-header" data-annot-id="header">
+    <div class="page-header__text">
+      <h1>Jobs</h1>
+      <p class="page-header__lead">Everything WGS Extract is doing or has done. Jobs keep running when you close this window or lock your phone; an interrupted job resumes from its last finished step.</p>
+    </div>
+  </header>
+
+  <div class="split">
+    <section class="section" data-annot-id="job-list">
+      <div class="row row--wrap" data-seg="jobs" role="group" aria-label="Show jobs">
+        <button class="chip" type="button" value="active" aria-pressed="true">Active <span class="chip__count">3</span></button>
+        <button class="chip" type="button" value="failed">Needs you <span class="chip__count">2</span></button>
+        <button class="chip" type="button" value="done">Done <span class="chip__count">2</span></button>
+        <button class="chip" type="button" value="all">All <span class="chip__count">6</span></button>
+      </div>
+      <div data-when="jobs:active"><div data-render="jobs" data-filter="active"></div></div>
+      <div data-when="jobs:failed" hidden><div data-render="jobs" data-filter="failed"></div></div>
+      <div data-when="jobs:done" hidden><div data-render="jobs" data-filter="done"></div></div>
+      <div data-when="jobs:all" hidden><div data-render="jobs" data-filter="all"></div></div>
+    </section>
+
+    <aside class="stack sticky" data-annot-id="job-settings">
+      <div class="card">
+        <h2 class="card__title">This Mac right now</h2>
+        <div class="stack stack--sm small">
+          <div><div class="row row--between"><span>CPU</span><span class="num">12 of 12 cores</span></div><div class="progress"><div class="progress__fill" style="--v: 96%"></div></div></div>
+          <div><div class="row row--between"><span>Memory</span><span class="num">21.4 of 32 GB</span></div><div class="progress"><div class="progress__fill" style="--v: 67%"></div></div></div>
+          <div><div class="row row--between"><span>Genomes disk</span><span class="num">1.1 TB free</span></div><div class="progress progress--success"><div class="progress__fill" style="--v: 38%"></div></div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2 class="card__title">While jobs run</h2>
+        <label class="switch"><input type="checkbox" role="switch" checked><span class="small">Keep this computer awake</span></label>
+        <label class="switch"><input type="checkbox" role="switch" checked><span class="small">Notify me when a job finishes or needs me</span></label>
+        <label class="switch"><input type="checkbox" role="switch" checked><span class="small">Also notify my paired phone</span></label>
+        <div class="field adv-only">
+          <label class="field__label" for="maxjobs">Jobs at the same time <code class="xsmall subtle">server_max_jobs</code></label>
+          <select class="select" id="maxjobs"><option>1 (recommended for 30x genomes)</option><option>2</option><option>3</option></select>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<dialog class="dialog dialog--wide" id="job-log" aria-labelledby="job-log-title" data-annot-id="job-log">
+  <div class="dialog__header"><h2 class="dialog__title" id="job-log-title">Realign to hs38 · log</h2><span class="badge badge--primary">Running</span><button class="btn btn--ghost btn--icon" type="button" data-close aria-label="Close"><i data-icon="x"></i></button></div>
+  <div class="dialog__body">
+    <dl class="kv xsmall"><dt>Job</dt><dd><code>20261111-081502-3fa9c1</code> · <code>realign</code></dd><dt>Started</dt><dd>08:15 · 1 h 41 min ago</dd><dt>Log</dt><dd><code>&lt;state&gt;/server/jobs/20261111-081502-3fa9c1.log</code></dd></dl>
+    <pre class="xsmall" tabindex="0" aria-label="Log" style="margin: 0; padding: var(--sp-3); max-height: 280px; overflow: auto; border-radius: var(--r-md); background: var(--c-surface-2)"><code>08:15:02 Preflight realign: estimated peak / available (GiB)
+08:15:02 Preflight memory OK      18.13 / 32.00 GiB
+08:15:02 Preflight disk   OK      93.86 / 1126.40 GiB at /Volumes/Genomes
+08:15:03 Step extract: streaming pairs (collate, 128 buckets)
+08:52:41 Step extract: done
+08:52:41 Step align: bwa-mem2 mem -t 12 -K 100000000 hs38.fa (interleaved)
+09:56:10 align: 412,118,004 of 876,231,560 reads (47.0%)</code></pre>
+  </div>
+  <div class="dialog__footer"><button class="btn" type="button" data-toast="Copied the log">Copy</button><button class="btn" type="button" data-toast="Saved a problem report to your Desktop">Report a problem</button><button class="btn btn--danger-outline" type="button" data-close data-toast="Cancelling… partial outputs are kept">Cancel job</button></div>
+</dialog>
+</body>
+</html>

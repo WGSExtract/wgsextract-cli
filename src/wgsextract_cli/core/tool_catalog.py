@@ -17,6 +17,7 @@ MANDATORY_TOOLS = [
 
 OPTIONAL_TOOLS = [
     "bwa-mem2",
+    "bwa-mem3",
     "minimap2",
     "pbmm2",
     "pbsv",
@@ -33,6 +34,7 @@ OPTIONAL_TOOLS = [
     "vep-cache-builder",
     "gatk",
     "run_deepvariant",
+    "wgse-deepvariant",
     "run_clair3.sh",
     "modkit",
     "verifybamid2",
@@ -61,6 +63,10 @@ INSTALL_HINTS = {
     "https://github.com/nanoporetech/dorado#installation, unpack it and put its "
     "bin folder on PATH, or set dorado_executable in config.toml (or pass "
     "basecall --dorado-path).",
+    "wgse-deepvariant": "wgse-deepvariant is WGS Extract's Apple Silicon build of "
+    "DeepVariant and isn't installed with WGS Extract: download a "
+    "macos-deepvariant release with its weights, put its bin folder on PATH and "
+    "set deepvariant_weights in config.toml (native/deepvariant/README.md).",
 }
 
 
@@ -74,6 +80,7 @@ def required_dependency_tools(include_python: bool = True) -> list[str]:
 # Optional tools the CLI only uses on some platforms (sys.platform prefixes).
 PLATFORM_ONLY_TOOLS = {
     "bwa-mem2": ("linux", "darwin", "win32"),
+    "bwa-mem3": ("linux", "darwin"),
     "sambamba": ("linux",),
     "cyrius": ("linux", "darwin"),
     "smn_caller.py": ("linux", "darwin"),
@@ -111,10 +118,18 @@ def _x86_deepvariant_host() -> bool:
     return not is_arm64_docker_host()
 
 
+def _apple_silicon_host() -> bool:
+    """Whether wgse-deepvariant (Apple Silicon only) can be used."""
+    from wgsextract_cli.core.native_support import is_arm64_docker_host
+
+    return sys.platform == "darwin" and is_arm64_docker_host()
+
+
 # Optional tools that need a particular OS and CPU.
 HOST_ONLY_TOOLS: dict[str, Callable[[], bool]] = {
     "run_clair3.sh": clair3_host_supported,
     "run_deepvariant": _x86_deepvariant_host,
+    "wgse-deepvariant": _apple_silicon_host,
 }
 
 
@@ -158,6 +173,7 @@ PIXI_TOOL_ENVS = {
     "samblaster": "default",
     "bwa": "default",
     "bwa-mem2": "default",
+    "bwa-mem3": "bwa-mem3",
     "minimap2": "default",
     "pbmm2": "pacbio",
     "pbsv": "pacbio",

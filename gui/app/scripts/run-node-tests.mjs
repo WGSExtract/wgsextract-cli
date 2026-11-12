@@ -4,6 +4,7 @@ const defaultTests = [
   "tests/dev-runner.test.mjs",
   "tests/rendering.test.mjs",
   "tests/rendering-regressions.test.mjs",
+  "tests/rendering-layout.test.mjs",
   "tests/bundle-loader.test.mjs",
   "tests/manifest-validator.test.mjs",
   "tests/bundle-archive.test.mjs",

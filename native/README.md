@@ -1,10 +1,18 @@
-# Apple Silicon aligner rebuilds
+# WGS Extract's aligner rebuilds
+
+These builds are for Apple Silicon. `wgse-bwa` is also built for Linux x86-64,
+with an experimental NVIDIA GPU backend (see
+[Linux x86-64 and NVIDIA GPUs](#linux-x86-64-and-nvidia-gpus-cuda)).
 
 Optional macOS arm64 (macOS 13+) rebuilds of the aligners WGS Extract uses,
 published as `macos-aligners-*` prereleases. `wgsextract align` and `realign`
 run them in place of their upstream aligners when they're on `PATH`, and
 `wgse-bwa-mem3` with `--compat` in place of bwa or bwa-mem2 (see
 [hardware and acceleration](../docs/hardware.md#apple-silicon-metal)).
+
+[`deepvariant/`](deepvariant/README.md) builds `wgse-deepvariant`, an Apple
+Silicon build of DeepVariant 1.10.0, published separately as
+`macos-deepvariant-*` prereleases.
 
 | Executable | Upstream | Notes |
 | --- | --- | --- |
@@ -21,6 +29,12 @@ printed by `--version`.
 
 ## Installing
 
+The `macos-aligners-15` prerelease has `wgse-bwa` 0.11.0, which can use an
+optional dense suffix-array side file (`wgse-bwa densify-sa`), `wgse-bwa-mem2`
+0.5.2, `wgse-bwa-mem3` 0.3.0, whose `--metal` also collects SMEMs on the GPU,
+and `wgse-minimap2` 0.3.0, with faster CPU and `--metal` gap fills. All four
+fall back to the CPU when a GPU command hangs (GPU watchdog) and align exactly
+as before.
 The `macos-aligners-14` prerelease has `wgse-bwa` 0.9.0 and `wgse-bwa-mem2`
 0.5.0, whose CPU backends are faster and align exactly as before, with the
 same `wgse-bwa-mem3` 0.2.0 and `wgse-minimap2` 0.2.0 as `macos-aligners-13`.
@@ -60,8 +74,8 @@ publishes for each release asset:
 
 ```bash
 mkdir wgse-aligners && cd wgse-aligners
-gh release download macos-aligners-14 -R WGSExtract/wgsextract-cli
-gh release view macos-aligners-14 -R WGSExtract/wgsextract-cli --json assets \
+gh release download macos-aligners-15 -R WGSExtract/wgsextract-cli
+gh release view macos-aligners-15 -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
   shasum -a 256 -c
 ```
@@ -148,6 +162,28 @@ at once, each read's FM-index walk prefetching the occurrence blocks of its next
 step while the other reads step, then locates all their seeds in one
 interleaved suffix-array walk. Each read's seeds are upstream's, in upstream's
 order. On the 5M HG002 pairs below 0.9.0 takes 27% less time than 0.8.0.
+
+`wgse-bwa` 0.9.2 aligns exactly as 0.9.1. Its GPU scheduling no longer depends
+on Metal (the Metal kernels sit behind a device interface, for the CUDA
+backend), and it also builds on Linux x86-64, on the CPU.
+
+From 0.11.0, an optional side file speeds up locate: nothing creates it
+automatically, and `mem` aligns exactly as before without it.
+`wgse-bwa densify-sa <index>` writes `<index>.wgse-sa16`, the
+suffix-array position of every 16th row (derived from the index's own samples;
+0.80 GB for hs38, `-i` picks another power of two). `mem` then locates seeds
+with walks of at most 15 steps instead of 31, on the CPU and the GPU, if the
+machine has at least 16 GiB and the file takes at most an eighth of it; it
+checks the file against the index and otherwise ignores it. `--dense-sa off`
+ignores it, `--dense-sa force` skips the memory check, and
+`capabilities --json <index>` lists the files and the one `mem` would read (it
+checks each file's header and checksum; only `mem` also spot-checks 1024
+samples against the index). Mate rescue also steps the lazy-F loops of the
+windows it aligns together in turn, and `--metal`'s CPU threads seed the pairs
+they take from the GPU's queue 8 at a time with the CPU backend's interleaved
+walks. Each gives upstream's exact results. WGS Extract does not write or use the
+file yet; opt-in support (a setting, a run flag and a reference-library command
+showing its disk and memory cost) will follow.
 
 From 0.5.0, `wgse-bwa-mem2`'s CPU backend does the same with its own exact
 replacements: it collects each read's SMEMs in all three passes with up to 16
@@ -256,10 +292,11 @@ What runs on the GPU:
   run. Whether the process then exits promptly with a command still stuck on
   the GPU is up to the Metal driver, and is untested: CI's injected hang
   never reaches the GPU.
-- `wgse-bwa-mem3` (from 0.2.0): seed extension only, in every output mode.
+- `wgse-bwa-mem3` (from 0.2.0): seed extension, and from 0.3.0 SMEM
+  seeding, in every output mode.
   bwa-mem3 extends seeds in batches, scoring each batch first with 8-bit
   scores and then, for the extensions that overflow, with 16-bit scores; the
-  GPU scores whole 8-bit batches with `wgse-bwa-mem2`'s extension kernel,
+  GPU scores whole 8-bit batches with its own banded Smith-Waterman kernel,
   which gives the same results as upstream's NEON kernel, and the 16-bit
   batches stay on the CPU. A batch with a query over 256 bases or a base
   other than A, C, G, T and N is scored by upstream's code; on HG002 none
@@ -269,9 +306,24 @@ What runs on the GPU:
   output does not change). A GPU command buffer that macOS aborts to keep the
   display responsive is run again, up to four times; any other GPU error,
   such as a GPU hang, sends that batch and every later one to the CPU (and
-  `--metal` exits 1). The GPU saves 7–10% of the time in the modes that use
-  upstream's full seed extension and nothing with `--fast` (see
-  Performance).
+  `--metal` exits 1).
+  From 0.3.0 the GPU also collects each read's SMEMs (upstream's three
+  passes) with `wgse-bwa-mem2`'s seeding kernel, reading the index's
+  occurrence table in place, while the previous chunk of reads maps; reads
+  over 512 bases or with more than 128 SMEMs, and any batch not finished when
+  its reads map, are seeded by upstream's code, and the SMEMs are then sorted,
+  deduplicated and resolved as upstream does (a GPU SMEM does not carry the
+  CPU's unique-match tag, so its suffix-array lookup walks to a sampled row
+  for the same coordinate). With the CPU threads freed from seeding, they
+  score a batch of seed extensions themselves while more than 4096 pairs wait
+  for the GPU (`--gpu-backlog PAIRS`; 0 never does). `--gpu-seed off` seeds on
+  the CPU as 0.2.0 did (and then `--gpu-backlog` defaults to 0). If GPU
+  seeding fails, the CPU seeds the rest and the run goes on. Long extensions
+  (over 30,000 band cells) are scored by a SIMD group each instead of one GPU
+  thread. Seeding and seed extension share the process's two GPU command
+  buffers in flight (`metal-common`), so a seeding batch waits while two
+  extension batches run, and the reverse. The GPU saves about 10% of the time
+  in the modes that use upstream's full seed extension (see Performance).
 
 With a Metal backend all three print GPU and CPU work counts to stderr.
 `wgse-bwa-mem2 capabilities --json [index]` (0.4.1) also reports the Mac's
@@ -394,7 +446,9 @@ backend) and up to 8 threads.
 
 `wgse-bwa-mem3` reads the same index as `wgse-bwa-mem2`, without the 6.2 GB
 `.0123` file, and like Bioconda's bwa-mem3 0.16.0 peaked at about 10.9 GiB on
-hs38 with 9 threads and `-K 10000000`; `--metal` adds about 0.2 GiB. Its
+hs38 with 9 threads and `-K 10000000`; `--metal` adds about 0.2 GiB, and
+0.5 GiB from 0.3.0 (11.2 GiB), whose GPU seeding reads the 5.8 GiB occurrence
+table in place: on a GPU whose largest buffer is smaller it seeds on the CPU. Its
 denser suffix-array index (`bwa-mem3 re-sa -u 2`) peaked at 14.5 GiB and was
 slower on this Mac. From 0.2.0, `mem` warns on stderr, as `wgse-bwa-mem2`
 0.4.1 does, when the Mac has less physical memory than its estimate of the
@@ -633,6 +687,15 @@ against 2949 s). The NEON extension alone took 286.2 s (15.6% less than 0.8.0).
 On one thread, collecting the SMEM intervals of 10,000 reads took 38% less time
 with the interleaved walks than with upstream's.
 
+`wgse-bwa` 0.11.0 was measured against 0.9.0 on the same data in interleaved
+rounds at nominal thermal pressure, while other work kept the load average at
+3 to 10 (so both took longer than above). With `hs38.fa.wgse-sa16` its CPU
+backend took 266.4 s against 301.1 s (11.5% less, faster in both rounds, 11%
+less CPU time) and `--metal` 125.7 s against 136.1 s (7.7% less, faster in all
+three rounds, 7% less CPU time); the file raised the peak RSS by 0.75 GiB (to
+6.2 GiB on the CPU and 7.0 GiB with `--metal`). With `--dense-sa off` 0.11.0
+took 5.8% less time than 0.9.0 on the CPU and 1.5% less with `--metal`.
+
 On hs38 BWA's time splits roughly into SMEM collection (19%), suffix-array
 locate (23%) and extension with mate rescue (45%). `--metal` 0.2.0 moved only
 SMEM collection to the GPU, so it could save at most about a fifth of the run;
@@ -819,6 +882,30 @@ takes much of the time, the gain was within the noise. Rescuing mates on the
 GPU with `wgse-bwa`'s kernel was also tried; it was no faster on `medium`, so
 0.2.0 does not do it.
 
+`wgse-bwa-mem3` 0.3.0 `--metal` (GPU seeding) was measured against 0.2.0
+`--metal` on the same 5M pairs, `-t 9`, in interleaved rounds on AC power,
+each run started at thermal pressure 0 (load averages 1.8–5.7 from other
+work). Every run of a mode wrote the alignments above:
+
+| Mode | 0.2.0 `--metal` | 0.3.0 `--metal` | Change | CPU, `-t 9` | Peak RSS (0.2.0 / 0.3.0 `--metal`) |
+| --- | --- | --- | --- | --- | --- |
+| plain | 63.2 s (65.1, 62.5, 62.1) | 57.6 s (56.7, 60.4, 55.8) | −8.9% | 68.0 s (68.9, 67.1) | 10.9 / 11.2 GiB |
+| `--compat=bwa-mem` | 65.1 s | 61.9 s | −5.0% | | 10.9 / 11.2 GiB |
+| `--compat=bwa-mem2` | 67.0 s | 59.1 s | −11.7% | | 10.9 / 11.2 GiB |
+
+The GPU seeded 9.92M of the 9.93M reads (the CPU the rest) in 42–45 s of GPU
+time, so with seed extension the GPU is now busy for most of the run, and
+the CPU threads, which spent about 18% of their time seeding, score
+extensions when the GPU falls behind. Each change alone gained little: GPU
+seeding with every extension on the GPU took 63.4 s (64.6, 63.0, 62.6), and
+the CPU taking extensions without GPU seeding 63.2 s (64.0, 62.4).
+`--fast` gains nothing measurable: in one interleaved round (load averages
+2–3.3), 0.3.0 `--metal` took 42.9 s, 0.2.0 `--metal` 44.2 s, the CPU 43.8 s
+and 0.3.0 with `--gpu-seed off` 45.3 s, all writing `d27f9ccd7a921c97`.
+Also tried, and not faster: four or eight command buffers in flight for seed
+extension (the buffers slowed each other), and one GPU thread per extension
+with interleaved bases (wgse-bwa-mem2's layout; the same time).
+
 ### Energy
 
 Each aligner's energy was measured with `bench/bench.sh --power` on the same
@@ -863,6 +950,51 @@ since a whole genome loads the index once rather than 62 times. Each run's
 directory in the benchmark's output keeps its samples, idle baseline and load
 average (`power.txt`, `power-samples.tsv`).
 
+## Linux x86-64 and NVIDIA GPUs (CUDA)
+
+`wgse-bwa` 0.12.0 also builds for Linux x86-64, as a conda package
+(`packaging/wgse-bwa`, built by `.github/workflows/linux_aligners.yml` and
+published as `linux-aligners-*` prereleases).
+
+- **CPU backend:** upstream BWA's code. The NEON replacements are Apple-only,
+  so on x86-64 it runs upstream's `ksw_extend2`; it keeps the other exact
+  batched steps.
+- **`--cuda` (`--backend cuda`, experimental):** runs the Metal backend's
+  kernels on an NVIDIA GPU. The kernels are ported to CUDA from one source
+  that HIP can also compile (`native/gpu-common`, `native/bwa/*.cuh`). They
+  cover SMEM seeding, suffix-array locate, mate rescue and seed extension, with
+  the same scheduling and the same exact-input matching as `--metal`.
+- **`--backend auto`:** uses CUDA in this build, and falls back to the CPU as
+  on macOS.
+
+Unlike Apple's unified memory, a discrete GPU has its own:
+
+- **Index:** the BWT and the sampled suffix array (about 4.7 GiB for hs38) are
+  uploaded once per run.
+- **Batches:** each batch's reads, rescue windows and extension jobs cross
+  PCIe through pinned buffers. Only compact results come back.
+- **GPU memory:** before each upload `--cuda` checks the GPU's free memory,
+  keeping 1 GiB spare, because the GPU may be shared. If the BWT doesn't fit,
+  the run aligns on the CPU, as after a GPU failure. If only the suffix array
+  doesn't fit, the CPU locates seeds and the GPU does the rest.
+- **Host memory:** the pinned batch buffers add about 0.7 GiB.
+- **Runtime:** the CUDA runtime is linked statically, so the package needs only
+  the NVIDIA driver, and only for `--cuda`. Without a usable driver or GPU,
+  `capabilities --json` reports `cuda_available: false`.
+- **Watchdog:** every wait for the GPU is bounded, by the larger of 60 s and 20
+  times that stage's slowest batch so far. A batch that overruns (a hung GPU)
+  is finished on the CPU with the same output. `--cuda` then exits 1, and
+  `--backend auto` exits 0.
+
+On an RTX 3090 with a Ryzen 5 5600X, at 2 threads (while another job held the
+other 10 cores), with output identical to upstream BWA (the `expected.tsv`
+hashes):
+
+| Tier | CPU | `--cuda` |
+| --- | --- | --- |
+| small (chr20) | 46.7 s | 28.3 s |
+| full (hs38, 200k pairs) | 105.2 s, 5.3 GiB | 25.0 s, 6.1 GiB |
+
 ## Building
 
 Requires Xcode command-line tools and CMake 3.24 or later. Upstream sources are
@@ -874,6 +1006,15 @@ cmake --build out/native -j
 ctest --test-dir out/native --output-on-failure
 cmake --install out/native --prefix out/native-prefix
 ```
+
+On Linux the same commands build `wgse-bwa` with a C/C++ compiler, CMake and
+zlib. `-DWGSE_CUDA=ON` adds the CUDA backend, which needs the CUDA toolkit
+(`nvcc` and the static runtime, for example conda-forge's `cuda-nvcc` and
+`cuda-cudart-static`). It builds for Turing to Hopper GPUs, plus PTX for newer
+ones; `-DCMAKE_CUDA_ARCHITECTURES` overrides this. A GPU the build has no
+kernels for (such as Pascal or Volta, by default) is never selected, and
+`capabilities --json` reports it unavailable and unsupported. The GPU parity tests run with
+whichever GPU backend the build and machine have.
 
 `-DBUILD_TESTING=OFF` builds the release executables without tests or the
 hidden GPU tuning flags. Metal tests are skipped when no Metal device is
@@ -926,7 +1067,7 @@ the same round, with their range: runs on hosted runners vary by 5–20%, so
 compare variants in one job with three or more rounds. Several runs can be
 dispatched at once.
 
-`bench/bench.sh` also runs locally:
+`bench/bench.sh` also runs locally, on macOS or Linux:
 
 ```bash
 native/bench/bench.sh fetch --data out/bench-data --tier small
@@ -940,6 +1081,13 @@ A `--bin` directory may also hold upstream executables (`bwa`, `bwa-mem2`,
 `mm2` runs `minimap2 -ax sr` on `<ref>.fa.sr.mmi`, which the data release
 does not have: build it next to the other index files with
 `minimap2 -x sr -d <ref>.fa.sr.mmi <ref>.fa`.
+
+On Linux the memory columns come from `/proc`: "Pressure" is the kernel's
+memory pressure (PSI "some", 10-second average), "Min free" is
+`MemAvailable`, the compressor is zswap's pool and a run the OOM killer
+ended counts as jetsam (its log needs read access to the kernel journal).
+Linux has no footprint or page-in counters, so those columns are empty, and
+`--power` is macOS only.
 
 `--power` also measures each run's energy with `powermetrics`, which needs
 root: `--power-cmd` gives the command that runs it without a password prompt

@@ -53,6 +53,8 @@ jobs:
           pixi-version: v0.82.0
           locked: true
           environments: lint
+          # PR runs restore main's environment; writing their own crowds it out.
+          cache-write: ${{ github.ref == 'refs/heads/main' }}
       - name: Lint, workflow validation and strict type check
         run: |
           pixi run -e lint -x ruff check .
@@ -76,6 +78,8 @@ jobs:
             default
             dev
             vep-rs
+          # PR runs restore main's environment; writing their own crowds it out.
+          cache-write: ${{ github.ref == 'refs/heads/main' }}
       - name: Test installer
         run: scripts/test_install_sh.sh
       - name: Verify Tools
@@ -177,6 +181,8 @@ jobs:
             pacbio
             phasing
             somalier
+          # PR runs restore main's environment; writing their own crowds it out.
+          cache-write: ${{ github.ref == 'refs/heads/main' }}
       # Clair3's environment is too large for CI; the rest must run, not skip.
       - name: Run ONT HG002 fixture tests
         shell: bash

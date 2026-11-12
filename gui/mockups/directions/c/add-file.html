@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Add files · Direction C · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="c-add-file" data-direction="C" data-shell="c" data-nav="add-file" data-title="Add genome files" data-parent="My genomes|directions/c/home.html">
+<div class="page page--narrow" data-annot-id="page">
+  <header class="page-header" data-annot-id="header">
+    <div class="page-header__text">
+      <h1>Add genome files</h1>
+      <p class="page-header__lead">WGS Extract reads your files where they are. Nothing is copied or uploaded. It checks what each file is, which reference it was made with, and whether it’s ready to use.</p>
+    </div>
+  </header>
+
+  <div class="dropzone" data-dropzone="#detected" data-annot-id="dropzone">
+    <span class="dropzone__icon"><i data-icon="file-up"></i></span>
+    <span class="dropzone__title">Drop BAM, CRAM, FASTQ, VCF or raw-data files here</span>
+    <span class="small">From Nebula, Dante, YSEQ, FTDNA Big Y, Sequencing.com, 23andMe, AncestryDNA and others. Big files are fine: only the header is read now.</span>
+    <div class="btn-group" style="justify-content: center">
+      <button class="btn btn--primary" type="button" data-browse><i data-icon="folder-open"></i>Choose files</button>
+      <button class="btn" type="button" data-browse><i data-icon="folder"></i>Choose a folder</button>
+    </div>
+  </div>
+
+  <div class="callout callout--neutral only-phone" data-annot-id="remote-note">
+    <i data-icon="smartphone"></i>
+    <div>On your phone you add files that are already on your computer. You can browse its <strong>allowed folders</strong>; uploading from the phone isn’t offered, since genomes are tens of gigabytes.</div>
+  </div>
+
+  <details class="disclosure adv-only" data-annot-id="paste-path">
+    <summary><i data-icon="terminal"></i>Type a path or a URL</summary>
+    <div class="disclosure__body stack stack--sm">
+      <div class="input-group">
+        <input class="input mono" type="text" aria-label="File path" value="/Volumes/Genomes/HG005/HG005.GRCh38.cram">
+        <button class="btn" type="button" data-browse>Add</button>
+      </div>
+      <p class="xsmall subtle">Paths must be inside an allowed folder (Settings → Folders). Long-read BAMs may also be an <code>https://</code> URL; they’re streamed, not downloaded.</p>
+    </div>
+  </details>
+
+  <section id="detected" class="section" hidden data-annot-id="detected">
+    <div class="section__head"><h2>Found 2 files</h2><span class="small subtle">Read in 0.8 s</span></div>
+
+    <div class="card" data-annot-id="detected-cram">
+      <div class="card__header">
+        <span class="ft" data-ft="cram"><i data-icon="file-cram"></i></span>
+        <div class="grow"><div class="card__title">HG005.GRCh38.cram</div><div class="xsmall subtle">/Volumes/Genomes/HG005 · 18.1 GB</div></div>
+        <span class="badge badge--success"><i data-icon="check"></i>Ready</span>
+      </div>
+      <ul class="checks">
+        <li data-state="ok"><i data-icon="circle-check"></i><span><strong>CRAM 3.0</strong>, sorted and indexed</span></li>
+        <li data-state="ok"><i data-icon="circle-check"></i><span>Made with <strong>GRCh38 (hs38)</strong>, which is in your library</span></li>
+        <li data-state="ok"><i data-icon="circle-check"></i><span>Illumina, paired 2×150 · about <strong>32×</strong> coverage</span></li>
+      </ul>
+      <div class="field">
+        <label class="field__label" for="name-hg005">Name in your library</label>
+        <input class="input" id="name-hg005" value="HG005">
+      </div>
+    </div>
+
+    <div class="card" data-annot-id="detected-vcf">
+      <div class="card__header">
+        <span class="ft" data-ft="vcf"><i data-icon="file-vcf"></i></span>
+        <div class="grow"><div class="card__title">HG005.snps.vcf.gz</div><div class="xsmall subtle">/Volumes/Genomes/HG005 · 96 MB</div></div>
+        <span class="badge badge--warn"><i data-icon="triangle-alert"></i>1 fix</span>
+      </div>
+      <ul class="checks">
+        <li data-state="ok"><i data-icon="circle-check"></i><span>VCF, one sample (HG005), GRCh38</span></li>
+        <li data-state="warn"><i data-icon="triangle-alert"></i><span>No index (<code>.tbi</code>), so it can’t be searched by region</span></li>
+      </ul>
+      <div class="fixit__actions" style="margin: 0">
+        <button class="btn btn--sm btn--soft" type="button" data-toast="Index created">Create index · a few seconds</button>
+      </div>
+    </div>
+
+    <label class="check" data-annot-id="quick-check">
+      <input type="checkbox" checked>
+      <span>Measure coverage and sex now <span class="subtle">(about 2 min each; you can keep working)</span></span>
+    </label>
+
+    <div class="btn-group btn-group--end">
+      <a class="btn" href="home.html">Cancel</a>
+      <a class="btn btn--primary" href="home.html"><i data-icon="plus"></i>Add 2 files</a>
+    </div>
+    <p class="xsmall subtle adv-only">Server calls: <code>info</code> (query) and <code>bam/identify</code> per file, then <code>sample/set</code>; the coverage check is an <code>info/calculate-coverage</code> job.</p>
+  </section>
+</div>
+</body>
+</html>

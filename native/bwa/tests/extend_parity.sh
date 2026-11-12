@@ -67,12 +67,11 @@ awk 'BEGIN {
 }'
 "$aligner" index reference.fa > index.log 2>&1
 
-# Skip (77) only on machines without supported Metal hardware.
-"$aligner" capabilities --json > capabilities.json
-if ! grep -q '"metal_available":true' capabilities.json; then
-    grep -q '"metal_hardware_supported":true' capabilities.json && exit 1
-    exit 77
-fi
+# Skip (77) only on machines without a supported GPU.
+gpu=""
+gpu_name=""
+# shellcheck source=native/bwa/tests/gpu_backend.sh disable=SC1091
+. "$(dirname "$0")/gpu_backend.sh"
 
 "$aligner" --cpu-upstream mem -t 4 reference.fa pairs-R1.fq pairs-R2.fq > cpu.sam 2> cpu.log
 
@@ -80,7 +79,7 @@ fi
 # many small batches. Calls for seeds other than each chain's first are not
 # staged and miss.
 "$aligner" --gpu-policy all --gpu-extend-pairs 16 --gpu-extend-batches 64 --gpu-extend-verify \
-    --metal mem -t 4 \
+    "$gpu" mem -t 4 \
     reference.fa pairs-R1.fq pairs-R2.fq > verify.sam 2> verify.log
 same cpu.sam verify.sam
 grep '^\[wgse-bwa\] extend_' verify.log
@@ -95,7 +94,7 @@ run() {
     shift
     "$aligner" --cpu-upstream mem "$@" reference.fa pairs-R1.fq pairs-R2.fq > "cpu-$name.sam" 2> "cpu-$name.log"
     "$aligner" --gpu-policy all --gpu-extend-pairs 64 --gpu-extend-batches 16 \
-        --gpu-extend-verify --metal mem "$@" \
+        --gpu-extend-verify "$gpu" mem "$@" \
         reference.fa pairs-R1.fq pairs-R2.fq > "metal-$name.sam" 2> "metal-$name.log"
     same "cpu-$name.sam" "metal-$name.sam"
     grep '^\[wgse-bwa\] extend_' "metal-$name.log"
@@ -119,29 +118,29 @@ test "$(metric metal-wide.log extend_skipped)" -gt 100
 run deletion -t 4 -B 100 -O 32700,6 -E 1
 # Single-end reads.
 "$aligner" --cpu-upstream mem -t 4 reference.fa pairs-R1.fq > cpu-single.sam 2> cpu-single.log
-"$aligner" --gpu-extend-verify --metal mem -t 4 reference.fa pairs-R1.fq \
+"$aligner" --gpu-extend-verify "$gpu" mem -t 4 reference.fa pairs-R1.fq \
     > metal-single.sam 2> metal-single.log
 same cpu-single.sam metal-single.sam
 test "$(metric metal-single.log extend_hits)" -gt 0
 test "$(metric metal-single.log extend_mismatches)" -eq 0
 # With one batch, pairs that find no free batch are extended on their CPU thread.
-"$aligner" --gpu-policy all --gpu-extend-pairs 4 --gpu-extend-batches 1 --metal mem -t 9 \
+"$aligner" --gpu-policy all --gpu-extend-pairs 4 --gpu-extend-batches 1 "$gpu" mem -t 9 \
     reference.fa pairs-R1.fq pairs-R2.fq > one.sam 2> one.log
 same cpu.sam one.sam
 test "$(metric one.log extend_hits)" -gt 0
 # --gpu-extend off leaves extension on the CPU.
-"$aligner" --gpu-extend off --metal mem -t 4 reference.fa pairs-R1.fq pairs-R2.fq \
+"$aligner" --gpu-extend off "$gpu" mem -t 4 reference.fa pairs-R1.fq pairs-R2.fq \
     > off.sam 2> off.log
 same cpu.sam off.sam
 test "$(metric off.log extend_batches)" -eq 0
 
-# A failed extension batch is finished on the CPU. Explicit --metal still reports it.
+# A failed extension batch is finished on the CPU. Explicit "$gpu" still reports it.
 status=0
-"$aligner" --gpu-inject-extend-failure --metal mem -t 4 reference.fa pairs-R1.fq pairs-R2.fq \
+"$aligner" --gpu-inject-extend-failure "$gpu" mem -t 4 reference.fa pairs-R1.fq pairs-R2.fq \
     > failed-metal.sam 2> failed-metal.log || status=$?
 test "$status" -eq 1
 grep -q 'CPU fallback: injected GPU extension failure' failed-metal.log
-grep -q 'Metal execution failed (alignments were completed on the CPU)' failed-metal.log
+grep -q "$gpu_name execution failed (alignments were completed on the CPU)" failed-metal.log
 test "$(metric failed-metal.log extend_hits)" -eq 0
 same cpu.sam failed-metal.sam
 "$aligner" --gpu-inject-extend-failure --backend auto mem -t 4 reference.fa pairs-R1.fq \

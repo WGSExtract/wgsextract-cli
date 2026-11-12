@@ -5,9 +5,9 @@ import path from "node:path";
 import test from "node:test";
 
 test("bundle workspace sync keeps runtime, state, config and data, and drops what the bundle dropped", async () => {
-  await withTemporaryHome("gui-for-cli-webui-workspace-", async (tempRoot) => {
-    const originalAppSupportName = process.env.GUI_FOR_CLI_APP_SUPPORT_NAME;
-    process.env.GUI_FOR_CLI_APP_SUPPORT_NAME = "dev.guiforcli.webui";
+  await withTemporaryHome("wgsextract-gui-workspace-", async (tempRoot) => {
+    const originalAppSupportName = process.env.WGSEXTRACT_GUI_APP_DATA_NAME;
+    process.env.WGSEXTRACT_GUI_APP_DATA_NAME = "dev.wgsextract-gui.webui";
 
     try {
       const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspace.js");
@@ -69,16 +69,16 @@ test("bundle workspace sync keeps runtime, state, config and data, and drops wha
       assert.equal(await readFile(path.join(workspaceRoot, "notes.txt"), "utf8"), "keep notes");
     } finally {
       if (originalAppSupportName == null) {
-        delete process.env.GUI_FOR_CLI_APP_SUPPORT_NAME;
+        delete process.env.WGSEXTRACT_GUI_APP_DATA_NAME;
       } else {
-        process.env.GUI_FOR_CLI_APP_SUPPORT_NAME = originalAppSupportName;
+        process.env.WGSEXTRACT_GUI_APP_DATA_NAME = originalAppSupportName;
       }
     }
   });
 });
 
 test("bundle workspace sync metadata resyncs changed source files", async () => {
-  await withTemporaryHome("gui-for-cli-webui-workspace-sync-", async (tempRoot) => {
+  await withTemporaryHome("wgsextract-gui-workspace-sync-", async (tempRoot) => {
     const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspace.js");
     const sourceRoot = path.join(tempRoot, "source");
     await mkdir(path.join(sourceRoot, "assets"), { recursive: true });
@@ -102,8 +102,27 @@ test("bundle workspace sync metadata resyncs changed source files", async () => 
   });
 });
 
+test("a workspace marked by a release up to 0.8.7 is still the app's, and preparing it updates the marker", async () => {
+  await withTemporaryHome("wgsextract-gui-workspace-old-marker-", async (tempRoot) => {
+    const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspace.js");
+    const { isManagedWorkspace } = await import("../dist/web/src/server/workspace-location.js");
+    const sourceRoot = path.join(tempRoot, "source");
+    await mkdir(sourceRoot, { recursive: true });
+    await writeFile(path.join(sourceRoot, "manifest.json"), "{\"id\":\"old-marker.bundle\"}\n");
+    const manifest = { id: "old-marker.bundle", pages: [] };
+    const workspaceRoot = await prepareBundleWorkspace(manifest, sourceRoot);
+    await writeFile(path.join(workspaceRoot, ".bundle-workspace"), "GUI for CLI bundle workspace\n");
+    await writeFile(path.join(workspaceRoot, "notes.txt"), "keep notes");
+
+    assert.equal(await isManagedWorkspace(workspaceRoot), true);
+    assert.equal(await prepareBundleWorkspace(manifest, sourceRoot), workspaceRoot);
+    assert.equal(await readFile(path.join(workspaceRoot, ".bundle-workspace"), "utf8"), "WGS Extract GUI workspace\n");
+    assert.equal(await readFile(path.join(workspaceRoot, "notes.txt"), "utf8"), "keep notes");
+  });
+});
+
 test("explicit bundle workspace refuses unmanaged non-empty directories", async () => {
-  await withTemporaryHome("gui-for-cli-webui-explicit-workspace-", async (tempRoot) => {
+  await withTemporaryHome("wgsextract-gui-explicit-workspace-", async (tempRoot) => {
     const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspace.js");
     const sourceRoot = path.join(tempRoot, "source");
     const workspaceRoot = path.join(tempRoot, "not-a-workspace");
@@ -121,7 +140,7 @@ test("explicit bundle workspace refuses unmanaged non-empty directories", async 
 });
 
 test("explicit bundle workspace refuses spoofed managed markers", async () => {
-  await withTemporaryHome("gui-for-cli-webui-explicit-workspace-spoofed-", async (tempRoot) => {
+  await withTemporaryHome("wgsextract-gui-explicit-workspace-spoofed-", async (tempRoot) => {
     const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspace.js");
     const sourceRoot = path.join(tempRoot, "source");
     const workspaceRoot = path.join(tempRoot, "not-a-workspace");
@@ -147,7 +166,7 @@ test("explicit bundle workspace refuses spoofed managed markers", async () => {
 });
 
 test("explicit bundle workspace allows empty directories and writes a sentinel", async () => {
-  await withTemporaryHome("gui-for-cli-webui-explicit-workspace-empty-", async (tempRoot) => {
+  await withTemporaryHome("wgsextract-gui-explicit-workspace-empty-", async (tempRoot) => {
     const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspace.js");
     const sourceRoot = path.join(tempRoot, "source");
     const workspaceRoot = path.join(tempRoot, "workspace");
@@ -158,7 +177,7 @@ test("explicit bundle workspace allows empty directories and writes a sentinel",
     const result = await prepareBundleWorkspace({ id: "explicit.bundle", pages: [] }, sourceRoot, workspaceRoot);
 
     assert.equal(result, workspaceRoot);
-    assert.equal(await readFile(path.join(workspaceRoot, ".bundle-workspace"), "utf8"), "GUI for CLI bundle workspace\n");
+    assert.equal(await readFile(path.join(workspaceRoot, ".bundle-workspace"), "utf8"), "WGS Extract GUI workspace\n");
   });
 });
 
@@ -168,7 +187,7 @@ test("bundle workspace sync marks nested scripts executable", async (t) => {
     return;
   }
 
-  await withTemporaryHome("gui-for-cli-webui-workspace-scripts-", async (tempRoot) => {
+  await withTemporaryHome("wgsextract-gui-workspace-scripts-", async (tempRoot) => {
     const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspace.js");
     const sourceRoot = path.join(tempRoot, "source");
     await mkdir(path.join(sourceRoot, "scripts", "posix"), { recursive: true });
@@ -197,7 +216,7 @@ test("bundle workspace sync ignores non-directory scripts entries", async (t) =>
     return;
   }
 
-  await withTemporaryHome("gui-for-cli-webui-workspace-scripts-file-", async (tempRoot) => {
+  await withTemporaryHome("wgsextract-gui-workspace-scripts-file-", async (tempRoot) => {
     const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspace.js");
     const sourceRoot = path.join(tempRoot, "source");
     await mkdir(sourceRoot, { recursive: true });
@@ -213,7 +232,7 @@ test("bundle workspace sync ignores non-directory scripts entries", async (t) =>
 });
 
 test("bundle workspace sync ignores nested hidden files when fingerprinting", async () => {
-  await withTemporaryHome("gui-for-cli-webui-workspace-hidden-", async (tempRoot) => {
+  await withTemporaryHome("wgsextract-gui-workspace-hidden-", async (tempRoot) => {
     const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspace.js");
     const sourceRoot = path.join(tempRoot, "source");
     await mkdir(path.join(sourceRoot, "assets"), { recursive: true });
@@ -275,7 +294,7 @@ function restoreEnv(name, value) {
 }
 
 test("bundle state persists selected page id", async () => {
-  const tempRoot = await mkdtemp(path.join(tmpdir(), "gui-for-cli-webui-state-"));
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-state-"));
 
   try {
     const { loadBundleState, saveBundleState } = await import("../dist/web/src/server/config-store.js");

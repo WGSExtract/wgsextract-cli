@@ -1,7 +1,8 @@
+// wgse-bwa's GPU scheduling and its exact CPU replacements, independent of the
+// GPU API: the device (gpu_device.h) runs the kernels.
 #include "metal_backend.h"
-#include "extend_engine.h"
-#include "rescue_engine.h"
-#include "seeding_engine.h"
+#include "dense_sa.h"
+#include "gpu_device.h"
 #include "smem_batch.h"
 
 #include <algorithm>
@@ -10,24 +11,26 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <condition_variable>
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <system_error>
 #include <thread>
-#include <sys/sysctl.h>
+#include <sys/stat.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <sys/sysctl.h>
+#endif
 
 extern "C" void kt_for(int n_threads, void (*func)(void *, long, int), void *data, long n);
 
 namespace {
-using namespace wgse::seeding;
-using wgse::rescue::GpuRescue;
-using wgse::extend::GpuExtend;
+using namespace wgse::gpu;
 
-constexpr size_t threadgroup_size = 64;
-constexpr size_t locate_rows_per_dispatch = size_t(1) << 21;
 // Prepared batches whose pairs are not all mapped yet; bounds memory for large -K.
 constexpr size_t max_outstanding_batches = 3;
 
@@ -41,10 +44,9 @@ bool locate_enabled = true;
 bool all_on_gpu = false;
 // Reads per GPU batch: smaller batches finish a chunk sooner, larger ones keep
 // more of the GPU busy.
-size_t gpu_batch_reads = 16384;
 // Rows one batch may locate on the GPU (bounds its host buffers at large -c);
 // the remaining reads' rows use upstream bwt_sa().
-size_t locate_rows_per_batch = locate_rows_per_dispatch;
+size_t locate_rows_per_batch = size_t(1) << 21;
 // Derive suffix-array samples every 1 << shift rows (shift 4: about 0.8 GiB
 // for hs38) once a run has mapped enough reads to repay their fixed GPU build
 // (about 19 s, repaid after about 14M more reads); only on Macs with at least
@@ -62,6 +64,19 @@ double locate_dense_seconds = 0;
 size_t mapped_reads = 0;
 // The built samples, also used by the CPU's bwt_sa (wgse_metal_sa).
 const uint32_t *dense_low = nullptr, *dense_high = nullptr;
+// Denser samples loaded from the index's side file (wgse_index_loaded), used by
+// the CPU and, in place, by the GPU; page-aligned whole pages.
+struct Sidecar {
+    uint32_t *low = nullptr, *high = nullptr;
+    size_t low_bytes = 0, high_bytes = 0;
+    uint32_t shift = 0;
+    double seconds = 0;
+};
+Sidecar sidecar;
+// Test option: whether mem loads side files, and whether it ignores the memory check.
+bool sidecar_enabled = true, sidecar_forced = false;
+// The largest side file mem loads, as a fraction of physical memory.
+constexpr uint64_t sidecar_memory_fraction = 8;
 // Mate rescue (mem_matesw's ksw_align2) on the GPU too.
 bool rescue_enabled = true, inject_rescue_failure = false, verify_rescue = false;
 bool cpu_rescue_batching = true;
@@ -87,11 +102,12 @@ constexpr size_t extend_in_flight = 2;
 constexpr size_t extend_jobs_per_pair = 24, extend_bases_per_pair = 8192;
 std::mutex failure_mutex;
 std::string execution_failure;
-std::unique_ptr<GpuSeeds> gpu;
-std::unique_ptr<GpuLocate> locator;
-std::unique_ptr<GpuRescue> rescuer;
-std::unique_ptr<GpuExtend> extender;
-const uint32_t *shared_bwt = nullptr;
+// The selected device (wgse_set_backend), and its failure or why none is usable.
+std::unique_ptr<Device> device;
+std::string device_reason;
+DeviceOptions device_options;
+// Whether the device locates with the attached index's samples.
+bool locator = false;
 const uint64_t *shared_sa = nullptr;
 
 // GPU results for one read: its SMEM intervals and the positions of the
@@ -142,9 +158,15 @@ double extend_gpu_seconds = 0, extend_kernel_seconds = 0;
 size_t overlapped_chunks = 0;
 std::atomic<size_t> pair_starts{0}, pairs_running{0};
 
-SeedKernel &kernel() {
-    static SeedKernel value;
-    return value;
+uint64_t physical_memory() {
+#ifdef __APPLE__
+    uint64_t memory = 0;
+    size_t size = sizeof(memory);
+    return sysctlbyname("hw.memsize", &memory, &size, nullptr, 0) == 0 ? memory : 0;
+#else
+    const long pages = sysconf(_SC_PHYS_PAGES), page = sysconf(_SC_PAGESIZE);
+    return pages > 0 && page > 0 ? uint64_t(pages) * uint64_t(page) : 0;
+#endif
 }
 
 void record_failure(const std::string &reason) {
@@ -157,49 +179,28 @@ void record_failure(const std::string &reason) {
 
 // reads_before: reads of the earlier chunks.
 void attach(const bwt_t *bwt, const mem_opt_t *opt, size_t reads_before) {
-    if (!gpu) gpu = std::make_unique<GpuSeeds>(kernel(), gpu_batch_reads);
-    if (shared_bwt != bwt->bwt) {
-        const size_t page = static_cast<size_t>(getpagesize());
-        if (reinterpret_cast<uintptr_t>(bwt->bwt) % page)
-            throw std::runtime_error("Metal needs a disk-loaded index, not a shared-memory one");
-        size_t bytes = (bwt->bwt_size * sizeof(uint32_t) + page - 1) / page * page;
-        // The C index keeps ownership; no GPU command outlives mem_process_seqs.
-        gpu->index = [gpu->runtime.device() newBufferWithBytesNoCopy:bwt->bwt length:bytes
-            options:MTLResourceStorageModeShared deallocator:nil];
-        if (!gpu->index) throw std::runtime_error("cannot share the BWT with Metal");
-        shared_bwt = bwt->bwt;
-    }
-    gpu->configure(*bwt, *opt, seed_scratch_capacity, seed_output_capacity);
+    device->attach(*bwt, *opt);
     if (locate_enabled && shared_sa != bwt->sa) {
-        const size_t page = static_cast<size_t>(getpagesize());
-        locator.reset();
-        dense_low = dense_high = nullptr;
-        dense_tried = dense_built = false;
+        locator = false;
+        // The side file's samples, if mem loaded one; the CPU uses them either way.
+        dense_low = sidecar.low;
+        dense_high = sidecar.high;
+        dense_tried = sidecar.low != nullptr;
+        dense_built = false;
         shared_sa = bwt->sa;
-        // Without a shareable sampled suffix array only seeding uses the GPU.
-        if (!GpuLocate::supported(*bwt) || reinterpret_cast<uintptr_t>(bwt->sa) % page) return;
-        auto shared = std::make_unique<GpuLocate>(kernel(), locate_rows_per_dispatch);
-        size_t bytes = (bwt->n_sa * sizeof(uint64_t) + page - 1) / page * page;
-        shared->sa = [gpu->runtime.device() newBufferWithBytesNoCopy:bwt->sa length:bytes
-            options:MTLResourceStorageModeShared deallocator:nil];
-        if (!shared->sa) return;
-        shared->configure(*bwt);
-        locator = std::move(shared);
+        // Without usable suffix-array samples only seeding uses the GPU.
+        locator = device->attach_sa(*bwt);
+        if (locator && sidecar.low)
+            dense_built = device->adopt_dense(sidecar.shift, sidecar.low, sidecar.low_bytes,
+                sidecar.high, sidecar.high_bytes);
     }
     // The denser samples cost a fixed build, repaid only by long runs.
     if (!locator || dense_tried || !locate_dense_shift || reads_before < locate_dense_after)
         return;
     dense_tried = true;
-    if (!locate_dense_forced) {
-        uint64_t memory = 0;
-        size_t size = sizeof(memory);
-        if (sysctlbyname("hw.memsize", &memory, &size, nullptr, 0) != 0
-            || memory < locate_dense_min_memory) return;
-    }
+    if (!locate_dense_forced && physical_memory() < locate_dense_min_memory) return;
     auto start = Clock::now();
-    if (locator->densify(gpu->index, locate_dense_shift, locate_dense_slice, threadgroup_size)) {
-        dense_low = static_cast<const uint32_t *>(locator->low.contents);
-        dense_high = static_cast<const uint32_t *>(locator->high.contents);
+    if (device->densify(locate_dense_shift, locate_dense_slice, &dense_low, &dense_high)) {
         dense_built = true;
         locate_dense_seconds = seconds(start);
     }
@@ -298,6 +299,11 @@ protected:
         worker_(data_, pair, tid);
         end();
     }
+    // How many unprepared pairs a CPU thread takes from the back at once, and the
+    // work to do on them before mapping each with a null batch (and then on an
+    // empty range, to drop it).
+    virtual long steal_block() const { return 1; }
+    virtual void prepare_stolen(long, long, int) {}
     // With mutex_ held: takes other work, which CPU threads do before mapping pairs.
     virtual bool claim(Work &) { return false; }
     virtual void perform(const Work &, int) {}
@@ -338,7 +344,7 @@ private:
         double wait_time = 0;
         size_t accelerated_pairs = 0, unprepared_pairs = 0, wasted_pairs = 0;
         for (;;) {
-            long pair = -1;
+            long pair = -1, stolen = 0;
             BatchBase *batch = nullptr;
             Work work;
             {
@@ -352,9 +358,12 @@ private:
                         break;
                     }
                     const bool steal = gpu_stopped_ || !all_on_gpu;
-                    if (steal && back_ > (packing_ ? claimed_ : front_)) {
-                        pair = --back_;
-                        if (pair < claimed_) ++wasted_pairs;
+                    const long limit = packing_ ? claimed_ : front_;
+                    if (steal && back_ > limit) {
+                        stolen = std::min(steal_block(), back_ - limit);
+                        back_ -= stolen;
+                        pair = back_;
+                        wasted_pairs += size_t(std::max(0L, std::min(claimed_, back_ + stolen) - back_));
                         break;
                     }
                     const bool busy = idle(tid);
@@ -374,6 +383,13 @@ private:
             }
             if (pair < 0) {
                 perform(work, tid);
+                continue;
+            }
+            if (stolen) {
+                unprepared_pairs += size_t(stolen);
+                prepare_stolen(pair, pair + stolen, tid);
+                for (long p = pair; p < pair + stolen; ++p) map(p, nullptr, tid);
+                prepare_stolen(0, 0, tid);
                 continue;
             }
             if (batch) ++accelerated_pairs;
@@ -544,7 +560,7 @@ struct ExtendBatch {
         // The pair's jobs.
         uint32_t first, last;
     };
-    id<MTLBuffer> bases = nil, jobs = nil, results = nil, order = nil;
+    std::unique_ptr<ExtendBuffers> buffers;
     // Capacities, and the space reserved by staged pairs.
     size_t base_capacity = 0, job_capacity = 0, base_count = 0, job_count = 0;
     std::vector<Pair> pairs;
@@ -667,6 +683,13 @@ inline int stride(const mem_opt_t *opt) {
 // its own queue, and CPU threads finish those pairs, using the GPU's result for
 // each extension whose inputs match exactly. Finishing pairs comes before
 // mapping new ones.
+const Prepared *seed_block(const mem_opt_t *opt, const bwt_t *bwt, bseq1_t *seqs, int stride,
+    long first, long last);
+void use_seeded(const Prepared *prepared, bseq1_t *seqs, int stride, long first, long pair);
+// The block of unprepared pairs this CPU thread stole and seeded, if any.
+thread_local const Prepared *stolen_seeds = nullptr;
+thread_local long stolen_first = 0, stolen_last = 0;
+
 class SeedScheduler : public Splitter {
 public:
     std::atomic<size_t> missing{0};
@@ -675,7 +698,7 @@ public:
 
     SeedScheduler(const mem_opt_t *opt, const bwt_t *bwt, int n, bseq1_t *seqs,
         void (*worker)(void *, long, int), void *data, const ExtendParameters *extension)
-        : Splitter(opt->n_threads, n / stride(opt), long(gpu->capacity) / stride(opt), false,
+        : Splitter(opt->n_threads, n / stride(opt), long(device->seed_capacity()) / stride(opt), false,
               inject_failure ? "injected GPU failure (test)" : nullptr, worker, data),
           opt_(opt), bwt_(bwt), seqs_(seqs), stride_(stride(opt)),
           prepared_(size_t(n / stride_) * stride_, nullptr), extend_(extension != nullptr) {
@@ -752,9 +775,8 @@ private:
             finish(pair, chains, nullptr, 0, 0);
             return;
         }
-        memcpy(static_cast<uint8_t *>(target->bases.contents) + base_offset, stage.bases.data(),
-            stage.bases.size());
-        auto *jobs = static_cast<ExtendJob *>(target->jobs.contents) + job_offset;
+        memcpy(target->buffers->bases + base_offset, stage.bases.data(), stage.bases.size());
+        ExtendJob *jobs = target->buffers->jobs + job_offset;
         for (ExtendJob job : stage.jobs) {
             job.left_query += uint32_t(base_offset);
             job.left_target += uint32_t(base_offset);
@@ -842,18 +864,14 @@ private:
             if (inject_extend_failure)
                 throw std::runtime_error("injected GPU extension failure (test)");
             const auto start = Clock::now();
-            extender->submit(parameters_, batch->bases, batch->jobs, batch->results, batch->order,
-                batch->job_count, batch->job_capacity, ^(id<MTLCommandBuffer> command) {
-                    if (retry(batch, command)) return;
-                    double kernel = 0;
-                    bool extended = false;
-                    try {
-                        kernel = GpuExtend::finished(command);
-                        extended = true;
-                    } catch (const std::exception &error) {
-                        record_failure(error.what());
+            device->extend(parameters_, *batch->buffers, batch->job_count, ++batch->attempts,
+                [this, batch, start](Outcome outcome, double kernel, const std::string &error) {
+                    if (outcome == Outcome::interrupted) {
+                        retry(batch);
+                        return;
                     }
-                    complete(batch, extended, seconds(start), kernel);
+                    if (outcome == Outcome::failed) record_failure(error);
+                    complete(batch, outcome == Outcome::done, seconds(start), kernel);
                 });
         } catch (const std::exception &error) {
             if (*error.what()) record_failure(error.what());
@@ -861,17 +879,13 @@ private:
         }
     }
 
-    // On the GPU's completion thread: queues an interrupted batch to be committed
+    // On the GPU's completion thread: queues an interrupted batch to be submitted
     // again first (the kernels rewrite the results from the unchanged jobs).
-    bool retry(ExtendBatch *batch, id<MTLCommandBuffer> command) {
+    void retry(ExtendBatch *batch) {
         std::lock_guard<std::mutex> lock(mutex_);
-        const int attempt = ++batch->attempts;
-        if (attempt == wgse::metal::Runtime::attempts
-            || !wgse::metal::Runtime::interrupted(command, attempt)) return false;
         queued_.push_front(batch);
         --in_flight_;
         extend_changed_.notify_one();
-        return true;
     }
 
     // On the GPU's completion thread (or extend_loop's after a failure).
@@ -960,9 +974,22 @@ private:
         std::vector<long>().swap(batch.slots);
     }
 
+    long steal_block() const override { return bwa_verbose >= 4 ? 1 : 8; }
+
+    void prepare_stolen(long first, long last, int) override {
+        stolen_seeds = first < last && bwa_verbose < 4
+            ? seed_block(opt_, bwt_, seqs_, stride_, first, last) : nullptr;
+        stolen_first = first;
+        stolen_last = last;
+    }
+
     void begin(long pair, BatchBase *batch) override {
         current = {};
-        if (!batch) return;
+        if (!batch) {
+            if (stolen_seeds && pair >= stolen_first && pair < stolen_last)
+                use_seeded(stolen_seeds, seqs_, stride_, stolen_first, pair);
+            return;
+        }
         for (int mate = 0; mate < stride_; ++mate) {
             const Prepared *entry = prepared_[size_t(pair) * stride_ + mate];
             current.seq[mate] = entry ? reinterpret_cast<const uint8_t *>(
@@ -982,11 +1009,12 @@ private:
     // keep a null entry and use the CPU.
     void locate(SeedBatch &batch, long first) {
         batch.output.resize(batch.input.reads.size());
-        gpu->run(batch.input, batch.output, threadgroup_size, 0, bwt_, opt_);
+        std::vector<long> failed;
+        device->seed(batch.input, batch.output, failed);
         // Skip locating a batch the CPU threads have already mapped.
         if (taken(first)) return;
         std::vector<char> usable_read(batch.output.size(), 1);
-        for (long i : gpu->failed) usable_read[size_t(i)] = 0;
+        for (long i : failed) usable_read[size_t(i)] = 0;
         std::vector<size_t> offsets(batch.output.size() + 1, 0);
         std::vector<char> located(batch.output.size(), 0);
         const bool locate = locator && opt_->max_occ > 0;
@@ -1010,7 +1038,7 @@ private:
             }
             if (inject_locate_failure)
                 throw std::runtime_error("injected GPU locate failure (test)");
-            locator->run(gpu->index, batch.rows, batch.positions, threadgroup_size);
+            device->locate(batch.rows, batch.positions);
             locate_seconds += seconds(phase);
             located_rows += batch.rows.size();
         }
@@ -1248,8 +1276,7 @@ private:
         if (inject_rescue_failure && batches > 0)
             throw std::runtime_error("injected GPU rescue failure (test)");
         if (!taken(first)) {
-            rescuer->run(parameters_, batch.bases, batch.jobs, batch.row_bytes, batch.results,
-                threadgroup_size);
+            device->rescue(parameters_, batch.bases, batch.jobs, batch.row_bytes, batch.results);
             jobs += batch.jobs.size();
             for (const RescueResult &result : batch.results) {
                 if (result.status != rescue_ok && result.status != rescue_cpu)
@@ -1289,15 +1316,12 @@ private:
 };
 // The extension kernel and its batches for opt->n_threads CPU threads.
 void prepare_extension() {
-    if (!extender)
-        extender = std::make_unique<GpuExtend>(kernel().extend_runtime, kernel().extend);
     const size_t pairs = extend_batch_pairs;
     while (extend_pool.size() < extend_batch_count) {
         auto batch = std::make_unique<ExtendBatch>();
         batch->base_capacity = pairs * extend_bases_per_pair;
         batch->job_capacity = pairs * extend_jobs_per_pair;
-        extender->allocate(batch->base_capacity, batch->job_capacity, batch->bases, batch->jobs,
-            batch->results, batch->order);
+        batch->buffers = device->extend_buffers(batch->base_capacity, batch->job_capacity);
         batch->pairs.reserve(pairs);
         extend_pool.push_back(std::move(batch));
     }
@@ -1305,11 +1329,11 @@ void prepare_extension() {
 } // namespace
 
 extern "C" void wgse_metal_free(void *memory) {
-    if (!wgse::metal::Runtime::unsettled()) free(memory);
+    if (!wgse::gpu::memory_unsettled()) free(memory);
 }
 
 extern "C" void *wgse_metal_calloc(size_t count, size_t size) {
-    // Page-aligned so Metal can use the index in place; contents as calloc's.
+    // Page-aligned so a GPU can use the index in place; contents as calloc's.
     const size_t page = static_cast<size_t>(getpagesize());
     void *memory = nullptr;
     if ((size && count > (SIZE_MAX - page) / size)
@@ -1345,38 +1369,36 @@ extern "C" int wgse_metal_map(const mem_opt_t *opt, const bwt_t *bwt, int n,
         || !std::isfinite(split) || split < 0 || split > INT_MAX) return 0;
     const size_t pairs_before = pair_starts.load();
     const bool paired_at_start = pairs_running.load() != 0;
-    @autoreleasepool {
-        try {
-            attach(bwt, opt, mapped_reads);
-            mapped_reads += size_t(n);
-            auto start = Clock::now();
-            // bwa_verbose >= 4 prints each extension as mem_chain2aln runs it.
-            ExtendParameters extension;
-            const bool extend = extend_enabled && bwa_verbose < 4
-                && wgse::extend::parameters(*opt, extension);
-            if (extend) prepare_extension();
-            SeedScheduler scheduler(opt, bwt, n, seqs, worker, data, extend ? &extension : nullptr);
-            scheduler.align();
-            const size_t reads = size_t(stride(opt));
-            std::lock_guard<std::mutex> lock(totals_mutex);
-            gpu_reads += scheduler.prepared * reads;
-            cpu_reads += scheduler.unprepared * reads;
-            wasted_reads += scheduler.wasted * reads;
-            fallback_reads += scheduler.missing.load();
-            gpu_batches += scheduler.batches;
-            gpu_seconds += scheduler.gpu_time;
-            cpu_wait_seconds += scheduler.waited;
-            map_seconds += seconds(start);
-            extend_batches += scheduler.extended_batches;
-            extend_jobs += scheduler.extended_jobs;
-            extend_kernel_seconds += scheduler.extend_kernel_time;
-            extend_gpu_seconds += scheduler.extend_time;
-            if (paired_at_start || pairs_running.load() || pair_starts.load() != pairs_before)
-                ++overlapped_chunks;
-        } catch (const std::exception &error) {
-            record_failure(error.what());
-            return 0;
-        }
+    try {
+        attach(bwt, opt, mapped_reads);
+        mapped_reads += size_t(n);
+        auto start = Clock::now();
+        // bwa_verbose >= 4 prints each extension as mem_chain2aln runs it.
+        ExtendParameters extension;
+        const bool extend = extend_enabled && bwa_verbose < 4
+            && extend_parameters(*opt, extension);
+        if (extend) prepare_extension();
+        SeedScheduler scheduler(opt, bwt, n, seqs, worker, data, extend ? &extension : nullptr);
+        scheduler.align();
+        const size_t reads = size_t(stride(opt));
+        std::lock_guard<std::mutex> lock(totals_mutex);
+        gpu_reads += scheduler.prepared * reads;
+        cpu_reads += scheduler.unprepared * reads;
+        wasted_reads += scheduler.wasted * reads;
+        fallback_reads += scheduler.missing.load();
+        gpu_batches += scheduler.batches;
+        gpu_seconds += scheduler.gpu_time;
+        cpu_wait_seconds += scheduler.waited;
+        map_seconds += seconds(start);
+        extend_batches += scheduler.extended_batches;
+        extend_jobs += scheduler.extended_jobs;
+        extend_kernel_seconds += scheduler.extend_kernel_time;
+        extend_gpu_seconds += scheduler.extend_time;
+        if (paired_at_start || pairs_running.load() || pair_starts.load() != pairs_before)
+            ++overlapped_chunks;
+    } catch (const std::exception &error) {
+        record_failure(error.what());
+        return 0;
     }
     return 1;
 }
@@ -1396,33 +1418,30 @@ extern "C" int wgse_metal_pair(const mem_opt_t *opt, const bntseq_t *bns, const 
     if (!usable || !rescue_enabled || !(opt->flag & MEM_F_PE)
         || (opt->flag & MEM_F_NO_RESCUE) || !wgse::rescue::parameters(*opt, parameters))
         return 0;
-    @autoreleasepool {
-        try {
-            if (!rescuer) rescuer = std::make_unique<GpuRescue>(kernel().runtime, kernel().rescue);
-            auto start = Clock::now();
-            const double kernel_before = rescuer->kernel_seconds;
-            RescueScheduler scheduler(opt, bns, pac, pes, n, seqs, regs, parameters, worker, data);
-            struct Running {
-                Running() { ++pairs_running; }
-                ~Running() { --pairs_running; }
-            } running;
-            scheduler.run();
-            std::lock_guard<std::mutex> lock(totals_mutex);
-            rescue_batches += scheduler.batches;
-            rescue_gpu_pairs += scheduler.prepared;
-            rescue_cpu_pairs += scheduler.unprepared;
-            rescue_wasted_pairs += scheduler.wasted;
-            rescue_jobs += scheduler.jobs;
-            rescue_declined += scheduler.declined;
-            rescue_skipped += scheduler.skipped;
-            rescue_gpu_seconds += scheduler.gpu_time;
-            rescue_kernel_seconds += rescuer->kernel_seconds - kernel_before;
-            rescue_wait_seconds += scheduler.waited;
-            rescue_seconds += seconds(start);
-        } catch (const std::exception &error) {
-            record_failure(error.what());
-            return 0;
-        }
+    try {
+        auto start = Clock::now();
+        const double kernel_before = device->rescue_kernel_seconds();
+        RescueScheduler scheduler(opt, bns, pac, pes, n, seqs, regs, parameters, worker, data);
+        struct Running {
+            Running() { ++pairs_running; }
+            ~Running() { --pairs_running; }
+        } running;
+        scheduler.run();
+        std::lock_guard<std::mutex> lock(totals_mutex);
+        rescue_batches += scheduler.batches;
+        rescue_gpu_pairs += scheduler.prepared;
+        rescue_cpu_pairs += scheduler.unprepared;
+        rescue_wasted_pairs += scheduler.wasted;
+        rescue_jobs += scheduler.jobs;
+        rescue_declined += scheduler.declined;
+        rescue_skipped += scheduler.skipped;
+        rescue_gpu_seconds += scheduler.gpu_time;
+        rescue_kernel_seconds += device->rescue_kernel_seconds() - kernel_before;
+        rescue_wait_seconds += scheduler.waited;
+        rescue_seconds += seconds(start);
+    } catch (const std::exception &error) {
+        record_failure(error.what());
+        return 0;
     }
     return 1;
 }
@@ -1465,9 +1484,9 @@ extern "C" int wgse_metal_extend(int qlen, const uint8_t *query, int tlen, const
     ExtendCurrent &pair = extend_current;
     if (!pair.batch) return 0;
     const ExtendParameters &p = *pair.parameters;
-    const auto *jobs = static_cast<const ExtendJob *>(pair.batch->jobs.contents);
-    const auto *results = static_cast<const ExtendResult *>(pair.batch->results.contents);
-    const auto *bases = static_cast<const uint8_t *>(pair.batch->bases.contents);
+    const ExtendJob *jobs = pair.batch->buffers->jobs;
+    const ExtendResult *results = pair.batch->buffers->results;
+    const uint8_t *bases = pair.batch->buffers->bases;
     auto same = [](const uint8_t *a, const uint8_t *b, int length) {
         return length == 0 || memcmp(a, b, size_t(length)) == 0;
     };
@@ -1644,19 +1663,21 @@ struct CpuMapScratch {
 };
 thread_local CpuMapScratch cpu_map_scratch;
 
-void cpu_map_worker(void *context, long block, int tid) {
-    const CpuMap &m = *static_cast<const CpuMap *>(context);
+// Seeds every read of pairs [first, last) and locates all their rows in one
+// interleaved walk, into this thread's scratch; returns each read's entry
+// (null intervals when mem_chain() seeds nothing), valid until the next call.
+const Prepared *seed_block(const mem_opt_t *opt, const bwt_t *bwt, bseq1_t *seqs, int stride,
+    long first, long last) {
     CpuMapScratch &s = cpu_map_scratch;
-    const long first = block * cpu_map_block, last = std::min(m.items, first + cpu_map_block);
-    const size_t reads = size_t(last - first) * size_t(m.stride);
+    const size_t reads = size_t(last - first) * size_t(stride);
     s.intervals.resize(reads);
     s.prepared.assign(reads, Prepared{nullptr, nullptr, nullptr, 0});
     s.rows.clear();
     s.walks.clear();
     for (size_t r = 0; r < reads; ++r) {
-        bseq1_t &seq = m.seqs[size_t(first) * size_t(m.stride) + r];
+        bseq1_t &seq = seqs[size_t(first) * size_t(stride) + r];
         // mem_chain() seeds nothing for these.
-        if (seq.l_seq < m.opt->min_seed_len) continue;
+        if (seq.l_seq < opt->min_seed_len) continue;
         // In place, as mem_align1_core() does.
         uint8_t *bases = reinterpret_cast<uint8_t *>(seq.seq);
         for (int i = 0; i < seq.l_seq; ++i)
@@ -1664,20 +1685,20 @@ void cpu_map_worker(void *context, long block, int tid) {
         s.walks.push_back({bases, seq.l_seq, &s.intervals[r]});
         s.prepared[r].intervals = &s.intervals[r];
     }
-    wgse::smem::collect(m.opt, m.bwt, s.walks.data(), s.walks.size());
+    wgse::smem::collect(opt, bwt, s.walks.data(), s.walks.size());
     std::vector<size_t> &offsets = s.offsets;
     offsets.assign(reads + 1, 0);
     for (size_t r = 0; r < reads; ++r) {
         offsets[r] = s.rows.size();
         if (!s.prepared[r].intervals) continue;
         const bwtintv_t *p = s.intervals[r].data(), *end = p + s.intervals[r].size();
-        const size_t bound = row_count(p, end, m.opt->max_occ);
-        if (m.opt->max_occ > 0 && bound && bound <= cpu_locate_max_rows)
-            append_rows(p, end, m.opt->max_occ, s.rows);
+        const size_t bound = row_count(p, end, opt->max_occ);
+        if (opt->max_occ > 0 && bound && bound <= cpu_locate_max_rows)
+            append_rows(p, end, opt->max_occ, s.rows);
     }
     offsets[reads] = s.rows.size();
     s.positions.resize(s.rows.size());
-    locate_rows(m.bwt, s.rows.data(), s.positions.data(), s.rows.size());
+    locate_rows(bwt, s.rows.data(), s.positions.data(), s.rows.size());
     cpu_located_rows.fetch_add(s.rows.size(), std::memory_order_relaxed);
     for (size_t r = 0; r < reads; ++r) {
         if (offsets[r + 1] == offsets[r]) continue;
@@ -1685,15 +1706,26 @@ void cpu_map_worker(void *context, long block, int tid) {
         s.prepared[r].positions = s.positions.data() + offsets[r];
         s.prepared[r].count = offsets[r + 1] - offsets[r];
     }
+    return s.prepared.data();
+}
+
+// Points current at pair's entries from seed_block(pairs from first).
+void use_seeded(const Prepared *prepared, bseq1_t *seqs, int stride, long first, long pair) {
+    current = {};
+    for (int mate = 0; mate < stride; ++mate) {
+        const Prepared &entry = prepared[size_t(pair - first) * size_t(stride) + size_t(mate)];
+        if (!entry.intervals) continue;
+        current.seq[mate] = reinterpret_cast<const uint8_t *>(seqs[size_t(pair) * size_t(stride) + size_t(mate)].seq);
+        current.prepared[mate] = &entry;
+    }
+}
+
+void cpu_map_worker(void *context, long block, int tid) {
+    const CpuMap &m = *static_cast<const CpuMap *>(context);
+    const long first = block * cpu_map_block, last = std::min(m.items, first + cpu_map_block);
+    const Prepared *prepared = seed_block(m.opt, m.bwt, m.seqs, m.stride, first, last);
     for (long item = first; item < last; ++item) {
-        current = {};
-        for (int mate = 0; mate < m.stride; ++mate) {
-            const size_t r = size_t(item - first) * size_t(m.stride) + size_t(mate);
-            if (!s.prepared[r].intervals) continue;
-            current.seq[mate] = reinterpret_cast<const uint8_t *>(
-                m.seqs[size_t(item) * size_t(m.stride) + size_t(mate)].seq);
-            current.prepared[mate] = &s.prepared[r];
-        }
+        use_seeded(prepared, m.seqs, m.stride, first, item);
         m.worker(m.data, item, tid);
         finish_cursor();
     }
@@ -1749,22 +1781,275 @@ extern "C" bwtint_t wgse_metal_sa(const bwt_t *bwt, bwtint_t k) {
     return steps + sampled_position(bwt, k);
 }
 
-bool wgse_metal_available(std::string &reason) {
-    return kernel().available(reason);
+namespace {
+namespace dsa = wgse::dense_sa;
+
+// Whether mem loads a side file of these bytes on this machine.
+bool sidecar_fits(uint64_t bytes, uint64_t memory) {
+    return memory >= locate_dense_min_memory && bytes <= memory / sidecar_memory_fraction;
 }
 
-bool wgse_metal_hardware_supported() {
-    return kernel().hardware_supported();
+std::string index_prefix(const char *hint) {
+    char *prefix = bwa_idx_infer_prefix(hint);
+    if (!prefix) return {};
+    std::string value(prefix);
+    free(prefix);
+    return value;
+}
+
+// Page-aligned, zeroed storage of whole pages, so Metal can use it in place.
+uint32_t *page_storage(size_t bytes, size_t &capacity) {
+    const size_t page = static_cast<size_t>(getpagesize());
+    capacity = (std::max<size_t>(bytes, 1) + page - 1) / page * page;
+    void *memory = nullptr;
+    if (posix_memalign(&memory, page, capacity) != 0) return nullptr;
+    memset(static_cast<uint8_t *>(memory) + bytes, 0, capacity - bytes);
+    return static_cast<uint32_t *>(memory);
+}
+
+struct FileCloser {
+    FILE *fp;
+    ~FileCloser() { if (fp) fclose(fp); }
+};
+
+// Reads a side file's header and samples and checks them against want; returns
+// why it cannot be used, or nothing. Keeps the samples in out if given (the
+// caller frees them), else only checksums them.
+std::string read_sidecar(FILE *fp, const dsa::Header &want, Sidecar *out) {
+    dsa::Header h{};
+    if (fread(&h, sizeof(h), 1, fp) != 1) return "it is truncated";
+    if (!dsa::matches(h, want)) return "it was not made from this index";
+    uint32_t crc = 0;
+    if (out) {
+        out->low = page_storage(h.entries * sizeof(uint32_t), out->low_bytes);
+        out->high = page_storage(h.words * sizeof(uint32_t), out->high_bytes);
+        if (!out->low || !out->high) return "out of memory";
+        if (fread(out->low, sizeof(uint32_t), h.entries, fp) != h.entries
+            || fread(out->high, sizeof(uint32_t), h.words, fp) != h.words)
+            return "it is truncated or too long";
+        crc = dsa::crc32c(crc, out->low, h.entries * sizeof(uint32_t));
+        crc = dsa::crc32c(crc, out->high, h.words * sizeof(uint32_t));
+    } else {
+        // The samples follow the header back to back, so one running checksum.
+        std::vector<uint8_t> buffer(size_t(1) << 20);
+        for (uint64_t left = (h.entries + h.words) * sizeof(uint32_t); left;) {
+            const size_t n = size_t(std::min<uint64_t>(left, buffer.size()));
+            if (fread(buffer.data(), 1, n, fp) != n) return "it is truncated or too long";
+            crc = dsa::crc32c(crc, buffer.data(), n);
+            left -= n;
+        }
+    }
+    if (fgetc(fp) != EOF) return "it is truncated or too long";
+    if (crc != h.checksum) return "its checksum does not match";
+    return {};
+}
+
+// Reads and checks a side file for mem; returns why it cannot be used, or nothing.
+std::string load_sidecar(const std::string &file, const bwt_t &bwt, uint32_t shift,
+    Sidecar &out) {
+    FileCloser closer{fopen(file.c_str(), "rb")};
+    if (!closer.fp) return "cannot open it";
+    Sidecar loaded;
+    loaded.shift = shift;
+    const dsa::Header want = dsa::header(dsa::shape(bwt), shift);
+    std::string problem = read_sidecar(closer.fp, want, &loaded);
+    // Spot-check samples against upstream's walk on the index's own samples.
+    for (uint64_t j = 0; problem.empty() && j < 1024; ++j) {
+        const uint64_t i = (j * 0x9e3779b97f4a7c15ull + 0x2545f4914f6cdd1dull) % want.entries;
+        const uint64_t row = dsa::row(i, uint64_t(bwt.sa_intv), shift);
+        const uint64_t value = loaded.low[i] | (uint64_t((loaded.high[i >> 5] >> (i & 31)) & 1) << 32);
+        if (value != (row <= bwt.seq_len ? uint64_t(bwt_sa(&bwt, row)) : 0))
+            problem = "its samples do not match the index";
+    }
+    if (!problem.empty()) {
+        free(loaded.low);
+        free(loaded.high);
+        return problem;
+    }
+    out = loaded;
+    return {};
+}
+} // namespace
+
+extern "C" void wgse_index_loaded(const char *hint, const bwt_t *bwt) {
+    if (!sidecar_enabled || (!enabled && cpu_upstream) || !bwt || sidecar.low) return;
+    const std::string prefix = index_prefix(hint);
+    if (prefix.empty()) return;
+    const uint64_t memory = physical_memory();
+    // The densest side file this machine has room for.
+    for (uint32_t shift = 1; (uint64_t(1) << shift) < uint64_t(bwt->sa_intv); ++shift) {
+        if (!dsa::supported(*bwt, shift)) continue;
+        const std::string file = dsa::path(prefix, shift);
+        struct stat info;
+        if (stat(file.c_str(), &info) != 0) continue;
+        if (!sidecar_forced && !sidecar_fits(uint64_t(info.st_size), memory)) continue;
+        auto start = Clock::now();
+        const std::string problem = load_sidecar(file, *bwt, shift, sidecar);
+        if (!problem.empty()) {
+            fprintf(stderr, "[wgse-bwa] not using %s: %s\n", file.c_str(), problem.c_str());
+            continue;
+        }
+        sidecar.seconds = seconds(start);
+        dense_low = sidecar.low;
+        dense_high = sidecar.high;
+        locate_dense_shift = shift;
+        if (bwa_verbose >= 3)
+            fprintf(stderr, "[M::wgse_index_loaded] read suffix-array samples for every %u rows "
+                "from %s in %.2f sec\n", 1u << shift, file.c_str(), sidecar.seconds);
+        return;
+    }
+}
+
+int wgse_densify_sa(const char *hint, unsigned interval, unsigned threads) {
+    const std::string prefix = index_prefix(hint);
+    if (prefix.empty()) {
+        fprintf(stderr, "[wgse-bwa] no BWA index found for %s\n", hint);
+        return 1;
+    }
+    auto start = Clock::now();
+    bwt_t *bwt = bwt_restore_bwt((prefix + ".bwt").c_str());
+    bwt_restore_sa((prefix + ".sa").c_str(), bwt);
+    const uint32_t shift = interval ? uint32_t(__builtin_ctz(interval)) : 0;
+    if ((interval & (interval - 1)) || !dsa::supported(*bwt, shift)) {
+        fprintf(stderr, "[wgse-bwa] cannot sample every %u rows of an index sampled every %d\n",
+            interval, bwt->sa_intv);
+        bwt_destroy(bwt);
+        return 1;
+    }
+    dsa::Header h = dsa::header(dsa::shape(*bwt), shift);
+    std::vector<uint32_t> low(h.entries), high(h.words);
+    // Whole words of high bits per block, so threads never share one.
+    constexpr uint64_t block = uint64_t(1) << 16;
+    std::atomic<uint64_t> next{0};
+    auto work = [&] {
+        std::vector<uint64_t> rows, positions, values;
+        for (;;) {
+            const uint64_t first = next.fetch_add(block);
+            if (first >= h.entries) return;
+            const uint64_t last = std::min(first + block, h.entries);
+            rows.clear();
+            for (uint64_t i = first; i < last; ++i) {
+                const uint64_t row = dsa::row(i, h.sa_intv, shift);
+                if (row <= bwt->seq_len) rows.push_back(row);
+            }
+            positions.resize(rows.size());
+            locate_rows(bwt, rows.data(), positions.data(), rows.size());
+            // Rows past the end (in the last block only) keep 0, as the GPU's build does.
+            values.assign(last - first, 0);
+            size_t k = 0;
+            for (uint64_t i = first; i < last; ++i)
+                if (dsa::row(i, h.sa_intv, shift) <= bwt->seq_len) values[i - first] = positions[k++];
+            for (uint64_t i = first; i < last; ++i) {
+                const uint64_t value = values[i - first];
+                low[i] = uint32_t(value);
+                high[i >> 5] |= uint32_t(value >> 32 & 1) << (i & 31);
+            }
+        }
+    };
+    std::vector<std::thread> pool;
+    for (unsigned t = 1; t < std::max(1u, threads); ++t) pool.emplace_back(work);
+    work();
+    for (std::thread &thread : pool) thread.join();
+    bwt_destroy(bwt);
+    uint32_t crc = dsa::crc32c(0, low.data(), low.size() * sizeof(uint32_t));
+    h.checksum = dsa::crc32c(crc, high.data(), high.size() * sizeof(uint32_t));
+    const std::string file = dsa::path(prefix, shift), partial = file + ".partial";
+    FILE *fp = fopen(partial.c_str(), "wb");
+    bool written = fp && fwrite(&h, sizeof(h), 1, fp) == 1
+        && fwrite(low.data(), sizeof(uint32_t), low.size(), fp) == low.size()
+        && fwrite(high.data(), sizeof(uint32_t), high.size(), fp) == high.size();
+    if (fp) written = fclose(fp) == 0 && written;
+    if (!written || rename(partial.c_str(), file.c_str()) != 0) {
+        fprintf(stderr, "[wgse-bwa] cannot write %s\n", file.c_str());
+        remove(partial.c_str());
+        return 1;
+    }
+    fprintf(stderr, "[wgse-bwa] wrote %s (%.2f GB) in %.1f sec\n", file.c_str(),
+        double(sizeof(h) + (low.size() + high.size()) * sizeof(uint32_t)) / 1e9, seconds(start));
+    return 0;
+}
+
+// The index's side files, and the one mem would read: the densest that fits this
+// Mac's memory and whose header and checksum are intact. (mem also spot-checks
+// 1024 samples against the index, which capabilities does not load.)
+std::string wgse_dense_sa_json(const char *hint) {
+    std::string json = "{\"intervals\":[";
+    const std::string prefix = index_prefix(hint);
+    // The index's shape, from the .sa header (primary, L2[1..4], interval, length).
+    uint64_t header[7] = {};
+    FILE *fp = prefix.empty() ? nullptr : fopen((prefix + ".sa").c_str(), "rb");
+    const bool readable = fp && fread(header, sizeof(uint64_t), 7, fp) == 7;
+    if (fp) fclose(fp);
+    dsa::Shape shape;
+    shape.primary = header[0];
+    for (int c = 1; c < 5; ++c) shape.l2[c] = header[c];
+    shape.sa_intv = header[5];
+    shape.seq_len = header[6];
+    const uint64_t memory = physical_memory();
+    unsigned chosen = 0;
+    bool first = true;
+    for (uint32_t shift = 1; readable && shift < 64 && (uint64_t(1) << shift) < shape.sa_intv;
+         ++shift) {
+        if (!dsa::supported(shape, shift)) continue;
+        const std::string file = dsa::path(prefix, shift);
+        struct stat info;
+        if (stat(file.c_str(), &info) != 0) continue;
+        json += (first ? "" : ",") + std::to_string(1u << shift);
+        first = false;
+        if (chosen || !sidecar_enabled
+            || (!sidecar_forced && !sidecar_fits(uint64_t(info.st_size), memory)))
+            continue;
+        FileCloser closer{fopen(file.c_str(), "rb")};
+        if (closer.fp && read_sidecar(closer.fp, dsa::header(shape, shift), nullptr).empty())
+            chosen = 1u << shift;
+    }
+    json += "],\"interval\":" + (chosen ? std::to_string(chosen) : std::string("null"));
+    json += ",\"index_sa_interval\":" + (readable ? std::to_string(header[5]) : std::string("null"));
+    return json + "}";
+}
+
+bool wgse_gpu_hardware_supported(Backend backend) {
+    return backend == Backend::metal ? metal_hardware_supported() : cuda_hardware_supported();
+}
+
+namespace {
+// The device for a GPU backend; automatic picks the one this build has.
+std::unique_ptr<Device> make_device(Backend backend, std::string &reason) {
+    if (backend == Backend::automatic)
+#ifdef __APPLE__
+        backend = Backend::metal;
+#else
+        backend = Backend::cuda;
+#endif
+    return backend == Backend::metal ? make_metal_device(device_options, reason)
+        : make_cuda_device(device_options, reason);
+}
+} // namespace
+
+bool wgse_gpu_available(Backend backend, std::string &reason) {
+    // The device is kept for wgse_set_backend, so its kernels build once.
+    if (!device) device = make_device(backend, device_reason);
+    reason = device ? "" : device_reason;
+    return device != nullptr;
+}
+
+const char *wgse_gpu_name(Backend backend) {
+    if (device) return device->name();
+#ifdef __APPLE__
+    return backend == Backend::cuda ? "CUDA" : "Metal";
+#else
+    return backend == Backend::metal ? "Metal" : "CUDA";
+#endif
 }
 
 void wgse_set_backend(Backend backend) {
     if (backend == Backend::cpu) return;
     std::string reason;
-    if (wgse_metal_available(reason)) enabled = true;
+    if (wgse_gpu_available(backend, reason)) enabled = true;
     else fprintf(stderr, "[wgse-bwa] CPU fallback: %s\n", reason.c_str());
 }
 
-bool wgse_metal_execution_failed(std::string &reason) {
+bool wgse_gpu_execution_failed(std::string &reason) {
     reason = execution_failure;
     return !reason.empty();
 }
@@ -1775,12 +2060,13 @@ void wgse_finish_backend() {
         "cpu_located_rows=%zu overlapped_chunks=%zu interruptions=%zu watchdog_threads=%zu\n",
         gpu_batches, gpu_reads, cpu_reads, fallback_reads, wasted_reads, unlocated_reads,
         located_rows, locate_misses.load(), cpu_located_rows.load(), overlapped_chunks,
-        wgse::metal::Runtime::interruptions(), wgse::metal::Runtime::watchdog_threads());
+        device ? device->interruptions() : size_t(0), wgse::gpu::watchdog_threads());
     fprintf(stderr, "[wgse-bwa] seconds gpu=%.3f locate=%.3f map=%.3f cpu_wait=%.3f\n",
         gpu_seconds, locate_seconds, map_seconds, cpu_wait_seconds);
     if (dense_tried)
-        fprintf(stderr, "[wgse-bwa] locate_dense shift=%u built=%d build_seconds=%.3f\n",
-            locate_dense_shift, dense_built ? 1 : 0, locate_dense_seconds);
+        fprintf(stderr, "[wgse-bwa] locate_dense shift=%u built=%d file=%d build_seconds=%.3f\n",
+            locate_dense_shift, dense_built ? 1 : 0, sidecar.low ? 1 : 0,
+            sidecar.low ? sidecar.seconds : locate_dense_seconds);
     fprintf(stderr, "[wgse-bwa] rescue_batches=%zu rescue_gpu_pairs=%zu rescue_cpu_pairs=%zu "
         "rescue_wasted_pairs=%zu rescue_jobs=%zu rescue_declined=%zu rescue_skipped=%zu "
         "rescue_hits=%zu rescue_misses=%zu rescue_mismatches=%zu rescue_cpu_jobs=%zu "
@@ -1798,17 +2084,16 @@ void wgse_finish_backend() {
     fprintf(stderr, "[wgse-bwa] extend seconds gpu=%.3f kernel=%.3f\n", extend_gpu_seconds,
         extend_kernel_seconds);
     extend_pool.clear();
-    extender.reset();
-    rescuer.reset();
-    locator.reset();
-    gpu.reset();
+    locator = false;
+    shared_sa = nullptr;
+    device.reset();
 }
 
 void wgse_report_cpu_backend() {
-    fprintf(stderr, "[wgse-bwa] cpu_located_rows=%zu locate_misses=%zu rescue_cpu_jobs=%zu "
-        "rescue_cpu_hits=%zu rescue_cpu_skipped=%zu\n", cpu_located_rows.load(),
-        locate_misses.load(), cpu_backend_jobs.load(), cpu_backend_hits.load(),
-        cpu_backend_skipped.load());
+    fprintf(stderr, "[wgse-bwa] cpu_located_rows=%zu locate_misses=%zu dense_sa_interval=%u "
+        "rescue_cpu_jobs=%zu rescue_cpu_hits=%zu rescue_cpu_skipped=%zu\n",
+        cpu_located_rows.load(), locate_misses.load(), sidecar.low ? 1u << sidecar.shift : 0u,
+        cpu_backend_jobs.load(), cpu_backend_hits.load(), cpu_backend_skipped.load());
 }
 
 void wgse_set_gpu_policy(bool all) {
@@ -1816,7 +2101,7 @@ void wgse_set_gpu_policy(bool all) {
 }
 
 void wgse_set_gpu_batch(size_t reads) {
-    gpu_batch_reads = reads;
+    device_options.seed_batch = reads;
 }
 
 void wgse_inject_gpu_failure() {
@@ -1828,11 +2113,11 @@ void wgse_inject_locate_failure() {
 }
 
 void wgse_inject_gpu_interruptions(size_t every) {
-    wgse::metal::Runtime::inject_interruptions(every);
+    device_options.interrupt_every = every;
 }
 
 void wgse_inject_gpu_hang(const char *label) {
-    wgse::metal::Runtime::inject_hang(label, 2);
+    device_options.hang_label = label;
 }
 
 void wgse_set_gpu_locate_rows(size_t rows) {
@@ -1862,6 +2147,11 @@ void wgse_set_gpu_rescue(bool enable) {
 
 void wgse_set_gpu_rescue_batch(size_t pairs) {
     rescue_batch_pairs = pairs;
+}
+
+void wgse_set_dense_sa_files(bool enable, bool force) {
+    sidecar_enabled = enable;
+    sidecar_forced = force;
 }
 
 void wgse_set_cpu_upstream() {
@@ -1906,4 +2196,40 @@ void wgse_inject_extend_failure() {
 
 void wgse_verify_gpu_extend() {
     verify_extend = true;
+}
+
+// Builds without a device report it as unavailable.
+namespace wgse::gpu {
+#ifndef WGSE_HAVE_METAL
+std::unique_ptr<Device> make_metal_device(const DeviceOptions &, std::string &reason) {
+    reason = "this build has no Metal backend";
+    return nullptr;
+}
+
+bool metal_hardware_supported() {
+    return false;
+}
+
+bool memory_unsettled() {
+    return false;
+}
+
+size_t watchdog_threads() {
+    return 0;
+}
+#endif
+#ifndef WGSE_HAVE_CUDA
+std::unique_ptr<Device> make_cuda_device(const DeviceOptions &, std::string &reason) {
+    reason = "this build has no CUDA backend";
+    return nullptr;
+}
+
+bool cuda_hardware_supported() {
+    return false;
+}
+#endif
+} // namespace wgse::gpu
+
+void wgse_set_gpu_watchdog_seconds(double seconds) {
+    device_options.watchdog_seconds = seconds;
 }

@@ -6,7 +6,7 @@ final="${2:-}"
 # The Reference Genomes Library, else genomes/ in the reference library.
 genomes="${3:-}"
 if [[ -z "$library" ]]; then
-  library="${GUI_FOR_CLI_BUNDLE_WORKSPACE:-$PWD}/reference"
+  library="${WGSEXTRACT_GUI_BUNDLE_WORKSPACE:-$PWD}/reference"
 fi
 if [[ -z "$final" || "$final" == */* || "$final" == "." || "$final" == ".." ]]; then
   printf 'Invalid reference genome file name: %s\n' "$final" >&2

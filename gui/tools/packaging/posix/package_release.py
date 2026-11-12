@@ -23,7 +23,7 @@ def env_value(name: str, default: str) -> str:
 
 
 RELEASE_DIR = Path(env_value("RELEASE_DIR", "out/release"))
-APP_NAME = env_value("APP_NAME", "GUI for CLI")
+APP_NAME = env_value("APP_NAME", "WGS Extract GUI")
 TAURI_BUNDLE_DIR = Path(
     os.environ.get(
         "TAURI_BUNDLE_DIR",

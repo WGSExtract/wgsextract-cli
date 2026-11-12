@@ -2,19 +2,20 @@ import { configEditorControls, initialCheckedOptions, initialConfigValues, initi
 import { api } from "./api.js";
 import { clamp, escapeAttribute, escapeHTML } from "./dom.js";
 import { normalizeColorTheme, normalizeIconSet } from "./icons.js";
-import { errorMessage } from "./model.js";
+import { errorMessage, renderIcon } from "./model.js";
 import { effectiveWebUIFont, shouldRenderInPageBundleLoader } from "./platform.js";
 import { setRender } from "./rerender.js";
 import { captureFocus, restoreFocus } from "./focus-state.js";
-import { captureScrollState, restoreScrollState, type ScrollSnapshot } from "./scroll-state.js";
+import { captureKeyedScrollStates, captureScrollState, restoreKeyedScrollStates, restoreScrollState, type ScrollSnapshot } from "./scroll-state.js";
 import { runSetup } from "./operations-setup.js";
 import { state } from "./state.js";
 import { initializeTauriUpdater } from "./tauri-updater.js";
-import { appendTerminal, discardPendingTerminalOutput, ensureMainTerminal, renderTerminalPane, terminalTabs, terminalToggleTitle } from "./terminal.js";
+import { appendTerminal, discardPendingTerminalOutput, ensureMainTerminal, renderTerminalPane, renderTerminalToggle, terminalTabs } from "./terminal.js";
 import { renderUpdatePopover } from "./view/update.js";
 import { renderPrerequisitesDialog } from "./view/prerequisites.js";
 import { renderBundleHeader, renderConfirmationDialog, renderNavigation, renderUIModeSwitch, renderPage, renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID } from "./view.js";
 import { renderAboutDialog } from "./view/about.js";
+import { revealPathInputEnds } from "./view/path-input.js";
 import type { BundleManifest, ManifestResponse } from "../../../shared/types.js";
 import { normalizeUIMode, visiblePages } from "../../../shared/ui-mode.js";
 const app: HTMLElement = (() => {
@@ -28,6 +29,7 @@ let bindEventsModulePromise: Promise<typeof import("./events.js")> | null = null
 let renderSerial = 0;
 let autoRunSetupTriggered = false;
 setRender(render);
+window.addEventListener("resize", () => revealPathInputEnds(app));
 await bootstrap();
 async function bootstrap(locale?: string) {
     try {
@@ -131,7 +133,7 @@ function render() {
     app.innerHTML = `
     ${state.isSidebarVisible
         ? `<aside class="sidebar">
-      <button type="button" class="sidebar-toggle sidebar-toggle-inside" data-sidebar-toggle title="${escapeAttribute(sidebarToggleTitle())}" aria-label="${escapeAttribute(sidebarToggleTitle())}">◀</button>
+      <button type="button" class="sidebar-toggle sidebar-toggle-inside" data-sidebar-toggle title="${escapeAttribute(sidebarToggleTitle())}" aria-label="${escapeAttribute(sidebarToggleTitle())}">${renderIcon("sidebar.left", undefined, "◀")}</button>
       ${renderBundleHeader()}
       ${renderUIModeSwitch()}
       <nav class="page-nav" aria-label="Pages">${renderNavigation()}</nav>
@@ -144,9 +146,9 @@ function render() {
       <main class="page-panel" data-page-panel-id="${escapeAttribute(activePage?.id ?? "")}">${activePage ? renderPage(activePage) : ""}</main>
       ${state.isTerminalVisible ? `<div class="terminal-resizer" data-terminal-resizer role="separator" aria-orientation="horizontal" aria-label="Resize command output" tabindex="0"></div>` : ""}
       ${state.isTerminalVisible ? renderTerminalPane() : ""}
-      <button type="button" class="terminal-toggle" data-terminal-toggle title="${escapeAttribute(terminalToggleTitle())}" aria-label="${escapeAttribute(terminalToggleTitle())}">▭</button>
+      ${state.isTerminalVisible ? "" : renderTerminalToggle()}
     </div>
-    ${state.isSidebarVisible ? "" : `<button type="button" class="sidebar-toggle sidebar-toggle-floating" data-sidebar-toggle title="${escapeAttribute(sidebarToggleTitle())}" aria-label="${escapeAttribute(sidebarToggleTitle())}">▶</button>`}
+    ${state.isSidebarVisible ? "" : `<button type="button" class="sidebar-toggle sidebar-toggle-floating" data-sidebar-toggle title="${escapeAttribute(sidebarToggleTitle())}" aria-label="${escapeAttribute(sidebarToggleTitle())}">${renderIcon("sidebar.left", undefined, "▶")}</button>`}
     ${renderUpdatePopover()}
     ${state.pendingConfirmation ? renderConfirmationDialog() : ""}
     ${renderPrerequisitesDialog()}
@@ -155,8 +157,9 @@ function render() {
   `;
     restoreRenderScrollSnapshot(scrollSnapshot, activePage?.id, activeTerminalID);
     restoreFocus(app, focus);
+    revealPathInputEnds(app);
     app.dataset.state = "ready";
-    window.dispatchEvent(new Event("gui-for-cli-rendered"));
+    window.dispatchEvent(new Event("wgsextract-gui-rendered"));
     bindEventsAfterFirstPaint(serial);
 }
 function renderBundleActionBar() {
@@ -174,6 +177,7 @@ type RenderScrollSnapshot = {
     windowY: number;
     page: ScrollSnapshot | null;
     terminal: ScrollSnapshot | null;
+    keyed: ScrollSnapshot[];
 };
 function captureRenderScrollSnapshot(): RenderScrollSnapshot {
     const pagePanel = app.querySelector<HTMLElement>(".page-panel");
@@ -183,11 +187,14 @@ function captureRenderScrollSnapshot(): RenderScrollSnapshot {
         windowY: window.scrollY ?? 0,
         page: captureScrollState(pagePanel, pagePanel?.dataset.pagePanelId),
         terminal: captureScrollState(terminalLog, terminalLog?.dataset.terminalLogId),
+        keyed: captureKeyedScrollStates<HTMLElement>(app),
     };
 }
 function restoreRenderScrollSnapshot(snapshot: RenderScrollSnapshot, activePageID: string | undefined, activeTerminalID: string | undefined) {
     const restoredPage = restoreScrollState(app.querySelector<HTMLElement>(".page-panel"), snapshot.page, activePageID);
     restoreScrollState(app.querySelector<HTMLElement>(".terminal-log"), snapshot.terminal, activeTerminalID);
+    // Before focus is restored, so a focused row button inside a scrolled table is back in view.
+    restoreKeyedScrollStates<HTMLElement>(app, snapshot.keyed);
     if (restoredPage && typeof window.scrollTo === "function") {
         window.scrollTo(snapshot.windowX, snapshot.windowY);
     }
@@ -214,7 +221,7 @@ function updateDocumentMetadata() {
     favicon.href = `/favicon.ico?bundle=${version}`;
 }
 function appWindowTitle() {
-    const appName = "GUI for CLI";
+    const appName = "WGS Extract GUI";
     const bundleName = String(state.manifest?.displayName ?? "").trim();
     const appVersion = String(state.appVersion ?? "").trim();
     const baseTitle = bundleName ? `${bundleName} - ${appName}` : appName;

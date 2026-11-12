@@ -48,6 +48,8 @@ jobs:
           pixi-version: v0.82.0
           locked: true
           environments: dev
+          # PR runs restore main's environment; writing their own crowds it out.
+          cache-write: ${{ github.ref == 'refs/heads/main' }}
       - name: Refresh within the declared pins
         id: refresh
         run: |

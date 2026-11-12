@@ -53,18 +53,31 @@ jobs:
           ref: ${{ inputs.ref }}
           persist-credentials: false
 
+      # This run's CI helpers, which an older ref being rebuilt may predate.
+      - name: Checkout CI helpers
+        if: matrix.artifact_name == 'tauri-linux'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: gui/out/ci-helpers
+          sparse-checkout: .github/actions
+          persist-credentials: false
+
       - name: Configure release version
         if: env.RELEASE_TAG != ''
         shell: bash
         run: echo "PACKAGE_APP_VERSION=${RELEASE_TAG#v}" >> "$GITHUB_ENV"
 
       - name: Setup Node
+        timeout-minutes: 10
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
+          cache: npm
+          cache-dependency-path: gui/app/package-lock.json
 
       # The hosted runners ship rustup; Tauri builds with the current stable.
       - name: Setup Rust
+        timeout-minutes: 10
         shell: bash
         run: |
           rustup toolchain install stable --profile minimal
@@ -73,15 +86,17 @@ jobs:
 
       - name: Install Linux system dependencies
         if: matrix.artifact_name == 'tauri-linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libgtk-3-dev \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            rpm \
+        timeout-minutes: 30
+        uses: ./gui/out/ci-helpers/.github/actions/apt-install
+        with:
+          cache: ${{ inputs.tag == '' }}
+          packages: >-
+            libgtk-3-dev
+            libwebkit2gtk-4.1-dev
+            libayatana-appindicator3-dev
+            librsvg2-dev
+            patchelf
+            rpm
             zstd
 
       # Tauri signs and notarizes the macOS app when these variables are set:
@@ -138,7 +153,21 @@ jobs:
             exit 1
           fi
 
+      # The crates Cargo.lock names, checked against its hashes when used. Not
+      # the build tree: it is large, and a release builds from scratch.
+      - name: Cache Cargo downloads
+        if: env.RELEASE_TAG == ''
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gui/app/web/packagers/tauri/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-${{ runner.arch }}-
+
       - name: Install dependencies
+        timeout-minutes: 15
         run: npm ci --prefix app
 
       - name: Package Tauri app

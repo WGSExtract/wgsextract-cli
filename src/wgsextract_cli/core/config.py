@@ -103,7 +103,7 @@ KNOWN_SETTINGS = {
         None,
         "Apple Silicon: `align`/`realign` use wgse-bwa, wgse-bwa-mem2, "
         "wgse-bwa-mem3 and wgse-minimap2 when on PATH (auto, the default) or "
-        "never (off)",
+        "never (off); Linux: Bioconda's bwa-mem3 in place of bwa/bwa-mem2",
     ),
     "dorado_models_directory": (
         None,
@@ -148,6 +148,17 @@ KNOWN_SETTINGS = {
         "DeepVariant Docker image for CPU calling (default "
         "google/deepvariant:1.10.0 on x64; local "
         "localhost/wgsextract-deepvariant:1.10.0-arm64 on Linux ARM64)",
+    ),
+    "deepvariant_native": (
+        None,
+        "Apple Silicon: `vcf deepvariant` runs wgse-deepvariant when it is on "
+        "PATH (auto, the default) or never, using the Docker image (off)",
+    ),
+    "deepvariant_weights": (
+        None,
+        "Apple Silicon: folder of the WGS weights wgse-deepvariant calls with "
+        "(from a macos-deepvariant release); `vcf deepvariant` runs "
+        "wgse-deepvariant when it is on PATH",
     ),
     "deepvariant_ultima_image": (
         None,
@@ -313,6 +324,7 @@ PATH_SETTINGS = {
     "haplocheck_executable",
     "dorado_executable",
     "dorado_models_directory",
+    "deepvariant_weights",
     "jar_directory",
     "vep_cache_directory",
     "pharmcat_directory",

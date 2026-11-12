@@ -24,6 +24,16 @@
   --button-danger-border: #d18f89;
   --button-danger-text: #111113;
   --control-height: 30px;
+  /* Spacing scale: inside a card rows sit --space-3 apart; cards sit --space-4 apart. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  /* Descriptive text fills its container and wraps only past a comfortable line length on very wide windows. */
+  --prose-max: 120ch;
+  --label-column: clamp(200px, 24%, 280px);
+  --focus-ring-color: color-mix(in srgb, var(--accent) 80%, transparent);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
 }
 
@@ -51,6 +61,9 @@
     --border: rgb(245 245 247 / 16%);
     --separator: rgb(245 245 247 / 24%);
     --accent-soft: rgb(10 132 255 / 22%);
+    --danger: #f97066;
+    --success: #32d583;
+    --warning: #fdb022;
     --terminal-bg: #15161a;
     --button-bg: #3a3b42;
     --button-bg-hover: #45464e;
@@ -74,6 +87,9 @@
   --border: rgb(245 245 247 / 16%);
   --separator: rgb(245 245 247 / 24%);
   --accent-soft: rgb(10 132 255 / 22%);
+  --danger: #f97066;
+  --success: #32d583;
+  --warning: #fdb022;
   --terminal-bg: #15161a;
   --button-bg: #3a3b42;
   --button-bg-hover: #45464e;
@@ -116,9 +132,23 @@ button:hover:not(:disabled) {
   background: var(--button-bg-hover);
 }
 
+button:active:not(:disabled) {
+  filter: brightness(0.94);
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.48;
+}
+
+/* One keyboard focus ring for every control. An outline, not a box-shadow: WebKit draws no shadow on native checkboxes. */
+:is(button, select, input, summary, a, [tabindex="0"]):focus-visible {
+  outline: 2px solid var(--focus-ring-color);
+  outline-offset: 2px;
+}
+
+:is(input[type="text"], select):focus {
+  border-color: var(--accent);
 }
 
 .app-shell {
@@ -285,7 +315,8 @@ button:disabled {
   text-align: start;
 }
 
-.nav-item.active {
+.nav-item.active,
+.nav-item.active:hover:not(:disabled) {
   background: var(--accent-soft);
   color: color-mix(in srgb, var(--accent) 78%, var(--text));
 }
@@ -517,7 +548,11 @@ button:disabled {
 .setup-global-banner:hover,
 .setup-global-banner:focus-visible {
   background: color-mix(in srgb, var(--warning) 18%, var(--panel));
-  outline: none;
+}
+
+/* Full-width bar: draw the focus ring inside it, where it can't be clipped. */
+.setup-global-banner:focus-visible {
+  outline-offset: -3px;
 }
 
 .setup-global-icon {
@@ -577,6 +612,8 @@ body.resizing-terminal * {
   min-height: 0;
   overflow: auto;
   background: var(--panel);
+  /* Lets a long table size itself to the visible page (cqh), so it scrolls inside the page instead of stretching it. */
+  container-type: size;
 }
 
 .page-panel article {
@@ -584,7 +621,7 @@ body.resizing-terminal * {
 }
 
 .page-header {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-4);
 }
 
 .page-header h2 {
@@ -602,9 +639,20 @@ body.resizing-terminal * {
 }
 
 .page-header p {
-  max-width: 860px;
   margin: 0;
   line-height: 1.45;
+}
+
+.page-header p,
+.section-header p,
+.field-note,
+.inline-error,
+.empty,
+.precheck-banner,
+.setup-status-header p,
+.result-summary .result-error,
+.confirmation-modal p {
+  max-width: var(--prose-max);
 }
 
 .field-note {
@@ -615,19 +663,19 @@ body.resizing-terminal * {
 
 .sections {
   display: grid;
-  gap: 20px;
+  gap: var(--space-4);
 }
 
 .card {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel);
-  padding: 14px 16px 16px;
+  padding: var(--space-3) var(--space-4) var(--space-4);
 }
 
 /* A subsection continues the card above it: no gap, joined borders, a smaller heading. */
 .card.subsection {
-  margin-top: -21px;
+  margin-top: calc(-1 * var(--space-4) - 1px);
   border-top-style: dashed;
   border-top-left-radius: 0;
   border-top-right-radius: 0;
@@ -637,17 +685,27 @@ body.resizing-terminal * {
   font-size: 0.95rem;
 }
 
+/* Cards a page renders above its manifest sections (Setup, Standard Options) keep the sections' spacing. */
+.page-panel article > .card {
+  margin-bottom: var(--space-4);
+}
+
 .setup-status-card {
   display: grid;
   gap: 12px;
-  margin-bottom: 20px;
 }
 
 .setup-status-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-2) var(--space-4);
+}
+
+.setup-status-header > div:first-child {
+  flex: 1 1 260px;
+  min-width: 0;
 }
 
 .setup-actions {
@@ -673,7 +731,7 @@ body.resizing-terminal * {
 
 .setup-step-list {
   display: grid;
-  gap: 8px;
+  gap: 4px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -684,7 +742,7 @@ body.resizing-terminal * {
   grid-template-columns: auto minmax(140px, 1fr) auto auto auto;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 5px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel-subtle);
@@ -746,7 +804,7 @@ body.resizing-terminal * {
 }
 
 .section-header {
-  margin-bottom: 14px;
+  margin-bottom: var(--space-3);
 }
 
 .section-header h3 {
@@ -756,12 +814,13 @@ body.resizing-terminal * {
 }
 
 .section-header p {
-  margin: 8px 0 0;
+  margin: var(--space-1) 0 0;
+  line-height: 1.4;
 }
 
 .controls {
   display: grid;
-  gap: 14px;
+  gap: var(--space-3);
 }
 
 .control {
@@ -771,9 +830,9 @@ body.resizing-terminal * {
 .form-row,
 .toggle-row {
   display: grid;
-  grid-template-columns: 190px minmax(220px, 1fr) minmax(0, 0);
+  grid-template-columns: var(--label-column) minmax(220px, 1fr);
   align-items: first baseline;
-  gap: 16px;
+  gap: var(--space-4);
   width: 100%;
 }
 
@@ -782,15 +841,27 @@ body.resizing-terminal * {
   gap: 6px;
 }
 
-.row-label,
-.control-label,
-.checkbox-group legend,
 .language-picker span {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-weight: 650;
   line-height: 1.25;
+}
+
+/* Labels flow as text, so a label that wraps keeps its info button right after its last word. */
+.row-label,
+.control-label,
+.checkbox-group legend {
+  display: block;
+  padding: 0;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+:is(.row-label, .control-label, .checkbox-group legend, .option-group h4, .option-category h4, .option-row-title) > .tooltip {
+  margin-inline-start: 6px;
+  vertical-align: text-bottom;
 }
 
 input[type="text"],
@@ -812,6 +883,7 @@ select {
 input[type="checkbox"] {
   inline-size: 16px;
   block-size: 16px;
+  margin: 0;
 }
 
 .input-button-row {
@@ -821,8 +893,13 @@ input[type="checkbox"] {
   align-items: center;
 }
 
+[data-workspace-location-current] {
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+
 .workspace-location-row {
-  grid-template-columns: minmax(180px, 1fr) auto auto;
+  grid-template-columns: minmax(180px, 1fr) auto auto auto;
 }
 
 .secondary-button {
@@ -839,11 +916,18 @@ input[type="checkbox"] {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 8px;
-  margin-top: 8px;
 }
 
 .option-group {
   margin-top: 12px;
+}
+
+.checkbox-group > .option-group:first-child {
+  margin-top: 0;
+}
+
+.option-group h4 + .option-grid {
+  margin-top: 8px;
 }
 
 .option-group h4 {
@@ -870,10 +954,15 @@ input[type="checkbox"] {
 
 .option-row {
   display: grid;
-  grid-template-columns: 9rem 1fr;
-  gap: 8px;
+  /* Same label column as the form rows, so checkboxes line up with the fields above them. */
+  grid-template-columns: var(--label-column) minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
   align-items: start;
   padding: 4px 0;
+}
+
+.option-row.untitled {
+  grid-template-columns: 1fr;
 }
 
 .option-row-title {
@@ -936,11 +1025,22 @@ input[type="checkbox"] {
   gap: 10px;
 }
 
+/* A long table scrolls on its own, at most the visible page tall, under a header row that stays in view. */
 .table-wrap {
-  overflow-x: auto;
+  max-height: max(240px, calc(100cqh - 2 * var(--space-5)));
+  overflow: auto;
   border-radius: 8px;
   background: var(--panel-subtle);
-  padding: 12px;
+  padding: 0 12px 12px;
+}
+
+.table-wrap thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-top: 12px;
+  background: var(--panel-subtle);
+  box-shadow: inset 0 -1px 0 var(--border);
 }
 
 table {
@@ -965,14 +1065,31 @@ tbody tr + tr {
   border-top: 1px solid var(--border);
 }
 
+/* Buttons size to their titles (at least 160px), so a long title stays on one line instead of wrapping in a fixed column. */
 .action-row,
-.row-actions,
-.button-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, max-content));
-  gap: 10px;
-  margin-top: 16px;
-  justify-content: start;
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) 10px;
+  margin-top: var(--space-3);
+}
+
+.action-row > .action-stack {
+  min-width: 160px;
+}
+
+/* An action with a disk estimate takes the whole row: the estimate reads across the card, its button keeps its size. */
+.action-row > .action-stack.has-precheck {
+  flex-basis: 100%;
+  justify-items: start;
+}
+
+.action-row > .action-stack.has-precheck > .action-button {
+  min-width: 160px;
+}
+
+.section-header + .action-row {
+  margin-top: 0;
 }
 
 .action-stack {
@@ -981,12 +1098,15 @@ tbody tr + tr {
   align-content: start;
 }
 
+.action-stack {
+  border-radius: 7px;
+}
+
 .action-stack.compact {
   gap: 4px;
 }
 
 .precheck-banner {
-  max-width: 360px;
   display: flex;
   align-items: flex-start;
   gap: 6px;
@@ -1014,8 +1134,8 @@ tbody tr + tr {
 }
 
 .row-actions {
-  display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  gap: 6px;
   margin-top: 0;
 }
 
@@ -1143,6 +1263,8 @@ tbody tr + tr {
 }
 
 .pill {
+  display: inline-block;
+  white-space: nowrap;
   border-radius: 999px;
   padding: 2px 7px 3px;
   font-size: 0.68rem;
@@ -1180,6 +1302,11 @@ tbody tr + tr {
   margin-top: 8px;
   color: var(--warning);
   font-size: 0.86rem;
+}
+
+.config-editor {
+  display: grid;
+  gap: 10px;
 }
 
 .loading-inline,
@@ -1270,7 +1397,7 @@ tbody tr + tr {
   line-height: 1;
 }
 
-.terminal-copy {
+.terminal-icon-button {
   min-height: 26px;
   inline-size: 30px;
   display: inline-grid;
@@ -1292,8 +1419,8 @@ tbody tr + tr {
 
 .terminal-tab-close:hover,
 .terminal-tab-close:focus-visible,
-.terminal-copy:hover,
-.terminal-copy:focus-visible {
+.terminal-icon-button:hover,
+.terminal-icon-button:focus-visible {
   background: color-mix(in srgb, var(--text) 14%, transparent);
   color: var(--text);
 }
@@ -1458,8 +1585,17 @@ tbody tr + tr {
   inset-inline-start: 12px;
 }
 
-.language-card {
-  margin-bottom: 20px;
+/* Leave room for the floating toggles, so they never cover a button or the end of the page. */
+.app-shell.sidebar-hidden :is(.bundle-action-bar, .setup-global-banner) {
+  padding-inline-start: 56px;
+}
+
+.app-shell.terminal-hidden .page-panel article {
+  padding-bottom: 56px;
+}
+
+.app-shell.sidebar-hidden:not(.bundle-action-visible, .setup-needed) .page-header {
+  padding-inline-start: 36px;
 }
 
 .modal-backdrop {
@@ -1632,13 +1768,40 @@ tbody tr + tr {
     display: none;
   }
 
+  /* The sidebar becomes a top bar: bundle name, mode switch and hide button on one row, then the pages. */
   .sidebar {
     position: relative;
     z-index: auto;
     height: auto;
     max-height: none;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "header mode toggle"
+      "nav nav nav";
+    align-items: center;
+    column-gap: var(--space-3);
     border-inline-end: 0;
     border-bottom: 1px solid var(--separator);
+  }
+
+  .sidebar .bundle-header {
+    grid-area: header;
+  }
+
+  .sidebar .ui-mode-switch {
+    grid-area: mode;
+    justify-self: start;
+  }
+
+  .sidebar .sidebar-toggle-inside {
+    grid-area: toggle;
+    position: static;
+    margin-inline-end: 10px;
+  }
+
+  .sidebar .page-nav {
+    grid-area: nav;
   }
 
   .bundle-header {
@@ -1646,15 +1809,15 @@ tbody tr + tr {
     justify-content: flex-start;
     align-items: center;
     gap: 8px;
-    padding: 8px 12px 6px;
+    padding: 6px 0 6px 12px;
   }
 
   .bundle-icon,
   .bundle-emoji {
-    width: 34px;
-    height: 34px;
-    border-radius: 9px;
-    font-size: 20px;
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    font-size: 17px;
   }
 
   .bundle-header h1 {
@@ -1668,9 +1831,9 @@ tbody tr + tr {
     flex: none;
     flex-direction: row;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: 2px;
     overflow: visible;
-    padding: 0 8px 8px;
+    padding: 0 8px 6px;
   }
 
   .nav-primary,
@@ -1693,10 +1856,17 @@ tbody tr + tr {
     width: auto;
     min-width: 0;
     max-width: 100%;
-    grid-template-columns: 22px minmax(0, auto);
+    grid-template-columns: auto minmax(0, auto);
+    gap: 6px;
+    min-height: 28px;
     margin: 0;
-    padding: 5px 10px;
+    padding: 3px 8px;
     white-space: normal;
+  }
+
+  .nav-icon {
+    width: auto;
+    min-width: 16px;
   }
 
   .nav-item span:last-child {
@@ -1735,6 +1905,11 @@ tbody tr + tr {
 
   .page-panel {
     min-height: 320px;
+    container-type: normal;
+  }
+
+  .table-wrap {
+    max-height: max(240px, 70vh);
   }
 
   .terminal-panel {
@@ -1746,10 +1921,24 @@ tbody tr + tr {
     min-height: 160px;
   }
 
-  .form-row,
-  .toggle-row {
+  .form-row {
     grid-template-columns: 1fr;
     gap: 6px;
+  }
+
+  .toggle-row {
+    grid-template-columns: minmax(0, max-content) auto;
+    justify-content: start;
+    gap: 10px;
+  }
+
+  .ui-mode-switch {
+    width: 200px;
+    margin: 0;
+  }
+
+  .option-row {
+    grid-template-columns: 9rem minmax(0, 1fr);
   }
 }
 

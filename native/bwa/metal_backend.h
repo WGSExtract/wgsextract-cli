@@ -78,6 +78,10 @@ void wgse_worker1_finish(void *data, long i, void *chains);
 uint8_t *wgse_fetch_window(const bntseq_t *bns, const uint8_t *pac, int64_t *beg, int64_t mid,
     int64_t *end, int *rid);
 
+// After main_mem() loads the index: reads the densest denser suffix-array side
+// file (<prefix>.wgse-sa<interval>, dense_sa.h) this machine has room for.
+void wgse_index_loaded(const char *prefix, const bwt_t *bwt);
+
 // Upstream main(), renamed in the generated main.c.
 int wgse_bwa_main(int argc, char *argv[]);
 
@@ -86,13 +90,21 @@ int wgse_bwa_main(int argc, char *argv[]);
 
 #include <string>
 
-enum class Backend { cpu, metal, automatic };
+enum class Backend { cpu, metal, cuda, automatic };
 
-bool wgse_metal_available(std::string &reason);
-bool wgse_metal_hardware_supported();
-// Must precede alignment; selecting metal or auto requires an available device.
+// Whether the GPU backend's device can run the kernels (automatic: this
+// build's GPU, Metal on macOS and CUDA elsewhere), with the reason if not.
+bool wgse_gpu_available(Backend backend, std::string &reason);
+bool wgse_gpu_hardware_supported(Backend backend);
+// "Metal" or "CUDA": the selected device, or the backend's.
+const char *wgse_gpu_name(Backend backend);
+// Writes <prefix>.wgse-sa<interval> from the index's samples; returns an exit status.
+int wgse_densify_sa(const char *prefix, unsigned interval, unsigned threads);
+// The side files an index has and the interval mem would load, as a JSON object.
+std::string wgse_dense_sa_json(const char *prefix);
+// Must precede alignment; a GPU backend without a usable device leaves the CPU's.
 void wgse_set_backend(Backend backend);
-bool wgse_metal_execution_failed(std::string &reason);
+bool wgse_gpu_execution_failed(std::string &reason);
 // Prints GPU/CPU read counts to stderr and releases the GPU buffers.
 void wgse_finish_backend();
 // Prints the CPU backend's batched work counts to stderr (test builds).
@@ -106,8 +118,9 @@ void wgse_inject_locate_failure();
 // Reports the first commit of every nth piece of GPU work as interrupted by
 // macOS, so it is committed again.
 void wgse_inject_gpu_interruptions(size_t every);
-// Withholds the first GPU command whose label starts with label, as a hung GPU
-// would, so the watchdog gives up on the GPU after 2 s.
+// The GPU watchdog's floor in seconds (CUDA).
+void wgse_set_gpu_watchdog_seconds(double seconds);
+// Hangs the first GPU work of the stage label names (see DeviceOptions::hang_label).
 void wgse_inject_gpu_hang(const char *label);
 void wgse_set_gpu_locate(bool enable);
 void wgse_set_gpu_locate_dense(unsigned shift);
@@ -121,6 +134,8 @@ void wgse_set_gpu_rescue_batch(size_t pairs);
 void wgse_inject_rescue_failure();
 // Also run each GPU or batched CPU rescue alignment with ksw_align2() and count differences.
 void wgse_verify_gpu_rescue();
+// Whether mem loads denser suffix-array side files, and whether regardless of memory.
+void wgse_set_dense_sa_files(bool enable, bool force);
 // The CPU backend runs upstream's code for every step (default: the exact
 // batched replacements of wgse_fast_cpu()).
 void wgse_set_cpu_upstream();

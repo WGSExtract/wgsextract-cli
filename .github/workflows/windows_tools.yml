@@ -22,6 +22,11 @@ on:
 permissions:
   contents: read
 
+# Only pull requests share a group: a new push supersedes the PR's older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     runs-on: windows-latest
@@ -69,6 +74,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:

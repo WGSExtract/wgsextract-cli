@@ -38,6 +38,8 @@ jobs:
             default
             dev
             vep
+          # PR runs restore main's environment; writing their own crowds it out.
+          cache-write: ${{ github.ref == 'refs/heads/main' }}
       - name: Check installed tools and VEP
         run: |
           pixi run wgsextract deps check

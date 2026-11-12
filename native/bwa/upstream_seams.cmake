@@ -96,6 +96,9 @@ seam_replace(fastmap_source "int main_mem(int argc, char *argv[])"
     "${fastmap_stages_source}int main_mem(int argc, char *argv[])")
 seam_replace(fastmap_source "kt_pipeline(no_mt_io? 1 : 2, process, &aux, 3);"
     "if (!no_mt_io && !(opt->flag & MEM_F_SMARTPE) && wgse_metal_enabled())\n\t\tkt_pipeline(3, wgse_process, &aux, 4);\n\telse kt_pipeline(no_mt_io? 1 : 2, process, &aux, 3);")
+# Denser suffix-array samples from the index's side file, if it has one.
+seam_replace(fastmap_source "\tif (ignore_alt)\n\t\tfor (i = 0; i < aux.idx->bns->n_seqs; ++i)"
+    "\twgse_index_loaded(argv[optind], aux.idx->bwt);\n\tif (ignore_alt)\n\t\tfor (i = 0; i < aux.idx->bns->n_seqs; ++i)")
 file(WRITE "${generated}/fastmap.c" "#include \"metal_backend.h\"\n${fastmap_source}")
 
 file(READ "${bwa_SOURCE_DIR}/main.c" main_source)

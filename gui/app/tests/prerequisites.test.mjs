@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -11,6 +11,7 @@ globalThis.document = { querySelector: () => null };
 
 const { missingPrerequisites, installPrerequisite } = await import("../dist/web/src/server/prerequisites.js");
 const { loadLocalizedBundle } = await import("../dist/web/src/server/bundle-loader.js");
+const { exampleBundleCopy } = await import("./example-bundle.mjs");
 const { createInitialState, state } = await import("../dist/web/src/client/state.js");
 const { runAction } = await import("../dist/web/src/client/operations.js");
 const { cancelPendingPrerequisites, continuePendingPrerequisites, installPendingPrerequisites } = await import("../dist/web/src/client/operations-prerequisites-dialog.js");
@@ -18,7 +19,6 @@ const { renderPrerequisitesDialog } = await import("../dist/web/src/client/view/
 const { localizationLabels, parseTomlStrings } = await import("../dist/shared/localization.js");
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const wgsExtractBundleRoot = path.join(repoRoot, "examples/WGSExtract");
 const englishLabels = localizationLabels(parseTomlStrings(await readFile(path.join(repoRoot, "resources/BuiltinStrings/strings.en.toml"), "utf8")));
 const cram = "/data/sample.cram";
 const hs37d5 = { id: "hs37d5", kind: "genome", name: "hs37d5", installArguments: ["ref", "library", "--install", "hs37d5"] };
@@ -108,9 +108,8 @@ test("an item installed meanwhile completes at once; a failing check or an unins
 });
 
 test("WGSExtract checks its wgsextract actions with `ref needs`, and Unalign through the command its wrapper runs", async (t) => {
-  const workspace = await mkdtemp(path.join(tmpdir(), "gui-for-cli-prerequisites-"));
-  t.after(() => rm(workspace, { recursive: true, force: true }));
-  const bundle = await loadLocalizedBundle("en", repoRoot, wgsExtractBundleRoot, workspace);
+  const workspace = await exampleBundleCopy(t);
+  const bundle = await loadLocalizedBundle("en", repoRoot, workspace, workspace);
   const actions = bundle.manifest.pages.flatMap((page) => page.sections ?? []).flatMap((section) => section.actions ?? []);
   const basicInfo = actions.find((action) => action.id === "basic-info");
   const unalign = actions.find((action) => action.id === "bam-unalign");
@@ -129,9 +128,8 @@ test("WGSExtract checks its wgsextract actions with `ref needs`, and Unalign thr
 });
 
 test("WGSExtract's Microarray leaves --ref out until a genome is chosen, so it runs with one installed after the page loaded", async (t) => {
-  const workspace = await mkdtemp(path.join(tmpdir(), "gui-for-cli-prerequisites-"));
-  t.after(() => rm(workspace, { recursive: true, force: true }));
-  const bundle = await loadLocalizedBundle("en", repoRoot, wgsExtractBundleRoot, workspace);
+  const workspace = await exampleBundleCopy(t);
+  const bundle = await loadLocalizedBundle("en", repoRoot, workspace, workspace);
   const actions = bundle.manifest.pages.flatMap((page) => page.sections ?? []).flatMap((section) => section.actions ?? []);
   const generate = actions.find((action) => action.id === "microarray-generate");
   const { calls, runProcess } = fakeProcesses({ current: [] });

@@ -249,7 +249,7 @@ export function bindEvents(bootstrap: Bootstrap) {
     });
     app.querySelector("[data-sidebar-toggle]")?.addEventListener("click", () => {
         state.isSidebarVisible = !state.isSidebarVisible;
-        localStorage.setItem("guiForCLI.sidebarVisible", state.isSidebarVisible ? "true" : "false");
+        localStorage.setItem("wgsextractGui.sidebarVisible", state.isSidebarVisible ? "true" : "false");
         scheduleRender();
     });
     elements("[data-retry-source]").forEach((button) => {
@@ -360,7 +360,7 @@ function installGlobalBundleLoadHandler(bootstrap: Bootstrap) {
         return;
     }
     installedGlobalBundleLoadHandler = true;
-    window.addEventListener("gui-for-cli-load-bundle", () => {
+    window.addEventListener("wgsextract-gui-load-bundle", () => {
         void loadBundleFromPicker(bootstrap);
     });
 }
@@ -370,7 +370,7 @@ function installGlobalAboutHandler() {
         return;
     }
     installedGlobalAboutHandler = true;
-    window.addEventListener("gui-for-cli-show-about", showAboutDialog);
+    window.addEventListener("wgsextract-gui-show-about", showAboutDialog);
 }
 
 function showAboutDialog() {
@@ -558,7 +558,7 @@ export function bindSplitters() {
             app.style.setProperty("--sidebar-width", `${state.sidebarWidth}px`);
         };
         const up = () => {
-            localStorage.setItem("guiForCLI.sidebarWidth", String(Math.round(state.sidebarWidth)));
+            localStorage.setItem("wgsextractGui.sidebarWidth", String(Math.round(state.sidebarWidth)));
             document.body.classList.remove("resizing-sidebar");
             window.removeEventListener("pointermove", move);
             window.removeEventListener("pointerup", up);
@@ -577,7 +577,7 @@ export function bindSplitters() {
             app.style.setProperty("--terminal-height", `${state.terminalHeight}px`);
         };
         const up = () => {
-            localStorage.setItem("guiForCLI.terminalHeight", String(Math.round(state.terminalHeight)));
+            localStorage.setItem("wgsextractGui.terminalHeight", String(Math.round(state.terminalHeight)));
             document.body.classList.remove("resizing-terminal");
             window.removeEventListener("pointermove", move);
             window.removeEventListener("pointerup", up);
