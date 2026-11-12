@@ -251,6 +251,20 @@ model still comes from `--model`, `clair3_model` or the reads' metadata, as
 on the CPU, and is checked the same way; a bundled model name needs the
 `clair3` Pixi environment, otherwise pass the model's directory.
 
+On the HG002 chr20:10-11 Mb slice below, `--gpu` gave the same 1,829 calls
+as the CPU (alleles, genotypes and filters; QUAL within 0.19, GQ within 1).
+On all of chr20 it took 8.5 min instead of 10.3 min on 4 CPUs
+([resource estimates](resource_estimates.md#nvidia-gpus-parabricks)), with
+the same vcfeval F1 (0.9785), but about 2,700 of the 144,543 records (1.8%)
+were missing, extra or genotyped differently. About two thirds lie in the
+25.5-32 Mb pericentromere, where depths pass 216x: Clair3 2.0.5's GPU mode
+stores pileup counts as 8-bit integers, so counts above 127 wrap, and skips
+the CPU mode's scaling of such deep pileups; every pileup call whose quality
+changed by 1 or more was deeper than 100x. With both fixed by hand, the
+pileup calls matched the CPU's (QUAL within 0.03), but 6 of 360,471 flipped
+near a threshold, which changes WhatsHap's phasing and so about 1,000
+full-alignment calls, with the same F1.
+
 The Pixi environment can't use the GPU itself: Bioconda's Linux Clair3
 depends on CPU-only PyTorch (`pytorch-cpu`), so its `--use_gpu` falls back to
 the CPU, and Clair3 2.0.5 has no Apple GPU (MPS) path, although the macOS

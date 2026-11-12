@@ -224,6 +224,22 @@ TensorFlow takes most of the free GPU memory whatever it needs (22.7 GiB of
 the free 24 GiB GPU). make_examples and postprocess run on the CPU, as in the
 CPU image.
 
+`vcf clair3 --gpu` runs HKU's Clair3 2.0.5 GPU image and checks only that a
+GPU has 7.8 GiB free: Clair3 starts a full-alignment GPU worker for each
+8,000 MiB free and a pileup worker for each 5,000 MiB. On the same RTX 3090,
+all of chr20 of the HG002 ONT whole-genome CRAM (42x), 4 CPUs, Clair3's own
+run time:
+
+| Run | Time | GPU peak | Result |
+| --- | ---: | ---: | --- |
+| CPU (`clair3` Pixi environment) | 10.3 min | | vcfeval F1 0.9785 |
+| `--gpu` | 8.5 min | 6.1 GiB (4 pileup workers of 1.0–1.3 GiB) | F1 0.9785 |
+
+The GPU halved pileup and full-alignment calling (283 s to 159 s). Clair3's
+start-up checks (about 130 s on a whole-genome CRAM) and WhatsHap phasing
+(about 205 s) stay on the CPU, and the GPU was busy in only about 5% of
+one-second samples, so the CPUs limit the speed-up.
+
 Preflight is advisory: `preflight_resources()` guards estimation and reporting
 against `ValueError`, `OSError` and subprocess failures, warns that the resource
 estimate is unavailable, and lets the command continue. Existing dependency,
