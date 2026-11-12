@@ -22,10 +22,10 @@
     "selection": "the window; INFO and every FORMAT but GT dropped; BED clipped to it"
   },
   "chip": {
-    "selection": "23andMe v5 (2025) template chr20 positions, lifted to GRCh38 with UCSC hg19ToHg38, at the panel's sites inside the confident BED: GIAB genotype, else 0/0; contig named 20"
+    "selection": "23andMe v5 (2025) template chr20 positions, lifted to GRCh38 with UCSC hg19ToHg38, at the panel's sites inside the confident BED: GIAB genotype, else 0/0; contig named 20. Probe 20:10008603 is a simulated ./., to test that Beagle-filled chip no-calls remain labelled imputed (#621)."
   },
   "sha256": {
-    "chip.vcf.gz": "b72620f5825eee03634a5cf7f588d48ebd231a05e4ed19a7b7f57dd435de534a",
+    "chip.vcf.gz": "b1a444781693a45fe8896c7d5217293d2ba97afe65ca6fdb55c0dfbb2553b9a3",
     "chr20.b38.gmap.gz": "ce46ee540cb48e28e26cc4120b31d1a3a7968069679ce4364d8b39d4249dd790",
     "panel.vcf.gz": "7bf6dc900cedf676b7863e3e8a29baa71b7b351582f618102e079653e193f4d2",
     "reads.bam": "76d9ef550f775e145cdaa43d5999d2f60cc85b4603209f6c9f33868cbf6ea280",

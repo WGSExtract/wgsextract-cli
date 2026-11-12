@@ -1181,10 +1181,10 @@ class VcfImputeParams(Params):
 
     Every imputed record carries INFO/IMP, the header a
     ``##wgsextract_imputation`` line, and records whose most likely genotype
-    has GP below ``min_gp`` or whose INFO score (GLIMPSE2 INFO, Beagle DR2) is
-    below ``min_info`` (default: INFO 0.8, DR2 0.04) are FILTERed
-    ``ImpLowConf``. Install the panel's
-    chromosomes first with ``ref imputation``.
+    has GP below ``min_gp`` (GLIMPSE2: 0.9, Beagle: 0.95) are FILTERed
+    ``ImpLowConf``. Site INFO/DR2 is not a single-sample confidence measure:
+    ``min_info`` is an explicit opt-in site filter, meaningful only for
+    multi-sample cohorts. Install panel chromosomes with ``ref imputation``.
     """
 
     COMMAND = "vcf impute"
@@ -1205,23 +1205,23 @@ class VcfImputeParams(Params):
         None,
         help="Chromosomes, e.g. chr20 or chr1-22 (default: every installed one).",
     )
-    min_gp: float = param(
-        0.9,
-        help="FILTER genotypes with a lower max GP ImpLowConf.",
+    min_gp: float | None = param(
+        None,
+        help="Minimum max GP (default: GLIMPSE2 0.9; Beagle 0.95).",
         minimum=0.0,
     )
     min_info: float | None = param(
         None,
-        help="INFO/DR2 cutoff (default: GLIMPSE2 0.8; Beagle 0.04).",
+        help="Opt-in INFO/DR2 site filter; meaningful only for multi-sample cohorts.",
         minimum=0.0,
     )
 
     @property
-    def info_threshold(self) -> float:
-        """Effective tool-specific quality threshold, including explicit zero."""
-        if self.min_info is not None:
-            return self.min_info
-        return 0.8 if self.input is not None else 0.04
+    def gp_threshold(self) -> float:
+        """Effective per-genotype threshold, including explicit zero."""
+        if self.min_gp is not None:
+            return self.min_gp
+        return 0.9 if self.input is not None else 0.95
 
     def __post_init__(self) -> None:
         super().__post_init__()

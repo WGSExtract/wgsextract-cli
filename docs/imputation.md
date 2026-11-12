@@ -45,16 +45,17 @@ each sample's ploidy and isn't supported yet. A chip VCF with contigs named
 `imputed.vcf.gz` (+ `.tbi`) holds every panel site of the chromosomes imputed:
 
 - `INFO/IMP` marks an imputed genotype. GLIMPSE2's are all imputed; Beagle
-  leaves the chip's own genotypes unmarked.
+  leaves the chip's observed genotypes unmarked. Missing chip genotypes are
+  removed before Beagle, so their filled-in calls are marked `IMP` too.
 - `FORMAT/GT`, `DS` (dosage) and `GP` (genotype probabilities), and the
   site's INFO score: GLIMPSE2's `INFO/INFO` (with the panel frequency
   `INFO/RAF`), Beagle's `INFO/DR2`. Beagle output also keeps the reference
   panel's `AC`/`AN`: Beagle's own `AF` is the target-sample frequency and
   must not be used to decide whether an imputed allele is rare in the panel.
 - `FILTER` `ImpLowConf` on imputed genotypes whose most likely genotype has
-  `GP` below `--min-gp` (0.9) or whose score is below `--min-info` (GLIMPSE2
-  INFO: 0.8; Beagle DR2: 0.04). An explicit `--min-info` overrides either
-  default; zero disables the score cutoff, not the GP cutoff.
+  `GP` below `--min-gp` (GLIMPSE2: 0.9; Beagle: 0.95). There is **no default
+  INFO or DR2 filter**. `--min-info` remains an explicit opt-in site filter,
+  meaningful only for multi-sample cohorts, not single-target imputation.
 - A header line `##wgsextract_imputation=<Tool=...,Version=...,Panel=...>`.
 
 Downstream commands use these labels:
@@ -77,52 +78,57 @@ and 26 GLIMPSE2 chunks. The original 35x BAM was downsampled to each depth.
 Beagle 5.5 used HG002 truth genotypes at 14,795 lifted 23andMe v5 chr20 sites;
 those input sites were excluded from its evaluation.
 
-| Input | Dosage r², MAF 0.1–0.5% | MAF 1–5% | MAF 5–20% | MAF 20–50% | NRC, MAF >5% (all / PASS) | PASS share, MAF >5% |
-|---|---|---|---|---|---|---|
-| GLIMPSE2 0.5x | 0.894 | 0.960 | 0.971 | 0.958 | 0.950 / 0.985 | 0.94 |
-| GLIMPSE2 1x | 0.918 | 0.974 | 0.985 | 0.979 | 0.974 / 0.992 | 0.97 |
-| GLIMPSE2 2x | 0.942 | 0.982 | 0.991 | 0.988 | 0.985 / 0.994 | 0.98 |
-| GLIMPSE2 4x | 0.959 | 0.989 | 0.995 | 0.992 | 0.991 / 0.996 | 0.99 |
-| GLIMPSE2 8x | 0.972 | 0.992 | 0.997 | 0.997 | 0.996 / 0.998 | 1.00 |
-| Beagle, chip sites | 0.827 | 0.926 | 0.942 | 0.934 | 0.921 / 0.973 | 0.25 |
+| Input | Dosage r², MAF 0.1–0.5% | MAF 1–5% | MAF 5–20% | MAF 20–50% | NRC, MAF >5% (all calls) |
+|---|---|---|---|---|---|
+| GLIMPSE2 0.5x | 0.894 | 0.960 | 0.971 | 0.958 | 0.950 |
+| GLIMPSE2 1x | 0.918 | 0.974 | 0.985 | 0.979 | 0.974 |
+| GLIMPSE2 2x | 0.942 | 0.982 | 0.991 | 0.988 | 0.985 |
+| GLIMPSE2 4x | 0.959 | 0.989 | 0.995 | 0.992 | 0.991 |
+| GLIMPSE2 8x | 0.972 | 0.992 | 0.997 | 0.997 | 0.996 |
+| Beagle, chip sites | 0.827 | 0.926 | 0.942 | 0.934 | 0.921 |
 
 Dosage r² compares DS with truth dosage, grouped by the panel's minor allele
 frequency. NRC is genotype concordance at sites where truth or the imputed
-call is non-reference. This table uses the original GP ≥0.9 and INFO/DR2 ≥0.8
-PASS rule; the Beagle threshold calibration below is separate.
+call is non-reference. These are unfiltered accuracy figures. The corrected
+single-target GP filtering is evaluated separately below.
 
 The go/no-go accuracy gate (r² ≥0.9 for MAF >5% at 1x) passed: 0.985 and
 0.979 in the two common bins. This is one sample and chromosome, not evidence
 of equal accuracy across ancestries, chips or the entire genome. Rare
 imputed variants are not suitable as clinical findings.
 
-### Confidence calibration for array inputs
+### Per-genotype confidence for single-target imputation
 
-On the same HG002 chr20 simulation, score all **136,208** common (panel MAF
->5%) confident-BED sites not supplied as chip input. Hold max GP ≥0.9 fixed,
-scan every distinct DR2 value and choose the threshold retaining the most
-sites with PASS non-reference concordance ≥0.97.
+The command takes exactly one target sample. Beagle's DR2 measures dosage
+spread across target haplotypes: with one sample it acts largely as a
+zygosity indicator. Confident hom-ref **and hom-alt** calls can have DR2 zero.
+Any positive default DR2 cutoff therefore discards genuine homozygous calls
+and turns them into chip-export no-calls. Do not use it as genotype confidence.
+GLIMPSE INFO is also a site statistic, not a substitute for the target's GP.
+Both scores are retained in the output, but neither is filtered by default.
 
-| Minimum DR2 | PASS sites | PASS share | PASS NRC |
-|---|---:|---:|---:|
-| 0 (GP only) | 127,444 | 93.57% | 0.96388 |
-| 0.03 | 35,936 | 26.38% | 0.96852 |
-| **0.04 (new default)** | **35,080** | **25.75%** | **0.97068** |
-| 0.05 | 34,510 | 25.34% | 0.97247 |
-| 0.10 | 34,099 | 25.03% | 0.97349 |
-| 0.80 (old default) | 34,044 | 24.99% | 0.97345 |
+Use the per-genotype max GP instead: **Beagle defaults to 0.95; GLIMPSE2 to
+0.9**. The GP curves score common (panel MAF >5%) sites inside GIAB's confident
+BED, excluding Beagle's chip-input positions. They are retained in
+`out/621/gp/`; the earlier DR2 calibration is superseded.
 
-This recovers 1,036 sites (+3.0%) versus the old cutoff, but **does not turn
-the 25% PASS share into broad coverage**. Many confident reference genotypes
-have DR2 zero in this single-target run; dropping the DR2 screen entirely
-raises coverage but misses the requested NRC gate. Report the full curve,
-not just the selected point. Calibration is in-sample, on one chip simulation,
-not a validated accuracy guarantee for other ancestries or arrays.
+| Tool | Minimum max GP | Common PASS sites | PASS share | PASS NRC |
+|---|---:|---:|---:|---:|
+| Beagle | 0.90 | 127,444 / 136,208 | 93.57% | 0.96388 |
+| Beagle | **0.95 (default)** | **123,445 / 136,208** | **90.63%** | **0.97367** |
+| Beagle | 0.99 | 115,776 / 136,208 | 85.00% | 0.98338 |
+| GLIMPSE2 1x | **0.90 (default)** | **139,571 / 143,964** | **96.95%** | **0.99166** |
+| GLIMPSE2 1x | 0.95 | 137,677 / 143,964 | 95.63% | 0.99454 |
+| GLIMPSE2 1x | 0.99 | 132,884 / 143,964 | 92.30% | 0.99725 |
 
-GLIMPSE2 retains INFO ≥0.8. For the 143,964 evaluated common sites at 1x,
-its curve gives 139,571 PASS sites (96.95%) and NRC 0.99166 at that cutoff;
-lowering it does not recover additional GP-eligible calls on this dataset.
-The curves and matching script's run logs are in `out/621/dr2/`.
+Beagle GP ≥0.95 meets the aggregate common-site NRC ≥0.97 gate while preserving
+confident homozygous calls. In these evaluated sites, 16,813 of 18,489
+GP-qualified hom-alt calls have DR2 zero; they must not be discarded for that.
+GLIMPSE2 GP ≥0.9 already clears the NRC gate with broad coverage; increasing
+it is an optional precision/coverage trade-off, not required by these data.
+
+Calibration is on one HG002 chip simulation/chromosome, not an independent
+accuracy guarantee for other ancestries or arrays.
 
 ### Resources
 
@@ -166,3 +172,25 @@ with the provenance header and a result manifest. Panel preparation took
 Evidence (`comparison.json`, GIAB evaluation, header, timings and command
 log) is retained in `out/621/product/`. The large output stays on lin-big,
 under `/mnt/models/wgse-621/out/621/product/output/`.
+
+The corrected **Beagle** product command was also run end to end on chr20,
+with the same chip VCF and product panel, under a four-core/
+8 GiB lease. Its dosage r² exactly matches Phase 0 in every MAF bin, including
+0.941519598 (5–20%) and 0.933948882 (20–50%).
+
+The actual output `FILTER` values, not just a reconstructed threshold, give
+123,445 / 136,208 common sites PASS (**90.63%**) and aggregate NRC
+**0.973671875**. All **18,489 / 18,489** GP-qualified hom-alt calls in these
+evaluated sites are PASS; there are zero disagreements between the output
+filter and the GP-only rule. The header records `MinGP=0.95` without a
+`MinINFO` condition, and the manifest reports the site filter as disabled.
+
+The product wrote 1,416,853 imputed sites (27,740 `ImpLowConf`), took
+2 min 34 s including input preparation/labelling, and peaked at 2.2 GB RSS.
+Evidence is in `out/621/product-beagle/`; its large VCF remains at
+`/mnt/models/wgse-621/out/621/product-beagle/output/`.
+
+The no-call fixture probe at chr20:10,008,603 is filled as `1|1`, GP=1,
+DR2=0, **PASS and IMP**, and its exported table row has `imputed=1`.
+It is a direct regression for both the homozygote filtering and missing-probe
+labelling bugs. Panel-rarity suppression remains in force for imputed calls.

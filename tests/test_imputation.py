@@ -9,6 +9,7 @@ contigs named 20 as chip exports name them. The panel and map stand in for the
 pinned downloads; GLIMPSE2, Beagle and bcftools run for real.
 """
 
+import csv
 import shutil
 import subprocess
 from pathlib import Path
@@ -177,9 +178,12 @@ def _beagle_installed() -> bool:
 @needs_htslib
 @needs_glimpse
 @pytest.mark.skipif(not _beagle_installed(), reason="imputation env not installed")
-@pytest.mark.parametrize(("min_info", "threshold"), [(None, 0.04), (0.0, 0.0)])
-def test_beagle_imputes_chip_genotypes_and_keeps_the_chip_calls_unmarked(
-    reflib, tmp_path, min_info, threshold
+@pytest.mark.parametrize(
+    ("min_gp", "min_info", "threshold"),
+    [(None, None, 0.95), (0.9, None, 0.9), (None, 0.8, 0.95)],
+)
+def test_beagle_preserves_hom_alt_pass_and_labels_filled_chip_no_calls(
+    reflib, tmp_path, min_gp, min_info, threshold
 ):
     result = api.vcf.impute(
         api.VcfImputeParams(
@@ -189,12 +193,15 @@ def test_beagle_imputes_chip_genotypes_and_keeps_the_chip_calls_unmarked(
             threads=2,
             memory="1G",
             min_info=min_info,
+            min_gp=min_gp,
         )
     )
 
     (output,) = [Path(o.path) for o in result.outputs if o.role == "imputed_variants"]
     assert "##wgsextract_imputation=<Tool=Beagle" in _header(output)
-    chip = {int(r[0]) for r in _query(FIXTURE / "chip.vcf.gz", "%POS\n")}
+    probes = _query(FIXTURE / "chip.vcf.gz", "%POS\t[%GT]\n")
+    chip = {int(pos) for pos, gt in probes if "." not in gt}
+    missing = {int(pos) for pos, gt in probes if "." in gt}
     rows = {int(pos): imp for pos, imp in _query(output, "%POS\t%INFO/IMP\n")}
     assert {p for p, imp in rows.items() if imp != "1"} == chip
     assert len(rows) > 10 * len(chip)
@@ -207,16 +214,41 @@ def test_beagle_imputes_chip_genotypes_and_keeps_the_chip_calls_unmarked(
     }
     for pos, ref, alt, ac, an in _query(output, "%POS\t%REF\t%ALT\t%AC\t%AN\n"):
         assert (ac, an) == panel_counts[pos, ref, alt]
-    filters = _query(output, "%INFO/IMP\t%INFO/DR2\t[%GP]\t%FILTER\n")
-    newly_passing = [
+    filters = _query(output, "%INFO/IMP\t%INFO/DR2\t[%GP]\t[%GT]\t%FILTER\n")
+    confident_hom_alt = [
         filt
-        for imp, dr2, gp, filt in filters
+        for imp, dr2, gp, gt, filt in filters
         if imp == "1"
-        and threshold <= float(dr2) < 0.8
-        and max(map(float, gp.split(","))) >= 0.9
+        and float(dr2) == 0
+        and gt.replace("|", "/") == "1/1"
+        and max(map(float, gp.split(","))) >= threshold
     ]
-    assert newly_passing
-    assert all("ImpLowConf" not in filt for filt in newly_passing)
+    assert confident_hom_alt
+    # #732: a single target's DR2=0 must not turn confident hom-alts into no-calls.
+    if min_info is None:
+        assert all("ImpLowConf" not in filt for filt in confident_hom_alt)
+    else:
+        assert all("ImpLowConf" in filt for filt in confident_hom_alt)
+    # #732: Beagle otherwise fills a ./., but leaves it unmarked as imputed.
+    assert missing and all(rows[pos] == "1" for pos in missing)
+    table = api.vcf.table(
+        api.VcfTableParams(
+            vcf_input=output,
+            outdir=tmp_path / "table",
+            all_alleles=True,
+            no_sqlite=True,
+        )
+    )
+    (tsv,) = [Path(o.path) for o in table.outputs if o.role == "variant_table"]
+    with tsv.open() as stream:
+        missing_rows = [
+            r
+            for r in csv.DictReader(stream, delimiter="\t")
+            if int(r["pos"]) in missing
+        ]
+    assert missing_rows and all(
+        r["imputed"] == "1" and "." not in r["genotype"] for r in missing_rows
+    )
     concordance, sites = _concordance(output)
     assert sites > 300
     assert concordance >= 0.9

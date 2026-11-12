@@ -8,8 +8,8 @@ for a genotype-only VCF such as microarray calls. Both come from the opt-in
 
 The output is labelled so nothing downstream mistakes it for direct calls:
 every imputed record has INFO/IMP, the header names the tool and panel in a
-``##wgsextract_imputation`` line, and imputed records below the GP or INFO
-thresholds are FILTERed ``ImpLowConf``.
+``##wgsextract_imputation`` line, and imputed records below the per-genotype
+GP threshold are FILTERed ``ImpLowConf``. Site INFO/DR2 filtering is opt-in.
 """
 
 import hashlib
@@ -273,7 +273,10 @@ def _beagle(
                 *([["bcftools", "annotate", "--rename-chrs", str(rename), "-Ou"]]
                   if rename else []),
                 ["bcftools", "norm", "-m", "-any", "-Ou"],
-                ["bcftools", "view", "-m2", "-M2", "-v", "snps", "-Ou"],
+                # Missing probes must become absent markers, so Beagle marks
+                # their replacement genotypes IMP rather than as chip calls.
+                ["bcftools", "view", "-m2", "-M2", "-v", "snps",
+                 "-e", 'GT="mis"', "-Ou"],
                 ["bcftools", "annotate", "-x", "ID,INFO,^FORMAT/GT", "-Oz",
                  "-o", str(gt)],
             ],
@@ -304,11 +307,12 @@ def _beagle(
 
 
 def _header_lines(tool: str, version: str, params: VcfImputeParams) -> str:
+    site_filter = f"MinINFO={params.min_info:g}," if params.min_info is not None else ""
     return (
         '##INFO=<ID=IMP,Number=0,Type=Flag,Description="Imputed genotype">\n'
         f'##{HEADER_KEY}=<Tool={tool},Version="{version}",'
         f'Panel="{imputation_panel.PANEL_LABEL}",Build=GRCh38,'
-        f"MinGP={params.min_gp:g},MinINFO={params.info_threshold:g},"
+        f"MinGP={params.gp_threshold:g},{site_filter}"
         f"Filter={LOW_CONFIDENCE}>\n"
     )
 
@@ -343,10 +347,10 @@ def _label(
         header.write_text("".join(lines), newline="\n")
         annotate = ["bcftools", "annotate", "-h", str(header), "-Ou"]
         score = "DR2"
-    low = (
-        f"INFO/IMP=1 && (MAX(FMT/GP)<{params.min_gp:g} || "
-        f"INFO/{score}<{params.info_threshold:g})"
-    )
+    criteria = [f"MAX(FMT/GP)<{params.gp_threshold:g}"]
+    if params.min_info is not None:
+        criteria.append(f"INFO/{score}<{params.min_info:g}")
+    low = f"INFO/IMP=1 && ({' || '.join(criteria)})"
     run_pipeline(
         [
             concat,
@@ -424,17 +428,20 @@ def run_impute(params: VcfImputeParams) -> None:
         tool_version=version,
         panel=imputation_panel.PANEL_LABEL,
         chromosomes=",".join(chroms),
-        min_gp=params.min_gp,
-        min_info=params.info_threshold,
+        min_gp=params.gp_threshold,
+        min_info=params.min_info,
         **_summary(out_vcf),
     )
     result = current_result()
     result.add_output(out_vcf, "imputed_variants", metrics=metrics)
     result.add_metrics(**metrics)
+    site_filter = (
+        f" or INFO < {params.min_info:g}" if params.min_info is not None else ""
+    )
     logging.info(
         f"Imputed {metrics['imputed_sites']:,} sites; "
         f"{metrics['low_confidence_sites']:,} are {LOW_CONFIDENCE} "
-        f"(max GP < {params.min_gp:g} or INFO < {params.info_threshold:g})."
+        f"(max GP < {params.gp_threshold:g}{site_filter})."
     )
 
 

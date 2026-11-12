@@ -38207,7 +38207,7 @@
    }
   },
   "vcf impute": {
-   "help": "usage: wgsextract vcf impute [-h] [--vcf-input VCF_INPUT] [--chromosomes CHROMOSOMES]\n                             [--min-gp MIN_GP] [--min-info MIN_INFO]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Genotype-only VCF (e.g. chip calls) to impute with Beagle instead.\n  --chromosomes CHROMOSOMES\n                        Chromosomes, e.g. chr20 or chr1-22 (default: every installed one).\n  --min-gp MIN_GP       FILTER genotypes with a lower max GP ImpLowConf.\n  --min-info MIN_INFO   INFO/DR2 cutoff (default: GLIMPSE2 0.8; Beagle 0.04).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vcf impute --input lowpass.bam --chromosomes chr20\n  wgsextract vcf impute --vcf-input chip.vcf.gz\n\noutputs (in the output directory unless noted):\n  imputed.vcf.gz (+ .tbi): every imputed record marked INFO/IMP, low-\n  confidence ones FILTERed ImpLowConf.\n\nneeds:\n  bcftools, bgzip, samtools, tabix; depending on options and inputs, also:\n  GLIMPSE2_ligate, GLIMPSE2_phase; hours on a 30x genome.\n",
+   "help": "usage: wgsextract vcf impute [-h] [--vcf-input VCF_INPUT] [--chromosomes CHROMOSOMES]\n                             [--min-gp MIN_GP] [--min-info MIN_INFO]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Genotype-only VCF (e.g. chip calls) to impute with Beagle instead.\n  --chromosomes CHROMOSOMES\n                        Chromosomes, e.g. chr20 or chr1-22 (default: every installed one).\n  --min-gp MIN_GP       Minimum max GP (default: GLIMPSE2 0.9; Beagle 0.95).\n  --min-info MIN_INFO   Opt-in INFO/DR2 site filter; meaningful only for multi-sample cohorts.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vcf impute --input lowpass.bam --chromosomes chr20\n  wgsextract vcf impute --vcf-input chip.vcf.gz\n\noutputs (in the output directory unless noted):\n  imputed.vcf.gz (+ .tbi): every imputed record marked INFO/IMP, low-\n  confidence ones FILTERed ImpLowConf.\n\nneeds:\n  bcftools, bgzip, samtools, tabix; depending on options and inputs, also:\n  GLIMPSE2_ligate, GLIMPSE2_phase; hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -38525,10 +38525,10 @@
       "choices": null,
       "class": "_StoreAction",
       "const": null,
-      "default": 0.9,
+      "default": null,
       "dest": "min_gp",
       "exclusive_group": null,
-      "help": "FILTER genotypes with a lower max GP ImpLowConf.",
+      "help": "Minimum max GP (default: GLIMPSE2 0.9; Beagle 0.95).",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -38544,7 +38544,7 @@
       "default": null,
       "dest": "min_info",
       "exclusive_group": null,
-      "help": "INFO/DR2 cutoff (default: GLIMPSE2 0.8; Beagle 0.04).",
+      "help": "Opt-in INFO/DR2 site filter; meaningful only for multi-sample cohorts.",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -50308,7 +50308,7 @@
    "log_dir": null,
    "log_file": null,
    "memory": "2G",
-   "min_gp": 0.9,
+   "min_gp": null,
    "min_info": 0.3,
    "outdir": null,
    "parent_pid": null,

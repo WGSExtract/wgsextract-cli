@@ -1494,10 +1494,10 @@ a genotype-only VCF such as microarray calls (`vcf_input`) with Beagle 5.
 
 Every imputed record carries INFO/IMP, the header a
 `##wgsextract_imputation` line, and records whose most likely genotype
-has GP below `min_gp` or whose INFO score (GLIMPSE2 INFO, Beagle DR2) is
-below `min_info` (default: INFO 0.8, DR2 0.04) are FILTERed
-`ImpLowConf`. Install the panel's
-chromosomes first with `ref imputation`.
+has GP below `min_gp` (GLIMPSE2: 0.9, Beagle: 0.95) are FILTERed
+`ImpLowConf`. Site INFO/DR2 is not a single-sample confidence measure:
+`min_info` is an explicit opt-in site filter, meaningful only for
+multi-sample cohorts. Install panel chromosomes with `ref imputation`.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -1508,8 +1508,8 @@ chromosomes first with `ref imputation`.
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
 | `chromosomes` | `str \| None` | `None` | `--chromosomes` | Chromosomes, e.g. chr20 or chr1-22 (default: every installed one). |
-| `min_gp` | `float` | `0.9` | `--min-gp` | FILTER genotypes with a lower max GP ImpLowConf. |
-| `min_info` | `float \| None` | `None` | `--min-info` | INFO/DR2 cutoff (default: GLIMPSE2 0.8; Beagle 0.04). |
+| `min_gp` | `float \| None` | `None` | `--min-gp` | Minimum max GP (default: GLIMPSE2 0.9; Beagle 0.95). |
+| `min_info` | `float \| None` | `None` | `--min-info` | Opt-in INFO/DR2 site filter; meaningful only for multi-sample cohorts. |
 
 ## `api.analyze`
 
