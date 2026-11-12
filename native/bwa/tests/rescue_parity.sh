@@ -118,6 +118,12 @@ for threads in 1 4; do
     test "$(metric "fast-t$threads.log" rescue_cpu_hits)" -gt 1000
     test "$(metric "upstream-t$threads.log" cpu_located_rows)" -eq 0
     test "$(metric "upstream-t$threads.log" rescue_cpu_jobs)" -eq 0
+    # bwa-mem3's exact pruning leaves out rescue-window rows (and whole windows);
+    # --cpu-upstream aligns every row.
+    test "$(metric "fast-t$threads.log" rescue_pruned_dead)" -gt 0
+    test "$(metric "fast-t$threads.log" rescue_kept_rows)" -lt \
+        "$(metric "fast-t$threads.log" rescue_window_rows)"
+    test "$(metric "upstream-t$threads.log" rescue_window_rows)" -eq 0
 done
 cpu_parity chunks -t 4 -K 20000
 cpu_parity gaps -t 4 -O 4,8 -E 2,1 -L 3,7 -U 9
@@ -318,6 +324,8 @@ test "$(metric verify.log rescue_batches)" -ge 3
 test "$(metric verify.log rescue_hits)" -gt 1000
 test "$(metric verify.log rescue_misses)" -eq 0
 test "$(metric verify.log rescue_mismatches)" -eq 0
+# Pruned windows the GPU never sees, checked against upstream too.
+test "$(metric verify.log rescue_pruned_dead)" -gt 0
 # Mates over 256 bp stay on upstream ksw_align2.
 test "$(metric verify.log rescue_skipped)" -gt 0
 

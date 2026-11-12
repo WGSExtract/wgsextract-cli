@@ -1576,6 +1576,8 @@ extern "C" kswr_t wgse_rescue_align(const mem_opt_t *opt, int l_ms, uint8_t *seq
     uint8_t *ref, int xtra) {
     int hb, he;
     const int kind = prune_rescue(opt, seq, l_ms, ref, tlen, xtra, &hb, &he);
+    if (cpu_upstream) return ksw_align2(l_ms, seq, tlen, ref, 5, opt->mat, opt->o_del, opt->e_del,
+        opt->o_ins, opt->e_ins, xtra, nullptr);
     rescue_tally.rows += size_t(tlen);
     if (kind == wgse_prune_none) {
         ++rescue_tally.dead;
@@ -2179,7 +2181,7 @@ void wgse_finish_backend() {
         "rescue_wasted_pairs=%zu rescue_jobs=%zu rescue_declined=%zu rescue_skipped=%zu "
         "rescue_hits=%zu rescue_misses=%zu rescue_mismatches=%zu rescue_cpu_jobs=%zu "
         "rescue_cpu_hits=%zu rescue_cpu_skipped=%zu rescue_pruned_dead=%zu "
-        "rescue_pruned_rows=%zu rescue_kept_rows=%zu rescue_unkept_differences=%zu\n",
+        "rescue_window_rows=%zu rescue_kept_rows=%zu rescue_unkept_differences=%zu\n",
         rescue_batches, rescue_gpu_pairs, rescue_cpu_pairs, rescue_wasted_pairs, rescue_jobs,
         rescue_declined, rescue_skipped, rescue_hits, rescue_misses, rescue_mismatches,
         rescue_cpu_jobs, rescue_cpu_hits, rescue_cpu_skipped, prune_dead, prune_rows, prune_kept,
@@ -2202,7 +2204,7 @@ void wgse_finish_backend() {
 void wgse_report_cpu_backend() {
     fprintf(stderr, "[wgse-bwa] cpu_located_rows=%zu locate_misses=%zu dense_sa_interval=%u "
         "rescue_cpu_jobs=%zu rescue_cpu_hits=%zu rescue_cpu_skipped=%zu rescue_pruned_dead=%zu "
-        "rescue_pruned_rows=%zu rescue_kept_rows=%zu\n",
+        "rescue_window_rows=%zu rescue_kept_rows=%zu\n",
         cpu_located_rows.load(), locate_misses.load(), sidecar.low ? 1u << sidecar.shift : 0u,
         cpu_backend_jobs.load(), cpu_backend_hits.load(), cpu_backend_skipped.load(),
         cpu_prune_dead.load(), cpu_prune_rows.load(), cpu_prune_kept.load());
