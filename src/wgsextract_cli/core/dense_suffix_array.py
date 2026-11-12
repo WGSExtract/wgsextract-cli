@@ -141,8 +141,10 @@ def _readable_interval(
     return interval if isinstance(interval, int) else None
 
 
-def _warn_once(reason: str, message: str, **details: str | int) -> None:
-    if any(w.code == UNUSED for w in current_result().warnings):
+def _warn_once(
+    reason: str, message: str, *, quiet: bool = False, **details: str | int
+) -> None:
+    if quiet or any(w.code == UNUSED for w in current_result().warnings):
         return
     warn(UNUSED, message, reason=reason, **details)
 
@@ -161,20 +163,22 @@ def other_aligner(aligner: str, *, enabled: bool) -> None:
 
 
 def for_alignment(
-    native: NativeAligner | None, ref: str, *, enabled: bool
+    native: NativeAligner | None, ref: str, *, enabled: bool, quiet: bool = False
 ) -> Path | None:
     """The side file wgse-bwa reads for this alignment of ``ref`` with bwa,
     or None. When ``enabled`` but it can't be used (no wgse-bwa, too old, no
     file, or wgse-bwa won't read it), warn (dense_suffix_array_unused) and
-    align without it."""
+    align without it. ``quiet`` probes a candidate without warning before the
+    aligner is chosen."""
     if not enabled:
         return None
     command = f"wgsextract ref dense-sa --ref {ref}"
     if native is None:
         _warn_once(
             "no_wgse_bwa",
-            "Not using a dense suffix-array file: only wgse-bwa on Apple "
-            f"Silicon reads one, and it isn't aligning ({INSTALL_HINT}).",
+            "Not using a dense suffix-array file: only wgse-bwa reads one, "
+            f"and it isn't aligning ({INSTALL_HINT}).",
+            quiet=quiet,
         )
         return None
     if not native.reads_dense_sa:
@@ -184,6 +188,7 @@ def for_alignment(
             f"predates them; they need {'.'.join(map(str, DENSE_SA_VERSION))} or later "
             f"({INSTALL_HINT}).",
             version=native.version,
+            quiet=quiet,
         )
         return None
     files = side_files(ref)
@@ -193,6 +198,7 @@ def for_alignment(
             f"Not using a dense suffix-array file: {ref} has none; `{command}` "
             "builds one.",
             path=str(side_file(ref)),
+            quiet=quiet,
         )
         return None
     interval = readable_interval(native, ref)
@@ -204,6 +210,7 @@ def for_alignment(
             "RAM or more and takes at most an eighth of it, and it must be "
             f"intact and made from this index; `{command}` rebuilds it).",
             path=str(files[0]),
+            quiet=quiet,
         )
         return None
     return chosen

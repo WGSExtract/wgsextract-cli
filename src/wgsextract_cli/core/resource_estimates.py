@@ -401,7 +401,7 @@ def estimate_resources(
         if gpu_bytes:
             notes.append(
                 f"Working memory includes {gpu_bytes / 1024**3:.1f} GiB for the "
-                "aligner's Metal GPU backend."
+                "aligner's GPU backend (Metal or CUDA)."
             )
         if dense_sa_bytes:
             notes.append(
