@@ -258,7 +258,7 @@ on the CPU, and is checked the same way; a bundled model name needs the
 On the HG002 chr20:10-11 Mb slice below, `--gpu` gave the same 1,829 calls
 as the CPU (alleles, genotypes and filters; QUAL within 0.19, GQ within 1).
 On all of chr20 it took 8.5 min instead of 10.3 min on 4 CPUs
-([resource estimates](resource_estimates.md#nvidia-gpus-parabricks)), with
+([resource estimates](resource_estimates.md#clair3-on-the-gpu)), with
 the same vcfeval F1 (0.9785), but about 2,700 of the 144,543 records (1.8%)
 were missing, extra or genotyped differently. About two thirds lie in the
 25.5-32 Mb pericentromere, where depths pass 216x: Clair3 2.0.5's GPU mode

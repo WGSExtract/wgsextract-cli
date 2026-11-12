@@ -236,10 +236,23 @@ Ultima reads at 30x (182,666 examples, 4 make_examples shards):
 | call_variants on the GPU, 6.3 GiB free | | out of memory |
 | call_variants in the CPU image, 4 CPUs | 16–33 min | same calls in GIAB's easy regions; 14 of about 103,570 PASS calls differ on all of chr20 |
 
+The example count is call_variants' final `Wrote N examples` line; its
+`Predicted N examples in M batches` lines are progress reports every 50 batches.
+CPU call_variants took 33 min in the #358 run and 16 min in #496; the cause of
+the difference is unknown.
+
+TensorFlow takes most of the free GPU memory whatever it needs (22.7 GiB of
+the free 24 GiB GPU). make_examples and postprocess run on the CPU, as in the
+CPU image.
+
 ### DeepVariant on the GPU with wgse-deepvariant
 
-On Linux x86-64 with [wgse-deepvariant](../native/deepvariant/README.md#linux-x86-64-and-nvidia-gpus-cuda)
-installed, `vcf deepvariant --gpu` runs only call_variants on the GPU and
+On Linux x86-64, `vcf deepvariant --gpu` uses
+[wgse-deepvariant](../native/deepvariant/README.md#linux-x86-64-and-nvidia-gpus-cuda)
+only for the WGS model, when it is installed, `deepvariant_weights` is set and
+`deepvariant_native` isn't `off`; WES, PacBio and ONT still run Parabricks, and
+Ultima Google's GPU image, with the memory needs above. This pipeline runs only
+call_variants on the GPU and
 checks just before it that GPU 0 has 3 GiB free (`--no-gpu-memory-check`
 skips this); make_examples and postprocess_variants stay on the CPU. Its RAM
 estimate is the Mac build's (#647), which covers what Linux used.
@@ -270,14 +283,7 @@ and chr20: 823,376 sites, 270,091 call_variants examples. Google's
   Google's image, at 4 threads (**projected**). make_examples scales with
   `--threads`.
 
-The example count is call_variants' final `Wrote N examples` line; its
-`Predicted N examples in M batches` lines are progress reports every 50 batches.
-CPU call_variants took 33 min in the #358 run and 16 min in #496; the cause of
-the difference is unknown.
-
-TensorFlow takes most of the free GPU memory whatever it needs (22.7 GiB of
-the free 24 GiB GPU). make_examples and postprocess run on the CPU, as in the
-CPU image.
+### Clair3 on the GPU
 
 `vcf clair3 --gpu` runs HKU's Clair3 2.0.5 GPU image and checks only that a
 GPU has 7.8 GiB free: Clair3 starts a full-alignment GPU worker for each
@@ -294,6 +300,8 @@ The GPU halved pileup and full-alignment calling (283 s to 159 s). Clair3's
 start-up checks (about 130 s on a whole-genome CRAM) and WhatsHap phasing
 (about 205 s) stay on the CPU, and the GPU was busy in only about 5% of
 one-second samples, so the CPUs limit the speed-up.
+
+## Preflight behaviour
 
 Preflight is advisory: `preflight_resources()` guards estimation and reporting
 against `ValueError`, `OSError` and subprocess failures, warns that the resource

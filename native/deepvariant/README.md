@@ -183,9 +183,18 @@ export PATH="$PWD/.pixi/envs/default/bin:$PATH"
 wgse-deepvariant --version        # "... (call_variants: ONNX Runtime 1.31.1, CUDA or CPU)"
 ```
 
+That `export` lasts only for this shell. So that new terminals find it too,
+add the environment's absolute `bin` path to your shell profile; run this in
+the same folder, which writes that folder's path in place of `$PWD`:
+
+```bash
+echo "export PATH=\"$PWD/.pixi/envs/default/bin:\$PATH\"" >> ~/.bashrc   # or ~/.zshrc
+```
+
 Then set `deepvariant_weights` in `config.toml` to the weights folder, as on a
-Mac; `vcf deepvariant` runs it on the CPU, and `vcf deepvariant --gpu` on the
-GPU instead of Parabricks (see [docs/hardware.md](../../docs/hardware.md)).
+Mac; `vcf deepvariant` runs WGS calls with it on the CPU, and
+`vcf deepvariant --gpu` on the GPU instead of Parabricks (WES, PacBio and ONT
+still use Parabricks; see [docs/hardware.md](../../docs/hardware.md)).
 
 To build it, `cmake -S native/deepvariant` in an environment with conda-forge's
 `libabseil`, `libprotobuf`, `re2`, `htslib`, `libboost-headers`, `zlib` and
