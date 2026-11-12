@@ -241,8 +241,8 @@ runs call_variants on an NVIDIA GPU through CUDA, or on the CPU.
   Ultima reads keep Google's image and Parabricks; `deepvariant_native = "off"`
   keeps them for everything.
 - **Same calls:** the same sites, genotypes and filters as Google's image on
-  HG002 chr20; QUAL differs by at most 0.5 and GQ by at most 2 at a few
-  thousand of 210,390 sites, as on a Mac.
+  HG002 chr20, and the same GIAB v4.2.1 counts; QUAL differs by at most 0.5
+  and GQ by 1 at a few thousand of 210,390 sites, as on a Mac.
 - **What it needs:** the NVIDIA driver; no Docker and no Parabricks licence.
   Before call_variants, `--gpu` checks that each GPU has 3 GiB free
   (`--no-gpu-memory-check` overrides it): it used 2.3 GiB at its default batch
@@ -250,9 +250,10 @@ runs call_variants on an NVIDIA GPU through CUDA, or on the CPU.
   stops the run, which resumes from its finished stages.
 - **How much faster (measured, HG002 chr20, 81,898 examples):** call_variants
   took 19.5 s on an RTX 3090 (three interleaved rounds, GPU to itself),
-  against 79 s for Google's own TensorFlow GPU image on the same GPU, 620 s
+  against 79 s for Google's own TensorFlow GPU image on the same GPU, 563 s
   for wgse-deepvariant on 4 CPU threads and 896 s for Google's CPU image (both
-  on a shared host). Its make_examples is about twice as fast as Google's too.
+  on a shared host). Its make_examples is faster than Google's too (240 s
+  against 597 s).
   Scaled to a 30x genome (about 50 times chr20's examples), call_variants takes
   about a quarter of an hour on the GPU (**projected**), where Google's CPU
   image takes 5–6 hours on 12 threads.

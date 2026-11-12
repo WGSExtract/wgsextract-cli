@@ -118,11 +118,12 @@ the same machine (Ryzen 5 5600X, RTX 3090), 4 threads:
 | --- | ---: | ---: | ---: |
 | Candidates, examples | 210,390, 81,898 | identical | identical |
 | Sites, genotypes, FILTER | | identical | identical |
-| QUAL | | 5,043 differ, by at most 0.5 | 5,044 differ, by at most 0.5 |
-| GQ | | 225 differ, by at most 2 | 226 differ, by at most 2 |
-| make_examples | 597 s | 319 s, 0.2 GB | (the same) |
-| call_variants | 896 s | 620 s, 1.5 GB | 21.6 s, 1.5 GB RAM, 2.3 GB GPU |
-| postprocess_variants | 31 s | 3 s | 3 s |
+| QUAL | | 5,042 differ, by at most 0.5 | 5,043 differ, by at most 0.5 |
+| GQ | | 222 differ, by 1 | 223 differ, by 1 |
+| GIAB v4.2.1 (confident regions) | TP 82,196, FP 66, FN 393 | the same | the same |
+| make_examples | 597 s | 240 s, 0.2 GB | (the same) |
+| call_variants | 896 s | 563 s, 1.5 GB | 21.3 s, 1.5 GB RAM, 2.3 GB GPU |
+| postprocess_variants | 31 s | 2 s | 2 s |
 
 The host was shared during these runs, so the CPU times are pessimistic (the
 image takes 287 + 409 + 12 s uncontended at 12 threads). With the GPU to
