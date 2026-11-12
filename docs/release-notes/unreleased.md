@@ -22,4 +22,12 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   is qualified. `deepvariant_native = "off"` keeps the Docker image instead.
   See [native/deepvariant/README.md](../../native/deepvariant/README.md).
 
+- `wgsextract ref dense-sa` builds `wgse-bwa`'s optional dense suffix-array
+  file for a reference (0.80 GB for hs38; `--list` and `--delete` too), and
+  `align`/`realign` read it with `--dense-suffix-array` or
+  `dense_suffix_array = true` in `config.toml`: the same alignments, about 11%
+  faster on the CPU and 8% on the GPU, with the file held in RAM. It is never
+  used unless asked; otherwise runs pass `wgse-bwa --dense-sa off`. Needs
+  `wgse-bwa` 0.11.0 or later. See docs/hardware.md.
+
 ## Fixes
