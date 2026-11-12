@@ -327,7 +327,8 @@ at it (`mimalloc = "auto"`, the default; `--mimalloc off` or `mimalloc = "off"`
 in `config.toml` turns this off). WGS Extract doesn't install it.
 
 The records are the same. On 5M HG002 read pairs on hs38 with 9 threads on the
-M1 Pro, `vcf snp` took 104 s against 132 s and `vcf indel` 155 s against 201 s.
+M1 Pro (medians of 3 interleaved runs), `vcf snp` took 102 s against 132 s and
+`vcf indel` 155 s against 193 s, with a quarter less CPU time.
 Each run first checks that bcftools loads the library (macOS drops `DYLD_*`
 variables for protected binaries, and a damaged file stops it starting); if not,
 or if `DYLD_INSERT_LIBRARIES` is already set, bcftools runs with the system
