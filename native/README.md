@@ -984,10 +984,10 @@ resolve dependencies). The CLI finds `wgse-bwa` on `PATH`:
 
 ```bash
 PKG=wgse-bwa-0.12.1-linux64_wgse_0.conda   # wgse-bwa-0.12.1-linuxaarch64_wgse_0.conda on ARM64
-gh release download linux-aligners-2 -R WGSExtract/wgsextract-cli -p "$PKG"
+gh release download linux-aligners-2 -R WGSExtract/wgsextract-cli -p "$PKG" --clobber
 gh release view linux-aligners-2 -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
-  sha256sum -c --ignore-missing &&
+  grep -F "  $PKG" | sha256sum -c &&
 conda create -y -n wgse-bwa -c conda-forge "libgcc>=14" "libstdcxx>=14" "libzlib>=1.3.2,<2" &&
 conda install -y -n wgse-bwa "./$PKG" &&
 export PATH="$(conda run -n wgse-bwa printenv CONDA_PREFIX)/bin:$PATH"
@@ -1061,10 +1061,10 @@ above, in its own environment:
 
 ```bash
 PKG=wgse-bwa-mem3-0.4.0-linux64_wgse_0.conda
-gh release download linux-aligners-2 -R WGSExtract/wgsextract-cli -p "$PKG"
+gh release download linux-aligners-2 -R WGSExtract/wgsextract-cli -p "$PKG" --clobber
 gh release view linux-aligners-2 -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
-  sha256sum -c --ignore-missing &&
+  grep -F "  $PKG" | sha256sum -c &&
 conda create -y -n wgse-bwa-mem3 -c conda-forge "libgcc>=14" "libstdcxx>=14" \
   "libzlib>=1.3.2,<2" "_x86_64-microarch-level>=3" &&
 conda install -y -n wgse-bwa-mem3 "./$PKG" &&
