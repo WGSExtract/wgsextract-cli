@@ -163,14 +163,15 @@ KNOWN_SETTINGS = {
     ),
     "deepvariant_native": (
         None,
-        "Apple Silicon: `vcf deepvariant` runs wgse-deepvariant when it is on "
-        "PATH (auto, the default) or never, using the Docker image (off)",
+        "Apple Silicon and Linux x86-64: `vcf deepvariant` (and on Linux "
+        "`--gpu`) runs wgse-deepvariant when it is on PATH (auto, the default) "
+        "or never, using the Docker image or Parabricks (off)",
     ),
     "deepvariant_weights": (
         None,
-        "Apple Silicon: folder of the WGS weights wgse-deepvariant calls with "
-        "(from a macos-deepvariant release); `vcf deepvariant` runs "
-        "wgse-deepvariant when it is on PATH",
+        "Apple Silicon and Linux x86-64: folder of the weights wgse-deepvariant "
+        "calls with (from a macos-deepvariant or linux-deepvariant release); "
+        "`vcf deepvariant` runs wgse-deepvariant when it is on PATH",
     ),
     "deepvariant_ultima_image": (
         None,

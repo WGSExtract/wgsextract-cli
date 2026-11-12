@@ -35,6 +35,15 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   whose files are checked against their published hashes; only the WGS model
   is qualified. `deepvariant_native = "off"` keeps the Docker image instead.
   See [native/deepvariant/README.md](../../native/deepvariant/README.md).
+- `vcf deepvariant` also runs `wgse-deepvariant` on Linux x86-64 (0.2.0, the
+  new `linux-deepvariant` conda packages): DeepVariant 1.10.0's WGS model
+  without Docker, on the CPU, or with `--gpu` on an NVIDIA GPU through CUDA
+  instead of Parabricks (call_variants for HG002 chr20 in 20 s on an RTX 3090,
+  against 79 s for Google's GPU image and 15 minutes for its CPU image on 4
+  threads), with the same sites,
+  genotypes and filters as Google's image. With it installed, `--gpu` uses it
+  for the WGS model; `deepvariant_native = "off"` keeps Parabricks. Other
+  models keep Google's image and Parabricks.
 
 - `wgsextract ref dense-sa` builds `wgse-bwa`'s optional dense suffix-array
   file for a reference (0.80 GB for hs38; `--list` and `--delete` too), and

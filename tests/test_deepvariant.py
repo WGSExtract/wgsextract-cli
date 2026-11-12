@@ -21,6 +21,7 @@ from tests.disk_volumes import GIB, Volumes
 from tests.fake_tools import (
     FakeDeepVariant,
     FakeDocker,
+    FakeParabricks,
     fake_nvidia_smi,
     python_tool,
     require_bare_name_fakes,
@@ -36,7 +37,12 @@ from tests.htslib_helpers import (
 )
 from wgsextract_cli import api
 from wgsextract_cli.commands.vcf import deepvariant
-from wgsextract_cli.core import alignment_memory, containers, native_deepvariant
+from wgsextract_cli.core import (
+    alignment_memory,
+    containers,
+    native_deepvariant,
+    parabricks,
+)
 from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
@@ -612,10 +618,10 @@ def mac_native(apple, monkeypatch):
     weights = apple.tmp / "weights"
     (weights / "wgs_small_weights").mkdir(parents=True)
     published = {}
-    for name in native_deepvariant.WEIGHTS_SHA256:
+    for name in native_deepvariant.WEIGHTS_SHA256["WGS"]:
         (weights / name).write_bytes(name.encode())
         published[name] = hashlib.sha256(name.encode()).hexdigest()
-    monkeypatch.setattr(native_deepvariant, "WEIGHTS_SHA256", published)
+    monkeypatch.setitem(native_deepvariant.WEIGHTS_SHA256, "WGS", published)
     monkeypatch.setitem(deepvariant.settings, "deepvariant_weights", str(weights))
     monkeypatch.setenv(
         "PATH", f"{apple.deepvariant.native_bin}{os.pathsep}{os.environ['PATH']}"
@@ -760,6 +766,123 @@ def test_an_old_wgse_deepvariant_is_refused_647(mac_native):
     (mac_native.deepvariant.root / "state.json").write_text(json.dumps(state))
     with pytest.raises(WGSExtractError, match="0.0.9 is too old"):
         call(mac_native)
+
+
+# Linux x86-64: wgse-deepvariant on the CPU or an NVIDIA GPU (#719) -----------
+
+
+@pytest.fixture
+def linux_native(dv, monkeypatch):
+    """Linux x86-64 with wgse-deepvariant 0.2.0 on PATH, its WGS weights
+    (stand-ins, whose hashes stand for the published ones), an RTX
+    3090 with nothing else on it, and Google's image but no Parabricks."""
+    weights = dv.tmp / "weights"
+    published = {}
+    for model, files in native_deepvariant.WEIGHTS_SHA256.items():
+        published[model] = {}
+        for name in files:
+            (weights / name).parent.mkdir(parents=True, exist_ok=True)
+            (weights / name).write_bytes(name.encode())
+            published[model][name] = hashlib.sha256(name.encode()).hexdigest()
+    monkeypatch.setattr(native_deepvariant, "WEIGHTS_SHA256", published)
+    monkeypatch.setitem(deepvariant.settings, "deepvariant_weights", str(weights))
+    dv.deepvariant.set_native_version("0.2.0")
+    dv.gpus = dv.tmp / "gpus.json"
+    set_gpus(dv.gpus, (24_576, 0))
+    fake_nvidia_smi(dv.docker.root.parent / "bin", dv.gpus)
+    monkeypatch.setenv(
+        "PATH", f"{dv.deepvariant.native_bin}{os.pathsep}{os.environ['PATH']}"
+    )
+    clear_tool_caches()
+    dv.weights = weights
+    return dv
+
+
+def native_inference(dv) -> dict:
+    (planned,) = dv.deepvariant.runs("wgse-deepvariant call_variants")
+    return planned["opts"]
+
+
+def test_linux_calls_with_wgse_deepvariant_on_the_cpu_without_docker_719(
+    linux_native,
+):
+    call(linux_native)
+    assert linux_native.docker.runs() == []
+    assert linux_native.deepvariant.stages() == STAGES
+    # contract: without --gpu, call_variants never takes the GPU.
+    assert native_inference(linux_native)["inference_backend"] == "cpu"
+    out = linux_native.out
+    assert visible(out) == ["deepvariant.vcf.gz", "deepvariant.vcf.gz.tbi"]
+    assert vcf_calls(out / "deepvariant.vcf.gz") == linux_native.sample.calls
+
+
+def test_gpu_calls_with_wgse_deepvariant_on_cuda_without_parabricks_719(
+    linux_native,
+):
+    call(linux_native, "--gpu", "-r", "chr1:1-1500,chr1:1501-3000")
+    assert linux_native.docker.runs() == []
+    # contract: --gpu runs call_variants on CUDA, never silently on the CPU.
+    assert native_inference(linux_native)["inference_backend"] == "cuda"
+    calls = vcf_calls(linux_native.out / "deepvariant.vcf.gz")
+    assert calls == linux_native.sample.calls
+
+
+def test_gpu_with_deepvariant_native_off_runs_parabricks_719(linux_native, monkeypatch):
+    monkeypatch.setitem(deepvariant.settings, "deepvariant_native", "off")
+    host = FakeParabricks(linux_native.tmp / "gpu", parabricks.DEFAULT_IMAGE)
+    monkeypatch.setenv("PATH", f"{host.bin}{os.pathsep}{os.environ['PATH']}")
+    clear_tool_caches()
+    call(linux_native, "--gpu")
+    assert [tool for tool, _ in host.runs()] == ["deepvariant"]
+    assert linux_native.deepvariant.runs("wgse-deepvariant run") == []
+
+
+def test_a_busy_gpu_stops_wgse_deepvariant_before_call_variants_719(linux_native):
+    set_gpus(linux_native.gpus, (24_576, 24_576 - 2_048))
+    with pytest.raises(WGSExtractError, match="free memory on each GPU"):
+        call(linux_native, "--gpu")
+    assert linux_native.deepvariant.stages() == ["make_examples"]
+
+    set_gpus(linux_native.gpus, (24_576, 0))
+    rerun(linux_native, "--gpu")
+    assert linux_native.deepvariant.stages() == [
+        "call_variants",
+        "postprocess_variants",
+    ]
+
+
+def test_ont_reads_keep_googles_image_and_parabricks_719(linux_native, monkeypatch):
+    """wgse-deepvariant's ONT make_examples doesn't match Google's yet."""
+    reads = other_sample(linux_native, ONT)
+    call(linux_native, reads=reads.bam)
+    assert linux_native.deepvariant.runs("wgse-deepvariant run") == []
+    assert {r["image"] for r in linux_native.docker.runs()} == {
+        deepvariant.DEFAULT_IMAGE
+    }
+
+    host = FakeParabricks(linux_native.tmp / "gpu", parabricks.DEFAULT_IMAGE)
+    monkeypatch.setenv("PATH", f"{host.bin}{os.pathsep}{os.environ['PATH']}")
+    clear_tool_caches()
+    call(linux_native, "--gpu", reads=reads.bam, out=linux_native.tmp / "gpu-out")
+    (run,) = host.runs()
+    # contract: Parabricks calls ONT reads with its ONT mode.
+    assert run[0] == "deepvariant" and "ont" in run[1]
+    assert linux_native.deepvariant.runs("wgse-deepvariant run") == []
+
+
+def test_linux_leaves_other_models_to_googles_image_719(linux_native):
+    call(linux_native, "--wes")
+    assert linux_native.deepvariant.runs("wgse-deepvariant run") == []
+    assert {r["image"] for r in linux_native.docker.runs()} == {
+        deepvariant.DEFAULT_IMAGE
+    }
+
+
+def test_linux_refuses_the_apple_silicon_only_wgse_deepvariant_719(linux_native):
+    linux_native.deepvariant.set_native_version("0.1.0")
+    with pytest.raises(WGSExtractError, match="0.1.0 is too old"):
+        call(linux_native)
+    assert linux_native.deepvariant.stages() == []
 
 
 def _mac_sysctl(dv, arm64: str) -> None:

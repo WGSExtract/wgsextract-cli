@@ -1,0 +1,1042 @@
+From 588795145de618002b66d59bf67d80d811051479 Mon Sep 17 00:00:00 2001
+From: WGS Extract AI <223556219+Copilot@users.noreply.github.com>
+Date: Thu, 12 Nov 2026 01:28:23 -0800
+Subject: [PATCH 8/8] Build on Linux, with call_variants on ONNX Runtime (CUDA or
+ CPU) (wgsextract #719)
+
+On Linux the port builds with GCC against shared abseil, protobuf, re2,
+htslib and Boost headers from CMAKE_PREFIX_PATH (a conda environment), the
+libraries ONNX Runtime links too. The Metal, Core ML and BNNS targets and the
+development executables stay Apple-only; the small model's plain C++ builds
+as C++.
+
+call_variants' Linux backend (onnx_inference.{h,cc}) builds the Inception-v3
+graph from the .dvw weights with ONNX Runtime's model editor API, folding each
+BatchNormalization into its convolution as metal_inference.mm does, and runs
+it on an NVIDIA GPU through the CUDA execution provider (FP32, TF32 off) or on
+the CPU. The examples' uint8 pileups go in as they are; the graph does
+upstream's (x - 128) / 128. --inference_backend is auto (CUDA when a probe run
+succeeds, else the CPU), cuda (fail without it) or cpu; --cpu_threads bounds
+the CPU provider, and run passes --num_shards' thread count.
+
+Also: the executable's path from /proc/self/exe; F_NOCACHE (macOS only)
+guarded; make_examples_native links the example writer it uses (GNU ld orders
+static libraries); librt for shm_open; call_variants joins its writer thread
+on every exit path (an error used to abort the process); --version names the
+Linux build; Linux's default batch is 256 (about 3 GB of GPU memory).
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+---
+ CMakeLists.txt                           |  24 +-
+ cmake/deps.cmake                         |  25 +-
+ deepvariant/CMakeLists.txt               |   4 +
+ deepvariant/native/CMakeLists.txt        |  41 ++-
+ deepvariant/native/call_variants_main.cc |  90 ++++-
+ deepvariant/native/cli.cc                |  35 +-
+ deepvariant/native/onnx_inference.cc     | 400 +++++++++++++++++++++++
+ deepvariant/native/onnx_inference.h      |  47 +++
+ deepvariant/native/tfrecord.cc           |   6 +
+ 9 files changed, 655 insertions(+), 17 deletions(-)
+ create mode 100644 deepvariant/native/onnx_inference.cc
+ create mode 100644 deepvariant/native/onnx_inference.h
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 3c51212..2b0565b 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,14 +1,20 @@
+ cmake_minimum_required(VERSION 3.27)
+-project(deepvariant VERSION 1.10.0 LANGUAGES CXX OBJCXX C)
++project(deepvariant VERSION 1.10.0 LANGUAGES CXX C)
+ 
+ # ---------------------------------------------------------------------------
+-# Guards: macOS arm64 only.
++# Guards: macOS arm64 (Metal call_variants) or Linux (ONNX Runtime
++# call_variants, on an NVIDIA GPU with CUDA or on the CPU).
+ # ---------------------------------------------------------------------------
+-if(NOT APPLE OR NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+-  message(FATAL_ERROR "This build targets macOS arm64 only.")
+-endif()
+-if(CMAKE_SYSTEM_VERSION VERSION_LESS "23")  # macOS 14 = Darwin 23.x
+-  message(FATAL_ERROR "macOS 14 (Sonoma) or newer required.")
++if(APPLE)
++  if(NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
++    message(FATAL_ERROR "This build targets macOS arm64 or Linux.")
++  endif()
++  if(CMAKE_SYSTEM_VERSION VERSION_LESS "23")  # macOS 14 = Darwin 23.x
++    message(FATAL_ERROR "macOS 14 (Sonoma) or newer required.")
++  endif()
++  enable_language(OBJCXX)
++elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
++  message(FATAL_ERROR "This build targets macOS arm64 or Linux.")
+ endif()
+ 
+ # ---------------------------------------------------------------------------
+@@ -41,8 +47,10 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+ # ---------------------------------------------------------------------------
+ # Compiler flags — arm64, Clang (Apple Clang 21+)
+ # ---------------------------------------------------------------------------
++if(APPLE)
++  add_compile_options(-arch arm64)
++endif()
+ add_compile_options(
+-  -arch arm64
+   -Wall
+   -Wextra
+   -Wno-unused-parameter
+diff --git a/cmake/deps.cmake b/cmake/deps.cmake
+index f9104c1..32ef92c 100644
+--- a/cmake/deps.cmake
++++ b/cmake/deps.cmake
+@@ -20,7 +20,30 @@ set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
+ # installed into one prefix (wgsextract-cli native/deepvariant superbuild),
+ # for a self-contained binary. Otherwise the Homebrew packages below.
+ # ---------------------------------------------------------------------------
+-if(WGSE_DEPS_PREFIX)
++if(NOT APPLE)
++  # Linux: shared abseil, protobuf, re2 and htslib, and Boost headers, from
++  # CMAKE_PREFIX_PATH (a conda environment), the libraries ONNX Runtime
++  # links too.
++  find_package(absl REQUIRED CONFIG)
++  find_package(protobuf REQUIRED CONFIG)
++  find_package(re2 REQUIRED CONFIG)
++  # The shared libhts brings its own codecs and libcurl.
++  find_library(HTSLIB_LIBRARY hts REQUIRED)
++  find_path(HTSLIB_INCLUDE_DIR htslib/sam.h REQUIRED)
++  add_library(htslib::htslib SHARED IMPORTED)
++  set_target_properties(htslib::htslib PROPERTIES
++    IMPORTED_LOCATION "${HTSLIB_LIBRARY}"
++    INTERFACE_INCLUDE_DIRECTORIES "${HTSLIB_INCLUDE_DIR}")
++  find_program(PROTOC protoc REQUIRED)
++  find_path(BOOST_INCLUDE_DIR boost/graph/adjacency_list.hpp REQUIRED)
++  get_target_property(ABSL_INCLUDE absl::base INTERFACE_INCLUDE_DIRECTORIES)
++  list(GET ABSL_INCLUDE 0 ABSL_INCLUDE)
++  get_filename_component(ABSL_PREFIX "${ABSL_INCLUDE}" DIRECTORY)
++  set(HTSLIB_PREFIX "${ABSL_PREFIX}")
++  set(PROTOBUF_PREFIX "${ABSL_PREFIX}")
++  set(RE2_PREFIX "${ABSL_PREFIX}")
++  message(STATUS "dependencies: ${ABSL_PREFIX} (protoc ${PROTOC})")
++elseif(WGSE_DEPS_PREFIX)
+   set(HTSLIB_PREFIX "${WGSE_DEPS_PREFIX}")
+   set(ABSL_PREFIX "${WGSE_DEPS_PREFIX}")
+   set(PROTOBUF_PREFIX "${WGSE_DEPS_PREFIX}")
+diff --git a/deepvariant/CMakeLists.txt b/deepvariant/CMakeLists.txt
+index 4d35576..618cf3f 100644
+--- a/deepvariant/CMakeLists.txt
++++ b/deepvariant/CMakeLists.txt
+@@ -89,6 +89,10 @@ dv_library(dv_allelecounter
+ # returns false), so these methods are never called at runtime.
+ # ---------------------------------------------------------------------------
+ add_library(dv_stream_examples STATIC stream_examples.cc)
++if(NOT APPLE)
++  # shm_open is in librt before glibc 2.34.
++  target_link_libraries(dv_stream_examples PUBLIC rt)
++endif()
+ target_include_directories(dv_stream_examples PUBLIC
+   ${DV_INCLUDE_DIRS}
+ )
+diff --git a/deepvariant/native/CMakeLists.txt b/deepvariant/native/CMakeLists.txt
+index 4172407..2d39acc 100644
+--- a/deepvariant/native/CMakeLists.txt
++++ b/deepvariant/native/CMakeLists.txt
+@@ -27,6 +27,7 @@ target_link_libraries(dv_weights PUBLIC
+   absl::log
+ )
+ 
++if(APPLE)
+ # ---------------------------------------------------------------------------
+ # dv_bnns_finalize — Phase 5.5 deterministic CPU dense + softmax
+ # (sequential FP32 reduction, designed to bit-match TF CPU output)
+@@ -179,6 +180,26 @@ target_link_libraries(dv_coreml PUBLIC
+   "-framework Foundation"
+ )
+ 
++else()
++# ---------------------------------------------------------------------------
++# dv_onnx_inference — Linux call_variants backend: the Inception-v3 graph
++# built from the .dvw weights with ONNX Runtime's model editor API, run on
++# an NVIDIA GPU (CUDA execution provider) or the CPU.
++# ---------------------------------------------------------------------------
++find_package(onnxruntime REQUIRED CONFIG)
++add_library(dv_onnx_inference STATIC onnx_inference.cc)
++target_include_directories(dv_onnx_inference PUBLIC
++  "${CMAKE_SOURCE_DIR}"
++  "${ABSL_PREFIX}/include"
++)
++target_link_libraries(dv_onnx_inference PUBLIC
++  dv_weights
++  onnxruntime::onnxruntime
++  absl::log
++  absl::strings
++)
++endif()
++
+ # ---------------------------------------------------------------------------
+ # dv_small_model — deterministic FP32 BNNS-CPU MLP runner for the
+ # small_model (70 → 750 → 750 → 3). Reads weights from .npy files
+@@ -190,6 +211,11 @@ add_library(dv_small_model STATIC
+   small_model_inference.mm
+   small_model_features.cc
+ )
++if(NOT APPLE)
++  # Plain C++ despite its extension.
++  set_source_files_properties(small_model_inference.mm PROPERTIES
++    LANGUAGE CXX COMPILE_OPTIONS "-xc++")
++endif()
+ target_include_directories(dv_small_model PUBLIC
+   "${CMAKE_SOURCE_DIR}"
+   "${CMAKE_BINARY_DIR}/proto_gen"
+@@ -214,11 +240,14 @@ target_include_directories(dv_call_variants_lib PUBLIC
+ target_compile_options(dv_call_variants_lib PRIVATE
+   "-include${CMAKE_SOURCE_DIR}/cmake/tf_stubs/tensorflow/core/platform/tf_compat.h"
+ )
++if(APPLE)
++  target_link_libraries(dv_call_variants_lib PUBLIC
++    dv_coreml dv_metal_inference dv_bnns_finalize)
++else()
++  target_link_libraries(dv_call_variants_lib PUBLIC dv_onnx_inference)
++endif()
+ target_link_libraries(dv_call_variants_lib PUBLIC
+   dv_tfrecord
+-  dv_coreml
+-  dv_metal_inference
+-  dv_bnns_finalize
+   proto_dv
+   proto_nucleus
+   absl::flags
+@@ -255,6 +284,9 @@ target_link_libraries(dv_example_writer PUBLIC
+   absl::strings
+   absl::status
+ )
++# make_examples_native writes through it: GNU ld needs the edge to order
++# the static libraries.
++target_link_libraries(dv_make_examples_native PUBLIC dv_example_writer)
+ 
+ # ---------------------------------------------------------------------------
+ # Phase 3 — make_examples orchestration
+@@ -314,6 +346,7 @@ target_link_libraries(dv_postprocess_lib PUBLIC
+   nucleus_io
+ )
+ 
++if(APPLE)
+ # ---------------------------------------------------------------------------
+ # debug_metal — dev-only diagnostic for Phase 5.5 MPSGraph divergence.
+ # Compares Metal stem_s1a output to the hand-computed reference for an
+@@ -563,6 +596,8 @@ target_link_libraries(dump_allele_counts PRIVATE
+   absl::raw_hash_set
+ )
+ 
++endif()  # APPLE: development and diagnostic executables
++
+ # ---------------------------------------------------------------------------
+ # deepvariant — main binary (CLI dispatcher)
+ # ---------------------------------------------------------------------------
+diff --git a/deepvariant/native/call_variants_main.cc b/deepvariant/native/call_variants_main.cc
+index 6fe9fff..57b2a68 100644
+--- a/deepvariant/native/call_variants_main.cc
++++ b/deepvariant/native/call_variants_main.cc
+@@ -38,10 +38,14 @@
+ #include "absl/log/log.h"
+ #include "absl/strings/str_cat.h"
+ 
++#include "deepvariant/native/dv_signpost.h"
++#if defined(__APPLE__)
+ #include "deepvariant/native/bnns_finalize.h"
+ #include "deepvariant/native/coreml_inference.h"
+-#include "deepvariant/native/dv_signpost.h"
+ #include "deepvariant/native/metal_inference.h"
++#else
++#include "deepvariant/native/onnx_inference.h"
++#endif
+ #include "deepvariant/native/tfrecord.h"
+ #include "deepvariant/protos/deepvariant.pb.h"
+ #include "third_party/nucleus/protos/struct.pb.h"
+@@ -67,12 +71,22 @@ ABSL_FLAG(int, input_channels, 7,
+ ABSL_FLAG(int, input_width, 221,
+           "Pileup-image width for the Metal backend. WGS/WES/MaSeq=221, "
+           "PacBio=147, ONT=199.");
++#if defined(__APPLE__)
+ ABSL_FLAG(std::string, inference_backend, "metal",
+           "Inference backend: metal (default, MPSGraph + BNNS-CPU .dvw — "
+           "GPU FP32 on Apple Silicon), coreml (Core ML .mlpackage — ANE "
+           "or GPU per --compute_units), or ane_speculate (ANE FP16 first, "
+           "GPU FP32 rerun for borderline-confidence sites — Scenario 3 "
+           "from the master plan).");
++#else
++ABSL_FLAG(std::string, inference_backend, "auto",
++          "Inference backend for the .dvw model (ONNX Runtime): auto "
++          "(default: an NVIDIA GPU through CUDA when one is usable, else "
++          "the CPU), cuda (fail without one) or cpu.");
++ABSL_FLAG(int, cpu_threads, 0,
++          "Threads for CPU inference (0 = one per core).");
++ABSL_FLAG(int, cuda_device, 0, "CUDA device for --inference_backend=cuda/auto.");
++#endif
+ ABSL_FLAG(std::string, ane_speculate_metal_checkpoint, "",
+           "When --inference_backend=ane_speculate, the .dvw bundle for "
+           "the GPU FP32 rerun on borderline-confidence sites. Required.");
+@@ -231,11 +245,13 @@ static ExampleFeatures ParseExample(const std::string& payload) {
+   return out;
+ }
+ 
++#if defined(__APPLE__)
+ ComputeUnits ParseComputeUnits(const std::string& s) {
+   if (s == "cpu_gpu")  return ComputeUnits::kCpuAndGpu;
+   if (s == "cpu_only") return ComputeUnits::kCpuOnly;
+   return ComputeUnits::kAll;
+ }
++#endif
+ 
+ }  // namespace
+ 
+@@ -246,14 +262,17 @@ int RunCallVariants(int argc, char** argv) {
+   const std::string checkpoint_path = absl::GetFlag(FLAGS_checkpoint);
+   const std::string outfile_path   = absl::GetFlag(FLAGS_outfile);
+   const int batch_size             = absl::GetFlag(FLAGS_batch_size);
++#if defined(__APPLE__)
+   const ComputeUnits compute_units =
+       ParseComputeUnits(absl::GetFlag(FLAGS_compute_units));
++#endif
+ 
+   if (examples_path.empty() || checkpoint_path.empty() || outfile_path.empty()) {
+     LOG(ERROR) << "Required flags: --examples, --checkpoint, --outfile";
+     return 2;
+   }
+ 
++#if defined(__APPLE__)
+   // Pick inference backend.
+   const std::string backend = absl::GetFlag(FLAGS_inference_backend);
+   std::unique_ptr<CoreMLModel> coreml_model;
+@@ -332,6 +351,33 @@ int RunCallVariants(int argc, char** argv) {
+                << " (expected 'coreml', 'metal' or 'ane_speculate')";
+     return 2;
+   }
++#else
++  // Pick inference backend.
++  const std::string backend = absl::GetFlag(FLAGS_inference_backend);
++  int H = absl::GetFlag(FLAGS_input_height);
++  int W = absl::GetFlag(FLAGS_input_width);
++  int C = absl::GetFlag(FLAGS_input_channels);
++  int K = 3;
++  OnnxInception::Device device;
++  if (backend == "auto") {
++    device = OnnxInception::Device::kAuto;
++  } else if (backend == "cuda") {
++    device = OnnxInception::Device::kCuda;
++  } else if (backend == "cpu") {
++    device = OnnxInception::Device::kCpu;
++  } else {
++    LOG(ERROR) << "Unknown --inference_backend=" << backend
++               << " (expected 'auto', 'cuda' or 'cpu')";
++    return 2;
++  }
++  std::unique_ptr<OnnxInception> onnx_model = OnnxInception::Create(
++      checkpoint_path, H, W, C, device, absl::GetFlag(FLAGS_cpu_threads),
++      absl::GetFlag(FLAGS_cuda_device));
++  if (!onnx_model) {
++    LOG(ERROR) << "Failed to load model: " << checkpoint_path;
++    return 1;
++  }
++#endif
+   LOG(INFO) << "Model input (" << H << "," << W << "," << C
+             << ") → " << K << " classes  [backend=" << backend << "]";
+ 
+@@ -393,6 +439,23 @@ int RunCallVariants(int argc, char** argv) {
+     }
+   });
+ 
++  // Joins the writer on every exit path (a std::thread destroyed while
++  // joinable aborts the process); records written so far are flushed.
++  struct WriterJoiner {
++    std::thread& t;
++    std::mutex& mu;
++    std::condition_variable& cv;
++    bool& done;
++    ~WriterJoiner() {
++      {
++        std::lock_guard<std::mutex> lk(mu);
++        done = true;
++      }
++      cv.notify_all();
++      if (t.joinable()) t.join();
++    }
++  } writer_joiner{writer_thread, wq_mu, wq_nonempty, writer_done};
++
+   auto enqueue_write = [&](std::string&& payload) -> bool {
+     if (writer_failed.load()) return false;
+     std::unique_lock<std::mutex> lk(wq_mu);
+@@ -422,8 +485,14 @@ int RunCallVariants(int argc, char** argv) {
+   // batch on M4 Max). Allocate once at full capacity, reuse across
+   // batches. The MPSGraph input wrapper reads only `n × elem` bytes
+   // so the trailing slack is harmless.
++#if defined(__APPLE__)
+   std::vector<float> images(static_cast<size_t>(batch_size) *
+                               static_cast<size_t>(H * W * C));
++#else
++  // The model takes the examples' bytes and normalizes them itself.
++  std::vector<uint8_t> images(static_cast<size_t>(batch_size) *
++                                static_cast<size_t>(H * W * C));
++#endif
+   std::vector<float> probs(static_cast<size_t>(batch_size) *
+                              static_cast<size_t>(K));
+ 
+@@ -432,6 +501,7 @@ int RunCallVariants(int argc, char** argv) {
+     const int n = static_cast<int>(batch.size());
+     const int64_t elem = H * W * C;
+     DV_SIGNPOST_INTERVAL_BEGIN(FlushBatch, "");
++#if defined(__APPLE__)
+     DV_SIGNPOST_INTERVAL_BEGIN(Normalize, "");
+     for (int i = 0; i < n; ++i) {
+       const std::string& img = batch[i].features.image_encoded;
+@@ -490,11 +560,24 @@ int RunCallVariants(int argc, char** argv) {
+     }
+ 
+     DV_SIGNPOST_INTERVAL_END(Normalize);
++#else
++    for (int i = 0; i < n; ++i) {
++      const std::string& img = batch[i].features.image_encoded;
++      if (static_cast<int64_t>(img.size()) != elem) {
++        LOG(ERROR) << "Unexpected image size " << img.size() << " (expected "
++                   << elem << ": is --input_height/width/channels the "
++                   << "model's?)";
++        return false;
++      }
++      std::memcpy(images.data() + i * elem, img.data(), elem);
++    }
++#endif
+ 
+     // Run inference. (probs hoisted, see top of fn; features lazily
+     // allocated to full batch capacity inside the metal branch.)
+     bool ok = false;
+     DV_SIGNPOST_INTERVAL_BEGIN(Inference, "");
++#if defined(__APPLE__)
+     const bool ane_speculate_mode =
+         (coreml_model && metal_model && metal_finalize);
+     if (ane_speculate_mode) {
+@@ -608,6 +691,9 @@ int RunCallVariants(int argc, char** argv) {
+         DV_SIGNPOST_INTERVAL_END(BnnsFinalize);
+       }
+     }
++#else
++    ok = onnx_model->Predict(images.data(), n, probs.data());
++#endif
+     DV_SIGNPOST_INTERVAL_END(Inference);
+     if (!ok) {
+       LOG(ERROR) << "Inference failed on batch " << total_batches;
+@@ -744,7 +830,7 @@ int RunCallVariants(int argc, char** argv) {
+     writer_done = true;
+   }
+   wq_nonempty.notify_all();
+-  writer_thread.join();
++  if (writer_thread.joinable()) writer_thread.join();
+   if (writer_failed.load()) {
+     LOG(ERROR) << "Async writer thread failed during run";
+     return 1;
+diff --git a/deepvariant/native/cli.cc b/deepvariant/native/cli.cc
+index b8edc4b..68ac07b 100644
+--- a/deepvariant/native/cli.cc
++++ b/deepvariant/native/cli.cc
+@@ -5,7 +5,12 @@
+ #include <cstring>
+ #include <filesystem>
+ #include <system_error>
++#if defined(__APPLE__)
+ #include <mach-o/dyld.h>
++#include <sys/sysctl.h>
++#else
++#include <unistd.h>
++#endif
+ #include <cstdint>
+ #include <fstream>
+ #include <string>
+@@ -19,7 +24,6 @@
+ #include "absl/flags/reflection.h"
+ #include "absl/flags/usage.h"
+ #include "absl/flags/usage_config.h"
+-#include <sys/sysctl.h>
+ #include "absl/log/globals.h"
+ #include "absl/log/initialize.h"
+ #include "absl/log/log.h"
+@@ -44,7 +48,8 @@ ABSL_FLAG(bool, include_alt_contigs, false,
+           "FILTER parity at WG scale.");
+ 
+ ABSL_FLAG(std::string, model_type, "WGS",
+-          "Model type: WGS, WES, PACBIO, ONT, HYBRID_PACBIO_ILLUMINA");
++          "Model type: WGS, WES, PACBIO, ONT (or ONT_R104), "
++          "HYBRID_PACBIO_ILLUMINA");
+ ABSL_FLAG(std::string, output_vcf, "", "Output VCF path (run mode).");
+ ABSL_FLAG(std::string, output_gvcf, "",
+           "Output gVCF path (run mode, optional).");
+@@ -184,11 +189,18 @@ int RunStage(int (*stage)(int, char**), const std::string& prog,
+ }
+ 
+ std::string ExecutablePath() {
++#if defined(__APPLE__)
+   uint32_t size = 0;
+   _NSGetExecutablePath(nullptr, &size);
+   std::string path(size, '\0');
+   if (_NSGetExecutablePath(path.data(), &size) != 0) return "deepvariant";
+   path.resize(std::strlen(path.c_str()));
++#else
++  std::error_code read_ec;
++  const std::string path =
++      std::filesystem::read_symlink("/proc/self/exe", read_ec).string();
++  if (read_ec) return "deepvariant";
++#endif
+   std::error_code ec;
+   auto canonical = std::filesystem::weakly_canonical(path, ec);
+   return ec ? path : canonical.string();
+@@ -375,6 +387,11 @@ std::string EffectiveRegions(const std::string& user_regions,
+ // We read RAM via sysctl(hw.memsize) which is the physical RAM in
+ // bytes — works on every Mac since macOS 10.0, no entitlements.
+ int AutoBatchSize() {
++#if !defined(__APPLE__)
++  // Linux: the batch lives in GPU memory, which may be shared with other
++  // jobs; 256 examples need about 3 GB with CUDA (and as little on the CPU).
++  return 256;
++#else
+   uint64_t mem_bytes = 0;
+   size_t len = sizeof(mem_bytes);
+   // sysctlbyname is the macOS-portable way; #include <sys/sysctl.h> at
+@@ -388,6 +405,7 @@ int AutoBatchSize() {
+   if (mem_gb < 32) return 512;
+   if (mem_gb < 64) return 1024;
+   return 2048;
++#endif
+ }
+ 
+ int EffectiveBatchSize() {
+@@ -957,7 +975,11 @@ int RunAll(int argc, char** argv) {
+     return RunAllPangenome(argc, argv);
+   }
+ 
+-  const std::string model_type = absl::GetFlag(FLAGS_model_type);
++  // Google's run_deepvariant names the ONT model ONT_R104.
++  const std::string model_type =
++      absl::GetFlag(FLAGS_model_type) == "ONT_R104"
++          ? std::string("ONT")
++          : absl::GetFlag(FLAGS_model_type);
+   const std::string reads_flag = absl::GetFlag(FLAGS_reads);
+   const std::string ref_flag = absl::GetFlag(FLAGS_ref);
+   const std::string output_vcf_flag = absl::GetFlag(FLAGS_output_vcf);
+@@ -1110,6 +1132,9 @@ int RunAll(int argc, char** argv) {
+     };
+     AppendAneSpeculateArgs(cv_args, inference_backend,
+                            absl::GetFlag(FLAGS_ane_speculate_metal_checkpoint));
++#if !defined(__APPLE__)
++    cv_args.push_back(absl::StrCat("--cpu_threads=", n_threads));
++#endif
+   }
+ 
+   // postprocess_variants reads the small model's CVOs, then call_variants'.
+@@ -2066,7 +2091,11 @@ static void PrintVersion() {
+ #endif
+   std::printf(
+       "%s %s (DeepVariant %s, build %s %s)\n"
++#if defined(__APPLE__)
+       "Apple Silicon native port — %s, macOS\n",
++#else
++      "native port — %s, Linux (call_variants: ONNX Runtime, CUDA or CPU)\n",
++#endif
+       g_multicall_tool.c_str(),
+       DV_VERSION, DV_UPSTREAM_VERSION,
+       DV_GIT_SHA, DV_BUILD_DATE,
+diff --git a/deepvariant/native/onnx_inference.cc b/deepvariant/native/onnx_inference.cc
+new file mode 100644
+index 0000000..ad0ab60
+--- /dev/null
++++ b/deepvariant/native/onnx_inference.cc
+@@ -0,0 +1,400 @@
++#include "deepvariant/native/onnx_inference.h"
++
++#include <algorithm>
++#include <cmath>
++#include <cstring>
++#include <exception>
++#include <string>
++#include <utility>
++#include <vector>
++
++#include "absl/log/log.h"
++#include "absl/strings/str_cat.h"
++#include "core/session/onnxruntime_cxx_api.h"
++#include "deepvariant/native/dv_weights.h"
++
++namespace deepvariant {
++
++namespace {
++
++constexpr float kBNEpsilon = 1e-3f;  // Keras BatchNormalization's default.
++constexpr int kOpset = 17;
++
++std::string Attr(int n, const char* name) {
++  return absl::StrCat("layer_with_weights-", n, "/", name,
++                      "/.ATTRIBUTES/VARIABLE_VALUE");
++}
++
++Ort::OpAttr IntsAttr(const char* name, const std::vector<int64_t>& v) {
++  return Ort::OpAttr(name, v.data(), static_cast<int>(v.size()),
++                     OrtOpAttrType::ORT_OP_ATTR_INTS);
++}
++
++Ort::OpAttr IntAttr(const char* name, int64_t v) {
++  return Ort::OpAttr(name, &v, 1, OrtOpAttrType::ORT_OP_ATTR_INT);
++}
++
++// Builds the graph node by node. Initializers are copied into tensors the
++// graph owns, so the .dvw can be closed once the session exists.
++class GraphBuilder {
++ public:
++  explicit GraphBuilder(const DvwWeights& w) : w_(w) {}
++
++  Ort::Graph& graph() { return graph_; }
++
++  std::string Name(const char* prefix) {
++    return absl::StrCat(prefix, "_", ++counter_);
++  }
++
++  void AddNode(const std::string& op, const std::vector<std::string>& inputs,
++               const std::vector<std::string>& outputs,
++               std::vector<Ort::OpAttr> attrs = {}) {
++    Ort::Node node(op, "", Name(op.c_str()), inputs, outputs, attrs);
++    graph_.AddNode(node);
++  }
++
++  void AddTensor(const std::string& name, const std::vector<int64_t>& shape,
++                 const float* data) {
++    Ort::Value value = Ort::Value::CreateTensor<float>(
++        allocator_, shape.data(), shape.size());
++    size_t count = 1;
++    for (int64_t d : shape) count *= static_cast<size_t>(d);
++    std::memcpy(value.GetTensorMutableData<float>(), data,
++                count * sizeof(float));
++    graph_.AddInitializer(name, value, /*data_is_external=*/false);
++  }
++
++  // Conv (HWIO kernel, folded with its BatchNormalization) + ReLU.
++  std::string Cbr(const std::string& x, int conv, int bn, int stride = 1,
++                  bool same = true) {
++    const DvwTensor* k = Need(Attr(conv, "kernel"));
++    const DvwTensor* beta = Need(Attr(bn, "beta"));
++    const DvwTensor* mean = Need(Attr(bn, "moving_mean"));
++    const DvwTensor* var = Need(Attr(bn, "moving_variance"));
++    if (k->shape.size() != 4) throw std::runtime_error("conv kernel rank");
++    const int kh = k->shape[0], kw = k->shape[1], ci = k->shape[2],
++              co = k->shape[3];
++    std::vector<float> scale(co), bias(co);
++    for (int o = 0; o < co; ++o) {
++      scale[o] = 1.0f / std::sqrt(var->data[o] + kBNEpsilon);
++      bias[o] = beta->data[o] - mean->data[o] * scale[o];
++    }
++    std::vector<float> oihw(static_cast<size_t>(co) * ci * kh * kw);
++    for (int h = 0; h < kh; ++h)
++      for (int w = 0; w < kw; ++w)
++        for (int i = 0; i < ci; ++i)
++          for (int o = 0; o < co; ++o)
++            oihw[((static_cast<size_t>(o) * ci + i) * kh + h) * kw + w] =
++                k->data[((static_cast<size_t>(h) * kw + w) * ci + i) * co + o] *
++                scale[o];
++    const std::string wn = Name("w"), bn_name = Name("b"), y = Name("conv"),
++                      r = Name("relu");
++    AddTensor(wn, {co, ci, kh, kw}, oihw.data());
++    AddTensor(bn_name, {co}, bias.data());
++    // Keras "same" with stride 1 (the only "same" convs here): the extra
++    // padding of an even kernel goes after.
++    std::vector<int64_t> pads = {0, 0, 0, 0};
++    if (same) pads = {(kh - 1) / 2, (kw - 1) / 2, kh / 2, kw / 2};
++    std::vector<Ort::OpAttr> attrs;
++    attrs.push_back(IntsAttr("kernel_shape", {kh, kw}));
++    attrs.push_back(IntsAttr("strides", {stride, stride}));
++    attrs.push_back(IntsAttr("pads", pads));
++    AddNode("Conv", {x, wn, bn_name}, {y}, std::move(attrs));
++    AddNode("Relu", {y}, {r});
++    return r;
++  }
++
++  std::string MaxPool(const std::string& x) {
++    const std::string y = Name("maxpool");
++    std::vector<Ort::OpAttr> attrs;
++    attrs.push_back(IntsAttr("kernel_shape", {3, 3}));
++    attrs.push_back(IntsAttr("strides", {2, 2}));
++    AddNode("MaxPool", {x}, {y}, std::move(attrs));
++    return y;
++  }
++
++  // Keras AveragePooling2D(3, strides=1, padding="same"): padding excluded
++  // from the average.
++  std::string AvgPool(const std::string& x) {
++    const std::string y = Name("avgpool");
++    std::vector<Ort::OpAttr> attrs;
++    attrs.push_back(IntsAttr("kernel_shape", {3, 3}));
++    attrs.push_back(IntsAttr("strides", {1, 1}));
++    attrs.push_back(IntsAttr("pads", {1, 1, 1, 1}));
++    attrs.push_back(IntAttr("count_include_pad", 0));
++    AddNode("AveragePool", {x}, {y}, std::move(attrs));
++    return y;
++  }
++
++  std::string Concat(const std::vector<std::string>& xs) {
++    const std::string y = Name("concat");
++    std::vector<Ort::OpAttr> attrs;
++    attrs.push_back(IntAttr("axis", 1));
++    AddNode("Concat", xs, {y}, std::move(attrs));
++    return y;
++  }
++
++  const DvwTensor* Need(const std::string& name) {
++    const DvwTensor* t = w_.Get(name);
++    if (!t) throw std::runtime_error("missing weight " + name);
++    return t;
++  }
++
++ private:
++  const DvwWeights& w_;
++  Ort::Graph graph_;
++  Ort::AllocatorWithDefaultOptions allocator_;
++  int counter_ = 0;
++};
++
++// tf.keras.applications.InceptionV3 (include_top=False, pooling="avg") with
++// layer_with_weights indices as metal_inference.mm / inception_v3_mil.py.
++std::string Inception(GraphBuilder& g, std::string x) {
++  x = g.Cbr(x, 0, 1, 2, false);
++  x = g.Cbr(x, 2, 3, 1, false);
++  x = g.Cbr(x, 4, 5);
++  x = g.MaxPool(x);
++  x = g.Cbr(x, 6, 7, 1, false);
++  x = g.Cbr(x, 8, 9, 1, false);
++  x = g.MaxPool(x);
++  for (int b : {10, 24, 38}) {  // Mixed_5b, 5c, 5d
++    const std::string b1 = g.Cbr(x, b + 6, b + 10);
++    const std::string b5 = g.Cbr(g.Cbr(x, b + 2, b + 4), b + 7, b + 11);
++    const std::string b3 =
++        g.Cbr(g.Cbr(g.Cbr(x, b, b + 1), b + 3, b + 5), b + 8, b + 12);
++    const std::string bp = g.Cbr(g.AvgPool(x), b + 9, b + 13);
++    x = g.Concat({b1, b5, b3, bp});
++  }
++  {  // Mixed_6a
++    const std::string b3 = g.Cbr(x, 56, 58, 2, false);
++    const std::string bd =
++        g.Cbr(g.Cbr(g.Cbr(x, 52, 53), 54, 55), 57, 59, 2, false);
++    x = g.Concat({b3, bd, g.MaxPool(x)});
++  }
++  for (int b : {60, 80, 100, 120}) {  // Mixed_6b to 6e
++    const std::string b1 = g.Cbr(x, b + 12, b + 16);
++    const std::string b7a = g.Cbr(
++        g.Cbr(g.Cbr(x, b + 4, b + 6), b + 8, b + 10), b + 13, b + 17);
++    std::string b7b = x;
++    for (auto [c, n] : std::vector<std::pair<int, int>>{
++             {b, b + 1}, {b + 2, b + 3}, {b + 5, b + 7}, {b + 9, b + 11},
++             {b + 14, b + 18}}) {
++      b7b = g.Cbr(b7b, c, n);
++    }
++    const std::string bp = g.Cbr(g.AvgPool(x), b + 15, b + 19);
++    x = g.Concat({b1, b7a, b7b, bp});
++  }
++  {  // Mixed_7a
++    const std::string b3 = g.Cbr(g.Cbr(x, 144, 146), 148, 150, 2, false);
++    const std::string b7 = g.Cbr(
++        g.Cbr(g.Cbr(g.Cbr(x, 140, 141), 142, 143), 145, 147), 149, 151, 2,
++        false);
++    x = g.Concat({b3, b7, g.MaxPool(x)});
++  }
++  for (int b : {152, 170}) {  // Mixed_7b, 7c
++    const std::string b1 = g.Cbr(x, b + 10, b + 16);
++    const std::string b3a = g.Cbr(x, b + 2, b + 4);
++    const std::string b3a1 = g.Cbr(b3a, b + 6, b + 11);
++    const std::string b3a3 = g.Cbr(b3a, b + 7, b + 12);
++    const std::string b3b = g.Cbr(g.Cbr(x, b, b + 1), b + 3, b + 5);
++    const std::string b3b1 = g.Cbr(b3b, b + 8, b + 13);
++    const std::string b3b3 = g.Cbr(b3b, b + 9, b + 14);
++    const std::string bp = g.Cbr(g.AvgPool(x), b + 15, b + 17);
++    x = g.Concat({b1, b3a1, b3a3, b3b1, b3b3, bp});
++  }
++  return x;
++}
++
++Ort::ValueInfo TensorInfo(const std::string& name,
++                          ONNXTensorElementDataType type,
++                          const std::vector<int64_t>& dims) {
++  const std::vector<std::string> symbolic(dims.size(), "N");
++  Ort::TensorTypeAndShapeInfo shape(type, dims, &symbolic);
++  Ort::TypeInfo info = Ort::TypeInfo::CreateTensorInfo(shape.GetConst());
++  return Ort::ValueInfo(name, info.GetConst());
++}
++
++Ort::Env& Environment() {
++  // Fatal only: cuDNN's exhaustive algorithm search logs every convolution
++  // plan it can't use as an error. Real failures reach us as exceptions.
++  static Ort::Env env(ORT_LOGGING_LEVEL_FATAL, "wgse-deepvariant");
++  return env;
++}
++
++}  // namespace
++
++struct OnnxInception::Impl {
++  int h = 0, w = 0, c = 0;
++  bool cuda = false;
++  Ort::Session session{nullptr};
++  Ort::MemoryInfo cpu_memory{nullptr};
++};
++
++OnnxInception::OnnxInception() : impl_(std::make_unique<Impl>()) {}
++OnnxInception::~OnnxInception() = default;
++
++bool OnnxInception::UsesCuda() const { return impl_->cuda; }
++
++std::unique_ptr<OnnxInception> OnnxInception::Create(
++    const std::string& dvw_path, int height, int width, int channels,
++    Device device, int cpu_threads, int gpu_id) {
++  Environment();  // ONNX Runtime's logger, which the providers need.
++  auto weights = DvwWeights::Open(dvw_path);
++  if (!weights) {
++    LOG(ERROR) << "Cannot read the .dvw weights " << dvw_path;
++    return nullptr;
++  }
++  auto build_model = [&]() {
++    GraphBuilder g(*weights);
++    const float c128 = 128.0f;
++    g.AddTensor("c128", {1}, &c128);
++    g.AddNode("Cast", {"images"}, {"f"}, [] {
++      std::vector<Ort::OpAttr> a;
++      a.push_back(IntAttr("to", ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
++      return a;
++    }());
++    g.AddNode("Sub", {"f", "c128"}, {"centred"});
++    g.AddNode("Div", {"centred", "c128"}, {"scaled"});
++    g.AddNode("Transpose", {"scaled"}, {"nchw"}, [] {
++      std::vector<Ort::OpAttr> a;
++      a.push_back(IntsAttr("perm", {0, 3, 1, 2}));
++      return a;
++    }());
++    const std::string features = Inception(g, "nchw");
++    const DvwTensor* k = g.Need(Attr(188, "kernel"));
++    const DvwTensor* b = g.Need(Attr(188, "bias"));
++    if (k->shape.size() != 2 || k->shape[1] != 3 || b->n_elements != 3) {
++      throw std::runtime_error("classification layer isn't (2048, 3)");
++    }
++    g.AddTensor("fc_w", {k->shape[0], k->shape[1]}, k->data);
++    g.AddTensor("fc_b", {3}, b->data);
++    g.AddNode("GlobalAveragePool", {features}, {"pooled"});
++    g.AddNode("Flatten", {"pooled"}, {"flat"});
++    g.AddNode("Gemm", {"flat", "fc_w", "fc_b"}, {"logits"});
++    g.AddNode("Softmax", {"logits"}, {"probs"}, [] {
++      std::vector<Ort::OpAttr> a;
++      a.push_back(IntAttr("axis", 1));
++      return a;
++    }());
++    std::vector<Ort::ValueInfo> inputs, outputs;
++    inputs.push_back(TensorInfo("images", ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8,
++                                {-1, height, width, channels}));
++    outputs.push_back(
++        TensorInfo("probs", ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, {-1, 3}));
++    g.graph().SetInputs(inputs);
++    g.graph().SetOutputs(outputs);
++    Ort::Model model({{"", kOpset}});
++    model.AddGraph(g.graph());
++    return model;
++  };
++
++  auto out = std::unique_ptr<OnnxInception>(new OnnxInception());
++  out->impl_->h = height;
++  out->impl_->w = width;
++  out->impl_->c = channels;
++  out->impl_->cpu_memory =
++      Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
++
++  auto make_session = [&](bool cuda) {
++    Ort::SessionOptions options;
++    options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
++    if (cpu_threads > 0) options.SetIntraOpNumThreads(cpu_threads);
++    if (cuda) {
++      Ort::CUDAProviderOptions cuda_options;
++      cuda_options.Update({
++          {"device_id", std::to_string(gpu_id)},
++          {"use_tf32", "0"},
++          {"cudnn_conv_algo_search", "EXHAUSTIVE"},
++          {"do_copy_in_default_stream", "1"},
++      });
++      options.AppendExecutionProvider_CUDA_V2(*cuda_options);
++    }
++    Ort::Model model = build_model();
++    return Ort::Session(Environment(), model, options);
++  };
++
++  // One example through the session: CUDA libraries (cuDNN, cuBLAS) and
++  // the GPU's memory are only touched by a run.
++  auto probe = [&](Ort::Session& session) {
++    std::vector<uint8_t> image(static_cast<size_t>(height) * width * channels,
++                               128);
++    float probs[3];
++    const std::vector<int64_t> shape = {1, height, width, channels};
++    const std::vector<int64_t> out_shape = {1, 3};
++    Ort::Value input = Ort::Value::CreateTensor<uint8_t>(
++        out->impl_->cpu_memory, image.data(), image.size(), shape.data(),
++        shape.size());
++    Ort::Value output = Ort::Value::CreateTensor<float>(
++        out->impl_->cpu_memory, probs, 3, out_shape.data(), out_shape.size());
++    const char* in_names[] = {"images"};
++    const char* out_names[] = {"probs"};
++    session.Run(Ort::RunOptions{nullptr}, in_names, &input, 1, out_names,
++                &output, 1);
++  };
++
++  const auto providers = Ort::GetAvailableProviders();
++  const bool cuda_built =
++      std::find(providers.begin(), providers.end(), "CUDAExecutionProvider") !=
++      providers.end();
++  if (device == Device::kCuda && !cuda_built) {
++    LOG(ERROR) << "call_variants can't use CUDA: this ONNX Runtime is a "
++                  "CPU-only build.";
++    return nullptr;
++  }
++  // A CPU-only ONNX Runtime (the cpu package) runs on the CPU without a word.
++  const bool want_cuda = device != Device::kCpu && cuda_built;
++  if (want_cuda) {
++    try {
++      Ort::Session session = make_session(true);
++      probe(session);
++      out->impl_->session = std::move(session);
++      out->impl_->cuda = true;
++    } catch (const std::exception& e) {
++      if (device == Device::kCuda) {
++        LOG(ERROR) << "call_variants can't use CUDA: " << e.what();
++        return nullptr;
++      }
++      LOG(WARNING) << "CUDA isn't usable (" << e.what()
++                   << "); call_variants runs on the CPU.";
++    }
++  }
++  if (!out->impl_->cuda) {
++    try {
++      out->impl_->session = make_session(false);
++    } catch (const std::exception& e) {
++      LOG(ERROR) << "Cannot build the model from " << dvw_path << ": "
++                 << e.what();
++      return nullptr;
++    }
++  }
++  LOG(INFO) << "call_variants: ONNX Runtime " << Ort::GetVersionString()
++            << " on " << (out->impl_->cuda ? "CUDA (FP32, TF32 off)" : "CPU")
++            << ", input " << height << "x" << width << "x" << channels;
++  return out;
++}
++
++bool OnnxInception::Predict(const uint8_t* images, int n, float* probs) {
++  if (n <= 0) return true;
++  const std::vector<int64_t> shape = {n, impl_->h, impl_->w, impl_->c};
++  const size_t count =
++      static_cast<size_t>(n) * impl_->h * impl_->w * impl_->c;
++  try {
++    Ort::Value input = Ort::Value::CreateTensor<uint8_t>(
++        impl_->cpu_memory, const_cast<uint8_t*>(images), count, shape.data(),
++        shape.size());
++    const std::vector<int64_t> out_shape = {n, 3};
++    Ort::Value output = Ort::Value::CreateTensor<float>(
++        impl_->cpu_memory, probs, static_cast<size_t>(n) * 3,
++        out_shape.data(), out_shape.size());
++    const char* in_names[] = {"images"};
++    const char* out_names[] = {"probs"};
++    impl_->session.Run(Ort::RunOptions{nullptr}, in_names, &input, 1,
++                       out_names, &output, 1);
++  } catch (const std::exception& e) {
++    LOG(ERROR) << "Inference failed: " << e.what();
++    return false;
++  }
++  return true;
++}
++
++}  // namespace deepvariant
+diff --git a/deepvariant/native/onnx_inference.h b/deepvariant/native/onnx_inference.h
+new file mode 100644
+index 0000000..bba2192
+--- /dev/null
++++ b/deepvariant/native/onnx_inference.h
+@@ -0,0 +1,47 @@
++// call_variants' Linux backend: DeepVariant's Inception-v3 built from a .dvw
++// weight bundle with ONNX Runtime's model editor API (no .onnx file), run on
++// an NVIDIA GPU through the CUDA execution provider or on the CPU.
++//
++// The graph takes the examples' uint8 NHWC pileups and does upstream's
++// preprocessing ((x - 128) / 128) itself, so only bytes cross to the GPU.
++// Every conv is folded with its BatchNormalization (gamma 1, epsilon 1e-3),
++// as in metal_inference.mm, and the (conv, BN) layer_with_weights pairs are
++// that file's. CUDA runs in FP32 with TF32 off: TF32 rounds the conv inputs
++// to 10-bit mantissas, which moves probabilities far more than
++// TensorFlow's own FP32 does.
++#pragma once
++
++#include <cstdint>
++#include <memory>
++#include <string>
++
++namespace deepvariant {
++
++class OnnxInception {
++ public:
++  enum class Device { kAuto, kCuda, kCpu };
++
++  // `device` kAuto uses CUDA when its provider loads and a GPU is usable,
++  // else the CPU; kCuda fails without one. `cpu_threads` (0 = ONNX Runtime's
++  // default) bounds the CPU provider. Returns nullptr on failure.
++  static std::unique_ptr<OnnxInception> Create(const std::string& dvw_path,
++                                               int height, int width,
++                                               int channels, Device device,
++                                               int cpu_threads, int gpu_id);
++  ~OnnxInception();
++
++  // images: n × H × W × C uint8 (the examples' bytes). probs: n × 3.
++  bool Predict(const uint8_t* images, int n, float* probs);
++
++  bool UsesCuda() const;
++
++  OnnxInception(const OnnxInception&) = delete;
++  OnnxInception& operator=(const OnnxInception&) = delete;
++
++ private:
++  OnnxInception();
++  struct Impl;
++  std::unique_ptr<Impl> impl_;
++};
++
++}  // namespace deepvariant
+diff --git a/deepvariant/native/tfrecord.cc b/deepvariant/native/tfrecord.cc
+index 6c191b0..d8b994c 100644
+--- a/deepvariant/native/tfrecord.cc
++++ b/deepvariant/native/tfrecord.cc
+@@ -197,9 +197,11 @@ struct TFRecordWriter::Impl {
+     // F_NOCACHE: bypass the unified buffer cache. Writes go straight
+     // to disk; pages are NOT marked dirty in the kernel's accounting,
+     // so Jetsam doesn't accumulate quota. Only available on macOS.
++#if defined(F_NOCACHE)
+     ::fcntl(fd, F_NOCACHE, 1);
+     // Pre-allocate a hint to the FS for sequential write.
+     fcntl(fd, F_RDADVISE, 0);  // best-effort; ignored if unsupported
++#endif
+     ok = true;
+   }
+ 
+@@ -240,8 +242,10 @@ struct TFRecordWriter::Impl {
+     // WG scale, per the implementation note above). For partial flushes
+     // we re-enable the buffered path so the kernel can write any byte
+     // count cleanly.
++#if defined(F_NOCACHE)
+     const bool partial = buf_used < buf.size();
+     if (partial && fd >= 0) ::fcntl(fd, F_NOCACHE, 0);
++#endif
+ 
+     const char* p = buf.data();
+     size_t left = buf_used;
+@@ -253,8 +257,10 @@ struct TFRecordWriter::Impl {
+     }
+     buf_used = 0;
+ 
++#if defined(F_NOCACHE)
+     // Re-enable F_NOCACHE for any subsequent full-buffer flushes.
+     if (partial && fd >= 0) ::fcntl(fd, F_NOCACHE, 1);
++#endif
+     return true;
+   }
+ 
+-- 
+2.56.0
+

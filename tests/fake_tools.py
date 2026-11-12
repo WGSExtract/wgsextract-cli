@@ -682,6 +682,8 @@ if command == "run":
     examples, small = f"{work}/examples.tfrecord@{shards}.gz", f"{work}/small_cvo.tfrecord@{shards}"
     regions = f" '--regions={opts['regions']}'" if "regions" in opts else ""
     batch = f" --batch_size={opts['batch_size']}" if "batch_size" in opts else ""
+    if "inference_backend" in opts:
+        batch += f" --inference_backend={opts['inference_backend']}"
     commands = [
         f"{self} make_examples --reads={opts['reads']} --ref={opts['ref']} --examples={examples} "
         f"--threads={shards} --small_model={opts['small_model_path']} --small_model_cvo_outfile={small}{regions}",
@@ -801,6 +803,11 @@ class FakeDeepVariant:
             "stage": stage, "task": task, "write": write, "oom": oom,
             "interrupt": interrupt,
         }  # fmt: skip
+        self._save()
+
+    def set_native_version(self, version: str) -> None:
+        """The version wgse-deepvariant --version reports."""
+        self._state["wgse_version"] = version
         self._save()
 
     def set_helpfull(self, text: str) -> None:

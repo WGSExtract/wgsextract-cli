@@ -1,0 +1,59 @@
+context:
+  # native/deepvariant/CMakeLists.txt's WGSE_DEEPVARIANT_VERSION.
+  version: "0.2.0"
+
+package:
+  name: wgse-deepvariant
+  version: ${{ version }}
+
+source:
+  - path: ../../native/deepvariant
+    target_directory: native/deepvariant
+  - path: ../../LICENSE
+
+build:
+  number: 0
+  # cuda129: call_variants on an NVIDIA GPU (CUDA 12.9, any recent driver) or
+  # the CPU; cpu: the CPU only, without CUDA's libraries.
+  string: ${{ target_platform | replace('-', '') }}_${{ onnxruntime_variant }}_wgse_${{ build_number }}
+  skip:
+    - not (linux and x86_64)
+  script:
+    - bash "$RECIPE_DIR/build.sh"
+
+requirements:
+  build:
+    - ${{ compiler('c') }}
+    - ${{ compiler('cxx') }}
+    - ${{ stdlib('c') }}
+    - cmake >=3.27
+    - ninja
+    - pkg-config
+    - patch
+  host:
+    - libabseil
+    - libprotobuf
+    - re2
+    - htslib
+    - libboost-headers
+    - zlib
+    - onnxruntime-cpp ${{ onnxruntime_version }}.* *_${{ onnxruntime_variant }}
+  run:
+    # The same ONNX Runtime build (CUDA or CPU) the package was built with.
+    - onnxruntime-cpp ${{ onnxruntime_version }}.* *_${{ onnxruntime_variant }}
+
+tests:
+  - script:
+      - wgse-deepvariant --version
+      - "wgse-deepvariant --version | grep -q 'Linux (call_variants: ONNX Runtime'"
+
+about:
+  homepage: https://github.com/WGSExtract/wgsextract-cli/tree/main/native/deepvariant
+  license: BSD-3-Clause AND GPL-3.0-or-later
+  license_file:
+    - LICENSE
+  summary: >-
+    DeepVariant 1.10.0 without Docker or TensorFlow (IPNP-BIPN's native port,
+    patched by WGS Extract), with call_variants on ONNX Runtime: an NVIDIA GPU
+    through CUDA, or the CPU. It calls the same sites, genotypes and filters as
+    google/deepvariant:1.10.0.

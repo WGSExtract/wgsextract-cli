@@ -440,6 +440,9 @@ _ULTIMA_GPU_SETUP = (
 ULTIMA_GPU_MIN_FREE = round(7.3 * GIB)
 # call_variants' default --batch_size, which that measurement used.
 CALL_VARIANTS_BATCH = 1024
+# Free GPU memory wgse-deepvariant's call_variants needs on CUDA at its default
+# batch (#719, RTX 3090, HG002 chr20): see NATIVE_CUDA_MIN_FREE's measurement.
+NATIVE_CUDA_MIN_FREE = 3 * GIB
 
 
 def _model_chosen(params: VcfDeepvariantParams) -> bool:
@@ -485,10 +488,16 @@ def _verify_ultima_gpu(params: VcfDeepvariantParams) -> None:
         docker_info(setup)
 
 
-def _check_gpu_free(check: bool, batch_size: int | None) -> None:
-    """Refuse (unless not ``check``) when a GPU lacks the memory call_variants
-    needs; just before it runs, so plans and finished reruns don't need one.
-    Every GPU is checked: the container gets them all."""
+def _check_gpu_free(
+    check: bool,
+    batch_size: int | None,
+    need: int = ULTIMA_GPU_MIN_FREE,
+    default_batch: int = CALL_VARIANTS_BATCH,
+) -> None:
+    """Refuse (unless not ``check``) when a GPU lacks the ``need`` bytes
+    call_variants needs at its ``default_batch``; just before it runs, so
+    plans and finished reruns don't need one. Every GPU is checked: the
+    container gets them all, and wgse-deepvariant may use any."""
     from wgsextract_cli.core.parabricks import gpu_memory
 
     gpus = gpu_memory()
@@ -496,19 +505,19 @@ def _check_gpu_free(check: bool, batch_size: int | None) -> None:
     if not free:
         logging.warning("GPU memory is unknown; running call_variants anyway.")
         return
-    if check and batch_size not in (None, CALL_VARIANTS_BATCH):
+    if check and batch_size not in (None, default_batch):
         warn(
             "deepvariant_gpu_batch_size",
-            f"--batch-size {batch_size}: the {ULTIMA_GPU_MIN_FREE / GIB:.1f} GiB "
+            f"--batch-size {batch_size}: the {need / GIB:.1f} GiB "
             "free-GPU-memory check assumes call_variants' default batch of "
-            f"{CALL_VARIANTS_BATCH}, so it may pass a batch that runs out of GPU "
+            f"{default_batch}, so it may pass a batch that runs out of GPU "
             "memory or refuse one that fits.",
         )
     least = min(free)
-    if least >= ULTIMA_GPU_MIN_FREE:
+    if least >= need:
         return
     message = (
-        f"DeepVariant call_variants needs ~{ULTIMA_GPU_MIN_FREE / GIB:.1f} GiB of "
+        f"DeepVariant call_variants needs ~{need / GIB:.1f} GiB of "
         f"free memory on each GPU, but one has {least / GIB:.1f} GiB free "
         "(other programs are using it)."
     )
@@ -558,13 +567,19 @@ def _deepvariant_parabricks(
     record_variants(out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region))
 
 
-def _require_native_wgs(model_type: str, checkpoint: str | None) -> None:
-    if model_type != "WGS" or checkpoint:
+def _native_model(model_type: str, checkpoint: str | None) -> bool:
+    """Whether wgse-deepvariant calls with this model here. On a Mac, where
+    Google's image can't run, the others are refused; on Linux they run in
+    the image (or Parabricks) as before."""
+    if not checkpoint and model_type in native_deepvariant.models():
+        return True
+    if sys.platform == "darwin":
         selection = "--checkpoint" if checkpoint else f"model {model_type}"
         raise WGSExtractError(
             f"wgse-deepvariant runs only the WGS model; DeepVariant {selection} "
             f"isn't qualified on Apple Silicon. {_ARM64_ALTERNATIVES}"
         )
+    return False
 
 
 def _docker_args(
@@ -606,14 +621,17 @@ def _native_args(
     work: Path,
     region: str | None,
     batch_size: int | None,
+    gpu: bool,
 ) -> list[str]:
-    """wgse-deepvariant run's options. A selection goes to it as one BED of
+    """wgse-deepvariant run's options. On Linux call_variants runs on the CPU,
+    or with ``gpu`` (--gpu) on an NVIDIA GPU, never silently on the CPU
+    instead. A selection goes to it as one BED of
     the intervals it covers, in reference order (BED files, literals or
     both, of any size: a command line holds at most 1 MiB on macOS), named
     by its content so a changed selection reruns the stages."""
     args = [
         "run",
-        "--model_type=WGS",
+        f"--model_type={native.model_type}",
         f"--ref={ref}",
         f"--reads={reads}",
         f"--output_vcf={vcf}",
@@ -636,6 +654,8 @@ def _native_args(
         args.append(f"--regions={path}")
     if batch_size is not None:
         args.append(f"--batch_size={batch_size}")
+    if sys.platform != "darwin":
+        args.append(f"--inference_backend={'cuda' if gpu else 'cpu'}")
     return args
 
 
@@ -648,6 +668,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
         raise UsageError("DeepVariant --batch-size must be positive.")
     caller = None
     gpu = params.gpu
+    native_gpu = False
     if gpu:
         require_gpu_host()
         if params.region and any(
@@ -660,27 +681,39 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                 f"{params.region!r}"
             )
         model, caller = _gpu_model(params)
-        if model != "ULTIMA":
+        # wgse-deepvariant, when installed, calls its models on the GPU
+        # without Docker; Parabricks the rest (deepvariant_native = "off": all).
+        native_gpu = bool(native_deepvariant.installed()) and _native_model(model, None)
+        if native_gpu:
+            logging.info(
+                "Calling on the GPU with wgse-deepvariant (CUDA), without Docker "
+                'or Parabricks; deepvariant_native = "off" runs Parabricks instead.'
+            )
+        elif model != "ULTIMA":
             _deepvariant_parabricks(params, model, caller)
             return
-        # Parabricks has no ULTIMA model: Google's GPU image runs DeepVariant's
-        # stages, as on the CPU, with call_variants on the GPU.
-        logging.info(
-            "Ultima reads on the GPU: running DeepVariant's stages in Google's "
-            "experimental GPU image (Parabricks has no ULTIMA model)."
-        )
-        _verify_ultima_gpu(params)
+        else:
+            # Parabricks has no ULTIMA model: Google's GPU image runs
+            # DeepVariant's stages, as on the CPU, with call_variants on the GPU.
+            logging.info(
+                "Ultima reads on the GPU: running DeepVariant's stages in Google's "
+                "experimental GPU image (Parabricks has no ULTIMA model)."
+            )
+            _verify_ultima_gpu(params)
         if params.region:
             # --gpu's regions are comma-separated; DeepVariant's, spaced.
             params = replace(
                 params, region=" ".join(region_items(params.region, commas=True))
             )
     checkpoint = str(params.checkpoint) if params.checkpoint else None
-    native_path = None if gpu else native_deepvariant.installed()
+    native_path = native_deepvariant.installed() if native_gpu or not gpu else None
     native = None
-    if native_path:
-        _require_native_wgs(_model_type(params), checkpoint)
-        native = native_deepvariant.require(native_path)
+    if native_path and _native_model(_model_type(params), checkpoint):
+        native = native_deepvariant.require(
+            native_path, _model_type(params), weights=_model_chosen(params)
+        )
+    # The GPU image (Ultima) or Parabricks.
+    gpu_image = gpu and not native
     arm64_image = (
         _verify_arm64_image(_model_type(params), checkpoint)
         if is_arm64_docker_host() and not gpu and not native
@@ -692,10 +725,10 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
         native.path
         if native
         else None
-        if arm64_image or gpu
+        if arm64_image or gpu_image
         else get_tool_path("run_deepvariant")
     )
-    if not local_dv and not arm64_image and not gpu:
+    if not local_dv and not arm64_image and not gpu_image:
         _verify_docker()
     verify_dependencies(["samtools", "tabix"])
     caller = caller or setup_caller(params)
@@ -704,8 +737,15 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
     model_type = _model_type(params, ref, caller.platform)
     if arm64_image:
         _require_arm64_wgs(model_type, checkpoint)
-    if native:
-        _require_native_wgs(model_type, checkpoint)
+    if native and (model_type != native.model_type or native.weights is None):
+        # The reads chose the model.
+        if _native_model(model_type, checkpoint):
+            native = native_deepvariant.require(native.path, model_type)
+        else:
+            native = None
+            local_dv = get_tool_path("run_deepvariant")
+            if not local_dv:
+                _verify_docker(model_type)
     _require_ont_x86(model_type)
     if model_type == "ONT_R104":
         _warn_ont_chemistry(input_file, ref)
@@ -713,11 +753,13 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
         # A local run_deepvariant is a release, which has no ULTIMA model yet.
         _verify_docker(model_type)
         local_dv = None
-    image = arm64_image or (None if local_dv else _verify_docker_image(model_type, gpu))
+    image = arm64_image or (
+        None if local_dv else _verify_docker_image(model_type, gpu_image)
+    )
     setup = (
         _ARM64_SETUP
         if arm64_image
-        else (_ULTIMA_GPU_SETUP if gpu else _SETUP).format(image=image)
+        else (_ULTIMA_GPU_SETUP if gpu_image else _SETUP).format(image=image)
         if image
         else None
     )
@@ -747,7 +789,16 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
         [ref, input_file, out_vcf, str(work), checkpoint, *region_files],
         work,
         gpu_check=(
-            (lambda: _check_gpu_free(not params.no_gpu_memory_check, batch_size))
+            (
+                lambda: _check_gpu_free(
+                    not params.no_gpu_memory_check,
+                    batch_size,
+                    NATIVE_CUDA_MIN_FREE,
+                    native_deepvariant.default_batch_size(),
+                )
+            )
+            if native_gpu
+            else (lambda: _check_gpu_free(not params.no_gpu_memory_check, batch_size))
             if gpu
             else None
         ),
@@ -769,7 +820,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
             batch_size = batch_size or native_deepvariant.default_batch_size()
             dv_args = _native_args(
                 native, ref, reads, str(work / Path(out_vcf).name), shards, work,
-                region, batch_size,
+                region, batch_size, native_gpu,
             )  # fmt: skip
         else:
             dv_args = _docker_args(
@@ -835,7 +886,9 @@ _COMMAND_MARK = "***** Running the command:*****"
 # stage subcommands (wgse-deepvariant make_examples).
 _STAGE_BINARY = re.compile(r"[/ ](make_examples|call_variants|postprocess_variants)\s")
 # Settings that bound a stage's memory or CPU use but not what it writes.
-_RESOURCE_FLAGS = re.compile(r'\s--(?:cpus|num_partitions|batch_size)[= ]"?\d+"?')
+_RESOURCE_FLAGS = re.compile(
+    r'\s--(?:cpus|num_partitions|batch_size|cpu_threads)[= ]"?\d+"?'
+)
 _JOBLOG = ".make_examples.joblog"
 # wgse-deepvariant's selection BED, beside (not among) the stage outputs.
 _REGIONS = "regions"
