@@ -95,6 +95,14 @@ scales with threads (2: 583 s, 4: 294 s, 8: 201 s, 10: 167 s before gzip); the
 calls are identical whatever the thread count. call_variants' batch size
 follows the Mac's memory (512 on 16 GB) unless `--batch-size` sets it.
 
+On a **16 GB base M1**, release **0.1.1** runs the same chr20 through the CLI
+in **409 s** at six threads and batch 512, with **2.24 GB peak RSS** and
+**6.56 GB peak GPU-inclusive footprint**, without additional swap-outs.
+RTG SNP/indel F1 is **0.997409 / 0.995993** (RTG, not the hap.py figures above).
+See the [16 GB measurements](../../docs/apple-silicon-16gb.md#native-deepvariant)
+for the version-labelled whole-genome timing projection; a whole genome was
+measured with 0.1.0, **not** 0.1.1.
+
 ## Linux x86-64 and NVIDIA GPUs (CUDA)
 
 The Linux build is conda packages (`packaging/wgse-deepvariant`, built by
@@ -177,7 +185,7 @@ executables), and check the archives against the published digests:
 
 ```bash
 mkdir wgse-deepvariant && cd wgse-deepvariant
-gh release download macos-deepvariant-1 -R WGSExtract/wgsextract-cli
+gh release download macos-deepvariant-2 -R WGSExtract/wgsextract-cli
 shasum -a 256 -c SHA256SUMS
 ```
 
