@@ -34,6 +34,13 @@ google/deepvariant#1085) with the patches in [`patches/`](patches):
 - **0006** lets `--regions` name BED (or gzipped BED) files, so a selection of
   any size fits on the command line, and merges the regions into one set in
   reference order, as upstream does.
+- **0007** always trims reads to the pileup window, as Google's make_examples
+  does: it sets `trim_reads_for_pileup` whenever `--alt_aligned_pileup` is set,
+  and that flag always holds a mode name, `none` included. Without trimming, a
+  read whose only overlap with the window was a long deletion became a blank
+  row ahead of the reads that cover the window. On HG003's whole genome
+  (wgse-deepvariant 0.1.0) this changed 20 low-quality records at 6 loci, none
+  in GIAB's confident regions.
 
 ## Same results as Google's image
 

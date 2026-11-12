@@ -6,8 +6,8 @@ mimalloc built to replace malloc in the process it is injected into, so
 ``vcf snp``/``vcf indel`` start their bcftools processes with
 ``DYLD_INSERT_LIBRARIES`` pointing at it: the same records, about a fifth
 faster. It is used only on macOS arm64 when the package is installed beside
-bcftools; it is never installed here. A probe checks once per process that
-bcftools actually loads it (macOS drops ``DYLD_*`` variables for protected
+bcftools; the CLI never installs it at runtime. A probe checks once per process
+that bcftools actually loads it (macOS drops ``DYLD_*`` variables for protected
 binaries), and anything unexpected falls back to the system allocator.
 """
 
