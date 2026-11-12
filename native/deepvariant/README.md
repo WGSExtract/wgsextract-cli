@@ -103,7 +103,7 @@ The Linux build is conda packages (`packaging/wgse-deepvariant`, built by
 
 - **cuda129**: call_variants on an NVIDIA GPU (any driver new enough for CUDA
   12.9), or on the CPU. It depends on conda-forge's ONNX Runtime and the CUDA
-  libraries it uses (cuDNN, cuBLAS: about 1.5 GB), which conda installs with
+  libraries it uses (cuDNN, cuBLAS: about 3.9 GB installed), which Pixi or conda installs with
   it; nothing else is needed but the NVIDIA driver.
 - **cpu**: call_variants on the CPU only, without the CUDA libraries.
 
@@ -145,18 +145,34 @@ F1 0.9735 against Google's 0.9833 there).
 
 ### Installing on Linux
 
-Download a `linux-deepvariant-N` prerelease, check it, and install the package
-for your machine into a conda environment of its own with Pixi (or conda), then
-unpack the weights:
+Download the `linux-deepvariant-1` prerelease into an empty directory and
+check it:
 
 ```bash
 mkdir wgse-deepvariant && cd wgse-deepvariant
 gh release download linux-deepvariant-1 -R WGSExtract/wgsextract-cli
 sha256sum -c SHA256SUMS
-pixi global install --channel conda-forge --channel bioconda \
-  ./wgse-deepvariant-0.2.0-linux64_cuda129_wgse_0.conda   # or ..._cpu_wgse_0.conda
 tar -xzf wgse-deepvariant-weights-1.10.0-wgs.tar.gz
-wgse-deepvariant --version
+```
+
+Continue only if every file reports `OK`. Then install the package into a Pixi
+environment of its own, with this `pixi.toml` beside it (for the CPU-only
+build, name `..._cpu_wgse_0.conda` and drop `cuda = "12"`):
+
+```toml
+[workspace]
+name = "wgse-deepvariant"
+channels = ["conda-forge", "bioconda"]
+platforms = [{ name = "linux-64-cuda", platform = "linux-64", cuda = "12" }]
+
+[dependencies]
+wgse-deepvariant = { path = "./wgse-deepvariant-0.2.0-linux64_cuda129_wgse_0.conda" }
+```
+
+```bash
+pixi install                      # about 3.9 GB with CUDA's libraries, 0.2 GB without
+export PATH="$PWD/.pixi/envs/default/bin:$PATH"
+wgse-deepvariant --version        # "... (call_variants: ONNX Runtime 1.31.1, CUDA or CPU)"
 ```
 
 Then set `deepvariant_weights` in `config.toml` to the weights folder, as on a

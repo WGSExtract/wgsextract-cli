@@ -228,6 +228,40 @@ Ultima reads at 30x (182,666 examples, 4 make_examples shards):
 | call_variants on the GPU, 6.3 GiB free | | out of memory |
 | call_variants in the CPU image, 4 CPUs | 16–33 min | same calls in GIAB's easy regions; 14 of about 103,570 PASS calls differ on all of chr20 |
 
+### DeepVariant on the GPU with wgse-deepvariant
+
+On Linux x86-64 with [wgse-deepvariant](../native/deepvariant/README.md#linux-x86-64-and-nvidia-gpus-cuda)
+installed, `vcf deepvariant --gpu` runs only call_variants on the GPU and
+checks just before it that GPU 0 has 3 GiB free (`--no-gpu-memory-check`
+skips this); make_examples and postprocess_variants stay on the CPU. Its RAM
+estimate is the Mac build's (#647), which covers what Linux used.
+
+Measured (#719) on a Ryzen 5 5600X with an RTX 3090, `--threads 4`, from the
+`linux-deepvariant-1` package, on HG002's 35x NovaSeq BAM (GRCh38 no-alt), chr1
+and chr20: 823,376 sites, 270,091 call_variants examples. Google's
+`google/deepvariant:1.10.0` image ran with 4 CPUs on the same host.
+
+| Stage | Google's CPU image | wgse-deepvariant, CPU | wgse-deepvariant, `--gpu` |
+| --- | ---: | ---: | ---: |
+| make_examples | 41.4 min | 18.4 min | 15.7 min |
+| call_variants | 50.5 min | 22.7 min | 1.2 min |
+| postprocess_variants | 0.8 min | 0.1 min | 0.2 min |
+| End to end | 92.8 min | 41.3 min | 17.1 min |
+
+- **GPU memory:** 2.3 GiB at the default batch of 256 (chr20 and chr1+chr20
+  alike).
+- **Host RAM (chr20):** call_variants 1.5 GiB on the GPU or the CPU;
+  make_examples 0.2 GiB; postprocess_variants 0.8 GiB.
+- **Same calls:** the three runs call the same 823,376 sites with the same
+  genotypes and filters, and the same GIAB v4.2.1 counts in its confident
+  regions (TP 386,651, FP 488, FN 2,761). QUAL differs from Google's by at most
+  0.5 at 24,130 sites, and GQ by at most 2 except one RefCall site (99 against
+  69, same PL); the CPU and GPU builds differ at 31 sites (QUAL ±0.1, GQ ±1).
+- **A 30x genome** is about ten times chr1 and chr20: about 3 hours with
+  `--gpu` (call_variants about 12 minutes), 7 hours on the CPU and 15 hours in
+  Google's image, at 4 threads (**projected**). make_examples scales with
+  `--threads`.
+
 The example count is call_variants' final `Wrote N examples` line; its
 `Predicted N examples in M batches` lines are progress reports every 50 batches.
 CPU call_variants took 33 min in the #358 run and 16 min in #496; the cause of
