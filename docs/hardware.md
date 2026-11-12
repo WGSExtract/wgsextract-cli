@@ -237,7 +237,8 @@ runs call_variants on an NVIDIA GPU through CUDA, or on the CPU.
 - **When it runs:** with `deepvariant_native = "auto"` (the default),
   `wgse-deepvariant` on `PATH` and `deepvariant_weights` set, `vcf deepvariant`
   calls the WGS model with it instead of Google's image: on the CPU, or with
-  `--gpu` on the GPU instead of Parabricks. Other models, `--checkpoint` and
+  `--gpu` on the GPU instead of Parabricks. Until `deepvariant_weights` is set,
+  an installed build is ignored. Other models, `--checkpoint` and
   Ultima reads keep Google's image and Parabricks; `deepvariant_native = "off"`
   keeps them for everything.
 - **Same calls:** the same sites, genotypes and filters as Google's image on

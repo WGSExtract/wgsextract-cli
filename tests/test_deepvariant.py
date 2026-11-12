@@ -878,6 +878,17 @@ def test_linux_leaves_other_models_to_googles_image_719(linux_native):
     }
 
 
+def test_linux_without_weights_set_keeps_googles_image_719(linux_native, monkeypatch):
+    """#733 review: an installed build without deepvariant_weights stopped
+    runs that Google's image (and Parabricks) used to make."""
+    monkeypatch.setitem(deepvariant.settings, "deepvariant_weights", None)
+    call(linux_native)
+    assert linux_native.deepvariant.runs("wgse-deepvariant run") == []
+    assert {r["image"] for r in linux_native.docker.runs()} == {
+        deepvariant.DEFAULT_IMAGE
+    }
+
+
 def test_linux_refuses_the_apple_silicon_only_wgse_deepvariant_719(linux_native):
     linux_native.deepvariant.set_native_version("0.1.0")
     with pytest.raises(WGSExtractError, match="0.1.0 is too old"):

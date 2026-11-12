@@ -118,7 +118,8 @@ def default_batch_size() -> int:
 
 def installed() -> str | None:
     """wgse-deepvariant's path when it's on PATH of an Apple Silicon Mac or
-    a Linux computer and the deepvariant_native setting doesn't turn it off."""
+    a Linux x86-64 computer (with deepvariant_weights set) and the
+    deepvariant_native setting doesn't turn it off."""
     setting = str(settings.get(ENGINE_SETTING) or "auto").lower()
     if setting not in ENGINE_CHOICES:
         raise WGSExtractError(
@@ -132,6 +133,9 @@ def installed() -> str | None:
     if sys.platform != "darwin" and (
         not sys.platform.startswith("linux")
         or platform.machine().lower() not in {"x86_64", "amd64"}
+        # Linux has Google's image and Parabricks: without the weights set,
+        # an installed build isn't chosen.
+        or not settings.get(WEIGHTS_SETTING)
     ):
         return None
     return shutil.which(BINARY)
