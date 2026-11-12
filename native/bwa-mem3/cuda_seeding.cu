@@ -27,7 +27,7 @@ unsigned blocks(size_t threads) { return unsigned((threads + block_size - 1) / b
 
 class CudaSeedingDevice final : public SeedingDevice {
 public:
-    CudaSeedingDevice(const void *checkpoints, size_t bytes)
+    CudaSeedingDevice(const void *checkpoints, size_t bytes, const SeedingLimits &limits)
         : watchdog_(wgse_mem3_cuda_watchdog_floor()) {
         std::string reason;
         ordinal_ = wgse_mem3_cuda_device(reason);
@@ -37,8 +37,10 @@ public:
         // shared.
         size_t free = 0, total = 0;
         check(WGSE_GPU(MemGetInfo)(&free, &total), "memory query");
-        const size_t needed = bytes + sk::prefix_entries * sizeof(sk::Prefix) + (size_t(1) << 30)
-            + (size_t(256) << 20);
+        const size_t batch = limits.reads * (limits.read_length * (1 + sizeof(sk::Interval))
+            + sizeof(SeedRead) + limits.capacity * sizeof(SeedSmem) + sizeof(SeedCount));
+        const size_t needed = bytes + sk::prefix_entries * sizeof(sk::Prefix) + batch
+            + (size_t(1) << 30);
         if (needed > free)
             throw std::runtime_error("the FM index needs " + std::to_string(needed >> 20)
                 + " MiB of GPU memory, " + std::to_string(free >> 20) + " MiB free");
@@ -48,6 +50,17 @@ public:
         check(WGSE_GPU(Memcpy)(index_.data(), checkpoints, bytes, WGSE_GPU(MemcpyHostToDevice)),
             "FM index upload");
         prefixes_.reserve(sk::prefix_entries);
+        // Every buffer at its largest now: an allocation can wait for the GPU's running
+        // kernels, so none may happen once other stages use the GPU.
+        bases_.reserve(limits.reads * limits.read_length);
+        host_bases_.reserve(limits.reads * limits.read_length);
+        reads_.reserve(limits.reads);
+        host_reads_.reserve(limits.reads);
+        scratch_.reserve(limits.reads * limits.read_length);
+        smems_.reserve(limits.reads * limits.capacity);
+        host_smems_.reserve(limits.reads * limits.capacity);
+        counts_.reserve(limits.reads);
+        host_counts_.reserve(limits.reads);
     }
     ~CudaSeedingDevice() override {
         if (gpu_hung()) return;
@@ -56,11 +69,11 @@ public:
     }
 
     uint8_t *bases(size_t count) override {
-        host_bases_.reserve(count);
+        if (count > host_bases_.size()) throw std::runtime_error("a seeding batch outgrew its GPU buffers");
         return host_bases_.data();
     }
     SeedRead *reads(size_t count) override {
-        host_reads_.reserve(count);
+        if (count > host_reads_.size()) throw std::runtime_error("a seeding batch outgrew its GPU buffers");
         return host_reads_.data();
     }
 
@@ -69,13 +82,9 @@ public:
         const auto start = std::chrono::steady_clock::now();
         check(WGSE_GPU(SetDevice)(ordinal_), "device selection");
         const size_t count = p.reads;
-        bases_.reserve(base_count);
-        reads_.reserve(count);
-        scratch_.reserve(count * p.scratch);
-        smems_.reserve(count * p.capacity);
-        counts_.reserve(count);
-        host_smems_.reserve(count * p.capacity);
-        host_counts_.reserve(count);
+        if (base_count > bases_.size() || count > reads_.size()
+            || count * p.scratch > scratch_.size() || count * p.capacity > smems_.size())
+            throw std::runtime_error("a seeding batch outgrew its GPU buffers");
         const auto *index = index_.data();
         if (!have_prefixes_) {
             // The table depends only on the index (p.count, p.sentinel).
@@ -87,9 +96,7 @@ public:
             WGSE_GPU(MemcpyHostToDevice), stream_), "seeding upload");
         check(WGSE_GPU(MemcpyAsync)(reads_.data(), host_reads_.data(), count * sizeof(SeedRead),
             WGSE_GPU(MemcpyHostToDevice), stream_), "seeding upload");
-        std::string &hang_label = wgse_mem3_cuda_hang_label();
-        if (!hang_label.empty() && std::string("collect_smems").rfind(hang_label, 0) == 0) {
-            hang_label.clear();
+        if (wgse_mem3_cuda_take_hang("collect_smems")) {
             spin<<<1, 1, 0, stream_>>>(uint64_t(watchdog_.limit(Watchdog::seeding) * 2e9));
         }
         sk::collect_smems<<<blocks(count), block_size, 0, stream_>>>(index, p, bases_.data(),
@@ -139,8 +146,9 @@ private:
 
 } // namespace
 
-std::unique_ptr<SeedingDevice> make_seeding_device(const void *checkpoints, size_t bytes) {
-    return std::make_unique<CudaSeedingDevice>(checkpoints, bytes);
+std::unique_ptr<SeedingDevice> make_seeding_device(const void *checkpoints, size_t bytes,
+    const SeedingLimits &limits) {
+    return std::make_unique<CudaSeedingDevice>(checkpoints, bytes, limits);
 }
 
 // The GPU reads its own copy of the index.

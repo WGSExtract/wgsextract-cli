@@ -26,9 +26,16 @@ public:
     virtual std::string hang() const = 0;
 };
 
+// A batch's limits: reads, bases per read (the scratch entries per read too) and SMEMs per
+// read. A device may allocate for them up front.
+struct SeedingLimits {
+    size_t reads, read_length, capacity;
+};
+
 // The GPU seeder for FMI_search's occurrence table (cp_occ, `bytes`); throws with the reason
 // when there is none.
-std::unique_ptr<SeedingDevice> make_seeding_device(const void *checkpoints, size_t bytes);
+std::unique_ptr<SeedingDevice> make_seeding_device(const void *checkpoints, size_t bytes,
+    const SeedingLimits &limits);
 // Whether an abandoned GPU command may still read the occurrence table in place, so that it
 // must not be freed.
 bool seeding_device_unsettled();

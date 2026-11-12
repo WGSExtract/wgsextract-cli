@@ -94,7 +94,8 @@ private:
 
 } // namespace
 
-std::unique_ptr<SeedingDevice> make_seeding_device(const void *checkpoints, size_t bytes) {
+std::unique_ptr<SeedingDevice> make_seeding_device(const void *checkpoints, size_t bytes,
+    const SeedingLimits &) {
     return std::make_unique<MetalSeedingDevice>(checkpoints, bytes);
 }
 

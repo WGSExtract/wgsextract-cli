@@ -29,6 +29,12 @@ constexpr unsigned block_size = 128;
 constexpr int32_t max_pairs = 1 << 18;
 // A batch's DP state; a request with more is scored on the CPU.
 constexpr size_t max_scratch_cells = size_t(16) << 20;
+// A batch's query words (a 256-base query is 32 words) and reference words (three times as
+// many); a request with more is scored on the CPU. Every slot's buffers are allocated at this
+// size when the engine starts: an allocation can wait for the GPU's running kernels, and the
+// submitter must never block while its watchdog is due.
+constexpr size_t max_query_words = size_t(max_pairs) * (wgse_mem3_max_gpu_query_length / 8);
+constexpr size_t max_reference_words = 3 * max_query_words;
 // Pairs worth a second batch while one runs; below it, they wait for the GPU.
 constexpr int32_t target_pairs = 8192;
 // Batches in flight, each on its own stream.
@@ -147,6 +153,13 @@ public:
                     "stream");
                 check(WGSE_GPU(EventCreateWithFlags)(&slot.done, WGSE_GPU(EventDisableTiming)),
                     "event");
+                slot.host_pairs.reserve(max_pairs);
+                slot.host_reference.reserve(max_reference_words);
+                slot.host_query.reserve(max_query_words);
+                slot.pairs.reserve(max_pairs);
+                slot.reference.reserve(max_reference_words);
+                slot.query.reserve(max_query_words);
+                slot.scratch.reserve(max_scratch_cells);
             }
         } catch (const std::exception &error) {
             reason = error.what();
@@ -181,22 +194,25 @@ private:
     std::thread submitter;
     double slowest_batch = 0;
 
-    // Takes pending requests, up to max_pairs and max_scratch_cells, ordered by scoring.
-    // Holds the lock.
+    // Takes pending requests, up to the slot's buffers, ordered by scoring. Holds the lock.
     void take(Slot &slot) {
         slot.requests.clear();
         int32_t count = 0;
-        size_t cells = 0;
+        size_t cells = 0, ref_words = 0, qer_words = 0;
         size_t kept = 0;
         for (Request *request : pending) {
             if (count > 0 && (count + request->count > max_pairs
-                || cells + request->scratch_cells > max_scratch_cells)) {
+                || cells + request->scratch_cells > max_scratch_cells
+                || ref_words + request->ref_word_count > max_reference_words
+                || qer_words + request->qer_word_count > max_query_words)) {
                 pending[kept++] = request;
                 continue;
             }
             slot.requests.push_back(request);
             count += request->count;
             cells += request->scratch_cells;
+            ref_words += request->ref_word_count;
+            qer_words += request->qer_word_count;
         }
         pending.resize(kept);
         pending_pairs -= count;
@@ -221,17 +237,10 @@ private:
             qer_words += request->qer_word_count;
             cells += request->scratch_cells;
         }
-        try {
-            check(WGSE_GPU(SetDevice)(ordinal_), "device selection");
-            slot.host_pairs.reserve(count);
-            slot.host_reference.reserve(ref_words);
-            slot.host_query.reserve(qer_words);
-            slot.pairs.reserve(count);
-            slot.reference.reserve(ref_words);
-            slot.query.reserve(qer_words);
-            slot.scratch.reserve(cells);
-        } catch (const std::exception &error) {
-            slot.failure = error.what();
+        // take() keeps a batch within the buffers start() allocated.
+        if (count > slot.pairs.size() || ref_words > slot.reference.size()
+            || qer_words > slot.query.size() || cells > slot.scratch.size()) {
+            slot.failure = "a seed-extension batch outgrew its GPU buffers";
             return;
         }
         WgseBswJob *jobs = slot.host_pairs.data();
@@ -275,9 +284,7 @@ private:
                 WGSE_GPU(MemcpyHostToDevice), stream), "extension upload");
             check(WGSE_GPU(MemcpyAsync)(slot.query.data(), query, qer_words * sizeof(uint32_t),
                 WGSE_GPU(MemcpyHostToDevice), stream), "extension upload");
-            std::string &hang_label = wgse_mem3_cuda_hang_label();
-            if (!hang_label.empty() && std::string("extend").rfind(hang_label, 0) == 0) {
-                hang_label.clear();
+            if (wgse_mem3_cuda_take_hang("extend")) {
                 spin<<<1, 1, 0, stream>>>(uint64_t(limit() * 2e9));
             }
             auto *pairs = reinterpret_cast<ek::Pair *>(slot.pairs.data());
@@ -367,6 +374,8 @@ private:
     }
 
     void run() {
+        // The submitter's launches go to the engine's GPU.
+        if (WGSE_GPU(SetDevice)(ordinal_) != WGSE_GPU_SUCCESS) fail("GPU seed extension: device selection");
         std::unique_lock<std::mutex> lock(mutex);
         auto pause = std::chrono::microseconds(20);
         for (;;) {
@@ -429,25 +438,30 @@ bool wgse_mem3_gpu_hardware_supported() {
 // CUDA reports no interrupted commands to commit again.
 void wgse_mem3_gpu_inject_interruptions(size_t) {}
 
+namespace {
+std::mutex hang_mutex;
+std::string hang_label, hang_reason;
+} // namespace
+
 void wgse_mem3_gpu_inject_hang(const char *label) {
-    wgse_mem3_cuda_hang_label() = label;
+    std::lock_guard<std::mutex> lock(hang_mutex);
+    hang_label = label;
     watchdog_floor = 2;
 }
 
-std::string &wgse_mem3_cuda_hang_label() {
-    static std::string label;
-    return label;
+bool wgse_mem3_cuda_take_hang(const char *stage) {
+    std::lock_guard<std::mutex> lock(hang_mutex);
+    if (hang_label.empty() || std::string(stage).rfind(hang_label, 0) != 0) return false;
+    hang_label.clear();
+    return true;
 }
 
 double wgse_mem3_cuda_watchdog_floor() { return watchdog_floor; }
 
-namespace {
-std::mutex hang_mutex;
-std::string hang_reason;
-} // namespace
-
 std::string wgse_mem3_cuda_hang() {
     std::lock_guard<std::mutex> lock(hang_mutex);
+    // Watchdog::wait marks the GPU hung before its caller records why.
+    if (hang_reason.empty() && gpu_hung()) return "GPU watchdog: the GPU hung";
     return hang_reason;
 }
 
@@ -557,7 +571,8 @@ bool wgse_mem3_bsw_score(WgseBswJob *jobs, int32_t count, const uint8_t *ref,
     }
     Request request{jobs, count, parameters(scoring), nullptr, nullptr, nullptr, 0, 0, 0, 0, 0};
     pack(request, jobs, count, ref, qer);
-    if (request.scratch_cells > max_scratch_cells || !engine().score(request)) {
+    if (request.scratch_cells > max_scratch_cells || request.ref_word_count > max_reference_words
+        || request.qer_word_count > max_query_words || !engine().score(request)) {
         ++cpu_fallbacks;
         return false;
     }

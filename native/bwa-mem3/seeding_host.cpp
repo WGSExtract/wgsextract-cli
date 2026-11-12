@@ -86,7 +86,8 @@ public:
     // (wgse_mem3_seed_release).
     explicit Seeder(FMI_search *fmi)
         : fmi_(fmi), device_(make_seeding_device(fmi->wgse_cp_occ(),
-              size_t((fmi->reference_seq_len >> CP_SHIFT) + 1) * sizeof(CP_OCC))) {
+              size_t((fmi->reference_seq_len >> CP_SHIFT) + 1) * sizeof(CP_OCC),
+              SeedingLimits{size_t(batch_reads), max_length, capacity})) {
         thread_ = std::thread([this] { loop(); });
     }
 
