@@ -52,26 +52,23 @@ class _TypingParams(Params):
 @dataclass(frozen=True, kw_only=True)
 class TypingCyp2d6Params(_TypingParams):
     """Call CYP2D6 star alleles, including copy-number and CYP2D6/CYP2D7
-    hybrid alleles, with Cyrius; it needs about 30x whole-genome data. On a
-    GRCh38 reference with chr22 ALT contigs, the locus's reads are first
-    realigned to primary chr22 (needs ``ref`` and minimap2). Metrics:
-    ``cyp2d6_genotype``, ``cyp2d6_filter``, ``cyp2d6_copy_number`` and
-    ``median_depth``."""
+    hybrids, with Cyrius (about 30x WGS). On GRCh38 with chr22 ALT contigs,
+    the locus's reads are first realigned to primary chr22 (needs ``ref``
+    and minimap2). Metrics: ``cyp2d6_genotype``, ``cyp2d6_filter``,
+    ``cyp2d6_copy_number`` and ``median_depth``."""
 
     COMMAND = "typing cyp2d6"
 
 
 @dataclass(frozen=True, kw_only=True)
 class TypingSmnParams(_TypingParams):
-    """Call the copy number of SMN1, SMN2 and SMN2Δ7–8 with SMNCopyNumberCaller
-    for spinal muscular atrophy (SMA) carrier screening: one SMN1 copy is a
-    carrier, none is SMA-affected. Two copies can still be a "2+0" silent
-    carrier; g.27134T>G, associated with that, is counted. Short-read WGS of
-    at least 30x only: long reads are refused, and below 30x median depth no
-    calls are reported (the caller's files are kept as
-    ``<stem>.smn.below_min_depth.*``). A non-bwa-like aligner in the header
-    (Novoalign, Bowtie 2, ...) gets an ``aligner_not_calibrated`` warning. Not
-    a diagnosis. Metrics: ``smn1_copy_number``,
+    """Call SMN1, SMN2 and SMN2Δ7–8 copy numbers with SMNCopyNumberCaller for
+    spinal muscular atrophy (SMA) carrier screening, not a diagnosis: one SMN1
+    copy is a carrier, none is affected; g.27134T>G, linked to "2+0" silent
+    carriers, is counted. Short-read WGS of at least 30x only; below 30x
+    median depth no calls are reported (files kept as
+    ``<stem>.smn.below_min_depth.*``), and non-bwa-like aligners get an
+    ``aligner_not_calibrated`` warning. Metrics: ``smn1_copy_number``,
     ``smn2_copy_number``, ``smn2_delta78_copy_number``, ``sma_carrier``,
     ``sma_affected``, ``g27134tg_copy_number``, ``smn_filter``,
     ``median_depth`` and ``coverage_mad``."""
@@ -81,11 +78,10 @@ class TypingSmnParams(_TypingParams):
 
 @dataclass(frozen=True, kw_only=True)
 class TypingHlaParams(_TypingParams):
-    """Type the HLA class I and II genes with T1K from the reads of the MHC,
-    the HLA decoys and chromosome 6 ALT contigs. Metrics: the diplotype of
-    HLA-A, -B, -C, -DRB1, -DQA1, -DQB1, -DPA1 and -DPB1 (None without a
-    confident call) and the IPD-IMGT/HLA release of the index
-    (``ipd_imgt_hla_release``). The outside-call file holds HLA-A and HLA-B."""
+    """Type HLA class I and II genes with T1K from reads of the MHC, HLA
+    decoys and chr6 ALT contigs. Metrics: diplotypes of HLA-A, -B, -C,
+    -DRB1, -DQA1, -DQB1, -DPA1 and -DPB1 (None without a confident call) and
+    ``ipd_imgt_hla_release``. The outside-call file holds HLA-A and HLA-B."""
 
     COMMAND = "typing hla"
 
@@ -128,13 +124,12 @@ class TypingHlaParams(_TypingParams):
 
 @dataclass(frozen=True, kw_only=True)
 class TypingStrParams(_TypingParams):
-    """Size the disease short tandem repeats (HTT, FMR1, C9ORF72, ...) and
-    flag those outside the normal range: with ExpansionHunter for short reads,
-    and LongTR (or STRkit) for Nanopore and PacBio reads, chosen by the reads'
-    platform. Sizing from reads isn't a diagnosis. Metrics: ``sex``,
-    ``repeat_caller``, ``disease_repeats`` and ``flagged_repeats``; each
-    flagged repeat is also a ``repeat_outside_normal_range`` warning (or
-    ``repeat_unconfirmed`` when only a one-read allele flags it, and
+    """Size disease short tandem repeats (HTT, FMR1, C9ORF72, ...) and flag
+    those outside the normal range, with ExpansionHunter for short reads and
+    LongTR (or STRkit) for Nanopore and PacBio; not a diagnosis. Metrics:
+    ``sex``, ``repeat_caller``, ``disease_repeats`` and ``flagged_repeats``;
+    each flagged repeat is a ``repeat_outside_normal_range`` warning
+    (``repeat_unconfirmed`` if only a one-read allele flags it,
     ``repeat_unavailable`` for NOTCH2NLC on hg19)."""
 
     COMMAND = "typing str"
