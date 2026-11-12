@@ -52,6 +52,31 @@
           }
         },
         "lineage": {"$ref": "#/$defs/section"},
+        "ancestry": {
+          "allOf": [{"$ref": "#/$defs/section"}],
+          "required": ["note", "components"],
+          "properties": {
+            "note": {"type": "string"},
+            "evidence": {"type": ["string", "null"]},
+            "metrics": {"type": "object"},
+            "components": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["k", "name", "region", "proportion", "lower", "upper", "reference_populations"],
+                "properties": {
+                  "k": {"type": "integer", "minimum": 1},
+                  "name": {"type": "string"},
+                  "region": {"type": "string"},
+                  "proportion": {"type": "number", "minimum": 0, "maximum": 1},
+                  "lower": {"type": "number", "minimum": 0, "maximum": 1},
+                  "upper": {"type": "number", "minimum": 0, "maximum": 1},
+                  "reference_populations": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
         "pharmacogenomics": {"$ref": "#/$defs/section"},
         "carrier_screening": {"$ref": "#/$defs/section"},
         "clinvar": {

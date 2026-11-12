@@ -252,6 +252,55 @@ class RelateParams(Params):
 
 
 @dataclass(frozen=True, kw_only=True)
+class QcAncestryParams(Params):
+    """Admixture-style proportions of 7 continental and 12 sub-continental
+    HGDP+1KG reference components (not an ethnicity), with 95% intervals,
+    from a BAM/CRAM, VCF or microarray file. Writes ``<stem>.ancestry.tsv``
+    and the ``ancestry`` fact; see docs/ancestry.md."""
+
+    COMMAND = "qc ancestry"
+
+    input: Path = input_param(
+        "Indexed BAM or CRAM, VCF, or microarray raw-data file.",
+        "--input (a BAM, CRAM, VCF or microarray file) is required.",
+    )
+    ref: Path | None = ref_param()
+    outdir: Path | None = outdir_param()
+    threads: int | None = threads_param()
+    sample: str | None = param(
+        None,
+        help="The sample of a multi-sample VCF",
+        metavar="NAME",
+    )
+    build: str | None = param(
+        None,
+        help="The input's build, when its header doesn't tell",
+        choices=("hg19", "hg38", "t2t"),
+    )
+    bootstrap: int = param(
+        100,
+        help="Bootstrap replicates for the 95%% intervals; 0 skips them",
+        metavar="N",
+    )
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.bootstrap < 0:
+            raise UsageError("--bootstrap must be 0 or more.")
+
+    def write_folders(self) -> Iterator[Path]:
+        # The first run downloads the reference into the library.
+        from wgsextract_cli.core import ancestry_reference
+        from wgsextract_cli.core.paths import expand_path
+
+        from ._params import with_config_defaults
+
+        ref = with_config_defaults(self).ref
+        library = ancestry_reference.library_for(expand_path(ref) if ref else None)
+        yield ancestry_reference.folder(library)
+
+
+@dataclass(frozen=True, kw_only=True)
 class FakeDataParams(Params):
     """Generate a small fake genome for tests: reference, reads and calls
     named ``fake*``, reproducible from ``seed``. Uses the build's installed
@@ -391,6 +440,19 @@ def relate(
     return execute(params, run_relate, progress=progress, cancel=cancel, check=check)
 
 
+def ancestry(
+    params: QcAncestryParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Estimate ancestry proportions (output role ``ancestry_table``)."""
+    from wgsextract_cli.commands.qc.ancestry import run_ancestry
+
+    return execute(params, run_ancestry, progress=progress, cancel=cancel, check=check)
+
+
 def fake_data(
     params: FakeDataParams,
     *,
@@ -411,9 +473,11 @@ __all__ = [
     "FastqcParams",
     "MultiqcMetricsParams",
     "MultiqcParams",
+    "QcAncestryParams",
     "QcContaminationParams",
     "QcVcfParams",
     "RelateParams",
+    "ancestry",
     "contamination",
     "fake_data",
     "fastp",

@@ -708,6 +708,27 @@ is optional (`pixi install -e somalier`) and unavailable on Windows.
 | `ancestry` | `bool \| None` | `None` | `--ancestry` | Predict the 1000 Genomes superpopulation (default: when 'ref somalier --install' has installed the labelled sketches). |
 | `table_format` | `str` | `'tsv'` | `--format` | Table format: tsv, or parquet (needs pyarrow) (default: tsv) One of: `tsv`, `parquet` |
 
+### `api.qc.ancestry(QcAncestryParams)`
+
+CLI: `wgsextract qc ancestry`.
+
+Estimate ancestry proportions (output role `ancestry_table`).
+
+`QcAncestryParams`: Admixture-style proportions of 7 continental and 12 sub-continental
+HGDP+1KG reference components (not an ethnicity), with 95% intervals,
+from a BAM/CRAM, VCF or microarray file. Writes `<stem>.ancestry.tsv`
+and the `ancestry` fact; see docs/ancestry.md.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | Indexed BAM or CRAM, VCF, or microarray raw-data file. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `sample` | `str \| None` | `None` | `--sample` | The sample of a multi-sample VCF |
+| `build` | `str \| None` | `None` | `--build` | The input's build, when its header doesn't tell. One of: `hg19`, `hg38`, `t2t` |
+| `bootstrap` | `int` | `100` | `--bootstrap` | Bootstrap replicates for the 95% intervals; 0 skips them |
+
 ### `api.qc.fake_data(FakeDataParams)`
 
 CLI: `wgsextract qc fake-data`.
@@ -1724,6 +1745,20 @@ uses, about 85 MB, or delete them.
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `delete` | `bool` | `False` | `--delete` | Delete the installed somalier sites and 1000 Genomes sketches |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+
+### `api.ref.ancestry(RefAncestryParams)`
+
+CLI: `wgsextract ref ancestry`.
+
+Install the resources; output role `reference_resource`.
+
+`RefAncestryParams`: Install the hash-pinned ancestry reference of `qc ancestry`, or
+delete it.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed ancestry reference |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 
 ### `api.ref.gnomad_sv(RefGnomadSvParams)`
