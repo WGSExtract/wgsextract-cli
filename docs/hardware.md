@@ -310,9 +310,15 @@ the check, or is older than the oldest supported release, raises the
     one `wgse-bwa` would read here, and `--delete` removes them.
   - `align` and `realign` read it with `--dense-suffix-array`, or
     `dense_suffix_array = true` in `config.toml` (`--no-dense-suffix-array`
-    turns that off for a run). Otherwise they run `wgse-bwa --dense-sa off`,
-    so a file left beside the index isn't read. The memory estimate counts the
-    file as index memory (with the GPU it replaces the denser sample the GPU
+    turns that off for a run). Otherwise wgse-bwa 0.12.1 or later gets
+    `--dense-sa off`, so a file left beside the index isn't read.
+    Production 0.11.0 and 0.12.0 cannot parse that switch: the CLI omits it
+    when no side file exists, but refuses alignment if one is present.
+    Upgrade to 0.12.1 or delete the side files with
+    `wgsextract ref dense-sa --ref <fasta> --delete`;
+    those older builds cannot safely honor the opt-in setting.
+    The memory estimate counts the file as index memory (with the GPU it
+    replaces the denser sample the GPU
     would build after 20M reads), and the manifest records
     `dense_suffix_array_interval`.
   - It is used only when `wgse-bwa` aligns. When another aligner runs, such

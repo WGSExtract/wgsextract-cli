@@ -45,8 +45,8 @@ _FAKE_WGSE_BWA = """\
 import glob, json, os, re, sys
 
 args = sys.argv[1:]
+document = json.loads({capabilities!r})
 if args[:1] == ["capabilities"]:
-    document = json.loads({capabilities!r})
     if len(args) > 2:
         found = sorted(
             int(m[1])
@@ -64,6 +64,9 @@ if args[:1] == ["densify-sa"]:
     sys.exit(0)
 options = []
 while args and args[0] in ("--backend", "--dense-sa"):
+    if args[0] == "--dense-sa" and tuple(map(int, document["version"].split("."))) < (0, 12, 1):
+        print("unrecognized command '--dense-sa'", file=sys.stderr)
+        sys.exit(1)
     options += args[:2]
     args = args[2:]
 os.execv({real!r}, [" ".join(["wgse-bwa", *options]), *args])
@@ -84,7 +87,7 @@ def mem3_bin(request):
     return only_tools(request, "bwa", "bwa-mem2", "samtools")
 
 
-def _install(bindir, version="0.11.0", **capabilities):
+def _install(bindir, version="0.12.1", **capabilities):
     from tests.fake_tools import python_tool
 
     source = _FAKE_WGSE_BWA.format(
@@ -109,6 +112,69 @@ def _dense_warnings(result):
     return [w for w in result.warnings if w.code == "dense_suffix_array_unused"]
 
 
+@pytest.mark.parametrize("machine", ["apple_silicon", "linux_x86_64"])
+@pytest.mark.parametrize("version", ["0.11.0", "0.12.0", "0.12.1"])
+def test_723_released_native_parser_without_dense_option_still_aligns(
+    tmp_path, bwa_bin, machine, version, request
+):
+    request.getfixturevalue(machine)
+    reads = _short_reads(tmp_path)
+    _install(
+        bwa_bin,
+        version=version,
+        metal_available=machine == "apple_silicon",
+        cuda_available=machine == "linux_x86_64",
+    )
+
+    bam, result = _align(reads, tmp_path / "native")
+    upstream, _ = _align(reads, tmp_path / "upstream", "--native-aligners", "off")
+
+    assert result.metrics["native_aligner_version"] == version
+    assert _samtools("view", bam) == _samtools("view", upstream)
+    # contract: old production parsers reject the option; fixed ones must
+    # explicitly disable automatic side-file loading to preserve opt-in RAM use.
+    assert ("--dense-sa" in _mapper(bam).split()) is (version == "0.12.1")
+
+
+@pytest.mark.usefixtures("apple_silicon")
+@pytest.mark.parametrize(
+    ("version", "enabled", "filename", "workflow"),
+    [
+        ("0.11.0", False, "ref.fa", "align"),
+        ("0.12.0", False, "ref.fa", "align"),
+        ("0.11.0", True, "ref.fa", "realign"),
+        ("0.12.0", True, "ref[1].fa", "realign"),
+    ],
+)
+def test_723_legacy_automatic_dense_file_cannot_escape_memory_planning(
+    tmp_path, bwa_bin, version, enabled, filename, workflow
+):
+    reads = _short_reads(tmp_path / "reads")
+    ref = tmp_path / filename
+    ref.write_bytes(Path(reads.ref).read_bytes())
+    _install(bwa_bin, version=version)
+    _index(str(ref))
+    side = _side_file(str(ref))
+    out = tmp_path / "out"
+    if workflow == "realign":
+        (tmp_path / "old").mkdir()
+        source, _ = _old_alignment(tmp_path, reads.genome)
+
+    with pytest.raises(UsageError) as error:
+        if workflow == "realign":
+            _run_realign(source, str(ref), out, dense_suffix_array=enabled)
+        else:
+            _run(
+                "align", "--r1", reads.r1, "--r2", reads.r2, "--ref", str(ref),
+                "--outdir", str(out), "--threads", "2", "--aligner", "bwa",
+            )  # fmt: skip
+
+    assert "0.12.1" in str(error.value) and "--delete" in str(error.value)
+    assert str(side) in str(error.value)
+    assert not list(out.glob("*_aligned.bam"))
+    assert not list(out.glob("*.fastq.gz"))
+
+
 @pytest.mark.usefixtures("apple_silicon")
 def test_align_never_reads_a_present_file_unless_asked(tmp_path, bwa_bin):
     reads = _short_reads(tmp_path)
@@ -118,7 +184,7 @@ def test_align_never_reads_a_present_file_unless_asked(tmp_path, bwa_bin):
 
     bam, result = _align(reads, tmp_path / "out")
 
-    # contract: wgse-bwa 0.11 reads any present file by default; the owner's
+    # contract: wgse-bwa reads any present file by default; the owner's
     # decision (#543) is opt-in only, so the run must switch it off.
     assert _mapper(bam).startswith("wgse-bwa --backend auto --dense-sa off mem ")
     assert "dense_suffix_array_interval" not in result.metrics
@@ -226,7 +292,7 @@ def test_asked_but_unusable_warns_and_aligns_without_it(
     tmp_path, bwa_bin, setup, reason
 ):
     reads = _short_reads(tmp_path)
-    _install(bwa_bin, version="0.10.0" if setup == "old wgse-bwa" else "0.11.0")
+    _install(bwa_bin, version="0.10.0" if setup == "old wgse-bwa" else "0.12.1")
     _index(reads.ref)
     if setup == "damaged file":
         _side_file(reads.ref, content=b"truncated")
@@ -321,7 +387,7 @@ def _ref_dense_sa(*options):
 
 def test_ref_dense_sa_builds_lists_and_deletes_the_file(tmp_path, bwa_bin):
     reads = _short_reads(tmp_path)
-    _install(bwa_bin)
+    _install(bwa_bin, version="0.11.0")
     _index(reads.ref)
 
     built = _ref_dense_sa("--ref", reads.ref, "--interval", "8")

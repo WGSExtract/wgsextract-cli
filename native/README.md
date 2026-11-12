@@ -29,11 +29,15 @@ printed by `--version`.
 
 ## Installing
 
-The published `wgse-bwa` 0.11.0 executable advertises dense suffix-array support
-but rejects the CLI's `--dense-sa off` option, stopping default `align` and
-`realign` runs. Until an updated prerelease is published, build `wgse-bwa`
-from this revision (0.12.1) as described under [Building](#building).
-The other three executables are unaffected.
+The published `wgse-bwa` 0.11.0 and 0.12.0 executables advertise dense
+suffix-array support but reject `--dense-sa`. The CLI omits that option for
+those versions, so alignment works when no dense side file is present.
+With a side file it refuses: those builds can read it automatically and cannot
+honor the run's opt-in setting. Upgrade to 0.12.1 or later, or remove the side
+files with `wgsextract ref dense-sa --ref <fasta> --delete`.
+Until updated prereleases are published, build `wgse-bwa` from this revision
+(0.12.1) as described under [Building](#building). The other three executables
+are unaffected.
 
 The `macos-aligners-15` prerelease has `wgse-bwa` 0.11.0, which can use an
 optional dense suffix-array side file (`wgse-bwa densify-sa`), `wgse-bwa-mem2`
