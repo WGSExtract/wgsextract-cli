@@ -972,16 +972,20 @@ average (`power.txt`, `power-samples.tsv`).
 `wgse-bwa` also builds for Linux x86-64 and ARM64, as conda packages
 (`packaging/wgse-bwa`, built by `.github/workflows/linux_aligners.yml` and
 published as `linux-aligners-*` prereleases; `linux-aligners-1` has 0.12.1).
-Download the package for your machine and check it against the SHA-256 digest
-GitHub publishes, then install it into the environment that runs `wgsextract`:
+Download the package for your machine, check it against the SHA-256 digest
+GitHub publishes, and install it with conda or mamba into its own environment
+together with its runtime libraries (installing a local package file doesn't
+resolve dependencies). The CLI finds `wgse-bwa` on `PATH`:
 
 ```bash
-gh release download linux-aligners-1 -R WGSExtract/wgsextract-cli \
-  -p 'wgse-bwa-0.12.1-linux64_wgse_0.conda'   # linuxaarch64 on ARM64
+PKG=wgse-bwa-0.12.1-linux64_wgse_0.conda   # wgse-bwa-0.12.1-linuxaarch64_wgse_0.conda on ARM64
+gh release download linux-aligners-1 -R WGSExtract/wgsextract-cli -p "$PKG"
 gh release view linux-aligners-1 -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
   sha256sum -c --ignore-missing
-conda install ./wgse-bwa-0.12.1-linux64_wgse_0.conda
+conda create -y -n wgse-bwa -c conda-forge "libgcc>=14" "libstdcxx>=14" "libzlib>=1.3.2,<2"
+conda install -y -n wgse-bwa "./$PKG"
+export PATH="$(conda run -n wgse-bwa printenv CONDA_PREFIX)/bin:$PATH"
 ```
 
 - **CPU backend:** upstream BWA's code. The NEON replacements are Apple-only,
