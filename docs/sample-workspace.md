@@ -76,6 +76,7 @@ at = "2026-11-04T22:31:02+00:00"
 | `read_length`, `mean_coverage` | `info` | `target_depths`; shown by `sample show` |
 | `somalier_sex` | `qc relate` (chrX heterozygosity, chrY depth) | checked against `sex`: a disagreement is a `sex_mismatch` warning |
 | `superpopulation` | `qc relate` with `ref somalier --install` | shown by `sample show` |
+| `ancestry` | `qc ancestry` (K=7 reference proportions of at least 0.5%) | the personal report; shown by `sample show` |
 | `contamination` | `qc contamination` (VerifyBamID2 FREEMIX) | the contamination warning of `vcf snp`/`indel`, `microarray` and `lineage`; confidence labels of rare and clinical findings in the genome folder; the personal report |
 
 ## Commands

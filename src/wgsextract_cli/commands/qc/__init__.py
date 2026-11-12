@@ -13,6 +13,7 @@ from wgsextract_cli.api.qc import (
     FastqcParams,
     MultiqcMetricsParams,
     MultiqcParams,
+    QcAncestryParams,
     QcContaminationParams,
     QcVcfParams,
     RelateParams,
@@ -27,6 +28,7 @@ from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.reference_assets import reference_genomes_dir
 from wgsextract_cli.core.results import current_result
 
+from .ancestry import cmd_ancestry
 from .commands import (
     cmd_fastp,
     cmd_fastqc,
@@ -131,6 +133,12 @@ def register(
         ),
         ("vcf", QcVcfParams, cmd_vcf_qc, CLI_HELP["cmd_vcf-qc"]),
         ("relate", RelateParams, cmd_relate, CLI_HELP["cmd_qc-relate"]),
+        (
+            "ancestry",
+            QcAncestryParams,
+            cmd_ancestry,
+            CLI_HELP["cmd_qc-ancestry"],
+        ),
         (
             "contamination",
             QcContaminationParams,

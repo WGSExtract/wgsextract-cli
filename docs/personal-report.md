@@ -50,6 +50,7 @@ CRAM `--input`.
 | --- | --- | --- |
 | Sample overview | workspace facts (sex, platform, build, coverage, depth by target, read length, each with its method and confidence); `info --detailed` (QC metrics, plus sex, coverage and read length with confidence "not recorded" when the folder has no workspace) | none: facts and QC tables |
 | Lineage | `lineage y-haplogroup`, `lineage mt-haplogroup` | the Y and mtDNA haplogroups, with tree links (YFull, FTDNA). Y-DNA is not asked for when the recorded sex is Female. |
+| Ancestry proportions | `qc ancestry` | the K=7 and K=12 reference proportions with their 95% intervals and the reference populations that carry each component most, worded as reference proportions, not ethnicities ([ancestry.md](ancestry.md)) |
 | Pharmacogenomics | `vcf pharmcat`, `typing cyp2d6` (Cyrius), `typing hla` (T1K) | one per PharmCAT gene (diplotype and phenotype); the CYP2D6 diplotype; the HLA-A and HLA-B alleles |
 | Carrier screening by copy number | `typing smn` (SMNCopyNumberCaller) | SMA carrier status from the SMN1 copy number, with SMN2 and g.27134T>G; two SMN1 copies carry the silent (2+0) carrier caveat |
 | ClinVar | `vcf clinvar` | each carried ClinVar pathogenic or likely-pathogenic call in a gene of the gene list (default ACMG SF v3.3), and per gene the calls by zygosity, with recessive genes marked carrier or (possibly) biallelic |
@@ -243,7 +244,7 @@ same document is the `details` of the report's result manifest
                  "confidence": "high", "status": null, "status_text": ""}],
       "all_calls": "clinvar_pathogenic.confidence.tsv"
     },
-    "overview": {"...": "..."}, "lineage": {"...": "..."},
+    "overview": {"...": "..."}, "lineage": {"...": "..."}, "ancestry": {"...": "..."},
     "pharmacogenomics": {"...": "..."}, "microarray": {"...": "..."}
   }
 }

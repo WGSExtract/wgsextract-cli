@@ -260,6 +260,7 @@ def test_sections_follow_the_runs_and_missing_ones_say_how_to_run(sample):
     assert {name: s["status"] for name, s in sections.items()} == {
         "overview": "ok",  # workspace facts, though info has not run
         "lineage": "ok",
+        "ancestry": "not_run",
         "pharmacogenomics": "ok",
         "carrier_screening": "not_run",
         "clinvar": "ok",

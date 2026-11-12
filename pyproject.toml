@@ -17,6 +17,7 @@ dependencies = [
     "platformdirs",  # For cross-platform configuration directories
     "tomli; python_version < '3.11'", # TOML parser for Python < 3.11
     "tomli-w",       # TOML writer
+    "numpy>=1.24",   # qc ancestry: projection onto the reference allele frequencies
 ]
 
 [project.optional-dependencies]

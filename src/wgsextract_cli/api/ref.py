@@ -117,6 +117,23 @@ class RefSomalierParams(_InLibrary, Params):
 
 
 @dataclass(frozen=True, kw_only=True)
+class RefAncestryParams(_InLibrary, Params):
+    """Install the hash-pinned ancestry reference of ``qc ancestry``, or
+    delete it."""
+
+    COMMAND = "ref ancestry"
+
+    delete: bool = _delete_param("ancestry reference")
+    ref: Path | None = ref_param()
+
+    def write_folders(self) -> Iterator[Path]:
+        from wgsextract_cli.core import ancestry_reference
+
+        yield from super().write_folders()
+        yield ancestry_reference.folder(os.fspath(self.library()))
+
+
+@dataclass(frozen=True, kw_only=True)
 class RefGnomadSvParams(_InLibrary, Params):
     """Install the gnomAD structural-variant sites tables that ``vcf sv-freq``
     matches SV calls against, or delete them. Each sites VCF is checked
@@ -544,6 +561,21 @@ def somalier(
     from wgsextract_cli.commands.ref.library_commands import run_somalier
 
     return execute(params, run_somalier, progress=progress, cancel=cancel, check=check)
+
+
+def ancestry(
+    params: RefAncestryParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Install the resources; output role ``reference_resource``."""
+    from wgsextract_cli.commands.ref.library_commands import run_ancestry_reference
+
+    return execute(
+        params, run_ancestry_reference, progress=progress, cancel=cancel, check=check
+    )
 
 
 def gnomad_sv(

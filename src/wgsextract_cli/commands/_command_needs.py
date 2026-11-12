@@ -175,6 +175,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "ref bootstrap": _n(DOWNLOAD, optional="curl"),
     "ref aadr": _n(DOWNLOAD, optional="curl"),
     "ref somalier": _n(DOWNLOAD, optional="curl"),
+    "ref ancestry": _n(DOWNLOAD, optional="curl"),
     "ref gnomad-sv": _n(DOWNLOAD, "bcftools", "bgzip", "tabix", optional="curl"),
     "ref ybrowse": _n(DOWNLOAD, "bgzip", "tabix"),
     "ref microarray-targets": _n(MINUTES),
@@ -213,6 +214,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "qc relate": _n(
         MINUTES, "bcftools", "samtools", "somalier", optional="bgzip tabix"
     ),
+    "qc ancestry": _n(MINUTES, "samtools", optional="bcftools curl"),
     "qc contamination": _n(MINUTES, "samtools", "verifybamid2", optional="bcftools"),
     "qc fake-data": _n(
         SECONDS,
