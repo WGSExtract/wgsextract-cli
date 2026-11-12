@@ -44,6 +44,8 @@ jobs:
           pixi-version: v0.82.0
           locked: true
           environments: lint
+          # PR runs restore main's environment; writing their own crowds it out.
+          cache-write: ${{ github.ref == 'refs/heads/main' }}
       - name: Lint and validate the workflows
         run: |
           pixi run -e lint -x actionlint

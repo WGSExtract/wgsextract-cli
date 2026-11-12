@@ -99,6 +99,7 @@ int main(int argc, char **argv) {
         perror("runstat: report");
         return code;
     }
+    fprintf(report, "pid=%d\n", (int)pid);
     fprintf(report, "exit_status=%d\n", WIFEXITED(status) ? WEXITSTATUS(status) : -1);
     fprintf(report, "signal=%d\n", WIFSIGNALED(status) ? WTERMSIG(status) : 0);
     fprintf(report, "timed_out=%d\n", (int)timed_out);

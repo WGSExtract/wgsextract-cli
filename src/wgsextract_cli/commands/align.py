@@ -50,6 +50,7 @@ from wgsextract_cli.core.native_aligners import (
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.output_checks import record_alignment_output
 from wgsextract_cli.core.paths import absolute_path, java_local_path
+from wgsextract_cli.core.pixi_tools import pixi_install_command
 from wgsextract_cli.core.read_counts import (
     alignment_sample,
     fasta_read_length,
@@ -871,9 +872,12 @@ def bwa_mem3_command(job: AlignJob) -> AlignerCommand:
                 "native_aligners is off (use --native-aligners auto), and "
                 f"bwa-mem3 isn't installed. Or {otherwise}."
             )
+        install = pixi_install_command("bwa-mem3") or (
+            "pixi install --locked -e bwa-mem3"
+        )
         raise WGSExtractError(
             f"{option} needs wgse-bwa-mem3 (Apple Silicon) or bwa-mem3 "
-            f"(Bioconda: `pixi install --locked -e bwa-mem3`); for "
+            f"(Bioconda: `{install}`); for "
             f"wgse-bwa-mem3, {INSTALL_HINT}. Or {otherwise}."
         )
     return AlignerCommand("bwa-mem3", options=options)

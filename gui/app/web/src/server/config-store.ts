@@ -5,7 +5,7 @@ import { mkdir, readFile, realpath, rename, rm, rmdir, stat, writeFile } from "n
 import path from "node:path";
 import { allControls, configEditorControls, parseFlatToml, persistsFieldValue, serializeFlatToml } from "../../../shared/rendering.js";
 import type { BundleManifest, ConfigBootstrapScriptSpec, ConfigSetting, ControlSpec, LooseRecord, SetupRun, StateValue, StringMap, ValueMap } from "../../../shared/types.js";
-import { configPath, expandPathTokens, expandWorkspaceToken, isPreviousConfigPath, resolveUserPath } from "./paths.js";
+import { configPath, expandPathTokens, expandWorkspaceToken, isPreviousConfigPath, resolveUserPath, bundleEnvironment } from "./paths.js";
 import { resolvePlatformScriptPath } from "./platform-scripts.js";
 import { errnoCode, errorMessage } from "./errors.js";
 import { normalizeUIMode, type UIMode } from "../../../shared/ui-mode.js";
@@ -167,6 +167,27 @@ export async function saveBundleState(partialState: BundleStateUpdate, bundleRoo
     saveBundleStateQueue = saveOperation.then(() => undefined, () => undefined);
     return saveOperation;
 }
+// Windows refuses to replace a file another process has open for a moment (the CLI reading its
+// config, an antivirus or indexer scanning it), and the rename fails with one of these.
+const transientReplaceCodes = new Set(["EPERM", "EACCES", "EBUSY"]);
+const replaceRetryDelaysMs = [10, 20, 40, 80, 160, 320, 640, 800];
+
+async function renameReplacing(from: string, to: string, platform: NodeJS.Platform = process.platform) {
+    for (let attempt = 0; ; attempt++) {
+        try {
+            await rename(from, to);
+            return;
+        }
+        catch (error) {
+            const delay = replaceRetryDelaysMs[attempt];
+            if (platform !== "win32" || delay == null || !transientReplaceCodes.has(errnoCode(error) ?? "")) {
+                throw error;
+            }
+            await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+    }
+}
+
 /**
  * Writes via a sibling temp file and rename, so readers never observe a truncated file. Symlinks are
  * resolved first and an existing file's permissions are kept.
@@ -183,7 +204,7 @@ export async function writeFileAtomically(filePath: string, contents: string) {
     const temporaryPath = `${target}.${process.pid}.${randomUUID()}.tmp`;
     try {
         await writeFile(temporaryPath, contents, { encoding: "utf8", ...(existingMode == null ? {} : { mode: existingMode }) });
-        await rename(temporaryPath, target);
+        await renameReplacing(temporaryPath, target);
     }
     catch (error) {
         await rm(temporaryPath, { force: true });
@@ -381,13 +402,12 @@ function bootstrapShell() {
 function scriptEnvironment(script: BootstrapScript, control: ControlSpec, bundleRoot: string, defaultURL: string): NodeJS.ProcessEnv {
     return {
         ...Object.fromEntries(inheritedBootstrapEnvironmentKeys.flatMap((key) => process.env[key] == null ? [] : [[key, process.env[key]]])),
-        GUI_FOR_CLI_BUNDLE_ROOT: bundleRoot,
-        GUI_FOR_CLI_BUNDLE_WORKSPACE: bundleRoot,
-        GUI_FOR_CLI_CONFIG_PATH: defaultURL,
-        GUI_FOR_CLI_CONFIG_DIR: path.dirname(defaultURL),
-        GUI_FOR_CLI_CONFIG_CONTROL_ID: control.id,
-        GUI_FOR_CLI_CONFIG_CONTROL_LABEL: control.label,
-        GUI_FOR_CLI_DRY_RUN: "0",
+        ...bundleEnvironment(bundleRoot),
+        WGSEXTRACT_GUI_CONFIG_PATH: defaultURL,
+        WGSEXTRACT_GUI_CONFIG_DIR: path.dirname(defaultURL),
+        WGSEXTRACT_GUI_CONFIG_CONTROL_ID: control.id,
+        WGSEXTRACT_GUI_CONFIG_CONTROL_LABEL: control.label,
+        WGSEXTRACT_GUI_DRY_RUN: "0",
         ...Object.fromEntries(Object.entries(script.environment ?? {}).map(([key, value]) => [
             key,
             expandConfigPath(value, bundleRoot, defaultURL),

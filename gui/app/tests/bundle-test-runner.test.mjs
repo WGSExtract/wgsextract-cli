@@ -19,7 +19,7 @@ test("web bundle test runner streams setup and action progress", async () => {
   await writeFile(
     path.join(bundleRoot, "manifest.json"),
     JSON.stringify({
-      id: "dev.guiforcli.web-bundle-test-fixture",
+      id: "dev.wgsextract-gui.web-bundle-test-fixture",
       displayName: "Web Bundle Test Fixture",
       summary: "Fixture bundle.",
       setup: {
@@ -143,7 +143,7 @@ test("web bundle test runner names a plan action this app version doesn't have",
 
     assert.equal(report.status, "failed");
     assert.equal(report.summary.failed, 1);
-    const mismatch = /plan expects action main\/inputs\/missing-action, which this app version \(dev\.guiforcli\.web-bundle-test-fixture 1\.2\.3\) doesn't have/;
+    const mismatch = /plan expects action main\/inputs\/missing-action, which this app version \(dev\.wgsextract-gui\.web-bundle-test-fixture 1\.2\.3\) doesn't have/;
     assert.match(report.steps[0].error, mismatch);
     assert(events.some((event) => event.type === "message" && mismatch.test(event.text)));
   });
@@ -279,7 +279,7 @@ async function withWebBundleTestFixture(actionScript, callback) {
   await writeFile(
     path.join(bundleRoot, "manifest.json"),
     JSON.stringify({
-      id: "dev.guiforcli.web-bundle-test-fixture",
+      id: "dev.wgsextract-gui.web-bundle-test-fixture",
       version: "1.2.3",
       displayName: "Web Bundle Test Fixture",
       summary: "Fixture bundle.",
@@ -356,7 +356,7 @@ async function dataSourceFixture(script) {
   await writeFile(
     path.join(bundleRoot, "manifest.json"),
     JSON.stringify({
-      id: "dev.guiforcli.web-bundle-data-source-fixture",
+      id: "dev.wgsextract-gui.web-bundle-data-source-fixture",
       displayName: "Data Source Fixture",
       summary: "Fixture bundle.",
       pages: [

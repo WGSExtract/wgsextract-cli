@@ -491,7 +491,7 @@
           }
         }
       ],
-      "iconName": "precheck",
+      "iconName": "bug-report",
       "textIcon": "🐞"
     }
   ],

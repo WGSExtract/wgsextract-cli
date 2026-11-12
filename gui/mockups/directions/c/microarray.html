@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DNA-test files · Direction C · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="c-microarray" data-direction="C" data-shell="c" data-nav="microarray" data-title="Make DNA-test files">
+<div class="page" data-annot-id="page">
+  <header class="page-header" data-annot-id="header">
+    <div class="page-header__text">
+      <h1>Make DNA-test files</h1>
+      <p class="page-header__lead">Turn a whole genome into the raw-data files that DNA-testing sites accept, to find relatives in their databases. Pick where you’ll use them; WGS Extract picks the right chip versions.</p>
+    </div>
+  </header>
+
+  <div class="split split--wide-side">
+    <div class="stack stack--lg">
+      <section class="section" data-annot-id="from">
+        <h2 class="eyebrow">From</h2>
+        <div data-render="genome-pick" data-genome="hg002"></div>
+      </section>
+
+      <section class="section" data-annot-id="destinations">
+        <div class="section__head">
+          <h2 class="eyebrow">Where will you use them?</h2>
+          <div class="row row--wrap" role="group" aria-label="Quick picks">
+            <button class="chip" type="button" data-toast="Selected GEDmatch, MyHeritage and FamilyTreeDNA">Find relatives</button>
+            <button class="chip" type="button" data-toast="Selected every site">All sites</button>
+          </div>
+        </div>
+        <div data-render="destinations" data-selected="gedmatch,myheritage"></div>
+        <div class="callout callout--neutral" data-annot-id="format-only">
+          <i data-icon="info"></i>
+          <div>23andMe and AncestryDNA don’t take uploads. Their formats are for other tools that read those files. Each file has the markers of that company’s chip, called from your genome; markers your genome doesn’t cover are left blank, as on a real kit.</div>
+        </div>
+      </section>
+
+      <details class="disclosure adv-only" data-annot-id="calling-options">
+        <summary><i data-icon="sliders-horizontal"></i>Genotype calling</summary>
+        <div class="disclosure__body">
+          <div class="field-row"><span class="field-row__label">A/T and C/G SNPs<code>strand_ambiguous</code></span><div class="seg" data-seg="strand" role="group" aria-label="Strand-ambiguous SNPs"><button class="seg__btn" type="button" value="keep" aria-pressed="true">Keep</button><button class="seg__btn" type="button" value="no-call">No-call</button></div></div>
+          <div class="field-row"><span class="field-row__label">Strand<code>quirks</code></span><div class="seg" data-seg="quirks" role="group" aria-label="Strand quirks"><button class="seg__btn" type="button" value="corrected" aria-pressed="true">Forward (corrected)</button><button class="seg__btn" type="button" value="vendor">As the company writes it</button></div></div>
+          <div class="field-row"><span class="field-row__label">Minimum quality<code>min_gq / min_dp</code></span><div class="row"><input class="input" type="number" value="0" aria-label="Minimum GQ" style="max-width: 90px"><input class="input" type="number" value="0" aria-label="Minimum depth" style="max-width: 90px"><span class="xsmall subtle">0 = off</span></div></div>
+          <div class="field-row"><span class="field-row__label">Retired rsIDs<code>resolve_rsids</code></span><label class="switch"><input type="checkbox" role="switch"><span class="small">Resolve dbSNP aliases</span></label></div>
+          <div class="field-row"><span class="field-row__label">Explain no-calls<code>call_reasons</code></span><label class="switch"><input type="checkbox" role="switch"><span class="small">Write CombinedKit_reasons.tsv</span></label></div>
+          <div class="field-row"><span class="field-row__label">Genotype table<code>table_format</code></span><select class="select" aria-label="Genotype table" style="max-width: 200px"><option>None</option><option>TSV</option><option>Parquet</option></select></div>
+        </div>
+      </details>
+
+    </div>
+
+    <aside class="stack sticky" data-annot-id="summary">
+      <div class="card card--raised">
+        <h2 class="card__title">You’ll get 2 files</h2>
+        <ul class="checks">
+          <li data-state="ok"><i data-icon="circle-check"></i><span><strong>GEDmatch</strong> combined kit · ≈ 2 M markers</span></li>
+          <li data-state="ok"><i data-icon="circle-check"></i><span><strong>MyHeritage</strong> v2 · ≈ 610 k markers</span></li>
+        </ul>
+        <hr class="divider">
+        <ul class="checks" data-annot-id="preflight">
+          <li data-state="ok"><i data-icon="circle-check"></i><span>31× coverage: about 99.6% of markers will be called</span></li>
+          <li data-state="ok"><i data-icon="circle-check"></i><span>Reference hs38 and the microarray targets are installed</span></li>
+          <li data-state="ok"><i data-icon="clock"></i><span>About 12 minutes · 40 MB in <code>HG002/microarray/</code></span></li>
+        </ul>
+        <button class="btn btn--primary btn--lg btn--block" type="button" data-toast="Started: DNA-test files for HG002 — see Jobs" data-annot-id="start">Make 2 files</button>
+      </div>
+      <p class="xsmall subtle adv-only">Server: <code>POST /v1/ops/microarray</code> with <code>formats: "all,myheritage_v2"</code>; the combined kit is always written.</p>
+    </aside>
+  </div>
+
+  <section class="section" data-annot-id="result-preview">
+    <div class="section__head"><h2>When it’s done</h2><span class="badge badge--outline">Preview</span></div>
+    <div class="card">
+      <div class="table-wrap" style="border: 0">
+        <table class="table table--compact" aria-label="Files that will be made">
+          <thead><tr><th>File</th><th>For</th><th class="num">Size</th><th class="actions"><span class="visually-hidden">Actions</span></th></tr></thead>
+          <tbody>
+            <tr><td><div class="table__name"><span class="ft ft--sm" data-ft="raw"><i data-icon="file-raw"></i></span><code>HG002_CombinedKit.zip</code></div></td><td>GEDmatch</td><td class="num">31 MB</td><td class="actions"><button class="btn btn--sm" type="button" data-toast="Opening the folder">Show</button></td></tr>
+            <tr><td><div class="table__name"><span class="ft ft--sm" data-ft="raw"><i data-icon="file-raw"></i></span><code>HG002_MyHeritage_V2.csv.gz</code></div></td><td>MyHeritage</td><td class="num">9 MB</td><td class="actions"><button class="btn btn--sm" type="button" data-toast="Opening the folder">Show</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout"><i data-icon="kit-upload"></i><div><strong>Next: upload to GEDmatch.</strong> Sign in, choose the generic raw-data upload, and pick <code>HG002_CombinedKit.zip</code>. It takes a day or two for matches to appear.</div></div>
+    </div>
+  </section>
+</div>
+</body>
+</html>

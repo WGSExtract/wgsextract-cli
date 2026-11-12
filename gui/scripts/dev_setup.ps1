@@ -15,7 +15,7 @@ $userBin = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".local\bin"
 $cargoBin = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".cargo\bin"
 # Not under AppData: MSIX-packaged hosts redirect those writes to a private copy,
 # which other shells cannot see and which breaks the junctions uv creates there.
-$nodeRoot = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".local\share\gui-for-cli\node"
+$nodeRoot = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".local\share\wgsextract-gui-dev\node"
 if (-not $env:UV_PYTHON_INSTALL_DIR) {
     $env:UV_PYTHON_INSTALL_DIR = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".local\share\uv\python"
 }

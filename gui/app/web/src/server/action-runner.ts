@@ -4,7 +4,7 @@ import path from "node:path";
 import { commandLine, evaluateNumeric, interpolate, renderedCommand } from "../../../shared/rendering.js";
 import { commandWithResultArguments, parseResultDocumentText, resultDocumentInFile, type ResultDocument, type ResultDocumentSpec } from "../../../shared/result-document.js";
 import type { ActionSpec, BundleManifest, CommandContext, DataSourcePayload, Labels, LastResultDocumentPaths, LooseRecord, ProcessResult, RunProcess, StringMap, ValueMap } from "../../../shared/types.js";
-import { decodeXML, environmentKey, formatGB, resolveBundlePath, resolveUserPath } from "./paths.js";
+import { decodeXML, environmentKey, formatGB, resolveBundlePath, resolveUserPath, bundleEnvironment } from "./paths.js";
 import { platformCommand } from "./platform-command.js";
 import { isPlatformScriptReference, resolvePlatformScriptPath } from "./platform-scripts.js";
 import { errnoCode, errorMessage } from "./errors.js";
@@ -58,7 +58,7 @@ export async function runAction(
         throw new Error("Missing action command.");
     }
     const resolvedContext = await contextWithFileState(context, bundleRoot);
-    const documentDirectory = resultSpec && resultDocumentInFile(resultSpec) ? await mkdtemp(path.join(tmpdir(), "gui-for-cli-result-")) : undefined;
+    const documentDirectory = resultSpec && resultDocumentInFile(resultSpec) ? await mkdtemp(path.join(tmpdir(), "wgsextract-gui-result-")) : undefined;
     const documentPath = documentDirectory ? path.join(documentDirectory, "result.json") : "";
     try {
         const rendered = renderedCommand(commandWithResultArguments(action.command, resultSpec, documentPath), resolvedContext);
@@ -72,7 +72,7 @@ export async function runAction(
         const documentOnStdout = resultSpec && !documentDirectory;
         const result = await runProcess(executable, rendered.arguments ?? [], {
             cwd: bundleRoot,
-            env: { ...process.env, GUI_FOR_CLI_BUNDLE_ROOT: bundleRoot, GUI_FOR_CLI_BUNDLE_WORKSPACE: bundleRoot },
+            env: { ...process.env, ...bundleEnvironment(bundleRoot) },
             ...(signal ? { signal } : {}),
             ...(documentOnStdout ? {} : { onStdout: (text: string) => void emit({ type: "output", stream: "stdout", text }) }),
             onStderr: (text) => void emit({ type: "output", stream: "stderr", text }),
@@ -150,15 +150,14 @@ export async function runDataSourceScript(
     const args = dataSource.arguments.map((argument) => interpolate(argument, resolvedContext));
     const env: Record<string, string | undefined> = {
         ...process.env,
-        GUI_FOR_CLI_BUNDLE_ROOT: bundleRoot,
-        GUI_FOR_CLI_BUNDLE_WORKSPACE: bundleRoot,
-        GUI_FOR_CLI_DATA_SOURCE: "1",
+        ...bundleEnvironment(bundleRoot),
+        WGSEXTRACT_GUI_DATA_SOURCE: "1",
     };
     for (const [key, value] of Object.entries(context.fieldValues ?? {})) {
-        env[`GUI_FOR_CLI_FIELD_${environmentKey(key)}`] = value === undefined ? undefined : String(value);
+        env[`WGSEXTRACT_GUI_FIELD_${environmentKey(key)}`] = value === undefined ? undefined : String(value);
     }
     for (const [key, value] of Object.entries(context.configValues ?? {})) {
-        env[`GUI_FOR_CLI_CONFIG_${environmentKey(key)}`] = value === undefined ? undefined : String(value);
+        env[`WGSEXTRACT_GUI_CONFIG_${environmentKey(key)}`] = value === undefined ? undefined : String(value);
     }
     for (const [key, value] of Object.entries(dataSource.environment)) {
         env[key] = interpolate(value, resolvedContext);

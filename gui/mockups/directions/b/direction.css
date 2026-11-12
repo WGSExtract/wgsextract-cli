@@ -1,0 +1,73 @@
+/* Direction B only: dense dashboard panels, the bulk-selection bar and the
+ * format matrix. */
+.b-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+
+.b-span-3 {
+  grid-column: span 3;
+}
+
+.b-span-4 {
+  grid-column: span 4;
+}
+
+.b-span-8 {
+  grid-column: span 8;
+}
+
+.b-span-12 {
+  grid-column: span 12;
+}
+
+@container app (max-width: 1080px) {
+  .b-span-3 {
+    grid-column: span 6;
+  }
+
+  .b-span-4,
+  .b-span-8 {
+    grid-column: span 12;
+  }
+}
+
+@container app (max-width: 720px) {
+  .b-grid > * {
+    grid-column: span 12;
+  }
+}
+
+.b-bulk {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--c-primary-soft);
+  color: var(--c-primary-soft-text);
+  font-size: var(--fs-sm);
+}
+
+.b-log {
+  margin: 0;
+  padding: var(--sp-3);
+  max-height: 220px;
+  overflow: auto;
+  border-radius: var(--r-md);
+  background: var(--c-surface-2);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+}
+
+.b-matrix td {
+  height: 34px;
+}
+
+.b-matrix .chip {
+  min-height: 24px;
+  padding: 0 var(--sp-2);
+  font-size: var(--fs-xs);
+}

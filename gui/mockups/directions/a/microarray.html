@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DNA-test files wizard · Direction A · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="direction.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="a-microarray" data-direction="A" data-shell="a" data-nav="microarray" data-title="Make DNA-test files">
+<div class="page page--narrow" data-steps data-annot-id="wizard">
+  <a class="btn btn--ghost btn--sm" href="home.html" style="align-self: flex-start"><i data-icon="chevron-left"></i>All tasks</a>
+  <ol class="stepper" aria-label="Steps" data-annot-id="stepper">
+    <li class="stepper__item"><span class="stepper__label">Your file</span></li>
+    <li class="stepper__item"><span class="stepper__label">Sites</span></li>
+    <li class="stepper__item"><span class="stepper__label">Check</span></li>
+    <li class="stepper__item"><span class="stepper__label">Done</span></li>
+  </ol>
+
+  <section class="stack stack--lg" data-step data-annot-id="step-file">
+    <h1>Which genome should we use?</h1>
+    <div class="stack stack--sm" data-seg="file" role="group" aria-label="Genome file">
+      <button class="option" type="button" value="hg002" aria-pressed="true"><span class="option__check"><i data-icon="check"></i></span><span class="row"><span class="ft" data-ft="cram"><i data-icon="file-cram"></i></span><span class="stack stack--xs"><span class="option__title">HG002 (son)</span><span class="option__meta">CRAM · GRCh38 · 31× · ready</span></span></span></button>
+      <button class="option" type="button" value="hg003"><span class="option__check"><i data-icon="check"></i></span><span class="row"><span class="ft" data-ft="bam"><i data-icon="file-bam"></i></span><span class="stack stack--xs"><span class="option__title">HG003 (father)</span><span class="option__meta">BAM · GRCh37 · 38× · busy realigning, will wait</span></span></span></button>
+      <button class="option" type="button" value="hg004"><span class="option__check"><i data-icon="check"></i></span><span class="row"><span class="ft" data-ft="vcf"><i data-icon="file-vcf"></i></span><span class="stack stack--xs"><span class="option__title">HG004 (mother)</span><span class="option__meta">VCF · GRCh38 · ready</span></span></span></button>
+    </div>
+    <div class="btn-group btn-group--end"><button class="btn btn--primary btn--lg" type="button" data-next>Next</button></div>
+  </section>
+
+  <section class="stack stack--lg" data-step hidden data-annot-id="step-sites">
+    <h1>Where will you upload them?</h1>
+    <p class="muted">Pick one or more. Most people start with GEDmatch and MyHeritage: both accept files from other companies and are free to match.</p>
+    <div data-render="destinations" data-selected="gedmatch,myheritage" data-min="260px"></div>
+    <div class="btn-group btn-group--end"><button class="btn btn--ghost btn--lg" type="button" data-prev>Back</button><button class="btn btn--primary btn--lg" type="button" data-next>Next</button></div>
+  </section>
+
+  <section class="stack stack--lg" data-step hidden data-annot-id="step-check">
+    <h1>Ready when you are</h1>
+    <div class="card">
+      <ul class="checks" style="font-size: var(--fs-md)">
+        <li data-state="ok"><i data-icon="circle-check"></i><span><strong>HG002 (son)</strong> → GEDmatch and MyHeritage files</span></li>
+        <li data-state="ok"><i data-icon="circle-check"></i><span>Your genome is detailed enough: about 99.6% of markers will be filled in</span></li>
+        <li data-state="ok"><i data-icon="clock"></i><span>Takes about <strong>12 minutes</strong>. You can close this window.</span></li>
+        <li data-state="ok"><i data-icon="folder"></i><span>Saved next to your genome, in <code>HG002/microarray</code></span></li>
+      </ul>
+    </div>
+    <div class="btn-group btn-group--end"><button class="btn btn--ghost btn--lg" type="button" data-prev>Back</button><button class="btn btn--primary btn--lg" type="button" data-next>Make my files</button></div>
+  </section>
+
+  <section class="stack stack--lg" data-step hidden data-annot-id="step-done" style="align-items: center; text-align: center">
+    <span class="ring ring--lg" style="--v: 64; --size: 120px; font-size: var(--fs-2xl)"><span>64%</span></span>
+    <h1>Making your files…</h1>
+    <p class="muted">Calling the chromosomes in parallel · about 4 minutes left.<br>We’ll tell you when they’re ready, and show you how to upload them.</p>
+    <div class="btn-group" style="justify-content: center"><a class="btn btn--lg" href="home.html">Back to start</a><a class="btn btn--lg btn--ghost" href="../c/jobs.html">Details</a></div>
+  </section>
+</div>
+</body>
+</html>

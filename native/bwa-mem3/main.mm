@@ -1,4 +1,5 @@
 #include "metal_extension.h"
+#include "metal_seeding_api.h"
 #include "runtime.h"
 
 #include <cstdio>
@@ -16,13 +17,16 @@ constexpr const char *engine_version = MEM3_VERSION;
 
 void help(FILE *stream) {
     fprintf(stream, "%s %s (bwa-mem3 %s rebuilt for Apple Silicon)\n"
-        "Usage: %s [--metal | --backend cpu|metal|auto] [--gpu-threads PERCENT] <command> [arguments]\n"
+        "Usage: %s [--metal | --backend cpu|metal|auto] [--gpu-threads PERCENT] [--gpu-seed on|off]\n"
+        "         [--gpu-backlog PAIRS] <command> [arguments]\n"
         "         bwa-mem3's commands: index, mem, shm, re-sa\n"
         "       %s capabilities --json   report Metal availability\n"
         "       %s --version | version   print executable and engine version\n"
         "       %s version --verbose     also print bwa-mem3's build details\n"
-        "Alignment is bwa-mem3's on the CPU by default. --metal (EXPERIMENTAL) scores bwa-mem3's\n"
-        "8-bit seed extensions on the GPU, with byte-identical output, and runs PERCENT%% (default\n"
+        "Alignment is bwa-mem3's on the CPU by default. --metal (EXPERIMENTAL) collects SMEMs (unless\n"
+        "--gpu-seed off) and scores bwa-mem3's 8-bit seed extensions on the GPU, with byte-identical\n"
+        "output; CPU threads score extensions while more than PAIRS (default 4096 with GPU seeding,\n"
+        "else 0 = never) wait for the GPU. It runs PERCENT%% (default\n"
         "%d) of -t compute threads, as threads wait for the GPU. --metal fails if Metal is\n"
         "unavailable, and exits 1 after finishing on the CPU if a GPU batch fails; --backend auto\n"
         "falls back to the CPU in both cases.\n"
@@ -47,6 +51,8 @@ std::string json(const std::string &text) {
 int run(int argc, char **argv) {
     // Backend options precede the command, as for wgse-bwa and wgse-bwa-mem2.
     enum class Backend { cpu, metal, automatic } backend = Backend::cpu;
+    bool gpu_seed = true;
+    long long gpu_backlog = -1;
     int command_index = 1;
     while (argc > command_index) {
         const char *option = argv[command_index];
@@ -54,6 +60,20 @@ int run(int argc, char **argv) {
         const char *value = has_value ? argv[command_index + 1] : "";
         if (strcmp(option, "--metal") == 0) {
             backend = Backend::metal;
+            ++command_index;
+        } else if (strcmp(option, "--gpu-seed") == 0) {
+            if (strcmp(value, "on") == 0) gpu_seed = true;
+            else if (strcmp(value, "off") == 0) gpu_seed = false;
+            else {
+                fprintf(stderr, "--gpu-seed requires on or off\n");
+                return 2;
+            }
+            command_index += 2;
+        } else if (strcmp(option, "--gpu-verify-seeds") == 0) {
+            wgse_mem3_seed_set_verify(true);
+            ++command_index;
+        } else if (strcmp(option, "--gpu-seed-wait") == 0) {
+            wgse_mem3_seed_set_wait(true);
             ++command_index;
         } else if (strcmp(option, "--gpu-inject-extension-failure") == 0) {
             wgse_mem3_bsw_inject_failure();
@@ -75,6 +95,15 @@ int run(int argc, char **argv) {
                 return 2;
             }
             wgse_mem3_set_physical_memory(bytes);
+            command_index += 2;
+        } else if (strcmp(option, "--gpu-backlog") == 0) {
+            char *end = nullptr;
+            const long long pairs = has_value ? strtoll(value, &end, 10) : -1;
+            if (!has_value || *end || pairs < 0) {
+                fprintf(stderr, "--gpu-backlog requires a pair count\n");
+                return 2;
+            }
+            gpu_backlog = pairs;
             command_index += 2;
         } else if (strcmp(option, "--gpu-threads") == 0
             || strcmp(option, "--gpu-inject-interruptions") == 0) {
@@ -153,6 +182,11 @@ int run(int argc, char **argv) {
                 return 1;
             }
             fprintf(stderr, "[%s] CPU fallback: Metal unavailable (%s)\n", name, reason.c_str());
+        } else {
+            wgse_mem3_seed_set_enabled(gpu_seed);
+            // With seeding on the GPU, the CPU threads have time to score extensions when the
+            // GPU's queue is long.
+            wgse_mem3_bsw_set_backlog(gpu_backlog >= 0 ? gpu_backlog : gpu_seed ? 4096 : 0);
         }
     }
     // Upstream records argv[0] plus its arguments as the @PG CL; fold the backend options
@@ -163,6 +197,7 @@ int run(int argc, char **argv) {
     arguments.insert(arguments.end(), argv + command_index, argv + argc);
     arguments.push_back(nullptr);
     int result = wgse_bwamem3_main(static_cast<int>(arguments.size() - 1), arguments.data());
+    if (accelerated) wgse_mem3_seed_finish();
     if (accelerated && wgse_mem3_bsw_finish() && backend == Backend::metal && result == 0)
         result = 1;
     return result;

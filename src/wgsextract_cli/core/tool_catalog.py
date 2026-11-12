@@ -30,8 +30,11 @@ OPTIONAL_TOOLS = [
     "delly",
     "freebayes",
     "vep",
+    "vep-rs",
+    "vep-cache-builder",
     "gatk",
     "run_deepvariant",
+    "wgse-deepvariant",
     "run_clair3.sh",
     "modkit",
     "verifybamid2",
@@ -60,6 +63,10 @@ INSTALL_HINTS = {
     "https://github.com/nanoporetech/dorado#installation, unpack it and put its "
     "bin folder on PATH, or set dorado_executable in config.toml (or pass "
     "basecall --dorado-path).",
+    "wgse-deepvariant": "wgse-deepvariant is WGS Extract's Apple Silicon build of "
+    "DeepVariant and isn't installed with WGS Extract: download a "
+    "macos-deepvariant release with its weights, put its bin folder on PATH and "
+    "set deepvariant_weights in config.toml (native/deepvariant/README.md).",
 }
 
 
@@ -111,10 +118,18 @@ def _x86_deepvariant_host() -> bool:
     return not is_arm64_docker_host()
 
 
+def _apple_silicon_host() -> bool:
+    """Whether wgse-deepvariant (Apple Silicon only) can be used."""
+    from wgsextract_cli.core.native_support import is_arm64_docker_host
+
+    return sys.platform == "darwin" and is_arm64_docker_host()
+
+
 # Optional tools that need a particular OS and CPU.
 HOST_ONLY_TOOLS: dict[str, Callable[[], bool]] = {
     "run_clair3.sh": clair3_host_supported,
     "run_deepvariant": _x86_deepvariant_host,
+    "wgse-deepvariant": _apple_silicon_host,
 }
 
 
@@ -142,6 +157,8 @@ PIXI_TOOL_ENVS = {
     "fastqc": "default",
     "multiqc": "multiqc",
     "vep": "vep",
+    "vep-rs": "vep-rs",
+    "vep-cache-builder": "vep-rs",
     "haplogrep3": "default",
     "haplocheck": "default",
     "gatk": "gatk",
@@ -204,6 +221,7 @@ WINDOWS_PIXI_SCRIPT_LAUNCHERS = {
 PIXI_TOOL_PACKAGES = {
     "gatk": "gatk4",
     "vep": "ensembl-vep",
+    "vep-cache-builder": "vep-rs",
     "pharmcat_python": "pandas",
     "cyrius_python": "cyrius",
     "smn_caller.py": "smncopynumbercaller",

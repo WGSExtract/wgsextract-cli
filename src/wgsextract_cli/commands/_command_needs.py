@@ -130,6 +130,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf clinvar": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf revel": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf gnomad": _n(MINUTES, *_VCF, optional="bgzip samtools"),
+    "vcf sv-freq": _n(MINUTES, "bcftools", "bgzip", "tabix", optional="samtools"),
     "vcf pharmgkb": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf to-fasta": _n(MINUTES, "bcftools", "bgzip", "samtools", "tabix"),
     "vcf trio": _n(MINUTES, *_CALL, optional="bgzip"),
@@ -138,7 +139,10 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf freebayes": _n(HOURS, "bcftools", "freebayes", "samtools", "tabix"),
     "vcf gatk": _n(HOURS, "gatk", "samtools", "tabix", optional="bcftools"),
     "vcf deepvariant": _n(
-        HOURS, "samtools", "tabix", optional="bcftools docker run_deepvariant sambamba"
+        HOURS,
+        "samtools",
+        "tabix",
+        optional="bcftools docker run_deepvariant wgse-deepvariant sambamba",
     ),
     "vcf clair3": _n(
         HOURS, "bcftools", "run_clair3.sh", "samtools", "tabix", optional="sambamba"
@@ -152,9 +156,10 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf spliceai": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf alphamissense": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf pharmcat": _n(MINUTES, "bcftools", "pharmcat", "tabix", optional="bgzip"),
-    "vcf chain-annotate": _n(MINUTES, *_VCF, optional="bgzip samtools vep"),
-    "vep run": _n(HOURS, "bcftools", "tabix", "vep", optional="samtools"),
-    "vep download": _n(DOWNLOAD, "curl", "tar"),
+    "vcf chain-annotate": _n(MINUTES, *_VCF, optional="bgzip samtools vep vep-rs"),
+    # Minutes with vep-rs, the default; hours with Ensembl VEP.
+    "vep run": _n(MINUTES, "bcftools", "tabix", "vep-rs", optional="samtools vep"),
+    "vep download": _n(DOWNLOAD, "samtools", "vep-cache-builder", optional="curl tar"),
     "vep verify": _n(SECONDS, scale=""),
     "vep delete": _n(SECONDS, scale=""),
     "ref download": _n(DOWNLOAD, optional="curl"),
@@ -165,9 +170,11 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
         DOWNLOAD, "bcftools", "bgzip", "curl", "htsfile", "samtools", "tabix"
     ),
     "ref status": _n(SECONDS, scale=""),
+    "ref needs": _n(SECONDS, scale=""),
     "ref bootstrap": _n(DOWNLOAD, optional="curl"),
     "ref aadr": _n(DOWNLOAD, optional="curl"),
     "ref somalier": _n(DOWNLOAD, optional="curl"),
+    "ref gnomad-sv": _n(DOWNLOAD, "bcftools", "bgzip", "tabix", optional="curl"),
     "ref ybrowse": _n(DOWNLOAD, "bgzip", "tabix"),
     "ref microarray-targets": _n(MINUTES),
     "ref gene-map": _n(DOWNLOAD, optional="curl"),

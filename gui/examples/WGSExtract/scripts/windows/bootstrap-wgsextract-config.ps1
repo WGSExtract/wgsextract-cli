@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
-$workspace = if ($env:GUI_FOR_CLI_BUNDLE_WORKSPACE) { $env:GUI_FOR_CLI_BUNDLE_WORKSPACE } else { (Get-Location).Path }
-$configPath = if ($env:GUI_FOR_CLI_CONFIG_PATH) { $env:GUI_FOR_CLI_CONFIG_PATH } else { Join-Path $workspace "config.toml" }
+$workspace = if ($env:WGSEXTRACT_GUI_BUNDLE_WORKSPACE) { $env:WGSEXTRACT_GUI_BUNDLE_WORKSPACE } else { (Get-Location).Path }
+$configPath = if ($env:WGSEXTRACT_GUI_CONFIG_PATH) { $env:WGSEXTRACT_GUI_CONFIG_PATH } else { Join-Path $workspace "config.toml" }
 $outputPath = Join-Path $workspace "output"
 $referencePath = Join-Path $workspace "reference"
 # New installs keep datasets in datasets\ and reference genomes in genomes\.

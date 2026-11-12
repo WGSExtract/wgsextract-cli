@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import gzip
+import io
 import logging
 import subprocess
 import threading
@@ -10,25 +10,89 @@ import zipfile
 import zlib
 from collections.abc import Callable
 from pathlib import Path
-from typing import IO
+from typing import IO, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from _typeshed import WriteableBuffer
 
 from wgsextract_cli.core.download_progress import CancelEvent
 from wgsextract_cli.core.utils import WGSExtractError, popen, wait_with_cancel
 
+_GZIP_MAGIC = b"\x1f\x8b"
+
 
 def is_bgzf(path: str) -> bool:
-    """Check if a file is in BGZF format by looking for the magic bytes."""
+    """
+    Whether path starts with a BGZF block: a gzip header whose extra field has
+    the BC subfield. Another gzip with an extra field (RAZF, which NIH serves
+    hs37d5 as) is not one: htslib can't index it.
+    """
     try:
         with open(path, "rb") as f:
-            # BGZF header: 1f 8b 08 04 ... (the 4th byte 04 indicates XLEN is present)
-            # This is a bit simplified but generally reliable for our tools.
-            header = f.read(4)
-            return header == b"\x1f\x8b\x08\x04"
+            header = f.read(12)
+            if len(header) < 12 or header[:4] != _GZIP_MAGIC + b"\x08\x04":
+                return False
+            extra = f.read(int.from_bytes(header[10:12], "little"))
     except OSError as e:
         raise WGSExtractError(f"Failed to inspect gzip header for {path}: {e}") from e
+    while len(extra) >= 4:
+        length = int.from_bytes(extra[2:4], "little")
+        if extra[:2] == b"BC" and length == 2:
+            return True
+        extra = extra[4 + length :]
+    return False
 
 
-def open_decompressed(path: str) -> gzip.GzipFile | IO[bytes]:
+class _GzipMembers(io.RawIOBase):
+    """
+    Every gzip member's content, ending at the first bytes that aren't one:
+    RAZF appends its block index after the gzip data, where gzip.open fails.
+    """
+
+    def __init__(self, path: str) -> None:
+        self._path = path
+        self._file = open(path, "rb")
+        self._inflater = zlib.decompressobj(zlib.MAX_WBITS | 16)
+        self._pending = b""
+        self._done = False
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: WriteableBuffer, /) -> int:
+        while not self._pending and not self._done:
+            self._pending = self._inflate()
+        view = memoryview(buffer).cast("B")
+        size = min(len(view), len(self._pending))
+        view[:size] = self._pending[:size]
+        self._pending = self._pending[size:]
+        return size
+
+    def _inflate(self) -> bytes:
+        if self._inflater.eof:
+            rest = self._inflater.unused_data
+            rest += self._file.read(max(0, 2 - len(rest)))
+            if rest[:2] != _GZIP_MAGIC:
+                if rest:
+                    logging.info(
+                        f"{self._path}: ignoring data after the gzip stream "
+                        "(an index, as RAZF appends)."
+                    )
+                self._done = True
+                return b""
+            self._inflater = zlib.decompressobj(zlib.MAX_WBITS | 16)
+            return self._inflater.decompress(rest)
+        chunk = self._file.read(1 << 20)
+        if not chunk:
+            raise EOFError(f"{self._path} ends before its gzip stream does.")
+        return self._inflater.decompress(chunk)
+
+    def close(self) -> None:
+        self._file.close()
+        super().close()
+
+
+def open_decompressed(path: str) -> IO[bytes]:
     """A gzip file's content (every member), or a single-file zip's."""
     with open(path, "rb") as f:
         magic = f.read(2)
@@ -41,7 +105,7 @@ def open_decompressed(path: str) -> gzip.GzipFile | IO[bytes]:
                 f"{path} is a zip of {len(members)} files; expected one FASTA."
             )
         return archive.open(members[0])
-    return gzip.open(path, "rb")
+    return io.BufferedReader(_GzipMembers(path), 1 << 20)
 
 
 def _feed_decompressed(

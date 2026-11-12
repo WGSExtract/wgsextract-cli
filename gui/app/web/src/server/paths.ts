@@ -57,11 +57,24 @@ export function applicationSupportDirectory() {
     }
     return process.env.XDG_DATA_HOME || path.join(homedir(), ".local", "share");
 }
+/** The app's own data folder's name: it holds settings.json and the CLI runtime that setup installs. */
+export const defaultAppDataName = "WGSExtract-gui";
 export function appSupportContainerName() {
-    return safePathComponent(process.env.GUI_FOR_CLI_APP_SUPPORT_NAME || "gui-for-cli");
+    return safePathComponent(process.env.WGSEXTRACT_GUI_APP_DATA_NAME || defaultAppDataName);
 }
 export function appSupportDirectory() {
     return path.join(applicationSupportDirectory(), appSupportContainerName());
+}
+/**
+ * What every bundle script is told about where it runs: the workspace, with the user's files, and the
+ * app's data folder ({{appData}}), where setup installs the CLI runtime, apart from the user's files.
+ */
+export function bundleEnvironment(bundleRoot: string): Record<string, string> {
+    return {
+        WGSEXTRACT_GUI_BUNDLE_ROOT: bundleRoot,
+        WGSEXTRACT_GUI_BUNDLE_WORKSPACE: bundleRoot,
+        WGSEXTRACT_GUI_APP_DATA: appSupportDirectory(),
+    };
 }
 export function safePathComponent(value: unknown): string {
     const sanitized = String(value)
@@ -116,6 +129,7 @@ export function expandPathTokens(value: unknown, bundleRoot: string, configPathV
     expanded = replacePathToken(expanded, "{{userConfig}}", tokens.configHome);
     expanded = replacePathToken(expanded, "{{applicationSupport}}", tokens.applicationSupport);
     expanded = replacePathToken(expanded, "{{appConfig}}", tokens.applicationSupport);
+    expanded = replacePathToken(expanded, "{{appData}}", tokens.appData);
     expanded = expanded.replaceAll("{{configPath}}", tokens.configPath);
     expanded = replacePathToken(expanded, "{{configDir}}", tokens.configDir);
     return expandEnvironmentVariables(expanded.replace(/^~(?=\/|$)/, tokens.home));
@@ -139,6 +153,7 @@ export function pathTokenValues(bundleRoot: string, configPathValue = "") {
         home,
         configHome,
         applicationSupport,
+        appData: appSupportDirectory(),
         configPath: configPathValue ?? "",
         configDir: configPathValue ? path.dirname(configPathValue) : "",
     };

@@ -26,7 +26,7 @@ int main(int argc, char **argv)
 		uint8_t *ref = malloc(2000);
 		for (i = 0; i < 2000; ++i) ref[i] = rnd() % 4;
 		for (k = 0; k < n; ++k) {
-			int ql = same_len ? ql0 : 1 + rnd() % 300, tl = 1 + rnd() % 1500;
+			int ql = same_len ? ql0 : 1 + (int)(rnd() % 300), tl = 1 + rnd() % 1500;
 			uint8_t *q = malloc(ql), *tg = malloc(tl);
 			for (i = 0; i < tl; ++i) tg[i] = rnd() % 64 == 0 ? 4 : ref[(i + round) % 2000];
 			int src = rnd() % 2000;
@@ -36,7 +36,7 @@ int main(int argc, char **argv)
 				int off = tl > ql ? rnd() % (tl - ql + 1) : 0;
 				for (i = 0; i < ql && off + i < tl; ++i) tg[off + i] = rnd() % errors ? q[i] % 4 : rnd() % 4;
 			}
-			int minsc = rnd() % 4 ? 19 * a : rnd() % 40;
+			int minsc = rnd() % 4 ? 19 * a : (int)(rnd() % 40);
 			int xtra = (ql * a < 250 && rnd() % 8 ? KSW_XBYTE : 0) | (rnd() % 8 ? KSW_XSUBO | KSW_XSTART : rnd() % 2 ? KSW_XSTART : KSW_XSTOP) | (minsc & 0xffff);
 			t[k] = (wgse_ksw_task_t){ ql, tl, xtra, q, tg, { 0 } };
 			want[k] = ksw_align2(ql, q, tl, tg, 5, mat, o_del, e_del, o_ins, e_ins, xtra, 0);

@@ -108,6 +108,7 @@
     {
       "id": "example-datasets",
       "title": "sections.cli.example-datasets.title",
+      "iconName": "download",
       "textIcon": "🧫",
       "advancedOnly": true,
       "controls": [
@@ -372,6 +373,6 @@
       ]
     }
   ],
-  "iconName": "sequence-reads",
+  "iconName": "datasets",
   "textIcon": "🗂️"
 }

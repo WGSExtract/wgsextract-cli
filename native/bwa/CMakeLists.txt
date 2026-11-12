@@ -8,7 +8,7 @@ FetchContent_Declare(bwa
 FetchContent_MakeAvailable(bwa)
 
 # Bump when the wgse-bwa package changes; it is versioned separately from BWA.
-set(WGSE_BWA_VERSION 0.9.1)
+set(WGSE_BWA_VERSION 0.11.0)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${generated}")
 include("${CMAKE_CURRENT_SOURCE_DIR}/upstream_seams.cmake")
@@ -47,8 +47,13 @@ target_include_directories(wgse_bwa_smem PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "
 target_include_directories(wgse_bwa_smem SYSTEM PRIVATE "${bwa_SOURCE_DIR}")
 target_compile_options(wgse_bwa_smem PRIVATE -Wall -Wextra -Werror)
 
-# BWA plus the Metal seeding backend, shared by the executable and the tests.
-add_library(wgse_bwa_core STATIC ${bwa_sources} metal_backend.mm $<TARGET_OBJECTS:wgse_bwa_smem>)
+# BWA plus the GPU scheduling and its devices, shared by the executable and the tests.
+set(device_sources)
+if(APPLE)
+    list(APPEND device_sources metal_device.mm)
+endif()
+add_library(wgse_bwa_core STATIC ${bwa_sources} backend.cpp ${device_sources}
+    $<TARGET_OBJECTS:wgse_bwa_smem>)
 target_include_directories(wgse_bwa_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" "${generated}")
 target_include_directories(wgse_bwa_core SYSTEM PUBLIC "${bwa_SOURCE_DIR}")
 target_compile_definitions(wgse_bwa_core PRIVATE
@@ -56,13 +61,22 @@ target_compile_definitions(wgse_bwa_core PRIVATE
     PACKAGE_VERSION="0.7.19-r1273-wgse-${WGSE_BWA_VERSION}">)
 target_compile_options(wgse_bwa_core PRIVATE
     $<$<COMPILE_LANGUAGE:C>:-Wno-unused-function -Wno-unused-but-set-variable
-    -Wno-deprecated-non-prototype>
+    $<$<C_COMPILER_ID:Clang,AppleClang>:-Wno-deprecated-non-prototype>>
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Werror>
     $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc -Wall -Wextra -Werror>)
-target_link_libraries(wgse_bwa_core PUBLIC wgse_metal_common ZLIB::ZLIB Threads::Threads m)
+target_link_libraries(wgse_bwa_core PUBLIC ZLIB::ZLIB Threads::Threads m)
+if(NOT APPLE)
+    # shm_open, as upstream's Makefile links on Linux (older glibc keeps it in librt).
+    target_link_libraries(wgse_bwa_core PUBLIC rt)
+endif()
+if(APPLE)
+    target_compile_definitions(wgse_bwa_core PRIVATE WGSE_HAVE_METAL=1)
+    target_link_libraries(wgse_bwa_core PUBLIC wgse_metal_common)
+endif()
 
-add_executable(wgse-bwa main.mm)
+add_executable(wgse-bwa main.cpp)
 target_compile_definitions(wgse-bwa PRIVATE WGSE_VERSION="${WGSE_BWA_VERSION}")
-target_compile_options(wgse-bwa PRIVATE -fobjc-arc -Wall -Wextra -Werror)
+target_compile_options(wgse-bwa PRIVATE -Wall -Wextra -Werror)
 target_link_libraries(wgse-bwa PRIVATE wgse_bwa_core)
 
 if(BUILD_TESTING)
@@ -70,19 +84,23 @@ if(BUILD_TESTING)
     target_compile_definitions(wgse-bwa PRIVATE WGSE_METAL_BENCHMARK_TOOLS=1)
     # Bounds-checked libc++ containers make out-of-range indexing in the backend trap.
     target_compile_definitions(wgse_bwa_core PRIVATE
-        $<$<COMPILE_LANGUAGE:OBJCXX>:_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST>)
+        $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST
+        _GLIBCXX_ASSERTIONS>)
     add_test(NAME bwa_capabilities COMMAND wgse-bwa capabilities --json)
     set_tests_properties(bwa_capabilities PROPERTIES
-        PASS_REGULAR_EXPRESSION "\"engine\":\"bwa\".*\"metal_hardware_supported\":")
+        PASS_REGULAR_EXPRESSION "\"engine\":\"bwa\".*\"metal_hardware_supported\":.*\"cuda_available\":.*\"cuda_hardware_supported\":")
     add_test(NAME bwa_smoke COMMAND "${PROJECT_SOURCE_DIR}/tests/smoke.sh"
         $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/smoke" force-gpu)
-    add_executable(seeding_benchmark tests/seeding_benchmark.mm)
-    target_compile_options(seeding_benchmark PRIVATE -fobjc-arc -Wall -Wextra -Werror)
-    target_link_libraries(seeding_benchmark PRIVATE wgse_bwa_core)
-    add_test(NAME bwa_metal_seeding_parity
-        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/seeding_parity.sh"
-        $<TARGET_FILE:wgse-bwa> $<TARGET_FILE:seeding_benchmark>
-        "${CMAKE_CURRENT_BINARY_DIR}/seeding-parity")
+    if(APPLE)
+        add_executable(seeding_benchmark tests/seeding_benchmark.mm)
+        target_compile_options(seeding_benchmark PRIVATE -fobjc-arc -Wall -Wextra -Werror)
+        target_link_libraries(seeding_benchmark PRIVATE wgse_bwa_core)
+        add_test(NAME bwa_metal_seeding_parity
+            COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/seeding_parity.sh"
+            $<TARGET_FILE:wgse-bwa> $<TARGET_FILE:seeding_benchmark>
+            "${CMAKE_CURRENT_BINARY_DIR}/seeding-parity")
+        set_tests_properties(bwa_metal_seeding_parity PROPERTIES SKIP_RETURN_CODE 77)
+    endif()
     add_executable(ksw_batch_check tests/ksw_batch_check.c)
     target_compile_options(ksw_batch_check PRIVATE -Wall -Wextra -Werror)
     target_link_libraries(ksw_batch_check PRIVATE wgse_bwa_core)
@@ -101,8 +119,8 @@ if(BUILD_TESTING)
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/extend_parity.sh"
         $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/extend-parity")
     # Exit 77 means the machine has no unified-memory Metal device.
-    set_tests_properties(bwa_smoke bwa_metal_seeding_parity bwa_metal_rescue_parity
-        bwa_metal_watchdog bwa_metal_extend_parity PROPERTIES SKIP_RETURN_CODE 77)
+    set_tests_properties(bwa_smoke bwa_metal_rescue_parity bwa_metal_watchdog
+        bwa_metal_extend_parity PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
 install(TARGETS wgse-bwa RUNTIME DESTINATION bin)

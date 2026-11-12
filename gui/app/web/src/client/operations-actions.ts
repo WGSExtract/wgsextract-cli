@@ -6,6 +6,7 @@ import { apiStream } from "./api.js";
 import { appendTerminal, appendTerminalOutput, runningActionControllers, terminalExitStatus, terminalProcessErrorStatus } from "./terminal.js";
 import { resultNotice, type ResultDocument } from "../../../shared/result-document.js";
 import { actionNoticeKey } from "./result-view.js";
+import { prerequisitesInstalled } from "./operations-prerequisites.js";
 import type { ActionReference, ActionSpec, CommandContext, CommandSpec, LastResultDocumentPaths, TerminalEntry, ValueMap } from "../../../shared/types.js";
 
 interface NoticeRun {
@@ -20,7 +21,7 @@ type ActionStreamEvent =
     | { type: "complete"; result: { exitCode: number; command: string; stderr?: string; resultDocument?: ResultDocument | null; lastResultDocumentPaths?: LastResultDocumentPaths } }
     | { type: "error"; error?: string };
 
-export async function runAction(action: ActionSpec, context: CommandContext, reference: ActionReference) {
+export async function runAction(action: ActionSpec, context: CommandContext, reference: ActionReference, options: { prerequisitesChecked?: boolean } = {}) {
     if (action.confirm) {
         state.pendingConfirmation = { action, reference, context, input: "" };
         scheduleRender();
@@ -29,6 +30,23 @@ export async function runAction(action: ActionSpec, context: CommandContext, ref
     if (!action.command) {
         throw new Error("Missing action command.");
     }
+    // Without a check the tab opens at once, as it always has.
+    const checked = options.prerequisitesChecked || !state.manifest?.prerequisites;
+    if (!checked && !(await prerequisitesInstalled(action, context, reference))) {
+        return;
+    }
+    // Only the latest run of an action (or row action) may set its notice; an older run can finish later.
+    const noticeRun = { key: actionNoticeKey(reference, context) };
+    latestNoticeRuns.set(noticeRun.key, noticeRun);
+    state.actionResultNotices.delete(noticeRun.key);
+    await streamCommand(action, context, "/api/run/stream", { action: reference, context }, noticeRun);
+}
+
+/**
+ * Runs a command on the server with `endpoint`, streaming it into a new terminal tab described by `action`.
+ * Resolves to its exit code, or null when it couldn't run or was cancelled.
+ */
+export async function streamCommand(action: ActionSpec, context: CommandContext, endpoint: string, body: unknown, noticeRun: NoticeRun | null = null): Promise<number | null> {
     const command = displayCommand(action.command, context);
     const runningID = appendTerminal(
         "command",
@@ -37,30 +55,33 @@ export async function runAction(action: ActionSpec, context: CommandContext, ref
         command);
     const controller = new AbortController();
     runningActionControllers.set(runningID, controller);
-    // Only the latest run of an action (or row action) may set its notice; an older run can finish later.
-    const noticeRun = { key: actionNoticeKey(reference, context) };
-    latestNoticeRuns.set(noticeRun.key, noticeRun);
-    state.actionResultNotices.delete(noticeRun.key);
     scheduleRender();
+    let exitCode: number | null = null;
     try {
         await apiStream<ActionStreamEvent>(
-            "/api/run/stream",
-            { action: reference, context },
-            (event) => applyActionEvent(event, action, context, runningID, noticeRun),
+            endpoint,
+            body,
+            (event) => {
+                if (event.type === "complete") {
+                    exitCode = event.result.exitCode;
+                }
+                applyActionEvent(event, action, context, runningID, noticeRun);
+            },
             { signal: controller.signal, label: "Action stream" },
         );
+        return exitCode;
     }
     catch (error) {
         if (error && typeof error === "object" && "name" in error && error.name === "AbortError") {
-            return;
+            return null;
         }
         const runningIndex = state.terminalEntries.findIndex((entry) => entry.id === runningID);
         if (runningIndex < 0) {
-            return;
+            return null;
         }
         const existing = state.terminalEntries[runningIndex];
         if (!existing) {
-            return;
+            return null;
         }
         const failedCommand = existing.command || command;
         state.terminalEntries[runningIndex] = {
@@ -74,6 +95,7 @@ export async function runAction(action: ActionSpec, context: CommandContext, ref
             ].join("\n"),
             status: terminalProcessErrorStatus(failedCommand, errorMessage(error)),
         };
+        return null;
     }
     finally {
         runningActionControllers.delete(runningID);
@@ -82,7 +104,7 @@ export async function runAction(action: ActionSpec, context: CommandContext, ref
     }
 }
 
-function applyActionEvent(event: ActionStreamEvent, action: ActionSpec, context: CommandContext, runningID: string, noticeRun: NoticeRun) {
+function applyActionEvent(event: ActionStreamEvent, action: ActionSpec, context: CommandContext, runningID: string, noticeRun: NoticeRun | null) {
     const tab = state.terminalEntries.find((entry) => entry.id === runningID);
     if (!tab) {
         return;
@@ -125,12 +147,12 @@ function applyActionEvent(event: ActionStreamEvent, action: ActionSpec, context:
     scheduleRender();
 }
 
-function applyResultDocument(tab: TerminalEntry, document: ResultDocument | null, exitCode: number, stderr: string, noticeRun: NoticeRun) {
+function applyResultDocument(tab: TerminalEntry, document: ResultDocument | null, exitCode: number, stderr: string, noticeRun: NoticeRun | null) {
     if (document) {
         tab.result = document;
     }
     const notice = resultNotice(document, exitCode, stderr);
-    if (notice && latestNoticeRuns.get(noticeRun.key) === noticeRun) {
+    if (notice && noticeRun && latestNoticeRuns.get(noticeRun.key) === noticeRun) {
         state.actionResultNotices.set(noticeRun.key, notice);
     }
 }

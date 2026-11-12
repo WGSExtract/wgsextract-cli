@@ -46,3 +46,16 @@ def test_remote_action_policy_rejects_unsafe_or_unreviewed_refs(
     write_workflow(tmp_path, uses)
     monkeypatch.setattr(policy, "ROOT", tmp_path)
     assert any(error in item for item in policy.validate_workflows())
+
+
+def test_composite_actions_are_held_to_the_same_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    action = tmp_path / ".github" / "actions" / "apt-install"
+    action.mkdir(parents=True)
+    (action / "action.yml").write_text(
+        "runs:\n  using: composite\n  steps:\n"
+        "    - uses: actions/cache/restore@v6.1.0 # v6.1.0\n"
+    )
+    monkeypatch.setattr(policy, "ROOT", tmp_path)
+    assert any("full commit SHA" in item for item in policy.validate_workflows())

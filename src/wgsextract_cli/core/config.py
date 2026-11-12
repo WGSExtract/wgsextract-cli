@@ -133,6 +133,10 @@ KNOWN_SETTINGS = {
     ),
     "jar_directory": (None, "Directory for JAR tools"),
     "vep_cache_directory": (None, "Path to VEP cache"),
+    "vep_engine": (
+        None,
+        "Engine `vep run` annotates with: vep-rs (default) or ensembl",
+    ),
     "pharmcat_directory": (None, "Extracted PharmCAT pipeline release"),
     "parabricks_image": (
         None,
@@ -144,6 +148,17 @@ KNOWN_SETTINGS = {
         "DeepVariant Docker image for CPU calling (default "
         "google/deepvariant:1.10.0 on x64; local "
         "localhost/wgsextract-deepvariant:1.10.0-arm64 on Linux ARM64)",
+    ),
+    "deepvariant_native": (
+        None,
+        "Apple Silicon: `vcf deepvariant` runs wgse-deepvariant when it is on "
+        "PATH (auto, the default) or never, using the Docker image (off)",
+    ),
+    "deepvariant_weights": (
+        None,
+        "Apple Silicon: folder of the WGS weights wgse-deepvariant calls with "
+        "(from a macos-deepvariant release); `vcf deepvariant` runs "
+        "wgse-deepvariant when it is on PATH",
     ),
     "deepvariant_ultima_image": (
         None,
@@ -258,6 +273,11 @@ KNOWN_SETTINGS = {
     "cadd_indel_tsv_path": (None, "Path to CADD indel TSV data"),
     "gerp_bigwig_path": (None, "Path to GERP++ RS bigWig data"),
     "gnomad_vcf_path": (None, "Path to gnomAD VCF data"),
+    "gnomad_sv_path": (None, "Path to a gnomAD-SV sites table (ref gnomad-sv)"),
+    "gnomad_lr_sv_path": (
+        None,
+        "Path to a gnomAD-LR SV sites table (ref gnomad-sv --source lr)",
+    ),
     "spliceai_vcf_path": (None, "Path to SpliceAI VCF data"),
     "alphamissense_vcf_path": (None, "Path to AlphaMissense VCF data"),
     "pharmgkb_vcf_path": (None, "Path to PharmGKB data"),
@@ -304,6 +324,7 @@ PATH_SETTINGS = {
     "haplocheck_executable",
     "dorado_executable",
     "dorado_models_directory",
+    "deepvariant_weights",
     "jar_directory",
     "vep_cache_directory",
     "pharmcat_directory",
@@ -320,6 +341,8 @@ PATH_SETTINGS = {
     "cadd_indel_tsv_path",
     "gerp_bigwig_path",
     "gnomad_vcf_path",
+    "gnomad_sv_path",
+    "gnomad_lr_sv_path",
     "spliceai_vcf_path",
     "alphamissense_vcf_path",
     "pharmgkb_vcf_path",

@@ -20230,7 +20230,7 @@
    }
   },
   "ref": {
-   "help": "usage: wgsextract ref [-h] <command> ...\n\npositional arguments:\n  <command>\n    aadr                Explicitly fetch the hash-pinned CC0 AADR v66.p1 2M SNP panel.\n    ybrowse             Explicitly install a hash-pinned, sites-only GRCh38 yBrowse snapshot.\n    somalier            Explicitly fetch somalier's hash-pinned sites and 1000 Genomes sketches\n                        for qc relate.\n    download            Download a reference FASTA from a URL (--url) to a path (--out). For\n                        curated hg19/hg38/T2T genomes use 'ref library --install'.\n    index               Prepare a FASTA file for use by indexing it. This is required before you\n                        can align reads or call variants against it.\n    count-ns            Calculate the percentage of 'N' (unknown) bases in a genome. Useful for\n                        understanding the 'mappability' of different reference builds.\n    verify              Ensure your reference genome file isn't corrupted and has all the\n                        necessary companion files (indexes, dicts).\n    library             Opens the interactive reference manager to help you organize and download\n                        genomic data.\n    status              Report reference library asset status.\n    gene-map            Download or delete lightweight gene-to-coordinate mapping files\n                        (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1).\n    clinvar             Download official ClinVar VCF for hg19 and hg38.\n    revel               Download REVEL pathogenicity scores for hg19 and hg38.\n    phylop              Download UCSC's PhyloP 100-way conservation scores (~10 GB bigWig).\n    gnomad              Download gnomAD population allele frequencies.\n    spliceai            Download SpliceAI scores for hg38 (Ensembl, MANE SNVs); index a manual\n                        hg19 download.\n    alphamissense       Download AlphaMissense scores for hg19 and hg38.\n    pharmgkb            Download PharmGKB annotations.\n    cadd                Download CADD v1.7 deleteriousness scores (all possible SNVs plus gnomAD\n                        indels, ~85 GB per build) with their tabix indexes.\n    gerp                Download GERP++ conservation scores as a bigWig (hg38 from Ensembl, ~9.6\n                        GB; hg19 from UCSC, ~7.6 GB).\n    bootstrap           Download and initialize the reference library bootstrap (liftover chains,\n                        chip templates, etc.).\n    microarray-targets  Build the genome-wide hg19 and hg38 microarray targets from the chip\n                        templates, or delete them.\n\noptions:\n  -h, --help            show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract ref [-h] <command> ...\n\npositional arguments:\n  <command>\n    aadr                Explicitly fetch the hash-pinned CC0 AADR v66.p1 2M SNP panel.\n    ybrowse             Explicitly install a hash-pinned, sites-only GRCh38 yBrowse snapshot.\n    somalier            Explicitly fetch somalier's hash-pinned sites and 1000 Genomes sketches\n                        for qc relate.\n    gnomad-sv           Explicitly fetch hash-pinned gnomAD SV tables for vcf sv-freq.\n    download            Download a reference FASTA from a URL (--url) to a path (--out). For\n                        curated hg19/hg38/T2T genomes use 'ref library --install'.\n    index               Prepare a FASTA file for use by indexing it. This is required before you\n                        can align reads or call variants against it.\n    count-ns            Calculate the percentage of 'N' (unknown) bases in a genome. Useful for\n                        understanding the 'mappability' of different reference builds.\n    verify              Ensure your reference genome file isn't corrupted and has all the\n                        necessary companion files (indexes, dicts).\n    library             Opens the interactive reference manager to help you organize and download\n                        genomic data.\n    status              Report reference library asset status.\n    needs               Report the reference genome or annotation data a command line needs that\n                        isn't installed, and how to install it.\n    gene-map            Download or delete lightweight gene-to-coordinate mapping files\n                        (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1).\n    clinvar             Download official ClinVar VCF for hg19 and hg38.\n    revel               Download REVEL pathogenicity scores for hg19 and hg38.\n    phylop              Download UCSC's PhyloP 100-way conservation scores (~10 GB bigWig).\n    gnomad              Download gnomAD population allele frequencies.\n    spliceai            Download SpliceAI scores for hg38 (Ensembl, MANE SNVs); index a manual\n                        hg19 download.\n    alphamissense       Download AlphaMissense scores for hg19 and hg38.\n    pharmgkb            Download PharmGKB annotations.\n    cadd                Download CADD v1.7 deleteriousness scores (all possible SNVs plus gnomAD\n                        indels, ~85 GB per build) with their tabix indexes.\n    gerp                Download GERP++ conservation scores as a bigWig (hg38 from Ensembl, ~9.6\n                        GB; hg19 from UCSC, ~7.6 GB).\n    bootstrap           Download and initialize the reference library bootstrap (liftover chains,\n                        chip templates, etc.).\n    microarray-targets  Build the genome-wide hg19 and hg38 microarray targets from the chip\n                        templates, or delete them.\n\noptions:\n  -h, --help            show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -20255,12 +20255,14 @@
        "aadr",
        "ybrowse",
        "somalier",
+       "gnomad-sv",
        "download",
        "index",
        "count-ns",
        "verify",
        "library",
        "status",
+       "needs",
        "gene-map",
        "clinvar",
        "revel",
@@ -20288,6 +20290,10 @@
         "Explicitly fetch somalier's hash-pinned sites and 1000 Genomes sketches for qc relate."
        ],
        [
+        "gnomad-sv",
+        "Explicitly fetch hash-pinned gnomAD SV tables for vcf sv-freq."
+       ],
+       [
         "download",
         "Download a reference FASTA from a URL (--url) to a path (--out). For curated hg19/hg38/T2T genomes use 'ref library --install'."
        ],
@@ -20310,6 +20316,10 @@
        [
         "status",
         "Report reference library asset status."
+       ],
+       [
+        "needs",
+        "Report the reference genome or annotation data a command line needs that isn't installed, and how to install it."
        ],
        [
         "gene-map",
@@ -23891,6 +23901,385 @@
     "description": null,
     "formatter_class": "HelpFormatter",
     "prog": "wgsextract ref gnomad"
+   }
+  },
+  "ref gnomad-sv": {
+   "help": "usage: wgsextract ref gnomad-sv [-h] [--install] [--source {sr,lr}] [--build {hg38,hg19}]\n                                [--delete]\n\noptions:\n  -h, --help           show this help message and exit\n  --install            Install it.\n  --source {sr,lr}     sr: gnomAD-SV (GRCh38, GRCh37). lr: gnomAD-LR (GRCh38, 53 GB).\n  --build {hg38,hg19}  Only this build (default: all).\n  --delete             Delete the installed gnomAD SV tables\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref gnomad-sv --install --source lr\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): gnomAD SV tables in gnomad-sv/\n  (--delete removes them).\n\nneeds:\n  bcftools, bgzip, tabix; depending on options and inputs, also: curl; depends\n  on download speed.\n",
+   "parser": {
+    "actions": [
+     {
+      "choices": null,
+      "class": "_HelpAction",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "help",
+      "exclusive_group": null,
+      "help": "show this help message and exit",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "input",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--input",
+       "-i"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "outdir",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--outdir",
+       "-o"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "genome",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--genome"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "ref",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--ref"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "threads",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "N|auto",
+      "nargs": null,
+      "option_strings": [
+       "--threads",
+       "-t"
+      ],
+      "required": false,
+      "type": "_thread_count_arg"
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "memory",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--memory",
+       "-m"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "tmp_dir",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "DIRECTORY",
+      "nargs": null,
+      "option_strings": [
+       "--tmp-dir"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "json",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "quiet",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--quiet"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "debug",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--debug"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "log_file",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "PATH",
+      "nargs": null,
+      "option_strings": [
+       "--log-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "keep_awake",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--keep-awake",
+       "--no-keep-awake"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "atomic_output",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--atomic-output",
+       "--no-atomic-output"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "config_path",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "FILE",
+      "nargs": null,
+      "option_strings": [
+       "--config"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_result_file",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "PATH",
+      "nargs": null,
+      "option_strings": [
+       "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "parent_pid",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--parent-pid"
+      ],
+      "required": false,
+      "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "install",
+      "exclusive_group": null,
+      "help": "Install it.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--install"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": [
+       "sr",
+       "lr"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": "sr",
+      "dest": "source",
+      "exclusive_group": null,
+      "help": "sr: gnomAD-SV (GRCh38, GRCh37). lr: gnomAD-LR (GRCh38, 53 GB).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--source"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": [
+       "hg38",
+       "hg19"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "build",
+      "exclusive_group": null,
+      "help": "Only this build (default: all).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--build"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "delete",
+      "exclusive_group": null,
+      "help": "Delete the installed gnomAD SV tables",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--delete"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_HelpAllAction",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "help_all",
+      "exclusive_group": null,
+      "help": "Show this help with the advanced options too, and exit.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--help-all"
+      ],
+      "required": false,
+      "type": null
+     }
+    ],
+    "defaults": {
+     "_command": "ref gnomad-sv",
+     "func": "_install_or_delete.<locals>.handler"
+    },
+    "description": null,
+    "formatter_class": "HelpFormatter",
+    "prog": "wgsextract ref gnomad-sv"
    }
   },
   "ref index": {
@@ -31293,7 +31682,7 @@
    }
   },
   "vcf": {
-   "help": "usage: wgsextract vcf [-h] <command> ...\n\npositional arguments:\n  <command>\n    snp             Call Single Nucleotide Polymorphisms (SNPs) using bcftools. Best for standard\n                    ancestry analysis and finding simple point mutations.\n    indel           Call Small Insertions and Deletions (InDels) using bcftools. Used to find\n                    small gaps or extra bases in the DNA sequence.\n    annotate        Add external metadata (like population frequencies or disease risk) to your\n                    VCF file.\n    filter          Filter your results. Use this to focus on specific genes of interest or to\n                    remove low-quality 'noisy' variant calls.\n    table           Export variants and their annotations (gene, consequence, ClinVar, gnomAD,\n                    genotype, depth, ...) as one row per variant, in a TSV (or Parquet) table and\n                    an SQLite database to query.\n    clinvar         Annotate VCF with ClinVar pathogenicity data.\n    revel           Annotate VCF with REVEL pathogenicity scores.\n    gnomad          Annotate VCF with gnomAD population frequencies.\n    pharmgkb        Annotate VCF with PharmGKB drug metabolism data.\n    to-fasta        (advanced) Build your personal consensus genome: the reference FASTA with your\n                    variants applied (heterozygous SNVs as IUPAC codes by default), and N where a\n                    gVCF has no call.\n    trio            (advanced) Analyze inheritance patterns. Compares a child's VCF with their\n                    parents to identify de novo (new) mutations or inherited conditions.\n    cnv             (advanced) Call Copy Number Variants (CNVs) using Delly. Detects large regions\n                    of DNA that have been duplicated or deleted, affecting gene dosage. (Not\n                    tested on macOS.)\n    sv              (advanced) Call Structural Variants (SVs) using Delly for short reads,\n                    Sniffles for Nanopore (ONT, auto-detected) or other long reads, or\n                    pbsv/Sniffles for PacBio. Identifies large-scale DNA changes (over 50bp).\n    freebayes       (advanced) A Bayesian genetic variant detector. Excellent for finding small\n                    variants in complex regions or when you have variable sequencing depth.\n    gatk            (advanced) Industry-standard GATK HaplotypeCaller. Best for high-accuracy\n                    clinical-grade SNP and InDel calling using local de novo assembly.\n    deepvariant     (advanced) Google's Deep Variant variant caller. Supports WGS/WES and PacBio\n                    HiFi models; uses a neural network to achieve superior accuracy by 'looking'\n                    at read alignments as images. (Not tested on macOS.)\n    clair3          (advanced) Clair3 small-variant caller for Oxford Nanopore reads (optional;\n                    Linux x86-64/ARM64 and Apple Silicon macOS, install with `pixi install -e\n                    clair3`). DeepVariant remains the default ONT caller.\n    phase           (advanced) Phase a sample's heterozygous calls with its reads (WhatsHap, or\n                    LongPhase for Nanopore and PacBio), and optionally tag the reads by haplotype.\n                    Optional; Linux and macOS, install with `pixi install -e phasing`.\n    phylop          (advanced) Annotate VCF with PhyloP conservation scores.\n    cadd            (advanced) Annotate VCF with CADD deleteriousness scores (CADD_RAW,\n                    CADD_PHRED).\n    gerp            (advanced) Annotate VCF with GERP++ conservation scores (GERP).\n    spliceai        (advanced) Annotate VCF with SpliceAI splicing scores.\n    alphamissense   (advanced) Annotate VCF with AlphaMissense pathogenicity scores.\n    pharmcat        (advanced) Call star-allele diplotypes and drug-response phenotypes (CYP2C19,\n                    CYP2C9, DPYD, ...) with PharmCAT, and write its prescribing report.\n    chain-annotate  (advanced) Sequentially apply multiple annotations to a single VCF.\n\noptions:\n  -h, --help        show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract vcf [-h] <command> ...\n\npositional arguments:\n  <command>\n    snp             Call Single Nucleotide Polymorphisms (SNPs) using bcftools. Best for standard\n                    ancestry analysis and finding simple point mutations.\n    indel           Call Small Insertions and Deletions (InDels) using bcftools. Used to find\n                    small gaps or extra bases in the DNA sequence.\n    annotate        Add external metadata (like population frequencies or disease risk) to your\n                    VCF file.\n    filter          Filter your results. Use this to focus on specific genes of interest or to\n                    remove low-quality 'noisy' variant calls.\n    table           Export variants and their annotations (gene, consequence, ClinVar, gnomAD,\n                    genotype, depth, ...) as one row per variant, in a TSV (or Parquet) table and\n                    an SQLite database to query.\n    clinvar         Annotate VCF with ClinVar pathogenicity data.\n    revel           Annotate VCF with REVEL pathogenicity scores.\n    gnomad          Annotate VCF with gnomAD population frequencies.\n    sv-freq         Annotate SVs with gnomAD-SV/gnomAD-LR frequencies.\n    pharmgkb        Annotate VCF with PharmGKB drug metabolism data.\n    to-fasta        (advanced) Build your personal consensus genome: the reference FASTA with your\n                    variants applied (heterozygous SNVs as IUPAC codes by default), and N where a\n                    gVCF has no call.\n    trio            (advanced) Analyze inheritance patterns. Compares a child's VCF with their\n                    parents to identify de novo (new) mutations or inherited conditions.\n    cnv             (advanced) Call Copy Number Variants (CNVs) using Delly. Detects large regions\n                    of DNA that have been duplicated or deleted, affecting gene dosage. (Not\n                    tested on macOS.)\n    sv              (advanced) Call Structural Variants (SVs) using Delly for short reads,\n                    Sniffles for Nanopore (ONT, auto-detected) or other long reads, or\n                    pbsv/Sniffles for PacBio. Identifies large-scale DNA changes (over 50bp).\n    freebayes       (advanced) A Bayesian genetic variant detector. Excellent for finding small\n                    variants in complex regions or when you have variable sequencing depth.\n    gatk            (advanced) Industry-standard GATK HaplotypeCaller. Best for high-accuracy\n                    clinical-grade SNP and InDel calling using local de novo assembly.\n    deepvariant     (advanced) Google's Deep Variant variant caller. Supports WGS/WES and PacBio\n                    HiFi models; uses a neural network to achieve superior accuracy by 'looking'\n                    at read alignments as images. (Not tested on macOS.)\n    clair3          (advanced) Clair3 small-variant caller for Oxford Nanopore reads (optional;\n                    Linux x86-64/ARM64 and Apple Silicon macOS, install with `pixi install -e\n                    clair3`). DeepVariant remains the default ONT caller.\n    phase           (advanced) Phase a sample's heterozygous calls with its reads (WhatsHap, or\n                    LongPhase for Nanopore and PacBio), and optionally tag the reads by haplotype.\n                    Optional; Linux and macOS, install with `pixi install -e phasing`.\n    phylop          (advanced) Annotate VCF with PhyloP conservation scores.\n    cadd            (advanced) Annotate VCF with CADD deleteriousness scores (CADD_RAW,\n                    CADD_PHRED).\n    gerp            (advanced) Annotate VCF with GERP++ conservation scores (GERP).\n    spliceai        (advanced) Annotate VCF with SpliceAI splicing scores.\n    alphamissense   (advanced) Annotate VCF with AlphaMissense pathogenicity scores.\n    pharmcat        (advanced) Call star-allele diplotypes and drug-response phenotypes (CYP2C19,\n                    CYP2C9, DPYD, ...) with PharmCAT, and write its prescribing report.\n    chain-annotate  (advanced) Sequentially apply multiple annotations to a single VCF.\n\noptions:\n  -h, --help        show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -31335,6 +31724,7 @@
        "cadd",
        "gerp",
        "gnomad",
+       "sv-freq",
        "spliceai",
        "alphamissense",
        "pharmgkb",
@@ -31373,6 +31763,10 @@
        [
         "gnomad",
         "Annotate VCF with gnomAD population frequencies."
+       ],
+       [
+        "sv-freq",
+        "Annotate SVs with gnomAD-SV/gnomAD-LR frequencies."
        ],
        [
         "pharmgkb",
@@ -32821,7 +33215,7 @@
    }
   },
   "vcf chain-annotate": {
-   "help": "usage: wgsextract vcf chain-annotate [-h] [--vcf-input VCF_INPUT] [--annotations ANNOTATIONS]\n                                     [--keep-intermediates]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --annotations ANNOTATIONS\n                        Comma-separated list of annotations to apply in order (default:\n                        clinvar,revel,phylop,gnomad,vep).\n  --keep-intermediates  Keep intermediate VCF files generated during the chain process.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vcf chain-annotate --vcf-input sample.vcf.gz --annotations clinvar,gnomad\n\noutputs (in the output directory unless noted):\n  chain_annotated.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, tabix; depending on options and inputs, also: bgzip, samtools,\n  vep; minutes on a 30x genome.\n",
+   "help": "usage: wgsextract vcf chain-annotate [-h] [--vcf-input VCF_INPUT] [--annotations ANNOTATIONS]\n                                     [--keep-intermediates]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --annotations ANNOTATIONS\n                        Comma-separated list of annotations to apply in order (default:\n                        clinvar,revel,phylop,gnomad,vep).\n  --keep-intermediates  Keep intermediate VCF files generated during the chain process.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vcf chain-annotate --vcf-input sample.vcf.gz --annotations clinvar,gnomad\n\noutputs (in the output directory unless noted):\n  chain_annotated.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, tabix; depending on options and inputs, also: bgzip, samtools,\n  vep, vep-rs; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -34290,7 +34684,7 @@
    }
   },
   "vcf deepvariant": {
-   "help": "usage: wgsextract vcf deepvariant [-h] [-r REGION] [--wes] [--ont] [--pacbio] [--gpu] [--force]\n                                  [--force-step STEP] [--dry-run] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM)\n  --wes                 Set model type to WES (default: WGS)\n  --ont                 Alias for --model-type ONT_R104 (R10.4.1 only; x86-64).\n  --pacbio              Alias for --model-type PACBIO.\n  --gpu                 Call on an NVIDIA GPU: Parabricks, or Google's ULTIMA GPU image for Ultima\n                        reads (x86-64 Linux, Docker; see README).\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nresuming:\n  Completed steps are recorded in <output>.steps.json and skipped when a rerun's inputs,\n  settings and tools are unchanged.\n\n  --force, --no-resume  Rerun every step, ignoring the steps an earlier run completed.\n  --force-step STEP     Rerun STEP and the steps that use its outputs (repeatable). Steps:\n                        stage_reads, make_examples, call_variants, postprocess_variants.\n  --dry-run             Print which steps would run or be skipped, and why, then exit.\n\n5 advanced options not shown; 'wgsextract vcf deepvariant --help-all' lists them.\n\nexamples:\n  wgsextract vcf deepvariant --input sample.cram\n  wgsextract vcf deepvariant --input hifi.bam --pacbio\n  wgsextract vcf deepvariant --input sample.cram --force-step call_variants\n\noutputs (in the output directory unless noted):\n  deepvariant.vcf.gz (+ .tbi) and deepvariant.vcf.gz.steps.json; until it\n  finishes, the stages' work in .deepvariant.work, where a rerun resumes.\n\nneeds:\n  samtools, tabix; depending on options and inputs, also: bcftools, docker,\n  run_deepvariant, sambamba; hours on a 30x genome.\n",
+   "help": "usage: wgsextract vcf deepvariant [-h] [-r REGION] [--wes] [--ont] [--pacbio] [--gpu] [--force]\n                                  [--force-step STEP] [--dry-run] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM)\n  --wes                 Set model type to WES (default: WGS)\n  --ont                 Alias for --model-type ONT_R104 (R10.4.1 only; x86-64).\n  --pacbio              Alias for --model-type PACBIO.\n  --gpu                 Call on an NVIDIA GPU: Parabricks, or Google's ULTIMA GPU image for Ultima\n                        reads (x86-64 Linux, Docker; see README).\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nresuming:\n  Completed steps are recorded in <output>.steps.json and skipped when a rerun's inputs,\n  settings and tools are unchanged.\n\n  --force, --no-resume  Rerun every step, ignoring the steps an earlier run completed.\n  --force-step STEP     Rerun STEP and the steps that use its outputs (repeatable). Steps:\n                        stage_reads, make_examples, call_variants, postprocess_variants.\n  --dry-run             Print which steps would run or be skipped, and why, then exit.\n\n5 advanced options not shown; 'wgsextract vcf deepvariant --help-all' lists them.\n\nexamples:\n  wgsextract vcf deepvariant --input sample.cram\n  wgsextract vcf deepvariant --input hifi.bam --pacbio\n  wgsextract vcf deepvariant --input sample.cram --force-step call_variants\n\noutputs (in the output directory unless noted):\n  deepvariant.vcf.gz (+ .tbi) and deepvariant.vcf.gz.steps.json; until it\n  finishes, the stages' work in .deepvariant.work, where a rerun resumes.\n\nneeds:\n  samtools, tabix; depending on options and inputs, also: bcftools, docker,\n  run_deepvariant, wgse-deepvariant, sambamba; hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -40118,6 +40512,443 @@
     "prog": "wgsextract vcf sv"
    }
   },
+  "vcf sv-freq": {
+   "help": "usage: wgsextract vcf sv-freq [-h] [--vcf-input VCF_INPUT] [--gnomad-sv-file GNOMAD_SV_FILE]\n                              [--gnomad-lr-file GNOMAD_LR_FILE] [--min-overlap MIN_OVERLAP]\n                              [--max-distance MAX_DISTANCE]\n                              [--min-size-similarity MIN_SIZE_SIMILARITY] [--common-af COMMON_AF]\n                              [--rare-af RARE_AF]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --gnomad-sv-file GNOMAD_SV_FILE\n                        gnomAD-SV table (default: the library's, from 'ref gnomad-sv').\n  --gnomad-lr-file GNOMAD_LR_FILE\n                        gnomAD-LR table (default: the library's; GRCh38).\n  --min-overlap MIN_OVERLAP\n                        Minimum reciprocal overlap for DEL/DUP/INV/CNV (default 0.5).\n  --max-distance MAX_DISTANCE\n                        Maximum insertion breakpoint distance, bp (default 500).\n  --min-size-similarity MIN_SIZE_SIMILARITY\n                        Minimum insertion size similarity (default 0.5).\n  --common-af COMMON_AF\n                        AF from which an SV is common (default 0.01).\n  --rare-af RARE_AF     AF below which an SV is rare (default 0.001).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vcf sv-freq --vcf-input sniffles.vcf.gz\n\noutputs (in the output directory unless noted):\n  sv_freq_annotated.vcf.gz (+ .tbi) and sv_freq.tsv.\n\nneeds:\n  bcftools, bgzip, tabix; depending on options and inputs, also: samtools;\n  minutes on a 30x genome.\n",
+   "parser": {
+    "actions": [
+     {
+      "choices": null,
+      "class": "_HelpAction",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "help",
+      "exclusive_group": null,
+      "help": "show this help message and exit",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "input",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--input",
+       "-i"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "outdir",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--outdir",
+       "-o"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "genome",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--genome"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "ref",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--ref"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "threads",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "N|auto",
+      "nargs": null,
+      "option_strings": [
+       "--threads",
+       "-t"
+      ],
+      "required": false,
+      "type": "_thread_count_arg"
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "memory",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--memory",
+       "-m"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "tmp_dir",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "DIRECTORY",
+      "nargs": null,
+      "option_strings": [
+       "--tmp-dir"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "json",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "quiet",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--quiet"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "debug",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--debug"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "log_file",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "PATH",
+      "nargs": null,
+      "option_strings": [
+       "--log-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "keep_awake",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--keep-awake",
+       "--no-keep-awake"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "atomic_output",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--atomic-output",
+       "--no-atomic-output"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "config_path",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "FILE",
+      "nargs": null,
+      "option_strings": [
+       "--config"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_result_file",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "PATH",
+      "nargs": null,
+      "option_strings": [
+       "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "parent_pid",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--parent-pid"
+      ],
+      "required": false,
+      "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "vcf_input",
+      "exclusive_group": null,
+      "help": "Optional override for VCF input file.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--vcf-input"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "gnomad_sv_file",
+      "exclusive_group": null,
+      "help": "gnomAD-SV table (default: the library's, from 'ref gnomad-sv').",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--gnomad-sv-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "gnomad_lr_file",
+      "exclusive_group": null,
+      "help": "gnomAD-LR table (default: the library's; GRCh38).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--gnomad-lr-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": 0.5,
+      "dest": "min_overlap",
+      "exclusive_group": null,
+      "help": "Minimum reciprocal overlap for DEL/DUP/INV/CNV (default 0.5).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--min-overlap"
+      ],
+      "required": false,
+      "type": "float"
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": 500,
+      "dest": "max_distance",
+      "exclusive_group": null,
+      "help": "Maximum insertion breakpoint distance, bp (default 500).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--max-distance"
+      ],
+      "required": false,
+      "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": 0.5,
+      "dest": "min_size_similarity",
+      "exclusive_group": null,
+      "help": "Minimum insertion size similarity (default 0.5).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--min-size-similarity"
+      ],
+      "required": false,
+      "type": "float"
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": 0.01,
+      "dest": "common_af",
+      "exclusive_group": null,
+      "help": "AF from which an SV is common (default 0.01).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--common-af"
+      ],
+      "required": false,
+      "type": "float"
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": 0.001,
+      "dest": "rare_af",
+      "exclusive_group": null,
+      "help": "AF below which an SV is rare (default 0.001).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--rare-af"
+      ],
+      "required": false,
+      "type": "float"
+     },
+     {
+      "choices": null,
+      "class": "_HelpAllAction",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "help_all",
+      "exclusive_group": null,
+      "help": "Show this help with the advanced options too, and exit.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--help-all"
+      ],
+      "required": false,
+      "type": null
+     }
+    ],
+    "defaults": {
+     "_command": "vcf sv-freq",
+     "func": "cli_VcfSvFreqParams"
+    },
+    "description": null,
+    "formatter_class": "HelpFormatter",
+    "prog": "wgsextract vcf sv-freq"
+   }
+  },
   "vcf table": {
    "help": "usage: wgsextract vcf table [-h] [--vcf-input VCF_INPUT] [-r REGION] [--sample SAMPLE]\n                            [--all-alleles] [--pharmcat-json FILE] [--no-sqlite]\n                            [--format {tsv,parquet}]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Input VCF file path.\n  -r, --region REGION   Only export this region (e.g. chr22).\n  --sample SAMPLE       Sample whose genotypes to use (default: the first).\n  --all-alleles         Also export ALT alleles the sample doesn't carry (0/0 calls, no-calls, the\n                        other ALT of a 0/1 multi-allelic site).\n  --pharmcat-json FILE  PharmCAT's <stem>.phenotype.json (from 'vcf pharmcat'), to add its\n                        diplotype and phenotype to rows in those genes.\n  --no-sqlite           Write only the table file.\n  --format {tsv,parquet}\n                        Table file format: tsv, or parquet (needs pyarrow) (default: tsv)\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vcf table --vcf-input sample.vcf.gz\n  wgsextract vcf table --vcf-input clinvar_annotated.vcf.gz --region chr22\n  wgsextract vcf table --vcf-input clinvar_annotated.vcf.gz --format parquet\n\noutputs (in the output directory unless noted):\n  <input stem>_variants.tsv (or .parquet with --format parquet) and <input\n  stem>_variants.sqlite: one row per variant allele, with its annotations.\n\nneeds:\n  bcftools; depending on options and inputs, also: bgzip, tabix; minutes on a\n  30x genome.\n",
    "parser": {
@@ -41437,7 +42268,7 @@
    }
   },
   "vep": {
-   "help": "usage: wgsextract vep [-h] <command> ...\n\npositional arguments:\n  <command>\n    download  Download the VEP cache (standard GRCh37/38) to your local machine for faster,\n              offline annotation.\n    verify    Check your existing VEP cache for missing files or corruption.\n    delete    Delete one release and assembly of your VEP cache.\n    run       Ensembl Variant Effect Predictor. Predicts the functional impact of your variants\n              (e.g., if a mutation likely breaks a gene or causes a specific disease).\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract vep [-h] <command> ...\n\npositional arguments:\n  <command>\n    download  Build vep-rs's VEP cache from Ensembl's files (GRCh37/38), or download Ensembl VEP's\n              with --engine ensembl, for offline annotation.\n    verify    Check your existing VEP cache for missing files or corruption.\n    delete    Delete one release and assembly of your VEP cache.\n    run       Variant Effect Predictor, with vep-rs (default) or Ensembl VEP (--engine ensembl).\n              Predicts the functional impact of your variants (e.g., if a mutation likely breaks a\n              gene or causes a specific disease).\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -41467,7 +42298,7 @@
       "help": [
        [
         "download",
-        "Download the VEP cache (standard GRCh37/38) to your local machine for faster, offline annotation."
+        "Build vep-rs's VEP cache from Ensembl's files (GRCh37/38), or download Ensembl VEP's with --engine ensembl, for offline annotation."
        ],
        [
         "verify",
@@ -41479,7 +42310,7 @@
        ],
        [
         "run",
-        "Ensembl Variant Effect Predictor. Predicts the functional impact of your variants (e.g., if a mutation likely breaks a gene or causes a specific disease)."
+        "Variant Effect Predictor, with vep-rs (default) or Ensembl VEP (--engine ensembl). Predicts the functional impact of your variants (e.g., if a mutation likely breaks a gene or causes a specific disease)."
        ]
       ],
       "required": true,
@@ -41773,7 +42604,7 @@
    }
   },
   "vep download": {
-   "help": "usage: wgsextract vep download [-h] [--species SPECIES] [--assembly {GRCh37,GRCh38}]\n                               [--vep-version VEP_VERSION] [--vep-cache VEP_CACHE]\n                               [--mirror {ebi,uk}]\n\noptions:\n  -h, --help            show this help message and exit\n  --species SPECIES     Species name (default: homo_sapiens)\n  --assembly {GRCh37,GRCh38}\n                        Assembly (default: GRCh38)\n  --vep-version VEP_VERSION\n                        Ensembl release version (default: 116)\n  --vep-cache VEP_CACHE\n                        Path to VEP cache directory\n  --mirror {ebi,uk}     Ensembl FTP mirror to use (default: uk)\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vep download --assembly GRCh38\n\noutputs (in the output directory unless noted):\n  Into the VEP cache directory (vep_cache, or --vep-cache).\n\nneeds:\n  curl, tar; depends on download speed.\n",
+   "help": "usage: wgsextract vep download [-h] [--engine {ensembl,vep-rs}] [--species SPECIES]\n                               [--assembly {GRCh37,GRCh38}] [--vep-version VEP_VERSION]\n                               [--vep-cache VEP_CACHE] [--mirror {ebi,uk}]\n                               [--variations | --no-variations]\n\noptions:\n  -h, --help            show this help message and exit\n  --engine {ensembl,vep-rs}\n                        Engine: 'vep-rs' (default; fast Rust VEP, every platform) or 'ensembl'\n                        (Linux, macOS); each has its own cache\n  --species SPECIES     Species name (default: homo_sapiens)\n  --assembly {GRCh37,GRCh38}\n                        Assembly (default: GRCh38)\n  --vep-version VEP_VERSION\n                        Ensembl release version (default: 116)\n  --vep-cache VEP_CACHE\n                        Path to VEP cache directory\n  --mirror {ebi,uk}     Ensembl FTP mirror to use (default: uk)\n  --variations, --no-variations\n                        vep-rs: include known variants (Existing_variation, frequencies; ~15 GB;\n                        default: on)\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vep download --assembly GRCh38\n\noutputs (in the output directory unless noted):\n  Into the VEP cache directory (vep_cache, or --vep-cache).\n\nneeds:\n  samtools, vep-cache-builder; depending on options and inputs, also: curl,\n  tar; depends on download speed.\n",
    "parser": {
     "actions": [
      {
@@ -42054,6 +42885,25 @@
       ],
       "required": false,
       "type": "int"
+     },
+     {
+      "choices": [
+       "ensembl",
+       "vep-rs"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "engine",
+      "exclusive_group": null,
+      "help": "Engine: 'vep-rs' (default; fast Rust VEP, every platform) or 'ensembl' (Linux, macOS); each has its own cache",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--engine"
+      ],
+      "required": false,
+      "type": null
      },
      {
       "choices": null,
@@ -42143,6 +42993,23 @@
      },
      {
       "choices": null,
+      "class": "BooleanOptionalAction",
+      "const": null,
+      "default": true,
+      "dest": "variations",
+      "exclusive_group": null,
+      "help": "vep-rs: include known variants (Existing_variation, frequencies; ~15 GB; default: on)",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--variations",
+       "--no-variations"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_HelpAllAction",
       "const": null,
       "default": "==SUPPRESS==",
@@ -42168,7 +43035,7 @@
    }
   },
   "vep run": {
-   "help": "usage: wgsextract vep run [-h] [--vep-cache VEP_CACHE] [--assembly {GRCh37,GRCh38}] [--force]\n                          [--preset {everything,fast}] [--format {vcf,tab,json}] [-r REGION]\n                          [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --vep-cache VEP_CACHE\n                        Path to VEP cache directory (e.g., $HOME/.vep)\n  --assembly {GRCh37,GRCh38}\n                        Reference assembly for VEP (GRCh37 or GRCh38)\n  --force               Force re-run even if output exists\n  --preset {everything,fast}\n                        What VEP annotates: 'everything' (default), or 'fast' (about twice as\n                        fast: consequences, genes, MANE transcripts, SIFT and PolyPhen; no\n                        population frequencies, for which use 'vcf gnomad', and no HGVS)\n  --format {vcf,tab,json}\n                        Output format (default: vcf)\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n6 advanced options not shown; 'wgsextract vep run --help-all' lists them.\n\nexamples:\n  wgsextract vep run --input sample.vcf.gz\n  wgsextract vep run --input sample.vcf.gz --assembly GRCh37 --format tab\n\noutputs (in the output directory unless noted):\n  <input stem>_vep.vcf.gz (or .tsv/.json with --format), with VEP's summary.\n\nneeds:\n  bcftools, tabix, vep; depending on options and inputs, also: samtools; hours\n  on a 30x genome.\n",
+   "help": "usage: wgsextract vep run [-h] [--engine {ensembl,vep-rs}] [--vep-cache VEP_CACHE]\n                          [--assembly {GRCh37,GRCh38}] [--force] [--preset {everything,fast}]\n                          [--format {vcf,tab,json}] [-r REGION] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --engine {ensembl,vep-rs}\n                        Engine: 'vep-rs' (default; fast Rust VEP, every platform) or 'ensembl'\n                        (Linux, macOS); each has its own cache\n  --vep-cache VEP_CACHE\n                        Path to VEP cache directory (e.g., $HOME/.vep)\n  --assembly {GRCh37,GRCh38}\n                        Reference assembly for VEP (GRCh37 or GRCh38)\n  --force               Force re-run even if output exists\n  --preset {everything,fast}\n                        What VEP annotates: 'everything' (default), or 'fast' (about twice as\n                        fast: consequences, genes, MANE transcripts, SIFT and PolyPhen; no\n                        population frequencies, for which use 'vcf gnomad', and no HGVS)\n  --format {vcf,tab,json}\n                        Output format (default: vcf)\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n6 advanced options not shown; 'wgsextract vep run --help-all' lists them.\n\nexamples:\n  wgsextract vep run --input sample.vcf.gz\n  wgsextract vep run --input sample.vcf.gz --assembly GRCh37 --format tab\n\noutputs (in the output directory unless noted):\n  <input stem>_vep.vcf.gz (or .tsv/.json with --format), with VEP's summary.\n\nneeds:\n  bcftools, tabix, vep-rs; depending on options and inputs, also: samtools,\n  vep; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -42449,6 +43316,25 @@
       ],
       "required": false,
       "type": "int"
+     },
+     {
+      "choices": [
+       "ensembl",
+       "vep-rs"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "engine",
+      "exclusive_group": null,
+      "help": "Engine: 'vep-rs' (default; fast Rust VEP, every platform) or 'ensembl' (Linux, macOS); each has its own cache",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--engine"
+      ],
+      "required": false,
+      "type": null
      },
      {
       "choices": null,
@@ -42704,7 +43590,7 @@
    }
   },
   "vep verify": {
-   "help": "usage: wgsextract vep verify [-h] [--species SPECIES] [--assembly {GRCh37,GRCh38}]\n                             [--vep-version VEP_VERSION] [--vep-cache VEP_CACHE]\n\noptions:\n  -h, --help            show this help message and exit\n  --species SPECIES     Species name (default: homo_sapiens)\n  --assembly {GRCh37,GRCh38}\n                        Assembly (default: GRCh38)\n  --vep-version VEP_VERSION\n                        Ensembl release version (default: 116)\n  --vep-cache VEP_CACHE\n                        Path to VEP cache directory\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vep verify --assembly GRCh38\n\noutputs (in the output directory unless noted):\n  Prints what is missing or damaged; writes no files.\n\nneeds:\n  no external tools; seconds.\n",
+   "help": "usage: wgsextract vep verify [-h] [--engine {ensembl,vep-rs}] [--species SPECIES]\n                             [--assembly {GRCh37,GRCh38}] [--vep-version VEP_VERSION]\n                             [--vep-cache VEP_CACHE]\n\noptions:\n  -h, --help            show this help message and exit\n  --engine {ensembl,vep-rs}\n                        Engine: 'vep-rs' (default; fast Rust VEP, every platform) or 'ensembl'\n                        (Linux, macOS); each has its own cache\n  --species SPECIES     Species name (default: homo_sapiens)\n  --assembly {GRCh37,GRCh38}\n                        Assembly (default: GRCh38)\n  --vep-version VEP_VERSION\n                        Ensembl release version (default: 116)\n  --vep-cache VEP_CACHE\n                        Path to VEP cache directory\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vep verify --assembly GRCh38\n\noutputs (in the output directory unless noted):\n  Prints what is missing or damaged; writes no files.\n\nneeds:\n  no external tools; seconds.\n",
    "parser": {
     "actions": [
      {
@@ -42985,6 +43871,25 @@
       ],
       "required": false,
       "type": "int"
+     },
+     {
+      "choices": [
+       "ensembl",
+       "vep-rs"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "engine",
+      "exclusive_group": null,
+      "help": "Engine: 'vep-rs' (default; fast Rust VEP, every platform) or 'ensembl' (Linux, macOS); each has its own cache",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--engine"
+      ],
+      "required": false,
+      "type": null
      },
      {
       "choices": null,
@@ -46219,6 +47124,37 @@
    "threads": 3,
    "tmp_dir": null
   },
+  "ref gnomad-sv --install --source lr --ref lib": {
+   "_command": "ref gnomad-sv",
+   "_explicit_dests": [
+    "install",
+    "ref",
+    "source"
+   ],
+   "atomic_output": false,
+   "build": null,
+   "command": "ref",
+   "debug": false,
+   "delete": false,
+   "full_help": false,
+   "func": "_install_or_delete.<locals>.handler",
+   "genome": null,
+   "input": null,
+   "install": true,
+   "json": false,
+   "keep_awake": false,
+   "log_dir": null,
+   "log_file": null,
+   "memory": null,
+   "outdir": null,
+   "parent_pid": null,
+   "quiet": false,
+   "ref": "lib",
+   "ref_cmd": "gnomad-sv",
+   "source": "lr",
+   "threads": null,
+   "tmp_dir": null
+  },
   "ref index --ref r.fa --aligner bwa-mem2": {
    "_command": "ref index",
    "_explicit_dests": [
@@ -48146,6 +49082,40 @@
    "tmp_dir": null,
    "vcf_cmd": "sv"
   },
+  "vcf sv-freq --vcf-input sv.vcf.gz --min-overlap 0.7": {
+   "_command": "vcf sv-freq",
+   "_explicit_dests": [
+    "min_overlap",
+    "vcf_input"
+   ],
+   "atomic_output": false,
+   "command": "vcf",
+   "common_af": 0.01,
+   "debug": false,
+   "full_help": false,
+   "func": "cli_VcfSvFreqParams",
+   "genome": null,
+   "gnomad_lr_file": null,
+   "gnomad_sv_file": null,
+   "input": null,
+   "json": false,
+   "keep_awake": false,
+   "log_dir": null,
+   "log_file": null,
+   "max_distance": 500,
+   "memory": null,
+   "min_overlap": 0.7,
+   "min_size_similarity": 0.5,
+   "outdir": null,
+   "parent_pid": null,
+   "quiet": false,
+   "rare_af": 0.001,
+   "ref": null,
+   "threads": null,
+   "tmp_dir": null,
+   "vcf_cmd": "sv-freq",
+   "vcf_input": "sv.vcf.gz"
+  },
   "vcf table -i x.vcf.gz --pharmcat-json p.json --format parquet": {
    "_command": "vcf table",
    "_explicit_dests": [
@@ -48402,6 +49372,7 @@
    "atomic_output": false,
    "command": "vep",
    "debug": false,
+   "engine": null,
    "full_help": false,
    "func": "cli_VepDownloadParams",
    "genome": null,
@@ -48419,6 +49390,7 @@
    "species": "homo_sapiens",
    "threads": null,
    "tmp_dir": null,
+   "variations": true,
    "vep_cache": null,
    "vep_cmd": "download",
    "vep_version": "116"
@@ -48434,6 +49406,7 @@
    "atomic_output": false,
    "command": "vep",
    "debug": false,
+   "engine": null,
    "full_help": false,
    "func": "cli_VepDownloadParams",
    "genome": null,
@@ -48451,6 +49424,7 @@
    "species": "homo_sapiens",
    "threads": null,
    "tmp_dir": null,
+   "variations": true,
    "vep_cache": "c",
    "vep_cmd": "download",
    "vep_version": "116"
@@ -48465,6 +49439,7 @@
    "atomic_output": false,
    "command": "vep",
    "debug": false,
+   "engine": null,
    "full_help": false,
    "func": "cli_VepDownloadParams",
    "genome": null,
@@ -48482,6 +49457,7 @@
    "species": "mus_musculus",
    "threads": null,
    "tmp_dir": null,
+   "variations": true,
    "vep_cache": null,
    "vep_cmd": "download",
    "vep_version": "110"
@@ -48498,6 +49474,7 @@
    "atomic_output": false,
    "command": "vep",
    "debug": false,
+   "engine": null,
    "force": true,
    "format": "vcf",
    "full_help": false,
@@ -48541,6 +49518,7 @@
    "atomic_output": false,
    "command": "vep",
    "debug": false,
+   "engine": null,
    "force": false,
    "format": "vcf",
    "full_help": false,
@@ -48581,6 +49559,7 @@
    "atomic_output": false,
    "command": "vep",
    "debug": false,
+   "engine": null,
    "force": false,
    "format": "vcf",
    "full_help": false,
@@ -48618,6 +49597,7 @@
    "atomic_output": false,
    "command": "vep",
    "debug": false,
+   "engine": null,
    "force": false,
    "format": "vcf",
    "full_help": false,
@@ -48657,6 +49637,7 @@
    "atomic_output": false,
    "command": "vep",
    "debug": false,
+   "engine": null,
    "force": false,
    "format": "tab",
    "full_help": false,
@@ -48695,6 +49676,7 @@
    "atomic_output": false,
    "command": "vep",
    "debug": false,
+   "engine": null,
    "full_help": false,
    "func": "cli_VepVerifyParams",
    "genome": null,
@@ -48725,6 +49707,7 @@
    "atomic_output": false,
    "command": "vep",
    "debug": false,
+   "engine": null,
    "full_help": false,
    "func": "cli_VepVerifyParams",
    "genome": null,

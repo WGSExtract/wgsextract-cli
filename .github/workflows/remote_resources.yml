@@ -33,6 +33,11 @@ on:
 permissions:
   contents: read
 
+# Only pull requests share a group: a new push supersedes the PR's older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   remote-resources:
     runs-on: ubuntu-latest
@@ -49,6 +54,8 @@ jobs:
           environments: >-
             default
             dev
+          # PR runs restore main's environment; writing their own crowds it out.
+          cache-write: ${{ github.ref == 'refs/heads/main' }}
       - name: Check remote resources
         run: |
           mkdir -p out

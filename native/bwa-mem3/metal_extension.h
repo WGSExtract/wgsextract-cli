@@ -1,8 +1,8 @@
 #pragma once
 
 // GPU banded Smith-Waterman (--metal) for bwa-mem3's 8-bit seed-extension tier, with
-// wgse-bwa-mem2's extend_batch kernel (native/bwa-mem2/extension.metal). It computes the
-// scalar banded SW that upstream's NEON getScores8 reproduces byte for byte.
+// extension.metal's extend_striped kernel. It computes the scalar banded SW that upstream's
+// NEON getScores8 reproduces byte for byte.
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -42,6 +42,9 @@ bool wgse_mem3_bsw_start(std::string &reason);
 // Prints the GPU's share; returns nonzero if the GPU failed (the CPU scored the rest).
 int wgse_mem3_bsw_finish();
 bool wgse_mem3_bsw_enabled();
+// Whether the GPU's queue is long enough that the caller should score its pairs on the CPU.
+bool wgse_mem3_bsw_busy();
+void wgse_mem3_bsw_set_backlog(int64_t pairs);
 // Compute threads for the user's -t: more under --metal, as workers block on the GPU.
 int wgse_mem3_compute_threads(int threads);
 // --gpu-threads: compute threads per -t thread under --metal, in percent.
@@ -59,13 +62,13 @@ template <class Pair>
 bool wgse_mem3_bsw8(Pair *pairs, const uint8_t *ref, const uint8_t *qer, int32_t count,
     int32_t w, const WgseBswScoring &scoring)
 {
-    if (count <= 0 || !wgse_mem3_bsw_enabled()) return false;
+    if (count <= 0 || !wgse_mem3_bsw_enabled() || wgse_mem3_bsw_busy()) return false;
     thread_local std::vector<WgseBswJob> jobs;
     jobs.resize(size_t(count));
     uint8_t high = 0;
     for (int32_t i = 0; i < count; ++i) {
         const Pair &p = pairs[i];
-        // The kernel keeps a query row in threadgroup memory; empty pairs stay upstream's.
+        // The kernel packs a row's best column in 9 bits; empty pairs stay upstream's.
         if (p.len1 <= 0 || p.len2 <= 0 || p.len2 > wgse_mem3_max_gpu_query_length || p.h0 < 0
             || p.h0 > 32767) {
             wgse_mem3_bsw_decline();

@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const { loadLocalizedBundle } = await import("../dist/web/src/server/bundle-loader.js");
 const { loadBundleTestPlan, runBundleTest } = await import("../dist/web/src/server/bundle-test-runner.js");
+const { exampleBundleCopy } = await import("./example-bundle.mjs");
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const examples = [
@@ -38,9 +39,9 @@ const examples = [
   },
 ];
 
-test("generic example bundles expose multiple pages", async () => {
+test("generic example bundles expose multiple pages", async (t) => {
   for (const example of examples) {
-    const bundleRoot = exampleRoot(example);
+    const bundleRoot = await exampleBundleCopy(t, example.directory);
     const { manifest } = await loadLocalizedBundle("en", repoRoot, bundleRoot, bundleRoot);
 
     assert.equal(manifest.id, example.id);

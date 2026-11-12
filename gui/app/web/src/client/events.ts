@@ -5,7 +5,9 @@ import { clamp } from "./dom.js";
 import { normalizeColorTheme, normalizeIconSet } from "./icons.js";
 import { elements, errorMessage, findControl, resolveText } from "./model.js";
 import { checkedOptionsChanged, configSettingChanged, fieldValueChanged, loadConfig, cancelSetup, openBundleWorkspace, persistBundleState, retryActionPrecheck, retryDataSource, runAction, runSetup, saveConfig } from "./operations.js";
+import { cancelPendingPrerequisites, continuePendingPrerequisites, installPendingPrerequisites } from "./operations-prerequisites-dialog.js";
 import { pathPickerDefaultPath, type PathPickerSpec } from "./path-picker-defaults.js";
+import { bindPrerequisitesFocus } from "./prerequisites-focus.js";
 import { nextFrame, scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
 import { dismissUpdatePopover, downloadUpdate, installUpdate, toggleUpdatePopover } from "./tauri-updater.js";
@@ -247,7 +249,7 @@ export function bindEvents(bootstrap: Bootstrap) {
     });
     app.querySelector("[data-sidebar-toggle]")?.addEventListener("click", () => {
         state.isSidebarVisible = !state.isSidebarVisible;
-        localStorage.setItem("guiForCLI.sidebarVisible", state.isSidebarVisible ? "true" : "false");
+        localStorage.setItem("wgsextractGui.sidebarVisible", state.isSidebarVisible ? "true" : "false");
         scheduleRender();
     });
     elements("[data-retry-source]").forEach((button) => {
@@ -286,6 +288,10 @@ export function bindEvents(bootstrap: Bootstrap) {
         const { confirm: _confirm, ...action } = pending.action;
         await runAction(action, pending.context, pending.reference);
     });
+    app.querySelector("[data-prerequisites-cancel]")?.addEventListener("click", cancelPendingPrerequisites);
+    app.querySelector("[data-prerequisites-continue]")?.addEventListener("click", () => void continuePendingPrerequisites());
+    app.querySelector("[data-prerequisites-install]")?.addEventListener("click", () => void installPendingPrerequisites());
+    bindPrerequisitesFocus(app, cancelPendingPrerequisites);
     app.querySelector("[data-about-close]")?.addEventListener("click", closeAboutDialog);
     app.querySelector("[data-about-backdrop]")?.addEventListener("click", (event) => {
         if (event.target === event.currentTarget) {
@@ -354,7 +360,7 @@ function installGlobalBundleLoadHandler(bootstrap: Bootstrap) {
         return;
     }
     installedGlobalBundleLoadHandler = true;
-    window.addEventListener("gui-for-cli-load-bundle", () => {
+    window.addEventListener("wgsextract-gui-load-bundle", () => {
         void loadBundleFromPicker(bootstrap);
     });
 }
@@ -364,7 +370,7 @@ function installGlobalAboutHandler() {
         return;
     }
     installedGlobalAboutHandler = true;
-    window.addEventListener("gui-for-cli-show-about", showAboutDialog);
+    window.addEventListener("wgsextract-gui-show-about", showAboutDialog);
 }
 
 function showAboutDialog() {
@@ -437,6 +443,7 @@ function resetBundleClientState() {
     state.setupPromptDismissed = false;
     state.aboutDialogVisible = false;
     state.pendingConfirmation = null;
+    state.pendingPrerequisites = null;
     resetTerminalEntries();
 }
 
@@ -551,7 +558,7 @@ export function bindSplitters() {
             app.style.setProperty("--sidebar-width", `${state.sidebarWidth}px`);
         };
         const up = () => {
-            localStorage.setItem("guiForCLI.sidebarWidth", String(Math.round(state.sidebarWidth)));
+            localStorage.setItem("wgsextractGui.sidebarWidth", String(Math.round(state.sidebarWidth)));
             document.body.classList.remove("resizing-sidebar");
             window.removeEventListener("pointermove", move);
             window.removeEventListener("pointerup", up);
@@ -570,7 +577,7 @@ export function bindSplitters() {
             app.style.setProperty("--terminal-height", `${state.terminalHeight}px`);
         };
         const up = () => {
-            localStorage.setItem("guiForCLI.terminalHeight", String(Math.round(state.terminalHeight)));
+            localStorage.setItem("wgsextractGui.terminalHeight", String(Math.round(state.terminalHeight)));
             document.body.classList.remove("resizing-terminal");
             window.removeEventListener("pointermove", move);
             window.removeEventListener("pointerup", up);

@@ -16,7 +16,7 @@ test("development runner stops the sibling when one child fails", { timeout: 150
 
 test("development runner stops siblings on a spawn failure", { timeout: 15000 }, async () => {
   const sibling = waitingChild();
-  const missing = spawn("gui-for-cli-nonexistent-test-executable", [], { stdio: "ignore" });
+  const missing = spawn("wgsextract-gui-nonexistent-test-executable", [], { stdio: "ignore" });
   assert.equal(await supervise([sibling, missing]).done, 1);
   assert.ok(sibling.exitCode !== null || sibling.signalCode !== null);
 });

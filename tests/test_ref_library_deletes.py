@@ -145,7 +145,7 @@ def test_vep_delete_removes_one_release_only(tmp_path):
         species / "115_GRCh37" / "info.txt",
         reflib / "vep" / "homo_sapiens_vep_116_GRCh38.tar.gz.partial",
     )
-    params = api.VepDeleteParams(ref=reflib)
+    params = api.VepDeleteParams(ref=reflib, engine="ensembl")
 
     api.vep.delete(params)
 
@@ -154,7 +154,9 @@ def test_vep_delete_removes_one_release_only(tmp_path):
     assert _values(reflib)["library.vepCacheInstalled"] == "true"  # 115 is left
 
     api.vep.delete(
-        api.VepDeleteParams(ref=reflib, vep_version="115", assembly="GRCh37")
+        api.VepDeleteParams(
+            ref=reflib, vep_version="115", assembly="GRCh37", engine="ensembl"
+        )
     )
     assert not species.exists()
     assert (reflib / "vep").is_dir()  # the cache folder itself stays
