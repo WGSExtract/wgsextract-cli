@@ -213,6 +213,33 @@ def test_linux_without_a_usable_nvidia_gpu_runs_wgse_bwa_on_the_cpu(tmp_path, bw
     assert result.metrics["native_aligner_backend"] == "cpu"
 
 
+def test_linux_arm64_aligns_with_wgse_bwa_on_the_cpu(
+    tmp_path, bwa_bin, monkeypatch, ram
+):
+    # #672: the linux-aarch64 build has no CUDA backend; its CPU backend's NEON
+    # steps write bwa's exact records.
+    monkeypatch.setattr(
+        native_aligners,
+        "platform",
+        Namespace(system=lambda: "Linux", machine=lambda: "aarch64"),
+    )
+    ram(64 * GIB)
+    reads = _short_reads(tmp_path)
+    _install_build(bwa_bin, "bwa", _cuda_capabilities("bwa", cuda_available=False))
+
+    native_bam, native = _align(reads, tmp_path / "auto")
+    upstream_bam, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
+
+    assert _mapper(native_bam).startswith("wgse-bwa mem ")
+    assert _samtools("view", native_bam) == _samtools("view", upstream_bam)
+    assert _native(native) == {
+        "native_aligner": "wgse-bwa",
+        "native_aligner_version": "0.10.0",
+        "native_aligner_backend": "cpu",
+    }
+    assert not native.warnings
+
+
 @pytest.mark.usefixtures("linux_x86_64")
 def test_linux_uses_no_apple_silicon_only_build(bwa_bin):
     # Only wgse-bwa is built for Linux; a wgse-bwa-mem2 on PATH is not used.
@@ -241,7 +268,7 @@ def test_a_bad_native_aligners_setting_is_refused(tmp_path, monkeypatch):
         _align(reads, tmp_path / "out")
 
 
-@pytest.mark.parametrize("machine", [("Darwin", "x86_64"), ("Linux", "aarch64")])
+@pytest.mark.parametrize("machine", [("Darwin", "x86_64"), ("Windows", "AMD64")])
 def test_other_computers_align_with_upstream_bwa(
     tmp_path, bwa_bin, monkeypatch, machine
 ):

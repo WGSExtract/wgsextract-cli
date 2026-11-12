@@ -3,7 +3,7 @@ and wgse-minimap2 write their upstream aligner's alignments, faster.
 wgse-bwa-mem3 (bwa-mem3) writes bwa's or bwa-mem2's exact records with
 ``--compat``, faster still, and so can stand in for either. On Apple Silicon
 all of them are built, and all but wgse-minimap2 can also run on the Metal GPU;
-on Linux x86-64, wgse-bwa is, and can also run on an NVIDIA GPU (CUDA). They
+on Linux, wgse-bwa is, and on x86-64 it can also run on an NVIDIA GPU (CUDA). They
 are used when installed on PATH; they are never installed here.
 
 Each tool is asked once per process what it can do (``capabilities --json``),
@@ -37,8 +37,8 @@ BINARIES = {
     "bwa-mem3": "wgse-bwa-mem3",
     "minimap2": "wgse-minimap2",
 }
-# The builds for Linux x86-64 (from wgse-bwa 0.10.0, with CUDA).
-LINUX_X86_64_BINARIES = {"bwa": "wgse-bwa"}
+# The builds for Linux (from wgse-bwa 0.10.0: CUDA on x86-64, NEON on ARM64).
+LINUX_BINARIES = {"bwa": "wgse-bwa"}
 MINIMUM_VERSIONS = {
     "wgse-bwa": (0, 7, 0),
     "wgse-bwa-mem2": (0, 4, 0),
@@ -262,8 +262,10 @@ def platform_binaries() -> dict[str, str]:
     if platform.system() == "Linux" and platform.machine().lower() in {
         "x86_64",
         "amd64",
+        "aarch64",
+        "arm64",
     }:
-        return LINUX_X86_64_BINARIES
+        return LINUX_BINARIES
     return {}
 
 
