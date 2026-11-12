@@ -48,9 +48,10 @@ _BWA_BATCH_BASES = 100_000_000
 # at 8.76 GB RSS against Bioconda bwa's 7.96 GB: its GPU buffers and a second
 # chunk of reads in flight. After 20M reads (on Macs with 16 GiB or more) it
 # adds a denser suffix-array sample, one 33-bit entry per 32 of the 2n+1 rows
-# (0.76 GiB for hs38; native/README.md, Memory).
-_BWA_METAL_BYTES = 3 * _GIB // 4
-_BWA_METAL_DENSE_SA_AFTER_READS = 20_000_000
+# (0.76 GiB for hs38; native/README.md, Memory). wgse-bwa --cuda 0.10.0 adds
+# about as much host memory (pinned batch buffers and the same samples).
+_BWA_GPU_BYTES = 3 * _GIB // 4
+_BWA_GPU_DENSE_SA_AFTER_READS = 20_000_000
 # bwa-mem3 estimates its own peak as its index plus 1 GiB plus 24 bytes per
 # base of a batch (native/README.md, Memory); --metal adds about 0.2 GiB.
 _BWA_MEM3_WORKING_BYTES = _GIB + 24 * _BWA_BATCH_BASES
@@ -293,18 +294,16 @@ def reference_bases(ref: str | None) -> int:
         return 0
 
 
-def bwa_metal_memory(
+def bwa_gpu_memory(
     ref: str | None, reads: int | None, *, dense_sa_file: bool = False
 ) -> int:
-    """What ``wgse-bwa --metal`` needs beyond bwa's estimate. With a dense
-    suffix-array file (``dense_sa_file``, counted as index memory) the GPU
+    """What wgse-bwa's GPU backend (Metal or CUDA) needs beyond bwa's estimate.
+    With a dense suffix-array file (``dense_sa_file``, counted as index memory) the GPU
     uses it rather than building its own denser sample."""
-    if dense_sa_file or (
-        reads is not None and reads <= _BWA_METAL_DENSE_SA_AFTER_READS
-    ):
-        return _BWA_METAL_BYTES
+    if dense_sa_file or (reads is not None and reads <= _BWA_GPU_DENSE_SA_AFTER_READS):
+        return _BWA_GPU_BYTES
     bases = reference_bases(ref) or _HUMAN_REFERENCE_BASES
-    return _BWA_METAL_BYTES + math.ceil((2 * bases + 1) * 33 / (32 * 8))
+    return _BWA_GPU_BYTES + math.ceil((2 * bases + 1) * 33 / (32 * 8))
 
 
 def estimate_mapping_memory(
@@ -324,7 +323,7 @@ def estimate_mapping_memory(
 ) -> MappingMemory:
     """Peak memory of the alignment pipeline. ``preset`` is minimap2's, and
     ``input_bytes`` (the read files' size) bounds its batches. ``gpu_bytes``
-    (an aligner's GPU backend: bwa_metal_memory) counts as working memory,
+    (an aligner's GPU backend: bwa_gpu_memory) counts as working memory,
     and ``dense_sa_bytes`` (wgse-bwa's dense suffix-array file) as index."""
     bases = (
         reference_bases(ref)

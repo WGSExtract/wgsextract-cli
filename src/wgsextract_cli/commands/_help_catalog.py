@@ -430,6 +430,10 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract ref somalier --install",
         "wgsextract ref somalier --delete",
     ),
+    "ref ancestry": _h(
+        f"{_LIBRARY}: the HGDP+1KG ancestry reference (--delete removes it).",
+        "wgsextract ref ancestry --install",
+    ),
     "ref gnomad-sv": _h(
         f"{_LIBRARY}: gnomAD SV tables in gnomad-sv/ (--delete removes them).",
         "wgsextract ref gnomad-sv --install --source lr",
@@ -571,6 +575,11 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract qc relate me.cram",
         "wgsextract qc relate child.cram mother.cram father.cram --ped trio.ped",
         "wgsextract qc relate me.cram somalier/cousin.somalier --no-ancestry",
+    ),
+    "qc ancestry": _h(
+        "<stem>.ancestry.tsv: K=7 and K=12 proportions with confidence intervals.",
+        "wgsextract qc ancestry --input sample.cram",
+        "wgsextract qc ancestry --input 23andme_raw.txt",
     ),
     "qc contamination": _h(
         "<stem>.contamination.selfSM (FREEMIX) and <stem>.contamination.Ancestry.",

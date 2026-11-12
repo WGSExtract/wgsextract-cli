@@ -75,6 +75,15 @@
           "$ref": "#/$defs/fact",
           "properties": { "value": { "type": "number", "minimum": 0, "maximum": 1 } }
         },
+        "ancestry": {
+          "$ref": "#/$defs/fact",
+          "properties": {
+            "value": {
+              "type": "object",
+              "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        },
         "target_depths": {
           "$ref": "#/$defs/fact",
           "properties": {

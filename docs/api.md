@@ -708,6 +708,27 @@ is optional (`pixi install -e somalier`) and unavailable on Windows.
 | `ancestry` | `bool \| None` | `None` | `--ancestry` | Predict the 1000 Genomes superpopulation (default: when 'ref somalier --install' has installed the labelled sketches). |
 | `table_format` | `str` | `'tsv'` | `--format` | Table format: tsv, or parquet (needs pyarrow) (default: tsv) One of: `tsv`, `parquet` |
 
+### `api.qc.ancestry(QcAncestryParams)`
+
+CLI: `wgsextract qc ancestry`.
+
+Estimate ancestry proportions (output role `ancestry_table`).
+
+`QcAncestryParams`: Admixture-style proportions of 7 continental and 12 sub-continental
+HGDP+1KG reference components (not an ethnicity), with 95% intervals,
+from a BAM/CRAM, VCF or microarray file. Writes `<stem>.ancestry.tsv`
+and the `ancestry` fact; see docs/ancestry.md.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | Indexed BAM or CRAM, VCF, or microarray raw-data file. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `sample` | `str \| None` | `None` | `--sample` | The sample of a multi-sample VCF |
+| `build` | `str \| None` | `None` | `--build` | The input's build, when its header doesn't tell. One of: `hg19`, `hg38`, `t2t` |
+| `bootstrap` | `int` | `100` | `--bootstrap` | Bootstrap replicates for the 95% intervals; 0 skips them |
+
 ### `api.qc.fake_data(FakeDataParams)`
 
 CLI: `wgsextract qc fake-data`.
@@ -787,7 +808,7 @@ workspace.
 | `platform` | `str \| None` | `None` | `--platform` | Sequencing platform; selects platform-specific alignment tooling (default: detected from read groups or read names, else illumina). One of: `illumina`, `dnbseq`, `ultima`, `pacbio`, `hifi`, `clr`, `ont`, `nanopore` |
 | `aligner` | `str` | `'auto'` | `--aligner` | Aligner to use. Auto uses bwa-mem2 for short reads when the reference has its index (see `ref index`), else bwa; for long reads pbmm2 for PacBio when installed, otherwise minimap2. bwa-mem3 (wgse-bwa-mem3 on Apple Silicon, else bwa-mem3 from PATH or its Pixi environment) writes bwa's exact records faster, from bwa-mem2's index. One of: `auto`, `bwa`, `bwa-mem2`, `bwa-mem3`, `minimap2`, `pbmm2` |
 | `fast` | `bool` | `False` | `--fast` | Align short reads with bwa-mem3's --fast speed preset (implies --aligner bwa-mem3), about twice as fast. Its alignments differ from BWA's (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast). Without it bwa-mem3 writes BWA's exact records. |
-| `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's Apple Silicon aligner builds when installed on PATH, and on Linux Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
+| `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux) when installed on PATH, and on Linux Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
 | `dense_suffix_array` | `bool \| None` | `None` (config `dense_suffix_array`) | `--dense-suffix-array` | Opt in to wgse-bwa's dense suffix-array file (``ref dense-sa``): the same alignments, faster, with the file held in RAM. None uses config dense_suffix_array, else off. Used only when wgse-bwa aligns; otherwise (another aligner, no file, or no wgse-bwa that reads it) the run warns (dense_suffix_array_unused). |
 | `gpu` | `bool` | `False` | `--gpu` | Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU alignment to retain MM/ML methylation tags. |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
@@ -825,7 +846,7 @@ settings and tools are unchanged.
 | `r2` | `Path \| None` | `None` | `--r2` | Read 2 FASTQ, with r1. |
 | `aligner` | `str` | `'auto'` | `--aligner` | Aligner: auto, bwa, bwa-mem2, bwa-mem3, minimap2 or pbmm2, chosen as for align. One of: `auto`, `bwa`, `bwa-mem2`, `bwa-mem3`, `minimap2`, `pbmm2` |
 | `fast` | `bool` | `False` | `--fast` | Align short reads with bwa-mem3's --fast speed preset (implies --aligner bwa-mem3), about twice as fast. Its alignments differ from BWA's (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast). Without it bwa-mem3 writes BWA's exact records. |
-| `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's Apple Silicon aligner builds when installed on PATH, and on Linux Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
+| `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux) when installed on PATH, and on Linux Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
 | `dense_suffix_array` | `bool \| None` | `None` (config `dense_suffix_array`) | `--dense-suffix-array` | Opt in to wgse-bwa's dense suffix-array file (``ref dense-sa``): the same alignments, faster, with the file held in RAM. None uses config dense_suffix_array, else off. Used only when wgse-bwa aligns; otherwise (another aligner, no file, or no wgse-bwa that reads it) the run warns (dense_suffix_array_unused). |
 | `gpu` | `bool` | `False` | `--gpu` | Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU alignment to retain MM/ML methylation tags. |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
@@ -1724,6 +1745,20 @@ uses, about 85 MB, or delete them.
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `delete` | `bool` | `False` | `--delete` | Delete the installed somalier sites and 1000 Genomes sketches |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+
+### `api.ref.ancestry(RefAncestryParams)`
+
+CLI: `wgsextract ref ancestry`.
+
+Install the resources; output role `reference_resource`.
+
+`RefAncestryParams`: Install the hash-pinned ancestry reference of `qc ancestry`, or
+delete it.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed ancestry reference |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 
 ### `api.ref.gnomad_sv(RefGnomadSvParams)`

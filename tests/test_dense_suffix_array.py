@@ -19,12 +19,14 @@ from tests.test_alignment_commands import _samtools, _short_reads
 from tests.test_native_aligners import (  # noqa: F401 (fixtures)
     _align,
     _capabilities,
+    _env_bwa_mem3,
     _install_bwa_mem3,
     _mapper,
     _mem3_reads,
     _run,
     _run_realign,
     apple_silicon,
+    linux_x86_64,
 )
 from tests.test_realign import _old_alignment
 from wgsextract_cli.core import dense_suffix_array
@@ -82,11 +84,11 @@ def mem3_bin(request):
     return only_tools(request, "bwa", "bwa-mem2", "samtools")
 
 
-def _install(bindir, version="0.11.0"):
+def _install(bindir, version="0.11.0", **capabilities):
     from tests.fake_tools import python_tool
 
     source = _FAKE_WGSE_BWA.format(
-        capabilities=_capabilities("bwa", version=version),
+        capabilities=_capabilities("bwa", version=version, **capabilities),
         magic=MAGIC,
         real=str((bindir / "bwa").resolve()),
     )
@@ -123,13 +125,18 @@ def test_align_never_reads_a_present_file_unless_asked(tmp_path, bwa_bin):
     assert not result.warnings
 
 
-@pytest.mark.usefixtures("apple_silicon")
+@pytest.mark.parametrize("machine", ["apple_silicon", "linux_x86_64"])
 @pytest.mark.parametrize("ask", ["flag", "config"])
 def test_asked_wgse_bwa_reads_the_file_with_the_same_records(
-    tmp_path, bwa_bin, monkeypatch, ask
+    tmp_path, bwa_bin, monkeypatch, ask, machine, request
 ):
+    request.getfixturevalue(machine)
     reads = _short_reads(tmp_path)
-    _install(bwa_bin)
+    _install(
+        bwa_bin,
+        metal_available=machine == "apple_silicon",
+        cuda_available=machine == "linux_x86_64",
+    )
     _index(reads.ref)
     _side_file(reads.ref)
     upstream, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
@@ -143,6 +150,52 @@ def test_asked_wgse_bwa_reads_the_file_with_the_same_records(
     assert result.metrics["dense_suffix_array_interval"] == 16
     assert _samtools("view", bam) == _samtools("view", upstream)
     assert not result.warnings
+
+
+@pytest.mark.usefixtures("linux_x86_64")
+@pytest.mark.parametrize(
+    "setup", ["cuda", "cpu", "dense exceeds budget", "cpu fallback"]
+)
+def test_680_709_cuda_first_routing_keeps_dense_sa_only_for_wgse_bwa(
+    tmp_path, mem3_bin, fake_pixi, ram, setup
+):
+    reads = _mem3_reads(tmp_path)
+    _install(mem3_bin, metal_available=False, cuda_available=setup != "cpu")
+    if setup != "cpu fallback":
+        _env_bwa_mem3(fake_pixi, mem3_bin)
+    side = _side_file(reads.ref)
+    if setup in {"dense exceeds budget", "cpu fallback"}:
+        # A sparse file makes the requested index exceed the GPU budget
+        # without allocating its contents; bwa-mem3 doesn't load this file.
+        with side.open("r+b") as handle:
+            handle.truncate(8 * 1024**3)
+        ram(8 * 1024**3)
+
+    bam, result = _align(
+        reads,
+        tmp_path / "out",
+        "--aligner",
+        "bwa",
+        "--dense-suffix-array",
+        memory="256M",
+    )
+
+    if setup == "cuda":
+        # contract: auto retains CPU fallback; on is required to read the file.
+        assert _mapper(bam).startswith("wgse-bwa --backend auto --dense-sa on mem ")
+        assert result.metrics["native_aligner_backend"] == "cuda"
+        assert result.metrics["dense_suffix_array_interval"] == 16
+        assert not _dense_warnings(result)
+    elif setup == "cpu fallback":
+        assert _mapper(bam).startswith("wgse-bwa --dense-sa on mem ")
+        assert result.metrics["native_aligner_backend"] == "cpu"
+        assert result.metrics["dense_suffix_array_interval"] == 16
+        assert not _dense_warnings(result)
+    else:
+        assert _mapper(bam).startswith("bwa-mem3 mem --compat=bwa-mem ")
+        (warning,) = _dense_warnings(result)
+        assert warning.details == {"reason": "other_aligner", "aligner": "bwa-mem3"}
+        assert "dense_suffix_array_interval" not in result.metrics
 
 
 @pytest.mark.usefixtures("apple_silicon")

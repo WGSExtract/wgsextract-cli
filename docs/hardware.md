@@ -196,6 +196,38 @@ What `--gpu` refuses:
 - **PacBio CLR/subreads**: there is no GPU preset.
 - **`--aligner bwa-mem2`**: Parabricks runs its own BWA-MEM; use `auto` or `bwa`.
 
+## NVIDIA GPUs without Parabricks (`wgse-bwa --cuda`)
+
+On Linux x86-64, WGS Extract's `wgse-bwa` 0.10.0 or later (bwa 0.7.19) can run
+on an NVIDIA GPU, as `wgse-bwa --metal` does on a Mac
+([native/README.md](../native/README.md#linux-x86-64-and-nvidia-gpus-cuda)).
+It writes bwa's exact alignments and is **experimental**.
+
+- **When it runs:** with `native_aligners = "auto"` (the default), `align` and
+  `realign` run `wgse-bwa --backend auto` in place of bwa when it's on `PATH`.
+  It uses the GPU when its capabilities report `cuda_available`, and otherwise
+  aligns on the CPU. If the GPU fails during a run, it finishes on the CPU with
+  the same alignments.
+- **Order on Linux (bwa's records):** `wgse-bwa` on the GPU when it fits in
+  RAM; otherwise [bwa-mem3](#bwa-mem3-on-linux) `--compat=bwa-mem` when it's
+  installed and fits; otherwise `wgse-bwa` on the CPU; otherwise bwa. All write
+  the same records.
+- **What it needs:** only the NVIDIA driver; no Docker and no Parabricks
+  licence. It checks the GPU's free memory before uploading the index (about
+  4.7 GiB for hs38). It needs about 0.75 GiB more RAM than bwa, and the same
+  sort-memory reduction as on a Mac applies.
+- **Provenance:** the result manifest records `native_aligner_backend` as `cuda`.
+- **`--gpu`:** still means Parabricks, which also sorts and marks duplicates on
+  the GPU.
+
+On Linux ARM64 (for example Graviton, Ampere or Cobalt), the linux-aarch64
+`wgse-bwa` package has no GPU backend; its CPU backend runs bwa's steps with
+the same exact NEON replacements as on a Mac, and `align` and `realign` run it
+in place of bwa the same way (`native_aligner_backend` is `cpu`). On a 16-vCPU Cobalt 100 (Neoverse N2), wgse-bwa 0.10.0
+aligned the first 5M HG002 pairs on hs38 in 224 s against Bioconda bwa's 282 s
+(−20%, median of three interleaved rounds, 16 threads, `-K 10000000`), with
+the same alignments (**measured**, `native/bench/bench.sh`).
+
 ## Apple Silicon (Metal)
 
 WGS Extract publishes its own builds of four aligners for Apple Silicon Macs:
@@ -263,7 +295,7 @@ the check, or is older than the oldest supported release, raises the
 - **Provenance.** The `@PG` header names the binary that ran and its version
   (for example `VN:0.7.19-r1273-wgse-0.7.1`). The result manifest lists it under
   `tools` and records the `native_aligner`, `native_aligner_version` and
-  `native_aligner_backend` (`metal` or `cpu`) metrics; bwa-mem3 runs also
+  `native_aligner_backend` (`metal`, `cuda` on Linux, or `cpu`) metrics; bwa-mem3 runs also
   record `bwa_mem3_mode` (`compat=bwa-mem`, `compat=bwa-mem2` or `fast`).
 - **Dense suffix-array file (optional).** `wgse-bwa` 0.11.0 and later can
   read a side file beside the reference's BWA index that holds the

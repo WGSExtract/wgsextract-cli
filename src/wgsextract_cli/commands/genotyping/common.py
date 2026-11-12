@@ -32,7 +32,7 @@ from wgsextract_cli.core.variant_files import (
 
 if TYPE_CHECKING:
     from wgsextract_cli.api.genotyping import _TypingParams
-    from wgsextract_cli.api.qc import QcContaminationParams
+    from wgsextract_cli.api.qc import QcAncestryParams, QcContaminationParams
 
 _ALT_CONTIG = re.compile(r"^(?:chr)?(?P<chrom>[0-9XY]+)_\w+_alt$")
 
@@ -84,7 +84,7 @@ class Alignment:
 
 
 def open_alignment(
-    params: _TypingParams | QcContaminationParams,
+    params: _TypingParams | QcContaminationParams | QcAncestryParams,
     *,
     purpose: str = "typing",
     any_build: bool = False,

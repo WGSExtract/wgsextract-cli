@@ -19,6 +19,13 @@ SIGNAL_EXPLANATIONS = {
     "SIGTERM": "normal termination request from kill or a process manager",
 }
 
+_stop_signal: int | None = None
+
+
+def received_stop_signal() -> int | None:
+    """The CLI's stop request, retained if cleanup replaces the handler's exit."""
+    return _stop_signal
+
 
 def describe_signal(signum: int) -> str:
     """Return a concise user-facing explanation for a signal number."""
@@ -88,7 +95,12 @@ def configure_logging(*, debug: bool = False, quiet: bool = False) -> None:
 
 
 def install_signal_handlers() -> None:
+    global _stop_signal
+    _stop_signal = None
+
     def signal_handler(signum: int, frame: FrameType | None) -> None:
+        global _stop_signal
+        _stop_signal = signum
         logging.info(f"Received {describe_signal(signum)}, cleaning up...")
         cleanup_processes()
         sys.exit(128 + signum)
