@@ -84,6 +84,8 @@ jobs:
         env:
           CONDA_OVERRIDE_CUDA: "12.9"
         run: |
+          # The single-quoted script runs in the package's environment.
+          # shellcheck disable=SC2016
           for package in out/conda/linux-64/wgse-deepvariant-*.conda; do
             build=$(basename "$package" .conda)
             pixi exec -c "file://$PWD/out/conda" -c conda-forge -c bioconda \
@@ -134,7 +136,7 @@ jobs:
         run: |
           case "$TAG" in linux-deepvariant-*) ;; *) echo "Tag must start with linux-deepvariant-" >&2; exit 1 ;; esac
           mkdir -p assets
-          find linux-deepvariant -name '*.conda' -o -name '*.tar.gz' | xargs -I{} cp {} assets/
+          find linux-deepvariant \( -name '*.conda' -o -name '*.tar.gz' \) -exec cp {} assets/ +
           (cd assets && sha256sum ./* | sed "s| ./| |" > SHA256SUMS)
           {
             echo "wgse-deepvariant: DeepVariant 1.10.0 for Linux x86-64 as conda packages (CUDA 12.9 or CPU-only call_variants), and its WGS model weights converted from google/deepvariant:1.10.0."
