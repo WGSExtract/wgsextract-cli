@@ -137,10 +137,11 @@ Pick the line that matches your file and run its commands in order. Each command
 - `panel`: Gene lists to BED targets for Nanopore adaptive sampling.
 - `pet-align`: Align and call variants for a cat or dog genome.
 - `sign`: Checksum and sign output files; verify them.
+- `score`: Research-only polygenic scores from local genotypes.
 - `benchmark`: Time the main workflows on test data.
 - `serve`: Local HTTP/JSON and MCP server for apps and AI agents.
 
-Advanced subcommands of core groups: `extract bam-subset`, `vcf alphamissense`, `vcf cadd`, `vcf chain-annotate`, `vcf clair3`, `vcf cnv`, `vcf deepvariant`, `vcf freebayes`, `vcf gatk`, `vcf gerp`, `vcf pharmcat`, `vcf phase`, `vcf phylop`, `vcf spliceai`, `vcf sv`, `vcf to-fasta`, `vcf trio`.
+Advanced subcommands of core groups: `extract bam-subset`, `vcf alphamissense`, `vcf cadd`, `vcf chain-annotate`, `vcf clair3`, `vcf cnv`, `vcf deepvariant`, `vcf freebayes`, `vcf gatk`, `vcf gerp`, `vcf impute`, `vcf pharmcat`, `vcf phase`, `vcf phylop`, `vcf spliceai`, `vcf sv`, `vcf to-fasta`, `vcf trio`.
 :::
 
 :::

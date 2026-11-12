@@ -117,6 +117,39 @@ class RefSomalierParams(_InLibrary, Params):
 
 
 @dataclass(frozen=True, kw_only=True)
+class RefImputationParams(_InLibrary, Params):
+    """Install SHA-256-pinned GRCh38 1000 Genomes 30x panel chromosomes
+    and prepare GLIMPSE2 binary references, or delete installed chromosomes."""
+
+    COMMAND = "ref imputation"
+
+    delete: bool = _delete_param("imputation panel chromosomes")
+    chromosomes: str | None = param(
+        None,
+        help="Chromosomes: chr20, chr1-22 or all (autosomes only).",
+    )
+    ref: Path | None = ref_param()
+    threads: int | None = threads_param()
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        from wgsextract_cli.core import imputation_panel
+
+        from ._params import with_config_defaults
+
+        filled = with_config_defaults(self)
+        if filled.ref is not None:
+            yield "ref", filled.ref.expanduser()
+        library = (
+            _library_named(filled.ref) if filled.ref is not None else filled.library()
+        )
+        yield "ref", library
+        for path in imputation_panel.guarded_paths(
+            os.fspath(library), self.chromosomes
+        ):
+            yield "ref", path
+
+
+@dataclass(frozen=True, kw_only=True)
 class RefAncestryParams(_InLibrary, Params):
     """Install the hash-pinned ancestry reference of ``qc ancestry``, or
     delete it."""
@@ -561,6 +594,21 @@ def somalier(
     from wgsextract_cli.commands.ref.library_commands import run_somalier
 
     return execute(params, run_somalier, progress=progress, cancel=cancel, check=check)
+
+
+def imputation(
+    params: RefImputationParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Install or delete panel chromosomes; output role ``reference_resource``."""
+    from wgsextract_cli.commands.ref.library_commands import run_imputation
+
+    return execute(
+        params, run_imputation, progress=progress, cancel=cancel, check=check
+    )
 
 
 def ancestry(

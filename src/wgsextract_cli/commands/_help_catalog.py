@@ -34,6 +34,12 @@ _SCORED = _ANNOTATED + "; with --min-score N, also {name}_gt_N.vcf.gz."
 _LIBRARY = "Into the reference library (reflib)"
 
 COMMAND_HELP: dict[str, CommandHelp] = {
+    "score pgs": _h(
+        "<input stem>_<PGS ID>_pgs.json and .tsv: raw score, variant match rate, "
+        "licence and citation. No calibrated percentile yet.",
+        "wgsextract score pgs --input sample.vcf.gz --build GRCh38 --trait height",
+        "wgsextract score pgs --input sample.vcf.gz --build GRCh38 --pgs-id PGS000018",
+    ),
     "help": _h(
         "Prints to stdout; writes no files.",
         "wgsextract help --all",
@@ -216,6 +222,12 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     "vcf clair3": _h(
         "clair3.vcf.gz (+ .tbi).",
         "wgsextract vcf clair3 --input ont.bam",
+    ),
+    "vcf impute": _h(
+        "imputed.vcf.gz (+ .tbi): every imputed record marked INFO/IMP, "
+        "low-confidence ones FILTERed ImpLowConf.",
+        "wgsextract vcf impute --input lowpass.bam --chromosomes chr20",
+        "wgsextract vcf impute --vcf-input chip.vcf.gz",
     ),
     "vcf phase": _h(
         "phased.vcf.gz (+ .tbi) and phased.blocks.tsv; with --haplotag, "
@@ -437,6 +449,12 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     "ref gnomad-sv": _h(
         f"{_LIBRARY}: gnomAD SV tables in gnomad-sv/ (--delete removes them).",
         "wgsextract ref gnomad-sv --install --source lr",
+    ),
+    "ref imputation": _h(
+        f"{_LIBRARY}: the imputation panel's chromosomes, prepared for GLIMPSE2 "
+        "(--delete removes them).",
+        "wgsextract ref imputation --install --chromosomes chr20",
+        "wgsextract ref imputation --delete --chromosomes all",
     ),
     "ref ybrowse": _h(
         f"{_LIBRARY}: the yBrowse GRCh38 SNP sites (--delete removes them).",

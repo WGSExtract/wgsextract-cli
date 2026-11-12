@@ -1,24 +1,32 @@
-# wgse-deepvariant: a self-contained Apple Silicon build of DeepVariant 1.10.0.
+# wgse-deepvariant: DeepVariant 1.10.0 without Docker, for Apple Silicon and Linux.
 #
 # Builds the native macOS port of DeepVariant (IPNP-BIPN/deepvariant,
 # feature/apple-silicon-native-v2) with the patches in patches/, which make
-# its WGS make_examples match google/deepvariant:1.10.0. Every dependency is
-# built here as a static library, so the binary links only macOS system
-# libraries and frameworks. See README.md.
+# its WGS make_examples match google/deepvariant:1.10.0 and (0008) build it on
+# Linux with call_variants on ONNX Runtime (CUDA or CPU). On macOS every
+# dependency is built here as a static library, so the binary links only
+# macOS system libraries and frameworks; on Linux they come from
+# CMAKE_PREFIX_PATH, a conda environment (packaging/wgse-deepvariant). See
+# README.md.
 cmake_minimum_required(VERSION 3.27)
 set(CMAKE_OSX_DEPLOYMENT_TARGET 14.0 CACHE STRING "Minimum macOS version")
-project(wgse_deepvariant VERSION 0.1.1 LANGUAGES C CXX)
+project(wgse_deepvariant VERSION 0.2.0 LANGUAGES C CXX)
 
-if(NOT APPLE OR NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
-    message(FATAL_ERROR "wgse-deepvariant requires Apple Silicon macOS")
+if(APPLE AND NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+    message(FATAL_ERROR "wgse-deepvariant requires Apple Silicon on macOS")
+elseif(NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(FATAL_ERROR "wgse-deepvariant builds on Apple Silicon macOS and Linux")
 endif()
 include(ExternalProject)
 cmake_host_system_information(RESULT cores QUERY NUMBER_OF_LOGICAL_CORES)
+# Parallel compile jobs for the port (conda builds pass CPU_COUNT).
+set(WGSE_BUILD_JOBS ${cores} CACHE STRING "Parallel jobs for the port's build")
 
 # Bump when the wgse-deepvariant package changes; versioned separately from DeepVariant.
-set(WGSE_DEEPVARIANT_VERSION 0.1.1)
+set(WGSE_DEEPVARIANT_VERSION 0.2.0)
 set(PORT_COMMIT 0b7b9c57ad84c55918fc0429dacf16f943808c0b)
 set(deps "${CMAKE_BINARY_DIR}/deps")
+if(APPLE)
 set(common_args
     -DCMAKE_BUILD_TYPE=Release
     -DCMAKE_INSTALL_PREFIX=${deps}
@@ -93,6 +101,20 @@ ExternalProject_Add(boost
     BUILD_COMMAND ""
     INSTALL_COMMAND ${CMAKE_COMMAND} -E copy_directory <SOURCE_DIR>/boost ${deps}/include/boost)
 
+set(port_args ${common_args} -DWGSE_DEPS_PREFIX=${deps})
+set(port_depends abseil protobuf re2 htslib boost)
+else()
+# Linux: the conda environment's shared libraries (ONNX Runtime links the
+# same abseil and protobuf).
+string(REPLACE ";" "|" prefix_path "${CMAKE_PREFIX_PATH}")
+set(port_args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=17 -DBUILD_TESTING=OFF
+    "-DCMAKE_PREFIX_PATH=${prefix_path}"
+    -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+    "-DCMAKE_C_FLAGS=${CMAKE_C_FLAGS}" "-DCMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}"
+    "-DCMAKE_EXE_LINKER_FLAGS=${CMAKE_EXE_LINKER_FLAGS}")
+set(port_depends "")
+endif()
+
 file(GLOB port_patches CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/patches/*.patch")
 list(SORT port_patches)
 set(apply_patches "")
@@ -116,12 +138,13 @@ ExternalProject_Add(port
     SOURCE_DIR ${CMAKE_BINARY_DIR}/port-src-${patch_hash}
     BINARY_DIR ${CMAKE_BINARY_DIR}/port-build-${patch_hash}
     PATCH_COMMAND ${apply_patches}
-    CMAKE_ARGS ${common_args} -DWGSE_DEPS_PREFIX=${deps}
+    LIST_SEPARATOR |
+    CMAKE_ARGS ${port_args}
         -DDV_VERSION=${WGSE_DEEPVARIANT_VERSION} -DDV_SOURCE_ID=${PORT_COMMIT}+wgse
         -DFETCHCONTENT_BASE_DIR=${CMAKE_BINARY_DIR}/port-deps
-    BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target deepvariant --parallel ${cores}
+    BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target deepvariant --parallel ${WGSE_BUILD_JOBS}
     INSTALL_COMMAND ""
-    DEPENDS abseil protobuf re2 htslib boost)
+    DEPENDS ${port_depends})
 ExternalProject_Get_Property(port SOURCE_DIR BINARY_DIR)
 install(PROGRAMS "${BINARY_DIR}/bin/deepvariant" DESTINATION bin RENAME wgse-deepvariant)
 
@@ -134,8 +157,10 @@ install(FILES "${SOURCE_DIR}/LICENSE" DESTINATION ${licenses} RENAME DeepVariant
 # libssw (MIT; its licence is in its README) and sse2neon, which the port builds in.
 install(FILES "${CMAKE_BINARY_DIR}/port-deps/libssw-src/README.md" DESTINATION ${licenses}
     RENAME libssw-LICENSE)
+if(APPLE)
 install(FILES "${SOURCE_DIR}/release/vendored/sse2neon.h" DESTINATION ${licenses}
     RENAME sse2neon-LICENSE)
+# The static dependencies' licences (on Linux, their conda packages carry them).
 foreach(dep_file IN ITEMS abseil:LICENSE protobuf:LICENSE re2:LICENSE htslib:LICENSE
         htslib:htscodecs/LICENSE.md libdeflate:COPYING xz:COPYING xz:COPYING.0BSD
         boost:LICENSE_1_0.txt)
@@ -146,3 +171,4 @@ foreach(dep_file IN ITEMS abseil:LICENSE protobuf:LICENSE re2:LICENSE htslib:LIC
     string(REGEX REPLACE "^htscodecs/" "htscodecs-" name "${file}")
     install(FILES "${SOURCE_DIR}/${file}" DESTINATION ${licenses} RENAME ${dep}-${name})
 endforeach()
+endif()

@@ -116,7 +116,10 @@ against bwa's and bwa-mem2's records on GitHub's x86-64 and ARM64 runners.
 
 Bioconda's x86-64 bwa-mem3 0.16.0 crashes at startup (in its bundled
 allocator) on glibc 2.44, as on current Arch Linux; it ran on Ubuntu 24.04's
-2.39. The CLI's version check catches that, warns and aligns with bwa.
+glibc 2.39 (#727). The CLI's version check catches that: standing in, it warns
+(`native_aligner_unusable`, naming the crash and the computer's glibc) and bwa
+or bwa-mem2 aligns; `--aligner bwa-mem3` and `--fast` stop before aligning
+with an error that says so.
 
 ### Threads and memory
 
@@ -208,10 +211,16 @@ It writes bwa's exact alignments and is **experimental**.
   It uses the GPU when its capabilities report `cuda_available`, and otherwise
   aligns on the CPU. If the GPU fails during a run, it finishes on the CPU with
   the same alignments.
-- **Order on Linux (bwa's records):** `wgse-bwa` on the GPU when it fits in
-  RAM; otherwise [bwa-mem3](#bwa-mem3-on-linux) `--compat=bwa-mem` when it's
-  installed and fits; otherwise `wgse-bwa` on the CPU; otherwise bwa. All write
-  the same records.
+- **Order on Linux (bwa's records):** [bwa-mem3](#bwa-mem3-on-linux)
+  `--compat=bwa-mem` when it's installed, runs and fits; otherwise `wgse-bwa`
+  on the GPU when it fits in RAM; otherwise `wgse-bwa` on the CPU; otherwise
+  bwa. All write the same records. bwa-mem3 goes first even with a GPU: on an
+  RTX 3090 with a Ryzen 5 5600X (5M HG002 pairs on hs38, 8 threads), bwa-mem3
+  0.16.0 `--compat=bwa-mem` on the CPU took 97.7 s (761 s of CPU time) and
+  `wgse-bwa --cuda` 131.4 s (1006 s), against upstream bwa's 472.5 s, all with
+  bwa's records (**measured**, #674/#736; bwa-mem3 as `wgse-bwa-mem3`, the same
+  engine built without Bioconda's malloc override, which crashes on that
+  host's glibc 2.44).
 - **What it needs:** only the NVIDIA driver; no Docker and no Parabricks
   licence. It checks the GPU's free memory before uploading the index (about
   4.7 GiB for hs38). It needs about 0.75 GiB more RAM than bwa, and the same
@@ -227,6 +236,39 @@ in place of bwa the same way (`native_aligner_backend` is `cpu`). On a 16-vCPU C
 aligned the first 5M HG002 pairs on hs38 in 224 s against Bioconda bwa's 282 s
 (−20%, median of three interleaved rounds, 16 threads, `-K 10000000`), with
 the same alignments (**measured**, `native/bench/bench.sh`).
+
+## DeepVariant on NVIDIA GPUs without Parabricks (`wgse-deepvariant`)
+
+On Linux x86-64, WGS Extract's `wgse-deepvariant` 0.2.0 or later (DeepVariant
+1.10.0 without Docker; [native/deepvariant/README.md](../native/deepvariant/README.md#linux-x86-64-and-nvidia-gpus-cuda))
+runs call_variants on an NVIDIA GPU through CUDA, or on the CPU.
+
+- **When it runs:** with `deepvariant_native = "auto"` (the default),
+  `wgse-deepvariant` on `PATH` and `deepvariant_weights` set, `vcf deepvariant`
+  calls the WGS model with it instead of Google's image: on the CPU, or with
+  `--gpu` on the GPU instead of Parabricks. Until `deepvariant_weights` is set,
+  an installed build is ignored. Other models, `--checkpoint` and
+  Ultima reads keep Google's image and Parabricks; `deepvariant_native = "off"`
+  keeps them for everything.
+- **Same calls:** the same sites, genotypes and filters as Google's image on
+  HG002 chr20, and the same GIAB v4.2.1 counts; QUAL differs by at most 0.5
+  and GQ by 1 at a few thousand of 210,390 sites, as on a Mac.
+- **What it needs:** the NVIDIA driver; no Docker and no Parabricks licence.
+  Before its first stage, `--gpu` checks that the build has CUDA (the cuda129
+  package) and that `nvidia-smi` sees a GPU; before call_variants, that GPU 0
+  has 3 GiB free
+  (`--no-gpu-memory-check` overrides it): it used 2.3 GiB at its default batch
+  of 256 on an RTX 3090. `--gpu` never falls back to the CPU: a GPU that fails
+  stops the run, which resumes from its finished stages.
+- **How much faster (measured, HG002 chr20, 81,898 examples):** call_variants
+  took 19.5 s on an RTX 3090 (three interleaved rounds, GPU to itself),
+  against 79 s for Google's own TensorFlow GPU image on the same GPU, 563 s
+  for wgse-deepvariant on 4 CPU threads and 896 s for Google's CPU image (both
+  on a shared host). Its make_examples is faster than Google's too (240 s
+  against 597 s).
+  Scaled to a 30x genome (about 50 times chr20's examples), call_variants takes
+  about a quarter of an hour on the GPU (**projected**), where Google's CPU
+  image takes 5–6 hours on 12 threads.
 
 ## Apple Silicon (Metal)
 
@@ -393,7 +435,10 @@ give no meaningful benefit.
   turns hours into tens of minutes. A rented cloud GPU works too.
 - **Variant calling:** `vcf deepvariant --gpu` and `vcf gatk --gpu` run
   Parabricks' DeepVariant and HaplotypeCaller, about a minute for chr20 on the
-  RTX 3090 (**measured**). CPU DeepVariant is much slower. Apple Silicon has
+  RTX 3090 (**measured**). CPU DeepVariant is much slower. On Linux x86-64,
+  [wgse-deepvariant](#deepvariant-on-nvidia-gpus-without-parabricks-wgse-deepvariant)
+  runs DeepVariant's WGS model on the GPU without Docker or Parabricks:
+  call_variants for chr20 in about 20 seconds (**measured**). Apple Silicon has
   [wgse-deepvariant](../native/deepvariant/README.md), a native build with
   call_variants on the GPU: chr20 in about 5 minutes on an M1 Pro, with the
   same calls as Google's image (**measured**). Linux ARM64 has a

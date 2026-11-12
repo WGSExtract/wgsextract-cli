@@ -1020,14 +1020,74 @@ Unlike Apple's unified memory, a discrete GPU has its own:
   is finished on the CPU with the same output. `--cuda` then exits 1, and
   `--backend auto` exits 0.
 
-On an RTX 3090 with a Ryzen 5 5600X, at 2 threads (while another job held the
-other 10 cores), with output identical to upstream BWA (the `expected.tsv`
-hashes):
+On an RTX 3090 with a Ryzen 5 5600X, aligning the full-5m tier (5M HG002 pairs
+to hs38) at 8 threads (`bench.sh` with `bwa:cpu,bwa:cuda`, two interleaved
+rounds, medians), with records identical to upstream BWA (the `expected.tsv`
+hash):
 
-| Tier | CPU | `--cuda` |
-| --- | --- | --- |
-| small (chr20) | 46.7 s | 28.3 s |
-| full (hs38, 200k pairs) | 105.2 s, 5.3 GiB | 25.0 s, 6.1 GiB |
+| | Wall | CPU time | Peak RSS |
+| --- | ---: | ---: | ---: |
+| upstream BWA 0.7.19 (Bioconda) | 472.5 s | 3711 s | 5.2 GiB |
+| `wgse-bwa` (CPU) | 418.9 s (−11%) | 3224 s | 5.2 GiB |
+| `wgse-bwa --cuda` | 131.4 s (−72%) | 1006 s | 6.3 GiB |
+
+`--cuda` used at most 5.2 GiB of GPU memory. On the CPU, `perf` puts a quarter
+of the time in SMEM seeding, a quarter in seed extension, a fifth in mate rescue
+and an eighth in suffix-array locate. With `--cuda` the CPU does the chaining,
+the sorts and reference fetches that remain, and spends a quarter as much time.
+
+On the same machine and tier, bwa-mem3 0.16.0 `--compat=bwa-mem` on the CPU
+(as `wgse-bwa-mem3`, below) took 97.7 s and 761 s of CPU time, with the same records
+as BWA: faster than `wgse-bwa --cuda`. So `align` and `realign` on Linux run
+bwa-mem3 in bwa's place first when it's installed and fits, and `wgse-bwa`'s
+GPU backend next (#736; [hardware guide](../docs/hardware.md#nvidia-gpus-without-parabricks-wgse-bwa---cuda)).
+
+### wgse-bwa-mem3 on Linux x86-64
+
+`wgse-bwa-mem3` also builds on Linux x86-64, as upstream's default build does:
+AVX2 for most code, and the SIMD kernels for each tier from SSE4.1 to AVX-512BW,
+picked at run time. It doesn't replace `malloc` with mimalloc, as Bioconda's
+build does (#727). It isn't packaged yet: `packaging/wgse-bwa` leaves it out
+(`-DWGSE_BWA_MEM3=OFF`).
+
+With `-DWGSE_CUDA=ON`, `--cuda` (`--backend cuda`, experimental) runs three
+stages on an NVIDIA GPU:
+
+- **SMEM collection:** `bwa-mem2/seeding.cuh`, ported from `seeding.metal`.
+  `seeding_host.cpp` schedules it for both backends. The occurrence table,
+  about 6 GiB for hs38, is uploaded once.
+- **8-bit seed extension:** `extension.cuh`, ported from `extension.metal`. It is
+  hooked into upstream's SSE, AVX2 and AVX-512 `getScores8`, as well as NEON's.
+- **8-bit mate rescue (CUDA only):** the pairs of `mem_sam_pe_batch`'s 8-bit
+  kswv run `wgse-bwa`'s `ksw_align2` kernel (`bwa/rescue.cuh`), both passes at
+  once (`rescue_host.cpp`, `cuda_rescue.cu`). kswv scores the rest, such as
+  16-bit windows and pairs whose query is over 256 bases. Each worker thread
+  has its own CUDA stream. `--gpu-rescue off` leaves rescue on the CPU.
+
+`--cuda` runs one compute thread per `-t` thread by default. More threads than
+cores were slower on x86-64.
+
+The full-5m tier on the same machine (8 threads, two interleaved rounds, means;
+the machine was busier than for the `wgse-bwa` table above):
+
+| | Wall | CPU time | Peak RSS | Records |
+| --- | ---: | ---: | ---: | --- |
+| `wgse-bwa-mem3` | 105.9 s | 817 s | 10.5 GiB | bwa-mem3's |
+| `wgse-bwa-mem3 --cuda --gpu-rescue off` | 94.8 s (−10%) | 579 s | 10.9 GiB | bwa-mem3's |
+| `wgse-bwa-mem3 --cuda` | 88.1 s (−17%) | 418 s (−49%) | 11.0 GiB | bwa-mem3's |
+| `wgse-bwa-mem3 mem --compat=bwa-mem` | 107.5 s | 828 s | 10.5 GiB | BWA's |
+| `wgse-bwa-mem3 --cuda mem --compat=bwa-mem` | 87.3 s (−19%) | 425 s (−49%) | 11.0 GiB | BWA's |
+
+The records match `expected.tsv`: bwa-mem3's own, and with `--compat=bwa-mem`,
+BWA's. `--cuda` used at most 6.5 GiB of GPU memory. In a quieter session
+`wgse-bwa-mem3` took 99.1 s and `--cuda` 84.5 s, and `wgse-bwa --cuda` (BWA's
+records) took 130.5 s in another.
+
+On x86-64, `perf` puts a fifth of the CPU backend's time in mate rescue
+(`kswv`), more than a quarter in SMEM collection, a tenth in suffix-array
+lookups and an eighth in the 8-bit extension. Suffix-array lookups stay on the
+CPU: the sampled suffix array would add about 4 GiB of GPU memory to the
+occurrence table's 6 GiB.
 
 ## Building
 
@@ -1042,13 +1102,16 @@ cmake --install out/native --prefix out/native-prefix
 ```
 
 On Linux the same commands build `wgse-bwa` with a C/C++ compiler, CMake and
-zlib. `-DWGSE_CUDA=ON` adds the CUDA backend, which needs the CUDA toolkit
-(`nvcc` and the static runtime, for example conda-forge's `cuda-nvcc` and
+zlib, and on x86-64 `wgse-bwa-mem3` too (it also needs `make` for htslib;
+`-DWGSE_BWA_MEM3=OFF` leaves it out). `-DWGSE_CUDA=ON` adds the CUDA backends,
+which need the CUDA toolkit (`nvcc` and the static runtime, for example conda-forge's `cuda-nvcc` and
 `cuda-cudart-static`). It builds for Turing to Hopper GPUs, plus PTX for newer
 ones; `-DCMAKE_CUDA_ARCHITECTURES` overrides this. A GPU the build has no
 kernels for (such as Pascal or Volta, by default) is never selected, and
 `capabilities --json` reports it unavailable and unsupported. The GPU parity tests run with
-whichever GPU backend the build and machine have.
+whichever GPU backend the build and machine have. CI's runners have no NVIDIA GPU:
+`.github/workflows/linux_aligners.yml` compiles the CUDA backends (`cuda-build`)
+but can't run their tests.
 
 `-DBUILD_TESTING=OFF` builds the release executables without tests or the
 hidden GPU tuning flags. The public `--dense-sa on|off` switch remains
@@ -1080,7 +1143,9 @@ gh run watch "$(gh run list --workflow aligner_bench.yml --limit 1 --json databa
   5M pairs. The workflow downloads them from the `aligner-bench-data-1`
   release and checks their sha256 (`bench/data.tsv`).
 - `configs`: `TOOL:BACKEND[:tN][:KN][:probe][:+ARG...]`, for example
-  `bwa:metal:t2` or `mem2:metal:probe`; by default each tier's configs in
+  `bwa:metal:t2` or `mem2:metal:probe` (BACKEND is `cpu`, `metal`, `cuda` or
+  `auto`; `cuda` needs a Linux machine with an NVIDIA GPU, which hosted runners
+  lack); by default each tier's configs in
   `bench/tiers.tsv` (only `wgse-bwa --metal` on `full`). A failure of a `probe`
   config, such as an out-of-memory kill, is reported but does not fail the job.
   `+ARG` passes an extra argument to the aligner's `mem` command; such runs

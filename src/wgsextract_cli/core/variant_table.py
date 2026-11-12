@@ -24,6 +24,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from urllib.parse import unquote
 
+from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.table_writer import Column
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
 
@@ -109,6 +110,17 @@ COLUMNS: tuple[Column, ...] = (
         "sv_freq",
         TEXT,
         "SV frequency class: common, low, rare or novel (SV_FREQ, `vcf sv-freq`).",
+    ),
+    Column(
+        "imputed",
+        INTEGER,
+        "1 when the genotype was imputed from a reference panel (INFO/IMP, "
+        "`vcf impute`), not read from the sample; else 0.",
+    ),
+    Column(
+        "genotype_probability",
+        REAL,
+        "Probability of the sample's genotype (largest FORMAT/GP), for imputed calls.",
     ),
 )
 COLUMN_NAMES = tuple(column.name for column in COLUMNS)
@@ -404,6 +416,13 @@ def _pharmgkb(raw: str | None) -> tuple[str | None, str | None, str | None]:
     return gene, (ranked[0] if ranked else None), "; ".join(sorted(set(drugs))) or None
 
 
+def _max_probability(raw: str | None) -> float | None:
+    values = [
+        v for part in (raw or "").split(",") if (v := _to_float(part)) is not None
+    ]
+    return max(values) if values and all(0 <= v <= 1 for v in values) else None
+
+
 def _info(raw: str) -> dict[str, str]:
     if raw in ("", "."):
         return {}
@@ -442,7 +461,7 @@ def variant_rows(
         if all(a in _NON_VARIANT_ALTS for a in alts):
             continue
         info = _info(info_text)
-        gt = sample_depth = gq = None
+        gt = sample_depth = gq = gp = None
         sample_column = None if sample_index is None else 9 + sample_index
         has_sample = sample_column is not None and len(fields) > sample_column
         if sample_column is not None and has_sample:
@@ -460,6 +479,7 @@ def variant_rows(
                 if all(v is not None for v in ad):
                     sample_depth = sum(v for v in ad if v is not None)
             gq = _to_int(sample.get("GQ"))
+            gp = _max_probability(sample.get("GP"))
         depth = sample_depth if sample_depth is not None else _to_int(info.get("DP"))
         pos = int(pos_text)
         qual = _to_float(qual_text)
@@ -551,4 +571,6 @@ def variant_rows(
                 phenotype,
                 _to_float(info.get("SV_AF")),
                 _value(info.get("SV_FREQ")),
+                int(IMPUTED_TAG in info),
+                gp,
             )

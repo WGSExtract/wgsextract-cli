@@ -17,6 +17,7 @@ from wgsextract_cli.api.vcf import (
     VcfGatkParams,
     VcfGerpParams,
     VcfGnomadParams,
+    VcfImputeParams,
     VcfIndelParams,
     VcfPharmcatParams,
     VcfPharmgkbParams,
@@ -58,6 +59,7 @@ from .filter_trio import (
     cmd_filter,
     cmd_trio,
 )
+from .imputation import cmd_impute
 from .pharmcat import cmd_pharmcat
 from .phasing import cmd_phase
 from .population import (
@@ -175,6 +177,10 @@ def register(
     _add_vcf_command(
         vcf_subs, base_parser, "phase", CLI_HELP["cmd_phase"],
         VcfPhaseParams, cmd_phase,
+    )  # fmt: skip
+    _add_vcf_command(
+        vcf_subs, base_parser, "impute", CLI_HELP["cmd_impute"],
+        VcfImputeParams, cmd_impute,
     )  # fmt: skip
 
     for name, help_text, cls, func in (

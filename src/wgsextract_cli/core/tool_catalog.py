@@ -39,8 +39,13 @@ OPTIONAL_TOOLS = [
     "modkit",
     "verifybamid2",
     "somalier",
+    "plink2",
     "whatshap",
     "longphase",
+    "GLIMPSE2_phase",
+    "GLIMPSE2_ligate",
+    "GLIMPSE2_chunk",
+    "GLIMPSE2_split_reference",
     "curl",
     "java",
     "haplogrep3",
@@ -58,15 +63,18 @@ OPTIONAL_TOOLS = [
 
 # Optional tools users install themselves (no Pixi environment): how to.
 INSTALL_HINTS = {
+    "plink2": "Download PLINK 2 for your system from "
+    "https://www.cog-genomics.org/plink/2.0/ and put plink2 on PATH. "
+    "It is optional, used only by score pgs --plink2-check.",
     "dorado": "Dorado is ONT's basecaller and isn't installed with WGS Extract: "
     "download the release for your system from "
     "https://github.com/nanoporetech/dorado#installation, unpack it and put its "
     "bin folder on PATH, or set dorado_executable in config.toml (or pass "
     "basecall --dorado-path).",
-    "wgse-deepvariant": "wgse-deepvariant is WGS Extract's Apple Silicon build of "
-    "DeepVariant and isn't installed with WGS Extract: download a "
-    "macos-deepvariant release with its weights, put its bin folder on PATH and "
-    "set deepvariant_weights in config.toml (native/deepvariant/README.md).",
+    "wgse-deepvariant": "wgse-deepvariant (DeepVariant without Docker) isn't "
+    "installed with WGS Extract: install a macos-deepvariant or "
+    "linux-deepvariant release with its weights, put it on PATH and set "
+    "deepvariant_weights in config.toml (native/deepvariant/README.md).",
 }
 
 
@@ -93,6 +101,10 @@ PLATFORM_ONLY_TOOLS = {
     "somalier": ("linux", "darwin"),
     "whatshap": ("linux", "darwin"),
     "longphase": ("linux", "darwin"),
+    "GLIMPSE2_phase": ("linux", "darwin"),
+    "GLIMPSE2_ligate": ("linux", "darwin"),
+    "GLIMPSE2_chunk": ("linux", "darwin"),
+    "GLIMPSE2_split_reference": ("linux", "darwin"),
 }
 
 
@@ -110,6 +122,15 @@ def clair3_host_supported() -> bool:
     return (system, machine) in CLAIR3_HOSTS
 
 
+def imputation_host_supported() -> bool:
+    """Hosts with the opt-in GLIMPSE2/Beagle environment."""
+    system = "linux" if sys.platform.startswith("linux") else sys.platform
+    return system in {"linux", "darwin"} and platform.machine().lower() in {
+        "x86_64",
+        "amd64",
+    }
+
+
 def _x86_deepvariant_host() -> bool:
     """Whether Google's run_deepvariant (x86-64) can be used: ARM64 hosts
     run the native image instead (`vcf deepvariant`, `deps check`)."""
@@ -118,18 +139,27 @@ def _x86_deepvariant_host() -> bool:
     return not is_arm64_docker_host()
 
 
-def _apple_silicon_host() -> bool:
-    """Whether wgse-deepvariant (Apple Silicon only) can be used."""
+def _native_deepvariant_host() -> bool:
+    """Whether wgse-deepvariant (Apple Silicon, Linux x86-64) can be used."""
     from wgsextract_cli.core.native_support import is_arm64_docker_host
 
-    return sys.platform == "darwin" and is_arm64_docker_host()
+    if sys.platform == "darwin":
+        return is_arm64_docker_host()
+    return sys.platform.startswith("linux") and platform.machine().lower() in {
+        "x86_64",
+        "amd64",
+    }
 
 
 # Optional tools that need a particular OS and CPU.
 HOST_ONLY_TOOLS: dict[str, Callable[[], bool]] = {
     "run_clair3.sh": clair3_host_supported,
     "run_deepvariant": _x86_deepvariant_host,
-    "wgse-deepvariant": _apple_silicon_host,
+    "wgse-deepvariant": _native_deepvariant_host,
+    "GLIMPSE2_phase": imputation_host_supported,
+    "GLIMPSE2_ligate": imputation_host_supported,
+    "GLIMPSE2_chunk": imputation_host_supported,
+    "GLIMPSE2_split_reference": imputation_host_supported,
 }
 
 
@@ -192,6 +222,10 @@ PIXI_TOOL_ENVS = {
     "somalier": "somalier",
     "whatshap": "phasing",
     "longphase": "phasing",
+    "GLIMPSE2_phase": "imputation",
+    "GLIMPSE2_ligate": "imputation",
+    "GLIMPSE2_chunk": "imputation",
+    "GLIMPSE2_split_reference": "imputation",
     # Only through their own environments (never a `python` on PATH): pixi_env_tool.
     "pharmcat_python": "pharmcat",
     "cyrius_python": "cyrius",
@@ -231,6 +265,10 @@ PIXI_TOOL_PACKAGES = {
     "LongTR": "longtr",
     "run_clair3.sh": "clair3",
     "modkit": "ont-modkit",
+    "GLIMPSE2_phase": "glimpse-bio",
+    "GLIMPSE2_ligate": "glimpse-bio",
+    "GLIMPSE2_chunk": "glimpse-bio",
+    "GLIMPSE2_split_reference": "glimpse-bio",
 }
 
 

@@ -1,5 +1,18 @@
 # CLI resource preflight and reusable estimates
 
+## Imputation
+
+`vcf impute` prints estimated memory and runtime before starting. HG002 chr20
+measurements at four threads: GLIMPSE2 phase/ligate 431–464 s and 2.2–3.1 GB
+peak RSS; Beagle 60 s and 3.4 GB. The memory preflight reserves a conservative
+4 GiB for GLIMPSE2 and 8 GiB for Beagle. Sequential chromosomes/chunks keep
+memory bounded; runtime scales with selected reference bases and thread count.
+The extrapolated whole-autosome GLIMPSE2 time is about 5.5 h at four threads,
+or 2.8 h at eight, excluding one-time panel preparation. These are not measured
+whole-genome runtimes. See [imputation](imputation.md) for accuracy and limits.
+
+## Other pipelines
+
 Native `align` (BWA/BWA-MEM2 and minimap2), `realign`, `bam sort`, `bam to-bam`,
 `bam to-cram`, and `vcf snp`/`indel`/`gatk`/`deepvariant` (CPU, every platform)
 report estimates before starting their heavy pipelines. For example:
@@ -24,6 +37,14 @@ realignment/whole-file sorting retain their existing disk guards. `--no-prefligh
 still bypasses realignment's disk refusal, not its memory guard; informational
 estimates are still printed. Realignment reports before FASTQ extraction and
 alignment reports again when the final aligner is selected.
+
+The memory estimate is the selected aligner's. On Linux, bwa-mem3 standing in
+for bwa (`--compat=bwa-mem`, chosen first since #736) needs about twice bwa's
+RAM (5M pairs on hs38: 14.7 GiB peak at 16 threads against bwa's 6.6 GiB;
+`wgse-bwa --cuda` peaked at 6.3 GiB at 8 threads), so it is taken only when its
+pipeline fits the RAM available; otherwise `wgse-bwa` (on its GPU when that
+fits) or bwa runs, and the preflight reports that aligner's estimate
+([hardware guide](hardware.md#bwa-mem3-on-linux)).
 
 Eligible paired BWA/bwa-mem2 realignment without `--keep-fastq` streams newly
 extracted reads (forced refresh of cached FASTQs at the exact output paths
@@ -223,6 +244,22 @@ the difference is unknown.
 TensorFlow takes most of the free GPU memory whatever it needs (22.7 GiB of
 the free 24 GiB GPU). make_examples and postprocess run on the CPU, as in the
 CPU image.
+
+`vcf clair3 --gpu` runs HKU's Clair3 2.0.5 GPU image and checks only that a
+GPU has 7.8 GiB free: Clair3 starts a full-alignment GPU worker for each
+8,000 MiB free and a pileup worker for each 5,000 MiB. On the same RTX 3090,
+all of chr20 of the HG002 ONT whole-genome CRAM (42x), 4 CPUs, Clair3's own
+run time:
+
+| Run | Time | GPU peak | Result |
+| --- | ---: | ---: | --- |
+| CPU (`clair3` Pixi environment) | 10.3 min | | vcfeval F1 0.9785 |
+| `--gpu` | 8.5 min | 6.1 GiB (4 pileup workers of 1.0–1.3 GiB) | F1 0.9785 |
+
+The GPU halved pileup and full-alignment calling (283 s to 159 s). Clair3's
+start-up checks (about 130 s on a whole-genome CRAM) and WhatsHap phasing
+(about 205 s) stay on the CPU, and the GPU was busy in only about 5% of
+one-second samples, so the CPUs limit the speed-up.
 
 Preflight is advisory: `preflight_resources()` guards estimation and reporting
 against `ValueError`, `OSError` and subprocess failures, warns that the resource

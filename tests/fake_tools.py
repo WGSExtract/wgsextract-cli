@@ -330,7 +330,7 @@ class FakeGatk:
 _FAKE_CLAIR3 = """\
 import json, os, select, subprocess, sys
 
-if sys.argv[1:] in ([], ["--version"], ["-h"], ["--help"]):
+if sys.argv[1:] in ([], ["-v"], ["--version"], ["-h"], ["--help"]):
     print("Clair3 v{version}")
     sys.exit(0)
 opts = dict(arg[2:].split("=", 1) for arg in sys.argv[1:])
@@ -350,10 +350,19 @@ with open({log!r}, "a") as log:
     log.write(json.dumps(record) + "\\n")
 if not record["stdin_closed"]:
     sys.exit("parallel: stdin is still open")
+if opts.get("use_gpu") == "True" and not os.environ.get("FAKE_GPUS"):
+    sys.exit("[ERROR] No GPU available, Please disabling --use_gpu for variant calling, exiting.")
+# In a container (FakeDocker) only mounted folders are visible: a model file
+# linked to a folder that isn't mounted dangles.
+mounts = [m for m in os.environ.get("FAKE_MOUNTS", "").split(os.pathsep) if m]
+def visible(path):
+    return any(os.path.commonpath([os.path.realpath(path), os.path.realpath(m)])
+               == os.path.realpath(m) for m in mounts)
 if record["pythonpath"]:
     sys.exit("ImportError: Clair3's Python loaded modules from PYTHONPATH")
 for name in ("pileup.pt", "full_alignment.pt"):
-    if not os.path.isfile(os.path.join(opts["model_path"], name)):
+    weights = os.path.join(opts["model_path"], name)
+    if not os.path.isfile(weights) or (mounts and not visible(weights)):
         sys.exit(f"[ERROR] {{name}} not found in {{opts['model_path']}}")
 out = opts["output"]
 os.makedirs(out)
@@ -414,8 +423,9 @@ class FakeClair3:
     if PYTHONPATH leaks in) and waits on an open stdin (it fails instead).
     Like the bundled htslib of Clair3 before 2.0.5 (``version``) it fails on
     CRAM 3.1 reads, reporting only on stdout and in its step logs; ``fail`` makes it fail that way on any
-    reads. Like Clair3 it calls nothing, yet exits 0, when a path it is
-    given contains a space. Each run's options, resolved model, reads' CRAM
+    reads. With ``--use_gpu=True`` it needs a container started with
+    ``--gpus`` (FakeDocker), as in HKU's GPU image. Like Clair3 it calls
+    nothing, yet exits 0, when a path it is given contains a space. Each run's options, resolved model, reads' CRAM
     version, region BED, stdin state and PYTHONPATH go to ``runs``.
     """
 
@@ -656,6 +666,7 @@ _DV_WGSE = r"""
 argv = sys.argv[1:]
 if argv == ["--version"]:
     print(f"wgse-deepvariant {state().get('wgse_version', '0.1.0')} (DeepVariant 1.10.0, build fake)")
+    print(f"native port — x86_64, Linux (call_variants: ONNX Runtime 1.31.1, {state().get('wgse_backends', 'CUDA or CPU')})")
     sys.exit(0)
 command, opts = argv[0], options([a for a in argv[1:] if a != "--dry_run=true"])
 log({"tool": f"wgse-deepvariant {command}", "opts": opts,
@@ -672,6 +683,9 @@ if command == "run":
     examples, small = f"{work}/examples.tfrecord@{shards}.gz", f"{work}/small_cvo.tfrecord@{shards}"
     regions = f" '--regions={opts['regions']}'" if "regions" in opts else ""
     batch = f" --batch_size={opts['batch_size']}" if "batch_size" in opts else ""
+    for flag in ("inference_backend", "cpu_threads"):
+        if flag in opts:
+            batch += f" --{flag}={opts[flag]}"
     commands = [
         f"{self} make_examples --reads={opts['reads']} --ref={opts['ref']} --examples={examples} "
         f"--threads={shards} --small_model={opts['small_model_path']} --small_model_cvo_outfile={small}{regions}",
@@ -793,6 +807,13 @@ class FakeDeepVariant:
         }  # fmt: skip
         self._save()
 
+    def set_native_version(self, version: str, backends: str = "CUDA or CPU") -> None:
+        """The version wgse-deepvariant --version reports, and its Linux
+        build's call_variants backends ("CPU only" for the cpu package)."""
+        self._state["wgse_version"] = version
+        self._state["wgse_backends"] = backends
+        self._save()
+
     def set_helpfull(self, text: str) -> None:
         """What postprocess_variants --helpfull prints."""
         self._state["helpfull"] = text
@@ -895,7 +916,8 @@ elif args[0] == "run":
     name = opts.get("--name", "anonymous")
     log({"cmd": "run", "image": image, "name": name, "label": opts.get("--label"),
          "entrypoint": opts.get("--entrypoint"), "pull": opts.get("--pull"),
-         "gpus": opts.get("--gpus"), "env": env, "mounts": mounts,
+         "gpus": opts.get("--gpus"), "cpus": opts.get("--cpus"), "env": env,
+         "mounts": mounts,
          "command": command})
     if image not in st["images"]:
         sys.exit(f"docker: Error response from daemon: No such image: {image}")
@@ -921,13 +943,14 @@ elif args[0] == "run":
         # The image's own folders, and its /tmp (HOME when none is given).
         if path and path != "/tmp" and not path.startswith(("/opt/", "/bin/", "/usr/")) and not visible(path):
             sys.exit(f"{path}: No such file or directory (not mounted in the container)")
-    if command[0].startswith("/opt/deepvariant/bin/"):
+    if command[0].startswith(("/opt/deepvariant/bin/", "/opt/bin/")):
         command[0] = os.path.join(DV_BIN, os.path.basename(command[0]))
     elif command[:2] == ["/bin/bash", "-c"]:
         command[2] = command[2].replace("/opt/deepvariant/bin/", DV_BIN + "/")
     container = {"PATH": f"{DV_BIN}:/usr/bin:/bin", **env, "FAKE_DV_IN_IMAGE": "1",
                  "FAKE_CONTAINER": name, "FAKE_OOM_DIR": os.path.join(ROOT, "oom"),
-                 "FAKE_GPUS": "1" if "--gpus" in opts else ""}
+                 "FAKE_GPUS": "1" if "--gpus" in opts else "",
+                 "FAKE_MOUNTS": os.pathsep.join(mounts)}
     record = os.path.join(running, name)
     process = subprocess.Popen(command, env=container, stdin=subprocess.DEVNULL, cwd=opts.get("-w"))
     with open(record, "w") as out:
@@ -943,8 +966,8 @@ else:
 
 
 class FakeDocker:
-    """A `docker` in ``bindir`` whose images run FakeDeepVariant's tools from
-    ``dv_bin`` as /opt/deepvariant/bin.
+    """A `docker` in ``bindir`` whose images run the tools in ``dv_bin``
+    (FakeDeepVariant's, or FakeClair3's) as /opt/deepvariant/bin or /opt/bin.
 
     A container sees only the folders mounted into it (paths outside them
     fail), its ``-e`` environment and no stdin, and must run as the caller
@@ -1131,6 +1154,17 @@ elif tool in ("deepvariant", "haplotypecaller"):
 else:
     sys.exit(f"fake pbrun: unknown tool {tool}")
 """
+
+
+def fake_image_torch(bindir: Path, cuda: bool = True) -> None:
+    """A ``python`` in an image's ``bindir`` whose PyTorch reports CUDA when
+    ``cuda`` and the container was started with ``--gpus`` (FakeDocker)."""
+    python_tool(bindir, "python", (
+        "import os, sys\n"
+        "if 'torch.cuda.is_available()' not in ' '.join(sys.argv):\n"
+        "    sys.exit('fake image python: unexpected script')\n"
+        f"print({cuda!r} and bool(os.environ.get('FAKE_GPUS')))\n"
+    ))  # fmt: skip
 
 
 _FAKE_NVIDIA_SMI = r"""
