@@ -1,5 +1,6 @@
 import contextlib
 import glob
+import hashlib
 import logging
 import os
 import platform
@@ -606,8 +607,10 @@ def _native_args(
     region: str | None,
     batch_size: int | None,
 ) -> list[str]:
-    """wgse-deepvariant run's options. It takes no BED files: a selection is
-    passed as the intervals it covers."""
+    """wgse-deepvariant run's options. A selection goes to it as one BED of
+    the intervals it covers, in reference order (BED files, literals or
+    both, of any size: a command line holds at most 1 MiB on macOS), named
+    by its content so a changed selection reruns the stages."""
     args = [
         "run",
         "--model_type=WGS",
@@ -620,15 +623,17 @@ def _native_args(
         f"--small_model_path={native.small_model}",
     ]
     if region:
-        intervals = region_intervals(region, read_fai_lengths(ref), "DeepVariant")
-        args.append(
-            "--regions="
-            + " ".join(
-                f"{chrom}:{start + 1}-{end}"
-                for chrom, spans in intervals.items()
-                for start, end in spans
-            )
+        lengths = read_fai_lengths(ref)
+        intervals = region_intervals(region, lengths, "DeepVariant")
+        bed = "".join(
+            f"{chrom}\t{start}\t{end}\n"
+            for chrom in lengths
+            for start, end in intervals.get(chrom, ())
         )
+        path = work / _REGIONS / f"{hashlib.sha256(bed.encode()).hexdigest()[:16]}.bed"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(bed)
+        args.append(f"--regions={path}")
     if batch_size is not None:
         args.append(f"--batch_size={batch_size}")
     return args
@@ -832,6 +837,8 @@ _STAGE_BINARY = re.compile(r"[/ ](make_examples|call_variants|postprocess_varian
 # Settings that bound a stage's memory or CPU use but not what it writes.
 _RESOURCE_FLAGS = re.compile(r'\s--(?:cpus|num_partitions|batch_size)[= ]"?\d+"?')
 _JOBLOG = ".make_examples.joblog"
+# wgse-deepvariant's selection BED, beside (not among) the stage outputs.
+_REGIONS = "regions"
 _DV_BIN = "/opt/deepvariant/bin"
 
 
@@ -1018,6 +1025,7 @@ def _run_stages(
         plan = run([run.launcher(), *dv_args, "--dry_run=true"], capture=True)
     finally:
         if journal.dry_run:
+            shutil.rmtree(work / _REGIONS, ignore_errors=True)
             with contextlib.suppress(OSError):
                 work.rmdir()
     commands = _stage_commands(plan)
@@ -1071,6 +1079,13 @@ def _run_stages(
         # A make_examples killed with the same inputs and settings keeps the
         # shards it finished (GNU parallel's job log); anything else restarts.
         resume = name == "make_examples" and decision.partial
+        if resume and not any("parallel " in c for c in commands[name]):
+            # wgse-deepvariant's make_examples is one process: no shard log.
+            logging.info(
+                "Rerunning make_examples in full: wgse-deepvariant can't keep "
+                "the shards an interrupted run finished."
+            )
+            resume = False
         if not resume:
             for stale in _stage_files(work, claimed):
                 stale.unlink()

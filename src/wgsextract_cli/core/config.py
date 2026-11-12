@@ -149,6 +149,11 @@ KNOWN_SETTINGS = {
         "google/deepvariant:1.10.0 on x64; local "
         "localhost/wgsextract-deepvariant:1.10.0-arm64 on Linux ARM64)",
     ),
+    "deepvariant_native": (
+        None,
+        "Apple Silicon: `vcf deepvariant` runs wgse-deepvariant when it is on "
+        "PATH (auto, the default) or never, using the Docker image (off)",
+    ),
     "deepvariant_weights": (
         None,
         "Apple Silicon: folder of the WGS weights wgse-deepvariant calls with "

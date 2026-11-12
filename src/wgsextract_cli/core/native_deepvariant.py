@@ -5,6 +5,7 @@ Silicon, with call_variants on the GPU, and calls the same sites, genotypes
 and filters as Google's x86-64 image. ``vcf deepvariant`` uses it on an Apple
 Silicon Mac when it is on PATH; its weights (converted from Google's image) are
 a separate download whose folder the ``deepvariant_weights`` setting names.
+``deepvariant_native = "off"`` in config.toml keeps the Docker path instead.
 Neither is ever installed here, and the weights are checked against their
 published hashes before every run.
 """
@@ -28,6 +29,8 @@ from wgsextract_cli.core.utils import WGSExtractError
 BINARY = "wgse-deepvariant"
 MINIMUM_VERSION = (0, 1, 0)
 WEIGHTS_SETTING = "deepvariant_weights"
+ENGINE_SETTING = "deepvariant_native"
+ENGINE_CHOICES = ("auto", "off")
 INSTALL_HINT = (
     "Install wgse-deepvariant and its WGS weights from a macos-deepvariant "
     "release, put wgse-deepvariant on PATH and set deepvariant_weights in "
@@ -90,8 +93,15 @@ def default_batch_size() -> int:
 
 
 def installed() -> str | None:
-    """wgse-deepvariant's path when it's on PATH of an Apple Silicon Mac."""
-    if sys.platform != "darwin" or not is_arm64_docker_host():
+    """wgse-deepvariant's path when it's on PATH of an Apple Silicon Mac and
+    the deepvariant_native setting doesn't turn it off."""
+    setting = str(settings.get(ENGINE_SETTING) or "auto").lower()
+    if setting not in ENGINE_CHOICES:
+        raise WGSExtractError(
+            f"{ENGINE_SETTING} must be one of {', '.join(ENGINE_CHOICES)}, "
+            f"not {setting!r}."
+        )
+    if setting == "off" or sys.platform != "darwin" or not is_arm64_docker_host():
         return None
     return shutil.which(BINARY)
 
@@ -102,6 +112,7 @@ def require(path: str) -> NativeDeepVariant:
     try:
         probe = subprocess.run(
             [path, "--version"],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             errors="replace",

@@ -657,7 +657,8 @@ if argv == ["--version"]:
     print(f"wgse-deepvariant {state().get('wgse_version', '0.1.0')} (DeepVariant 1.10.0, build fake)")
     sys.exit(0)
 command, opts = argv[0], options([a for a in argv[1:] if a != "--dry_run=true"])
-log({"tool": f"wgse-deepvariant {command}", "opts": opts})
+log({"tool": f"wgse-deepvariant {command}", "opts": opts,
+     "regions_bed": open(opts["regions"]).read() if opts.get("regions", "").endswith(".bed") else None})
 own_python()
 self = os.path.abspath(sys.argv[0])
 if command == "run":
@@ -684,7 +685,10 @@ elif command == "make_examples":
     if not any(os.path.exists(reads + s) for s in (".bai", ".crai", ".csi")):
         sys.exit(f"[E::idx_find_and_load] Could not retrieve index file for '{reads}'")
     for selection in (opts.get("regions") or "").split():
-        if not re.fullmatch(r"\S+:\d+-\d+", selection):
+        if selection.endswith((".bed", ".bed.gz")):
+            if not os.path.isfile(selection):
+                sys.exit(f"Cannot open regions BED {selection}")
+        elif not re.fullmatch(r"\S+:\d+-\d+", selection):
             sys.exit(f"make_examples: can't parse region {selection}")
 
 

@@ -643,14 +643,62 @@ def test_wgse_deepvariant_resumes_after_a_failed_stage_647(mac_native):
     assert vcf_calls(mac_native.out / "deepvariant.vcf.gz") == mac_native.sample.calls
 
 
-def test_wgse_deepvariant_takes_a_bed_selection_as_its_intervals_647(mac_native):
+def test_wgse_deepvariant_gets_a_selection_as_one_bed_of_its_intervals_647(
+    mac_native,
+):
+    bed = mac_native.tmp / "panel.bed"
+    bed.write_text("chr1\t1400\t1600\nchr1\t899\t1100\nchr1\t1050\t1200\n")
+    call(mac_native, "-r", f"{bed} chr1:2001-2100")
+    examples = mac_native.deepvariant.runs("wgse-deepvariant make_examples")[0]
+    # contract: wgse-deepvariant calls the selection's merged intervals, in order.
+    assert examples["regions_bed"] == (
+        "chr1\t899\t1200\nchr1\t1400\t1600\nchr1\t2000\t2100\n"
+    )
+    assert (mac_native.out / "deepvariant.vcf.gz").exists()
+
+
+def test_wgse_deepvariant_calls_a_selection_too_big_for_a_command_line_647(
+    mac_native,
+):
+    """A 100,000-interval BED (exome-sized) once became one --regions
+    argument longer than macOS's 1 MiB command-line limit: Argument list too
+    long, reported as a stage to resume that failed again on every rerun."""
+    sample, work = mac_native.sample, mac_native.tmp / "wide"
+    chr1 = Path(sample.ref).read_text().split("\n")[1]
+    ref = write_fasta(work / "ref.fa", {"chr1": chr1, "chrW": "ACGT" * 75_000})
+    header = run_command(
+        ["samtools", "view", "-H", sample.bam], capture_output=True
+    ).stdout.splitlines()
+    body = run_command(["samtools", "view", sample.bam], capture_output=True).stdout
+    header.insert(2, "@SQ\tSN:chrW\tLN:300000")
+    bam = sam_to_bam(header + body.splitlines(), work / "wide.bam")
+    bed = work / "exome.bed"
+    bed.write_text("".join(f"chrW\t{i}\t{i + 1}\n" for i in range(0, 300_000, 3)))
+    run_wgsextract(
+        "vcf", "deepvariant", "--input", bam, "--ref", str(ref),
+        "--outdir", str(mac_native.out), "--threads", "2", "-r", str(bed),
+    )  # fmt: skip
+    assert mac_native.deepvariant.stages() == STAGES
+    assert (mac_native.out / "deepvariant.vcf.gz").exists()
+
+
+def test_wgse_deepvariant_reruns_for_a_changed_selection_647(mac_native):
     bed = mac_native.tmp / "panel.bed"
     bed.write_text("chr1\t899\t1100\n")
     call(mac_native, "-r", str(bed))
-    examples = mac_native.deepvariant.runs("wgse-deepvariant make_examples")[0]
-    # contract: wgse-deepvariant reads no BED files; it calls the BED's 1-based intervals.
-    assert examples["opts"]["regions"] == "chr1:900-1100"
-    assert (mac_native.out / "deepvariant.vcf.gz").exists()
+    bed.write_text("chr1\t899\t1600\n")
+    rerun(mac_native, "-r", str(bed))
+    assert mac_native.deepvariant.stages() == STAGES
+
+
+def test_deepvariant_native_off_keeps_the_docker_image_647(mac_native, monkeypatch):
+    monkeypatch.setitem(deepvariant.settings, "deepvariant_native", "off")
+    mac_native.docker.add_image(deepvariant.DEFAULT_ARM64_IMAGE, platform="linux/arm64")
+    call(mac_native)
+    assert mac_native.deepvariant.runs("wgse-deepvariant make_examples") == []
+    assert {r["image"] for r in mac_native.docker.runs()} == {
+        deepvariant.DEFAULT_ARM64_IMAGE
+    }
 
 
 def test_wgse_deepvariant_reads_cram_31_without_staging_647(mac_native):
