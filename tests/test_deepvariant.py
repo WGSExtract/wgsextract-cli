@@ -827,7 +827,10 @@ def test_gpu_calls_with_wgse_deepvariant_on_cuda_without_parabricks_719(
     assert calls == linux_native.sample.calls
 
 
-def test_gpu_with_deepvariant_native_off_runs_parabricks_719(linux_native, monkeypatch):
+def test_gpu_with_deepvariant_native_off_runs_parabricks_719(
+    linux_native, monkeypatch, ram
+):
+    ram(128 * 10**9)  # above Parabricks' RAM floor
     monkeypatch.setitem(deepvariant.settings, "deepvariant_native", "off")
     host = FakeParabricks(linux_native.tmp / "gpu", parabricks.DEFAULT_IMAGE)
     monkeypatch.setenv("PATH", f"{host.bin}{os.pathsep}{os.environ['PATH']}")
@@ -851,8 +854,11 @@ def test_a_busy_gpu_stops_wgse_deepvariant_before_call_variants_719(linux_native
     ]
 
 
-def test_ont_reads_keep_googles_image_and_parabricks_719(linux_native, monkeypatch):
+def test_ont_reads_keep_googles_image_and_parabricks_719(
+    linux_native, monkeypatch, ram
+):
     """wgse-deepvariant's ONT make_examples doesn't match Google's yet."""
+    ram(128 * 10**9)  # above Parabricks' RAM floor
     reads = other_sample(linux_native, ONT)
     call(linux_native, reads=reads.bam)
     assert linux_native.deepvariant.runs("wgse-deepvariant run") == []
