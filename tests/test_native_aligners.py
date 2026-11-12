@@ -1164,6 +1164,7 @@ def glibc_2_44(monkeypatch):
         native_aligners.os,
         "confstr",
         lambda name: "glibc 2.44" if name == "CS_GNU_LIBC_VERSION" else None,
+        raising=False,  # Windows' os has no confstr.
     )
 
 
