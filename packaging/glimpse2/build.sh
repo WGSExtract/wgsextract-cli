@@ -8,7 +8,9 @@ HTS=$(realpath htslib-*)
 # Windows' GCC doesn't align the stack for AVX (phase is built with -mavx2,
 # as upstream builds it): the assembler uses unaligned vector moves instead.
 # The compat header gives 64-bit file offsets (Win64's long is 32-bit).
-CXXFLAGS="$OPT -std=c++17 -Wno-ignored-attributes -Wa,-muse-unaligned-vector-move $COMPAT_CPPFLAGS"
+# Keep Boost's C++ COMDAT exception thunks out of MinGW LTO; HTSlib still
+# uses the shared helper's C LTO, with the plugin enabled at link time.
+CXXFLAGS="$OPT -fno-lto -std=c++17 -Wno-ignored-attributes -Wa,-muse-unaligned-vector-move $COMPAT_CPPFLAGS"
 CXXFLAGS="$CXXFLAGS -D__COMMIT_ID__=\\\"88915f7\\\" -D__COMMIT_DATE__=\\\"2023-04-24\\\""
 LIBS="-lzstd $(sed -n 's/^HTSLIB_static_LIBS = //p' "$HTS/htslib_static.mk") $HTS_LIBS"
 for tool in chunk concordance ligate phase split_reference; do
