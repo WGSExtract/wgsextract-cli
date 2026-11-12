@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import platform
 import re
 import shutil
@@ -396,7 +397,7 @@ def find_bwa_mem3(setting: str | None, *, instead: str) -> NativeAligner | None:
         problem = (
             f"its version {version!r} isn't {minimum} or later"
             if parsed
-            else f"`bwa-mem3 version` failed ({detail})"
+            else f"`bwa-mem3 version` failed ({detail}{bwa_mem3_crash_cause(detail)})"
         )
         warn(
             "native_aligner_unusable",
@@ -415,6 +416,42 @@ def find_bwa_mem3(setting: str | None, *, instead: str) -> NativeAligner | None:
         engine_version=str(version),
         metal_available=False,
     )
+
+
+def bwa_mem3_crash_cause(detail: str) -> str:
+    """What may explain a bwa-mem3 crash (``detail`` from its version probe)
+    on this computer: Bioconda's Linux build, which overrides malloc with
+    mimalloc, crashes at startup with glibc 2.44 (#727)."""
+    if "crashed" not in detail or platform.system() != "Linux":
+        return ""
+    try:
+        library = os.confstr("CS_GNU_LIBC_VERSION") or ""
+    except (AttributeError, ValueError, OSError):
+        return ""
+    name, _, version = library.partition(" ")
+    if name != "glibc":
+        return ""
+    parsed = tuple(int(part) for part in re.findall(r"\d+", version)[:2])
+    if parsed < (2, 44):
+        return f"; this computer has glibc {version}"
+    return (
+        f"; this computer has glibc {version}, and Bioconda's bwa-mem3 0.16.0 "
+        "crashes at startup with glibc 2.44 (#727)"
+    )
+
+
+def bwa_mem3_failure() -> str | None:
+    """Why the bwa-mem3 on PATH or in its Pixi environment can't run (its
+    ``version`` crashed or failed), or None. Run before an explicit
+    ``--aligner bwa-mem3`` or ``--fast`` so a broken build stops with an
+    explanation rather than a crashed alignment pipeline."""
+    from wgsextract_cli.core.dependency_checks import get_tool_version
+
+    version = get_tool_version("bwa-mem3")
+    if version is None or not version.startswith("Error:"):
+        return None
+    detail = version.removeprefix("Error: ")
+    return f"`bwa-mem3 version` failed ({detail}{bwa_mem3_crash_cause(detail)})"
 
 
 def installed_build(tool: str) -> NativeAligner:

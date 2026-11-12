@@ -116,7 +116,10 @@ against bwa's and bwa-mem2's records on GitHub's x86-64 and ARM64 runners.
 
 Bioconda's x86-64 bwa-mem3 0.16.0 crashes at startup (in its bundled
 allocator) on glibc 2.44, as on current Arch Linux; it ran on Ubuntu 24.04's
-2.39. The CLI's version check catches that, warns and aligns with bwa.
+2.39 (#727). The CLI's version check catches that: standing in, it warns
+(`native_aligner_unusable`, naming the crash and the computer's glibc) and bwa
+or bwa-mem2 aligns; `--aligner bwa-mem3` and `--fast` stop before aligning
+with an error that says so.
 
 ### Threads and memory
 
