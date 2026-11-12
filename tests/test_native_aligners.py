@@ -1033,7 +1033,7 @@ def test_native_aligners_off_still_needs_bwa_mem2s_0123_file(tmp_path, mem3_bin)
     # #658 review: upstream bwa-mem2 reads the .0123 file, so with the
     # installed wgse-bwa-mem2 0.5.0 turned off align builds it first.
     reads = _mem3_reads(tmp_path)
-    Path(reads.ref + ".0123").unlink()
+    Path(reads.ref + ".0123").unlink(missing_ok=True)
     _install_wgse_bwa_mem2(mem3_bin, "0.5.0")
 
     bam, result = _align(
@@ -1114,7 +1114,7 @@ def test_736_linux_prefers_bwa_mem3_to_wgse_bwa_on_cuda(
     # wgse-bwa --cuda (131 s) with the same records, yet the GPU went first.
     reads = _mem3_reads(tmp_path)
     # Without bwa-mem2's .0123 file auto keeps bwa's records.
-    Path(reads.ref + ".0123").unlink()
+    Path(reads.ref + ".0123").unlink(missing_ok=True)
     _install_build(mem3_bin, "bwa", _cuda_capabilities("bwa", cuda_available=cuda))
     _env_bwa_mem3(fake_pixi, mem3_bin)
 
@@ -1145,6 +1145,7 @@ def test_736_wgse_bwa_on_cuda_aligns_when_bwa_mem3_cannot(
     if why == "does not fit":
         bwa = _mem3_needed(reads, "bwa")
         stand_in = _mem3_needed(reads, "bwa-mem3")
+        assert stand_in > bwa  # so halfway leaves room for bwa only
         ram(64 * GIB, available=(bwa + stand_in) // 2)
 
     bam, result = _align(reads, tmp_path / "out", "--aligner", "bwa")
@@ -1266,7 +1267,7 @@ def test_auto_keeps_wgse_bwa_mem2_when_only_it_fits_the_ram_available(
     # available, then the bigger wgse-bwa-mem3 stood in, checked only against
     # this Mac's RAM less headroom, and started over budget.
     reads = _mem3_reads(tmp_path)
-    Path(reads.ref + ".0123").unlink()
+    Path(reads.ref + ".0123").unlink(missing_ok=True)
     _install_bwa_mem3(mem3_bin, mem2="bwa")
     _install_wgse_bwa_mem2(mem3_bin, "0.5.0")
     mem2 = _mem3_needed(reads, "wgse-bwa-mem2", memory="256M")
@@ -1308,7 +1309,7 @@ def test_auto_with_only_wgse_bwa_mem3_keeps_bwas_records(tmp_path, mem3_bin):
     # bwa-mem2) stands in for bwa with bwa's records; auto doesn't switch to
     # bwa-mem2's.
     reads = _mem3_reads(tmp_path)
-    Path(reads.ref + ".0123").unlink()
+    Path(reads.ref + ".0123").unlink(missing_ok=True)
     (mem3_bin / "bwa-mem2").unlink()
     _install_bwa_mem3(mem3_bin, mem2="bwa")
 
