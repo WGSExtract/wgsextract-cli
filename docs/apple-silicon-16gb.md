@@ -25,17 +25,25 @@ the user's processes, sampled every 5 s.
 
 ## Summary
 
-A whole genome went from a BAM file to a personal report in **7.3 hours** on
-the base 16 GB M1, with default settings and its owner's apps still open.
-Nothing ran out of memory or disk. The genome, HG002, was sequenced to 35x,
-a little deeper than the usual 30x, so a 30x genome should take a little less.
+A whole genome went from a BAM file to a personal report in **7.3 hours** in
+the original trial on the base 16 GB M1, with default settings and its owner's
+apps still open. The current-default repeat took **7 h 25 min**, including
+cold reference indexing and interrupt recovery. Both completed, but completion
+does **not** mean alignment fits in RAM: current defaults swap heavily
+([#747](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
+HG002 was sequenced to **35x**, not 30x; neither trial measures a 30x duration.
 
 - **`realign` takes 6 hours**, and the GPU sets the pace. Calling SNPs and
   indels takes 68 minutes. Every other step takes under 4 minutes.
-- **Memory.** Only `realign` comes close to 16 GB: all processes together used
-  10.4 GiB at their peak and macOS swapped up to 4.8 GiB. Every other step
-  used under 4 GiB.
-- **Disk.** `realign` needs about 166 GiB free at its peak, on top of the input.
+- **Memory.** Concurrent RSS peaked around 10 GiB only because macOS compressed
+  and swapped memory. Current-default alignment moved about **1.1 TiB of
+  swap-out traffic**, not just a few GiB of occupied swap
+  ([#747](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
+  Its working-set estimate is about **22 GiB**, above this Mac's physical RAM.
+- **Disk.** The 35x run's normal refusal check required about **204 GiB free**
+  with the input and reference already present. The observed 166 GiB
+  scratch-plus-results peak is not a space recommendation; see
+  [the planning advice](#advice-for-16-gb-macs).
 - **Accuracy.** Against GIAB v4.2.1, `bcftools` SNP calls have 99.1% recall and
   97.5% precision, and indel calls 95.2% recall and 95.3% precision. 27 of the 29 Y-STRs it
   called match NIST's values for HG002.
@@ -319,10 +327,11 @@ recorded **1,113.72 GiB swap-in and 1,116.92 GiB swap-out traffic**. These
 are cumulative system-wide traffic deltas, not simultaneously occupied swap
 or process-attributed bytes. Sampled occupied swap ranged from 1.21 to
 3.70 GiB; memory pressure alternated between normal (1) and warning (2).
-Alignment kept progressing, so the 30-minute stalled-progress safety stop
-did not trigger. Default mimalloc calling and report added no swap-out
-traffic; the optional system-allocator SNP run coincided with 0.034 GiB
-of system-wide swap-out traffic.
+This heavy swapping is a product bug tracked in
+[#747](https://github.com/WGSExtract/wgsextract-cli/issues/747), not evidence
+that the defaults fit comfortably in 16 GiB. Default mimalloc calling and
+report added no swap-out traffic; the optional system-allocator SNP run
+coincided with 0.034 GiB of system-wide swap-out traffic.
 The conservative RAM estimate was 22.02 GiB at startup, versus 10.80 GiB
 available. Do **not** recalibrate that working-set estimate down to 8.30 GiB
 RSS: macOS compression and swapping kept the resident peak smaller.
@@ -344,12 +353,19 @@ accuracy benchmark.
 
 ## Advice for 16 GB Macs
 
+- **Current defaults make alignment swap heavily:** about **1.1 TiB of swap-out
+  traffic per 35x genome**, which wears the SSD. The preflight's **LOW memory**
+  warning (about 22 GiB estimated against about 11 GiB available) predicts this
+  problem; it does not yet adapt defaults to avoid it. Track
+  [open bug #747](https://github.com/WGSExtract/wgsextract-cli/issues/747).
 - **Close what you can before `realign`,** and leave the Mac on overnight.
   It runs at the GPU's pace, and more threads only use more memory.
-- **Plan disk space before starting.** The current 35x run used up to
-  166 GiB of scratch plus results, excluding its existing input and reference.
-  Leave additional headroom for reference indexing, swap and the desktop.
-  If you still need to download the input, budget its space separately.
+- **Plan disk space before starting.** For a 35x run with the input and
+  reference already present, the normal refusal check requires about
+  **204 GiB free**. The conservative envelope is about **260 GiB** if reference
+  indexes must be built. Download space for the input comes **on top**.
+  Leave additional headroom for swap and the desktop rather than planning
+  around the observed 166 GiB scratch-plus-results peak.
   The normal refusal check and the advisory conservative resource envelope
   are different checks; a passing refusal check is not a reservation.
 - **Install the `macos-aligners` builds** ([Apple Silicon](hardware.md#apple-silicon-metal)).

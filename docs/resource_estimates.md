@@ -387,7 +387,10 @@ filesystem for reference-index storage.
   but resumed alignment also generated 1,113.72/1,116.92 GiB of system-wide
   swap-in/out traffic, with sampled occupied swap up to 3.70 GiB and warning
   memory pressure. Completion under compression/swap does not validate an
-  8–10 GiB working-set budget. The conservative RAM model is unchanged.
+  8–10 GiB working-set budget. This heavy swapping is tracked as product bug
+  [#747](https://github.com/WGSExtract/wgsextract-cli/issues/747): LOW memory
+  predicts the problem, but defaults do not yet adapt to avoid it.
+  The conservative RAM model is unchanged.
 - Ultima pipelines using GATK flow duplicate marking pass
   `duplicate_marking="gatk-flow"`. Their temporary budget includes retained
   sorted/marked BAMs: up to two BAMs (200 bytes/read) for CRAM output, rather
