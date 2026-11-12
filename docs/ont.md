@@ -245,8 +245,12 @@ hkubal/clair3:v2.0.5_gpu@sha256:3f660a693142db0aa8361a58fb6379fc6e3eeead20916eaa
 about 4.5 GB; `clair3_gpu_image` in `config.toml` for another build). It needs
 x86-64 Linux (or WSL2), the NVIDIA driver, Docker and the NVIDIA Container
 Toolkit; the CLI checks for them and the image but installs nothing. Clair3
-starts a GPU worker only on a GPU with 7.8 GiB free, so the command refuses
-to start when none has; each worker used 1.0-1.3 GB of GPU memory here. The
+starts a GPU worker only on a GPU with 7.8 GiB free, so the command gives it
+only such GPUs and refuses to start when none has; each worker used 1.0-1.3
+GB of GPU memory here. It also refuses an image whose PyTorch can't use the
+GPU, where Clair3 would quietly call on the CPU, and holds the container to
+`--threads` CPUs. A custom image's Clair3 version is read from the image,
+not its tag, to decide whether CRAM 3.1 reads need a CRAM 3.0 copy. The
 model still comes from `--model`, `clair3_model` or the reads' metadata, as
 on the CPU, and is checked the same way; a bundled model name needs the
 `clair3` Pixi environment, otherwise pass the model's directory.

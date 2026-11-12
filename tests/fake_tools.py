@@ -330,7 +330,7 @@ class FakeGatk:
 _FAKE_CLAIR3 = """\
 import json, os, select, subprocess, sys
 
-if sys.argv[1:] in ([], ["--version"], ["-h"], ["--help"]):
+if sys.argv[1:] in ([], ["-v"], ["--version"], ["-h"], ["--help"]):
     print("Clair3 v{version}")
     sys.exit(0)
 opts = dict(arg[2:].split("=", 1) for arg in sys.argv[1:])
@@ -352,10 +352,17 @@ if not record["stdin_closed"]:
     sys.exit("parallel: stdin is still open")
 if opts.get("use_gpu") == "True" and not os.environ.get("FAKE_GPUS"):
     sys.exit("[ERROR] No GPU available, Please disabling --use_gpu for variant calling, exiting.")
+# In a container (FakeDocker) only mounted folders are visible: a model file
+# linked to a folder that isn't mounted dangles.
+mounts = [m for m in os.environ.get("FAKE_MOUNTS", "").split(os.pathsep) if m]
+def visible(path):
+    return any(os.path.commonpath([os.path.realpath(path), os.path.realpath(m)])
+               == os.path.realpath(m) for m in mounts)
 if record["pythonpath"]:
     sys.exit("ImportError: Clair3's Python loaded modules from PYTHONPATH")
 for name in ("pileup.pt", "full_alignment.pt"):
-    if not os.path.isfile(os.path.join(opts["model_path"], name)):
+    weights = os.path.join(opts["model_path"], name)
+    if not os.path.isfile(weights) or (mounts and not visible(weights)):
         sys.exit(f"[ERROR] {{name}} not found in {{opts['model_path']}}")
 out = opts["output"]
 os.makedirs(out)
@@ -898,7 +905,8 @@ elif args[0] == "run":
     name = opts.get("--name", "anonymous")
     log({"cmd": "run", "image": image, "name": name, "label": opts.get("--label"),
          "entrypoint": opts.get("--entrypoint"), "pull": opts.get("--pull"),
-         "gpus": opts.get("--gpus"), "env": env, "mounts": mounts,
+         "gpus": opts.get("--gpus"), "cpus": opts.get("--cpus"), "env": env,
+         "mounts": mounts,
          "command": command})
     if image not in st["images"]:
         sys.exit(f"docker: Error response from daemon: No such image: {image}")
@@ -930,7 +938,8 @@ elif args[0] == "run":
         command[2] = command[2].replace("/opt/deepvariant/bin/", DV_BIN + "/")
     container = {"PATH": f"{DV_BIN}:/usr/bin:/bin", **env, "FAKE_DV_IN_IMAGE": "1",
                  "FAKE_CONTAINER": name, "FAKE_OOM_DIR": os.path.join(ROOT, "oom"),
-                 "FAKE_GPUS": "1" if "--gpus" in opts else ""}
+                 "FAKE_GPUS": "1" if "--gpus" in opts else "",
+                 "FAKE_MOUNTS": os.pathsep.join(mounts)}
     record = os.path.join(running, name)
     process = subprocess.Popen(command, env=container, stdin=subprocess.DEVNULL, cwd=opts.get("-w"))
     with open(record, "w") as out:
@@ -1134,6 +1143,17 @@ elif tool in ("deepvariant", "haplotypecaller"):
 else:
     sys.exit(f"fake pbrun: unknown tool {tool}")
 """
+
+
+def fake_image_torch(bindir: Path, cuda: bool = True) -> None:
+    """A ``python`` in an image's ``bindir`` whose PyTorch reports CUDA when
+    ``cuda`` and the container was started with ``--gpus`` (FakeDocker)."""
+    python_tool(bindir, "python", (
+        "import os, sys\n"
+        "if 'torch.cuda.is_available()' not in ' '.join(sys.argv):\n"
+        "    sys.exit('fake image python: unexpected script')\n"
+        f"print({cuda!r} and bool(os.environ.get('FAKE_GPUS')))\n"
+    ))  # fmt: skip
 
 
 _FAKE_NVIDIA_SMI = r"""

@@ -1125,8 +1125,8 @@ class VcfClair3Params(_CallerParams):
     )
     gpu: bool = param(
         False,
-        help="Run Clair3's neural networks on an NVIDIA GPU, in HKU's Clair3 GPU "
-        "image (x86-64 Linux, Docker; see docs/ont.md).",
+        help="Call on an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, "
+        "Docker; see docs/ont.md).",
         action="store_true",
     )
     qc_min_depth: float | None = depth_param()

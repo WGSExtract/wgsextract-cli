@@ -130,6 +130,7 @@ def run_container(
     paths: Iterable[str | None],
     *,
     gpus: bool = False,
+    cpus: int | None = None,
     entrypoint: str | None = None,
     temporary_directory: str | None = None,
     local_only: bool = False,
@@ -143,12 +144,15 @@ def run_container(
     With ``oom_error``, an out-of-memory kill of any process in the container
     stops it and raises that message, for tools such as DeepVariant whose
     worker pools wait forever on a killed worker. ``capture_output`` returns
-    its output instead of showing it."""
+    its output instead of showing it. ``cpus`` caps the CPUs the container
+    may use."""
     mounts = sorted(
         {host_path(p) if Path(p).is_dir() else str(Path(host_path(p)).parent)
          for p in paths if p}
     )  # fmt: skip
     cmd = [docker(""), "run", "--rm", *(["--gpus", "all"] if gpus else [])]
+    if cpus is not None:
+        cmd += ["--cpus", str(cpus)]
     if local_only:
         cmd += ["--pull=never"]
     if entrypoint is not None:
@@ -172,7 +176,7 @@ def run_container(
     if tag := os.environ.get(RUN_TAG):
         # A rerun finds the container of a step whose wgsextract was killed.
         cmd += ["--label", f"{STEP_LABEL}={tag}"]
-    cmd += ["-w", mounts[0], image, *command]
+    cmd += [*(["-w", mounts[0]] if mounts else []), image, *command]
     try:
         if oom_error is None:
             return run_command(cmd, capture_output=capture_output)
