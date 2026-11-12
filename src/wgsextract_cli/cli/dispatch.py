@@ -25,6 +25,7 @@ from wgsextract_cli.core.results import (
 from wgsextract_cli.core.run_log import active_log_path
 from wgsextract_cli.core.sample_workspace import SampleWorkspace, active_workspace
 
+from .bootstrap import received_stop_signal
 from .help import deprecation_message
 from .hints import print_next_steps
 from .platform_support import verify_platform_support
@@ -169,7 +170,11 @@ def _run(
         ):
             _run_command(args, explicit_dests, result)
     except (Exception, KeyboardInterrupt, SystemExit) as e:
-        fail_from_exception(result, e, debug=bool(getattr(args, "debug", False)))
+        # A tool failure or an exception during cleanup can beat the handler's
+        # SystemExit. The run's stop request takes precedence over that failure.
+        signum = received_stop_signal()
+        error = SystemExit(128 + signum) if signum is not None else e
+        fail_from_exception(result, error, debug=bool(getattr(args, "debug", False)))
 
 
 def command_reads_urls(args: argparse.Namespace) -> bool:

@@ -935,7 +935,7 @@ def _dying_tools(tmp_path, log):
     return shims
 
 
-def _realign_cli(argv, shims, die=None, signal="9"):
+def _realign_cli(argv, shims, die=None, signal="9", *, block_stop_signal=False):
     import os
     import subprocess
     import sys
@@ -944,8 +944,18 @@ def _realign_cli(argv, shims, die=None, signal="9"):
         (shims.parent / "die").write_text(die + "\n")
         (shims.parent / "signal").write_text(signal + "\n")
     env = {**os.environ, "PATH": f"{shims}{os.pathsep}{os.environ['PATH']}"}
+    entrypoint = ["-m", "wgsextract_cli.main"]
+    if block_stop_signal:
+        # OS boundary: hold TERM pending so the tool's death is observed before
+        # Python can run the parent's signal handler (issue #717).
+        entrypoint = [
+            "-c",
+            "import signal; "
+            "signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM}); "
+            "from wgsextract_cli.main import main; main()",
+        ]
     with subprocess.Popen(
-        [sys.executable, "-m", "wgsextract_cli.main", "realign", *argv],
+        [sys.executable, *entrypoint, "realign", *argv],
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -955,6 +965,28 @@ def _realign_cli(argv, shims, die=None, signal="9"):
         (shims.parent / "run.pid").write_text(str(run.pid))
         stdout, stderr = run.communicate()
     return subprocess.CompletedProcess(run.args, run.returncode, stdout, stderr)
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="POSIX signal mask")
+@needs_tools("bwa", "samtools")
+def test_issue_717_child_death_before_stop_handler_is_cancelled_and_resumes(
+    tmp_path, genome_and_ref
+):
+    genome, ref = genome_and_ref
+    source, _ = _old_alignment(tmp_path, genome)
+    shims = _dying_tools(tmp_path, tmp_path / "calls.log")
+    out = tmp_path / "out"
+    argv = ["--input", str(source), "--ref", ref, "--outdir", str(out),
+            "--threads", "2", "--keep-fastq"]  # fmt: skip
+    stopped = _realign_cli(argv, shims, "bwa mem", "TERM", block_stop_signal=True)
+    manifest = json.loads((out / "x_aligned.bam.manifest.json").read_text())
+    assert manifest["status"] == "cancelled"
+    assert manifest["exit_code"] == stopped.returncode == 143
+    resumed = _realign_cli(argv, shims)
+    assert resumed.returncode == 0, resumed.stderr
+    assert "Skipping step extract: complete" in resumed.stderr
+    assert "Running step align: an earlier run was interrupted" in resumed.stderr
+    assert len(_view("view", str(out / "x_aligned.bam")).splitlines()) == 302
 
 
 def _records(bam):
