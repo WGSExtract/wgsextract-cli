@@ -462,3 +462,12 @@ def test_imputed_genotypes_are_marked_with_their_probability():
         rows[("900", "A")]["imputed"],
         rows[("900", "A")]["genotype_probability"],
     ) == (0, None)
+
+
+@pytest.mark.parametrize("gp", ["255,0,20", "-1,1,1", "0,inf,1"])
+def test_732_non_probability_gp_never_becomes_a_probability(gp):
+    record = _record(
+        "chr1", "800", ".", "C", "T", ".", "PASS", ".",
+        "GT:GP", f"0/1:{gp}",
+    )  # fmt: skip
+    assert _rows([record])[("800", "T")]["genotype_probability"] is None

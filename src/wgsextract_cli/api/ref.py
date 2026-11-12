@@ -131,6 +131,23 @@ class RefImputationParams(_InLibrary, Params):
     ref: Path | None = ref_param()
     threads: int | None = threads_param()
 
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        from wgsextract_cli.core import imputation_panel
+
+        from ._params import with_config_defaults
+
+        filled = with_config_defaults(self)
+        if filled.ref is not None:
+            yield "ref", filled.ref.expanduser()
+        library = (
+            _library_named(filled.ref) if filled.ref is not None else filled.library()
+        )
+        yield "ref", library
+        for path in imputation_panel.guarded_paths(
+            os.fspath(library), self.chromosomes
+        ):
+            yield "ref", path
+
 
 @dataclass(frozen=True, kw_only=True)
 class RefAncestryParams(_InLibrary, Params):

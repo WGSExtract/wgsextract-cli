@@ -118,6 +118,15 @@ def clair3_host_supported() -> bool:
     return (system, machine) in CLAIR3_HOSTS
 
 
+def imputation_host_supported() -> bool:
+    """Hosts with the opt-in GLIMPSE2/Beagle environment."""
+    system = "linux" if sys.platform.startswith("linux") else sys.platform
+    return system in {"linux", "darwin"} and platform.machine().lower() in {
+        "x86_64",
+        "amd64",
+    }
+
+
 def _x86_deepvariant_host() -> bool:
     """Whether Google's run_deepvariant (x86-64) can be used: ARM64 hosts
     run the native image instead (`vcf deepvariant`, `deps check`)."""
@@ -138,6 +147,10 @@ HOST_ONLY_TOOLS: dict[str, Callable[[], bool]] = {
     "run_clair3.sh": clair3_host_supported,
     "run_deepvariant": _x86_deepvariant_host,
     "wgse-deepvariant": _apple_silicon_host,
+    "GLIMPSE2_phase": imputation_host_supported,
+    "GLIMPSE2_ligate": imputation_host_supported,
+    "GLIMPSE2_chunk": imputation_host_supported,
+    "GLIMPSE2_split_reference": imputation_host_supported,
 }
 
 

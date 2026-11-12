@@ -90,6 +90,10 @@ sambamba = ">=1.0.1,<2"
 # Match the qualified x64 calling version; do not introduce architecture drift.
 bcftools = "==1.24"
 
+[feature.bio-tools.target.osx-arm64.dependencies]
+# Override-enabled mimalloc for bcftools; published by mimalloc.yml.
+wgse-mimalloc = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/wgse-mimalloc-1/wgse-mimalloc-3.6.1-osxarm64_wgse_1.conda", sha256 = "970706abfefea9610af0f4624e58dc8d816e5e1068f690ab07c06b27e6978429" }
+
 [feature.bio-tools.target.win-64.dependencies]
 fastqc = ">=0.13,<0.14"
 haplogrep3 = "==3.2.2"

@@ -14,8 +14,7 @@ GP threshold are FILTERed ``ImpLowConf``. Site INFO/DR2 filtering is opt-in.
 
 import hashlib
 import logging
-import platform
-import sys
+import re
 import tempfile
 from pathlib import Path
 
@@ -29,6 +28,9 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.genotype_qc import AUTOSOMES, target_depths
+from wgsextract_cli.core.imputation_panel import (
+    require_supported_platform as require_supported_platform,
+)
 from wgsextract_cli.core.imputed_vcf import HEADER_KEY
 from wgsextract_cli.core.imputed_vcf import LOW_CONFIDENCE_FILTER as LOW_CONFIDENCE
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
@@ -62,17 +64,6 @@ OUTPUT = "imputed.vcf.gz"
 BEAGLE_JAR_SHA256 = "7319f4af9638be05c18dcc1bfb8fb41a58a09293507ebf0d54617d0e40df5a70"
 # Mean autosomal depth above which calling the reads directly beats imputing.
 DIRECT_CALLING_DEPTH = 8.0
-UNSUPPORTED = (
-    "Imputation needs GLIMPSE2 and Beagle from the `imputation` Pixi "
-    "environment, which Bioconda builds for Linux and Intel macOS only. Run "
-    "`vcf impute` on Linux (for example under WSL2) or an Intel Mac."
-)
-
-
-def require_supported_platform() -> None:
-    apple_silicon = sys.platform == "darwin" and platform.machine() == "arm64"
-    if sys.platform == "win32" or apple_silicon:
-        raise WGSExtractError(UNSUPPORTED)
 
 
 def _library(ref: Path | None) -> str | None:
@@ -249,8 +240,17 @@ def _beagle(
     sample = _vcf_sample(vcf)
     header = run_command(["bcftools", "view", "-h", vcf], capture_output=True).stdout
     lengths = sequence_lengths(header)
+    names = set(re.findall(r"^##contig=<ID=([^,>]+)", header, re.MULTILINE))
+    for panel in panels:
+        for name in (panel.chrom, panel.chrom.removeprefix("chr")):
+            if name in names and name not in lengths:
+                raise UsageError(
+                    f"{vcf} declares {name} without a length; cannot verify GRCh38. "
+                    "Supply GRCh38 contig lengths with "
+                    "`bcftools reheader --fai GRCh38.fa.fai` before imputing."
+                )
     rename = None
-    if not any(c.startswith("chr") for c in lengths):
+    if not any(c.startswith("chr") for c in names):
         # Chip VCFs often name contigs 1, 2...; the panel's are chr1, chr2...
         rename = work / "rename.txt"
         rename.write_text("".join(f"{c}\tchr{c}\n" for c in lengths), newline="\n")
@@ -266,6 +266,9 @@ def _beagle(
     for panel in panels:
         bare = panel.chrom.removeprefix("chr") if rename else panel.chrom
         gt = work / f"{panel.chrom}.gt.vcf.gz"
+        observed = 'GT="mis"'
+        if re.search(r"^##INFO=<ID=IMP,", header, re.MULTILINE):
+            observed += " || INFO/IMP=1"
         # Beagle wants one sample's biallelic genotypes and nothing else.
         run_pipeline(
             [
@@ -276,7 +279,7 @@ def _beagle(
                 # Missing probes must become absent markers, so Beagle marks
                 # their replacement genotypes IMP rather than as chip calls.
                 ["bcftools", "view", "-m2", "-M2", "-v", "snps",
-                 "-e", 'GT="mis"', "-Ou"],
+                 "-e", observed, "-Ou"],
                 ["bcftools", "annotate", "-x", "ID,INFO,^FORMAT/GT", "-Oz",
                  "-o", str(gt)],
             ],
@@ -299,7 +302,9 @@ def _beagle(
         part = work / f"{panel.chrom}.vcf.gz"
         run_command(
             ["bcftools", "annotate", "-h", contig,
-             "-a", panel.panel, "-c", "INFO/AC,INFO/AN", "-Oz", "-o", part,
+             "-a", panel.panel,
+             "-c", "INFO/WGSE_PANEL_AC:=INFO/AC,INFO/WGSE_PANEL_AN:=INFO/AN",
+             "-Oz", "-o", part,
              f"{out}.vcf.gz"]
         )  # fmt: skip
         parts.append(part)
@@ -363,18 +368,20 @@ def _label(
 
 
 def _summary(vcf: str) -> dict[str, Scalar]:
-    out = run_command(
-        ["bcftools", "query", "-i", "INFO/IMP=1", "-f", "%FILTER\t[%GT]\n", vcf],
-        capture_output=True,
-    ).stdout
     imputed = low = nonref = 0
-    for line in out.splitlines():
-        filt, gt = line.split("\t")
-        imputed += 1
-        if LOW_CONFIDENCE in filt.split(";"):
-            low += 1
-        elif "1" in gt:
-            nonref += 1
+    with tempfile.TemporaryFile(mode="w+t", dir=Path(vcf).parent) as rows:
+        run_command(
+            ["bcftools", "query", "-i", "INFO/IMP=1", "-f", "%FILTER\t[%GT]\n", vcf],
+            stdout=rows,
+        )
+        rows.seek(0)
+        for line in rows:
+            filt, gt = line.rstrip("\n").split("\t")
+            imputed += 1
+            if LOW_CONFIDENCE in filt.split(";"):
+                low += 1
+            elif "1" in gt:
+                nonref += 1
     return {
         "imputed_sites": imputed,
         "low_confidence_sites": low,
@@ -385,6 +392,21 @@ def _summary(vcf: str) -> dict[str, Scalar]:
 def run_impute(params: VcfImputeParams) -> None:
     """``vcf impute``: impute a sample into ``imputed.vcf.gz``."""
     require_supported_platform()
+    source = params.input or params.vcf_input
+    assert source is not None
+    outdir = str(
+        (params.outdir or Path(source).expanduser().absolute().parent).expanduser()
+    )
+    out_vcf = str(Path(outdir, OUTPUT))
+    source_path = Path(source).expanduser()
+    if Path(out_vcf).resolve() == source_path.resolve() or (
+        Path(out_vcf).exists()
+        and source_path.exists()
+        and Path(out_vcf).samefile(source_path)
+    ):
+        raise UsageError(
+            f"vcf impute would overwrite its input {source}; choose another --outdir."
+        )
     reads_mode = params.input is not None
     verify_dependencies(["bcftools", "bgzip", "tabix"])
     if reads_mode:
@@ -400,11 +422,7 @@ def run_impute(params: VcfImputeParams) -> None:
         for c in chroms
     ]
     threads, memory = get_resource_defaults(params.threads, params.memory)
-    source = params.input or params.vcf_input
-    assert source is not None
-    outdir = str(params.outdir or Path(source).expanduser().absolute().parent)
     Path(outdir).mkdir(parents=True, exist_ok=True)
-    out_vcf = str(Path(outdir, OUTPUT))
     tool = "GLIMPSE2" if reads_mode else "Beagle"
     preflight_resources(
         lambda: estimate_imputation(

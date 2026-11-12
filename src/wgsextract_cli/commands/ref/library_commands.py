@@ -180,6 +180,7 @@ def _delete(
 def run_imputation(params: RefImputationParams) -> None:
     from wgsextract_cli.core import imputation_panel
 
+    imputation_panel.require_supported_platform()
     reflib = _library(params.ref)
     base = imputation_panel.folder(reflib)
     if params.delete:

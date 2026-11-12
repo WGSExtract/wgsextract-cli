@@ -22,6 +22,7 @@ import hashlib
 import json
 import logging
 import shutil
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -232,6 +233,51 @@ def folder(reflib: str | None = None) -> Path:
     return Path(resolve_reference_library(reflib), FOLDER, PANEL_ID)
 
 
+def require_supported_platform() -> None:
+    from wgsextract_cli.core.tool_catalog import imputation_host_supported
+
+    if not imputation_host_supported():
+        raise WGSExtractError(
+            "Imputation supports x86-64 Linux and Intel macOS only. "
+            "Windows, Linux ARM64 and Apple Silicon builds are not available "
+            "yet. Use x86-64 Linux (including x64 WSL2) or an Intel Mac."
+        )
+
+
+def guarded_paths(reflib: str, selected: str | None) -> Iterator[Path]:
+    """Panel paths a server must allow, before traversing any symlink."""
+    # Keep a foreign path flavour lexical until PathGuard validates it.
+    base = Path(reflib, FOLDER, PANEL_ID)
+    yield base
+    for chrom in chromosomes(selected) if selected else AUTOSOMES:
+        target = base / chrom
+        yield target
+        for name in (
+            "panel.vcf.gz",
+            "panel.vcf.gz.tbi",
+            "map.gmap.gz",
+            "map.plink",
+            _MARKER,
+            "chunks.txt",
+            "download.vcf.gz",
+            "panel.partial.vcf.gz",
+            "panel.partial.vcf.gz.tbi",
+            "samples.txt",
+            "split.log",
+            "chunk.log",
+            "bins",
+        ):
+            yield target / name
+        yield from (target / "bins").glob("*.bin")
+        for chunk in (_marker(target) or {}).get("chunks") or ():
+            if (
+                isinstance(chunk, list)
+                and len(chunk) == 3
+                and isinstance(chunk[2], str)
+            ):
+                yield target / chunk[2]
+
+
 @dataclass(frozen=True)
 class ChromosomePanel:
     chrom: str
@@ -333,16 +379,26 @@ def _fetch(
         raise WGSExtractError(f"Could not download the pinned {item.url}.")
 
 
-def needed_bytes(chroms: list[str], reflib: str | None = None) -> int:
+def needed_bytes(
+    chroms: list[str], reflib: str | None = None, *, version: str | None = None
+) -> int:
     """Free space an install of ``chroms`` needs at its peak."""
     base = folder(reflib)
-    return sum(
-        int(_PANEL[c][0] * PEAK_SHARE) for c in chroms if not _panel_ready(base / c, c)
-    )
+    need = 0
+    for chrom in chroms:
+        marker = _marker(base / chrom) or {}
+        if not _panel_ready(base / chrom, chrom):
+            need += int(_PANEL[chrom][0] * PEAK_SHARE)
+        elif not installed(chrom, reflib) or (
+            version is not None and marker.get("glimpse") != version
+        ):
+            # Measured binary chunks occupy ~1.6 times the original download.
+            need += int(_PANEL[chrom][0] * 1.6)
+    return need
 
 
 def check_disk(chroms: list[str], reflib: str | None = None) -> None:
-    need = needed_bytes(chroms, reflib)
+    need = needed_bytes(chroms, reflib, version=glimpse_version())
     if not need:
         return
     target = folder(reflib)

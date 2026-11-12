@@ -1237,6 +1237,27 @@ class VcfImputeParams(Params):
             assert source is not None
             yield Path(source).expanduser().absolute().parent
 
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        from wgsextract_cli.core import imputation_panel
+        from wgsextract_cli.core.reference_assets import (
+            resolve_reference_library,
+        )
+
+        from ._params import with_config_defaults
+        from .ref import _library_named
+
+        ref = with_config_defaults(self).ref
+        if ref is not None:
+            yield "ref", ref.expanduser()
+        library = (
+            _library_named(ref)
+            if ref is not None
+            else Path(resolve_reference_library())
+        )
+        yield "ref", library
+        for path in imputation_panel.guarded_paths(str(library), self.chromosomes):
+            yield "ref", path
+
 
 def cnv(
     params: VcfCnvParams,

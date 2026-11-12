@@ -10,17 +10,27 @@ pinned downloads; GLIMPSE2, Beagle and bcftools run for real.
 """
 
 import csv
+import gzip
+import json
+import os
+import platform
+import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
-from tests.htslib_helpers import needs_htslib, needs_tools
+from tests.htslib_helpers import bgzip_index, needs_htslib
 from wgsextract_cli import api
 from wgsextract_cli.core import imputation_panel
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
+from wgsextract_cli.core.tool_catalog import (
+    imputation_host_supported,
+    platform_unavailable_tools,
+)
 from wgsextract_cli.core.utils import UsageError
 
 FIXTURE = Path(__file__).parent / "fixtures" / "imputation_hg002"
@@ -78,7 +88,7 @@ def _concordance(vcf: Path) -> tuple[float, int]:
     truth = _truth()
     calls = {
         int(pos): _dosage(gt)
-        for pos, gt in _query(vcf, "%POS\t[%GT]\n", "-f", "PASS")
+        for pos, gt in _query(vcf, "%POS\t[%GT]\n", "-i", 'FILTER="PASS"')
         if int(pos) in truth
     }
     agree = sum(calls[p] == truth[p] for p in calls)
@@ -118,7 +128,14 @@ def reflib(tmp_path: Path, panel_downloads: list[str]) -> Path:
     return library
 
 
-needs_glimpse = needs_tools("GLIMPSE2_phase", "GLIMPSE2_ligate", "GLIMPSE2_chunk")
+needs_glimpse = pytest.mark.skipif(
+    not imputation_host_supported()
+    or any(
+        not get_tool_path(tool)
+        for tool in ("GLIMPSE2_phase", "GLIMPSE2_ligate", "GLIMPSE2_chunk")
+    ),
+    reason="supported imputation host and GLIMPSE2 tools required",
+)
 
 
 @needs_htslib
@@ -212,7 +229,9 @@ def test_beagle_preserves_hom_alt_pass_and_labels_filled_chip_no_calls(
             "%POS\t%REF\t%ALT\t%AC\t%AN\n",
         )
     }
-    for pos, ref, alt, ac, an in _query(output, "%POS\t%REF\t%ALT\t%AC\t%AN\n"):
+    for pos, ref, alt, ac, an in _query(
+        output, "%POS\t%REF\t%ALT\t%WGSE_PANEL_AC\t%WGSE_PANEL_AN\n"
+    ):
         assert (ac, an) == panel_counts[pos, ref, alt]
     filters = _query(output, "%INFO/IMP\t%INFO/DR2\t[%GP]\t[%GT]\t%FILTER\n")
     confident_hom_alt = [
@@ -250,7 +269,8 @@ def test_beagle_preserves_hom_alt_pass_and_labels_filled_chip_no_calls(
         r["imputed"] == "1" and "." not in r["genotype"] for r in missing_rows
     )
     concordance, sites = _concordance(output)
-    assert sites > 300
+    # An explicit cohort-style site screen deliberately removes most single-target calls.
+    assert sites > (300 if min_info is None else 100)
     assert concordance >= 0.9
 
 
@@ -261,6 +281,7 @@ def test_impute_takes_reads_or_a_vcf_not_both(tmp_path):
         )
 
 
+@needs_glimpse
 def test_ref_imputation_rejects_chromosomes_without_a_panel(tmp_path):
     with pytest.raises(api.CommandFailed, match="chrX is not supported"):
         api.ref.imputation(api.RefImputationParams(chromosomes="chrX", ref=tmp_path))
@@ -279,6 +300,7 @@ def test_ref_imputation_checks_free_space_before_downloading(
 
 
 @needs_htslib
+@needs_glimpse
 def test_impute_without_an_installed_panel_says_how_to_install_it(tmp_path):
     with pytest.raises(api.CommandFailed, match="ref imputation --install"):
         api.vcf.impute(
@@ -286,3 +308,117 @@ def test_impute_without_an_installed_panel_says_how_to_install_it(tmp_path):
                 vcf_input=FIXTURE / "chip.vcf.gz", ref=tmp_path, outdir=tmp_path
             )
         )
+
+
+@pytest.mark.parametrize(
+    ("system", "machine"),
+    [("win32", "AMD64"), ("darwin", "arm64"), ("linux", "aarch64"), ("linux", "arm64")],
+)
+@pytest.mark.parametrize("operation", ["impute", "install"])
+def test_732_unsupported_platform_reports_gate_before_tools(
+    tmp_path, monkeypatch, system, machine, operation
+):
+    monkeypatch.setattr(sys, "platform", system)
+    monkeypatch.setattr(platform, "machine", lambda: machine)
+    with pytest.raises(api.CommandFailed, match="x86-64 Linux and Intel macOS"):
+        if operation == "install":
+            api.ref.imputation(
+                api.RefImputationParams(ref=tmp_path, chromosomes="chr20")
+            )
+        else:
+            api.vcf.impute(
+                api.VcfImputeParams(
+                    vcf_input=FIXTURE / "chip.vcf.gz", ref=tmp_path, outdir=tmp_path
+                )
+            )
+    assert "GLIMPSE2_phase" in platform_unavailable_tools()
+
+
+@needs_glimpse
+@pytest.mark.parametrize("alias", ["same", "symlink", "hardlink"])
+def test_732_imputation_never_overwrites_its_source(tmp_path, alias):
+    source = tmp_path / "input.vcf.gz"
+    source.write_bytes((FIXTURE / "chip.vcf.gz").read_bytes())
+    output = tmp_path / "imputed.vcf.gz"
+    if alias == "same":
+        source.rename(output)
+        source = output
+    elif alias == "symlink":
+        try:
+            output.symlink_to(source)
+        except OSError:
+            pytest.skip("symlinks are unavailable")
+    else:
+        os.link(source, output)
+    before = source.read_bytes()
+    with pytest.raises(api.CommandFailed, match="overwrite its input"):
+        api.vcf.impute(api.VcfImputeParams(vcf_input=source, outdir=tmp_path))
+    assert source.read_bytes() == before
+
+
+@needs_htslib
+@needs_glimpse
+@pytest.mark.skipif(not _beagle_installed(), reason="imputation env not installed")
+def test_732_lengthless_chip_contig_explains_how_to_verify_build(reflib, tmp_path):
+    chip = tmp_path / "lengthless.vcf"
+    with gzip.open(FIXTURE / "chip.vcf.gz", "rt") as source:
+        chip.write_text(re.sub(r",length=\d+", "", source.read()))
+    with pytest.raises(api.CommandFailed, match="cannot verify GRCh38") as error:
+        api.vcf.impute(
+            api.VcfImputeParams(vcf_input=chip, ref=reflib, outdir=tmp_path, threads=2)
+        )
+    assert "bcftools reheader" in str(error.value)
+
+
+@needs_htslib
+@needs_glimpse
+@pytest.mark.skipif(not _beagle_installed(), reason="imputation env not installed")
+def test_732_reimputed_source_calls_keep_the_imputed_label(reflib, tmp_path):
+    chip = tmp_path / "already-imputed.vcf"
+    with gzip.open(FIXTURE / "chip.vcf.gz", "rt") as source:
+        lines = source.read().splitlines()
+    first = next(i for i, line in enumerate(lines) if not line.startswith("#"))
+    fields = lines[first].split("\t")
+    fields[7] = "IMP"
+    tagged_pos = fields[1]
+    lines[first] = "\t".join(fields)
+    lines.insert(
+        1, '##INFO=<ID=IMP,Number=0,Type=Flag,Description="Previously imputed">'
+    )
+    chip.write_text("\n".join(lines) + "\n")
+    indexed = Path(bgzip_index(chip))
+    result = api.vcf.impute(
+        api.VcfImputeParams(
+            vcf_input=indexed,
+            ref=reflib,
+            outdir=tmp_path / "out",
+            threads=2,
+            memory="1G",
+        )
+    )
+    output = next(Path(o.path) for o in result.outputs if o.role == "imputed_variants")
+    imputed = dict(_query(output, "%POS\t%INFO/IMP\n"))
+    assert imputed[tagged_pos] == "1"
+
+
+@needs_htslib
+@needs_glimpse
+@pytest.mark.parametrize("interruption", ["unfinished", "different-version"])
+def test_732_panel_retry_checks_space_for_pending_binary_chunks(
+    reflib, panel_downloads, monkeypatch, interruption
+):
+    marker = next(reflib.glob("imputation/*/chr20/.installed.json"))
+    state = json.loads(marker.read_text())
+    if interruption == "unfinished":
+        state.pop("chunks")
+    else:
+        state["glimpse"] = "an older GLIMPSE2 build"
+    marker.write_text(json.dumps(state))
+    usage = shutil.disk_usage(reflib)
+    monkeypatch.setattr(shutil, "disk_usage", lambda path: usage._replace(free=1))
+    fetched = len(panel_downloads)
+    with pytest.raises(api.CommandFailed, match="needs about"):
+        api.ref.imputation(
+            api.RefImputationParams(ref=reflib, chromosomes="chr20", threads=2)
+        )
+    assert len(panel_downloads) == fetched

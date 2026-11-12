@@ -38,7 +38,16 @@ It checks for free space of 2.5 times the requested downloads first.
 
 The panel is GRCh38 only, with contigs named `chr1`, `chr2`...; chrX needs
 each sample's ploidy and isn't supported yet. A chip VCF with contigs named
-`1`, `2`... is renamed for you.
+`1`, `2`... is renamed for you. Contig lengths must be present to verify
+GRCh38; for a lengthless header, supply the matching GRCh38 FASTA index with
+`bcftools reheader --fai GRCh38.fa.fai` first.
+
+The optional environment supports **x86-64 Linux and Intel macOS only**.
+Windows, Linux ARM64 and Apple Silicon are gated off until native builds
+exist. The server must allow the effective reference library and panel paths,
+not just the FASTA's `genomes/` subfolder; configured defaults and symlinks are
+checked too. Failed or version-mismatched binary-chunk builds also recheck
+disk space on retry (about 1.6 times the download size for pending chunks).
 
 ## Output and labelling
 
@@ -47,11 +56,15 @@ each sample's ploidy and isn't supported yet. A chip VCF with contigs named
 - `INFO/IMP` marks an imputed genotype. GLIMPSE2's are all imputed; Beagle
   leaves the chip's observed genotypes unmarked. Missing chip genotypes are
   removed before Beagle, so their filled-in calls are marked `IMP` too.
+  Previously imputed source calls are also removed rather than promoted to
+  observed chip genotypes.
 - `FORMAT/GT`, `DS` (dosage) and `GP` (genotype probabilities), and the
   site's INFO score: GLIMPSE2's `INFO/INFO` (with the panel frequency
   `INFO/RAF`), Beagle's `INFO/DR2`. Beagle output also keeps the reference
-  panel's `AC`/`AN`: Beagle's own `AF` is the target-sample frequency and
-  must not be used to decide whether an imputed allele is rare in the panel.
+  panel's counts as `WGSE_PANEL_AC`/`WGSE_PANEL_AN`. These dedicated fields
+  survive sample subsetting; standard `AC`/`AN` can be recalculated from one
+  sample. Beagle's own `AF` is also a target-sample frequency. Neither
+  unqualified `AF` nor ordinary `AC`/`AN` establishes panel rarity.
 - `FILTER` `ImpLowConf` on imputed genotypes whose most likely genotype has
   `GP` below `--min-gp` (GLIMPSE2: 0.9; Beagle: 0.95). There is **no default
   INFO or DR2 filter**. `--min-info` remains an explicit opt-in site filter,
@@ -67,7 +80,8 @@ Downstream commands use these labels:
   every imputed call `low` (reason `imputed`), and an imputed allele rarer
   than 1% in the panel is never listed as a ClinVar or rare-variant finding.
 - `microarray` exports `ImpLowConf` genotypes as no-calls, not as the
-  reference.
+  reference. Targets absent from an imputed VCF are also no-calls: the panel
+  did not assess them, so they cannot be filled as homozygous reference.
 
 ## Accuracy, time and memory
 

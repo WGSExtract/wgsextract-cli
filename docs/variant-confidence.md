@@ -76,12 +76,19 @@ reason makes it `moderate`; otherwise it is `high`.
 An imputed genotype (`INFO/IMP`, from [`vcf impute`](imputation.md)) has no
 reads behind it to judge, so it is always `low`, reason `imputed` (with
 `filtered` when it is `ImpLowConf`). An imputed allele rarer than 1% in the
-panel (GLIMPSE2's `INFO/RAF`, Beagle's copied panel `AC`/`AN`, or `INFO/AF`
-for other imputed inputs without panel counts) is never counted or listed as a
-finding at all. Beagle's target-sample `AF` must not substitute for its panel
-frequency. Imputation cannot see a rare allele the reads don't show, so
+panel (GLIMPSE2's `INFO/RAF`, or Beagle's dedicated `WGSE_PANEL_AC`/
+`WGSE_PANEL_AN`) is never counted or listed as a clinical/discovery
+finding. The dedicated counts survive sample subsetting, unlike standard
+`AC`/`AN`. An imputed input with only unqualified `AF` or standard `AC`/`AN`
+has unknown panel frequency and is excluded too: these can describe just
+the target sample. Imputation cannot see a rare allele the reads don't show, so
 it would be a guess. The labelled VCF keeps it; the manifest counts them
 (`rare_imputed_not_listed`) and warns.
+
+PharmCAT still uses the input genotypes when deriving diplotypes, so its
+confidence summary retains **all** imputed calls, including rare ones, as
+low-confidence evidence. Suppression from clinical findings must not remove
+that evidence and accidentally raise a diplotype's confidence.
 
 Contamination applies to the whole sample, not one call: another person's
 reads can turn a homozygous site heterozygous or add an allele the sample

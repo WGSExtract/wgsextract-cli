@@ -436,6 +436,8 @@ def test_imputed_rare_variants_are_never_listed_as_clinvar_findings(tmp_path):
         '##INFO=<ID=AF,Number=A,Type=Float,Description="Target sample AF">\n'
         '##INFO=<ID=AC,Number=A,Type=Integer,Description="Panel AC">\n'
         '##INFO=<ID=AN,Number=1,Type=Integer,Description="Panel AN">\n'
+        '##INFO=<ID=WGSE_PANEL_AC,Number=A,Type=Integer,Description="Stable panel AC">\n'
+        '##INFO=<ID=WGSE_PANEL_AN,Number=1,Type=Integer,Description="Stable panel AN">\n'
         '##FORMAT=<ID=GP,Number=G,Type=Float,Description="GP">\n'
         '##wgsextract_imputation=<Tool=GLIMPSE2,Version="2.0.1",Panel="p">\n'
     )
@@ -444,9 +446,15 @@ def test_imputed_rare_variants_are_never_listed_as_clinvar_findings(tmp_path):
         "200 rare A G . PASS IMP;RAF=0.002 GT:GP 0/1:0.02,0.97,0.01",
         "300 sequenced G A 50 PASS . GT:AD:DP:GQ 0/1:15,15:30:99",
         # #621: a Beagle heterozygote's target AF=0.5 must not hide a rare panel allele.
-        "400 beagle_rare G T . PASS IMP;AF=0.5;AC=4;AN=6404 GT:GP 0/1:0.01,0.98,0.01",
+        "400 beagle_rare G T . PASS IMP;AF=0.5;WGSE_PANEL_AC=4;WGSE_PANEL_AN=6404 GT:GP 0/1:0.01,0.98,0.01",
+        "500 external G T . PASS IMP;AF=0.5 GT:GP 0/1:0.01,0.98,0.01",
+        "600 beagle_common G T . PASS IMP;WGSE_PANEL_AC=2000;WGSE_PANEL_AN=6404 GT:GP 0/1:0.01,0.98,0.01",
     ]
     sample = _vcf(tmp_path / "s.vcf.gz", calls, header=imputed)
+    subset = tmp_path / "subset.vcf.gz"
+    # #732: phasing selects a sample; ordinary AC/AN are rewritten to 1/2.
+    run_command(["bcftools", "view", "-s", "S", "-Oz", "-o", str(subset), sample])
+    sample = str(subset)
     clinvar = _vcf(
         tmp_path / "clinvar.vcf.gz",
         [f"{c.split()[0]} {c.split()[1]} {c.split()[2]} {c.split()[3]} . . "
@@ -460,7 +468,8 @@ def test_imputed_rare_variants_are_never_listed_as_clinvar_findings(tmp_path):
     assert [(r["pos"], r["confidence"], r["reasons"]) for r in rows] == [
         ("100", "low", "imputed"),
         ("300", "high", ""),
+        ("600", "low", "imputed"),
     ]  # fmt: skip
     warnings = {w["code"]: w for w in document["warnings"]}
-    assert warnings["rare_imputed_not_listed"]["details"]["count"] == 2
-    assert warnings["unconfirmed_clinical_findings"]["details"]["count"] == 2
+    assert warnings["rare_imputed_not_listed"]["details"]["count"] == 3
+    assert warnings["unconfirmed_clinical_findings"]["details"]["count"] == 3

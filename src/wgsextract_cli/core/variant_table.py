@@ -420,7 +420,7 @@ def _max_probability(raw: str | None) -> float | None:
     values = [
         v for part in (raw or "").split(",") if (v := _to_float(part)) is not None
     ]
-    return max(values) if values else None
+    return max(values) if values and all(0 <= v <= 1 for v in values) else None
 
 
 def _info(raw: str) -> dict[str, str]:

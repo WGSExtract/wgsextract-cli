@@ -444,18 +444,15 @@ def rare_imputed(info: Mapping[str, str], alt: int) -> bool:
     if len(frequencies) >= alt and (frequency := frequencies[alt - 1]) is not None:
         return frequency < RARE_IMPUTED_AF
     # Beagle's AF describes the target sample(s), not the reference panel.
-    # vcf impute copies the panel's AC/AN alongside it.
-    if "AC" in info or "AN" in info:
-        counts = _numbers(info.get("AC"))
-        total = _number(info.get("AN"))
+    # Dedicated counts survive bcftools sample subsetting, unlike AC/AN.
+    if "WGSE_PANEL_AC" in info or "WGSE_PANEL_AN" in info:
+        counts = _numbers(info.get("WGSE_PANEL_AC"))
+        total = _number(info.get("WGSE_PANEL_AN"))
         if total and total > 0 and len(counts) >= alt:
             count = counts[alt - 1]
             if count is not None:
                 return count / total < RARE_IMPUTED_AF
         return True
-    frequencies = _numbers(info.get("AF"))
-    if len(frequencies) >= alt and (frequency := frequencies[alt - 1]) is not None:
-        return frequency < RARE_IMPUTED_AF
     return True
 
 
@@ -557,6 +554,7 @@ def label_records(
     summary_columns: Sequence[str] = (),
     region_names: Sequence[tuple[str, int, int, str]] = (),
     keep_findings: bool = True,
+    suppress_rare_imputed: bool = True,
     contamination: float | None = None,
 ) -> Iterator[str | ConfidenceSummary]:
     """Label VCF text lines; yields output lines, then the summary last.
@@ -638,7 +636,7 @@ def label_records(
                 continue
             labels.append(result.label)
             reasons.append("|".join(result.reasons) or ".")
-            if rare_imputed(info, index):
+            if suppress_rare_imputed and rare_imputed(info, index):
                 # Labelled in the VCF, but never counted or listed as a finding.
                 summary.rare_imputed += 1
                 continue
@@ -712,6 +710,7 @@ def label_vcf(
     summary_columns: Sequence[str] = (),
     region_names: Sequence[tuple[str, int, int, str]] = (),
     keep_findings: bool = True,
+    suppress_rare_imputed: bool = True,
     samples: Sequence[PathInput | None] = (),
 ) -> ConfidenceSummary:
     """Write source_vcf's records (those matching the bcftools ``include``
@@ -741,6 +740,7 @@ def label_vcf(
         summary_columns=summary_columns,
         region_names=region_names,
         keep_findings=keep_findings,
+        suppress_rare_imputed=suppress_rare_imputed,
         contamination=freemix,
     )
 

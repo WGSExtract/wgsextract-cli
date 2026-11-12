@@ -496,7 +496,8 @@ def test_imputed_low_confidence_genotypes_become_no_calls_not_reference(tmp_path
     )
     vcf = bgzip_index(imputed)
     targets = _indexed_targets(
-        tmp_path / "targets.tab.gz", ["chr1 100 rsOk A", f"chr1 102 rsLow {low_ref}"]
+        tmp_path / "targets.tab.gz",
+        ["chr1 100 rsOk A", f"chr1 102 rsLow {low_ref}", "chr1 103 rsNotInPanel C"],
     )
     result = CommandResult("microarray")
 
@@ -519,5 +520,5 @@ def test_imputed_low_confidence_genotypes_become_no_calls_not_reference(tmp_path
     )
 
     calls = {row.split("\t")[0]: row.split("\t")[3] for row in rows}
-    assert calls == {"rsOk": "AT", "rsLow": "--"}
+    assert calls == {"rsOk": "AT", "rsLow": "--", "rsNotInPanel": "--"}
     assert "imputed_vcf" in {w.code for w in result.warnings}
