@@ -411,11 +411,15 @@ unified-memory footprint.
 Calibration in [#721](https://github.com/WGSExtract/wgsextract-cli/issues/721):
 **0.1.1**, six threads, batch 512, HG002 35x chr20 on a 16 GiB M1 peaked at
 **6.56 GB inference footprint**, with **0.843 GB workspace** from a 1.09 GB
-BAM. The existing per-input-byte regional disk allowance remains appropriate.
+BAM. The temporary-disk allowance is shared by regional and whole-genome runs:
+**0.8 temporary bytes per input byte**.
 An earlier **0.1.0** whole-genome run used only 17.3 GB of workspace from a
 46.0 GB BAM, but lowering the shared allowance to that ratio would underbudget
-chr20. Its largest stage RSS was 3.70 GB; the existing RAM envelopes also
-remain conservative.
+chr20. Its largest stage RSS was 3.70 GB, while Metal inference's measured
+peak footprint was **5.26 GB**. At batch 512, the inference-stage RAM envelope
+is **7 GiB** (1 GiB base plus 512 × 12 MiB), plus **1 GiB driver headroom**:
+**8 GiB total preflight RAM**, covering the footprint rather than RSS alone.
+The existing envelopes remain conservative.
 
 The [16 GB benchmark](apple-silicon-16gb.md#native-deepvariant) projects
 0.1.1 whole-genome wall time from measured 0.1.0 whole-genome time and the
