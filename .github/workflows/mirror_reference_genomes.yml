@@ -105,7 +105,7 @@ jobs:
 
   notes:
     needs: mirror
-    if: always() && needs.mirror.result != 'skipped'
+    if: always() && (needs.mirror.result == 'success' || needs.mirror.result == 'failure')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -124,6 +124,7 @@ jobs:
           # Records of earlier runs are kept as a release asset, so the notes list every file.
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern records.tar.gz --dir old 2>/dev/null &&
             tar -xzf old/records.tar.gz -C records --skip-old-files || true
+          if ! ls records/*.json > /dev/null 2>&1; then echo "No genome was mirrored."; exit 0; fi
           tar -czf records.tar.gz -C records .
           python3 scripts/mirror_reference_genomes.py notes records/*.json > notes.md
           gh release upload "$TAG" records.tar.gz --clobber --repo "$GITHUB_REPOSITORY"
