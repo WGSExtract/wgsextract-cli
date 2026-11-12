@@ -29,8 +29,9 @@ printed by `--version`.
 
 ## Installing
 
-The `macos-aligners-16` (Apple Silicon) and `linux-aligners-1` (Linux x86-64
-and ARM64) prereleases have `wgse-bwa` 0.12.1. The steps below install the
+The `macos-aligners-16` (Apple Silicon) and `linux-aligners-2` (Linux x86-64
+and ARM64) prereleases have `wgse-bwa` 0.12.1; `linux-aligners-2` also has
+`wgse-bwa-mem3` 0.4.0 for Linux x86-64. The steps below install the
 Apple Silicon executables; on Linux, see
 [Linux x86-64 and NVIDIA GPUs](#linux-x86-64-and-nvidia-gpus-cuda). Earlier published `wgse-bwa`
 executables, 0.11.0 and 0.12.0, advertise dense suffix-array support but reject
@@ -973,7 +974,9 @@ average (`power.txt`, `power-samples.tsv`).
 
 `wgse-bwa` also builds for Linux x86-64 and ARM64, as conda packages
 (`packaging/wgse-bwa`, built by `.github/workflows/linux_aligners.yml` and
-published as `linux-aligners-*` prereleases; `linux-aligners-1` has 0.12.1).
+published as `linux-aligners-*` prereleases; `linux-aligners-2` has 0.12.1, and
+`wgse-bwa-mem3` 0.4.0 for x86-64, see
+[below](#wgse-bwa-mem3-on-linux-x86-64)).
 Download the package for your machine, check it against the SHA-256 digest
 GitHub publishes, and install it with conda or mamba into its own environment
 together with its runtime libraries (installing a local package file doesn't
@@ -981,10 +984,10 @@ resolve dependencies). The CLI finds `wgse-bwa` on `PATH`:
 
 ```bash
 PKG=wgse-bwa-0.12.1-linux64_wgse_0.conda   # wgse-bwa-0.12.1-linuxaarch64_wgse_0.conda on ARM64
-gh release download linux-aligners-1 -R WGSExtract/wgsextract-cli -p "$PKG"
-gh release view linux-aligners-1 -R WGSExtract/wgsextract-cli --json assets \
+gh release download linux-aligners-2 -R WGSExtract/wgsextract-cli -p "$PKG" --clobber
+gh release view linux-aligners-2 -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
-  sha256sum -c --ignore-missing &&
+  grep -F "  $PKG" | sha256sum -c &&
 conda create -y -n wgse-bwa -c conda-forge "libgcc>=14" "libstdcxx>=14" "libzlib>=1.3.2,<2" &&
 conda install -y -n wgse-bwa "./$PKG" &&
 export PATH="$(conda run -n wgse-bwa printenv CONDA_PREFIX)/bin:$PATH"
@@ -1053,7 +1056,20 @@ in the `linux-aligners-*` prereleases; `packaging/wgse-bwa` leaves it out
 (`-DWGSE_BWA_MEM3=OFF`), and it builds without `wgse-bwa` (`-DWGSE_BWA=OFF`).
 On `PATH`, `align` and `realign` run it in Bioconda's bwa-mem3's place
 ([docs/hardware.md](../docs/hardware.md#bwa-mem3-on-linux)), with
-`--backend auto`.
+`--backend auto`. It needs an x86-64-v3 (AVX2) CPU. Install it as `wgse-bwa`
+above, in its own environment:
+
+```bash
+PKG=wgse-bwa-mem3-0.4.0-linux64_wgse_0.conda
+gh release download linux-aligners-2 -R WGSExtract/wgsextract-cli -p "$PKG" --clobber
+gh release view linux-aligners-2 -R WGSExtract/wgsextract-cli --json assets \
+  --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
+  grep -F "  $PKG" | sha256sum -c &&
+conda create -y -n wgse-bwa-mem3 -c conda-forge "libgcc>=14" "libstdcxx>=14" \
+  "libzlib>=1.3.2,<2" "_x86_64-microarch-level>=3" &&
+conda install -y -n wgse-bwa-mem3 "./$PKG" &&
+export PATH="$(conda run -n wgse-bwa-mem3 printenv CONDA_PREFIX)/bin:$PATH"
+```
 
 With `-DWGSE_CUDA=ON`, `--cuda` (`--backend cuda`, experimental) runs three
 stages on an NVIDIA GPU:
