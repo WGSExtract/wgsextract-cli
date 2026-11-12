@@ -87,7 +87,14 @@ def register(
         name: str, cls: type[Params] | None, func: Handler, help: str
     ) -> argparse.ArgumentParser:
         sub = ref_subs.add_parser(name, parents=[base_parser], help=help)
-        if name in ("aadr", "ybrowse", "somalier", "ancestry", "gnomad-sv", "imputation"):
+        if name in (
+            "aadr",
+            "ybrowse",
+            "somalier",
+            "ancestry",
+            "gnomad-sv",
+            "imputation",
+        ):
             # The CLI asks for these downloads explicitly; the API call is the ask.
             sub.add_argument("--install", action="store_true", help="Install it.")
             func = _install_or_delete(func)

@@ -137,7 +137,8 @@ def test_ref_imputation_installs_a_chromosome_once(reflib, panel_downloads):
 
 @needs_htslib
 @needs_glimpse
-def test_glimpse2_imputes_1x_reads_and_labels_them(reflib, tmp_path):
+def test_glimpse2_imputes_1x_reads_and_labels_them(reflib, tmp_path, caplog):
+    caplog.set_level("INFO")
     result = api.vcf.impute(
         api.VcfImputeParams(
             input=FIXTURE / "reads.bam",
@@ -155,6 +156,8 @@ def test_glimpse2_imputes_1x_reads_and_labels_them(reflib, tmp_path):
     assert rows and all(imp == "1" for imp, _f in rows)
     metrics = result.metrics
     assert metrics["imputed_sites"] == len(rows)
+    assert "Preflight impute" in caplog.text
+    assert "reference bases" in caplog.text
     assert 0 < metrics["low_confidence_sites"] < len(rows)
     concordance, sites = _concordance(output)
     assert sites > 500
@@ -174,8 +177,9 @@ def _beagle_installed() -> bool:
 @needs_htslib
 @needs_glimpse
 @pytest.mark.skipif(not _beagle_installed(), reason="imputation env not installed")
+@pytest.mark.parametrize(("min_info", "threshold"), [(None, 0.04), (0.0, 0.0)])
 def test_beagle_imputes_chip_genotypes_and_keeps_the_chip_calls_unmarked(
-    reflib, tmp_path
+    reflib, tmp_path, min_info, threshold
 ):
     result = api.vcf.impute(
         api.VcfImputeParams(
@@ -184,6 +188,7 @@ def test_beagle_imputes_chip_genotypes_and_keeps_the_chip_calls_unmarked(
             outdir=tmp_path / "out",
             threads=2,
             memory="1G",
+            min_info=min_info,
         )
     )
 
@@ -193,6 +198,25 @@ def test_beagle_imputes_chip_genotypes_and_keeps_the_chip_calls_unmarked(
     rows = {int(pos): imp for pos, imp in _query(output, "%POS\t%INFO/IMP\n")}
     assert {p for p, imp in rows.items() if imp != "1"} == chip
     assert len(rows) > 10 * len(chip)
+    panel_counts = {
+        (pos, ref, alt): (ac, an)
+        for pos, ref, alt, ac, an in _query(
+            imputation_panel.require("chr20", str(reflib), None).panel,
+            "%POS\t%REF\t%ALT\t%AC\t%AN\n",
+        )
+    }
+    for pos, ref, alt, ac, an in _query(output, "%POS\t%REF\t%ALT\t%AC\t%AN\n"):
+        assert (ac, an) == panel_counts[pos, ref, alt]
+    filters = _query(output, "%INFO/IMP\t%INFO/DR2\t[%GP]\t%FILTER\n")
+    newly_passing = [
+        filt
+        for imp, dr2, gp, filt in filters
+        if imp == "1"
+        and threshold <= float(dr2) < 0.8
+        and max(map(float, gp.split(","))) >= 0.9
+    ]
+    assert newly_passing
+    assert all("ImpLowConf" not in filt for filt in newly_passing)
     concordance, sites = _concordance(output)
     assert sites > 300
     assert concordance >= 0.9

@@ -76,8 +76,10 @@ reason makes it `moderate`; otherwise it is `high`.
 An imputed genotype (`INFO/IMP`, from [`vcf impute`](imputation.md)) has no
 reads behind it to judge, so it is always `low`, reason `imputed` (with
 `filtered` when it is `ImpLowConf`). An imputed allele rarer than 1% in the
-panel (GLIMPSE2's `INFO/RAF`, else `INFO/AF`) is never counted or listed as a
-finding at all: imputation cannot see a rare allele the reads don't show, so
+panel (GLIMPSE2's `INFO/RAF`, Beagle's copied panel `AC`/`AN`, or `INFO/AF`
+for other imputed inputs without panel counts) is never counted or listed as a
+finding at all. Beagle's target-sample `AF` must not substitute for its panel
+frequency. Imputation cannot see a rare allele the reads don't show, so
 it would be a guess. The labelled VCF keeps it; the manifest counts them
 (`rare_imputed_not_listed`) and warns.
 

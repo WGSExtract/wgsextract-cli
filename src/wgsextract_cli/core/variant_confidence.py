@@ -437,15 +437,25 @@ class Finding:
 
 
 def rare_imputed(info: Mapping[str, str], alt: int) -> bool:
-    """An imputed ALT (INFO/IMP) whose panel frequency (GLIMPSE2's RAF, else
-    AF) is below RARE_IMPUTED_AF, or unknown."""
+    """An imputed ALT whose reference-panel frequency is rare or unknown."""
     if IMPUTED_TAG not in info:
         return False
-    for key in ("RAF", "AF"):
-        values = _numbers(info.get(key))
-        if len(values) >= alt and values[alt - 1] is not None:
-            frequency = values[alt - 1]
-            return frequency is None or frequency < RARE_IMPUTED_AF
+    frequencies = _numbers(info.get("RAF"))
+    if len(frequencies) >= alt and (frequency := frequencies[alt - 1]) is not None:
+        return frequency < RARE_IMPUTED_AF
+    # Beagle's AF describes the target sample(s), not the reference panel.
+    # vcf impute copies the panel's AC/AN alongside it.
+    if "AC" in info or "AN" in info:
+        counts = _numbers(info.get("AC"))
+        total = _number(info.get("AN"))
+        if total and total > 0 and len(counts) >= alt:
+            count = counts[alt - 1]
+            if count is not None:
+                return count / total < RARE_IMPUTED_AF
+        return True
+    frequencies = _numbers(info.get("AF"))
+    if len(frequencies) >= alt and (frequency := frequencies[alt - 1]) is not None:
+        return frequency < RARE_IMPUTED_AF
     return True
 
 

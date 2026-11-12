@@ -589,7 +589,9 @@ def imputation(
     """Install or delete panel chromosomes; output role ``reference_resource``."""
     from wgsextract_cli.commands.ref.library_commands import run_imputation
 
-    return execute(params, run_imputation, progress=progress, cancel=cancel, check=check)
+    return execute(
+        params, run_imputation, progress=progress, cancel=cancel, check=check
+    )
 
 
 def ancestry(

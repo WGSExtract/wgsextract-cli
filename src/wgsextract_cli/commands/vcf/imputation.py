@@ -35,6 +35,10 @@ from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.reference_assets import reference_library_of
 from wgsextract_cli.core.reference_models import sequence_lengths
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.resource_estimates import (
+    estimate_imputation,
+    preflight_resources,
+)
 from wgsextract_cli.core.results import Scalar, current_result, warn
 from wgsextract_cli.core.samtools_commands import alignment_index, parse_memory
 from wgsextract_cli.core.ultima import read_groups
@@ -83,7 +87,7 @@ def _chromosomes(text: str | None, reflib: str | None) -> list[str]:
         raise UsageError(
             "No imputation panel is installed. Install the chromosomes to impute, "
             "e.g. 'wgsextract ref imputation --install --chromosomes chr20' "
-            "(or --chromosomes all, about 20 GB to download)."
+            "(or --chromosomes all, about 30 GB to download)."
         )
     return found
 
@@ -288,9 +292,11 @@ def _beagle(
         contig.write_text(
             f"##contig=<ID={panel.chrom},length={length}>\n", newline="\n"
         )
+        ensure_vcf_indexed(f"{out}.vcf.gz")
         part = work / f"{panel.chrom}.vcf.gz"
         run_command(
-            ["bcftools", "annotate", "-h", contig, "-Oz", "-o", part,
+            ["bcftools", "annotate", "-h", contig,
+             "-a", panel.panel, "-c", "INFO/AC,INFO/AN", "-Oz", "-o", part,
              f"{out}.vcf.gz"]
         )  # fmt: skip
         parts.append(part)
@@ -302,7 +308,7 @@ def _header_lines(tool: str, version: str, params: VcfImputeParams) -> str:
         '##INFO=<ID=IMP,Number=0,Type=Flag,Description="Imputed genotype">\n'
         f'##{HEADER_KEY}=<Tool={tool},Version="{version}",'
         f'Panel="{imputation_panel.PANEL_LABEL}",Build=GRCh38,'
-        f"MinGP={params.min_gp:g},MinINFO={params.min_info:g},"
+        f"MinGP={params.min_gp:g},MinINFO={params.info_threshold:g},"
         f"Filter={LOW_CONFIDENCE}>\n"
     )
 
@@ -339,7 +345,7 @@ def _label(
         score = "DR2"
     low = (
         f"INFO/IMP=1 && (MAX(FMT/GP)<{params.min_gp:g} || "
-        f"INFO/{score}<{params.min_info:g})"
+        f"INFO/{score}<{params.info_threshold:g})"
     )
     run_pipeline(
         [
@@ -396,6 +402,13 @@ def run_impute(params: VcfImputeParams) -> None:
     Path(outdir).mkdir(parents=True, exist_ok=True)
     out_vcf = str(Path(outdir, OUTPUT))
     tool = "GLIMPSE2" if reads_mode else "Beagle"
+    preflight_resources(
+        lambda: estimate_imputation(
+            reads=reads_mode,
+            threads=int(threads),
+            bases=sum(_panel_length(p.panel, p.chrom) or 0 for p in panels),
+        )
+    )
     logging.info(f"Imputing {', '.join(chroms)} with {tool} into {out_vcf}")
     with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_impute_") as tmp:
         work = Path(tmp)
@@ -412,7 +425,7 @@ def run_impute(params: VcfImputeParams) -> None:
         panel=imputation_panel.PANEL_LABEL,
         chromosomes=",".join(chroms),
         min_gp=params.min_gp,
-        min_info=params.min_info,
+        min_info=params.info_threshold,
         **_summary(out_vcf),
     )
     result = current_result()
@@ -421,7 +434,7 @@ def run_impute(params: VcfImputeParams) -> None:
     logging.info(
         f"Imputed {metrics['imputed_sites']:,} sites; "
         f"{metrics['low_confidence_sites']:,} are {LOW_CONFIDENCE} "
-        f"(max GP < {params.min_gp:g} or INFO < {params.min_info:g})."
+        f"(max GP < {params.min_gp:g} or INFO < {params.info_threshold:g})."
     )
 
 

@@ -1482,6 +1482,35 @@ HP/PS tags to `haplotagged.bam` (or `.cram`).
 | `haplotag` | `bool` | `False` | `--haplotag` | Also write the reads tagged with their haplotype (HP) and phase block (PS) to haplotagged.bam (.cram for CRAM input). |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 
+### `api.vcf.impute(VcfImputeParams)`
+
+CLI: `wgsextract vcf impute`.
+
+Impute a sample's genotypes; output role `imputed_variants`.
+
+`VcfImputeParams`: Impute one GRCh38 sample's genotypes from the 1000 Genomes 30x panel
+into `imputed.vcf.gz`: low-coverage reads (`input`) with GLIMPSE2, or
+a genotype-only VCF such as microarray calls (`vcf_input`) with Beagle 5.
+
+Every imputed record carries INFO/IMP, the header a
+`##wgsextract_imputation` line, and records whose most likely genotype
+has GP below `min_gp` or whose INFO score (GLIMPSE2 INFO, Beagle DR2) is
+below `min_info` (default: INFO 0.8, DR2 0.04) are FILTERed
+`ImpLowConf`. Install the panel's
+chromosomes first with `ref imputation`.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path \| None` | `None` | `--input`, `-i` | Low-coverage BAM or CRAM to impute with GLIMPSE2 (about 0.5-8x). |
+| `vcf_input` | `Path \| None` | `None` | `--vcf-input` | Genotype-only VCF (e.g. chip calls) to impute with Beagle instead. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `chromosomes` | `str \| None` | `None` | `--chromosomes` | Chromosomes, e.g. chr20 or chr1-22 (default: every installed one). |
+| `min_gp` | `float` | `0.9` | `--min-gp` | FILTER genotypes with a lower max GP ImpLowConf. |
+| `min_info` | `float \| None` | `None` | `--min-info` | INFO/DR2 cutoff (default: GLIMPSE2 0.8; Beagle 0.04). |
+
 ## `api.analyze`
 
 `analyze`: whole-sample workflows that chain other commands.
@@ -1746,6 +1775,22 @@ uses, about 85 MB, or delete them.
 | --- | --- | --- | --- | --- |
 | `delete` | `bool` | `False` | `--delete` | Delete the installed somalier sites and 1000 Genomes sketches |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+
+### `api.ref.imputation(RefImputationParams)`
+
+CLI: `wgsextract ref imputation`.
+
+Install or delete panel chromosomes; output role `reference_resource`.
+
+`RefImputationParams`: Install SHA-256-pinned GRCh38 1000 Genomes 30x panel chromosomes
+and prepare GLIMPSE2 binary references, or delete installed chromosomes.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed imputation panel chromosomes |
+| `chromosomes` | `str \| None` | `None` | `--chromosomes` | Chromosomes: chr20, chr1-22 or all (autosomes only). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 
 ### `api.ref.ancestry(RefAncestryParams)`
 
