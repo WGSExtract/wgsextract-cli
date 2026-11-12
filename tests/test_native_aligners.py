@@ -1097,40 +1097,68 @@ def test_linux_bwa_mem3_from_its_environment_stands_in_with_the_same_records(
     assert not result.warnings
 
 
-@pytest.mark.usefixtures("linux_x86_64")
-@pytest.mark.parametrize(
-    ("cuda", "mapper", "backend"),
-    [
-        (True, "wgse-bwa --backend auto mem ", "cuda"),
-        (False, "bwa-mem3 mem --compat=bwa-mem ", "cpu"),
-    ],
-)
-def test_linux_prefers_wgse_bwa_on_cuda_then_bwa_mem3(
-    tmp_path, mem3_bin, fake_pixi, cuda, mapper, backend
-):
-    # #674/#672: an NVIDIA GPU beats bwa-mem3 on the CPU; without one,
-    # bwa-mem3 (85% less time than bwa on x86) beats wgse-bwa's CPU backend.
-    reads = _mem3_reads(tmp_path)
-    _install_build(mem3_bin, "bwa", _cuda_capabilities("bwa", cuda_available=cuda))
-    _env_bwa_mem3(fake_pixi, mem3_bin)
-
-    bam, result = _align(reads, tmp_path / "auto", "--aligner", "bwa")
-    upstream_bam, _ = _align(
-        reads, tmp_path / "off", "--aligner", "bwa", "--native-aligners", "off"
-    )
-
-    assert _mapper(bam).startswith(mapper)
-    assert _samtools("view", bam) == _samtools("view", upstream_bam)
-    assert result.metrics["aligner"] == "bwa"
-    assert result.metrics["native_aligner_backend"] == backend
-    assert not result.warnings
-
-
 _CRASHING_BWA_MEM3 = """\
 import os, signal
 
 os.kill(os.getpid(), signal.SIGSEGV)
 """
+
+
+@pytest.mark.usefixtures("linux_x86_64")
+@pytest.mark.parametrize("cuda", [True, False])
+@pytest.mark.parametrize("options", [("--aligner", "bwa"), ()])
+def test_736_linux_prefers_bwa_mem3_to_wgse_bwa_on_cuda(
+    tmp_path, mem3_bin, fake_pixi, cuda, options
+):
+    # #736: on an RTX 3090, bwa-mem3 --compat=bwa-mem on the CPU (98 s) beat
+    # wgse-bwa --cuda (131 s) with the same records, yet the GPU went first.
+    reads = _mem3_reads(tmp_path)
+    # Without bwa-mem2's .0123 file auto keeps bwa's records.
+    Path(reads.ref + ".0123").unlink()
+    _install_build(mem3_bin, "bwa", _cuda_capabilities("bwa", cuda_available=cuda))
+    _env_bwa_mem3(fake_pixi, mem3_bin)
+
+    bam, result = _align(reads, tmp_path / "auto", *options)
+    upstream_bam, _ = _align(
+        reads, tmp_path / "off", "--aligner", "bwa", "--native-aligners", "off"
+    )
+
+    # contract: --compat=bwa-mem is what makes bwa-mem3 write bwa's records.
+    assert _mapper(bam).startswith("bwa-mem3 mem --compat=bwa-mem ")
+    assert _samtools("view", bam) == _samtools("view", upstream_bam)
+    assert result.metrics["aligner"] == "bwa"
+    assert result.metrics["native_aligner"] == "bwa-mem3"
+    assert result.metrics["native_aligner_backend"] == "cpu"
+    assert not result.warnings
+
+
+@pytest.mark.usefixtures("linux_x86_64")
+@pytest.mark.parametrize("why", ["crashes", "does not fit"])
+def test_736_wgse_bwa_on_cuda_aligns_when_bwa_mem3_cannot(
+    tmp_path, mem3_bin, fake_pixi, ram, why
+):
+    # #736 keeps wgse-bwa --cuda next, for a bwa-mem3 that crashes (#727) or
+    # whose pipeline doesn't fit the RAM available.
+    reads = _mem3_reads(tmp_path)
+    _install_build(mem3_bin, "bwa", _cuda_capabilities("bwa"))
+    _env_bwa_mem3(fake_pixi, mem3_bin, _CRASHING_BWA_MEM3 if why == "crashes" else None)
+    if why == "does not fit":
+        bwa = _mem3_needed(reads, "bwa")
+        stand_in = _mem3_needed(reads, "bwa-mem3")
+        ram(64 * GIB, available=(bwa + stand_in) // 2)
+
+    bam, result = _align(reads, tmp_path / "out", "--aligner", "bwa")
+    upstream_bam, _ = _align(
+        reads, tmp_path / "off", "--aligner", "bwa", "--native-aligners", "off"
+    )
+
+    assert _mapper(bam).startswith("wgse-bwa --backend auto mem ")
+    assert _samtools("view", bam) == _samtools("view", upstream_bam)
+    assert result.metrics["native_aligner"] == "wgse-bwa"
+    assert result.metrics["native_aligner_backend"] == "cuda"
+    if why == "crashes":
+        (warning,) = result.warnings
+        assert warning.code == "native_aligner_unusable"
 
 
 @pytest.mark.usefixtures("linux")

@@ -25,6 +25,14 @@ still bypasses realignment's disk refusal, not its memory guard; informational
 estimates are still printed. Realignment reports before FASTQ extraction and
 alignment reports again when the final aligner is selected.
 
+The memory estimate is the selected aligner's. On Linux, bwa-mem3 standing in
+for bwa (`--compat=bwa-mem`, chosen first since #736) needs about twice bwa's
+RAM (5M pairs on hs38: 14.7 GiB peak at 16 threads against bwa's 6.6 GiB;
+`wgse-bwa --cuda` peaked at 6.3 GiB at 8 threads), so it is taken only when its
+pipeline fits the RAM available; otherwise `wgse-bwa` (on its GPU when that
+fits) or bwa runs, and the preflight reports that aligner's estimate
+([hardware guide](hardware.md#bwa-mem3-on-linux)).
+
 Eligible paired BWA/bwa-mem2 realignment without `--keep-fastq` streams newly
 extracted reads (forced refresh of cached FASTQs at the exact output paths
 retains file handling): `samtools view | collate | fastq` writes interleaved
