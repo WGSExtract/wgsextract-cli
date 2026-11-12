@@ -372,7 +372,7 @@ if [ "$gpu" = --cuda ]; then
     test "$status" -eq 1
     # The hung rescue stream can also stall another stage's next batch (a device
     # allocation waits for running kernels), so either stage's watchdog may fire.
-    grep -Eq 'CPU fallback: GPU watchdog: [a-z ]+ did not finish within 2 s' hung.log
+    grep -Eq 'CPU fallback: GPU watchdog: .+ did not finish within 2 s' hung.log
     grep -q "$gpu_name execution failed (alignments were completed on the CPU)" hung.log
     same cpu-chunks.sam hung.sam
 fi
