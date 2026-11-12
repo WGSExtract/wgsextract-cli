@@ -545,11 +545,11 @@ CLI: `wgsextract bam to-ubam`.
 
 Write the unaligned BAM (output role `unaligned_bam`).
 
-`BamToUbamParams`: A queryname-sorted unaligned BAM, as GATK's pipelines start from, as
-`<input>_unaligned.bam`: from an aligned `input` (read-describing tags
-kept, alignments dropped) or from FASTQ `r1` and optional `r2`. Input
-without read groups gets one from `sample`, `library` and
-`platform`, with the flowcell and lane parsed from the read names.
+`BamToUbamParams`: A queryname-sorted unaligned BAM, as GATK's pipelines start from
+(`<input>_unaligned.bam`), from an aligned `input` (read tags kept,
+alignments dropped) or FASTQ `r1` and optional `r2`. Input without
+read groups gets one from `sample`, `library` and `platform`, with
+flowcell and lane parsed from the read names.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -658,13 +658,12 @@ CLI: `wgsextract qc contamination`.
 Estimate contamination (output roles `contamination_report` and
 `contamination_ancestry`).
 
-`QcContaminationParams`: Estimate how much of a BAM/CRAM's DNA comes from another person with
-VerifyBamID2: the FREEMIX fraction, from reads at 1000 Genomes sites
-(GRCh37/hg19 or GRCh38). Writes `<stem>.contamination.selfSM` and
-`.Ancestry`. Metrics: `freemix`, `freemix_sites`, `freemix_depth`
-and the ancestry PCs; the estimate is recorded as the sample's
-`contamination` fact. VerifyBamID2 is optional (`pixi install -e
-verifybamid2`) and unavailable on Windows.
+`QcContaminationParams`: Estimate how much of a BAM/CRAM's DNA comes from another person
+(FREEMIX) with VerifyBamID2 at 1000 Genomes sites (GRCh37/hg19 or
+GRCh38). Writes `<stem>.contamination.selfSM` and `.Ancestry`.
+Metrics: `freemix`, `freemix_sites`, `freemix_depth` and the
+ancestry PCs; recorded as the sample's `contamination` fact. Optional
+(`pixi install -e verifybamid2`); not on Windows.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -1554,12 +1553,11 @@ mtDNA haplogroup; `metrics` holds `haplogroup` and
 full Haplogrep row (`haplogrep`), `haplogrep_version`, the `tree`
 (id, version, name) and the haplocheck row (`haplocheck`).
 
-`MtHaplogroupParams`: Predict the mtDNA haplogroup with Haplogrep 3 from a BAM/CRAM (chrM is
-called first; needs the reference) or a VCF. The report is
-`haplogrep_results.txt` in the output folder. The chosen tree is
-downloaded once into the reference library. With `contamination`,
-haplocheck also checks the mtDNA for a mixture of two haplogroups and writes
-`haplocheck_contamination.txt`.
+`MtHaplogroupParams`: Predict the mtDNA haplogroup with Haplogrep 3 from a BAM/CRAM (chrM
+called first; needs the reference) or a VCF, into
+`haplogrep_results.txt`; the tree is downloaded once into the reference
+library. With `contamination`, haplocheck also looks for a mixture of
+two haplogroups (`haplocheck_contamination.txt`).
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -2253,11 +2251,10 @@ CLI: `wgsextract typing cyp2d6`.
 Call CYP2D6 star alleles with Cyrius (see `TypingCyp2d6Params`).
 
 `TypingCyp2d6Params`: Call CYP2D6 star alleles, including copy-number and CYP2D6/CYP2D7
-hybrid alleles, with Cyrius; it needs about 30x whole-genome data. On a
-GRCh38 reference with chr22 ALT contigs, the locus's reads are first
-realigned to primary chr22 (needs `ref` and minimap2). Metrics:
-`cyp2d6_genotype`, `cyp2d6_filter`, `cyp2d6_copy_number` and
-`median_depth`.
+hybrids, with Cyrius (about 30x WGS). On GRCh38 with chr22 ALT contigs,
+the locus's reads are first realigned to primary chr22 (needs `ref`
+and minimap2). Metrics: `cyp2d6_genotype`, `cyp2d6_filter`,
+`cyp2d6_copy_number` and `median_depth`.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -2273,15 +2270,13 @@ CLI: `wgsextract typing smn`.
 Call SMN1/SMN2 copy number with SMNCopyNumberCaller (see
 `TypingSmnParams`).
 
-`TypingSmnParams`: Call the copy number of SMN1, SMN2 and SMN2Δ7–8 with SMNCopyNumberCaller
-for spinal muscular atrophy (SMA) carrier screening: one SMN1 copy is a
-carrier, none is SMA-affected. Two copies can still be a "2+0" silent
-carrier; g.27134T>G, associated with that, is counted. Short-read WGS of
-at least 30x only: long reads are refused, and below 30x median depth no
-calls are reported (the caller's files are kept as
-`<stem>.smn.below_min_depth.*`). A non-bwa-like aligner in the header
-(Novoalign, Bowtie 2, ...) gets an `aligner_not_calibrated` warning. Not
-a diagnosis. Metrics: `smn1_copy_number`,
+`TypingSmnParams`: Call SMN1, SMN2 and SMN2Δ7–8 copy numbers with SMNCopyNumberCaller for
+spinal muscular atrophy (SMA) carrier screening, not a diagnosis: one SMN1
+copy is a carrier, none is affected; g.27134T>G, linked to "2+0" silent
+carriers, is counted. Short-read WGS of at least 30x only; below 30x
+median depth no calls are reported (files kept as
+`<stem>.smn.below_min_depth.*`), and non-bwa-like aligners get an
+`aligner_not_calibrated` warning. Metrics: `smn1_copy_number`,
 `smn2_copy_number`, `smn2_delta78_copy_number`, `sma_carrier`,
 `sma_affected`, `g27134tg_copy_number`, `smn_filter`,
 `median_depth` and `coverage_mad`.
@@ -2299,11 +2294,10 @@ CLI: `wgsextract typing hla`.
 
 Type HLA genes with T1K (see `TypingHlaParams`).
 
-`TypingHlaParams`: Type the HLA class I and II genes with T1K from the reads of the MHC,
-the HLA decoys and chromosome 6 ALT contigs. Metrics: the diplotype of
-HLA-A, -B, -C, -DRB1, -DQA1, -DQB1, -DPA1 and -DPB1 (None without a
-confident call) and the IPD-IMGT/HLA release of the index
-(`ipd_imgt_hla_release`). The outside-call file holds HLA-A and HLA-B.
+`TypingHlaParams`: Type HLA class I and II genes with T1K from reads of the MHC, HLA
+decoys and chr6 ALT contigs. Metrics: diplotypes of HLA-A, -B, -C,
+-DRB1, -DQA1, -DQB1, -DPA1 and -DPB1 (None without a confident call) and
+`ipd_imgt_hla_release`. The outside-call file holds HLA-A and HLA-B.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -2320,13 +2314,12 @@ CLI: `wgsextract typing str`.
 Size disease repeats with ExpansionHunter, LongTR or STRkit (`typing
 str`; see `TypingStrParams`).
 
-`TypingStrParams`: Size the disease short tandem repeats (HTT, FMR1, C9ORF72, ...) and
-flag those outside the normal range: with ExpansionHunter for short reads,
-and LongTR (or STRkit) for Nanopore and PacBio reads, chosen by the reads'
-platform. Sizing from reads isn't a diagnosis. Metrics: `sex`,
-`repeat_caller`, `disease_repeats` and `flagged_repeats`; each
-flagged repeat is also a `repeat_outside_normal_range` warning (or
-`repeat_unconfirmed` when only a one-read allele flags it, and
+`TypingStrParams`: Size disease short tandem repeats (HTT, FMR1, C9ORF72, ...) and flag
+those outside the normal range, with ExpansionHunter for short reads and
+LongTR (or STRkit) for Nanopore and PacBio; not a diagnosis. Metrics:
+`sex`, `repeat_caller`, `disease_repeats` and `flagged_repeats`;
+each flagged repeat is a `repeat_outside_normal_range` warning
+(`repeat_unconfirmed` if only a one-read allele flags it,
 `repeat_unavailable` for NOTCH2NLC on hg19).
 
 | Field | Type | Default | CLI | Description |
