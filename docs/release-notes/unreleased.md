@@ -30,4 +30,12 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   used unless asked; otherwise runs pass `wgse-bwa --dense-sa off`. Needs
   `wgse-bwa` 0.11.0 or later. See docs/hardware.md.
 
+- `vcf snp` and `vcf indel` are about a fifth faster on Apple Silicon Macs
+  with `wgse-mimalloc`, WGS Extract's build of the mimalloc allocator, which
+  they inject into bcftools when it is installed: the same records (5M read
+  pairs: 104 against 132 s for SNPs, 155 against 201 s for indels). The new
+  `mimalloc` setting and `--mimalloc off` turn it off; the manifest's
+  `bcftools_allocator` metric says which allocator ran. See
+  [hardware.md](../hardware.md#bcftools-with-mimalloc).
+
 ## Fixes

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.core.mimalloc import SETTINGS as MIMALLOC_SETTINGS
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.table_writer import FORMATS, table_format_type
 from wgsextract_cli.core.utils import UsageError
@@ -70,6 +71,17 @@ class _SmallVariantParams(Params):
         action="boolean_optional",
     )
     qc_min_depth: float | None = depth_param()
+    mimalloc: str | None = param(
+        None,
+        help="On Apple Silicon, run bcftools mpileup and call with WGS Extract's "
+        "wgse-mimalloc allocator when it's installed in bcftools' environment "
+        "(auto; same records, about a fifth faster) or never (off). Default: "
+        "config mimalloc, else auto.",
+        doc="auto (the default, or config mimalloc) injects wgse-mimalloc into "
+        "bcftools on Apple Silicon when installed; off never does.",
+        choices=MIMALLOC_SETTINGS,
+        config_key="mimalloc",
+    )
 
     def __post_init__(self) -> None:
         super().__post_init__()
