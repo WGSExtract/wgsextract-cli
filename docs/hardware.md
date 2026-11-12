@@ -359,7 +359,7 @@ Apple Silicon; `pixi install --locked` installs it alongside bcftools.
 When it is installed in bcftools' environment, `vcf snp` and `vcf indel` start
 their bcftools processes, and only those, with `DYLD_INSERT_LIBRARIES` pointing
 at it (`mimalloc = "auto"`, the default; `--mimalloc off` or `mimalloc = "off"`
-in `config.toml` turns this off). WGS Extract doesn't install it.
+in `config.toml` turns this off). The CLI never installs it at runtime.
 
 The records are the same. On 5M HG002 read pairs on hs38 with 9 threads on the
 M1 Pro (medians of 3 interleaved runs), `vcf snp` took 102 s against 132 s and
