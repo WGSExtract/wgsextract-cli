@@ -245,10 +245,10 @@ class BamMergeParams(Params):
 @dataclass(frozen=True, kw_only=True)
 class BamToUbamParams(Params):
     """A queryname-sorted unaligned BAM, as GATK's pipelines start from
-    (``<input>_unaligned.bam``), from an aligned ``input`` (read tags kept,
-    alignments dropped) or FASTQ ``r1`` and optional ``r2``. Input without
-    read groups gets one from ``sample``, ``library`` and ``platform``, with
-    flowcell and lane parsed from the read names."""
+    (``<input>_unaligned.bam``), from an aligned ``input`` (read-describing
+    tags kept, alignments dropped) or FASTQ ``r1`` and optional ``r2``. Input
+    without read groups gets one from ``sample``, ``library`` and
+    ``platform``, with flowcell and lane parsed from the read names."""
 
     COMMAND = "bam to-ubam"
 
