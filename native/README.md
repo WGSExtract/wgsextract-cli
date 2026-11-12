@@ -1040,20 +1040,21 @@ stages on an NVIDIA GPU:
 `--cuda` runs one compute thread per `-t` thread by default. More threads than
 cores were slower on x86-64.
 
-The full-5m tier on the same machine (8 threads, two interleaved rounds, means):
+The full-5m tier on the same machine (8 threads, two interleaved rounds, means;
+the machine was busier than for the `wgse-bwa` table above):
 
 | | Wall | CPU time | Peak RSS | Records |
 | --- | ---: | ---: | ---: | --- |
-| `wgse-bwa --cuda` | 130.5 s | 1003 s | 6.3 GiB | BWA's |
-| `wgse-bwa-mem3` | 99.1 s | 770 s | 10.5 GiB | bwa-mem3's |
-| `wgse-bwa-mem3 --cuda --gpu-rescue off` | 91.1 s (−8%) | 554 s | 10.9 GiB | bwa-mem3's |
-| `wgse-bwa-mem3 --cuda` | 84.5 s (−15%) | 408 s (−47%) | 10.9 GiB | bwa-mem3's |
-| `wgse-bwa-mem3 mem --compat=bwa-mem` | 106.6 s | 813 s | 10.5 GiB | BWA's |
-| `wgse-bwa-mem3 --cuda mem --compat=bwa-mem` | 83.7 s (−21%) | 405 s (−50%) | 10.9 GiB | BWA's |
+| `wgse-bwa-mem3` | 105.9 s | 817 s | 10.5 GiB | bwa-mem3's |
+| `wgse-bwa-mem3 --cuda --gpu-rescue off` | 94.8 s (−10%) | 579 s | 10.9 GiB | bwa-mem3's |
+| `wgse-bwa-mem3 --cuda` | 88.1 s (−17%) | 418 s (−49%) | 11.0 GiB | bwa-mem3's |
+| `wgse-bwa-mem3 mem --compat=bwa-mem` | 107.5 s | 828 s | 10.5 GiB | BWA's |
+| `wgse-bwa-mem3 --cuda mem --compat=bwa-mem` | 87.3 s (−19%) | 425 s (−49%) | 11.0 GiB | BWA's |
 
 The records match `expected.tsv`: bwa-mem3's own, and with `--compat=bwa-mem`,
-BWA's. `--cuda` used at most 6.3 GiB of GPU memory. The CPU `--compat` run of
-the first round was slower than the second (114.6 s against 98.5 s).
+BWA's. `--cuda` used at most 6.5 GiB of GPU memory. In a quieter session
+`wgse-bwa-mem3` took 99.1 s and `--cuda` 84.5 s, and `wgse-bwa --cuda` (BWA's
+records) took 130.5 s in another.
 
 On x86-64, `perf` puts a fifth of the CPU backend's time in mate rescue
 (`kswv`), more than a quarter in SMEM collection, a tenth in suffix-array
