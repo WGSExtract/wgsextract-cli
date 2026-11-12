@@ -76,14 +76,16 @@
   /* Which iteration this is: the published copy names its commit */
   blocks.version = function (el) {
     var v = window.WGSM_VERSION || {};
-    if (v.source !== "pages" || !v.sha) {
+    if ((v.source !== "pages" && v.source !== "preview") || !v.sha) {
       el.append("Local copy of the mockups (your checkout). The published site shows the commit it was built from here.");
       return;
     }
+    var preview = v.source === "preview";
     el.append(
       "Published from commit ",
       h("a", { href: "https://github.com/WGSExtract/wgsextract-cli/commit/" + v.sha }, h("code", v.sha.slice(0, 7))),
-      " of main, " + v.date.replace("T", " ").replace(/([+-]\d\d:\d\d|Z)$/, " $1") + "."
+      " of " + (preview ? "branch " + v.branch : "main") + ", " + v.date.replace("T", " ").replace(/([+-]\d\d:\d\d|Z)$/, " $1") + ". ",
+      h("a", { href: WGSM.link(preview ? "../index.html" : "preview/index.html") }, "Branch previews")
     );
   };
 

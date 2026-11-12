@@ -2,7 +2,9 @@ name: GitHub Pages
 
 # The CLI's site at the root, the desktop app's site (gui/site_src) under
 # app/: https://wgsextract.github.io/wgsextract-cli/app/, and the UI redesign
-# mockups (gui/mockups) under app/mockups/.
+# mockups (gui/mockups) under app/mockups/, with previews of the mockups/*
+# branches under app/mockups/preview/<name>/. mockup_previews.yml starts this
+# workflow on main when such a branch is pushed or deleted.
 
 on:
   push:
@@ -16,6 +18,7 @@ on:
       - "gui/scripts/site_*.py"
       - "gui/scripts/validate_site_sources.py"
       - "gui/mockups/**"
+      - "scripts/build_mockup_previews.py"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -64,6 +67,11 @@ jobs:
           printf 'window.WGSM_VERSION = { source: "pages", sha: "%s", date: "%s" };\n' \
             "$GITHUB_SHA" "$(git log -1 --format=%cI "$GITHUB_SHA")" > site/app/mockups/shared/version.js
           python3 -c 'import json, pathlib; d = pathlib.Path("site/app/mockups/feedback"); d.mkdir(exist_ok=True); (d / "_pages.json").write_text(json.dumps(sorted(p.stem for p in d.glob("*.json") if not p.stem.startswith("_"))))'
+
+      # Static files only from each branch (read from git archive, never run),
+      # with code from main; this repository's branches only, never forks.
+      - name: Add previews of mockups/* branches under app/mockups/preview/
+        run: python3 scripts/build_mockup_previews.py --out site/app/mockups/preview
 
       - name: Upload site artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
