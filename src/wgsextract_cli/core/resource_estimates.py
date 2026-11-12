@@ -315,6 +315,7 @@ def estimate_resources(
     gatk_workers: int = 1,
     additional_ram_bytes: int = 0,
     gpu_bytes: int = 0,
+    dense_sa_bytes: int = 0,
     inference_batch_size: int = 1024,
     deepvariant_model: str = "WGS",
     postprocess_plan: PostprocessPlan | None = None,
@@ -395,11 +396,17 @@ def estimate_resources(
             preset=preset,
             input_bytes=size if aligner == "minimap2" else None,
             gpu_bytes=gpu_bytes,
+            dense_sa_bytes=dense_sa_bytes,
         )
         if gpu_bytes:
             notes.append(
                 f"Working memory includes {gpu_bytes / 1024**3:.1f} GiB for the "
                 "aligner's Metal GPU backend."
+            )
+        if dense_sa_bytes:
+            notes.append(
+                f"Index memory includes {dense_sa_bytes / 1024**3:.1f} GiB for "
+                "wgse-bwa's dense suffix-array file."
             )
         if aligner == "minimap2":
             notes.append(

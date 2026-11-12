@@ -103,7 +103,13 @@ KNOWN_SETTINGS = {
         None,
         "Apple Silicon: `align`/`realign` use wgse-bwa, wgse-bwa-mem2, "
         "wgse-bwa-mem3 and wgse-minimap2 when on PATH (auto, the default) or "
-        "never (off)",
+        "never (off); Linux: Bioconda's bwa-mem3 in place of bwa/bwa-mem2",
+    ),
+    "dense_suffix_array": (
+        False,
+        "`align`/`realign`: wgse-bwa reads the reference's dense suffix-array "
+        "file from `ref dense-sa` (opt-in; used only when wgse-bwa aligns; "
+        "holds it in RAM, 0.8 GB for hs38)",
     ),
     "dorado_models_directory": (
         None,

@@ -242,8 +242,13 @@ struct DeviceOptions {
     // Test hook (Metal): report the first submission of every nth piece of work
     // as interrupted even if it completed, so its kernels run twice.
     size_t interrupt_every = 0;
-    // Test hook (Metal): withhold the first command whose label starts with
-    // this, as a hung GPU would, so the watchdog gives up after 2 s.
+    // The watchdog's floor: a wait for the GPU fails after the larger of this
+    // and 20 times the slowest batch of its stage (CUDA).
+    double watchdog_seconds = 60;
+    // Test hook: hang the first GPU work of the stage this names (a prefix of
+    // collect_seeds, locate_rows, rescue_align or extend) as a hung GPU would.
+    // Metal withholds the command and gives up after 2 s; CUDA, which hangs only
+    // rescue_align, occupies the GPU for twice the watchdog's limit.
     std::string hang_label;
 };
 std::unique_ptr<Device> make_metal_device(const DeviceOptions &options, std::string &reason);

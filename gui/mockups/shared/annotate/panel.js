@@ -53,7 +53,7 @@
     return h(
       "div.an-store.an-store--local",
       h("strong", "Notes are saved in this browser."),
-      h("span", "Export and commit the JSON to ", h("code", file), " (or open the mockups locally with ", h("code", "just mockups"), " to save directly)."),
+      h("span", "Export and commit the JSON to ", h("code", file), WGSM.notes.branch() ? [" on branch ", h("code", WGSM.notes.branch())] : null, " (or open the mockups locally with ", h("code", "just mockups"), " to save directly)."),
       h("span", WGSM.notes.published
         ? "Notes already committed to the repo are shown here too."
         : "Import a committed file to see others’ notes."),

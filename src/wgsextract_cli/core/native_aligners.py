@@ -46,9 +46,15 @@ MINIMUM_VERSIONS = {
 # (@PG aside; native/README.md).
 BWA_MEM3_COMPAT = {"bwa": "bwa-mem", "bwa-mem2": "bwa-mem2"}
 BWA_MEM3_FAST = "--fast"
+# The oldest Bioconda bwa-mem3 that stands in on Linux (find_bwa_mem3): the
+# release whose --compat records were checked against bwa's and bwa-mem2's.
+BIOCONDA_BWA_MEM3_MINIMUM = (0, 16, 0)
 # From this release wgse-bwa-mem2 maps (CPU and --metal) without bwa-mem2's
 # 6.2 GB .0123 file (native/README.md, Memory).
 BWA_MEM2_WITHOUT_0123 = (0, 5, 0)
+# From this release wgse-bwa reads a dense suffix-array side file
+# (dense_suffix_array) when one is present, unless told --dense-sa off.
+DENSE_SA_VERSION = (0, 11, 0)
 CAPABILITIES_SCHEMA = 1
 _PROBE_TIMEOUT_SECONDS = 30
 _VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
@@ -80,17 +86,34 @@ class NativeAligner:
             and version >= BWA_MEM2_WITHOUT_0123
         )
 
+    @property
+    def reads_dense_sa(self) -> bool:
+        """Whether this is a wgse-bwa that reads dense suffix-array files."""
+        version = _version_tuple(self.version)
+        return (
+            self.binary == "wgse-bwa"
+            and version is not None
+            and version >= DENSE_SA_VERSION
+        )
+
 
 @dataclass(frozen=True)
 class AlignerCommand:
     """How to run an aligner: upstream ``tool`` itself, or ``native`` (on the
     Metal GPU when ``metal``) in its place. ``options`` are bwa-mem3's ``mem``
-    options that choose its output: ``--compat=<target>`` or ``--fast``."""
+    options that choose its output: ``--compat=<target>`` or ``--fast``.
+    ``dense_sa`` is the dense suffix-array file wgse-bwa reads, if any."""
 
     tool: str
     native: NativeAligner | None = None
     metal: bool = False
     options: tuple[str, ...] = ()
+    dense_sa: Path | None = None
+
+    @property
+    def dense_sa_bytes(self) -> int:
+        """The RAM the dense suffix-array file takes (wgse-bwa holds it)."""
+        return self.dense_sa.stat().st_size if self.dense_sa else 0
 
     @property
     def binary(self) -> str:
@@ -131,7 +154,11 @@ class AlignerCommand:
         finishes on the CPU (same alignments) instead of failing the run."""
         if self.native is None:
             return [self.tool]
-        return [self.native.command, *(["--backend", "auto"] if self.metal else [])]
+        argv = [self.native.command, *(["--backend", "auto"] if self.metal else [])]
+        if self.native.reads_dense_sa:
+            # The file is opt-in: wgse-bwa would otherwise read any present.
+            argv += ["--dense-sa", "on" if self.dense_sa else "off"]
+        return argv
 
     def record(self) -> None:
         """Name the build that ran on the result: its version under the
@@ -148,6 +175,10 @@ class AlignerCommand:
             native_aligner_version=self.native.version,
             native_aligner_backend=self.backend,
         )
+        if self.dense_sa:
+            from wgsextract_cli.core.dense_suffix_array import interval_of
+
+            result.add_metrics(dense_suffix_array_interval=interval_of(self.dense_sa))
 
     @property
     def backend(self) -> str:
@@ -173,9 +204,15 @@ class AlignerCommand:
         else:
             output = f"{self.tool} {version}'s"
         options = "".join(f" {option}" for option in self.options)
+        dense = (
+            f" It locates seeds with the dense suffix-array file {self.dense_sa} "
+            f"({self.dense_sa_bytes / 1e9:.2f} GB, held in RAM)."
+            if self.dense_sa
+            else ""
+        )
         logging.info(
             f"Aligning with {self.native.binary} {self.native.version}{options} on "
-            f"{backend} ({self.native.path}); its alignments are {output}."
+            f"{backend} ({self.native.path}); its alignments are {output}.{dense}"
         )
 
 
@@ -273,6 +310,75 @@ def _check(tool: str, binary: str, path: str) -> NativeAligner:
         engine_version=str(document.get("engine_version") or ""),
         metal_available=document.get("metal_available") is True,
     )
+
+
+def find_bwa_mem3(setting: str | None, *, instead: str) -> NativeAligner | None:
+    """The bwa-mem3 that can stand in for upstream ``instead`` (bwa or
+    bwa-mem2) with ``--compat``, or None: wgse-bwa-mem3 on Apple Silicon
+    (find_native_aligner), and on Linux Bioconda's bwa-mem3 (its own Pixi
+    environment, #591), which has the same output modes (#672). Off with
+    native_aligners off, like the builds."""
+    if platform.system() != "Linux":
+        return find_native_aligner("bwa-mem3", setting, quiet=True, instead=instead)
+    if native_setting(setting) == "off":
+        return None
+    from wgsextract_cli.core.dependencies import get_tool_path
+    from wgsextract_cli.core.dependency_checks import get_tool_version
+
+    path = get_tool_path("bwa-mem3")
+    if path is None:
+        return None
+    # Failed probes aren't cached, and realign asks several times: once is enough.
+    if any(
+        w.code == "native_aligner_unusable" and w.details.get("path") == path
+        for w in current_result().warnings
+    ):
+        return None
+    version = get_tool_version("bwa-mem3")
+    parsed = _version_tuple(version)
+    if parsed is None or parsed < BIOCONDA_BWA_MEM3_MINIMUM:
+        minimum = ".".join(map(str, BIOCONDA_BWA_MEM3_MINIMUM))
+        # get_tool_version says "Available" when it found no version.
+        detail = (
+            "no recognizable version"
+            if version in (None, "", "Available")
+            else str(version).removeprefix("Error: ")
+        )
+        problem = (
+            f"its version {version!r} isn't {minimum} or later"
+            if parsed
+            else f"`bwa-mem3 version` failed ({detail})"
+        )
+        warn(
+            "native_aligner_unusable",
+            f"Not using bwa-mem3 ({path}): {problem}. Aligning with {instead} instead.",
+            binary="bwa-mem3",
+            path=path,
+            aligner=instead,
+        )
+        return None
+    return NativeAligner(
+        tool="bwa-mem3",
+        binary="bwa-mem3",
+        command="bwa-mem3",
+        path=path,
+        version=str(version),
+        engine_version=str(version),
+        metal_available=False,
+    )
+
+
+def installed_build(tool: str) -> NativeAligner:
+    """The build on PATH that replaces upstream ``tool``, wherever this runs;
+    NativeAlignerUnusable says why there is none."""
+    binary = BINARIES[tool]
+    path = shutil.which(binary)
+    if path is None:
+        raise NativeAlignerUnusable("isn't installed")
+    try:
+        return _check(tool, binary, path)
+    except OSError as error:
+        raise NativeAlignerUnusable(str(error)) from error
 
 
 def find_native_aligner(

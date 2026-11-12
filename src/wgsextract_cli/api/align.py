@@ -49,12 +49,34 @@ def _native_aligners_param() -> Any:
         "wgse-bwa-mem3 in place of bwa or bwa-mem2 when the reference has "
         "bwa-mem2's index and it fits in RAM, when they're on PATH (auto; same "
         "alignments, faster, on the Metal GPU when it fits) or never (off). "
-        "Default: config native_aligners, else auto. Install them as "
-        "native/README.md describes.",
+        "On Linux, auto uses Bioconda's bwa-mem3 (`pixi install -e bwa-mem3`) "
+        "the same way. Default: config native_aligners, else auto. Install the "
+        "builds as native/README.md describes.",
         doc="auto (the default, or config native_aligners) uses WGS Extract's "
-        "Apple Silicon aligner builds when installed on PATH; off never does.",
+        "Apple Silicon aligner builds when installed on PATH, and on Linux "
+        "Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does.",
         choices=NATIVE_ALIGNER_SETTINGS,
         config_key="native_aligners",
+    )
+
+
+def _dense_suffix_array_param() -> Any:
+    return param(
+        None,
+        help="Have wgse-bwa (0.11.0 or later) read the reference's dense "
+        "suffix-array file, built by `ref dense-sa`: the same alignments, "
+        "faster, holding the file in RAM (0.8 GB for hs38). Used only when "
+        "wgse-bwa aligns: otherwise (another aligner, such as wgse-bwa-mem3 "
+        "standing in, no file, or no such wgse-bwa) the run warns "
+        "(dense_suffix_array_unused) and aligns without it. Default: config "
+        "dense_suffix_array, else off.",
+        doc="Opt in to wgse-bwa's dense suffix-array file (``ref dense-sa``): "
+        "the same alignments, faster, with the file held in RAM. None uses "
+        "config dense_suffix_array, else off. Used only when wgse-bwa aligns; "
+        "otherwise (another aligner, no file, or no wgse-bwa that reads it) "
+        "the run warns (dense_suffix_array_unused).",
+        action="boolean_optional",
+        config_key="dense_suffix_array",
     )
 
 
@@ -115,12 +137,13 @@ class AlignParams(Params):
         help="Aligner to use. Auto uses bwa-mem2 for short reads when the reference "
         "has its index (see `ref index`), else bwa; for long reads pbmm2 for PacBio "
         "when installed, otherwise minimap2. bwa-mem3 (wgse-bwa-mem3 on Apple "
-        "Silicon, else bwa-mem3 on PATH) writes bwa's exact records faster, "
+        "Silicon, else bwa-mem3 from PATH or its Pixi environment) writes bwa's exact records faster, "
         "from bwa-mem2's index.",
         choices=ALIGNERS,
     )
     fast: bool = _fast_param()
     native_aligners: str | None = _native_aligners_param()
+    dense_suffix_array: bool | None = _dense_suffix_array_param()
     gpu: bool = param(False, help=GPU_HELP, action="store_true")
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
     sample: str | None = param(
@@ -193,6 +216,7 @@ class RealignParams(Params):
     )
     fast: bool = _fast_param()
     native_aligners: str | None = _native_aligners_param()
+    dense_suffix_array: bool | None = _dense_suffix_array_param()
     gpu: bool = param(False, help=GPU_HELP, action="store_true")
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
     platform: str | None = param(

@@ -118,8 +118,9 @@ void wgse_inject_locate_failure();
 // Reports the first commit of every nth piece of GPU work as interrupted by
 // macOS, so it is committed again.
 void wgse_inject_gpu_interruptions(size_t every);
-// Withholds the first GPU command whose label starts with label, as a hung GPU
-// would, so the watchdog gives up on the GPU after 2 s.
+// The GPU watchdog's floor in seconds (CUDA).
+void wgse_set_gpu_watchdog_seconds(double seconds);
+// Hangs the first GPU work of the stage label names (see DeviceOptions::hang_label).
 void wgse_inject_gpu_hang(const char *label);
 void wgse_set_gpu_locate(bool enable);
 void wgse_set_gpu_locate_dense(unsigned shift);

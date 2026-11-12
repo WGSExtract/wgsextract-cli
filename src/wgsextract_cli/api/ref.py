@@ -211,6 +211,45 @@ class RefIndexParams(Params):
 
 
 @dataclass(frozen=True, kw_only=True)
+class RefDenseSaParams(Params):
+    """Build wgse-bwa's optional dense suffix-array file for a FASTA's BWA
+    index (``<ref>.wgse-sa<interval>``, 0.8 GB for hs38 at 16), list the
+    FASTA's files, or delete them. Needs wgse-bwa 0.11.0 or later on PATH;
+    ``align``/``realign`` read the file only when asked
+    (``dense_suffix_array``)."""
+
+    COMMAND = "ref dense-sa"
+    WRITES_BESIDE = "ref"
+
+    ref: Path | None = _fasta_param()
+    interval: int = param(
+        16,
+        help="Store the suffix-array position of every Nth row. A smaller N "
+        "locates seeds faster but doubles the file each halving (0.8 GB for "
+        "hs38 at 16, the default).",
+        choices=(2, 4, 8, 16),
+        metavar="N",
+    )
+    list_files: bool = param(
+        False,
+        help="List the FASTA's dense suffix-array files, their size, and the "
+        "one wgse-bwa would read on this computer.",
+        flags=("--list",),
+        dest="list",
+        action="store_true",
+        exclusive="dense-sa-mode",
+    )
+    delete: bool = param(
+        False,
+        help="Delete the FASTA's dense suffix-array files.",
+        action="store_true",
+        deletes=True,
+        exclusive="dense-sa-mode",
+    )
+    threads: int | None = threads_param()
+
+
+@dataclass(frozen=True, kw_only=True)
 class RefCountNsParams(Params):
     """Count the FASTA's N runs into ``<ref>_ncnt.csv`` and ``<ref>_nbin.csv``;
     sequence, length and N totals are metrics."""
@@ -589,6 +628,20 @@ def index(
     from wgsextract_cli.commands.ref.core_commands import run_index
 
     return execute(params, run_index, progress=progress, cancel=cancel, check=check)
+
+
+def dense_sa(
+    params: RefDenseSaParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Build (output role ``reference_index``), list or delete the FASTA's
+    dense suffix-array files."""
+    from wgsextract_cli.commands.ref.dense_sa import run_dense_sa
+
+    return execute(params, run_dense_sa, progress=progress, cancel=cancel, check=check)
 
 
 def count_ns(

@@ -288,25 +288,24 @@ rm reference.fa.wgse-sa8
 "$aligner" densify-sa -i 8 smoke-missing.fa 2> /dev/null && exit 1
 rm reference.fa.wgse-sa4
 
-# Skip (77) only on machines without supported Metal hardware.
-"$aligner" capabilities --json > capabilities.json
-if ! grep -q '"metal_available":true' capabilities.json; then
-    grep -q '"metal_hardware_supported":true' capabilities.json && exit 1
-    exit 77
-fi
+# Skip (77) only on machines without a supported GPU.
+gpu=""
+gpu_name=""
+# shellcheck source=native/bwa/tests/gpu_backend.sh disable=SC1091
+. "$(dirname "$0")/gpu_backend.sh"
 
 run() {
     name=$1
     shift
     "$aligner" --cpu-upstream mem "$@" reference.fa pairs-R1.fq pairs-R2.fq > "cpu-$name.sam" 2> "cpu-$name.log"
-    "$aligner" --gpu-policy all --gpu-rescue-batch 7 --metal mem "$@" reference.fa \
+    "$aligner" --gpu-policy all --gpu-rescue-batch 7 "$gpu" mem "$@" reference.fa \
         pairs-R1.fq pairs-R2.fq > "metal-$name.sam" 2> "metal-$name.log"
     same "cpu-$name.sam" "metal-$name.sam"
     grep '^\[wgse-bwa\] rescue_batches' "metal-$name.log"
 }
 
 # Each GPU result is compared with upstream ksw_align2 for the same inputs.
-"$aligner" --gpu-policy all --gpu-rescue-batch 7 --gpu-rescue-verify --metal mem -t 4 \
+"$aligner" --gpu-policy all --gpu-rescue-batch 7 --gpu-rescue-verify "$gpu" mem -t 4 \
     reference.fa pairs-R1.fq pairs-R2.fq > verify.sam 2> verify.log
 "$aligner" --cpu-upstream mem -t 4 reference.fa pairs-R1.fq pairs-R2.fq > cpu.sam 2> cpu.log
 same cpu.sam verify.sam
@@ -323,7 +322,7 @@ test "$(metric verify.log rescue_mismatches)" -eq 0
 test "$(metric verify.log rescue_skipped)" -gt 0
 
 # The GPU locates with the side file's samples in place.
-"$aligner" --dense-sa force --gpu-policy all --metal mem -t 4 reference.fa pairs-R1.fq \
+"$aligner" --dense-sa force --gpu-policy all "$gpu" mem -t 4 reference.fa pairs-R1.fq \
     pairs-R2.fq > metal-dense.sam 2> metal-dense.log
 same upstream-t4.sam metal-dense.sam
 grep -q 'locate_dense shift=4 built=1 file=1' metal-dense.log
@@ -335,10 +334,13 @@ for threads in 1 4; do
     test "$(metric "metal-t$threads.log" rescue_hits)" -gt 1000
 done
 # Regression (PR #684 review): one watchdog thread per stretch of GPU work, not
-# one per command (hundreds of rescue batches of 7 pairs here).
+# one per command (hundreds of rescue batches of 7 pairs here). Metal only:
+# CUDA's waits time themselves, with no watchdog thread.
 test "$(metric metal-t4.log rescue_batches)" -gt 100
-test "$(metric metal-t4.log watchdog_threads)" -ge 1
-test "$(metric metal-t4.log watchdog_threads)" -le 3
+if [ "$gpu" = --metal ]; then
+    test "$(metric metal-t4.log watchdog_threads)" -ge 1
+    test "$(metric metal-t4.log watchdog_threads)" -le 3
+fi
 # Small chunks: Metal maps each chunk while the previous one pairs.
 run chunks -t 4 -K 20000
 test "$(metric metal-chunks.log rescue_hits)" -gt 0
@@ -347,16 +349,31 @@ test "$(metric metal-chunks.log overlapped_chunks)" -gt 0
 # for example while another process uses the GPU; that work is committed again.
 # Report every second piece of seeding, locate, rescue and extension work as
 # interrupted, so its kernels run twice: the results must not change.
-"$aligner" --gpu-inject-interruptions 2 --gpu-policy all --gpu-rescue-batch 7 \
-    --gpu-rescue-verify --gpu-extend-verify --metal mem -t 4 -K 20000 reference.fa \
-    pairs-R1.fq pairs-R2.fq > interrupted.sam 2> interrupted.log
-same cpu-chunks.sam interrupted.sam
-test "$(grep -c 'CPU fallback' interrupted.log)" -eq 0
-test "$(metric interrupted.log interruptions)" -gt 0
-test "$(metric interrupted.log rescue_hits)" -gt 0
-test "$(metric interrupted.log rescue_mismatches)" -eq 0
-test "$(metric interrupted.log extend_hits)" -gt 0
-test "$(metric interrupted.log extend_mismatches)" -eq 0
+# Metal only: CUDA work is never interrupted.
+if [ "$gpu" = --metal ]; then
+    "$aligner" --gpu-inject-interruptions 2 --gpu-policy all --gpu-rescue-batch 7 \
+        --gpu-rescue-verify --gpu-extend-verify "$gpu" mem -t 4 -K 20000 reference.fa \
+        pairs-R1.fq pairs-R2.fq > interrupted.sam 2> interrupted.log
+    same cpu-chunks.sam interrupted.sam
+    test "$(grep -c 'CPU fallback' interrupted.log)" -eq 0
+    test "$(metric interrupted.log interruptions)" -gt 0
+    test "$(metric interrupted.log rescue_hits)" -gt 0
+    test "$(metric interrupted.log rescue_mismatches)" -eq 0
+    test "$(metric interrupted.log extend_hits)" -gt 0
+    test "$(metric interrupted.log extend_mismatches)" -eq 0
+fi
+# CUDA only: a GPU that stops answering trips the watchdog, which finishes the
+# work on the CPU instead of waiting forever (#548). Explicit --cuda reports it.
+if [ "$gpu" = --cuda ]; then
+    status=0
+    "$aligner" --gpu-watchdog-seconds 2 --gpu-inject-hang rescue_align --gpu-policy all --gpu-rescue-batch 7 \
+        "$gpu" mem -t 4 -K 20000 reference.fa pairs-R1.fq pairs-R2.fq > hung.sam 2> hung.log \
+        || status=$?
+    test "$status" -eq 1
+    grep -q 'CPU fallback: GPU watchdog: mate rescue did not finish within 2 s' hung.log
+    grep -q "$gpu_name execution failed (alignments were completed on the CPU)" hung.log
+    same cpu-chunks.sam hung.sam
+fi
 # Other gap penalties and clipping; a manual insert size distribution.
 run gaps -t 4 -O 4,8 -E 2,1 -L 3,7 -U 9
 test "$(metric metal-gaps.log rescue_hits)" -gt 0
@@ -394,21 +411,21 @@ awk 'BEGIN {
 }'
 "$aligner" --cpu-upstream mem -t 4 -k 160 -B 120 -I 400,40 reference.fa sat-R1.fq sat-R2.fq \
     > cpu-saturate.sam 2> cpu-saturate.log
-"$aligner" --gpu-policy all --metal mem -t 4 -k 160 -B 120 -I 400,40 reference.fa \
+"$aligner" --gpu-policy all "$gpu" mem -t 4 -k 160 -B 120 -I 400,40 reference.fa \
     sat-R1.fq sat-R2.fq > metal-saturate.sam 2> metal-saturate.log
 same cpu-saturate.sam metal-saturate.sam
 test "$(metric metal-saturate.log rescue_declined)" -eq 200
 test "$(metric metal-saturate.log rescue_misses)" -eq 0
 
 # A rescue batch that fails after the first one (while the next is packed) is
-# finished on the CPU, as is the rest. Explicit --metal still reports it.
+# finished on the CPU, as is the rest. Explicit "$gpu" still reports it.
 status=0
-"$aligner" --gpu-inject-rescue-failure --gpu-policy all --gpu-rescue-batch 7 --metal mem -t 4 reference.fa \
+"$aligner" --gpu-inject-rescue-failure --gpu-policy all --gpu-rescue-batch 7 "$gpu" mem -t 4 reference.fa \
     pairs-R1.fq pairs-R2.fq > failed-metal.sam 2> failed-metal.log || status=$?
 test "$status" -eq 1
 grep -q 'CPU fallback: injected GPU rescue failure' failed-metal.log
 test "$(metric failed-metal.log rescue_batches)" -ge 1
-grep -q 'Metal execution failed (alignments were completed on the CPU)' failed-metal.log
+grep -q "$gpu_name execution failed (alignments were completed on the CPU)" failed-metal.log
 same cpu.sam failed-metal.sam
 "$aligner" --gpu-inject-rescue-failure --gpu-policy all --gpu-rescue-batch 7 --backend auto mem -t 4 \
     reference.fa pairs-R1.fq pairs-R2.fq > failed-auto.sam 2> failed-auto.log
@@ -416,7 +433,7 @@ grep -q 'CPU fallback: injected GPU rescue failure' failed-auto.log
 same cpu.sam failed-auto.sam
 # The same while the next chunk is being mapped on the GPU.
 status=0
-"$aligner" --gpu-inject-rescue-failure --gpu-policy all --gpu-rescue-batch 7 --metal mem -t 4 \
+"$aligner" --gpu-inject-rescue-failure --gpu-policy all --gpu-rescue-batch 7 "$gpu" mem -t 4 \
     -K 20000 reference.fa pairs-R1.fq pairs-R2.fq > failed-chunks.sam 2> failed-chunks.log \
     || status=$?
 test "$status" -eq 1

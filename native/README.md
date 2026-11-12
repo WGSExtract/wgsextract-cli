@@ -1,4 +1,8 @@
-# Apple Silicon aligner rebuilds
+# WGS Extract's aligner rebuilds
+
+These builds are for Apple Silicon. `wgse-bwa` is also built for Linux x86-64,
+with an experimental NVIDIA GPU backend (see
+[Linux x86-64 and NVIDIA GPUs](#linux-x86-64-and-nvidia-gpus-cuda)).
 
 Optional macOS arm64 (macOS 13+) rebuilds of the aligners WGS Extract uses,
 published as `macos-aligners-*` prereleases. `wgsextract align` and `realign`
@@ -177,9 +181,10 @@ checks each file's header and checksum; only `mem` also spot-checks 1024
 samples against the index). Mate rescue also steps the lazy-F loops of the
 windows it aligns together in turn, and `--metal`'s CPU threads seed the pairs
 they take from the GPU's queue 8 at a time with the CPU backend's interleaved
-walks. Each gives upstream's exact results. WGS Extract does not write or use the
-file yet; opt-in support (a setting, a run flag and a reference-library command
-showing its disk and memory cost) will follow.
+walks. Each gives upstream's exact results. WGS Extract builds the file only
+with `wgsextract ref dense-sa`, and its `align` and `realign` read it only with
+`--dense-suffix-array` (or `dense_suffix_array = true` in `config.toml`);
+otherwise they pass `--dense-sa off` (docs/hardware.md).
 
 From 0.5.0, `wgse-bwa-mem2`'s CPU backend does the same with its own exact
 replacements: it collects each read's SMEMs in all three passes with up to 16
@@ -313,8 +318,10 @@ What runs on the GPU:
   for the same coordinate). With the CPU threads freed from seeding, they
   score a batch of seed extensions themselves while more than 4096 pairs wait
   for the GPU (`--gpu-backlog PAIRS`; 0 never does). `--gpu-seed off` seeds on
-  the CPU as 0.2.0 did (and then `--gpu-backlog` defaults to 0). If GPU
-  seeding fails, the CPU seeds the rest and the run goes on. Long extensions
+  the CPU as 0.2.0 did (and then `--gpu-backlog` defaults to 0). If a GPU
+  seeding batch fails, the CPU seeds the rest and the run goes on (from 0.3.1,
+  `--metal` then exits 1, like after an extension failure; an index larger
+  than the GPU's largest buffer only turns GPU seeding off). Long extensions
   (over 30,000 band cells) are scored by a SIMD group each instead of one GPU
   thread. Seeding and seed extension share the process's two GPU command
   buffers in flight (`metal-common`), so a seeding batch waits while two
@@ -946,6 +953,51 @@ since a whole genome loads the index once rather than 62 times. Each run's
 directory in the benchmark's output keeps its samples, idle baseline and load
 average (`power.txt`, `power-samples.tsv`).
 
+## Linux x86-64 and NVIDIA GPUs (CUDA)
+
+`wgse-bwa` 0.12.0 also builds for Linux x86-64, as a conda package
+(`packaging/wgse-bwa`, built by `.github/workflows/linux_aligners.yml` and
+published as `linux-aligners-*` prereleases).
+
+- **CPU backend:** upstream BWA's code. The NEON replacements are Apple-only,
+  so on x86-64 it runs upstream's `ksw_extend2`; it keeps the other exact
+  batched steps.
+- **`--cuda` (`--backend cuda`, experimental):** runs the Metal backend's
+  kernels on an NVIDIA GPU. The kernels are ported to CUDA from one source
+  that HIP can also compile (`native/gpu-common`, `native/bwa/*.cuh`). They
+  cover SMEM seeding, suffix-array locate, mate rescue and seed extension, with
+  the same scheduling and the same exact-input matching as `--metal`.
+- **`--backend auto`:** uses CUDA in this build, and falls back to the CPU as
+  on macOS.
+
+Unlike Apple's unified memory, a discrete GPU has its own:
+
+- **Index:** the BWT and the sampled suffix array (about 4.7 GiB for hs38) are
+  uploaded once per run.
+- **Batches:** each batch's reads, rescue windows and extension jobs cross
+  PCIe through pinned buffers. Only compact results come back.
+- **GPU memory:** before each upload `--cuda` checks the GPU's free memory,
+  keeping 1 GiB spare, because the GPU may be shared. If the BWT doesn't fit,
+  the run aligns on the CPU, as after a GPU failure. If only the suffix array
+  doesn't fit, the CPU locates seeds and the GPU does the rest.
+- **Host memory:** the pinned batch buffers add about 0.7 GiB.
+- **Runtime:** the CUDA runtime is linked statically, so the package needs only
+  the NVIDIA driver, and only for `--cuda`. Without a usable driver or GPU,
+  `capabilities --json` reports `cuda_available: false`.
+- **Watchdog:** every wait for the GPU is bounded, by the larger of 60 s and 20
+  times that stage's slowest batch so far. A batch that overruns (a hung GPU)
+  is finished on the CPU with the same output. `--cuda` then exits 1, and
+  `--backend auto` exits 0.
+
+On an RTX 3090 with a Ryzen 5 5600X, at 2 threads (while another job held the
+other 10 cores), with output identical to upstream BWA (the `expected.tsv`
+hashes):
+
+| Tier | CPU | `--cuda` |
+| --- | --- | --- |
+| small (chr20) | 46.7 s | 28.3 s |
+| full (hs38, 200k pairs) | 105.2 s, 5.3 GiB | 25.0 s, 6.1 GiB |
+
 ## Building
 
 Requires Xcode command-line tools and CMake 3.24 or later. Upstream sources are
@@ -957,6 +1009,15 @@ cmake --build out/native -j
 ctest --test-dir out/native --output-on-failure
 cmake --install out/native --prefix out/native-prefix
 ```
+
+On Linux the same commands build `wgse-bwa` with a C/C++ compiler, CMake and
+zlib. `-DWGSE_CUDA=ON` adds the CUDA backend, which needs the CUDA toolkit
+(`nvcc` and the static runtime, for example conda-forge's `cuda-nvcc` and
+`cuda-cudart-static`). It builds for Turing to Hopper GPUs, plus PTX for newer
+ones; `-DCMAKE_CUDA_ARCHITECTURES` overrides this. A GPU the build has no
+kernels for (such as Pascal or Volta, by default) is never selected, and
+`capabilities --json` reports it unavailable and unsupported. The GPU parity tests run with
+whichever GPU backend the build and machine have.
 
 `-DBUILD_TESTING=OFF` builds the release executables without tests or the
 hidden GPU tuning flags. Metal tests are skipped when no Metal device is

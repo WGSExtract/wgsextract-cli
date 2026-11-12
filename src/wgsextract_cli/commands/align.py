@@ -18,7 +18,7 @@ from wgsextract_cli.api._params import job_values
 from wgsextract_cli.api.align import ALIGNERS as ALIGNERS
 from wgsextract_cli.api.align import PLATFORMS as PLATFORMS
 from wgsextract_cli.api.align import AlignParams
-from wgsextract_cli.core import bwa_mem2, ultima
+from wgsextract_cli.core import bwa_mem2, dense_suffix_array, ultima
 from wgsextract_cli.core.alignment_memory import (
     BWA_MEM3_METAL_BYTES,
     available_memory,
@@ -43,12 +43,14 @@ from wgsextract_cli.core.native_aligners import (
     AlignerCommand,
     NativeAligner,
     apple_silicon,
+    find_bwa_mem3,
     find_native_aligner,
     native_setting,
 )
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.output_checks import record_alignment_output
 from wgsextract_cli.core.paths import absolute_path, java_local_path
+from wgsextract_cli.core.pixi_tools import pixi_install_command
 from wgsextract_cli.core.read_counts import (
     alignment_sample,
     fasta_read_length,
@@ -165,6 +167,8 @@ class AlignJob:
     fast: bool = False
     # auto or off: WGS Extract's Apple Silicon aligner builds (native_aligners).
     native_aligners: str | None = None
+    # Whether wgse-bwa reads the reference's dense suffix-array file (opt-in).
+    dense_suffix_array: bool | None = None
     # samtools options decoding a CRAM r1 (realign's, or _cram_reference's).
     input_cram_opt: list[str] | None = None
     # Set once measured, so later stages don't read the reads again.
@@ -574,6 +578,7 @@ def streaming_mapping_fits(
     read_length: float | None,
     additional_ram_bytes: int,
     gpu_bytes: int = 0,
+    dense_sa_bytes: int = 0,
 ) -> bool:
     estimate = estimate_mapping_memory(
         ref,
@@ -585,6 +590,7 @@ def streaming_mapping_fits(
         platform=platform,
         read_length=read_length,
         gpu_bytes=gpu_bytes,
+        dense_sa_bytes=dense_sa_bytes,
     )
     return estimate.total + additional_ram_bytes <= available_memory()
 
@@ -647,6 +653,9 @@ def native_short_read_aligner(
     (AlignerCommand.memory_model).
     wgse-bwa-mem3 writes either's exact records faster, so it runs in their
     place when it fits (bwa_mem3_stand_in).
+    wgse-bwa reads the reference's dense suffix-array file only when the run
+    asks (job.dense_suffix_array, dense_suffix_array.for_alignment); it
+    counts as index memory.
     """
     stand_in = bwa_mem3_stand_in(
         job,
@@ -659,19 +668,28 @@ def native_short_read_aligner(
         read_length=read_length,
         additional_ram_bytes=additional_ram_bytes,
     )
+    dense = bool(job.dense_suffix_array)
     if stand_in is not None:
         if announce:
+            dense_suffix_array.other_aligner(stand_in.binary, enabled=dense)
             stand_in.announce()
         return stand_in, memory
     native = find_native_aligner(tool, job.native_aligners)
+    if tool != "bwa":
+        if announce:
+            aligner_name = native.binary if native else tool
+            dense_suffix_array.other_aligner(aligner_name, enabled=dense)
+        dense = False
+    dense_sa = dense_suffix_array.for_alignment(native, ref, enabled=dense)
     if native is None:
         return AlignerCommand(tool), memory
     if not native.metal_available:
-        aligner = AlignerCommand(tool, native)
+        aligner = AlignerCommand(tool, native, dense_sa=dense_sa)
     elif tool != "bwa":
         aligner = AlignerCommand(tool, native, metal=True)
     else:
-        gpu = bwa_metal_memory(ref, reads)
+        gpu = bwa_metal_memory(ref, reads, dense_sa_file=dense_sa is not None)
+        dense_sa_bytes = dense_sa.stat().st_size if dense_sa else 0
         budget = _metal_budget(additional_ram_bytes)
         amount, unit = parse_memory(memory)
         mib = amount * (1024 if unit == "G" else 1)
@@ -690,6 +708,7 @@ def native_short_read_aligner(
                 platform=job.platform,
                 read_length=read_length,
                 gpu_bytes=gpu_bytes,
+                dense_sa_bytes=dense_sa_bytes,
             )
             return estimate.total + additional_ram_bytes
 
@@ -709,7 +728,7 @@ def native_short_read_aligner(
                 f"the alignment is estimated to need {needed(candidates[-1]) / 1024**3:.1f} "
                 f"GiB, more than {room}."
             )
-            aligner = AlignerCommand(tool, native)
+            aligner = AlignerCommand(tool, native, dense_sa=dense_sa)
         else:
             if fitting != memory:
                 logging.info(
@@ -717,7 +736,7 @@ def native_short_read_aligner(
                     f"room for {native.binary}'s Metal GPU backend; the output "
                     "is the same."
                 )
-            aligner = AlignerCommand(tool, native, metal=True)
+            aligner = AlignerCommand(tool, native, metal=True, dense_sa=dense_sa)
             memory = fitting
     if announce:
         aligner.announce()
@@ -735,16 +754,15 @@ def _metal_budget(additional_ram_bytes: int) -> int:
 
 
 def bwa_mem3_build(job: AlignJob, tool: str, ref: str) -> NativeAligner | None:
-    """The wgse-bwa-mem3 that can write ``tool``'s exact records (--compat)
-    for this run, memory aside, or None. It needs the reference's bwa-mem2
-    index. Ultima reads keep BWA, which is qualified for their flow tags."""
+    """The bwa-mem3 (wgse-bwa-mem3 on Apple Silicon, Bioconda's on Linux:
+    find_bwa_mem3) that can write ``tool``'s exact records (--compat) for this
+    run, memory aside, or None. It needs the reference's bwa-mem2 index.
+    Ultima reads keep BWA, which is qualified for their flow tags."""
     if tool not in BWA_MEM3_COMPAT or job.platform == "ultima":
         return None
     if not bwa_mem2.has_bwa_mem3_index(ref):
         return None
-    return find_native_aligner(
-        "bwa-mem3", job.native_aligners, quiet=True, instead=tool
-    )
+    return find_bwa_mem3(job.native_aligners, instead=tool)
 
 
 def bwa_mem3_stand_in(
@@ -759,7 +777,7 @@ def bwa_mem3_stand_in(
     read_length: float | None,
     additional_ram_bytes: int = 0,
 ) -> AlignerCommand | None:
-    """wgse-bwa-mem3 writing bwa's or bwa-mem2's exact records (--compat) in
+    """bwa-mem3 writing bwa's or bwa-mem2's exact records (--compat) in
     place of ``tool`` (bwa_mem3_build), or None when its pipeline won't fit.
 
     In bwa's place it needs more memory than bwa, so its estimate must fit
@@ -838,7 +856,7 @@ def aligner_gpu_bytes(aligner: AlignerCommand, ref: str, reads: int | None) -> i
     if not aligner.metal:
         return 0
     if aligner.engine == "bwa":
-        return bwa_metal_memory(ref, reads)
+        return bwa_metal_memory(ref, reads, dense_sa_file=aligner.dense_sa is not None)
     if aligner.engine == "bwa-mem3":
         return BWA_MEM3_METAL_BYTES
     return 0
@@ -846,7 +864,7 @@ def aligner_gpu_bytes(aligner: AlignerCommand, ref: str, reads: int | None) -> i
 
 def bwa_mem3_command(job: AlignJob) -> AlignerCommand:
     """How to run --aligner bwa-mem3: wgse-bwa-mem3 (on Apple Silicon), else
-    bwa-mem3 from PATH, writing bwa's records (--compat=bwa-mem) or, with
+    bwa-mem3 from PATH or its Pixi environment, writing bwa's records (--compat=bwa-mem) or, with
     --fast, its faster preset's."""
     options = (BWA_MEM3_FAST,) if job.fast else ("--compat=bwa-mem",)
     native = find_native_aligner("bwa-mem3", job.native_aligners)
@@ -869,12 +887,15 @@ def bwa_mem3_command(job: AlignJob) -> AlignerCommand:
             raise WGSExtractError(
                 f"{option} needs bwa-mem3: wgse-bwa-mem3 is installed, but "
                 "native_aligners is off (use --native-aligners auto), and "
-                f"bwa-mem3 isn't on PATH. Or {otherwise}."
+                f"bwa-mem3 isn't installed. Or {otherwise}."
             )
+        install = pixi_install_command("bwa-mem3") or (
+            "pixi install --locked -e bwa-mem3"
+        )
         raise WGSExtractError(
             f"{option} needs wgse-bwa-mem3 (Apple Silicon) or bwa-mem3 "
-            f"(Bioconda) on PATH; for wgse-bwa-mem3, {INSTALL_HINT}. Or "
-            f"{otherwise}."
+            f"(Bioconda: `{install}`); for "
+            f"wgse-bwa-mem3, {INSTALL_HINT}. Or {otherwise}."
         )
     return AlignerCommand("bwa-mem3", options=options)
 
@@ -1198,6 +1219,9 @@ def _bwa_setup(
         read_length = statistics.read_length if statistics is not None else None
     if mem3 is not None:
         aligner = mem3
+        dense_suffix_array.other_aligner(
+            aligner.binary, enabled=bool(job.dense_suffix_array)
+        )
         aligner.announce()
     else:
         aligner, memory = short_read_command(
@@ -1227,6 +1251,7 @@ def _bwa_setup(
         read_length=read_length,
         additional_ram_bytes=additional_ram_bytes,
         gpu_bytes=gpu_bytes,
+        dense_sa_bytes=aligner.dense_sa_bytes,
     ):
         raise StreamingMemoryUnavailable("Collation exceeds available alignment RAM")
     preflight_resources(
@@ -1247,6 +1272,7 @@ def _bwa_setup(
             read_length=read_length,
             additional_ram_bytes=additional_ram_bytes,
             gpu_bytes=gpu_bytes,
+            dense_sa_bytes=aligner.dense_sa_bytes,
             output_format=job.format,
             duplicate_marking=(
                 "gatk-flow"
@@ -1267,6 +1293,7 @@ def _bwa_setup(
             read_length=read_length,
             additional_ram_bytes=additional_ram_bytes,
             gpu_bytes=gpu_bytes,
+            dense_sa_bytes=aligner.dense_sa_bytes,
             required=requested_aligner(job) == "bwa-mem2",
             label=stand_in_label(aligner),
         )

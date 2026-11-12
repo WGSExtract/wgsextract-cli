@@ -61,6 +61,8 @@ DEFAULT_CONFIG = """# WGS Extract Configuration
 # jar_dir = "/path/to/jars"
 # Apple Silicon aligner builds on PATH (native/README.md): "auto" or "off"
 # native_aligners = "auto"
+# wgse-bwa reads the dense suffix-array file `ref dense-sa` builds (opt-in)
+# dense_suffix_array = false
 
 # --- Y haplogroup trees (lineage y-haplogroup) ---
 # y_tree = "yfull"  # or yfull_v10, ftdna, isogg, or a [y_trees] id (end of file)

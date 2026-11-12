@@ -1,0 +1,127 @@
+name: Mirror reference genomes
+
+# Copies the reference genomes in the catalog (seed_genomes.csv) to a release
+# of this repository, which `ref library --install` then downloads first (#701):
+# Actions > Mirror reference genomes > Run workflow. Each genome is installed
+# from its original source exactly as a user's install does (BGZF, signature
+# check) by scripts/mirror_reference_genomes.py and uploaded under its catalog
+# file name; genomes already in the release are skipped, so a rerun finishes a
+# partial mirror. Then add each file's GitHub row and SHA-256 to the catalog.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release to upload to (created as a prerelease if missing).
+        required: true
+        default: reference-genomes-1
+      genomes:
+        description: Comma-separated catalog file names (empty mirrors every genome not yet mirrored).
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      genomes: ${{ steps.plan.outputs.genomes }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Create the release if needed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          case "$TAG" in reference-genomes-*) ;; *) echo "Tag must start with reference-genomes-" >&2; exit 1 ;; esac
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 ||
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "Reference genomes $TAG" --notes "Reference genome mirror (#701); notes follow." \
+              --prerelease --latest=false
+      - name: List the genomes to mirror
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+          ONLY: ${{ inputs.genomes }}
+        run: |
+          python3 -m pip install --quiet -e .
+          genomes=$(python3 scripts/mirror_reference_genomes.py plan --only "$ONLY" --skip-uploaded "$TAG")
+          echo "$genomes"
+          echo "genomes=$genomes" >> "$GITHUB_OUTPUT"
+
+  mirror:
+    needs: plan
+    if: needs.plan.outputs.genomes != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        genome: ${{ fromJSON(needs.plan.outputs.genomes) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+        with:
+          pixi-version: v0.82.0
+          locked: true
+          environments: default
+      - name: Download, convert and verify ${{ matrix.genome.final }}
+        env:
+          FINAL: ${{ matrix.genome.final }}
+        run: |
+          df -h .
+          pixi run -e default python scripts/mirror_reference_genomes.py build "$FINAL" --out out/mirror
+      - name: Upload it to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+          FINAL: ${{ matrix.genome.final }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -qxF "$FINAL"; then
+            echo "$FINAL is already in $TAG; keeping that copy."
+          else
+            gh release upload "$TAG" "out/mirror/$FINAL" --repo "$GITHUB_REPOSITORY"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: record-${{ matrix.genome.code }}
+          path: out/mirror/*.json
+          if-no-files-found: error
+
+  notes:
+    needs: mirror
+    if: always() && (needs.mirror.result == 'success' || needs.mirror.result == 'failure')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: record-*
+          path: records
+          merge-multiple: true
+      - name: Write the release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          # Records of earlier runs are kept as a release asset, so the notes list every file.
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern records.tar.gz --dir old 2>/dev/null &&
+            tar -xzf old/records.tar.gz -C records --skip-old-files || true
+          if ! ls records/*.json > /dev/null 2>&1; then echo "No genome was mirrored."; exit 0; fi
+          tar -czf records.tar.gz -C records .
+          python3 scripts/mirror_reference_genomes.py notes records/*.json > notes.md
+          gh release upload "$TAG" records.tar.gz --clobber --repo "$GITHUB_REPOSITORY"
+          gh release edit "$TAG" --notes-file notes.md --repo "$GITHUB_REPOSITORY"

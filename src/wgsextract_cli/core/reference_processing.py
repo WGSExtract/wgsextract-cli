@@ -221,7 +221,11 @@ def download_and_process_genome(
             f"Downloading {genome_data['label']} from {genome_data['source']}..."
         )
         if not download_file(
-            genome_data["url"], final_path, progress_callback, cancel_event
+            genome_data["url"],
+            final_path,
+            progress_callback,
+            cancel_event,
+            expected_sha256=genome_data.get("sha256") or None,
         ):
             return False
 

@@ -111,7 +111,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
         HOURS,
         *_SAM,
         optional=(
-            "bcftools bgzip bwa bwa-mem2 curl gatk minimap2 pbmm2 sambamba samblaster"
+            "bcftools bgzip bwa bwa-mem2 bwa-mem3 curl gatk minimap2 pbmm2 sambamba samblaster"
         ),
     ),
     "basecall": _n(
@@ -120,7 +120,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "align": _n(
         HOURS,
         *_SAM,
-        optional="bcftools bwa bwa-mem2 curl gatk minimap2 pbmm2 sambamba samblaster",
+        optional="bcftools bwa bwa-mem2 bwa-mem3 curl gatk minimap2 pbmm2 sambamba samblaster",
     ),
     "vcf snp": _n(HOURS, *_CALL),
     "vcf indel": _n(HOURS, *_CALL),
@@ -165,6 +165,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "ref download": _n(DOWNLOAD, optional="curl"),
     "ref index": _n(HOURS, *_SAM, optional="bwa bwa-mem2 curl", scale=REFERENCE),
     "ref count-ns": _n(MINUTES, scale=REFERENCE),
+    "ref dense-sa": _n(MINUTES, scale=REFERENCE),
     "ref verify": _n(MINUTES, *_SAM, scale=REFERENCE),
     "ref library": _n(
         DOWNLOAD, "bcftools", "bgzip", "curl", "htsfile", "samtools", "tabix"

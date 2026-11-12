@@ -83,6 +83,41 @@ bwa-mem2 where it used to pick bwa, and a re-run gives a different BAM; it
 logs when it does. To compare runs, pin the aligner with `--aligner bwa` (or
 `--aligner bwa-mem2`).
 
+### bwa-mem3 on Linux
+
+[bwa-mem3](https://github.com/fulcrumgenomics/bwa-mem3) writes bwa's exact
+records with `--compat=bwa-mem` and bwa-mem2's with `--compat=bwa-mem2`, from
+bwa-mem2's index without its `.0123` file, several times faster. Bioconda's
+build needs a newer htslib than the default environment's samtools, so it has
+its own environment; install it with `pixi install --locked -e bwa-mem3` (Linux
+and macOS). On Linux, when it is installed and the reference has bwa-mem2's
+index, `align` and `realign` run it in place of bwa or bwa-mem2 (whichever
+`--aligner` or `auto` chose), under the same memory rules as `wgse-bwa-mem3` on
+a Mac ([Apple Silicon](#apple-silicon-metal)): in bwa's place its pipeline must
+fit the RAM available, so on 16 GB computers bwa usually runs. Ultima reads keep
+BWA. `--native-aligners off` (or `native_aligners = "off"`) turns this off. A
+bwa-mem3 older than 0.16.0, or one whose `bwa-mem3 version` fails, raises the
+`native_aligner_unusable` warning and bwa or bwa-mem2 runs. The result manifest
+records `native_aligner` `bwa-mem3` and `bwa_mem3_mode`, as on a Mac.
+
+**Measured** with `wgsextract align` on the first 5M HG002 read pairs (30x
+NovaSeq) on hs38, 16 threads, BAM output, two rounds in reversed order, on
+Azure 16-vCPU, 64 GiB VMs with Ubuntu 24.04. The records were the same with and
+without bwa-mem3 (SHA-256 of `samtools view`, 10,062,598 records):
+
+| Computer | `--aligner bwa` | with bwa-mem3 | `--aligner bwa-mem2` | with bwa-mem3 |
+| :--- | ---: | ---: | ---: | ---: |
+| ARM64: Cobalt 100 (Neoverse N2), D16pds_v6 | 295 s, 287 s | 52 s, 51 s (−82%) | 245 s, 243 s | 53 s, 53 s (−78%) |
+| x86-64: AMD EPYC 9V74 (Zen 4), D16ads_v6 | 342 s, 334 s | 55 s, 56 s (−84%) | 181 s, 181 s | 57 s, 57 s (−69%) |
+
+Peak memory was 14.7 GiB with bwa-mem3, against 6.6 GiB with bwa and 18.7 GiB
+with bwa-mem2. The `Linux bwa-mem3 parity` workflow checks Bioconda's build
+against bwa's and bwa-mem2's records on GitHub's x86-64 and ARM64 runners.
+
+Bioconda's x86-64 bwa-mem3 0.16.0 crashes at startup (in its bundled
+allocator) on glibc 2.44, as on current Arch Linux; it ran on Ubuntu 24.04's
+2.39. The CLI's version check catches that, warns and aligns with bwa.
+
 ### Threads and memory
 
 - `--threads` (or `threads` in `config.toml`) defaults to `auto`: all cores, or
@@ -230,6 +265,32 @@ the check, or is older than the oldest supported release, raises the
   `tools` and records the `native_aligner`, `native_aligner_version` and
   `native_aligner_backend` (`metal` or `cpu`) metrics; bwa-mem3 runs also
   record `bwa_mem3_mode` (`compat=bwa-mem`, `compat=bwa-mem2` or `fast`).
+- **Dense suffix-array file (optional).** `wgse-bwa` 0.11.0 and later can
+  read a side file beside the reference's BWA index that holds the
+  suffix-array position of every 16th row, so it locates seeds with shorter
+  walks: the same alignments, 11.5% faster on the CPU and 7.7% faster on the
+  GPU for 5M read pairs on hs38. The file takes 0.80 GB on disk for hs38 and
+  as much RAM while aligning. It is opt-in and never built or used
+  automatically:
+  - `wgsextract ref dense-sa --ref <fasta>` builds it with `wgse-bwa
+    densify-sa` (it shows the disk it will take first; `--interval 8`, `4` or
+    `2` makes a larger, faster file), `--list` shows the FASTA's files and the
+    one `wgse-bwa` would read here, and `--delete` removes them.
+  - `align` and `realign` read it with `--dense-suffix-array`, or
+    `dense_suffix_array = true` in `config.toml` (`--no-dense-suffix-array`
+    turns that off for a run). Otherwise they run `wgse-bwa --dense-sa off`,
+    so a file left beside the index isn't read. The memory estimate counts the
+    file as index memory (with the GPU it replaces the denser sample the GPU
+    would build after 20M reads), and the manifest records
+    `dense_suffix_array_interval`.
+  - It is used only when `wgse-bwa` aligns. When another aligner runs, such
+    as `wgse-bwa-mem3` standing in for bwa or bwa-mem2 (faster, with the same
+    records), or bwa-mem2 chosen by `--aligner auto`, that aligner is kept.
+    Asked to use the file, a run that can't (another aligner, no file,
+    `wgse-bwa` missing or older than 0.11.0, or a file `wgse-bwa` won't read:
+    it needs 16 GiB of RAM or more, a file of at most an eighth of it, and an
+    intact file made from this index) raises the `dense_suffix_array_unused`
+    warning and aligns without it.
 
 `--aligner bwa-mem3` asks for bwa-mem3 itself: `wgse-bwa-mem3` on Apple
 Silicon, else (or with `--native-aligners off`) `bwa-mem3` on `PATH`, for

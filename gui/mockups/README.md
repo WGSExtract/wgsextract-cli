@@ -93,7 +93,8 @@ repository and branch), what the fields mean, and how to act on them (read
 this README and DESIGN.md, change the mockups for each open note, keep the
 design system consistent, reply in the thread and mark it resolved). It is
 written by `serve.py` and by **Export JSON**, and it is the same in every
-file, so it never shows up in diffs. Import ignores it.
+file, so it never shows up in diffs; exports from a branch preview name that
+branch instead of `main`. Import ignores it.
 
 So Randy (or anyone) can annotate on the published site, press **Export
 JSON**, and give the downloaded file to their agent with “apply these notes”;
@@ -125,16 +126,35 @@ by “AI” are questions from the designer about decisions to make.
 2. **Save the notes to the repo:** locally they are already in
    `gui/mockups/feedback/`; from the published site, Export JSON and commit it
    there (or hand it straight to an agent, above).
-3. **An agent or a person applies the changes on a branch**, replying in each
-   note’s thread, and opens a PR.
-4. **Merge the PR.** The GitHub Pages workflow (`.github/workflows/pages.yml`)
-   runs on every push to `main` that touches `gui/mockups/**`, rebuilds the
-   site and republishes the mockups. If it didn’t run, start it by hand:
-   `gh workflow run pages.yml --ref main`.
-5. **Check which iteration you’re looking at:** the footer of the mockups
-   index names the commit and date it was published from (a checkout says
-   “Local copy”). The workflow writes that into `shared/version.js` in the
-   published copy only.
+3. **Change the mockups on a `mockups/<name>` branch** of this repository
+   (an agent or a person), replying in each note’s thread, and push it.
+4. **Review the preview** at
+   `https://wgsextract.github.io/wgsextract-cli/app/mockups/preview/<name>/`,
+   up a few minutes after each push. `<name>` is the branch name after
+   `mockups/`, lower-cased, with anything but letters, digits and `-` turned
+   into `-` (`mockups/Randy-nav` → `randy-nav`). All previews are listed at
+   <https://wgsextract.github.io/wgsextract-cli/app/mockups/preview/>. A yellow
+   banner says which branch and commit you’re looking at. Notes there stay in
+   your browser; Export them and commit them to the same branch.
+5. **Open a PR from the branch to `main` and merge it.** That publishes the
+   change at <https://wgsextract.github.io/wgsextract-cli/app/mockups/>.
+   Deleting the branch removes its preview.
+
+How it’s built: pushing or deleting a `mockups/*` branch runs
+`.github/workflows/mockup_previews.yml`, which only starts the Pages workflow
+(`pages.yml`) on `main`; the `github-pages` environment deploys from `main`
+alone. That workflow runs `scripts/build_mockup_previews.py` from `main`,
+which copies just the static files (HTML, CSS, JS, JSON, images, Markdown)
+under `gui/mockups/` of each branch, read from `git archive` and never run.
+Only branches of this repository count, so only people with write access can
+publish a preview; forks can’t. Pages also republishes on every push to
+`main` that touches `gui/mockups/**`. If something didn’t update, start it by
+hand: `gh workflow run pages.yml --ref main`.
+
+Which iteration is this? The footer of each mockups index names the branch
+(or `main`), commit and date it was published from; a checkout says “Local
+copy”. The Pages build writes that into `shared/version.js` in the published
+copies only.
 
 ## Folder layout
 
