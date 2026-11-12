@@ -63,6 +63,17 @@ set(htslib_cflags "-g -O2")
 if(APPLE)
     string(APPEND htslib_cflags " -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
 endif()
+set(htslib_cppflags "-I${mem3_libdeflate_SOURCE_DIR}")
+set(htslib_ldflags "-L${CMAKE_CURRENT_BINARY_DIR}/libdeflate")
+if(NOT APPLE)
+    # On Linux, htslib's configure uses the zlib CMake found, which may not be on the
+    # compiler's own paths (a conda toolchain with its own sysroot).
+    list(GET ZLIB_INCLUDE_DIRS 0 zlib_include)
+    list(GET ZLIB_LIBRARIES 0 zlib_library)
+    get_filename_component(zlib_lib_dir "${zlib_library}" DIRECTORY)
+    string(APPEND htslib_cppflags " -I${zlib_include}")
+    string(APPEND htslib_ldflags " -L${zlib_lib_dir}")
+endif()
 file(MAKE_DIRECTORY "${htslib_dir}")
 ExternalProject_Add(mem3_htslib_build
     URL https://github.com/samtools/htslib/releases/download/1.21/htslib-1.21.tar.bz2
@@ -72,8 +83,8 @@ ExternalProject_Add(mem3_htslib_build
     BUILD_IN_SOURCE TRUE
     CONFIGURE_COMMAND ./configure "CC=${CMAKE_C_COMPILER}"
         "CFLAGS=${htslib_cflags}"
-        "CPPFLAGS=-I${mem3_libdeflate_SOURCE_DIR}"
-        "LDFLAGS=-L${CMAKE_CURRENT_BINARY_DIR}/libdeflate"
+        "CPPFLAGS=${htslib_cppflags}"
+        "LDFLAGS=${htslib_ldflags}"
         --with-libdeflate --disable-bz2 --disable-lzma --disable-libcurl --disable-gcs
         --disable-s3 --disable-plugins
     BUILD_COMMAND make -j4 libhts.a

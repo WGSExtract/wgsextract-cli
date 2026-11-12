@@ -60,12 +60,13 @@ jobs:
 
       - name: Build with -DWGSE_CUDA=ON
         run: |
-          # zlib's headers too: CMake finds the environment's libz before the system's.
+          # cuda-nvcc brings conda-forge's GCC, which sets CC and CXX and has its own sysroot,
+          # so zlib comes from conda-forge too.
           pixi exec --spec "cuda-nvcc 12.9.*" --spec "cuda-cudart-dev 12.9.*" \
             --spec "cuda-cudart-static 12.9.*" --spec zlib -- bash -euo pipefail -c '
               nvcc --version | tail -1
               cmake -S native -B out/build-cuda -DCMAKE_BUILD_TYPE=Release -DWGSE_CUDA=ON \
-                -DCMAKE_CUDA_COMPILER="$(command -v nvcc)" -DCMAKE_CUDA_HOST_COMPILER=g++ \
+                -DCMAKE_CUDA_COMPILER="$(command -v nvcc)" \
                 -DCUDAToolkit_ROOT="$(dirname "$(dirname "$(command -v nvcc)")")" \
                 -DFETCHCONTENT_BASE_DIR="$PWD/out/deps"
               cmake --build out/build-cuda -j "$(nproc)"
