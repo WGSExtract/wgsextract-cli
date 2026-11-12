@@ -42,10 +42,12 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
   2. the "Up next" list at the top of the roadmap tracking issue (label `roadmap`), in the order listed; it overrides milestones
   3. the oldest open milestone
   4. the rest of the roadmap tracking issue
-- **Machine labels.** A `machine-*` label (for example `machine-lin-3090`) claims an issue for the agent on that machine, usually because it needs that machine's hardware; the label's description names the host.
-  - Machine labels are mutually exclusive: an issue carries at most one. Before adding yours, check for another `machine-*` label; if one is there, the issue is taken.
-  - Agents on other machines skip a labelled issue unless an owner reassigns it, by swapping the label; to coordinate, comment on the issue.
-  - Claim an issue by adding your machine's label before starting work, and remove the label when you release it. Create a new `machine-*` label for a new machine.
+- **Machine labels.** A `machine-*` label (for example `machine-lin-3090`) claims an issue for the agent on that machine; the label's description names the host.
+  - An issue carries at most one machine label. Agents on other machines skip a labelled issue; an owner moves it by swapping the label. To coordinate, comment on the issue.
+  - **Only that machine can do it:** label the issue in advance (for example, it needs that machine's GPU). The label stays on even while nobody works on it.
+  - **Any machine can do it:** unlabelled issues are open to every machine. Add your machine's label when you start actively working on one. Remove it when you stop or can't continue, so another machine can take it.
+  - Create a new `machine-*` label for a new machine.
+- **Assignees.** Don't work on an issue assigned to someone other than the account you're signed in as (`gh api user --jq .login`).
 - **Keep going.** When given a queue of work (such as a list of GitHub issues), keep working through it without stopping to ask for confirmation between items.
   - When an item is blocked on something only the user can provide, or needs owner sign-off first, note it and move on to other work in the queue that isn't blocked.
   - Stop only when the queue is empty or every remaining item is blocked.
