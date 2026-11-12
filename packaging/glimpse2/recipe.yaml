@@ -9,6 +9,8 @@ package:
 source:
   - url: https://github.com/odelaneau/GLIMPSE/archive/refs/tags/v${{ version }}.tar.gz
     sha256: dcdc06fc85ca9bae6a2255caf3f985a5e6ccab5a99a0c3fe4c2fd7f8d27b0b8e
+    patches:
+      - patches/0001-native-windows-environment.patch
   - url: https://github.com/samtools/htslib/releases/download/${{ htslib }}/htslib-${{ htslib }}.tar.bz2
     sha256: 28a8de191381c7a97a35675ceac76fa1ea95e7b678d6a2e9d600a7874e4077de
     target_directory: htslib-${{ htslib }}
