@@ -25,6 +25,12 @@ printed by `--version`.
 
 ## Installing
 
+The `macos-aligners-15` prerelease has `wgse-bwa` 0.11.0, which can use an
+optional dense suffix-array side file (`wgse-bwa densify-sa`), `wgse-bwa-mem2`
+0.5.2, `wgse-bwa-mem3` 0.3.0, whose `--metal` also collects SMEMs on the GPU,
+and `wgse-minimap2` 0.3.0, with faster CPU and `--metal` gap fills. All four
+fall back to the CPU when a GPU command hangs (GPU watchdog) and align exactly
+as before.
 The `macos-aligners-14` prerelease has `wgse-bwa` 0.9.0 and `wgse-bwa-mem2`
 0.5.0, whose CPU backends are faster and align exactly as before, with the
 same `wgse-bwa-mem3` 0.2.0 and `wgse-minimap2` 0.2.0 as `macos-aligners-13`.
@@ -64,8 +70,8 @@ publishes for each release asset:
 
 ```bash
 mkdir wgse-aligners && cd wgse-aligners
-gh release download macos-aligners-14 -R WGSExtract/wgsextract-cli
-gh release view macos-aligners-14 -R WGSExtract/wgsextract-cli --json assets \
+gh release download macos-aligners-15 -R WGSExtract/wgsextract-cli
+gh release view macos-aligners-15 -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
   shasum -a 256 -c
 ```
