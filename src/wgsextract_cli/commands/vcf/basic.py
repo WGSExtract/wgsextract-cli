@@ -21,6 +21,7 @@ from wgsextract_cli.api.vcf import (
 )
 from wgsextract_cli.core import read_scope, ultima
 from wgsextract_cli.core.alignment_health import warn_about_alignment
+from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.builds import is_hg37_build, is_hg38_build, ploidy_for_build
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependency_checks import (
@@ -291,6 +292,7 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
     setup = setup_caller(params)
     threads, outdir, ref = setup.threads, setup.outdir, setup.ref
     parallel = int(threads) > 1 if params.parallel is None else params.parallel
+    contigs = calling_contigs(input_file, ref, threads, params.region, parallel)
     preflight_resources(
         lambda: estimate_resources(
             task,
@@ -305,9 +307,10 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
             ),
             region=params.region,
             parallel=parallel,
+            bcftools_contigs=contigs,
+            alignment_header=get_bam_header(input_file),
         )
     )
-    contigs = calling_contigs(input_file, ref, threads, params.region, parallel)
     environment = bcftools_environment(params.mimalloc)
     # One bcftools stream uses one core however many threads were given (#583).
     _, workers = calling_jobs(contigs, threads)

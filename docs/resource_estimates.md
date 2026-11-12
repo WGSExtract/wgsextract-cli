@@ -340,8 +340,24 @@ filesystem for reference-index storage.
   fallback, so input compression does not directly set the VCF budget.
   The CLI supplies the cheap indexed BAM count; CRAM keeps the fallback
   rather than decoding the file for preflight.
-  Temporary space allows twice that output plus 16 KiB per contig part's
-  header (one part without contig parallelism). On #722's nominal-30x HG002
+  Serial calling (`--no-parallel`, one thread, an explicit region, or a
+  caller-resolved serial fallback) writes directly to the staged output and
+  reserves **no part/concatenation temporary space**.
+  Parallel calling uses the runtime's shared batching plan, not one part per
+  reference contig. Compressed batch headers are estimated from the complete
+  reference dictionary and supplied alignment header, with compression and
+  metadata headroom. Non-replaying indels reserve two output-sized data sets.
+  Parallel SNPs also reserve possible deep-site split/replay files: a full
+  uncompressed header for each split contig, both window and whole-contig
+  fallback splices, and reheadering, plus an eight-output-sized record-data
+  envelope. These files can coexist until publication, even though a shallow
+  run may not need replay. All of these files are charged to the output volume,
+  where the caller actually creates them.
+  The CLI supplies the resolved `bcftools_contigs` and `alignment_header`;
+  read-only API clients without that metadata conservatively use the reference
+  dictionary. If neither a reference index nor resolved contigs are available,
+  parallel temporary disk is reported unknown rather than assuming a serial run.
+  On #722's nominal-30x HG002
   slice, the 670.5 MB BAM produced 2.95 MB SNP and 0.80 MB indel VCF.gz files;
   the old tenth-of-input output estimate was 23×/84× high. The new budgets
   retain several-fold headroom; depth, variant burden and compression vary.
