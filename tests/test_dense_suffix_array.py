@@ -220,14 +220,17 @@ def test_asked_wgse_bwa_reads_the_file_with_the_same_records(
 
 @pytest.mark.usefixtures("linux_x86_64")
 @pytest.mark.parametrize(
-    "setup", ["cuda", "cpu", "dense exceeds budget", "cpu fallback"]
+    "setup",
+    ["cuda", "cpu", "dense exceeds budget", "cuda without bwa-mem3", "cpu fallback"],
 )
-def test_680_709_cuda_first_routing_keeps_dense_sa_only_for_wgse_bwa(
+def test_680_709_736_routing_keeps_dense_sa_only_for_wgse_bwa(
     tmp_path, mem3_bin, fake_pixi, ram, setup
 ):
+    # #736: bwa-mem3 goes before wgse-bwa --cuda on Linux, as on a Mac, so
+    # the dense file is read only when wgse-bwa aligns.
     reads = _mem3_reads(tmp_path)
     _install(mem3_bin, metal_available=False, cuda_available=setup != "cpu")
-    if setup != "cpu fallback":
+    if setup not in {"cuda without bwa-mem3", "cpu fallback"}:
         _env_bwa_mem3(fake_pixi, mem3_bin)
     side = _side_file(reads.ref)
     if setup in {"dense exceeds budget", "cpu fallback"}:
@@ -246,7 +249,7 @@ def test_680_709_cuda_first_routing_keeps_dense_sa_only_for_wgse_bwa(
         memory="256M",
     )
 
-    if setup == "cuda":
+    if setup == "cuda without bwa-mem3":
         # contract: auto retains CPU fallback; on is required to read the file.
         assert _mapper(bam).startswith("wgse-bwa --backend auto --dense-sa on mem ")
         assert result.metrics["native_aligner_backend"] == "cuda"

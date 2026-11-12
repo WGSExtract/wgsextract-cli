@@ -1015,6 +1015,12 @@ of the time in SMEM seeding, a quarter in seed extension, a fifth in mate rescue
 and an eighth in suffix-array locate. With `--cuda` the CPU does the chaining,
 the sorts and reference fetches that remain, and spends a quarter as much time.
 
+On the same machine and tier, bwa-mem3 0.16.0 `--compat=bwa-mem` on the CPU
+(as `wgse-bwa-mem3`, below) took 97.7 s and 761 s of CPU time, with the same records
+as BWA: faster than `wgse-bwa --cuda`. So `align` and `realign` on Linux run
+bwa-mem3 in bwa's place first when it's installed and fits, and `wgse-bwa`'s
+GPU backend next (#736; [hardware guide](../docs/hardware.md#nvidia-gpus-without-parabricks-wgse-bwa---cuda)).
+
 ### wgse-bwa-mem3 on Linux x86-64
 
 `wgse-bwa-mem3` also builds on Linux x86-64, as upstream's default build does:
