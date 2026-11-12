@@ -439,7 +439,7 @@ def test_realign_includes_extracted_fastqs_only_when_needed(tmp_path, source):
     reuse = resources.estimate_resources("realign", **options)
     assert (
         extract.resources[1].estimated_bytes - reuse.resources[1].estimated_bytes
-        == 7_500_000
+        == extract.resources[1].components["extracted_fastqs"]
     )
     assert extract.resources[0].estimated_bytes == reuse.resources[0].estimated_bytes
 
@@ -489,6 +489,23 @@ def hg002_slice_metadata(tmp_path):
         for number in range(430):
             stream.write(f"alt{number}\t1000\t0\t60\t61\n")
     return source, reference
+
+
+def test_722_extracted_fastq_budget_covers_full_quality_hg002_slice(
+    tmp_path, hg002_slice_metadata
+):
+    source, reference = hg002_slice_metadata
+    estimate = resources.estimate_resources(
+        "realign",
+        input_paths=[str(source)],
+        output_dir=str(tmp_path),
+        reference=str(reference),
+        reads=10_971_483,
+        extract_fastq=True,
+    )
+    disk = next(row for row in estimate.resources if row.resource == "disk")
+    # Actual completed R1/R2 outputs retained by the #722 SIGINT run.
+    assert disk.components["extracted_fastqs"] >= 460_014_704 + 477_371_236
 
 
 @pytest.mark.parametrize("operation", ["snp", "indel"])

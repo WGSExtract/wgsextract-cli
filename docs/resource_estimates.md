@@ -320,12 +320,16 @@ filesystem for reference-index storage.
   **8.63 GB CRAM**, plus a 1.14 MB CRAI. Do not extrapolate that unusually good
   compression to full-quality inputs.
 - The conservative disk envelope uses **120 bytes/read sort spill**,
-  **28 bytes/read CRAM**, **100 bytes/read BAM**, and **75 bytes/read extracted
+  **28 bytes/read CRAM**, **100 bytes/read BAM**, and **100 bytes/read extracted
   FASTQ**. At H2 depth this is **81.56 GB temporary sort space and 19.03 GB
   CRAM** (75.96 and 17.72 GiB), within the phase-2 planning ranges of 70–90 GB
   sort space and about 16–20 GB CRAM. Output indexes add 1% (at least 64 KiB).
   Existing reference indexes cost no new disk; missing ones receive an
   additional two-resident-index-size build allowance on the reference volume.
+  The FASTQ allowance was raised from 75 after #722's full-quality HG002
+  slice wrote 937.4 MB for 10,971,483 indexed records (85.4 bytes/record):
+  the files were 14% larger than the old budget. Known indexed counts avoid additional
+  uncertainty from BAM/CRAM compression-based count inference.
 - Ultima pipelines using GATK flow duplicate marking pass
   `duplicate_marking="gatk-flow"`. Their temporary budget includes retained
   sorted/marked BAMs: up to two BAMs (200 bytes/read) for CRAM output, rather

@@ -35,7 +35,7 @@ GATK_WORKER_BYTES = 6 * GIB
 SORT_BYTES_PER_READ = 120
 CRAM_BYTES_PER_READ = 28
 BAM_BYTES_PER_READ = 100
-FASTQ_BYTES_PER_READ = 75
+FASTQ_BYTES_PER_READ = 100
 # HG002 30x, #722: 2.95 MB SNP and 0.80 MB indel VCF.gz from a 670.5 MB BAM.
 # Leave several times the measured size, normalizing BAM/CRAM via disk_reads.
 _BCFTOOLS_VCF_BYTES_PER_READ = {"snp": 1.6, "indel": 0.4}
