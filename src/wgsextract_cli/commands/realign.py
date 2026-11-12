@@ -918,6 +918,32 @@ def _run_steps(
         )
         return
 
+    if not job.r1 and not job.force_extract and not job.keep_fastq:
+        previous = journal.check(extract_step)
+        if previous.metrics.get("temporary") is True:
+            retained = tuple(
+                journal.resolve(output["path"]) for output in previous.outputs
+            )
+            resolved = tuple(path.resolve() for path in retained)
+            workspace = Path(staging).resolve()
+            # The new workspace changes paths, not the completed extraction.
+            # Only recover unchanged files from an owned sibling workspace.
+            if (
+                len(retained) == 2
+                and workspace.name.startswith(".wgse_run_")
+                and resolved[0].parent == resolved[1].parent
+                and resolved[0].parent.name.startswith(".wgse_run_")
+                and resolved[0].parent.parent == workspace.parent
+                and tuple(path.name for path in resolved)
+                == tuple(Path(path).name for path in staged)
+            ):
+                recovered = replace(
+                    extract_step, outputs=tuple(str(path) for path in retained)
+                )
+                if not journal.check(recovered).run:
+                    extract_step = recovered
+                    staged = str(retained[0]), str(retained[1])
+
     extract_decision: Decision | None = None
     if job.r1:
         verify_paths_exist({"--r1": job.r1})
@@ -1244,7 +1270,8 @@ def _run_steps(
             if directory:
                 logging.warning(
                     "Alignment failed; extracted FASTQs are retained in %s. "
-                    "Rerun with --r1 and --r2 pointing to:\n  %s\n  %s\n"
+                    "Rerun the same command to reuse them, or set --r1 and --r2 to:\n"
+                    "  %s\n  %s\n"
                     "Remove the retained workspace after recovery.",
                     directory,
                     r1_path,
