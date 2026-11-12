@@ -16,8 +16,14 @@ from typing import TYPE_CHECKING, Any, TextIO
 from wgsextract_cli.core import ultima
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.download_progress import CancelEvent
+from wgsextract_cli.core.imputed_vcf import (
+    LOW_CONFIDENCE_FILTER,
+    describe,
+    imputation_info,
+)
 from wgsextract_cli.core.microarray_quality import quality_policy
 from wgsextract_cli.core.progress import ContigProgress
+from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.utils import (
     WGSExtractError,
@@ -438,6 +444,30 @@ def _expand_gvcf_targets(
         )
 
 
+def _no_call_low_confidence_imputed(vcf: str, outdir: str, base_name: str) -> str:
+    """For a `vcf impute` VCF, its low-confidence genotypes as no-calls: left
+    out, the kit would fill them in as homozygous reference."""
+    header = run_command(["bcftools", "view", "-h", vcf], capture_output=True)
+    imputed = imputation_info(header.stdout.splitlines())
+    if imputed is None:
+        return vcf
+    warn(
+        "imputed_vcf",
+        f"{Path(vcf).name} is {describe(imputed)}: the kit's genotypes are "
+        f"predicted from a reference panel; those marked {LOW_CONFIDENCE_FILTER} "
+        "are exported as no-calls.",
+        tool=imputed.get("Tool"),
+        panel=imputed.get("Panel"),
+    )
+    out = str(Path(outdir, f"{base_name}_imputed_hits.vcf.gz"))
+    run_command(
+        ["bcftools", "filter", "--set-GTs", ".", "-e",
+         f'FILTER~"{LOW_CONFIDENCE_FILTER}"', "-Oz", "-o", out, vcf]
+    )  # fmt: skip
+    ensure_vcf_indexed(out)
+    return out
+
+
 def _prepare_microarray_vcf(
     *,
     params: MicroarrayParams,
@@ -511,6 +541,7 @@ def _prepare_microarray_vcf(
                     + ["-Oz", "-o", hit_vcf, str(params.input)]
                 )
             ensure_vcf_indexed(hit_vcf)
+            hit_vcf = _no_call_low_confidence_imputed(hit_vcf, outdir, base_name)
 
             # Step 2: Since we need a complete file for the templates, we'll
             # handle the "Reference Filling" during the extraction to CombinedKit.txt

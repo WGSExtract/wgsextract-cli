@@ -43,6 +43,7 @@ from wgsextract_cli.core.native_aligners import (
     AlignerCommand,
     NativeAligner,
     apple_silicon,
+    bwa_mem3_failure,
     find_bwa_mem3,
     find_native_aligner,
     native_setting,
@@ -914,13 +915,21 @@ def bwa_mem3_command(job: AlignJob) -> AlignerCommand:
         return AlignerCommand(
             "bwa-mem3", native, gpu=native.gpu is not None, options=options
         )
-    if get_tool_path("bwa-mem3") is None:
+    failure = None
+    if get_tool_path("bwa-mem3") is None or (failure := bwa_mem3_failure()):
         option = "--aligner bwa-mem3" if job.aligner == "bwa-mem3" else "--fast"
         otherwise = (
             "drop --fast"
             if option == "--fast"
             else "align with --aligner auto" + (" without --fast" if job.fast else "")
         )
+        if failure:
+            # #727: a build that crashes at startup would otherwise fail the
+            # alignment pipeline with a bare signal.
+            raise WGSExtractError(
+                f"{option} needs bwa-mem3, and the installed one can't run: "
+                f"{failure}. Install a bwa-mem3 that runs here, or {otherwise}."
+            )
         if (
             native_setting(job.native_aligners) == "off"
             and apple_silicon()

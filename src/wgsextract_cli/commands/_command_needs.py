@@ -151,6 +151,14 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
         "tabix",
         optional="docker run_clair3.sh sambamba",
     ),
+    "vcf impute": _n(
+        HOURS,
+        "bcftools",
+        "bgzip",
+        "samtools",
+        "tabix",
+        optional="GLIMPSE2_ligate GLIMPSE2_phase",
+    ),  # fmt: skip
     "vcf phase": _n(
         HOURS, "bcftools", "samtools", "tabix", optional="longphase whatshap"
     ),
@@ -181,6 +189,14 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "ref somalier": _n(DOWNLOAD, optional="curl"),
     "ref ancestry": _n(DOWNLOAD, optional="curl"),
     "ref gnomad-sv": _n(DOWNLOAD, "bcftools", "bgzip", "tabix", optional="curl"),
+    "ref imputation": _n(
+        DOWNLOAD,
+        "bcftools",
+        "GLIMPSE2_chunk",
+        "GLIMPSE2_phase",
+        "GLIMPSE2_split_reference",
+        "tabix",
+    ),  # fmt: skip
     "ref ybrowse": _n(DOWNLOAD, "bgzip", "tabix"),
     "ref microarray-targets": _n(MINUTES),
     "ref gene-map": _n(DOWNLOAD, optional="curl"),

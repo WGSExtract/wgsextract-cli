@@ -36,12 +36,11 @@ def _build_param() -> Any:
 
 @dataclass(frozen=True, kw_only=True)
 class MtHaplogroupParams(Params):
-    """Predict the mtDNA haplogroup with Haplogrep 3 from a BAM/CRAM (chrM is
-    called first; needs the reference) or a VCF. The report is
-    ``haplogrep_results.txt`` in the output folder. The chosen tree is
-    downloaded once into the reference library. With ``contamination``,
-    haplocheck also checks the mtDNA for a mixture of two haplogroups and writes
-    ``haplocheck_contamination.txt``."""
+    """Predict the mtDNA haplogroup with Haplogrep 3 from a BAM/CRAM (chrM
+    called first; needs the reference) or a VCF, into
+    ``haplogrep_results.txt``; the tree is downloaded once into the reference
+    library. With ``contamination``, haplocheck also looks for a mixture of
+    two haplogroups (``haplocheck_contamination.txt``)."""
 
     COMMAND = "lineage mt-haplogroup"
 

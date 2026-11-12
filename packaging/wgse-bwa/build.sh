@@ -9,6 +9,7 @@ cmake -S native -B build -G Ninja ${CMAKE_ARGS} \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_TESTING=OFF \
     -DWGSE_CUDA="$cuda" \
+    -DWGSE_BWA_MEM3=OFF \
     -DFETCHCONTENT_SOURCE_DIR_BWA="$SRC_DIR/bwa" \
     -DFETCHCONTENT_FULLY_DISCONNECTED=ON
 cmake --build build --parallel "${CPU_COUNT:-2}"

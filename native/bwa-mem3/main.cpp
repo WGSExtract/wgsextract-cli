@@ -1,6 +1,6 @@
 #include "metal_extension.h"
 #include "metal_seeding_api.h"
-#include "runtime.h"
+#include "rescue_api.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -15,28 +15,32 @@ constexpr const char *name = "wgse-bwa-mem3";
 constexpr const char *version = WGSE_VERSION;
 constexpr const char *engine_version = MEM3_VERSION;
 
+#ifdef __APPLE__
+constexpr const char *platform = "Apple Silicon", *gpu_option = "--metal";
+#else
+constexpr const char *platform = "Linux", *gpu_option = "--cuda";
+#endif
+
 void help(FILE *stream) {
-    fprintf(stream, "%s %s (bwa-mem3 %s rebuilt for Apple Silicon)\n"
-        "Usage: %s [--metal | --backend cpu|metal|auto] [--gpu-threads PERCENT] [--gpu-seed on|off]\n"
-        "         [--gpu-backlog PAIRS] <command> [arguments]\n"
+    fprintf(stream, "%s %s (bwa-mem3 %s rebuilt for %s)\n"
+        "Usage: %s [%s | --backend cpu|%s|auto] [--gpu-threads PERCENT] [--gpu-seed on|off]\n"
+        "         [--gpu-backlog PAIRS] [--gpu-rescue on|off] <command> [arguments]\n"
         "         bwa-mem3's commands: index, mem, shm, re-sa\n"
-        "       %s capabilities --json   report Metal availability\n"
+        "       %s capabilities --json   report %s availability\n"
         "       %s --version | version   print executable and engine version\n"
         "       %s version --verbose     also print bwa-mem3's build details\n"
-        "Alignment is bwa-mem3's on the CPU by default. --metal (EXPERIMENTAL) collects SMEMs (unless\n"
+        "Alignment is bwa-mem3's on the CPU by default. %s (EXPERIMENTAL) collects SMEMs (unless\n"
         "--gpu-seed off) and scores bwa-mem3's 8-bit seed extensions on the GPU, with byte-identical\n"
         "output; CPU threads score extensions while more than PAIRS (default 4096 with GPU seeding,\n"
         "else 0 = never) wait for the GPU. It runs PERCENT%% (default\n"
-        "%d) of -t compute threads, as threads wait for the GPU. --metal fails if Metal is\n"
+        "%d) of -t compute threads, as threads wait for the GPU. %s fails if %s is\n"
         "unavailable, and exits 1 after finishing on the CPU if a GPU batch fails; --backend auto\n"
-        "falls back to the CPU in both cases.\n"
+        "falls back to the CPU in both cases. With CUDA it also aligns mate-rescue windows on the\n"
+        "GPU (unless --gpu-rescue off).\n"
         "SAM is written to stdout, diagnostics to stderr. Not qualified for clinical use.\n\n",
-        name, version, engine_version, name, name, name, name, wgse_mem3_default_thread_percent);
-}
-
-bool metal_hardware_supported() {
-    wgse::metal::Runtime runtime;
-    return runtime.device() != nil;
+        name, version, engine_version, platform, name, gpu_option, gpu_option + 2, name,
+        wgse_mem3_gpu_name(), name, name, gpu_option, wgse_mem3_default_thread_percent,
+        gpu_option, wgse_mem3_gpu_name());
 }
 
 std::string json(const std::string &text) {
@@ -50,16 +54,17 @@ std::string json(const std::string &text) {
 
 int run(int argc, char **argv) {
     // Backend options precede the command, as for wgse-bwa and wgse-bwa-mem2.
-    enum class Backend { cpu, metal, automatic } backend = Backend::cpu;
-    bool gpu_seed = true;
+    // gpu: --metal on macOS, --cuda on Linux.
+    enum class Backend { cpu, gpu, automatic } backend = Backend::cpu;
+    bool gpu_seed = true, gpu_rescue = true;
     long long gpu_backlog = -1;
     int command_index = 1;
     while (argc > command_index) {
         const char *option = argv[command_index];
         const bool has_value = argc > command_index + 1;
         const char *value = has_value ? argv[command_index + 1] : "";
-        if (strcmp(option, "--metal") == 0) {
-            backend = Backend::metal;
+        if (strcmp(option, gpu_option) == 0) {
+            backend = Backend::gpu;
             ++command_index;
         } else if (strcmp(option, "--gpu-seed") == 0) {
             if (strcmp(value, "on") == 0) gpu_seed = true;
@@ -69,6 +74,17 @@ int run(int argc, char **argv) {
                 return 2;
             }
             command_index += 2;
+        } else if (strcmp(option, "--gpu-rescue") == 0) {
+            if (strcmp(value, "on") == 0) gpu_rescue = true;
+            else if (strcmp(value, "off") == 0) gpu_rescue = false;
+            else {
+                fprintf(stderr, "--gpu-rescue requires on or off\n");
+                return 2;
+            }
+            command_index += 2;
+        } else if (strcmp(option, "--gpu-inject-rescue-failure") == 0) {
+            wgse_mem3_rescue_inject_failure();
+            ++command_index;
         } else if (strcmp(option, "--gpu-verify-seeds") == 0) {
             wgse_mem3_seed_set_verify(true);
             ++command_index;
@@ -83,10 +99,10 @@ int run(int argc, char **argv) {
             ++command_index;
         } else if (strcmp(option, "--backend") == 0) {
             if (strcmp(value, "cpu") == 0) backend = Backend::cpu;
-            else if (strcmp(value, "metal") == 0) backend = Backend::metal;
+            else if (strcmp(value, gpu_option + 2) == 0) backend = Backend::gpu;
             else if (strcmp(value, "auto") == 0) backend = Backend::automatic;
             else {
-                fprintf(stderr, "--backend requires cpu, metal or auto\n");
+                fprintf(stderr, "--backend requires cpu, %s or auto\n", gpu_option + 2);
                 return 2;
             }
             command_index += 2;
@@ -119,7 +135,7 @@ int run(int argc, char **argv) {
                 return 2;
             }
             if (threads) wgse_mem3_bsw_set_threads(int(number));
-            else wgse::metal::Runtime::inject_interruptions(size_t(number));
+            else wgse_mem3_gpu_inject_interruptions(size_t(number));
             command_index += 2;
 #ifdef WGSE_METAL_BENCHMARK_TOOLS
         } else if (strcmp(option, "--gpu-inject-hang") == 0) {
@@ -129,7 +145,7 @@ int run(int argc, char **argv) {
                 fprintf(stderr, "--gpu-inject-hang requires a command label prefix\n");
                 return 2;
             }
-            wgse::metal::Runtime::inject_hang(value, 2);
+            wgse_mem3_gpu_inject_hang(value);
             command_index += 2;
 #endif
         } else {
@@ -158,17 +174,25 @@ int run(int argc, char **argv) {
         }
         std::string reason;
         const bool available = wgse_mem3_bsw_available(reason);
-        if (!available) fprintf(stderr, "Metal unavailable: %s\n", reason.c_str());
+        if (!available) fprintf(stderr, "%s unavailable: %s\n", wgse_mem3_gpu_name(), reason.c_str());
+        const bool supported = wgse_mem3_gpu_hardware_supported();
+#ifdef __APPLE__
+        const bool metal = available, metal_supported = supported, cuda = false, cuda_supported = false;
+#else
+        const bool metal = false, metal_supported = false, cuda = available, cuda_supported = supported;
+#endif
         const WgseMem3MetalLimits limits = wgse_mem3_metal_limits();
         printf("{\"schema_version\":1,\"version\":\"%s\","
             "\"engine\":\"bwa-mem3\",\"engine_version\":\"%s\","
             "\"qualified\":false,\"metal_available\":%s,"
-            "\"metal_hardware_supported\":%s,"
+            "\"metal_hardware_supported\":%s,\"cuda_available\":%s,"
+            "\"cuda_hardware_supported\":%s,"
             "\"cpu_available\":true,\"max_gpu_query_length\":%d,"
             "\"physical_memory_bytes\":%llu,\"metal\":{\"device\":%s,"
             "\"max_buffer_bytes\":%llu,\"recommended_max_working_set_bytes\":%llu}}\n",
-            version, engine_version, available ? "true" : "false",
-            metal_hardware_supported() ? "true" : "false", wgse_mem3_max_gpu_query_length,
+            version, engine_version, metal ? "true" : "false",
+            metal_supported ? "true" : "false", cuda ? "true" : "false",
+            cuda_supported ? "true" : "false", wgse_mem3_max_gpu_query_length,
             (unsigned long long)wgse_mem3_physical_memory(), json(limits.device).c_str(),
             (unsigned long long)limits.max_buffer_bytes,
             (unsigned long long)limits.recommended_working_set_bytes);
@@ -180,13 +204,15 @@ int run(int argc, char **argv) {
     if (accelerated) {
         std::string reason;
         if (!wgse_mem3_bsw_start(reason)) {
-            if (backend == Backend::metal) {
-                fprintf(stderr, "Metal unavailable: %s\n", reason.c_str());
+            if (backend == Backend::gpu) {
+                fprintf(stderr, "%s unavailable: %s\n", wgse_mem3_gpu_name(), reason.c_str());
                 return 1;
             }
-            fprintf(stderr, "[%s] CPU fallback: Metal unavailable (%s)\n", name, reason.c_str());
+            fprintf(stderr, "[%s] CPU fallback: %s unavailable (%s)\n", name, wgse_mem3_gpu_name(),
+                reason.c_str());
         } else {
             wgse_mem3_seed_set_enabled(gpu_seed);
+            wgse_mem3_rescue_set_enabled(gpu_rescue);
             // With seeding on the GPU, the CPU threads have time to score extensions when the
             // GPU's queue is long.
             wgse_mem3_bsw_set_backlog(gpu_backlog >= 0 ? gpu_backlog : gpu_seed ? 4096 : 0);
@@ -202,13 +228,19 @@ int run(int argc, char **argv) {
     int result = wgse_bwamem3_main(static_cast<int>(arguments.size() - 1), arguments.data());
     const bool seeding_failed = accelerated && wgse_mem3_seed_finish();
     const bool extension_failed = accelerated && wgse_mem3_bsw_finish();
-    if ((seeding_failed || extension_failed) && backend == Backend::metal && result == 0) result = 1;
+    const bool rescue_failed = accelerated && wgse_mem3_rescue_finish();
+    if ((seeding_failed || extension_failed || rescue_failed) && backend == Backend::gpu && result == 0)
+        result = 1;
     return result;
 }
 } // namespace
 
 int main(int argc, char **argv) {
+#ifdef __OBJC__
     @autoreleasepool {
         return run(argc, argv);
     }
+#else
+    return run(argc, argv);
+#endif
 }
