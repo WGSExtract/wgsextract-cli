@@ -1,7 +1,7 @@
-From aff5ac2fbf95fbc426f9a9d42da2b19b4d1d5699 Mon Sep 17 00:00:00 2001
+From 179b36e90d3226026a89e0724c604e34ad772ac8 Mon Sep 17 00:00:00 2001
 From: WGS Extract AI <223556219+Copilot@users.noreply.github.com>
 Date: Wed, 11 Nov 2026 12:51:39 -0800
-Subject: [PATCH 3/5] run --dry_run=true prints its stages as commands
+Subject: [PATCH 3/6] run --dry_run=true prints its stages as commands
  (wgsextract #647)
 
 Like run_deepvariant --dry_run, so a caller can run and resume
@@ -13,12 +13,12 @@ upstream does. The staged commands give the same VCF as run.
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 ---
- deepvariant/native/cli.cc              | 149 +++++++++++++------------
+ deepvariant/native/cli.cc              | 161 ++++++++++++++-----------
  deepvariant/native/postprocess_main.cc |  21 +++-
- 2 files changed, 95 insertions(+), 75 deletions(-)
+ 2 files changed, 107 insertions(+), 75 deletions(-)
 
 diff --git a/deepvariant/native/cli.cc b/deepvariant/native/cli.cc
-index d732adc..69e0a67 100644
+index d732adc..2bdbcc6 100644
 --- a/deepvariant/native/cli.cc
 +++ b/deepvariant/native/cli.cc
 @@ -2,6 +2,10 @@
@@ -232,6 +232,39 @@ index d732adc..69e0a67 100644
    LOG(INFO) << "Done. VCF: " << output_vcf_flag;
    return 0;
  }
+@@ -1160,6 +1165,10 @@ int RunAll(int argc, char** argv) {
+ // ──────────────────────────────────────────────────────────────────────
+ int RunAllTrio(int argc, char** argv) {
+   absl::ParseCommandLine(argc, argv);
++  if (absl::GetFlag(FLAGS_dry_run)) {
++    LOG(ERROR) << "--dry_run=true is for single-sample runs only, not trio.";
++    return 1;
++  }
+   const std::string model_type = absl::GetFlag(FLAGS_model_type);
+   // Ensure intermediate_results_dir exists (may not be pre-created by caller).
+   { std::system(absl::StrCat("mkdir -p '",
+@@ -1503,6 +1512,10 @@ int RunAllTrio(int argc, char** argv) {
+ // ──────────────────────────────────────────────────────────────────────
+ int RunAllSomatic(int argc, char** argv) {
+   absl::ParseCommandLine(argc, argv);
++  if (absl::GetFlag(FLAGS_dry_run)) {
++    LOG(ERROR) << "--dry_run=true is for single-sample runs only, not somatic.";
++    return 1;
++  }
+   const std::string model_type = absl::GetFlag(FLAGS_model_type);
+   { std::system(absl::StrCat("mkdir -p '",
+       absl::GetFlag(FLAGS_intermediate_results_dir), "'").c_str()); }
+@@ -1729,6 +1742,10 @@ int RunAllSomatic(int argc, char** argv) {
+ // ──────────────────────────────────────────────────────────────────────
+ int RunAllPangenome(int argc, char** argv) {
+   absl::ParseCommandLine(argc, argv);
++  if (absl::GetFlag(FLAGS_dry_run)) {
++    LOG(ERROR) << "--dry_run=true is for single-sample runs only, not pangenome.";
++    return 1;
++  }
+   { std::system(absl::StrCat("mkdir -p '",
+       absl::GetFlag(FLAGS_intermediate_results_dir), "'").c_str()); }
+   const std::string ref_flag = absl::GetFlag(FLAGS_ref);
 diff --git a/deepvariant/native/postprocess_main.cc b/deepvariant/native/postprocess_main.cc
 index ca68b83..8dfcaf1 100644
 --- a/deepvariant/native/postprocess_main.cc

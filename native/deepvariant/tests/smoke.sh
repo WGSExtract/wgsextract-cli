@@ -1,6 +1,8 @@
 #!/bin/sh
 # Call variants on a deterministic synthetic genome with planted SNPs and
-# require each one in the VCF as a PASS call with the planted genotype.
+# require each one in the VCF as a PASS call with the planted genotype; then
+# run the stages `run --dry_run=true` prints, on a copy with only a .csi
+# index and a BED selection of every contig, and require the same VCF.
 # Usage: smoke.sh <wgse-deepvariant> <weights-dir> <work-dir>
 # Needs samtools on PATH.
 set -eu
@@ -63,4 +65,21 @@ if ! diff truth.tsv called.tsv; then
     echo "smoke: PASS calls differ from the planted SNPs" >&2
     exit 1
 fi
-echo "smoke: $(wc -l < truth.tsv | tr -d ' ') planted SNPs called"
+cp reads.bam staged.bam
+samtools index -c staged.bam
+awk -F '\t' '{ print $1 "\t0\t" $2 }' reference.fa.fai > all.bed
+"$binary" run --model_type=WGS --ref=reference.fa --reads=staged.bam --regions=all.bed \
+    --checkpoint="$weights/wgs.dvw" --small_model_path="$weights/wgs_small_weights" \
+    --output_vcf=staged.vcf.gz --intermediate_results_dir=staged --num_shards=2 \
+    --dry_run=true > plan.txt
+awk '/^\*\*\*\*\* Running the command:\*\*\*\*\*$/ { getline; print }' plan.txt > stages.sh
+test "$(wc -l < stages.sh)" -eq 3
+mkdir -p staged
+sh -e stages.sh > staged.log 2>&1 || { tail -20 staged.log; exit 1; }
+gzip -dc calls.vcf.gz | grep -v '^##' > calls.body
+gzip -dc staged.vcf.gz | grep -v '^##' > staged.body
+if ! cmp -s calls.body staged.body; then
+    echo "smoke: the staged commands called differently from run" >&2
+    exit 1
+fi
+echo "smoke: $(wc -l < truth.tsv | tr -d ' ') planted SNPs called; the staged commands agree"

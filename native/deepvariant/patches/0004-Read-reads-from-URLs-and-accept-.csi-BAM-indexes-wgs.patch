@@ -1,7 +1,7 @@
-From b2b504e0d0a94cb520bc250785e623245d8fa826 Mon Sep 17 00:00:00 2001
+From 8fba1b2d2ca5262aad3bc3ad2c9572151910385c Mon Sep 17 00:00:00 2001
 From: WGS Extract AI <223556219+Copilot@users.noreply.github.com>
 Date: Wed, 11 Nov 2026 13:49:40 -0800
-Subject: [PATCH 4/5] Read --reads from URLs and accept .csi BAM indexes
+Subject: [PATCH 4/6] Read --reads from URLs and accept .csi BAM indexes
  (wgsextract #647)
 
 htslib reads http(s) and ftp URLs, and their indexes, itself: skip the
@@ -14,7 +14,7 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
  1 file changed, 8 insertions(+), 2 deletions(-)
 
 diff --git a/deepvariant/native/cli.cc b/deepvariant/native/cli.cc
-index 69e0a67..5ff41f3 100644
+index 2bdbcc6..b8edc4b 100644
 --- a/deepvariant/native/cli.cc
 +++ b/deepvariant/native/cli.cc
 @@ -576,9 +576,14 @@ static void MaybeAutoDiscoverTrioOrSomaticSmallModel(

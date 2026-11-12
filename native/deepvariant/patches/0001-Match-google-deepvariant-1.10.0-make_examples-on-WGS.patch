@@ -1,7 +1,7 @@
 From 70eda3d4a5537fe538a01272ac468a71d333268c Mon Sep 17 00:00:00 2001
 From: WGS Extract AI <223556219+Copilot@users.noreply.github.com>
 Date: Wed, 11 Nov 2026 12:40:13 -0800
-Subject: [PATCH 1/5] Match google/deepvariant:1.10.0 make_examples on WGS
+Subject: [PATCH 1/6] Match google/deepvariant:1.10.0 make_examples on WGS
  (wgsextract #647)
 
 - RealignerOptions.normalize_reads follows upstream's --normalize_reads

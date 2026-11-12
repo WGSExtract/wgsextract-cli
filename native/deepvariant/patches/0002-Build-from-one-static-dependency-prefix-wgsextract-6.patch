@@ -1,7 +1,7 @@
 From 287a1f8f66dd32dd91f1a8a4c4e65d42c26d3cb3 Mon Sep 17 00:00:00 2001
 From: WGS Extract AI <223556219+Copilot@users.noreply.github.com>
 Date: Wed, 11 Nov 2026 12:43:33 -0800
-Subject: [PATCH 2/5] Build from one static dependency prefix (wgsextract #647)
+Subject: [PATCH 2/6] Build from one static dependency prefix (wgsextract #647)
 
 WGSE_DEPS_PREFIX takes static htslib (libdeflate, liblzma), abseil,
 protobuf, re2 and Boost headers from one prefix instead of Homebrew, for

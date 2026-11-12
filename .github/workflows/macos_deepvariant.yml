@@ -22,6 +22,11 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # A newer push supersedes a PR's build; a release run is never cancelled.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   # The image docs/deepvariant-arm64.md checks the Linux ARM64 build's models against.
   DEEPVARIANT_IMAGE: google/deepvariant:1.10.0@sha256:962e5a83b1d76aae6990625d47102785f791603f2138aa1fa9aa4fb6a2eecbe6
@@ -103,6 +108,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:

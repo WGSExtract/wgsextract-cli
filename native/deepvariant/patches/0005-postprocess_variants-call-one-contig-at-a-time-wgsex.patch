@@ -1,7 +1,7 @@
-From 0cd6ed92bbc11ebf951584e98271f543d66c694a Mon Sep 17 00:00:00 2001
+From 592079506b351d9c70a1613bf628f1c44adc85aa Mon Sep 17 00:00:00 2001
 From: WGS Extract AI <223556219+Copilot@users.noreply.github.com>
 Date: Wed, 11 Nov 2026 14:40:24 -0800
-Subject: [PATCH 5/5] postprocess_variants: call one contig at a time
+Subject: [PATCH 5/6] postprocess_variants: call one contig at a time
  (wgsextract #647)
 
 It parsed every CallVariantsOutput up front and held them, their groups

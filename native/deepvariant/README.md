@@ -3,10 +3,9 @@
 `wgse-deepvariant` is a self-contained Apple Silicon (macOS 14+, arm64) build
 of [DeepVariant](https://github.com/google/deepvariant) 1.10.0. It runs
 make_examples and postprocess_variants natively on the CPU and call_variants on
-the GPU (Metal, FP32), without Docker, TensorFlow or Python. `wgsextract vcf
-deepvariant` uses it on an Apple Silicon Mac when it is on `PATH`, for the WGS
-model; Google publishes DeepVariant for x86-64 only, and its image can't run
-under Docker Desktop's emulation there (#665).
+the GPU (Metal, FP32), without Docker, TensorFlow or Python. Google publishes
+DeepVariant for x86-64 only, and its image can't run under Docker Desktop's
+emulation on Apple Silicon (#665). Only the WGS model is qualified.
 
 It is the native port of DeepVariant by IPNP-BIPN
 ([IPNP-BIPN/deepvariant](https://github.com/IPNP-BIPN/deepvariant),
@@ -24,10 +23,14 @@ google/deepvariant#1085) with the patches in [`patches/`](patches):
 - **0002** builds from one prefix of static dependencies instead of Homebrew.
 - **0003** adds `run --dry_run=true`, which prints the make_examples,
   call_variants and postprocess_variants commands in run_deepvariant's format,
-  so `vcf deepvariant` runs and resumes them one by one as it does Google's.
+  so a caller can run and resume them one by one as it does Google's
+  (single-sample runs only; trio, somatic and pangenome runs refuse it).
 - **0004** reads `--reads` from https URLs and accepts `.csi` BAM indexes.
 - **0005** makes postprocess_variants call one contig at a time: it held every
   site of the run in memory, tens of GB for a whole genome.
+- **0006** lets `--regions` name BED (or gzipped BED) files, so a selection of
+  any size fits on the command line, and merges the regions into one set in
+  reference order, as upstream does.
 
 ## Same results as Google's image
 
@@ -81,9 +84,9 @@ gh release download macos-deepvariant-1 -R WGSExtract/wgsextract-cli
 shasum -a 256 -c SHA256SUMS
 ```
 
-Continue only if every archive reports `OK`. Then unpack both, put the
+Continue only if every archive reports `OK`. Then unpack both and put the
 binary's `bin` folder on `PATH` (add the `export` line to your shell profile to
-keep it) and name the weights folder in `config.toml`:
+keep it):
 
 ```bash
 for archive in wgse-deepvariant-*.tar.gz; do tar -xzf "$archive"; done
@@ -91,13 +94,16 @@ export PATH="$PWD/$(ls -d wgse-deepvariant-*-macos-arm64)/bin:$PATH"
 wgse-deepvariant --version
 ```
 
-```toml
-deepvariant_weights = "/path/to/wgse-deepvariant/wgse-deepvariant-weights-1.10.0-wgs"
-```
+The weights folder, `wgse-deepvariant-weights-1.10.0-wgs`, is what
+`--checkpoint` (`wgs.dvw`) and `--small_model_path` (`wgs_small_weights`)
+name:
 
-`vcf deepvariant` checks every weight file against
-[`weights-sha256.txt`](weights-sha256.txt) before it runs. Only the WGS model
-is qualified: WES, PacBio, ONT, Ultima and `--checkpoint` are refused.
+```bash
+w=wgse-deepvariant-weights-1.10.0-wgs
+wgse-deepvariant run --model_type=WGS --ref=ref.fa --reads=sample.bam \
+  --checkpoint=$w/wgs.dvw --small_model_path=$w/wgs_small_weights \
+  --output_vcf=sample.vcf.gz --intermediate_results_dir=work --num_shards=8
+```
 
 ## Weights
 
