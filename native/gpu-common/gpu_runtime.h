@@ -34,6 +34,7 @@ using wgse_gpu_stream = cudaStream_t;
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace wgse::gpu {
 
@@ -49,61 +50,54 @@ inline void check(wgse_gpu_error error, const char *what) {
         throw std::runtime_error(std::string("GPU ") + what + ": " + WGSE_GPU(GetErrorString)(error));
 }
 
-// Device memory of `count` T, uninitialised.
-template <class T>
-class DeviceBuffer {
-public:
-    DeviceBuffer() = default;
-    explicit DeviceBuffer(size_t count) { reserve(count); }
-    DeviceBuffer(const DeviceBuffer &) = delete;
-    DeviceBuffer &operator=(const DeviceBuffer &) = delete;
-    ~DeviceBuffer() { release(); }
-
-    // Grows to at least count elements (half again, to limit reallocations);
-    // the contents are not kept.
-    void reserve(size_t count) {
-        if (count <= count_ && data_) return;
-        release();
-        count = std::max<size_t>(count, 1);
-        if (count_) count += count / 2;
-        check(WGSE_GPU(Malloc)(reinterpret_cast<void **>(&data_), count * sizeof(T)),
-            "allocation");
-        count_ = count;
+struct DeviceMemory {
+    static constexpr const char *what = "allocation";
+    static wgse_gpu_error allocate(void **pointer, size_t bytes) {
+        return WGSE_GPU(Malloc)(pointer, bytes);
     }
-    void release() {
-        if (data_ && !gpu_hung()) (void)WGSE_GPU(Free)(data_);
-        data_ = nullptr;
-        count_ = 0;
-    }
-    T *data() const { return data_; }
-    size_t size() const { return count_; }
-
-private:
-    T *data_ = nullptr;
-    size_t count_ = 0;
+    static void free(void *pointer) { (void)WGSE_GPU(Free)(pointer); }
 };
 
 // Page-locked host memory, which the GPU copies to and from at full speed.
-template <class T>
-class PinnedBuffer {
-public:
-    PinnedBuffer() = default;
-    explicit PinnedBuffer(size_t count) { reserve(count); }
-    PinnedBuffer(const PinnedBuffer &) = delete;
-    PinnedBuffer &operator=(const PinnedBuffer &) = delete;
-    ~PinnedBuffer() { release(); }
+struct PinnedMemory {
+    static constexpr const char *what = "pinned allocation";
+    static wgse_gpu_error allocate(void **pointer, size_t bytes) {
+        return wgse_gpu_host_alloc(pointer, bytes);
+    }
+    static void free(void *pointer) { (void)wgse_gpu_host_free(pointer); }
+};
 
+// `count` T of Memory, uninitialised. Freeing waits for all of the device's
+// work, including another stage's on its own stream, which may be hung; so
+// growing only allocates, and the outgrown storage (at most about twice the
+// final size, as each growth adds half) is freed by release() or the destructor,
+// once the stages are done.
+template <class T, class Memory>
+class GpuBuffer {
+public:
+    GpuBuffer() = default;
+    explicit GpuBuffer(size_t count) { reserve(count); }
+    GpuBuffer(const GpuBuffer &) = delete;
+    GpuBuffer &operator=(const GpuBuffer &) = delete;
+    ~GpuBuffer() { release(); }
+
+    // Grows to at least count elements (half again when it grows, to limit
+    // reallocations); the contents are not kept.
     void reserve(size_t count) {
         if (count <= count_ && data_) return;
-        release();
         count = std::max<size_t>(count, 1);
-        if (count_) count += count / 2;
-        check(wgse_gpu_host_alloc(reinterpret_cast<void **>(&data_), count * sizeof(T)),
-            "pinned allocation");
+        if (data_) count += count / 2;
+        T *grown = nullptr;
+        check(Memory::allocate(reinterpret_cast<void **>(&grown), count * sizeof(T)), Memory::what);
+        if (data_) outgrown_.push_back(data_);
+        data_ = grown;
         count_ = count;
     }
     void release() {
-        if (data_ && !gpu_hung()) (void)wgse_gpu_host_free(data_);
+        if (data_) outgrown_.push_back(data_);
+        if (!gpu_hung())
+            for (T *pointer : outgrown_) Memory::free(pointer);
+        outgrown_.clear();
         data_ = nullptr;
         count_ = 0;
     }
@@ -113,7 +107,13 @@ public:
 private:
     T *data_ = nullptr;
     size_t count_ = 0;
+    std::vector<T *> outgrown_;
 };
+
+template <class T>
+using DeviceBuffer = GpuBuffer<T, DeviceMemory>;
+template <class T>
+using PinnedBuffer = GpuBuffer<T, PinnedMemory>;
 
 // Bounds each wait for the GPU. A stage's limit is generous, so slow GPUs never
 // trip it: the larger of a floor and `factor` times the slowest batch of that

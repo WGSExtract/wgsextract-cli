@@ -1005,7 +1005,9 @@ On Linux the same commands build `wgse-bwa` with a C/C++ compiler, CMake and
 zlib. `-DWGSE_CUDA=ON` adds the CUDA backend, which needs the CUDA toolkit
 (`nvcc` and the static runtime, for example conda-forge's `cuda-nvcc` and
 `cuda-cudart-static`). It builds for Turing to Hopper GPUs, plus PTX for newer
-ones; `-DCMAKE_CUDA_ARCHITECTURES` overrides this. The GPU parity tests run with
+ones; `-DCMAKE_CUDA_ARCHITECTURES` overrides this. A GPU the build has no
+kernels for (such as Pascal or Volta, by default) is never selected, and
+`capabilities --json` reports it unavailable and unsupported. The GPU parity tests run with
 whichever GPU backend the build and machine have.
 
 `-DBUILD_TESTING=OFF` builds the release executables without tests or the

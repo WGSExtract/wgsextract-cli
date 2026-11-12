@@ -129,9 +129,10 @@ struct CudaExtendBuffers : ExtendBuffers {
 
 class CudaDevice final : public Device {
 public:
+    // The device is selected first, so the queues' streams are created on it.
     CudaDevice(int ordinal, const DeviceOptions &options)
-        : ordinal_(ordinal), options_(options), watchdog_(options.watchdog_seconds) {
-        select();
+        : ordinal_((check(WGSE_GPU(SetDevice)(ordinal), "device selection"), ordinal)),
+          options_(options), watchdog_(options.watchdog_seconds) {
         completer_ = std::thread(&CudaDevice::complete_loop, this);
     }
 
@@ -246,7 +247,7 @@ public:
 
     bool attach_sa(const bwt_t &bwt) override {
         select();
-        sa_ready_ = false;
+        sa_ready_ = dense_ready_ = false;
         dense_low_.release();
         dense_high_.release();
         if (!bwt.sa || bwt.sa_intv <= 0 || (bwt.sa_intv & (bwt.sa_intv - 1))
@@ -287,7 +288,7 @@ public:
             const auto stream = seed_queue_.stream;
             check(WGSE_GPU(MemcpyAsync)(rows_.data(), host_rows_.data(), count * sizeof(uint64_t),
                 WGSE_GPU(MemcpyHostToDevice), stream), "locate upload");
-            if (dense_low_.data())
+            if (dense_ready_)
                 sk::locate_rows_dense<<<blocks(count), block_size, 0, stream>>>(index_.data(),
                     sa_.data(), p, rows_.data(), positions_.data(), dense_low_.data(),
                     dense_high_.data());
@@ -317,8 +318,7 @@ public:
             host_dense_low_.resize(entries);
             host_dense_high_.resize(words);
         } catch (const std::exception &) {
-            dense_low_.release();
-            dense_high_.release();
+            // Kept until the device goes: freeing now would wait for mate rescue.
             return false;
         }
         p.dense_shift = shift;
@@ -336,6 +336,7 @@ public:
             "dense samples");
         download(host_dense_high_.data(), dense_high_.data(), words * sizeof(uint32_t),
             "dense samples");
+        dense_ready_ = true;
         *low = host_dense_low_.data();
         *high = host_dense_high_.data();
         return true;
@@ -472,7 +473,7 @@ private:
         ExtendDone done;
     };
 
-    const int ordinal_;
+    const int ordinal_; // first: its initialiser selects the device
     DeviceOptions options_;
     Watchdog watchdog_;
     // Seeding and locate run on the map stage's GPU thread, rescue on the pair
@@ -491,7 +492,7 @@ private:
     PinnedBuffer<SeedResult> host_results_;
     PinnedBuffer<uint64_t> host_offsets_;
     PinnedBuffer<SeedInterval> host_compact_;
-    bool sa_ready_ = false;
+    bool sa_ready_ = false, dense_ready_ = false;
     LocateParameters locate_parameters_{};
     DeviceBuffer<uint64_t> sa_, rows_, positions_;
     PinnedBuffer<uint64_t> host_rows_, host_positions_;
@@ -577,6 +578,16 @@ private:
         }
     }
 };
+
+// Whether the current device can run this build's kernels: an older GPU than
+// CMAKE_CUDA_ARCHITECTURES covers has no machine code or PTX for them.
+wgse_gpu_error runs_kernels() {
+    WGSE_GPU(FuncAttributes) attributes;
+    const wgse_gpu_error status = WGSE_GPU(FuncGetAttributes)(&attributes,
+        reinterpret_cast<const void *>(gather_seeds));
+    (void)WGSE_GPU(GetLastError)();
+    return status;
+}
 } // namespace
 
 std::unique_ptr<Device> make_cuda_device(const DeviceOptions &options, std::string &reason) {
@@ -588,17 +599,25 @@ std::unique_ptr<Device> make_cuda_device(const DeviceOptions &options, std::stri
             : "no NVIDIA GPU";
         return nullptr;
     }
-    // The device with the most free memory: the GPU may be shared.
+    // Of the devices this build has kernels for, the one with the most free
+    // memory: the GPU may be shared.
     int best = -1;
     size_t best_free = 0;
+    std::string unsupported;
     for (int ordinal = 0; ordinal < count; ++ordinal) {
         size_t free = 0, total = 0;
-        if (WGSE_GPU(SetDevice)(ordinal) != WGSE_GPU_SUCCESS
-            || WGSE_GPU(MemGetInfo)(&free, &total) != WGSE_GPU_SUCCESS) continue;
+        if (WGSE_GPU(SetDevice)(ordinal) != WGSE_GPU_SUCCESS) continue;
+        const wgse_gpu_error kernels = runs_kernels();
+        if (kernels != WGSE_GPU_SUCCESS) {
+            unsupported = WGSE_GPU(GetErrorString)(kernels);
+            continue;
+        }
+        if (WGSE_GPU(MemGetInfo)(&free, &total) != WGSE_GPU_SUCCESS) continue;
         if (best < 0 || free > best_free) best = ordinal, best_free = free;
     }
     if (best < 0) {
-        reason = "no NVIDIA GPU answered";
+        reason = unsupported.empty() ? "no NVIDIA GPU answered"
+            : "no NVIDIA GPU this build has kernels for: " + unsupported;
         return nullptr;
     }
     try {
@@ -611,6 +630,10 @@ std::unique_ptr<Device> make_cuda_device(const DeviceOptions &options, std::stri
 
 bool cuda_hardware_supported() {
     int count = 0;
-    return WGSE_GPU(GetDeviceCount)(&count) == WGSE_GPU_SUCCESS && count > 0;
+    if (WGSE_GPU(GetDeviceCount)(&count) != WGSE_GPU_SUCCESS) return false;
+    for (int ordinal = 0; ordinal < count; ++ordinal)
+        if (WGSE_GPU(SetDevice)(ordinal) == WGSE_GPU_SUCCESS && runs_kernels() == WGSE_GPU_SUCCESS)
+            return true;
+    return false;
 }
 } // namespace wgse::gpu

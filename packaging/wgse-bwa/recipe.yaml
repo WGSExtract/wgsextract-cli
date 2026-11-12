@@ -44,10 +44,13 @@ requirements:
     - cuda-cudart-dev
     - cuda-cudart-static
     - zlib
+  # Statically linked: neither the shared runtime cuda-cudart-dev exports nor a
+  # CUDA version is needed at run time.
   ignore_run_exports:
     from_package:
       - ${{ compiler('cuda') }}
     by_name:
+      - cuda-cudart
       - cuda-version
 
 tests:
