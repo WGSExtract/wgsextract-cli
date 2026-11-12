@@ -71,12 +71,10 @@ INSTALL_HINTS = {
     "https://github.com/nanoporetech/dorado#installation, unpack it and put its "
     "bin folder on PATH, or set dorado_executable in config.toml (or pass "
     "basecall --dorado-path).",
-    "wgse-deepvariant": "wgse-deepvariant is WGS Extract's build of DeepVariant "
-    "without Docker (Apple Silicon, and Linux x86-64 with NVIDIA GPUs) and isn't "
-    "installed with WGS Extract: download a macos-deepvariant release or "
-    "install a linux-deepvariant conda package, with its weights, put "
-    "wgse-deepvariant on PATH and set deepvariant_weights in config.toml "
-    "(native/deepvariant/README.md).",
+    "wgse-deepvariant": "wgse-deepvariant (DeepVariant without Docker) isn't "
+    "installed with WGS Extract: install a macos-deepvariant or "
+    "linux-deepvariant release with its weights, put it on PATH and set "
+    "deepvariant_weights in config.toml (native/deepvariant/README.md).",
 }
 
 
