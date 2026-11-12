@@ -96,7 +96,8 @@ def _apple_silicon_environment() -> dict[str, str]:
 def bcftools_environment(value: str | None) -> dict[str, str]:
     """Variables to add to the environment of the bcftools processes that call
     variants: mimalloc's injection, or none for the system allocator. The
-    choice is logged and recorded as the ``bcftools_allocator`` metric."""
+    choice is recorded as the ``bcftools_allocator`` metric, and logged when
+    mimalloc is off or the host is Apple Silicon (elsewhere it never applies)."""
     setting = mimalloc_setting(value)
     extra: dict[str, str] = {}
     if setting == "off":

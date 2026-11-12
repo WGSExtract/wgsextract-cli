@@ -80,7 +80,7 @@ def test_a_library_bcftools_cannot_load_falls_back_with_the_same_records(
     library = env / LIBRARY
     library.parent.mkdir(parents=True)
     library.write_bytes(b"not a Mach-O library")
-    monkeypatch.setenv("PATH", f"{env / 'bin'}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("PATH", f"{env / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}")
     clear_tool_caches()
     _apple_silicon(monkeypatch)
     caplog.set_level(logging.INFO)

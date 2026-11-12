@@ -675,8 +675,9 @@ def call_small_variants(
     """Call into ``output``: per-contig workers for ``contigs`` (from
     `calling_contigs`), or one bcftools stream when it is empty.
     ``environment`` is added to the calling bcftools processes' environment."""
-    caller = _ContigCaller(alignment, ref, profile, call_args, indels)
-    caller.environment = dict(environment or {})
+    caller = _ContigCaller(
+        alignment, ref, profile, call_args, indels, environment=dict(environment or {})
+    )
     if not contigs:
         caller.call(output, ["-r", region] if region else [], region, threads)
         return
