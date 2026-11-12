@@ -12,6 +12,7 @@ on:
     branches: [ main ]
     paths:
       - native/**
+      - '!native/deepvariant/**'
       - .github/workflows/macos_aligners.yml
   workflow_dispatch:
     inputs:

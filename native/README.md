@@ -6,6 +6,10 @@ run them in place of their upstream aligners when they're on `PATH`, and
 `wgse-bwa-mem3` with `--compat` in place of bwa or bwa-mem2 (see
 [hardware and acceleration](../docs/hardware.md#apple-silicon-metal)).
 
+[`deepvariant/`](deepvariant/README.md) builds `wgse-deepvariant`, an Apple
+Silicon build of DeepVariant 1.10.0, published separately as
+`macos-deepvariant-*` prereleases.
+
 | Executable | Upstream | Notes |
 | --- | --- | --- |
 | `wgse-bwa` | BWA 0.7.19 | Native arm64 build. CPU by default (upstream code, with some steps replaced by exact faster versions); `--metal` is **experimental**. Low memory: about 6 GB for a human index. |

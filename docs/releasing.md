@@ -169,3 +169,10 @@ never become the latest release:
   The CLI does not use them yet. Each package carries its own version, printed
   by `--version`: bump `WGSE_BWA_VERSION` in `native/bwa/CMakeLists.txt` or the
   project version in `native/CMakeLists.txt` (`wgse-bwa-mem2`) when it changes.
+- **macOS DeepVariant** (`macos-deepvariant-N`): Actions > macOS DeepVariant >
+  Run workflow. It publishes the Apple Silicon `wgse-deepvariant` tarball built
+  from `native/deepvariant/` and its WGS weights converted from Google's image,
+  with a `SHA256SUMS` (see
+  [native/deepvariant/README.md](../native/deepvariant/README.md)). Bump
+  `WGSE_DEEPVARIANT_VERSION` in `native/deepvariant/CMakeLists.txt` when the
+  package changes.
