@@ -999,14 +999,21 @@ Unlike Apple's unified memory, a discrete GPU has its own:
   is finished on the CPU with the same output. `--cuda` then exits 1, and
   `--backend auto` exits 0.
 
-On an RTX 3090 with a Ryzen 5 5600X, at 2 threads (while another job held the
-other 10 cores), with output identical to upstream BWA (the `expected.tsv`
-hashes):
+On an RTX 3090 with a Ryzen 5 5600X, aligning the full-5m tier (5M HG002 pairs
+to hs38) at 8 threads (`bench.sh` with `bwa:cpu,bwa:cuda`, two interleaved
+rounds, medians), with records identical to upstream BWA (the `expected.tsv`
+hash):
 
-| Tier | CPU | `--cuda` |
-| --- | --- | --- |
-| small (chr20) | 46.7 s | 28.3 s |
-| full (hs38, 200k pairs) | 105.2 s, 5.3 GiB | 25.0 s, 6.1 GiB |
+| | Wall | CPU time | Peak RSS |
+| --- | ---: | ---: | ---: |
+| upstream BWA 0.7.19 (Bioconda) | 472.5 s | 3711 s | 5.2 GiB |
+| `wgse-bwa` (CPU) | 418.9 s (−11%) | 3224 s | 5.2 GiB |
+| `wgse-bwa --cuda` | 131.4 s (−72%) | 1006 s | 6.3 GiB |
+
+`--cuda` used at most 5.2 GiB of GPU memory. On the CPU, `perf` puts a quarter
+of the time in SMEM seeding, a quarter in seed extension, a fifth in mate rescue
+and an eighth in suffix-array locate. With `--cuda` the CPU does the chaining,
+the sorts and reference fetches that remain, and spends a quarter as much time.
 
 ## Building
 
@@ -1059,7 +1066,9 @@ gh run watch "$(gh run list --workflow aligner_bench.yml --limit 1 --json databa
   5M pairs. The workflow downloads them from the `aligner-bench-data-1`
   release and checks their sha256 (`bench/data.tsv`).
 - `configs`: `TOOL:BACKEND[:tN][:KN][:probe][:+ARG...]`, for example
-  `bwa:metal:t2` or `mem2:metal:probe`; by default each tier's configs in
+  `bwa:metal:t2` or `mem2:metal:probe` (BACKEND is `cpu`, `metal`, `cuda` or
+  `auto`; `cuda` needs a Linux machine with an NVIDIA GPU, which hosted runners
+  lack); by default each tier's configs in
   `bench/tiers.tsv` (only `wgse-bwa --metal` on `full`). A failure of a `probe`
   config, such as an out-of-memory kill, is reported but does not fail the job.
   `+ARG` passes an extra argument to the aligner's `mem` command; such runs
