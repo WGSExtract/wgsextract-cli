@@ -89,7 +89,9 @@ def test_publishes_only_static_mockups_of_mockups_branches(tmp_path, remote):
         for f in folders
         if (out / f / "index.html").read_text() == "<h1>idea</h1>"
     )
-    published = sorted(str(p.relative_to(idea)) for p in idea.rglob("*") if p.is_file())
+    published = sorted(
+        p.relative_to(idea).as_posix() for p in idea.rglob("*") if p.is_file()
+    )
     assert published == [
         "feedback/_pages.json",
         "feedback/c-home.json",
