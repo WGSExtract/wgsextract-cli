@@ -346,6 +346,7 @@ def test_621_windows_missing_tools_fail_validation_not_platform_gate(
     # Tool discovery is the OS boundary; no external tools are installed here.
     monkeypatch.setattr(shutil, "which", lambda command: None)
     monkeypatch.setattr(dependencies, "get_tool_path", lambda tool: None)
+    assert "GLIMPSE2_phase" not in platform_unavailable_tools()
     with pytest.raises(api.CommandFailed, match="Missing required .*tool"):
         if operation == "install":
             api.ref.imputation(

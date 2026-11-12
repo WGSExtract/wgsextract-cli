@@ -101,10 +101,10 @@ PLATFORM_ONLY_TOOLS = {
     "somalier": ("linux", "darwin"),
     "whatshap": ("linux", "darwin"),
     "longphase": ("linux", "darwin"),
-    "GLIMPSE2_phase": ("linux", "darwin"),
-    "GLIMPSE2_ligate": ("linux", "darwin"),
-    "GLIMPSE2_chunk": ("linux", "darwin"),
-    "GLIMPSE2_split_reference": ("linux", "darwin"),
+    "GLIMPSE2_phase": ("linux", "darwin", "win32"),
+    "GLIMPSE2_ligate": ("linux", "darwin", "win32"),
+    "GLIMPSE2_chunk": ("linux", "darwin", "win32"),
+    "GLIMPSE2_split_reference": ("linux", "darwin", "win32"),
 }
 
 
