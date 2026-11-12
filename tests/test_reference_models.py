@@ -171,3 +171,25 @@ def test_info_reads_the_model_name_with_or_without_a_naming():
     assert reference_model_name(human.describe()) == "hg38"
     assert reference_model_name(cat.describe()) == "Cat_Fca126"
     assert reference_model_name("Unknown, 12 SNs") == "Unknown"
+
+
+def test_issue_701_genomes_install_from_a_pinned_github_copy_first():
+    """The original hosts (EBI, NCBI, UCSC, AWS) are slow and flaky, so an
+    install tries this project's checksummed copy first; only genomes whose
+    terms don't allow copying (docs/reference-genomes.md) go to their host."""
+    import re
+
+    from wgsextract_cli.core.ref_library.catalog import get_available_genomes
+
+    first: dict[str, dict] = {}
+    for genome in get_available_genomes():
+        first.setdefault(genome["final"], genome)
+    from_host = sorted(f for f, g in first.items() if g["source"] != "GitHub")
+    assert from_host == [
+        "hg01243_v3.fna.gz",
+        "hg19_yseq.fa.gz",
+        "hg38_CP086569.fasta.gz",
+    ]
+    for genome in first.values():
+        if genome["source"] == "GitHub":
+            assert re.fullmatch(r"[0-9a-f]{64}", genome["sha256"]), genome["final"]

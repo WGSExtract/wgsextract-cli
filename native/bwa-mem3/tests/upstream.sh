@@ -11,9 +11,9 @@
 # when --gpu-inject-interruptions reports them interrupted), and with
 # --gpu-inject-extension-failure (or --gpu-inject-hang, a command the GPU watchdog gives up
 # on) the CPU must report scoring them instead (and --metal must then exit 1, with the same
-# records). With --gpu-seed-wait the GPU's SMEMs must have been used (and, with
-# --gpu-verify-seeds, match upstream's). With --physical-memory below the run's needs, every
-# alignment must warn about memory.
+# records; --gpu-inject-seed-failure likewise for seeding). With --gpu-seed-wait the GPU's
+# SMEMs must have been used (and, with --gpu-verify-seeds, match upstream's). With
+# --physical-memory below the run's needs, every alignment must warn about memory.
 # Usage: upstream.sh <wgse-bwa-mem3> <bwa-mem3-upstream> <work-dir> [wgse-bwa-mem3 options]
 set -eu
 wgse=$1
@@ -25,7 +25,8 @@ wgse_options="$*"
 # --metal exits 1 after a GPU failure; --backend auto does not.
 expected_status() {
     case "$1: $wgse_options " in
-    wgse:*" --gpu-inject-extension-failure "* | wgse:*" --gpu-inject-hang "*) case " $wgse_options " in
+    wgse:*" --gpu-inject-extension-failure "* | wgse:*" --gpu-inject-hang "* \
+        | wgse:*" --gpu-inject-seed-failure "*) case " $wgse_options " in
         *" --metal "*) echo 1 ;;
         *) echo 0 ;;
         esac ;;
@@ -202,8 +203,14 @@ case " $wgse_options " in
         grep -q "CPU fallback: GPU seed extension failed (GPU watchdog: a Metal command ($label" \
             "$log"
         if [ "$label" = collect_smems ]; then
-            grep -q 'GPU seeding is off: GPU watchdog' "$log"
+            grep -q 'CPU fallback: GPU seeding failed: GPU watchdog' "$log"
         fi
+    done ;;
+*" --gpu-inject-seed-failure "*)
+    # The CPU seeds instead; the GPU still extends seeds.
+    for log in wgse.*.log; do
+        grep -q 'CPU fallback: GPU seeding failed: injected' "$log"
+        grep -Eq 'extension_batches=[1-9][0-9]* extension_pairs=[1-9]' "$log"
     done ;;
 *" --gpu-inject-extension-failure "*)
     for log in wgse.*.log; do grep -q 'CPU fallback: GPU seed extension failed' "$log"; done ;;

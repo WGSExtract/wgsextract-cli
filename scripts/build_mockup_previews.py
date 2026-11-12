@@ -58,6 +58,10 @@ def fetch(remote: str) -> list[Preview]:
     """The remote's mockups/* branches, newest commit first."""
     for ref in git("for-each-ref", "--format=%(refname)", NAMESPACE).decode().split():
         git("update-ref", "-d", ref)
+    # A shallow fetch whose refspec matches no branch fails, so look first:
+    # having no mockups/* branches is the normal state between iterations.
+    if not git("ls-remote", "--heads", remote, f"refs/heads/{PREFIX}*").strip():
+        return []
     git(
         "fetch",
         "--quiet",

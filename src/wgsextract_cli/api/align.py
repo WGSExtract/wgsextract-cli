@@ -60,6 +60,26 @@ def _native_aligners_param() -> Any:
     )
 
 
+def _dense_suffix_array_param() -> Any:
+    return param(
+        None,
+        help="Have wgse-bwa (0.11.0 or later) read the reference's dense "
+        "suffix-array file, built by `ref dense-sa`: the same alignments, "
+        "faster, holding the file in RAM (0.8 GB for hs38). Used only when "
+        "wgse-bwa aligns: otherwise (another aligner, such as wgse-bwa-mem3 "
+        "standing in, no file, or no such wgse-bwa) the run warns "
+        "(dense_suffix_array_unused) and aligns without it. Default: config "
+        "dense_suffix_array, else off.",
+        doc="Opt in to wgse-bwa's dense suffix-array file (``ref dense-sa``): "
+        "the same alignments, faster, with the file held in RAM. None uses "
+        "config dense_suffix_array, else off. Used only when wgse-bwa aligns; "
+        "otherwise (another aligner, no file, or no wgse-bwa that reads it) "
+        "the run warns (dense_suffix_array_unused).",
+        action="boolean_optional",
+        config_key="dense_suffix_array",
+    )
+
+
 GPU_HELP = (
     "Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, "
     "minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU "
@@ -123,6 +143,7 @@ class AlignParams(Params):
     )
     fast: bool = _fast_param()
     native_aligners: str | None = _native_aligners_param()
+    dense_suffix_array: bool | None = _dense_suffix_array_param()
     gpu: bool = param(False, help=GPU_HELP, action="store_true")
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
     sample: str | None = param(
@@ -195,6 +216,7 @@ class RealignParams(Params):
     )
     fast: bool = _fast_param()
     native_aligners: str | None = _native_aligners_param()
+    dense_suffix_array: bool | None = _dense_suffix_array_param()
     gpu: bool = param(False, help=GPU_HELP, action="store_true")
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
     platform: str | None = param(

@@ -7,6 +7,7 @@ from wgsextract_cli.api.ref import (
     RefAadrParams,
     RefBootstrapParams,
     RefCountNsParams,
+    RefDenseSaParams,
     RefDownloadParams,
     RefGeneMapParams,
     RefGnomadSvParams,
@@ -27,6 +28,7 @@ from .core_commands import (
     cmd_index,
     cmd_ref_verify,
 )
+from .dense_sa import cmd_dense_sa
 from .library_commands import (
     RESOURCE_COMMANDS,
     cmd_aadr,
@@ -117,6 +119,13 @@ def register(
     )
     add("download", RefDownloadParams, cmd_download, CLI_HELP["cmd_ref-download"])
     add("index", RefIndexParams, cmd_index, CLI_HELP["cmd_ref-index"])
+    add(
+        "dense-sa",
+        RefDenseSaParams,
+        cmd_dense_sa,
+        "Build wgse-bwa's optional dense suffix-array file for a FASTA (0.8 GB "
+        "for hs38; align reads it with --dense-suffix-array), list or delete it.",
+    )
     add("count-ns", RefCountNsParams, cmd_count_ns, CLI_HELP["cmd_ref-count-ns"])
     add("verify", RefVerifyParams, cmd_ref_verify, CLI_HELP["cmd_ref-verify"])
     library = add("library", RefLibraryParams, cmd_library, CLI_HELP["cmd_ref-library"])

@@ -4,7 +4,9 @@
 Omni 2.5 chip genotypes. This makes kits from 2 Mb of the genome with the real
 CLI and a library from `ref bootstrap`, then compares it with the chip by rsID.
 Everything is read remotely by region, so the downloads stay small apart from
-the bootstrap (~170 MB) and chr20 (~65 MB).
+the bootstrap (~170 MB) and chr20 (~17 MB). The data are region-sized copies in
+this repository's release remote-test-data-1, made from the EBI originals by
+scripts/build_remote_test_data.sh: EBI's servers kept failing CI.
 """
 
 import json
@@ -30,16 +32,15 @@ pytestmark = [
     needs_tools("bcftools", "samtools", "tabix"),
 ]
 
-KG = "https://ftp.1000genomes.ebi.ac.uk/vol1/ftp"
-GRCH38 = (
-    f"{KG}/technical/reference/GRCh38_reference_genome/"
-    "GRCh38_full_analysis_set_plus_decoy_hla.fa"
+DATA = (
+    "https://github.com/WGSExtract/wgsextract-cli/releases/download/remote-test-data-1"
 )
-HG00096_CRAM = "https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3240114/HG00096.final.cram"
-OMNI = (
-    f"{KG}/release/20130502/supporting/hd_genotype_chip/"
-    "ALL.chip.omni_broad_sanger_combined.20140818.snps.genotypes.vcf.gz"
-)
+# chr20 of GRCh38_full_analysis_set_plus_decoy_hla.fa (1000 Genomes), BGZF.
+GRCH38 = f"{DATA}/GRCh38_chr20.fa.gz"
+# chr20:10-12 Mb of HG00096.final.cram (NYGC 30x, ERR3240114).
+HG00096_CRAM = f"{DATA}/HG00096.chr20_10-12Mb.cram"
+# HG00096 and HG00097 around that stretch, from the 1000 Genomes Omni 2.5 chips.
+OMNI = f"{DATA}/omni.HG00096_HG00097.20_9.9-12.1Mb.vcf.gz"
 REGION_HG38 = "chr20:10000000-12000000"
 # The same stretch in GRCh37, with a margin; match by rsID, not position.
 REGION_HG19 = "20:9900000-12100000"

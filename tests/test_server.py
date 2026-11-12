@@ -2207,6 +2207,7 @@ def test_deleting_data_needs_allow_destructive(tmp_path, work, fake_data):
         listed = {o["op"]: o for o in client.request("GET", "/ops")[1]["ops"]}
         assert listed["bam/unindex"]["destructive"] is True
         assert listed["ref/gene-map"]["destructive"] is True
+        assert listed["ref/dense-sa"]["destructive"] is True
         assert "destructive" not in listed["bam/index"]
         status, response = client.request(
             "POST", "/ops/bam/unindex", {"input": str(bam)}
@@ -2214,6 +2215,10 @@ def test_deleting_data_needs_allow_destructive(tmp_path, work, fake_data):
         assert (status, response["error"]["code"]) == (403, "destructive")
         status, response = client.request(
             "POST", "/ops/ref/gene-map", {"ref": str(work), "delete": True}
+        )
+        assert (status, response["error"]["code"]) == (403, "destructive")
+        status, response = client.request(
+            "POST", "/ops/ref/dense-sa", {"ref": str(bam), "delete": True}
         )
         assert (status, response["error"]["code"]) == (403, "destructive")
         assert client.request("GET", "/jobs")[1]["jobs"] == []

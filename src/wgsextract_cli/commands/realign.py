@@ -1038,6 +1038,7 @@ def _run_steps(
                 read_length=read_length,
                 additional_ram_bytes=additional_ram_bytes,
                 gpu_bytes=align_cmd.aligner_gpu_bytes(aligner, target, reads),
+                dense_sa_bytes=aligner.dense_sa_bytes,
             )
         if not fits:
             logging.info(
@@ -1085,6 +1086,7 @@ def _run_steps(
             platform=job.platform,
             additional_ram_bytes=0,
             gpu_bytes=align_cmd.aligner_gpu_bytes(aligner, target, reads),
+            dense_sa_bytes=aligner.dense_sa_bytes,
             required=True,
             label=align_cmd.stand_in_label(aligner),
         )
@@ -1318,7 +1320,7 @@ def _report_resource_estimates(
         resolved = reference if reference and Path(reference).is_file() else None
         tool = align_cmd.short_read_tool(job)
         sort_memory = align_cmd.short_read_sort_memory(tool, memory, log=False)
-        gpu_bytes = 0
+        gpu_bytes = dense_sa_bytes = 0
         if resolved:
             # The aligner that will run, bwa-mem3 standing in included.
             aligner, sort_memory = _short_read_plan(
@@ -1333,6 +1335,7 @@ def _report_resource_estimates(
             )
             tool = aligner.memory_model
             gpu_bytes = align_cmd.aligner_gpu_bytes(aligner, resolved, reads)
+            dense_sa_bytes = aligner.dense_sa_bytes
         return estimate_resources(
             "realign",
             input_paths=[path for path in input_paths if path],
@@ -1348,6 +1351,7 @@ def _report_resource_estimates(
             read_length=read_length,
             additional_ram_bytes=additional_ram_bytes,
             gpu_bytes=gpu_bytes,
+            dense_sa_bytes=dense_sa_bytes,
             output_format=job.format,
             extract_fastq=need_extract,
             fastq_dir=outdir if job.keep_fastq else configured_temp_directory(),
