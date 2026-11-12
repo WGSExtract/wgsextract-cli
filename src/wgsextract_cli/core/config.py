@@ -294,6 +294,12 @@ KNOWN_SETTINGS = {
     "alphamissense_vcf_path": (None, "Path to AlphaMissense VCF data"),
     "pharmgkb_vcf_path": (None, "Path to PharmGKB data"),
     "signing_key": (None, "OpenSSH private key used by `sign create`"),
+    "pgs_scoring_file": (None, "Custom scoring TSV[.gz], overriding Catalog weights"),
+    "pgs_min_match": (0.75, "Minimum PGS match fraction for percentile eligibility"),
+    "pgs_keep_ambiguous": (
+        False,
+        "Keep palindromic SNPs only with independently verified forward-strand alleles",
+    ),
     "pet_r1_fastq": (None, "Test: Path to PET R1 reads"),
     "pet_r2_fastq": (None, "Test: Path to PET R2 reads"),
     "pet_reference_fasta": (None, "Test: Path to PET reference genome"),
@@ -319,6 +325,7 @@ FRACTION_SETTINGS = frozenset(
         "qc_max_autosomal_homozygosity",
         "qc_max_no_call_rate",
         "qc_max_contamination",
+        "pgs_min_match",
     }
 )
 
@@ -359,6 +366,7 @@ PATH_SETTINGS = {
     "alphamissense_vcf_path",
     "pharmgkb_vcf_path",
     "signing_key",
+    "pgs_scoring_file",
     "pet_r1_fastq",
     "pet_r2_fastq",
     "pet_reference_fasta",

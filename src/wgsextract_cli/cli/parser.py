@@ -95,6 +95,11 @@ DEFAULT_CONFIG = """# WGS Extract Configuration
 # --- Personal report (docs/personal-report.md) ---
 # report_gene_list = "acmg-sf-3.3"  # or acmg-sf-3.2, or a TSV or BED file
 
+# --- Research-only polygenic scoring (docs/pgs.md) ---
+# pgs_min_match = 0.75  # below this fraction, percentile eligibility is refused
+# pgs_keep_ambiguous = false  # only enable after verifying scoring-allele strands
+# pgs_scoring_file = "/path/to/my_score.txt.gz"  # overrides Catalog selection
+
 # --- Local Developer Test Data ---
 # Path to a local real genome dataset used by real smoke tests.
 # real_genome_test_path = "~/genomes/sample"

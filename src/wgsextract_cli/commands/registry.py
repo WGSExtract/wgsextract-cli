@@ -24,6 +24,7 @@ from . import (
     report,
     report_issue,
     sample,
+    score,
     serve,
     sign,
     vcf,
@@ -50,6 +51,7 @@ COMMAND_MODULES: tuple[ModuleType, ...] = (
     vep,
     analyze,
     sample,
+    score,
     sign,
     genotyping,
     methylation,
@@ -174,6 +176,9 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
         "pet-align", ADVANCED, "Align and call variants for a cat or dog genome."
     ),
     CommandTier("sign", ADVANCED, "Checksum and sign output files; verify them."),
+    CommandTier(
+        "score", ADVANCED, "Research-only polygenic scores from local genotypes."
+    ),
     CommandTier("benchmark", ADVANCED, "Time the main workflows on test data."),
     CommandTier(
         "serve", ADVANCED, "Local HTTP/JSON and MCP server for apps and AI agents."
