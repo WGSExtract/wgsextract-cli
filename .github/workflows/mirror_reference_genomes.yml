@@ -9,10 +9,6 @@ name: Mirror reference genomes
 # partial mirror. Then add each file's GitHub row and SHA-256 to the catalog.
 
 on:
-  # TEMPORARY (#701): build the first mirror from the PR's branch; remove before merging.
-  push:
-    branches: [ feat/701-genome-mirrors ]
-    paths: [ .github/workflows/mirror_reference_genomes.yml ]
   workflow_dispatch:
     inputs:
       release_tag:
@@ -42,7 +38,7 @@ jobs:
       - name: Create the release if needed
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.release_tag || 'reference-genomes-1' }}
+          TAG: ${{ inputs.release_tag }}
         run: |
           case "$TAG" in reference-genomes-*) ;; *) echo "Tag must start with reference-genomes-" >&2; exit 1 ;; esac
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 ||
@@ -53,7 +49,7 @@ jobs:
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.release_tag || 'reference-genomes-1' }}
+          TAG: ${{ inputs.release_tag }}
           ONLY: ${{ inputs.genomes }}
         run: |
           python3 -m pip install --quiet -e .
@@ -89,7 +85,7 @@ jobs:
       - name: Upload it to the release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.release_tag || 'reference-genomes-1' }}
+          TAG: ${{ inputs.release_tag }}
           FINAL: ${{ matrix.genome.final }}
         run: |
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -qxF "$FINAL"; then
@@ -119,7 +115,7 @@ jobs:
       - name: Write the release notes
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.release_tag || 'reference-genomes-1' }}
+          TAG: ${{ inputs.release_tag }}
         run: |
           # Records of earlier runs are kept as a release asset, so the notes list every file.
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern records.tar.gz --dir old 2>/dev/null &&

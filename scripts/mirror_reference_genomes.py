@@ -196,7 +196,8 @@ def catalog(tag: str, records: list[dict[str, Any]]) -> str:
     anchor = 0
     out: list[dict[str, str]] = []
     moved: list[dict[str, str]] = []
-    done: set[str] = set()
+    # Genomes with a GitHub row already keep it (rerunning changes nothing).
+    done = {r["Final File Name"] for r in rows if r["Source"] == GITHUB}
     for i, row in enumerate(rows):
         final = row["Final File Name"]
         record = by_final.get(final) or by_url.get(row["URL"].strip())

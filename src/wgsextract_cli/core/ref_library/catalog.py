@@ -88,12 +88,13 @@ FALLBACK_GENOMES: list[dict[str, Any]] = [
 PET_GENOMES: list[dict[str, Any]] = [
     {
         "code": "UU_Cfam_GSD_1.0",
-        "source": "NCBI",
+        "source": "GitHub",
         "final": "GCF_011100685.1_UU_Cfam_GSD_1.0_genomic.fna.gz",
-        "url": "https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Canis_lupus_familiaris/latest_assembly_versions/GCF_011100685.1_UU_Cfam_GSD_1.0/GCF_011100685.1_UU_Cfam_GSD_1.0_genomic.fna.gz",
+        "url": "https://github.com/WGSExtract/wgsextract-cli/releases/download/reference-genomes-1/GCF_011100685.1_UU_Cfam_GSD_1.0_genomic.fna.gz",
         "label": "Dog (Canis lupus familiaris) UU_Cfam_GSD_1.0 (NCBI)",
         "description": "Dog reference genome (Canis lupus familiaris; @NCBI UU_Cfam_GSD_1.0)",
         "md5": "567b0b7efc021c69f64fe63d85dbc797",
+        "sha256": "a0155bdf0166d4ef89d1f013ed300e79d4e2b26db5c9eee942a14b72e408b98a",
     },
     {
         "code": "Fca126_mat1.0",
