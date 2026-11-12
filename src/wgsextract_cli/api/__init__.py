@@ -29,7 +29,7 @@ Stability: the names exported here and the group modules (``api.extract``,
 ``api.lineage``, ``api.methylation``, ``api.microarray``, ``api.panel``, ``api.ref``,
 ``api.repair``, ``api.genotyping``, ``api.report``, ``api.sample``,
 ``api.support``, ``api.pet``, ``api.analyze``, ``api.sign``, ``api.deps``,
-``api.examples``, ``api.vep``, ``api.benchmark``) follow
+``api.examples``, ``api.vep``, ``api.benchmark``, ``api.score``) follow
 semantic versioning from the 1.0 release; adding fields with defaults is not
 a breaking change.
 Modules whose names start with ``_`` are private and may change at any time.
@@ -69,6 +69,7 @@ from . import (
     repair,
     report,
     sample,
+    score,
     sign,
     support,
     vcf,
@@ -165,6 +166,7 @@ from .ref import (
 from .repair import RepairFtdnaBamParams, RepairFtdnaVcfParams
 from .report import ReportParams
 from .sample import SampleSetParams, SampleShowParams, SampleUnsetParams
+from .score import ScorePgsParams
 from .sign import SignCreateParams, SignVerifyParams
 from .support import IssueReport, ReportIssueParams
 from .vcf import (
@@ -284,6 +286,7 @@ __all__ = [
     "SampleSetParams",
     "SampleShowParams",
     "SampleUnsetParams",
+    "ScorePgsParams",
     "SignCreateParams",
     "SignVerifyParams",
     "UnmappedParams",
@@ -348,6 +351,7 @@ __all__ = [
     "repair",
     "report",
     "sample",
+    "score",
     "sign",
     "support",
     "use_config",

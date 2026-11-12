@@ -44,6 +44,7 @@ GROUPS = (
     api.ref,
     api.repair,
     api.sign,
+    api.score,
     api.genotyping,
     api.report,
     api.sample,

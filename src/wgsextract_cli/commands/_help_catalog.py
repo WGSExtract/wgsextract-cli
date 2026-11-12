@@ -34,6 +34,12 @@ _SCORED = _ANNOTATED + "; with --min-score N, also {name}_gt_N.vcf.gz."
 _LIBRARY = "Into the reference library (reflib)"
 
 COMMAND_HELP: dict[str, CommandHelp] = {
+    "score pgs": _h(
+        "<input stem>_<PGS ID>_pgs.json and .tsv: raw score, variant match rate, "
+        "licence and citation. No calibrated percentile yet.",
+        "wgsextract score pgs --input sample.vcf.gz --build GRCh38 --trait height",
+        "wgsextract score pgs --input sample.vcf.gz --build GRCh38 --pgs-id PGS000018",
+    ),
     "help": _h(
         "Prints to stdout; writes no files.",
         "wgsextract help --all",

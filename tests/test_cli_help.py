@@ -508,7 +508,7 @@ def test_help_stays_token_efficient(capsys):
     main(["help", "--all"])
     assert len(capsys.readouterr().out) <= 12_000
     main(["help", "--all", "--json"])
-    # Ancestry and mimalloc options used the old budget; keep modest headroom.
+    # Typed API, ancestry, mimalloc and PGS share this token-efficient budget.
     assert len(capsys.readouterr().out) <= 320_000
     main(["help", "microarray", "--json"])
     assert len(capsys.readouterr().out) <= 15_000

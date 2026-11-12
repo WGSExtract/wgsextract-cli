@@ -1,0 +1,11 @@
+#genome_build=GRCh38
+#trait_reported=Synthetic trait (not a real score)
+#citation=Synthetic test fixture
+#license=CC0-1.0
+chr_name	chr_position	effect_allele	other_allele	effect_weight
+1	10	G	A	0.5
+1	20	C	T	0.25
+1	30	A	G	0.75
+1	40	G	A	2
+1	70	A	C	0.1
+1	95	T	C	1
