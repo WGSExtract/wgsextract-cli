@@ -110,6 +110,20 @@ def host_path(path: str) -> str:
     return os.path.abspath(path)
 
 
+def link_chain(path: str) -> list[str]:
+    """``path`` and, if it is a symlink, each file it leads to: given to
+    run_container, every folder on the way to its target is mounted, so the
+    link still opens in the container (pbrun takes an interval file's format
+    from its name, so ``panel.bed`` linked to a store's ``dataset_7.dat`` is
+    passed as itself)."""
+    chain = [path]
+    while Path(chain[-1]).is_symlink() and len(chain) <= 40:
+        link = chain[-1]
+        chain.append(host_path(os.path.join(os.path.dirname(link), os.readlink(link))))
+    target = str(Path(path).resolve())
+    return chain if target in chain else [*chain, target]
+
+
 def run_container(
     image: str,
     command: list[str],

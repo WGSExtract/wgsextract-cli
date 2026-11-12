@@ -5,10 +5,17 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from tests.fake_tools import FakeClair3, require_bare_name_fakes
+from tests.fake_tools import (
+    FakeClair3,
+    FakeDocker,
+    fake_nvidia_smi,
+    require_bare_name_fakes,
+    set_gpus,
+)
 from tests.htslib_helpers import (
     needs_tools,
     require_runnable,
@@ -22,6 +29,7 @@ from wgsextract_cli.commands.vcf import clair3
 from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
+    UsageError,
     WGSExtractError,
     run_command,
 )
@@ -511,3 +519,101 @@ def test_intel_macos_is_refused(monkeypatch):
     monkeypatch.setattr(platform, "machine", lambda: "x86_64")
     with pytest.raises(WGSExtractError, match="no Clair3 2.x build"):
         clair3.require_supported_platform()
+
+
+# Clair3 on an NVIDIA GPU (#639) ---------------------------------------------
+
+
+@pytest.fixture
+def clair3_gpu(tmp_path, monkeypatch, linux_x86):
+    """A GPU host: an RTX 3090 with nothing else on it, Docker's NVIDIA runtime
+    and HKU's Clair3 GPU image, whose /opt/bin holds FakeClair3; no Clair3
+    on PATH."""
+    require_bare_name_fakes()
+    require_runnable("samtools", "bcftools", "tabix")
+    image_bin = tmp_path / "image" / "bin"
+    fake = FakeClair3(image_bin, CORE_TOOLS["bcftools"] or "bcftools")
+    docker = FakeDocker(tmp_path / "docker" / "bin", image_bin)
+    docker.set(gpus=True, runtimes='{"nvidia":{},"runc":{}}')
+    docker.add_image(clair3.DEFAULT_GPU_IMAGE)
+    gpus = tmp_path / "gpus.json"
+    set_gpus(gpus, (24_576, 0))
+    fake_nvidia_smi(docker.root.parent / "bin", gpus)
+    monkeypatch.setenv(
+        "PATH", f"{docker.root.parent / 'bin'}{os.pathsep}{os.environ['PATH']}"
+    )
+    monkeypatch.delitem(clair3.settings, "clair3_model", raising=False)
+    monkeypatch.delitem(clair3.settings, "clair3_gpu_image", raising=False)
+    clear_tool_caches()
+    return SimpleNamespace(clair3=fake, docker=docker, gpus=gpus)
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+def test_gpu_calls_in_hkus_gpu_image_from_paths_with_spaces(tmp_path, clair3_gpu):
+    """#639: --gpu runs Clair3 on the GPU in HKU's image, which must still
+    open the space-free links to the user's files (#623)."""
+    home = tmp_path / "John Smith"
+    home.mkdir()
+    reads = snp_sample(home, DORADO_RG)
+    model = make_model(home / "clair3 models", "my r1041 model")
+    outdir = home / "wgse out"
+    run_wgsextract(
+        "vcf", "clair3", "--input", reads.bam, "--ref", reads.ref, "--gpu",
+        "--outdir", str(outdir), "--model", str(model), "-r", "chr1:900-1100",
+    )  # fmt: skip
+
+    assert vcf_calls(outdir / "clair3.vcf.gz") == reads.calls[:1]
+    assert sorted(p.name for p in outdir.iterdir()) == [
+        "clair3.vcf.gz",
+        "clair3.vcf.gz.tbi",
+    ]
+    assert f"##reference={reads.ref}" in header_lines(outdir / "clair3.vcf.gz")
+    (run,) = clair3_gpu.clair3.runs()
+    # contract: Clair3's networks run on the GPU, with the chosen model.
+    assert (run["opts"]["use_gpu"], run["model"]) == ("True", str(model.resolve()))
+    containers = clair3_gpu.docker.runs()
+    assert [(c["image"], c["gpus"]) for c in containers] == [
+        (clair3.DEFAULT_GPU_IMAGE, "all")
+    ]
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+@pytest.mark.parametrize(
+    ("setup", "error", "message"),
+    [
+        pytest.param(lambda gpu: gpu.docker.set(images={}), MissingDependencyError,
+                     r"docker pull hkubal/clair3:v2\.0\.5_gpu@sha256:", id="no-image"),
+        pytest.param(lambda gpu: set_gpus(gpu.gpus, (24_576, 18_000)), WGSExtractError,
+                     r"needs 7\.8 GiB free on a GPU \(GPU 0: 6\.4 GiB free\)",
+                     id="gpu-busy"),
+        pytest.param(lambda gpu: gpu.docker.set(runtimes='{"runc":{}}'),
+                     MissingDependencyError, "no NVIDIA runtime", id="no-runtime"),
+    ],
+)  # fmt: skip
+def test_gpu_refuses_a_host_that_cant_run_it_before_any_work(
+    tmp_path, clair3_gpu, setup, error, message
+):
+    """#639: a missing image, a busy GPU (Clair3 would stop only after
+    pileup calling and phasing) or no NVIDIA runtime is named up front."""
+    setup(clair3_gpu)
+    reads = snp_sample(tmp_path, DORADO_RG)
+    model = make_model(tmp_path, "my_r1041_model")
+    outdir = tmp_path / "out"
+    with pytest.raises(error, match=message):
+        run_wgsextract(
+            "vcf", "clair3", "--input", reads.bam, "--ref", reads.ref, "--gpu",
+            "--outdir", str(outdir), "--model", str(model),
+        )  # fmt: skip
+    assert clair3_gpu.docker.runs() == []
+    assert not outdir.exists()
+
+
+@pytest.mark.parametrize(
+    ("host", "machine"), [("darwin", "arm64"), ("linux", "aarch64")]
+)
+def test_gpu_is_refused_where_clair3_has_no_gpu_build(monkeypatch, host, machine):
+    """#639: Clair3's GPU mode is CUDA only (no Apple MPS), in an x86-64 image."""
+    monkeypatch.setattr(sys, "platform", host)
+    monkeypatch.setattr(platform, "machine", lambda: machine)
+    with pytest.raises(UsageError, match="x86-64 Linux with an NVIDIA GPU"):
+        run_wgsextract("vcf", "clair3", "--input", "reads.bam", "--gpu")

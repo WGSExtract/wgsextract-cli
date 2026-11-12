@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -18,6 +19,12 @@ from wgsextract_cli.api.vcf import VcfClair3Params
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.containers import (
+    image_record,
+    link_chain,
+    require_image,
+    run_container,
+)
 from wgsextract_cli.core.cram_staging import stage_cram30
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
@@ -27,6 +34,7 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import warn_if_no_variants
+from wgsextract_cli.core.parabricks import gpu_memory, verify_gpu_docker
 from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.reference_assets import read_fai_lengths
@@ -46,6 +54,21 @@ from .basic import plain_reference, record_variants, setup_caller
 from .callers import write_region_bed
 
 CLAIR3 = "run_clair3.sh"
+# HKU's CUDA build of the same Clair3 for --gpu, pinned to the build validated
+# in #639: Bioconda's Linux Clair3 depends on pytorch-cpu, so its --use_gpu
+# falls back to the CPU.
+DEFAULT_GPU_IMAGE = (
+    "hkubal/clair3:v2.0.5_gpu"
+    "@sha256:3f660a693142db0aa8361a58fb6379fc6e3eeead20916eaae5614bd00d21cbeb"
+)
+GPU_CLAIR3 = "/opt/bin/run_clair3.sh"
+# Clair3 starts a full-alignment GPU worker only on a GPU with this much free
+# memory (CallVariantsFromCffiGPU); pileup workers need 5000 MiB.
+GPU_FREE_MIB = 8000
+_GPU_SETUP = (
+    "vcf clair3 --gpu needs x86-64 Linux (or WSL2) with an NVIDIA GPU, Docker, "
+    "the NVIDIA Container Toolkit and HKU's Clair3 GPU image: docker pull {image}"
+)
 MODEL_FILES = ("pileup.pt", "full_alignment.pt")
 WINDOWS_UNSUPPORTED = (
     "Clair3 is not available on Windows (Bioconda builds it for Linux and macOS "
@@ -181,9 +204,47 @@ def require_supported_platform() -> None:
         )
 
 
-def clair3_version() -> tuple[int, ...] | None:
-    """The installed Clair3's version (``Clair3 v2.0.5``), or None if unknown."""
-    match = re.search(r"(\d+)\.(\d+)\.(\d+)", get_tool_version(CLAIR3) or "")
+def clair3_gpu_image() -> str:
+    return str(settings.get("clair3_gpu_image") or DEFAULT_GPU_IMAGE)
+
+
+def verify_gpu() -> str:
+    """The Clair3 GPU image, once this host can run it on a GPU with the
+    memory Clair3 asks for; else name what's missing."""
+    image = clair3_gpu_image()
+    setup = _GPU_SETUP.format(image=image)
+    machine = platform.machine().lower()
+    if not sys.platform.startswith("linux") or machine not in ("x86_64", "amd64"):
+        raise UsageError(
+            "vcf clair3 --gpu runs on x86-64 Linux with an NVIDIA GPU only; Clair3 "
+            "has no Apple GPU (MPS) or ARM64 GPU build. Run without --gpu here."
+        )
+    verify_gpu_docker(setup)
+    require_image(
+        image,
+        f"The Clair3 GPU image isn't downloaded: docker pull {image} "
+        "(set clair3_gpu_image in config.toml for another build).",
+    )
+    gpus = gpu_memory()
+    # Unified-memory GPUs report none (None), and nvidia-smi may say nothing.
+    free = [gpu.free_bytes for gpu in gpus if gpu.free_bytes is not None]
+    if gpus and len(free) == len(gpus) and max(free) < GPU_FREE_MIB * 1024**2:
+        held = ", ".join(
+            f"GPU {gpu.index}: {(gpu.free_bytes or 0) / 1024**3:.1f} GiB free"
+            for gpu in gpus
+        )
+        raise WGSExtractError(
+            f"Clair3 on the GPU needs {GPU_FREE_MIB / 1024:.1f} GiB free on a GPU "
+            f"({held}). Wait for other GPU programs to finish, or run without --gpu."
+        )
+    return image
+
+
+def clair3_version(image: str | None = None) -> tuple[int, ...] | None:
+    """The Clair3 version (``Clair3 v2.0.5``) installed, or in the GPU
+    ``image``'s tag; None if unknown."""
+    text = image.split("@")[0].rpartition(":")[2] if image else get_tool_version(CLAIR3)
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", text or "")
     return tuple(int(part) for part in match.groups()) if match else None
 
 
@@ -378,9 +439,10 @@ def clair3_command(
     output: str,
     bed: str | None,
     sample: str,
+    gpu: bool = False,
 ) -> list[str]:
     command = [
-        CLAIR3,
+        GPU_CLAIR3 if gpu else CLAIR3,
         f"--bam_fn={reads}",
         f"--ref_fn={ref}",
         f"--threads={threads}",
@@ -391,7 +453,24 @@ def clair3_command(
     ]
     if bed:
         command.append(f"--bed_fn={bed}")
+    if gpu:
+        command.append("--use_gpu=True")
     return command
+
+
+def container_paths(paths: list[str]) -> list[str]:
+    """``paths`` and their index files, with each link's chain to its target,
+    so a container that mounts their folders opens them all."""
+    found = []
+    for path in paths:
+        candidates = [path]
+        candidates += [f"{path}{ext}" for ext in (*READS_INDEXES, *REFERENCE_INDEXES)]
+        if Path(path).suffix.lower() in (".bam", ".cram"):
+            candidates += [str(Path(path).with_suffix(ext)) for ext in READS_INDEXES]
+        for candidate in candidates:
+            if candidate == path or Path(candidate).exists():
+                found += link_chain(candidate)
+    return found
 
 
 def space_free_run_paths(
@@ -440,8 +519,13 @@ def clair3_errors(output: Path, limit: int = 8) -> str:
 def run_clair3(params: VcfClair3Params) -> None:
     """``vcf clair3``: Clair3 on Nanopore reads into ``clair3.vcf.gz``."""
     require_supported_platform()
-    verify_dependencies([CLAIR3, "samtools", "bcftools", "tabix"])
-    log_dependency_info([CLAIR3])
+    image = verify_gpu() if params.gpu else None
+    if image:
+        verify_dependencies(["samtools", "bcftools", "tabix"])
+        logging.info(f"Running Clair3 on the GPU from {image_record(image)['image']}.")
+    else:
+        verify_dependencies([CLAIR3, "samtools", "bcftools", "tabix"])
+        log_dependency_info([CLAIR3])
     setup = setup_caller(params)
     threads, outdir, ref = setup.threads, setup.outdir, setup.ref
     input_file, region = str(params.input), params.region
@@ -474,7 +558,7 @@ def run_clair3(params: VcfClair3Params) -> None:
                     f"Invalid Clair3 region selection: {region}: {error}"
                 ) from error
         reads = input_file
-        if needs_cram30_staging(clair3_version()):
+        if needs_cram30_staging(clair3_version(image)):
             staging = Path(work, "reads")
             staging.mkdir()
             reads = stage_cram30(
@@ -492,10 +576,18 @@ def run_clair3(params: VcfClair3Params) -> None:
                 run_reads, run_ref, Path(run_model), threads,
                 str(Path(run_work, "clair3")),
                 str(Path(run_work, "regions.bed")) if bed else None, sample,
+                gpu=bool(image),
             )  # fmt: skip
             try:
-                # stdin closed: Clair3's GNU parallel would read it otherwise.
-                run_command(command, env=_clair3_env(), stdin=subprocess.DEVNULL)
+                if image:
+                    run_container(
+                        image, command,
+                        container_paths([run_reads, run_ref, run_model, run_work]),
+                        gpus=True, local_only=True, temporary_directory=run_work,
+                    )  # fmt: skip
+                else:
+                    # stdin closed: Clair3's GNU parallel would read it otherwise.
+                    run_command(command, env=_clair3_env(), stdin=subprocess.DEVNULL)
             except (OSError, subprocess.SubprocessError) as e:
                 errors = clair3_errors(Path(output))
                 if not errors or not isinstance(e, subprocess.CalledProcessError):

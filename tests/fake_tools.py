@@ -350,6 +350,8 @@ with open({log!r}, "a") as log:
     log.write(json.dumps(record) + "\\n")
 if not record["stdin_closed"]:
     sys.exit("parallel: stdin is still open")
+if opts.get("use_gpu") == "True" and not os.environ.get("FAKE_GPUS"):
+    sys.exit("[ERROR] No GPU available, Please disabling --use_gpu for variant calling, exiting.")
 if record["pythonpath"]:
     sys.exit("ImportError: Clair3's Python loaded modules from PYTHONPATH")
 for name in ("pileup.pt", "full_alignment.pt"):
@@ -414,8 +416,9 @@ class FakeClair3:
     if PYTHONPATH leaks in) and waits on an open stdin (it fails instead).
     Like the bundled htslib of Clair3 before 2.0.5 (``version``) it fails on
     CRAM 3.1 reads, reporting only on stdout and in its step logs; ``fail`` makes it fail that way on any
-    reads. Like Clair3 it calls nothing, yet exits 0, when a path it is
-    given contains a space. Each run's options, resolved model, reads' CRAM
+    reads. With ``--use_gpu=True`` it needs a container started with
+    ``--gpus`` (FakeDocker), as in HKU's GPU image. Like Clair3 it calls
+    nothing, yet exits 0, when a path it is given contains a space. Each run's options, resolved model, reads' CRAM
     version, region BED, stdin state and PYTHONPATH go to ``runs``.
     """
 
@@ -921,7 +924,7 @@ elif args[0] == "run":
         # The image's own folders, and its /tmp (HOME when none is given).
         if path and path != "/tmp" and not path.startswith(("/opt/", "/bin/", "/usr/")) and not visible(path):
             sys.exit(f"{path}: No such file or directory (not mounted in the container)")
-    if command[0].startswith("/opt/deepvariant/bin/"):
+    if command[0].startswith(("/opt/deepvariant/bin/", "/opt/bin/")):
         command[0] = os.path.join(DV_BIN, os.path.basename(command[0]))
     elif command[:2] == ["/bin/bash", "-c"]:
         command[2] = command[2].replace("/opt/deepvariant/bin/", DV_BIN + "/")
@@ -943,8 +946,8 @@ else:
 
 
 class FakeDocker:
-    """A `docker` in ``bindir`` whose images run FakeDeepVariant's tools from
-    ``dv_bin`` as /opt/deepvariant/bin.
+    """A `docker` in ``bindir`` whose images run the tools in ``dv_bin``
+    (FakeDeepVariant's, or FakeClair3's) as /opt/deepvariant/bin or /opt/bin.
 
     A container sees only the folders mounted into it (paths outside them
     fail), its ``-e`` environment and no stdin, and must run as the caller
