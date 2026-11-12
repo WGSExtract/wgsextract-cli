@@ -26,6 +26,9 @@ google/deepvariant#1085) with the patches in [`patches/`](patches):
   so a caller can run and resume them one by one as it does Google's
   (single-sample runs only; trio, somatic and pangenome runs refuse it).
 - **0004** reads `--reads` from https URLs and accepts `.csi` BAM indexes.
+  Reading a remote BAM partition by partition fetches far more than the BAM
+  (33 GB in 14 minutes for 20 Mb of chr1), so for more than a small region
+  copy the reads first (`samtools view -b URL REGION`).
 - **0005** makes postprocess_variants call one contig at a time: it held every
   site of the run in memory, tens of GB for a whole genome.
 - **0006** lets `--regions` name BED (or gzipped BED) files, so a selection of
