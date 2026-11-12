@@ -264,12 +264,94 @@ with the same BWA index files.
   (22.0 GiB estimated against 8.4 available) and disk (230 GiB against 223
   free) as LOW, then completed within 164 GiB of extra disk.
 
+### Current defaults, `macos-aligners-16` and mimalloc
+
+[#722](https://github.com/WGSExtract/wgsextract-cli/issues/722) repeated the
+short-read pipeline on this Mac with main `992ee758`, published `wgse-bwa`
+0.12.1 (`macos-aligners-16`), samtools/bcftools 1.24, and the optional
+`wgse-mimalloc` installed through the documented tool setup. The existing
+HG002 **35x**, full-quality BAM (42.87 GiB, 835,260,805 indexed records) was
+used in place, without a staging copy. The target was the existing
+195-contig `GRCh38_no_alt.fa`, not the 456-contig hs38a used for this issue's
+small-data trial. Desktop applications remained open.
+
+No scientific settings were overridden: four requested threads, Metal BWA,
+512M sort memory per thread selected automatically, and the caller's default
+mimalloc mode. The normal disk refusal check passed; no force or preflight
+bypass was used.
+The four-thread setting is a worker request, not a cap on all OS threads:
+sampling saw up to 207 threads in an extraction samtools process, 39 in
+alignment's samtools, and 20 in `wgse-bwa`, including library/helper threads.
+Those are thread counts, not simultaneously busy CPU cores.
+
+| Step | Measured wall time | Largest-process RSS | Sampled pipeline RSS |
+| :--- | ---: | ---: | ---: |
+| Initial `realign`: extraction, cold reference index, intentional interruption | 62.65 min | 7.72 GiB | 9.02 GiB |
+| Resumed `realign`: cached FASTQs, align, sort and output index | 323.96 min | 8.30 GiB | 10.11 GiB |
+| `vcf snp`, mimalloc | 27.04 min | 0.514 GiB | 1.29 GiB |
+| `vcf indel`, mimalloc | 31.16 min | 0.305 GiB | 1.37 GiB |
+| `report` | 0.47 s | 0.063 GiB | — |
+
+The optional `--mimalloc off` comparison then took 29.99 min / 0.533 GiB
+largest-process RSS for SNPs and 34.60 min / 0.299 GiB for indels.
+Both produced exactly the same ordered VCF records as their mimalloc runs.
+Mimalloc's wall times were about 10% lower in this single sequential
+comparison, not a repeated or randomized benchmark; its RSS advantage was
+small for SNPs and absent for indels. Including both comparisons and record
+hashing, the experiment took 8 h 30 min.
+
+The default sequence took **7 h 25 min**, including a cold reference index
+(39 min), FASTQ extraction (22.5 min), and a deliberate alignment interrupt.
+It is a measured 35x run, not a measured 30x duration. The small slice's linear
+time projection was not a whole-genome guarantee.
+
+**Resume recovered the completed extraction.** SIGINT after the first
+alignment heartbeat returned 130. The unchanged command then skipped
+extraction, reused the same 66.23 GiB FASTQ pair, and completed with
+835,260,415 BAM records (832,735,204 mapped). The small-data test had already
+verified identical ordered SAM records between interrupted/resumed and
+uninterrupted runs; a second uninterrupted whole-genome run was not performed.
+The result manifests recorded `wgse-bwa` 0.12.1/`metal`, and both callers
+recorded `bcftools_allocator: mimalloc`.
+
+**RSS alone hides the memory cost.** During resumed alignment, `vm_stat`
+recorded **1,113.72 GiB swap-in and 1,116.92 GiB swap-out traffic**. These
+are cumulative system-wide traffic deltas, not simultaneously occupied swap
+or process-attributed bytes. Sampled occupied swap ranged from 1.21 to
+3.70 GiB; memory pressure alternated between normal (1) and warning (2).
+Alignment kept progressing, so the 30-minute stalled-progress safety stop
+did not trigger. Default mimalloc calling and report added no swap-out
+traffic; the optional system-allocator SNP run coincided with 0.034 GiB
+of system-wide swap-out traffic.
+The conservative RAM estimate was 22.02 GiB at startup, versus 10.80 GiB
+available. Do **not** recalibrate that working-set estimate down to 8.30 GiB
+RSS: macOS compression and swapping kept the resident peak smaller.
+
+**Disk fit, but the margin mattered.** Free space started at 210.36 GiB
+above the already-present input and reference and fell to 37.42 GiB.
+The independent 25 GiB system-volume safety guard never fired. Sampled
+scratch peaked at 134.86 GiB; scratch plus results peaked at 166.15 GiB.
+The free-space fall also includes newly built reference indexes and other
+system activity, so it is not the same measurement. The completed BAM was
+43.20 GiB; the SNP and indel VCFs contained 4,392,799 and 918,481 variants.
+Keep extra space for the desktop, swap and reference indexing rather than
+treating the observed peak as a minimum free-space recommendation.
+
+`report` successfully wrote its artifacts, but this sequence did not run
+annotation, lineage or typing. Its clinical sections were `not_run`; this
+is a pipeline/resource measurement, not a populated clinical report or a new
+accuracy benchmark.
+
 ## Advice for 16 GB Macs
 
 - **Close what you can before `realign`,** and leave the Mac on overnight.
   It runs at the GPU's pace, and more threads only use more memory.
-- **Have about 230 GB free** for a 30x `realign`: 166 GiB at its peak, plus
-  the input.
+- **Plan disk space before starting.** The current 35x run used up to
+  166 GiB of scratch plus results, excluding its existing input and reference.
+  Leave additional headroom for reference indexing, swap and the desktop.
+  If you still need to download the input, budget its space separately.
+  The normal refusal check and the advisory conservative resource envelope
+  are different checks; a passing refusal check is not a reservation.
 - **Install the `macos-aligners` builds** ([Apple Silicon](hardware.md#apple-silicon-metal)).
   Without them `realign` runs bwa on the CPU, about four times slower.
 - **Call with `vcf snp` and `vcf indel`** (`bcftools`). They use the four

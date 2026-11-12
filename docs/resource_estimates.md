@@ -367,6 +367,27 @@ filesystem for reference-index storage.
   slice wrote 937.4 MB for 10,971,483 indexed records (85.4 bytes/record):
   the files were 14% larger than the old budget. Known indexed counts avoid additional
   uncertainty from BAM/CRAM compression-based count inference.
+- The full-quality HG002 **35x** run on a 16 GiB M1 (#722, `wgse-bwa`
+  0.12.1/Metal, four threads, automatically selected 512M sort memory) adds
+  whole-genome evidence to that slice calibration. Its 835,260,805 indexed
+  input records produced **71.11 GB extracted FASTQs** (85.1 bytes/record)
+  and a **46.38 GB BAM** (55.5 bytes/record). Sampled scratch including the
+  FASTQs peaked at 134.86 GiB, and scratch plus results at 166.15 GiB.
+  The initial advisory disk envelope was 259.81 GiB with missing reference
+  indexes; the normal realignment refusal check required about 204 GiB.
+  With the existing input and reference already on disk, 210.36 GiB free
+  was enough, but only 37.42 GiB remained at the observed minimum. These
+  different envelopes are not allocation guarantees or equivalent measures.
+  Retain the conservative disk coefficients and additional free-space margin.
+  [The measured stage table](apple-silicon-16gb.md#current-defaults-macos-aligners-16-and-mimalloc)
+  records the exact run and resume conditions.
+- **macOS RSS is not the uncompressed working set.** That run's startup RAM
+  estimate was 22.02 GiB against 10.80 GiB available. The largest process
+  peaked at 8.30 GiB RSS and the sampled concurrent pipeline at 10.11 GiB,
+  but resumed alignment also generated 1,113.72/1,116.92 GiB of system-wide
+  swap-in/out traffic, with sampled occupied swap up to 3.70 GiB and warning
+  memory pressure. Completion under compression/swap does not validate an
+  8–10 GiB working-set budget. The conservative RAM model is unchanged.
 - Ultima pipelines using GATK flow duplicate marking pass
   `duplicate_marking="gatk-flow"`. Their temporary budget includes retained
   sorted/marked BAMs: up to two BAMs (200 bytes/read) for CRAM output, rather
@@ -398,6 +419,13 @@ filesystem for reference-index storage.
   slice, the 670.5 MB BAM produced 2.95 MB SNP and 0.80 MB indel VCF.gz files;
   the old tenth-of-input output estimate was 23×/84× high. The new budgets
   retain several-fold headroom; depth, variant burden and compression vary.
+  The subsequent whole **35x** run produced 180.70 MB SNP and 47.75 MB
+  indel VCF.gz files from 835,260,415 realigned records. With the existing
+  result directories subtracted, the sampled incremental **temporary plus
+  new output** peaks were 0.497/0.056 GiB on the output volume, respectively.
+  These are combined peaks, not separate measurements of temporary files.
+  They support keeping the compressed-output budgets conservative rather
+  than replacing replay/header worst-case allowances with one run's peak.
   GATK retains 10% of input bytes for output and twice that for temporary
   storage. Regional GATK CRAM conversion
   also budgets a whole-input BAM upper bound on the output volume.
