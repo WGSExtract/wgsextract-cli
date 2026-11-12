@@ -1,5 +1,6 @@
 #include "metal_extension.h"
 #include "metal_seeding_api.h"
+#include "rescue_api.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -23,7 +24,7 @@ constexpr const char *platform = "Linux", *gpu_option = "--cuda";
 void help(FILE *stream) {
     fprintf(stream, "%s %s (bwa-mem3 %s rebuilt for %s)\n"
         "Usage: %s [%s | --backend cpu|%s|auto] [--gpu-threads PERCENT] [--gpu-seed on|off]\n"
-        "         [--gpu-backlog PAIRS] <command> [arguments]\n"
+        "         [--gpu-backlog PAIRS] [--gpu-rescue on|off] <command> [arguments]\n"
         "         bwa-mem3's commands: index, mem, shm, re-sa\n"
         "       %s capabilities --json   report %s availability\n"
         "       %s --version | version   print executable and engine version\n"
@@ -34,7 +35,8 @@ void help(FILE *stream) {
         "else 0 = never) wait for the GPU. It runs PERCENT%% (default\n"
         "%d) of -t compute threads, as threads wait for the GPU. %s fails if %s is\n"
         "unavailable, and exits 1 after finishing on the CPU if a GPU batch fails; --backend auto\n"
-        "falls back to the CPU in both cases.\n"
+        "falls back to the CPU in both cases. With CUDA it also aligns mate-rescue windows on the\n"
+        "GPU (unless --gpu-rescue off).\n"
         "SAM is written to stdout, diagnostics to stderr. Not qualified for clinical use.\n\n",
         name, version, engine_version, platform, name, gpu_option, gpu_option + 2, name,
         wgse_mem3_gpu_name(), name, name, gpu_option, wgse_mem3_default_thread_percent,
@@ -54,7 +56,7 @@ int run(int argc, char **argv) {
     // Backend options precede the command, as for wgse-bwa and wgse-bwa-mem2.
     // gpu: --metal on macOS, --cuda on Linux.
     enum class Backend { cpu, gpu, automatic } backend = Backend::cpu;
-    bool gpu_seed = true;
+    bool gpu_seed = true, gpu_rescue = true;
     long long gpu_backlog = -1;
     int command_index = 1;
     while (argc > command_index) {
@@ -72,6 +74,17 @@ int run(int argc, char **argv) {
                 return 2;
             }
             command_index += 2;
+        } else if (strcmp(option, "--gpu-rescue") == 0) {
+            if (strcmp(value, "on") == 0) gpu_rescue = true;
+            else if (strcmp(value, "off") == 0) gpu_rescue = false;
+            else {
+                fprintf(stderr, "--gpu-rescue requires on or off\n");
+                return 2;
+            }
+            command_index += 2;
+        } else if (strcmp(option, "--gpu-inject-rescue-failure") == 0) {
+            wgse_mem3_rescue_inject_failure();
+            ++command_index;
         } else if (strcmp(option, "--gpu-verify-seeds") == 0) {
             wgse_mem3_seed_set_verify(true);
             ++command_index;
@@ -199,6 +212,7 @@ int run(int argc, char **argv) {
                 reason.c_str());
         } else {
             wgse_mem3_seed_set_enabled(gpu_seed);
+            wgse_mem3_rescue_set_enabled(gpu_rescue);
             // With seeding on the GPU, the CPU threads have time to score extensions when the
             // GPU's queue is long.
             wgse_mem3_bsw_set_backlog(gpu_backlog >= 0 ? gpu_backlog : gpu_seed ? 4096 : 0);
@@ -214,7 +228,9 @@ int run(int argc, char **argv) {
     int result = wgse_bwamem3_main(static_cast<int>(arguments.size() - 1), arguments.data());
     const bool seeding_failed = accelerated && wgse_mem3_seed_finish();
     const bool extension_failed = accelerated && wgse_mem3_bsw_finish();
-    if ((seeding_failed || extension_failed) && backend == Backend::gpu && result == 0) result = 1;
+    const bool rescue_failed = accelerated && wgse_mem3_rescue_finish();
+    if ((seeding_failed || extension_failed || rescue_failed) && backend == Backend::gpu && result == 0)
+        result = 1;
     return result;
 }
 } // namespace

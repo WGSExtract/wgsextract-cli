@@ -260,16 +260,37 @@ mem3_seam(fastmap_source "        return ret;\n    } // Step 0\n"
 mem3_seam(fastmap_source "        read_arena_destroy(ret->read_arena);\n        free(ret->seqs);\n"
     "        wgse_mem3_seed_forget(ret->seqs);\n        read_arena_destroy(ret->read_arena);\n        free(ret->seqs);\n")
 file(WRITE "${mem3_src}/fastmap.cpp" "#include \"metal_extension.h\"\n${fastmap_source}")
+# GPU mate rescue (--cuda): the 8-bit pairs of mem_sam_pe_batch's kswv run wgse-bwa's
+# ksw_align2 kernel (native/bwa/rescue.cuh), both passes in pass 0; kswv scores the rest.
+file(READ "${mem3_SOURCE_DIR}/src/bwamem_pair.cpp" pair_source)
+mem3_seam(pair_source "    pwsw->getScores8(pairs + n_banded, seqBufRef, seqBufQer, aln, slice_pcnt8 - n_banded, nthreads, 0);"
+    "    {
+        int64_t wgse_count = slice_pcnt8 - n_banded;
+        SeqPair *wgse_pairs = wgse_mem3_rescue_pass0(pairs + n_banded, wgse_count, seqBufRef, seqBufQer, aln);
+        pwsw->getScores8(wgse_pairs, seqBufRef, seqBufQer, aln, wgse_count, nthreads, 0);
+    }")
+mem3_seam(pair_source "    pwsw->getScores8(pairs, seqBufRef, seqBufQer, aln, pos8, nthreads, 1);"
+    "    {
+        int64_t wgse_count = pos8;
+        SeqPair *wgse_pairs = wgse_mem3_rescue_pass1(pairs, wgse_count);
+        pwsw->getScores8(wgse_pairs, seqBufRef, seqBufQer, aln, wgse_count, nthreads, 1);
+    }")
+mem3_seam(pair_source "    mem_sam_pe_batch_run(pwsw.get(), pairs, seqBufRef, seqBufQer,\n                         aln, pcnt, pcnt8, nthreads, n_banded, band_reset.b, p1_band_any);"
+    "    WgseRescueScope wgse_rescue(opt, pcnt);
+    mem_sam_pe_batch_run(pwsw.get(), pairs, seqBufRef, seqBufQer,
+                         aln, pcnt, pcnt8, nthreads, n_banded, band_reset.b, p1_band_any);")
+file(WRITE "${mem3_src}/bwamem_pair.cpp" "#include \"rescue_gpu.h\"\n${pair_source}")
 # The GPU backend: Metal on macOS, CUDA on Linux with -DWGSE_CUDA=ON, else the CPU's code
 # only. seeding_host.cpp schedules GPU seeding for either.
 if(APPLE)
-    set(gpu_sources metal_extension.mm seeding_host.cpp metal_seeding_device.mm)
+    set(gpu_sources metal_extension.mm seeding_host.cpp metal_seeding_device.mm rescue_host.cpp
+        rescue_device_none.cpp)
     set_source_files_properties(metal_extension.mm metal_seeding_device.mm main.cpp
         PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
     set_source_files_properties(main.cpp PROPERTIES LANGUAGE OBJCXX)
 elseif(WGSE_CUDA)
-    set(gpu_sources seeding_host.cpp)
-    add_library(wgse_mem3_cuda STATIC cuda_extension.cu cuda_seeding.cu)
+    set(gpu_sources seeding_host.cpp rescue_host.cpp)
+    add_library(wgse_mem3_cuda STATIC cuda_extension.cu cuda_seeding.cu cuda_rescue.cu)
     target_include_directories(wgse_mem3_cuda PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
         "${CMAKE_CURRENT_SOURCE_DIR}/../gpu-common" "${CMAKE_CURRENT_SOURCE_DIR}/../bwa-mem2")
     target_compile_options(wgse_mem3_cuda PRIVATE
@@ -277,7 +298,7 @@ elseif(WGSE_CUDA)
     # The static runtime: the package needs only the NVIDIA driver.
     target_link_libraries(wgse_mem3_cuda PUBLIC CUDA::cudart_static)
 else()
-    set(gpu_sources gpu_none.cpp seeding_none.cpp)
+    set(gpu_sources gpu_none.cpp seeding_none.cpp rescue_host.cpp rescue_device_none.cpp)
 endif()
 mem3_core(wgse_mem3_core "${mem3_src}" "${mem3_src}/main.cpp" host_memory.cpp ${gpu_sources})
 target_include_directories(wgse_mem3_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -327,28 +348,31 @@ if(BUILD_TESTING)
     # interruption (Metal), and the CPU's after a GPU failure, must leave every record
     # unchanged. --gpu-seed-wait has each chunk use its GPU SMEMs, which --gpu-verify-seeds
     # compares with upstream's.
+    # Each test is NAME|OPTION|..., run with the GPU's option.
     if(APPLE)
         set(gpu metal)
-        set(parity_options --gpu-seed-wait --gpu-inject-interruptions 2)
+        set(gpu_specs "parity|--gpu-seed-wait|--gpu-inject-interruptions|2")
     elseif(WGSE_CUDA)
         set(gpu cuda)
-        set(parity_options --gpu-seed-wait)
+        # Mate rescue on the GPU (CUDA only): off, failed, and hung.
+        set(gpu_specs "parity|--gpu-seed-wait" "no_rescue_parity|--gpu-rescue|off"
+            "rescue_failure_parity|--gpu-inject-rescue-failure"
+            "rescue_watchdog|--gpu-inject-hang|rescue")
     endif()
     if(gpu)
+        list(APPEND gpu_specs "seed_verify|--gpu-seed-wait|--gpu-verify-seeds"
+            # Seed extension on the GPU without GPU seeding, as in 0.2.0.
+            "cpu_seeding_parity|--gpu-seed|off"
+            "failure_parity|--gpu-inject-extension-failure"
+            # A failed GPU seeding batch: the CPU seeds, and the run exits 1.
+            "seed_failure_parity|--gpu-seed-wait|--gpu-inject-seed-failure"
+            # Regression (#548): a GPU command that never completes is given up by the watchdog.
+            "watchdog|--gpu-inject-hang|extend"
+            # A hung GPU seeding command: the chunk waits for it, then the run goes on on the CPU.
+            "seed_watchdog|--gpu-seed-wait|--gpu-inject-hang|collect_smems")
         set(gpu_tests)
-        foreach(test IN ITEMS "parity;${parity_options}"
-                "seed_verify;--gpu-seed-wait;--gpu-verify-seeds"
-                # Seed extension on the GPU without GPU seeding, as in 0.2.0.
-                "cpu_seeding_parity;--gpu-seed;off"
-                "failure_parity;--gpu-inject-extension-failure"
-                # A failed GPU seeding batch: the CPU seeds, and the run exits 1.
-                "seed_failure_parity;--gpu-seed-wait;--gpu-inject-seed-failure"
-                # Regression (#548): a GPU command that never completes is given up by the
-                # watchdog.
-                "watchdog;--gpu-inject-hang;extend"
-                # A hung GPU seeding command: the chunk waits for it, then the run goes on on
-                # the CPU.
-                "seed_watchdog;--gpu-seed-wait;--gpu-inject-hang;collect_smems")
+        foreach(spec IN LISTS gpu_specs)
+            string(REPLACE "|" ";" test "${spec}")
             list(POP_FRONT test name)
             string(REPLACE "_" "-" directory "${gpu}-${name}")
             add_test(NAME bwa_mem3_${gpu}_${name}

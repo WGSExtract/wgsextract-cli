@@ -22,11 +22,14 @@ work=$3
 shift 3
 wgse_options="$*"
 
-# --metal and --cuda exit 1 after a GPU failure; --backend auto does not.
+# --metal and --cuda exit 1 after a GPU failure; --backend auto does not. Mate rescue (whose
+# failures --gpu-inject-rescue-failure and --gpu-inject-hang rescue inject) runs for pairs only.
+# Usage: expected_status TOOL ENDS
 expected_status() {
-    case "$1: $wgse_options " in
-    wgse:*" --gpu-inject-extension-failure "* | wgse:*" --gpu-inject-hang "* \
-        | wgse:*" --gpu-inject-seed-failure "*) case " $wgse_options " in
+    case "$1 $2: $wgse_options " in
+    "wgse se:"*" --gpu-inject-rescue-failure "* | "wgse se:"*" --gpu-inject-hang rescue "*) echo 0 ;;
+    wgse*" --gpu-inject-extension-failure "* | wgse*" --gpu-inject-hang "* \
+        | wgse*" --gpu-inject-seed-failure "* | wgse*" --gpu-inject-rescue-failure "*) case " $wgse_options " in
         *" --metal "* | *" --cuda "*) echo 1 ;;
         *) echo 0 ;;
         esac ;;
@@ -162,7 +165,7 @@ align() {
             # shellcheck disable=SC2086 # $2 holds mem options, $backend a few
             "$binary" $backend mem -t 4 $2 "$tool/reference.fa" $reads \
                 > "$tool.$1.$ends.sam" 2> "$tool.$1.$ends.log" || status=$?
-            [ "$status" -eq "$(expected_status "$tool")" ] || {
+            [ "$status" -eq "$(expected_status "$tool" "$ends")" ] || {
                 echo "$tool $1 $ends exited $status" >&2
                 exit 1
             }
@@ -199,13 +202,20 @@ case " $wgse_options " in
 *" --gpu-inject-hang "*)
     # The hung command's label (extend, or collect_smems for GPU seeding).
     label=$(echo " $wgse_options " | sed 's/.* --gpu-inject-hang \([^ ]*\) .*/\1/')
-    for log in wgse.*.log; do
+    if [ "$label" = rescue ]; then
+        for log in wgse.*.pe.log; do
+            grep -q 'CPU fallback: GPU mate rescue failed: GPU watchdog: a CUDA command (rescue)' "$log"
+        done
+    else for log in wgse.*.log; do
         grep -Eq "CPU fallback: GPU seed extension failed \(GPU watchdog: a (Metal|CUDA) command \($label" \
             "$log"
         if [ "$label" = collect_smems ]; then
             grep -q 'CPU fallback: GPU seeding failed: GPU watchdog' "$log"
         fi
-    done ;;
+    done; fi ;;
+*" --gpu-inject-rescue-failure "*)
+    # The CPU rescues mates instead.
+    for log in wgse.*.pe.log; do grep -q 'CPU fallback: GPU mate rescue failed: injected' "$log"; done ;;
 *" --gpu-inject-seed-failure "*)
     # The CPU seeds instead; the GPU still extends seeds.
     for log in wgse.*.log; do
@@ -230,6 +240,11 @@ case " $wgse_options " in
         *" --gpu-verify-seeds "*) grep -q ' seed_mismatches=0 ' "$log" ;;
         esac
     done
+    # With CUDA, the GPU rescues mates of pairs unless --gpu-rescue off.
+    case " $wgse_options " in
+    *" --gpu-rescue off "*) if grep -q 'rescue_calls=' wgse.*.log; then exit 1; fi ;;
+    *" --cuda "*) for log in wgse.*.pe.log; do grep -Eq 'rescue_gpu_pairs=[1-9]' "$log"; done ;;
+    esac
     # Reads over 512 bases, and with more SMEMs than the GPU keeps, are seeded on the CPU.
     case " $wgse_options " in
     *" --gpu-seed-wait "*)

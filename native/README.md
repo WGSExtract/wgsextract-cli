@@ -1023,35 +1023,43 @@ picked at run time. It doesn't replace `malloc` with mimalloc, as Bioconda's
 build does (#727). It isn't packaged yet: `packaging/wgse-bwa` leaves it out
 (`-DWGSE_BWA_MEM3=OFF`).
 
-With `-DWGSE_CUDA=ON`, `--cuda` (`--backend cuda`, experimental) runs the
-Metal backend's two GPU stages on an NVIDIA GPU, with the same scheduling:
+With `-DWGSE_CUDA=ON`, `--cuda` (`--backend cuda`, experimental) runs three
+stages on an NVIDIA GPU:
 
 - **SMEM collection:** `bwa-mem2/seeding.cuh`, ported from `seeding.metal`.
   `seeding_host.cpp` schedules it for both backends. The occurrence table,
   about 6 GiB for hs38, is uploaded once.
 - **8-bit seed extension:** `extension.cuh`, ported from `extension.metal`. It is
   hooked into upstream's SSE, AVX2 and AVX-512 `getScores8`, as well as NEON's.
+- **8-bit mate rescue (CUDA only):** the pairs of `mem_sam_pe_batch`'s 8-bit
+  kswv run `wgse-bwa`'s `ksw_align2` kernel (`bwa/rescue.cuh`), both passes at
+  once (`rescue_host.cpp`, `cuda_rescue.cu`). kswv scores the rest, such as
+  16-bit windows and pairs whose query is over 256 bases. Each worker thread
+  has its own CUDA stream. `--gpu-rescue off` leaves rescue on the CPU.
 
 `--cuda` runs one compute thread per `-t` thread by default. More threads than
 cores were slower on x86-64.
 
-The full-5m tier on the same machine (8 threads, two interleaved rounds, medians):
+The full-5m tier on the same machine (8 threads, two interleaved rounds, means):
 
 | | Wall | CPU time | Peak RSS | Records |
 | --- | ---: | ---: | ---: | --- |
 | `wgse-bwa --cuda` | 130.5 s | 1003 s | 6.3 GiB | BWA's |
-| `wgse-bwa-mem3` | 98.0 s | 761 s | 10.5 GiB | bwa-mem3's |
-| `wgse-bwa-mem3 --cuda` | 89.3 s (−9%) | 543 s | 10.9 GiB | bwa-mem3's |
-| `wgse-bwa-mem3 mem --compat=bwa-mem` | 97.7 s | 761 s | 10.5 GiB | BWA's |
-| `wgse-bwa-mem3 --cuda mem --compat=bwa-mem` | 91.8 s (−6%) | 559 s | 10.9 GiB | BWA's |
+| `wgse-bwa-mem3` | 99.1 s | 770 s | 10.5 GiB | bwa-mem3's |
+| `wgse-bwa-mem3 --cuda --gpu-rescue off` | 91.1 s (−8%) | 554 s | 10.9 GiB | bwa-mem3's |
+| `wgse-bwa-mem3 --cuda` | 84.5 s (−15%) | 408 s (−47%) | 10.9 GiB | bwa-mem3's |
+| `wgse-bwa-mem3 mem --compat=bwa-mem` | 106.6 s | 813 s | 10.5 GiB | BWA's |
+| `wgse-bwa-mem3 --cuda mem --compat=bwa-mem` | 83.7 s (−21%) | 405 s (−50%) | 10.9 GiB | BWA's |
 
 The records match `expected.tsv`: bwa-mem3's own, and with `--compat=bwa-mem`,
-BWA's. `--cuda` used at most 6.2 GiB of GPU memory.
+BWA's. `--cuda` used at most 6.3 GiB of GPU memory. The CPU `--compat` run of
+the first round was slower than the second (114.6 s against 98.5 s).
 
 On x86-64, `perf` puts a fifth of the CPU backend's time in mate rescue
 (`kswv`), more than a quarter in SMEM collection, a tenth in suffix-array
-lookups and an eighth in the 8-bit extension. Mate rescue and suffix-array
-lookups stay on the CPU, so the GPU saves more CPU time than wall time.
+lookups and an eighth in the 8-bit extension. Suffix-array lookups stay on the
+CPU: the sampled suffix array would add about 4 GiB of GPU memory to the
+occurrence table's 6 GiB.
 
 ## Building
 
@@ -1073,7 +1081,9 @@ which need the CUDA toolkit (`nvcc` and the static runtime, for example conda-fo
 ones; `-DCMAKE_CUDA_ARCHITECTURES` overrides this. A GPU the build has no
 kernels for (such as Pascal or Volta, by default) is never selected, and
 `capabilities --json` reports it unavailable and unsupported. The GPU parity tests run with
-whichever GPU backend the build and machine have.
+whichever GPU backend the build and machine have. CI's runners have no NVIDIA GPU:
+`.github/workflows/linux_aligners.yml` compiles the CUDA backends (`cuda-build`)
+but can't run their tests.
 
 `-DBUILD_TESTING=OFF` builds the release executables without tests or the
 hidden GPU tuning flags. The public `--dense-sa on|off` switch remains

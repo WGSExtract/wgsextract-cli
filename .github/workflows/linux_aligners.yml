@@ -45,6 +45,32 @@ jobs:
           cmake --build out/build-test -j "$(nproc)"
           ctest --test-dir out/build-test --output-on-failure
 
+  # The CUDA backends (wgse-bwa and wgse-bwa-mem3) with their tests, compiled only: the
+  # runner has no GPU, so their GPU tests would skip. The packages build wgse-bwa's alone.
+  cuda-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Pixi
+        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+        with:
+          run-install: false
+
+      - name: Build with -DWGSE_CUDA=ON
+        run: |
+          pixi exec --spec "cuda-nvcc 12.9.*" --spec "cuda-cudart-dev 12.9.*" \
+            --spec "cuda-cudart-static 12.9.*" -- bash -euo pipefail -c '
+              nvcc --version | tail -1
+              cmake -S native -B out/build-cuda -DCMAKE_BUILD_TYPE=Release -DWGSE_CUDA=ON \
+                -DCMAKE_CUDA_COMPILER="$(command -v nvcc)" -DCMAKE_CUDA_HOST_COMPILER=g++ \
+                -DCUDAToolkit_ROOT="$(dirname "$(dirname "$(command -v nvcc)")")" \
+                -DFETCHCONTENT_BASE_DIR="$PWD/out/deps"
+              cmake --build out/build-cuda -j "$(nproc)"
+              out/build-cuda/bwa-mem3/wgse-bwa-mem3 capabilities --json
+              out/build-cuda/bwa-mem3/wgse-bwa-mem3 capabilities --json | grep -q "\"cuda_available\":false"'
+
   build:
     strategy:
       fail-fast: false
