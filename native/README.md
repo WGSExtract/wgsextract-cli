@@ -30,7 +30,9 @@ printed by `--version`.
 ## Installing
 
 The `macos-aligners-16` (Apple Silicon) and `linux-aligners-1` (Linux x86-64
-and ARM64) prereleases have `wgse-bwa` 0.12.1. Earlier published `wgse-bwa`
+and ARM64) prereleases have `wgse-bwa` 0.12.1. The steps below install the
+Apple Silicon executables; on Linux, see
+[Linux x86-64 and NVIDIA GPUs](#linux-x86-64-and-nvidia-gpus-cuda). Earlier published `wgse-bwa`
 executables, 0.11.0 and 0.12.0, advertise dense suffix-array support but reject
 `--dense-sa`. The CLI omits that option for those versions, so alignment works
 when no dense side file is present. With a side file it refuses: those builds
@@ -982,9 +984,9 @@ PKG=wgse-bwa-0.12.1-linux64_wgse_0.conda   # wgse-bwa-0.12.1-linuxaarch64_wgse_0
 gh release download linux-aligners-1 -R WGSExtract/wgsextract-cli -p "$PKG"
 gh release view linux-aligners-1 -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
-  sha256sum -c --ignore-missing
-conda create -y -n wgse-bwa -c conda-forge "libgcc>=14" "libstdcxx>=14" "libzlib>=1.3.2,<2"
-conda install -y -n wgse-bwa "./$PKG"
+  sha256sum -c --ignore-missing &&
+conda create -y -n wgse-bwa -c conda-forge "libgcc>=14" "libstdcxx>=14" "libzlib>=1.3.2,<2" &&
+conda install -y -n wgse-bwa "./$PKG" &&
 export PATH="$(conda run -n wgse-bwa printenv CONDA_PREFIX)/bin:$PATH"
 ```
 
