@@ -7,11 +7,15 @@ FetchContent_Declare(mem3
     URL https://github.com/fg-labs/bwa-mem3/archive/refs/tags/v0.16.0.tar.gz
     URL_HASH SHA256=28f7e4be7cf359e97b59f2925bb67b27905058c13e6c8af08507b13f2c10662c
     SOURCE_SUBDIR unused)
-# A newer sse2neon than the one bwa-mem2 and minimap2 declare as "neon".
-FetchContent_Declare(mem3_neon
-    URL https://github.com/DLTcollab/sse2neon/archive/92f6de174717aef09033ad21568d5bb9e5470404.tar.gz
-    URL_HASH SHA256=c6b1abea2debdd534a3845e9079a99cac1c585ded4f8822676e6734ff3d55acb
-    SOURCE_SUBDIR unused)
+# A newer sse2neon than the one bwa-mem2 and minimap2 declare as "neon" (Apple Silicon only:
+# x86-64 builds use the SSE and AVX intrinsics themselves).
+if(APPLE)
+    FetchContent_Declare(mem3_neon
+        URL https://github.com/DLTcollab/sse2neon/archive/92f6de174717aef09033ad21568d5bb9e5470404.tar.gz
+        URL_HASH SHA256=c6b1abea2debdd534a3845e9079a99cac1c585ded4f8822676e6734ff3d55acb
+        SOURCE_SUBDIR unused)
+    FetchContent_MakeAvailable(mem3_neon)
+endif()
 FetchContent_Declare(mem3_libsais
     URL https://github.com/IlyaGrebnov/libsais/archive/1a696e600ec62ef7900d77c00af6d76983f7a658.tar.gz
     URL_HASH SHA256=b04859f4f312bfe91a18c7973be1c2c7487f6871ae49fcce5d7572cf541c9816
@@ -35,7 +39,7 @@ set(ZLIBNG_ENABLE_TESTS OFF)
 set(WITH_GTEST OFF)
 set(BUILD_SHARED_LIBS OFF)
 set(SKIP_INSTALL_ALL ON)
-FetchContent_MakeAvailable(mem3 mem3_neon mem3_libsais mem3_mimalloc mem3_zlibng mem3_libdeflate)
+FetchContent_MakeAvailable(mem3 mem3_libsais mem3_mimalloc mem3_zlibng mem3_libdeflate)
 
 # Bump when the wgse-bwa-mem3 package changes; it is versioned separately from bwa-mem3.
 set(WGSE_BWA_MEM3_VERSION 0.4.0)
@@ -75,8 +79,12 @@ if(NOT APPLE)
     string(APPEND htslib_ldflags " -L${zlib_lib_dir}")
 endif()
 file(MAKE_DIRECTORY "${htslib_dir}")
+# A local copy of the same tarball for offline builds (the conda package's).
+set(WGSE_MEM3_HTSLIB_URL
+    "https://github.com/samtools/htslib/releases/download/1.21/htslib-1.21.tar.bz2"
+    CACHE STRING "Where to get htslib 1.21's release tarball (a URL or a local path)")
 ExternalProject_Add(mem3_htslib_build
-    URL https://github.com/samtools/htslib/releases/download/1.21/htslib-1.21.tar.bz2
+    URL "${WGSE_MEM3_HTSLIB_URL}"
     URL_HASH SHA256=84b510e735f4963641f26fd88c8abdee81ff4cb62168310ae716636aac0f1823
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     SOURCE_DIR "${htslib_dir}"
@@ -227,7 +235,8 @@ file(WRITE "${mem3_src}/bandedSWA.cpp" "#include \"metal_extension.h\"\n${bsw_so
 # GPU seeding (--metal, --cuda): wgse-bwa-mem2's seeding.metal (seeding.cuh) collects
 # mem_collect_smem's SMEMs on the GPU, from the occurrence table in place on Metal (so it is
 # allocated page-aligned), from a copy on CUDA.
-set(mem2_dir "${CMAKE_CURRENT_SOURCE_DIR}/../bwa-mem2")
+# Normalized: Ninja rejects the same configure dependency under two spellings.
+cmake_path(SET mem2_dir NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../bwa-mem2")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${mem2_dir}/seeding_types.h" "${mem2_dir}/seeding.metal")
 file(READ "${mem2_dir}/seeding_types.h" seeding_types)
@@ -405,7 +414,9 @@ set(licenses share/licenses/wgse-bwa-mem3)
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../../LICENSE" DESTINATION ${licenses}
     RENAME WGSE-LICENSE)
 install(FILES "${mem3_SOURCE_DIR}/LICENSE" DESTINATION ${licenses} RENAME BWA-MEM3-LICENSE)
-install(FILES "${mem3_neon_SOURCE_DIR}/LICENSE" DESTINATION ${licenses} RENAME sse2neon-LICENSE)
+if(APPLE)
+    install(FILES "${mem3_neon_SOURCE_DIR}/LICENSE" DESTINATION ${licenses} RENAME sse2neon-LICENSE)
+endif()
 install(FILES "${mem3_libsais_SOURCE_DIR}/LICENSE" DESTINATION ${licenses} RENAME libsais-LICENSE)
 install(FILES "${mem3_mimalloc_SOURCE_DIR}/LICENSE" DESTINATION ${licenses}
     RENAME mimalloc-LICENSE)
@@ -417,3 +428,8 @@ install(FILES "${htslib_dir}/LICENSE" DESTINATION ${licenses} RENAME htslib-LICE
 # htslib's CRAM codecs (rANS, arithmetic coder, ...) come from its bundled htscodecs.
 install(FILES "${htslib_dir}/htscodecs/LICENSE.md" DESTINATION ${licenses}
     RENAME htscodecs-LICENSE)
+if(WGSE_CUDA)
+    # The CUDA mate rescue runs wgse-bwa's kernel, adapted from BWA's ksw.c.
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../bwa/SEEDING-LICENSE" DESTINATION ${licenses}
+        RENAME BWA-KERNELS-LICENSE)
+endif()

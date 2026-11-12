@@ -190,6 +190,45 @@ They are close to the chr20-only result on the same Mac (SNPs 0.9932 recall,
 0.9746 precision; indels 0.9498 and 0.9496). Google's DeepVariant image can't
 run on a Mac (see above).
 
+## Native DeepVariant
+
+The native engine needs no Docker. On this 16 GiB M1, the released
+**wgse-deepvariant 0.1.1** (`macos-deepvariant-2`, DeepVariant 1.10.0) ran
+HG002 NovaSeq PCR-free 35x chr20 through `vcf deepvariant -t 6 -r chr20`,
+with the automatically selected **Metal FP32 batch 512**:
+
+| Stage | Wall seconds | Peak RSS, decimal GB |
+| :--- | ---: | ---: |
+| make_examples | 233.32 | 0.339 |
+| call_variants | 172.30 | 2.244 |
+| postprocess_variants | 1.46 | 0.735 |
+| CLI end-to-end | **408.93 (6m49s)** | 2.244 maximum child RSS |
+
+`/usr/bin/time -l` also measured **6.557 GB peak memory footprint** during
+inference: RSS alone understates Metal's unified-memory use. Swap-outs did
+not increase; pre-existing used swap stayed at 1374.69 MiB.
+RTG Tools 3.13 against GIAB v4.2.1 inside its confident BED gave
+**SNP F1 0.997409 and indel F1 0.995993**, identical to the earlier 0.1.0
+chr20 and same-input Linux/Docker control scored the same way. These are
+RTG results, not hap.py scores.
+
+The whole-genome run already in progress when 0.1.1 was released was allowed
+to finish with **0.1.0**. Its measured CLI wall time was **13,748.78 s
+(3h49m09s)**. Scaling that by the measured chr20 ratio
+`408.93 / 413.83 = 0.9882` gives a **0.1.1 whole-genome projection of about
+3h46m**, not a measured 0.1.1 whole-genome time or accuracy qualification.
+Allow extra time for other inputs, desktop activity and thermal variation.
+
+For capacity planning, the **0.1.0** whole-genome run needed 17.3 GB of
+allocated workspace before cleanup, plus the 46.0 GB input BAM and reference.
+Its largest stage RSS was 3.70 GB during postprocessing; inference's peak
+footprint was 5.26 GB. Native calling produced no additional swap-outs.
+The separate genome-wide RTG evaluation later increased used swap by about
+265 MiB. The conservative preflight allowances are retained, rather than
+lowered from this one sample; the 0.1.1 chr20 workspace was 0.843 GB.
+Version-labelled measurements, evaluation commands and evidence are in
+[#721](https://github.com/WGSExtract/wgsextract-cli/issues/721).
+
 ## `wgse-bwa` or `wgse-bwa-mem3`
 
 On Macs with room for it, `wgse-bwa-mem3` aligns 1.8 times as fast as

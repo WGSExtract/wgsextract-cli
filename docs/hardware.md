@@ -121,6 +121,15 @@ glibc 2.39 (#727). The CLI's version check catches that: standing in, it warns
 or bwa-mem2 aligns; `--aligner bwa-mem3` and `--fast` stop before aligning
 with an error that says so.
 
+On Linux x86-64, WGS Extract's `wgse-bwa-mem3` 0.4.0 or later (bwa-mem3 0.16.0
+without that allocator, from the `linux-aligners-*` prereleases; see
+[native/README.md](../native/README.md#wgse-bwa-mem3-on-linux-x86-64)) stands
+in the same way, ahead of Bioconda's, when it's on `PATH`. It runs
+`--backend auto`: on an NVIDIA GPU when its capabilities report
+`cuda_available` (**experimental**: seeding, seed extension and mate rescue),
+otherwise on the CPU, with the same records either way. The manifest records
+`native_aligner` `wgse-bwa-mem3` and `native_aligner_backend` `cuda` or `cpu`.
+
 ### Threads and memory
 
 - `--threads` (or `threads` in `config.toml`) defaults to `auto`: all cores, or
@@ -211,10 +220,17 @@ It writes bwa's exact alignments and is **experimental**.
   It uses the GPU when its capabilities report `cuda_available`, and otherwise
   aligns on the CPU. If the GPU fails during a run, it finishes on the CPU with
   the same alignments.
-- **Order on Linux (bwa's records):** `wgse-bwa` on the GPU when it fits in
-  RAM; otherwise [bwa-mem3](#bwa-mem3-on-linux) `--compat=bwa-mem` when it's
-  installed and fits; otherwise `wgse-bwa` on the CPU; otherwise bwa. All write
-  the same records.
+- **Order on Linux (bwa's records):** [bwa-mem3](#bwa-mem3-on-linux)
+  `--compat=bwa-mem` (`wgse-bwa-mem3`, on its own GPU, else Bioconda's) when
+  it's installed, runs and fits; otherwise `wgse-bwa`
+  on the GPU when it fits in RAM; otherwise `wgse-bwa` on the CPU; otherwise
+  bwa. All write the same records. bwa-mem3 goes first even with a GPU: on an
+  RTX 3090 with a Ryzen 5 5600X (5M HG002 pairs on hs38, 8 threads), bwa-mem3
+  0.16.0 `--compat=bwa-mem` on the CPU took 97.7 s (761 s of CPU time) and
+  `wgse-bwa --cuda` 131.4 s (1006 s), against upstream bwa's 472.5 s, all with
+  bwa's records (**measured**, #674/#736; bwa-mem3 as `wgse-bwa-mem3`, the same
+  engine built without Bioconda's malloc override, which crashes on that
+  host's glibc 2.44).
 - **What it needs:** only the NVIDIA driver; no Docker and no Parabricks
   licence. It checks the GPU's free memory before uploading the index (about
   4.7 GiB for hs38). It needs about 0.75 GiB more RAM than bwa, and the same
