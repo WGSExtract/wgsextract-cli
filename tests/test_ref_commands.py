@@ -562,6 +562,27 @@ def test_library_install_falls_back_to_the_next_mirror(
 
 
 @needs_library_tools
+@pytest.mark.parametrize("pinned", ["match", "mismatch"])
+def test_issue_701_a_pinned_mirror_is_used_only_when_its_sha256_matches(
+    tmp_path, server, catalog, pinned
+):
+    """Our GitHub copy comes first and is pinned by SHA-256 in the catalog; a
+    copy that doesn't match is not installed, and the original source is."""
+    sha256 = hashlib.sha256(TINY_FA_GZ).hexdigest()
+    catalog += [
+        _genome(server, "hs38", "github/hs38.fa.gz")
+        | {"sha256": sha256 if pinned == "match" else "0" * 64},
+        _genome(server, "hs38", "origin/hs38.fa.gz"),
+    ]
+
+    _install(tmp_path, "hs38")
+
+    _assert_installed(tmp_path, "hs38.fa.gz")
+    used = ["github/hs38.fa.gz"] if pinned == "match" else ["origin/hs38.fa.gz"]
+    assert [p for p in server.paths if p.endswith(".fa.gz")][-1:] == used
+
+
+@needs_library_tools
 def test_a_later_mirror_replaces_a_corrupt_installed_genome(tmp_path, server, catalog):
     """The first mirror only re-indexes an installed genome; when that fails,
     the next one downloads it afresh rather than re-indexing the same file."""
