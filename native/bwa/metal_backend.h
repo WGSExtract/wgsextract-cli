@@ -50,6 +50,11 @@ int wgse_metal_pair(const mem_opt_t *opt, const bntseq_t *bns, const uint8_t *pa
 // exactly these inputs for the pair this thread is finishing.
 int wgse_metal_matesw(const mem_opt_t *opt, const uint8_t *ms, uint8_t *seq, int l_ms,
     uint8_t *ref, int is_rev, int64_t rb, int64_t re, int xtra, kswr_t *aln);
+// mem_matesw()'s ksw_align2() for a window no batch aligned: upstream's on the
+// rows bwa-mem3's exact pruning keeps, or a result mem_matesw() drops when it
+// proves no row yields one it keeps (upstream's on every row with --cpu-upstream).
+kswr_t wgse_rescue_align(const mem_opt_t *opt, int l_ms, uint8_t *seq, int tlen,
+    uint8_t *ref, int xtra);
 
 // Appended to the generated bwamem_pair.c: reports each mate-rescue alignment
 // mem_sam_pe() may run for the pair, with mem_matesw()'s inputs.

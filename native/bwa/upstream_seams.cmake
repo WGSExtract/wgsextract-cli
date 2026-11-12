@@ -53,7 +53,7 @@ file(WRITE "${generated}/bwamem.c"
 file(READ "${bwa_SOURCE_DIR}/bwamem_pair.c" pair_source)
 set(rescue_call "aln = ksw_align2(l_ms, seq, re - rb, ref, 5, opt->mat, opt->o_del, opt->e_del, opt->o_ins, opt->e_ins, xtra, 0);")
 seam_replace(pair_source "${rescue_call}"
-    "if (!wgse_metal_matesw(opt, ms, seq, l_ms, ref, is_rev, rb, re, xtra, &aln))\n\t\t\t\t${rescue_call}")
+    "if (!wgse_metal_matesw(opt, ms, seq, l_ms, ref, is_rev, rb, re, xtra, &aln))\n\t\t\t\taln = wgse_rescue_align(opt, l_ms, seq, re - rb, ref, xtra);")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/rescue_oracle.c.in" rescue_source)
 file(WRITE "${generated}/bwamem_pair.c"
     "#include \"metal_backend.h\"\n${pair_source}\n${rescue_source}")
