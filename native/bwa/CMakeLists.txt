@@ -8,7 +8,7 @@ FetchContent_Declare(bwa
 FetchContent_MakeAvailable(bwa)
 
 # Bump when the wgse-bwa package changes; it is versioned separately from BWA.
-set(WGSE_BWA_VERSION 0.11.0)
+set(WGSE_BWA_VERSION 0.12.0)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${generated}")
 include("${CMAKE_CURRENT_SOURCE_DIR}/upstream_seams.cmake")
@@ -51,6 +51,8 @@ target_compile_options(wgse_bwa_smem PRIVATE -Wall -Wextra -Werror)
 set(device_sources)
 if(APPLE)
     list(APPEND device_sources metal_device.mm)
+elseif(WGSE_CUDA)
+    list(APPEND device_sources cuda_device.cu)
 endif()
 add_library(wgse_bwa_core STATIC ${bwa_sources} backend.cpp ${device_sources}
     $<TARGET_OBJECTS:wgse_bwa_smem>)
@@ -72,6 +74,14 @@ endif()
 if(APPLE)
     target_compile_definitions(wgse_bwa_core PRIVATE WGSE_HAVE_METAL=1)
     target_link_libraries(wgse_bwa_core PUBLIC wgse_metal_common)
+elseif(WGSE_CUDA)
+    target_compile_definitions(wgse_bwa_core PRIVATE WGSE_HAVE_CUDA=1)
+    target_include_directories(wgse_bwa_core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../gpu-common")
+    target_compile_options(wgse_bwa_core PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:--Werror=all-warnings -Xcompiler=-Wall,-Wextra>)
+    # The static runtime needs only the NVIDIA driver at run time; without one,
+    # the CUDA backend reports itself unavailable.
+    target_link_libraries(wgse_bwa_core PUBLIC CUDA::cudart_static)
 endif()
 
 add_executable(wgse-bwa main.cpp)
@@ -100,6 +110,12 @@ if(BUILD_TESTING)
             $<TARGET_FILE:wgse-bwa> $<TARGET_FILE:seeding_benchmark>
             "${CMAKE_CURRENT_BINARY_DIR}/seeding-parity")
         set_tests_properties(bwa_metal_seeding_parity PROPERTIES SKIP_RETURN_CODE 77)
+    else()
+        # Without the Metal benchmark ("-"), the aligner's output is checked.
+        add_test(NAME bwa_gpu_seeding_parity
+            COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/seeding_parity.sh"
+            $<TARGET_FILE:wgse-bwa> - "${CMAKE_CURRENT_BINARY_DIR}/seeding-parity")
+        set_tests_properties(bwa_gpu_seeding_parity PROPERTIES SKIP_RETURN_CODE 77)
     endif()
     add_executable(ksw_batch_check tests/ksw_batch_check.c)
     target_compile_options(ksw_batch_check PRIVATE -Wall -Wextra -Werror)
@@ -109,18 +125,18 @@ if(BUILD_TESTING)
     target_compile_options(extend_neon_check PRIVATE -Wall -Wextra -Werror)
     target_link_libraries(extend_neon_check PRIVATE wgse_bwa_core)
     add_test(NAME bwa_extend_neon COMMAND extend_neon_check 200000)
-    add_test(NAME bwa_metal_rescue_parity
+    add_test(NAME bwa_gpu_rescue_parity
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/rescue_parity.sh"
         $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/rescue-parity")
     add_test(NAME bwa_metal_watchdog
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/rescue_parity.sh"
         $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/watchdog" watchdog)
-    add_test(NAME bwa_metal_extend_parity
+    add_test(NAME bwa_gpu_extend_parity
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/extend_parity.sh"
         $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/extend-parity")
     # Exit 77 means the machine has no unified-memory Metal device.
-    set_tests_properties(bwa_smoke bwa_metal_rescue_parity bwa_metal_watchdog
-        bwa_metal_extend_parity PROPERTIES SKIP_RETURN_CODE 77)
+    set_tests_properties(bwa_smoke bwa_gpu_rescue_parity bwa_metal_watchdog
+        bwa_gpu_extend_parity PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
 install(TARGETS wgse-bwa RUNTIME DESTINATION bin)
