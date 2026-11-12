@@ -48,11 +48,10 @@ from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.progress import ContigProgress
 from wgsextract_cli.core.reference_assets import read_fai_lengths
 from wgsextract_cli.core.reference_resolver import header_contig_lengths
+from wgsextract_cli.core.resource_estimates import bcftools_batches as _batches
 from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 
-# Jobs per worker that small contigs are grouped into; see _batches.
-_JOBS_PER_WORKER = 16
 # htslib's errmod_cal shuffles (draws for) a column's bases above 255.
 _DRAW_DEPTH = 256
 # Below this many bases a column's alive reads stay under mpileup's -d 250
@@ -91,26 +90,6 @@ def _bam_contigs(alignment: str, names: list[str]) -> set[str]:
         logging.debug("Calling every contig: idxstats failed: %s", error)
         return set(names)
     return mapped & set(names)
-
-
-def _batches(contigs: dict[str, int], workers: int) -> list[dict[str, int]]:
-    """Consecutive contigs grouped into jobs of at least 1/16 of a worker's
-    share of the bases, so thousands of small contigs (decoys, HLA, ALTs)
-    don't each start a pipeline. A contig that size or larger is its own job."""
-    limit = max(1, sum(contigs.values()) // (workers * _JOBS_PER_WORKER))
-    batches: list[dict[str, int]] = []
-    batch: dict[str, int] = {}
-    for name, length in contigs.items():
-        if length >= limit:
-            batches += [batch] if batch else []
-            batches.append({name: length})
-            batch = {}
-            continue
-        batch[name] = length
-        if sum(batch.values()) >= limit:
-            batches.append(batch)
-            batch = {}
-    return batches + ([batch] if batch else [])
 
 
 def _parallel_contigs(

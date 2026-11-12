@@ -6,7 +6,9 @@ the suffix-array position of every ``interval``-th row (0.8 GB for hs38 at
 alignments, and holds the file in RAM. WGS Extract never builds or uses it
 unless asked: ``ref dense-sa`` builds it, and ``align``/``realign`` read it
 only with ``--dense-suffix-array`` or config ``dense_suffix_array = true``;
-otherwise they tell wgse-bwa ``--dense-sa off``.
+otherwise they tell supported builds ``--dense-sa off``. Production 0.11.0
+and 0.12.0 cannot disable automatic reading, so alignment refuses those
+builds when a side file is present.
 """
 
 from __future__ import annotations
@@ -17,9 +19,12 @@ import re
 import struct
 import subprocess
 from functools import lru_cache
+from glob import escape
 from pathlib import Path
+from shlex import quote
 
 from wgsextract_cli.core.native_aligners import (
+    DENSE_SA_OPTION_VERSION,
     DENSE_SA_VERSION,
     INSTALL_HINT,
     NativeAligner,
@@ -27,6 +32,7 @@ from wgsextract_cli.core.native_aligners import (
     installed_build,
 )
 from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.utils import UsageError
 
 DEFAULT_INTERVAL = 16
 # Powers of two below BWA's default sample interval (32).
@@ -47,7 +53,7 @@ def side_files(ref: str) -> list[Path]:
     """``ref``'s side files, densest first."""
     found = []
     name = Path(ref).name
-    for path in Path(ref).parent.glob(f"{name}.wgse-sa*"):
+    for path in Path(ref).parent.glob(f"{escape(name)}.wgse-sa*"):
         match = _NAME.fullmatch(path.name.removeprefix(name))
         if match and path.is_file():
             found.append((int(match[1]), path))
@@ -169,7 +175,22 @@ def for_alignment(
     or None. When ``enabled`` but it can't be used (no wgse-bwa, too old, no
     file, or wgse-bwa won't read it), warn (dense_suffix_array_unused) and
     align without it. ``quiet`` probes a candidate without warning before the
-    aligner is chosen."""
+    aligner is chosen. A legacy build that cannot disable automatic reading
+    refuses when any side file exists, including when ``enabled`` is false."""
+    if (
+        native is not None
+        and native.reads_dense_sa
+        and not native.supports_dense_sa_option
+        and (present := side_files(ref))
+    ):
+        minimum = ".".join(map(str, DENSE_SA_OPTION_VERSION))
+        raise UsageError(
+            f"wgse-bwa {native.version} cannot disable automatic dense suffix-array "
+            f"loading, but {present[0]} is present. Upgrade wgse-bwa to {minimum} "
+            "or later, or remove the side files with "
+            f"`wgsextract ref dense-sa --ref {quote(ref)} --delete`; otherwise their "
+            "memory use cannot follow this run's dense-suffix-array setting."
+        )
     if not enabled:
         return None
     command = f"wgsextract ref dense-sa --ref {ref}"

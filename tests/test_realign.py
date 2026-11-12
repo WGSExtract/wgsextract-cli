@@ -935,7 +935,9 @@ def _dying_tools(tmp_path, log):
     return shims
 
 
-def _realign_cli(argv, shims, die=None, signal="9"):
+def _realign_cli(
+    argv, shims, die=None, signal="9", available_memory=None, effective_uid=None
+):
     import os
     import subprocess
     import sys
@@ -944,8 +946,25 @@ def _realign_cli(argv, shims, die=None, signal="9"):
         (shims.parent / "die").write_text(die + "\n")
         (shims.parent / "signal").write_text(signal + "\n")
     env = {**os.environ, "PATH": f"{shims}{os.pathsep}{os.environ['PATH']}"}
+    command = [sys.executable, "-m", "wgsextract_cli.main"]
+    if available_memory is not None or effective_uid is not None:
+        # OS boundary: force file extraction, as on a 16 GB Mac with apps open.
+        setup = "import runpy; "
+        if available_memory is not None:
+            setup += (
+                "import psutil; memory = psutil.virtual_memory(); "
+                f"psutil.virtual_memory = lambda: memory._replace(available={available_memory}); "
+            )
+        if effective_uid is not None:
+            # OS boundary: simulate a foreign owner without privileged chown.
+            setup += f"import os; os.geteuid = lambda: {effective_uid}; "
+        command = [
+            sys.executable,
+            "-c",
+            setup + "runpy.run_module('wgsextract_cli.main', run_name='__main__')",
+        ]
     with subprocess.Popen(
-        [sys.executable, "-m", "wgsextract_cli.main", "realign", *argv],
+        [*command, "realign", *argv],
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -1018,6 +1037,87 @@ def test_a_run_killed_mid_step_resumes_there_with_identical_output(
     again, calls = realign_to(out)
     assert again.returncode == 0 and "bwa mem" not in calls
     assert not any(call.endswith(" index") for call in calls)
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="bash PATH shims")
+@needs_tools("bwa", "samtools")
+@pytest.mark.parametrize(
+    "cache_state,temp_alias",
+    [
+        ("valid", False),
+        ("truncated", False),
+        ("valid", True),
+        ("writable-directory", False),
+        ("writable-file", False),
+        ("foreign-owner", False),
+        ("unsafe-temp-root", False),
+        ("sticky-temp-root", False),
+    ],
+)
+def test_722_sigint_resume_reuses_valid_retained_temp_fastqs(
+    tmp_path, genome_and_ref, cache_state, temp_alias
+):
+    genome, ref = genome_and_ref
+    source, _ = _old_alignment(tmp_path, genome)
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    if temp_alias:
+        alias = tmp_path / "scratch-alias"
+        alias.symlink_to(scratch, target_is_directory=True)
+        scratch = alias
+    shims = _dying_tools(tmp_path, tmp_path / "calls.log")
+
+    def run(outdir, die=None, effective_uid=None):
+        argv = [
+            "--input", str(source), "--ref", ref, "--outdir", str(outdir),
+            "--tmp-dir", str(scratch), "--threads", "2", "--memory", "64M",
+            "--native-aligners", "off", "--sample", "Ann", "--json",
+        ]  # fmt: skip
+        return _realign_cli(
+            argv,
+            shims,
+            die,
+            "INT",
+            available_memory=1024**3,
+            effective_uid=effective_uid,
+        )
+
+    clean = run(tmp_path / "clean")
+    assert clean.returncode == 0, clean.stderr
+    out = tmp_path / "out"
+    stopped = run(out, die="bwa mem")
+    assert stopped.returncode == 130, stopped.stderr
+    journal_path = out / "x_aligned.bam.steps.json"
+    extraction = json.loads(journal_path.read_text())["steps"]["extract"]
+    assert extraction["status"] == "complete"
+    retained = [Path(item["path"]) for item in extraction["outputs"]]
+    assert all(path.is_file() for path in retained)
+    if cache_state == "truncated":
+        retained[0].write_bytes(b"")
+    elif cache_state == "writable-directory":
+        retained[0].parent.chmod(0o777)
+    elif cache_state == "writable-file":
+        retained[0].chmod(0o666)
+    elif cache_state == "unsafe-temp-root":
+        scratch.chmod(0o777)
+    elif cache_state == "sticky-temp-root":
+        scratch.chmod(0o1777)
+
+    resumed = run(
+        out,
+        effective_uid=os.geteuid() + 1 if cache_state == "foreign-owner" else None,
+    )
+    assert resumed.returncode == 0, resumed.stderr
+    result = json.loads(resumed.stdout)
+    trusted = cache_state in {"valid", "sticky-temp-root"}
+    assert result["metrics"]["steps_skipped"] == (1 if trusted else 0)
+    assert _records(out / "x_aligned.bam") == _records(
+        tmp_path / "clean" / "x_aligned.bam"
+    )
+    if trusted:
+        assert not any(path.exists() for path in retained)
+    else:
+        assert all(path.exists() for path in retained)
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="bash PATH shims")

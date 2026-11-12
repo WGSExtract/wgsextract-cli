@@ -3,6 +3,13 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## New
 
+- `score pgs` computes research-only local polygenic score sums from a VCF,
+  with 11 curated PGS Catalog IDs, arbitrary IDs (with a warning), and custom
+  scoring files. JSON, TSV and the manifest report missingness, licence and
+  citation. Absent variants are never assumed reference without a confident
+  BED or called gVCF block and indexed FASTA. Percentiles remain unavailable
+  pending score-specific reference calibration. See [pgs.md](../pgs.md).
+
 - `qc ancestry` estimates admixture-style ancestry proportions from a BAM/CRAM,
   VCF or microarray raw-data file: 7 continental and 12 sub-continental
   reference components learned from the HGDP and 1000 Genomes samples in

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Index and align a deterministic synthetic genome; require accurate CPU
 # mappings and, for metal modes when Metal is usable, byte-identical alignments.
-# Usage: smoke.sh <aligner> <work-dir> [metal|force-gpu]
+# Usage: smoke.sh <aligner> <work-dir> [metal|force-gpu|dense-sa]
 set -eu
 binary=$1
 work=$2
@@ -65,7 +65,30 @@ awk -F '\t' '
     }
     function bit(flags, value) { return int(flags / value) % 2 }' cpu.sam
 
-if [ "$mode" = cpu ]; then
+if [ "$mode" = dense-sa ]; then
+    "$binary" densify-sa reference.fa > dense-build.log 2>&1
+    "$binary" capabilities --json reference.fa > dense-capabilities.json 2> dense-capabilities.log
+    grep -v '^@PG' cpu.sam > cpu.records
+    for setting in on off; do
+        "$binary" --backend auto --dense-sa "$setting" mem -t 4 \
+            reference.fa reads_1.fq reads_2.fq > "dense-$setting.sam" 2> "dense-$setting.log"
+        grep -v '^@PG' "dense-$setting.sam" > "dense-$setting.records"
+        cmp cpu.records "dense-$setting.records"
+    done
+    if grep -q 'read suffix-array samples' dense-off.log; then
+        echo "--dense-sa off loaded a side file" >&2
+        exit 1
+    fi
+    if grep -Eq '"interval"[[:space:]]*:[[:space:]]*16([,}]|$)' dense-capabilities.json; then
+        grep -q 'read suffix-array samples for every 16 rows' dense-on.log
+    fi
+    if "$binary" --dense-sa force --version > force.log 2>&1; then
+        echo "Production CLI must not expose the benchmark-only memory bypass" >&2
+        exit 1
+    fi
+    grep -Fq -- '--dense-sa requires on or off' force.log
+    echo "Production dense-SA options preserve alignment records"
+elif [ "$mode" = cpu ]; then
     echo "CPU alignment verified"
 else
     "$binary" capabilities --json > capabilities.json 2> capabilities.log

@@ -29,6 +29,16 @@ printed by `--version`.
 
 ## Installing
 
+The published `wgse-bwa` 0.11.0 and 0.12.0 executables advertise dense
+suffix-array support but reject `--dense-sa`. The CLI omits that option for
+those versions, so alignment works when no dense side file is present.
+With a side file it refuses: those builds can read it automatically and cannot
+honor the run's opt-in setting. Upgrade to 0.12.1 or later, or remove the side
+files with `wgsextract ref dense-sa --ref <fasta> --delete`.
+Until updated prereleases are published, build `wgse-bwa` from this revision
+(0.12.1) as described under [Building](#building). The other three executables
+are unaffected.
+
 The `macos-aligners-15` prerelease has `wgse-bwa` 0.11.0, which can use an
 optional dense suffix-array side file (`wgse-bwa densify-sa`), `wgse-bwa-mem2`
 0.5.2, `wgse-bwa-mem3` 0.3.0, whose `--metal` also collects SMEMs on the GPU,
@@ -989,14 +999,21 @@ Unlike Apple's unified memory, a discrete GPU has its own:
   is finished on the CPU with the same output. `--cuda` then exits 1, and
   `--backend auto` exits 0.
 
-On an RTX 3090 with a Ryzen 5 5600X, at 2 threads (while another job held the
-other 10 cores), with output identical to upstream BWA (the `expected.tsv`
-hashes):
+On an RTX 3090 with a Ryzen 5 5600X, aligning the full-5m tier (5M HG002 pairs
+to hs38) at 8 threads (`bench.sh` with `bwa:cpu,bwa:cuda`, two interleaved
+rounds, medians), with records identical to upstream BWA (the `expected.tsv`
+hash):
 
-| Tier | CPU | `--cuda` |
-| --- | --- | --- |
-| small (chr20) | 46.7 s | 28.3 s |
-| full (hs38, 200k pairs) | 105.2 s, 5.3 GiB | 25.0 s, 6.1 GiB |
+| | Wall | CPU time | Peak RSS |
+| --- | ---: | ---: | ---: |
+| upstream BWA 0.7.19 (Bioconda) | 472.5 s | 3711 s | 5.2 GiB |
+| `wgse-bwa` (CPU) | 418.9 s (−11%) | 3224 s | 5.2 GiB |
+| `wgse-bwa --cuda` | 131.4 s (−72%) | 1006 s | 6.3 GiB |
+
+`--cuda` used at most 5.2 GiB of GPU memory. On the CPU, `perf` puts a quarter
+of the time in SMEM seeding, a quarter in seed extension, a fifth in mate rescue
+and an eighth in suffix-array locate. With `--cuda` the CPU does the chaining,
+the sorts and reference fetches that remain, and spends a quarter as much time.
 
 ## Building
 
@@ -1020,7 +1037,11 @@ kernels for (such as Pascal or Volta, by default) is never selected, and
 whichever GPU backend the build and machine have.
 
 `-DBUILD_TESTING=OFF` builds the release executables without tests or the
-hidden GPU tuning flags. Metal tests are skipped when no Metal device is
+hidden GPU tuning flags. The public `--dense-sa on|off` switch remains
+available; `--dense-sa force`, which bypasses its memory check, is
+benchmark-only. `bwa_release_dense_sa` also checks alignment records with a
+production parser, so benchmark-enabled builds cannot hide missing public
+options. Metal tests are skipped when no Metal device is
 available. `.github/workflows/macos_aligners.yml` builds, tests and packages
 all four executables, and publishes them when run with a `macos-aligners-N` tag.
 
@@ -1045,7 +1066,9 @@ gh run watch "$(gh run list --workflow aligner_bench.yml --limit 1 --json databa
   5M pairs. The workflow downloads them from the `aligner-bench-data-1`
   release and checks their sha256 (`bench/data.tsv`).
 - `configs`: `TOOL:BACKEND[:tN][:KN][:probe][:+ARG...]`, for example
-  `bwa:metal:t2` or `mem2:metal:probe`; by default each tier's configs in
+  `bwa:metal:t2` or `mem2:metal:probe` (BACKEND is `cpu`, `metal`, `cuda` or
+  `auto`; `cuda` needs a Linux machine with an NVIDIA GPU, which hosted runners
+  lack); by default each tier's configs in
   `bench/tiers.tsv` (only `wgse-bwa --metal` on `full`). A failure of a `probe`
   config, such as an out-of-memory kill, is reported but does not fail the job.
   `+ARG` passes an extra argument to the aligner's `mem` command; such runs

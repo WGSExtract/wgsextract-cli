@@ -35,7 +35,7 @@ Stability: the names exported here and the group modules (`api.extract`,
 `api.lineage`, `api.methylation`, `api.microarray`, `api.panel`, `api.ref`,
 `api.repair`, `api.genotyping`, `api.report`, `api.sample`,
 `api.support`, `api.pet`, `api.analyze`, `api.sign`, `api.deps`,
-`api.examples`, `api.vep`, `api.benchmark`) follow
+`api.examples`, `api.vep`, `api.benchmark`, `api.score`) follow
 semantic versioning from the 1.0 release; adding fields with defaults is not
 a breaking change.
 Modules whose names start with `_` are private and may change at any time.
@@ -1454,6 +1454,7 @@ Call with Clair3; output role `variants`.
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chr20:1-1000000) |
 | `model` | `str \| None` | `None` | `--model` | Clair3 model directory, or the name of a bundled model, matching the reads' basecaller (e.g. r1041_e82_400bps_sup_v500). Overrides config clair3_model; default: chosen from the basecaller metadata. |
+| `gpu` | `bool` | `False` | `--gpu` | Call on an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, Docker; see docs/ont.md). |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 
 ### `api.vcf.phase(VcfPhaseParams)`
@@ -2230,6 +2231,38 @@ key); with no signature file, only the hashes are checked.
 | `allowed_signers` | `Path \| None` | `None` | `--allowed-signers` | OpenSSH allowed_signers file (needs --identity). |
 | `identity` | `str \| None` | `None` | `--identity` | Signer identity in --allowed-signers. |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+
+## `api.score`
+
+Local polygenic sums, with explicit missingness and research-only labels.
+
+Percentiles are withheld until score-specific ancestry calibration is available.
+
+### `api.score.pgs(ScorePgsParams)`
+
+CLI: `wgsextract score pgs`.
+
+Compute an additive score without imputing missing genotypes.
+
+`ScorePgsParams`: Score one sample's VCF on the specified build. Explicit calls and
+reference blocks are supported; a variants-only VCF needs a matching
+confident BED and reference FASTA to infer absent reference calls.
+Custom scoring files take precedence over Catalog selection.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | Single-sample VCF/gVCF, or choose --sample. |
+| `build` | `Literal` | required | `--build` | Input/scoring coordinate build (must match). One of: `GRCh37`, `GRCh38` |
+| `pgs_id` | `str \| None` | `None` | `--pgs-id` | Catalog PGS ID; uncurated IDs carry a warning. |
+| `trait` | `str \| None` | `None` | `--trait` | Curated trait (see docs/pgs.md). |
+| `scoring_file` | `Path \| None` | `None` (config `pgs_scoring_file`) | `--scoring-file` | Own scoring TSV[.gz], overriding Catalog selection. |
+| `sample` | `str \| None` | `None` | `--sample` | VCF sample name (required for multi-sample files). |
+| `plink2_check` | `bool` | `False` | `--plink2-check` | Cross-check the matched-set sum with installed plink2 (no imputation). |
+| `keep_ambiguous` | `bool \| None` | `None` (config `pgs_keep_ambiguous`) | `--keep-ambiguous` | Keep A/T and C/G SNPs only if their forward strand was independently verified. |
+| `confident_bed` | `Path \| None` | `None` | `--confident-bed` | Same-sample/build confident BED: absent SNPs within it are reference calls (needs --ref). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Indexed reference FASTA, for confident BED/gVCF reference calls. |
+| `min_match` | `float \| None` | `None` (config `pgs_min_match`) | `--min-match` | Minimum matched fraction for percentile eligibility (default 0.75). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 
 ## `api.genotyping`
 

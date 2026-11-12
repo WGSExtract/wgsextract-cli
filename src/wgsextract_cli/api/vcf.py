@@ -1124,6 +1124,12 @@ class VcfClair3Params(_CallerParams):
         metavar="NAME|DIR",
         may_name_file=True,
     )
+    gpu: bool = param(
+        False,
+        help="Call on an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, "
+        "Docker; see docs/ont.md).",
+        action="store_true",
+    )
     qc_min_depth: float | None = depth_param()
 
 

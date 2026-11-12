@@ -145,7 +145,11 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
         optional="bcftools docker run_deepvariant wgse-deepvariant sambamba",
     ),
     "vcf clair3": _n(
-        HOURS, "bcftools", "run_clair3.sh", "samtools", "tabix", optional="sambamba"
+        HOURS,
+        "bcftools",
+        "samtools",
+        "tabix",
+        optional="docker run_clair3.sh sambamba",
     ),
     "vcf impute": _n(
         HOURS,
@@ -231,6 +235,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
         MINUTES, "bcftools", "samtools", "somalier", optional="bgzip tabix"
     ),
     "qc ancestry": _n(MINUTES, "samtools", optional="bcftools curl"),
+    "score pgs": _n(MINUTES, "bcftools", optional="plink2"),
     "qc contamination": _n(MINUTES, "samtools", "verifybamid2", optional="bcftools"),
     "qc fake-data": _n(
         SECONDS,

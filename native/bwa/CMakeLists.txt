@@ -8,7 +8,7 @@ FetchContent_Declare(bwa
 FetchContent_MakeAvailable(bwa)
 
 # Bump when the wgse-bwa package changes; it is versioned separately from BWA.
-set(WGSE_BWA_VERSION 0.12.0)
+set(WGSE_BWA_VERSION 0.12.1)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${generated}")
 include("${CMAKE_CURRENT_SOURCE_DIR}/upstream_seams.cmake")
@@ -90,6 +90,14 @@ target_compile_options(wgse-bwa PRIVATE -Wall -Wextra -Werror)
 target_link_libraries(wgse-bwa PRIVATE wgse_bwa_core)
 
 if(BUILD_TESTING)
+    # Exercise the shipped parser too: benchmark flags must not hide public options.
+    add_executable(wgse-bwa-release-cli main.cpp)
+    target_compile_definitions(wgse-bwa-release-cli PRIVATE WGSE_VERSION="${WGSE_BWA_VERSION}")
+    target_compile_options(wgse-bwa-release-cli PRIVATE -Wall -Wextra -Werror)
+    target_link_libraries(wgse-bwa-release-cli PRIVATE wgse_bwa_core)
+    add_test(NAME bwa_release_dense_sa
+        COMMAND "${PROJECT_SOURCE_DIR}/tests/smoke.sh"
+        $<TARGET_FILE:wgse-bwa-release-cli> "${CMAKE_CURRENT_BINARY_DIR}/release-dense-sa" dense-sa)
     # Hidden routing and failure-injection flags for tests and benchmarks only.
     target_compile_definitions(wgse-bwa PRIVATE WGSE_METAL_BENCHMARK_TOOLS=1)
     # Bounds-checked libc++ containers make out-of-range indexing in the backend trap.

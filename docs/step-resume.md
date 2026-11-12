@@ -40,6 +40,18 @@ Running step align: x_aligned.bam changed size (1048576 -> 1048476 bytes; trunca
 Settings that don't change a step's output, such as threads and memory, are
 left out of its key. You can therefore resume with a different `--threads`.
 
+With `--tmp-dir` or `temp_directory`, a failed `realign` retains completed
+FASTQs in its run workspace. Rerunning the same command reuses those files
+after checking the journal's inputs, tools and output fingerprints, even
+though the new run gets a different workspace. On POSIX, the retained
+directory and FASTQs must belong to the current user and must not be writable
+by their group or other users; otherwise extraction runs again. Shared
+temporary roots must belong to this user or root and either disallow other
+writers or have the sticky bit set. Changed or missing FASTQs are also
+regenerated. Use `--force-extract`,
+`--force-step extract`, or `--force` to explicitly regenerate the pair.
+Temporary FASTQs are removed after the resumed alignment succeeds.
+
 A step's inputs include the data it reads, not just the sample: the
 reference FASTA, region BED files, DeepVariant checkpoint files and
 installed annotation data (a new ClinVar or gnomAD release reruns
