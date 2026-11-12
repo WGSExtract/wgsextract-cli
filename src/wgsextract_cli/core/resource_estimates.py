@@ -28,6 +28,7 @@ Operation = Literal[
     "deepvariant",
     "vep-download",
     "vep",
+    "impute",
 ]
 GIB = 1024**3
 GATK_WORKER_BYTES = 6 * GIB
@@ -79,6 +80,8 @@ DV_MAX_PARTITIONS = 128
 # parses one contig at a time (~10 B/base). The 0.8 temporary bytes/input byte
 # allowance is shared by regional and whole-genome runs; chr20 needs a larger
 # ratio than the measured whole genome.
+# On Linux (#719) call_variants peaked at 1.5 GiB at batch 256,
+# on CUDA or the CPU: within the Mac's estimate.
 NATIVE_DV_BASE_BYTES = GIB
 NATIVE_DV_THREAD_BYTES = GIB // 4
 NATIVE_DV_INFERENCE_BYTES_PER_EXAMPLE = 12 * 1024**2
@@ -567,8 +570,8 @@ def estimate_resources(
             "driver_headroom": GIB,
         }
         notes.append(
-            "wgse-deepvariant runs make_examples, call_variants (GPU, memory "
-            "set by --batch-size) and postprocess_variants (one contig at a "
+            "wgse-deepvariant runs make_examples, call_variants (memory set "
+            "by --batch-size) and postprocess_variants (one contig at a "
             "time) one after another: allow for the largest."
         )
         output = None if size is None else math.ceil(size / 10)
@@ -1074,6 +1077,29 @@ def estimate_vep_run(engine: str) -> PreflightEstimate:
         "vep",
         (ResourceEstimate("memory", VEP_RUN_MEMORY[engine], _available_memory(), {}),),
         (),
+    )
+
+
+def estimate_imputation(*, reads: bool, threads: int, bases: int) -> PreflightEstimate:
+    """HG002 chr20 measurements (#621), scaled by selected reference bases.
+
+    Sequential chunks keep memory roughly constant; thread scaling of time
+    and extrapolation beyond chr20 are estimates, not measured genome runs.
+    """
+    fraction = bases / 64_444_167
+    seconds = (450 if reads else 60) * fraction * 4 / max(1, threads)
+    tool = "GLIMPSE2" if reads else "Beagle"
+    memory = 4 * GIB if reads else 8 * GIB
+    return PreflightEstimate(
+        "impute",
+        (ResourceEstimate("memory", memory, _available_memory(), {}),),
+        (
+            f"{tool}: estimated {seconds / 3600:.2f} h at {threads} threads "
+            f"for {bases:,} reference bases (HG002 chr20 extrapolation).",
+            "Excludes one-time panel preparation (~10 min for chr20); "
+            "GLIMPSE2 whole autosomes ~5.5 h at 4 threads, ~2.8 h at 8. "
+            "Actual runtime depends on depth, hardware and panel.",
+        ),
     )
 
 

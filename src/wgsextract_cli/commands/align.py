@@ -43,10 +43,10 @@ from wgsextract_cli.core.native_aligners import (
     AlignerCommand,
     NativeAligner,
     apple_silicon,
+    bwa_mem3_failure,
     find_bwa_mem3,
     find_native_aligner,
     native_setting,
-    on_linux,
 )
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.output_checks import record_alignment_output
@@ -653,47 +653,18 @@ def native_short_read_aligner(
     fallback when the GPU can't hold its index tables; from 0.5.0 that
     estimate leaves out the .0123 file it no longer loads
     (AlignerCommand.memory_model).
-    wgse-bwa-mem3 writes either's exact records faster, so it runs in their
-    place when it fits (bwa_mem3_stand_in).
+    bwa-mem3 (wgse-bwa-mem3 on Apple Silicon, Bioconda's on Linux) writes
+    either's exact records faster, so it runs in their place when it fits
+    (bwa_mem3_stand_in), ahead of a GPU build.
     wgse-bwa reads the reference's dense suffix-array file only when the run
     asks (job.dense_suffix_array, dense_suffix_array.for_alignment); it
     counts as index memory.
     """
 
-    def gpu_fit(
-        native: NativeAligner, dense_sa: Path | None, quiet: bool = False
-    ) -> tuple[AlignerCommand, str]:
-        return _bwa_gpu_fit(
-            job,
-            native,
-            ref,
-            threads=threads,
-            memory=memory,
-            samblaster=samblaster,
-            reads=reads,
-            read_length=read_length,
-            additional_ram_bytes=additional_ram_bytes,
-            dense_sa=dense_sa,
-            quiet=quiet,
-        )
-
-    # On Linux, wgse-bwa on an NVIDIA GPU beats bwa-mem3 on the CPU (#674), so
-    # it goes first when its GPU backend fits; then bwa-mem3, then the builds
-    # on the CPU, then upstream.
-    if on_linux() and tool == "bwa":
-        native = find_native_aligner(tool, job.native_aligners, probe=True)
-        if native is not None and native.gpu == "cuda":
-            dense_sa = dense_suffix_array.for_alignment(
-                native, ref, enabled=bool(job.dense_suffix_array), quiet=True
-            )
-            if gpu_fit(native, dense_sa, quiet=True)[0].gpu:
-                dense_sa = dense_suffix_array.for_alignment(
-                    native, ref, enabled=bool(job.dense_suffix_array)
-                )
-                aligner, fitted = gpu_fit(native, dense_sa)
-                if announce:
-                    aligner.announce()
-                return aligner, fitted
+    # bwa-mem3 goes first, then the build (on its GPU when it fits), then
+    # upstream. Even on Linux with an NVIDIA GPU: on an RTX 3090 and a Ryzen 5
+    # 5600X, bwa-mem3 --compat=bwa-mem on the CPU aligned 5M pairs in 98 s
+    # against wgse-bwa --cuda's 131 s, with the same records (#736).
     stand_in = bwa_mem3_stand_in(
         job,
         tool,
@@ -725,7 +696,18 @@ def native_short_read_aligner(
     elif tool != "bwa":
         aligner = AlignerCommand(tool, native, gpu=True)
     else:
-        aligner, memory = gpu_fit(native, dense_sa)
+        aligner, memory = _bwa_gpu_fit(
+            job,
+            native,
+            ref,
+            threads=threads,
+            memory=memory,
+            samblaster=samblaster,
+            reads=reads,
+            read_length=read_length,
+            additional_ram_bytes=additional_ram_bytes,
+            dense_sa=dense_sa,
+        )
     if announce:
         aligner.announce()
     return aligner, memory
@@ -743,11 +725,9 @@ def _bwa_gpu_fit(
     read_length: float | None,
     additional_ram_bytes: int,
     dense_sa: Path | None,
-    quiet: bool = False,
 ) -> tuple[AlignerCommand, str]:
     """wgse-bwa on its GPU with the sort memory per thread that lets it fit
-    (see native_short_read_aligner), else on the CPU with ``memory``; ``quiet``
-    logs neither choice (a probe before bwa-mem3 is considered)."""
+    (see native_short_read_aligner), else on the CPU with ``memory``."""
     tool = "bwa"
     gpu = bwa_gpu_memory(ref, reads, dense_sa_file=dense_sa is not None)
     dense_sa_bytes = dense_sa.stat().st_size if dense_sa else 0
@@ -779,8 +759,6 @@ def _bwa_gpu_fit(
     limit = max(budget, cpu)
     fitting = next((m for m in candidates if needed(m) <= limit), None)
     if fitting is None:
-        if quiet:
-            return AlignerCommand(tool, native, dense_sa=dense_sa), memory
         room = (
             f"the {budget / 1024**3:.1f} GiB of RAM it can use"
             if limit == budget
@@ -793,7 +771,7 @@ def _bwa_gpu_fit(
         )
         aligner = AlignerCommand(tool, native, dense_sa=dense_sa)
     else:
-        if fitting != memory and not quiet:
+        if fitting != memory:
             logging.info(
                 f"Sorting with {fitting} per thread (not {memory}) to leave "
                 f"room for {native.binary}'s {_gpu_name(native)} GPU backend; the output "
@@ -937,13 +915,21 @@ def bwa_mem3_command(job: AlignJob) -> AlignerCommand:
         return AlignerCommand(
             "bwa-mem3", native, gpu=native.gpu is not None, options=options
         )
-    if get_tool_path("bwa-mem3") is None:
+    failure = None
+    if get_tool_path("bwa-mem3") is None or (failure := bwa_mem3_failure()):
         option = "--aligner bwa-mem3" if job.aligner == "bwa-mem3" else "--fast"
         otherwise = (
             "drop --fast"
             if option == "--fast"
             else "align with --aligner auto" + (" without --fast" if job.fast else "")
         )
+        if failure:
+            # #727: a build that crashes at startup would otherwise fail the
+            # alignment pipeline with a bare signal.
+            raise WGSExtractError(
+                f"{option} needs bwa-mem3, and the installed one can't run: "
+                f"{failure}. Install a bwa-mem3 that runs here, or {otherwise}."
+            )
         if (
             native_setting(job.native_aligners) == "off"
             and apple_silicon()

@@ -40,7 +40,7 @@
 #            (wgse-bwa-mem3 or bwa-mem3, on the BWA-MEM2 index) or mm2
 #            (wgse-minimap2 or minimap2, -ax sr on <ref>.fa.sr.mmi); upstream
 #            executables (without wgse-) run only the cpu backend
-#   BACKEND  cpu, metal (--metal) or auto (--backend auto)
+#   BACKEND  cpu, metal (--metal), cuda (--cuda) or auto (--backend auto)
 #   tN       threads (default --threads, or every core)
 #   KN       -K N (default 10000000, or minimap2's own for mm2; K0 leaves -K out)
 #   probe    a failure (crash, kill, timeout) is reported, not failed
@@ -103,6 +103,7 @@ tool_command() {
     case $backend in
         cpu) ;;
         metal) cmd+=(--metal) ;;
+        cuda) cmd+=(--cuda) ;;
         auto) cmd+=(--backend auto) ;;
         *) die "unknown backend $backend" ;;
     esac
@@ -125,7 +126,7 @@ parse_config() {
     c_args=()
     tool_binary "$c_tool" > /dev/null
     [ "$c_tool" != mm2 ] || c_K=0
-    case $c_backend in cpu | metal | auto) ;; *) die "unknown backend in $1" ;; esac
+    case $c_backend in cpu | metal | cuda | auto) ;; *) die "unknown backend in $1" ;; esac
     for field in "${fields[@]:2}"; do
         case $field in
             t[0-9]*) c_threads=${field#t}; [[ $c_threads =~ ^[1-9][0-9]*$ ]] || die "bad threads $field in config $1" ;;
@@ -432,7 +433,7 @@ row() {
     local dir=$1 label=$2 config=$3 round=$4 rc=$5 hash=$6 expected=$7 status=$8 note jetsam=0 resets pid
     local power_file=/dev/null runstat=$dir/runstat.txt
     [ ! -f "$dir/power.txt" ] || power_file=$dir/power.txt
-    note=$(grep -m 1 -o 'CPU fallback: .*\|Metal execution failed.*\|[Ee]rror[: ].*\|[Ff]ailed.*' "$dir/stderr.txt" |
+    note=$(grep -m 1 -o 'CPU fallback: .*\|\(Metal\|CUDA\) execution failed.*\|[Ee]rror[: ].*\|[Ff]ailed.*' "$dir/stderr.txt" |
         tr '\t' ' ' | cut -c1-120 || true)
     [ -n "$note" ] || note=$(grep -m 1 -o 'warning: .*' "$dir/stderr.txt" | tr '\t' ' ' | cut -c1-120 || true)
     if [ ! -f "$runstat" ]; then
@@ -468,7 +469,7 @@ row() {
                 v = substr(line, RSTART, RLENGTH); sub(/.*=/, "", v); gpu += v; line = substr(line, RSTART + RLENGTH) }
             if (match($0, /interruptions=[0-9]+/)) { v = substr($0, RSTART, RLENGTH); sub(/.*=/, "", v); interruptions += v }
             if ($0 ~ /CPU fallback/) fallback++
-            if ($0 ~ /Metal execution failed/) failed++
+            if ($0 ~ /(Metal|CUDA) execution failed/) failed++
             next }
         { r[$1] = $2 }
         END {

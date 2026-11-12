@@ -172,6 +172,7 @@ def label_pgx_calls(
         variant_confidence.thresholds_from(params),
         regions_file=regions,
         region_names=named,
+        suppress_rare_imputed=False,
     )
 
 

@@ -1,5 +1,18 @@
 # CLI resource preflight and reusable estimates
 
+## Imputation
+
+`vcf impute` prints estimated memory and runtime before starting. HG002 chr20
+measurements at four threads: GLIMPSE2 phase/ligate 431–464 s and 2.2–3.1 GB
+peak RSS; Beagle 60 s and 3.4 GB. The memory preflight reserves a conservative
+4 GiB for GLIMPSE2 and 8 GiB for Beagle. Sequential chromosomes/chunks keep
+memory bounded; runtime scales with selected reference bases and thread count.
+The extrapolated whole-autosome GLIMPSE2 time is about 5.5 h at four threads,
+or 2.8 h at eight, excluding one-time panel preparation. These are not measured
+whole-genome runtimes. See [imputation](imputation.md) for accuracy and limits.
+
+## Other pipelines
+
 Native `align` (BWA/BWA-MEM2 and minimap2), `realign`, `bam sort`, `bam to-bam`,
 `bam to-cram`, and `vcf snp`/`indel`/`gatk`/`deepvariant` (CPU, every platform)
 report estimates before starting their heavy pipelines. For example:
@@ -24,6 +37,14 @@ realignment/whole-file sorting retain their existing disk guards. `--no-prefligh
 still bypasses realignment's disk refusal, not its memory guard; informational
 estimates are still printed. Realignment reports before FASTQ extraction and
 alignment reports again when the final aligner is selected.
+
+The memory estimate is the selected aligner's. On Linux, bwa-mem3 standing in
+for bwa (`--compat=bwa-mem`, chosen first since #736) needs about twice bwa's
+RAM (5M pairs on hs38: 14.7 GiB peak at 16 threads against bwa's 6.6 GiB;
+`wgse-bwa --cuda` peaked at 6.3 GiB at 8 threads), so it is taken only when its
+pipeline fits the RAM available; otherwise `wgse-bwa` (on its GPU when that
+fits) or bwa runs, and the preflight reports that aligner's estimate
+([hardware guide](hardware.md#bwa-mem3-on-linux)).
 
 Eligible paired BWA/bwa-mem2 realignment without `--keep-fastq` streams newly
 extracted reads (forced refresh of cached FASTQs at the exact output paths
@@ -400,10 +421,11 @@ filesystem for reference-index storage.
   are conservative heuristics, not measured guarantees for every caller, read
   length or depth.
 
-### Native Apple Silicon DeepVariant
+### Native DeepVariant
 
-`wgse-deepvariant` has a separate sequential-stage model, not the TensorFlow
-partition model below. It allows a fixed base plus per-thread make_examples
+`wgse-deepvariant` on Apple Silicon and Linux x86-64 has a separate
+sequential-stage model, not the TensorFlow partition model below.
+It allows a fixed base plus per-thread make_examples
 memory, batch-scaled GPU inference, and serialized whole-run records plus
 one parsed contig for postprocessing. RSS alone does not capture Metal's
 unified-memory footprint.
@@ -420,6 +442,11 @@ peak footprint was **5.26 GB**. At batch 512, the inference-stage RAM envelope
 is **7 GiB** (1 GiB base plus 512 × 12 MiB), plus **1 GiB driver headroom**:
 **8 GiB total preflight RAM**, covering the footprint rather than RSS alone.
 The existing envelopes remain conservative.
+
+On Linux x86-64 (#719), call_variants peaked at **1.5 GiB host RAM** at batch
+256 on either CUDA or the CPU, also within the shared native RAM envelope.
+See the [Linux/CUDA measurements](../native/deepvariant/README.md#linux-x86-64-and-nvidia-gpus-cuda)
+for inference backend, GPU memory and qualification details.
 
 The [16 GB benchmark](apple-silicon-16gb.md#native-deepvariant) projects
 0.1.1 whole-genome wall time from measured 0.1.0 whole-genome time and the

@@ -22,7 +22,24 @@ struct WgseBswScoring {
 
 // The longest query the kernel scores; longer extensions stay on the CPU.
 constexpr int wgse_mem3_max_gpu_query_length = 256;
+// Compute threads per -t thread with the GPU, in percent: Apple Silicon's unified memory
+// leaves its workers time to spare while they wait; on x86-64 with CUDA, more threads than
+// cores were slower (#674).
+#ifdef __APPLE__
 constexpr int wgse_mem3_default_thread_percent = 200;
+#else
+constexpr int wgse_mem3_default_thread_percent = 100;
+#endif
+
+// This build's GPU backend ("Metal" on macOS, "CUDA" on Linux) and whether the machine has a
+// GPU that it supports.
+const char *wgse_mem3_gpu_name();
+bool wgse_mem3_gpu_hardware_supported();
+// Test hooks: report the first `count` GPU commands interrupted, so they are committed again;
+// withhold the first GPU command whose label starts with `label`, as a hung GPU would, which
+// the watchdog gives up on after 2 s.
+void wgse_mem3_gpu_inject_interruptions(size_t count);
+void wgse_mem3_gpu_inject_hang(const char *label);
 
 // Whether the kernel compiles and its buffers fit the device, or the reason not.
 bool wgse_mem3_bsw_available(std::string &reason);
@@ -57,10 +74,11 @@ void wgse_mem3_bsw_decline();
 bool wgse_mem3_bsw_score(WgseBswJob *jobs, int32_t count, const uint8_t *ref,
     const uint8_t *qer, const WgseBswScoring &scoring);
 
-// getScores8 on the GPU: the same results, and the same padding lanes, as upstream's kernel.
+// getScores8 on the GPU: the same results, and the same padding lanes (up to a multiple of
+// the CPU kernel's `lanes`), as upstream's kernel.
 template <class Pair>
 bool wgse_mem3_bsw8(Pair *pairs, const uint8_t *ref, const uint8_t *qer, int32_t count,
-    int32_t w, const WgseBswScoring &scoring)
+    int32_t w, const WgseBswScoring &scoring, int32_t lanes)
 {
     if (count <= 0 || !wgse_mem3_bsw_enabled() || wgse_mem3_bsw_busy()) return false;
     thread_local std::vector<WgseBswJob> jobs;
@@ -95,7 +113,7 @@ bool wgse_mem3_bsw8(Pair *pairs, const uint8_t *ref, const uint8_t *qer, int32_t
         p.gscore = job.gscore;
         p.max_off = job.max_off;
     }
-    const int32_t round = (count + 15) / 16 * 16;
+    const int32_t round = (count + lanes - 1) / lanes * lanes;
     for (int32_t i = count; i < round; ++i) {
         pairs[i].id = i;
         pairs[i].len1 = pairs[i].len2 = 0;

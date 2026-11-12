@@ -1,11 +1,17 @@
-# wgse-deepvariant: DeepVariant on Apple Silicon
+# wgse-deepvariant: DeepVariant without Docker
 
-`wgse-deepvariant` is a self-contained Apple Silicon (macOS 14+, arm64) build
-of [DeepVariant](https://github.com/google/deepvariant) 1.10.0. It runs
-make_examples and postprocess_variants natively on the CPU and call_variants on
-the GPU (Metal, FP32), without Docker, TensorFlow or Python. Google publishes
-DeepVariant for x86-64 only, and its image can't run under Docker Desktop's
-emulation on Apple Silicon (#665). Only the WGS model is qualified.
+`wgse-deepvariant` is a native build of
+[DeepVariant](https://github.com/google/deepvariant) 1.10.0, without Docker,
+TensorFlow or Python. It runs make_examples and postprocess_variants natively
+on the CPU, and call_variants:
+
+- on **Apple Silicon** (macOS 14+, arm64), on the GPU (Metal, FP32), in a
+  self-contained binary. Google publishes DeepVariant for x86-64 only, and its
+  image can't run under Docker Desktop's emulation on Apple Silicon (#665).
+- on **Linux x86-64**, with ONNX Runtime: on an NVIDIA GPU through CUDA, or on
+  the CPU (see [Linux x86-64 and NVIDIA GPUs](#linux-x86-64-and-nvidia-gpus-cuda)).
+
+Only the WGS model is qualified.
 
 It is the native port of DeepVariant by IPNP-BIPN
 ([IPNP-BIPN/deepvariant](https://github.com/IPNP-BIPN/deepvariant),
@@ -41,6 +47,13 @@ google/deepvariant#1085) with the patches in [`patches/`](patches):
   row ahead of the reads that cover the window. On HG003's whole genome
   (wgse-deepvariant 0.1.0) this changed 20 low-quality records at 6 loci, none
   in GIAB's confident regions.
+- **0008** builds it on Linux (GCC, against a conda environment's abseil,
+  protobuf, re2, htslib and Boost) with call_variants on ONNX Runtime: the
+  Inception-v3 graph is built in memory from the same `.dvw` weights
+  (`onnx_inference.cc`), and runs on an NVIDIA GPU (CUDA, FP32 with TF32 off)
+  or the CPU (`--inference_backend=auto|cuda|cpu`). `--model_type=ONT_R104`
+  is accepted as Google's name for `ONT`. It also stops call_variants aborting
+  the process when inference fails.
 
 ## Same results as Google's image
 
@@ -89,6 +102,80 @@ RTG SNP/indel F1 is **0.997409 / 0.995993** (RTG, not the hap.py figures above).
 See the [16 GB measurements](../../docs/apple-silicon-16gb.md#native-deepvariant)
 for the version-labelled whole-genome timing projection; a whole genome was
 measured with 0.1.0, **not** 0.1.1.
+
+## Linux x86-64 and NVIDIA GPUs (CUDA)
+
+The Linux build is conda packages (`packaging/wgse-deepvariant`, built by
+`.github/workflows/linux_deepvariant.yml` and published as
+`linux-deepvariant-N` prereleases with the weights):
+
+- **cuda129**: call_variants on an NVIDIA GPU (any driver new enough for CUDA
+  12.9), or on the CPU. It depends on conda-forge's ONNX Runtime and the CUDA
+  libraries it uses (cuDNN, cuBLAS: about 1.5 GB), which conda installs with
+  it; nothing else is needed but the NVIDIA driver.
+- **cpu**: call_variants on the CPU only, without the CUDA libraries.
+
+`--inference_backend=auto` (the default) uses the GPU when a probe run on it
+succeeds and the CPU otherwise; `cuda` fails rather than fall back; `cpu` never
+touches the GPU (`--cuda_device` picks a GPU, numbered as `nvidia-smi` numbers
+them). The batch defaults to 256 examples on Linux (`--batch_size`), and
+`--version` says whether the build has CUDA.
+
+On HG002 chr20 (the case-study BAM), against `google/deepvariant:1.10.0` on
+the same machine (Ryzen 5 5600X, RTX 3090), 4 threads:
+
+| | Google's image (CPU) | wgse-deepvariant, CPU | wgse-deepvariant, CUDA |
+| --- | ---: | ---: | ---: |
+| Candidates, examples | 210,390, 81,898 | identical | identical |
+| Sites, genotypes, FILTER | | identical | identical |
+| QUAL | | 5,042 differ, by at most 0.5 | 5,043 differ, by at most 0.5 |
+| GQ | | 222 differ, by 1 | 223 differ, by 1 |
+| GIAB v4.2.1 (confident regions) | TP 82,196, FP 66, FN 393 | the same | the same |
+| make_examples | 597 s | 240 s, 0.2 GB | (the same) |
+| call_variants | 896 s | 563 s, 1.5 GB | 21.3 s, 1.5 GB RAM, 2.3 GB GPU |
+| postprocess_variants | 31 s | 2 s | 2 s |
+
+The host was shared during these runs, so the CPU times are pessimistic (the
+image takes 287 + 409 + 12 s uncontended at 12 threads). With the GPU to
+itself, call_variants took 19.5 s (three interleaved rounds; batch 1024 was no
+faster), against 79 s for Google's TensorFlow GPU image on the same GPU and
+examples. The CUDA and CPU
+builds' VCFs differ at 6 sites, in QUAL (±0.1) or GQ (±1). Their QUAL and GQ
+differences from Google's image are the same as the Mac's: they come from the
+port's make_examples and small model, not the inference. ONNX Runtime on
+Google's own examples reproduces TensorFlow's probabilities to 4.6e-6 (210,376
+of 210,390 records identical after Google's postprocess_variants).
+
+ONT_R104 isn't qualified: the CUDA inference reproduces Google's on ONT
+examples too (3,403 of 3,405 records identical on a 1 Mb HG002 slice), but the
+port's ONT make_examples doesn't yet (99 genotypes and 77 filters differ; GIAB
+F1 0.9735 against Google's 0.9833 there).
+
+### Installing on Linux
+
+Download a `linux-deepvariant-N` prerelease, check it, and install the package
+for your machine into a conda environment of its own with Pixi (or conda), then
+unpack the weights:
+
+```bash
+mkdir wgse-deepvariant && cd wgse-deepvariant
+gh release download linux-deepvariant-1 -R WGSExtract/wgsextract-cli
+sha256sum -c SHA256SUMS
+pixi global install --channel conda-forge --channel bioconda \
+  ./wgse-deepvariant-0.2.0-linux64_cuda129_wgse_0.conda   # or ..._cpu_wgse_0.conda
+tar -xzf wgse-deepvariant-weights-1.10.0-wgs.tar.gz
+wgse-deepvariant --version
+```
+
+Then set `deepvariant_weights` in `config.toml` to the weights folder, as on a
+Mac; `vcf deepvariant` runs it on the CPU, and `vcf deepvariant --gpu` on the
+GPU instead of Parabricks (see [docs/hardware.md](../../docs/hardware.md)).
+
+To build it, `cmake -S native/deepvariant` in an environment with conda-forge's
+`libabseil`, `libprotobuf`, `re2`, `htslib`, `libboost-headers`, `zlib` and
+`onnxruntime-cpp`, with `-DCMAKE_PREFIX_PATH` naming it, or build the package
+with `rattler-build build -c conda-forge -c bioconda --recipe-dir packaging/wgse-deepvariant -m
+packaging/wgse-deepvariant/variants.yaml`.
 
 ## Installing
 
@@ -158,4 +245,7 @@ DeepVariant and the port are BSD-3-Clause (Google LLC); Google distributes the
 binary's archive has the licences of everything built into it in
 `share/licenses/wgse-deepvariant`: abseil (Apache-2.0), protobuf, re2 (BSD-3),
 htslib and htscodecs (MIT/BSD), libdeflate (MIT), liblzma (0BSD), Boost (BSL-1.0),
-libssw and sse2neon (MIT).
+libssw and sse2neon (MIT). The Linux packages link their dependencies from
+conda-forge, whose packages carry their own licences: ONNX Runtime (MIT), and
+in the CUDA build NVIDIA's CUDA runtime, cuBLAS and cuDNN (NVIDIA's
+redistributable licences), which conda-forge distributes.

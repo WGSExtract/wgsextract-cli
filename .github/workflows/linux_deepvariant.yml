@@ -1,0 +1,152 @@
+name: Linux DeepVariant
+
+# Builds wgse-deepvariant for Linux x86-64 as conda packages
+# (packaging/wgse-deepvariant: DeepVariant 1.10.0 from native/deepvariant, with
+# call_variants on ONNX Runtime, in a CUDA and a CPU-only build), converts its
+# WGS weights from Google's image, smoke-tests both builds on the
+# CPU (the runner has no GPU), and publishes packages and weights to a
+# prerelease when asked: Actions > Linux DeepVariant > Run workflow, with a new
+# tag such as linux-deepvariant-1.
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - native/deepvariant/**
+      - packaging/wgse-deepvariant/**
+      - .github/workflows/linux_deepvariant.yml
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: New release tag to publish the packages under (empty builds only).
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # A newer push supersedes a PR's build; a release run is never cancelled.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # The image docs/deepvariant-arm64.md checks the Linux ARM64 build's models against.
+  DEEPVARIANT_IMAGE: google/deepvariant:1.10.0@sha256:962e5a83b1d76aae6990625d47102785f791603f2138aa1fa9aa4fb6a2eecbe6
+
+jobs:
+  weights:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Convert the WGS models
+        run: |
+          mkdir -p out/weights
+          docker run --rm --network none -v "$PWD:/w" "$DEEPVARIANT_IMAGE" \
+            python3 /w/native/deepvariant/convert_weights.py /w/out/weights
+          (cd out/weights && sha256sum -c ../../native/deepvariant/weights-sha256.txt)
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: deepvariant-weights-linux
+          path: out/weights
+          if-no-files-found: error
+
+  build:
+    needs: weights
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Pixi
+        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+        with:
+          run-install: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: deepvariant-weights-linux
+          path: out/weights
+
+      - name: Build the packages
+        # The CUDA build needs a driver only to call on the GPU: CONDA_OVERRIDE_CUDA
+        # lets the GPU-less runner solve and install it.
+        env:
+          CONDA_OVERRIDE_CUDA: "12.9"
+        run: |
+          pixi exec --spec rattler-build==0.77.0 rattler-build build -c conda-forge -c bioconda --recipe-dir packaging/wgse-deepvariant \
+            -m packaging/wgse-deepvariant/variants.yaml --output-dir out/conda --target-platform linux-64
+
+      - name: Smoke-test both builds on the CPU
+        env:
+          CONDA_OVERRIDE_CUDA: "12.9"
+        run: |
+          # The single-quoted script runs in the package's environment.
+          # shellcheck disable=SC2016
+          for package in out/conda/linux-64/wgse-deepvariant-*.conda; do
+            build=$(basename "$package" .conda)
+            pixi exec -c "file://$PWD/out/conda" -c conda-forge -c bioconda \
+              --spec "wgse-deepvariant==$(echo "$build" | cut -d- -f3)=$(echo "$build" | cut -d- -f4)" \
+              --spec samtools -- bash -c '
+                set -e
+                wgse-deepvariant --version
+                native/deepvariant/tests/smoke.sh "$(command -v wgse-deepvariant)" out/weights "out/smoke-$0"
+              ' "$build"
+          done
+
+      - name: Package the weights
+        run: |
+          mkdir -p out/stage
+          # Google distributes the models under DeepVariant's BSD-3-Clause licence.
+          curl -fsSL -o out/DeepVariant-LICENSE \
+            https://raw.githubusercontent.com/google/deepvariant/v1.10.0/LICENSE
+          weights=wgse-deepvariant-weights-1.10.0-wgs
+          mkdir -p "out/stage/$weights"
+          cp -R out/weights/. "out/stage/$weights/"
+          cp out/DeepVariant-LICENSE "out/stage/$weights/LICENSE"
+          tar -C out/stage -czf "out/conda/$weights.tar.gz" "$weights"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-deepvariant
+          path: |
+            out/conda/linux-64/*.conda
+            out/conda/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-deepvariant
+          path: linux-deepvariant
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          case "$TAG" in linux-deepvariant-*) ;; *) echo "Tag must start with linux-deepvariant-" >&2; exit 1 ;; esac
+          mkdir -p assets
+          find linux-deepvariant \( -name '*.conda' -o -name '*.tar.gz' \) -exec cp -t assets/ {} +
+          (cd assets && sha256sum ./* | sed "s| ./| |" > SHA256SUMS)
+          {
+            echo "wgse-deepvariant: DeepVariant 1.10.0 for Linux x86-64 as conda packages (CUDA 12.9 or CPU-only call_variants), and its WGS model weights converted from google/deepvariant:1.10.0."
+            echo "Built from native/deepvariant and packaging/wgse-deepvariant at ${GITHUB_SHA} by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
+            echo "See native/deepvariant/README.md for installation, validation and licences."
+            echo
+            echo "| Asset | SHA-256 |"
+            echo "| --- | --- |"
+            for f in assets/*.conda assets/*.tar.gz; do echo "| $(basename "$f") | \`$(sha256sum "$f" | cut -d' ' -f1)\` |"; done
+          } > notes.md
+          gh release create "$TAG" assets/* \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Linux DeepVariant $TAG" \
+            --notes-file notes.md --prerelease --latest=false
