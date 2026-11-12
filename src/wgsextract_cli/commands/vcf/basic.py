@@ -29,6 +29,7 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.genotype_qc import region_targets, warn_low_depth
 from wgsextract_cli.core.messages import LOG_MESSAGES
+from wgsextract_cli.core.mimalloc import bcftools_environment
 from wgsextract_cli.core.output_checks import vcf_record_count, warn_if_no_variants
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
@@ -302,6 +303,7 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
         )
     )
     contigs = calling_contigs(input_file, ref, threads, params.region, parallel)
+    environment = bcftools_environment(params.mimalloc)
     # One bcftools stream uses one core however many threads were given (#583).
     _, workers = calling_jobs(contigs, threads)
     print_warning(
@@ -336,6 +338,7 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
             call_args=[*ploidy, *sex_args, *prior],
             indels=indels,
             contigs=contigs,
+            environment=environment,
         )
     ensure_vcf_indexed(out_vcf)
     record_variants(

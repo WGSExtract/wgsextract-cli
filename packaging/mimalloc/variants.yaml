@@ -1,0 +1,5 @@
+# The C standard library the build links against (conda-forge's defaults).
+c_stdlib:
+  - macosx_deployment_target
+c_stdlib_version:
+  - "11.0"

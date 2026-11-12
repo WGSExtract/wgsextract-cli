@@ -914,6 +914,7 @@ library's ploidy file, else bcftools' built-in GRCh37/GRCh38 table.
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
 | `parallel` | `bool \| None` | `None` | `--parallel` | Call contigs in parallel with up to --threads workers (default: on with --threads above 1). SNP calling recalls the stretches with sites deeper than 255 reads in one stream, because bcftools subsamples them with one random stream per process, so the calls match a single stream. |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
+| `mimalloc` | `str \| None` | `None` (config `mimalloc`) | `--mimalloc` | auto: bcftools uses wgse-mimalloc on Apple Silicon if installed. One of: `auto`, `off` |
 
 ### `api.vcf.indel(VcfIndelParams)`
 
@@ -934,6 +935,7 @@ Call indels; the `indels` output carries the record count in its metrics.
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
 | `parallel` | `bool \| None` | `None` | `--parallel` | Call contigs in parallel with up to --threads workers (default: on with --threads above 1). SNP calling recalls the stretches with sites deeper than 255 reads in one stream, because bcftools subsamples them with one random stream per process, so the calls match a single stream. |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
+| `mimalloc` | `str \| None` | `None` (config `mimalloc`) | `--mimalloc` | auto: bcftools uses wgse-mimalloc on Apple Silicon if installed. One of: `auto`, `off` |
 
 ### `api.vcf.annotate(VcfAnnotateParams)`
 

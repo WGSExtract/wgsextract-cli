@@ -203,7 +203,10 @@ and otherwise finishes on the CPU, so the GPU may have done none of the work;
 BAM also `mapped_records` and `unmapped_records` (from the index, without
 decoding reads). CRAM counts come from container headers, which also count
 unmapped reads placed beside their mates, so a CRAM reports `records` only.
-Variant callers and annotators record `variants` per output VCF; filtered
+Variant callers and annotators record `variants` per output VCF;
+`vcf snp` and `vcf indel` also record `bcftools_allocator` (`mimalloc` when
+bcftools ran with wgse-mimalloc on Apple Silicon, else `system`; see
+[hardware.md](hardware.md#bcftools-with-mimalloc)); filtered
 outputs (`--min-score`, `--max-af`) are separate outputs with their own counts.
 
 Other commands' metrics:
