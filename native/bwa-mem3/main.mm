@@ -75,6 +75,9 @@ int run(int argc, char **argv) {
         } else if (strcmp(option, "--gpu-seed-wait") == 0) {
             wgse_mem3_seed_set_wait(true);
             ++command_index;
+        } else if (strcmp(option, "--gpu-inject-seed-failure") == 0) {
+            wgse_mem3_seed_inject_failure();
+            ++command_index;
         } else if (strcmp(option, "--gpu-inject-extension-failure") == 0) {
             wgse_mem3_bsw_inject_failure();
             ++command_index;
@@ -197,9 +200,9 @@ int run(int argc, char **argv) {
     arguments.insert(arguments.end(), argv + command_index, argv + argc);
     arguments.push_back(nullptr);
     int result = wgse_bwamem3_main(static_cast<int>(arguments.size() - 1), arguments.data());
-    if (accelerated) wgse_mem3_seed_finish();
-    if (accelerated && wgse_mem3_bsw_finish() && backend == Backend::metal && result == 0)
-        result = 1;
+    const bool seeding_failed = accelerated && wgse_mem3_seed_finish();
+    const bool extension_failed = accelerated && wgse_mem3_bsw_finish();
+    if ((seeding_failed || extension_failed) && backend == Backend::metal && result == 0) result = 1;
     return result;
 }
 } // namespace

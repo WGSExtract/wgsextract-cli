@@ -67,8 +67,8 @@ you start yourself:
   samtools and tabix after `--`.
 - **Deleting needs an opt-in.** Requests that delete data a command didn't
   make are refused (403 `destructive`) unless the server was started with
-  `--allow-destructive`: `bam unindex`, `sample unset` and
-  `ref gene-map` with `delete`. Over MCP, `bam_unindex` and `sample_unset`
+  `--allow-destructive`: `bam unindex`, `sample unset`, and
+  `ref gene-map` and `ref dense-sa` with `delete`. Over MCP, `bam_unindex` and `sample_unset`
   are offered only then, and their tools carry `destructiveHint`.
   Regenerating a command's own outputs (`restart`, `force_*`) isn't
   deleting in this sense.
