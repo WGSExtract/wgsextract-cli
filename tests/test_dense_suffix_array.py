@@ -9,24 +9,33 @@ runs the real bwa under the build's name and options, so the BAM's @PG line
 shows the options it was given. Apple Silicon and its RAM are mocked.
 """
 
+import shutil
 from pathlib import Path
 
 import pytest
 
 from tests.htslib_helpers import write_fasta
 from tests.test_alignment_commands import _samtools, _short_reads
-from tests.test_native_aligners import (  # noqa: F401 (apple_silicon: fixture)
+from tests.test_native_aligners import (  # noqa: F401 (fixtures)
     _align,
     _capabilities,
+    _install_bwa_mem3,
     _mapper,
+    _mem3_reads,
     _run,
     _run_realign,
     apple_silicon,
 )
 from tests.test_realign import _old_alignment
+from wgsextract_cli.core import dense_suffix_array
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.resource_estimates import estimate_resources
-from wgsextract_cli.core.utils import MissingDependencyError, UsageError, run_command
+from wgsextract_cli.core.utils import (
+    MissingDependencyError,
+    UsageError,
+    WGSExtractError,
+    run_command,
+)
 
 MAGIC = b"WGSEDSA1"
 
@@ -64,6 +73,13 @@ def bwa_bin(request):
     from tests.fake_tools import only_tools
 
     return only_tools(request, "bwa", "samtools")
+
+
+@pytest.fixture
+def mem3_bin(request):
+    from tests.fake_tools import only_tools
+
+    return only_tools(request, "bwa", "bwa-mem2", "samtools")
 
 
 def _install(bindir, version="0.11.0"):
@@ -172,6 +188,39 @@ def test_asked_but_unusable_warns_and_aligns_without_it(
 
 
 @pytest.mark.usefixtures("apple_silicon")
+def test_asked_while_wgse_bwa_mem3_stands_in_warns_and_keeps_the_stand_in(
+    tmp_path, mem3_bin
+):
+    # #709 review: the stand-in dropped a requested file with only a log line.
+    reads = _mem3_reads(tmp_path)
+    _install(mem3_bin)
+    _install_bwa_mem3(mem3_bin)
+    _side_file(reads.ref)
+
+    bam, result = _align(
+        reads, tmp_path / "out", "--aligner", "bwa", "--dense-suffix-array"
+    )
+
+    assert _mapper(bam).startswith("wgse-bwa-mem3 ")
+    (warning,) = _dense_warnings(result)
+    assert warning.details == {"reason": "other_aligner", "aligner": "wgse-bwa-mem3"}
+    assert "dense_suffix_array_interval" not in result.metrics
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_asked_when_auto_picks_bwa_mem2_warns(tmp_path, mem3_bin):
+    reads = _mem3_reads(tmp_path)
+    _install(mem3_bin)
+    _side_file(reads.ref)
+
+    bam, result = _align(reads, tmp_path / "out", "--dense-suffix-array")
+
+    assert result.metrics["aligner"] == "bwa-mem2"
+    (warning,) = _dense_warnings(result)
+    assert warning.details == {"reason": "other_aligner", "aligner": "bwa-mem2"}
+
+
+@pytest.mark.usefixtures("apple_silicon")
 def test_realign_streams_into_wgse_bwa_reading_the_file_when_asked(tmp_path, bwa_bin):
     genome = _short_reads(tmp_path / "reads").genome[:6_000]
     (tmp_path / "old").mkdir()
@@ -235,6 +284,27 @@ def test_ref_dense_sa_builds_lists_and_deletes_the_file(tmp_path, bwa_bin):
     assert "wgse-bwa reads this one" in listed.text
     assert "Deleted 1" in deleted.text
     assert not list(Path(reads.ref).parent.glob("*.wgse-sa*"))  # manifests too
+
+
+def test_ref_dense_sa_needs_room_beside_the_file_it_replaces(
+    tmp_path, bwa_bin, monkeypatch
+):
+    # #709 review: densify-sa writes a .partial before replacing the old file,
+    # so the old file's space can't count as free.
+    reads = _short_reads(tmp_path)
+    _install(bwa_bin)
+    _index(reads.ref)
+    old = _side_file(reads.ref, content=MAGIC + bytes(1 << 20))
+    planned = dense_suffix_array.planned_bytes(reads.ref, 16)
+    free = planned + (1 << 30) - 1
+    monkeypatch.setattr(
+        shutil, "disk_usage", lambda _: shutil._ntuple_diskusage(free * 4, 0, free)
+    )
+
+    with pytest.raises(WGSExtractError, match="of disk"):
+        _ref_dense_sa("--ref", reads.ref)
+
+    assert old.read_bytes()[:8] == MAGIC and old.stat().st_size == 8 + (1 << 20)
 
 
 @pytest.mark.parametrize(

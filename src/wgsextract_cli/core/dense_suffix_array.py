@@ -147,6 +147,19 @@ def _warn_once(reason: str, message: str, **details: str | int) -> None:
     warn(UNUSED, message, reason=reason, **details)
 
 
+def other_aligner(aligner: str, *, enabled: bool) -> None:
+    """When the run asked for the file (``enabled``) but ``aligner`` (not
+    wgse-bwa) aligns, as when wgse-bwa-mem3 stands in: warn
+    (dense_suffix_array_unused, reason other_aligner)."""
+    if enabled:
+        _warn_once(
+            "other_aligner",
+            f"Not using a dense suffix-array file: only wgse-bwa reads one, and "
+            f"{aligner} aligns (with the same records).",
+            aligner=aligner,
+        )
+
+
 def for_alignment(
     native: NativeAligner | None, ref: str, *, enabled: bool
 ) -> Path | None:

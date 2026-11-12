@@ -108,7 +108,8 @@ KNOWN_SETTINGS = {
     "dense_suffix_array": (
         False,
         "`align`/`realign`: wgse-bwa reads the reference's dense suffix-array "
-        "file from `ref dense-sa` (opt-in; holds it in RAM, 0.8 GB for hs38)",
+        "file from `ref dense-sa` (opt-in; used only when wgse-bwa aligns; "
+        "holds it in RAM, 0.8 GB for hs38)",
     ),
     "dorado_models_directory": (
         None,

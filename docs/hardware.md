@@ -283,11 +283,14 @@ the check, or is older than the oldest supported release, raises the
     file as index memory (with the GPU it replaces the denser sample the GPU
     would build after 20M reads), and the manifest records
     `dense_suffix_array_interval`.
-  - Asked to use it, a run that can't (no file, `wgse-bwa` not aligning or
-    older than 0.11.0, or a file `wgse-bwa` won't read: it needs 16 GiB of RAM
-    or more, a file of at most an eighth of it, and an intact file made from
-    this index) raises the `dense_suffix_array_unused` warning and aligns
-    without it.
+  - It is used only when `wgse-bwa` aligns. When another aligner runs, such
+    as `wgse-bwa-mem3` standing in for bwa or bwa-mem2 (faster, with the same
+    records), or bwa-mem2 chosen by `--aligner auto`, that aligner is kept.
+    Asked to use the file, a run that can't (another aligner, no file,
+    `wgse-bwa` missing or older than 0.11.0, or a file `wgse-bwa` won't read:
+    it needs 16 GiB of RAM or more, a file of at most an eighth of it, and an
+    intact file made from this index) raises the `dense_suffix_array_unused`
+    warning and aligns without it.
 
 `--aligner bwa-mem3` asks for bwa-mem3 itself: `wgse-bwa-mem3` on Apple
 Silicon, else (or with `--native-aligners off`) `bwa-mem3` on `PATH`, for

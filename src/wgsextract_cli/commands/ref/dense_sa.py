@@ -127,8 +127,8 @@ def _build(ref: str, interval: int, threads: int | None) -> None:
         )
     target = dense_suffix_array.side_file(ref, interval)
     free = shutil.disk_usage(Path(ref).parent).free
-    existing = target.stat().st_size if target.is_file() else 0
-    if planned + _DISK_MARGIN_BYTES > free + existing:
+    # densify-sa writes beside an existing file and then replaces it.
+    if planned + _DISK_MARGIN_BYTES > free:
         raise WGSExtractError(
             f"Writing {target} needs {_size(planned)} of disk; {_size(free)} is free."
         )

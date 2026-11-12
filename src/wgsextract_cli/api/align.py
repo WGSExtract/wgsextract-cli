@@ -65,13 +65,16 @@ def _dense_suffix_array_param() -> Any:
         None,
         help="Have wgse-bwa (0.11.0 or later) read the reference's dense "
         "suffix-array file, built by `ref dense-sa`: the same alignments, "
-        "faster, holding the file in RAM (0.8 GB for hs38). Without the file "
-        "or wgse-bwa the run warns (dense_suffix_array_unused) and aligns "
-        "without it. Default: config dense_suffix_array, else off.",
+        "faster, holding the file in RAM (0.8 GB for hs38). Used only when "
+        "wgse-bwa aligns: otherwise (another aligner, such as wgse-bwa-mem3 "
+        "standing in, no file, or no such wgse-bwa) the run warns "
+        "(dense_suffix_array_unused) and aligns without it. Default: config "
+        "dense_suffix_array, else off.",
         doc="Opt in to wgse-bwa's dense suffix-array file (``ref dense-sa``): "
         "the same alignments, faster, with the file held in RAM. None uses "
-        "config dense_suffix_array, else off; without the file or a wgse-bwa "
-        "that reads it the run warns (dense_suffix_array_unused).",
+        "config dense_suffix_array, else off. Used only when wgse-bwa aligns; "
+        "otherwise (another aligner, no file, or no wgse-bwa that reads it) "
+        "the run warns (dense_suffix_array_unused).",
         action="boolean_optional",
         config_key="dense_suffix_array",
     )

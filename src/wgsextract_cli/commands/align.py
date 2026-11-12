@@ -669,18 +669,17 @@ def native_short_read_aligner(
         additional_ram_bytes=additional_ram_bytes,
     )
     dense = bool(job.dense_suffix_array)
-    if stand_in is not None or tool != "bwa":
-        if dense and announce:
-            logging.info(
-                "Not using a dense suffix-array file: only wgse-bwa reads one, "
-                f"and {(stand_in or AlignerCommand(tool)).binary} aligns."
-            )
-        dense = False
     if stand_in is not None:
         if announce:
+            dense_suffix_array.other_aligner(stand_in.binary, enabled=dense)
             stand_in.announce()
         return stand_in, memory
     native = find_native_aligner(tool, job.native_aligners)
+    if tool != "bwa":
+        if announce:
+            aligner_name = native.binary if native else tool
+            dense_suffix_array.other_aligner(aligner_name, enabled=dense)
+        dense = False
     dense_sa = dense_suffix_array.for_alignment(native, ref, enabled=dense)
     if native is None:
         return AlignerCommand(tool), memory
@@ -1220,6 +1219,9 @@ def _bwa_setup(
         read_length = statistics.read_length if statistics is not None else None
     if mem3 is not None:
         aligner = mem3
+        dense_suffix_array.other_aligner(
+            aligner.binary, enabled=bool(job.dense_suffix_array)
+        )
         aligner.announce()
     else:
         aligner, memory = short_read_command(
