@@ -19,9 +19,10 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.genome_library import pair_stem
+from wgsextract_cli.core.imputed_vcf import describe, imputation_info
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path, java_local_path
-from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.results import Scalar, current_result, warn
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     get_resource_defaults,
@@ -394,7 +395,19 @@ def run_vcf_qc(params: QcVcfParams) -> None:
             run_command(["bcftools", "stats", input_file], stdout=f)
     except (OSError, subprocess.SubprocessError) as e:
         raise WGSExtractError(f"VCF stats failed: {e}") from e
-    stats = bcftools_stats_summary(out_stats)
+    stats: dict[str, Scalar] = dict(bcftools_stats_summary(out_stats))
+    header = run_command(["bcftools", "view", "-h", input_file], capture_output=True)
+    imputed = imputation_info(header.stdout.splitlines())
+    if imputed is not None:
+        stats["imputed_by"] = imputed.get("Tool", "unknown")
+        warn(
+            "imputed_vcf",
+            f"{Path(input_file).name} is {describe(imputed)}: its genotypes are "
+            "predicted from a reference panel, not read from this sample's DNA, "
+            "and rare variants in it are unreliable.",
+            tool=imputed.get("Tool"),
+            panel=imputed.get("Panel"),
+        )
     current_result().add_output(out_stats, "vcf_stats", metrics=stats)
     current_result().add_metrics(**stats)
 

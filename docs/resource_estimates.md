@@ -1,5 +1,18 @@
 # CLI resource preflight and reusable estimates
 
+## Imputation
+
+`vcf impute` prints estimated memory and runtime before starting. HG002 chr20
+measurements at four threads: GLIMPSE2 phase/ligate 431–464 s and 2.2–3.1 GB
+peak RSS; Beagle 60 s and 3.4 GB. The memory preflight reserves a conservative
+4 GiB for GLIMPSE2 and 8 GiB for Beagle. Sequential chromosomes/chunks keep
+memory bounded; runtime scales with selected reference bases and thread count.
+The extrapolated whole-autosome GLIMPSE2 time is about 5.5 h at four threads,
+or 2.8 h at eight, excluding one-time panel preparation. These are not measured
+whole-genome runtimes. See [imputation](imputation.md) for accuracy and limits.
+
+## Other pipelines
+
 Native `align` (BWA/BWA-MEM2 and minimap2), `realign`, `bam sort`, `bam to-bam`,
 `bam to-cram`, and `vcf snp`/`indel`/`gatk`/`deepvariant` (CPU, every platform)
 report estimates before starting their heavy pipelines. For example:

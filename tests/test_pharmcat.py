@@ -224,6 +224,35 @@ def test_pharmcat_runs_its_pipeline_on_the_gene_regions_in_its_names(
 
 
 @needs_htslib
+def test_732_rare_imputed_allele_remains_low_confidence_pgx_evidence(
+    tmp_path, pharmcat_env, monkeypatch
+):
+    monkeypatch.setattr(runtime, "is_windows_host", lambda: False)
+    release = _release(tmp_path / "pharmcat")
+    vcf = _vcf(
+        tmp_path / "imputed.vcf.gz",
+        f"{{c}}\t150\t.\t{_base(150)}\tT\t.\tPASS\tIMP;RAF=0.002\tGT\t0/1\n",
+        header=(
+            '##INFO=<ID=IMP,Number=0,Type=Flag,Description="Imputed">\n'
+            '##INFO=<ID=RAF,Number=A,Type=Float,Description="Panel AF">\n'
+        ),
+    )
+    result = api.vcf.pharmcat(
+        api.VcfPharmcatParams(
+            vcf_input=Path(vcf), pharmcat_dir=release, outdir=tmp_path / "out"
+        )
+    )
+    summary = next(
+        entry for entry in result.details["confidence"] if entry["role"] == "pgx_calls"
+    )
+    assert summary["counts"]["low"] == 1
+    (finding,) = summary["findings"]
+    assert finding["confidence"] == "low"
+    assert "imputed" in finding["reasons"]
+    assert finding["gene"] == "CYP2C19"
+
+
+@needs_htslib
 def test_issue_622_windows_report_says_cyp2d6_not_called_with_spaced_paths(
     tmp_path, pharmcat_env, monkeypatch, caplog
 ):
