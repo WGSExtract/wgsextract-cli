@@ -632,7 +632,7 @@ def _native_args(
         )
         path = work / _REGIONS / f"{hashlib.sha256(bed.encode()).hexdigest()[:16]}.bed"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(bed)
+        path.write_text(bed, newline="\n")
         args.append(f"--regions={path}")
     if batch_size is not None:
         args.append(f"--batch_size={batch_size}")
