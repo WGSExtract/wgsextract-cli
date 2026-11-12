@@ -4,8 +4,7 @@
 #include "utils.h"
 
 #include "metal_seeding.h"
-#include "runtime.h"
-#include "seeding_source.h"
+#include "seeding_device.h"
 #include "seeding_types.h"
 
 #include <algorithm>
@@ -20,7 +19,6 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
-#include <unistd.h>
 #include <utility>
 #include <vector>
 
@@ -30,15 +28,14 @@ SMEM *mem_collect_smem(FMI_search *fmi, const mem_opt_t *opt, const bseq1_t *seq
 
 namespace {
 
-static_assert(sizeof(SeedParameters) == 80 && sizeof(SeedSmem) == 32);
-static_assert(sizeof(SeedRead) == 8 && sizeof(SeedCount) == 20);
+static_assert(sizeof(SeedParameters) == 80 && sizeof(SeedSmem) == 32, "seeding_types.h");
+static_assert(sizeof(SeedRead) == 8 && sizeof(SeedCount) == 20, "seeding_types.h");
 // Longer reads stay on the CPU, as in wgse-bwa-mem2.
 constexpr uint32_t max_length = 512;
 // SMEMs per read on the GPU; a read with more goes to the CPU.
 constexpr uint32_t capacity = 128;
-// Reads per command buffer.
+// Reads per GPU batch.
 constexpr int batch_reads = 8192;
-constexpr size_t group = 64;
 
 using Clock = std::chrono::steady_clock;
 
@@ -85,25 +82,12 @@ struct Chunk {
 
 class Seeder {
 public:
-    explicit Seeder(FMI_search *fmi) : fmi_(fmi) {
-        if (!runtime_.device()) throw std::runtime_error(runtime_.failure());
-        id<MTLLibrary> library = runtime_.library(wgse_seeding_source);
-        pipeline_ = runtime_.pipeline(library, "collect_smems");
-        prefix_pipeline_ = runtime_.pipeline(library, "seed_prefixes");
-        if (!pipeline_ || !prefix_pipeline_) throw std::runtime_error(runtime_.failure());
-        const size_t page = size_t(getpagesize());
-        const void *checkpoints = fmi->wgse_cp_occ();
-        const size_t bytes = size_t((fmi->reference_seq_len >> CP_SHIFT) + 1) * sizeof(CP_OCC);
-        if (!checkpoints || reinterpret_cast<uintptr_t>(checkpoints) % page)
-            throw std::runtime_error("the FM index is not page-aligned for Metal");
-        const size_t length = (bytes + page - 1) / page * page;
-        if (length > runtime_.device().maxBufferLength)
-            throw std::runtime_error("the FM index is larger than the GPU's largest buffer");
-        // FMI_search keeps ownership, and frees it after the Seeder (wgse_mem3_seed_release).
-        index_ = [runtime_.device() newBufferWithBytesNoCopy:const_cast<void *>(checkpoints)
-            length:length options:MTLResourceStorageModeShared deallocator:nil];
-        parameters_ = runtime_.allocate(sizeof(SeedParameters));
-        if (!index_ || !parameters_) throw std::runtime_error("cannot share the FM index with Metal");
+    // FMI_search keeps ownership of its occurrence table, and frees it after the Seeder
+    // (wgse_mem3_seed_release).
+    explicit Seeder(FMI_search *fmi)
+        : fmi_(fmi), device_(make_seeding_device(fmi->wgse_cp_occ(),
+              size_t((fmi->reference_seq_len >> CP_SHIFT) + 1) * sizeof(CP_OCC),
+              SeedingLimits{size_t(batch_reads), max_length, capacity})) {
         thread_ = std::thread([this] { loop(); });
     }
 
@@ -150,7 +134,7 @@ public:
         return found;
     }
 
-    // Waits for the chunk's command buffers.
+    // Waits for the chunk's GPU batches.
     void drain(Chunk &chunk) {
         std::unique_lock<std::mutex> lock(mutex_);
         changed_.wait(lock, [&chunk] { return chunk.in_flight == 0; });
@@ -168,11 +152,8 @@ public:
     }
 
 private:
-    wgse::metal::Runtime runtime_;
     FMI_search *fmi_;
-    id<MTLComputePipelineState> pipeline_ = nil, prefix_pipeline_ = nil;
-    id<MTLBuffer> index_ = nil, parameters_ = nil, bases_ = nil, reads_ = nil, scratch_ = nil,
-        smems_ = nil, counts_ = nil, prefixes_ = nil;
+    std::unique_ptr<SeedingDevice> device_;
     std::mutex mutex_;
     std::condition_variable changed_;
     std::deque<std::shared_ptr<Chunk>> pending_;
@@ -200,7 +181,7 @@ private:
                 ++chunk->in_flight;
             }
             try {
-                @autoreleasepool { run(*chunk, b); }
+                run(*chunk, b);
             } catch (const std::exception &error) {
                 fail(error.what(), true);
             }
@@ -225,7 +206,7 @@ private:
         const size_t count = size_t(last - first);
         Batch &batch = chunk.batches[b];
         // Once the watchdog gives up, the GPU is not used again.
-        const std::string hang = wgse::metal::Runtime::hang();
+        const std::string hang = device_->hang();
         if (!hang.empty()) throw std::runtime_error(hang);
         if (inject_failure) throw std::runtime_error("injected GPU seeding failure (test)");
         std::vector<uint8_t> declined(count);
@@ -247,10 +228,8 @@ private:
                     longest = std::max(longest, uint32_t(length));
                 }
             }
-            reserve(bases_, total_bases);
-            reserve(reads_, count * sizeof(SeedRead));
-            auto *bases = static_cast<uint8_t *>(bases_.contents);
-            auto *reads = static_cast<SeedRead *>(reads_.contents);
+            uint8_t *bases = device_->bases(total_bases);
+            SeedRead *reads = device_->reads(count);
             size_t offset = 0;
             for (size_t i = 0; i < count; ++i) {
                 const bseq1_t &read = chunk.seqs[first + int(i)];
@@ -265,28 +244,9 @@ private:
         p.reads = uint32_t(count);
         p.scratch = longest;
         p.capacity = capacity;
-        reserve(scratch_, count * p.scratch * 32);
-        reserve(smems_, count * p.capacity * sizeof(SeedSmem));
-        reserve(counts_, count * sizeof(SeedCount));
-        memcpy(parameters_.contents, &p, sizeof(p));
-        if (!prefixes_) {
-            // The table depends only on the index (p.count, p.sentinel).
-            const size_t entries = ((size_t(1) << (2 * (seed_prefix_depth + 1))) - 4) / 3;
-            id<MTLBuffer> table = runtime_.allocate(entries * 3 * sizeof(int64_t));
-            if (!table) throw std::runtime_error("Metal allocation failed");
-            double seconds = 0;
-            if (!runtime_.dispatch(prefix_pipeline_, {index_, parameters_, table}, entries, group, seconds))
-                throw std::runtime_error(runtime_.failure());
-            prefixes_ = table;
-        }
-        double elapsed = 0;
-        // The kernel rewrites its outputs from unchanged inputs, so an interrupted dispatch reruns.
-        if (!runtime_.dispatch(pipeline_,
-                {index_, parameters_, bases_, reads_, scratch_, smems_, counts_, prefixes_}, count, group,
-                elapsed))
-            throw std::runtime_error(runtime_.failure());
-        const auto *counts = static_cast<const SeedCount *>(counts_.contents);
-        const auto *smems = static_cast<const SeedSmem *>(smems_.contents);
+        const double elapsed = device_->collect(p, total_bases);
+        const SeedCount *counts = device_->counts();
+        const SeedSmem *smems = device_->smems();
         batch.counts.resize(count);
         batch.offsets.resize(count);
         size_t gpu = 0;
@@ -308,14 +268,6 @@ private:
         gpu_seconds += elapsed;
         gpu_reads += gpu;
         ++batches_run;
-    }
-
-    void reserve(__strong id<MTLBuffer> &buffer, size_t bytes) {
-        bytes = std::max<size_t>(bytes, 1);
-        if (buffer && buffer.length >= bytes) return;
-        buffer = nil;
-        buffer = runtime_.allocate(bytes + bytes / 4);
-        if (!buffer) throw std::runtime_error("Metal allocation failed");
     }
 };
 
@@ -413,7 +365,7 @@ bool wgse_mem3_seed_release(const FMI_search *fmi) {
     std::lock_guard<std::mutex> lock(seeder_mutex);
     if (!seeder || seeder->fmi() != fmi) return false;
     seeder.reset();
-    return wgse::metal::Runtime::unsettled() > 0;
+    return seeding_device_unsettled();
 }
 
 void wgse_mem3_seed_chunk_done(const bseq1_t *seqs) {
