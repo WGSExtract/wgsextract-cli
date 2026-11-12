@@ -42,10 +42,11 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
   2. the "Up next" list at the top of the roadmap tracking issue (label `roadmap`), in the order listed; it overrides milestones
   3. the oldest open milestone
   4. the rest of the roadmap tracking issue
-- **Machine labels.** A `machine-*` label (for example `machine-lin-3090`) claims an issue for the agent on that machine; the label's description names the host.
-  - An issue carries at most one machine label. Agents on other machines skip a labelled issue; an owner moves it by swapping the label. To coordinate, comment on the issue.
+- **Machine labels.** A `machine-*` label (for example `machine-lin-3090`) claims an issue for one machine. The label's description names the agent that owns it: the agent on that machine, or the supervisor that drives it remotely (randy-mini, Azure VMs).
+  - An issue carries at most one machine label. Every other agent skips a labelled issue; an owner moves it by swapping the label. To coordinate, comment on the issue.
   - **Only that machine can do it:** label the issue in advance (for example, it needs that machine's GPU). The label stays on even while nobody works on it.
   - **Any machine can do it:** unlabelled issues are open to every machine. Add your machine's label when you start actively working on one. Remove it when you stop or can't continue, so another machine can take it.
+  - **Claim races:** after adding your label, re-read the issue's labels. If another machine label is there too, the label added first in the issue timeline wins; the other agent removes its label and doesn't start.
   - Create a new `machine-*` label for a new machine.
 - **Assignees.** Don't work on an issue assigned to someone other than the account you're signed in as (`gh api user --jq .login`).
 - **Keep going.** When given a queue of work (such as a list of GitHub issues), keep working through it without stopping to ask for confirmation between items.
