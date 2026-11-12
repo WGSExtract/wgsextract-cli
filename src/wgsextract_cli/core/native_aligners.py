@@ -375,15 +375,26 @@ def find_bwa_mem3(setting: str | None, *, instead: str) -> NativeAligner | None:
         return find_native_aligner("bwa-mem3", setting, quiet=True, instead=instead)
     if native_setting(setting) == "off":
         return None
+    native = find_native_aligner("bwa-mem3", setting, probe=True)
+    if native is not None:
+        return native
+    bioconda = _bioconda_bwa_mem3(instead)
+    # An installed but unusable wgse-bwa-mem3 warns, naming what aligns instead.
+    find_native_aligner(
+        "bwa-mem3", setting, quiet=True, instead="bwa-mem3" if bioconda else instead
+    )
+    return bioconda
+
+
+def _bioconda_bwa_mem3(instead: str) -> NativeAligner | None:
+    """Bioconda's bwa-mem3 from PATH or its Pixi environment, when it is
+    0.16.0 or later and runs; otherwise None, with a warning when installed."""
     from wgsextract_cli.core.dependencies import get_tool_path
     from wgsextract_cli.core.dependency_checks import get_tool_version
 
     path = get_tool_path("bwa-mem3")
-    native = find_native_aligner(
-        "bwa-mem3", setting, quiet=True, instead="bwa-mem3" if path else instead
-    )
-    if native is not None or path is None:
-        return native
+    if path is None:
+        return None
     # Failed probes aren't cached, and realign asks several times: once is enough.
     if any(
         w.code == "native_aligner_unusable" and w.details.get("path") == path

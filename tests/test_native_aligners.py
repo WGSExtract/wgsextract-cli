@@ -1245,25 +1245,33 @@ def test_linux_x86_64_wgse_bwa_mem3_stands_in_before_biocondas_on_its_gpu(
 
 
 @pytest.mark.usefixtures("linux_x86_64")
-def test_linux_unusable_wgse_bwa_mem3_warns_and_biocondas_stands_in(
-    tmp_path, mem3_bin, fake_pixi
+@pytest.mark.parametrize(
+    ("bioconda", "mapper", "aligner"),
+    [
+        (None, "bwa-mem3 mem --compat=bwa-mem ", "bwa-mem3"),
+        ("print('0.15.0')\n", "bwa mem ", "bwa"),
+    ],
+)
+def test_linux_unusable_wgse_bwa_mem3_warns_naming_what_aligns_instead(
+    tmp_path, mem3_bin, fake_pixi, bioconda, mapper, aligner
 ):
+    # #742 review: with Bioconda's bwa-mem3 unusable too, bwa aligns, and the
+    # warning must say so rather than name bwa-mem3.
     reads = _mem3_reads(tmp_path)
     build = _install_bwa_mem3(
         mem3_bin, capabilities=_linux_wgse_bwa_mem3_capabilities(cpu_available=False)
     )
-    _env_bwa_mem3(fake_pixi, mem3_bin)
+    _env_bwa_mem3(fake_pixi, mem3_bin, bioconda)
 
     bam, result = _align(reads, tmp_path / "out", "--aligner", "bwa")
 
-    assert _mapper(bam).startswith("bwa-mem3 mem --compat=bwa-mem ")
-    (warning,) = result.warnings
-    assert warning.code == "native_aligner_unusable"
-    # The warning names what aligns instead: Bioconda's bwa-mem3, not bwa.
-    assert warning.details == {
+    assert _mapper(bam).startswith(mapper)
+    warnings = {w.details["binary"]: w for w in result.warnings}
+    assert warnings["wgse-bwa-mem3"].code == "native_aligner_unusable"
+    assert warnings["wgse-bwa-mem3"].details == {
         "binary": "wgse-bwa-mem3",
         "path": str(build),
-        "aligner": "bwa-mem3",
+        "aligner": aligner,
     }
 
 

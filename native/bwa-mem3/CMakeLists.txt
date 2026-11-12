@@ -428,3 +428,8 @@ install(FILES "${htslib_dir}/LICENSE" DESTINATION ${licenses} RENAME htslib-LICE
 # htslib's CRAM codecs (rANS, arithmetic coder, ...) come from its bundled htscodecs.
 install(FILES "${htslib_dir}/htscodecs/LICENSE.md" DESTINATION ${licenses}
     RENAME htscodecs-LICENSE)
+if(WGSE_CUDA)
+    # The CUDA mate rescue runs wgse-bwa's kernel, adapted from BWA's ksw.c.
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../bwa/SEEDING-LICENSE" DESTINATION ${licenses}
+        RENAME BWA-KERNELS-LICENSE)
+endif()

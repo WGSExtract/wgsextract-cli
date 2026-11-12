@@ -8,6 +8,10 @@
 #include <string>
 #include <vector>
 
+// Upstream's simd_dispatch: whether this CPU has the build's SIMD floor (AVX2 on x86-64);
+// below it, `mem` exits 2 before aligning.
+extern "C" int bwamem3_host_meets_floor(void);
+
 extern "C" int wgse_bwamem3_main(int argc, char *argv[]);
 
 namespace {
@@ -187,12 +191,13 @@ int run(int argc, char **argv) {
             "\"qualified\":false,\"metal_available\":%s,"
             "\"metal_hardware_supported\":%s,\"cuda_available\":%s,"
             "\"cuda_hardware_supported\":%s,"
-            "\"cpu_available\":true,\"max_gpu_query_length\":%d,"
+            "\"cpu_available\":%s,\"max_gpu_query_length\":%d,"
             "\"physical_memory_bytes\":%llu,\"metal\":{\"device\":%s,"
             "\"max_buffer_bytes\":%llu,\"recommended_max_working_set_bytes\":%llu}}\n",
             version, engine_version, metal ? "true" : "false",
             metal_supported ? "true" : "false", cuda ? "true" : "false",
-            cuda_supported ? "true" : "false", wgse_mem3_max_gpu_query_length,
+            cuda_supported ? "true" : "false", bwamem3_host_meets_floor() ? "true" : "false",
+            wgse_mem3_max_gpu_query_length,
             (unsigned long long)wgse_mem3_physical_memory(), json(limits.device).c_str(),
             (unsigned long long)limits.max_buffer_bytes,
             (unsigned long long)limits.recommended_working_set_bytes);

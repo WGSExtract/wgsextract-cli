@@ -1238,7 +1238,9 @@ adapted from BWA's MIT-licensed `bwt.c`, `bwamem.c`, `bwamem_pair.c` and
 like this repository). `wgse-bwa-mem3` combines bwa-mem3 (MIT), sse2neon
 (MIT), libsais (Apache-2.0), mimalloc (MIT), zlib-ng (zlib), libdeflate (MIT)
 htslib (MIT/Expat and modified BSD) and htslib's bundled htscodecs (BSD) with
-the code in `bwa-mem3/` (GPL-3.0-or-later).
+the code in `bwa-mem3/` (GPL-3.0-or-later); its CUDA build's mate rescue runs
+`wgse-bwa`'s kernel, adapted from BWA's MIT-licensed `ksw.c`
+(`BWA-KERNELS-LICENSE`).
 `wgse-minimap2` combines minimap2 (MIT) and sse2neon
 (MIT) with the code in `minimap2/` (GPL-3.0-or-later). Its sketching code is
 adapted from minimap2's `sketch.c` (`MINIMAP2-LICENSE`) and its radix sort from

@@ -63,6 +63,10 @@ requirements:
     - cuda-cudart-dev
     - cuda-cudart-static
     - zlib
+  run:
+    # bwa-mem3's floor: AVX2 (x86-64-v3) outside its run-time-dispatched kernels. On an older
+    # CPU `mem` exits 2, and capabilities report cpu_available false.
+    - _x86_64-microarch-level >=3
   # Statically linked: neither the shared runtime cuda-cudart-dev exports nor a CUDA
   # version is needed at run time.
   ignore_run_exports:
@@ -91,9 +95,12 @@ tests:
 
 about:
   homepage: https://github.com/WGSExtract/wgsextract-cli/tree/main/native
-  license: MIT
+  # This repository's GPL-3.0-or-later code with the MIT, Apache-2.0, zlib and BSD sources
+  # the licence files list (native/README.md, Licences).
+  license: GPL-3.0-or-later
   license_file:
     - LICENSE
+    - native/bwa/SEEDING-LICENSE
     - mem3/LICENSE
     - libsais/LICENSE
     - mimalloc/LICENSE
