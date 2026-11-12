@@ -177,6 +177,11 @@ export function localizationLabels(table: StringMap = {}) {
         setupStepOkTitle: table["app.setup.step.ok"] ?? "OK",
         setupStepWarningTitle: table["app.setup.step.warning"] ?? "Warning",
         setupStepFailedTitle: table["app.setup.step.failed"] ?? "Failed",
+        setupStepKindScriptLabel: table["app.setup.step.kind.script"] ?? "Script",
+        setupStepKindPathToolLabel: table["app.setup.step.kind.pathTool"] ?? "Tool on PATH",
+        setupStepKindHomebrewPackageLabel: table["app.setup.step.kind.homebrewPackage"] ?? "Homebrew package",
+        setupStepKindPixiInstallLabel: table["app.setup.step.kind.pixiInstall"] ?? "Pixi install",
+        setupStepKindPixiRunLabel: table["app.setup.step.kind.pixiRun"] ?? "Pixi command",
         chooseButtonTitle: table["app.pathPicker.chooseButton.title"] ?? "Choose...",
         pathPickerErrorTitle: table["app.pathPicker.error.title"] ?? "Could not choose path",
         settingsFileLabel: table["app.settingsFile.label"] ?? "Settings File",
@@ -221,6 +226,17 @@ export function localizationLabels(table: StringMap = {}) {
         resultUsageTitle: table["app.result.usage.title"] ?? "Check the selected options",
         resultMissingDependencyTitle: table["app.result.missingDependency.title"] ?? "A required tool is not installed",
         resultOpenSetupTitle: table["app.result.openSetup.title"] ?? "Open Setup",
+        prerequisitesTitle: table["app.prerequisites.title"] ?? "Required data is missing",
+        prerequisitesMessage: table["app.prerequisites.message"] ?? "This command needs data that isn't installed yet:",
+        prerequisitesStillMissingMessage: table["app.prerequisites.stillMissing"] ??
+            "It still isn't installed. Install it, or download it yourself and click Continue again.",
+        prerequisitesManualNote: table["app.prerequisites.manualNote"] ??
+            "To download it yourself, install it from the library pages, then click Continue.",
+        prerequisitesInstallButtonTitle: table["app.prerequisites.install"] ?? "Install and Continue",
+        prerequisitesContinueButtonTitle: table["app.prerequisites.continue"] ?? "Continue",
+        prerequisitesCancelButtonTitle: table["app.prerequisites.cancel"] ?? "Cancel",
+        prerequisitesCheckingTitle: table["app.prerequisites.checking"] ?? "Checking for required data…",
+        prerequisitesInstallTitleFormat: table["app.prerequisites.installTitleFormat"] ?? "Install %{name}",
         libraryStatusLabels: {
             installed: table["library.status.installed"] ?? "installed",
             unindexed: table["library.status.unindexed"] ?? "unindexed",
@@ -238,6 +254,9 @@ export function localizeManifest(rawManifest: BundleManifest, table: StringMap =
     manifest.setup.steps = (manifest.setup.steps ?? []).map((step) => localizeFields(step, table, ["label"]));
     manifest.exitCodeReference = (manifest.exitCodeReference ?? []).map((entry) => localizeFields(entry, table, ["title", "summary"]));
     manifest.pages = (manifest.pages ?? []).map((page) => localizePage(page, table));
+    if (manifest.prerequisites?.kindLabels) {
+        manifest.prerequisites.kindLabels = mapValues(manifest.prerequisites.kindLabels, (value) => localizedText(String(value), table));
+    }
     return manifest;
 }
 function localizePage(page: BundlePage, table: StringMap): BundlePage {

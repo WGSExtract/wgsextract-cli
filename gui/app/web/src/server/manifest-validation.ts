@@ -16,6 +16,7 @@ const CONFIG_FILE_PREFIXES = [
     "{{userConfig}}/",
     "{{applicationSupport}}/",
     "{{appConfig}}/",
+    "{{appData}}/",
     "~/",
 ];
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });

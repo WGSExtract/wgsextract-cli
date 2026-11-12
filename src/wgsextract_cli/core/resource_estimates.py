@@ -25,6 +25,8 @@ Operation = Literal[
     "indel",
     "gatk",
     "deepvariant",
+    "vep-download",
+    "vep",
 ]
 GIB = 1024**3
 GATK_WORKER_BYTES = 6 * GIB
@@ -59,6 +61,17 @@ DV_RECORDS_PER_BASE = 4.75e-3
 DV_BYTES_PER_RECORD = 2048
 DV_WORKER_BASE_BYTES = 768 * 1024**2
 DV_MAX_PARTITIONS = 128
+# wgse-deepvariant (#647), from HG002 35x chr20 on an M1 Pro (10 threads):
+# make_examples < 0.5 GiB; call_variants' footprint 12.9 GB at batch 1024;
+# postprocess_variants keeps the run's records serialized (~0.6 B/base) and
+# parses one contig at a time (~10 B/base); gzipped examples 0.8 GB from a
+# 1.1 GB BAM.
+NATIVE_DV_BASE_BYTES = GIB
+NATIVE_DV_THREAD_BYTES = GIB // 4
+NATIVE_DV_INFERENCE_BYTES_PER_EXAMPLE = 12 * 1024**2
+NATIVE_DV_RECORD_BYTES_PER_BASE = 0.6
+NATIVE_DV_CONTIG_BYTES_PER_BASE = 10.0
+NATIVE_DV_EXAMPLES_PER_INPUT_BYTE = 0.8
 
 
 @dataclass(frozen=True)
@@ -306,6 +319,7 @@ def estimate_resources(
     deepvariant_model: str = "WGS",
     postprocess_plan: PostprocessPlan | None = None,
     available_ram: int | None = None,
+    deepvariant_native: bool = False,
 ) -> PreflightEstimate:
     """Estimate a resolved command without creating files or running tools.
 
@@ -485,6 +499,38 @@ def estimate_resources(
             if disk_reads is None
             else disk_reads
             * (CRAM_BYTES_PER_READ if operation == "to-cram" else BAM_BYTES_PER_READ)
+        )
+    elif operation == "deepvariant" and deepvariant_native:
+        calling = dv_calling_regions(
+            read_fai_lengths(reference) if reference else {}, region
+        )
+        contig_bases: dict[str, int] = {}
+        for contig, start, end in calling or []:
+            contig_bases[contig] = contig_bases.get(contig, 0) + end - start
+        memory_components = {
+            "largest_sequential_stage": max(
+                NATIVE_DV_BASE_BYTES + count * NATIVE_DV_THREAD_BYTES,
+                NATIVE_DV_BASE_BYTES
+                + inference_batch_size * NATIVE_DV_INFERENCE_BYTES_PER_EXAMPLE,
+                NATIVE_DV_BASE_BYTES
+                + math.ceil(
+                    sum(contig_bases.values()) * NATIVE_DV_RECORD_BYTES_PER_BASE
+                    + max(contig_bases.values(), default=0)
+                    * NATIVE_DV_CONTIG_BYTES_PER_BASE
+                ),
+            ),
+            "driver_headroom": GIB,
+        }
+        notes.append(
+            "wgse-deepvariant runs make_examples, call_variants (GPU, memory "
+            "set by --batch-size) and postprocess_variants (one contig at a "
+            "time) one after another: allow for the largest."
+        )
+        output = None if size is None else math.ceil(size / 10)
+        temporary = (
+            None
+            if size is None
+            else math.ceil(size * NATIVE_DV_EXAMPLES_PER_INPUT_BYTE)
         )
     elif operation == "deepvariant":
         arm64 = is_arm64_docker_host()
@@ -859,3 +905,53 @@ def report_resources(estimate: PreflightEstimate) -> None:
         )
     for note in estimate.notes:
         logging.info("Preflight: %s", note)
+
+
+# vep-rs's GRCh38 cache, built by `vep download --engine vep-rs` (#602, measured
+# on Ensembl release 116): Ensembl's files, the unpacked genome FASTA the
+# builder reads, the cache itself, and vep-cache-builder's peak memory.
+VEP_RS_DOWNLOAD_BYTES = {False: int(1.6 * GIB), True: int(17.5 * GIB)}
+VEP_RS_GENOME_BYTES = int(3.0 * GIB)
+VEP_RS_CACHE_BYTES = {False: int(5.7 * GIB), True: 17 * GIB}
+# vep-cache-builder peaked at 8.5 GB RSS without variations, 11 GB with.
+VEP_RS_BUILD_MEMORY = 12 * GIB
+# Peak memory of `vep run` on a whole genome: vep-rs on its built cache (6
+# threads, HG002), Ensembl VEP (6 forks).
+VEP_RUN_MEMORY = {"vep-rs": 8 * GIB, "ensembl": int(1.5 * GIB)}
+
+
+def estimate_vep_download(cache_dir: str, variations: bool) -> PreflightEstimate:
+    """Disk and memory a vep-rs cache build needs: the downloads and the
+    unpacked genome stay until the cache beside them is complete."""
+    _, free = _disk_space(cache_dir)
+    components = {
+        "downloads": VEP_RS_DOWNLOAD_BYTES[variations],
+        "genome": VEP_RS_GENOME_BYTES,
+        "cache": VEP_RS_CACHE_BYTES[variations],
+    }
+    return PreflightEstimate(
+        "vep-download",
+        (
+            ResourceEstimate(
+                "disk", sum(components.values()), free, components, (cache_dir,)
+            ),
+            ResourceEstimate("memory", VEP_RS_BUILD_MEMORY, _available_memory(), {}),
+        ),
+        (),
+    )
+
+
+def estimate_vep_run(engine: str) -> PreflightEstimate:
+    """Memory `vep run` needs for a whole genome with ``engine``."""
+    return PreflightEstimate(
+        "vep",
+        (ResourceEstimate("memory", VEP_RUN_MEMORY[engine], _available_memory(), {}),),
+        (),
+    )
+
+
+def _available_memory() -> int | None:
+    try:
+        return alignment_memory.available_memory()
+    except (OSError, ValueError):
+        return None

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Icons · WGS Extract mockups</title>
+<link rel="stylesheet" href="../design-system/wgse.css">
+<link rel="stylesheet" href="../shared/mockup.css">
+<link rel="stylesheet" href="../shared/docs.css">
+<script src="../shared/boot.js" defer></script>
+</head>
+<body data-page-id="icons" data-shell="none" data-title="Icons and logomarks">
+<div class="doc" data-annot-id="doc">
+  <header class="doc__hero" data-annot-id="hero">
+    <span class="eyebrow">Design system</span>
+    <h1>Icons and logomarks</h1>
+    <p>One line style for everything: a 24 px grid, round caps and joins, drawn with <code>currentColor</code> and a 1.75 px stroke set in CSS (<code>--icon-stroke</code>). Icons never carry text, so nothing in them needs translating; the label always sits beside them. Click an icon to copy its markup.</p>
+    <div class="row row--wrap">
+      <div class="input-icon" style="width: 280px"><i data-icon="search" class="icon--sm"></i><input class="input" type="search" placeholder="Filter icons" aria-label="Filter icons" data-icon-filter></div>
+      <a class="btn btn--ghost" href="../design-system/design-system.html"><i data-icon="arrow-right"></i>Design system</a>
+    </div>
+  </header>
+
+  <section class="doc-section" data-annot-id="logos">
+    <h2>App logomark: three options</h2>
+    <p>The current icon is a helix and a toolbox; these keep the helix colours and drop detail that disappears at small sizes. Vote with a note on the one you prefer.</p>
+    <div class="logo-row">
+      <figure class="card logo-card" data-annot-id="logo-a" style="margin: 0">
+        <div class="logo-card__sizes"><img src="logos/logo-a-helix-bracket.svg" width="96" height="96" alt="Option A"><img src="logos/logo-a-helix-bracket.svg" width="32" height="32" alt=""><img src="logos/logo-a-helix-bracket.svg" width="16" height="16" alt=""></div>
+        <figcaption><strong>A · Helix in brackets</strong><br><span class="small muted">The helix, with brackets for “extract a part”. Closest to today’s icon. Used in Direction C.</span></figcaption>
+      </figure>
+      <figure class="card logo-card" data-annot-id="logo-b" style="margin: 0">
+        <div class="logo-card__sizes"><img src="logos/logo-b-ring-slice.svg" width="96" height="96" alt="Option B"><img src="logos/logo-b-ring-slice.svg" width="32" height="32" alt=""><img src="logos/logo-b-ring-slice.svg" width="16" height="16" alt=""></div>
+        <figcaption><strong>B · Genome ring, one slice out</strong><br><span class="small muted">A circular genome with a section lifted out. Reads well at 16 px. Used in Direction A.</span></figcaption>
+      </figure>
+      <figure class="card logo-card" data-annot-id="logo-c" style="margin: 0">
+        <div class="logo-card__sizes"><img src="logos/logo-c-pileup.svg" width="96" height="96" alt="Option C"><img src="logos/logo-c-pileup.svg" width="32" height="32" alt=""><img src="logos/logo-c-pileup.svg" width="16" height="16" alt=""></div>
+        <figcaption><strong>C · Reads onto a reference</strong><br><span class="small muted">Aligned reads converging on a reference line: what the tool does. Used in Direction B.</span></figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="doc-section" data-annot-id="domain-icons">
+    <h2>WGS Extract icons</h2>
+    <p>Drawn for this app: file types, genealogy and analysis steps. Source files are in <code>icons/wgse/</code>.</p>
+    <div data-render="icon-gallery" data-set="wgse"></div>
+  </section>
+
+  <section class="doc-section" data-annot-id="ui-icons">
+    <h2>Interface icons</h2>
+    <p>A subset of <a href="https://lucide.dev">Lucide</a> (ISC licence, <code>icons/lucide/LICENSE</code>), whose 24 px round-cap style the domain icons follow. Add one by copying its SVG into <code>icons/lucide/</code> and running <code>python3 gui/mockups/icons/build_icons.py</code>.</p>
+    <div data-render="icon-gallery" data-set="lucide"></div>
+  </section>
+</div>
+</body>
+</html>

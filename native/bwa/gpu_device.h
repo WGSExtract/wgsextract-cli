@@ -204,6 +204,13 @@ public:
     // (see sampled_position in backend.cpp). False if unsupported or out of memory.
     virtual bool densify(unsigned shift, size_t slice, const uint32_t **low,
         const uint32_t **high) = 0;
+    // Locates with denser samples read from a side file (dense_sa.h's layout) in
+    // place: page-aligned whole pages that outlive the device. False if unsupported.
+    virtual bool adopt_dense(unsigned shift, uint32_t *low, size_t low_bytes, uint32_t *high,
+        size_t high_bytes) {
+        (void)shift, (void)low, (void)low_bytes, (void)high, (void)high_bytes;
+        return false;
+    }
 
     // Mate rescue: results[i] is ksw_align2's result for jobs[i] unless its
     // status is rescue_cpu. Synchronous.

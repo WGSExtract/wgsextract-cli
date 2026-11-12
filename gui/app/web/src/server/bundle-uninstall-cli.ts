@@ -5,23 +5,25 @@
  * removes what its setup installed (the same steps as /api/uninstall/stream). Prints the steps'
  * output; exits 1 if any step failed.
  *
- * Usage: bundle-uninstall-cli.js --app-support-name <app identifier> [--print-workspace] [--remove-workspace] [--remove-app-data] <bundle>
- * The bundle's workspaces are where it is now and, if it was moved or the bundle names no
+ * Usage: bundle-uninstall-cli.js [--app-data-name <name>] [--print-workspace] [--remove-workspace] [--remove-app-data] <bundle>
+ * --app-data-name names the app's data folder (default WGSExtract-gui), which holds the CLI runtime that
+ * setup installed and the app's settings. The bundle's workspaces are where it is now and, if it was moved or the bundle names no
  * defaultWorkspace, in the app's data folder. They hold the user's libraries, settings and outputs, so
  * they are deleted only with --remove-workspace (ask the user first; --print-workspace only prints
  * their paths, one per line, or nothing if there are none). Unless a step failed, --remove-workspace
- * then deletes them and --remove-app-data the app's data folders, keeping any workspace in them.
- * GUI_FOR_CLI_UNINSTALL_RESULT_FILE, if set, receives the result as JSON (as from the macOS app).
+ * then deletes them and --remove-app-data the app's data folder, keeping any workspace in it.
+ * WGSEXTRACT_GUI_UNINSTALL_RESULT_FILE, if set, receives the result as JSON (as from the macOS app).
  */
 import { existsSync } from "node:fs";
 import { readdir, rm, rmdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { loadManifestFromRoot } from "./bundle-loader.js";
+import { leaveAppImageEnvironment } from "./appimage-environment.js";
 import { errorMessage } from "./errors.js";
 import { appSupportDirectory } from "./paths.js";
 import { createProcessManager } from "./process-runner.js";
 import { runUninstall, type SetupSummary } from "./setup-runner.js";
-import { appDataWorkspacesDirectory, isManagedWorkspace, resolveWorkspaceRoot, workspaceRootIn } from "./workspace-location.js";
+import { appDataWorkspacesDirectory, isManagedWorkspace, migrateLegacyAppData, resolveWorkspaceRoot, workspaceRootIn } from "./workspace-location.js";
 
 type UninstallResult = SetupSummary & { log: string[] };
 
@@ -31,24 +33,30 @@ function parseArgs(argv: string[]) {
         const index = args.indexOf(flag);
         return index < 0 ? false : Boolean(args.splice(index, 1));
     };
-    const nameIndex = args.indexOf("--app-support-name");
-    const appSupportName = nameIndex >= 0 ? args.splice(nameIndex, 2)[1] : undefined;
+    const nameIndex = args.indexOf("--app-data-name");
+    const appDataName = nameIndex >= 0 ? args.splice(nameIndex, 2)[1] : undefined;
     const printWorkspace = take("--print-workspace");
     const removeWorkspace = take("--remove-workspace");
     const removeAppData = take("--remove-app-data");
     const [bundle, ...rest] = args;
-    if (!appSupportName || !bundle || rest.length > 0) {
-        throw new Error("Usage: bundle-uninstall-cli.js --app-support-name <app identifier> [--print-workspace] [--remove-workspace] [--remove-app-data] <bundle>");
+    if ((nameIndex >= 0 && !appDataName) || !bundle || rest.length > 0) {
+        throw new Error("Usage: bundle-uninstall-cli.js [--app-data-name <name>] [--print-workspace] [--remove-workspace] [--remove-app-data] <bundle>");
     }
-    return { appSupportName, printWorkspace, removeWorkspace, removeAppData, bundle };
+    return { appDataName, printWorkspace, removeWorkspace, removeAppData, bundle };
 }
 
 async function main(argv: string[]): Promise<number> {
-    const { appSupportName, printWorkspace, removeWorkspace, removeAppData, bundle } = parseArgs(argv);
-    process.env.GUI_FOR_CLI_APP_SUPPORT_NAME = appSupportName;
+    // The uninstall steps run the system's programs, not the AppImage's.
+    leaveAppImageEnvironment();
+    const { appDataName, printWorkspace, removeWorkspace, removeAppData, bundle } = parseArgs(argv);
+    if (appDataName) {
+        process.env.WGSEXTRACT_GUI_APP_DATA_NAME = appDataName;
+    }
+    // An app upgraded from 0.8.6 or earlier and uninstalled before it ever ran still has its settings there.
+    await migrateLegacyAppData();
     const manifest = await loadManifestFromRoot(path.resolve(bundle));
-    // On Windows the app keeps data in both %LOCALAPPDATA% and %APPDATA%, and the uninstaller removes both here.
-    const appDataFolders = [appSupportDirectory(), ...(process.platform === "win32" && process.env.APPDATA ? [path.join(process.env.APPDATA, appSupportName)] : [])];
+    // The webview's data and logs are in folders named for the app's identifier, which the uninstaller removes.
+    const appDataFolders = [appSupportDirectory()];
     // Where prepareBundleWorkspace keeps the workspace now, which can be outside the app's data folder, and where it is kept by default.
     const workspace = await resolveWorkspaceRoot(manifest);
     const appDataWorkspace = workspaceRootIn(appDataWorkspacesDirectory(), manifest.id);
@@ -143,7 +151,7 @@ async function runWorkspaceSteps(workspace: string) {
 }
 
 async function writeResult(result: UninstallResult) {
-    const resultFile = process.env.GUI_FOR_CLI_UNINSTALL_RESULT_FILE;
+    const resultFile = process.env.WGSEXTRACT_GUI_UNINSTALL_RESULT_FILE;
     if (resultFile) {
         await writeFile(resultFile, `${JSON.stringify(result, null, 2)}\n`, "utf8");
     }

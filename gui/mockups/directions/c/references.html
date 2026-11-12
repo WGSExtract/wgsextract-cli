@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reference genomes · Direction C · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="c-references" data-direction="C" data-shell="c" data-nav="references" data-title="Reference genomes">
+<div class="page" data-annot-id="page">
+  <header class="page-header" data-annot-id="header">
+    <div class="page-header__text">
+      <h1>Reference genomes</h1>
+      <p class="page-header__lead">The human genome your files were aligned to. WGS Extract needs the same one to read a CRAM, call variants or make DNA-test files.</p>
+    </div>
+    <div class="btn-group"><button class="btn" type="button" data-toast="Verifying 2 genomes (about 4 min)"><i data-icon="shield-check"></i>Verify all</button></div>
+  </header>
+
+  <div class="callout callout--success" data-annot-id="coverage-of-needs">
+    <i data-icon="circle-check"></i>
+    <div><strong>Your library covers 5 of your 6 files.</strong> Alex — Nebula 30x needs hs38d1 (0.9 GB). <button class="link-btn" type="button" data-toast="Installing hs38d1 — see Jobs">Install it</button></div>
+  </div>
+
+  <section class="section" data-annot-id="installed">
+    <div class="section__head"><h2>Installed</h2><span class="small subtle">6.1 GB in <code>{{bundleWorkspace}}/reference</code></span></div>
+    <div data-render="references" data-installed="1"></div>
+  </section>
+
+  <section class="section" data-annot-id="available">
+    <div class="section__head"><h2>Available</h2><span class="small subtle">Downloaded from the fastest mirror, checked against a pinned checksum</span></div>
+    <div data-render="references" data-installed="0"></div>
+  </section>
+
+  <section class="section adv-only" data-annot-id="resources">
+    <div class="section__head"><h2>Annotation data</h2><span class="small subtle">Optional, for variant annotation and research exports</span></div>
+    <div class="table-wrap">
+      <table class="table table--stack" aria-label="Annotation data">
+        <thead><tr><th>Data</th><th>Used for</th><th class="num">Size</th><th>Status</th><th class="actions"><span class="visually-hidden">Actions</span></th></tr></thead>
+        <tbody>
+          <tr data-annot-id="res-targets"><td><strong>Microarray targets</strong><div class="table__sub"><code>ref/microarray-targets</code></div></td><td data-label="Used for">DNA-test files</td><td class="num" data-label="Size">310 MB</td><td data-label="Status"><span class="badge badge--success">Installed</span></td><td class="actions"></td></tr>
+          <tr data-annot-id="res-ancestry"><td><strong>Ancestry reference</strong><div class="table__sub"><code>qc/ancestry</code> · HGDP + 1KG</div></td><td data-label="Used for">Ancestry proportions</td><td class="num" data-label="Size">16 MB</td><td data-label="Status"><span class="badge badge--success">Installed</span></td><td class="actions"></td></tr>
+          <tr data-annot-id="res-ybrowse"><td><strong>YBrowse SNPs</strong><div class="table__sub"><code>ref/ybrowse</code></div></td><td data-label="Used for">Y-SNP names</td><td class="num" data-label="Size">480 MB</td><td data-label="Status"><span class="badge badge--info">Update available</span></td><td class="actions"><button class="btn btn--sm" type="button" data-toast="Updating YBrowse SNPs">Update</button></td></tr>
+          <tr data-annot-id="res-clinvar"><td><strong>ClinVar</strong><div class="table__sub"><code>ref/clinvar</code></div></td><td data-label="Used for">Variant meaning</td><td class="num" data-label="Size">160 MB</td><td data-label="Status"><span class="badge badge--success">Installed</span></td><td class="actions"><button class="btn btn--sm btn--ghost" type="button" data-open="#confirm-delete">Remove</button></td></tr>
+          <tr data-annot-id="res-vep"><td><strong>VEP cache GRCh38</strong><div class="table__sub"><code>vep/download</code></div></td><td data-label="Used for">Full annotation</td><td class="num" data-label="Size">≈ 26 GB</td><td data-label="Status"><span class="badge">Not installed</span></td><td class="actions"><button class="btn btn--sm btn--soft" type="button" data-toast="Downloading the VEP cache (26 GB) — see Jobs">Install</button></td></tr>
+          <tr data-annot-id="res-cadd"><td><strong>CADD</strong><div class="table__sub"><code>ref/cadd</code></div></td><td data-label="Used for">Deleteriousness</td><td class="num" data-label="Size">≈ 85 GB</td><td data-label="Status"><span class="badge">Not installed</span></td><td class="actions"><button class="btn btn--sm btn--soft" type="button" data-toast="Downloading CADD (85 GB) — see Jobs">Install</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<dialog class="dialog" id="confirm-delete" role="alertdialog" aria-labelledby="confirm-title" aria-describedby="confirm-desc" data-annot-id="confirm-delete">
+  <div class="dialog__header"><span class="fixit__icon" style="--tone: var(--c-danger); --tone-soft: var(--c-danger-soft)"><i data-icon="trash-2"></i></span><h2 class="dialog__title" id="confirm-title">Remove ClinVar?</h2></div>
+  <div class="dialog__body">
+    <p id="confirm-desc">This deletes 160 MB from <code>{{bundleWorkspace}}/reference/clinvar</code>. Annotated files you already made keep their ClinVar columns. You can install it again any time.</p>
+    <p class="small subtle">From a paired phone this needs approval on the computer.</p>
+  </div>
+  <div class="dialog__footer"><button class="btn" type="button" data-close autofocus>Keep it</button><button class="btn btn--danger" type="button" data-close data-toast="ClinVar removed">Remove</button></div>
+</dialog>
+</body>
+</html>

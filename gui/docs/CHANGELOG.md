@@ -5,14 +5,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Changed
+- The rest of the GUI for CLI name goes: the app and its docs call themselves WGS Extract GUI, and internal names (window events, temporary folders, browser storage keys, the npm and Python package names) use `wgsextract-gui`. The workspace marker reads `WGS Extract GUI workspace`; workspaces marked by earlier releases are still recognised and get the new marker on the next start. The window layout (sidebar and terminal sizes) is remembered under new keys, so it resets once. Developer tools keep Node in `~/.local/share/wgsextract-gui-dev` and their caches in `wgsextract-gui-dev`, so `make setup` downloads Node again once.
+
+## [0.8.7] - 2026-11-11
+
 ### Added
+- Bundles can declare a `prerequisites` check that runs before an action. When the action needs data that isn't installed, it doesn't start; a dialog names what is missing and offers **Install and Continue**, **Continue** (after installing it yourself; the app checks again) or **Cancel** ([docs/prerequisites.md](prerequisites.md)). WGSExtract checks with `wgsextract ref needs`, so running Info, variant calling, extraction and the rest on a CRAM whose reference genome (for example hs37d5) isn't installed offers to install it first, as the old WGS Extract did. The VCF annotation commands do the same for their annotation data.
 - Options can give `groupTooltip` and `categoryTooltip`, shown beside their group's heading or row title and their category's heading. WGSExtract's Microarray formats use them for Consumer Tests, Reich Lab and AADR; the AADR file-format note moves from the section description to Reich Lab.
-- A Basic / Advanced mode switch in the sidebar, saved with the app's state. Pages, sections, controls, options, actions, columns and library rows can be marked `advancedOnly`; Basic runs commands with hidden settings at their defaults. Sections can be `subsection`s, dropdowns take `emptyText`, and checkbox groups can lay options out in vendor rows (`layout: "rows"`).
 - A settings file (`configFile`) can list `previousPaths`. On load the app moves the file from the first that exists to its declared path, removes the old folder if that leaves it empty, and treats a saved choice of an old path as the declared one.
+
+### Changed
+- Bump the bundled WGSExtract CLI installer target to `v0.8.7` ([release notes](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.7)).
+- The app keeps its own data in `WGSExtract-gui` in the platform's app data folder (`%LOCALAPPDATA%\WGSExtract-gui`, `~/Library/Application Support/WGSExtract-gui`, `~/.local/share/WGSExtract-gui`), and setup installs the WGS Extract CLI there (`runtime/wgsextract-cli`) instead of in the workspace, so the workspace holds only the user's files and moving it no longer reinstalls the CLI. Bundles reach the folder as `{{appData}}` and their scripts as `WGSEXTRACT_GUI_APP_DATA`. The desktop app's identifier is `dev.wgsextract-gui` (its webview data and logs). Environment variables are renamed from `GUI_FOR_CLI_*` to `WGSEXTRACT_GUI_*` (`GUI_FOR_CLI_APP_SUPPORT_NAME` is now `WGSEXTRACT_GUI_APP_DATA_NAME`), and the uninstall CLI's `--app-support-name` is now `--app-data-name`, optional. Installs up to 0.8.6 migrate on the first start: the app's settings come over from `dev.guiforcli.web.embed.wgsextract`, setup is offered again since its CLI is gone, and once it has installed the CLI in the new place it removes the old one from the workspace (on Windows, with its Pixi environment). The Windows installer removes a 0.8.6 app installed in another folder than the new one.
+- WGSExtract's `config.toml` moves from `<workspace>/settings/` to the workspace folder itself (`~/wgs-extract/config.toml` by default), and the `settings` folder goes. Existing installs' files move on the next start. A relative path in it, such as a custom Y tree's `tree = "mytree.json"`, now means a file in the workspace folder.
+
+### Fixed
+- Linux AppImage: setup, actions and uninstall no longer run with the AppImage's library and tool paths (`LD_LIBRARY_PATH`, `PATH`, `PYTHONHOME` and the like). The system's programs loaded the image's older libraries instead of their own, so setup failed on newer systems such as Ubuntu 26.04 (`libcrypto.so.3: version 'OPENSSL_3.3.0' not found`).
+- Windows: saving settings no longer fails with `EPERM` when another program has the file open for a moment, such as the CLI reading its `config.toml` or a virus scanner. The save retries for up to about two seconds.
+
+## [0.8.6] - 2026-11-09
+
+### Added
+- A Basic / Advanced mode switch in the sidebar, saved with the app's state. Pages, sections, controls, options, actions, columns and library rows can be marked `advancedOnly`; Basic runs commands with hidden settings at their defaults. Sections can be `subsection`s, dropdowns take `emptyText`, and checkbox groups can lay options out in vendor rows (`layout: "rows"`).
 - WGSExtract: Advanced mode covers the CLI's remaining user options, with a new Workflows page. Detailed Coverage shows the depth bins; Extract has MT-only, Y-only, Y and MT, and Autosomes and X buttons; Library Install buttons turn into Delete.
 
 ### Changed
-- WGSExtract's `config.toml` moves from `<workspace>/settings/` to the workspace folder itself (`~/wgs-extract/config.toml` by default), and the `settings` folder goes. Existing installs' files move on the next start. A relative path in it, such as a custom Y tree's `tree = "mytree.json"`, now means a file in the workspace folder.
 - WGSExtract's Library page splits into Reference Data and Reference Genomes, and a new Datasets page (just above Reference Data) holds User Datasets: the Dataset Library folder (`dataset_library`, formerly `genome_library`; new installs use `<workspace>/datasets`), the Test Dataset and Example Datasets. A new Reference Genomes Library setting (`reference_genome_library`, new installs `<workspace>/genomes`) holds only the reference genomes; existing installs keep their folders. The Manage Reference Genomes table shows sizes for FTP-hosted genomes too. Downloading Example Datasets over 25 GB (every example, about 441 GB, or a large tag) asks first. Manage Reference Data's buttons show in Basic; Annotate moves above Workflows.
 - WGSExtract pages reorganised around Inputs sections; Align, Realign and Variant Calling move to Extract and VCF annotation to the VCF page.
 - Languages trimmed to English, French, German and Brazilian Portuguese (`pt-BR`); other Portuguese locales fall back to it.

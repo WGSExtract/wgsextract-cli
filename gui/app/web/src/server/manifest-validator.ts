@@ -1,5 +1,6 @@
 import { resultDocumentFormats } from "../../../shared/result-document.js";
 import { setupPlatformAlias } from "../../../shared/setup-platforms.js";
+import { isSetupStepKind, scriptSetupStepKinds, setupStepKinds } from "../../../shared/setup-step-kinds.js";
 import type { BundleManifest, BundlePage, PageSection, SetupStep } from "../../../shared/types.js";
 import {
     BundleValidationError,
@@ -13,7 +14,6 @@ import {
 } from "./manifest-validation.js";
 import { validateAction, validateControl } from "./manifest-validator-controls.js";
 
-const SCRIPT_STEP_KINDS = new Set(["bundledScript", "setupScript"]);
 
 /** Checks a loaded manifest (with page files already inlined) against the rules in docs/schema. */
 export function validateManifest(manifest: BundleManifest): void {
@@ -36,6 +36,7 @@ export function validateManifest(manifest: BundleManifest): void {
     validateExitCodeReference(manifest);
     validateJobServer(manifest);
     validateResultDocument(manifest);
+    validatePrerequisites(manifest);
     validateSetupSteps(manifest.setup?.steps, "setup.steps");
     validateSetupSteps(manifest.uninstall?.steps, "uninstall.steps");
     for (const page of manifest.pages) {
@@ -85,6 +86,33 @@ function validateResultDocument(manifest: BundleManifest): void {
     }
 }
 
+function validatePrerequisites(manifest: BundleManifest): void {
+    const spec = manifest.prerequisites;
+    if (spec == null) {
+        return;
+    }
+    requireNonEmpty(spec.command?.executable, "prerequisites.command.executable");
+    if (!isStringArray(spec.command.arguments ?? [])) {
+        throw new BundleValidationError("Invalid prerequisites.command.arguments: expected an array of strings.");
+    }
+    const executables = spec.executables;
+    if (executables == null || typeof executables !== "object" || Array.isArray(executables) || Object.keys(executables).length === 0) {
+        throw new BundleValidationError("Invalid prerequisites.executables: expected an object naming at least one executable.");
+    }
+    for (const [executable, prefix] of Object.entries(executables)) {
+        if (!isStringArray(prefix)) {
+            throw new BundleValidationError(`Invalid prerequisites.executables.${executable}: expected an array of strings.`);
+        }
+    }
+    for (const [kind, label] of Object.entries(spec.kindLabels ?? {})) {
+        requireNonEmpty(label, `prerequisites.kindLabels.${kind}`);
+    }
+}
+
+function isStringArray(value: unknown): value is string[] {
+    return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
 function validateSetupSteps(steps: SetupStep[] | undefined, scope: string): void {
     validateUniqueIDs(steps, scope);
     for (const [index, step] of (steps ?? []).entries()) {
@@ -93,7 +121,10 @@ function validateSetupSteps(steps: SetupStep[] | undefined, scope: string): void
         requireNonEmpty(step.id, `${base}.id`);
         requireNonEmpty(step.label, `${base}.label`);
         requireNonEmpty(step.value, `${base}.value`);
-        if (SCRIPT_STEP_KINDS.has(step.kind)) {
+        if (!isSetupStepKind(step.kind)) {
+            throw new BundleValidationError(`Invalid ${base}.kind: expected one of ${setupStepKinds.join(", ")}.`);
+        }
+        if (scriptSetupStepKinds.has(step.kind)) {
             validateRelativePath(step.value, `${base}.value`);
         }
         if (step.workingDirectory != null) {

@@ -142,6 +142,8 @@ jobs:
           environments: >-
             default
             dev
+          # PR runs restore main's environment; writing their own crowds it out.
+          cache-write: ${{ github.ref == 'refs/heads/main' }}
       - name: Lint and type check
         run: |
           pixi run lint

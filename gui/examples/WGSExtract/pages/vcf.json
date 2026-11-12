@@ -496,6 +496,7 @@
       "id": "more-annotations",
       "title": "sections.cli.more-annotations.title",
       "subtitle": "sections.cli.more-annotations.subtitle",
+      "iconName": "tags",
       "textIcon": "🏷️",
       "advancedOnly": true,
       "controls": [
@@ -895,6 +896,7 @@
     {
       "id": "pharmacogenomics",
       "title": "sections.cli.pharmacogenomics.title",
+      "iconName": "pharmacogenomics",
       "textIcon": "💊",
       "advancedOnly": true,
       "controls": [
@@ -980,6 +982,7 @@
     {
       "id": "consensus",
       "title": "sections.cli.consensus.title",
+      "iconName": "fasta",
       "textIcon": "🧬",
       "advancedOnly": true,
       "controls": [

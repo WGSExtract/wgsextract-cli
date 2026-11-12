@@ -120,7 +120,15 @@ def verify_platform_support(args: argparse.Namespace) -> None:
     # The tool is unsupported only because an option chose it.
     chosen_by_option = False
     if command == "vep":
-        tool = "VEP"
+        from wgsextract_cli.commands._vep_engines import vep_engine
+        from wgsextract_cli.core.config import settings
+
+        engine = vep_engine(getattr(args, "engine", None) or settings.get("vep_engine"))
+        if not engine.supported_here():
+            raise WGSExtractError(
+                f"{engine.label} is not supported on Windows; use --engine vep-rs "
+                '(or set vep_engine = "vep-rs" in config.toml).'
+            )
     elif command == "vcf":
         subcommand = getattr(args, "vcf_cmd", "") or ""
         tool = _WINDOWS_VCF_TOOLS.get(subcommand)

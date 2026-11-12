@@ -85,6 +85,13 @@ public:
         }
     }
 
+    bool adopt_dense(unsigned shift, uint32_t *low, size_t low_bytes, uint32_t *high,
+        size_t high_bytes) override {
+        @autoreleasepool {
+            return locator_ && locator_->adopt(low, low_bytes, high, high_bytes, shift);
+        }
+    }
+
     void rescue(const RescueParameters &p, const std::vector<uint8_t> &bases,
         const std::vector<RescueJob> &jobs, size_t row_bytes,
         std::vector<RescueResult> &results) override {

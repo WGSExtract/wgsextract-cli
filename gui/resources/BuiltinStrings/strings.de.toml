@@ -77,6 +77,11 @@
 "app.setup.step.ok" = "Fertig"  # i18n-source-hash:9ce3bd42
 "app.setup.step.warning" = "Warnung"  # i18n-source-hash:e9c45563
 "app.setup.step.failed" = "Fehlgeschlagen"  # i18n-source-hash:09fef5d8
+"app.setup.step.kind.script" = "Skript"  # i18n-source-hash:ee6d6afa
+"app.setup.step.kind.pathTool" = "Werkzeug im PATH"  # i18n-source-hash:7fbaeb9b
+"app.setup.step.kind.homebrewPackage" = "Homebrew-Paket"  # i18n-source-hash:6572cfdd
+"app.setup.step.kind.pixiInstall" = "Pixi-Installation"  # i18n-source-hash:be8e57bc
+"app.setup.step.kind.pixiRun" = "Pixi-Befehl"  # i18n-source-hash:da734b12
 "app.pathPicker.chooseButton.title" = "Auswählen..."  # i18n-source-hash:1f77e839
 "app.pathPicker.error.title" = "Pfad konnte nicht ausgewählt werden"  # i18n-source-hash:fa84a44d
 "app.settingsFile.label" = "Einstellungsdatei"  # i18n-source-hash:a05c5b26
@@ -118,6 +123,15 @@
 "app.result.usage.title" = "Prüfen Sie die gewählten Optionen"  # i18n-source-hash:fe89b952
 "app.result.missingDependency.title" = "Ein benötigtes Werkzeug ist nicht installiert"  # i18n-source-hash:1f5dd223
 "app.result.openSetup.title" = "Einrichtung öffnen"  # i18n-source-hash:0ddb2086
+"app.prerequisites.title" = "Benötigte Daten fehlen"  # i18n-source-hash:a96c1dde
+"app.prerequisites.message" = "Dieser Befehl benötigt Daten, die noch nicht installiert sind:"  # i18n-source-hash:5c2ec892
+"app.prerequisites.stillMissing" = "Sie sind noch immer nicht installiert. Installieren Sie sie oder laden Sie sie selbst herunter und klicken Sie erneut auf Fortfahren."  # i18n-source-hash:620e1770
+"app.prerequisites.manualNote" = "Um sie selbst herunterzuladen, installieren Sie sie über die Bibliotheksseiten und klicken Sie dann auf Fortfahren."  # i18n-source-hash:44b5da7f
+"app.prerequisites.install" = "Installieren und fortfahren"  # i18n-source-hash:153ec292
+"app.prerequisites.continue" = "Fortfahren"  # i18n-source-hash:2e026239
+"app.prerequisites.cancel" = "Abbrechen"  # i18n-source-hash:77dfd213
+"app.prerequisites.checking" = "Benötigte Daten werden geprüft…"  # i18n-source-hash:7717482c
+"app.prerequisites.installTitleFormat" = "%{name} installieren"  # i18n-source-hash:f218798b
 "exitCodes.default.1.title" = "Allgemeiner Befehlsfehler"  # i18n-source-hash:87ab6134
 "exitCodes.default.1.summary" = "Der Befehl meldete einen allgemeinen Fehler. Prüfen Sie die Ausgabe oben auf den konkreten Fehler von WGS Extract oder des Tools."  # i18n-source-hash:ebe2ed7e
 "exitCodes.default.2.title" = "Fehler bei der Befehlszeilenverwendung"  # i18n-source-hash:4beae94c

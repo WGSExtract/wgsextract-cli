@@ -4,6 +4,7 @@ import { state } from "../state.js";
 import { setupToolSummary } from "./setup-tool-summary.js";
 import { formatDurationMs } from "../../../../shared/rendering.js";
 import { setupStepsForPlatform } from "../../../../shared/setup-platforms.js";
+import { isSetupStepKind, setupStepKindLabelKeys } from "../../../../shared/setup-step-kinds.js";
 import type { LocalizedOption, SetupRun, SetupStep, SetupStepResult } from "../../../../shared/types.js";
 
 export function renderSetupStatusSection() {
@@ -53,11 +54,16 @@ function renderSetupStepStatus(step: SetupStep, result: SetupStepResult | undefi
       <span class="setup-step-main">
         <span class="setup-step-title">${escapeHTML(step.label)}</span>
       </span>
-      <span class="setup-step-kind">${escapeHTML(step.kind)}</span>
+      <span class="setup-step-kind">${escapeHTML(setupStepKindLabel(step.kind))}</span>
       <span class="setup-step-duration">${escapeHTML(duration)}</span>
       <span class="setup-step-label">${escapeHTML(statusLabel)}</span>
     </li>
   `;
+}
+
+/** What kind of step this is, in words, never its manifest id. */
+function setupStepKindLabel(kind: string) {
+  return isSetupStepKind(kind) ? state.labels[setupStepKindLabelKeys[kind]] ?? "" : "";
 }
 
 function setupHeaderToolSummary(steps: SetupStep[]) {
@@ -124,15 +130,12 @@ export function renderStandardOptionsAccessory() {
         ${state.localizationOptions.length > 1
           ? `<label class="form-row">
                 <span class="row-label">${escapeHTML(state.labels.languagePickerLabel)}</span>
-                <span>
-                  <select data-locale-picker aria-label="${escapeAttribute(state.labels.languagePickerLabel)}">
-                    <option value="__system__" ${state.usingSystemDefaultLocale ? "selected" : ""}>${escapeHTML(systemLabel)}</option>
-                    ${state.localizationOptions
+                <select data-locale-picker aria-label="${escapeAttribute(state.labels.languagePickerLabel)}">
+                  <option value="__system__" ${state.usingSystemDefaultLocale ? "selected" : ""}>${escapeHTML(systemLabel)}</option>
+                  ${state.localizationOptions
               .map((option) => `<option value="${escapeAttribute(option.code)}" ${!state.usingSystemDefaultLocale && option.code === state.localizationCode ? "selected" : ""}>${escapeHTML(languageOptionLabel(option))}</option>`)
               .join("")}
-                  </select>
-                  <span class="field-note">${escapeHTML(state.usingSystemDefaultLocale ? systemLabel : currentName)}</span>
-                </span>
+                </select>
               </label>`
           : ""}
         <label class="form-row">

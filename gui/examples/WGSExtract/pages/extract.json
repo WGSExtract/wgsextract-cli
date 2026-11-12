@@ -1755,6 +1755,7 @@
     {
       "id": "typing",
       "title": "sections.cli.typing.title",
+      "iconName": "typing",
       "textIcon": "🧪",
       "advancedOnly": true,
       "controls": [
@@ -1864,6 +1865,7 @@
       "id": "phasing",
       "title": "sections.cli.phasing.title",
       "subtitle": "sections.cli.phasing.subtitle",
+      "iconName": "phasing",
       "textIcon": "🧬",
       "advancedOnly": true,
       "controls": [
@@ -1957,6 +1959,7 @@
     {
       "id": "panel",
       "title": "sections.cli.panel.title",
+      "iconName": "panel",
       "textIcon": "🎯",
       "advancedOnly": true,
       "controls": [

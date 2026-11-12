@@ -1,7 +1,7 @@
 {
   "id": "wgs-extract",
   // Keep this bundle version in sync with scripts/wgsextract-release-tag.txt so installer names match the bundled WGSExtract CLI release.
-  "version": "0.8.6",
+  "version": "0.8.7",
   // Its folders grow large and belong to the user, so they are kept in plain sight, not in the app's data folder.
   "defaultWorkspace": "~/wgs-extract",
   "displayName": "bundle.displayName",
@@ -41,7 +41,7 @@
         "toolName": "WGS Extract CLI",
         "toolVersionFile": "scripts/wgsextract-release-tag.txt",
         "environment": {
-          "WGSEXTRACT_INSTALL_DIR": "{{bundleRoot}}/runtime/wgsextract-cli"
+          "WGSEXTRACT_INSTALL_DIR": "{{appData}}/runtime/wgsextract-cli"
         }
       },
       {
@@ -58,14 +58,14 @@
         "toolName": "WGS Extract CLI",
         "toolVersionFile": "scripts/wgsextract-release-tag.txt",
         "environment": {
-          "WGSEXTRACT_INSTALL_DIR": "{{bundleRoot}}/runtime/wgsextract-cli"
+          "WGSEXTRACT_INSTALL_DIR": "{{appData}}/runtime/wgsextract-cli"
         }
       },
       {
         "id": "wgsextract-cli",
         "kind": "pathTool",
         "label": "setup.wgsextract.label",
-        "value": "{{bundleRoot}}/runtime/wgsextract-cli/bin/wgsextract",
+        "value": "{{appData}}/runtime/wgsextract-cli/bin/wgsextract",
         "platforms": [
           "posix"
         ]
@@ -74,7 +74,7 @@
         "id": "wgsextract-cli-windows",
         "kind": "pathTool",
         "label": "setup.wgsextract.label",
-        "value": "{{bundleRoot}}/runtime/wgsextract-cli/bin/wgsextract.cmd",
+        "value": "{{appData}}/runtime/wgsextract-cli/bin/wgsextract.cmd",
         "platforms": [
           "windows"
         ]
@@ -121,6 +121,30 @@
         "--allow",
         "{{home}}"
       ]
+    }
+  },
+  // Before an action runs, `wgsextract ref needs` names the reference genome or annotation data its command line needs
+  // that isn't installed; the app then offers to install it (`wgsextract ref library --install <code>` and the like).
+  "prerequisites": {
+    "command": {
+      "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+      "arguments": [
+        "ref",
+        "needs",
+        "--report-json",
+        "--"
+      ]
+    },
+    "executables": {
+      "{{bundleRoot}}/scripts/run-wgsextract.sh": [],
+      // Runs `wgsextract vcf snp|indel ...`.
+      "{{bundleRoot}}/scripts/run-wgsextract-vcf.sh": [
+        "vcf"
+      ]
+    },
+    "kindLabels": {
+      "genome": "prerequisites.kinds.genome",
+      "annotation": "prerequisites.kinds.annotation"
     }
   },
   "pages": [

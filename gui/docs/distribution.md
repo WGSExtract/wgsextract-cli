@@ -1,6 +1,6 @@
 # Distribution packaging
 
-GUI for CLI ships one Tauri desktop app, built natively on each OS:
+WGS Extract GUI ships one Tauri desktop app, built natively on each OS:
 
 - **macOS** → `.app`, `.dmg`, and a signed updater archive (`<App>_<arch>.app.tar.gz`)
 - **Linux** → `.deb`, `.rpm`, Arch Linux `.pkg.tar.zst`, and `.AppImage`
@@ -39,7 +39,7 @@ app_name = "WGSExtract"
 
 The branded name is used for the app bundle name, installer/DMG name, and native window title. If you omit `app_name`, packaging falls back to the bundle directory name. `TAURI_PRODUCT_SUFFIX` appends a suffix (for example `Ubuntu WebUI`) for side-by-side test builds.
 
-Packaging reads `version` from the bundle's `manifest.json` and uses it as the app version. For example, the bundled WGSExtract manifest currently sets `"version": "0.8.6"`, so installers are named with `0.8.6` instead of GUI for CLI's own version. Bundle-authored JSON files support `//` and `/* ... */` comments. Use SemVer-compatible values because Tauri/NSIS and macOS marketing versions reject arbitrary tags. Set `app_version` in `.devconfig.toml` or `PACKAGE_APP_VERSION` / `EMBEDDED_APP_VERSION` to override the manifest version.
+Packaging reads `version` from the bundle's `manifest.json` and uses it as the app version. For example, the bundled WGSExtract manifest currently sets `"version": "0.8.7"`, so installers are named with `0.8.7` instead of WGS Extract GUI's own version. Bundle-authored JSON files support `//` and `/* ... */` comments. Use SemVer-compatible values because Tauri/NSIS and macOS marketing versions reject arbitrary tags. Set `app_version` in `.devconfig.toml` or `PACKAGE_APP_VERSION` / `EMBEDDED_APP_VERSION` to override the manifest version.
 
 Embedded bundle scripts can be split by platform under `scripts/windows`, `scripts/macos`, `scripts/linux`, `scripts/linux/<distro>`, and `scripts/posix`. Runtime resolution chooses the most specific folder for the host and falls back to `posix` for POSIX platforms. Every platform folder present in a bundle must include the full referenced script set, otherwise bundle validation fails.
 
@@ -144,7 +144,7 @@ source of truth. Release builds enable updater metadata when
 Generate a Tauri updater keypair once and store the private key in GitHub Actions secrets:
 
 ```bash
-npm --prefix app run tauri -- signer generate -w ~/.tauri/gui-for-cli.key
+npm --prefix app run tauri -- signer generate -w ~/.tauri/wgsextract-gui.key
 ```
 
 Configure release automation with:

@@ -1,0 +1,237 @@
+/* App shell: sidebar + top bar + scrolling main on desktop, icon rail on
+ * tablet, top bar + main + bottom tab bar on phone. Breakpoints are
+ * container queries on .vp, so the mockup viewport switcher and a real
+ * phone both get the same layout from the same markup. */
+
+.vp {
+  container: app / inline-size;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--c-bg);
+}
+
+.app {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  grid-template-rows: var(--topbar-h) minmax(0, 1fr);
+  grid-template-areas:
+    "side top"
+    "side main";
+  height: 100%;
+}
+
+.app > .sidebar {
+  grid-area: side;
+}
+
+.app > .topbar {
+  grid-area: top;
+}
+
+.app > .main {
+  grid-area: main;
+}
+
+.app > .tabbar {
+  display: none;
+}
+
+.main {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-top: var(--sp-4);
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--sp-5) var(--sp-6) var(--sp-10);
+}
+
+.page--narrow {
+  max-width: 880px;
+}
+
+.page--wide {
+  max-width: none;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+}
+
+.page-header__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+  flex: 1 1 320px;
+}
+
+.card > .btn {
+  align-self: flex-start;
+}
+
+.page-header__lead {
+  color: var(--c-text-2);
+  max-width: 68ch;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+/* Two-column page body: content + side panel */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--sp-5);
+  align-items: start;
+}
+
+.split--wide-side {
+  grid-template-columns: minmax(0, 1fr) 380px;
+}
+
+.split.split--even {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.split--three {
+  grid-template-columns: 220px minmax(0, 1fr) 300px;
+}
+
+.sticky {
+  position: sticky;
+  top: var(--sp-4);
+}
+
+/* Focused full-screen flow (first-run setup): no navigation */
+.setup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  max-width: 640px;
+  min-height: 100%;
+  margin: 0 auto;
+  padding: var(--sp-8) var(--sp-4);
+}
+
+.setup__card {
+  gap: var(--sp-4);
+  padding: var(--sp-6);
+}
+
+/* Depth: Advanced-only content is hidden in Basic */
+[data-depth="basic"] .adv-only {
+  display: none !important;
+}
+
+[data-depth="advanced"] .basic-only {
+  display: none !important;
+}
+
+.only-phone {
+  display: none !important;
+}
+
+/* Tablet: narrower side panels (the sidebar becomes a rail, see nav.css) */
+@container app (max-width: 1080px) {
+  .split,
+  .split--wide-side {
+    grid-template-columns: minmax(0, 1fr) 280px;
+  }
+
+  .split--three {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+
+  .split--three > :last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@container app (max-width: 860px) {
+  .split,
+  .split--wide-side,
+  .split.split--even,
+  .split--three {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .split--three > :last-child {
+    grid-column: auto;
+  }
+
+  .sticky {
+    position: static;
+  }
+}
+
+/* Phone: single column, top bar + bottom tab bar, touch-size controls */
+@container app (max-width: 720px) {
+  .app {
+    --control-h: 44px;
+    --control-h-sm: 36px;
+    --touch-min: 44px;
+    --row-h: 48px;
+    --topbar-h: 56px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: var(--topbar-h) minmax(0, 1fr) auto;
+    grid-template-areas:
+      "top"
+      "main"
+      "tab";
+    font-size: var(--fs-lg);
+  }
+
+  .app > .sidebar {
+    display: none;
+  }
+
+  .app > .tabbar {
+    display: flex;
+    grid-area: tab;
+  }
+
+  .page {
+    gap: var(--sp-4);
+    padding: var(--sp-4) var(--sp-4) var(--sp-8);
+  }
+
+  .page-header h1 {
+    font-size: var(--fs-2xl);
+  }
+
+  .hide-phone {
+    display: none !important;
+  }
+
+  .only-phone {
+    display: revert !important;
+  }
+
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
