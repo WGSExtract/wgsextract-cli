@@ -10,7 +10,7 @@ HTS=$(realpath htslib-*)
 # The compat header gives 64-bit file offsets (Win64's long is 32-bit).
 CXXFLAGS="$OPT -std=c++17 -Wno-ignored-attributes -Wa,-muse-unaligned-vector-move $COMPAT_CPPFLAGS"
 CXXFLAGS="$CXXFLAGS -D__COMMIT_ID__=\\\"88915f7\\\" -D__COMMIT_DATE__=\\\"2023-04-24\\\""
-LIBS="-lzstd $(sed -n 's/^HTSLIB_static_LIBS = //p' "$HTS/htslib_static.mk")"
+LIBS="-lzstd $(sed -n 's/^HTSLIB_static_LIBS = //p' "$HTS/htslib_static.mk") $HTS_LIBS"
 for tool in chunk concordance ligate phase split_reference; do
     # The source tarball shares headers and .cpp files through Unix symlinks.
     # Materialize them: native Windows GCC cannot read MSYS2 emulated links.
