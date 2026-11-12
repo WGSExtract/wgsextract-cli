@@ -400,6 +400,28 @@ filesystem for reference-index storage.
   are conservative heuristics, not measured guarantees for every caller, read
   length or depth.
 
+### Native Apple Silicon DeepVariant
+
+`wgse-deepvariant` has a separate sequential-stage model, not the TensorFlow
+partition model below. It allows a fixed base plus per-thread make_examples
+memory, batch-scaled GPU inference, and serialized whole-run records plus
+one parsed contig for postprocessing. RSS alone does not capture Metal's
+unified-memory footprint.
+
+Calibration in [#721](https://github.com/WGSExtract/wgsextract-cli/issues/721):
+**0.1.1**, six threads, batch 512, HG002 35x chr20 on a 16 GiB M1 peaked at
+**6.56 GB inference footprint**, with **0.843 GB workspace** from a 1.09 GB
+BAM. The existing per-input-byte regional disk allowance remains appropriate.
+An earlier **0.1.0** whole-genome run used only 17.3 GB of workspace from a
+46.0 GB BAM, but lowering the shared allowance to that ratio would underbudget
+chr20. Its largest stage RSS was 3.70 GB; the existing RAM envelopes also
+remain conservative.
+
+The [16 GB benchmark](apple-silicon-16gb.md#native-deepvariant) projects
+0.1.1 whole-genome wall time from measured 0.1.0 whole-genome time and the
+0.1.1/0.1.0 chr20 timing ratio. It is not a measured 0.1.1 whole-genome run;
+the estimator does not promise a wall time.
+
 ### DeepVariant postprocess_variants
 
 DeepVariant's stages run one after another, so its RAM estimate is the largest

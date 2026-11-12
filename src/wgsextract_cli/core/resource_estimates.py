@@ -67,11 +67,15 @@ DV_RECORDS_PER_BASE = 4.75e-3
 DV_BYTES_PER_RECORD = 2048
 DV_WORKER_BASE_BYTES = 768 * 1024**2
 DV_MAX_PARTITIONS = 128
-# wgse-deepvariant (#647), from HG002 35x chr20 on an M1 Pro (10 threads):
-# make_examples < 0.5 GiB; call_variants' footprint 12.9 GB at batch 1024;
+# wgse-deepvariant: #647 measured 12.9 GB inference footprint at batch 1024.
+# #721, 0.1.1 on a 16 GiB M1, six threads, HG002 35x chr20: 6.56 GB
+# inference footprint at batch 512; 0.84 GB workspace from a 1.09 GB BAM.
+# The 0.1.0 whole-genome run peaked at 1.62/2.24/3.70 GB stage RSS
+# (make/infer/postprocess), with 17.3 GB workspace from a 46.0 GB BAM.
+# The allowances below remain conservative; 0.1.1 WGS is not yet measured.
 # postprocess_variants keeps the run's records serialized (~0.6 B/base) and
-# parses one contig at a time (~10 B/base); gzipped examples 0.8 GB from a
-# 1.1 GB BAM.
+# parses one contig at a time (~10 B/base). Keep the regional disk allowance:
+# chr20 needs more bytes per input byte than the measured whole genome.
 NATIVE_DV_BASE_BYTES = GIB
 NATIVE_DV_THREAD_BYTES = GIB // 4
 NATIVE_DV_INFERENCE_BYTES_PER_EXAMPLE = 12 * 1024**2
