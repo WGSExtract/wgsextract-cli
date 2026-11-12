@@ -1047,8 +1047,13 @@ GPU backend next (#736; [hardware guide](../docs/hardware.md#nvidia-gpus-without
 `wgse-bwa-mem3` also builds on Linux x86-64, as upstream's default build does:
 AVX2 for most code, and the SIMD kernels for each tier from SSE4.1 to AVX-512BW,
 picked at run time. It doesn't replace `malloc` with mimalloc, as Bioconda's
-build does (#727). It isn't packaged yet: `packaging/wgse-bwa` leaves it out
-(`-DWGSE_BWA_MEM3=OFF`).
+build does (#727). Its conda package (`packaging/wgse-bwa-mem3`, with the CUDA
+backend) is built by the same workflow as `wgse-bwa`'s and published next to it
+in the `linux-aligners-*` prereleases; `packaging/wgse-bwa` leaves it out
+(`-DWGSE_BWA_MEM3=OFF`), and it builds without `wgse-bwa` (`-DWGSE_BWA=OFF`).
+On `PATH`, `align` and `realign` run it in Bioconda's bwa-mem3's place
+([docs/hardware.md](../docs/hardware.md#bwa-mem3-on-linux)), with
+`--backend auto`.
 
 With `-DWGSE_CUDA=ON`, `--cuda` (`--backend cuda`, experimental) runs three
 stages on an NVIDIA GPU:
@@ -1254,7 +1259,9 @@ adapted from BWA's MIT-licensed `bwt.c`, `bwamem.c`, `bwamem_pair.c` and
 like this repository). `wgse-bwa-mem3` combines bwa-mem3 (MIT), sse2neon
 (MIT), libsais (Apache-2.0), mimalloc (MIT), zlib-ng (zlib), libdeflate (MIT)
 htslib (MIT/Expat and modified BSD) and htslib's bundled htscodecs (BSD) with
-the code in `bwa-mem3/` (GPL-3.0-or-later).
+the code in `bwa-mem3/` (GPL-3.0-or-later); its CUDA build's mate rescue runs
+`wgse-bwa`'s kernel, adapted from BWA's MIT-licensed `ksw.c`
+(`BWA-KERNELS-LICENSE`).
 `wgse-minimap2` combines minimap2 (MIT) and sse2neon
 (MIT) with the code in `minimap2/` (GPL-3.0-or-later). Its sketching code is
 adapted from minimap2's `sketch.c` (`MINIMAP2-LICENSE`) and its radix sort from

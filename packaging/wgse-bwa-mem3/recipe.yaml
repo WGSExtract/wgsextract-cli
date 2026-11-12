@@ -1,0 +1,113 @@
+context:
+  # native/bwa-mem3/CMakeLists.txt's WGSE_BWA_MEM3_VERSION and MEM3_VERSION.
+  version: "0.4.0"
+  mem3_version: "0.16.0"
+
+package:
+  name: wgse-bwa-mem3
+  version: ${{ version }}
+
+# The pinned sources native/bwa-mem3 declares (FetchContent and htslib's tarball), so the
+# build runs offline.
+source:
+  - path: ../../native
+    target_directory: native
+  - path: ../../LICENSE
+  - url: https://github.com/fg-labs/bwa-mem3/archive/refs/tags/v${{ mem3_version }}.tar.gz
+    sha256: 28f7e4be7cf359e97b59f2925bb67b27905058c13e6c8af08507b13f2c10662c
+    target_directory: mem3
+  - url: https://github.com/IlyaGrebnov/libsais/archive/1a696e600ec62ef7900d77c00af6d76983f7a658.tar.gz
+    sha256: b04859f4f312bfe91a18c7973be1c2c7487f6871ae49fcce5d7572cf541c9816
+    target_directory: libsais
+  - url: https://github.com/microsoft/mimalloc/archive/0ddf397796fbefa35b3278bd4431c2913a9892eb.tar.gz
+    sha256: 217afdcf73286e0c57b4dc03926cc8d3f54fe777cca56da73396bd7e18781954
+    target_directory: mimalloc
+  - url: https://github.com/zlib-ng/zlib-ng/archive/860e4cff7917d93f54f5d7f0bc1d0e8b1a3cb988.tar.gz
+    sha256: 97f98a25fc3e27cda4f6972dbdac9db15175969e766e17c3db67d0dab897dcec
+    target_directory: zlib-ng
+  - url: https://github.com/ebiggers/libdeflate/archive/refs/tags/v1.25.tar.gz
+    sha256: d11473c1ad4c57d874695e8026865e38b47116bbcb872bfc622ec8f37a86017d
+    target_directory: libdeflate
+  # Kept as the tarball: native/bwa-mem3 builds htslib from it (WGSE_MEM3_HTSLIB_URL).
+  - url: https://github.com/samtools/htslib/releases/download/1.21/htslib-1.21.tar.bz2
+    sha256: 84b510e735f4963641f26fd88c8abdee81ff4cb62168310ae716636aac0f1823
+    file_name: htslib-1.21.tar.bz2
+
+build:
+  number: 0
+  string: ${{ target_platform | replace('-', '') }}_wgse_${{ build_number }}
+  # Linux x86-64, with the CUDA backend (#674).
+  skip:
+    - not (linux and x86_64)
+  script:
+    - bash "$RECIPE_DIR/build.sh"
+  # The CUDA runtime is linked statically, so the package needs only the NVIDIA driver,
+  # and only for --cuda: without one, wgse-bwa-mem3 reports CUDA unavailable and
+  # --backend auto aligns on the CPU. Don't require a driver (or a CUDA version).
+  dynamic_linking:
+    missing_dso_allowlist:
+      - libcuda.so.1
+
+requirements:
+  build:
+    - ${{ compiler('c') }}
+    - ${{ compiler('cxx') }}
+    - ${{ compiler('cuda') }}
+    - ${{ stdlib('c') }}
+    - cmake >=3.24
+    - ninja
+    # htslib's configure and Makefile.
+    - make
+  host:
+    - cuda-version ${{ cuda_compiler_version }}.*
+    - cuda-cudart-dev
+    - cuda-cudart-static
+    - zlib
+  run:
+    # bwa-mem3's floor: AVX2 (x86-64-v3) outside its run-time-dispatched kernels. On an older
+    # CPU `mem` exits 2, and capabilities report cpu_available false.
+    - _x86_64-microarch-level >=3
+  # Statically linked: neither the shared runtime cuda-cudart-dev exports nor a CUDA
+  # version is needed at run time.
+  ignore_run_exports:
+    from_package:
+      - ${{ compiler('cuda') }}
+    by_name:
+      - cuda-cudart
+      - cuda-version
+
+tests:
+  - script:
+      - wgse-bwa-mem3 --version
+      - wgse-bwa-mem3 capabilities --json
+      - wgse-bwa-mem3 capabilities --json | grep -q '"engine":"bwa-mem3"'
+      - wgse-bwa-mem3 capabilities --json | grep -q '"cuda_hardware_supported":'
+  - files:
+      source:
+        - native/tests/smoke.sh
+    requirements:
+      run:
+        - gawk
+    script:
+      # Indexes and aligns a synthetic genome on the CPU, and on the GPU too when the build
+      # machine has one.
+      - bash native/tests/smoke.sh "$(command -v wgse-bwa-mem3)" smoke metal
+
+about:
+  homepage: https://github.com/WGSExtract/wgsextract-cli/tree/main/native
+  # This repository's GPL-3.0-or-later code with the MIT, Apache-2.0, zlib and BSD sources
+  # the licence files list (native/README.md, Licences).
+  license: GPL-3.0-or-later
+  license_file:
+    - LICENSE
+    - native/bwa/SEEDING-LICENSE
+    - mem3/LICENSE
+    - libsais/LICENSE
+    - mimalloc/LICENSE
+    - zlib-ng/LICENSE.md
+    - libdeflate/COPYING
+  summary: >-
+    bwa-mem3 0.16.0 rebuilt by WGS Extract for Linux x86-64, without bwa-mem3's malloc
+    override, and with an experimental CUDA backend (--cuda, --backend auto) for SMEM
+    seeding, seed extension and mate rescue; it writes bwa-mem3's exact alignments, and
+    bwa's or bwa-mem2's with --compat.

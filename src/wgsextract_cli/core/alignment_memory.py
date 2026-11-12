@@ -56,6 +56,9 @@ _BWA_GPU_DENSE_SA_AFTER_READS = 20_000_000
 # base of a batch (native/README.md, Memory); --metal adds about 0.2 GiB.
 _BWA_MEM3_WORKING_BYTES = _GIB + 24 * _BWA_BATCH_BASES
 BWA_MEM3_METAL_BYTES = _GIB // 4
+# --cuda's pinned batch buffers: its peak was 0.5 GiB above the CPU backend's on
+# full-5m at 8 threads (native/README.md).
+BWA_MEM3_CUDA_BYTES = _GIB // 2
 # minimap2 2.31 builds its index from the FASTA on every run. On hs38 (3.10
 # Gbases) the build peaked at 11.1-11.3 GiB with every preset but map-pb's
 # homopolymer-compressed 8.6 GiB. The built index (as a saved .mmi) is smaller:

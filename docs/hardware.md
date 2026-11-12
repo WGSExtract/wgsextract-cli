@@ -121,6 +121,15 @@ glibc 2.39 (#727). The CLI's version check catches that: standing in, it warns
 or bwa-mem2 aligns; `--aligner bwa-mem3` and `--fast` stop before aligning
 with an error that says so.
 
+On Linux x86-64, WGS Extract's `wgse-bwa-mem3` 0.4.0 or later (bwa-mem3 0.16.0
+without that allocator, from the `linux-aligners-*` prereleases; see
+[native/README.md](../native/README.md#wgse-bwa-mem3-on-linux-x86-64)) stands
+in the same way, ahead of Bioconda's, when it's on `PATH`. It runs
+`--backend auto`: on an NVIDIA GPU when its capabilities report
+`cuda_available` (**experimental**: seeding, seed extension and mate rescue),
+otherwise on the CPU, with the same records either way. The manifest records
+`native_aligner` `wgse-bwa-mem3` and `native_aligner_backend` `cuda` or `cpu`.
+
 ### Threads and memory
 
 - `--threads` (or `threads` in `config.toml`) defaults to `auto`: all cores, or
@@ -212,7 +221,8 @@ It writes bwa's exact alignments and is **experimental**.
   aligns on the CPU. If the GPU fails during a run, it finishes on the CPU with
   the same alignments.
 - **Order on Linux (bwa's records):** [bwa-mem3](#bwa-mem3-on-linux)
-  `--compat=bwa-mem` when it's installed, runs and fits; otherwise `wgse-bwa`
+  `--compat=bwa-mem` (`wgse-bwa-mem3`, on its own GPU, else Bioconda's) when
+  it's installed, runs and fits; otherwise `wgse-bwa`
   on the GPU when it fits in RAM; otherwise `wgse-bwa` on the CPU; otherwise
   bwa. All write the same records. bwa-mem3 goes first even with a GPU: on an
   RTX 3090 with a Ryzen 5 5600X (5M HG002 pairs on hs38, 8 threads), bwa-mem3

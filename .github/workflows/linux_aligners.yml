@@ -1,9 +1,11 @@
 name: Linux Aligners
 
-# Builds WGS Extract's Linux wgse-bwa conda packages (packaging/wgse-bwa: BWA
-# 0.7.19 from native/; linux-64 with its experimental CUDA backend, linux-aarch64
-# with NEON on the CPU) on every change to them, runs native/'s tests on both
-# architectures, and publishes the packages to a release when asked:
+# Builds WGS Extract's Linux conda packages from native/ on every change to them:
+# wgse-bwa (packaging/wgse-bwa: BWA 0.7.19; linux-64 with its experimental CUDA
+# backend, linux-aarch64 with NEON on the CPU) and wgse-bwa-mem3
+# (packaging/wgse-bwa-mem3: bwa-mem3 0.16.0, linux-64 with its CUDA backend).
+# It runs native/'s tests on both architectures, and publishes the packages to a
+# release when asked:
 # Actions > Linux Aligners > Run workflow, with a new tag such as linux-aligners-1.
 # Then pin pixi.toml to the new asset's URL and SHA-256. The runner has no GPU:
 # the package's tests align on the CPU and check that CUDA reports itself
@@ -15,6 +17,7 @@ on:
     paths:
       - native/**
       - packaging/wgse-bwa/**
+      - packaging/wgse-bwa-mem3/**
       - .github/workflows/linux_aligners.yml
   workflow_dispatch:
     inputs:
@@ -81,8 +84,13 @@ jobs:
         include:
           - runner: ubuntu-latest
             platform: linux-64
+            package: wgse-bwa
           - runner: ubuntu-24.04-arm
             platform: linux-aarch64
+            package: wgse-bwa
+          - runner: ubuntu-latest
+            platform: linux-64
+            package: wgse-bwa-mem3
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     steps:
@@ -95,12 +103,12 @@ jobs:
 
       - name: Build and test the package
         run: |
-          pixi exec --spec rattler-build==0.77.0 rattler-build build --recipe-dir packaging/wgse-bwa \
-            -m packaging/wgse-bwa/variants.yaml --output-dir out/conda --target-platform ${{ matrix.platform }}
+          pixi exec --spec rattler-build==0.77.0 rattler-build build --recipe-dir packaging/${{ matrix.package }} \
+            -m packaging/${{ matrix.package }}/variants.yaml --output-dir out/conda --target-platform ${{ matrix.platform }}
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: wgse-bwa-${{ matrix.platform }}
+          name: ${{ matrix.package }}-${{ matrix.platform }}
           path: out/conda/${{ matrix.platform }}/*.conda
           if-no-files-found: error
 
@@ -125,7 +133,7 @@ jobs:
           cp packages/*/*.conda assets/
           {
             echo "WGS Extract's Linux (x86-64 and ARM64) aligner builds as conda packages that Pixi installs."
-            echo "Built from native/ and packaging/wgse-bwa at ${GITHUB_SHA} by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
+            echo "Built from native/ and packaging/ at ${GITHUB_SHA} by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
             echo
             echo "| Package | SHA-256 |"
             echo "| --- | --- |"
