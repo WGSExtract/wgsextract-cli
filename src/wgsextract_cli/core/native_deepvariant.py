@@ -29,16 +29,17 @@ from wgsextract_cli.core.native_support import is_arm64_docker_host
 from wgsextract_cli.core.utils import WGSExtractError
 
 BINARY = "wgse-deepvariant"
+PIXI_ENVIRONMENT = "deepvariant"
 # The oldest usable build: 0.2.0 is the first Linux one.
 MINIMUM_VERSION = {"darwin": (0, 1, 0), "linux": (0, 2, 0)}
 WEIGHTS_SETTING = "deepvariant_weights"
 ENGINE_SETTING = "deepvariant_native"
 ENGINE_CHOICES = ("auto", "off")
 INSTALL_HINT = (
-    "Install wgse-deepvariant (a macos-deepvariant release on a Mac, a "
-    "linux-deepvariant conda package on Linux) and its weights, put "
-    "wgse-deepvariant on PATH and set deepvariant_weights in config.toml to "
-    "the weights folder: see native/deepvariant/README.md "
+    "Install wgse-deepvariant (on a Mac a macos-deepvariant release on PATH, "
+    "on Linux `pixi install -e deepvariant`) and its weights, and set "
+    "deepvariant_weights in config.toml to the weights folder: see "
+    "native/deepvariant/README.md "
     "(https://github.com/WGSExtract/wgsextract-cli/blob/main/native/deepvariant/"
     "README.md#installing)."
 )
@@ -120,8 +121,8 @@ def default_batch_size() -> int:
 
 def installed() -> str | None:
     """wgse-deepvariant's path when it's on PATH of an Apple Silicon Mac or
-    a Linux x86-64 computer (with deepvariant_weights set) and the
-    deepvariant_native setting doesn't turn it off."""
+    a Linux x86-64 computer (with deepvariant_weights set), or there in its
+    Pixi environment, and the deepvariant_native setting doesn't turn it off."""
     setting = str(settings.get(ENGINE_SETTING) or "auto").lower()
     if setting not in ENGINE_CHOICES:
         raise WGSExtractError(
@@ -140,7 +141,18 @@ def installed() -> str | None:
         or not settings.get(WEIGHTS_SETTING)
     ):
         return None
-    return shutil.which(BINARY)
+    return shutil.which(BINARY) or (None if sys.platform == "darwin" else _pixi_build())
+
+
+def _pixi_build() -> str | None:
+    """wgse-deepvariant in the opt-in ``deepvariant`` Pixi environment
+    (``pixi install -e deepvariant``, Linux x86-64), run by its path: its
+    libraries load from the environment without activating it."""
+    from wgsextract_cli.core.pixi_tools import pixi_env_prefix
+
+    prefix = pixi_env_prefix(PIXI_ENVIRONMENT)
+    binary = prefix / "bin" / BINARY if prefix else None
+    return str(binary) if binary and binary.is_file() else None
 
 
 def require(

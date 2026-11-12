@@ -44,6 +44,8 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   genotypes and filters as Google's image. With it installed, `--gpu` uses it
   for the WGS model; `deepvariant_native = "off"` keeps Parabricks. Other
   models keep Google's image and Parabricks.
+- `pixi install -e deepvariant` installs `wgse-deepvariant`'s CUDA build on
+  Linux x86-64 into an opt-in Pixi environment, where `vcf deepvariant` finds it.
 
 - `wgsextract ref dense-sa` builds `wgse-bwa`'s optional dense suffix-array
   file for a reference (0.80 GB for hs38; `--list` and `--delete` too), and

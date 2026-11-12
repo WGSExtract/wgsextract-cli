@@ -71,10 +71,9 @@ INSTALL_HINTS = {
     "https://github.com/nanoporetech/dorado#installation, unpack it and put its "
     "bin folder on PATH, or set dorado_executable in config.toml (or pass "
     "basecall --dorado-path).",
-    "wgse-deepvariant": "wgse-deepvariant (DeepVariant without Docker) isn't "
-    "installed with WGS Extract: install a macos-deepvariant or "
-    "linux-deepvariant release with its weights, put it on PATH and set "
-    "deepvariant_weights in config.toml (native/deepvariant/README.md).",
+    "wgse-deepvariant": "wgse-deepvariant (DeepVariant without Docker): on "
+    "Linux `pixi install -e deepvariant`, on a Mac a macos-deepvariant release "
+    "on PATH; set deepvariant_weights in config.toml (native/deepvariant/README.md).",
 }
 
 
@@ -217,6 +216,7 @@ PIXI_TOOL_ENVS = {
     "LongTR": "longtr",
     "strkit": "strkit",
     "run_clair3.sh": "clair3",
+    "wgse-deepvariant": "deepvariant",
     "modkit": "modkit",
     "verifybamid2": "verifybamid2",
     "somalier": "somalier",
