@@ -20,6 +20,7 @@ void help() {
         "  <command>                 a BWA command such as index or mem (run %s alone to list them)\n"
         "  capabilities --json [index]  report GPU availability (and the index's side files)\n"
         "  densify-sa [-i N] <index>    write denser suffix-array samples for faster mem\n"
+        "  --dense-sa on|off          enable or disable reading those samples\n"
         "  --version                 print executable and engine version\n"
         "Options precede the command and affect only mem. The default CPU backend is BWA's\n"
         "code, with some steps replaced by exact batched versions (identical output).\n"
@@ -83,6 +84,18 @@ int run(int argc, char **argv) {
                 fprintf(stderr, "--backend requires cpu, metal, cuda or auto\n");
                 return 2;
             }
+            command_index += 2;
+        } else if (strcmp(option, "--dense-sa") == 0) {
+            const char *value = argc > command_index + 1 ? argv[command_index + 1] : "";
+            bool force = false;
+#ifdef WGSE_METAL_BENCHMARK_TOOLS
+            force = strcmp(value, "force") == 0;
+#endif
+            if (!force && strcmp(value, "on") && strcmp(value, "off")) {
+                fprintf(stderr, "--dense-sa requires on or off\n");
+                return 2;
+            }
+            wgse_set_dense_sa_files(strcmp(value, "off") != 0, force);
             command_index += 2;
 #ifdef WGSE_METAL_BENCHMARK_TOOLS
         } else if (strcmp(option, "--gpu-inject-failure") == 0) {
@@ -191,14 +204,6 @@ int run(int argc, char **argv) {
                 return 2;
             }
             wgse_set_gpu_rescue(strcmp(value, "on") == 0);
-            command_index += 2;
-        } else if (strcmp(option, "--dense-sa") == 0) {
-            const char *value = argc > command_index + 1 ? argv[command_index + 1] : "";
-            if (strcmp(value, "on") && strcmp(value, "off") && strcmp(value, "force")) {
-                fprintf(stderr, "--dense-sa requires on, off or force\n");
-                return 2;
-            }
-            wgse_set_dense_sa_files(strcmp(value, "off") != 0, strcmp(value, "force") == 0);
             command_index += 2;
         } else if (strcmp(option, "--cpu-upstream") == 0) {
             wgse_set_cpu_upstream();

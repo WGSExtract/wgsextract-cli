@@ -29,6 +29,16 @@ printed by `--version`.
 
 ## Installing
 
+The published `wgse-bwa` 0.11.0 and 0.12.0 executables advertise dense
+suffix-array support but reject `--dense-sa`. The CLI omits that option for
+those versions, so alignment works when no dense side file is present.
+With a side file it refuses: those builds can read it automatically and cannot
+honor the run's opt-in setting. Upgrade to 0.12.1 or later, or remove the side
+files with `wgsextract ref dense-sa --ref <fasta> --delete`.
+Until updated prereleases are published, build `wgse-bwa` from this revision
+(0.12.1) as described under [Building](#building). The other three executables
+are unaffected.
+
 The `macos-aligners-15` prerelease has `wgse-bwa` 0.11.0, which can use an
 optional dense suffix-array side file (`wgse-bwa densify-sa`), `wgse-bwa-mem2`
 0.5.2, `wgse-bwa-mem3` 0.3.0, whose `--metal` also collects SMEMs on the GPU,
@@ -1020,7 +1030,11 @@ kernels for (such as Pascal or Volta, by default) is never selected, and
 whichever GPU backend the build and machine have.
 
 `-DBUILD_TESTING=OFF` builds the release executables without tests or the
-hidden GPU tuning flags. Metal tests are skipped when no Metal device is
+hidden GPU tuning flags. The public `--dense-sa on|off` switch remains
+available; `--dense-sa force`, which bypasses its memory check, is
+benchmark-only. `bwa_release_dense_sa` also checks alignment records with a
+production parser, so benchmark-enabled builds cannot hide missing public
+options. Metal tests are skipped when no Metal device is
 available. `.github/workflows/macos_aligners.yml` builds, tests and packages
 all four executables, and publishes them when run with a `macos-aligners-N` tag.
 

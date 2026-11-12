@@ -55,9 +55,10 @@ BIOCONDA_BWA_MEM3_MINIMUM = (0, 16, 0)
 # From this release wgse-bwa-mem2 maps (CPU and --metal) without bwa-mem2's
 # 6.2 GB .0123 file (native/README.md, Memory).
 BWA_MEM2_WITHOUT_0123 = (0, 5, 0)
-# From this release wgse-bwa reads a dense suffix-array side file
-# (dense_suffix_array) when one is present, unless told --dense-sa off.
+# From this release wgse-bwa can automatically read dense suffix-array files.
 DENSE_SA_VERSION = (0, 11, 0)
+# Earlier production builds compiled the on/off option out of their parser.
+DENSE_SA_OPTION_VERSION = (0, 12, 1)
 CAPABILITIES_SCHEMA = 1
 _PROBE_TIMEOUT_SECONDS = 30
 _VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
@@ -105,6 +106,16 @@ class NativeAligner:
             self.binary == "wgse-bwa"
             and version is not None
             and version >= DENSE_SA_VERSION
+        )
+
+    @property
+    def supports_dense_sa_option(self) -> bool:
+        """Whether the production parser accepts ``--dense-sa on|off``."""
+        version = _version_tuple(self.version)
+        return (
+            self.binary == "wgse-bwa"
+            and version is not None
+            and version >= DENSE_SA_OPTION_VERSION
         )
 
 
@@ -166,7 +177,7 @@ class AlignerCommand:
         if self.native is None:
             return [self.tool]
         argv = [self.native.command, *(["--backend", "auto"] if self.gpu else [])]
-        if self.native.reads_dense_sa:
+        if self.native.supports_dense_sa_option:
             # The file is opt-in: wgse-bwa would otherwise read any present.
             argv += ["--dense-sa", "on" if self.dense_sa else "off"]
         return argv
