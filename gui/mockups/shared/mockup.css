@@ -285,3 +285,17 @@ body.mk-ready {
   text-align: center;
   letter-spacing: 0.08em;
 }
+
+/* Branch preview banner (published previews of mockups/* branches) */
+.mk-preview {
+  flex: none;
+  padding: 6px 12px;
+  background: #f2c94c;
+  color: #1b1b1b;
+  font-size: 13px;
+}
+
+.mk-preview a {
+  color: #1b1b1b;
+  font-weight: 600;
+}

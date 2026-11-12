@@ -106,7 +106,9 @@
 
     /* The copy on GitHub Pages has no notes API; it reads the committed
      * notes listed in feedback/_pages.json (made by the Pages workflow). */
-    published: /\.github\.io$/.test(location.hostname) || WGSM.params.has("published"),
+    published: (window.WGSM_VERSION || {}).source === "pages" ||
+      (window.WGSM_VERSION || {}).source === "preview" ||
+      /\.github\.io$/.test(location.hostname) || WGSM.params.has("published"),
 
     init: function () {
       var probe = store.published
@@ -240,7 +242,7 @@
     },
 
     exportFile: function () {
-      var doc = Object.assign({}, store.doc, { about: window.WGSM_ABOUT });
+      var doc = Object.assign({}, store.doc, { about: store.about() });
       var blob = new Blob([JSON.stringify(sortKeys(doc), null, 2) + "\n"], { type: "application/json" });
       var a = WGSM.h("a", { href: URL.createObjectURL(blob), download: WGSM.page.id + ".json" });
       document.body.appendChild(a);
@@ -254,6 +256,19 @@
         if (!doc || typeof doc.notes !== "object") throw new Error("Not a feedback file");
         return store.apply({ op: "merge", notes: doc.notes });
       });
+    },
+
+    /* The branch a preview was built from, else "" (main or a checkout) */
+    branch: function () {
+      var v = window.WGSM_VERSION || {};
+      return v.source === "preview" ? v.branch : "";
+    },
+
+    about: function () {
+      var branch = store.branch();
+      return branch
+        ? window.WGSM_ABOUT.replace("on branch main.", "on branch " + branch + " (a preview; it is merged into main by pull request).")
+        : window.WGSM_ABOUT;
     },
 
     author: function (name) {

@@ -95,7 +95,21 @@
         this.annotBtn,
         this.notesBtn
       );
-      document.body.replaceChildren(bar, stage);
+      var version = window.WGSM_VERSION || {};
+      var preview = version.source === "preview"
+        ? h(
+            "div.mk-preview",
+            { role: "note", "data-annot-ignore": "" },
+            h("strong", "Preview of branch " + version.branch + ", not main."),
+            " Commit ",
+            h("code", String(version.sha).slice(0, 7)),
+            ". ",
+            h("a", { href: WGSM.link("../../index.html") }, "Main mockups"),
+            " · ",
+            h("a", { href: WGSM.link("../index.html") }, "All previews")
+          )
+        : null;
+      document.body.replaceChildren.apply(document.body, [bar, preview, stage].filter(Boolean));
       this.stage = stage;
       this.vp = WGSM.qs("#vp", stage);
     },
