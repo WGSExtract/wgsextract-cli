@@ -315,6 +315,26 @@ The builds are `macos-aligners-N` prerelease assets; see
 command, and a whole genome from `realign` to `report`, on the smallest Apple
 Silicon Mac.
 
+### bcftools with mimalloc
+
+On macOS about a third of `bcftools mpileup`'s time goes to the system
+allocator. `wgse-mimalloc` is WGS Extract's build of
+[mimalloc](https://github.com/microsoft/mimalloc) 3.6.1 with malloc override on
+(conda-forge's has it off), from [packaging/mimalloc](../packaging/mimalloc).
+When it is installed in bcftools' environment, `vcf snp` and `vcf indel` start
+their bcftools processes, and only those, with `DYLD_INSERT_LIBRARIES` pointing
+at it (`mimalloc = "auto"`, the default; `--mimalloc off` or `mimalloc = "off"`
+in `config.toml` turns this off). WGS Extract doesn't install it.
+
+The records are the same. On 5M HG002 read pairs on hs38 with 9 threads on the
+M1 Pro (medians of 3 interleaved runs), `vcf snp` took 102 s against 132 s and
+`vcf indel` 155 s against 193 s, with a quarter less CPU time.
+Each run first checks that bcftools loads the library (macOS drops `DYLD_*`
+variables for protected binaries, and a damaged file stops it starting); if not,
+or if `DYLD_INSERT_LIBRARIES` is already set, bcftools runs with the system
+allocator and the log says why. The result manifest's `bcftools_allocator`
+metric (`mimalloc` or `system`) records which ran. Linux isn't covered yet.
+
 `vcf clair3` runs on Apple Silicon on the CPU only: Clair3 2.0.5 has no Metal
 (MPS) path; see [docs/ont.md](ont.md#clair3-optional).
 

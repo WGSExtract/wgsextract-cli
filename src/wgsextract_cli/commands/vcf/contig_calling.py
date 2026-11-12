@@ -35,9 +35,9 @@ import hashlib
 import logging
 import os
 import tempfile
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from itertools import groupby
 from pathlib import Path
@@ -285,6 +285,7 @@ def _pump(
     *,
     description: str,
     cancel_event: Event | None,
+    env: Mapping[str, str] | None = None,
 ) -> None:
     """Run ``source`` and let ``copy`` feed its output to each sink pipeline."""
     source_read, source_write = os.pipe()
@@ -299,6 +300,7 @@ def _pump(
                 stages,
                 stdin=stdin,
                 stdout=stdout,
+                env=env,
                 description=description,
                 cancel_event=cancel_event,
             )
@@ -435,6 +437,8 @@ class _ContigCaller:
     bands: bool = False
     workers: int = 1
     cancelled: Event | None = None
+    # Added to the calling bcftools' environment (mimalloc on Apple Silicon).
+    environment: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def description(self) -> str:
@@ -461,12 +465,15 @@ class _ContigCaller:
             bands=self.bands,
         )
         description = self.description + (f" ({label})" if label else "")
+        env = {**os.environ, **self.environment} if self.environment else None
         if listing is None:
-            run_pipeline(stages, description=description, cancel_event=self.cancelled)
+            run_pipeline(
+                stages, env=env, description=description, cancel_event=self.cancelled
+            )
         else:
             _pump(
                 stages[0], [stages[1:], [_dense_listing(listing)]], _tee,
-                description=description, cancel_event=self.cancelled,
+                description=description, cancel_event=self.cancelled, env=env,
             )  # fmt: skip
 
     def run_all(self, tasks: Sequence[Callable[[], None]]) -> None:
@@ -663,10 +670,14 @@ def call_small_variants(
     call_args: list[str],
     contigs: dict[str, int],
     indels: bool = False,
+    environment: Mapping[str, str] | None = None,
 ) -> None:
     """Call into ``output``: per-contig workers for ``contigs`` (from
-    `calling_contigs`), or one bcftools stream when it is empty."""
-    caller = _ContigCaller(alignment, ref, profile, call_args, indels)
+    `calling_contigs`), or one bcftools stream when it is empty.
+    ``environment`` is added to the calling bcftools processes' environment."""
+    caller = _ContigCaller(
+        alignment, ref, profile, call_args, indels, environment=dict(environment or {})
+    )
     if not contigs:
         caller.call(output, ["-r", region] if region else [], region, threads)
         return

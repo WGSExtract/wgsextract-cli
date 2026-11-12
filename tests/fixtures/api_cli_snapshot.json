@@ -37128,7 +37128,7 @@
    }
   },
   "vcf indel": {
-   "help": "usage: wgsextract vcf indel [-h] [-r REGION] [--parallel | --no-parallel] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --parallel, --no-parallel\n                        Call contigs in parallel with up to --threads workers (default: on with\n                        --threads above 1). SNP calling recalls the stretches with sites deeper\n                        than 255 reads in one stream, because bcftools subsamples them with one\n                        random stream per process, so the calls match a single stream.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n3 advanced options not shown; 'wgsextract vcf indel --help-all' lists them.\n\nexamples:\n  wgsextract vcf indel --input sample.cram\n\noutputs (in the output directory unless noted):\n  indels.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, samtools, tabix; hours on a 30x genome.\n",
+   "help": "usage: wgsextract vcf indel [-h] [-r REGION] [--parallel | --no-parallel] [--mimalloc {auto,off}]\n                            [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --parallel, --no-parallel\n                        Call contigs in parallel with up to --threads workers (default: on with\n                        --threads above 1). SNP calling recalls the stretches with sites deeper\n                        than 255 reads in one stream, because bcftools subsamples them with one\n                        random stream per process, so the calls match a single stream.\n  --mimalloc {auto,off}\n                        Apple Silicon: bcftools uses wgse-mimalloc if installed (auto) or not\n                        (off). Default: config mimalloc, else auto.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n3 advanced options not shown; 'wgsextract vcf indel --help-all' lists them.\n\nexamples:\n  wgsextract vcf indel --input sample.cram\n\noutputs (in the output directory unless noted):\n  indels.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, samtools, tabix; hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -37491,6 +37491,25 @@
       ],
       "required": false,
       "type": "_non_negative"
+     },
+     {
+      "choices": [
+       "auto",
+       "off"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "mimalloc",
+      "exclusive_group": null,
+      "help": "Apple Silicon: bcftools uses wgse-mimalloc if installed (auto) or not (off). Default: config mimalloc, else auto.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--mimalloc"
+      ],
+      "required": false,
+      "type": null
      },
      {
       "choices": null,
@@ -39378,7 +39397,7 @@
    }
   },
   "vcf snp": {
-   "help": "usage: wgsextract vcf snp [-h] [-r REGION] [--parallel | --no-parallel] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --parallel, --no-parallel\n                        Call contigs in parallel with up to --threads workers (default: on with\n                        --threads above 1). SNP calling recalls the stretches with sites deeper\n                        than 255 reads in one stream, because bcftools subsamples them with one\n                        random stream per process, so the calls match a single stream.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n3 advanced options not shown; 'wgsextract vcf snp --help-all' lists them.\n\nexamples:\n  wgsextract vcf snp --input sample.cram\n  wgsextract vcf snp --input sample.cram --region chrM\n\noutputs (in the output directory unless noted):\n  snps.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, samtools, tabix; hours on a 30x genome.\n",
+   "help": "usage: wgsextract vcf snp [-h] [-r REGION] [--parallel | --no-parallel] [--mimalloc {auto,off}]\n                          [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --parallel, --no-parallel\n                        Call contigs in parallel with up to --threads workers (default: on with\n                        --threads above 1). SNP calling recalls the stretches with sites deeper\n                        than 255 reads in one stream, because bcftools subsamples them with one\n                        random stream per process, so the calls match a single stream.\n  --mimalloc {auto,off}\n                        Apple Silicon: bcftools uses wgse-mimalloc if installed (auto) or not\n                        (off). Default: config mimalloc, else auto.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n3 advanced options not shown; 'wgsextract vcf snp --help-all' lists them.\n\nexamples:\n  wgsextract vcf snp --input sample.cram\n  wgsextract vcf snp --input sample.cram --region chrM\n\noutputs (in the output directory unless noted):\n  snps.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, samtools, tabix; hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -39741,6 +39760,25 @@
       ],
       "required": false,
       "type": "_non_negative"
+     },
+     {
+      "choices": [
+       "auto",
+       "off"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "mimalloc",
+      "exclusive_group": null,
+      "help": "Apple Silicon: bcftools uses wgse-mimalloc if installed (auto) or not (off). Default: config mimalloc, else auto.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--mimalloc"
+      ],
+      "required": false,
+      "type": null
      },
      {
       "choices": null,
@@ -44118,6 +44156,7 @@
    "log_dir": null,
    "log_file": null,
    "memory": null,
+   "mimalloc": null,
    "outdir": null,
    "parallel": null,
    "parent_pid": null,
@@ -48757,6 +48796,7 @@
    "log_dir": null,
    "log_file": null,
    "memory": null,
+   "mimalloc": null,
    "outdir": null,
    "parallel": null,
    "parent_pid": null,
@@ -48983,6 +49023,7 @@
    "log_dir": null,
    "log_file": null,
    "memory": null,
+   "mimalloc": null,
    "outdir": null,
    "parallel": true,
    "parent_pid": null,
@@ -49016,6 +49057,7 @@
    "log_dir": null,
    "log_file": null,
    "memory": null,
+   "mimalloc": null,
    "outdir": "out",
    "parallel": null,
    "parent_pid": null,

@@ -1,0 +1,86 @@
+name: wgse-mimalloc
+
+# Builds the wgse-mimalloc conda package (packaging/mimalloc): mimalloc with
+# malloc override enabled, which `vcf snp`/`vcf indel` inject into bcftools on
+# Apple Silicon (#646). Builds on every change to it, and publishes it to a
+# release when asked: Actions > wgse-mimalloc > Run workflow, with a new tag
+# such as wgse-mimalloc-2. Then pin pixi.toml's wgse-mimalloc to the new
+# asset's URL and SHA-256.
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - packaging/mimalloc/**
+      - .github/workflows/mimalloc.yml
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: New release tag to publish the package under (empty builds only).
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# Only pull requests share a group: a new push supersedes the PR's older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Pixi
+        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+        with:
+          run-install: false
+
+      # The recipe's tests inject the library into Python, checking that malloc()
+      # then returns mimalloc's blocks, and into bioconda's bcftools.
+      - name: Build and test the package
+        run: |
+          pixi exec --spec rattler-build==0.77.0 rattler-build build --recipe-dir packaging/mimalloc -m packaging/mimalloc/variants.yaml \
+            -c conda-forge -c bioconda --output-dir out/conda --target-platform osx-arm64
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wgse-mimalloc
+          path: out/conda/osx-arm64/*.conda
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: wgse-mimalloc
+          path: assets
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          case "$TAG" in wgse-mimalloc-*) ;; *) echo "Tag must start with wgse-mimalloc-" >&2; exit 1 ;; esac
+          (cd assets && sha256sum -- *.conda > SHA256SUMS)
+          {
+            echo "mimalloc built with malloc override for Apple Silicon, as a conda package that Pixi installs."
+            echo "\`vcf snp\`/\`vcf indel\` inject it into bcftools (#646). MIT-licensed (microsoft/mimalloc); the license is in the package."
+            echo "Built from packaging/mimalloc at ${GITHUB_SHA} by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
+            echo
+            echo '```'
+            cat assets/SHA256SUMS
+            echo '```'
+          } > notes.md
+          gh release create "$TAG" assets/*.conda assets/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "wgse-mimalloc $TAG" \
+            --notes-file notes.md --prerelease --latest=false

@@ -116,6 +116,12 @@ KNOWN_SETTINGS = {
         "Folder `basecall` downloads Dorado models into (default: the "
         "wgsextract cache's dorado-models)",
     ),
+    "mimalloc": (
+        None,
+        "Apple Silicon: `vcf snp`/`vcf indel` run bcftools with WGS Extract's "
+        "wgse-mimalloc allocator when it's installed (auto, the default) or "
+        "never (off)",
+    ),
     "haplocheck_executable": (None, "Path to the haplocheck executable or JAR"),
     "report_gene_list": (
         None,

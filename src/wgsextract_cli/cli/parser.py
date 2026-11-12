@@ -63,6 +63,8 @@ DEFAULT_CONFIG = """# WGS Extract Configuration
 # native_aligners = "auto"
 # wgse-bwa reads the dense suffix-array file `ref dense-sa` builds (opt-in)
 # dense_suffix_array = false
+# Apple Silicon: bcftools calls variants with wgse-mimalloc when installed: "auto" or "off"
+# mimalloc = "auto"
 
 # --- Y haplogroup trees (lineage y-haplogroup) ---
 # y_tree = "yfull"  # or yfull_v10, ftdna, isogg, or a [y_trees] id (end of file)
