@@ -42,9 +42,14 @@ each sample's ploidy and isn't supported yet. A chip VCF with contigs named
 GRCh38; for a lengthless header, supply the matching GRCh38 FASTA index with
 `bcftools reheader --fai GRCh38.fa.fai` first.
 
-The optional environment supports **x86-64 Linux and Intel macOS only**.
-Windows, Linux ARM64 and Apple Silicon are gated off until native builds
-exist. The server must allow the effective reference library and panel paths,
+The optional environment supports **x86-64 Linux, Windows and Intel macOS**.
+On Windows, Beagle uses conda-forge's native OpenJDK and the pinned noarch
+Beagle jar. GLIMPSE2 is built natively by `.github/workflows/glimpse2.yml`;
+its first release URL and SHA-256 still need pinning in `pixi.toml`.
+Until that follow-up, Windows users must supply GLIMPSE2 2.0.1 themselves
+to prepare a panel or impute reads. Missing tools fail dependency validation;
+neither command installs tools. Linux ARM64 and Apple Silicon remain gated off.
+The server must allow the effective reference library and panel paths,
 not just the FASTA's `genomes/` subfolder; configured defaults and symlinks are
 checked too. Failed or version-mismatched binary-chunk builds also recheck
 disk space on retry (about 1.6 times the download size for pending chunks).

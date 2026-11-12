@@ -24,14 +24,15 @@ import pytest
 
 from tests.htslib_helpers import bgzip_index, needs_htslib
 from wgsextract_cli import api
-from wgsextract_cli.core import imputation_panel
+from wgsextract_cli.commands.vcf.imputation import beagle_command
+from wgsextract_cli.core import dependencies, imputation_panel
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.tool_catalog import (
     imputation_host_supported,
     platform_unavailable_tools,
 )
-from wgsextract_cli.core.utils import UsageError
+from wgsextract_cli.core.utils import UsageError, WGSExtractError
 
 FIXTURE = Path(__file__).parent / "fixtures" / "imputation_hg002"
 
@@ -312,7 +313,7 @@ def test_impute_without_an_installed_panel_says_how_to_install_it(tmp_path):
 
 @pytest.mark.parametrize(
     ("system", "machine"),
-    [("win32", "AMD64"), ("darwin", "arm64"), ("linux", "aarch64"), ("linux", "arm64")],
+    [("win32", "ARM64"), ("darwin", "arm64"), ("linux", "aarch64"), ("linux", "arm64")],
 )
 @pytest.mark.parametrize("operation", ["impute", "install"])
 def test_732_unsupported_platform_reports_gate_before_tools(
@@ -320,7 +321,9 @@ def test_732_unsupported_platform_reports_gate_before_tools(
 ):
     monkeypatch.setattr(sys, "platform", system)
     monkeypatch.setattr(platform, "machine", lambda: machine)
-    with pytest.raises(api.CommandFailed, match="x86-64 Linux and Intel macOS"):
+    with pytest.raises(
+        api.CommandFailed, match="x86-64 Linux, Windows and Intel macOS"
+    ):
         if operation == "install":
             api.ref.imputation(
                 api.RefImputationParams(ref=tmp_path, chromosomes="chr20")
@@ -332,6 +335,42 @@ def test_732_unsupported_platform_reports_gate_before_tools(
                 )
             )
     assert "GLIMPSE2_phase" in platform_unavailable_tools()
+
+
+@pytest.mark.parametrize("operation", ["impute", "install"])
+def test_621_windows_missing_tools_fail_validation_not_platform_gate(
+    tmp_path, monkeypatch, operation
+):
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(platform, "machine", lambda: "AMD64")
+    # Tool discovery is the OS boundary; no external tools are installed here.
+    monkeypatch.setattr(shutil, "which", lambda command: None)
+    monkeypatch.setattr(dependencies, "get_tool_path", lambda tool: None)
+    with pytest.raises(api.CommandFailed, match="Missing required .*tool"):
+        if operation == "install":
+            api.ref.imputation(
+                api.RefImputationParams(ref=tmp_path, chromosomes="chr20")
+            )
+        else:
+            api.vcf.impute(
+                api.VcfImputeParams(
+                    input=FIXTURE / "reads.bam", ref=tmp_path, outdir=tmp_path
+                )
+            )
+
+
+def test_621_windows_beagle_requires_native_java_and_pinned_jar(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "win32")
+    jar = tmp_path / "share" / "beagle-5.5" / "beagle.jar"
+    jar.parent.mkdir(parents=True)
+    jar.write_bytes(b"not the pinned jar")
+    with pytest.raises(WGSExtractError, match="Beagle is not installed"):
+        beagle_command(tmp_path)
+    java = tmp_path / "Library" / "bin" / "java.exe"
+    java.parent.mkdir(parents=True)
+    java.touch()
+    with pytest.raises(WGSExtractError, match="not the pinned Beagle"):
+        beagle_command(tmp_path)
 
 
 @needs_glimpse

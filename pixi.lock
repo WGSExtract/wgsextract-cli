@@ -2847,6 +2847,14 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/xz-gpl-tools-5.8.3-h6a5a847_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/xz-tools-5.8.3-hbb4bfdb_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zstd-1.5.7-hbc1a06c_7.conda
+      win-64:
+      - conda: https://conda.anaconda.org/bioconda/noarch/beagle-5.5_27Feb25.75f-hdfd78af_1.conda
+      - conda: https://conda.anaconda.org/conda-forge/win-64/openjdk-25.0.2-h56f2b75_26.conda
+      - conda: https://conda.anaconda.org/conda-forge/win-64/symlink-exe-runtime-1.0-hfd05255_2.conda
+      - conda: https://conda.anaconda.org/conda-forge/win-64/ucrt-10.0.26100.0-h57928b3_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/win-64/vc-14.5-hda273ae_43.conda
+      - conda: https://conda.anaconda.org/conda-forge/win-64/vc14_runtime-14.51.36247-h072b54c_43.conda
+      - conda: https://conda.anaconda.org/conda-forge/win-64/vcomp14-14.51.36247-h1c3f1cb_43.conda
   lint:
     channels:
     - url: https://conda.anaconda.org/conda-forge/
@@ -34243,7 +34251,6 @@ packages:
   sha256: 970706abfefea9610af0f4624e58dc8d816e5e1068f690ab07c06b27e6978429
   depends:
   - __osx >=11.0
-  channel: null
   license: MIT
   timestamp: 1794466105525
 - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-8/bcftools-1.24-wgse_3.conda

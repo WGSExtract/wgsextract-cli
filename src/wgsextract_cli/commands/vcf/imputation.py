@@ -15,6 +15,7 @@ GP threshold are FILTERed ``ImpLowConf``. Site INFO/DR2 filtering is opt-in.
 import hashlib
 import logging
 import re
+import sys
 import tempfile
 from pathlib import Path
 
@@ -196,7 +197,11 @@ def beagle_command(prefix: Path) -> list[str]:
     """``java -jar beagle.jar`` from the imputation environment, the jar checked
     against its pinned digest."""
     jars = sorted(prefix.glob("share/beagle-*/beagle.jar"))
-    java = prefix / "bin" / "java"
+    java = (
+        prefix / "Library" / "bin" / "java.exe"
+        if sys.platform == "win32"
+        else prefix / "bin" / "java"
+    )
     if not jars or not java.is_file():
         raise WGSExtractError(
             f"Beagle is not installed in the {ENV} environment. Install it with "
