@@ -342,6 +342,31 @@ public:
         return true;
     }
 
+    bool adopt_dense(unsigned shift, uint32_t *low, size_t low_bytes, uint32_t *high,
+        size_t high_bytes) override {
+        select();
+        LocateParameters &p = locate_parameters_;
+        if (!sa_ready_ || shift == 0 || (uint64_t(1) << shift) >= p.sa_intv || p.seq_len >> 33)
+            return false;
+        const uint64_t entries = (p.seq_len / p.sa_intv + 1) * ((p.sa_intv >> shift) - 1);
+        const uint64_t words = (entries + 31) / 32;
+        if (entries > UINT32_MAX || low_bytes < entries * sizeof(uint32_t)
+            || high_bytes < words * sizeof(uint32_t)) return false;
+        try {
+            reserve_memory((entries + words) * sizeof(uint32_t), "dense suffix-array samples");
+            dense_low_.reserve(entries);
+            dense_high_.reserve(words);
+        } catch (const std::exception &) {
+            return false;
+        }
+        upload(dense_low_.data(), low, entries * sizeof(uint32_t), "dense samples upload");
+        upload(dense_high_.data(), high, words * sizeof(uint32_t), "dense samples upload");
+        p.dense_shift = shift;
+        p.dense_entries = entries;
+        dense_ready_ = true;
+        return true;
+    }
+
     void rescue(const RescueParameters &p, const std::vector<uint8_t> &bases,
         const std::vector<RescueJob> &jobs, size_t row_bytes,
         std::vector<RescueResult> &results) override {

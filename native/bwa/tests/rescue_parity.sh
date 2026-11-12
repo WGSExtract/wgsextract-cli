@@ -322,7 +322,7 @@ test "$(metric verify.log rescue_mismatches)" -eq 0
 test "$(metric verify.log rescue_skipped)" -gt 0
 
 # The GPU locates with the side file's samples in place.
-"$aligner" --dense-sa force --gpu-policy all --metal mem -t 4 reference.fa pairs-R1.fq \
+"$aligner" --dense-sa force --gpu-policy all "$gpu" mem -t 4 reference.fa pairs-R1.fq \
     pairs-R2.fq > metal-dense.sam 2> metal-dense.log
 same upstream-t4.sam metal-dense.sam
 grep -q 'locate_dense shift=4 built=1 file=1' metal-dense.log

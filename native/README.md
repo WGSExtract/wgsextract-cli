@@ -166,7 +166,7 @@ automatically, and `mem` aligns exactly as before without it.
 `wgse-bwa densify-sa <index>` writes `<index>.wgse-sa16`, the
 suffix-array position of every 16th row (derived from the index's own samples;
 0.80 GB for hs38, `-i` picks another power of two). `mem` then locates seeds
-with walks of at most 15 steps instead of 31, on the CPU and Metal, if the
+with walks of at most 15 steps instead of 31, on the CPU and the GPU, if the
 machine has at least 16 GiB and the file takes at most an eighth of it; it
 checks the file against the index and otherwise ignores it. `--dense-sa off`
 ignores it, `--dense-sa force` skips the memory check, and
