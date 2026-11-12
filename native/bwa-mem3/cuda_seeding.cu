@@ -32,6 +32,7 @@ public:
         std::string reason;
         ordinal_ = wgse_mem3_cuda_device(reason);
         if (ordinal_ < 0) throw std::runtime_error(reason);
+        wgse_mem3_cuda_prepare();
         check(WGSE_GPU(SetDevice)(ordinal_), "device selection");
         // The table, the prefix table and a batch's buffers, with 1 GiB spare: the GPU may be
         // shared.

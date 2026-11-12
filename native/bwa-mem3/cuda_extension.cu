@@ -26,9 +26,9 @@ static_assert(sizeof(ek::Parameters) == sizeof(Parameters), "extension.cuh's Par
 namespace {
 
 constexpr unsigned block_size = 128;
-constexpr int32_t max_pairs = 1 << 18;
+constexpr int32_t max_pairs = 1 << 16;
 // A batch's DP state; a request with more is scored on the CPU.
-constexpr size_t max_scratch_cells = size_t(16) << 20;
+constexpr size_t max_scratch_cells = size_t(8) << 20;
 // A batch's query words (a 256-base query is 32 words) and reference words (three times as
 // many); a request with more is scored on the CPU. Every slot's buffers are allocated at this
 // size when the engine starts: an allocation can wait for the GPU's running kernels, and the
@@ -153,13 +153,6 @@ public:
                     "stream");
                 check(WGSE_GPU(EventCreateWithFlags)(&slot.done, WGSE_GPU(EventDisableTiming)),
                     "event");
-                slot.host_pairs.reserve(max_pairs);
-                slot.host_reference.reserve(max_reference_words);
-                slot.host_query.reserve(max_query_words);
-                slot.pairs.reserve(max_pairs);
-                slot.reference.reserve(max_reference_words);
-                slot.query.reserve(max_query_words);
-                slot.scratch.reserve(max_scratch_cells);
             }
         } catch (const std::exception &error) {
             reason = error.what();
@@ -170,7 +163,29 @@ public:
         return true;
     }
 
+    // Every slot's buffers at their largest (wgse_mem3_cuda_prepare); false if they don't fit.
+    bool prepare() {
+        try {
+            check(WGSE_GPU(SetDevice)(ordinal_), "device selection");
+            for (Slot &slot : slots) {
+                slot.host_pairs.reserve(max_pairs);
+                slot.host_reference.reserve(max_reference_words);
+                slot.host_query.reserve(max_query_words);
+                slot.pairs.reserve(max_pairs);
+                slot.reference.reserve(max_reference_words);
+                slot.query.reserve(max_query_words);
+                slot.scratch.reserve(max_scratch_cells);
+            }
+            prepared_ = true;
+        } catch (const std::exception &error) {
+            fail(std::string("GPU seed extension: ") + error.what());
+        }
+        return prepared_;
+    }
+
     bool score(Request &request) {
+        wgse_mem3_cuda_prepare();
+        if (!prepared_) return false;
         std::unique_lock<std::mutex> lock(mutex);
         request.enqueued = now_ns();
         pending.push_back(&request);
@@ -185,6 +200,7 @@ public:
 private:
     std::string failure_;
     int ordinal_ = -1;
+    std::atomic<bool> prepared_{false};
     std::mutex mutex;
     std::condition_variable changed, done;
     std::vector<Request *> pending;
@@ -457,6 +473,14 @@ bool wgse_mem3_cuda_take_hang(const char *stage) {
 }
 
 double wgse_mem3_cuda_watchdog_floor() { return watchdog_floor; }
+
+void wgse_mem3_cuda_prepare() {
+    static std::once_flag once;
+    std::call_once(once, [] {
+        if (enabled) engine().prepare();
+        wgse_mem3_rescue_prepare();
+    });
+}
 
 std::string wgse_mem3_cuda_hang() {
     std::lock_guard<std::mutex> lock(hang_mutex);

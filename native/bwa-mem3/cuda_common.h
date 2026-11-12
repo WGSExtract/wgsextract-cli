@@ -11,6 +11,13 @@ int wgse_mem3_cuda_device(std::string &reason);
 // hook).
 bool wgse_mem3_cuda_take_hang(const char *stage);
 double wgse_mem3_cuda_watchdog_floor();
+// Allocates every stage's batch buffers at their largest, once, before the first GPU work
+// (the seeder's first batch, or the first extension): an allocation can wait for the GPU's
+// running kernels, so none may happen once a stage could be waiting on a hung one. After the
+// index loads, as pinned memory then slowed loading it and the CPU's index lookups (#674).
+void wgse_mem3_cuda_prepare();
+// Mate rescue's part of it (cuda_rescue.cu).
+void wgse_mem3_rescue_prepare();
 // Why the watchdog gave up on the GPU (the first hung command), or empty while it hasn't;
 // once set, no stage uses the GPU again.
 std::string wgse_mem3_cuda_hang();

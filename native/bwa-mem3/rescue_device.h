@@ -9,7 +9,8 @@
 #include <cstdint>
 #include <string>
 
-// Whether this build and machine have a GPU for mate rescue, or the reason not.
+// Whether this build and machine have a GPU for mate rescue, or the reason not; asking means
+// GPU mate rescue is wanted.
 bool wgse_mem3_rescue_device_available(std::string &reason);
 // Aligns jobs[0, count) (offsets into `bases` and into a row scratch of `rows` bytes),
 // writing results[0, count); a result with status rescue_cpu is left to the CPU. Returns

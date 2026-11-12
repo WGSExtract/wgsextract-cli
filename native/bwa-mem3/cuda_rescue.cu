@@ -6,10 +6,12 @@
 #include "rescue_device.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
+#include <thread>
 #include <vector>
 
 using namespace wgse::gpu;
@@ -49,9 +51,12 @@ void launch_class(int segments, const uint8_t *bases, const RescueJob *jobs, uin
 // starts: an allocation can wait for the GPU's running kernels, so none may happen while
 // other stages use the GPU. Larger calls run in several batches; a window beyond them is
 // left to the CPU.
-constexpr size_t max_jobs = 16384, max_bases = size_t(16) << 20, max_rows = size_t(8) << 20;
-// Contexts, each with its own stream; worker threads take a free one.
-constexpr int context_count = 4;
+constexpr size_t max_jobs = 8192, max_bases = size_t(4) << 20, max_rows = size_t(2) << 20;
+// Contexts, each with its own stream; worker threads take a free one. A worker waiting for a
+// context costs more than one's memory (about 7 MiB of GPU memory and 5 MiB pinned).
+int context_count() {
+    return int(std::clamp<unsigned>(std::thread::hardware_concurrency(), 4, 16));
+}
 
 class Context {
 public:
@@ -173,7 +178,7 @@ private:
 class Pool {
 public:
     explicit Pool(int ordinal) {
-        for (int i = 0; i < context_count; ++i) free_.push_back(new Context(ordinal));
+        for (int i = 0, n = context_count(); i < n; ++i) free_.push_back(new Context(ordinal));
     }
     Context *take() {
         std::unique_lock<std::mutex> lock(mutex_);
@@ -197,30 +202,31 @@ private:
 };
 
 Pool *pool = nullptr;
-std::string pool_failure;
-
-Pool *make_pool(std::string &reason) {
-    static std::once_flag once;
-    std::call_once(once, [] {
-        std::string why;
-        const int ordinal = wgse_mem3_cuda_device(why);
-        if (ordinal < 0) {
-            pool_failure = why;
-            return;
-        }
-        try {
-            pool = new Pool(ordinal);
-        } catch (const std::exception &error) {
-            pool_failure = error.what();
-        }
-    });
-    reason = pool_failure;
-    return pool;
-}
+std::string pool_failure = "GPU mate rescue was not prepared";
+// Whether rescue_host.cpp asked for GPU mate rescue (--gpu-rescue on).
+std::atomic<bool> wanted{false};
 
 } // namespace
 
-bool wgse_mem3_rescue_device_available(std::string &reason) { return make_pool(reason) != nullptr; }
+void wgse_mem3_rescue_prepare() {
+    if (!wanted) return;
+    std::string why;
+    const int ordinal = wgse_mem3_cuda_device(why);
+    if (ordinal < 0) {
+        pool_failure = why;
+        return;
+    }
+    try {
+        pool = new Pool(ordinal);
+    } catch (const std::exception &error) {
+        pool_failure = std::string("GPU mate rescue: ") + error.what();
+    }
+}
+
+bool wgse_mem3_rescue_device_available(std::string &reason) {
+    wanted = wgse_mem3_cuda_device(reason) >= 0;
+    return wanted;
+}
 
 bool wgse_mem3_rescue_device_align(const RescueParameters &p, const uint8_t *bases, size_t,
     const RescueJob *jobs, size_t count, size_t, RescueResult *results, double &seconds,
@@ -230,8 +236,12 @@ bool wgse_mem3_rescue_device_align(const RescueParameters &p, const uint8_t *bas
         reason = wgse_mem3_cuda_hang();
         return false;
     }
-    Pool *contexts = make_pool(reason);
-    if (!contexts) return false;
+    wgse_mem3_cuda_prepare();
+    Pool *contexts = pool;
+    if (!contexts) {
+        reason = pool_failure;
+        return false;
+    }
     Context *context = contexts->take();
     bool ok = true;
     try {
