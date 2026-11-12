@@ -4,7 +4,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -13,18 +15,20 @@ constexpr const char *version = WGSE_VERSION;
 constexpr const char *engine_version = "0.7.19";
 
 void help() {
-    printf("%s %s (BWA %s rebuilt for Apple Silicon)\n"
-        "Usage: %s [--metal | --backend cpu|metal|auto] <command> [arguments]\n"
+    printf("%s %s (BWA %s rebuilt)\n"
+        "Usage: %s [--metal | --cuda | --backend cpu|metal|cuda|auto] <command> [arguments]\n"
         "  <command>                 a BWA command such as index or mem (run %s alone to list them)\n"
-        "  capabilities --json       report Metal availability\n"
+        "  capabilities --json [index]  report GPU availability (and the index's side files)\n"
+        "  densify-sa [-i N] <index>    write denser suffix-array samples for faster mem\n"
         "  --version                 print executable and engine version\n"
         "Options precede the command and affect only mem. The default CPU backend is BWA's\n"
         "code, with some steps replaced by exact batched versions (identical output).\n"
-        "--metal (EXPERIMENTAL) finds and locates the seeds of most reads, extends most\n"
-        "seeds and aligns many mate-rescue windows on the GPU while the CPU does the\n"
-        "rest, with identical output. It fails if Metal is\n"
-        "unavailable, and exits 1 after finishing on the CPU if a GPU batch fails;\n"
-        "--backend auto falls back to the CPU in both cases.\n"
+        "--metal (Apple Silicon) and --cuda (NVIDIA) are EXPERIMENTAL: they find and\n"
+        "locate the seeds of most reads, extend most seeds and align many mate-rescue\n"
+        "windows on the GPU while the CPU does the rest, with identical output. Each\n"
+        "fails if its GPU is unavailable, and exits 1 after finishing on the CPU if a\n"
+        "GPU batch fails; --backend auto uses this build's GPU (Metal on macOS, CUDA\n"
+        "elsewhere) and falls back to the CPU in both cases.\n"
         "SAM is written to stdout; diagnostics to stderr.\n"
         "Not qualified for clinical use.\n",
         name, version, engine_version, name, name);
@@ -33,9 +37,34 @@ void help() {
 bool parse_backend(const char *value, Backend &backend) {
     if (strcmp(value, "cpu") == 0) backend = Backend::cpu;
     else if (strcmp(value, "metal") == 0) backend = Backend::metal;
+    else if (strcmp(value, "cuda") == 0) backend = Backend::cuda;
     else if (strcmp(value, "auto") == 0) backend = Backend::automatic;
     else return false;
     return true;
+}
+
+// densify-sa [-i INTERVAL] [-t THREADS] <index>
+int densify(int argc, char **argv) {
+    unsigned interval = 16, threads = std::thread::hardware_concurrency();
+    int i = 1;
+    for (; i + 1 < argc && argv[i][0] == '-'; i += 2) {
+        char *end = nullptr;
+        const long value = strtol(argv[i + 1], &end, 10);
+        if (end == argv[i + 1] || *end || value < 1 || value > 1024) break;
+        if (strcmp(argv[i], "-i") == 0) interval = unsigned(value);
+        else if (strcmp(argv[i], "-t") == 0) threads = unsigned(value);
+        else break;
+    }
+    if (i + 1 != argc) {
+        fprintf(stderr, "Usage: %s densify-sa [-i INTERVAL] [-t THREADS] <index>\n"
+            "Writes <index>.wgse-sa<INTERVAL>: the suffix-array position of every\n"
+            "INTERVALth row (a power of two below the index's own interval; default 16),\n"
+            "derived from the index's samples. mem then reads it and locates seeds with\n"
+            "shorter walks, with identical output, if the machine has at least 16 GiB of memory\n"
+            "and the file takes at most an eighth of it (the densest such file).\n", name);
+        return 2;
+    }
+    return wgse_densify_sa(argv[i], interval, std::max(1u, threads));
 }
 
 int run(int argc, char **argv) {
@@ -46,9 +75,12 @@ int run(int argc, char **argv) {
         if (strcmp(option, "--metal") == 0) {
             backend = Backend::metal;
             ++command_index;
+        } else if (strcmp(option, "--cuda") == 0) {
+            backend = Backend::cuda;
+            ++command_index;
         } else if (strcmp(option, "--backend") == 0) {
             if (argc <= command_index + 1 || !parse_backend(argv[command_index + 1], backend)) {
-                fprintf(stderr, "--backend requires cpu, metal or auto\n");
+                fprintf(stderr, "--backend requires cpu, metal, cuda or auto\n");
                 return 2;
             }
             command_index += 2;
@@ -150,6 +182,14 @@ int run(int argc, char **argv) {
             }
             wgse_set_gpu_rescue(strcmp(value, "on") == 0);
             command_index += 2;
+        } else if (strcmp(option, "--dense-sa") == 0) {
+            const char *value = argc > command_index + 1 ? argv[command_index + 1] : "";
+            if (strcmp(value, "on") && strcmp(value, "off") && strcmp(value, "force")) {
+                fprintf(stderr, "--dense-sa requires on, off or force\n");
+                return 2;
+            }
+            wgse_set_dense_sa_files(strcmp(value, "off") != 0, strcmp(value, "force") == 0);
+            command_index += 2;
         } else if (strcmp(option, "--cpu-upstream") == 0) {
             wgse_set_cpu_upstream();
             ++command_index;
@@ -239,22 +279,36 @@ int run(int argc, char **argv) {
         printf("%s %s; BWA %s\n", name, version, engine_version);
         return 0;
     }
+    if (command == "densify-sa") return densify(argc - command_index, argv + command_index);
     if (command == "capabilities") {
-        if (argc != command_index + 2 || strcmp(argv[command_index + 1], "--json")) {
-            fprintf(stderr, "Usage: %s capabilities --json\n", name);
+        if (argc < command_index + 2 || argc > command_index + 3
+            || strcmp(argv[command_index + 1], "--json")) {
+            fprintf(stderr, "Usage: %s capabilities --json [index]\n", name);
             return 2;
         }
-        std::string reason;
-        bool available = wgse_metal_available(reason);
-        if (!available) fprintf(stderr, "Metal unavailable: %s\n", reason.c_str());
+        // Each GPU this build has is reported; the other is unavailable.
+        std::string metal_reason, cuda_reason;
+#ifdef __APPLE__
+        const bool metal = wgse_gpu_available(Backend::metal, metal_reason), cuda = false;
+        if (!metal) fprintf(stderr, "Metal unavailable: %s\n", metal_reason.c_str());
+#else
+        const bool metal = false, cuda = wgse_gpu_available(Backend::cuda, cuda_reason);
+        if (!cuda) fprintf(stderr, "CUDA unavailable: %s\n", cuda_reason.c_str());
+#endif
         printf("{\"schema_version\":1,\"version\":\"%s\","
             "\"engine\":\"bwa\",\"engine_version\":\"%s\","
             "\"qualified\":false,\"metal_available\":%s,"
-            "\"metal_hardware_supported\":%s,"
-            "\"cpu_available\":true,\"max_gpu_query_length\":%u}\n",
-            version, engine_version, available ? "true" : "false",
-            wgse_metal_hardware_supported() ? "true" : "false",
-            static_cast<unsigned>(seed_max_length));
+            "\"metal_hardware_supported\":%s,\"cuda_available\":%s,"
+            "\"cuda_hardware_supported\":%s,"
+            "\"cpu_available\":true,\"max_gpu_query_length\":%u,"
+            "\"dense_suffix_array\":true%s%s}\n",
+            version, engine_version, metal ? "true" : "false",
+            wgse_gpu_hardware_supported(Backend::metal) ? "true" : "false",
+            cuda ? "true" : "false",
+            wgse_gpu_hardware_supported(Backend::cuda) ? "true" : "false",
+            static_cast<unsigned>(seed_max_length),
+            argc > command_index + 2 ? ",\"dense_sa\":" : "",
+            argc > command_index + 2 ? wgse_dense_sa_json(argv[command_index + 2]).c_str() : "");
         return 0;
     }
     if (command_index == 1) {
@@ -269,10 +323,10 @@ int run(int argc, char **argv) {
         return 2;
     }
     const bool accelerated = command == "mem" && backend != Backend::cpu;
-    if (accelerated && backend == Backend::metal) {
+    if (accelerated && backend != Backend::automatic) {
         std::string reason;
-        if (!wgse_metal_available(reason)) {
-            fprintf(stderr, "Metal unavailable: %s\n", reason.c_str());
+        if (!wgse_gpu_available(backend, reason)) {
+            fprintf(stderr, "%s unavailable: %s\n", wgse_gpu_name(backend), reason.c_str());
             return 1;
         }
     }
@@ -289,11 +343,12 @@ int run(int argc, char **argv) {
     if (!accelerated && command == "mem") wgse_report_cpu_backend();
 #endif
     if (!accelerated) return result;
+    const std::string gpu = wgse_gpu_name(backend);
     wgse_finish_backend();
     std::string failure;
-    if (backend == Backend::metal && wgse_metal_execution_failed(failure)) {
-        fprintf(stderr, "[%s] Metal execution failed (alignments were completed on the CPU): %s\n",
-            name, failure.c_str());
+    if (backend != Backend::automatic && wgse_gpu_execution_failed(failure)) {
+        fprintf(stderr, "[%s] %s execution failed (alignments were completed on the CPU): %s\n",
+            name, gpu.c_str(), failure.c_str());
         if (result == 0) result = 1;
     }
     return result;
@@ -301,7 +356,5 @@ int run(int argc, char **argv) {
 } // namespace
 
 int main(int argc, char **argv) {
-    @autoreleasepool {
-        return run(argc, argv);
-    }
+    return run(argc, argv);
 }

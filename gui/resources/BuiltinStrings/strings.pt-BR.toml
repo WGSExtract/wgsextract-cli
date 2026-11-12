@@ -77,6 +77,11 @@
 "app.setup.step.ok" = "Concluído"  # i18n-source-hash:9ce3bd42
 "app.setup.step.warning" = "Aviso"  # i18n-source-hash:e9c45563
 "app.setup.step.failed" = "Falhou"  # i18n-source-hash:09fef5d8
+"app.setup.step.kind.script" = "Script"  # i18n-ignore
+"app.setup.step.kind.pathTool" = "Ferramenta no PATH"  # i18n-source-hash:7fbaeb9b
+"app.setup.step.kind.homebrewPackage" = "Pacote Homebrew"  # i18n-source-hash:6572cfdd
+"app.setup.step.kind.pixiInstall" = "Instalação do Pixi"  # i18n-source-hash:be8e57bc
+"app.setup.step.kind.pixiRun" = "Comando do Pixi"  # i18n-source-hash:da734b12
 "app.pathPicker.chooseButton.title" = "Escolher..."  # i18n-source-hash:1f77e839
 "app.pathPicker.error.title" = "Não foi possível escolher o caminho"  # i18n-source-hash:fa84a44d
 "app.settingsFile.label" = "Arquivo de configurações"  # i18n-source-hash:a05c5b26
@@ -118,6 +123,15 @@
 "app.result.usage.title" = "Verifique as opções selecionadas"  # i18n-source-hash:fe89b952
 "app.result.missingDependency.title" = "Uma ferramenta necessária não está instalada"  # i18n-source-hash:1f5dd223
 "app.result.openSetup.title" = "Abrir configuração"  # i18n-source-hash:0ddb2086
+"app.prerequisites.title" = "Faltam dados necessários"  # i18n-source-hash:a96c1dde
+"app.prerequisites.message" = "Este comando precisa de dados que ainda não estão instalados:"  # i18n-source-hash:5c2ec892
+"app.prerequisites.stillMissing" = "Eles ainda não estão instalados. Instale-os ou baixe-os você mesmo e clique em Continuar novamente."  # i18n-source-hash:620e1770
+"app.prerequisites.manualNote" = "Para baixá-los você mesmo, instale-os nas páginas de biblioteca e depois clique em Continuar."  # i18n-source-hash:44b5da7f
+"app.prerequisites.install" = "Instalar e continuar"  # i18n-source-hash:153ec292
+"app.prerequisites.continue" = "Continuar"  # i18n-source-hash:2e026239
+"app.prerequisites.cancel" = "Cancelar"  # i18n-source-hash:77dfd213
+"app.prerequisites.checking" = "Verificando os dados necessários…"  # i18n-source-hash:7717482c
+"app.prerequisites.installTitleFormat" = "Instalar %{name}"  # i18n-source-hash:f218798b
 "exitCodes.default.1.title" = "Falha geral do comando"  # i18n-source-hash:87ab6134
 "exitCodes.default.1.summary" = "O comando relatou uma falha genérica. Revise a saída acima para ver o erro específico do WGS Extract ou da ferramenta."  # i18n-source-hash:ebe2ed7e
 "exitCodes.default.2.title" = "Erro de uso da linha de comando"  # i18n-source-hash:4beae94c

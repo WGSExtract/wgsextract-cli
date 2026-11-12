@@ -1,0 +1,92 @@
+name: vep-rs
+
+# Builds the vep-rs conda package (packaging/vep-rs) for every platform the
+# CLI supports, on every change to it, and publishes a set to a release when
+# asked: Actions > vep-rs > Run workflow, with a new tag such as vep-rs-2.
+# Then pin pixi.toml's vep-rs feature to the new assets' URLs and SHA-256s.
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - packaging/vep-rs/**
+      - .github/workflows/vep_rs.yml
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: New release tag to publish the packages under (empty builds only).
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# Only pull requests share a group: a new push supersedes the PR's older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux-64, runner: ubuntu-latest }
+          - { platform: linux-aarch64, runner: ubuntu-24.04-arm }
+          - { platform: osx-64, runner: macos-15-intel }
+          - { platform: osx-arm64, runner: macos-latest }
+          - { platform: win-64, runner: windows-latest }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Pixi
+        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+        with:
+          run-install: false
+
+      - name: Build and test the package
+        shell: bash
+        run: |
+          pixi exec --spec rattler-build==0.77.0 rattler-build build --recipe-dir packaging/vep-rs -m packaging/vep-rs/variants.yaml \
+            --output-dir out/conda --target-platform ${{ matrix.platform }}
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vep-rs-${{ matrix.platform }}
+          path: out/conda/${{ matrix.platform }}/*.conda
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: vep-rs-*
+          path: vep-rs
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          case "$TAG" in vep-rs-*) ;; *) echo "Tag must start with vep-rs-" >&2; exit 1 ;; esac
+          mkdir -p assets
+          cp vep-rs/*/*.conda assets/
+          {
+            echo "vep-rs (natera-open-source/vep-rs) as conda packages that Pixi installs, for each platform."
+            echo "Built from packaging/vep-rs at ${GITHUB_SHA} by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
+            echo
+            echo "| Package | SHA-256 |"
+            echo "| --- | --- |"
+            for f in assets/*.conda; do echo "| $(basename "$f") | \`$(sha256sum "$f" | cut -d' ' -f1)\` |"; done
+          } > notes.md
+          gh release create "$TAG" assets/*.conda \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "vep-rs $TAG" \
+            --notes-file notes.md --prerelease --latest=false

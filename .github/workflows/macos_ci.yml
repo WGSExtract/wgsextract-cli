@@ -35,6 +35,9 @@ jobs:
           environments: >-
             default
             dev
+            vep-rs
+          # PR runs restore main's environment; writing their own crowds it out.
+          cache-write: ${{ github.ref == 'refs/heads/main' }}
       - name: Test installer
         run: scripts/test_install_sh.sh
       - name: Verify Tools

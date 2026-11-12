@@ -77,12 +77,14 @@ jobs:
           environments: >-
             default
             pharmcat
+          # PR runs restore main's environment; writing their own crowds it out.
+          cache-write: ${{ github.ref == 'refs/heads/main' }}
       - name: Fetch the PharmCAT pipeline release (SHA-256 pinned)
         shell: bash
         run: |
           dir="$RUNNER_TEMP/Pharm CAT"
           mkdir -p "$dir"
-          curl -fsSL -o "$RUNNER_TEMP/pharmcat.tar.gz" \
+          curl -fsSL --retry 5 --retry-all-errors --connect-timeout 20 -o "$RUNNER_TEMP/pharmcat.tar.gz" \
             "https://github.com/PharmGKB/PharmCAT/releases/download/v$PHARMCAT_VERSION/pharmcat-pipeline-$PHARMCAT_VERSION.tar.gz"
           echo "$PHARMCAT_SHA256  $RUNNER_TEMP/pharmcat.tar.gz" | sha256sum -c -
           # Relative paths: Git Bash's tar reads "D:" as a remote host.

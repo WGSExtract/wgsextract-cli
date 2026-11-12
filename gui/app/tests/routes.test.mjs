@@ -49,7 +49,7 @@ function testManifest() {
 }
 
 async function withTestServer(t, overrides = {}) {
-  const tempRoot = await mkdtemp(path.join(tmpdir(), "gui-for-cli-routes-"));
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-routes-"));
   t.after(async () => {
     await rm(tempRoot, { force: true, recursive: true });
   });
@@ -614,3 +614,29 @@ class FailingStreamResponse extends EventEmitter {
     this.emit("close");
   }
 }
+
+test("the prerequisite routes check the referenced action and install only what the check reports", async (t) => {
+  const manifest = testManifest();
+  manifest.prerequisites = { command: { executable: "tool", arguments: ["needs"] }, executables: { tool: [] } };
+  const hs37d5 = { id: "hs37d5", kind: "genome", name: "hs37d5", installArguments: ["install", "hs37d5"] };
+  const { baseURL, calls } = await withTestServer(t, {
+    manifest,
+    async runProcess(executable, args) {
+      calls.runProcess.push({ executable, args });
+      return { exitCode: 0, stdout: args[0] === "needs" ? JSON.stringify({ missing: [hs37d5] }) : "", stderr: "" };
+    },
+  });
+  const action = { pageID: "main", sectionID: "run", actionID: "run" };
+
+  const check = await apiFetch(baseURL, "/api/prerequisites", { body: { action, context: runContext } });
+  assert.deepEqual(await check.json(), { missing: [hs37d5] });
+  const install = await apiFetch(baseURL, "/api/prerequisites/install/stream", { body: { action, context: runContext, id: "hs37d5" } });
+  const events = await readNDJSON(install);
+
+  assert.equal(events.at(-1).type, "complete");
+  assert.deepEqual(calls.runProcess.map((call) => [call.executable, call.args]), [
+    ["tool", ["needs", "HG001"]],
+    ["tool", ["needs", "HG001"]],
+    ["tool", ["install", "hs37d5"]],
+  ]);
+});

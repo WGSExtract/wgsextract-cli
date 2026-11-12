@@ -15,8 +15,18 @@ $defaultReleaseTag = if ($env:WGSEXTRACT_DEFAULT_RELEASE_TAG) {
 }
 if (-not $defaultReleaseTag) { $defaultReleaseTag = "latest" }
 $requestedRef = if ($env:WGSEXTRACT_REF) { $env:WGSEXTRACT_REF } elseif ($env:WGSEXTRACT_RELEASE_TAG) { $env:WGSEXTRACT_RELEASE_TAG } else { $defaultReleaseTag }
-$bundleRoot = if ($env:GUI_FOR_CLI_BUNDLE_WORKSPACE) { $env:GUI_FOR_CLI_BUNDLE_WORKSPACE } else { Split-Path -Parent $scriptsRoot }
-$installDir = if ($env:WGSEXTRACT_INSTALL_DIR) { $env:WGSEXTRACT_INSTALL_DIR } else { Join-Path $bundleRoot "runtime\wgsextract-cli" }
+$bundleRoot = if ($env:WGSEXTRACT_GUI_BUNDLE_WORKSPACE) { $env:WGSEXTRACT_GUI_BUNDLE_WORKSPACE } else { Split-Path -Parent $scriptsRoot }
+# The runtime goes in the app's data folder, apart from the user's files in the workspace. Apps up to
+# 0.8.6 installed it in the workspace ($legacyRuntime).
+$legacyRuntime = Join-Path $bundleRoot "runtime\wgsextract-cli"
+$installDir = if ($env:WGSEXTRACT_INSTALL_DIR) {
+    $env:WGSEXTRACT_INSTALL_DIR
+} elseif ($env:WGSEXTRACT_GUI_APP_DATA) {
+    Join-Path $env:WGSEXTRACT_GUI_APP_DATA "runtime\wgsextract-cli"
+} else {
+    $legacyRuntime
+}
+$movesLegacyRuntime = [System.IO.Path]::GetFullPath($legacyRuntime).TrimEnd("\") -ne [System.IO.Path]::GetFullPath($installDir).TrimEnd("\")
 $appDir = Join-Path $installDir "app"
 $binDir = Join-Path $installDir "bin"
 
@@ -293,10 +303,13 @@ try {
         $manifestItems.Add(@{ type = "directory"; path = $pixiBaseDir; ownedBy = "setup-wgsextract-pixi.ps1" })
     }
     # A rerun of setup finds what the first run installed already there; it is
-    # still the app's to remove.
+    # still the app's to remove. So is what an earlier version's setup recorded
+    # in the workspace's runtime.
     $manifestPath = Join-Path $installDir "install-manifest.json"
-    if (Test-Path -LiteralPath $manifestPath) {
-        $previous = @((Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json).items)
+    $previousManifests = @($manifestPath)
+    if ($movesLegacyRuntime) { $previousManifests += Join-Path $legacyRuntime "install-manifest.json" }
+    foreach ($previousManifest in $previousManifests | Where-Object { Test-Path -LiteralPath $_ }) {
+        $previous = @((Get-Content -LiteralPath $previousManifest -Raw | ConvertFrom-Json).items)
         foreach ($item in $previous) {
             $key = "$($item.type)|$($item.path)|$($item.root)"
             if (-not ($manifestItems | Where-Object { "$($_.type)|$($_.path)|$($_.root)" -eq $key })) {
@@ -317,6 +330,36 @@ try {
         items = @(foreach ($type in $order) { $manifestItems | Where-Object { $_.type -eq $type } })
     }
     Set-Content -LiteralPath $manifestPath -Encoding UTF8 -Value ($manifest | ConvertTo-Json -Depth 5)
+
+    # The runtime an earlier version installed in the workspace is unused now; what it recorded is in the
+    # new manifest. Its Pixi environments were never in it (they are in $pixiBaseDir).
+    if ($movesLegacyRuntime -and (Test-Path -LiteralPath $legacyRuntime)) {
+        Write-Host "Removing the runtime an earlier version installed in the workspace: $legacyRuntime"
+        # Its Pixi environment is in $pixiEnvsDirNew, recorded as installed for its pixi.toml; this
+        # runtime's has a new one there.
+        $legacyPixiManifest = [System.IO.Path]::GetFullPath((Join-Path $legacyRuntime "app\pixi.toml"))
+        foreach ($project in Get-ChildItem -LiteralPath $pixiEnvsDirNew -Directory -Force -ErrorAction SilentlyContinue) {
+            $record = Join-Path $project.FullName "envs\default\conda-meta\pixi"
+            if (-not (Test-Path -LiteralPath $record -PathType Leaf)) { continue }
+            try {
+                $installedFor = (Get-Content -LiteralPath $record -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json).manifest_path
+                if ($installedFor -and [string]::Equals([System.IO.Path]::GetFullPath($installedFor), $legacyPixiManifest, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    Remove-Item -LiteralPath $project.FullName -Recurse -Force -ErrorAction Stop
+                }
+            } catch {
+                Write-Warning "Could not check or remove the Pixi environment in $($project.FullName): $($_.Exception.Message)"
+            }
+        }
+        try {
+            Remove-Item -LiteralPath $legacyRuntime -Recurse -Force -ErrorAction Stop
+            $legacyParent = Split-Path -Parent $legacyRuntime
+            if (-not (Get-ChildItem -LiteralPath $legacyParent -Force | Select-Object -First 1)) {
+                Remove-Item -LiteralPath $legacyParent -Force -ErrorAction SilentlyContinue
+            }
+        } catch {
+            Write-Warning "Could not remove all of ${legacyRuntime}: $($_.Exception.Message). It is no longer used and can be deleted."
+        }
+    }
 
     Write-Host "WGS Extract CLI is installed in $installDir"
     exit 0

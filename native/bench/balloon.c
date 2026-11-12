@@ -1,4 +1,4 @@
-/* Wire memory so that a benchmark sees a Mac with less RAM.
+/* Wire memory so that a benchmark sees a computer with less RAM.
  * Usage: balloon <MiB>
  * Allocates and mlock()s <MiB> in 64 MiB pieces, prints "wired <n> MiB" (or
  * how far it got and why it stopped), then holds the memory until a signal
@@ -9,9 +9,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/event.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <sys/event.h>
+#else
+#include <signal.h>
+#include <sys/prctl.h>
+#endif
 
 int main(int argc, char **argv) {
     const size_t piece = (size_t)64 << 20;
@@ -22,10 +27,15 @@ int main(int argc, char **argv) {
         return 2;
     }
     pid_t parent = getppid();
+#ifdef __APPLE__
     int queue = kqueue();
     struct kevent watch;
     EV_SET(&watch, parent, EVFILT_PROC, EV_ADD, NOTE_EXIT, 0, NULL);
     if (queue < 0 || kevent(queue, &watch, 1, NULL, 0, NULL) < 0) {
+#else
+    // The parent's exit sends SIGTERM, which ends this process and frees the memory.
+    if (prctl(PR_SET_PDEATHSIG, SIGTERM) != 0 || getppid() != parent) {
+#endif
         fprintf(stderr, "balloon: cannot watch the parent process: %s\n", strerror(errno));
         return 1;
     }
@@ -49,7 +59,11 @@ int main(int argc, char **argv) {
     fflush(stdout);
     if (wired < wanted) return 1;
     // SIGTERM and SIGINT keep their default action, ending the process and freeing the memory.
+#ifdef __APPLE__
     struct kevent event;
     while (kevent(queue, NULL, 0, &event, 1, NULL) < 0 && errno == EINTR) {}
+#else
+    for (;;) pause();
+#endif
     return 0;
 }

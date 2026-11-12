@@ -615,6 +615,7 @@
     {
       "id": "annotation-downloads",
       "title": "sections.cli.annotation-downloads.title",
+      "iconName": "download",
       "textIcon": "⬇️",
       "advancedOnly": true,
       "controls": [

@@ -61,7 +61,29 @@ qualification before a future implementation can permit it. Parabricks
 
 ## Apple Silicon Macs
 
-Docker Desktop on Apple Silicon runs a Linux aarch64 VM, so `vcf deepvariant`
+On a Mac, prefer `wgse-deepvariant`, WGS Extract's native Apple Silicon build
+of DeepVariant 1.10.0 ([native/deepvariant](../native/deepvariant/README.md)):
+it needs no Docker, runs call_variants on the GPU and calls the same sites,
+genotypes and filters as Google's image. Install it and its weights from a
+`macos-deepvariant` release, put it on `PATH`, and name the weights folder in
+`config.toml`:
+
+```toml
+deepvariant_weights = "/path/to/wgse-deepvariant-weights-1.10.0-wgs"
+```
+
+`vcf deepvariant` then runs it instead of Docker, through the same resumable
+stages (an interrupted make_examples reruns in full). Before each run it checks
+the build's version and every weight file against its published SHA-256, and
+stops with the setup steps if either is wrong. Only the WGS model is
+qualified: WES, PacBio, ONT, Ultima and `--checkpoint` are refused. A region
+selection of any size (literals, BED files or both) is passed to it as one BED
+file, and CRAM 3.1 is read directly (its htslib is 1.25 on ARM, without the
+x86 image's rANS bug). call_variants' GPU batch follows the Mac's memory, so
+16 GB Macs fit. To use the Docker image below even with `wgse-deepvariant`
+installed, set `deepvariant_native = "off"`.
+
+Without it, Docker Desktop on Apple Silicon runs a Linux aarch64 VM, so `vcf deepvariant`
 takes the same native path there: the default image is the one above, and the
 engine and image architectures are checked the same way. Google's
 `google/deepvariant` image is linux/amd64 only; under Docker Desktop's x86-64
@@ -70,7 +92,7 @@ the first stage, so an amd64 image is refused before any input is prepared.
 This holds under Rosetta too: Apple Silicon is detected from the Mac
 (`sysctl hw.optional.arm64`), and on every path the image's architecture is
 checked against the Docker engine's.
-Without a native image, use `vcf clair3` for ONT reads, `vcf snp`/`vcf indel`
+Without `wgse-deepvariant` or a native image, use `vcf clair3` for ONT reads, `vcf snp`/`vcf indel`
 for short reads, or an x86-64 host.
 
 `build.sh` runs only on Linux aarch64: build there and move the image with

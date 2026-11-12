@@ -43,12 +43,8 @@ for argument in "$@"; do
   previous="$argument"
 done
 
-if [ "${1:-}" = "microarray" ]; then
-  if [ -z "$microarray_ref_path" ]; then
-    printf '%s\n' "Reference genome is required before generating microarray kits." >&2
-    printf '%s\n' "Install/download the reference library from the Library page or rerun setup, then choose an existing reference FASTA." >&2
-    exit 2
-  fi
+# Without --ref, microarray uses the library genome matching the input.
+if [ "${1:-}" = "microarray" ] && [ -n "$microarray_ref_path" ]; then
   if [ -d "$microarray_ref_path" ]; then
     printf 'Reference genome must be a FASTA file, not the reference library directory: %s\n' "$microarray_ref_path" >&2
     printf '%s\n' "Choose an installed reference FASTA from the Reference genome dropdown on the Microarray page." >&2
@@ -66,6 +62,6 @@ fi
 # The bundle's settings file is this runtime's config.toml, so what the CLI saves
 # (ref bootstrap's reference_library, for one) stays in the workspace instead of
 # the user's own CLI config, and leaves with the app.
-workspace="${GUI_FOR_CLI_BUNDLE_WORKSPACE:-$(CDPATH= cd "$script_dir/../.." && pwd)}"
-config_path="${GUI_FOR_CLI_CONFIG_PATH:-$workspace/config.toml}"
+workspace="${WGSEXTRACT_GUI_BUNDLE_WORKSPACE:-$(CDPATH= cd "$script_dir/../.." && pwd)}"
+config_path="${WGSEXTRACT_GUI_CONFIG_PATH:-$workspace/config.toml}"
 exec sh "$script_dir/run-wgsextract-env.sh" wgsextract --config "$config_path" "$@"

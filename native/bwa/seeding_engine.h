@@ -1,6 +1,7 @@
 #pragma once
 
 #include "extend_engine.h"
+#include "gpu_device.h"
 #include "rescue_engine.h"
 #include "runtime.h"
 #include "seed_oracle.h"
@@ -18,21 +19,12 @@
 extern "C" void kt_for(int, void (*)(void *, long, int), void *, long);
 
 namespace wgse::seeding {
-using Clock = std::chrono::steady_clock;
-using Intervals = std::vector<bwtintv_t>;
-static_assert(sizeof(SeedInterval) == sizeof(bwtintv_t));
-static_assert(offsetof(SeedInterval, info) == offsetof(bwtintv_t, info));
-static_assert(sizeof(SeedParameters) == 80 && sizeof(SeedRead) == 8);
-static_assert(sizeof(LocateParameters) == 88);
-
-inline double seconds(Clock::time_point start) {
-    return std::chrono::duration<double>(Clock::now() - start).count();
-}
-
-struct Reads {
-    std::vector<uint8_t> bases;
-    std::vector<SeedRead> reads;
-};
+using wgse::gpu::Clock;
+using wgse::gpu::Intervals;
+using wgse::gpu::Reads;
+using wgse::gpu::append_rows;
+using wgse::gpu::row_count;
+using wgse::gpu::seconds;
 
 struct CpuJob {
     const bwt_t *bwt;
@@ -218,40 +210,6 @@ public:
         for (const auto &seeds : out) intervals += seeds.size();
     }
 };
-// The suffix-array rows mem_chain() passes to bwt_sa() for these intervals, in
-// its order: at most max_occ evenly spaced rows per interval. The casts spell
-// out C's implicit conversions so any wrap-around behaves identically.
-// At most the number of rows append_rows() adds for these intervals (equal
-// unless an interval's step wraps around in upstream's int).
-inline size_t row_count(const bwtintv_t *begin, const bwtintv_t *end, int max_occ) {
-    size_t total = 0;
-    for (const bwtintv_t *p = begin; p != end; ++p)
-        total += p->x[2] > static_cast<uint64_t>(max_occ) ? static_cast<size_t>(max_occ)
-            : static_cast<size_t>(p->x[2]);
-    return total;
-}
-
-inline size_t row_count(const Intervals &intervals, int max_occ) {
-    return row_count(intervals.data(), intervals.data() + intervals.size(), max_occ);
-}
-
-inline void append_rows(const bwtintv_t *begin, const bwtintv_t *end, int max_occ,
-    std::vector<uint64_t> &rows) {
-    for (const bwtintv_t *p = begin; p != end; ++p) {
-        int step, count;
-        int64_t k;
-        const uint64_t limit = static_cast<uint64_t>(max_occ);
-        step = p->x[2] > limit ? static_cast<int>(p->x[2] / limit) : 1;
-        for (k = count = 0; static_cast<uint64_t>(k) < p->x[2] && count < max_occ;
-            k += step, ++count)
-            rows.push_back(p->x[0] + static_cast<uint64_t>(k));
-    }
-}
-
-inline void append_rows(const Intervals &intervals, int max_occ, std::vector<uint64_t> &rows) {
-    append_rows(intervals.data(), intervals.data() + intervals.size(), max_occ, rows);
-}
-
 // Resolves suffix-array rows to reference positions (bwt_sa) on the GPU,
 // sharing the BWT and the sampled suffix array with the CPU in place.
 class GpuLocate {
@@ -325,6 +283,27 @@ public:
         }
         low = lo;
         high = hi;
+        pipeline = dense;
+        return true;
+    }
+
+    // Uses denser samples built elsewhere (dense_sa.h's layout, as densify
+    // builds them) in place: page-aligned storage of whole pages.
+    bool adopt(void *lo, size_t lo_bytes, void *hi, size_t hi_bytes, uint32_t shift) {
+        auto &p = *static_cast<LocateParameters *>(parameters.contents);
+        if (shift == 0 || (uint64_t(1) << shift) >= p.sa_intv || p.seq_len >> 33) return false;
+        id<MTLComputePipelineState> dense = runtime.compile(wgse_seeding_source,
+            "locate_rows_dense");
+        if (!dense) return false;
+        id<MTLBuffer> l = [runtime.device() newBufferWithBytesNoCopy:lo length:lo_bytes
+            options:MTLResourceStorageModeShared deallocator:nil];
+        id<MTLBuffer> h = [runtime.device() newBufferWithBytesNoCopy:hi length:hi_bytes
+            options:MTLResourceStorageModeShared deallocator:nil];
+        if (!l || !h) return false;
+        p.dense_shift = shift;
+        p.dense_entries = (p.seq_len / p.sa_intv + 1) * ((p.sa_intv >> shift) - 1);
+        low = l;
+        high = h;
         pipeline = dense;
         return true;
     }

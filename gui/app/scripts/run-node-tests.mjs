@@ -4,9 +4,11 @@ const defaultTests = [
   "tests/dev-runner.test.mjs",
   "tests/rendering.test.mjs",
   "tests/rendering-regressions.test.mjs",
+  "tests/rendering-layout.test.mjs",
   "tests/bundle-loader.test.mjs",
   "tests/manifest-validator.test.mjs",
   "tests/bundle-archive.test.mjs",
+  "tests/appimage-environment.test.mjs",
   "tests/paths.test.mjs",
   "tests/config-store.test.mjs",
   "tests/bundle-test-runner.test.mjs",
@@ -30,6 +32,7 @@ const defaultTests = [
   "tests/result-document.test.mjs",
   "tests/conformance.test.mjs",
   "tests/action-confirmation.test.mjs",
+  "tests/prerequisites.test.mjs",
   "tests/ui-mode.test.mjs",
 ];
 

@@ -40,6 +40,7 @@ from .library_commands import (
     cmd_somalier,
     cmd_ybrowse,
 )
+from .needs import cmd_ref_needs
 from .status import cmd_ref_status
 
 Handler = Callable[[argparse.Namespace], None]
@@ -142,6 +143,24 @@ def register(
         "--values",
         action="store_true",
         help="Emit a compact values JSON object for GUI data-source consumers.",
+    )
+    needs = add(
+        "needs",
+        None,
+        cmd_ref_needs,
+        "Report the reference genome or annotation data a command line needs "
+        "that isn't installed, and how to install it.",
+    )
+    needs.add_argument(
+        "--report-json",
+        action="store_true",
+        help='Print only {"missing": [...]} as JSON, for the desktop app.',
+    )
+    needs.add_argument(
+        "command_line",
+        nargs=argparse.REMAINDER,
+        metavar="-- COMMAND ...",
+        help="The wgsextract command line to check, after --.",
     )
     add("gene-map", RefGeneMapParams, cmd_gene_map, CLI_HELP["cmd_ref-gene-map"])
     for cls, run in RESOURCE_COMMANDS:

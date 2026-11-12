@@ -109,7 +109,7 @@ export function renderTooltip(text: unknown): string {
         : "";
 }
 export function renderInlineError(message: unknown, accessory = ""): string {
-    return `<div class="inline-error"><span aria-hidden="true">⚠</span><span>${escapeHTML(message)}</span>${accessory}</div>`;
+    return `<div class="inline-error"><span aria-hidden="true">${renderIcon("exclamationmark.triangle.fill", undefined, "⚠")}</span><span>${escapeHTML(message)}</span>${accessory}</div>`;
 }
 export function renderLoadingInline(message: unknown): string {
     return `<p class="loading-inline"><span class="spinner small" aria-hidden="true"></span>${escapeHTML(message)}</p>`;

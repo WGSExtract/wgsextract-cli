@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $library = if ($args.Count -gt 0) { $args[0] } else { "" }
 if (-not $library) {
-    $workspace = if ($env:GUI_FOR_CLI_BUNDLE_WORKSPACE) { $env:GUI_FOR_CLI_BUNDLE_WORKSPACE } else { (Get-Location).Path }
+    $workspace = if ($env:WGSEXTRACT_GUI_BUNDLE_WORKSPACE) { $env:WGSEXTRACT_GUI_BUNDLE_WORKSPACE } else { (Get-Location).Path }
     $library = Join-Path $workspace "reference"
 }
 $final = if ($args.Count -gt 1) { $args[1] } else { "" }

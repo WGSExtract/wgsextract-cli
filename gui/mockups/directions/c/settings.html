@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Settings · Direction C · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="c-settings" data-direction="C" data-shell="c" data-nav="settings" data-title="Settings">
+<div class="page page--narrow" data-annot-id="page">
+  <header class="page-header" data-annot-id="header">
+    <div class="page-header__text">
+      <h1>Settings</h1>
+      <p class="page-header__lead">Saved in <code>{{bundleWorkspace}}/config.toml</code>, which the command line reads too.</p>
+    </div>
+  </header>
+
+  <nav class="stack stack--sm only-phone" aria-label="More" data-annot-id="more-links">
+    <a class="action" href="references.html"><span class="action__icon"><i data-icon="reference"></i></span><span class="action__title">Reference genomes</span><i data-icon="chevron-right"></i></a>
+    <a class="action" href="remote.html"><span class="action__icon"><i data-icon="remote"></i></span><span class="action__title">Phone access</span><i data-icon="chevron-right"></i></a>
+    <a class="action" href="states.html"><span class="action__icon"><i data-icon="layout-grid"></i></span><span class="action__title">Empty, loading and error states</span><i data-icon="chevron-right"></i></a>
+  </nav>
+
+  <section class="card" data-annot-id="appearance">
+    <h2 class="card__title">Appearance</h2>
+    <div>
+      <div class="field-row"><span class="field-row__label">Theme</span><div class="seg" data-seg="theme" role="group" aria-label="Theme"><button class="seg__btn" type="button" value="system" aria-pressed="true">System</button><button class="seg__btn" type="button" value="light">Light</button><button class="seg__btn" type="button" value="dark">Dark</button></div></div>
+      <div class="field-row"><span class="field-row__label">Detail level</span><div class="seg" data-depth-toggle role="group" aria-label="Detail level"><button class="seg__btn" type="button" value="basic">Basic</button><button class="seg__btn" type="button" value="advanced">Advanced</button></div></div>
+      <div class="field-row"><span class="field-row__label">Language</span><select class="select" aria-label="Language" style="max-width: 240px"><option>English</option><option>Deutsch</option><option>Français</option><option>Português (Brasil)</option></select></div>
+    </div>
+  </section>
+
+  <section class="card" data-annot-id="folders">
+    <h2 class="card__title">Folders</h2>
+    <div>
+      <div class="field-row"><span class="field-row__label">Workspace<code class="adv-only">bundleWorkspace</code></span><div class="input-group"><input class="input mono" value="~/wgs-extract" aria-label="Workspace folder"><button class="btn" type="button" data-toast="Choose a new place; everything moves together">Move…</button></div></div>
+      <div class="field-row"><span class="field-row__label">Outputs<code class="adv-only">output_directory</code></span><select class="select" aria-label="Outputs"><option>Next to each genome file</option><option>{{bundleWorkspace}}/output</option><option>Choose…</option></select></div>
+      <div class="field-row"><span class="field-row__label">Reference library<code class="adv-only">reference_library</code></span><input class="input mono" value="{{bundleWorkspace}}/reference" aria-label="Reference library"></div>
+      <div class="field-row"><span class="field-row__label">Other folders with genomes<code class="adv-only">server_allowed_paths</code></span><div class="stack stack--xs"><code class="small">/Volumes/Genomes</code><button class="link-btn small" type="button" style="align-self: start">Add a folder</button></div></div>
+    </div>
+  </section>
+
+  <section class="card" data-annot-id="performance">
+    <h2 class="card__title">Performance</h2>
+    <div>
+      <div class="field-row"><span class="field-row__label">This computer</span><span class="small">Apple M2 Max · 12 cores · 32 GB · Metal GPU</span></div>
+      <div class="field-row"><span class="field-row__label">CPU threads<code class="adv-only">cpu_threads</code></span><select class="select" aria-label="CPU threads" style="max-width: 240px"><option>Automatic (12)</option><option>8</option><option>4</option></select></div>
+      <div class="field-row adv-only"><span class="field-row__label">Memory limit<code>memory_limit</code></span><select class="select" aria-label="Memory limit" style="max-width: 240px"><option>Automatic (about 24 GB)</option><option>16 GB</option></select></div>
+      <div class="field-row adv-only"><span class="field-row__label">Apple Silicon aligners<code>native_aligners</code></span><label class="switch"><input type="checkbox" role="switch" checked><span class="small">Use Metal-accelerated aligners</span></label></div>
+    </div>
+  </section>
+
+  <section class="card" data-annot-id="privacy">
+    <h2 class="card__title">Privacy</h2>
+    <p class="small muted">Your genome never leaves this computer. WGS Extract only goes online to download reference data you ask for, and to check for updates.</p>
+    <label class="switch"><input type="checkbox" role="switch" checked><span class="small">Check for updates once a day</span></label>
+    <a class="action" href="remote.html"><span class="action__icon"><i data-icon="remote"></i></span><span><span class="action__title">Phone access</span><br><span class="action__desc">On · 1 phone paired · local network only</span></span><i data-icon="chevron-right"></i></a>
+  </section>
+
+  <section class="card" data-annot-id="diagnostics">
+    <h2 class="card__title">Tools and diagnostics</h2>
+    <ul class="checks">
+      <li data-state="ok"><i data-icon="circle-check"></i><span>samtools 1.21, bcftools 1.21, htslib 1.21</span></li>
+      <li data-state="ok"><i data-icon="circle-check"></i><span>bwa-mem2 2.2.1, minimap2 2.28, WGS Extract native aligners 0.3</span></li>
+      <li data-state="warn"><i data-icon="triangle-alert"></i><span>Java not found: needed only for GATK and PharmCAT. <a href="#">How to install</a></span></li>
+    </ul>
+    <div class="btn-group"><button class="btn btn--sm" type="button" data-toast="All tools checked">Check again</button><button class="btn btn--sm" type="button" data-toast="Saved a problem report (no genome data) to your Desktop">Report a problem</button></div>
+    <p class="xsmall subtle">WGS Extract 0.9.0 · CLI 0.9.0 · server API v1 <span class="adv-only">· <code>deps/check</code>, <code>support</code></span></p>
+  </section>
+</div>
+</body>
+</html>

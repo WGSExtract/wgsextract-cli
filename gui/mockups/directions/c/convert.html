@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Convert · Direction C · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="c-convert" data-direction="C" data-shell="c" data-nav="convert" data-title="Convert a file">
+<div class="page" data-annot-id="page">
+  <header class="page-header" data-annot-id="header">
+    <div class="page-header__text">
+      <h1>Convert a file</h1>
+      <p class="page-header__lead">Change a genome file into another format. Your original file is never changed or deleted.</p>
+    </div>
+  </header>
+
+  <div class="split split--wide-side">
+    <div class="stack stack--lg">
+      <section class="section" data-annot-id="from">
+        <h2 class="eyebrow">From</h2>
+        <div data-render="genome-pick" data-genome="hg003"></div>
+      </section>
+
+      <section class="section" data-annot-id="to">
+        <h2 class="eyebrow">To</h2>
+        <div class="grid" style="--grid-min: 200px" data-seg="target" role="group" aria-label="Convert to">
+          <button class="option" type="button" value="cram" aria-pressed="true" data-annot-id="to-cram">
+            <span class="option__check"><i data-icon="check"></i></span>
+            <span class="row"><span class="ft" data-ft="cram"><i data-icon="file-cram"></i></span><span class="option__title">CRAM</span></span>
+            <span class="small muted">Same reads, about a third of the size. Needs the reference to read it.</span>
+            <span class="badge badge--primary">Recommended for storage</span>
+          </button>
+          <button class="option" type="button" value="fastq" aria-pressed="false" data-annot-id="to-fastq">
+            <span class="option__check"><i data-icon="check"></i></span>
+            <span class="row"><span class="ft" data-ft="fastq"><i data-icon="file-fastq"></i></span><span class="option__title">FASTQ</span></span>
+            <span class="small muted">The raw reads, for another aligner or a service that asks for FASTQ.</span>
+          </button>
+          <button class="option" type="button" value="vcf" aria-pressed="false" data-annot-id="to-vcf">
+            <span class="option__check"><i data-icon="check"></i></span>
+            <span class="row"><span class="ft" data-ft="vcf"><i data-icon="file-vcf"></i></span><span class="option__title">VCF</span></span>
+            <span class="small muted">Only where you differ from the reference: SNPs and indels. Small, and what most tools read.</span>
+          </button>
+          <button class="option" type="button" value="bam" aria-pressed="false" data-annot-id="to-bam">
+            <span class="option__check"><i data-icon="check"></i></span>
+            <span class="row"><span class="ft" data-ft="bam"><i data-icon="file-bam"></i></span><span class="option__title">BAM</span></span>
+            <span class="small muted">Already a BAM. Choose this to sort, or to rewrite only part of it.</span>
+          </button>
+          <button class="option adv-only" type="button" value="ubam" aria-pressed="false" data-annot-id="to-ubam">
+            <span class="option__check"><i data-icon="check"></i></span>
+            <span class="row"><span class="ft" data-ft="bam"><i data-icon="file-bam"></i></span><span class="option__title">Unaligned BAM</span></span>
+            <span class="small muted">Reads with their tags, no alignment (GATK-style uBAM).</span>
+          </button>
+        </div>
+      </section>
+
+      <details class="disclosure" data-annot-id="options">
+        <summary><i data-icon="sliders-horizontal"></i>More options</summary>
+        <div class="disclosure__body">
+          <div class="field-row"><span class="field-row__label">Only part of the genome<code class="adv-only">region / gene</code></span><input class="input" placeholder="All of it, or e.g. chrY, chrM, BRCA1" aria-label="Region or gene"></div>
+          <div class="field-row" data-when="target:cram"><span class="field-row__label">CRAM version<code class="adv-only">cram_version</code></span><div class="seg" data-seg="cramv" role="group" aria-label="CRAM version"><button class="seg__btn" type="button" value="2.1">2.1</button><button class="seg__btn" type="button" value="3.0" aria-pressed="true">3.0 (most compatible)</button><button class="seg__btn" type="button" value="3.1">3.1</button></div></div>
+          <div class="field-row"><span class="field-row__label">Save to<code class="adv-only">outdir</code></span><div class="input-group"><input class="input mono" value="/Volumes/Genomes/HG003" aria-label="Output folder"><button class="btn" type="button">Change</button></div></div>
+          <div class="field-row adv-only"><span class="field-row__label">CPU threads<code>threads</code></span><input class="input" type="number" value="12" aria-label="Threads" style="max-width: 120px"></div>
+        </div>
+      </details>
+    </div>
+
+    <aside class="stack sticky" data-annot-id="summary">
+      <div class="card card--raised">
+        <h2 class="card__title">HG003 → <span data-when="target:cram">CRAM</span><span data-when="target:fastq">FASTQ</span><span data-when="target:vcf">VCF</span><span data-when="target:bam">BAM</span><span data-when="target:ubam">unaligned BAM</span></h2>
+        <div class="stats" style="grid-template-columns: repeat(2, minmax(0, 1fr))">
+          <div class="stat"><span class="stat__label">New file</span><span class="stat__value"><span data-when="target:cram">≈ 34 <small>GB</small></span><span data-when="target:fastq">≈ 2×41 <small>GB</small></span><span data-when="target:vcf">≈ 150 <small>MB</small></span><span data-when="target:bam">≈ 90 <small>GB</small></span><span data-when="target:ubam">≈ 70 <small>GB</small></span></span></div>
+          <div class="stat"><span class="stat__label">Takes about</span><span class="stat__value"><span data-when="target:cram">45 <small>min</small></span><span data-when="target:fastq">70 <small>min</small></span><span data-when="target:vcf">2.5 <small>h</small></span><span data-when="target:bam">60 <small>min</small></span><span data-when="target:ubam">80 <small>min</small></span></span></div>
+        </div>
+        <ul class="checks" data-annot-id="preflight">
+          <li data-state="ok"><i data-icon="circle-check"></i><span>Reference hs37d5 is in your library</span></li>
+          <li data-state="ok"><i data-icon="circle-check"></i><span>Enough space on Genomes (1.1 TB free)</span></li>
+          <li data-state="ok" data-when="target:vcf"><i data-icon="circle-check"></i><span>Calls SNPs and indels with bcftools; for DeepVariant use Advanced tools</span></li>
+          <li data-state="ok"><i data-icon="circle-check"></i><span>The BAM stays where it is</span></li>
+        </ul>
+        <button class="btn btn--primary btn--lg btn--block" type="button" data-toast="Conversion started. It runs in the background — see Jobs." data-annot-id="start">Convert</button>
+        <p class="xsmall subtle">Runs in the background; you’ll get a notification when it’s done. You can queue more work meanwhile.</p>
+      </div>
+      <div class="card adv-only" data-annot-id="cli">
+        <div class="card__header"><h2 class="card__title">Same thing elsewhere</h2><button class="btn btn--sm btn--ghost" type="button" data-toast="Copied"><i data-icon="copy"></i>Copy</button></div>
+        <pre class="xsmall" style="margin: 0; white-space: pre-wrap; overflow-wrap: anywhere"><code>wgsextract <span data-when="target:cram">bam to-cram</span><span data-when="target:fastq">bam unalign</span><span data-when="target:vcf">vcf snp</span><span data-when="target:bam">bam to-bam</span><span data-when="target:ubam">bam to-ubam</span> \
+  --input /Volumes/Genomes/HG003/HG003.hs37d5.38x.bam \
+  --ref hs37d5</code></pre>
+        <p class="xsmall subtle">Server: <code>POST /v1/ops/<span data-when="target:cram">bam/to-cram</span><span data-when="target:fastq">bam/unalign</span><span data-when="target:vcf">vcf/snp + vcf/indel</span><span data-when="target:bam">bam/to-bam</span><span data-when="target:ubam">bam/to-ubam</span></code></p>
+      </div>
+    </aside>
+  </div>
+</div>
+</body>
+</html>

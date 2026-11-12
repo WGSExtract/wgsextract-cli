@@ -12,6 +12,7 @@ on:
     branches: [ main ]
     paths:
       - native/**
+      - '!native/deepvariant/**'
       - .github/workflows/macos_aligners.yml
   workflow_dispatch:
     inputs:
@@ -22,6 +23,11 @@ on:
 
 permissions:
   contents: read
+
+# Only pull requests share a group: a new push supersedes the PR's older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -72,6 +78,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -87,7 +94,7 @@ jobs:
           case "$TAG" in macos-aligners-*) ;; *) echo "Tag must start with macos-aligners-" >&2; exit 1 ;; esac
           {
             echo "Optional Apple Silicon (macOS 13+, arm64) rebuilds of BWA 0.7.19, BWA-MEM2 2.3, bwa-mem3 0.16.0 and minimap2 2.31. Not used by the wgsextract CLI yet."
-            echo "All align on the CPU by default. The EXPERIMENTAL --metal flags offload seeding, locate, seed extension and mate rescue (wgse-bwa), seeding, seed extension and mate rescue (wgse-bwa-mem2), seed extension (wgse-bwa-mem3), or base-level gap fills of long reads (wgse-minimap2) to the GPU."
+            echo "All align on the CPU by default. The EXPERIMENTAL --metal flags offload seeding, locate, seed extension and mate rescue (wgse-bwa), seeding, seed extension and mate rescue (wgse-bwa-mem2), seeding and seed extension (wgse-bwa-mem3), or base-level gap fills of long reads (wgse-minimap2) to the GPU."
             echo "Built from native/ at ${GITHUB_SHA} by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
             echo "See native/README.md for usage, benchmarks and licences."
             echo
