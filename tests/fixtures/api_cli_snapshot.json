@@ -35101,7 +35101,7 @@
    }
   },
   "vcf clair3": {
-   "help": "usage: wgsextract vcf clair3 [-h] [-r REGION] [--model NAME|DIR] [--help-all]\n\noptions:\n  -h, --help           show this help message and exit\n  -r, --region REGION  Chromosomal region (e.g. chr20:1-1000000)\n  --model NAME|DIR     Clair3 model directory, or the name of a bundled model, matching the reads'\n                       basecaller (e.g. r1041_e82_400bps_sup_v500). Overrides config clair3_model;\n                       default: chosen from the basecaller metadata.\n  --help-all           Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n1 advanced option not shown; 'wgsextract vcf clair3 --help-all' lists them.\n\nexamples:\n  wgsextract vcf clair3 --input ont.bam\n\noutputs (in the output directory unless noted):\n  clair3.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, run_clair3.sh, samtools, tabix; depending on options and inputs,\n  also: sambamba; hours on a 30x genome.\n",
+   "help": "usage: wgsextract vcf clair3 [-h] [-r REGION] [--model NAME|DIR] [--gpu] [--help-all]\n\noptions:\n  -h, --help           show this help message and exit\n  -r, --region REGION  Chromosomal region (e.g. chr20:1-1000000)\n  --model NAME|DIR     Clair3 model directory, or the name of a bundled model, matching the reads'\n                       basecaller (e.g. r1041_e82_400bps_sup_v500). Overrides config clair3_model;\n                       default: chosen from the basecaller metadata.\n  --gpu                Call on an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, Docker; see\n                       docs/ont.md).\n  --help-all           Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n1 advanced option not shown; 'wgsextract vcf clair3 --help-all' lists them.\n\nexamples:\n  wgsextract vcf clair3 --input ont.bam\n\noutputs (in the output directory unless noted):\n  clair3.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, samtools, tabix; depending on options and inputs, also: docker,\n  run_clair3.sh, sambamba; hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -35412,6 +35412,22 @@
       "nargs": null,
       "option_strings": [
        "--model"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "gpu",
+      "exclusive_group": null,
+      "help": "Call on an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, Docker; see docs/ont.md).",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--gpu"
       ],
       "required": false,
       "type": null
@@ -49787,6 +49803,7 @@
    "full_help": false,
    "func": "cli_VcfClair3Params",
    "genome": null,
+   "gpu": false,
    "input": "x.bam",
    "json": false,
    "keep_awake": false,

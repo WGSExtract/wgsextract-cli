@@ -238,10 +238,42 @@ Clair3 2.0.5 bundles htslib 1.24 and reads CRAM 3.1 itself. Older Clair3
 builds on `PATH` can't decode some CRAM 3.1 blocks (#604), so for them the
 command calls from a temporary CRAM 3.0 copy.
 
-Clair3 runs on the CPU. Its `--use_gpu` mode needs CUDA, but Bioconda's Linux
-builds depend on CPU-only PyTorch, and Clair3 2.0.5 has no Apple GPU (MPS)
-path, although the macOS PyTorch has MPS. The command therefore has no
-`--gpu` option.
+Clair3 runs on the CPU by default. `vcf clair3 --gpu` runs its neural
+networks on an NVIDIA GPU instead, from HKU's CUDA image of the same Clair3
+2.0.5, pinned by digest (`docker pull
+hkubal/clair3:v2.0.5_gpu@sha256:3f660a693142db0aa8361a58fb6379fc6e3eeead20916eaae5614bd00d21cbeb`,
+about 4.5 GB; `clair3_gpu_image` in `config.toml` for another build). It needs
+x86-64 Linux (or WSL2), the NVIDIA driver, Docker and the NVIDIA Container
+Toolkit; the CLI checks for them and the image but installs nothing. Clair3
+starts a GPU worker only on a GPU with 7.8 GiB free, so the command gives it
+only such GPUs and refuses to start when none has; each worker used 1.0-1.3
+GB of GPU memory here. It also refuses an image whose PyTorch can't use the
+GPU, where Clair3 would quietly call on the CPU, and holds the container to
+`--threads` CPUs. A custom image's Clair3 version is read from the image,
+not its tag, to decide whether CRAM 3.1 reads need a CRAM 3.0 copy. The
+model still comes from `--model`, `clair3_model` or the reads' metadata, as
+on the CPU, and is checked the same way; a bundled model name needs the
+`clair3` Pixi environment, otherwise pass the model's directory.
+
+On the HG002 chr20:10-11 Mb slice below, `--gpu` gave the same 1,829 calls
+as the CPU (alleles, genotypes and filters; QUAL within 0.19, GQ within 1).
+On all of chr20 it took 8.5 min instead of 10.3 min on 4 CPUs
+([resource estimates](resource_estimates.md#nvidia-gpus-parabricks)), with
+the same vcfeval F1 (0.9785), but about 2,700 of the 144,543 records (1.8%)
+were missing, extra or genotyped differently. About two thirds lie in the
+25.5-32 Mb pericentromere, where depths pass 216x: Clair3 2.0.5's GPU mode
+stores pileup counts as 8-bit integers, so counts above 127 wrap, and skips
+the CPU mode's scaling of such deep pileups; every pileup call whose quality
+changed by 1 or more was deeper than 100x. With both fixed by hand, the
+pileup calls matched the CPU's (QUAL within 0.03), but 6 of 360,471 flipped
+near a threshold, which changes WhatsHap's phasing and so about 1,000
+full-alignment calls, with the same F1.
+
+The Pixi environment can't use the GPU itself: Bioconda's Linux Clair3
+depends on CPU-only PyTorch (`pytorch-cpu`), so its `--use_gpu` falls back to
+the CPU, and Clair3 2.0.5 has no Apple GPU (MPS) path, although the macOS
+PyTorch has MPS. With conda-forge's CUDA PyTorch swapped in by hand,
+Bioconda's own Clair3 ran on the GPU and gave the same calls (#639).
 
 On the HG002 chr20:10-11 Mb slice (R10.4.1 sup v4.0.0 reads, model
 `r1041_e82_400bps_sup_v400`, 4 threads), Clair3 2.0.5 on Linux x86-64 gave

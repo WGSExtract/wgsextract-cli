@@ -188,6 +188,11 @@ KNOWN_SETTINGS = {
         "Clair3 ONT model for `vcf clair3`: a model directory or the name of one "
         "Clair3 bundles (default: chosen from the reads' basecaller metadata)",
     ),
+    "clair3_gpu_image": (
+        None,
+        "Clair3 GPU Docker image for `vcf clair3 --gpu` (default "
+        "hkubal/clair3:v2.0.5_gpu, pinned by digest)",
+    ),
     "methylation_context": (
         "cpg",
         "`methylation pileup` context: cpg (CpG sites) or all (every cytosine)",
