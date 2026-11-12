@@ -4,6 +4,7 @@ import logging
 import math
 import shutil
 import subprocess
+import zlib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,7 +36,12 @@ GATK_WORKER_BYTES = 6 * GIB
 SORT_BYTES_PER_READ = 120
 CRAM_BYTES_PER_READ = 28
 BAM_BYTES_PER_READ = 100
-FASTQ_BYTES_PER_READ = 75
+FASTQ_BYTES_PER_READ = 100
+# HG002 30x, #722: 2.95 MB SNP and 0.80 MB indel VCF.gz from a 670.5 MB BAM.
+# Leave several times the measured size, normalizing BAM/CRAM via disk_reads.
+_BCFTOOLS_VCF_BYTES_PER_READ = {"snp": 1.6, "indel": 0.4}
+_BCFTOOLS_PART_HEADER_BYTES = 16 * 1024
+_BCFTOOLS_JOBS_PER_WORKER = 16
 # Long reads realigned with minimap2 -Y, which keeps every supplementary
 # record's full SEQ, QUAL and modification tags, per byte of input CRAM (#474).
 # HG002 ONT (PAO83395.pass.cram) onto hs38: the whole genome's sort spills
@@ -290,6 +296,24 @@ def long_read_disk(
     )
 
 
+def bcftools_batches(contigs: dict[str, int], workers: int) -> list[dict[str, int]]:
+    """Consecutive contigs grouped into the same jobs as the calling pipeline."""
+    limit = max(1, sum(contigs.values()) // (workers * _BCFTOOLS_JOBS_PER_WORKER))
+    batches: list[dict[str, int]] = []
+    batch: dict[str, int] = {}
+    for name, length in contigs.items():
+        if length >= limit:
+            batches += [batch] if batch else []
+            batches.append({name: length})
+            batch = {}
+            continue
+        batch[name] = length
+        if sum(batch.values()) >= limit:
+            batches.append(batch)
+            batch = {}
+    return batches + ([batch] if batch else [])
+
+
 def estimate_resources(
     operation: Operation,
     *,
@@ -321,8 +345,15 @@ def estimate_resources(
     postprocess_plan: PostprocessPlan | None = None,
     available_ram: int | None = None,
     deepvariant_native: bool = False,
+    bcftools_contigs: dict[str, int] | None = None,
+    alignment_header: str | None = None,
 ) -> PreflightEstimate:
     """Estimate a resolved command without creating files or running tools.
+
+    ``bcftools_contigs`` is the caller's resolved parallel plan (empty for a
+    serial fallback); None conservatively infers it from the reference index.
+    ``alignment_header`` helps budget full headers without launching metadata
+    tools in this read-only API.
 
     ``reads`` counts individual reads, not pairs. Callers may provide a cheap
     FASTQ sample/indexed count. Otherwise disk uses a conservative byte-size
@@ -603,15 +634,91 @@ def estimate_resources(
                 )
         else:
             contigs = read_fai_lengths(reference) if reference else {}
-            workers = 1 if region or not parallel else min(count, len(contigs) or count)
+            selected = contigs if bcftools_contigs is None else bcftools_contigs
+            unknown_parallel = (
+                parallel
+                and count > 1
+                and not region
+                and bcftools_contigs is None
+                and not contigs
+            )
+            active = parallel and count > 1 and not region and len(selected) > 1
+            batches = (
+                bcftools_batches(selected, min(count, len(selected))) if active else []
+            )
+            workers = 1
+            if unknown_parallel:
+                workers = count
+            elif batches:
+                workers = min(count, len(batches))
             memory_components = {"callers": workers * GIB, "overhead": GIB // 4}
             notes.append(
                 "bcftools RAM allows 1 GiB per active contig worker plus overhead."
             )
-        output = None if size is None else math.ceil(size / 10)
-        temporary = (
-            None if output is None else output * (2 if operation == "gatk" else 1)
-        )
+        if operation in _BCFTOOLS_VCF_BYTES_PER_READ:
+            reference_header = "".join(
+                f"##contig=<ID={name},length={length}>\n"
+                for name, length in contigs.items()
+            ).encode()
+            input_header = (alignment_header or "").encode()
+            # Include the complete contig dictionary, not a fixed allowance
+            # per shard. Extra room covers INFO/FORMAT declarations and BCF IDs.
+            raw_header = (
+                2 * len(reference_header)
+                + len(input_header)
+                + 4 * _BCFTOOLS_PART_HEADER_BYTES
+            )
+            compressed_header = (
+                2 * len(zlib.compress(reference_header + input_header))
+                + _BCFTOOLS_PART_HEADER_BYTES
+            )
+            output = (
+                None
+                if disk_reads is None
+                else max(
+                    64 * 1024,
+                    compressed_header,
+                    math.ceil(disk_reads * _BCFTOOLS_VCF_BYTES_PER_READ[operation]),
+                )
+            )
+            temporary = None if unknown_parallel else 0
+            if unknown_parallel:
+                notes.append(
+                    "Parallel bcftools temporary disk is unknown without a "
+                    "reference index or resolved calling contigs."
+                )
+            if batches:
+                replay = operation == "snp"
+                compressed_copies = len(batches) + (3 if replay else 1)
+                split_contigs = sum(len(batch) for batch in batches if len(batch) > 1)
+                # Split batches, window splices, whole-contig fallback splices,
+                # and the reheadering text can coexist until final publication.
+                raw_copies = split_contigs + 2 * len(selected) + 1 if replay else 0
+                requests = sum(len(name.encode()) + 32 for name in selected)
+                temporary = (
+                    None
+                    if output is None
+                    else (8 if replay else 2) * output
+                    + compressed_copies * compressed_header
+                    + raw_copies * raw_header
+                    + requests
+                )
+                notes.append(
+                    f"bcftools budgets {len(batches)} compressed batches and "
+                    f"{raw_copies} possible full uncompressed replay headers "
+                    f"({raw_header} bytes each)."
+                )
+            notes.append(
+                "bcftools compressed VCF disk uses the HG002 30x envelope "
+                "(BAM/CRAM read-count normalization); serial calling writes "
+                "directly to output with no parts. Depth, variant burden and "
+                "compression vary."
+            )
+        else:
+            output = None if size is None else math.ceil(size / 10)
+            temporary = (
+                None if output is None else output * (2 if operation == "gatk" else 1)
+            )
     indexes = None if output is None else max(64 * 1024, math.ceil(output / 100))
     if operation == "gatk" and gatk_workers > 1:
         # Shards coexist with the gathered output.
@@ -622,7 +729,13 @@ def estimate_resources(
     demands += [
         (output_dir, "output", output),
         (output_dir, "indexes", indexes),
-        (temp_dir or output_dir, "temporary", temporary),
+        (
+            output_dir
+            if operation in _BCFTOOLS_VCF_BYTES_PER_READ
+            else temp_dir or output_dir,
+            "temporary",
+            temporary,
+        ),
     ]
     grouped: dict[object, tuple[int | None, dict[str, int], list[str], bool]] = {}
     for path, component, needed in demands:

@@ -320,18 +320,49 @@ filesystem for reference-index storage.
   **8.63 GB CRAM**, plus a 1.14 MB CRAI. Do not extrapolate that unusually good
   compression to full-quality inputs.
 - The conservative disk envelope uses **120 bytes/read sort spill**,
-  **28 bytes/read CRAM**, **100 bytes/read BAM**, and **75 bytes/read extracted
+  **28 bytes/read CRAM**, **100 bytes/read BAM**, and **100 bytes/read extracted
   FASTQ**. At H2 depth this is **81.56 GB temporary sort space and 19.03 GB
   CRAM** (75.96 and 17.72 GiB), within the phase-2 planning ranges of 70–90 GB
   sort space and about 16–20 GB CRAM. Output indexes add 1% (at least 64 KiB).
   Existing reference indexes cost no new disk; missing ones receive an
   additional two-resident-index-size build allowance on the reference volume.
+  The FASTQ allowance was raised from 75 after #722's full-quality HG002
+  slice wrote 937.4 MB for 10,971,483 indexed records (85.4 bytes/record):
+  the files were 14% larger than the old budget. Known indexed counts avoid additional
+  uncertainty from BAM/CRAM compression-based count inference.
 - Ultima pipelines using GATK flow duplicate marking pass
   `duplicate_marking="gatk-flow"`. Their temporary budget includes retained
   sorted/marked BAMs: up to two BAMs (200 bytes/read) for CRAM output, rather
   than assuming only sort spill and final CRAM coexist.
-- VCF output uses 10% of input bytes, with another output-sized allowance for
-  per-contig files/concatenation (twice for GATK). Regional GATK CRAM conversion
+- bcftools compressed VCF output allows **1.6 bytes per inferred read for SNPs**
+  and **0.4 for indels**, at least 64 KiB. Without a supplied read count, BAM
+  and CRAM bytes are normalized using the existing 80/12 bytes-per-read
+  fallback, so input compression does not directly set the VCF budget.
+  The CLI supplies the cheap indexed BAM count; CRAM keeps the fallback
+  rather than decoding the file for preflight.
+  Serial calling (`--no-parallel`, one thread, an explicit region, or a
+  caller-resolved serial fallback) writes directly to the staged output and
+  reserves **no part/concatenation temporary space**.
+  Parallel calling uses the runtime's shared batching plan, not one part per
+  reference contig. Compressed batch headers are estimated from the complete
+  reference dictionary and supplied alignment header, with compression and
+  metadata headroom. Non-replaying indels reserve two output-sized data sets.
+  Parallel SNPs also reserve possible deep-site split/replay files: a full
+  uncompressed header for each split contig, both window and whole-contig
+  fallback splices, and reheadering, plus an eight-output-sized record-data
+  envelope. These files can coexist until publication, even though a shallow
+  run may not need replay. All of these files are charged to the output volume,
+  where the caller actually creates them.
+  The CLI supplies the resolved `bcftools_contigs` and `alignment_header`;
+  read-only API clients without that metadata conservatively use the reference
+  dictionary. If neither a reference index nor resolved contigs are available,
+  parallel temporary disk is reported unknown rather than assuming a serial run.
+  On #722's nominal-30x HG002
+  slice, the 670.5 MB BAM produced 2.95 MB SNP and 0.80 MB indel VCF.gz files;
+  the old tenth-of-input output estimate was 23×/84× high. The new budgets
+  retain several-fold headroom; depth, variant burden and compression vary.
+  GATK retains 10% of input bytes for output and twice that for temporary
+  storage. Regional GATK CRAM conversion
   also budgets a whole-input BAM upper bound on the output volume.
   GATK scattering additionally charges retained shard VCFs and their indexes to
   the **output volume**, where they coexist with the gathered output; JVM
