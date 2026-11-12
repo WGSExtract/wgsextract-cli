@@ -12,6 +12,9 @@ wgsextract score pgs --input sample.vcf.gz --build GRCh38 --pgs-id PGS000018 --j
 Genotypes stay on your machine. Only the score ID/build is sent to the
 PGS Catalog, to download its metadata and harmonized weights. No scoring
 files are bundled or mirrored. Downloads retry transient failures three times.
+Each attempt checks the advertised byte count (when present) and validates
+the complete gzip stream or metadata JSON before replacing a cached file.
+Failed or truncated responses never replace a previously good copy.
 `bcftools` must already be on PATH; the command checks, it never installs tools.
 
 ## Choosing a score

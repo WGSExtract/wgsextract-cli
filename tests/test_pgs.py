@@ -5,7 +5,9 @@ import json
 import shutil
 import subprocess
 from dataclasses import replace
+from http.client import IncompleteRead
 from pathlib import Path
+from urllib.response import addinfourl
 
 import pytest
 
@@ -231,14 +233,18 @@ def test_617_download_retries_and_records_catalog_licence(
     )
     failures = 0
 
-    def response(address: str, **kwargs: object) -> io.BytesIO:
+    def response(address: str, **kwargs: object) -> addinfourl:
         nonlocal failures
         if address == url:
             if failures == 0:
                 failures += 1
                 raise urllib.error.URLError("temporary outage")
-            return io.BytesIO(data)
-        return io.BytesIO(json.dumps(metadata).encode())
+            payload = data
+        else:
+            payload = json.dumps(metadata).encode()
+        return addinfourl(
+            io.BytesIO(payload), {"Content-Length": str(len(payload))}, address
+        )
 
     monkeypatch.setattr(urllib.request, "urlopen", response)
     monkeypatch.setattr("time.sleep", lambda _: None)
@@ -254,6 +260,149 @@ def test_617_download_retries_and_records_catalog_licence(
     assert result.details["pgs_id"] == pgs_id
     assert result.metrics["score_sum"] == pytest.approx(1.0)
     assert "pgs_uncurated_score" in {w.code for w in result.warnings}
+
+
+@pytest.fixture
+def catalog_payloads() -> tuple[str, str, dict[str, bytes]]:
+    pgs_id = "PGS999999"
+    url = f"https://ftp.ebi.ac.uk/pub/databases/spot/pgs/scores/{pgs_id}/ScoringFiles/Harmonized/test.txt.gz"
+    metadata = {
+        "ftp_harmonized_scoring_files": {"GRCh38": {"positions": url}},
+        "license": "Retry test licence",
+    }
+    return (
+        pgs_id,
+        url,
+        {
+            f"https://www.pgscatalog.org/rest/score/{pgs_id}/": json.dumps(
+                metadata
+            ).encode(),
+            url: gzip.compress(
+                (
+                    f"#pgs_id={pgs_id}\n" + (FIXTURES / "additive.txt").read_text()
+                ).encode()
+            ),
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    ("target", "failure"),
+    [
+        ("weights", "short"),
+        ("metadata", "short"),
+        ("metadata", "length-mismatch"),
+        ("weights", "truncated-gzip"),
+        ("weights", "empty"),
+        ("metadata", "invalid-json"),
+        ("metadata", "invalid-encoding"),
+        ("weights", "incomplete-read"),
+        ("weights", "corrupt-deflate"),
+    ],
+)
+def test_617_truncated_catalog_download_retries_before_scoring(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    catalog_payloads: tuple[str, str, dict[str, bytes]],
+    target: str,
+    failure: str,
+) -> None:
+    import urllib.request
+
+    pgs_id, score_url, payloads = catalog_payloads
+    bad_url = score_url if target == "weights" else next(iter(payloads))
+    requests: dict[str, int] = {}
+
+    class InterruptedResponse(io.BytesIO):
+        def read(self, size: int = -1) -> bytes:
+            raise IncompleteRead(b"partial body", len(payloads[bad_url]))
+
+    def response(address: str, **kwargs: object) -> addinfourl:
+        requests[address] = requests.get(address, 0) + 1
+        body = payloads[address]
+        headers = {"Content-Length": str(len(body))}
+        if address == bad_url and requests[address] == 1:
+            if failure == "short":
+                body = body[: len(body) // 2]
+            elif failure == "length-mismatch":
+                headers["Content-Length"] = str(len(body) + 100)
+            elif failure == "incomplete-read":
+                return addinfourl(InterruptedResponse(), headers, address)
+            else:
+                headers = {}
+                if failure == "truncated-gzip":
+                    body = body[:-8]
+                elif failure == "empty":
+                    body = b""
+                elif failure == "corrupt-deflate":
+                    body = b"\x1f\x8b\x08\x00" + b"\x00" * 6 + b"\x07" + b"\x00" * 8
+                elif failure == "invalid-encoding":
+                    body = body.decode("utf-8").encode("utf-16")
+                else:
+                    body = body[: len(body) // 2]
+        return addinfourl(io.BytesIO(body), headers, address)
+
+    monkeypatch.setattr(urllib.request, "urlopen", response)
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    result = api.score.pgs(
+        api.ScorePgsParams(
+            input=FIXTURES / "sample.vcf",
+            build="GRCh38",
+            pgs_id=pgs_id,
+            outdir=tmp_path,
+        )
+    )
+    assert requests[bad_url] == 2
+    assert result.metrics["score_sum"] == pytest.approx(1.0)
+    assert result.details["license"] == "Retry test licence"
+    scoring = next(Path(f.path) for f in result.inputs if f.role == "pgs_scoring_file")
+    assert scoring.read_bytes() == payloads[score_url]
+
+
+@pytest.mark.parametrize("target", ["metadata", "weights"])
+def test_617_bad_catalog_download_never_replaces_a_good_cached_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    catalog_payloads: tuple[str, str, dict[str, bytes]],
+    target: str,
+) -> None:
+    import urllib.request
+
+    pgs_id, score_url, payloads = catalog_payloads
+    folder = tmp_path / "pgs_catalog"
+    folder.mkdir()
+    metadata = folder / f"{pgs_id}.json"
+    weights = folder / f"{pgs_id}_GRCh38.txt.gz"
+    metadata.write_bytes(payloads[next(iter(payloads))])
+    weights.write_bytes(payloads[score_url])
+    bad_url = score_url if target == "weights" else next(iter(payloads))
+    requests: dict[str, int] = {}
+
+    def response(address: str, **kwargs: object) -> addinfourl:
+        requests[address] = requests.get(address, 0) + 1
+        body = payloads[address]
+        headers = {"Content-Length": str(len(body))}
+        if address == bad_url:
+            body = body[: len(body) // 2]
+        return addinfourl(io.BytesIO(body), headers, address)
+
+    monkeypatch.setattr(urllib.request, "urlopen", response)
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    result = api.score.pgs(
+        api.ScorePgsParams(
+            input=FIXTURES / "sample.vcf",
+            build="GRCh38",
+            pgs_id=pgs_id,
+            outdir=tmp_path,
+        ),
+        check=False,
+    )
+    assert result.status == "failed"
+    assert requests[bad_url] == 3
+    assert result.error is not None
+    assert "PGS download failed" in result.error.message
+    assert metadata.read_bytes() == payloads[next(iter(payloads))]
+    assert weights.read_bytes() == payloads[score_url]
 
 
 def test_617_custom_file_overrides_catalog_and_configures_gate(tmp_path: Path) -> None:

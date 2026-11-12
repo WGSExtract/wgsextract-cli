@@ -20,9 +20,11 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+import zlib
 from collections import Counter, OrderedDict
 from collections.abc import Iterator
 from dataclasses import dataclass
+from http.client import HTTPException
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -88,12 +90,41 @@ def _download(url: str, path: Path) -> None:
         try:
             with atomic_output(path, retire_indexes=False) as staged:
                 with urllib.request.urlopen(url, timeout=60) as response:
+                    content_length = response.headers.get("Content-Length")
+                    try:
+                        expected = (
+                            int(content_length) if content_length is not None else None
+                        )
+                    except ValueError as exc:
+                        raise OSError("Invalid PGS download Content-Length.") from exc
+                    received = 0
                     with open(staged, "wb") as target:
                         while data := response.read(1024 * 1024):
                             checkpoint()
                             target.write(data)
+                            received += len(data)
+                    if received == 0:
+                        raise EOFError("Empty PGS download.")
+                    if expected is not None and received != expected:
+                        raise OSError(
+                            f"Incomplete PGS download: received {received} bytes, expected {expected}."
+                        )
+                if path.suffix == ".gz":
+                    with gzip.open(staged, "rb") as compressed:
+                        while compressed.read(1024 * 1024):
+                            checkpoint()
+                elif path.suffix == ".json":
+                    json.loads(Path(staged).read_text(encoding="utf-8"))
             return
-        except (OSError, urllib.error.URLError) as exc:
+        except (
+            OSError,
+            urllib.error.URLError,
+            HTTPException,
+            EOFError,
+            zlib.error,
+            json.JSONDecodeError,
+            UnicodeDecodeError,
+        ) as exc:
             if attempt == 2:
                 raise WGSExtractError(f"PGS download failed: {url}: {exc}") from exc
             time.sleep(2**attempt)
