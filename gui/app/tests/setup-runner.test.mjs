@@ -5,8 +5,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import test from "node:test";
+import { exampleBundleCopy } from "./example-bundle.mjs";
 import { currentSetupPlatform } from "../dist/shared/setup-platforms.js";
-import { runInitialSetupIfNeeded, runSetup, runSetupStep, runUninstall } from "../dist/web/src/server/setup-runner.js";
+import { forgetSetupWithMissingTools, runInitialSetupIfNeeded, runSetup, runSetupStep, runUninstall } from "../dist/web/src/server/setup-runner.js";
 import { createProcessManager } from "../dist/web/src/server/process-runner.js";
 
 test("normalizes setup platform aliases", () => {
@@ -43,7 +44,7 @@ test("setup steps run without a wall-clock timeout and stop on cancellation", as
 });
 
 test("setup and uninstall share one lock per workspace", async () => {
-  const workspace = await mkdtemp(path.join(tmpdir(), "gui-for-cli-setup-lock-"));
+  const workspace = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-setup-lock-"));
   let release;
   const blocked = new Promise((resolve) => {
     release = resolve;
@@ -109,13 +110,13 @@ test("runs only the requested setup step", async () => {
 
 test("wraps admin setup steps with elevated execution", async (t) => {
   const calls = [];
-  const previousParentEnv = process.env.GUI_FOR_CLI_TEST_PARENT_ENV;
-  process.env.GUI_FOR_CLI_TEST_PARENT_ENV = "parent-value";
+  const previousParentEnv = process.env.WGSEXTRACT_GUI_TEST_PARENT_ENV;
+  process.env.WGSEXTRACT_GUI_TEST_PARENT_ENV = "parent-value";
   t.after(() => {
     if (previousParentEnv == null) {
-      delete process.env.GUI_FOR_CLI_TEST_PARENT_ENV;
+      delete process.env.WGSEXTRACT_GUI_TEST_PARENT_ENV;
     } else {
-      process.env.GUI_FOR_CLI_TEST_PARENT_ENV = previousParentEnv;
+      process.env.WGSEXTRACT_GUI_TEST_PARENT_ENV = previousParentEnv;
     }
   });
   const manifest = {
@@ -148,25 +149,25 @@ test("wraps admin setup steps with elevated execution", async (t) => {
   if (process.platform === "win32") {
     assert.equal(result.command.startsWith("sudo "), false);
     assert.equal(calls[0].options.requiresAdmin, true);
-    assert.equal(calls[0].options.elevatedEnv.GUI_FOR_CLI_TEST_PARENT_ENV, "parent-value");
+    assert.equal(calls[0].options.elevatedEnv.WGSEXTRACT_GUI_TEST_PARENT_ENV, "parent-value");
     assert.equal(calls[0].options.elevatedEnv.SETUP_VALUE, "needs spaces");
     assert.equal(calls[0].options.elevatedEnv.TOOL_HOME, path.join(bundleRoot, "runtime", "tool"));
-    assert.equal(calls[0].options.elevatedEnv.GUI_FOR_CLI_BUNDLE_ROOT, bundleRoot);
-    assert.equal(calls[0].options.elevatedEnv.GUI_FOR_CLI_BUNDLE_WORKSPACE, bundleRoot);
+    assert.equal(calls[0].options.elevatedEnv.WGSEXTRACT_GUI_BUNDLE_ROOT, bundleRoot);
+    assert.equal(calls[0].options.elevatedEnv.WGSEXTRACT_GUI_BUNDLE_WORKSPACE, bundleRoot);
   } else if (process.platform === "darwin") {
     assert.equal(result.command.startsWith("sudo "), true);
     assert.equal(calls[0].executable, "/usr/bin/osascript");
     assert.equal(calls[0].options.cwd, undefined);
     assert.match(calls[0].args[1], /with administrator privileges/);
     assert.match(calls[0].args[1], /'SETUP_VALUE=needs spaces'/);
-    assert.match(calls[0].args[1], /GUI_FOR_CLI_BUNDLE_ROOT=/);
+    assert.match(calls[0].args[1], /WGSEXTRACT_GUI_BUNDLE_ROOT=/);
   } else {
     assert.equal(result.command.startsWith("sudo "), true);
     assert.equal(calls[0].executable, "/usr/bin/sudo");
     assert.equal(calls[0].args[0], "/usr/bin/env");
     assert.equal(calls[0].args.includes("SETUP_VALUE=needs spaces"), true);
     assert.equal(calls[0].args.includes(`TOOL_HOME=${path.join(bundleRoot, "runtime", "tool")}`), true);
-    assert.equal(calls[0].args.some((argument) => argument.startsWith("GUI_FOR_CLI_BUNDLE_ROOT=")), true);
+    assert.equal(calls[0].args.some((argument) => argument.startsWith("WGSEXTRACT_GUI_BUNDLE_ROOT=")), true);
     assert.equal(calls[0].args.at(-1), path.join(bundleRoot, "scripts", "admin.sh"));
     assert.equal(calls[0].options.cwd, bundleRoot);
   }
@@ -262,7 +263,7 @@ test("WGSExtract Windows library state delegates to CLI status", async (t) => {
 
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   const sourceScript = path.join(repoRoot, "examples", "WGSExtract", "scripts", "windows", "library-state.ps1");
-  const tempRoot = await mkdtemp(path.join(tmpdir(), "gui-for-cli-wgsextract-library-state-"));
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-wgsextract-library-state-"));
   const scriptRoot = path.join(tempRoot, "scripts");
   const script = path.join(scriptRoot, "library-state.ps1");
   const refPath = path.join(tempRoot, "reference");
@@ -313,14 +314,14 @@ test("WGSExtract Windows config bootstrap includes the dataset and reference gen
 
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   const script = path.join(repoRoot, "examples", "WGSExtract", "scripts", "windows", "bootstrap-wgsextract-config.ps1");
-  const tempRoot = await mkdtemp(path.join(tmpdir(), "gui-for-cli-wgsextract-config-"));
-  const previousWorkspace = process.env.GUI_FOR_CLI_BUNDLE_WORKSPACE;
-  const previousConfigPath = process.env.GUI_FOR_CLI_CONFIG_PATH;
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-wgsextract-config-"));
+  const previousWorkspace = process.env.WGSEXTRACT_GUI_BUNDLE_WORKSPACE;
+  const previousConfigPath = process.env.WGSEXTRACT_GUI_CONFIG_PATH;
   const processManager = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
 
   try {
-    process.env.GUI_FOR_CLI_BUNDLE_WORKSPACE = tempRoot;
-    delete process.env.GUI_FOR_CLI_CONFIG_PATH;
+    process.env.WGSEXTRACT_GUI_BUNDLE_WORKSPACE = tempRoot;
+    delete process.env.WGSEXTRACT_GUI_CONFIG_PATH;
     const result = await processManager.runProcess("powershell.exe", [
       "-NoProfile",
       "-ExecutionPolicy",
@@ -339,8 +340,8 @@ test("WGSExtract Windows config bootstrap includes the dataset and reference gen
     assert.doesNotMatch(bootstrap.contents, /^genome_library/m);
   } finally {
     await processManager.terminateAllProcesses();
-    setOrDeleteEnv("GUI_FOR_CLI_BUNDLE_WORKSPACE", previousWorkspace);
-    setOrDeleteEnv("GUI_FOR_CLI_CONFIG_PATH", previousConfigPath);
+    setOrDeleteEnv("WGSEXTRACT_GUI_BUNDLE_WORKSPACE", previousWorkspace);
+    setOrDeleteEnv("WGSEXTRACT_GUI_CONFIG_PATH", previousConfigPath);
     await rm(tempRoot, { force: true, recursive: true });
   }
 });
@@ -353,7 +354,7 @@ test("WGSExtract Windows repair actions forward to CLI file mode", async (t) => 
 
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   const scriptsRoot = path.join(repoRoot, "examples", "WGSExtract", "scripts", "windows");
-  const tempRoot = await mkdtemp(path.join(tmpdir(), "gui-for-cli-wgsextract-repair-"));
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-wgsextract-repair-"));
   const appDir = path.join(tempRoot, "runtime", "app");
   const outDir = path.join(tempRoot, "out");
   const fakePixi = path.join(tempRoot, "pixi.ps1");
@@ -362,7 +363,7 @@ test("WGSExtract Windows repair actions forward to CLI file mode", async (t) => 
   const configPath = path.join(tempRoot, "settings", "config.toml");
   const previousPixi = process.env.PIXI;
   const previousAppDir = process.env.WGSEXTRACT_APP_DIR;
-  const previousConfigPath = process.env.GUI_FOR_CLI_CONFIG_PATH;
+  const previousConfigPath = process.env.WGSEXTRACT_GUI_CONFIG_PATH;
   const processManager = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
 
   try {
@@ -388,7 +389,7 @@ test("WGSExtract Windows repair actions forward to CLI file mode", async (t) => 
     ].join("\r\n"));
     process.env.PIXI = fakePixi;
     process.env.WGSEXTRACT_APP_DIR = appDir;
-    process.env.GUI_FOR_CLI_CONFIG_PATH = configPath;
+    process.env.WGSEXTRACT_GUI_CONFIG_PATH = configPath;
 
     const vcfResult = await processManager.runProcess("powershell.exe", [
       "-NoProfile",
@@ -427,7 +428,7 @@ test("WGSExtract Windows repair actions forward to CLI file mode", async (t) => 
     await processManager.terminateAllProcesses();
     setOrDeleteEnv("PIXI", previousPixi);
     setOrDeleteEnv("WGSEXTRACT_APP_DIR", previousAppDir);
-    setOrDeleteEnv("GUI_FOR_CLI_CONFIG_PATH", previousConfigPath);
+    setOrDeleteEnv("WGSEXTRACT_GUI_CONFIG_PATH", previousConfigPath);
     await rm(tempRoot, { force: true, recursive: true });
   }
 });
@@ -440,7 +441,7 @@ test("WGSExtract Windows runtime wrapper does not wait for stdin unless requeste
 
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   const sourceScripts = path.join(repoRoot, "examples", "WGSExtract", "scripts", "windows");
-  const tempRoot = await mkdtemp(path.join(tmpdir(), "gui-for-cli-wgsextract-no-stdin-"));
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-wgsextract-no-stdin-"));
   const scriptsRoot = path.join(tempRoot, "scripts");
   const appDir = path.join(tempRoot, "app");
   const fakePixi = path.join(tempRoot, "pixi.cmd");
@@ -579,7 +580,7 @@ test("WGSExtract Windows reference delete treats missing files as no-op", async 
 
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   const script = path.join(repoRoot, "examples", "WGSExtract", "scripts", "windows", "delete-reference-genome.ps1");
-  const tempRoot = await mkdtemp(path.join(tmpdir(), "gui-for-cli-wgsextract-delete-ref-"));
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-wgsextract-delete-ref-"));
   const reference = path.join(tempRoot, "reference");
   const processManager = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
 
@@ -610,7 +611,7 @@ test("WGSExtract Windows VCF wrapper adds the FASTA build's ploidy", async (t) =
 
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   const sourceScripts = path.join(repoRoot, "examples", "WGSExtract", "scripts", "windows");
-  const tempRoot = await mkdtemp(path.join(tmpdir(), "gui-for-cli-wgsextract-vcf-wrapper-"));
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-wgsextract-vcf-wrapper-"));
   const scriptsRoot = path.join(tempRoot, "scripts");
   const genomeRoot = path.join(tempRoot, "genomes", "wgsextract-benchmark-hg19-mini");
   const referenceRoot = path.join(tempRoot, "reference");
@@ -667,11 +668,13 @@ test("runs WGSExtract POSIX setup scripts from nested script folders", async (t)
 
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   const sourceBundleRoot = path.join(repoRoot, "examples", "WGSExtract");
-  const tempRoot = await mkdtemp(path.join(tmpdir(), "gui-for-cli-wgsextract-posix-setup-"));
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-wgsextract-posix-setup-"));
   const bundleRoot = path.join(tempRoot, "WGSExtract");
-  const appDir = path.join(bundleRoot, "runtime", "wgsextract-cli", "app");
+  // The CLI setup installed, wherever the app's data folder is on this platform.
+  const appDir = path.join(tempRoot, "runtime", "wgsextract-cli", "app");
   const fakePixi = path.join(tempRoot, "pixi");
   const previousPixi = process.env.PIXI;
+  const previousAppDir = process.env.WGSEXTRACT_APP_DIR;
   const processManager = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
 
   try {
@@ -681,6 +684,7 @@ test("runs WGSExtract POSIX setup scripts from nested script folders", async (t)
     await writeFile(fakePixi, "#!/bin/sh\necho fake pixi \"$@\"\nexit 0\n");
     await chmod(fakePixi, 0o755);
     process.env.PIXI = fakePixi;
+    process.env.WGSEXTRACT_APP_DIR = appDir;
 
     const { loadManifestFromRoot } = await import("../dist/web/src/server/bundle-loader.js");
     const manifest = await loadManifestFromRoot(bundleRoot);
@@ -697,6 +701,7 @@ test("runs WGSExtract POSIX setup scripts from nested script folders", async (t)
   } finally {
     await processManager.terminateAllProcesses();
     setOrDeleteEnv("PIXI", previousPixi);
+    setOrDeleteEnv("WGSEXTRACT_APP_DIR", previousAppDir);
     await rm(tempRoot, { force: true, recursive: true });
   }
 });
@@ -707,9 +712,9 @@ test("runs WGSExtract platform setup scripts from nested script folders", async 
     return;
   }
 
-  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-  const bundleRoot = path.join(repoRoot, "examples", "WGSExtract");
-  const tempRoot = await mkdtemp(path.join(tmpdir(), "gui-for-cli-wgsextract-setup-"));
+  // The bootstrap script writes the bundle's config.toml, so it runs in a copy.
+  const bundleRoot = await exampleBundleCopy(t);
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-wgsextract-setup-"));
   const appDir = path.join(tempRoot, "runtime", "wgsextract-cli", "app");
   const referenceLibrary = path.join(tempRoot, "reference");
   const fakePixi = path.join(tempRoot, "pixi.cmd");
@@ -760,7 +765,7 @@ test("WGSExtract Windows bootstrap runs ref bootstrap", async (t) => {
 
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   const sourceScript = path.join(repoRoot, "examples", "WGSExtract", "scripts", "windows", "bootstrap-reference-library.ps1");
-  const tempRoot = await mkdtemp(path.join(tmpdir(), "gui-for-cli-wgsextract-bootstrap-default-"));
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-wgsextract-bootstrap-default-"));
   const scriptRoot = path.join(tempRoot, "scripts", "windows");
   const script = path.join(scriptRoot, "bootstrap-reference-library.ps1");
   const referenceLibrary = path.join(tempRoot, "reference");
@@ -804,7 +809,7 @@ test("runs WGSExtract uninstall steps and removes bundle runtime", async (t) => 
 
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   const sourceBundleRoot = path.join(repoRoot, "examples", "WGSExtract");
-  const tempRoot = await mkdtemp(path.join(tmpdir(), "gui-for-cli-wgsextract-uninstall-"));
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-wgsextract-uninstall-"));
   const bundleRoot = path.join(tempRoot, "WGSExtract");
   const runtimeRoot = path.join(bundleRoot, "runtime", "wgsextract-cli");
   const processManager = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
@@ -834,7 +839,7 @@ test("uninstall reverses install-manifest items (owned directories)", async (t) 
 
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   const sourceBundleRoot = path.join(repoRoot, "examples", "WGSExtract");
-  const tempRoot = await mkdtemp(path.join(tmpdir(), "gui-for-cli-wgsextract-manifest-"));
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-wgsextract-manifest-"));
   const bundleRoot = path.join(tempRoot, "WGSExtract");
   const runtimeRoot = path.join(bundleRoot, "runtime", "wgsextract-cli");
   const ownedDir = path.join(tempRoot, "fake-pixi-install");
@@ -1112,4 +1117,24 @@ test("persists a failed initial setup when launching a setup command throws", as
   assert.equal(setupRun.completedAt, "2026-05-09T19:21:00.000Z");
   assert.deepEqual(setupRun.results, []);
   assert.deepEqual(savedStates, [{ setupRun }]);
+});
+
+test("a finished setup whose installed tools are gone is forgotten, so the app offers setup again", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-setup-tools-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const tool = path.join(root, "app data", "runtime", "tool", "bin", "tool");
+  const manifest = { setup: { steps: [{ id: "tool", kind: "pathTool", value: tool }] } };
+  const state = path.join(root, "state.json");
+
+  await writeFile(state, JSON.stringify({ setupRun: { status: "ok", results: [] } }));
+  await mkdir(path.dirname(tool), { recursive: true });
+  await writeFile(tool, "");
+  assert.equal(await forgetSetupWithMissingTools(manifest, root), false);
+  assert.deepEqual(JSON.parse(await readFile(state, "utf8")).setupRun, { status: "ok", results: [] });
+
+  await rm(tool);
+  assert.equal(await forgetSetupWithMissingTools(manifest, root), true);
+  assert.equal(JSON.parse(await readFile(state, "utf8")).setupRun, null);
+  // Nothing to forget once setup hasn't run.
+  assert.equal(await forgetSetupWithMissingTools(manifest, root), false);
 });

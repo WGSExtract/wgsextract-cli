@@ -544,6 +544,7 @@
     {
       "id": "bam-tools",
       "title": "sections.cli.bam-tools.title",
+      "iconName": "tools",
       "textIcon": "🧰",
       "advancedOnly": true,
       "controls": [

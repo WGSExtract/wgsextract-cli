@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/WGSExtract/wgsextract-cli/gui/schema/page.schema.json",
-  "title": "GUI for CLI Bundle Page",
+  "title": "WGS Extract GUI Bundle Page",
   "type": "object",
   "required": ["id", "title", "summary", "sections"],
   "additionalProperties": false,

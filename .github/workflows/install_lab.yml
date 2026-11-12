@@ -66,6 +66,11 @@ env:
   # app pins, exactly as a user's app does.
   WEEKLY: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
 
+# Only pull requests share a group: a new push supersedes the PR's older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   linux:
     runs-on: ubuntu-latest
@@ -82,6 +87,8 @@ jobs:
           pixi-version: v0.82.0
           locked: true
           environments: default
+          # PR runs restore main's environment; writing their own crowds it out.
+          cache-write: ${{ github.ref == 'refs/heads/main' }}
       - name: Install, use, update and uninstall in a fresh Ubuntu container
         run: python3 scripts/installlab/lab.py run linux --out out/installlab/ci-linux
       - name: Every corruption of the evidence must fail the oracle
@@ -93,7 +100,7 @@ jobs:
         run: python3 scripts/installlab/lab.py run linux --install-dir "WGS Extract" --out out/installlab/ci-linux-spaced
       - name: Update the latest published release to this tree
         run: |
-          latest=$(curl -fsIL -o /dev/null -w '%{url_effective}' https://github.com/WGSExtract/wgsextract-cli/releases/latest)
+          latest=$(curl -fsIL --retry 5 --retry-all-errors --connect-timeout 20 -o /dev/null -w '%{url_effective}' https://github.com/WGSExtract/wgsextract-cli/releases/latest)
           python3 scripts/installlab/lab.py run linux --update-from "${latest##*/}" --out out/installlab/ci-linux-update
       - name: Every sabotaged install must fail
         if: env.WEEKLY == 'true'
@@ -197,6 +204,8 @@ jobs:
           pixi-version: v0.82.0
           locked: true
           environments: default
+          # PR runs restore main's environment; writing their own crowds it out.
+          cache-write: ${{ github.ref == 'refs/heads/main' }}
       - name: Get the app built from this tree
         if: matrix.cli == 'tree' && needs.app-source.outputs.build == 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -255,6 +264,8 @@ jobs:
           pixi-version: v0.82.0
           locked: true
           environments: default
+          # PR runs restore main's environment; writing their own crowds it out.
+          cache-write: ${{ github.ref == 'refs/heads/main' }}
       # Hosted macOS runners can't nest VMs, so the scenario runs as a brand-new
       # account with only the system PATH. lab.py first hides the runner's
       # Homebrew and JDKs and turns Gatekeeper on, as on a user's Mac; the
@@ -496,6 +507,8 @@ jobs:
           pixi-version: v0.82.0
           locked: true
           environments: default
+          # PR runs restore main's environment; writing their own crowds it out.
+          cache-write: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: install-lab-windows*

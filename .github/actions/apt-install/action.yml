@@ -1,0 +1,79 @@
+name: Install Ubuntu packages
+description: >-
+  apt-get install on a GitHub-hosted Ubuntu runner that fails fast and clearly
+  when the package mirrors are down, falls back through official mirrors, and
+  caches the package lists and .debs so an outage matters only on a cache miss.
+  See apt-install.sh.
+inputs:
+  packages:
+    description: The packages to install, separated by spaces or newlines.
+    required: true
+  install-recommends:
+    description: Also install recommended packages ("true" or "false").
+    required: false
+    default: "false"
+  cache:
+    description: >-
+      Restore and save the package lists and .debs ("true" or "false"). A
+      release build passes "false", to build from what the mirrors serve.
+    required: false
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Plan the apt cache
+      id: plan
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        RECOMMENDS: ${{ inputs.install-recommends }}
+      run: |
+        sudo install -d -o "$(id -u)" -g "$(id -g)" /var/cache/ci-apt
+        # shellcheck disable=SC2086
+        packages=$(printf '%s\n' $PACKAGES | sort -u | tr '\n' ' ')
+        hash=$(printf '%s recommends=%s' "$packages" "$RECOMMENDS" | cat - "$GITHUB_ACTION_PATH/apt-install.sh" | sha256sum | cut -c1-16)
+        # The image fixes what is already installed, so it decides which .debs
+        # are needed; an older image's cache is still a useful start.
+        prefix="apt-v1-${ImageOS:-unknown}-$(dpkg --print-architecture)-$hash-"
+        {
+          echo "packages=$packages"
+          echo "key=$prefix${ImageVersion:-unknown}"
+          echo "restore-prefix=$prefix"
+        } >> "$GITHUB_OUTPUT"
+    - name: Restore the apt cache
+      id: restore
+      if: inputs.cache == 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: /var/cache/ci-apt
+        key: ${{ steps.plan.outputs.key }}
+        restore-keys: ${{ steps.plan.outputs.restore-prefix }}
+    - name: Install the packages
+      id: install
+      shell: bash
+      env:
+        PACKAGES: ${{ steps.plan.outputs.packages }}
+        RECOMMENDS: ${{ inputs.install-recommends }}
+        CACHE: ${{ inputs.cache }}
+      run: |
+        flags=()
+        if [ "$RECOMMENDS" != true ]; then flags+=(--no-install-recommends); fi
+        if [ "$CACHE" = true ]; then flags+=(--cache-dir /var/cache/ci-apt); fi
+        status=0
+        # shellcheck disable=SC2086
+        sudo bash "$GITHUB_ACTION_PATH/apt-install.sh" "${flags[@]}" $PACKAGES || status=$?
+        # Back to the runner user, for the cache action to read.
+        sudo rm -rf /var/cache/ci-apt/lists/partial /var/cache/ci-apt/archives/partial /var/cache/ci-apt/*/lock
+        sudo chown -R "$(id -u):$(id -g)" /var/cache/ci-apt
+        exit "$status"
+    # Main refreshes the cache for each runner image; another branch saves
+    # one only when it found none, so pull requests don't crowd out the
+    # repository's other caches.
+    - name: Save the apt cache
+      if: >-
+        inputs.cache == 'true' && steps.restore.outputs.cache-hit != 'true' &&
+        (github.ref == 'refs/heads/main' || steps.restore.outputs.cache-matched-key == '')
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: /var/cache/ci-apt
+        key: ${{ steps.plan.outputs.key }}

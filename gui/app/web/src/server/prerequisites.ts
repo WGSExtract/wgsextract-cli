@@ -3,6 +3,7 @@ import type { ResultDocumentSpec } from "../../../shared/result-document.js";
 import type { ActionSpec, BundleManifest, CommandContext, MissingPrerequisite, RunProcess } from "../../../shared/types.js";
 import { contextWithFileState, runAction, type ActionEmit, type ActionRunResult } from "./action-runner.js";
 import { errorMessage } from "./errors.js";
+import { bundleEnvironment } from "./paths.js";
 import { isPlatformScriptReference, resolvePlatformScriptPath } from "./platform-scripts.js";
 
 // Reading a BAM/CRAM header and the reference library takes a few seconds; a check that hangs mustn't hold the action back forever.
@@ -24,7 +25,7 @@ export async function missingPrerequisites(
         return await checkPrerequisites(manifest, action, context, bundleRoot, runProcess);
     }
     catch (error) {
-        console.warn(`[gui-for-cli] Prerequisite check for action ${action.id ?? action.title ?? ""} failed; running it anyway: ${errorMessage(error)}`);
+        console.warn(`[wgsextract-gui] Prerequisite check for action ${action.id ?? action.title ?? ""} failed; running it anyway: ${errorMessage(error)}`);
         return [];
     }
 }
@@ -50,7 +51,7 @@ async function checkPrerequisites(
     const executable = await scriptPath(check.executable, bundleRoot);
     const result = await runProcess(executable, [...(check.arguments ?? []), ...commandLine], {
         cwd: bundleRoot,
-        env: { ...process.env, GUI_FOR_CLI_BUNDLE_ROOT: bundleRoot, GUI_FOR_CLI_BUNDLE_WORKSPACE: bundleRoot },
+        env: { ...process.env, ...bundleEnvironment(bundleRoot) },
         timeoutMs: checkTimeoutMs,
     });
     if (result.exitCode !== 0) {

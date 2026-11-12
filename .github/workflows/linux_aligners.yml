@@ -1,0 +1,94 @@
+name: Linux Aligners
+
+# Builds WGS Extract's Linux x86-64 wgse-bwa conda package (packaging/wgse-bwa:
+# BWA 0.7.19 from native/, with its experimental CUDA backend) on every change
+# to it, runs native/'s tests, and publishes it to a release when asked:
+# Actions > Linux Aligners > Run workflow, with a new tag such as linux-aligners-1.
+# Then pin pixi.toml to the new asset's URL and SHA-256. The runner has no GPU:
+# the package's tests align on the CPU and check that CUDA reports itself
+# unavailable rather than failing.
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - native/**
+      - packaging/wgse-bwa/**
+      - .github/workflows/linux_aligners.yml
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: New release tag to publish the packages under (empty builds only).
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The CPU build's tests, which the package (built without them) skips: the
+      # batched mate rescue and seed extension against upstream's, and the smoke
+      # alignment; GPU tests skip.
+      - name: Build and test (development build)
+        run: |
+          cmake -S native -B out/build-test -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_BASE_DIR="$PWD/out/deps"
+          cmake --build out/build-test -j "$(nproc)"
+          ctest --test-dir out/build-test --output-on-failure
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Pixi
+        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+        with:
+          run-install: false
+
+      - name: Build and test the package
+        run: |
+          pixi exec --spec rattler-build==0.77.0 rattler-build build --recipe-dir packaging/wgse-bwa \
+            -m packaging/wgse-bwa/variants.yaml --output-dir out/conda --target-platform linux-64
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wgse-bwa-linux-64
+          path: out/conda/linux-64/*.conda
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: wgse-bwa-*
+          path: packages
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          case "$TAG" in linux-aligners-*) ;; *) echo "Tag must start with linux-aligners-" >&2; exit 1 ;; esac
+          mkdir -p assets
+          cp packages/*/*.conda assets/
+          {
+            echo "WGS Extract's Linux x86-64 aligner builds as conda packages that Pixi installs."
+            echo "Built from native/ and packaging/wgse-bwa at ${GITHUB_SHA} by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
+            echo
+            echo "| Package | SHA-256 |"
+            echo "| --- | --- |"
+            for f in assets/*.conda; do echo "| $(basename "$f") | \`$(sha256sum "$f" | cut -d' ' -f1)\` |"; done
+          } > notes.md
+          gh release create "$TAG" assets/*.conda \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Linux aligners $TAG" \
+            --notes-file notes.md --prerelease --latest=false

@@ -332,27 +332,34 @@ def find_bwa_mem3(setting: str | None, *, instead: str) -> NativeAligner | None:
     path = get_tool_path("bwa-mem3")
     if path is None:
         return None
+    # Failed probes aren't cached, and realign asks several times: once is enough.
+    if any(
+        w.code == "native_aligner_unusable" and w.details.get("path") == path
+        for w in current_result().warnings
+    ):
+        return None
     version = get_tool_version("bwa-mem3")
     parsed = _version_tuple(version)
     if parsed is None or parsed < BIOCONDA_BWA_MEM3_MINIMUM:
-        if not any(
-            w.code == "native_aligner_unusable" and w.details.get("path") == path
-            for w in current_result().warnings
-        ):
-            minimum = ".".join(map(str, BIOCONDA_BWA_MEM3_MINIMUM))
-            problem = (
-                f"its version {version!r} isn't {minimum} or later"
-                if parsed
-                else f"`bwa-mem3 version` failed ({version or 'no output'})"
-            )
-            warn(
-                "native_aligner_unusable",
-                f"Not using bwa-mem3 ({path}): {problem}. Aligning with "
-                f"{instead} instead.",
-                binary="bwa-mem3",
-                path=path,
-                aligner=instead,
-            )
+        minimum = ".".join(map(str, BIOCONDA_BWA_MEM3_MINIMUM))
+        # get_tool_version says "Available" when it found no version.
+        detail = (
+            "no recognizable version"
+            if version in (None, "", "Available")
+            else str(version).removeprefix("Error: ")
+        )
+        problem = (
+            f"its version {version!r} isn't {minimum} or later"
+            if parsed
+            else f"`bwa-mem3 version` failed ({detail})"
+        )
+        warn(
+            "native_aligner_unusable",
+            f"Not using bwa-mem3 ({path}): {problem}. Aligning with {instead} instead.",
+            binary="bwa-mem3",
+            path=path,
+            aligner=instead,
+        )
         return None
     return NativeAligner(
         tool="bwa-mem3",

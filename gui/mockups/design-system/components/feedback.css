@@ -1,0 +1,283 @@
+/* Feedback: callouts, fix-it (preflight) cards, toasts, empty states,
+ * skeletons and spinners. */
+
+.callout {
+  --tone: var(--c-info);
+  --tone-soft: var(--c-info-soft);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--tone-soft);
+  color: var(--c-text);
+  font-size: var(--fs-sm);
+}
+
+.callout > .icon {
+  color: var(--tone);
+  margin-top: 1px;
+}
+
+.callout--success {
+  --tone: var(--c-success);
+  --tone-soft: var(--c-success-soft);
+}
+
+.callout--warn {
+  --tone: var(--c-warn);
+  --tone-soft: var(--c-warn-soft);
+}
+
+.callout--danger {
+  --tone: var(--c-danger);
+  --tone-soft: var(--c-danger-soft);
+}
+
+.callout--neutral {
+  --tone: var(--c-text-2);
+  --tone-soft: var(--c-surface-2);
+}
+
+/* Fix-it card: what is wrong, why it matters, and the one-click fix */
+.fixit {
+  --tone: var(--c-warn);
+  --tone-soft: var(--c-warn-soft);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--sp-1) var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--c-border);
+  border-left: 4px solid var(--tone);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+}
+
+.fixit__icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--tone-soft);
+  color: var(--tone);
+  grid-row: span 3;
+}
+
+.fixit__title {
+  font-weight: var(--fw-semibold);
+}
+
+.fixit__body {
+  font-size: var(--fs-sm);
+  color: var(--c-text-2);
+}
+
+.fixit__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+.fixit--danger {
+  --tone: var(--c-danger);
+  --tone-soft: var(--c-danger-soft);
+}
+
+.fixit--info {
+  --tone: var(--c-info);
+  --tone-soft: var(--c-info-soft);
+}
+
+.fixit--ok {
+  --tone: var(--c-success);
+  --tone-soft: var(--c-success-soft);
+}
+
+/* Preflight checklist: one row per check */
+.checks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-sm);
+}
+
+.checks li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+
+.checks .icon {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+}
+
+.checks [data-state="ok"] > .icon {
+  color: var(--c-success);
+}
+
+.checks [data-state="warn"] > .icon {
+  color: var(--c-warn);
+}
+
+.checks [data-state="fail"] > .icon {
+  color: var(--c-danger);
+}
+
+.checks [data-state="pending"] > .icon {
+  color: var(--c-text-3);
+}
+
+/* Toasts */
+.toasts {
+  position: absolute;
+  right: var(--sp-4);
+  bottom: var(--sp-4);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: min(380px, calc(100% - 2 * var(--sp-4)));
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+  box-shadow: var(--shadow-3);
+  font-size: var(--fs-sm);
+  pointer-events: auto;
+  animation: toast-in var(--dur-slow) var(--ease-out);
+}
+
+.toast > .icon {
+  color: var(--c-success);
+}
+
+.toast__body {
+  flex: 1;
+  min-width: 0;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@container app (max-width: 720px) {
+  .toasts {
+    left: var(--sp-3);
+    right: var(--sp-3);
+    bottom: 84px;
+    width: auto;
+  }
+}
+
+/* Empty state */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-10) var(--sp-4);
+  text-align: center;
+  color: var(--c-text-2);
+}
+
+.empty__art {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--c-surface-2);
+  color: var(--c-text-3);
+}
+
+.empty__art .icon {
+  width: 36px;
+  height: 36px;
+  stroke-width: 1.5;
+}
+
+.empty__title {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
+.empty p {
+  max-width: 46ch;
+}
+
+/* Skeleton and spinner for loading states */
+.skeleton {
+  display: block;
+  height: var(--h, 12px);
+  width: var(--w, 100%);
+  border-radius: var(--r-xs);
+  background: linear-gradient(90deg, var(--c-surface-3) 25%, var(--c-surface-2) 50%, var(--c-surface-3) 75%);
+  background-size: 300% 100%;
+  animation: skeleton 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: 0 0;
+  }
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--c-surface-3);
+  border-top-color: var(--c-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex: none;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,
+  .spinner {
+    animation: none;
+  }
+}
+
+/* App-wide banner (connection lost, read-only remote, setup needed) */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--c-warn-soft);
+  border-bottom: 1px solid var(--c-warn-border);
+  font-size: var(--fs-sm);
+}
+
+.banner > .icon {
+  color: var(--c-warn);
+}

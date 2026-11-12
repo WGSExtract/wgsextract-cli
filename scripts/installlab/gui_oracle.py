@@ -71,7 +71,7 @@ MACOS_TAURI = replace(
     window_file="app-stdout.txt",
     window_text="metric webAppRendered_ms=",
     install_marker=_WORKSPACE_MARKER,
-    emptied_preferences="/Library/Preferences/dev.guiforcli.web.embed.wgsextract.plist",
+    emptied_preferences="/Library/Preferences/dev.wgsextract-gui.plist",
 )
 _WIN_APP = "C:/Users/lab user/AppData/Local/WGSExtract"
 WINDOWS = AppPlatform(
@@ -90,7 +90,7 @@ WINDOWS = AppPlatform(
     window_file="app-stdout.txt",
     window_text="metric webAppRendered_ms=",
     installed=[
-        f"file\t{_WIN_APP}/gui-for-cli-webui-tauri.exe",
+        f"file\t{_WIN_APP}/wgsextract-gui.exe",
         "regkey\tHKEY_CURRENT_USER/Software/Microsoft/Windows/CurrentVersion/Uninstall/WGSExtract",
         "file\tC:/Users/lab user/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/WGSExtract.lnk",
     ],

@@ -8,6 +8,7 @@
     {
       "id": "comprehensive",
       "title": "sections.cli.comprehensive.title",
+      "iconName": "workflow",
       "textIcon": "🧭",
       "advancedOnly": true,
       "controls": [
@@ -206,6 +207,7 @@
     {
       "id": "batch",
       "title": "sections.cli.batch.title",
+      "iconName": "batch",
       "textIcon": "🗂️",
       "advancedOnly": true,
       "controls": [
@@ -254,6 +256,7 @@
       "id": "personal-report",
       "title": "sections.cli.personal-report.title",
       "subtitle": "sections.cli.personal-report.subtitle",
+      "iconName": "report",
       "textIcon": "📝",
       "advancedOnly": true,
       "controls": [
@@ -344,6 +347,7 @@
     {
       "id": "sample-overrides",
       "title": "sections.cli.sample-overrides.title",
+      "iconName": "sample",
       "textIcon": "🧑",
       "advancedOnly": true,
       "controls": [
@@ -489,6 +493,7 @@
     {
       "id": "signatures",
       "title": "sections.cli.signatures.title",
+      "iconName": "signature",
       "textIcon": "✍️",
       "advancedOnly": true,
       "controls": [
@@ -620,5 +625,6 @@
       ]
     }
   ],
+  "iconName": "workflow",
   "textIcon": "🧭"
 }

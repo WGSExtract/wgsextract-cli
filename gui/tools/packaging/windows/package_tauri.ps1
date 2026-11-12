@@ -86,7 +86,8 @@ function Test-ManagedWorkspace([string]$LiteralPath) {
     if (-not (Test-Path -LiteralPath $sentinel -PathType Leaf)) {
         return $false
     }
-    return [System.IO.File]::ReadAllText($sentinel) -eq "GUI for CLI bundle workspace`n"
+    # Workspaces made by releases up to 0.8.7 hold the older text.
+    return [System.IO.File]::ReadAllText($sentinel) -in @("WGS Extract GUI workspace`n", "GUI for CLI bundle workspace`n")
 }
 
 # Deletes an app data folder except any bundle workspace in it: those hold the user's libraries and
@@ -152,7 +153,7 @@ function Stop-WGSExtractProcesses {
     `$needles = @(
         `$AppName,
         `$AppIdentifier,
-        "gui-for-cli-webui-tauri",
+        "wgsextract-gui",
         "\wgs-extract\",
         "/wgs-extract/"
     ) | Where-Object { `$_ }
@@ -251,7 +252,9 @@ Remove-InstallerShortcuts
 
 `$dataDirectories = @()
 foreach (`$root in Get-ApplicationSupportRoots) {
+    # The webview's and logs' folder, and the app's data folder with its settings and the CLI runtime.
     `$dataDirectories += (Join-Path `$root `$AppIdentifier)
+    `$dataDirectories += (Join-Path `$root "WGSExtract-gui")
 }
 if (`$env:LOCALAPPDATA) {
     `$dataDirectories += (Join-Path `$env:LOCALAPPDATA `$AppName)

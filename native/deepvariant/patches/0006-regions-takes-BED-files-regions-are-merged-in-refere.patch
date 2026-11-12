@@ -1,0 +1,135 @@
+From d3ab2ad697ea3386240d33a911727390fdd324a5 Mon Sep 17 00:00:00 2001
+From: WGS Extract AI <223556219+Copilot@users.noreply.github.com>
+Date: Wed, 11 Nov 2026 16:02:31 -0800
+Subject: [PATCH 6/6] --regions takes BED files; regions are merged in
+ reference order (wgsextract #647)
+
+A --regions item ending in .bed or .bed.gz is read as BED (rows on
+contigs the reference lacks are skipped; an unreadable file or bad row is
+fatal), so a caller can pass a selection of any size without hitting the
+command line's length limit. As upstream's RangeSet, the regions are then
+one set in reference order, with overlapping and abutting ones merged.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+---
+ deepvariant/native/regions.cc | 87 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 87 insertions(+)
+
+diff --git a/deepvariant/native/regions.cc b/deepvariant/native/regions.cc
+index 8c5d2d2..2c863bd 100644
+--- a/deepvariant/native/regions.cc
++++ b/deepvariant/native/regions.cc
+@@ -7,7 +7,10 @@
+ #include <unordered_map>
+ #include <vector>
+ 
++#include <zlib.h>
++
+ #include "absl/log/log.h"
++#include "absl/strings/match.h"
+ #include "absl/strings/numbers.h"
+ #include "absl/strings/str_split.h"
+ #include "third_party/nucleus/protos/range.pb.h"
+@@ -66,6 +69,63 @@ bool ParseRegionString(
+   return true;
+ }
+ 
++bool IsBedPath(const std::string& spec) {
++  return absl::EndsWith(spec, ".bed") || absl::EndsWith(spec, ".bed.gz");
++}
++
++// A BED (or gzipped BED) file's rows as 0-based half-open ranges, clipped to
++// their contigs; rows on contigs the reference lacks are skipped. A file
++// that can't be read, or a malformed row, is fatal.
++void AppendBedRegions(
++    const std::string& path,
++    const std::unordered_map<std::string, int64_t>& contig_lengths,
++    std::vector<nucleus::genomics::v1::Range>* out) {
++  gzFile file = gzopen(path.c_str(), "rb");
++  if (!file) LOG(FATAL) << "Cannot open regions BED " << path;
++  std::string line;
++  char buf[1 << 16];
++  int64_t row = 0;
++  auto take = [&](const std::string& text) {
++    ++row;
++    if (text.empty() || text[0] == '#' || absl::StartsWith(text, "track") ||
++        absl::StartsWith(text, "browser")) {
++      return;
++    }
++    std::vector<std::string> fields =
++        absl::StrSplit(text, absl::ByAnyChar(" \t"), absl::SkipEmpty());
++    int64_t start = 0, end = 0;
++    if (fields.size() < 3 || !absl::SimpleAtoi(fields[1], &start) ||
++        !absl::SimpleAtoi(fields[2], &end) || start < 0 || end < start) {
++      LOG(FATAL) << "Invalid BED row " << row << " in " << path << ": " << text;
++    }
++    auto it = contig_lengths.find(fields[0]);
++    if (it == contig_lengths.end()) return;
++    end = std::min(end, it->second);
++    if (end <= start) return;
++    nucleus::genomics::v1::Range r;
++    r.set_reference_name(fields[0]);
++    r.set_start(start);
++    r.set_end(end);
++    out->push_back(std::move(r));
++  };
++  while (gzgets(file, buf, sizeof(buf))) {
++    line += buf;
++    if (!line.empty() && line.back() == '\n') {
++      line.pop_back();
++      if (!line.empty() && line.back() == '\r') line.pop_back();
++      take(line);
++      line.clear();
++    }
++  }
++  if (!line.empty()) take(line);
++  int err = 0;
++  const char* message = gzerror(file, &err);
++  if (err != Z_OK && err != Z_STREAM_END) {
++    LOG(FATAL) << "Cannot read regions BED " << path << ": " << message;
++  }
++  gzclose(file);
++}
++
+ std::vector<nucleus::genomics::v1::Range> BuildCallingRegions(
+     const std::vector<nucleus::genomics::v1::ContigInfo>& contigs,
+     const std::vector<std::string>& regions_to_include,
+@@ -89,11 +149,38 @@ std::vector<nucleus::genomics::v1::Range> BuildCallingRegions(
+     }
+   } else {
+     for (const auto& spec : regions_to_include) {
++      if (IsBedPath(spec)) {
++        AppendBedRegions(spec, lengths, &regions);
++        continue;
++      }
+       nucleus::genomics::v1::Range r;
+       if (ParseRegionString(spec, lengths, &r)) {
+         regions.push_back(std::move(r));
+       }
+     }
++    // As upstream's RangeSet: one set of regions, in reference order, with
++    // overlapping and abutting ones merged.
++    std::unordered_map<std::string, int> order;
++    for (int i = 0; i < static_cast<int>(contigs.size()); ++i) {
++      order[contigs[i].name()] = i;
++    }
++    std::stable_sort(regions.begin(), regions.end(),
++                     [&order](const auto& a, const auto& b) {
++                       const int oa = order.at(a.reference_name());
++                       const int ob = order.at(b.reference_name());
++                       return oa != ob ? oa < ob : a.start() < b.start();
++                     });
++    std::vector<nucleus::genomics::v1::Range> merged;
++    for (auto& r : regions) {
++      if (!merged.empty() &&
++          merged.back().reference_name() == r.reference_name() &&
++          r.start() <= merged.back().end()) {
++        merged.back().set_end(std::max(merged.back().end(), r.end()));
++      } else {
++        merged.push_back(std::move(r));
++      }
++    }
++    regions = std::move(merged);
+   }
+ 
+   if (regions_to_exclude.empty()) return regions;
