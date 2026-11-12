@@ -429,9 +429,9 @@ def bwa_mem3_crash_cause(detail: str) -> str:
     except (AttributeError, ValueError, OSError):
         return ""
     name, _, version = library.partition(" ")
-    if name != "glibc":
-        return ""
     parsed = tuple(int(part) for part in re.findall(r"\d+", version)[:2])
+    if name != "glibc" or len(parsed) < 2:
+        return ""
     if parsed < (2, 44):
         return f"; this computer has glibc {version}"
     return (
