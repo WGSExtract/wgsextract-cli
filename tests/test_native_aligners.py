@@ -1245,6 +1245,34 @@ def test_linux_x86_64_wgse_bwa_mem3_stands_in_before_biocondas_on_its_gpu(
 
 
 @pytest.mark.usefixtures("linux_x86_64")
+@pytest.mark.parametrize("options", [("--aligner", "bwa"), ()])
+def test_linux_wgse_bwa_mem3_goes_ahead_of_wgse_bwa_on_cuda(
+    tmp_path, mem3_bin, fake_pixi, options
+):
+    # #742 review: with both packages installed, bwa's records come from
+    # wgse-bwa-mem3 (#736's order), on its own GPU.
+    reads = _mem3_reads(tmp_path)
+    # Without bwa-mem2's .0123 file auto keeps bwa's records.
+    Path(reads.ref + ".0123").unlink(missing_ok=True)
+    _install_build(mem3_bin, "bwa", _cuda_capabilities("bwa"))
+    _install_bwa_mem3(mem3_bin, capabilities=_linux_wgse_bwa_mem3_capabilities())
+    _env_bwa_mem3(fake_pixi, mem3_bin)
+
+    bam, result = _align(reads, tmp_path / "auto", *options)
+    upstream_bam, _ = _align(
+        reads, tmp_path / "off", "--aligner", "bwa", "--native-aligners", "off"
+    )
+
+    # contract: --compat=bwa-mem is what makes bwa-mem3 write bwa's records.
+    assert _mapper(bam).startswith("wgse-bwa-mem3 --backend auto mem --compat=bwa-mem ")
+    assert _samtools("view", bam) == _samtools("view", upstream_bam)
+    assert result.metrics["aligner"] == "bwa"
+    assert result.metrics["native_aligner"] == "wgse-bwa-mem3"
+    assert result.metrics["native_aligner_backend"] == "cuda"
+    assert not result.warnings
+
+
+@pytest.mark.usefixtures("linux_x86_64")
 @pytest.mark.parametrize(
     ("bioconda", "mapper", "aligner"),
     [

@@ -52,7 +52,7 @@ def _native_aligners_param() -> Any:
         "Silicon. Used when they're on PATH (auto; same alignments, "
         "faster, on the Metal or NVIDIA GPU when it fits) or never (off). "
         "On Linux without wgse-bwa-mem3, auto uses Bioconda's bwa-mem3 (`pixi "
-        "install -e bwa-mem3`) in its place, after wgse-bwa's GPU. Default: config native_aligners, else "
+        "install -e bwa-mem3`) in its place, ahead of wgse-bwa. Default: config native_aligners, else "
         "auto. Install the builds as native/README.md describes.",
         doc="auto (the default, or config native_aligners) uses WGS Extract's "
         "aligner builds (Apple Silicon; wgse-bwa on Linux, and wgse-bwa-mem3 on "
