@@ -1186,6 +1186,70 @@ def test_linux_bwa_mem3_that_fails_its_check_warns_and_bwa_aligns(
     assert warning.details["aligner"] == "bwa"
 
 
+@pytest.fixture
+def glibc_2_44(monkeypatch):
+    """The C library of the host where Bioconda's bwa-mem3 crashed (#727)."""
+    monkeypatch.setattr(
+        native_aligners.os,
+        "confstr",
+        lambda name: "glibc 2.44" if name == "CS_GNU_LIBC_VERSION" else None,
+        raising=False,  # Windows' os has no confstr.
+    )
+
+
+@pytest.mark.usefixtures("linux_x86_64", "glibc_2_44")
+def test_727_crashing_bwa_mem3_stand_in_falls_back_and_names_the_cause(
+    tmp_path, mem3_bin, fake_pixi
+):
+    # #727: Bioconda's bwa-mem3 0.16.0 segfaults at startup on glibc 2.44;
+    # standing in for bwa it must not take the alignment down with it.
+    reads = _mem3_reads(tmp_path)
+    _env_bwa_mem3(fake_pixi, mem3_bin, _CRASHING_BWA_MEM3)
+
+    bam, result = _align(reads, tmp_path / "out")
+
+    # Auto's next choice for these reads, bwa-mem2, aligns.
+    assert _mapper(bam, "bwa-mem2").startswith("bwa-mem2 mem ")
+    assert result.metrics["aligner"] == "bwa-mem2"
+    (warning,) = result.warnings
+    assert warning.code == "native_aligner_unusable"
+    assert warning.details["aligner"] == "bwa-mem2"
+    assert "SIGSEGV" in warning.message
+    assert "glibc 2.44" in warning.message and "#727" in warning.message
+
+
+@pytest.mark.usefixtures("linux_x86_64", "glibc_2_44")
+@pytest.mark.parametrize(
+    ("command", "options"),
+    [
+        ("align", ("--aligner", "bwa-mem3")),
+        ("align", ("--fast",)),
+        ("realign", ("--aligner", "bwa-mem3")),
+    ],
+)
+def test_727_explicit_bwa_mem3_that_crashes_stops_with_the_cause(
+    tmp_path, mem3_bin, fake_pixi, command, options
+):
+    # #727: --aligner bwa-mem3 ran the crashing build and failed with a bare
+    # "exit -11" and errors from samblaster and samtools sort downstream.
+    _env_bwa_mem3(fake_pixi, mem3_bin, _CRASHING_BWA_MEM3)
+    out = tmp_path / "out"
+    if command == "align":
+        reads = _mem3_reads(tmp_path)
+        run = lambda: _align(reads, out, *options)  # noqa: E731
+    else:
+        source, ref = _mem3_realign_source(tmp_path)
+        run = lambda: _run_realign(source, ref, out, aligner="bwa-mem3")  # noqa: E731
+
+    with pytest.raises(WGSExtractError) as raised:
+        run()
+
+    message = str(raised.value)
+    assert f"{' '.join(options)} needs bwa-mem3" in message
+    assert "crashed (SIGSEGV)" in message and "glibc 2.44" in message
+    assert not list(out.glob("*_aligned.*"))
+
+
 @pytest.mark.usefixtures("apple_silicon")
 @pytest.mark.parametrize("command", ["align", "realign"])
 def test_auto_aligns_with_wgse_bwa_mem2_0_5_0_without_upstream_or_0123(
