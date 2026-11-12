@@ -39,6 +39,7 @@ OPTIONAL_TOOLS = [
     "modkit",
     "verifybamid2",
     "somalier",
+    "plink2",
     "whatshap",
     "longphase",
     "curl",
@@ -58,6 +59,9 @@ OPTIONAL_TOOLS = [
 
 # Optional tools users install themselves (no Pixi environment): how to.
 INSTALL_HINTS = {
+    "plink2": "Download PLINK 2 for your system from "
+    "https://www.cog-genomics.org/plink/2.0/ and put plink2 on PATH. "
+    "It is optional, used only by score pgs --plink2-check.",
     "dorado": "Dorado is ONT's basecaller and isn't installed with WGS Extract: "
     "download the release for your system from "
     "https://github.com/nanoporetech/dorado#installation, unpack it and put its "

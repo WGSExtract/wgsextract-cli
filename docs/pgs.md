@@ -65,8 +65,9 @@ or citation is reported explicitly, never guessed.
 - Choose the **same build** as the VCF. Only GRCh37 and GRCh38 are supported.
   Known chromosome-1 lengths inconsistent with `--build` are refused.
 - Select `--sample NAME` for a multi-sample VCF.
-- An explicit diploid genotype can match. Missing records, `./.`, filtered
-  calls, unresolved alleles and ambiguous duplicate records are unmatched.
+- An explicit diploid genotype can match. Missing records, `./.`, site- or
+  sample-filtered (`FILTER` or `FORMAT/FT`) calls, unresolved alleles and
+  ambiguous duplicate records are unmatched.
   **Missing never means homozygous reference by default**, even in WGS.
 - A called, passing gVCF reference block can supply a reference genotype
   within its bounds when an indexed `--ref` FASTA is supplied.

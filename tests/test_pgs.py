@@ -159,6 +159,54 @@ def test_617_palindromic_strand_is_not_inferred_from_matching_alleles(
     assert "pgs_ambiguous_strand_assumed" in {w.code for w in kept.warnings}
 
 
+@pytest.mark.parametrize("with_bed", [False, True])
+def test_617_sample_filters_exclude_genotypes_and_reference_blocks(
+    tmp_path: Path, with_bed: bool
+) -> None:
+    source = (FIXTURES / "sample.vcf").read_text().splitlines()
+    lines = []
+    for line in source:
+        if line.startswith("#CHROM"):
+            lines.append(
+                '##FORMAT=<ID=FT,Number=1,Type=String,Description="Sample filter">'
+            )
+        elif not line.startswith("#"):
+            fields = line.split("\t")
+            fields[8] = "GT:FT"
+            fields[9] += ":LowGQ" if fields[1] in ("10", "60") else ":PASS"
+            line = "\t".join(fields)
+        lines.append(line)
+    vcf = tmp_path / "filtered.vcf"
+    vcf.write_text("\n".join(lines) + "\n")
+    bed = tmp_path / "confident.bed"
+    bed.write_text("chr1\t0\t80\n")
+    result = api.score.pgs(
+        replace(
+            _params(tmp_path),
+            input=vcf,
+            ref=_reference(tmp_path),
+            confident_bed=bed if with_bed else None,
+        )
+    )
+    assert result.metrics["score_sum"] == pytest.approx(2.0 if with_bed else 0.5)
+    assert result.details["match_counts"]["filtered"] == 1
+    assert result.details["match_counts"]["overlapping_nonreference"] == 1
+
+
+def test_617_confident_bed_uses_configured_reference(tmp_path: Path) -> None:
+    reference = _reference(tmp_path)
+    bed = tmp_path / "confident.bed"
+    bed.write_text("chr1\t0\t80\n")
+    config = tmp_path / "config.toml"
+    config.write_text(f"reference_fasta = {json.dumps(str(reference))}\n")
+    api.use_config(config)
+    result = api.score.pgs(_params(tmp_path, confident_bed=bed))
+    assert result.metrics["score_sum"] == pytest.approx(2.7)
+    assert any(
+        f.role == "reference" and Path(f.path) == reference for f in result.inputs
+    )
+
+
 @pytest.mark.skipif(not shutil.which("plink2"), reason="optional plink2 not installed")
 def test_617_optional_plink_checks_matched_calls(tmp_path: Path) -> None:
     result = api.score.pgs(_params(tmp_path, plink2_check=True))

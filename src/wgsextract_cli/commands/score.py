@@ -4,6 +4,7 @@ import argparse
 import csv
 import json
 import tempfile
+from contextlib import ExitStack
 from pathlib import Path
 
 from wgsextract_cli.api._cli import add_arguments, cli_handler
@@ -34,6 +35,8 @@ def register(
 
 
 def run_pgs(params: ScorePgsParams) -> None:
+    if params.confident_bed and not params.ref:
+        raise UsageError("--confident-bed requires an indexed --ref FASTA.")
     verify_dependencies(["bcftools", *(["plink2"] if params.plink2_check else [])])
     outdir = (params.outdir or params.input.parent).resolve()
     outdir.mkdir(parents=True, exist_ok=True)
@@ -66,7 +69,6 @@ def run_pgs(params: ScorePgsParams) -> None:
     if not params.scoring_file and scoring.metadata.get("pgs_id") != selected:
         raise UsageError("Downloaded scoring file does not match the requested PGS ID.")
     confident = pgs.ConfidentBed(params.confident_bed) if params.confident_bed else None
-    reference = pgs.Reference(params.ref, params.build) if params.ref else None
     result = current_result()
     result.add_input(params.input, "vcf")
     result.add_input(path, "pgs_scoring_file")
@@ -75,31 +77,33 @@ def run_pgs(params: ScorePgsParams) -> None:
     if params.ref:
         result.add_input(params.ref, "reference")
     report("pgs", "Indexing observed calls on disk")
-    with tempfile.TemporaryDirectory(prefix=".pgs-", dir=outdir) as work:
+    with (
+        tempfile.TemporaryDirectory(prefix=".pgs-", dir=outdir) as work,
+        ExitStack() as handles,
+    ):
+        reference = pgs.Reference(params.ref, params.build) if params.ref else None
+        if reference is not None:
+            handles.callback(reference.close)
         matched_file = Path(work) / "matched.tsv" if params.plink2_check else None
         genotypes = pgs.Genotypes(
             params.input, Path(work) / "calls.sqlite", params.sample, params.build
         )
-        try:
-            report("pgs", "Matching alleles and summing effect dosages")
-            data = pgs.score(
-                scoring,
-                genotypes,
-                confident=confident,
-                reference=reference,
-                min_match=params.min_match if params.min_match is not None else 0.75,
-                matched_file=matched_file,
-                keep_ambiguous=bool(params.keep_ambiguous),
+        handles.callback(genotypes.close)
+        report("pgs", "Matching alleles and summing effect dosages")
+        data = pgs.score(
+            scoring,
+            genotypes,
+            confident=confident,
+            reference=reference,
+            min_match=params.min_match if params.min_match is not None else 0.75,
+            matched_file=matched_file,
+            keep_ambiguous=bool(params.keep_ambiguous),
+        )
+        if matched_file is not None and data["score_sum"] is not None:
+            report("pgs", "Cross-checking matched calls with PLINK 2")
+            data["plink2_crosscheck"] = pgs_plink.crosscheck(
+                matched_file, Path(work), data["score_sum"]
             )
-            if matched_file is not None and data["score_sum"] is not None:
-                report("pgs", "Cross-checking matched calls with PLINK 2")
-                data["plink2_crosscheck"] = pgs_plink.crosscheck(
-                    matched_file, Path(work), data["score_sum"]
-                )
-        finally:
-            genotypes.close()
-            if reference is not None:
-                reference.close()
     if data["match_rate"] < data["minimum_match_rate"]:
         warn(
             "pgs_low_match",
@@ -140,11 +144,15 @@ def run_pgs(params: ScorePgsParams) -> None:
     stem = f"{params.input.name.removesuffix('.gz').removesuffix('.vcf')}_{data['pgs_id']}_pgs"
     output = outdir / f"{stem}.json"
     with atomic_output(output, retire_indexes=False) as staged:
-        Path(staged).write_text(json.dumps(data, indent=2, allow_nan=False) + "\n")
+        Path(staged).write_text(
+            json.dumps(data, indent=2, allow_nan=False) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
     result.add_output(output, "pgs")
     table = outdir / f"{stem}.tsv"
     with atomic_output(table, retire_indexes=False) as staged:
-        with open(staged, "w", newline="") as stream:
+        with open(staged, "w", newline="", encoding="utf-8") as stream:
             columns = [
                 "pgs_id",
                 "trait",
@@ -159,7 +167,11 @@ def run_pgs(params: ScorePgsParams) -> None:
                 "disclaimer",
             ]
             writer = csv.DictWriter(
-                stream, fieldnames=columns, delimiter="\t", extrasaction="ignore"
+                stream,
+                fieldnames=columns,
+                delimiter="\t",
+                extrasaction="ignore",
+                lineterminator="\n",
             )
             writer.writeheader()
             writer.writerow(data)

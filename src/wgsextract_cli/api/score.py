@@ -92,8 +92,6 @@ class ScorePgsParams(Params):
             not math.isfinite(self.min_match) or not 0 <= self.min_match <= 1
         ):
             raise UsageError("--min-match must be a fraction between 0 and 1.")
-        if self.confident_bed and not self.ref:
-            raise UsageError("--confident-bed requires an indexed --ref FASTA.")
 
 
 def pgs(

@@ -28,7 +28,10 @@ def crosscheck(matched: Path, work: Path, expected: float) -> dict[str, float]:
         "-T",
         str(work / "sort"),
     ]
-    with matched.open() as source, weights.open("w") as table:
+    with (
+        matched.open(encoding="utf-8") as source,
+        weights.open("w", encoding="utf-8", newline="\n") as table,
+    ):
         with popen(sorter, stdin=subprocess.PIPE, text=True) as process:
             assert process.stdin is not None
             stream = process.stdin
@@ -53,7 +56,7 @@ def crosscheck(matched: Path, work: Path, expected: float) -> dict[str, float]:
         if process.returncode:
             raise WGSExtractError("bcftools sort failed during the PLINK cross-check.")
     prefix = work / "plink"
-    with (work / "plink.stdout.log").open("w") as log:
+    with (work / "plink.stdout.log").open("w", encoding="utf-8", newline="\n") as log:
         with popen(
             [
                 "plink2",

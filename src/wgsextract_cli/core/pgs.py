@@ -53,7 +53,11 @@ CURATED = {
 
 
 def text_file(path: Path) -> TextIO:
-    return gzip.open(path, "rt") if path.suffix == ".gz" else path.open()
+    return (
+        gzip.open(path, "rt", encoding="utf-8-sig")
+        if path.suffix == ".gz"
+        else path.open(encoding="utf-8-sig")
+    )
 
 
 def catalog_file(pgs_id: str, build: str, folder: Path) -> Path:
@@ -64,7 +68,7 @@ def catalog_file(pgs_id: str, build: str, folder: Path) -> Path:
     metadata = folder / f"{pgs_id}.json"
     _download(f"https://www.pgscatalog.org/rest/score/{pgs_id}/", metadata)
     try:
-        info = json.loads(metadata.read_text())
+        info = json.loads(metadata.read_text(encoding="utf-8"))
         url = info["ftp_harmonized_scoring_files"][build]["positions"]
         expected = f"https://ftp.ebi.ac.uk/pub/databases/spot/pgs/scores/{pgs_id}/"
         if not isinstance(url, str) or not url.startswith(expected):
@@ -199,7 +203,7 @@ class ScoringFile:
             for data in iter(lambda: stream.read(1024 * 1024), b""):
                 sha.update(data)
         info = (
-            json.loads(self.catalog_metadata.read_text())
+            json.loads(self.catalog_metadata.read_text(encoding="utf-8"))
             if self.catalog_metadata is not None
             else {}
         )
@@ -333,13 +337,23 @@ class Genotypes:
         self, vcf: Path, database: Path, sample: str | None, build: str
     ) -> None:
         self.db = sqlite3.connect(database)
+        try:
+            self._load(vcf, sample, build)
+        except BaseException:
+            self.db.close()
+            raise
+
+    def _load(self, vcf: Path, sample: str | None, build: str) -> None:
         self.db.execute("PRAGMA journal_mode=OFF")
         self.db.execute("PRAGMA synchronous=OFF")
         self.db.execute(
             "CREATE TABLE calls (chrom TEXT, pos INTEGER, end INTEGER, ref TEXT, alt TEXT, gt TEXT, filter TEXT)"
         )
         names = subprocess.run(
-            ["bcftools", "query", "-l", str(vcf)], capture_output=True, text=True
+            ["bcftools", "query", "-l", str(vcf)],
+            capture_output=True,
+            text=True,
+            errors="replace",
         )
         if names.returncode:
             raise WGSExtractError(f"Cannot read VCF: {names.stderr[-500:]}")
@@ -356,6 +370,7 @@ class Genotypes:
             capture_output=True,
             text=True,
             check=True,
+            errors="replace",
         ).stdout
         expected = "248956422" if build == "GRCh38" else "249250621"
         chr1 = re.search(r"##contig=<ID=(?:chr)?1,length=(\d+)", header)
@@ -369,14 +384,18 @@ class Genotypes:
             "-s",
             self.sample,
             "-f",
-            "%CHROM\t%POS\t%INFO/END\t%REF\t%ALT\t[%GT]\t%FILTER\n",
+            "%CHROM\t%POS\t%INFO/END\t%REF\t%ALT\t[%GT\t%FT]\t%FILTER\n",
             str(vcf),
         ]
         with popen(command, stdout=subprocess.PIPE, text=True) as process:
             assert process.stdout is not None
             batch = []
             for line in process.stdout:
-                chrom, pos, end, ref, alt, gt, filt = line.rstrip("\n").split("\t")
+                chrom, pos, end, ref, alt, gt, sample_filter, filt = line.rstrip(
+                    "\n"
+                ).split("\t")
+                if sample_filter not in (".", "PASS"):
+                    filt = sample_filter
                 end_pos = max(
                     int(end) if end != "." else int(pos), int(pos) + len(ref) - 1
                 )
@@ -494,7 +513,9 @@ def score(
     sums: list[float] = []
     weights: list[float] = []
     dosages: list[int] = []
-    target = matched_file.open("w") if matched_file else None
+    target = (
+        matched_file.open("w", encoding="utf-8", newline="\n") if matched_file else None
+    )
     try:
         if target:
             target.write("id\tchrom\tpos\teffect\tother\tweight\tdosage\n")
