@@ -4,8 +4,9 @@ project(wgse_native_aligners VERSION 0.1.0 LANGUAGES C CXX)
 
 # Apple Silicon builds every aligner with its Metal backend. Linux builds
 # wgse-bwa (-DWGSE_BWA=OFF leaves it out), with its CPU backend and, with
-# -DWGSE_CUDA=ON, its CUDA one, and on x86-64 wgse-bwa-mem3 (-DWGSE_BWA_MEM3=OFF
-# leaves it out). Each Linux package builds one of them.
+# -DWGSE_CUDA=ON, its CUDA one, and on x86-64 wgse-bwa-mem3 and wgse-minimap2
+# (-DWGSE_BWA_MEM3=OFF and -DWGSE_MINIMAP2=OFF leave them out). Each Linux package
+# builds one of them.
 if(APPLE)
     if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
         message(FATAL_ERROR "The wgse native aligners require Apple Silicon on macOS")
@@ -20,6 +21,7 @@ if(NOT APPLE)
 endif()
 if(NOT APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
     option(WGSE_BWA_MEM3 "Build wgse-bwa-mem3 (Linux x86-64)" ON)
+    option(WGSE_MINIMAP2 "Build wgse-minimap2 (Linux x86-64)" ON)
 endif()
 if(WGSE_CUDA)
     if(APPLE)
@@ -53,5 +55,8 @@ else()
     endif()
     if(WGSE_BWA_MEM3)
         add_subdirectory(bwa-mem3)
+    endif()
+    if(WGSE_MINIMAP2)
+        add_subdirectory(minimap2)
     endif()
 endif()

@@ -842,6 +842,19 @@ int wgse_ksw_metal_start(char *reason, int reason_size) {
 
 int wgse_ksw_metal_enabled(void) { return engine && engine->enabled() && current_fiber; }
 
+int wgse_ksw_gpu_hardware_supported(void) {
+    wgse::metal::Runtime runtime;
+    return runtime.device() != nil;
+}
+
+void wgse_ksw_inject_interruptions(int count) {
+    wgse::metal::Runtime::inject_interruptions((size_t)count);
+}
+
+void wgse_ksw_inject_hang(const char *label, double timeout) {
+    wgse::metal::Runtime::inject_hang(label, timeout);
+}
+
 int wgse_ksw_workers(int n_threads) {
     return engine ? engine->workers(n_threads) : n_threads;
 }

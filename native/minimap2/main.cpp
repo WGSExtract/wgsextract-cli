@@ -1,5 +1,4 @@
 #include "metal_ksw.h"
-#include "runtime.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -20,6 +19,7 @@ constexpr const char *version = WGSE_VERSION;
 constexpr const char *engine_version = "2.31-r1302";
 
 void help(FILE *stream) {
+#ifdef __APPLE__
     fprintf(stream, "%s %s (minimap2 %s rebuilt for Apple Silicon)\n"
         "Usage: %s [--metal] [minimap2 options] <target.fa>|<target.mmi> [query.fa[.gz]|query.fq[.gz]] [...]\n"
         "       %s capabilities --json   report Metal availability\n"
@@ -31,11 +31,15 @@ void help(FILE *stream) {
         "and exits 1 after finishing on the CPU if a GPU batch fails.\n"
         "Not qualified for clinical use.\n\n",
         name, version, engine_version, name, name, name);
-}
-
-bool metal_hardware_supported() {
-    wgse::metal::Runtime runtime;
-    return runtime.device() != nil;
+#else
+    fprintf(stream, "%s %s (minimap2 %s rebuilt for Linux)\n"
+        "Usage: %s [minimap2 options] <target.fa>|<target.mmi> [query.fa[.gz]|query.fq[.gz]] [...]\n"
+        "       %s capabilities --json   report what this build can run on\n"
+        "       %s --version             print executable and engine version\n"
+        "Alignment is minimap2's, unchanged; SAM/PAF is written to stdout, diagnostics to stderr.\n"
+        "Not qualified for clinical use.\n\n",
+        name, version, engine_version, name, name, name);
+#endif
 }
 
 #ifdef WGSE_METAL_BENCHMARK_TOOLS
@@ -72,12 +76,12 @@ int parse_metal_options(int &argc, char **&argv, bool &metal) {
             if (!count_option(argc, argv, index, max_cost)) return 2;
         } else if (strcmp(argv[index], "--gpu-inject-interruptions") == 0) {
             if (!count_option(argc, argv, index, interruptions)) return 2;
-            wgse::metal::Runtime::inject_interruptions((size_t)interruptions);
+            wgse_ksw_inject_interruptions(interruptions);
         } else if (strcmp(argv[index], "--gpu-inject-hang") == 0) {
             // Withholds the first GPU command whose label starts with the value,
             // as a hung GPU would; the watchdog gives up on the GPU after 2 s.
             if (index + 1 >= argc) return 2;
-            wgse::metal::Runtime::inject_hang(argv[index + 1], 2);
+            wgse_ksw_inject_hang(argv[index + 1], 2);
             index += 2;
         } else if (strcmp(argv[index], "--gpu-inject-failure") == 0) {
             fail = 1;
@@ -109,12 +113,19 @@ int run(int argc, char **argv) {
         }
         char reason[256] = "";
         const bool available = wgse_ksw_metal_start(reason, sizeof reason);
+        const bool supported = wgse_ksw_gpu_hardware_supported();
+#ifdef __APPLE__
+        const bool metal = available, metal_supported = supported, cuda = false, cuda_supported = false;
+#else
+        const bool metal = false, metal_supported = false, cuda = available, cuda_supported = supported;
+#endif
         printf("{\"schema_version\":1,\"version\":\"%s\","
             "\"engine\":\"minimap2\",\"engine_version\":\"%s\","
             "\"qualified\":false,\"metal_available\":%s,"
-            "\"metal_hardware_supported\":%s,\"cpu_available\":true}\n",
-            version, engine_version, available ? "true" : "false",
-            metal_hardware_supported() ? "true" : "false");
+            "\"metal_hardware_supported\":%s,\"cuda_available\":%s,"
+            "\"cuda_hardware_supported\":%s,\"cpu_available\":true}\n",
+            version, engine_version, metal ? "true" : "false", metal_supported ? "true" : "false",
+            cuda ? "true" : "false", cuda_supported ? "true" : "false");
         return 0;
     }
     // Upstream then prints its options: to stdout for -h (exit 0), else to stderr (exit 1).
@@ -157,7 +168,11 @@ int run(int argc, char **argv) {
 } // namespace
 
 int main(int argc, char **argv) {
+#ifdef __OBJC__
     @autoreleasepool {
         return run(argc, argv);
     }
+#else
+    return run(argc, argv);
+#endif
 }
