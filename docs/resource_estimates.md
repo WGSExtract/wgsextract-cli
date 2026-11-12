@@ -330,8 +330,17 @@ filesystem for reference-index storage.
   `duplicate_marking="gatk-flow"`. Their temporary budget includes retained
   sorted/marked BAMs: up to two BAMs (200 bytes/read) for CRAM output, rather
   than assuming only sort spill and final CRAM coexist.
-- VCF output uses 10% of input bytes, with another output-sized allowance for
-  per-contig files/concatenation (twice for GATK). Regional GATK CRAM conversion
+- bcftools compressed VCF output allows **1.6 bytes per inferred read for SNPs**
+  and **0.4 for indels**, at least 64 KiB. Without a supplied read count, BAM
+  and CRAM bytes are normalized using the existing 80/12 bytes-per-read
+  fallback, so input compression does not directly set the VCF budget.
+  Temporary space allows twice that output plus 16 KiB per contig part's
+  header (one part without contig parallelism). On #722's nominal-30x HG002
+  slice, the 670.5 MB BAM produced 2.95 MB SNP and 0.80 MB indel VCF.gz files;
+  the old tenth-of-input output estimate was 23×/84× high. The new budgets
+  retain several-fold headroom; depth, variant burden and compression vary.
+  GATK retains 10% of input bytes for output and twice that for temporary
+  storage. Regional GATK CRAM conversion
   also budgets a whole-input BAM upper bound on the output volume.
   GATK scattering additionally charges retained shard VCFs and their indexes to
   the **output volume**, where they coexist with the gathered output; JVM

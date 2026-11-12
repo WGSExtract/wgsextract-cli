@@ -36,6 +36,10 @@ SORT_BYTES_PER_READ = 120
 CRAM_BYTES_PER_READ = 28
 BAM_BYTES_PER_READ = 100
 FASTQ_BYTES_PER_READ = 75
+# HG002 30x, #722: 2.95 MB SNP and 0.80 MB indel VCF.gz from a 670.5 MB BAM.
+# Leave several times the measured size, normalizing BAM/CRAM via disk_reads.
+_BCFTOOLS_VCF_BYTES_PER_READ = {"snp": 1.6, "indel": 0.4}
+_BCFTOOLS_PART_HEADER_BYTES = 16 * 1024
 # Long reads realigned with minimap2 -Y, which keeps every supplementary
 # record's full SEQ, QUAL and modification tags, per byte of input CRAM (#474).
 # HG002 ONT (PAO83395.pass.cram) onto hs38: the whole genome's sort spills
@@ -608,10 +612,31 @@ def estimate_resources(
             notes.append(
                 "bcftools RAM allows 1 GiB per active contig worker plus overhead."
             )
-        output = None if size is None else math.ceil(size / 10)
-        temporary = (
-            None if output is None else output * (2 if operation == "gatk" else 1)
-        )
+        if operation in _BCFTOOLS_VCF_BYTES_PER_READ:
+            output = (
+                None
+                if disk_reads is None
+                else max(
+                    64 * 1024,
+                    math.ceil(disk_reads * _BCFTOOLS_VCF_BYTES_PER_READ[operation]),
+                )
+            )
+            parts = max(1, len(contigs)) if parallel and not region else 1
+            temporary = (
+                None
+                if output is None
+                else 2 * output + parts * _BCFTOOLS_PART_HEADER_BYTES
+            )
+            notes.append(
+                "bcftools compressed VCF disk uses the HG002 30x envelope "
+                "(BAM/CRAM read-count normalization); temporary space includes "
+                "parts and their headers. Depth, variant burden and compression vary."
+            )
+        else:
+            output = None if size is None else math.ceil(size / 10)
+            temporary = (
+                None if output is None else output * (2 if operation == "gatk" else 1)
+            )
     indexes = None if output is None else max(64 * 1024, math.ceil(output / 100))
     if operation == "gatk" and gatk_workers > 1:
         # Shards coexist with the gathered output.

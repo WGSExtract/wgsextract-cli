@@ -478,6 +478,65 @@ def test_variant_worker_memory_and_regional_gatk_conversion(tmp_path, source):
     assert any("whole input" in note for note in gatk.notes)
 
 
+@pytest.fixture
+def hg002_slice_metadata(tmp_path):
+    source = tmp_path / "hg002.bam"
+    # #722's measured BAM size; the read-only estimator needs only file metadata.
+    with source.open("wb") as stream:
+        stream.truncate(670_545_706)
+    _, reference = _whole_genome(tmp_path)
+    with Path(f"{reference}.fai").open("a") as stream:
+        for number in range(430):
+            stream.write(f"alt{number}\t1000\t0\t60\t61\n")
+    return source, reference
+
+
+@pytest.mark.parametrize("operation", ["snp", "indel"])
+def test_722_bcftools_preflight_does_not_falsely_report_small_slice_disk_low(
+    tmp_path, monkeypatch, hg002_slice_metadata, operation
+):
+    source, reference = hg002_slice_metadata
+    monkeypatch.setattr(
+        resources.shutil,
+        "disk_usage",
+        lambda _path: SimpleNamespace(free=64 * 1024**2),
+    )
+    estimate = resources.estimate_resources(
+        operation,
+        input_paths=[str(source)],
+        output_dir=str(tmp_path / "out"),
+        reference=str(reference),
+        threads="4",
+        parallel=True,
+        available_ram=14 * GIB,
+    )
+    disk = next(row for row in estimate.resources if row.resource == "disk")
+    # The measured SNP VCF plus parts used < 8 MiB; 64 MiB leaves ample headroom.
+    assert disk.status == "OK"
+
+
+@pytest.mark.parametrize("operation", ["snp", "indel"])
+def test_722_vcf_budget_with_known_read_count_is_independent_of_bam_cram_storage(
+    tmp_path, hg002_slice_metadata, operation
+):
+    source, reference = hg002_slice_metadata
+    cram = tmp_path / "hg002.cram"
+    with cram.open("wb") as stream:
+        stream.truncate(100_000_000)
+    budgets = []
+    for alignment in (source, cram):
+        estimate = resources.estimate_resources(
+            operation,
+            input_paths=[str(alignment)],
+            output_dir=str(tmp_path),
+            reference=str(reference),
+            reads=11_140_364,
+        )
+        disk = next(row for row in estimate.resources if row.resource == "disk")
+        budgets.append(disk.components["output"])
+    assert budgets[0] == budgets[1]
+
+
 class Reported(Exception):
     pass
 
