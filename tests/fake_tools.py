@@ -138,7 +138,8 @@ elif sub == "run":
     if exe is None:
         sys.exit(f"pixi: {{command[0]}}: command not found")
     environ = dict(os.environ, PATH=path, CONDA_PREFIX=prefix, PIXI_ENVIRONMENT_NAME=env)
-    sys.exit(subprocess.run([exe, *command[1:]], env=environ).returncode)
+    code = subprocess.run([exe, *command[1:]], env=environ).returncode
+    sys.exit(128 - code if code < 0 else code)  # a signal, as a shell reports it
 """
 
 # An environment's Python: this interpreter, reporting the environment as its prefix.
