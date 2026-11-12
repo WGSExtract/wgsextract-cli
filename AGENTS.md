@@ -61,8 +61,15 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
   - Each issue gets its own branch and worktree. Implementer sub-agents get complete context.
   - An independent review agent reviews the PR.
   - The PR uses `Fixes #N` and lands under the babysitting rules below.
-  - Heavy compute goes through the host's resource coordinator, when one exists.
+  - Heavy compute goes through the host's resource coordinator, short timing runs included; running outside it starves everyone else's queue. On a host without one, check the load first and keep to a share that leaves room for others.
+  - Agents work only in their own worktree. The main checkout stays on `main`; never check out a branch there, reviews included.
   - Validation evidence goes in `out/` and is summarised on the issue or PR.
+- **Long runs (whole genomes, or roughly an hour or more).** Lessons from #431 (`out/431/retro.md`):
+  - **Size first:** run 1–2% of the data, record wall time, peak memory, temp disk and output size, and post the scaled-up table on the issue before choosing a host.
+  - **Build what's missing first:** if the slice shows the job won't fit or can't resume, fix that as its own PR on small data before starting the full run.
+  - **One host, no extra copies:** prefer the host that can run the whole pipeline; stream inputs from URLs and let tools read the original rather than making full-size copies.
+  - **Smoke-test the exact script on the host that will run it,** including a forced failure (for example a missing input) that shows the failure alert arriving; keep the log in `out/`. Don't assume host tools such as `/usr/bin/time` exist on every machine.
+  - **Every unattended step announces failure:** an exit trap that calls `agent-coord send`, naming the issue, host, step, exit code and log path. The supervisor watches each long job until it ends and re-arms its watch after every step.
 - **PR ownership.** Work only on pull requests authored by the GitHub account you are signed in as (`gh api user --jq .login`). Don't push to, rebase, review-fix, babysit or merge another user's PR, even a collaborator's, unless an owner explicitly tells you to work on that PR.
 - **Closing.** Close an issue only when its acceptance criteria are met. If part of it is blocked, for example on an upstream release, move that part to a new issue and link it.
 - **Communication.** Prefix agent comments on issues and PRs with `(AI):`. Keep a dated handoff log in `out/` so that a crashed or replaced supervisor can resume.

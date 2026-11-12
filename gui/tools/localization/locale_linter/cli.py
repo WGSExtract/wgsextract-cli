@@ -15,7 +15,7 @@ from .rules import lint_locale, lint_source, update_source_hashes
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="lint_locales.py",
-        description="Lints localization TOML files for GUI-for-CLI bundles.",
+        description="Lints localization TOML files for WGS Extract GUI bundles.",
         epilog=(
             "PATH may be a bundle directory containing strings/, a strings folder, a "
             "strings.<code>.toml file, or omitted to auto-scan "

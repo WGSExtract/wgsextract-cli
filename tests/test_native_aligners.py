@@ -1111,7 +1111,7 @@ os.kill(os.getpid(), signal.SIGSEGV)
     ("source", "problem"),
     [
         # Bioconda's x86-64 build crashed at startup on glibc 2.44 (#672).
-        (_CRASHING_BWA_MEM3, "`bwa-mem3 version` failed"),
+        (_CRASHING_BWA_MEM3, "crashed (SIGSEGV)"),
         ("print('0.15.0')\n", "its version '0.15.0' isn't 0.16.0 or later"),
     ],
 )

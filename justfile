@@ -147,6 +147,18 @@ gui-build-tauri:
 gui-package:
     uv run --locked python tools/tasks.py package tauri
 
+# Serve the UI redesign mockups and save review notes (gui/mockups/README.md)
+[unix]
+[working-directory("gui")]
+mockups *args:
+    python3 mockups/serve.py {{args}}
+
+# Serve the UI redesign mockups and save review notes (gui/mockups/README.md)
+[windows]
+[working-directory("gui")]
+mockups *args:
+    python mockups/serve.py {{args}}
+
 # Regenerate the app's site into gui/site/ (published at /app/ on Pages)
 [working-directory("gui")]
 gui-site:

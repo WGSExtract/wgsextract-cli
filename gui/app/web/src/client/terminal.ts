@@ -1,6 +1,6 @@
 import { escapeAttribute, escapeHTML } from "./dom.js";
 import type { TerminalEntry, TerminalStatus } from "../../../shared/types.js";
-import { formatLabel } from "./model.js";
+import { formatLabel, renderIcon } from "./model.js";
 import { state } from "./state.js";
 import { renderResultSummary } from "./result-view.js";
 import { renderTerminalText } from "./terminal-output.js";
@@ -20,7 +20,7 @@ export function renderTerminalPane() {
     return `
     <section class="terminal-panel" aria-label="${escapeHTML(state.labels.terminalCommandOutputLabel)}">
       <header class="terminal-header">
-        <span class="terminal-glyph" aria-hidden="true">⌘</span>
+        <span class="terminal-glyph" aria-hidden="true">${renderIcon("terminal", undefined, ">_")}</span>
         <div class="terminal-tabs">
           ${tabs
         .map((tab, index) => `
@@ -35,10 +35,11 @@ export function renderTerminalPane() {
               </span>`)
         .join("")}
         </div>
-        <button type="button" class="terminal-copy" data-terminal-copy title="${escapeAttribute(copyLabel)}" aria-label="${escapeAttribute(copyLabel)}">
+        <button type="button" class="terminal-icon-button" data-terminal-copy title="${escapeAttribute(copyLabel)}" aria-label="${escapeAttribute(copyLabel)}">
           <i class="bi bi-copy" aria-hidden="true"></i>
         </button>
         ${state.terminalCopyFeedback ? `<span class="terminal-copy-feedback" role="status">${escapeHTML(state.labels.terminalCopiedTextLabel ?? "Copied!")}</span>` : ""}
+        ${renderTerminalToggle()}
       </header>
       <div class="terminal-log" data-terminal-log-id="${escapeAttribute(entry?.id ?? "")}" dir="${escapeAttribute(textDirection)}">${renderTerminal()}${renderResultSummary(entry?.result)}</div>
     </section>
@@ -112,7 +113,14 @@ export function closeTerminalTab(index: number) {
     }
     state.activeTerminalIndex = Math.min(state.activeTerminalIndex, state.terminalEntries.length - 1);
 }
-export function terminalToggleTitle(): string {
+/** Hides the output from its own header; once hidden, a floating button brings it back without covering any output. */
+export function renderTerminalToggle(): string {
+    const title = escapeAttribute(terminalToggleTitle());
+    return state.isTerminalVisible
+        ? `<button type="button" class="terminal-icon-button" data-terminal-toggle title="${title}" aria-label="${title}">${renderIcon("chevron.down", undefined, "⌄")}</button>`
+        : `<button type="button" class="terminal-toggle" data-terminal-toggle title="${title}" aria-label="${title}">${renderIcon("terminal", undefined, ">_")}</button>`;
+}
+function terminalToggleTitle(): string {
     return state.isTerminalVisible
         ? state.labels.terminalHideOutputLabel ?? "Hide Command Output"
         : state.labels.terminalShowOutputLabel ?? "Show Command Output";

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>First-run setup · Direction C · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="c-setup" data-direction="C" data-shell="none" data-title="First-run setup">
+<div class="setup" data-steps data-annot-id="setup">
+  <header class="row" style="justify-content: center; gap: var(--sp-3)">
+    <img src="../../icons/logos/logo-a-helix-bracket.svg" alt="" width="40" height="40">
+    <strong style="font-size: var(--fs-xl)">Welcome to WGS Extract</strong>
+  </header>
+  <ol class="stepper" aria-label="Setup steps" data-annot-id="setup-stepper">
+    <li class="stepper__item"><span class="stepper__label">Workspace</span></li>
+    <li class="stepper__item"><span class="stepper__label">Tools</span></li>
+    <li class="stepper__item"><span class="stepper__label">Reference</span></li>
+    <li class="stepper__item"><span class="stepper__label">Done</span></li>
+  </ol>
+
+  <section class="card card--raised setup__card" data-step data-annot-id="step-workspace">
+    <h1>Where should WGS Extract keep its files?</h1>
+    <p class="muted">Reference genomes, results and logs go here. It can grow to 20–100 GB, so a roomy disk is best. Your genome files can stay wherever they are.</p>
+    <div class="input-group"><input class="input mono" value="~/wgs-extract" aria-label="Workspace folder"><button class="btn" type="button">Change</button></div>
+    <ul class="checks"><li data-state="ok"><i data-icon="circle-check"></i><span>412 GB free on Macintosh HD</span></li></ul>
+    <div class="btn-group btn-group--end"><button class="btn btn--primary" type="button" data-next>Continue</button></div>
+  </section>
+
+  <section class="card card--raised setup__card" data-step hidden data-annot-id="step-tools">
+    <h1>Checking the analysis tools</h1>
+    <p class="muted">These come with WGS Extract; nothing to install unless something is missing.</p>
+    <ul class="checks">
+      <li data-state="ok"><i data-icon="circle-check"></i><span>samtools, bcftools, htslib 1.21</span></li>
+      <li data-state="ok"><i data-icon="circle-check"></i><span>Aligners: bwa-mem2, minimap2, Apple Silicon (Metal)</span></li>
+      <li data-state="ok"><i data-icon="circle-check"></i><span>Haplogroups: Yleaf, HaploGrep</span></li>
+      <li data-state="warn"><i data-icon="triangle-alert"></i><span>Java isn’t installed. Only GATK and PharmCAT need it; you can add it later from Settings.</span></li>
+    </ul>
+    <div class="btn-group btn-group--end"><button class="btn btn--ghost" type="button" data-prev>Back</button><button class="btn btn--primary" type="button" data-next>Continue</button></div>
+  </section>
+
+  <section class="card card--raised setup__card" data-step hidden data-annot-id="step-reference">
+    <h1>Get a reference genome</h1>
+    <p class="muted">Needed to read CRAM files and to make DNA-test files. Who sequenced you? We’ll pick the right one.</p>
+    <div class="row row--wrap" data-seg="lab" role="group" aria-label="Sequencing company">
+      <button class="chip" type="button" value="nebula" aria-pressed="true">Nebula</button>
+      <button class="chip" type="button" value="dante">Dante Labs</button>
+      <button class="chip" type="button" value="yseq">YSEQ</button>
+      <button class="chip" type="button" value="ftdna">FTDNA Big Y</button>
+      <button class="chip" type="button" value="other">Another / not sure</button>
+    </div>
+    <div class="option" aria-checked="true" data-annot-id="ref-recommendation">
+      <span class="option__check"><i data-icon="check"></i></span>
+      <span class="row"><span class="ft" data-ft="fasta"><i data-icon="reference"></i></span><span class="stack stack--xs"><span class="option__title"><span data-when="lab:nebula">hs38d1 (GRCh38)</span><span data-when="lab:dante">hs37d5 (GRCh37)</span><span data-when="lab:yseq">hg38 (UCSC)</span><span data-when="lab:ftdna">hg19 (UCSC)</span><span data-when="lab:other">hs38 (GRCh38)</span></span><span class="option__meta">0.9 GB download · 3.2 GB on disk · about 4 min on a 50 Mbit/s line</span></span></span>
+    </div>
+    <p class="small subtle">Not sure? Skip this. When you add a file, WGS Extract reads which reference it needs and offers to fetch it then.</p>
+    <div class="btn-group btn-group--end"><button class="btn btn--ghost" type="button" data-prev>Back</button><button class="btn" type="button" data-next>Skip for now</button><button class="btn btn--primary" type="button" data-next data-toast="Downloading the reference — it continues in the background">Download</button></div>
+  </section>
+
+  <section class="card card--raised setup__card" data-step hidden data-annot-id="step-done">
+    <h1>You’re set</h1>
+    <p class="muted">The reference keeps downloading in the background (Jobs shows it). Add your genome, or try a small example to see how things work.</p>
+    <div class="grid" style="--grid-min: 220px">
+      <a class="action" href="add-file.html"><span class="action__icon"><i data-icon="plus"></i></span><span><span class="action__title">Add my genome</span><br><span class="action__desc">BAM, CRAM, FASTQ, VCF or a kit</span></span><i data-icon="chevron-right"></i></a>
+      <a class="action" href="home.html"><span class="action__icon"><i data-icon="download"></i></span><span><span class="action__title">Try an example</span><br><span class="action__desc">chr20 BAM + mtDNA VCF · 0.6 GB</span></span><i data-icon="chevron-right"></i></a>
+    </div>
+    <p class="xsmall subtle">Server calls in this flow: <code>deps/check</code>, <code>ref/library-list</code>, <code>ref/library</code> (install), <code>example-genome/list</code>, <code>example-genome/download</code>.</p>
+  </section>
+</div>
+</body>
+</html>

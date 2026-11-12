@@ -117,7 +117,7 @@ test("uses configured genome library as the default picker directory", () => {
 
 test("bundle picker remembers its last directory separately from normal path defaults", () => {
   const storage = new MemoryStorage();
-  storage.setItem("guiForCLI.pathPicker.lastDirectory", "/ordinary/files");
+  storage.setItem("wgsextractGui.pathPicker.lastDirectory", "/ordinary/files");
 
   assert.equal(bundlePickerDefaultPath("/initial/bundle", storage), "/initial/bundle");
   rememberBundlePickerPath("/examples/GitHelper", storage);
@@ -127,7 +127,7 @@ test("bundle picker remembers its last directory separately from normal path def
   assert.equal(bundlePickerDefaultPath("", storage), "C:\\Bundles");
   rememberBundlePickerPath("/downloads/GitHelper.zip", storage);
   assert.equal(bundlePickerDefaultPath("", storage), "/downloads");
-  assert.equal(storage.getItem("guiForCLI.pathPicker.lastDirectory"), "/ordinary/files");
+  assert.equal(storage.getItem("wgsextractGui.pathPicker.lastDirectory"), "/ordinary/files");
   assert.equal(parentDirectory("C:\\Users\\mac\\Bundles\\CurlWorkbench"), "C:\\Users\\mac\\Bundles");
 });
 

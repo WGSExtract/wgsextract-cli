@@ -77,6 +77,11 @@
 "app.setup.step.ok" = "Fertig"  # i18n-source-hash:9ce3bd42
 "app.setup.step.warning" = "Warnung"  # i18n-source-hash:e9c45563
 "app.setup.step.failed" = "Fehlgeschlagen"  # i18n-source-hash:09fef5d8
+"app.setup.step.kind.script" = "Skript"  # i18n-source-hash:ee6d6afa
+"app.setup.step.kind.pathTool" = "Werkzeug im PATH"  # i18n-source-hash:7fbaeb9b
+"app.setup.step.kind.homebrewPackage" = "Homebrew-Paket"  # i18n-source-hash:6572cfdd
+"app.setup.step.kind.pixiInstall" = "Pixi-Installation"  # i18n-source-hash:be8e57bc
+"app.setup.step.kind.pixiRun" = "Pixi-Befehl"  # i18n-source-hash:da734b12
 "app.pathPicker.chooseButton.title" = "Auswählen..."  # i18n-source-hash:1f77e839
 "app.pathPicker.error.title" = "Pfad konnte nicht ausgewählt werden"  # i18n-source-hash:fa84a44d
 "app.settingsFile.label" = "Einstellungsdatei"  # i18n-source-hash:a05c5b26

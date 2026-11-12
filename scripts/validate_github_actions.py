@@ -8,7 +8,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-WORKFLOW_GLOB = ".github/workflows/*.y*ml"
+# Workflows, and the repository's own composite actions.
+WORKFLOW_GLOBS = (".github/workflows/*.y*ml", ".github/actions/*/action.y*ml")
 USES_RE = re.compile(
     r"^(?P<indent>\s*)(?:-\s+)?uses:\s+(?P<target>['\"]?[^'\"\s#]+['\"]?)"
     r"(?:\s+#\s*(?P<comment>.*))?\s*$"
@@ -51,7 +52,7 @@ def _is_local_or_docker_action(target: str) -> bool:
 
 def validate_workflows() -> list[str]:
     errors: list[str] = []
-    workflows = sorted(ROOT.glob(WORKFLOW_GLOB))
+    workflows = sorted(path for glob in WORKFLOW_GLOBS for path in ROOT.glob(glob))
     for workflow in workflows:
         for line_number, line in enumerate(
             workflow.read_text(encoding="utf-8").splitlines(), start=1

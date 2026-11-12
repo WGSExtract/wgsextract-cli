@@ -330,7 +330,9 @@ give no meaningful benefit.
   turns hours into tens of minutes. A rented cloud GPU works too.
 - **Variant calling:** `vcf deepvariant --gpu` and `vcf gatk --gpu` run
   Parabricks' DeepVariant and HaplotypeCaller, about a minute for chr20 on the
-  RTX 3090 (**measured**). CPU DeepVariant is much slower, especially on Apple
-  Silicon, which runs the x86-64 image under emulation. Linux ARM64 has a
+  RTX 3090 (**measured**). CPU DeepVariant is much slower. Apple Silicon has
+  [wgse-deepvariant](../native/deepvariant/README.md), a native build with
+  call_variants on the GPU: chr20 in about 5 minutes on an M1 Pro, with the
+  same calls as Google's image (**measured**). Linux ARM64 has a
   [native CPU build](deepvariant-arm64.md); native Windows has no DeepVariant
   ([Windows](windows.md)).

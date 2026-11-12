@@ -2,21 +2,21 @@ import type { UpdateState, WebUIState } from "../../../shared/types.js";
 
 export function createInitialState(): WebUIState {
     const appMetadata = window as Window & {
-        GUI_FOR_CLI_APPLICATION_NAME?: string;
-        GUI_FOR_CLI_APPLICATION_VERSION?: string;
-        GUI_FOR_CLI_AUTO_UPDATE?: boolean;
-        GUI_FOR_CLI_AUTO_ACCEPT_UPDATE?: boolean;
-        GUI_FOR_CLI_AUTO_UPDATE_DELAY_SECONDS?: number;
-        GUI_FOR_CLI_AUTO_UPDATE_ACTION_DELAY_SECONDS?: number;
+        WGSEXTRACT_GUI_APPLICATION_NAME?: string;
+        WGSEXTRACT_GUI_APPLICATION_VERSION?: string;
+        WGSEXTRACT_GUI_AUTO_UPDATE?: boolean;
+        WGSEXTRACT_GUI_AUTO_ACCEPT_UPDATE?: boolean;
+        WGSEXTRACT_GUI_AUTO_UPDATE_DELAY_SECONDS?: number;
+        WGSEXTRACT_GUI_AUTO_UPDATE_ACTION_DELAY_SECONDS?: number;
     };
     return {
         manifest: null,
-        applicationName: appMetadata.GUI_FOR_CLI_APPLICATION_NAME ?? "",
-        applicationVersion: appMetadata.GUI_FOR_CLI_APPLICATION_VERSION ?? "",
-        autoUpdate: Boolean(appMetadata.GUI_FOR_CLI_AUTO_UPDATE),
-        autoAcceptUpdate: Boolean(appMetadata.GUI_FOR_CLI_AUTO_ACCEPT_UPDATE),
-        autoUpdateDelaySeconds: Number(appMetadata.GUI_FOR_CLI_AUTO_UPDATE_DELAY_SECONDS) || 0,
-        autoUpdateActionDelaySeconds: Number(appMetadata.GUI_FOR_CLI_AUTO_UPDATE_ACTION_DELAY_SECONDS) || 0,
+        applicationName: appMetadata.WGSEXTRACT_GUI_APPLICATION_NAME ?? "",
+        applicationVersion: appMetadata.WGSEXTRACT_GUI_APPLICATION_VERSION ?? "",
+        autoUpdate: Boolean(appMetadata.WGSEXTRACT_GUI_AUTO_UPDATE),
+        autoAcceptUpdate: Boolean(appMetadata.WGSEXTRACT_GUI_AUTO_ACCEPT_UPDATE),
+        autoUpdateDelaySeconds: Number(appMetadata.WGSEXTRACT_GUI_AUTO_UPDATE_DELAY_SECONDS) || 0,
+        autoUpdateActionDelaySeconds: Number(appMetadata.WGSEXTRACT_GUI_AUTO_UPDATE_ACTION_DELAY_SECONDS) || 0,
         update: createInitialUpdateState(),
         iconMap: {},
         labels: {},
@@ -61,12 +61,12 @@ export function createInitialState(): WebUIState {
         activeTerminalIndex: 0,
         aboutDialogVisible: false,
         isTerminalVisible: true,
-        isSidebarVisible: localStorage.getItem("guiForCLI.sidebarVisible") !== "false",
+        isSidebarVisible: localStorage.getItem("wgsextractGui.sidebarVisible") !== "false",
         pendingConfirmation: null,
         pendingPrerequisites: null,
         checkingPrerequisites: false,
-        sidebarWidth: Number(localStorage.getItem("guiForCLI.sidebarWidth")) || 220,
-        terminalHeight: Number(localStorage.getItem("guiForCLI.terminalHeight")) ||
+        sidebarWidth: Number(localStorage.getItem("wgsextractGui.sidebarWidth")) || 220,
+        terminalHeight: Number(localStorage.getItem("wgsextractGui.terminalHeight")) ||
             Math.round(window.innerHeight * 0.2),
     };
 }

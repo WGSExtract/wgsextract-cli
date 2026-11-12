@@ -330,7 +330,7 @@ function withAppVersion(bundle: ManifestResponse, appVersion: unknown): Manifest
 }
 
 function withAutoRunSetup(bundle: ManifestResponse): ManifestResponse {
-    const raw = String(process.env.GUI_FOR_CLI_AUTO_RUN_SETUP ?? "").trim().toLowerCase();
+    const raw = String(process.env.WGSEXTRACT_GUI_AUTO_RUN_SETUP ?? "").trim().toLowerCase();
     return ["1", "true", "yes", "on"].includes(raw) ? { ...bundle, autoRunSetup: true } : bundle;
 }
 

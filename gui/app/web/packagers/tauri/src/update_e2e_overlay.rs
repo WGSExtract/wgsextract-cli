@@ -36,12 +36,12 @@ pub fn script(application_name: &str, application_version: &str) -> String {
                     if (!document.body) {{
                       return null;
                     }}
-                    let panel = document.getElementById("gui-for-cli-update-e2e-overlay");
+                    let panel = document.getElementById("wgsextract-gui-update-e2e-overlay");
                     if (panel) {{
                       return panel;
                     }}
                     panel = document.createElement("section");
-                    panel.id = "gui-for-cli-update-e2e-overlay";
+                    panel.id = "wgsextract-gui-update-e2e-overlay";
                     panel.setAttribute("aria-label", "Update end-to-end test status");
                     panel.style.cssText = [
                       "position: fixed",
@@ -90,7 +90,7 @@ pub fn script(application_name: &str, application_version: &str) -> String {
                       progressBar.style.width = "0%";
                     }}
                   }};
-                  window.__guiForCliSetUpdateE2EStatus = render;
+                  window.__wgsextractGuiSetUpdateE2EStatus = render;
                   document.addEventListener("DOMContentLoaded", () => render(lastStatus, lastDetail));
                   window.addEventListener("load", () => render(lastStatus, lastDetail));
                   render(lastStatus, lastDetail);
@@ -119,7 +119,7 @@ pub fn update_with_progress<R: tauri::Runtime>(
         .map(|value| format!("{value:.2}"))
         .unwrap_or_else(|| "null".to_string());
     let script = format!(
-        "window.__guiForCliSetUpdateE2EStatus && window.__guiForCliSetUpdateE2EStatus({}, {}, {});",
+        "window.__wgsextractGuiSetUpdateE2EStatus && window.__wgsextractGuiSetUpdateE2EStatus({}, {}, {});",
         js_string_literal(status),
         js_string_literal(detail),
         progress

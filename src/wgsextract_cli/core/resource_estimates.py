@@ -61,6 +61,17 @@ DV_RECORDS_PER_BASE = 4.75e-3
 DV_BYTES_PER_RECORD = 2048
 DV_WORKER_BASE_BYTES = 768 * 1024**2
 DV_MAX_PARTITIONS = 128
+# wgse-deepvariant (#647), from HG002 35x chr20 on an M1 Pro (10 threads):
+# make_examples < 0.5 GiB; call_variants' footprint 12.9 GB at batch 1024;
+# postprocess_variants keeps the run's records serialized (~0.6 B/base) and
+# parses one contig at a time (~10 B/base); gzipped examples 0.8 GB from a
+# 1.1 GB BAM.
+NATIVE_DV_BASE_BYTES = GIB
+NATIVE_DV_THREAD_BYTES = GIB // 4
+NATIVE_DV_INFERENCE_BYTES_PER_EXAMPLE = 12 * 1024**2
+NATIVE_DV_RECORD_BYTES_PER_BASE = 0.6
+NATIVE_DV_CONTIG_BYTES_PER_BASE = 10.0
+NATIVE_DV_EXAMPLES_PER_INPUT_BYTE = 0.8
 
 
 @dataclass(frozen=True)
@@ -308,6 +319,7 @@ def estimate_resources(
     deepvariant_model: str = "WGS",
     postprocess_plan: PostprocessPlan | None = None,
     available_ram: int | None = None,
+    deepvariant_native: bool = False,
 ) -> PreflightEstimate:
     """Estimate a resolved command without creating files or running tools.
 
@@ -487,6 +499,38 @@ def estimate_resources(
             if disk_reads is None
             else disk_reads
             * (CRAM_BYTES_PER_READ if operation == "to-cram" else BAM_BYTES_PER_READ)
+        )
+    elif operation == "deepvariant" and deepvariant_native:
+        calling = dv_calling_regions(
+            read_fai_lengths(reference) if reference else {}, region
+        )
+        contig_bases: dict[str, int] = {}
+        for contig, start, end in calling or []:
+            contig_bases[contig] = contig_bases.get(contig, 0) + end - start
+        memory_components = {
+            "largest_sequential_stage": max(
+                NATIVE_DV_BASE_BYTES + count * NATIVE_DV_THREAD_BYTES,
+                NATIVE_DV_BASE_BYTES
+                + inference_batch_size * NATIVE_DV_INFERENCE_BYTES_PER_EXAMPLE,
+                NATIVE_DV_BASE_BYTES
+                + math.ceil(
+                    sum(contig_bases.values()) * NATIVE_DV_RECORD_BYTES_PER_BASE
+                    + max(contig_bases.values(), default=0)
+                    * NATIVE_DV_CONTIG_BYTES_PER_BASE
+                ),
+            ),
+            "driver_headroom": GIB,
+        }
+        notes.append(
+            "wgse-deepvariant runs make_examples, call_variants (GPU, memory "
+            "set by --batch-size) and postprocess_variants (one contig at a "
+            "time) one after another: allow for the largest."
+        )
+        output = None if size is None else math.ceil(size / 10)
+        temporary = (
+            None
+            if size is None
+            else math.ceil(size * NATIVE_DV_EXAMPLES_PER_INPUT_BYTE)
         )
     elif operation == "deepvariant":
         arm64 = is_arm64_docker_host()

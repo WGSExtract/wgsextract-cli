@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Phone access · Direction C · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="c-remote" data-direction="C" data-shell="c" data-nav="remote" data-title="Phone access">
+<div class="page" data-annot-id="page">
+  <header class="page-header" data-annot-id="header">
+    <div class="page-header__text">
+      <h1>Phone access</h1>
+      <p class="page-header__lead">Check on jobs and results from your phone or tablet while this computer does the work. Your genome files stay here; the phone only sees what you open.</p>
+    </div>
+    <label class="switch" data-annot-id="remote-switch"><input type="checkbox" role="switch" checked><span><strong>On</strong> <span class="small subtle">· this Wi-Fi only</span></span></label>
+  </header>
+
+  <div class="split split--wide-side">
+    <div class="stack stack--lg">
+      <section class="card" data-annot-id="pairing">
+        <div class="card__header"><h2 class="card__title">Pair a phone</h2><span class="badge badge--info"><i data-icon="clock"></i>Code expires in 4:12</span></div>
+        <div class="row row--top row--wrap" style="gap: var(--sp-5)">
+          <div data-render="qr" data-size="168px" data-label="QR code to pair a phone (illustrative)"></div>
+          <ol class="stack stack--sm small" style="padding-left: var(--sp-5); flex: 1 1 240px">
+            <li>Open the camera on your phone and point it at the code.</li>
+            <li>Check that the phone shows the same number: <strong class="mono" style="font-size: var(--fs-xl); letter-spacing: 0.08em">481 207</strong></li>
+            <li>Approve the phone here when asked. Each phone gets its own key, which you can remove at any time.</li>
+            <li class="subtle">Or type <code>https://mac-studio.local:41890</code> and the number above.</li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="section" data-annot-id="devices">
+        <h2>Paired devices</h2>
+        <div class="table-wrap">
+          <table class="table table--stack" aria-label="Paired devices">
+            <thead><tr><th>Device</th><th>Last seen</th><th>Can</th><th class="actions"><span class="visually-hidden">Actions</span></th></tr></thead>
+            <tbody>
+              <tr data-annot-id="device-iphone"><td><div class="table__name"><i data-icon="smartphone"></i><span>Mac’s iPhone<div class="table__sub">Safari · paired Nov 3</div></span></div></td><td data-label="Last seen"><span class="row"><span class="dot dot--success"></span>Connected now</span></td><td data-label="Can">View, start and cancel jobs</td><td class="actions"><button class="btn btn--sm btn--danger-outline" type="button" data-toast="Removed. The phone can no longer connect.">Remove</button></td></tr>
+              <tr data-annot-id="device-ipad"><td><div class="table__name"><i data-icon="tablet"></i><span>Living-room iPad<div class="table__sub">Safari · paired Oct 12</div></span></div></td><td data-label="Last seen">9 days ago</td><td data-label="Can">View only</td><td class="actions"><button class="btn btn--sm btn--danger-outline" type="button" data-toast="Removed. The tablet can no longer connect.">Remove</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card" data-annot-id="permissions">
+        <h2 class="card__title">What paired phones can do</h2>
+        <ul class="checks">
+          <li data-state="ok"><i data-icon="circle-check"></i><span>See your genomes, results and jobs</span></li>
+          <li data-state="ok"><i data-icon="circle-check"></i><span>Start and cancel jobs <span class="subtle">(per device)</span></span></li>
+          <li data-state="ok"><i data-icon="circle-check"></i><span>Browse only the folders WGS Extract may use</span></li>
+          <li data-state="warn"><i data-icon="shield-check"></i><span>Deleting anything needs approval on this computer</span></li>
+          <li data-state="fail"><i data-icon="circle-x"></i><span>Change settings, folders or phone access</span></li>
+          <li data-state="fail"><i data-icon="circle-x"></i><span>Download or upload genome files</span></li>
+        </ul>
+      </section>
+    </div>
+
+    <aside class="stack sticky" data-annot-id="security">
+      <div class="card">
+        <h2 class="card__title">How it stays private</h2>
+        <ul class="checks">
+          <li data-state="ok"><i data-icon="lock"></i><span>Encrypted. The QR code carries this computer’s certificate fingerprint, so the phone knows it’s talking to this Mac.</span></li>
+          <li data-state="ok"><i data-icon="wifi"></i><span>Your local network only. Away from home, use a private network such as Tailscale; never open a port on your router.</span></li>
+          <li data-state="ok"><i data-icon="key-round"></i><span>One key per device; remove a phone and its key stops working.</span></li>
+          <li data-state="ok"><i data-icon="history"></i><span>Turns itself off after 7 days with no paired device connecting.</span></li>
+        </ul>
+        <button class="btn btn--sm" type="button" data-open="#access-log"><i data-icon="scroll-text"></i>Access log</button>
+      </div>
+      <div class="phone-previews" aria-label="What the phone shows" data-annot-id="phone-previews">
+        <figure class="phone-mini"><div class="phone-mini__screen"><span class="eyebrow">Step 1</span><strong>Pair with WGS Extract</strong><span class="small muted">Enter the number shown on your computer</span><span class="phone-mini__code mono">481 207</span><span class="btn btn--primary btn--sm">Pair</span></div><figcaption class="xsmall subtle">Phone, after scanning</figcaption></figure>
+        <figure class="phone-mini"><div class="phone-mini__screen"><span class="row small"><span class="dot dot--success"></span>mac-studio · encrypted</span><strong>Jobs</strong><span class="small">Realign to hs38</span><div class="progress"><div class="progress__fill" style="--v: 47%"></div></div><span class="xsmall muted">47% · 1 h 52 min left</span></div><figcaption class="xsmall subtle">Connected</figcaption></figure>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<dialog class="dialog" id="access-log" aria-labelledby="access-log-title" data-annot-id="access-log">
+  <div class="dialog__header"><h2 class="dialog__title" id="access-log-title">Access log</h2><button class="btn btn--ghost btn--icon" type="button" data-close aria-label="Close"><i data-icon="x"></i></button></div>
+  <div class="dialog__body">
+    <table class="table table--compact" aria-label="Recent access">
+      <tbody>
+        <tr><td class="num">09:58</td><td>Mac’s iPhone</td><td>Viewed Jobs</td></tr>
+        <tr><td class="num">09:41</td><td>Mac’s iPhone</td><td>Started “DNA-test files” for HG002</td></tr>
+        <tr><td class="num">Yesterday</td><td>Mac’s iPhone</td><td>Asked to delete ClinVar — <strong>declined here</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+</dialog>
+</body>
+</html>

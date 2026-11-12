@@ -11,7 +11,13 @@ if [ "$#" -lt 1 ]; then
 fi
 
 script_dir="$(CDPATH= cd "$(dirname "$0")" && pwd)"
-runtime="$(CDPATH= cd "$script_dir/../.." && pwd)/runtime/wgsextract-cli"
+# Setup installs the runtime in the app's data folder; run outside the app, the
+# workspace's own runtime folder (where apps up to 0.8.6 installed it).
+if [ -n "${WGSEXTRACT_GUI_APP_DATA:-}" ]; then
+  runtime="$WGSEXTRACT_GUI_APP_DATA/runtime/wgsextract-cli"
+else
+  runtime="$(CDPATH= cd "$script_dir/../.." && pwd)/runtime/wgsextract-cli"
+fi
 app_dir="${WGSEXTRACT_APP_DIR:-$runtime/app}"
 
 if [ ! -d "$app_dir" ]; then
@@ -43,7 +49,7 @@ fi
 # an interrupted install: they need the environment Pixi marks as installed
 # and run it as it is.
 run_flags=""
-if [ "${GUI_FOR_CLI_DATA_SOURCE:-}" = "1" ]; then
+if [ "${WGSEXTRACT_GUI_DATA_SOURCE:-}" = "1" ]; then
   if [ ! -f "$app_dir/.pixi/envs/default/conda-meta/pixi" ]; then
     printf 'Error: WGS Extract CLI setup has not finished: its Pixi environment in %s is not installed.\n' "$app_dir" >&2
     printf 'Run the WGS Extract setup action again.\n' >&2

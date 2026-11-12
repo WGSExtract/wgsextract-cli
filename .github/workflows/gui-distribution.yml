@@ -17,6 +17,7 @@ on:
     paths:
       - ".github/workflows/gui-build.yml"
       - ".github/workflows/gui-distribution.yml"
+      - ".github/actions/apt-install/**"
       - "gui/app/web/packagers/**"
       - "gui/tools/packaging/**"
       - "gui/tools/tasks.py"
@@ -41,6 +42,11 @@ on:
 
 permissions:
   contents: read
+
+# Only pull requests share a group: a new push supersedes the PR's older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   tauri:

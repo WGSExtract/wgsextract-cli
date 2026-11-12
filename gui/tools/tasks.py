@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cross-platform developer tasks for GUI for CLI.
+"""Cross-platform developer tasks for WGS Extract GUI.
 
 Usage: tools/tasks.py <action> [target] [--dry-run]
 

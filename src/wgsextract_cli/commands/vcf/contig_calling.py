@@ -706,7 +706,10 @@ def call_small_variants(
                 listings[-1] if replays else None,
             )  # fmt: skip
             tasks.append(partial(_then_report, call, progress, list(batch)))
-        caller.run_all(tasks)
+        # Longest jobs first, so a large contig late in the .fai (chrX) doesn't
+        # run alone at the end; parts keep their .fai order below.
+        order = sorted(range(len(batches)), key=lambda i: -sum(batches[i].values()))
+        caller.run_all([tasks[i] for i in order])
         if replays:
             parts = caller.match_one_stream(batches, parts, listings, work)
         # A file list avoids Windows' command-line length limit for references

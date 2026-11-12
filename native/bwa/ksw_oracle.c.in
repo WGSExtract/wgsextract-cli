@@ -34,24 +34,11 @@ static void wgse_ksw_start(wgse_ksw_job_t *J, kswq_t *q, int tlen, const uint8_t
 	J->done = J->i >= J->tlen;
 }
 
-// Lazy-F loop and per-row bookkeeping, as upstream after its j loop.
-static inline void wgse_ksw_row_end(wgse_ksw_job_t *J, __m128i f, __m128i max, const wgse_ksw_consts_t *c)
+// Per-row bookkeeping, as upstream after its lazy-F loop.
+static inline void wgse_ksw_row_tail(wgse_ksw_job_t *J, __m128i max)
 {
-	int j, k, imax, slen = J->q->slen, i = J->i;
-	__m128i h, *H1 = J->H1, zero = c->zero;
-	for (k = 0; LIKELY(k < 16); ++k) {
-		f = _mm_slli_si128(f, 1);
-		for (j = 0; LIKELY(j < slen); ++j) {
-			h = _mm_load_si128(H1 + j);
-			h = _mm_max_epu8(h, f);
-			_mm_store_si128(H1 + j, h);
-			h = _mm_subs_epu8(h, c->oe_ins);
-			f = _mm_subs_epu8(f, c->e_ins);
-			if (UNLIKELY(allzero_16(_mm_subs_epu8(f, h)))) goto end_loop16;
-		}
-	}
-end_loop16:
-	(void)zero;
+	int j, imax, slen = J->q->slen, i = J->i;
+	__m128i *H1 = J->H1;
 	__max_16(imax, max);
 	if (imax >= J->minsc) {
 		if (J->n_b == 0 || (int32_t)J->b[J->n_b-1] + 1 != i) {
@@ -70,6 +57,57 @@ end_loop16:
 	}
 	{ __m128i *S = J->H1; J->H1 = J->H0; J->H0 = S; }
 	if (++J->i >= J->tlen) J->done = 1;
+}
+
+// Lazy-F loop and per-row bookkeeping, as upstream after its j loop.
+static inline void wgse_ksw_row_end(wgse_ksw_job_t *J, __m128i f, __m128i max, const wgse_ksw_consts_t *c)
+{
+	int j, k, slen = J->q->slen;
+	__m128i h, *H1 = J->H1, zero = c->zero;
+	for (k = 0; LIKELY(k < 16); ++k) {
+		f = _mm_slli_si128(f, 1);
+		for (j = 0; LIKELY(j < slen); ++j) {
+			h = _mm_load_si128(H1 + j);
+			h = _mm_max_epu8(h, f);
+			_mm_store_si128(H1 + j, h);
+			h = _mm_subs_epu8(h, c->oe_ins);
+			f = _mm_subs_epu8(f, c->e_ins);
+			if (UNLIKELY(allzero_16(_mm_subs_epu8(f, h)))) goto end_loop16;
+		}
+	}
+end_loop16:
+	(void)zero;
+	wgse_ksw_row_tail(J, max);
+}
+
+// wgse_ksw_row_end() for n (<= 4) jobs with the same segment length, their
+// lazy-F loops stepped in turn so that one job's f->h->f chain hides another's.
+// Each job runs exactly its own loop's operations.
+static inline void wgse_ksw_row_end_many(int n, wgse_ksw_job_t **J, __m128i *f, const __m128i *max,
+	const wgse_ksw_consts_t *c)
+{
+	int t, slen = J[0]->q->slen, j[4], k[4], live = 0;
+	__m128i zero = c->zero;
+	for (t = 0; t < n; ++t) j[t] = 0, k[t] = 0, f[t] = _mm_slli_si128(f[t], 1), live |= 1 << t;
+	while (live) {
+		for (t = 0; t < n; ++t) {
+			__m128i h, *H1 = J[t]->H1;
+			if (!(live >> t & 1)) continue;
+			h = _mm_load_si128(H1 + j[t]);
+			h = _mm_max_epu8(h, f[t]);
+			_mm_store_si128(H1 + j[t], h);
+			h = _mm_subs_epu8(h, c->oe_ins);
+			f[t] = _mm_subs_epu8(f[t], c->e_ins);
+			if (UNLIKELY(allzero_16(_mm_subs_epu8(f[t], h)))) live &= ~(1 << t);
+			else if (++j[t] == slen) {
+				j[t] = 0;
+				if (++k[t] == 16) live &= ~(1 << t);
+				else f[t] = _mm_slli_si128(f[t], 1);
+			}
+		}
+	}
+	(void)zero;
+	for (t = 0; t < n; ++t) wgse_ksw_row_tail(J[t], max[t]);
 }
 
 #define WGSE_KSW_DECL(k) \
@@ -111,8 +149,11 @@ static void wgse_ksw_row2(wgse_ksw_job_t *J0, wgse_ksw_job_t *J1, const wgse_ksw
 	__m128i zero = c->zero;
 	WGSE_KSW_DECL(0) WGSE_KSW_DECL(1)
 	for (j = 0; LIKELY(j < slen); ++j) { WGSE_KSW_STEP(0); WGSE_KSW_STEP(1); }
-	wgse_ksw_row_end(J0, f0, max0, c);
-	wgse_ksw_row_end(J1, f1, max1, c);
+	{
+		wgse_ksw_job_t *J[2] = {J0, J1};
+		__m128i f[2] = {f0, f1}, max[2] = {max0, max1};
+		wgse_ksw_row_end_many(2, J, f, max, c);
+	}
 }
 
 static void wgse_ksw_row4(wgse_ksw_job_t *J0, wgse_ksw_job_t *J1, wgse_ksw_job_t *J2, wgse_ksw_job_t *J3, const wgse_ksw_consts_t *c)
@@ -121,10 +162,11 @@ static void wgse_ksw_row4(wgse_ksw_job_t *J0, wgse_ksw_job_t *J1, wgse_ksw_job_t
 	__m128i zero = c->zero;
 	WGSE_KSW_DECL(0) WGSE_KSW_DECL(1) WGSE_KSW_DECL(2) WGSE_KSW_DECL(3)
 	for (j = 0; LIKELY(j < slen); ++j) { WGSE_KSW_STEP(0); WGSE_KSW_STEP(1); WGSE_KSW_STEP(2); WGSE_KSW_STEP(3); }
-	wgse_ksw_row_end(J0, f0, max0, c);
-	wgse_ksw_row_end(J1, f1, max1, c);
-	wgse_ksw_row_end(J2, f2, max2, c);
-	wgse_ksw_row_end(J3, f3, max3, c);
+	{
+		wgse_ksw_job_t *J[4] = {J0, J1, J2, J3};
+		__m128i f[4] = {f0, f1, f2, f3}, max[4] = {max0, max1, max2, max3};
+		wgse_ksw_row_end_many(4, J, f, max, c);
+	}
 }
 
 static kswr_t wgse_ksw_finish(wgse_ksw_job_t *J)
