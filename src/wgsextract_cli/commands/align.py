@@ -43,12 +43,14 @@ from wgsextract_cli.core.native_aligners import (
     AlignerCommand,
     NativeAligner,
     apple_silicon,
+    find_bwa_mem3,
     find_native_aligner,
     native_setting,
 )
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.output_checks import record_alignment_output
 from wgsextract_cli.core.paths import absolute_path, java_local_path
+from wgsextract_cli.core.pixi_tools import pixi_install_command
 from wgsextract_cli.core.read_counts import (
     alignment_sample,
     fasta_read_length,
@@ -735,16 +737,15 @@ def _metal_budget(additional_ram_bytes: int) -> int:
 
 
 def bwa_mem3_build(job: AlignJob, tool: str, ref: str) -> NativeAligner | None:
-    """The wgse-bwa-mem3 that can write ``tool``'s exact records (--compat)
-    for this run, memory aside, or None. It needs the reference's bwa-mem2
-    index. Ultima reads keep BWA, which is qualified for their flow tags."""
+    """The bwa-mem3 (wgse-bwa-mem3 on Apple Silicon, Bioconda's on Linux:
+    find_bwa_mem3) that can write ``tool``'s exact records (--compat) for this
+    run, memory aside, or None. It needs the reference's bwa-mem2 index.
+    Ultima reads keep BWA, which is qualified for their flow tags."""
     if tool not in BWA_MEM3_COMPAT or job.platform == "ultima":
         return None
     if not bwa_mem2.has_bwa_mem3_index(ref):
         return None
-    return find_native_aligner(
-        "bwa-mem3", job.native_aligners, quiet=True, instead=tool
-    )
+    return find_bwa_mem3(job.native_aligners, instead=tool)
 
 
 def bwa_mem3_stand_in(
@@ -759,7 +760,7 @@ def bwa_mem3_stand_in(
     read_length: float | None,
     additional_ram_bytes: int = 0,
 ) -> AlignerCommand | None:
-    """wgse-bwa-mem3 writing bwa's or bwa-mem2's exact records (--compat) in
+    """bwa-mem3 writing bwa's or bwa-mem2's exact records (--compat) in
     place of ``tool`` (bwa_mem3_build), or None when its pipeline won't fit.
 
     In bwa's place it needs more memory than bwa, so its estimate must fit
@@ -846,7 +847,7 @@ def aligner_gpu_bytes(aligner: AlignerCommand, ref: str, reads: int | None) -> i
 
 def bwa_mem3_command(job: AlignJob) -> AlignerCommand:
     """How to run --aligner bwa-mem3: wgse-bwa-mem3 (on Apple Silicon), else
-    bwa-mem3 from PATH, writing bwa's records (--compat=bwa-mem) or, with
+    bwa-mem3 from PATH or its Pixi environment, writing bwa's records (--compat=bwa-mem) or, with
     --fast, its faster preset's."""
     options = (BWA_MEM3_FAST,) if job.fast else ("--compat=bwa-mem",)
     native = find_native_aligner("bwa-mem3", job.native_aligners)
@@ -869,12 +870,15 @@ def bwa_mem3_command(job: AlignJob) -> AlignerCommand:
             raise WGSExtractError(
                 f"{option} needs bwa-mem3: wgse-bwa-mem3 is installed, but "
                 "native_aligners is off (use --native-aligners auto), and "
-                f"bwa-mem3 isn't on PATH. Or {otherwise}."
+                f"bwa-mem3 isn't installed. Or {otherwise}."
             )
+        install = pixi_install_command("bwa-mem3") or (
+            "pixi install --locked -e bwa-mem3"
+        )
         raise WGSExtractError(
             f"{option} needs wgse-bwa-mem3 (Apple Silicon) or bwa-mem3 "
-            f"(Bioconda) on PATH; for wgse-bwa-mem3, {INSTALL_HINT}. Or "
-            f"{otherwise}."
+            f"(Bioconda: `{install}`); for "
+            f"wgse-bwa-mem3, {INSTALL_HINT}. Or {otherwise}."
         )
     return AlignerCommand("bwa-mem3", options=options)
 

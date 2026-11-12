@@ -103,7 +103,7 @@ KNOWN_SETTINGS = {
         None,
         "Apple Silicon: `align`/`realign` use wgse-bwa, wgse-bwa-mem2, "
         "wgse-bwa-mem3 and wgse-minimap2 when on PATH (auto, the default) or "
-        "never (off)",
+        "never (off); Linux: Bioconda's bwa-mem3 in place of bwa/bwa-mem2",
     ),
     "dorado_models_directory": (
         None,
