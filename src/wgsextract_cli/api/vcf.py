@@ -1097,8 +1097,8 @@ class VcfDeepvariantParams(_CallerParams):
     )
     gpu: bool = param(
         False,
-        help="Call on an NVIDIA GPU: Parabricks, or Google's ULTIMA GPU image "
-        "for Ultima reads (x86-64 Linux, Docker; see README).",
+        help="NVIDIA GPU (x86-64 Linux): WGS via wgse-deepvariant if set up, "
+        "else Parabricks; Ultima: Google's GPU image (README).",
         action="store_true",
     )
     no_gpu_memory_check: bool = no_gpu_memory_check_param()

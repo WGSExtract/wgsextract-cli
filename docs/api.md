@@ -1429,7 +1429,7 @@ Google's ULTIMA GPU image runs the stages with call_variants on the GPU.
 | `pacbio` | `bool` | `False` | `--pacbio` | Alias for --model-type PACBIO. |
 | `checkpoint` | `Path \| None` | `None` | `--checkpoint` | A custom model: its directory, or a checkpoint prefix. |
 | `batch_size` | `int \| None` | `None` | `--batch-size` | call_variants batch size (upstream default: 1024; not Parabricks). Use 256 to lower TensorFlow peak RAM without changing models or precision; --threads controls make_examples shards, not this batch. |
-| `gpu` | `bool` | `False` | `--gpu` | Call on an NVIDIA GPU: Parabricks, or Google's ULTIMA GPU image for Ultima reads (x86-64 Linux, Docker; see README). |
+| `gpu` | `bool` | `False` | `--gpu` | NVIDIA GPU (x86-64 Linux): WGS via wgse-deepvariant if set up, else Parabricks; Ultima: Google's GPU image (README). |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 | `restart` | `bool` | `False` | `--force`, `--no-resume` | Rerun every step, ignoring the steps an earlier run completed. |

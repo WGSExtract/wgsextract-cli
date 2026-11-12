@@ -231,6 +231,39 @@ aligned the first 5M HG002 pairs on hs38 in 224 s against Bioconda bwa's 282 s
 (−20%, median of three interleaved rounds, 16 threads, `-K 10000000`), with
 the same alignments (**measured**, `native/bench/bench.sh`).
 
+## DeepVariant on NVIDIA GPUs without Parabricks (`wgse-deepvariant`)
+
+On Linux x86-64, WGS Extract's `wgse-deepvariant` 0.2.0 or later (DeepVariant
+1.10.0 without Docker; [native/deepvariant/README.md](../native/deepvariant/README.md#linux-x86-64-and-nvidia-gpus-cuda))
+runs call_variants on an NVIDIA GPU through CUDA, or on the CPU.
+
+- **When it runs:** with `deepvariant_native = "auto"` (the default),
+  `wgse-deepvariant` on `PATH` and `deepvariant_weights` set, `vcf deepvariant`
+  calls the WGS model with it instead of Google's image: on the CPU, or with
+  `--gpu` on the GPU instead of Parabricks. Until `deepvariant_weights` is set,
+  an installed build is ignored. Other models, `--checkpoint` and
+  Ultima reads keep Google's image and Parabricks; `deepvariant_native = "off"`
+  keeps them for everything.
+- **Same calls:** the same sites, genotypes and filters as Google's image on
+  HG002 chr20, and the same GIAB v4.2.1 counts; QUAL differs by at most 0.5
+  and GQ by 1 at a few thousand of 210,390 sites, as on a Mac.
+- **What it needs:** the NVIDIA driver; no Docker and no Parabricks licence.
+  Before its first stage, `--gpu` checks that the build has CUDA (the cuda129
+  package) and that `nvidia-smi` sees a GPU; before call_variants, that GPU 0
+  has 3 GiB free
+  (`--no-gpu-memory-check` overrides it): it used 2.3 GiB at its default batch
+  of 256 on an RTX 3090. `--gpu` never falls back to the CPU: a GPU that fails
+  stops the run, which resumes from its finished stages.
+- **How much faster (measured, HG002 chr20, 81,898 examples):** call_variants
+  took 19.5 s on an RTX 3090 (three interleaved rounds, GPU to itself),
+  against 79 s for Google's own TensorFlow GPU image on the same GPU, 563 s
+  for wgse-deepvariant on 4 CPU threads and 896 s for Google's CPU image (both
+  on a shared host). Its make_examples is faster than Google's too (240 s
+  against 597 s).
+  Scaled to a 30x genome (about 50 times chr20's examples), call_variants takes
+  about a quarter of an hour on the GPU (**projected**), where Google's CPU
+  image takes 5–6 hours on 12 threads.
+
 ## Apple Silicon (Metal)
 
 WGS Extract publishes its own builds of four aligners for Apple Silicon Macs:
@@ -396,7 +429,10 @@ give no meaningful benefit.
   turns hours into tens of minutes. A rented cloud GPU works too.
 - **Variant calling:** `vcf deepvariant --gpu` and `vcf gatk --gpu` run
   Parabricks' DeepVariant and HaplotypeCaller, about a minute for chr20 on the
-  RTX 3090 (**measured**). CPU DeepVariant is much slower. Apple Silicon has
+  RTX 3090 (**measured**). CPU DeepVariant is much slower. On Linux x86-64,
+  [wgse-deepvariant](#deepvariant-on-nvidia-gpus-without-parabricks-wgse-deepvariant)
+  runs DeepVariant's WGS model on the GPU without Docker or Parabricks:
+  call_variants for chr20 in about 20 seconds (**measured**). Apple Silicon has
   [wgse-deepvariant](../native/deepvariant/README.md), a native build with
   call_variants on the GPU: chr20 in about 5 minutes on an M1 Pro, with the
   same calls as Google's image (**measured**). Linux ARM64 has a

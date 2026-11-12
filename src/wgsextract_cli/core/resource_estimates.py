@@ -72,7 +72,8 @@ DV_MAX_PARTITIONS = 128
 # make_examples < 0.5 GiB; call_variants' footprint 12.9 GB at batch 1024;
 # postprocess_variants keeps the run's records serialized (~0.6 B/base) and
 # parses one contig at a time (~10 B/base); gzipped examples 0.8 GB from a
-# 1.1 GB BAM.
+# 1.1 GB BAM. On Linux (#719) call_variants peaked at 1.5 GiB at batch 256,
+# on CUDA or the CPU: within the Mac's estimate.
 NATIVE_DV_BASE_BYTES = GIB
 NATIVE_DV_THREAD_BYTES = GIB // 4
 NATIVE_DV_INFERENCE_BYTES_PER_EXAMPLE = 12 * 1024**2
@@ -561,8 +562,8 @@ def estimate_resources(
             "driver_headroom": GIB,
         }
         notes.append(
-            "wgse-deepvariant runs make_examples, call_variants (GPU, memory "
-            "set by --batch-size) and postprocess_variants (one contig at a "
+            "wgse-deepvariant runs make_examples, call_variants (memory set "
+            "by --batch-size) and postprocess_variants (one contig at a "
             "time) one after another: allow for the largest."
         )
         output = None if size is None else math.ceil(size / 10)

@@ -71,10 +71,10 @@ INSTALL_HINTS = {
     "https://github.com/nanoporetech/dorado#installation, unpack it and put its "
     "bin folder on PATH, or set dorado_executable in config.toml (or pass "
     "basecall --dorado-path).",
-    "wgse-deepvariant": "wgse-deepvariant is WGS Extract's Apple Silicon build of "
-    "DeepVariant and isn't installed with WGS Extract: download a "
-    "macos-deepvariant release with its weights, put its bin folder on PATH and "
-    "set deepvariant_weights in config.toml (native/deepvariant/README.md).",
+    "wgse-deepvariant": "wgse-deepvariant (DeepVariant without Docker) isn't "
+    "installed with WGS Extract: install a macos-deepvariant or "
+    "linux-deepvariant release with its weights, put it on PATH and set "
+    "deepvariant_weights in config.toml (native/deepvariant/README.md).",
 }
 
 
@@ -139,18 +139,23 @@ def _x86_deepvariant_host() -> bool:
     return not is_arm64_docker_host()
 
 
-def _apple_silicon_host() -> bool:
-    """Whether wgse-deepvariant (Apple Silicon only) can be used."""
+def _native_deepvariant_host() -> bool:
+    """Whether wgse-deepvariant (Apple Silicon, Linux x86-64) can be used."""
     from wgsextract_cli.core.native_support import is_arm64_docker_host
 
-    return sys.platform == "darwin" and is_arm64_docker_host()
+    if sys.platform == "darwin":
+        return is_arm64_docker_host()
+    return sys.platform.startswith("linux") and platform.machine().lower() in {
+        "x86_64",
+        "amd64",
+    }
 
 
 # Optional tools that need a particular OS and CPU.
 HOST_ONLY_TOOLS: dict[str, Callable[[], bool]] = {
     "run_clair3.sh": clair3_host_supported,
     "run_deepvariant": _x86_deepvariant_host,
-    "wgse-deepvariant": _apple_silicon_host,
+    "wgse-deepvariant": _native_deepvariant_host,
     "GLIMPSE2_phase": imputation_host_supported,
     "GLIMPSE2_ligate": imputation_host_supported,
     "GLIMPSE2_chunk": imputation_host_supported,

@@ -176,3 +176,8 @@ never become the latest release:
   [native/deepvariant/README.md](../native/deepvariant/README.md)). Bump
   `WGSE_DEEPVARIANT_VERSION` in `native/deepvariant/CMakeLists.txt` when the
   package changes.
+- **Linux DeepVariant** (`linux-deepvariant-N`): Actions > Linux DeepVariant >
+  Run workflow. It publishes the Linux x86-64 `wgse-deepvariant` conda
+  packages (CUDA and CPU-only call_variants) built from `native/deepvariant/`
+  by `packaging/wgse-deepvariant`, and the WGS weights, with a `SHA256SUMS`.
+  Bump `WGSE_DEEPVARIANT_VERSION` and the recipe's `version` together.
