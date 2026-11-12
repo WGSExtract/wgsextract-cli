@@ -22,6 +22,12 @@ from wgsextract_cli.core.utils import (
 )
 
 _GB = 1e9
+
+
+def _size(size: int) -> str:
+    return f"{size / _GB:.2f} GB" if size >= _GB / 10 else f"{size / 1e6:.1f} MB"
+
+
 # Room on the disk beyond the file itself.
 _DISK_MARGIN_BYTES = 1 << 30
 
@@ -54,9 +60,13 @@ def run_dense_sa(params: RefDenseSaParams) -> None:
 
 def _delete(ref: str) -> None:
     files = dense_suffix_array.side_files(ref)
-    partial = [Path(f"{path}.partial") for path in files]
-    partial += Path(ref).parent.glob(f"{Path(ref).name}.wgse-sa*.partial")
-    removed = library_removal.remove([*files, *dict.fromkeys(partial)])
+    # Their result manifests, and what an interrupted densify-sa left.
+    leftovers = [
+        path
+        for path in Path(ref).parent.glob(f"{Path(ref).name}.wgse-sa*")
+        if path.name.endswith((".manifest.json", ".partial"))
+    ]
+    removed = library_removal.remove([*files, *leftovers])
     freed = sum(1 for path in removed if path in files)
     human_output(
         f"Deleted {freed} dense suffix-array file(s) of {ref}."
@@ -75,12 +85,12 @@ def _list(ref: str) -> None:
         size = path.stat().st_size
         rows.append({"path": str(path), "interval": interval, "bytes": size})
         mark = " (wgse-bwa reads this one)" if interval == readable else ""
-        human_output(f"{path}: every {interval} rows, {size / _GB:.2f} GB{mark}")
+        human_output(f"{path}: every {interval} rows, {_size(size)}{mark}")
     if not files:
         planned = dense_suffix_array.planned_bytes(
             ref, dense_suffix_array.DEFAULT_INTERVAL
         )
-        cost = f" ({planned / _GB:.2f} GB)" if planned else ""
+        cost = f" ({_size(planned)})" if planned else ""
         human_output(
             f"{ref} has no dense suffix-array files; `wgsextract ref dense-sa "
             f"--ref {ref}` builds one{cost}."
@@ -120,11 +130,10 @@ def _build(ref: str, interval: int, threads: int | None) -> None:
     existing = target.stat().st_size if target.is_file() else 0
     if planned + _DISK_MARGIN_BYTES > free + existing:
         raise WGSExtractError(
-            f"Writing {target} needs {planned / _GB:.2f} GB of disk; "
-            f"{free / _GB:.2f} GB is free."
+            f"Writing {target} needs {_size(planned)} of disk; {_size(free)} is free."
         )
     logging.info(
-        f"Writing {target}: {planned / _GB:.2f} GB on disk, which wgse-bwa holds "
+        f"Writing {target}: {_size(planned)} on disk, which wgse-bwa holds "
         "in RAM while aligning when asked to (--dense-suffix-array)."
     )
     count, _ = get_resource_defaults(threads, None)
@@ -140,7 +149,7 @@ def _build(ref: str, interval: int, threads: int | None) -> None:
     )
     current_result().set_reference(ref)
     human_output(
-        f"Wrote {target} ({size / _GB:.2f} GB). Align with --dense-suffix-array, "
+        f"Wrote {target} ({_size(size)}). Align with --dense-suffix-array, "
         "or set dense_suffix_array = true in config.toml, to use it; it is held "
         "in RAM while aligning."
     )

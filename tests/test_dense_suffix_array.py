@@ -233,7 +233,8 @@ def test_ref_dense_sa_builds_lists_and_deletes_the_file(tmp_path, bwa_bin):
     (row,) = listed.details["dense_suffix_array_files"]
     assert (row["path"], row["interval"]) == (target, 8)
     assert "wgse-bwa reads this one" in listed.text
-    assert not Path(target).exists() and "Deleted 1" in deleted.text
+    assert "Deleted 1" in deleted.text
+    assert not list(Path(reads.ref).parent.glob("*.wgse-sa*"))  # manifests too
 
 
 @pytest.mark.parametrize(
@@ -266,4 +267,4 @@ def test_ref_dense_sa_lists_the_cost_before_a_file_is_built(tmp_path, bwa_bin):
     listed = _ref_dense_sa("--ref", reads.ref, "--list")
 
     assert listed.details["dense_suffix_array_files"] == []
-    assert "builds one (0.00 GB)" in listed.text
+    assert "builds one (0.0 MB)" in listed.text
