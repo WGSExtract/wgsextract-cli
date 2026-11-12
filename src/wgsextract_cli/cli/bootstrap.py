@@ -23,15 +23,8 @@ _stop_signal: int | None = None
 
 
 def received_stop_signal() -> int | None:
-    """The CLI's stop request, even if its Python handler has not run yet."""
-    if _stop_signal is not None:
-        return _stop_signal
-    if hasattr(signal, "sigpending"):
-        pending = signal.sigpending()
-        for signum in (signal.SIGINT, signal.SIGTERM):
-            if signum in pending:
-                return signum
-    return None
+    """The CLI's stop request, retained if cleanup replaces the handler's exit."""
+    return _stop_signal
 
 
 def describe_signal(signum: int) -> str:

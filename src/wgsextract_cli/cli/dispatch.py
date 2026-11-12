@@ -170,8 +170,8 @@ def _run(
         ):
             _run_command(args, explicit_dests, result)
     except (Exception, KeyboardInterrupt, SystemExit) as e:
-        # A tool failure or an exception during cleanup can beat the handler's
-        # SystemExit. The run's stop request takes precedence over that failure.
+        # An exception during cleanup can replace the handler's SystemExit.
+        # The run's stop request takes precedence over that failure.
         signum = received_stop_signal()
         error = SystemExit(128 + signum) if signum is not None else e
         fail_from_exception(result, error, debug=bool(getattr(args, "debug", False)))

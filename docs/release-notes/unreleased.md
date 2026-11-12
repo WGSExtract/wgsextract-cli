@@ -41,4 +41,4 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 ## Fixes
 
 - Runs stopped with Ctrl-C or SIGTERM report `cancelled`, rather than `failed`,
-  when a tool dies before the stop-signal handler finishes (#717).
+  when a cleanup failure replaces the stop-signal handler's exit (#717).
