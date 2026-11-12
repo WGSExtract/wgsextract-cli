@@ -191,7 +191,13 @@ def catalog(tag: str, records: list[dict[str, Any]]) -> str:
     by_url = {r["url"].strip(): r for r in records}
     by_final = {r["final"]: r for r in records}
     # The basic genomes' original sources join the Advanced block's -Alt rows.
-    last_alt = max(i for i, r in enumerate(rows) if r["Source"].endswith("-Alt"))
+    # (after the GUI's default rows when there are none yet).
+    last_alt = max(
+        (i for i, r in enumerate(rows) if r["Source"].endswith("-Alt")),
+        default=next(
+            i for i, r in enumerate(rows) if r["Pyth Code"] == LAST_BASIC_CODE
+        ),
+    )
     basic = True
     anchor = 0
     out: list[dict[str, str]] = []
@@ -212,7 +218,7 @@ def catalog(tag: str, records: list[dict[str, Any]]) -> str:
             alt = row | {"Source": _alt(row["Source"]), "SHA256": ""}
             (moved if basic else out).append(alt)
         elif record:
-            out.append(row | {"Source": _alt(row["Source"])})
+            out.append(row | {"Source": _alt(row["Source"]), "SHA256": ""})
         else:
             out.append(row)
         if row["Pyth Code"] == LAST_BASIC_CODE:

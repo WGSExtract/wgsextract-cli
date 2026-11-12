@@ -28,7 +28,7 @@ def load_genomes_from_csv(csv_path: str) -> list[dict[str, Any]]:
                         "description": row.get("Description", ""),
                         "md5": row.get("Signature") or "",
                         # SHA-256 of the file at url, when pinned (our mirrors).
-                        "sha256": row.get("SHA256") or "",
+                        "sha256": (row.get("SHA256") or "").strip().lower(),
                     }
                 )
     except (OSError, csv.Error) as e:
