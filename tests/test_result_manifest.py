@@ -53,6 +53,49 @@ def dispatch(func, tmp_path: Path, *, as_json: bool = False, **extra) -> int:
     return 0
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX self-signalling")
+@pytest.mark.parametrize("stop_signal, code", [("SIGINT", 130), ("SIGTERM", 143)])
+def test_issue_717_cleanup_failure_cannot_replace_signal_cancellation(
+    tmp_path, stop_signal, code
+):
+    output = tmp_path / "interrupted.txt"
+    script = textwrap.dedent(
+        f"""
+        import argparse, os, signal
+        from pathlib import Path
+        from wgsextract_cli.cli.bootstrap import configure_logging, install_signal_handlers
+        from wgsextract_cli.cli.dispatch import dispatch_command
+        from wgsextract_cli.core.results import current_result
+        from wgsextract_cli.core.utils import WGSExtractError
+
+        def command(args):
+            output = Path({str(output)!r})
+            output.write_text("partial")
+            current_result().add_output(output, "output")
+            try:
+                os.kill(os.getpid(), signal.{stop_signal})
+            finally:
+                raise WGSExtractError("Step cleanup failed.")
+
+        configure_logging(debug=True)
+        install_signal_handlers()
+        dispatch_command(argparse.Namespace(
+            func=command, command="test", json=True, debug=True,
+            outdir={str(tmp_path)!r}), set())
+        """
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=60
+    )
+    document = json.loads(proc.stdout)
+    assert_valid(document)
+    assert document["status"] == "cancelled"
+    assert document["exit_code"] == proc.returncode == code
+    assert json.loads(output.with_suffix(".txt.manifest.json").read_text()) == document
+    # The replaced cleanup error stays visible under --debug (review on #718).
+    assert "Step cleanup failed." in proc.stderr
+
+
 def test_schema_is_a_valid_draft_2020_12_schema():
     Draft202012Validator.check_schema(SCHEMA)
     assert SCHEMA["properties"]["schema"]["const"] == results.SCHEMA_ID
