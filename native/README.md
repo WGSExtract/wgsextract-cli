@@ -181,9 +181,10 @@ checks each file's header and checksum; only `mem` also spot-checks 1024
 samples against the index). Mate rescue also steps the lazy-F loops of the
 windows it aligns together in turn, and `--metal`'s CPU threads seed the pairs
 they take from the GPU's queue 8 at a time with the CPU backend's interleaved
-walks. Each gives upstream's exact results. WGS Extract does not write or use the
-file yet; opt-in support (a setting, a run flag and a reference-library command
-showing its disk and memory cost) will follow.
+walks. Each gives upstream's exact results. WGS Extract builds the file only
+with `wgsextract ref dense-sa`, and its `align` and `realign` read it only with
+`--dense-suffix-array` (or `dense_suffix_array = true` in `config.toml`);
+otherwise they pass `--dense-sa off` (docs/hardware.md).
 
 From 0.5.0, `wgse-bwa-mem2`'s CPU backend does the same with its own exact
 replacements: it collects each read's SMEMs in all three passes with up to 16
@@ -317,8 +318,10 @@ What runs on the GPU:
   for the same coordinate). With the CPU threads freed from seeding, they
   score a batch of seed extensions themselves while more than 4096 pairs wait
   for the GPU (`--gpu-backlog PAIRS`; 0 never does). `--gpu-seed off` seeds on
-  the CPU as 0.2.0 did (and then `--gpu-backlog` defaults to 0). If GPU
-  seeding fails, the CPU seeds the rest and the run goes on. Long extensions
+  the CPU as 0.2.0 did (and then `--gpu-backlog` defaults to 0). If a GPU
+  seeding batch fails, the CPU seeds the rest and the run goes on (from 0.3.1,
+  `--metal` then exits 1, like after an extension failure; an index larger
+  than the GPU's largest buffer only turns GPU seeding off). Long extensions
   (over 30,000 band cells) are scored by a SIMD group each instead of one GPU
   thread. Seeding and seed extension share the process's two GPU command
   buffers in flight (`metal-common`), so a seeding batch waits while two

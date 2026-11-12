@@ -31,14 +31,19 @@ def branch(
     git(repo, "commit", "--quiet", "-m", name)
 
 
-@pytest.fixture
-def remote(tmp_path: Path) -> Path:
+def main_only(tmp_path: Path) -> Path:
     repo = tmp_path / "remote"
     repo.mkdir()
     git(repo, "init", "--quiet", "-b", "main")
     git(repo, "config", "user.email", "t@example.com")
     git(repo, "config", "user.name", "t")
     branch(repo, "main", {"README.md": "main"})
+    return repo
+
+
+@pytest.fixture
+def remote(tmp_path: Path) -> Path:
+    repo = main_only(tmp_path)
     branch(
         repo,
         "mockups/Randy's_Idea",
@@ -111,3 +116,14 @@ def test_index_lists_previews_and_escapes_branch_names(tmp_path, remote):
     assert "mockups/Randy&#x27;s_Idea" in index
     assert 'href="randy-s-idea/index.html"' in index
     assert "no-mockups" not in index
+
+
+def test_no_preview_branches_still_builds_an_empty_index(tmp_path):
+    # The Pages deploy failed once the last mockups/* branch was deleted:
+    # a shallow fetch that matches no branch exits non-zero.
+    out = build(tmp_path, main_only(tmp_path))
+    assert [p.name for p in out.iterdir()] == ["index.html"]
+    assert (
+        "No <code>mockups/*</code> branches right now."
+        in (out / "index.html").read_text()
+    )

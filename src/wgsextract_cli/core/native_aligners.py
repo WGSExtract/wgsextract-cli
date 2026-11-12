@@ -55,6 +55,9 @@ BIOCONDA_BWA_MEM3_MINIMUM = (0, 16, 0)
 # From this release wgse-bwa-mem2 maps (CPU and --metal) without bwa-mem2's
 # 6.2 GB .0123 file (native/README.md, Memory).
 BWA_MEM2_WITHOUT_0123 = (0, 5, 0)
+# From this release wgse-bwa reads a dense suffix-array side file
+# (dense_suffix_array) when one is present, unless told --dense-sa off.
+DENSE_SA_VERSION = (0, 11, 0)
 CAPABILITIES_SCHEMA = 1
 _PROBE_TIMEOUT_SECONDS = 30
 _VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
@@ -94,17 +97,34 @@ class NativeAligner:
             and version >= BWA_MEM2_WITHOUT_0123
         )
 
+    @property
+    def reads_dense_sa(self) -> bool:
+        """Whether this is a wgse-bwa that reads dense suffix-array files."""
+        version = _version_tuple(self.version)
+        return (
+            self.binary == "wgse-bwa"
+            and version is not None
+            and version >= DENSE_SA_VERSION
+        )
+
 
 @dataclass(frozen=True)
 class AlignerCommand:
     """How to run an aligner: upstream ``tool`` itself, or ``native`` (on its
     GPU, Metal or CUDA, when ``gpu``) in its place. ``options`` are bwa-mem3's
-    ``mem`` options that choose its output: ``--compat=<target>`` or ``--fast``."""
+    ``mem`` options that choose its output: ``--compat=<target>`` or ``--fast``.
+    ``dense_sa`` is the dense suffix-array file wgse-bwa reads, if any."""
 
     tool: str
     native: NativeAligner | None = None
     gpu: bool = False
     options: tuple[str, ...] = ()
+    dense_sa: Path | None = None
+
+    @property
+    def dense_sa_bytes(self) -> int:
+        """The RAM the dense suffix-array file takes (wgse-bwa holds it)."""
+        return self.dense_sa.stat().st_size if self.dense_sa else 0
 
     @property
     def binary(self) -> str:
@@ -145,7 +165,11 @@ class AlignerCommand:
         then finishes on the CPU (same alignments) instead of failing the run."""
         if self.native is None:
             return [self.tool]
-        return [self.native.command, *(["--backend", "auto"] if self.gpu else [])]
+        argv = [self.native.command, *(["--backend", "auto"] if self.gpu else [])]
+        if self.native.reads_dense_sa:
+            # The file is opt-in: wgse-bwa would otherwise read any present.
+            argv += ["--dense-sa", "on" if self.dense_sa else "off"]
+        return argv
 
     def record(self) -> None:
         """Name the build that ran on the result: its version under the
@@ -162,6 +186,10 @@ class AlignerCommand:
             native_aligner_version=self.native.version,
             native_aligner_backend=self.backend,
         )
+        if self.dense_sa:
+            from wgsextract_cli.core.dense_suffix_array import interval_of
+
+            result.add_metrics(dense_suffix_array_interval=interval_of(self.dense_sa))
 
     @property
     def backend(self) -> str:
@@ -191,9 +219,15 @@ class AlignerCommand:
         else:
             output = f"{self.tool} {version}'s"
         options = "".join(f" {option}" for option in self.options)
+        dense = (
+            f" It locates seeds with the dense suffix-array file {self.dense_sa} "
+            f"({self.dense_sa_bytes / 1e9:.2f} GB, held in RAM)."
+            if self.dense_sa
+            else ""
+        )
         logging.info(
             f"Aligning with {self.native.binary} {self.native.version}{options} on "
-            f"{backend} ({self.native.path}); its alignments are {output}."
+            f"{backend} ({self.native.path}); its alignments are {output}.{dense}"
         )
 
 
@@ -370,6 +404,19 @@ def find_bwa_mem3(setting: str | None, *, instead: str) -> NativeAligner | None:
         engine_version=str(version),
         metal_available=False,
     )
+
+
+def installed_build(tool: str) -> NativeAligner:
+    """The build on PATH that replaces upstream ``tool``, wherever this runs;
+    NativeAlignerUnusable says why there is none."""
+    binary = BINARIES[tool]
+    path = shutil.which(binary)
+    if path is None:
+        raise NativeAlignerUnusable("isn't installed")
+    try:
+        return _check(tool, binary, path)
+    except OSError as error:
+        raise NativeAlignerUnusable(str(error)) from error
 
 
 def find_native_aligner(

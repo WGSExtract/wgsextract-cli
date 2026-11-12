@@ -294,10 +294,13 @@ def reference_bases(ref: str | None) -> int:
         return 0
 
 
-def bwa_gpu_memory(ref: str | None, reads: int | None) -> int:
-    """What wgse-bwa's GPU backend (``--metal`` or ``--cuda``) needs in RAM
-    beyond bwa's estimate."""
-    if reads is not None and reads <= _BWA_GPU_DENSE_SA_AFTER_READS:
+def bwa_gpu_memory(
+    ref: str | None, reads: int | None, *, dense_sa_file: bool = False
+) -> int:
+    """What wgse-bwa's GPU backend (Metal or CUDA) needs beyond bwa's estimate.
+    With a dense suffix-array file (``dense_sa_file``, counted as index memory) the GPU
+    uses it rather than building its own denser sample."""
+    if dense_sa_file or (reads is not None and reads <= _BWA_GPU_DENSE_SA_AFTER_READS):
         return _BWA_GPU_BYTES
     bases = reference_bases(ref) or _HUMAN_REFERENCE_BASES
     return _BWA_GPU_BYTES + math.ceil((2 * bases + 1) * 33 / (32 * 8))
@@ -316,10 +319,12 @@ def estimate_mapping_memory(
     preset: str | None = None,
     input_bytes: int | None = None,
     gpu_bytes: int = 0,
+    dense_sa_bytes: int = 0,
 ) -> MappingMemory:
     """Peak memory of the alignment pipeline. ``preset`` is minimap2's, and
     ``input_bytes`` (the read files' size) bounds its batches. ``gpu_bytes``
-    (an aligner's GPU backend: bwa_gpu_memory) counts as working memory."""
+    (an aligner's GPU backend: bwa_gpu_memory) counts as working memory,
+    and ``dense_sa_bytes`` (wgse-bwa's dense suffix-array file) as index."""
     bases = (
         reference_bases(ref)
         or (_fasta_bases_bound(ref) if aligner == "minimap2" else 0)
@@ -375,7 +380,7 @@ def estimate_mapping_memory(
         except OSError:
             pass
     return MappingMemory(
-        index,
+        index + dense_sa_bytes,
         _working_memory(aligner, int(threads), reads, platform, read_length)
         + gpu_bytes,
         (input_reads * _SAMBLASTER_BYTES_PER_PAIR + 1) // 2 if samblaster else 0,
@@ -398,6 +403,7 @@ def check_mapping_memory(
     preset: str | None = None,
     input_bytes: int | None = None,
     gpu_bytes: int = 0,
+    dense_sa_bytes: int = 0,
     required: bool = False,
     label: str | None = None,
 ) -> None:
@@ -418,6 +424,7 @@ def check_mapping_memory(
             preset=preset,
             input_bytes=input_bytes,
             gpu_bytes=gpu_bytes,
+            dense_sa_bytes=dense_sa_bytes,
         )
 
     requested = estimate(threads, memory)
