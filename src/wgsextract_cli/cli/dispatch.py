@@ -173,7 +173,15 @@ def _run(
         # An exception during cleanup can replace the handler's SystemExit.
         # The run's stop request takes precedence over that failure.
         signum = received_stop_signal()
-        error = SystemExit(128 + signum) if signum is not None else e
+        error: BaseException = e
+        if signum is not None:
+            error = SystemExit(128 + signum)
+            if not (isinstance(e, SystemExit) and e.code == error.code):
+                logging.debug(
+                    "Run was stopped by signal %d; replacing error raised during the stop",
+                    signum,
+                    exc_info=e,
+                )
         fail_from_exception(result, error, debug=bool(getattr(args, "debug", False)))
 
 

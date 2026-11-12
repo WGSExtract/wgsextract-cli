@@ -63,7 +63,7 @@ def test_issue_717_cleanup_failure_cannot_replace_signal_cancellation(
         f"""
         import argparse, os, signal
         from pathlib import Path
-        from wgsextract_cli.cli.bootstrap import install_signal_handlers
+        from wgsextract_cli.cli.bootstrap import configure_logging, install_signal_handlers
         from wgsextract_cli.cli.dispatch import dispatch_command
         from wgsextract_cli.core.results import current_result
         from wgsextract_cli.core.utils import WGSExtractError
@@ -77,9 +77,10 @@ def test_issue_717_cleanup_failure_cannot_replace_signal_cancellation(
             finally:
                 raise WGSExtractError("Step cleanup failed.")
 
+        configure_logging(debug=True)
         install_signal_handlers()
         dispatch_command(argparse.Namespace(
-            func=command, command="test", json=True,
+            func=command, command="test", json=True, debug=True,
             outdir={str(tmp_path)!r}), set())
         """
     )
@@ -91,6 +92,8 @@ def test_issue_717_cleanup_failure_cannot_replace_signal_cancellation(
     assert document["status"] == "cancelled"
     assert document["exit_code"] == proc.returncode == code
     assert json.loads(output.with_suffix(".txt.manifest.json").read_text()) == document
+    # The replaced cleanup error stays visible under --debug (review on #718).
+    assert "Step cleanup failed." in proc.stderr
 
 
 def test_schema_is_a_valid_draft_2020_12_schema():
