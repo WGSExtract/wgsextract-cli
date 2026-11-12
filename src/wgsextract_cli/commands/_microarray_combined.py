@@ -9,9 +9,11 @@ import subprocess
 import tempfile
 import time
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, TextIO
 
+from wgsextract_cli.core.imputed_vcf import imputation_info
 from wgsextract_cli.core.microarray_identity import identity_policy
 from wgsextract_cli.core.microarray_quality import MicroarrayQuality, quality_policy
 from wgsextract_cli.core.microarray_utils import GenotypeTally, sort_alleles
@@ -145,6 +147,9 @@ def _write_vcf_mode_kit(
     restrict_reference_fill: bool = False,
 ) -> None:
     policy = quality_policy(params)
+    vcf_header = run_command(["bcftools", "view", "-h", out_vcf], capture_output=True)
+    if imputation_info(vcf_header.stdout.splitlines()) is not None:
+        policy = replace(policy, assume_hom_ref=False)
     identity = identity_policy(params)
     fields = policy.needs_fields or identity.needs_alleles
     _validate_quality_sample(policy, out_vcf, outdir, identity_enabled=identity.enabled)

@@ -1119,6 +1119,91 @@ def test_path_guard_checks_the_library_of_a_home_relative_fasta(
         PathGuard([genomes]).check(find(op).params(ref="~/lib/genomes/x.fa"))
 
 
+@pytest.mark.parametrize("op", ["vcf/impute", "ref/imputation"])
+def test_732_imputation_checks_the_library_above_an_allowed_fasta(tmp_path, op):
+    genomes = tmp_path / "library" / "genomes"
+    genomes.mkdir(parents=True)
+    fasta = genomes / "hg38.fa"
+    fasta.write_text(">chr20\nA\n")
+    request = {"ref": str(fasta), "chromosomes": "chr20"}
+    if op == "vcf/impute":
+        request["vcf_input"] = str(genomes / "chip.vcf.gz")
+    params = params_from_json(find(op), request)
+    with pytest.raises(RequestError) as error:
+        PathGuard([genomes]).check(params)
+    assert error.value.code == "path_not_allowed"
+    PathGuard([tmp_path / "library"]).check(params)
+
+
+@pytest.mark.parametrize(
+    ("op", "delete"),
+    [("vcf/impute", False), ("ref/imputation", False), ("ref/imputation", True)],
+)
+@pytest.mark.parametrize("configured", ["reference_library", "reference_fasta"])
+def test_732_omitted_imputation_ref_cannot_escape_allowed_roots(
+    tmp_path, monkeypatch, op, delete, configured
+):
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    outside = tmp_path / "outside"
+    genomes = outside / "genomes"
+    genomes.mkdir(parents=True)
+    fasta = genomes / "hg38.fa"
+    fasta.write_text(">chr20\nA\n")
+    monkeypatch.delitem(settings, "reference_fasta", raising=False)
+    monkeypatch.setitem(settings, "reference_library", str(outside))
+    if configured == "reference_fasta":
+        monkeypatch.setitem(settings, "reference_library", str(allowed))
+        monkeypatch.setitem(settings, "reference_fasta", str(fasta))
+    request = {"chromosomes": "chr20"}
+    if op == "vcf/impute":
+        request["vcf_input"] = str(allowed / "chip.vcf.gz")
+    else:
+        request["delete"] = delete
+    with pytest.raises(RequestError) as error:
+        PathGuard([allowed], allow_destructive=True).check(
+            params_from_json(find(op), request)
+        )
+    assert error.value.code == "path_not_allowed"
+
+
+@pytest.mark.parametrize("op", ["vcf/impute", "ref/imputation"])
+@pytest.mark.parametrize("escape", ["panel-folder", "binary", "marker-path"])
+def test_732_imputation_rejects_escaping_panel_paths(tmp_path, op, escape):
+    from wgsextract_cli.core import imputation_panel
+
+    library, outside = tmp_path / "library", tmp_path / "outside"
+    library.mkdir()
+    outside.mkdir()
+    panel = imputation_panel.folder(str(library))
+    if escape == "panel-folder":
+        panel.parent.mkdir(parents=True)
+        try:
+            panel.symlink_to(outside, target_is_directory=True)
+        except OSError:
+            pytest.skip("symlinks are unavailable")
+    else:
+        chrom = panel / "chr20"
+        (chrom / "bins").mkdir(parents=True)
+        if escape == "binary":
+            target = outside / "ref.bin"
+            target.write_bytes(b"reference")
+            try:
+                (chrom / "bins" / "ref.bin").symlink_to(target)
+            except OSError:
+                pytest.skip("symlinks are unavailable")
+        else:
+            (chrom / ".installed.json").write_text(
+                json.dumps({"chunks": [["input", "output", str(outside / "ref.bin")]]})
+            )
+    request = {"ref": str(library), "chromosomes": "chr20"}
+    if op == "vcf/impute":
+        request["vcf_input"] = str(library / "chip.vcf.gz")
+    with pytest.raises(RequestError) as error:
+        PathGuard([library]).check(params_from_json(find(op), request))
+    assert error.value.code == "path_not_allowed"
+
+
 @pytest.mark.parametrize(
     ("op", "params"),
     [
@@ -2122,10 +2207,12 @@ _BASE_REQUESTS: dict[str, dict[str, Any]] = {
     "extract/custom": {"region": "chrM"},
     "extract/region": {"formats": "bam"},
     "info/chip": {"input": _FILE},
+    "vcf/impute": {"input": _FILE, "ref": _DATA},
     "panel/bed": {"genes": ["BRCA1"]},
     "qc/vcf": {"input": _FILE},
     "ref/library": {"install": "hs38"},
     "ref/library-list": {"ref": _DATA},
+    "ref/imputation": {"ref": _DATA},
     "report": {"input": _FILE},
     "sample/show": {"input": _FILE},
     "sample/set": {"input": _FILE, "sex": "female"},
@@ -2140,6 +2227,7 @@ _COMPANIONS: dict[tuple[str, str], dict[str, Any]] = {
     ("basecall", "alignment"): {"alignment": _FILE, "regions_bed": _FILE},
     ("bam/to-ubam", "r1"): {"input": None, "r1": _FILE},
     ("bam/to-ubam", "r2"): {"input": None, "r1": _FILE},
+    ("vcf/impute", "vcf_input"): {"input": None, "vcf_input": _FILE},
 }
 
 
