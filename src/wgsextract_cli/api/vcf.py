@@ -73,12 +73,9 @@ class _SmallVariantParams(Params):
     qc_min_depth: float | None = depth_param()
     mimalloc: str | None = param(
         None,
-        help="On Apple Silicon, run bcftools mpileup and call with WGS Extract's "
-        "wgse-mimalloc allocator when it's installed in bcftools' environment "
-        "(auto; same records, about a fifth faster) or never (off). Default: "
-        "config mimalloc, else auto.",
-        doc="auto (the default, or config mimalloc) injects wgse-mimalloc into "
-        "bcftools on Apple Silicon when installed; off never does.",
+        help="Apple Silicon: bcftools uses wgse-mimalloc if installed (auto) or "
+        "not (off). Default: config mimalloc, else auto.",
+        doc="auto: bcftools uses wgse-mimalloc on Apple Silicon if installed.",
         choices=MIMALLOC_SETTINGS,
         config_key="mimalloc",
     )
