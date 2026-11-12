@@ -13,6 +13,11 @@ The recipe's tests check that, injected, the library takes over the C
 library's `malloc()` in a Python process, and that bioconda's bcftools 1.24
 loads it.
 
+The published [wgse-mimalloc-1 release](https://github.com/WGSExtract/wgsextract-cli/releases/tag/wgse-mimalloc-1)
+is pinned by URL and SHA-256 in `pixi.toml` and `pixi.lock`. Pixi installs it
+beside bcftools in the default and development environments on Apple Silicon;
+no separate allocator installation is needed.
+
 ## Building and publishing
 
 The [wgse-mimalloc workflow](../../.github/workflows/mimalloc.yml) builds and

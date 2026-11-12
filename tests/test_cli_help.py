@@ -508,8 +508,8 @@ def test_help_stays_token_efficient(capsys):
     main(["help", "--all"])
     assert len(capsys.readouterr().out) <= 12_000
     main(["help", "--all", "--json"])
-    # Grows with each command group moved onto typed Params (input_schema).
-    assert len(capsys.readouterr().out) <= 312_000
+    # Typed Params and mimalloc options used the old budget; keep modest headroom.
+    assert len(capsys.readouterr().out) <= 316_000
     main(["help", "microarray", "--json"])
     assert len(capsys.readouterr().out) <= 15_000
 

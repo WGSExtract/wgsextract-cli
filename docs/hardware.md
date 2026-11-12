@@ -321,6 +321,9 @@ On macOS about a third of `bcftools mpileup`'s time goes to the system
 allocator. `wgse-mimalloc` is WGS Extract's build of
 [mimalloc](https://github.com/microsoft/mimalloc) 3.6.1 with malloc override on
 (conda-forge's has it off), from [packaging/mimalloc](../packaging/mimalloc).
+The published [wgse-mimalloc-1 package](https://github.com/WGSExtract/wgsextract-cli/releases/tag/wgse-mimalloc-1)
+is pinned by URL and SHA-256 and included in the default Pixi environment on
+Apple Silicon; `pixi install --locked` installs it alongside bcftools.
 When it is installed in bcftools' environment, `vcf snp` and `vcf indel` start
 their bcftools processes, and only those, with `DYLD_INSERT_LIBRARIES` pointing
 at it (`mimalloc = "auto"`, the default; `--mimalloc off` or `mimalloc = "off"`
