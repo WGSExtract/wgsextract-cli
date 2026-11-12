@@ -110,6 +110,8 @@ significant digits, so comparison allows that rounding plus `1e-6`.
 ## Outputs and percentiles
 
 The command writes `<input>_<PGS ID>_pgs.json`, `.tsv`, and a result manifest.
+The input stem is the same for `.vcf`, `.vcf.gz`, `.vcf.bgz` and `.bcf`;
+compression and variant-file extensions are not part of the output name.
 The JSON and manifest details include score sum, matched/total counts,
 match rate and reason counts, build, sample, scoring-file SHA-256, licence,
 citation and research warning. `--json` prints the usual result-manifest

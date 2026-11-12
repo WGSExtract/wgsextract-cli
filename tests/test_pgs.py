@@ -438,6 +438,49 @@ def test_617_wrong_scoring_build_is_refused(tmp_path: Path) -> None:
         )
 
 
+@pytest.mark.parametrize("suffix", [".vcf", ".vcf.gz", ".vcf.bgz", ".bcf"])
+def test_617_compression_does_not_change_the_score_output_stem(
+    tmp_path: Path, suffix: str
+) -> None:
+    source = tmp_path / f"person.run{suffix}"
+    if suffix == ".vcf":
+        shutil.copyfile(FIXTURES / "sample.vcf", source)
+    else:
+        subprocess.run(
+            [
+                "bcftools",
+                "view",
+                "-Ob" if suffix == ".bcf" else "-Oz",
+                "-o",
+                str(source),
+                str(FIXTURES / "sample.vcf"),
+            ],
+            check=True,
+        )
+    result = api.score.pgs(replace(_params(tmp_path), input=source))
+    assert {
+        Path(output.path).name
+        for output in result.outputs
+        if output.role in ("pgs", "pgs_table")
+    } == {"person.run_custom_pgs.json", "person.run_custom_pgs.tsv"}
+    assert result.metrics["score_sum"] == pytest.approx(1.0)
+
+
+def test_617_missing_column_error_does_not_list_present_columns(tmp_path: Path) -> None:
+    scoring = tmp_path / "incomplete.txt"
+    scoring.write_text(
+        "#genome_build=GRCh38\nchr_name\tchr_position\teffect_allele\n1\t10\tG\n"
+    )
+    result = api.score.pgs(
+        replace(_params(tmp_path), scoring_file=scoring), check=False
+    )
+    assert result.status == "failed"
+    assert result.error is not None
+    assert "effect_weight" in result.error.message
+    for present in ("chr_name", "chr_position", "effect_allele"):
+        assert present not in result.error.message
+
+
 def test_617_cli_json_reports_sum_and_structured_warnings(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

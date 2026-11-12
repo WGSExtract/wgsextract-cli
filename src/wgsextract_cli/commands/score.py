@@ -13,6 +13,7 @@ from wgsextract_cli.api.score import ScorePgsParams
 from wgsextract_cli.core import pgs, pgs_plink
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.dependency_checks import verify_dependencies
+from wgsextract_cli.core.reference_assets import input_stem
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.utils import UsageError
 
@@ -141,7 +142,7 @@ def run_pgs(params: ScorePgsParams) -> None:
         variants_total=data["variants_total"],
         percentile=None,
     )
-    stem = f"{params.input.name.removesuffix('.gz').removesuffix('.vcf')}_{data['pgs_id']}_pgs"
+    stem = f"{input_stem(params.input)}_{data['pgs_id']}_pgs"
     output = outdir / f"{stem}.json"
     with atomic_output(output, retire_indexes=False) as staged:
         Path(staged).write_text(

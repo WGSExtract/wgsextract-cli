@@ -176,8 +176,11 @@ class ScoringFile:
             "effect_allele",
             "effect_weight",
         }
-        if not required.issubset(self.columns):
-            raise WGSExtractError(f"{path.name}: missing scoring columns: {required}")
+        missing = required.difference(self.columns)
+        if missing:
+            raise WGSExtractError(
+                f"{path.name}: missing scoring columns: {', '.join(sorted(missing))}"
+            )
         if any(
             c in self.columns
             for c in (
@@ -252,7 +255,7 @@ class ScoringFile:
 
 
 class IntervalIndex:
-    """Zero-based half-open intervals, merged before membership queries."""
+    """Merged zero-based, half-open BED intervals, queried with one-based positions."""
 
     def __init__(self, intervals: dict[str, list[tuple[int, int]]]) -> None:
         self.intervals: dict[str, list[tuple[int, int]]] = {}
@@ -268,6 +271,7 @@ class IntervalIndex:
             self.starts[chrom] = [v[0] for v in merged]
 
     def contains(self, chrom: str, pos: int) -> bool:
+        """Test one-based VCF ``pos``: start < pos <= end for BED [start, end)."""
         index = bisect.bisect_right(self.starts.get(chrom, []), pos - 1) - 1
         return index >= 0 and pos <= self.intervals[chrom][index][1]
 
