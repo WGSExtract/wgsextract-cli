@@ -349,6 +349,8 @@ class Genotypes:
         self.db.execute(
             "CREATE TABLE calls (chrom TEXT, pos INTEGER, end INTEGER, ref TEXT, alt TEXT, gt TEXT, filter TEXT)"
         )
+        # Build incrementally, avoiding an external index sort in OS temp.
+        self.db.execute("CREATE INDEX locus ON calls(chrom,pos)")
         names = subprocess.run(
             ["bcftools", "query", "-l", str(vcf)],
             capture_output=True,
@@ -414,7 +416,6 @@ class Genotypes:
             raise WGSExtractError(
                 f"bcftools query failed (exit {process.returncode}); no score was produced."
             )
-        self.db.execute("CREATE INDEX locus ON calls(chrom,pos)")
         self.db.commit()
         blocked: dict[str, list[tuple[int, int]]] = {}
         for chrom, pos, end in self.db.execute(
