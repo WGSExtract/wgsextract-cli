@@ -28,7 +28,6 @@ requirements:
     - ${{ stdlib('c') }}
     - cmake >=3.27
     - ninja
-    - pkg-config
     - patch
   host:
     - libabseil
