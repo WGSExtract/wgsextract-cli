@@ -1015,6 +1015,44 @@ of the time in SMEM seeding, a quarter in seed extension, a fifth in mate rescue
 and an eighth in suffix-array locate. With `--cuda` the CPU does the chaining,
 the sorts and reference fetches that remain, and spends a quarter as much time.
 
+### wgse-bwa-mem3 on Linux x86-64
+
+`wgse-bwa-mem3` also builds on Linux x86-64, as upstream's default build does:
+AVX2 for most code, and the SIMD kernels for each tier from SSE4.1 to AVX-512BW,
+picked at run time. It doesn't replace `malloc` with mimalloc, as Bioconda's
+build does (#727). It isn't packaged yet: `packaging/wgse-bwa` leaves it out
+(`-DWGSE_BWA_MEM3=OFF`).
+
+With `-DWGSE_CUDA=ON`, `--cuda` (`--backend cuda`, experimental) runs the
+Metal backend's two GPU stages on an NVIDIA GPU, with the same scheduling:
+
+- **SMEM collection:** `bwa-mem2/seeding.cuh`, ported from `seeding.metal`.
+  `seeding_host.cpp` schedules it for both backends. The occurrence table,
+  about 6 GiB for hs38, is uploaded once.
+- **8-bit seed extension:** `extension.cuh`, ported from `extension.metal`. It is
+  hooked into upstream's SSE, AVX2 and AVX-512 `getScores8`, as well as NEON's.
+
+`--cuda` runs one compute thread per `-t` thread by default. More threads than
+cores were slower on x86-64.
+
+The full-5m tier on the same machine (8 threads, two interleaved rounds, medians):
+
+| | Wall | CPU time | Peak RSS | Records |
+| --- | ---: | ---: | ---: | --- |
+| `wgse-bwa --cuda` | 130.5 s | 1003 s | 6.3 GiB | BWA's |
+| `wgse-bwa-mem3` | 98.0 s | 761 s | 10.5 GiB | bwa-mem3's |
+| `wgse-bwa-mem3 --cuda` | 89.3 s (−9%) | 543 s | 10.9 GiB | bwa-mem3's |
+| `wgse-bwa-mem3 mem --compat=bwa-mem` | 97.7 s | 761 s | 10.5 GiB | BWA's |
+| `wgse-bwa-mem3 --cuda mem --compat=bwa-mem` | 91.8 s (−6%) | 559 s | 10.9 GiB | BWA's |
+
+The records match `expected.tsv`: bwa-mem3's own, and with `--compat=bwa-mem`,
+BWA's. `--cuda` used at most 6.2 GiB of GPU memory.
+
+On x86-64, `perf` puts a fifth of the CPU backend's time in mate rescue
+(`kswv`), more than a quarter in SMEM collection, a tenth in suffix-array
+lookups and an eighth in the 8-bit extension. Mate rescue and suffix-array
+lookups stay on the CPU, so the GPU saves more CPU time than wall time.
+
 ## Building
 
 Requires Xcode command-line tools and CMake 3.24 or later. Upstream sources are
@@ -1028,8 +1066,9 @@ cmake --install out/native --prefix out/native-prefix
 ```
 
 On Linux the same commands build `wgse-bwa` with a C/C++ compiler, CMake and
-zlib. `-DWGSE_CUDA=ON` adds the CUDA backend, which needs the CUDA toolkit
-(`nvcc` and the static runtime, for example conda-forge's `cuda-nvcc` and
+zlib, and on x86-64 `wgse-bwa-mem3` too (it also needs `make` for htslib;
+`-DWGSE_BWA_MEM3=OFF` leaves it out). `-DWGSE_CUDA=ON` adds the CUDA backends,
+which need the CUDA toolkit (`nvcc` and the static runtime, for example conda-forge's `cuda-nvcc` and
 `cuda-cudart-static`). It builds for Turing to Hopper GPUs, plus PTX for newer
 ones; `-DCMAKE_CUDA_ARCHITECTURES` overrides this. A GPU the build has no
 kernels for (such as Pascal or Volta, by default) is never selected, and
