@@ -23,7 +23,9 @@ that finished, and redoes the one that didn't.
 import argparse
 import logging
 import math
+import os
 import shutil
+import stat
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -919,30 +921,9 @@ def _run_steps(
         return
 
     if not job.r1 and not job.force_extract and not job.keep_fastq:
-        previous = journal.check(extract_step)
-        if previous.metrics.get("temporary") is True:
-            retained = tuple(
-                journal.resolve(output["path"]) for output in previous.outputs
-            )
-            resolved = tuple(path.resolve() for path in retained)
-            workspace = Path(staging).resolve()
-            # The new workspace changes paths, not the completed extraction.
-            # Only recover unchanged files from an owned sibling workspace.
-            if (
-                len(retained) == 2
-                and workspace.name.startswith(".wgse_run_")
-                and resolved[0].parent == resolved[1].parent
-                and resolved[0].parent.name.startswith(".wgse_run_")
-                and resolved[0].parent.parent == workspace.parent
-                and tuple(path.name for path in resolved)
-                == tuple(Path(path).name for path in staged)
-            ):
-                recovered = replace(
-                    extract_step, outputs=tuple(str(path) for path in retained)
-                )
-                if not journal.check(recovered).run:
-                    extract_step = recovered
-                    staged = str(retained[0]), str(retained[1])
+        recovered = _recover_retained_fastqs(journal, extract_step, staged, staging)
+        if recovered is not None:
+            extract_step, staged = recovered
 
     extract_decision: Decision | None = None
     if job.r1:
@@ -1298,6 +1279,59 @@ def _run_steps(
     else:  # kept by the --keep-fastq run that extracted them
         current_result().add_input(r1_path, "fastq_r1")
         current_result().add_input(r2_path, "fastq_r2")
+
+
+def _recover_retained_fastqs(
+    journal: StepJournal,
+    extract_step: Step,
+    staged: tuple[str, str],
+    staging: str,
+) -> tuple[Step, tuple[str, str]] | None:
+    """Recover a private sibling workspace only after journal validation."""
+    previous = journal.check(extract_step)
+    if previous.metrics.get("temporary") is not True:
+        return None
+    try:
+        retained = tuple(journal.resolve(output["path"]) for output in previous.outputs)
+        resolved = tuple(path.resolve() for path in retained)
+        workspace = Path(staging).resolve()
+        if len(retained) != 2:
+            return None
+        sibling_workspace = (
+            workspace.name.startswith(".wgse_run_")
+            and resolved[0].parent == resolved[1].parent
+            and resolved[0].parent.name.startswith(".wgse_run_")
+            and resolved[0].parent.parent == workspace.parent
+        )
+        matching_names = tuple(path.name for path in resolved) == tuple(
+            Path(path).name for path in staged
+        )
+        if not sibling_workspace or not matching_names:
+            return None
+        if os.name == "posix":
+            # Windows temporary-directory access is controlled by its OS ACLs.
+            directory, *files = [
+                path.stat() for path in (resolved[0].parent, *resolved)
+            ]
+            private_owner = all(
+                item.st_uid == os.geteuid() and not item.st_mode & 0o022
+                for item in (directory, *files)
+            )
+            regular_pair = stat.S_ISDIR(directory.st_mode) and all(
+                stat.S_ISREG(item.st_mode) for item in files
+            )
+            root = workspace.parent.stat()
+            trusted_root = root.st_uid in (0, os.geteuid()) and (
+                not root.st_mode & 0o022 or bool(root.st_mode & stat.S_ISVTX)
+            )
+            if not private_owner or not regular_pair or not trusted_root:
+                return None
+    except OSError:
+        return None
+    recovered = replace(extract_step, outputs=tuple(str(path) for path in retained))
+    if journal.check(recovered).run:
+        return None
+    return recovered, (str(retained[0]), str(retained[1]))
 
 
 def _short_read_plan(
