@@ -29,16 +29,22 @@ printed by `--version`.
 
 ## Installing
 
-The published `wgse-bwa` 0.11.0 and 0.12.0 executables advertise dense
-suffix-array support but reject `--dense-sa`. The CLI omits that option for
-those versions, so alignment works when no dense side file is present.
-With a side file it refuses: those builds can read it automatically and cannot
-honor the run's opt-in setting. Upgrade to 0.12.1 or later, or remove the side
-files with `wgsextract ref dense-sa --ref <fasta> --delete`.
-Until updated prereleases are published, build `wgse-bwa` from this revision
-(0.12.1) as described under [Building](#building). The other three executables
-are unaffected.
+The `macos-aligners-16` (Apple Silicon) and `linux-aligners-1` (Linux x86-64
+and ARM64) prereleases have `wgse-bwa` 0.12.1. The steps below install the
+Apple Silicon executables; on Linux, see
+[Linux x86-64 and NVIDIA GPUs](#linux-x86-64-and-nvidia-gpus-cuda). Earlier published `wgse-bwa`
+executables, 0.11.0 and 0.12.0, advertise dense suffix-array support but reject
+`--dense-sa`. The CLI omits that option for those versions, so alignment works
+when no dense side file is present. With a side file it refuses: those builds
+read it automatically and cannot honor the run's opt-in setting. Upgrade to
+0.12.1, or remove the side files with
+`wgsextract ref dense-sa --ref <fasta> --delete`.
 
+The `macos-aligners-16` prerelease has `wgse-bwa` 0.12.1, which parses
+`--dense-sa on|off` in release builds, with the same `wgse-bwa-mem2` 0.5.2 and
+`wgse-minimap2` 0.3.0 as `macos-aligners-15`, and `wgse-bwa-mem3` 0.3.1, whose
+`--metal` finishes a run on the CPU after a GPU seeding batch fails and then
+exits 1, as after an extension failure.
 The `macos-aligners-15` prerelease has `wgse-bwa` 0.11.0, which can use an
 optional dense suffix-array side file (`wgse-bwa densify-sa`), `wgse-bwa-mem2`
 0.5.2, `wgse-bwa-mem3` 0.3.0, whose `--metal` also collects SMEMs on the GPU,
@@ -84,8 +90,8 @@ publishes for each release asset:
 
 ```bash
 mkdir wgse-aligners && cd wgse-aligners
-gh release download macos-aligners-15 -R WGSExtract/wgsextract-cli
-gh release view macos-aligners-15 -R WGSExtract/wgsextract-cli --json assets \
+gh release download macos-aligners-16 -R WGSExtract/wgsextract-cli
+gh release view macos-aligners-16 -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
   shasum -a 256 -c
 ```
@@ -965,9 +971,24 @@ average (`power.txt`, `power-samples.tsv`).
 
 ## Linux x86-64 and NVIDIA GPUs (CUDA)
 
-`wgse-bwa` 0.12.0 also builds for Linux x86-64, as a conda package
+`wgse-bwa` also builds for Linux x86-64 and ARM64, as conda packages
 (`packaging/wgse-bwa`, built by `.github/workflows/linux_aligners.yml` and
-published as `linux-aligners-*` prereleases).
+published as `linux-aligners-*` prereleases; `linux-aligners-1` has 0.12.1).
+Download the package for your machine, check it against the SHA-256 digest
+GitHub publishes, and install it with conda or mamba into its own environment
+together with its runtime libraries (installing a local package file doesn't
+resolve dependencies). The CLI finds `wgse-bwa` on `PATH`:
+
+```bash
+PKG=wgse-bwa-0.12.1-linux64_wgse_0.conda   # wgse-bwa-0.12.1-linuxaarch64_wgse_0.conda on ARM64
+gh release download linux-aligners-1 -R WGSExtract/wgsextract-cli -p "$PKG"
+gh release view linux-aligners-1 -R WGSExtract/wgsextract-cli --json assets \
+  --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
+  sha256sum -c --ignore-missing &&
+conda create -y -n wgse-bwa -c conda-forge "libgcc>=14" "libstdcxx>=14" "libzlib>=1.3.2,<2" &&
+conda install -y -n wgse-bwa "./$PKG" &&
+export PATH="$(conda run -n wgse-bwa printenv CONDA_PREFIX)/bin:$PATH"
+```
 
 - **CPU backend:** upstream BWA's code. The NEON replacements are Apple-only,
   so on x86-64 it runs upstream's `ksw_extend2`; it keeps the other exact
