@@ -668,13 +668,13 @@ def test_aligner_bwa_mem3_writes_bwas_records(tmp_path, mem3_bin):
 
 @pytest.mark.parametrize(
     ("machine", "options"),
-    [(("Linux", "x86_64"), ()), (("Darwin", "arm64"), ("--native-aligners", "off"))],
+    [(("Linux", "aarch64"), ()), (("Darwin", "arm64"), ("--native-aligners", "off"))],
 )
 def test_fast_aligns_with_bwa_mem3s_preset_and_warns(
     tmp_path, mem3_bin, monkeypatch, ram, machine, options
 ):
-    # Off Apple Silicon, or with native aligners off, bwa-mem3 from PATH runs
-    # even with wgse-bwa-mem3 installed.
+    # Where wgse-bwa-mem3 isn't built (Linux ARM64), or with native aligners
+    # off, bwa-mem3 from PATH runs even with wgse-bwa-mem3 installed.
     reads = _mem3_reads(tmp_path)
     _install_bwa_mem3(mem3_bin)
     _install_bwa_mem3(mem3_bin, name="bwa-mem3")
@@ -729,7 +729,8 @@ def test_bwa_mem3_without_bwa_mem3_fails_clearly(tmp_path, mem3_bin, options, ad
         _align(reads, tmp_path / "out", *options)
 
     message = str(raised.value)
-    assert "needs wgse-bwa-mem3 (Apple Silicon) or bwa-mem3" in message
+    assert "needs wgse-bwa-mem3" in message
+    assert "or bwa-mem3 (Bioconda" in message
     assert message.endswith(advice)
 
 
@@ -1184,6 +1185,86 @@ def test_linux_bwa_mem3_that_fails_its_check_warns_and_bwa_aligns(
     assert warning.code == "native_aligner_unusable"
     assert problem in warning.message
     assert warning.details["aligner"] == "bwa"
+
+
+def _linux_wgse_bwa_mem3_capabilities(**overrides):
+    """The Linux x86-64 wgse-bwa-mem3 package's capabilities (#674)."""
+    document = {
+        "version": "0.4.0",
+        "metal_available": False,
+        "metal_hardware_supported": False,
+        "cuda_available": True,
+        "cuda_hardware_supported": True,
+        **overrides,
+    }
+    return _capabilities("bwa-mem3", **document)
+
+
+@pytest.mark.parametrize(
+    ("machine", "mapper", "native"),
+    [
+        (
+            "x86_64",
+            "wgse-bwa-mem3 --backend auto mem --compat=bwa-mem2 ",
+            ("wgse-bwa-mem3", "0.4.0", "cuda"),
+        ),
+        # wgse-bwa-mem3 is built for x86-64 only.
+        ("aarch64", "bwa-mem3 mem --compat=bwa-mem2 ", ("bwa-mem3", "0.16.0", "cpu")),
+    ],
+)
+def test_linux_x86_64_wgse_bwa_mem3_stands_in_before_biocondas_on_its_gpu(
+    tmp_path, mem3_bin, fake_pixi, monkeypatch, ram, machine, mapper, native
+):
+    # #674: the Linux package, found on PATH as wgse-bwa does, runs its CUDA
+    # backend in Bioconda's bwa-mem3's place, with the same records.
+    monkeypatch.setattr(
+        native_aligners,
+        "platform",
+        Namespace(system=lambda: "Linux", machine=lambda: machine),
+    )
+    ram(64 * GIB)
+    reads = _mem3_reads(tmp_path)
+    _install_bwa_mem3(mem3_bin, capabilities=_linux_wgse_bwa_mem3_capabilities())
+    _env_bwa_mem3(fake_pixi, mem3_bin)
+
+    bam, result = _align(reads, tmp_path / "auto", "--aligner", "bwa-mem2")
+    upstream_bam, _ = _align(
+        reads, tmp_path / "off", "--aligner", "bwa-mem2", "--native-aligners", "off"
+    )
+
+    assert _mapper(bam, "bwa-mem2").startswith(mapper)
+    assert _samtools("view", bam) == _samtools("view", upstream_bam)
+    assert _native(result) == dict(
+        zip(
+            ("native_aligner", "native_aligner_version", "native_aligner_backend"),
+            native,
+            strict=True,
+        )
+    )
+    assert not result.warnings
+
+
+@pytest.mark.usefixtures("linux_x86_64")
+def test_linux_unusable_wgse_bwa_mem3_warns_and_biocondas_stands_in(
+    tmp_path, mem3_bin, fake_pixi
+):
+    reads = _mem3_reads(tmp_path)
+    build = _install_bwa_mem3(
+        mem3_bin, capabilities=_linux_wgse_bwa_mem3_capabilities(cpu_available=False)
+    )
+    _env_bwa_mem3(fake_pixi, mem3_bin)
+
+    bam, result = _align(reads, tmp_path / "out", "--aligner", "bwa")
+
+    assert _mapper(bam).startswith("bwa-mem3 mem --compat=bwa-mem ")
+    (warning,) = result.warnings
+    assert warning.code == "native_aligner_unusable"
+    # The warning names what aligns instead: Bioconda's bwa-mem3, not bwa.
+    assert warning.details == {
+        "binary": "wgse-bwa-mem3",
+        "path": str(build),
+        "aligner": "bwa-mem3",
+    }
 
 
 @pytest.fixture

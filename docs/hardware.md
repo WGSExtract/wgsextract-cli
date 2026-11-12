@@ -121,6 +121,15 @@ glibc 2.39 (#727). The CLI's version check catches that: standing in, it warns
 or bwa-mem2 aligns; `--aligner bwa-mem3` and `--fast` stop before aligning
 with an error that says so.
 
+On Linux x86-64, WGS Extract's `wgse-bwa-mem3` 0.4.0 or later (bwa-mem3 0.16.0
+without that allocator, from the `linux-aligners-*` prereleases; see
+[native/README.md](../native/README.md#wgse-bwa-mem3-on-linux-x86-64)) stands
+in the same way, ahead of Bioconda's, when it's on `PATH`. It runs
+`--backend auto`: on an NVIDIA GPU when its capabilities report
+`cuda_available` (**experimental**: seeding, seed extension and mate rescue),
+otherwise on the CPU, with the same records either way. The manifest records
+`native_aligner` `wgse-bwa-mem3` and `native_aligner_backend` `cuda` or `cpu`.
+
 ### Threads and memory
 
 - `--threads` (or `threads` in `config.toml`) defaults to `auto`: all cores, or

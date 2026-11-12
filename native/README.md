@@ -1026,8 +1026,13 @@ GPU backend next (#736; [hardware guide](../docs/hardware.md#nvidia-gpus-without
 `wgse-bwa-mem3` also builds on Linux x86-64, as upstream's default build does:
 AVX2 for most code, and the SIMD kernels for each tier from SSE4.1 to AVX-512BW,
 picked at run time. It doesn't replace `malloc` with mimalloc, as Bioconda's
-build does (#727). It isn't packaged yet: `packaging/wgse-bwa` leaves it out
-(`-DWGSE_BWA_MEM3=OFF`).
+build does (#727). Its conda package (`packaging/wgse-bwa-mem3`, with the CUDA
+backend) is built by the same workflow as `wgse-bwa`'s and published next to it
+in the `linux-aligners-*` prereleases; `packaging/wgse-bwa` leaves it out
+(`-DWGSE_BWA_MEM3=OFF`), and it builds without `wgse-bwa` (`-DWGSE_BWA=OFF`).
+On `PATH`, `align` and `realign` run it in Bioconda's bwa-mem3's place
+([docs/hardware.md](../docs/hardware.md#bwa-mem3-on-linux)), with
+`--backend auto`.
 
 With `-DWGSE_CUDA=ON`, `--cuda` (`--backend cuda`, experimental) runs three
 stages on an NVIDIA GPU:

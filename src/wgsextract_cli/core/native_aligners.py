@@ -3,8 +3,9 @@ and wgse-minimap2 write their upstream aligner's alignments, faster.
 wgse-bwa-mem3 (bwa-mem3) writes bwa's or bwa-mem2's exact records with
 ``--compat``, faster still, and so can stand in for either. On Apple Silicon
 all of them are built, and all but wgse-minimap2 can also run on the Metal GPU;
-on Linux, wgse-bwa is, and on x86-64 it can also run on an NVIDIA GPU (CUDA). They
-are used when installed on PATH; they are never installed here.
+on Linux, wgse-bwa is, and on x86-64 wgse-bwa-mem3 too, both of which can also
+run on an NVIDIA GPU (CUDA) there. They are used when installed on PATH; they are
+never installed here.
 
 Each tool is asked once per process what it can do (``capabilities --json``),
 and anything unexpected falls back to the upstream aligner.
@@ -38,8 +39,10 @@ BINARIES = {
     "bwa-mem3": "wgse-bwa-mem3",
     "minimap2": "wgse-minimap2",
 }
-# The builds for Linux (from wgse-bwa 0.10.0: CUDA on x86-64, NEON on ARM64).
+# The builds for Linux (from wgse-bwa 0.10.0: CUDA on x86-64, NEON on ARM64),
+# and for x86-64 also wgse-bwa-mem3 (from 0.4.0, with CUDA).
 LINUX_BINARIES = {"bwa": "wgse-bwa"}
+LINUX_X86_64_BINARIES = {**LINUX_BINARIES, "bwa-mem3": "wgse-bwa-mem3"}
 MINIMUM_VERSIONS = {
     "wgse-bwa": (0, 7, 0),
     "wgse-bwa-mem2": (0, 4, 0),
@@ -271,12 +274,12 @@ def platform_binaries() -> dict[str, str]:
     aligner each replaces."""
     if apple_silicon():
         return BINARIES
-    if platform.system() == "Linux" and platform.machine().lower() in {
-        "x86_64",
-        "amd64",
-        "aarch64",
-        "arm64",
-    }:
+    if platform.system() != "Linux":
+        return {}
+    machine = platform.machine().lower()
+    if machine in {"x86_64", "amd64"}:
+        return LINUX_X86_64_BINARIES
+    if machine in {"aarch64", "arm64"}:
         return LINUX_BINARIES
     return {}
 
@@ -364,10 +367,10 @@ def _check(tool: str, binary: str, path: str) -> NativeAligner:
 
 def find_bwa_mem3(setting: str | None, *, instead: str) -> NativeAligner | None:
     """The bwa-mem3 that can stand in for upstream ``instead`` (bwa or
-    bwa-mem2) with ``--compat``, or None: wgse-bwa-mem3 on Apple Silicon
-    (find_native_aligner), and on Linux Bioconda's bwa-mem3 (its own Pixi
-    environment, #591), which has the same output modes (#672). Off with
-    native_aligners off, like the builds."""
+    bwa-mem2) with ``--compat``, or None: wgse-bwa-mem3 on Apple Silicon and
+    Linux x86-64 (find_native_aligner), else on Linux Bioconda's bwa-mem3
+    (its own Pixi environment, #591), which has the same output modes (#672).
+    Off with native_aligners off, like the builds."""
     if platform.system() != "Linux":
         return find_native_aligner("bwa-mem3", setting, quiet=True, instead=instead)
     if native_setting(setting) == "off":
@@ -376,8 +379,11 @@ def find_bwa_mem3(setting: str | None, *, instead: str) -> NativeAligner | None:
     from wgsextract_cli.core.dependency_checks import get_tool_version
 
     path = get_tool_path("bwa-mem3")
-    if path is None:
-        return None
+    native = find_native_aligner(
+        "bwa-mem3", setting, quiet=True, instead="bwa-mem3" if path else instead
+    )
+    if native is not None or path is None:
+        return native
     # Failed probes aren't cached, and realign asks several times: once is enough.
     if any(
         w.code == "native_aligner_unusable" and w.details.get("path") == path
