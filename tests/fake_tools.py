@@ -666,7 +666,7 @@ write()
 _DV_WGSE = r"""
 argv = sys.argv[1:]
 if argv == ["--version"]:
-    print(f"wgse-deepvariant {state().get('wgse_version', '0.1.0')} (DeepVariant 1.10.0, build fake)")
+    print(f"wgse-deepvariant {state().get('wgse_version', '0.1.1')} (DeepVariant 1.10.0, build fake)")
     print(f"native port — x86_64, Linux (call_variants: ONNX Runtime 1.31.1, {state().get('wgse_backends', 'CUDA or CPU')})")
     sys.exit(0)
 command, opts = argv[0], options([a for a in argv[1:] if a != "--dry_run=true"])

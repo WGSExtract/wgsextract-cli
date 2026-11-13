@@ -79,6 +79,27 @@ call_variants on the GPU (FP32) gives the same calls from the same examples;
 FP16 on the Neural Engine does not, so it isn't used. See #647 for the
 measurements.
 
+On HG003's whole genome (the case study's NovaSeq 35x BAM), 0.1.1 against
+Google's published `wgs_HG003` 1.10.0 VCF:
+
+| | Official x86-64 | wgse-deepvariant 0.1.1 |
+| --- | ---: | ---: |
+| Records | 7,714,297 | 7,714,297 |
+| PASS genotypes | | identical |
+| Other genotypes, FILTER, alleles | | 2 QUAL-0 RefCalls differ |
+| QUAL | | 241,686 differ, by at most 28.6 |
+| GQ | | 10,321 differ, by at most 30 |
+| hap.py, GIAB v4.2.1: SNP F1 / INDEL F1 | 0.996136 / 0.995980 | identical, as are TP, FN and FP |
+
+The two RefCalls are outside GIAB's confident regions. At chr15:22254920, a
+repeat, the RefCall names a different insertion allele, as Google's own
+make_examples does when it runs on a window around that locus. At
+chr16:33733297 the hom-ref GQ sits on the 19.5 boundary of the GQ-20 no-call
+threshold. The largest QUAL change is a site Google caps at 99 (its small
+model's probability rounds to exactly 1.0); most changes are below 1. These are
+within the bounds of the Linux ARM64 build's whole-genome qualification
+(docs/deepvariant-arm64.md: 29.7 / 30).
+
 ## Speed and memory
 
 HG002 chr20 on an M1 Pro (10 cores, 32 GB), 10 threads, each stage on its own:
@@ -94,6 +115,16 @@ Google's image took 287 + 409 + 12 s on a 12-thread Ryzen 5600X. make_examples
 scales with threads (2: 583 s, 4: 294 s, 8: 201 s, 10: 167 s before gzip); the
 calls are identical whatever the thread count. call_variants' batch size
 follows the Mac's memory (512 on 16 GB) unless `--batch-size` sets it.
+
+HG003's whole genome on the same M1 Pro (0.1.1, 10 threads, batch 1024) took
+**2 h 42 min**: make_examples 1 h 56 min (at most 1.1 GB resident),
+call_variants 46 min (at most 4.6 GB resident and 13.2 GB footprint, which
+counts GPU buffers) and postprocess_variants 1 min (at most 2.2 GB). It ran in
+five parts of a few chromosomes each, with at most 3.8 GB of intermediate files
+per part; the VCF is 137 MB. That time excludes the 29 minutes spent copying
+each part's reads from the case study's bucket first. For scale, Google's
+image and the Linux ARM64 build took 3 h 39 min and 3 h 56 min of wall time
+on HG002 with 16 vCPUs (docs/deepvariant-arm64.md).
 
 On a **16 GB base M1**, release **0.1.1** runs the same chr20 through the CLI
 in **409 s** at six threads and batch 512, with **2.24 GB peak RSS** and
