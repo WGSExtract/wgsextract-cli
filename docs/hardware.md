@@ -270,15 +270,16 @@ runs call_variants on an NVIDIA GPU through CUDA, or on the CPU.
   (`--no-gpu-memory-check` overrides it): it used 2.3 GiB at its default batch
   of 256 on an RTX 3090. `--gpu` never falls back to the CPU: a GPU that fails
   stops the run, which resumes from its finished stages.
-- **How much faster (measured, HG002 chr20, 81,898 examples):** call_variants
-  took 19.5 s on an RTX 3090 (three interleaved rounds, GPU to itself),
-  against 79 s for Google's own TensorFlow GPU image on the same GPU, 563 s
-  for wgse-deepvariant on 4 CPU threads and 896 s for Google's CPU image (both
-  on a shared host). Its make_examples is faster than Google's too (240 s
-  against 597 s).
-  Scaled to a 30x genome (about 50 times chr20's examples), call_variants takes
-  about a quarter of an hour on the GPU (**projected**), where Google's CPU
-  image takes 5–6 hours on 12 threads.
+- **How much faster (measured, HG002 35x, 4 threads, RTX 3090):** on chr1
+  and chr20 (823,376 sites, 270,091 call_variants examples), `vcf deepvariant
+  --gpu` took 17 minutes end to end (call_variants 72 s), against 41 minutes
+  without `--gpu` and 93 minutes for Google's CPU image (call_variants 50
+  minutes), with the same GIAB v4.2.1 counts. On chr20 alone call_variants took
+  19.5 s, against 79 s for Google's own TensorFlow GPU image on the same GPU.
+  For a 30x genome, about ten times chr1 and chr20, that is about 3 hours on 4
+  threads with the GPU, mostly make_examples, against about 15 hours for
+  Google's CPU image (**projected**). See
+  [resource estimates](resource_estimates.md#deepvariant-on-the-gpu-with-wgse-deepvariant).
 
 ## Apple Silicon (Metal)
 

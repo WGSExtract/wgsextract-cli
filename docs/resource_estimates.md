@@ -245,6 +245,46 @@ TensorFlow takes most of the free GPU memory whatever it needs (22.7 GiB of
 the free 24 GiB GPU). make_examples and postprocess run on the CPU, as in the
 CPU image.
 
+### DeepVariant on the GPU with wgse-deepvariant
+
+On Linux x86-64, `vcf deepvariant --gpu` uses
+[wgse-deepvariant](../native/deepvariant/README.md#linux-x86-64-and-nvidia-gpus-cuda)
+only for the WGS model, when it is installed, `deepvariant_weights` is set and
+`deepvariant_native` isn't `off`; WES, PacBio and ONT still run Parabricks, and
+Ultima Google's GPU image, with the memory needs above. This pipeline runs only
+call_variants on the GPU and
+checks just before it that GPU 0 has 3 GiB free (`--no-gpu-memory-check`
+skips this); make_examples and postprocess_variants stay on the CPU. Its RAM
+estimate is the Mac build's (#647), which covers what Linux used.
+
+Measured (#719) on a Ryzen 5 5600X with an RTX 3090, `--threads 4`, from the
+`linux-deepvariant-1` package, on HG002's 35x NovaSeq BAM (GRCh38 no-alt), chr1
+and chr20: 823,376 sites, 270,091 call_variants examples. Google's
+`google/deepvariant:1.10.0` image ran with 4 CPUs on the same host.
+
+| Stage | Google's CPU image | wgse-deepvariant, CPU | wgse-deepvariant, `--gpu` |
+| --- | ---: | ---: | ---: |
+| make_examples | 41.4 min | 18.4 min | 15.7 min |
+| call_variants | 50.5 min | 22.7 min | 1.2 min |
+| postprocess_variants | 0.8 min | 0.1 min | 0.2 min |
+| End to end | 92.8 min | 41.3 min | 17.1 min |
+
+- **GPU memory:** 2.3 GiB at the default batch of 256 (chr20 and chr1+chr20
+  alike).
+- **Host RAM (chr20):** call_variants 1.5 GiB on the GPU or the CPU;
+  make_examples 0.2 GiB; postprocess_variants 0.8 GiB.
+- **Same calls:** the three runs call the same 823,376 sites with the same
+  genotypes and filters, and the same GIAB v4.2.1 counts in its confident
+  regions (TP 386,651, FP 488, FN 2,761). QUAL differs from Google's by at most
+  0.5 at 24,130 sites, and GQ by at most 2 except one RefCall site (99 against
+  69, same PL); the CPU and GPU builds differ at 31 sites (QUAL ±0.1, GQ ±1).
+- **A 30x genome** is about ten times chr1 and chr20: about 3 hours with
+  `--gpu` (call_variants about 12 minutes), 7 hours on the CPU and 15 hours in
+  Google's image, at 4 threads (**projected**). make_examples scales with
+  `--threads`.
+
+### Clair3 on the GPU
+
 `vcf clair3 --gpu` runs HKU's Clair3 2.0.5 GPU image and checks only that a
 GPU has 7.8 GiB free: Clair3 starts a full-alignment GPU worker for each
 8,000 MiB free and a pileup worker for each 5,000 MiB. On the same RTX 3090,
@@ -260,6 +300,8 @@ The GPU halved pileup and full-alignment calling (283 s to 159 s). Clair3's
 start-up checks (about 130 s on a whole-genome CRAM) and WhatsHap phasing
 (about 205 s) stay on the CPU, and the GPU was busy in only about 5% of
 one-second samples, so the CPUs limit the speed-up.
+
+## Preflight behaviour
 
 Preflight is advisory: `preflight_resources()` guards estimation and reporting
 against `ValueError`, `OSError` and subprocess failures, warns that the resource
