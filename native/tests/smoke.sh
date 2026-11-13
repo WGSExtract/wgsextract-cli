@@ -3,6 +3,8 @@
 # mappings and, for metal modes when Metal is usable, byte-identical alignments.
 # Usage: smoke.sh <aligner> <work-dir> [metal|force-gpu|dense-sa]
 set -eu
+# shellcheck source=native/tests/seeded_random.sh
+. "$(dirname "$0")/seeded_random.sh"
 binary=$1
 work=$2
 mode=${3:-cpu}
@@ -13,24 +15,24 @@ rm -rf "$work"
 mkdir -p "$work"
 cd "$work"
 
-awk 'BEGIN {
-    srand(364)
+awk "$seeded_random"'BEGIN {
+    seed(364)
     split("A C G T", base, " ")
     complement["A"] = "T"; complement["C"] = "G"
     complement["G"] = "C"; complement["T"] = "A"
     contigs = 2; length_ = 120000; pairs = 3000; read = 150
     for (c = 1; c <= contigs; c++) {
         sequence[c] = ""
-        for (i = 0; i < length_; i++) sequence[c] = sequence[c] base[int(rand() * 4) + 1]
+        for (i = 0; i < length_; i++) sequence[c] = sequence[c] base[int(rnd() * 4) + 1]
         print ">chr" c > "reference.fa"
         for (i = 1; i <= length_; i += 60) print substr(sequence[c], i, 60) > "reference.fa"
     }
     quality = ""
     for (i = 0; i < read; i++) quality = quality "I"
     for (p = 1; p <= pairs; p++) {
-        c = int(rand() * contigs) + 1
-        insert = 300 + int(rand() * 200)
-        start = int(rand() * (length_ - insert)) + 1
+        c = int(rnd() * contigs) + 1
+        insert = 300 + int(rnd() * 200)
+        start = int(rnd() * (length_ - insert)) + 1
         left = mutate(substr(sequence[c], start, read))
         right = mutate(substr(sequence[c], start + insert - read, read))
         reverse = ""
@@ -42,8 +44,8 @@ awk 'BEGIN {
 }
 function mutate(read_sequence,    i, position) {
     for (i = 0; i < 3; i++) {
-        position = int(rand() * length(read_sequence)) + 1
-        read_sequence = substr(read_sequence, 1, position - 1) base[int(rand() * 4) + 1] \
+        position = int(rnd() * length(read_sequence)) + 1
+        read_sequence = substr(read_sequence, 1, position - 1) base[int(rnd() * 4) + 1] \
             substr(read_sequence, position + 1)
     }
     return read_sequence

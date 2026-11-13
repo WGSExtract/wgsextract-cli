@@ -11,6 +11,7 @@ on:
     branches: [ main ]
     paths:
       - native/deepvariant/**
+      - native/tests/seeded_random.sh
       - .github/workflows/macos_deepvariant.yml
       - "!**/*.md"
   push:

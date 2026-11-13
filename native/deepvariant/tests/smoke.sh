@@ -6,6 +6,8 @@
 # Usage: smoke.sh <wgse-deepvariant> <weights-dir> <work-dir>
 # Needs samtools on PATH.
 set -eu
+# shellcheck source=native/tests/seeded_random.sh
+. "$(dirname "$0")/../../tests/seeded_random.sh"
 binary=$1
 weights=$(cd "$2" && pwd)
 work=$3
@@ -15,8 +17,8 @@ mkdir -p "$work"
 cd "$work"
 
 # Two 30 kb contigs; 30x of 2x150 bp pairs; a het and a hom-alt SNP every 3 kb.
-awk 'BEGIN {
-    srand(647)
+awk "$seeded_random"'BEGIN {
+    seed(647)
     split("A C G T", base, " ")
     contigs = 2; n = 30000; read = 150; insert = 400; depth = 30
     printf "@HD\tVN:1.6\tSO:unsorted\n" > "reads.sam"
@@ -26,7 +28,7 @@ awk 'BEGIN {
     for (i = 0; i < read; i++) quality = quality "F"
     for (c = 1; c <= contigs; c++) {
         delete ref; delete alt; delete hom
-        for (i = 1; i <= n; i++) ref[i] = base[int(rand() * 4) + 1]
+        for (i = 1; i <= n; i++) ref[i] = base[int(rnd() * 4) + 1]
         print ">chr" c > "reference.fa"
         line = ""
         for (i = 1; i <= n; i++) { line = line ref[i]; if (i % 60 == 0) { print line > "reference.fa"; line = "" } }
@@ -37,8 +39,8 @@ awk 'BEGIN {
         }
         pairs = int(n * depth / (2 * read))
         for (p = 0; p < pairs; p++) {
-            start = int(rand() * (n - insert - 2)) + 1
-            hap = int(rand() * 2)
+            start = int(rnd() * (n - insert - 2)) + 1
+            hap = int(rnd() * 2)
             for (m = 0; m < 2; m++) {
                 pos = m == 0 ? start : start + insert - read
                 s = ""

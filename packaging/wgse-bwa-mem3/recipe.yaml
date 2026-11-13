@@ -85,6 +85,7 @@ tests:
   - files:
       source:
         - native/tests/smoke.sh
+        - native/tests/seeded_random.sh
     requirements:
       run:
         - gawk

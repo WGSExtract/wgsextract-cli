@@ -1,6 +1,8 @@
 #!/bin/sh
 # Exercise all three seeding rounds, divergent reads and each fallback path.
 set -eu
+# shellcheck source=native/tests/seeded_random.sh
+. "$(dirname "$0")/../../tests/seeded_random.sh"
 aligner=$1
 benchmark=$2
 work=$3
@@ -14,23 +16,23 @@ same() {
     cmp "$1.records" "$2.records"
 }
 
-awk 'BEGIN {
-    srand(364)
+awk "$seeded_random"'BEGIN {
+    seed(364)
     split("A C G T", base, " ")
-    for (i = 1; i <= 120000; ++i) random = random base[int(rand() * 4) + 1]
+    for (i = 1; i <= 120000; ++i) random = random base[int(rnd() * 4) + 1]
     for (i = 1; i <= 24000; ++i) tandem = tandem "ACGT"
     for (i = 1; i <= 96000; ++i) homo = homo "A"
     print ">random\n" random "\n>tandem\n" tandem "\n>homopolymer\n" homo > "reference.fa"
     split("1 18 19 20 28 29 30 100 150 250 511 512 513 900", lengths, " ")
     for (r = 1; r <= 2048; ++r) {
         n = lengths[1 + (r % 14)]
-        start = 1 + int(rand() * 110000)
+        start = 1 + int(rnd() * 110000)
         seq = substr(random, start, n)
         if (r % 7 == 0) seq = substr(tandem, 1 + r % 4, n)
         if (r % 11 == 0) seq = substr(homo, 1, n)
         if (r % 3 == 0) {
             for (i = 15; i < n; i += 23)
-                seq = substr(seq, 1, i - 1) base[int(rand() * 4) + 1] substr(seq, i + 1)
+                seq = substr(seq, 1, i - 1) base[int(rnd() * 4) + 1] substr(seq, i + 1)
         }
         if (r % 5 == 0) {
             for (i = 1; i <= n; i += 19) seq = substr(seq, 1, i - 1) "N" substr(seq, i + 1)
@@ -167,8 +169,8 @@ done
 
 # Regression (PR #455 review): paired-end reads across many GPU batches, more
 # than the scheduler keeps outstanding, so later batches' mate offsets are used.
-awk 'BEGIN {
-    srand(455)
+awk "$seeded_random"'BEGIN {
+    seed(455)
     while ((getline line < "reference.fa") > 0) {
         if (line ~ /^>/) name = substr(line, 2)
         else ref[name] = ref[name] line
@@ -176,8 +178,8 @@ awk 'BEGIN {
     complement["A"] = "T"; complement["C"] = "G"; complement["G"] = "C"; complement["T"] = "A"
     for (p = 1; p <= 600; ++p) {
         source = p % 9 == 0 ? ref["tandem"] : ref["random"]
-        insert = 250 + int(rand() * 250)
-        start = 1 + int(rand() * (length(source) - insert))
+        insert = 250 + int(rnd() * 250)
+        start = 1 + int(rnd() * (length(source) - insert))
         left = substr(source, start, 101)
         right = substr(source, start + insert - 101, 101)
         if (p % 4 == 0) left = substr(left, 1, 50) (substr(left, 51, 1) == "A" ? "C" : "A") substr(left, 52)
