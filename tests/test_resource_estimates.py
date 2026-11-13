@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from tests.htslib_helpers import needs_tools, run_wgsextract, sam_to_bam, write_fasta
+from tests.prepared_data import sparse_truncate
 from wgsextract_cli import api
 from wgsextract_cli.commands import align, bam, realign
 from wgsextract_cli.commands.vcf import basic, callers, contig_calling
@@ -72,6 +73,34 @@ def _whole_genome(tmp_path):
         "".join(f"{name}\t{length}\t0\t60\t61\n" for name, length in HS38DH.items())
     )
     return resources.dv_calling_regions(HS38DH, None), ref
+
+
+def test_native_ont_deepvariant_budgets_the_read_phase_merge_739(tmp_path, monkeypatch):
+    """#739: wgse-deepvariant's ONT postprocess first merges every read's
+    phase, about 4.2 GiB for HG002's 81 GB whole-genome ONT CRAM."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(host_platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 64 * GIB)
+    cram = tmp_path / "PAO83395.cram"
+    sparse_truncate(cram, 81_375_294_252)
+    _regions, ref = _whole_genome(tmp_path)
+    options = {
+        "input_paths": [str(cram)],
+        "output_dir": str(tmp_path),
+        "reference": str(ref),
+        "threads": "4",
+        "inference_batch_size": 256,
+        "deepvariant_native": True,
+    }
+
+    def stage(model):
+        estimate = resources.estimate_resources(
+            "deepvariant", deepvariant_model=model, **options
+        )
+        return estimate.resources[0].components["largest_sequential_stage"]
+
+    assert stage("ONT_R104") > stage("WGS")
+    assert stage("ONT_R104") > 4.2 * GIB + GIB
 
 
 def test_dv_partitions_reproduce_the_173_whole_genome_run(tmp_path):
@@ -484,8 +513,7 @@ def test_variant_worker_memory_and_regional_gatk_conversion(tmp_path, source):
 def hg002_slice_metadata(tmp_path):
     source = tmp_path / "hg002.bam"
     # #722's measured BAM size; the read-only estimator needs only file metadata.
-    with source.open("wb") as stream:
-        stream.truncate(670_545_706)
+    sparse_truncate(source, 670_545_706)
     _, reference = _whole_genome(tmp_path)
     with Path(f"{reference}.fai").open("a") as stream:
         for number in range(430):
@@ -682,8 +710,7 @@ def test_722_vcf_budget_with_known_read_count_is_independent_of_bam_cram_storage
 ):
     source, reference = hg002_slice_metadata
     cram = tmp_path / "hg002.cram"
-    with cram.open("wb") as stream:
-        stream.truncate(100_000_000)
+    sparse_truncate(cram, 100_000_000)
     budgets = []
     for alignment in (source, cram):
         estimate = resources.estimate_resources(

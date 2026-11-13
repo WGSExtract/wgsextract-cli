@@ -1,6 +1,8 @@
 #!/bin/sh
 # GPU SMEM collection (mem_collect_smem's three passes) must leave the SAM unchanged.
 set -eu
+# shellcheck source=native/tests/seeded_random.sh
+. "$(dirname "$0")/../../tests/seeded_random.sh"
 aligner=$1
 work=$2
 mkdir -p "$work"
@@ -18,16 +20,16 @@ metric() {
 # A random reference with a family of diverged repeats (many SMEMs and
 # re-seeding) and reads of varied lengths with errors, Ns and IUPAC codes.
 # Single-end reads include random sequence and reads too long for the GPU.
-awk 'BEGIN {
-    srand(1364)
+awk "$seeded_random"'BEGIN {
+    seed(1364)
     split("A C G T", base, " ")
-    for (i = 1; i <= 200000; ++i) random = random base[int(rand() * 4) + 1]
+    for (i = 1; i <= 200000; ++i) random = random base[int(rnd() * 4) + 1]
     element = substr(random, 100001, 1500)
     ref = substr(random, 1, 60000)
     for (c = 0; c < 24; ++c) {
         copy = element
-        for (i = 1 + int(rand() * 40); i < 1500; i += 20 + int(rand() * 60))
-            copy = substr(copy, 1, i - 1) base[int(rand() * 4) + 1] substr(copy, i + 1)
+        for (i = 1 + int(rnd() * 40); i < 1500; i += 20 + int(rnd() * 60))
+            copy = substr(copy, 1, i - 1) base[int(rnd() * 4) + 1] substr(copy, i + 1)
         ref = ref copy substr(random, 60001 + c * 1000, 1000)
     }
     ref = ref substr(random, 120001)
@@ -36,12 +38,12 @@ awk 'BEGIN {
     split("151 151 151 101 76 250 36 300", lengths, " ")
     for (p = 1; p <= 6000; ++p) {
         n = lengths[1 + p % 8]
-        insert = 350 + int(rand() * 150)
-        start = p % 3 == 0 ? 60000 + int(rand() * 55000) : 1 + int(rand() * (length(ref) - insert))
+        insert = 350 + int(rnd() * 150)
+        start = p % 3 == 0 ? 60000 + int(rnd() * 55000) : 1 + int(rnd() * (length(ref) - insert))
         for (mate = 1; mate <= 2; ++mate) {
             read = substr(ref, mate == 1 ? start : start + insert - n, n)
-            for (i = 1 + int(rand() * 30); i <= n; i += 10 + int(rand() * 40))
-                read = substr(read, 1, i - 1) base[int(rand() * 4) + 1] substr(read, i + 1)
+            for (i = 1 + int(rnd() * 30); i <= n; i += 10 + int(rnd() * 40))
+                read = substr(read, 1, i - 1) base[int(rnd() * 4) + 1] substr(read, i + 1)
             if (p % 11 == 0) read = substr(read, 1, 20) "N" substr(read, 22)
             if (p % 17 == 0) read = substr(read, 1, 30) "R" substr(read, 32)
             if (p % 19 == 0) read = substr(read, 1, n - 1) "N"
@@ -60,7 +62,7 @@ awk 'BEGIN {
         }
         if (p % 50 == 0) {
             read = ""
-            for (i = 1; i <= 120; ++i) read = read base[int(rand() * 4) + 1]
+            for (i = 1; i <= 120; ++i) read = read base[int(rnd() * 4) + 1]
             printf "@random%d\n%s\n+\n%s\n", p, read, substr(q, 1, 120) > "single.fq"
         }
     }

@@ -1,0 +1,59 @@
+name: CLI package and benchmark smoke
+
+on:
+  push:
+    branches: [main]
+  workflow_call:
+  schedule:
+    - cron: "11 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        check: [package, benchmark]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: >-
+            default dev
+            ${{ matrix.check == 'benchmark' && 'vep-rs' || '' }}
+            ${{ matrix.check == 'benchmark' && matrix.os == 'windows-latest' && 'gatk' || '' }}
+      - name: Build and Smoke Test Package
+        if: matrix.check == 'package'
+        run: pixi run package-smoke
+      - name: Run Benchmark
+        if: matrix.check == 'benchmark'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: pixi run wgsextract benchmark --dataset real --profile smoke
+      - name: Run real-data smoke tests on the benchmark's prepared inputs
+        if: matrix.check == 'benchmark'
+        shell: bash
+        run: |
+          coverage=()
+          if [ "${{ github.event_name }}" != pull_request ]; then
+            coverage+=(--cov=wgsextract_cli --cov-report=xml:out/real-smoke-coverage.xml)
+          fi
+          pixi run pytest tests/test_smoke_real_full.py --ci-require-real-data --junitxml=out/real-smoke.xml --durations=60 --basetemp=out/real-smoke-tmp "${coverage[@]}"
+      - name: Publish real-data smoke coverage and timings
+        if: always() && matrix.check == 'benchmark'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: real-smoke-${{ matrix.os }}
+          path: |
+            out/real-smoke.xml
+            out/real-smoke-coverage.xml

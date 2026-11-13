@@ -1,20 +1,19 @@
 """Pet Analysis command for aligning and calling variants in non-human species."""
 
-import argparse
 import logging
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api.pet import PetAlignParams
+from wgsextract_cli.cli.registration.pet import register as register
 from wgsextract_cli.core.alignment_memory import check_mapping_memory
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
 from wgsextract_cli.core.genome_library import pair_stem
-from wgsextract_cli.core.messages import CLI_HELP, LOG_MESSAGES
+from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.read_counts import fastq_input_reads
@@ -50,17 +49,6 @@ _SPECIES_REFERENCES = {
     "dog": "GCF_011100685.1_UU_Cfam_GSD_1.0_genomic.fna.gz",
     "cat": "GCF_018350175.1_F.catus_Fca126_mat1.0_genomic.fna.gz",
 }
-
-
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser(
-        "pet-align", parents=[base_parser], help=CLI_HELP["cmd_pet-align"]
-    )
-    add_arguments(parser, PetAlignParams)
-    parser.set_defaults(func=cli_handler(PetAlignParams, run_pet))
 
 
 @dataclass(kw_only=True)

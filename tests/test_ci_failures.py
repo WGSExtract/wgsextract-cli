@@ -490,13 +490,37 @@ def test_pr_matching_red_main_is_labelled_and_never_rerun_even_with_landing_over
     assert "ci-red-main" in api.labels
 
 
-def test_routed_pr_job_compares_reusable_main_not_pr_only_wrapper() -> None:
+@pytest.mark.parametrize(
+    ("prefix", "job_name", "workflow", "workflow_name"),
+    [
+        ("macos", "test-macos", "macos_ci.yml", "CI macOS"),
+        pytest.param(
+            "smoke",
+            "smoke (ubuntu-latest, package)",
+            "cli_smoke.yml",
+            "CLI package and benchmark smoke",
+            id="761-parallel-smoke",
+        ),
+    ],
+)
+def test_routed_pr_job_compares_reusable_main_not_pr_only_wrapper(
+    prefix: str, job_name: str, workflow: str, workflow_name: str
+) -> None:
     api = ReplayGitHub()
     api.run["name"] = "PR area checks"
-    api.jobs[1][0]["name"] = "macos / test-macos"
-    api.main = dict(api.run, id=200, name="CI macOS", head_branch="main", event="push")
-    api.main_by_workflow["macos_ci.yml"] = api.main
-    api.main_jobs = [recorded("test_failure")]
+    api.jobs[1][0]["name"] = f"{prefix} / {job_name}"
+    if prefix == "smoke":
+        api.annotation_text = ""
+        api.evidence_text = "error: wheel install failed"
+        for step in api.jobs[1][0]["steps"]:
+            if step["conclusion"] == "failure":
+                step["name"] = "Build and Smoke Test Package"
+    api.main = dict(
+        api.run, id=200, name=workflow_name, head_branch="main", event="push"
+    )
+    api.main_by_workflow[workflow] = api.main
+    api.main_jobs = copy.deepcopy(api.jobs[1])
+    api.main_jobs[0]["name"] = job_name
     assert Observer(api).process(api.run, rerun_tests=True) == 2
     assert api.retried == []
     assert "ci-red-main" in api.labels

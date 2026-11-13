@@ -1,6 +1,8 @@
 #!/bin/sh
 # GPU seed extension (mem_chain2aln's ksw_extend2) must leave the SAM unchanged.
 set -eu
+# shellcheck source=native/tests/seeded_random.sh
+. "$(dirname "$0")/../../tests/seeded_random.sh"
 aligner=$1
 work=$2
 mkdir -p "$work"
@@ -20,36 +22,36 @@ metric() {
 # read), and pairs whose mates carry mismatches, indels up to 30 bp (band
 # retries with a narrow -w), N bases, and foreign tails (Z-drop and clipping).
 # Mates of 300 bp have sides over 256 bp, which stay on upstream ksw_extend2.
-awk 'BEGIN {
-    srand(2364)
+awk "$seeded_random"'BEGIN {
+    seed(2364)
     split("A C G T", base, " ")
-    for (i = 1; i <= 200000; ++i) random = random base[int(rand() * 4) + 1]
+    for (i = 1; i <= 200000; ++i) random = random base[int(rnd() * 4) + 1]
     copy = substr(random, 60001, 4000)
-    for (i = 30; i < 4000; i += 61) copy = substr(copy, 1, i - 1) base[int(rand() * 4) + 1] substr(copy, i + 1)
+    for (i = 30; i < 4000; i += 61) copy = substr(copy, 1, i - 1) base[int(rnd() * 4) + 1] substr(copy, i + 1)
     ref = substr(random, 1, 120000) copy substr(random, 124001)
     print ">chr\n" ref > "reference.fa"
     complement["A"] = "T"; complement["C"] = "G"; complement["G"] = "C"; complement["T"] = "A"
     complement["N"] = "N"
     split("151 151 151 101 76 250 300", lengths, " ")
     for (p = 1; p <= 2000; ++p) {
-        insert = 380 + int(rand() * 120)
-        start = p % 4 == 0 ? 59000 + int(rand() * 5000) : 1 + int(rand() * (length(ref) - insert - 400))
+        insert = 380 + int(rnd() * 120)
+        start = p % 4 == 0 ? 59000 + int(rnd() * 5000) : 1 + int(rnd() * (length(ref) - insert - 400))
         for (m = 1; m <= 2; ++m) {
             n = lengths[1 + (p + m) % 7]
             read = m == 1 ? substr(ref, start, n + 40) : substr(ref, start + insert - n, n + 40)
-            for (i = 1 + int(rand() * 40); i <= n; i += 20 + int(rand() * 40))
+            for (i = 1 + int(rnd() * 40); i <= n; i += 20 + int(rnd() * 40))
                 read = substr(read, 1, i - 1) (substr(read, i, 1) == "A" ? "C" : "A") substr(read, i + 1)
             kind = (p * 2 + m) % 11
-            at = 20 + int(rand() * (n - 40))
-            gap = kind < 3 ? 1 + int(rand() * 6) : 10 + int(rand() * 21)
+            at = 20 + int(rnd() * (n - 40))
+            gap = kind < 3 ? 1 + int(rnd() * 6) : 10 + int(rnd() * 21)
             if (kind == 0 || kind == 5) {
                 inserted = ""
-                for (i = 1; i <= gap; ++i) inserted = inserted base[int(rand() * 4) + 1]
+                for (i = 1; i <= gap; ++i) inserted = inserted base[int(rnd() * 4) + 1]
                 read = substr(read, 1, at) inserted substr(read, at + 1)
             } else if (kind == 1 || kind == 6) {
                 read = substr(read, 1, at) substr(read, at + gap + 1)
             } else if (kind == 7) {
-                read = substr(read, 1, n - 50) substr(ref, 1 + int(rand() * 100000), 50)
+                read = substr(read, 1, n - 50) substr(ref, 1 + int(rnd() * 100000), 50)
             } else if (kind == 8) {
                 read = substr(read, 1, at) "N" substr(read, at + 2)
             }

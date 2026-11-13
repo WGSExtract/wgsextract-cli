@@ -1,38 +1,20 @@
 """Research-only polygenic scoring."""
 
-import argparse
 import csv
 import json
 import tempfile
 from contextlib import ExitStack
 from pathlib import Path
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api._runtime import report
 from wgsextract_cli.api.score import ScorePgsParams
+from wgsextract_cli.cli.registration.score import register as register
 from wgsextract_cli.core import pgs, pgs_plink
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.reference_assets import input_stem
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.utils import UsageError
-
-
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser(
-        "score", help="Local research-only polygenic scores."
-    )
-    subs = parser.add_subparsers(dest="score_cmd", required=True)
-    sub = subs.add_parser(
-        "pgs",
-        parents=[base_parser],
-        help="Score an additive PGS Catalog or custom file locally.",
-    )
-    add_arguments(sub, ScorePgsParams)
-    sub.set_defaults(func=cli_handler(ScorePgsParams, run_pgs))
 
 
 def run_pgs(params: ScorePgsParams) -> None:

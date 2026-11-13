@@ -1,13 +1,14 @@
-"""Convert google/deepvariant:1.10.0's WGS models to wgse-deepvariant's weight files.
+"""Convert google/deepvariant:1.10.0's models to wgse-deepvariant's weight files.
 
 Run inside the official image (it has TensorFlow, Keras and NumPy):
 
     docker run --rm -v "$PWD":/w google/deepvariant:1.10.0@sha256:... \
-        python3 /w/native/deepvariant/convert_weights.py /w/out/weights
+        python3 /w/native/deepvariant/convert_weights.py /w/out/weights [MODEL...]
 
-Writes <out>/wgs.dvw, the big model's float32 variables in the port's
-weight-file layout (IPNP-BIPN/deepvariant tools/conversion/extract_weights.py),
-and <out>/wgs_small_weights/layer_*_{kernel,bias}.npy, the small model's
+For each model (wgs and ont_r104 unless named), writes <out>/<model>.dvw, the
+big model's float32 variables in the port's weight-file layout
+(IPNP-BIPN/deepvariant tools/conversion/extract_weights.py), and
+<out>/<model>_small_weights/layer_*_{kernel,bias}.npy, the small model's
 dense layers. Both are deterministic: weights-sha256.txt lists their hashes.
 """
 
@@ -17,8 +18,11 @@ from pathlib import Path
 
 import numpy as np
 
-SAVED_MODEL = "/opt/models/wgs"
-SMALL_MODEL = "/opt/smallmodels/wgs/model.keras"
+# The image's big model and small model of each DeepVariant model.
+MODELS = {
+    "wgs": ("/opt/models/wgs", "/opt/smallmodels/wgs/model.keras"),
+    "ont_r104": ("/opt/models/ont_r104", "/opt/smallmodels/ont/model.keras"),
+}
 DVW_MAGIC, DVW_VERSION, DT_FLOAT = b"DVW1", 1, 1
 
 
@@ -58,8 +62,10 @@ def write_small(small_model: str, out: Path) -> None:
 def main() -> None:
     out = Path(sys.argv[1])
     out.mkdir(parents=True, exist_ok=True)
-    write_dvw(SAVED_MODEL, out / "wgs.dvw")
-    write_small(SMALL_MODEL, out / "wgs_small_weights")
+    for model in sys.argv[2:] or MODELS:
+        saved_model, small_model = MODELS[model]
+        write_dvw(saved_model, out / f"{model}.dvw")
+        write_small(small_model, out / f"{model}_small_weights")
 
 
 if __name__ == "__main__":

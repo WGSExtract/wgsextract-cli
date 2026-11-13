@@ -62,6 +62,7 @@ tests:
   - files:
       source:
         - native/minimap2/tests/smoke.sh
+        - native/tests/seeded_random.sh
     requirements:
       run:
         - gawk

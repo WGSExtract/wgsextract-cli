@@ -14,6 +14,7 @@ import pytest
 
 from tests.fake_tools import FakeParabricks
 from tests.htslib_helpers import needs_tools, sam_to_bam, write_fasta
+from tests.prepared_data import sparse_truncate
 from wgsextract_cli.api.align import RealignParams
 from wgsextract_cli.commands import realign
 from wgsextract_cli.commands.realign import RealignJob
@@ -731,8 +732,7 @@ def test_whole_genome_input_streams_when_its_collate_bucket_fits_ram(
     tmp_path, monkeypatch, source, gib
 ):
     fakes = _Fakes(monkeypatch)
-    with source.open("wb") as output:
-        output.truncate(40 * 1024**3)
+    sparse_truncate(source, 40 * 1024**3)
     monkeypatch.setattr(realign, "indexed_read_count", lambda *_a: 800_000_000)
     monkeypatch.setattr(realign, "calculate_bam_md5", lambda *_a: None)
     monkeypatch.setattr(realign, "resolve_reference", lambda *_a: None)

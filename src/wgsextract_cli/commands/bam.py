@@ -1,11 +1,10 @@
-import argparse
 import logging
 import subprocess
 import tempfile
 from os import fspath
 from pathlib import Path
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
+from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.bam import (
     BamIdentifyParams,
     BamIndexParams,
@@ -13,17 +12,17 @@ from wgsextract_cli.api.bam import (
     BamSortParams,
     BamToBamParams,
     BamToCramParams,
-    BamToUbamParams,
     BamUnalignParams,
     BamUnindexParams,
     BamUnsortParams,
     _InputParams,
 )
+from wgsextract_cli.cli.registration.bam import register as register
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.messages import CLI_HELP, LOG_MESSAGES
+from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import record_alignment_output
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.resource_estimates import (
@@ -58,7 +57,6 @@ from wgsextract_cli.core.warnings import (
 )
 
 from ._bam_merge import run_merge
-from ._bam_ubam import cmd_to_ubam
 from ._extract_helpers import (
     BaseArgs,
     alignments_to_fastq,
@@ -68,29 +66,6 @@ from ._extract_helpers import (
     named_output_path,
     region_or_gene,
 )
-
-
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser("bam", help=CLI_HELP["cmd_bam_mgmt"])
-    bam_subs = parser.add_subparsers(dest="bam_cmd", required=True)
-    for name, cls, func, help_key in (
-        ("sort", BamSortParams, cmd_sort, "cmd_sort"),
-        ("index", BamIndexParams, cmd_index, "cmd_index"),
-        ("unindex", BamUnindexParams, cmd_unindex, "cmd_unindex"),
-        ("unsort", BamUnsortParams, cmd_unsort, "cmd_unsort"),
-        ("to-cram", BamToCramParams, cmd_tocram, "cmd_to-cram"),
-        ("to-bam", BamToBamParams, cmd_tobam, "cmd_to-bam"),
-        ("unalign", BamUnalignParams, cmd_unalign, "cmd_unalign"),
-        ("identify", BamIdentifyParams, cmd_identify, "cmd_bam-identify"),
-        ("merge", BamMergeParams, cmd_merge, "cmd_bam-merge"),
-        ("to-ubam", BamToUbamParams, cmd_to_ubam, "cmd_bam-to-ubam"),
-    ):
-        sub = bam_subs.add_parser(name, parents=[base_parser], help=CLI_HELP[help_key])
-        add_arguments(sub, cls)
-        sub.set_defaults(func=func)
 
 
 def _require_input(params: _InputParams) -> str:

@@ -278,13 +278,17 @@ runs call_variants on an NVIDIA GPU through CUDA, or on the CPU.
   `wgse-deepvariant` installed (on `PATH`, or `pixi install -e deepvariant`) and
   `deepvariant_weights` set, `vcf deepvariant`
   calls the WGS model with it instead of Google's image: on the CPU, or with
-  `--gpu` on the GPU instead of Parabricks. Until `deepvariant_weights` is set,
+  `--gpu` on the GPU instead of Parabricks; from 0.3.0, ONT reads' ONT_R104
+  model too (#739). Until `deepvariant_weights` is set,
   an installed build is ignored. Other models, `--checkpoint` and
   Ultima reads keep Google's image and Parabricks; `deepvariant_native = "off"`
   keeps them for everything.
 - **Same calls:** the same sites, genotypes and filters as Google's image on
   HG002 chr20, and the same GIAB v4.2.1 counts; QUAL differs by at most 0.5
-  and GQ by 1 at a few thousand of 210,390 sites, as on a Mac.
+  and GQ by 1 at a few thousand of 210,390 sites, as on a Mac. On HG002's ONT
+  chr20, 2 of 387,476 sites differ (outside GIAB's confident regions), with the
+  same GIAB counts, and the same phased genotypes and phase sets elsewhere;
+  call_variants took 45 s on the GPU against 22 minutes in Google's CPU image.
 - **What it needs:** the NVIDIA driver; no Docker and no Parabricks licence.
   Before its first stage, `--gpu` checks that the build has CUDA (the cuda129
   package) and that `nvidia-smi` sees a GPU; before call_variants, that GPU 0
@@ -470,7 +474,7 @@ give no meaningful benefit.
   Parabricks' DeepVariant and HaplotypeCaller, about a minute for chr20 on the
   RTX 3090 (**measured**). CPU DeepVariant is much slower. On Linux x86-64,
   [wgse-deepvariant](#deepvariant-on-nvidia-gpus-without-parabricks-wgse-deepvariant)
-  runs DeepVariant's WGS model on the GPU without Docker or Parabricks:
+  runs DeepVariant's WGS and ONT_R104 models on the GPU without Docker or Parabricks:
   call_variants for chr20 in about 20 seconds (**measured**). Apple Silicon has
   [wgse-deepvariant](../native/deepvariant/README.md), a native build with
   call_variants on the GPU: chr20 in about 5 minutes on an M1 Pro, with the

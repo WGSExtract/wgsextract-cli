@@ -17,6 +17,7 @@ from tests.htslib_helpers import (
     write_fasta,
     write_read_pairs,
 )
+from tests.prepared_data import sparse_truncate
 from wgsextract_cli.commands import align
 from wgsextract_cli.core import alignment_memory, bwa_mem2
 from wgsextract_cli.core.read_counts import fastq_input_reads
@@ -321,7 +322,7 @@ def test_realign_refuses_mem2_memory_before_extracting(
     library.mkdir()
     ref = _reference(library, bases=2_000_000_000, index=True)
     # MEM2 maps its index into RAM; a sparse one is as big without the disk.
-    os.truncate(ref + ".bwt.2bit.64", 8 * GB)
+    sparse_truncate(Path(ref + ".bwt.2bit.64"), 8 * GB)
     # A small genome the input wasn't aligned to: it would fit.
     (library / "hg19.fa").write_text(">chr2\nA\n")
     (library / "hg19.fa.fai").write_text("chr2\t1\t6\t1\t2\n")

@@ -152,6 +152,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.cli == 'true'
     uses: ./.github/workflows/linux_arm64.yml
+  smoke:
+    needs: changes
+    if: needs.changes.outputs.cli == 'true'
+    uses: ./.github/workflows/cli_smoke.yml
   install:
     needs: changes
     if: needs.changes.outputs.install == 'true'

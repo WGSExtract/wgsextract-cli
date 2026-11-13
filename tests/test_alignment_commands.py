@@ -20,6 +20,7 @@ from tests.htslib_helpers import (
     write_fasta,
     write_read_pairs,
 )
+from tests.prepared_data import sparse_truncate
 from wgsextract_cli import api
 from wgsextract_cli.commands import align
 from wgsextract_cli.commands._extract_helpers import alignments_to_fastq
@@ -418,8 +419,7 @@ def test_collate_buckets_fit_the_memory_budget(tmp_path):
     from wgsextract_cli.commands._extract_helpers import _collate_buckets
 
     cram = tmp_path / "x.cram"
-    with open(cram, "wb") as f:
-        f.truncate(8 * 1024**3)  # 30x CRAM: ~560 GB of records in memory
+    sparse_truncate(cram, 8 * 1024**3)  # 30x CRAM: ~560 GB of records in memory
     assert _collate_buckets(str(cram), "12", "1300M") == 64
     assert _collate_buckets(str(cram), "4", "1G") == 140
     assert _collate_buckets(str(cram), "1", "512M") == 200
@@ -433,8 +433,7 @@ def test_streamed_collate_uses_file_extractions_bucket_count(tmp_path):
     )
 
     bam = tmp_path / "large.bam"
-    with bam.open("wb") as output:
-        output.truncate(5 * 1024**3)
+    sparse_truncate(bam, 5 * 1024**3)
     for threads, memory in (("8", "2G"), ("2", "512M"), ("1", "100M")):
         with paired_fastq_stream(
             bam, threads=threads, memory=memory, temp_parent=tmp_path
@@ -451,8 +450,7 @@ def test_collate_working_memory_holds_the_largest_bucket_of_records(tmp_path):
     from wgsextract_cli.commands._extract_helpers import collate_working_memory
 
     bam = tmp_path / "x.bam"
-    with bam.open("wb") as output:
-        output.truncate(64 * 1024**3)  # 200 buckets at 6 x 1G
+    sparse_truncate(bam, 64 * 1024**3)  # 200 buckets at 6 x 1G
     mib = 1024**2
     whole_genome = collate_working_memory(
         bam, "6", "1G", records=800_000_000, max_record_bytes=600
