@@ -85,6 +85,7 @@ publish exact hit/miss and key in each job summary.
 | hs38 reference | Automatic writes on PRs | One main-owned verified public reference (~0.8 GB), read-only on PRs |
 | liftOver chain | A new run-id key on each download | One checksum key (<0.001 GB), main-only writes |
 | apt | PR cold misses could save duplicates | Main-only writes (~0.1–0.3 GB) |
+| PharmCAT reference | Up to two infrequently reused ~1 GB OS-specific entries | Not cached; leave space for the common tool environments |
 
 Target steady state is roughly **6.6–7 GB**, leaving headroom for CodeQL-managed
 caches and lockfile rollover. This is a size plan, not an asserted measured
@@ -99,3 +100,8 @@ scope and workspace-path hash (Conda environments are not relocatable).
 No prefix fallback restores an incompatible environment. npm and Cargo retain
 only downloads, using their respective lockfile hashes. PRs never save these
 caches, even on a cold miss.
+
+Pixi-binary-only build jobs disable project caching entirely: `run-install:
+false` alone would still restore an unused old environment and keep it alive.
+Manual mirror/bwa qualification jobs use the same read-only CLI cache rather
+than creating additional partial environment sets.
