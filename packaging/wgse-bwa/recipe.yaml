@@ -65,6 +65,7 @@ requirements:
 tests:
   - script:
       - wgse-bwa --version
+      - test -s "$PREFIX/share/licenses/wgse-bwa/BWA-MEM3-LICENSE"
       - wgse-bwa capabilities --json
       - wgse-bwa capabilities --json | grep -q '"cuda_hardware_supported":'
   - files:

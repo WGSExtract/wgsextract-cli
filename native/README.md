@@ -205,7 +205,7 @@ with `wgsextract ref dense-sa`, and its `align` and `realign` read it only with
 `--dense-suffix-array` (or `dense_suffix_array = true` in `config.toml`);
 otherwise they pass `--dense-sa off` (docs/hardware.md).
 
-From 0.13.0, `wgse-bwa` prunes mate-rescue windows with bwa-mem3's exact
+From 0.13.0, on AArch64, `wgse-bwa` prunes mate-rescue windows with bwa-mem3's exact
 score bound, through the same adapter as `wgse-bwa-mem2`: rows that cannot
 contribute to a kept alignment are omitted before CPU or GPU alignment.
 On AArch64, the CPU threads count all four bases in an occurrence block
@@ -213,6 +213,9 @@ with NEON, masking positions past the requested row. Alignment-region sorting
 uses compact records of the sort keys and addresses, with the same comparisons
 and introsort order as before. These changes preserve upstream's records;
 `--cpu-upstream` retains the upstream implementations.
+Pruning is not enabled on x86-64: the scalar filter has not been benchmarked
+there. `wgse-bwa-mem2` 0.5.3 also includes the shared compact-key region sort;
+the published 0.5.2 binaries are unchanged.
 
 From 0.5.0, `wgse-bwa-mem2`'s CPU backend does the same with its own exact
 replacements: it collects each read's SMEMs in all three passes with up to 16

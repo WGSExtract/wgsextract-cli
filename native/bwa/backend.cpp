@@ -1083,9 +1083,15 @@ constexpr kswr_t dead_alignment = {0, -1, -1, -1, -1, -1, -1};
 int prune_rescue(const mem_opt_t *opt, const uint8_t *query, int l_ms, const uint8_t *ref,
     int tlen, int xtra, int *hb, int *he) {
     int kind = wgse_prune_full;
+    // Only AArch64 has benchmark evidence for this filter.
+#if defined(__aarch64__)
+    constexpr bool measured_arch = true;
+#else
+    constexpr bool measured_arch = false;
+#endif
     // mem_matesw() keeps only alignments from ksw_align2() with a start, which
     // it computes only for scores of at least the KSW_XSUBO threshold.
-    if (!cpu_upstream && (xtra & KSW_XSUBO) && (xtra & KSW_XSTART))
+    if (measured_arch && !cpu_upstream && (xtra & KSW_XSUBO) && (xtra & KSW_XSTART))
         kind = wgse_rescue_prune(opt->a, opt->b, opt->o_del, opt->e_del, opt->o_ins,
             opt->e_ins, xtra & 0xffff, ref, tlen, query, l_ms, hb, he);
     if (kind == wgse_prune_full) *hb = 0, *he = tlen - 1;
@@ -1125,6 +1131,7 @@ struct RescueCurrent {
     uint32_t begin = 0, end = 0;
     // Whether this thread aligned the windows itself (wgse_ksw_align2_batch).
     bool cpu = false;
+    bool fallback_prune_counted = false;
 };
 thread_local RescueCurrent rescue_current;
 struct RescueTally {
@@ -1533,6 +1540,7 @@ extern "C" int wgse_metal_pair(const mem_opt_t *opt, const bntseq_t *bns, const 
 
 extern "C" int wgse_metal_matesw(const mem_opt_t *opt, const uint8_t *ms, uint8_t *seq, int l_ms,
     uint8_t *ref, int is_rev, int64_t rb, int64_t re, int xtra, kswr_t *aln) {
+    rescue_current.fallback_prune_counted = false;
     const RescueCurrent &pair = rescue_current;
     if (!pair.batch) return 0;
     for (uint32_t i = pair.begin; i < pair.end; ++i) {
@@ -1543,7 +1551,11 @@ extern "C" int wgse_metal_matesw(const mem_opt_t *opt, const uint8_t *ms, uint8_
         if (key.result == dead_job) *aln = dead_alignment;
         else {
             const RescueResult &r = pair.batch->results[key.result];
-            if (r.status != rescue_ok) return 0;
+            if (r.status != rescue_ok) {
+                // Batch pruning already accounted for this window before fallback.
+                rescue_current.fallback_prune_counted = true;
+                return 0;
+            }
             *aln = unshift({r.score, r.te, r.qe, r.score2, r.te2, r.tb, r.qb}, key.shift);
         }
         if (verify_rescue) {
@@ -1574,16 +1586,18 @@ extern "C" int wgse_metal_matesw(const mem_opt_t *opt, const uint8_t *ms, uint8_
 
 extern "C" kswr_t wgse_rescue_align(const mem_opt_t *opt, int l_ms, uint8_t *seq, int tlen,
     uint8_t *ref, int xtra) {
+    const bool counted = rescue_current.fallback_prune_counted;
+    rescue_current.fallback_prune_counted = false;
     int hb, he;
     const int kind = prune_rescue(opt, seq, l_ms, ref, tlen, xtra, &hb, &he);
     if (cpu_upstream) return ksw_align2(l_ms, seq, tlen, ref, 5, opt->mat, opt->o_del, opt->e_del,
         opt->o_ins, opt->e_ins, xtra, nullptr);
-    rescue_tally.rows += size_t(tlen);
+    if (!counted) rescue_tally.rows += size_t(tlen);
     if (kind == wgse_prune_none) {
-        ++rescue_tally.dead;
+        if (!counted) ++rescue_tally.dead;
         return dead_alignment;
     }
-    rescue_tally.kept += size_t(he - hb + 1);
+    if (!counted) rescue_tally.kept += size_t(he - hb + 1);
     return unshift(ksw_align2(l_ms, seq, he - hb + 1, ref + hb, 5, opt->mat, opt->o_del,
         opt->e_del, opt->o_ins, opt->e_ins, xtra, nullptr), hb);
 }

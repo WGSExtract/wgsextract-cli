@@ -15,6 +15,10 @@ same() {
 metric() {
     sed -n "s/.* $2=\([0-9]*\).*/\1/p" "$1"
 }
+pruning=0
+case "$(uname -m)" in
+    arm64|aarch64) pruning=1 ;;
+esac
 
 # A random reference with near-copies of one region, so rescue finds suboptimal
 # hits, and pairs in three orientations. Every third mate has a mismatch every
@@ -120,9 +124,15 @@ for threads in 1 4; do
     test "$(metric "upstream-t$threads.log" rescue_cpu_jobs)" -eq 0
     # bwa-mem3's exact pruning leaves out rescue-window rows (and whole windows);
     # --cpu-upstream aligns every row.
-    test "$(metric "fast-t$threads.log" rescue_pruned_dead)" -gt 0
-    test "$(metric "fast-t$threads.log" rescue_kept_rows)" -lt \
-        "$(metric "fast-t$threads.log" rescue_window_rows)"
+    if [ "$pruning" -eq 1 ]; then
+        test "$(metric "fast-t$threads.log" rescue_pruned_dead)" -gt 0
+        test "$(metric "fast-t$threads.log" rescue_kept_rows)" -lt \
+            "$(metric "fast-t$threads.log" rescue_window_rows)"
+    else
+        test "$(metric "fast-t$threads.log" rescue_pruned_dead)" -eq 0
+        test "$(metric "fast-t$threads.log" rescue_kept_rows)" -eq \
+            "$(metric "fast-t$threads.log" rescue_window_rows)"
+    fi
     test "$(metric "upstream-t$threads.log" rescue_window_rows)" -eq 0
 done
 cpu_parity chunks -t 4 -K 20000
@@ -325,7 +335,11 @@ test "$(metric verify.log rescue_hits)" -gt 1000
 test "$(metric verify.log rescue_misses)" -eq 0
 test "$(metric verify.log rescue_mismatches)" -eq 0
 # Pruned windows the GPU never sees, checked against upstream too.
-test "$(metric verify.log rescue_pruned_dead)" -gt 0
+if [ "$pruning" -eq 1 ]; then
+    test "$(metric verify.log rescue_pruned_dead)" -gt 0
+else
+    test "$(metric verify.log rescue_pruned_dead)" -eq 0
+fi
 # Mates over 256 bp stay on upstream ksw_align2.
 test "$(metric verify.log rescue_skipped)" -gt 0
 
@@ -433,8 +447,13 @@ awk 'BEGIN {
 "$aligner" --gpu-policy all "$gpu" mem -t 4 -k 160 -B 120 -I 400,40 reference.fa \
     sat-R1.fq sat-R2.fq > metal-saturate.sam 2> metal-saturate.log
 same cpu-saturate.sam metal-saturate.sam
-test "$(metric metal-saturate.log rescue_pruned_dead)" -eq 200
-test "$(metric metal-saturate.log rescue_declined)" -eq 0
+if [ "$pruning" -eq 1 ]; then
+    test "$(metric metal-saturate.log rescue_pruned_dead)" -eq 200
+    test "$(metric metal-saturate.log rescue_declined)" -eq 0
+else
+    test "$(metric metal-saturate.log rescue_pruned_dead)" -eq 0
+    test "$(metric metal-saturate.log rescue_declined)" -eq 200
+fi
 test "$(metric metal-saturate.log rescue_misses)" -eq 0
 "$aligner" --cpu-upstream mem -t 4 -k 160 -B 120 -I 400,40 reference.fa sat-R1.fq sat-long-R2.fq \
     > cpu-saturate-long.sam 2> cpu-saturate-long.log
@@ -443,6 +462,16 @@ test "$(metric metal-saturate.log rescue_misses)" -eq 0
 same cpu-saturate-long.sam metal-saturate-long.sam
 test "$(metric metal-saturate-long.log rescue_declined)" -eq 200
 test "$(metric metal-saturate-long.log rescue_misses)" -eq 0
+# Regression: a GPU-declined window was counted again by its CPU fallback.
+# With fixed insert sizes these two scores examine the same candidate windows.
+"$aligner" --cpu-upstream mem -t 4 -k 160 -B 4 -I 400,40 reference.fa sat-R1.fq sat-long-R2.fq \
+    > cpu-unsaturated-long.sam 2> cpu-unsaturated-long.log
+"$aligner" --gpu-policy all "$gpu" mem -t 4 -k 160 -B 4 -I 400,40 reference.fa \
+    sat-R1.fq sat-long-R2.fq > metal-unsaturated-long.sam 2> metal-unsaturated-long.log
+same cpu-unsaturated-long.sam metal-unsaturated-long.sam
+test "$(metric metal-unsaturated-long.log rescue_declined)" -eq 0
+test "$(metric metal-saturate-long.log rescue_window_rows)" -eq \
+    "$(metric metal-unsaturated-long.log rescue_window_rows)"
 
 # A rescue batch that fails after the first one (while the next is packed) is
 # finished on the CPU, as is the rest. Explicit "$gpu" still reports it.
