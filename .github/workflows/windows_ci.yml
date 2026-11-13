@@ -56,6 +56,7 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Impute HG002 with the pinned Windows tools (no skips)
         run: |
+          New-Item -ItemType Directory -Force out | Out-Null
           pixi run pytest tests/test_imputation.py -p no:randomly -rs -o addopts="" --basetemp=out/imputation-tmp --junitxml=out/imputation-e2e.xml
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           pixi run python -c "import sys, xml.etree.ElementTree as ET; s = ET.parse('out/imputation-e2e.xml').getroot().find('testsuite'); assert s is not None; n = int(s.get('tests', '0')); skipped = int(s.get('skipped', '0')); print(n, 'tests,', skipped, 'skipped'); sys.exit(n == 0 or skipped > 0)"
