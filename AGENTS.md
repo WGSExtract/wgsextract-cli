@@ -39,7 +39,7 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
 
 - **Queue.** The open issues are the work queue. Take them in this order:
   1. open `bug` issues, oldest first; bugs come before new features and roadmap items
-  2. open `efficiency` issues (CI cost, tests, flakes, process, token use), oldest first; they come before roadmap work because they speed up everything else (tracking issue #764, development efficiency)
+  2. open `efficiency` issues (CI cost, tests, flakes, process, token use), oldest first; they come before roadmap work because they speed up everything else. Tracking issues such as #764 (development efficiency tracking) are indexes, not tasks: work their linked issues
   3. the "Up next" list at the top of the roadmap tracking issue (label `roadmap`), in the order listed; it overrides milestones
   4. the oldest open milestone
   5. the rest of the roadmap tracking issue
