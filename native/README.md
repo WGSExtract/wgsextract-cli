@@ -42,8 +42,8 @@ when no dense side file is present. With a side file it refuses: those builds
 read it automatically and cannot honor the run's opt-in setting. Upgrade to
 0.12.1, or remove the side files with
 `wgsextract ref dense-sa --ref <fasta> --delete`.
-The 0.13.0 optimizations described below require a build from this revision
-until an updated prerelease is published.
+The 0.13.0 and 0.14.0 optimizations described below require a build from this
+revision until an updated prerelease is published.
 
 The `macos-aligners-17` prerelease speeds up `wgse-bwa` CPU alignment with
 exact mate-rescue window pruning, compact-key region sorting and NEON
@@ -220,9 +220,18 @@ with NEON, masking positions past the requested row. Alignment-region sorting
 uses compact records of the sort keys and addresses, with the same comparisons
 and introsort order as before. These changes preserve upstream's records;
 `--cpu-upstream` retains the upstream implementations.
-Pruning is not enabled on x86-64: the scalar filter has not been benchmarked
-there. `wgse-bwa-mem2` 0.5.3 also includes the shared compact-key region sort;
-the published 0.5.2 binaries are unchanged.
+Pruning is not enabled on x86-64: there it left out almost no work (0.2% fewer
+instructions on the small tier, 0.14.0). `wgse-bwa-mem2` 0.5.3 also includes the
+shared compact-key region sort; the published 0.5.2 binaries are unchanged.
+
+From 0.14.0, on x86-64, the CPU backend also extends seeds with the NEON
+`ksw_extend2` and unpacks reference bases with the NEON loops: `bwa/neon.h`
+gives the NEON operations they use in SSE2, which every x86-64 CPU has, with
+NEON's exact lane results, so one source serves both. The extension is also
+compiled for AVX2, and CPUs that have it run that copy (picked once, at load).
+Their records are upstream's; `--cpu-upstream` runs upstream's code. The NEON
+occurrence counts were also tried on x86-64, in SSE2 and with POPCNT, and took
+as long as upstream's table lookups, so x86-64 keeps upstream's.
 
 From 0.5.0, `wgse-bwa-mem2`'s CPU backend does the same with its own exact
 replacements: it collects each read's SMEMs in all three passes with up to 16
@@ -1029,9 +1038,10 @@ conda install -y -n wgse-bwa "./$PKG" &&
 export PATH="$(conda run -n wgse-bwa printenv CONDA_PREFIX)/bin:$PATH"
 ```
 
-- **CPU backend:** upstream BWA's code. The NEON replacements are Apple-only,
-  so on x86-64 it runs upstream's `ksw_extend2`; it keeps the other exact
-  batched steps.
+- **CPU backend:** BWA's code with the exact CPU replacements described
+  above. From 0.14.0 that includes the NEON seed extension and reference
+  unpacking on x86-64 too, in SSE2 (the extension in AVX2 on CPUs that have
+  it); occurrence counting and mate-rescue pruning stay upstream's there.
 - **`--cuda` (`--backend cuda`, experimental):** runs the Metal backend's
   kernels on an NVIDIA GPU. The kernels are ported to CUDA from one source
   that HIP can also compile (`native/gpu-common`, `native/bwa/*.cuh`). They

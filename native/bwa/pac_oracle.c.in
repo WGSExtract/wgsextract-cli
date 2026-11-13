@@ -1,15 +1,13 @@
 
 /* bns_get_seq()'s unpacking loops, a byte of four bases at a time:
  * seq[i] = _get_pac(pac, beg + i) for beg <= beg + i < end. */
-#ifdef __ARM_NEON
-#include <arm_neon.h>
-#endif
+#include "neon.h"
 
 void wgse_unpack_pac(const uint8_t *pac, int64_t beg, int64_t end, uint8_t *seq)
 {
 	int64_t k = beg;
 	for (; k < end && (k & 3); ++k) *seq++ = _get_pac(pac, k);
-#ifdef __ARM_NEON
+#ifdef WGSE_NEON
 	const uint8x16_t three = vdupq_n_u8(3);
 	for (; end - k >= 64; k += 64, seq += 64) {
 		const uint8x16_t b = vld1q_u8(pac + (k >> 2));
@@ -29,7 +27,7 @@ void wgse_unpack_pac_reverse(const uint8_t *pac, int64_t beg_f, int64_t end_f, u
 {
 	uint8_t *lo = seq, *hi = seq + (end_f - beg_f), t;
 	wgse_unpack_pac(pac, beg_f + 1, end_f + 1, seq);
-#ifdef __ARM_NEON
+#ifdef WGSE_NEON
 	const uint8x16_t three = vdupq_n_u8(3);
 	for (; hi - lo >= 32; lo += 16, hi -= 16) {
 		uint8x16_t a = vld1q_u8(lo), b = vld1q_u8(hi - 16);
