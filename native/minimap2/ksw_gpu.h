@@ -1,7 +1,9 @@
-// Metal offload of minimap2's base-level gap fills (ksw_extd2_sse with only
-// KSW_EZ_APPROX_MAX, as mm_align1 calls it between anchors). Results are exact:
-// the GPU computes the same int8 cells and backtrack, and a fill is taken from
-// the GPU only if its inputs are byte-identical to the ones the CPU code asks for.
+// GPU offload (Metal on Apple Silicon, CUDA on Linux) of minimap2's base-level gap
+// fills (ksw_extd2_sse with only KSW_EZ_APPROX_MAX, as mm_align1 calls it between
+// anchors). Results are exact: the GPU computes the same int8 cells and backtrack, and a
+// fill is taken from the GPU only if its inputs are byte-identical to the ones the CPU
+// code asks for. ksw_host.cpp implements it on a ksw_engine.h device; ksw_gpu_none.cpp
+// for builds without one.
 #pragma once
 
 #include <stdint.h>
@@ -12,15 +14,17 @@
 extern "C" {
 #endif
 
-// Set up the GPU for the rest of the process. Returns 0 and a reason if Metal
-// is unavailable.
-int wgse_ksw_metal_start(char *reason, int reason_size);
-// Benchmark and test settings, applied by the next wgse_ksw_metal_start: reads
+// Set up the GPU for the rest of the process. Returns 0 and a reason if it is
+// unavailable.
+int wgse_ksw_gpu_start(char *reason, int reason_size);
+// Whether wgse_ksw_gpu_start would succeed (capabilities), and if not why.
+int wgse_ksw_gpu_probe(char *reason, int reason_size);
+// Benchmark and test settings, applied by the next wgse_ksw_gpu_start: reads
 // in flight per CPU thread, fills per GPU batch (0 keeps the default), and
 // failing every GPU batch.
 void wgse_ksw_tune(int fibers_per_thread, int batch_fills, int max_cost, int fail_batches);
 // Whether the calling read may queue fills for the GPU.
-int wgse_ksw_metal_enabled(void);
+int wgse_ksw_gpu_enabled(void);
 // Whether this computer has a GPU the build can use (without setting it up).
 int wgse_ksw_gpu_hardware_supported(void);
 // Tests only: interrupt the next GPU commands, or withhold the first whose label starts
@@ -61,7 +65,7 @@ int wgse_ksw_take(void *km, int qlen, const uint8_t *qseq, int tlen, const uint8
 
 // Summary on stderr; whether a GPU batch failed (its fills ran on the CPU).
 void wgse_ksw_print_metrics(void);
-int wgse_ksw_metal_failed(char *reason, int reason_size);
+int wgse_ksw_gpu_failed(char *reason, int reason_size);
 
 #ifdef __cplusplus
 }

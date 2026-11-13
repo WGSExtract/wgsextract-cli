@@ -1,4 +1,4 @@
-#include "metal_ksw.h"
+#include "ksw_gpu.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -18,28 +18,27 @@ constexpr const char *name = "wgse-minimap2";
 constexpr const char *version = WGSE_VERSION;
 constexpr const char *engine_version = "2.31-r1302";
 
-void help(FILE *stream) {
 #ifdef __APPLE__
-    fprintf(stream, "%s %s (minimap2 %s rebuilt for Apple Silicon)\n"
-        "Usage: %s [--metal] [minimap2 options] <target.fa>|<target.mmi> [query.fa[.gz]|query.fq[.gz]] [...]\n"
-        "       %s capabilities --json   report Metal availability\n"
-        "       %s --version             print executable and engine version\n"
-        "Alignment is minimap2's, unchanged; SAM/PAF is written to stdout, diagnostics to stderr.\n"
-        "--metal (EXPERIMENTAL) runs most base-level gap fills between seeds on the GPU for\n"
-        "presets with dual affine gaps, such as map-hifi, map-ont and map-pb, with identical\n"
-        "output; sr and splice presets stay on the CPU. It fails if Metal is unavailable,\n"
-        "and exits 1 after finishing on the CPU if a GPU batch fails.\n"
-        "Not qualified for clinical use.\n\n",
-        name, version, engine_version, name, name, name);
+constexpr const char *platform = "Apple Silicon", *gpu_name = "Metal", *gpu_option = "--metal";
 #else
-    fprintf(stream, "%s %s (minimap2 %s rebuilt for Linux)\n"
-        "Usage: %s [minimap2 options] <target.fa>|<target.mmi> [query.fa[.gz]|query.fq[.gz]] [...]\n"
-        "       %s capabilities --json   report what this build can run on\n"
+constexpr const char *platform = "Linux", *gpu_name = "CUDA", *gpu_option = "--cuda";
+#endif
+
+void help(FILE *stream) {
+    fprintf(stream, "%s %s (minimap2 %s rebuilt for %s)\n"
+        "Usage: %s [%s | --backend cpu|%s|auto] [minimap2 options] <target.fa>|<target.mmi>\n"
+        "         [query.fa[.gz]|query.fq[.gz]] [...]\n"
+        "       %s capabilities --json   report %s availability\n"
         "       %s --version             print executable and engine version\n"
         "Alignment is minimap2's, unchanged; SAM/PAF is written to stdout, diagnostics to stderr.\n"
+        "%s (EXPERIMENTAL) runs most base-level gap fills between seeds on the GPU for\n"
+        "presets with dual affine gaps, such as map-hifi, map-ont and map-pb, with identical\n"
+        "output; sr and splice presets stay on the CPU. It fails if %s is unavailable,\n"
+        "and exits 1 after finishing on the CPU if a GPU batch fails; --backend auto uses the\n"
+        "GPU when it can and otherwise aligns on the CPU, with exit 0.\n"
         "Not qualified for clinical use.\n\n",
-        name, version, engine_version, name, name, name);
-#endif
+        name, version, engine_version, platform, name, gpu_option, gpu_option + 2, name, gpu_name,
+        name, gpu_option, gpu_name);
 }
 
 #ifdef WGSE_METAL_BENCHMARK_TOOLS
@@ -58,15 +57,27 @@ bool count_option(int argc, char **argv, int &index, int &value) {
 #endif
 
 // Strips the wrapper's options, which precede minimap2's; returns -1 or an exit code.
-int parse_metal_options(int &argc, char **&argv, bool &metal) {
+enum class Backend { cpu, gpu, automatic };
+
+int parse_backend_options(int &argc, char **&argv, Backend &backend) {
     int index = 1;
 #ifdef WGSE_METAL_BENCHMARK_TOOLS
     int fibers = 0, batch = 0, max_cost = -1, fail = 0, interruptions = 0;
 #endif
     while (index < argc) {
-        if (strcmp(argv[index], "--metal") == 0) {
-            metal = true;
+        if (strcmp(argv[index], gpu_option) == 0) {
+            backend = Backend::gpu;
             ++index;
+        } else if (strcmp(argv[index], "--backend") == 0) {
+            const char *value = index + 1 < argc ? argv[index + 1] : "";
+            if (strcmp(value, "cpu") == 0) backend = Backend::cpu;
+            else if (strcmp(value, gpu_option + 2) == 0) backend = Backend::gpu;
+            else if (strcmp(value, "auto") == 0) backend = Backend::automatic;
+            else {
+                fprintf(stderr, "--backend requires cpu, %s or auto\n", gpu_option + 2);
+                return 2;
+            }
+            index += 2;
 #ifdef WGSE_METAL_BENCHMARK_TOOLS
         } else if (strcmp(argv[index], "--gpu-fibers") == 0) {
             if (!count_option(argc, argv, index, fibers)) return 2;
@@ -112,7 +123,7 @@ int run(int argc, char **argv) {
             return 2;
         }
         char reason[256] = "";
-        const bool available = wgse_ksw_metal_start(reason, sizeof reason);
+        const bool available = wgse_ksw_gpu_probe(reason, sizeof reason);
         const bool supported = wgse_ksw_gpu_hardware_supported();
 #ifdef __APPLE__
         const bool metal = available, metal_supported = supported, cuda = false, cuda_supported = false;
@@ -138,29 +149,35 @@ int run(int argc, char **argv) {
     std::vector<char *> command_line(argv, argv + argc + 1);
     wgse_pg_argc = argc;
     wgse_pg_argv = command_line.data();
-    bool metal = false;
-    const int status = parse_metal_options(argc, argv, metal);
+    Backend backend = Backend::cpu;
+    const int status = parse_backend_options(argc, argv, backend);
     if (status >= 0) return status;
     // Upstream's stderr CMD starts with argv[0]: fold the wrapper options into it.
     std::string program = command_line[0];
     for (int i = 1; i < wgse_pg_argc - argc + 1; ++i) program.append(" ").append(command_line[i]);
     argv[0] = program.data();
     if (argc < 2) help(stderr);
-    if (metal) {
+    bool gpu = backend != Backend::cpu;
+    if (gpu) {
         char reason[256] = "";
-        if (!wgse_ksw_metal_start(reason, sizeof reason)) {
-            fprintf(stderr, "[wgse-minimap2] --metal: Metal is unavailable: %s\n", reason);
-            return 1;
+        if (!wgse_ksw_gpu_start(reason, sizeof reason)) {
+            if (backend == Backend::gpu) {
+                fprintf(stderr, "[wgse-minimap2] %s: %s is unavailable: %s\n", gpu_option, gpu_name, reason);
+                return 1;
+            }
+            fprintf(stderr, "[wgse-minimap2] CPU fallback: %s unavailable (%s)\n", gpu_name, reason);
+            gpu = false;
         }
     }
     int ret = wgse_minimap2_main(argc, argv);
-    if (metal) {
+    if (gpu) {
         wgse_ksw_print_metrics();
         char reason[256] = "";
-        if (wgse_ksw_metal_failed(reason, sizeof reason)) {
-            fprintf(stderr, "[wgse-minimap2] --metal: a GPU batch failed (%s); "
-                "its gap fills ran on the CPU, so the output is complete\n", reason);
-            if (ret == 0) ret = 1;
+        if (wgse_ksw_gpu_failed(reason, sizeof reason)) {
+            fprintf(stderr, "[wgse-minimap2] %s: a GPU batch failed (%s); "
+                "its gap fills ran on the CPU, so the output is complete\n",
+                backend == Backend::gpu ? gpu_option : "--backend auto", reason);
+            if (ret == 0 && backend == Backend::gpu) ret = 1;
         }
     }
     return ret;

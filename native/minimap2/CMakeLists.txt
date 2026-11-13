@@ -106,12 +106,12 @@ file(WRITE "${generated}/seed.c" "${seed_source}")
 # sketch.c: sketch part of a sequence, for index construction on several threads.
 file(READ "${minimap2_SOURCE_DIR}/sketch.c" sketch_source)
 file(WRITE "${generated}/sketch.c" "${sketch_source}\n#include \"wgse_sketch.inc\"\n")
-# --metal (metal_ksw.h): align.c queues each read's gap fills for the GPU before
+# --metal (ksw_gpu.h): align.c queues each read's gap fills for the GPU before
 # aligning it and takes the results of identical fills; map.c runs several reads
 # per CPU thread as fibers, so reads waiting for the GPU leave their thread to others.
 file(READ "${minimap2_SOURCE_DIR}/align.c" align_source)
 minimap2_seam(align_source "#include \"ksw2.h\"\n"
-    "#include \"ksw2.h\"\n#include \"metal_ksw.h\"\n
+    "#include \"ksw2.h\"\n#include \"ksw_gpu.h\"\n
 static void wgse_ksw_prefetch(void *km, const mm_mapopt_t *opt, const mm_idx_t *mi, int qlen,
 \tuint8_t *qseq0[2], int n_regs, const mm_reg1_t *regs, const mm128_t *a);
 ")
@@ -123,7 +123,7 @@ minimap2_seam(align_source "\tmemset(&ez, 0, sizeof(ksw_extz_t));\n\tfor (i = 0;
 file(WRITE "${generated}/align.c" "${align_source}\n#include \"wgse_align.inc\"\n")
 file(READ "${minimap2_SOURCE_DIR}/map.c" map_source)
 minimap2_seam(map_source "mm_tbuf_t *mm_tbuf_init(void)\n"
-    "#include \"metal_ksw.h\"\nmm_tbuf_t *mm_tbuf_init(void)\n")
+    "#include \"ksw_gpu.h\"\nmm_tbuf_t *mm_tbuf_init(void)\n")
 minimap2_seam(map_source "\tif (b->km) {\n\t\tkm_stat(b->km, &kmst);"
     "\tif (b->km && wgse_ksw_km_check(b->km, opt->cap_kalloc)) {\n\t\tkm_stat(b->km, &kmst);")
 minimap2_seam(map_source "\t\t\tkm_destroy(b->km);\n\t\t\tb->km = km_init();\n"
@@ -214,6 +214,17 @@ function(minimap2_ksw2_library name mode)
 endfunction()
 minimap2_ksw2_library(wgse_minimap2_ksw2 ${WGSE_MINIMAP2_KSW2})
 
+if(WGSE_CUDA)
+    # The CUDA device (ksw_cuda.cu): ksw_fill.cuh's kernels, ported from metal_ksw.mm's.
+    add_library(wgse_minimap2_cuda STATIC ksw_cuda.cu)
+    target_include_directories(wgse_minimap2_cuda PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../gpu-common")
+    target_include_directories(wgse_minimap2_cuda SYSTEM PRIVATE "${minimap2_SOURCE_DIR}")
+    target_compile_options(wgse_minimap2_cuda PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:--Werror=all-warnings -Xcompiler=-Wall,-Wextra>)
+    target_link_libraries(wgse_minimap2_cuda PUBLIC CUDA::cudart_static)
+endif()
+
 function(minimap2_target_settings target)
     target_include_directories(${target} SYSTEM PUBLIC "${minimap2_SOURCE_DIR}")
     if(APPLE)
@@ -228,8 +239,12 @@ function(minimap2_target_settings target)
 endfunction()
 
 function(wgse_minimap2_executable name core)
+    # The gap-fill offload (ksw_gpu.h): ksw_host.cpp's engine on Metal (macOS) or CUDA
+    # (Linux with -DWGSE_CUDA=ON), else every fill on the CPU.
     if(APPLE)
-        set(gpu_sources metal_ksw.mm)
+        set(gpu_sources ksw_host.cpp metal_ksw.mm)
+    elseif(WGSE_CUDA)
+        set(gpu_sources ksw_host.cpp)
     else()
         set(gpu_sources ksw_gpu_none.cpp)
     endif()
@@ -238,6 +253,9 @@ function(wgse_minimap2_executable name core)
     minimap2_target_settings(${core})
     target_include_directories(${core} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
     set_source_files_properties(${gpu_sources} PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Werror")
+    if(WGSE_CUDA)
+        target_link_libraries(${core} PRIVATE wgse_minimap2_cuda)
+    endif()
     if(APPLE)
         target_link_libraries(${core} PRIVATE wgse_metal_common)
         set_source_files_properties(metal_ksw.mm PROPERTIES COMPILE_OPTIONS
@@ -293,6 +311,16 @@ if(BUILD_TESTING)
             target_compile_options(${target} PRIVATE -UNDEBUG -fsigned-char -Wno-unused-function)
         endforeach()
         add_test(NAME minimap2_ksw2_fuzz COMMAND minimap2-ksw2-fuzz 20000 1)
+    endif()
+    if(APPLE OR WGSE_CUDA)
+        # The GPU gap fills against upstream's ksw_extd2_sse (skipped without a usable GPU).
+        add_executable(minimap2-ksw-gpu-fuzz tests/ksw_gpu_fuzz.cpp)
+        target_include_directories(minimap2-ksw-gpu-fuzz PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+        target_compile_definitions(minimap2-ksw-gpu-fuzz PRIVATE HAVE_KALLOC)
+        target_compile_options(minimap2-ksw-gpu-fuzz PRIVATE -Wall -Wextra -Werror)
+        target_link_libraries(minimap2-ksw-gpu-fuzz PRIVATE wgse_minimap2_core)
+        add_test(NAME minimap2_ksw_gpu_fuzz COMMAND minimap2-ksw-gpu-fuzz 60 1)
+        set_tests_properties(minimap2_ksw_gpu_fuzz PROPERTIES SKIP_RETURN_CODE 77)
     endif()
     # The anchor sort against upstream's in-place radix sort, including the order of equal keys.
     add_executable(minimap2-sort128-fuzz tests/sort128_fuzz.c)
