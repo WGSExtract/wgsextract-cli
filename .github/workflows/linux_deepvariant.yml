@@ -13,6 +13,7 @@ on:
     branches: [ main ]
     paths:
       - native/deepvariant/**
+      - native/tests/seeded_random.sh
       - packaging/wgse-deepvariant/**
       - .github/workflows/linux_deepvariant.yml
       - "!**/*.md"
