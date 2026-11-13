@@ -5,13 +5,20 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from test_mockup_review_server import SCRIPT, read, running
+from test_mockup_review_server import SCRIPT, git, read, running
 from test_mockup_review_server import bare_repo as bare_repo
 
 
 def test_776_hosted_pages_and_versions_mark_shared_storage(
     tmp_path: Path, bare_repo: Path
 ) -> None:
+    source = bare_repo.parent / "source"
+    git(source, "checkout", "main")
+    (source / "gui/mockups/index.html").write_text(
+        "<!DOCTYPE html><HTML><HEAD><TITLE>Main</TITLE></HEAD><BODY>Main</BODY></HTML>"
+    )
+    git(source, "add", ".")
+    git(source, "commit", "-m", "uppercase head must retain standards mode")
     with running(
         tmp_path, "--db", str(tmp_path / "notes.db"), "--repo", str(bare_repo)
     ) as base:
@@ -20,6 +27,7 @@ def test_776_hosted_pages_and_versions_mark_shared_storage(
                 base, prefix + "/"
             )
             assert '"hosted": true' in read(base, prefix + "/shared/version.js")
+        assert read(base, "/").startswith("<!DOCTYPE html>")
 
 
 def test_776_api_outage_does_not_write_browser_notes() -> None:

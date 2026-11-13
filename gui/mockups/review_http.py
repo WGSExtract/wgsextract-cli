@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import io
 import json
+import re
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler
 from os import PathLike
@@ -72,11 +73,17 @@ class ReviewFiles(SimpleHTTPRequestHandler):
                 + html.escape(idea, quote=True)
                 + '">\n'
             )
-            text = (
-                text.replace("</head>", marker + "</head>", 1)
-                if "</head>" in text
-                else marker + text
-            )
+            head = re.search(r"</head\s*>", text, re.IGNORECASE)
+            body = re.search(r"<body\b", text, re.IGNORECASE)
+            doctype = re.match(r"\s*<!doctype[^>]*>", text, re.IGNORECASE)
+            insert = 0
+            if head:
+                insert = head.start()
+            elif body:
+                insert = body.start()
+            elif doctype:
+                insert = doctype.end()
+            text = text[:insert] + marker + text[insert:]
             data = text.encode("utf-8")
             content_type = "text/html; charset=utf-8"
         else:
