@@ -3,8 +3,10 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 from tests.htslib_helpers import needs_htslib, sam_to_bam, write_fasta
-from tests.prepared_data import sparse_truncate
+from tests.prepared_data import prepared_files, sparse_truncate
 from wgsextract_cli.core.utils import run_command
 
 
@@ -73,3 +75,24 @@ def test_761_large_metadata_files_do_not_allocate_gigabytes_on_windows(tmp_path)
     else:
         allocated = path.stat().st_blocks * 512
     assert allocated < 1024**2
+
+
+def test_761_interrupted_fixture_repair_never_publishes_partial_inputs(tmp_path):
+    interrupted = False
+
+    def build(root: Path) -> None:
+        (root / "left").write_bytes(b"partial" if interrupted else b"complete")
+        if interrupted:
+            raise OSError("builder interrupted")
+        (root / "right").write_bytes(b"complete")
+
+    args = (str(tmp_path).encode(), sys.executable, ("left", "right"), build)
+    root = prepared_files(*args)
+    (root / "left").unlink()
+    interrupted = True
+    with pytest.raises(OSError, match="interrupted"):
+        prepared_files(*args)
+    interrupted = False
+    recovered = prepared_files(*args)
+    assert (recovered / "left").read_bytes() == b"complete"
+    assert (recovered / "right").read_bytes() == b"complete"

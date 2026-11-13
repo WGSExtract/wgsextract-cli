@@ -47,6 +47,7 @@ def prepared_files(
         if not (root / "complete").is_file() or not all(
             (root / name).is_file() for name in names
         ):
+            (root / "complete").unlink(missing_ok=True)
             build(root)
             (root / "complete").touch()
     return root
