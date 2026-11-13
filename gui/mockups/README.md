@@ -200,6 +200,11 @@ with the Pages publisher's exact branch naming and static allow-list, never
 executed. Cache directories are keyed by commit and idea; the previous
 snapshot is retained briefly for in-flight requests. Shared review tooling
 is served from the running app so older ideas also get the shared API.
+Startup never waits for GitHub: it restores the last published cache mapping
+(or scans completed snapshots if necessary) and refreshes in the background.
+During an outage it retries every 15 seconds, or sooner if the configured
+refresh interval is shorter. Even with an empty cache, the notes API and
+All notes view stay available; uncached mockup pages return 404 until fetched.
 Without `--db`, the original per-page `feedback/*.json` workflow is unchanged.
 For additional listening authorities use repeatable `--allow-host HOST:PORT`.
 
@@ -284,7 +289,16 @@ Requires existing noninteractive `ssh randy-mini`, curl, and agent-coord at
 `~/.local/bin/agent-coord` (systemd's default PATH omits that folder).
 Every five minutes it probes tailnet `/api/health`.
 On failure it bootstraps the launchd service (or kickstarts an existing
-one), announces the recovery through agent-coord, then checks health again.
+one), then checks health again. Only then does it announce `restarted OK`,
+or report `still down` / `ssh unreachable` and exit nonzero. SSH failure
+does not suppress the alert. For a safe unreachable-host drill:
+
+```sh
+~/.local/lib/mockup-server/watchdog.sh --host mockup-watchdog-unreachable.invalid \
+  --url http://127.0.0.1:1/api/health --retry-delay 0
+```
+
+This reports failure for the bogus host without touching randy-mini.
 The timer needs lin-mid online; KeepAlive handles ordinary server crashes
 without it. Inspect `journalctl --user -u mockup-server-watchdog.service`.
 

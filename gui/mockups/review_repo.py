@@ -37,11 +37,71 @@ class ReviewRepo:
         self.branches: dict[str, str] = {}
         self.stop = threading.Event()
         cache.mkdir(parents=True, exist_ok=True)
-        self.refresh()
+        self.restore()
+        self.previous: set[Path] = set(self.roots.values())
         self.thread = threading.Thread(
             target=self.run, name="preview-refresh", daemon=True
         )
         self.thread.start()
+
+    def restore(self) -> None:
+        """Recover the last published mapping without any network access."""
+        try:
+            manifest = json.loads((self.cache / "current.json").read_text("utf-8"))
+            if not isinstance(manifest.get("roots"), dict) or not isinstance(
+                manifest.get("branches"), dict
+            ):
+                raise ValueError("invalid snapshot mapping")
+            roots = {
+                idea: self.cache / folder for idea, folder in manifest["roots"].items()
+            }
+            if any(
+                path.parent != self.cache or not path.is_dir()
+                for path in roots.values()
+            ):
+                raise ValueError("invalid or missing snapshot directory")
+            self.roots = roots
+            self.branches = manifest["branches"]
+            return
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            logging.exception(
+                "cannot read snapshot manifest; scanning completed snapshots"
+            )
+        # Also recover completed snapshots when the first manifest has not yet
+        # been written, or an interrupted write left it unavailable.
+        candidates = sorted(
+            (
+                path
+                for path in self.cache.iterdir()
+                if path.is_dir() and not path.is_symlink()
+            ),
+            key=lambda path: path.stat().st_mtime_ns,
+            reverse=True,
+        )
+        for path in candidates:
+            match = re.fullmatch(r"([0-9a-f]{40,64})-([a-z0-9-]+)", path.name)
+            if not match:
+                continue
+            try:
+                text = (path / "shared/version.js").read_text("utf-8")
+                version = json.loads(
+                    text.removeprefix("window.WGSM_VERSION = ")
+                    .strip()
+                    .removesuffix(";")
+                )
+                branch = version["branch"]
+                if version["sha"] != match[1] or not isinstance(branch, str):
+                    continue
+                if branch != "main" and not branch.startswith("mockups/"):
+                    continue
+                if branch not in self.roots:
+                    self.roots[branch] = path
+                    if branch != "main":
+                        self.branches.setdefault(match[2], branch)
+            except (OSError, ValueError, KeyError, TypeError):
+                logging.exception("cannot recover cached snapshot %s", path.name)
 
     def snapshot(self, preview: previews.Preview) -> Path:
         dest: Path = self.cache / (preview.sha + "-" + preview.name)
@@ -94,8 +154,19 @@ class ReviewRepo:
             ),
             encoding="utf-8",
         )
-        self.roots = roots
-        self.branches = {p.name: p.branch for p in published}
+        names = {p.name: p.branch for p in published}
+        manifest = self.cache / "current.json.partial"
+        manifest.write_text(
+            json.dumps(
+                {
+                    "roots": {idea: path.name for idea, path in roots.items()},
+                    "branches": names,
+                }
+            ),
+            encoding="utf-8",
+        )
+        manifest.replace(self.cache / "current.json")
+        self.roots, self.branches = roots, names
         # Keep the active and previous snapshots: in-flight requests may still
         # be reading the old tree. Older commits are no longer reachable URLs.
         active = set(roots.values()) | getattr(self, "previous", set())
@@ -105,10 +176,13 @@ class ReviewRepo:
                 shutil.rmtree(path)
 
     def run(self) -> None:
-        while not self.stop.wait(self.interval):
+        delay = 0.0
+        while not self.stop.wait(delay):
             try:
                 self.refresh()
+                delay = self.interval
             except Exception:
                 logging.exception(
                     "preview refresh failed; retaining last good snapshots"
                 )
+                delay = min(self.interval, 15)

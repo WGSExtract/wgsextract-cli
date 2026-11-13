@@ -41,6 +41,13 @@ class ReviewFiles(SimpleHTTPRequestHandler):
                 idea, parts = self.repository.branches.get(parts[1], ""), parts[2:]
             root = self.repository.roots.get(idea, HERE / ".missing")
         rel = Path(*parts) if parts and parts[0] else Path("index.html")
+        if (
+            not root.is_dir()
+            and rel.parts
+            and rel.parts[0] in ("shared", "design-system", "icons")
+        ):
+            # A cold offline start still needs the All notes runtime and styles.
+            root = HERE
         # Review tooling comes from the running app, not old idea branches.
         if (
             rel == Path("notes.html")

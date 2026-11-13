@@ -58,7 +58,7 @@ def bare_repo(tmp_path: Path) -> Path:
 
 
 @contextmanager
-def running(tmp_path: Path, *args: str) -> Iterator[str]:
+def running(tmp_path: Path, *args: str, wait_for_pages: bool = True) -> Iterator[str]:
     log = tmp_path / "server.log"
     with log.open("w") as output:
         process = subprocess.Popen(
@@ -72,6 +72,12 @@ def running(tmp_path: Path, *args: str) -> Iterator[str]:
                 if match:
                     base = match.group(1).rstrip("/")
                     assert request(base, "/api/health")["ok"]
+                    if wait_for_pages and "--repo" in args:
+                        try:
+                            read(base, "/")
+                        except HTTPError:
+                            time.sleep(0.05)
+                            continue
                     yield base
                     return
                 if process.poll() is not None:
@@ -349,6 +355,82 @@ def test_776_online_backup_can_restore_notes(tmp_path: Path) -> None:
     assert not (backups / "notes-20000101.db").exists()
     with running(tmp_path, "--db", str(paths[-1])) as base:
         assert request(base, "/api/notes")["notes"][0]["text"] == "Survives restore"
+
+
+@pytest.mark.parametrize("cache", ["manifest", "scan", "empty"])
+def test_776_offline_start_keeps_notes_available_and_retries(
+    tmp_path: Path, bare_repo: Path, cache: str
+) -> None:
+    db_args = ("--db", str(tmp_path / "notes.db"))
+    args = (*db_args, "--repo", str(bare_repo), "--refresh-minutes", "0.01")
+    source = bare_repo.parent / "source"
+    with running(tmp_path, *(db_args if cache == "empty" else args)) as base:
+        request(
+            base,
+            "/api/feedback/index",
+            {
+                "op": "add",
+                "note": {
+                    "id": "noffline",
+                    "author": "Randy",
+                    "text": "Available offline",
+                },
+            },
+        )
+        if cache != "empty":
+            git(source, "checkout", "main")
+            (source / "gui/mockups/index.html").write_text("Newest cached main")
+            git(source, "add", ".")
+            git(source, "commit", "-m", "newest main")
+            for _ in range(100):
+                if "Newest cached main" in read(base, "/"):
+                    break
+                time.sleep(0.05)
+            assert "Newest cached main" in read(base, "/")
+    if cache == "scan":
+        (tmp_path / "cache/current.json").unlink()
+    git(
+        tmp_path,
+        "--git-dir",
+        str(bare_repo),
+        "remote",
+        "set-url",
+        "origin",
+        "http://127.0.0.1:1/unreachable.git",
+    )
+    with running(tmp_path, *args, wait_for_pages=False) as base:
+        assert request(base, "/api/notes")["notes"][0]["text"] == "Available offline"
+        assert "All notes" in read(base, "/notes.html")
+        if cache != "empty":
+            assert "Newest cached main" in read(base, "/")
+            assert "Idea X" in read(base, "/preview/x/")
+        else:
+            assert read(base, "/shared/boot.js")
+            with pytest.raises(HTTPError) as error:
+                read(base, "/")
+            assert error.value.code == 404
+        git(source, "checkout", "main")
+        (source / "gui/mockups/index.html").write_text("Recovered online")
+        git(source, "add", ".")
+        git(source, "commit", "-m", "network restored")
+        git(
+            tmp_path,
+            "--git-dir",
+            str(bare_repo),
+            "remote",
+            "set-url",
+            "origin",
+            str(source),
+        )
+        for _ in range(100):
+            try:
+                if "Recovered online" in read(base, "/"):
+                    break
+            except HTTPError:
+                pass
+            time.sleep(0.05)
+        assert "Recovered online" in read(base, "/")
+        assert request(base, "/api/notes")["notes"][0]["text"] == "Available offline"
 
 
 def test_776_file_mode_still_writes_repo_feedback(tmp_path: Path) -> None:
