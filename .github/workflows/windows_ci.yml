@@ -3,25 +3,20 @@ name: CI Windows
 # Native Windows, as users run it: every tool comes from the Pixi environment
 # (WGS Extract's own Windows builds of the bioinformatics tools). Lint and type
 # checks run on Ubuntu.
-# The desktop app (gui/) has its own CI (gui-*.yml); app-only changes skip this.
+# pr_ci.yml selects PRs; main pushes and nightly runs retain the full matrix.
 on:
   push:
     branches: [ main ]
-    paths-ignore:
-      - gui/**
-      - .github/workflows/gui-*.yml
-  pull_request:
-    branches: [ main ]
-    paths-ignore:
-      - gui/**
-      - .github/workflows/gui-*.yml
+  workflow_call:
+  schedule:
+    - cron: "11 6 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-windows-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -31,17 +26,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Pixi
-        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+        uses: ./.github/actions/setup-pixi
         with:
-          pixi-version: v0.82.0
-          locked: true
           environments: >-
             default
             dev
             gatk
             vep-rs
-          # PR runs restore main's environment; writing their own crowds it out.
-          cache-write: ${{ github.ref == 'refs/heads/main' }}
+          writer: "true"
       - name: Validate installer arguments
         shell: cmd
         run: install_windows.bat --dry-run --msys2-root C:\msys64 --skip-pacman-setup

@@ -12,6 +12,11 @@ on:
     paths:
       - native/deepvariant/**
       - .github/workflows/macos_deepvariant.yml
+      - "!**/*.md"
+  push:
+    branches: [main]
+  schedule:
+    - cron: "47 6 * * *"
   workflow_dispatch:
     inputs:
       release_tag:

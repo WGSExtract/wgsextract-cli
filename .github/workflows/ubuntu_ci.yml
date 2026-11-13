@@ -1,42 +1,19 @@
 name: CI Ubuntu
 
-# The desktop app (gui/) has its own CI (gui-*.yml); app-only changes skip this.
+# pr_ci.yml selects PRs; main pushes and nightly runs retain the full matrix.
 on:
   push:
     branches: [ main ]
-    paths:
-      - "**"
-      - "!gui/**"
-      - "!.github/workflows/gui-*.yml"
-      # tests/test_bump_version.py bumps the app's CLI pin in these.
-      - gui/scripts/bump-wgsextract-cli.py
-      - gui/examples/WGSExtract/scripts/wgsextract-release-tag.txt
-      - gui/examples/WGSExtract/manifest.json
-      - gui/docs/distribution.md
-      - gui/docs/CHANGELOG.md
-      - gui/app/tests/conformance.test.mjs
-      - gui/tools/packaging/tests/test_embedded_branding.py
-  pull_request:
-    branches: [ main ]
-    paths:
-      - "**"
-      - "!gui/**"
-      - "!.github/workflows/gui-*.yml"
-      # tests/test_bump_version.py bumps the app's CLI pin in these.
-      - gui/scripts/bump-wgsextract-cli.py
-      - gui/examples/WGSExtract/scripts/wgsextract-release-tag.txt
-      - gui/examples/WGSExtract/manifest.json
-      - gui/docs/distribution.md
-      - gui/docs/CHANGELOG.md
-      - gui/app/tests/conformance.test.mjs
-      - gui/tools/packaging/tests/test_embedded_branding.py
+  workflow_call:
+  schedule:
+    - cron: "11 6 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-ubuntu-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -48,13 +25,11 @@ jobs:
         with:
           fetch-depth: 2
       - name: Set up lint-only Pixi environment
-        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+        uses: ./.github/actions/setup-pixi
         with:
-          pixi-version: v0.82.0
-          locked: true
           environments: lint
-          # PR runs restore main's environment; writing their own crowds it out.
-          cache-write: ${{ github.ref == 'refs/heads/main' }}
+          scope: lint
+          writer: "true"
       - name: Lint, workflow validation and strict type check
         run: |
           pixi run -e lint -x ruff check .
@@ -70,32 +45,30 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Pixi
-        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+        uses: ./.github/actions/setup-pixi
         with:
-          pixi-version: v0.82.0
-          locked: true
           environments: >-
             default
             dev
             vep-rs
-          # PR runs restore main's environment; writing their own crowds it out.
-          cache-write: ${{ github.ref == 'refs/heads/main' }}
+          writer: "true"
       - name: Test installer
         run: scripts/test_install_sh.sh
       - name: Verify Tools
         run: chmod +x scripts/verify_tools.sh && pixi run scripts/verify_tools.sh
       # UCSC is often unresolvable from runners (#667). Bootstrap keeps a chain
       # already in the library, so restore the newest cached one and keep it only
-      # if it has the pinned SHA-256. Each save gets its own key, so a bad entry
-      # never blocks a good one from being saved and restored after it.
+      # if it has the pinned SHA-256. A verified checksum has one shared key.
       - name: Pinned hg19ToHg38 chain checksum
         id: chain
         run: pixi run python -c 'import os; from wgsextract_cli.core.microarray_targets import HG19_TO_HG38_CHAIN as c; open(os.environ["GITHUB_OUTPUT"], "a").write(f"sha256={c.sha256}\n")'
       - name: Restore the hg19ToHg38 liftOver chain
+        id: chain-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: reference/hg19ToHg38.over.chain.gz
-          key: ucsc-hg19ToHg38-${{ steps.chain.outputs.sha256 }}-${{ github.run_id }}
+          key: ucsc-hg19ToHg38-${{ steps.chain.outputs.sha256 }}
+          # Keep the verified fallback during migration from run-id keys.
           restore-keys: ucsc-hg19ToHg38-${{ steps.chain.outputs.sha256 }}-
       - name: Keep a restored chain only if it has the pinned SHA-256
         id: restored
@@ -121,14 +94,17 @@ jobs:
         env:
           CHAIN_SHA256: ${{ steps.chain.outputs.sha256 }}
         run: echo "$CHAIN_SHA256  reference/hg19ToHg38.over.chain.gz" | shasum -a 256 -c
-      - name: Cache the downloaded hg19ToHg38 liftOver chain
-        if: steps.downloaded.outcome == 'success'
+      - name: Cache the verified hg19ToHg38 liftOver chain
+        if: >-
+          github.ref == 'refs/heads/main' && steps.chain-cache.outputs.cache-hit != 'true' &&
+          (steps.restored.outputs.verified == 'true' || steps.downloaded.outcome == 'success')
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: reference/hg19ToHg38.over.chain.gz
-          key: ucsc-hg19ToHg38-${{ steps.chain.outputs.sha256 }}-${{ github.run_id }}
+          key: ucsc-hg19ToHg38-${{ steps.chain.outputs.sha256 }}
       - name: Cache public hs38 reference
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: reference-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: reference/genomes
           key: hs38-v1-${{ hashFiles('src/wgsextract_cli/assets/reference/seed_genomes.csv', 'src/wgsextract_cli/core/ref_library/catalog.py') }}
@@ -136,6 +112,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: pixi run python -m wgsextract_cli.main ref library --install hs38 --ref reference
+      - name: Seed the shared hs38 reference on main
+        if: github.ref == 'refs/heads/main' && steps.reference-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: reference/genomes
+          key: hs38-v1-${{ hashFiles('src/wgsextract_cli/assets/reference/seed_genomes.csv', 'src/wgsextract_cli/core/ref_library/catalog.py') }}
       - name: Build and Smoke Test Package
         run: pixi run package-smoke
       - name: Run Benchmark
@@ -172,10 +154,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Pixi
-        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+        uses: ./.github/actions/setup-pixi
         with:
-          pixi-version: v0.82.0
-          locked: true
           environments: >-
             dev
             imputation
@@ -194,17 +174,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Pixi
-        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+        uses: ./.github/actions/setup-pixi
         with:
-          pixi-version: v0.82.0
-          locked: true
           environments: >-
             dev
             pacbio
             phasing
             somalier
-          # PR runs restore main's environment; writing their own crowds it out.
-          cache-write: ${{ github.ref == 'refs/heads/main' }}
       # Clair3's environment is too large for CI; the rest must run, not skip.
       - name: Run ONT HG002 fixture tests
         shell: bash
