@@ -29,9 +29,10 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 - `vcf deepvariant` runs DeepVariant natively on Apple Silicon Macs with
   `wgse-deepvariant`, WGS Extract's build of DeepVariant 1.10.0 (the
   `macos-deepvariant` release, 0.1.1 or later): no Docker, call_variants on
-  the GPU, and the same calls as Google's x86-64 image (HG002 chr20 in about
-  5 minutes on an M1 Pro; HG003's whole genome in 2 h 42 min with every PASS
-  genotype and hap.py count identical to Google's; 16 GB Macs fit). Put it on `PATH` and set the
+  the GPU, and the same PASS calls, genotypes and filters as Google's x86-64
+  image (HG002 chr20 in about 5 minutes on an M1 Pro; HG003's whole genome in
+  2 h 42 min with every hap.py count identical to Google's and two QUAL-0
+  RefCalls differing; 16 GB Macs fit). Put it on `PATH` and set the
   new `deepvariant_weights` setting in `config.toml` to its weights folder,
   whose files are checked against their published hashes; only the WGS model
   is qualified. `deepvariant_native = "off"` keeps the Docker image instead.

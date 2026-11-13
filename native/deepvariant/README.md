@@ -97,7 +97,7 @@ make_examples does when it runs on a window around that locus. At
 chr16:33733297 the hom-ref GQ sits on the 19.5 boundary of the GQ-20 no-call
 threshold. The largest QUAL change is a site Google caps at 99 (its small
 model's probability rounds to exactly 1.0); most changes are below 1. These are
-the bounds of the Linux ARM64 build's whole-genome qualification
+within the bounds of the Linux ARM64 build's whole-genome qualification
 (docs/deepvariant-arm64.md: 29.7 / 30).
 
 ## Speed and memory
@@ -121,8 +121,10 @@ HG003's whole genome on the same M1 Pro (0.1.1, 10 threads, batch 1024) took
 call_variants 46 min (at most 4.6 GB resident and 13.2 GB footprint, which
 counts GPU buffers) and postprocess_variants 1 min (at most 2.2 GB). It ran in
 five parts of a few chromosomes each, with at most 3.8 GB of intermediate files
-per part; the VCF is 137 MB. Google's image and the Linux ARM64 build took
-3 h 39 min and 3 h 56 min on 64 vCPUs (docs/deepvariant-arm64.md).
+per part; the VCF is 137 MB. That time excludes the 29 minutes spent copying
+each part's reads from the case study's bucket first. For scale, Google's
+image and the Linux ARM64 build took 3 h 39 min and 3 h 56 min of wall time
+on HG002 with 16 vCPUs (docs/deepvariant-arm64.md).
 
 On a **16 GB base M1**, release **0.1.1** runs the same chr20 through the CLI
 in **409 s** at six threads and batch 512, with **2.24 GB peak RSS** and
