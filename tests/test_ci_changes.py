@@ -28,6 +28,7 @@ from scripts.pr_checks_ready import checks_ready
         (["src/wgsextract_cli/commands/info.py"], {"cli", "docs"}),
         (["pixi.lock"], {"cli", "docs", "install"}),
         (["scripts/installlab/lab.py"], {"cli", "docs", "install"}),
+        ([".github/actions/download-cache/action.yml"], {"cli", "docs", "install"}),
         (["install.sh"], {"cli", "docs", "install"}),
         (["uninstall.sh"], {"cli", "docs", "install"}),
         (["uninstall_windows.bat"], {"cli", "docs", "install"}),

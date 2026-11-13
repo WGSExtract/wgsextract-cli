@@ -8,6 +8,8 @@ on:
     branches: [ main ]
     paths:
       - ".github/workflows/gui-tauri-installer.yml"
+      - ".github/actions/setup-node/**"
+      - ".github/actions/download-cache/**"
       - "gui/examples/**"
       - "gui/app/**"
       - "gui/resources/**"

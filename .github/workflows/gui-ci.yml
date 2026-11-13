@@ -11,6 +11,7 @@ on:
     paths:
       - "gui/**"
       - ".github/workflows/gui-*.yml"
+      - ".github/actions/**"
       - "!gui/mockups/**"
       - "!gui/site_src/**"
       - "!gui/site/**"

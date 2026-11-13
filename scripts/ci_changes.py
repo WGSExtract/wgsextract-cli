@@ -23,6 +23,7 @@ SHARED_GUI_FILES = {
     "gui/tools/packaging/tests/test_embedded_branding.py",
 }
 INSTALL_PREFIXES = (
+    ".github/actions/",
     "packaging/",
     "scripts/installlab/",
     "src/wgsextract_cli/cli/",
