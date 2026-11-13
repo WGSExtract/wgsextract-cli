@@ -524,7 +524,8 @@ def _check_gpu(job: RealignJob) -> None:
 
 
 def _check_long_read_options(job: RealignJob) -> None:
-    """realign streams long reads from the BAM/CRAM into CPU minimap2."""
+    """realign streams long reads from the BAM/CRAM into minimap2 (not
+    Parabricks; wgse-minimap2, on its NVIDIA GPU where it can)."""
     if job.aligner == "pbmm2":
         if job.platform not in align_cmd.PACBIO_PLATFORMS:
             raise UsageError(
@@ -540,8 +541,8 @@ def _check_long_read_options(job: RealignJob) -> None:
         )
     if job.gpu:
         raise UsageError(
-            "realign aligns long reads on the CPU with minimap2, keeping their "
-            "MM/ML tags; drop --gpu."
+            "realign aligns long reads with minimap2, not Parabricks, keeping "
+            "their MM/ML tags; drop --gpu."
         )
     parse_size(job.chunk_size)
     if job.aligner == "auto":

@@ -1,7 +1,8 @@
 #!/bin/sh
 # Map deterministic synthetic HiFi-like, ONT-like and paired short reads to a
 # synthetic genome; require accurate placements, identical output from a FASTA
-# reference and a saved index, and identical output across repeated runs.
+# reference and a saved index, identical output across repeated runs, and with the
+# build's GPU (--metal or --cuda), where it is usable.
 # Usage: smoke.sh <wgse-minimap2> <work-dir>
 set -eu
 binary=$1
@@ -110,17 +111,21 @@ done
 check sr.sam 2000
 echo "minimap2 alignments verified"
 
-# --metal must write the same alignments, with gap fills on the GPU, where Metal is usable.
+# --metal or --cuda must write the same alignments, with gap fills on the GPU, where the
+# build's GPU is usable.
 "$binary" capabilities --json > capabilities.json
-if grep -q '"metal_available":true' capabilities.json; then
+gpu=""
+if grep -q '"metal_available":true' capabilities.json; then gpu=--metal; fi
+if grep -q '"cuda_available":true' capabilities.json; then gpu=--cuda; fi
+if [ -n "$gpu" ]; then
     for preset in map-hifi map-ont; do
-        "$binary" --metal -t 4 -ax "$preset" "$preset.mmi" "${preset#map-}.fq" \
-            > "$preset.metal.sam" 2> "$preset.metal.log"
-        records "$preset.metal.sam"
-        cmp "$preset.sam.records" "$preset.metal.sam.records"
-        grep -Eq 'on the GPU \([1-9][0-9]* used\)' "$preset.metal.log"
+        "$binary" "$gpu" -t 4 -ax "$preset" "$preset.mmi" "${preset#map-}.fq" \
+            > "$preset.gpu.sam" 2> "$preset.gpu.log"
+        records "$preset.gpu.sam"
+        cmp "$preset.sam.records" "$preset.gpu.sam.records"
+        grep -Eq 'on the GPU \([1-9][0-9]* used\)' "$preset.gpu.log"
         # @PG CL records that the GPU was used (PR #559 review).
-        grep -q "^@PG	ID:minimap2	.*	CL:minimap2 --metal -t 4 -ax $preset " "$preset.metal.sam"
+        grep -q "^@PG	ID:minimap2	.*	CL:minimap2 $gpu -t 4 -ax $preset " "$preset.gpu.sam"
     done
-    echo "minimap2 --metal alignments verified"
+    echo "minimap2 $gpu alignments verified"
 fi

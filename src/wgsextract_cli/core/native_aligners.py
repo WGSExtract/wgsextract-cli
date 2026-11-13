@@ -3,9 +3,9 @@ and wgse-minimap2 write their upstream aligner's alignments, faster.
 wgse-bwa-mem3 (bwa-mem3) writes bwa's or bwa-mem2's exact records with
 ``--compat``, faster still, and so can stand in for either. On Apple Silicon
 all of them are built, and all but wgse-minimap2 can also run on the Metal GPU;
-on Linux, wgse-bwa is, and on x86-64 wgse-bwa-mem3 too, both of which can also
-run on an NVIDIA GPU (CUDA) there. They are used when installed on PATH; they are
-never installed here.
+on Linux, wgse-bwa is, and on x86-64 wgse-bwa-mem3 and wgse-minimap2 too, all of
+which can also run on an NVIDIA GPU (CUDA) there. They are used when installed on
+PATH; they are never installed here.
 
 Each tool is asked once per process what it can do (``capabilities --json``),
 and anything unexpected falls back to the upstream aligner.
@@ -40,9 +40,13 @@ BINARIES = {
     "minimap2": "wgse-minimap2",
 }
 # The builds for Linux (from wgse-bwa 0.10.0: CUDA on x86-64, NEON on ARM64),
-# and for x86-64 also wgse-bwa-mem3 (from 0.4.0, with CUDA).
+# and for x86-64 also wgse-bwa-mem3 and wgse-minimap2 (from 0.4.0, with CUDA).
 LINUX_BINARIES = {"bwa": "wgse-bwa"}
-LINUX_X86_64_BINARIES = {**LINUX_BINARIES, "bwa-mem3": "wgse-bwa-mem3"}
+LINUX_X86_64_BINARIES = {
+    **LINUX_BINARIES,
+    "bwa-mem3": "wgse-bwa-mem3",
+    "minimap2": "wgse-minimap2",
+}
 MINIMUM_VERSIONS = {
     "wgse-bwa": (0, 7, 0),
     "wgse-bwa-mem2": (0, 4, 0),
@@ -59,6 +63,9 @@ BIOCONDA_BWA_MEM3_MINIMUM = (0, 16, 0)
 # From this release wgse-bwa-mem2 maps (CPU and --metal) without bwa-mem2's
 # 6.2 GB .0123 file (native/README.md, Memory).
 BWA_MEM2_WITHOUT_0123 = (0, 5, 0)
+# From this release wgse-minimap2 takes --backend auto (its gap fills on CUDA,
+# native/README.md). Its Mac --metal stays unused here.
+MINIMAP2_GPU_VERSION = (0, 4, 0)
 # From this release wgse-bwa can automatically read dense suffix-array files.
 DENSE_SA_VERSION = (0, 11, 0)
 # Earlier production builds compiled the on/off option out of their parser.
@@ -91,6 +98,18 @@ class NativeAligner:
         if self.metal_available:
             return "metal"
         return "cuda" if self.cuda_available else None
+
+    @property
+    def minimap2_gpu(self) -> bool:
+        """Whether this is a wgse-minimap2 whose long-read gap fills can run on
+        its NVIDIA GPU with --backend auto."""
+        version = _version_tuple(self.version)
+        return (
+            self.binary == "wgse-minimap2"
+            and self.gpu == "cuda"
+            and version is not None
+            and version >= MINIMAP2_GPU_VERSION
+        )
 
     @property
     def reads_0123(self) -> bool:

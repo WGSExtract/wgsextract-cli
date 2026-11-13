@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import tempfile
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, TypeVar
 
@@ -22,6 +22,7 @@ from wgsextract_cli.core import bwa_mem2, dense_suffix_array, ultima
 from wgsextract_cli.core.alignment_memory import (
     BWA_MEM3_CUDA_BYTES,
     BWA_MEM3_METAL_BYTES,
+    MINIMAP2_CUDA_BYTES,
     available_memory,
     bwa_gpu_memory,
     check_mapping_memory,
@@ -904,6 +905,8 @@ def aligner_gpu_bytes(aligner: AlignerCommand, ref: str, reads: int | None) -> i
     if aligner.engine == "bwa-mem3":
         cuda = aligner.native is not None and aligner.native.gpu == "cuda"
         return BWA_MEM3_CUDA_BYTES if cuda else BWA_MEM3_METAL_BYTES
+    if aligner.engine == "minimap2":
+        return MINIMAP2_CUDA_BYTES
     return 0
 
 
@@ -1824,6 +1827,53 @@ def _long_read_length(reads: str, cram_opt: Sequence[str]) -> float | None:
     return mean
 
 
+def _minimap2_command(
+    job: AlignJob,
+    ref: str,
+    preset: str,
+    *,
+    threads: str,
+    memory: str,
+    samblaster: bool,
+    reads: int | None,
+    read_length: float | None,
+    input_bytes: int | None,
+) -> AlignerCommand:
+    """minimap2, or wgse-minimap2 in its place (find_native_aligner). Long
+    reads' gap fills run on its NVIDIA GPU (--backend auto, from wgse-minimap2
+    0.4.0 on Linux) unless the GPU's extra RAM alone would make the pipeline
+    exceed the RAM available; sr keeps them on the CPU."""
+    native = find_native_aligner("minimap2", job.native_aligners)
+    aligner = AlignerCommand("minimap2", native)
+    if native is None or not native.minimap2_gpu or preset == "sr":
+        return aligner
+    gpu = AlignerCommand("minimap2", native, gpu=True)
+    gpu_bytes = aligner_gpu_bytes(gpu, ref, reads)
+    needed = estimate_mapping_memory(
+        ref,
+        "minimap2",
+        threads=threads,
+        memory=memory,
+        samblaster=samblaster,
+        reads=reads,
+        platform=job.platform,
+        read_length=read_length,
+        preset=preset,
+        input_bytes=input_bytes,
+        gpu_bytes=gpu_bytes,
+    ).total
+    available = available_memory()
+    if needed > available >= needed - gpu_bytes:
+        logging.info(
+            f"Running {native.binary} on the CPU: its GPU backend needs "
+            f"{gpu_bytes / 1024**3:.1f} GiB more RAM, and the alignment would "
+            f"then need {needed / 1024**3:.1f} GiB, more than the "
+            f"{available / 1024**3:.1f} GiB available."
+        )
+        return aligner
+    return gpu
+
+
 def align_minimap2(job: AlignJob) -> None:
     setup = _prepare_alignment(job, ["minimap2", "samtools"], "Minimap2 alignment")
 
@@ -1853,6 +1903,18 @@ def align_minimap2(job: AlignJob) -> None:
     read_length = job.input_reads.read_length if job.input_reads else None
     if read_length is None and preset != "sr" and input_bytes:
         read_length = _long_read_length(setup.r1, job.input_cram_opt or [])
+    aligner = _minimap2_command(
+        job,
+        setup.ref,
+        preset,
+        threads=setup.threads,
+        memory=setup.memory,
+        samblaster=duplicates == "samblaster",
+        reads=read_count,
+        read_length=read_length,
+        input_bytes=input_bytes,
+    )
+    gpu_bytes = aligner_gpu_bytes(aligner, setup.ref, read_count)
     # realign checked a chunked alignment's disk space, chunk by chunk.
     if not job.chunks:
         preflight_resources(
@@ -1871,6 +1933,7 @@ def align_minimap2(job: AlignJob) -> None:
                 platform=job.platform,
                 read_length=read_length,
                 output_format=job.format,
+                gpu_bytes=gpu_bytes,
             )
         )
     check_mapping_memory(
@@ -1884,10 +1947,7 @@ def align_minimap2(job: AlignJob) -> None:
         read_length=read_length,
         preset=preset,
         input_bytes=input_bytes,
-    )
-    # wgse-minimap2 has no GPU backend: it runs on the CPU, like minimap2.
-    aligner = AlignerCommand(
-        "minimap2", find_native_aligner("minimap2", job.native_aligners)
+        gpu_bytes=gpu_bytes,
     )
     aligner.announce()
     aligner.record()
@@ -1930,7 +1990,11 @@ def align_minimap2(job: AlignJob) -> None:
                 threads=setup.threads,
                 memory=setup.memory,
                 mapper=align_cmd,
-                indexer=[*aligner.argv(), "-x", preset, "-t", setup.threads],
+                # Building the index uses no GPU.
+                indexer=[
+                    *replace(aligner, gpu=False).argv(),
+                    *("-x", preset, "-t", setup.threads),
+                ],
                 reads=["samtools", "fastq", "-n", "-T", LONG_READ_TAGS, "-"],
                 decode=job.input_cram_opt or [],
                 resume=job.resume_chunks,

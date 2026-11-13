@@ -170,12 +170,13 @@ never become the latest release:
   by `--version`: bump `WGSE_BWA_VERSION` in `native/bwa/CMakeLists.txt` or the
   project version in `native/CMakeLists.txt` (`wgse-bwa-mem2`) when it changes.
 - **Linux aligners** (`linux-aligners-N`): Actions > Linux Aligners > Run
-  workflow. It publishes the `wgse-bwa` (x86-64 and ARM64) and `wgse-bwa-mem3`
-  (x86-64) conda packages built from `native/` by `packaging/wgse-bwa` and
-  `packaging/wgse-bwa-mem3`, with their CUDA backends on x86-64. Bump
-  `WGSE_BWA_VERSION` in `native/bwa/CMakeLists.txt` or
-  `WGSE_BWA_MEM3_VERSION` in `native/bwa-mem3/CMakeLists.txt` together with
-  the recipe's `version`.
+  workflow. It publishes the `wgse-bwa` (x86-64 and ARM64), `wgse-bwa-mem3`
+  and `wgse-minimap2` (x86-64) conda packages built from `native/` by
+  `packaging/wgse-bwa`, `packaging/wgse-bwa-mem3` and `packaging/wgse-minimap2`,
+  with their CUDA backends on x86-64. Bump `WGSE_BWA_VERSION` in
+  `native/bwa/CMakeLists.txt`, `WGSE_BWA_MEM3_VERSION` in
+  `native/bwa-mem3/CMakeLists.txt` or `WGSE_MINIMAP2_VERSION` in
+  `native/minimap2/CMakeLists.txt` together with the recipe's `version`.
 - **macOS DeepVariant** (`macos-deepvariant-N`): Actions > macOS DeepVariant >
   Run workflow. It publishes the Apple Silicon `wgse-deepvariant` tarball built
   from `native/deepvariant/` and its WGS weights converted from Google's image,

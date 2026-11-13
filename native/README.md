@@ -1119,6 +1119,27 @@ base-level alignment: the SSE4.1 and SSE2 `ksw_extd2` kernels, picked at run
 time as upstream's build does. Its tests compare it with unmodified upstream
 minimap2 2.31 as on a Mac (`tests/upstream.sh`).
 
+Its conda package (`packaging/wgse-minimap2`, 0.4.0, with the CUDA backend
+below) is built by the same workflow and published next to `wgse-bwa` in the
+`linux-aligners-*` prereleases, from the release after `linux-aligners-2`.
+On `PATH`, `align` and `realign` run it in minimap2's place. For long reads
+they add `--backend auto`, so it uses the GPU when one is usable
+([docs/hardware.md](../docs/hardware.md#nvidia-gpus-without-parabricks-wgse-bwa---cuda)).
+Install it as `wgse-bwa-mem3` above, in its own environment, with that
+release's tag:
+
+```bash
+TAG=linux-aligners-N PKG=wgse-minimap2-0.4.0-linux64_wgse_0.conda
+gh release download "$TAG" -R WGSExtract/wgsextract-cli -p "$PKG" --clobber
+gh release view "$TAG" -R WGSExtract/wgsextract-cli --json assets \
+  --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
+  grep -F "  $PKG" | sha256sum -c &&
+conda create -y -n wgse-minimap2 -c conda-forge "libgcc>=14" "libstdcxx>=14" \
+  "libzlib>=1.3.2,<2" &&
+conda install -y -n wgse-minimap2 "./$PKG" &&
+export PATH="$(conda run -n wgse-minimap2 printenv CONDA_PREFIX)/bin:$PATH"
+```
+
 On the RTX 3090 machine above (Ryzen 5 5600X), with 8 threads, `.mmi` indexes
 and two interleaved rounds (means), the records of all three were identical:
 
