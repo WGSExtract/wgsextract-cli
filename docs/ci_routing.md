@@ -39,6 +39,8 @@ tools. It runs:
 - `tests/test_cli_help.py` (`docs/commands.md`, generated site cards and help
   topics/examples);
 - `tests/test_bump_version.py` (CLI/app site sources, version/distribution docs);
+- `tests/test_regen.py` (real Git conflicts and regeneration/freshness checks,
+  without bioinformatics tools);
 - `tests/test_build_mockup_previews.py` (static branch preview publishing);
 - routing/action-policy tests, including a meta-gate that every test-referenced
   input selects pytest and every light-only input's readers run in that job;
