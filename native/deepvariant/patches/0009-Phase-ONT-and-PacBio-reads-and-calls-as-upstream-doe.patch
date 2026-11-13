@@ -1,4 +1,4 @@
-From 3ea36bf376a31bcbc58c1ed60499e8b03debacff Mon Sep 17 00:00:00 2001
+From 9818e1166a108a576c480f9e76fa58430627a02e Mon Sep 17 00:00:00 2001
 From: "Mahyar (Mac) McDonald" <22130+theontho@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 13:08:30 -0800
 Subject: [PATCH] Phase ONT and PacBio reads and calls as upstream does
@@ -28,13 +28,17 @@ features, and differed from upstream's make_examples_core.py elsewhere:
   MID=small_model as upstream's does. The port's own per-region PS and
   is_phased on big-model candidates, which upstream doesn't set, are gone.
 - --output_local_read_phasing writes each phased read's phase by region
-  (regions numbered in reference order across tasks).
+  (regions numbered in reference order across tasks); a failed write fails
+  the stage.
 
 postprocess_variants phases genotypes from ALT_PS (upstream's
 maybe_phase_genotype) and, with --phased_reads_input_path, merges the
 regions' read phases (upstream's merge_phased_reads, now built) and stitches
 phase sets across regions (postprocess_variants.cc's StitchPhaseSets),
-writing PS where upstream's records have it. run passes these flags for the
+writing PS where upstream's records have it. The merge runs before the calls
+are read, and an unreadable shard or switches file fails the stage rather
+than treating regions as matching. Calls without ALT_PS (the trio path's
+own phasing) keep their phase. run passes these flags for the
 PACBIO and ONT models, as run_deepvariant does.
 
 On a 1 Mb HG002 ONT R10.4.1 slice the examples (images and variant protos),
@@ -44,9 +48,9 @@ google/deepvariant:1.10.0's.
 ---
  deepvariant/native/CMakeLists.txt        |   2 +
  deepvariant/native/cli.cc                |  23 +-
- deepvariant/native/make_examples_main.cc | 386 +++++++++++++++--------
- deepvariant/native/postprocess_main.cc   | 184 ++++++++++-
- 4 files changed, 455 insertions(+), 140 deletions(-)
+ deepvariant/native/make_examples_main.cc | 394 +++++++++++++++--------
+ deepvariant/native/postprocess_main.cc   | 201 +++++++++++-
+ 4 files changed, 480 insertions(+), 140 deletions(-)
 
 diff --git a/deepvariant/native/CMakeLists.txt b/deepvariant/native/CMakeLists.txt
 index 2d39acc..5ebd47c 100644
@@ -117,7 +121,7 @@ index b806f42..28f7bba 100644
  
    // --dry_run prints each stage as a command (run_deepvariant's format), so a
 diff --git a/deepvariant/native/make_examples_main.cc b/deepvariant/native/make_examples_main.cc
-index 8c35f70..3f6989b 100644
+index 8c35f70..ada09e1 100644
 --- a/deepvariant/native/make_examples_main.cc
 +++ b/deepvariant/native/make_examples_main.cc
 @@ -15,6 +15,7 @@
@@ -619,8 +623,23 @@ index 8c35f70..3f6989b 100644
      // Wrap in ConstProtoPtr for ExamplesGenerator API.
      std::vector<nucleus::ConstProtoPtr<DeepVariantCall>> cand_ptrs;
      cand_ptrs.reserve(big_candidates.size());
+@@ -2533,6 +2651,14 @@ int RunMakeExamples(int argc, char** argv) {
+     }
+     for (auto& w : workers) w.join();
+   }
++  if (read_phasing_out.is_open()) {
++    read_phasing_out.close();
++    if (read_phasing_out.fail()) {
++      LOG(ERROR) << "Writing " << absl::GetFlag(FLAGS_output_local_read_phasing)
++                 << " failed";
++      return 1;
++    }
++  }
+ 
+   // ── Sum per-thread stats ─────────────────────────────────────────────────
+   WorkerStats agg;
 diff --git a/deepvariant/native/postprocess_main.cc b/deepvariant/native/postprocess_main.cc
-index aebcf68..217b7e0 100644
+index aebcf68..536a4db 100644
 --- a/deepvariant/native/postprocess_main.cc
 +++ b/deepvariant/native/postprocess_main.cc
 @@ -21,6 +21,7 @@
@@ -665,15 +684,15 @@ index aebcf68..217b7e0 100644
 +// on different haplotypes is phased and ordered by haplotype. As upstream,
 +// ALT_PS keeps the candidate's allele indexing when alleles were pruned.
 +void MaybePhaseGenotype(const Variant& variant, VariantCall* call) {
-+  call->set_is_phased(false);
 +  const auto ps_contig = variant.info().find("PS_CONTIG");
 +  const auto alt_ps = variant.info().find("ALT_PS");
 +  if (ps_contig == variant.info().end() ||
 +      ps_contig->second.values_size() == 0 ||
 +      ps_contig->second.values(0).string_value().empty() ||
 +      alt_ps == variant.info().end() || alt_ps->second.values_size() == 0) {
-+    return;
++    return;  // the trio path's own is_phased and PS stay as they are
 +  }
++  call->set_is_phased(false);
 +  const auto& phase_info = alt_ps->second.values();
 +  const int g0 = call->genotype(0);
 +  const int g1 = call->genotype(1);
@@ -819,12 +838,14 @@ index aebcf68..217b7e0 100644
    };
    for (const auto& f : fmts) {
      auto* fi = hdr.add_formats();
-@@ -548,6 +701,25 @@ int RunPostprocessVariants(int argc, char** argv) {
-   const double qual_filter = absl::GetFlag(FLAGS_qual_filter);
-   const double homref_min_gq = absl::GetFlag(FLAGS_cnn_homref_call_min_gq);
+@@ -484,6 +637,41 @@ int RunPostprocessVariants(int argc, char** argv) {
+   }
  
+   // ── Read the CallVariantsOutput records, by contig ─────────────────────
 +  // Upstream merges the regions' read phases first, recording whether each
 +  // region's phases match or are switched against the previous region's.
++  // The merge holds every read phase (about 4 GB for a 30x ONT genome), so it
++  // runs, and frees them, before the calls are read.
 +  std::unique_ptr<PhaseSetStitcher> stitcher;
 +  if (const std::string phased_reads =
 +          absl::GetFlag(FLAGS_phased_reads_input_path);
@@ -836,16 +857,38 @@ index aebcf68..217b7e0 100644
 +          slash == std::string::npos ? "" : phased_reads.substr(0, slash + 1),
 +          "phased_reads_switches.tsv");
 +    }
-+    ::learning::genomics::deepvariant::Merger merger;
-+    merger.LoadFromFiles(phased_reads);
-+    merger.MergeReads(switches);
++    // The merge skips shards it can't read and treats a region it has no
++    // switch status for as matching, so check both.
++    for (const auto& shard : ExpandShards(phased_reads)) {
++      if (!std::ifstream(shard)) {
++        LOG(ERROR) << "Cannot read phased reads file " << shard;
++        return 1;
++      }
++    }
++    {
++      ::learning::genomics::deepvariant::Merger merger;
++      merger.LoadFromFiles(phased_reads);
++      merger.MergeReads(switches);
++    }
++    if (!std::ifstream(switches)) {
++      LOG(ERROR) << "Cannot write phase switches file " << switches;
++      return 1;
++    }
 +    stitcher = std::make_unique<PhaseSetStitcher>(switches);
 +  }
++
+   // --infile: comma-separated files or "name@N" shard specs, read in order.
+   // Records are kept serialized (~16x smaller than parsed protos) and parsed
+   // one contig at a time, so memory follows the largest contig, not the
+@@ -548,6 +736,7 @@ int RunPostprocessVariants(int argc, char** argv) {
+   const double qual_filter = absl::GetFlag(FLAGS_qual_filter);
+   const double homref_min_gq = absl::GetFlag(FLAGS_cnn_homref_call_min_gq);
+ 
 +
    int written = 0;
    int refcall = 0;
    int nocall = 0;
-@@ -813,6 +985,7 @@ int RunPostprocessVariants(int argc, char** argv) {
+@@ -813,6 +1002,7 @@ int RunPostprocessVariants(int argc, char** argv) {
        call->clear_genotype();
        call->add_genotype(j);
        call->add_genotype(k);
@@ -853,7 +896,7 @@ index aebcf68..217b7e0 100644
  
        // Propagate MID from any of the source CVOs. If at least one CVO in
        // this site's group was tagged as a small_model hit, use that;
-@@ -1011,6 +1184,11 @@ int RunPostprocessVariants(int argc, char** argv) {
+@@ -1011,6 +1201,11 @@ int RunPostprocessVariants(int argc, char** argv) {
        LOG(INFO) << "PON filter: " << pon_hits << " variants tagged PON.";
      }
  

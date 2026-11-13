@@ -92,8 +92,8 @@ echo "smoke: $(wc -l < truth.tsv | tr -d ' ') planted SNPs called; the staged co
 # 60x of 8 kb reads (30x at the outer SNPs), long enough to join the het SNPs
 # 6 kb apart, from the same genome's two haplotypes; the het SNPs are
 # all on haplotype 1.
-awk -F '\t' 'BEGIN {
-    srand(739)
+awk -F '\t' "$seeded_random"'BEGIN {
+    seed(739)
     read = 8000; depth = 60
     while ((getline line < "reference.fa.fai") > 0) { split(line, f, "\t"); len[f[1]] = f[2]; order[++contigs] = f[1] }
     while ((getline line < "truth.tsv") > 0) { split(line, f, "\t"); alt[f[1], f[2]] = f[4]; hom[f[1], f[2]] = f[5] == "1/1" }
@@ -110,8 +110,8 @@ awk -F '\t' 'BEGIN {
     for (c = 1; c <= contigs; c++) {
         contig = order[c]; n = len[contig]
         for (r = 0; r < int(n * depth / read); r++) {
-            pos = int(rand() * (n - read)) + 1
-            hap = int(rand() * 2)
+            pos = int(rnd() * (n - read)) + 1
+            hap = int(rnd() * 2)
             s = ""
             for (i = pos; i < pos + read; i++) {
                 b = substr(seq[contig], i, 1)
@@ -131,20 +131,21 @@ gzip -dc ont.vcf.gz | awk -F '\t' '!/^#/ && $7 == "PASS" {
     split($9, k, ":"); split($10, v, ":")
     delete f
     for (i in k) f[k[i]] = v[i]
-    gt = f["GT"]; phased = gt ~ /\|/ && f["PS"] != ""; gsub(/\|/, "/", gt)
+    gt = f["GT"]; phased = gt ~ /\|/ && f["PS"] ~ /^[1-9][0-9]*$/; gsub(/\|/, "/", gt)
     if (gt == "1/0") gt = "0/1"
     print $1 "\t" $2 "\t" $4 "\t" $5 "\t" gt "\t" (gt == "0/1" && phased)
 }' > ont-called.tsv
-# The model gives perfect synthetic reads little confidence at the contigs'
-# ends, so a few planted SNPs may be missed; none may be wrong.
+# Within a read length of the contigs' ends, too few reads join a het SNP to
+# its neighbour for the model to call it with confidence: require the SNPs
+# between them, with every het one phased, and no PASS call that wasn't planted.
 cut -f1-5 ont-called.tsv | sort > ont-pass.tsv
 sort truth.tsv | comm -13 - ont-pass.tsv > ont-wrong.tsv
-called=$(wc -l < ont-pass.tsv | tr -d ' ')
-phased=$(awk -F '\t' '$6' ont-called.tsv | wc -l | tr -d ' ')
-planted=$(wc -l < truth.tsv | tr -d ' ')
-if [ -s ont-wrong.tsv ] || [ "$called" -lt $((planted - 2)) ] || [ "$phased" -lt 6 ]; then
-    cat ont-wrong.tsv >&2
-    echo "smoke: ONT_R104 called $called of $planted planted SNPs ($phased het ones phased), $(wc -l < ont-wrong.tsv | tr -d ' ') wrongly" >&2
+awk -F '\t' '$2 > 8000 && $2 < 22000' truth.tsv | sort | comm -23 - ont-pass.tsv > ont-missed.tsv
+inner_hets=$(awk -F '\t' '$2 > 8000 && $2 < 22000 && $5 == "0/1"' truth.tsv | wc -l | tr -d ' ')
+phased=$(awk -F '\t' '$2 > 8000 && $2 < 22000 && $6' ont-called.tsv | wc -l | tr -d ' ')
+if [ -s ont-wrong.tsv ] || [ -s ont-missed.tsv ] || [ "$phased" -ne "$inner_hets" ]; then
+    cat ont-wrong.tsv ont-missed.tsv >&2
+    echo "smoke: ONT_R104 made $(wc -l < ont-wrong.tsv | tr -d ' ') wrong calls, missed $(wc -l < ont-missed.tsv | tr -d ' ') planted SNPs and phased $phased of $inner_hets het ones" >&2
     exit 1
 fi
-echo "smoke: ONT_R104 called $called of $planted planted SNPs, $phased het ones phased"
+echo "smoke: ONT_R104 called $(wc -l < ont-pass.tsv | tr -d ' ') of $(wc -l < truth.tsv | tr -d ' ') planted SNPs, the $inner_hets het ones away from the contigs' ends phased"
