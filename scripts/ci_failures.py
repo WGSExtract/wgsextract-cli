@@ -211,15 +211,9 @@ class Observer(IssueReports):
                 else "rerun-failed-jobs"
             )
             endpoint = f"actions/runs/{run['id']}/{scope}"
-        ledger = self.ledger()
-        markers = [
-            f"<!-- ci-retry:{run['id']}:{run['run_attempt']}:{failure.job_id} -->"
-            for failure in failures
-        ]
-        if any(self.has_comment(ledger, marker) for marker in markers):
-            return
-        for failure, marker in zip(failures, markers, strict=True):
-            record = {
+        marker = f"<!-- ci-retry:{run['id']}:{run['run_attempt']} -->"
+        records = [
+            {
                 "observed_at": run["updated_at"],
                 "workflow": run["name"],
                 "sha": run["head_sha"],
@@ -228,11 +222,13 @@ class Observer(IssueReports):
                 "scope": scope,
                 **asdict(failure),
             }
-            self.comment_once(
-                ledger,
-                marker,
-                f"Retry requested: {self.link(run)}\n\n<pre>{safe(json.dumps(record, indent=2))}</pre>",
-            )
+            for failure in failures
+        ]
+        details = f"\n\n<pre>{safe(json.dumps(records, indent=2))}</pre>"
+        body = f"(AI): {marker}\n\nRetry requested: {self.link(run)}{details}"
+        receipt = self.begin_retry_audit(marker, body)
+        if receipt.duplicate:
+            return
         latest = self.latest(run)
         if (
             not latest
@@ -247,17 +243,16 @@ class Observer(IssueReports):
                 )
             )
         ):
-            self.comment_once(
-                ledger,
-                markers[0] + ":aborted",
-                "Retry not dispatched: the source run or PR changed while its audit was recorded.",
+            self.finish_retry_audit(
+                receipt,
+                f"(AI): {marker}\n\nRetry not dispatched: the source run or PR "
+                f"changed while its audit was recorded.{details}",
             )
             return
         self.gh.api("POST", endpoint)
-        for marker in markers:
-            self.comment_once(
-                ledger, marker + ":accepted", f"Retry accepted: {self.link(run)}."
-            )
+        self.finish_retry_audit(
+            receipt, f"(AI): {marker}\n\nRetry accepted: {self.link(run)}{details}"
+        )
 
     def process(self, run: dict[str, Any], *, rerun_tests: bool = False) -> int:
         self.report_recoveries(run)
@@ -282,6 +277,8 @@ class Observer(IssueReports):
         elif failures:
             baselines: dict[str, list[Failure]] = {}
             for failure in failures:
+                if failure.classification != "test failure":
+                    continue
                 source = str(run["workflow_id"])
                 if run["name"] == "PR area checks":
                     source = ROUTED_MAIN.get(failure.job.split(" / ", 1)[0], "")

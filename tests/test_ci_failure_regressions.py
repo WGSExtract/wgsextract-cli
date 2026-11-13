@@ -159,7 +159,9 @@ def test_failed_infrastructure_siblings_are_retried_together_and_each_audited() 
     Observer(api).process(api.run)
     assert api.rerun_scopes == ["rerun-failed-jobs"]
     assert api.retried == [first["id"], second["id"]]
-    assert len(ledger_comments(api)) == 4
+    assert len(ledger_comments(api)) == 1
+    assert "Retry accepted:" in ledger_comments(api)[0]
+    assert second["name"] in ledger_comments(api)[0]
 
 
 def test_concurrent_committed_quarantine_is_reconciled_after_stale_label_delete() -> (
@@ -216,8 +218,16 @@ def test_deliberately_cancelled_started_job_prevents_restarting_queued_sibling()
 def test_closed_newer_duplicate_is_not_reopened_instead_of_canonical_bug() -> None:
     api = ReplayGitHub()
     marker = "<!-- ci-flaky:collision -->"
-    original = api.api("POST", "issues", {"title": "Flaky: same test", "body": marker})
-    duplicate = api.api("POST", "issues", {"title": "Flaky: same test", "body": marker})
+    original = api.api(
+        "POST",
+        "issues",
+        {"title": "Flaky: same test", "body": marker, "labels": ["ci-automation"]},
+    )
+    duplicate = api.api(
+        "POST",
+        "issues",
+        {"title": "Flaky: same test", "body": marker, "labels": ["ci-automation"]},
+    )
     api.api("PATCH", f"issues/{duplicate['number']}", {"state": "closed"})
     issue = Observer(api).issue("Flaky: same test", marker, "new evidence")
     assert issue["number"] == original["number"]

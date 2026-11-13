@@ -44,12 +44,27 @@ Successful retries are observed to discover flakes; main successes close bugs.
 
 ## Pinned ledger and flaky tests
 
-The script creates and pins **CI flake ledger**, labelled `ci-automation`, if
-missing. A comment records every automatic retry request **before** dispatch,
-including workflow, job, failing step, first five error lines, classification,
-SHA, PR numbers, source attempt and a run link. A second comment confirms API
-acceptance. API errors cannot produce an unaudited retry; a repeated observer
-event cannot dispatch the same request twice.
+The script creates and pins **CI flake ledger — YYYY-Www** for the current ISO
+week, labelled `ci-automation` and `ci-flake-ledger`. The period is included in
+its marker. The weekly rollup pins the current issue and unpins/closes older
+ledgers, preserving their comments as archives; the first retry of a new period
+also advances an existing periodized ledger. The rollup migrates the original
+unperiodized issue as well. Retry lookup reads only open ledger-labelled issues,
+never the lifetime history of archived ledgers.
+
+One comment records each run/attempt's retry request **before** dispatch,
+including every failed job, failing step, first five error lines, classification,
+SHA, PR numbers, source attempt and run link. The same comment is PATCHed with
+API acceptance or an aborted-dispatch result. Comments are fetched just once
+per audit, independent of the number of failed jobs, with a five-page
+(500-comment) safety budget. A repeated observer event finds the same marker
+without adding another record.
+
+Auditing is best-effort: a missing/unavailable/oversized ledger or failed comment
+write emits `ci-audit-skipped` in the workflow log and **does not block runner
+recovery**. Confirmation-write failures likewise do not undo a successful retry.
+Run/PR freshness checks, retry budgets and actual Actions API failures remain
+mandatory; an audit outage does not bypass retry eligibility.
 
 This chooses immediate issue comments over summary-only batching: evidence is
 searchable and durable even if a run is deleted, and agents can see a retry

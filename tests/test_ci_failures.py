@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+from collections import Counter
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -63,6 +64,11 @@ class ReplayGitHub(GitHub):
         self.runs: list[dict[str, Any]] = []
         self.superseded = False
         self.refuse_audit = False
+        self.refuse_issues = False
+        self.refuse_audit_update = False
+        self.refuse_retry = False
+        self.comment_fetches: Counter[int] = Counter()
+        self.next_comment_id = 1
 
     def evidence(self, job: dict[str, Any]) -> Evidence:
         if self.use_transport:
@@ -86,6 +92,11 @@ class ReplayGitHub(GitHub):
                     "data": {
                         "node": {"isPinned": data["variables"]["id"] in self.pinned}
                     }
+                }
+            if "unpinIssue" in data["query"]:
+                self.pinned.discard(data["variables"]["id"])
+                return {
+                    "data": {"unpinIssue": {"issue": {"id": data["variables"]["id"]}}}
                 }
             if data["variables"]["id"] in self.pinned:
                 raise RuntimeError("The issue is already pinned")
@@ -146,6 +157,8 @@ class ReplayGitHub(GitHub):
                     "workflow_runs": runs[(page - 1) * 100 : page * 100],
                 }
             if method == "POST":
+                if self.refuse_retry:
+                    raise RuntimeError("Actions API is unavailable")
                 self.rerun_scopes.append(parts[-1])
                 latest_jobs = {
                     job["name"]: job
@@ -170,6 +183,8 @@ class ReplayGitHub(GitHub):
             )
             return {"jobs": copy.deepcopy(jobs)}
         if parts[:2] == ["actions", "jobs"]:
+            if self.refuse_retry:
+                raise RuntimeError("Actions API is unavailable")
             if int(parts[2]) not in {
                 job["id"] for job in self.jobs.get(self.run["run_attempt"], [])
             }:
@@ -177,8 +192,19 @@ class ReplayGitHub(GitHub):
             self.retried.append(int(parts[2]))
             return None
         if parts == ["issues"]:
+            if self.refuse_issues:
+                raise RuntimeError("Issue API is unavailable")
             if method == "GET":
-                return copy.deepcopy(list(reversed(self.issues)))
+                query = parse_qs(url.query)
+                state = query.get("state", ["all"])[0]
+                labels = set(query.get("labels", [""])[0].split(",")) - {""}
+                issues = [
+                    issue
+                    for issue in reversed(self.issues)
+                    if (state == "all" or issue["state"] == state)
+                    and labels <= set(issue.get("labels", []))
+                ]
+                return copy.deepcopy(issues)
             assert data is not None
             issue = {
                 **data,
@@ -189,6 +215,18 @@ class ReplayGitHub(GitHub):
             }
             self.issues.append(issue)
             return copy.deepcopy(issue)
+        if parts[:2] == ["issues", "comments"]:
+            if self.refuse_audit_update:
+                raise RuntimeError("Issue update API is unavailable")
+            assert data is not None
+            comment = next(
+                item
+                for comments in self.comments.values()
+                for item in comments
+                if item.get("id") == int(parts[2])
+            )
+            comment.update(data)
+            return copy.deepcopy(comment)
         if parts[0] == "issues":
             number = int(parts[1])
             if parts[-1] == "labels":
@@ -207,16 +245,25 @@ class ReplayGitHub(GitHub):
             if parts[-1] == "comments":
                 comments = self.comments.setdefault(number, [])
                 if method == "GET":
-                    return copy.deepcopy(comments)
+                    self.comment_fetches[number] += 1
+                    query = parse_qs(url.query)
+                    page = int(query.get("page", ["1"])[0])
+                    return copy.deepcopy(comments[(page - 1) * 100 : page * 100])
                 if self.refuse_audit:
                     raise RuntimeError("Issue API is unavailable")
                 assert data is not None
-                comments.append({**data, "user": {"login": "github-actions[bot]"}})
+                comment = {
+                    **data,
+                    "id": self.next_comment_id,
+                    "user": {"login": "github-actions[bot]"},
+                }
+                self.next_comment_id += 1
+                comments.append(comment)
                 if self.on_audit and "Retry requested:" in data["body"]:
                     callback = self.on_audit
                     self.on_audit = None
                     callback()
-                return None
+                return copy.deepcopy(comment)
             assert data is not None
             issue = next(item for item in self.issues if item["number"] == number)
             issue.update(data)
@@ -225,7 +272,11 @@ class ReplayGitHub(GitHub):
 
 
 def ledger_comments(api: ReplayGitHub) -> list[str]:
-    ledger = next(issue for issue in api.issues if LEDGER in issue["body"])
+    ledger = next(
+        issue
+        for issue in reversed(api.issues)
+        if LEDGER in issue["body"] and issue["state"] == "open"
+    )
     return [comment["body"] for comment in api.comments.get(ledger["number"], [])]
 
 
@@ -323,14 +374,16 @@ def test_test_failure_is_not_an_infrastructure_flake() -> None:
     assert "Run Tests" in ledger_comments(api)[0]
 
 
-def test_missing_audit_fails_closed_before_requesting_a_rerun() -> None:
+def test_missing_audit_cannot_block_lost_runner_recovery(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     api = ReplayGitHub()
-    api.annotation_text = "Upstream package mirror unreachable"
-    api.evidence_text = ""
+    api.jobs[1] = [recorded("lost_runner")]
+    api.run["conclusion"] = "cancelled"
     api.refuse_audit = True
-    with pytest.raises(RuntimeError, match="Issue API"):
-        Observer(api).process(api.run)
-    assert api.retried == []
+    Observer(api).process(api.run)
+    assert api.retried == [api.jobs[1][0]["id"]]
+    assert "ci-audit-skipped" in capsys.readouterr().err
 
 
 def passed_job() -> dict[str, Any]:

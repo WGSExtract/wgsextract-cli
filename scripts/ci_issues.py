@@ -2,14 +2,22 @@
 
 from __future__ import annotations
 
+import sys
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from scripts.ci_github import TRUSTED, GitHub
 from scripts.ci_policy import safe
 
-LEDGER = "<!-- ci-flake-ledger:v1 -->"
+LEDGER = "<!-- ci-flake-ledger:"
+
+
+@dataclass(frozen=True)
+class AuditReceipt:
+    duplicate: bool = False
+    comment_id: int | None = None
 
 
 class IssueReports:
@@ -36,7 +44,11 @@ class IssueReports:
 
     def ensure_labels(self) -> None:
         labels = {item["name"] for item in self.gh.pages("labels")}
-        for label, color in (("ci-automation", "ededed"), ("ci-red-main", "b60205")):
+        for label, color in (
+            ("ci-automation", "ededed"),
+            ("ci-red-main", "b60205"),
+            ("ci-flake-ledger", "5319e7"),
+        ):
             if label not in labels:
                 self.gh.api("POST", "labels", {"name": label, "color": color})
 
@@ -97,17 +109,7 @@ class IssueReports:
         )
         return True
 
-    def ledger(self) -> dict[str, Any]:
-        issue = self.find(LEDGER)
-        if issue is None:
-            issue = self.issue(
-                "CI flake ledger",
-                LEDGER,
-                "Automatic retry requests and outcomes. Records include workflow, job, "
-                "step, first errors, classification, SHA and PR. "
-                "Use the run links to compare attempts; never erase failed evidence.",
-                bug=False,
-            )
+    def set_pinned(self, issue: dict[str, Any], desired: bool) -> None:
         pinned = self.gh.request(
             "POST",
             "graphql",
@@ -116,19 +118,116 @@ class IssueReports:
                 "variables": {"id": issue["node_id"]},
             },
         )["data"]["node"]["isPinned"]
-        if not pinned:
+        if pinned != desired:
+            mutation = "pinIssue" if desired else "unpinIssue"
             self.gh.request(
                 "POST",
                 "graphql",
                 {
-                    "query": "mutation($id:ID!){pinIssue(input:{issueId:$id}){issue{id}}}",
+                    "query": f"mutation($id:ID!){{{mutation}(input:{{issueId:$id}}){{issue{{id}}}}}}",
                     "variables": {"id": issue["node_id"]},
                 },
             )
+
+    def ledger(
+        self, *, now: datetime | None = None, rotate_legacy: bool = False
+    ) -> dict[str, Any]:
+        year, week, _ = (now or datetime.now(timezone.utc)).isocalendar()
+        period = f"{year}-W{week:02d}"
+        marker = f"{LEDGER}v2:{period} -->"
+        ledgers = self.gh.pages("issues?state=open&labels=ci-flake-ledger")
+        if rotate_legacy:
+            ledgers += self.gh.pages("issues?state=open&labels=ci-automation")
+        ledgers = [
+            item
+            for item in {int(item["number"]): item for item in ledgers}.values()
+            if item["user"]["login"] in TRUSTED
+            and LEDGER in (item.get("body") or "")
+            and "pull_request" not in item
+        ]
+        issue = min(
+            (item for item in ledgers if marker in item["body"]),
+            key=lambda item: int(item["number"]),
+            default=None,
+        )
+        if issue is None:
+            self.ensure_labels()
+            issue = self.gh.api(
+                "POST",
+                "issues",
+                {
+                    "title": f"CI flake ledger — {period}",
+                    "body": f"(AI): {marker}\n\nAutomatic retry requests and outcomes for "
+                    f"{period}. Records include workflow, job, step, first errors, "
+                    "classification, SHA and PR. Earlier periods remain archived.",
+                    "labels": ["ci-automation", "ci-flake-ledger"],
+                },
+            )
+            ledgers += self.gh.pages("issues?state=open&labels=ci-flake-ledger")
+            issue = min(
+                (
+                    item
+                    for item in ledgers
+                    if item["user"]["login"] in TRUSTED
+                    and marker in (item.get("body") or "")
+                    and "pull_request" not in item
+                ),
+                key=lambda item: int(item["number"]),
+                default=issue,
+            )
+        for old in {int(item["number"]): item for item in ledgers}.values():
+            if (
+                old["number"] != issue["number"]
+                and old["user"]["login"] in TRUSTED
+                and LEDGER in (old.get("body") or "")
+                and "pull_request" not in old
+            ):
+                self.set_pinned(old, False)
+                self.gh.api("PATCH", f"issues/{old['number']}", {"state": "closed"})
+        self.set_pinned(issue, True)
+        self._issues = None
         return issue
+
+    def audit_warning(self, stage: str, error: Exception) -> None:
+        detail = str(error).replace("\n", " ")[:200]
+        print(
+            f"::warning::ci-audit-skipped ({stage}): {type(error).__name__}: {detail}",
+            file=sys.stderr,
+        )
+
+    def begin_retry_audit(self, marker: str, body: str) -> AuditReceipt:
+        try:
+            issue = self.ledger()
+            comments = self.gh.pages(f"issues/{issue['number']}/comments", max_pages=5)
+            for comment in comments:
+                if marker in comment["body"] and comment["user"]["login"] in TRUSTED:
+                    accepted = comment["body"].startswith(
+                        f"(AI): {marker}\n\nRetry accepted:"
+                    )
+                    return AuditReceipt(
+                        duplicate=accepted, comment_id=int(comment["id"])
+                    )
+            comment = self.gh.api(
+                "POST", f"issues/{issue['number']}/comments", {"body": body}
+            )
+            return AuditReceipt(comment_id=int(comment["id"]))
+        except Exception as error:
+            # Audit availability must never gate recovery of a lost runner.
+            self.audit_warning("create", error)
+            return AuditReceipt()
+
+    def finish_retry_audit(self, receipt: AuditReceipt, body: str) -> None:
+        if receipt.comment_id is not None:
+            try:
+                self.gh.api(
+                    "PATCH", f"issues/comments/{receipt.comment_id}", {"body": body}
+                )
+            except Exception as error:
+                self.audit_warning("update", error)
 
     def rollup(self, *, now: datetime | None = None) -> None:
         now = (now or datetime.now(timezone.utc)).replace(microsecond=0)
+        ledger = self.ledger(now=now, rotate_legacy=True)
         since = now - timedelta(days=7)
         by_id: dict[int, dict[str, Any]] = {}
         for day in range(7):
@@ -140,7 +239,7 @@ class IssueReports:
             run["name"] for run in by_id.values() if run["run_attempt"] > 1
         )
         self.comment_once(
-            self.ledger(),
+            ledger,
             f"<!-- ci-week:v2:{now.strftime('%G-%V')} -->",
             f"Seven days since {since:%Y-%m-%dT%H:%M:%SZ}. Run-level retry rate includes "
             "manual retries. Complete date-partitioned counts supersede any older "

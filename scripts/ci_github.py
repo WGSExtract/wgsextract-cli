@@ -44,9 +44,11 @@ class GitHub:
     def api(self, method: str, path: str, data: dict[str, Any] | None = None) -> Any:
         return self.request(method, f"repos/{self.repository}/{path}", data)
 
-    def pages(self, path: str, key: str | None = None) -> list[dict[str, Any]]:
+    def pages(
+        self, path: str, key: str | None = None, *, max_pages: int = 100
+    ) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
-        for page in range(1, 101):
+        for page in range(1, max_pages + 1):
             separator = "&" if "?" in path else "?"
             response = self.api("GET", f"{path}{separator}per_page=100&page={page}")
             batch = response[key] if key else response
