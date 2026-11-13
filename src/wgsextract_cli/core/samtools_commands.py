@@ -53,8 +53,8 @@ DECODED_BYTES_PER_INPUT_BYTE = 96
 # samtools sort mallocs all of -@ × -m when it starts, and the kernel refuses
 # an allocation beyond RAM plus swap, however few reads arrive (#781).
 SORT_RAM_FRACTION = 0.5
-# Buffers this small only hold inputs smaller than they are (samtools refuses
-# less than 1M); the RAM cap leaves larger ones on any real machine.
+# The least an input-filled buffer is lowered to: buffers this small only hold
+# inputs smaller than they are.
 _MIN_SORT_MIB = 16
 
 
@@ -72,28 +72,26 @@ def regular_files_bytes(paths: Iterable[PathInput]) -> int | None:
 
 def sort_memory(threads: str, memory: str, *, input_bytes: int | None = None) -> str:
     """The per-thread memory (-m) to give samtools (or sambamba) sort for a
-    ``memory`` budget: no more than ``input_bytes`` of read files can fill,
-    and with -@ × -m at most SORT_RAM_FRACTION of this computer's RAM, so the
-    sort can reserve its buffers. Never lowered below 16M; ``memory`` itself is
+    ``memory`` budget: no more than ``input_bytes`` of read files can fill
+    (but at least 16M), and with -@ × -m at most SORT_RAM_FRACTION of this
+    computer's RAM, so the sort can reserve its buffers. ``memory`` itself is
     returned when it is no larger."""
     count = max(1, int(threads))
     amount, unit = parse_memory(memory)
     requested = amount * (1024 if unit == "G" else 1)
     total = int(psutil.virtual_memory().total)
-    caps = {
-        int(total * SORT_RAM_FRACTION) // count // _MIB: (
-            f"-@ × -m stays within half of this computer's "
-            f"{total / 1024**3:.1f} GiB RAM"
-        )
-    }
+    chosen = int(total * SORT_RAM_FRACTION) // count // _MIB
+    reason = (
+        f"-@ × -m stays within half of this computer's {total / 1024**3:.1f} GiB RAM"
+    )
     if input_bytes is not None:
         fill = max(0, input_bytes) * DECODED_BYTES_PER_INPUT_BYTE
-        caps.setdefault(
-            math.ceil(fill / count / _MIB),
-            f"{input_bytes / 1e6:.1f} MB of reads fill at most {fill / _MIB:.0f} MiB",
-        )
-    lowest = min(caps)
-    chosen = max(lowest, _MIN_SORT_MIB)
+        filled = max(math.ceil(fill / count / _MIB), _MIN_SORT_MIB)
+        if filled < chosen:
+            chosen = filled
+            reason = f"{input_bytes / 1e6:.1f} MB of reads fill at most {fill / _MIB:.0f} MiB"
+    # samtools refuses less than 1M a thread.
+    chosen = max(chosen, 1)
     if chosen >= requested:
         return memory
     logging.info(
@@ -102,7 +100,7 @@ def sort_memory(threads: str, memory: str, *, input_bytes: int | None = None) ->
         memory,
         chosen,
         count,
-        caps[lowest],
+        reason,
     )
     return f"{chosen}M"
 

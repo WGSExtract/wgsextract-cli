@@ -437,7 +437,7 @@ def _align_logged(
 @needs_tools("bwa", "samtools")
 @pytest.mark.parametrize(
     ("pairs", "total", "reason"),
-    [(300, 4 * GIB, "MB of reads fill"), (4000, GIB // 4, "half of this computer's")],
+    [(300, 4 * GIB, "MB of reads fill"), (4000, GIB // 8, "half of this computer's")],
 )
 def test_many_sort_threads_get_buffers_samtools_can_reserve(
     tmp_path, ram, pairs, total, reason

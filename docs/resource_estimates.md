@@ -110,8 +110,8 @@ thread, can ask for more. So `align`, `realign`, `pet`, `bam sort` and
   input is a local file;
 - half of this computer's RAM, split across the threads,
 
-but never less than 16M per thread (samtools refuses less than 1M), and logs
-when that lowers `--memory`. Records and their order are unchanged: a sort that
+and logs when that lowers `--memory`. The input bound never goes below 16M per
+thread, but half the RAM is a hard limit, down to samtools' minimum of 1M. Records and their order are unchanged: a sort that
 fits its input sorts in memory, and a sort that spills merges its spills stably.
 Alignment memory checks count the sort's reservation (threads × `-m`) at
 least, as well as what its reads fill. `realign`'s checks before extracting
