@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable
 from importlib import import_module
+from typing import TYPE_CHECKING
 
-from wgsextract_cli.api._params import Params
+if TYPE_CHECKING:
+    from wgsextract_cli.api._params import Params
 
 
 class _CommandHandler:

@@ -169,6 +169,8 @@ def test_help_all_json_is_a_versioned_command_index(capsys, entries):
         ["--help"],
         ["--version"],
         ["help", "--all", "--json"],
+        ["serve", "--help"],
+        ["help", "serve"],
         ["qc", "ancestry", "--help"],
         ["score", "pgs", "--help"],
         ["vcf", "impute", "--help"],
@@ -203,7 +205,10 @@ implementations = {{
     "wgsextract_cli.core.pgs",
     "wgsextract_cli.commands.vcf.imputation",
 }}
-if argv in (["--help"], ["--version"], ["help", "--all", "--json"]):
+if argv in (
+    ["--help"], ["--version"], ["help", "--all", "--json"],
+    ["serve", "--help"], ["help", "serve"],
+):
     implementations.add("wgsextract_cli.api")
 print(json.dumps(sorted(
     name for name in sys.modules
