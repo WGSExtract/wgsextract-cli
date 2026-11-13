@@ -336,13 +336,17 @@ accuracy and caveats are in
 
 | Step | Host, threads | Wall time | Peak RAM | Disk |
 | --- | --- | ---: | ---: | --- |
-| `realign`, chunked, streamed from the URL, `--memory 512M` | Apple M1 16 GB, 7 | 21.4 h | 10.5 GB | 185.5 GB output (1.79x input); preflight asked for about 211 GB |
-| `vcf deepvariant --ont`, Google's CPU image | Ryzen 5 5600X, 10 | 11.3 h | not recorded | under 150 GB work directory; plus a CRAM 3.0 copy of CRAM 3.1 input |
+| `realign`, chunked, streamed from the URL, `--memory 512M` | Apple M1 16 GB, 7 | 21.4 h | 10.5 GB (minimap2) | 185.5 GB output (1.79x input); preflight asked for about 211 GiB |
+| `vcf deepvariant --ont`, Google's CPU image | Ryzen 5 5600X, 10 | 11.3 h | not recorded | from the 81.4 GB primary-only CRAM 3.0 copy: work directory not recorded, 150 GB was enough; CRAM 3.1 input also needs about 1.95x its size free for a staged CRAM 3.0 copy |
 | `vcf clair3 --gpu` | Ryzen 5 5600X + RTX 3090, 6 | 2.5 h | 15.2 GiB, GPU 6.1 GiB | about 100 GiB temporary (full-alignment tensors, about 1 GiB per 1% of the genome) |
 | `rtg vcfeval` of one whole-genome VCF | 4 | 1 min | 7.2 GB | |
 
-Clair3's temporary space isn't checked before it starts yet
-([#811](https://github.com/WGSExtract/wgsextract-cli/issues/811)).
+Both callers read a primary-only CRAM 3.0 copy (81.4 GB) of the realigned
+output. Clair3's temporary space isn't checked before it starts yet
+([#811](https://github.com/WGSExtract/wgsextract-cli/issues/811)). The realign
+preflight budgets the output at 1.7x the input CRAM ([long-read
+disk](#long-read-disk)); this genome needed 1.79x, about 9 GB more, so leave
+some room beyond what it asks for.
 
 ## Preflight behaviour
 
