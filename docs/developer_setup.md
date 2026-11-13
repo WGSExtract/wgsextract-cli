@@ -68,6 +68,42 @@ When you add or rename a command:
 
 `tests/test_cli_help.py` fails until all three are done.
 
+### Generated references and parallel PRs
+
+Run `just regen` (or `pixi run python scripts/regen.py`) after changing CLI/API
+help. It updates the API snapshot, `docs/api.md`, `docs/commands.md`, and the
+generated command cards in `site_src/cli.md`. Keep these committed: readers,
+release archives and freshness tests need them without running Python.
+
+The setup scripts configure the `merge=generated` driver in `.gitattributes`.
+For an existing checkout, configure it once:
+
+```bash
+git config merge.generated.name "Keep generated references until regeneration"
+git config merge.generated.driver true
+```
+
+This is an **ours-style placeholder**, not an automatic generator: a merge
+driver runs before all source files are merged, so regeneration there could
+silently use inconsistent sources. Merge locally with `git merge --no-commit
+origin/main`, resolve and stage source conflicts, then run **`just regen-resolve`**
+(or `pixi run python scripts/regen.py --resolve`). It regenerates all references
+from the combined sources and stages them; it refuses unresolved source
+conflicts. Review the diff, run the freshness tests and commit the merge.
+The same command resolves generated-file conflicts without the driver installed.
+Site command cards share a file with hand-written content, so resolve any
+`site_src/cli.md` conflict as a source conflict before regenerating.
+
+GitHub **does not execute custom merge drivers**. If it reports generated-file
+conflicts, use the local workflow above and push the resolution; don't choose
+one side in GitHub's conflict editor or expect its Update branch button to
+regenerate. No freshness checks are bypassed. Re-run regeneration after *every*
+merge, even if Git reported no conflicts.
+
+Help-size tests gate each command's JSON (12,000 characters maximum) and the
+average (3,000), rather than a global total that every new command changes.
+The total is reported as a test property, not a gate.
+
 The "Start from what you have" paths in both come from `JOURNEYS` in
 `registry.py`. To retire a command, don't delete it: add it to `DEPRECATIONS`
 there with its replacement and the next minor version as `remove_in`, and add
