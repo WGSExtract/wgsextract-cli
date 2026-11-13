@@ -57,12 +57,31 @@ test("a rows checkbox group without a group name does not indent its options", a
 
 test("the command output toggle never floats over the output", async () => {
   // UI audit: the show/hide button sat on top of the last lines of output and the result summary.
-  const { state, renderTerminalPane, renderTerminalToggle } = await clientView();
+  const { state, renderTerminalPane } = await clientView();
+  const headerToggle = /<header class="terminal-header">[\s\S]*data-terminal-toggle[\s\S]*<\/header>/;
   state.isTerminalVisible = true;
-  assert.match(renderTerminalPane(), /<header class="terminal-header">[\s\S]*data-terminal-toggle[\s\S]*<\/header>/);
+  assert.match(renderTerminalPane(), headerToggle);
 
   state.isTerminalVisible = false;
-  assert.match(renderTerminalToggle(), /class="terminal-toggle" data-terminal-toggle/);
+  assert.match(renderTerminalPane(), headerToggle);
+});
+
+test("collapsing the Jobs pane keeps its row of job tabs and flips the arrow", async () => {
+  const { state, renderTerminalPane, appendTerminal } = await clientView();
+  appendTerminal("command", "Sort BAM");
+
+  state.isTerminalVisible = true;
+  let html = renderTerminalPane();
+  assert.match(html, /data-terminal-tab="1"[\s\S]*Sort BAM/);
+  assert.match(html, /class="terminal-log"/);
+  assert.match(html, /aria-expanded="true"[^>]*>[\s\S]*⌄/);
+
+  state.isTerminalVisible = false;
+  html = renderTerminalPane();
+  assert.match(html, /class="terminal-panel collapsed"/);
+  assert.match(html, /data-terminal-tab="1"[\s\S]*Sort BAM/);
+  assert.doesNotMatch(html, /class="terminal-log"/);
+  assert.match(html, /aria-expanded="false"[^>]*>[\s\S]*⌃/);
 });
 
 test("an action without a disk estimate shows no empty precheck banner", async () => {

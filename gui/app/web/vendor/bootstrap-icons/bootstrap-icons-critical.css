@@ -37,6 +37,7 @@ url("./fonts/bootstrap-icons.woff?dd67030699838ea613ee6dbda90effa6") format("wof
 .bi-card-checklist::before { content: "\f224"; }
 .bi-check-circle-fill::before { content: "\f26a"; }
 .bi-chevron-down::before { content: "\f282"; }
+.bi-chevron-up::before { content: "\f286"; }
 .bi-clipboard2-pulse::before { content: "\f730"; }
 .bi-clock::before { content: "\f293"; }
 .bi-collection::before { content: "\f2cc"; }

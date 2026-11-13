@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+const storage = new Map();
 globalThis.localStorage = {
-  getItem() {
-    return null;
+  getItem(key) {
+    return storage.get(key) ?? null;
   },
-  setItem() {},
+  setItem(key, value) {
+    storage.set(key, String(value));
+  },
 };
 globalThis.window = { innerHeight: 900 };
 
@@ -34,8 +37,33 @@ test("terminal copy feedback renders only after copying", () => {
   assert.match(html, /role="status"/);
 });
 
+test("Basic starts with the Jobs pane collapsed; Advanced reopens it as it was last left", async () => {
+  const { applyUIModeTerminalVisibility, setTerminalVisible } = await import("../dist/web/src/client/terminal-visibility.js");
+  storage.clear();
+  Object.assign(state, createInitialState());
+
+  state.uiMode = "basic";
+  applyUIModeTerminalVisibility();
+  assert.equal(state.isTerminalVisible, false);
+
+  state.uiMode = "advanced";
+  applyUIModeTerminalVisibility();
+  assert.equal(state.isTerminalVisible, true);
+  setTerminalVisible(false);
+
+  // Expanding it in Basic doesn't change what Advanced remembers.
+  state.uiMode = "basic";
+  applyUIModeTerminalVisibility();
+  setTerminalVisible(true);
+
+  Object.assign(state, createInitialState(), { uiMode: "advanced" });
+  applyUIModeTerminalVisibility();
+  assert.equal(state.isTerminalVisible, false);
+});
+
 test("terminal log direction follows manifest instead of UI locale", () => {
   Object.assign(state, createInitialState(), {
+    isTerminalVisible: true,
     manifest: { terminalTextDirection: "ltr" },
     labels: {
       layoutDirection: "rtl",

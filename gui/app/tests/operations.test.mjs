@@ -466,6 +466,41 @@ test("action terminal streams progress and logs only command GUI inputs", async 
   }
 });
 
+test("the Jobs tab lists each run with its outcome, start time and main input file, even after its tab is closed", async () => {
+  resetState();
+  const { renderJobsList } = await import("../dist/web/src/client/jobs-list.js");
+  const { closeTerminalTab } = await import("../dist/web/src/client/terminal.js");
+  const originalFetch = globalThis.fetch;
+  const streams = [setupStreamResponse(), setupStreamResponse()];
+  let requests = 0;
+  globalThis.fetch = () => Promise.resolve(streams[requests++].response);
+  const context = {
+    fieldValues: { bam: "/data/genomes/HG002.bam", out: "/tmp/out" },
+    checkedOptions: {}, configValues: {}, rowValues: {}, bundleRootPath: "/bundle", placeholderLabels: {},
+  };
+  const action = { title: "Sort BAM", command: { executable: "tool", arguments: ["--out", "{{out}}", "{{bam}}"] } };
+
+  try {
+    const sortRun = runAction(action, context, actionReference, { prerequisitesChecked: true });
+    streams[0].write({ type: "complete", result: { exitCode: 2, command: "tool", stderr: "" } });
+    streams[0].close();
+    await sortRun;
+
+    runAction({ ...action, title: "Index BAM" }, context, actionReference, { prerequisitesChecked: true });
+    await waitUntil(() => requests === 2);
+    closeTerminalTab(state.terminalEntries.findIndex((entry) => entry.title === "Index BAM"));
+
+    const html = renderJobsList(state.terminalEntries[0]);
+    const rows = [...html.matchAll(/<tr class="jobs-row ([a-z]+)">([\s\S]*?)<\/tr>/g)];
+    assert.deepEqual(rows.map(([, kind]) => kind), ["cancelled", "error"]);
+    assert.match(rows[1][2], /Sort BAM[\s\S]*Failed[\s\S]*<time datetime="[^"]+">[\s\S]*title="\/data\/genomes\/HG002\.bam">HG002\.bam</);
+    assert.match(rows[0][2], /Index BAM[\s\S]*Cancelled/);
+    assert.equal(state.terminalEntries.some((entry) => entry.title === "Index BAM"), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("an action's result document reaches its terminal tab, and a usage error its notice until the next run", async () => {
   resetState();
   const originalFetch = globalThis.fetch;

@@ -2,23 +2,32 @@ import { escapeAttribute, escapeHTML } from "./dom.js";
 import type { TerminalEntry, TerminalStatus } from "../../../shared/types.js";
 import { formatLabel, renderIcon } from "./model.js";
 import { state } from "./state.js";
+import { jobsListText, renderJobsList } from "./jobs-list.js";
 import { renderResultSummary } from "./result-view.js";
+import { renderTerminalTabLabel } from "./terminal-tab-label.js";
 import { renderTerminalText } from "./terminal-output.js";
 export { appendTerminalOutput, discardPendingTerminalOutput } from "./terminal-output.js";
 /** Cancels the run streaming into a terminal tab (actions and setup) when the tab is closed. */
 export const runningActionControllers = new Map<string, AbortController>();
 
-export function renderTerminal() {
-    const entry = terminalTabs()[state.activeTerminalIndex] ?? terminalTabs()[0];
-    return `<pre>${renderTerminalText(entry)}</pre>`;
+/** Keeps a session's job list bounded; older jobs drop off the Jobs tab. */
+const maxJobHistory = 200;
+
+function activeTerminalEntry(): TerminalEntry | undefined {
+    const tabs = terminalTabs();
+    return tabs[state.activeTerminalIndex] ?? tabs[0];
 }
+/** The pane always shows its row of job tabs; collapsing it hides only the output below them. */
 export function renderTerminalPane() {
     const tabs = terminalTabs();
-    const entry = tabs[state.activeTerminalIndex] ?? tabs[0];
+    const entry = activeTerminalEntry();
     const copyLabel = state.labels.terminalCopyTextLabel ?? "Copy terminal text";
     const textDirection = terminalTextDirection();
+    const output = entry?.kind === "main"
+        ? renderJobsList(entry)
+        : `<pre>${renderTerminalText(entry)}</pre>${renderResultSummary(entry?.result)}`;
     return `
-    <section class="terminal-panel" aria-label="${escapeHTML(state.labels.terminalCommandOutputLabel)}">
+    <section class="terminal-panel ${state.isTerminalVisible ? "" : "collapsed"}" aria-label="${escapeHTML(state.labels.terminalCommandOutputLabel)}">
       <header class="terminal-header">
         <span class="terminal-glyph" aria-hidden="true">${renderIcon("terminal", undefined, ">_")}</span>
         <div class="terminal-tabs">
@@ -26,8 +35,7 @@ export function renderTerminalPane() {
         .map((tab, index) => `
               <span class="terminal-tab-wrap ${index === state.activeTerminalIndex ? "active" : ""} ${escapeAttribute(tab.kind)}">
                 <button type="button" class="terminal-tab" data-terminal-tab="${index}" ${tab.status ? `data-tooltip="${escapeAttribute(terminalStatusTooltip(tab.status))}"` : ""}>
-                  ${tab.kind === "command" ? `<span class="mini-spinner" aria-hidden="true"></span>` : terminalStatusGlyph(tab.kind, tab.status)}
-                  <span>${escapeHTML(tab.title)}</span>
+                  ${renderTerminalTabLabel(tab)}
                 </button>
                 ${tab.kind === "main"
         ? ""
@@ -41,14 +49,35 @@ export function renderTerminalPane() {
         ${state.terminalCopyFeedback ? `<span class="terminal-copy-feedback" role="status">${escapeHTML(state.labels.terminalCopiedTextLabel ?? "Copied!")}</span>` : ""}
         ${renderTerminalToggle()}
       </header>
-      <div class="terminal-log" data-terminal-log-id="${escapeAttribute(entry?.id ?? "")}" dir="${escapeAttribute(textDirection)}">${renderTerminal()}${renderResultSummary(entry?.result)}</div>
+      ${state.isTerminalVisible
+        ? `<div class="terminal-log" data-terminal-log-id="${escapeAttribute(entry?.id ?? "")}" dir="${escapeAttribute(textDirection)}">${output}</div>`
+        : ""}
     </section>
   `;
+}
+/** The text the Copy button copies: the active tab's output, or the job list on the Jobs tab. */
+export function activeTerminalCopyText(): string {
+    const entry = activeTerminalEntry();
+    return entry?.kind === "main" ? jobsListText(entry) : entry?.body ?? "";
+}
+/** Makes a job's tab the active one, reopening the tab if it was closed. */
+export function openJob(id: string) {
+    let index = state.terminalEntries.findIndex((entry) => entry.id === id);
+    if (index < 0) {
+        const job = state.jobHistory.find((entry) => entry.id === id);
+        if (!job) {
+            return;
+        }
+        state.terminalEntries.push(job);
+        index = state.terminalEntries.length - 1;
+    }
+    state.activeTerminalIndex = index;
 }
 export function terminalTextDirection() {
     return state.manifest?.terminalTextDirection === "rtl" ? "rtl" : "ltr";
 }
-export function appendTerminal(kind: string, title: unknown, body = "", command = ""): string {
+/** Opens a terminal tab. A "command" tab is a job: it is timestamped and listed on the Jobs tab. */
+export function appendTerminal(kind: string, title: unknown, body = "", command = "", details: Pick<TerminalEntry, "primaryFile"> = {}): string {
     ensureMainTerminal();
     if (kind === "config") {
         const main = state.terminalEntries[0];
@@ -60,7 +89,12 @@ export function appendTerminal(kind: string, title: unknown, body = "", command 
         return "main";
     }
     const id = crypto.randomUUID();
-    state.terminalEntries.push({ id, kind, title: String(title ?? ""), body, command });
+    const entry: TerminalEntry = { id, kind, title: String(title ?? ""), body, command, ...details };
+    if (kind === "command") {
+        entry.startedAt = Date.now();
+        state.jobHistory = [...state.jobHistory, entry].slice(-maxJobHistory);
+    }
+    state.terminalEntries.push(entry);
     state.terminalEntries = state.terminalEntries.slice(-40);
     state.activeTerminalIndex = Math.max(0, state.terminalEntries.length - 1);
     return id;
@@ -71,6 +105,7 @@ export function resetTerminalEntries() {
     }
     runningActionControllers.clear();
     state.terminalEntries = [];
+    state.jobHistory = [];
     state.activeTerminalIndex = 0;
     ensureMainTerminal();
 }
@@ -104,6 +139,10 @@ export function closeTerminalTab(index: number) {
     }
     runningActionControllers.get(tab.id)?.abort();
     runningActionControllers.delete(tab.id);
+    // Closing a running job's tab stops it; the Jobs list keeps it as cancelled.
+    if (tab.kind === "command") {
+        tab.kind = "cancelled";
+    }
     state.terminalEntries.splice(index, 1);
     if (state.activeTerminalIndex === index) {
         state.activeTerminalIndex = Math.max(0, index - 1);
@@ -113,31 +152,16 @@ export function closeTerminalTab(index: number) {
     }
     state.activeTerminalIndex = Math.min(state.activeTerminalIndex, state.terminalEntries.length - 1);
 }
-/** Hides the output from its own header; once hidden, a floating button brings it back without covering any output. */
+/** Collapses the pane to its row of tabs (down arrow) or expands it again (up arrow). */
 export function renderTerminalToggle(): string {
     const title = escapeAttribute(terminalToggleTitle());
-    return state.isTerminalVisible
-        ? `<button type="button" class="terminal-icon-button" data-terminal-toggle title="${title}" aria-label="${title}">${renderIcon("chevron.down", undefined, "⌄")}</button>`
-        : `<button type="button" class="terminal-toggle" data-terminal-toggle title="${title}" aria-label="${title}">${renderIcon("terminal", undefined, ">_")}</button>`;
+    const icon = state.isTerminalVisible ? renderIcon("chevron.down", undefined, "⌄") : renderIcon("chevron.up", undefined, "⌃");
+    return `<button type="button" class="terminal-icon-button" data-terminal-toggle aria-expanded="${state.isTerminalVisible}" title="${title}" aria-label="${title}">${icon}</button>`;
 }
 function terminalToggleTitle(): string {
     return state.isTerminalVisible
         ? state.labels.terminalHideOutputLabel ?? "Hide Command Output"
         : state.labels.terminalShowOutputLabel ?? "Show Command Output";
-}
-export function terminalStatusGlyph(kind: string, status?: TerminalStatus): string {
-    switch (kind) {
-        case "success":
-            return '<span class="terminal-status success" aria-hidden="true">●</span>';
-        case "warning":
-            return `<span class="terminal-status warning" aria-hidden="true">${escapeHTML(status?.symbol ?? "▲")}</span>`;
-        case "error":
-            return `<span class="terminal-status error" aria-hidden="true">${escapeHTML(status?.symbol ?? "●")}</span>`;
-        case "config":
-            return '<span class="terminal-status config" aria-hidden="true">●</span>';
-        default:
-            return "";
-    }
 }
 export function terminalExitStatus(exitCode: number | null, command: string): TerminalStatus {
     const reference = state.exitCodeReference.get(Number(exitCode));

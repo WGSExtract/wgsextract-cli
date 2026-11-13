@@ -52,7 +52,8 @@ export async function streamCommand(action: ActionSpec, context: CommandContext,
         "command",
         action.title,
         actionTerminalBody(action.title, context, action),
-        command);
+        command,
+        { ...primaryFileDetail(action, context) });
     const controller = new AbortController();
     runningActionControllers.set(runningID, controller);
     scheduleRender();
@@ -84,8 +85,8 @@ export async function streamCommand(action: ActionSpec, context: CommandContext,
             return null;
         }
         const failedCommand = existing.command || command;
-        state.terminalEntries[runningIndex] = {
-            ...existing,
+        // Updated in place: the Jobs list holds this same entry.
+        Object.assign(existing, {
             kind: "error",
             title: action.title ?? "Action",
             command: failedCommand,
@@ -94,7 +95,7 @@ export async function streamCommand(action: ActionSpec, context: CommandContext,
                 errorMessage(error),
             ].join("\n"),
             status: terminalProcessErrorStatus(failedCommand, errorMessage(error)),
-        };
+        });
         return null;
     }
     finally {
@@ -157,6 +158,16 @@ function applyResultDocument(tab: TerminalEntry, document: ResultDocument | null
     }
 }
 
+/** The first file path among the inputs the command uses, in command order: the job's main file for the Jobs list. */
+function primaryFileDetail(action: ActionSpec, context: CommandContext): { primaryFile?: string } {
+    for (const placeholder of action.command ? actionCommandPlaceholders(action.command) : []) {
+        const value = String(contextValue(context, inputValueKey(placeholder)) ?? "").trim();
+        if (/[\\/]/.test(value) && /\.[A-Za-z0-9]{1,8}$/.test(value)) {
+            return { primaryFile: value };
+        }
+    }
+    return {};
+}
 function actionTerminalBody(title: unknown, context: CommandContext, action: ActionSpec | null = null) {
     return [
         actionExecutionLine(title, context, action),
