@@ -815,7 +815,7 @@ test("runs WGSExtract uninstall steps and removes bundle runtime", async (t) => 
   const processManager = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
 
   try {
-    await cp(sourceBundleRoot, bundleRoot, { recursive: true });
+    await copyBundleWithoutRuntime(sourceBundleRoot, bundleRoot);
     await mkdir(path.join(runtimeRoot, "app"), { recursive: true });
 
     const { loadManifestFromRoot } = await import("../dist/web/src/server/bundle-loader.js");
@@ -858,7 +858,7 @@ test("uninstall reverses install-manifest items (owned directories)", async (t) 
   const processManager = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
 
   try {
-    await cp(sourceBundleRoot, bundleRoot, { recursive: true });
+    await copyBundleWithoutRuntime(sourceBundleRoot, bundleRoot);
     await mkdir(path.join(runtimeRoot, "app"), { recursive: true });
     await mkdir(path.join(ownedDir, "bin"), { recursive: true });
     await writeFile(path.join(ownedDir, "bin", "fake.exe"), "");
@@ -928,6 +928,18 @@ test("Windows WGSExtract setup delegates to upstream install_windows.bat", async
   // Safety check: refuse to remove if the root isn't a recognizable MSYS2 install.
   assert.match(uninstallSource, /Test-MsysRootSafeToRemove/);
 });
+
+/**
+ * Copies a bundle for an uninstall test without its `runtime` folder: a developer's bundle can hold one whose
+ * install manifest names their real install, which the uninstall would stop and delete.
+ */
+function copyBundleWithoutRuntime(source, destination) {
+  const runtime = path.join(source, "runtime");
+  return cp(source, destination, {
+    recursive: true,
+    filter: (entry) => entry !== runtime && !entry.startsWith(runtime + path.sep),
+  });
+}
 
 /**
  * Runs `run` with the app's data folder (WGSEXTRACT_GUI_APP_DATA, from LOCALAPPDATA or XDG_DATA_HOME) inside

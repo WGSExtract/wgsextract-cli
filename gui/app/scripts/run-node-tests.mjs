@@ -66,7 +66,12 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 }
 
 child.on("close", (code, signal) => {
-  rmSync(isolatedRoot, { recursive: true, force: true, maxRetries: 3 });
+  try {
+    rmSync(isolatedRoot, { recursive: true, force: true, maxRetries: 3 });
+  } catch (error) {
+    // A file Windows still holds open must not hide the results or change the outcome.
+    console.warn(`Could not remove the tests' app data folder ${isolatedRoot}: ${error.message}`);
+  }
   const stdoutText = Buffer.concat(stdout).toString("utf8");
   const stderrText = Buffer.concat(stderr).toString("utf8");
   if (signal) {
