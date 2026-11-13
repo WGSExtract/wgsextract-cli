@@ -499,19 +499,25 @@ def test_an_agent_can_go_from_help_json_to_valid_invocations(capsys):
         assert _parse(words)._command == command["path"], words
 
 
-def test_help_stays_token_efficient(capsys):
-    """Byte budgets, not exact text: the index must stay small enough to read
-    whole, and one command's JSON much smaller than the full document."""
+def test_help_stays_token_efficient(capsys, record_property):
+    """Gate individual command help and the average, not command count."""
     with pytest.raises(SystemExit):
         main(["--help"])
     assert len(capsys.readouterr().out) <= 6_000
     main(["help", "--all"])
-    assert len(capsys.readouterr().out) <= 12_000
+    record_property("help_text_index_characters", len(capsys.readouterr().out))
     main(["help", "--all", "--json"])
-    # Typed API, ancestry, mimalloc, PGS and imputation share this budget.
-    assert len(capsys.readouterr().out) <= 326_000
-    main(["help", "microarray", "--json"])
-    assert len(capsys.readouterr().out) <= 15_000
+    output = capsys.readouterr().out
+    record_property("help_total_characters", len(output))
+    commands = json.loads(output)["commands"]
+    sizes = {
+        command["path"]: len(json.dumps(command, separators=(",", ":")))
+        for command in commands
+    }
+    # Gate individual schemas and the average, never the number of commands.
+    # A new command has room without changing a shared total in every PR.
+    assert all(size <= 12_000 for size in sizes.values()), sizes
+    assert sum(sizes.values()) / len(sizes) <= 3_000, sizes
 
 
 def test_next_step_hints_parse_to_commands():

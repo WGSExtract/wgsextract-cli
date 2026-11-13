@@ -654,10 +654,13 @@ def _namespace(argv: list[str]) -> dict[str, Any]:
 
 
 def snapshot() -> dict[str, Any]:
+    from wgsextract_cli.core.config import settings_suspended
+
     saved = os.environ.get("COLUMNS"), sys.argv[0]
     os.environ["COLUMNS"] = "100"
     try:
-        return _snapshot()
+        with settings_suspended():
+            return _snapshot()
     finally:
         if saved[0] is None:
             os.environ.pop("COLUMNS", None)
