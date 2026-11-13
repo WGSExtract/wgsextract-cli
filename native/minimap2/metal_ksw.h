@@ -21,6 +21,12 @@ int wgse_ksw_metal_start(char *reason, int reason_size);
 void wgse_ksw_tune(int fibers_per_thread, int batch_fills, int max_cost, int fail_batches);
 // Whether the calling read may queue fills for the GPU.
 int wgse_ksw_metal_enabled(void);
+// Whether this computer has a GPU the build can use (without setting it up).
+int wgse_ksw_gpu_hardware_supported(void);
+// Tests only: interrupt the next GPU commands, or withhold the first whose label starts
+// with label, as a hung GPU would, giving up on it after timeout seconds.
+void wgse_ksw_inject_interruptions(int count);
+void wgse_ksw_inject_hang(const char *label, double timeout);
 
 // kt_for for mapping reads. With --metal each of n_threads CPU threads runs
 // several reads as fibers and switches to another while one waits for the GPU,

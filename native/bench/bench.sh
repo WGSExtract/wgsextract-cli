@@ -201,7 +201,11 @@ fetch() {
     local missing=() line
     for path in $(tier_paths "$tier" "$configs"); do
         line=$(awk -F '\t' -v path="$path" '$1 == path' "$here/data.tsv")
-        [ -n "$line" ] || die "data.tsv has no $path; build it in $data"
+        if [ -z "$line" ]; then
+            # Not published (such as minimap2's .mmi indexes): built locally.
+            [ -f "$data/$path" ] || die "data.tsv has no $path; build it in $data"
+            continue
+        fi
         IFS=$'\t' read -r path bytes sha assets <<< "$line"
         if [ -f "$data/$path.sha256" ] && [ "$(cat "$data/$path.sha256")" = "$sha" ] &&
             [ "$(file_bytes "$data/$path")" = "$bytes" ]; then

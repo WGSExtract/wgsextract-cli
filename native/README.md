@@ -1110,6 +1110,33 @@ lookups and an eighth in the 8-bit extension. Suffix-array lookups stay on the
 CPU: the sampled suffix array would add about 4 GiB of GPU memory to the
 occurrence table's 6 GiB.
 
+### wgse-minimap2 on Linux x86-64
+
+`wgse-minimap2` also builds on Linux x86-64, on the CPU only so far. It has
+the same output-identical changes as on a Mac (faster index loading and
+building, seed prefetching and the anchor sort), with upstream's x86-64
+base-level alignment: the SSE4.1 and SSE2 `ksw_extd2` kernels, picked at run
+time as upstream's build does. Its tests compare it with unmodified upstream
+minimap2 2.31 as on a Mac (`tests/upstream.sh`).
+
+On the RTX 3090 machine above (Ryzen 5 5600X), with 8 threads, `.mmi` indexes
+and two interleaved rounds (means), the records of all three were identical:
+
+| Reads | Bioconda minimap2 2.31 | Plain build | `wgse-minimap2` | Peak RSS | Records |
+| --- | ---: | ---: | ---: | ---: | --- |
+| HiFi, 40k reads, 0.69 Gbp (`map-hifi`) | 43.4 s | 43.2 s | 32.2 s (−26%) | 14.3–14.6 GiB | `661f00b5ed4b82c1` |
+| ONT, 47k reads, 0.92 Gbp (`map-ont`) | 113.5 s | 112.3 s | 112.0 s (−1%) | 11.4–12.0 GiB | `895d325921dc2bf2` |
+| full-5m tier (`sr`, `bench.sh`) | 176.3 s | 173.7 s | 157.1 s (−11%) | 11.3 GiB | `8d527463b1dad57d` |
+
+The HiFi reads are the first 40k of PacBio's public Revio HG002 run, as above;
+the ONT reads are HG002's (R10.4.1) that overlap a 750 kb window of each of
+chr1–22 and X. The `sr` records match `expected.tsv`, as do the small tier's.
+HiFi gains from loading the index on several threads; mapping itself costs the
+same CPU time. A `perf` profile at 4 threads puts `ksw_extd2` (base-level gap
+fills) at 47% of the HiFi CPU time and 16% of ONT's, where chaining (DP and
+RMQ, 50%) and anchor sorting dominate, so GPU gap fills are the next step for
+HiFi.
+
 ## Building
 
 Requires Xcode command-line tools and CMake 3.24 or later. Upstream sources are
@@ -1123,8 +1150,9 @@ cmake --install out/native --prefix out/native-prefix
 ```
 
 On Linux the same commands build `wgse-bwa` with a C/C++ compiler, CMake and
-zlib, and on x86-64 `wgse-bwa-mem3` too (it also needs `make` for htslib;
-`-DWGSE_BWA_MEM3=OFF` leaves it out). `-DWGSE_CUDA=ON` adds the CUDA backends,
+zlib, and on x86-64 `wgse-bwa-mem3` (it also needs `make` for htslib;
+`-DWGSE_BWA_MEM3=OFF` leaves it out) and `wgse-minimap2` (`-DWGSE_MINIMAP2=OFF`
+leaves it out) too. `-DWGSE_CUDA=ON` adds the CUDA backends,
 which need the CUDA toolkit (`nvcc` and the static runtime, for example conda-forge's `cuda-nvcc` and
 `cuda-cudart-static`). It builds for Turing to Hopper GPUs, plus PTX for newer
 ones; `-DCMAKE_CUDA_ARCHITECTURES` overrides this. A GPU the build has no
