@@ -72,8 +72,14 @@ INSTALL_HINTS = {
     "bin folder on PATH, or set dorado_executable in config.toml (or pass "
     "basecall --dorado-path).",
     "wgse-deepvariant": "wgse-deepvariant (DeepVariant without Docker): on "
-    "Linux `pixi install -e deepvariant`, on a Mac a macos-deepvariant release "
-    "on PATH; set deepvariant_weights in config.toml (native/deepvariant/README.md).",
+    "Linux `pixi install -e deepvariant` (NVIDIA driver) or the CPU-only "
+    "linux-deepvariant package on PATH, on a Mac a macos-deepvariant release on "
+    "PATH; set deepvariant_weights in config.toml (native/deepvariant/README.md).",
+}
+# What a tool still needs after its Pixi environment is installed.
+PIXI_SETUP_HINTS = {
+    "wgse-deepvariant": "then set deepvariant_weights in config.toml to its "
+    "weights folder (native/deepvariant/README.md).",
 }
 
 
@@ -230,6 +236,8 @@ PIXI_TOOL_ENVS = {
     "pharmcat_python": "pharmcat",
     "cyrius_python": "cyrius",
 }
+# Environments without a Python of their own: their tools are probed from here.
+PIXI_ENVS_WITHOUT_PYTHON = frozenset({"deepvariant"})
 
 
 # Interpreters only their own Pixi environment provides (its packages matter).

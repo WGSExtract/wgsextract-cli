@@ -14,6 +14,7 @@ before every run.
 from __future__ import annotations
 
 import hashlib
+import os
 import platform
 import re
 import shutil
@@ -36,8 +37,9 @@ WEIGHTS_SETTING = "deepvariant_weights"
 ENGINE_SETTING = "deepvariant_native"
 ENGINE_CHOICES = ("auto", "off")
 INSTALL_HINT = (
-    "Install wgse-deepvariant (on a Mac a macos-deepvariant release on PATH, "
-    "on Linux `pixi install -e deepvariant`) and its weights, and set "
+    "Install wgse-deepvariant (on a Mac a macos-deepvariant release on PATH; "
+    "on Linux `pixi install -e deepvariant` with an NVIDIA driver, or the "
+    "CPU-only linux-deepvariant package on PATH) and its weights, and set "
     "deepvariant_weights in config.toml to the weights folder: see "
     "native/deepvariant/README.md "
     "(https://github.com/WGSExtract/wgsextract-cli/blob/main/native/deepvariant/"
@@ -147,12 +149,15 @@ def installed() -> str | None:
 def _pixi_build() -> str | None:
     """wgse-deepvariant in the opt-in ``deepvariant`` Pixi environment
     (``pixi install -e deepvariant``, Linux x86-64), run by its path: its
-    libraries load from the environment without activating it."""
+    libraries load from the environment without activating it. Only a
+    finished install counts: Pixi marks one with conda-meta/pixi."""
     from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 
     prefix = pixi_env_prefix(PIXI_ENVIRONMENT)
-    binary = prefix / "bin" / BINARY if prefix else None
-    return str(binary) if binary and binary.is_file() else None
+    if not prefix or not (prefix / "conda-meta" / "pixi").is_file():
+        return None
+    binary = prefix / "bin" / BINARY
+    return str(binary) if binary.is_file() and os.access(binary, os.X_OK) else None
 
 
 def require(

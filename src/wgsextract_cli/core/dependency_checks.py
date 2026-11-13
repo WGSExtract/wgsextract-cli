@@ -28,6 +28,7 @@ from .dependencies import (
 from .tool_catalog import (
     INSTALL_HINTS,
     OPTIONAL_TOOLS,
+    PIXI_SETUP_HINTS,
     PIXI_TOOL_ENVS,
     optional_dependency_tools,
     required_dependency_tools,
@@ -416,7 +417,7 @@ def _missing_tool_hint(tool: str) -> str | None:
         return f"Error: {unsupported}"
     command = pixi_install_command(tool)
     if command:
-        return f"Run: {command}"
+        return " ".join(filter(None, [f"Run: {command}", PIXI_SETUP_HINTS.get(tool)]))
     return INSTALL_HINTS.get(tool)
 
 

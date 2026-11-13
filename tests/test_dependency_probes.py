@@ -15,7 +15,7 @@ from tests.fake_tools import FakePixi, python_tool
 from wgsextract_cli import api
 from wgsextract_cli.cli.parser import build_parser
 from wgsextract_cli.core import dependency_checks, pixi_tools, windows_arm64
-from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     check_all_dependencies,
     get_tool_version,
@@ -385,6 +385,35 @@ def test_check_all_dependencies_marks_crashing_tools_missing(host):
     assert by_name["minimap2"]["path"] is None
     assert by_name["minimap2"]["version"].startswith("Run: ")
     assert "install --locked" in by_name["minimap2"]["version"]
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="wgse-deepvariant is for Linux and macOS"
+)
+def test_deps_check_follows_wgse_deepvariant_into_its_pixi_environment_719(
+    host, fake_pixi, monkeypatch
+):
+    """#748 review: the install hint keeps the weights step, and the
+    environment, which has no Python, is found once installed even where the
+    host has no `python`."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    prefix = fake_pixi.env("deepvariant", locked=("wgse-deepvariant",), installed=False)
+    (prefix / "bin" / "python").unlink()
+    fake_pixi.set(host_python=False)
+    python_tool(prefix / "bin", "wgse-deepvariant", 'print("deepvariant 0.2.0")')
+
+    (missing,) = check_all_dependencies([], ["wgse-deepvariant"])["optional"]
+    assert missing["path"] is None
+    assert "install --locked" in missing["version"]
+    assert "-e deepvariant" in missing["version"]
+    assert "deepvariant_weights" in missing["version"]
+
+    fake_pixi.install("deepvariant")
+    clear_tool_caches()
+    (found,) = check_all_dependencies([], ["wgse-deepvariant"])["optional"]
+    assert found["path"] is not None
+    assert found["version"] == "deepvariant 0.2.0"
 
 
 def test_a_slow_lockfile_query_still_gives_the_install_hint(
