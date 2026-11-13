@@ -110,3 +110,5 @@ Pixi-binary-only build jobs disable project caching entirely: `run-install:
 false` alone would still restore an unused old environment and keep it alive.
 Manual mirror/bwa qualification jobs use the same read-only CLI cache rather
 than creating additional partial environment sets.
+Release verification installs its immutable tag's environment without caching;
+an unpublished old tag can predate today's local CI helper actions.

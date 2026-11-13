@@ -135,11 +135,15 @@ jobs:
           print(f"{tag} matches {', '.join(versions)}")
           EOF
       - name: Set up Pixi
-        uses: ./.github/actions/setup-pixi
+        # A retry may verify an unpublished older tag without current CI helpers.
+        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
+          pixi-version: v0.82.0
+          locked: true
           environments: >-
             default
             dev
+          cache: false
       - name: Lint and type check
         run: |
           pixi run lint
