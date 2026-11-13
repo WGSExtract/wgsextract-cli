@@ -887,8 +887,11 @@ def render_site_commands() -> str:
 _GROUPS_LEDE = (
     "`wgsextract --help` lists the core commands first, in the order you would "
     "usually run them, then setup and advanced commands. Run `wgsextract help "
-    "--all` for one line per command (`--json` for a machine-readable index "
-    "with each command's options and, for typed commands, a JSON Schema), "
+    "--all` for one line per command. Agents: start with "
+    "`wgsextract help --all --json` for a compact index of paths, summaries, "
+    "tiers and key flags, then `wgsextract help <command> --json` for full "
+    "options and typed JSON Schemas. Use `wgsextract help --all --json --full` "
+    "only when the complete schema dump is needed. Run "
     "`wgsextract help <command>` for one command's options, examples and "
     "output files (`--help-all` adds the advanced options), `wgsextract help "
     "topics` for concepts such as references, builds and exit codes, or "
