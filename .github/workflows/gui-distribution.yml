@@ -18,6 +18,7 @@ on:
       - ".github/workflows/gui-build.yml"
       - ".github/workflows/gui-distribution.yml"
       - ".github/actions/apt-install/**"
+      - ".github/actions/download-cache/**"
       - "gui/app/web/packagers/**"
       - "gui/tools/packaging/**"
       - "gui/tools/tasks.py"

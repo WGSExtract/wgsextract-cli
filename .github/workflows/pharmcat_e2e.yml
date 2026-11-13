@@ -26,6 +26,7 @@ on:
       - tests/fixtures/pharmcat_hg002/**
       - scripts/compare_pharmcat_phenotypes.py
       - .github/workflows/pharmcat_e2e.yml
+      - "!**/*.md"
   push:
     branches: [main]
     paths:

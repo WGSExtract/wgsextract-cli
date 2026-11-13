@@ -6,10 +6,12 @@ on:
     paths:
       - .github/workflows/copilot-setup-steps.yml
       - .github/actions/apt-install/**
+      - "!**/*.md"
   pull_request:
     paths:
       - .github/workflows/copilot-setup-steps.yml
       - .github/actions/apt-install/**
+      - "!**/*.md"
 
 env:
   WGSEXTRACT_TOOL_RUNTIME: native

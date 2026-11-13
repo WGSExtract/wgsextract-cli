@@ -28,6 +28,7 @@ on:
       - tests/test_remote_*.py
       - tests/test_microarray_chip_benchmark.py
       - scripts/benchmark_microarray_chip.py
+      - "!**/*.md"
   workflow_dispatch:
 
 permissions:
