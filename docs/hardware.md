@@ -340,11 +340,14 @@ the check, or is older than the oldest supported release, raises the
 
   Otherwise `wgse-bwa` or `wgse-bwa-mem2` runs as below. Ultima reads keep
   BWA. The records are the same either way; see the parity results below.
-- **Metal.** `wgse-bwa`, `wgse-bwa-mem2` and `wgse-bwa-mem3` run with
-  `--backend auto` when their GPU plan is selected by the memory checks
-  and their capabilities report `metal_available`. If the GPU fails during
-  a run, they finish on the CPU with the same alignments. `wgse-minimap2` runs on
-  the CPU.
+- **Metal.** These builds normally run with `--backend auto` when their
+  capabilities report `metal_available`; `wgse-bwa` also applies its
+  GPU-specific RAM-fit check below. Stand-in selection uses the rules above.
+  An explicit `--aligner bwa-mem3` or `--fast` selects its Metal backend from
+  capabilities and may continue after a `LOW` memory warning: those explicit
+  paths do **not** use `wgse-bwa`'s GPU-fit guard. If the GPU fails during a
+  run, the builds finish on the CPU with the same alignments.
+  `wgse-minimap2` runs on the CPU.
 - **Memory.** `wgse-bwa`'s GPU backend needs about 0.75 GiB more than bwa (8.76
   against 7.96 GB peak for 5M read pairs on hs38 at 8 threads), and 0.76 GiB
   more for a denser suffix-array sample after 20M reads. When the alignment's

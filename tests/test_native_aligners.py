@@ -459,6 +459,27 @@ def test_issue747_real_metal_realign_adapts_to_low_available_memory(
 
 
 @pytest.mark.usefixtures("apple_silicon")
+@pytest.mark.parametrize(("memory", "cpu_fits"), [("100M", False), ("384M", True)])
+def test_issue747_cpu_fallback_retains_smaller_or_already_fitting_sort_budget(
+    tmp_path, bwa_bin, ram, memory, cpu_fits
+):
+    reads = _short_reads(tmp_path)
+    _install_build(bwa_bin, "bwa")
+    upstream_bam, _ = _align(
+        reads, tmp_path / "off", "--native-aligners", "off", memory=memory
+    )
+    cpu = _needed(reads, memory) - bwa_gpu_memory(reads.ref, 2 * 140)
+    budget = (cpu + _needed(reads, "256M")) // 2 if cpu_fits else cpu - GIB // 4
+    ram(64 * GIB, available=budget)
+
+    bam, result = _align(reads, tmp_path / "out", memory=memory)
+
+    assert _sort_memory(bam) == memory
+    assert result.metrics["native_aligner_backend"] == "cpu"
+    assert _samtools("view", bam) == _samtools("view", upstream_bam)
+
+
+@pytest.mark.usefixtures("apple_silicon")
 def test_auto_aligns_long_reads_with_wgse_minimap2(tmp_path, request):
     bindir = only_tools(request, "minimap2", "samtools")
     reads = _short_reads(tmp_path)

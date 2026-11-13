@@ -78,5 +78,14 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## Fixes
 
+- `align` and `realign` no longer admit an over-budget `wgse-bwa` GPU plan
+  just because the CPU estimate is also oversized. Native BWA GPU selection
+  now respects available RAM as well as physical RAM less OS headroom; when
+  it falls back to CPU, an also-over-budget sort is capped at 256M per thread.
+  Smaller or already fitting CPU requests are retained. Workers and fixed
+  K100M are unchanged for alignment identity. CPU fallback can be much slower
+  than older GPU measurements; this addresses the excessive swap traffic on
+  16 GB Macs tracked in #747 (low-memory realignment).
+
 - Runs stopped with Ctrl-C or SIGTERM report `cancelled`, rather than `failed`,
   when a cleanup failure replaces the stop-signal handler's exit (#717).

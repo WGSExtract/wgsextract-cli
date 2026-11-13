@@ -1,9 +1,11 @@
 # A 30x genome on a 16 GB Apple M1
 
-This page records how the whole toolset runs on the smallest current Apple
-Silicon Mac, with **default settings**, and what a user should expect
-([#549](https://github.com/WGSExtract/wgsextract-cli/issues/549)). Every
-figure is **measured** unless labelled otherwise.
+This page preserves measurements on the smallest Apple Silicon Mac, with
+the default settings of each recorded version
+([#549](https://github.com/WGSExtract/wgsextract-cli/issues/549)). Automatic
+RAM-aware backend selection has since changed; see
+[current defaults](#defaults-for-16-gb). Every figure is **measured** unless
+labelled otherwise.
 
 ## The computer
 
@@ -27,19 +29,22 @@ the user's processes, sampled every 5 s.
 
 A whole genome went from a BAM file to a personal report in **7.3 hours** in
 the original trial on the base 16 GB M1, with default settings and its owner's
-apps still open. The current-default repeat took **7 h 25 min**, including
-cold reference indexing and interrupt recovery. Both completed, but completion
-does **not** mean alignment fits in RAM: current defaults swap heavily
-([#747](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
+apps still open. The historical GPU-policy repeat at main `992ee758` took
+**7 h 25 min**, including cold reference indexing and interrupt recovery.
+Both completed, but completion does **not** mean alignment fits in RAM:
+that policy swapped heavily
+([#747, low-memory realignment](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
 HG002 was sequenced to **35x**, not 30x; neither trial measures a 30x duration.
 
-- **`realign` takes 6 hours**, and the GPU sets the pace. Calling SNPs and
-  indels takes 68 minutes. Every other step takes under 4 minutes.
+- **Historical timing.** GPU realignment took about 6 hours; SNP/indel
+  calling took 68 minutes in the original trial. These GPU-paced figures
+  are not predictions for the current automatic CPU fallback, which can
+  be substantially slower.
 - **Memory.** Concurrent RSS peaked around 10 GiB only because macOS compressed
-  and swapped memory. Current-default alignment moved about **1.1 TiB of
+  and swapped memory. The historical GPU alignment moved about **1.1 TiB of
   swap-out traffic**, not just a few GiB of occupied swap
   ([#747](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
-  Its working-set estimate is about **22 GiB**, above this Mac's physical RAM.
+  That run's working-set estimate was about **22 GiB**, above physical RAM.
 - **Disk.** The 35x run's normal refusal check required about **204 GiB free**
   with the input and reference already present. The observed 166 GiB
   scratch-plus-results peak is not a space recommendation; see
@@ -92,15 +97,31 @@ The test suite passed on the M1 (5,826 tests in 6 min 21 s).
 
 ## Defaults for 16 GB
 
-Measuring found five problems on this Mac. Each is fixed, and the fix is the
-default:
+Automatic `wgse-bwa` GPU selection now requires the pipeline estimate to fit
+both physical RAM less OS headroom and the RAM available now. It first lowers
+sort memory, down to 256M per thread. If no GPU plan fits, it selects CPU;
+an also-over-budget CPU sort is capped at 256M without increasing smaller
+requests. Workers and fixed K100M are unchanged for record identity.
 
-- **`wgse-bwa` fell back to the CPU for a whole genome.** Its Metal estimate
-  was compared with the RAM free at the start, which a 16 GB Mac with apps
-  open never has. It now runs on Metal whenever its estimate fits within the
-  CPU aligner's own estimate, lowering the sort memory to 512M. The CPU
-  fallback aligned at ~11k reads/s; Metal aligns at ~41k reads/s, about 4×
-  faster ([#563](https://github.com/WGSExtract/wgsextract-cli/pull/563)).
+A whole short-read genome on this Mac can therefore use **CPU**, not Metal.
+Check the manifest's `native_aligner_backend` and the selected sort memory
+in the log/BAM program header rather than assuming a GPU-paced overnight run.
+The conservative CPU estimate may still be `LOW`; this is not a guarantee of
+RAM fit. Explicit bwa-mem3/`--fast` paths have different rules; see
+[the hardware guide](hardware.md#apple-silicon-metal).
+
+### Earlier default changes
+
+Earlier measurements drove the changes below. The CPU-estimate allowance
+in the first item has since been removed; the other changes remain in use.
+
+- **An earlier optimization retained Metal despite low RAM.** It allowed
+  a GPU plan within the CPU aligner's own estimate and lowered sort memory
+  to 512M ([#563, earlier GPU selection](https://github.com/WGSExtract/wgsextract-cli/pull/563)).
+  It improved the old benchmark from about 11k to 41k reads/s, but the
+  subsequent whole run exposed excessive swap traffic. The oversized CPU
+  estimate no longer overrides the RAM budget
+  ([#747, low-memory realignment](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
 - **`vcf snp` and `vcf indel` used one core.** They now call contigs in
   parallel when `--threads` is above 1, with identical records: 849 s became
   211 s ([#560](https://github.com/WGSExtract/wgsextract-cli/pull/560)).
@@ -112,7 +133,7 @@ default:
 - **`realign`'s disk pre-flight was a warning** even when the disk had room.
   It is now information ([#556](https://github.com/WGSExtract/wgsextract-cli/pull/556)).
 
-Experiments that left the defaults alone:
+Earlier experiments, with their historical settings:
 
 - **Threads.** `realign` of 25M reads took 656 s at 4 threads and 637 s at 8:
   the GPU sets the pace (~44k reads/s), and more threads only add memory.
@@ -311,7 +332,7 @@ with the same BWA index files.
   (22.0 GiB estimated against 8.4 available) and disk (230 GiB against 223
   free) as LOW, then completed within 164 GiB of extra disk.
 
-### Current defaults, `macos-aligners-16` and mimalloc
+### Historical Metal run, `macos-aligners-16` and mimalloc
 
 [#722](https://github.com/WGSExtract/wgsextract-cli/issues/722) repeated the
 short-read pipeline on this Mac with main `992ee758`, published `wgse-bwa`
@@ -322,7 +343,7 @@ used in place, without a staging copy. The target was the existing
 195-contig `GRCh38_no_alt.fa`, not the 456-contig hs38a used for this issue's
 small-data trial. Desktop applications remained open.
 
-No scientific settings were overridden: four requested threads, Metal BWA,
+The then-current settings were not overridden: four requested threads, Metal BWA,
 512M sort memory per thread selected automatically, and the caller's default
 mimalloc mode. The normal disk refusal check passed; no force or preflight
 bypass was used.
@@ -347,7 +368,7 @@ comparison, not a repeated or randomized benchmark; its RSS advantage was
 small for SNPs and absent for indels. Including both comparisons and record
 hashing, the experiment took 8 h 30 min.
 
-The default sequence took **7 h 25 min**, including a cold reference index
+That historical sequence took **7 h 25 min**, including a cold reference index
 (39 min), FASTQ extraction (22.5 min), and a deliberate alignment interrupt.
 It is a measured 35x run, not a measured 30x duration. The small slice's linear
 time projection was not a whole-genome guarantee.
@@ -368,8 +389,8 @@ or process-attributed bytes. Sampled occupied swap ranged from 1.21 to
 3.70 GiB; memory pressure alternated between normal (1) and warning (2).
 This heavy swapping is a product bug tracked in
 [#747](https://github.com/WGSExtract/wgsextract-cli/issues/747), not evidence
-that the defaults fit comfortably in 16 GiB. Default mimalloc calling and
-report added no swap-out traffic; the optional system-allocator SNP run
+that the historical GPU defaults fit comfortably in 16 GiB. Default mimalloc
+calling and report added no swap-out traffic; the optional system-allocator SNP run
 coincided with 0.034 GiB of system-wide swap-out traffic.
 The conservative RAM estimate was 22.02 GiB at startup, versus 10.80 GiB
 available. Do **not** recalibrate that working-set estimate down to 8.30 GiB
@@ -393,13 +414,15 @@ accuracy benchmark.
 
 ## Advice for 16 GB Macs
 
-- **Current defaults make alignment swap heavily:** about **1.1 TiB of swap-out
-  traffic per 35x genome**, which wears the SSD. The preflight's **LOW memory**
-  warning (about 22 GiB estimated against about 11 GiB available) predicts this
-  problem; it does not yet adapt defaults to avoid it. Track
-  [open bug #747](https://github.com/WGSExtract/wgsextract-cli/issues/747).
-- **Close what you can before `realign`,** and leave the Mac on overnight.
-  It runs at the GPU's pace, and more threads only use more memory.
+- **Use the RAM-adaptive policy rather than forcing the old GPU choice.**
+  The historical GPU run generated about **1.1 TiB of swap-out traffic per
+  35x genome**, wearing the SSD; its **LOW memory** warning (about 22 GiB
+  estimated against about 11 GiB available) predicted the risk. Automatic
+  `wgse-bwa` selection now honors that budget and can choose CPU with 256M
+  sort memory. See [#747, low-memory realignment](https://github.com/WGSExtract/wgsextract-cli/issues/747).
+- **Close what you can before `realign` and check its chosen backend.**
+  CPU fallback can take substantially longer than the old GPU measurements;
+  more workers add memory and are not an automatic speed improvement.
 - **Plan disk space before starting.** For a 35x run with the input and
   reference already present, the normal refusal check requires about
   **204 GiB free**. The conservative envelope is about **260 GiB** if reference
@@ -409,7 +432,8 @@ accuracy benchmark.
   The normal refusal check and the advisory conservative resource envelope
   are different checks; a passing refusal check is not a reservation.
 - **Install the `macos-aligners` builds** ([Apple Silicon](hardware.md#apple-silicon-metal)).
-  Without them `realign` runs bwa on the CPU, about four times slower.
+  They provide CPU optimizations and GPU acceleration when the pipeline
+  fits; installation is not a promise that a whole 35x run will use Metal.
 - **Call with `vcf snp` and `vcf indel`** (`bcftools`). They use the four
   performance cores and little memory.
 - **Run the other commands as you like.** They take minutes and stay well

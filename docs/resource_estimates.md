@@ -437,7 +437,7 @@ filesystem for reference-index storage.
   was enough, but only 37.42 GiB remained at the observed minimum. These
   different envelopes are not allocation guarantees or equivalent measures.
   Retain the conservative disk coefficients and additional free-space margin.
-  [The measured stage table](apple-silicon-16gb.md#current-defaults-macos-aligners-16-and-mimalloc)
+  [The historical measured stage table](apple-silicon-16gb.md#historical-metal-run-macos-aligners-16-and-mimalloc)
   records the exact run and resume conditions.
 - **macOS RSS is not the uncompressed working set.** That run's startup RAM
   estimate was 22.02 GiB against 10.80 GiB available. The largest process
