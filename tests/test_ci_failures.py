@@ -59,6 +59,7 @@ class ReplayGitHub(GitHub):
         self.pr_sha: str | None = None
         self.pr_state = "open"
         self.on_label_delete: Callable[[], None] | None = None
+        self.on_audit: Callable[[], None] | None = None
         self.runs: list[dict[str, Any]] = []
         self.superseded = False
         self.refuse_audit = False
@@ -211,6 +212,10 @@ class ReplayGitHub(GitHub):
                     raise RuntimeError("Issue API is unavailable")
                 assert data is not None
                 comments.append({**data, "user": {"login": "github-actions[bot]"}})
+                if self.on_audit and "Retry requested:" in data["body"]:
+                    callback = self.on_audit
+                    self.on_audit = None
+                    callback()
                 return None
             assert data is not None
             issue = next(item for item in self.issues if item["number"] == number)

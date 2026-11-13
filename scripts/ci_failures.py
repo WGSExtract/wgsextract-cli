@@ -233,6 +233,19 @@ class Observer(IssueReports):
                 marker,
                 f"Retry requested: {self.link(run)}\n\n<pre>{safe(json.dumps(record, indent=2))}</pre>",
             )
+        latest = self.latest(run)
+        if (
+            not latest
+            or latest["id"] != run["id"]
+            or latest["status"] != "completed"
+            or latest["run_attempt"] != run["run_attempt"]
+        ):
+            self.comment_once(
+                ledger,
+                markers[0] + ":aborted",
+                "Retry not dispatched: the source run changed while its audit was recorded.",
+            )
+            return
         self.gh.api("POST", endpoint)
         for marker in markers:
             self.comment_once(
@@ -289,14 +302,7 @@ class Observer(IssueReports):
         # strand old job IDs or restart deliberately cancelled queued siblings.
         if not all(retryable(failure, rerun_tests=rerun_tests) for failure in failures):
             return 0
-        latest = self.latest(run)
-        if (
-            latest
-            and latest["id"] == run["id"]
-            and latest["status"] == "completed"
-            and latest["run_attempt"] == run["run_attempt"]
-        ):
-            self.audit_retry(run, failures)
+        self.audit_retry(run, failures)
         return 0
 
 

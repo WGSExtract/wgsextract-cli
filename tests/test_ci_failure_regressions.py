@@ -269,3 +269,16 @@ def test_attempt_ten_does_not_dispatch_an_eleventh_attempt() -> None:
     Observer(api).process(api.run)
     assert api.retried == []
     assert api.issues == []
+
+
+def test_push_during_audit_cannot_restart_a_superseded_head() -> None:
+    api = ReplayGitHub()
+    api.annotation_text = "The hosted runner lost communication with the server"
+
+    def newer_push() -> None:
+        api.other_runs = [dict(api.run, id=999, head_sha="b" * 40, status="queued")]
+
+    api.on_audit = newer_push
+    Observer(api).process(api.run)
+    assert api.retried == []
+    assert any("not dispatched" in comment for comment in ledger_comments(api))
