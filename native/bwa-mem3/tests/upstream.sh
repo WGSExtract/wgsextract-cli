@@ -16,6 +16,8 @@
 # --physical-memory below the run's needs, every alignment must warn about memory.
 # Usage: upstream.sh <wgse-bwa-mem3> <bwa-mem3-upstream> <work-dir> [wgse-bwa-mem3 options]
 set -eu
+# shellcheck source=native/tests/seeded_random.sh
+. "$(dirname "$0")/../../tests/seeded_random.sh"
 wgse=$1
 upstream=$2
 work=$3
@@ -51,8 +53,8 @@ case " $wgse_options " in
     fi ;;
 esac
 
-awk 'BEGIN {
-    srand(542)
+awk "$seeded_random"'BEGIN {
+    seed(542)
     split("A C G T", base, " ")
     complement["A"] = "T"; complement["C"] = "G"; complement["G"] = "C"; complement["T"] = "A"
     complement["a"] = "t"; complement["c"] = "g"; complement["g"] = "c"; complement["t"] = "a"
@@ -72,9 +74,9 @@ awk 'BEGIN {
         sequence[c] = toupper(sequence[c])
     }
     for (p = 1; p <= 3000; p++) {
-        c = int(rand() * contigs) + 1
-        insert = 300 + int(rand() * 200)
-        start = int(rand() * (length(sequence[c]) - insert)) + 1
+        c = int(rnd() * contigs) + 1
+        insert = 300 + int(rnd() * 200)
+        start = int(rnd() * (length(sequence[c]) - insert)) + 1
         left = mutate(substr(sequence[c], start, 150), 0.01)
         right = reverse_complement(mutate(substr(sequence[c], start + insert - 150, 150), 0.01))
         printf "@p%d\n%s\n+\n%s\n", p, left, quality(150) > "reads_1.fq"
@@ -83,8 +85,8 @@ awk 'BEGIN {
     # Pairs the GPU leaves to the CPU or that stress seeding: 600-base reads (longer than the
     # GPU seeds), N-rich reads, and 500-base chimeras of 13-base pieces (many short SMEMs).
     for (p = 1; p <= 90; p++) {
-        c = int(rand() * contigs) + 1
-        start = int(rand() * (length(sequence[c]) - 1000)) + 1
+        c = int(rnd() * contigs) + 1
+        start = int(rnd() * (length(sequence[c]) - 1000)) + 1
         if (p % 3 == 0) {
             left = mutate(substr(sequence[c], start, 600), 0.01)
             right = reverse_complement(mutate(substr(sequence[c], start + 300, 600), 0.01))
@@ -96,8 +98,8 @@ awk 'BEGIN {
         } else {
             left = ""
             while (length(left) < 500) {
-                c = int(rand() * contigs) + 1
-                left = left substr(sequence[c], int(rand() * (length(sequence[c]) - 13)) + 1, 13)
+                c = int(rnd() * contigs) + 1
+                left = left substr(sequence[c], int(rnd() * (length(sequence[c]) - 13)) + 1, 13)
             }
             left = substr(left, 1, 500)
             right = reverse_complement(substr(sequence[c], start, 150))
@@ -110,7 +112,7 @@ function random(n,    s, piece, i) {
     s = ""
     while (n > 0) {
         piece = ""
-        for (i = 0; i < 100 && i < n; i++) piece = piece base[int(rand() * 4) + 1]
+        for (i = 0; i < 100 && i < n; i++) piece = piece base[int(rnd() * 4) + 1]
         s = s piece; n -= i
     }
     return s
@@ -122,8 +124,8 @@ function repeat(unit, copies,    s) {
 }
 function mutate(s, rate,    n, position) {
     for (n = int(length(s) * rate); n > 0; n--) {
-        position = int(rand() * length(s)) + 1
-        s = substr(s, 1, position - 1) base[int(rand() * 4) + 1] substr(s, position + 1)
+        position = int(rnd() * length(s)) + 1
+        s = substr(s, 1, position - 1) base[int(rnd() * 4) + 1] substr(s, position + 1)
     }
     return s
 }

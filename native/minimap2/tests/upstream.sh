@@ -11,6 +11,8 @@
 # redoes the failed fills (0 with --backend auto), and a hung GPU.
 # Usage: upstream.sh <wgse-minimap2> <minimap2-upstream> <work-dir>
 set -eu
+# shellcheck source=native/tests/seeded_random.sh
+. "$(dirname "$0")/../../tests/seeded_random.sh"
 wgse=$1
 upstream=$2
 work=$3
@@ -19,8 +21,8 @@ rm -rf "$work"
 mkdir -p "$work"
 cd "$work"
 
-awk 'BEGIN {
-    srand(537)
+awk "$seeded_random"'BEGIN {
+    seed(537)
     split("A C G T", base, " ")
     complement["A"] = "T"; complement["C"] = "G"; complement["G"] = "C"; complement["T"] = "A"
     complement["a"] = "t"; complement["c"] = "g"; complement["g"] = "c"; complement["t"] = "a"
@@ -43,9 +45,9 @@ awk 'BEGIN {
     long_reads("ont.fq", 150, 0.03, 0.03)
     long_reads("pb.fq", 150, 0.02, 0.08)
     for (p = 1; p <= 3000; p++) {
-        c = int(rand() * contigs) + 1
-        insert = 300 + int(rand() * 200)
-        start = int(rand() * (length(sequence[c]) - insert)) + 1
+        c = int(rnd() * contigs) + 1
+        insert = 300 + int(rnd() * 200)
+        start = int(rnd() * (length(sequence[c]) - insert)) + 1
         left = mutate(substr(sequence[c], start, 150), 0.01)
         right = reverse_complement(mutate(substr(sequence[c], start + insert - 150, 150), 0.01))
         printf "@p%d\n%s\n+\n%s\n", p, left, quality(150) > "reads_1.fq"
@@ -56,7 +58,7 @@ function random(n,    s, piece, i) {
     s = ""
     while (n > 0) {
         piece = ""
-        for (i = 0; i < 100 && i < n; i++) piece = piece base[int(rand() * 4) + 1]
+        for (i = 0; i < 100 && i < n; i++) piece = piece base[int(rnd() * 4) + 1]
         s = s piece; n -= i
     }
     return s
@@ -68,31 +70,31 @@ function repeat(unit, copies,    s) {
 }
 function mutate(s, rate,    n, position) {
     for (n = int(length(s) * rate); n > 0; n--) {
-        position = int(rand() * length(s)) + 1
-        s = substr(s, 1, position - 1) base[int(rand() * 4) + 1] substr(s, position + 1)
+        position = int(rnd() * length(s)) + 1
+        s = substr(s, 1, position - 1) base[int(rnd() * 4) + 1] substr(s, position + 1)
     }
     return s
 }
 # Reads of 2-12 kb from either strand with substitutions and short indels.
 function long_reads(file, count, substitution, indel,    r, c, size, start, read, i, b, out, piece) {
     for (r = 1; r <= count; r++) {
-        c = int(rand() * contigs) + 1
-        size = 2000 + int(rand() * 10000)
-        start = int(rand() * (length(sequence[c]) - size)) + 1
+        c = int(rnd() * contigs) + 1
+        size = 2000 + int(rnd() * 10000)
+        start = int(rnd() * (length(sequence[c]) - size)) + 1
         read = substr(sequence[c], start, size)
         out = ""; piece = ""
         for (i = 1; i <= size; i++) {
             b = substr(read, i, 1)
-            if (rand() < indel) {
-                if (rand() < 0.5) continue
-                piece = piece base[int(rand() * 4) + 1]
+            if (rnd() < indel) {
+                if (rnd() < 0.5) continue
+                piece = piece base[int(rnd() * 4) + 1]
             }
-            if (rand() < substitution) b = base[int(rand() * 4) + 1]
+            if (rnd() < substitution) b = base[int(rnd() * 4) + 1]
             piece = piece b
             if (length(piece) >= 100) { out = out piece; piece = "" }
         }
         out = out piece
-        if (rand() < 0.5) out = reverse_complement(out)
+        if (rnd() < 0.5) out = reverse_complement(out)
         printf "@r%d\n%s\n+\n%s\n", r, out, quality(length(out)) > file
     }
 }

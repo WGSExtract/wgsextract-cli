@@ -1,6 +1,8 @@
 #!/bin/sh
 # GPU mate rescue (mem_matesw's ksw_align2) must leave the paired SAM unchanged.
 set -eu
+# shellcheck source=native/tests/seeded_random.sh
+. "$(dirname "$0")/../../tests/seeded_random.sh"
 aligner=$1
 work=$2
 mkdir -p "$work"
@@ -15,12 +17,6 @@ same() {
 metric() {
     sed -n "s/.* $2=\([0-9]*\).*/\1/p" "$1"
 }
-# awk's rand() differs between awks, and Ubuntu's mawk ignores srand()'s seed,
-# so its data changed with every run (#769). This Park-Miller generator, exact
-# in any awk's doubles, gives every machine the same data.
-seeded_random='function seed(s) { state = s }
-function rnd() { state = state * 16807 % 2147483647; return state / 2147483647 }
-'
 pruning=0
 case "$(uname -m)" in
     arm64|aarch64) pruning=1 ;;
