@@ -63,16 +63,21 @@ When you add or rename a command:
   summary in `COMMAND_TIERS` in `src/wgsextract_cli/commands/registry.py`.
 - Give every runnable command an example and an outputs line in
   `src/wgsextract_cli/commands/_help_catalog.py`.
+- Register its parser in `src/wgsextract_cli/cli/registration/`, keeping
+  execution imports inside handlers. `cli/_lazy.py` defers loading command
+  implementations until execution; help must not import scientific libraries.
 - Run `pixi run gen-command-docs` to regenerate `docs/commands.md` and the
-  command cards on the site's CLI page (`site_src/cli.md`).
+  command cards on the site's CLI page (`site_src/cli.md`), plus the bundled
+  `assets/cli/help-index.json` used for fast, configuration-independent discovery.
 
 `tests/test_cli_help.py` fails until all three are done.
 
 ### Generated references and parallel PRs
 
 Run `just regen` (or `pixi run python scripts/regen.py`) after changing CLI/API
-help. It updates the API snapshot, `docs/api.md`, `docs/commands.md`, and the
-generated command cards in `site_src/cli.md`. Keep these committed: readers,
+help. It updates the API snapshot, `docs/api.md`, `docs/commands.md`, the bundled
+compact discovery index, and the generated command cards in `site_src/cli.md`.
+Keep these committed: readers,
 release archives and freshness tests need them without running Python.
 
 The setup scripts configure the `merge=generated` driver in `.gitattributes`.

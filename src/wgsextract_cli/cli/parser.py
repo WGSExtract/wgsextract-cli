@@ -2,14 +2,18 @@ import argparse
 import logging
 import sys
 import textwrap
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from wgsextract_cli import __version__
-from wgsextract_cli.commands.registry import COMMAND_MODULES
+from wgsextract_cli.commands.registry import (
+    COMMAND_MODULES,
+    COMMAND_TIERS,
+    CommandRegistration,
+)
 from wgsextract_cli.core.config import KNOWN_SETTINGS, get_config_path, settings
 from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.resource_policy import parse_thread_count
@@ -254,6 +258,8 @@ class RootArgumentParser(WgsArgumentParser):
     """The top-level parser: its help is the tiered command map, then the
     global options."""
 
+    command_loader: Callable[[str | None], None] | None = None
+
     def format_help(self) -> str:
         formatter = self._get_formatter()
         formatter.add_usage(self.usage, self._actions, self._mutually_exclusive_groups)
@@ -351,7 +357,42 @@ class _GlobalBoolean(_GlobalOption, argparse.BooleanOptionalAction):
     pass
 
 
-def build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
+if TYPE_CHECKING:
+    _SubParsers = argparse._SubParsersAction[argparse.ArgumentParser]
+else:
+    _SubParsers = argparse._SubParsersAction
+
+
+class _LazySubParsers(_SubParsers):
+    pending: dict[str, CommandRegistration]
+    shared_parser: argparse.ArgumentParser
+    root_parser: RootArgumentParser
+
+    def __call__(self, parser, namespace, values, option_string=None):  # type: ignore[no-untyped-def]
+        self.load(values[0])
+        super().__call__(parser, namespace, values, option_string)
+
+    def load(self, name: str | None = None) -> None:
+        pending = self.pending
+        names = list(pending) if name is None else [name]
+        if not any(key in pending for key in names):
+            return
+        for key in names:
+            if key not in pending:
+                continue
+            registration = pending.pop(key)
+            self.choices.pop(key)
+            self._choices_actions[:] = [
+                action for action in self._choices_actions if action.dest != key
+            ]
+            registration.register(self, self.shared_parser)
+        _walk_commands(self.root_parser, self.shared_parser)
+        apply_help_metadata(self.root_parser)
+
+
+def build_parser(
+    *, lazy: bool = False
+) -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
     """Return the CLI parser and the parent parser that commands inherit
     global options from.
 
@@ -359,6 +400,10 @@ def build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
     before or after the command at any depth (``wgsextract --input x vcf snp``
     and ``wgsextract vcf snp --input x`` are the same). Only the top-level
     help lists them in full; each command's help names them in one line.
+
+    With ``lazy=True``, parsing loads only the selected command group.
+    Help traversal loads the groups it needs; top-level help and version
+    need neither the typed API nor execution modules.
     """
     base_parser = argparse.ArgumentParser(
         add_help=False, argument_default=argparse.SUPPRESS
@@ -414,6 +459,7 @@ def build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
         metavar="<command>",
         prog="wgsextract",
         parser_class=WgsArgumentParser,
+        action=_LazySubParsers if lazy else "parsers",
     )
 
     help_parser = subparsers.add_parser(
@@ -452,8 +498,21 @@ def build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
     )
     config_parser.set_defaults(func=run_config)
 
-    for cmd_module in COMMAND_MODULES:
-        cmd_module.register(subparsers, shared_parser)
+    if lazy:
+        lazy_subparsers = cast(_LazySubParsers, subparsers)
+        lazy_subparsers.pending = {module.name: module for module in COMMAND_MODULES}
+        lazy_subparsers.shared_parser = shared_parser
+        lazy_subparsers.root_parser = parser
+        parser.command_loader = lazy_subparsers.load
+        summaries = {command.name: command.summary for command in COMMAND_TIERS}
+        for name in lazy_subparsers.pending:
+            subparsers.add_parser(name, help=summaries[name])
+    else:
+        for cmd_module in COMMAND_MODULES:
+            cmd_module.register(
+                cast("argparse._SubParsersAction[argparse.ArgumentParser]", subparsers),
+                shared_parser,
+            )
 
     _walk_commands(parser, shared_parser)
     apply_help_metadata(parser)

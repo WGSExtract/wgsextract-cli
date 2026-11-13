@@ -154,7 +154,7 @@ def test_command_dispatch(args: list[str], tmp_path: Path) -> None:
         "vcf": str(tmp_path / "dummy.vcf.gz"),
     }
     argv = ["--outdir", paths["dir"], *(a.format(**paths) for a in args)]
-    with patch("wgsextract_cli.main.dispatch_command") as dispatch:
+    with patch("wgsextract_cli.cli.dispatch.dispatch_command") as dispatch:
         main(argv)
     dispatch.assert_called_once()
     parsed = dispatch.call_args.args[0]

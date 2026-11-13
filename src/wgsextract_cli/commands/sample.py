@@ -1,15 +1,13 @@
 """`sample show|set|unset`: a sample's workspace, wgsextract.sample.toml."""
 
-import argparse
 from typing import Any
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api.sample import (
     SampleSetParams,
     SampleShowParams,
     SampleUnsetParams,
 )
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.cli.registration.sample import register as register
 from wgsextract_cli.core.results import current_result, human_output
 from wgsextract_cli.core.sample_workspace import (
     FACTS,
@@ -113,26 +111,6 @@ def run_unset(params: SampleUnsetParams) -> None:
         params.input,
     )
     _report(params)
-
-
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser(
-        "sample", parents=[base_parser], help=CLI_HELP["cmd_sample"]
-    )
-    subs = parser.add_subparsers(dest="sample_cmd", required=True)
-    for name, cls, impl in (
-        ("show", SampleShowParams, run_show),
-        ("set", SampleSetParams, run_set),
-        ("unset", SampleUnsetParams, run_unset),
-    ):
-        sub = subs.add_parser(
-            name, parents=[base_parser], help=CLI_HELP[f"cmd_sample-{name}"]
-        )
-        add_arguments(sub, cls)
-        sub.set_defaults(func=cli_handler(cls, impl))
 
 
 __all__ = ["register", "run_set", "run_show", "run_unset"]

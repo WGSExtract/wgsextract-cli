@@ -7,8 +7,6 @@ import time
 from types import FrameType
 from typing import TextIO
 
-import psutil
-
 from wgsextract_cli.core.utils import cleanup_processes
 
 SIGNAL_EXPLANATIONS = {
@@ -39,6 +37,8 @@ def describe_signal(signum: int) -> str:
 
 
 def _parent_process_is_alive(parent_pid: int) -> bool:
+    import psutil
+
     return parent_pid > 0 and bool(psutil.pid_exists(parent_pid))
 
 

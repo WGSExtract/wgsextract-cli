@@ -1,6 +1,5 @@
 """Checksum manifests and OpenSSH signatures for output files."""
 
-import argparse
 import hashlib
 import logging
 import os
@@ -12,12 +11,11 @@ from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path, PurePath
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api.sign import MANIFEST_NAME, SignCreateParams, SignVerifyParams
+from wgsextract_cli.cli.registration.sign import register as register
 from wgsextract_cli.core import read_scope
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.config import settings
-from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.paths import PathInput, absolute_path, append_suffix
 from wgsextract_cli.core.results import current_result, manifest_path_for, warn
 from wgsextract_cli.core.utils import (
@@ -34,23 +32,6 @@ _CHUNK = 4 << 20
 _FINGERPRINT = re.compile(r"(\S+) key (SHA256:\S+)")
 # Verifying a manifest takes well under a second.
 _VERIFY_TIMEOUT = 10
-
-
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser("sign", help=CLI_HELP["cmd_sign"])
-    subs = parser.add_subparsers(dest="sign_cmd", required=True)
-    for name, cls, impl in (
-        ("create", SignCreateParams, create_manifest),
-        ("verify", SignVerifyParams, verify_manifest),
-    ):
-        sub = subs.add_parser(
-            name, parents=[base_parser], help=CLI_HELP[f"cmd_sign-{name}"]
-        )
-        add_arguments(sub, cls)
-        sub.set_defaults(func=cli_handler(cls, impl))
 
 
 def _ssh_keygen() -> str:

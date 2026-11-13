@@ -28,8 +28,6 @@ from http.client import HTTPException
 from pathlib import Path
 from typing import Any, TextIO
 
-import numpy as np
-
 from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen
@@ -545,6 +543,8 @@ def score(
     keep_ambiguous: bool = False,
 ) -> dict[str, Any]:
     """Sum observed effect-allele dosages; count every source row in coverage."""
+    import numpy as np
+
     counts: Counter[str] = Counter()
     sums: list[float] = []
     weights: list[float] = []
