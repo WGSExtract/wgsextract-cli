@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import logging
 import os
 import shutil
@@ -13,11 +12,11 @@ from typing import TYPE_CHECKING, NamedTuple, TypeVar
 
 import psutil
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api._params import job_values
 from wgsextract_cli.api.align import ALIGNERS as ALIGNERS
 from wgsextract_cli.api.align import PLATFORMS as PLATFORMS
 from wgsextract_cli.api.align import AlignParams
+from wgsextract_cli.cli.registration.align import register as register
 from wgsextract_cli.core import bwa_mem2, dense_suffix_array, ultima
 from wgsextract_cli.core.alignment_memory import (
     BWA_MEM3_CUDA_BYTES,
@@ -37,7 +36,7 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.genome_library import pair_stem
-from wgsextract_cli.core.messages import CLI_HELP, LOG_MESSAGES
+from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.native_aligners import (
     BWA_MEM3_COMPAT,
     BWA_MEM3_FAST,
@@ -195,17 +194,6 @@ class AlignJob:
     @property
     def read_count(self) -> int | None:
         return self.input_reads.reads if self.input_reads else None
-
-
-def register(
-    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser(
-        "align", parents=[base_parser], help=CLI_HELP["cmd_align"]
-    )
-    add_arguments(parser, AlignParams)
-    parser.set_defaults(func=cli_handler(AlignParams, run_align))
 
 
 def run_align(params: AlignParams) -> None:

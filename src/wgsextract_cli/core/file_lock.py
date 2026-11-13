@@ -11,8 +11,6 @@ import time
 from collections.abc import Iterator
 from pathlib import Path
 
-import psutil
-
 from wgsextract_cli.core.utils import WGSExtractError
 
 # Chosen at import, so tests that patch sys.platform still lock natively.
@@ -69,6 +67,8 @@ def exclusive_lock(path: Path, timeout: float = 30) -> Iterator[None]:
 
 
 def _abandoned(path: Path, timeout: float) -> bool:
+    import psutil
+
     try:
         record = json.loads(path.read_text())
         if record["host"] != socket.gethostname():
@@ -87,6 +87,8 @@ def _abandoned(path: Path, timeout: float) -> bool:
 @contextlib.contextmanager
 def build_lock(lock: str, timeout: float = 1800) -> Iterator[None]:
     """Reclaim dead local owners, never evict a live hour-long index builder."""
+    import psutil
+
     path = Path(lock)
     deadline = time.monotonic() + timeout
     record = json.dumps(

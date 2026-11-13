@@ -162,6 +162,79 @@ def test_help_all_json_is_a_versioned_command_index(capsys, entries):
     assert all("options" not in c and "input_schema" not in c for c in doc["commands"])
 
 
+@pytest.mark.parametrize(
+    "argv",
+    [
+        None,
+        ["--help"],
+        ["--version"],
+        ["help", "--all", "--json"],
+        ["qc", "ancestry", "--help"],
+        ["score", "pgs", "--help"],
+        ["vcf", "impute", "--help"],
+    ],
+)
+def test_startup_regression_help_does_not_import_analysis_libraries(argv):
+    """CLI startup regression: help and version must not load analysis code."""
+    code = f"""
+import contextlib
+import io
+import json
+import runpy
+import sys
+
+argv = {argv!r}
+with contextlib.redirect_stdout(io.StringIO()):
+    if argv is None:
+        from wgsextract_cli.cli.parser import build_parser
+        build_parser()[0].format_help()
+    else:
+        sys.argv = ["wgsextract", *argv]
+        try:
+            runpy.run_module("wgsextract_cli", run_name="__main__")
+        except SystemExit as error:
+            assert error.code == 0, error.code
+heavy = {{"numpy", "pandas", "polars", "scipy", "jsonschema", "pyarrow", "psutil"}}
+implementations = {{
+    "wgsextract_cli.commands.qc.ancestry",
+    "wgsextract_cli.core.ancestry",
+    "wgsextract_cli.core.ancestry_reference",
+    "wgsextract_cli.commands.score",
+    "wgsextract_cli.core.pgs",
+    "wgsextract_cli.commands.vcf.imputation",
+}}
+if argv in (["--help"], ["--version"], ["help", "--all", "--json"]):
+    implementations.add("wgsextract_cli.api")
+print(json.dumps(sorted(
+    name for name in sys.modules
+    if name.split(".")[0] in heavy or name in implementations
+)))
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert json.loads(completed.stdout) == []
+
+
+def test_startup_regression_fast_index_matches_live_help(capsys):
+    """The fast discovery response must stay identical to the live parser."""
+    from wgsextract_cli.core.config import settings_suspended
+
+    with settings_suspended():
+        live = parser.build_parser()[0]
+        expected = cli_help.index_json(
+            cli_help.command_index(live),
+            cli_help.global_options_json(live),
+            compact=True,
+        )
+    main(["help", "--all", "--json"])
+    assert json.loads(capsys.readouterr().out) == json.loads(expected)
+
+
 def test_full_json_dump_is_opt_in_and_keeps_command_details(capsys, entries):
     main(["help", "--all", "--json", "--full"])
     doc = json.loads(capsys.readouterr().out)

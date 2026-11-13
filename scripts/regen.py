@@ -12,6 +12,7 @@ GENERATED = (
     "tests/fixtures/api_cli_snapshot.json",
     "docs/api.md",
     "docs/commands.md",
+    "src/wgsextract_cli/assets/cli/help-index.json",
 )
 
 

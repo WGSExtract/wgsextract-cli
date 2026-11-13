@@ -184,6 +184,8 @@ def command_index(
     parser: argparse.ArgumentParser, prefix: str = ""
 ) -> list[CommandEntry]:
     """Runnable commands under prefix, by tier and then journey order."""
+    if load := getattr(parser, "command_loader", None):
+        load(prefix.split()[0] if prefix else None)
     if prefix:
         parser = resolve_command(parser, prefix.split())
     entries = [e for e in walk_commands(parser, prefix) if e.runnable]
@@ -209,6 +211,7 @@ def apply_help_metadata(parser: argparse.ArgumentParser, prefix: str = "") -> No
         group_tier = command_tier(prefix) if prefix else None
         tiers: dict[str, str] = {}
         for choice in action._choices_actions:
+            choice.help = choice.__dict__.setdefault("_original_help", choice.help)
             path = f"{prefix} {choice.dest}".strip()
             subparser = action.choices[choice.dest]
             subparser.summary = (
@@ -343,6 +346,8 @@ def resolve_command(
     Raises ValueError with a "did you mean" hint for an unknown name."""
     path: list[str] = []
     for token in tokens:
+        if load := getattr(parser, "command_loader", None):
+            load(token)
         choices = {name: sub for name, sub, _help in _subcommands(parser)}
         if token not in choices:
             raise ValueError(unknown_command_message(" ".join(path), token, choices))
@@ -499,11 +504,7 @@ def index_json(
         if entry.path in schemas:
             command["input_schema"] = schemas[entry.path]
         if entry.deprecation is not None:
-            command["deprecated"] = {
-                "replacement": entry.deprecation.replacement,
-                "remove_in": entry.deprecation.remove_in,
-                "without_subcommand": entry.deprecation.bare,
-            }
+            command["deprecated"] = _deprecation_json(entry.deprecation)
         commands.append(command)
     document: dict[str, Any] = {"schema": HELP_INDEX_SCHEMA if compact else HELP_SCHEMA}
     if compact:
@@ -518,6 +519,14 @@ def index_json(
             for name, topic in HELP_TOPICS.items()
         ]
     return dump_json(document)
+
+
+def _deprecation_json(deprecation: Deprecation) -> dict[str, str | bool]:
+    return {
+        "replacement": deprecation.replacement,
+        "remove_in": deprecation.remove_in,
+        "without_subcommand": deprecation.bare,
+    }
 
 
 def dump_json(document: dict[str, Any]) -> str:
@@ -689,6 +698,20 @@ def run_help(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
         else:
             sys.stdout.write(HELP_TOPICS[topic[0]].body)
         return
+    if as_json and not topic and not getattr(args, "full", False):
+        from importlib.resources import files
+
+        document = json.loads(
+            files("wgsextract_cli")
+            .joinpath("assets/cli/help-index.json")
+            .read_text(encoding="utf-8")
+        )
+        for command in document["commands"]:
+            command.pop("deprecated", None)
+            if deprecation := DEPRECATED.get(command["path"]):
+                command["deprecated"] = _deprecation_json(deprecation)
+        sys.stdout.write(dump_json(document))
+        return
     try:
         target = resolve_command(parser, topic)
     except ValueError as error:
@@ -734,6 +757,8 @@ def _top_names(parser: argparse.ArgumentParser) -> list[str]:
 
 def print_full_help(parser: argparse.ArgumentParser) -> None:
     """Print a concise tree of all commands and subcommands."""
+    if load := getattr(parser, "command_loader", None):
+        load(None)
     print("\n" + CLI_HELP["description"])
     print("\nGLOBAL OPTIONS:")
     for action in parser._actions:

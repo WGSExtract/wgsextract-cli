@@ -1,10 +1,9 @@
-import argparse
 import contextlib
 import logging
 import subprocess
 from pathlib import Path
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
+from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.extract import (
     BamSubsetParams,
     CustomParams,
@@ -18,13 +17,14 @@ from wgsextract_cli.api.extract import (
     YMtExtractParams,
     _ExtractParams,
 )
+from wgsextract_cli.cli.registration.extract import register as register
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.messages import CLI_HELP, LOG_MESSAGES
+from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import (
     bam_has_reads,
     warn_if_no_reads,
@@ -58,33 +58,6 @@ from ._extract_region import run_region
 
 _SAMTOOLS = ["samtools"]
 _CALLING_TOOLS = ["samtools", "bcftools", "tabix"]
-
-
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser(
-        "extract", help="Extract specific chromosomes or unmapped reads."
-    )
-    ext_subs = parser.add_subparsers(dest="ext_cmd", required=True)
-    for name, cls, func in (
-        ("mito-fasta", MitoFastaParams, cmd_mito_fasta),
-        ("mito-vcf", MitoVcfParams, cmd_mito_vcf),
-        ("mt-bam", MtBamParams, cmd_mt_bam),
-        ("bam-subset", BamSubsetParams, cmd_bam_subset),
-        ("ydna-bam", YdnaBamParams, cmd_ydna_bam),
-        ("ydna-vcf", YdnaVcfParams, cmd_ydna_vcf),
-        ("y-mt-extract", YMtExtractParams, cmd_y_mt_extract),
-        ("unmapped", UnmappedParams, cmd_unmapped),
-        ("custom", CustomParams, cmd_custom),
-        ("region", ExtractRegionParams, cmd_region),
-    ):
-        sub = ext_subs.add_parser(
-            name, parents=[base_parser], help=CLI_HELP[f"cmd_{name}"]
-        )
-        add_arguments(sub, cls)
-        sub.set_defaults(func=func)
 
 
 def _setup(params: _ExtractParams, tools: list[str]) -> BaseArgs:

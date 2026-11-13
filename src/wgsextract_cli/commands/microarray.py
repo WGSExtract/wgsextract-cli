@@ -1,4 +1,3 @@
-import argparse
 import contextlib
 import functools
 import logging
@@ -11,8 +10,9 @@ from collections.abc import Callable, Iterator
 from dataclasses import replace
 from pathlib import Path
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
+from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.microarray import MicroarrayParams
+from wgsextract_cli.cli.registration.microarray import register as register
 from wgsextract_cli.core.aadr_resources import AADR_2M_FILENAME, require_aadr_2m
 from wgsextract_cli.core.alignment_health import warn_about_alignment
 from wgsextract_cli.core.builds import (
@@ -31,7 +31,7 @@ from wgsextract_cli.core.genotype_qc import (
     warn_about_genotypes,
     warn_low_depth,
 )
-from wgsextract_cli.core.messages import CLI_HELP, LOG_MESSAGES
+from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.microarray_aadr import (
     aadr_lifter,
     aadr_panel,
@@ -935,20 +935,6 @@ def _sample_vcf(
     except (OSError, subprocess.SubprocessError) as e:
         raise WGSExtractError(f"Could not select sample '{sample}': {e}") from e
     return subset
-
-
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser(
-        "microarray",
-        parents=[base_parser],
-        help=CLI_HELP["cmd_microarray"],
-        formatter_class=argparse.RawTextHelpFormatter,
-    )
-    add_arguments(parser, MicroarrayParams)
-    parser.set_defaults(func=run)
 
 
 run = cli_handler(MicroarrayParams, run_microarray)

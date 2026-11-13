@@ -6,8 +6,6 @@ from collections.abc import Iterable
 from os import fspath
 from pathlib import Path
 
-import psutil
-
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.paths import PathInput, append_suffix
 
@@ -76,6 +74,8 @@ def sort_memory(threads: str, memory: str, *, input_bytes: int | None = None) ->
     (but at least 16M), and with -@ × -m at most SORT_RAM_FRACTION of this
     computer's RAM, so the sort can reserve its buffers. ``memory`` itself is
     returned when it is no larger."""
+    import psutil
+
     count = max(1, int(threads))
     amount, unit = parse_memory(memory)
     requested = amount * (1024 if unit == "G" else 1)
