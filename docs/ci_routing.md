@@ -4,6 +4,12 @@ PR area checks diffs the PR's **base...head**, not just the latest commit.
 `--no-renames` includes deletions and both sides of moves. Unknown paths run
 the full CLI matrix; mixed PRs run the union of their areas.
 
+Drafts retain the documentation route and run lint/routing-policy tests.
+When the diff selects CLI tests, they also run the lightweight product subset
+(`test_microarray_vendor_formats.py`, `test_table_writer.py`), without a
+bioinformatics environment. The OS matrix and Install Lab wait until
+`ready_for_review`; readiness recomputes the complete diff.
+
 Test dependencies take precedence over area exclusions. The router scans the
 root test suite's imports, path literals, composed pathlib paths and directory
 globs without executing tests. Inputs read only by the lightweight docs modules
@@ -81,13 +87,18 @@ replace those gates with a nonempty structured report:
 ```sh
 set -o pipefail
 gh pr checks "$PR" --watch --interval 90
-gh pr checks "$PR" --json bucket,name | python scripts/pr_checks_ready.py
+gh pr checks "$PR" --json bucket,name,workflow,link | python scripts/pr_checks_ready.py
 ```
 
-The validator requires at least one passing check, permits intentional skips,
-and rejects empty reports, pending, failed, cancelled and unknown statuses.
-Wait for workflow registration, verify that the head SHA has not changed,
-and check reviews/threads and mergeability separately. The autopilot skill
+The validator requires a passing `Ready PR area checks` gate and a passing
+`changes` job from the same workflow run, with draft-fast absent or skipped
+in that run. That gate runs
+only on non-draft, non-label events after all selected area jobs succeed.
+It rejects old draft-only passes/skips (including the gap before the ready
+run registers), empty reports, pending, failed, cancelled and unknown statuses.
+Verify the PR is non-draft, its head SHA has not changed, and check
+reviews/threads and mergeability separately; merge with `--match-head-commit`.
+The autopilot skill
 documents this rule too. This validator does not itself merge anything.
 
 ## Cache plan

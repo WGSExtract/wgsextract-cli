@@ -57,7 +57,10 @@ The loop is intentionally conservative. Prefer stopping and reporting over guess
 
 Before marking ready, obtain an independent local review, fix its findings,
 run `pixi run lint` and relevant tests/type checks, and self-review against
-AGENTS.md. Readiness starts Copilot review and area-selected full CI.
+AGENTS.md. For a draft this skill created, run `gh pr ready` after that gate
+passes, unless the user explicitly requires it to remain draft. For an existing
+draft, obtain authorization before marking ready. Readiness starts Copilot
+review and area-selected full CI; do not land using the old draft-run checks.
 Ruleset `15885247` excludes drafts and push re-reviews (checked 2026-11-13);
 request another review explicitly when needed, without changing settings.
 
@@ -161,10 +164,15 @@ Only resolve a thread after one of these is true:
 
 Check counts depend on the PR's changed areas. Never wait for a fixed minimum
 number of checks (such as the old `scratch/merge_when_clean.sh` threshold of
-more than five). Use `gh pr checks --json bucket,name` with
-`python scripts/pr_checks_ready.py`: at least one passing check, no failing,
-pending, cancelled or unknown checks, and intentional skips allowed. An empty
-report is not success. Recheck the head SHA and review threads separately.
+more than five). Use `gh pr checks --json bucket,name,workflow,link` with
+`python scripts/pr_checks_ready.py`: require a passing `Ready PR area checks`
+gate and passing `changes` job from the **same run**, with draft-fast absent
+or skipped there and no failing, pending, cancelled or unknown checks. The gate runs only
+after all area-selected checks finish on a non-draft, non-label event.
+Old draft passes/skips, or a not-yet-registered ready run, are not success.
+Verify that the PR is non-draft and the checks still refer to the current
+head SHA immediately before merging; use `--match-head-commit` with that SHA.
+Recheck review threads separately.
 Documentation-only PRs deliberately skip the OS matrix and Install Lab.
 
 Repeat until complete or blocked:
@@ -188,7 +196,7 @@ histories into prompts, or broadcast to idle agents.
 Treat these as serious blockers and stop with a clear report:
 
 - Merge conflicts.
-- Draft PR unless user explicitly says to mark ready.
+- A draft this skill did not create without authorization to mark ready, a draft that has not passed the local-review/check gate, or any draft the user explicitly requires to remain draft. Skill-created drafts proceed through `gh pr ready` after that gate.
 - Required approval missing or latest review decision is `CHANGES_REQUESTED` after all sensible fixes/refusals.
 - Required CI is unavailable or permanently failing for non-code reasons.
 - Local comprehensive tests fail for a reason you cannot fix safely.

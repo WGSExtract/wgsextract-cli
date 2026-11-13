@@ -56,10 +56,9 @@ def routes(
     draft: bool = False,
     repository: Path = ROOT,
 ) -> dict[str, bool]:
-    result = dict.fromkeys(("cli", "docs", "native", "site", "install", "fast"), False)
-    if draft:
-        result["fast"] = bool(paths)
-        return result
+    result = dict.fromkeys(
+        ("cli", "docs", "native", "site", "install", "fast", "draft_cli"), False
+    )
     result["install"] = force_install_lab
     for path in paths:
         readers = set().union(
@@ -99,6 +98,11 @@ def routes(
         # Unknown paths deliberately fail open to the full CLI matrix.
         result["cli"] = True
         result["docs"] = True
+    if draft:
+        result["fast"] = bool(paths)
+        result["draft_cli"] = result["cli"]
+        for area in ("cli", "native", "site", "install"):
+            result[area] = False
     return result
 
 

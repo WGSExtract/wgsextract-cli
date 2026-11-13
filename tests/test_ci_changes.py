@@ -75,6 +75,7 @@ def test_757_install_lab_label_does_not_repeat_the_cli_matrix() -> None:
         "site": "false",
         "install": "true",
         "fast": "false",
+        "draft_cli": "false",
         "python_files": "[]",
     }
 
@@ -84,10 +85,12 @@ def test_757_install_lab_label_does_not_repeat_the_cli_matrix() -> None:
     [["src/wgsextract_cli/main.py"], ["pixi.lock"], ["AGENTS.md"], ["unknown/path"]],
 )
 def test_763_drafts_defer_heavy_checks_until_ready(paths: list[str]) -> None:
-    assert {key for key, value in routes(paths, draft=True).items() if value} == {
-        "fast"
-    }
     ready = routes(paths)
+    draft = routes(paths, draft=True)
+    assert draft["docs"] == ready["docs"]
+    assert draft["draft_cli"] == ready["cli"]
+    assert draft["fast"]
+    assert not any(draft[key] for key in ("cli", "native", "site", "install"))
     assert not ready["fast"]
     assert ready["cli"] or ready["docs"]
 
@@ -212,6 +215,8 @@ def test_757_diff_routes_both_sides_of_a_cross_area_rename(
     )
     selected = dict(line.split("=", 1) for line in output.splitlines())
     assert selected["fast"] == str(draft).lower()
+    assert selected["docs"] == "true"
+    assert selected["draft_cli"] == str(draft).lower()
     assert selected["cli"] == str(not draft).lower()
     assert selected["native"] == str(not draft).lower()
 
@@ -232,7 +237,80 @@ def test_757_diff_routes_both_sides_of_a_cross_area_rename(
 def test_757_landing_accepts_one_green_check_not_a_fixed_matrix_size(
     buckets: list[str], ready: bool
 ) -> None:
-    assert checks_ready([{"bucket": bucket} for bucket in buckets]) is ready
+    checks = [
+        {
+            "name": "Ready PR area checks",
+            "bucket": buckets[0] if buckets else "pending",
+            "workflow": "PR area checks",
+            "link": "https://github.com/owner/repo/actions/runs/10/job/100",
+        },
+        {
+            "name": "Draft lint and fast tests",
+            "bucket": "skipping",
+            "workflow": "PR area checks",
+            "link": "https://github.com/owner/repo/actions/runs/10/job/101",
+        },
+        {
+            "name": "changes",
+            "bucket": "pass",
+            "workflow": "PR area checks",
+            "link": "https://github.com/owner/repo/actions/runs/10/job/102",
+        },
+        *[{"bucket": bucket} for bucket in buckets[1:]],
+    ]
+    assert checks_ready(checks) is ready
+
+
+def test_802_old_draft_passes_and_skips_cannot_land_before_ready_ci_registers() -> None:
+    checks = [
+        {
+            "name": "Draft lint and fast tests",
+            "bucket": "pass",
+            "workflow": "PR area checks",
+            "link": "https://github.com/owner/repo/actions/runs/10/job/100",
+        },
+        *[
+            {"name": name, "bucket": "skipping"}
+            for name in ("ubuntu", "macos", "windows")
+        ],
+        *[{"name": name, "bucket": "pass"} for name in ("changes", "lint", "docs")],
+    ]
+    assert not checks_ready(checks)
+
+
+@pytest.mark.parametrize(
+    ("gate_bucket", "draft_bucket", "routing_run", "ready"),
+    [
+        ("pending", "skipping", 11, False),
+        ("pass", "pass", 11, False),
+        ("pass", "skipping", 10, False),
+        ("pass", "skipping", 11, True),
+    ],
+)
+def test_802_landing_requires_completed_non_draft_validation_from_one_run(
+    gate_bucket: str, draft_bucket: str, routing_run: int, ready: bool
+) -> None:
+    checks = [
+        {
+            "name": "Ready PR area checks",
+            "bucket": gate_bucket,
+            "workflow": "PR area checks",
+            "link": "https://github.com/owner/repo/actions/runs/11/job/110",
+        },
+        {
+            "name": "Draft lint and fast tests",
+            "bucket": draft_bucket,
+            "workflow": "PR area checks",
+            "link": "https://github.com/owner/repo/actions/runs/11/job/111",
+        },
+        {
+            "name": "changes",
+            "bucket": "pass",
+            "workflow": "PR area checks",
+            "link": f"https://github.com/owner/repo/actions/runs/{routing_run}/job/112",
+        },
+    ]
+    assert checks_ready(checks) is ready
 
 
 def test_757_landing_cli_rejects_an_empty_check_report() -> None:

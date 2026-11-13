@@ -76,7 +76,7 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
 - **Execution.**
   - Each issue gets its own branch and worktree. Implementer sub-agents get complete context.
   - Open PRs as drafts (`gh pr create --draft`). Before `gh pr ready`, run an independent review agent, fix its findings, run `pixi run lint` and the relevant local tests/type checks, and self-review the diff against AGENTS.md.
-  - Mark ready only when local review and checks pass: readiness triggers Copilot review and the area-selected full matrix; drafts get lint and fast tests, not the CLI matrix or Install Lab.
+  - Mark ready only when local review and checks pass: readiness triggers Copilot review and the area-selected full matrix. Drafts retain documentation checks, run lint/routing tests, and run fast product unit tests for CLI changes; they skip the CLI matrix and Install Lab.
   - Keep Copilot review on readiness plus explicit re-requests. Ruleset `15885247` already has `review_on_push=false` and `review_draft_pull_requests=false` (checked 2026-11-13); don't change repository settings yourself.
   - The PR uses `Fixes #N` and lands under the babysitting rules below.
   - Heavy compute goes through the host's resource coordinator, short timing runs included; running outside it starves everyone else's queue. On a host without one, check the load first and keep to a share that leaves room for others.
@@ -111,4 +111,5 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
 - Fix real issues that CI finds, or fix CI itself when the failure is in CI rather than in the code.
 - Collect all open review threads, fix or decline them together, run local checks, then push **one batch per review round**, not one push per thread. Resolve handled threads only after the fixes are pushed or the refusal is posted.
 - Notify the owning agent when new threads appear; handle them within one hour or hand off explicitly. Transfer CI waits to the supervisor/watcher, not an implementer's polling loop.
+- After marking ready, require the current head's non-draft area run, not stale draft passes/skips: `gh pr checks --json bucket,name,workflow,link | python scripts/pr_checks_ready.py`. Verify non-draft/head SHA, reviews and mergeability separately; merge with `--match-head-commit`.
 - Once the PR is in a passable state, merge it. That means CI is green, no material threads are unresolved, and the local checks pass.
