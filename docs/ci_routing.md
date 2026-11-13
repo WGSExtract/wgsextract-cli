@@ -101,6 +101,11 @@ No prefix fallback restores an incompatible environment. npm and Cargo retain
 only downloads, using their respective lockfile hashes. PRs never save these
 caches, even on a cold miss.
 
+The liftOver data cache retains a checksum-verified read fallback to old run-id
+keys, so UCSC outages cannot break the migration. Main seeds the canonical
+checksum-only key from either a verified fallback or a verified download;
+no new run-id keys are written.
+
 Pixi-binary-only build jobs disable project caching entirely: `run-install:
 false` alone would still restore an unused old environment and keep it alive.
 Manual mirror/bwa qualification jobs use the same read-only CLI cache rather
