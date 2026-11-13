@@ -152,7 +152,12 @@ def test_realign_budgets_mem2_ram_for_its_256m_sort(tmp_path, ram, caplog):
     ref, r1, r2 = _genome(tmp_path)
     run_wgsextract("ref", "index", "--ref", ref, "--aligner", "bwa-mem2")
     ram(64 * GB)
-    source = _align(ref, r1, r2, tmp_path / "first", "--aligner", "bwa")
+    # An explicit --memory: the default would size the real sort from the fake
+    # 64 GB, more than a CI runner can allocate (#774, flaky bam_mem
+    # allocation failures).
+    source = _align(
+        ref, r1, r2, tmp_path / "first", "--aligner", "bwa", "--memory", "256M"
+    )
     ram(64 * GB, _mem2_budget_between_256m_and_512m(ref, 400))
     caplog.clear()
     caplog.set_level(logging.INFO)
@@ -219,14 +224,18 @@ def test_low_available_memory_refuses_mem2_but_bwa_warns_and_runs(
     before = _mem2_index(ref)
     ram(64 * GB, 1024**2)
     out = tmp_path / "out"
+    # A small explicit sort: the default would size the real sort from the fake
+    # 64 GB, more than a CI runner can allocate (#774, flaky bam_mem
+    # allocation failures).
+    options = ("--aligner", tool, "--memory", "256M")
     if tool == "bwa-mem2":
         with pytest.raises(WGSExtractError, match="--memory.*--aligner bwa"):
-            _align(ref, r1, r2, out, "--aligner", tool)
+            _align(ref, r1, r2, out, *options)
         # Refused before building an index or writing anything.
         assert _mem2_index(ref) == before
         assert not out.exists() or not list(out.iterdir())
     else:
-        bam = _align(ref, r1, r2, out, "--aligner", tool)
+        bam = _align(ref, r1, r2, out, *options)
         assert "\tID:bwa\t" in _header(bam)
         assert "Continuing with bwa" in caplog.text
         assert "--memory" in caplog.text
