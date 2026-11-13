@@ -64,8 +64,12 @@ qualification before a future implementation can permit it. Parabricks
 On a Mac, prefer `wgse-deepvariant`, WGS Extract's native Apple Silicon build
 of DeepVariant 1.10.0 ([native/deepvariant](../native/deepvariant/README.md)):
 it needs no Docker, runs call_variants on the GPU and calls the same sites,
-genotypes and filters as Google's image. Install it and its weights from a
-`macos-deepvariant` release, put it on `PATH`, and name the weights folder in
+genotypes and filters as Google's image. On HG003's whole genome (0.1.1, an
+M1 Pro, 2 h 42 min) every PASS genotype matches Google's published VCF and
+hap.py against GIAB v4.2.1 gives identical counts; the details are in its
+[README](../native/deepvariant/README.md#same-results-as-googles-image).
+Install it and its weights from a `macos-deepvariant` release (0.1.1 or later),
+put it on `PATH`, and name the weights folder in
 `config.toml`:
 
 ```toml
