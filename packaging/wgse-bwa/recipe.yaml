@@ -1,7 +1,8 @@
 context:
   # native/bwa/CMakeLists.txt's WGSE_BWA_VERSION.
-  version: "0.12.1"
+  version: "0.13.0"
   bwa_version: "0.7.19"
+  mem3_version: "0.16.0"
 
 package:
   name: wgse-bwa
@@ -15,6 +16,10 @@ source:
   - url: https://github.com/lh3/bwa/archive/refs/tags/v${{ bwa_version }}.tar.gz
     sha256: cdff5db67652c5b805a3df08c4e813a822c65791913eccfb3cf7d528588f37bc
     target_directory: bwa
+  # The exact rescue-pruning headers linked through native/bwa-mem2's adapter.
+  - url: https://github.com/fg-labs/bwa-mem3/archive/refs/tags/v${{ mem3_version }}.tar.gz
+    sha256: 28f7e4be7cf359e97b59f2925bb67b27905058c13e6c8af08507b13f2c10662c
+    target_directory: mem3
 
 build:
   number: 0
@@ -60,6 +65,7 @@ requirements:
 tests:
   - script:
       - wgse-bwa --version
+      - test -s "$PREFIX/share/licenses/wgse-bwa/BWA-MEM3-LICENSE"
       - wgse-bwa capabilities --json
       - wgse-bwa capabilities --json | grep -q '"cuda_hardware_supported":'
   - files:
@@ -80,6 +86,7 @@ about:
   license_file:
     - LICENSE
     - bwa/COPYING
+    - mem3/LICENSE
     - native/bwa/SEEDING-LICENSE
   summary: >-
     BWA 0.7.19 rebuilt by WGS Extract with exact faster CPU steps (NEON on
