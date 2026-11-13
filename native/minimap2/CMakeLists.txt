@@ -140,14 +140,46 @@ minimap2_seam(map_source "\t\tfor (i = 0; i < p->n_threads; ++i) mm_tbuf_destroy
     "\t\tfor (i = 0; i < wgse_ksw_workers(p->n_threads); ++i) mm_tbuf_destroy(s->buf[i]);")
 file(WRITE "${generated}/map.c" "${map_source}")
 
+# lchain.c (chain_gpu.h): mg_lchain_dp's score fill moves verbatim into
+# wgse_lchain_dp_fill, which mg_lchain_dp calls unless the GPU computed the same scores.
+file(READ "${minimap2_SOURCE_DIR}/lchain.c" lchain_source)
+set(fill_begin "\t// fill the score and backtrack arrays\n\tfor (i = 0, max_ii = -1; i < n; ++i) {")
+set(fill_end "\n\tu = mg_chain_backtrack(km, n, f, p, v, t, min_cnt, min_sc, max_drop, &n_u, &n_v);")
+string(FIND "${lchain_source}" "${fill_begin}" fill_at)
+string(FIND "${lchain_source}" "${fill_end}" fill_end_at)
+string(FIND "${lchain_source}" "mm128_t *mg_lchain_rmq(" rmq_at)
+if(fill_at EQUAL -1 OR fill_end_at LESS fill_at OR rmq_at LESS fill_end_at)
+    message(FATAL_ERROR "Unexpected upstream minimap2 source: mg_lchain_dp's score fill")
+endif()
+math(EXPR fill_length "${fill_end_at} - ${fill_at}")
+string(SUBSTRING "${lchain_source}" ${fill_at} ${fill_length} fill_loop)
+string(SUBSTRING "${lchain_source}" 0 ${fill_at} lchain_head)
+string(SUBSTRING "${lchain_source}" ${fill_end_at} -1 lchain_tail)
+minimap2_seam(lchain_head "#include \"krmq.h\"\n" "#include \"krmq.h\"\n#include \"chain_gpu.h\"\n")
+file(WRITE "${generated}/lchain.c" "${lchain_head}\t// fill the score and backtrack arrays
+\tif (!wgse_chain_dp_gpu(max_dist_x, max_dist_y, bw, max_skip, max_iter, chn_pen_gap, chn_pen_skip,
+\t\t\tis_cdna, n_seg, n, a, f, p, v))
+\t\twgse_lchain_dp_fill(max_dist_x, max_dist_y, bw, max_skip, max_iter, chn_pen_gap, chn_pen_skip,
+\t\t\tis_cdna, n_seg, n, a, f, p, v, t);${lchain_tail}
+void wgse_lchain_dp_fill(int max_dist_x, int max_dist_y, int bw, int max_skip, int max_iter,
+\tfloat chn_pen_gap, float chn_pen_skip, int is_cdna, int n_seg, int64_t n, const mm128_t *a,
+\tint32_t *f, int64_t *p, int32_t *v, int32_t *t)
+{
+\tint32_t mmax_f = 0;
+\tint64_t i, j, max_ii, st = 0;
+
+${fill_loop}
+}
+")
+
 # Mirrors upstream's Makefile OBJS (the same on aarch64, arm_neon, and x86-64), less the
 # ksw2 extension kernels, which are built below.
 set(minimap2_names
-    kthread kalloc bseq sdust options lchain hit jump
+    kthread kalloc bseq sdust options hit jump
     format pe esterr splitidx ksw2_ll_sse)
 list(TRANSFORM minimap2_names PREPEND "${minimap2_SOURCE_DIR}/" OUTPUT_VARIABLE minimap2_common_sources)
 list(TRANSFORM minimap2_common_sources APPEND ".c")
-set(minimap2_seamed main index misc seed sketch align map)
+set(minimap2_seamed main index misc seed sketch align map lchain)
 list(TRANSFORM minimap2_seamed PREPEND "${generated}/" OUTPUT_VARIABLE minimap2_sources)
 list(TRANSFORM minimap2_sources APPEND ".c")
 list(PREPEND minimap2_sources ${minimap2_common_sources})
@@ -215,8 +247,9 @@ endfunction()
 minimap2_ksw2_library(wgse_minimap2_ksw2 ${WGSE_MINIMAP2_KSW2})
 
 if(WGSE_CUDA)
-    # The CUDA device (ksw_cuda.cu): ksw_fill.cuh's kernels, ported from metal_ksw.mm's.
-    add_library(wgse_minimap2_cuda STATIC ksw_cuda.cu)
+    # The CUDA devices: ksw_cuda.cu (ksw_fill.cuh's kernels, ported from metal_ksw.mm's)
+    # and chain_cuda.cu (chain_fill.cuh's).
+    add_library(wgse_minimap2_cuda STATIC ksw_cuda.cu chain_cuda.cu)
     target_include_directories(wgse_minimap2_cuda PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
         "${CMAKE_CURRENT_SOURCE_DIR}/../gpu-common")
     target_include_directories(wgse_minimap2_cuda SYSTEM PRIVATE "${minimap2_SOURCE_DIR}")
@@ -242,9 +275,9 @@ function(wgse_minimap2_executable name core)
     # The gap-fill offload (ksw_gpu.h): ksw_host.cpp's engine on Metal (macOS) or CUDA
     # (Linux with -DWGSE_CUDA=ON), else every fill on the CPU.
     if(APPLE)
-        set(gpu_sources ksw_host.cpp metal_ksw.mm)
+        set(gpu_sources ksw_host.cpp chain_host.cpp metal_ksw.mm)
     elseif(WGSE_CUDA)
-        set(gpu_sources ksw_host.cpp)
+        set(gpu_sources ksw_host.cpp chain_host.cpp)
     else()
         set(gpu_sources ksw_gpu_none.cpp)
     endif()
@@ -322,6 +355,15 @@ if(BUILD_TESTING)
         add_test(NAME minimap2_ksw_gpu_fuzz COMMAND minimap2-ksw-gpu-fuzz 60 1)
         set_tests_properties(minimap2_ksw_gpu_fuzz PROPERTIES SKIP_RETURN_CODE 77)
     endif()
+    if(WGSE_CUDA)
+        # The GPU chaining (split, kernels, unpack) against upstream's score fill.
+        add_executable(minimap2-chain-gpu-fuzz tests/chain_gpu_fuzz.cpp)
+        target_include_directories(minimap2-chain-gpu-fuzz PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+        target_compile_options(minimap2-chain-gpu-fuzz PRIVATE -Wall -Wextra -Werror)
+        target_link_libraries(minimap2-chain-gpu-fuzz PRIVATE wgse_minimap2_core)
+        add_test(NAME minimap2_chain_gpu_fuzz COMMAND minimap2-chain-gpu-fuzz 60 1)
+        set_tests_properties(minimap2_chain_gpu_fuzz PROPERTIES SKIP_RETURN_CODE 77)
+    endif()
     # The anchor sort against upstream's in-place radix sort, including the order of equal keys.
     add_executable(minimap2-sort128-fuzz tests/sort128_fuzz.c)
     target_include_directories(minimap2-sort128-fuzz PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -338,6 +380,7 @@ if(BUILD_TESTING)
     endif()
     add_executable(minimap2-upstream
         ${minimap2_common_sources} "${minimap2_SOURCE_DIR}/main.c" "${minimap2_SOURCE_DIR}/index.c"
+        "${minimap2_SOURCE_DIR}/lchain.c"
         "${minimap2_SOURCE_DIR}/misc.c" "${minimap2_SOURCE_DIR}/seed.c"
         "${minimap2_SOURCE_DIR}/sketch.c" "${minimap2_SOURCE_DIR}/align.c"
         "${minimap2_SOURCE_DIR}/map.c" ${minimap2_upstream_ksw2_objects})

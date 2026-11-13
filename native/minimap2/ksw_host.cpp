@@ -1,6 +1,7 @@
 // The gap-fill offload engine (ksw_gpu.h) on any ksw_engine.h device: reads run as
 // fibers on the mapping threads and queue their fills; dispatcher threads batch them for
 // the device, and mapping threads with nothing to run compute queued fills themselves.
+#include "fiber.h"
 #include "ksw_engine.h"
 #include "ksw_gpu.h"
 
@@ -257,6 +258,7 @@ public:
     bool failed(std::string &reason) const;
 
     std::atomic<size_t> taken{0}, drains{0};
+    void finish(Read &read, size_t fills);
 
 private:
     void thread_main(Thread &thread, Fiber *fibers, int n_fibers, For &job);
@@ -266,7 +268,6 @@ private:
     bool ready(double now_s) const;
     void run_batch(std::vector<Pending> &batch, int slot);
     void fail(const std::string &reason);
-    void finish(Read &read, size_t fills);
 
     std::unique_ptr<Device> device_;
     std::atomic<bool> enabled_{false};
@@ -400,6 +401,7 @@ void Engine::thread_main(Thread &thread, Fiber *fibers, int n_fibers, For &job) 
         if (progressed || (waiting == 0 && thread.draining)) continue;
         if (waiting == 0) break;
         if (help(km, ez, exhausted)) continue;
+        if (wgse::fiber::idle_work && wgse::fiber::idle_work(exhausted)) continue;
         const double t0 = now();
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -650,6 +652,27 @@ void Engine::print_metrics() const {
 }
 
 } // namespace
+
+namespace wgse::fiber {
+
+bool (*idle_work)(bool tail) = nullptr;
+
+Read *current() {
+    return engine && engine->enabled() && current_fiber ? reinterpret_cast<Read *>(current_fiber) : nullptr;
+}
+void expect(Read *read, size_t n) {
+    reinterpret_cast<Fiber *>(read)->read.remaining.store(n, std::memory_order_relaxed);
+}
+void complete(Read *read, size_t n) { engine->finish(reinterpret_cast<Fiber *>(read)->read, n); }
+void wait(Read *read) {
+    Fiber &fiber = *reinterpret_cast<Fiber *>(read);
+    if (fiber.read.remaining.load(std::memory_order_acquire) == 0) return;
+    fiber.state = Fiber::Waiting;
+    fiber_yield(&fiber);
+}
+
+} // namespace wgse::fiber
+
 extern "C" {
 
 void wgse_ksw_tune(int fibers_per_thread, int batch_fills, int max_cost, int fail_batches) {

@@ -1,5 +1,6 @@
 // The gap-fill offload API (ksw_gpu.h) for builds without a GPU backend: every
 // fill runs on the CPU, in upstream's code, and mapping uses kt_for as upstream does.
+#include "chain_gpu.h"
 #include "ksw_gpu.h"
 
 extern "C" {
@@ -41,6 +42,19 @@ void wgse_ksw_run_read(void) {}
 int wgse_ksw_take(void *, int, const uint8_t *, int, const uint8_t *, int, int, ksw_extz_t *) {
     return 0;
 }
+
+int wgse_chain_dp_gpu(int, int, int, int, int, float, float, int, int, int64_t, const mm128_t *,
+    int32_t *, int64_t *, int32_t *) {
+    return 0;
+}
+
+int wgse_chain_gpu_start(char *reason, int reason_size) {
+    return wgse_ksw_gpu_start(reason, reason_size);
+}
+void wgse_chain_tune(int, int, int) {}
+void wgse_chain_inject_hang(const char *, double) {}
+void wgse_chain_print_metrics(void) {}
+int wgse_chain_gpu_failed(char *, int) { return 0; }
 
 void wgse_ksw_print_metrics(void) {}
 int wgse_ksw_gpu_failed(char *, int) { return 0; }

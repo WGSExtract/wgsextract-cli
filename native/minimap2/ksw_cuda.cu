@@ -2,6 +2,7 @@
 // GPU with the most free memory. Each slot (dispatcher thread) has its own stream and
 // buffers, allocated up front for the engine's largest batch: an allocation can wait for
 // the GPU's running kernels, so none happens once a batch could be waiting on a hung one.
+#include "cuda_device.h"
 #include "gpu_runtime.h"
 #include "ksw_engine.h"
 #include "ksw_fill.cuh"
@@ -20,7 +21,6 @@ namespace kk = wgse::kernels::ksw;
 namespace {
 
 constexpr unsigned block_size = 128; // four fills per block
-constexpr size_t spare_bytes = size_t(1) << 30; // left free: the GPU may be shared
 
 // Test hook (--gpu-inject-hang): the first batch hangs, once, and the watchdog gives up
 // after `hang_floor` seconds.
@@ -40,30 +40,6 @@ bool has_kernels() {
     const bool ok = WGSE_GPU(FuncGetAttributes)(&attributes, kk::ksw_fill<4, int8_t>) == WGSE_GPU_SUCCESS;
     (void)WGSE_GPU(GetLastError)();
     return ok;
-}
-
-// The usable GPU with the most free memory, or -1 with the reason.
-int choose_device(size_t &free_bytes, std::string &reason) {
-    int count = 0;
-    const wgse_gpu_error error = WGSE_GPU(GetDeviceCount)(&count);
-    if (error != WGSE_GPU_SUCCESS || count == 0) {
-        (void)WGSE_GPU(GetLastError)();
-        reason = error != WGSE_GPU_SUCCESS ? WGSE_GPU(GetErrorString)(error) : "no CUDA device";
-        return -1;
-    }
-    int best = -1;
-    free_bytes = 0;
-    for (int d = 0; d < count; ++d) {
-        size_t free = 0, total = 0;
-        if (WGSE_GPU(SetDevice)(d) != WGSE_GPU_SUCCESS || !has_kernels()
-            || WGSE_GPU(MemGetInfo)(&free, &total) != WGSE_GPU_SUCCESS) {
-            (void)WGSE_GPU(GetLastError)();
-            continue;
-        }
-        if (best < 0 || free > free_bytes) best = d, free_bytes = free;
-    }
-    if (best < 0) reason = "no CUDA device this build has kernels for";
-    return best;
 }
 
 template <int C, typename T>
@@ -92,9 +68,9 @@ public:
 
     bool probe(int slots, const Limits &limits, std::string &reason) override {
         size_t free = 0;
-        ordinal_ = choose_device(free, reason);
+        ordinal_ = wgse::cuda::choose_device(free, reason);
         if (ordinal_ < 0) return false;
-        const size_t needed = size_t(slots) * slot_bytes(limits) + spare_bytes;
+        const size_t needed = size_t(slots) * slot_bytes(limits) + wgse::cuda::spare_bytes;
         if (free < needed) {
             reason = "the GPU has " + std::to_string(free >> 20) + " MiB free, less than the "
                 + std::to_string(needed >> 20) + " MiB needed";
@@ -221,6 +197,29 @@ private:
 
 } // namespace
 
+int wgse::cuda::choose_device(size_t &free_bytes, std::string &reason) {
+    int count = 0;
+    const wgse_gpu_error error = WGSE_GPU(GetDeviceCount)(&count);
+    if (error != WGSE_GPU_SUCCESS || count == 0) {
+        (void)WGSE_GPU(GetLastError)();
+        reason = error != WGSE_GPU_SUCCESS ? WGSE_GPU(GetErrorString)(error) : "no CUDA device";
+        return -1;
+    }
+    int best = -1;
+    free_bytes = 0;
+    for (int d = 0; d < count; ++d) {
+        size_t free = 0, total = 0;
+        if (WGSE_GPU(SetDevice)(d) != WGSE_GPU_SUCCESS || !has_kernels()
+            || WGSE_GPU(MemGetInfo)(&free, &total) != WGSE_GPU_SUCCESS) {
+            (void)WGSE_GPU(GetLastError)();
+            continue;
+        }
+        if (best < 0 || free > free_bytes) best = d, free_bytes = free;
+    }
+    if (best < 0) reason = "no CUDA device this build has kernels for";
+    return best;
+}
+
 std::unique_ptr<Device> wgse::ksw::make_device() {
     return std::make_unique<CudaDevice>();
 }
@@ -230,7 +229,7 @@ extern "C" {
 int wgse_ksw_gpu_hardware_supported(void) {
     size_t free = 0;
     std::string reason;
-    return choose_device(free, reason) >= 0;
+    return wgse::cuda::choose_device(free, reason) >= 0;
 }
 
 void wgse_ksw_inject_interruptions(int) {}

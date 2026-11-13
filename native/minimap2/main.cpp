@@ -1,3 +1,4 @@
+#include "chain_gpu.h"
 #include "ksw_gpu.h"
 
 #include <cstdio>
@@ -33,7 +34,8 @@ void help(FILE *stream) {
         "Alignment is minimap2's, unchanged; SAM/PAF is written to stdout, diagnostics to stderr.\n"
         "%s (EXPERIMENTAL) runs most base-level gap fills between seeds on the GPU for\n"
         "presets with dual affine gaps, such as map-hifi, map-ont and map-pb, with identical\n"
-        "output; sr and splice presets stay on the CPU. It fails if %s is unavailable,\n"
+        "output; sr and splice presets stay on the CPU. With CUDA, it also scores chains of\n"
+        "seeds for single-end reads on the GPU. It fails if %s is unavailable,\n"
         "and exits 1 after finishing on the CPU if a GPU batch fails; --backend auto uses the\n"
         "GPU when it can and otherwise aligns on the CPU, with exit 0.\n"
         "Not qualified for clinical use.\n\n",
@@ -59,10 +61,10 @@ bool count_option(int argc, char **argv, int &index, int &value) {
 // Strips the wrapper's options, which precede minimap2's; returns -1 or an exit code.
 enum class Backend { cpu, gpu, automatic };
 
-int parse_backend_options(int &argc, char **&argv, Backend &backend) {
+int parse_backend_options(int &argc, char **&argv, Backend &backend, bool &chain) {
     int index = 1;
 #ifdef WGSE_METAL_BENCHMARK_TOOLS
-    int fibers = 0, batch = 0, max_cost = -1, fail = 0, interruptions = 0;
+    int fibers = 0, batch = 0, max_cost = -1, fail = 0, interruptions = 0, chain_batch = 0, chain_run = 0;
 #endif
     while (index < argc) {
         if (strcmp(argv[index], gpu_option) == 0) {
@@ -83,6 +85,13 @@ int parse_backend_options(int &argc, char **&argv, Backend &backend) {
             if (!count_option(argc, argv, index, fibers)) return 2;
         } else if (strcmp(argv[index], "--gpu-batch") == 0) {
             if (!count_option(argc, argv, index, batch)) return 2;
+        } else if (strcmp(argv[index], "--gpu-chain-batch") == 0) {
+            if (!count_option(argc, argv, index, chain_batch)) return 2;
+        } else if (strcmp(argv[index], "--gpu-chain-max-run") == 0) {
+            if (!count_option(argc, argv, index, chain_run)) return 2;
+        } else if (strcmp(argv[index], "--gpu-no-chain") == 0) {
+            chain = false;
+            ++index;
         } else if (strcmp(argv[index], "--gpu-max-cost") == 0) {
             if (!count_option(argc, argv, index, max_cost)) return 2;
         } else if (strcmp(argv[index], "--gpu-inject-interruptions") == 0) {
@@ -93,6 +102,7 @@ int parse_backend_options(int &argc, char **&argv, Backend &backend) {
             // as a hung GPU would; the watchdog gives up on the GPU after 2 s.
             if (index + 1 >= argc) return 2;
             wgse_ksw_inject_hang(argv[index + 1], 2);
+            wgse_chain_inject_hang(argv[index + 1], 2);
             index += 2;
         } else if (strcmp(argv[index], "--gpu-inject-failure") == 0) {
             fail = 1;
@@ -104,6 +114,7 @@ int parse_backend_options(int &argc, char **&argv, Backend &backend) {
     }
 #ifdef WGSE_METAL_BENCHMARK_TOOLS
     wgse_ksw_tune(fibers, batch, max_cost, fail);
+    wgse_chain_tune(chain_batch, chain_run, fail);
 #endif
     argv[index - 1] = argv[0];
     argv += index - 1;
@@ -150,7 +161,8 @@ int run(int argc, char **argv) {
     wgse_pg_argc = argc;
     wgse_pg_argv = command_line.data();
     Backend backend = Backend::cpu;
-    const int status = parse_backend_options(argc, argv, backend);
+    bool chain = true;
+    const int status = parse_backend_options(argc, argv, backend, chain);
     if (status >= 0) return status;
     // Upstream's stderr CMD starts with argv[0]: fold the wrapper options into it.
     std::string program = command_line[0];
@@ -169,16 +181,34 @@ int run(int argc, char **argv) {
             gpu = false;
         }
     }
+#ifndef __APPLE__
+    if (gpu && chain) {
+        char reason[256] = "";
+        if (!wgse_chain_gpu_start(reason, sizeof reason))
+            fprintf(stderr, "[wgse-minimap2] chaining stays on the CPU: %s\n", reason);
+    }
+#else
+    (void)chain;
+#endif
     int ret = wgse_minimap2_main(argc, argv);
     if (gpu) {
         wgse_ksw_print_metrics();
+        wgse_chain_print_metrics();
         char reason[256] = "";
+        bool failed = false;
         if (wgse_ksw_gpu_failed(reason, sizeof reason)) {
             fprintf(stderr, "[wgse-minimap2] %s: a GPU batch failed (%s); "
                 "its gap fills ran on the CPU, so the output is complete\n",
                 backend == Backend::gpu ? gpu_option : "--backend auto", reason);
-            if (ret == 0 && backend == Backend::gpu) ret = 1;
+            failed = true;
         }
+        if (wgse_chain_gpu_failed(reason, sizeof reason)) {
+            fprintf(stderr, "[wgse-minimap2] %s: a GPU chaining batch failed (%s); "
+                "its chains were scored on the CPU, so the output is complete\n",
+                backend == Backend::gpu ? gpu_option : "--backend auto", reason);
+            failed = true;
+        }
+        if (failed && ret == 0 && backend == Backend::gpu) ret = 1;
     }
     return ret;
 }

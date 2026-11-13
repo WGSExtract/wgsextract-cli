@@ -121,7 +121,7 @@ using PinnedBuffer = GpuBuffer<T, PinnedMemory>;
 // wait throws, and the caller finishes the work on the CPU.
 class Watchdog {
 public:
-    enum Stage { seeding, locate, rescue, extend, gap_fill, stages };
+    enum Stage { seeding, locate, rescue, extend, gap_fill, chaining, stages };
 
     explicit Watchdog(double floor_seconds = 60, double factor = 20)
         : floor_(floor_seconds), factor_(factor) {}
