@@ -74,8 +74,8 @@ def threads_param() -> Any:
 def memory_param() -> Any:
     return param(
         None,
-        doc="Memory limit per thread, e.g. '2G'; None picks a share of "
-        "this machine's RAM (default: config memory_limit, else auto).",
+        doc="Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); "
+        "None picks a share of RAM (default: config memory_limit, else auto).",
         flags=("--memory", "-m"),
         shared=True,
         config_key="memory_limit",

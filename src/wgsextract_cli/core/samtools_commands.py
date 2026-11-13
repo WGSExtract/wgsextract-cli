@@ -1,7 +1,12 @@
+import logging
+import math
 import platform
 import re
+from collections.abc import Iterable
 from os import fspath
 from pathlib import Path
+
+import psutil
 
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.paths import PathInput, append_suffix
@@ -38,6 +43,68 @@ def parse_memory(memory: str) -> tuple[float, str]:
 
 def _format_memory(amount: float, unit: str) -> str:
     return f"{amount:g}{unit}"
+
+
+_MIB = 1024**2
+# A read file decodes to at most this many bytes of records: even
+# reference-compressed CRAM with binned qualities holds fewer than 16 bases per
+# byte, and a record takes about 5.4 bytes per base.
+DECODED_BYTES_PER_INPUT_BYTE = 96
+# samtools sort mallocs all of -@ × -m when it starts, and the kernel refuses
+# an allocation beyond RAM plus swap, however few reads arrive (#781).
+SORT_RAM_FRACTION = 0.5
+# Buffers this small only hold inputs smaller than they are (samtools refuses
+# less than 1M); the RAM cap leaves larger ones on any real machine.
+_MIN_SORT_MIB = 16
+
+
+def regular_files_bytes(paths: Iterable[PathInput]) -> int | None:
+    """The total size of ``paths``, or None if one is not a regular file
+    (a URL, pipe or device reports no size)."""
+    files = [Path(path) for path in paths]
+    if not all(file.is_file() for file in files):
+        return None
+    try:
+        return sum(file.stat().st_size for file in files)
+    except OSError:
+        return None
+
+
+def sort_memory(threads: str, memory: str, *, input_bytes: int | None = None) -> str:
+    """The per-thread memory (-m) to give samtools (or sambamba) sort for a
+    ``memory`` budget: no more than ``input_bytes`` of read files can fill,
+    and with -@ × -m at most SORT_RAM_FRACTION of this computer's RAM, so the
+    sort can reserve its buffers. Never lowered below 16M; ``memory`` itself is
+    returned when it is no larger."""
+    count = max(1, int(threads))
+    amount, unit = parse_memory(memory)
+    requested = amount * (1024 if unit == "G" else 1)
+    total = int(psutil.virtual_memory().total)
+    caps = {
+        int(total * SORT_RAM_FRACTION) // count // _MIB: (
+            f"-@ × -m stays within half of this computer's "
+            f"{total / 1024**3:.1f} GiB RAM"
+        )
+    }
+    if input_bytes is not None:
+        fill = max(0, input_bytes) * DECODED_BYTES_PER_INPUT_BYTE
+        caps.setdefault(
+            math.ceil(fill / count / _MIB),
+            f"{input_bytes / 1e6:.1f} MB of reads fill at most {fill / _MIB:.0f} MiB",
+        )
+    lowest = min(caps)
+    chosen = max(lowest, _MIN_SORT_MIB)
+    if chosen >= requested:
+        return memory
+    logging.info(
+        "Lowering samtools sort memory from %s to %dM per thread (%d threads): "
+        "%s, and the sort reserves all of -@ × -m when it starts.",
+        memory,
+        chosen,
+        count,
+        caps[lowest],
+    )
+    return f"{chosen}M"
 
 
 def _use_sambamba() -> bool:

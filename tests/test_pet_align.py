@@ -68,14 +68,14 @@ def test_pet_align_calls_a_planted_snp(tmp_path, paired, fmt):
 needs_pet_tools = needs_tools("bwa", "samtools", "bcftools", "bgzip")
 
 
-def _dog(tmp_path: Path, fasta: str = "dog.fa") -> tuple[Path, Path]:
-    """A 5 kb reference and 200 single-end reads from it, rex_R1.fq."""
+def _dog(tmp_path: Path, fasta: str = "dog.fa", reads: int = 200) -> tuple[Path, Path]:
+    """A 5 kb reference and ``reads`` single-end reads from it, rex_R1.fq."""
     rng = random.Random(5)
     genome = "".join(rng.choice("ACGT") for _ in range(5_000))
     ref = write_fasta(tmp_path / fasta, {"chr1": genome})
-    reads = tmp_path / "rex_R1.fq"
-    write_read_pairs(genome, reads, tmp_path / "rex_R2.fq", range(0, 4_600, 23))
-    return ref, reads
+    starts = [i * 23 % 4_600 for i in range(reads)]
+    write_read_pairs(genome, tmp_path / "rex_R1.fq", tmp_path / "rex_R2.fq", starts)
+    return ref, tmp_path / "rex_R1.fq"
 
 
 def _programs(bam: Path) -> list[str]:
@@ -114,7 +114,9 @@ def test_bwa_mem2_aligns_when_the_reference_has_its_index(
     tmp_path, ram, memory, sort_memory
 ):
     ram(64 * 1024**3)  # bwa-mem2 is only chosen when its pipeline fits
-    ref, reads = _dog(tmp_path)
+    # Enough reads to fill 256M a thread: a sort gets no more than its reads
+    # can fill (#781, sort buffers samtools couldn't reserve).
+    ref, reads = _dog(tmp_path, reads=28_000)
     if not shutil.which("bwa-mem2"):
         pytest.skip("bwa-mem2 missing")
     run_command(["bwa-mem2", "index", str(ref)])

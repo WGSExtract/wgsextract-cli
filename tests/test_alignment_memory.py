@@ -1,15 +1,23 @@
+import json
 import random
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from tests.htslib_helpers import needs_tools, run_wgsextract, write_fasta
+from tests.htslib_helpers import (
+    needs_tools,
+    run_wgsextract,
+    write_fasta,
+    write_read_pairs,
+)
 from wgsextract_cli.core import alignment_memory, results
 from wgsextract_cli.core import resource_estimates as resources
-from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 GIB = 1024**3
+MIB = 1024**2
 ULTIMA_READS = 313_736_048
 
 
@@ -392,5 +400,85 @@ def test_tiny_minimap2_alignment_with_many_threads_does_not_warn(tmp_path, monke
         alignment_memory.check_mapping_memory(
             str(ref), "minimap2", threads="8", memory="512M", samblaster=False,
             preset="map-hifi", input_bytes=100 * 10**9,
+        )  # fmt: skip
+    assert [warning.code for warning in result.warnings] == ["alignment_memory"]
+
+
+def _align_logged(
+    tmp_path: Path, pairs: int, *options: str
+) -> tuple[list[str], int, str]:
+    """Align ``pairs`` read pairs with bwa through the CLI with a run log: the
+    samtools sort command it ran, the output's primary records and the log."""
+    from wgsextract_cli.main import main
+
+    genome = "".join(random.Random(781).choice("ACGT") for _ in range(50_000))
+    ref = write_fasta(tmp_path / "ref.fa", {"chr1": genome})
+    r1, r2 = tmp_path / "reads_R1.fastq", tmp_path / "reads_R2.fastq"
+    write_read_pairs(genome, r1, r2, [i * 7 % 49_000 for i in range(pairs)])
+    log = tmp_path / "run.log"
+    try:
+        main([
+            "align", "--r1", str(r1), "--r2", str(r2), "--ref", str(ref),
+            "--aligner", "bwa", "--native-aligners", "off",
+            "--outdir", str(tmp_path / "out"), "--log-file", str(log), *options,
+        ])  # fmt: skip
+    except SystemExit as exit:
+        assert not exit.code
+    commands = json.loads(Path(f"{log}.provenance.json").read_text())["commands"]
+    sort = next(c for c in commands if Path(c[0]).stem == "samtools" and c[1] == "sort")
+    bam = tmp_path / "out" / "reads_aligned.bam"
+    primary = run_command(
+        [get_tool_path("samtools"), "view", "-c", "-F", "0x900", str(bam)],
+        capture_output=True,
+    ).stdout
+    return sort, int(primary), log.read_text()
+
+
+@needs_tools("bwa", "samtools")
+@pytest.mark.parametrize(
+    ("pairs", "total", "reason"),
+    [(300, 4 * GIB, "MB of reads fill"), (4000, GIB // 4, "half of this computer's")],
+)
+def test_many_sort_threads_get_buffers_samtools_can_reserve(
+    tmp_path, ram, pairs, total, reason
+):
+    """#781: samtools sort mallocs all of -@ × -m when it starts, so 8 threads
+    at --memory 2G on a small machine failed with "couldn't allocate memory for
+    bam_mem" (and the aligner died of a broken pipe), however few reads it had.
+    The sort now gets no more than its reads can fill, nor half the RAM."""
+    ram(total)
+    sort, primary, log = _align_logged(
+        tmp_path, pairs, "--threads", "8", "--memory", "2G"
+    )
+    assert primary == 2 * pairs
+    threads, memory = int(sort[sort.index("-@") + 1]), sort[sort.index("-m") + 1]
+    assert memory.endswith("M") and threads * int(memory[:-1]) * MIB <= total // 2
+    assert "Lowering samtools sort memory from 2G" in log and reason in log
+
+
+@needs_tools("bwa", "samtools")
+def test_sort_memory_within_the_machine_and_input_is_passed_unchanged(tmp_path, ram):
+    """#781: only a sort budget samtools can't reserve, or its reads can't
+    fill, is lowered."""
+    ram(64 * GIB)
+    sort, primary, log = _align_logged(
+        tmp_path, 1000, "--threads", "1", "--memory", "32M"
+    )
+    assert primary == 2000
+    # contract: the user's --memory is the sort's per-thread buffer.
+    assert sort[sort.index("-m") + 1] == "32M"
+    assert "Lowering samtools sort memory" not in log
+
+
+def test_guard_counts_the_sort_buffers_samtools_reserves(tmp_path, monkeypatch):
+    """#781: the guard capped its sort estimate at what a tiny input fills, so
+    it approved 8 × 2G of sort buffers that samtools reserves up front."""
+    ref = write_fasta(tmp_path / "ref.fa", {"chr1": "ACGT" * 5_000})
+    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 8 * GIB)
+    result = results.CommandResult("align")
+    with results.collecting(result):
+        alignment_memory.check_mapping_memory(
+            str(ref), "minimap2", threads="8", memory="2G", samblaster=False,
+            preset="map-hifi", input_bytes=200_000,
         )  # fmt: skip
     assert [warning.code for warning in result.warnings] == ["alignment_memory"]

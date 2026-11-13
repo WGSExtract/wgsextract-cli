@@ -20,6 +20,7 @@ from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.read_counts import fastq_input_reads
 from wgsextract_cli.core.reference_assets import is_fasta_path, reference_genomes_dir
 from wgsextract_cli.core.results import current_result
+from wgsextract_cli.core.samtools_commands import regular_files_bytes, sort_memory
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -86,6 +87,9 @@ def run(job: PetJob) -> None:
     verify_paths_exist(paths_to_check)
 
     threads, memory = get_resource_defaults(job.threads, job.memory)
+    memory = sort_memory(
+        threads, memory, input_bytes=regular_files_bytes(paths_to_check.values())
+    )
 
     if not job.ref:
         raise UsageError(LOG_MESSAGES["ref_required"])

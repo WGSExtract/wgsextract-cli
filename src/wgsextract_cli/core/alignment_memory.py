@@ -23,7 +23,10 @@ import psutil
 from wgsextract_cli.core.paths import append_suffix
 from wgsextract_cli.core.reference_assets import read_fai_lengths
 from wgsextract_cli.core.results import warn
-from wgsextract_cli.core.samtools_commands import parse_memory
+from wgsextract_cli.core.samtools_commands import (
+    DECODED_BYTES_PER_INPUT_BYTE,
+    parse_memory,
+)
 from wgsextract_cli.core.utils import WGSExtractError
 
 _GIB = 1024**3
@@ -79,11 +82,9 @@ _MINIMAP2_INDEX_BYTES_PER_BASE = {
 # index, plus each thread's alignment buffers, which grow with read length:
 # 40k HG002 ONT reads (20 kb mean) at -t 4 peaked 4.2 GiB above the index.
 _MINIMAP2_BATCH_BYTES = 5 * _GIB // 2
-# That is about 5.4 bytes per batched base. Even reference-compressed CRAM with
-# binned qualities holds fewer than 16 bases per byte, so read files smaller
-# than about 30 MB fill one smaller batch. The same bound caps samtools sort's
-# buffers and the threads' work, which only grow as reads arrive.
-_DECODED_BYTES_PER_INPUT_BYTE = 96
+# That is about 5.4 bytes per batched base, so read files smaller than about
+# 30 MB (DECODED_BYTES_PER_INPUT_BYTE) fill one smaller batch. The same bound
+# caps the threads' work, which only grows as reads arrive.
 # gzip/BGZF stores a FASTA's bases in at least 0.2 bytes each.
 _FASTA_GZ_BASES_PER_BYTE = 5
 _MINIMAP2_THREAD_BYTES = _GIB // 2
@@ -269,7 +270,7 @@ def _minimap2_memory(
         )
     thread_work = math.ceil(threads * per_thread)
     if input_bytes is not None:
-        decoded = max(0, input_bytes) * _DECODED_BYTES_PER_INPUT_BYTE
+        decoded = max(0, input_bytes) * DECODED_BYTES_PER_INPUT_BYTE
         batch = min(batch, decoded)
         # One long read can still need a whole thread's alignment buffers.
         thread_work = min(thread_work, max(math.ceil(per_thread), decoded))
@@ -338,7 +339,9 @@ def estimate_mapping_memory(
     )
     amount, unit = parse_memory(memory)
     per_thread = amount * (1024**3 if unit == "G" else 1024**2)
-    sort = int(int(threads) * per_thread * 1.25)
+    # samtools sort reserves -@ × -m when it starts (#781).
+    reserved = int(int(threads) * per_thread)
+    sort = int(reserved * 1.25)
     input_reads = max(0, reads) if reads is not None else _H2_INPUT_READS
     if aligner == "minimap2":
         long_read = _long_read_preset(preset)
@@ -355,9 +358,10 @@ def estimate_mapping_memory(
             sort = int(int(threads) * per_thread * _LONG_READ_SORT_FACTOR)
             overhead += _LONG_READ_DECODER_BYTES
         if input_bytes is not None:
-            decoded = max(0, input_bytes) * _DECODED_BYTES_PER_INPUT_BYTE
-            # samtools sort fills its buffers only with the reads it receives.
-            sort = min(sort, decoded)
+            decoded = max(0, input_bytes) * DECODED_BYTES_PER_INPUT_BYTE
+            # samtools sort fills its buffers only with the reads it receives,
+            # beyond the buffer it reserves.
+            sort = max(reserved, min(sort, decoded))
             overhead = min(overhead, _PIPELINE_OVERHEAD_BYTES + decoded)
         if reads is None and input_bytes is not None:
             # A compressed short read takes at least 8 bytes.
