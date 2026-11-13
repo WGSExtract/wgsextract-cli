@@ -21,6 +21,8 @@ DOCS_TEST_TARGETS = (
     "tests/test_api.py::test_api_docs_are_up_to_date",
     "tests/test_api_cli_parity.py",
     "tests/test_cli_help.py",
+    # Real Git/generator checks need only the same Python deps as freshness tests.
+    "tests/test_regen.py",
     "tests/test_bump_version.py",
     "tests/test_build_mockup_previews.py",
     "tests/test_ci_changes.py",
