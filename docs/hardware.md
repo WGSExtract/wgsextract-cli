@@ -254,7 +254,8 @@ On Linux x86-64, WGS Extract's `wgse-deepvariant` 0.2.0 or later (DeepVariant
 runs call_variants on an NVIDIA GPU through CUDA, or on the CPU.
 
 - **When it runs:** with `deepvariant_native = "auto"` (the default),
-  `wgse-deepvariant` on `PATH` and `deepvariant_weights` set, `vcf deepvariant`
+  `wgse-deepvariant` installed (on `PATH`, or `pixi install -e deepvariant`) and
+  `deepvariant_weights` set, `vcf deepvariant`
   calls the WGS model with it instead of Google's image: on the CPU, or with
   `--gpu` on the GPU instead of Parabricks. Until `deepvariant_weights` is set,
   an installed build is ignored. Other models, `--checkpoint` and

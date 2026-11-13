@@ -133,7 +133,7 @@ elif sub == "run":
         [os.path.join(prefix, b) for b in bins] + [os.environ.get("PATH", "")]
     )
     exe = shutil.which(command[0], path=path)
-    if exe is None and command[0] == "python":
+    if exe is None and command[0] == "python" and state["host_python"]:
         exe = sys.executable  # the host's Python
     if exe is None:
         sys.exit(f"pixi: {{command[0]}}: command not found")
@@ -181,6 +181,7 @@ class FakePixi:
             "list_returncode": 0,
             "list_walk_limit": None,
             "run_stdout": None,
+            "host_python": True,
         }
         self._save()
         self.host_bin = root / "host-bin"
@@ -197,8 +198,8 @@ class FakePixi:
 
     def set(self, **outputs: object) -> None:
         """Replace an answer: info_stdout, list_stdout/list_returncode,
-        list_walk_limit (files under the current directory `list` can size)
-        or run_stdout."""
+        list_walk_limit (files under the current directory `list` can size),
+        run_stdout or host_python (False: the host has no `python`)."""
         self._data.update(outputs)
         self._save()
 

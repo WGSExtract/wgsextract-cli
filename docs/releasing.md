@@ -187,4 +187,6 @@ never become the latest release:
   Run workflow. It publishes the Linux x86-64 `wgse-deepvariant` conda
   packages (CUDA and CPU-only call_variants) built from `native/deepvariant/`
   by `packaging/wgse-deepvariant`, and the WGS weights, with a `SHA256SUMS`.
-  Bump `WGSE_DEEPVARIANT_VERSION` and the recipe's `version` together.
+  Bump `WGSE_DEEPVARIANT_VERSION` and the recipe's `version` together, then
+  point pixi.toml's `deepvariant` feature at the new CUDA package's URL and
+  sha256 and run `pixi lock`.

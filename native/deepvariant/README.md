@@ -153,8 +153,12 @@ F1 0.9735 against Google's 0.9833 there).
 
 ### Installing on Linux
 
-Download the `linux-deepvariant-1` prerelease into an empty directory and
-check it:
+From a checkout of this repository, `pixi install -e deepvariant` installs the
+CUDA build from `linux-deepvariant-1`, pinned by its checksum (about 3.9 GB;
+needs an NVIDIA driver for CUDA 12), and `vcf deepvariant` finds it there
+without `PATH`; download and unpack the weights as below and set
+`deepvariant_weights`. Otherwise, download the `linux-deepvariant-1`
+prerelease into an empty directory and check it:
 
 ```bash
 mkdir wgse-deepvariant && cd wgse-deepvariant

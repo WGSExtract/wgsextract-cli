@@ -22,6 +22,7 @@ from tests.fake_tools import (
     FakeDeepVariant,
     FakeDocker,
     FakeParabricks,
+    FakePixi,
     fake_nvidia_smi,
     python_tool,
     require_bare_name_fakes,
@@ -825,6 +826,40 @@ def test_gpu_calls_with_wgse_deepvariant_on_cuda_without_parabricks_719(
     assert native_inference(linux_native)["inference_backend"] == "cuda"
     calls = vcf_calls(linux_native.out / "deepvariant.vcf.gz")
     assert calls == linux_native.sample.calls
+
+
+def test_gpu_finds_wgse_deepvariant_in_its_pixi_environment_719(
+    linux_native, monkeypatch
+):
+    """`pixi install -e deepvariant` puts wgse-deepvariant in the workspace's
+    deepvariant environment, not on PATH; --gpu runs it from there."""
+    pixi = FakePixi(linux_native.tmp / "pixi", None)
+    bindir = pixi.env("deepvariant") / "bin"
+    for tool in linux_native.deepvariant.native_bin.iterdir():
+        shutil.move(tool, bindir / tool.name)
+    monkeypatch.setenv("PIXI_EXE", str(pixi.exe))
+    monkeypatch.delenv("PIXI_ENVIRONMENT_NAME", raising=False)
+    clear_tool_caches()
+    call(linux_native, "--gpu", "-r", "chr1:1-1500,chr1:1501-3000")
+    assert linux_native.docker.runs() == []
+    assert native_inference(linux_native)["inference_backend"] == "cuda"
+    calls = vcf_calls(linux_native.out / "deepvariant.vcf.gz")
+    assert calls == linux_native.sample.calls
+
+
+def test_an_unfinished_pixi_install_keeps_googles_image_719(linux_native, monkeypatch):
+    """#748 review: an interrupted `pixi install -e deepvariant` can leave the
+    binary without its libraries; only a finished install is used."""
+    pixi = FakePixi(linux_native.tmp / "pixi", None)
+    bindir = pixi.env("deepvariant", installed=False) / "bin"
+    for tool in linux_native.deepvariant.native_bin.iterdir():
+        shutil.move(tool, bindir / tool.name)
+    monkeypatch.setenv("PIXI_EXE", str(pixi.exe))
+    monkeypatch.delenv("PIXI_ENVIRONMENT_NAME", raising=False)
+    clear_tool_caches()
+    call(linux_native)
+    assert linux_native.deepvariant.runs("wgse-deepvariant call_variants") == []
+    assert linux_native.docker.runs() != []
 
 
 def test_gpu_with_deepvariant_native_off_runs_parabricks_719(

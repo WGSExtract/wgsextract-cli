@@ -14,6 +14,7 @@ from wgsextract_cli.core import runtime
 from wgsextract_cli.core.paths import absolute_path, expand_path, java_local_path
 from wgsextract_cli.core.tool_catalog import (
     JAVA_JAR,
+    PIXI_ENVS_WITHOUT_PYTHON,
     PIXI_TOOL_ENVS,
     PIXI_TOOL_PACKAGES,
     WINDOWS_PIXI_SCRIPT_LAUNCHERS,
@@ -347,7 +348,13 @@ def _host_pixi_tool_command(tool: str) -> str | None:
         else None
     )
     in_env = bool(found) or current == env
-    if not in_env:
+    if not in_env and env in PIXI_ENVS_WITHOUT_PYTHON:
+        prefix = pixi_env_prefix(env)
+        if prefix and (prefix / "conda-meta" / "pixi").is_file():
+            found = _probe_environment(
+                str(prefix), list(executable_names), runtime.is_windows_host()
+            )
+    elif not in_env:
         result = _probe_environment_with_pixi(pixi_cmd, env, list(executable_names))
         if result is None:
             return None

@@ -4,7 +4,9 @@ version = "0.8.7"
 description = "A modern, standalone Command-Line Interface for WGS Extract."
 authors = ["WGS Extract Contributors"]
 channels = ["conda-forge", "bioconda"]
-platforms = ["osx-arm64", "osx-64", "linux-64", "linux-aarch64", "win-64"]
+# linux-64-cuda (CUDA 12 required) is for the deepvariant environment only:
+# every other environment takes feature.standard-platforms instead.
+platforms = ["osx-arm64", "osx-64", "linux-64", "linux-aarch64", "win-64", { name = "linux-64-cuda", platform = "linux-64", cuda = "12" }]
 
 [dependencies]
 python = "3.13.*"
@@ -186,6 +188,20 @@ platforms = ["linux-64", "linux-aarch64", "osx-arm64"]
 
 [feature.clair3.dependencies]
 clair3 = ">=2.0.5,<3"
+
+# wgse-deepvariant (`vcf deepvariant`; native/deepvariant/README.md):
+# DeepVariant 1.10.0's WGS model without Docker, with call_variants on an
+# NVIDIA GPU for `--gpu` (CUDA 12.9) or the CPU. Opt-in environment
+# (`pixi install -e deepvariant`, about 4 GB) for Linux x86-64 with an NVIDIA
+# driver: only it takes the workspace's linux-64-cuda platform (every other
+# environment takes feature.standard-platforms). WGS Extract's build from packaging/wgse-deepvariant (workflow
+# linux_deepvariant.yml), published as linux-deepvariant-1 and pinned by URL
+# and SHA-256; its weights are a separate download (deepvariant_weights).
+[feature.deepvariant]
+platforms = ["linux-64-cuda"]
+
+[feature.deepvariant.dependencies]
+wgse-deepvariant = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/linux-deepvariant-1/wgse-deepvariant-0.2.0-linux64_cuda129_wgse_0.conda", sha256 = "31bf9d7c88d134e7ba1c90ee101e3cf72b3e966f75588008b753d5a0da9fe219" }
 
 # modkit summarizes Nanopore/PacBio base-modification (MM/ML) tags into
 # bedMethyl (`methylation pileup`). Opt-in environment (`pixi install -e modkit`);
@@ -389,32 +405,38 @@ vncdotool = ">=1.2, <2"
 # Qualify the same test runner as x64, not a newly released pytest.
 pytest = "==9.2.0"
 
+# The workspace's usual platforms: every environment but deepvariant takes
+# them, so the CUDA platform below reaches only deepvariant.
+[feature.standard-platforms]
+platforms = ["osx-arm64", "osx-64", "linux-64", "linux-aarch64", "win-64"]
+
 [environments]
-default = { features = ["bio-tools", "pysam"], solve-group = "default" }
-dev = { features = ["bio-tools", "pysam", "dev", "lint", "multiqc", "parquet", "mcp"], solve-group = "default" }
-lint = { features = ["lint"], no-default-feature = true }
-multiqc = { features = ["multiqc"], solve-group = "default" }
-parquet = { features = ["bio-tools", "pysam", "parquet"], solve-group = "default" }
-mcp = { features = ["bio-tools", "pysam", "mcp"], solve-group = "default" }
-gatk = { features = ["gatk"], no-default-feature = true }
-freebayes = { features = ["freebayes"], no-default-feature = true }
-bwa-mem3 = { features = ["bwa-mem3"], no-default-feature = true }
-t1k = { features = ["t1k"], no-default-feature = true }
-expansionhunter = { features = ["expansionhunter"], no-default-feature = true }
-longtr = { features = ["longtr"], no-default-feature = true }
-strkit = { features = ["strkit"], no-default-feature = true }
-pacbio = { features = ["bio-tools", "pacbio"], no-default-feature = true, solve-group = "pacbio-unix" }
-vep = { features = ["vep"], no-default-feature = true }
-vep-rs = { features = ["vep-rs"], no-default-feature = true }
-pharmcat = { features = ["pharmcat"], no-default-feature = true }
-cyrius = { features = ["cyrius"], no-default-feature = true }
-clair3 = { features = ["clair3"], no-default-feature = true }
-modkit = { features = ["modkit"], no-default-feature = true }
-verifybamid2 = { features = ["verifybamid2"], no-default-feature = true }
-somalier = { features = ["somalier"], no-default-feature = true }
-phasing = { features = ["phasing"], no-default-feature = true }
-smn = { features = ["smn"], no-default-feature = true }
-imputation = { features = ["imputation"], no-default-feature = true }
+default = { features = ["standard-platforms", "bio-tools", "pysam"], solve-group = "default" }
+dev = { features = ["standard-platforms", "bio-tools", "pysam", "dev", "lint", "multiqc", "parquet", "mcp"], solve-group = "default" }
+lint = { features = ["standard-platforms", "lint"], no-default-feature = true }
+multiqc = { features = ["standard-platforms", "multiqc"], solve-group = "default" }
+parquet = { features = ["standard-platforms", "bio-tools", "pysam", "parquet"], solve-group = "default" }
+mcp = { features = ["standard-platforms", "bio-tools", "pysam", "mcp"], solve-group = "default" }
+gatk = { features = ["standard-platforms", "gatk"], no-default-feature = true }
+freebayes = { features = ["standard-platforms", "freebayes"], no-default-feature = true }
+bwa-mem3 = { features = ["standard-platforms", "bwa-mem3"], no-default-feature = true }
+t1k = { features = ["standard-platforms", "t1k"], no-default-feature = true }
+expansionhunter = { features = ["standard-platforms", "expansionhunter"], no-default-feature = true }
+longtr = { features = ["standard-platforms", "longtr"], no-default-feature = true }
+strkit = { features = ["standard-platforms", "strkit"], no-default-feature = true }
+pacbio = { features = ["standard-platforms", "bio-tools", "pacbio"], no-default-feature = true, solve-group = "pacbio-unix" }
+vep = { features = ["standard-platforms", "vep"], no-default-feature = true }
+vep-rs = { features = ["standard-platforms", "vep-rs"], no-default-feature = true }
+pharmcat = { features = ["standard-platforms", "pharmcat"], no-default-feature = true }
+cyrius = { features = ["standard-platforms", "cyrius"], no-default-feature = true }
+clair3 = { features = ["standard-platforms", "clair3"], no-default-feature = true }
+deepvariant = { features = ["deepvariant"], no-default-feature = true }
+modkit = { features = ["standard-platforms", "modkit"], no-default-feature = true }
+verifybamid2 = { features = ["standard-platforms", "verifybamid2"], no-default-feature = true }
+somalier = { features = ["standard-platforms", "somalier"], no-default-feature = true }
+phasing = { features = ["standard-platforms", "phasing"], no-default-feature = true }
+smn = { features = ["standard-platforms", "smn"], no-default-feature = true }
+imputation = { features = ["standard-platforms", "imputation"], no-default-feature = true }
 
 [pypi-dependencies]
 # pysam is platform-specific (no native Windows build); see feature.pysam.
