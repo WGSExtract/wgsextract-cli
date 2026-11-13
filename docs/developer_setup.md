@@ -102,7 +102,8 @@ merge, even if Git reported no conflicts.
 
 Help-size tests gate each command's JSON (12,000 characters maximum) and the
 average (3,000), rather than a global total that every new command changes.
-The total is reported as a test property, not a gate.
+The JSON and text-index totals are reported as test properties, not gates;
+the text index's existing per-line width check still catches bloated entries.
 
 The "Start from what you have" paths in both come from `JOURNEYS` in
 `registry.py`. To retire a command, don't delete it: add it to `DEPRECATIONS`
