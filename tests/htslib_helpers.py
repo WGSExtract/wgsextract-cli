@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.prepared_data import copy_prepared, prepared_files
+from tests.prepared_data import cacheable_tool, copy_prepared, prepared_files
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import run_command
 
@@ -37,6 +37,11 @@ def write_fasta(path: Path, seqs: Mapping[str, str]) -> Path:
     content = "".join(f">{name}\n{seq}\n" for name, seq in seqs.items()).encode()
     samtools = get_tool_path("samtools")
     assert samtools is not None
+    if not cacheable_tool(samtools):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+        run_command([samtools, "faidx", str(path)])
+        return path
 
     def build(root: Path) -> None:
         fasta = root / "ref.fa"
@@ -55,6 +60,10 @@ def sam_to_bam(lines: Iterable[str], bam_path: Path) -> str:
     sam.write_text("\n".join(lines) + "\n")
     samtools = get_tool_path("samtools")
     assert samtools is not None
+    if not cacheable_tool(samtools):
+        run_command([samtools, "sort", "-o", str(bam_path), str(sam)])
+        run_command([samtools, "index", str(bam_path)])
+        return str(bam_path)
     content = sam.read_bytes()
 
     def build(root: Path) -> None:

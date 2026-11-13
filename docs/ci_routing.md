@@ -110,13 +110,17 @@ selected tier rather than a merged whole-suite percentage.
 `CLI package and benchmark smoke` runs the existing package-smoke and real-data
 smoke benchmark commands as independent parallel jobs on all three x64 OSes.
 It has the same CLI-PR routing and unconditional main/nightly coverage. Neither
-command precedes pytest anymore; neither has been removed.
+command precedes pytest anymore; neither has been removed. The failure observer
+watches direct smoke runs and compares routed PR smoke failures with that
+workflow's main run, as it does for the OS workflows.
 
 Test preparation also avoids duplicate real-tool work. Tiny FASTA/faidx and
 SAM/sorted-BAM/index inputs prepared by `tests/htslib_helpers.py` are shared
 across workers/sessions in ignored `out/test-fixtures/`, keyed by input content,
 builder source, lockfile and tool binary. Tests receive copies, never shared writable
 inputs. Locking and a completion marker prevent partially built cache hits.
+Complete entries need no lock; Pixi launch-command wrappers bypass caching and
+still prepare inputs with the real tools.
 This is a local content-addressed cache, not another Actions cache family.
 Large metadata-only stand-ins explicitly request sparse allocation on Windows;
 plain `truncate()` otherwise allocated up to 64 GiB on NTFS. Their logical sizes

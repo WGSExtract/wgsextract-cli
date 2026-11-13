@@ -1,12 +1,18 @@
 import ctypes
 import os
+import shlex
+import shutil
+import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
+from tests import htslib_helpers
 from tests.htslib_helpers import needs_htslib, sam_to_bam, write_fasta
 from tests.prepared_data import prepared_files, sparse_truncate
+from wgsextract_cli.core.file_lock import build_lock
 from wgsextract_cli.core.utils import run_command
 
 
@@ -96,3 +102,50 @@ def test_761_interrupted_fixture_repair_never_publishes_partial_inputs(tmp_path)
     recovered = prepared_files(*args)
     assert (recovered / "left").read_bytes() == b"complete"
     assert (recovered / "right").read_bytes() == b"complete"
+
+
+def test_761_complete_fixtures_remain_readable_while_a_builder_holds_the_lock(
+    tmp_path,
+):
+    def build(root: Path) -> None:
+        (root / "input").write_bytes(b"complete")
+
+    args = (str(tmp_path).encode(), sys.executable, ("input",), build)
+    root = prepared_files(*args)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with build_lock(str(root) + ".lock"):
+            result = pool.submit(prepared_files, *args).result(timeout=5)
+            assert (result / "input").read_bytes() == b"complete"
+
+
+@needs_htslib
+def test_761_fixture_tools_accept_pixi_wrapper_commands(tmp_path, monkeypatch):
+    pixi = shutil.which("pixi")
+    if pixi is None:
+        pytest.skip("Pixi needed to exercise a real tool launcher")
+    args = [
+        pixi,
+        "run",
+        "--no-install",
+        "--manifest-path",
+        str(Path(__file__).resolve().parents[1] / "pixi.toml"),
+        "-e",
+        "dev",
+        "samtools",
+    ]
+    command = subprocess.list2cmdline(args) if os.name == "nt" else shlex.join(args)
+    # OS boundary: dependency discovery can return a launch command, not a file.
+    monkeypatch.setattr(htslib_helpers, "get_tool_path", lambda _name: command)
+    fasta = write_fasta(tmp_path / "wrapped.fa", {"chr1": "ACGT"})
+    assert (
+        run_command(
+            [command, "faidx", str(fasta), "chr1:2-3"], capture_output=True
+        ).stdout
+        == ">chr1:2-3\nCG\n"
+    )
+    row = "read\t0\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII"
+    bam = sam_to_bam(["@SQ\tSN:chr1\tLN:4", row], tmp_path / "wrapped.bam")
+    assert (
+        run_command([command, "view", bam, "chr1"], capture_output=True).stdout.rstrip()
+        == row
+    )
