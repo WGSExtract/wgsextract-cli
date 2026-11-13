@@ -17,6 +17,10 @@ def _current() -> dict[str, Any]:
     return normalise_funcs(snapshot())
 
 
+def test_snapshot_cannot_silently_drop_other_branch_cases() -> None:
+    assert _current() == _GOLDEN, "CLI snapshot is stale; run 'just regen'"
+
+
 @pytest.mark.parametrize("command", sorted(_GOLDEN["commands"]))
 def test_parser_structure_unchanged(command: str) -> None:
     assert (
