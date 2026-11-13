@@ -261,8 +261,9 @@ openjdk = ">=17"
 [feature.imputation.target.unix.dependencies]
 glimpse-bio = "==2.0.1"
 
-# win-64 GLIMPSE2 URL + SHA-256 follows the first glimpse2-N release.
-# Until then Windows validates manually supplied tools, never installs them.
+# Our native Windows build; upstream Bioconda has no win-64 package.
+[feature.imputation.target.win-64.dependencies]
+glimpse-bio = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/glimpse2-1/glimpse-bio-2.0.1-win64_wgse_1.conda", sha256 = "a7a970ab79957d08a44e1eedbe3cee7f36a86078d9880a84e25bbb06d2906184" }
 
 [feature.vep]
 platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]

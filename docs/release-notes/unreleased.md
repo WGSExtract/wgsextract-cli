@@ -3,6 +3,15 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## New
 
+- Genotype imputation now works natively on **Windows x64**:
+  `pixi install -e imputation` installs GLIMPSE2 2.0.1 from our `glimpse2-1`
+  release (pinned by URL and SHA-256), Beagle and native OpenJDK.
+  `ref imputation` prepares the GRCh38 panel; `vcf impute` imputes
+  low-coverage reads or genotype-only VCFs with downstream imputed-call labels.
+  No MSYS2 or WSL is needed at runtime. GLIMPSE2 phase requires AVX2/FMA;
+  Windows ARM64, Linux ARM64 and Apple Silicon remain unsupported.
+  See [imputation.md](../imputation.md).
+
 - `score pgs` computes research-only local polygenic score sums from a VCF,
   with 11 curated PGS Catalog IDs, arbitrary IDs (with a warning), and custom
   scoring files. JSON, TSV and the manifest report missingness, licence and
