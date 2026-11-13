@@ -40,6 +40,7 @@ jobs:
         uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
           run-install: false
+          cache: false
 
       # The recipe's tests inject the library into Python, checking that malloc()
       # then returns mimalloc's blocks, and into bioconda's bcftools.

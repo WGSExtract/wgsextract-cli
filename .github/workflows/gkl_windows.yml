@@ -45,6 +45,7 @@ jobs:
         with:
           pixi-version: v0.82.0
           run-install: false
+          cache: false
       - name: Build static JNI kernels
         shell: pwsh
         env:

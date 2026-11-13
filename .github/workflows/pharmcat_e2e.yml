@@ -86,12 +86,8 @@ jobs:
           echo "$PHARMCAT_SHA256  $RUNNER_TEMP/pharmcat.tar.gz" | sha256sum -c -
           # Relative paths: Git Bash's tar reads "D:" as a remote host.
           cd "$RUNNER_TEMP" && tar -xzf pharmcat.tar.gz -C "Pharm CAT"
-      # PharmCAT fetches its GRCh38 reference (about 1 GB) on first use.
-      - name: Cache PharmCAT's reference
-        uses: ./.github/actions/download-cache
-        with:
-          path: ${{ runner.temp }}/Pharm CAT/reference.fna.bgz*
-          key: pharmcat-reference-zenodo-7288118-${{ runner.os }}
+      # Its infrequent 1 GB reference downloads must not evict the shared tool
+      # environments (separate Linux/Windows entries would consume ~2 GB).
       - name: Check tools
         run: pixi run wgsextract deps check --tool pharmcat_python
       - name: vcf pharmcat on HG002 (paths with spaces)
