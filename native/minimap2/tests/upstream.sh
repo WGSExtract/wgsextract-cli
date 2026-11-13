@@ -8,7 +8,8 @@
 # Where the build's GPU is available, so must those of --metal or --cuda (gap fills on the
 # GPU) with small batches, one or several reads per thread, most fills kept on the CPU,
 # injected Metal interruptions, an injected GPU failure, which must exit 1 after the CPU
-# redoes the failed fills (0 with --backend auto), and a hung GPU.
+# redoes the failed fills (0 with --backend auto), and a hung GPU. With --cuda, chains are
+# scored on the GPU as well, also in tiny batches, with long runs left to the CPU, and hung.
 # Usage: upstream.sh <wgse-minimap2> <minimap2-upstream> <work-dir>
 set -eu
 wgse=$1
@@ -158,6 +159,15 @@ for preset in map-hifi map-ont map-pb sr; do
         if [ "$gpu" = --metal ]; then
             metal_run "$preset" interrupted 0 --gpu-inject-interruptions 1 -t 2
             grep -Eq '[1-9][0-9]* Metal interruptions' "metal.$preset.interrupted.log"
+        fi
+        if [ "$gpu" = --cuda ]; then
+            # Chains are scored on the GPU too: in tiny batches, and with runs over 40
+            # anchors left to the CPU; a hung chaining batch is given up and redone on the CPU.
+            grep -Eq 'GPU chaining: [1-9][0-9]* reads .* [1-9][0-9]* in [1-9][0-9]* runs queued for the GPU' \
+                "metal.$preset.default.log"
+            metal_run "$preset" chain-small 0 --gpu-chain-batch 64 --gpu-chain-max-run 40 -t 3
+            metal_run "$preset" chain-hang 1 --gpu-inject-hang chain_fill -t 2
+            grep -q 'a GPU chaining batch failed (GPU watchdog: .*chain_fill' "metal.$preset.chain-hang.log"
         fi
         metal_run "$preset" failed 1 --gpu-inject-failure -t 2
         grep -q 'a GPU batch failed (injected GPU failure)' "metal.$preset.failed.log"

@@ -158,7 +158,7 @@ string(SUBSTRING "${lchain_source}" ${fill_end_at} -1 lchain_tail)
 minimap2_seam(lchain_head "#include \"krmq.h\"\n" "#include \"krmq.h\"\n#include \"chain_gpu.h\"\n")
 file(WRITE "${generated}/lchain.c" "${lchain_head}\t// fill the score and backtrack arrays
 \tif (!wgse_chain_dp_gpu(max_dist_x, max_dist_y, bw, max_skip, max_iter, chn_pen_gap, chn_pen_skip,
-\t\t\tis_cdna, n_seg, n, a, f, p, v))
+\t\t\tis_cdna, n_seg, n, a, f, p, v, t))
 \t\twgse_lchain_dp_fill(max_dist_x, max_dist_y, bw, max_skip, max_iter, chn_pen_gap, chn_pen_skip,
 \t\t\tis_cdna, n_seg, n, a, f, p, v, t);${lchain_tail}
 void wgse_lchain_dp_fill(int max_dist_x, int max_dist_y, int bw, int max_skip, int max_iter,
@@ -286,6 +286,13 @@ function(wgse_minimap2_executable name core)
     minimap2_target_settings(${core})
     target_include_directories(${core} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
     set_source_files_properties(${gpu_sources} PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Werror")
+    # The GPU's chain scores equal the CPU's float arithmetic without fused multiply-adds,
+    # as upstream's builds compute it, whatever the target (chain_fill.h).
+    set_source_files_properties("${generated}/lchain.c" PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+    if(WGSE_CUDA OR APPLE)
+        set_source_files_properties(chain_host.cpp PROPERTIES COMPILE_OPTIONS
+            "-Wall;-Wextra;-Werror;-ffp-contract=off")
+    endif()
     if(WGSE_CUDA)
         target_link_libraries(${core} PRIVATE wgse_minimap2_cuda)
     endif()

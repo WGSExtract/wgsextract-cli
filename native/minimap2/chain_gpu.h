@@ -18,18 +18,20 @@ void wgse_lchain_dp_fill(int max_dist_x, int max_dist_y, int bw, int max_skip, i
     float chn_pen_gap, float chn_pen_skip, int is_cdna, int n_seg, int64_t n, const mm128_t *a,
     int32_t *f, int64_t *p, int32_t *v, int32_t *t);
 
-// Fills f, p and v on the GPU, running other reads while it waits. Returns 0 if the
+// Fills f, p and v on the GPU, running other reads while it waits (t[] is zero, and
+// scratch). Returns 0 if the
 // GPU did not (no GPU, not a read's fiber, an unsupported job, or a failed batch).
 int wgse_chain_dp_gpu(int max_dist_x, int max_dist_y, int bw, int max_skip, int max_iter,
     float chn_pen_gap, float chn_pen_skip, int is_cdna, int n_seg, int64_t n, const mm128_t *a,
-    int32_t *f, int64_t *p, int32_t *v);
+    int32_t *f, int64_t *p, int32_t *v, int32_t *t);
 
 // Set up chaining on the GPU of wgse_ksw_gpu_start's engine (call after it succeeds).
 // Returns 0 and a reason if it is unavailable; chaining then stays on the CPU.
 int wgse_chain_gpu_start(char *reason, int reason_size);
 // Benchmark and test settings, applied by the next wgse_chain_gpu_start: anchors per
-// GPU batch, the longest run the GPU fills (0 keeps the defaults), failing every batch.
-void wgse_chain_tune(int batch_anchors, int max_gpu_run, int fail_batches);
+// GPU batch, the shortest and longest runs the GPU fills (0 keeps the defaults), and
+// failing every batch.
+void wgse_chain_tune(int batch_anchors, int min_gpu_run, int max_gpu_run, int fail_batches);
 // Tests only: withhold the first chaining batch if label is a prefix of "chain_fill",
 // as a hung GPU would, giving up on it after timeout seconds.
 void wgse_chain_inject_hang(const char *label, double timeout);

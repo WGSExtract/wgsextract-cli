@@ -1,11 +1,12 @@
-// The build's chaining device (chain_engine.h: CUDA) with chain_host.cpp's split and unpack,
-// against upstream's score fill (wgse_lchain_dp_fill, mg_lchain_dp's loop) on random reads'
-// anchors: chains along diagonals with indels, tandem repeats whose rows exit on the skip
-// count, equal positions, both strands and several sequences, gaps that split the anchors
-// into runs, and runs from one anchor to several thousand, with mg_lchain_dp's map-ont,
-// map-hifi and splice settings and random ones (small bands, skip counts and iteration caps).
-// f, p and v must be identical for every anchor. Exits 1 on any difference, and 77 (skipped)
-// without a usable GPU.
+// The build's chaining device (chain_engine.h: CUDA), with chain_host.cpp's split, unpack and
+// fast CPU fill of the runs between the GPU's (chain_fill.h's loop on the CPU), against upstream's score fill (wgse_lchain_dp_fill,
+// mg_lchain_dp's loop) on random reads' anchors: chains along diagonals with indels, tandem
+// repeats whose rows exit on the skip count, parallel copies with equal scores, equal
+// positions, both strands and several sequences, and gaps that split the anchors into runs
+// of one to several thousand anchors, any range of whose lengths goes to the GPU. Settings
+// are mg_lchain_dp's for map-ont, map-hifi and splice, and random ones (small bands, skip
+// counts and iteration caps). f, p and v must be identical for every anchor. Exits 1 on any
+// difference, and 77 (skipped) without a usable GPU.
 // Usage: chain_gpu_fuzz [BATCHES] [SEED]
 #include "chain_engine.h"
 #include "chain_gpu.h"
@@ -112,7 +113,7 @@ int main(int argc, char **argv) {
     std::vector<int32_t> t;
     for (int b = 0; b < batches; ++b) {
         const Params p = params();
-        const uint32_t max_gpu_run = rnd(4) ? 16384 : 1 + rnd(100);
+        const uint32_t min_run = rnd(3) ? 1 + rnd(100) : 1, max_run = rnd(4) ? 16384 : min_run + rnd(100);
         std::vector<Read> reads(1 + rnd(24));
         size_t anchors = 0, runs = 0, n_short = 0;
         for (Read &r : reads) {
@@ -123,7 +124,7 @@ int main(int argc, char **argv) {
             wgse_lchain_dp_fill(p.max_dist_x, p.max_dist_y, p.bw, p.max_skip, p.max_iter, p.pen_gap, p.pen_skip,
                 p.is_cdna, 1, n, r.a.data(), r.ef.data(), r.ep.data(), r.ev.data(), t.data());
             r.f.assign(n, -1), r.v.assign(n, -1), r.p.assign(n, -2);
-            if (!split(p, n, r.a.data(), max_gpu_run, r.packed, r.f.data(), r.p.data(), r.v.data())
+            if (!split(p, n, r.a.data(), min_run, max_run, r.packed)
                 || anchors + r.packed.n_anchors > cap) {
                 ++rejected;
                 r.a.clear();
@@ -153,9 +154,10 @@ int main(int argc, char **argv) {
         for (Read &r : reads) {
             if (r.a.empty()) continue;
             unpack(r.packed, batch.scores + r.offset, r.f.data(), r.p.data(), r.v.data());
-            for (size_t k = 0; k < r.packed.cpu_runs.size(); k += 2)
-                fill_cpu(p, r.a.data(), r.packed.cpu_runs[k], r.packed.cpu_runs[k + 1], r.f.data(), r.p.data(),
-                    r.v.data(), t);
+            t.assign(r.a.size(), 0);
+            for (size_t k = 0; k < r.packed.cpu.size(); k += 2)
+                fill_stretch(p, r.a.data(), r.packed.cpu[k], r.packed.cpu[k + 1], r.f.data(), r.p.data(),
+                    r.v.data(), t.data());
             for (size_t i = 0; i < r.a.size(); ++i) {
                 ++anchors_checked;
                 if (r.f[i] == r.ef[i] && r.p[i] == r.ep[i] && r.v[i] == r.ev[i]) continue;

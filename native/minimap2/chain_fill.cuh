@@ -1,98 +1,12 @@
-// mg_lchain_dp's score fill (upstream lchain.c, now wgse_lchain_dp_fill) on the GPU,
-// for chain_cuda.cu. Each run of anchors (chain_engine.h) is filled on its own: short
-// runs by one thread with upstream's loop, long ones by a warp that scores 32
-// predecessors at a time and replays the loop's order (running maximum, skip count
-// and early exit) with warp votes. Float arithmetic uses explicitly rounded operations,
-// as the CPU computes it without fused multiply-adds, so every score is identical.
+// mg_lchain_dp's score fill on the GPU, for chain_cuda.cu. Each run of anchors is filled
+// on its own: short runs by one thread with chain_fill.h's loop, long ones by a warp that
+// scores 32 predecessors at a time and replays the loop's order (running maximum, skip
+// count and early exit) with warp votes.
 #pragma once
 
-#include "chain_engine.h"
-
-#include <climits>
-#include <cstdint>
+#include "chain_fill.h"
 
 namespace wgse::kernels::chain {
-
-using wgse::chain::Anchor;
-using wgse::chain::Params;
-using wgse::chain::Run;
-using wgse::chain::Score;
-
-// mmpriv.h's mg_log2 (valid for x >= 2).
-__device__ __forceinline__ float mg_log2(float x) {
-    uint32_t i = __float_as_uint(x);
-    float log_2 = __int2float_rn((int)((i >> 23) & 255) - 128);
-    i &= ~(255u << 23);
-    i += 127u << 23;
-    const float z = __uint_as_float(i);
-    const float poly = __fsub_rn(__fmul_rn(__fadd_rn(__fmul_rn(-0.34484843f, z), 2.02466578f), z), 0.67487759f);
-    return __fadd_rn(log_2, poly);
-}
-
-// lchain.c's comput_sc for anchors of one read segment (n_seg == 1, so sidi == sidj)
-// on one reference sequence and strand (so only the low 32 bits of x differ).
-__device__ __forceinline__ int32_t comput_sc(Anchor ai, Anchor aj, const Params &p) {
-    const int32_t dq = (int32_t)(ai.y & 0xffffff) - (int32_t)(aj.y & 0xffffff);
-    if (dq <= 0 || dq > p.max_dist_x) return INT32_MIN;
-    const int32_t dr = (int32_t)(ai.x - aj.x);
-    if (dr == 0 || dq > p.max_dist_y) return INT32_MIN;
-    const int32_t dd = dr > dq ? dr - dq : dq - dr;
-    if (dd > p.bw) return INT32_MIN;
-    const int32_t dg = dr < dq ? dr : dq;
-    const int32_t q_span = (int32_t)(aj.y >> 24);
-    int32_t sc = q_span < dg ? q_span : dg;
-    if (dd || dg > q_span) {
-        const float lin_pen = __fadd_rn(__fmul_rn(p.pen_gap, __int2float_rn(dd)), __fmul_rn(p.pen_skip, __int2float_rn(dg)));
-        const float log_pen = dd >= 1 ? mg_log2(__int2float_rn(dd + 1)) : 0.0f;
-        if (p.is_cdna && dr > dq) sc -= __float2int_rz(lin_pen < log_pen ? lin_pen : log_pen);
-        else sc -= __float2int_rz(__fadd_rn(lin_pen, __fmul_rn(.5f, log_pen)));
-    }
-    return sc;
-}
-
-// a.x - b.x > max_dist_x for a[].x with equal high bits, as upstream compares it.
-__device__ __forceinline__ bool beyond(Anchor a, Anchor b, const Params &p) {
-    return (uint64_t)a.x - b.x > (uint64_t)(int64_t)p.max_dist_x;
-}
-
-__device__ __forceinline__ int32_t span(Anchor a) { return (int32_t)(a.y >> 24); }
-
-// Upstream's loop over one run, by one thread; t[] holds zeros.
-__device__ void fill_thread(const Anchor *a, Score *out, int32_t *t, int64_t n, const Params &p) {
-    int64_t st = 0, max_ii = -1;
-    for (int64_t i = 0; i < n; ++i) {
-        const Anchor ai = a[i];
-        int64_t max_j = -1, end_j, j;
-        int32_t max_f = span(ai), n_skip = 0;
-        while (st < i && (uint64_t)ai.x > (uint64_t)a[st].x + (uint64_t)(int64_t)p.max_dist_x) ++st;
-        if (i - st > p.max_iter) st = i - p.max_iter;
-        for (j = i - 1; j >= st; --j) {
-            int32_t sc = comput_sc(ai, a[j], p);
-            if (sc == INT32_MIN) continue;
-            sc += out[j].f;
-            if (sc > max_f) {
-                max_f = sc, max_j = j;
-                if (n_skip > 0) --n_skip;
-            } else if (t[j] == (int32_t)i) {
-                if (++n_skip > p.max_skip) break;
-            }
-            if (out[j].p >= 0) t[out[j].p] = (int32_t)i;
-        }
-        end_j = j;
-        if (max_ii < 0 || beyond(ai, a[max_ii], p)) {
-            int32_t max = INT32_MIN;
-            max_ii = -1;
-            for (j = i - 1; j >= st; --j)
-                if (max < out[j].f) max = out[j].f, max_ii = j;
-        }
-        if (max_ii >= 0 && max_ii < end_j) {
-            const int32_t tmp = comput_sc(ai, a[max_ii], p);
-            if (tmp != INT32_MIN && max_f < tmp + out[max_ii].f) max_f = tmp + out[max_ii].f, max_j = max_ii;
-        }
-        out[i] = {max_f, (int32_t)max_j};
-        if (max_ii < 0 || (!beyond(ai, a[max_ii], p) && out[max_ii].f < max_f)) max_ii = i;
-    }
-}
 
 // The same loop by a warp. Lane l scores predecessor j = base - l, so the lanes in
 // order are the loop's iterations; a prefix maximum over them gives each iteration's

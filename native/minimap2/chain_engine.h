@@ -57,22 +57,25 @@ public:
 std::unique_ptr<Device> make_device();
 
 // A read's anchors split into runs (chain_host.cpp): the runs for the GPU, packed, with
-// each one's first anchor in a[], and the runs longer than the GPU takes.
+// each one's first anchor in a[], and the stretches of runs between them for the CPU.
 struct Packed {
     std::vector<Anchor> anchors; // the first n_anchors are the runs'
     size_t n_anchors = 0;
     std::vector<Run> runs;
     std::vector<int64_t> starts;
-    std::vector<int64_t> cpu_runs; // start, length pairs
+    std::vector<int64_t> cpu; // start, length pairs
 };
-// Splits a[0..n) into runs, fills lone anchors' f, p and v, and packs runs of up to
-// max_gpu_run anchors; false if the GPU can't fill them.
-bool split(const Params &params, int64_t n, const mm128_t *a, uint32_t max_gpu_run, Packed &packed,
-    int32_t *f, int64_t *p, int32_t *v);
+// Splits a[0..n) into runs and packs those of min_run to max_run anchors; false if the
+// GPU can't fill them.
+bool split(const Params &params, int64_t n, const mm128_t *a, uint32_t min_run, uint32_t max_run, Packed &packed);
 // f, p and v of the packed runs from the GPU's scores.
 void unpack(const Packed &packed, const Score *scores, int32_t *f, int64_t *p, int32_t *v);
-// Upstream's fill of len anchors from start (t is scratch).
+// Upstream's fill of len anchors from start, which begins a run; t[start..start + len) is zero.
 void fill_cpu(const Params &params, const mm128_t *a, int64_t start, int64_t len, int32_t *f, int64_t *p,
-    int32_t *v, std::vector<int32_t> &t);
+    int32_t *v, int32_t *t);
+// The same, faster: lone anchors score their span, runs shorter than warp_run use
+// chain_fill.h's loop, and longer ones upstream's.
+void fill_stretch(const Params &params, const mm128_t *a, int64_t start, int64_t len, int32_t *f, int64_t *p,
+    int32_t *v, int32_t *t);
 
 } // namespace wgse::chain

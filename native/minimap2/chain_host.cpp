@@ -3,6 +3,7 @@
 // overlong runs itself and queues the rest; dispatcher threads batch them for the
 // device, and mapping threads with no read to run fill queued reads on the CPU.
 #include "chain_engine.h"
+#include "chain_fill.h"
 #include "chain_gpu.h"
 #include "fiber.h"
 
@@ -38,16 +39,17 @@ struct Job {
     const mm128_t *a = nullptr;
     int32_t *f = nullptr, *v = nullptr;
     int64_t *p = nullptr;
+    int32_t *t = nullptr; // mg_lchain_dp's, zero
     wgse::fiber::Read *read = nullptr;
     Packed packed;
     enum Outcome { queued, gpu, cpu, failed } outcome = queued;
 };
 
 // The queued runs on the CPU, as when the GPU fails or a thread helps.
-void fill_queued_cpu(const Params &params, Job &job, std::vector<int32_t> &t) {
+void fill_queued_cpu(const Params &params, Job &job) {
     const Packed &q = job.packed;
     for (size_t k = 0; k < q.runs.size(); ++k)
-        fill_cpu(params, job.a, q.starts[k], q.runs[k].n, job.f, job.p, job.v, t);
+        fill_cpu(params, job.a, q.starts[k], q.runs[k].n, job.f, job.p, job.v, job.t);
 }
 
 class Engine {
@@ -62,10 +64,9 @@ public:
     void print_metrics() const;
     bool failed(std::string &reason) const;
 
-    uint32_t max_gpu_run = 16384;
+    uint32_t min_gpu_run = 64, max_gpu_run = 16384;
     size_t max_job_anchors() const { return max_anchors_; }
-    std::atomic<size_t> jobs{0}, alone{0}, gpu_runs{0}, gpu_anchors{0}, cpu_runs{0}, cpu_anchors{0},
-        unsupported{0};
+    std::atomic<size_t> jobs{0}, anchors{0}, gpu_runs{0}, gpu_anchors{0}, unsupported{0};
     Params params{};
 
 private:
@@ -94,11 +95,12 @@ private:
 };
 
 Engine *engine = nullptr;
-int tune_batch = 0, tune_max_run = 0, tune_fail = 0;
+int tune_batch = 0, tune_min_run = 0, tune_max_run = 0, tune_fail = 0;
 bool fail_batches = false;
 
 bool Engine::start(std::string &reason) {
     if (tune_batch > 0) target_anchors_ = (size_t)tune_batch;
+    if (tune_min_run > 0) min_gpu_run = (uint32_t)tune_min_run;
     if (tune_max_run > 0) max_gpu_run = (uint32_t)tune_max_run;
     max_anchors_ = std::max(max_anchors_, target_anchors_);
     fail_batches = tune_fail != 0;
@@ -159,8 +161,7 @@ bool Engine::help(bool tail) {
         queue_.pop_back();
         queued_anchors_ -= job->packed.n_anchors;
     }
-    thread_local std::vector<int32_t> t;
-    fill_queued_cpu(params, *job, t);
+    fill_queued_cpu(params, *job);
     job->outcome = Job::cpu;
     ++helped_;
     wgse::fiber::complete(job->read, 1);
@@ -262,13 +263,11 @@ void Engine::print_metrics() const {
     const double gpu = gpu_ns_.load() * 1e-9;
     const size_t batches = batches_.load();
     fprintf(stderr, "[wgse-minimap2] GPU chaining: %zu reads (%zu on the CPU: unsupported anchors), "
-        "%zu by idle CPU threads; anchors: %zu alone, %zu in %zu runs queued for the GPU, %zu in %zu runs "
-        "over %u on the CPU; %zu batches of %.0f anchors, GPU %.2f s, batches in flight %.2f s; "
-        "%.0f MB of GPU buffers\n",
-        jobs.load(), unsupported.load(), helped_.load(), alone.load(), gpu_anchors.load(), gpu_runs.load(),
-        cpu_anchors.load(), cpu_runs.load(), max_gpu_run, batches,
-        batches ? (double)gpu_anchors.load() / batches : 0.0, gpu, busy_ns_.load() * 1e-9,
-        device_->buffer_bytes() / 1048576.0);
+        "%zu by idle CPU threads; %zu anchors, %zu in %zu runs of %u-%u queued for the GPU; %zu batches of %.0f "
+        "anchors, GPU %.2f s, batches in flight %.2f s; %.0f MB of GPU buffers\n",
+        jobs.load(), unsupported.load(), helped_.load(), anchors.load(), gpu_anchors.load(), gpu_runs.load(),
+        min_gpu_run, max_gpu_run, batches, batches ? (double)gpu_anchors.load() / batches : 0.0, gpu,
+        busy_ns_.load() * 1e-9, device_->buffer_bytes() / 1048576.0);
 }
 
 } // namespace
@@ -280,57 +279,99 @@ static int32_t span(const mm128_t &a) { return (int32_t)(a.y >> 32 & 0xff); }
 // past it, the loop's start st moves to i, and a[i] is also too far from max_ii, so
 // max_ii restarts at i too. Nothing before i then affects f, p or v from i on, so the
 // anchors split into runs, each filled as if it were the whole input (with p offset by
-// its start). A lone anchor scores its own span with no predecessor. Returns false if
-// the GPU can't take the job: anchors with query positions of 2^24 or more, several
+// its start), and so is any stretch of consecutive runs. Most runs are a few anchors,
+// cheaper to fill than to pack, but the long ones take most of the time. Returns false
+// if the GPU can't take a run: anchors with query positions of 2^24 or more, several
 // read segments, or a run that crosses reference sequences (only within max_dist_x of
 // a sequence's 2^32 end).
-bool wgse::chain::split(const Params &params, int64_t n, const mm128_t *a, uint32_t max_gpu_run, Packed &out,
-    int32_t *f, int64_t *p, int32_t *v) {
-    out.runs.clear(), out.starts.clear(), out.cpu_runs.clear();
-    if (out.anchors.size() < (size_t)n) out.anchors.resize((size_t)n);
-    Anchor *packed = out.anchors.data();
+bool wgse::chain::split(const Params &params, int64_t n, const mm128_t *a, uint32_t min_run, uint32_t max_run,
+    Packed &out) {
+    out.runs.clear(), out.starts.clear(), out.cpu.clear();
     size_t n_packed = 0;
     const uint64_t d = (uint64_t)(int64_t)params.max_dist_x;
     const uint64_t segment = a[0].y & MM_SEED_SEG_MASK;
     bool ok = true;
+    int64_t cpu_from = 0;
     for (int64_t s = 0; s < n;) {
         int64_t e = s + 1;
-        uint64_t prev = a[s].x;
-        for (; e < n; ++e) {
+        for (uint64_t prev = a[s].x; e < n; ++e) {
             const uint64_t x = a[e].x;
             if ((x >> 32 != prev >> 32 || x > prev + d) && x - prev > d) break;
-            ok &= x >> 32 == prev >> 32;
             prev = x;
         }
         const int64_t len = e - s;
-        if (len == 1) {
-            f[s] = v[s] = span(a[s]);
-            p[s] = -1;
-        } else if (len > (int64_t)max_gpu_run) {
-            out.cpu_runs.push_back(s), out.cpu_runs.push_back(len);
-        } else {
+        if (len >= (int64_t)min_run && len <= (int64_t)max_run) {
+            if (s > cpu_from) out.cpu.push_back(cpu_from), out.cpu.push_back(s - cpu_from);
+            cpu_from = e;
             out.runs.push_back({(uint32_t)n_packed, (uint32_t)len});
             out.starts.push_back(s);
+            if (out.anchors.size() < n_packed + (size_t)len) out.anchors.resize(std::max(2 * out.anchors.size(), n_packed + (size_t)len));
+            Anchor *packed = out.anchors.data() + n_packed;
+            const uint64_t high = a[s].x >> 32;
             for (int64_t i = s; i < e; ++i) {
                 const uint64_t y = a[i].y;
-                ok &= (uint32_t)y < 1u << 24 && (y & MM_SEED_SEG_MASK) == segment;
-                packed[n_packed++] = {(uint32_t)a[i].x, (uint32_t)y | (uint32_t)(y >> 32 & 0xff) << 24};
+                ok &= (uint32_t)y < 1u << 24 && (y & MM_SEED_SEG_MASK) == segment && a[i].x >> 32 == high;
+                *packed++ = {(uint32_t)a[i].x, (uint32_t)y | (uint32_t)(y >> 32 & 0xff) << 24};
             }
+            n_packed += (size_t)len;
         }
         s = e;
     }
+    if (n > cpu_from) out.cpu.push_back(cpu_from), out.cpu.push_back(n - cpu_from);
     out.n_anchors = n_packed;
     return ok;
 }
 
-// Upstream's loop over runs of a[], from start for len anchors.
-void wgse::chain::fill_cpu(const Params &params, const mm128_t *a, int64_t start, int64_t len, int32_t *f, int64_t *p,
-    int32_t *v, std::vector<int32_t> &t) {
-    t.assign((size_t)len, 0);
+void wgse::chain::fill_cpu(const Params &params, const mm128_t *a, int64_t start, int64_t len, int32_t *f,
+    int64_t *p, int32_t *v, int32_t *t) {
     wgse_lchain_dp_fill(params.max_dist_x, params.max_dist_y, params.bw, params.max_skip, params.max_iter,
-        params.pen_gap, params.pen_skip, params.is_cdna, 1, len, a + start, f + start, p + start, v + start, t.data());
-    for (int64_t i = start; i < start + len; ++i)
-        if (p[i] >= 0) p[i] += start;
+        params.pen_gap, params.pen_skip, params.is_cdna, 1, len, a + start, f + start, p + start, v + start, t + start);
+    if (start)
+        for (int64_t i = start; i < start + len; ++i)
+            if (p[i] >= 0) p[i] += start;
+}
+
+void wgse::chain::fill_stretch(const Params &params, const mm128_t *a, int64_t start, int64_t len, int32_t *f,
+    int64_t *p, int32_t *v, int32_t *t) {
+    const uint64_t d = (uint64_t)(int64_t)params.max_dist_x;
+    const int64_t end = start + len;
+    Anchor packed[warp_run];
+    Score out[warp_run];
+    int32_t marks[warp_run];
+    for (int64_t s = start; s < end;) {
+        int64_t e = s + 1;
+        for (uint64_t prev = a[s].x; e < end; ++e) {
+            const uint64_t x = a[e].x;
+            if ((x >> 32 != prev >> 32 || x > prev + d) && x - prev > d) break;
+            prev = x;
+        }
+        const int64_t n = e - s;
+        if (n == 1) {
+            f[s] = v[s] = span(a[s]);
+            p[s] = -1;
+            s = e;
+            continue;
+        }
+        bool packable = n < (int64_t)warp_run;
+        for (int64_t i = s; packable && i < e; ++i) {
+            const uint64_t y = a[i].y;
+            packable = (uint32_t)y < 1u << 24 && (y & MM_SEED_SEG_MASK) == (a[s].y & MM_SEED_SEG_MASK)
+                && a[i].x >> 32 == a[s].x >> 32;
+            packed[i - s] = {(uint32_t)a[i].x, (uint32_t)y | (uint32_t)(y >> 32 & 0xff) << 24};
+        }
+        if (!packable) {
+            fill_cpu(params, a, s, n, f, p, v, t);
+        } else {
+            memset(marks, 0, (size_t)n * sizeof marks[0]);
+            wgse::kernels::chain::fill_thread(packed, out, marks, n, params);
+            for (int64_t i = 0; i < n; ++i) {
+                const int64_t j = out[i].p < 0 ? -1 : s + out[i].p;
+                f[s + i] = out[i].f, p[s + i] = j;
+                v[s + i] = j >= 0 && v[j] > out[i].f ? v[j] : out[i].f;
+            }
+        }
+        s = e;
+    }
 }
 
 // The GPU's f and p, and v as upstream derives it: the peak score up to each anchor.
@@ -355,8 +396,8 @@ extern "C" void wgse_chain_inject_hang(const char *, double) {}
 
 extern "C" {
 
-void wgse_chain_tune(int batch_anchors, int max_gpu_run, int fail_batches) {
-    tune_batch = batch_anchors, tune_max_run = max_gpu_run, tune_fail = fail_batches;
+void wgse_chain_tune(int batch_anchors, int min_gpu_run, int max_gpu_run, int fail_batches) {
+    tune_batch = batch_anchors, tune_min_run = min_gpu_run, tune_max_run = max_gpu_run, tune_fail = fail_batches;
 }
 
 int wgse_chain_gpu_start(char *reason, int reason_size) {
@@ -370,39 +411,37 @@ int wgse_chain_gpu_start(char *reason, int reason_size) {
 }
 
 int wgse_chain_dp_gpu(int max_dist_x, int max_dist_y, int bw, int max_skip, int max_iter, float chn_pen_gap,
-    float chn_pen_skip, int is_cdna, int n_seg, int64_t n, const mm128_t *a, int32_t *f, int64_t *p,
-    int32_t *v) {
-    if (!engine || !engine->enabled() || n_seg != 1 || n < 2 || max_dist_x < 0 || max_iter < 0) return 0;
+    float chn_pen_skip, int is_cdna, int n_seg, int64_t n, const mm128_t *a, int32_t *f, int64_t *p, int32_t *v,
+    int32_t *t) {
+    if (!engine || !engine->enabled() || n_seg != 1 || max_dist_x < 0 || max_iter < 0)
+        return 0;
     wgse::fiber::Read *read = wgse::fiber::current();
     if (!read) return 0;
     const Params params{max_dist_x, max_dist_y, bw, max_skip, max_iter, is_cdna, chn_pen_gap, chn_pen_skip};
     if (!engine->accepts(params)) return 0;
-    ++engine->jobs;
     Job *job = engine->acquire();
-    job->a = a, job->f = f, job->p = p, job->v = v, job->read = read;
-    if (!split(params, n, a, engine->max_gpu_run, job->packed, f, p, v) || job->packed.n_anchors > engine->max_job_anchors()) {
+    Packed &packed = job->packed;
+    const bool ok = split(params, n, a, engine->min_gpu_run, engine->max_gpu_run, packed);
+    if (!ok || packed.n_anchors > engine->max_job_anchors()) {
         ++engine->unsupported;
         engine->release(job);
         return 0;
     }
-    size_t cpu = 0;
-    for (size_t k = 1; k < job->packed.cpu_runs.size(); k += 2) cpu += (size_t)job->packed.cpu_runs[k];
-    engine->alone += (size_t)n - job->packed.n_anchors - cpu;
-    engine->gpu_anchors += job->packed.n_anchors, engine->gpu_runs += job->packed.runs.size();
-    engine->cpu_anchors += cpu, engine->cpu_runs += job->packed.cpu_runs.size() / 2;
-    const bool queued = !job->packed.runs.empty();
-    if (queued) {
-        wgse::fiber::expect(read, 1);
-        engine->submit(job);
+    if (packed.runs.empty()) {
+        fill_stretch(engine->params, a, 0, n, f, p, v, t);
+        engine->release(job);
+        return 1;
     }
-    // Long runs on this thread, while the GPU fills the rest.
-    thread_local std::vector<int32_t> t;
-    for (size_t k = 0; k < job->packed.cpu_runs.size(); k += 2)
-        fill_cpu(engine->params, a, job->packed.cpu_runs[k], job->packed.cpu_runs[k + 1], f, p, v, t);
-    if (queued) {
-        wgse::fiber::wait(read);
-        if (job->outcome == Job::failed) fill_queued_cpu(engine->params, *job, t);
-    }
+    ++engine->jobs;
+    engine->anchors += (size_t)n, engine->gpu_anchors += packed.n_anchors, engine->gpu_runs += packed.runs.size();
+    job->a = a, job->f = f, job->p = p, job->v = v, job->t = t, job->read = read;
+    wgse::fiber::expect(read, 1);
+    engine->submit(job);
+    // The other runs on this thread, while the GPU fills these.
+    for (size_t k = 0; k < packed.cpu.size(); k += 2)
+        fill_stretch(engine->params, a, packed.cpu[k], packed.cpu[k + 1], f, p, v, t);
+    wgse::fiber::wait(read);
+    if (job->outcome == Job::failed) fill_queued_cpu(engine->params, *job);
     engine->release(job);
     return 1;
 }

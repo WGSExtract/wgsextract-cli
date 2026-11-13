@@ -64,7 +64,7 @@ enum class Backend { cpu, gpu, automatic };
 int parse_backend_options(int &argc, char **&argv, Backend &backend, bool &chain) {
     int index = 1;
 #ifdef WGSE_METAL_BENCHMARK_TOOLS
-    int fibers = 0, batch = 0, max_cost = -1, fail = 0, interruptions = 0, chain_batch = 0, chain_run = 0;
+    int fibers = 0, batch = 0, max_cost = -1, fail = 0, interruptions = 0, chain_batch = 0, chain_min_run = 0, chain_run = 0;
 #endif
     while (index < argc) {
         if (strcmp(argv[index], gpu_option) == 0) {
@@ -87,6 +87,8 @@ int parse_backend_options(int &argc, char **&argv, Backend &backend, bool &chain
             if (!count_option(argc, argv, index, batch)) return 2;
         } else if (strcmp(argv[index], "--gpu-chain-batch") == 0) {
             if (!count_option(argc, argv, index, chain_batch)) return 2;
+        } else if (strcmp(argv[index], "--gpu-chain-min-run") == 0) {
+            if (!count_option(argc, argv, index, chain_min_run)) return 2;
         } else if (strcmp(argv[index], "--gpu-chain-max-run") == 0) {
             if (!count_option(argc, argv, index, chain_run)) return 2;
         } else if (strcmp(argv[index], "--gpu-no-chain") == 0) {
@@ -114,7 +116,7 @@ int parse_backend_options(int &argc, char **&argv, Backend &backend, bool &chain
     }
 #ifdef WGSE_METAL_BENCHMARK_TOOLS
     wgse_ksw_tune(fibers, batch, max_cost, fail);
-    wgse_chain_tune(chain_batch, chain_run, fail);
+    wgse_chain_tune(chain_batch, chain_min_run, chain_run, fail);
 #endif
     argv[index - 1] = argv[0];
     argv += index - 1;
