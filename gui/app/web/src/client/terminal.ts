@@ -18,10 +18,16 @@ function activeTerminalEntry(): TerminalEntry | undefined {
     const tabs = terminalTabs();
     return tabs[state.activeTerminalIndex] ?? tabs[0];
 }
-/** The pane always shows its row of job tabs; collapsing it hides only the output below them. */
+/**
+ * The pane shows its row of job tabs, collapsed or not; collapsing hides only the output below them. While
+ * the Jobs list itself is showing, its rows already hold those tabs, so the row shows only Jobs.
+ */
 export function renderTerminalPane() {
     const tabs = terminalTabs();
     const entry = activeTerminalEntry();
+    const jobTabs = state.isTerminalVisible && entry?.kind === "main"
+        ? []
+        : tabs.map((tab, index) => ({ tab, index })).slice(1).reverse();
     const copyLabel = state.labels.terminalCopyTextLabel ?? "Copy terminal text";
     const textDirection = terminalTextDirection();
     // Collapsed, only the tab row shows: skip building output that can run to a million characters.
@@ -35,7 +41,7 @@ export function renderTerminalPane() {
         <div class="terminal-tabs">
           ${tabs[0] ? renderTerminalTab(tabs[0], 0) : ""}
           <div class="terminal-job-tabs">
-            ${tabs.map((tab, index) => ({ tab, index })).slice(1).reverse().map(({ tab, index }) => renderTerminalTab(tab, index)).join("")}
+            ${jobTabs.map(({ tab, index }) => renderTerminalTab(tab, index)).join("")}
           </div>
         </div>
         <button type="button" class="terminal-icon-button" data-terminal-copy title="${escapeAttribute(copyLabel)}" aria-label="${escapeAttribute(copyLabel)}">

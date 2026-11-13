@@ -101,6 +101,27 @@ test("job tabs keep the newest next to the pane buttons, and a job opened from t
   assert.equal(state.terminalEntries[state.activeTerminalIndex].title, "First");
 });
 
+test("while the Jobs list shows, the tab row holds only Jobs; collapsed or on another tab it shows the job tabs", async () => {
+  // User request: the Jobs list's rows repeat the job tabs, so showing both looked duplicated.
+  const { state, renderTerminalPane, appendTerminal } = await clientView();
+  appendTerminal("command", "First");
+  appendTerminal("command", "Second");
+  const titles = () => [...renderTerminalPane().match(/<div class="terminal-job-tabs">([\s\S]*?)<\/div>/)[1].matchAll(/<span>([^<]+)<\/span>/g)].map(([, title]) => title);
+
+  state.activeTerminalIndex = 0;
+  state.isTerminalVisible = true;
+  assert.deepEqual(titles(), []);
+  assert.match(renderTerminalPane(), /<div class="terminal-tabs">\s*<span class="terminal-tab-wrap active main/);
+  assert.match(renderTerminalPane(), /class="jobs-table"[\s\S]*First/);
+
+  state.isTerminalVisible = false;
+  assert.deepEqual(titles(), ["Second", "First"]);
+
+  state.isTerminalVisible = true;
+  state.activeTerminalIndex = 1;
+  assert.deepEqual(titles(), ["Second", "First"]);
+});
+
 test("an action without a disk estimate shows no empty precheck banner", async () => {
   // UI audit: Extract's Realign showed a blank blue box when the server had no disk estimate for the chosen BAM.
   const { state, renderActions } = await clientView();
