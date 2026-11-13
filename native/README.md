@@ -29,9 +29,11 @@ printed by `--version`.
 
 ## Installing
 
-The `macos-aligners-16` (Apple Silicon) and `linux-aligners-3` (Linux x86-64
-and ARM64) prereleases have `wgse-bwa` 0.12.1; `linux-aligners-3` also has
-`wgse-bwa-mem3` 0.4.0 and `wgse-minimap2` 0.4.0 for Linux x86-64. The steps below install the
+The `macos-aligners-17` (Apple Silicon) prerelease has `wgse-bwa` 0.13.0,
+`wgse-bwa-mem2` 0.5.3, `wgse-bwa-mem3` 0.4.0 and `wgse-minimap2` 0.4.0.
+The `linux-aligners-3` (Linux x86-64 and ARM64) prerelease has `wgse-bwa`
+0.12.1, plus `wgse-bwa-mem3` 0.4.0 and `wgse-minimap2` 0.4.0 for Linux
+x86-64. The steps below install the
 Apple Silicon executables; on Linux, see
 [Linux x86-64 and NVIDIA GPUs](#linux-x86-64-and-nvidia-gpus-cuda). Earlier published `wgse-bwa`
 executables, 0.11.0 and 0.12.0, advertise dense suffix-array support but reject
@@ -43,6 +45,11 @@ read it automatically and cannot honor the run's opt-in setting. Upgrade to
 The 0.13.0 optimizations described below require a build from this revision
 until an updated prerelease is published.
 
+The `macos-aligners-17` prerelease speeds up `wgse-bwa` CPU alignment with
+exact mate-rescue window pruning, compact-key region sorting and NEON
+whole-block occurrence counting. `wgse-bwa-mem2` shares the sorting change.
+All four retain experimental Metal support and their previous alignment
+outputs, including `wgse-bwa-mem3`'s GPU seed-failure exit fix from 0.3.1.
 The `macos-aligners-16` prerelease has `wgse-bwa` 0.12.1, which parses
 `--dense-sa on|off` in release builds, with the same `wgse-bwa-mem2` 0.5.2 and
 `wgse-minimap2` 0.3.0 as `macos-aligners-15`, and `wgse-bwa-mem3` 0.3.1, whose
@@ -93,8 +100,8 @@ publishes for each release asset:
 
 ```bash
 mkdir wgse-aligners && cd wgse-aligners
-gh release download macos-aligners-16 -R WGSExtract/wgsextract-cli
-gh release view macos-aligners-16 -R WGSExtract/wgsextract-cli --json assets \
+gh release download macos-aligners-17 -R WGSExtract/wgsextract-cli
+gh release view macos-aligners-17 -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
   shasum -a 256 -c
 ```
