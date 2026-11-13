@@ -5,8 +5,8 @@
  * is solved as a max-plus prefix scan; the band, the first column, the row's
  * maximum and the last column reaching it, and z-drop are upstream's code.
  * Calls whose scores could exceed 16 bits use upstream's code. On x86-64 the
- * same code runs on SSE2 (neon.h). */
-#include "neon.h"
+ * same code runs on SSE2 (wgse_neon.h). */
+#include "wgse_neon.h"
 
 /* Whether every H, E, F and M of the call fits int16 with room for the scan. */
 int wgse_extend_fits(int qlen, int m, const int8_t *mat, int o_del, int e_del,

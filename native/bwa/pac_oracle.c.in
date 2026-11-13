@@ -1,7 +1,7 @@
 
 /* bns_get_seq()'s unpacking loops, a byte of four bases at a time:
  * seq[i] = _get_pac(pac, beg + i) for beg <= beg + i < end. */
-#include "neon.h"
+#include "wgse_neon.h"
 
 void wgse_unpack_pac(const uint8_t *pac, int64_t beg, int64_t end, uint8_t *seq)
 {

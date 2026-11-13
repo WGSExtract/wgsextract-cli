@@ -225,9 +225,9 @@ instructions on the small tier, 0.14.0). `wgse-bwa-mem2` 0.5.3 also includes the
 shared compact-key region sort; the published 0.5.2 binaries are unchanged.
 
 From 0.14.0, on x86-64, the CPU backend also extends seeds with the NEON
-`ksw_extend2` and unpacks reference bases with the NEON loops: `bwa/neon.h`
-gives the NEON operations they use in SSE2, which every x86-64 CPU has, with
-NEON's exact lane results, so one source serves both. The extension is also
+`ksw_extend2` and unpacks reference bases with the NEON loops:
+`bwa/wgse_neon.h` gives the NEON operations they use in SSE2, which every
+x86-64 CPU has, with NEON's exact lane results, so one source serves both. The extension is also
 compiled for AVX2, and CPUs that have it run that copy (picked once, at load).
 Their records are upstream's; `--cpu-upstream` runs upstream's code. The NEON
 occurrence counts were also tried on x86-64, in SSE2 and with POPCNT, and took
