@@ -74,8 +74,27 @@ def test_757_install_lab_label_does_not_repeat_the_cli_matrix() -> None:
         "native": "false",
         "site": "false",
         "install": "true",
+        "fast": "false",
         "python_files": "[]",
     }
+
+
+@pytest.mark.parametrize(
+    "paths",
+    [["src/wgsextract_cli/main.py"], ["pixi.lock"], ["AGENTS.md"], ["unknown/path"]],
+)
+def test_763_drafts_defer_heavy_checks_until_ready(paths: list[str]) -> None:
+    assert {key for key, value in routes(paths, draft=True).items() if value} == {
+        "fast"
+    }
+    ready = routes(paths)
+    assert not ready["fast"]
+    assert ready["cli"] or ready["docs"]
+
+
+def test_763_install_override_cannot_start_heavy_checks_on_a_draft() -> None:
+    assert not routes(["install.sh"], draft=True, force_install_lab=True)["install"]
+    assert not any(routes([], draft=True, force_install_lab=True).values())
 
 
 @pytest.mark.parametrize(
@@ -158,7 +177,10 @@ def test_757_deleted_directory_inputs_still_run_their_readers(tmp_path: Path) ->
     assert routes(["gui/site_src/deleted.md"], repository=tmp_path)["cli"]
 
 
-def test_757_diff_routes_both_sides_of_a_cross_area_rename(tmp_path: Path) -> None:
+@pytest.mark.parametrize("draft", [False, True])
+def test_757_diff_routes_both_sides_of_a_cross_area_rename(
+    tmp_path: Path, draft: bool
+) -> None:
     def git(*args: str) -> str:
         return subprocess.check_output(
             ["git", "-C", str(tmp_path), *args], text=True
@@ -176,12 +198,22 @@ def test_757_diff_routes_both_sides_of_a_cross_area_rename(tmp_path: Path) -> No
     git("commit", "--quiet", "-m", "move")
     script = Path(__file__).resolve().parents[1] / "scripts" / "ci_changes.py"
     output = subprocess.check_output(
-        [sys.executable, str(script), "--base", base, "--head", "HEAD"],
+        [
+            sys.executable,
+            str(script),
+            "--base",
+            base,
+            "--head",
+            "HEAD",
+            *(["--draft"] if draft else []),
+        ],
         cwd=tmp_path,
         text=True,
     )
-    assert "cli=true" in output
-    assert "native=true" in output
+    selected = dict(line.split("=", 1) for line in output.splitlines())
+    assert selected["fast"] == str(draft).lower()
+    assert selected["cli"] == str(not draft).lower()
+    assert selected["native"] == str(not draft).lower()
 
 
 @pytest.mark.parametrize(

@@ -37,7 +37,7 @@ The loop is intentionally conservative. Prefer stopping and reporting over guess
    - Prefer a descriptive branch name derived from the change.
    - Preserve the working tree changes on that new branch.
    - Stage and commit the intended PR changes on that branch using the identity from Step 2.
-   - Push the new branch, then create a PR with `gh pr create`.
+   - Push the new branch, then create a PR with `gh pr create --draft`.
    - After the PR exists, continue the normal discovery flow against that PR.
 4. Identify the PR and repository:
    - If the user gave a PR URL, use `gh pr view <url> --json ...`.
@@ -54,6 +54,16 @@ The loop is intentionally conservative. Prefer stopping and reporting over guess
    - Build a comprehensive local test command set covering formatting, linting, typecheck, unit tests, integration tests, and build when available.
 
 ## Review Comment Policy
+
+Before marking ready, obtain an independent local review, fix its findings,
+run `pixi run lint` and relevant tests/type checks, and self-review against
+AGENTS.md. Readiness starts Copilot review and area-selected full CI.
+Ruleset `15885247` excludes drafts and push re-reviews (checked 2026-11-13);
+request another review explicitly when needed, without changing settings.
+
+Collect all open threads before editing and push one locally verified batch
+per review round. Notify the responsible agent on new threads; handle them
+within one hour or explicitly hand off. Never push once per thread.
 
 Classify every unresolved PR thread and actionable review comment.
 
@@ -163,9 +173,17 @@ Repeat until complete or blocked:
 2. If new failing CI exists, diagnose, fix, test, commit, push, and wait.
 3. If new actionable review feedback exists, fix or refuse with `(AI): Reason: ...`, commit, push if changed, and resolve handled threads.
 4. If changes were pushed, wait for new CI results before merging.
-5. If CI is pending, wait and poll at a reasonable interval. Avoid tight loops.
+5. If CI is pending, hand the wait to a background shell (`gh run watch RUN --exit-status`) and resume on its completion notification, not repeated model-side status reads. For review/result-file waits, use a cheap shell watcher that notifies on actionable changes.
 6. If PR state changes while you are working, re-read state before resolving threads or merging.
 7. Continue until no failing/pending required checks, no unresolved material threads, no unhandled requested changes, and no new review comments remain.
+
+Keep at most two active implementers per machine. Implementers report after
+pushing; supervisors own CI/review watchers and launch fresh, scoped agents
+only for actionable fixes. Before retiring or transferring a wait, write
+`out/<issue>/handoff.md` (state, commits, evidence, next action, watcher/lease
+ownership) and obtain the supervisor's adoption acknowledgement. Keep attached
+watchers owned until then. Don't reuse agents for unrelated tasks, paste large
+histories into prompts, or broadcast to idle agents.
 
 Treat these as serious blockers and stop with a clear report:
 
