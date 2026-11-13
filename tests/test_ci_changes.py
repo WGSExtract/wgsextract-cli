@@ -49,6 +49,30 @@ def test_757_label_forces_install_lab_on_a_docs_pr() -> None:
     assert routes(["README.md"], force_install_lab=True)["install"]
 
 
+def test_757_install_lab_label_does_not_repeat_the_cli_matrix() -> None:
+    script = Path(__file__).resolve().parents[1] / "scripts" / "ci_changes.py"
+    output = subprocess.check_output(
+        [
+            sys.executable,
+            str(script),
+            "--base",
+            "HEAD",
+            "--head",
+            "HEAD",
+            "--label-event",
+            "--force-install-lab",
+        ],
+        text=True,
+    )
+    assert dict(line.split("=") for line in output.splitlines()) == {
+        "cli": "false",
+        "docs": "false",
+        "native": "false",
+        "site": "false",
+        "install": "true",
+    }
+
+
 def test_757_diff_routes_both_sides_of_a_cross_area_rename(tmp_path: Path) -> None:
     def git(*args: str) -> str:
         return subprocess.check_output(

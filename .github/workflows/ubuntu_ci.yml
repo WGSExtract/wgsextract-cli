@@ -1,6 +1,6 @@
 name: CI Ubuntu
 
-# The desktop app (gui/) has its own CI (gui-*.yml); app-only changes skip this.
+# pr_ci.yml selects PRs; main pushes and nightly runs retain the full matrix.
 on:
   push:
     branches: [ main ]
@@ -98,6 +98,7 @@ jobs:
           path: reference/hg19ToHg38.over.chain.gz
           key: ucsc-hg19ToHg38-v2-${{ steps.chain.outputs.sha256 }}
       - name: Cache public hs38 reference
+        id: reference-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: reference/genomes
@@ -107,7 +108,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: pixi run python -m wgsextract_cli.main ref library --install hs38 --ref reference
       - name: Seed the shared hs38 reference on main
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && steps.reference-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: reference/genomes

@@ -1,6 +1,6 @@
 name: CI macOS
 
-# The desktop app (gui/) has its own CI (gui-*.yml); app-only changes skip this.
+# pr_ci.yml selects PRs; main pushes and nightly runs retain the full matrix.
 on:
   push:
     branches: [ main ]

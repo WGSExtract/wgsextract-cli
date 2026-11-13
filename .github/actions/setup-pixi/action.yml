@@ -20,7 +20,12 @@ runs:
         SCOPE: ${{ inputs.scope }}
         LOCK_HASH: ${{ hashFiles('pixi.lock') }}
       run: |
-        workspace_hash=$(printf '%s' "$GITHUB_WORKSPACE" | sha256sum | cut -d' ' -f1)
+        if command -v sha256sum >/dev/null 2>&1; then
+          hash=(sha256sum)
+        else
+          hash=(shasum -a 256)
+        fi
+        workspace_hash=$(printf '%s' "$GITHUB_WORKSPACE" | "${hash[@]}" | cut -d' ' -f1)
         echo "key=pixi-v2-${RUNNER_OS}-${RUNNER_ARCH}-v0.82.0-${SCOPE}-${LOCK_HASH}-${workspace_hash}" >> "$GITHUB_OUTPUT"
     - name: Restore shared environment
       id: restore
