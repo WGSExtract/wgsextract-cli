@@ -4,8 +4,16 @@
 from __future__ import annotations
 
 import argparse
+import fnmatch
+import json
 import subprocess
+import sys
 from pathlib import Path
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.ci_test_dependencies import DOCS_TEST_MODULES, ROOT, test_inputs  # noqa: E402
 
 SITE_PREFIXES = ("site/", "site_src/", "gui/site_src/", "gui/mockups/")
 SITE_SCRIPTS = (
@@ -15,13 +23,6 @@ SITE_SCRIPTS = (
     "gui/scripts/build_site.py",
     "gui/scripts/validate_site_sources.py",
 )
-SHARED_GUI_FILES = {
-    "gui/scripts/bump-wgsextract-cli.py",
-    "gui/examples/WGSExtract/scripts/wgsextract-release-tag.txt",
-    "gui/examples/WGSExtract/manifest.json",
-    "gui/app/tests/conformance.test.mjs",
-    "gui/tools/packaging/tests/test_embedded_branding.py",
-}
 INSTALL_PREFIXES = (
     ".github/actions/",
     "packaging/",
@@ -48,11 +49,30 @@ INSTALL_FILES = {
 }
 
 
-def routes(paths: list[str], *, force_install_lab: bool = False) -> dict[str, bool]:
+def routes(
+    paths: list[str],
+    *,
+    force_install_lab: bool = False,
+    repository: Path = ROOT,
+) -> dict[str, bool]:
     result = dict.fromkeys(("cli", "docs", "native", "site", "install"), False)
     result["install"] = force_install_lab
     for path in paths:
-        # Site Markdown belongs to Pages, not the generated CLI documentation.
+        readers = set().union(
+            *(
+                modules
+                for pattern, modules in test_inputs(repository).items()
+                if path == pattern or fnmatch.fnmatchcase(path, pattern)
+            )
+        )
+        # Test inputs must be considered before broad site/prose/native skips.
+        if readers:
+            result["docs"] = True
+            if not readers <= DOCS_TEST_MODULES:
+                result["cli"] = True
+        if path.endswith(".py"):
+            result["cli"] = True
+            result["docs"] = True
         if (
             path.startswith(SITE_PREFIXES)
             or path in SITE_SCRIPTS
@@ -68,7 +88,7 @@ def routes(paths: list[str], *, force_install_lab: bool = False) -> dict[str, bo
             continue
         if path.startswith(INSTALL_PREFIXES) or path in INSTALL_FILES:
             result["install"] = True
-        if path.startswith("gui/") and path not in SHARED_GUI_FILES:
+        if path.startswith("gui/"):
             continue
         if path.startswith(".github/workflows/gui-"):
             continue
@@ -104,6 +124,13 @@ def main() -> None:
     paths = changed.decode().rstrip("\0").split("\0") if changed else []
     selected = routes(paths, force_install_lab=args.force_install_lab)
     output = "".join(f"{key}={str(value).lower()}\n" for key, value in selected.items())
+    output += (
+        "python_files="
+        + json.dumps(
+            [path for path in paths if path.endswith(".py") and Path(path).is_file()]
+        )
+        + "\n"
+    )
     print(output, end="")
     if args.output:
         with args.output.open("a", encoding="utf-8") as stream:

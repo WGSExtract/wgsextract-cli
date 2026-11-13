@@ -4,13 +4,23 @@ PR area checks diffs the PR's **base...head**, not just the latest commit.
 `--no-renames` includes deletions and both sides of moves. Unknown paths run
 the full CLI matrix; mixed PRs run the union of their areas.
 
+Test dependencies take precedence over area exclusions. The router scans the
+root test suite's imports, path literals, composed pathlib paths and directory
+globs without executing tests. Inputs read only by the lightweight docs modules
+select that pytest job; other referenced inputs select the full CLI matrix.
+The map is deliberately conservative, including some fixture-data literals.
+Every Python change, including native and GUI/site Python, selects CLI pytest
+and explicit changed-file lint. CLI Python retains root Ruff/format rules and
+the existing strict CLI mypy gate; GUI Python retains its own compile gate and
+adds fatal-error Ruff checks without imposing unrelated root formatting.
+
 | PR changes | Checks selected (in addition to routing and the secret scan) | Estimated runner-minutes/push |
 |---|---|---|
 | Markdown, including `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, native READMEs | Documentation freshness | 1–3 (previously ~125) |
 | CLI source/tests | Four-OS CLI matrix, docs, CodeQL | ~90–100 (previously ~125) |
 | Installer, packaging, Pixi lock/manifest, CLI entry points | Above plus Install Lab and applicable package checks | ~125; no intended coverage reduction |
 | Native source only | Native build/ctest/package workflows and CLI help smoke | Native build cost + <1; removes ~125 of unrelated checks |
-| Site sources or `gui/mockups/` only | Pages source checks | 1–2 (previously ~125 for root site changes) |
+| Site sources or `gui/mockups/` only | Pages checks plus pytest for referenced inputs | Usually 1–3; Python/other CLI test inputs select the matrix |
 | App source | Existing GUI checks; app packaging also selects Install Lab | Depends on the app area |
 
 These are estimates from the pre-routing workflow medians, not billing claims.
@@ -28,7 +38,16 @@ tools. It runs:
 - `tests/test_api_cli_parity.py` (the CLI structure/help snapshot);
 - `tests/test_cli_help.py` (`docs/commands.md`, generated site cards and help
   topics/examples);
+- `tests/test_bump_version.py` (CLI/app site sources, version/distribution docs);
+- `tests/test_build_mockup_previews.py` (static branch preview publishing);
+- routing/action-policy tests, including a meta-gate that every test-referenced
+  input selects pytest and every light-only input's readers run in that job;
 - `scripts/validate_site_sources.py` (existing source/front-matter validation).
+
+`DOCS_TEST_TARGETS` in `scripts/ci_test_dependencies.py` is the single source for
+the job's pytest selection and its coverage classification. For example,
+`site_src/cli.md` cannot bypass the generated-card freshness assertion, and
+`native/bench/power.py` runs its unit tests through CLI pytest.
 
 There is no existing general Markdown link/anchor checker. Pages source checks
 also run both site builders and the app's site-source validator, without
