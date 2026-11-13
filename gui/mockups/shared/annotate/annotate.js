@@ -36,7 +36,7 @@
           op: "add",
           note: { id: WGSM.uid("n"), author: WGSM.notes.author(), text: text, anchor: anchor, context: context() },
         }).then(function () {
-          WGSM.toast("Note saved" + (WGSM.notes.hosted ? " to the review server" :
+          WGSM.toast("Note saved" + (WGSM.notes.shared ? " to the shared review server" :
             WGSM.notes.mode === "server" ? " to feedback/" + WGSM.page.id + ".json" : " in this browser"));
         });
       },

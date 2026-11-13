@@ -13,7 +13,6 @@ Standard library only; private-network and same-origin access only.
 
 from __future__ import annotations
 
-import argparse
 import hashlib
 import json
 import os
@@ -32,6 +31,7 @@ from review_access import BadRequest
 from review_db import ReviewDB
 from review_http import ReviewFiles
 from review_model import apply_op
+from review_options import make_parser
 from review_repo import ReviewRepo, page_paths, previews
 
 HERE = Path(__file__).resolve().parent
@@ -39,6 +39,7 @@ FEEDBACK = HERE / "feedback"
 ABOUT_JS = HERE / "shared" / "annotate" / "about.js"
 PAGE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 MAX_BODY = 512 * 1024
+MAX_IMPORT_BODY = 32 * 1024 * 1024
 WRITE_LOCK = threading.Lock()
 DB: ReviewDB | None = None
 REPO: ReviewRepo | None = None
@@ -200,7 +201,20 @@ def import_all(body: Any) -> None:
 
 def summary(idea: str = "main") -> dict[str, Any]:
     pages = []
-    for doc in documents():
+    docs = []
+    if DB:
+        docs = documents()
+    else:
+        for path in sorted(FEEDBACK.glob("*.json")):
+            if path.stem.startswith("_"):
+                continue
+            try:
+                docs.append(load(path.stem))
+            except BadRequest as err:
+                pages.append(
+                    {"page": path.stem, "error": str(err), "open": 0, "resolved": 0}
+                )
+    for doc in docs:
         if doc.get("idea", "main") != idea:
             continue
         notes = list(doc["notes"].values())
@@ -238,14 +252,14 @@ class Handler(ReviewFiles):
     def do_POST(self) -> None:
         self.api("POST")
 
-    def read_json(self) -> Any:
+    def read_json(self, max_body: int = MAX_BODY) -> Any:
         if (self.headers.get("Content-Type") or "").split(";")[0] != "application/json":
             raise BadRequest(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "send application/json")
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             length = -1
-        if length <= 0 or length > MAX_BODY:
+        if length <= 0 or length > max_body:
             raise BadRequest(
                 HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "body missing or too large"
             )
@@ -268,9 +282,10 @@ class Handler(ReviewFiles):
                 self.reply({"ok": True, "queued": True}, HTTPStatus.ACCEPTED)
             elif method == "GET" and route == ["export"]:
                 with WRITE_LOCK:
-                    self.reply(export_all())
+                    exported = export_all()
+                self.reply(exported)
             elif method == "POST" and route == ["import"]:
-                body = self.read_json()
+                body = self.read_json(MAX_IMPORT_BODY)
                 with WRITE_LOCK:
                     import_all(body)
                 self.reply({"ok": True})
@@ -371,50 +386,7 @@ def check() -> int:
 
 def main() -> int:
     global DB, REPO, FEEDBACK
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument(
-        "--port",
-        type=int,
-        help="port (default: the first free one from 8765; 0 picks any)",
-    )
-    parser.add_argument(
-        "--host", default="127.0.0.1", help="address to listen on (default 127.0.0.1)"
-    )
-    parser.add_argument(
-        "--open", action="store_true", help="open the index in the browser"
-    )
-    parser.add_argument(
-        "--check",
-        action="store_true",
-        help="validate and tidy feedback/*.json, then exit",
-    )
-    parser.add_argument("--db", type=Path, help="shared SQLite notes database")
-    parser.add_argument(
-        "--repo", type=Path, help="read-only bare clone for main and previews"
-    )
-    parser.add_argument(
-        "--local-repo",
-        type=Path,
-        help="separate bare repository for SSH-pushed previews",
-    )
-    parser.add_argument(
-        "--cache", type=Path, help="static snapshots (default: beside --db)"
-    )
-    parser.add_argument("--refresh-minutes", type=float, default=5)
-    parser.add_argument(
-        "--allow-host", action="append", default=[], help="allowed host:port"
-    )
-    parser.add_argument("--feedback-dir", type=Path, default=FEEDBACK)
-    parser.add_argument(
-        "--import-feedback",
-        type=Path,
-        help="import per-page files into main, then exit",
-    )
-    parser.add_argument(
-        "--export-feedback",
-        type=Path,
-        help="write per-idea repo-format files, then exit",
-    )
+    parser = make_parser(__doc__.split("\n\n")[0], FEEDBACK)
     args = parser.parse_args()
     if args.local_repo and not args.repo:
         parser.error("--local-repo requires --repo")

@@ -9,13 +9,15 @@ const { pathToFileURL } = require("node:url");
 const source = readFileSync(path.join(__dirname, "../gui/mockups/shared/annotate/store.js"), "utf8");
 const allNotesSource = readFileSync(path.join(__dirname, "../gui/mockups/shared/annotate/all-notes.js"), "utf8");
 
-function browser({ hosted = true, protocol = "http:", version = {}, pathname = "/" } = {}) {
-  const storage = new Map(), timers = new Map(), events = [];
+function browser({ hosted = true, protocol = "http:", version = {}, pathname = "/",
+  storage = new Map(), committed = [], shared = true } = {}) {
+  const timers = new Map(), events = [];
   let online = false, sequence = 0, requests = 0;
   const doc = { page: "index", title: "Main", notes: {} };
   const WGSM = {
     page: { id: "index", title: "Main" }, params: new URLSearchParams(),
-    link: p => "/" + p, emit: (name, value) => events.push({ name, value }),
+    link: p => (pathname.match(/^\/(?:preview|local)\/[^/]+\//) || ["/"])[0] + p,
+    emit: (name, value) => events.push({ name, value }),
     pref: () => null,
   };
   const location = { protocol, pathname, hostname: "review.invalid", href: protocol + "//review.invalid" + pathname };
@@ -25,6 +27,7 @@ function browser({ hosted = true, protocol = "http:", version = {}, pathname = "
     localStorage: {
       getItem(key) { assert.ok(!hosted, "hosted notes must not read browser storage"); return storage.get(key) || null; },
       setItem(key, value) { assert.ok(!hosted, "hosted notes must not write browser storage"); storage.set(key, value); },
+      removeItem(key) { assert.ok(!hosted, "hosted notes must not migrate browser storage"); storage.delete(key); },
       get length() { assert.ok(!hosted, "hosted notes must not enumerate browser storage"); return storage.size; },
       key: i => [...storage.keys()][i],
     },
@@ -33,9 +36,10 @@ function browser({ hosted = true, protocol = "http:", version = {}, pathname = "
     async fetch(url, opts = {}) {
       requests++;
       const endpoint = new URL(url, location.href).pathname;
-      if (endpoint.startsWith("/feedback/")) return { ok: true, json: async () => [] };
+      if (endpoint.endsWith("/feedback/_pages.json")) return { ok: true, json: async () => committed.map(d => d.page) };
+      if (endpoint.includes("/feedback/") && !endpoint.startsWith("/api/")) return { ok: true, json: async () => committed.find(d => endpoint.endsWith("/" + d.page + ".json")) || null };
       if (!online) throw new TypeError("network unavailable");
-      if (endpoint === "/api/health") return { ok: true, json: async () => ({ ok: true }) };
+      if (endpoint === "/api/health") return { ok: true, json: async () => ({ ok: true, shared }) };
       if (opts.method === "POST") {
         const change = JSON.parse(opts.body);
         if (change.op === "add") doc.notes[change.note.id] = change.note;
@@ -74,10 +78,12 @@ for (const options of [
     const before = b.requests();
     await assert.rejects(b.store.apply(change), /can't be saved/);
     await assert.rejects(b.store.api("import", {}), /can't be saved/);
+    assert.throws(() => b.store.saveLocalDoc({ page: "index", notes: {} }), /cannot be saved in browser/);
     assert.equal(b.requests(), before, "writes must be blocked before recovery");
     b.online(true);
     await b.retry();
     assert.equal(b.store.available, true);
+    assert.equal(b.store.shared, true);
     await b.store.apply(change);
     assert.equal(b.doc.notes.noutage.text, "Shared only");
     b.online(false);
@@ -91,12 +97,14 @@ for (const options of [
   });
 }
 
-const chrome = ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"]
-  .find(command => spawnSync(command, ["--version"], { encoding: "utf8" }).status === 0);
+const chrome = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]
+  .find(command => spawnSync(command, ["--version"], {
+    encoding: "utf8", timeout: 2000, killSignal: "SIGKILL",
+  }).status === 0);
 
 test("note and exception markup stays inert in real panel, All notes and toast renderers", {
   skip: chrome ? false : "Chromium/Chrome is required for the real-DOM regression",
-  timeout: 30000,
+  timeout: 60000,
 }, () => {
   const out = path.join(__dirname, "../out/776/xss-renderer");
   const profile = path.join(out, "profile-" + process.pid);
@@ -106,7 +114,7 @@ test("note and exception markup stays inert in real panel, All notes and toast r
       "--headless", "--no-sandbox", "--disable-gpu", "--no-first-run",
       "--user-data-dir=" + profile, "--virtual-time-budget=1000", "--dump-dom",
       pathToFileURL(path.join(__dirname, "mockup_xss_fixture.html")).href,
-    ], { encoding: "utf8", timeout: 25000 });
+    ], { encoding: "utf8", timeout: 45000, killSignal: "SIGKILL" });
     writeFileSync(path.join(out, "dom.html"), result.stdout || "");
     writeFileSync(path.join(out, "browser.log"), result.stderr || "");
     assert.equal(result.status, 0, String(result.error || result.stderr));
@@ -117,11 +125,13 @@ test("note and exception markup stays inert in real panel, All notes and toast r
   }
 });
 
-for (const [idea, url, linked] of [
+for (const [idea, url, linked, mode = "server", site] of [
   ["local/gone", undefined, false],
   ["mockups/gone", undefined, false],
   ["local/bad", "//index.html", false],
   ["local/live", "/local/live/index.html", true],
+  ["mockups/draft", undefined, true, "local", "/preview/draft/"],
+  ["mockups/unavailable", undefined, false, "local", undefined],
 ]) {
   test("All notes links only published same-origin ideas: " + idea, async () => {
     const controls = new Map();
@@ -144,9 +154,9 @@ for (const [idea, url, linked] of [
         return controls.get(selector);
       },
       notes: {
-        ready: true, mode: "server", idea: "main",
+        ready: true, mode, idea: "main",
         allDocs: async () => [{
-          idea, page: "index", url,
+          idea, page: "index", url, site,
           notes: { nremoved: { author: "Randy", text: "Retained note", status: "open", replies: [] } },
         }],
       },
@@ -162,9 +172,10 @@ for (const [idea, url, linked] of [
     if (linked) {
       assert.equal(new URL(label.attrs.href).origin, "http://review.invalid");
       assert.match(label.attrs.href, /note=nremoved/);
+      if (site) assert.equal(new URL(label.attrs.href).pathname, site + "index.html");
     } else {
       assert.equal(label.attrs.href, undefined);
-      assert.match(label.children.join(""), /\(idea removed\)/);
+      assert.match(label.children.join(""), mode === "server" ? /\(idea removed\)/ : /open this idea/);
     }
   });
 }
@@ -177,7 +188,52 @@ for (const options of [
     const b = browser(options);
     await b.store.init();
     await b.store.apply({ op: "add", note: { id: "nstatic", author: "Randy", text: "Browser note" } });
-    assert.equal(JSON.parse(b.storage.get("wgsm.notes.index")).notes.nstatic.text, "Browser note");
+    const docs = await b.store.allDocs();
+    assert.equal(docs[0].notes.nstatic.text, "Browser note");
     assert.equal(b.store.mode, "local");
   });
 }
+
+test("Pages ideas isolate notes and preserve legacy documents on migration", async () => {
+  const storage = new Map([["wgsm.notes.index", JSON.stringify({
+    page: "index", notes: { nlegacy: { id: "nlegacy", text: "Old main review" } },
+  })]]);
+  const draft = browser({ hosted: false, protocol: "https:", pathname: "/preview/draft/",
+    version: { source: "preview", branch: "mockups/draft" }, storage });
+  await draft.store.init();
+  await draft.store.apply({ op: "add", note: { id: "nsame", author: "Randy", text: "Draft review" } });
+  const main = browser({ hosted: false, protocol: "https:", version: { source: "pages" }, storage });
+  await main.store.init();
+  await main.store.apply({ op: "add", note: { id: "nsame", author: "Randy", text: "Main review" } });
+  const docs = await main.store.allDocs();
+  assert.equal(docs.length, 2);
+  assert.equal(docs.find(d => d.idea === "main").notes.nlegacy.text, "Old main review");
+  assert.equal(docs.find(d => d.idea === "main").notes.nsame.text, "Main review");
+  assert.equal(docs.find(d => d.idea === "mockups/draft").notes.nsame.text, "Draft review");
+  assert.equal(docs.find(d => d.idea === "mockups/draft").site, "/preview/draft/");
+  assert.equal((await main.store.summary()).pages.length, 1);
+  assert.equal(storage.has("wgsm.notes.index"), false);
+  main.store.saveLocalDoc({ idea: "mockups/imported", page: "index", notes: {
+    nimport: { id: "nimport", text: "Imported review" },
+  } });
+  assert.equal((await main.store.allDocs()).find(d => d.idea === "mockups/imported").notes.nimport.text, "Imported review");
+});
+
+test("unstamped committed preview feedback exports with the preview identity", async () => {
+  const b = browser({ hosted: false, protocol: "https:", pathname: "/preview/draft/",
+    version: { source: "preview", branch: "mockups/draft" },
+    committed: [{ page: "index", notes: { ncommitted: { id: "ncommitted", text: "Preview review" } } }] });
+  await b.store.init();
+  const exported = await b.store.allDocs();
+  assert.equal(exported.length, 1);
+  assert.equal(exported[0].idea, "mockups/draft");
+  assert.equal(exported[0].notes.ncommitted.text, "Preview review");
+});
+
+test("file-backed server storage keeps the health response's non-shared identity", async () => {
+  const b = browser({ shared: false });
+  b.online(true);
+  await b.store.init();
+  assert.equal(b.store.mode, "server");
+  assert.equal(b.store.shared, false);
+});

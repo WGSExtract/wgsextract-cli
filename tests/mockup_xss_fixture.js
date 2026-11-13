@@ -20,12 +20,13 @@
   W.pins = { placement: function () { return "shown"; }, schedule: function () {} };
   W.annotate = { filter: "all" };
   W.notes = {
-    ready: true, mode: "local", idea: untrusted, hosted: false, available: true, error: message,
+    ready: true, mode: "local", idea: untrusted, hosted: false, available: true, shared: true, error: message,
     doc: { notes: { nmarkup: note } },
     list: function () { return [note]; },
     author: function () { return untrusted; },
     branch: function () { return untrusted; },
     apply: function () { return Promise.reject(new Error(message)); },
+    summary: function () { return Promise.resolve({ pages: [] }); },
     allDocs: function () {
       return Promise.resolve([{ idea: untrusted, page: untrusted, title: untrusted, url: location.href, notes: { nmarkup: note } }]);
     },
@@ -35,6 +36,7 @@
   var localPanelText = document.querySelector(".an-panel").textContent;
   W.notes.mode = "server";
   W.panel.render();
+  W.render.blocks["feedback-summary"](document.getElementById("fixture-summary"));
   Array.from(document.querySelectorAll(".an-actions button")).find(function (button) {
     return button.textContent === "Resolve";
   }).click();
@@ -46,6 +48,7 @@
     var passed = localPanelText.includes(untrusted) &&
       panel.textContent.includes(untrusted) && panel.textContent.includes(message) &&
       allNotes.textContent.includes(untrusted) &&
+      document.getElementById("fixture-summary").textContent.includes("shared review server") &&
       toast && toast.textContent.includes(message) &&
       !document.querySelector("img") && !window.mockupXssExecuted;
     document.getElementById("xss-result").textContent = passed

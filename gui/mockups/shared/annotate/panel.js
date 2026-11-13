@@ -10,6 +10,39 @@
   var filterEl;
   var expanded = {};
 
+  function pagePath(id) {
+    var match = /^([abc])-(.+)$/.exec(id);
+    if (match) return "directions/" + match[1] + "/" + match[2] + ".html";
+    return { index: "index.html", "design-system": "design-system/design-system.html", icons: "icons/icons.html" }[id] || "index.html";
+  }
+
+  if (WGSM.render && WGSM.render.blocks) WGSM.render.blocks["feedback-summary"] = function (el) {
+    el.textContent = "Loading notes…";
+    function renderSummary() {
+      WGSM.notes.summary().then(function (data) {
+        if (data.error) { el.textContent = data.error; return; }
+        var pages = (data.pages || []).filter(function (p) { return p.error || p.open + p.resolved > 0; });
+        var guidance = WGSM.notes.shared
+          ? "Notes are saved to the shared review server. Use All notes → Export all to save them to the repo."
+          : WGSM.notes.mode === "server"
+          ? "Notes are saved in gui/mockups/feedback/ by serve.py; commit them to share."
+          : "Notes are saved in this browser. Export the JSON to share them.";
+        el.replaceChildren(h("p.small.muted", guidance),
+          pages.length ? h("div.table-wrap", h("table.table.table--compact", { "aria-label": "Notes per page" },
+            h("thead", h("tr", h("th", "Page"), h("th.num", "Open"), h("th.num", "Resolved"))),
+            h("tbody", pages.map(function (p) {
+              return h("tr",
+                h("td", h("a", { href: WGSM.keepParams(WGSM.link(pagePath(p.page)) + "?notes=1") }, p.title || p.page),
+                  h("code.xsmall.subtle", " " + p.page), p.error ? h("div.field__error", p.error) : null),
+                h("td.num", String(p.open)), h("td.num", String(p.resolved)));
+            })))) : h("p.small.subtle", "No notes yet."));
+      }).catch(function (err) { el.textContent = err.message; });
+    }
+    WGSM.on("notes-ready", renderSummary);
+    WGSM.on("notes-connection", function (available) { if (available) renderSummary(); });
+    if (WGSM.notes.ready) renderSummary();
+  };
+
   var COLORS = { theontho: "#1d5bd0", Randy: "#a3238f", AI: "#4b5563" };
 
   function avatar(name) {
@@ -49,7 +82,7 @@
     );
     if (WGSM.notes.mode === "server") {
       if (!WGSM.notes.available) return h("div.an-store.an-error", { role: "status" }, WGSM.notes.error);
-      if (WGSM.notes.hosted) return h("div.an-store", "Saved to the review server.",
+      if (WGSM.notes.shared) return h("div.an-store", "Saved to the shared review server. Export notes to commit them.",
         WGSM.notes.error ? h("div.an-error", WGSM.notes.error) : null, io);
       return h("div.an-store", h("div.an-row", h("span.an-dot"), h("span", "Saved to ", h("code", file))), WGSM.notes.error ? h("div.an-error", WGSM.notes.error) : null, io);
     }

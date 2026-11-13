@@ -28,10 +28,16 @@
             if (target.origin === location.origin) url = target;
           }
         } else {
-          url = new URL(W.link(fallbackPath(doc.page)), location.href);
+          if (doc.site) {
+            var site = new URL(doc.site, location.href);
+            if (site.origin === location.origin) url = new URL(fallbackPath(doc.page), site);
+          } else if (idea === W.notes.idea) {
+            url = new URL(W.link(fallbackPath(doc.page)), location.href);
+          }
         }
         if (url) url.searchParams.set("note", id);
-        var label = idea + " · " + (doc.title || doc.page) + " · " + note.author + " · " + note.status + (url ? "" : " (idea removed)");
+        var label = idea + " · " + (doc.title || doc.page) + " · " + note.author + " · " + note.status +
+          (url ? "" : W.notes.mode === "server" ? " (idea removed)" : " (open this idea to review)");
         var item = h("li.card.stack",
           url ? h("a", { href: url.href }, label) : h("span", label),
           h("p", { style: { whiteSpace: "pre-wrap" } }, note.text));
@@ -51,15 +57,9 @@
     if (!incoming || !Array.isArray(incoming.pages)) throw new Error("Expected an all-notes export");
     incoming.pages.forEach(function (doc) {
       if (!doc.page || !doc.notes) throw new Error("Invalid page");
-      if ((doc.idea || W.notes.idea) !== W.notes.idea) throw new Error("Import each idea on its own static preview, or use the shared server");
     });
     incoming.pages.forEach(function (doc) {
-      var key = "wgsm.notes." + doc.page;
-      var old = JSON.parse(localStorage.getItem(key)) || { notes: {} };
-      Object.keys(doc.notes).forEach(function (id) {
-        if (!old.notes[id] || String(doc.notes[id].updated) > String(old.notes[id].updated)) old.notes[id] = doc.notes[id];
-      });
-      localStorage.setItem(key, JSON.stringify(Object.assign({}, doc, { notes: old.notes })));
+      W.notes.saveLocalDoc(doc);
     });
     return Promise.resolve();
   }

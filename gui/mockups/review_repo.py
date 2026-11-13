@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import uuid
 from functools import lru_cache
 from pathlib import Path
 
@@ -24,7 +25,8 @@ def page_paths(root: Path) -> dict[str, str]:
     pages = {}
     for path in root.rglob("*.html"):
         match = re.search(
-            r'data-page-id=["\']([a-z0-9-]+)["\']', path.read_text("utf-8")
+            r'data-page-id=["\']([a-z0-9-]+)["\']',
+            path.read_text("utf-8", errors="replace"),
         )
         if match:
             pages[match.group(1)] = path.relative_to(root).as_posix()
@@ -123,42 +125,51 @@ class ReviewRepo:
             except (OSError, ValueError, KeyError, TypeError):
                 logging.exception("cannot recover cached snapshot %s", path.name)
 
+    @staticmethod
+    def snapshot_name(branch: str, sha: str, name: str) -> str:
+        return sha + "-" + hashlib.sha256(branch.encode()).hexdigest()[:12] + "-" + name
+
     def snapshot(self, preview: previews.Preview, repo: Path | None = None) -> Path:
-        key = (
-            preview.sha
-            + "-"
-            + hashlib.sha256(preview.branch.encode()).hexdigest()[:12]
-            + "-"
-            + preview.name
-        )
+        key = self.snapshot_name(preview.branch, preview.sha, preview.name)
         dest: Path = self.cache / key
         if not dest.exists():
-            staging = self.cache / (key + ".partial")
-            shutil.rmtree(staging, ignore_errors=True)
+            staging = self.cache / (key + "." + uuid.uuid4().hex + ".partial")
             staging.mkdir()
-            previews.copy_tree(preview, staging, repo=repo or self.repo)
-            (staging / "shared/version.js").write_text(
-                "window.WGSM_VERSION = "
-                + json.dumps(
-                    {
-                        "branch": preview.branch,
-                        "sha": preview.sha,
-                        "date": preview.date,
-                        "source": "hosted"
-                        if preview.branch == "main"
-                        else (
-                            "local"
+            try:
+                previews.copy_tree(preview, staging, repo=repo or self.repo)
+                (staging / "shared/version.js").write_text(
+                    "window.WGSM_VERSION = "
+                    + json.dumps(
+                        {
+                            "branch": preview.branch,
+                            "sha": preview.sha,
+                            "date": preview.date,
+                            "source": "hosted"
+                            if preview.branch == "main"
+                            else "local"
                             if preview.branch.startswith("local/")
-                            else "preview"
-                        ),
-                        "name": preview.name,
-                        "local_push": preview.branch.startswith("local/"),
-                    }
+                            else "preview",
+                            "name": preview.name,
+                            "local_push": preview.branch.startswith("local/"),
+                        }
+                    )
+                    + ";\n",
+                    encoding="utf-8",
                 )
-                + ";\n",
-                encoding="utf-8",
-            )
-            staging.rename(dest)
+                (staging / ".wgsm-snapshot.json").write_text(
+                    json.dumps(
+                        {
+                            "schema": 1,
+                            "branch": preview.branch,
+                            "sha": preview.sha,
+                            "name": preview.name,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                staging.rename(dest)
+            finally:
+                shutil.rmtree(staging, ignore_errors=True)
         return dest
 
     def refresh(self) -> None:
@@ -177,7 +188,7 @@ class ReviewRepo:
             .strip()
         )
         roots = {"main": self.snapshot(previews.Preview("main", "main", sha, ""))}
-        branches = previews.fetch("origin", repo=self.repo)
+        branches = previews.fetch("origin", repo=self.repo, limit=None)
         published = []
         for preview in branches:
             try:
@@ -243,17 +254,30 @@ class ReviewRepo:
                 if (
                     path in active
                     or not path.is_dir()
+                    or path.is_symlink()
                     or path.name.endswith(".partial")
                 ):
                     continue
+                marker = path / ".wgsm-snapshot.json"
+                if not marker.is_file():
+                    continue
                 try:
-                    text = (path / "shared/version.js").read_text("utf-8")
-                    branch = json.loads(
-                        text.removeprefix("window.WGSM_VERSION = ")
-                        .strip()
-                        .removesuffix(";")
-                    )["branch"]
-                    if branch.startswith("local/") == local:
+                    owned = json.loads(marker.read_text("utf-8"))
+                    if (
+                        not isinstance(owned, dict)
+                        or owned.get("schema") != 1
+                        or not all(
+                            isinstance(owned.get(field), str)
+                            for field in ("branch", "sha", "name")
+                        )
+                    ):
+                        continue
+                    branch = owned["branch"]
+                    if (
+                        self.snapshot_name(branch, owned["sha"], owned["name"])
+                        == path.name
+                        and branch.startswith("local/") == local
+                    ):
                         shutil.rmtree(path)
                 except (OSError, ValueError, KeyError, TypeError):
                     logging.exception("cannot prune snapshot %s", path)
@@ -265,7 +289,9 @@ class ReviewRepo:
     def refresh_local(self) -> None:
         assert self.local_repo is not None
         roots, names = {}, {}
-        for preview in previews.discover("refs/heads/", repo=self.local_repo):
+        for preview in previews.discover(
+            "refs/heads/", repo=self.local_repo, limit=None
+        ):
             preview.branch = "local/" + preview.branch.removeprefix(previews.PREFIX)
             try:
                 roots[preview.branch] = self.snapshot(preview, repo=self.local_repo)

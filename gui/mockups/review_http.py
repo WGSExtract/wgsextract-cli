@@ -11,7 +11,7 @@ from http.server import SimpleHTTPRequestHandler
 from os import PathLike
 from pathlib import Path
 from typing import Any, BinaryIO
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 from review_access import BadRequest, allowed_client
 from review_repo import ReviewRepo, previews
@@ -32,6 +32,11 @@ class ReviewFiles(SimpleHTTPRequestHandler):
         if not allowed_client(self.client_address[0]):
             self.send_error(HTTPStatus.FORBIDDEN, "private clients only")
             return False
+        try:
+            self.check_host()
+        except BadRequest as err:
+            self.send_error(err.status, str(err))
+            return False
         return True
 
     def request_idea(self) -> str:
@@ -51,6 +56,22 @@ class ReviewFiles(SimpleHTTPRequestHandler):
         else:
             target = Path(self.translate_path(self.path))
             idea = self.request_idea()
+        parsed = urlsplit(self.path)
+        directory = (
+            self.repository is not None and parsed.path in ("/preview", "/local")
+        ) or (
+            target.name == "index.html"
+            and target.parent.is_dir()
+            and not parsed.path.endswith("/index.html")
+        )
+        if directory and not parsed.path.endswith("/"):
+            self.send_response(HTTPStatus.MOVED_PERMANENTLY)
+            self.send_header(
+                "Location", urlunsplit(("", "", parsed.path + "/", parsed.query, ""))
+            )
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return None
         if urlsplit(self.path).path.endswith("/shared/version.js"):
             version = {}
             if target.is_file():
@@ -67,7 +88,7 @@ class ReviewFiles(SimpleHTTPRequestHandler):
             data = ("window.WGSM_VERSION = " + json.dumps(version) + ";\n").encode()
             content_type = "application/javascript; charset=utf-8"
         elif target.suffix == ".html" and target.is_file():
-            text = target.read_text("utf-8")
+            text = target.read_text("utf-8", errors="replace")
             marker = (
                 '<meta name="wgsm-review-server" content="hosted" data-idea="'
                 + html.escape(idea, quote=True)
@@ -140,7 +161,7 @@ class ReviewFiles(SimpleHTTPRequestHandler):
         self.send_error(HTTPStatus.FORBIDDEN, "directory listing disabled")
         return None
 
-    def check_origin(self) -> None:
+    def check_host(self) -> None:
         host = (self.headers.get("Host") or "").lower()
         address = self.server.server_address
         assert isinstance(address, tuple)
@@ -150,6 +171,10 @@ class ReviewFiles(SimpleHTTPRequestHandler):
         }
         if host not in allowed:
             raise BadRequest(HTTPStatus.FORBIDDEN, "bad Host header")
+
+    def check_origin(self) -> None:
+        self.check_host()
+        host = (self.headers.get("Host") or "").lower()
         origin = self.headers.get("Origin")
         if origin:
             parsed = urlsplit(origin)

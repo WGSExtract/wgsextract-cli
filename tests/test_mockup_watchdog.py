@@ -5,11 +5,15 @@ from __future__ import annotations
 import os
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "gui/mockups/hosting/watchdog.sh"
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="The systemd watchdog runs on POSIX hosts"
+)
 
 
 @pytest.mark.parametrize(

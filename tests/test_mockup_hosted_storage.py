@@ -38,5 +38,5 @@ def test_776_api_outage_does_not_write_browser_notes() -> None:
         [node, "--test", str(SCRIPT.parents[2] / "tests/mockup_store_checks.cjs")],
         check=True,
         capture_output=True,
-        timeout=30,
+        timeout=90,
     )

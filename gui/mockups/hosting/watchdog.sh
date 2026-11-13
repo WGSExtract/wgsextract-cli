@@ -27,8 +27,7 @@ if healthy; then
 fi
 ssh_failed=0
 ssh -o BatchMode=yes -o ConnectTimeout=15 "$host" '
-    /bin/launchctl bootstrap user/502 /Users/wgse/Library/LaunchAgents/org.wgsextract.mockups.plist 2>/dev/null ||
-    /bin/launchctl kickstart -k user/502/org.wgsextract.mockups
+    /usr/bin/python3 /Users/wgse/mockup-server/app/gui/mockups/hosting/recover.py
 ' || ssh_failed=1
 sleep "$retry_delay"
 if healthy; then

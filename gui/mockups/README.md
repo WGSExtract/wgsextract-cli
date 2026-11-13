@@ -84,6 +84,11 @@ says so. The published site also shows the notes committed in `feedback/`
 (the Pages workflow lists them in `feedback/_pages.json`). Use **Export
 JSON** and save the file as `gui/mockups/feedback/<page-id>.json`; **Import
 JSON** merges a committed file into the browser so you can see others’ notes.
+Browser documents are keyed by both idea and page, so main and Pages previews
+cannot mix their reviews. Existing browser documents migrate once without
+deleting notes: explicit idea identities are preserved; older unstamped
+documents belong to main. Committed preview files without an idea are stamped
+with that preview when exported. Static imports preserve each document's idea.
 
 ### Handing notes to an AI agent
 
@@ -212,6 +217,9 @@ snapshot is retained briefly for in-flight requests. Shared review tooling
 and the text-only DOM helpers in `shared/core.js` are served from the running
 app so older ideas also get the shared API and safe note rendering.
 Review text is never interpreted as HTML; the DOM helper has no HTML escape hatch.
+Hosted refresh includes every idea; the twenty-preview limit applies only to
+the Pages publisher. Cache pruning removes only snapshots carrying this
+server's ownership marker, never unrelated output folders or repositories.
 Startup never waits for GitHub: it restores the last published cache mapping
 (or scans completed snapshots if necessary) and refreshes in the background.
 During an outage it retries every 15 seconds, or sooner if the configured
@@ -287,6 +295,9 @@ notes). `/api/import` accepts an all-notes export, `/api/export` returns it,
 and `/api/notes` lists flattened notes with optional `idea`, `page`, `status`
 and `author` query filters. Per-page `/api/feedback/<page>?idea=mockups%2F<branch>`
 retains the add/reply/status/edit/delete/merge operations.
+Bulk JSON imports accept up to 32 MiB (ordinary note changes stay limited to
+512 KiB). Larger archives can be split into `pages` batches or imported from
+per-page files with the CLI.
 
 ### Reproduce the unattended setup
 
@@ -310,11 +321,15 @@ instead of main. The update job fetches every five minutes and fast-forwards
 the app checkout, refusing local edits. Once its HEAD is contained in main
 (or GitHub reports its PR merged, including squash merges), it switches
 to main. It restarts the server whenever the app commit changes.
+The last successfully requested restart is recorded in `app-restarted.sha`;
+a failed launchd restart is retried even when the checkout has not advanced again.
 For a manual switch after merge:
 
 ```sh
 git -C /Users/wgse/mockup-server/app fetch origin main
-git -C /Users/wgse/mockup-server/app checkout -b main FETCH_HEAD
+git -C /Users/wgse/mockup-server/app checkout main ||
+  git -C /Users/wgse/mockup-server/app checkout -b main FETCH_HEAD
+git -C /Users/wgse/mockup-server/app merge --ff-only FETCH_HEAD
 launchctl kickstart -k user/502/org.wgsextract.mockups
 ```
 
@@ -349,8 +364,9 @@ systemctl --user start mockup-server-watchdog.service
 Requires existing noninteractive `ssh randy-mini`, curl, and agent-coord at
 `~/.local/bin/agent-coord` (systemd's default PATH omits that folder).
 Every five minutes it probes tailnet `/api/health`.
-On failure it bootstraps the launchd service (or kickstarts an existing
-one), then checks health again. Only then does it announce `restarted OK`,
+On failure it runs `hosting/recover.py`, which restores all three launchd
+registrations and kickstarts an existing server without forcing the nightly
+backup to run. It then checks health again. Only then does it announce `restarted OK`,
 or report `still down` / `ssh unreachable` and exit nonzero. SSH failure
 does not suppress the alert. For a safe unreachable-host drill:
 

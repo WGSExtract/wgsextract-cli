@@ -59,7 +59,9 @@ def slug(branch: str) -> str:
     return re.sub(r"-{2,}", "-", name).strip("-")[:40].strip("-")
 
 
-def fetch(remote: str, repo: Path | None = None) -> list[Preview]:
+def fetch(
+    remote: str, repo: Path | None = None, limit: int | None = MAX_PREVIEWS
+) -> list[Preview]:
     """The remote's mockups/* branches, newest commit first."""
     for ref in (
         git("for-each-ref", "--format=%(refname)", NAMESPACE, repo=repo)
@@ -82,10 +84,12 @@ def fetch(remote: str, repo: Path | None = None) -> list[Preview]:
         f"+refs/heads/{PREFIX}*:{NAMESPACE}*",
         repo=repo,
     )
-    return discover(NAMESPACE, repo=repo)
+    return discover(NAMESPACE, repo=repo, limit=limit)
 
 
-def discover(namespace: str, repo: Path | None = None) -> list[Preview]:
+def discover(
+    namespace: str, repo: Path | None = None, limit: int | None = MAX_PREVIEWS
+) -> list[Preview]:
     """Allocate publisher names for refs already present in a repository."""
     out = git(
         "for-each-ref",
@@ -108,7 +112,7 @@ def discover(namespace: str, repo: Path | None = None) -> list[Preview]:
             name, n = f"{base}-{n}", n + 1
         taken.add(name)
         previews.append(Preview(branch, name, sha, date))
-    return previews[:MAX_PREVIEWS]
+    return previews if limit is None else previews[:limit]
 
 
 def static_member(member: tarfile.TarInfo) -> PurePosixPath | None:

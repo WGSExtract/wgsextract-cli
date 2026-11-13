@@ -14,7 +14,11 @@
   var preview = location.pathname.match(/\/(preview|local)\/([^/]+)\//);
   var idea = (marker && marker.getAttribute("data-idea")) || version.idea ||
     (preview ? (version.branch || (preview[1] === "local" ? "local/" : "mockups/") + preview[2]) : "main");
-  var LOCAL_KEY = "wgsm.notes." + WGSM.page.id;
+  var LOCAL_PREFIX = "wgsm.notes.v2.";
+  function localKey(identity, page) {
+    return LOCAL_PREFIX + encodeURIComponent(identity) + "." + page;
+  }
+  var LOCAL_KEY = localKey(idea, WGSM.page.id);
   var retryTimer = null, retryDelay = 500;
   var chosenAuthor = null;
   var unavailableText = "Review server unavailable, retrying; notes can't be saved yet.";
@@ -24,9 +28,12 @@
   }
 
   function emptyDoc() {
-    return { idea: idea, notes: {}, page: WGSM.page.id, title: WGSM.page.title };
+    return { idea: idea, notes: {}, page: WGSM.page.id, title: WGSM.page.title, site: currentSite() };
   }
 
+  function currentSite() {
+    return /^https?:$/.test(location.protocol) ? new URL(WGSM.link(""), location.href).pathname : null;
+  }
   /* Mirrors apply_op() in serve.py */
   function applyOp(doc, change) {
     var notes = doc.notes;
@@ -53,17 +60,49 @@
         delete notes[change.id];
         break;
       case "merge":
-        Object.keys(change.notes || {}).forEach(function (id) {
-          var incoming = change.notes[id];
-          var mine = notes[id];
-          if (!mine || String(incoming.updated) > String(mine.updated)) notes[id] = incoming;
-        });
+        mergeNotes(notes, change.notes || {});
         break;
       default:
         throw new Error("Unknown operation: " + change.op);
     }
     doc.title = WGSM.page.title;
+    doc.site = currentSite();
     return doc;
+  }
+
+  function mergeNotes(notes, incoming) {
+    Object.keys(incoming).forEach(function (id) {
+      var mine = notes[id], note = incoming[id];
+      if (!mine || String(note.updated || "") > String(mine.updated || "")) notes[id] = note;
+    });
+  }
+
+  function saveLocalDoc(doc) {
+    if (store && store.mode === "server") throw new Error("Hosted review notes cannot be saved in browser storage");
+    var identity = doc.idea || idea;
+    var key = localKey(identity, doc.page);
+    var mine = JSON.parse(localStorage.getItem(key)) || { notes: {} };
+    mergeNotes(mine.notes, doc.notes || {});
+    var merged = Object.assign({}, mine, doc, { idea: identity, notes: mine.notes });
+    if (!merged.site && identity === idea) merged.site = currentSite();
+    localStorage.setItem(key, JSON.stringify(merged));
+    return merged;
+  }
+
+  function migrateLocalDocs() {
+    var keys = [];
+    for (var i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
+    keys.forEach(function (key) {
+      if (key.indexOf("wgsm.notes.") !== 0 || key.indexOf(LOCAL_PREFIX) === 0) return;
+      try {
+        var doc = JSON.parse(localStorage.getItem(key));
+        if (!doc || !doc.notes) return;
+        saveLocalDoc(Object.assign({}, doc, { idea: doc.idea || "main", page: doc.page || key.slice("wgsm.notes.".length) }));
+        localStorage.removeItem(key);
+      } catch (err) {
+        /* Leave an unreadable document intact for manual recovery. */
+      }
+    });
   }
 
   function api(path, body) {
@@ -142,6 +181,8 @@
   var store = (WGSM.notes = {
     idea: idea,
     hosted: hosted,
+    shared: false,
+    saveLocalDoc: saveLocalDoc,
     api: api,
     mode: location.protocol === "file:" ? "local" : "server",
     available: false,
@@ -161,6 +202,7 @@
         WGSM.emit("notes-connection", false);
       }
       return Promise.resolve().then(function () {
+        if (store.mode === "local") migrateLocalDocs();
         return store.mode === "local" && store.published ? store.loadCommitted() : null;
       }).then(function () {
         return store.load();
@@ -179,7 +221,7 @@
         if (!pages || pages.indexOf(WGSM.page.id) < 0) return null;
         return fetchJson("feedback/" + WGSM.page.id + ".json").then(function (doc) {
           if (!doc || !doc.notes) return null;
-          localStorage.setItem(LOCAL_KEY, JSON.stringify(applyOp(readLocal(), { op: "merge", notes: doc.notes })));
+          saveLocalDoc(Object.assign({}, doc, { idea: doc.idea || idea, page: WGSM.page.id }));
           return null;
         });
       }).catch(function () {
@@ -198,6 +240,7 @@
     reconnect: function () {
       return api("health").then(function (health) {
         if (!health.ok) throw new Error(unavailableText);
+        store.shared = health.shared === true;
         return api("feedback/" + WGSM.page.id);
       }).then(function (doc) {
         store.doc = doc;
@@ -257,10 +300,10 @@
       var docs = {};
       for (var i = 0; i < localStorage.length; i++) {
         var key = localStorage.key(i);
-        if (key.indexOf("wgsm.notes.") !== 0) continue;
+        if (key.indexOf(LOCAL_PREFIX) !== 0) continue;
         try {
           var doc = JSON.parse(localStorage.getItem(key));
-          docs[doc.page] = doc;
+          docs[(doc.idea || idea) + "\0" + doc.page] = Object.assign({}, doc, { idea: doc.idea || idea });
         } catch (err) {
           continue;
         }
@@ -268,8 +311,12 @@
       var committed = store.published ? committedDocs() : Promise.resolve([]);
       return committed.then(function (list) {
         list.forEach(function (doc) {
-          docs[doc.page] = applyOp(docs[doc.page] || { notes: {}, page: doc.page, title: doc.title }, { op: "merge", notes: doc.notes });
-          docs[doc.page].title = doc.title || docs[doc.page].title;
+          var identity = doc.idea || idea;
+          var key = identity + "\0" + doc.page;
+          var mine = docs[key] || { notes: {}, page: doc.page, idea: identity, title: doc.title };
+          mergeNotes(mine.notes, doc.notes || {});
+          mine.title = doc.title || mine.title;
+          docs[key] = mine;
         });
         return Object.keys(docs).sort().map(function (page) {
           return docs[page];
@@ -284,7 +331,7 @@
       });
       return store.allDocs().then(function (docs) {
         return {
-          pages: docs.map(function (doc) {
+          pages: docs.filter(function (doc) { return doc.idea === idea; }).map(function (doc) {
             var notes = Object.keys(doc.notes || {}).map(function (id) {
               return doc.notes[id];
             });

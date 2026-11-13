@@ -11,12 +11,19 @@ from urllib.parse import urlencode
 from urllib.request import urlopen
 
 
+def restart(domain: str) -> None:
+    subprocess.run(
+        ["/bin/launchctl", "kickstart", "-k", domain + "/org.wgsextract.mockups"],
+        check=True,
+    )
+
+
 def update(root: Path, domain: str) -> None:
     app = root / "app"
 
     def git(*args: str) -> str:
         return subprocess.run(
-            ["/usr/bin/git", "-C", str(app), *args],
+            ["git", "-C", str(app), *args],
             check=True,
             capture_output=True,
             text=True,
@@ -25,13 +32,12 @@ def update(root: Path, domain: str) -> None:
 
     if git("status", "--porcelain", "--untracked-files=no"):
         raise RuntimeError("app has local edits; refusing automatic update")
-    before = git("rev-parse", "HEAD")
     branch = git("branch", "--show-current")
     git("fetch", "--quiet", "origin", "+refs/heads/main:refs/remotes/origin/main")
     merged = (
         subprocess.run(
             [
-                "/usr/bin/git",
+                "git",
                 "-C",
                 str(app),
                 "merge-base",
@@ -54,18 +60,45 @@ def update(root: Path, domain: str) -> None:
         except OSError as err:
             print("merge-status check unavailable:", err, flush=True)
     if branch != "main" and merged:
-        git("checkout", "-b", "main", "refs/remotes/origin/main")
+        exists = (
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(app),
+                    "show-ref",
+                    "--verify",
+                    "--quiet",
+                    "refs/heads/main",
+                ],
+                check=False,
+            ).returncode
+            == 0
+        )
+        if exists:
+            git("checkout", "main")
+            git("merge", "--ff-only", "refs/remotes/origin/main")
+        else:
+            git("checkout", "-b", "main", "refs/remotes/origin/main")
     elif branch == "main":
         git("merge", "--ff-only", "refs/remotes/origin/main")
     else:
         git("fetch", "--quiet", "origin", branch)
         git("merge", "--ff-only", "FETCH_HEAD")
-    if before != git("rev-parse", "HEAD"):
-        subprocess.run(
-            ["/bin/launchctl", "kickstart", "-k", domain + "/org.wgsextract.mockups"],
-            check=True,
-        )
-    print("app", git("rev-parse", "--short", "HEAD"), branch, flush=True)
+    revision = git("rev-parse", "HEAD")
+    marker = root / "app-restarted.sha"
+    restarted = marker.read_text("utf-8").strip() if marker.exists() else ""
+    if restarted != revision:
+        restart(domain)
+        pending = marker.with_suffix(".partial")
+        pending.write_text(revision + "\n", encoding="utf-8")
+        pending.replace(marker)
+    print(
+        "app",
+        git("rev-parse", "--short", "HEAD"),
+        git("branch", "--show-current"),
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

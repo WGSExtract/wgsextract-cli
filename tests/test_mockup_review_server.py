@@ -284,7 +284,7 @@ def test_776_colliding_slugs_and_preview_main_never_exchange_notes(
     tmp_path: Path, bare_repo: Path
 ) -> None:
     source = bare_repo.parent / "source"
-    for branch in ("mockups/Foo", "mockups/foo", "mockups/main"):
+    for branch in ("mockups/foo_", "mockups/foo"):
         git(source, "checkout", "-b", branch, "main")
         (source / "gui/mockups/index.html").write_text(branch)
         shared = source / "gui/mockups/shared/data/jobs.js"
@@ -292,6 +292,7 @@ def test_776_colliding_slugs_and_preview_main_never_exchange_notes(
         shared.write_text(branch + " application asset")
         git(source, "add", ".")
         git(source, "commit", "-m", branch)
+    git(source, "branch", "mockups/main", "main")
     with running(
         tmp_path,
         "--db",
@@ -302,8 +303,11 @@ def test_776_colliding_slugs_and_preview_main_never_exchange_notes(
         "0.01",
     ) as base:
         assert "Main idea" in read(base, "/")
-        assert "mockups/main" in read(base, "/preview/main/")
-        for idea in ("main", "mockups/Foo", "mockups/foo", "mockups/main"):
+        assert "Main idea" in read(base, "/preview/main/")
+        assert '"branch": "mockups/main"' in read(
+            base, "/preview/main/shared/version.js"
+        )
+        for idea in ("main", "mockups/foo_", "mockups/foo", "mockups/main"):
             request(
                 base,
                 "/api/feedback/index?idea=" + idea,
@@ -313,7 +317,7 @@ def test_776_colliding_slugs_and_preview_main_never_exchange_notes(
                 },
             )
         time.sleep(1.05)
-        git(source, "checkout", "mockups/Foo")
+        git(source, "checkout", "mockups/foo_")
         (source / "gui/mockups/index.html").write_text("Updated Foo")
         git(source, "add", ".")
         git(source, "commit", "-m", "ordinary push reorders colliding previews")
@@ -324,7 +328,7 @@ def test_776_colliding_slugs_and_preview_main_never_exchange_notes(
         assert "Updated Foo" in read(base, "/preview/foo/")
         assert (
             read(base, "/preview/foo/shared/data/jobs.js")
-            == "mockups/Foo application asset"
+            == "mockups/foo_ application asset"
         )
         assert (
             read(base, "/preview/foo-2/shared/data/jobs.js")
@@ -336,7 +340,7 @@ def test_776_colliding_slugs_and_preview_main_never_exchange_notes(
         urls = {n["idea"]: n["url"] for n in notes}
         assert urls["main"] == "/index.html"
         assert urls["mockups/main"] == "/preview/main/index.html"
-        assert urls["mockups/Foo"] == "/preview/foo/index.html"
+        assert urls["mockups/foo_"] == "/preview/foo/index.html"
         assert urls["mockups/foo"] == "/preview/foo-2/index.html"
 
 
