@@ -159,3 +159,26 @@ def test_second():
     assert sorted((pytester.path / "ran.txt").read_text().splitlines()) == sorted(
         f"{name}::{case}" for name in names for case in ("first", "second")
     )
+
+
+@pytest.mark.parametrize("required", [False, True])
+def test_761_benchmark_smoke_cannot_silently_skip_missing_real_inputs(
+    pytester: pytest.Pytester, required: bool
+) -> None:
+    pytester.makeconftest(
+        """
+from pathlib import Path
+from tests.conftest import pytest_addoption
+import tests.test_smoke_real_full as smoke
+
+# OS boundary: this isolated checkout has no benchmark or configured inputs.
+smoke.REPO_ROOT = Path.cwd()
+real_dataset = smoke.real_dataset
+"""
+    )
+    pytester.makepyfile("def test_real_input(real_dataset): pass")
+    flags = ["--ci-require-real-data"] if required else []
+    result = pytester.runpytest_subprocess(
+        *flags, "--basetemp", str(pytester.path / "out" / "pytest")
+    )
+    result.assert_outcomes(errors=int(required), skipped=int(not required))

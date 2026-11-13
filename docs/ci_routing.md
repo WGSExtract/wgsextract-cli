@@ -113,6 +113,12 @@ It has the same CLI-PR routing and unconditional main/nightly coverage. Neither
 command precedes pytest anymore; neither has been removed. The failure observer
 watches direct smoke runs and compares routed PR smoke failures with that
 workflow's main run, as it does for the OS workflows.
+`tests/test_smoke_real_full.py` follows the benchmark in that same job: its
+real-data fixture discovers the benchmark's prepared HG00096 inputs. Moving
+the benchmark without this suite would silently skip six previously passing
+Ubuntu real-tool tests. The suite is excluded from `test-ci`, requires its real
+inputs in CI (`--ci-require-real-data`), and publishes separate per-OS timing
+XML. Optional tool/cache-specific cases retain their existing skip rules.
 
 Test preparation also avoids duplicate real-tool work. Tiny FASTA/faidx and
 SAM/sorted-BAM/index inputs prepared by `tests/htslib_helpers.py` are shared

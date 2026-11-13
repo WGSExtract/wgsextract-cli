@@ -72,6 +72,11 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Split the core tier by stable module hash, retaining module fixtures.",
     )
     group.addoption(
+        "--ci-require-real-data",
+        action="store_true",
+        help="Fail real-data smoke setup instead of skipping missing benchmark data.",
+    )
+    group.addoption(
         "--yleaf-upstream", help="Local tagged Yleaf checkout for optional parity."
     )
     group.addoption(
