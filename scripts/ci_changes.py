@@ -82,18 +82,23 @@ def main() -> None:
     parser.add_argument("--base", required=True)
     parser.add_argument("--head", required=True)
     parser.add_argument("--force-install-lab", action="store_true")
+    parser.add_argument("--label-event", action="store_true")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    changed = subprocess.check_output(
-        [
-            "git",
-            "diff",
-            "--name-only",
-            "--no-renames",
-            "-z",
-            f"{args.base}...{args.head}",
-            "--",
-        ]
+    changed = (
+        b""
+        if args.label_event
+        else subprocess.check_output(
+            [
+                "git",
+                "diff",
+                "--name-only",
+                "--no-renames",
+                "-z",
+                f"{args.base}...{args.head}",
+                "--",
+            ]
+        )
     )
     paths = changed.decode().rstrip("\0").split("\0") if changed else []
     selected = routes(paths, force_install_lab=args.force_install_lab)

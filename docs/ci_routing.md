@@ -41,8 +41,11 @@ The OS workflows and Install Lab run unconditionally on main pushes and nightly,
 as do the GUI and native workflows covered by area routing. CodeQL retains
 unfiltered main coverage and runs nightly; PRs scan code/configuration paths
 only. Releases and manual dispatches remain available. Install Lab can be
-forced on any PR with the `run-install-lab` label; adding/removing a label
-recomputes the routes. Its nightly run includes the former weekly negative
+forced on any PR with the `run-install-lab` label. Only this label is actionable:
+adding it runs Install Lab without repeating the matrix; other labels are ignored.
+Label runs cannot cancel a code-validation run, and skipped label-event checks
+have distinct names so they cannot supersede real documentation checks.
+Its nightly run includes the former weekly negative
 controls and pinned-release scenarios.
 
 PR area checks also accepts non-main target branches, so its routing can be

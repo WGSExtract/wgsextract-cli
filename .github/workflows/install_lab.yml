@@ -47,7 +47,7 @@ env:
   APP_RUN: ${{ inputs.app_run }}
   # `tree`: the app sets up this CLI tree. `pinned` (nightly): the CLI release the
   # app pins, exactly as a user's app does.
-  WEEKLY: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+  EXTENDED_SCENARIOS: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
 
 # Only pull requests share a group: a new push supersedes the PR's older run.
 concurrency:
@@ -80,7 +80,7 @@ jobs:
           latest=$(curl -fsIL --retry 5 --retry-all-errors --connect-timeout 20 -o /dev/null -w '%{url_effective}' https://github.com/WGSExtract/wgsextract-cli/releases/latest)
           python3 scripts/installlab/lab.py run linux --update-from "${latest##*/}" --out out/installlab/ci-linux-update
       - name: Every sabotaged install must fail
-        if: env.WEEKLY == 'true'
+        if: env.EXTENDED_SCENARIOS == 'true'
         run: python3 scripts/installlab/lab.py selftest linux
       - name: Upload evidence
         if: always()
@@ -241,7 +241,7 @@ jobs:
       - name: Every corruption of the evidence must fail the oracle
         run: pixi run python scripts/installlab/lab.py mutate out/installlab/ci-macos/results
       - name: Every sabotaged install must fail
-        if: env.WEEKLY == 'true'
+        if: env.EXTENDED_SCENARIOS == 'true'
         run: pixi run python scripts/installlab/lab.py selftest host
       - name: Upload evidence
         if: always()
@@ -480,7 +480,7 @@ jobs:
           EXPECTED: >-
             install-lab-windows
             install-lab-windows-app-tree
-            ${{ env.WEEKLY == 'true' && 'install-lab-windows-app-pinned install-lab-windows-sabotage-noop-installer install-lab-windows-sabotage-fake-launcher install-lab-windows-sabotage-break-samtools install-lab-windows-sabotage-leftover install-lab-windows-sabotage-skip-uninstall' || '' }}
+            ${{ env.EXTENDED_SCENARIOS == 'true' && 'install-lab-windows-app-pinned install-lab-windows-sabotage-noop-installer install-lab-windows-sabotage-fake-launcher install-lab-windows-sabotage-break-samtools install-lab-windows-sabotage-leftover install-lab-windows-sabotage-skip-uninstall' || '' }}
         run: |
           status=0
           for name in $EXPECTED; do
