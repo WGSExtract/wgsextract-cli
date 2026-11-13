@@ -27,8 +27,7 @@ jobs:
         with:
           pixi-version: v0.82.0
           locked: false
-          # PR runs restore main's environment; writing their own crowds it out.
-          cache-write: ${{ github.ref == 'refs/heads/main' }}
+          cache: false
       - name: Install project environment
         run: pixi install -e default -e dev
       - name: Verify CLI imports
@@ -46,10 +45,6 @@ jobs:
             librsvg2-dev
             patchelf
       - name: Set up Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: gui/app/package-lock.json
+        uses: ./.github/actions/setup-node
       - name: Install the app's dependencies
         run: npm ci --prefix gui/app

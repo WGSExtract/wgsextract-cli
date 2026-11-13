@@ -15,6 +15,11 @@ on:
       - native/deepvariant/**
       - packaging/wgse-deepvariant/**
       - .github/workflows/linux_deepvariant.yml
+      - "!**/*.md"
+  push:
+    branches: [main]
+  schedule:
+    - cron: "47 6 * * *"
   workflow_dispatch:
     inputs:
       release_tag:

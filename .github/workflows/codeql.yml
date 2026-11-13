@@ -8,8 +8,21 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    paths:
+      - "src/**"
+      - "scripts/**"
+      - "tests/**"
+      - "packaging/**"
+      - "gui/**"
+      - ".github/**"
+      - "pixi.toml"
+      - "pixi.lock"
+      - "pyproject.toml"
+      - "!gui/mockups/**"
+      - "!gui/site_src/**"
+      - "!**/*.md"
   schedule:
-    - cron: "23 7 * * 1"
+    - cron: "23 7 * * *"
 
 permissions:
   actions: read

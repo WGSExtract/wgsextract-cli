@@ -21,6 +21,11 @@ on:
       - "gui/app/web/packagers/**"
       - "gui/tools/packaging/**"
       - "gui/tools/tasks.py"
+      - "!**/*.md"
+  push:
+    branches: [main]
+  schedule:
+    - cron: "31 6 * * *"
   workflow_dispatch:
     inputs:
       tag:

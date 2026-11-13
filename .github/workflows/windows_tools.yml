@@ -12,6 +12,7 @@ on:
     paths:
       - packaging/windows/**
       - .github/workflows/windows_tools.yml
+      - "!**/*.md"
   workflow_dispatch:
     inputs:
       release_tag:

@@ -70,15 +70,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+      - uses: ./.github/actions/setup-pixi
         with:
-          pixi-version: v0.82.0
-          locked: true
           environments: >-
             default
             pharmcat
-          # PR runs restore main's environment; writing their own crowds it out.
-          cache-write: ${{ github.ref == 'refs/heads/main' }}
       - name: Fetch the PharmCAT pipeline release (SHA-256 pinned)
         shell: bash
         run: |
@@ -91,7 +87,7 @@ jobs:
           cd "$RUNNER_TEMP" && tar -xzf pharmcat.tar.gz -C "Pharm CAT"
       # PharmCAT fetches its GRCh38 reference (about 1 GB) on first use.
       - name: Cache PharmCAT's reference
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: ./.github/actions/download-cache
         with:
           path: ${{ runner.temp }}/Pharm CAT/reference.fna.bgz*
           key: pharmcat-reference-zenodo-7288118-${{ runner.os }}

@@ -1,0 +1,115 @@
+name: PR area checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-area-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      cli: ${{ steps.diff.outputs.cli }}
+      docs: ${{ steps.diff.outputs.docs }}
+      native: ${{ steps.diff.outputs.native }}
+      site: ${{ steps.diff.outputs.site }}
+      install: ${{ steps.diff.outputs.install }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Route the complete PR diff
+        id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          FORCE_INSTALL: ${{ contains(github.event.pull_request.labels.*.name, 'run-install-lab') }}
+        run: |
+          flags=()
+          if [ "$FORCE_INSTALL" = true ]; then flags+=(--force-install-lab); fi
+          python3 scripts/ci_changes.py --base "$BASE" --head "$HEAD" "${flags[@]}" --output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  docs:
+    name: Documentation freshness
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Install only Python documentation test dependencies
+        run: python -m pip install --quiet -e . pytest jsonschema
+      - name: Check API reference, command reference, CLI snapshot and help topics
+        run: |
+          python -m pytest -q tests/test_api.py::test_api_docs_are_up_to_date tests/test_api_cli_parity.py tests/test_cli_help.py --basetemp=out/docs-tmp
+          python scripts/validate_site_sources.py
+
+  ubuntu:
+    needs: changes
+    if: needs.changes.outputs.cli == 'true'
+    uses: ./.github/workflows/ubuntu_ci.yml
+  macos:
+    needs: changes
+    if: needs.changes.outputs.cli == 'true'
+    uses: ./.github/workflows/macos_ci.yml
+  windows:
+    needs: changes
+    if: needs.changes.outputs.cli == 'true'
+    uses: ./.github/workflows/windows_ci.yml
+  arm64:
+    needs: changes
+    if: needs.changes.outputs.cli == 'true'
+    uses: ./.github/workflows/linux_arm64.yml
+  install:
+    needs: changes
+    if: needs.changes.outputs.install == 'true'
+    uses: ./.github/workflows/install_lab.yml
+
+  native-smoke:
+    name: Native CLI smoke
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: python -m pip install --quiet -e .
+      - run: |
+          wgsextract --help
+          wgsextract realign --help
+          wgsextract deps check --help
+
+  pages:
+    name: Pages source checks
+    needs: changes
+    if: needs.changes.outputs.site == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: |
+          python3 scripts/validate_site_sources.py
+          python3 scripts/build_site.py
+          python3 gui/scripts/validate_site_sources.py
+          python3 gui/scripts/build_site.py
+          test -d gui/mockups

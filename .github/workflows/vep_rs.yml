@@ -11,6 +11,7 @@ on:
     paths:
       - packaging/vep-rs/**
       - .github/workflows/vep_rs.yml
+      - "!**/*.md"
   workflow_dispatch:
     inputs:
       release_tag:

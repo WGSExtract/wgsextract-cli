@@ -21,6 +21,11 @@ on:
       - packaging/wgse-bwa-mem3/**
       - packaging/wgse-minimap2/**
       - .github/workflows/linux_aligners.yml
+      - "!**/*.md"
+  push:
+    branches: [main]
+  schedule:
+    - cron: "47 6 * * *"
   workflow_dispatch:
     inputs:
       release_tag:

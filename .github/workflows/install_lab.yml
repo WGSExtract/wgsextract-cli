@@ -6,44 +6,27 @@ name: Install Lab
 # real user doesn't have one.
 #
 # Every passing run is also corrupted (lab.py mutate) and must then fail, and
-# the weekly run adds negative controls (sabotaged installs that must fail) and
+# the nightly run adds negative controls (sabotaged installs that must fail) and
 # the app as users get it, setting up the CLI release it pins.
 
 # A dispatch with app_release is named after it, so app_release_watch.yml can
 # see which releases have had a full run; otherwise the event's default name.
 run-name: "${{ inputs.app_release && format('Install Lab: app {0}', inputs.app_release) || '' }}"
 
-# Changes that can't affect the app or the CLI skip this; see "In CI" in
-# docs/install_testing.md. Later patterns override earlier ones.
+# PR area checks selects installer/packaging changes or run-install-lab.
 on:
-  pull_request:
-    branches: [ main ]
-    paths:
-      - "**"
-      # Can't change the app or its actions (#625); all other gui/ changes run
-      # the tree jobs on an app built from the tree.
-      - "!gui/docs/**"
-      - "!gui/**/*.md"
-      - "!gui/app/tests/**"
-      - "!gui/tests/**"
-      - "!gui/tools/packaging/tests/**"
-      - "!.github/workflows/gui-*.yml"
-      - ".github/workflows/gui-build.yml"
+  workflow_call:
+    inputs:
+      app_run:
+        type: string
+        default: ""
+      app_release:
+        type: string
+        default: ""
   push:
     branches: [ main ]
-    paths:
-      - "**"
-      # Can't change the app or its actions (#625); all other gui/ changes run
-      # the tree jobs on an app built from the tree.
-      - "!gui/docs/**"
-      - "!gui/**/*.md"
-      - "!gui/app/tests/**"
-      - "!gui/tests/**"
-      - "!gui/tools/packaging/tests/**"
-      - "!.github/workflows/gui-*.yml"
-      - ".github/workflows/gui-build.yml"
   schedule:
-    - cron: "17 6 * * 1"
+    - cron: "17 6 * * *"
   workflow_dispatch:
     inputs:
       app_run:
@@ -62,7 +45,7 @@ permissions:
 
 env:
   APP_RUN: ${{ inputs.app_run }}
-  # `tree`: the app sets up this CLI tree. `pinned` (weekly): the CLI release the
+  # `tree`: the app sets up this CLI tree. `pinned` (nightly): the CLI release the
   # app pins, exactly as a user's app does.
   WEEKLY: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
 
@@ -82,13 +65,7 @@ jobs:
       # Host-side measuring tools for the oracle (samtools/bcftools); the guest
       # container never sees this environment.
       - name: Set up Pixi
-        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
-        with:
-          pixi-version: v0.82.0
-          locked: true
-          environments: default
-          # PR runs restore main's environment; writing their own crowds it out.
-          cache-write: ${{ github.ref == 'refs/heads/main' }}
+        uses: ./.github/actions/setup-pixi
       - name: Install, use, update and uninstall in a fresh Ubuntu container
         run: python3 scripts/installlab/lab.py run linux --out out/installlab/ci-linux
       - name: Every corruption of the evidence must fail the oracle
@@ -199,13 +176,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up Pixi
-        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
-        with:
-          pixi-version: v0.82.0
-          locked: true
-          environments: default
-          # PR runs restore main's environment; writing their own crowds it out.
-          cache-write: ${{ github.ref == 'refs/heads/main' }}
+        uses: ./.github/actions/setup-pixi
       - name: Get the app built from this tree
         if: matrix.cli == 'tree' && needs.app-source.outputs.build == 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -259,13 +230,7 @@ jobs:
       # pixi installs into the runner's account; the scenario runs as a new
       # account that can't see it.
       - name: Set up Pixi
-        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
-        with:
-          pixi-version: v0.82.0
-          locked: true
-          environments: default
-          # PR runs restore main's environment; writing their own crowds it out.
-          cache-write: ${{ github.ref == 'refs/heads/main' }}
+        uses: ./.github/actions/setup-pixi
       # Hosted macOS runners can't nest VMs, so the scenario runs as a brand-new
       # account with only the system PATH. lab.py first hides the runner's
       # Homebrew and JDKs and turns Gatekeeper on, as on a user's Mac; the
@@ -502,13 +467,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up Pixi
-        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
-        with:
-          pixi-version: v0.82.0
-          locked: true
-          environments: default
-          # PR runs restore main's environment; writing their own crowds it out.
-          cache-write: ${{ github.ref == 'refs/heads/main' }}
+        uses: ./.github/actions/setup-pixi
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: install-lab-windows*

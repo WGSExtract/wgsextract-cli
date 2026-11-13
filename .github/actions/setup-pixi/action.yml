@@ -1,0 +1,49 @@
+name: Shared Pixi environment
+description: Restore one lockfile-keyed environment per OS; only the matrix seeds it.
+inputs:
+  environments:
+    description: Space-separated environments to install.
+    default: default
+  scope:
+    description: Cache family (lint is separate from the CLI tool environment).
+    default: cli
+  writer:
+    description: Whether this job is the designated main-branch writer.
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - name: Key the non-relocatable Pixi environment
+      id: key
+      shell: bash
+      env:
+        SCOPE: ${{ inputs.scope }}
+        LOCK_HASH: ${{ hashFiles('pixi.lock') }}
+      run: |
+        workspace_hash=$(printf '%s' "$GITHUB_WORKSPACE" | sha256sum | cut -d' ' -f1)
+        echo "key=pixi-v2-${RUNNER_OS}-${RUNNER_ARCH}-v0.82.0-${SCOPE}-${LOCK_HASH}-${workspace_hash}" >> "$GITHUB_OUTPUT"
+    - name: Restore shared environment
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .pixi
+        key: ${{ steps.key.outputs.key }}
+    - name: Install pinned Pixi and selected environments
+      uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+      with:
+        pixi-version: v0.82.0
+        locked: true
+        environments: ${{ inputs.environments }}
+        cache: false
+    - name: Publish environment cache hit
+      shell: bash
+      env:
+        HIT: ${{ steps.restore.outputs.cache-hit == 'true' }}
+        KEY: ${{ steps.key.outputs.key }}
+      run: echo "Pixi cache hit=${HIT}; key=${KEY}" >> "$GITHUB_STEP_SUMMARY"
+    - name: Seed the shared environment from main only
+      if: inputs.writer == 'true' && github.ref == 'refs/heads/main' && steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .pixi
+        key: ${{ steps.key.outputs.key }}

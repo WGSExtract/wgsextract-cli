@@ -17,6 +17,7 @@ on:
       - tests/test_windows_arm64.py
       - tests/test_pixi_hash_restore.py
       - .github/workflows/windows_arm64.yml
+      - "!**/*.md"
 
 permissions:
   contents: read
