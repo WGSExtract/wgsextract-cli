@@ -1,5 +1,6 @@
 """Explicit slow-module partition; unclassified/new tests stay in the core tier."""
 
+import hashlib
 from pathlib import Path
 
 # These suites exercise real workflows, resumability and multiple tool stages.
@@ -25,3 +26,8 @@ SINGLE_OS_MODULES = frozenset({"test_genotyping.py"})
 
 def test_tier(path: str) -> str:
     return "integration" if Path(path).name in INTEGRATION_MODULES else "core"
+
+
+def module_shard(path: str) -> int:
+    """Keep module fixtures together and make assignment stable across hosts."""
+    return hashlib.sha256(Path(path).name.encode()).digest()[0] % 2

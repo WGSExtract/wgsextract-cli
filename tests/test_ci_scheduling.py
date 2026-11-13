@@ -93,6 +93,7 @@ from tests.conftest import pytest_collection_modifyitems
 def pytest_addoption(parser):
     parser.addoption("--ci-tier", default="all")
     parser.addoption("--ci-skip-independent", action="store_true")
+    parser.addoption("--ci-shard", default="all")
 """
     )
     pytester.makepyfile(
@@ -109,3 +110,52 @@ def pytest_addoption(parser):
         str(pytester.path / "out" / "pytest"),
     )
     result.assert_outcomes(passed=passed, deselected=deselected)
+
+
+def test_761_core_shards_run_every_module_once_with_shared_fixtures(
+    pytester: pytest.Pytester,
+) -> None:
+    pytester.makeconftest(
+        """
+from pathlib import Path
+import pytest
+from tests.conftest import pytest_collection_modifyitems
+
+def pytest_addoption(parser):
+    parser.addoption("--ci-tier", default="core")
+    parser.addoption("--ci-skip-independent", action="store_true")
+    parser.addoption("--ci-shard", default="all")
+
+@pytest.fixture(scope="module", autouse=True)
+def prepared_module(request):
+    with Path("prepared.txt").open("a") as out:
+        out.write(request.module.__name__ + "\\n")
+"""
+    )
+    source = """
+from pathlib import Path
+
+def test_first():
+    with Path("ran.txt").open("a") as out:
+        out.write(__name__ + "::first\\n")
+
+def test_second():
+    with Path("ran.txt").open("a") as out:
+        out.write(__name__ + "::second\\n")
+"""
+    names = ("test_new_feature", "test_sample", "test_other_feature", "test_another")
+    pytester.makepyfile(**dict.fromkeys(names, source))
+    for shard in ("0/2", "1/2"):
+        result = pytester.runpytest_subprocess(
+            "--ci-shard",
+            shard,
+            "--basetemp",
+            str(pytester.path / "out" / shard.replace("/", "-")),
+        )
+        assert result.ret == 0
+    assert sorted((pytester.path / "prepared.txt").read_text().splitlines()) == sorted(
+        names
+    )
+    assert sorted((pytester.path / "ran.txt").read_text().splitlines()) == sorted(
+        f"{name}::{case}" for name in names for case in ("first", "second")
+    )

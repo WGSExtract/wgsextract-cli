@@ -74,7 +74,9 @@ Windows/Ubuntu, three on macOS in the November 13 baseline). They now run two
 independent, disjoint pytest tiers in parallel:
 
 - **Core:** every test not explicitly listed in `INTEGRATION_MODULES` in
-  `scripts/ci_test_tiers.py`. New tests automatically join this tier.
+  `scripts/ci_test_tiers.py`. New tests automatically join this tier. Two
+  parallel core shards use a stable module-name hash; module fixtures are
+  never split between shards.
 - **Integration:** the realignment, analyze-workflow, benchmark,
   benchmark-module, pipeline-interoperability, contig-calling, microarray-reuse,
   native-aligner and DeepVariant modules listed there. Whole modules retain
@@ -90,7 +92,15 @@ suite in one job. No slow suite is demoted to nightly-only coverage.
 Only `test_genotyping.py` (pure genotype parsing/repeat classification) is
 Ubuntu-x64-only in CI. Real-tool genotyping commands remain cross-platform.
 Ordinary local pytest still collects everything; the opt-in `--ci-tier` and
-`--ci-skip-independent` flags implement these CI-only partitions.
+`--ci-skip-independent` and `--ci-shard` flags implement these CI-only partitions.
+
+The first implementation PR run measured 573 s for Ubuntu core versus 439 s
+for integration, so just two jobs still missed the 480 s target. Core is
+therefore split once more rather than dropping tests. Its first-run JUnit
+costs predict approximately 665/431 accumulated test-seconds for the two
+shards (each still has two xdist workers). This adds one environment/setup per
+x64 OS; it trades some setup runner-minutes for latency, not free capacity.
+Only core-1 seeds shared main caches and runs one-off core checks.
 
 Per-test timing XML and the slowest 60 durations remain available on **every**
 run, separately named by OS/tier. Non-gating line coverage is collected on
@@ -105,7 +115,7 @@ command precedes pytest anymore; neither has been removed.
 Test preparation also avoids duplicate real-tool work. Tiny FASTA/faidx and
 SAM/sorted-BAM/index inputs prepared by `tests/htslib_helpers.py` are shared
 across workers/sessions in ignored `out/test-fixtures/`, keyed by input content,
-builder source and tool binary. Tests receive copies, never shared writable
+builder source, lockfile and tool binary. Tests receive copies, never shared writable
 inputs. Locking and a completion marker prevent partially built cache hits.
 This is a local content-addressed cache, not another Actions cache family.
 Large metadata-only stand-ins explicitly request sparse allocation on Windows;

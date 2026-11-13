@@ -66,6 +66,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Leave reviewed OS-independent tests to Ubuntu x64 CI.",
     )
     group.addoption(
+        "--ci-shard",
+        choices=("all", "0/2", "1/2"),
+        default="all",
+        help="Split the core tier by stable module hash, retaining module fixtures.",
+    )
+    group.addoption(
         "--yleaf-upstream", help="Local tagged Yleaf checkout for optional parity."
     )
     group.addoption(
@@ -116,17 +122,20 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 def pytest_collection_modifyitems(
     config: pytest.Config, items: list[pytest.Item]
 ) -> None:
-    from scripts.ci_test_tiers import SINGLE_OS_MODULES, test_tier
+    from scripts.ci_test_tiers import SINGLE_OS_MODULES, module_shard, test_tier
 
     tier = config.getoption("--ci-tier")
     skip_independent = config.getoption("--ci-skip-independent")
-    if tier == "all" and not skip_independent:
+    shard = config.getoption("--ci-shard")
+    if tier == "all" and not skip_independent and shard == "all":
         return
     selected, deselected = [], []
     for item in items:
         keep = (tier == "all" or test_tier(str(item.path)) == tier) and not (
             skip_independent and item.path.name in SINGLE_OS_MODULES
         )
+        if shard != "all":
+            keep = keep and module_shard(str(item.path)) == int(shard[0])
         (selected if keep else deselected).append(item)
     items[:] = selected
     config.hook.pytest_deselected(items=deselected)
