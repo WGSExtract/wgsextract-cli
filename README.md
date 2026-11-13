@@ -170,12 +170,16 @@ have (a BAM/CRAM, FASTQ, VCF or raw-data file), then lists every command.
   `help dataset-library`, `help exit-codes` and `help manifests`.
 - `wgsextract help`: the full command tree.
 
-`help --all --json` (or `help <command> --json`) is the machine-readable
-index (schema `wgsextract.help/1`): each command's options with their types,
+For agents, navigate **index → command**: `help --all --json` is a compact
+index (schema `wgsextract.help-index/1`), with each command's path, one-line
+summary, tier and key flags. Then `help <command> --json` gives the full
+details (schema `wgsextract.help/1`): each command's options with their types,
 choices and defaults, its examples and outputs, and, for commands of the
 [typed API](docs/api.md), a JSON Schema of its parameters (`input_schema`).
 New fields may be added under the same schema version; a renamed or removed
-field gets a new one.
+field gets a new one. `help --all --json --full` opts into the complete dump.
+Key flags are discovery hints, not a complete invocation; consult the command
+schema for required arguments, advanced options and defaults.
 
 A mistyped command, option or choice is a usage error (exit 2) with a "Did you
 mean" hint. On a terminal, some commands end with "Next:" suggestions for

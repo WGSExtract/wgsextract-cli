@@ -104,6 +104,16 @@ Help-size tests gate each command's JSON (12,000 characters maximum) and the
 average (3,000), rather than a global total that every new command changes.
 The JSON and text-index totals are reported as test properties, not gates;
 the text index's existing per-line width check still catches bloated entries.
+The compact discovery index has a separate 60,000-character ceiling and a
+20,000-token approximation ceiling (word pieces plus JSON punctuation,
+without downloading a tokenizer model). Agents read this index first, then
+`wgsextract help <command> --json` for full schemas.
+
+The CLI help document is not the server protocol. HTTP discovery uses
+`GET /v1/ops` (summaries) then `GET /v1/ops/{op}` (full Params schema);
+MCP `tools/list` must include its protocol-required `inputSchema`. Both use
+the same typed Params definitions as per-command CLI help, not the compact
+help index, so their invocation schemas remain complete.
 
 The "Start from what you have" paths in both come from `JOURNEYS` in
 `registry.py`. To retire a command, don't delete it: add it to `DEPRECATIONS`

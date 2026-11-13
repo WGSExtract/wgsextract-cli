@@ -173,8 +173,9 @@ def runtime_section() -> Iterator[str]:
         "`wgsextract.result/1` document. `text` is the human-readable report "
         "the CLI prints (without `--json`); it is not in the manifest. "
         "`api.json_schema(cls)` gives a JSON "
-        "Schema of a Params class; `wgsextract help --all --json` includes it "
-        "as each typed command's `input_schema`, with each property's flag "
+        "Schema of a Params class. Start with the compact index "
+        "`wgsextract help --all --json`, then `wgsextract help <command> --json` "
+        "includes the typed command's `input_schema`, with each property's flag "
         "as `x-cli-flag` (a positional argument's metavar as "
         "`x-cli-positional`)."
     )

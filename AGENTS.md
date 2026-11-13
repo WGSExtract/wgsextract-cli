@@ -8,6 +8,14 @@ When outputting test run results, logs, or stdout captures, **always** put them 
 
 Do not add new environment-variable configuration. Put persistent configuration in config.toml settings, and use command-line parameters for run-specific overrides.
 
+## Discover CLI commands
+
+Navigate index → command: `pixi run wgsextract help --all --json` gives a
+compact index (path, summary, tier, key flags). Pick a path, then read
+`pixi run wgsextract help <command> --json` for its full options, required
+arguments, examples and typed input schema before building an invocation.
+Only request `help --all --json --full` when the entire schema dump is needed.
+
 ## The desktop app (`gui/`)
 
 `gui/` is the WGS Extract desktop app (formerly the gui-for-cli repository): TypeScript, Tauri and its own Python tooling, with its own [AGENTS.md](gui/AGENTS.md), which applies to work there. Root ruff, mypy and pytest skip `gui/`; check app changes with `just gui-ci` (or `just gui-test`, `just gui-lint`), which GUI CI (`.github/workflows/gui-*.yml`) runs for changes under `gui/`. The app and the CLI release together as one `vX.Y.Z`; see `docs/releasing.md`.
