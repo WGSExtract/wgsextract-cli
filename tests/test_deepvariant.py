@@ -761,12 +761,15 @@ def test_wgse_deepvariant_fits_a_16_gb_mac_647(mac_native, monkeypatch):
     assert (mac_native.out / "deepvariant.vcf.gz").exists()
 
 
-def test_an_old_wgse_deepvariant_is_refused_647(mac_native):
+def test_wgse_deepvariant_0_1_0_is_refused_for_its_pileup_drift_647(mac_native):
+    """0.1.0 didn't trim reads to the pileup window, so 20 HG003 records
+    differed from Google's VCF; 0.1.1 is the first build that matches."""
     state = json.loads((mac_native.deepvariant.root / "state.json").read_text())
-    state["wgse_version"] = "0.0.9"
+    state["wgse_version"] = "0.1.0"
     (mac_native.deepvariant.root / "state.json").write_text(json.dumps(state))
-    with pytest.raises(WGSExtractError, match="0.0.9 is too old"):
+    with pytest.raises(WGSExtractError, match=r"0\.1\.0 is too old.*0\.1\.1 or later"):
         call(mac_native)
+    assert not (mac_native.out / "deepvariant.vcf.gz").exists()
 
 
 # Linux x86-64: wgse-deepvariant on the CPU or an NVIDIA GPU (#719) -----------

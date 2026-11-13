@@ -45,6 +45,22 @@ jobs:
       - name: Validate installer arguments
         shell: cmd
         run: install_windows.bat --dry-run --msys2-root C:\msys64 --skip-pacman-setup
+      # This environment is deliberately not restored by setup-pixi above:
+      # prove that a fresh install uses the published, SHA-256-pinned package.
+      - name: Install pinned imputation tools from scratch
+        run: |
+          if (Test-Path .pixi/envs/imputation) {
+            Remove-Item -Recurse -Force .pixi/envs/imputation
+          }
+          pixi install --locked -e imputation
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Impute HG002 with the pinned Windows tools (no skips)
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          pixi run pytest tests/test_imputation.py -p no:randomly -rs -o addopts="" --basetemp=out/imputation-tmp --junitxml=out/imputation-e2e.xml
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          pixi run python -c "import sys, xml.etree.ElementTree as ET; s = ET.parse('out/imputation-e2e.xml').getroot().find('testsuite'); assert s is not None; n = int(s.get('tests', '0')); skipped = int(s.get('skipped', '0')); print(n, 'tests,', skipped, 'skipped'); sys.exit(n == 0 or skipped > 0)"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Check tools
         run: pixi run wgsextract deps check
       - name: Run Benchmark
@@ -63,6 +79,7 @@ jobs:
           path: |
             out/coverage.xml
             out/pytest.xml
+            out/imputation-e2e.xml
       - name: Annotate with vep-rs end to end (no skips)
         run: |
           pixi run python -c "from wgsextract_cli.core.dependencies import get_tool_path as g; assert g('vep-rs') and g('vep-cache-builder'), 'vep-rs environment missing'"

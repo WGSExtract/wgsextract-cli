@@ -3,6 +3,15 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## New
 
+- Genotype imputation now works natively on **Windows x64**:
+  `pixi install -e imputation` installs GLIMPSE2 2.0.1 from our `glimpse2-1`
+  release (pinned by URL and SHA-256), Beagle and native OpenJDK.
+  `ref imputation` prepares the GRCh38 panel; `vcf impute` imputes
+  low-coverage reads or genotype-only VCFs with downstream imputed-call labels.
+  No MSYS2 or WSL is needed at runtime. GLIMPSE2 phase requires AVX2/FMA;
+  Windows ARM64, Linux ARM64 and Apple Silicon remain unsupported.
+  See [imputation.md](../imputation.md).
+
 - `score pgs` computes research-only local polygenic score sums from a VCF,
   with 11 curated PGS Catalog IDs, arbitrary IDs (with a warning), and custom
   scoring files. JSON, TSV and the manifest report missingness, licence and
@@ -28,9 +37,11 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   `wgse-bwa`) may now give a different BAM; pass `--aligner bwa` to keep bwa.
 - `vcf deepvariant` runs DeepVariant natively on Apple Silicon Macs with
   `wgse-deepvariant`, WGS Extract's build of DeepVariant 1.10.0 (the
-  `macos-deepvariant` release): no Docker, call_variants on the GPU, and the
-  same sites, genotypes and filters as Google's x86-64 image (HG002 chr20 in
-  about 5 minutes on an M1 Pro; 16 GB Macs fit). Put it on `PATH` and set the
+  `macos-deepvariant` release, 0.1.1 or later): no Docker, call_variants on
+  the GPU, and the same PASS calls, genotypes and filters as Google's x86-64
+  image (HG002 chr20 in about 5 minutes on an M1 Pro; HG003's whole genome in
+  2 h 42 min with every hap.py count identical to Google's and two QUAL-0
+  RefCalls differing; 16 GB Macs fit). Put it on `PATH` and set the
   new `deepvariant_weights` setting in `config.toml` to its weights folder,
   whose files are checked against their published hashes; only the WGS model
   is qualified. `deepvariant_native = "off"` keeps the Docker image instead.

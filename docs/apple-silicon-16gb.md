@@ -25,17 +25,25 @@ the user's processes, sampled every 5 s.
 
 ## Summary
 
-A whole genome went from a BAM file to a personal report in **7.3 hours** on
-the base 16 GB M1, with default settings and its owner's apps still open.
-Nothing ran out of memory or disk. The genome, HG002, was sequenced to 35x,
-a little deeper than the usual 30x, so a 30x genome should take a little less.
+A whole genome went from a BAM file to a personal report in **7.3 hours** in
+the original trial on the base 16 GB M1, with default settings and its owner's
+apps still open. The current-default repeat took **7 h 25 min**, including
+cold reference indexing and interrupt recovery. Both completed, but completion
+does **not** mean alignment fits in RAM: current defaults swap heavily
+([#747](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
+HG002 was sequenced to **35x**, not 30x; neither trial measures a 30x duration.
 
 - **`realign` takes 6 hours**, and the GPU sets the pace. Calling SNPs and
   indels takes 68 minutes. Every other step takes under 4 minutes.
-- **Memory.** Only `realign` comes close to 16 GB: all processes together used
-  10.4 GiB at their peak and macOS swapped up to 4.8 GiB. Every other step
-  used under 4 GiB.
-- **Disk.** `realign` needs about 166 GiB free at its peak, on top of the input.
+- **Memory.** Concurrent RSS peaked around 10 GiB only because macOS compressed
+  and swapped memory. Current-default alignment moved about **1.1 TiB of
+  swap-out traffic**, not just a few GiB of occupied swap
+  ([#747](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
+  Its working-set estimate is about **22 GiB**, above this Mac's physical RAM.
+- **Disk.** The 35x run's normal refusal check required about **204 GiB free**
+  with the input and reference already present. The observed 166 GiB
+  scratch-plus-results peak is not a space recommendation; see
+  [the planning advice](#advice-for-16-gb-macs).
 - **Accuracy.** Against GIAB v4.2.1, `bcftools` SNP calls have 99.1% recall and
   97.5% precision, and indel calls 95.2% recall and 95.3% precision. 27 of the 29 Y-STRs it
   called match NIST's values for HG002.
@@ -303,12 +311,103 @@ with the same BWA index files.
   (22.0 GiB estimated against 8.4 available) and disk (230 GiB against 223
   free) as LOW, then completed within 164 GiB of extra disk.
 
+### Current defaults, `macos-aligners-16` and mimalloc
+
+[#722](https://github.com/WGSExtract/wgsextract-cli/issues/722) repeated the
+short-read pipeline on this Mac with main `992ee758`, published `wgse-bwa`
+0.12.1 (`macos-aligners-16`), samtools/bcftools 1.24, and the optional
+`wgse-mimalloc` installed through the documented tool setup. The existing
+HG002 **35x**, full-quality BAM (42.87 GiB, 835,260,805 indexed records) was
+used in place, without a staging copy. The target was the existing
+195-contig `GRCh38_no_alt.fa`, not the 456-contig hs38a used for this issue's
+small-data trial. Desktop applications remained open.
+
+No scientific settings were overridden: four requested threads, Metal BWA,
+512M sort memory per thread selected automatically, and the caller's default
+mimalloc mode. The normal disk refusal check passed; no force or preflight
+bypass was used.
+The four-thread setting is a worker request, not a cap on all OS threads:
+sampling saw up to 207 threads in an extraction samtools process, 39 in
+alignment's samtools, and 20 in `wgse-bwa`, including library/helper threads.
+Those are thread counts, not simultaneously busy CPU cores.
+
+| Step | Measured wall time | Largest-process RSS | Sampled pipeline RSS |
+| :--- | ---: | ---: | ---: |
+| Initial `realign`: extraction, cold reference index, intentional interruption | 62.65 min | 7.72 GiB | 9.02 GiB |
+| Resumed `realign`: cached FASTQs, align, sort and output index | 323.96 min | 8.30 GiB | 10.11 GiB |
+| `vcf snp`, mimalloc | 27.04 min | 0.514 GiB | 1.29 GiB |
+| `vcf indel`, mimalloc | 31.16 min | 0.305 GiB | 1.37 GiB |
+| `report` | 0.47 s | 0.063 GiB | — |
+
+The optional `--mimalloc off` comparison then took 29.99 min / 0.533 GiB
+largest-process RSS for SNPs and 34.60 min / 0.299 GiB for indels.
+Both produced exactly the same ordered VCF records as their mimalloc runs.
+Mimalloc's wall times were about 10% lower in this single sequential
+comparison, not a repeated or randomized benchmark; its RSS advantage was
+small for SNPs and absent for indels. Including both comparisons and record
+hashing, the experiment took 8 h 30 min.
+
+The default sequence took **7 h 25 min**, including a cold reference index
+(39 min), FASTQ extraction (22.5 min), and a deliberate alignment interrupt.
+It is a measured 35x run, not a measured 30x duration. The small slice's linear
+time projection was not a whole-genome guarantee.
+
+**Resume recovered the completed extraction.** SIGINT after the first
+alignment heartbeat returned 130. The unchanged command then skipped
+extraction, reused the same 66.23 GiB FASTQ pair, and completed with
+835,260,415 BAM records (832,735,204 mapped). The small-data test had already
+verified identical ordered SAM records between interrupted/resumed and
+uninterrupted runs; a second uninterrupted whole-genome run was not performed.
+The result manifests recorded `wgse-bwa` 0.12.1/`metal`, and both callers
+recorded `bcftools_allocator: mimalloc`.
+
+**RSS alone hides the memory cost.** During resumed alignment, `vm_stat`
+recorded **1,113.72 GiB swap-in and 1,116.92 GiB swap-out traffic**. These
+are cumulative system-wide traffic deltas, not simultaneously occupied swap
+or process-attributed bytes. Sampled occupied swap ranged from 1.21 to
+3.70 GiB; memory pressure alternated between normal (1) and warning (2).
+This heavy swapping is a product bug tracked in
+[#747](https://github.com/WGSExtract/wgsextract-cli/issues/747), not evidence
+that the defaults fit comfortably in 16 GiB. Default mimalloc calling and
+report added no swap-out traffic; the optional system-allocator SNP run
+coincided with 0.034 GiB of system-wide swap-out traffic.
+The conservative RAM estimate was 22.02 GiB at startup, versus 10.80 GiB
+available. Do **not** recalibrate that working-set estimate down to 8.30 GiB
+RSS: macOS compression and swapping kept the resident peak smaller.
+
+**Disk fit, but the margin mattered.** Free space started at 210.36 GiB
+above the already-present input and reference and fell to 37.42 GiB.
+The measurement harness's own 25 GiB free-space guard, which is not part of
+`realign`, never fired; `realign` checks its disk requirement only at start-up. Sampled
+scratch peaked at 134.86 GiB; scratch plus results peaked at 166.15 GiB.
+The free-space fall also includes newly built reference indexes and other
+system activity, so it is not the same measurement. The completed BAM was
+43.20 GiB; the SNP and indel VCFs contained 4,392,799 and 918,481 variants.
+Keep extra space for the desktop, swap and reference indexing rather than
+treating the observed peak as a minimum free-space recommendation.
+
+`report` successfully wrote its artifacts, but this sequence did not run
+annotation, lineage or typing. Its clinical sections were `not_run`; this
+is a pipeline/resource measurement, not a populated clinical report or a new
+accuracy benchmark.
+
 ## Advice for 16 GB Macs
 
+- **Current defaults make alignment swap heavily:** about **1.1 TiB of swap-out
+  traffic per 35x genome**, which wears the SSD. The preflight's **LOW memory**
+  warning (about 22 GiB estimated against about 11 GiB available) predicts this
+  problem; it does not yet adapt defaults to avoid it. Track
+  [open bug #747](https://github.com/WGSExtract/wgsextract-cli/issues/747).
 - **Close what you can before `realign`,** and leave the Mac on overnight.
   It runs at the GPU's pace, and more threads only use more memory.
-- **Have about 230 GB free** for a 30x `realign`: 166 GiB at its peak, plus
-  the input.
+- **Plan disk space before starting.** For a 35x run with the input and
+  reference already present, the normal refusal check requires about
+  **204 GiB free**. The conservative envelope is about **260 GiB** if reference
+  indexes must be built. Download space for the input comes **on top**.
+  Leave additional headroom for swap and the desktop rather than planning
+  around the observed 166 GiB scratch-plus-results peak.
+  The normal refusal check and the advisory conservative resource envelope
+  are different checks; a passing refusal check is not a reservation.
 - **Install the `macos-aligners` builds** ([Apple Silicon](hardware.md#apple-silicon-metal)).
   Without them `realign` runs bwa on the CPU, about four times slower.
 - **Call with `vcf snp` and `vcf indel`** (`bcftools`). They use the four

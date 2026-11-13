@@ -31,8 +31,9 @@ from wgsextract_cli.core.utils import WGSExtractError
 
 BINARY = "wgse-deepvariant"
 PIXI_ENVIRONMENT = "deepvariant"
-# The oldest usable build: 0.2.0 is the first Linux one.
-MINIMUM_VERSION = {"darwin": (0, 1, 0), "linux": (0, 2, 0)}
+# The oldest usable build: 0.1.1 is the first Mac one that matches Google's
+# calls on a whole genome (#647); 0.2.0 is the first Linux one.
+MINIMUM_VERSION = {"darwin": (0, 1, 1), "linux": (0, 2, 0)}
 WEIGHTS_SETTING = "deepvariant_weights"
 ENGINE_SETTING = "deepvariant_native"
 ENGINE_CHOICES = ("auto", "off")

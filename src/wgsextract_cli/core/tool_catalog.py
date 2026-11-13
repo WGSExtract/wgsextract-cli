@@ -106,10 +106,10 @@ PLATFORM_ONLY_TOOLS = {
     "somalier": ("linux", "darwin"),
     "whatshap": ("linux", "darwin"),
     "longphase": ("linux", "darwin"),
-    "GLIMPSE2_phase": ("linux", "darwin"),
-    "GLIMPSE2_ligate": ("linux", "darwin"),
-    "GLIMPSE2_chunk": ("linux", "darwin"),
-    "GLIMPSE2_split_reference": ("linux", "darwin"),
+    "GLIMPSE2_phase": ("linux", "darwin", "win32"),
+    "GLIMPSE2_ligate": ("linux", "darwin", "win32"),
+    "GLIMPSE2_chunk": ("linux", "darwin", "win32"),
+    "GLIMPSE2_split_reference": ("linux", "darwin", "win32"),
 }
 
 
@@ -130,7 +130,7 @@ def clair3_host_supported() -> bool:
 def imputation_host_supported() -> bool:
     """Hosts with the opt-in GLIMPSE2/Beagle environment."""
     system = "linux" if sys.platform.startswith("linux") else sys.platform
-    return system in {"linux", "darwin"} and platform.machine().lower() in {
+    return system in {"linux", "darwin", "win32"} and platform.machine().lower() in {
         "x86_64",
         "amd64",
     }
