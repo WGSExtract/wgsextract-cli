@@ -1112,7 +1112,7 @@ occurrence table's 6 GiB.
 
 ### wgse-minimap2 on Linux x86-64
 
-`wgse-minimap2` also builds on Linux x86-64, on the CPU only so far. It has
+`wgse-minimap2` also builds on Linux x86-64. It has
 the same output-identical changes as on a Mac (faster index loading and
 building, seed prefetching and the anchor sort), with upstream's x86-64
 base-level alignment: the SSE4.1 and SSE2 `ksw_extd2` kernels, picked at run
@@ -1134,8 +1134,42 @@ chr1–22 and X. The `sr` records match `expected.tsv`, as do the small tier's.
 HiFi gains from loading the index on several threads; mapping itself costs the
 same CPU time. A `perf` profile at 4 threads puts `ksw_extd2` (base-level gap
 fills) at 47% of the HiFi CPU time and 16% of ONT's, where chaining (DP and
-RMQ, 50%) and anchor sorting dominate, so GPU gap fills are the next step for
+RMQ, 50%) and anchor sorting dominate, so GPU gap fills pay off mostly on
 HiFi.
+
+With `-DWGSE_CUDA=ON`, `--cuda` (`--backend cuda`, experimental) runs the gap
+fills on an NVIDIA GPU as `--metal` does on a Mac, with the same exact-input
+matching. `--backend auto` uses the GPU when it can, and otherwise aligns on
+the CPU.
+
+- **Shared engine:** `ksw_host.cpp` is the engine both GPU builds share. It
+  runs reads as fibers on each `-t` thread (an x86-64 ELF context switch
+  alongside the arm64 one), queues their fills and dispatches the batches.
+  `ksw_engine.h` is the device interface: Metal (`metal_ksw.mm`) and CUDA
+  (`ksw_cuda.cu`).
+- **Kernel:** `ksw_fill.cuh` is the Metal kernel ported to CUDA, one warp per
+  fill, in 8- and 16-bit variants. Fills whose int8 differences wrap go to the
+  CPU, as on a Mac.
+- **Memory and failures:** each of the two dispatchers allocates its buffers
+  up front: about 0.35 GiB of GPU memory and 0.1 GiB of pinned host memory. `--cuda`
+  needs those, with 1 GiB spare, or it refuses to start. A watchdog bounds every
+  wait for the GPU. A failed or hung batch is finished on the CPU with the same
+  output; `--cuda` then exits 1, and `--backend auto` exits 0.
+- **Tests:** `tests/ksw_gpu_fuzz.cpp` compares the device with upstream's
+  `ksw_extd2_sse` on random batches, through the same interface for Metal and
+  CUDA. `tests/upstream.sh` runs its GPU cases with whichever GPU the build has.
+
+On the same machine and data (8 threads, `.mmi` indexes, two interleaved
+rounds, means; records identical):
+
+| Reads | Bioconda minimap2 2.31 | `wgse-minimap2` | `wgse-minimap2 --cuda` | CPU time (CPU → `--cuda`) |
+| --- | ---: | ---: | ---: | ---: |
+| HiFi, 40k reads (`map-hifi`) | 45.6 s | 32.5 s | 20.4 s (−37%) | 207 → 120 s (−42%) |
+| ONT, 47k reads (`map-ont`) | 112.3 s | 111.6 s | 100.7 s (−10%) | 808 → 729 s (−10%) |
+
+`--cuda` used 0.94 GiB of GPU memory and 0.8 GiB more RAM. The GPU computed
+all but a few hundred of the HiFi set's 3.45M fills (the rest by CPU threads
+with no read left to map), at about 12 G cells/s.
 
 ## Building
 

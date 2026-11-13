@@ -5,10 +5,10 @@
 # masking. For map-hifi, map-ont, map-pb and sr, the indexes each builds must be
 # byte-identical, and the SAM records (all but @PG) of reads drawn from the whole genome
 # must be identical, whether wgse-minimap2 maps the FASTA or loads upstream's index.
-# Where Metal is available, so must those of --metal (gap fills on the GPU) with small
-# batches, one or several reads per thread, most fills kept on the CPU, injected Metal
-# interruptions, and an injected GPU failure, which must exit 1 after the CPU redoes the
-# failed fills.
+# Where the build's GPU is available, so must those of --metal or --cuda (gap fills on the
+# GPU) with small batches, one or several reads per thread, most fills kept on the CPU,
+# injected Metal interruptions, an injected GPU failure, which must exit 1 after the CPU
+# redoes the failed fills (0 with --backend auto), and a hung GPU.
 # Usage: upstream.sh <wgse-minimap2> <minimap2-upstream> <work-dir>
 set -eu
 wgse=$1
@@ -111,8 +111,12 @@ function quality(n,    q) {
 }'
 
 records() { grep -v '^@PG' "$1" > "$1.records"; }
+# The GPU option of the build's available GPU, if any.
+gpu=""
+if "$wgse" capabilities --json | grep -q '"metal_available":true'; then gpu=--metal; fi
+if "$wgse" capabilities --json | grep -q '"cuda_available":true'; then gpu=--cuda; fi
 metal=false
-if "$wgse" capabilities --json | grep -q '"metal_available":true'; then metal=true; fi
+[ -z "$gpu" ] || metal=true
 
 # metal_run <preset> <name> <expected exit> <wrapper options>... -- <minimap2 options>...
 metal_run() {
@@ -120,7 +124,7 @@ metal_run() {
     shift 3
     status=0
     # shellcheck disable=SC2086
-    "$wgse" --metal "$@" -ax "$preset" reference.fa $reads > "metal.$preset.$name.sam" \
+    "$wgse" "$gpu" "$@" -ax "$preset" reference.fa $reads > "metal.$preset.$name.sam" \
         2> "metal.$preset.$name.log" || status=$?
     test "$status" -eq "$expected"
     records "metal.$preset.$name.sam"
@@ -151,15 +155,19 @@ for preset in map-hifi map-ont map-pb sr; do
         metal_run "$preset" small 0 --gpu-fibers 3 --gpu-batch 5 -t 3
         metal_run "$preset" single 0 --gpu-fibers 1 -t 1
         metal_run "$preset" capped 0 --gpu-max-cost 3000 -t 2
-        metal_run "$preset" interrupted 0 --gpu-inject-interruptions 1 -t 2
-        grep -Eq '[1-9][0-9]* Metal interruptions' "metal.$preset.interrupted.log"
+        if [ "$gpu" = --metal ]; then
+            metal_run "$preset" interrupted 0 --gpu-inject-interruptions 1 -t 2
+            grep -Eq '[1-9][0-9]* Metal interruptions' "metal.$preset.interrupted.log"
+        fi
         metal_run "$preset" failed 1 --gpu-inject-failure -t 2
         grep -q 'a GPU batch failed (injected GPU failure)' "metal.$preset.failed.log"
+        # --backend auto finishes on the CPU after a GPU failure and exits 0.
+        metal_run "$preset" auto-failed 0 --backend auto --gpu-inject-failure -t 2
+        grep -q 'backend auto: a GPU batch failed (injected GPU failure)' "metal.$preset.auto-failed.log"
         # Regression (#548): a GPU command that never completes, with no error
-        # from macOS, is given up by the watchdog and its fills run on the CPU.
+        # from the driver, is given up by the watchdog and its fills run on the CPU.
         metal_run "$preset" hang 1 --gpu-inject-hang ksw_fill -t 2
-        grep -q 'a GPU batch failed (GPU watchdog: a Metal command (ksw_fill' \
-            "metal.$preset.hang.log"
+        grep -q 'a GPU batch failed (GPU watchdog: .*ksw_fill' "metal.$preset.hang.log"
     fi
     # The repeats must give ambiguous alignments (secondary, or primary with MAPQ 0).
     awk -F '\t' '!/^@/ && int($2 / 4) % 2 == 0 && $5 == 0 { n++ } END { exit !(n > 0) }' \
@@ -171,7 +179,7 @@ done
 if $metal; then
     "$upstream" -t 2 --pairing=no --cap-kalloc 1 -ax map-hifi reference.fa hifi.fq hifi.fq \
         > upstream.km-reset.sam 2> upstream.km-reset.log
-    "$wgse" --metal --gpu-fibers 4 -t 2 --pairing=no --cap-kalloc 1 -ax map-hifi reference.fa \
+    "$wgse" "$gpu" --gpu-fibers 4 -t 2 --pairing=no --cap-kalloc 1 -ax map-hifi reference.fa \
         hifi.fq hifi.fq > metal.km-reset.sam 2> metal.km-reset.log
     records upstream.km-reset.sam
     records metal.km-reset.sam
@@ -182,7 +190,7 @@ if $metal; then
     # Fills whose int8 differences wrap (a match score this large) must be redone on the CPU.
     "$upstream" -t 2 -ax map-hifi -A85 -B19 -O39,81 -E3,1 reference.fa hifi.fq \
         > upstream.wrap.sam 2> upstream.wrap.log
-    "$wgse" --metal -t 2 -ax map-hifi -A85 -B19 -O39,81 -E3,1 reference.fa hifi.fq \
+    "$wgse" "$gpu" -t 2 -ax map-hifi -A85 -B19 -O39,81 -E3,1 reference.fa hifi.fq \
         > metal.wrap.sam 2> metal.wrap.log
     records upstream.wrap.sam
     records metal.wrap.sam
@@ -192,25 +200,29 @@ if $metal; then
     # inside and just outside one bound) must give upstream's records with the kernels named.
     for scoring in "16-bit -A104 -B40 -O20,40 -E2,1" "8-bit -A105 -B40 -O20,40 -E2,1" \
         "16-bit -A10 -B60 -O30,68 -E4,1" "8-bit -A10 -B60 -O30,69 -E4,1" "16-bit -A20 -B6 -O2,10 -E2,1"; do
+        # shellcheck disable=SC2086 # the kernels named, then the scoring options
         set -- $scoring
         kernels=$1; shift
         name=scoring$(echo "$*" | tr -d ' ,-')
         "$upstream" -t 2 -ax map-hifi "$@" reference.fa hifi.fq > "upstream.$name.sam" 2> "upstream.$name.log"
-        "$wgse" --metal -t 2 -ax map-hifi "$@" reference.fa hifi.fq > "metal.$name.sam" 2> "metal.$name.log"
+        "$wgse" "$gpu" -t 2 -ax map-hifi "$@" reference.fa hifi.fq > "metal.$name.sam" 2> "metal.$name.log"
         records "upstream.$name.sam"
         records "metal.$name.sam"
         cmp "upstream.$name.sam.records" "metal.$name.sam.records"
         grep -q "; $kernels kernels;" "metal.$name.log"
-        grep -Eq 'on the GPU \([1-9][0-9]* used\)' "metal.$name.log"
+        # The kernels ran: they computed fills, or found that int8 wraps (-A105 almost always
+        # does), which the CPU then redoes.
+        grep -Eq 'on the GPU \([1-9][0-9]* used\)|[1-9][0-9]* redone on the CPU' "metal.$name.log"
     done
     # PR #657 review: scorings with q > q2 cannot reach the kernels: minimap2 requires E1 > E2 and
     # O1 + E1 < O2 + E2, which imply q2 > q, and rejects any other dual-gap scoring before mapping.
     for gaps in "-O50,10 -E4,44" "-O12,8 -E4,2" "-O30,10 -E2,1"; do
         status=0
-        "$wgse" --metal -t 2 -ax map-hifi -B80 $gaps reference.fa hifi.fq > /dev/null 2> metal.qgtq2.log || status=$?
+        # shellcheck disable=SC2086 # $gaps holds two options
+        "$wgse" "$gpu" -t 2 -ax map-hifi -B80 $gaps reference.fa hifi.fq > /dev/null 2> metal.qgtq2.log || status=$?
         [ "$status" -ne 0 ]
         grep -q 'dual gap penalties violating' metal.qgtq2.log
     done
 fi
 echo "wgse-minimap2 matches upstream minimap2 for map-hifi, map-ont, map-pb and sr"
-if $metal; then echo "wgse-minimap2 --metal matches upstream minimap2 for map-hifi, map-ont, map-pb and sr"; fi
+if $metal; then echo "wgse-minimap2 $gpu matches upstream minimap2 for map-hifi, map-ont, map-pb and sr"; fi
