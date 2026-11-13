@@ -71,7 +71,9 @@
       close();
       var text = h("textarea.an-input.an-textarea", { "aria-label": "Note", placeholder: opts.placeholder || "What should change here, or what do you think?", rows: 4 });
       var error = h("div.an-error", { role: "alert" });
+      var saving = false;
       function save() {
+        if (saving) return;
         if (WGSM.notes.mode === "server" && !WGSM.notes.available) {
           error.textContent = WGSM.notes.error;
           return;
@@ -86,8 +88,14 @@
           text.focus();
           return;
         }
-        opts.onSave(value);
-        close();
+        saving = true;
+        var dialog = current;
+        opts.onSave(value).then(function () {
+          if (current === dialog) close();
+        }, function (err) {
+          saving = false;
+          error.textContent = WGSM.notes.error || err.message;
+        });
       }
       current = h(
         "div.an-composer",

@@ -16,6 +16,7 @@
     (preview ? (version.branch || (preview[1] === "local" ? "local/" : "mockups/") + preview[2]) : "main");
   var LOCAL_KEY = "wgsm.notes." + WGSM.page.id;
   var retryTimer = null, retryDelay = 500;
+  var chosenAuthor = null;
   var unavailableText = "Review server unavailable, retrying; notes can't be saved yet.";
 
   function now() {
@@ -231,7 +232,7 @@
         WGSM.emit("notes", doc);
         return doc;
       }, function (err) {
-        store.error = err.message;
+        store.error = store.mode === "server" && !store.available ? unavailableText : err.message;
         WGSM.emit("notes", store.doc);
         throw err;
       });
@@ -327,8 +328,11 @@
     },
 
     author: function (name) {
-      if (arguments.length) WGSM.pref("author", name);
-      return WGSM.pref("author") || "";
+      if (arguments.length) {
+        chosenAuthor = name;
+        WGSM.pref("author", name);
+      }
+      return chosenAuthor === null ? WGSM.pref("author") || "" : chosenAuthor;
     },
   });
 

@@ -13,11 +13,12 @@ function browser({ hosted = true, protocol = "http:", version = {}, pathname = "
   const WGSM = {
     page: { id: "index", title: "Main" }, params: new URLSearchParams(),
     link: p => "/" + p, emit: (name, value) => events.push({ name, value }),
+    pref: () => null,
   };
   const location = { protocol, pathname, hostname: "review.invalid", href: protocol + "//review.invalid" + pathname };
   const context = {
     window: { WGSM, WGSM_VERSION: version }, location, URL, URLSearchParams, AbortController,
-    document: { querySelector: () => hosted ? { getAttribute: () => pathname.startsWith("/local/") ? "local/draft" : "main" } : null },
+    document: { querySelector: () => hosted ? { getAttribute: () => pathname.startsWith("/local/") ? "local/draft" : pathname.startsWith("/preview/") ? "mockups/draft" : "main" } : null },
     localStorage: {
       getItem(key) { assert.ok(!hosted, "hosted notes must not read browser storage"); return storage.get(key) || null; },
       setItem(key, value) { assert.ok(!hosted, "hosted notes must not write browser storage"); storage.set(key, value); },
@@ -51,14 +52,21 @@ function browser({ hosted = true, protocol = "http:", version = {}, pathname = "
   };
 }
 
-for (const pathname of ["/", "/local/draft/"]) {
-  test("hosted HTML marker prevents browser-note fallback during outage: " + pathname, async () => {
-    // No version.js: the marker must survive a failed version-script request too.
-    const b = browser({ pathname });
+for (const options of [
+  { pathname: "/" },
+  { pathname: "/local/draft/" },
+  { pathname: "/preview/draft/", version: { source: "preview", branch: "mockups/draft" } },
+  { pathname: "/preview/draft/", hosted: false, version: { source: "preview", hosted: true, branch: "mockups/draft" } },
+]) {
+  test("hosted marker prevents browser-note fallback during outage: " + JSON.stringify(options), async () => {
+    // Empty-version cases cover a failed version-script request too.
+    const b = browser(options);
     await b.store.init();
     assert.equal(b.store.mode, "server");
     assert.equal(b.store.available, false);
     assert.match(b.store.error, /unavailable.*retrying/);
+    b.store.author("Randy");
+    assert.equal(b.store.author(), "Randy", "name selection must also work if browser preferences cannot persist");
     const change = { op: "add", note: { id: "noutage", author: "Randy", text: "Shared only" } };
     const before = b.requests();
     await assert.rejects(b.store.apply(change), /can't be saved/);
