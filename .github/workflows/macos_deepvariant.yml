@@ -48,8 +48,9 @@ jobs:
         run: |
           mkdir -p out/weights
           docker run --rm --network none -v "$PWD:/w" "$DEEPVARIANT_IMAGE" \
-            python3 /w/native/deepvariant/convert_weights.py /w/out/weights
-          (cd out/weights && sha256sum -c ../../native/deepvariant/weights-sha256.txt)
+            python3 /w/native/deepvariant/convert_weights.py /w/out/weights wgs
+          # The Mac build is qualified for the WGS model only.
+          (cd out/weights && grep '  wgs' ../../native/deepvariant/weights-sha256.txt | sha256sum -c)
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

@@ -10,7 +10,7 @@
 # README.md.
 cmake_minimum_required(VERSION 3.27)
 set(CMAKE_OSX_DEPLOYMENT_TARGET 14.0 CACHE STRING "Minimum macOS version")
-project(wgse_deepvariant VERSION 0.2.0 LANGUAGES C CXX)
+project(wgse_deepvariant VERSION 0.3.0 LANGUAGES C CXX)
 
 if(APPLE AND NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
     message(FATAL_ERROR "wgse-deepvariant requires Apple Silicon on macOS")
@@ -23,7 +23,7 @@ cmake_host_system_information(RESULT cores QUERY NUMBER_OF_LOGICAL_CORES)
 set(WGSE_BUILD_JOBS ${cores} CACHE STRING "Parallel jobs for the port's build")
 
 # Bump when the wgse-deepvariant package changes; versioned separately from DeepVariant.
-set(WGSE_DEEPVARIANT_VERSION 0.2.0)
+set(WGSE_DEEPVARIANT_VERSION 0.3.0)
 set(PORT_COMMIT 0b7b9c57ad84c55918fc0429dacf16f943808c0b)
 set(deps "${CMAKE_BINARY_DIR}/deps")
 if(APPLE)

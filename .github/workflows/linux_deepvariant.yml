@@ -3,7 +3,7 @@ name: Linux DeepVariant
 # Builds wgse-deepvariant for Linux x86-64 as conda packages
 # (packaging/wgse-deepvariant: DeepVariant 1.10.0 from native/deepvariant, with
 # call_variants on ONNX Runtime, in a CUDA and a CPU-only build), converts its
-# WGS weights from Google's image, smoke-tests both builds on the
+# WGS and ONT_R104 weights from Google's image, smoke-tests both builds on the
 # CPU (the runner has no GPU), and publishes packages and weights to a
 # prerelease when asked: Actions > Linux DeepVariant > Run workflow, with a new
 # tag such as linux-deepvariant-1.
@@ -47,7 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Convert the WGS models
+      - name: Convert the WGS and ONT_R104 models
         run: |
           mkdir -p out/weights
           docker run --rm --network none -v "$PWD:/w" "$DEEPVARIANT_IMAGE" \
@@ -110,7 +110,7 @@ jobs:
           # Google distributes the models under DeepVariant's BSD-3-Clause licence.
           curl -fsSL -o out/DeepVariant-LICENSE \
             https://raw.githubusercontent.com/google/deepvariant/v1.10.0/LICENSE
-          weights=wgse-deepvariant-weights-1.10.0-wgs
+          weights=wgse-deepvariant-weights-1.10.0
           mkdir -p "out/stage/$weights"
           cp -R out/weights/. "out/stage/$weights/"
           cp out/DeepVariant-LICENSE "out/stage/$weights/LICENSE"
@@ -146,7 +146,7 @@ jobs:
           find linux-deepvariant \( -name '*.conda' -o -name '*.tar.gz' \) -exec cp -t assets/ {} +
           (cd assets && sha256sum ./* | sed "s| ./| |" > SHA256SUMS)
           {
-            echo "wgse-deepvariant: DeepVariant 1.10.0 for Linux x86-64 as conda packages (CUDA 12.9 or CPU-only call_variants), and its WGS model weights converted from google/deepvariant:1.10.0."
+            echo "wgse-deepvariant: DeepVariant 1.10.0 for Linux x86-64 as conda packages (CUDA 12.9 or CPU-only call_variants), and its WGS and ONT_R104 model weights converted from google/deepvariant:1.10.0."
             echo "Built from native/deepvariant and packaging/wgse-deepvariant at ${GITHUB_SHA} by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
             echo "See native/deepvariant/README.md for installation, validation and licences."
             echo

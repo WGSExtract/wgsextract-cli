@@ -892,10 +892,11 @@ def test_a_busy_gpu_stops_wgse_deepvariant_before_call_variants_719(linux_native
     ]
 
 
-def test_ont_reads_keep_googles_image_and_parabricks_719(
+def test_ont_reads_keep_googles_image_and_parabricks_before_0_3_0_739(
     linux_native, monkeypatch, ram
 ):
-    """wgse-deepvariant's ONT make_examples doesn't match Google's yet."""
+    """#739: wgse-deepvariant 0.2.0's ONT make_examples didn't phase reads as
+    Google's does, so it leaves ONT reads to Google's image and Parabricks."""
     ram(128 * 10**9)  # above Parabricks' RAM floor
     reads = other_sample(linux_native, ONT)
     call(linux_native, reads=reads.bam)
@@ -912,6 +913,34 @@ def test_ont_reads_keep_googles_image_and_parabricks_719(
     # contract: Parabricks calls ONT reads with its ONT mode.
     assert run[0] == "deepvariant" and "ont" in run[1]
     assert linux_native.deepvariant.runs("wgse-deepvariant run") == []
+
+
+@pytest.mark.parametrize("gpu", [False, True])
+def test_ont_reads_call_with_wgse_deepvariant_0_3_0_739(linux_native, gpu):
+    """#739: from 0.3.0 wgse-deepvariant calls ONT reads as Google's image
+    does, on the CPU and, with --gpu, on CUDA instead of Parabricks."""
+    linux_native.deepvariant.set_native_version("0.3.0")
+    reads = other_sample(linux_native, ONT)
+    call(linux_native, *(["--gpu"] if gpu else []), reads=reads.bam)
+    assert linux_native.docker.runs() == []
+    (run,) = linux_native.deepvariant.runs("wgse-deepvariant run")
+    # contract: the ONT_R104 model, with its own checked weights.
+    assert run["opts"]["model_type"] == "ONT_R104"
+    assert run["opts"]["checkpoint"] == str(linux_native.weights / "ont_r104.dvw")
+    assert native_inference(linux_native)["inference_backend"] == (
+        "cuda" if gpu else "cpu"
+    )
+    assert visible(linux_native.out) == ["deepvariant.vcf.gz", "deepvariant.vcf.gz.tbi"]
+
+
+def test_ont_reads_need_the_ont_r104_weights_739(linux_native):
+    """#739: a weights folder from before 0.3.0 has only the WGS model's."""
+    linux_native.deepvariant.set_native_version("0.3.0")
+    shutil.rmtree(linux_native.weights / "ont_r104_small_weights")
+    reads = other_sample(linux_native, ONT)
+    with pytest.raises(WGSExtractError, match="ont_r104_small_weights.* is missing"):
+        call(linux_native, reads=reads.bam)
+    assert linux_native.deepvariant.stages() == []
 
 
 def test_linux_leaves_other_models_to_googles_image_719(linux_native):

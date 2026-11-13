@@ -272,8 +272,9 @@ CPU image.
 
 On Linux x86-64, `vcf deepvariant --gpu` uses
 [wgse-deepvariant](../native/deepvariant/README.md#linux-x86-64-and-nvidia-gpus-cuda)
-only for the WGS model, when it is installed, `deepvariant_weights` is set and
-`deepvariant_native` isn't `off`; WES, PacBio and ONT still run Parabricks, and
+only for the WGS model (and from 0.3.0 ONT_R104), when it is installed,
+`deepvariant_weights` is set and `deepvariant_native` isn't `off`; WES and
+PacBio still run Parabricks, and
 Ultima Google's GPU image, with the memory needs above. This pipeline runs only
 call_variants on the GPU and
 checks just before it that GPU 0 has 3 GiB free (`--no-gpu-memory-check`
