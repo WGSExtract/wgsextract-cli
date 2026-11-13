@@ -177,7 +177,7 @@ genome-wide). The figures are bytes per byte of input CRAM (BAM inputs count
 | --- | ---: | ---: |
 | samtools sort spills | 3.0 | whole-genome run 2.65–2.8 when stopped at 12% of the input; full-hs38 slice 3.35 |
 | Extra spill while sort merges 32 spill files into one | 33 × 0.65 × `--memory` per thread, up to the spills | samtools 1.24's merge |
-| Output CRAM / BAM | 1.7 / 2.6 | slice CRAM 1.90 (1.91 bases per base); genome-wide about 1.5 |
+| Output CRAM / BAM | 1.7 / 2.6 | slice CRAM 1.90 (1.91 bases per base); whole genome 1.79 (#431) |
 | Tagged bgzipped FASTQ (`realign`) | 1.45 | 1.39 |
 
 `realign --tmp-dir` on another volume needs the spills there, and the output and
@@ -338,7 +338,7 @@ accuracy and caveats are in
 | --- | --- | ---: | ---: | --- |
 | `realign`, chunked, streamed from the URL, `--memory 512M` | Apple M1 16 GB, 7 | 21.4 h | 10.5 GB | 185.5 GB output (1.79x input); preflight asked for about 211 GB |
 | `vcf deepvariant --ont`, Google's CPU image | Ryzen 5 5600X, 10 | 11.3 h | not recorded | under 150 GB work directory; plus a CRAM 3.0 copy of CRAM 3.1 input |
-| `vcf clair3 --gpu` | Ryzen 5 5600X + RTX 3090, 6 | 2.5 h | 15.2 GB, GPU 6.2 GiB | about 100 GiB temporary (full-alignment tensors, about 1.3 GB per 1% of the genome) |
+| `vcf clair3 --gpu` | Ryzen 5 5600X + RTX 3090, 6 | 2.5 h | 15.2 GiB, GPU 6.1 GiB | about 100 GiB temporary (full-alignment tensors, about 1 GiB per 1% of the genome) |
 | `rtg vcfeval` of one whole-genome VCF | 4 | 1 min | 7.2 GB | |
 
 Clair3's temporary space isn't checked before it starts yet

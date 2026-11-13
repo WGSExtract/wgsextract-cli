@@ -699,7 +699,7 @@ whole-genome ONT run from these numbers:
 | --- | --- | ---: | ---: | --- |
 | `realign --format CRAM --memory 512M`, streamed from the URL, [chunked](#chunked-realignment) (26 chunks) | Apple M1, 16 GB; 7 | 21.4 h (457,208 CPU s) | 10.5 GB (minimap2; its index build alone 9.8 GB) | output 185.5 GB CRAM 3.1 (1.79x the input); preflight asked for about 211 GB in the output directory with the index and the largest chunk |
 | `vcf deepvariant --ont` (Google's 1.10.0 CPU image) | Ryzen 5 5600X; 10 | 11.3 h: make_examples 4.9 h, call_variants 6.2 h, postprocess_variants 12 min | not recorded | work directory not recorded (fitted in 150 GB); VCF 231 MB |
-| `vcf clair3 --gpu` (Clair3 2.0.5 GPU image) | Ryzen 5 5600X, RTX 3090; 6 | 2.5 h: pileup 76 min, WhatsHap phasing 42 min, full-alignment 29 min | 15.2 GB; GPU 6.2 GiB | **about 100 GiB** of temporary files in the output directory (below); VCF 79 MB |
+| `vcf clair3 --gpu` (Clair3 2.0.5 GPU image) | Ryzen 5 5600X, RTX 3090; 6 | 2.5 h: pileup 76 min, WhatsHap phasing 42 min, full-alignment 29 min | 15.2 GiB; GPU 6.1 GiB | **about 100 GiB** of temporary files in the output directory (below); VCF 79 MB |
 
 - **Slow chunks.** Most realign chunks took about 30 min; those holding
   pericentromeric satellite reads (chr1 q12, the chr4 centromere, chrX q with
@@ -713,8 +713,8 @@ whole-genome ONT run from these numbers:
   much again. Clair3 2.0.5 reads CRAM 3.1 directly.
 - **Clair3's GPU temporary files.** Clair3 2.0.5's GPU mode writes every
   full-alignment tensor (here 460 files of about 230 MB) before the GPU predicts
-  any, then deletes them; on chr20 the peak was 2.7 GB, so about 1.3 GB per 1%
-  of the genome at 51x. The CPU mode streams them. `vcf clair3` doesn't check
+  any, then deletes them: about 1 GiB per 1% of the genome at 51x. The CPU
+  mode streams them. `vcf clair3` doesn't check
   for this space yet
   ([#811](https://github.com/WGSExtract/wgsextract-cli/issues/811)).
 - **Scaling from a slice.** chr20 with `--gpu` and 6 threads took 599 s, which
