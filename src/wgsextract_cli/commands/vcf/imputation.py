@@ -202,9 +202,14 @@ def beagle_command(prefix: Path) -> list[str]:
         if sys.platform == "win32"
         else prefix / "bin" / "java"
     )
-    if not jars or not java.is_file():
+    if not jars:
         raise WGSExtractError(
-            f"Beagle is not installed in the {ENV} environment. Install it with "
+            f"Beagle jar missing: expected {prefix / 'share'}/beagle-*/beagle.jar. "
+            f"Restore it with `pixi install -e {ENV}`."
+        )
+    if not java.is_file():
+        raise WGSExtractError(
+            f"Java executable missing: expected {java}. Restore OpenJDK with "
             f"`pixi install -e {ENV}`."
         )
     digest = hashlib.sha256(jars[-1].read_bytes()).hexdigest()

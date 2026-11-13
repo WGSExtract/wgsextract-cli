@@ -360,14 +360,26 @@ def test_621_windows_missing_tools_fail_validation_not_platform_gate(
             )
 
 
-def test_621_windows_beagle_requires_native_java_and_pinned_jar(tmp_path, monkeypatch):
-    monkeypatch.setattr(sys, "platform", "win32")
+@pytest.mark.parametrize("system", ["win32", "linux"])
+def test_621_beagle_diagnoses_missing_jar_java_and_unpinned_jar(
+    tmp_path, monkeypatch, system
+):
+    monkeypatch.setattr(sys, "platform", system)
+    with pytest.raises(WGSExtractError, match="Beagle jar missing") as error:
+        beagle_command(tmp_path)
+    assert str(tmp_path / "share") in str(error.value)
     jar = tmp_path / "share" / "beagle-5.5" / "beagle.jar"
     jar.parent.mkdir(parents=True)
     jar.write_bytes(b"not the pinned jar")
-    with pytest.raises(WGSExtractError, match="Beagle is not installed"):
+    java = (
+        tmp_path / "Library" / "bin" / "java.exe"
+        if system == "win32"
+        else tmp_path / "bin" / "java"
+    )
+    with pytest.raises(WGSExtractError, match="Java executable missing") as error:
         beagle_command(tmp_path)
-    java = tmp_path / "Library" / "bin" / "java.exe"
+    assert str(java) in str(error.value)
+    assert "OpenJDK" in str(error.value)
     java.parent.mkdir(parents=True)
     java.touch()
     with pytest.raises(WGSExtractError, match="not the pinned Beagle"):
