@@ -39,9 +39,10 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
 
 - **Queue.** The open issues are the work queue. Take them in this order:
   1. open `bug` issues, oldest first; bugs come before new features and roadmap items
-  2. the "Up next" list at the top of the roadmap tracking issue (label `roadmap`), in the order listed; it overrides milestones
-  3. the oldest open milestone
-  4. the rest of the roadmap tracking issue
+  2. open `efficiency` issues (CI cost, tests, flakes, process, token use), oldest first; they come before roadmap work because they speed up everything else (tracking issue #764, development efficiency)
+  3. the "Up next" list at the top of the roadmap tracking issue (label `roadmap`), in the order listed; it overrides milestones
+  4. the oldest open milestone
+  5. the rest of the roadmap tracking issue
 - **Machine labels.** A `machine-*` label (for example `machine-lin-3090`) claims an issue for one machine. The label's description names the agent that owns it: the agent on that machine, or the supervisor that drives it remotely (randy-mini, Azure VMs).
   - An issue carries at most one machine label. Every other agent skips a labelled issue; an owner moves it by swapping the label. To coordinate, comment on the issue.
   - **Only that machine can do it:** label the issue in advance (for example, it needs that machine's GPU). The label stays on even while nobody works on it.
