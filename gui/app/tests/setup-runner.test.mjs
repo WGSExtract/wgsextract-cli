@@ -820,10 +820,18 @@ test("runs WGSExtract uninstall steps and removes bundle runtime", async (t) => 
 
     const { loadManifestFromRoot } = await import("../dist/web/src/server/bundle-loader.js");
     const manifest = await loadManifestFromRoot(bundleRoot);
-    const result = await runUninstall(manifest, bundleRoot, processManager.runProcess);
+    // Regression: this test ran the uninstall against the real app data folder, killing the user's running
+    // job and deleting their CLI runtime. The runtime it removes must be the isolated one.
+    await withIsolatedAppData(tempRoot, async (appData) => {
+      const appDataRuntime = path.join(appData, "runtime", "wgsextract-cli");
+      await mkdir(path.join(appDataRuntime, "app"), { recursive: true });
 
-    assert.equal(result.status, "ok");
-    assert.equal(result.results[0].id, "cleanup-wgsextract-runtime");
+      const result = await runUninstall(manifest, bundleRoot, processManager.runProcess);
+
+      assert.equal(result.status, "ok");
+      assert.equal(result.results[0].id, "cleanup-wgsextract-runtime");
+      await assert.rejects(() => mkdir(path.join(appDataRuntime, "sentinel")), /ENOENT/);
+    });
     await assert.rejects(() => mkdir(path.join(runtimeRoot, "sentinel")), /ENOENT/);
   } finally {
     await processManager.terminateAllProcesses();
@@ -871,7 +879,7 @@ test("uninstall reverses install-manifest items (owned directories)", async (t) 
 
     const { loadManifestFromRoot } = await import("../dist/web/src/server/bundle-loader.js");
     const manifest = await loadManifestFromRoot(bundleRoot);
-    const result = await runUninstall(manifest, bundleRoot, processManager.runProcess);
+    const result = await withIsolatedAppData(tempRoot, () => runUninstall(manifest, bundleRoot, processManager.runProcess));
 
     assert.equal(result.status, "ok");
     assert.equal(result.results[0].id, "cleanup-wgsextract-runtime");
@@ -920,6 +928,25 @@ test("Windows WGSExtract setup delegates to upstream install_windows.bat", async
   // Safety check: refuse to remove if the root isn't a recognizable MSYS2 install.
   assert.match(uninstallSource, /Test-MsysRootSafeToRemove/);
 });
+
+/**
+ * Runs `run` with the app's data folder (WGSEXTRACT_GUI_APP_DATA, from LOCALAPPDATA or XDG_DATA_HOME) inside
+ * `root`, returning that folder. The uninstall script stops processes using, and deletes, the runtime in the
+ * app's data folder: run against the real one, it killed a user's running job and deleted their CLI runtime.
+ */
+async function withIsolatedAppData(root, run) {
+  const previous = { LOCALAPPDATA: process.env.LOCALAPPDATA, XDG_DATA_HOME: process.env.XDG_DATA_HOME };
+  process.env.LOCALAPPDATA = path.join(root, "LocalAppData");
+  process.env.XDG_DATA_HOME = path.join(root, "data");
+  try {
+    const { appSupportDirectory } = await import("../dist/web/src/server/paths.js");
+    return await run(appSupportDirectory());
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      setOrDeleteEnv(key, value);
+    }
+  }
+}
 
 function setOrDeleteEnv(key, value) {
   if (value === undefined) {

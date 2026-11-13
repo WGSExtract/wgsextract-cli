@@ -1,4 +1,7 @@
 import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 const defaultTests = [
   "tests/dev-runner.test.mjs",
@@ -37,9 +40,18 @@ const defaultTests = [
 ];
 
 const tests = process.argv.slice(2);
+// The app's data folder (from LOCALAPPDATA or XDG_DATA_HOME) holds the CLI runtime that uninstall tests remove,
+// stopping whatever uses it. Tests get a throwaway one, so a test that forgets to isolate it can't touch the
+// developer's own installed app.
+const isolatedRoot = mkdtempSync(path.join(tmpdir(), "wgsextract-gui-tests-"));
 const child = spawn(process.execPath, ["--test", ...(tests.length > 0 ? tests : defaultTests)], {
   stdio: ["ignore", "pipe", "pipe"],
   windowsHide: true,
+  env: {
+    ...process.env,
+    LOCALAPPDATA: path.join(isolatedRoot, "LocalAppData"),
+    XDG_DATA_HOME: path.join(isolatedRoot, "data"),
+  },
 });
 
 const stdout = [];
@@ -54,6 +66,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 }
 
 child.on("close", (code, signal) => {
+  rmSync(isolatedRoot, { recursive: true, force: true, maxRetries: 3 });
   const stdoutText = Buffer.concat(stdout).toString("utf8");
   const stderrText = Buffer.concat(stderr).toString("utf8");
   if (signal) {
