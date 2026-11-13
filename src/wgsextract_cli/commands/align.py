@@ -645,12 +645,12 @@ def native_short_read_aligner(
     Its build (wgse-bwa, wgse-bwa-mem2) writes the same alignments; it runs on
     its GPU (Metal on Apple Silicon, CUDA on Linux) when it can. wgse-bwa's GPU
     backend needs bwa_gpu_memory more RAM: when the pipeline's estimate with it
-    exceeds this machine's RAM less headroom, or the CPU run's estimate when
-    that is larger (a 30x genome on 16 GB), sort memory is lowered (which
-    leaves the output unchanged), and when even 256M doesn't fit wgse-bwa runs
-    on the CPU. Streaming realign (additional_ram_bytes) also needs it to fit
-    the RAM available now, as streaming_mapping_fits checks, so the GPU never
-    pushes it to extracting FASTQs.
+    exceeds physical RAM less headroom or the RAM available now, sort memory
+    is lowered without changing the output. When even 256M doesn't fit,
+    wgse-bwa runs on the CPU, whose buffers are not wired for GPU access.
+    An over-budget CPU fallback also caps sort memory at 256M per thread.
+    Workers and the scientific batch size are unchanged. Streaming realign
+    counts additional_ram_bytes beside the same pipeline.
     wgse-bwa-mem2 keeps bwa-mem2's (CPU) estimate, which also covers its CPU
     fallback when the GPU can't hold its index tables; from 0.5.0 that
     estimate leaves out the .0123 file it no longer loads
@@ -729,11 +729,11 @@ def _bwa_gpu_fit(
     dense_sa: Path | None,
 ) -> tuple[AlignerCommand, str]:
     """wgse-bwa on its GPU with the sort memory per thread that lets it fit
-    (see native_short_read_aligner), else on the CPU with ``memory``."""
+    (see native_short_read_aligner), else on the CPU with bounded sort memory."""
     tool = "bwa"
     gpu = bwa_gpu_memory(ref, reads, dense_sa_file=dense_sa is not None)
     dense_sa_bytes = dense_sa.stat().st_size if dense_sa else 0
-    budget = _gpu_budget(additional_ram_bytes)
+    budget = min(_gpu_budget(additional_ram_bytes), available_memory())
     amount, unit = parse_memory(memory)
     mib = amount * (1024 if unit == "G" else 1)
     candidates = [memory] + [
@@ -755,22 +755,20 @@ def _bwa_gpu_fit(
         )
         return estimate.total + additional_ram_bytes
 
-    # The GPU never needs more than the CPU run it replaces, which goes
-    # ahead (with a LOW preflight) even when it doesn't fit.
-    cpu = needed(memory, 0)
-    limit = max(budget, cpu)
-    fitting = next((m for m in candidates if needed(m) <= limit), None)
+    fitting = next((m for m in candidates if needed(m) <= budget), None)
     if fitting is None:
-        room = (
-            f"the {budget / 1024**3:.1f} GiB of RAM it can use"
-            if limit == budget
-            else f"the {cpu / 1024**3:.1f} GiB it needs on the CPU"
-        )
         logging.info(
             f"Running {native.binary} on the CPU: with its {_gpu_name(native)} GPU backend "
             f"the alignment is estimated to need {needed(candidates[-1]) / 1024**3:.1f} "
-            f"GiB, more than {room}."
+            f"GiB, more than the {budget / 1024**3:.1f} GiB memory budget."
         )
+        if mib > 256 and needed(memory, 0) > budget:
+            logging.info(
+                "Sorting with 256M per thread (not %s) to reduce the over-budget "
+                "CPU pipeline's concurrent memory; workers and batch size are unchanged.",
+                memory,
+            )
+            memory = "256M"
         aligner = AlignerCommand(tool, native, dense_sa=dense_sa)
     else:
         if fitting != memory:

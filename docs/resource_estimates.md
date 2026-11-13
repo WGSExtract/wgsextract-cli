@@ -38,6 +38,22 @@ still bypasses realignment's disk refusal, not its memory guard; informational
 estimates are still printed. Realignment reports before FASTQ extraction and
 alignment reports again when the final aligner is selected.
 
+Native `wgse-bwa` GPU selection must satisfy **both** physical RAM less
+2 GiB of OS headroom and the RAM available now, including file-based
+realignment. Sort memory is lowered through the existing candidates down to
+256M per thread. An over-budget CPU estimate is not a larger GPU allowance:
+if no GPU plan fits, the CPU backend runs. When the CPU pipeline with the
+requested sort memory is also over budget, sort memory is capped at 256M per
+thread without increasing already smaller requests. Workers and fixed
+`-K 100000000` are unchanged,
+preserving alignment identity. The CLI reports the resolved CPU/backend and
+sort-memory estimate rather than the rejected GPU plan. A conservative CPU
+estimate can still be `LOW`; CPU compression, occupied swap and cumulative
+SSD swap traffic must not be conflated
+([#747](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
+The read-only `estimate_resources` API does not change settings itself:
+callers supply their resolved backend allowance and sort memory.
+
 The memory estimate is the selected aligner's. On Linux, bwa-mem3 standing in
 for bwa (`--compat=bwa-mem`, chosen first since #736) needs about twice bwa's
 RAM (5M pairs on hs38: 14.7 GiB peak at 16 threads against bwa's 6.6 GiB;

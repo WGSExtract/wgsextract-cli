@@ -1,22 +1,24 @@
 """``align`` and ``realign`` with WGS Extract's Apple Silicon aligner builds
 (wgse-bwa, wgse-bwa-mem3, wgse-minimap2) on PATH, and with bwa-mem3.
 
-The builds are faked at their boundary: a ``wgse-bwa`` that answers
+Most tests fake the builds at their boundary: a ``wgse-bwa`` that answers
 ``capabilities --json`` and otherwise runs the real bwa under its own name,
 as the real build does (its ``@PG`` CL names ``wgse-bwa`` and its backend
 option). The fake bwa-mem3 runs the real bwa or bwa-mem2 whose records its
 ``--compat`` mode writes. Apple Silicon, its GPU and the Mac's RAM are the
-mocked platform.
+mocked platform. The real-Metal #747 case instead uses the installed build
+and mocks only psutil; it skips when that hardware/build is unavailable.
 """
 
 import json
 from argparse import Namespace
 from pathlib import Path
 
+import psutil
 import pytest
 
 from tests.fake_tools import only_tools, python_tool
-from tests.htslib_helpers import run_wgsextract, write_fasta
+from tests.htslib_helpers import needs_tools, run_wgsextract, write_fasta
 from tests.test_alignment_commands import _programs, _samtools, _short_reads
 from tests.test_realign import _args as _realign_args
 from tests.test_realign import _old_alignment
@@ -396,23 +398,64 @@ def test_a_mac_too_small_for_metal_runs_wgse_bwa_on_the_cpu(tmp_path, bwa_bin, r
 
 
 @pytest.mark.usefixtures("apple_silicon")
-def test_a_genome_too_big_for_the_macs_ram_still_aligns_on_metal(
-    tmp_path, bwa_bin, ram
+@pytest.mark.parametrize("constraint", ["total", "available"])
+def test_issue747_gpu_does_not_inherit_an_over_budget_cpu_floor(
+    tmp_path, bwa_bin, ram, constraint
 ):
-    # Issue #549: a 30x genome on a 16 GB M1 was estimated over RAM with or without
-    # the GPU, so wgse-bwa ran on the CPU, about 4x slower. Metal with less
-    # sort memory needs less than the CPU run with the default.
     reads = _short_reads(tmp_path)
     _install_build(bwa_bin, "bwa")
     upstream_bam, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
-    ram(2 * GIB + _needed(reads, "256M") - GIB)
+    budget = _needed(reads, "256M") - GIB // 4
+    if constraint == "total":
+        ram(2 * GIB + budget)
+    else:
+        ram(64 * GIB, available=budget)
 
     bam, result = _align(reads, tmp_path / "out")
 
-    assert _mapper(bam).startswith("wgse-bwa --backend auto mem -K 100000000 ")
-    assert _sort_memory(bam) == "512M"
+    assert _sort_memory(bam) == "256M"
     assert _samtools("view", bam) == _samtools("view", upstream_bam)
-    assert result.metrics["native_aligner_backend"] == "metal"
+    assert result.metrics["native_aligner_backend"] == "cpu"
+
+
+@needs_tools("bwa", "samtools", "samblaster")
+def test_issue747_real_metal_realign_adapts_to_low_available_memory(
+    tmp_path, monkeypatch
+):
+    native = native_aligners.find_native_aligner("bwa", "auto")
+    if native is None or native.gpu != "metal":
+        pytest.skip("Requires the installed real wgse-bwa Metal build")
+    reads = _short_reads(tmp_path)
+    (tmp_path / "old").mkdir()
+    source, pairs = _old_alignment(tmp_path, reads.genome)
+    memory = psutil.virtual_memory()
+    monkeypatch.setattr(
+        psutil,
+        "virtual_memory",
+        lambda: memory._replace(total=16 * GIB, available=14 * GIB),
+    )
+    baseline_out = tmp_path / "baseline"
+    baseline = _run_realign(
+        source, reads.ref, baseline_out, memory="1G", aligner="bwa", no_preflight=False
+    )
+    monkeypatch.setattr(
+        psutil,
+        "virtual_memory",
+        lambda: memory._replace(total=16 * GIB, available=2 * GIB),
+    )
+    low_out = tmp_path / "low-memory"
+    low = _run_realign(
+        source, reads.ref, low_out, memory="1G", aligner="bwa", no_preflight=False
+    )
+
+    baseline_bam = str(baseline_out / "x_aligned.bam")
+    low_bam = str(low_out / "x_aligned.bam")
+    assert baseline.metrics["native_aligner_backend"] == "metal"
+    assert low.metrics["native_aligner_backend"] == "cpu"
+    assert _sort_memory(low_bam) == "256M"
+    baseline_records = _samtools("view", baseline_bam)
+    assert len(baseline_records.splitlines()) == 2 * pairs
+    assert _samtools("view", low_bam) == baseline_records
 
 
 @pytest.mark.usefixtures("apple_silicon")

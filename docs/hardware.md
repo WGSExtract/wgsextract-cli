@@ -137,8 +137,10 @@ otherwise on the CPU, with the same records either way. The manifest records
 - `--memory` is the sort memory per thread. `auto` uses 25% of RAM (at least
   2 GB) split across the threads, with at least 1 GiB per thread; for example
   16 GiB and 12 threads gives 1 GiB each, 12 GiB in total. With bwa-mem2,
-  sorting is capped at 256 MiB per thread to leave room for its index; bwa
-  keeps the full `--memory`.
+  sorting is capped at 256 MiB per thread to leave room for its index.
+  Upstream bwa keeps the requested budget. Native `wgse-bwa` can lower it
+  when fitting its GPU pipeline, or cap an over-budget CPU fallback at 256M
+  per thread as described below.
 - Before a native BWA run, the CLI prints a memory and disk preflight. More
   threads use more memory; when it reports `LOW`, lower `--threads` or
   `--memory`, or use `--aligner bwa`. Threads are never lowered automatically.
@@ -339,22 +341,26 @@ the check, or is older than the oldest supported release, raises the
   Otherwise `wgse-bwa` or `wgse-bwa-mem2` runs as below. Ultima reads keep
   BWA. The records are the same either way; see the parity results below.
 - **Metal.** `wgse-bwa`, `wgse-bwa-mem2` and `wgse-bwa-mem3` run with
-  `--backend auto`, using the GPU when their capabilities report
-  `metal_available`. If the GPU fails during
+  `--backend auto` when their GPU plan is selected by the memory checks
+  and their capabilities report `metal_available`. If the GPU fails during
   a run, they finish on the CPU with the same alignments. `wgse-minimap2` runs on
   the CPU.
 - **Memory.** `wgse-bwa`'s GPU backend needs about 0.75 GiB more than bwa (8.76
   against 7.96 GB peak for 5M read pairs on hs38 at 8 threads), and 0.76 GiB
   more for a denser suffix-array sample after 20M reads. When the alignment's
-  memory estimate with it exceeds the Mac's RAM less 2 GiB, the sort memory per
-  thread is lowered (768M, 512M, 384M, then 256M; sorting more often doesn't
-  change the output). When the CPU run's own estimate is larger than that, as
-  for a 30x genome on a 16 GB Mac, the GPU run only has to fit within it: the
-  CPU run would go ahead regardless, about four times slower.
-  When `realign` streams reads from the input into the aligner, the estimate
-  must also fit the RAM available when it starts, so the GPU never pushes it
-  to extracting FASTQs. If even 256M doesn't fit,
-  `wgse-bwa` runs on the CPU. The batch size (`-K`) never changes.
+  memory estimate exceeds either the Mac's RAM less 2 GiB **or the RAM
+  available now**, the sort memory per thread is lowered (768M, 512M, 384M,
+  then 256M; sorting more often doesn't change the output). This also applies
+  when realignment extracts FASTQs rather than streaming them.
+  An oversized CPU estimate does **not** make an oversized GPU plan safe.
+  If no GPU plan fits, `wgse-bwa` runs on the CPU. If its pipeline with the
+  requested sort memory is also over budget, sort memory is capped at 256M
+  per thread; an already smaller budget is retained. The conservative CPU
+  estimate can still report `LOW`: this is not a reservation or a guarantee of RAM fit.
+  Workers and the batch size (`-K 100000000`) never change. Reducing K changes
+  alignment records, including MAPQ and duplicate flags, so it is not an
+  identity-preserving memory adjustment
+  ([#747](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
   `wgse-bwa-mem2` is chosen only when
   bwa-mem2's own (CPU) memory estimate fits, so a GPU too small for its index
   tables, where it finishes on the CPU, still fits. Before 0.5.0 that estimate
