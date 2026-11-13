@@ -15,6 +15,12 @@ same() {
 metric() {
     sed -n "s/.* $2=\([0-9]*\).*/\1/p" "$1"
 }
+# awk's rand() differs between awks, and Ubuntu's mawk ignores srand()'s seed,
+# so its data changed with every run (#769). This Park-Miller generator, exact
+# in any awk's doubles, gives every machine the same data.
+seeded_random='function seed(s) { state = s }
+function rnd() { state = state * 16807 % 2147483647; return state / 2147483647 }
+'
 pruning=0
 case "$(uname -m)" in
     arm64|aarch64) pruning=1 ;;
@@ -24,13 +30,13 @@ esac
 # hits, and pairs in three orientations. Every third mate has a mismatch every
 # 12 bp and often an indel, so it has no exact 19-mer seed and is only placed by
 # mate rescue.
-awk 'BEGIN {
-    srand(364)
+awk "$seeded_random"'BEGIN {
+    seed(364)
     split("A C G T", base, " ")
-    for (i = 1; i <= 160000; ++i) random = random base[int(rand() * 4) + 1]
+    for (i = 1; i <= 160000; ++i) random = random base[int(rnd() * 4) + 1]
     repeat = substr(random, 40001, 3000)
     copy = repeat
-    for (i = 50; i < 3000; i += 97) copy = substr(copy, 1, i - 1) base[int(rand() * 4) + 1] substr(copy, i + 1)
+    for (i = 50; i < 3000; i += 97) copy = substr(copy, 1, i - 1) base[int(rnd() * 4) + 1] substr(copy, i + 1)
     ref = substr(random, 1, 41500) copy substr(random, 44501)
     print ">chr\n" ref > "reference.fa"
     complement["A"] = "T"; complement["C"] = "G"; complement["G"] = "C"; complement["T"] = "A"
@@ -38,18 +44,18 @@ awk 'BEGIN {
     split("151 151 151 101 76 250 300", lengths, " ")
     for (p = 1; p <= 1500; ++p) {
         n = lengths[1 + p % 7]
-        insert = 350 + int(rand() * 150)
-        start = p % 5 == 0 ? 39000 + int(rand() * 6000) : 1 + int(rand() * (length(ref) - insert))
+        insert = 350 + int(rnd() * 150)
+        start = p % 5 == 0 ? 39000 + int(rnd() * 6000) : 1 + int(rnd() * (length(ref) - insert))
         left = substr(ref, start, n)
         right = substr(ref, start + insert - n, n)
         if (p % 3 == 0) {
-            for (i = 1 + int(rand() * 12); i <= n; i += 12) right = substr(right, 1, i - 1) (substr(right, i, 1) == "A" ? "C" : "A") substr(right, i + 1)
+            for (i = 1 + int(rnd() * 12); i <= n; i += 12) right = substr(right, 1, i - 1) (substr(right, i, 1) == "A" ? "C" : "A") substr(right, i + 1)
             # Insertions and deletions exercise the striped lazy-F and E updates.
-            at = 10 + int(rand() * (n - 20))
-            gap = 1 + int(rand() * 4)
+            at = 10 + int(rnd() * (n - 20))
+            gap = 1 + int(rnd() * 4)
             if (p % 6 == 0) {
                 inserted = ""
-                for (i = 1; i <= gap; ++i) inserted = inserted base[int(rand() * 4) + 1]
+                for (i = 1; i <= gap; ++i) inserted = inserted base[int(rnd() * 4) + 1]
                 right = substr(right, 1, at) inserted substr(right, at + 1, n - at - gap)
             } else if (p % 9 == 0) {
                 right = substr(right, 1, at) substr(right, at + gap + 1) substr(ref, start + insert, gap)
@@ -207,8 +213,8 @@ done
 # (smem_batch.cpp). Reads of 1 to 900 bp (and some of 5000) from the repeat copies, tandem and
 # homopolymer runs, with mismatches and Ns, through all three of
 # mem_collect_intv()'s passes (-y enables the third).
-awk 'BEGIN {
-    srand(543)
+awk "$seeded_random"'BEGIN {
+    seed(543)
     split("A C G T", base, " ")
     getline < "reference.fa"
     getline ref < "reference.fa"
@@ -219,12 +225,12 @@ awk 'BEGIN {
         n = lengths[1 + r % 12]
         # Longer than the NEON ksw_extend2 limit (4096 bp).
         if (r % 250 == 0) n = 5000
-        start = r % 4 == 0 ? 39000 + int(rand() * 6000) : 1 + int(rand() * (length(ref) - n))
+        start = r % 4 == 0 ? 39000 + int(rnd() * 6000) : 1 + int(rnd() * (length(ref) - n))
         seq = substr(ref, start, n)
         if (r % 7 == 0) seq = substr(seq, 1, n / 2) substr(tandem, 1 + r % 4, n - int(n / 2))
         if (r % 11 == 0) seq = substr(homo, 1, n / 3) substr(seq, 1, n - int(n / 3))
         if (r % 3 == 0)
-            for (i = 15; i < n; i += 23) seq = substr(seq, 1, i - 1) base[int(rand() * 4) + 1] substr(seq, i + 1)
+            for (i = 15; i < n; i += 23) seq = substr(seq, 1, i - 1) base[int(rnd() * 4) + 1] substr(seq, i + 1)
         if (r % 5 == 0)
             for (i = 1 + r % 17; i <= n; i += 37) seq = substr(seq, 1, i - 1) "N" substr(seq, i + 1)
         qual = ""
@@ -418,13 +424,13 @@ test "$(metric metal-norescue.log rescue_batches)" -eq 0
 # those windows. A 191 bp mate with a central insertion cannot seed either,
 # but can reach that threshold. With -B 120 it saturates ksw_u8; upstream's
 # reverse pass is empty, so the GPU must decline it and use upstream's result.
-awk 'BEGIN {
-    srand(7)
+awk "$seeded_random"'BEGIN {
+    seed(7)
     while ((getline line < "reference.fa") > 0) if (line !~ /^>/) ref = ref line
     complement["A"] = "T"; complement["C"] = "G"; complement["G"] = "C"; complement["T"] = "A"
     for (p = 1; p <= 200; ++p) {
-        start = 1 + int(rand() * (length(ref) - 500))
-        end = start + 380 + int(rand() * 40)
+        start = 1 + int(rnd() * (length(ref) - 500))
+        end = start + 380 + int(rnd() * 40)
         right = substr(ref, end - 151, 151)
         right_long = substr(ref, end - 190, 190)
         two = ""
