@@ -1,5 +1,7 @@
 # CI routing and cache budget
 
+<!-- Throwaway docs-only routing proof; this branch is not for merging. -->
+
 PR area checks diffs the PR's **base...head**, not just the latest commit.
 `--no-renames` includes deletions and both sides of moves. Unknown paths run
 the full CLI matrix; mixed PRs run the union of their areas.
