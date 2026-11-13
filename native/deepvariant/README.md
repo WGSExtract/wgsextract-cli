@@ -11,7 +11,8 @@ on the CPU, and call_variants:
 - on **Linux x86-64**, with ONNX Runtime: on an NVIDIA GPU through CUDA, or on
   the CPU (see [Linux x86-64 and NVIDIA GPUs](#linux-x86-64-and-nvidia-gpus-cuda)).
 
-Only the WGS model is qualified.
+The WGS model is qualified on both, and on Linux the ONT_R104 model too
+(#739); the others are not.
 
 It is the native port of DeepVariant by IPNP-BIPN
 ([IPNP-BIPN/deepvariant](https://github.com/IPNP-BIPN/deepvariant),
@@ -54,6 +55,16 @@ google/deepvariant#1085) with the patches in [`patches/`](patches):
   or the CPU (`--inference_backend=auto|cuda|cpu`). `--model_type=ONT_R104`
   is accepted as Google's name for `ONT`. It also stops call_variants aborting
   the process when inference fails.
+- **0009** phases ONT and PacBio reads as Google's make_examples does (#739).
+  DirectPhasing's read phases now go into the reads' HP tags, so pileups are
+  sorted by haplotype and fill the haplotype channel; DirectPhasing phases
+  the partition's own (capped) reads with the candidates of the region padded
+  by 20%, rather than reading the padded region again; alt-aligned pileups
+  align reads to the alt haplotypes with the realigner's scores instead of
+  zeros; and make_examples adds upstream's phase info (`ALT_PS`), which the
+  ONT model's fuzzy read-support channel reads. postprocess_variants writes
+  phased genotypes and phase sets (`PS`) stitched across regions from the
+  read phases, as Google's does.
 
 ## Same results as Google's image
 
@@ -177,10 +188,36 @@ port's make_examples and small model, not the inference. ONNX Runtime on
 Google's own examples reproduces TensorFlow's probabilities to 4.6e-6 (210,376
 of 210,390 records identical after Google's postprocess_variants).
 
-ONT_R104 isn't qualified: the CUDA inference reproduces Google's on ONT
-examples too (3,403 of 3,405 records identical on a 1 Mb HG002 slice), but the
-port's ONT make_examples doesn't yet (99 genotypes and 77 filters differ; GIAB
-F1 0.9735 against Google's 0.9833 there).
+### ONT_R104
+
+From 0.3.0 (patch 0009) the ONT_R104 model matches Google's image too. On
+HG002's chr20 (ONT R10.4.1, `PAO83395.pass_aligned.v30.cram`, GRCh38), against
+`google/deepvariant:1.10.0` on the same machine, 4 threads:
+
+| | Google's image (CPU) | wgse-deepvariant, CPU | wgse-deepvariant, CUDA |
+| --- | ---: | ---: | ---: |
+| Candidates, examples | 387,476, 143,653 | 387,476, 143,652 | (the same) |
+| Examples (pileups and variants) | | 143,652 identical | (the same) |
+| Sites, phased genotypes, phase sets, FILTER | | 2 sites differ | 2 sites differ |
+| QUAL | | 5,116 differ | 5,125 differ |
+| GQ | | 533 differ | 533 differ |
+| GIAB v4.2.1 (confident regions) | TP 81,006, FP 1,787, FN 1,583 | the same | the same |
+| make_examples | 897 s | 462 s | (the same) |
+| call_variants | 1,335 s | 854 s | 45 s |
+| postprocess_variants | 89 s | 9 s | 8 s |
+
+Every difference comes from the small model, whose FP32 sums differ from
+TensorFlow's in the last bits (probabilities by at most 6.8e-5): 5,066 of the
+QUAL differences are small-model calls, most of them below 1 but up to 29.6
+where Google's probability rounds to exactly 1 and its QUAL to the cap of 99;
+the deepvariant model's QUALs differ at 50 sites. One candidate
+(chr20:29148519 G>A) passed the small model's GQ threshold here and went to
+the big model in Google's run, and one hom-ref GQ is 19 against Google's 20,
+the no-call threshold; both are outside GIAB's confident regions. On
+1 Mb of it (chr20:10,000,000-11,000,000) the examples, the small model's
+calls, the read phases and the VCF's sites, phased genotypes, phase sets and
+filters are all identical to Google's, as is a synthetic genome's VCF
+(`tests/smoke.sh`) byte for byte.
 
 ### Installing on Linux
 
@@ -228,8 +265,13 @@ echo "export PATH=\"$PWD/.pixi/envs/default/bin:\$PATH\"" >> ~/.bashrc   # or ~/
 
 Then set `deepvariant_weights` in `config.toml` to the weights folder, as on a
 Mac; `vcf deepvariant` runs WGS calls with it on the CPU, and
-`vcf deepvariant --gpu` on the GPU instead of Parabricks (WES, PacBio and ONT
-still use Parabricks; see [docs/hardware.md](../../docs/hardware.md)).
+`vcf deepvariant --gpu` on the GPU instead of Parabricks (WES and PacBio
+still use Parabricks; see [docs/hardware.md](../../docs/hardware.md)). ONT
+reads take it too from 0.3.0, the first build after `linux-deepvariant-1`,
+with the weights archive that has both models
+(`wgse-deepvariant-weights-1.10.0`); with 0.2.0 they keep Google's image and
+Parabricks, and with WGS-only weights the run stops at the missing ONT_R104
+files.
 
 To build it, `cmake -S native/deepvariant` in an environment with conda-forge's
 `libabseil`, `libprotobuf`, `re2`, `htslib`, `libboost-headers`, `zlib` and
@@ -272,7 +314,8 @@ wgse-deepvariant run --model_type=WGS --ref=ref.fa --reads=sample.bam \
 
 ## Weights
 
-The weights are Google's DeepVariant 1.10.0 WGS model and small model from
+The weights are Google's DeepVariant 1.10.0 WGS and ONT_R104 models and
+small models (the macOS release has only WGS's) from
 `google/deepvariant:1.10.0` (the image digest is in the workflow),
 repackaged by [`convert_weights.py`](convert_weights.py): the big model's
 float32 variables in the port's `.dvw` layout and the small model's dense
