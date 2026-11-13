@@ -79,6 +79,10 @@
       event.target.value = "";
     });
     load();
+    W.on("notes-connection", function (available) {
+      if (available) load();
+      else status(W.notes.error);
+    });
   }
   if (W.notes.ready) init();
   else W.on("notes-ready", init);

@@ -9,6 +9,7 @@
     <string>--port</string><string>8765</string>
     <string>--db</string><string>@ROOT@/notes.db</string>
     <string>--repo</string><string>@ROOT@/repo.git</string>
+    <string>--local-repo</string><string>@ROOT@/local.git</string>
     <string>--allow-host</string><string>randy-mini.tail720e6b.ts.net:8765</string>
     <string>--allow-host</string><string>10.1.10.48:8765</string>
   </array>

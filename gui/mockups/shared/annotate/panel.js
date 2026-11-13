@@ -48,6 +48,9 @@
       } }))
     );
     if (WGSM.notes.mode === "server") {
+      if (!WGSM.notes.available) return h("div.an-store.an-error", { role: "status" }, WGSM.notes.error);
+      if (WGSM.notes.hosted) return h("div.an-store", "Saved to the review server.",
+        WGSM.notes.error ? h("div.an-error", WGSM.notes.error) : null, io);
       return h("div.an-store", h("div.an-row", h("span.an-dot"), h("span", "Saved to ", h("code", file))), WGSM.notes.error ? h("div.an-error", WGSM.notes.error) : null, io);
     }
     return h(

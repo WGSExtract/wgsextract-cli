@@ -9,10 +9,13 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from local_repo import install as install_local_repo
+
 
 def install(root: Path, agents: Path, domain: str) -> None:
     agents.mkdir(parents=True, exist_ok=True)
     (root / "logs").mkdir(parents=True, exist_ok=True)
+    install_local_repo(root)
     template = Path(__file__).with_name("server.plist.template").read_text("utf-8")
     server = plistlib.loads(template.replace("@ROOT@", str(root)).encode())
     jobs = [server]

@@ -168,11 +168,20 @@ The shared review space is **not GitHub Pages**:
 
 Both addresses use **the same database**. Notes, replies and resolutions save
 immediately; refresh another browser or reopen its Notes panel's page to see
-changes. All notes has idea, page, author and status filters, in-place note
+changes. Hosted pages never store notes in browser localStorage, including
+during an API outage or an update restart. A marker injected into each HTML
+page and `version.js` selects server-only storage, independently of the hostname.
+If the API is unavailable, the page says “Review server unavailable, retrying;
+notes can't be saved yet”, blocks saves and keeps the editor draft open.
+Retries back off from half a second to fifteen seconds. Browser storage is
+only for preferences (name, theme, viewport); Pages and `file://` retain their
+browser-local notes workflow.
+
+All notes has idea, page, author and status filters, in-place note
 links, Export all, and Import. Imports merge by note id and newer `updated`
 timestamps: importing the same export twice does not duplicate notes or replies.
 Exports include the self-describing `about` text and a `pages` array, each
-with its `idea` (`main` or the full `mockups/*` branch name), `page`, `title`,
+with its `idea` (`main`, the full `mockups/*` branch name, or `local/<branch>`), `page`, `title`,
 `notes` and server-relative `url`. The full branch name is the stable identity:
 colliding URL slugs may change order after pushes, but notes never change ideas. Existing
 committed notes were imported once into `main`. Notes on deleted preview
@@ -207,6 +216,51 @@ refresh interval is shorter. Even with an empty cache, the notes API and
 All notes view stay available; uncached mockup pages return 404 until fetched.
 Without `--db`, the original per-page `feedback/*.json` workflow is unchanged.
 For additional listening authorities use repeatable `--allow-host HOST:PORT`.
+
+### Review a local branch without pushing to GitHub
+
+The direct-push repository is separate from the GitHub mirror. You need SSH
+access as **wgse** on randy-mini (over the tailnet or Randy's LAN); an HTTP
+connection alone cannot publish branches. In your working checkout, once:
+
+```sh
+git remote add review ssh://wgse@randy-mini/Users/wgse/mockup-server/local.git
+```
+
+Commit your in-progress mockup edits locally, then push the current branch:
+
+```sh
+git push review HEAD:my-idea
+```
+
+Open <http://randy-mini.tail720e6b.ts.net:8765/local/my-idea/>.
+The page is labelled **“Local push, not on GitHub”**, with its commit.
+Branch names use the Pages publisher's slug rules. This push does not publish
+anything to GitHub and does not change `main`; GitHub previews still live under
+`/preview/`, so the namespaces cannot collide. Notes use the stable identity
+`local/my-idea`, in the same notes database as every other idea.
+
+The trusted `post-receive` hook only touches `refresh.trigger`. A lightweight
+worker watches it every second and archives only allowed static files; no
+pushed programs or hooks are run. Local refreshes are independent of GitHub
+fetches, even if GitHub is down. To update the same idea, push again (use
+`--force-with-lease` if you rewrote your local history).
+
+Delete the preview when finished:
+
+```sh
+git push review :my-idea
+```
+
+Its notes remain in All notes/export until explicitly deleted. The GitHub
+fetch never prunes or modifies this separate push repository.
+**Refresh ideas** in the top review bar requests an immediate refresh of both
+sources. The equivalent endpoint is `POST /api/refresh` with JSON `{}`,
+subject to the usual private-client and same-origin checks.
+
+For a local test server, initialize a separate push target with
+`python3 gui/mockups/hosting/local_repo.py --root out/mockups`,
+then add `--local-repo out/mockups/local.git` to the server command above.
 
 ### Export back to git
 
@@ -268,6 +322,8 @@ in `~/Library/LaunchAgents`, bootstrapped into **user/502**, not gui/502:
 - `org.wgsextract.mockups.update`: five-minute app refresh/restart.
 
 Logs are in `logs/`, snapshots in `cache/`, backups in `backups/notes-YYYYMMDD.db`.
+The installer also initializes `local.git` and its refresh-only post-receive
+hook. Re-run it when upgrading an existing deployment to enable direct pushes.
 Run `python3 app/gui/mockups/hosting/backup.py` for an immediate backup.
 For restore, boot out the server first, preserve the current DB and its
 `-wal`/`-shm` files, copy the chosen backup to `notes.db`, and bootstrap again.

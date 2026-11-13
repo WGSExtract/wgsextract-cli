@@ -82,18 +82,23 @@ def fetch(remote: str, repo: Path | None = None) -> list[Preview]:
         f"+refs/heads/{PREFIX}*:{NAMESPACE}*",
         repo=repo,
     )
+    return discover(NAMESPACE, repo=repo)
+
+
+def discover(namespace: str, repo: Path | None = None) -> list[Preview]:
+    """Allocate publisher names for refs already present in a repository."""
     out = git(
         "for-each-ref",
         "--sort=-committerdate",
         "--format=%(refname)%00%(objectname)%00%(committerdate:iso-strict)",
-        NAMESPACE,
+        namespace,
         repo=repo,
     ).decode()
     previews: list[Preview] = []
     taken: set[str] = set()
     for line in out.splitlines():
         ref, sha, date = line.split("\0")
-        branch = PREFIX + ref.removeprefix(NAMESPACE)
+        branch = PREFIX + ref.removeprefix(namespace)
         name = slug(branch)
         if not name or name == "index":
             print(f"skip {branch}: no usable folder name", file=sys.stderr)

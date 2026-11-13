@@ -1,6 +1,6 @@
 /* Notes storage. With serve.py running, notes are read from and written to
  * feedback/<page-id>.json through its API, so they can be committed. From
- * file:// (or any host without the API) they live in this browser's
+ * file:// and Pages they live in this browser's
  * localStorage, and Export/Import move them to and from that JSON file.
  *
  * A change is an operation ({op: "add" | "reply" | "status" | "edit" |
@@ -8,9 +8,15 @@
 (function () {
   "use strict";
   var WGSM = window.WGSM;
-  var preview = location.pathname.match(/\/preview\/([^/]+)\//);
-  var idea = preview ? ((window.WGSM_VERSION || {}).branch || "mockups/" + preview[1]) : "main";
+  var version = window.WGSM_VERSION || {};
+  var marker = document.querySelector('meta[name="wgsm-review-server"]');
+  var hosted = location.protocol !== "file:" && (!!marker || version.hosted || version.source === "hosted");
+  var preview = location.pathname.match(/\/(preview|local)\/([^/]+)\//);
+  var idea = (marker && marker.getAttribute("data-idea")) || version.idea ||
+    (preview ? (version.branch || (preview[1] === "local" ? "local/" : "mockups/") + preview[2]) : "main");
   var LOCAL_KEY = "wgsm.notes." + WGSM.page.id;
+  var retryTimer = null, retryDelay = 500;
+  var unavailableText = "Review server unavailable, retrying; notes can't be saved yet.";
 
   function now() {
     return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -60,19 +66,47 @@
   }
 
   function api(path, body) {
+    if (body && store.mode === "server" && !store.available) return Promise.reject(new Error(unavailableText));
     var url = new URL(WGSM.link("api/" + path), location.href);
     if (preview) url = new URL("/api/" + path, location.href);
     url.searchParams.set("idea", idea);
+    var controller = new AbortController();
+    var timeout = setTimeout(function () { controller.abort(); }, 10000);
     return fetch(url.href, body ? {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    } : { cache: "no-store" }).then(function (response) {
+      signal: controller.signal,
+    } : { cache: "no-store", signal: controller.signal }).then(function (response) {
       return response.json().then(function (data) {
-        if (!response.ok) throw new Error((data.error && data.error.message) || response.statusText);
+        if (!response.ok) {
+          var err = new Error((data.error && data.error.message) || response.statusText);
+          err.apiResponse = true;
+          err.retryable = response.status >= 500;
+          throw err;
+        }
         return data;
       });
+    }).catch(function (err) {
+      if (store.mode === "server" && (!err.apiResponse || err.retryable)) disconnected(err);
+      throw err;
+    }).finally(function () {
+      clearTimeout(timeout);
     });
+  }
+
+  function disconnected(err) {
+    store.available = false;
+    store.error = unavailableText;
+    WGSM.emit("notes-connection", false);
+    WGSM.emit("notes", store.doc);
+    if (retryTimer === null) {
+      retryTimer = setTimeout(function () {
+        retryTimer = null;
+        return store.reconnect();
+      }, retryDelay);
+      retryDelay = Math.min(retryDelay * 2, 15000);
+    }
   }
 
   function fetchJson(path) {
@@ -106,8 +140,10 @@
 
   var store = (WGSM.notes = {
     idea: idea,
+    hosted: hosted,
     api: api,
-    mode: "local",
+    mode: location.protocol === "file:" ? "local" : "server",
+    available: false,
     doc: emptyDoc(),
     error: null,
 
@@ -118,16 +154,13 @@
       /\.github\.io$/.test(location.hostname) || WGSM.params.has("published"),
 
     init: function () {
-      var probe = /^https?:$/.test(location.protocol)
-        ? api("health").then(function (health) {
-            return health.ok ? "server" : "local";
-          }, function () {
-            return "local";
-          })
-        : Promise.resolve("local");
-      return probe.then(function (mode) {
-        store.mode = mode;
-        return mode === "local" && store.published ? store.loadCommitted() : null;
+      store.mode = !hosted && (location.protocol === "file:" || store.published) ? "local" : "server";
+      if (store.mode === "server") {
+        store.error = unavailableText;
+        WGSM.emit("notes-connection", false);
+      }
+      return Promise.resolve().then(function () {
+        return store.mode === "local" && store.published ? store.loadCommitted() : null;
       }).then(function () {
         return store.load();
       }).then(function (doc) {
@@ -140,6 +173,7 @@
     /* Merge the committed notes into this browser's copy; notes changed
      * here since keep the newer version (as Import does) */
     loadCommitted: function () {
+      if (store.mode === "server") return Promise.resolve();
       return fetchJson("feedback/_pages.json").then(function (pages) {
         if (!pages || pages.indexOf(WGSM.page.id) < 0) return null;
         return fetchJson("feedback/" + WGSM.page.id + ".json").then(function (doc) {
@@ -157,13 +191,25 @@
         store.doc = readLocal();
         return Promise.resolve(store.doc);
       }
-      return api("feedback/" + WGSM.page.id).then(function (doc) {
+      return store.reconnect();
+    },
+
+    reconnect: function () {
+      return api("health").then(function (health) {
+        if (!health.ok) throw new Error(unavailableText);
+        return api("feedback/" + WGSM.page.id);
+      }).then(function (doc) {
         store.doc = doc;
+        store.available = true;
+        store.error = null;
+        clearTimeout(retryTimer);
+        retryTimer = null;
+        retryDelay = 500;
+        WGSM.emit("notes-connection", true);
+        WGSM.emit("notes", doc);
         return doc;
       }, function (err) {
-        /* e.g. a feedback file left broken by a merge: show why, keep going */
-        store.error = err.message;
-        store.doc = emptyDoc();
+        disconnected(err);
         return store.doc;
       });
     },
@@ -232,7 +278,9 @@
 
     /* Open/resolved counts per page */
     summary: function () {
-      if (store.mode === "server") return api("feedback");
+      if (store.mode === "server") return api("feedback").catch(function () {
+        return { pages: [], error: store.error };
+      });
       return store.allDocs().then(function (docs) {
         return {
           pages: docs.map(function (doc) {
@@ -267,8 +315,7 @@
 
     /* The branch a preview was built from, else "" (main or a checkout) */
     branch: function () {
-      var v = window.WGSM_VERSION || {};
-      return v.source === "preview" ? v.branch : "";
+      return idea === "main" ? "" : idea;
     },
 
     about: function () {
@@ -276,7 +323,7 @@
       var text = branch
         ? window.WGSM_ABOUT.replace("on branch main.", "on branch " + branch + " (a preview; it is merged into main by pull request).")
         : window.WGSM_ABOUT;
-      return text + ' An all-notes export wraps these documents in "pages"; each page has an "idea" (main or a mockups/* branch) and may have a "url" relative to the review server. Apply each document to its own idea. Importing the export merges by note id and updated timestamp.';
+      return text + ' An all-notes export wraps these documents in "pages"; each page has an "idea" (main, a mockups/* GitHub branch or a local/* SSH-pushed branch) and may have a "url" relative to the review server. Local pushes are not on GitHub. Apply each document to its own idea. Importing the export merges by note id and updated timestamp.';
     },
 
     author: function (name) {

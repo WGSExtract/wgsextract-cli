@@ -1,24 +1,14 @@
 #!/usr/bin/env python3
-"""Serve the WGS Extract UI mockups and save review notes into the repo.
+"""Serve WGS Extract mockups with shared SQLite or per-page repository notes.
 
     python3 gui/mockups/serve.py            # http://127.0.0.1:8765/
     python3 gui/mockups/serve.py --open     # and open it in the browser
     python3 gui/mockups/serve.py --check    # validate and tidy feedback/*.json
 
-Static files come from this folder. The annotation tool reads and writes
-feedback/<page-id>.json through a small JSON API, one file per page,
-pretty-printed with sorted keys so git diffs and merges stay readable:
-
-    GET  /api/health              {"ok": true}
-    GET  /api/feedback            open/resolved counts for every page
-    GET  /api/feedback/<page-id>  the page's notes
-    POST /api/feedback/<page-id>  apply one change and return the notes:
-         {"op": "add", "note": {...}}            {"op": "reply", "id", "reply": {...}}
-         {"op": "status", "id", "status"}        {"op": "edit", "id", "text"}
-         {"op": "delete", "id"}                  {"op": "merge", "notes": {...}}
-
-Python standard library only. Listens on 127.0.0.1 unless --host says
-otherwise. Only loopback, RFC1918, tailnet and IPv6 ULA peers are accepted.
+Use --db for SQLite, --repo for GitHub snapshots, and --local-repo for
+SSH-pushed ideas. POST /api/refresh requests an immediate refresh.
+See README.md for the notes API, import/export and unattended hosting.
+Standard library only; private-network and same-origin access only.
 """
 
 from __future__ import annotations
@@ -86,7 +76,10 @@ def feedback_path(page: str) -> Path:
 def idea_id(value: str) -> str:
     if not isinstance(value, str) or (
         value != "main"
-        and (len(value) > 256 or not re.fullmatch(r"mockups/[^\x00-\x20\x7f]+", value))
+        and (
+            len(value) > 256
+            or not re.fullmatch(r"(mockups|local)/[^\x00-\x20\x7f]+", value)
+        )
     ):
         raise BadRequest(HTTPStatus.BAD_REQUEST, "bad idea")
     if DB is None and value != "main":
@@ -159,16 +152,19 @@ def documents() -> list[dict[str, Any]]:
             if REPO
             else ""
         )
-        doc["url"] = ("/" if idea == "main" else f"/preview/{name}/") + (
-            path or "index.html"
+        base = (
+            "/"
+            if idea == "main"
+            else (f"/{name}/" if idea.startswith("local/") else f"/preview/{name}/")
         )
+        doc["url"] = base + (path or "index.html")
     return docs
 
 
 def export_all() -> dict[str, Any]:
     return {
         "about": ABOUT + ' An all-notes export wraps page documents in "pages"; '
-        'each has an "idea" (main or a mockups/* branch) and a server-relative "url". '
+        'each has an "idea" (main, a mockups/* GitHub branch or a local/* SSH-pushed branch) and a server-relative "url". '
         "Apply each document to its own idea; import merges by note id and updated timestamp.",
         "schema": 1,
         "pages": documents(),
@@ -263,6 +259,10 @@ class Handler(ReviewFiles):
             idea = idea_id(query.get("idea", ["main"])[0])
             if method == "GET" and route == ["health"]:
                 self.reply({"ok": True, "writable": True, "shared": DB is not None})
+            elif method == "POST" and route == ["refresh"] and REPO:
+                self.read_json()
+                REPO.request_refresh()
+                self.reply({"ok": True, "queued": True}, HTTPStatus.ACCEPTED)
             elif method == "GET" and route == ["export"]:
                 with WRITE_LOCK:
                     self.reply(export_all())
@@ -390,6 +390,11 @@ def main() -> int:
         "--repo", type=Path, help="read-only bare clone for main and previews"
     )
     parser.add_argument(
+        "--local-repo",
+        type=Path,
+        help="separate bare repository for SSH-pushed previews",
+    )
+    parser.add_argument(
         "--cache", type=Path, help="static snapshots (default: beside --db)"
     )
     parser.add_argument("--refresh-minutes", type=float, default=5)
@@ -408,6 +413,8 @@ def main() -> int:
         help="write per-idea repo-format files, then exit",
     )
     args = parser.parse_args()
+    if args.local_repo and not args.repo:
+        parser.error("--local-repo requires --repo")
     FEEDBACK = args.feedback_dir
     if args.db:
         DB = ReviewDB(args.db)
@@ -450,7 +457,10 @@ def main() -> int:
         if not args.db or args.refresh_minutes <= 0:
             parser.error("--repo requires --db and positive --refresh-minutes")
         REPO = ReviewRepo(
-            args.repo, args.cache or args.db.parent / "cache", args.refresh_minutes * 60
+            args.repo,
+            args.cache or args.db.parent / "cache",
+            args.refresh_minutes * 60,
+            local_repo=args.local_repo,
         )
         Handler.repository = REPO
     Handler.allow_hosts = {host.lower() for host in args.allow_host}

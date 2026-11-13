@@ -94,23 +94,32 @@
         themeButton(),
         this.annotBtn,
         this.notesBtn,
-        h("a.mk-btn", { href: new URL(WGSM.link("notes.html"), location.href).href }, "All notes")
+        h("a.mk-btn", { href: WGSM.notes.hosted ? "/notes.html" : new URL(WGSM.link("notes.html"), location.href).href }, "All notes"),
+        WGSM.notes.hosted ? h("button.mk-btn", { type: "button", onclick: function () {
+          WGSM.notes.api("refresh", {}).then(function () { WGSM.toast("Preview refresh requested"); },
+            function (err) { WGSM.toast(err.message, "circle-alert"); });
+        } }, "Refresh ideas") : null
       );
       var version = window.WGSM_VERSION || {};
-      var preview = version.source === "preview"
+      var preview = version.source === "preview" || WGSM.notes.idea !== "main"
         ? h(
             "div.mk-preview",
             { role: "note", "data-annot-ignore": "" },
-            h("strong", "Preview of branch " + version.branch + ", not main."),
+            h("strong", WGSM.notes.idea.indexOf("local/") === 0
+              ? "Local push, not on GitHub: " + WGSM.notes.idea + "."
+              : "Preview of branch " + (version.branch || WGSM.notes.idea) + ", not main."),
             " Commit ",
             h("code", String(version.sha).slice(0, 7)),
             ". ",
-            h("a", { href: WGSM.link("../../index.html") }, "Main mockups"),
+            h("a", { href: WGSM.notes.hosted ? "/" : WGSM.link("../../index.html") }, "Main mockups"),
             " · ",
-            h("a", { href: WGSM.link("../index.html") }, "All previews")
+            h("a", { href: WGSM.notes.hosted ? "/preview/" : WGSM.link("../index.html") }, "All previews")
           )
         : null;
-      document.body.replaceChildren.apply(document.body, [bar, preview, stage].filter(Boolean));
+      var notice = h("div.mk-preview", { hidden: true, role: "alert", "data-annot-ignore": "" },
+        "Review server unavailable, retrying; notes can't be saved yet.");
+      WGSM.on("notes-connection", function (available) { notice.hidden = available; });
+      document.body.replaceChildren.apply(document.body, [bar, preview, notice, stage].filter(Boolean));
       this.stage = stage;
       this.vp = WGSM.qs("#vp", stage);
     },
