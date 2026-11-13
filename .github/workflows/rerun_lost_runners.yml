@@ -8,6 +8,7 @@ on:
       - CI macOS
       - CI Windows
       - CI Linux ARM64
+      - CLI package and benchmark smoke
       - macOS DeepVariant
       - macOS Aligners
       - Linux Aligners

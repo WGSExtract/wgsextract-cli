@@ -67,6 +67,83 @@ have distinct names so they cannot supersede real documentation checks.
 Its nightly run includes the former weekly negative
 controls and pinned-release scenarios.
 
+### CLI test time and tiers
+
+The three x64 OS jobs already used `-n auto --dist loadgroup` (two workers on
+Windows/Ubuntu, three on macOS in the November 13 baseline). They now run two
+independent, disjoint pytest tiers in parallel:
+
+- **Core:** every test not explicitly listed in `INTEGRATION_MODULES` in
+  `scripts/ci_test_tiers.py`. New tests automatically join this tier. Two
+  parallel core shards use a stable module-name hash; module fixtures are
+  never split between shards.
+- **Integration:** the realignment, analyze-workflow, benchmark,
+  benchmark-module, pipeline-interoperability, contig-calling, microarray-reuse,
+  native-aligner and DeepVariant modules listed there. Whole modules retain
+  their shared fixtures and the existing shared-smoke scheduler.
+- Generated chrM and whole-genome end-to-end tests still run on every OS
+  (after the integration tier on x64). The separately configured imputation,
+  ONT and Windows vep-rs checks remain in place.
+
+Both tiers run on every CLI-routed PR, not only main: the existing conservative
+area router includes all Python, tool/configuration and test-input changes.
+Both run unconditionally on main and nightly too. ARM64 retains its complete
+suite in one job. No slow suite is demoted to nightly-only coverage.
+Only `test_genotyping.py` (pure genotype parsing/repeat classification) is
+Ubuntu-x64-only in CI. Real-tool genotyping commands remain cross-platform.
+Ordinary local pytest still collects everything; the opt-in `--ci-tier` and
+`--ci-skip-independent` and `--ci-shard` flags implement these CI-only partitions.
+
+The first implementation PR run measured 573 s for Ubuntu core versus 439 s
+for integration, so just two jobs still missed the 480 s target. Core is
+therefore split once more rather than dropping tests. Its first-run JUnit
+costs predict approximately 665/431 accumulated test-seconds for the two
+shards (each still has two xdist workers). This adds one environment/setup per
+x64 OS; it trades some setup runner-minutes for latency, not free capacity.
+Only core-1 seeds shared main caches and runs one-off core checks.
+
+Per-test timing XML and the slowest 60 durations remain available on **every**
+run, separately named by OS/tier. Non-gating line coverage is collected on
+main, nightly and manual runs, not PRs; its per-tier reports describe the
+selected tier rather than a merged whole-suite percentage.
+
+`CLI package and benchmark smoke` runs the existing package-smoke and real-data
+smoke benchmark commands as independent parallel jobs on all three x64 OSes.
+It has the same CLI-PR routing and unconditional main/nightly coverage. Neither
+command precedes pytest anymore; neither has been removed. The failure observer
+watches direct smoke runs and compares routed PR smoke failures with that
+workflow's main run, as it does for the OS workflows.
+`tests/test_smoke_real_full.py` follows the benchmark in that same job: its
+real-data fixture discovers the benchmark's prepared HG00096 inputs. Moving
+the benchmark without this suite would silently skip six previously passing
+Ubuntu real-tool tests. The suite is excluded from `test-ci`, requires its real
+inputs in CI (`--ci-require-real-data`), and publishes separate per-OS timing
+XML. Optional tool/cache-specific cases retain their existing skip rules.
+
+Test preparation also avoids duplicate real-tool work. Tiny FASTA/faidx and
+SAM/sorted-BAM/index inputs prepared by `tests/htslib_helpers.py` are shared
+across workers/sessions in ignored `out/test-fixtures/`, keyed by input content,
+builder source, lockfile and tool binary. Tests receive copies, never shared writable
+inputs. Locking and a completion marker prevent partially built cache hits.
+Complete entries need no lock; Pixi launch-command wrappers bypass caching and
+still prepare inputs with the real tools.
+This is a local content-addressed cache, not another Actions cache family.
+Large metadata-only stand-ins explicitly request sparse allocation on Windows;
+plain `truncate()` otherwise allocated up to 64 GiB on NTFS. Their logical sizes
+and memory-estimator assertions are unchanged.
+
+The latest pre-change main runs reported these pytest durations:
+
+| OS | Main run | Test step before |
+|---|---|---|
+| Windows | `43443418452` | 1,916.11 s (31m56s) |
+| Ubuntu | `43443418355` | 1,076.50 s (17m56s) |
+| macOS | `43443418134` | 1,413.57 s (23m33s) |
+
+These are individual baselines, not 20-run medians. The targets in
+#761 (reducing CLI test-step time) require PR measurements and a 20-run median;
+the implementation PR reports the observed sample and any remaining gap.
+
 PR area checks also accepts non-main target branches, so its routing can be
 verified with a docs-only draft PR against the implementation branch before
 the routing itself lands. Other main-only workflow triggers are unchanged.

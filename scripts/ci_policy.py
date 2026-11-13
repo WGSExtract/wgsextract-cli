@@ -16,6 +16,7 @@ ROUTED_MAIN = {
     "macos": "macos_ci.yml",
     "windows": "windows_ci.yml",
     "arm64": "linux_arm64.yml",
+    "smoke": "cli_smoke.yml",
     "install": "install_lab.yml",
     "Documentation freshness": "ubuntu_ci.yml",
 }

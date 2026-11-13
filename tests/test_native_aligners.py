@@ -17,6 +17,7 @@ import pytest
 
 from tests.fake_tools import only_tools, python_tool
 from tests.htslib_helpers import run_wgsextract, write_fasta
+from tests.prepared_data import sparse_truncate
 from tests.test_alignment_commands import _programs, _samtools, _short_reads
 from tests.test_realign import _args as _realign_args
 from tests.test_realign import _old_alignment
@@ -787,8 +788,7 @@ def test_realign_fast_streams_into_bwa_mem3_and_a_resumed_run_still_warns(
 
 def _bloat_0123(ref):
     """Make bwa-mem2's .0123 file a sparse 64 GiB (so bwa-mem2 can't load it)."""
-    with open(ref + ".0123", "r+b") as index:
-        index.truncate(64 * GIB)
+    sparse_truncate(Path(ref + ".0123"), 64 * GIB)
 
 
 def _mem3_needed(reads, engine, available_reads=2 * 140, **options):
