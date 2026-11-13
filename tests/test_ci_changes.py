@@ -24,7 +24,8 @@ from scripts.pr_checks_ready import checks_ready
         ),
         (["docs/api.md", "docs/commands.md"], {"docs"}),
         (["native/bwa/bwa.c"], {"native", "docs"}),
-        (["gui/mockups/index.html", "site_src/index.md"], {"site", "docs"}),
+        # Mockup changes also feed the cross-platform review-server regressions.
+        (["gui/mockups/index.html", "site_src/index.md"], {"site", "cli", "docs"}),
         (["gui/scripts/site_layout.py"], {"site", "cli", "docs"}),
         (["gui/app/shared/config.ts"], {"docs"}),
         (["src/wgsextract_cli/commands/info.py"], {"cli", "docs"}),

@@ -84,6 +84,11 @@ says so. The published site also shows the notes committed in `feedback/`
 (the Pages workflow lists them in `feedback/_pages.json`). Use **Export
 JSON** and save the file as `gui/mockups/feedback/<page-id>.json`; **Import
 JSON** merges a committed file into the browser so you can see others’ notes.
+Browser documents are keyed by both idea and page, so main and Pages previews
+cannot mix their reviews. Existing browser documents migrate once without
+deleting notes: explicit idea identities are preserved; older unstamped
+documents belong to main. Committed preview files without an idea are stamped
+with that preview when exported. Static imports preserve each document's idea.
 
 ### Handing notes to an AI agent
 
@@ -155,6 +160,224 @@ Which iteration is this? The footer of each mockups index names the branch
 (or `main`), commit and date it was published from; a checkout says “Local
 copy”. The Pages build writes that into `shared/version.js` in the published
 copies only.
+
+## Hosted review server (randy-mini)
+
+The shared review space is **not GitHub Pages**:
+
+- Tailnet: <http://randy-mini.tail720e6b.ts.net:8765/>
+- Randy's LAN: <http://10.1.10.48:8765/>
+- All notes: <http://randy-mini.tail720e6b.ts.net:8765/notes.html>
+  (or `/notes.html` at the LAN address)
+- Ideas: `/preview/`, with `mockups/<name>` at `/preview/<name>/`.
+
+Both addresses use **the same database**. Notes, replies and resolutions save
+immediately; refresh another browser or reopen its Notes panel's page to see
+changes. Hosted pages never store notes in browser localStorage, including
+during an API outage or an update restart. A marker injected into each HTML
+page and `version.js` selects server-only storage, independently of the hostname.
+If the API is unavailable, the page says “Review server unavailable, retrying;
+notes can't be saved yet”, blocks saves and keeps the editor draft open.
+Retries back off from half a second to fifteen seconds. Browser storage is
+only for preferences (name, theme, viewport); Pages and `file://` retain their
+browser-local notes workflow.
+
+All notes has idea, page, author and status filters, in-place note
+links, Export all, and Import. Imports merge by note id and newer `updated`
+timestamps: importing the same export twice does not duplicate notes or replies.
+Exports include the self-describing `about` text and a `pages` array, each
+with its `idea` (`main`, the full `mockups/*` branch name, or `local/<branch>`), `page`, `title`,
+`notes` and server-relative `url`. The full branch name is the stable identity:
+colliding URL slugs may change order after pushes, but notes never change ideas. Existing
+committed notes were imported once into `main`. Notes on deleted preview
+branches remain in the database/export even though their pages are no longer
+available. All notes marks these entries “(idea removed)” without a link;
+their API/export documents omit `url`. Author names are self-selected, not authenticated.
+
+The server accepts socket peers only from loopback, RFC1918, tailnet
+`100.64.0.0/10`, IPv6 loopback and ULA. Forwarding headers are ignored.
+POSTs with an Origin must match the request's explicitly allowed host and port.
+Do not forward this port to the Internet; there are no accounts or TLS.
+`file://` and GitHub Pages still use browser-local notes, not this database.
+
+### Run the shared store locally
+
+```sh
+python3 gui/mockups/serve.py --db out/mockups/notes.db
+# Optional read-only static snapshots from a bare clone:
+git clone --bare https://github.com/WGSExtract/wgsextract-cli out/mockups/repo.git
+python3 gui/mockups/serve.py --db out/mockups/notes.db --repo out/mockups/repo.git
+```
+
+`--refresh-minutes 5` is the default. The fetch worker reads `main` and
+`mockups/*` from the bare clone's `origin`; snapshot files are extracted
+with the Pages publisher's exact branch naming and static allow-list, never
+executed. Cache directories are keyed by commit and idea; the previous
+snapshot is retained briefly for in-flight requests. Shared review tooling
+and the text-only DOM helpers in `shared/core.js` are served from the running
+app so older ideas also get the shared API and safe note rendering.
+Review text is never interpreted as HTML; the DOM helper has no HTML escape hatch.
+Hosted refresh includes every idea; the twenty-preview limit applies only to
+the Pages publisher. Cache pruning removes only snapshots carrying this
+server's ownership marker, never unrelated output folders or repositories.
+Startup never waits for GitHub: it restores the last published cache mapping
+(or scans completed snapshots if necessary) and refreshes in the background.
+During an outage it retries every 15 seconds, or sooner if the configured
+refresh interval is shorter. Even with an empty cache, the notes API and
+All notes view stay available; uncached mockup pages return 404 until fetched.
+Without `--db`, the original per-page `feedback/*.json` workflow is unchanged.
+For additional listening authorities use repeatable `--allow-host HOST:PORT`.
+
+### Review a local branch without pushing to GitHub
+
+The direct-push repository is separate from the GitHub mirror. You need SSH
+access as **wgse** on randy-mini (over the tailnet or Randy's LAN); an HTTP
+connection alone cannot publish branches. In your working checkout, once:
+
+```sh
+git remote add review ssh://wgse@randy-mini/Users/wgse/mockup-server/local.git
+```
+
+Commit your in-progress mockup edits locally, then push the current branch:
+
+```sh
+git push review HEAD:my-idea
+```
+
+Open <http://randy-mini.tail720e6b.ts.net:8765/local/my-idea/>.
+The page is labelled **“Local push, not on GitHub”**, with its commit.
+Branch names use the Pages publisher's slug rules. This push does not publish
+anything to GitHub and does not change `main`; GitHub previews still live under
+`/preview/`, so the namespaces cannot collide. Notes use the stable identity
+`local/my-idea`, in the same notes database as every other idea.
+Shallow development clones are supported; there is no need to download the
+repository's complete history before pushing a review.
+
+The trusted `post-receive` hook only touches `refresh.trigger`. A lightweight
+worker watches it every second and archives only allowed static files; no
+pushed programs or hooks are run. Local refreshes are independent of GitHub
+fetches, even if GitHub is down. To update the same idea, push again (use
+`--force-with-lease` if you rewrote your local history).
+
+Delete the preview when finished:
+
+```sh
+git push review :my-idea
+```
+
+Its notes remain in All notes/export until explicitly deleted. The GitHub
+fetch never prunes or modifies this separate push repository.
+**Refresh ideas** in the top review bar requests an immediate refresh of both
+sources. The equivalent endpoint is `POST /api/refresh` with JSON `{}`,
+subject to the usual private-client and same-origin checks.
+
+For a local test server, initialize a separate push target with
+`python3 gui/mockups/hosting/local_repo.py --root out/mockups`,
+then add `--local-repo out/mockups/local.git` to the server command above.
+
+### Export back to git
+
+Run on the host (or copy a backup to a local `out/` folder first):
+
+```sh
+python3 gui/mockups/serve.py --db /Users/wgse/mockup-server/notes.db \
+  --export-feedback /Users/wgse/mockup-server/export
+```
+
+`export/<page>.json` belongs in main's `gui/mockups/feedback/`.
+`export/preview/<slug>-<branch-hash>/<page>.json` belongs in the branch named
+by the document's `idea`, in its
+`gui/mockups/feedback/`. Copy only the relevant idea, review the diff, commit
+and push; never commit the live DB. **Export all** is a portable JSON download,
+not per-page files. `--import-feedback DIR` imports only `DIR/*.json` into
+main and exits; do not schedule it (it could resurrect deliberately deleted
+notes). `/api/import` accepts an all-notes export, `/api/export` returns it,
+and `/api/notes` lists flattened notes with optional `idea`, `page`, `status`
+and `author` query filters. Per-page `/api/feedback/<page>?idea=mockups%2F<branch>`
+retains the add/reply/status/edit/delete/merge operations.
+Bulk JSON imports accept up to 32 MiB (ordinary note changes stay limited to
+512 KiB). Larger archives can be split into `pages` batches or imported from
+per-page files with the CLI.
+
+### Reproduce the unattended setup
+
+Everything except the launch agent plists lives in
+`/Users/wgse/mockup-server/`, as `wgse`; no sudo, GUI login, reboot or
+changes to `/Users/randy` are needed. Python 3.9+ and git must already exist.
+On randy-mini:
+
+```sh
+mkdir -p /Users/wgse/mockup-server
+cd /Users/wgse/mockup-server
+git clone --bare https://github.com/WGSExtract/wgsextract-cli repo.git
+git clone --branch main https://github.com/WGSExtract/wgsextract-cli app
+/usr/bin/python3 app/gui/mockups/serve.py --db notes.db \
+  --import-feedback app/gui/mockups/feedback
+/usr/bin/python3 app/gui/mockups/hosting/install.py
+```
+
+Before the implementation PR merges, clone branch `feat/776-mockup-server`
+instead of main. The update job fetches every five minutes and fast-forwards
+the app checkout, refusing local edits. Once its HEAD is contained in main
+(or GitHub reports its PR merged, including squash merges), it switches
+to main. It restarts the server whenever the app commit changes.
+The last successfully requested restart is recorded in `app-restarted.sha`;
+a failed launchd restart is retried even when the checkout has not advanced again.
+For a manual switch after merge:
+
+```sh
+git -C /Users/wgse/mockup-server/app fetch origin main
+git -C /Users/wgse/mockup-server/app checkout main ||
+  git -C /Users/wgse/mockup-server/app checkout -b main FETCH_HEAD
+git -C /Users/wgse/mockup-server/app merge --ff-only FETCH_HEAD
+launchctl kickstart -k user/502/org.wgsextract.mockups
+```
+
+`hosting/server.plist.template` and `hosting/install.py` install three jobs
+in `~/Library/LaunchAgents`, bootstrapped into **user/502**, not gui/502:
+
+- `org.wgsextract.mockups`: RunAtLoad + KeepAlive, port 8765, low-priority I/O.
+- `org.wgsextract.mockups.backup`: 03:15 local time nightly; SQLite's online
+  backup API, integrity checked, atomically replaced, newest 14 dated DBs kept.
+- `org.wgsextract.mockups.update`: five-minute app refresh/restart.
+
+Logs are in `logs/`, snapshots in `cache/`, backups in `backups/notes-YYYYMMDD.db`.
+The installer also initializes `local.git` and its refresh-only post-receive
+hook. Re-run it when upgrading an existing deployment to enable direct pushes.
+Run `python3 app/gui/mockups/hosting/backup.py` for an immediate backup.
+For restore, boot out the server first, preserve the current DB and its
+`-wal`/`-shm` files, copy the chosen backup to `notes.db`, and bootstrap again.
+Check with `launchctl print user/502/org.wgsextract.mockups` and
+`curl http://127.0.0.1:8765/api/health`.
+
+On lin-mid, install the watchdog as the current user:
+
+```sh
+mkdir -p ~/.local/lib/mockup-server ~/.config/systemd/user
+install -m 755 gui/mockups/hosting/watchdog.sh ~/.local/lib/mockup-server/watchdog.sh
+cp gui/mockups/hosting/mockup-server-watchdog.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now mockup-server-watchdog.timer
+systemctl --user start mockup-server-watchdog.service
+```
+
+Requires existing noninteractive `ssh randy-mini`, curl, and agent-coord at
+`~/.local/bin/agent-coord` (systemd's default PATH omits that folder).
+Every five minutes it probes tailnet `/api/health`.
+On failure it runs `hosting/recover.py`, which restores all three launchd
+registrations and kickstarts an existing server without forcing the nightly
+backup to run. It then checks health again. Only then does it announce `restarted OK`,
+or report `still down` / `ssh unreachable` and exit nonzero. SSH failure
+does not suppress the alert. For a safe unreachable-host drill:
+
+```sh
+~/.local/lib/mockup-server/watchdog.sh --host mockup-watchdog-unreachable.invalid \
+  --url http://127.0.0.1:1/api/health --retry-delay 0
+```
+
+This reports failure for the bogus host without touching randy-mini.
+The timer needs lin-mid online; KeepAlive handles ordinary server crashes
+without it. Inspect `journalctl --user -u mockup-server-watchdog.service`.
 
 ## Folder layout
 

@@ -1,0 +1,7 @@
+[Unit]
+Description=Recover the randy-mini mockup review server
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/lib/mockup-server/watchdog.sh
+TimeoutStartSec=90
