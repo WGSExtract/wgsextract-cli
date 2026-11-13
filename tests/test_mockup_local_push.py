@@ -26,7 +26,19 @@ def test_776_local_push_refreshes_without_github_and_retains_deleted_idea_notes(
         check=True,
         capture_output=True,
     )
-    source, local_repo = bare_repo.parent / "source", tmp_path / "local.git"
+    remote, local_repo = bare_repo.parent / "source", tmp_path / "local.git"
+    source = tmp_path / "dev"
+    git(
+        tmp_path,
+        "clone",
+        "--depth=1",
+        "--branch",
+        "mockups/x",
+        remote.as_uri(),
+        str(source),
+    )
+    git(source, "config", "user.email", "test@example.org")
+    git(source, "config", "user.name", "Reviewer")
     with running(
         tmp_path,
         "--db",
@@ -77,10 +89,10 @@ def test_776_local_push_refreshes_without_github_and_retains_deleted_idea_notes(
             request(base, "/api/notes?idea=local/x")["notes"][0]["url"]
             == "/local/x/index.html"
         )
-        git(source, "checkout", "main")
-        (source / "gui/mockups/index.html").write_text("Refreshed GitHub main")
-        git(source, "add", ".")
-        git(source, "commit", "-m", "GitHub refresh")
+        git(remote, "checkout", "main")
+        (remote / "gui/mockups/index.html").write_text("Refreshed GitHub main")
+        git(remote, "add", ".")
+        git(remote, "commit", "-m", "GitHub refresh")
         git(
             tmp_path,
             "--git-dir",
@@ -88,7 +100,7 @@ def test_776_local_push_refreshes_without_github_and_retains_deleted_idea_notes(
             "remote",
             "set-url",
             "origin",
-            str(source),
+            str(remote),
         )
         assert request(base, "/api/refresh", {})["queued"]
         for _ in range(100):

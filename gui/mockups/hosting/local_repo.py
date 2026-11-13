@@ -27,6 +27,10 @@ def install(root: Path) -> Path:
         ],
         check=True,
     )
+    subprocess.run(
+        ["git", "--git-dir", str(repo), "config", "receive.shallowUpdate", "true"],
+        check=True,
+    )
     hook = hooks / "post-receive"
     hook.write_text(
         "#!/bin/sh\nset -eu\ncat >/dev/null\n/usr/bin/touch "

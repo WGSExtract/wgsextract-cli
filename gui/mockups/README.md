@@ -239,6 +239,8 @@ Branch names use the Pages publisher's slug rules. This push does not publish
 anything to GitHub and does not change `main`; GitHub previews still live under
 `/preview/`, so the namespaces cannot collide. Notes use the stable identity
 `local/my-idea`, in the same notes database as every other idea.
+Shallow development clones are supported; there is no need to download the
+repository's complete history before pushing a review.
 
 The trusted `post-receive` hook only touches `refresh.trigger`. A lightweight
 worker watches it every second and archives only allowed static files; no
