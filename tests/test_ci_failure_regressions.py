@@ -282,3 +282,22 @@ def test_push_during_audit_cannot_restart_a_superseded_head() -> None:
     Observer(api).process(api.run)
     assert api.retried == []
     assert any("not dispatched" in comment for comment in ledger_comments(api))
+
+
+@pytest.mark.parametrize("closed", [True, False])
+def test_pr_change_during_audit_blocks_retry_before_new_run_exists(
+    closed: bool,
+) -> None:
+    api = ReplayGitHub()
+    api.annotation_text = "The hosted runner lost communication with the server"
+
+    def changed_pr() -> None:
+        if closed:
+            api.pr_state = "closed"
+        else:
+            api.pr_sha = "b" * 40
+
+    api.on_audit = changed_pr
+    Observer(api).process(api.run)
+    assert api.retried == []
+    assert any("not dispatched" in comment for comment in ledger_comments(api))

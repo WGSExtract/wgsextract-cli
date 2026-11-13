@@ -239,11 +239,18 @@ class Observer(IssueReports):
             or latest["id"] != run["id"]
             or latest["status"] != "completed"
             or latest["run_attempt"] != run["run_attempt"]
+            or (
+                run.get("pull_requests")
+                and not any(
+                    Quarantine(self.gh).head(int(pr["number"])) == run["head_sha"]
+                    for pr in run["pull_requests"]
+                )
+            )
         ):
             self.comment_once(
                 ledger,
                 markers[0] + ":aborted",
-                "Retry not dispatched: the source run changed while its audit was recorded.",
+                "Retry not dispatched: the source run or PR changed while its audit was recorded.",
             )
             return
         self.gh.api("POST", endpoint)
