@@ -231,6 +231,7 @@
       "actions": [
         {
           "id": "analyze-batch-gen",
+          "primaryInput": "batch_directory",
           "title": "actions.cli.analyze-batch-gen.title",
           "tooltip": "actions.cli.analyze-batch-gen.tooltip",
           "advancedOnly": true,

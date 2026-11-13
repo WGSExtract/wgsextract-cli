@@ -11,7 +11,7 @@ import { runSetup } from "./operations-setup.js";
 import { state } from "./state.js";
 import { initializeTauriUpdater } from "./tauri-updater.js";
 import { appendTerminal, discardPendingTerminalOutput, ensureMainTerminal, renderTerminalPane, terminalTabs } from "./terminal.js";
-import { applyUIModeTerminalVisibility } from "./terminal-visibility.js";
+import { applyUIModeTerminalVisibilityIfChanged } from "./terminal-visibility.js";
 import { renderUpdatePopover } from "./view/update.js";
 import { renderPrerequisitesDialog } from "./view/prerequisites.js";
 import { renderBundleHeader, renderConfirmationDialog, renderNavigation, renderUIModeSwitch, renderPage, renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID } from "./view.js";
@@ -29,7 +29,6 @@ const app: HTMLElement = (() => {
 let bindEventsModulePromise: Promise<typeof import("./events.js")> | null = null;
 let renderSerial = 0;
 let autoRunSetupTriggered = false;
-let terminalVisibilityApplied = false;
 setRender(render);
 window.addEventListener("resize", () => revealPathInputEnds(app));
 await bootstrap();
@@ -46,11 +45,8 @@ async function bootstrap(locale?: string) {
         state.colorTheme = normalizeColorTheme(bundle.bundleState?.colorTheme);
         state.webUIFont = bundle.bundleState?.webUIFont === "sfPro" ? "sfPro" : "system";
         state.uiMode = normalizeUIMode(bundle.bundleState?.uiMode);
-        // Only at launch: reloading the bundle (a language change, say) keeps the pane as the user left it.
-        if (!terminalVisibilityApplied) {
-            applyUIModeTerminalVisibility();
-            terminalVisibilityApplied = true;
-        }
+        // At launch, or when a loaded bundle changes the mode; a reload in the same mode (a language change, say) keeps the pane as it was.
+        applyUIModeTerminalVisibilityIfChanged();
         state.setupRun = bundle.bundleState?.setupRun ?? null;
         state.appVersion = bundle.appVersion ?? "";
         state.workspaceLocation = bundle.workspaceLocation ?? null;

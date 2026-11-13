@@ -121,13 +121,25 @@ function applySetupEvent(event: SetupStreamEvent, tab: TerminalEntry | undefined
         case "complete":
             clearSetupElapsedTimer();
             state.setupRun = { ...event.result, completedAt: new Date().toISOString(), currentStepID: null, currentStepStartedAt: null, currentStepElapsedMs: 0 };
-            tab.kind = event.result?.status === "failed" ? "error" : "success";
+            tab.kind = setupJobKind(event.result?.status);
             if (event.result?.error) {
                 tab.body = [tab.body, event.result.error].filter(Boolean).join("\n");
             }
             break;
     }
     scheduleRender();
+}
+
+/** A finished setup run's tab and Jobs row: an optional step that failed finishes it with warnings. */
+function setupJobKind(status: unknown): string {
+    switch (status) {
+        case "failed":
+            return "error";
+        case "warning":
+            return "warning";
+        default:
+            return "success";
+    }
 }
 
 function startSetupElapsedTimer(stepID: string) {

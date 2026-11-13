@@ -1,5 +1,5 @@
 import { contextValue, displayCommand, placeholdersIn } from "../../../shared/rendering.js";
-import { errorMessage } from "./model.js";
+import { controlWithID, errorMessage } from "./model.js";
 import { scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
 import { apiStream } from "./api.js";
@@ -155,15 +155,25 @@ function applyResultDocument(tab: TerminalEntry, document: ResultDocument | null
     }
 }
 
-/** The first file path among the inputs the command uses, in command order: the job's main file for the Jobs list. */
+/**
+ * The job's main input for the Jobs list: the action's `primaryInput` placeholder, else the first file path
+ * control the command uses. Blank when there is none.
+ */
 function primaryFileDetail(action: ActionSpec, context: CommandContext): { primaryFile?: string } {
-    for (const placeholder of action.command ? actionCommandPlaceholders(action.command) : []) {
-        const value = String(contextValue(context, inputValueKey(placeholder)) ?? "").trim();
-        if (/[\\/]/.test(value) && /\.[A-Za-z0-9]{1,8}$/.test(value)) {
+    const candidates = action.primaryInput
+        ? [action.primaryInput]
+        : actionCommandPlaceholders(action.command).map(inputValueKey).filter(isFilePathControl);
+    for (const key of candidates) {
+        const value = String(contextValue(context, key) ?? "").trim();
+        if (value) {
             return { primaryFile: value };
         }
     }
     return {};
+}
+function isFilePathControl(key: string): boolean {
+    const control = controlWithID(key);
+    return control?.kind === "path" && control.pathType !== "directory";
 }
 function actionTerminalBody(title: unknown, context: CommandContext, action: ActionSpec | null = null) {
     return [

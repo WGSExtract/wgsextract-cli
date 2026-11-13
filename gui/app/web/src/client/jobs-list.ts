@@ -64,7 +64,18 @@ function formatStartedAt(startedAt: number | undefined): string {
     if (startedAt == null) {
         return "";
     }
-    return new Intl.DateTimeFormat(state.localizationCode || undefined, { dateStyle: "short", timeStyle: "medium" }).format(startedAt);
+    return new Intl.DateTimeFormat(dateLocale(), { dateStyle: "short", timeStyle: "medium" }).format(startedAt);
+}
+
+/** The UI locale as a BCP 47 tag; bundle locale files may name it `pt_BR`, and Intl throws on an invalid tag. */
+function dateLocale(): string | undefined {
+    const code = state.localizationCode.replaceAll("_", "-");
+    try {
+        return code ? Intl.getCanonicalLocales(code)[0] : undefined;
+    }
+    catch {
+        return undefined;
+    }
 }
 
 function fileName(path: string): string {

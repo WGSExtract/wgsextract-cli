@@ -24,7 +24,8 @@ export function renderTerminalPane() {
     const entry = activeTerminalEntry();
     const copyLabel = state.labels.terminalCopyTextLabel ?? "Copy terminal text";
     const textDirection = terminalTextDirection();
-    const output = entry?.kind === "main"
+    // Collapsed, only the tab row shows: skip building output that can run to a million characters.
+    const output = () => entry?.kind === "main"
         ? renderJobsList(entry)
         : `<pre>${renderTerminalText(entry)}</pre>${renderResultSummary(entry?.result)}`;
     return `
@@ -44,7 +45,7 @@ export function renderTerminalPane() {
         ${renderTerminalToggle()}
       </header>
       ${state.isTerminalVisible
-        ? `<div class="terminal-log" data-terminal-log-id="${escapeAttribute(entry?.id ?? "")}" dir="${escapeAttribute(textDirection)}">${output}</div>`
+        ? `<div class="terminal-log" data-terminal-log-id="${escapeAttribute(entry?.id ?? "")}" dir="${escapeAttribute(textDirection)}">${output()}</div>`
         : ""}
     </section>
   `;
@@ -100,11 +101,23 @@ export function appendTerminal(kind: string, title: unknown, body = "", command 
         entry.startedAt = Date.now();
         state.jobHistory = [...state.jobHistory, entry].slice(-maxJobHistory);
     }
-    // At most 40 tabs, always keeping the Jobs tab; a running job whose tab drops off still updates its row.
     const [main, ...rest] = state.terminalEntries;
-    state.terminalEntries = main ? [main, ...[...rest, entry].slice(-(maxTerminalTabs - 1))] : [entry];
+    state.terminalEntries = main ? [main, ...capTabs([...rest, entry])] : [entry];
     state.activeTerminalIndex = Math.max(0, state.terminalEntries.length - 1);
     return id;
+}
+/**
+ * Keeps at most 40 tabs besides Jobs, dropping the oldest finished ones first, then the oldest running ones
+ * (a running job whose tab drops off still updates its Jobs row).
+ */
+function capTabs(tabs: TerminalEntry[]): TerminalEntry[] {
+    const kept = [...tabs];
+    while (kept.length > maxTerminalTabs - 1) {
+        // Never the newest tab, which just opened.
+        const finished = kept.slice(0, -1).findIndex((tab) => tab.kind !== "command");
+        kept.splice(finished < 0 ? 0 : finished, 1);
+    }
+    return kept;
 }
 export function resetTerminalEntries() {
     for (const controller of runningActionControllers.values()) {

@@ -28,6 +28,9 @@ export function validateAction(action: ActionSpec, basePath: string): void {
     if (prerequisiteArguments != null && !(Array.isArray(prerequisiteArguments) && prerequisiteArguments.every((argument) => typeof argument === "string"))) {
         throw new BundleValidationError(`Invalid ${basePath}.prerequisiteArguments: expected an array of strings.`);
     }
+    if (action.primaryInput != null) {
+        requireNonEmpty(action.primaryInput, `${basePath}.primaryInput`);
+    }
 }
 
 function validateServerOperation(operation: ServerOperationSpec, basePath: string): void {

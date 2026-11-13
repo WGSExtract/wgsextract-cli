@@ -61,6 +61,39 @@ test("Basic starts with the Jobs pane collapsed; Advanced reopens it as it was l
   assert.equal(state.isTerminalVisible, false);
 });
 
+test("review regression: the Jobs list renders a start time when the UI locale is a bundle code like pt_BR", async () => {
+  const { renderJobsList } = await import("../dist/web/src/client/jobs-list.js");
+  Object.assign(state, createInitialState(), { localizationCode: "pt_BR" });
+  state.jobHistory = [{ id: "j", kind: "success", title: "Sort", body: "", startedAt: Date.UTC(2026, 10, 12, 12, 0, 0) }];
+
+  assert.match(renderJobsList(undefined), /<time datetime="2026-11-12T12:00:00\.000Z">[^<]*12\/11\/2026/);
+
+  state.localizationCode = "not a locale!";
+  assert.match(renderJobsList(undefined), /<time datetime="2026-11-12T12:00:00\.000Z">[^<]+</);
+});
+
+test("collapsing the pane builds no output, and a reload in the same mode keeps it as the user left it", async () => {
+  const { applyUIModeTerminalVisibilityIfChanged, setTerminalVisible } = await import("../dist/web/src/client/terminal-visibility.js");
+  Object.assign(state, createInitialState(), { uiMode: "basic" });
+  state.terminalEntries = [{ id: "main", kind: "main", title: "Jobs", body: "" }, { id: "big", kind: "success", title: "Run", body: "secret-output" }];
+  state.activeTerminalIndex = 1;
+
+  applyUIModeTerminalVisibilityIfChanged();
+  assert.equal(state.isTerminalVisible, false);
+  assert.doesNotMatch(renderTerminalPane(), /secret-output/);
+
+  setTerminalVisible(true);
+  applyUIModeTerminalVisibilityIfChanged();
+  assert.equal(state.isTerminalVisible, true);
+  assert.match(renderTerminalPane(), /secret-output/);
+
+  // Review regression: loading a bundle saved in Advanced reapplies Advanced's choice.
+  storage.set("wgsextractGui.advancedJobsPaneExpanded", "false");
+  state.uiMode = "advanced";
+  applyUIModeTerminalVisibilityIfChanged();
+  assert.equal(state.isTerminalVisible, false);
+});
+
 test("terminal log direction follows manifest instead of UI locale", () => {
   Object.assign(state, createInitialState(), {
     isTerminalVisible: true,

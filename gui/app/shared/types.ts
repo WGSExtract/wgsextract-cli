@@ -283,6 +283,8 @@ export interface ActionSpec {
     serverOperation?: ServerOperationSpec;
     /** The command line the bundle's prerequisite check is given for this action, when its executable is a wrapper the check can't read. */
     prerequisiteArguments?: string[];
+    /** The placeholder naming the job's main input, shown in the Jobs list; else the first file path control the command uses. */
+    primaryInput?: string;
     [key: string]: unknown;
 }
 
