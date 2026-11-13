@@ -338,7 +338,8 @@ RSS: macOS compression and swapping kept the resident peak smaller.
 
 **Disk fit, but the margin mattered.** Free space started at 210.36 GiB
 above the already-present input and reference and fell to 37.42 GiB.
-The independent 25 GiB system-volume safety guard never fired. Sampled
+The measurement harness's own 25 GiB free-space guard, which is not part of
+`realign`, never fired; `realign` checks its disk requirement only at start-up. Sampled
 scratch peaked at 134.86 GiB; scratch plus results peaked at 166.15 GiB.
 The free-space fall also includes newly built reference indexes and other
 system activity, so it is not the same measurement. The completed BAM was

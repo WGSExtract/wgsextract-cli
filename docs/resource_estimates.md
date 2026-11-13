@@ -384,8 +384,9 @@ filesystem for reference-index storage.
 - **macOS RSS is not the uncompressed working set.** That run's startup RAM
   estimate was 22.02 GiB against 10.80 GiB available. The largest process
   peaked at 8.30 GiB RSS and the sampled concurrent pipeline at 10.11 GiB,
-  but resumed alignment also generated 1,113.72/1,116.92 GiB of system-wide
-  swap-in/out traffic, with sampled occupied swap up to 3.70 GiB and warning
+  but 1,113.72/1,116.92 GiB of system-wide swap-in/out traffic coincided with
+  resumed alignment (`vm_stat` can't attribute it to a process; other desktop
+  apps were open), with sampled occupied swap up to 3.70 GiB and warning
   memory pressure. Completion under compression/swap does not validate an
   8–10 GiB working-set budget. This heavy swapping is tracked as product bug
   [#747](https://github.com/WGSExtract/wgsextract-cli/issues/747): LOW memory
