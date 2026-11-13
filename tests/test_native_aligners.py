@@ -1498,3 +1498,131 @@ def test_auto_with_only_wgse_bwa_mem3_keeps_bwas_records(tmp_path, mem3_bin):
 
     assert result.metrics["aligner"] == "bwa"
     assert result.metrics["bwa_mem3_mode"] == "compat=bwa-mem"
+
+
+# #674: wgse-minimap2 0.4.0 on Linux x86-64 runs long reads' gap fills on an
+# NVIDIA GPU with --backend auto; sr, older builds and ARM64 stay on the CPU.
+def _align_single(reads, out, *options):
+    result = _run(
+        "align", "--r1", reads.r1, "--ref", reads.ref, "--outdir", str(out),
+        "--threads", "2", "--memory", "1G", "--aligner", "minimap2", *options,
+    )  # fmt: skip
+    (bam,) = out.glob("*_aligned.bam")
+    return str(bam), result
+
+
+def _minimap2_cuda(version="0.4.0", cuda_available=True):
+    """The Linux x86-64 wgse-minimap2 package's capabilities on a CUDA machine
+    (cuda_available is false while its GPU's memory is taken)."""
+    return _capabilities(
+        "minimap2",
+        version=version,
+        metal_available=False,
+        metal_hardware_supported=False,
+        cuda_available=cuda_available,
+        cuda_hardware_supported=True,
+    )
+
+
+def _linux(monkeypatch, machine):
+    monkeypatch.setattr(
+        native_aligners,
+        "platform",
+        Namespace(system=lambda: "Linux", machine=lambda: machine),
+    )
+
+
+@pytest.mark.parametrize(
+    ("machine", "version", "options", "backend"),
+    [
+        ("x86_64", "0.4.0", ("--platform", "ont"), "cuda"),
+        ("x86_64", "0.4.0", ("--platform", "hifi"), "cuda"),
+        # Before 0.4.0 wgse-minimap2 had no --backend.
+        ("x86_64", "0.3.0", ("--platform", "ont"), "cpu"),
+        # wgse-minimap2 is built for Linux x86-64 only.
+        ("aarch64", "0.4.0", ("--platform", "ont"), None),
+    ],
+)
+def test_linux_long_reads_run_wgse_minimap2_on_cuda(
+    tmp_path, request, monkeypatch, ram, machine, version, options, backend
+):
+    _linux(monkeypatch, machine)
+    ram(64 * GIB)
+    bindir = only_tools(request, "minimap2", "samtools")
+    reads = _short_reads(tmp_path)
+    _install_build(bindir, "minimap2", _minimap2_cuda(version))
+
+    bam, result = _align_single(reads, tmp_path / "auto", *options)
+    upstream_bam, _ = _align_single(
+        reads, tmp_path / "off", *options, "--native-aligners", "off"
+    )
+
+    if backend is None:
+        assert _native(result) == {}
+    else:
+        assert result.metrics["native_aligner"] == "wgse-minimap2"
+        assert result.metrics["native_aligner_backend"] == backend
+    assert _samtools("view", bam) == _samtools("view", upstream_bam)
+    assert not result.warnings
+
+
+@pytest.mark.usefixtures("linux_x86_64")
+def test_linux_short_reads_keep_wgse_minimap2_on_the_cpu(tmp_path, request):
+    # sr's gap fills stay on the CPU even with --cuda, so no GPU is set up.
+    bindir = only_tools(request, "minimap2", "samtools")
+    reads = _short_reads(tmp_path)
+    _install_build(bindir, "minimap2", _minimap2_cuda())
+
+    bam, result = _align(reads, tmp_path / "out", "--aligner", "minimap2")
+
+    assert result.metrics["native_aligner"] == "wgse-minimap2"
+    assert result.metrics["native_aligner_backend"] == "cpu"
+    assert _samtools("view", "-c", bam) != "0\n"
+
+
+@pytest.mark.usefixtures("linux_x86_64")
+def test_linux_wgse_minimap2_without_ram_for_its_gpu_runs_on_the_cpu(
+    tmp_path, request, ram
+):
+    bindir = only_tools(request, "minimap2", "samtools")
+    reads = _short_reads(tmp_path)
+    _install_build(bindir, "minimap2", _minimap2_cuda())
+
+    def needed(gpu_bytes):
+        return estimate_mapping_memory(
+            reads.ref,
+            "minimap2",
+            threads="2",
+            memory="1G",
+            samblaster=False,
+            platform="ont",
+            read_length=100,
+            preset="map-ont",
+            input_bytes=Path(reads.r1).stat().st_size,
+            gpu_bytes=gpu_bytes,
+        ).total
+
+    # #752 review: just the CPU backend's estimate, which the GPU backend's
+    # (with its RAM's headroom too) exceeds.
+    ram(64 * GIB, needed(0))
+
+    bam, result = _align_single(reads, tmp_path / "out", "--platform", "ont")
+
+    assert result.metrics["native_aligner"] == "wgse-minimap2"
+    assert result.metrics["native_aligner_backend"] == "cpu"
+    assert _samtools("view", "-c", bam) != "0\n"
+
+
+@pytest.mark.usefixtures("linux_x86_64")
+def test_linux_wgse_minimap2_keeps_its_gpu_when_busy_at_the_first_probe(
+    tmp_path, request
+):
+    # #752 review: capabilities are asked once per process, and a GPU busy then
+    # reports cuda_available false; --backend auto checks it as each run starts.
+    bindir = only_tools(request, "minimap2", "samtools")
+    reads = _short_reads(tmp_path)
+    _install_build(bindir, "minimap2", _minimap2_cuda(cuda_available=False))
+
+    _, result = _align_single(reads, tmp_path / "out", "--platform", "hifi")
+
+    assert result.metrics["native_aligner_backend"] == "cuda"

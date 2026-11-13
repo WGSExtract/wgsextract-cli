@@ -239,6 +239,23 @@ It writes bwa's exact alignments and is **experimental**.
 - **`--gpu`:** still means Parabricks, which also sorts and marks duplicates on
   the GPU.
 
+Long reads work the same way with `wgse-minimap2` 0.4.0 or later (minimap2
+2.31), which also writes its upstream aligner's exact alignments
+([native/README.md](../native/README.md#wgse-minimap2-on-linux-x86-64)):
+
+- **When it runs:** `align` and `realign` run `wgse-minimap2 --backend auto` in
+  place of minimap2 for ONT, HiFi and other long reads. Its base-level gap fills
+  run on the GPU and the rest on the CPU. Short reads (`sr`) stay entirely on the
+  CPU.
+- **Gain (measured):** on the RTX 3090 machine above (8 threads), 40k HiFi reads
+  took 20.4 s against 32.5 s on its CPU backend and 45.6 s with Bioconda's
+  minimap2. 47k ONT reads, which spend most of their time chaining, took 100.7 s
+  against 111.6 s.
+- **What it needs:** about 0.7 GiB of GPU memory, which it checks for (keeping
+  1 GiB spare) before using the GPU. It needs about 1 GiB more RAM. When only
+  that extra RAM wouldn't fit, it runs on the CPU. On a Mac, `wgse-minimap2`
+  still runs on the CPU.
+
 On Linux ARM64 (for example Graviton, Ampere or Cobalt), the linux-aarch64
 `wgse-bwa` package has no GPU backend; its CPU backend runs bwa's steps with
 the same exact NEON replacements as on a Mac, and `align` and `realign` run it

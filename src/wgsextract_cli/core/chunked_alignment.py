@@ -462,8 +462,15 @@ class ChunkedAlignment:
 
     def _key(self, groups: list[Chunk]) -> str:
         def settings(argv: list[str]) -> list[str]:
-            # Threads don't change the alignment.
-            return [a for i, a in enumerate(argv) if "-t" not in argv[i - 1 : i] + [a]]
+            # Threads don't change the alignment, nor does the backend: --backend
+            # auto (the GPU's gap fills) writes the CPU's records, and comes and
+            # goes with the GPU's availability.
+            unkeyed = ("-t", "--backend")
+            return [
+                a
+                for i, a in enumerate(argv)
+                if not any(o in unkeyed for o in argv[i - 1 : i] + [a])
+            ]
 
         plan = {
             "input": self.input,

@@ -1,0 +1,85 @@
+context:
+  # native/minimap2/CMakeLists.txt's WGSE_MINIMAP2_VERSION, and the minimap2 it declares.
+  version: "0.4.0"
+  minimap2_version: "2.31"
+
+package:
+  name: wgse-minimap2
+  version: ${{ version }}
+
+# The minimap2 release native/minimap2 declares, so the build runs offline.
+source:
+  - path: ../../native
+    target_directory: native
+  - path: ../../LICENSE
+  - url: https://github.com/lh3/minimap2/archive/refs/tags/v${{ minimap2_version }}.tar.gz
+    sha256: bff334a0e4512644e2f3e29944aeec408f49450f4f74dc39fe89e5273869255b
+    target_directory: minimap2
+
+build:
+  number: 0
+  string: ${{ target_platform | replace('-', '') }}_wgse_${{ build_number }}
+  # Linux x86-64, with the CUDA backend (#674).
+  skip:
+    - not (linux and x86_64)
+  script:
+    - bash "$RECIPE_DIR/build.sh"
+  # The CUDA runtime is linked statically, so the package needs only the NVIDIA driver,
+  # and only for --cuda: without one, wgse-minimap2 reports CUDA unavailable and
+  # --backend auto aligns on the CPU. Don't require a driver (or a CUDA version).
+  dynamic_linking:
+    missing_dso_allowlist:
+      - libcuda.so.1
+
+requirements:
+  build:
+    - ${{ compiler('c') }}
+    - ${{ compiler('cxx') }}
+    - ${{ compiler('cuda') }}
+    - ${{ stdlib('c') }}
+    - cmake >=3.24
+    - ninja
+  host:
+    - cuda-version ${{ cuda_compiler_version }}.*
+    - cuda-cudart-dev
+    - cuda-cudart-static
+    - zlib
+  # Statically linked: neither the shared runtime cuda-cudart-dev exports nor a CUDA
+  # version is needed at run time.
+  ignore_run_exports:
+    from_package:
+      - ${{ compiler('cuda') }}
+    by_name:
+      - cuda-cudart
+      - cuda-version
+
+tests:
+  - script:
+      - wgse-minimap2 --version
+      - wgse-minimap2 capabilities --json
+      - wgse-minimap2 capabilities --json | grep -q '"engine":"minimap2"'
+      - wgse-minimap2 capabilities --json | grep -q '"cuda_hardware_supported":'
+  - files:
+      source:
+        - native/minimap2/tests/smoke.sh
+    requirements:
+      run:
+        - gawk
+    script:
+      # Maps synthetic HiFi, ONT and short reads on the CPU, and with --cuda too when the
+      # build machine has a GPU.
+      - bash native/minimap2/tests/smoke.sh "$(command -v wgse-minimap2)" smoke
+
+about:
+  homepage: https://github.com/WGSExtract/wgsextract-cli/tree/main/native
+  # This repository's GPL-3.0-or-later code with minimap2's MIT sources (native/README.md,
+  # Licences).
+  license: GPL-3.0-or-later
+  license_file:
+    - LICENSE
+    - minimap2/LICENSE.txt
+  summary: >-
+    minimap2 2.31 rebuilt by WGS Extract for Linux x86-64, with faster index loading and
+    building, seeding and anchor sorting, and an experimental CUDA backend (--cuda,
+    --backend auto) for long reads' base-level gap fills; it writes minimap2's exact
+    alignments.
