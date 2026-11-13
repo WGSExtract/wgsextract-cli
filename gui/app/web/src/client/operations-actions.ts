@@ -4,6 +4,7 @@ import { scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
 import { apiStream } from "./api.js";
 import { appendTerminal, appendTerminalOutput, runningActionControllers, terminalExitStatus, terminalProcessErrorStatus } from "./terminal.js";
+import { findTerminalEntry } from "./terminal-output.js";
 import { resultNotice, type ResultDocument } from "../../../shared/result-document.js";
 import { actionNoticeKey } from "./result-view.js";
 import { prerequisitesInstalled } from "./operations-prerequisites.js";
@@ -76,11 +77,7 @@ export async function streamCommand(action: ActionSpec, context: CommandContext,
         if (error && typeof error === "object" && "name" in error && error.name === "AbortError") {
             return null;
         }
-        const runningIndex = state.terminalEntries.findIndex((entry) => entry.id === runningID);
-        if (runningIndex < 0) {
-            return null;
-        }
-        const existing = state.terminalEntries[runningIndex];
+        const existing = findTerminalEntry(runningID);
         if (!existing) {
             return null;
         }
@@ -106,7 +103,7 @@ export async function streamCommand(action: ActionSpec, context: CommandContext,
 }
 
 function applyActionEvent(event: ActionStreamEvent, action: ActionSpec, context: CommandContext, runningID: string, noticeRun: NoticeRun | null) {
-    const tab = state.terminalEntries.find((entry) => entry.id === runningID);
+    const tab = findTerminalEntry(runningID);
     if (!tab) {
         return;
     }

@@ -84,6 +84,23 @@ test("collapsing the Jobs pane keeps its row of job tabs and flips the arrow", a
   assert.match(html, /aria-expanded="false"[^>]*>[\s\S]*⌃/);
 });
 
+test("job tabs keep the newest next to the pane buttons, and a job opened from the list moves there", async () => {
+  // User request: as tabs pile up, the oldest drop off the left so Copy and Hide stay in view.
+  const { state, renderTerminalPane, appendTerminal, openJob } = await clientView();
+  const first = appendTerminal("command", "First");
+  appendTerminal("command", "Second");
+  appendTerminal("command", "Third");
+  const strip = () => renderTerminalPane().match(/<div class="terminal-job-tabs">([\s\S]*?)<\/div>/)[1];
+  const titles = () => [...strip().matchAll(/<span>([^<]+)<\/span>/g)].map(([, title]) => title);
+
+  assert.match(renderTerminalPane(), /<div class="terminal-tabs">\s*<span class="terminal-tab-wrap[^"]*main/);
+  assert.deepEqual(titles(), ["Third", "Second", "First"]);
+
+  openJob(first);
+  assert.deepEqual(titles(), ["First", "Third", "Second"]);
+  assert.equal(state.terminalEntries[state.activeTerminalIndex].title, "First");
+});
+
 test("an action without a disk estimate shows no empty precheck banner", async () => {
   // UI audit: Extract's Realign showed a blank blue box when the server had no disk estimate for the chosen BAM.
   const { state, renderActions } = await clientView();

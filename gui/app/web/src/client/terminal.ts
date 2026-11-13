@@ -12,6 +12,7 @@ export const runningActionControllers = new Map<string, AbortController>();
 
 /** Keeps a session's job list bounded; older jobs drop off the Jobs tab. */
 const maxJobHistory = 200;
+const maxTerminalTabs = 40;
 
 function activeTerminalEntry(): TerminalEntry | undefined {
     const tabs = terminalTabs();
@@ -31,17 +32,10 @@ export function renderTerminalPane() {
       <header class="terminal-header">
         <span class="terminal-glyph" aria-hidden="true">${renderIcon("terminal", undefined, ">_")}</span>
         <div class="terminal-tabs">
-          ${tabs
-        .map((tab, index) => `
-              <span class="terminal-tab-wrap ${index === state.activeTerminalIndex ? "active" : ""} ${escapeAttribute(tab.kind)}">
-                <button type="button" class="terminal-tab" data-terminal-tab="${index}" ${tab.status ? `data-tooltip="${escapeAttribute(terminalStatusTooltip(tab.status))}"` : ""}>
-                  ${renderTerminalTabLabel(tab)}
-                </button>
-                ${tab.kind === "main"
-        ? ""
-        : `<button type="button" class="terminal-tab-close" data-terminal-tab-close="${index}" aria-label="${escapeAttribute(formatLabel(state.labels.terminalCloseTabLabelFormat, { title: tab.title }))}">×</button>`}
-              </span>`)
-        .join("")}
+          ${tabs[0] ? renderTerminalTab(tabs[0], 0) : ""}
+          <div class="terminal-job-tabs">
+            ${tabs.map((tab, index) => ({ tab, index })).slice(1).reverse().map(({ tab, index }) => renderTerminalTab(tab, index)).join("")}
+          </div>
         </div>
         <button type="button" class="terminal-icon-button" data-terminal-copy title="${escapeAttribute(copyLabel)}" aria-label="${escapeAttribute(copyLabel)}">
           <i class="bi bi-copy" aria-hidden="true"></i>
@@ -55,23 +49,35 @@ export function renderTerminalPane() {
     </section>
   `;
 }
+/**
+ * One tab chip. Job tabs are rendered newest first into a row-reverse strip one tab high, so the newest
+ * sit at the right end and the oldest wrap out of view on the left, whole; the Jobs list still lists them.
+ */
+function renderTerminalTab(tab: TerminalEntry, index: number): string {
+    const close = tab.kind === "main"
+        ? ""
+        : `<button type="button" class="terminal-tab-close" data-terminal-tab-close="${index}" aria-label="${escapeAttribute(formatLabel(state.labels.terminalCloseTabLabelFormat, { title: tab.title }))}">×</button>`;
+    return `
+      <span class="terminal-tab-wrap ${index === state.activeTerminalIndex ? "active" : ""} ${escapeAttribute(tab.kind)}">
+        <button type="button" class="terminal-tab" data-terminal-tab="${index}" ${tab.status ? `data-tooltip="${escapeAttribute(terminalStatusTooltip(tab.status))}"` : ""}>
+          ${renderTerminalTabLabel(tab)}
+        </button>
+        ${close}
+      </span>`;
+}
 /** The text the Copy button copies: the active tab's output, or the job list on the Jobs tab. */
 export function activeTerminalCopyText(): string {
     const entry = activeTerminalEntry();
     return entry?.kind === "main" ? jobsListText(entry) : entry?.body ?? "";
 }
-/** Makes a job's tab the active one, reopening the tab if it was closed. */
+/** Makes a job's tab the active one at the right end of the tab row, where it is always in view, reopening it if it was closed. */
 export function openJob(id: string) {
-    let index = state.terminalEntries.findIndex((entry) => entry.id === id);
-    if (index < 0) {
-        const job = state.jobHistory.find((entry) => entry.id === id);
-        if (!job) {
-            return;
-        }
-        state.terminalEntries.push(job);
-        index = state.terminalEntries.length - 1;
+    const job = state.jobHistory.find((entry) => entry.id === id);
+    if (!job) {
+        return;
     }
-    state.activeTerminalIndex = index;
+    state.terminalEntries = [...state.terminalEntries.filter((entry) => entry.id !== id), job];
+    state.activeTerminalIndex = state.terminalEntries.length - 1;
 }
 export function terminalTextDirection() {
     return state.manifest?.terminalTextDirection === "rtl" ? "rtl" : "ltr";
@@ -94,8 +100,9 @@ export function appendTerminal(kind: string, title: unknown, body = "", command 
         entry.startedAt = Date.now();
         state.jobHistory = [...state.jobHistory, entry].slice(-maxJobHistory);
     }
-    state.terminalEntries.push(entry);
-    state.terminalEntries = state.terminalEntries.slice(-40);
+    // At most 40 tabs, always keeping the Jobs tab; a running job whose tab drops off still updates its row.
+    const [main, ...rest] = state.terminalEntries;
+    state.terminalEntries = main ? [main, ...[...rest, entry].slice(-(maxTerminalTabs - 1))] : [entry];
     state.activeTerminalIndex = Math.max(0, state.terminalEntries.length - 1);
     return id;
 }
@@ -116,14 +123,14 @@ export function terminalTabs(): TerminalEntry[] {
 export function ensureMainTerminal() {
     if (state.terminalEntries[0]?.kind === "main") {
         state.terminalEntries[0].id ??= "main";
-        state.terminalEntries[0].title = state.labels.terminalMainTabTitle ?? "Main";
+        state.terminalEntries[0].title = state.labels.terminalMainTabTitle ?? "Jobs";
         return;
     }
     const hadEntries = state.terminalEntries.length > 0;
     state.terminalEntries.unshift({
         id: "main",
         kind: "main",
-        title: state.labels.terminalMainTabTitle ?? "Main",
+        title: state.labels.terminalMainTabTitle ?? "Jobs",
         body: "",
         command: "main",
     });

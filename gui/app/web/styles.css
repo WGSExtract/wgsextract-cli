@@ -1343,7 +1343,23 @@ tbody tr + tr {
   flex: 1;
   display: flex;
   gap: 6px;
-  overflow-x: auto;
+}
+
+/*
+ * Job tabs, newest first in the DOM. Reversed and wrapped into a strip one tab high, the newest stay in
+ * view next to the copy and hide buttons and the oldest drop out of view on the left, whole, never pushing
+ * those buttons off.
+ */
+.terminal-job-tabs {
+  min-width: 0;
+  flex: 1;
+  height: 26px;
+  display: flex;
+  flex-flow: row-reverse wrap;
+  justify-content: flex-end;
+  align-content: flex-start;
+  gap: 6px;
+  overflow: hidden;
 }
 
 .terminal-tab-wrap {
@@ -1962,6 +1978,23 @@ tbody tr + tr {
 
   .app-shell.setup-needed.terminal-hidden .detail-shell {
     grid-template-rows: auto auto minmax(320px, auto) auto;
+  }
+
+  /* The desktop app has no bundle action bar, so the page is the first row (or the second, under the setup banner). */
+  .app-shell:not(.bundle-action-visible) .detail-shell {
+    grid-template-rows: minmax(320px, auto) minmax(220px, 32vh);
+  }
+
+  .app-shell.setup-needed:not(.bundle-action-visible) .detail-shell {
+    grid-template-rows: auto minmax(320px, auto) minmax(220px, 32vh);
+  }
+
+  .app-shell.terminal-hidden:not(.bundle-action-visible) .detail-shell {
+    grid-template-rows: minmax(320px, auto) auto;
+  }
+
+  .app-shell.setup-needed.terminal-hidden:not(.bundle-action-visible) .detail-shell {
+    grid-template-rows: auto minmax(320px, auto) auto;
   }
 
   .page-panel {

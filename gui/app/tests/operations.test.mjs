@@ -501,6 +501,36 @@ test("the Jobs tab lists each run with its outcome, start time and main input fi
   }
 });
 
+test("review regression: a job whose tab the 40-tab cap drops still finishes in the Jobs list, and the Jobs tab stays", async () => {
+  resetState();
+  const { renderJobsList } = await import("../dist/web/src/client/jobs-list.js");
+  const { appendTerminal } = await import("../dist/web/src/client/terminal.js");
+  const originalFetch = globalThis.fetch;
+  const stream = setupStreamResponse();
+  globalThis.fetch = () => Promise.resolve(stream.response);
+  const context = { fieldValues: {}, checkedOptions: {}, configValues: {}, rowValues: {}, bundleRootPath: "/bundle", placeholderLabels: {} };
+
+  try {
+    const run = runAction({ title: "Align", command: { executable: "tool" } }, context, actionReference, { prerequisitesChecked: true });
+    appendTerminal("config", "Settings", "settings loaded");
+    for (let index = 0; index < 45; index += 1) {
+      appendTerminal("error", `Notice ${index}`);
+    }
+    assert.equal(state.terminalEntries.some((entry) => entry.title === "Align"), false);
+    stream.write({ type: "complete", result: { exitCode: 0, command: "tool", stderr: "" } });
+    stream.close();
+    await run;
+
+    assert.equal(state.terminalEntries.length, 40);
+    assert.equal(state.terminalEntries[0].kind, "main");
+    const html = renderJobsList(state.terminalEntries[0]);
+    assert.match(html, /<tr class="jobs-row success">[\s\S]*Align/);
+    assert.match(html, /settings loaded/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("an action's result document reaches its terminal tab, and a usage error its notice until the next run", async () => {
   resetState();
   const originalFetch = globalThis.fetch;
