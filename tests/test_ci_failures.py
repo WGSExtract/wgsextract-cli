@@ -32,6 +32,7 @@ class ReplayGitHub(GitHub):
         )
         self.run["pull_requests"] = [{"number": 123}]
         self.main: dict[str, Any] | None = None
+        self.last_completed_main: dict[str, Any] | None = None
         self.main_by_workflow: dict[str, dict[str, Any]] = {}
         self.jobs: dict[int, list[dict[str, Any]]] = {1: [recorded("test_failure")]}
         self.main_jobs: list[dict[str, Any]] = []
@@ -54,6 +55,14 @@ class ReplayGitHub(GitHub):
     ) -> Any:
         if path == "graphql":
             assert data is not None
+            if data["query"].startswith("query"):
+                return {
+                    "data": {
+                        "node": {"isPinned": data["variables"]["id"] in self.pinned}
+                    }
+                }
+            if data["variables"]["id"] in self.pinned:
+                raise RuntimeError("The issue is already pinned")
             self.pinned.add(data["variables"]["id"])
             return {"data": {"pinIssue": {"issue": {"id": data["variables"]["id"]}}}}
         path = path.removeprefix(f"repos/{self.repository}/")
@@ -74,6 +83,12 @@ class ReplayGitHub(GitHub):
             )
             if main_query and self.main_by_workflow:
                 selected = self.main_by_workflow.get(parts[2])
+            if (
+                main_query
+                and parse_qs(url.query).get("status") == ["completed"]
+                and self.last_completed_main
+            ):
+                selected = self.last_completed_main
             if self.superseded and not main_query:
                 selected = dict(self.run, id=999)
             return {"workflow_runs": [copy.deepcopy(selected)] if selected else []}
@@ -83,7 +98,10 @@ class ReplayGitHub(GitHub):
             attempt = int(parts[4])
             jobs = (
                 self.main_jobs
-                if self.main and int(parts[2]) == self.main["id"]
+                if any(
+                    main and int(parts[2]) == main["id"]
+                    for main in (self.main, self.last_completed_main)
+                )
                 else self.jobs.get(attempt, [])
             )
             return {"jobs": copy.deepcopy(jobs)}
@@ -352,6 +370,24 @@ def test_routed_pr_job_compares_reusable_main_not_pr_only_wrapper() -> None:
     assert "ci-red-main" in api.labels
 
 
+def test_queued_main_fix_does_not_release_existing_main_failure_quarantine() -> None:
+    api = ReplayGitHub()
+    api.main = dict(
+        api.run,
+        id=201,
+        head_branch="main",
+        event="push",
+        status="queued",
+        conclusion=None,
+    )
+    api.last_completed_main = dict(
+        api.main, id=200, status="completed", conclusion="failure"
+    )
+    api.main_jobs = [recorded("test_failure")]
+    assert Observer(api).process(api.run, rerun_tests=True) == 2
+    assert api.retried == []
+
+
 def test_different_pr_failure_is_not_mistaken_for_red_main() -> None:
     api = ReplayGitHub()
     api.main = dict(api.run, id=200, head_branch="main", event="push")
@@ -412,6 +448,8 @@ def test_weekly_ledger_reports_run_level_retry_rate() -> None:
     Observer(api).rollup()
     assert "25.0%" in ledger_comments(api)[0]
     assert api.run["name"] in ledger_comments(api)[0]
+    Observer(api).rollup()
+    assert len(ledger_comments(api)) == 1
 
 
 def test_log_content_cannot_mention_users_or_inject_issue_html() -> None:

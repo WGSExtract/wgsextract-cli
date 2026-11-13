@@ -61,8 +61,9 @@ A latest failing push run on main opens or updates a workflow-specific
 already confirmed flaky by this observer are excluded. A later successful
 main run closes that workflow's issue; an old/superseded success cannot close it.
 
-Before any PR retry, the observer compares its failures with the latest main
-push run of the same workflow. Any overlapping non-flaky test IDs quarantine
+Before any PR retry, the observer compares its failures with the latest completed
+main push run of the same workflow. A queued fix is not evidence that main is
+green. Any overlapping non-flaky test IDs quarantine
 the PR with `ci-red-main` and prevent **all** retries of that run, including
 landing-script test retries. Observations are tracked per workflow and SHA:
 a successful observed retry clears only its own workflow's quarantine.

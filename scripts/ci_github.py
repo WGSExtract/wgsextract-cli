@@ -47,6 +47,8 @@ class GitHub:
         raise RuntimeError("Pagination limit exceeded; refusing an incomplete decision")
 
     def evidence(self, job: dict[str, Any]) -> str:
+        if job.get("conclusion") == "cancelled" and not job.get("steps"):
+            return ""
         job_id = int(job["id"])
         if job_id not in self._evidence:
             self._evidence[job_id] = self.fetch_evidence(job)

@@ -177,6 +177,7 @@ class Observer:
             {
                 "branch": branch or run["head_branch"],
                 "event": "push" if branch else run["event"],
+                **({"status": "completed"} if branch else {}),
             }
         )
         runs = self.gh.api(
@@ -306,6 +307,16 @@ class Observer:
                 "Use the run links to compare attempts; never erase failed evidence.",
                 bug=False,
             )
+        pinned = self.gh.request(
+            "POST",
+            "graphql",
+            {
+                "query": "query($id:ID!){node(id:$id){... on Issue{isPinned}}}",
+                "variables": {"id": issue["node_id"]},
+            },
+        )["data"]["node"]["isPinned"]
+        if pinned:
+            return issue
         self.gh.request(
             "POST",
             "graphql",
