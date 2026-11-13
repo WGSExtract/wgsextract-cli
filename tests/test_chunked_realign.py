@@ -771,3 +771,83 @@ def test_an_unreachable_url_is_named_as_written(tmp_path, ont, url):
         run_wgsextract("realign", "--input", url, "--ref", ont["ref"],
                        "--outdir", str(tmp_path / "out"))  # fmt: skip
     assert f"Can't reach {url}" in str(error.value)
+
+
+_FAKE_WGSE_MINIMAP2 = """\
+import os, sys
+
+args = sys.argv[1:]
+if args[:1] == ["capabilities"]:
+    sys.stdout.write({capabilities!r})
+    sys.exit(0)
+gpu = args[:2] == ["--backend", "auto"]
+if gpu:
+    args = args[2:]
+# Logs each chunk's mapping (minimap2 reading the chunk from stdin), and dies
+# on the third while the die file exists.
+if args[-1:] == ["-"]:
+    with open({log!r}, "a") as log:
+        log.write(("gpu" if gpu else "cpu") + "\\n")
+    if os.path.exists({die!r}) and len(open({log!r}).read().split()) == 3:
+        sys.exit(1)
+os.execv({real!r}, ["minimap2", *args])
+"""
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Python PATH shims")
+@needs_tools("samtools", "minimap2")
+def test_a_resumed_chunked_realign_keeps_chunks_when_the_gpu_comes_back(
+    tmp_path, ont, monkeypatch
+):
+    """#752 review: wgse-minimap2 --backend auto writes the CPU's records, so
+    a GPU that was busy when the run was killed and is free when it resumes
+    (or the reverse) must not discard the finished chunks."""
+    from tests.fake_tools import python_tool
+    from wgsextract_cli.core import native_aligners
+
+    monkeypatch.setattr(
+        native_aligners,
+        "platform",
+        type("P", (), {"system": lambda: "Linux", "machine": lambda: "x86_64"}),
+    )
+    bindir = tmp_path / "bin"
+    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+    die, log = tmp_path / "die", tmp_path / "mappings.log"
+
+    def install(cuda: bool) -> None:
+        capabilities = {
+            "schema_version": 1, "version": "0.4.0", "engine": "minimap2",
+            "engine_version": "2.31-r1302", "qualified": False,
+            "metal_available": False, "metal_hardware_supported": False,
+            "cuda_available": cuda, "cuda_hardware_supported": cuda,
+            "cpu_available": True,
+        }  # fmt: skip
+        python_tool(bindir, "wgse-minimap2", _FAKE_WGSE_MINIMAP2.format(
+            capabilities=json.dumps(capabilities) + "\n", die=str(die),
+            log=str(log), real=shutil.which("minimap2"),
+        ))  # fmt: skip
+
+    def realign_to(out: str) -> list[str]:
+        log.unlink(missing_ok=True)
+        try:
+            _realign(ont["cram"], ont["ref"], tmp_path / out, *chunks)
+        finally:
+            mappings = log.read_text().split() if log.exists() else []
+        return mappings
+
+    chunks = ("--chunk-size", _chunk_size(ont["cram"]))
+    install(cuda=False)
+    clean = realign_to("clean")
+    die.write_text("")
+    with pytest.raises(WGSExtractError):
+        realign_to("out")
+    die.unlink()
+    install(cuda=True)
+
+    resumed = realign_to("out")
+
+    # The two finished chunks are kept; the rest are mapped on the GPU.
+    assert resumed == ["gpu"] * (len(clean) - 2)
+    bam = str(tmp_path / "out/x_aligned.bam")
+    clean_bam = str(tmp_path / "clean/x_aligned.bam")
+    assert _records(bam, ont["ref"]) == _records(clean_bam, ont["ref"])

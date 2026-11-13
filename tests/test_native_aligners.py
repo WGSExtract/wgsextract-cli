@@ -23,7 +23,6 @@ from tests.test_realign import _old_alignment
 from wgsextract_cli.commands import realign
 from wgsextract_cli.core import native_aligners, results
 from wgsextract_cli.core.alignment_memory import (
-    MINIMAP2_CUDA_BYTES,
     bwa_gpu_memory,
     estimate_mapping_memory,
 )
@@ -1512,14 +1511,15 @@ def _align_single(reads, out, *options):
     return str(bam), result
 
 
-def _minimap2_cuda(version="0.4.0"):
-    """The Linux x86-64 wgse-minimap2 package's capabilities on a CUDA machine."""
+def _minimap2_cuda(version="0.4.0", cuda_available=True):
+    """The Linux x86-64 wgse-minimap2 package's capabilities on a CUDA machine
+    (cuda_available is false while its GPU's memory is taken)."""
     return _capabilities(
         "minimap2",
         version=version,
         metal_available=False,
         metal_hardware_supported=False,
-        cuda_available=True,
+        cuda_available=cuda_available,
         cuda_hardware_supported=True,
     )
 
@@ -1602,11 +1602,27 @@ def test_linux_wgse_minimap2_without_ram_for_its_gpu_runs_on_the_cpu(
             gpu_bytes=gpu_bytes,
         ).total
 
-    # Between the CPU backend's estimate and the GPU backend's.
-    ram(64 * GIB, (needed(0) + needed(MINIMAP2_CUDA_BYTES)) // 2)
+    # #752 review: just the CPU backend's estimate, which the GPU backend's
+    # (with its RAM's headroom too) exceeds.
+    ram(64 * GIB, needed(0))
 
     bam, result = _align_single(reads, tmp_path / "out", "--platform", "ont")
 
     assert result.metrics["native_aligner"] == "wgse-minimap2"
     assert result.metrics["native_aligner_backend"] == "cpu"
     assert _samtools("view", "-c", bam) != "0\n"
+
+
+@pytest.mark.usefixtures("linux_x86_64")
+def test_linux_wgse_minimap2_keeps_its_gpu_when_busy_at_the_first_probe(
+    tmp_path, request
+):
+    # #752 review: capabilities are asked once per process, and a GPU busy then
+    # reports cuda_available false; --backend auto checks it as each run starts.
+    bindir = only_tools(request, "minimap2", "samtools")
+    reads = _short_reads(tmp_path)
+    _install_build(bindir, "minimap2", _minimap2_cuda(cuda_available=False))
+
+    _, result = _align_single(reads, tmp_path / "out", "--platform", "hifi")
+
+    assert result.metrics["native_aligner_backend"] == "cuda"

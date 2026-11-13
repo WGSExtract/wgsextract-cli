@@ -1849,25 +1849,30 @@ def _minimap2_command(
         return aligner
     gpu = AlignerCommand("minimap2", native, gpu=True)
     gpu_bytes = aligner_gpu_bytes(gpu, ref, reads)
-    needed = estimate_mapping_memory(
-        ref,
-        "minimap2",
-        threads=threads,
-        memory=memory,
-        samblaster=samblaster,
-        reads=reads,
-        platform=job.platform,
-        read_length=read_length,
-        preset=preset,
-        input_bytes=input_bytes,
-        gpu_bytes=gpu_bytes,
-    ).total
+
+    def needed(gpu_bytes: int) -> int:
+        return estimate_mapping_memory(
+            ref,
+            "minimap2",
+            threads=threads,
+            memory=memory,
+            samblaster=samblaster,
+            reads=reads,
+            platform=job.platform,
+            read_length=read_length,
+            preset=preset,
+            input_bytes=input_bytes,
+            gpu_bytes=gpu_bytes,
+        ).total
+
+    # Long reads' estimates add headroom to the GPU's RAM too: compare both.
+    with_gpu, cpu_only = needed(gpu_bytes), needed(0)
     available = available_memory()
-    if needed > available >= needed - gpu_bytes:
+    if with_gpu > available >= cpu_only:
         logging.info(
             f"Running {native.binary} on the CPU: its GPU backend needs "
             f"{gpu_bytes / 1024**3:.1f} GiB more RAM, and the alignment would "
-            f"then need {needed / 1024**3:.1f} GiB, more than the "
+            f"then need {with_gpu / 1024**3:.1f} GiB, more than the "
             f"{available / 1024**3:.1f} GiB available."
         )
         return aligner

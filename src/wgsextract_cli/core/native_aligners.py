@@ -91,6 +91,9 @@ class NativeAligner:
     engine_version: str
     metal_available: bool
     cuda_available: bool = False
+    # A usable NVIDIA GPU, busy or not: capabilities are asked once per process,
+    # and cuda_available also depends on the GPU's free memory at that moment.
+    cuda_hardware_supported: bool = False
 
     @property
     def gpu(self) -> str | None:
@@ -102,11 +105,14 @@ class NativeAligner:
     @property
     def minimap2_gpu(self) -> bool:
         """Whether this is a wgse-minimap2 whose long-read gap fills can run on
-        its NVIDIA GPU with --backend auto."""
+        an NVIDIA GPU with --backend auto. From its hardware support, not
+        cuda_available: --backend auto checks the GPU's free memory itself, as
+        each run starts, and otherwise aligns on the CPU."""
         version = _version_tuple(self.version)
         return (
             self.binary == "wgse-minimap2"
-            and self.gpu == "cuda"
+            and not self.metal_available
+            and self.cuda_hardware_supported
             and version is not None
             and version >= MINIMAP2_GPU_VERSION
         )
@@ -228,7 +234,11 @@ class AlignerCommand:
     @property
     def backend(self) -> str:
         """cpu, or the GPU backend (metal or cuda) it runs on."""
-        return (self.native.gpu or "cpu") if self.gpu and self.native else "cpu"
+        if not self.gpu or not self.native:
+            return "cpu"
+        if self.native.gpu:
+            return self.native.gpu
+        return "cuda" if self.native.minimap2_gpu else "cpu"
 
     def announce(self) -> None:
         """Log which build runs, and where."""
@@ -381,6 +391,7 @@ def _check(tool: str, binary: str, path: str) -> NativeAligner:
         engine_version=str(document.get("engine_version") or ""),
         metal_available=document.get("metal_available") is True,
         cuda_available=document.get("cuda_available") is True,
+        cuda_hardware_supported=document.get("cuda_hardware_supported") is True,
     )
 
 
