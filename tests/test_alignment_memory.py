@@ -370,13 +370,18 @@ def test_tiny_minimap2_alignment_with_many_threads_does_not_warn(tmp_path, monke
             for i in range(50)
         )
     )
-    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 4 * GIB)
+    # 8 sort threads at 512M would need 7 GiB of full buffers, more than the
+    # 2 GiB available. Real samtools sort reserves -@ x -m up front, so keep
+    # that small enough for any CI runner to allocate (#774, flaky bam_mem
+    # allocation failures). Upstream minimap2: a GPU backend's buffers would
+    # not fit in 2 GiB.
+    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 2 * GIB)
     result = results.CommandResult("align")
     with results.collecting(result):
         run_wgsextract(
             "align", "--r1", str(reads), "--ref", str(ref), "--platform", "hifi",
-            "--aligner", "minimap2", "--threads", "8", "--memory", "2G",
-            "--outdir", str(tmp_path / "out"),
+            "--aligner", "minimap2", "--threads", "8", "--memory", "512M",
+            "--native-aligners", "off", "--outdir", str(tmp_path / "out"),
         )  # fmt: skip
     assert Path(tmp_path, "out", "reads_aligned.bam").is_file()
     assert "alignment_memory" not in {warning.code for warning in result.warnings}
@@ -385,7 +390,7 @@ def test_tiny_minimap2_alignment_with_many_threads_does_not_warn(tmp_path, monke
     result = results.CommandResult("align")
     with results.collecting(result):
         alignment_memory.check_mapping_memory(
-            str(ref), "minimap2", threads="8", memory="2G", samblaster=False,
+            str(ref), "minimap2", threads="8", memory="512M", samblaster=False,
             preset="map-hifi", input_bytes=100 * 10**9,
         )  # fmt: skip
     assert [warning.code for warning in result.warnings] == ["alignment_memory"]
