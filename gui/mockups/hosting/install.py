@@ -30,6 +30,7 @@ def install(root: Path, agents: Path, domain: str) -> None:
             args.extend(["--domain", domain])
         job: dict[str, Any] = {
             "Label": "org.wgsextract.mockups." + task,
+            "LimitLoadToSessionType": "Background",
             "ProgramArguments": args,
             "WorkingDirectory": str(root),
             "LowPriorityIO": True,
