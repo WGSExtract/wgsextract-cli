@@ -14,7 +14,7 @@ CLI_HELP = {
     "arg_outdir": "Destination directory for outputs. Defaults to the selected --genome folder when set.",
     "arg_ref": "Path to the reference genome FASTA.",
     "arg_threads": "CPU threads to use: a positive integer, or 'auto' (default).",
-    "arg_memory": "Memory limit per thread (e.g., '2G').",
+    "arg_memory": "Memory per thread, e.g. '2G' (sorts: at most half the RAM in all).",
     "cmd_benchmark": "Benchmark the main CLI workflows using a deterministic generated BAM foundation.",
     "cmd_info": "Perform a rapid analysis of your BAM/CRAM file to identify the reference genome build, file integrity, and sequencing metrics.",
     "arg_detailed": "Perform full index and body sample analysis (detailed mode)",

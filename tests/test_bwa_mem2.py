@@ -129,11 +129,13 @@ def _preflight_memory_warnings(caplog):
 def test_mem2_sorts_in_256m_per_thread_and_budgets_ram_for_that(
     tmp_path, ram, caplog, requested
 ):
-    ref, r1, r2 = _genome(tmp_path)
+    # Enough reads to fill 256M a thread: a sort gets no more than its reads
+    # can fill (#781, sort buffers samtools couldn't reserve).
+    ref, r1, r2 = _genome(tmp_path, pairs=14_000)
     run_wgsextract("ref", "index", "--ref", ref, "--aligner", "bwa-mem2")
     # Enough RAM for MEM2 sorting in 256M a thread, not in the 512M asked for:
     # auto still takes it, and neither the guard nor the preflight objects.
-    ram(64 * GB, _mem2_budget_between_256m_and_512m(ref, 400))
+    ram(64 * GB, _mem2_budget_between_256m_and_512m(ref, 28_000))
     caplog.clear()
     caplog.set_level(logging.INFO)
 
