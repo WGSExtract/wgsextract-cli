@@ -173,6 +173,7 @@
         WGSM.pins.schedule();
         if (WGSM.params.get("pins") === "0") WGSM.annotate.pinsHidden = true;
         if (WGSM.params.has("notes")) WGSM.panel.toggle(true);
+        if (WGSM.params.has("note")) WGSM.panel.open(WGSM.params.get("note"));
         if (WGSM.params.has("annotate")) setMode(true);
       });
     },

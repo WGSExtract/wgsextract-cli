@@ -18,12 +18,13 @@ pretty-printed with sorted keys so git diffs and merges stay readable:
          {"op": "delete", "id"}                  {"op": "merge", "notes": {...}}
 
 Python standard library only. Listens on 127.0.0.1 unless --host says
-otherwise, and then anyone who can reach the port can read and write notes.
+otherwise. Only loopback, RFC1918, tailnet and IPv6 ULA peers are accepted.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -31,37 +32,35 @@ import sys
 import tempfile
 import threading
 import webbrowser
-from datetime import datetime, timezone
 from http import HTTPStatus
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
+
+from review_access import BadRequest
+from review_db import ReviewDB
+from review_http import ReviewFiles
+from review_model import apply_op
+from review_repo import ReviewRepo, page_paths, previews
 
 HERE = Path(__file__).resolve().parent
 FEEDBACK = HERE / "feedback"
 ABOUT_JS = HERE / "shared" / "annotate" / "about.js"
 PAGE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
-ITEM_ID = re.compile(r"^[a-z][a-z0-9-]{3,40}$")
 MAX_BODY = 512 * 1024
-MAX_TEXT = 8000
-MAX_AUTHOR = 40
-STATUSES = ("open", "resolved")
-LOOPBACK = ("127.0.0.1", "localhost", "[::1]")
 WRITE_LOCK = threading.Lock()
-
-
-class BadRequest(Exception):
-    def __init__(self, status: HTTPStatus, message: str) -> None:
-        super().__init__(message)
-        self.status = status
+DB: ReviewDB | None = None
+REPO: ReviewRepo | None = None
 
 
 def read_about() -> str:
     """The "about" text every feedback file starts with; shared with the
     browser's Export, so it lives in about.js as one JSON string literal."""
     match = re.search(
-        r"^window\.WGSM_ABOUT = (\".*\");\s*$", ABOUT_JS.read_text("utf-8"), re.MULTILINE
+        r"^window\.WGSM_ABOUT = (\".*\");\s*$",
+        ABOUT_JS.read_text("utf-8"),
+        re.MULTILINE,
     )
     if not match:
         raise SystemExit(f"{ABOUT_JS}: no window.WGSM_ABOUT string")
@@ -72,15 +71,10 @@ def read_about() -> str:
 ABOUT = read_about()
 
 
-def now() -> str:
-    # timezone.utc, not datetime.UTC: this runs on any python3, including 3.9
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: UP017
-
-
 def feedback_path(page: str) -> Path:
     """feedback/<page>.json; the id pattern already rules out separators, and
     the containment check makes sure nothing resolves outside feedback/."""
-    if not PAGE_ID.match(page):
+    if not isinstance(page, str) or not PAGE_ID.fullmatch(page):
         raise BadRequest(HTTPStatus.BAD_REQUEST, f"bad page id: {page!r}")
     base = os.path.realpath(FEEDBACK)
     full = os.path.realpath(os.path.join(base, page + ".json"))
@@ -89,8 +83,21 @@ def feedback_path(page: str) -> Path:
     return Path(full)
 
 
-def load(page: str) -> dict[str, Any]:
+def idea_id(value: str) -> str:
+    if not isinstance(value, str) or (
+        value != "main"
+        and (len(value) > 256 or not re.fullmatch(r"mockups/[^\x00-\x20\x7f]+", value))
+    ):
+        raise BadRequest(HTTPStatus.BAD_REQUEST, "bad idea")
+    if DB is None and value != "main":
+        raise BadRequest(HTTPStatus.BAD_REQUEST, "preview notes require --db")
+    return value
+
+
+def load(page: str, idea: str = "main") -> dict[str, Any]:
     path = feedback_path(page)
+    if DB:
+        return DB.load(idea_id(idea), page)
     if not path.exists():
         return {"notes": {}, "page": page, "title": ""}
     try:
@@ -102,7 +109,9 @@ def load(page: str) -> dict[str, Any]:
             "and run serve.py --check",
         ) from err
     if not isinstance(doc, dict) or not isinstance(doc.get("notes", {}), dict):
-        raise BadRequest(HTTPStatus.CONFLICT, f"feedback/{page}.json has no notes object")
+        raise BadRequest(
+            HTTPStatus.CONFLICT, f"feedback/{page}.json has no notes object"
+        )
     doc.setdefault("notes", {})
     doc["page"] = page
     return doc
@@ -110,11 +119,20 @@ def load(page: str) -> dict[str, Any]:
 
 def dump(doc: dict[str, Any]) -> str:
     """Canonical file text: the about text first (sorted keys put it there)."""
-    doc = {**doc, "about": ABOUT}
+    idea = doc.get("idea", "main")
+    about = (
+        ABOUT
+        if idea == "main"
+        else ABOUT.replace("on branch main.", f"on branch {idea}.")
+    )
+    doc = {**doc, "about": about}
     return json.dumps(doc, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
 
 
-def save(page: str, doc: dict[str, Any]) -> None:
+def save(page: str, doc: dict[str, Any], idea: str = "main") -> None:
+    if DB:
+        DB.save(idea_id(idea), page, doc)
+        return
     path = feedback_path(page)
     path.parent.mkdir(exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.stem}.", suffix=".tmp")
@@ -123,121 +141,75 @@ def save(page: str, doc: dict[str, Any]) -> None:
     os.replace(tmp, path)
 
 
-def text_field(value: Any, name: str, limit: int) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise BadRequest(HTTPStatus.BAD_REQUEST, f"{name} must be non-empty text")
-    if len(value) > limit:
-        raise BadRequest(HTTPStatus.BAD_REQUEST, f"{name} is longer than {limit}")
-    return value.strip()
-
-
-def item_id(value: Any) -> str:
-    if not isinstance(value, str) or not ITEM_ID.match(value):
-        raise BadRequest(HTTPStatus.BAD_REQUEST, f"bad id: {value!r}")
-    return value
-
-
-def clean_note(raw: Any) -> dict[str, Any]:
-    """The fields of a note we keep, checked; anything else is dropped."""
-    if not isinstance(raw, dict):
-        raise BadRequest(HTTPStatus.BAD_REQUEST, "note must be an object")
-    note: dict[str, Any] = {
-        "anchor": raw.get("anchor") if isinstance(raw.get("anchor"), dict) else None,
-        "author": text_field(raw.get("author"), "author", MAX_AUTHOR),
-        "context": raw.get("context") if isinstance(raw.get("context"), dict) else {},
-        "id": item_id(raw.get("id")),
-        "replies": [clean_reply(r) for r in replies_list(raw.get("replies", []))],
-        "status": raw.get("status", "open"),
-        "text": text_field(raw.get("text"), "text", MAX_TEXT),
-    }
-    if note["status"] not in STATUSES:
-        raise BadRequest(HTTPStatus.BAD_REQUEST, "status must be open or resolved")
-    for stamp in ("created", "updated"):
-        if isinstance(raw.get(stamp), str):
-            note[stamp] = raw[stamp]
-    return note
-
-
-def replies_list(value: Any) -> list[Any]:
-    if not isinstance(value, list):
-        raise BadRequest(HTTPStatus.BAD_REQUEST, "replies must be a list")
-    return value
-
-
-def clean_reply(raw: Any) -> dict[str, Any]:
-    if not isinstance(raw, dict):
-        raise BadRequest(HTTPStatus.BAD_REQUEST, "reply must be an object")
-    reply = {
-        "author": text_field(raw.get("author"), "author", MAX_AUTHOR),
-        "id": item_id(raw.get("id")),
-        "text": text_field(raw.get("text"), "text", MAX_TEXT),
-    }
-    if isinstance(raw.get("created"), str):
-        reply["created"] = raw["created"]
-    return reply
-
-
-def apply_op(doc: dict[str, Any], change: Any) -> dict[str, Any]:
-    """Apply one change to a page's notes (mirrors applyOp in store.js)."""
-    if not isinstance(change, dict):
-        raise BadRequest(HTTPStatus.BAD_REQUEST, "body must be a JSON object")
-    notes: dict[str, Any] = doc["notes"]
-    op = change.get("op")
-    stamp = now()
-    if op == "add":
-        note = clean_note(change.get("note"))
-        if note["id"] in notes:
-            raise BadRequest(HTTPStatus.CONFLICT, "a note with this id exists")
-        note.update(created=stamp, updated=stamp, status="open", replies=[])
-        notes[note["id"]] = note
-    elif op == "merge":
-        incoming = change.get("notes")
-        if not isinstance(incoming, dict):
-            raise BadRequest(HTTPStatus.BAD_REQUEST, "notes must be an object")
-        for raw in incoming.values():
-            note = clean_note(raw)
-            mine: dict[str, Any] | None = notes.get(note["id"])
-            if mine is None or str(note.get("updated", "")) > str(mine.get("updated", "")):
-                notes[note["id"]] = note
-    elif op not in ("reply", "status", "edit", "delete"):
-        raise BadRequest(HTTPStatus.BAD_REQUEST, f"unknown op: {op!r}")
+def documents() -> list[dict[str, Any]]:
+    if DB:
+        docs = DB.documents()
     else:
-        note_id = item_id(change.get("id"))
-        found: dict[str, Any] | None = notes.get(note_id)
-        if found is None:
-            raise BadRequest(HTTPStatus.NOT_FOUND, f"no note {note_id}")
-        note = found
-        if op == "reply":
-            reply = clean_reply(change.get("reply"))
-            reply["created"] = stamp
-            note["replies"].append(reply)
-        elif op == "status":
-            if change.get("status") not in STATUSES:
-                raise BadRequest(HTTPStatus.BAD_REQUEST, "status must be open or resolved")
-            note["status"] = change["status"]
-        elif op == "edit":
-            note["text"] = text_field(change.get("text"), "text", MAX_TEXT)
-        else:
-            del notes[note_id]
-            return doc
-        note["updated"] = stamp
-    return doc
+        docs = [
+            {**load(path.stem), "idea": "main"}
+            for path in sorted(FEEDBACK.glob("*.json"))
+            if not path.stem.startswith("_")
+        ]
+    for doc in docs:
+        idea = doc.get("idea", "main")
+        root = REPO.roots.get(idea) if REPO else HERE
+        path = page_paths(root).get(doc["page"]) if root else None
+        name = (
+            next((name for name, branch in REPO.branches.items() if branch == idea), "")
+            if REPO
+            else ""
+        )
+        doc["url"] = ("/" if idea == "main" else f"/preview/{name}/") + (
+            path or "index.html"
+        )
+    return docs
 
 
-def summary() -> dict[str, Any]:
+def export_all() -> dict[str, Any]:
+    return {
+        "about": ABOUT + ' An all-notes export wraps page documents in "pages"; '
+        'each has an "idea" (main or a mockups/* branch) and a server-relative "url". '
+        "Apply each document to its own idea; import merges by note id and updated timestamp.",
+        "schema": 1,
+        "pages": documents(),
+    }
+
+
+def import_all(body: Any) -> None:
+    if not isinstance(body, dict) or not isinstance(body.get("pages"), list):
+        raise BadRequest(HTTPStatus.BAD_REQUEST, "expected pages list")
+    pending: dict[tuple[str, str], dict[str, Any]] = {}
+    for incoming in body["pages"]:
+        if not isinstance(incoming, dict):
+            raise BadRequest(HTTPStatus.BAD_REQUEST, "expected page object")
+        idea = idea_id(incoming.get("idea", "main"))
+        page = incoming.get("page", "")
+        feedback_path(page)
+        key = (idea, page)
+        doc = pending.get(key) or load(page, idea)
+        doc = apply_op(doc, {"op": "merge", "notes": incoming.get("notes")})
+        doc["title"] = str(incoming.get("title", doc.get("title", "")))[:200]
+        pending[key] = doc
+    if DB:
+        with DB.connect() as db:
+            for (idea, page), doc in pending.items():
+                DB.write(db, idea, page, doc)
+    else:
+        for (_, page), doc in pending.items():
+            save(page, doc)
+
+
+def summary(idea: str = "main") -> dict[str, Any]:
     pages = []
-    for path in sorted(FEEDBACK.glob("*.json")):
-        try:
-            doc = load(path.stem)
-        except BadRequest as err:
-            pages.append({"error": str(err), "open": 0, "page": path.stem, "resolved": 0})
+    for doc in documents():
+        if doc.get("idea", "main") != idea:
             continue
         notes = list(doc["notes"].values())
         resolved = sum(1 for n in notes if n.get("status") == "resolved")
         pages.append(
             {
                 "open": len(notes) - resolved,
-                "page": path.stem,
+                "page": doc["page"],
                 "resolved": resolved,
                 "title": doc.get("title", ""),
                 "updated": max((n.get("updated", "") for n in notes), default=""),
@@ -246,11 +218,8 @@ def summary() -> dict[str, Any]:
     return {"pages": pages}
 
 
-class Handler(SimpleHTTPRequestHandler):
+class Handler(ReviewFiles):
     server_version = "WGSEMockups/1"
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, directory=str(HERE), **kwargs)
 
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")
@@ -270,18 +239,6 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         self.api("POST")
 
-    def check_origin(self) -> None:
-        """Refuse other sites (and DNS rebinding) when serving on loopback."""
-        address = self.server.server_address
-        if not isinstance(address, tuple) or address[0] not in ("127.0.0.1", "::1"):
-            return
-        host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
-        if host not in LOOPBACK:
-            raise BadRequest(HTTPStatus.FORBIDDEN, "bad Host header")
-        origin = self.headers.get("Origin")
-        if origin and urlsplit(origin).hostname not in ("127.0.0.1", "localhost", "::1"):
-            raise BadRequest(HTTPStatus.FORBIDDEN, "cross-site request refused")
-
     def read_json(self) -> Any:
         if (self.headers.get("Content-Type") or "").split(";")[0] != "application/json":
             raise BadRequest(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "send application/json")
@@ -290,7 +247,9 @@ class Handler(SimpleHTTPRequestHandler):
         except ValueError:
             length = -1
         if length <= 0 or length > MAX_BODY:
-            raise BadRequest(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "body missing or too large")
+            raise BadRequest(
+                HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "body missing or too large"
+            )
         try:
             return json.loads(self.rfile.read(length))
         except ValueError as err:  # also covers JSONDecodeError and bad UTF-8
@@ -300,19 +259,49 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             self.check_origin()
             route = urlsplit(self.path).path.rstrip("/").split("/")[2:]
+            query = parse_qs(urlsplit(self.path).query)
+            idea = idea_id(query.get("idea", ["main"])[0])
             if method == "GET" and route == ["health"]:
-                self.reply({"ok": True, "writable": os.access(FEEDBACK, os.W_OK)})
+                self.reply({"ok": True, "writable": True, "shared": DB is not None})
+            elif method == "GET" and route == ["export"]:
+                with WRITE_LOCK:
+                    self.reply(export_all())
+            elif method == "POST" and route == ["import"]:
+                body = self.read_json()
+                with WRITE_LOCK:
+                    import_all(body)
+                self.reply({"ok": True})
+            elif method == "GET" and route == ["notes"]:
+                with WRITE_LOCK:
+                    docs = documents()
+                notes = [
+                    {
+                        **note,
+                        "idea": doc.get("idea", "main"),
+                        "page": doc["page"],
+                        "title": doc.get("title", ""),
+                        "url": doc["url"],
+                    }
+                    for doc in docs
+                    for note in doc["notes"].values()
+                ]
+                for field in ("idea", "page", "status", "author"):
+                    if field in query:
+                        notes = [n for n in notes if n.get(field) == query[field][0]]
+                self.reply({"notes": notes})
             elif method == "GET" and route == ["feedback"]:
-                self.reply(summary())
+                self.reply(summary(idea))
             elif len(route) == 2 and route[0] == "feedback" and method == "GET":
-                self.reply(load(route[1]))
+                self.reply(load(route[1], idea))
             elif len(route) == 2 and route[0] == "feedback" and method == "POST":
                 change = self.read_json()
                 with WRITE_LOCK:
-                    doc = apply_op(load(route[1]), change)
-                    if isinstance(change, dict) and isinstance(change.get("title"), str):
+                    doc = apply_op(load(route[1], idea), change)
+                    if isinstance(change, dict) and isinstance(
+                        change.get("title"), str
+                    ):
                         doc["title"] = change["title"][:200]
-                    save(route[1], doc)
+                    save(route[1], doc, idea)
                 self.reply(doc)
             else:
                 raise BadRequest(HTTPStatus.NOT_FOUND, "no such endpoint")
@@ -322,7 +311,8 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception as err:  # noqa: BLE001
             self.log_error("notes API error: %r", err)
             self.reply(
-                {"error": {"message": f"server error: {err}"}}, HTTPStatus.INTERNAL_SERVER_ERROR
+                {"error": {"message": f"server error: {err}"}},
+                HTTPStatus.INTERNAL_SERVER_ERROR,
             )
 
     def reply(self, body: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
@@ -359,7 +349,9 @@ def check() -> int:
     for path in sorted(FEEDBACK.glob("*.json")):
         try:
             doc = json.loads(path.read_text(encoding="utf-8"))
-            clean = apply_op({"notes": {}}, {"op": "merge", "notes": doc.get("notes", {})})
+            clean = apply_op(
+                {"notes": {}}, {"op": "merge", "notes": doc.get("notes", {})}
+            )
             doc["notes"] = clean["notes"]
             doc["page"] = path.stem
             text = dump(doc)
@@ -375,27 +367,101 @@ def check() -> int:
 
 
 def main() -> int:
+    global DB, REPO, FEEDBACK
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
-        "--port", type=int, help="port (default: the first free one from 8765; 0 picks any)"
+        "--port",
+        type=int,
+        help="port (default: the first free one from 8765; 0 picks any)",
     )
     parser.add_argument(
         "--host", default="127.0.0.1", help="address to listen on (default 127.0.0.1)"
     )
-    parser.add_argument("--open", action="store_true", help="open the index in the browser")
     parser.add_argument(
-        "--check", action="store_true", help="validate and tidy feedback/*.json, then exit"
+        "--open", action="store_true", help="open the index in the browser"
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="validate and tidy feedback/*.json, then exit",
+    )
+    parser.add_argument("--db", type=Path, help="shared SQLite notes database")
+    parser.add_argument(
+        "--repo", type=Path, help="read-only bare clone for main and previews"
+    )
+    parser.add_argument(
+        "--cache", type=Path, help="static snapshots (default: beside --db)"
+    )
+    parser.add_argument("--refresh-minutes", type=float, default=5)
+    parser.add_argument(
+        "--allow-host", action="append", default=[], help="allowed host:port"
+    )
+    parser.add_argument("--feedback-dir", type=Path, default=FEEDBACK)
+    parser.add_argument(
+        "--import-feedback",
+        type=Path,
+        help="import per-page files into main, then exit",
+    )
+    parser.add_argument(
+        "--export-feedback",
+        type=Path,
+        help="write per-idea repo-format files, then exit",
     )
     args = parser.parse_args()
+    FEEDBACK = args.feedback_dir
+    if args.db:
+        DB = ReviewDB(args.db)
+    if args.import_feedback:
+        with WRITE_LOCK:
+            import_all(
+                {
+                    "pages": [
+                        {
+                            **json.loads(p.read_text("utf-8")),
+                            "page": p.stem,
+                            "idea": "main",
+                        }
+                        for p in sorted(args.import_feedback.glob("*.json"))
+                        if not p.stem.startswith("_")
+                    ]
+                }
+            )
+        return 0
+    if args.export_feedback:
+        for doc in documents():
+            dest = args.export_feedback
+            if doc.get("idea", "main") != "main":
+                branch = idea_id(doc["idea"])
+                name = (
+                    previews.slug(branch)
+                    + "-"
+                    + hashlib.sha256(branch.encode()).hexdigest()[:10]
+                )
+                dest /= "preview/" + name
+            dest.mkdir(parents=True, exist_ok=True)
+            (dest / (doc["page"] + ".json")).write_text(
+                dump({k: v for k, v in doc.items() if k != "url"}), encoding="utf-8"
+            )
+        return 0
     if args.check:
         return check()
     FEEDBACK.mkdir(exist_ok=True)
+    if args.repo:
+        if not args.db or args.refresh_minutes <= 0:
+            parser.error("--repo requires --db and positive --refresh-minutes")
+        REPO = ReviewRepo(
+            args.repo, args.cache or args.db.parent / "cache", args.refresh_minutes * 60
+        )
+        Handler.repository = REPO
+    Handler.allow_hosts = {host.lower() for host in args.allow_host}
     server = listen(args.host, args.port)
     host, port = str(server.server_address[0]), int(server.server_address[1])
     url = f"http://{'127.0.0.1' if host in ('127.0.0.1', '0.0.0.0') else host}:{port}/"
     print(f"WGS Extract mockups on {url}  (notes are saved in {FEEDBACK})", flush=True)
     if args.host not in ("127.0.0.1", "localhost", "::1"):
-        print("Warning: listening beyond this computer; anyone who can reach it can edit notes.")
+        print(
+            "Warning: listening beyond this computer; anyone who can reach it can edit notes."
+        )
     print("Stop with Ctrl-C.", flush=True)
     if args.open:
         webbrowser.open(url)
@@ -405,6 +471,8 @@ def main() -> int:
         pass
     finally:
         server.server_close()
+        if REPO:
+            REPO.stop.set()
     return 0
 
 

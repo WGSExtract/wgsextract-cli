@@ -93,7 +93,8 @@
         viewportSwitcher(stage),
         themeButton(),
         this.annotBtn,
-        this.notesBtn
+        this.notesBtn,
+        h("a.mk-btn", { href: new URL(WGSM.link("notes.html"), location.href).href }, "All notes")
       );
       var version = window.WGSM_VERSION || {};
       var preview = version.source === "preview"

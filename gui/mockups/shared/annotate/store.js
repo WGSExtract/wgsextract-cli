@@ -8,6 +8,8 @@
 (function () {
   "use strict";
   var WGSM = window.WGSM;
+  var preview = location.pathname.match(/\/preview\/([^/]+)\//);
+  var idea = preview ? ((window.WGSM_VERSION || {}).branch || "mockups/" + preview[1]) : "main";
   var LOCAL_KEY = "wgsm.notes." + WGSM.page.id;
 
   function now() {
@@ -15,7 +17,7 @@
   }
 
   function emptyDoc() {
-    return { notes: {}, page: WGSM.page.id, title: WGSM.page.title };
+    return { idea: idea, notes: {}, page: WGSM.page.id, title: WGSM.page.title };
   }
 
   /* Mirrors apply_op() in serve.py */
@@ -58,7 +60,10 @@
   }
 
   function api(path, body) {
-    return fetch(WGSM.link("api/" + path), body ? {
+    var url = new URL(WGSM.link("api/" + path), location.href);
+    if (preview) url = new URL("/api/" + path, location.href);
+    url.searchParams.set("idea", idea);
+    return fetch(url.href, body ? {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -100,6 +105,8 @@
   }
 
   var store = (WGSM.notes = {
+    idea: idea,
+    api: api,
     mode: "local",
     doc: emptyDoc(),
     error: null,
@@ -111,9 +118,7 @@
       /\.github\.io$/.test(location.hostname) || WGSM.params.has("published"),
 
     init: function () {
-      var probe = store.published
-        ? Promise.resolve("local")
-        : /^https?:$/.test(location.protocol)
+      var probe = /^https?:$/.test(location.protocol)
         ? api("health").then(function (health) {
             return health.ok ? "server" : "local";
           }, function () {
@@ -122,10 +127,11 @@
         : Promise.resolve("local");
       return probe.then(function (mode) {
         store.mode = mode;
-        return store.published ? store.loadCommitted() : null;
+        return mode === "local" && store.published ? store.loadCommitted() : null;
       }).then(function () {
         return store.load();
       }).then(function (doc) {
+        store.ready = true;
         WGSM.emit("notes-ready", store.mode);
         return doc;
       });
@@ -200,6 +206,7 @@
     /* Every page's notes this browser can see: its own, plus (when
      * published) the committed ones. Not used with serve.py. */
     allDocs: function () {
+      if (store.mode === "server") return api("export").then(function (data) { return data.pages; });
       var docs = {};
       for (var i = 0; i < localStorage.length; i++) {
         var key = localStorage.key(i);
@@ -215,7 +222,7 @@
       return committed.then(function (list) {
         list.forEach(function (doc) {
           docs[doc.page] = applyOp(docs[doc.page] || { notes: {}, page: doc.page, title: doc.title }, { op: "merge", notes: doc.notes });
-          docs[doc.page].title = docs[doc.page].title || doc.title;
+          docs[doc.page].title = doc.title || docs[doc.page].title;
         });
         return Object.keys(docs).sort().map(function (page) {
           return docs[page];
@@ -266,9 +273,10 @@
 
     about: function () {
       var branch = store.branch();
-      return branch
+      var text = branch
         ? window.WGSM_ABOUT.replace("on branch main.", "on branch " + branch + " (a preview; it is merged into main by pull request).")
         : window.WGSM_ABOUT;
+      return text + ' An all-notes export wraps these documents in "pages"; each page has an "idea" (main or a mockups/* branch) and may have a "url" relative to the review server. Apply each document to its own idea. Importing the export merges by note id and updated timestamp.';
     },
 
     author: function (name) {

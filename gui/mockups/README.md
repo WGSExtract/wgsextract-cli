@@ -156,6 +156,137 @@ Which iteration is this? The footer of each mockups index names the branch
 copy”. The Pages build writes that into `shared/version.js` in the published
 copies only.
 
+## Hosted review server (randy-mini)
+
+The shared review space is **not GitHub Pages**:
+
+- Tailnet: <http://randy-mini.tail720e6b.ts.net:8765/>
+- Randy's LAN: <http://10.1.10.48:8765/>
+- All notes: <http://randy-mini.tail720e6b.ts.net:8765/notes.html>
+  (or `/notes.html` at the LAN address)
+- Ideas: `/preview/`, with `mockups/<name>` at `/preview/<name>/`.
+
+Both addresses use **the same database**. Notes, replies and resolutions save
+immediately; refresh another browser or reopen its Notes panel's page to see
+changes. All notes has idea, page, author and status filters, in-place note
+links, Export all, and Import. Imports merge by note id and newer `updated`
+timestamps: importing the same export twice does not duplicate notes or replies.
+Exports include the self-describing `about` text and a `pages` array, each
+with its `idea` (`main` or the full `mockups/*` branch name), `page`, `title`,
+`notes` and server-relative `url`. The full branch name is the stable identity:
+colliding URL slugs may change order after pushes, but notes never change ideas. Existing
+committed notes were imported once into `main`. Notes on deleted preview
+branches remain in the database/export even though their pages are no longer
+available. Author names are self-selected, not authenticated.
+
+The server accepts socket peers only from loopback, RFC1918, tailnet
+`100.64.0.0/10`, IPv6 loopback and ULA. Forwarding headers are ignored.
+POSTs with an Origin must match the request's explicitly allowed host and port.
+Do not forward this port to the Internet; there are no accounts or TLS.
+`file://` and GitHub Pages still use browser-local notes, not this database.
+
+### Run the shared store locally
+
+```sh
+python3 gui/mockups/serve.py --db out/mockups/notes.db
+# Optional read-only static snapshots from a bare clone:
+git clone --bare https://github.com/WGSExtract/wgsextract-cli out/mockups/repo.git
+python3 gui/mockups/serve.py --db out/mockups/notes.db --repo out/mockups/repo.git
+```
+
+`--refresh-minutes 5` is the default. The fetch worker reads `main` and
+`mockups/*` from the bare clone's `origin`; snapshot files are extracted
+with the Pages publisher's exact branch naming and static allow-list, never
+executed. Cache directories are keyed by commit and idea; the previous
+snapshot is retained briefly for in-flight requests. Shared review tooling
+is served from the running app so older ideas also get the shared API.
+Without `--db`, the original per-page `feedback/*.json` workflow is unchanged.
+For additional listening authorities use repeatable `--allow-host HOST:PORT`.
+
+### Export back to git
+
+Run on the host (or copy a backup to a local `out/` folder first):
+
+```sh
+python3 gui/mockups/serve.py --db /Users/wgse/mockup-server/notes.db \
+  --export-feedback /Users/wgse/mockup-server/export
+```
+
+`export/<page>.json` belongs in main's `gui/mockups/feedback/`.
+`export/preview/<slug>-<branch-hash>/<page>.json` belongs in the branch named
+by the document's `idea`, in its
+`gui/mockups/feedback/`. Copy only the relevant idea, review the diff, commit
+and push; never commit the live DB. **Export all** is a portable JSON download,
+not per-page files. `--import-feedback DIR` imports only `DIR/*.json` into
+main and exits; do not schedule it (it could resurrect deliberately deleted
+notes). `/api/import` accepts an all-notes export, `/api/export` returns it,
+and `/api/notes` lists flattened notes with optional `idea`, `page`, `status`
+and `author` query filters. Per-page `/api/feedback/<page>?idea=mockups%2F<branch>`
+retains the add/reply/status/edit/delete/merge operations.
+
+### Reproduce the unattended setup
+
+Everything except the launch agent plists lives in
+`/Users/wgse/mockup-server/`, as `wgse`; no sudo, GUI login, reboot or
+changes to `/Users/randy` are needed. Python 3.9+ and git must already exist.
+On randy-mini:
+
+```sh
+mkdir -p /Users/wgse/mockup-server
+cd /Users/wgse/mockup-server
+git clone --bare https://github.com/WGSExtract/wgsextract-cli repo.git
+git clone --branch main https://github.com/WGSExtract/wgsextract-cli app
+/usr/bin/python3 app/gui/mockups/serve.py --db notes.db \
+  --import-feedback app/gui/mockups/feedback
+/usr/bin/python3 app/gui/mockups/hosting/install.py
+```
+
+Before the implementation PR merges, clone branch `feat/776-mockup-server`
+instead of main. The update job fetches every five minutes and fast-forwards
+the app checkout, refusing local edits. Once its HEAD is contained in main
+(or GitHub reports its PR merged, including squash merges), it switches
+to main. It restarts the server whenever the app commit changes.
+For a manual switch after merge:
+
+```sh
+git -C /Users/wgse/mockup-server/app fetch origin main
+git -C /Users/wgse/mockup-server/app checkout -b main FETCH_HEAD
+launchctl kickstart -k user/502/org.wgsextract.mockups
+```
+
+`hosting/server.plist.template` and `hosting/install.py` install three jobs
+in `~/Library/LaunchAgents`, bootstrapped into **user/502**, not gui/502:
+
+- `org.wgsextract.mockups`: RunAtLoad + KeepAlive, port 8765, low-priority I/O.
+- `org.wgsextract.mockups.backup`: 03:15 local time nightly; SQLite's online
+  backup API, integrity checked, atomically replaced, newest 14 dated DBs kept.
+- `org.wgsextract.mockups.update`: five-minute app refresh/restart.
+
+Logs are in `logs/`, snapshots in `cache/`, backups in `backups/notes-YYYYMMDD.db`.
+Run `python3 app/gui/mockups/hosting/backup.py` for an immediate backup.
+For restore, boot out the server first, preserve the current DB and its
+`-wal`/`-shm` files, copy the chosen backup to `notes.db`, and bootstrap again.
+Check with `launchctl print user/502/org.wgsextract.mockups` and
+`curl http://127.0.0.1:8765/api/health`.
+
+On lin-mid, install the watchdog as the current user:
+
+```sh
+mkdir -p ~/.local/lib/mockup-server ~/.config/systemd/user
+install -m 755 gui/mockups/hosting/watchdog.sh ~/.local/lib/mockup-server/watchdog.sh
+cp gui/mockups/hosting/mockup-server-watchdog.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now mockup-server-watchdog.timer
+systemctl --user start mockup-server-watchdog.service
+```
+
+Requires existing noninteractive `ssh randy-mini`, curl, and agent-coord on
+the user service PATH. Every five minutes it probes tailnet `/api/health`.
+On failure it bootstraps the launchd service (or kickstarts an existing
+one), announces the recovery through agent-coord, then checks health again.
+The timer needs lin-mid online; KeepAlive handles ordinary server crashes
+without it. Inspect `journalctl --user -u mockup-server-watchdog.service`.
+
 ## Folder layout
 
 ```
