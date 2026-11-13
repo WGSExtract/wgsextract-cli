@@ -5,6 +5,7 @@ const vm = require("node:vm");
 const path = require("node:path");
 
 const source = readFileSync(path.join(__dirname, "../gui/mockups/shared/annotate/store.js"), "utf8");
+const allNotesSource = readFileSync(path.join(__dirname, "../gui/mockups/shared/annotate/all-notes.js"), "utf8");
 
 function browser({ hosted = true, protocol = "http:", version = {}, pathname = "/" } = {}) {
   const storage = new Map(), timers = new Map(), events = [];
@@ -85,6 +86,58 @@ for (const options of [
     b.online(true);
     await b.retry();
     assert.equal(b.store.available, true);
+  });
+}
+
+for (const [idea, url, linked] of [
+  ["local/gone", undefined, false],
+  ["mockups/gone", undefined, false],
+  ["local/bad", "//index.html", false],
+  ["local/live", "/local/live/index.html", true],
+]) {
+  test("All notes links only published same-origin ideas: " + idea, async () => {
+    const controls = new Map();
+    const list = {
+      children: [],
+      replaceChildren() { this.children = []; },
+      appendChild(node) { this.children.push(node); },
+    };
+    const h = (spec, attrs, ...children) => {
+      if (!attrs || attrs.nodeType || typeof attrs !== "object") {
+        children.unshift(attrs); attrs = {};
+      }
+      return { nodeType: 1, spec, attrs, children, appendChild(node) { this.children.push(node); } };
+    };
+    const W = {
+      h, on() {}, link: value => "/" + value,
+      qs(selector) {
+        if (selector === "#all-notes") return list;
+        if (!controls.has(selector)) controls.set(selector, { value: "", addEventListener() {} });
+        return controls.get(selector);
+      },
+      notes: {
+        ready: true, mode: "server", idea: "main",
+        allDocs: async () => [{
+          idea, page: "index", url,
+          notes: { nremoved: { author: "Randy", text: "Retained note", status: "open", replies: [] } },
+        }],
+      },
+    };
+    vm.runInNewContext(allNotesSource, {
+      window: { WGSM: W }, URL,
+      location: { href: "http://review.invalid/notes.html", origin: "http://review.invalid" },
+    });
+    await new Promise(setImmediate);
+    assert.equal(list.children.length, 1);
+    const label = list.children[0].children[0];
+    assert.equal(label.spec, linked ? "a" : "span");
+    if (linked) {
+      assert.equal(new URL(label.attrs.href).origin, "http://review.invalid");
+      assert.match(label.attrs.href, /note=nremoved/);
+    } else {
+      assert.equal(label.attrs.href, undefined);
+      assert.match(label.children.join(""), /\(idea removed\)/);
+    }
   });
 }
 

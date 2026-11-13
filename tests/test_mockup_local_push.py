@@ -125,10 +125,10 @@ def test_776_local_push_refreshes_without_github_and_retains_deleted_idea_notes(
         with pytest.raises(HTTPError) as missing:
             read(base, "/local/x/")
         assert missing.value.code == 404
-        assert (
-            request(base, "/api/notes?idea=local/x")["notes"][0]["text"]
-            == "Local review"
+        note = request(base, "/api/notes?idea=local/x")["notes"][0]
+        assert note["text"] == "Local review"
+        assert "url" not in note
+        exported = next(
+            p for p in request(base, "/api/export")["pages"] if p["idea"] == "local/x"
         )
-        assert any(
-            p["idea"] == "local/x" for p in request(base, "/api/export")["pages"]
-        )
+        assert "url" not in exported

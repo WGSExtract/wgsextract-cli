@@ -152,6 +152,9 @@ def documents() -> list[dict[str, Any]]:
             if REPO
             else ""
         )
+        doc.pop("url", None)
+        if idea != "main" and not name:
+            continue
         base = (
             "/"
             if idea == "main"
@@ -164,7 +167,7 @@ def documents() -> list[dict[str, Any]]:
 def export_all() -> dict[str, Any]:
     return {
         "about": ABOUT + ' An all-notes export wraps page documents in "pages"; '
-        'each has an "idea" (main, a mockups/* GitHub branch or a local/* SSH-pushed branch) and a server-relative "url". '
+        'each has an "idea" (main, a mockups/* GitHub branch or a local/* SSH-pushed branch) and an optional server-relative "url", omitted for removed ideas. '
         "Apply each document to its own idea; import merges by note id and updated timestamp.",
         "schema": 1,
         "pages": documents(),
@@ -280,7 +283,7 @@ class Handler(ReviewFiles):
                         "idea": doc.get("idea", "main"),
                         "page": doc["page"],
                         "title": doc.get("title", ""),
-                        "url": doc["url"],
+                        **({"url": doc["url"]} if "url" in doc else {}),
                     }
                     for doc in docs
                     for note in doc["notes"].values()

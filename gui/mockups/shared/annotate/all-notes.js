@@ -21,15 +21,19 @@
           var filter = W.qs("#filter-" + key).value.toLowerCase();
           return filter && String(fields[key]).toLowerCase().indexOf(filter) < 0;
         })) return;
-        var url;
+        var url = null;
         if (W.notes.mode === "server") {
-          url = new URL(doc.url || ((idea === "main" ? "/" : "/preview/" + encodeURIComponent(idea) + "/") + fallbackPath(doc.page)), location.href);
+          if (doc.url) {
+            var target = new URL(doc.url, location.href);
+            if (target.origin === location.origin) url = target;
+          }
         } else {
           url = new URL(W.link(fallbackPath(doc.page)), location.href);
         }
-        url.searchParams.set("note", id);
+        if (url) url.searchParams.set("note", id);
+        var label = idea + " · " + (doc.title || doc.page) + " · " + note.author + " · " + note.status + (url ? "" : " (idea removed)");
         var item = h("li.card.stack",
-          h("a", { href: url.href }, idea + " · " + (doc.title || doc.page) + " · " + note.author + " · " + note.status),
+          url ? h("a", { href: url.href }, label) : h("span", label),
           h("p", { style: { whiteSpace: "pre-wrap" } }, note.text));
         (note.replies || []).forEach(function (reply) {
           item.appendChild(h("p.small", { style: { whiteSpace: "pre-wrap" } }, reply.author + ": " + reply.text));

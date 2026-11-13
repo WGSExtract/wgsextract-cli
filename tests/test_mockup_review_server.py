@@ -244,6 +244,18 @@ def test_776_refreshes_main_and_removes_deleted_ideas(
         "--refresh-minutes",
         "0.01",
     ) as base:
+        request(
+            base,
+            "/api/feedback/index?idea=mockups/x",
+            {
+                "op": "add",
+                "note": {
+                    "id": "nremoved",
+                    "author": "Randy",
+                    "text": "Keep this review",
+                },
+            },
+        )
         git(source, "checkout", "main")
         (source / "gui/mockups/index.html").write_text("Updated main")
         git(source, "add", ".")
@@ -259,6 +271,13 @@ def test_776_refreshes_main_and_removes_deleted_ideas(
         with pytest.raises(HTTPError) as error:
             read(base, "/preview/x/")
         assert error.value.code == 404
+        note = request(base, "/api/notes?idea=mockups/x")["notes"][0]
+        assert note["text"] == "Keep this review"
+        assert "url" not in note
+        exported = next(
+            p for p in request(base, "/api/export")["pages"] if p["idea"] == "mockups/x"
+        )
+        assert "url" not in exported
 
 
 def test_776_colliding_slugs_and_preview_main_never_exchange_notes(

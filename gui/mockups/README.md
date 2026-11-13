@@ -186,7 +186,8 @@ with its `idea` (`main`, the full `mockups/*` branch name, or `local/<branch>`),
 colliding URL slugs may change order after pushes, but notes never change ideas. Existing
 committed notes were imported once into `main`. Notes on deleted preview
 branches remain in the database/export even though their pages are no longer
-available. Author names are self-selected, not authenticated.
+available. All notes marks these entries “(idea removed)” without a link;
+their API/export documents omit `url`. Author names are self-selected, not authenticated.
 
 The server accepts socket peers only from loopback, RFC1918, tailnet
 `100.64.0.0/10`, IPv6 loopback and ULA. Forwarding headers are ignored.
