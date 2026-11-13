@@ -450,7 +450,14 @@ def index_json(
     """Command discovery (compact) or full schemas; with global_options (the
     whole index), also those and the help topics.
 
-        "usage" is argparse's usage line and "options" each command's own options
+        compact=True uses wgsextract.help-index/1: each command has "path",
+        "tier", a one-line "summary", and "key_flags" (ordinary flags plus
+        required advanced flags). Deprecation metadata is retained. Top-level
+        "details" and "full" explain how to request schemas.
+
+        compact=False uses wgsextract.help/1 and adds the following full-only
+        fields. "usage" is argparse's usage line and "options" each command's
+        own options
         (the global ones are listed once, under "global_options"). Commands with
         a typed Params class (wgsextract_cli.api) also carry its JSON Schema as
         "input_schema", each property naming its flag in "x-cli-flag" (or, for a
@@ -774,7 +781,7 @@ def render_markdown(parser: argparse.ArgumentParser) -> str:
         "`wgsextract help <command>` for its options (`--help-all` adds the "
         "advanced ones). Agents: start with `wgsextract help --all --json` "
         "for a compact index, then `wgsextract help <command> --json` for "
-        "options and schemas; `help --all --json --full` dumps everything. "
+        "options and schemas; `wgsextract help --all --json --full` dumps everything. "
         "*Needs* lists the external tools a "
         "command checks for (`wgsextract deps check` shows which are "
         "installed) and how long it typically takes.",

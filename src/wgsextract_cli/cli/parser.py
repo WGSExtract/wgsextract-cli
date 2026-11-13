@@ -443,7 +443,7 @@ def build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
     help_parser.add_argument(
         "--full",
         action="store_true",
-        help="Include full command schemas in --json instead of the compact index.",
+        help="Include full command schemas instead of the compact index. Requires --json.",
     )
     help_parser.set_defaults(func=lambda args: run_help(args, parser))
 
