@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import copy
 import json
+from collections.abc import Callable
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from scripts.ci_failures import LEDGER, Observer
-from scripts.ci_github import GitHub
+from scripts.ci_failures import Observer
+from scripts.ci_github import Evidence, GitHub
+from scripts.ci_issues import LEDGER
 from scripts.ci_quarantine import Quarantine
 
 FIXTURES = Path(__file__).parent / "fixtures" / "ci_failures"
@@ -34,6 +37,8 @@ class ReplayGitHub(GitHub):
         self.main: dict[str, Any] | None = None
         self.last_completed_main: dict[str, Any] | None = None
         self.main_by_workflow: dict[str, dict[str, Any]] = {}
+        self.other_runs: list[dict[str, Any]] = []
+        self.run_jobs: dict[int, list[dict[str, Any]]] = {}
         self.jobs: dict[int, list[dict[str, Any]]] = {1: [recorded("test_failure")]}
         self.main_jobs: list[dict[str, Any]] = []
         self.issues: list[dict[str, Any]] = []
@@ -41,14 +46,34 @@ class ReplayGitHub(GitHub):
         self.labels: set[str] = set()
         self.repository_labels: set[str] = set()
         self.retried: list[int] = []
+        self.rerun_scopes: list[str] = []
         self.pinned: set[str] = set()
         self.evidence_text = str(recorded("errors")["log"])
+        self.annotations: list[dict[str, Any]] = recorded("errors")["annotations"]
+        self.annotation_text = "\n".join(
+            item["message"]
+            for item in self.annotations
+            if item["annotation_level"] == "failure"
+        )
+        self.use_transport = False
+        self.pr_sha: str | None = None
+        self.pr_state = "open"
+        self.on_label_delete: Callable[[], None] | None = None
         self.runs: list[dict[str, Any]] = []
         self.superseded = False
         self.refuse_audit = False
 
-    def evidence(self, job: dict[str, Any]) -> str:
-        return self.evidence_text if job.get("steps") else ""
+    def evidence(self, job: dict[str, Any]) -> Evidence:
+        if self.use_transport:
+            return super().evidence(job)
+        return (
+            Evidence(self.annotation_text, self.evidence_text)
+            if job.get("steps")
+            else Evidence()
+        )
+
+    def log(self, job_id: int) -> str:
+        return self.evidence_text
 
     def request(
         self, method: str, path: str, data: dict[str, Any] | None = None
@@ -68,6 +93,13 @@ class ReplayGitHub(GitHub):
         path = path.removeprefix(f"repos/{self.repository}/")
         url = urlsplit(path)
         parts = url.path.split("/")
+        if parts[0] == "pulls":
+            return {
+                "state": self.pr_state,
+                "head": {"sha": self.pr_sha or self.run["head_sha"]},
+            }
+        if parts[0] == "check-runs":
+            return self.annotations
         if parts == ["labels"]:
             if method == "GET":
                 return [{"name": name} for name in self.repository_labels]
@@ -83,18 +115,49 @@ class ReplayGitHub(GitHub):
             )
             if main_query and self.main_by_workflow:
                 selected = self.main_by_workflow.get(parts[2])
-            if (
-                main_query
-                and parse_qs(url.query).get("status") == ["completed"]
-                and self.last_completed_main
-            ):
-                selected = self.last_completed_main
             if self.superseded and not main_query:
                 selected = dict(self.run, id=999)
-            return {"workflow_runs": [copy.deepcopy(selected)] if selected else []}
+            candidates = [selected] if selected else []
+            if main_query:
+                if self.last_completed_main:
+                    candidates.append(self.last_completed_main)
+                if parse_qs(url.query).get("status") == ["completed"]:
+                    candidates = [
+                        run for run in candidates if run["status"] == "completed"
+                    ]
+            else:
+                candidates = self.other_runs + candidates
+            return {"workflow_runs": copy.deepcopy(candidates)}
         if parts[:2] == ["actions", "runs"]:
             if len(parts) == 2:
-                return {"workflow_runs": self.runs}
+                query = parse_qs(url.query)
+                start, end = query["created"][0].split("..")
+                runs = [
+                    run
+                    for run in self.runs
+                    if start <= run.get("created_at", run["updated_at"]) <= end
+                ]
+                page = int(query["page"][0])
+                if page > 10:
+                    raise RuntimeError("GitHub run search caps at 1,000")
+                return {
+                    "total_count": len(runs),
+                    "workflow_runs": runs[(page - 1) * 100 : page * 100],
+                }
+            if method == "POST":
+                self.rerun_scopes.append(parts[-1])
+                latest_jobs = {
+                    job["name"]: job
+                    for attempt in range(1, self.run["run_attempt"] + 1)
+                    for job in self.jobs.get(attempt, [])
+                }
+                self.retried.extend(
+                    job["id"]
+                    for job in latest_jobs.values()
+                    if parts[-1] == "rerun"
+                    or job["conclusion"] not in {"success", "skipped"}
+                )
+                return None
             attempt = int(parts[4])
             jobs = (
                 self.main_jobs
@@ -102,15 +165,19 @@ class ReplayGitHub(GitHub):
                     main and int(parts[2]) == main["id"]
                     for main in (self.main, self.last_completed_main)
                 )
-                else self.jobs.get(attempt, [])
+                else self.run_jobs.get(int(parts[2]), self.jobs.get(attempt, []))
             )
             return {"jobs": copy.deepcopy(jobs)}
         if parts[:2] == ["actions", "jobs"]:
+            if int(parts[2]) not in {
+                job["id"] for job in self.jobs.get(self.run["run_attempt"], [])
+            }:
+                raise RuntimeError("Only jobs from the current attempt can be re-run")
             self.retried.append(int(parts[2]))
             return None
         if parts == ["issues"]:
             if method == "GET":
-                return copy.deepcopy(self.issues)
+                return copy.deepcopy(list(reversed(self.issues)))
             assert data is not None
             issue = {
                 **data,
@@ -131,6 +198,10 @@ class ReplayGitHub(GitHub):
                 return None
             if method == "DELETE":
                 self.labels.discard(parts[-1])
+                if self.on_label_delete:
+                    callback = self.on_label_delete
+                    self.on_label_delete = None
+                    callback()
                 return None
             if parts[-1] == "comments":
                 comments = self.comments.setdefault(number, [])
@@ -190,25 +261,26 @@ def test_superseded_zero_step_cancellation_does_not_restart_old_head() -> None:
 
 def test_lost_runner_after_a_step_is_also_retried() -> None:
     api = ReplayGitHub()
-    api.evidence_text = "The hosted runner lost communication with the server"
+    api.annotation_text = "The hosted runner lost communication with the server"
     Observer(api).process(api.run)
     assert len(api.retried) == 1
     assert "lost runner" in ledger_comments(api)[0]
 
 
-def test_multiple_lost_jobs_each_get_one_retry_across_job_only_attempts() -> None:
+def test_multiple_lost_jobs_are_recovered_together_without_stale_job_ids() -> None:
     api = ReplayGitHub()
     first = recorded("lost_runner")
     second = dict(first, id=first["id"] + 1, name="second runner")
     api.jobs[1] = [first, second]
     api.run["conclusion"] = "cancelled"
     Observer(api).process(api.run)
-    api.run["run_attempt"] = 2
-    api.jobs[2] = [dict(first, conclusion="success")]
-    Observer(api).process(api.run)
     assert api.retried == [first["id"], second["id"]]
-    api.run.update(run_attempt=3, conclusion="success")
-    api.jobs[3] = [dict(second, conclusion="success")]
+    assert api.rerun_scopes == ["rerun"]
+    api.run.update(run_attempt=2, conclusion="success")
+    api.jobs[2] = [
+        dict(first, conclusion="success"),
+        dict(second, conclusion="success"),
+    ]
     Observer(api).process(api.run)
     assert len(api.retried) == 2
 
@@ -224,7 +296,8 @@ def test_deliberate_cancellation_after_steps_is_not_retried_by_landing() -> None
 
 def test_mirror_outage_has_a_finite_retry_budget() -> None:
     api = ReplayGitHub()
-    api.evidence_text = "Upstream package mirror unreachable"
+    api.annotation_text = "Upstream package mirror unreachable"
+    api.evidence_text = ""
     for attempt in (1, 2, 3):
         api.run["run_attempt"] = attempt
         api.jobs[attempt] = [recorded("test_failure")]
@@ -247,7 +320,8 @@ def test_test_failure_is_not_an_infrastructure_flake() -> None:
 
 def test_missing_audit_fails_closed_before_requesting_a_rerun() -> None:
     api = ReplayGitHub()
-    api.evidence_text = "Upstream package mirror unreachable"
+    api.annotation_text = "Upstream package mirror unreachable"
+    api.evidence_text = ""
     api.refuse_audit = True
     with pytest.raises(RuntimeError, match="Issue API"):
         Observer(api).process(api.run)
@@ -438,22 +512,28 @@ def test_new_head_invalidates_old_quarantine_without_observing_successful_first_
     api.main_jobs = [recorded("test_failure")]
     Observer(api).process(api.run)
     assert "ci-red-main" in api.labels
-    Quarantine(api).reset(123, "a" * 40)
+    api.pr_sha = "a" * 40
+    Quarantine(api).reset(123)
     assert "ci-red-main" not in api.labels
 
 
 def test_weekly_ledger_reports_run_level_retry_rate() -> None:
     api = ReplayGitHub()
-    api.runs = [dict(api.run, run_attempt=attempt) for attempt in (1, 1, 1, 2)]
-    Observer(api).rollup()
+    api.runs = [
+        dict(api.run, id=100 + index, run_attempt=attempt)
+        for index, attempt in enumerate((1, 1, 1, 2))
+    ]
+    now = datetime(2026, 11, 14, tzinfo=timezone.utc)
+    Observer(api).rollup(now=now)
     assert "25.0%" in ledger_comments(api)[0]
     assert api.run["name"] in ledger_comments(api)[0]
-    Observer(api).rollup()
+    Observer(api).rollup(now=now)
     assert len(ledger_comments(api)) == 1
 
 
 def test_log_content_cannot_mention_users_or_inject_issue_html() -> None:
     api = ReplayGitHub()
+    api.annotation_text = "Upstream package mirror unreachable"
     api.evidence_text = (
         "Upstream package mirror unreachable\nerror @theontho <script>x</script>"
     )
