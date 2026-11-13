@@ -35,3 +35,14 @@ def test_help_text_unchanged(command: str) -> None:
 @pytest.mark.parametrize("argv", sorted(_GOLDEN["namespaces"]))
 def test_parsed_namespace_unchanged(argv: str) -> None:
     assert _current()["namespaces"][argv] == _GOLDEN["namespaces"][argv]
+
+
+def test_snapshot_regeneration_does_not_commit_user_settings() -> None:
+    from wgsextract_cli.core.config import reload_settings, save_config, settings
+
+    before = snapshot()
+    save_config({"cpu_threads": 7})
+    reload_settings()
+    assert settings["cpu_threads"] == 7
+    assert snapshot() == before
+    assert settings["cpu_threads"] == 7
