@@ -44,7 +44,7 @@ class ReviewRepo:
         self.thread.start()
 
     def snapshot(self, preview: previews.Preview) -> Path:
-        dest = self.cache / (preview.sha + "-" + preview.name)
+        dest: Path = self.cache / (preview.sha + "-" + preview.name)
         if not dest.exists():
             staging = self.cache / (preview.sha + "-" + preview.name + ".partial")
             shutil.rmtree(staging, ignore_errors=True)

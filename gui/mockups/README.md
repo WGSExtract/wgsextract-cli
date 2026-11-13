@@ -280,8 +280,9 @@ systemctl --user enable --now mockup-server-watchdog.timer
 systemctl --user start mockup-server-watchdog.service
 ```
 
-Requires existing noninteractive `ssh randy-mini`, curl, and agent-coord on
-the user service PATH. Every five minutes it probes tailnet `/api/health`.
+Requires existing noninteractive `ssh randy-mini`, curl, and agent-coord at
+`~/.local/bin/agent-coord` (systemd's default PATH omits that folder).
+Every five minutes it probes tailnet `/api/health`.
 On failure it bootstraps the launchd service (or kickstarts an existing
 one), announces the recovery through agent-coord, then checks health again.
 The timer needs lin-mid online; KeepAlive handles ordinary server crashes

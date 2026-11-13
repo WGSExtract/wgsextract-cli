@@ -10,7 +10,7 @@ ssh -o BatchMode=yes -o ConnectTimeout=15 "$host" '
     /bin/launchctl bootstrap user/502 /Users/wgse/Library/LaunchAgents/org.wgsextract.mockups.plist 2>/dev/null ||
     /bin/launchctl kickstart -k user/502/org.wgsextract.mockups
 '
-agent-coord send --to all "#776 mockup server down on randy-mini; restarted"
+"$HOME/.local/bin/agent-coord" send --to all "#776 mockup server down on randy-mini; restarted"
 sleep 10
 curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$url" |
     grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'

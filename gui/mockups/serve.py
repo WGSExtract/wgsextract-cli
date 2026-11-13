@@ -457,7 +457,10 @@ def main() -> int:
     server = listen(args.host, args.port)
     host, port = str(server.server_address[0]), int(server.server_address[1])
     url = f"http://{'127.0.0.1' if host in ('127.0.0.1', '0.0.0.0') else host}:{port}/"
-    print(f"WGS Extract mockups on {url}  (notes are saved in {FEEDBACK})", flush=True)
+    print(
+        f"WGS Extract mockups on {url}  (notes are saved in {DB.path if DB else FEEDBACK})",
+        flush=True,
+    )
     if args.host not in ("127.0.0.1", "localhost", "::1"):
         print(
             "Warning: listening beyond this computer; anyone who can reach it can edit notes."
