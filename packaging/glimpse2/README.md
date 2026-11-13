@@ -14,12 +14,14 @@ the 1x BAM, ligate the chunks and check genotype concordance and output labels.
 The Beagle fixture tests also exercise Windows OpenJDK and the pinned noarch jar.
 No synthetic or duplicated fixture is needed.
 
-After merging, dispatch the workflow from `main` with a new release tag such
-as `glimpse2-1`. It publishes the tested win-64 package and the MSYS2 package
+To publish an update, dispatch the workflow from `main` with a fresh release tag.
+It publishes the tested win-64 package and the MSYS2 package
 inventory as a prerelease, with SHA-256 in the release notes.
 
-In a follow-up PR, add a `[feature.imputation.target.win-64.dependencies]`
-`glimpse-bio` URL plus SHA-256 pin for that asset, and regenerate `pixi.lock`.
-Until then, `pixi install -e imputation` on Windows provides Beagle/Java but
-not GLIMPSE2; panel preparation and reads imputation require manually supplied
-GLIMPSE2 tools. Runtime commands validate dependencies and never install them.
+`pixi.toml` currently pins `glimpse2-1` under
+`[feature.imputation.target.win-64.dependencies]` by URL and SHA-256.
+For a new release, update that pin and refresh only the imputation environment
+in `pixi.lock`. CI Windows validates a fresh install of the published pin and
+runs the complete HG002 imputation suite without skips. The build workflow
+overrides the win-64 pin locally to test its newly built candidate instead.
+Runtime commands validate dependencies and never install them.

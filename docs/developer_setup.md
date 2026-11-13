@@ -68,6 +68,53 @@ When you add or rename a command:
 
 `tests/test_cli_help.py` fails until all three are done.
 
+### Generated references and parallel PRs
+
+Run `just regen` (or `pixi run python scripts/regen.py`) after changing CLI/API
+help. It updates the API snapshot, `docs/api.md`, `docs/commands.md`, and the
+generated command cards in `site_src/cli.md`. Keep these committed: readers,
+release archives and freshness tests need them without running Python.
+
+The setup scripts configure the `merge=generated` driver in `.gitattributes`.
+For an existing checkout, configure it once:
+
+```bash
+git config merge.generated.name "Keep generated references until regeneration"
+git config merge.generated.driver true
+```
+
+This is an **ours-style placeholder**, not an automatic generator: a merge
+driver runs before all source files are merged, so regeneration there could
+silently use inconsistent sources. Merge locally with `git merge --no-commit
+origin/main`, resolve and stage source conflicts, then run **`just regen-resolve`**
+(or `pixi run python scripts/regen.py --resolve`). It regenerates all references
+from the combined sources and stages them; it refuses unresolved source
+conflicts. Review the diff, run the freshness tests and commit the merge.
+The same command resolves generated-file conflicts without the driver installed.
+Site command cards share a file with hand-written content, so resolve any
+`site_src/cli.md` conflict as a source conflict before regenerating.
+
+GitHub **does not execute custom merge drivers**. If it reports generated-file
+conflicts, use the local workflow above and push the resolution; don't choose
+one side in GitHub's conflict editor or expect its Update branch button to
+regenerate. No freshness checks are bypassed. Re-run regeneration after *every*
+merge, even if Git reported no conflicts.
+
+Help-size tests gate each command's JSON (12,000 characters maximum) and the
+average (3,000), rather than a global total that every new command changes.
+The JSON and text-index totals are reported as test properties, not gates;
+the text index's existing per-line width check still catches bloated entries.
+The compact discovery index has a separate 60,000-character ceiling and a
+20,000-token approximation ceiling (word pieces plus JSON punctuation,
+without downloading a tokenizer model). Agents read this index first, then
+`wgsextract help <command> --json` for full schemas.
+
+The CLI help document is not the server protocol. HTTP discovery uses
+`GET /v1/ops` (summaries) then `GET /v1/ops/{op}` (full Params schema);
+MCP `tools/list` must include its protocol-required `inputSchema`. Both use
+the same typed Params definitions as per-command CLI help, not the compact
+help index, so their invocation schemas remain complete.
+
 The "Start from what you have" paths in both come from `JOURNEYS` in
 `registry.py`. To retire a command, don't delete it: add it to `DEPRECATIONS`
 there with its replacement and the next minor version as `remove_in`, and add
@@ -106,7 +153,7 @@ The project is developed with AI coding agents. [AGENTS.md](../AGENTS.md) holds 
 3. Review what it did: read the diff (`/diff` in Copilot CLI, or `git diff`), and check that the tests would fail without the change. Run the command yourself on real data when you have it.
 4. Have it push and open the pull request, then watch CI (`gh pr checks --watch`). Paste failures or review comments back to the agent until it's green.
 
-   A job that fails with **Upstream package mirror unreachable** couldn't reach Ubuntu's package mirrors; that is an outage, not your change. Ubuntu packages come through `.github/actions/apt-install`, which tries several official mirrors, gives up within minutes, and installs from its cache when it has one. `rerun_lost_runners.yml` reruns such jobs up to twice, 10 minutes apart.
+   A job that fails with **Upstream package mirror unreachable** couldn't reach Ubuntu's package mirrors; that is an outage, not your change. Ubuntu packages come through `.github/actions/apt-install`, which tries several official mirrors, gives up within minutes, and installs from its cache when it has one. `rerun_lost_runners.yml` reruns such jobs up to twice, normally recording each request in the current week's pinned **CI flake ledger**. Audit outages are logged without blocking runner recovery. It also recovers lost runners, reports confirmed flaky tests as bugs, and blocks retries matching red main. See [CI failure observation and retries](ci_failures.md) for the policy and the audited landing-script command.
 
 Keep each change small and state how you'll verify it. Most problems show up when the result is checked against real data, not in review.
 

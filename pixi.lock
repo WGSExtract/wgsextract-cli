@@ -2910,6 +2910,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/vc-14.5-hda273ae_43.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/vc14_runtime-14.51.36247-h072b54c_43.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/vcomp14-14.51.36247-h1c3f1cb_43.conda
+      - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/glimpse2-1/glimpse-bio-2.0.1-win64_wgse_1.conda
   lint:
     channels:
     - url: https://conda.anaconda.org/conda-forge/
@@ -34469,6 +34470,12 @@ packages:
     - zstd >=1.5.7,<1.6.0a0
   size: 387535
   timestamp: 1786599623274
+- conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/glimpse2-1/glimpse-bio-2.0.1-win64_wgse_1.conda
+  subdir: win-64
+  sha256: a7a970ab79957d08a44e1eedbe3cee7f36a86078d9880a84e25bbb06d2906184
+  channel: null
+  license: MIT
+  timestamp: 1794544600560
 - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/linux-deepvariant-1/wgse-deepvariant-0.2.0-linux64_cuda129_wgse_0.conda
   subdir: linux-64
   sha256: 31bf9d7c88d134e7ba1c90ee101e3cf72b3e966f75588008b753d5a0da9fe219

@@ -31,7 +31,11 @@ from wgsextract_cli.core.resource_estimates import (
     preflight_resources,
 )
 from wgsextract_cli.core.results import current_result, warn
-from wgsextract_cli.core.samtools_commands import alignment_index
+from wgsextract_cli.core.samtools_commands import (
+    alignment_index,
+    regular_files_bytes,
+    sort_memory,
+)
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import (
     WGSExtractError,
@@ -183,6 +187,7 @@ def run_identify(params: BamIdentifyParams) -> None:
 def run_sort(params: BamSortParams) -> None:
     input_path, base, region = _setup(params)
     threads, memory, outdir, cram_opt, resolved_ref = base
+    memory = sort_memory(threads, memory, input_bytes=regular_files_bytes([input_path]))
 
     fmt, ext = _alignment_format(input_path)
     preflight_resources(

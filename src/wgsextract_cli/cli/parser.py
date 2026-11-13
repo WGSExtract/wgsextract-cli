@@ -423,8 +423,9 @@ def build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
         description="Without arguments, show the command tree. 'help --all' "
         "lists every command in one line each; 'help vcf snp' shows one "
         "command's help; 'help topics' lists concept pages such as 'help "
-        "references'. --json prints the command index (with each command's "
-        "options) or the topics as JSON.",
+        "references'. --json prints a compact command index, full schemas "
+        "for a specific command, or topics as JSON. --all --json --full "
+        "dumps every command's schema.",
     )
     help_parser.add_argument(
         "topic",
@@ -438,6 +439,11 @@ def build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
         dest="all_commands",
         action="store_true",
         help="List every command (under COMMAND, if given), one line each.",
+    )
+    help_parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Include full command schemas instead of the compact index. Requires --json.",
     )
     help_parser.set_defaults(func=lambda args: run_help(args, parser))
 

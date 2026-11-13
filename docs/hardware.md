@@ -139,6 +139,10 @@ otherwise on the CPU, with the same records either way. The manifest records
   16 GiB and 12 threads gives 1 GiB each, 12 GiB in total. With bwa-mem2,
   sorting is capped at 256 MiB per thread to leave room for its index; bwa
   keeps the full `--memory`.
+- `samtools sort` reserves all of its threads' memory when it starts, so every
+  sort gets at most half the RAM in total and no more than its input can fill
+  (see [resource_estimates.md](resource_estimates.md#samtools-sort-buffers)).
+  The log says when this lowers `--memory`; the output is the same.
 - Before a native BWA run, the CLI prints a memory and disk preflight. More
   threads use more memory; when it reports `LOW`, lower `--threads` or
   `--memory`, or use `--aligner bwa`. Threads are never lowered automatically.

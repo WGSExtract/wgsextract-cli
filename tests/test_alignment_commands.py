@@ -40,9 +40,11 @@ def _align_args(**overrides):
     return AlignJob(**values)
 
 
-def _short_reads(work, pairs=120, duplicates=20):
+def _short_reads(work, pairs=120, duplicates=20, comment=0):
     """A 20 kb chr1 and 100 bp FR pairs from it, the first ``duplicates``
-    fragments sequenced twice."""
+    fragments sequenced twice. Each read's FASTQ comment of ``comment`` bytes,
+    which aligners drop, makes the files as large as a genome's whose reads
+    fill bigger sort buffers (#781: a sort gets no more than its reads fill)."""
     rng = random.Random(7)
     genome = "".join(rng.choice("ACGT") for _ in range(20_000))
     (work / "ref").mkdir(parents=True)
@@ -50,6 +52,11 @@ def _short_reads(work, pairs=120, duplicates=20):
     starts = rng.sample(range(0, 19_600, 50), pairs)
     r1, r2 = work / "reads_R1.fq", work / "reads_R2.fq"
     write_read_pairs(genome, r1, r2, starts + starts[:duplicates], frag=400)
+    if comment:
+        for path in (r1, r2):
+            lines = path.read_text().splitlines()
+            lines[::4] = [f"{name} {'x' * comment}" for name in lines[::4]]
+            path.write_text("\n".join(lines) + "\n")
     return Namespace(genome=genome, ref=str(ref), r1=str(r1), r2=str(r2))
 
 

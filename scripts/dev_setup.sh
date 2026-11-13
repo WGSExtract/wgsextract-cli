@@ -67,6 +67,8 @@ note "just $(just --version | cut -d' ' -f2)"
 if [ -d .git ] || [ -f .git ]; then
     step "Installing pre-commit hooks"
     pixi run pre-commit install
+    git config merge.generated.name "Keep generated references until regeneration"
+    git config merge.generated.driver true
 fi
 
 step "Checking the CLI and its tools"

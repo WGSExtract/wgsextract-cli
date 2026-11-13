@@ -154,11 +154,26 @@ def test_help_all_json_is_a_versioned_command_index(capsys, entries):
     main(["help", "--all", "--json"])
 
     doc = json.loads(capsys.readouterr().out)
-    assert doc["schema"] == "wgsextract.help/1"
+    assert doc["schema"] == "wgsextract.help-index/1"
     assert [command["path"] for command in doc["commands"]] == [e.path for e in entries]
     snp = next(c for c in doc["commands"] if c["path"] == "vcf snp")
-    assert snp["tier"] == CORE and snp["examples"] and snp["outputs"]
+    assert snp["tier"] == CORE and snp["summary"]
+    assert snp["key_flags"]
+    assert all("options" not in c and "input_schema" not in c for c in doc["commands"])
+
+
+def test_full_json_dump_is_opt_in_and_keeps_command_details(capsys, entries):
+    main(["help", "--all", "--json", "--full"])
+    doc = json.loads(capsys.readouterr().out)
+    assert doc["schema"] == "wgsextract.help/1"
+    assert [c["path"] for c in doc["commands"]] == [e.path for e in entries]
+    snp = next(c for c in doc["commands"] if c["path"] == "vcf snp")
+    assert snp["examples"] and snp["outputs"] and snp["input_schema"]
     assert snp["usage"].startswith("wgsextract vcf snp ")
+
+
+def test_full_requires_json(capsys):
+    assert "--full requires --json" in _usage_error(["help", "--full"], capsys)
 
 
 def test_help_for_a_command_shows_its_examples_and_outputs(capsys):
@@ -272,6 +287,7 @@ def test_help_index_has_no_settings_from_the_users_config(tmp_path):
     for words in (
         ["help", "--all"],
         ["help", "--all", "--json"],
+        ["help", "--all", "--json", "--full"],
         ["help", "vcf", "--json"],
     ):
         result = subprocess.run(
@@ -431,7 +447,7 @@ def test_coverage_topic_quotes_the_default_depth_thresholds(capsys):
 
 
 def test_typed_commands_embed_their_input_schema(capsys, root):
-    main(["help", "--all", "--json"])
+    main(["help", "--all", "--json", "--full"])
     doc = json.loads(capsys.readouterr().out)
     typed = {c["path"]: c for c in doc["commands"] if "input_schema" in c}
     assert {"microarray", "vcf snp", "lineage y-haplogroup"} <= set(typed)
@@ -463,9 +479,8 @@ def _value(option: dict) -> str:
 
 
 def test_an_agent_can_go_from_help_json_to_valid_invocations(capsys):
-    """Using only 'help --all --json': find the command that makes a
-    23andMe-style file, then build an invocation of every command from its
-    required options and arguments, and check that each parses."""
+    """Compact index -> per-command schema -> a valid invocation, for every
+    command, without needing the full dump."""
     main(["help", "--all", "--json"])
     out = capsys.readouterr().out
     doc = json.loads(out)
@@ -475,9 +490,11 @@ def test_an_agent_can_go_from_help_json_to_valid_invocations(capsys):
         if c["tier"] == CORE and " " not in c["path"] and "23andMe" in c["summary"]
     ]
     assert [c["path"] for c in chip] == ["microarray"]
-    schema = chip[0]["input_schema"]
+    main(["help", chip[0]["path"], "--json"])
+    chip_details = json.loads(capsys.readouterr().out)["commands"][0]
+    schema = chip_details["input_schema"]
     flag = schema["properties"]["input"]["x-cli-flag"]
-    formats = next(o for o in chip[0]["options"] if o["dest"] == "formats")
+    formats = next(o for o in chip_details["options"] if o["dest"] == "formats")
     args = _parse(
         ["microarray", flag, "sample.cram", formats["flags"][0], "23andme_v5"]
     )
@@ -487,7 +504,12 @@ def test_an_agent_can_go_from_help_json_to_valid_invocations(capsys):
         "23andme_v5",
     )
 
-    for command in doc["commands"]:
+    for entry in doc["commands"]:
+        main(["help", *entry["path"].split(), "--json"])
+        details = json.loads(capsys.readouterr().out)
+        command = next(c for c in details["commands"] if c["path"] == entry["path"])
+        known_flags = {f for o in command["options"] for f in o.get("flags", [])}
+        assert set(entry["key_flags"]) <= known_flags, entry["path"]
         words = command["path"].split()
         for option in command["options"]:
             if option.get("positional") and option.get("nargs") not in ("*", "?"):
@@ -499,19 +521,35 @@ def test_an_agent_can_go_from_help_json_to_valid_invocations(capsys):
         assert _parse(words)._command == command["path"], words
 
 
-def test_help_stays_token_efficient(capsys):
-    """Byte budgets, not exact text: the index must stay small enough to read
-    whole, and one command's JSON much smaller than the full document."""
+def test_help_stays_token_efficient(capsys, record_property):
+    """Gate individual command help and the average, not command count."""
     with pytest.raises(SystemExit):
         main(["--help"])
     assert len(capsys.readouterr().out) <= 6_000
     main(["help", "--all"])
-    assert len(capsys.readouterr().out) <= 12_000
+    record_property("help_text_index_characters", len(capsys.readouterr().out))
     main(["help", "--all", "--json"])
-    # Typed API, ancestry, mimalloc, PGS and imputation share this budget.
-    assert len(capsys.readouterr().out) <= 326_000
-    main(["help", "microarray", "--json"])
-    assert len(capsys.readouterr().out) <= 15_000
+    output = capsys.readouterr().out
+    assert len(output) <= 60_000
+    # Tokenizer approximation: split words/numbers/punctuation before allowing
+    # at most four characters per word piece. Unlike len(text)/4, this accounts
+    # for JSON punctuation and fragmented identifiers without model downloads.
+    pieces = re.findall(r"[^\W\d_]+|\d{1,3}|_|[^\w\s]", output)
+    estimated_tokens = sum((len(piece) + 3) // 4 for piece in pieces)
+    record_property("help_index_estimated_tokens", estimated_tokens)
+    assert estimated_tokens <= 20_000
+    main(["help", "--all", "--json", "--full"])
+    output = capsys.readouterr().out
+    record_property("help_total_characters", len(output))
+    commands = json.loads(output)["commands"]
+    sizes = {
+        command["path"]: len(json.dumps(command, separators=(",", ":")))
+        for command in commands
+    }
+    # Gate individual schemas and the average, never the number of commands.
+    # A new command has room without changing a shared total in every PR.
+    assert all(size <= 12_000 for size in sizes.values()), sizes
+    assert sum(sizes.values()) / len(sizes) <= 3_000, sizes
 
 
 def test_next_step_hints_parse_to_commands():

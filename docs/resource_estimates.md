@@ -95,6 +95,29 @@ command line (`-p … -`); file extraction stayed byte-identical. Streaming wrot
 38% less (HG00096 113 → 75 MiB, HG002 316 → 196 MiB) at the same wall time and
 within 3% of the same peak RSS.
 
+## samtools sort buffers
+
+`samtools sort -@ N -m M` mallocs all N × M bytes when it starts, and the kernel
+refuses an allocation larger than RAM plus swap however few reads arrive: the
+sort fails with `couldn't allocate memory for bam_mem` and the aligner then dies
+of a broken pipe (#781). `--memory`, including `auto`'s floor of 1 GiB per
+thread, can ask for more. So `align`, `realign`, `pet`, `bam sort` and
+`bam to-ubam` give each sort the smallest of:
+
+- `--memory` per thread;
+- what its read files can fill: 96 bytes of records per byte of input (the
+  bound minimap2's estimate uses below), split across the threads, when every
+  input is a local file;
+- half of this computer's RAM, split across the threads,
+
+and logs when that lowers `--memory`. The input bound never goes below 16M per
+thread, but half the RAM is a hard limit, down to samtools' minimum of 1M. Records and their order are unchanged: a sort that
+fits its input sorts in memory, and a sort that spills merges its spills stably.
+Alignment memory checks count the sort's reservation (threads × `-m`) at
+least, as well as what its reads fill. `realign`'s checks before extracting
+FASTQs use the requested `--memory`, so they never ask for less than its
+alignment uses.
+
 ## minimap2 (long reads)
 
 minimap2 builds its index from the reference FASTA in memory on every run;

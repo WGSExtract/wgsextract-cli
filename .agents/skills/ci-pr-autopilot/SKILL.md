@@ -149,6 +149,14 @@ Only resolve a thread after one of these is true:
 
 ## Monitoring Loop
 
+Check counts depend on the PR's changed areas. Never wait for a fixed minimum
+number of checks (such as the old `scratch/merge_when_clean.sh` threshold of
+more than five). Use `gh pr checks --json bucket,name` with
+`python scripts/pr_checks_ready.py`: at least one passing check, no failing,
+pending, cancelled or unknown checks, and intentional skips allowed. An empty
+report is not success. Recheck the head SHA and review threads separately.
+Documentation-only PRs deliberately skip the OS matrix and Install Lab.
+
 Repeat until complete or blocked:
 
 1. Refresh PR state, review threads, reviews, commits, mergeability, and checks.

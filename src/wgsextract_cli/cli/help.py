@@ -41,6 +41,7 @@ from wgsextract_cli.core.config import settings_suspended
 from wgsextract_cli.core.messages import CLI_HELP
 
 HELP_SCHEMA = "wgsextract.help/1"
+HELP_INDEX_SCHEMA = "wgsextract.help-index/1"
 TIER_TITLES = {
     CORE: "Start here, in this order",
     SETUP: "Setup",
@@ -265,7 +266,8 @@ def command_map(color: bool) -> str:
         "More: 'wgsextract help --all' lists every command; 'wgsextract help "
         "vcf snp' (or 'wgsextract vcf snp --help') explains one; 'wgsextract "
         "help topics' lists concepts such as references and exit codes. For "
-        "scripts and AI agents: 'wgsextract help --all --json'.",
+        "scripts and AI agents: 'wgsextract help --all --json' indexes commands; "
+        "'wgsextract help <command> --json' gives the full schema.",
         color,
         "More",
     )
@@ -440,12 +442,22 @@ def _index_groups(
 
 
 def index_json(
-    entries: list[CommandEntry], global_options: list[dict[str, Any]] | None = None
+    entries: list[CommandEntry],
+    global_options: list[dict[str, Any]] | None = None,
+    *,
+    compact: bool = False,
 ) -> str:
-    """'help --all --json': the command index as a stable JSON document; with
-    global_options (the whole index), also those and the help topics.
+    """Command discovery (compact) or full schemas; with global_options (the
+    whole index), also those and the help topics.
 
-        "usage" is argparse's usage line and "options" each command's own options
+        compact=True uses wgsextract.help-index/1: each command has "path",
+        "tier", a one-line "summary", and "key_flags" (ordinary flags plus
+        required advanced flags). Deprecation metadata is retained. Top-level
+        "details" and "full" explain how to request schemas.
+
+        compact=False uses wgsextract.help/1 and adds the following full-only
+        fields. "usage" is argparse's usage line and "options" each command's
+        own options
         (the global ones are listed once, under "global_options"). Commands with
         a typed Params class (wgsextract_cli.api) also carry its JSON Schema as
         "input_schema", each property naming its flag in "x-cli-flag" (or, for a
@@ -453,24 +465,33 @@ def index_json(
         are the external tools a run checks for, "optional_tools" those only
         some options use, and "runtime" one of instant, seconds, minutes, hours
         or download, for a 30x genome unless "runtime_text" says otherwise."""
-    schemas = input_schemas()
+    schemas = {} if compact else input_schemas()
     commands = []
     for entry in entries:
-        usage = " ".join(entry.parser.format_usage().split())
         command: dict[str, Any] = {
             "path": entry.path,
             "tier": entry.tier,
-            "summary": entry.summary,
-            "usage": usage.removeprefix("usage: "),
-            "options": [
-                option_json(entry.parser, action, advanced)
-                for action, advanced in _command_options(entry.parser)
-            ],
-            "examples": list(entry.help.examples) if entry.help else [],
-            "outputs": entry.help.outputs if entry.help else None,
+            "summary": first_sentence(entry.summary) if compact else entry.summary,
         }
+        if compact:
+            command["key_flags"] = [
+                max(action.option_strings, key=len)
+                for action, advanced in _command_options(entry.parser)
+                if action.option_strings and (not advanced or action.required)
+            ]
+        else:
+            usage = " ".join(entry.parser.format_usage().split())
+            command.update(
+                usage=usage.removeprefix("usage: "),
+                options=[
+                    option_json(entry.parser, action, advanced)
+                    for action, advanced in _command_options(entry.parser)
+                ],
+                examples=list(entry.help.examples) if entry.help else [],
+                outputs=entry.help.outputs if entry.help else None,
+            )
         needs = COMMAND_NEEDS.get(entry.path)
-        if needs is not None:
+        if needs is not None and not compact:
             command["tools"] = list(needs.tools)
             command["optional_tools"] = list(needs.optional)
             command["runtime"] = needs.runtime
@@ -484,7 +505,10 @@ def index_json(
                 "without_subcommand": entry.deprecation.bare,
             }
         commands.append(command)
-    document: dict[str, Any] = {"schema": HELP_SCHEMA}
+    document: dict[str, Any] = {"schema": HELP_INDEX_SCHEMA if compact else HELP_SCHEMA}
+    if compact:
+        document["details"] = "wgsextract help <command> --json"
+        document["full"] = "wgsextract help --all --json --full"
     if global_options is not None:
         document["global_options"] = global_options
     document["commands"] = commands
@@ -653,6 +677,8 @@ def run_help(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     one command."""
     topic = list(getattr(args, "topic", None) or [])
     as_json = getattr(args, "json", False)
+    if getattr(args, "full", False) and not as_json:
+        resolve_command(parser, ["help"]).error("--full requires --json")
     color = use_color()
     if topic == ["topics"] or (len(topic) == 1 and topic[0] in HELP_TOPICS):
         names = list(HELP_TOPICS) if topic == ["topics"] else topic
@@ -679,7 +705,10 @@ def run_help(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
         parser = _parser_without_settings()
         entries = command_index(parser, " ".join(topic))
         globals_ = None if topic else global_options_json(parser)
-        sys.stdout.write(index_json(entries, globals_))
+        compact = not getattr(args, "full", False) and (
+            not topic or getattr(args, "all_commands", False)
+        )
+        sys.stdout.write(index_json(entries, globals_, compact=compact))
     elif getattr(args, "all_commands", False):
         sys.stdout.write(format_index(command_index(parser, " ".join(topic)), color))
         if not topic:
@@ -750,8 +779,10 @@ def render_markdown(parser: argparse.ArgumentParser) -> str:
         "run that registers outputs also writes a `.manifest.json` beside its "
         "main output. Run "
         "`wgsextract help <command>` for its options (`--help-all` adds the "
-        "advanced ones) and `wgsextract help --all --json` for every "
-        "command's options as JSON. *Needs* lists the external tools a "
+        "advanced ones). Agents: start with `wgsextract help --all --json` "
+        "for a compact index, then `wgsextract help <command> --json` for "
+        "options and schemas; `wgsextract help --all --json --full` dumps everything. "
+        "*Needs* lists the external tools a "
         "command checks for (`wgsextract deps check` shows which are "
         "installed) and how long it typically takes.",
     ]
@@ -856,8 +887,11 @@ def render_site_commands() -> str:
 _GROUPS_LEDE = (
     "`wgsextract --help` lists the core commands first, in the order you would "
     "usually run them, then setup and advanced commands. Run `wgsextract help "
-    "--all` for one line per command (`--json` for a machine-readable index "
-    "with each command's options and, for typed commands, a JSON Schema), "
+    "--all` for one line per command. Agents: start with "
+    "`wgsextract help --all --json` for a compact index of paths, summaries, "
+    "tiers and key flags, then `wgsextract help <command> --json` for full "
+    "options and typed JSON Schemas. Use `wgsextract help --all --json --full` "
+    "only when the complete schema dump is needed. Run "
     "`wgsextract help <command>` for one command's options, examples and "
     "output files (`--help-all` adds the advanced options), `wgsextract help "
     "topics` for concepts such as references, builds and exit codes, or "

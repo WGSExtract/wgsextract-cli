@@ -1,0 +1,7 @@
+# GitHub supports queue:max since May 2026; actionlint 1.7.12 does not yet.
+# Only this new schema key is exempted; validate_github_actions.py validates
+# its value and rejects cancel-in-progress conflicts.
+paths:
+  .github/workflows/rerun_lost_runners.yml:
+    ignore:
+      - '^unexpected key "queue" for "concurrency" section\. expected one of "cancel-in-progress", "group"$'
