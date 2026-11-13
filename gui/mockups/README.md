@@ -209,7 +209,9 @@ python3 gui/mockups/serve.py --db out/mockups/notes.db --repo out/mockups/repo.g
 with the Pages publisher's exact branch naming and static allow-list, never
 executed. Cache directories are keyed by commit and idea; the previous
 snapshot is retained briefly for in-flight requests. Shared review tooling
-is served from the running app so older ideas also get the shared API.
+and the text-only DOM helpers in `shared/core.js` are served from the running
+app so older ideas also get the shared API and safe note rendering.
+Review text is never interpreted as HTML; the DOM helper has no HTML escape hatch.
 Startup never waits for GitHub: it restores the last published cache mapping
 (or scans completed snapshots if necessary) and refreshes in the background.
 During an outage it retries every 15 seconds, or sooner if the configured

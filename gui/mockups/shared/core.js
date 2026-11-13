@@ -20,7 +20,7 @@
     var el = document.createElement(parts[0] || "div");
     if (parts.length > 1) el.className = parts.slice(1).join(" ");
     var children = Array.prototype.slice.call(arguments, 2);
-    if (attrs && (attrs.nodeType || typeof attrs !== "object" || Array.isArray(attrs))) {
+    if (typeof attrs !== "object" || attrs instanceof Node || Array.isArray(attrs)) {
       children.unshift(attrs);
       attrs = null;
     }
@@ -28,7 +28,6 @@
       var value = attrs[key];
       if (value === undefined || value === null || value === false) return;
       if (key.slice(0, 2) === "on") el.addEventListener(key.slice(2), value);
-      else if (key === "html") el.innerHTML = value;
       else if (key === "dataset") Object.assign(el.dataset, value);
       else if (key === "style" && typeof value === "object") setStyle(el, value);
       else el.setAttribute(key, value === true ? "" : value);
@@ -49,7 +48,9 @@
     children.forEach(function (child) {
       if (child === null || child === undefined || child === false) return;
       if (Array.isArray(child)) WGSM.append(el, child);
-      else el.appendChild(child.nodeType ? child : document.createTextNode(String(child)));
+      else if (typeof child === "string") el.appendChild(document.createTextNode(child));
+      else if (child instanceof Node) el.appendChild(child);
+      else el.appendChild(document.createTextNode(String(child)));
     });
     return el;
   };

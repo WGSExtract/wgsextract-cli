@@ -1,8 +1,10 @@
 const assert = require("node:assert/strict");
-const { readFileSync } = require("node:fs");
+const { readFileSync, mkdirSync, writeFileSync, rmSync } = require("node:fs");
+const { spawnSync } = require("node:child_process");
 const { test } = require("node:test");
 const vm = require("node:vm");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 
 const source = readFileSync(path.join(__dirname, "../gui/mockups/shared/annotate/store.js"), "utf8");
 const allNotesSource = readFileSync(path.join(__dirname, "../gui/mockups/shared/annotate/all-notes.js"), "utf8");
@@ -88,6 +90,32 @@ for (const options of [
     assert.equal(b.store.available, true);
   });
 }
+
+const chrome = ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"]
+  .find(command => spawnSync(command, ["--version"], { encoding: "utf8" }).status === 0);
+
+test("note and exception markup stays inert in real panel, All notes and toast renderers", {
+  skip: chrome ? false : "Chromium/Chrome is required for the real-DOM regression",
+  timeout: 30000,
+}, () => {
+  const out = path.join(__dirname, "../out/776/xss-renderer");
+  const profile = path.join(out, "profile-" + process.pid);
+  mkdirSync(profile, { recursive: true });
+  try {
+    const result = spawnSync(chrome, [
+      "--headless", "--no-sandbox", "--disable-gpu", "--no-first-run",
+      "--user-data-dir=" + profile, "--virtual-time-budget=1000", "--dump-dom",
+      pathToFileURL(path.join(__dirname, "mockup_xss_fixture.html")).href,
+    ], { encoding: "utf8", timeout: 25000 });
+    writeFileSync(path.join(out, "dom.html"), result.stdout || "");
+    writeFileSync(path.join(out, "browser.log"), result.stderr || "");
+    assert.equal(result.status, 0, String(result.error || result.stderr));
+    assert.match(result.stdout, /data-xss-result="passed"/);
+    assert.match(result.stdout, /PASS: panel, All notes and error toast render markup inert/);
+  } finally {
+    rmSync(profile, { recursive: true, force: true });
+  }
+});
 
 for (const [idea, url, linked] of [
   ["local/gone", undefined, false],

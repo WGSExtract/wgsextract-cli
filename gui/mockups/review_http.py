@@ -120,7 +120,7 @@ class ReviewFiles(SimpleHTTPRequestHandler):
         # Review tooling comes from the running app, not old idea branches.
         if (
             rel == Path("notes.html")
-            or rel == Path("shared/chrome.js")
+            or rel in (Path("shared/chrome.js"), Path("shared/core.js"))
             or rel.parts[:2] == ("shared", "annotate")
         ):
             root = HERE
