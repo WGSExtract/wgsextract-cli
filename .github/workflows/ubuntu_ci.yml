@@ -40,6 +40,10 @@ jobs:
       - name: Advisory test-smell annotations (never fails)
         run: pixi run -e lint -x python scripts/test_smells.py --base HEAD^1 --github
   test-ubuntu:
+    strategy:
+      fail-fast: false
+      matrix:
+        tier: [core, integration]
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -51,7 +55,7 @@ jobs:
             default
             dev
             vep-rs
-          writer: "true"
+          writer: ${{ matrix.tier == 'core' }}
       - name: Test installer
         run: scripts/test_install_sh.sh
       - name: Verify Tools
@@ -118,32 +122,32 @@ jobs:
         with:
           path: reference/genomes
           key: hs38-v1-${{ hashFiles('src/wgsextract_cli/assets/reference/seed_genomes.csv', 'src/wgsextract_cli/core/ref_library/catalog.py') }}
-      - name: Build and Smoke Test Package
-        run: pixi run package-smoke
-      - name: Run Benchmark
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          pixi run wgsextract benchmark --dataset real --profile smoke
-          echo "Benchmark timing is published in this job summary."
       - name: Run Tests
-        run: pixi run test-ci
+        shell: bash
+        run: |
+          coverage=()
+          if [ "${{ github.event_name }}" != pull_request ]; then
+            coverage+=(--cov=wgsextract_cli --cov-report=xml:out/coverage.xml)
+          fi
+          pixi run test-ci --ci-tier ${{ matrix.tier }} "${coverage[@]}"
       # The app's bundle commands must still parse with this CLI (#538); GUI CI
       # checks the bundle side, this catches a CLI flag dropped or renamed.
       - name: Check the app's bundle commands parse with this CLI
+        if: matrix.tier == 'core'
         working-directory: gui
         run: pixi run python -m unittest discover -s tests/wgsextract
       - name: Publish test timings and non-gating coverage
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: tests-ubuntu
+          name: tests-ubuntu-${{ matrix.tier }}
           path: |
             out/coverage.xml
             out/pytest.xml
       # Each extract, call and annotate command run end to end on generated chrM
       # and whole-genome data; about 30 s, no downloads.
       - name: Run end-to-end tests on generated data
+        if: matrix.tier == 'integration'
         run: pixi run test-e2e-fake
 
   imputation:

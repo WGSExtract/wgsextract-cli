@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from tests.htslib_helpers import needs_tools, run_wgsextract, sam_to_bam, write_fasta
+from tests.prepared_data import sparse_truncate
 from wgsextract_cli import api
 from wgsextract_cli.commands import align, bam, realign
 from wgsextract_cli.commands.vcf import basic, callers, contig_calling
@@ -484,8 +485,7 @@ def test_variant_worker_memory_and_regional_gatk_conversion(tmp_path, source):
 def hg002_slice_metadata(tmp_path):
     source = tmp_path / "hg002.bam"
     # #722's measured BAM size; the read-only estimator needs only file metadata.
-    with source.open("wb") as stream:
-        stream.truncate(670_545_706)
+    sparse_truncate(source, 670_545_706)
     _, reference = _whole_genome(tmp_path)
     with Path(f"{reference}.fai").open("a") as stream:
         for number in range(430):
@@ -682,8 +682,7 @@ def test_722_vcf_budget_with_known_read_count_is_independent_of_bam_cram_storage
 ):
     source, reference = hg002_slice_metadata
     cram = tmp_path / "hg002.cram"
-    with cram.open("wb") as stream:
-        stream.truncate(100_000_000)
+    sparse_truncate(cram, 100_000_000)
     budgets = []
     for alignment in (source, cram):
         estimate = resources.estimate_resources(

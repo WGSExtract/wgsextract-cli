@@ -55,6 +55,17 @@ def pytest_xdist_make_scheduler(config: pytest.Config, log: Any) -> Any:
 def pytest_addoption(parser: pytest.Parser) -> None:
     group = parser.getgroup("wgsextract", "WGS Extract real-data test inputs")
     group.addoption(
+        "--ci-tier",
+        choices=("all", "core", "integration"),
+        default="all",
+        help="Partition CI suites without changing the default local collection.",
+    )
+    group.addoption(
+        "--ci-skip-independent",
+        action="store_true",
+        help="Leave reviewed OS-independent tests to Ubuntu x64 CI.",
+    )
+    group.addoption(
         "--yleaf-upstream", help="Local tagged Yleaf checkout for optional parity."
     )
     group.addoption(
@@ -100,6 +111,25 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     group.addoption(
         "--pet-species", default="dog", help="Species for the real pet-align test."
     )
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    from scripts.ci_test_tiers import SINGLE_OS_MODULES, test_tier
+
+    tier = config.getoption("--ci-tier")
+    skip_independent = config.getoption("--ci-skip-independent")
+    if tier == "all" and not skip_independent:
+        return
+    selected, deselected = [], []
+    for item in items:
+        keep = (tier == "all" or test_tier(str(item.path)) == tier) and not (
+            skip_independent and item.path.name in SINGLE_OS_MODULES
+        )
+        (selected if keep else deselected).append(item)
+    items[:] = selected
+    config.hook.pytest_deselected(items=deselected)
 
 
 _CHECKOUT_STATE = repo_root() / "state"

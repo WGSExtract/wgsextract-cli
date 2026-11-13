@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.prepared_data import copy_prepared, prepared_files
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import run_command
 
@@ -33,9 +34,18 @@ def bgzip_index(plain_vcf: str | Path, out: str | Path | None = None) -> str:
 
 def write_fasta(path: Path, seqs: Mapping[str, str]) -> Path:
     """Write a FASTA, one line per sequence, and faidx it."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("".join(f">{name}\n{seq}\n" for name, seq in seqs.items()))
-    run_command([get_tool_path("samtools"), "faidx", str(path)])
+    content = "".join(f">{name}\n{seq}\n" for name, seq in seqs.items()).encode()
+    samtools = get_tool_path("samtools")
+    assert samtools is not None
+
+    def build(root: Path) -> None:
+        fasta = root / "ref.fa"
+        fasta.write_bytes(content)
+        run_command([samtools, "faidx", str(fasta)])
+
+    root = prepared_files(content, samtools, ("ref.fa", "ref.fa.fai"), build)
+    copy_prepared(root / "ref.fa", path)
+    copy_prepared(root / "ref.fa.fai", Path(str(path) + ".fai"))
     return path
 
 
@@ -44,8 +54,18 @@ def sam_to_bam(lines: Iterable[str], bam_path: Path) -> str:
     sam = bam_path.with_suffix(".sam")
     sam.write_text("\n".join(lines) + "\n")
     samtools = get_tool_path("samtools")
-    run_command([samtools, "sort", "-o", str(bam_path), str(sam)])
-    run_command([samtools, "index", str(bam_path)])
+    assert samtools is not None
+    content = sam.read_bytes()
+
+    def build(root: Path) -> None:
+        cached_sam = root / "s.sam"
+        cached_sam.write_bytes(content)
+        run_command([samtools, "sort", "-o", str(root / "s.bam"), str(cached_sam)])
+        run_command([samtools, "index", str(root / "s.bam")])
+
+    root = prepared_files(content, samtools, ("s.bam", "s.bam.bai"), build)
+    copy_prepared(root / "s.bam", bam_path)
+    copy_prepared(root / "s.bam.bai", Path(str(bam_path) + ".bai"))
     return str(bam_path)
 
 

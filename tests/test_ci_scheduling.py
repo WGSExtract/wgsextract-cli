@@ -71,3 +71,41 @@ def test_second():
         "--basetemp", str(pytester.path / "out" / "pytest")
     )
     result.assert_outcomes(passed=2)
+
+
+@pytest.mark.parametrize(
+    ("tier", "skip", "passed", "deselected"),
+    [
+        ("all", False, 3, 0),
+        ("core", False, 2, 1),
+        ("integration", False, 1, 2),
+        ("all", True, 2, 1),
+        ("core", True, 1, 2),
+    ],
+)
+def test_761_ci_tiers_preserve_every_test_including_new_modules(
+    pytester: pytest.Pytester, tier: str, skip: bool, passed: int, deselected: int
+) -> None:
+    pytester.makeconftest(
+        """
+from tests.conftest import pytest_collection_modifyitems
+
+def pytest_addoption(parser):
+    parser.addoption("--ci-tier", default="all")
+    parser.addoption("--ci-skip-independent", action="store_true")
+"""
+    )
+    pytester.makepyfile(
+        test_realign="def test_real_workflow(): pass",
+        test_genotyping="def test_genotype(): pass",
+        test_new_feature="def test_new_feature(): pass",
+    )
+    flags = ["--ci-skip-independent"] if skip else []
+    result = pytester.runpytest_subprocess(
+        "--ci-tier",
+        tier,
+        *flags,
+        "--basetemp",
+        str(pytester.path / "out" / "pytest"),
+    )
+    result.assert_outcomes(passed=passed, deselected=deselected)
