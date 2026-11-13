@@ -522,13 +522,12 @@ def test_an_agent_can_go_from_help_json_to_valid_invocations(capsys):
 
 
 def test_help_stays_token_efficient(capsys, record_property):
-    """Byte budgets, not exact text: the index must stay small enough to read
-    whole, and one command's JSON much smaller than the full document."""
+    """Gate individual command help and the average, not command count."""
     with pytest.raises(SystemExit):
         main(["--help"])
     assert len(capsys.readouterr().out) <= 6_000
     main(["help", "--all"])
-    assert len(capsys.readouterr().out) <= 12_000
+    record_property("help_text_index_characters", len(capsys.readouterr().out))
     main(["help", "--all", "--json"])
     output = capsys.readouterr().out
     assert len(output) <= 60_000

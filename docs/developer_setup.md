@@ -102,7 +102,8 @@ merge, even if Git reported no conflicts.
 
 Help-size tests gate each command's JSON (12,000 characters maximum) and the
 average (3,000), rather than a global total that every new command changes.
-The total is reported as a test property, not a gate.
+The JSON and text-index totals are reported as test properties, not gates;
+the text index's existing per-line width check still catches bloated entries.
 The compact discovery index has a separate 60,000-character ceiling and a
 20,000-token approximation ceiling (word pieces plus JSON punctuation,
 without downloading a tokenizer model). Agents read this index first, then
