@@ -237,6 +237,7 @@ def sample(tmp_path: Path) -> Path:
         metrics={
             "cyp2d6_genotype": "*1/*2",
             "cyp2d6_filter": "PASS",
+            "cyp2d6_call_status": "resolved",
             "median_depth": 31.0,
         },
     )
@@ -775,6 +776,20 @@ def test_pgx_and_lineage_labels_come_from_the_callers_evidence(sample):
     (mt,) = sections["lineage"]["findings"]
     assert (mt["value"], mt["confidence"]) == ("H1a", "high")
     assert any("H1a" in link["url"] for link in mt["links"])
+
+
+def test_cyp2d6_from_runs_before_issue_844_is_not_high_or_called_d6_copies(sample):
+    # Issue 844: older runs recorded Cyrius's CYP2D6+CYP2D7 Total_CN as
+    # cyp2d6_copy_number and no Call_info, so a unique match is unproven.
+    manifest = sample / "HG002_cyp2d6.manifest.json"
+    data = json.loads(manifest.read_text())
+    del data["metrics"]["cyp2d6_call_status"]
+    data["metrics"]["cyp2d6_copy_number"] = 4
+    manifest.write_text(json.dumps(data))
+    (cyp2d6,) = pr.build_report(sample)["sections"]["pharmacogenomics"]["findings"]
+    assert (cyp2d6["value"], cyp2d6["confidence"]) == ("*1/*2", "moderate")
+    assert cyp2d6["confidence_reasons"] == ["call_info_unknown"]
+    assert "CYP2D6+CYP2D7 copy number 4" in cyp2d6["detail"]
 
 
 def test_pharmcat_genes_take_their_weakest_labelled_call(sample):

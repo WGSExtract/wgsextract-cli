@@ -74,6 +74,10 @@ REASONS = {
     "low_coverage": "the run warned that coverage is too low for reliable calls",
     "caller_filter": "the caller flagged the call (its filter did not pass)",
     "no_call": "the caller made no call",
+    "genotype_unresolved": "the caller's variants fit more than one diplotype, "
+    "so it picked one; no outside call was exported",
+    "call_info_unknown": "the run predates recording whether the call was a "
+    "unique match; rerun it",
     "evidence_mismatch": "the evidence file no longer matches the run's result",
     "no_labelled_calls": "the gene has no labelled variant calls; a reference "
     "(*1) allele rests on coverage alone",
@@ -940,12 +944,15 @@ def _cyrius_finding(section: dict[str, Any], source: Source, ctx: _Context) -> N
     metrics = source.metrics
     genotype = metrics.get("cyp2d6_genotype")
     status = metrics.get("cyp2d6_filter")
+    call_status = metrics.get("cyp2d6_call_status")
     depth = metrics.get("median_depth")
     thresholds = variant_confidence.thresholds_from()
     if not genotype:
         label, reasons = variant_confidence.LOW, ["no_call"]
     elif status != "PASS":
         label, reasons = variant_confidence.LOW, ["caller_filter"]
+    elif call_status == "unresolved":
+        label, reasons = variant_confidence.LOW, ["genotype_unresolved"]
     elif not isinstance(depth, (int, float)):
         label, reasons = variant_confidence.MODERATE, ["depth_unknown"]
     elif depth < thresholds.min_depth:
@@ -954,26 +961,47 @@ def _cyrius_finding(section: dict[str, Any], source: Source, ctx: _Context) -> N
         label, reasons = variant_confidence.MODERATE, ["moderate_depth"]
     else:
         label, reasons = variant_confidence.HIGH, []
-    copies = metrics.get("cyp2d6_copy_number")
+    if genotype and call_status is None and label == variant_confidence.HIGH:
+        # Runs from before Cyrius's Call_info was recorded can't show the call
+        # was a unique match.
+        label, reasons = variant_confidence.MODERATE, ["call_info_unknown"]
+    # Cyrius's Total_CN, recorded as cyp2d6_copy_number by older runs, counts
+    # CYP2D6 and CYP2D7 together.
+    copies = metrics.get("cyp2d6_cyp2d7_copy_number", metrics.get("cyp2d6_copy_number"))
+    candidates = metrics.get("cyp2d6_raw_star_alleles")
     detail = ", ".join(
         x
         for x in (
             f"filter {status}" if status else "",
-            f"{copies} copies" if copies is not None else "",
+            f"Cyrius call {metrics['cyp2d6_call_info']}"
+            if metrics.get("cyp2d6_call_info")
+            else "",
+            f"candidates {candidates}" if candidates else "",
+            f"CNV group {metrics['cyp2d6_cnv_group']}"
+            if metrics.get("cyp2d6_cnv_group")
+            else "",
+            f"CYP2D6+CYP2D7 copy number {copies}" if copies is not None else "",
             f"median depth {_number(depth, 'x')}" if depth is not None else "",
         )
         if x
     )
+    if not genotype:
+        value = "no call"
+    elif call_status == "unresolved" or (call_status is None and status != "PASS"):
+        value = f"unresolved (Cyrius's pick: {genotype})"
+    else:
+        value = str(genotype)
     section["findings"].append(
         _finding(
             "pharmacogenomics",
             "CYP2D6 diplotype (Cyrius)",
-            str(genotype or "no call"),
+            value,
             detail=detail or None,
             gene="CYP2D6",
             confidence=label,
             reasons=reasons,
-            basis="Cyrius filter and median depth vs. confidence thresholds",
+            basis="Cyrius filter, call uniqueness and median depth vs. confidence "
+            "thresholds",
             evidence=ctx.rel(source.output("cyp2d6_calls", "cyrius_report")),
             region="gene CYP2D6",
             manifest=ctx.rel(source.manifest),
