@@ -100,7 +100,7 @@ SECTIONS = {
 _ALIGNMENT_SUFFIXES = (".bam", ".cram")
 _VCF_SUFFIXES = (".vcf.gz", ".vcf.bgz", ".vcf", ".bcf")
 # Manifest input roles naming the sample's own files
-SAMPLE_ROLES = ("input", "vcf_input")
+SAMPLE_ROLES = ("input", "vcf_input", "proband")
 _OVERVIEW_FACTS = (
     ("sex", "Sex"),
     ("platform", "Platform"),
@@ -560,7 +560,9 @@ def _overview(ctx: _Context) -> dict[str, Any]:
     info = latest(ctx.sources, _command("info"))
     run = latest(ctx.sources, _command("qc contamination"))
     run = run if run is not None and run.status == "ok" else None
-    section = _section("overview", [info, run], ctx)
+    trio = latest(ctx.sources, _command("vcf trio"))
+    trio = trio if trio is not None and trio.status == "ok" else None
+    section = _section("overview", [info, run, trio], ctx)
     facts = []
     for name, label in _OVERVIEW_FACTS:
         fact = ctx.fact(name)
