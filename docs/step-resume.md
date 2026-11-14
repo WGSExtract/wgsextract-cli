@@ -18,7 +18,8 @@ When a step finishes, the journal (JSON, schema `wgsextract.steps/1`) records:
 
 - a key made from its settings, the versions of the tools it ran and the
   version of the step itself
-- the fingerprint of each input, and the run of the step that made it
+- the fingerprint of each input (see [Directory inputs](#directory-inputs)),
+  and the run of the step that made it
 - the size and [content fingerprint](result-manifest.md) of each output
 
 A rerun skips the step only if all of the following hold:
@@ -59,6 +60,30 @@ installed annotation data (a new ClinVar or gnomAD release reruns
 for `mt-haplogroup` and, for
 DeepVariant in Docker, the image's ID, so replacing an image under the same
 tag reruns every stage.
+
+## Directory inputs
+
+Some steps read a folder rather than a file: VEP's cache for `annotate`, or a
+folder a child command reports reading. The journal records such an input's
+identity from the path, size and modification time (to the nanosecond) of
+every file under it, following symbolic links. The rerun runs the step again
+when a file in the folder is added, removed, renamed, resized or rewritten,
+including when the whole folder is replaced by a new release at the same
+path. Lock files (`*.lock`, `*.guard`) and the hidden `.partial` files of an
+unfinished download are left out, so another run using the same library
+doesn't force a rerun.
+
+No file is read, so checking a cache of tens of thousands of files costs one
+`stat` per file, not a pass over its gigabytes. The trade-off: an edit that
+keeps a file's size and also restores its modification time (`touch -r`, or
+a copy with `rsync -t` of a file the same size) isn't seen. Use `--force-step`
+after such a change. Copying a folder without keeping times (`cp -r`) changes
+every time, so it reruns the steps that read the folder.
+
+A journal written by a wgsextract older than this behaviour holds no contents
+identity for its directory inputs, so the steps that read one run once more,
+with the reason `is a directory whose contents an earlier wgsextract didn't
+record`.
 
 ## Partial outputs
 

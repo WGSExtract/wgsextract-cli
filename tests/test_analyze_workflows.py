@@ -670,6 +670,26 @@ def test_updated_reference_or_annotation_data_redo_the_steps_that_read_them(
 
 
 @needs_bcftools
+def test_858_edited_file_in_vep_cache_reruns_annotation(
+    fake: FakeSteps, bam: str, tmp_path: Path
+) -> None:
+    # Issue #858: a changed file inside VEP's cache directory kept old results.
+    release = Path(str(fake.settings["vep_cache_directory"]), "homo_sapiens", "116")
+    release.mkdir(parents=True)
+    (release / "info.txt").write_text("release-one")
+    out = tmp_path / "out"
+    fake.run("--input", bam, "--outdir", str(out))
+    assert fake.run("--input", bam, "--outdir", str(out)).ran == []
+
+    (release / "info.txt").write_text("release-two")
+    run = fake.run("--input", bam, "--outdir", str(out))
+    assert run.ran == _ALL_STEPS[5:]
+    assert list(fake.annotated()) == [
+        str(out / "snps.vcf.gz"), str(out / "indels.vcf.gz")
+    ]  # fmt: skip
+
+
+@needs_bcftools
 def test_dry_run_plans_and_forced_steps_rerun_with_what_uses_them(
     fake: FakeSteps, bam: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
