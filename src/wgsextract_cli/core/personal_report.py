@@ -1249,6 +1249,7 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
                     "depth": _int(call.get("depth")),
                     "genotype_quality": _int(call.get("genotype_quality")),
                     "alt_fraction": _float(call.get("alt_fraction")),
+                    "phase_set": str(call.get("phase_set") or "") or None,
                 },
             )
         )
@@ -1307,8 +1308,7 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
             }
         )
     flagged = [
-        f"{g['gene']} {g['status'].replace('_', ' ')}"
-        + ("" if g["confidence"] == "high" else f" ({_confidence_text(g)})")
+        f"{g['gene']} {g['status'].replace('_', ' ')}" + _qualifiers(g)
         for g in section["genes"]
         if g["status"]
     ]
@@ -1424,9 +1424,17 @@ GENE_STATUS = {
     "biallelic": "a homozygous P/LP call, or P/LP calls of two ALTs of one "
     "multi-allelic call (such as 1/2): both copies affected",
     "possible_biallelic": "possibly both copies affected: two or more "
-    "heterozygous P/LP calls whose phase is unknown (they may be on the same "
-    "copy), or a call whose other allele was not called",
+    "heterozygous P/LP calls whose phase is unknown (unphased, or in different "
+    "phase sets, so they may be on the same copy), or a call whose other "
+    "allele was not called",
     "carrier": "one heterozygous P/LP call: one copy affected",
+}
+# The same statuses when the phase set (FORMAT/PS) of the calls decided them.
+PHASED_STATUS = {
+    "biallelic": "heterozygous P/LP calls phased on opposite copies (trans) "
+    "in one phase set: both copies affected",
+    "carrier": "heterozygous P/LP calls all phased on the same copy (cis) in "
+    "one phase set: one copy affected",
 }
 
 
@@ -1440,17 +1448,39 @@ def _split_index(origin: Sequence[str]) -> bool:
     )
 
 
+def _phased_copy(
+    call: Mapping[str, Any], alleles: Sequence[str]
+) -> tuple[tuple[str, str], int] | None:
+    """The phase set (chromosome, FORMAT/PS) of a heterozygous diploid call
+    phased within one, and the copy (0 or 1) carrying its ALT; None when its
+    phase is unknown. Pipes without a PS don't say which calls were phased
+    together, so they compare nothing."""
+    genotype = str(call.get("genotype") or "")
+    phase_set = str(call.get("phase_set") or "")
+    if "/" in genotype or "|" not in genotype or phase_set in ("", "."):
+        return None
+    carried = [i for i, allele in enumerate(alleles) if allele != "0"]
+    if len(alleles) != 2 or len(carried) != 1:
+        return None
+    return (str(call.get("chrom") or ""), phase_set), carried[0]
+
+
 def _gene_calls(
     gene: gene_lists.Gene, calls: Sequence[Mapping[str, Any]], complete: bool = True
 ) -> dict[str, Any]:
     """A listed gene's P/LP calls by zygosity, and for a gene the list reports
     only when biallelic (AR) whether this sample is a carrier or (possibly)
-    biallelic, with the weakest confidence of those calls. Phase is not
-    known, and a haploid or partly called genotype (``1/.``) doesn't show the
-    other copy, so these make the gene only possibly biallelic. Two ALTs split
-    from one diploid call (``1/2``) are on opposite copies: biallelic."""
-    het = hom = hemi = partial = 0
+    biallelic, with the weakest confidence of those calls.
+
+    Heterozygous calls are on known copies only when phased (``0|1``) in one
+    phase set (FORMAT/PS): on one copy (cis) they leave the other unaffected,
+    on opposite copies (trans) they affect both. So are two ALTs split from
+    one diploid call (``1/2``). Calls of unknown phase, or in different phase
+    sets, make the gene only possibly biallelic, as does a haploid or partly
+    called genotype (``1/.``), which doesn't show the other copy."""
+    het = hom = hemi = partial = unphased = 0
     split_alts: dict[str, set[str]] = {}
+    phase_sets: dict[tuple[str, str], set[int]] = {}
     for call in calls:
         zygosity = str(call.get("zygosity") or "")
         alleles = re.split(r"[/|]", str(call.get("genotype") or ""))
@@ -1463,20 +1493,42 @@ def _gene_calls(
             origin = str(call.get(variant_confidence.SPLIT_TAG) or "").split("|")
             if len(alleles) == 2 and _split_index(origin):
                 split_alts.setdefault("|".join(origin[:4]), set()).add(origin[4])
+            if copy := _phased_copy(call, alleles):
+                phase_sets.setdefault(copy[0], set()).add(copy[1])
+            else:
+                unphased += 1
         elif zygosity == "hom":
             hom += 1
         elif zygosity == "haploid":
             hemi += 1
+    split_trans = any(len(alts) > 1 for alts in split_alts.values())
+    phased_trans = any(len(copies) > 1 for copies in phase_sets.values())
+    # Calls of one phase set on one copy are one allele; others may each be.
+    alleles_seen = unphased + len(phase_sets)
+    phase = None
+    if het >= 2:
+        if split_trans or phased_trans:
+            phase = "trans"
+        elif alleles_seen == 1:
+            phase = "cis"
+        else:
+            phase = "unknown"
     status = None
     if gene.recessive:
-        if hom or any(len(alts) > 1 for alts in split_alts.values()):
+        if hom or split_trans or phased_trans:
             status = "biallelic"
-        elif hemi or partial or het >= 2:
+        elif hemi or partial or alleles_seen >= 2:
             status = "possible_biallelic"
         elif het:
             status = "carrier"
     if not complete and status != "biallelic":
         status = None
+    if not complete and phase != "trans":
+        phase = None
+    # Phase sets decided it: no homozygous call or split 1/2 already did.
+    by_phase = (status, phase) == ("carrier", "cis") or (
+        status == "biallelic" and not hom and not split_trans
+    )
     order = {label: i for i, label in enumerate(CONFIDENCE)}
     labels = [str(c.get("confidence") or NOT_ASSESSED) for c in calls]
     return {
@@ -1486,10 +1538,26 @@ def _gene_calls(
         "homozygous": hom,
         "hemizygous": hemi,
         "partial": partial,
+        "phase": phase,
         "confidence": max(labels, key=lambda label: order.get(label, len(order))),
         "status": status,
-        "status_text": GENE_STATUS.get(status or "", ""),
+        "status_text": (PHASED_STATUS if by_phase else GENE_STATUS).get(
+            status or "", ""
+        ),
     }
+
+
+def _qualifiers(gene: Mapping[str, Any]) -> str:
+    """' (cis; low-confidence calls)': the known phase behind the status, and
+    the calls' confidence when not high."""
+    known = (gene["status"], gene["phase"]) in {
+        ("carrier", "cis"),
+        ("biallelic", "trans"),
+    }
+    parts = [gene["phase"]] if known else []
+    if gene["confidence"] != "high":
+        parts.append(_confidence_text(gene))
+    return f" ({'; '.join(parts)})" if parts else ""
 
 
 def _confidence_text(gene: Mapping[str, Any]) -> str:
@@ -1954,7 +2022,11 @@ def _call_text(v: Mapping[str, Any]) -> str:
     head = " ".join(str(x) for x in (allele, v.get("genotype"), v.get("zygosity")) if x)
     tail = [
         f"{label} {v[key]}"
-        for label, key in (("DP", "depth"), ("GQ", "genotype_quality"))
+        for label, key in (
+            ("DP", "depth"),
+            ("GQ", "genotype_quality"),
+            ("PS", "phase_set"),
+        )
         if v.get(key) is not None
     ]
     return ", ".join([head, *tail])
