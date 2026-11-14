@@ -30,6 +30,17 @@ output folder doesn't mix samples. When a command ran more than once, the
 newest successful run is used. A section whose only runs failed is shown as
 **failed**, with the error.
 
+When this sample's newest run of a step failed (or was cancelled) after an
+older one succeeded, the section keeps the older evidence but says so: a
+**Newer attempt failed** line at the top of the section names the newest
+attempt, its finish time and error, and the date of the run shown, and the
+section's sources list both runs with their status and finish time. The JSON
+adds a `newer_attempt_failed` warning and the newest attempt as the source's
+`latest_attempt`; the report's own manifest repeats the warning. Rerun the
+step (or delete the failed run's manifest) to clear it. Only runs this report
+already counts as this sample's are compared, so another sample's failures in
+a shared `--results` folder never mark a section stale.
+
 With `--input`, only that file's runs are reported: runs on it, on files made
 from it (its `vcf snp` VCF, say) and the runs that made it. In a sample
 workspace or genome folder, which holds one person, runs on files made from no
@@ -252,7 +263,8 @@ same document is the `details` of the report's result manifest
       "missing": [], "warnings": [],
       "sources": [{"command": "vcf clinvar", "status": "ok",
                    "finished": "2025-06-01T11:00:00+00:00",
-                   "manifest": "clinvar_pathogenic.vcf.manifest.json"}],
+                   "manifest": "clinvar_pathogenic.vcf.manifest.json",
+                   "latest_attempt": null}],
       "gene_list": {"id": "acmg-sf-3.3", "name": "ACMG SF v3.3", "version": "3.3", "citation": "...", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12318660/", "genes": 84},
       "build": "hg38",
       "counts": {"carried": 4, "in_gene_list": 1, "outside_gene_list": 3,
@@ -270,7 +282,10 @@ same document is the `details` of the report's result manifest
 
 Every section has `title`, `status` (`ok`, `not_run` or `failed`),
 `summary`, `findings`, `missing` (`what` and the `command` to run in the
-sample folder), `warnings`, `sources` and, when failed, `error`. The overview
+sample folder), `warnings`, `sources` and, when failed, `error`. Each source
+gives the selected run's `command`, `status`, `finished` and `manifest`, and
+`latest_attempt`: `null` when it is the newest run of its step, otherwise
+the newer failed or cancelled attempt with the same four fields. The overview
 adds `facts` and `qc`, ClinVar adds `gene_list`, `build`, `counts`, `genes`
 and `all_calls`, and the microarray section adds `files` and `metrics`.
 
@@ -283,4 +298,6 @@ The report's result manifest records the source manifests as inputs (role
 `manifest`), the four documents as outputs (`report_html`, `report_markdown`,
 `report_json`, `findings_table`), the metrics `findings`,
 `findings_<label>` and `section_<name>` (each section's status), and a
-`section_failed` warning for each failed section.
+`section_failed` warning for each failed section and a `newer_attempt_failed`
+warning (with its `section`) for each source that a newer failed attempt
+followed.
