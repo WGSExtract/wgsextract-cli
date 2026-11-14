@@ -107,7 +107,7 @@
               "description": "Each listed gene with P/LP calls, counted by zygosity.",
               "items": {
                 "type": "object",
-                "required": ["gene", "inheritance", "heterozygous", "homozygous", "hemizygous", "partial", "confidence", "status", "status_text"],
+                "required": ["gene", "inheritance", "heterozygous", "homozygous", "hemizygous", "partial", "phase", "confidence", "status", "status_text"],
                 "additionalProperties": false,
                 "properties": {
                   "gene": {"type": "string"},
@@ -116,8 +116,9 @@
                   "homozygous": {"type": "integer", "minimum": 0},
                   "hemizygous": {"type": "integer", "minimum": 0, "description": "Haploid calls (one allele in the genotype)."},
                   "partial": {"type": "integer", "minimum": 0, "description": "Calls whose other allele was not called (1/.)."},
+                  "phase": {"enum": ["trans", "cis", "unknown", null], "description": "The phase of two or more heterozygous calls: trans when two are on opposite copies (two ALTs of one call such as 1/2, or phased in one phase set), cis when all are phased on one copy in one phase set, else unknown (unphased, phased without a PS, or in different phase sets). Null for fewer than two, and when the calls are incomplete (calls_truncated) unless trans."},
                   "confidence": {"enum": ["high", "moderate", "low", "not_assessed"], "description": "The weakest confidence label of the gene's calls."},
-                  "status": {"enum": ["biallelic", "possible_biallelic", "carrier", null], "description": "For a gene the list reports only when biallelic (AR): biallelic (a homozygous call, or two ALTs of one multi-allelic call such as 1/2), possible_biallelic (two or more heterozygous calls with phase unknown, or a hemizygous or partly called genotype) or carrier (one heterozygous call). Null for other genes, and when the calls are incomplete (calls_truncated) unless biallelic."},
+                  "status": {"enum": ["biallelic", "possible_biallelic", "carrier", null], "description": "For a gene the list reports only when biallelic (AR): biallelic (a homozygous call, or two heterozygous calls in trans), possible_biallelic (two or more heterozygous calls not all phased together, or a hemizygous or partly called genotype) or carrier (one heterozygous call, or several in cis). Null for other genes, and when the calls are incomplete (calls_truncated) unless biallelic."},
                   "status_text": {"type": "string", "description": "The status explained; empty when status is null."}
                 }
               }
@@ -290,7 +291,8 @@
             "zygosity": {"type": ["string", "null"]},
             "depth": {"type": ["integer", "null"]},
             "genotype_quality": {"type": ["integer", "null"]},
-            "alt_fraction": {"type": ["number", "null"]}
+            "alt_fraction": {"type": ["number", "null"]},
+            "phase_set": {"type": ["string", "null"], "description": "FORMAT/PS of a ClinVar call: calls phased (0|1) in one phase set are on known copies."}
           }
         },
         "links": {

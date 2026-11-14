@@ -137,8 +137,10 @@ otherwise on the CPU, with the same records either way. The manifest records
 - `--memory` is the sort memory per thread. `auto` uses 25% of RAM (at least
   2 GB) split across the threads, with at least 1 GiB per thread; for example
   16 GiB and 12 threads gives 1 GiB each, 12 GiB in total. With bwa-mem2,
-  sorting is capped at 256 MiB per thread to leave room for its index; bwa
-  keeps the full `--memory`.
+  sorting is capped at 256 MiB per thread to leave room for its index.
+  Native `wgse-bwa` can also lower the requested sort budget
+  when fitting its GPU pipeline, or cap an over-budget CPU fallback at 256M
+  per thread as described below.
 - `samtools sort` reserves all of its threads' memory when it starts, so every
   sort gets at most half the RAM in total and no more than its input can fill
   (see [resource_estimates.md](resource_estimates.md#samtools-sort-buffers)).
@@ -349,23 +351,47 @@ the check, or is older than the oldest supported release, raises the
 
   Otherwise `wgse-bwa` or `wgse-bwa-mem2` runs as below. Ultima reads keep
   BWA. The records are the same either way; see the parity results below.
-- **Metal.** `wgse-bwa`, `wgse-bwa-mem2` and `wgse-bwa-mem3` run with
-  `--backend auto`, using the GPU when their capabilities report
-  `metal_available`. If the GPU fails during
-  a run, they finish on the CPU with the same alignments. `wgse-minimap2` runs on
-  the CPU.
+- **Metal.** These builds normally run with `--backend auto` when their
+  capabilities report `metal_available`; `wgse-bwa` also applies its
+  GPU-specific RAM-fit check below. Stand-in selection uses the rules above.
+  An explicit `--aligner bwa-mem3` or `--fast` selects its Metal backend from
+  capabilities and may continue after a `LOW` memory warning: those explicit
+  paths do **not** use `wgse-bwa`'s GPU-fit guard. If the GPU fails during a
+  run, the builds finish on the CPU with the same alignments.
+  `wgse-minimap2` runs on the CPU.
 - **Memory.** `wgse-bwa`'s GPU backend needs about 0.75 GiB more than bwa (8.76
   against 7.96 GB peak for 5M read pairs on hs38 at 8 threads), and 0.76 GiB
   more for a denser suffix-array sample after 20M reads. When the alignment's
-  memory estimate with it exceeds the Mac's RAM less 2 GiB, the sort memory per
-  thread is lowered (768M, 512M, 384M, then 256M; sorting more often doesn't
-  change the output). When the CPU run's own estimate is larger than that, as
-  for a 30x genome on a 16 GB Mac, the GPU run only has to fit within it: the
-  CPU run would go ahead regardless, about four times slower.
-  When `realign` streams reads from the input into the aligner, the estimate
-  must also fit the RAM available when it starts, so the GPU never pushes it
-  to extracting FASTQs. If even 256M doesn't fit,
-  `wgse-bwa` runs on the CPU. The batch size (`-K`) never changes.
+  memory estimate exceeds the Mac's **physical RAM less 2 GiB**, the sort
+  memory per thread is lowered (768M, 512M, 384M,
+  then 256M; sorting more often doesn't change the output). This also applies
+  when realignment extracts FASTQs rather than streaming them.
+  An oversized CPU estimate does **not** make an oversized GPU plan safe.
+  If no GPU plan fits, `wgse-bwa` runs on the CPU. If its pipeline with the
+  requested sort memory is also over budget, sort memory is capped at 256M
+  per thread; an already smaller budget is retained. The conservative CPU
+  estimate can still report `LOW`: this is not a reservation or a guarantee of RAM fit.
+  Momentarily low available RAM warns without forcing a large-RAM host onto
+  CPU; streaming realignment retains its existing available-RAM check.
+  CPU fallback was about **2.5× slower** on the measured 16 GB M1 whole genome.
+  To favor speed despite the swap risk, pass **`--prefer-native-gpu`** or set
+  **`prefer_native_gpu = true`** in `config.toml`. Normal GPU-fit sort step-down
+  runs first. Only when none fits does the preference replace CPU fallback:
+  explicit `--memory` is retained, while default/config memory is capped at
+  256M, subject to general sort limits. `--no-prefer-native-gpu` overrides config.
+  The manifest records `native_aligner_backend_reason="memory_budget_cpu"` on
+  fallback (`"prefer_gpu"` on opt-in), estimate/budget bytes and requested/
+  actual sort memory; a fitting stepped-down Metal plan uses
+  `"memory_budget_metal_low_sort"` (CUDA: `"memory_budget_cuda_low_sort"`).
+  A resumed run retains these diagnostics; an ineffective preference changes
+  neither the reason nor the journal key.
+  Whole 35x Metal/sort256 retained exact records at 5.08 h, but still moved
+  378.39 GiB swap-out versus CPU's 47.87 GiB: it failed the under-200-GiB
+  gate, so CPU remains the automatic low-memory choice when no GPU plan fits.
+  Workers and the batch size (`-K 100000000`) never change. Reducing K changes
+  alignment records, including MAPQ and duplicate flags, so it is not an
+  identity-preserving memory adjustment
+  ([#747](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
   `wgse-bwa-mem2` is chosen only when
   bwa-mem2's own (CPU) memory estimate fits, so a GPU too small for its index
   tables, where it finishes on the CPU, still fits. Before 0.5.0 that estimate

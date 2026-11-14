@@ -83,6 +83,8 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
   - The PR uses `Fixes #N` and lands under the babysitting rules below.
   - Heavy compute goes through the host's resource coordinator, short timing runs included; running outside it starves everyone else's queue. On a host without one, check the load first and keep to a share that leaves room for others.
   - Agents work only in their own worktree. The main checkout stays on `main`; never check out a branch there, reviews included.
+  - Clean up when the work ends: once an issue's PR merges, or its work stops (stop rule reached, research done, abandoned), copy the worktree's `out/` logs and small text evidence to `out/archive/<worktree>/` in the main checkout, then `git worktree remove` it. Branches stay, so unmerged experiments survive. Remove it before `gh pr merge --delete-branch` (which deletes the worktree and its untracked `out/` with it).
+  - Keep large shared inputs (reference indexes, benchmark reads) in one place outside per-issue worktrees and link to them; delete per-run outputs (BAMs, SAMs, timing runs) once their numbers are recorded in a PR or issue.
   - Validation evidence goes in `out/` and is summarised on the issue or PR.
 - **Agent budget.** Keep at most **two active implementers per machine**; queue the rest. Start a fresh agent per PR/task, not unrelated follow-up messages to an old agent. Retire it at its stop rule or handoff.
   - Pass paths, commit IDs, acceptance criteria and a bounded objective; point to files instead of pasting histories, logs or instruction files.

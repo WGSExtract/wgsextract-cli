@@ -98,23 +98,37 @@ jobs:
       - name: Compare raw decoded VCF records without normalization
         run: |
           $script = @'
-          import gzip, hashlib, json
+          import gzip, hashlib, json, sys
           from pathlib import Path
+          # Pinned from native Windows x64 and Linux x64 runs of main on 2026-11-14.
+          # The previous pin (589fb4b1..., 251,928 bytes, FORMAT GT:PL:AD) predates
+          # `vcf snp` requesting FORMAT/AD,FORMAT/DP for depth-aware confidence
+          # labels (#383); the only body change is the added per-sample DP.
+          expected = {"records": 1437, "body_bytes": 260506, "formats": ["GT:PL:DP:AD"],
+                      "body_sha256": "d74f491db6eb9f2f6ee3188639d4ad44fd9c276f4af102f23d7c64eff8aff77f"}
           digest = hashlib.sha256()
           count = size = 0
+          formats, first = set(), None
           with gzip.open("out/calling-control/calls/snps.vcf.gz", "rb") as stream:
               for line in stream:
                   if not line.startswith(b"#"):
                       digest.update(line)
                       count += 1
                       size += len(line)
-          result = {"records": count, "body_bytes": size, "body_sha256": digest.hexdigest(),
+                      formats.add(line.split(b"\t")[8].decode())
+                      first = first or line.decode().rstrip("\n")
+          result = {"records": count, "body_bytes": size, "formats": sorted(formats),
+                    "body_sha256": digest.hexdigest(),
                     "region": "chr20:10000000-11000000",
                     "policy": "Raw decoded body, order/newlines/values unchanged; headers excluded."}
           Path("out/calling-control/fingerprint.json").write_text(json.dumps(result, indent=2) + "\n")
           print(json.dumps(result))
-          assert count == 1437
-          assert digest.hexdigest() == "589fb4b1189290eab285992b71f9e0231455cfb93f3ab4e20e877a828db0b861"
+          changed = [f"{key}: expected {value}, got {result[key]}"
+                     for key, value in expected.items() if result[key] != value]
+          if changed:
+              print("VCF body fingerprint mismatch:", *changed, f"first record: {first}",
+                    sep="\n  ", file=sys.stderr)
+              sys.exit(1)
           '@
           $script | pixi run python -
           if ($LASTEXITCODE) { throw "Native x64/ARM64 public VCF equality failed" }

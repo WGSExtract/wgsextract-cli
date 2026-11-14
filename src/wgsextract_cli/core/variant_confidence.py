@@ -413,6 +413,8 @@ class Finding:
     genotype: str
     confidence: CallConfidence
     annotations: dict[str, str] = field(default_factory=dict)
+    # FORMAT/PS: calls phased (``|``) in one phase set are on known copies.
+    phase_set: str = ""
 
     def row(self, columns: Sequence[str]) -> dict[str, str]:
         c = self.confidence
@@ -428,6 +430,7 @@ class Finding:
             "depth": _format(c.depth),
             "genotype_quality": _format(c.genotype_quality),
             "alt_fraction": _format(c.alt_fraction, 3),
+            "phase_set": self.phase_set,
             **{column: self.annotations.get(column, "") for column in columns},
         }
 
@@ -447,6 +450,7 @@ class Finding:
             "alt_fraction": None
             if c.alt_fraction is None
             else round(c.alt_fraction, 4),
+            **({"phase_set": self.phase_set} if self.phase_set else {}),
             **{k: v for k, v in self.annotations.items() if v},
         }
 
@@ -701,6 +705,7 @@ def label_records(
                         fmt.get("GT", "."),
                         result,
                         annotations,
+                        "" if fmt.get("PS", ".") == "." else fmt["PS"],
                     )
                 )
         fields[7] = _strip_own_info(fields[7])
@@ -866,7 +871,7 @@ def _write(
 
 TABLE_COLUMNS = (
     "chrom", "pos", "ref", "alt", "genotype", "zygosity", "confidence",
-    "reasons", "depth", "genotype_quality", "alt_fraction",
+    "reasons", "depth", "genotype_quality", "alt_fraction", "phase_set",
 )  # fmt: skip
 
 

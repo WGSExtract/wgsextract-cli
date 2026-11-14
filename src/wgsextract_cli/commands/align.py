@@ -43,9 +43,11 @@ from wgsextract_cli.core.native_aligners import (
     INSTALL_HINT,
     AlignerCommand,
     NativeAligner,
+    NativeMemoryDecision,
     bwa_mem3_failure,
     find_bwa_mem3,
     find_native_aligner,
+    native_gpu_preference,
     native_setting,
     platform_binaries,
 )
@@ -159,6 +161,7 @@ class AlignJob:
     outdir: str | None = None
     threads: int | None = None
     memory: str | None = None
+    memory_explicit: bool = False
     platform: str | None = None
     aligner: str = "auto"
     preset: str | None = None
@@ -171,6 +174,7 @@ class AlignJob:
     fast: bool = False
     # auto or off: WGS Extract's Apple Silicon aligner builds (native_aligners).
     native_aligners: str | None = None
+    prefer_native_gpu: bool | None = None
     # Whether wgse-bwa reads the reference's dense suffix-array file (opt-in).
     dense_suffix_array: bool | None = None
     # samtools options decoding a CRAM r1 (realign's, or _cram_reference's).
@@ -189,7 +193,9 @@ class AlignJob:
     @classmethod
     def of(cls: type[_Job], params: Params) -> _Job:
         """The job of ``params``' fields that it shares."""
-        return cls(**job_values(params, cls))
+        return cls(
+            **job_values(params, cls), memory_explicit=params.explicitly_set("memory")
+        )
 
     @property
     def read_count(self) -> int | None:
@@ -635,12 +641,12 @@ def native_short_read_aligner(
     Its build (wgse-bwa, wgse-bwa-mem2) writes the same alignments; it runs on
     its GPU (Metal on Apple Silicon, CUDA on Linux) when it can. wgse-bwa's GPU
     backend needs bwa_gpu_memory more RAM: when the pipeline's estimate with it
-    exceeds this machine's RAM less headroom, or the CPU run's estimate when
-    that is larger (a 30x genome on 16 GB), sort memory is lowered (which
-    leaves the output unchanged), and when even 256M doesn't fit wgse-bwa runs
-    on the CPU. Streaming realign (additional_ram_bytes) also needs it to fit
-    the RAM available now, as streaming_mapping_fits checks, so the GPU never
-    pushes it to extracting FASTQs.
+    exceeds physical RAM less headroom or the RAM available now, sort memory
+    is lowered without changing the output. When even 256M doesn't fit,
+    wgse-bwa runs on the CPU, whose buffers are not wired for GPU access.
+    An over-budget CPU fallback also caps sort memory at 256M per thread.
+    Workers and the scientific batch size are unchanged. Streaming realign
+    counts additional_ram_bytes beside the same pipeline.
     wgse-bwa-mem2 keeps bwa-mem2's (CPU) estimate, which also covers its CPU
     fallback when the GPU can't hold its index tables; from 0.5.0 that
     estimate leaves out the .0123 file it no longer loads
@@ -719,7 +725,7 @@ def _bwa_gpu_fit(
     dense_sa: Path | None,
 ) -> tuple[AlignerCommand, str]:
     """wgse-bwa on its GPU with the sort memory per thread that lets it fit
-    (see native_short_read_aligner), else on the CPU with ``memory``."""
+    (see native_short_read_aligner), else on the CPU with bounded sort memory."""
     tool = "bwa"
     gpu = bwa_gpu_memory(ref, reads, dense_sa_file=dense_sa is not None)
     dense_sa_bytes = dense_sa.stat().st_size if dense_sa else 0
@@ -745,23 +751,54 @@ def _bwa_gpu_fit(
         )
         return estimate.total + additional_ram_bytes
 
-    # The GPU never needs more than the CPU run it replaces, which goes
-    # ahead (with a LOW preflight) even when it doesn't fit.
-    cpu = needed(memory, 0)
-    limit = max(budget, cpu)
-    fitting = next((m for m in candidates if needed(m) <= limit), None)
-    if fitting is None:
-        room = (
-            f"the {budget / 1024**3:.1f} GiB of RAM it can use"
-            if limit == budget
-            else f"the {cpu / 1024**3:.1f} GiB it needs on the CPU"
+    fitting = next((m for m in candidates if needed(m) <= budget), None)
+    if fitting is None and native_gpu_preference(job.prefer_native_gpu):
+        preferred_memory = memory if job.memory_explicit or mib <= 256 else "256M"
+        logging.info(
+            "Preferring %s's native GPU (--prefer-native-gpu): estimated %.1f GiB "
+            "against a %.1f GiB memory budget after GPU sort step-down; using %s. "
+            "This speed preference may cause heavy swapping.",
+            native.binary,
+            needed(preferred_memory) / 1024**3,
+            budget / 1024**3,
+            preferred_memory,
         )
+        return AlignerCommand(
+            tool,
+            native,
+            gpu=True,
+            dense_sa=dense_sa,
+            memory_decision=NativeMemoryDecision(
+                "prefer_gpu", needed(preferred_memory), budget, memory, preferred_memory
+            ),
+        ), preferred_memory
+
+    if fitting is None:
+        requested_memory = memory
+        gpu_estimate = needed(candidates[-1])
         logging.info(
             f"Running {native.binary} on the CPU: with its {_gpu_name(native)} GPU backend "
-            f"the alignment is estimated to need {needed(candidates[-1]) / 1024**3:.1f} "
-            f"GiB, more than {room}."
+            f"the alignment is estimated to need {gpu_estimate / 1024**3:.1f} "
+            f"GiB, more than the {budget / 1024**3:.1f} GiB memory budget. "
+            "CPU fallback was about 2.5x slower on the measured 16 GB M1 whole "
+            "genome. Use --prefer-native-gpu (config prefer_native_gpu=true) "
+            "to favor speed instead, accepting possible heavy swapping."
         )
-        aligner = AlignerCommand(tool, native, dense_sa=dense_sa)
+        if mib > 256 and needed(memory, 0) > budget:
+            logging.info(
+                "Sorting with 256M per thread (not %s) to reduce the over-budget "
+                "CPU pipeline's concurrent memory; workers and batch size are unchanged.",
+                memory,
+            )
+            memory = "256M"
+        aligner = AlignerCommand(
+            tool,
+            native,
+            dense_sa=dense_sa,
+            memory_decision=NativeMemoryDecision(
+                "memory_budget_cpu", gpu_estimate, budget, requested_memory, memory
+            ),
+        )
     else:
         if fitting != memory:
             logging.info(
@@ -769,7 +806,20 @@ def _bwa_gpu_fit(
                 f"room for {native.binary}'s {_gpu_name(native)} GPU backend; the output "
                 "is the same."
             )
-        aligner = AlignerCommand(tool, native, gpu=True, dense_sa=dense_sa)
+        decision = (
+            NativeMemoryDecision(
+                f"memory_budget_{native.gpu}_low_sort",
+                needed(fitting),
+                budget,
+                memory,
+                fitting,
+            )
+            if fitting != memory
+            else None
+        )
+        aligner = AlignerCommand(
+            tool, native, gpu=True, dense_sa=dense_sa, memory_decision=decision
+        )
         memory = fitting
     return aligner, memory
 

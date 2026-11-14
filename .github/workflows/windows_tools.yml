@@ -80,24 +80,16 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: windows-tools
-          path: windows-tools
-      - name: Publish the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.release_tag }}
-        run: |
-          case "$TAG" in windows-tools-*) ;; *) echo "Tag must start with windows-tools-" >&2; exit 1 ;; esac
-          {
-            echo "Native Windows builds of WGS Extract's command-line tools, as conda packages that Pixi installs."
-            echo "Built from packaging/windows/recipes at ${GITHUB_SHA} by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
-            echo
-            echo "| Package | SHA-256 |"
-            echo "| --- | --- |"
-            for f in windows-tools/*.conda; do echo "| $(basename "$f") | \`$(sha256sum "$f" | cut -d' ' -f1)\` |"; done
-          } > notes.md
-          gh release create "$TAG" windows-tools/*.conda windows-tools/msys2-packages-used.txt \
-            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Windows tools $TAG" \
-            --notes-file notes.md --prerelease --latest=false
+          persist-credentials: false
+      - uses: ./.github/actions/publish-native-release
+        with:
+          tag: ${{ inputs.release_tag }}
+          tag-prefix: windows-tools-
+          title: Windows tools ${{ inputs.release_tag }}
+          source: packaging/windows/recipes
+          artifacts: windows-tools
+          extra-assets: msys2-packages-used.txt
+          description: |
+            Native Windows builds of WGS Extract's command-line tools, as conda packages that Pixi installs.
