@@ -14,10 +14,12 @@ import pytest
 
 from tests.microarray_helpers import microarray_params
 from wgsextract_cli.commands import microarray
+from wgsextract_cli.core.microarray_coordinates import project_coordinates
 from wgsextract_cli.core.microarray_utils import (
     convert_to_vendor_format,
     liftover_hg38_to_hg19,
 )
+from wgsextract_cli.core.results import CommandResult, collecting
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 
 KIT = [
@@ -396,6 +398,83 @@ def test_liftover_complements_genotypes_in_inverted_regions(tmp_path):
     # hg38 chr1:1 is the last base of hg19's reverse-strand block: chr1:10000.
     # AC complements to TG, written in alphabetical order.
     assert lifted == [["rsInv", "1", "10000", "GT"]]
+
+
+# hg38 chr1:101 has two chain placements (hg19 chr1:201 and chr1:301); chr1:1001
+# one; chr2:1 lies on an inverted block (hg19 chr2:1000); chr3:5 and chr3:105
+# both land on hg19 chr3:505.
+MULTI_MAPPING = (
+    "chain 100 chr1 10000 + 100 110 chr1 10000 + 200 210 1\n10",
+    "chain 90 chr1 10000 + 100 110 chr1 10000 + 300 310 2\n10",
+    "chain 80 chr1 10000 + 1000 1010 chr1 10000 + 5000 5010 3\n10",
+    "chain 70 chr2 10000 + 0 10 chr2 1000 - 0 10 4\n10",
+    "chain 60 chr3 10000 + 0 10 chr3 10000 + 500 510 5\n10",
+    "chain 50 chr3 10000 + 100 110 chr3 10000 + 500 510 6\n10",
+)
+
+
+def test_issue_853_multiply_placed_sites_are_no_calls_not_first_hit(tmp_path):
+    """Issue 853: a site with two chain hits was exported at the first one."""
+    lib_root = _templates(
+        tmp_path / "lib",
+        "23andMe_V5.txt",
+        "# h\n",
+        "rsAmb\t1\t201\nrsAmbAlt\t1\t301\nrsUniq\t1\t5001\n",
+        "rsInv\t2\t1000\nrsCol\t3\t505\nrsGone\t1\t9000\n",
+    )
+    (lib_root / "ref.fa").touch()
+    outdir = tmp_path / "out"
+    outdir.mkdir()
+    kit = [
+        ("rsAmb", "1", "101", "AC"),
+        ("rsUniq", "1", "1001", "AG"),
+        ("rsInv", "2", "1", "AC"),
+        ("rsCol1", "3", "5", "AA"),
+        ("rsCol2", "3", "105", "GG"),
+        ("rsGone", "1", "9000", "CT"),
+    ]
+    result = CommandResult(command="microarray")
+    with collecting(result):
+        microarray._convert_microarray_outputs(
+            params=microarray_params(formats="23andme_v5"),
+            outdir=str(outdir),
+            base_name="sample",
+            lib=SimpleNamespace(
+                root=str(lib_root),
+                build="hg38",
+                liftover_chain=_chain(tmp_path / "c.chain", *MULTI_MAPPING),
+            ),
+            combined_kit_txt=_kit(outdir / "sample_CombinedKit.txt", kit),
+            ref_fasta=str(lib_root / "ref.fa"),
+            start_total=0.0,
+        )
+
+    assert (outdir / "sample_23andMe_V5.txt").read_text() == (
+        "# h\nrsAmb\t1\t201\t--\nrsAmbAlt\t1\t301\t--\nrsUniq\t1\t5001\tAG\n"
+        "rsInv\t2\t1000\tGT\nrsCol\t3\t505\t--\nrsGone\t1\t9000\t--\n"
+    )
+    assert {k: v for k, v in result.metrics.items() if k.startswith("liftover_")} == {
+        "liftover_lifted": 2,
+        "liftover_unmapped": 1,
+        "liftover_alt_contig": 0,
+        "liftover_ambiguous": 1,
+        "liftover_collision": 2,
+    }
+    [warning] = [w for w in result.warnings if w.code == "liftover_ambiguous"]
+    assert warning.details == {"ambiguous": 1, "collision": 2}
+
+
+def test_issue_853_cached_projection_keeps_rejection_counts(tmp_path):
+    chain = _chain(tmp_path / "c.chain", *MULTI_MAPPING)
+    sites = [("chr1", 101), ("chr1", 1001), ("chr3", 5), ("chr3", 105)]
+    library = str(tmp_path / "library")
+
+    cold_rows, cold = project_coordinates(sites, chain, library)
+    warm_rows, warm = project_coordinates(sites, chain, library)
+
+    assert list(warm_rows) == list(cold_rows)
+    assert warm == cold
+    assert (cold.lifted, cold.ambiguous, cold.collision) == (1, 1, 2)
 
 
 # --- 23andMe haploid calls, line endings, template fixes ----------------------

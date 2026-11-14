@@ -83,6 +83,7 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `mapped_read_fraction_unavailable` | `info --detailed` | Long reads' mapped percentage could not be estimated: no read starts in the sampled windows (a small targeted file). |
 | `alt_unaware`, `duplicates_unmarked` | `info`, `vcf snp`/`indel`, `microarray` | The alignment has ALT contigs without ALT-aware mapping, or its duplicates are not marked. |
 | `high_homozygosity`, `low_homozygosity`, `high_no_call_rate` | `microarray` | Genotype statistics outside the expected range. |
+| `liftover_ambiguous` | `microarray` on hg38 | Sites the hg38-to-hg19 chain places more than once (`ambiguous`), or distinct sites that land on one hg19 position (`collision`), are exported as no-calls rather than placed arbitrarily. The run's `liftover_*` metrics count every outcome. |
 | `alignment_memory` | `align`, `realign` | minimap2 is estimated to need more RAM than is available (`aligner`, `estimated_gib`, `available_gib`, and `suggested_threads`/`suggested_memory` that fit, or `null`). The run continues. |
 | `aligner_stalled` | `align`, `realign` | The aligner reported no progress, and no stage of its pipeline used CPU, for 15 minutes (`tool`, `minutes`): it is waiting on its input or output. A quiet aligner whose pipeline is busy (a slow batch of centromeric long reads, or samtools collate reading the whole input first) is not stalled. |
 | `dense_suffix_array_unused` | `align`, `realign` asked to use the dense suffix-array file; `ref dense-sa` | It wasn't used (`reason`: `other_aligner` with the `aligner` that ran, `missing`, `unusable`, `wgse_bwa_too_old` or `no_wgse_bwa`; `path`, `version`); the alignment ran without it, with the same records. |
@@ -236,6 +237,11 @@ Other commands' metrics:
   diplotype per HLA gene, flagged repeats, SMN1/SMN2 copy numbers with
   `sma_carrier` and `sma_affected`); `repair` the records read and
   repaired.
+- `microarray` on hg38 input records how the hg38-to-hg19 liftover placed the
+  CombinedKit's sites: `liftover_lifted`, and the no-calls by reason,
+  `liftover_unmapped`, `liftover_alt_contig`, `liftover_ambiguous` (more than
+  one placement) and `liftover_collision` (sharing an hg19 position with a
+  different site).
 - `vep` records `inputs`, `succeeded`, `skipped` and `failed`, and `variants`
   per annotated VCF; a directory of inputs writes `vep.manifest.json`.
 - Reference installers (`ref library --install`, `ref bootstrap`, the

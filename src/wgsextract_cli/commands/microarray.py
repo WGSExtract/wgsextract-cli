@@ -210,7 +210,7 @@ def _convert_microarray_outputs(
         logging.info(LOG_MESSAGES["micro_liftover_warn"])
         start_lift = time.time()
         try:
-            liftover_hg38_to_hg19(
+            lifted = liftover_hg38_to_hg19(
                 final_txt,
                 hg19_txt,
                 chain,
@@ -223,6 +223,18 @@ def _convert_microarray_outputs(
             )
         except (OSError, ValueError) as e:
             raise WGSExtractError(f"Microarray liftover failed: {e}") from e
+        current_result().add_metrics(
+            **{f"liftover_{reason}": n for reason, n in lifted._asdict().items()}
+        )
+        if lifted.ambiguous or lifted.collision:
+            warn(
+                "liftover_ambiguous",
+                f"{lifted.ambiguous:,} sites have more than one hg19 placement and "
+                f"{lifted.collision:,} share an hg19 position with another site; "
+                "they are exported as no-calls rather than placed arbitrarily.",
+                ambiguous=lifted.ambiguous,
+                collision=lifted.collision,
+            )
         final_txt = hg19_txt
         record_kept(hg19_txt, outdir, "combined_kit_hg19")
         logging.info(f"Liftover took {time.time() - start_lift:.2f}s")
