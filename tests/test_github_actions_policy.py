@@ -5,6 +5,18 @@ import pytest
 from scripts import validate_github_actions as policy
 
 
+@pytest.mark.parametrize("job", ["required", "ready-gate"])
+def test_876_summary_gates_stop_when_the_workflow_is_cancelled(job: str) -> None:
+    workflow = (policy.ROOT / ".github/workflows/pr_ci.yml").read_text()
+    block = workflow.split(f"\n  {job}:\n", 1)[1].split("\n  required:", 1)[0]
+    condition = block.split("    if:", 1)[1].split("    runs-on:", 1)[0]
+    # CI contract: !cancelled() overrides implicit success() without keeping
+    # gates alive on workflow cancellation like always() does.
+    assert "!cancelled()" in condition
+    assert "always()" not in condition
+    assert "success()" not in condition
+
+
 def write_workflow(root: Path, uses: str) -> None:
     directory = root / ".github" / "workflows"
     directory.mkdir(parents=True)
