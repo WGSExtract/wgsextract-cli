@@ -1217,7 +1217,6 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
         for c in labelled
         if variant_confidence.is_pathogenic(str(c.get("CLNSIG") or ""))
     ]
-    calls = clinical_evidence.nonredundant_calls(calls)
     conflicts, _ = _labelled_calls(
         source, "clinvar_conflicts", "clinvar_conflict_table"
     )
@@ -1234,6 +1233,17 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
             section["warnings"].append(
                 {"code": "gene_list_unavailable", "message": str(error)}
             )
+    if not unavailable:
+        for call in calls:
+            genes = _call_genes(
+                gene_list,
+                call,
+                build,
+                str(call.get("chrom") or ""),
+                _int(call.get("pos")),
+            )
+            call["_report_gene_symbols"] = [g.symbol for g in genes] if genes else []
+        calls = clinical_evidence.nonredundant_calls(calls)
     outside = unplaced = 0
     findings = []
     gene_calls: dict[str, tuple[gene_lists.Gene, list[Mapping[str, Any]]]] = {}
@@ -1248,6 +1258,8 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
         if not genes:
             outside += not review["conflict"]
             continue
+        if "_report_gene_symbols" in call:
+            genes = [g for g in genes if g.symbol in call["_report_gene_symbols"]]
         if not review["conflict"]:
             for gene in genes:
                 gene_calls.setdefault(gene.symbol, (gene, []))[1].append(call)
@@ -1556,6 +1568,14 @@ def _gene_calls(
             or any(haps == {0, 1} for haps in phase_haplotypes.values())
         ):
             status = "biallelic"
+        elif (
+            not hemi
+            and not partial
+            and len(phase_haplotypes) == 1
+            and all(c.get("_mnv_phase_set") for c in calls)
+            and len(next(iter(phase_haplotypes.values()))) == 1
+        ):
+            status = "carrier"
         elif hemi or partial or het >= 2:
             status = "possible_biallelic"
         elif het:

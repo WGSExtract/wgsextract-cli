@@ -53,7 +53,7 @@ def nonredundant_calls(calls: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
             str(call.get("alt")),
         )
 
-    covered: dict[tuple[str, str, str, str], tuple[str, set[int]]] = {}
+    covered: dict[tuple[tuple[str, str, str, str], str], tuple[str, set[int]]] = {}
     annotated = [dict(call) for call in calls]
     for call in annotated:
         try:
@@ -75,25 +75,41 @@ def nonredundant_calls(calls: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
             }
             call["_mnv_phase_set"] = ps
             for component in parts:
-                covered.setdefault(key(component), (ps, set()))[1].update(haplotypes)
+                for gene in call.get("_report_gene_symbols", [""]):
+                    covered.setdefault((key(component), gene), (ps, set()))[1].update(
+                        haplotypes
+                    )
         except (ValueError, KeyError, TypeError, IndexError, AttributeError):
             continue
     result = []
     for call in annotated:
-        coverage = covered.get(key(call))
-        if coverage is not None:
-            ps, haplotypes = coverage
-            gt = str(call.get("genotype", "")).split("|")
-            if len(gt) == 2 and set(gt) <= {"0", "1"}:
-                remaining = [
-                    "1" if allele == "1" and h not in haplotypes else "0"
-                    for h, allele in enumerate(gt)
-                ]
-                copies = remaining.count("1")
-                if not copies:
-                    continue
-                call["_gene_genotype"] = "|".join(remaining)
-                call["_mnv_phase_set"] = ps
-                call["_mnv_residual_copies"] = copies
-        result.append(call)
+        genes = call.get("_report_gene_symbols", [""])
+        if not genes:
+            result.append(call)
+            continue
+        groups: dict[tuple[str, str], list[str]] = {}
+        for gene in genes:
+            residual, phase = "", ""
+            coverage = covered.get((key(call), gene))
+            if coverage is not None:
+                ps, haplotypes = coverage
+                gt = str(call.get("genotype", "")).split("|")
+                if len(gt) == 2 and set(gt) <= {"0", "1"}:
+                    remaining = [
+                        "1" if allele == "1" and h not in haplotypes else "0"
+                        for h, allele in enumerate(gt)
+                    ]
+                    if "1" not in remaining:
+                        continue
+                    residual, phase = "|".join(remaining), ps
+            groups.setdefault((residual, phase), []).append(gene)
+        for (residual, phase), retained_genes in groups.items():
+            retained = dict(call)
+            if "_report_gene_symbols" in call:
+                retained["_report_gene_symbols"] = retained_genes
+            if residual:
+                retained["_gene_genotype"] = residual
+                retained["_mnv_phase_set"] = phase
+                retained["_mnv_residual_copies"] = residual.split("|").count("1")
+            result.append(retained)
     return result

@@ -183,6 +183,7 @@ def test_chain_uses_each_steps_known_output(tmp_path, monkeypatch, keep_awake):
 
     class Lib:
         clinvar_vcf = revel_file = "present"
+        fasta = "present"
 
         def __init__(self, *_a, **_k):
             pass
@@ -468,6 +469,7 @@ def test_clinvar_normalizes_contigs_and_leaves_no_temporaries(tmp_path):
     assert _query(str(outdir / "clinvar_pathogenic.vcf.gz"), "%POS\n") == ["10"]
     assert sorted(os.listdir(inputs)) == ["sample.vcf.gz", "sample.vcf.gz.tbi"]
     assert sorted(os.listdir(outdir)) == [
+        ".wgse_normalized_resources",
         "clinvar_annotated.vcf.gz",
         "clinvar_annotated.vcf.gz.tbi",
         "clinvar_conflicts.confidence.tsv",

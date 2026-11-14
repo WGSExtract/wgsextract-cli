@@ -370,7 +370,7 @@ def test_836_unavailable_resource_alt_contigs_do_not_block_primary_findings(tmp_
     assert warning["details"]["count"] == 1
 
 
-@pytest.mark.parametrize(("extra_gt", "expected"), [("0|1", 0), ("1|0", 1), ("0/1", 0)])
+@pytest.mark.parametrize(("extra_gt", "expected"), [("0|1", 0), ("1|0", 0), ("0/1", 0)])
 def test_837_intervening_variant_must_not_invent_a_different_pathogenic_mnv(
     tmp_path, extra_gt, expected
 ):

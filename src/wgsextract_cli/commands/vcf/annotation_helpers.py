@@ -244,22 +244,19 @@ def annotate_vcf(
             if reference:
                 from .matching import normalized_inputs
 
-                if not annotation.endswith(VCF_SUFFIXES):
-                    from .matching import table_as_vcf
-
-                    annotation, columns = table_as_vcf(
-                        annotation, columns, header_lines, reference, work
-                    )
-                    cmd[cmd.index("-c") + 1] = columns
-                input_vcf, annotation = normalized_inputs(
+                input_vcf, annotation, columns = normalized_inputs(
                     input_vcf,
                     annotation,
                     reference,
                     work,
                     compose_mnvs,
                     compose_thresholds,
+                    columns,
+                    header_lines,
+                    label in {"CADD", "REVEL", "AlphaMissense"},
                 )
                 cmd[cmd.index("-a") + 1] = annotation
+                cmd[cmd.index("-c") + 1] = columns
             run_command(
                 ["bcftools", "norm", "-m", "-any", "--old-rec-tag", SPLIT_TAG,
                  "-Oz", "-o", split, input_vcf],

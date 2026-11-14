@@ -563,7 +563,12 @@ def variant_rows(
                 (ann or {}).get("HGVS.p")
             )
             diplotype, phenotype = pharmcat.get(gene or "", (None, None))
-            review = ce.review_evidence(info)
+            clinical = {
+                key: _per_allele(info.get(key), numbers.get(key), alt_index)
+                for key in (ce.IDENTITY, "CLNREVSTAT", "CLNSIGCONF")
+            }
+            clinical["CLNSIG"] = clnsig
+            review = ce.review_evidence(clinical)
             yield (
                 chrom,
                 pos,
@@ -600,11 +605,11 @@ def variant_rows(
                 _value(info.get("SV_FREQ")),
                 int(IMPUTED_TAG in info),
                 gp,
-                _value(info.get(ce.IDENTITY)),
-                _value(info.get("CLNREVSTAT")),
+                clinical[ce.IDENTITY],
+                clinical["CLNREVSTAT"],
                 _to_int(str(review["stars"])),
                 str(review["review_tier"]) if "CLNSIG" in info else None,
-                _value(info.get("CLNSIGCONF")),
+                clinical["CLNSIGCONF"],
                 _value(info.get(ce.ORIGIN)),
                 _value(info.get(ce.COMPONENTS)),
             )

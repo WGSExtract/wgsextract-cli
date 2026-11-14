@@ -186,8 +186,11 @@ class FakeSteps:
         data = home / "data"
         data.mkdir()
         self.config = get_config_path().read_text()
-        # An empty library, so only the configured data counts as installed.
+        # The FASTA is installed; annotation availability comes from config.
         (home / "library").mkdir()
+        genomes = home / "library" / "genomes"
+        genomes.mkdir()
+        (genomes / "hg38.fa").write_text(">chr1\n" + "A" * 1000 + "\n")
         self.settings: dict[str, object] = {"reference_library": str(home / "library")}
         for ann, key in _ANNOTATION_DATA.items():
             (data / ann).write_text(f"{ann} release 1")

@@ -477,6 +477,7 @@ def test_chain_step_without_its_output_fails_and_keeps_intermediates(tmp_path):
 
     class Lib:
         clinvar_vcf = "present"
+        fasta = "present"
 
         def __init__(self, *_a, **_k):
             pass

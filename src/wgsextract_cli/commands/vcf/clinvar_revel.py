@@ -148,15 +148,25 @@ def run_clinvar(params: VcfClinvarParams) -> None:
         CLINVAR_TABLE_COLUMNS,
         "ClinVar conflicting assertions (not consensus P/LP)",
     )
+    result = current_result()
+    conflict_metrics = conflict_summary.metrics("clinvar_conflict_confidence")
+    result.add_output(conflicts, "clinvar_conflicts", metrics=conflict_metrics)
+    result.add_metrics(**conflict_metrics)
     if conflict_summary.carried:
-        variant_confidence.record(
-            conflict_summary,
-            output=conflicts,
-            role="clinvar_conflicts",
-            what="ClinVar conflicting assertions",
+        details = dict(result.details or {})
+        details["confidence"] = [
+            *details.get("confidence", []),
+            conflict_summary.details(conflicts, "clinvar_conflicts"),
+        ]
+        result.set_details(details)
+    if conflict_summary.counts[variant_confidence.LOW]:
+        from wgsextract_cli.core.results import warn
+
+        warn(
+            "low_confidence_conflicts",
+            "Some conflicting ClinVar assertions have low sequencing confidence.",
+            count=conflict_summary.counts[variant_confidence.LOW],
         )
-    else:
-        current_result().add_output(conflicts, "clinvar_conflicts")
     current_result().add_output(conflict_table, "clinvar_conflict_table", kind="tsv")
     logging.info(LOG_MESSAGES["vcf_clinvar_done"].format(output=path_out))
 
