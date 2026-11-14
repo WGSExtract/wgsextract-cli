@@ -1,6 +1,9 @@
 """Translate the shared bcftools sex/PAR contract into caller intervals."""
 
 import hashlib
+import os
+import re
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -13,7 +16,7 @@ from wgsextract_cli.core.bgzf import is_bgzf
 from wgsextract_cli.core.builds import canonical_build, ploidy_for_build
 from wgsextract_cli.core.reference_assets import read_fai_lengths, sequence_dictionary
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
-from wgsextract_cli.core.region_selection import selected_intervals
+from wgsextract_cli.core.region_selection import Intervals, selected_intervals
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
@@ -26,6 +29,81 @@ class PloidyInterval:
     ploidy: int
 
 
+def _sex_contig(chrom: str) -> str | None:
+    key = chrom.upper().removeprefix("CHR")
+    if key in {"X", "Y"}:
+        return key
+    if key in {"M", "MT"} or re.fullmatch(r"NC_012920\.\d+", key):
+        return "M"
+    for accession, name in (("NC_000023", "X"), ("NC_000024", "Y")):
+        if re.fullmatch(rf"{accession}\.\d+", key):
+            return name
+    return None
+
+
+def _policy(
+    rows: list[list[str]], selected: Intervals, sex: str
+) -> list[PloidyInterval]:
+    rules = []
+    try:
+        for chrom, first_text, last_text, code, value in rows:
+            if code in {sex, "*"}:
+                start = int(first_text) - 1 if first_text != "*" else None
+                end = int(last_text) if last_text != "*" else None
+                ploidy = int(value)
+                if (start is not None and start < 0) or (end is not None and end < 1):
+                    raise ValueError
+                if start is not None and end is not None and end <= start:
+                    raise ValueError
+                if ploidy not in {0, 1, 2}:
+                    raise ValueError
+                rules.append((chrom, start, end, ploidy))
+    except ValueError as exc:
+        raise WGSExtractError(
+            "Malformed or unsupported reference ploidy rule."
+        ) from exc
+    result: list[PloidyInterval] = []
+    for chrom, spans in selected.items():
+        key = _sex_contig(chrom)
+        relevant = [
+            row
+            for row in rules
+            if row[0] in {chrom, "*"}
+            or (key is not None and _sex_contig(row[0]) == key)
+        ]
+        for start, end in spans:
+            breaks = {start, end}
+            for _, first, last, _ in relevant:
+                for bound in (first, last):
+                    if bound is not None:
+                        breaks.add(max(start, min(end, bound)))
+            points = sorted(breaks)
+            for left, right in zip(points, points[1:], strict=False):
+                matches = [
+                    row
+                    for row in relevant
+                    if (row[1] is None or row[1] <= left)
+                    and (row[2] is None or row[2] >= right)
+                ]
+                specific = [row for row in matches if row[0] != "*"]
+                values = {row[3] for row in specific or matches} or {2}
+                if len(values) != 1:
+                    raise WGSExtractError(
+                        "Overlapping reference ploidy rules disagree."
+                    )
+                ploidy = values.pop()
+                if (
+                    result
+                    and result[-1].chrom == chrom
+                    and result[-1].end == left
+                    and result[-1].ploidy == ploidy
+                ):
+                    result[-1] = replace(result[-1], end=right)
+                else:
+                    result.append(PloidyInterval(chrom, left, right, ploidy))
+    return result
+
+
 def calling_ploidy(
     alignment: str,
     reference: str,
@@ -34,6 +112,7 @@ def calling_ploidy(
     region: str | None,
     *,
     commas: bool = True,
+    default_contigs: set[str] | frozenset[str] | None = None,
 ) -> list[PloidyInterval]:
     """Zero-based half-open intervals, including ploidy-zero exclusions.
 
@@ -63,16 +142,20 @@ def calling_ploidy(
     selected = (
         selected
         if selected is not None
-        else {chrom: [(0, length)] for chrom, length in lengths.items()}
+        else {
+            chrom: [(0, length)]
+            for chrom, length in lengths.items()
+            if default_contigs is None or chrom in default_contigs
+        }
     )
-    special = any(chrom.lower().removeprefix("chr") in {"x", "y"} for chrom in selected)
+    special = any(_sex_contig(chrom) in {"X", "Y"} for chrom in selected)
     if not special and not library.ploidy_file:
         return [
             PloidyInterval(
                 chrom,
                 start,
                 end,
-                1 if chrom.lower().removeprefix("chr") in {"m", "mt"} else 2,
+                1 if _sex_contig(chrom) == "M" else 2,
             )
             for chrom, spans in selected.items()
             for start, end in spans
@@ -102,7 +185,10 @@ def calling_ploidy(
             "This caller does not support a single-sex or custom-sex ploidy table. "
             "Provide M and F rules or a sex-neutral '*' fallback."
         )
-    sex = sample_sex(alignment, directory) if sexes != {"*"} else None
+    male, female = _policy(rows, selected, "M"), _policy(rows, selected, "F")
+    if male == female:
+        return female
+    sex = sample_sex(alignment, directory)
     if sex is not None and sex not in {"Male", "Female"}:
         warn(
             "caller_sex_unknown",
@@ -111,62 +197,27 @@ def calling_ploidy(
         )
     if sex is not None:
         current_result().add_metrics(calling_sex=sex)
-    code = "M" if sex == "Male" else "F"
-    rules = []
-    for fields in rows:
-        chrom, rule_start, rule_end, rule_sex, value = fields
-        if rule_sex in {code, "*"}:
-            try:
-                rules.append((chrom, rule_start, rule_end, int(value)))
-            except ValueError as exc:
-                raise WGSExtractError(
-                    "Malformed reference library ploidy file."
-                ) from exc
-    result = []
-    for chrom, spans in selected.items():
-        relevant = [row for row in rules if row[0] in {chrom, "*"}]
-        for start, end in spans:
-            breaks = {start, end}
-            for _, first, last, _ in relevant:
-                if first != "*" and last != "*":
-                    breaks.update(
-                        (
-                            max(start, min(end, int(first) - 1)),
-                            max(start, min(end, int(last))),
-                        )
-                    )
-            points = sorted(breaks)
-            for left, right in zip(points, points[1:], strict=False):
-                matches = [
-                    row
-                    for row in relevant
-                    if (row[1] == "*" or int(row[1]) - 1 <= left)
-                    and (row[2] == "*" or int(row[2]) >= right)
-                ]
-                specific = [row for row in matches if row[0] == chrom]
-                applicable = specific or matches or [("", "", "", 2)]
-                if len({row[3] for row in applicable}) != 1:
-                    raise WGSExtractError(
-                        "Overlapping reference ploidy rules disagree; this caller "
-                        "does not support that policy."
-                    )
-                ploidy = applicable[0][3]
-                if ploidy not in {0, 1, 2}:
-                    raise WGSExtractError("This caller supports only ploidy 0, 1 or 2.")
-                result.append(PloidyInterval(chrom, left, right, ploidy))
-    return result
+    return male if sex == "Male" else female
 
 
 def write_intervals(path: Path, intervals: list[PloidyInterval]) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     content = "".join(f"{i.chrom}\t{i.start}\t{i.end}\n" for i in intervals)
     path = path.with_stem(f"{path.stem}-{hashlib.sha256(content.encode()).hexdigest()}")
+    fd, name = tempfile.mkstemp(dir=path.parent, prefix=".policy-")
+    temporary = Path(name)
     try:
-        with path.open("x") as stream:
+        with os.fdopen(fd, "w", newline="\n") as stream:
             stream.write(content)
-    except FileExistsError:
-        if path.read_text() != content:
-            raise WGSExtractError(f"Calling policy input has changed: {path}") from None
+        try:
+            os.link(temporary, path)
+        except FileExistsError:
+            if path.read_text() != content:
+                raise WGSExtractError(
+                    f"Calling policy input has changed: {path}"
+                ) from None
+    finally:
+        temporary.unlink(missing_ok=True)
     return str(path)
 
 
@@ -188,15 +239,23 @@ def call_partitioned(
     run: Callable[[P, int, CallerSetup | None, bool], None],
 ) -> None:
     """Run haploid and diploid jobs separately, then gather in reference order."""
-    import tempfile
-
     from wgsextract_cli.commands.vcf.basic import record_variants
     from wgsextract_cli.core.atomic_output import safe_output
     from wgsextract_cli.core.output_checks import warn_if_no_variants
     from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 
+    default_contigs = None
+    if name == "clair3":
+        from .clair3 import _MAJOR_CONTIGS
+
+        default_contigs = _MAJOR_CONTIGS
     intervals = calling_ploidy(
-        str(params.input), setup.ref, setup.lib, setup.outdir, params.region
+        str(params.input),
+        setup.ref,
+        setup.lib,
+        setup.outdir,
+        params.region,
+        default_contigs=default_contigs,
     )
     active = {i.ploidy for i in intervals if i.ploidy}
     if not active:
@@ -210,6 +269,15 @@ def call_partitioned(
         raise WGSExtractError(
             "GATK --scatter does not support sex/PAR ploidy partitions."
         )
+    if name == "gatk" and params.region is None:
+        from wgsextract_cli.core.cram_staging import cram_version
+
+        version = cram_version(str(params.input))
+        if version is not None and version >= (3, 1):
+            raise WGSExtractError(
+                "Whole-genome GATK CRAM 3.1 ploidy partitions require BAM input. "
+                "Convert to BAM first, or select a bounded --region."
+            )
     from wgsextract_cli.core.dependency_checks import verify_dependencies
 
     verify_dependencies(["bcftools", "tabix"])

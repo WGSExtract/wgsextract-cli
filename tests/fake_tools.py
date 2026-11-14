@@ -258,6 +258,8 @@ if not os.path.isdir(tmp):
     sys.exit(f"A USER ERROR has occurred: --tmp-dir {{tmp}} does not exist")
 if " " in tmp:
     sys.exit("htsjdk.tribble.TribbleException: Unable to automatically instantiate codec")
+if state.get("require_cram") and not alignment.endswith(".cram"):
+    sys.exit("This qualification requires direct CRAM input, not BAM staging")
 if alignment.endswith(".cram") and not state["reads_cram"]:
     sys.exit("htsjdk.samtools.cram.CRAMException: CRAM version 3.1 is not supported")
 intervals = open(local("-L")).read().split() if "-L" in opts else []
@@ -885,7 +887,7 @@ class FakeDeepVariant:
 
 
 _FAKE_DOCKER = r"""
-import json, os, re, signal, subprocess, sys, time
+import json, os, re, shlex, signal, subprocess, sys, time
 
 
 def state():
@@ -980,7 +982,14 @@ elif args[0] == "run":
             not os.path.exists(path) or any(
                 os.path.commonpath([os.path.realpath(path), os.path.realpath(m)])
                 == os.path.realpath(m) for m in mounts))
-    paths = [p for arg in command for p in re.findall(r"/[^\s\"']+", arg)]
+    words = shlex.split(command[2]) if command[:2] == ["/bin/bash", "-c"] else command
+    paths = []
+    for word in words:
+        value = word.split("=", 1)[-1] if word.startswith("--") and "=" in word else word
+        if value.startswith("/"):
+            paths.append(value)
+        else:
+            paths.extend(re.findall(r"/[^\s\"']+", value))
     paths += [env.get("HOME"), env.get("TMPDIR"), opts.get("-w")]
     for path in paths:
         # The image's own folders, and its /tmp (HOME when none is given).

@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from functools import partial
 from pathlib import Path
 
 from wgsextract_cli.api._cli import cli_handler
@@ -187,7 +188,7 @@ def run_freebayes(params: VcfFreebayesParams) -> None:
     record_variants(out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region))
 
 
-def _gatk_gpu(params: VcfGatkParams) -> None:
+def _gatk_gpu(params: VcfGatkParams, setup: CallerSetup | None = None) -> None:
     """HaplotypeCaller on an NVIDIA GPU (Parabricks), which reads CRAM itself."""
     from wgsextract_cli.core.parabricks import (
         call_variants,
@@ -200,7 +201,7 @@ def _gatk_gpu(params: VcfGatkParams) -> None:
     fit = plan_gpu_memory(
         "haplotypecaller", "gatk", check=not params.no_gpu_memory_check
     )
-    setup = setup_caller(params)
+    setup = setup or setup_caller(params)
     outdir, ref = setup.outdir, setup.ref
     input_file, region = str(params.input), params.region
     if ultima.alignment_is_ultima(input_file):
@@ -216,9 +217,15 @@ def _gatk_gpu(params: VcfGatkParams) -> None:
 def run_gatk(params: VcfGatkParams) -> None:
     from .caller_ploidy import call_partitioned
 
+    require_native_tool("gatk")
     if params.gpu and params.scatter:
         raise UsageError("GATK --scatter cannot be combined with --gpu.")
-    call_partitioned(params, setup_caller(params), "gatk", _run_gatk)
+    call_partitioned(
+        params,
+        setup_caller(params),
+        "gatk",
+        partial(_run_gatk, stage_region=params.region is not None),
+    )
 
 
 def _run_gatk(
@@ -226,6 +233,8 @@ def _run_gatk(
     sample_ploidy: int = 2,
     setup: CallerSetup | None = None,
     record: bool = True,
+    *,
+    stage_region: bool = True,
 ) -> None:
     """``vcf gatk``: HaplotypeCaller into ``gatk.vcf.gz``, or Parabricks."""
     require_native_tool("gatk")
@@ -233,7 +242,7 @@ def _run_gatk(
     if params.gpu:
         if scatter:
             raise UsageError("GATK --scatter cannot be combined with --gpu.")
-        _gatk_gpu(params)
+        _gatk_gpu(params, setup)
         return
     verify_dependencies(
         ["gatk", "samtools", *(["bcftools", "tabix"] if scatter else [])]
@@ -296,7 +305,7 @@ def _run_gatk(
 
     try:
         gatk_input, temp_gatk_input = _prepare_gatk_input(
-            input_file, region, ref, outdir
+            input_file, region if stage_region else None, ref, outdir
         )
         if shards:
             with tempfile.TemporaryDirectory(

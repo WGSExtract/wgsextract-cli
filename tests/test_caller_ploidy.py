@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.fake_tools import require_bare_name_fakes
 from tests.htslib_helpers import (
     needs_htslib,
     run_wgsextract,
@@ -46,12 +47,26 @@ def sex_par(tmp_path, request):
             for i in range(30):
                 start = pos - 70 + i
                 read = sample[start - 1 : start + 149]
+                if i % 2 == 0:
+                    if chrom == "chr20":
+                        read = sequences[chrom][start - 1 : start + 149]
+                    else:
+                        bases = list(read)
+                        bases[boundary + 1 - start] = sequences[chrom][boundary]
+                        read = "".join(bases)
                 rows.append(
                     f"{chrom}_{pos}_{i}\t0\t{chrom}\t{start}\t60\t150M\t*\t0\t0"
                     f"\t{read}\t{'I' * 150}\tRG:Z:r"
                 )
     bam = sam_to_bam(rows, tmp_path / "sample.bam")
-    return SimpleNamespace(ref=ref, bam=Path(bam), root=tmp_path, boundary=boundary)
+    return SimpleNamespace(
+        ref=ref,
+        bam=Path(bam),
+        root=tmp_path,
+        boundary=boundary,
+        sequences=sequences,
+        rows=rows,
+    )
 
 
 @pytest.mark.parametrize("sex", ["Male", "Female", "Unknown"])
@@ -60,6 +75,7 @@ def sex_par(tmp_path, request):
 def test_sex_par_850_caller_genotypes_preserve_par_and_autosomes(
     sex_par, caller, sex, bounded, request
 ):
+    require_bare_name_fakes()
     if sex != "Unknown":
         run_wgsextract("sample", "set", "--input", str(sex_par.bam), "--sex", sex)
     common = {
@@ -94,13 +110,13 @@ def test_sex_par_850_caller_genotypes_preserve_par_and_autosomes(
         for c in vcf_calls(sex_par.root / "calls" / f"{caller}.vcf.gz")
     ]
     assert observed == [
-        ("chr20", "1000", "1/1"),
+        ("chr20", "1000", "0/1"),
         (
             "chrX",
             str(sex_par.boundary),
             "1" if sex == "Male" and caller != "deepvariant" else "1/1",
         ),
-        ("chrX", str(sex_par.boundary + 1), "1/1"),
+        ("chrX", str(sex_par.boundary + 1), "0/1"),
     ]
     assert all(".ploidy_" not in str(output.path) for output in result.outputs)
     if sex == "Unknown":
@@ -126,6 +142,7 @@ def test_sex_par_850_gpu_gatk_refuses_unsupported_haploid_policy(sex_par):
 
 
 def test_sex_par_850_native_deepvariant_refuses_unsupported_policy(sex_par, request):
+    require_bare_name_fakes()
     request.getfixturevalue("mac_native")
     run_wgsextract("sample", "set", "--input", str(sex_par.bam), "--sex", "Male")
     result = api.vcf.deepvariant(
@@ -148,6 +165,7 @@ def test_sex_par_850_native_deepvariant_refuses_unsupported_policy(sex_par, requ
 def test_sex_par_850_single_sex_custom_table_is_not_silently_diploid(
     sex_par, caller, request
 ):
+    require_bare_name_fakes()
     for build in ("hg19", "hg38"):
         (sex_par.root / f"ploidy_{build}.txt").write_text("chr20 1 1000 F 1\n")
     run_wgsextract("sample", "set", "--input", str(sex_par.bam), "--sex", "Male")
@@ -177,6 +195,7 @@ def test_sex_par_850_single_sex_custom_table_is_not_silently_diploid(
 def test_sex_par_850_dry_run_cannot_rewrite_an_interrupted_runs_policy(
     sex_par, request
 ):
+    require_bare_name_fakes()
     fake = request.getfixturevalue("dv")
     run_wgsextract("sample", "set", "--input", str(sex_par.bam), "--sex", "Male")
     fake.deepvariant.fail("call_variants")

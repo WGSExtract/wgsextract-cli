@@ -5,6 +5,9 @@ coverage-based inference as bcftools calling. The detected fact and any explicit
 override remain separate in the workspace. An unknown sex produces the structured
 `caller_sex_unknown` warning and uses the female policy, matching bcftools.
 Autosome-only requests do not need a sex scan.
+This remains true with installed M/F tables when their selected policies agree.
+Sex/mitochondrial aliases (including RefSeq X/Y and `M`/`chrMT`) resolve
+consistently for table lookups; the original FASTA names remain in caller inputs.
 
 The reference library's ploidy file wins; otherwise GRCh37/GRCh38 use the same
 bcftools build-specific table used by `vcf snp`. The table's coordinates are
@@ -19,16 +22,23 @@ are explicitly refused rather than silently interpreted as diploid.
 
 * **Google DeepVariant:** uses `--haploid_contigs` and `--par_regions_bed`;
   ploidy-zero intervals are excluded from its region selection. The generated
-  BEDs are immutable, content-addressed, fingerprinted inputs kept while work
-  is resumable. A competing plan cannot rewrite an active run's policy.
+  BEDs are atomically published, immutable, content-addressed inputs in
+  `.deepvariant.policy` beside (not inside) its cleaned work folder. Concurrent
+  planning and work cleanup cannot rewrite or delete an active run's policy.
   Google's recalibration suppresses heterozygous non-PAR genotypes but retains
   homozygous **diploid-encoded** GT fields (`0/0`, `1/1`), not single-allele GT.
 * **CPU GATK:** calls haploid and diploid interval sets separately, using
   `--sample-ploidy`, then gathers and sorts the VCF. Partitioned calls cannot
   currently be combined with `--scatter`.
+  Whole-genome CRAM 3.0 remains direct CRAM input. Whole-genome CRAM 3.1 requiring
+  ploidy partitions must first be converted to BAM, rather than silently staging
+  almost the whole genome as temporary BAMs. Bounded regions retain compatibility
+  staging.
 * **CPU Clair3:** calls each ploidy interval set separately, with
   `--haploid_precise` on the haploid set. That mode retains homozygous-alt
   haploid calls, rather than converting every heterozygous prediction to ALT.
+  Without an explicit region, it retains its chr1–22/X/Y default scope rather
+  than extending calls to ALT/decoy contigs.
 * **wgse-deepvariant and GPU/Parabricks paths:** explicitly refuse requests
   requiring non-diploid handling until those paths are qualified. Diploid-only
   regions still work. For Google's pipeline rather than the native engine, set

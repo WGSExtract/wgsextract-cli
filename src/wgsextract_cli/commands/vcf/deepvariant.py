@@ -831,14 +831,19 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
     if not any(i.ploidy for i in ploidy):
         raise WGSExtractError("The sex/ploidy policy excludes every requested base.")
     if any(i.ploidy == 0 for i in ploidy):
-        region = write_intervals(
-            work / "ploidy" / "selected.bed", [i for i in ploidy if i.ploidy]
+        region = " ".join(
+            f"{i.chrom}:{i.start + 1}-{i.end}" for i in ploidy if i.ploidy
         )
+        if len(region.encode()) > 500_000:
+            raise WGSExtractError(
+                "Ploidy exclusions require too many calling intervals; "
+                "select a smaller --region."
+            )
     haploid = sorted({i.chrom for i in ploidy if i.ploidy == 1})
     par = None
     if haploid:
         par = write_intervals(
-            work / "ploidy" / "par.bed",
+            absolute_path(Path(outdir, ".deepvariant.policy", "par.bed")),
             [i for i in ploidy if i.chrom in haploid and i.ploidy == 2],
         )
     # wgse-deepvariant's htslib (1.25, ARM) decodes CRAM 3.1 correctly.
