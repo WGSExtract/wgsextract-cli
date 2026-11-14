@@ -134,6 +134,13 @@ sequence checksums and alignment artifact.
 
 The legacy GRCh38 mitochondrial target/export behavior is deliberately unchanged.
 
+`lineage mt-haplogroup` reads the same alignment to classify chrM called on
+CHM13 (#832): it calls every chrM site, rebuilds the sample's sequence along
+the alignment, and hands Haplogrep its rCRS variants, indels left-aligned
+against the rCRS. Only the sample's bases count where the two differ (the C
+after rCRS 310, 10208, 3107N), which is why a variants-only VCF on CHM13 is
+refused. On HG00096's chrM it gives H16a1, as the GRCh38 alignment does.
+
 ## Regeneration
 
 `scripts/build_microarray_chm13_map.py --help` documents the developer generator.

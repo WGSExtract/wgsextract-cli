@@ -580,11 +580,18 @@ def test_y_haplogroup_fastq_requires_explicit_alignment(tmp_path):
         run_wgsextract(*argv)
 
 
-def _reads(chrom: str, genome: str, n: int, start: int = 0, snp: int | None = None):
-    """``n`` 50 bp reads at ``start``, with ALT C at 0-based ``snp`` if given."""
+def _reads(
+    chrom: str,
+    genome: str,
+    n: int,
+    start: int = 0,
+    snp: int | None = None,
+    alt: str = "C",
+):
+    """``n`` 50 bp reads at ``start``, with ``alt`` at 0-based ``snp`` if given."""
     seq = genome[start : start + 50]
     if snp is not None:
-        seq = seq[: snp - start] + "C" + seq[snp - start + 1 :]
+        seq = seq[: snp - start] + alt + seq[snp - start + 1 :]
     return [
         f"{chrom}_{i}\t0\t{chrom}\t{start + 1}\t60\t50M\t*\t0\t0\t{seq}\t{'I' * 50}"
         for i in range(n)
@@ -800,26 +807,29 @@ def _mito_on(tmp_path: Path, mito: str, m5: str = "") -> tuple[str, Path]:
     return sam_to_bam([sq, *reads], tmp_path / "kit.bam"), ref
 
 
-@pytest.mark.parametrize("chrm", ["CHM13", "rotated", "origin split", "M5"])
+@pytest.mark.parametrize("chrm", ["rotated", "origin split", "M5"])
 def test_mt_haplogroup_refuses_a_chrm_that_is_not_rcrs_positions_827(tmp_path, chrm):
     """#827: CHM13's chrM is the rCRS's length but rotated 576 bp, so it passed
-    the length check and Haplogrep classified shifted positions."""
-    rcrs, chm13 = pinned_sequences()
+    the length check and Haplogrep classified shifted positions. Since #832
+    CHM13's own chrM is mapped onto the rCRS; other rotations are refused."""
+    rcrs = pinned_sequences()[0]
     mito = {
-        "CHM13": chm13,
         "rotated": rcrs[576:] + rcrs[:576],
         "origin split": rcrs[1:] + rcrs[:1],  # its first 40 bp cross the end
         "M5": rcrs,
     }[chrm]
     # M5: the header says CHM13 even though --ref is (wrongly) an rCRS FASTA.
     bam, ref = _mito_on(tmp_path, mito, m5=CHM13_CHRM_MD5 if chrm == "M5" else "")
-    with pytest.raises(WGSExtractError, match="not the rCRS") as error:
+    with pytest.raises(WGSExtractError) as error:
         run_wgsextract(
             "lineage", "mt-haplogroup", "--input", bam, "--ref", str(ref),
             "--haplogrep-path", _haplogrep(tmp_path),
         )  # fmt: skip
-    assert ("is CHM13v2.0's chrM" in str(error.value)) is (chrm in ("CHM13", "M5"))
-    assert "realign" in str(error.value)
+    if chrm == "M5":
+        assert "CHM13v2.0's chrM in the alignment's header" in str(error.value)
+        assert "--ref" in str(error.value)
+    else:
+        assert "not the rCRS" in str(error.value) and "realign" in str(error.value)
     assert not (tmp_path / "calls.jsonl").exists()  # Haplogrep never ran
 
 
@@ -863,7 +873,8 @@ def test_mt_haplogroup_refuses_a_vcf_called_against_chm13_827(tmp_path, evidence
         plain = tmp_path / "plain.vcf"  # can't be indexed, so its chrM is a guess
         plain.write_bytes(gzip.decompress(Path(vcf).read_bytes()))
         vcf = str(plain)
-    with pytest.raises(WGSExtractError, match="CHM13v2.0's chrM, not the rCRS"):
+    # #832: a variants-only VCF can't be mapped onto the rCRS (10208).
+    with pytest.raises(WGSExtractError, match="CHM13v2.0's chrM.*variants only"):
         run_wgsextract(
             "lineage", "mt-haplogroup", "--input", vcf,
             "--haplogrep-path", _haplogrep(tmp_path),
@@ -884,6 +895,78 @@ def test_mt_haplogroup_refuses_mtdna_split_over_two_contigs_827(tmp_path):
             "lineage", "mt-haplogroup", "--input", str(plain),
             "--haplogrep-path", _haplogrep(tmp_path),
         )  # fmt: skip
+
+
+@pytest.mark.parametrize("at_10208", ["C", "T"])
+def test_mt_haplogroup_maps_a_chm13_chrm_onto_rcrs_positions_832(tmp_path, at_10208):
+    """#832: an alignment on CHM13's chrM was refused. It is mapped onto the
+    rCRS now: HG00096's 750G sits at CHM13 174, and a sample matching CHM13
+    at 10208 has no variant there yet carries 10208C against the rCRS."""
+    chm13 = pinned_sequences()[1]
+    assert (chm13[173], chm13[9630]) == ("A", "C")
+    ref = write_fasta(tmp_path / "ref.fa", {"chrM": chm13})
+    reads = _reads("chrM", chm13, 12, start=150, snp=173, alt="G")
+    snp = 9630 if at_10208 == "T" else None
+    reads += _reads("chrM", chm13, 12, start=9600, snp=snp, alt="T")
+    bam = sam_to_bam([f"@SQ\tSN:chrM\tLN:{len(chm13)}", *reads], tmp_path / "k.bam")
+    result = _classify(
+        bam, tmp_path / "o", ref=ref, haplogrep_path=_haplogrep(tmp_path)
+    )
+    (call,) = _calls(tmp_path)
+    expected = [["chrM", "750", "A", "G"]]
+    expected += [["chrM", "10208", "T", "C"]] if at_10208 == "C" else []
+    assert [r[:4] for r in call["records"]] == expected
+    assert f"md5={RCRS_MD5}" in "".join(call["contigs"])
+    assert "rCRS" in result.details["mt_reference"]
+    assert not result.warnings
+
+
+_POLY_C = {  # CHM13 16294-16310 is rCRS 302-316 with a C after 310
+    "HG00096": (
+        "16294\t.\tACCCCCCC\tACCCCCCCC",
+        [("302", "A", "AC"), ("310", "T", "TC")],
+    ),
+    "CHM13's C": ("", [("310", "T", "TC")]),
+    "the rCRS's": ("16302\t.\tTC\tT", []),
+    # A shorter allele keeps the longer one's REF padding (GATK, DeepVariant).
+    "the rCRS's, padded": ("16302\t.\tTCC\tT,TC", []),
+}
+
+
+@pytest.mark.parametrize("sample", _POLY_C)
+def test_mt_haplogroup_renormalises_chm13_indels_against_rcrs_832(tmp_path, sample):
+    """#832: indels in the poly-C run by rCRS 310 are restated against the
+    rCRS, left-aligned as bcftools calls them there; CHM13's extra C counts
+    only when the sample has it."""
+    indel, expected = _POLY_C[sample]
+    chm13 = pinned_sequences()[1]
+    rows = [
+        (q, f"chrM\t{q}\t.\t{chm13[q - 1]}\t.\t50\tPASS\t.\tGT\t0\n")
+        for q in range(16280, 16321)
+    ]
+    if indel:  # after the reference call at its position
+        gt = len(indel.split()[3].split(","))  # the last ALT
+        rows.append((int(indel.split()[0]), f"chrM\t{indel}\t50\tPASS\t.\tGT\t{gt}\n"))
+    body = "".join(row for _q, row in sorted(rows, key=lambda r: r[0]))
+    meta = f"##contig=<ID=chrM,length=16569,md5={CHM13_CHRM_MD5}>\n"
+    vcf = _vcf(tmp_path / "kit.vcf.gz", {}, body, meta)
+    _classify(vcf, tmp_path / "o", haplogrep_path=_haplogrep(tmp_path))
+    (call,) = _calls(tmp_path)
+    assert [tuple(r[1:4]) for r in call["records"]] == expected
+
+
+def test_mt_haplogroup_contamination_needs_the_alignment_on_chm13_832(tmp_path):
+    chm13 = pinned_sequences()[1]
+    meta = f"##contig=<ID=chrM,length=16569,md5={CHM13_CHRM_MD5}>\n"
+    body = f"chrM\t174\t.\t{chm13[173]}\t.\t50\tPASS\t.\tGT\t0\n"
+    vcf = _vcf(tmp_path / "kit.vcf.gz", {}, body, meta)
+    with pytest.raises(WGSExtractError, match="--contamination.*BAM or CRAM"):
+        run_wgsextract(
+            "lineage", "mt-haplogroup", "--input", vcf, "--contamination",
+            "--haplogrep-path", _haplogrep(tmp_path),
+            "--haplocheck-path", _haplogrep(tmp_path),
+        )  # fmt: skip
+    assert not (tmp_path / "calls.jsonl").exists()
 
 
 @pytest.mark.parametrize(
@@ -1086,3 +1169,23 @@ def test_contamination_check_on_a_bam_calls_heteroplasmies(tmp_path, mini_tree):
         (tmp_path / "o" / "haplocheck_contamination.raw.txt").open(), delimiter="\t"
     )
     assert row["Sample Coverage"] == "12" and row["Overall Homoplasmies"] == "1"
+
+
+@needs_haplogrep3
+@needs_tools("haplocheck")
+def test_contamination_check_maps_chm13_heteroplasmies_onto_rcrs_832(
+    tmp_path, mini_tree
+):
+    """#832: haplocheck reads rCRS positions too, so mutserve's CHM13 calls are
+    mapped, and 10208C, where the sample matches CHM13, is added."""
+    chm13 = pinned_sequences()[1]
+    ref = write_fasta(tmp_path / "ref.fa", {"chrM": chm13})
+    reads = _reads("chrM", chm13, 12, start=150, snp=173, alt="G")
+    reads += _reads("chrM", chm13, 12, start=9600)
+    bam = sam_to_bam([f"@SQ\tSN:chrM\tLN:{len(chm13)}", *reads], tmp_path / "k.bam")
+    result = _classify(bam, tmp_path / "o", ref=ref, contamination=True)
+    assert result.metrics["mt_contamination"] == "ND"
+    (row,) = csv.DictReader(
+        (tmp_path / "o" / "haplocheck_contamination.raw.txt").open(), delimiter="\t"
+    )
+    assert row["Overall Homoplasmies"] == "2"  # 750G and 10208C
