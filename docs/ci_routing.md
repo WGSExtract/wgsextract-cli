@@ -62,10 +62,35 @@ also run both site builders and the app's site-source validator, without
 deployment permissions. The secret scan remains on **all PRs and queue groups**,
 including docs: routing must not hide a secret in prose.
 
-The OS workflows and Install Lab run unconditionally on main pushes and nightly,
-as do the GUI and native workflows covered by area routing. CodeQL retains
-unfiltered main coverage and runs nightly; PRs scan code/configuration paths
-only. Releases and manual dispatches remain available. Install Lab can be
+### Main-push prose filters
+
+CI Ubuntu, macOS, Windows and ARM64 skip Markdown-only main pushes except
+test-checked references: `docs/api.md`, `docs/commands.md`, `site_src/cli.md`,
+`site_src/index.md`, `site_src/install.md`, `gui/site_src/index.md`,
+`gui/docs/distribution.md` and `gui/docs/CHANGELOG.md`. Their ordered `paths`
+start with `**`, exclude `!**/*.md`, then re-include these references so
+freshness/version tests still run. CLI smoke, Linux aligners/DeepVariant,
+GATK/GKL on Windows, GUI Tauri installer and CodeQL use
+`paths-ignore: ["**/*.md"]`. Mixed prose/code pushes still run normally.
+The secret scan remains unfiltered on every main push; Pages retains its
+existing site-source filters.
+
+Install Lab, GUI distribution/CI/developer setup and macOS aligners/DeepVariant
+are intentionally left to #904 (main-push coalescing) to avoid conflicting edits.
+Until those filters land, these six workflows still start for prose-only main
+pushes. The fast-path target is only gitleaks, plus Pages for site sources.
+See AGENTS.md, "Docs fast path", for the narrower direct-push permission:
+policy files and generated/test-checked references still require PRs.
+
+All standalone `pull_request` workflows exclude prose-only Markdown diffs
+through ordered path exclusions (including Developer setup and Linux bwa-mem3
+parity). Only `pr_ci.yml` starts: its existing router retains documentation
+freshness, gitleaks and `required`, including generated-reference checks.
+Mixed diffs still select the union of applicable code areas. PR event types
+and job-level draft gates are managed separately by #910 (draft PR CI gating).
+
+Merge-group routing, nightly schedules, reusable calls, releases and manual
+dispatches retain their coverage. Install Lab can be
 forced on any PR with the `run-install-lab` label. Only this label is actionable:
 adding it runs Install Lab without repeating the matrix; other labels are ignored.
 Label runs cannot cancel a code-validation run. Routing, documentation, lint
@@ -95,7 +120,7 @@ independent, disjoint pytest tiers in parallel:
 
 Both tiers run on every CLI-routed PR, not only main: the existing conservative
 area router includes all Python, tool/configuration and test-input changes.
-Both run unconditionally on main and nightly too. ARM64 retains its complete
+Both run on non-prose main pushes and nightly too. ARM64 retains its complete
 suite in one job. No slow suite is demoted to nightly-only coverage.
 Only `test_genotyping.py` (pure genotype parsing/repeat classification) is
 Ubuntu-x64-only in CI. Real-tool genotyping commands remain cross-platform.
@@ -117,7 +142,7 @@ selected tier rather than a merged whole-suite percentage.
 
 `CLI package and benchmark smoke` runs the existing package-smoke and real-data
 smoke benchmark commands as independent parallel jobs on all three x64 OSes.
-It has the same CLI-PR routing and unconditional main/nightly coverage. Neither
+It has the same CLI-PR routing, non-Markdown main coverage and nightly coverage. Neither
 command precedes pytest anymore; neither has been removed. The failure observer
 watches direct smoke runs and compares routed PR smoke failures with that
 workflow's main run, as it does for the OS workflows.
@@ -172,7 +197,7 @@ because GitHub counts a skipped required check as passing.
 
 The required set stays on fast Ubuntu jobs. The other OS jobs, which more
 often lose runners or wait for capacity, stay advisory so they can't stall the
-queue; main pushes and nightly runs still run them in full. A job-level `needs:` summary in one workflow, rather than polling the
+queue; selected main pushes and nightly runs still run them in full. A job-level `needs:` summary in one workflow, rather than polling the
 checks API, reports exactly once per run with no extra permissions or timeout.
 The queue's `merge_group` events ignore `paths:` filters, so routing uses the
 group's `base_sha...head_sha` diff, keeping docs-only groups to a few minutes.

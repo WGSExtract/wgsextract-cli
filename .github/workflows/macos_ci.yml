@@ -4,6 +4,18 @@ name: CI macOS
 on:
   push:
     branches: [ main ]
+    paths:
+      - "**"
+      - "!**/*.md"
+      # References checked by the documentation tests must still run pytest.
+      - "docs/api.md"
+      - "docs/commands.md"
+      - "site_src/cli.md"
+      - "site_src/index.md"
+      - "site_src/install.md"
+      - "gui/site_src/index.md"
+      - "gui/docs/distribution.md"
+      - "gui/docs/CHANGELOG.md"
   workflow_call:
   schedule:
     - cron: "11 6 * * *"
