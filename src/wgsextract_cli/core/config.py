@@ -108,7 +108,8 @@ KNOWN_SETTINGS = {
     "prefer_native_gpu": (
         False,
         "`align`/`realign`: prefer wgse-bwa's native GPU even above the RAM "
-        "budget, retaining requested sort memory (may swap heavily)",
+        "budget after normal sort step-down; retain explicit memory, otherwise "
+        "cap default/config sort at 256M (may swap heavily)",
     ),
     "dense_suffix_array": (
         False,

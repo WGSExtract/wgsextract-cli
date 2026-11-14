@@ -56,20 +56,29 @@ SSD swap traffic must not be conflated
 ([#747](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
 The read-only `estimate_resources` API does not change settings itself:
 callers supply their resolved backend allowance and sort memory.
-`--prefer-native-gpu` / config `prefer_native_gpu = true` bypasses GPU-fit
-sort reductions and CPU fallback, favoring speed at the risk of heavy swap.
-Explicit `--memory` is retained subject to general sort caps. The manifest's
+`--prefer-native-gpu` / config `prefer_native_gpu = true` applies only after
+normal GPU sort step-down fails, replacing CPU fallback at the risk of heavy
+swap. Explicit `--memory` is retained; default/config memory is capped at
+256M, subject to general sort limits. The manifest's
 `native_aligner_backend_reason`, `native_aligner_memory_estimate_bytes`,
 `native_aligner_memory_budget_bytes`, `native_aligner_sort_memory_requested`
 and `native_aligner_sort_memory_actual` explain fallback or opt-in and survive
 resume. The fallback estimate is the smallest considered GPU plan, not the
 selected CPU pipeline's estimate.
+Reasons are `memory_budget_cpu`, `memory_budget_metal_low_sort` (or CUDA),
+and `prefer_gpu`; preference reasons/journal changes occur only when it
+replaces the CPU plan.
 On the measured 16 GiB M1 whole HG002 35x run, automatic CPU4/sort256
 reported 19.22 GiB / 10.78 GiB available and completed with identical ordered
 records. Swap-out fell from 1,116.92 to 47.87 GiB, **not zero**, while alignment
 wall time rose from 5.40 to 13.63 hours. This is a conservative safety/speed
 trade-off, not evidence that the estimate should shrink to the 7.60 GiB RSS.
 See the [whole validation and options](apple-silicon-16gb.md#whole-genome-validation-of-the-ram-adaptive-fallback).
+The approved whole Metal/sort256 comparison took **5.08 h** with identical
+records, but **378.39 GiB swap-out**, versus CPU's 47.87 GiB. It failed the
+under-200-GiB gate, so it does not justify reducing the working-set estimate
+or making an over-budget GPU plan the default. Its native footprint/wired
+peaks were 10.409/5.551 GiB despite only 8.633 GiB largest-child RSS.
 
 The memory estimate is the selected aligner's. On Linux, bwa-mem3 standing in
 for bwa (`--compat=bwa-mem`, chosen first since #736) needs about twice bwa's

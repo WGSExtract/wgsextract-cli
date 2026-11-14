@@ -161,6 +161,7 @@ class AlignJob:
     outdir: str | None = None
     threads: int | None = None
     memory: str | None = None
+    memory_explicit: bool = False
     platform: str | None = None
     aligner: str = "auto"
     preset: str | None = None
@@ -192,7 +193,9 @@ class AlignJob:
     @classmethod
     def of(cls: type[_Job], params: Params) -> _Job:
         """The job of ``params``' fields that it shares."""
-        return cls(**job_values(params, cls))
+        return cls(
+            **job_values(params, cls), memory_explicit=params.explicitly_set("memory")
+        )
 
     @property
     def read_count(self) -> int | None:
@@ -748,15 +751,17 @@ def _bwa_gpu_fit(
         )
         return estimate.total + additional_ram_bytes
 
-    if native_gpu_preference(job.prefer_native_gpu):
+    fitting = next((m for m in candidates if needed(m) <= budget), None)
+    if fitting is None and native_gpu_preference(job.prefer_native_gpu):
+        preferred_memory = memory if job.memory_explicit or mib <= 256 else "256M"
         logging.info(
             "Preferring %s's native GPU (--prefer-native-gpu): estimated %.1f GiB "
-            "against a %.1f GiB memory budget; retaining sort memory %s. "
+            "against a %.1f GiB memory budget after GPU sort step-down; using %s. "
             "This speed preference may cause heavy swapping.",
             native.binary,
-            needed(memory) / 1024**3,
+            needed(preferred_memory) / 1024**3,
             budget / 1024**3,
-            memory,
+            preferred_memory,
         )
         return AlignerCommand(
             tool,
@@ -764,11 +769,10 @@ def _bwa_gpu_fit(
             gpu=True,
             dense_sa=dense_sa,
             memory_decision=NativeMemoryDecision(
-                "prefer_gpu", needed(memory), budget, memory, memory
+                "prefer_gpu", needed(preferred_memory), budget, memory, preferred_memory
             ),
-        ), memory
+        ), preferred_memory
 
-    fitting = next((m for m in candidates if needed(m) <= budget), None)
     if fitting is None:
         requested_memory = memory
         gpu_estimate = needed(candidates[-1])
@@ -792,7 +796,7 @@ def _bwa_gpu_fit(
             native,
             dense_sa=dense_sa,
             memory_decision=NativeMemoryDecision(
-                "memory_budget", gpu_estimate, budget, requested_memory, memory
+                "memory_budget_cpu", gpu_estimate, budget, requested_memory, memory
             ),
         )
     else:
@@ -802,7 +806,20 @@ def _bwa_gpu_fit(
                 f"room for {native.binary}'s {_gpu_name(native)} GPU backend; the output "
                 "is the same."
             )
-        aligner = AlignerCommand(tool, native, gpu=True, dense_sa=dense_sa)
+        decision = (
+            NativeMemoryDecision(
+                f"memory_budget_{native.gpu}_low_sort",
+                needed(fitting),
+                budget,
+                memory,
+                fitting,
+            )
+            if fitting != memory
+            else None
+        )
+        aligner = AlignerCommand(
+            tool, native, gpu=True, dense_sa=dense_sa, memory_decision=decision
+        )
         memory = fitting
     return aligner, memory
 

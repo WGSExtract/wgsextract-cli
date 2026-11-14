@@ -78,7 +78,11 @@ from wgsextract_cli.core.resource_estimates import (
     preflight_resources,
 )
 from wgsextract_cli.core.results import current_result
-from wgsextract_cli.core.samtools_commands import parse_memory
+from wgsextract_cli.core.samtools_commands import (
+    parse_memory,
+    regular_files_bytes,
+    sort_memory,
+)
 from wgsextract_cli.core.sequencing import input_platform
 from wgsextract_cli.core.steps import (
     Decision,
@@ -580,13 +584,47 @@ def _align_step(
             **({"fast": True} if job.fast else {}),
             **(
                 {"prefer_native_gpu": True}
-                if native_gpu_preference(job.prefer_native_gpu)
+                if aligner in align_cmd.BWA_ALIGNERS
+                and _native_gpu_preference_changes_plan(job, target, reads)
                 else {}
             ),
         },
         tools=_align_tools(aligner, job.platform, bool(job.gpu)),
         # 2: a CRAM's chunked realign could drop unplaced reads (#655).
         version=2 if aligner == "minimap2" and _is_cram(job.input) else 1,
+    )
+
+
+def _native_gpu_preference_changes_plan(
+    job: RealignJob, target: str | None, reads: dict[str, str | None]
+) -> bool:
+    """Key the speed preference only when normal native GPU plans cannot fit."""
+    if (
+        not native_gpu_preference(job.prefer_native_gpu)
+        or job.gpu
+        or not target
+        or not Path(target).is_file()
+        or align_cmd.short_read_tool(job) not in align_cmd.BWA_ALIGNERS
+    ):
+        return False
+    threads, memory = get_resource_defaults(job.threads, job.memory)
+    r1, r2 = reads.get("fastq_r1"), reads.get("fastq_r2")
+    paths = [path for path in (r1, r2) if path] or [job.input]
+    memory = sort_memory(threads, memory, input_bytes=regular_files_bytes(paths))
+    statistics = fastq_input_statistics(r1, r2) if r1 else None
+    count = statistics.reads if statistics else indexed_read_count(job.input, threads)
+    plan, _ = _short_read_plan(
+        job,
+        target,
+        threads=threads,
+        memory=memory,
+        samblaster=align_cmd.duplicate_marker(paired=bool(r2) or not r1)
+        == "samblaster",
+        reads=count,
+        read_length=statistics.read_length if statistics else None,
+    )
+    return (
+        plan.memory_decision is not None and plan.memory_decision.reason == "prefer_gpu"
     )
 
 

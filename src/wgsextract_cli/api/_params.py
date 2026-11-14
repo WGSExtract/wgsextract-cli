@@ -234,6 +234,13 @@ class Params:
     DELETES: ClassVar[bool] = False
     WRITES_BESIDE: ClassVar[str] = ""
     SAVES_IN_WORKING_FOLDER: ClassVar[bool] = False
+    _config_default_fields: ClassVar[frozenset[str]] = frozenset()
+
+    def explicitly_set(self, name: str) -> bool:
+        """Whether a nonempty value came from the caller, not config defaults."""
+        return (
+            getattr(self, name) is not None and name not in self._config_default_fields
+        )
 
     def deletes_data(self) -> bool:
         """Whether running these parameters deletes data the command didn't
@@ -374,7 +381,15 @@ def with_config_defaults(params: P, keep: Collection[str] = ()) -> P:
                 value = None
         if value is not None:
             updates[item.name] = value
-    return dataclasses.replace(params, **updates) if updates else params
+    if not updates:
+        return params
+    configured = dataclasses.replace(params, **updates)
+    object.__setattr__(
+        configured,
+        "_config_default_fields",
+        params._config_default_fields.union(updates),
+    )
+    return configured
 
 
 def from_namespace(cls: type[P], args: argparse.Namespace | Any) -> P:
@@ -396,7 +411,21 @@ def from_namespace(cls: type[P], args: argparse.Namespace | Any) -> P:
         if isinstance(value, list):
             value = tuple(value)
         values[item.name] = value
-    return cls(**values)
+    params = cls(**values)
+    explicit = getattr(args, "_explicit_dests", None)
+    if explicit is not None:
+        object.__setattr__(
+            params,
+            "_config_default_fields",
+            frozenset(
+                item.name
+                for item in param_fields(cls)
+                if item.name in values
+                and item.spec.config_key
+                and item.dest not in explicit
+            ),
+        )
+    return params
 
 
 def job_values(params: Params, job: type) -> dict[str, Any]:

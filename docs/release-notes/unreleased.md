@@ -94,11 +94,17 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   to 47.87 GiB (95.7%), but alignment took 13.63 h rather than 5.40 h:
   reduced SSD swap traffic, not swap-free execution or a speed improvement.
   `--prefer-native-gpu` (or config `prefer_native_gpu = true`) opts into GPU
-  speed despite that risk, retaining requested sort memory subject to general
-  sort caps; `--no-prefer-native-gpu` overrides config. Fallback messages name
+  speed only after normal GPU sort step-down fails: explicit memory is retained,
+  while default/config memory is capped at 256M, subject to general sort limits.
+  `--no-prefer-native-gpu` overrides config. Fallback messages name
   the roughly 2.5× measured slowdown and this override. Manifest/resume
   diagnostics retain the backend reason, estimate/budget bytes and requested/
   actual sort memory.
+  The whole Metal/sort256 comparison kept the gold records at 5.08 h, but
+  swap-out was still 378.39 GiB (versus CPU's 47.87 GiB), failing the 200 GiB
+  gate. CPU therefore remains the low-memory default when no GPU plan fits.
+  An ineffective speed preference no longer changes the reason or reruns a
+  completed GPU alignment.
 
 - Runs stopped with Ctrl-C or SIGTERM report `cancelled`, rather than `failed`,
   when a cleanup failure replaces the stop-signal handler's exit (#717).

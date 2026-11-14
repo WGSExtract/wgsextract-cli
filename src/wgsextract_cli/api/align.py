@@ -88,13 +88,16 @@ def _dense_suffix_array_param() -> Any:
 def _prefer_native_gpu_param() -> Any:
     return param(
         None,
-        help="Prefer wgse-bwa's native Metal/CUDA GPU even when its estimated "
-        "RAM exceeds the budget. Keeps the requested sort memory instead of "
-        "the low-memory CPU fallback; may swap heavily. General sort memory "
-        "limits still apply. Default: config prefer_native_gpu, else off.",
+        help="Try wgse-bwa's normal GPU sort-memory step-down first; if no GPU "
+        "plan fits, prefer Metal/CUDA over CPU despite the RAM budget. "
+        "Retain explicit --memory, otherwise use at most 256M per thread; "
+        "may swap heavily. General sort limits still apply. "
+        "Default: config prefer_native_gpu, else off.",
         doc="Opt in to native wgse-bwa GPU speed over the RAM-budget fallback. "
-        "Keeps the requested sort memory, subject to general sort limits; "
-        "may swap heavily. None uses config prefer_native_gpu, else off.",
+        "Try normal GPU sort step-down first. If none fits, retain explicit "
+        "memory, or cap default/config memory at 256M per thread, subject to "
+        "general sort limits; may swap heavily. None uses config "
+        "prefer_native_gpu, else off.",
         action="boolean_optional",
         config_key="prefer_native_gpu",
     )

@@ -106,8 +106,9 @@ requests. Workers and fixed K100M are unchanged for record identity.
 Low momentary available memory alone does not force a large-RAM host onto
 CPU; streaming realignment retains its available-memory guard.
 `--prefer-native-gpu` (or `prefer_native_gpu = true` in `config.toml`)
-opts into speed despite the swap risk, bypassing this fallback and retaining
-`--memory` subject to general sort caps. `--no-prefer-native-gpu` disables
+opts into speed only after normal GPU sort step-down fails. At that point
+explicit `--memory` is retained; default/config memory is capped at 256M,
+subject to general sort limits. `--no-prefer-native-gpu` disables
 the config preference for one run.
 
 A whole short-read genome on this Mac can therefore use **CPU**, not Metal.
@@ -467,16 +468,50 @@ as swap-free or assume that a near-budget case needs the same trade-off.
   identity-preserving automatic fix, and no whole K10M run was performed.
 - Metal with **K100M and sort256** preserved records and took 29.09 min
   versus 29.38 min for sort512 on that small case, while sort footprint
-  fell from 2.342 to 1.222 GiB. Whole-genome swap traffic for this option
-  is **unmeasured**. It is the next useful single-change experiment, requiring
-  owner approval before a full-input swap/time/hash comparison.
+  fell from 2.342 to 1.222 GiB. The approved whole-genome comparison below
+  retained Metal speed, but still moved **378.39 GiB** of swap-out.
 - Restricting CPU fallback to only *far* over-budget estimates could keep
   faster Metal for modest overestimates, but no threshold has been calibrated.
   That threshold policy is not implemented. The owner-approved speed opt-in,
   `--prefer-native-gpu` / `prefer_native_gpu = true`, deliberately exposes
-  the known roughly 5.4-hour / 1,117-GiB-swap-out choice. Combining it with
-  `--memory 256M` is the approved next whole-genome comparison, not yet a
-  measured result in this table.
+  the known GPU speed/swap choice. It tries normal GPU sort step-down first;
+  an ineffective preference changes neither the manifest reason nor the
+  completed alignment's journal key.
+
+### Three-mode whole-genome comparison
+
+The approved third run used the same HG002 35x reads, whose regenerated full
+FASTQ sizes and fingerprints match both earlier cases, and published
+wgse-bwa 0.12.1 with four workers/K100M. `--prefer-native-gpu --memory 256M`
+selected Metal despite the estimated **20.71 GiB** GPU plan exceeding the
+**14 GiB** physical-RAM budget.
+
+| Whole alignment, sort and inline index | Original Metal/sort512 | CPU/sort256 | Metal/sort256 |
+| :--- | ---: | ---: | ---: |
+| Wall time | 5.40 h | 13.63 h | **5.08 h** |
+| Global swap-out | 1,116.922 GiB | 47.873 GiB | **378.389 GiB** |
+| Global swap-in | 1,113.716 GiB | 46.935 GiB | **376.432 GiB** |
+| Largest-child RSS | 8.298 GiB | 7.602 GiB | **8.633 GiB** |
+| BWA footprint / wired | not sampled | 8.781 / 0.005 GiB | **10.409 / 5.551 GiB** |
+| Ordered SAM gold hash | identical | identical | **identical** |
+
+All 835,260,415 records match the gold hash above. The third run exited 0
+with manifest status `ok`; the free-space guard never fired (29.83 GiB
+minimum). Its separate full extraction took **23.50 min / 3.031 GiB RSS**.
+Native BWA took **17,335.869 s (4 h 49 min)**; the complete alignment/sort/index
+command took **18,294.66 s (5 h 5 min)**. Inline indexing added no separate
+pass; post-command hash/finalization took about **632 s**, outside that wall
+time. Samblaster/sort footprint peaks were 6.111/1.256 GiB, not simultaneous
+sums. VM traffic includes the shared desktop and is not process-attributed.
+
+**Decision: keep CPU as the automatic low-memory fallback.** Metal/sort256
+reduced swap-out 66.1% versus original Metal and kept its speed, but still
+generated **7.90×** the CPU case's swap traffic. It failed the owner's
+under-200-GiB gate. Do not infer RAM fit from its 8.63 GiB RSS or shrink the
+working-set estimate to force automatic GPU selection. GPU/sort256 remains
+an opt-in speed/wear trade-off when no normal GPU plan fits. No additional
+benchmark was started; verified generated outputs/FASTQs were removed and
+free space restored to about 203 GiB.
 
 ## Advice for 16 GB Macs
 

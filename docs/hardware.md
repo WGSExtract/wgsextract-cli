@@ -375,12 +375,19 @@ the check, or is older than the oldest supported release, raises the
   CPU; streaming realignment retains its existing available-RAM check.
   CPU fallback was about **2.5× slower** on the measured 16 GB M1 whole genome.
   To favor speed despite the swap risk, pass **`--prefer-native-gpu`** or set
-  **`prefer_native_gpu = true`** in `config.toml`. This skips GPU-fit sort
-  reductions and CPU fallback, retaining `--memory` subject to the general
-  sort caps above; `--no-prefer-native-gpu` overrides the config opt-in.
-  The manifest records `native_aligner_backend_reason="memory_budget"` on
+  **`prefer_native_gpu = true`** in `config.toml`. Normal GPU-fit sort step-down
+  runs first. Only when none fits does the preference replace CPU fallback:
+  explicit `--memory` is retained, while default/config memory is capped at
+  256M, subject to general sort limits. `--no-prefer-native-gpu` overrides config.
+  The manifest records `native_aligner_backend_reason="memory_budget_cpu"` on
   fallback (`"prefer_gpu"` on opt-in), estimate/budget bytes and requested/
-  actual sort memory; a resumed run retains these diagnostics.
+  actual sort memory; a fitting stepped-down Metal plan uses
+  `"memory_budget_metal_low_sort"` (CUDA: `"memory_budget_cuda_low_sort"`).
+  A resumed run retains these diagnostics; an ineffective preference changes
+  neither the reason nor the journal key.
+  Whole 35x Metal/sort256 retained exact records at 5.08 h, but still moved
+  378.39 GiB swap-out versus CPU's 47.87 GiB: it failed the under-200-GiB
+  gate, so CPU remains the automatic low-memory choice when no GPU plan fits.
   Workers and the batch size (`-K 100000000`) never change. Reducing K changes
   alignment records, including MAPQ and duplicate flags, so it is not an
   identity-preserving memory adjustment
