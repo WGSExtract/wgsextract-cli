@@ -4,13 +4,13 @@
 Two ``samtools depth`` passes with the same read filters as ``--bins``
 (default flags, no base or mapping quality minimum, deletions not counted,
 both overlapping mates counted): one over the targets fills a depth histogram
-per target, and one over the whole file sums the depth for the off-target
-mean.
+per target, and one over the assessed scope sums depth for the off-target mean.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 import subprocess
 import tempfile
 from collections.abc import Iterable, Iterator, Mapping, Sequence
@@ -24,7 +24,7 @@ from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.table_writer import Column, Value, table_path, write_table
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen
 
-from .render import _cram_reference_opts
+from .render import _cram_reference_opts, region_file_tag
 
 DEPTHS = (10, 20, 30)
 MITOCHONDRIA = frozenset({"chrM", "MT", "chrMT", "M"})
@@ -270,14 +270,19 @@ def _target_depths(
 
 
 def _depth_total(
-    input_path: str, reference: str | None, bed: Path, contigs: Mapping[str, int]
+    input_path: str,
+    reference: str | None,
+    bed: Path,
+    contigs: Mapping[str, tuple[int, int]],
 ) -> int:
-    """The depth summed over whole ``contigs``, in one pass over the file.
+    """The depth summed over assessed contig spans, in one pass over the file.
 
     ``samtools depth`` (not ``bedcov``, whose pileup took over 3 GB on a 60x
     Nanopore genome) prints only covered bases; their third column is summed.
     """
-    bed.write_text("".join(f"{c}\t0\t{n}\n" for c, n in contigs.items()), newline="\n")
+    bed.write_text(
+        "".join(f"{c}\t{s}\t{e}\n" for c, (s, e) in contigs.items()), newline="\n"
+    )
     command = [
         "samtools", "depth", "-b", str(bed),
         *_cram_reference_opts(input_path, reference), input_path,
@@ -329,6 +334,27 @@ def _columns() -> tuple[Column, ...]:
 TARGET_TABLE = _columns()
 
 
+def _assessed_spans(
+    lengths: Mapping[str, int], region: str | None
+) -> dict[str, tuple[int, int]]:
+    if region is None:
+        return {c: (0, n) for c, n in lengths.items()}
+    chrom, start, end = region, 0, None
+    if region not in lengths and ":" in region:
+        chrom, _, span = region.rpartition(":")
+        match = re.fullmatch(r"(\d[\d,]*)(?:-(\d[\d,]*))?", span)
+        if match is None:
+            raise UsageError(f"Invalid --region: {region}")
+        start = int(match[1].replace(",", "")) - 1
+        end = int(match[2].replace(",", "")) if match[2] else None
+    if chrom not in lengths:
+        raise UsageError(f"--region names a contig the alignment lacks: {chrom}")
+    end = lengths[chrom] if end is None else end
+    if not 0 <= start < end <= lengths[chrom]:
+        raise UsageError(f"--region is outside the alignment contig: {region}")
+    return {chrom: (start, end)}
+
+
 def run_target_coverage(
     input_path: str,
     reference: str | None,
@@ -338,11 +364,20 @@ def run_target_coverage(
     min_depth: int,
     table_format: str = "tsv",
     metadata: Mapping[str, str] | None = None,
+    *,
+    region: str | None = None,
 ) -> Path:
     bed_path = bed_path.expanduser()
     outdir = str(Path(outdir).expanduser())
     current_result().add_input(bed_path, "targets_bed")
     targets = read_bed(bed_path, lengths)
+    assessed = _assessed_spans(lengths, region)
+    for target in targets:
+        span = assessed.get(target.chrom)
+        if span is None or not span[0] <= target.start < target.end <= span[1]:
+            raise UsageError(
+                f"--by target {target.name} is outside the assessed --region {region}."
+            )
     order = {name: i for i, name in enumerate(lengths)}
     merged = _merged(targets, order)
     Path(outdir).mkdir(parents=True, exist_ok=True)
@@ -360,12 +395,12 @@ def run_target_coverage(
         on_sums = {c: sum(d * n for d, n in h.items()) for c, h in on_depths.items()}
         # The mitochondrial contig is left out of off-target: its copy
         # number isn't the nuclear genome's.
-        nuclear = {c: n for c, n in lengths.items() if c not in MITOCHONDRIA}
+        nuclear = {c: span for c, span in assessed.items() if c not in MITOCHONDRIA}
         targeted = dict.fromkeys(nuclear, 0)
         for chrom, start, end in merged:
             if chrom in targeted:
                 targeted[chrom] += end - start
-        off_bases = sum(nuclear.values()) - sum(targeted.values())
+        off_bases = sum(e - s for s, e in nuclear.values()) - sum(targeted.values())
         off = 0
         if off_bases:
             logging.info("Summing off-target depth (one pass over the file)...")
@@ -383,7 +418,7 @@ def run_target_coverage(
     # Over the merged targets, so overlapping ones count once.
     covered = sum(n for h in on_depths.values() for d, n in h.items() if d >= min_depth)
 
-    stem = f"{Path(input_path).name}_{bed_path.stem}"
+    stem = f"{Path(input_path).name}_{bed_path.stem}{region_file_tag(region)}"
     table = Path(table_path(Path(outdir, f"{stem}_target_coverage"), table_format))
     rows: list[tuple[Value, ...]] = [
         (
@@ -397,6 +432,7 @@ def run_target_coverage(
     write_table(table, TARGET_TABLE, rows, table_format, metadata=metadata)
 
     summary = [
+        f"Assessed scope: {region or 'whole alignment header'}",
         f"Targets: {len(targets)} ({on_bases:,} bases after merging overlaps) "
         f"from {bed_path.name}",
         f"On-target mean depth: {on_mean:.2f}x",
@@ -421,6 +457,8 @@ def run_target_coverage(
     metrics: dict[str, Scalar] = {
         "targets": len(targets),
         "target_bases": on_bases,
+        "off_target_bases": off_bases,
+        "assessed_scope": region or "whole alignment header",
         "on_target_mean_depth": round(on_mean, 3),
         "off_target_mean_depth": round(off_mean, 3),
         "enrichment": round(enrichment, 2) if enrichment is not None else None,

@@ -626,6 +626,18 @@ follows `samtools depth`'s defaults, like `--bins`: deletions and duplicates
 don't count, overlapping mates do. BED contig names may use `chr1` or `1`
 style either way.
 
+The assessed scope defaults to **the whole alignment header**, not just contigs
+with reads. For a regional BAM retaining a full reference header, explicitly
+declare the assessed contig or 1-based inclusive interval with `--region chr20`
+or `--region chr20:100001-200000`. With `--by`, every target must fit inside
+that scope (outside targets are refused rather than silently clipped).
+The off-target depth sum and denominator then use only assessed nuclear bases
+outside the merged targets. Capture and whole-genome BAMs should retain the
+whole-header default: unsequenced off-target contigs still count in the assay.
+The scope is recorded in the manifest's `provenance.params.region`, the
+`assessed_scope` metric and the text summary; regional output names include
+the scope so they do not overwrite whole-header reports.
+
 ## Validation on GIAB HG002
 
 ONT's public HG002 R10.4.1 run (`PAO83395`, giab_2023.05, sup v4.0.0 with

@@ -119,7 +119,7 @@ Exact coverage; outputs the coverage table (or the depth-bins TSV).
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to describe. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
-| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
+| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000); with --by, declare the assessed scope (all targets must fit inside it); otherwise the whole alignment header is the assessed scope |
 | `bins` | `bool` | `False` | `--bins` | Report exact per-contig depth 0, 1-3, 4-7 and 8+ breadth in one streaming pass. |
 | `with_bins` | `bool` | `False` | `--with-bins` | After the coverage table, also report the --bins depth breadth; an up-to-date whole-file bins report is shown again instead of rescanned. |
 | `by` | `Path \| None` | `None` | `--by` | Report depth per target of this BED (e.g. from 'panel bed'): mean, median and the fraction at >=10x, 20x, 30x and --min-depth, plus the on- versus off-target enrichment |

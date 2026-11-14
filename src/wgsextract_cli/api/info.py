@@ -63,7 +63,11 @@ class CalculateCoverageParams(Params):
     ref: Path | None = ref_param()
     outdir: Path | None = outdir_param()
     region: str | None = param(
-        None, help=CLI_HELP["arg_region"], flags=("-r", "--region")
+        None,
+        help=CLI_HELP["arg_region"]
+        + "; with --by, declare the assessed scope (all targets must fit inside it); "
+        "otherwise the whole alignment header is the assessed scope",
+        flags=("-r", "--region"),
     )
     bins: bool = param(
         False,
@@ -101,10 +105,10 @@ class CalculateCoverageParams(Params):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        if self.by is not None and (self.bins or self.region):
+        if self.by is not None and self.bins:
             from wgsextract_cli.core.utils import UsageError
 
-            raise UsageError("--by can't be combined with --bins or --region.")
+            raise UsageError("--by can't be combined with --bins.")
         if self.with_bins and (self.bins or self.by is not None):
             from wgsextract_cli.core.utils import UsageError
 
