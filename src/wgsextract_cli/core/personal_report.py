@@ -887,8 +887,24 @@ def _pharmacogenomics(ctx: _Context) -> dict[str, Any]:
             "HLA-A and HLA-B alleles (T1K)",
             ctx.command_for("typing hla", ctx.alignment, "cram"),
         )
-    count = len(section["findings"])
-    section["summary"] = f"{count} gene call{'s' * (count != 1)}." if count else ""
+    gene_statuses: dict[str, str] = {}
+    priority = {"resolved": 0, "ambiguous": 1, "no_call": 2}
+    for finding in section["findings"]:
+        status = (finding.get("pgx") or {}).get(
+            "status",
+            "no_call" if "no_call" in finding["confidence_reasons"] else "resolved",
+        )
+        previous = gene_statuses.get(finding["gene"], "no_call")
+        gene_statuses[finding["gene"]] = min(
+            (previous, status), key=priority.__getitem__
+        )
+    statuses: dict[str, set[str]] = {}
+    for gene, status in gene_statuses.items():
+        statuses.setdefault(status, set()).add(gene)
+    section["summary"] = "; ".join(
+        f"{len(genes)} {status.replace('_', '-')} gene(s)"
+        for status, genes in sorted(statuses.items())
+    )
     return section
 
 
@@ -909,7 +925,8 @@ def _pharmcat_findings(section: dict[str, Any], source: Source, ctx: _Context) -
             if gene:
                 calls.setdefault(gene, []).append(call)
     evidence = source.output("pharmcat_report", "pharmcat_phenotypes")
-    for gene, diplotype, phenotype in rows:
+    for row in rows:
+        gene, diplotype, phenotype = row.gene, row.diplotype, row.phenotype
         gene_calls = calls.get(gene, [])
         if gene_calls:
             label = _worst(str(c.get("confidence")) for c in gene_calls)
@@ -925,21 +942,29 @@ def _pharmcat_findings(section: dict[str, Any], source: Source, ctx: _Context) -
         else:
             label, reasons = NOT_ASSESSED, ["no_labelled_calls"]
             basis = "no labelled calls in the gene"
-        section["findings"].append(
-            _finding(
-                "pharmacogenomics",
-                f"{gene} diplotype (PharmCAT)",
-                diplotype,
-                detail=phenotype if phenotype != "-" else None,
-                gene=gene,
-                confidence=label,
-                reasons=reasons,
-                basis=basis,
-                evidence=ctx.rel(evidence),
-                region=f"gene {gene}",
-                manifest=ctx.rel(source.manifest),
-            )
+        if row.status != "resolved":
+            label = variant_confidence.LOW
+            reasons = sorted({*reasons, row.status})
+        finding = _finding(
+            "pharmacogenomics",
+            f"{gene} diplotype (PharmCAT)",
+            diplotype,
+            detail=phenotype if phenotype != "-" else None,
+            gene=gene,
+            confidence=label,
+            reasons=reasons,
+            basis=basis,
+            evidence=ctx.rel(evidence),
+            region=f"gene {gene}",
+            manifest=ctx.rel(source.manifest),
         )
+        finding["pgx"] = {
+            "status": row.status,
+            "alternatives": row.alternatives,
+            "phenotype_consistent": row.phenotype_consistent,
+            "source": "PharmCAT",
+        }
+        section["findings"].append(finding)
 
 
 def _cyrius_finding(section: dict[str, Any], source: Source, ctx: _Context) -> None:

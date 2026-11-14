@@ -24,7 +24,7 @@ import jsonschema
 import pytest
 from markdown_it import MarkdownIt
 
-from tests.htslib_helpers import needs_htslib, needs_tools
+from tests.htslib_helpers import bgzip_index, needs_htslib, needs_tools, write_fasta
 from wgsextract_cli import api
 from wgsextract_cli.core import gene_lists
 from wgsextract_cli.core import personal_report as pr
@@ -1002,6 +1002,134 @@ def test_pharmcat_genes_take_their_weakest_labelled_call(sample):
     assert genes["SLCO1B1"]["confidence"] == "not_assessed"
     assert genes["CYP2C19"]["evidence"]["file"] == "HG002.report.html"
     assert genes["CYP2D6"]["confidence"] == "high"  # Cyrius
+
+
+@needs_htslib
+def test_842_non_definition_reference_blocks_do_not_downgrade_gene_report(sample):
+    from wgsextract_cli.api.vcf import VcfPharmcatParams
+    from wgsextract_cli.commands.vcf.pharmcat import label_pgx_calls, prepare_input
+    from wgsextract_cli.core.variant_confidence import write_table
+
+    release = sample / "release"
+    release.mkdir()
+    (release / "pharmcat_regions.bed").write_text("chr1\t100\t200\tPX=CYP2C19\n")
+    (release / "pharmcat_positions.vcf").write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=400>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr1\t105\t.\tAA\tA\t.\tPASS\t.\n"
+    )
+    reference = write_fasta(release / "ref.fa", {"chr1": "A" * 400})
+    plain = sample / "input.vcf"
+    plain.write_text(
+        "##fileformat=VCFv4.2\n##reference=GRCh38\n##contig=<ID=chr1,length=400>\n"
+        '##INFO=<ID=END,Number=1,Type=Integer,Description="Block end">\n'
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tHG002\n"
+        "chr1\t101\t.\tA\t<NON_REF>\t.\tPASS\tEND=104\tGT:DP:GQ\t0/0:40:2\n"
+        "chr1\t105\t.\tA\t<NON_REF>\t.\tPASS\tEND=106\tGT:DP:GQ\t0/0:40:60\n"
+        "chr1\t107\t.\tA\t<NON_REF>\t.\tPASS\tEND=200\tGT:DP:GQ\t0/0:40:2\n"
+    )
+    vcf = bgzip_index(plain, sample / "HG002.vcf.gz")
+    work = sample / "work"
+    work.mkdir()
+    prepare_input(vcf, str(release), str(reference), str(work))
+    confidence = label_pgx_calls(vcf, str(work), VcfPharmcatParams())
+    assert {(f.pos, f.ref) for f in confidence.findings} == {
+        (105, "A"),
+        (106, "A"),
+        (105, "AA"),
+    }
+    table = sample / "reference-confidence.tsv"
+    write_table(str(table), confidence, ("gene", "PGX_STATE"), "PharmCAT calls")
+    phenotypes = sample / "reference.phenotype.json"
+    phenotypes.write_text(
+        json.dumps(
+            {
+                "geneReports": {
+                    "CYP2C19": {
+                        "recommendationDiplotypes": [
+                            {
+                                "allele1": {"name": "*1"},
+                                "allele2": {"name": "*1"},
+                                "phenotypes": ["Normal Metabolizer"],
+                            }
+                        ],
+                    }
+                }
+            }
+        )
+    )
+    _manifest(
+        sample,
+        "definition-reference",
+        "vcf pharmcat",
+        inputs=((Path(vcf), "input"),),
+        outputs=((phenotypes, "pharmcat_phenotypes"), (table, "confidence_table")),
+    )
+    findings = pr.build_report(sample)["sections"]["pharmacogenomics"]["findings"]
+    (gene,) = [f for f in findings if f["gene"] == "CYP2C19"]
+    assert gene["confidence"] == "high"
+    assert "low_gq" not in gene["confidence_reasons"]
+
+
+@pytest.mark.parametrize(
+    ("phenotypes", "status", "consistent"),
+    [
+        (["Normal Metabolizer", "Intermediate Metabolizer"], "ambiguous", False),
+        (["Normal Metabolizer", "Normal Metabolizer"], "ambiguous", True),
+        ([], "no_call", False),
+    ],
+)
+def test_843_ambiguous_pgx_is_one_gene_without_definitive_conflicting_guidance(
+    sample, phenotypes, status, consistent
+):
+    phenotype = sample / "ambiguous.phenotype.json"
+    alternatives = [
+        {"allele1": {"name": "*1"}, "allele2": {"name": allele}, "phenotypes": [name]}
+        for allele, name in zip(("*1", "*2"), phenotypes, strict=False)
+    ]
+    if not alternatives:
+        alternatives = [
+            {"allele1": {"name": "Unknown"}, "allele2": {"name": "Unknown"}}
+        ]
+    phenotype.write_text(
+        json.dumps(
+            {
+                "geneReports": {
+                    "CYP2C19": {
+                        "recommendationDiplotypes": alternatives,
+                    }
+                }
+            }
+        )
+    )
+    _manifest(
+        sample,
+        "ambiguous",
+        "vcf pharmcat",
+        inputs=((sample / "HG002.vcf.gz", "input"),),
+        outputs=((phenotype, "pharmcat_phenotypes"),),
+    )
+    report = pr.build_report(sample)
+    section = report["sections"]["pharmacogenomics"]
+    (gene,) = [f for f in section["findings"] if f["gene"] == "CYP2C19"]
+    assert gene["pgx"]["status"] == status
+    assert gene["pgx"]["phenotype_consistent"] is consistent
+    assert gene["pgx"]["source"] == "PharmCAT"
+    assert gene["evidence"]["file"] == phenotype.name
+    assert gene["evidence"]["manifest"]
+    assert gene["confidence"] == "low"
+    assert len(gene["pgx"]["alternatives"]) == len(alternatives)
+    if status == "ambiguous":
+        assert "*1/*1 OR *1/*2" in gene["value"]
+        assert "1 ambiguous gene(s)" in section["summary"]
+        assert "Ambiguous:" in pr.render_markdown(report)
+        assert "Ambiguous:" in pr.render_html(report)
+    if not consistent:
+        assert "no definitive guidance" in gene["detail"]
+    jsonschema.validate(report, pr.load_schema())
 
 
 def test_low_coverage_warning_lowers_a_haplogroup_label(sample):

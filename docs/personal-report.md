@@ -60,6 +60,25 @@ CRAM `--input`.
 Warnings the source runs recorded (low coverage, high no-call rates, ...) are
 shown with their section.
 
+PharmCAT alternatives stay together as one **ambiguous** gene finding, rather
+than multiple ordinary genotypes. The JSON finding's `pgx` object records
+`status` (`resolved`, `ambiguous`, `no_call`), the alternative diplotypes and
+phenotypes, whether their phenotypes agree, and `source: "PharmCAT"`. Conflicting
+or unknown phenotypes give no definitive guidance. Explicit unknown/no-call
+genes remain visible. Section counts distinguish uniquely resolved genes
+from ambiguous and no-call genes; alternative rows are not counted as genes.
+The evidence file and source manifest retain the result's provenance.
+Called haploid results, such as G6PD with no second allele, retain their single
+allele and known phenotype; an explicit `Unknown` allele remains a no-call.
+
+`vcf pharmcat` consumes outside calls only when explicitly passed with
+`--outside-call`. Each invocation uses an isolated pipeline output directory;
+same-basename outside-call files left in the final output folder are not
+inputs. All requested outside-call files and their fingerprints are recorded
+as `pharmcat_outside_call` inputs in the result manifest, together with the
+merged `pharmcat_outside_calls` output. Repeatable merging still rejects
+duplicate genes.
+
 ### ClinVar gene list
 
 ClinVar hits are listed only for the genes of one gene list, by default the 84
