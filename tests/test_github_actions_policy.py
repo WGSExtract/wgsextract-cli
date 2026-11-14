@@ -2,7 +2,6 @@ import re
 from pathlib import Path
 
 import pytest
-import yaml
 
 from scripts import validate_github_actions as policy
 from scripts.ci_changes import routes
@@ -170,17 +169,63 @@ def github_paths_select(paths: list[str], patterns: list[str]) -> bool:
     return False
 
 
+def event_path_filters(workflow: Path, event: str) -> dict[str, list[str]] | None:
+    """Read Actions' block event/list subset without adding docs-job dependencies."""
+    text = workflow.read_text()
+    on = re.search(r"^(?:on|'on'|\"on\"):\s*(?:#.*)?$", text, re.MULTILINE)
+    assert on is not None, f"Unsupported event syntax in {workflow.name}"
+    lines = text[on.end() :].splitlines()
+    in_event = False
+    filters: dict[str, list[str]] = {}
+    list_key = None
+    for line in lines:
+        content = line.partition("#")[0].rstrip()
+        if not content.strip():
+            continue
+        indent = len(content) - len(content.lstrip())
+        if indent == 0:
+            break
+        if indent == 2:
+            if in_event:
+                break
+            in_event = content.strip() == f"{event}:"
+            continue
+        if not in_event:
+            continue
+        if indent == 4:
+            key, _, value = content.strip().partition(":")
+            list_key = (
+                key
+                if key in {"branches", "branches-ignore", "paths", "paths-ignore"}
+                else None
+            )
+            if list_key is not None:
+                filters[list_key] = []
+                if value.strip():
+                    value = value.strip()
+                    assert value.startswith("[") and value.endswith("]"), workflow.name
+                    filters[list_key] = [
+                        item.strip().strip("'\"") for item in value[1:-1].split(",")
+                    ]
+                    list_key = None
+        elif list_key is not None:
+            assert indent == 6 and content.strip().startswith("- "), workflow.name
+            filters[list_key].append(content.strip()[2:].strip("'\""))
+    return filters if in_event else None
+
+
 def triggered_workflows(paths: list[str], event: str = "push") -> set[str]:
     selected = set()
     for workflow in (policy.ROOT / ".github/workflows").glob("*.yml"):
-        document = yaml.safe_load(workflow.read_text())
-        # PyYAML's YAML 1.1 loader interprets the unquoted Actions "on" as True.
-        events = document.get("on", document.get(True, {}))
-        if not isinstance(events, dict) or event not in events:
+        push = event_path_filters(workflow, event)
+        if push is None:
             continue
-        push = events[event] or {}
         assert not ("paths" in push and "paths-ignore" in push), workflow.name
         if "branches" in push and not github_paths_select(["main"], push["branches"]):
+            continue
+        if "branches-ignore" in push and github_paths_select(
+            ["main"], push["branches-ignore"]
+        ):
             continue
         if "paths" in push and not github_paths_select(paths, push["paths"]):
             continue
@@ -246,6 +291,31 @@ def test_github_path_filters_reinclude_only_matching_files_in_order() -> None:
     assert not github_paths_select(["docs/private/script.py"], patterns)
     assert github_paths_select(["README.md", "scripts/check.py"], patterns)
     assert not github_glob_matches("docs/nested/api.md", "docs/*.md")
+
+
+def test_filter_reader_keeps_push_and_pr_paths_separate(tmp_path: Path) -> None:
+    workflow = tmp_path / "filters.yml"
+    workflow.write_text(
+        "name: filters\non:\n"
+        "  push:\n"
+        "    branches: [main] # main only\n"
+        "    paths:\n"
+        '      - "**"\n'
+        '      - "!**/*.md"\n'
+        '      - "docs/api.md"\n'
+        "  pull_request:\n"
+        "    types: [opened, synchronize, ready_for_review]\n"
+        "    paths-ignore:\n"
+        '      - "**/*.md"\n'
+        "jobs:\n  test:\n    paths: [unrelated]\n"
+    )
+    push = event_path_filters(workflow, "push")
+    pr = event_path_filters(workflow, "pull_request")
+    assert push is not None and pr is not None
+    assert github_paths_select(["docs/api.md"], push["paths"])
+    assert not github_paths_select(["README.md"], push["paths"])
+    assert any(github_glob_matches("docs/api.md", path) for path in pr["paths-ignore"])
+    assert event_path_filters(workflow, "merge_group") is None
 
 
 @pytest.mark.parametrize(
