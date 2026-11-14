@@ -285,7 +285,7 @@ def _require(
 
 def _minimap2_needs(
     job: "RealignJob",
-    path: str,
+    paths: list[str],
     reference: str | None,
     threads: str,
     memory: str,
@@ -293,10 +293,12 @@ def _minimap2_needs(
     reads: int | None = None,
     samblaster: bool = False,
 ) -> "_Needs":
-    """minimap2's RAM at these settings (its sort memory lowered as align
-    lowers it) and what it can't run without (its index, known only with the
-    reference), and for long reads the approximate hours to realign ``path``."""
-    size = input_size(path)
+    """minimap2's RAM at these settings and what it can't run without (its
+    index), as align sizes them for the read files ``paths`` (local files
+    bound its sort and batches; a URL doesn't), and for long reads the
+    approximate hours to realign them. The floor needs the reference's base
+    count: a gzipped FASTA's size only bounds it loosely."""
+    files = regular_files_bytes(paths)
     resolved = reference if reference and Path(reference).is_file() else None
     preset = align_cmd._minimap2_preset(job)
     options: dict[str, Any] = {
@@ -304,17 +306,23 @@ def _minimap2_needs(
         "reads": reads,
         "platform": job.platform,
         "preset": preset,
-        "input_bytes": size,
+        "input_bytes": files,
     }
-    long_read = preset != "sr"
-    hours = long_read_alignment_hours(path, size, int(threads)) if long_read else None
+    hours = None
+    if preset != "sr":
+        size = sum(input_size(path) for path in paths)
+        hours = long_read_alignment_hours(paths[0], size, int(threads))
+    counted = resolved is not None and (
+        reference_bases(resolved) > 0
+        or not resolved.lower().endswith((".gz", ".bgz", ".bgzf"))
+    )
     try:
-        sorting = sort_memory(threads, memory, input_bytes=size, log=False)
+        sorting = sort_memory(threads, memory, input_bytes=files, log=False)
         need = estimate_mapping_memory(
             resolved, "minimap2", threads=threads, memory=sorting, **options
         ).total
         least = (
-            least_mapping_memory(resolved, "minimap2", **options) if resolved else None
+            least_mapping_memory(resolved, "minimap2", **options) if counted else None
         )
     except (OSError, ValueError) as error:
         logging.debug("minimap2's memory wasn't estimated: %s", error)
@@ -833,7 +841,10 @@ def _realign_long_reads(
         done_bytes=_tree_bytes(workdir),
     )
     _require(
-        job, disk, threads, _minimap2_needs(job, job.input, reference, threads, memory)
+        job,
+        disk,
+        threads,
+        _minimap2_needs(job, [job.input], reference, threads, memory),
     )
     # samtools fastq's -T lists tags; the reference needs --reference.
     decode = ["--reference", cram_opt[1]] if cram_opt else []
@@ -1148,7 +1159,7 @@ def _run_steps(
         # Short reads with --aligner minimap2 (--preset sr).
         needs = _minimap2_needs(
             job,
-            job.input if need_extract else r1_path,
+            [job.input] if need_extract else [p for p in (r1_path, r2_path) if p],
             target,
             threads,
             memory,
@@ -1193,7 +1204,7 @@ def _run_steps(
             threads=threads,
             memory=memory,
         )
-        needs = _minimap2_needs(job, job.r1, target, threads, memory)
+        needs = _minimap2_needs(job, [job.r1], target, threads, memory)
     else:
         disk = _disk_requirements(
             job.input,

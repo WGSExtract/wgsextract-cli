@@ -314,8 +314,8 @@ def _selected_share(
     reads: str, ref: str, intervals: dict[str, list[tuple[int, int]]]
 ) -> float | None:
     """The share of ``reads``' data in ``intervals``: their CRAI slices, or
-    the BAM index's reads on each contig by the share of it selected. None
-    when the index can't say."""
+    all the BAM index's reads on each contig they touch (reads can crowd
+    into a capture region). None when the index can't say."""
     try:
         if cram_version(reads) is not None:
             size = Path(reads).stat().st_size
@@ -329,14 +329,7 @@ def _selected_share(
     except (OSError, ValueError, subprocess.SubprocessError, WGSExtractError):
         return None
     total = sum(stat["mapped"] + stat["unmapped"] for stat in stats)
-    picked = sum(
-        stat["mapped"]
-        * min(
-            1.0, sum(e - s for s, e in intervals.get(stat["name"], ())) / stat["length"]
-        )
-        for stat in stats
-        if stat["length"]
-    )
+    picked = sum(stat["mapped"] for stat in stats if stat["name"] in intervals)
     return picked / total if total else None
 
 
@@ -369,7 +362,10 @@ def _host_requirement(
     intervals: dict[str, list[tuple[int, int]]] = {}
     for contig, start, end in regions:
         intervals.setdefault(contig, []).append((start, end))
-    selected = _selected_share(input_file, ref, intervals) if region else None
+    # Without resolved intervals (no .fai), keep the whole-input bound.
+    selected = (
+        _selected_share(input_file, ref, intervals) if region and intervals else None
+    )
     share = 1.0 if selected is None else selected
     disk: list[tuple[str, int | None]] = []
     memory = None

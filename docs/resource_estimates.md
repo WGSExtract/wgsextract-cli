@@ -32,8 +32,9 @@ sums what shares one.
   - realign: extraction, sort spills and output ([long
     reads](#long-read-disk)), and BWA's missing reference indexes;
   - DeepVariant: its work directory and output, for a `--region` scaled to
-    the share of the input's data it selects (its CRAI slices, or the BAM
-    index's reads per contig; the whole input when the index can't say);
+    the share of the input's data it selects (its CRAI slices, or all the BAM
+    index's reads on each contig it touches; the whole input when the index
+    can't say);
   - [Clair3's temporary space](#clair3s-temporary-space);
   - for both callers, the CRAM 3.0 copy an older build needs of CRAM 3.1
     input, sized as staging sizes it.
@@ -75,8 +76,9 @@ can't meet the requirement:
   build and its mapping: 11.9 GiB for #431's CRAM on hs38, whose index build
   measured 11.17 GiB) or DeepVariant's largest stage on one thread at
   `--batch-size 256`. Sort buffers, samblaster's table and read-scaled
-  transients can swap, slowly. BWA's floor needs the reference's size (its
-  `.fai` or `.ann`); without it there is none.
+  transients can swap, slowly. The floor needs the reference's size (its
+  `.fai`, BWA's `.ann`, or for minimap2 an uncompressed FASTA's size);
+  without it there is none.
 
 Less RAM than the estimate at the run's settings is a structured
 `host_requirement_memory` warning, not a refusal: a 16 GB Mac realigned
