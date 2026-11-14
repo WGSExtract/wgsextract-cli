@@ -63,6 +63,8 @@ would take minutes. The mtime is not hashed, so a copied file keeps its
 fingerprint. Only regular files are read. A named pipe, `/dev/stdin` or a process
 substitution is recorded with `size_bytes` and `fingerprint` set to `null` and
 is never opened, so the command still gets its whole stream.
+`align` separately spools one-shot read streams before validating and mapping
+them; fingerprint collection itself still never consumes stream input.
 
 A fingerprint identifies a file cheaply ("is this the same BAM as last time?").
 It is not an integrity check: an edit outside the sampled blocks that keeps the

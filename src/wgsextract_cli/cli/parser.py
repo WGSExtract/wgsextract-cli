@@ -625,7 +625,8 @@ def add_shared_arguments(
     add(
         "--atomic-output",
         action=argparse.BooleanOptionalAction,
-        help="Opt in to atomic main-output publication; staged tool provenance paths may differ.",
+        help="Opt in to atomic publication (align always uses it, even with "
+        "--no-atomic-output); staged tool provenance paths may differ.",
     )
     add(
         "--config",

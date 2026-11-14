@@ -78,18 +78,56 @@ def _fake_pbmm2(tmp_path, monkeypatch):
         tmp_path / "bin",
         "pbmm2",
         f"""import subprocess, sys
+from pathlib import Path
 T = {tools!r}
 _, ref, reads, out = sys.argv[1:5]
 if reads.lower().endswith((".cram", ".sam")):
     sys.exit("pbmm2: unsupported input file type: " + reads)
-fq = subprocess.run([T["samtools"], "fastq", reads], capture_output=True, check=True)
-sam = subprocess.run([T["minimap2"], "-ax", "map-hifi", ref, "-"], input=fq.stdout,
+if reads.lower().endswith((".fq", ".fastq")):
+    fq = Path(reads).read_bytes()
+    if "--median-filter" in sys.argv:
+        fq = b"".join(fq.splitlines(keepends=True)[:4])
+else:
+    fq = subprocess.run([T["samtools"], "fastq", reads], capture_output=True, check=True).stdout
+sam = subprocess.run([T["minimap2"], "-ax", "map-hifi", "-t", "1", ref, "-"], input=fq,
                      capture_output=True, check=True)
-subprocess.run([T["samtools"], "sort", "-o", out, "-"], input=sam.stdout, check=True)
+records = sam.stdout
+if "--unmapped" not in sys.argv:
+    records = b"".join(line for line in records.splitlines(keepends=True)
+                       if line.startswith(b"@") or not int(line.split(b"\\t")[1]) & 4)
+subprocess.run([T["samtools"], "sort", "-o", out, "-"], input=records, check=True)
 """,
     )
     monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}")
     clear_tool_caches()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="pbmm2 has no Windows build")
+@needs_tools("samtools", "minimap2")
+@pytest.mark.parametrize("platform", ["hifi", "clr"])
+def test_pbmm2_fastq_retains_unmapped_reads_and_all_subreads(
+    tmp_path, genome, monkeypatch, platform
+):
+    """Exact read accounting must retain unmapped reads and avoid median filtering."""
+    from wgsextract_cli import api
+
+    seq, ref = genome
+    reads = tmp_path / "subreads.fastq"
+    reads.write_text(
+        f"@movie/1/0_1000\n{seq[500:1500]}\n+\n{'I' * 1000}\n"
+        f"@movie/1/1000_2000\n{'N' * 1000}\n+\n{'I' * 1000}\n"
+    )
+    _fake_pbmm2(tmp_path, monkeypatch)
+    result = api.align.align(
+        api.AlignParams(
+            r1=reads, ref=ref, aligner="pbmm2", platform=platform,
+            outdir=tmp_path / "out", threads=1, memory="16M",
+        )
+    )  # fmt: skip
+    records = _view(tmp_path / "out/subreads_aligned.bam", "-F", "0x900")
+    assert {record[0] for record in records} == {"movie/1/0_1000", "movie/1/1000_2000"}
+    assert sum(bool(int(record[1]) & 4) for record in records) == 1
+    assert result.metrics["primary_records"] == result.metrics["input_reads"] == 2
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="pbmm2 has no Windows build")
