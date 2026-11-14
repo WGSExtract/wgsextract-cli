@@ -21,3 +21,10 @@ packaging/windows/recipes/**/*.patch -text -whitespace
 
 # Bundled catalogs are pinned by SHA-256 (provenance.json).
 src/wgsextract_cli/commands/genotyping/str_catalog/* text eol=lf
+
+# Local merges keep one side; ALWAYS run just regen-resolve after merging.
+# GitHub does not run custom drivers; see docs/developer_setup.md.
+tests/fixtures/api_cli_snapshot.json merge=generated
+docs/api.md merge=generated
+docs/commands.md merge=generated
+src/wgsextract_cli/assets/cli/help-index.json merge=generated

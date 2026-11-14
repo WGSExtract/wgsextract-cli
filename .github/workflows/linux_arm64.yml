@@ -1,24 +1,19 @@
 name: CI Linux ARM64
 
-# The desktop app (gui/) has its own CI (gui-*.yml); app-only changes skip this.
+# pr_ci.yml selects PRs; main pushes and nightly runs retain the full matrix.
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - gui/**
-      - .github/workflows/gui-*.yml
-  pull_request:
-    branches: [main]
-    paths-ignore:
-      - gui/**
-      - .github/workflows/gui-*.yml
+  workflow_call:
+  schedule:
+    - cron: "11 6 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-arm64-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -30,16 +25,13 @@ jobs:
       - name: Verify native runner architecture
         run: test "$(uname -m)" = aarch64
       - name: Set up native Pixi environments
-        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+        uses: ./.github/actions/setup-pixi
         with:
-          pixi-version: v0.82.0
-          locked: true
           environments: >-
             default
             dev
             vep
-          # PR runs restore main's environment; writing their own crowds it out.
-          cache-write: ${{ github.ref == 'refs/heads/main' }}
+          writer: "true"
       - name: Check installed tools and VEP
         run: |
           pixi run wgsextract deps check
@@ -48,8 +40,13 @@ jobs:
       - name: Test installer
         run: scripts/test_install_sh.sh
       - name: Run tests and native generated-genome end-to-end suite
+        shell: bash
         run: |
-          pixi run test-ci
+          coverage=()
+          if [ "${{ github.event_name }}" != pull_request ]; then
+            coverage+=(--cov=wgsextract_cli --cov-report=xml:out/coverage.xml)
+          fi
+          pixi run test-ci --ci-skip-independent "${coverage[@]}"
           pixi run pytest --fake-data tests/test_e2e_fast_chrM.py tests/test_e2e_full_genome.py --basetemp=out/arm64-e2e-tmp --junitxml=out/arm64-e2e.xml
       - name: Publish native test evidence
         if: always()

@@ -38,41 +38,6 @@
     });
   });
 
-  /* Open/resolved notes per page, from serve.py or this browser */
-  blocks["feedback-summary"] = function (el) {
-    el.appendChild(h("p.small.subtle", "Loading notes…"));
-    WGSM.on("notes-ready", function (mode) {
-      WGSM.notes.summary().then(function (data) {
-        var pages = (data.pages || []).filter(function (p) {
-          return p.error || p.open + p.resolved > 0;
-        });
-        el.replaceChildren(
-          h("p.small.muted", mode === "server"
-            ? "Notes are saved in gui/mockups/feedback/ by serve.py; commit them to share."
-            : "Notes are saved in this browser. Export and commit the JSON to gui/mockups/feedback/ (or open locally with just mockups to save directly)."),
-          pages.length
-            ? h(
-                "div.table-wrap",
-                h(
-                  "table.table.table--compact",
-                  { "aria-label": "Notes per page" },
-                  h("thead", h("tr", h("th", "Page"), h("th.num", "Open"), h("th.num", "Resolved"))),
-                  h("tbody", pages.map(function (p) {
-                    return h(
-                      "tr",
-                      h("td", h("a", { href: WGSM.keepParams(WGSM.link(pagePath(p.page)) + "?notes=1") }, p.title || p.page), h("code.xsmall.subtle", " " + p.page), p.error ? h("div.field__error", p.error) : null),
-                      h("td.num", String(p.open)),
-                      h("td.num", String(p.resolved))
-                    );
-                  }))
-                )
-              )
-            : h("p.small.subtle", "No notes yet.")
-        );
-      });
-    });
-  };
-
   /* Which iteration this is: the published copy names its commit */
   blocks.version = function (el) {
     var v = window.WGSM_VERSION || {};
@@ -88,13 +53,6 @@
       h("a", { href: WGSM.link(preview ? "../index.html" : "preview/index.html") }, "Branch previews")
     );
   };
-
-  /* Page ids are "<direction>-<file>" for mockups, else the page itself */
-  function pagePath(id) {
-    var match = /^([abc])-(.+)$/.exec(id);
-    if (match) return "directions/" + match[1] + "/" + match[2] + ".html";
-    return { index: "index.html", "design-system": "design-system/design-system.html", icons: "icons/icons.html" }[id] || "index.html";
-  }
 
   /* <div data-render="swatches" data-tokens="--c-bg,--c-surface,..."> */
   blocks.swatches = function (el, opts) {

@@ -5,10 +5,16 @@ FetchContent_Declare(bwa
     URL https://github.com/lh3/bwa/archive/refs/tags/v0.7.19.tar.gz
     URL_HASH SHA256=cdff5db67652c5b805a3df08c4e813a822c65791913eccfb3cf7d528588f37bc
     SOURCE_SUBDIR unused)
-FetchContent_MakeAvailable(bwa)
+# bwa-mem3 0.16.0 (as in ../bwa-mem2 and ../bwa-mem3; the first declaration
+# wins), for its exact mate-rescue pruning headers.
+FetchContent_Declare(mem3
+    URL https://github.com/fg-labs/bwa-mem3/archive/refs/tags/v0.16.0.tar.gz
+    URL_HASH SHA256=28f7e4be7cf359e97b59f2925bb67b27905058c13e6c8af08507b13f2c10662c
+    SOURCE_SUBDIR unused)
+FetchContent_MakeAvailable(bwa mem3)
 
 # Bump when the wgse-bwa package changes; it is versioned separately from BWA.
-set(WGSE_BWA_VERSION 0.12.1)
+set(WGSE_BWA_VERSION 0.13.0)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${generated}")
 include("${CMAKE_CURRENT_SOURCE_DIR}/upstream_seams.cmake")
@@ -47,6 +53,13 @@ target_include_directories(wgse_bwa_smem PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "
 target_include_directories(wgse_bwa_smem SYSTEM PRIVATE "${bwa_SOURCE_DIR}")
 target_compile_options(wgse_bwa_smem PRIVATE -Wall -Wextra -Werror)
 
+# bwa-mem3's rescue-window pruning behind wgse-bwa-mem2's adapter
+# (../bwa-mem2/wgse_rescue_prune.h), compiled apart: bwa-mem3's source
+# directory has headers named like BWA's.
+add_library(wgse_bwa_rescue_prune STATIC ../bwa-mem2/rescue_prune.cpp)
+target_include_directories(wgse_bwa_rescue_prune SYSTEM PRIVATE "${mem3_SOURCE_DIR}/src")
+target_compile_options(wgse_bwa_rescue_prune PRIVATE -Wall -Wextra -Werror)
+
 # BWA plus the GPU scheduling and its devices, shared by the executable and the tests.
 set(device_sources)
 if(APPLE)
@@ -66,7 +79,7 @@ target_compile_options(wgse_bwa_core PRIVATE
     $<$<C_COMPILER_ID:Clang,AppleClang>:-Wno-deprecated-non-prototype>>
     $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Werror>
     $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc -Wall -Wextra -Werror>)
-target_link_libraries(wgse_bwa_core PUBLIC ZLIB::ZLIB Threads::Threads m)
+target_link_libraries(wgse_bwa_core PUBLIC ZLIB::ZLIB Threads::Threads m wgse_bwa_rescue_prune)
 if(NOT APPLE)
     # shm_open, as upstream's Makefile links on Linux (older glibc keeps it in librt).
     target_link_libraries(wgse_bwa_core PUBLIC rt)
@@ -129,6 +142,11 @@ if(BUILD_TESTING)
     target_compile_options(ksw_batch_check PRIVATE -Wall -Wextra -Werror)
     target_link_libraries(ksw_batch_check PRIVATE wgse_bwa_core)
     add_test(NAME bwa_ksw_batch COMMAND ksw_batch_check)
+    add_executable(occ_check tests/occ_check.cpp)
+    target_compile_options(occ_check PRIVATE -Wall -Wextra -Werror)
+    target_link_libraries(occ_check PRIVATE wgse_bwa_core)
+    add_test(NAME bwa_occ COMMAND occ_check)
+    add_test(NAME bwa_occ_upstream COMMAND occ_check --cpu-upstream)
     add_executable(extend_neon_check tests/extend_neon_check.c)
     target_compile_options(extend_neon_check PRIVATE -Wall -Wextra -Werror)
     target_link_libraries(extend_neon_check PRIVATE wgse_bwa_core)
@@ -152,5 +170,7 @@ install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../../LICENSE" DESTINATION share/lice
     RENAME WGSE-LICENSE)
 install(FILES "${bwa_SOURCE_DIR}/COPYING" DESTINATION share/licenses/wgse-bwa
     RENAME BWA-LICENSE)
+install(FILES "${mem3_SOURCE_DIR}/LICENSE" DESTINATION share/licenses/wgse-bwa
+    RENAME BWA-MEM3-LICENSE)
 install(FILES SEEDING-LICENSE DESTINATION share/licenses/wgse-bwa
     RENAME METAL-SEEDING-LICENSE)

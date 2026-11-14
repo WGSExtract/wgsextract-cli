@@ -1,4 +1,3 @@
-import argparse
 import logging
 import os
 import shutil
@@ -8,12 +7,12 @@ from urllib.parse import urlparse
 
 import tomli_w
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api._runtime import cancel_event, checkpoint
 from wgsextract_cli.api.examples import (
     ExampleGenomeDownloadParams,
     ExampleGenomeListParams,
 )
+from wgsextract_cli.cli.registration.examples import register as register
 from wgsextract_cli.core.config import dataset_library
 from wgsextract_cli.core.download_progress import curl_progress_args, redact_urls
 from wgsextract_cli.core.genome_library import GENOME_CONFIG_NAME
@@ -317,24 +316,3 @@ def run_download(params: ExampleGenomeDownloadParams) -> None:
         current_result().set_details(
             {"collection": str(collection_dir), "examples": plan}
         )
-
-
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    """Register the example-genome list/download subcommands."""
-    parser = subparsers.add_parser(
-        "example-genome",
-        help="Download curated 1000 Genomes example datasets.",
-    )
-    examples_subs = parser.add_subparsers(dest="examples_cmd", required=True)
-    for name, cls, impl, help_text in (
-        ("list", ExampleGenomeListParams, run_list,
-         "List curated 1000 Genomes examples."),
-        ("download", ExampleGenomeDownloadParams, run_download,
-         "Download curated 1000 Genomes examples into the dataset library."),
-    ):  # fmt: skip
-        sub = examples_subs.add_parser(name, parents=[base_parser], help=help_text)
-        add_arguments(sub, cls)
-        sub.set_defaults(func=cli_handler(cls, impl))

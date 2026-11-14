@@ -50,6 +50,8 @@ Note (just --version)
 if (Test-Path -LiteralPath (Join-Path $Root ".git")) {
     Step "Installing pre-commit hooks"
     Invoke-Checked pixi @("run", "pre-commit", "install")
+    Invoke-Checked git @("config", "merge.generated.name", "Keep generated references until regeneration")
+    Invoke-Checked git @("config", "merge.generated.driver", "true")
 }
 
 Step "Checking the CLI and its tools"

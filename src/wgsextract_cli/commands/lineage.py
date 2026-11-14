@@ -1,4 +1,3 @@
-import argparse
 import csv
 import logging
 import re
@@ -8,8 +7,9 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
-from wgsextract_cli.api.lineage import MtHaplogroupParams, YHaplogroupParams
+from wgsextract_cli.api._cli import cli_handler
+from wgsextract_cli.api.lineage import MtHaplogroupParams
+from wgsextract_cli.cli.registration.lineage import register as register
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -21,7 +21,7 @@ from wgsextract_cli.core.haplogrep_trees import (
     ensure_tree,
     write_config,
 )
-from wgsextract_cli.core.messages import CLI_HELP, LOG_MESSAGES, SYSTEM_MESSAGES
+from wgsextract_cli.core.messages import LOG_MESSAGES, SYSTEM_MESSAGES
 from wgsextract_cli.core.paths import absolute_path, java_local_path
 from wgsextract_cli.core.reference_assets import resolve_reference_library
 from wgsextract_cli.core.reference_models import MITO_BY_LENGTH, sequence_lengths
@@ -50,12 +50,10 @@ from wgsextract_cli.core.variant_files import (
 
 from ._lineage_ydna import (
     VCF_SUFFIXES,
-    cmd_ydna,
     extract_vcf_chromosome,
     resolve_lineage_tool,
     tool_command,
 )
-from ._lineage_ystr import add_ystr_parser
 
 HAPLOGREP_BANNER = re.compile(r"Haplogrep 3 (\d\S*)")
 HAPLOCHECK_BANNER = re.compile(r"haplocheck (\d\S*)")
@@ -497,37 +495,3 @@ def _report_contamination(row: dict[str, str]) -> None:
             major_haplogroup=row.get("Major Haplogroup"),
             minor_haplogroup=row.get("Minor Haplogroup"),
         )
-
-
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser(
-        "lineage", help="Native Yleaf or Haplogrep 3 analysis."
-    )
-    lin_subs = parser.add_subparsers(dest="lin_cmd", required=True)
-
-    ydna_parser = lin_subs.add_parser(
-        "y-haplogroup", parents=[base_parser], help=CLI_HELP["cmd_lineage-y-haplogroup"]
-    )
-    add_arguments(ydna_parser, YHaplogroupParams)
-    ydna_parser.set_defaults(func=cmd_ydna)
-    ydna_parser.add_argument(
-        "--tree-links", action="store_true", help="Print YFull and FTDNA tree links."
-    )
-
-    add_ystr_parser(lin_subs, base_parser, CLI_HELP["cmd_lineage-y-str"])
-
-    mtdna_parser = lin_subs.add_parser(
-        "mt-haplogroup",
-        parents=[base_parser],
-        help=CLI_HELP["cmd_lineage-mt-haplogroup"],
-    )
-    add_arguments(mtdna_parser, MtHaplogroupParams)
-    mtdna_parser.set_defaults(func=cmd_mtdna)
-    mtdna_parser.add_argument(
-        "--tree-links",
-        action="store_true",
-        help="Print YFull and FamilyTreeDNA mtDNA tree links.",
-    )

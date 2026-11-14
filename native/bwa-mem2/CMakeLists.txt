@@ -174,7 +174,7 @@ mem2_seam(bwamem_source "${ref_window}\n        } else { // forward strand"
     "#else\n            seq = ref_string ? ref_string + beg : wgse_ref_window(l_pac, pac, beg, end);\n#endif\n        } else { // forward strand")
 mem2_seam(bwamem_source "${ref_window}"
     "#else\n            seq = ref_string ? ref_string + beg : wgse_ref_window(l_pac, pac, beg, end);\n#endif")
-# mem_sort_dedup_patch()'s sorts move pointers instead of regions (native/bwa/sort_oracle.c.in).
+# mem_sort_dedup_patch()'s sorts move compact keys instead of regions (native/bwa/sort_oracle.c.in).
 mem2_seam(bwamem_source "    ks_introsort(mem_ars2, n, a); // sort by the END position, not START!"
     "    if (wgse_exact_cpu()) wgse_sort_alnreg_by_end(n, a);\n    else ks_introsort(mem_ars2, n, a);")
 mem2_seam(bwamem_source "    n = m;\n    ks_introsort(mem_ars, n, a);"
@@ -316,7 +316,7 @@ target_compile_options(metal_backend PRIVATE -fobjc-arc -Wall -Wextra -Werror)
 target_link_libraries(metal_backend PUBLIC mem2_core mem2_rescue_prune wgse_metal_common)
 add_executable(wgse-bwa-mem2 main.cpp)
 target_link_libraries(wgse-bwa-mem2 PRIVATE metal_backend)
-set(WGSE_BWA_MEM2_VERSION 0.5.2)
+set(WGSE_BWA_MEM2_VERSION 0.5.3)
 target_compile_definitions(wgse-bwa-mem2 PRIVATE WGSE_VERSION="${WGSE_BWA_MEM2_VERSION}")
 target_compile_options(wgse-bwa-mem2 PRIVATE -Wall -Wextra -Werror)
 

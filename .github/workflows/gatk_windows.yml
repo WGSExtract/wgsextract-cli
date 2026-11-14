@@ -4,14 +4,23 @@ name: GATK native Windows smoke
 on:
   pull_request:
     branches: [main]
-    paths-ignore:
-      - gui/**
-      - .github/workflows/gui-*.yml
+    paths:
+      - "packaging/windows/**"
+      - "src/wgsextract_cli/core/*gatk*.py"
+      - "src/wgsextract_cli/core/*gkl*.py"
+      - "src/wgsextract_cli/core/pixi_tools.py"
+      - "src/wgsextract_cli/core/dependency_checks.py"
+      - "src/wgsextract_cli/core/dependencies.py"
+      - "src/wgsextract_cli/commands/vcf/callers.py"
+      - "tests/test_gkl_windows.py"
+      - "pixi.toml"
+      - "pixi.lock"
+      - ".github/workflows/gatk_windows.yml"
+      - "!**/*.md"
   push:
     branches: [main]
-    paths-ignore:
-      - gui/**
-      - .github/workflows/gui-*.yml
+  schedule:
+    - cron: "53 6 * * *"
   workflow_dispatch:
 
 permissions:
@@ -28,16 +37,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+      - uses: ./.github/actions/setup-pixi
         with:
-          pixi-version: v0.82.0
-          locked: true
           environments: >-
             default
             dev
             gatk
-          # PR runs restore main's environment; writing their own crowds it out.
-          cache-write: ${{ github.ref == 'refs/heads/main' }}
       - name: Installed-package native HaplotypeCaller and Linux body parity
         shell: pwsh
         run: |

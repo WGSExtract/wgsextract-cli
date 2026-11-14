@@ -223,7 +223,7 @@ def test_info_errors_exit_nonzero(tmp_path, info_env, monkeypatch):
 
 def test_global_options_before_subcommand_are_preserved(tmp_path):
     with (
-        patch("wgsextract_cli.commands.info.run") as mock_run,
+        patch("wgsextract_cli.commands.info.runner.run") as mock_run,
         patch("wgsextract_cli.core.alignment_input.validate_alignment_input"),
     ):
         _run_cli(

@@ -9,11 +9,12 @@ import tempfile
 from pathlib import Path
 from typing import IO, TextIO
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
+from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.api.repair import RepairFtdnaBamParams, RepairFtdnaVcfParams
+from wgsextract_cli.cli.registration.repair import register as register
 from wgsextract_cli.core.dependency_checks import verify_dependencies
-from wgsextract_cli.core.messages import CLI_HELP, LOG_MESSAGES
+from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.reference_assets import input_stem
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
@@ -31,32 +32,6 @@ from ._extract_helpers import cleanup_files
 
 # Records between cancellation checks in the stream copies.
 _CHECK_EVERY = 10_000
-
-
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser(
-        "repair", help="Repair formatting violations in FTDNA files."
-    )
-    repair_subs = parser.add_subparsers(dest="repair_cmd", required=True)
-
-    bam_parser = repair_subs.add_parser(
-        "ftdna-bam",
-        parents=[base_parser],
-        help=CLI_HELP["cmd_repair-ftdna-bam"],
-    )
-    add_arguments(bam_parser, RepairFtdnaBamParams)
-    bam_parser.set_defaults(func=repair_bam)
-
-    vcf_parser = repair_subs.add_parser(
-        "ftdna-vcf",
-        parents=[base_parser],
-        help=CLI_HELP["cmd_repair-ftdna-vcf"],
-    )
-    add_arguments(vcf_parser, RepairFtdnaVcfParams)
-    vcf_parser.set_defaults(func=repair_vcf)
 
 
 def repair_bam(args: argparse.Namespace) -> None:

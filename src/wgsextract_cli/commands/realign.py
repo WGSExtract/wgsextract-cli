@@ -20,7 +20,6 @@ core.steps): a rerun after a crash or kill skips an alignment or extraction
 that finished, and redoes the one that didn't.
 """
 
-import argparse
 import logging
 import math
 import os
@@ -32,8 +31,8 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import urlsplit
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api.align import RealignParams
+from wgsextract_cli.cli.registration.realign import register as register
 from wgsextract_cli.core import bwa_mem2, ultima
 from wgsextract_cli.core.alignment_memory import available_memory, check_mapping_memory
 from wgsextract_cli.core.alignment_metadata import cram_encoded_with, get_bam_header
@@ -49,7 +48,6 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.native_aligners import AlignerCommand
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.read_counts import (
@@ -126,19 +124,6 @@ _FASTQ_PATTERNS: list[tuple[str, str]] = [
     ("_1.fastq.gz", "_2.fastq.gz"),
     ("_1.fq.gz", "_2.fq.gz"),
 ]
-
-
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser(
-        "realign",
-        parents=[base_parser],
-        help=CLI_HELP["cmd_realign"],
-    )
-    add_arguments(parser, RealignParams)
-    parser.set_defaults(func=cli_handler(RealignParams, run_realign))
 
 
 @dataclass(kw_only=True)

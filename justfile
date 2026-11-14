@@ -41,6 +41,14 @@ run *args:
 help:
     pixi run wgsextract --help
 
+# Regenerate the API snapshot, API docs, command docs and site command cards
+regen:
+    pixi run python scripts/regen.py
+
+# After resolving source conflicts, regenerate and stage generated references
+regen-resolve:
+    pixi run python scripts/regen.py --resolve
+
 # Unit and integration tests; extra args go to pytest, e.g. `just test -k microarray`
 [positional-arguments]
 [unix]

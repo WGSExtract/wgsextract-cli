@@ -487,8 +487,9 @@ Measured on HG002 against the GIAB v4.2.1 phased benchmark
 
 "Hets phased" counts every heterozygous record in the input, including Clair3's
 low-quality ones; WhatsHap's block-wise Hamming distance on chr20 was 5.4%
-against LongPhase's 0.8%. No whole-genome phasing run was made: it needs a
-whole-genome call set (#431). Scaling the chr20 time (about 2% of the genome),
+against LongPhase's 0.8%. No whole-genome phasing run has been made; the
+whole-genome call sets now exist
+([whole-genome ONT requirements](#whole-genome-ont-requirements)). Scaling the chr20 time (about 2% of the genome),
 LongPhase would take about 40 minutes on 4 cores.
 
 ## Repeat expansions
@@ -660,8 +661,9 @@ limit and was killed, so plan for at least 16 GB of RAM for ONT alignment.
 not fit, and suggest `--threads` and `--memory` that do; see
 [resource estimates](resource_estimates.md#minimap2-long-reads).
 Scaled from chr20 (2.1% of the genome), a 51x whole genome on 4 threads would
-take about 32 h to realign, 25 h for DeepVariant and 8 h for Clair3. Whole-genome
-small-variant accuracy was therefore measured on chr20 only.
+take about 32 h to realign, 25 h for DeepVariant and 8 h for Clair3. The
+whole genome was later realigned and called on larger hosts; see
+[whole-genome ONT requirements](#whole-genome-ont-requirements).
 The read-only features were run on ONT's whole-genome CRAM (PAO83395, 104 GB,
 about 51x, GRCh38 analysis set), without realigning it:
 
@@ -686,6 +688,54 @@ Unplaced, alt and decoy contigs under 1 Mb share one pooled sample, which
 sets the Other row. Sampling needs the BAM/CRAM index: without one, `info`
 warns, falls back to the record estimate and caches it until an index appears.
 Unaligned reads have no depth to sample, so it is cached as zero.
+
+### Whole-genome ONT requirements
+
+The whole of `PAO83395.pass.cram` (103.7 GB CRAM 3.1, 7.93 M primary reads,
+about 51x) was realigned to hs38 and called with both callers
+([#431](https://github.com/WGSExtract/wgsextract-cli/issues/431)). Plan a
+whole-genome ONT run from these numbers:
+
+| Step | Host, threads | Wall time | Peak RAM | Disk |
+| --- | --- | ---: | ---: | --- |
+| `realign --format CRAM --memory 512M`, streamed from the URL, [chunked](#chunked-realignment) (26 chunks) | Apple M1, 16 GB; 7 | 21.4 h (457,208 CPU s) | 10.5 GB (minimap2; its index build alone 9.8 GB) | output 185.5 GB CRAM 3.1 (1.79x the input); preflight asked for about 211 GiB in the output directory with the index and the largest chunk |
+| `vcf deepvariant --ont` (Google's 1.10.0 CPU image) | Ryzen 5 5600X; 10 | 11.3 h: make_examples 4.9 h, call_variants 6.2 h, postprocess_variants 12 min | not recorded | work directory not recorded (fitted in 150 GB); VCF 231 MB |
+| `vcf clair3 --gpu` (Clair3 2.0.5 GPU image) | Ryzen 5 5600X, RTX 3090; 6 | 2.5 h: pileup 76 min, WhatsHap phasing 42 min, full-alignment 29 min | 15.2 GiB; GPU 6.1 GiB | **about 100 GiB** of temporary files in the output directory (below); VCF 79 MB |
+
+- **Slow chunks.** Most realign chunks took about 30 min; those holding
+  pericentromeric satellite reads (chr1 q12, the chr4 centromere, chrX q with
+  chrY and the alts) took about 2 h each.
+- **Unchunked realign** would also need about 260 GB of sort spills beside the
+  output; see [long-read disk](resource_estimates.md#long-read-disk).
+- **Primary-only copy for calling.** Both callers read a primary-only
+  CRAM 3.0 copy of the realigned output (81.4 GB), not the 185.5 GB CRAM 3.1,
+  so their disk figures apply to that input. Older Clair3 builds can't read
+  some CRAM 3.1 blocks (#604); Clair3 2.0.5 reads CRAM 3.1 directly. Given
+  CRAM 3.1, DeepVariant's container stages a CRAM 3.0 copy itself and first
+  requires free space of about 1.95x the input (about 362 GB for the 185.5 GB
+  output), before its own work directory.
+- **Clair3's GPU temporary files.** Clair3 2.0.5's GPU mode writes every
+  full-alignment tensor (here 460 files of about 230 MB) before the GPU predicts
+  any, then deletes them: about 1 GiB per 1% of the genome at 51x. The CPU
+  mode streams them. `vcf clair3` doesn't check
+  for this space yet
+  ([#811](https://github.com/WGSExtract/wgsextract-cli/issues/811)).
+- **Scaling from a slice.** chr20 with `--gpu` and 6 threads took 599 s, which
+  scales to about 8 h; the whole genome took 2.5 h. The earlier 4-thread
+  projections (above) were 32 h for `realign`, 25 h for DeepVariant and 8 h
+  for Clair3 on the CPU.
+
+Accuracy against GIAB v4.2.1 inside its benchmark regions (`rtg vcfeval` 3.13
+with `--ref-overlap`, PASS calls; SNVs are biallelic SNPs, indels everything
+else):
+
+| Caller | SNV recall / precision / F1 | Indel recall / precision / F1 |
+| --- | --- | --- |
+| `vcf deepvariant --ont` | 0.9986 / 0.9988 / 0.9987 | 0.880 / 0.863 / 0.871 |
+| `vcf clair3 --gpu` (`r1041_e82_400bps_sup_v400`) | 0.9952 / 0.9977 / 0.9965 | 0.837 / 0.903 / 0.869 |
+
+Clair3's lower SNV recall on the whole genome may come partly from its GPU
+mode's handling of pileups deeper than 127x ([Clair3](#clair3-optional)).
 
 ### Read lengths and mapping rate
 
@@ -728,13 +778,12 @@ position and CIGAR, which took it from 156 s to 46 s on the whole-genome CRAM.
 The whole-genome truth took a 32-minute pass.
 `qc vcf` ran on the chr20 DeepVariant VCF (106,665 PASS SNVs, Ts/Tv 1.74).
 
-Small-variant calling on the whole genome was not run: 32 h of realignment
-plus 25 h of DeepVariant on 4 shared cores would not show anything that chr20
-does not, since the callers work per region. The whole-genome run instead
-covers what chr20 cannot: sex and haplogroup inference, the genome-wide
-microarray export and SV calling across all chromosomes; a whole-genome
-small-variant run is tracked in
-[#431](https://github.com/WGSExtract/wgsextract-cli/issues/431).
+Small-variant calling on the whole genome was not part of this run (32 h of
+realignment plus 25 h of DeepVariant on 4 shared cores); it covered what chr20
+cannot: sex and haplogroup inference, the genome-wide microarray export and SV
+calling across all chromosomes. The whole genome was later realigned and
+called on larger hosts; see
+[whole-genome ONT requirements](#whole-genome-ont-requirements).
 
 ### Data and CI fixture
 

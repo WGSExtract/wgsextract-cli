@@ -50,10 +50,45 @@ def _is_local_or_docker_action(target: str) -> bool:
     return target.startswith(("./", "../", "docker://"))
 
 
+def validate_concurrency(text: str, workflow: Path) -> list[str]:
+    """Cover queue:max until actionlint understands GitHub's new schema key."""
+    errors = []
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        match = re.fullmatch(r"(\s*)concurrency:\s*(?:#.*)?", line)
+        if match is None:
+            continue
+        indent = len(match[1])
+        fields: dict[str, str] = {}
+        for child in lines[index + 1 :]:
+            content = child.partition("#")[0].strip()
+            if not content:
+                continue
+            child_indent = len(child) - len(child.lstrip())
+            if child_indent <= indent:
+                break
+            if child_indent == indent + 2 and ":" in content:
+                key, value = content.split(":", 1)
+                if key == "queue" and key in fields:
+                    errors.append(f"{workflow}:{index + 1}: duplicate queue key")
+                fields[key] = _strip_quotes(value.strip())
+        if "queue" in fields:
+            if fields["queue"] != "max":
+                errors.append(f"{workflow}:{index + 1}: queue must be max")
+            if fields.get("cancel-in-progress", "false") != "false":
+                errors.append(
+                    f"{workflow}:{index + 1}: queue:max conflicts with cancel-in-progress"
+                )
+    return errors
+
+
 def validate_workflows() -> list[str]:
     errors: list[str] = []
     workflows = sorted(path for glob in WORKFLOW_GLOBS for path in ROOT.glob(glob))
     for workflow in workflows:
+        errors.extend(
+            validate_concurrency(workflow.read_text(encoding="utf-8"), workflow)
+        )
         for line_number, line in enumerate(
             workflow.read_text(encoding="utf-8").splitlines(), start=1
         ):

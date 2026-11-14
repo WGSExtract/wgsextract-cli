@@ -17,6 +17,7 @@ from tests.htslib_helpers import (
     write_fasta,
     write_read_pairs,
 )
+from tests.prepared_data import sparse_truncate
 from wgsextract_cli.commands import align
 from wgsextract_cli.core import alignment_memory, bwa_mem2
 from wgsextract_cli.core.read_counts import fastq_input_reads
@@ -129,11 +130,13 @@ def _preflight_memory_warnings(caplog):
 def test_mem2_sorts_in_256m_per_thread_and_budgets_ram_for_that(
     tmp_path, ram, caplog, requested
 ):
-    ref, r1, r2 = _genome(tmp_path)
+    # Enough reads to fill 256M a thread: a sort gets no more than its reads
+    # can fill (#781, sort buffers samtools couldn't reserve).
+    ref, r1, r2 = _genome(tmp_path, pairs=14_000)
     run_wgsextract("ref", "index", "--ref", ref, "--aligner", "bwa-mem2")
     # Enough RAM for MEM2 sorting in 256M a thread, not in the 512M asked for:
     # auto still takes it, and neither the guard nor the preflight objects.
-    ram(64 * GB, _mem2_budget_between_256m_and_512m(ref, 400))
+    ram(64 * GB, _mem2_budget_between_256m_and_512m(ref, 28_000))
     caplog.clear()
     caplog.set_level(logging.INFO)
 
@@ -319,7 +322,7 @@ def test_realign_refuses_mem2_memory_before_extracting(
     library.mkdir()
     ref = _reference(library, bases=2_000_000_000, index=True)
     # MEM2 maps its index into RAM; a sparse one is as big without the disk.
-    os.truncate(ref + ".bwt.2bit.64", 8 * GB)
+    sparse_truncate(Path(ref + ".bwt.2bit.64"), 8 * GB)
     # A small genome the input wasn't aligned to: it would fit.
     (library / "hg19.fa").write_text(">chr2\nA\n")
     (library / "hg19.fa.fai").write_text("chr2\t1\t6\t1\t2\n")

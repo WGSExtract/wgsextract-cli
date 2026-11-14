@@ -66,6 +66,12 @@ def _serve(*args: str) -> Iterator[Served]:
         info = json.loads(line)
         discovery = state_directory() / "server" / "mcp.json"
         assert json.loads(discovery.read_text()) == info
+        # The discovery line precedes uvicorn's startup/signal handlers.
+        # Wait for a real response before a quick test can interrupt startup.
+        status, _ = _post(
+            info["url"], INITIALIZE, {"Authorization": f"Bearer {info['token']}"}
+        )
+        assert status == 200
         yield Served(proc, info["url"], info["token"], discovery)
     finally:
         if proc.poll() is None:
