@@ -164,6 +164,11 @@ def _run(
             )
         verify_platform_support(args)
         apply_genome_selection(args, set(explicit_dests))
+        if getattr(args, "_one_vcf_input", False):
+            # Of --input and --vcf-input, only the VCF it reads is an input.
+            from wgsextract_cli.commands.vcf.basic import resolve_vcf_input
+
+            resolve_vcf_input(args)
         with active_workspace(
             getattr(args, "genome_dir", None),
             (getattr(args, dest, None) for dest in INPUT_ARGS),

@@ -88,25 +88,35 @@ def require_vcf_input(params: _VcfFileParams) -> str:
     return os.fspath(chosen)
 
 
+def resolve_vcf_input(args: argparse.Namespace) -> None:
+    """Leave set only the option naming the VCF the command reads, so that
+    only it is checked and recorded as an input: ``vcf_input`` (config
+    default_input_vcf when not given) or ``input``, as ``_select_vcf_input``
+    picks; neither when ``vcf trio --proband`` names it. Idempotent."""
+    explicit: set[str] = getattr(args, "_explicit_dests", set())
+    if getattr(args, "vcf_input", None) is None and "vcf_input" not in explicit:
+        args.vcf_input = settings.get("default_input_vcf")
+    if getattr(args, "proband", None):
+        args.input = args.vcf_input = None
+        return
+    selected = _select_vcf_input(args)
+    given = getattr(args, "input", None)
+    if selected is not None and given is not None and selected == str(given):
+        args.vcf_input = None
+    else:
+        args.vcf_input = selected
+        args.input = None
+
+
 def vcf_input_handler(
     cls: type[P], impl: Callable[..., None], **render: str
 ) -> Callable[[argparse.Namespace], None]:
-    """``cli_handler`` for an operation on a VCF: the CLI's choice between
-    --vcf-input (default: config default_input_vcf) and --input
-    (``_select_vcf_input``) becomes ``vcf_input``, or stays ``input`` when
-    that is the pick (dispatch has recorded it under that role)."""
+    """``cli_handler`` for an operation on a VCF, after ``resolve_vcf_input``
+    (which dispatch also runs before recording the inputs)."""
     handler = cli_handler(cls, impl, **render)
 
     def cmd(args: argparse.Namespace) -> None:
-        explicit: set[str] = getattr(args, "_explicit_dests", set())
-        if getattr(args, "vcf_input", None) is None and "vcf_input" not in explicit:
-            args.vcf_input = settings.get("default_input_vcf")
-        selected = _select_vcf_input(args)
-        given = getattr(args, "input", None)
-        if selected is not None and given is not None and selected == str(given):
-            args.vcf_input = None
-        else:
-            args.vcf_input = selected
+        resolve_vcf_input(args)
         handler(args)
 
     cmd.__module__ = impl.__module__
