@@ -142,3 +142,67 @@ def test_sex_par_850_native_deepvariant_refuses_unsupported_policy(sex_par, requ
     assert result.status == "failed"
     assert "wgse-deepvariant does not support this sex/PAR" in str(result.error)
     assert not (sex_par.root / "refused" / "deepvariant.vcf.gz").exists()
+
+
+@pytest.mark.parametrize("caller", ["gatk", "clair3", "deepvariant"])
+def test_sex_par_850_single_sex_custom_table_is_not_silently_diploid(
+    sex_par, caller, request
+):
+    for build in ("hg19", "hg38"):
+        (sex_par.root / f"ploidy_{build}.txt").write_text("chr20 1 1000 F 1\n")
+    run_wgsextract("sample", "set", "--input", str(sex_par.bam), "--sex", "Male")
+    common = {
+        "input": sex_par.bam,
+        "ref": sex_par.ref,
+        "outdir": sex_par.root / "refused",
+        "region": "chr20",
+        "threads": 1,
+    }
+    if caller == "gatk":
+        result = api.vcf.gatk(VcfGatkParams(**common), check=False)
+    elif caller == "clair3":
+        request.getfixturevalue("linux_x86")
+        request.getfixturevalue("fake_clair3")
+        result = api.vcf.clair3(VcfClair3Params(**common), check=False)
+    else:
+        request.getfixturevalue("dv")
+        result = api.vcf.deepvariant(
+            VcfDeepvariantParams(**common, model_type="WGS"), check=False
+        )
+    assert result.status == "failed"
+    assert "single-sex" in str(result.error)
+    assert not (sex_par.root / "refused" / f"{caller}.vcf.gz").exists()
+
+
+def test_sex_par_850_dry_run_cannot_rewrite_an_interrupted_runs_policy(
+    sex_par, request
+):
+    fake = request.getfixturevalue("dv")
+    run_wgsextract("sample", "set", "--input", str(sex_par.bam), "--sex", "Male")
+    fake.deepvariant.fail("call_variants")
+    params = VcfDeepvariantParams(
+        input=sex_par.bam,
+        ref=sex_par.ref,
+        outdir=sex_par.root / "calls",
+        region="chrX",
+        model_type="WGS",
+        threads=1,
+    )
+    result = api.vcf.deepvariant(params, check=False)
+    assert result.status == "failed"
+    # contract: the PAR BED recorded by a caller must remain its original policy.
+    original = Path(
+        fake.deepvariant.runs("run_deepvariant")[-1]["opts"]["par_regions_bed"]
+    )
+    content = original.read_text()
+    from dataclasses import replace
+
+    planned = api.vcf.deepvariant(
+        replace(
+            params,
+            dry_run=True,
+            region=f"chrX:{sex_par.boundary - 20}-{sex_par.boundary + 50}",
+        )
+    )
+    assert planned.status == "ok"
+    assert original.read_text() == content

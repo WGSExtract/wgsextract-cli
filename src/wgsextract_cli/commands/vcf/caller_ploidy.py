@@ -1,5 +1,6 @@
 """Translate the shared bcftools sex/PAR contract into caller intervals."""
 
+import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -88,22 +89,31 @@ def calling_ploidy(
             "Sex/PAR-aware calling needs a GRCh37/GRCh38 reference or a "
             "reference library ploidy file; this build is unsupported."
         )
-    sex = sample_sex(alignment, directory)
-    if sex not in {"Male", "Female"}:
+    rows = [
+        line.split()
+        for line in text.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    if not rows or any(len(row) != 5 for row in rows):
+        raise WGSExtractError("Malformed reference library ploidy file.")
+    sexes = {row[3] for row in rows}
+    if not sexes <= {"M", "F", "*"} or ("*" not in sexes and sexes != {"M", "F"}):
+        raise WGSExtractError(
+            "This caller does not support a single-sex or custom-sex ploidy table. "
+            "Provide M and F rules or a sex-neutral '*' fallback."
+        )
+    sex = sample_sex(alignment, directory) if sexes != {"*"} else None
+    if sex is not None and sex not in {"Male", "Female"}:
         warn(
             "caller_sex_unknown",
             "Sample sex is unknown; applying the female ploidy policy, as bcftools "
             "does. Set the sample workspace sex to override.",
         )
-    current_result().add_metrics(calling_sex=sex)
+    if sex is not None:
+        current_result().add_metrics(calling_sex=sex)
     code = "M" if sex == "Male" else "F"
     rules = []
-    for line in text.splitlines():
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        fields = line.split()
-        if len(fields) != 5:
-            raise WGSExtractError("Malformed reference library ploidy file.")
+    for fields in rows:
         chrom, rule_start, rule_end, rule_sex, value = fields
         if rule_sex in {code, "*"}:
             try:
@@ -150,8 +160,13 @@ def calling_ploidy(
 def write_intervals(path: Path, intervals: list[PloidyInterval]) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     content = "".join(f"{i.chrom}\t{i.start}\t{i.end}\n" for i in intervals)
-    if not path.is_file() or path.read_text() != content:
-        path.write_text(content)
+    path = path.with_stem(f"{path.stem}-{hashlib.sha256(content.encode()).hexdigest()}")
+    try:
+        with path.open("x") as stream:
+            stream.write(content)
+    except FileExistsError:
+        if path.read_text() != content:
+            raise WGSExtractError(f"Calling policy input has changed: {path}") from None
     return str(path)
 
 

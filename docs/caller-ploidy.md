@@ -14,10 +14,13 @@ remain diploid. The bcftools contract makes male Y haploid (including its PAR
 copies), female Y excluded, and mitochondrial calls haploid. This is not a
 genome-wide haploid switch. Other sex-chromosome builds require a library ploidy
 file. Custom tables must be unambiguous and specify ploidy 0, 1 or 2.
+Single-sex tables without a sex-neutral fallback, or sex labels other than M/F,
+are explicitly refused rather than silently interpreted as diploid.
 
 * **Google DeepVariant:** uses `--haploid_contigs` and `--par_regions_bed`;
   ploidy-zero intervals are excluded from its region selection. The generated
-  BEDs are fingerprinted as inputs and kept while work is resumable.
+  BEDs are immutable, content-addressed, fingerprinted inputs kept while work
+  is resumable. A competing plan cannot rewrite an active run's policy.
   Google's recalibration suppresses heterozygous non-PAR genotypes but retains
   homozygous **diploid-encoded** GT fields (`0/0`, `1/1`), not single-allele GT.
 * **CPU GATK:** calls haploid and diploid interval sets separately, using
