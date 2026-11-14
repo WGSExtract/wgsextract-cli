@@ -22,9 +22,12 @@ from tests.htslib_helpers import (
     write_fasta,
 )
 from tests.yleaf_helpers import native_tables as native_tables
-from wgsextract_cli.api import CommandFailed
 from wgsextract_cli.commands._lineage_ydna import _yleaf_build
-from wgsextract_cli.core.mito_reference import CHM13_CHRM_MD5, pinned_sequences
+from wgsextract_cli.core.mito_reference import (
+    CHM13_CHRM_MD5,
+    RCRS_MD5,
+    pinned_sequences,
+)
 from wgsextract_cli.core.utils import WGSExtractError
 from wgsextract_cli.ydna.yleaf_native.trees import MANIFEST
 
@@ -557,14 +560,18 @@ def test_mt_haplogroup_refuses_a_chrm_that_is_not_rcrs_positions_827(tmp_path, c
     assert not (tmp_path / "calls.jsonl").exists()  # Haplogrep never ran
 
 
-def test_mt_haplogroup_hands_haplogrep_rcrs_positions_unchanged_827(tmp_path):
-    bam, ref = _mito_on(tmp_path, pinned_sequences()[0])
-    run_wgsextract(
-        "lineage", "mt-haplogroup", "--input", bam, "--ref", str(ref),
-        "--haplogrep-path", _haplogrep(tmp_path),
-    )  # fmt: skip
+@pytest.mark.parametrize("chrm", ["rCRS", "unrecognised"])
+def test_mt_haplogroup_warns_unless_the_chrm_is_confirmed_rcrs_827(tmp_path, chrm):
+    rcrs = pinned_sequences()[0]
+    mito = rcrs if chrm == "rCRS" else rcrs[::-1].replace("C", "G")
+    bam, ref = _mito_on(tmp_path, mito)
+    result = _classify(
+        bam, tmp_path / "o", ref=ref, haplogrep_path=_haplogrep(tmp_path)
+    )
+    unconfirmed = "mt_reference_unconfirmed" in {w.code for w in result.warnings}
+    assert unconfirmed is (chrm == "unrecognised")
     (call,) = _calls(tmp_path)
-    assert [r[:4] for r in call["records"]] == [["chrM", "2011", "G", "C"]]
+    assert [r[:2] + r[3:4] for r in call["records"]] == [["chrM", "2011", "C"]]
 
 
 @pytest.mark.parametrize(
@@ -598,26 +605,20 @@ def test_mt_haplogroup_refuses_a_vcf_called_against_chm13_827(tmp_path, evidence
     assert not (tmp_path / "calls.jsonl").exists()
 
 
-@pytest.mark.parametrize("md5", ["", "0" * 32])
-def test_mt_haplogroup_vcf_whose_refs_fit_both_references_827(
-    tmp_path, monkeypatch, md5
+@pytest.mark.parametrize(
+    ("ref", "md5"), [("A", ""), ("A", "0" * 32), ("C", ""), ("A", RCRS_MD5)]
+)
+def test_mt_haplogroup_vcf_warns_unless_its_chrm_is_confirmed_rcrs_827(
+    tmp_path, ref, md5
 ):
-    """#827: rCRS and CHM13 share the REF at 73, and an unknown md5 proves
-    nothing, so only a --ref the user chose can tell."""
-    from wgsextract_cli.core.config import settings
-
+    """#827: rCRS and CHM13 share the A at 73, so only an rCRS md5 confirms
+    it; an unknown md5 or a REF neither has (C) proves nothing either."""
     meta = f"##contig=<ID=chrM,length=16569,md5={md5}>\n" if md5 else ""
-    body = "chrM\t73\t.\tA\tG\t50\tPASS\t.\tGT\t1\n"
+    body = f"chrM\t73\t.\t{ref}\tG\t50\tPASS\t.\tGT\t1\n"
     vcf = _vcf(tmp_path / "kit.vcf.gz", {} if md5 else {"chrM": 16_569}, body, meta)
-    chm13 = pinned_sequences()[1]
-    # Config's default reference isn't what this VCF was called against.
-    default = write_fasta(tmp_path / "default" / "ref.fa", {"chrM": chm13})
-    monkeypatch.setitem(settings, "reference_fasta", str(default))
     result = _classify(vcf, tmp_path / "o", haplogrep_path=_haplogrep(tmp_path))
-    assert "mt_reference_unconfirmed" in {w.code for w in result.warnings}
-    chosen = write_fasta(tmp_path / "chm13.fa", {"MT": chm13})  # named otherwise
-    with pytest.raises(CommandFailed, match="CHM13v2.0's chrM, not the rCRS"):
-        _classify(vcf, tmp_path / "p", ref=chosen, haplogrep_path=_haplogrep(tmp_path))
+    warned = "mt_reference_unconfirmed" in {w.code for w in result.warnings}
+    assert warned is (md5 != RCRS_MD5)
 
 
 @pytest.mark.parametrize(

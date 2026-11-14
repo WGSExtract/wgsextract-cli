@@ -29,15 +29,18 @@ def sequence_md5(sequence: str) -> str:
     return hashlib.md5("".join(sequence.split()).upper().encode()).hexdigest()
 
 
-def rotated_mito(sequence: str) -> str | None:
-    """Which non-rCRS origin ``sequence`` has, or None when it has the rCRS's
-    (or isn't recognisably the rCRS at all, like a fake genome's)."""
+def mito_origin(sequence: str) -> str | None:
+    """ "rCRS" when ``sequence`` starts at the rCRS origin, a description of
+    the other origin when it is a rotated rCRS, or None when it isn't
+    recognisably the rCRS at all (like a fake genome's)."""
     if sequence_md5(sequence) == CHM13_CHRM_MD5:
         return CHM13_CHRM
     bases = "".join(sequence.split()).upper()
     # The circle may split the origin across the sequence's end and start.
     start = (bases + bases[: len(RCRS_ORIGIN) - 1]).find(RCRS_ORIGIN)
-    return f"an rCRS copy whose position 1 is at {start + 1}" if start > 0 else None
+    if start < 0:
+        return None
+    return f"an rCRS copy whose position 1 is at {start + 1}" if start else "rCRS"
 
 
 @cache
