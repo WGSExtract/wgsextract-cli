@@ -311,6 +311,61 @@ def test_run_provenance_identifies_the_actual_marker_panel(
 
 
 @needs_tools("bcftools")
+@pytest.mark.parametrize(
+    ("tree", "site"), [("ftdna", "familytreedna.com"), ("isogg", "isogg.org")]
+)
+def test_864_run_records_where_a_trees_rights_were_checked(
+    native_tables, tmp_path, tree, site
+):
+    """Issue #864: FTDNA and ISOGG trees were labelled "license unspecified"
+    with no record of their sources' published terms."""
+    vcf = _y_vcf(tmp_path / "synthetic.vcf", (100, 110, 120, 130))
+    analysis.analyze(
+        vcf, tmp_path / "out", build="hg38", tree=tree, no_ref_inference=True
+    )
+    recorded = json.loads((tmp_path / "out" / "run.json").read_text())["tree"]
+    assert recorded["license"] != "unspecified"
+    assert site in recorded["terms"] and "checked 20" in recorded["terms"]
+
+
+def test_864_installed_ucsc_chain_has_its_licence_readme_beside_it(
+    tmp_path, monkeypatch
+):
+    """Issue #864: Yleaf's packs carry UCSC chain files, whose licence must stay
+    in the same directory, without UCSC's README."""
+    chain = "t2t/hg38ToHs1.over.chain.gz"
+    assets, blobs = {}, {}
+    for folder, name in (("t2t", chain), ("hg38", "hg38/table.txt"),
+                         ("hg_prediction_tables", "hg_prediction_tables/t.txt")):  # fmt: skip
+        blob = _archive(name, b"x")
+        blobs[f"https://example.invalid/{folder}.tar.gz"] = blob
+        assets[folder] = {
+            "url": f"https://example.invalid/{folder}.tar.gz",
+            "sha256": hashlib.sha256(blob).hexdigest(),
+            "files": {name: {"size": 1, "sha256": hashlib.sha256(b"x").hexdigest()}},
+        }
+    monkeypatch.setattr(
+        data,
+        "manifest",
+        lambda: {
+            "upstream": {"tag": "v4.1.6"},
+            "archives": assets,
+            "third_party": {chain: data.ucsc_chain_terms(chain)},
+        },
+    )
+    monkeypatch.setattr(
+        data,
+        "download_file",
+        lambda url, dest, **_: Path(dest).write_bytes(blobs[url]) or True,
+    )
+    root = data.ensure_data("hg38", tmp_path)
+    assert not list(root.rglob("*README*"))  # no chain installed, no notice
+    root = data.ensure_data("t2t", tmp_path)
+    readme = (root / "t2t" / data.UCSC_README).read_text()
+    assert "redistribution of UCSC Chain Files" in " ".join(readme.split())
+
+
+@needs_tools("bcftools")
 def test_analysis_clears_previous_result_on_failed_run(native_tables, tmp_path):
     vcf = _y_vcf(tmp_path / "no-y.vcf", (), contig="X")
     output = tmp_path / "results"

@@ -14,6 +14,8 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.pharmgkb import INFO_HEADER as PHARMGKB_INFO_HEADER
+from wgsextract_cli.core.pharmgkb import table_provenance
+from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError
 from wgsextract_cli.core.variant_files import ensure_vcf_prepared
 
@@ -142,14 +144,28 @@ def run_pharmgkb(params: VcfPharmgkbParams) -> None:
         )
     else:
         # The table `ref pharmgkb` builds: #CHROM, POS, REF, ALT, PHARMGKB.
+        table = prepare_tabix_annotation(pharmgkb_file, "PharmGKB")
+        source = table_provenance(table)
+        if source:
+            result = current_result()
+            result.set_details({**(result.details or {}), "pharmgkb_source": source})
+        else:
+            warn(
+                "pharmgkb_provenance_missing",
+                f"{pharmgkb_file} records no ClinPGx licence or retrieval date; "
+                "rebuild it with 'wgsextract ref pharmgkb' to keep them.",
+            )
         annotate_vcf(
             ensure_vcf_prepared(input_file),
-            prepare_tabix_annotation(pharmgkb_file, "PharmGKB"),
+            table,
             "CHROM,POS,REF,ALT,INFO/PHARMGKB",
             ann_out,
             outdir,
             "PharmGKB",
-            [PHARMGKB_INFO_HEADER],
+            [
+                PHARMGKB_INFO_HEADER,
+                *(f"##PHARMGKB_{key}={value}" for key, value in source.items()),
+            ],
             threads=params.threads,
         )
     record_annotated(ann_out)

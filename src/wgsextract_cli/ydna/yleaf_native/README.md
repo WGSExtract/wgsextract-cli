@@ -43,7 +43,8 @@ directory is recursively deleted. Only the current prediction file is replaced.
 ## Trees
 
 `trees.json` is the registry of built-in trees. Each entry gives the name,
-version, release date, license and source; the builds it covers; where its
+version, release date, license, source and (`terms`) where and when the
+source's published terms were checked; the builds it covers; where its
 tree JSON and marker tables are (`{build}` stands for the build); and its QC
 profile, Yleaf's QC1 backbone check (see `qc` in `trees.json`). The CLI prints
 the tree's name and version with each result; JSON results carry them in
@@ -52,10 +53,10 @@ SHA-256. The config.toml setting `y_tree` picks the default tree.
 
 | `--tree` | Tree | Version | Markers from |
 |---|---|---|---|
-| `yfull` (default) | YFull YTree, CC-BY-4.0; YBrowse positions, CC-BY-SA | see `trees.json` | data modules built by `scripts/build_yfull_tree.py` |
-| `yfull_v10` | YFull YTree | 10.01.0 (2022-02-25) | Yleaf v4.1.6 data |
-| `ftdna` | FamilyTreeDNA Y-DNA tree | 2026-03-26 | Yleaf v4.1.6 data |
-| `isogg` | ISOGG Y-DNA tree | 2020-07 SNP table, 2023-08 index | Yleaf v4.1.6 data |
+| `yfull` (default) | YFull YTree, CC-BY-4.0; YBrowse positions, CC-BY-SA (version not stated) | see `trees.json` | data modules built by `scripts/build_yfull_tree.py` |
+| `yfull_v10` | YFull YTree, CC-BY-4.0 | 10.01.0 (2022-02-25) | Yleaf v4.1.6 data |
+| `ftdna` | FamilyTreeDNA Y-DNA tree; no licence published | 2026-03-26 | Yleaf v4.1.6 data |
+| `isogg` | ISOGG Y-DNA tree; "All Rights Reserved" | 2020-07 SNP table, 2023-08 index | Yleaf v4.1.6 data |
 
 The `yfull` tree comes as two data modules, built reproducibly from a YFull
 [YTree](https://github.com/YFullTeam/YTree) release and a
@@ -150,6 +151,16 @@ Sources and their licenses:
   data release. You may register a Yleaf-format FTDNA tree that you made
   yourself, for your own use.
 * **ISOGG**: the built-in `isogg` tree comes from Yleaf's data release.
+  ISOGG's tree pages say "Copyright 2019. International Society of Genetic
+  Genealogy. All Rights Reserved." and publish no licence.
+* **UCSC chains**: Yleaf's hg19 and T2T packs include UCSC's
+  `hg38ToHg19.over.chain.gz` and `hg38ToHs1.over.chain.gz`, byte-identical to
+  [UCSC's](https://hgdownload.soe.ucsc.edu/goldenPath/hg38/liftOver/). UCSC
+  licenses them free for non-commercial use by independent researchers and
+  nonprofit organizations only, and redistribution must keep its liftOver
+  README with the chains. `data_manifest.json` records those terms under
+  `third_party`, and the CLI installs the README (`UCSC-liftOver-README.txt`,
+  verbatim) beside each chain it unpacks.
 * **theytree.com**: not supported. WGS Extract doesn't fetch or redistribute
   it, because it has no known export or license
   ([#584](https://github.com/WGSExtract/wgsextract-cli/issues/584)). A tree
@@ -232,7 +243,8 @@ A valid cache works offline; an uncached offline run reports what is missing.
    The script diffs the prediction, tree, extraction/constants source against
    the recorded base and reports data changes. It creates deterministic gzip
    tarballs per build and prediction directory, a source-pinned file/archive
-   manifest, `SHA256SUMS`, and the upstream GPL license.
+   manifest (with UCSC's chain terms under `third_party`), `SHA256SUMS`, the
+   upstream GPL license and, when a pack has UCSC chains, UCSC's liftOver README.
 3. Review/port algorithm changes, preserving original attribution. Run focused
    tests, upstream parity (below), and real male WGS parity for each build.
    Only then repeat with `--write-manifest` to update package data pins and
@@ -243,7 +255,7 @@ A valid cache works offline; an uncached offline run reports what is missing.
    ```sh
    gh release create yleaf-data-vNEXT out/yleaf-native/vNEXT/* \
      --draft --target main --title "Yleaf data vNEXT" \
-     --notes "Unmodified Yleaf tables; upstream source/tag/commit and GPL license in assets."
+     --notes "Unmodified Yleaf tables; upstream source/tag/commit, GPL license and UCSC chain README in assets."
    ```
 
    Check uploaded draft assets with `gh release download` and `SHA256SUMS`.

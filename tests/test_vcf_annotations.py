@@ -693,10 +693,15 @@ PGX_CLINICAL = (
 )
 
 
-def _zip_with(dest: str, member: str, text: str) -> None:
+def _zip_with(dest: str, member: str, text: str, created: str = "") -> None:
     with zipfile.ZipFile(dest, "w") as archive:
         archive.writestr("README.pdf", "x")
         archive.writestr(member, text)
+        if created:
+            archive.writestr(
+                "LICENSE.txt", "ClinPGx licence\nUnder no circumstances..."
+            )
+            archive.writestr(f"CREATED_{created}.txt", "Created")
 
 
 @needs_bcftools
@@ -709,9 +714,9 @@ def test_pharmgkb_download_builds_the_hg38_table(tmp_path):
 
     def fake_download(url, dest, *_args):
         if url == pharmgkb.CLINICAL_URL:
-            _zip_with(dest, "clinical_annotations.tsv", PGX_CLINICAL)
+            _zip_with(dest, "clinical_annotations.tsv", PGX_CLINICAL, "2025-07-05")
         else:
-            _zip_with(dest, "variants.tsv", PGX_VARIANTS)
+            _zip_with(dest, "variants.tsv", PGX_VARIANTS, "2026-11-05")
         return True
 
     with patch.object(pharmgkb, "download_file", side_effect=fake_download):
@@ -721,10 +726,20 @@ def test_pharmgkb_download_builds_the_hg38_table(tmp_path):
         "pharmgkb_hg38.tsv.gz.tbi",
     ]
     with gzip.open(ref / "pharmgkb_hg38.tsv.gz", "rt") as f:
-        assert f.read().splitlines() == [
-            "#CHROM\tPOS\tREF\tALT\tPHARMGKB",
-            "chr16\t31096368\tC\tT\trs200|VKORC1|1A|Dosage|warfarin",
-        ]
+        lines = f.read().splitlines()
+    assert [line for line in lines if not line.startswith("##")] == [
+        "#CHROM\tPOS\tREF\tALT\tPHARMGKB",
+        "chr16\t31096368\tC\tT\trs200|VKORC1|1A|Dosage|warfarin",
+    ]
+    # Issue #864: the derived table kept no ClinPGx licence, version or date.
+    header = "\n".join(line for line in lines if line.startswith("##"))
+    assert (
+        f"##clinical_annotations={pharmgkb.CLINICAL_URL} (created 2025-07-05)" in header
+    )
+    assert f"##variants={pharmgkb.VARIANTS_URL} (created 2026-11-05)" in header
+    assert "##license=CC-BY-SA-4.0" in header and "no sale" in header
+    assert "##license_text=Under no circumstances..." in header
+    assert "##retrieved=20" in header
 
 
 def test_pharmgkb_download_fails_without_placeable_annotations(tmp_path):

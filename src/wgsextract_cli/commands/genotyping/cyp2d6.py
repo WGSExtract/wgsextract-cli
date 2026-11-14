@@ -1,8 +1,11 @@
 """`typing cyp2d6`: CYP2D6 star alleles with Cyrius.
 
-Cyrius (Illumina; PolyForm Strict license, noncommercial use only) calls CYP2D6
+Cyrius (Illumina) calls CYP2D6
 diplotypes, including copy-number and CYP2D6/CYP2D7 hybrid alleles, from the
-depth and reads at the CYP2D6 locus of a 30x WGS BAM/CRAM.
+depth and reads at the CYP2D6 locus of a 30x WGS BAM/CRAM. The pinned PyPI
+package (cyrius 1.1.1) declares the PolyForm Strict License: use for
+noncommercial purposes only, and no distribution or modification. WGS Extract
+doesn't bundle it; `pixi install -e cyrius` fetches it from PyPI.
 
 GRCh38 references with ALT contigs (hs38DH, GRCh38 full analysis set) carry
 copies of CYP2D6 on chr22 ALTs: an aligner that isn't ALT-aware (bwa-mem2
@@ -39,7 +42,10 @@ from .common import (
     write_outside_calls,
 )
 
-LICENSE_NOTE = " (Cyrius's PolyForm Strict license allows noncommercial use only)"
+LICENSE_NOTE = (
+    " (Cyrius's PolyForm Strict license allows noncommercial use only, "
+    "and no distribution or modification)"
+)
 # CYP2D6 through CYP2D7 (GRCh38 chr22:42123192-42145745) with 40 kb either side,
 # so reads pair up within it. No Cyrius normalization region is within 0.1 Mb.
 RESCUE_WINDOW = (42_080_000, 42_180_000)

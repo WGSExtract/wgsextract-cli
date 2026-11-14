@@ -87,6 +87,13 @@ def run_pgs(params: ScorePgsParams) -> None:
             data["plink2_crosscheck"] = pgs_plink.crosscheck(
                 matched_file, Path(work), data["score_sum"]
             )
+    if not params.scoring_file and pgs.author_license(data["license"]):
+        warn(
+            "pgs_license_restricted",
+            f"{data['pgs_id']}'s authors set their own licence: {data['license']} "
+            "Check that your use is allowed.",
+            pgs_id=data["pgs_id"],
+        )
     if data["match_rate"] < data["minimum_match_rate"]:
         warn(
             "pgs_low_match",

@@ -18,11 +18,21 @@ files and modifications. Yleaf data is distributed separately, unmodified,
 with upstream provenance and SHA-256 checksums in the yleaf-data release
 manifest (release tags: yleaf-data-v<VERSION>).
 
+Those Yleaf data packs hold third-party data under its own terms, not the GPL:
+the hg19 and t2t packs include UCSC's hg38ToHg19.over.chain.gz and
+hg38ToHs1.over.chain.gz, which UCSC licenses free for non-commercial use by
+independent researchers and nonprofit organizations only; UCSC's liftOver
+README, which must accompany them, is
+src/wgsextract_cli/ydna/yleaf_native/UCSC-liftOver-README.txt and is installed
+beside each chain. The packs' FamilyTreeDNA and ISOGG tree tables come from
+Yleaf's data release; neither source publishes a licence for them (see
+trees.json "terms").
+
 The default YFull Y tree is not part of WGS Extract either. It is downloaded
 on demand as two separately licensed data modules (release tags:
 yleaf-yfull-v<VERSION>): yfull-tree (YFull YTree, CC-BY-4.0) and
 yfull-ybrowse-positions (marker positions derived from YBrowse, CC-BY-SA
-Thomas Krahn YSEQ (2022)). Each module carries its own licence file and
+Thomas Krahn YSEQ (2022), no CC-BY-SA version stated). Each module carries its own licence file and
 SHA-256 pins; neither licence applies to this program.
 
 Please cite:
