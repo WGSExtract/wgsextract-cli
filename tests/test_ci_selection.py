@@ -10,7 +10,13 @@ from pathlib import Path
 import pytest
 
 from scripts.ci_changes import routes
-from scripts.ci_select_tests import CI_TESTS, os_selection, select_tests
+from scripts.ci_select_replay import failed_test_files
+from scripts.ci_select_tests import (
+    CI_TESTS,
+    ci_test_targets,
+    os_selection,
+    select_tests,
+)
 from scripts.ci_test_dependencies import ROOT
 
 
@@ -68,7 +74,8 @@ def test_914_workflow_only_selects_ci_tests_and_only_changed_os_smoke() -> None:
 def test_914_selector_regressions_do_not_start_the_cli_matrix() -> None:
     paths = ["scripts/ci_select_tests.py", "tests/test_ci_selection.py"]
     assert not routes(paths)["cli"]
-    assert select_tests(paths) == sorted(CI_TESTS)
+    assert set(CI_TESTS) <= set(select_tests(paths))
+    assert "tests/test_table_writer.py" not in select_tests(paths)
 
 
 def test_914_lazy_registry_command_selects_its_tests(tmp_path: Path) -> None:
@@ -230,3 +237,113 @@ def test_914_empty_selection_skips_without_starting_pixi() -> None:
     )
     assert result.returncode == 0
     assert "skipping" in result.stdout
+
+
+def test_914_transitive_docs_reader_has_an_executable_lane() -> None:
+    paths = ["scripts/build_mockup_previews.py"]
+    assert "tests/test_mockup_review_edges.py" in select_tests(paths)
+    assert routes(paths)["cli"]
+
+
+def test_914_mixed_product_and_generated_docs_cannot_skip_freshness() -> None:
+    selected = select_tests(["tests/test_table_writer.py", "docs/api.md"])
+    assert "tests/test_table_writer.py" in selected
+    assert "tests/test_api.py" in selected
+
+
+def test_914_ci_observer_change_keeps_its_actual_readers() -> None:
+    paths = ["scripts/ci_failures.py"]
+    selected = ci_test_targets(paths)
+    assert "tests/test_ci_failures.py" in selected
+    assert "tests/test_ci_main_observer.py" in selected
+    assert set(select_tests(paths)) <= set(selected)
+    assert not routes(paths)["cli"]
+
+
+def test_914_prose_policy_files_do_not_start_ci_tests() -> None:
+    paths = [".github/copilot-instructions.md", ".github/README.md"]
+    assert select_tests(paths) == []
+    assert ci_test_targets(paths) == []
+    assert not any(routes(paths).values())
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "src/wgsextract_cli/core/haplogrep_trees.json",
+        "src/wgsextract_cli/ydna/y_str/data.tsv",
+    ],
+)
+def test_914_packaged_resources_cannot_hide_runtime_consumers(path: str) -> None:
+    assert select_tests([path]) == "all"
+
+
+def test_914_collection_errors_are_reported_in_replay() -> None:
+    observed = failed_test_files(
+        "ERROR tests/test_missing_dependency.py - ImportError: no package\n"
+        "FAILED tests/test_runtime.py::test_error - AssertionError\n"
+        "ERROR tests/test_no_suffix.py"
+    )
+    assert observed == {
+        "tests/test_missing_dependency.py",
+        "tests/test_runtime.py",
+        "tests/test_no_suffix.py",
+    }
+
+
+def test_914_explicit_e2e_paths_keep_the_dedicated_runner() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/ci_run_tests.py"),
+            "--selection",
+            json.dumps(["tests/test_e2e_full_genome.py"]),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    assert "skipping" in result.stdout
+
+
+def test_914_shared_workflow_change_exercises_all_os_smokes() -> None:
+    paths = [".github/workflows/os_tests.yml"]
+    matrix = os_selection(paths, select_tests(paths), cli=False)
+    assert all(matrix.values())
+    assert not routes(paths)["cli"]
+
+
+def test_923_local_selector_cli_prints_only_diff_selection(tmp_path: Path) -> None:
+    def git(*args: str) -> str:
+        return subprocess.check_output(
+            ["git", "-c", "core.hooksPath=/dev/null", *args],
+            cwd=tmp_path,
+            text=True,
+        ).strip()
+
+    git("init", "--quiet")
+    git("config", "user.name", "CI Test")
+    git("config", "user.email", "ci@example.invalid")
+    (tmp_path / "README.md").write_text("initial")
+    git("add", ".")
+    git("commit", "--quiet", "-m", "base")
+    base = git("rev-parse", "HEAD")
+    (tmp_path / "README.md").write_text("changed")
+    git("add", ".")
+    git("commit", "--quiet", "-m", "prose")
+    command = [
+        sys.executable,
+        str(ROOT / "scripts/ci_changes.py"),
+        "--base",
+        base,
+        "--head",
+        "HEAD",
+        "--print-tests",
+    ]
+    assert json.loads(subprocess.check_output(command, cwd=tmp_path, text=True)) == []
+    assert (
+        subprocess.check_output(
+            [*command, "--full-suite"], cwd=tmp_path, text=True
+        ).strip()
+        == "all"
+    )

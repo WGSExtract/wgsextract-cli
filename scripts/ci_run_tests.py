@@ -3,9 +3,17 @@
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
+import shlex
 import subprocess
+import sys
 from pathlib import Path
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 
 def test_targets(selection: str) -> list[str] | None:
@@ -21,7 +29,25 @@ def test_targets(selection: str) -> list[str] | None:
         for target in targets
     ):
         raise ValueError("Selection must contain existing repository test files")
-    return targets
+    manifest = Path(__file__).resolve().parents[1] / "pixi.toml"
+    task = tomllib.loads(manifest.read_text(encoding="utf-8"))["feature"]["dev"][
+        "tasks"
+    ]["test-ci"]
+    words = shlex.split(task if isinstance(task, str) else task["cmd"])
+    ignored: set[str] = set()
+    patterns: set[str] = set()
+    for index, word in enumerate(words):
+        option, _, value = word.partition("=")
+        if option not in {"--ignore", "--ignore-glob"}:
+            continue
+        value = value or words[index + 1]
+        (ignored if option == "--ignore" else patterns).add(value.rstrip("/"))
+    return [
+        target
+        for target in targets
+        if not any(target == path or target.startswith(path + "/") for path in ignored)
+        and not any(fnmatch.fnmatchcase(target, pattern) for pattern in patterns)
+    ]
 
 
 def main() -> None:

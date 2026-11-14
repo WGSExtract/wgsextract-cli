@@ -17,7 +17,11 @@ if __package__ in {None, ""}:
 from scripts.ci_select_tests import select_tests  # noqa: E402
 from scripts.ci_test_dependencies import ROOT  # noqa: E402
 
-FAILED_TEST = re.compile(r"\b(?:FAILED|ERROR)\s+(tests/[^\s:]+\.py)::[^\s]+")
+FAILED_TEST = re.compile(r"\b(?:FAILED|ERROR)\s+(tests/[^\s:]+\.py)(?=::|\s|$)")
+
+
+def failed_test_files(log: str) -> set[str]:
+    return {match.group(1) for match in FAILED_TEST.finditer(log)}
 
 
 def gh_json(*args: str) -> Any:
@@ -105,9 +109,7 @@ def replay(
             )
             if result.returncode:
                 unavailable.append(run["id"])
-            failed_tests.update(
-                match.group(1) for match in FAILED_TEST.finditer(result.stdout)
-            )
+            failed_tests.update(failed_test_files(result.stdout))
         records.append(
             {
                 "pr": number,

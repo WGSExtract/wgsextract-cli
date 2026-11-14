@@ -67,23 +67,36 @@ The current shared fixture helper imports the typed API, whose eager package
 initializer connects almost all application modules. Those changes can
 select the whole suite even without the explicit `all` fallback. Narrowing
 that shared dependency requires a separate fixture/API refactor, not dropping
-edges from this safety graph. Packaged application assets currently fail open
+edges from this safety graph. Non-Python application resources currently fail open
 because the test-input scanner does not inspect runtime resource consumers.
+Explicitly declared generated documentation inputs retain their freshness lane.
 
 The `changes` job publishes `tests` and per-OS selections as JSON test-file
-arrays or `all`. Reusable OS workflows pass them through
+arrays or `all`. The four OS wrappers forward these inputs to the shared
+`os_tests.yml` workflow, which passes them through
 `scripts/ci_run_tests.py` to `pixi run test-ci`; existing tiers, stable module
 shards and Ubuntu-only partitions apply **within** that set. Empty selections
 skip jobs, and empty tier/shard partitions exit successfully. Selections are
-validated and passed as argv, never evaluated as shell text.
+validated and passed as argv, never evaluated as shell text. Explicit paths
+are filtered using the `test-ci` task's ignore rules so generated-genome and
+real-data suites remain exclusively in their dedicated steps.
 
-`.github/**` and `scripts/ci_*.py` changes select actionlint and the CI
+Non-Markdown `.github/**` and `scripts/ci_*.py` changes select actionlint and the CI
 policy/routing/readiness regressions, not the CLI matrix or Install Lab.
+`ci_tests` includes their actual transitive script/action readers as well as
+the baseline policy checks; the CI job executes that complete selection.
 Changing an OS matrix workflow additionally exercises **only that OS** in
-one lightweight smoke job. Mixed product/CI changes union their coverage.
+one lightweight smoke job; changing shared `os_tests.yml` exercises all four
+OS smoke jobs. Mixed product/CI changes union their coverage. Declared docs
+freshness modules join a product selection before the docs lane is suppressed.
 Extra generated-genome, imputation, ONT and Windows vep-rs checks run only
 when their test files are affected. Main pushes, nightly/manual runs and
 merge-queue Ubuntu validation retain full-suite coverage.
+
+Local callers can use
+`pixi run python scripts/ci_changes.py --base origin/main --head HEAD --print-tests`.
+Stdout is only the JSON file array or `all`; no GitHub credentials or output
+file is required. `select_tests(paths, repository=...)` remains importable.
 
 Replay with `pixi run python scripts/ci_select_replay.py --limit 50 --output
 out/914`. It records each merged PR's files, selected fraction, failed
@@ -144,9 +157,9 @@ The secret scan remains unfiltered on every main push; Pages retains its
 existing site-source filters.
 
 Install Lab, GUI distribution/CI/developer setup and macOS aligners/DeepVariant
-are intentionally left to #904 (main-push coalescing) to avoid conflicting edits.
-Until those filters land, these six workflows still start for prose-only main
-pushes. The fast-path target is only gitleaks, plus Pages for site sources.
+now use their installer, app and native PR path filters on main pushes too,
+as implemented by #904 (main-push coalescing). All retain unfiltered nightly
+coverage. The fast-path target is only gitleaks, plus Pages for site sources.
 See AGENTS.md, "Docs fast path", for the narrower direct-push permission:
 policy files and generated/test-checked references still require PRs.
 
@@ -165,8 +178,42 @@ Label runs cannot cancel a code-validation run. Routing, documentation, lint
 and summary label checks have distinct names. Draft-fast, native smoke and
 Pages checks use static names so skipped jobs do not expose raw name expressions.
 The landing validator scopes area checks to the selected ready run.
-Its nightly run includes the former weekly negative
-controls and pinned-release scenarios.
+Its nightly run includes the former weekly negative controls and pinned-release
+scenarios.
+
+### Main-push macOS capacity
+
+Main pushes supersede older main-push runs independently in Install Lab, GUI
+distribution, CI macOS, CLI package/benchmark smoke, macOS Aligners,
+macOS DeepVariant, GUI CI and GUI developer setup. Their concurrency groups
+separate push, PR, nightly and manual events. Nightly/manual runs keep unique
+run-ID groups and are not cancelled by pushes. Reusable workflows use literal
+workflow-specific prefixes, not the caller's `github.workflow`; tagged GUI
+distribution calls also keep unique, non-cancelling groups, including a release
+caller with a push event. Release publishing and `app_run` artifact selection
+are unchanged.
+Main-push retries (`run_attempt > 1`) also use independent run-ID groups:
+rerunning an old commit cannot cancel the newest first-attempt main push.
+
+The eight workflows previously submitted **13–14 macOS jobs per main merge**:
+CI macOS 3, smoke 2, Install Lab 2–3 (one extra if it builds the tree app),
+GUI distribution 2, and one each for Aligners, DeepVariant, GUI CI and GUI
+developer setup. A CLI-only merge outside installer/packaging paths now submits
+**5** (CI macOS plus smoke); before the prose filters, docs-only submitted
+the same 5. Relevant app/native
+merges still run the matching workflows. Coalescing limits each workflow's
+main-push backlog to its newest run; it does not promise a fixed saving in
+runner-minutes or a measured queue-wait target.
+
+The failure observer treats a cancelled superseded main run as obsolete:
+no retry, red-main update or flake exemption from its partial passes.
+Cancelled runs do not replace the last conclusive main failure/success used
+for PR comparisons, including an earlier failed attempt of a cancelled retry.
+A relevant newer main push or nightly success still closes that workflow's
+red-main bug. Nightly results refresh the baseline after fixes outside the push
+route; unrelated path-filtered pushes do not falsely mark it green.
+Manual/nightly retries remain independent and can report confirmed recoveries
+even when another run of their event exists.
 
 ### CLI test time and tiers
 
@@ -266,7 +313,8 @@ cancellation, avoiding stale failed gates after a draft transition.
 
 The required set stays on fast Ubuntu jobs. The other OS jobs, which more
 often lose runners or wait for capacity, stay advisory so they can't stall the
-queue; selected main pushes and nightly runs still run them in full. A job-level `needs:` summary in one workflow, rather than polling the
+queue; main pushes run selected advisory workflows in full and nightly runs cover
+all paths. A job-level `needs:` summary in one workflow, rather than polling the
 checks API, reports exactly once per run with no extra permissions or timeout.
 The queue's `merge_group` events ignore `paths:` filters, so routing uses the
 group's `base_sha...head_sha` diff for ancillary lanes; Ubuntu retains full
@@ -365,3 +413,15 @@ the validator rejects direct `actions/setup-node` steps. `gui-build.yml` can
 build an older ref, so it replaces that ref's `.github/actions` with the run's
 own before using it. `gui-dev-setup.yml` deliberately bypasses it: it tests the
 app's own bootstrap on runners without user tools.
+
+CI Ubuntu, CI macOS, CI Windows and CI Linux ARM64 keep their own triggers,
+concurrency groups and workflow names, but run the CLI suite through one
+reusable workflow, `os_tests.yml`. Its `os` input selects the installer checks,
+Windows imputation and vep-rs, and ARM64 checks; `reference: true` (Ubuntu and
+macOS) adds the hg19ToHg38 chain and hs38 reference library. ARM64 passes one
+`tier: all, shard: all` matrix entry, the `--ci-tier`/`--ci-shard` defaults, so
+it collects the same tests as before. Its jobs report as `test-ubuntu / core-1`
+on main and `ubuntu / test-ubuntu / core-1` in PR area checks; ARM64's single job is
+`native-arm64 / native`. Each job uploads `tests-<os>-<label>`. The workflow has
+no concurrency group of its own, so the OS calls in one run never cancel each
+other.

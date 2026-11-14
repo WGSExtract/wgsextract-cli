@@ -7,6 +7,23 @@ from scripts import validate_github_actions as policy
 from scripts.ci_changes import routes
 
 
+@pytest.mark.parametrize(
+    "workflow",
+    [
+        "ubuntu_ci.yml",
+        "macos_ci.yml",
+        "windows_ci.yml",
+        "linux_arm64.yml",
+    ],
+)
+def test_906_selected_tests_survive_shared_workflow_boundary(workflow: str) -> None:
+    source = (policy.ROOT / ".github/workflows" / workflow).read_text()
+    # CI contract: the shared suite must receive both PR selection and smoke mode.
+    assert "uses: ./.github/workflows/os_tests.yml" in source
+    assert "tests: ${{ inputs.tests }}" in source
+    assert "smoke-only: ${{ inputs.smoke-only }}" in source
+
+
 @pytest.mark.parametrize("job", ["required", "ready-gate"])
 def test_876_summary_gates_stop_when_the_workflow_is_cancelled(job: str) -> None:
     workflow = (policy.ROOT / ".github/workflows/pr_ci.yml").read_text()

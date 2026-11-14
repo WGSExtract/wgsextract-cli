@@ -7,7 +7,12 @@ import fnmatch
 from functools import cache
 from pathlib import Path
 
-from scripts.ci_test_dependencies import ROOT, test_inputs
+from scripts.ci_test_dependencies import (
+    GENERATED_DOCS,
+    ROOT,
+    docs_test_targets,
+    test_inputs,
+)
 
 CI_TESTS = (
     "tests/test_ci_changes.py",
@@ -24,7 +29,7 @@ OS_WORKFLOWS = {
 
 
 def ci_path(path: str) -> bool:
-    return (
+    return not path.endswith(".md") and (
         path in CI_TESTS
         or path.startswith(".github/")
         or (path.startswith("scripts/ci_") and path.endswith(".py"))
@@ -260,23 +265,32 @@ def select_tests(paths: list[str], *, repository: Path = ROOT) -> list[str] | st
         for name, file in graph.files.items()
         if name.startswith("tests.") and file.name.startswith("test_")
     }
-    selected: set[str] = set()
+    selected = {
+        target.split("::")[0]
+        for target in docs_test_targets(paths, repository=root)
+        if target.split("::")[0] in tests
+    }
     changed_modules: set[str] = set()
+    ci_modules: set[str] = set()
     inputs = test_inputs(root)
     by_path = {
         file.relative_to(root).as_posix(): name for name, file in graph.files.items()
     }
+    direct_closures = {test: graph.reaches(name) for test, name in tests.items()}
     closures = {
-        test: graph.reaches(name) | graph.fixture_dependencies((root / test).parent)
+        test: direct_closures[test] | graph.fixture_dependencies((root / test).parent)
         for test, name in tests.items()
     }
     for path in paths:
+        if path.endswith(".md") and path not in GENERATED_DOCS:
+            continue
+        if path in GENERATED_DOCS:
+            continue
         if ci_path(path):
             selected.update(test for test in CI_TESTS if test in tests)
-            continue
         if path in {"pyproject.toml", "pixi.toml", "pixi.lock"}:
             return "all"
-        if path.startswith("src/wgsextract_cli/assets/"):
+        if path.startswith("src/wgsextract_cli/") and not path.endswith(".py"):
             # Runtime resource readers are not yet part of the literal-input
             # scanner. A direct test reader must not hide indirect consumers.
             return "all"
@@ -292,21 +306,31 @@ def select_tests(paths: list[str], *, repository: Path = ROOT) -> list[str] | st
             for pattern, modules in inputs.items()
             if path == pattern or fnmatch.fnmatchcase(path, pattern)
             for test in modules
+            if ci_path(path) or test not in CI_TESTS
         }
         selected.update(readers & tests.keys())
         reader_modules = {by_path[reader] for reader in readers if reader in by_path}
+        reader_closures = direct_closures if ci_path(path) else closures
         selected.update(
-            test for test, reached in closures.items() if reached & reader_modules
+            test
+            for test, reached in reader_closures.items()
+            if reached & reader_modules
         )
         if path in tests:
             selected.add(path)
         if path in by_path:
-            changed_modules.add(by_path[path])
+            (ci_modules if ci_path(path) else changed_modules).add(by_path[path])
+        elif path.endswith(".py") and not readers and not ci_path(path):
+            return "all"
         elif path.startswith("src/wgsextract_cli/") and path.endswith(".py"):
             return "all"
-        elif not readers and not (
-            path.endswith(".md")
-            or path.startswith(("gui/", "native/", "site/", "site_src/"))
+        elif (
+            not readers
+            and not ci_path(path)
+            and not (
+                path.endswith(".md")
+                or path.startswith(("gui/", "native/", "site/", "site_src/"))
+            )
         ):
             return "all"
     if changed_modules:
@@ -320,6 +344,9 @@ def select_tests(paths: list[str], *, repository: Path = ROOT) -> list[str] | st
                 selected.add(test)
             if reached & changed_modules:
                 selected.add(test)
+    selected.update(
+        test for test, reached in direct_closures.items() if reached & ci_modules
+    )
     return sorted(selected)
 
 
@@ -327,6 +354,18 @@ def os_selection(
     paths: list[str], selection: list[str] | str, *, cli: bool
 ) -> dict[str, list[str] | str]:
     return {
-        os: selection if cli else list(SMOKE_TESTS) if workflow in paths else []
+        os: selection
+        if cli
+        else list(SMOKE_TESTS)
+        if workflow in paths or ".github/workflows/os_tests.yml" in paths
+        else []
         for os, workflow in OS_WORKFLOWS.items()
     }
+
+
+def ci_test_targets(paths: list[str], *, repository: Path = ROOT) -> list[str]:
+    """Baseline policy checks plus actual CI script/action dependency readers."""
+    selected = select_tests(
+        [path for path in paths if ci_path(path)], repository=repository
+    )
+    return list(CI_TESTS) if selected == "all" else list(selected)
