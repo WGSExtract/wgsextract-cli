@@ -62,6 +62,16 @@ shown with their section.
 
 ### ClinVar gene list
 
+ClinVar findings show assertion review status and stars separately from
+sequencing confidence, together with the resource record ID. Conflicting
+assertions and their submitter distributions are explicitly labelled for
+review, never counted as consensus P/LP in carrier/biallelic gene status.
+The JSON variant's `clinical_evidence` object and the findings table's
+`clinvar_*` columns retain these fields. Phase-supported composed MNVs also
+retain `mnv_components`; their classified component calls do not count twice.
+See [variant-confidence.md](variant-confidence.md) for normalization,
+phase requirements and the review-star scale.
+
 ClinVar hits are listed only for the genes of one gene list, by default the 84
 genes of the ACMG secondary-findings list, version 3.3 (Lee K et al., *Genet
 Med* 2025;27(8):101454, PMID 40568962). The genes, categories, inheritance
