@@ -1,0 +1,214 @@
+name: CLI test suite
+
+# The CLI pytest suite on one OS, shared by CI Ubuntu, CI macOS, CI Windows and
+# CI Linux ARM64. Those callers keep their own triggers and concurrency; this
+# file has none, so the four OS calls in one PR run never cancel each other.
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: ubuntu, macos, windows or linux-arm64; selects OS-specific steps and names artifacts.
+        type: string
+        required: true
+      runner:
+        type: string
+        required: true
+      timeout-minutes:
+        type: number
+        required: true
+      environments:
+        description: Space-separated Pixi environments to restore.
+        type: string
+        required: true
+      matrix:
+        description: JSON list of {tier, shard, label}; the first entry seeds shared main caches.
+        type: string
+        default: >-
+          [{"tier": "core", "shard": "0/2", "label": "core-1"},
+           {"tier": "core", "shard": "1/2", "label": "core-2"},
+           {"tier": "integration", "shard": "all", "label": "integration"}]
+      reference:
+        description: Install the hs38 reference library the reference-backed tests read.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.matrix) }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Verify native runner architecture
+        if: inputs.os == 'linux-arm64'
+        run: test "$(uname -m)" = aarch64
+      # The first matrix entry (core-1) is the one main-branch cache writer.
+      - name: Set up Pixi
+        uses: ./.github/actions/setup-pixi
+        with:
+          environments: ${{ inputs.environments }}
+          writer: ${{ strategy.job-index == 0 }}
+      - name: Test installer
+        if: inputs.os != 'windows'
+        run: scripts/test_install_sh.sh
+      - name: Validate installer arguments
+        if: inputs.os == 'windows' && strategy.job-index == 0
+        shell: cmd
+        run: install_windows.bat --dry-run --msys2-root C:\msys64 --skip-pacman-setup
+      - name: Verify Tools
+        if: inputs.os == 'ubuntu' || inputs.os == 'macos'
+        run: chmod +x scripts/verify_tools.sh && pixi run scripts/verify_tools.sh
+      - name: Check tools
+        if: inputs.os == 'windows' || inputs.os == 'linux-arm64'
+        run: pixi run wgsextract deps check
+      - name: Check native lineage and VEP entry points
+        if: inputs.os == 'linux-arm64'
+        run: |
+          pixi run --no-install wgsextract lineage y-haplogroup --help > /dev/null
+          pixi run -e vep --no-install vep --help > /dev/null
+      # UCSC is often unresolvable from runners (#667). Bootstrap keeps a chain
+      # already in the library, so restore the newest cached one and keep it only
+      # if it has the pinned SHA-256. A verified checksum has one shared key.
+      - name: Pinned hg19ToHg38 chain checksum
+        if: inputs.reference
+        id: chain
+        run: pixi run python -c 'import os; from wgsextract_cli.core.microarray_targets import HG19_TO_HG38_CHAIN as c; open(os.environ["GITHUB_OUTPUT"], "a").write(f"sha256={c.sha256}\n")'
+      - name: Restore the hg19ToHg38 liftOver chain
+        if: inputs.reference
+        id: chain-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: reference/hg19ToHg38.over.chain.gz
+          key: ucsc-hg19ToHg38-${{ steps.chain.outputs.sha256 }}
+          # Keep the verified fallback during migration from run-id keys.
+          restore-keys: ucsc-hg19ToHg38-${{ steps.chain.outputs.sha256 }}-
+      - name: Keep a restored chain only if it has the pinned SHA-256
+        if: inputs.reference
+        id: restored
+        env:
+          CHAIN_SHA256: ${{ steps.chain.outputs.sha256 }}
+        run: |
+          chain=reference/hg19ToHg38.over.chain.gz
+          if [ -f "$chain" ] && echo "$CHAIN_SHA256  $chain" | shasum -a 256 -c --status; then
+            echo "verified=true" >> "$GITHUB_OUTPUT"
+          elif [ -f "$chain" ]; then
+            echo "::warning::Cached $chain failed its SHA-256; downloading it again."
+            rm -f "$chain"
+          fi
+      - name: Configure and Bootstrap Library
+        if: inputs.reference
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          pixi run python -c "from wgsextract_cli.core.config import save_config; save_config({'reference_library': 'reference'})"
+          pixi run python -m wgsextract_cli.main ref bootstrap --ref reference
+      - name: Check the downloaded chain before caching it
+        id: downloaded
+        if: inputs.reference && steps.restored.outputs.verified != 'true'
+        env:
+          CHAIN_SHA256: ${{ steps.chain.outputs.sha256 }}
+        run: echo "$CHAIN_SHA256  reference/hg19ToHg38.over.chain.gz" | shasum -a 256 -c
+      - name: Cache the verified hg19ToHg38 liftOver chain
+        if: >-
+          inputs.reference && github.ref == 'refs/heads/main' && strategy.job-index == 0 &&
+          steps.chain-cache.outputs.cache-hit != 'true' &&
+          (steps.restored.outputs.verified == 'true' || steps.downloaded.outcome == 'success')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: reference/hg19ToHg38.over.chain.gz
+          key: ucsc-hg19ToHg38-${{ steps.chain.outputs.sha256 }}
+      - name: Cache public hs38 reference
+        if: inputs.reference
+        id: reference-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: reference/genomes
+          key: hs38-v1-${{ hashFiles('src/wgsextract_cli/assets/reference/seed_genomes.csv', 'src/wgsextract_cli/core/ref_library/catalog.py') }}
+      - name: Install Reference Genome
+        if: inputs.reference
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: pixi run python -m wgsextract_cli.main ref library --install hs38 --ref reference
+      # Only Ubuntu seeds the multi-gigabyte reference cache.
+      - name: Seed the shared hs38 reference on main
+        if: >-
+          inputs.reference && inputs.os == 'ubuntu' && github.ref == 'refs/heads/main' &&
+          strategy.job-index == 0 && steps.reference-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: reference/genomes
+          key: hs38-v1-${{ hashFiles('src/wgsextract_cli/assets/reference/seed_genomes.csv', 'src/wgsextract_cli/core/ref_library/catalog.py') }}
+      # This environment is deliberately not restored by setup-pixi above:
+      # prove that a fresh install uses the published, SHA-256-pinned package.
+      - name: Install pinned imputation tools from scratch
+        if: inputs.os == 'windows' && matrix.tier == 'integration'
+        shell: pwsh
+        run: |
+          if (Test-Path .pixi/envs/imputation) {
+            Remove-Item -Recurse -Force .pixi/envs/imputation
+          }
+          pixi install --locked -e imputation
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Impute HG002 with the pinned Windows tools (no skips)
+        if: inputs.os == 'windows' && matrix.tier == 'integration'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          pixi run pytest tests/test_imputation.py -p no:randomly -rs -o addopts="" --basetemp=out/imputation-tmp --junitxml=out/imputation-e2e.xml
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          pixi run python -c "import sys, xml.etree.ElementTree as ET; s = ET.parse('out/imputation-e2e.xml').getroot().find('testsuite'); assert s is not None; n = int(s.get('tests', '0')); skipped = int(s.get('skipped', '0')); print(n, 'tests,', skipped, 'skipped'); sys.exit(n == 0 or skipped > 0)"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Run Tests
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          TIER: ${{ matrix.tier }}
+          SHARD: ${{ matrix.shard }}
+          # Ubuntu x64 alone runs the reviewed OS-independent tests.
+          SKIP_INDEPENDENT: ${{ inputs.os != 'ubuntu' }}
+        run: |
+          args=(--ci-tier "$TIER" --ci-shard "$SHARD")
+          if [ "$SKIP_INDEPENDENT" = true ]; then args+=(--ci-skip-independent); fi
+          if [ "$EVENT" != pull_request ] && [ "$EVENT" != merge_group ]; then
+            args+=(--cov=wgsextract_cli --cov-report=xml:out/coverage.xml)
+          fi
+          pixi run test-ci "${args[@]}"
+      # The app's bundle commands must still parse with this CLI (#538); GUI CI
+      # checks the bundle side, this catches a CLI flag dropped or renamed.
+      - name: Check the app's bundle commands parse with this CLI
+        if: inputs.os == 'ubuntu' && strategy.job-index == 0
+        working-directory: gui
+        run: pixi run python -m unittest discover -s tests/wgsextract
+      - name: Annotate with vep-rs end to end (no skips)
+        if: inputs.os == 'windows' && matrix.tier == 'integration'
+        shell: pwsh
+        run: |
+          pixi run python -c "from wgsextract_cli.core.dependencies import get_tool_path as g; assert g('vep-rs') and g('vep-cache-builder'), 'vep-rs environment missing'"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          pixi run pytest tests/test_vep_rs.py -p no:randomly -rs -o addopts="" --junitxml=out/vep-rs-e2e.xml
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          pixi run python -c "import sys, xml.etree.ElementTree as ET; s = ET.parse('out/vep-rs-e2e.xml').getroot().find('testsuite'); n = int(s.get('skipped')); print(s.get('tests'), 'tests,', n, 'skipped'); sys.exit(n > 0)"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      # Each extract, call and annotate command run end to end on generated chrM
+      # and whole-genome data; about 30 s, no downloads.
+      - name: Run end-to-end tests on generated data
+        if: matrix.tier != 'core'
+        run: pixi run test-e2e-fake --junitxml=out/e2e-fake.xml
+      - name: Publish test timings and non-gating coverage
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tests-${{ inputs.os }}-${{ matrix.label }}
+          path: |
+            out/coverage.xml
+            out/pytest.xml
+            out/imputation-e2e.xml
+            out/vep-rs-e2e.xml
+            out/e2e-fake.xml
