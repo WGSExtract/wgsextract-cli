@@ -186,8 +186,11 @@ class FakeSteps:
         data = home / "data"
         data.mkdir()
         self.config = get_config_path().read_text()
-        # An empty library, so only the configured data counts as installed.
+        # The FASTA is installed; annotation availability comes from config.
         (home / "library").mkdir()
+        genomes = home / "library" / "genomes"
+        genomes.mkdir()
+        (genomes / "hg38.fa").write_text(">chr1\n" + "A" * 1000 + "\n")
         self.settings: dict[str, object] = {"reference_library": str(home / "library")}
         for ann, key in _ANNOTATION_DATA.items():
             (data / ann).write_text(f"{ann} release 1")
@@ -906,6 +909,9 @@ def test_vcf_input_end_to_end_with_clinvar(
         tmp_path / "me.vcf.gz",
         [(100, "a", "50", "."), (200, "b", "50", "."), (300, "c", "50", ".")],
     )
+    from tests.htslib_helpers import reference_for_vcf
+
+    reference_for_vcf(lib / "genomes" / "hg38.fa.gz", calls)
     out = tmp_path / "out"
     main(["--config", str(cfg), "analyze", "comprehensive", "--vcf-inputs", calls,
           "--outdir", str(out), "--threads", "1"])  # fmt: skip

@@ -97,6 +97,7 @@
             },
             "build": {"enum": ["hg19", "hg38", null]},
             "all_calls": {"type": ["string", "null"], "description": "Every carried ClinVar P/LP call (confidence TSV), relative to the folder."},
+            "all_conflicts": {"type": ["string", "null"], "description": "Conflicting ClinVar assertions for review, not consensus P/LP, relative to the folder."},
             "counts": {
               "type": "object",
               "required": ["carried", "in_gene_list", "outside_gene_list", "high", "moderate", "low"],
@@ -261,6 +262,21 @@
           "required": ["chrom", "pos", "ref", "alt", "genotype", "zygosity", "depth", "genotype_quality", "alt_fraction"],
           "additionalProperties": false,
           "properties": {
+            "clinical_evidence": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {"type": ["string", "null"]},
+                "review_status": {"type": ["string", "null"]},
+                "stars": {"type": ["integer", "null"], "minimum": 0, "maximum": 4},
+                "review_tier": {"type": "string"},
+                "conflict": {"type": "boolean"},
+                "conflict_evidence": {"type": ["string", "null"]}
+              }
+            },
+            "original_record": {"type": ["string", "null"]},
+            "mnv_components": {"type": ["string", "null"]},
+            "mnv_residual_copies": {"type": ["integer", "null"], "minimum": 1, "maximum": 2},
             "chrom": {"type": "string"},
             "pos": {"type": ["integer", "null"]},
             "ref": {"type": ["string", "null"]},

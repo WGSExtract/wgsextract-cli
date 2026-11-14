@@ -30,6 +30,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import IO, Any
 
+from wgsextract_cli.core import clinical_evidence
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.config import KNOWN_SETTINGS, settings
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
@@ -638,6 +639,20 @@ def label_records(
                 if alt_allele not in SYMBOLIC_REFERENCE_ALTS:
                     summary.not_carried += 1
                 continue
+            component_label = info.get(clinical_evidence.COMPONENT_CONF)
+            if component_label in LABELS:
+                if LABELS.index(component_label) > LABELS.index(result.label):
+                    result.label = component_label
+                result.reasons = sorted(
+                    set(result.reasons)
+                    | {
+                        r
+                        for r in info.get(
+                            clinical_evidence.COMPONENT_REASONS, ""
+                        ).split("|")
+                        if r in REASONS
+                    }
+                )
             labels.append(result.label)
             reasons.append("|".join(result.reasons) or ".")
             if suppress_rare_imputed and rare_imputed(info, index):
