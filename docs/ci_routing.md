@@ -255,20 +255,22 @@ the routing itself lands. Other main-only workflow triggers are unchanged.
 `required`, a dependency summary in PR area checks. It runs for every PR, docs-only
 included, and for every merge-queue group. It passes when routing succeeded
 and every required job passed or was skipped by area routing; a failed or
-cancelled job fails it. `always()` keeps it reporting when a dependency fails,
-because GitHub counts a skipped required check as passing.
+cancelled dependency fails it while the run remains active. `!cancelled()`
+allows reporting after a dependency failure but stops the summary on whole-run
+cancellation, avoiding stale failed gates after a draft transition.
 
 | Event | Jobs `required` waits for | Not required |
 |---|---|---|
-| Pull request | routing, draft lint/fast tests when applicable, documentation freshness, changed Python lint, CI Ubuntu (lint, tests, imputation, ONT), secret scan, native CLI smoke, Pages checks | macOS, Windows, ARM64, package smoke, Install Lab, CodeQL, GUI and native workflows: advisory |
-| Merge-queue group | the same set, routed by the group's diff against `main` | not run |
+| Pull request | routing, draft lint/fast tests when applicable, documentation freshness, changed Python lint, CI policy, selected CI Ubuntu checks, secret scan, native CLI smoke, Pages checks | macOS, Windows, ARM64, package smoke, Install Lab, CodeQL, GUI and native workflows: advisory |
+| Merge-queue group | full Ubuntu CLI suite plus the other required checks selected by the group's diff against `main` | other OSes, package smoke and Install Lab not run |
 
 The required set stays on fast Ubuntu jobs. The other OS jobs, which more
 often lose runners or wait for capacity, stay advisory so they can't stall the
 queue; selected main pushes and nightly runs still run them in full. A job-level `needs:` summary in one workflow, rather than polling the
 checks API, reports exactly once per run with no extra permissions or timeout.
 The queue's `merge_group` events ignore `paths:` filters, so routing uses the
-group's `base_sha...head_sha` diff, keeping docs-only groups to a few minutes.
+group's `base_sha...head_sha` diff for ancillary lanes; Ubuntu retains full
+test coverage even for docs-only groups.
 
 Agents enqueue with `gh pr merge PR --squash --auto --match-head-commit SHA` after
 every check, advisory ones included, is green, and don't update branches that
@@ -289,7 +291,8 @@ Routing uses `set -euo pipefail`; the final gate fails on a routing failure
 or a missing completion output, rather than accepting an all-skipped matrix.
 It rejects old draft-only passes/skips (including the gap before the ready
 run registers), empty reports, and pending, failed, cancelled or unknown statuses
-in the selected area run or any other workflow. Stale area checks from earlier
+in the selected area run or other reported workflows. Reported checks are
+verified against their latest matching workflow runs; unrelated and superseded
 draft/label runs do not block a passing ready run.
 `--pr` is required: the validator reads the latest ready-for-review event and
 current head from GitHub, then selects the newest non-draft area run for that

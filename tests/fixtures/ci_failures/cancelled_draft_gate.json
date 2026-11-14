@@ -1,0 +1,25 @@
+{
+  "run": {
+    "id": 43579850651,
+    "name": "PR area checks / opened / draft",
+    "path": ".github/workflows/pr_ci.yml",
+    "display_title": "PR area checks / opened / draft",
+    "head_branch": "docs/worktree-cleanup",
+    "head_repository": {"full_name": "WGSExtract/wgsextract-cli"},
+    "head_sha": "43d992d86f52847913e2af7d545c891b57bc9468",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "cancelled",
+    "workflow_id": 416978936,
+    "created_at": "2026-11-14T09:17:30Z",
+    "pull_requests": []
+  },
+  "jobs": [
+    {"name": "changes", "conclusion": "cancelled"},
+    {"name": "gitleaks / gitleaks", "conclusion": "cancelled"},
+    {"name": "required", "conclusion": "failure"},
+    {"name": "Native CLI smoke", "conclusion": "cancelled"},
+    {"name": "Draft lint and fast tests", "conclusion": "cancelled"},
+    {"name": "Pages source checks", "conclusion": "cancelled"}
+  ]
+}
