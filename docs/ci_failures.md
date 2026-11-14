@@ -87,8 +87,9 @@ API responses, including the macOS GPU-resume flake.
 
 Flaky-test and red-main bugs created by this publisher carry `endorsed` as well
 as `ci-automation` and their existing hidden CI marker. Updates endorse only
-our `github-actions[bot]` issues with that label and a valid marker in the first
-`(AI):` line; stale `needs-owner` is removed without replacing other labels.
+our `github-actions[bot]` issues with that label and a body whose first line is
+exactly `(AI): <valid CI marker>`; prose or quoted content before that line is
+not accepted. Stale `needs-owner` is removed without replacing other labels.
 Existing issues from other authors, ordinary bot reports, quoted markers, PRs
 and ledger issues are never auto-endorsed. This is the narrow owner-approved
 exception in `AGENTS.md`;

@@ -137,3 +137,13 @@ def test_one_time_migration_is_selective_idempotent_and_does_not_interpret_logs(
     writes = api.issue_mutations[own["number"]]
     assert IssueReports(api).endorse_existing() == []
     assert api.issue_mutations[own["number"]] == writes
+
+
+def test_legacy_crlf_header_is_recognized_without_rewriting_the_report() -> None:
+    api = ReplayGitHub()
+    bug = seed_issue(api, f"(AI): {RED_MAIN}\r\n\r\nCI evidence")
+    original_body = bug["body"]
+    assert IssueReports(api).endorse_existing() == [bug["number"]]
+    assert "endorsed" in bug["labels"]
+    assert "needs-owner" not in bug["labels"]
+    assert bug["body"] == original_body
