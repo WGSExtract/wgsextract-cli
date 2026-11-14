@@ -228,7 +228,7 @@ GATK (Python 3.10, Java 17) and FreeBayes live in their own environments. Instal
 
 ::: card
 ### cyrius, t1k, and expansionhunter
-Gene and repeat typing: `typing cyp2d6` (Cyrius), `typing hla` (T1K), and `typing str` (ExpansionHunter). Linux x86_64 and macOS, where packaged; not qualified on Linux ARM64. Install once with `pixi install --locked -e <environment>`; Cyrius is licensed for noncommercial use only.
+Gene and repeat typing: `typing cyp2d6` (Cyrius), `typing hla` (T1K), and `typing str` (ExpansionHunter). Linux x86_64 and macOS, where packaged; not qualified on Linux ARM64. Install once with `pixi install --locked -e <environment>`; Cyrius's PolyForm Strict license allows noncommercial use only, and no distribution or modification; WGS Extract doesn't bundle it.
 :::
 
 ::: card

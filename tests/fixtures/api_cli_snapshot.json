@@ -31964,7 +31964,7 @@
    }
   },
   "typing": {
-   "help": "usage: wgsextract typing [-h] <command> ...\n\npositional arguments:\n  <command>\n    cyp2d6    Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius, and\n              write a PharmCAT outside call. Cyrius is for noncommercial use only.\n    hla       Call HLA class I and II alleles with T1K from reads in the MHC, and write a PharmCAT\n              outside call for HLA-A/HLA-B. The first run downloads 45 MB.\n    smn       Call SMN1/SMN2 copy number with SMNCopyNumberCaller for SMA carrier screening (one\n              SMN1 copy: carrier; none: affected). Short-read ~30x WGS only; not a diagnosis.\n    str       Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72,\n              ...) with ExpansionHunter, or LongTR for Nanopore and PacBio reads, and flag those\n              outside STRchive's normal range.\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract typing [-h] <command> ...\n\npositional arguments:\n  <command>\n    cyp2d6    Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius, and\n              write a PharmCAT outside call. Cyrius's license allows noncommercial use only, and\n              no distribution or modification.\n    hla       Call HLA class I and II alleles with T1K from reads in the MHC, and write a PharmCAT\n              outside call for HLA-A/HLA-B. The first run downloads 45 MB.\n    smn       Call SMN1/SMN2 copy number with SMNCopyNumberCaller for SMA carrier screening (one\n              SMN1 copy: carrier; none: affected). Short-read ~30x WGS only; not a diagnosis.\n    str       Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72,\n              ...) with ExpansionHunter, or LongTR for Nanopore and PacBio reads, and flag those\n              outside STRchive's normal range.\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -31994,7 +31994,7 @@
       "help": [
        [
         "cyp2d6",
-        "Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius, and write a PharmCAT outside call. Cyrius is for noncommercial use only."
+        "Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius, and write a PharmCAT outside call. Cyrius's license allows noncommercial use only, and no distribution or modification."
        ],
        [
         "hla",

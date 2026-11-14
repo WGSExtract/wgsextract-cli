@@ -47,8 +47,9 @@ class ChainSource:
     sha256: str
 
 
-# UCSC chain files are free for non-commercial use under UCSC's EULA; a mirror
-# must ship UCSC's liftOver README (its licence terms) beside the chain.
+# UCSC chain files are free only for non-commercial use by independent researchers
+# and nonprofit organizations (UCSC's EULA); a mirror must ship UCSC's liftOver
+# README (its licence terms) beside the chain.
 _UCSC_LIFTOVER = "https://hgdownload.soe.ucsc.edu/goldenPath/{}/liftOver/{}"
 _MIRROR = (
     "https://github.com/WGSExtract/wgsextract-cli/releases/download/"

@@ -248,7 +248,8 @@ def run_y_haplogroup(params: YHaplogroupParams, *, tree_links: bool = False) -> 
             "build": yleaf_build,
             "tree": {
                 key: provenance[key]
-                for key in ("id", "name", "version", "date", "license")
+                for key in ("id", "name", "version", "date", "license", "terms")
+                if key in provenance
             },
             "tables": version,
             "predictions": rows,

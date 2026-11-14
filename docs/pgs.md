@@ -25,7 +25,7 @@ Failed or truncated responses never replace a previously good copy.
 | `breast-cancer` | PGS000004 | Breast cancer |
 | `height` | PGS000297 | Height |
 | `t2d` | PGS000020 | Type 2 diabetes |
-| `bmi` | PGS000027 | Body mass index |
+| `bmi` | PGS000027 | Body mass index (authors' licence: academic research use only) |
 | `stroke` | PGS000038 | Stroke |
 | `triglycerides` | PGS000063 | Triglycerides |
 | `ldl-cholesterol` | PGS000065 | LDL cholesterol |
@@ -35,7 +35,10 @@ Failed or truncated responses never replace a previously good copy.
 
 This is a convenience list, not a clinical recommendation or a ranking of
 predictive accuracy. Any `PGSnnnnnn` is accepted with `--pgs-id`; an uncurated
-ID emits `pgs_uncurated_score`. Review the publication, development ancestry,
+ID emits `pgs_uncurated_score`. A Catalog score whose authors set their own
+licence emits `pgs_license_restricted` with it: PGS000027, the `bmi` score, is
+"freely available to the academic community for research use", and commercial
+use needs the Broad Institute's permission. Review the publication, development ancestry,
 licence and limitations before using a score. A height score in raw score
 units is **not** height in centimetres; a disease score is **not** disease
 probability.

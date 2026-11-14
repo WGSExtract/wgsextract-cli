@@ -36,7 +36,11 @@ DISCLAIMER = (
     "Research use only; not a diagnosis. A polygenic score is not absolute "
     "disease risk, and must not guide treatment or screening."
 )
-# IDs and trait labels only: scoring files are never redistributed.
+# The PGS Catalog's licence for a score whose authors set no terms of their own.
+CATALOG_DEFAULT_LICENSE = "PGS obtained from the Catalog should be cited appropriately"
+# IDs and trait labels only: scoring files are never redistributed. `bmi`'s
+# PGS000027 carries its authors' terms (academic research use; commercial use
+# needs the Broad Institute's permission), which `score pgs` warns of.
 CURATED = {
     "cad": "PGS000018",
     "breast-cancer": "PGS000004",
@@ -50,6 +54,12 @@ CURATED = {
     "lung-cancer": "PGS000070",
     "thyroid-cancer": "PGS000087",
 }
+
+
+def author_license(license: str | None) -> bool:
+    """Whether a Catalog score's licence is its authors' own terms rather than
+    the Catalog's default."""
+    return bool(license) and not str(license).startswith(CATALOG_DEFAULT_LICENSE)
 
 
 def text_file(path: Path) -> TextIO:

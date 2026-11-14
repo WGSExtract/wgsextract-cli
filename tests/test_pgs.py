@@ -262,6 +262,59 @@ def test_617_download_retries_and_records_catalog_licence(
     assert "pgs_uncurated_score" in {w.code for w in result.warnings}
 
 
+@pytest.mark.parametrize(
+    ("license", "restricted"),
+    [
+        (
+            "Freely available to the academic community for research use. Parties "
+            "interested in using the scores for commercial purposes should contact "
+            "the Broad Office of Strategic Alliances and Partnering.",
+            True,
+        ),
+        (
+            "PGS obtained from the Catalog should be cited appropriately, and used "
+            "in accordance with any licensing restrictions set by the authors.",
+            False,
+        ),
+    ],
+)
+def test_864_bmi_alias_warns_of_its_scores_author_licence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, license: str, restricted: bool
+) -> None:
+    """Issue #864: --trait bmi selected PGS000027, which only academic research
+    may use, without saying so outside the licence field."""
+    import urllib.request
+
+    url = "https://ftp.ebi.ac.uk/pub/databases/spot/pgs/scores/PGS000027/h.txt.gz"
+    payloads = {
+        "https://www.pgscatalog.org/rest/score/PGS000027/": json.dumps(
+            {
+                "ftp_harmonized_scoring_files": {"GRCh38": {"positions": url}},
+                "license": license,
+            }
+        ).encode(),
+        url: gzip.compress(
+            ("#pgs_id=PGS000027\n" + (FIXTURES / "additive.txt").read_text()).encode()
+        ),
+    }
+
+    def response(address: str, **kwargs: object) -> addinfourl:
+        payload = payloads[address]
+        return addinfourl(
+            io.BytesIO(payload), {"Content-Length": str(len(payload))}, address
+        )
+
+    monkeypatch.setattr(urllib.request, "urlopen", response)
+    result = api.score.pgs(
+        api.ScorePgsParams(
+            input=FIXTURES / "sample.vcf", build="GRCh38", trait="bmi", outdir=tmp_path
+        )
+    )
+    warned = [w for w in result.warnings if w.code == "pgs_license_restricted"]
+    assert bool(warned) is restricted
+    assert all("academic community" in w.message for w in warned)
+
+
 @pytest.fixture
 def catalog_payloads() -> tuple[str, str, dict[str, bytes]]:
     pgs_id = "PGS999999"

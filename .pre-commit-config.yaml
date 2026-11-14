@@ -3,12 +3,12 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
-        # Vendor headers are copied verbatim, trailing spaces included.
-        # The app's TOML parser test has a trailing space on purpose.
-        exclude: ^src/wgsextract_cli/assets/microarray/raw_file_templates/head/|^packaging/(windows/recipes|arm64)/.*\.patch$|^gui/app/tests/rendering\.test\.mjs$
+        # Vendor headers and UCSC's liftOver README are copied verbatim, trailing
+        # spaces included. The app's TOML parser test has a trailing space on purpose.
+        exclude: ^src/wgsextract_cli/assets/microarray/raw_file_templates/head/|^src/wgsextract_cli/ydna/yleaf_native/UCSC-liftOver-README\.txt$|^packaging/(windows/recipes|arm64)/.*\.patch$|^gui/app/tests/rendering\.test\.mjs$
       - id: end-of-file-fixer
-        # Upstream patch context must retain its exact whitespace and line endings.
-        exclude: ^packaging/(windows/recipes|arm64)/.*\.patch$
+        # Upstream patch context and UCSC's README keep their exact whitespace.
+        exclude: ^src/wgsextract_cli/ydna/yleaf_native/UCSC-liftOver-README\.txt$|^packaging/(windows/recipes|arm64)/.*\.patch$
       - id: check-yaml
       - id: check-added-large-files
         # Shipped coordinate data; the CHM13 v1 loader enforces its 7 MiB cap.

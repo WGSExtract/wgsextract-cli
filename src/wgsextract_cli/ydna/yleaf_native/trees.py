@@ -61,6 +61,8 @@ class YleafTree:
     root: Path | None = None
     """The folder marker table identifiers are relative to (None: file names)."""
     ancient_files: dict[str, Path] = field(default_factory=dict)
+    terms: str = ""
+    """Where the licence was checked, and what the source's terms say."""
 
     def positions(self, build: str, ancient: bool = False) -> Path:
         if ancient:
@@ -88,7 +90,7 @@ class YleafTree:
         return tree_label(self.provenance())
 
     def provenance(self) -> dict[str, str]:
-        return {
+        record = {
             "id": self.id,
             "name": self.name,
             "version": self.version,
@@ -96,6 +98,9 @@ class YleafTree:
             "license": self.license,
             "source": self.source,
         }
+        if self.terms:
+            record["terms"] = self.terms
+        return record
 
 
 def tree_label(meta: dict[str, Any]) -> str:
@@ -234,6 +239,7 @@ def ensure_tree(
         date=str(meta["date"]),
         license=str(meta["license"]),
         source=str(meta["source"]),
+        terms=str(meta.get("terms", "")),
         tree_file=tree_root / meta["tree"],
         positions_files=tables["positions"],
         ancient_files=tables["positions_ancient"],

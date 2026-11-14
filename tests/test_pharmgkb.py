@@ -1,10 +1,12 @@
 import gzip
+import json
 import subprocess
+import zipfile
 
 from smoke_utils import run_cli
 
 from tests.htslib_helpers import bgzip_index
-from wgsextract_cli.core.pharmgkb import build_table, write_table
+from wgsextract_cli.core.pharmgkb import build_table, source_header, write_table
 
 VARIANTS = (
     "Variant ID\tVariant Name\tGene IDs\tGene Symbols\tLocation\tSynonyms\n"
@@ -85,6 +87,88 @@ def test_vcf_pharmgkb_annotates_matching_alleles_only(tmp_path):
     with gzip.open(tmp_path / "out" / "pharmgkb_annotated.vcf.gz", "rt") as out:
         info = [line.split("\t")[7] for line in out if not line.startswith("#")]
     assert info == [f"PHARMGKB={RS100}", "END=31096367", "."]
+
+
+def _hg38_library(tmp_path, header=()):
+    library = tmp_path / "reflib"
+    (library / "ref").mkdir(parents=True)
+    (library / "genomes").mkdir()
+    (library / "genomes" / "hg38.fa").write_text(">chr10\nACGT\n")
+    subprocess.run(["bgzip", "-f", str(library / "genomes" / "hg38.fa")], check=True)
+    write_table(
+        build_table(CLINICAL, VARIANTS),
+        str(library / "ref" / "pharmgkb_hg38.tsv.gz"),
+        header,
+    )
+    vcf = tmp_path / "sample.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n"
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        "##contig=<ID=chr10,length=133797422>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+        "chr10\t94761900\t.\tC\tT\t50\tPASS\t.\tGT\t1/1\n"
+    )
+    return library, bgzip_index(vcf)
+
+
+def test_864_vcf_pharmgkb_carries_the_clinpgx_licence_into_its_outputs(tmp_path):
+    """Issue #864: ClinPGx's licence and dates didn't survive into results."""
+    archive = tmp_path / "clinical.zip"
+    with zipfile.ZipFile(archive, "w") as z:
+        z.writestr("LICENSE.txt", "CC BY-SA 4.0.\nNo sale.")
+        z.writestr("CREATED_2025-07-05.txt", "")
+    header = source_header(
+        {"clinical_annotations": ("https://x/c.zip", str(archive))}, "2026-11-14"
+    )
+    library, vcf_gz = _hg38_library(tmp_path, header)
+
+    rc, stdout, stderr = run_cli(
+        [
+            "vcf",
+            "pharmgkb",
+            "--input",
+            vcf_gz,
+            "--ref",
+            str(library),
+            "--outdir",
+            str(tmp_path / "out"),
+            "--json",
+        ]  # fmt: skip
+    )
+
+    assert rc == 0, stderr
+    source = json.loads(stdout)["details"]["pharmgkb_source"]
+    assert source["clinical_annotations"] == "https://x/c.zip (created 2025-07-05)"
+    assert source["retrieved"] == "2026-11-14"
+    assert "CC-BY-SA-4.0" in source["license"]
+    with gzip.open(tmp_path / "out" / "pharmgkb_annotated.vcf.gz", "rt") as out:
+        vcf_header = [line for line in out if line.startswith("##PHARMGKB_")]
+    assert any(
+        line.startswith("##PHARMGKB_license=CC-BY-SA-4.0") for line in vcf_header
+    )
+    assert not any("license_text" in line for line in vcf_header)
+
+
+def test_864_vcf_pharmgkb_warns_when_the_table_records_no_licence(tmp_path):
+    library, vcf_gz = _hg38_library(tmp_path)
+
+    rc, stdout, stderr = run_cli(
+        [
+            "vcf",
+            "pharmgkb",
+            "--input",
+            vcf_gz,
+            "--ref",
+            str(library),
+            "--outdir",
+            str(tmp_path / "out"),
+            "--json",
+        ]  # fmt: skip
+    )
+
+    assert rc == 0, stderr
+    codes = {w["code"] for w in json.loads(stdout)["warnings"]}
+    assert "pharmgkb_provenance_missing" in codes
 
 
 def test_vcf_pharmgkb_on_grch37_says_the_data_is_grch38(tmp_path):

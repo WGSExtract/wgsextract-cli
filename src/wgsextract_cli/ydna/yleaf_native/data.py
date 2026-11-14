@@ -20,6 +20,28 @@ from wgsextract_cli.core.ref_library.downloads import download_file
 from wgsextract_cli.core.reference_assets import resolve_reference_library
 from wgsextract_cli.core.utils import WGSExtractError
 
+UCSC_README = "UCSC-liftOver-README.txt"
+"""UCSC's liftOver README, verbatim: its chain files' licence, which must stay in
+the same directory as any redistributed chain."""
+
+
+def ucsc_chain_terms(relative: str) -> dict[str, str]:
+    """The ``third_party`` manifest record of a UCSC chain file in an archive."""
+    name = Path(relative).name
+    folder = (
+        f"https://hgdownload.soe.ucsc.edu/goldenPath/{name.split('To', 1)[0]}/liftOver"
+    )
+    return {
+        "source": f"{folder}/{name}",
+        "license": (
+            "UCSC Chain Files: free for non-commercial use by independent "
+            "researchers and nonprofit organizations; any other use needs a "
+            "commercial licence from UCSC"
+        ),
+        "terms": f"{folder}/README.txt",
+        "notice": UCSC_README,
+    }
+
 
 def manifest() -> dict[str, Any]:
     with (
@@ -125,4 +147,16 @@ def ensure_data(build: str | None, library: Path | None = None) -> Path:
                 ) from error
             finally:
                 archive.unlink(missing_ok=True)
+        _place_notices(root, metadata.get("third_party", {}))
     return root
+
+
+def _place_notices(root: Path, third_party: dict[str, Any]) -> None:
+    """Put each installed third-party file's licence notice beside it."""
+    for name, terms in third_party.items():
+        if not (root / name).is_file():
+            continue
+        notice = Path(__file__).with_name(terms["notice"]).read_bytes()
+        target = (root / name).parent / terms["notice"]
+        if not target.is_file() or target.read_bytes() != notice:
+            target.write_bytes(notice)

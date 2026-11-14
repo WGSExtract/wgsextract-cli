@@ -10,6 +10,9 @@ import json
 import subprocess
 import tarfile
 from pathlib import Path
+from typing import Any
+
+from wgsextract_cli.ydna.yleaf_native.data import UCSC_README, ucsc_chain_terms
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "src/wgsextract_cli/ydna/yleaf_native"
@@ -40,7 +43,7 @@ def sync(
         "upstream": {**base, "tag": tag, "commit": commit},
         "release_tag": f"yleaf-data-{tag}",
     }
-    archives = {}
+    archives: dict[str, dict[str, Any]] = {}
     for folder in ("hg19", "hg38", "t2t", "hg_prediction_tables"):
         prefix = f"yleaf/data/{folder}"
         paths = (
@@ -70,6 +73,14 @@ def sync(
             "files": files,
         }
     manifest["archives"] = archives
+    # UCSC's chain licence must travel with the chains: recorded here, installed
+    # beside them, and published as a release asset.
+    manifest["third_party"] = {
+        name: ucsc_chain_terms(name)
+        for archive in archives.values()
+        for name in archive["files"]
+        if name.endswith(".over.chain.gz")
+    }
     content = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
     (output / "manifest.json").write_text(content, encoding="utf-8", newline="\n")
     (output / "SHA256SUMS").write_text(
@@ -82,6 +93,8 @@ def sync(
         newline="\n",
     )
     (output / "LICENSE.txt").write_bytes(git(checkout, "show", f"{commit}:LICENSE.txt"))
+    if manifest["third_party"]:
+        (output / UCSC_README).write_bytes((PACKAGE / UCSC_README).read_bytes())
     if write_manifest:
         (PACKAGE / "data_manifest.json").write_text(
             content, encoding="utf-8", newline="\n"

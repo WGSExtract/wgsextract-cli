@@ -2285,7 +2285,8 @@ Each writes `<input stem>.*` files in `outdir`, else beside the input:
 
 * `cyp2d6`: CYP2D6 star alleles, copy number and hybrids with Cyrius
   (`.cyrius.tsv`/`.json`), from the optional `cyrius` Pixi environment.
-  Cyrius's PolyForm Strict license allows noncommercial use only.
+  Cyrius's PolyForm Strict license allows noncommercial use only, and no
+  distribution or modification.
 * `smn`: SMN1/SMN2 copy number and SMA carrier status with
   SMNCopyNumberCaller (`.smn.tsv`/`.json`), from the optional `smn`
   environment. A screening estimate, not a diagnosis.
