@@ -147,6 +147,37 @@ def test_923_local_fork_refuses(
         )
 
 
+def test_923_clean_but_moved_local_head_refuses(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    subprocess.run(["git", "init", "-q"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Certification regression",
+            "-c",
+            "user.email=certification@example.invalid",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "Local-only regression fixture",
+        ],
+        check=True,
+    )
+    with pytest.raises(ValueError, match="Local HEAD"):
+        validate_head(
+            {
+                "state": "open",
+                "head": {"repo": {"full_name": "owner/repo"}, "sha": "old"},
+            },
+            "old",
+            "owner/repo",
+        )
+
+
 @pytest.mark.parametrize(
     ("system", "machine", "expected"),
     [

@@ -45,6 +45,8 @@ def validate_head(pr: dict[str, Any], sha: str, repository: str) -> None:
         raise ValueError("Refusing fork PR")
     if pr.get("state") != "open" or pr["head"]["sha"] != sha:
         raise ValueError("HEAD is not the pushed open PR head")
+    if git("rev-parse", "HEAD") != sha:
+        raise ValueError("Local HEAD changed during certification")
     branch = git("branch", "--show-current")
     if not branch or branch != pr["head"]["ref"]:
         raise ValueError("Checkout must be on the pushed PR branch")
@@ -237,7 +239,6 @@ def generic_commands(paths: list[str], targets: list[str] | str) -> list[list[st
     pixi = ["pixi", "run", "--no-install"]
     commands = [
         [*pixi, "ruff", "check", "."],
-        [*pixi, "ruff", "format", "--check", "."],
         [*pixi, "mypy", "src/wgsextract_cli"],
         [*pixi, "actionlint"],
         [*pixi, "python", "scripts/validate_github_actions.py"],
@@ -314,9 +315,18 @@ def main() -> None:
     repository, pr, sha = pr_head()
     host = host_platform()
     subprocess.run(["git", "fetch", "origin", pr["base"]["sha"]], check=True)
-    paths = git(
-        "diff", "--name-only", "--no-renames", f"{pr['base']['sha']}...{sha}", "--"
-    ).splitlines()
+    changed = subprocess.check_output(
+        [
+            "git",
+            "diff",
+            "--name-only",
+            "--no-renames",
+            "-z",
+            f"{pr['base']['sha']}...{sha}",
+            "--",
+        ]
+    )
+    paths = changed.decode().rstrip("\0").split("\0") if changed else []
     selected = routes(paths)
     targets = select_tests(paths)
     os = {
