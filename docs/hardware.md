@@ -415,7 +415,8 @@ the check, or is older than the oldest supported release, raises the
   and never built or used automatically:
   - `wgsextract ref dense-sa --ref <fasta>` builds it with `wgse-bwa
     densify-sa` (it shows the disk it will take first; `--interval 8`, `4` or
-    `2` makes a larger, faster file), `--list` shows the FASTA's files and the
+    `2` makes a larger file with shorter walks; on x86 Linux interval 8 wasn't
+    clearly faster than 16), `--list` shows the FASTA's files and the
     one `wgse-bwa` would read here, and `--delete` removes them.
   - `align` and `realign` read it with `--dense-suffix-array`, or
     `dense_suffix_array = true` in `config.toml` (`--no-dense-suffix-array`

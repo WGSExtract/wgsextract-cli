@@ -1124,10 +1124,11 @@ run with upstream's records:
 The CPU gain fits `perf`'s eighth of the time in locate (7.5% and 7.8% in
 the two rounds). With `--cuda` the file cut the GPU's locate time from 11.1 to
 9.6 s, but mate rescue and extension dominate there; after 20M reads the GPU
-builds the same denser sample itself. An interval-8 file (2.40 GB) took 335.8
-s against 345.0 s for the interval-16 file in two more rounds (−16% and +11%
-in the two rounds, on a busier machine), with 7.5% less CPU time and a peak of
-7.5 GiB.
+builds the same denser sample itself. An interval-8 file (2.40 GB) was within
+noise of the interval-16 file in two more rounds on a busier machine: 335.8
+against 345.0 s, but −16% in one round and +11% in the other, with 15% less CPU
+time in one round and the same in the other. It peaked at 7.5 GiB against
+6.0 GiB.
 
 On the same machine and tier, bwa-mem3 0.16.0 `--compat=bwa-mem` on the CPU
 (as `wgse-bwa-mem3`, below) took 97.7 s and 761 s of CPU time, with the same records
