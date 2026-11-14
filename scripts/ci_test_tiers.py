@@ -39,6 +39,83 @@ PURE_FIXTURES = {
     "caplog",
     "recwarn",
 }
+PURE_IMPORTS = {
+    "__future__",
+    "collections",
+    "csv",
+    "dataclasses",
+    "enum",
+    "functools",
+    "gzip",
+    "hashlib",
+    "io",
+    "itertools",
+    "json",
+    "logging",
+    "math",
+    "pathlib",
+    "pytest",
+    "re",
+    "statistics",
+    "string",
+    "struct",
+    "tomllib",
+    "tomli",
+    "typing",
+}
+
+
+def pure_imports(path: Path, tree: ast.Module) -> bool:
+    from scripts.ci_select_tests import import_graph
+
+    root = Path(__file__).resolve().parents[1]
+    graph = import_graph(root)
+    module = (
+        ".".join(path.relative_to(root).with_suffix("").parts)
+        if path.is_relative_to(root)
+        else ""
+    )
+    dependencies = graph.reaches(module) - {module}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            imports = (
+                [alias.name for alias in node.names]
+                if isinstance(node, ast.Import)
+                else [node.module or ""]
+            )
+            for name in imports:
+                if name.startswith("wgsextract_cli"):
+                    if name not in graph.files:
+                        return False
+                    dependencies.update(graph.reaches(name))
+            if isinstance(node, ast.ImportFrom) and node.module:
+                for alias in node.names:
+                    for name in graph.module(f"{node.module}.{alias.name}"):
+                        dependencies.update(graph.reaches(name))
+    trees = [tree]
+    for name in dependencies:
+        if name in graph.unsafe:
+            return False
+        dependency = ast.parse(graph.files[name].read_text(encoding="utf-8"))
+        if SENSITIVE.search(ast.unparse(dependency)):
+            return False
+        trees.append(dependency)
+    for parsed in trees:
+        for node in ast.walk(parsed):
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                modules = (
+                    [alias.name for alias in node.names]
+                    if isinstance(node, ast.Import)
+                    else [node.module or ""]
+                )
+                for name in modules:
+                    if name.startswith("wgsextract_cli") and name in graph.files:
+                        continue
+                    if isinstance(node, ast.ImportFrom) and node.level and module:
+                        continue
+                    if name.split(".")[0] not in PURE_IMPORTS:
+                        return False
+    return True
 
 
 def generic_test(path: Path) -> bool:
@@ -49,6 +126,8 @@ def generic_test(path: Path) -> bool:
     except (OSError, UnicodeError, SyntaxError):
         return False
     if SENSITIVE.search(ast.unparse(tree)):
+        return False
+    if not pure_imports(path, tree):
         return False
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -75,12 +154,21 @@ def generic_test(path: Path) -> bool:
                         isinstance(decorator, ast.Call)
                         and ast.unparse(decorator.func) == "pytest.mark.parametrize"
                         and decorator.args
-                        and isinstance(decorator.args[0], ast.Constant)
-                        and isinstance(decorator.args[0].value, str)
                     ):
-                        parametrized.update(
-                            part.strip() for part in decorator.args[0].value.split(",")
-                        )
+                        argument = decorator.args[0]
+                        if isinstance(argument, ast.Constant) and isinstance(
+                            argument.value, str
+                        ):
+                            parametrized.update(
+                                part.strip() for part in argument.value.split(",")
+                            )
+                        elif isinstance(argument, (ast.List, ast.Tuple)):
+                            parametrized.update(
+                                item.value
+                                for item in argument.elts
+                                if isinstance(item, ast.Constant)
+                                and isinstance(item.value, str)
+                            )
                 if parameters - PURE_FIXTURES - parametrized:
                     return False
     return True

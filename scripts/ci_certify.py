@@ -200,6 +200,18 @@ def platform_commands(
                     "-rs",
                 ]
             )
+    if host == "linux-x64" and (all_tests or "tests/test_cli_parser.py" in targets):
+        commands.append(
+            [
+                *pixi,
+                "python",
+                "-m",
+                "unittest",
+                "discover",
+                "-s",
+                "gui/tests/wgsextract",
+            ]
+        )
     if host == "windows-x64":
         for test in ("tests/test_imputation.py", "tests/test_vep_rs.py"):
             if all_tests or test in targets:
@@ -215,18 +227,6 @@ def platform_commands(
                         "addopts=",
                     ]
                 )
-        if all_tests or "tests/test_cli_parser.py" in targets:
-            commands.append(
-                [
-                    *pixi,
-                    "python",
-                    "-m",
-                    "unittest",
-                    "discover",
-                    "-s",
-                    "gui/tests/wgsextract",
-                ]
-            )
     return commands
 
 
@@ -241,6 +241,44 @@ def generic_commands(paths: list[str], targets: list[str] | str) -> list[list[st
         [*pixi, "python", "scripts/validate_site_sources.py"],
         [*pixi, "pytest", *CI_TESTS, "tests/test_ci_certify.py"],
     ]
+    python_files = [
+        path for path in paths if path.endswith(".py") and Path(path).is_file()
+    ]
+    cli_files = [path for path in python_files if not path.startswith("gui/")]
+    gui_files = [path for path in python_files if path.startswith("gui/")]
+    if cli_files:
+        commands.extend(
+            [
+                [*pixi, "ruff", "check", "--no-force-exclude", "--", *cli_files],
+                [
+                    *pixi,
+                    "ruff",
+                    "format",
+                    "--check",
+                    "--no-force-exclude",
+                    "--",
+                    *cli_files,
+                ],
+            ]
+        )
+    if gui_files:
+        commands.extend(
+            [
+                [*pixi, "python", "-m", "compileall", "-q", *gui_files],
+                [
+                    *pixi,
+                    "ruff",
+                    "check",
+                    "--isolated",
+                    "--target-version",
+                    "py313",
+                    "--select",
+                    "E9,F63,F7,F82",
+                    "--",
+                    *gui_files,
+                ],
+            ]
+        )
     docs = docs_test_targets(paths, cli=routes(paths)["cli"])
     if docs:
         commands.append([*pixi, "pytest", *docs])

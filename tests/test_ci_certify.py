@@ -89,6 +89,8 @@ def test_923_merge_group_never_uses_certifications() -> None:
         "def test_unknown(shell_fixture): assert shell_fixture",
         "def test_hidden(request): request.getfixturevalue('fixture')",
         "from tests.helpers import data\ndef test_data(): assert data",
+        "from wgsextract_cli.core.utils import run_command\ndef test_command(): run_command(['true'])",
+        "import urllib.request\ndef test_network(): assert urllib.request.urlopen('x')",
     ],
 )
 def test_923_sensitive_or_uncertain_tests_remain_multiplatform(
