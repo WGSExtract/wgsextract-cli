@@ -5,10 +5,17 @@ ADMIXTURE's model: at each site j the sample's alleles are drawn with
 frequency f_j = sum_k q_k p_jk, where p_jk is the frequency of the counted
 allele in reference component k and q are the sample's proportions. With P
 fixed (trained offline on the reference panel, see
-scripts/ancestry_reference/) the likelihood of q is concave and EM converges
-to its maximum. Genotype likelihoods take the place of hard calls, so a
-low-coverage sample contributes what its reads say and no more; the genotype
-is a second latent variable of the same EM.
+scripts/ancestry_reference/), genotype likelihoods are marginalised over the
+three diploid genotypes. Hard calls also use error-smoothed likelihoods.
+Unlike the exact hard-genotype log-likelihood, this marginal log-likelihood
+need not be concave in q, even for error-smoothed hard calls.
+
+Fitting uses projected Newton steps on a curvature-shifted local quadratic
+model and a backtracking line search, not EM. Accepted steps satisfy an
+increase condition on the likelihood. The fit starts at uniform proportions
+and stops on small directional improvement, small likelihood improvement,
+line-search failure or the iteration limit. It does not certify a stationary
+point or a global maximum; results can depend on the starting point.
 
 Confidence intervals come from a block bootstrap over sites: contiguous runs
 of sites are resampled, so residual linkage between neighbours widens them as
@@ -54,7 +61,8 @@ def genotype_likelihoods(
 
 def hard_call_likelihoods(dosage: np.ndarray, error: float = 1e-3) -> np.ndarray:
     """(n, 3) likelihoods for called genotypes (0, 1 or 2 alt alleles); a small
-    error keeps a miscall from ruling a component out."""
+    error gives alternative genotypes nonzero support. This smoothing does
+    not preserve concavity of the exact hard-genotype log-likelihood."""
     dosage = np.asarray(dosage, dtype=np.int64)
     likelihoods = np.full((dosage.size, 3), error)
     likelihoods[np.arange(dosage.size), dosage] = 1.0
@@ -100,7 +108,7 @@ def _simplex(v: np.ndarray) -> np.ndarray:
 
 
 def _newton_target(q: np.ndarray, grad: np.ndarray, hess: np.ndarray) -> np.ndarray:
-    """The maximum over the simplex of the local quadratic model, by
+    """Approximately maximise a curvature-shifted local quadratic model, by
     accelerated projected gradient (K is small, so this costs no data pass)."""
     eigen = np.linalg.eigvalsh(hess)
     shift = max(0.0, eigen[-1]) + 1e-9 * max(1.0, -eigen[0])
@@ -123,8 +131,8 @@ def _newton_target(q: np.ndarray, grad: np.ndarray, hess: np.ndarray) -> np.ndar
 def _maximise(
     p: np.ndarray, likelihoods: np.ndarray, q: np.ndarray, weights: np.ndarray | None
 ) -> tuple[np.ndarray, float, int]:
-    """Projected Newton with a backtracking line search; the likelihood is
-    concave in q for hard calls and in practice for likelihoods."""
+    """Fit a potentially nonconcave likelihood by projected Newton and
+    backtracking, without a global-optimality or convergence certificate."""
     model = _Model(p, likelihoods, weights)
     iterations = 0
     while iterations < _MAX_ITERATIONS:
@@ -165,9 +173,10 @@ def project(
     block_size: int = 500,
     seed: int = 620,
 ) -> Projection:
-    """Proportions maximising the likelihood of ``likelihoods`` (n, 3) at the
+    """Fitted proportions for the likelihood of ``likelihoods`` (n, 3) at the
     n sites whose component frequencies are the rows of ``p`` (n, K), in
     genome order (the bootstrap resamples blocks of ``block_size`` neighbours).
+    A single uniform-start fit is returned, not a certified global maximum.
     """
     p = np.clip(np.asarray(p, dtype=np.float64), _P_FLOOR, 1 - _P_FLOOR)
     likelihoods = np.asarray(likelihoods, dtype=np.float64)
