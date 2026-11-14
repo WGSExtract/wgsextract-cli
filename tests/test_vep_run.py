@@ -24,7 +24,7 @@ from tests.htslib_helpers import (
 )
 from wgsextract_cli import api
 from wgsextract_cli.api import VepRunParams
-from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 pytestmark = needs_htslib
 
@@ -421,10 +421,12 @@ def test_bam_input_calls_variants_in_region_then_annotates(tmp_path, fake_vep):
 
 
 @pytest.mark.parametrize("region", [None, "chr1:1-150"])
-def test_839_bam_to_vep_keeps_supported_deletion(tmp_path, fake_vep, region):
+@pytest.mark.parametrize("iupac", [False, True])
+def test_839_bam_to_vep_keeps_supported_deletion(tmp_path, fake_vep, region, iupac):
     rng = random.Random(839)
     genome = "".join(rng.choice("ACGT") for _ in range(150))
-    fasta = write_fasta(tmp_path / "ref.fa", {"chr1": genome})
+    reference = genome[:50] + "R" + genome[51:] if iupac else genome
+    fasta = write_fasta(tmp_path / "ref.fa", {"chr1": reference})
     seq = genome[:50] + genome[51:]
     bam = sam_to_bam(
         [
@@ -456,6 +458,65 @@ def test_839_bam_to_vep_keeps_supported_deletion(tmp_path, fake_vep, region):
     assert any(
         o.role == "vep_annotated" and Path(o.path) == output for o in result.outputs
     )
+    assert all(set(ref + alt) <= set("ACGTN") for _, _, ref, alt, _ in calls)
+
+
+@pytest.mark.parametrize("across_contigs", [False, True])
+def test_839_indel_after_snp_drops_stale_bias_but_snp_keeps_values(
+    tmp_path, fake_vep, across_contigs
+):
+    rng = random.Random(839)
+    genome = "".join(rng.choice("ACGT") for _ in range(400))
+    sequences = {"chr1": genome}
+    deletion_contig = "chr2" if across_contigs else "chr1"
+    if across_contigs:
+        sequences["chr2"] = genome
+    fasta = write_fasta(tmp_path / "ref.fa", sequences)
+    lines = ["@HD\tVN:1.6\tSO:coordinate"]
+    lines += [f"@SQ\tSN:{name}\tLN:400" for name in sequences]
+    lines += ["@RG\tID:rg\tSM:child"]
+    alt = next(base for base in "ACGT" if base != genome[50])
+    for i in range(30):
+        bases = list(genome[:100])
+        if i % 2:
+            bases[50] = alt
+        lines.append(
+            f"snp{i}\t{16 if i % 3 else 0}\tchr1\t1\t{50 + i % 10}\t100M\t*\t0\t0\t"
+            f"{''.join(bases)}\t{('I' if i % 2 else '?') * 100}\tRG:Z:rg"
+        )
+    seq = genome[200:250] + genome[251:350]
+    lines += [
+        f"del{i}\t0\t{deletion_contig}\t201\t60\t50M1D99M\t*\t0\t0\t"
+        f"{seq}\t{'I' * 149}\tRG:Z:rg"
+        for i in range(30)
+    ]
+    bam = sam_to_bam(lines, tmp_path / "mixed.bam")
+    result = api.vep.run(
+        VepRunParams(
+            input=Path(bam), ref=fasta, ploidy="2", threads=1, vep_cache=tmp_path
+        )
+    )
+    assert result.status == "ok"
+    output = tmp_path / "mixed_vep.vcf.gz"
+    rows = [
+        line.split("\t")
+        for line in run_command(
+            [
+                "bcftools",
+                "query",
+                "-f",
+                "%CHROM\t%POS\t%REF\t%ALT\t%INFO/BQBZ\t%INFO/MQSBZ\n",
+                str(output),
+            ],
+            capture_output=True,
+        ).stdout.splitlines()
+    ]
+    [snp] = [row for row in rows if len(row[2]) == len(row[3]) == 1]
+    [deletion] = [row for row in rows if len(row[2]) > len(row[3])]
+    assert snp[:2] == ["chr1", "51"]
+    assert "." not in snp[4:]
+    assert deletion[0] == deletion_contig
+    assert deletion[4:] == [".", "."]
 
 
 def test_bam_input_is_called_with_the_ploidy_file(tmp_path, fake_vep):

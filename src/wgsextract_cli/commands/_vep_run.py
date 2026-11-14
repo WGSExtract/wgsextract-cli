@@ -47,6 +47,7 @@ from ._vep_engines import (
     vep_engine,
 )
 from ._vep_resources import preprocess_vcf_chr_prefix
+from .vcf.call_cleanup import indel_cleanup_pipeline
 
 GENOMIC_SUFFIXES = (".vcf", ".vcf.gz", ".bcf", ".bam", ".cram")
 _FORMAT_EXT = {"vcf": ".vcf", "tab": ".txt", "json": ".json"}
@@ -170,7 +171,8 @@ def _call_variants_for_vep(
                 + region_args
                 + [bam_path],
                 ["bcftools", "call", *ploidy_args, *sex_args, "-mv", "-P", "0"]
-                + ["--threads", threads, "-Oz", "-o", out_vcf],
+                + ["--threads", threads, "-Ou"],
+                *indel_cleanup_pipeline(ref, out_vcf, threads, mixed=True),
             ],
             description="Variant calling for VEP",
         )
