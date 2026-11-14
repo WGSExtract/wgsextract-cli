@@ -12,33 +12,45 @@ from wgsextract_cli.core.reference_assets import (
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 
-def validate_calling_reference(alignment: str, fasta: str) -> None:
+def validate_calling_reference(
+    alignment: str, fasta: str, *, allow_reference_subset: bool = False
+) -> None:
     """Require every input SQ to exist with the same name and length.
 
     An alignment may contain a subset of the reference dictionary. Sequence
     content is checked only where both dictionaries provide an M5 checksum.
     """
     sequences = header_sequences(get_bam_header(alignment))
+    if not sequences:
+        raise WGSExtractError(
+            f"Cannot validate {alignment}: alignment header has no @SQ."
+        )
     if not Path(fasta + ".fai").is_file() and not (
         fasta.lower().endswith(".gz") and not is_bgzf(fasta)
     ):
         run_command(["samtools", "faidx", fasta])
     lengths = read_fai_lengths(fasta)
+    reference_sequences = None
     if not lengths and fasta.lower().endswith(".gz"):
         # Ordinary gzip cannot be faidx'd. Callers with plain_reference()
         # still support it; samtools dict can inspect it without decoding reads.
-        lengths = {
-            row["SN"]: int(row["LN"]) for row in sequence_dictionary(fasta) or ()
-        }
-    if not sequences or not lengths:
+        reference_sequences = sequence_dictionary(fasta)
+        lengths = {row["SN"]: int(row["LN"]) for row in reference_sequences or ()}
+    if not lengths:
         raise WGSExtractError(
-            "Cannot validate the calling reference: missing alignment SQ or FASTA index."
+            f"Cannot validate reference {fasta} for {alignment}: "
+            "no FASTA .fai/.dict sequence metadata available."
+        )
+    if allow_reference_subset and not any(row["SN"] in lengths for row in sequences):
+        raise WGSExtractError(
+            f"Incompatible calling reference {fasta}: no input contigs match."
         )
     problems = []
     for sequence in sequences:
         name, length = sequence["SN"], int(sequence["LN"])
         if name not in lengths:
-            problems.append(f"{name}: missing from reference")
+            if not allow_reference_subset:
+                problems.append(f"{name}: missing from reference")
         elif lengths[name] != length:
             problems.append(f"{name}: input length {length}, reference {lengths[name]}")
     # Do not scan an entire human FASTA just to compute checksums. Existing
@@ -47,7 +59,9 @@ def validate_calling_reference(alignment: str, fasta: str) -> None:
 
     dictionary = Path(reference_dict_path(fasta))
     if dictionary.is_file():
-        reference = {row["SN"]: row for row in header_sequences(dictionary.read_text())}
+        reference_sequences = header_sequences(dictionary.read_text())
+    if reference_sequences:
+        reference = {row["SN"]: row for row in reference_sequences}
         for sequence in sequences:
             expected = reference.get(sequence["SN"], {}).get("M5")
             actual = sequence.get("M5")
