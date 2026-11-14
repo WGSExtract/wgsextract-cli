@@ -5,6 +5,18 @@ import pytest
 from scripts import validate_github_actions as policy
 
 
+@pytest.mark.parametrize("job", ["required", "ready-gate"])
+def test_876_summary_gates_stop_when_the_workflow_is_cancelled(job: str) -> None:
+    workflow = (policy.ROOT / ".github/workflows/pr_ci.yml").read_text()
+    block = workflow.split(f"\n  {job}:\n", 1)[1].split("\n  required:", 1)[0]
+    condition = block.split("    if:", 1)[1].split("    runs-on:", 1)[0]
+    # CI contract: !cancelled() overrides implicit success() without keeping
+    # gates alive on workflow cancellation like always() does.
+    assert "!cancelled()" in condition
+    assert "always()" not in condition
+    assert "success()" not in condition
+
+
 def write_workflow(root: Path, uses: str) -> None:
     directory = root / ".github" / "workflows"
     directory.mkdir(parents=True)
@@ -61,15 +73,26 @@ def test_composite_actions_are_held_to_the_same_policy(
     assert any("full commit SHA" in item for item in policy.validate_workflows())
 
 
-def test_setup_pixi_is_used_only_through_the_shared_action(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("uses", "wrapper"),
+    [
+        (
+            "prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3",
+            "setup-pixi",
+        ),
+        (
+            "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0",
+            "setup-gui",
+        ),
+    ],
+)
+def test_wrapped_actions_are_used_only_through_the_shared_action(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, uses: str, wrapper: str
 ) -> None:
-    """Issue 822: direct setup-pixi steps bypassed the one Pixi pin and cache policy."""
-    uses = (
-        "uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3"
-    )
+    """Issue 822: direct steps bypassed the shared pin and cache policy."""
+    uses = f"uses: {uses}"
     write_workflow(tmp_path, uses)
-    action = tmp_path / ".github" / "actions" / "setup-pixi"
+    action = tmp_path / ".github" / "actions" / wrapper
     action.mkdir(parents=True)
     (action / "action.yml").write_text(
         f"runs:\n  using: composite\n  steps:\n    - {uses}\n"
@@ -77,7 +100,7 @@ def test_setup_pixi_is_used_only_through_the_shared_action(
     monkeypatch.setattr(policy, "ROOT", tmp_path)
     errors = policy.validate_workflows()
     assert len(errors) == 1
-    assert "test.yml" in errors[0] and "./.github/actions/setup-pixi" in errors[0]
+    assert "test.yml" in errors[0] and f"./.github/actions/{wrapper}" in errors[0]
 
 
 @pytest.mark.parametrize(

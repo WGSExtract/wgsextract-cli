@@ -225,7 +225,7 @@ publish exact hit/miss and key in each job summary.
 | Cache family | Before | After, per current lockfile (estimated) |
 |---|---|---|
 | Pixi | Many overlapping default/dev/optional environment sets (~8 GB in the sampled inventory) | Four CLI OS/architecture sets (~5.4 GB) + Linux lint (~0.1 GB) |
-| npm | setup-node could save PR-scoped duplicates | One download cache per OS/arch and package-lock hash (~0.1 GB total) |
+| npm | actions/setup-node could save PR-scoped duplicates | One download cache per OS/arch and package-lock hash (~0.1 GB total) |
 | Cargo | Registry downloads plus a second Windows Tauri cache including `target/` | Shared registry/git downloads per OS/arch and Cargo.lock hash (~0.1 GB); no target cache |
 | hs38 reference | Automatic writes on PRs | One main-owned verified public reference (~0.8 GB), read-only on PRs |
 | liftOver chain | A new run-id key on each download | One checksum key (<0.001 GB), main-only writes |
@@ -261,3 +261,11 @@ environment sets.
 Release verification installs its immutable tag's environment without caching;
 an unpublished old tag can predate today's local CI helper actions, so Pixi
 comes from the run's own commit before the tag is checked out.
+
+The desktop app's workflows and the Copilot setup install its toolchain through
+`.github/actions/setup-gui`: Node and `npm ci`, and on request Rust, Tauri's
+Linux libraries or the CLI's Python dependencies. It holds CI's only Node pin;
+the validator rejects direct `actions/setup-node` steps. `gui-build.yml` can
+build an older ref, so it replaces that ref's `.github/actions` with the run's
+own before using it. `gui-dev-setup.yml` deliberately bypasses it: it tests the
+app's own bootstrap on runners without user tools.

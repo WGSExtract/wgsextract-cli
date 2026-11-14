@@ -147,6 +147,16 @@ def warn_mixed_platforms(
     return platforms
 
 
+def pacbio_platform(header: str) -> str:
+    """ "clr" when every read group is of subreads (READTYPE=SUBREAD), else
+    "pacbio" (HiFi/CCS)."""
+    groups = read_groups(header)
+    subreads = bool(groups) and all(
+        "READTYPE=SUBREAD" in group.get("DS", "").upper().split(";") for group in groups
+    )
+    return "clr" if subreads else "pacbio"
+
+
 def input_platform(
     reads: PathInput | None,
     reference: PathInput | None = None,

@@ -860,7 +860,7 @@ settings and tools are unchanged.
 | `keep_fastq` | `bool` | `False` | `--keep-fastq` | Keep the FASTQs extracted from --input after alignment (default: delete them); ONT and PacBio reads are then extracted to one tagged <input stem>.fastq.gz. FASTQs passed with --r1/--r2 or reused from an earlier extraction are never deleted. |
 | `force_extract` | `bool` | `False` | `--force-extract` | Re-extract FASTQs even if a matching pair already exists next to the BAM. |
 | `chunk_size` | `str` | `'4G'` | `--chunk-size` | Realign ONT and PacBio reads in chunks of about this much of the input (K, M, G or T; 0: in one pass). Temporary files then stay chunk-sized and an interrupted run resumes at its first unfinished chunk. Needs a coordinate-sorted, indexed input; ignored with --keep-fastq. |
-| `no_preflight` | `bool` | `False` | `--no-preflight` | Skip the up-front disk space check (not recommended). |
+| `no_preflight` | `bool` | `False` | `--no-preflight` | Run despite too little disk or RAM (not recommended). |
 | `restart` | `bool` | `False` | `--force`, `--no-resume` | Rerun every step, ignoring the steps an earlier run completed. |
 | `force_steps` | `tuple[str, ...] \| None` | `None` | `--force-step` | Steps to rerun with the steps that use their outputs; None reruns none. Steps: extract, align, index. One of: `extract`, `align`, `index` |
 | `dry_run` | `bool` | `False` | `--dry-run` | Log which steps would run or be skipped, and why, and run none. |
@@ -1085,7 +1085,12 @@ Annotate with ClinVar; output roles `annotated_vcf` and
 
 `VcfClinvarParams`: ClinVar significance and disease (CLNSIG, CLNDN) as
 `clinvar_annotated.vcf.gz`; the pathogenic and likely pathogenic calls,
-with confidence labels, as `clinvar_pathogenic.vcf.gz`.
+with sequencing confidence labels, as `clinvar_pathogenic.vcf.gz`.
+Matching requires an indexed reference FASTA (`ref`, else the library).
+Both copies are reference-normalized; phase-supported SNVs can match MNVs.
+Review status, stars and ClinVar identity remain separate from sequencing
+confidence. Conflicting assertions go to `clinvar_conflicts.vcf.gz` and
+their own confidence table, not the consensus pathogenic subset.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -1210,9 +1215,10 @@ SV_FREQ, SV_COMMON, ...) from gnomAD-SV and gnomAD-LR as
 `sv_freq_annotated.vcf.gz`, and one row per SV in `sv_freq.tsv`.
 
 For the SV calls of `vcf sv` (Delly, Sniffles, pbsv) and `vcf cnv`,
-or any VCF of SVs. A call matches a gnomAD SV of a compatible type by
-reciprocal overlap (deletions, duplications, inversions, CNVs) or by
-breakpoint distance and size similarity (insertions).
+or any VCF of SVs. A call matches a gnomAD SV of the same type by
+reciprocal overlap (deletions, duplications, inversions) or by
+breakpoint distance and size similarity (insertions). Nondirectional
+CNV carrier frequencies and cross-type INS/DUP matches are excluded.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -1223,7 +1229,7 @@ breakpoint distance and size similarity (insertions).
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `gnomad_sv_file` | `Path \| None` | `None` (config `gnomad_sv_path`) | `--gnomad-sv-file` | gnomAD-SV table (default: the library's, from 'ref gnomad-sv'). |
 | `gnomad_lr_file` | `Path \| None` | `None` (config `gnomad_lr_sv_path`) | `--gnomad-lr-file` | gnomAD-LR table (default: the library's; GRCh38). |
-| `min_overlap` | `float` | `0.5` | `--min-overlap` | Minimum reciprocal overlap for DEL/DUP/INV/CNV (default 0.5). |
+| `min_overlap` | `float` | `0.5` | `--min-overlap` | Minimum reciprocal overlap for same-type DEL/DUP/INV (default 0.5). |
 | `max_distance` | `int` | `500` | `--max-distance` | Maximum insertion breakpoint distance, bp (default 500). |
 | `min_size_similarity` | `float` | `0.5` | `--min-size-similarity` | Minimum insertion size similarity (default 0.5). |
 | `common_af` | `float` | `0.01` | `--common-af` | AF from which an SV is common (default 0.01). |
@@ -1348,14 +1354,15 @@ Call CNVs; output role `copy_number_variants`.
 
 CLI: `wgsextract vcf sv`.
 
-Call SVs; output role `structural_variants`, and the `caller`
-metric names the tool chosen.
+Call SVs; output role `structural_variants`, the `caller` metric
+names the tool chosen and `caller_reason` why.
 
 `VcfSvParams`: Call structural variants into `sv.vcf.gz` (delly), `pbsv.vcf.gz`
 or `sniffles.vcf.gz`.
 
 `caller` picks the tool; otherwise Sniffles for ONT input (detected or
-`ont`) and long reads, pbsv (else Sniffles) for `pacbio`, else delly.
+`ont`) and long reads, pbsv (else Sniffles) for PacBio input (detected
+or `pacbio`), else delly. The `caller_reason` metric says why.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -1364,8 +1371,8 @@ or `sniffles.vcf.gz`.
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region |
-| `caller` | `str \| None` | `None` | `--caller` | SV caller to use (default: sniffles for detected ONT, else delly; pbsv/sniffles with --pacbio; sniffles with --ont or --long-read). pbsv is PacBio-only and is refused for ONT reads. One of: `delly`, `pbsv`, `sniffles` |
-| `pacbio` | `bool` | `False` | `--pacbio` | PacBio HiFi/CCS data: use pbsv (or sniffles if pbsv is missing) with CCS thresholds. |
+| `caller` | `str \| None` | `None` | `--caller` | SV caller to use (default: sniffles for ONT or --long-read, pbsv/sniffles for PacBio, detected or flagged; else delly). pbsv is PacBio-only and is refused for ONT reads. One of: `delly`, `pbsv`, `sniffles` |
+| `pacbio` | `bool` | `False` | `--pacbio` | PacBio HiFi/CCS data: use pbsv (or sniffles if pbsv is missing) with CCS thresholds. Detected PacBio gets this automatically, without CCS thresholds for subreads (CLR). |
 | `ont` | `bool` | `False` | `--ont` | Oxford Nanopore data: use Sniffles (detected ONT input selects it automatically). |
 | `long_read` | `bool` | `False` | `--long-read` | Long-read data from any platform: use Sniffles unless --caller selects pbsv for PacBio reads. |
 | `ccs` | `bool` | `False` | `--ccs` | Use pbsv CCS/HiFi thresholds when --caller pbsv is selected. |
@@ -1439,6 +1446,7 @@ Google's ULTIMA GPU image runs the stages with call_variants on the GPU.
 | `batch_size` | `int \| None` | `None` | `--batch-size` | call_variants batch size (upstream default: 1024; not Parabricks). Use 256 to lower TensorFlow peak RAM without changing models or precision; --threads controls make_examples shards, not this batch. |
 | `gpu` | `bool` | `False` | `--gpu` | NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, else Parabricks; Ultima: Google's GPU image (README). |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
+| `no_preflight` | `bool` | `False` | `--no-preflight` | Run despite too little disk or RAM (not recommended). |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 | `restart` | `bool` | `False` | `--force`, `--no-resume` | Rerun every step, ignoring the steps an earlier run completed. |
 | `force_steps` | `tuple[str, ...] \| None` | `None` | `--force-step` | Steps to rerun with the steps that use their outputs; None reruns none. Steps: stage_reads, make_examples, call_variants, postprocess_variants. One of: `stage_reads`, `make_examples`, `call_variants`, `postprocess_variants` |
@@ -1462,7 +1470,7 @@ Call with Clair3; output role `variants`.
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chr20:1-1000000) |
 | `model` | `str \| None` | `None` | `--model` | Clair3 model directory, or the name of a bundled model, matching the reads' basecaller (e.g. r1041_e82_400bps_sup_v500). Overrides config clair3_model; default: chosen from the basecaller metadata. |
 | `gpu` | `bool` | `False` | `--gpu` | Call on an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, Docker; see docs/ont.md). |
-| `no_preflight` | `bool` | `False` | `--no-preflight` | Skip the up-front disk space check (not recommended). |
+| `no_preflight` | `bool` | `False` | `--no-preflight` | Run despite too little disk or RAM (not recommended). |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 
 ### `api.vcf.phase(VcfPhaseParams)`
@@ -1634,12 +1642,12 @@ or single-sample VCF/BCF. Outputs go to `yleaf/` in the output folder.
 | `build` | `str \| None` | `None` | `--build` | Override the detected reference build for this run. One of: `hg19`, `hg38`, `t2t` |
 | `tree` | `str \| None` | `None` (config `y_tree`) | `--tree` | Haplogroup tree: yfull (the pinned YFull YTree release), yfull_v10 (YFull 10.01), ftdna, isogg, or a config.toml [y_trees.<id>] tree (default: config y_tree, else yfull). |
 | `tree_file` | `Path \| None` | `None` | `--tree-file` | A Yleaf-format tree JSON to use instead of --tree, with its markers in --pos-file; QC1 backbone checks are skipped. |
-| `min_reads` | `int` | `10` | `--min-reads` | Reads needed at a marker position for it to be used. |
-| `base_quality` | `int` | `20` | `--base-quality` | Minimum base quality of a read at a marker position. |
+| `min_reads` | `int` | `10` | `--min-reads` | Reads needed at a marker; VCF requires AD, DP or callable-block MIN_DP. |
+| `base_quality` | `int` | `20` | `--base-quality` | Minimum read base quality; VCF also checks GQ when present. |
 | `base_majority` | `int` | `90` | `--base-majority` | Percentage of reads at a marker that must agree on the base. |
 | `min_score` | `float` | `0.95` | `--min-score` | Minimum QC score of a reported haplogroup prediction. |
 | `ancient` | `bool` | `False` | `--ancient` | Use ancient-DNA marker tables. |
-| `no_ref_inference` | `bool` | `False` | `--no-ref-inference` | VCF: use genotyped positions only (targeted panels); otherwise --ref is required. |
+| `no_ref_inference` | `bool` | `False` | `--no-ref-inference` | VCF: use explicit genotypes only; otherwise --ref supplies bases inside callable reference blocks, never at unassessed sites. |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 
 ### `api.lineage.y_str(YStrParams)`
@@ -1729,10 +1737,10 @@ settings) and then to the documented default.
 | `strand_ambiguous` | `str \| None` | `None` | `--strand-ambiguous` | Keep/no-call biallelic A/T or C/G input SNPs; unknown probe alleles are not inferred (default: config or keep) One of: `keep`, `no-call` |
 | `resolve_rsids` | `bool \| None` | `None` | `--resolve-rsids` | Resolve packaged dbSNP aliases and no-call retired/ambiguous marker IDs (default: config or false) |
 | `quirks` | `str \| None` | `None` | `--quirks` | corrected: forward-strand calls; vendor: reverse-strand calls where a template's vendor revision reported them so (default: config or corrected) One of: `corrected`, `vendor` |
-| `min_gq` | `int \| None` | `None` | `--min-gq` | Minimum sample GQ; missing GQ becomes a no-call (default: config or 0, disabled) |
-| `min_dp` | `int \| None` | `None` | `--min-dp` | Minimum sample DP; missing DP becomes a no-call (default: config or 0, disabled) |
-| `assume_hom_ref` | `bool \| None` | `None` | `--assume-hom-ref` | Assume absent VCF markers are reference on represented contigs (default: config or true) |
-| `exclude_filtered` | `bool \| None` | `None` | `--exclude-filtered` | No-call VCF records failing FILTER (default: config or false) |
+| `min_gq` | `int \| None` | `None` | `--min-gq` | Minimum sample GQ; missing GQ becomes a no-call (default: config or 20; 0 disables filtering) |
+| `min_dp` | `int \| None` | `None` | `--min-dp` | Minimum sample DP; missing DP becomes a no-call (default: config or 10; 0 disables filtering) |
+| `assume_hom_ref` | `bool \| None` | `None` | `--assume-hom-ref` | Assume absent VCF markers are reference on represented contigs (unsafe opt-in; default: config or false; also requires --min-dp 0 --min-gq 0) |
+| `exclude_filtered` | `bool \| None` | `None` | `--exclude-filtered` | No-call VCF records failing FILTER (default: config or true) |
 | `call_reasons` | `bool \| None` | `None` | `--call-reasons` | Also write CombinedKit_reasons.tsv with explicit reasons (default: config or false) |
 | `aadr_sample_id` | `str` | `'sample'` | `--aadr-sample-id` | Non-identifying sample label for AADR .fam/.ind (default: sample) |
 | `aadr_sex` | `str` | `'U'` | `--aadr-sex` | AADR metadata sex only; does not change genotype calling (default: U) One of: `U`, `M`, `F` |
@@ -2379,9 +2387,11 @@ str`; see `TypingStrParams`).
 `TypingStrParams`: Size disease short tandem repeats (HTT, FMR1, C9ORF72, ...) and flag
 those outside the normal range, with ExpansionHunter for short reads and
 LongTR (or STRkit) for Nanopore and PacBio; not a diagnosis. Metrics:
-`sex`, `repeat_caller`, `disease_repeats` and `flagged_repeats`;
+`sex`, `repeat_caller`, `disease_repeats`, `flagged_repeats` and
+`unconfirmed_repeats`;
 each flagged repeat is a `repeat_outside_normal_range` warning
-(`repeat_unconfirmed` if only a one-read allele flags it,
+(`repeat_unconfirmed` for a low-support-only finding or an unresolved
+all-weak or incomplete call,
 `repeat_unavailable` for NOTCH2NLC on hg19).
 
 | Field | Type | Default | CLI | Description |

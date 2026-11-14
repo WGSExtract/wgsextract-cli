@@ -14269,7 +14269,7 @@
       "default": false,
       "dest": "no_ref_inference",
       "exclusive_group": null,
-      "help": "VCF: use genotyped positions only (targeted panels); otherwise --ref is required.",
+      "help": "VCF: use explicit genotypes only; otherwise --ref supplies bases inside callable reference blocks, never at unassessed sites.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -15853,7 +15853,7 @@
       "default": null,
       "dest": "min_gq",
       "exclusive_group": null,
-      "help": "Minimum sample GQ; missing GQ becomes a no-call (default: config or 0, disabled)",
+      "help": "Minimum sample GQ; missing GQ becomes a no-call (default: config or 20; 0 disables filtering)",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -15869,7 +15869,7 @@
       "default": null,
       "dest": "min_dp",
       "exclusive_group": null,
-      "help": "Minimum sample DP; missing DP becomes a no-call (default: config or 0, disabled)",
+      "help": "Minimum sample DP; missing DP becomes a no-call (default: config or 10; 0 disables filtering)",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -15885,7 +15885,7 @@
       "default": null,
       "dest": "assume_hom_ref",
       "exclusive_group": null,
-      "help": "Assume absent VCF markers are reference on represented contigs (default: config or true)",
+      "help": "Assume absent VCF markers are reference on represented contigs (unsafe opt-in; default: config or false; also requires --min-dp 0 --min-gq 0)",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -15902,7 +15902,7 @@
       "default": null,
       "dest": "exclude_filtered",
       "exclusive_group": null,
-      "help": "No-call VCF records failing FILTER (default: config or false)",
+      "help": "No-call VCF records failing FILTER (default: config or true)",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -20575,7 +20575,7 @@
       "default": false,
       "dest": "no_preflight",
       "exclusive_group": null,
-      "help": "Skip the up-front disk space check (not recommended).",
+      "help": "Run despite too little disk or RAM (not recommended).",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -35840,7 +35840,7 @@
       "default": false,
       "dest": "no_preflight",
       "exclusive_group": null,
-      "help": "Skip the up-front disk space check (not recommended).",
+      "help": "Run despite too little disk or RAM (not recommended).",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -36646,7 +36646,7 @@
    }
   },
   "vcf deepvariant": {
-   "help": "usage: wgsextract vcf deepvariant [-h] [-r REGION] [--wes] [--ont] [--pacbio] [--gpu] [--force]\n                                  [--force-step STEP] [--dry-run] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM)\n  --wes                 Set model type to WES (default: WGS)\n  --ont                 Alias for --model-type ONT_R104 (R10.4.1 only; x86-64).\n  --pacbio              Alias for --model-type PACBIO.\n  --gpu                 NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, else\n                        Parabricks; Ultima: Google's GPU image (README).\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nresuming:\n  Completed steps are recorded in <output>.steps.json and skipped when a rerun's inputs,\n  settings and tools are unchanged.\n\n  --force, --no-resume  Rerun every step, ignoring the steps an earlier run completed.\n  --force-step STEP     Rerun STEP and the steps that use its outputs (repeatable). Steps:\n                        stage_reads, make_examples, call_variants, postprocess_variants.\n  --dry-run             Print which steps would run or be skipped, and why, then exit.\n\n5 advanced options not shown; 'wgsextract vcf deepvariant --help-all' lists them.\n\nexamples:\n  wgsextract vcf deepvariant --input sample.cram\n  wgsextract vcf deepvariant --input hifi.bam --pacbio\n  wgsextract vcf deepvariant --input sample.cram --force-step call_variants\n\noutputs (in the output directory unless noted):\n  deepvariant.vcf.gz (+ .tbi) and deepvariant.vcf.gz.steps.json; until it\n  finishes, the stages' work in .deepvariant.work, where a rerun resumes.\n\nneeds:\n  samtools, tabix; depending on options and inputs, also: bcftools, docker,\n  run_deepvariant, wgse-deepvariant, sambamba; hours on a 30x genome.\n",
+   "help": "usage: wgsextract vcf deepvariant [-h] [-r REGION] [--wes] [--ont] [--pacbio] [--gpu] [--force]\n                                  [--force-step STEP] [--dry-run] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM)\n  --wes                 Set model type to WES (default: WGS)\n  --ont                 Alias for --model-type ONT_R104 (R10.4.1 only; x86-64).\n  --pacbio              Alias for --model-type PACBIO.\n  --gpu                 NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, else\n                        Parabricks; Ultima: Google's GPU image (README).\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nresuming:\n  Completed steps are recorded in <output>.steps.json and skipped when a rerun's inputs,\n  settings and tools are unchanged.\n\n  --force, --no-resume  Rerun every step, ignoring the steps an earlier run completed.\n  --force-step STEP     Rerun STEP and the steps that use its outputs (repeatable). Steps:\n                        stage_reads, make_examples, call_variants, postprocess_variants.\n  --dry-run             Print which steps would run or be skipped, and why, then exit.\n\n6 advanced options not shown; 'wgsextract vcf deepvariant --help-all' lists them.\n\nexamples:\n  wgsextract vcf deepvariant --input sample.cram\n  wgsextract vcf deepvariant --input hifi.bam --pacbio\n  wgsextract vcf deepvariant --input sample.cram --force-step call_variants\n\noutputs (in the output directory unless noted):\n  deepvariant.vcf.gz (+ .tbi) and deepvariant.vcf.gz.steps.json; until it\n  finishes, the stages' work in .deepvariant.work, where a rerun resumes.\n\nneeds:\n  samtools, tabix; depending on options and inputs, also: bcftools, docker,\n  run_deepvariant, wgse-deepvariant, sambamba; hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -37076,6 +37076,22 @@
       "nargs": 0,
       "option_strings": [
        "--no-gpu-memory-check"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "no_preflight",
+      "exclusive_group": null,
+      "help": "Run despite too little disk or RAM (not recommended).",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--no-preflight"
       ],
       "required": false,
       "type": null
@@ -42444,7 +42460,7 @@
    }
   },
   "vcf sv": {
-   "help": "usage: wgsextract vcf sv [-h] [-r REGION] [--caller {delly,pbsv,sniffles}] [--pacbio] [--ont]\n                         [--long-read] [--ccs] [--tandem-repeats TANDEM_REPEATS] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region\n  --caller {delly,pbsv,sniffles}\n                        SV caller to use (default: sniffles for detected ONT, else delly;\n                        pbsv/sniffles with --pacbio; sniffles with --ont or --long-read). pbsv is\n                        PacBio-only and is refused for ONT reads.\n  --pacbio              PacBio HiFi/CCS data: use pbsv (or sniffles if pbsv is missing) with CCS\n                        thresholds.\n  --ont                 Oxford Nanopore data: use Sniffles (detected ONT input selects it\n                        automatically).\n  --long-read           Long-read data from any platform: use Sniffles unless --caller selects\n                        pbsv for PacBio reads.\n  --ccs                 Use pbsv CCS/HiFi thresholds when --caller pbsv is selected.\n  --tandem-repeats TANDEM_REPEATS\n                        Optional tandem-repeat BED for pbsv discover or Sniffles (recommended for\n                        long-read SV calling).\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n1 advanced option not shown; 'wgsextract vcf sv --help-all' lists them.\n\nexamples:\n  wgsextract vcf sv --input sample.cram\n  wgsextract vcf sv --input hifi.bam --pacbio\n\noutputs (in the output directory unless noted):\n  sv.vcf.gz (Delly), pbsv.vcf.gz or sniffles.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, samtools, tabix; depending on options and inputs, also: delly,\n  pbsv, sambamba, sniffles; hours on a 30x genome.\n",
+   "help": "usage: wgsextract vcf sv [-h] [-r REGION] [--caller {delly,pbsv,sniffles}] [--pacbio] [--ont]\n                         [--long-read] [--ccs] [--tandem-repeats TANDEM_REPEATS] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region\n  --caller {delly,pbsv,sniffles}\n                        SV caller to use (default: sniffles for ONT or --long-read, pbsv/sniffles\n                        for PacBio, detected or flagged; else delly). pbsv is PacBio-only and is\n                        refused for ONT reads.\n  --pacbio              PacBio HiFi/CCS data: use pbsv (or sniffles if pbsv is missing) with CCS\n                        thresholds. Detected PacBio gets this automatically, without CCS\n                        thresholds for subreads (CLR).\n  --ont                 Oxford Nanopore data: use Sniffles (detected ONT input selects it\n                        automatically).\n  --long-read           Long-read data from any platform: use Sniffles unless --caller selects\n                        pbsv for PacBio reads.\n  --ccs                 Use pbsv CCS/HiFi thresholds when --caller pbsv is selected.\n  --tandem-repeats TANDEM_REPEATS\n                        Optional tandem-repeat BED for pbsv discover or Sniffles (recommended for\n                        long-read SV calling).\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n1 advanced option not shown; 'wgsextract vcf sv --help-all' lists them.\n\nexamples:\n  wgsextract vcf sv --input sample.cram\n  wgsextract vcf sv --input hifi.bam --pacbio\n\noutputs (in the output directory unless noted):\n  sv.vcf.gz (Delly), pbsv.vcf.gz or sniffles.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, samtools, tabix; depending on options and inputs, also: delly,\n  pbsv, sambamba, sniffles; hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -42754,7 +42770,7 @@
       "default": null,
       "dest": "caller",
       "exclusive_group": null,
-      "help": "SV caller to use (default: sniffles for detected ONT, else delly; pbsv/sniffles with --pacbio; sniffles with --ont or --long-read). pbsv is PacBio-only and is refused for ONT reads.",
+      "help": "SV caller to use (default: sniffles for ONT or --long-read, pbsv/sniffles for PacBio, detected or flagged; else delly). pbsv is PacBio-only and is refused for ONT reads.",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -42770,7 +42786,7 @@
       "default": false,
       "dest": "pacbio",
       "exclusive_group": null,
-      "help": "PacBio HiFi/CCS data: use pbsv (or sniffles if pbsv is missing) with CCS thresholds.",
+      "help": "PacBio HiFi/CCS data: use pbsv (or sniffles if pbsv is missing) with CCS thresholds. Detected PacBio gets this automatically, without CCS thresholds for subreads (CLR).",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -42886,7 +42902,7 @@
    }
   },
   "vcf sv-freq": {
-   "help": "usage: wgsextract vcf sv-freq [-h] [--vcf-input VCF_INPUT] [--gnomad-sv-file GNOMAD_SV_FILE]\n                              [--gnomad-lr-file GNOMAD_LR_FILE] [--min-overlap MIN_OVERLAP]\n                              [--max-distance MAX_DISTANCE]\n                              [--min-size-similarity MIN_SIZE_SIMILARITY] [--common-af COMMON_AF]\n                              [--rare-af RARE_AF]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --gnomad-sv-file GNOMAD_SV_FILE\n                        gnomAD-SV table (default: the library's, from 'ref gnomad-sv').\n  --gnomad-lr-file GNOMAD_LR_FILE\n                        gnomAD-LR table (default: the library's; GRCh38).\n  --min-overlap MIN_OVERLAP\n                        Minimum reciprocal overlap for DEL/DUP/INV/CNV (default 0.5).\n  --max-distance MAX_DISTANCE\n                        Maximum insertion breakpoint distance, bp (default 500).\n  --min-size-similarity MIN_SIZE_SIMILARITY\n                        Minimum insertion size similarity (default 0.5).\n  --common-af COMMON_AF\n                        AF from which an SV is common (default 0.01).\n  --rare-af RARE_AF     AF below which an SV is rare (default 0.001).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vcf sv-freq --vcf-input sniffles.vcf.gz\n\noutputs (in the output directory unless noted):\n  sv_freq_annotated.vcf.gz (+ .tbi) and sv_freq.tsv.\n\nneeds:\n  bcftools, bgzip, tabix; depending on options and inputs, also: samtools;\n  minutes on a 30x genome.\n",
+   "help": "usage: wgsextract vcf sv-freq [-h] [--vcf-input VCF_INPUT] [--gnomad-sv-file GNOMAD_SV_FILE]\n                              [--gnomad-lr-file GNOMAD_LR_FILE] [--min-overlap MIN_OVERLAP]\n                              [--max-distance MAX_DISTANCE]\n                              [--min-size-similarity MIN_SIZE_SIMILARITY] [--common-af COMMON_AF]\n                              [--rare-af RARE_AF]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --gnomad-sv-file GNOMAD_SV_FILE\n                        gnomAD-SV table (default: the library's, from 'ref gnomad-sv').\n  --gnomad-lr-file GNOMAD_LR_FILE\n                        gnomAD-LR table (default: the library's; GRCh38).\n  --min-overlap MIN_OVERLAP\n                        Minimum reciprocal overlap for same-type DEL/DUP/INV (default 0.5).\n  --max-distance MAX_DISTANCE\n                        Maximum insertion breakpoint distance, bp (default 500).\n  --min-size-similarity MIN_SIZE_SIMILARITY\n                        Minimum insertion size similarity (default 0.5).\n  --common-af COMMON_AF\n                        AF from which an SV is common (default 0.01).\n  --rare-af RARE_AF     AF below which an SV is rare (default 0.001).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vcf sv-freq --vcf-input sniffles.vcf.gz\n\noutputs (in the output directory unless noted):\n  sv_freq_annotated.vcf.gz (+ .tbi) and sv_freq.tsv.\n\nneeds:\n  bcftools, bgzip, tabix; depending on options and inputs, also: samtools;\n  minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -43223,7 +43239,7 @@
       "default": 0.5,
       "dest": "min_overlap",
       "exclusive_group": null,
-      "help": "Minimum reciprocal overlap for DEL/DUP/INV/CNV (default 0.5).",
+      "help": "Minimum reciprocal overlap for same-type DEL/DUP/INV (default 0.5).",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -50867,6 +50883,7 @@
    "memory": null,
    "model_type": "PACBIO",
    "no_gpu_memory_check": false,
+   "no_preflight": false,
    "ont": false,
    "outdir": null,
    "pacbio": false,
@@ -50909,6 +50926,7 @@
    "memory": null,
    "model_type": null,
    "no_gpu_memory_check": false,
+   "no_preflight": false,
    "ont": true,
    "outdir": null,
    "pacbio": true,
@@ -50949,6 +50967,7 @@
    "memory": null,
    "model_type": null,
    "no_gpu_memory_check": false,
+   "no_preflight": false,
    "ont": false,
    "outdir": null,
    "pacbio": false,

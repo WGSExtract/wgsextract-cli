@@ -482,3 +482,36 @@ def test_guard_counts_the_sort_buffers_samtools_reserves(tmp_path, monkeypatch):
             preset="map-hifi", input_bytes=200_000,
         )  # fmt: skip
     assert [warning.code for warning in result.warnings] == ["alignment_memory"]
+
+
+def test_total_memory_keeps_a_cgroup_limit_whose_usage_is_unreadable(
+    tmp_path, monkeypatch
+):
+    """#690 review: with a readable memory.max but no memory.current, RAM
+    capacity fell back to the host's free memory, above the cgroup's limit."""
+    from functools import partial
+
+    membership = tmp_path / "membership"
+    membership.write_text("0::/\n")
+    (tmp_path / "memory.max").write_text(str(8 * GIB))
+    monkeypatch.setattr(
+        alignment_memory,
+        "_cgroup_limits",
+        partial(alignment_memory._cgroup_limits, membership, tmp_path),
+    )
+    monkeypatch.setattr(
+        alignment_memory.psutil,
+        "virtual_memory",
+        lambda: SimpleNamespace(total=64 * GIB, available=60 * GIB),
+    )
+    assert alignment_memory.total_memory() == 8 * GIB
+
+
+def test_minimap2_needs_at_least_its_measured_hs38_index_build():
+    """#690 review: on a human reference minimap2 can't run in less RAM than
+    its map-ont index build, measured at 11.17 GiB (docs/resource_estimates.md),
+    whichever phase its total estimate picks for a large input."""
+    least = alignment_memory.least_mapping_memory(
+        None, "minimap2", preset="map-ont", input_bytes=100 * 10**9
+    )
+    assert least >= 11.17 * GIB

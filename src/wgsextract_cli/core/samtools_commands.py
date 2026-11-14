@@ -68,12 +68,14 @@ def regular_files_bytes(paths: Iterable[PathInput]) -> int | None:
         return None
 
 
-def sort_memory(threads: str, memory: str, *, input_bytes: int | None = None) -> str:
+def sort_memory(
+    threads: str, memory: str, *, input_bytes: int | None = None, log: bool = True
+) -> str:
     """The per-thread memory (-m) to give samtools (or sambamba) sort for a
     ``memory`` budget: no more than ``input_bytes`` of read files can fill
     (but at least 16M), and with -@ × -m at most SORT_RAM_FRACTION of this
     computer's RAM, so the sort can reserve its buffers. ``memory`` itself is
-    returned when it is no larger."""
+    returned when it is no larger; ``log`` says when it is lowered."""
     import psutil
 
     count = max(1, int(threads))
@@ -94,14 +96,15 @@ def sort_memory(threads: str, memory: str, *, input_bytes: int | None = None) ->
     chosen = max(chosen, 1)
     if chosen >= requested:
         return memory
-    logging.info(
-        "Lowering samtools sort memory from %s to %dM per thread (%d threads): "
-        "%s, and the sort reserves all of -@ × -m when it starts.",
-        memory,
-        chosen,
-        count,
-        reason,
-    )
+    if log:
+        logging.info(
+            "Lowering samtools sort memory from %s to %dM per thread (%d threads): "
+            "%s, and the sort reserves all of -@ × -m when it starts.",
+            memory,
+            chosen,
+            count,
+            reason,
+        )
     return f"{chosen}M"
 
 

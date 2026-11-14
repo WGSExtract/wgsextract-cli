@@ -204,8 +204,9 @@ def test_mixed_2m_vendor_preflights_chain_before_consumer_target_build(
 
 @needs_tools("bcftools", "bgzip", "tabix", "samtools")
 @pytest.mark.parametrize("chroms", [("chr1", "chrX"), ("1", "X")])
+@pytest.mark.parametrize("legacy_fill", [False, True])
 def test_sparse_vcf_2m_only_hit_does_not_reference_fill_legacy_panels(
-    tmp_path, installed_2m, chroms
+    tmp_path, installed_2m, chroms, legacy_fill
 ):
     fasta = installed_2m / "genomes" / "hg19.fa"
     fasta.parent.mkdir()
@@ -218,9 +219,11 @@ def test_sparse_vcf_2m_only_hit_does_not_reference_fill_legacy_panels(
         "##fileformat=VCFv4.2\n"
         + "".join(f"##contig=<ID={chrom},length=600>\n" for chrom in chroms)
         + '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">\n'
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample\n"
-        f"{chroms[0]}\t100\trs1\tA\tG\t.\tPASS\t.\tGT\t1/1\n"
-        f"{chroms[1]}\t550\tnew_probe_x\tT\tC\t.\tPASS\t.\tGT\t0/1\n"
+        f"{chroms[0]}\t100\trs1\tA\tG\t.\tPASS\t.\tGT:DP:GQ\t1/1:30:60\n"
+        f"{chroms[1]}\t550\tnew_probe_x\tT\tC\t.\tPASS\t.\tGT:DP:GQ\t0/1:30:60\n"
     )
     compressed = str(plain) + ".gz"
     with open(compressed, "wb") as stream:
@@ -236,6 +239,7 @@ def test_sparse_vcf_2m_only_hit_does_not_reference_fill_legacy_panels(
         parallel=False,
         ref_vcf_tab=None,
         ploidy_file=None,
+        **({"assume_hom_ref": True, "min_dp": 0, "min_gq": 0} if legacy_fill else {}),
     )
     result = CommandResult(command="microarray")
     with collecting(result):
@@ -262,7 +266,7 @@ def test_sparse_vcf_2m_only_hit_does_not_reference_fill_legacy_panels(
     projected = {
         snp.split()[0]: genotype for snp, genotype in zip(snps, genotypes, strict=True)
     }
-    assert projected["rs5"] == "2"
+    assert projected["rs5"] == ("2" if legacy_fill else "9")
     assert projected["new_probe_x"] == "1"
 
 
@@ -527,6 +531,12 @@ def test_cli_vcf_rejected_calls_cannot_be_reference_filled(
     fasta.write_text(">chr1\n" + "".join(sequence) + "\n")
     run_command(["samtools", "faidx", str(fasta)])
     plain = tmp_path / "input.vcf"
+    records = "".join(
+        line.replace("\tGT\t", "\tGT:DP:GQ\t") + ":30:60\n"
+        if "\tGT\t" in line
+        else line + "\n"
+        for line in records.splitlines()
+    )
     plain.write_text(
         "##fileformat=VCFv4.2\n"
         "##contig=<ID=chr1,length=500>\n"
@@ -565,3 +575,32 @@ def test_cli_vcf_rejected_calls_cannot_be_reference_filled(
     assert len(list(out.glob("AADR_*/input_CombinedKit.txt"))) == 2
     assert len((out / "input_AADR_1240k.geno").read_text().splitlines()) == 5
     assert (out / "input_AADR_ho.geno").read_text() == expected
+
+
+@needs_tools("bcftools", "bgzip", "tabix", "samtools")
+def test_issue_853_changing_aadr_panels_regenerates_vendor_kits(tmp_path, markers):
+    """Issue 853: AADR panel sites join the CombinedKit and so can change which
+    vendor positions liftover rejects as collisions; a vendor kit made with
+    other panels must not be reused."""
+    library = tmp_path / "library"
+    fasta = _fasta(library / "genomes" / "hg19.fa")
+    templates = library / "microarray" / "raw_file_templates"
+    for part, text in (("head", "# h\n"), ("body", "rs1\t1\t100\n")):
+        (templates / part).mkdir(parents=True)
+        (templates / part / "23andMe_V3.txt").write_text(text)
+    vcf = _plain_vcf(tmp_path / "input.vcf")
+    outdir = tmp_path / "out"
+
+    def vendor_kit_reused(formats: str) -> bool:
+        result = CommandResult(command="microarray")
+        with collecting(result):
+            run_wgsextract(
+                "microarray", "--input", str(vcf), "--ref", str(fasta),
+                "--formats", formats, "--outdir", str(outdir),
+            )  # fmt: skip
+        [kit] = [o for o in result.outputs if o.role == "vendor_kit"]
+        return bool(kit.metrics.get("reused"))
+
+    assert not vendor_kit_reused("23andme_v3")
+    assert vendor_kit_reused("23andme_v3")
+    assert not vendor_kit_reused("23andme_v3,aadr_1240k")

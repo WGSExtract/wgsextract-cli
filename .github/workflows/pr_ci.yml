@@ -212,7 +212,7 @@ jobs:
     needs: [changes, required, draft-fast, docs, python-lint, ubuntu, macos, windows, arm64, smoke, install, native-smoke, pages]
     if: >-
       ${{
-        always() &&
+        !cancelled() &&
         github.event_name == 'pull_request' &&
         !github.event.pull_request.draft &&
         !contains(fromJSON('["labeled","unlabeled"]'), github.event.action)
@@ -241,9 +241,9 @@ jobs:
   required:
     name: required${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
     needs: [changes, draft-fast, docs, python-lint, ubuntu, gitleaks, native-smoke, pages]
-    # always(): a cancelled or failed dependency must report failure here, not
-    # leave a skipped check that GitHub would count as passing.
-    if: ${{ always() && !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
+    # Run after failed dependencies, but let whole-run cancellation stop this
+    # gate. A cancelled dependency in an otherwise active run still fails below.
+    if: ${{ !cancelled() && !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
