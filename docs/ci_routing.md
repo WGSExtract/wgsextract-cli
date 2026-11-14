@@ -272,10 +272,12 @@ app's own bootstrap on runners without user tools.
 
 CI Ubuntu, CI macOS, CI Windows and CI Linux ARM64 keep their own triggers,
 concurrency groups and workflow names, but run the CLI suite through one
-reusable workflow, `os_tests.yml`, which selects each OS's extra steps
-(reference library, installer checks, Windows imputation and vep-rs) by its
-`os` input. Its jobs therefore report as `test-ubuntu / core-1` on main and
-`ubuntu / test-ubuntu / core-1` in PR area checks; ARM64's single job is
+reusable workflow, `os_tests.yml`. Its `os` input selects the installer checks,
+Windows imputation and vep-rs, and ARM64 checks; `reference: true` (Ubuntu and
+macOS) adds the hg19ToHg38 chain and hs38 reference library. ARM64 passes one
+`tier: all, shard: all` matrix entry, the `--ci-tier`/`--ci-shard` defaults, so
+it collects the same tests as before. Its jobs report as `test-ubuntu / core-1`
+on main and `ubuntu / test-ubuntu / core-1` in PR area checks; ARM64's single job is
 `native-arm64 / native`. Each job uploads `tests-<os>-<label>`. The workflow has
 no concurrency group of its own, so the OS calls in one run never cancel each
 other.
