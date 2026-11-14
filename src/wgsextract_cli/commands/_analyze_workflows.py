@@ -478,23 +478,17 @@ def run_vcf_workflow(
         if Path(actual_ann_vcf).exists():
             handle.add_output(actual_ann_vcf)
 
-    # Updated annotation data (a new ClinVar release) must redo the step.
+    # Updated annotation data (a new ClinVar release, an edited file in VEP's
+    # cache directory) must redo the step.
     inputs = {"vcf": vcf_path}
-    caches: dict[str, list[str]] = {}
     for ann in available:
-        path = dataset(ann, lib)
-        if path and Path(path).is_dir():
-            # VEP's cache: a release is a species/version directory.
-            caches[ann] = sorted(
-                p.relative_to(path).as_posix() for p in Path(path).glob("*/*")
-            )
-        elif path:
+        if path := dataset(ann, lib):
             inputs[f"dataset:{ann}"] = path
     tag = f"{v_type}_{base_name}"
     annotate_step = Step(
         f"annotate:{tag}",
         inputs=inputs,
-        params={**_step_params(job, command), "caches": caches},
+        params=_step_params(job, command),
         tools=[
             "bcftools",
             *([vep_step_engine(lib).tool] if "vep" in available else []),
