@@ -117,7 +117,7 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `few_modification_tags`, `opposite_strand_modifications`, `pacbio_5hmc_limited`, `unknown_platform` | `methylation` | The input's MM/ML modification tags are sparse, strand-mixed, or from a platform with limited calls. |
 | `genotype_ambiguous`, `high_copy_number`, `no_call` | `typing` | A star-allele or HLA call is ambiguous, has extra copies, or failed (`gene`). For CYP2D6, an ambiguous call (`filter`, `call_info`, `candidates`) or Cyrius's `LowQ_high_CN` (about 6 or more CYP2D6 copies; `cyp2d6_cyp2d7_copies`) writes no PharmCAT outside call. |
 | `repeat_outside_normal_range` | `typing repeats` | A repeat length is outside its normal range (`locus`). |
-| `repeat_unconfirmed`, `repeat_unavailable` | `typing str` | Only a low-support allele (one read) puts the repeat outside its normal range; the build's catalog lacks the repeat (NOTCH2NLC on hg19) (`locus`). |
+| `repeat_unconfirmed`, `repeat_unavailable` | `typing str` | A low-support allele alone changes the grade, all called alleles have low support, or missing expected copies leave the call unresolved; the build's catalog lacks the repeat (NOTCH2NLC on hg19) (`locus`). |
 | `output_exists`, `input_failed` | `vep` | An input was skipped because its output exists (`path`), or failed while the batch went on. |
 | `vep_info_missing`, `chromosomes_missing` | `vep verify` | The VEP cache lacks its `info.txt` or chromosome directories (`chromosomes`). |
 | `dict_missing` | `ref verify` | The reference has no sequence dictionary. |

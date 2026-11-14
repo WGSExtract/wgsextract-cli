@@ -2379,9 +2379,11 @@ str`; see `TypingStrParams`).
 `TypingStrParams`: Size disease short tandem repeats (HTT, FMR1, C9ORF72, ...) and flag
 those outside the normal range, with ExpansionHunter for short reads and
 LongTR (or STRkit) for Nanopore and PacBio; not a diagnosis. Metrics:
-`sex`, `repeat_caller`, `disease_repeats` and `flagged_repeats`;
+`sex`, `repeat_caller`, `disease_repeats`, `flagged_repeats` and
+`unconfirmed_repeats`;
 each flagged repeat is a `repeat_outside_normal_range` warning
-(`repeat_unconfirmed` if only a one-read allele flags it,
+(`repeat_unconfirmed` for a low-support-only finding or an unresolved
+all-weak or incomplete call,
 `repeat_unavailable` for NOTCH2NLC on hg19).
 
 | Field | Type | Default | CLI | Description |
