@@ -15853,7 +15853,7 @@
       "default": null,
       "dest": "min_gq",
       "exclusive_group": null,
-      "help": "Minimum sample GQ; missing GQ becomes a no-call (default: config or 0, disabled)",
+      "help": "Minimum sample GQ; missing GQ becomes a no-call (default: config or 20; 0 disables filtering)",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -15869,7 +15869,7 @@
       "default": null,
       "dest": "min_dp",
       "exclusive_group": null,
-      "help": "Minimum sample DP; missing DP becomes a no-call (default: config or 0, disabled)",
+      "help": "Minimum sample DP; missing DP becomes a no-call (default: config or 10; 0 disables filtering)",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -15885,7 +15885,7 @@
       "default": null,
       "dest": "assume_hom_ref",
       "exclusive_group": null,
-      "help": "Assume absent VCF markers are reference on represented contigs (default: config or true)",
+      "help": "Assume absent VCF markers are reference on represented contigs (unsafe opt-in; default: config or false; also requires --min-dp 0 --min-gq 0)",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -15902,7 +15902,7 @@
       "default": null,
       "dest": "exclude_filtered",
       "exclusive_group": null,
-      "help": "No-call VCF records failing FILTER (default: config or false)",
+      "help": "No-call VCF records failing FILTER (default: config or true)",
       "metavar": null,
       "nargs": 0,
       "option_strings": [

@@ -409,7 +409,8 @@ def run_chm13(
                 "query",
                 "-u",
                 "-f",
-                "%CHROM\t%POS\t%END\t%REF\t%ALT\t[%GT\t%DP\t%GQ]\t%FILTER\n",
+                "%CHROM\t%POS\t%END\t%REF\t%ALT\t[%GT\t%DP\t%GQ]\t%FILTER"
+                + ("\t%QUAL\n" if not is_vcf else "\n"),
                 out_vcf,
             ],
             str(directory),
@@ -418,6 +419,7 @@ def run_chm13(
         markers,
         quality,
         identity,
+        reference_qual=not is_vcf,
     )
     evidence = (
         {

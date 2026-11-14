@@ -1723,10 +1723,10 @@ settings) and then to the documented default.
 | `strand_ambiguous` | `str \| None` | `None` | `--strand-ambiguous` | Keep/no-call biallelic A/T or C/G input SNPs; unknown probe alleles are not inferred (default: config or keep) One of: `keep`, `no-call` |
 | `resolve_rsids` | `bool \| None` | `None` | `--resolve-rsids` | Resolve packaged dbSNP aliases and no-call retired/ambiguous marker IDs (default: config or false) |
 | `quirks` | `str \| None` | `None` | `--quirks` | corrected: forward-strand calls; vendor: reverse-strand calls where a template's vendor revision reported them so (default: config or corrected) One of: `corrected`, `vendor` |
-| `min_gq` | `int \| None` | `None` | `--min-gq` | Minimum sample GQ; missing GQ becomes a no-call (default: config or 0, disabled) |
-| `min_dp` | `int \| None` | `None` | `--min-dp` | Minimum sample DP; missing DP becomes a no-call (default: config or 0, disabled) |
-| `assume_hom_ref` | `bool \| None` | `None` | `--assume-hom-ref` | Assume absent VCF markers are reference on represented contigs (default: config or true) |
-| `exclude_filtered` | `bool \| None` | `None` | `--exclude-filtered` | No-call VCF records failing FILTER (default: config or false) |
+| `min_gq` | `int \| None` | `None` | `--min-gq` | Minimum sample GQ; missing GQ becomes a no-call (default: config or 20; 0 disables filtering) |
+| `min_dp` | `int \| None` | `None` | `--min-dp` | Minimum sample DP; missing DP becomes a no-call (default: config or 10; 0 disables filtering) |
+| `assume_hom_ref` | `bool \| None` | `None` | `--assume-hom-ref` | Assume absent VCF markers are reference on represented contigs (unsafe opt-in; default: config or false; also requires --min-dp 0 --min-gq 0) |
+| `exclude_filtered` | `bool \| None` | `None` | `--exclude-filtered` | No-call VCF records failing FILTER (default: config or true) |
 | `call_reasons` | `bool \| None` | `None` | `--call-reasons` | Also write CombinedKit_reasons.tsv with explicit reasons (default: config or false) |
 | `aadr_sample_id` | `str` | `'sample'` | `--aadr-sample-id` | Non-identifying sample label for AADR .fam/.ind (default: sample) |
 | `aadr_sex` | `str` | `'U'` | `--aadr-sex` | AADR metadata sex only; does not change genotype calling (default: U) One of: `U`, `M`, `F` |

@@ -21,6 +21,7 @@ HEADER = (
     "##contig=<ID={contig},length=5000>\n"
     '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
     '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">\n'
+    '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
     '##INFO=<ID=END,Number=1,Type=Integer,Description="End of the block">\n'
     "##source=nf-core/sarek\n"
 )
@@ -35,7 +36,14 @@ def _vcf(
         + f"{columns}\tINFO\tFORMAT\t"
         + "\t".join(samples)
         + "\n"
-        + "".join(record + "\n" for record in records)
+        + "".join(
+            "\t".join(
+                [*record.split("\t")[:8], record.split("\t")[8] + ":DP"]
+                + [sample + ":30" for sample in record.split("\t")[9:]]
+            )
+            + "\n"
+            for record in records
+        )
     )
     return str(bgzip_index(path))
 
