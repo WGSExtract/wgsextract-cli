@@ -18,6 +18,7 @@ ROUTED_MAIN = {
     "arm64": "linux_arm64.yml",
     "smoke": "cli_smoke.yml",
     "install": "install_lab.yml",
+    "gitleaks": "gitleaks.yml",
     "Documentation freshness": "ubuntu_ci.yml",
 }
 

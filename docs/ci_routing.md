@@ -53,7 +53,7 @@ the job's pytest selection and its coverage classification. For example,
 
 There is no existing general Markdown link/anchor checker. Pages source checks
 also run both site builders and the app's site-source validator, without
-deployment permissions. The secret scan remains on **all main-target PRs**,
+deployment permissions. The secret scan remains on **all PRs and queue groups**,
 including docs: routing must not hide a secret in prose.
 
 The OS workflows and Install Lab run unconditionally on main pushes and nightly,
@@ -150,10 +150,29 @@ the routing itself lands. Other main-only workflow triggers are unchanged.
 
 ## Landing checks
 
-The main ruleset has no required status checks. Workflow/job skips do not block
-merging. Do not hard-code a count or require every OS job to exist.
-The old ignored `scratch/merge_when_clean.sh` used `>5` / `<=5` count gates;
-replace those gates with a nonempty structured report:
+`main` lands through a merge queue whose only required status check is
+`required`, the last job of PR area checks. It runs for every PR, docs-only
+included, and for every merge-queue group. It passes when routing succeeded
+and every required job passed or was skipped by area routing; a failed or
+cancelled job fails it. `always()` keeps it reporting when a dependency fails,
+because GitHub counts a skipped required check as passing.
+
+| Event | Jobs `required` waits for | Not required |
+|---|---|---|
+| Pull request | routing, documentation freshness, changed Python lint, CI Ubuntu (lint, tests, imputation, ONT), secret scan, native CLI smoke, Pages checks | macOS, Windows, ARM64, package smoke, Install Lab, CodeQL, GUI and native workflows: advisory |
+| Merge-queue group | the same set, routed by the group's diff against `main` | not run |
+
+The required set stays on fast Ubuntu jobs. The other OS jobs, which more
+often lose runners or wait for capacity, stay advisory so they can't stall the
+queue; main pushes and nightly runs still run them in full. A job-level `needs:` summary in one workflow, rather than polling the
+checks API, reports exactly once per run with no extra permissions or timeout.
+The queue's `merge_group` events ignore `paths:` filters, so routing uses the
+group's `base_sha...head_sha` diff, keeping docs-only groups to a few minutes.
+
+Agents land with `gh pr merge PR --auto --squash --match-head-commit SHA` after
+every check, advisory ones included, is green, and don't update branches that
+are merely BEHIND (see AGENTS.md, "Babysitting a PR"). Wait for checks with a
+nonempty structured report rather than a fixed count:
 
 ```sh
 set -o pipefail
@@ -163,9 +182,8 @@ gh pr checks "$PR" --json bucket,name | python scripts/pr_checks_ready.py
 
 The validator requires at least one passing check, permits intentional skips,
 and rejects empty reports, pending, failed, cancelled and unknown statuses.
-Wait for workflow registration, verify that the head SHA has not changed,
-and check reviews/threads and mergeability separately. The autopilot skill
-documents this rule too. This validator does not itself merge anything.
+Verify that the head SHA has not changed, and check reviews/threads and
+mergeability separately. The autopilot skill documents this rule too.
 
 ## Cache plan
 
