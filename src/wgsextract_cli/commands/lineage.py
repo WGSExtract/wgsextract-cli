@@ -10,6 +10,7 @@ from typing import Any
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.lineage import MtHaplogroupParams
 from wgsextract_cli.cli.registration.lineage import register as register
+from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -25,6 +26,7 @@ from wgsextract_cli.core.messages import LOG_MESSAGES, SYSTEM_MESSAGES
 from wgsextract_cli.core.mito_reference import (
     CHM13_CHRM,
     CHM13_CHRM_MD5,
+    RCRS_MD5,
     ref_agreement,
     rotated_mito,
 )
@@ -49,6 +51,7 @@ from wgsextract_cli.core.utils import (
 )
 from wgsextract_cli.core.variant_files import (
     calculate_bam_md5,
+    chromosome_aliases,
     get_bam_header,
     get_chr_name,
     verify_paths_exist,
@@ -162,6 +165,7 @@ def run_mt_haplogroup(params: MtHaplogroupParams, *, tree_links: bool = False) -
     is_alignment = input_lower.endswith((".bam", ".cram"))
     if not is_alignment and not input_lower.endswith(VCF_SUFFIXES):
         raise WGSExtractError("--input must be a BAM, CRAM or VCF file.")
+    vcf_ref = None if is_alignment else _explicit_fasta(params.ref)
 
     logging.info("Running mtDNA haplogroup analysis...")
 
@@ -176,7 +180,7 @@ def run_mt_haplogroup(params: MtHaplogroupParams, *, tree_links: bool = False) -
             _haplocheck_path(params.haplocheck_path), "haplocheck.jar"
         )
         tools.append("haplocheck")
-    if is_alignment:
+    if is_alignment or vcf_ref:
         tools.append("samtools")
     verify_dependencies(["bcftools"] + (["samtools"] if "samtools" in tools else []))
     log_dependency_info(tools)
@@ -254,8 +258,7 @@ def run_mt_haplogroup(params: MtHaplogroupParams, *, tree_links: bool = False) -
         else:
             # Filter VCF to chrM to avoid Haplogrep errors on large VCFs
             chr_m = extract_vcf_chromosome(input_file, "MT", temp_vcf)
-            ref = params.ref if params.ref and params.ref.is_file() else None
-            _require_rcrs(temp_vcf, chr_m, fasta=str(ref) if ref else None)
+            _require_rcrs(temp_vcf, chr_m, fasta=vcf_ref)
             input_file = temp_vcf
             if haplocheck_cmd:
                 _require_heteroplasmy_levels(temp_vcf)
@@ -431,25 +434,23 @@ def _require_rcrs(
         )
     md5 = _header_md5(header, chr_m)
     found = CHM13_CHRM if md5 == CHM13_CHRM_MD5 else None
-    checked = md5 is not None
-    if found is None and fasta:
-        sequence = run_command(
-            ["samtools", "faidx", fasta, chr_m], capture_output=True, check=False
-        )
-        if sequence.returncode == 0:
-            checked = True
-            found = rotated_mito("".join(sequence.stdout.splitlines()[1:]))
-    if found is None and rows:
+    if rows:
+        # A VCF's own REF alleles outrank a FASTA, which only settles a tie.
         rcrs, chm13 = ref_agreement((int(row[1]), row[2]) for row in rows)
-        if chm13 and not rcrs:
+        if found is None and chm13 and not rcrs:
             found = CHM13_CHRM
-        elif chm13 and not checked:
-            warn(
-                "mt_reference_unconfirmed",
-                f"{chr_m}'s REF alleles fit both the rCRS and CHM13v2.0's "
-                "chrM, so the VCF's reference isn't confirmed as the rCRS; "
-                "pass --ref to check it.",
-            )
+        unsettled = found is None and md5 != RCRS_MD5 and rcrs and chm13
+    else:  # an alignment: its reference decides
+        unsettled = found is None
+    if unsettled and fasta and (sequence := _fasta_mito(fasta, chr_m)):
+        found, unsettled = rotated_mito(sequence), False
+    if unsettled and rows:
+        warn(
+            "mt_reference_unconfirmed",
+            f"{chr_m}'s REF alleles fit both the rCRS and CHM13v2.0's chrM and "
+            "the VCF names no chrM md5, so it isn't confirmed as rCRS; pass "
+            "--ref with the FASTA it was called against to check.",
+        )
     if found:
         raise WGSExtractError(
             f"{chr_m} is {found}, not the rCRS: its positions aren't the ones "
@@ -458,6 +459,28 @@ def _require_rcrs(
             "(hg38, hs37d5, or CHM13v2.0's rCRS analysis set); `wgsextract "
             "realign` re-maps a BAM or CRAM."
         )
+
+
+def _explicit_fasta(ref: Path | None) -> str | None:
+    """``--ref`` when it is a FASTA the caller chose, not config's default,
+    which needn't be what a VCF was called against."""
+    default = settings.get("reference_fasta")
+    if ref is None or not ref.is_file():
+        return None
+    if default and Path(str(default)).expanduser().resolve() == ref.resolve():
+        return None
+    return str(ref)
+
+
+def _fasta_mito(fasta: str, chr_m: str) -> str | None:
+    """The FASTA's mitochondrial sequence under any of its names, or None."""
+    for name in dict.fromkeys((chr_m, *chromosome_aliases(chr_m))):
+        result = run_command(
+            ["samtools", "faidx", fasta, name], capture_output=True, check=False
+        )
+        if result.returncode == 0 and result.stdout.count("\n") > 1:
+            return "".join(result.stdout.splitlines()[1:])
+    return None
 
 
 def _header_md5(header: str, contig: str) -> str | None:
@@ -472,7 +495,7 @@ def _header_md5(header: str, contig: str) -> str | None:
                 f.split("=", 1) for f in line[10:].rstrip(">").split(",") if "=" in f
             )
             if fields.get("ID") == contig:
-                return fields.get("md5", "").lower() or None
+                return fields.get("md5", "").strip("\"'").lower() or None
     return None
 
 

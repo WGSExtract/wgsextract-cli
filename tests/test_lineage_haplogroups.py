@@ -567,7 +567,9 @@ def test_mt_haplogroup_hands_haplogrep_rcrs_positions_unchanged_827(tmp_path):
     assert [r[:4] for r in call["records"]] == [["chrM", "2011", "G", "C"]]
 
 
-@pytest.mark.parametrize("evidence", ["REF alleles", "contig md5", "plain VCF md5"])
+@pytest.mark.parametrize(
+    "evidence", ["REF alleles", "contig md5", "quoted md5", "plain VCF md5"]
+)
 def test_mt_haplogroup_refuses_a_vcf_called_against_chm13_827(tmp_path, evidence):
     """#827: a VCF called against CHM13 reads as rCRS positions to Haplogrep."""
     rcrs, chm13 = pinned_sequences()
@@ -575,7 +577,8 @@ def test_mt_haplogroup_refuses_a_vcf_called_against_chm13_827(tmp_path, evidence
     if evidence == "REF alleles":
         meta, refs = "", chm13
     else:
-        meta, refs = f"##contig=<ID=chrM,length=16569,md5={CHM13_CHRM_MD5}>\n", rcrs
+        md5 = f'"{CHM13_CHRM_MD5}"' if evidence == "quoted md5" else CHM13_CHRM_MD5
+        meta, refs = f"##contig=<ID=chrM,length=16569,md5={md5}>\n", rcrs
     body = "".join(
         f"chrM\t{p}\t.\t{refs[p - 1]}\t{'T' if refs[p - 1] != 'T' else 'G'}"
         "\t50\tPASS\t.\tGT\t1\n"
@@ -595,14 +598,26 @@ def test_mt_haplogroup_refuses_a_vcf_called_against_chm13_827(tmp_path, evidence
     assert not (tmp_path / "calls.jsonl").exists()
 
 
-def test_mt_haplogroup_vcf_whose_refs_fit_both_references_827(tmp_path):
-    """#827: rCRS and CHM13 share the REF at 73, so only --ref can tell."""
-    vcf = _mt_vcf(tmp_path / "kit.vcf.gz", "chrM\t73\t.\tA\tG\t50\tPASS\t.\tGT\t1\n")
+@pytest.mark.parametrize("md5", ["", "0" * 32])
+def test_mt_haplogroup_vcf_whose_refs_fit_both_references_827(
+    tmp_path, monkeypatch, md5
+):
+    """#827: rCRS and CHM13 share the REF at 73, and an unknown md5 proves
+    nothing, so only a --ref the user chose can tell."""
+    from wgsextract_cli.core.config import settings
+
+    meta = f"##contig=<ID=chrM,length=16569,md5={md5}>\n" if md5 else ""
+    body = "chrM\t73\t.\tA\tG\t50\tPASS\t.\tGT\t1\n"
+    vcf = _vcf(tmp_path / "kit.vcf.gz", {} if md5 else {"chrM": 16_569}, body, meta)
+    chm13 = pinned_sequences()[1]
+    # Config's default reference isn't what this VCF was called against.
+    default = write_fasta(tmp_path / "default" / "ref.fa", {"chrM": chm13})
+    monkeypatch.setitem(settings, "reference_fasta", str(default))
     result = _classify(vcf, tmp_path / "o", haplogrep_path=_haplogrep(tmp_path))
     assert "mt_reference_unconfirmed" in {w.code for w in result.warnings}
-    chm13 = write_fasta(tmp_path / "chm13.fa", {"chrM": pinned_sequences()[1]})
+    chosen = write_fasta(tmp_path / "chm13.fa", {"MT": chm13})  # named otherwise
     with pytest.raises(CommandFailed, match="CHM13v2.0's chrM, not the rCRS"):
-        _classify(vcf, tmp_path / "p", ref=chm13, haplogrep_path=_haplogrep(tmp_path))
+        _classify(vcf, tmp_path / "p", ref=chosen, haplogrep_path=_haplogrep(tmp_path))
 
 
 @pytest.mark.parametrize(
