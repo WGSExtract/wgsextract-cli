@@ -12,11 +12,13 @@ need not be concave in q, even for error-smoothed hard calls.
 
 Fitting uses projected Newton steps on a curvature-shifted local quadratic
 model and a backtracking line search, not EM. Accepted steps satisfy an
-increase condition on the likelihood. The fit starts at uniform proportions
+increase condition on the likelihood. The point estimate starts at uniform proportions
 and stops on small directional improvement, small likelihood improvement,
 line-search failure or the iteration limit. It does not certify a stationary
 point or a global maximum; results can depend on the starting point.
 
+Bootstrap refits start from that point estimate with components floored at
+1e-3 and renormalised, not from uniform proportions.
 Confidence intervals come from a block bootstrap over sites: contiguous runs
 of sites are resampled, so residual linkage between neighbours widens them as
 it should.
