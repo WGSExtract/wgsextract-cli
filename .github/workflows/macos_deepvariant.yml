@@ -17,6 +17,11 @@ on:
       - "!**/*.md"
   push:
     branches: [main]
+    paths:
+      - native/deepvariant/**
+      - native/tests/seeded_random.sh
+      - .github/workflows/macos_deepvariant.yml
+      - "!**/*.md"
   schedule:
     - cron: "47 6 * * *"
   workflow_dispatch:
@@ -30,9 +35,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  # A newer push supersedes a PR's build; a release run is never cancelled.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: macos-deepvariant-${{ github.event_name }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}
+  # Nightly and release dispatches must not compete with main pushes.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 }}
 
 env:
   # The image docs/deepvariant-arm64.md checks the Linux ARM64 build's models against.

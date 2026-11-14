@@ -35,6 +35,14 @@ def is_pr_area_run(run: dict[str, Any]) -> bool:
     return run.get("path") == ".github/workflows/pr_ci.yml"
 
 
+def is_main_validation(run: dict[str, Any], repository: str) -> bool:
+    return (
+        run["head_branch"] == "main"
+        and run["event"] in {"push", "schedule"}
+        and run["head_repository"]["full_name"] == repository
+    )
+
+
 class Observer(IssueReports):
     def __init__(self, github: GitHub) -> None:
         super().__init__(github)
@@ -61,10 +69,11 @@ class Observer(IssueReports):
     def latest(
         self, run: dict[str, Any], branch: str | None = None
     ) -> dict[str, Any] | None:
+        main = branch is not None or is_main_validation(run, self.gh.repository)
         query = urlencode(
             {
                 "branch": branch or run["head_branch"],
-                "event": "push" if branch else run["event"],
+                **({} if main else {"event": run["event"]}),
                 **({"status": "completed"} if branch else {}),
             }
         )
@@ -77,8 +86,13 @@ class Observer(IssueReports):
             )
             if item["head_repository"]["full_name"] != repository:
                 continue
-            if branch and item["conclusion"] not in {"failure", "success"}:
+            if main and item["event"] not in {"push", "schedule"}:
                 continue
+            if branch:
+                conclusive = self.conclusive_attempt(item)
+                if conclusive is None:
+                    continue
+                return conclusive
             if (
                 not branch
                 and is_pr_area_run(run)
@@ -88,6 +102,21 @@ class Observer(IssueReports):
             ):
                 continue
             return item
+        return None
+
+    def conclusive_attempt(self, run: dict[str, Any]) -> dict[str, Any] | None:
+        if run["conclusion"] in {"failure", "success"}:
+            return run
+        if run["conclusion"] != "cancelled":
+            return None
+        # The run list contains only the latest attempt. Cancellation of a
+        # retry cannot erase an already observed red-main failure.
+        for attempt in range(run["run_attempt"] - 1, 0, -1):
+            previous: dict[str, Any] = self.gh.api(
+                "GET", f"actions/runs/{run['id']}/attempts/{attempt}"
+            )
+            if previous["conclusion"] in {"failure", "success"}:
+                return previous
         return None
 
     def failures(self, run: dict[str, Any], *, history: bool = False) -> list[Failure]:
@@ -289,11 +318,20 @@ class Observer(IssueReports):
         )
 
     def process(self, run: dict[str, Any], *, rerun_tests: bool = False) -> int:
-        self.report_recoveries(run)
         latest = self.latest(run)
-        if latest is None or latest["id"] != run["id"]:
+        superseded = latest is None or latest["id"] != run["id"]
+        # Partial passes in a cancelled, superseded run must not create flake
+        # exemptions. Completed successful retries still report recoveries.
+        if not (
+            superseded
+            and run["conclusion"] == "cancelled"
+            and run["event"] in {"push", "pull_request", "merge_group"}
+        ):
+            self.report_recoveries(run)
+        if superseded:
             print("Superseded run; not rerunning or changing main status.")
             return 0
+        assert latest is not None
         if (
             latest["run_attempt"] != run["run_attempt"]
             or latest["status"] != "completed"
@@ -301,12 +339,7 @@ class Observer(IssueReports):
             print("Attempt is no longer current.")
             return 0
         failures = self.failures(run) if run["conclusion"] != "success" else []
-        is_main = (
-            run["head_branch"] == "main"
-            and run["event"] == "push"
-            and run["head_repository"]["full_name"] == self.gh.repository
-        )
-        if is_main:
+        if is_main_validation(run, self.gh.repository):
             self.red_main(run, failures)
         elif failures:
             baselines: dict[str, list[Failure]] = {}

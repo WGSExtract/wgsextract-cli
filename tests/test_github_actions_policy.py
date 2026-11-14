@@ -83,6 +83,16 @@ def test_910_pr_workflows_allocate_no_draft_runners_and_wake_on_readiness(
         )
 
 
+def test_910_shared_os_suite_skips_drafts_before_expanding_the_runner_matrix() -> None:
+    workflow = (WORKFLOWS / "os_tests.yml").read_text()
+    job = workflow.split("\njobs:\n", 1)[1].split("\n    steps:", 1)[0]
+    condition = re.search(r"^    if: (.*)", job, re.MULTILINE)
+    assert condition
+    assert "github.event.pull_request.draft != true" in top_level_conjuncts(
+        condition[1]
+    )
+
+
 def test_910_setup_push_trigger_does_not_allocate_runners_for_draft_branches() -> None:
     setup = (WORKFLOWS / "copilot-setup-steps.yml").read_text()
     push = re.search(r"^  push:\n((?:    .*\n)*)", setup, re.MULTILINE)

@@ -16,9 +16,11 @@ area-selected checks as a ready PR push.
 GitHub Actions has no workflow-level `if`. Job-level draft conditions are
 evaluated before runner allocation (and before expanding a matrix); reusable
 workflow callers have the same gate. Skipped workflow records may appear, but
-use no runner. Every PR workflow includes `ready_for_review`. Workflows with
-cancelling concurrency retain a runner-free `converted_to_draft` event in the
-same concurrency group to cancel in-flight ready runs. Pushes, schedules,
+use no runner. Every PR workflow includes `ready_for_review`.
+The shared `os_tests.yml` suite also gates its matrix job on the inherited
+draft payload, in addition to the PR area's gates on its OS callers.
+Workflows with cancelling concurrency retain a runner-free `converted_to_draft`
+event in the same concurrency group to cancel in-flight ready runs. Pushes, schedules,
 manual dispatches, workflow calls and merge groups retain their existing gates.
 The runner-free `pr_draft_cancel.yml` workflow also cancels the separate
 Install Lab label group on redrafting/readiness, without letting ordinary
@@ -77,8 +79,11 @@ also run both site builders and the app's site-source validator, without
 deployment permissions. The secret scan remains on **all ready PRs and queue groups**,
 including docs: routing must not hide a secret in prose.
 
-The OS workflows and Install Lab run unconditionally on main pushes and nightly,
-as do the GUI and native workflows covered by area routing. CodeQL retains
+The OS workflows and CLI package/benchmark smoke run unconditionally on main
+pushes and nightly. Install Lab's main-push paths match the installer/packaging
+route above; GUI CI, GUI developer setup, GUI distribution, macOS Aligners and
+macOS DeepVariant use their PR path filters on main pushes too. All retain
+unfiltered nightly coverage. CodeQL retains
 unfiltered main coverage and runs nightly; PRs scan code/configuration paths
 only. Releases and manual dispatches remain available. Install Lab can be
 forced on any PR with the `run-install-lab` label. Only this label is actionable:
@@ -87,8 +92,41 @@ Label runs cannot cancel a code-validation run. Routing, documentation, lint
 and summary label checks have distinct names. The now-skipped draft-fast, native smoke and
 Pages checks use static names so skipped jobs do not expose raw name expressions.
 The landing validator scopes area checks to the selected ready run.
-Its nightly run includes the former weekly negative
-controls and pinned-release scenarios.
+Its nightly run includes the former weekly negative controls and pinned-release
+scenarios.
+
+### Main-push macOS capacity
+
+Main pushes supersede older main-push runs independently in Install Lab, GUI
+distribution, CI macOS, CLI package/benchmark smoke, macOS Aligners,
+macOS DeepVariant, GUI CI and GUI developer setup. Their concurrency groups
+separate push, PR, nightly and manual events. Nightly/manual runs keep unique
+run-ID groups and are not cancelled by pushes. Reusable workflows use literal
+workflow-specific prefixes, not the caller's `github.workflow`; tagged GUI
+distribution calls also keep unique, non-cancelling groups, including a release
+caller with a push event. Release publishing and `app_run` artifact selection
+are unchanged.
+Main-push retries (`run_attempt > 1`) also use independent run-ID groups:
+rerunning an old commit cannot cancel the newest first-attempt main push.
+
+The eight workflows previously submitted **13–14 macOS jobs per main merge**:
+CI macOS 3, smoke 2, Install Lab 2–3 (one extra if it builds the tree app),
+GUI distribution 2, and one each for Aligners, DeepVariant, GUI CI and GUI
+developer setup. A CLI-only merge outside installer/packaging paths now submits
+**5** (CI macOS plus smoke); docs-only submits the same 5. Relevant app/native
+merges still run the matching workflows. Coalescing limits each workflow's
+main-push backlog to its newest run; it does not promise a fixed saving in
+runner-minutes or a measured queue-wait target.
+
+The failure observer treats a cancelled superseded main run as obsolete:
+no retry, red-main update or flake exemption from its partial passes.
+Cancelled runs do not replace the last conclusive main failure/success used
+for PR comparisons, including an earlier failed attempt of a cancelled retry.
+A relevant newer main push or nightly success still closes that workflow's
+red-main bug. Nightly results refresh the baseline after fixes outside the push
+route; unrelated path-filtered pushes do not falsely mark it green.
+Manual/nightly retries remain independent and can report confirmed recoveries
+even when another run of their event exists.
 
 ### CLI test time and tiers
 
@@ -189,7 +227,8 @@ Drafts cannot enter the queue and need no `required` result.
 
 The required set stays on fast Ubuntu jobs. The other OS jobs, which more
 often lose runners or wait for capacity, stay advisory so they can't stall the
-queue; main pushes and nightly runs still run them in full. A job-level `needs:` summary in one workflow, rather than polling the
+queue; main pushes run selected advisory workflows in full and nightly runs cover
+all paths. A job-level `needs:` summary in one workflow, rather than polling the
 checks API, reports exactly once per run with no extra permissions or timeout.
 The queue's `merge_group` events ignore `paths:` filters, so routing uses the
 group's `base_sha...head_sha` diff, keeping docs-only groups to a few minutes.
@@ -286,3 +325,15 @@ the validator rejects direct `actions/setup-node` steps. `gui-build.yml` can
 build an older ref, so it replaces that ref's `.github/actions` with the run's
 own before using it. `gui-dev-setup.yml` deliberately bypasses it: it tests the
 app's own bootstrap on runners without user tools.
+
+CI Ubuntu, CI macOS, CI Windows and CI Linux ARM64 keep their own triggers,
+concurrency groups and workflow names, but run the CLI suite through one
+reusable workflow, `os_tests.yml`. Its `os` input selects the installer checks,
+Windows imputation and vep-rs, and ARM64 checks; `reference: true` (Ubuntu and
+macOS) adds the hg19ToHg38 chain and hs38 reference library. ARM64 passes one
+`tier: all, shard: all` matrix entry, the `--ci-tier`/`--ci-shard` defaults, so
+it collects the same tests as before. Its jobs report as `test-ubuntu / core-1`
+on main and `ubuntu / test-ubuntu / core-1` in PR area checks; ARM64's single job is
+`native-arm64 / native`. Each job uploads `tests-<os>-<label>`. The workflow has
+no concurrency group of its own, so the OS calls in one run never cancel each
+other.

@@ -22,11 +22,27 @@ on:
       - ".github/actions/download-cache/**"
       - ".github/actions/setup-gui/**"
       - "gui/app/web/packagers/**"
+      - "gui/app/scripts/**"
+      - "gui/app/package.json"
+      - "gui/app/package-lock.json"
       - "gui/tools/packaging/**"
       - "gui/tools/tasks.py"
       - "!**/*.md"
   push:
     branches: [main]
+    paths:
+      - ".github/workflows/gui-build.yml"
+      - ".github/workflows/gui-distribution.yml"
+      - ".github/actions/apt-install/**"
+      - ".github/actions/download-cache/**"
+      - ".github/actions/setup-gui/**"
+      - "gui/app/web/packagers/**"
+      - "gui/app/scripts/**"
+      - "gui/app/package.json"
+      - "gui/app/package-lock.json"
+      - "gui/tools/packaging/**"
+      - "gui/tools/tasks.py"
+      - "!**/*.md"
   schedule:
     - cron: "31 6 * * *"
   workflow_dispatch:
@@ -51,10 +67,11 @@ on:
 permissions:
   contents: read
 
-# Only pull requests share a group: a new push supersedes the PR's older run.
+# Called releases inherit the caller's event/workflow: give them a unique group,
+# and never cancel a tagged build. Nightly/manual runs are independent too.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: gui-distribution-${{ github.event_name }}-${{ inputs.tag == '' && (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}
+  cancel-in-progress: ${{ inputs.tag == '' && (github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1) }}
 
 jobs:
   tauri:
