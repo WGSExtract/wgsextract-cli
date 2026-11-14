@@ -261,7 +261,7 @@ def run_cyp2d6(params: TypingCyp2d6Params) -> None:
             )
 
     call = parse_cyrius(str(Path(aln.outdir, f"{prefix}.json")))
-    depth = f"{call.median_depth}x" if call.median_depth is not None else "unknown"
+    depth = f"{call.median_depth:g}x" if call.median_depth is not None else "unknown"
     alternatives = ";".join(call.raw_star_alleles) or None
     result = current_result()
     result.set_reference(aln.reference)
