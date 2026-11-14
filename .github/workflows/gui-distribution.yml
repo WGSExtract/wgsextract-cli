@@ -21,6 +21,9 @@ on:
       - ".github/actions/download-cache/**"
       - ".github/actions/setup-gui/**"
       - "gui/app/web/packagers/**"
+      - "gui/app/scripts/**"
+      - "gui/app/package.json"
+      - "gui/app/package-lock.json"
       - "gui/tools/packaging/**"
       - "gui/tools/tasks.py"
       - "!**/*.md"
@@ -33,6 +36,9 @@ on:
       - ".github/actions/download-cache/**"
       - ".github/actions/setup-gui/**"
       - "gui/app/web/packagers/**"
+      - "gui/app/scripts/**"
+      - "gui/app/package.json"
+      - "gui/app/package-lock.json"
       - "gui/tools/packaging/**"
       - "gui/tools/tasks.py"
       - "!**/*.md"
@@ -63,8 +69,8 @@ permissions:
 # Called releases inherit the caller's event/workflow: give them a unique group,
 # and never cancel a tagged build. Nightly/manual runs are independent too.
 concurrency:
-  group: gui-distribution-${{ github.event_name }}-${{ inputs.tag == '' && (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'pull_request') && github.ref || github.run_id }}
-  cancel-in-progress: ${{ inputs.tag == '' && (github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+  group: gui-distribution-${{ github.event_name }}-${{ inputs.tag == '' && (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}
+  cancel-in-progress: ${{ inputs.tag == '' && (github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1) }}
 
 jobs:
   tauri:

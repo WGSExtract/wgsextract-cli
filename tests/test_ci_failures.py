@@ -40,6 +40,7 @@ class ReplayGitHub(GitHub):
         self.main_by_workflow: dict[str, dict[str, Any]] = {}
         self.other_runs: list[dict[str, Any]] = []
         self.run_jobs: dict[int, list[dict[str, Any]]] = {}
+        self.attempt_runs: dict[tuple[int, int], dict[str, Any]] = {}
         self.jobs: dict[int, list[dict[str, Any]]] = {1: [recorded("test_failure")]}
         self.main_jobs: list[dict[str, Any]] = []
         self.issues: list[dict[str, Any]] = []
@@ -135,7 +136,7 @@ class ReplayGitHub(GitHub):
                 run
                 for run in self.other_runs
                 if run["head_branch"] == query["branch"][0]
-                and run["event"] == query["event"][0]
+                and ("event" not in query or run["event"] == query["event"][0])
             ] + ([selected] if selected else [])
             if main_query:
                 if self.last_completed_main:
@@ -178,6 +179,8 @@ class ReplayGitHub(GitHub):
                 )
                 return None
             attempt = int(parts[4])
+            if len(parts) == 5:
+                return copy.deepcopy(self.attempt_runs[int(parts[2]), attempt])
             jobs = (
                 self.main_jobs
                 if any(

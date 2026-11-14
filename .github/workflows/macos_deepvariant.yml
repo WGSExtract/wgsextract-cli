@@ -34,9 +34,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: macos-deepvariant-${{ github.event_name }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'pull_request') && github.ref || github.run_id }}
+  group: macos-deepvariant-${{ github.event_name }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}
   # Nightly and release dispatches must not compete with main pushes.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 }}
 
 env:
   # The image docs/deepvariant-arm64.md checks the Linux ARM64 build's models against.

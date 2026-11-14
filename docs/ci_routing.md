@@ -89,6 +89,8 @@ workflow-specific prefixes, not the caller's `github.workflow`; tagged GUI
 distribution calls also keep unique, non-cancelling groups, including a release
 caller with a push event. Release publishing and `app_run` artifact selection
 are unchanged.
+Main-push retries (`run_attempt > 1`) also use independent run-ID groups:
+rerunning an old commit cannot cancel the newest first-attempt main push.
 
 The eight workflows previously submitted **13–14 macOS jobs per main merge**:
 CI macOS 3, smoke 2, Install Lab 2–3 (one extra if it builds the tree app),
@@ -102,8 +104,12 @@ runner-minutes or a measured queue-wait target.
 The failure observer treats a cancelled superseded main run as obsolete:
 no retry, red-main update or flake exemption from its partial passes.
 Cancelled runs do not replace the last conclusive main failure/success used
-for PR comparisons. A relevant newer main success still closes that workflow's
-red-main bug; unrelated path-filtered pushes do not falsely mark it green.
+for PR comparisons, including an earlier failed attempt of a cancelled retry.
+A relevant newer main push or nightly success still closes that workflow's
+red-main bug. Nightly results refresh the baseline after fixes outside the push
+route; unrelated path-filtered pushes do not falsely mark it green.
+Manual/nightly retries remain independent and can report confirmed recoveries
+even when another run of their event exists.
 
 ### CLI test time and tiers
 
