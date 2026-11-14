@@ -203,19 +203,19 @@ def _serve_mcp_http(
         raise UsageError(f"Can't listen on 127.0.0.1:{port}: {e}") from None
     url = f"http://127.0.0.1:{sock.getsockname()[1]}{PATH}"
     mode = " (jobs allowed)" if allow_jobs else " (read-only queries)"
-    _announce(
-        f"WGS Extract MCP server (streamable HTTP) on {url}{mode}",
-        url,
-        token,
-        discovery,
-        guard,
-        f"Clients send it as 'Authorization: Bearer {token}'.",
-        ready_json=ready_json,
-    )
     try:
+        # Discovery precedes HTTP startup, so protect it from early Ctrl-C too.
+        _announce(
+            f"WGS Extract MCP server (streamable HTTP) on {url}{mode}",
+            url,
+            token,
+            discovery,
+            guard,
+            f"Clients send it as 'Authorization: Bearer {token}'.",
+            ready_json=ready_json,
+        )
         serve(McpTools(manager, guard, allow_jobs=allow_jobs), token, sock)
     except (KeyboardInterrupt, SystemExit):
-        # An interrupt before the HTTP server installs its signal handlers.
         logging.info("Stopping the MCP server.")
     finally:
         sock.close()

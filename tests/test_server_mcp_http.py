@@ -52,20 +52,9 @@ class Served:
 
 
 @contextlib.contextmanager
-def _serve(
-    *args: str,
-    command: list[str] | None = None,
-    stop_signal: int | None = None,
-) -> Iterator[Served]:
+def _serve(*args: str) -> Iterator[Served]:
     proc = subprocess.Popen(
-        [
-            *(command or get_cli_command()),
-            "serve",
-            "--mcp-transport",
-            "http",
-            "--ready-json",
-            *args,
-        ],
+        [*get_cli_command(), "serve", "--mcp-transport", "http", "--ready-json", *args],
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         text=True,
@@ -87,8 +76,7 @@ def _serve(
     finally:
         if proc.poll() is None:
             proc.send_signal(
-                stop_signal
-                or (signal.SIGINT if sys.platform != "win32" else signal.SIGTERM)
+                signal.SIGINT if sys.platform != "win32" else signal.SIGTERM
             )
         proc.wait(60)
 
@@ -167,33 +155,45 @@ def test_mcp_http_listens_on_loopback_only_and_cleans_up(work):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signal delivery")
 @pytest.mark.parametrize("stop_signal", [signal.SIGINT, signal.SIGTERM])
-def test_799_delayed_shutdown_signal_exits_cleanly(
+def test_799_interrupting_discovery_announcement_exits_cleanly(
     work: Path, stop_signal: int
 ) -> None:
-    # The OS boundary: macOS can defer delivery of uvicorn's replayed signal
-    # until after the serve command's exception guard. Flush it after main
-    # returns to reproduce that ordering without a timing-dependent sleep.
-    code = """
-import signal
+    # The OS stream boundary: interrupt as soon as the ready line is printed,
+    # before HTTP startup, rather than depending on subprocess scheduling.
+    code = f"""
+import os, signal, sys
 from wgsextract_cli.main import main
-raise_signal = signal.raise_signal
-pending = []
-signal.raise_signal = pending.append
-try:
-    main()
-finally:
-    for signum in pending:
-        raise_signal(signum)
+class InterruptOnReady:
+    def write(self, text):
+        result = sys.__stdout__.write(text)
+        if '"url"' in text:
+            sys.__stdout__.flush()
+            os.kill(os.getpid(), {stop_signal})
+        return result
+    def flush(self):
+        sys.__stdout__.flush()
+sys.stdout = InterruptOnReady()
+main()
 """
-    with _serve(
-        "--allow",
-        str(work),
-        command=[sys.executable, "-c", code],
-        stop_signal=stop_signal,
-    ) as served:
-        assert served.discovery.exists()
-    assert served.proc.returncode == 0
-    assert not served.discovery.exists()
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            code,
+            "serve",
+            "--mcp-transport",
+            "http",
+            "--ready-json",
+            "--allow",
+            str(work),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert json.loads(proc.stdout)["url"].startswith("http://127.0.0.1:")
+    assert proc.returncode == 0
+    assert not (state_directory() / "server" / "mcp.json").exists()
 
 
 def test_mcp_http_runs_tool_calls(work, fake_data):
