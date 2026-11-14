@@ -442,7 +442,9 @@ def test_802_ready_transition_changes_during_validation_fail_closed(
 
     monkeypatch.setattr(pr_checks_ready, "github_json", github_response)
     assert pr_checks_ready.current_ready_run(802, "owner/repo") == (
-        None if redrafted_during_discovery else 20
+        (None, [])
+        if redrafted_during_discovery
+        else (20, [area_run(20, "2026-11-13T16:20:01Z")])
     )
 
 
@@ -643,6 +645,142 @@ def test_757_landing_cli_rejects_an_empty_check_report() -> None:
         text=True,
     )
     assert result.returncode == 1
+
+
+@pytest.mark.parametrize("latest_conclusion", ["success", "failure", "cancelled", None])
+def test_876_superseded_workflow_checks_do_not_hide_the_latest_result(
+    latest_conclusion: str | None,
+) -> None:
+    fixture = json.loads(
+        (
+            Path(__file__).parent / "fixtures/ci_failures/cancelled_draft_gate.json"
+        ).read_text()
+    )
+    draft = fixture["run"]
+    ready = {
+        **draft,
+        "id": draft["id"] + 1,
+        "display_title": "PR area checks / ready_for_review / ready",
+        "conclusion": "success",
+        "pull_requests": [{"number": 875}],
+        "created_at": "2026-11-14T09:20:00Z",
+    }
+    scan = {
+        **draft,
+        "id": draft["id"] + 2,
+        "workflow_id": 123,
+        "path": ".github/workflows/gitleaks.yml",
+    }
+    replacement = {
+        **scan,
+        "id": scan["id"] + 1,
+        "conclusion": latest_conclusion,
+        "status": "completed" if latest_conclusion else "queued",
+    }
+    buckets = {"success": "pass", "failure": "fail", "cancelled": "cancel"}
+    checks = [
+        {
+            "name": job["name"],
+            "bucket": buckets[job["conclusion"]],
+            "workflow": "PR area checks",
+            "link": f"https://github.com/owner/repo/actions/runs/{draft['id']}/job/{i}",
+        }
+        for i, job in enumerate(fixture["jobs"])
+    ]
+    checks += [
+        {
+            "name": name,
+            "bucket": "pass",
+            "workflow": "PR area checks",
+            "link": f"https://github.com/owner/repo/actions/runs/{ready['id']}/job/{i}",
+        }
+        for i, name in enumerate(("changes", "required", "Ready PR area checks"), 20)
+    ]
+    checks.append(
+        {
+            "name": "gitleaks",
+            "bucket": "cancel",
+            "workflow": "Secret Scan",
+            "link": f"https://github.com/owner/repo/actions/runs/{scan['id']}/job/30",
+        }
+    )
+    # Queued replacement deliberately has no registered check yet.
+    if latest_conclusion:
+        checks.append(
+            {
+                **checks[-1],
+                "bucket": buckets[latest_conclusion],
+                "link": f"https://github.com/owner/repo/actions/runs/{replacement['id']}/job/31",
+            }
+        )
+    assert checks_ready(
+        checks, run_id=ready["id"], runs=[replacement, draft, scan, ready]
+    ) is (latest_conclusion == "success")
+    assert not checks_ready(checks, run_id=ready["id"], runs=[draft, ready])
+
+
+def test_876_recorded_pr_run_with_empty_associations_is_still_verified(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = json.loads(
+        (
+            Path(__file__).parent / "fixtures/ci_failures/cancelled_draft_gate.json"
+        ).read_text()
+    )
+    run = {
+        **fixture["run"],
+        "display_title": "PR area checks / ready_for_review / ready",
+        "conclusion": "success",
+    }
+    pr = {
+        "headRefOid": run["head_sha"],
+        "headRefName": run["head_branch"],
+        "headRepository": {"nameWithOwner": run["head_repository"]["full_name"]},
+        "isDraft": False,
+        "createdAt": run["created_at"],
+        "timelineItems": {"nodes": []},
+    }
+
+    def response(*arguments: str) -> Any:
+        if arguments[:2] == ("api", "graphql"):
+            return {"data": {"repository": {"pullRequest": pr}}}
+        return [{"workflow_runs": [run]}]
+
+    monkeypatch.setattr(pr_checks_ready, "github_json", response)
+    assert pr_checks_ready.current_ready_run(875, "WGSExtract/wgsextract-cli") == (
+        run["id"],
+        [run],
+    )
+
+
+@LINUX_BASH
+@pytest.mark.parametrize("dependency_result", ["failure", "cancelled"])
+def test_876_active_run_cannot_pass_with_a_failed_or_timed_out_dependency(
+    dependency_result: str,
+) -> None:
+    fixture = json.loads(
+        (
+            Path(__file__).parent / "fixtures/ci_failures/cancelled_draft_gate.json"
+        ).read_text()
+    )
+    needs = {
+        job["name"]: {"result": "success"}
+        for job in fixture["jobs"]
+        if job["name"] != "required"
+    }
+    needs["gitleaks / gitleaks"]["result"] = dependency_result
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            workflow_shell("Require routing and every selected required job to pass"),
+        ],
+        env={**os.environ, "NEEDS": json.dumps(needs), "ROUTED": "true"},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "gitleaks / gitleaks" in result.stderr
 
 
 def test_867_ready_run_found_by_workflow_file_not_run_name() -> None:
