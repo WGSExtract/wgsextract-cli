@@ -24,7 +24,7 @@ import jsonschema
 import pytest
 from markdown_it import MarkdownIt
 
-from tests.htslib_helpers import needs_tools
+from tests.htslib_helpers import needs_htslib, needs_tools
 from wgsextract_cli import api
 from wgsextract_cli.core import gene_lists
 from wgsextract_cli.core import personal_report as pr
@@ -1262,6 +1262,57 @@ def test_report_from_an_alignment_needs_no_samtools(sample, monkeypatch):
     assert code == 0, out
     result = api.report.build(api.ReportParams(input=cram, outdir=sample / "out2"))
     assert result.exit_code == 0
+
+
+@needs_htslib
+def test_838_cli_proband_inconclusive_warning_survives_selected_input_report(tmp_path):
+    paths = {}
+    for role, gt in (("child", "0/1"), ("mother", "./."), ("father", "./.")):
+        path = tmp_path / f"{role}.vcf"
+        path.write_text(
+            "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000>\n"
+            '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+            f"#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{role}\n"
+            f"chr1\t100\tcandidate\tA\tG\t50\tPASS\t.\tGT\t{gt}\n"
+        )
+        paths[role] = str(path)
+    code, output = _cli(
+        "vcf",
+        "trio",
+        "--proband",
+        paths["child"],
+        "--mother",
+        paths["mother"],
+        "--father",
+        paths["father"],
+        "--outdir",
+        str(tmp_path),
+    )
+    assert code == 0, output
+    reportdir = tmp_path / "report"
+    code, output = _cli("report", "--input", paths["child"], "--outdir", str(reportdir))
+    assert code == 0, output
+    document = json.loads((reportdir / "child_personal_report.json").read_text())
+    overview = document["sections"]["overview"]
+    assert "inconclusive_parent_genotypes" in {w["code"] for w in overview["warnings"]}
+    assert (
+        "inconclusive inheritance"
+        in (reportdir / "child_personal_report.md").read_text()
+    )
+    # Family members are not merged into the child's sample identity.
+    for role in ("mother", "father"):
+        report = pr.build_report(tmp_path, input_file=Path(paths[role]))
+        assert not report["sections"]["overview"]["sources"]
+
+
+def test_838_failed_trio_alone_does_not_fail_sample_overview(tmp_path):
+    child = _touch(tmp_path / "child.vcf")
+    _manifest(
+        tmp_path, "trio", "vcf trio", inputs=((child, "proband"),), status="failed"
+    )
+    overview = pr.build_report(tmp_path, input_file=child)["sections"]["overview"]
+    assert overview["status"] == "not_run"
+    assert not overview.get("error")
 
 
 def _overview_contamination(report: dict) -> tuple[Any, set[str]]:

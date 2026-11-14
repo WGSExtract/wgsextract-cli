@@ -21,6 +21,7 @@ from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
+    popen,
     run_command,
 )
 from wgsextract_cli.core.variant_files import (
@@ -199,10 +200,14 @@ def _vcf_trio_expressions(
                 f'(GT[{idx}]="ref" && GT[{idx}]="het")',
                 f'(GT[{idx}]="ref" || GT[{idx}]!="ref")',
             )
-        return (
-            f'(GT[{idx}]!~"\\." && GQ[{idx}]!="." && GQ[{idx}]>=20)',
-            f'(GT[{idx}]~"\\." || GQ[{idx}]="." || GQ[{idx}]<20)',
-        )
+        assessed = f'(GT[{idx}]!~"\\." && GQ[{idx}]!="." && GQ[{idx}]>=20)'
+        uncertain = f'(GT[{idx}]~"\\." || GQ[{idx}]="." || GQ[{idx}]<20)'
+        if "##FORMAT=<ID=FT," in header:
+            passed = f'(FT[{idx}]="PASS" || FT[{idx}]=".")'
+            failed = f'(FT[{idx}]!="PASS" && FT[{idx}]!=".")'
+            assessed = f"({assessed} && {passed})"
+            uncertain = f"({uncertain} || {failed})"
+        return assessed, uncertain
 
     (ma, mu), (fa, fu) = confidence(m_idx), confidence(f_idx)
     confident = f"({ma} && {fa})"
@@ -236,16 +241,19 @@ def _summarize_trio_output(mode: str, out_vcf: str) -> None:
     """Log the mode's variant (and HIGH impact) counts and record its output."""
     metrics: dict[str, int | None] = {"variants": None}
     try:
-        total = run_command(["bcftools", "view", "-H", out_vcf], capture_output=True)
-        metrics["variants"] = total.stdout.count(chr(10))
+        metrics["variants"] = vcf_record_count(out_vcf)
         summary = f"{mode.upper()} results: {metrics['variants']} total variants"
         header = run_command(["bcftools", "view", "-h", out_vcf], capture_output=True)
         if "ID=CSQ," in header.stdout:
-            high = run_command(
-                ["bcftools", "view", "-H", "-i", 'CSQ~"HIGH"', out_vcf],
-                capture_output=True,
-            )
-            metrics["high_impact"] = high.stdout.count(chr(10))
+            command = ["bcftools", "query", "-i", 'CSQ~"HIGH"', "-f", "%POS\n", out_vcf]
+            with tempfile.TemporaryFile(dir=Path(out_vcf).parent) as err:
+                with popen(
+                    command, stdout=subprocess.PIPE, stderr=err, text=True
+                ) as proc:
+                    assert proc.stdout is not None
+                    metrics["high_impact"] = sum(1 for _ in proc.stdout)
+                    if proc.wait():
+                        raise subprocess.CalledProcessError(proc.returncode, command)
             summary += f", {metrics['high_impact']} HIGH impact"
         logging.info(summary)
     except (OSError, subprocess.SubprocessError) as e:
@@ -314,6 +322,20 @@ def run_trio(params: VcfTrioParams) -> None:
     p_vcf = ensure_vcf_prepared(proband)
     m_vcf = ensure_vcf_prepared(mother)
     f_vcf = ensure_vcf_prepared(father)
+    for mode in modes:
+        names = [f"trio_{mode}.vcf.gz"]
+        if mode in ("denovo", "comphet"):
+            names.append(f"trio_{mode}_inconclusive.vcf.gz")
+        for name in names:
+            output = Path(outdir, name)
+            if output.exists() and any(
+                output.samefile(path)
+                for path in (proband, mother, father, p_vcf, m_vcf, f_vcf)
+            ):
+                raise UsageError(
+                    f"vcf trio would overwrite its input {output}; "
+                    "choose another --outdir."
+                )
     p_idx, m_idx, f_idx = trio_sample_indices(p_vcf, m_vcf, f_vcf)
     region_args = ["-r", params.region] if params.region else []
     gvcf_args = _gvcf_merge_args(params, [p_vcf, m_vcf, f_vcf])
@@ -382,7 +404,8 @@ def run_trio(params: VcfTrioParams) -> None:
                     warn(
                         "inconclusive_parent_genotypes",
                         f"{count:,} {mode} candidates have inconclusive inheritance: "
-                        "a parental genotype is missing, partial, or lacks GQ >=20. "
+                        "a parental genotype is missing, partial, filtered, "
+                        "or lacks GQ >=20. "
                         f"They are not classified as {mode}; see {inconclusive}.",
                         count=count,
                         mode=mode,

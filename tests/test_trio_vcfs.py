@@ -510,6 +510,74 @@ def test_838_parent_without_gq_field_is_unassessed(tmp_path):
     assert _ids(out / "trio_denovo_inconclusive.vcf.gz") == ["candidate"]
 
 
+@pytest.mark.parametrize("parent_filter", ["PASS", ".", "LowDP", "LowDP;LowGQ"])
+def test_838_filtered_parent_is_inconclusive_despite_high_gq(tmp_path, parent_filter):
+    files = []
+    for role, genotypes, ft in (
+        ("child", ("0/1", "0/1"), "PASS"),
+        ("mother", ("0/0", "0/1"), parent_filter),
+        ("father", ("0/0", "0/0"), "PASS"),
+    ):
+        plain = tmp_path / f"{role}.vcf"
+        plain.write_text(
+            HEADER
+            + '##FORMAT=<ID=FT,Number=1,Type=String,Description="Genotype filter">\n'
+            + f"#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{role}\n"
+            + "".join(
+                f"chr1\t{pos}\t{vid}\tA\tG\t50\tPASS\t.\tGT:GQ:FT\t{gt}:99:{ft}\n"
+                for pos, vid, gt in zip(
+                    (100, 200), ("denovo", "comphet"), genotypes, strict=True
+                )
+            )
+        )
+        files.append(bgzip_index(plain))
+    out = tmp_path / "out"
+    _run_trio(files, out, "--mode", "all")
+    passed = parent_filter in ("PASS", ".")
+    assert _ids(out / "trio_denovo.vcf.gz") == (["denovo"] if passed else [])
+    assert _ids(out / "trio_comphet.vcf.gz") == (["comphet"] if passed else [])
+    assert _ids(out / "trio_denovo_inconclusive.vcf.gz") == (
+        [] if passed else ["denovo", "comphet"]
+    )
+    assert _ids(out / "trio_comphet_inconclusive.vcf.gz") == (
+        [] if passed else ["denovo", "comphet"]
+    )
+
+
+@pytest.mark.parametrize("alias", ["original", "prepared", "hardlink"])
+def test_838_inconclusive_output_cannot_overwrite_a_trio_input(tmp_path, alias):
+    import os
+
+    files = list(
+        _trio(
+            tmp_path,
+            child=["100 candidate A G 0/1:99"],
+            mother=["100 . A G ./.:."],
+            father=["100 . A G ./.:."],
+        )
+    )
+    output = tmp_path / "trio_denovo_inconclusive.vcf.gz"
+    if alias == "prepared":
+        import gzip
+
+        plain = output.with_suffix("")
+        with gzip.open(files[0], "rt") as source:
+            plain.write_text(source.read())
+        files[0] = str(plain)
+    elif alias == "original":
+        Path(files[0]).rename(output)
+        Path(files[0] + ".tbi").rename(str(output) + ".tbi")
+        files[0] = str(output)
+    else:
+        os.link(files[1], output)
+    before = [Path(path).read_bytes() for path in files]
+    with pytest.raises(WGSExtractError, match="overwrite its input"):
+        _run_trio(files, tmp_path)
+    assert [Path(path).read_bytes() for path in files] == before
+    assert _ids(files[0] if alias != "prepared" else output) == ["candidate"]
+    assert not (tmp_path / "trio_denovo.vcf.gz").exists()
+
+
 @pytest.mark.parametrize(
     ("contig", "proband_prefix", "gvcf"),
     [

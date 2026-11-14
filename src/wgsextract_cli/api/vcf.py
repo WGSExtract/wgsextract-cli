@@ -328,7 +328,8 @@ class VcfTrioParams(_VcfFileParams):
     ``trio_<mode>.vcf.gz``. Three VCFs are merged; three BAM/CRAMs are first
     genotyped jointly from the reads (``trio_joint.vcf.gz``), which de novo
     calls need. VCF de novo and comphet classification requires complete
-    parental genotypes with GQ >=20; missing or weak evidence is written to
+    parental genotypes with GQ >=20 and no failed FORMAT/FT filter; missing,
+    filtered or weak evidence is written to
     ``trio_<mode>_inconclusive.vcf.gz``, preserving the parental genotypes.
     Sparse variant-only VCFs do not establish parental reference calls.
     Covering gVCF reference blocks are assessed when a matching --ref is given."""
