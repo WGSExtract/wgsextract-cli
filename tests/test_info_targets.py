@@ -129,8 +129,60 @@ def test_bad_bed_is_refused(tmp_path, bed, message):
         _coverage(tmp_path, bed)
 
 
-def test_by_excludes_bins_and_region(tmp_path):
+def test_by_excludes_bins(tmp_path):
     with pytest.raises(UsageError, match="--by can't be combined"):
         api.CalculateCoverageParams(
             input=tmp_path / "x.bam", by=tmp_path / "p.bed", bins=True
         )
+
+
+@needs_samtools
+@pytest.mark.parametrize("region", [None, "chr20", "chr20:1-10"])
+def test_bug_861_regional_bam_denominators_retain_full_header(tmp_path, region):
+    # chr1 remains in the header, without reads: never infer assay scope from it.
+    sample = sam_to_bam(
+        [
+            "@SQ\tSN:chr1\tLN:1000",
+            "@SQ\tSN:chr20\tLN:20",
+            "r1\t0\tchr20\t1\t60\t20M\t*\t0\t0\t" + "A" * 20 + "\t" + "I" * 20,
+            "r2\t0\tchr20\t1\t60\t5M\t*\t0\t0\tAAAAA\tIIIII",
+        ],
+        tmp_path / "regional.bam",
+    )
+    bed = tmp_path / "panel.bed"
+    bed.write_text("chr20\t0\t5\tA\nchr20\t2\t5\tB\n", newline="\n")
+    result = api.info.calculate_coverage(
+        api.CalculateCoverageParams(
+            input=Path(sample),
+            by=bed,
+            region=region,
+            outdir=tmp_path / "out",
+            min_depth=1,
+        )
+    )
+    off_bases, off_depth = {None: (1015, 15), "chr20": (15, 15), "chr20:1-10": (5, 5)}[
+        region
+    ]
+    assert result.metrics["target_bases"] == 5
+    assert result.metrics["off_target_bases"] == off_bases
+    assert result.metrics["on_target_mean_depth"] == 2
+    assert result.metrics["off_target_mean_depth"] == pytest.approx(
+        off_depth / off_bases, abs=0.001
+    )
+    assert result.metrics["enrichment"] == pytest.approx(
+        2 / (off_depth / off_bases), abs=0.01
+    )
+    assert result.metrics["assessed_scope"] == (region or "whole alignment header")
+    assert result.provenance.params["region"] == region
+    summary = next(o for o in result.outputs if o.role == "target_summary")
+    assert (
+        f"Assessed scope: {region or 'whole alignment header'}"
+        in Path(summary.path).read_text()
+    )
+
+
+@needs_samtools
+@pytest.mark.parametrize("region", ["chr9", "chr1:0-10", "chr1:1-21", "chr1:6-10"])
+def test_bug_861_invalid_or_outside_target_scope_is_refused(tmp_path, region):
+    with pytest.raises(api.CommandFailed, match="--region"):
+        _coverage(tmp_path, "chr1\t2\t8\tA\n", region=region)

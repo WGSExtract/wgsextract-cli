@@ -855,6 +855,7 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
             params.min_depth,
             table_format or "tsv",
             metadata,
+            region=region,
         )
         return
 
