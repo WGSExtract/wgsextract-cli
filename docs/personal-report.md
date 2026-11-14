@@ -156,8 +156,11 @@ reason codes. The JSON document explains each code in `confidence_reasons`.
   `not_assessed` (with an `evidence_mismatch` warning) when the file no longer
   gives the call the run recorded. The detail gives the qualities and the
   IPD-IMGT/HLA release.
-- **CYP2D6 (Cyrius)**: `low` when Cyrius made no call or its filter did not
-  pass; otherwise the median depth against the `confidence_min_depth` and
+- **CYP2D6 (Cyrius)**: `low` when Cyrius made no call, its filter did not
+  pass, or its variants fit more than one diplotype (`genotype_unresolved`:
+  the value reads "unresolved" and the detail lists Cyrius's candidates);
+  `moderate` at best for runs that predate recording Cyrius's Call_info;
+  otherwise the median depth against the `confidence_min_depth` and
   `confidence_high_depth` settings (`low` below the minimum, `moderate`
   below the high threshold, `high` above it).
 - **SMA carrier status (SMNCopyNumberCaller)**: `low` when there is no SMN1
