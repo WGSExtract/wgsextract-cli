@@ -575,14 +575,17 @@ def test_mt_haplogroup_warns_unless_the_chrm_is_confirmed_rcrs_827(tmp_path, chr
 
 
 @pytest.mark.parametrize(
-    "evidence", ["REF alleles", "contig md5", "quoted md5", "plain VCF md5"]
+    "evidence",
+    ["REF alleles", "stale rCRS md5", "contig md5", "quoted md5", "plain VCF md5"],
 )
 def test_mt_haplogroup_refuses_a_vcf_called_against_chm13_827(tmp_path, evidence):
     """#827: a VCF called against CHM13 reads as rCRS positions to Haplogrep."""
     rcrs, chm13 = pinned_sequences()
     sites = [73, 263, 750, 2706, 7028]
-    if evidence == "REF alleles":
-        meta, refs = "", chm13
+    if evidence in ("REF alleles", "stale rCRS md5"):
+        md5 = RCRS_MD5 if evidence == "stale rCRS md5" else ""
+        meta = f"##contig=<ID=chrM,length=16569,md5={md5}>\n" if md5 else ""
+        refs = chm13
     else:
         md5 = f'"{CHM13_CHRM_MD5}"' if evidence == "quoted md5" else CHM13_CHRM_MD5
         meta, refs = f"##contig=<ID=chrM,length=16569,md5={md5}>\n", rcrs

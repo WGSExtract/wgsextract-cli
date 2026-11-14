@@ -410,8 +410,9 @@ def _require_rcrs(
     """Refuse an mtDNA sequence that isn't the rCRS Haplogrep's positions assume.
 
     Length alone can't tell (#827): CHM13v2.0's chrM is as long as the rCRS but
-    rotated. The header's MD5 decides, then an alignment's reference sequence
-    or a VCF's REF alleles; a chrM none of them confirms as rCRS is warned of.
+    rotated. A CHM13 MD5 in the header refuses it; otherwise an alignment's
+    reference or a VCF's REF alleles decide, ahead of an rCRS MD5. A chrM
+    none of them confirms as rCRS is warned of.
     """
     rows: list[list[str]] = []
     if path.lower().endswith(VCF_SUFFIXES):
@@ -436,7 +437,8 @@ def _require_rcrs(
         # The reference variants are called against outranks the header.
         sequence = _fasta_mito(fasta, chr_m)
         origin = (mito_origin(sequence) if sequence else None) or origin
-    elif rows and origin is None:
+    elif rows and origin != CHM13_CHRM:
+        # The VCF's REFs outrank an rCRS md5 its header may carry over.
         rcrs, chm13 = ref_agreement((int(row[1]), row[2]) for row in rows)
         if rcrs != chm13:  # REFs both references share prove nothing
             origin = "rCRS" if rcrs else CHM13_CHRM
