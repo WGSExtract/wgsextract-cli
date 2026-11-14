@@ -801,3 +801,28 @@ def test_clair3_states_its_host_requirement_and_only_warns_short_of_ram(
     )
     assert clair3_gpu.clair3.runs()
     assert (clair3_gpu.out / "clair3.vcf.gz").is_file()
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+@pytest.mark.parametrize("clair3_gpu", ["2.0.3"], indirect=True)
+def test_staged_reads_state_the_host_requirement_once(
+    tmp_path, clair3_gpu, ram, monkeypatch, caplog
+):
+    """#690 review: the disk recheck after a CRAM 3.0 copy is written printed
+    Clair3's requirement and recorded its RAM warning a second time."""
+    from wgsextract_cli.core.results import CommandResult, collecting
+
+    caplog.set_level(logging.INFO)
+    ram(4 * GIB)
+    # Clair3 2.0.3 in an image whose tag doesn't say so: its reads are staged.
+    clair3_gpu.docker.add_image("my/clair3:latest")
+    monkeypatch.setitem(clair3.settings, "clair3_gpu_image", "my/clair3:latest")
+    cram = as_cram(clair3_gpu.reads, "3.1", tmp_path / "reads.cram")
+    result = CommandResult(command="vcf clair3")
+    with collecting(result):
+        gpu_call(clair3_gpu, make_model(tmp_path, "my_r1041_model"), cram=cram)
+
+    assert clair3_gpu.clair3.runs()[0]["cram_version"] == [3, 0]
+    assert caplog.text.count("Host requirement:") == 1
+    codes = [warning.code for warning in result.warnings]
+    assert codes.count("host_requirement_memory") == 1

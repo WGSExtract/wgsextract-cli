@@ -659,22 +659,28 @@ class TempSpace:
     depth: float | None
     gpu: bool
 
-    def check(self, outdir: str, threads: str, *, enforce: bool = True) -> None:
+    def check(
+        self, outdir: str, threads: str, *, enforce: bool = True, recheck: bool = False
+    ) -> None:
         """Report the peak beside the output with Clair3's host requirement,
         and refuse a run that wouldn't fit (#811, #690): it fails hours in
-        otherwise."""
+        otherwise. A ``recheck`` (once a CRAM 3.0 copy is written) says
+        nothing more unless the disk is now short."""
         estimate = estimate_clair3(outdir, self.bases, gpu=self.gpu, depth=self.depth)
-        report_resources(estimate)
         (disk,) = estimate.resources
         caller = "clair3-gpu" if self.gpu else "clair3"
+        requirement = HostRequirement(
+            "Clair3",
+            ((outdir, disk.estimated_bytes),),
+            None if recheck else CLAIR3_MEMORY,
+            int(threads),
+            calling_hours(caller, self.bases, int(threads)),
+        )
+        if recheck and not any(v.short for v in requirement.volumes()):
+            return
+        report_resources(estimate)
         check_host_requirement(
-            HostRequirement(
-                "Clair3",
-                ((outdir, disk.estimated_bytes),),
-                CLAIR3_MEMORY,
-                int(threads),
-                calling_hours(caller, self.bases, int(threads)),
-            ),
+            requirement,
             enforce=enforce,
             disk_advice="Free up space, choose an --outdir on a bigger disk or "
             "call a smaller --region.",
@@ -752,7 +758,9 @@ def run_clair3(params: VcfClair3Params) -> None:
             )  # fmt: skip
             if space and reads != input_file:
                 # The staged copy stays beside the tensors while Clair3 runs.
-                space.check(outdir, threads, enforce=not params.no_preflight)
+                space.check(
+                    outdir, threads, enforce=not params.no_preflight, recheck=True
+                )
         output = str(Path(work, "clair3"))
         # Absolute, so the header's paths can be told apart and restored.
         abs_reads, abs_ref, abs_work = (
