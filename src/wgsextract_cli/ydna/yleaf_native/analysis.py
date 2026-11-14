@@ -67,6 +67,7 @@ def _query_vcf(
         f"%{field}" if f"##FORMAT=<ID={field}," in header else "."
         for field in ("GT", "AD", "DP", "GQ", "MIN_DP")
     ]
+    block_depth_field = "%INFO/MIN_DP" if "##INFO=<ID=MIN_DP," in header else "."
     region_args: list[str] = []
     if any(Path(str(path) + suffix).is_file() for suffix in (".tbi", ".csi")):
         contigs = vcf_index_chromosomes(path)
@@ -83,7 +84,9 @@ def _query_vcf(
             "-i",
             'CHROM="Y" || CHROM="chrY"',
             "-f",
-            "%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\t%FILTER[\\t"
+            "%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\t%FILTER\\t"
+            + block_depth_field
+            + "[\\t"
             + "\\t".join(fields)
             + "]\\n",
             str(path),
@@ -96,18 +99,39 @@ def _query_vcf(
     seen = set()
     marker_positions = sorted(positions or ())
     for line in text.splitlines():
-        _, position, end, ref, alt, site_filter, gt, ad, dp, gq, min_dp = line.split(
-            "\t"
-        )
+        (
+            _,
+            position,
+            end,
+            ref,
+            alt,
+            site_filter,
+            info_min_dp,
+            gt,
+            ad,
+            dp,
+            gq,
+            min_dp,
+        ) = line.split("\t")
         pos = int(position)
         if pos in seen:
             continue
         seen.add(pos)
         genotype = gt_call(ref, alt, gt)
         quality = float(gq) if gq != "." else None
-        reads = (
-            int(min_dp if min_dp != "." else dp) if min_dp != "." or dp != "." else 0
+        reference_block = (
+            int(end) > pos
+            and len(ref) == 1
+            and alt in (".", "<NON_REF>", "<*>")
+            and genotype is not None
+            and genotype.base == ref
         )
+        depth_metrics = [
+            int(value)
+            for value in (min_dp, dp, info_min_dp if reference_block else ".")
+            if value != "."
+        ]
+        reads = min(depth_metrics) if depth_metrics else 0
         description = ""
         if site_filter != "PASS":
             description = "Filtered or unassessed variant"
@@ -132,27 +156,23 @@ def _query_vcf(
             evidence = ad_call(ref, alt, ad)
             call = replace(
                 call,
-                reads=min(reads, evidence.reads)
-                if dp != "." or min_dp != "."
-                else evidence.reads,
+                reads=min(reads, evidence.reads) if depth_metrics else evidence.reads,
                 percentage=evidence.percentage,
             )
             if genotype and evidence.base != genotype.base:
                 call = replace(call, description="Genotype and allele depths disagree")
-        elif not description and dp == "." and min_dp == ".":
+        elif not description and not depth_metrics:
             call = replace(call, description="Missing depth evidence")
         calls[pos] = call
         # A FASTA supplies bases, not callability. Only an explicit reference
         # block can prove that an otherwise absent marker was assessed.
-        if (
-            reference_sequence
-            and positions
-            and int(end) > pos
-            and len(ref) == 1
-            and alt in (".", "<NON_REF>", "<*>")
-            and genotype
-            and genotype.base == ref
-        ):
+        if reference_sequence and positions and reference_block:
+            minimums = [int(value) for value in (min_dp, info_min_dp) if value != "."]
+            if not minimums:
+                continue
+            # DP/AD at the block's first position (or an average DP) does not
+            # prove depth at any interior marker. MIN_DP is a block-wide floor.
+            block_call = replace(call, reads=min(call.reads, *minimums))
             first = bisect_right(marker_positions, pos)
             last = bisect_right(
                 marker_positions, min(int(end), len(reference_sequence))
@@ -160,7 +180,7 @@ def _query_vcf(
             for marker_pos in marker_positions[first:last]:
                 calls.setdefault(
                     marker_pos,
-                    replace(call, base=reference_sequence[marker_pos - 1]),
+                    replace(block_call, base=reference_sequence[marker_pos - 1]),
                 )
     return calls, has_ad
 

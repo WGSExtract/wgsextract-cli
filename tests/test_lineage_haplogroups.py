@@ -152,6 +152,13 @@ def test_855_y_no_call_filtered_and_gt_order_are_unknown(
     )
     vcf = _vcf(tmp_path / "kit.vcf.gz", {"chrY": 1000}, body, meta)
     reference = write_fasta(tmp_path / "reference.fa", {"chrY": "A" * 1000})
+    panel = tmp_path / "positions.txt"
+    panel.write_text(
+        (native_tables / "hg38/new_positions.txt")
+        .read_text()
+        .replace("150\tA>G\tA\tG", "150\tG>A\tG\tA")
+        .replace("151\tA>G\tA\tG", "151\tG>A\tG\tA")
+    )
     output = tmp_path / "output"
     result = CommandResult(command="lineage y-haplogroup")
     with collecting(result):
@@ -166,6 +173,8 @@ def test_855_y_no_call_filtered_and_gt_order_are_unknown(
             str(reference),
             "--outdir",
             str(output),
+            "--pos-file",
+            str(panel),
         )
     passing = _y_rows(output, "out")
     failed = _y_rows(output, "fmf")
@@ -214,6 +223,47 @@ def test_855_y_callable_reference_block_not_fasta_absence(
     assert Counter(r["state"] for r in passing) == {"D": 2, "A": 4}
     assert {r["pos"] for r in _y_rows(output, "fmf")} == {"120", "130", "150"}
     assert all(int(r["reads"]) == 20 for r in passing)
+
+
+@pytest.mark.parametrize(
+    ("minimum", "expected_ancestral"),
+    [("", 0), (";MIN_DP=3", 0), (";MIN_DP=20", 5)],
+)
+@pytest.mark.parametrize(
+    "depth_format,depth_sample", [("GT:DP:GQ", "0:20:60"), ("GT:GQ", "0:60")]
+)
+def test_855_y_reference_block_point_depth_is_not_interior_evidence(
+    tmp_path, native_tables, minimum, expected_ancestral, depth_format, depth_sample
+):
+    meta = (
+        '##INFO=<ID=END,Number=1,Type=Integer,Description="Block end">\n'
+        '##INFO=<ID=MIN_DP,Number=1,Type=Integer,Description="Block minimum depth">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Point or average depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">\n'
+    )
+    body = (
+        "chrY\t100\t.\tA\tG\t60\tPASS\t.\tGT:DP:GQ\t1:20:60\n"
+        "chrY\t110\t.\tA\tG\t60\tPASS\t.\tGT:DP:GQ\t1:20:60\n"
+        f"chrY\t135\t.\tA\t<NON_REF>\t60\tPASS\tEND=160{minimum}\t{depth_format}\t{depth_sample}\n"
+    )
+    vcf = _vcf(tmp_path / "kit.vcf.gz", {"chrY": 1000}, body, meta)
+    reference = write_fasta(tmp_path / "reference.fa", {"chrY": "A" * 1000})
+    output = tmp_path / "output"
+    run_wgsextract(
+        "lineage",
+        "y-haplogroup",
+        "--input",
+        vcf,
+        "--build",
+        "hg38",
+        "--ref",
+        str(reference),
+        "--outdir",
+        str(output),
+    )
+    states = Counter(r["state"] for r in _y_rows(output, "out"))
+    assert states["D"] == 2
+    assert states["A"] == expected_ancestral
 
 
 @pytest.mark.parametrize(

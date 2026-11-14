@@ -102,7 +102,9 @@ majority uses all reported allele depths.
 
 A FASTA supplies reference bases, not evidence that a site was called.
 Reference inference is limited to explicit callable gVCF reference blocks
-(`END` with reference GT and adequate depth/quality); an explicit no-call
+(`END` with reference GT, adequate quality, and a block-wide FORMAT/MIN_DP
+or single-sample INFO/MIN_DP meeting the read threshold). DP/AD at a block's
+first position or its average DP does not prove interior callability. An explicit no-call
 inside a block remains unknown. `--no-ref-inference` disables block expansion
 for targeted panels.
 
