@@ -19959,6 +19959,7 @@
     ],
     "defaults": {
      "_command": "qc vcf",
+     "_one_vcf_input": true,
      "func": "cmd_vcf_qc"
     },
     "description": null,
@@ -34407,6 +34408,7 @@
     ],
     "defaults": {
      "_command": "vcf alphamissense",
+     "_one_vcf_input": true,
      "func": "cmd_alphamissense"
     },
     "description": null,
@@ -34764,6 +34766,7 @@
     ],
     "defaults": {
      "_command": "vcf annotate",
+     "_one_vcf_input": true,
      "func": "cmd_annotate"
     },
     "description": null,
@@ -35137,6 +35140,7 @@
     ],
     "defaults": {
      "_command": "vcf cadd",
+     "_one_vcf_input": true,
      "func": "cmd_cadd"
     },
     "description": null,
@@ -35494,6 +35498,7 @@
     ],
     "defaults": {
      "_command": "vcf chain-annotate",
+     "_one_vcf_input": true,
      "func": "cmd_chain_annotate"
     },
     "description": null,
@@ -36263,6 +36268,7 @@
     ],
     "defaults": {
      "_command": "vcf clinvar",
+     "_one_vcf_input": true,
      "func": "cmd_clinvar"
     },
     "description": null,
@@ -37559,6 +37565,7 @@
     ],
     "defaults": {
      "_command": "vcf filter",
+     "_one_vcf_input": true,
      "func": "cmd_filter"
     },
     "description": null,
@@ -38648,6 +38655,7 @@
     ],
     "defaults": {
      "_command": "vcf gerp",
+     "_one_vcf_input": true,
      "func": "cmd_gerp"
     },
     "description": null,
@@ -39043,6 +39051,7 @@
     ],
     "defaults": {
      "_command": "vcf gnomad",
+     "_one_vcf_input": true,
      "func": "cmd_gnomad"
     },
     "description": null,
@@ -40237,6 +40246,7 @@
     ],
     "defaults": {
      "_command": "vcf pharmcat",
+     "_one_vcf_input": true,
      "func": "cmd_pharmcat"
     },
     "description": null,
@@ -40578,6 +40588,7 @@
     ],
     "defaults": {
      "_command": "vcf pharmgkb",
+     "_one_vcf_input": true,
      "func": "cmd_pharmgkb"
     },
     "description": null,
@@ -41328,6 +41339,7 @@
     ],
     "defaults": {
      "_command": "vcf phylop",
+     "_one_vcf_input": true,
      "func": "cmd_phylop"
     },
     "description": null,
@@ -41685,6 +41697,7 @@
     ],
     "defaults": {
      "_command": "vcf revel",
+     "_one_vcf_input": true,
      "func": "cmd_revel"
     },
     "description": null,
@@ -42436,6 +42449,7 @@
     ],
     "defaults": {
      "_command": "vcf spliceai",
+     "_one_vcf_input": true,
      "func": "cmd_spliceai"
     },
     "description": null,
@@ -43315,6 +43329,7 @@
     ],
     "defaults": {
      "_command": "vcf sv-freq",
+     "_one_vcf_input": true,
      "func": "cmd_sv_freq"
     },
     "description": null,
@@ -43740,6 +43755,7 @@
     ],
     "defaults": {
      "_command": "vcf table",
+     "_one_vcf_input": true,
      "func": "cmd_table"
     },
     "description": null,
@@ -44187,6 +44203,7 @@
     ],
     "defaults": {
      "_command": "vcf to-fasta",
+     "_one_vcf_input": true,
      "func": "cmd_to_fasta"
     },
     "description": null,
@@ -44633,6 +44650,7 @@
     ],
     "defaults": {
      "_command": "vcf trio",
+     "_one_vcf_input": true,
      "func": "cmd_trio"
     },
     "description": null,
@@ -48954,6 +48972,7 @@
     "outdir",
     "vcf_input"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "qc",
    "debug": false,
@@ -48980,6 +48999,7 @@
    "_explicit_dests": [
     "input"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "qc",
    "debug": false,
@@ -50417,6 +50437,7 @@
     "am_file",
     "input"
    ],
+   "_one_vcf_input": true,
    "am_file": "a.tsv.gz",
    "atomic_output": false,
    "command": "vcf",
@@ -50446,6 +50467,7 @@
     "input",
     "min_score"
    ],
+   "_one_vcf_input": true,
    "am_file": null,
    "atomic_output": false,
    "command": "vcf",
@@ -50475,6 +50497,7 @@
     "input",
     "vcf_input"
    ],
+   "_one_vcf_input": true,
    "ann_vcf": null,
    "atomic_output": false,
    "cols": null,
@@ -50505,6 +50528,7 @@
     "cols",
     "input"
    ],
+   "_one_vcf_input": true,
    "ann_vcf": "a.vcf.gz",
    "atomic_output": false,
    "cols": "ID",
@@ -50535,6 +50559,7 @@
     "input",
     "min_score"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "cadd_file": "c.tsv.gz",
    "cadd_indel_file": null,
@@ -50565,6 +50590,7 @@
     "cadd_indel_file",
     "input"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "cadd_file": null,
    "cadd_indel_file": "i.tsv.gz",
@@ -50595,6 +50621,7 @@
     "keep_intermediates",
     "vcf_input"
    ],
+   "_one_vcf_input": true,
    "annotations": "clinvar,revel,phylop,gnomad,vep",
    "atomic_output": false,
    "command": "vcf",
@@ -50624,6 +50651,7 @@
     "annotations",
     "input"
    ],
+   "_one_vcf_input": true,
    "annotations": "clinvar,revel",
    "atomic_output": false,
    "command": "vcf",
@@ -50685,6 +50713,7 @@
     "clinvar_file",
     "input"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "clinvar_file": "c.vcf.gz",
    "command": "vcf",
@@ -50715,6 +50744,7 @@
     "confidence_depth",
     "input"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "clinvar_file": null,
    "command": "vcf",
@@ -50748,6 +50778,7 @@
     "confidence_gq",
     "input"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "clinvar_file": null,
    "command": "vcf",
@@ -50970,6 +51001,7 @@
     "input",
     "region"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "debug": false,
@@ -51002,6 +51034,7 @@
     "gene",
     "input"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "debug": false,
@@ -51127,6 +51160,7 @@
     "input",
     "min_score"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "debug": false,
@@ -51156,6 +51190,7 @@
     "confidence_depth",
     "input"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "confidence_depth": [
@@ -51191,6 +51226,7 @@
     "input",
     "max_af"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "confidence_depth": null,
@@ -51318,6 +51354,7 @@
     "input",
     "outside_call"
    ],
+   "_one_vcf_input": true,
    "absent_to_ref": false,
    "atomic_output": false,
    "command": "vcf",
@@ -51357,6 +51394,7 @@
     "input",
     "pharmcat_dir"
    ],
+   "_one_vcf_input": true,
    "absent_to_ref": true,
    "atomic_output": false,
    "command": "vcf",
@@ -51389,6 +51427,7 @@
     "input",
     "pharmgkb_file"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "debug": false,
@@ -51452,6 +51491,7 @@
     "min_score",
     "phylop_file"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "debug": false,
@@ -51482,6 +51522,7 @@
     "min_score",
     "revel_file"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "debug": false,
@@ -51578,6 +51619,7 @@
     "input",
     "spliceai_file"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "debug": false,
@@ -51678,6 +51720,7 @@
     "min_overlap",
     "vcf_input"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "common_af": 0.01,
@@ -51713,6 +51756,7 @@
     "pharmcat_json",
     "table_format"
    ],
+   "_one_vcf_input": true,
    "all_alleles": false,
    "atomic_output": false,
    "command": "vcf",
@@ -51748,6 +51792,7 @@
     "no_sqlite",
     "sample"
    ],
+   "_one_vcf_input": true,
    "all_alleles": true,
    "atomic_output": false,
    "command": "vcf",
@@ -51782,6 +51827,7 @@
     "input",
     "uncalled"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "chain": false,
    "command": "vcf",
@@ -51817,6 +51863,7 @@
     "input",
     "sample"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "chain": false,
    "command": "vcf",
@@ -51853,6 +51900,7 @@
     "mask",
     "region"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "chain": true,
    "command": "vcf",
@@ -51888,6 +51936,7 @@
     "mother",
     "proband"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "debug": false,
@@ -51927,6 +51976,7 @@
     "proband_sex",
     "region"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "debug": false,
