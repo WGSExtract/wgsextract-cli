@@ -66,10 +66,12 @@ tag reruns every stage.
 Some steps read a folder rather than a file: VEP's cache for `annotate`, or a
 folder a child command reports reading. The journal records such an input's
 identity from the path, size and modification time (to the nanosecond) of
-every file under it, following symbolic links. The rerun runs the step again
-when a file in the folder is added, removed, renamed, resized or rewritten,
-including when the whole folder is replaced by a new release at the same
-path. Lock files (`*.lock`, `*.guard`) and the hidden `.partial` files of an
+every file under it, following symbolic links and noting where each points.
+The rerun runs the step again when a file in the folder is added, removed,
+renamed, resized or rewritten, or a link in it is repointed, including when
+the whole folder is replaced by a new release at the same path. A folder
+that can't be listed is recorded as unreadable, so it reruns the step once
+it can be read again. Lock files (`*.lock`, `*.guard`) and the hidden `.partial` files of an
 unfinished download are left out, so another run using the same library
 doesn't force a rerun.
 

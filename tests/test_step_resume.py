@@ -189,3 +189,22 @@ def test_858_file_name_that_is_not_utf8_does_not_break_resume(
         pytest.skip("this filesystem refuses file names that aren't UTF-8")
     assert workflow.run()["annotation"].startswith("ran: its database")
     assert workflow.run()["annotation"].startswith("skipped: complete")
+
+
+def test_858_repointed_link_in_directory_input_reruns(tmp_path: Path) -> None:
+    flow = Workflow(tmp_path / "out")
+    for release in ("a", "b"):
+        folder = tmp_path / release
+        folder.mkdir()
+        (folder / "release.txt").write_text("release-x")
+        os.utime(folder / "release.txt", ns=(10**18, 10**18))
+    try:
+        (flow.database / "current").symlink_to(tmp_path / "a", True)
+    except OSError:
+        pytest.skip("this system can't make symbolic links")
+    flow.run()
+
+    (flow.database / "current").unlink()
+    (flow.database / "current").symlink_to(tmp_path / "b", True)
+
+    assert flow.run()["annotation"].startswith("ran: its database")

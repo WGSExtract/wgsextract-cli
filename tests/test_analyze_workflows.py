@@ -682,6 +682,9 @@ def test_858_edited_file_in_vep_cache_reruns_annotation(
     assert fake.run("--input", bam, "--outdir", str(out)).ran == []
 
     (release / "info.txt").write_text("release-two")
+    # A later edit: a second on, for filesystems with coarse timestamps.
+    mtime = (release / "info.txt").stat().st_mtime_ns + 1_000_000_000
+    os.utime(release / "info.txt", ns=(mtime, mtime))
     run = fake.run("--input", bam, "--outdir", str(out))
     assert run.ran == _ALL_STEPS[5:]
     assert list(fake.annotated()) == [

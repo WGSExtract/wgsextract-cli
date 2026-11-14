@@ -182,15 +182,23 @@ def _name_bytes(text: str) -> bytes:
     return text.encode("utf-8", "surrogateescape")
 
 
-def _directory_identity(root: Path) -> dict[str, Any] | None:
+def _link_target(path: str) -> str:
+    try:
+        return os.readlink(path)
+    except OSError:
+        return "?"
+
+
+def _directory_identity(root: Path) -> dict[str, Any]:
     """The identity of a directory's contents, without reading any file.
 
     Hashes each file's path relative to ``root``, size and mtime (ns), in
     sorted order, so adding, removing, renaming, resizing or rewriting a file
-    changes it. Symbolic links are followed (each directory once) and dangling
-    ones hashed by target. Costs one stat per file, so a VEP cache of tens of
-    thousands of files takes well under a second. None if ``root`` can't be
-    listed.
+    changes it. Symbolic links are followed (each directory once), and their
+    targets hashed too, so repointing one changes it. A folder that can't be
+    listed, ``root`` included, is hashed as unreadable. Costs one stat per
+    file, so a VEP cache of tens of thousands of files takes well under a
+    second.
     """
     digest = hashlib.sha256(b"wgse-dir1\0")
     files = total = 0
@@ -206,8 +214,6 @@ def _directory_identity(root: Path) -> dict[str, Any] | None:
             with os.scandir(directory) as listing:
                 entries = sorted(listing, key=lambda entry: entry.name)
         except OSError:
-            if not prefix:
-                return None
             digest.update(_name_bytes(f"{prefix}\0unreadable\n"))
             continue
         subdirectories = []
@@ -215,14 +221,14 @@ def _directory_identity(root: Path) -> dict[str, Any] | None:
             if _transient(entry.name):
                 continue
             name = prefix + entry.name
+            with contextlib.suppress(OSError):
+                if entry.is_symlink():
+                    target = _link_target(entry.path)
+                    digest.update(_name_bytes(f"{name}\0link\0{target}\n"))
             try:
                 info = entry.stat()
             except OSError:
-                try:
-                    target = os.readlink(entry.path)
-                except OSError:
-                    target = "?"
-                digest.update(_name_bytes(f"{name}\0unreadable\0{target}\n"))
+                digest.update(_name_bytes(f"{name}\0unreadable\n"))
                 continue
             if stat.S_ISDIR(info.st_mode):
                 subdirectories.append((Path(entry.path), name + "/"))
@@ -521,7 +527,7 @@ class StepJournal:
             item["fingerprint"] = _fingerprint(resolved)
         elif resolved.is_dir():
             item["kind"] = "directory"
-            item.update(_directory_identity(resolved) or {})
+            item.update(_directory_identity(resolved))
         else:
             item["missing"] = True
         return item
@@ -644,7 +650,7 @@ class StepJournal:
                 continue
             path = Path(old["path"])
             if old.get("kind") == "directory" and path.is_dir():
-                now = (_directory_identity(path) or {}).get("fingerprint")
+                now = _directory_identity(path)["fingerprint"]
             elif path.is_file():
                 now = _fingerprint(path)
             else:
