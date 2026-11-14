@@ -27,7 +27,21 @@ The script needs only git (and the Xcode Command Line Tools on macOS). It:
 5. Runs `wgsextract --version`, `wgsextract deps check` and the quick smoke tests.
 6. Lists anything else worth having: a git identity, the GitHub CLI (`gh`), and an AI coding agent.
 
+Pixi **0.82.0 or newer** is required (declared in `pixi.toml`, kept in
+agreement with CI). Setup checks existing installations before loading the
+manifest; it never updates them automatically. If yours is older, run
+`pixi self-update` and rerun setup.
+
 `deps check` marks tools in optional Pixi environments (GATK, VEP, DeepVariant, ...) as missing. That's expected: install one when you need it with the `pixi install` command `deps check` prints. When the script installs Pixi or `just`, open a new terminal before using them (or add `~/.pixi/bin`, `%USERPROFILE%\.pixi\bin` on Windows, to `PATH`). Rerun the script at any time; `just setup` does the same once `just` is installed. `--skip-tests` (`-SkipTests` on Windows) skips the smoke tests.
+
+### Benchmarking on macOS
+
+Setup creates `.metadata_never_index` in `out/`, `scratch/` and `tmp/`
+(safe to rerun). For existing indexed trees, also add those folders or the
+repository to **System Settings → Spotlight → Search Privacy**. Keep heavy
+benchmark inputs and outputs out of Photos libraries and Spotlight-indexed
+folders. Check volume indexing with `mdutil -s /` and thermal pressure with
+`pmset -g therm` before timing; wait for indexing and throttling to settle.
 
 ## Make a change
 
