@@ -25,6 +25,8 @@ jobs:
     outputs:
       cli: ${{ steps.diff.outputs.cli }}
       docs: ${{ steps.diff.outputs.docs }}
+      docs_tests: ${{ steps.diff.outputs.docs_tests }}
+      site_validation: ${{ steps.diff.outputs.site_validation }}
       native: ${{ steps.diff.outputs.native }}
       site: ${{ steps.diff.outputs.site }}
       install: ${{ steps.diff.outputs.install }}
@@ -99,15 +101,24 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: needs.changes.outputs.docs_tests != '[]'
         with:
           python-version: "3.13"
       - name: Install only Python documentation test dependencies
+        if: needs.changes.outputs.docs_tests != '[]'
         run: python -m pip install --quiet -e . pytest jsonschema
-      - name: Check API reference, command reference, CLI snapshot and help topics
+      - name: Run input-selected documentation tests
+        if: needs.changes.outputs.docs_tests != '[]'
+        env:
+          DOCS_TESTS: ${{ needs.changes.outputs.docs_tests }}
         run: |
           mkdir -p out
-          python -c 'import subprocess, sys; from scripts.ci_test_dependencies import DOCS_TEST_TARGETS; subprocess.run([sys.executable, "-m", "pytest", "-q", *DOCS_TEST_TARGETS, "--basetemp=out/docs-tmp"], check=True)'
-          python scripts/validate_site_sources.py
+          python -c 'import json, os, subprocess, sys; subprocess.run([sys.executable, "-m", "pytest", "-q", *json.loads(os.environ["DOCS_TESTS"]), "--basetemp=out/docs-tmp"], check=True)'
+      - name: Validate changed site sources without package installation
+        if: needs.changes.outputs.site_validation == 'true'
+        run: |
+          python3 scripts/validate_site_sources.py
+          python3 gui/scripts/validate_site_sources.py
 
   python-lint:
     name: Changed Python lint${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}

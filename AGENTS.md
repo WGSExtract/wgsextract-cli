@@ -107,6 +107,13 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
   - weaken CI, security or permission checks
   - act outside this repository
 
+## Docs fast path
+
+- **Scope:** owner-account agents may push commits changing only hand-written Markdown prose directly to `main`, without a PR, review or queue. Generated/test-checked references (including API/command docs, site CLI cards, the help index and CLI snapshot), `AGENTS.md` and other policy files are excluded, as are code, workflow, config and asset files. Policy changes still need a PR and owner direction.
+- **Before pushing:** fetch and rebase on the latest `origin/main`, then run `python scripts/validate_site_sources.py` and `pixi run pre-commit run gitleaks --files ...` for all changed files. Fast-forward push only (`git push origin HEAD:main`); never force. If main advances, rebase and repeat the checks.
+- **Batching:** batch prose edits; check that the merge queue is empty before pushing and do not push while it has entries, because each main push rebuilds queued groups.
+- Keep `(AI):` on GitHub comments and the usual commit trailers.
+
 ## Babysitting a PR
 
 "Babysit" a PR (or "babysit landing" it) means: shepherd it until it merges, using the `ci-pr-autopilot` skill (`.agents/skills/ci-pr-autopilot`).
