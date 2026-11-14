@@ -97,6 +97,10 @@ with known depth and GQ meeting the configured minimums reach the matcher;
 `MIN_DP`, when present in a block, is the depth floor. Reference calls do not
 require ALT allele balance or variant QD. Haploid reference uses the same
 halved depth thresholds as haploid ALT.
+Reference confidence rows cover only PharmCAT definition sites and the bases
+required by their REF spans, including absent-definition evidence. Weak reference
+blocks elsewhere in a gene are not evidence for its diplotype and do not lower
+the reported gene confidence.
 
 Multi-base reference fills use the extracted release's
 `pharmcat_positions.vcf.bgz` (or `.vcf`) definition REF, not a guessed span.

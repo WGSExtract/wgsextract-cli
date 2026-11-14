@@ -78,6 +78,32 @@ def test_summary_lists_called_genes_and_preserves_unknown(tmp_path):
     assert unknown.alternatives == [{"diplotype": "Unknown/Unknown", "phenotype": "-"}]
 
 
+def test_843_haploid_pharmcat_summary_keeps_a_known_g6pd_call(tmp_path):
+    phenotype = tmp_path / "haploid.phenotype.json"
+    phenotype.write_text(
+        json.dumps(
+            {
+                "geneReports": {
+                    "G6PD": {
+                        "recommendationDiplotypes": [
+                            {
+                                "allele1": {"name": "B"},
+                                "allele2": None,
+                                "phenotypes": ["Normal"],
+                            }
+                        ],
+                    }
+                }
+            }
+        )
+    )
+    (call,) = summarize(str(phenotype))
+    assert call.status == "resolved"
+    assert call.diplotype == "B"
+    assert call.phenotype == "Normal"
+    assert call.phenotype_consistent
+
+
 def test_outside_calls_merge_and_reject_a_gene_called_twice(tmp_path):
     cyp2d6 = tmp_path / "s.cyp2d6.pharmcat.tsv"
     cyp2d6.write_text("CYP2D6\t*1/*2≥3\n", encoding="utf-8")
@@ -158,13 +184,22 @@ def _release(directory: Path) -> Path:
 
 
 def _vcf(
-    path: Path, body: str, build: str = "GRCh38", contig: str = "1", header: str = ""
+    path: Path,
+    body: str,
+    build: str = "GRCh38",
+    contig: str = "1",
+    header: str = "",
+    length: int | None = 400,
 ) -> str:
     """A bgzipped, indexed single-sample VCF on ``contig`` (body uses {c})."""
     plain = path.with_suffix("")
     plain.write_text(
         "##fileformat=VCFv4.2\n"
-        f"##reference={build}\n" + header + f"##contig=<ID={contig},length=400>\n"
+        f"##reference={build}\n"
+        + header
+        + f"##contig=<ID={contig}"
+        + (f",length={length}" if length is not None else "")
+        + ">\n"
         '##INFO=<ID=DP,Number=1,Type=Integer,Description="d">\n'
         '##INFO=<ID=END,Number=1,Type=Integer,Description="e">\n'
         '##FORMAT=<ID=GT,Number=1,Type=String,Description="g">\n'
@@ -450,6 +485,38 @@ def _span_definition(release):
         stream.write(
             f"chr1\t105\t.\t{_base(105)}{_base(106)}\t{_base(105)}\t.\tPASS\t.\n"
         )
+
+
+@needs_htslib
+def test_842_contig_without_length_retains_reference_calls_and_confidence_gene(
+    tmp_path, pharmcat_env
+):
+    release = _release(tmp_path / "pharmcat")
+    _span_definition(release)
+    vcf = _vcf(
+        tmp_path / "no-length.vcf.gz",
+        f"{{c}}\t100\t.\t{_base(100)}\t<NON_REF>\t.\tPASS\tEND=110\tGT:DP:GQ\t0/0:40:60\n",
+        header=QUALITY_HEADER,
+        length=None,
+    )
+    result = api.vcf.pharmcat(
+        api.VcfPharmcatParams(
+            vcf_input=Path(vcf),
+            pharmcat_dir=release,
+            outdir=tmp_path / "out",
+        )
+    )
+    multi = next(
+        row.split("\t")
+        for row in _view(release / "seen.vcf.gz", "-H")
+        if len(row.split("\t")[3]) == 2
+    )
+    assert multi[0] == "chr1" and multi[9] == "0/0"
+    summary = next(c for c in result.details["confidence"] if c["role"] == "pgx_calls")
+    assert summary["findings"]
+    assert all(f["gene"] == "CYP2C19" for f in summary["findings"])
+    assert all(f["PGX_STATE"] == "reference" for f in summary["findings"])
+    assert all(f["confidence"] == "high" for f in summary["findings"])
 
 
 @needs_htslib

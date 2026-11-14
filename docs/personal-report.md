@@ -68,6 +68,8 @@ or unknown phenotypes give no definitive guidance. Explicit unknown/no-call
 genes remain visible. Section counts distinguish uniquely resolved genes
 from ambiguous and no-call genes; alternative rows are not counted as genes.
 The evidence file and source manifest retain the result's provenance.
+Called haploid results, such as G6PD with no second allele, retain their single
+allele and known phenotype; an explicit `Unknown` allele remains a no-call.
 
 `vcf pharmcat` consumes outside calls only when explicitly passed with
 `--outside-call`. Each invocation uses an isolated pipeline output directory;

@@ -43,7 +43,8 @@ from wgsextract_cli.core.variant_files import (
     chromosome_rename_mapping,
     ensure_vcf_indexed,
     ensure_vcf_prepared,
-    vcf_index_chromosomes,
+    vcf_chromosomes,
+    vcf_header_chromosomes,
 )
 
 from .basic import require_vcf_input, vcf_input_handler
@@ -112,7 +113,7 @@ def prepare_input(
     with open(regions) as f:
         bed_lines = [line.split("\t") for line in f if line.strip()]
     pharmcat_chroms = sorted({fields[0] for fields in bed_lines})
-    input_chroms = vcf_index_chromosomes(input_vcf)
+    input_chroms = vcf_chromosomes(input_vcf)
 
     # The regions, in the input's names.
     to_input = dict(chromosome_rename_mapping(pharmcat_chroms, input_chroms))
@@ -131,7 +132,7 @@ def prepare_input(
         ["bcftools", "view", "-h", subset], capture_output=True
     ).stdout
     to_pharmcat = chromosome_rename_mapping(
-        list(header_contig_lengths(subset_header)), pharmcat_chroms
+        vcf_header_chromosomes(subset_header), pharmcat_chroms
     )
     if to_pharmcat:
         names = str(Path(work, "names.txt"))
@@ -188,7 +189,7 @@ def label_pgx_calls(
     header = run_command(
         ["bcftools", "view", "-h", evidence], capture_output=True
     ).stdout
-    chroms = list(header_contig_lengths(header))
+    chroms = vcf_header_chromosomes(header)
     mapping = dict(chromosome_rename_mapping([n[0] for n in named], chroms))
     return variant_confidence.label_vcf(
         evidence,
@@ -267,10 +268,9 @@ def summarize(phenotype_json: str) -> list[GeneCall]:
         alternatives: list[dict[str, str]] = []
         unknown = False
         for diplotype in report.get("recommendationDiplotypes") or []:
-            alleles = [
-                (diplotype.get(side) or {}).get("name") or "?"
-                for side in ("allele1", "allele2")
-            ]
+            alleles = [(diplotype.get("allele1") or {}).get("name") or "?"]
+            if (second := diplotype.get("allele2")) is not None:
+                alleles.append(second.get("name") or "?")
             unknown |= any(
                 a.lower() in {"unknown", "?", "no call", "no-call"} for a in alleles
             )

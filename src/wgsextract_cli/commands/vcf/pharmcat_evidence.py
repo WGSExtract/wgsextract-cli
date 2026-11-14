@@ -106,6 +106,11 @@ def expand(
             ["bcftools", "view", "-H", str(definitions)], capture_output=True
         ).stdout.splitlines()
     ]
+    definition_loci = {
+        (target[0], pos)
+        for target in targets
+        for pos in range(int(target[1]), int(target[1]) + len(target[3]))
+    }
     sequence: dict[tuple[str, int], str] = {}
     for chrom, start, end in regions:
         fasta = run_command(
@@ -288,6 +293,12 @@ def expand(
             for original in output:
                 fields = original.copy()
                 record_state = _info(fields[7]).get("PGX_STATE")
+                if (
+                    not mask
+                    and record_state is not None
+                    and (fields[0], int(fields[1])) not in definition_loci
+                ):
+                    continue
                 if mask and record_state == "absent":
                     continue
                 if mask and record_state and record_state != "reference":
