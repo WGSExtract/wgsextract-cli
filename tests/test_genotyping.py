@@ -110,7 +110,7 @@ def _repeat(locus: str, *alleles: int, high: int | None = None) -> RepeatCall:
         (_repeat("FXN", 9, 400), "carrier"),
         (_repeat("FXN", 300, 400), "pathogenic"),
         (_repeat("AR", 21, 45), "carrier"),  # X-linked recessive, two X
-        (_repeat("AR", 45), "pathogenic"),  # one X
+        (_repeat("AR", 45), "unresolved (incomplete call: 1 of 2 expected alleles)"),
         (_repeat("FMR1", 30, 80), "premutation"),
         (_repeat("FMR1", 30, 250), "pathogenic"),
         (_repeat("RFC1", 9, 31), "normal"),

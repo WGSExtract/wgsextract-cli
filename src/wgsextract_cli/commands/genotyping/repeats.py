@@ -155,12 +155,20 @@ def _grade(alleles: list[int], copies: int, threshold: Threshold) -> str:
     return "normal"
 
 
-def unconfirmed(call: RepeatCall, threshold: Threshold | None) -> str:
+def _expected_copies(threshold: Threshold, sex: str) -> int:
+    return 1 if threshold.inheritance in ("XR", "XD") and sex == "male" else 2
+
+
+def unconfirmed(
+    call: RepeatCall, threshold: Threshold | None, *, sex: str = "female"
+) -> str:
     """A note when low-support alleles alone would change the grade, else ""."""
     weak = low_support(call)
-    if threshold is None or not any(weak) or all(weak):
+    if threshold is None or not any(weak):
         return ""
-    copies = len(call.alleles)
+    if all(weak):
+        return " (unconfirmed: all called alleles have low read support)"
+    copies = _expected_copies(threshold, sex)
     confirmed = [a for a, w in zip(call.alleles, weak, strict=True) if not w]
     status = _grade(list(call.alleles), copies, threshold)
     if status == _grade(confirmed, copies, threshold):
@@ -176,9 +184,11 @@ def unconfirmed(call: RepeatCall, threshold: Threshold | None) -> str:
     )
 
 
-def classify(call: RepeatCall, threshold: Threshold | None) -> str:
-    """normal, intermediate, premutation, carrier or pathogenic (or "-" for a
-    repeat without thresholds), with a note when an allele's confidence
+def classify(
+    call: RepeatCall, threshold: Threshold | None, *, sex: str = "female"
+) -> str:
+    """normal, intermediate, premutation, carrier, pathogenic or unresolved
+    (or "-" without thresholds), with a note when an allele's confidence
     interval reaches the pathogenic range but its call doesn't. Low-support
     alleles (``low_support``) don't count towards the grade; a note says what
     they suggest."""
@@ -192,13 +202,14 @@ def classify(call: RepeatCall, threshold: Threshold | None) -> str:
         return "no call" + clipped
     if threshold is None:
         return "-" + clipped
-    note = unconfirmed(call, threshold)
-    alleles = list(call.alleles)
-    if note:
-        alleles = [
-            a for a, w in zip(call.alleles, low_support(call), strict=True) if not w
-        ]
-    status = _grade(alleles, len(call.alleles), threshold)
+    note = unconfirmed(call, threshold, sex=sex)
+    alleles = [a for a, w in zip(call.alleles, low_support(call), strict=True) if not w]
+    copies = _expected_copies(threshold, sex)
+    status = _grade(alleles, copies, threshold) if alleles else "unresolved"
+    if len(call.alleles) < copies:
+        note += f" (incomplete call: {len(call.alleles)} of {copies} expected alleles)"
+        if status != "pathogenic":
+            status = "unresolved"
     expanded = status in ("carrier", "pathogenic")
     if status != "pathogenic" and any(
         allele < threshold.pathogenic_min <= high
@@ -270,7 +281,11 @@ def _format_reads(call: RepeatCall) -> str:
 
 
 def write_summary(
-    path: str, calls: list[RepeatCall], unavailable: dict[str, str] | None = None
+    path: str,
+    calls: list[RepeatCall],
+    unavailable: dict[str, str] | None = None,
+    *,
+    sex: str = "female",
 ) -> list[tuple[str, str, str]]:
     """A TSV of each pathogenic repeat's call and range, with a row for each
     repeat of ``unavailable`` (locus: why); returns the (warning code, locus,
@@ -292,7 +307,7 @@ def write_summary(
             if threshold is None and call.variant_id.split("_")[0] in THRESHOLDS:
                 continue  # A flanking repeat of a catalog locus.
             why = unavailable.get(variant_id, "")
-            status = why or classify(call, threshold)
+            status = why or classify(call, threshold, sex=sex)
             genotype, ci = _format_alleles(call)
             f.write(
                 "\t".join(
@@ -320,10 +335,12 @@ def write_summary(
                 + (f" [CI {ci}]" if call.intervals else "")
                 + f" {status}"
             )
-            note = unconfirmed(call, threshold)
+            note = unconfirmed(call, threshold, sex=sex)
             if why:
                 line = f"{variant_id} ({known.disease}, {known.inheritance}): {why}"
                 flagged.append(("repeat_unavailable", variant_id, line))
+            elif status.startswith("unresolved"):
+                flagged.append(("repeat_unconfirmed", variant_id, line))
             elif status.removesuffix(note) not in ("normal", "-", "no call"):
                 flagged.append(("repeat_outside_normal_range", variant_id, line))
             elif note:
@@ -452,11 +469,12 @@ def run_str(params: TypingStrParams, *, debug: bool = False) -> None:
             sorted(set(THRESHOLDS) - catalog_ids),
             f"not available on {aln.build}: the bundled catalog lacks it",
         )
-    warnings = write_summary(summary, calls, unavailable)
+    warnings = write_summary(summary, calls, unavailable, sex=sex)
     flagged = [w for w in warnings if w[0] == "repeat_outside_normal_range"]
     classified = sum(1 for c in calls if c.variant_id in THRESHOLDS and c.alleles)
+    uncertain = sum(w[0] == "repeat_unconfirmed" for w in warnings)
     logging.info(
-        f"{classified - len(flagged)} of {classified} disease repeats are in the "
+        f"{classified - len(flagged) - uncertain} of {classified} disease repeats are in the "
         "normal range."
     )
     result = current_result()
@@ -467,6 +485,7 @@ def run_str(params: TypingStrParams, *, debug: bool = False) -> None:
         repeat_caller=caller,
         disease_repeats=classified,
         flagged_repeats=len(flagged),
+        unconfirmed_repeats=uncertain,
     )
     for code, locus, line in warnings:
         logging.warning(f"  {line}")

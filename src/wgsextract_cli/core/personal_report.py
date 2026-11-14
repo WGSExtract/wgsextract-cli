@@ -556,7 +556,8 @@ def _overview(ctx: _Context) -> dict[str, Any]:
     info = latest(ctx.sources, _command("info"))
     run = latest(ctx.sources, _command("qc contamination"))
     run = run if run is not None and run.status == "ok" else None
-    section = _section("overview", [info, run], ctx)
+    repeat_run = latest(ctx.sources, _command("typing str"))
+    section = _section("overview", [info, run, repeat_run], ctx)
     facts = []
     for name, label in _OVERVIEW_FACTS:
         fact = ctx.fact(name)

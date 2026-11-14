@@ -539,6 +539,15 @@ wgsextract typing str --input sample.cram --ref hs38.fa.gz
   `repeat_unconfirmed` warning. The limits are low because true expansions
   are thinly read: on the PureTarget set below, STRkit read a 1.2 kb DMPK
   expansion in 2 of 247 reads, and LongTR an FXN one in 1 of 1.
+  When every called allele is low support, the status is `unresolved`, not
+  pathogenic or normal. Expected ploidy is two autosomal copies and one X
+  copy for males or two for females (the explicit or inferred `--sex`).
+  A missing allele is not evidence of homozygosity: incomplete recessive
+  calls are `unresolved`, even when the observed allele is expanded.
+  Raw sizes remain in the TSV and caller files. These unresolved calls emit
+  `repeat_unconfirmed`, count in `unconfirmed_repeats` rather than the normal
+  range or `flagged_repeats`, and appear in the personal report's overview
+  warnings.
 - LongTR has no threads; `--threads` runs chromosomes in parallel. It drops
   reads below mean base quality 30, which leaves most ONT R9.4.1 loci
   uncalled; R9 reads (named in the header) get an `r9_reads` warning
