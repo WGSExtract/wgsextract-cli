@@ -210,6 +210,13 @@ def test_914_real_lazy_command_and_startup_tests_are_selected() -> None:
     assert "tests/test_cli_parser.py" in selected
 
 
+def test_914_real_leaf_module_does_not_select_unrelated_ci_tests() -> None:
+    selected = select_tests(["src/wgsextract_cli/commands/benchmark/chip.py"])
+    assert "tests/test_microarray_chip_benchmark.py" in selected
+    assert "tests/test_ci_ledger.py" not in selected
+    assert len(selected) < 20
+
+
 def test_914_empty_selection_skips_without_starting_pixi() -> None:
     result = subprocess.run(
         [
