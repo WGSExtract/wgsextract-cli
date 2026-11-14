@@ -29,9 +29,11 @@ printed by `--version`.
 
 ## Installing
 
-The `macos-aligners-16` (Apple Silicon) and `linux-aligners-3` (Linux x86-64
-and ARM64) prereleases have `wgse-bwa` 0.12.1; `linux-aligners-3` also has
-`wgse-bwa-mem3` 0.4.0 and `wgse-minimap2` 0.4.0 for Linux x86-64. The steps below install the
+The `macos-aligners-17` (Apple Silicon) prerelease has `wgse-bwa` 0.13.0,
+`wgse-bwa-mem2` 0.5.3, `wgse-bwa-mem3` 0.4.0 and `wgse-minimap2` 0.4.0.
+The `linux-aligners-3` (Linux x86-64 and ARM64) prerelease has `wgse-bwa`
+0.12.1, plus `wgse-bwa-mem3` 0.4.0 and `wgse-minimap2` 0.4.0 for Linux
+x86-64. The steps below install the
 Apple Silicon executables; on Linux, see
 [Linux x86-64 and NVIDIA GPUs](#linux-x86-64-and-nvidia-gpus-cuda). Earlier published `wgse-bwa`
 executables, 0.11.0 and 0.12.0, advertise dense suffix-array support but reject
@@ -40,7 +42,14 @@ when no dense side file is present. With a side file it refuses: those builds
 read it automatically and cannot honor the run's opt-in setting. Upgrade to
 0.12.1, or remove the side files with
 `wgsextract ref dense-sa --ref <fasta> --delete`.
+The 0.13.0 optimizations described below require a build from this revision
+until an updated prerelease is published.
 
+The `macos-aligners-17` prerelease speeds up `wgse-bwa` CPU alignment with
+exact mate-rescue window pruning, compact-key region sorting and NEON
+whole-block occurrence counting. `wgse-bwa-mem2` shares the sorting change.
+All four retain experimental Metal support and their previous alignment
+outputs, including `wgse-bwa-mem3`'s GPU seed-failure exit fix from 0.3.1.
 The `macos-aligners-16` prerelease has `wgse-bwa` 0.12.1, which parses
 `--dense-sa on|off` in release builds, with the same `wgse-bwa-mem2` 0.5.2 and
 `wgse-minimap2` 0.3.0 as `macos-aligners-15`, and `wgse-bwa-mem3` 0.3.1, whose
@@ -91,8 +100,8 @@ publishes for each release asset:
 
 ```bash
 mkdir wgse-aligners && cd wgse-aligners
-gh release download macos-aligners-16 -R WGSExtract/wgsextract-cli
-gh release view macos-aligners-16 -R WGSExtract/wgsextract-cli --json assets \
+gh release download macos-aligners-17 -R WGSExtract/wgsextract-cli
+gh release view macos-aligners-17 -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
   shasum -a 256 -c
 ```
@@ -202,6 +211,18 @@ walks. Each gives upstream's exact results. WGS Extract builds the file only
 with `wgsextract ref dense-sa`, and its `align` and `realign` read it only with
 `--dense-suffix-array` (or `dense_suffix_array = true` in `config.toml`);
 otherwise they pass `--dense-sa off` (docs/hardware.md).
+
+From 0.13.0, on AArch64, `wgse-bwa` prunes mate-rescue windows with bwa-mem3's exact
+score bound, through the same adapter as `wgse-bwa-mem2`: rows that cannot
+contribute to a kept alignment are omitted before CPU or GPU alignment.
+On AArch64, the CPU threads count all four bases in an occurrence block
+with NEON, masking positions past the requested row. Alignment-region sorting
+uses compact records of the sort keys and addresses, with the same comparisons
+and introsort order as before. These changes preserve upstream's records;
+`--cpu-upstream` retains the upstream implementations.
+Pruning is not enabled on x86-64: the scalar filter has not been benchmarked
+there. `wgse-bwa-mem2` 0.5.3 also includes the shared compact-key region sort;
+the published 0.5.2 binaries are unchanged.
 
 From 0.5.0, `wgse-bwa-mem2`'s CPU backend does the same with its own exact
 replacements: it collects each read's SMEMs in all three passes with up to 16
@@ -715,6 +736,21 @@ less CPU time) and `--metal` 125.7 s against 136.1 s (7.7% less, faster in all
 three rounds, 7% less CPU time); the file raised the peak RSS by 0.75 GiB (to
 6.2 GiB on the CPU and 7.0 GiB with `--metal`). With `--dense-sa off` 0.11.0
 took 5.8% less time than 0.9.0 on the CPU and 1.5% less with `--metal`.
+
+`wgse-bwa` 0.13.0's changes were measured against 0.12.0 (the same alignment
+backend as 0.12.1), with hs38's dense-SA side file, 5M HG002 pairs, 9 threads
+and `-K 10000000`. Two opposing-order CPU rounds took 259.34 and 253.26 s
+against 272.00 and 275.35 s: 6.3% less wall time on average, with 7.8% less
+total CPU time (1937.3 against 2101.3 CPU-seconds). Each run started at load
+below 3.5 and nominal thermal pressure, which held throughout; other desktop
+work continued during the runs. All records, excluding `@PG`, were identical
+(SHA-256 prefix `e2febf171215d840`), as were the 200k-pair CPU and Metal checks
+(`bf35bba2923cd0a0`).
+The same opposing-order `--metal` rounds took 119.60 and 123.58 s against
+128.62 and 125.55 s (4.3% less wall time; below the campaign's 5% win gate),
+with 0.7% more total CPU time as the CPU/GPU work split varied. One baseline
+run briefly reached thermal pressure 1 (one sample, 4% of its samples);
+the other runs stayed at 0. All Metal records also matched.
 
 On hs38 BWA's time splits roughly into SMEM collection (19%), suffix-array
 locate (23%) and extension with mate rescue (45%). `--metal` 0.2.0 moved only

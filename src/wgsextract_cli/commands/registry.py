@@ -1,64 +1,64 @@
+from __future__ import annotations
+
+import argparse
 from dataclasses import dataclass
-from types import ModuleType
+from importlib import import_module
 
-from . import (
-    align,
-    analyze,
-    bam,
-    basecall,
-    benchmark,
-    deps,
-    examples,
-    extract,
-    genotyping,
-    info,
-    lineage,
-    methylation,
-    microarray,
-    panel,
-    pet,
-    qc,
-    realign,
-    ref,
-    repair,
-    report,
-    report_issue,
-    sample,
-    score,
-    serve,
-    sign,
-    vcf,
-    vep,
-)
 
-COMMAND_MODULES: tuple[ModuleType, ...] = (
-    info,
-    deps,
-    examples,
-    bam,
-    benchmark,
-    extract,
-    microarray,
-    lineage,
-    vcf,
-    repair,
-    qc,
-    ref,
-    align,
-    realign,
-    basecall,
-    pet,
-    vep,
-    analyze,
-    sample,
-    score,
-    sign,
-    genotyping,
-    methylation,
-    report,
-    report_issue,
-    panel,
-    serve,
+@dataclass(frozen=True)
+class CommandRegistration:
+    module: str
+    name: str
+
+    def register(
+        self,
+        subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+        base_parser: argparse.ArgumentParser,
+    ) -> None:
+        import_module(f"wgsextract_cli.cli.registration.{self.module}").register(
+            subparsers, base_parser
+        )
+
+
+COMMAND_MODULES = tuple(
+    CommandRegistration(
+        name,
+        {
+            "examples": "example-genome",
+            "genotyping": "typing",
+            "pet": "pet-align",
+            "report_issue": "report-issue",
+        }.get(name, name),
+    )
+    for name in (
+        "info",
+        "deps",
+        "examples",
+        "bam",
+        "benchmark",
+        "extract",
+        "microarray",
+        "lineage",
+        "vcf",
+        "repair",
+        "qc",
+        "ref",
+        "align",
+        "realign",
+        "basecall",
+        "pet",
+        "vep",
+        "analyze",
+        "sample",
+        "score",
+        "sign",
+        "genotyping",
+        "methylation",
+        "report",
+        "report_issue",
+        "panel",
+        "serve",
+    )
 )
 
 CORE = "core"

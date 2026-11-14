@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import logging
 import os
 import shutil
@@ -13,11 +12,11 @@ from typing import TYPE_CHECKING, NamedTuple, TypeVar
 
 import psutil
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api._params import job_values
 from wgsextract_cli.api.align import ALIGNERS as ALIGNERS
 from wgsextract_cli.api.align import PLATFORMS as PLATFORMS
 from wgsextract_cli.api.align import AlignParams
+from wgsextract_cli.cli.registration.align import register as register
 from wgsextract_cli.core import bwa_mem2, dense_suffix_array, ultima
 from wgsextract_cli.core.alignment_memory import (
     BWA_MEM3_CUDA_BYTES,
@@ -37,7 +36,7 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.genome_library import pair_stem
-from wgsextract_cli.core.messages import CLI_HELP, LOG_MESSAGES
+from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.native_aligners import (
     BWA_MEM3_COMPAT,
     BWA_MEM3_FAST,
@@ -75,6 +74,8 @@ from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.samtools_commands import (
     indexed_output,
     parse_memory,
+    regular_files_bytes,
+    sort_memory,
     written_index,
 )
 from wgsextract_cli.core.sequencing import input_platform
@@ -193,17 +194,6 @@ class AlignJob:
     @property
     def read_count(self) -> int | None:
         return self.input_reads.reads if self.input_reads else None
-
-
-def register(
-    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser(
-        "align", parents=[base_parser], help=CLI_HELP["cmd_align"]
-    )
-    add_arguments(parser, AlignParams)
-    parser.set_defaults(func=cli_handler(AlignParams, run_align))
 
 
 def run_align(params: AlignParams) -> None:
@@ -1019,7 +1009,11 @@ def _prepare_alignment(
     task: str,
     *,
     read_paths: list[str] | None = None,
+    samtools_sort: bool = True,
 ) -> _AlignSetup:
+    """With ``samtools_sort`` (the output is sorted by samtools, not the
+    aligner), the setup's memory is the sort's per-thread memory: sort_memory
+    of --memory for these reads."""
     verify_dependencies(tools)
     log_dependency_info(tools)
     threads, memory = get_resource_defaults(job.threads, job.memory)
@@ -1037,6 +1031,10 @@ def _prepare_alignment(
     verify_paths_exist(
         {label: path for label, path in paths_to_check.items() if not is_url(path)}
     )
+    if samtools_sort:
+        memory = sort_memory(
+            threads, memory, input_bytes=regular_files_bytes(paths_to_check.values())
+        )
 
     input_path = job.input or job.r1
     outdir = job.outdir or str(absolute_path(input_path).parent)
@@ -1635,7 +1633,7 @@ def _align_gpu_bwa(job: AlignJob) -> None:
     the same index, ALT contigs and read group as align_bwa."""
     from wgsextract_cli.core.parabricks import host_path, verify_parabricks
 
-    setup = _prepare_alignment(job, ["samtools"], "GPU alignment")
+    setup = _prepare_alignment(job, ["samtools"], "GPU alignment", samtools_sort=False)
     verify_parabricks()
     fit = _gpu_memory_options(job, "fq2bam")
     ensure_bwa_index(setup.ref)
@@ -1653,7 +1651,9 @@ def _align_gpu_minimap2(job: AlignJob, preset: str) -> None:
 
     if job.r2:
         raise UsageError("Long-read alignment takes single-end input; drop --r2.")
-    setup = _prepare_alignment(job, ["samtools"], "GPU long-read alignment")
+    setup = _prepare_alignment(
+        job, ["samtools"], "GPU long-read alignment", samtools_sort=False
+    )
     verify_parabricks()
     fit = _gpu_memory_options(job, "minimap2")
     reads = host_path(setup.r1)
@@ -1892,13 +1892,8 @@ def align_minimap2(job: AlignJob) -> None:
     logging.info("Using minimap2 preset %s for %s reads.", preset, job.platform)
     duplicates = duplicate_marker(paired=bool(job.r2)) if preset == "sr" else None
     read_files = [path for path in (job.r1, job.r2) if path]
-    input_bytes: int | None = None
     # Pipes and devices report no size; only regular files bound the batches.
-    if all(Path(path).is_file() for path in read_files):
-        try:
-            input_bytes = sum(os.path.getsize(path) for path in read_files)
-        except OSError:
-            input_bytes = None
+    input_bytes = regular_files_bytes(read_files)
     read_count = job.read_count
     if read_count is None and duplicates == "samblaster":
         statistics = fastq_input_statistics(setup.r1, job.r2)
@@ -2037,7 +2032,9 @@ def align_pbmm2(job: AlignJob) -> None:
         raise UsageError(
             "pbmm2 writes sorted BAM. Convert to CRAM with 'bam to-cram' after alignment."
         )
-    setup = _prepare_alignment(job, ["pbmm2", "samtools"], "PacBio alignment")
+    setup = _prepare_alignment(
+        job, ["pbmm2", "samtools"], "PacBio alignment", samtools_sort=False
+    )
 
     preset_arg = job.preset or ("subread" if job.platform == "clr" else "ccs")
     if preset_arg not in _PBMM2_PRESETS:

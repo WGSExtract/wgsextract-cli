@@ -8,6 +8,8 @@ on:
     branches: [ main ]
     paths:
       - ".github/workflows/gui-tauri-installer.yml"
+      - ".github/actions/setup-node/**"
+      - ".github/actions/download-cache/**"
       - "gui/examples/**"
       - "gui/app/**"
       - "gui/resources/**"
@@ -15,17 +17,11 @@ on:
       - "gui/scripts/windows-admin-task-broker.ps1"
       - "gui/tools/packaging/windows/**"
       - "gui/tools/tasks.py"
+      - "!**/*.md"
   push:
     branches: [ main ]
-    paths:
-      - ".github/workflows/gui-tauri-installer.yml"
-      - "gui/examples/**"
-      - "gui/app/**"
-      - "gui/resources/**"
-      - "gui/scripts/validate-windows-tauri-lifecycle.ps1"
-      - "gui/scripts/windows-admin-task-broker.ps1"
-      - "gui/tools/packaging/windows/**"
-      - "gui/tools/tasks.py"
+  schedule:
+    - cron: "31 6 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -47,26 +43,20 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: gui/app/package-lock.json
+      - uses: ./.github/actions/setup-node
 
       - name: Install dependencies
         run: npm ci
         working-directory: gui/app
 
-      - name: Cache Tauri Rust build
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Cache Cargo downloads (not the redundant multi-GB target tree)
+        uses: ./.github/actions/download-cache
         with:
           path: |
-            ~/.cargo/git
-            ~/.cargo/registry
-            gui/app/web/packagers/tauri/target
-          key: ${{ runner.os }}-tauri-${{ hashFiles('gui/app/web/packagers/tauri/Cargo.lock', 'gui/app/web/packagers/tauri/Cargo.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-tauri-
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gui/app/web/packagers/tauri/Cargo.lock') }}
 
       - name: Build Tauri installer
         shell: pwsh

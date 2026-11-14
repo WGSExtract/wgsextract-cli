@@ -23,9 +23,10 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import numpy as np
+if TYPE_CHECKING:
+    import numpy as np
 
 from wgsextract_cli.core.download_progress import CancelEvent, ProgressCallback
 from wgsextract_cli.core.ref_library.downloads import download_file
@@ -68,6 +69,8 @@ class Sites:
 
 class AncestryReference:
     def __init__(self, path: Path) -> None:
+        import numpy as np
+
         with np.load(path, allow_pickle=False) as data:
             self._arrays = {name: data[name] for name in data.files}
         self.info: dict[str, Any] = json.loads(str(self._arrays.pop("info")))
@@ -79,6 +82,8 @@ class AncestryReference:
 
     def sites(self, build: str) -> Sites:
         """The sites with coordinates on ``build`` (hg38, hg19 or t2t)."""
+        import numpy as np
+
         name = BUILDS.get(build)
         if name is None:
             raise WGSExtractError(
@@ -99,6 +104,8 @@ class AncestryReference:
 
     def frequencies(self, k: int) -> np.ndarray:
         """(sites, K) alt-allele frequency of each component."""
+        import numpy as np
+
         p: np.ndarray = self._arrays[f"P{k}"].astype(np.float64) / 65535.0
         return p
 

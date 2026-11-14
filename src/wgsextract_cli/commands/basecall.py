@@ -7,7 +7,6 @@ unaligned BAM keeps Dorado's read tags, MM/ML base modifications included,
 and `align --r1` takes it as Nanopore reads.
 """
 
-import argparse
 import logging
 import platform
 import re
@@ -16,14 +15,13 @@ import sys
 import tempfile
 from pathlib import Path
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api.align import DORADO_MODELS, BasecallParams
+from wgsextract_cli.cli.registration.basecall import register as register
 from wgsextract_cli.commands._extract_helpers import cleanup_files
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled, safe_output
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.dev_download_cache import wgsextract_cache_root
-from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.tool_catalog import INSTALL_HINTS
@@ -336,20 +334,6 @@ def run_basecall(params: BasecallParams) -> None:
             modifications=",".join(codes),
         )
     human_output(f"Unaligned BAM: {out_bam} ({reads:,} reads)")
-
-
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser(
-        "basecall",
-        parents=[base_parser],
-        help=CLI_HELP["cmd_basecall"],
-        description=CLI_HELP["cmd_basecall"],
-    )
-    add_arguments(parser, BasecallParams)
-    parser.set_defaults(func=cli_handler(BasecallParams, run_basecall))
 
 
 __all__ = ["models_directory", "register", "run_basecall"]

@@ -44,8 +44,13 @@ class Preview:
     files: int = 0
 
 
-def git(*args: str) -> bytes:
-    return subprocess.run(["git", *args], check=True, capture_output=True).stdout
+def git(*args: str, repo: Path | None = None) -> bytes:
+    command = ["git"]
+    if repo is not None:
+        command.extend(["--git-dir", str(repo.resolve())])
+    return subprocess.run(
+        [*command, *args], check=True, capture_output=True, timeout=120
+    ).stdout
 
 
 def slug(branch: str) -> str:
@@ -54,13 +59,21 @@ def slug(branch: str) -> str:
     return re.sub(r"-{2,}", "-", name).strip("-")[:40].strip("-")
 
 
-def fetch(remote: str) -> list[Preview]:
+def fetch(
+    remote: str, repo: Path | None = None, limit: int | None = MAX_PREVIEWS
+) -> list[Preview]:
     """The remote's mockups/* branches, newest commit first."""
-    for ref in git("for-each-ref", "--format=%(refname)", NAMESPACE).decode().split():
-        git("update-ref", "-d", ref)
+    for ref in (
+        git("for-each-ref", "--format=%(refname)", NAMESPACE, repo=repo)
+        .decode()
+        .split()
+    ):
+        git("update-ref", "-d", ref, repo=repo)
     # A shallow fetch whose refspec matches no branch fails, so look first:
     # having no mockups/* branches is the normal state between iterations.
-    if not git("ls-remote", "--heads", remote, f"refs/heads/{PREFIX}*").strip():
+    if not git(
+        "ls-remote", "--heads", remote, f"refs/heads/{PREFIX}*", repo=repo
+    ).strip():
         return []
     git(
         "fetch",
@@ -69,18 +82,27 @@ def fetch(remote: str) -> list[Preview]:
         "--depth=1",
         remote,
         f"+refs/heads/{PREFIX}*:{NAMESPACE}*",
+        repo=repo,
     )
+    return discover(NAMESPACE, repo=repo, limit=limit)
+
+
+def discover(
+    namespace: str, repo: Path | None = None, limit: int | None = MAX_PREVIEWS
+) -> list[Preview]:
+    """Allocate publisher names for refs already present in a repository."""
     out = git(
         "for-each-ref",
         "--sort=-committerdate",
         "--format=%(refname)%00%(objectname)%00%(committerdate:iso-strict)",
-        NAMESPACE,
+        namespace,
+        repo=repo,
     ).decode()
     previews: list[Preview] = []
     taken: set[str] = set()
     for line in out.splitlines():
         ref, sha, date = line.split("\0")
-        branch = PREFIX + ref.removeprefix(NAMESPACE)
+        branch = PREFIX + ref.removeprefix(namespace)
         name = slug(branch)
         if not name or name == "index":
             print(f"skip {branch}: no usable folder name", file=sys.stderr)
@@ -90,7 +112,7 @@ def fetch(remote: str) -> list[Preview]:
             name, n = f"{base}-{n}", n + 1
         taken.add(name)
         previews.append(Preview(branch, name, sha, date))
-    return previews[:MAX_PREVIEWS]
+    return previews if limit is None else previews[:limit]
 
 
 def static_member(member: tarfile.TarInfo) -> PurePosixPath | None:
@@ -112,8 +134,8 @@ def static_member(member: tarfile.TarInfo) -> PurePosixPath | None:
     return rel
 
 
-def copy_tree(preview: Preview, dest: Path) -> None:
-    archive = git("archive", "--format=tar", preview.sha, "--", SOURCE)
+def copy_tree(preview: Preview, dest: Path, repo: Path | None = None) -> None:
+    archive = git("archive", "--format=tar", preview.sha, "--", SOURCE, repo=repo)
     total = 0
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
         for member in tar.getmembers():

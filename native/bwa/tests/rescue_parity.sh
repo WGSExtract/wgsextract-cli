@@ -1,6 +1,8 @@
 #!/bin/sh
 # GPU mate rescue (mem_matesw's ksw_align2) must leave the paired SAM unchanged.
 set -eu
+# shellcheck source=native/tests/seeded_random.sh
+. "$(dirname "$0")/../../tests/seeded_random.sh"
 aligner=$1
 work=$2
 mkdir -p "$work"
@@ -15,18 +17,22 @@ same() {
 metric() {
     sed -n "s/.* $2=\([0-9]*\).*/\1/p" "$1"
 }
+pruning=0
+case "$(uname -m)" in
+    arm64|aarch64) pruning=1 ;;
+esac
 
 # A random reference with near-copies of one region, so rescue finds suboptimal
 # hits, and pairs in three orientations. Every third mate has a mismatch every
 # 12 bp and often an indel, so it has no exact 19-mer seed and is only placed by
 # mate rescue.
-awk 'BEGIN {
-    srand(364)
+awk "$seeded_random"'BEGIN {
+    seed(364)
     split("A C G T", base, " ")
-    for (i = 1; i <= 160000; ++i) random = random base[int(rand() * 4) + 1]
+    for (i = 1; i <= 160000; ++i) random = random base[int(rnd() * 4) + 1]
     repeat = substr(random, 40001, 3000)
     copy = repeat
-    for (i = 50; i < 3000; i += 97) copy = substr(copy, 1, i - 1) base[int(rand() * 4) + 1] substr(copy, i + 1)
+    for (i = 50; i < 3000; i += 97) copy = substr(copy, 1, i - 1) base[int(rnd() * 4) + 1] substr(copy, i + 1)
     ref = substr(random, 1, 41500) copy substr(random, 44501)
     print ">chr\n" ref > "reference.fa"
     complement["A"] = "T"; complement["C"] = "G"; complement["G"] = "C"; complement["T"] = "A"
@@ -34,18 +40,18 @@ awk 'BEGIN {
     split("151 151 151 101 76 250 300", lengths, " ")
     for (p = 1; p <= 1500; ++p) {
         n = lengths[1 + p % 7]
-        insert = 350 + int(rand() * 150)
-        start = p % 5 == 0 ? 39000 + int(rand() * 6000) : 1 + int(rand() * (length(ref) - insert))
+        insert = 350 + int(rnd() * 150)
+        start = p % 5 == 0 ? 39000 + int(rnd() * 6000) : 1 + int(rnd() * (length(ref) - insert))
         left = substr(ref, start, n)
         right = substr(ref, start + insert - n, n)
         if (p % 3 == 0) {
-            for (i = 1 + int(rand() * 12); i <= n; i += 12) right = substr(right, 1, i - 1) (substr(right, i, 1) == "A" ? "C" : "A") substr(right, i + 1)
+            for (i = 1 + int(rnd() * 12); i <= n; i += 12) right = substr(right, 1, i - 1) (substr(right, i, 1) == "A" ? "C" : "A") substr(right, i + 1)
             # Insertions and deletions exercise the striped lazy-F and E updates.
-            at = 10 + int(rand() * (n - 20))
-            gap = 1 + int(rand() * 4)
+            at = 10 + int(rnd() * (n - 20))
+            gap = 1 + int(rnd() * 4)
             if (p % 6 == 0) {
                 inserted = ""
-                for (i = 1; i <= gap; ++i) inserted = inserted base[int(rand() * 4) + 1]
+                for (i = 1; i <= gap; ++i) inserted = inserted base[int(rnd() * 4) + 1]
                 right = substr(right, 1, at) inserted substr(right, at + 1, n - at - gap)
             } else if (p % 9 == 0) {
                 right = substr(right, 1, at) substr(right, at + gap + 1) substr(ref, start + insert, gap)
@@ -118,6 +124,18 @@ for threads in 1 4; do
     test "$(metric "fast-t$threads.log" rescue_cpu_hits)" -gt 1000
     test "$(metric "upstream-t$threads.log" cpu_located_rows)" -eq 0
     test "$(metric "upstream-t$threads.log" rescue_cpu_jobs)" -eq 0
+    # bwa-mem3's exact pruning leaves out rescue-window rows (and whole windows);
+    # --cpu-upstream aligns every row.
+    if [ "$pruning" -eq 1 ]; then
+        test "$(metric "fast-t$threads.log" rescue_pruned_dead)" -gt 0
+        test "$(metric "fast-t$threads.log" rescue_kept_rows)" -lt \
+            "$(metric "fast-t$threads.log" rescue_window_rows)"
+    else
+        test "$(metric "fast-t$threads.log" rescue_pruned_dead)" -eq 0
+        test "$(metric "fast-t$threads.log" rescue_kept_rows)" -eq \
+            "$(metric "fast-t$threads.log" rescue_window_rows)"
+    fi
+    test "$(metric "upstream-t$threads.log" rescue_window_rows)" -eq 0
 done
 cpu_parity chunks -t 4 -K 20000
 cpu_parity gaps -t 4 -O 4,8 -E 2,1 -L 3,7 -U 9
@@ -191,8 +209,8 @@ done
 # (smem_batch.cpp). Reads of 1 to 900 bp (and some of 5000) from the repeat copies, tandem and
 # homopolymer runs, with mismatches and Ns, through all three of
 # mem_collect_intv()'s passes (-y enables the third).
-awk 'BEGIN {
-    srand(543)
+awk "$seeded_random"'BEGIN {
+    seed(543)
     split("A C G T", base, " ")
     getline < "reference.fa"
     getline ref < "reference.fa"
@@ -203,12 +221,12 @@ awk 'BEGIN {
         n = lengths[1 + r % 12]
         # Longer than the NEON ksw_extend2 limit (4096 bp).
         if (r % 250 == 0) n = 5000
-        start = r % 4 == 0 ? 39000 + int(rand() * 6000) : 1 + int(rand() * (length(ref) - n))
+        start = r % 4 == 0 ? 39000 + int(rnd() * 6000) : 1 + int(rnd() * (length(ref) - n))
         seq = substr(ref, start, n)
         if (r % 7 == 0) seq = substr(seq, 1, n / 2) substr(tandem, 1 + r % 4, n - int(n / 2))
         if (r % 11 == 0) seq = substr(homo, 1, n / 3) substr(seq, 1, n - int(n / 3))
         if (r % 3 == 0)
-            for (i = 15; i < n; i += 23) seq = substr(seq, 1, i - 1) base[int(rand() * 4) + 1] substr(seq, i + 1)
+            for (i = 15; i < n; i += 23) seq = substr(seq, 1, i - 1) base[int(rnd() * 4) + 1] substr(seq, i + 1)
         if (r % 5 == 0)
             for (i = 1 + r % 17; i <= n; i += 37) seq = substr(seq, 1, i - 1) "N" substr(seq, i + 1)
         qual = ""
@@ -318,6 +336,12 @@ test "$(metric verify.log rescue_batches)" -ge 3
 test "$(metric verify.log rescue_hits)" -gt 1000
 test "$(metric verify.log rescue_misses)" -eq 0
 test "$(metric verify.log rescue_mismatches)" -eq 0
+# Pruned windows the GPU never sees, checked against upstream too.
+if [ "$pruning" -eq 1 ]; then
+    test "$(metric verify.log rescue_pruned_dead)" -gt 0
+else
+    test "$(metric verify.log rescue_pruned_dead)" -eq 0
+fi
 # Mates over 256 bp stay on upstream ksw_align2.
 test "$(metric verify.log rescue_skipped)" -gt 0
 
@@ -392,23 +416,32 @@ test "$(metric metal-wide.log rescue_skipped)" -gt 0
 run norescue -t 4 -S
 test "$(metric metal-norescue.log rescue_batches)" -eq 0
 
-# A large mismatch penalty saturates ksw_u8 on exact 151 bp mates (which -k 160
-# keeps from seeding); upstream then runs an empty reverse pass, so the GPU
-# declines those windows and mem_matesw() computes them as upstream does.
-awk 'BEGIN {
-    srand(7)
+# Exact 151 bp mates cannot reach -k 160's rescue threshold: pruning can omit
+# those windows. A 191 bp mate with a central insertion cannot seed either,
+# but can reach that threshold. With -B 120 it saturates ksw_u8; upstream's
+# reverse pass is empty, so the GPU must decline it and use upstream's result.
+awk "$seeded_random"'BEGIN {
+    seed(7)
     while ((getline line < "reference.fa") > 0) if (line !~ /^>/) ref = ref line
     complement["A"] = "T"; complement["C"] = "G"; complement["G"] = "C"; complement["T"] = "A"
     for (p = 1; p <= 200; ++p) {
-        start = 1 + int(rand() * (length(ref) - 500))
-        right = substr(ref, start + 380 + int(rand() * 40) - 151, 151)
+        start = 1 + int(rnd() * (length(ref) - 500))
+        end = start + 380 + int(rnd() * 40)
+        right = substr(ref, end - 151, 151)
+        right_long = substr(ref, end - 190, 190)
         two = ""
         for (i = 151; i >= 1; --i) two = two complement[substr(right, i, 1)]
+        two_long = ""
+        for (i = 190; i >= 1; --i) two_long = two_long complement[substr(right_long, i, 1)]
+        two_long = substr(two_long, 1, 95) "N" substr(two_long, 96)
         q1 = q2 = ""
         for (i = 1; i <= 200; ++i) q1 = q1 "I"
         for (i = 1; i <= 151; ++i) q2 = q2 "I"
+        q2_long = ""
+        for (i = 1; i <= 191; ++i) q2_long = q2_long "I"
         printf "@sat%d/1\n%s\n+\n%s\n", p, substr(ref, start, 200), q1 > "sat-R1.fq"
         printf "@sat%d/2\n%s\n+\n%s\n", p, two, q2 > "sat-R2.fq"
+        printf "@sat%d/2\n%s\n+\n%s\n", p, two_long, q2_long > "sat-long-R2.fq"
     }
 }'
 "$aligner" --cpu-upstream mem -t 4 -k 160 -B 120 -I 400,40 reference.fa sat-R1.fq sat-R2.fq \
@@ -416,8 +449,31 @@ awk 'BEGIN {
 "$aligner" --gpu-policy all "$gpu" mem -t 4 -k 160 -B 120 -I 400,40 reference.fa \
     sat-R1.fq sat-R2.fq > metal-saturate.sam 2> metal-saturate.log
 same cpu-saturate.sam metal-saturate.sam
-test "$(metric metal-saturate.log rescue_declined)" -eq 200
+if [ "$pruning" -eq 1 ]; then
+    test "$(metric metal-saturate.log rescue_pruned_dead)" -eq 200
+    test "$(metric metal-saturate.log rescue_declined)" -eq 0
+else
+    test "$(metric metal-saturate.log rescue_pruned_dead)" -eq 0
+    test "$(metric metal-saturate.log rescue_declined)" -eq 200
+fi
 test "$(metric metal-saturate.log rescue_misses)" -eq 0
+"$aligner" --cpu-upstream mem -t 4 -k 160 -B 120 -I 400,40 reference.fa sat-R1.fq sat-long-R2.fq \
+    > cpu-saturate-long.sam 2> cpu-saturate-long.log
+"$aligner" --gpu-policy all "$gpu" mem -t 4 -k 160 -B 120 -I 400,40 reference.fa \
+    sat-R1.fq sat-long-R2.fq > metal-saturate-long.sam 2> metal-saturate-long.log
+same cpu-saturate-long.sam metal-saturate-long.sam
+test "$(metric metal-saturate-long.log rescue_declined)" -eq 200
+test "$(metric metal-saturate-long.log rescue_misses)" -eq 0
+# Regression: a GPU-declined window was counted again by its CPU fallback.
+# With fixed insert sizes these two scores examine the same candidate windows.
+"$aligner" --cpu-upstream mem -t 4 -k 160 -B 4 -I 400,40 reference.fa sat-R1.fq sat-long-R2.fq \
+    > cpu-unsaturated-long.sam 2> cpu-unsaturated-long.log
+"$aligner" --gpu-policy all "$gpu" mem -t 4 -k 160 -B 4 -I 400,40 reference.fa \
+    sat-R1.fq sat-long-R2.fq > metal-unsaturated-long.sam 2> metal-unsaturated-long.log
+same cpu-unsaturated-long.sam metal-unsaturated-long.sam
+test "$(metric metal-unsaturated-long.log rescue_declined)" -eq 0
+test "$(metric metal-saturate-long.log rescue_window_rows)" -eq \
+    "$(metric metal-unsaturated-long.log rescue_window_rows)"
 
 # A rescue batch that fails after the first one (while the next is packed) is
 # finished on the CPU, as is the rest. Explicit "$gpu" still reports it.

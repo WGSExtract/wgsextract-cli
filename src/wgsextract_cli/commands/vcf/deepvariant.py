@@ -593,12 +593,13 @@ def _native_gpu_preflight(native: native_deepvariant.NativeDeepVariant | None) -
         )
 
 
-def _native_model(model_type: str, checkpoint: str | None) -> bool:
-    """Whether wgse-deepvariant calls with this model here. On a Mac, where
-    Google's image can't run, the others are refused; on Linux they run in
-    the image (or Parabricks) as before."""
+def _native_model(path: str, model_type: str, checkpoint: str | None) -> bool:
+    """Whether wgse-deepvariant at ``path`` calls with this model here. On a
+    Mac, where Google's image can't run, the others are refused; on Linux
+    they run in the image (or Parabricks) as before, as do models the
+    installed build predates."""
     if not checkpoint and model_type in native_deepvariant.models():
-        return True
+        return native_deepvariant.qualified(path, model_type)
     if sys.platform == "darwin":
         selection = "--checkpoint" if checkpoint else f"model {model_type}"
         raise WGSExtractError(
@@ -714,7 +715,8 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
         model, caller = _gpu_model(params)
         # wgse-deepvariant, when installed, calls its models on the GPU
         # without Docker; Parabricks the rest (deepvariant_native = "off": all).
-        native_gpu = bool(native_deepvariant.installed()) and _native_model(model, None)
+        installed = native_deepvariant.installed()
+        native_gpu = installed is not None and _native_model(installed, model, None)
         if native_gpu:
             logging.info(
                 "Calling on the GPU with wgse-deepvariant (CUDA), without Docker "
@@ -745,7 +747,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
         # before the build is checked.
         caller = caller or setup_caller(params)
         early_model = _model_type(params, caller.ref, caller.platform)
-    if native_path and _native_model(early_model, checkpoint):
+    if native_path and _native_model(native_path, early_model, checkpoint):
         native = native_deepvariant.require(
             native_path,
             early_model,
@@ -778,7 +780,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
         _require_arm64_wgs(model_type, checkpoint)
     if native and (model_type != native.model_type or native.weights is None):
         # The reads chose the model.
-        if _native_model(model_type, checkpoint):
+        if _native_model(native.path, model_type, checkpoint):
             native = native_deepvariant.require(native.path, model_type)
         else:
             native = None

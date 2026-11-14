@@ -59,3 +59,27 @@ def test_composite_actions_are_held_to_the_same_policy(
     )
     monkeypatch.setattr(policy, "ROOT", tmp_path)
     assert any("full commit SHA" in item for item in policy.validate_workflows())
+
+
+@pytest.mark.parametrize(
+    ("queue", "cancel", "valid"),
+    [("max", "false", True), ("max", "true", False), ("all", "false", False)],
+)
+def test_new_github_queue_schema_is_validated_despite_actionlint_lag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    queue: str,
+    cancel: str,
+    valid: bool,
+) -> None:
+    directory = tmp_path / ".github" / "workflows"
+    directory.mkdir(parents=True)
+    (directory / "test.yml").write_text(
+        f"concurrency:\n  group: ci-observer\n  queue: {queue}\n"
+        f"  cancel-in-progress: {cancel}\njobs:\n  test:\n    runs-on: ubuntu-latest\n"
+    )
+    monkeypatch.setattr(policy, "ROOT", tmp_path)
+    errors = policy.validate_workflows()
+    assert (not errors) == valid
+    if not valid:
+        assert any("queue" in error for error in errors)

@@ -1,0 +1,1 @@
+"""Lightweight command parser registration."""

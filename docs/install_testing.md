@@ -387,23 +387,21 @@ and judged (and mutated) by a separate Linux job.
 
 ## In CI
 
-`.github/workflows/install_lab.yml` runs the lab on every pull request and push
-to `main`, and weekly. A change only to files that can't affect the app or its
-actions skips it: `gui/docs/`, Markdown under `gui/`, the app's tests
-(`gui/app/tests/`, `gui/tests/`, `gui/tools/packaging/tests/`) and the other
-`gui-*.yml` workflows (`gui-build.yml`, which builds the app tested here, still
-runs it). Any other `gui/` change runs it, so a renamed action is caught on its
-own pull request (#625). Within an hour of a new app release,
-`app_release_watch.yml` also starts the weekly run's full matrix on `main` for
+`.github/workflows/install_lab.yml` runs on every push to `main` and nightly.
+On PRs, `pr_ci.yml` calls it only for installer, packaging, Pixi, CLI entry-point
+or shipped app-bundle changes; the `run-install-lab` label forces it.
+See [CI routing and cache budget](ci_routing.md) for the routes and coverage.
+Within an hour of a new app release,
+`app_release_watch.yml` also starts the nightly run's full matrix on `main` for
 that release (`-f app_release=<tag>`; the run is named after it):
 
 | Job | Machine | What runs |
 | --- | --- | --- |
-| `linux` | a fresh `ubuntu:24.04` container on `ubuntu-latest` | the CLI; again into a folder with a space; an update from the latest release; weekly, `selftest` |
+| `linux` | a fresh `ubuntu:24.04` container on `ubuntu-latest` | the CLI; again into a folder with a space; an update from the latest release; nightly, `selftest` |
 | `linux-app` | the same | the app's `.deb`: the latest release, or built from the tree (see below) |
-| `macos` | a new account on `macos-latest` | the CLI; weekly, `selftest` |
+| `macos` | a new account on `macos-latest` | the CLI; nightly, `selftest` |
 | `macos-app` | the runner's signed-in account | the app's DMG, chosen the same way |
-| `windows` | a new standard user on `windows-latest` | the CLI; weekly, each sabotage on its own runner |
+| `windows` | a new standard user on `windows-latest` | the CLI; nightly, each sabotage on its own runner |
 | `windows-app` | a new standard user's desktop on `windows-latest` | the app's installer, chosen the same way |
 | `windows-judge` | `ubuntu-latest` | judges every Windows job's evidence |
 
@@ -417,7 +415,7 @@ builds the app unsigned from this commit for Linux, macOS arm64 and Windows
 (about 14–24 extra runner minutes), and the tree jobs test that build. The judge
 still requires the platform's signature check to refuse it. A plan step the app
 lacks fails as "the test plan expects action X, which this app version doesn't
-have". Weekly `pinned` jobs also test the release with the CLI release it pins,
+have". Nightly `pinned` jobs also test the release with the CLI release it pins,
 exactly as on a user's machine. A sabotaged run's evidence (`--sabotage --no-judge`) is judged as a negative
 control: `lab.py judge` passes it only if it fails on the checks the sabotage
 breaks.

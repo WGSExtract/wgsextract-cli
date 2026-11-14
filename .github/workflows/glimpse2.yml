@@ -15,6 +15,7 @@ on:
       - tests/fixtures/imputation_hg002/**
       - tests/test_imputation.py
       - .github/workflows/glimpse2.yml
+      - "!**/*.md"
   workflow_dispatch:
     inputs:
       release_tag:
@@ -55,6 +56,7 @@ jobs:
         uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
           run-install: false
+          cache: false
 
       - name: Build and test the package
         shell: pwsh

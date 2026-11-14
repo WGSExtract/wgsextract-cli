@@ -81,7 +81,9 @@
       host = h("div.toasts", { role: "status", "aria-live": "polite" });
       vp().appendChild(host);
     }
-    var toast = h("div.toast", WGSM.icon(icon || "circle-check"), h("div.toast__body", text));
+    var body = h("div.toast__body");
+    body.textContent = String(text);
+    var toast = h("div.toast", WGSM.icon(icon || "circle-check"), body);
     host.appendChild(toast);
     setTimeout(function () {
       toast.remove();

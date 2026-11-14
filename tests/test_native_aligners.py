@@ -19,6 +19,7 @@ import pytest
 
 from tests.fake_tools import only_tools, python_tool
 from tests.htslib_helpers import needs_tools, run_wgsextract, write_fasta
+from tests.prepared_data import sparse_truncate
 from tests.test_alignment_commands import _programs, _samtools, _short_reads
 from tests.test_realign import _args as _realign_args
 from tests.test_realign import _old_alignment
@@ -29,6 +30,7 @@ from wgsextract_cli.core.alignment_memory import (
     estimate_mapping_memory,
 )
 from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.samtools_commands import sort_memory
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 
 GIB = 1024**3
@@ -353,6 +355,10 @@ def test_wgse_bwa_without_metal_aligns_on_the_cpu(tmp_path, bwa_bin):
     assert result.metrics["native_aligner_backend"] == "cpu"
 
 
+# A comment per read that makes _short_reads' files fill 2 threads' 1G sorts.
+_GENOME_SIZED = {"comment": 100_000}
+
+
 def _needed(reads, sort_memory):
     """The pipeline's memory estimate with wgse-bwa's GPU backend."""
     return estimate_mapping_memory(
@@ -371,7 +377,7 @@ def _needed(reads, sort_memory):
 def test_a_mac_short_of_ram_for_metal_sorts_in_less_memory(tmp_path, bwa_bin, ram):
     # #480: a 16 GB Mac. Sorting with less memory leaves the output unchanged;
     # the batch size (-K) never changes.
-    reads = _short_reads(tmp_path)
+    reads = _short_reads(tmp_path, **_GENOME_SIZED)
     _install_build(bwa_bin, "bwa")
     upstream_bam, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
     ram(2 * GIB + (_needed(reads, "1G") + _needed(reads, "768M")) // 2)
@@ -386,7 +392,7 @@ def test_a_mac_short_of_ram_for_metal_sorts_in_less_memory(tmp_path, bwa_bin, ra
 
 @pytest.mark.usefixtures("apple_silicon")
 def test_a_mac_too_small_for_metal_runs_wgse_bwa_on_the_cpu(tmp_path, bwa_bin, ram):
-    reads = _short_reads(tmp_path)
+    reads = _short_reads(tmp_path, **_GENOME_SIZED)
     _install_build(bwa_bin, "bwa")
     ram(2 * GIB + _needed(reads, "256M") - GIB // 4)
 
@@ -402,7 +408,7 @@ def test_a_mac_too_small_for_metal_runs_wgse_bwa_on_the_cpu(tmp_path, bwa_bin, r
 def test_issue747_gpu_does_not_inherit_an_over_budget_cpu_floor(
     tmp_path, bwa_bin, ram, constraint
 ):
-    reads = _short_reads(tmp_path)
+    reads = _short_reads(tmp_path, **_GENOME_SIZED)
     _install_build(bwa_bin, "bwa")
     upstream_bam, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
     budget = _needed(reads, "256M") - GIB // 4
@@ -452,7 +458,8 @@ def test_issue747_real_metal_realign_adapts_to_low_available_memory(
     low_bam = str(low_out / "x_aligned.bam")
     assert baseline.metrics["native_aligner_backend"] == "metal"
     assert low.metrics["native_aligner_backend"] == "cpu"
-    assert _sort_memory(low_bam) == "256M"
+    # Input sizing already bounds these tiny buffers; fallback must not raise them.
+    assert _sort_memory(low_bam) == _sort_memory(baseline_bam)
     baseline_records = _samtools("view", baseline_bam)
     assert len(baseline_records.splitlines()) == 2 * pairs
     assert _samtools("view", low_bam) == baseline_records
@@ -463,7 +470,7 @@ def test_issue747_real_metal_realign_adapts_to_low_available_memory(
 def test_issue747_cpu_fallback_retains_smaller_or_already_fitting_sort_budget(
     tmp_path, bwa_bin, ram, memory, cpu_fits
 ):
-    reads = _short_reads(tmp_path)
+    reads = _short_reads(tmp_path, **_GENOME_SIZED)
     _install_build(bwa_bin, "bwa")
     upstream_bam, _ = _align(
         reads, tmp_path / "off", "--native-aligners", "off", memory=memory
@@ -613,10 +620,10 @@ def mem3_bin(request):
     return only_tools(request, "bwa", "bwa-mem2", "samtools")
 
 
-def _mem3_reads(tmp_path):
+def _mem3_reads(tmp_path, **options):
     """Reads whose reference has bwa's index and bwa-mem2's, which bwa-mem3
     maps with."""
-    reads = _short_reads(tmp_path)
+    reads = _short_reads(tmp_path, **options)
     for indexer in (["bwa", "index"], ["bwa-mem2", "index"]):
         _run_tool([*indexer, reads.ref])
     return reads
@@ -676,7 +683,7 @@ def test_without_bwa_mem2s_index_wgse_bwa_aligns_in_bwas_place(tmp_path, mem3_bi
 def test_a_mac_short_of_ram_for_bwa_mem3_aligns_with_bwa(tmp_path, mem3_bin, ram):
     # bwa-mem3's index takes about twice bwa's memory: on a Mac where only
     # bwa's pipeline fits, bwa aligns.
-    reads = _mem3_reads(tmp_path)
+    reads = _mem3_reads(tmp_path, **_GENOME_SIZED)
     _install_bwa_mem3(mem3_bin)
 
     def needed(engine, gpu_bytes=0):
@@ -846,8 +853,7 @@ def test_realign_fast_streams_into_bwa_mem3_and_a_resumed_run_still_warns(
 
 def _bloat_0123(ref):
     """Make bwa-mem2's .0123 file a sparse 64 GiB (so bwa-mem2 can't load it)."""
-    with open(ref + ".0123", "r+b") as index:
-        index.truncate(64 * GIB)
+    sparse_truncate(Path(ref + ".0123"), 64 * GIB)
 
 
 def _mem3_needed(reads, engine, available_reads=2 * 140, **options):
@@ -867,7 +873,7 @@ def test_bwa_aligns_when_only_its_pipeline_fits_the_ram_available(
     # too little available it took bwa's place (and auto, having dropped
     # bwa-mem2 for low available RAM, picked the bigger stand-in). A sparse
     # .0123 makes bwa-mem2's index hs38-sized next to bwa-mem3's.
-    reads = _mem3_reads(tmp_path)
+    reads = _mem3_reads(tmp_path, **_GENOME_SIZED)
     _bloat_0123(reads.ref)
     _install_bwa_mem3(mem3_bin)
     bwa = _mem3_needed(reads, "bwa")
@@ -1204,7 +1210,7 @@ def test_736_wgse_bwa_on_cuda_aligns_when_bwa_mem3_cannot(
 ):
     # #736 keeps wgse-bwa --cuda next, for a bwa-mem3 that crashes (#727) or
     # whose pipeline doesn't fit the RAM available.
-    reads = _mem3_reads(tmp_path)
+    reads = _mem3_reads(tmp_path, **_GENOME_SIZED)
     _install_build(mem3_bin, "bwa", _cuda_capabilities("bwa"))
     _env_bwa_mem3(fake_pixi, mem3_bin, _CRASHING_BWA_MEM3 if why == "crashes" else None)
     if why == "does not fit":
@@ -1652,17 +1658,20 @@ def test_linux_wgse_minimap2_without_ram_for_its_gpu_runs_on_the_cpu(
     reads = _short_reads(tmp_path)
     _install_build(bindir, "minimap2", _minimap2_cuda())
 
+    size = Path(reads.r1).stat().st_size
+
     def needed(gpu_bytes):
         return estimate_mapping_memory(
             reads.ref,
             "minimap2",
             threads="2",
-            memory="1G",
+            # #781: the sort gets no more than these reads fill.
+            memory=sort_memory("2", "1G", input_bytes=size),
             samblaster=False,
             platform="ont",
             read_length=100,
             preset="map-ont",
-            input_bytes=Path(reads.r1).stat().st_size,
+            input_bytes=size,
             gpu_bytes=gpu_bytes,
         ).total
 

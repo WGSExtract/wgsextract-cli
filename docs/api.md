@@ -43,7 +43,7 @@ See docs/api.md.
 
 ## Results, progress and cancellation
 
-`api.Result` is the `CommandResult` model of the [result manifest](result-manifest.md): `status`, `exit_code`, `error`, `inputs`, `outputs`, `metrics`, `warnings`, `details`, `manifest` and `provenance`; `to_dict()` and `to_json()` give the `wgsextract.result/1` document. `text` is the human-readable report the CLI prints (without `--json`); it is not in the manifest. `api.json_schema(cls)` gives a JSON Schema of a Params class; `wgsextract help --all --json` includes it as each typed command's `input_schema`, with each property's flag as `x-cli-flag` (a positional argument's metavar as `x-cli-positional`).
+`api.Result` is the `CommandResult` model of the [result manifest](result-manifest.md): `status`, `exit_code`, `error`, `inputs`, `outputs`, `metrics`, `warnings`, `details`, `manifest` and `provenance`; `to_dict()` and `to_json()` give the `wgsextract.result/1` document. `text` is the human-readable report the CLI prints (without `--json`); it is not in the manifest. `api.json_schema(cls)` gives a JSON Schema of a Params class. Start with the compact index `wgsextract help --all --json`, then `wgsextract help <command> --json` includes the typed command's `input_schema`, with each property's flag as `x-cli-flag` (a positional argument's metavar as `x-cli-positional`).
 
 ### `api.ProgressEvent`
 
@@ -183,7 +183,7 @@ reads called haploid with bcftools and applied to the reference's chrM.
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 
 ### `api.extract.mito_vcf(MitoVcfParams)`
 
@@ -200,7 +200,7 @@ metric counts them).
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 
 ### `api.extract.mt_bam(MtBamParams)`
 
@@ -216,7 +216,7 @@ Extract the chrM reads (output role `mt_bam`).
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 
 ### `api.extract.bam_subset(BamSubsetParams)`
 
@@ -233,7 +233,7 @@ limited to a region or gene.
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `fraction` | `float` | required | `--fraction`, `-f` | Fraction of the reads to keep, e.g. 0.1 for 10%. |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
 | `gene` | `str \| None` | `None` | `--gene` | A gene name (e.g. BRCA1) to extract, looked up in the reference library's gene map (hg19/hg38 only); the region wins when both are set. |
@@ -253,7 +253,7 @@ Warns when the sample appears female, whose chrY reads are mismapped.
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `poz` | `bool` | `False` | `--poz` | Restrict Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37/38 only). |
 
 ### `api.extract.ydna_vcf(YdnaVcfParams)`
@@ -272,7 +272,7 @@ metric counts them).
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `ybrowse` | `bool` | `False` | `--ybrowse` | Call installed, allele-annotated yBrowse SNP targets (GRCh38 only; no downloads). |
 
 ### `api.extract.y_mt_extract(YMtExtractParams)`
@@ -289,7 +289,7 @@ Extract the chrY and chrM reads together (output role `y_mt_bam`).
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 
 ### `api.extract.unmapped(UnmappedParams)`
 
@@ -307,7 +307,7 @@ for the FASTQs that have reads).
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `fastq` | `bool` | `False` | `--fastq` | Also write paired, single-end and singleton unmapped FASTQs. |
 
 ### `api.extract.custom(CustomParams)`
@@ -328,7 +328,7 @@ and holds each read once.
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Region (chrY:10000-20000), comma-separated regions, or a BED file. |
 | `gene` | `str \| None` | `None` | `--gene` | A gene name (e.g. BRCA1) to extract, looked up in the reference library's gene map (hg19/hg38 only); the region wins when both are set. |
 
@@ -361,7 +361,7 @@ are mismapped.
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `target` | `str` | required | `--target` | Region to extract: mt (chrM), y (chrY), ymt (chrY and chrM) or autox (autosomes and chrX). One of: `mt`, `y`, `ymt`, `autox` |
 | `formats` | `str \| None` | `None` | `--formats` | Comma-separated formats to write: fasta (consensus sequence), bam (reads) and vcf (variant calls), e.g. bam,vcf. |
 | `poz` | `bool` | `False` | `--poz` | With --target y and the bam format: restrict the BAM's Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37/38 only). |
@@ -392,7 +392,7 @@ checks that the temporary and final files fit on disk.
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Region (chrY:10000-20000), comma-separated regions, or a BED file to limit the output to. |
 | `gene` | `str \| None` | `None` | `--gene` | A gene name (e.g. BRCA1) to limit the output to, looked up in the reference library's gene map (hg19/hg38 only); the region wins when both are set. |
 
@@ -489,7 +489,7 @@ than one read group, which FASTQ can't keep apart.
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `r1` | `str` | required | `--r1` | Read 1 FASTQ to write: a bare name goes in outdir, a path is used as given. |
 | `r2` | `str` | required | `--r2` | Read 2 FASTQ to write: a bare name goes in outdir, a path is used as given. |
 | `se` | `str \| None` | `None` | `--se` | FASTQ for reads without a mate to write: a bare name goes in outdir, a path is used as given. |
@@ -562,7 +562,7 @@ without read groups gets one from `sample`, `library` and
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 
 ## `api.qc`
 
@@ -819,7 +819,7 @@ workspace.
 | `input_ref` | `Path \| None` | `None` | `--input-ref` | Reference FASTA a CRAM --r1 was encoded with (default: --ref when its sequence names, lengths and MD5s match the CRAM). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder, else the reads'). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 
 ### `api.align.realign(RealignParams)`
 
@@ -866,7 +866,7 @@ settings and tools are unchanged.
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 
 ## `api.pet`
 
@@ -897,7 +897,7 @@ required; the CLI's `--genome` may fill it in from a sample workspace.
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the reads' folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 
 ## `api.vcf`
 
@@ -1506,7 +1506,7 @@ multi-sample cohorts. Install panel chromosomes with `ref imputation`.
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `chromosomes` | `str \| None` | `None` | `--chromosomes` | Chromosomes, e.g. chr20 or chr1-22 (default: every installed one). |
 | `min_gp` | `float \| None` | `None` | `--min-gp` | Minimum max GP (default: GLIMPSE2 0.9; Beagle 0.95). |
 | `min_info` | `float \| None` | `None` | `--min-info` | Opt-in INFO/DR2 site filter; meaningful only for multi-sample cohorts. |
@@ -2780,7 +2780,7 @@ for every step.
 | --- | --- | --- | --- | --- |
 | `outdir` | `Path \| None` | `None` | `--outdir`, `-o` | Folder for the benchmark runs (default: out/benchmark in the working folder; config output_directory doesn't apply). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory limit per thread, e.g. '2G'; None picks a share of this machine's RAM (default: config memory_limit, else auto). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `profile` | `str` | `'standard'` | `--profile` | Benchmark size preset. smoke is chrM-only, standard is a scaled human-like genome, 200mb targets a ~200 MiB fake BAM, and full uses real chromosome lengths. One of: `200mb`, `full`, `smoke`, `standard` |
 | `coverage` | `float \| None` | `None` | `--coverage` | Override generated BAM coverage for the selected profile. |
 | `full_size` | `bool` | `False` | `--full-size` | Use real chromosome lengths for the generated benchmark reference. |

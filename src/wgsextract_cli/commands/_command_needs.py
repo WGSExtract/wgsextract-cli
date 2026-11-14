@@ -1,6 +1,6 @@
 """What each runnable command needs, and how long it typically takes.
 
-Each command's ``--help``, ``wgsextract help --all --json`` and
+Each command's ``--help``, ``wgsextract help <command> --json`` and
 docs/commands.md publish this. ``tools`` are the external tools every
 documented run needs; ``optional`` are those only some options or inputs use
 (an alternative caller or aligner, a VCF instead of a BAM, a download, or a
