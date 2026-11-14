@@ -13,7 +13,14 @@ from pathlib import Path
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.ci_test_dependencies import DOCS_TEST_MODULES, ROOT, test_inputs  # noqa: E402
+from scripts.ci_test_dependencies import (  # noqa: E402
+    DOCS_ONLY_SCRIPTS,
+    DOCS_TEST_MODULES,
+    GENERATED_DOCS,
+    ROOT,
+    docs_test_targets,
+    test_inputs,
+)
 
 SITE_PREFIXES = ("site/", "site_src/", "gui/site_src/", "gui/mockups/")
 SITE_SCRIPTS = (
@@ -49,6 +56,15 @@ INSTALL_FILES = {
 }
 
 
+def site_validation(paths: list[str]) -> bool:
+    return any(
+        path.startswith(("site_src/", "gui/site_src/"))
+        or path
+        in {"scripts/validate_site_sources.py", "gui/scripts/validate_site_sources.py"}
+        for path in paths
+    )
+
+
 def routes(
     paths: list[str],
     *,
@@ -61,6 +77,13 @@ def routes(
     )
     result["install"] = force_install_lab
     for path in paths:
+        if path.endswith(".md") or path in GENERATED_DOCS:
+            continue
+        docs_python = (
+            path in DOCS_ONLY_SCRIPTS
+            or (path.startswith("scripts/ci_") and path.endswith(".py"))
+            or path in DOCS_TEST_MODULES
+        )
         readers = set().union(
             *(
                 modules
@@ -68,14 +91,12 @@ def routes(
                 if path == pattern or fnmatch.fnmatchcase(path, pattern)
             )
         )
-        # Test inputs must be considered before broad site/prose/native skips.
-        if readers:
-            result["docs"] = True
-            if not readers <= DOCS_TEST_MODULES:
-                result["cli"] = True
-        if path.endswith(".py"):
+        # Non-Markdown test inputs still take precedence over area exclusions.
+        uncovered = readers - DOCS_TEST_MODULES
+        if path == "scripts/gen_api_docs.py":
+            uncovered.discard("tests/test_api.py")
+        if uncovered or (path.endswith(".py") and not docs_python):
             result["cli"] = True
-            result["docs"] = True
         if (
             path.startswith(SITE_PREFIXES)
             or path in SITE_SCRIPTS
@@ -83,8 +104,7 @@ def routes(
         ):
             result["site"] = True
             continue
-        if path.endswith(".md"):
-            result["docs"] = True
+        if docs_python:
             continue
         if path.startswith("native/"):
             result["native"] = True
@@ -97,12 +117,16 @@ def routes(
             continue
         # Unknown paths deliberately fail open to the full CLI matrix.
         result["cli"] = True
-        result["docs"] = True
     if draft:
-        result["fast"] = bool(paths)
+        result["fast"] = bool(paths) and any(
+            result[area] for area in ("cli", "native", "site", "install")
+        )
         result["draft_cli"] = result["cli"]
         for area in ("cli", "native", "site", "install"):
             result[area] = False
+    result["docs"] = bool(
+        docs_test_targets(paths, cli=result["cli"], repository=repository)
+    ) or (site_validation(paths) and not result["site"])
     return result
 
 
@@ -133,6 +157,12 @@ def main() -> None:
     paths = changed.decode().rstrip("\0").split("\0") if changed else []
     selected = routes(paths, force_install_lab=args.force_install_lab, draft=args.draft)
     output = "".join(f"{key}={str(value).lower()}\n" for key, value in selected.items())
+    output += (
+        "docs_tests="
+        + json.dumps(docs_test_targets(paths, cli=selected["cli"]))
+        + "\n"
+        + f"site_validation={str(site_validation(paths) and not selected['site']).lower()}\n"
+    )
     output += (
         "python_files="
         + json.dumps(

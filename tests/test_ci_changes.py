@@ -12,8 +12,13 @@ from typing import Any
 import pytest
 
 from scripts import pr_checks_ready
-from scripts.ci_changes import routes
-from scripts.ci_test_dependencies import DOCS_TEST_MODULES
+from scripts.ci_changes import routes, site_validation
+from scripts.ci_test_dependencies import (
+    DOCS_ONLY_SCRIPTS,
+    DOCS_TEST_TARGETS,
+    GENERATED_DOCS,
+    docs_test_targets,
+)
 from scripts.ci_test_dependencies import test_inputs as referenced_inputs
 from scripts.pr_checks_ready import checks_ready, latest_ready_run
 
@@ -23,29 +28,29 @@ from scripts.pr_checks_ready import checks_ready, latest_ready_run
     [
         (
             ["AGENTS.md", "native/README.md", ".github/copilot-instructions.md"],
-            {"docs"},
+            set(),
         ),
         (["docs/api.md", "docs/commands.md"], {"docs"}),
-        (["native/bwa/bwa.c"], {"native", "docs"}),
+        (["native/bwa/bwa.c"], {"native"}),
         # Mockup changes also feed the cross-platform review-server regressions.
-        (["gui/mockups/index.html", "site_src/index.md"], {"site", "cli", "docs"}),
-        (["gui/scripts/site_layout.py"], {"site", "cli", "docs"}),
-        (["gui/app/shared/config.ts"], {"docs"}),
-        (["src/wgsextract_cli/commands/info.py"], {"cli", "docs"}),
-        (["pixi.lock"], {"cli", "docs", "install"}),
-        (["scripts/installlab/lab.py"], {"cli", "docs", "install"}),
-        ([".github/actions/download-cache/action.yml"], {"cli", "docs", "install"}),
-        (["install.sh"], {"cli", "docs", "install"}),
-        (["uninstall.sh"], {"cli", "docs", "install"}),
-        (["uninstall_windows.bat"], {"cli", "docs", "install"}),
-        (["scripts/bootstrap_windows_prereqs.ps1"], {"cli", "docs", "install"}),
-        (["src/wgsextract_cli/main.py"], {"cli", "docs", "install"}),
-        (["gui/app/web/packagers/tauri/Cargo.lock"], {"install", "docs"}),
+        (["gui/mockups/index.html", "site_src/index.md"], {"site", "cli"}),
+        (["gui/scripts/site_layout.py"], {"site", "cli"}),
+        (["gui/app/shared/config.ts"], set()),
+        (["src/wgsextract_cli/commands/info.py"], {"cli"}),
+        (["pixi.lock"], {"cli", "install"}),
+        (["scripts/installlab/lab.py"], {"cli", "install"}),
+        ([".github/actions/download-cache/action.yml"], {"cli", "install"}),
+        (["install.sh"], {"cli", "install"}),
+        (["uninstall.sh"], {"cli", "install"}),
+        (["uninstall_windows.bat"], {"cli", "install"}),
+        (["scripts/bootstrap_windows_prereqs.ps1"], {"cli", "install"}),
+        (["src/wgsextract_cli/main.py"], {"cli", "install"}),
+        (["gui/app/web/packagers/tauri/Cargo.lock"], {"install"}),
         (
             ["native/bwa/bwa.c", "src/wgsextract_cli/main.py"],
-            {"native", "cli", "docs", "install"},
+            {"native", "cli", "install"},
         ),
-        (["unknown/new-config"], {"cli", "docs"}),
+        (["unknown/new-config"], {"cli"}),
     ],
 )
 def test_757_routes_isolated_and_mixed_prs(paths: list[str], enabled: set[str]) -> None:
@@ -74,6 +79,8 @@ def test_757_install_lab_label_does_not_repeat_the_cli_matrix() -> None:
     assert dict(line.split("=") for line in output.splitlines()) == {
         "cli": "false",
         "docs": "false",
+        "docs_tests": "[]",
+        "site_validation": "false",
         "native": "false",
         "site": "false",
         "install": "true",
@@ -91,12 +98,13 @@ def test_757_install_lab_label_does_not_repeat_the_cli_matrix() -> None:
 def test_763_drafts_defer_heavy_checks_until_ready(paths: list[str]) -> None:
     ready = routes(paths)
     draft = routes(paths, draft=True)
-    assert draft["docs"] == ready["docs"]
+    assert draft["docs"] == (bool(docs_test_targets(paths)) or site_validation(paths))
     assert draft["draft_cli"] == ready["cli"]
-    assert draft["fast"]
+    assert draft["fast"] == any(
+        ready[area] for area in ("cli", "native", "site", "install")
+    )
     assert not any(draft[key] for key in ("cli", "native", "site", "install"))
     assert not ready["fast"]
-    assert ready["cli"] or ready["docs"]
 
 
 def test_763_install_override_cannot_start_heavy_checks_on_a_draft() -> None:
@@ -113,11 +121,8 @@ def test_763_install_override_cannot_start_heavy_checks_on_a_draft() -> None:
         "gui/site_src/index.md",
         "gui/scripts/build_site.py",
         "gui/scripts/site_layout.py",
-        "gui/docs/distribution.md",
-        "gui/docs/CHANGELOG.md",
         "scripts/build_mockup_previews.py",
         "scripts/build_site.py",
-        "scripts/validate_site_sources.py",
         "native/bench/power.py",
         "native/new_python_tool.py",
         "gui/new_python_tool.py",
@@ -126,16 +131,30 @@ def test_763_install_override_cannot_start_heavy_checks_on_a_draft() -> None:
 def test_757_reviewed_test_inputs_never_bypass_pytest(path: str) -> None:
     selected = routes([path])
     assert selected["cli"] or selected["docs"], path
-    if path.endswith(".py"):
+    if path.endswith(".py") and path not in DOCS_ONLY_SCRIPTS:
         assert selected["cli"], path
 
 
 def test_757_every_test_referenced_input_selects_pytest() -> None:
     for path, readers in referenced_inputs().items():
+        readers = readers - {
+            "tests/test_ci_changes.py",
+            "tests/test_github_actions_policy.py",
+        }
+        if not readers:
+            continue
+        if path.endswith(".md") and path not in GENERATED_DOCS:
+            continue
+        if path in GENERATED_DOCS:
+            assert docs_test_targets([path]), path
+            continue
         selected = routes([path])
         assert selected["cli"] or selected["docs"], path
         if not selected["cli"]:
-            assert readers <= DOCS_TEST_MODULES, (path, readers)
+            assert readers <= {target.split("::")[0] for target in DOCS_TEST_TARGETS}, (
+                path,
+                readers,
+            )
 
 
 def test_757_new_test_imports_and_reads_are_discovered_without_a_path_allowlist(
@@ -143,7 +162,7 @@ def test_757_new_test_imports_and_reads_are_discovered_without_a_path_allowlist(
 ) -> None:
     for name in (
         "tests/test_reader.py",
-        "gui/site_src/future[raw].md",
+        "gui/site_src/future[raw].json",
         "gui/scripts/future.py",
         "native/bench/future.py",
     ):
@@ -154,14 +173,14 @@ def test_757_new_test_imports_and_reads_are_discovered_without_a_path_allowlist(
         "from pathlib import Path as RootPath\n"
         "from gui.scripts import future\n"
         "ROOT: RootPath = RootPath(__file__).resolve().parents[1]\n"
-        "DATA = ROOT / 'gui' / 'site_src' / 'future[raw].md'\n"
+        "DATA = ROOT / 'gui' / 'site_src' / 'future[raw].json'\n"
         "POWER = ROOT / 'native' / 'bench' / 'future.py'\n"
         "def test_reads_data():\n"
         "    assert DATA.read_text() == ''\n"
     )
     inputs = referenced_inputs(tmp_path)
     for path in (
-        "gui/site_src/future[raw].md",
+        "gui/site_src/future[raw].json",
         "gui/scripts/future.py",
         "native/bench/future.py",
     ):
@@ -181,7 +200,7 @@ def test_757_deleted_directory_inputs_still_run_their_readers(tmp_path: Path) ->
         "    for name in DIRECTORIES:\n"
         "        shutil.copytree(ROOT / name, tmp_path / name)\n"
     )
-    assert routes(["gui/site_src/deleted.md"], repository=tmp_path)["cli"]
+    assert routes(["gui/site_src/deleted.json"], repository=tmp_path)["cli"]
 
 
 @pytest.mark.parametrize("draft", [False, True])
@@ -219,10 +238,85 @@ def test_757_diff_routes_both_sides_of_a_cross_area_rename(
     )
     selected = dict(line.split("=", 1) for line in output.splitlines())
     assert selected["fast"] == str(draft).lower()
-    assert selected["docs"] == "true"
+    assert selected["docs"] == "false"
     assert selected["draft_cli"] == str(draft).lower()
     assert selected["cli"] == str(not draft).lower()
     assert selected["native"] == str(not draft).lower()
+
+
+@pytest.mark.parametrize(
+    ("paths", "validate"),
+    [
+        (["README.md", "docs/developer_setup.md", "gui/docs/CHANGELOG.md"], False),
+        (["site_src/index.md", "site_src/install.md"], True),
+        (["gui/site_src/index.md"], True),
+        (["native/deepvariant/README.md"], False),
+    ],
+)
+def test_913_prose_skips_python_tests_and_only_validates_site_sources(
+    paths: list[str], validate: bool
+) -> None:
+    for draft in (False, True):
+        selected = routes(paths, draft=draft)
+        assert not any(
+            selected[area] for area in ("cli", "native", "site", "install", "fast")
+        )
+        assert selected["docs"] == validate
+        assert site_validation(paths) == validate
+        assert docs_test_targets(paths) == []
+
+
+@pytest.mark.parametrize(
+    ("path", "targets"),
+    [
+        ("docs/api.md", ["tests/test_api.py::test_api_docs_are_up_to_date"]),
+        ("docs/commands.md", ["tests/test_cli_help.py"]),
+        ("site_src/cli.md", ["tests/test_cli_help.py"]),
+        ("scripts/regen.py", ["tests/test_regen.py"]),
+        ("scripts/bump_version.py", ["tests/test_bump_version.py"]),
+        (
+            "scripts/gen_api_docs.py",
+            ["tests/test_api.py::test_api_docs_are_up_to_date", "tests/test_regen.py"],
+        ),
+        (
+            "scripts/gen_command_docs.py",
+            ["tests/test_cli_help.py", "tests/test_regen.py"],
+        ),
+        (
+            "scripts/ci_changes.py",
+            ["tests/test_ci_changes.py", "tests/test_github_actions_policy.py"],
+        ),
+        (
+            "scripts/build_mockup_previews.py",
+            ["tests/test_build_mockup_previews.py"],
+        ),
+        ("tests/fixtures/api_cli_snapshot.json", ["tests/test_api_cli_parity.py"]),
+    ],
+)
+def test_913_light_checks_run_only_for_their_own_inputs(
+    path: str, targets: list[str]
+) -> None:
+    selected = routes([path])
+    assert not selected["cli"]
+    assert selected["docs"]
+    assert docs_test_targets([path]) == targets
+
+
+@pytest.mark.parametrize(
+    "paths",
+    [
+        ["src/wgsextract_cli/commands/info.py"],
+        ["src/wgsextract_cli/api/__init__.py", "docs/api.md"],
+        ["src/wgsextract_cli/cli/help.py", "docs/commands.md", "site_src/cli.md"],
+    ],
+)
+def test_913_cli_lane_owns_freshness_without_duplicate_docs_pytest(
+    paths: list[str],
+) -> None:
+    selected = routes(paths)
+    assert selected["cli"]
+    assert docs_test_targets(paths, cli=selected["cli"]) == []
+    assert selected["docs"] == site_validation(paths)
 
 
 @pytest.mark.parametrize(

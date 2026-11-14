@@ -5,8 +5,6 @@ import pytest
 
 from scripts import validate_github_actions as policy
 from scripts.ci_changes import routes
-from scripts.ci_test_dependencies import DOCS_TEST_TARGETS
-from scripts.ci_test_dependencies import test_inputs as repository_inputs
 
 
 def write_workflow(root: Path, uses: str) -> None:
@@ -260,20 +258,27 @@ def test_docs_fast_path_909_keeps_pages_for_handwritten_site_prose() -> None:
     assert not triggered & HEAVY_PUSH_WORKFLOWS
 
 
-def test_docs_fast_path_909_keeps_tests_for_reference_markdown() -> None:
-    docs_modules = {target.split("::")[0] for target in DOCS_TEST_TARGETS}
-    # Routing/policy fixtures name hypothetical inputs, not freshness dependencies.
-    docs_modules -= {"tests/test_ci_changes.py", "tests/test_github_actions_policy.py"}
-    references = {
-        path
-        for path, readers in repository_inputs().items()
-        if path.endswith(".md") and readers & docs_modules
-    } | {"docs/api.md", "docs/commands.md", "site_src/cli.md"}
-    for reference in references:
-        triggered = triggered_workflows([reference])
-        assert CLI_PUSH_WORKFLOWS <= triggered, reference
-        assert "gitleaks.yml" in triggered
-        assert not triggered & (HEAVY_PUSH_WORKFLOWS - CLI_PUSH_WORKFLOWS)
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "docs/api.md",
+        "docs/commands.md",
+        "site_src/cli.md",
+        "site_src/index.md",
+        "site_src/install.md",
+        "gui/site_src/index.md",
+        "gui/docs/distribution.md",
+        "gui/docs/CHANGELOG.md",
+    ],
+)
+def test_docs_fast_path_909_generated_markdown_never_starts_heavy_suites(
+    reference: str,
+) -> None:
+    triggered = triggered_workflows([reference])
+    assert not triggered & HEAVY_PUSH_WORKFLOWS
+    assert "gitleaks.yml" in triggered
+    assert triggered_workflows([reference], "pull_request") == {"pr_ci.yml"}
+    assert not routes([reference])["cli"]
 
 
 @pytest.mark.parametrize(
@@ -331,7 +336,9 @@ def test_filter_reader_keeps_push_and_pr_paths_separate(tmp_path: Path) -> None:
 def test_docs_fast_path_909_pr_prose_runs_only_area_checks(paths: list[str]) -> None:
     assert triggered_workflows(paths, "pull_request") == {"pr_ci.yml"}
     selected = routes(paths)
-    assert selected["docs"]
+    assert selected["docs"] == any(
+        path.startswith(("site_src/", "gui/site_src/")) for path in paths
+    )
     assert not any(selected[area] for area in ("cli", "native", "install"))
 
 

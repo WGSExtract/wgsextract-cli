@@ -4,7 +4,8 @@ PR area checks diffs the PR's **base...head**, not just the latest commit.
 `--no-renames` includes deletions and both sides of moves. Unknown paths run
 the full CLI matrix; mixed PRs run the union of their areas.
 
-Drafts retain the documentation route and run lint/routing-policy tests.
+Drafts retain input-selected documentation checks. Prose-only drafts do not
+start the lint/fast-test lane; code drafts still run lint/routing-policy tests.
 When the diff selects CLI tests, they also run the lightweight product subset
 (`test_microarray_vendor_formats.py`, `test_table_writer.py`), without a
 bioinformatics environment. The OS matrix and Install Lab wait until
@@ -15,18 +16,22 @@ root test suite's imports, path literals, composed pathlib paths and directory
 globs without executing tests. Inputs read only by the lightweight docs modules
 select that pytest job; other referenced inputs select the full CLI matrix.
 The map is deliberately conservative, including some fixture-data literals.
-Every Python change, including native and GUI/site Python, selects CLI pytest
-and explicit changed-file lint. CLI Python retains root Ruff/format rules and
+Product Python changes, including native and GUI/site Python, select CLI pytest
+and explicit changed-file lint. Known docs/CI generator scripts and lightweight
+test modules select their own checks instead of the full CLI matrix.
+CLI Python retains root Ruff/format rules and
 the existing strict CLI mypy gate; GUI Python retains its own compile gate and
 adds fatal-error Ruff checks without imposing unrelated root formatting.
 
 | PR changes | Checks selected (in addition to routing and the secret scan) | Estimated runner-minutes/push |
 |---|---|---|
-| Markdown, including `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, native READMEs | Documentation freshness | 1–3 (previously ~125) |
-| CLI source/tests | Four-OS CLI matrix, docs, CodeQL | ~90–100 (previously ~125) |
+| Hand-written Markdown, including `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, native READMEs | Only site-source validation if a site source changes; otherwise no docs job | <1 (previously ~125) |
+| Generated API/command reference only | Its freshness check in the cheap docs lane | 1–3 |
+| CLI source/tests | Four-OS CLI matrix (including freshness), CodeQL | ~90–100 (previously ~125) |
 | Installer, packaging, Pixi lock/manifest, CLI entry points | Above plus Install Lab and applicable package checks | ~125; no intended coverage reduction |
 | Native source only | Native build/ctest/package workflows and CLI help smoke | Native build cost + <1; removes ~125 of unrelated checks |
-| Site sources or `gui/mockups/` only | Pages checks plus pytest for referenced inputs | Usually 1–3; Python/other CLI test inputs select the matrix |
+| Site Markdown only | Site-source validation, plus command freshness for generated CLI cards | <1–3 |
+| Site code/assets or `gui/mockups/` | Pages checks plus pytest for referenced inputs | Usually 1–3; non-light test inputs select the matrix |
 | App source | Existing GUI checks; app packaging also selects Install Lab | Depends on the app area |
 
 These are estimates from the pre-routing workflow medians, not billing claims.
@@ -37,8 +42,10 @@ after deployment.
 
 ## Coverage
 
-The lightweight documentation job installs Python dependencies, not bioinformatics
-tools. It runs:
+The lightweight documentation job installs the package, pytest and jsonschema
+**only when its selected Python tests are nonempty**, never for prose alone.
+`DOCS_TARGET_INPUTS` in `scripts/ci_test_dependencies.py`, complemented by exact
+test-input reads, selects each target independently:
 
 - `tests/test_api.py::test_api_docs_are_up_to_date` (`docs/api.md`);
 - `tests/test_api_cli_parity.py` (the CLI structure/help snapshot);
@@ -48,12 +55,22 @@ tools. It runs:
 - `tests/test_regen.py` (real Git conflicts and regeneration/freshness checks,
   without bioinformatics tools);
 - `tests/test_build_mockup_previews.py` (static branch preview publishing);
-- routing/action-policy tests, including a meta-gate that every test-referenced
-  input selects pytest and every light-only input's readers run in that job;
+- routing/action-policy tests on CI scripts/workflows and test changes, not
+  arbitrary prose mentioned by routing fixtures;
 - `scripts/validate_site_sources.py` (existing source/front-matter validation).
 
-`DOCS_TEST_TARGETS` in `scripts/ci_test_dependencies.py` is the single source for
-the job's pytest selection and its coverage classification. For example,
+`DOCS_TEST_TARGETS` in `scripts/ci_test_dependencies.py` is the available target
+inventory, not an unconditional test batch. The router outputs `docs_tests`
+and `site_validation`. Prose outside `site_src/` and `gui/site_src/` selects
+neither; site prose runs both source validators with system Python and no
+package installation. This does not build Pages for a Markdown-only PR.
+Version/changelog prose does not run release-script tests.
+
+When the full CLI lane is selected, `docs_tests` is empty: its existing pytest
+suite already collects API freshness, CLI snapshot and help checks, plus the
+other light test modules. Freshness therefore runs in one lane, not both.
+The same routing/output contract applies to PR and merge-queue diffs, and
+`required` still waits for the selected docs or CLI checks. For example,
 `site_src/cli.md` cannot bypass the generated-card freshness assertion, and
 `native/bench/power.py` runs its unit tests through CLI pytest.
 
@@ -64,14 +81,12 @@ including docs: routing must not hide a secret in prose.
 
 ### Main-push prose filters
 
-CI Ubuntu, macOS, Windows and ARM64 skip Markdown-only main pushes except
-test-checked references: `docs/api.md`, `docs/commands.md`, `site_src/cli.md`,
-`site_src/index.md`, `site_src/install.md`, `gui/site_src/index.md`,
-`gui/docs/distribution.md` and `gui/docs/CHANGELOG.md`. Their ordered `paths`
-start with `**`, exclude `!**/*.md`, then re-include these references so
-freshness/version tests still run. CLI smoke, Linux aligners/DeepVariant,
+CI Ubuntu, macOS, Windows and ARM64, CLI smoke, Linux aligners/DeepVariant,
 GATK/GKL on Windows, GUI Tauri installer and CodeQL use
-`paths-ignore: ["**/*.md"]`. Mixed prose/code pushes still run normally.
+`paths-ignore: ["**/*.md"]` on main pushes, with no generated-reference or
+changelog exceptions. Mixed Markdown/code pushes still run normally.
+Generated references legitimately change with code inputs; the PR/merge-queue
+docs or CLI lane already checked freshness before `required` passed.
 The secret scan remains unfiltered on every main push; Pages retains its
 existing site-source filters.
 
@@ -84,7 +99,7 @@ policy files and generated/test-checked references still require PRs.
 
 All standalone `pull_request` workflows exclude prose-only Markdown diffs
 through ordered path exclusions (including Developer setup and Linux bwa-mem3
-parity). Only `pr_ci.yml` starts: its existing router retains documentation
+parity). Only `pr_ci.yml` starts: its router retains input-selected documentation
 freshness, gitleaks and `required`, including generated-reference checks.
 Mixed diffs still select the union of applicable code areas. PR event types
 and job-level draft gates are managed separately by #910 (draft PR CI gating).
