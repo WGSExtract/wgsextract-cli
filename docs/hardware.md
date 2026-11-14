@@ -359,8 +359,8 @@ the check, or is older than the oldest supported release, raises the
 - **Memory.** `wgse-bwa`'s GPU backend needs about 0.75 GiB more than bwa (8.76
   against 7.96 GB peak for 5M read pairs on hs38 at 8 threads), and 0.76 GiB
   more for a denser suffix-array sample after 20M reads. When the alignment's
-  memory estimate exceeds either the Mac's RAM less 2 GiB **or the RAM
-  available now**, the sort memory per thread is lowered (768M, 512M, 384M,
+  memory estimate exceeds the Mac's **physical RAM less 2 GiB**, the sort
+  memory per thread is lowered (768M, 512M, 384M,
   then 256M; sorting more often doesn't change the output). This also applies
   when realignment extracts FASTQs rather than streaming them.
   An oversized CPU estimate does **not** make an oversized GPU plan safe.
@@ -368,6 +368,16 @@ the check, or is older than the oldest supported release, raises the
   requested sort memory is also over budget, sort memory is capped at 256M
   per thread; an already smaller budget is retained. The conservative CPU
   estimate can still report `LOW`: this is not a reservation or a guarantee of RAM fit.
+  Momentarily low available RAM warns without forcing a large-RAM host onto
+  CPU; streaming realignment retains its existing available-RAM check.
+  CPU fallback was about **2.5× slower** on the measured 16 GB M1 whole genome.
+  To favor speed despite the swap risk, pass **`--prefer-native-gpu`** or set
+  **`prefer_native_gpu = true`** in `config.toml`. This skips GPU-fit sort
+  reductions and CPU fallback, retaining `--memory` subject to the general
+  sort caps above; `--no-prefer-native-gpu` overrides the config opt-in.
+  The manifest records `native_aligner_backend_reason="memory_budget"` on
+  fallback (`"prefer_gpu"` on opt-in), estimate/budget bytes and requested/
+  actual sort memory; a resumed run retains these diagnostics.
   Workers and the batch size (`-K 100000000`) never change. Reducing K changes
   alignment records, including MAPQ and duplicate flags, so it is not an
   identity-preserving memory adjustment

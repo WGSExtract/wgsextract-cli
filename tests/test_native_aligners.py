@@ -404,28 +404,118 @@ def test_a_mac_too_small_for_metal_runs_wgse_bwa_on_the_cpu(tmp_path, bwa_bin, r
 
 
 @pytest.mark.usefixtures("apple_silicon")
-@pytest.mark.parametrize("constraint", ["total", "available"])
 def test_issue747_gpu_does_not_inherit_an_over_budget_cpu_floor(
-    tmp_path, bwa_bin, ram, constraint
+    tmp_path, bwa_bin, ram, caplog
 ):
+    caplog.set_level("INFO")
     reads = _short_reads(tmp_path, **_GENOME_SIZED)
     _install_build(bwa_bin, "bwa")
     upstream_bam, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
     budget = _needed(reads, "256M") - GIB // 4
-    if constraint == "total":
-        ram(2 * GIB + budget)
-    else:
-        ram(64 * GIB, available=budget)
+    ram(2 * GIB + budget)
 
     bam, result = _align(reads, tmp_path / "out")
 
     assert _sort_memory(bam) == "256M"
     assert _samtools("view", bam) == _samtools("view", upstream_bam)
     assert result.metrics["native_aligner_backend"] == "cpu"
+    assert result.metrics["native_aligner_backend_reason"] == "memory_budget"
+    assert result.metrics["native_aligner_memory_estimate_bytes"] > budget
+    assert result.metrics["native_aligner_memory_budget_bytes"] == budget
+    assert result.metrics["native_aligner_sort_memory_requested"] == "1G"
+    assert result.metrics["native_aligner_sort_memory_actual"] == "256M"
+    assert "2.5x slower" in caplog.text
+    assert "--prefer-native-gpu" in caplog.text
+
+
+@pytest.mark.parametrize("host", ["apple_silicon", "linux_x86_64"])
+def test_issue747_large_ram_host_keeps_gpu_when_momentary_available_is_low(
+    tmp_path, bwa_bin, ram, request, host
+):
+    request.getfixturevalue(host)
+    reads = _short_reads(tmp_path, **_GENOME_SIZED)
+    capabilities = _cuda_capabilities("bwa") if host == "linux_x86_64" else None
+    _install_build(bwa_bin, "bwa", capabilities)
+    ram(64 * GIB, available=GIB)
+
+    bam, result = _align(reads, tmp_path / "out")
+
+    assert result.metrics["native_aligner_backend"] == (
+        "cuda" if host == "linux_x86_64" else "metal"
+    )
+    assert _sort_memory(bam) == "1G"
+
+
+@pytest.mark.usefixtures("apple_silicon")
+@pytest.mark.parametrize("preference", ["flag", "config", "config_disabled_by_flag"])
+def test_issue747_speed_opt_in_preserves_gpu_and_explicit_sort_memory(
+    tmp_path, bwa_bin, ram, monkeypatch, preference
+):
+    reads = _short_reads(tmp_path, **_GENOME_SIZED)
+    _install_build(bwa_bin, "bwa")
+    control, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
+    cpu = _needed(reads, "384M") - bwa_gpu_memory(reads.ref, 2 * 140)
+    ram(2 * GIB + cpu - GIB // 4)
+    options = ["--prefer-native-gpu"] if preference == "flag" else []
+    if preference != "flag":
+        monkeypatch.setitem(settings, "prefer_native_gpu", True)
+    if preference == "config_disabled_by_flag":
+        options = ["--no-prefer-native-gpu"]
+
+    bam, result = _align(reads, tmp_path / "out", *options, memory="384M")
+
+    gpu = preference != "config_disabled_by_flag"
+    assert result.metrics["native_aligner_backend"] == ("metal" if gpu else "cpu")
+    assert _sort_memory(bam) == ("384M" if gpu else "256M")
+    assert result.metrics["native_aligner_backend_reason"] == (
+        "prefer_gpu" if gpu else "memory_budget"
+    )
+    assert _samtools("view", bam) == _samtools("view", control)
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_issue747_resume_preserves_fallback_explanation_and_speed_opt_in_reruns(
+    tmp_path, bwa_bin, ram
+):
+    reads = _short_reads(tmp_path, **_GENOME_SIZED)
+    _install_build(bwa_bin, "bwa")
+    source, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
+    ram(2 * GIB + _needed(reads, "256M") - GIB // 4)
+    out = tmp_path / "out"
+
+    def run(**options):
+        return _run_realign(
+            source, reads.ref, out, r1=reads.r1, r2=reads.r2,
+            memory="1G", threads=2, no_preflight=True, **options,
+        )  # fmt: skip
+
+    first = run()
+    (bam,) = out.glob("*_aligned.bam")
+    written = bam.stat().st_mtime_ns
+    resumed = run()
+    assert bam.stat().st_mtime_ns == written
+    assert _native(resumed) == _native(first)
+    assert resumed.metrics["native_aligner_backend_reason"] == "memory_budget"
+    assert (
+        resumed.metrics["native_aligner_memory_estimate_bytes"]
+        > (resumed.metrics["native_aligner_memory_budget_bytes"])
+    )
+    assert resumed.metrics["native_aligner_sort_memory_actual"] == _sort_memory(
+        str(bam)
+    )
+    control = _samtools("view", str(bam))
+
+    preferred = run(prefer_native_gpu=True)
+    assert bam.stat().st_mtime_ns != written
+    assert preferred.metrics["native_aligner_backend"] == "metal"
+    assert preferred.metrics["native_aligner_sort_memory_actual"] == _sort_memory(
+        str(bam)
+    )
+    assert _samtools("view", str(bam)) == control
 
 
 @needs_tools("bwa", "samtools", "samblaster")
-def test_issue747_real_metal_realign_adapts_to_low_available_memory(
+def test_issue747_real_metal_realign_adapts_to_low_physical_memory(
     tmp_path, monkeypatch
 ):
     native = native_aligners.find_native_aligner("bwa", "auto")
@@ -447,7 +537,7 @@ def test_issue747_real_metal_realign_adapts_to_low_available_memory(
     monkeypatch.setattr(
         psutil,
         "virtual_memory",
-        lambda: memory._replace(total=16 * GIB, available=2 * GIB),
+        lambda: memory._replace(total=4 * GIB, available=2 * GIB),
     )
     low_out = tmp_path / "low-memory"
     low = _run_realign(
@@ -477,7 +567,7 @@ def test_issue747_cpu_fallback_retains_smaller_or_already_fitting_sort_budget(
     )
     cpu = _needed(reads, memory) - bwa_gpu_memory(reads.ref, 2 * 140)
     budget = (cpu + _needed(reads, "256M")) // 2 if cpu_fits else cpu - GIB // 4
-    ram(64 * GIB, available=budget)
+    ram(2 * GIB + budget)
 
     bam, result = _align(reads, tmp_path / "out", memory=memory)
 

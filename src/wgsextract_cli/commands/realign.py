@@ -48,7 +48,7 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.native_aligners import AlignerCommand
+from wgsextract_cli.core.native_aligners import AlignerCommand, native_gpu_preference
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.read_counts import (
     alignment_sample,
@@ -578,6 +578,11 @@ def _align_step(
             "ref": None if reference else job.ref,
             # Only when set, so earlier runs' journals still match.
             **({"fast": True} if job.fast else {}),
+            **(
+                {"prefer_native_gpu": True}
+                if native_gpu_preference(job.prefer_native_gpu)
+                else {}
+            ),
         },
         tools=_align_tools(aligner, job.platform, bool(job.gpu)),
         # 2: a CRAM's chunked realign could drop unplaced reads (#655).
@@ -654,7 +659,8 @@ def _resume_alignment(
 def _native_aligner_metrics(metrics: Mapping[str, Any]) -> dict[str, Any]:
     """The metrics naming the Apple Silicon aligner build that made an
     alignment, and bwa-mem3's output mode (AlignerCommand.record), kept in
-    the journal for a resume."""
+    the journal for a resume, including the native_aligner-prefixed memory
+    decision, estimate/budget bytes and requested/actual sort memory."""
     return {
         key: value
         for key, value in metrics.items()

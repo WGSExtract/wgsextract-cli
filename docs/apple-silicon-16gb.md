@@ -99,10 +99,16 @@ The test suite passed on the M1 (5,826 tests in 6 min 21 s).
 ## Defaults for 16 GB
 
 Automatic `wgse-bwa` GPU selection now requires the pipeline estimate to fit
-both physical RAM less OS headroom and the RAM available now. It first lowers
+physical RAM less OS headroom. It first lowers
 sort memory, down to 256M per thread. If no GPU plan fits, it selects CPU;
 an also-over-budget CPU sort is capped at 256M without increasing smaller
 requests. Workers and fixed K100M are unchanged for record identity.
+Low momentary available memory alone does not force a large-RAM host onto
+CPU; streaming realignment retains its available-memory guard.
+`--prefer-native-gpu` (or `prefer_native_gpu = true` in `config.toml`)
+opts into speed despite the swap risk, bypassing this fallback and retaining
+`--memory` subject to general sort caps. `--no-prefer-native-gpu` disables
+the config preference for one run.
 
 A whole short-read genome on this Mac can therefore use **CPU**, not Metal.
 Check the manifest's `native_aligner_backend` and the selected sort memory
@@ -466,9 +472,11 @@ as swap-free or assume that a near-budget case needs the same trade-off.
   owner approval before a full-input swap/time/hash comparison.
 - Restricting CPU fallback to only *far* over-budget estimates could keep
   faster Metal for modest overestimates, but no threshold has been calibrated.
-  An opt-in `config.toml` speed preference could expose the known roughly
-  5.4-hour / 1,117-GiB-swap-out choice. Neither policy is implemented or
-  validated here; both require an owner decision and targeted confirmation.
+  That threshold policy is not implemented. The owner-approved speed opt-in,
+  `--prefer-native-gpu` / `prefer_native_gpu = true`, deliberately exposes
+  the known roughly 5.4-hour / 1,117-GiB-swap-out choice. Combining it with
+  `--memory 256M` is the approved next whole-genome comparison, not yet a
+  measured result in this table.
 
 ## Advice for 16 GB Macs
 

@@ -38,9 +38,10 @@ still bypasses realignment's disk refusal, not its memory guard; informational
 estimates are still printed. Realignment reports before FASTQ extraction and
 alignment reports again when the final aligner is selected.
 
-Native `wgse-bwa` GPU selection must satisfy **both** physical RAM less
-2 GiB of OS headroom and the RAM available now, including file-based
-realignment. Sort memory is lowered through the existing candidates down to
+Native `wgse-bwa` GPU selection must satisfy **physical RAM less
+2 GiB of OS headroom**. Low momentary available RAM alone warns rather than
+moving large-RAM hosts to CPU; streaming realignment keeps its existing
+available-RAM guard. Sort memory is lowered through the existing candidates down to
 256M per thread. An over-budget CPU estimate is not a larger GPU allowance:
 if no GPU plan fits, the CPU backend runs. When the CPU pipeline with the
 requested sort memory is also over budget, sort memory is capped at 256M per
@@ -53,6 +54,14 @@ SSD swap traffic must not be conflated
 ([#747](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
 The read-only `estimate_resources` API does not change settings itself:
 callers supply their resolved backend allowance and sort memory.
+`--prefer-native-gpu` / config `prefer_native_gpu = true` bypasses GPU-fit
+sort reductions and CPU fallback, favoring speed at the risk of heavy swap.
+Explicit `--memory` is retained subject to general sort caps. The manifest's
+`native_aligner_backend_reason`, `native_aligner_memory_estimate_bytes`,
+`native_aligner_memory_budget_bytes`, `native_aligner_sort_memory_requested`
+and `native_aligner_sort_memory_actual` explain fallback or opt-in and survive
+resume. The fallback estimate is the smallest considered GPU plan, not the
+selected CPU pipeline's estimate.
 On the measured 16 GiB M1 whole HG002 35x run, automatic CPU4/sort256
 reported 19.22 GiB / 10.78 GiB available and completed with identical ordered
 records. Swap-out fell from 1,116.92 to 47.87 GiB, **not zero**, while alignment

@@ -43,9 +43,11 @@ from wgsextract_cli.core.native_aligners import (
     INSTALL_HINT,
     AlignerCommand,
     NativeAligner,
+    NativeMemoryDecision,
     bwa_mem3_failure,
     find_bwa_mem3,
     find_native_aligner,
+    native_gpu_preference,
     native_setting,
     platform_binaries,
 )
@@ -171,6 +173,7 @@ class AlignJob:
     fast: bool = False
     # auto or off: WGS Extract's Apple Silicon aligner builds (native_aligners).
     native_aligners: str | None = None
+    prefer_native_gpu: bool | None = None
     # Whether wgse-bwa reads the reference's dense suffix-array file (opt-in).
     dense_suffix_array: bool | None = None
     # samtools options decoding a CRAM r1 (realign's, or _cram_reference's).
@@ -723,7 +726,7 @@ def _bwa_gpu_fit(
     tool = "bwa"
     gpu = bwa_gpu_memory(ref, reads, dense_sa_file=dense_sa is not None)
     dense_sa_bytes = dense_sa.stat().st_size if dense_sa else 0
-    budget = min(_gpu_budget(additional_ram_bytes), available_memory())
+    budget = _gpu_budget(additional_ram_bytes)
     amount, unit = parse_memory(memory)
     mib = amount * (1024 if unit == "G" else 1)
     candidates = [memory] + [
@@ -745,12 +748,37 @@ def _bwa_gpu_fit(
         )
         return estimate.total + additional_ram_bytes
 
+    if native_gpu_preference(job.prefer_native_gpu):
+        logging.info(
+            "Preferring %s's native GPU (--prefer-native-gpu): estimated %.1f GiB "
+            "against a %.1f GiB memory budget; retaining sort memory %s. "
+            "This speed preference may cause heavy swapping.",
+            native.binary,
+            needed(memory) / 1024**3,
+            budget / 1024**3,
+            memory,
+        )
+        return AlignerCommand(
+            tool,
+            native,
+            gpu=True,
+            dense_sa=dense_sa,
+            memory_decision=NativeMemoryDecision(
+                "prefer_gpu", needed(memory), budget, memory, memory
+            ),
+        ), memory
+
     fitting = next((m for m in candidates if needed(m) <= budget), None)
     if fitting is None:
+        requested_memory = memory
+        gpu_estimate = needed(candidates[-1])
         logging.info(
             f"Running {native.binary} on the CPU: with its {_gpu_name(native)} GPU backend "
-            f"the alignment is estimated to need {needed(candidates[-1]) / 1024**3:.1f} "
-            f"GiB, more than the {budget / 1024**3:.1f} GiB memory budget."
+            f"the alignment is estimated to need {gpu_estimate / 1024**3:.1f} "
+            f"GiB, more than the {budget / 1024**3:.1f} GiB memory budget. "
+            "CPU fallback was about 2.5x slower on the measured 16 GB M1 whole "
+            "genome. Use --prefer-native-gpu (config prefer_native_gpu=true) "
+            "to favor speed instead, accepting possible heavy swapping."
         )
         if mib > 256 and needed(memory, 0) > budget:
             logging.info(
@@ -759,7 +787,14 @@ def _bwa_gpu_fit(
                 memory,
             )
             memory = "256M"
-        aligner = AlignerCommand(tool, native, dense_sa=dense_sa)
+        aligner = AlignerCommand(
+            tool,
+            native,
+            dense_sa=dense_sa,
+            memory_decision=NativeMemoryDecision(
+                "memory_budget", gpu_estimate, budget, requested_memory, memory
+            ),
+        )
     else:
         if fitting != memory:
             logging.info(

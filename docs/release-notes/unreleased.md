@@ -80,7 +80,8 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 - `align` and `realign` no longer admit an over-budget `wgse-bwa` GPU plan
   just because the CPU estimate is also oversized. Native BWA GPU selection
-  now respects available RAM as well as physical RAM less OS headroom; when
+  now respects physical RAM less OS headroom without penalizing large-RAM
+  hosts for momentarily low available memory; when
   it falls back to CPU, an also-over-budget sort is capped at 256M per thread.
   Smaller or already fitting CPU requests are retained. Workers and fixed
   K100M are unchanged for alignment identity. CPU fallback can be much slower
@@ -89,6 +90,12 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   35x run retained every ordered record and reduced swap-out from 1,116.92
   to 47.87 GiB (95.7%), but alignment took 13.63 h rather than 5.40 h:
   reduced SSD swap traffic, not swap-free execution or a speed improvement.
+  `--prefer-native-gpu` (or config `prefer_native_gpu = true`) opts into GPU
+  speed despite that risk, retaining requested sort memory subject to general
+  sort caps; `--no-prefer-native-gpu` overrides config. Fallback messages name
+  the roughly 2.5× measured slowdown and this override. Manifest/resume
+  diagnostics retain the backend reason, estimate/budget bytes and requested/
+  actual sort memory.
 
 - Runs stopped with Ctrl-C or SIGTERM report `cancelled`, rather than `failed`,
   when a cleanup failure replaces the stop-signal handler's exit (#717).

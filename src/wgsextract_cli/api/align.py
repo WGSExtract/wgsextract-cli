@@ -85,6 +85,21 @@ def _dense_suffix_array_param() -> Any:
     )
 
 
+def _prefer_native_gpu_param() -> Any:
+    return param(
+        None,
+        help="Prefer wgse-bwa's native Metal/CUDA GPU even when its estimated "
+        "RAM exceeds the budget. Keeps the requested sort memory instead of "
+        "the low-memory CPU fallback; may swap heavily. General sort memory "
+        "limits still apply. Default: config prefer_native_gpu, else off.",
+        doc="Opt in to native wgse-bwa GPU speed over the RAM-budget fallback. "
+        "Keeps the requested sort memory, subject to general sort limits; "
+        "may swap heavily. None uses config prefer_native_gpu, else off.",
+        action="boolean_optional",
+        config_key="prefer_native_gpu",
+    )
+
+
 GPU_HELP = (
     "Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, "
     "minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU "
@@ -148,6 +163,7 @@ class AlignParams(Params):
     )
     fast: bool = _fast_param()
     native_aligners: str | None = _native_aligners_param()
+    prefer_native_gpu: bool | None = _prefer_native_gpu_param()
     dense_suffix_array: bool | None = _dense_suffix_array_param()
     gpu: bool = param(False, help=GPU_HELP, action="store_true")
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
@@ -221,6 +237,7 @@ class RealignParams(Params):
     )
     fast: bool = _fast_param()
     native_aligners: str | None = _native_aligners_param()
+    prefer_native_gpu: bool | None = _prefer_native_gpu_param()
     dense_suffix_array: bool | None = _dense_suffix_array_param()
     gpu: bool = param(False, help=GPU_HELP, action="store_true")
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
