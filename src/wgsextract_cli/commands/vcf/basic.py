@@ -156,6 +156,13 @@ def caller_setup(
     if resolved_ref:
         paths_to_check["--ref"] = resolved_ref
     verify_paths_exist(paths_to_check)
+    if not resolved_ref or not Path(resolved_ref).is_file():
+        raise WGSExtractError(
+            LOG_MESSAGES["ref_required_for"].format(task="variant calling")
+        )
+    from wgsextract_cli.core.calling_reference import validate_calling_reference
+
+    validate_calling_reference(input_file, resolved_ref)
     platform = input_platform(input_file, resolved_ref)
     warn_mixed_platforms(
         input_file,
