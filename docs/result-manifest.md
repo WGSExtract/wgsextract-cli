@@ -103,7 +103,7 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `build_unknown`, `build_unsupported` | microarray, Y haplogroup | The reference build is unknown or unsupported by the tool. |
 | `chip_ambiguous` | `info chip` | Two catalogued revisions match equally well. |
 | `gaps_not_excluded` | `vcf filter --exclude-near-gaps` | The reference or its gap table was not found, so variants near gaps were kept. |
-| `gvcf_reference_missing`, `unconfident_parent_genotypes` | `vcf trio` | A gVCF trio has no `--ref`, so reference blocks count only where they start at a variant; de novo calls rest on a parent's low-quality reference call (`count`, `total`). |
+| `gvcf_reference_missing`, `inconclusive_parent_genotypes` | `vcf trio` | A gVCF trio has no `--ref`, so reference blocks count only where they start at a variant; missing, partial or unassessed parental genotypes prevent inheritance classification. Inconclusive candidates are written separately (`count`, `mode`) and included in the personal report's overview warnings. |
 | `no_indel_scores` | `vcf cadd` | The CADD indel file is missing, so indels are not scored. |
 | `contigs_skipped` | `vcf to-fasta` | VCF contigs absent from the reference were left out (`count`). |
 | `mt_reference_unconfirmed` | `lineage mt-haplogroup` | Nothing confirms the chrM is the rCRS whose positions Haplogrep classifies: no rCRS header MD5, a reference chrM that isn't a recognisable rCRS, or VCF REF alleles that CHM13's rotated chrM fits too. CHM13's chrM itself is refused. |
@@ -115,7 +115,7 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `read_name_collision`, `sample_name_assumed` | `bam merge` | Different reads in two runs share names (`inputs`), so name-based tools may pair them; no input names its sample, so `SM` is the output name (`sample`). |
 | `mod_tags_partial`, `mod_models_differ` | `bam merge` | Only some runs carry MM/ML tags (`inputs` lists those without), or the runs' basecalls name different modified-base models (`models`). |
 | `few_modification_tags`, `opposite_strand_modifications`, `pacbio_5hmc_limited`, `unknown_platform` | `methylation` | The input's MM/ML modification tags are sparse, strand-mixed, or from a platform with limited calls. |
-| `genotype_ambiguous`, `high_copy_number`, `no_call` | `typing` | A star-allele or HLA call is ambiguous, has extra copies, or failed (`gene`). |
+| `genotype_ambiguous`, `high_copy_number`, `no_call` | `typing` | A star-allele or HLA call is ambiguous, has extra copies, or failed (`gene`). For CYP2D6, an ambiguous call (`filter`, `call_info`, `candidates`) or Cyrius's `LowQ_high_CN` (about 6 or more CYP2D6 copies; `cyp2d6_cyp2d7_copies`) writes no PharmCAT outside call. |
 | `repeat_outside_normal_range` | `typing repeats` | A repeat length is outside its normal range (`locus`). |
 | `repeat_unconfirmed`, `repeat_unavailable` | `typing str` | Only a low-support allele (one read) puts the repeat outside its normal range; the build's catalog lacks the repeat (NOTCH2NLC on hg19) (`locus`). |
 | `output_exists`, `input_failed` | `vep` | An input was skipped because its output exists (`path`), or failed while the batch went on. |
@@ -232,8 +232,10 @@ Other commands' metrics:
   `info --detailed`; plus `sex` and `significant_variants`.
 - `methylation` records sites, median coverage and weighted percent modified
   per modification (and, with `--format parquet`, the `rows` of the
-  `bedmethyl_table`); `typing` the called genotypes (`cyp2d6_genotype`, one
-  diplotype per HLA gene, flagged repeats, SMN1/SMN2 copy numbers with
+  `bedmethyl_table`); `typing` the called genotypes (`cyp2d6_genotype` with
+  `cyp2d6_call_status`, Cyrius's `cyp2d6_call_info` and candidate
+  `cyp2d6_raw_star_alleles`, and `cyp2d6_cyp2d7_copy_number`, Cyrius's
+  combined CYP2D6+CYP2D7 copy number; one diplotype per HLA gene, flagged repeats, SMN1/SMN2 copy numbers with
   `sma_carrier` and `sma_affected`); `repair` the records read and
   repaired.
 - `vep` records `inputs`, `succeeded`, `skipped` and `failed`, and `variants`

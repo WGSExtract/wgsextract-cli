@@ -43,22 +43,47 @@ LICENSE_NOTE = " (Cyrius's PolyForm Strict license allows noncommercial use only
 # CYP2D6 through CYP2D7 (GRCh38 chr22:42123192-42145745) with 40 kb either side,
 # so reads pair up within it. No Cyrius normalization region is within 0.1 Mb.
 RESCUE_WINDOW = (42_080_000, 42_180_000)
-# Filters Cyrius reports for a genotype; LowQ_high_CN is a call at 4+ copies.
-CALLED_FILTERS = ("PASS", "LowQ_high_CN")
+# Cyrius's Call_info when its called variants fit one diplotype of main star
+# alleles. It says pick_common_allele when it dropped rare alternatives
+# (*34, *39, *4.009, *139) and more_than_one_match when several fit; such a
+# call stays unresolved even under a PASS filter.
+UNIQUE_CALL_INFO = ("unique_match", "unique_star")
 
 
 @dataclass(frozen=True)
 class CyriusCall:
     genotype: str | None
     filter: str | None
+    # Total_CN is CYP2D6 and CYP2D7 together (normally 4), not CYP2D6 alone.
     total_cn: int | None
     total_cn_raw: float | None
     median_depth: float | None
+    call_info: str | None = None
+    raw_star_alleles: tuple[str, ...] = ()
+    cnv_group: str | None = None
+
+    @property
+    def resolved(self) -> bool:
+        """Cyrius stands behind one diplotype: a PASS filter on a unique match.
+        Its LowQ_high_CN filter (about 6 or more CYP2D6 copies) isn't enough."""
+        return bool(
+            self.genotype
+            and self.filter == "PASS"
+            and self.call_info in UNIQUE_CALL_INFO
+            and "/" in self.genotype
+            and ";" not in self.genotype
+        )
+
+    @property
+    def status(self) -> str:
+        if not self.genotype:
+            return "no_call"
+        return "resolved" if self.resolved else "unresolved"
 
     @property
     def outside_call(self) -> str | None:
-        """The genotype to give PharmCAT: only one Cyrius stands behind."""
-        if self.genotype and self.filter in CALLED_FILTERS:
+        """The genotype to give PharmCAT: only a resolved one."""
+        if self.genotype and self.resolved:
             return pharmcat_copy_numbers(self.genotype)
         return None
 
@@ -78,16 +103,30 @@ def pharmcat_copy_numbers(genotype: str) -> str:
     return re.sub(r"(\*\d+)x(\d+)", name, genotype)
 
 
+def _text(value: object) -> str | None:
+    return str(value) if value not in (None, "", "None") else None
+
+
+def _present(*parts: str | None) -> str:
+    return "; ".join(p for p in parts if p) or "no details"
+
+
 def parse_cyrius(json_path: str) -> CyriusCall:
     with open(json_path) as f:
         result = next(iter(json.load(f).values()))
-    genotype = result.get("Genotype")
+    raw = result.get("Raw_star_allele")
+    # A list of candidate haplotype sets ("*1_*4"); a plain string for the
+    # deletion/hybrid groups Cyrius names directly ("*5/*5").
+    raw_alleles = [raw] if isinstance(raw, str) else raw or []
     return CyriusCall(
-        genotype=genotype if genotype and genotype != "None" else None,
-        filter=result.get("Filter"),
+        genotype=_text(result.get("Genotype")),
+        filter=_text(result.get("Filter")),
         total_cn=result.get("Total_CN"),
         total_cn_raw=result.get("Total_CN_raw"),
         median_depth=result.get("Median_depth"),
+        call_info=_text(result.get("Call_info")),
+        raw_star_alleles=tuple(a for a in map(_text, raw_alleles) if a),
+        cnv_group=_text(result.get("CNV_group")),
     )
 
 
@@ -226,7 +265,8 @@ def run_cyp2d6(params: TypingCyp2d6Params) -> None:
             )
 
     call = parse_cyrius(str(Path(aln.outdir, f"{prefix}.json")))
-    depth = f"{call.median_depth}x" if call.median_depth is not None else "unknown"
+    depth = f"{call.median_depth:g}x" if call.median_depth is not None else "unknown"
+    alternatives = ";".join(call.raw_star_alleles) or None
     result = current_result()
     result.set_reference(aln.reference)
     result.add_output(Path(aln.outdir, prefix + ".tsv"), "cyp2d6_calls")
@@ -234,28 +274,45 @@ def run_cyp2d6(params: TypingCyp2d6Params) -> None:
     result.add_metrics(
         cyp2d6_genotype=call.genotype,
         cyp2d6_filter=call.filter,
-        cyp2d6_copy_number=call.total_cn,
+        cyp2d6_call_status=call.status,
+        cyp2d6_call_info=call.call_info,
+        cyp2d6_raw_star_alleles=alternatives,
+        cyp2d6_cnv_group=call.cnv_group,
+        cyp2d6_cyp2d7_copy_number=call.total_cn,
         median_depth=call.median_depth,
     )
-    logging.info(
-        f"CYP2D6: {call.genotype or 'no call'} (filter {call.filter}, "
-        f"{call.total_cn if call.total_cn is not None else '?'} copies; raw "
-        f"{call.total_cn_raw}; median depth {depth})"
+    cn = call.total_cn if call.total_cn is not None else "?"
+    facts = _present(
+        f"filter {call.filter}" if call.filter else "",
+        f"Cyrius {call.call_info}" if call.call_info else "",
+        f"candidates {alternatives}" if alternatives else "",
+        f"CNV group {call.cnv_group}" if call.cnv_group else "",
+        f"CYP2D6+CYP2D7 copy number {cn}, raw {call.total_cn_raw}",
+        f"median depth {depth}",
     )
-    if call.genotype and not call.outside_call:
-        warn(
-            "genotype_ambiguous",
-            f"Cyrius couldn't settle on one genotype ({call.filter}); no PharmCAT "
-            "outside call was written.",
-            gene="CYP2D6",
-            filter=call.filter,
-        )
-    elif call.filter == "LowQ_high_CN":
+    logging.info(
+        f"CYP2D6: {call.genotype or 'no call'}, {call.status.replace('_', ' ')} "
+        f"({facts})"
+    )
+    if call.filter == "LowQ_high_CN":
         warn(
             "high_copy_number",
-            "The call has 4 or more copies of CYP2D6; it's lower confidence.",
+            "Cyrius flagged a high copy number (about 6 or more CYP2D6 copies; "
+            f"CYP2D6+CYP2D7 copy number {call.total_cn}), so the call is low "
+            "confidence; no PharmCAT outside call was written.",
             gene="CYP2D6",
-            copies=call.total_cn,
+            cyp2d6_cyp2d7_copies=call.total_cn,
+        )
+    elif call.genotype and not call.resolved:
+        warn(
+            "genotype_ambiguous",
+            "Cyrius couldn't settle on one genotype "
+            f"({_present(call.filter, call.call_info, alternatives)}); no "
+            "PharmCAT outside call was written.",
+            gene="CYP2D6",
+            filter=call.filter,
+            call_info=call.call_info,
+            candidates=alternatives,
         )
     elif not call.genotype:
         warn(

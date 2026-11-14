@@ -122,18 +122,32 @@ weakest confidence label of those calls. For a gene the list marks as
 autosomal recessive (`inheritance` `AR`; the built-in lists take it from Table
 1) it gives a status:
 
-- **biallelic**: a homozygous call, or calls of two ALTs of one multi-allelic
+- **biallelic**: a homozygous call; calls of two ALTs of one multi-allelic
   call such as `1/2` (one on each copy; `vcf clinvar` keeps the split record
-  in `OLD_MULTIALLELIC`);
-- **possible biallelic**: two or more heterozygous calls, whose phase is
+  in `OLD_MULTIALLELIC`); or heterozygous calls phased on opposite copies
+  (trans: `0|1` and `1|0`) in one phase set;
+- **possible biallelic**: two or more heterozygous calls whose phase is
   unknown, so they may be on the same copy (cis) rather than one on each
   (trans); or a hemizygous or partly called genotype, which doesn't show the
   other copy;
-- **carrier**: one heterozygous call.
+- **carrier**: one heterozygous call, or several phased on the same copy (cis)
+  in one phase set.
 
-So an HFE p.C282Y homozygote shows as biallelic, and two heterozygous ATP7B
-calls as possible biallelic. The summary names each status, with the calls'
-confidence when it is not high. The report does not work out phase, variant
+Calls are on known copies only when their genotypes are phased (`|`) and share
+a phase set: the same chromosome and `FORMAT/PS`, as WhatsHap, LongPhase
+(`vcf phase`) and read-backed callers write it. Unphased calls, calls in
+different phase sets and pipes without a PS (statistical phasing doesn't say
+which calls were phased together) leave the phase unknown, as do a triploid
+or partly called genotype. Each gene's `phase` is `trans` when two of its
+heterozygous calls are on opposite copies, `cis` when all are on one copy,
+`unknown` otherwise, and null with fewer than two; each finding's `variant`
+carries its `phase_set`, and the summary adds `(cis)` or `(trans)` when the
+phase decided the status.
+
+So an HFE p.C282Y homozygote shows as biallelic, two unphased heterozygous
+ATP7B calls as possible biallelic, and two MUTYH calls phased in one block as
+carrier (cis) or biallelic (trans). The summary names each status, with the
+calls' confidence when it is not high. The report does not work out variant
 consequence or which HFE variant a call is, and X-linked genes get counts but
 no status. If the run's confidence table is missing, its manifest lists only
 the first 1,000 calls; the section then warns (`calls_truncated`) and gives
@@ -156,8 +170,11 @@ reason codes. The JSON document explains each code in `confidence_reasons`.
   `not_assessed` (with an `evidence_mismatch` warning) when the file no longer
   gives the call the run recorded. The detail gives the qualities and the
   IPD-IMGT/HLA release.
-- **CYP2D6 (Cyrius)**: `low` when Cyrius made no call or its filter did not
-  pass; otherwise the median depth against the `confidence_min_depth` and
+- **CYP2D6 (Cyrius)**: `low` when Cyrius made no call, its filter did not
+  pass, or its variants fit more than one diplotype (`genotype_unresolved`:
+  the value reads "unresolved" and the detail lists Cyrius's candidates);
+  `moderate` at best for runs that predate recording Cyrius's Call_info;
+  otherwise the median depth against the `confidence_min_depth` and
   `confidence_high_depth` settings (`low` below the minimum, `moderate`
   below the high threshold, `high` above it).
 - **SMA carrier status (SMNCopyNumberCaller)**: `low` when there is no SMN1
@@ -227,7 +244,8 @@ same document is the `details` of the report's result manifest
                      "manifest": "clinvar_pathogenic.vcf.manifest.json"},
         "variant": {"chrom": "chr13", "pos": 32340301, "ref": "C", "alt": "T",
                     "genotype": "0/1", "zygosity": "het", "depth": 34,
-                    "genotype_quality": 99, "alt_fraction": 0.5},
+                    "genotype_quality": 99, "alt_fraction": 0.5,
+                    "phase_set": null},
         "links": [],
         "disclaimer": "Technical result, not diagnosis."
       }],
@@ -240,7 +258,7 @@ same document is the `details` of the report's result manifest
       "counts": {"carried": 4, "in_gene_list": 1, "outside_gene_list": 3,
                  "unplaced": 0, "high": 1, "moderate": 0, "low": 0},
       "genes": [{"gene": "BRCA2", "inheritance": "AD", "heterozygous": 1,
-                 "homozygous": 0, "hemizygous": 0, "partial": 0,
+                 "homozygous": 0, "hemizygous": 0, "partial": 0, "phase": null,
                  "confidence": "high", "status": null, "status_text": ""}],
       "all_calls": "clinvar_pathogenic.confidence.tsv"
     },
