@@ -25,7 +25,7 @@ from wgsextract_cli.core.messages import LOG_MESSAGES, SYSTEM_MESSAGES
 from wgsextract_cli.core.mito_reference import (
     CHM13_CHRM,
     CHM13_CHRM_MD5,
-    refs_from_chm13,
+    ref_agreement,
     rotated_mito,
 )
 from wgsextract_cli.core.paths import absolute_path, java_local_path
@@ -254,7 +254,8 @@ def run_mt_haplogroup(params: MtHaplogroupParams, *, tree_links: bool = False) -
         else:
             # Filter VCF to chrM to avoid Haplogrep errors on large VCFs
             chr_m = extract_vcf_chromosome(input_file, "MT", temp_vcf)
-            _require_rcrs(temp_vcf, chr_m)
+            ref = params.ref if params.ref and params.ref.is_file() else None
+            _require_rcrs(temp_vcf, chr_m, fasta=str(ref) if ref else None)
             input_file = temp_vcf
             if haplocheck_cmd:
                 _require_heteroplasmy_levels(temp_vcf)
@@ -411,6 +412,14 @@ def _require_rcrs(
     rotated, so the header's MD5, the reference's sequence or, for a VCF, its
     REF alleles decide.
     """
+    rows: list[list[str]] = []
+    if path.lower().endswith(VCF_SUFFIXES):
+        query = ["bcftools", "query", "-f", "%CHROM\\t%POS\\t%REF\\n", path]
+        out = run_command(query, capture_output=True).stdout
+        rows = [line.split("\t") for line in out.splitlines() if line]
+        # A plain VCF's chromosome name is a guess: its records have the real one.
+        if len(names := {row[0] for row in rows}) == 1:
+            chr_m = names.pop()
     header = get_bam_header(path, cram_opt)
     length = sequence_lengths(header).get(chr_m)
     if length is not None and MITO_BY_LENGTH.get(length) != "rCRS":
@@ -420,21 +429,27 @@ def _require_rcrs(
             f"{chr_m} is {length} bp, not the 16569 bp rCRS that Haplogrep's "
             "positions refer to."
         )
-    found = CHM13_CHRM if _header_md5(header, chr_m) == CHM13_CHRM_MD5 else None
+    md5 = _header_md5(header, chr_m)
+    found = CHM13_CHRM if md5 == CHM13_CHRM_MD5 else None
+    checked = md5 is not None
     if found is None and fasta:
         sequence = run_command(
             ["samtools", "faidx", fasta, chr_m], capture_output=True, check=False
         )
         if sequence.returncode == 0:
+            checked = True
             found = rotated_mito("".join(sequence.stdout.splitlines()[1:]))
-    if found is None and path.lower().endswith(VCF_SUFFIXES):
-        query = ["bcftools", "query", "-f", "%POS\\t%REF\\n", path]
-        rows = (
-            line.split("\t")
-            for line in run_command(query, capture_output=True).stdout.splitlines()
-        )
-        if refs_from_chm13((int(pos), ref) for pos, ref in rows):
+    if found is None and rows:
+        rcrs, chm13 = ref_agreement((int(row[1]), row[2]) for row in rows)
+        if chm13 and not rcrs:
             found = CHM13_CHRM
+        elif chm13 and not checked:
+            warn(
+                "mt_reference_unconfirmed",
+                f"{chr_m}'s REF alleles fit both the rCRS and CHM13v2.0's "
+                "chrM, so the VCF's reference isn't confirmed as the rCRS; "
+                "pass --ref to check it.",
+            )
     if found:
         raise WGSExtractError(
             f"{chr_m} is {found}, not the rCRS: its positions aren't the ones "

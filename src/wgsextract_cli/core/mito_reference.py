@@ -34,7 +34,9 @@ def rotated_mito(sequence: str) -> str | None:
     (or isn't recognisably the rCRS at all, like a fake genome's)."""
     if sequence_md5(sequence) == CHM13_CHRM_MD5:
         return CHM13_CHRM
-    start = "".join(sequence.split()).upper().find(RCRS_ORIGIN)
+    bases = "".join(sequence.split()).upper()
+    # The circle may split the origin across the sequence's end and start.
+    start = (bases + bases[: len(RCRS_ORIGIN) - 1]).find(RCRS_ORIGIN)
     return f"an rCRS copy whose position 1 is at {start + 1}" if start > 0 else None
 
 
@@ -64,13 +66,13 @@ def pinned_sequences() -> tuple[str, str]:
     return rcrs, chm13
 
 
-def refs_from_chm13(records: Iterable[tuple[int, str]]) -> bool:
-    """Whether VCF REF alleles, as (1-based position, REF), were read from
-    CHM13's chrM rather than the rCRS: all agree with it, some not with rCRS."""
+def ref_agreement(records: Iterable[tuple[int, str]]) -> tuple[bool, bool]:
+    """Whether VCF REF alleles, as (1-based position, REF), all agree with the
+    rCRS, and whether they all agree with CHM13v2.0's chrM."""
     rcrs, chm13 = pinned_sequences()
     rows = [(pos - 1, ref.upper()) for pos, ref in records if pos >= 1 and ref]
 
     def agree(sequence: str) -> bool:
         return all(sequence[i : i + len(ref)] == ref for i, ref in rows)
 
-    return bool(rows) and agree(chm13) and not agree(rcrs)
+    return agree(rcrs), agree(chm13)
