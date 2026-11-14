@@ -428,16 +428,23 @@ class _Context:
     alignment: str | None
     vcf: str | None
     gene_list: str | Path | None = None
-    # A selected run's manifest -> the newer attempt that failed after it.
+    # A selected run's manifest -> the newer attempt that failed (or was
+    # cancelled) after it.
     superseded: dict[str, Source] = field(default_factory=dict)
 
     def latest(self, match: Callable[[Source], bool]) -> Source | None:
         """:func:`latest` of this sample's runs, remembering the newest
-        attempt when it is newer than the run chosen (so it failed)."""
-        chosen = latest(self.sources, match)
+        attempt when it ended unsuccessfully after the successful run chosen."""
         hits = [s for s in self.sources if match(s)]
+        chosen = latest(hits, lambda _: True)
         newest = max(hits, key=lambda s: s.finished, default=None)
-        if chosen and newest and newest.finished > chosen.finished:
+        if (
+            chosen is not None
+            and newest is not None
+            and chosen.status == "ok"
+            and newest.status != "ok"
+            and newest.finished > chosen.finished
+        ):
             self.superseded[_key(chosen.manifest)] = newest
         return chosen
 
@@ -557,8 +564,9 @@ def _section(
                     f" ({newer.finished or 'time not recorded'})"
                     f" {_ENDED.get(newer.status, f'ended {newer.status}')}"
                     + (f": {error}" if error else "")
-                    + f". Shown is the older {s.status} run of {s.finished},"
-                    " which may be out of date.",
+                    + f". Shown is the older {s.status} run"
+                    f" ({s.finished or 'time not recorded'}), which may be out"
+                    " of date.",
                 }
             )
     errors = [
@@ -1924,7 +1932,7 @@ def _source_links(
     source: Mapping[str, Any], link: Callable[[str, str | None], str]
 ) -> str:
     """A section source as 'command (status, finished)', linked to its
-    manifest, then the newer attempt that failed after it, if any."""
+    manifest, then the newer attempt that failed or was cancelled after it."""
 
     def label(run: Mapping[str, Any]) -> str:
         when = f", {run['finished']}" if run["finished"] else ""
