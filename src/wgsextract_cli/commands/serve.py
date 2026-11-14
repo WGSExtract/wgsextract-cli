@@ -238,16 +238,16 @@ def _serve_http(
     except OSError as e:
         raise UsageError(f"Can't listen on 127.0.0.1:{port}: {e}") from None
     url = server.url + "/v1"
-    _announce(
-        f"WGS Extract server on {url}",
-        url,
-        token,
-        discovery,
-        guard,
-        f"Try: curl -H 'Authorization: Bearer {token}' {url}/ops",
-        ready_json=ready_json,
-    )
     try:
+        _announce(
+            f"WGS Extract server on {url}",
+            url,
+            token,
+            discovery,
+            guard,
+            f"Try: curl -H 'Authorization: Bearer {token}' {url}/ops",
+            ready_json=ready_json,
+        )
         server.serve_forever()
     except (KeyboardInterrupt, SystemExit):
         logging.info("Stopping the server.")

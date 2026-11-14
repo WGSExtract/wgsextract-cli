@@ -19,7 +19,7 @@ import pytest
 
 from tests.fake_tools import python_tool
 from tests.smoke_utils import get_cli_command
-from tests.test_server import FAKE_DIR
+from tests.test_server import FAKE_DIR, interrupt_serve_announcement
 from tests.test_server import fake_data as fake_data
 from tests.test_server import work as work
 from wgsextract_cli.core.last_run import state_directory
@@ -158,39 +158,7 @@ def test_mcp_http_listens_on_loopback_only_and_cleans_up(work):
 def test_799_interrupting_discovery_announcement_exits_cleanly(
     work: Path, stop_signal: int
 ) -> None:
-    # The OS stream boundary: interrupt as soon as the ready line is printed,
-    # before HTTP startup, rather than depending on subprocess scheduling.
-    code = f"""
-import os, signal, sys
-from wgsextract_cli.main import main
-class InterruptOnReady:
-    def write(self, text):
-        result = sys.__stdout__.write(text)
-        if '"url"' in text:
-            sys.__stdout__.flush()
-            os.kill(os.getpid(), {stop_signal})
-        return result
-    def flush(self):
-        sys.__stdout__.flush()
-sys.stdout = InterruptOnReady()
-main()
-"""
-    proc = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            code,
-            "serve",
-            "--mcp-transport",
-            "http",
-            "--ready-json",
-            "--allow",
-            str(work),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
+    proc = interrupt_serve_announcement(work, stop_signal, "--mcp-transport", "http")
     assert json.loads(proc.stdout)["url"].startswith("http://127.0.0.1:")
     assert proc.returncode == 0
     assert not (state_directory() / "server" / "mcp.json").exists()
