@@ -39,7 +39,8 @@ HG002 was sequenced to **35x**, not 30x; neither trial measures a 30x duration.
 - **Historical timing.** GPU realignment took about 6 hours; SNP/indel
   calling took 68 minutes in the original trial. These GPU-paced figures
   are not predictions for the current automatic CPU fallback, which can
-  be substantially slower.
+  be substantially slower: the RAM-adaptive whole alignment measured
+  **13 h 38 min**, versus **5 h 24 min** for the prior Metal alignment stage.
 - **Memory.** Concurrent RSS peaked around 10 GiB only because macOS compressed
   and swapped memory. The historical GPU alignment moved about **1.1 TiB of
   swap-out traffic**, not just a few GiB of occupied swap
@@ -412,6 +413,63 @@ annotation, lineage or typing. Its clinical sections were `not_run`; this
 is a pipeline/resource measurement, not a populated clinical report or a new
 accuracy benchmark.
 
+### Whole-genome validation of the RAM-adaptive fallback
+
+The same HG002 **35x** input and 195-contig reference were rerun with the
+RAM-adaptive policy from #747 (low-memory realignment). Public `bam unalign`
+first recreated the full FASTQ pair with the original four-worker/1G collate
+plan; both sizes and fingerprints matched the original retained files.
+`realign --r1/--r2` then exercised the alignment stage with normal disk checks
+and no backend, worker or sort-memory overrides.
+
+| Whole 35x alignment stage | Prior Metal4 / sort512 | Automatic CPU4 / sort256 |
+| :--- | ---: | ---: |
+| Alignment, sort and inline index wall time | 323.96 min (5 h 24 min) | 817.65 min (13 h 38 min) |
+| Largest-process RSS | 8.298 GiB | 7.602 GiB |
+| Global swap-in traffic | 1,113.716 GiB | 46.935 GiB |
+| Global swap-out traffic | 1,116.922 GiB | 47.873 GiB |
+| Minimum free disk during measured stage | 37.42 GiB | 29.83 GiB |
+
+The native CPU mapper itself reported 48,102 s (**13 h 22 min**);
+the CLI alignment step, including final sorting/indexing, took 49,057 s.
+The separate extraction took **23.67 min**, indexing added no separate pass,
+and post-command record hashing/runner finalization took about **10.5 min**.
+These are not a repeated or randomized benchmark.
+
+The fallback reduced measured swap-out traffic by **95.7% (23.3×)**, but
+**did not eliminate swapping**. It cost **2.52×** the alignment wall time,
+about **8 h 14 min extra**. Sampled occupied swap was 0.96–2.15 GiB, not the
+47.87 GiB of cumulative traffic. Whole-run BWA footprint peaked at 8.781 GiB,
+with only 0.005 GiB wired; samblaster and sort peaked at 6.115/1.242 GiB.
+The conservative CPU RAM preflight still reported LOW, 19.22/10.78 GiB.
+
+All **835,260,415 records**, including 832,735,204 mapped records, matched
+the Metal control exactly as ordered SAM text:
+`e91f5279cf594fc4db133e157012a1d0c64f62d2792050ef376b0429f3c0fb6f`.
+The manifest recorded published wgse-bwa 0.12.1, backend `cpu`. No native
+code was changed. The 25 GiB harness guard never fired, and verified output
+BAM/index/FASTQs were retired after evidence collection; the original input,
+reference and truth files were retained.
+
+**Recommendation and remaining options.** Keep the conservative CPU fallback
+for this approximately 2×-over-budget whole-genome GPU plan when record
+identity and lower swap traffic matter more than speed. Do not describe it
+as swap-free or assume that a near-budget case needs the same trade-off.
+
+- Metal with **K10M** lowered BWA footprint from 9.795 to 7.366 GiB on the
+  70.7-million-read case, but changed MAPQ and duplicate flags. It is not an
+  identity-preserving automatic fix, and no whole K10M run was performed.
+- Metal with **K100M and sort256** preserved records and took 29.09 min
+  versus 29.38 min for sort512 on that small case, while sort footprint
+  fell from 2.342 to 1.222 GiB. Whole-genome swap traffic for this option
+  is **unmeasured**. It is the next useful single-change experiment, requiring
+  owner approval before a full-input swap/time/hash comparison.
+- Restricting CPU fallback to only *far* over-budget estimates could keep
+  faster Metal for modest overestimates, but no threshold has been calibrated.
+  An opt-in `config.toml` speed preference could expose the known roughly
+  5.4-hour / 1,117-GiB-swap-out choice. Neither policy is implemented or
+  validated here; both require an owner decision and targeted confirmation.
+
 ## Advice for 16 GB Macs
 
 - **Use the RAM-adaptive policy rather than forcing the old GPU choice.**
@@ -419,7 +477,9 @@ accuracy benchmark.
   35x genome**, wearing the SSD; its **LOW memory** warning (about 22 GiB
   estimated against about 11 GiB available) predicted the risk. Automatic
   `wgse-bwa` selection now honors that budget and can choose CPU with 256M
-  sort memory. See [#747, low-memory realignment](https://github.com/WGSExtract/wgsextract-cli/issues/747).
+  sort memory. The whole validation reduced traffic to 47.87 GiB, not zero,
+  at 13 h 38 min rather than 5 h 24 min for alignment.
+  See [#747, low-memory realignment](https://github.com/WGSExtract/wgsextract-cli/issues/747).
 - **Close what you can before `realign` and check its chosen backend.**
   CPU fallback can take substantially longer than the old GPU measurements;
   more workers add memory and are not an automatic speed improvement.

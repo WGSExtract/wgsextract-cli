@@ -85,7 +85,10 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   Smaller or already fitting CPU requests are retained. Workers and fixed
   K100M are unchanged for alignment identity. CPU fallback can be much slower
   than older GPU measurements; this addresses the excessive swap traffic on
-  16 GB Macs tracked in #747 (low-memory realignment).
+  16 GB Macs tracked in #747 (low-memory realignment). The same whole HG002
+  35x run retained every ordered record and reduced swap-out from 1,116.92
+  to 47.87 GiB (95.7%), but alignment took 13.63 h rather than 5.40 h:
+  reduced SSD swap traffic, not swap-free execution or a speed improvement.
 
 - Runs stopped with Ctrl-C or SIGTERM report `cancelled`, rather than `failed`,
   when a cleanup failure replaces the stop-signal handler's exit (#717).

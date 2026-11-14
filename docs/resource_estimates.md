@@ -53,6 +53,12 @@ SSD swap traffic must not be conflated
 ([#747](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
 The read-only `estimate_resources` API does not change settings itself:
 callers supply their resolved backend allowance and sort memory.
+On the measured 16 GiB M1 whole HG002 35x run, automatic CPU4/sort256
+reported 19.22 GiB / 10.78 GiB available and completed with identical ordered
+records. Swap-out fell from 1,116.92 to 47.87 GiB, **not zero**, while alignment
+wall time rose from 5.40 to 13.63 hours. This is a conservative safety/speed
+trade-off, not evidence that the estimate should shrink to the 7.60 GiB RSS.
+See the [whole validation and options](apple-silicon-16gb.md#whole-genome-validation-of-the-ram-adaptive-fallback).
 
 The memory estimate is the selected aligner's. On Linux, bwa-mem3 standing in
 for bwa (`--compat=bwa-mem`, chosen first since #736) needs about twice bwa's
