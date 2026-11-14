@@ -562,11 +562,15 @@ def test_two_pathogenic_alts_of_one_call_are_biallelic(sample, calls, status):
 MUTYH_CALLS = ((45329439, "T", "A"), (45330515, "C", "A"))
 
 
-def _phased_mutyh_report(tmp_path: Path, calls: list[str]) -> tuple[dict, str]:
+def _phased_mutyh_report(
+    tmp_path: Path, calls: list[str], calls_from: str = "table"
+) -> tuple[dict, str]:
     """Run vcf clinvar and report (CLI) on a one-sample GRCh38 VCF of MUTYH
     calls, each "POS REF ALT FORMAT VALUES" (DP30, GQ99, AD15,15 added),
     every ALT of them a ClinVar P/LP MUTYH record; MUTYH's report gene and
-    the HTML page's text."""
+    the HTML page's text. With ``calls_from`` "manifest" the report reads the
+    run's manifest findings (its confidence table gone), "truncated" too but
+    as if the manifest listed only some."""
     header = "".join(
         f"##FORMAT=<ID={tag},Number={number},Type={kind},Description=\"{tag}\">\n"
         for tag, number, kind in (("GT", 1, "String"), ("PS", 1, "Integer"),
@@ -598,6 +602,16 @@ def _phased_mutyh_report(tmp_path: Path, calls: list[str]) -> tuple[dict, str]:
     code, log = _cli("vcf", "clinvar", "--vcf-input", vcf, "--clinvar-file", clinvar,
                      "--outdir", str(results))  # fmt: skip
     assert code == 0, log
+    if calls_from != "table":
+        (manifest,) = results.glob("clinvar_pathogenic*.manifest.json")
+        document = json.loads(manifest.read_text())
+        document["outputs"] = [
+            o for o in document["outputs"] if o["role"] != "confidence_table"
+        ]
+        if calls_from == "truncated":
+            for entry in document["details"]["confidence"]:
+                entry["findings_truncated"] = True
+        manifest.write_text(json.dumps(document))
     code, log = _cli("report", "--input", vcf, "--results", str(results),
                      "--outdir", str(out))  # fmt: skip
     assert code == 0, log
@@ -653,6 +667,32 @@ def test_known_cis_and_trans_mutyh_calls_get_different_statuses(
     assert shown in mutyh["status_text"]
     assert shown in page
     assert "PS 45329439" in page
+
+
+@needs_tools("bcftools", "bgzip", "tabix")
+@pytest.mark.parametrize(
+    ("second", "calls_from", "status", "phase"),
+    [
+        ("0|1", "manifest", "carrier", "cis"),
+        ("1|0", "manifest", "biallelic", "trans"),
+        # Review of #877: more calls could break a cis carrier, not a trans pair.
+        ("0|1", "truncated", None, None),
+        ("1|0", "truncated", "biallelic", "trans"),
+    ],
+)
+def test_known_phase_survives_reading_the_manifest_findings(
+    tmp_path, second, calls_from, status, phase
+):
+    # Issue #840: without the confidence table the report reads the calls'
+    # phase sets from the run's manifest.
+    (first_pos, first_ref, first_alt), (pos, ref, alt) = MUTYH_CALLS
+    mutyh, _ = _phased_mutyh_report(
+        tmp_path,
+        [f"{first_pos} {first_ref} {first_alt} GT:PS 0|1:45329439",
+         f"{pos} {ref} {alt} GT:PS {second}:45329439"],
+        calls_from,
+    )  # fmt: skip
+    assert (mutyh["status"], mutyh["phase"]) == (status, phase)
 
 
 @needs_tools("bcftools", "bgzip", "tabix")
