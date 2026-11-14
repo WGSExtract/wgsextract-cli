@@ -6,6 +6,7 @@ two, yet the finished step was skipped and its output kept release one.
 """
 
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -60,6 +61,14 @@ class Workflow:
         return str(document["steps"][step]["run_id"])
 
 
+def rewrite(path: Path, text: str) -> None:
+    """Rewrite ``path`` as a later edit would: a second on, so filesystems
+    with coarse timestamps (a few ms) see a new mtime."""
+    path.write_text(text)
+    mtime = path.stat().st_mtime_ns + 1_000_000_000
+    os.utime(path, ns=(mtime, mtime))
+
+
 @pytest.fixture
 def workflow(tmp_path: Path) -> Workflow:
     flow = Workflow(tmp_path / "out")
@@ -74,7 +83,7 @@ def test_858_changed_file_inside_directory_input_reruns_and_regenerates_output(
     first_run = workflow.run_id("annotation")
 
     # The issue's reproduction: same name, same size, new content.
-    (workflow.database / "release.txt").write_text("release-two")
+    rewrite(workflow.database / "release.txt", "release-two")
     reasons = workflow.run()
 
     assert reasons["annotation"].startswith("ran: its database")
@@ -164,6 +173,19 @@ def test_858_directory_a_step_reports_reading_is_checked_on_resume(
 
     assert run()
     assert not run()
-    (models / "weights.txt").write_text("weights-two")
+    rewrite(models / "weights.txt", "weights-two")
     assert run()
     assert output.read_text() == "weights-two"
+
+
+def test_858_file_name_that_is_not_utf8_does_not_break_resume(
+    workflow: Workflow,
+) -> None:
+    try:
+        name = os.path.join(os.fsencode(workflow.database), b"latin1-\xe9.txt")
+        with open(name, "wb") as stream:
+            stream.write(b"x")
+    except (OSError, ValueError):
+        pytest.skip("this filesystem refuses file names that aren't UTF-8")
+    assert workflow.run()["annotation"].startswith("ran: its database")
+    assert workflow.run()["annotation"].startswith("skipped: complete")

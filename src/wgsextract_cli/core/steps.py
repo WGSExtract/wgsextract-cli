@@ -177,6 +177,11 @@ def _transient(name: str) -> bool:
     )
 
 
+def _name_bytes(text: str) -> bytes:
+    # File names that aren't valid UTF-8 reach Python as lone surrogates.
+    return text.encode("utf-8", "surrogateescape")
+
+
 def _directory_identity(root: Path) -> dict[str, Any] | None:
     """The identity of a directory's contents, without reading any file.
 
@@ -203,7 +208,7 @@ def _directory_identity(root: Path) -> dict[str, Any] | None:
         except OSError:
             if not prefix:
                 return None
-            digest.update(f"{prefix}\0unreadable\n".encode())
+            digest.update(_name_bytes(f"{prefix}\0unreadable\n"))
             continue
         subdirectories = []
         for entry in entries:
@@ -217,7 +222,7 @@ def _directory_identity(root: Path) -> dict[str, Any] | None:
                     target = os.readlink(entry.path)
                 except OSError:
                     target = "?"
-                digest.update(f"{name}\0unreadable\0{target}\n".encode())
+                digest.update(_name_bytes(f"{name}\0unreadable\0{target}\n"))
                 continue
             if stat.S_ISDIR(info.st_mode):
                 subdirectories.append((Path(entry.path), name + "/"))
@@ -225,7 +230,7 @@ def _directory_identity(root: Path) -> dict[str, Any] | None:
                 files += 1
                 total += info.st_size
                 line = f"{name}\0{info.st_size}\0{info.st_mtime_ns}\n"
-                digest.update(line.encode())
+                digest.update(_name_bytes(line))
         # Depth first, in name order: the same tree always hashes the same.
         pending.extend(reversed(subdirectories))
     return {
