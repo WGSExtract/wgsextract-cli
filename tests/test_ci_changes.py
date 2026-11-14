@@ -91,6 +91,7 @@ def test_757_install_lab_label_does_not_repeat_the_cli_matrix() -> None:
         "routed": "true",
         "tests": "[]",
         "ci": "false",
+        "generic_tests": "[]",
         "ubuntu_tests": "[]",
         "macos_tests": "[]",
         "windows_tests": "[]",

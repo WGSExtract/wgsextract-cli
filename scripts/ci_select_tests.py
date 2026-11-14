@@ -13,6 +13,7 @@ CI_TESTS = (
     "tests/test_ci_changes.py",
     "tests/test_ci_selection.py",
     "tests/test_github_actions_policy.py",
+    "tests/test_ci_certify.py",
 )
 SMOKE_TESTS = ("tests/test_microarray_vendor_formats.py", "tests/test_table_writer.py")
 OS_WORKFLOWS = {
@@ -327,6 +328,10 @@ def os_selection(
     paths: list[str], selection: list[str] | str, *, cli: bool
 ) -> dict[str, list[str] | str]:
     return {
-        os: selection if cli else list(SMOKE_TESTS) if workflow in paths else []
+        os: selection
+        if cli
+        else list(SMOKE_TESTS)
+        if (workflow in paths or ".github/workflows/os_tests.yml" in paths)
+        else []
         for os, workflow in OS_WORKFLOWS.items()
     }

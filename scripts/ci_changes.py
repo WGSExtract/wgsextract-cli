@@ -22,6 +22,7 @@ from scripts.ci_test_dependencies import (  # noqa: E402
     docs_test_targets,
     test_inputs,
 )
+from scripts.ci_test_tiers import SINGLE_OS_MODULES  # noqa: E402
 
 SITE_PREFIXES = ("site/", "site_src/", "gui/site_src/", "gui/mockups/")
 SITE_SCRIPTS = (
@@ -178,6 +179,21 @@ def main() -> None:
         + f"site_validation={str(site_validation(paths) and not selected['site']).lower()}\n"
     )
     output += "tests=" + (tests if isinstance(tests, str) else json.dumps(tests)) + "\n"
+    output += (
+        "generic_tests="
+        + json.dumps(
+            [
+                target
+                for target in (
+                    sorted(path.as_posix() for path in Path("tests").glob("test_*.py"))
+                    if tests == "all"
+                    else tests
+                )
+                if Path(target).name in SINGLE_OS_MODULES
+            ]
+        )
+        + "\n"
+    )
     for os, targets in os_selection(paths, tests, cli=selected["cli"]).items():
         output += (
             f"{os}_tests="

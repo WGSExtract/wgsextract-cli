@@ -1,6 +1,9 @@
 """Explicit slow-module partition; unclassified/new tests stay in the core tier."""
 
+import ast
 import hashlib
+import re
+from functools import cache
 from pathlib import Path
 
 # These suites exercise real workflows, resumability and multiple tool stages.
@@ -19,9 +22,78 @@ INTEGRATION_MODULES = frozenset(
     }
 )
 
-# Pure genotype parsing and repeat classification; real genotyping commands
-# remain cross-platform in test_genotyping_commands.py.
-SINGLE_OS_MODULES = frozenset({"test_genotyping.py"})
+SENSITIVE = re.compile(
+    r"subprocess|platform|sys\.|os\.|shutil|signal|chmod|symlink|newline|"
+    r"line.?ending|CRLF|\\r|samtools|bcftools|bwa|tool|shell|"
+    r"Popen|check_output|check_call|exec|importlib|__import__|"
+    r"getfixturevalue|pytest_plugins|usefixtures|runner|CliRunner",
+    re.IGNORECASE,
+)
+# Shared autouse isolation is infrastructure, not a shell-out fixture. Unknown
+# requested fixtures are deliberately rejected rather than guessed from names.
+PURE_FIXTURES = {
+    "tmp_path",
+    "tmp_path_factory",
+    "monkeypatch",
+    "capsys",
+    "caplog",
+    "recwarn",
+}
+
+
+def generic_test(path: Path) -> bool:
+    """Prove a test file free of platform signals and unreviewed fixtures."""
+    try:
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+    except (OSError, UnicodeError, SyntaxError):
+        return False
+    if SENSITIVE.search(ast.unparse(tree)):
+        return False
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            modules = (
+                [alias.name for alias in node.names]
+                if isinstance(node, ast.Import)
+                else [node.module or ""]
+            )
+            if any(
+                module.startswith(("tests.", "test_", "conftest", "smoke_utils"))
+                for module in modules
+            ) or (isinstance(node, ast.ImportFrom) and node.level):
+                return False
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.decorator_list:
+                decorators = " ".join(ast.unparse(d) for d in node.decorator_list)
+                if "fixture" in decorators:
+                    return False
+            if node.name.startswith("test_"):
+                parameters = {a.arg for a in node.args.args} - {"self"}
+                parametrized: set[str] = set()
+                for decorator in node.decorator_list:
+                    if (
+                        isinstance(decorator, ast.Call)
+                        and ast.unparse(decorator.func) == "pytest.mark.parametrize"
+                        and decorator.args
+                        and isinstance(decorator.args[0], ast.Constant)
+                        and isinstance(decorator.args[0].value, str)
+                    ):
+                        parametrized.update(
+                            part.strip() for part in decorator.args[0].value.split(",")
+                        )
+                if parameters - PURE_FIXTURES - parametrized:
+                    return False
+    return True
+
+
+@cache
+def generic_modules(root: Path) -> frozenset[str]:
+    return frozenset(
+        path.name for path in (root / "tests").glob("test_*.py") if generic_test(path)
+    )
+
+
+SINGLE_OS_MODULES = generic_modules(Path(__file__).resolve().parents[1])
 
 
 def test_tier(path: str) -> str:
