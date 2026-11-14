@@ -119,26 +119,18 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: macos-deepvariant
-          path: macos-deepvariant
-      - name: Publish the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.release_tag }}
-        run: |
-          case "$TAG" in macos-deepvariant-*) ;; *) echo "Tag must start with macos-deepvariant-" >&2; exit 1 ;; esac
-          (cd macos-deepvariant && sha256sum ./*.tar.gz | sed "s| ./| |" > SHA256SUMS)
-          {
-            echo "wgse-deepvariant: DeepVariant 1.10.0 for Apple Silicon (macOS 14+, arm64), with call_variants on the GPU, and its WGS model weights converted from google/deepvariant:1.10.0."
-            echo "Built from native/deepvariant at ${GITHUB_SHA} by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
-            echo "See native/deepvariant/README.md for installation, validation and licences."
-            echo
-            echo "| Package | SHA-256 |"
-            echo "| --- | --- |"
-            for f in macos-deepvariant/*.tar.gz; do echo "| $(basename "$f") | \`$(sha256sum "$f" | cut -d' ' -f1)\` |"; done
-          } > notes.md
-          gh release create "$TAG" macos-deepvariant/*.tar.gz macos-deepvariant/SHA256SUMS \
-            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "macOS DeepVariant $TAG" \
-            --notes-file notes.md --prerelease --latest=false
+          persist-credentials: false
+      - uses: ./.github/actions/publish-native-release
+        with:
+          tag: ${{ inputs.release_tag }}
+          tag-prefix: macos-deepvariant-
+          title: macOS DeepVariant ${{ inputs.release_tag }}
+          source: native/deepvariant
+          artifacts: macos-deepvariant
+          assets: "*.tar.gz"
+          sha256sums: "true"
+          description: |
+            wgse-deepvariant: DeepVariant 1.10.0 for Apple Silicon (macOS 14+, arm64), with call_variants on the GPU, and its WGS model weights converted from google/deepvariant:1.10.0.
+            See native/deepvariant/README.md for installation, validation and licences.
