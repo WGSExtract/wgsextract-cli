@@ -98,8 +98,8 @@ See AGENTS.md, "Docs fast path", for the narrower direct-push permission:
 policy files and generated/test-checked references still require PRs.
 
 All standalone `pull_request` workflows exclude prose-only Markdown diffs
-through ordered path exclusions (including Developer setup and Linux bwa-mem3
-parity). Only `pr_ci.yml` starts: its router retains input-selected documentation
+through ordered path exclusions or exact non-Markdown includes (Developer
+setup and Linux bwa-mem3 parity). Only `pr_ci.yml` starts: its router retains input-selected documentation
 freshness, gitleaks and `required`, including generated-reference checks.
 Mixed diffs still select the union of applicable code areas. PR event types
 and job-level draft gates are managed separately by #910 (draft PR CI gating).
