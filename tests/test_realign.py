@@ -625,7 +625,8 @@ def test_preflight_needs_room_for_the_extraction_only_when_extracting(
     # Extraction's temp space is freed before alignment; its FASTQs are not:
     # max(10, 4 + 3 + 2) when extracting, 3 + 2 when not.
     with pytest.raises(
-        WGSExtractError, match=f"~{needed} GiB disk on {tmp_path},.*--no-preflight"
+        WGSExtractError,
+        match=f"~{needed} GiB disk on {re.escape(str(tmp_path))},.*--no-preflight",
     ):
         realign.run(args)
     assert fakes.extracted == [] and fakes.aligned == []

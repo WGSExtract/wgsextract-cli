@@ -28,14 +28,19 @@ in 21.4 h on 7 threads of a 16 GB M1. The line names every filesystem the run
 writes to (the output directory, and a `temp_directory` on another disk) and
 sums what shares one.
 
-- **Disk** is what the run's own preflight checks: realign's extraction, sort
-  spills and output ([long reads](#long-read-disk)), DeepVariant's work
-  directory and output plus a CRAM 3.0 copy of CRAM 3.1 input (scaled to a
-  `--region`'s share of the reference), and [Clair3's temporary
-  space](#clair3s-temporary-space).
-- **RAM** is the estimate at the run's settings: the aligner's
-  ([minimap2](#minimap2-long-reads) or BWA's), DeepVariant's largest stage,
-  and 16 GiB for Clair3 (15.2 GiB measured with `--gpu` on 6 threads).
+- **Disk** is what the run's own preflight checks:
+  - realign: extraction, sort spills and output ([long
+    reads](#long-read-disk)), and BWA's missing reference indexes;
+  - DeepVariant: its work directory and output, for a `--region` scaled to
+    the share of the input's data it selects (its CRAI slices, or the BAM
+    index's reads per contig; the whole input when the index can't say);
+  - [Clair3's temporary space](#clair3s-temporary-space);
+  - for both callers, the CRAM 3.0 copy an older build needs of CRAM 3.1
+    input, sized as staging sizes it.
+- **RAM** is the estimate at the run's settings, sort memory lowered as the
+  run lowers it: the aligner's ([minimap2](#minimap2-long-reads) or BWA's),
+  DeepVariant's largest stage, and 16 GiB for Clair3 (15.2 GiB measured with
+  `--gpu` on 6 threads).
 - **Time** is approximate. It scales a measured or projected whole-genome
   time by the work (read bases, CRAM bytes or reference bases called) and
   divides by the threads, which no step does perfectly, and CPUs differ. It
@@ -47,6 +52,7 @@ sums what shares one.
 | Short-read realign, `wgse-bwa` on a GPU | 0.19 per Gb, plus 15% | the same: 131.4 s |
 | Short-read realign, bwa-mem3 (bwa-mem2 assumed the same) | 0.15 per Gb, plus 15% | the same: 97.7 s |
 | Long-read realign, minimap2 | 1.4 per GB of CRAM | #431: 21.4 h on 7 threads for 103.7 GB |
+| Short-read realign, minimap2 `--preset sr`; Parabricks | not estimated | |
 | DeepVariant, Google's CPU image | 60 | 30x: 15 h on 4 threads (projected from chr1 and chr20) |
 | DeepVariant ONT model | 113 | #431: 11.3 h on 10 threads, 51x |
 | wgse-deepvariant, CPU / `--gpu` | 28 / 12 | 30x: 7 h / 3 h on 4 threads (projected) |
@@ -56,7 +62,8 @@ The extra 15% covers FASTQ extraction and sorting: the 35x realign on a 16 GB
 M1 spent 23 of its 362 minutes extracting. That run (830 million reads, 125
 Gb) took 6 h; the table predicts about 3.5 h on 8 threads for `wgse-bwa` on
 its GPU, which was timed on an RTX 3090. A 30x short-read genome is about 100
-Gb of reads: about 20 h for bwa on 4 threads.
+Gb of reads: about 20 h for bwa on 4 threads. The callers count the bases
+they call on contigs the index places reads on.
 
 **Refusal.** The run stops before it writes anything when this computer
 can't meet the requirement:
@@ -64,9 +71,12 @@ can't meet the requirement:
 - a filesystem has less free space than the run needs on it, or
 - this computer has less RAM in total (or its cgroup or Docker VM allows
   less) than the run can't do without: the aligner's index and working
-  memory (minimap2's index build, 11.4 GiB for hs38) or DeepVariant's
-  largest stage on one thread at `--batch-size 256`. Sort buffers,
-  samblaster's table and read-scaled transients can swap, slowly.
+  memory on one thread (for minimap2's long reads, the larger of its index
+  build and its mapping: 11.9 GiB for #431's CRAM on hs38, whose index build
+  measured 11.17 GiB) or DeepVariant's largest stage on one thread at
+  `--batch-size 256`. Sort buffers, samblaster's table and read-scaled
+  transients can swap, slowly. BWA's floor needs the reference's size (its
+  `.fai` or `.ann`); without it there is none.
 
 Less RAM than the estimate at the run's settings is a structured
 `host_requirement_memory` warning, not a refusal: a 16 GB Mac realigned
@@ -80,8 +90,9 @@ the result. `--no-preflight` runs anyway, the requirement turned into that
 warning. With `--json`, or in the result manifest, `details.host_requirement`
 has the same data: `line`, `disk` (`paths`, `needed_bytes`, `free_bytes` per
 filesystem), `memory_bytes`, `memory_floor_bytes`, `memory_capacity_bytes`,
-`threads`, `approximate_hours`, `shortfalls` and `enforced`. A resumed
-DeepVariant run that has finished a stage, `--dry-run`, and Parabricks
+`threads`, `approximate_hours`, `shortfalls` and `enforced`. A DeepVariant
+rerun that keeps finished stages needs less than a fresh one, so it only warns.
+`--dry-run` and Parabricks
 (`--gpu` for short reads, which has [its own check](#nvidia-gpus-parabricks))
 print no requirement.
 
@@ -511,7 +522,7 @@ before it starts. The realign preflight first budgeted the output at 1.7x
 the input CRAM; this genome needed 1.79x, so it now budgets 1.8x ([long-read
 disk](#long-read-disk)). Each of these steps prints its [host
 requirement](#whole-genome-host-requirement) first: for this CRAM on 7 threads,
-realign asks for about 221 GiB, 26 GiB of RAM (refusing below 11.4 GiB) and
+realign asks for about 221 GiB, 26 GiB of RAM (refusing below 11.9 GiB) and
 21 h.
 
 ## Preflight behaviour

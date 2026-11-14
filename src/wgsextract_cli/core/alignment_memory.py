@@ -16,7 +16,7 @@ import math
 import re
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import psutil
 
@@ -135,7 +135,9 @@ def total_memory() -> int:
     Linux cgroup's lower limit, and never less than is available now."""
     total = int(psutil.virtual_memory().total)
     limits = [limit for _, limit in _cgroup_limits()]
-    return max(min([total, *limits]), available_memory())
+    # A cgroup's limit binds whatever is free; without one, free memory
+    # measured elsewhere (a container's) can exceed the host's total.
+    return min([total, *limits]) if limits else max(total, available_memory())
 
 
 def _cgroup_limits(
@@ -341,6 +343,43 @@ def bwa_gpu_memory(
     return _BWA_GPU_BYTES + math.ceil((2 * bases + 1) * 33 / (32 * 8))
 
 
+def _model_bases(ref: str | None, aligner: str) -> int:
+    """The reference bases the memory model sizes indexes by."""
+    return (
+        reference_bases(ref)
+        or (_fasta_bases_bound(ref) if aligner == "minimap2" else 0)
+        or _HUMAN_REFERENCE_BASES
+    )
+
+
+def least_mapping_memory(
+    ref: str | None,
+    aligner: str,
+    *,
+    memory: str = "256M",
+    preset: str | None = None,
+    input_bytes: int | None = None,
+    read_length: float | None = None,
+    gpu_bytes: int = 0,
+    **options: Any,
+) -> int:
+    """What the aligner can't run without on one thread (#690): its index,
+    its working memory and the pipeline's base overhead. For minimap2's long
+    reads, the larger of its index build and its mapping, whichever phase
+    the estimate's total picks."""
+    one = estimate_mapping_memory(
+        ref, aligner, threads="1", memory=memory, preset=preset,
+        input_bytes=input_bytes, read_length=read_length, gpu_bytes=gpu_bytes,
+        **options,
+    )  # fmt: skip
+    if aligner != "minimap2" or not _long_read_preset(preset):
+        return one.essential
+    index, build, mapping = _minimap2_memory(
+        _model_bases(ref, aligner), preset, 1, input_bytes, read_length
+    )
+    return index + max(build, mapping) + gpu_bytes + _PIPELINE_OVERHEAD_BYTES
+
+
 def estimate_mapping_memory(
     ref: str | None,
     aligner: str,
@@ -360,11 +399,7 @@ def estimate_mapping_memory(
     ``input_bytes`` (the read files' size) bounds its batches. ``gpu_bytes``
     (an aligner's GPU backend: bwa_gpu_memory) counts as working memory,
     and ``dense_sa_bytes`` (wgse-bwa's dense suffix-array file) as index."""
-    bases = (
-        reference_bases(ref)
-        or (_fasta_bases_bound(ref) if aligner == "minimap2" else 0)
-        or _HUMAN_REFERENCE_BASES
-    )
+    bases = _model_bases(ref, aligner)
     amount, unit = parse_memory(memory)
     per_thread = amount * (1024**3 if unit == "G" else 1024**2)
     # samtools sort reserves -@ × -m when it starts (#781).

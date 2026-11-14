@@ -1198,11 +1198,15 @@ class HostRequirement:
         memory = (
             "RAM not estimated" if self.memory is None else f"{_size(self.memory)} RAM"
         )
-        time = "time not estimated" if self.hours is None else _duration(self.hours)
         threads = f"{self.threads} thread{'' if self.threads == 1 else 's'}"
+        time = (
+            f"on {threads} (time not estimated)"
+            if self.hours is None
+            else f"{_duration(self.hours)} on {threads} (time approximate)"
+        )
         return (
             f"this {self.operation} run needs {' and '.join(disks) or 'no disk'}, "
-            f"{memory}, {time} on {threads}"
+            f"{memory}, {time}"
         )
 
     def shortfalls(
@@ -1230,6 +1234,7 @@ def check_host_requirement(
     requirement: HostRequirement,
     *,
     enforce: bool,
+    unenforced: str = "--no-preflight",
     disk_advice: str = "",
     memory_advice: str = "",
 ) -> None:
@@ -1237,8 +1242,8 @@ def check_host_requirement(
     (``details.host_requirement``) and refuse a run this computer can't meet:
     too little free disk, or less RAM than the run can't do without. Less
     RAM than its settings need is warned about. With ``enforce`` False
-    (``--no-preflight``) refusals are warnings too. The advice says how to
-    make the run fit the disk or the RAM."""
+    refusals are warnings too, naming why (``unenforced``). The advice says
+    how to make the run fit the disk or the RAM."""
     from .results import current_result, warn
     from .utils import WGSExtractError
 
@@ -1253,7 +1258,7 @@ def check_host_requirement(
     line = requirement.line(volumes)
     logging.log(
         logging.WARNING if refusals or cautions else logging.INFO,
-        "Host requirement: %s (time approximate).",
+        "Host requirement: %s.",
         line,
     )
     result = current_result()
@@ -1308,9 +1313,7 @@ def check_host_requirement(
         f"requirement: it needs {'; '.join(refusals + cautions)}."
     )
     if not enforce:
-        warn(
-            "host_requirement", f"{message} Running anyway (--no-preflight).", **details
-        )
+        warn("host_requirement", f"{message} Running anyway ({unenforced}).", **details)
         return
     result.warn("host_requirement", message, **details)
     raise WGSExtractError(

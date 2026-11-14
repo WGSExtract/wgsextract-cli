@@ -487,8 +487,9 @@ def test_capture_staging_counts_the_selected_slices_not_the_genome_fraction(
     Path(f"{big_cram.path}.crai").write_bytes(
         gzip.compress(data) if compressed else data
     )
+    # Staging's own check, past --no-preflight's requirement (#690).
     with pytest.raises(WGSExtractError, match=r"~32\.00 GiB"):
-        call(dv, "-r", "chr1:10-20", reads=big_cram.path)
+        call(dv, "-r", "chr1:10-20", "--no-preflight", reads=big_cram.path)
 
 
 @pytest.mark.parametrize(
@@ -511,7 +512,7 @@ def test_an_unreadable_crai_bounds_staging_by_the_whole_input(dv, big_cram, inde
         index.write_bytes(index_data)
     big_cram.volumes.free[dv.out] = 1.5
     with pytest.raises(WGSExtractError, match=r"~2\.00 GiB"):
-        call(dv, "-r", "chr1:10", reads=big_cram.path)
+        call(dv, "-r", "chr1:10", "--no-preflight", reads=big_cram.path)
 
 
 def test_crai_slices_follow_the_header_order_and_shared_slices_count_once(dv):
@@ -537,7 +538,7 @@ def test_crai_slices_follow_the_header_order_and_shared_slices_count_once(dv):
         with pytest.raises(WGSExtractError, match=rf"needs ~{needs} GiB"):
             run_wgsextract(
                 "vcf", "deepvariant", "--input", cram, "--ref", str(ref),
-                "--outdir", str(dv.out), "-r", region,
+                "--outdir", str(dv.out), "-r", region, "--no-preflight",
             )  # fmt: skip
 
 
@@ -1886,3 +1887,22 @@ def test_deepvariant_states_its_host_requirement_and_refuses_too_little_ram(
     assert dv.deepvariant.runs("make_examples") == []
     call(dv, "--no-preflight", out=dv.tmp / "small")
     assert dv.deepvariant.runs("make_examples")
+
+
+def test_deepvariant_rerun_with_finished_stages_warns_instead_of_refusing(
+    dv, monkeypatch, ram, caplog
+):
+    """#690 review: a rerun that keeps finished stages printed no host
+    requirement; it now does, and warns of a shortfall without refusing,
+    since the kept stages need less than a fresh run."""
+    dv.deepvariant.fail("call_variants")
+    with pytest.raises(WGSExtractError):
+        call(dv)
+    ram(4 * GIB)
+    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 4 * GIB)
+    caplog.clear()
+    with caplog.at_level("INFO"):
+        rerun(dv)
+    assert "this DeepVariant run needs" in caplog.text
+    assert "Running anyway (finished stages are kept)" in caplog.text
+    assert dv.deepvariant.stages() == ["call_variants", "postprocess_variants"]

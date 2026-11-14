@@ -35,10 +35,10 @@ from wgsextract_cli.api.align import RealignParams
 from wgsextract_cli.cli.registration.realign import register as register
 from wgsextract_cli.core import bwa_mem2, ultima
 from wgsextract_cli.core.alignment_memory import (
-    MappingMemory,
     available_memory,
     check_mapping_memory,
     estimate_mapping_memory,
+    least_mapping_memory,
     reference_bases,
 )
 from wgsextract_cli.core.alignment_metadata import cram_encoded_with, get_bam_header
@@ -271,7 +271,7 @@ def _require(
     check_host_requirement(
         HostRequirement(
             "realign",
-            tuple(disk),
+            (*disk, *needs.disk),
             needs.memory,
             int(threads),
             needs.hours,
@@ -283,34 +283,43 @@ def _require(
     )
 
 
-def _long_read_needs(
-    job: "RealignJob", path: str, reference: str | None, threads: str, memory: str
+def _minimap2_needs(
+    job: "RealignJob",
+    path: str,
+    reference: str | None,
+    threads: str,
+    memory: str,
+    *,
+    reads: int | None = None,
+    samblaster: bool = False,
 ) -> "_Needs":
-    """minimap2's RAM at these settings and what it can't run without (its
-    index build, known only with the reference's size), and the approximate
-    hours to realign the long reads in ``path``."""
+    """minimap2's RAM at these settings (its sort memory lowered as align
+    lowers it) and what it can't run without (its index, known only with the
+    reference), and for long reads the approximate hours to realign ``path``."""
     size = input_size(path)
     resolved = reference if reference and Path(reference).is_file() else None
-
-    def need(threads: str, memory: str) -> MappingMemory:
-        return estimate_mapping_memory(
-            resolved,
-            "minimap2",
-            threads=threads,
-            memory=memory,
-            samblaster=False,
-            platform=job.platform,
-            preset=align_cmd._minimap2_preset(job),
-            input_bytes=size,
-        )
-
-    hours = long_read_alignment_hours(path, size, int(threads))
+    preset = align_cmd._minimap2_preset(job)
+    options: dict[str, Any] = {
+        "samblaster": samblaster,
+        "reads": reads,
+        "platform": job.platform,
+        "preset": preset,
+        "input_bytes": size,
+    }
+    long_read = preset != "sr"
+    hours = long_read_alignment_hours(path, size, int(threads)) if long_read else None
     try:
-        least = need("1", "256M").essential if reference_bases(resolved) > 0 else None
-        return _Needs(need(threads, memory).total, least, hours)
+        sorting = sort_memory(threads, memory, input_bytes=size, log=False)
+        need = estimate_mapping_memory(
+            resolved, "minimap2", threads=threads, memory=sorting, **options
+        ).total
+        least = (
+            least_mapping_memory(resolved, "minimap2", **options) if resolved else None
+        )
     except (OSError, ValueError) as error:
         logging.debug("minimap2's memory wasn't estimated: %s", error)
         return _Needs(hours=hours)
+    return _Needs(need, least, hours)
 
 
 def _long_read_reference(job: RealignJob, target: str | None) -> str | None:
@@ -824,7 +833,7 @@ def _realign_long_reads(
         done_bytes=_tree_bytes(workdir),
     )
     _require(
-        job, disk, threads, _long_read_needs(job, job.input, reference, threads, memory)
+        job, disk, threads, _minimap2_needs(job, job.input, reference, threads, memory)
     )
     # samtools fastq's -T lists tags; the reference needs --reference.
     decode = ["--reference", cram_opt[1]] if cram_opt else []
@@ -1135,6 +1144,17 @@ def _run_steps(
             read_length=read_length,
             additional_ram_bytes=additional_ram_bytes,
         )
+    elif selected_aligner == "minimap2" and not job.gpu:
+        # Short reads with --aligner minimap2 (--preset sr).
+        needs = _minimap2_needs(
+            job,
+            job.input if need_extract else r1_path,
+            target,
+            threads,
+            memory,
+            reads=reads,
+            samblaster=align_cmd.duplicate_marker(paired=bool(r2_path)) == "samblaster",
+        )
     if job.aligner == "bwa-mem2" and target and Path(target).is_file():
         # As align's: bwa-mem2, or wgse-bwa-mem3 in its place, must fit.
         samblaster = align_cmd.duplicate_marker(paired=bool(r2_path)) == "samblaster"
@@ -1173,7 +1193,7 @@ def _run_steps(
             threads=threads,
             memory=memory,
         )
-        needs = _long_read_needs(job, job.r1, target, threads, memory)
+        needs = _minimap2_needs(job, job.r1, target, threads, memory)
     else:
         disk = _disk_requirements(
             job.input,
@@ -1433,11 +1453,13 @@ def _short_read_plan(
 
 class _Needs(NamedTuple):
     """An alignment's RAM at its settings and what it can't run without (its
-    floor), each None when not estimated, and its approximate hours."""
+    floor), each None when not estimated, its approximate hours, and disk it
+    needs beyond the alignment's (reference indexes to build)."""
 
     memory: int | None = None
     floor: int | None = None
     hours: float | None = None
+    disk: tuple[tuple[str, int], ...] = ()
 
 
 def _report_resource_estimates(
@@ -1488,13 +1510,12 @@ def _report_resource_estimates(
             gpu_bytes = align_cmd.aligner_gpu_bytes(aligner, resolved, reads)
             dense_sa_bytes = aligner.dense_sa_bytes
             if reference_bases(resolved) > 0:
-                # Without the reference's size a human reference stands in,
-                # even for a tiny one.
+                # Without the reference's size (its .fai or BWA's .ann) a
+                # human reference stands in, even for a tiny one.
                 floors.append(
-                    estimate_mapping_memory(
+                    least_mapping_memory(
                         resolved,
                         tool,
-                        threads="1",
                         memory=sorting,
                         samblaster=samblaster,
                         reads=reads,
@@ -1502,7 +1523,7 @@ def _report_resource_estimates(
                         read_length=read_length,
                         gpu_bytes=gpu_bytes,
                         dense_sa_bytes=dense_sa_bytes,
-                    ).essential
+                    )
                 )
         return estimate_resources(
             "realign",
@@ -1532,6 +1553,12 @@ def _report_resource_estimates(
         )
 
     reported = preflight_resources(estimate)
+    # BWA builds a missing index beside the reference before it aligns.
+    indexes = tuple(
+        (row.paths[0], row.components["reference_indexes"])
+        for row in (reported.resources if reported else ())
+        if row.paths and "reference_indexes" in row.components
+    )
     ram = (
         next(
             (r.estimated_bytes for r in reported.resources if r.resource == "memory"),
@@ -1551,4 +1578,4 @@ def _report_resource_estimates(
     hours = alignment_hours(
         engine, bool(chosen and chosen[0].gpu), count * length, int(threads)
     )
-    return _Needs(ram, floors[0] if floors else None, hours)
+    return _Needs(ram, floors[0] if floors else None, hours, indexes)

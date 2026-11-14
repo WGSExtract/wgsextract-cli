@@ -826,3 +826,24 @@ def test_staged_reads_state_the_host_requirement_once(
     assert caplog.text.count("Host requirement:") == 1
     codes = [warning.code for warning in result.warnings]
     assert codes.count("host_requirement_memory") == 1
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+@pytest.mark.parametrize("clair3_gpu", ["2.0.3"], indirect=True)
+def test_staged_copy_counts_in_the_host_requirement_before_transcoding(
+    tmp_path, clair3_gpu, monkeypatch, caplog
+):
+    """#690 review: a disk with room for the CRAM 3.0 copy or the tensors,
+    not both, passed both checks and wrote the whole copy before the recheck
+    refused. The first requirement now counts both."""
+    caplog.set_level(logging.INFO)
+    clair3_gpu.docker.add_image("my/clair3:latest")
+    monkeypatch.setitem(clair3.settings, "clair3_gpu_image", "my/clair3:latest")
+    cram = as_cram(clair3_gpu.reads, "3.1", tmp_path / "reads.cram")
+    clair3_gpu.out.mkdir()
+    # Exactly the copy's 64 MiB minimum.
+    Volumes(monkeypatch).free[clair3_gpu.out] = 64 / 1024
+    with pytest.raises(WGSExtractError, match=r"Clair3 run's requirement: .*GiB disk"):
+        gpu_call(clair3_gpu, make_model(tmp_path, "my_r1041_model"), cram=cram)
+    assert "Transcoding CRAM" not in caplog.text
+    assert clair3_gpu.clair3.runs() == []

@@ -29,12 +29,16 @@ from wgsextract_cli.core.containers import (
     run_container,
 )
 from wgsextract_cli.core.cram_staging import (
+    cram_version,
+    indexed_slice_bytes,
     needs_cram30,
     region_intervals,
     stage_cram30,
+    staging_bytes,
 )
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
+from wgsextract_cli.core.genotype_qc import contigs_with_reads
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.native_support import is_arm64_docker_host, require_native_tool
 from wgsextract_cli.core.output_checks import warn_if_no_variants
@@ -57,11 +61,11 @@ from wgsextract_cli.core.resource_estimates import (
     preflight_resources,
 )
 from wgsextract_cli.core.results import warn
+from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.sequencing import input_platform, refuse_mixed_platforms
 from wgsextract_cli.core.steps import Decision, Step, StepJournal, resume_policy
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
-from wgsextract_cli.core.warnings import get_free_space_needed
 
 from .basic import CallerSetup, record_variants, setup_caller
 
@@ -306,6 +310,36 @@ def _available_memory(engine: int | None) -> int | None:
     return available if engine is None else min(available, engine)
 
 
+def _selected_share(
+    reads: str, ref: str, intervals: dict[str, list[tuple[int, int]]]
+) -> float | None:
+    """The share of ``reads``' data in ``intervals``: their CRAI slices, or
+    the BAM index's reads on each contig by the share of it selected. None
+    when the index can't say."""
+    try:
+        if cram_version(reads) is not None:
+            size = Path(reads).stat().st_size
+            selected = indexed_slice_bytes(reads, ref, intervals)
+            return None if selected is None or not size else min(1.0, selected / size)
+        if not alignment_index(reads):
+            return None
+        from wgsextract_cli.commands.info.metrics import parse_idxstats
+
+        stats, *_ = parse_idxstats(reads)
+    except (OSError, ValueError, subprocess.SubprocessError, WGSExtractError):
+        return None
+    total = sum(stat["mapped"] + stat["unmapped"] for stat in stats)
+    picked = sum(
+        stat["mapped"]
+        * min(
+            1.0, sum(e - s for s, e in intervals.get(stat["name"], ())) / stat["length"]
+        )
+        for stat in stats
+        if stat["length"]
+    )
+    return picked / total if total else None
+
+
 def _host_requirement(
     estimate: PreflightEstimate | None,
     floor: PreflightEstimate | None,
@@ -321,17 +355,22 @@ def _host_requirement(
     work: Path,
     engine: int | None,
 ) -> HostRequirement:
-    """DeepVariant's host requirement (#690): the estimate's disk, scaled to
-    the bases called, beside any CRAM 3.0 copy; its RAM, and the least it
-    can run in (``floor``: one thread, a batch of 256); and its time."""
+    """DeepVariant's host requirement (#690): the estimate's disk (for a
+    --region, the share of the input's data it selects, else all of it)
+    beside any CRAM 3.0 copy; its RAM, and the least it can run in
+    (``floor``: one thread, a batch of 256); and its time for the bases it
+    calls on contigs with reads."""
     lengths = read_fai_lengths(ref)
     try:
-        regions = dv_calling_regions(lengths, region)
+        regions = dv_calling_regions(lengths, region) or []
     except (OSError, ValueError) as error:
         logging.debug("DeepVariant's calling regions weren't sized: %s", error)
-        regions = None
-    called = sum(end - start for _, start, end in regions) if regions else None
-    share = 1.0 if not called or not region else called / sum(lengths.values())
+        regions = []
+    intervals: dict[str, list[tuple[int, int]]] = {}
+    for contig, start, end in regions:
+        intervals.setdefault(contig, []).append((start, end))
+    selected = _selected_share(input_file, ref, intervals) if region else None
+    share = 1.0 if selected is None else selected
     disk: list[tuple[str, int | None]] = []
     memory = None
     for row in estimate.resources if estimate else ():
@@ -343,18 +382,22 @@ def _host_requirement(
                 (row.paths[0], None if needed is None else math.ceil(needed * share))
             )
     if staged_reads:
-        # stage_cram30's allowance: the CRAM 3.1 input decoded to CRAM 3.0.
         try:
-            size: int | None = Path(input_file).stat().st_size
-        except OSError:
-            size = None
-        copy_gb = None if size is None else get_free_space_needed(size, is_cram=True)[1]
-        disk.append(
-            (
-                str(work),
-                None if copy_gb is None else math.ceil((copy_gb + 1) * GIB * share),
+            copy: int | None = staging_bytes(
+                input_file, ref, intervals if region else None
             )
-        )
+        except OSError:
+            copy = None
+        disk.append((str(work), copy))
+    try:
+        with_reads = contigs_with_reads(input_file, ref)
+    except (OSError, ValueError, subprocess.SubprocessError, WGSExtractError):
+        with_reads = {}
+    called = sum(
+        end - start
+        for contig, start, end in regions
+        if not with_reads or contig in with_reads
+    )
     caller = (
         "deepvariant-ont"
         if model_type == "ONT_R104"
@@ -955,7 +998,9 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                 model_type, ref, reads, str(work / Path(out_vcf).name), shards, work,
                 region, checkpoint, batch_size, postprocess, int(threads),
             )  # fmt: skip
-        if not journal.dry_run and not any(journal.recorded(s) for s in STEPS):
+        if not journal.dry_run:
+            # A rerun with finished stages needs less than this: it warns.
+            fresh = not any(journal.recorded(s) for s in STEPS)
 
             def estimate_with(
                 threads: str, batch: int, plan: PostprocessPlan | None
@@ -992,7 +1037,8 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                     native=bool(native), native_gpu=native_gpu,
                     staged_reads=staged_reads, work=work, engine=engine,
                 ),
-                enforce=not params.no_preflight,
+                enforce=fresh and not params.no_preflight,
+                unenforced="--no-preflight" if fresh else "finished stages are kept",
                 disk_advice="Free up space, choose an --outdir on a bigger disk "
                 "or call a --region.",
                 memory_advice="Lower --batch-size or --threads.",
