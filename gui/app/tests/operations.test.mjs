@@ -249,7 +249,8 @@ test("setup warning completion is not marked as an error tab", async () => {
     await setupPromise;
 
     assert.equal(state.setupRun.status, "warning");
-    assert.equal(state.terminalEntries[1].kind, "success");
+    // Review regression: a setup that finished with warnings showed as Succeeded in the Jobs list.
+    assert.equal(state.terminalEntries[1].kind, "warning");
     const saveRequest = requests.find((request) => request.path === "/api/state/save");
     assert.ok(saveRequest);
     assert.equal(JSON.parse(saveRequest.options.body).state.setupRun.status, "warning");
@@ -461,6 +462,112 @@ test("action terminal streams progress and logs only command GUI inputs", async 
     assert.doesNotMatch(state.terminalEntries[1].body, /super-secret/);
     assert.match(state.terminalEntries[1].body, /exit 0/);
     assert.equal(state.terminalEntries[1].kind, "success");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("the Jobs tab lists each run with its outcome, start time and main input file, even after its tab is closed", async () => {
+  resetState();
+  const { renderJobsList } = await import("../dist/web/src/client/jobs-list.js");
+  const { closeTerminalTab } = await import("../dist/web/src/client/terminal.js");
+  const originalFetch = globalThis.fetch;
+  const streams = [setupStreamResponse(), setupStreamResponse()];
+  let requests = 0;
+  globalThis.fetch = () => Promise.resolve(streams[requests++].response);
+  state.manifest.pages = [{ id: "bam", sections: [{ id: "inputs", controls: [
+    { id: "out", kind: "path", pathType: "directory" },
+    { id: "bam", kind: "path", pathType: "file" },
+  ] }] }];
+  const context = {
+    fieldValues: { bam: "/data/genomes/HG002.bam", out: "/tmp/out" },
+    checkedOptions: {}, configValues: {}, rowValues: {}, bundleRootPath: "/bundle", placeholderLabels: {},
+  };
+  const action = { title: "Sort BAM", command: { executable: "tool", arguments: ["--out", "{{out}}", "{{bam}}"] } };
+
+  try {
+    const sortRun = runAction(action, context, actionReference, { prerequisitesChecked: true });
+    streams[0].write({ type: "complete", result: { exitCode: 2, command: "tool", stderr: "" } });
+    streams[0].close();
+    await sortRun;
+
+    runAction({ ...action, title: "Index BAM" }, context, actionReference, { prerequisitesChecked: true });
+    await waitUntil(() => requests === 2);
+    closeTerminalTab(state.terminalEntries.findIndex((entry) => entry.title === "Index BAM"));
+
+    const html = renderJobsList(state.terminalEntries[0]);
+    const rows = [...html.matchAll(/<tr class="jobs-row ([a-z]+)">([\s\S]*?)<\/tr>/g)];
+    assert.deepEqual(rows.map(([, kind]) => kind), ["cancelled", "error"]);
+    assert.match(rows[1][2], /Sort BAM[\s\S]*Failed[\s\S]*<time datetime="[^"]+">[\s\S]*title="\/data\/genomes\/HG002\.bam">HG002\.bam</);
+    assert.match(rows[0][2], /Index BAM[\s\S]*Cancelled/);
+    assert.equal(state.terminalEntries.some((entry) => entry.title === "Index BAM"), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("review regression: a job's File is its declared primaryInput, else its first file path control, relative or not", async () => {
+  resetState();
+  const { renderJobsList } = await import("../dist/web/src/client/jobs-list.js");
+  state.manifest.pages = [{ id: "p", sections: [{ id: "s", controls: [
+    { id: "folder", kind: "path", pathType: "directory" },
+    { id: "report", kind: "path", pathType: "file" },
+    { id: "sample", kind: "path", pathType: "file" },
+  ] }] }];
+  const originalFetch = globalThis.fetch;
+  const streams = [setupStreamResponse(), setupStreamResponse()];
+  let requests = 0;
+  globalThis.fetch = () => Promise.resolve(streams[requests++].response);
+  const context = {
+    fieldValues: { folder: "/data/batch", report: "/tmp/batch.yaml", sample: "HG002.bam" },
+    checkedOptions: {}, configValues: {}, rowValues: {}, bundleRootPath: "/bundle", placeholderLabels: {},
+  };
+
+  try {
+    const runs = [
+      runAction({ title: "Batch", primaryInput: "folder", command: { executable: "tool", arguments: ["{{report}}", "{{folder}}"] } }, context, actionReference, { prerequisitesChecked: true }),
+      runAction({ title: "Info", command: { executable: "tool", arguments: ["{{folder}}", "{{sample}}"] } }, context, actionReference, { prerequisitesChecked: true }),
+    ];
+    for (const stream of streams) {
+      stream.write({ type: "complete", result: { exitCode: 0, command: "tool", stderr: "" } });
+      stream.close();
+    }
+    await Promise.all(runs);
+
+    const html = renderJobsList(state.terminalEntries[0]);
+    assert.match(html, /Info[\s\S]*title="HG002\.bam">HG002\.bam<[\s\S]*Batch[\s\S]*title="\/data\/batch">batch</);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("review regression: the 40-tab cap drops finished tabs before a running job's, never the Jobs tab, and the job finishes in the list", async () => {
+  resetState();
+  const { renderJobsList } = await import("../dist/web/src/client/jobs-list.js");
+  const { appendTerminal } = await import("../dist/web/src/client/terminal.js");
+  const originalFetch = globalThis.fetch;
+  const stream = setupStreamResponse();
+  globalThis.fetch = () => Promise.resolve(stream.response);
+  const context = { fieldValues: {}, checkedOptions: {}, configValues: {}, rowValues: {}, bundleRootPath: "/bundle", placeholderLabels: {} };
+
+  try {
+    const run = runAction({ title: "Align", command: { executable: "tool" } }, context, actionReference, { prerequisitesChecked: true });
+    appendTerminal("config", "Settings", "settings loaded");
+    for (let index = 0; index < 45; index += 1) {
+      appendTerminal("error", `Notice ${index}`);
+    }
+    assert.equal(state.terminalEntries.length, 40);
+    assert.equal(state.terminalEntries[1].title, "Align");
+    assert.equal(state.terminalEntries.at(-1).title, "Notice 44");
+    stream.write({ type: "complete", result: { exitCode: 0, command: "tool", stderr: "" } });
+    stream.close();
+    await run;
+
+    assert.equal(state.terminalEntries.length, 40);
+    assert.equal(state.terminalEntries[0].kind, "main");
+    const html = renderJobsList(state.terminalEntries[0]);
+    assert.match(html, /<tr class="jobs-row success">[\s\S]*Align/);
+    assert.match(html, /settings loaded/);
   } finally {
     globalThis.fetch = originalFetch;
   }

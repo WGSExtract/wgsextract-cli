@@ -11,7 +11,8 @@ import { bindPrerequisitesFocus } from "./prerequisites-focus.js";
 import { nextFrame, scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
 import { dismissUpdatePopover, downloadUpdate, installUpdate, toggleUpdatePopover } from "./tauri-updater.js";
-import { appendTerminal, closeTerminalTab, resetTerminalEntries, terminalTabs } from "./terminal.js";
+import { activeTerminalCopyText, appendTerminal, closeTerminalTab, openJob, resetTerminalEntries } from "./terminal.js";
+import { applyUIModeTerminalVisibility, setTerminalVisible } from "./terminal-visibility.js";
 import { bindTooltipEvents } from "./tooltips.js";
 import { bindWorkspaceLocationEvents } from "./workspace-location.js";
 import { setupPageID } from "./view.js";
@@ -223,6 +224,14 @@ export function bindEvents(bootstrap: Bootstrap) {
     elements("[data-terminal-tab]").forEach((button) => {
         button.addEventListener("click", () => {
             state.activeTerminalIndex = Number(button.dataset.terminalTab);
+            // A tab in the collapsed row opens the pane to show what it holds.
+            setTerminalVisible(true);
+            scheduleRender();
+        });
+    });
+    elements("[data-job-open]").forEach((button) => {
+        button.addEventListener("click", () => {
+            openJob(requiredDataset(button, "jobOpen"));
             scheduleRender();
         });
     });
@@ -233,8 +242,7 @@ export function bindEvents(bootstrap: Bootstrap) {
         });
     });
     app.querySelector("[data-terminal-copy]")?.addEventListener("click", async () => {
-        const entry = terminalTabs()[state.activeTerminalIndex] ?? terminalTabs()[0];
-        await copyText(entry?.body ?? "");
+        await copyText(activeTerminalCopyText());
         state.terminalCopyFeedback = true;
         window.clearTimeout(terminalCopyFeedbackTimer);
         terminalCopyFeedbackTimer = window.setTimeout(() => {
@@ -244,7 +252,7 @@ export function bindEvents(bootstrap: Bootstrap) {
         scheduleRender();
     });
     app.querySelector("[data-terminal-toggle]")?.addEventListener("click", () => {
-        state.isTerminalVisible = !state.isTerminalVisible;
+        setTerminalVisible(!state.isTerminalVisible);
         scheduleRender();
     });
     app.querySelector("[data-sidebar-toggle]")?.addEventListener("click", () => {
@@ -454,6 +462,7 @@ async function selectUIMode(value: string) {
         return;
     }
     state.uiMode = mode;
+    applyUIModeTerminalVisibility();
     await persistAndRender();
 }
 

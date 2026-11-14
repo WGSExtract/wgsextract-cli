@@ -31,8 +31,8 @@ printed by `--version`.
 
 The `macos-aligners-17` (Apple Silicon) prerelease has `wgse-bwa` 0.13.0,
 `wgse-bwa-mem2` 0.5.3, `wgse-bwa-mem3` 0.4.0 and `wgse-minimap2` 0.4.0.
-The `linux-aligners-3` (Linux x86-64 and ARM64) prerelease has `wgse-bwa`
-0.12.1, plus `wgse-bwa-mem3` 0.4.0 and `wgse-minimap2` 0.4.0 for Linux
+The `linux-aligners-4` (Linux x86-64 and ARM64) prerelease has `wgse-bwa`
+0.14.0, plus `wgse-bwa-mem3` 0.4.0 and `wgse-minimap2` 0.4.0 for Linux
 x86-64. The steps below install the
 Apple Silicon executables; on Linux, see
 [Linux x86-64 and NVIDIA GPUs](#linux-x86-64-and-nvidia-gpus-cuda). Earlier published `wgse-bwa`
@@ -42,8 +42,8 @@ when no dense side file is present. With a side file it refuses: those builds
 read it automatically and cannot honor the run's opt-in setting. Upgrade to
 0.12.1, or remove the side files with
 `wgsextract ref dense-sa --ref <fasta> --delete`.
-The 0.13.0 optimizations described below require a build from this revision
-until an updated prerelease is published.
+On Linux, `linux-aligners-4` has the 0.13.0 and 0.14.0 optimizations
+described below.
 
 The `macos-aligners-17` prerelease speeds up `wgse-bwa` CPU alignment with
 exact mate-rescue window pruning, compact-key region sorting and NEON
@@ -220,9 +220,18 @@ with NEON, masking positions past the requested row. Alignment-region sorting
 uses compact records of the sort keys and addresses, with the same comparisons
 and introsort order as before. These changes preserve upstream's records;
 `--cpu-upstream` retains the upstream implementations.
-Pruning is not enabled on x86-64: the scalar filter has not been benchmarked
-there. `wgse-bwa-mem2` 0.5.3 also includes the shared compact-key region sort;
-the published 0.5.2 binaries are unchanged.
+Pruning is not enabled on x86-64: there it left out almost no work (0.2% fewer
+instructions on the small tier, 0.14.0). `wgse-bwa-mem2` 0.5.3 also includes the
+shared compact-key region sort; the published 0.5.2 binaries are unchanged.
+
+From 0.14.0, on x86-64, the CPU backend also extends seeds with the NEON
+`ksw_extend2` and unpacks reference bases with the NEON loops:
+`bwa/wgse_neon.h` gives the NEON operations they use in SSE2, which every
+x86-64 CPU has, with NEON's exact lane results, so one source serves both. The extension is also
+compiled for AVX2, and CPUs that have it run that copy (picked once, at load).
+Their records are upstream's; `--cpu-upstream` runs upstream's code. The NEON
+occurrence counts were also tried on x86-64, in SSE2 and with POPCNT, and took
+as long as upstream's table lookups, so x86-64 keeps upstream's.
 
 From 0.5.0, `wgse-bwa-mem2`'s CPU backend does the same with its own exact
 replacements: it collects each read's SMEMs in all three passes with up to 16
@@ -1010,7 +1019,7 @@ average (`power.txt`, `power-samples.tsv`).
 
 `wgse-bwa` also builds for Linux x86-64 and ARM64, as conda packages
 (`packaging/wgse-bwa`, built by `.github/workflows/linux_aligners.yml` and
-published as `linux-aligners-*` prereleases; `linux-aligners-3` has 0.12.1, and
+published as `linux-aligners-*` prereleases; `linux-aligners-4` has 0.14.0, and
 `wgse-bwa-mem3` 0.4.0 for x86-64, see
 [below](#wgse-bwa-mem3-on-linux-x86-64)).
 Download the package for your machine, check it against the SHA-256 digest
@@ -1019,9 +1028,9 @@ together with its runtime libraries (installing a local package file doesn't
 resolve dependencies). The CLI finds `wgse-bwa` on `PATH`:
 
 ```bash
-PKG=wgse-bwa-0.12.1-linux64_wgse_0.conda   # wgse-bwa-0.12.1-linuxaarch64_wgse_0.conda on ARM64
-gh release download linux-aligners-3 -R WGSExtract/wgsextract-cli -p "$PKG" --clobber
-gh release view linux-aligners-3 -R WGSExtract/wgsextract-cli --json assets \
+PKG=wgse-bwa-0.14.0-linux64_wgse_0.conda   # wgse-bwa-0.14.0-linuxaarch64_wgse_0.conda on ARM64
+gh release download linux-aligners-4 -R WGSExtract/wgsextract-cli -p "$PKG" --clobber
+gh release view linux-aligners-4 -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
   grep -F "  $PKG" | sha256sum -c &&
 conda create -y -n wgse-bwa -c conda-forge "libgcc>=14" "libstdcxx>=14" "libzlib>=1.3.2,<2" &&
@@ -1029,9 +1038,10 @@ conda install -y -n wgse-bwa "./$PKG" &&
 export PATH="$(conda run -n wgse-bwa printenv CONDA_PREFIX)/bin:$PATH"
 ```
 
-- **CPU backend:** upstream BWA's code. The NEON replacements are Apple-only,
-  so on x86-64 it runs upstream's `ksw_extend2`; it keeps the other exact
-  batched steps.
+- **CPU backend:** BWA's code with the exact CPU replacements described
+  above. From 0.14.0 that includes the NEON seed extension and reference
+  unpacking on x86-64 too, in SSE2 (the extension in AVX2 on CPUs that have
+  it); occurrence counting and mate-rescue pruning stay upstream's there.
 - **`--cuda` (`--backend cuda`, experimental):** runs the Metal backend's
   kernels on an NVIDIA GPU. The kernels are ported to CUDA from one source
   that HIP can also compile (`native/gpu-common`, `native/bwa/*.cuh`). They
@@ -1075,6 +1085,30 @@ of the time in SMEM seeding, a quarter in seed extension, a fifth in mate rescue
 and an eighth in suffix-array locate. With `--cuda` the CPU does the chaining,
 the sorts and reference fetches that remain, and spends a quarter as much time.
 
+From 0.14.0 the CPU backend also runs the NEON seed extension and reference
+unpacking on x86-64 (described above). On the same machine and tier at 8
+threads (`bench.sh` with `bwa:cpu`, four interleaved rounds, medians; both
+`wgse-bwa` builds with conda-forge's gcc and the package's flags), every run
+with upstream's records:
+
+| | Wall | CPU time | Peak RSS |
+| --- | ---: | ---: | ---: |
+| upstream BWA 0.7.19 (Bioconda) | 465.3 s | 3644 s | 5.2 GiB |
+| `wgse-bwa` 0.13.0 (CPU) | 402.0 s (−14%) | 3083 s | 5.2 GiB |
+| `wgse-bwa` 0.14.0 (CPU) | 350.3 s (−25%) | 2698 s | 5.2 GiB |
+
+The machine was shared, so the rounds varied: 0.14.0 took 10–26% less time
+than 0.13.0 in each. In the quietest round it took 290.1 s, against 392.9 s for
+0.13.0 and 454.2 s for upstream (−36%). Two other builds of 0.14.0 were within
+that noise in two rounds, against the package's build in the same rounds:
+built for x86-64-v3 throughout (+0.5% and −10%), and with jemalloc preloaded
+(−1.4% and −4%). The package keeps the baseline build,
+whose extension kernel already has its AVX2 copy, and the system allocator.
+Transparent huge pages are a host setting: this machine runs them `always`. On
+a Zen 4 VM, `always` instead of `madvise` cut `wgse-bwa`'s time by about 6% in
+one round (#671, the x86-64 CPU research). Set it in `/sys/kernel/mm/transparent_hugepage/enabled`, or
+with `transparent_hugepage=always` on the kernel command line.
+
 On the same machine and tier, bwa-mem3 0.16.0 `--compat=bwa-mem` on the CPU
 (as `wgse-bwa-mem3`, below) took 97.7 s and 761 s of CPU time, with the same records
 as BWA: faster than `wgse-bwa --cuda`. So `align` and `realign` on Linux run
@@ -1097,8 +1131,8 @@ above, in its own environment:
 
 ```bash
 PKG=wgse-bwa-mem3-0.4.0-linux64_wgse_0.conda
-gh release download linux-aligners-3 -R WGSExtract/wgsextract-cli -p "$PKG" --clobber
-gh release view linux-aligners-3 -R WGSExtract/wgsextract-cli --json assets \
+gh release download linux-aligners-4 -R WGSExtract/wgsextract-cli -p "$PKG" --clobber
+gh release view linux-aligners-4 -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
   grep -F "  $PKG" | sha256sum -c &&
 conda create -y -n wgse-bwa-mem3 -c conda-forge "libgcc>=14" "libstdcxx>=14" \
@@ -1157,14 +1191,15 @@ minimap2 2.31 as on a Mac (`tests/upstream.sh`).
 
 Its conda package (`packaging/wgse-minimap2`, 0.4.0, with the CUDA backend
 below) is built by the same workflow and published next to `wgse-bwa` in the
-`linux-aligners-*` prereleases, from `linux-aligners-3`.
+`linux-aligners-*` prereleases (first in `linux-aligners-3`; the commands below
+use `linux-aligners-4`).
 On `PATH`, `align` and `realign` run it in minimap2's place. For long reads
 they add `--backend auto`, so it uses the GPU when one is usable
 ([docs/hardware.md](../docs/hardware.md#nvidia-gpus-without-parabricks-wgse-bwa---cuda)).
 Install it as `wgse-bwa-mem3` above, in its own environment:
 
 ```bash
-TAG=linux-aligners-3 PKG=wgse-minimap2-0.4.0-linux64_wgse_0.conda
+TAG=linux-aligners-4 PKG=wgse-minimap2-0.4.0-linux64_wgse_0.conda
 gh release download "$TAG" -R WGSExtract/wgsextract-cli -p "$PKG" --clobber
 gh release view "$TAG" -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |

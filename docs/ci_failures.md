@@ -22,6 +22,7 @@ failures and are not automatically retried.
 - Deliberate cancellations after steps are left alone.
 - Budgets count executions of each job across attempts. A single current-attempt
   job is retried directly; multiple failed jobs use one failed-jobs request.
+  A carried-forward entry with the same job ID is not a new execution or pass.
   Multiple cancelled jobs (or an older cancelled job left by a manual job-only
   retry) require a whole-run retry: GitHub rejects old job IDs and the
   failed-jobs endpoint does not guarantee retrying cancellations. This rare
@@ -30,6 +31,18 @@ failures and are not automatically retried.
 - All outstanding failures must be eligible. A mixed test/infra failure needs a
   code fix, and a deliberately cancelled started job prevents restarting its
   queued zero-step siblings. No automatic request is made at attempt ten.
+- A missing-artifact download can be a consequence of a lost producer, not a
+  code failure. When its failure annotation names the exact target of a
+  zero-step lost build job in the same run, and the consumer has no failed tests
+  or additional failed steps, it is classified as lost-runner infrastructure
+  too. The whole run is retried, including producer and consumers, with the
+  producer's one-retry budget. Repeated consumer-only failures do not spend
+  that root budget. Unrelated failures still block automatic retries. This
+  classification also prevents false red-main bugs/quarantine.
+- Windows evidence judging omits a missing app evidence set only when the app
+  job already failed/cancelled. Available app evidence, the regular Windows
+  installer evidence and sabotage evidence still go through the unchanged
+  oracle/mutation checks; a missing required set still fails judging.
 - Before retrying, the script verifies that this is the latest run and attempt
   for the workflow, event, branch **and head repository**. Fork branch names
   cannot accidentally supersede another repository's run.
@@ -84,6 +97,26 @@ can create flaky-test exemptions: fork logs cannot change global retry policy.
 Missing/expired logs do not invent
 test IDs. The recorded fixtures under `tests/fixtures/ci_failures` exercise real
 API responses, including the macOS GPU-resume flake.
+
+Flaky-test and red-main bugs created by this publisher carry `endorsed` as well
+as `ci-automation` and their existing hidden CI marker. Updates endorse only
+our `github-actions[bot]` issues with that label and a body whose first line is
+exactly `(AI): <valid CI marker>`; prose or quoted content before that line is
+not accepted. Stale `needs-owner` is removed without replacing other labels.
+Existing issues from other authors, ordinary bot reports, quoted markers, PRs
+and ledger issues are never auto-endorsed. This is the narrow owner-approved
+exception in `AGENTS.md`;
+CI-log excerpts remain data, never agent instructions.
+
+The one-time migration for existing open bot reports uses the same ownership
+checks and is idempotent:
+
+```python
+from scripts.ci_github import GitHub
+from scripts.ci_issues import IssueReports
+
+IssueReports(GitHub("WGSExtract/wgsextract-cli")).endorse_existing()
+```
 
 ## Red main
 

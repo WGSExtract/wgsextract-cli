@@ -22,6 +22,9 @@ Try: curl -H 'Authorization: Bearer 3q2Kx...' http://127.0.0.1:41873/v1/ops
 Stop with Ctrl-C.
 ```
 
+On macOS and Linux, Ctrl-C or SIGTERM stops either HTTP server with exit
+status 0 and removes its discovery file, even during the startup announcement.
+
 ## Security
 
 The server runs analyses with your permissions, so it only answers programs
@@ -31,8 +34,10 @@ you start yourself:
 - Every request except `GET /v1/health` needs `Authorization: Bearer <token>`.
   The token is new each time the server starts. It is printed to stderr and
   saved in `<state>/server/server.json` (mode 0600), along with the URL and
-  process id, so local clients can find it. The file is removed when the
-  server stops.
+  process id, so local clients can find it. Discovery files are published
+  atomically: an interrupted write cannot leave partial JSON or destroy
+  an earlier server's discovery file. The file is removed when the server
+  stops, unless a newer server has replaced it.
 - Requests whose `Host` header isn't `127.0.0.1:<port>` or `localhost:<port>`,
   and requests whose `Origin` is a different site, are refused. This stops a web page
   in your browser from reaching the server through DNS rebinding or

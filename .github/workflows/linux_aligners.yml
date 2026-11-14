@@ -47,8 +47,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # The CPU build's tests, which the packages (built without them) skip: the
-      # exact NEON seed extension against upstream's (ARM64), batched mate rescue
-      # and seed extension against upstream's, and the smoke alignment; GPU tests skip.
+      # exact NEON seed extension and reference unpacking against upstream's (NEON on
+      # ARM64, SSE2/AVX2 on x86-64), batched mate rescue and seed extension against
+      # upstream's, and the smoke alignment; GPU tests skip.
       - name: Build and test (development build)
         run: |
           cmake -S native -B out/build-test -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_BASE_DIR="$PWD/out/deps"

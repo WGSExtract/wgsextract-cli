@@ -220,7 +220,7 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   assert.ok(genomesPage.sections.find((section) => section.id === "genome-management"), "genome management moved to Reference Genomes");
   assert.ok(!library.sections.some((section) => section.id === "genome-management"));
   const datasets = bundle.manifest.pages.find((page) => page.id === "datasets");
-  assert.equal(datasets.title, "Datasets");
+  assert.equal(datasets.title, "My Genomes");
   assert.equal(datasets.sidebarPlacement, "bottom");
   assert.equal(datasets.advancedOnly, undefined);
   const pageOrder = bundle.manifest.pages.map((page) => page.id);

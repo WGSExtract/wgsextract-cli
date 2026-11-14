@@ -508,17 +508,18 @@ button:disabled {
   grid-template-rows: auto auto minmax(260px, 1fr) 8px var(--terminal-height, 20vh);
 }
 
+/* Collapsed, the Jobs pane keeps only its row of tabs. */
 .app-shell.terminal-hidden .detail-shell {
-  grid-template-rows: 1fr;
+  grid-template-rows: 1fr auto;
 }
 
 .app-shell.bundle-action-visible.terminal-hidden .detail-shell,
 .app-shell.setup-needed.terminal-hidden .detail-shell {
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto 1fr auto;
 }
 
 .app-shell.bundle-action-visible.setup-needed.terminal-hidden .detail-shell {
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto auto 1fr auto;
 }
 
 .bundle-action-bar {
@@ -1342,7 +1343,23 @@ tbody tr + tr {
   flex: 1;
   display: flex;
   gap: 6px;
-  overflow-x: auto;
+}
+
+/*
+ * Job tabs, newest first in the DOM. Reversed and wrapped into a strip one tab high, the newest stay in
+ * view next to the copy and hide buttons and the oldest drop out of view on the left, whole, never pushing
+ * those buttons off.
+ */
+.terminal-job-tabs {
+  min-width: 0;
+  flex: 1;
+  height: 26px;
+  display: flex;
+  flex-flow: row-reverse wrap;
+  justify-content: flex-end;
+  align-content: flex-start;
+  gap: 6px;
+  overflow: hidden;
 }
 
 .terminal-tab-wrap {
@@ -1439,6 +1456,80 @@ tbody tr + tr {
 
 .terminal-status.config {
   color: var(--accent);
+}
+
+.terminal-status.cancelled {
+  color: var(--muted);
+}
+
+.terminal-panel.collapsed {
+  grid-template-rows: auto;
+}
+
+.terminal-panel.collapsed .terminal-header {
+  border-bottom: 0;
+}
+
+.jobs-list {
+  padding: 8px 12px 12px;
+}
+
+.jobs-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.jobs-table th {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--separator);
+  color: var(--muted);
+  font-weight: 600;
+  text-align: start;
+}
+
+.jobs-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--separator) 60%, transparent);
+  vertical-align: middle;
+}
+
+.jobs-tab {
+  gap: 4px;
+  padding: 0 10px 0 8px;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.jobs-status,
+.jobs-started {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.jobs-file {
+  overflow-wrap: anywhere;
+}
+
+.jobs-empty {
+  margin: 4px 0;
+  color: var(--muted);
+}
+
+.jobs-messages h3 {
+  margin: 14px 0 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.jobs-messages pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 0.82rem ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .terminal-log {
@@ -1552,16 +1643,6 @@ tbody tr + tr {
   text-align: right;
 }
 
-.terminal-toggle {
-  position: absolute;
-  inset-inline-end: 16px;
-  bottom: 12px;
-  min-height: 26px;
-  inline-size: 32px;
-  padding: 0;
-  z-index: 5;
-}
-
 .sidebar-toggle {
   min-height: 26px;
   inline-size: 32px;
@@ -1588,10 +1669,6 @@ tbody tr + tr {
 /* Leave room for the floating toggles, so they never cover a button or the end of the page. */
 .app-shell.sidebar-hidden :is(.bundle-action-bar, .setup-global-banner) {
   padding-inline-start: 56px;
-}
-
-.app-shell.terminal-hidden .page-panel article {
-  padding-bottom: 56px;
 }
 
 .app-shell.sidebar-hidden:not(.bundle-action-visible, .setup-needed) .page-header {
@@ -1896,11 +1973,28 @@ tbody tr + tr {
   }
 
   .app-shell.terminal-hidden .detail-shell {
-    grid-template-rows: auto minmax(320px, auto);
+    grid-template-rows: auto minmax(320px, auto) auto;
   }
 
   .app-shell.setup-needed.terminal-hidden .detail-shell {
-    grid-template-rows: auto auto minmax(320px, auto);
+    grid-template-rows: auto auto minmax(320px, auto) auto;
+  }
+
+  /* The desktop app has no bundle action bar, so the page is the first row (or the second, under the setup banner). */
+  .app-shell:not(.bundle-action-visible) .detail-shell {
+    grid-template-rows: minmax(320px, auto) minmax(220px, 32vh);
+  }
+
+  .app-shell.setup-needed:not(.bundle-action-visible) .detail-shell {
+    grid-template-rows: auto minmax(320px, auto) minmax(220px, 32vh);
+  }
+
+  .app-shell.terminal-hidden:not(.bundle-action-visible) .detail-shell {
+    grid-template-rows: minmax(320px, auto) auto;
+  }
+
+  .app-shell.setup-needed.terminal-hidden:not(.bundle-action-visible) .detail-shell {
+    grid-template-rows: auto minmax(320px, auto) auto;
   }
 
   .page-panel {
@@ -1915,6 +2009,11 @@ tbody tr + tr {
   .terminal-panel {
     min-height: 220px;
     grid-template-rows: auto minmax(160px, 1fr);
+  }
+
+  .terminal-panel.collapsed {
+    min-height: 0;
+    grid-template-rows: auto;
   }
 
   .terminal-log {

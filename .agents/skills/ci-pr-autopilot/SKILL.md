@@ -37,7 +37,7 @@ The loop is intentionally conservative. Prefer stopping and reporting over guess
    - Prefer a descriptive branch name derived from the change.
    - Preserve the working tree changes on that new branch.
    - Stage and commit the intended PR changes on that branch using the identity from Step 2.
-   - Push the new branch, then create a PR with `gh pr create`.
+   - Push the new branch, then create a PR with `gh pr create --draft`.
    - After the PR exists, continue the normal discovery flow against that PR.
 4. Identify the PR and repository:
    - If the user gave a PR URL, use `gh pr view <url> --json ...`.
@@ -54,6 +54,19 @@ The loop is intentionally conservative. Prefer stopping and reporting over guess
    - Build a comprehensive local test command set covering formatting, linting, typecheck, unit tests, integration tests, and build when available.
 
 ## Review Comment Policy
+
+Before marking ready, obtain an independent local review, fix its findings,
+run `pixi run lint` and relevant tests/type checks, and self-review against
+AGENTS.md. For a draft this skill created, run `gh pr ready` after that gate
+passes, unless the user explicitly requires it to remain draft. For an existing
+draft, obtain authorization before marking ready. Readiness starts Copilot
+review and area-selected full CI; do not land using the old draft-run checks.
+Ruleset `15885247` excludes drafts and push re-reviews (checked 2026-11-13);
+request another review explicitly when needed, without changing settings.
+
+Collect all open threads before editing and push one locally verified batch
+per review round. Notify the responsible agent on new threads; handle them
+within one hour or explicitly hand off. Never push once per thread.
 
 Classify every unresolved PR thread and actionable review comment.
 
@@ -151,26 +164,47 @@ Only resolve a thread after one of these is true:
 
 Check counts depend on the PR's changed areas. Never wait for a fixed minimum
 number of checks (such as the old `scratch/merge_when_clean.sh` threshold of
-more than five). Use `gh pr checks --json bucket,name` with
-`python scripts/pr_checks_ready.py`: at least one passing check, no failing,
-pending, cancelled or unknown checks, and intentional skips allowed. An empty
-report is not success. Recheck the head SHA and review threads separately.
+more than five). Use `gh pr checks "$PR" --json bucket,name,workflow,link` with
+`python scripts/pr_checks_ready.py --pr "$PR"`: require a passing `Ready PR area checks`
+gate, `required` check and passing `changes` job from the **same run**, with draft-fast absent
+or skipped there and no failing, pending, cancelled or unknown checks. The gate runs only
+after all area-selected checks finish on a non-draft, non-label event.
+Area checks are evaluated only from that selected run; cancelled/failed older
+draft runs cannot block it. Every other workflow's reported checks must remain clean.
+Old draft passes/skips, or a not-yet-registered ready run, are not success.
+The validator queries GitHub for the current PR head and latest ready transition,
+selects the newest non-draft, non-label area run since that transition, and
+requires checks from that exact run. Redrafting the same SHA cannot reuse old
+validation. Missing metadata, pending runs and PR changes during discovery fail closed.
+Verify that the PR is non-draft and the checks still refer to the current
+head SHA immediately before merging; use `--match-head-commit` with that SHA.
+Recheck review threads separately.
+This is PR validation before enqueueing, not a gate for merge-group commits:
+the queue retests only its `required` set and intentionally omits advisory jobs.
 Documentation-only PRs deliberately skip the OS matrix and Install Lab.
 
 Repeat until complete or blocked:
 
 1. Refresh PR state, review threads, reviews, commits, mergeability, and checks.
-2. If new failing CI exists, diagnose, fix, test, commit, push, and wait.
+2. If new failing CI exists, diagnose, fix, test, commit, push, and wait. For a suspected flake or lost runner, rerun only the failed jobs (`gh run rerun RUN --failed`). Don't update the branch only because it is BEHIND the base.
 3. If new actionable review feedback exists, fix or refuse with `(AI): Reason: ...`, commit, push if changed, and resolve handled threads.
 4. If changes were pushed, wait for new CI results before merging.
-5. If CI is pending, wait and poll at a reasonable interval. Avoid tight loops.
+5. If CI is pending, hand the wait to a background shell (`gh run watch RUN --exit-status`) and resume on its completion notification, not repeated model-side status reads. For review/result-file waits, use a cheap shell watcher that notifies on actionable changes.
 6. If PR state changes while you are working, re-read state before resolving threads or merging.
 7. Continue until no failing/pending required checks, no unresolved material threads, no unhandled requested changes, and no new review comments remain.
+
+Keep at most two active implementers per machine. Implementers report after
+pushing; supervisors own CI/review watchers and launch fresh, scoped agents
+only for actionable fixes. Before retiring or transferring a wait, write
+`out/<issue>/handoff.md` (state, commits, evidence, next action, watcher/lease
+ownership) and obtain the supervisor's adoption acknowledgement. Keep attached
+watchers owned until then. Don't reuse agents for unrelated tasks, paste large
+histories into prompts, or broadcast to idle agents.
 
 Treat these as serious blockers and stop with a clear report:
 
 - Merge conflicts.
-- Draft PR unless user explicitly says to mark ready.
+- A draft this skill did not create without authorization to mark ready, a draft that has not passed the local-review/check gate, or any draft the user explicitly requires to remain draft. Skill-created drafts proceed through `gh pr ready` after that gate.
 - Required approval missing or latest review decision is `CHANGES_REQUESTED` after all sensible fixes/refusals.
 - Required CI is unavailable or permanently failing for non-code reasons.
 - Local comprehensive tests fail for a reason you cannot fix safely.
@@ -206,6 +240,8 @@ Only land the PR when all conditions are true:
 - Mergeability is clean and branch protection allows merge.
 
 Use the repository's normal merge method. If uncertain, inspect allowed merge methods or existing project convention. Prefer `gh pr merge --auto` when branch protection requires queued/auto merge, otherwise use the repo's standard method. Do not use admin override.
+
+In WGS Extract, enqueue with `gh pr merge PR --squash --auto --match-head-commit SHA` once every check (advisory ones included) is green. Never merge directly. The queue retests only the `required` set against the latest `main`; if it drops the PR, fix or rerun the failure and enqueue again.
 
 After merging:
 

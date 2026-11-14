@@ -33,6 +33,17 @@ export type LabelTextKey =
     | "terminalCommandOutputLabel"
     | "terminalShowOutputLabel"
     | "terminalHideOutputLabel"
+    | "jobsEmptyLabel"
+    | "jobsColumnJobLabel"
+    | "jobsColumnStatusLabel"
+    | "jobsColumnStartedLabel"
+    | "jobsColumnFileLabel"
+    | "jobsStatusRunningLabel"
+    | "jobsStatusSucceededLabel"
+    | "jobsStatusWarningLabel"
+    | "jobsStatusFailedLabel"
+    | "jobsStatusCancelledLabel"
+    | "jobsMessagesLabel"
     | "sidebarShowLabel"
     | "sidebarHideLabel"
     | "openBundleWorkspaceTitle"
@@ -272,6 +283,8 @@ export interface ActionSpec {
     serverOperation?: ServerOperationSpec;
     /** The command line the bundle's prerequisite check is given for this action, when its executable is a wrapper the check can't read. */
     prerequisiteArguments?: string[];
+    /** The placeholder naming the job's main input, shown in the Jobs list; else the first file path control the command uses. */
+    primaryInput?: string;
     [key: string]: unknown;
 }
 
@@ -545,6 +558,10 @@ export interface TerminalEntry {
     status?: TerminalStatus;
     /** The action's result document, when its command printed one. */
     result?: ResultDocument;
+    /** When a job (an action or setup run) started, in epoch milliseconds. */
+    startedAt?: number;
+    /** The main input file a job ran on, shown in the Jobs list. */
+    primaryFile?: string;
 }
 
 /** Identifies a section, control, or config setting in the loaded manifest. */
@@ -628,6 +645,8 @@ export interface WebUIState {
     setupPromptDismissed: boolean;
     terminalCopyFeedback: boolean;
     terminalEntries: TerminalEntry[];
+    /** Every job run this session, oldest first, including ones whose tab was closed. */
+    jobHistory: TerminalEntry[];
     activeTerminalIndex: number;
     aboutDialogVisible: boolean;
     isTerminalVisible: boolean;

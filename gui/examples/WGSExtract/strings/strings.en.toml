@@ -269,7 +269,7 @@
 "pages.library.summary" = "Manage reference data: indexes, gene maps, annotation datasets, and VEP caches used by alignment and advanced variant-effect workflows."
 "pages.reference-genomes.title" = "Reference Genomes"
 "pages.reference-genomes.summary" = "Manage Reference Genomes needed by the tool for alignment, decrypting CRAM files, and interpreting and creating VCF files."
-"pages.datasets.title" = "Datasets"
+"pages.datasets.title" = "My Genomes"
 "pages.datasets.summary" = "A common place to download and manage User Datasets: your own WGS result files from a testing vendor, or research samples downloaded to use with the tool."
 "sections.library.library-paths.title" = "Library Paths"
 "controls.library.library-paths.ref_path.label" = "Reference Data Path"

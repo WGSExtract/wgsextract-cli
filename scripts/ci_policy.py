@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import html
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from scripts.ci_github import Evidence
@@ -18,8 +18,11 @@ ROUTED_MAIN = {
     "arm64": "linux_arm64.yml",
     "smoke": "cli_smoke.yml",
     "install": "install_lab.yml",
+    "gitleaks": "gitleaks.yml",
     "Documentation freshness": "ubuntu_ci.yml",
 }
+# PR area checks' summary gate only mirrors its dependencies' results.
+SUMMARY_JOBS = {"required"}
 
 
 def safe(value: str) -> str:
@@ -37,6 +40,10 @@ class Failure:
     conclusion: str
     executions: int = 1
     source_attempt: int = 1
+    started: bool = True
+    missing_artifacts: list[str] = field(default_factory=list)
+    upstream_job_ids: list[int] = field(default_factory=list)
+    root_executions: int | None = None
 
 
 def classify(job: dict[str, Any], evidence: Evidence) -> Failure:
@@ -70,6 +77,26 @@ def classify(job: dict[str, Any], evidence: Evidence) -> Failure:
             r"error|failed|lost communication|shutdown signal|unreachable", line, re.I
         )
     ]
+    missing_artifacts: list[str] = []
+    if (
+        not tests
+        and len(failed_steps) == 1
+        and re.search(
+            r"^(?:get|download|fetch|retrieve)\b|actions/download-artifact@",
+            failed_steps[0],
+            re.I,
+        )
+    ):
+        missing_artifacts = sorted(
+            {
+                name.strip().strip("'\"")
+                for name in re.findall(
+                    r"\bArtifact not found for name:[ \t]*([^\r\n]+)",
+                    evidence.failures,
+                    re.I,
+                )
+            }
+        )
     return Failure(
         int(job["id"]),
         job["name"],
@@ -78,7 +105,43 @@ def classify(job: dict[str, Any], evidence: Evidence) -> Failure:
         tests,
         [line[:300] for line in lines[:5]],
         str(job["conclusion"]),
+        started=bool(steps),
+        missing_artifacts=missing_artifacts,
     )
+
+
+def classify_lost_dependencies(failures: list[Failure]) -> None:
+    producers: dict[str, list[Failure]] = {}
+    for failure in failures:
+        if failure.classification != "lost runner" or failure.started:
+            continue
+        name, _, matrix = failure.job.partition(" (")
+        if not re.search(r"\b(?:build|tauri)\b", name, re.I):
+            continue
+        # Build matrix targets identify their artifact in the API job name.
+        targets = (
+            matrix.removesuffix(")").split(",")
+            if matrix
+            else [name.rsplit(" / ", 1)[-1]]
+        )
+        for target in targets:
+            producers.setdefault(target.strip(), []).append(failure)
+    for failure in failures:
+        if (
+            failure.classification != "test failure"
+            or failure.conclusion != "failure"
+            or not failure.missing_artifacts
+            or not all(artifact in producers for artifact in failure.missing_artifacts)
+        ):
+            continue
+        upstream = {
+            root.job_id: root
+            for artifact in failure.missing_artifacts
+            for root in producers[artifact]
+        }
+        failure.classification = "lost runner"
+        failure.upstream_job_ids = sorted(upstream)
+        failure.root_executions = max(root.executions for root in upstream.values())
 
 
 def signature(failure: Failure) -> tuple[str, str, str]:
@@ -119,7 +182,12 @@ def retryable(failure: Failure, *, rerun_tests: bool) -> bool:
         failure.classification, 0
     )
     return (
-        failure.executions <= limit
+        (
+            failure.root_executions
+            if failure.root_executions is not None
+            else failure.executions
+        )
+        <= limit
         and (
             failure.conclusion != "cancelled" or failure.classification == "lost runner"
         )

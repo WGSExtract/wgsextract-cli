@@ -53,6 +53,13 @@ export function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 export function findControl(id: string): ControlSpec {
+    const control = controlWithID(id);
+    if (!control) {
+        throw new Error(`Unknown control: ${id}`);
+    }
+    return control;
+}
+export function controlWithID(id: string): ControlSpec | undefined {
     for (const page of state.manifest?.pages ?? []) {
         for (const section of page.sections ?? []) {
             const control = (section.controls ?? []).find((candidate) => candidate.id === id);
@@ -60,7 +67,7 @@ export function findControl(id: string): ControlSpec {
                 return control;
         }
     }
-    throw new Error(`Unknown control: ${id}`);
+    return undefined;
 }
 export function displayOption(option: ControlOption): string {
     return optionTitle(option, state.labels);

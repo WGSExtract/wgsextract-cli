@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from collections import Counter
 from dataclasses import dataclass
@@ -12,6 +13,38 @@ from scripts.ci_github import TRUSTED, GitHub
 from scripts.ci_policy import safe
 
 LEDGER = "<!-- ci-flake-ledger:"
+CI_BUG_MARKER = re.compile(r"<!-- ci-(?:flaky:[0-9a-f]{64}|red-main:[0-9]+) -->")
+CI_BOT = "github-actions[bot]"
+
+
+def ci_issue_marker(issue: dict[str, Any]) -> str | None:
+    first_line = (issue.get("body") or "").partition("\n")[0].removesuffix("\r")
+    if not first_line.startswith("(AI): "):
+        return None
+    marker = first_line.removeprefix("(AI): ")
+    return marker if CI_BUG_MARKER.fullmatch(marker) else None
+
+
+def matches_marker(issue: dict[str, Any], marker: str) -> bool:
+    if CI_BUG_MARKER.fullmatch(marker):
+        return ci_issue_marker(issue) == marker
+    return marker in (issue.get("body") or "")
+
+
+def own_ci_issue(issue: dict[str, Any]) -> bool:
+    return (
+        (issue.get("user") or {}).get("login") == CI_BOT
+        and "pull_request" not in issue
+        and "ci-automation" in issue_labels(issue)
+        and ci_issue_marker(issue) is not None
+    )
+
+
+def issue_labels(issue: dict[str, Any]) -> set[str]:
+    return {
+        str(label["name"] if isinstance(label, dict) else label)
+        for label in (issue.get("labels") or [])
+    }
 
 
 @dataclass(frozen=True)
@@ -37,7 +70,7 @@ class IssueReports:
 
     def find(self, marker: str) -> dict[str, Any] | None:
         return min(
-            (issue for issue in self.issues if marker in (issue.get("body") or "")),
+            (issue for issue in self.issues if matches_marker(issue, marker)),
             key=lambda issue: int(issue["number"]),
             default=None,
         )
@@ -48,6 +81,7 @@ class IssueReports:
             ("ci-automation", "ededed"),
             ("ci-red-main", "b60205"),
             ("ci-flake-ledger", "5319e7"),
+            ("endorsed", "0e8a16"),
         ):
             if label not in labels:
                 self.gh.api("POST", "labels", {"name": label, "color": color})
@@ -65,6 +99,8 @@ class IssueReports:
                     {"state": "open", "body": content},
                 )
             )
+            if bug:
+                self.endorse_own_issue(existing)
             return existing
         self.ensure_labels()
         created: dict[str, Any] = self.gh.api(
@@ -73,13 +109,18 @@ class IssueReports:
             {
                 "title": title[:240],
                 "body": content,
-                "labels": ["ci-automation", "bug"] if bug else ["ci-automation"],
+                "labels": (
+                    ["ci-automation", "bug"]
+                    + (["endorsed"] if CI_BUG_MARKER.fullmatch(marker) else [])
+                )
+                if bug
+                else ["ci-automation"],
             },
         )
         matches = [
             item
             for item in self.gh.pages("issues?state=all&labels=ci-automation")
-            if item["user"]["login"] in TRUSTED and marker in (item.get("body") or "")
+            if item["user"]["login"] in TRUSTED and matches_marker(item, marker)
         ]
         canonical = min(matches or [created], key=lambda item: int(item["number"]))
         for duplicate in matches:
@@ -91,7 +132,36 @@ class IssueReports:
                     "PATCH", f"issues/{duplicate['number']}", {"state": "closed"}
                 )
         self._issues = None
+        if bug:
+            self.endorse_own_issue(canonical)
         return canonical
+
+    def endorse_own_issue(self, issue: dict[str, Any]) -> bool:
+        if not own_ci_issue(issue):
+            return False
+        labels = issue_labels(issue)
+        changed = False
+        if "endorsed" not in labels:
+            self.ensure_labels()
+            self.gh.api(
+                "POST", f"issues/{issue['number']}/labels", {"labels": ["endorsed"]}
+            )
+            labels.add("endorsed")
+            changed = True
+        if "needs-owner" in labels:
+            self.gh.api("DELETE", f"issues/{issue['number']}/labels/needs-owner")
+            labels.remove("needs-owner")
+            changed = True
+        if changed:
+            issue["labels"] = [{"name": name} for name in sorted(labels)]
+        return changed
+
+    def endorse_existing(self) -> list[int]:
+        changed = []
+        for issue in self.gh.pages("issues?state=open&creator=github-actions%5Bbot%5D"):
+            if self.endorse_own_issue(issue):
+                changed.append(int(issue["number"]))
+        return changed
 
     def has_comment(self, issue: dict[str, Any], marker: str) -> bool:
         return any(

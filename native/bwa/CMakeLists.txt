@@ -14,7 +14,7 @@ FetchContent_Declare(mem3
 FetchContent_MakeAvailable(bwa mem3)
 
 # Bump when the wgse-bwa package changes; it is versioned separately from BWA.
-set(WGSE_BWA_VERSION 0.13.0)
+set(WGSE_BWA_VERSION 0.14.0)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${generated}")
 include("${CMAKE_CURRENT_SOURCE_DIR}/upstream_seams.cmake")
@@ -151,6 +151,10 @@ if(BUILD_TESTING)
     target_compile_options(extend_neon_check PRIVATE -Wall -Wextra -Werror)
     target_link_libraries(extend_neon_check PRIVATE wgse_bwa_core)
     add_test(NAME bwa_extend_neon COMMAND extend_neon_check 200000)
+    add_executable(pac_check tests/pac_check.c)
+    target_compile_options(pac_check PRIVATE -Wall -Wextra -Werror)
+    target_link_libraries(pac_check PRIVATE wgse_bwa_core)
+    add_test(NAME bwa_pac COMMAND pac_check)
     add_test(NAME bwa_gpu_rescue_parity
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/rescue_parity.sh"
         $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/rescue-parity")

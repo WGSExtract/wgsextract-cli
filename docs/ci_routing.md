@@ -4,6 +4,12 @@ PR area checks diffs the PR's **base...head**, not just the latest commit.
 `--no-renames` includes deletions and both sides of moves. Unknown paths run
 the full CLI matrix; mixed PRs run the union of their areas.
 
+Drafts retain the documentation route and run lint/routing-policy tests.
+When the diff selects CLI tests, they also run the lightweight product subset
+(`test_microarray_vendor_formats.py`, `test_table_writer.py`), without a
+bioinformatics environment. The OS matrix and Install Lab wait until
+`ready_for_review`; readiness recomputes the complete diff.
+
 Test dependencies take precedence over area exclusions. The router scans the
 root test suite's imports, path literals, composed pathlib paths and directory
 globs without executing tests. Inputs read only by the lightweight docs modules
@@ -53,7 +59,7 @@ the job's pytest selection and its coverage classification. For example,
 
 There is no existing general Markdown link/anchor checker. Pages source checks
 also run both site builders and the app's site-source validator, without
-deployment permissions. The secret scan remains on **all main-target PRs**,
+deployment permissions. The secret scan remains on **all PRs and queue groups**,
 including docs: routing must not hide a secret in prose.
 
 The OS workflows and Install Lab run unconditionally on main pushes and nightly,
@@ -62,8 +68,10 @@ unfiltered main coverage and runs nightly; PRs scan code/configuration paths
 only. Releases and manual dispatches remain available. Install Lab can be
 forced on any PR with the `run-install-lab` label. Only this label is actionable:
 adding it runs Install Lab without repeating the matrix; other labels are ignored.
-Label runs cannot cancel a code-validation run, and skipped label-event checks
-have distinct names so they cannot supersede real documentation checks.
+Label runs cannot cancel a code-validation run. Routing, documentation, lint
+and summary label checks have distinct names. Draft-fast, native smoke and
+Pages checks use static names so skipped jobs do not expose raw name expressions.
+The landing validator scopes area checks to the selected ready run.
 Its nightly run includes the former weekly negative
 controls and pinned-release scenarios.
 
@@ -150,21 +158,60 @@ the routing itself lands. Other main-only workflow triggers are unchanged.
 
 ## Landing checks
 
-The main ruleset has no required status checks. Workflow/job skips do not block
-merging. Do not hard-code a count or require every OS job to exist.
-The old ignored `scratch/merge_when_clean.sh` used `>5` / `<=5` count gates;
-replace those gates with a nonempty structured report:
+`main` lands through a merge queue whose only required status check is
+`required`, a dependency summary in PR area checks. It runs for every PR, docs-only
+included, and for every merge-queue group. It passes when routing succeeded
+and every required job passed or was skipped by area routing; a failed or
+cancelled job fails it. `always()` keeps it reporting when a dependency fails,
+because GitHub counts a skipped required check as passing.
+
+| Event | Jobs `required` waits for | Not required |
+|---|---|---|
+| Pull request | routing, draft lint/fast tests when applicable, documentation freshness, changed Python lint, CI Ubuntu (lint, tests, imputation, ONT), secret scan, native CLI smoke, Pages checks | macOS, Windows, ARM64, package smoke, Install Lab, CodeQL, GUI and native workflows: advisory |
+| Merge-queue group | the same set, routed by the group's diff against `main` | not run |
+
+The required set stays on fast Ubuntu jobs. The other OS jobs, which more
+often lose runners or wait for capacity, stay advisory so they can't stall the
+queue; main pushes and nightly runs still run them in full. A job-level `needs:` summary in one workflow, rather than polling the
+checks API, reports exactly once per run with no extra permissions or timeout.
+The queue's `merge_group` events ignore `paths:` filters, so routing uses the
+group's `base_sha...head_sha` diff, keeping docs-only groups to a few minutes.
+
+Agents enqueue with `gh pr merge PR --squash --auto --match-head-commit SHA` after
+every check, advisory ones included, is green, and don't update branches that
+are merely BEHIND (see AGENTS.md, "Babysitting a PR"). Wait for checks with a
+nonempty structured report rather than a fixed count:
 
 ```sh
 set -o pipefail
 gh pr checks "$PR" --watch --interval 90
-gh pr checks "$PR" --json bucket,name | python scripts/pr_checks_ready.py
+gh pr checks "$PR" --json bucket,name,workflow,link | python scripts/pr_checks_ready.py --pr "$PR"
 ```
 
-The validator requires at least one passing check, permits intentional skips,
-and rejects empty reports, pending, failed, cancelled and unknown statuses.
-Wait for workflow registration, verify that the head SHA has not changed,
-and check reviews/threads and mergeability separately. The autopilot skill
+The validator requires a passing `Ready PR area checks` gate, `required` check
+and `changes` job from the same workflow run, with draft-fast absent or skipped
+in that run. That gate runs
+only on non-draft, non-label events after all selected area jobs succeed.
+Routing uses `set -euo pipefail`; the final gate fails on a routing failure
+or a missing completion output, rather than accepting an all-skipped matrix.
+It rejects old draft-only passes/skips (including the gap before the ready
+run registers), empty reports, and pending, failed, cancelled or unknown statuses
+in the selected area run or any other workflow. Stale area checks from earlier
+draft/label runs do not block a passing ready run.
+`--pr` is required: the validator reads the latest ready-for-review event and
+current head from GitHub, then selects the newest non-draft area run for that
+PR/head after the event and requires it to have completed successfully.
+Run titles encode event action and
+draft state so label-only runs are excluded. Earlier same-SHA ready runs cannot
+satisfy a later ready transition; missing metadata and state changes fail closed.
+Use `--repo OWNER/REPO` when running outside the repository checkout.
+Verify the PR is non-draft, its head SHA has not changed, and check
+reviews/threads and mergeability separately; enqueue with
+`--squash --auto --match-head-commit`.
+The readiness gate runs only on PRs before enqueueing, not on merge-group
+commits. Queue runs need only the `required` set; their smaller matrix must not
+be rejected for omitting the PR-only gate or advisory jobs.
+The autopilot skill
 documents this rule too. This validator does not itself merge anything.
 
 ## Cache plan

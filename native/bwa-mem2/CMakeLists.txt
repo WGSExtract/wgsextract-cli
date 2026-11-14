@@ -196,6 +196,7 @@ mem2_seam(bntseq_source "\t\t\tfor (k = end_f; k > beg_f; --k) {\n\t\t\t\tseq[l+
 mem2_seam(bntseq_source "\t\t\tfor (k = beg; k < end; ++k) {\n\t\t\t\tseq[l++] = _get_pac(pac, k);\n\t\t\t}"
     "\t\t\tif (wgse_exact_cpu()) wgse_unpack_pac(pac, beg, end, seq);\n\t\t\telse for (k = beg; k < end; ++k) {\n\t\t\t\tseq[l++] = _get_pac(pac, k);\n\t\t\t}")
 file(READ "${bwa_dir}/pac_oracle.c.in" pac_oracle)
+configure_file("${bwa_dir}/wgse_neon.h" "${mem2_src}/wgse_neon.h" COPYONLY)
 file(WRITE "${mem2_src}/bntseq.cpp" "#include \"metal_backend.h\"
 #include \"rescue_backend.h\"
 ${bntseq_source}

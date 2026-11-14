@@ -1,9 +1,10 @@
 import { contextValue, displayCommand, placeholdersIn } from "../../../shared/rendering.js";
-import { errorMessage } from "./model.js";
+import { controlWithID, errorMessage } from "./model.js";
 import { scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
 import { apiStream } from "./api.js";
 import { appendTerminal, appendTerminalOutput, runningActionControllers, terminalExitStatus, terminalProcessErrorStatus } from "./terminal.js";
+import { findTerminalEntry } from "./terminal-output.js";
 import { resultNotice, type ResultDocument } from "../../../shared/result-document.js";
 import { actionNoticeKey } from "./result-view.js";
 import { prerequisitesInstalled } from "./operations-prerequisites.js";
@@ -52,7 +53,8 @@ export async function streamCommand(action: ActionSpec, context: CommandContext,
         "command",
         action.title,
         actionTerminalBody(action.title, context, action),
-        command);
+        command,
+        { ...primaryFileDetail(action, context) });
     const controller = new AbortController();
     runningActionControllers.set(runningID, controller);
     scheduleRender();
@@ -75,17 +77,13 @@ export async function streamCommand(action: ActionSpec, context: CommandContext,
         if (error && typeof error === "object" && "name" in error && error.name === "AbortError") {
             return null;
         }
-        const runningIndex = state.terminalEntries.findIndex((entry) => entry.id === runningID);
-        if (runningIndex < 0) {
-            return null;
-        }
-        const existing = state.terminalEntries[runningIndex];
+        const existing = findTerminalEntry(runningID);
         if (!existing) {
             return null;
         }
         const failedCommand = existing.command || command;
-        state.terminalEntries[runningIndex] = {
-            ...existing,
+        // Updated in place: the Jobs list holds this same entry.
+        Object.assign(existing, {
             kind: "error",
             title: action.title ?? "Action",
             command: failedCommand,
@@ -94,7 +92,7 @@ export async function streamCommand(action: ActionSpec, context: CommandContext,
                 errorMessage(error),
             ].join("\n"),
             status: terminalProcessErrorStatus(failedCommand, errorMessage(error)),
-        };
+        });
         return null;
     }
     finally {
@@ -105,7 +103,7 @@ export async function streamCommand(action: ActionSpec, context: CommandContext,
 }
 
 function applyActionEvent(event: ActionStreamEvent, action: ActionSpec, context: CommandContext, runningID: string, noticeRun: NoticeRun | null) {
-    const tab = state.terminalEntries.find((entry) => entry.id === runningID);
+    const tab = findTerminalEntry(runningID);
     if (!tab) {
         return;
     }
@@ -157,6 +155,26 @@ function applyResultDocument(tab: TerminalEntry, document: ResultDocument | null
     }
 }
 
+/**
+ * The job's main input for the Jobs list: the action's `primaryInput` placeholder, else the first file path
+ * control the command uses. Blank when there is none.
+ */
+function primaryFileDetail(action: ActionSpec, context: CommandContext): { primaryFile?: string } {
+    const candidates = action.primaryInput
+        ? [action.primaryInput]
+        : actionCommandPlaceholders(action.command).map(inputValueKey).filter(isFilePathControl);
+    for (const key of candidates) {
+        const value = String(contextValue(context, key) ?? "").trim();
+        if (value) {
+            return { primaryFile: value };
+        }
+    }
+    return {};
+}
+function isFilePathControl(key: string): boolean {
+    const control = controlWithID(key);
+    return control?.kind === "path" && control.pathType !== "directory";
+}
 function actionTerminalBody(title: unknown, context: CommandContext, action: ActionSpec | null = null) {
     return [
         actionExecutionLine(title, context, action),

@@ -217,16 +217,24 @@ def test_deliberately_cancelled_started_job_prevents_restarting_queued_sibling()
 
 def test_closed_newer_duplicate_is_not_reopened_instead_of_canonical_bug() -> None:
     api = ReplayGitHub()
-    marker = "<!-- ci-flaky:collision -->"
+    marker = f"<!-- ci-flaky:{'a' * 64} -->"
     original = api.api(
         "POST",
         "issues",
-        {"title": "Flaky: same test", "body": marker, "labels": ["ci-automation"]},
+        {
+            "title": "Flaky: same test",
+            "body": f"(AI): {marker}\n\nEvidence",
+            "labels": ["ci-automation"],
+        },
     )
     duplicate = api.api(
         "POST",
         "issues",
-        {"title": "Flaky: same test", "body": marker, "labels": ["ci-automation"]},
+        {
+            "title": "Flaky: same test",
+            "body": f"(AI): {marker}\n\nEvidence",
+            "labels": ["ci-automation"],
+        },
     )
     api.api("PATCH", f"issues/{duplicate['number']}", {"state": "closed"})
     issue = Observer(api).issue("Flaky: same test", marker, "new evidence")

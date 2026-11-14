@@ -229,8 +229,9 @@ It writes bwa's exact alignments and is **experimental**.
 - **Order on Linux (bwa's records):** [bwa-mem3](#bwa-mem3-on-linux)
   `--compat=bwa-mem` (`wgse-bwa-mem3`, on its own GPU, else Bioconda's) when
   it's installed, runs and fits; otherwise `wgse-bwa`
-  on the GPU when it fits in RAM; otherwise `wgse-bwa` on the CPU; otherwise
-  bwa. All write the same records. bwa-mem3 goes first even with a GPU: on an
+  on the GPU when it fits in RAM; otherwise `wgse-bwa` on the CPU (0.14.0
+  took a quarter less time than bwa on the machine below, in bwa's RAM);
+  otherwise bwa. All write the same records. bwa-mem3 goes first even with a GPU: on an
   RTX 3090 with a Ryzen 5 5600X (5M HG002 pairs on hs38, 8 threads), bwa-mem3
   0.16.0 `--compat=bwa-mem` on the CPU took 97.7 s (761 s of CPU time) and
   `wgse-bwa --cuda` 131.4 s (1006 s), against upstream bwa's 472.5 s, all with

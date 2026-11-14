@@ -1,6 +1,6 @@
 context:
   # native/bwa/CMakeLists.txt's WGSE_BWA_VERSION.
-  version: "0.13.0"
+  version: "0.14.0"
   bwa_version: "0.7.19"
   mem3_version: "0.16.0"
 
@@ -91,5 +91,5 @@ about:
     - native/bwa/SEEDING-LICENSE
   summary: >-
     BWA 0.7.19 rebuilt by WGS Extract with exact faster CPU steps (NEON on
-    ARM64) and, on x86-64, an experimental CUDA backend (--cuda, --backend
-    auto); it writes BWA's exact alignments.
+    ARM64, SSE2 and AVX2 on x86-64) and, on x86-64, an experimental CUDA
+    backend (--cuda, --backend auto); it writes BWA's exact alignments.

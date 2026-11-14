@@ -1,0 +1,849 @@
+{
+  "total_count": 12,
+  "jobs": [
+    {
+      "id": 132019332049,
+      "name": "app-build / Tauri (tauri-macos-arm64)",
+      "conclusion": "cancelled",
+      "run_id": 43443418565,
+      "run_attempt": 2,
+      "head_sha": "fca3bb08f9066b230aade01098c2f767dbabedae",
+      "check_run_url": "https://api.github.com/repos/WGSExtract/wgsextract-cli/check-runs/132019332049",
+      "runner_id": 0,
+      "runner_name": "",
+      "steps": []
+    },
+    {
+      "id": 132019334098,
+      "name": "macos",
+      "conclusion": "success",
+      "run_id": 43443418565,
+      "run_attempt": 2,
+      "head_sha": "fca3bb08f9066b230aade01098c2f767dbabedae",
+      "check_run_url": "https://api.github.com/repos/WGSExtract/wgsextract-cli/check-runs/132019334098",
+      "runner_id": 1000027435,
+      "runner_name": "GitHub Actions 1000027435",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "number": 1,
+          "status": "completed"
+        },
+        {
+          "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "number": 2,
+          "status": "completed"
+        },
+        {
+          "name": "Set up Pixi",
+          "conclusion": "success",
+          "number": 3,
+          "status": "completed"
+        },
+        {
+          "name": "Install, use, update and uninstall as a fresh macOS user",
+          "conclusion": "success",
+          "number": 4,
+          "status": "completed"
+        },
+        {
+          "name": "Every corruption of the evidence must fail the oracle",
+          "conclusion": "success",
+          "number": 5,
+          "status": "completed"
+        },
+        {
+          "name": "Every sabotaged install must fail",
+          "conclusion": "skipped",
+          "number": 6,
+          "status": "completed"
+        },
+        {
+          "name": "Upload evidence",
+          "conclusion": "success",
+          "number": 7,
+          "status": "completed"
+        },
+        {
+          "name": "Post Set up Pixi",
+          "conclusion": "success",
+          "number": 13,
+          "status": "completed"
+        },
+        {
+          "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "number": 14,
+          "status": "completed"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "number": 15,
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "id": 132019334599,
+      "name": "linux",
+      "conclusion": "success",
+      "run_id": 43443418565,
+      "run_attempt": 2,
+      "head_sha": "fca3bb08f9066b230aade01098c2f767dbabedae",
+      "check_run_url": "https://api.github.com/repos/WGSExtract/wgsextract-cli/check-runs/132019334599",
+      "runner_id": 1000027388,
+      "runner_name": "GitHub Actions 1000027388",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "number": 1,
+          "status": "completed"
+        },
+        {
+          "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "number": 2,
+          "status": "completed"
+        },
+        {
+          "name": "Set up Pixi",
+          "conclusion": "success",
+          "number": 3,
+          "status": "completed"
+        },
+        {
+          "name": "Install, use, update and uninstall in a fresh Ubuntu container",
+          "conclusion": "success",
+          "number": 4,
+          "status": "completed"
+        },
+        {
+          "name": "Every corruption of the evidence must fail the oracle",
+          "conclusion": "success",
+          "number": 5,
+          "status": "completed"
+        },
+        {
+          "name": "Install into a folder whose path has a space",
+          "conclusion": "success",
+          "number": 6,
+          "status": "completed"
+        },
+        {
+          "name": "Update the latest published release to this tree",
+          "conclusion": "success",
+          "number": 7,
+          "status": "completed"
+        },
+        {
+          "name": "Every sabotaged install must fail",
+          "conclusion": "skipped",
+          "number": 8,
+          "status": "completed"
+        },
+        {
+          "name": "Upload evidence",
+          "conclusion": "success",
+          "number": 9,
+          "status": "completed"
+        },
+        {
+          "name": "Post Set up Pixi",
+          "conclusion": "success",
+          "number": 17,
+          "status": "completed"
+        },
+        {
+          "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "number": 18,
+          "status": "completed"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "number": 19,
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "id": 132019335700,
+      "name": "app-build / Tauri (tauri-windows)",
+      "conclusion": "success",
+      "run_id": 43443418565,
+      "run_attempt": 2,
+      "head_sha": "fca3bb08f9066b230aade01098c2f767dbabedae",
+      "check_run_url": "https://api.github.com/repos/WGSExtract/wgsextract-cli/check-runs/132019335700",
+      "runner_id": 1000027410,
+      "runner_name": "GitHub Actions 1000027410",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "number": 1,
+          "status": "completed"
+        },
+        {
+          "name": "Checkout",
+          "conclusion": "success",
+          "number": 2,
+          "status": "completed"
+        },
+        {
+          "name": "Checkout CI helpers",
+          "conclusion": "success",
+          "number": 3,
+          "status": "completed"
+        },
+        {
+          "name": "Configure release version",
+          "conclusion": "skipped",
+          "number": 4,
+          "status": "completed"
+        },
+        {
+          "name": "Setup Node",
+          "conclusion": "success",
+          "number": 5,
+          "status": "completed"
+        },
+        {
+          "name": "Configure shared npm downloads",
+          "conclusion": "success",
+          "number": 6,
+          "status": "completed"
+        },
+        {
+          "name": "Restore npm downloads with this run's helpers",
+          "conclusion": "success",
+          "number": 7,
+          "status": "completed"
+        },
+        {
+          "name": "Setup Rust",
+          "conclusion": "success",
+          "number": 8,
+          "status": "completed"
+        },
+        {
+          "name": "Install Linux system dependencies",
+          "conclusion": "skipped",
+          "number": 9,
+          "status": "completed"
+        },
+        {
+          "name": "Configure macOS signing and notarization",
+          "conclusion": "skipped",
+          "number": 10,
+          "status": "completed"
+        },
+        {
+          "name": "Cache Cargo downloads",
+          "conclusion": "success",
+          "number": 11,
+          "status": "completed"
+        },
+        {
+          "name": "Install dependencies",
+          "conclusion": "success",
+          "number": 12,
+          "status": "completed"
+        },
+        {
+          "name": "Package Tauri app",
+          "conclusion": "success",
+          "number": 13,
+          "status": "completed"
+        },
+        {
+          "name": "Upload Tauri artifacts",
+          "conclusion": "success",
+          "number": 14,
+          "status": "completed"
+        },
+        {
+          "name": "Post Cache Cargo downloads",
+          "conclusion": "success",
+          "number": 24,
+          "status": "completed"
+        },
+        {
+          "name": "Post Restore npm downloads with this run's helpers",
+          "conclusion": "success",
+          "number": 25,
+          "status": "completed"
+        },
+        {
+          "name": "Post Setup Node",
+          "conclusion": "success",
+          "number": 26,
+          "status": "completed"
+        },
+        {
+          "name": "Post Checkout CI helpers",
+          "conclusion": "success",
+          "number": 27,
+          "status": "completed"
+        },
+        {
+          "name": "Post Checkout",
+          "conclusion": "success",
+          "number": 28,
+          "status": "completed"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "number": 29,
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "id": 132019336583,
+      "name": "app-build / Tauri (tauri-linux)",
+      "conclusion": "success",
+      "run_id": 43443418565,
+      "run_attempt": 2,
+      "head_sha": "fca3bb08f9066b230aade01098c2f767dbabedae",
+      "check_run_url": "https://api.github.com/repos/WGSExtract/wgsextract-cli/check-runs/132019336583",
+      "runner_id": 1000027402,
+      "runner_name": "GitHub Actions 1000027402",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "number": 1,
+          "status": "completed"
+        },
+        {
+          "name": "Checkout",
+          "conclusion": "success",
+          "number": 2,
+          "status": "completed"
+        },
+        {
+          "name": "Checkout CI helpers",
+          "conclusion": "success",
+          "number": 3,
+          "status": "completed"
+        },
+        {
+          "name": "Configure release version",
+          "conclusion": "skipped",
+          "number": 4,
+          "status": "completed"
+        },
+        {
+          "name": "Setup Node",
+          "conclusion": "success",
+          "number": 5,
+          "status": "completed"
+        },
+        {
+          "name": "Configure shared npm downloads",
+          "conclusion": "success",
+          "number": 6,
+          "status": "completed"
+        },
+        {
+          "name": "Restore npm downloads with this run's helpers",
+          "conclusion": "success",
+          "number": 7,
+          "status": "completed"
+        },
+        {
+          "name": "Setup Rust",
+          "conclusion": "success",
+          "number": 8,
+          "status": "completed"
+        },
+        {
+          "name": "Install Linux system dependencies",
+          "conclusion": "success",
+          "number": 9,
+          "status": "completed"
+        },
+        {
+          "name": "Configure macOS signing and notarization",
+          "conclusion": "skipped",
+          "number": 10,
+          "status": "completed"
+        },
+        {
+          "name": "Cache Cargo downloads",
+          "conclusion": "success",
+          "number": 11,
+          "status": "completed"
+        },
+        {
+          "name": "Install dependencies",
+          "conclusion": "success",
+          "number": 12,
+          "status": "completed"
+        },
+        {
+          "name": "Package Tauri app",
+          "conclusion": "success",
+          "number": 13,
+          "status": "completed"
+        },
+        {
+          "name": "Upload Tauri artifacts",
+          "conclusion": "success",
+          "number": 14,
+          "status": "completed"
+        },
+        {
+          "name": "Post Cache Cargo downloads",
+          "conclusion": "success",
+          "number": 24,
+          "status": "completed"
+        },
+        {
+          "name": "Post Restore npm downloads with this run's helpers",
+          "conclusion": "success",
+          "number": 25,
+          "status": "completed"
+        },
+        {
+          "name": "Post Setup Node",
+          "conclusion": "success",
+          "number": 26,
+          "status": "completed"
+        },
+        {
+          "name": "Post Checkout CI helpers",
+          "conclusion": "success",
+          "number": 27,
+          "status": "completed"
+        },
+        {
+          "name": "Post Checkout",
+          "conclusion": "success",
+          "number": 28,
+          "status": "completed"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "number": 29,
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "id": 132019405839,
+      "name": "app-source",
+      "conclusion": "success",
+      "run_id": 43443418565,
+      "run_attempt": 2,
+      "head_sha": "fca3bb08f9066b230aade01098c2f767dbabedae",
+      "check_run_url": "https://api.github.com/repos/WGSExtract/wgsextract-cli/check-runs/132019405839",
+      "runner_id": 1000027394,
+      "runner_name": "GitHub Actions 1000027394",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "number": 1,
+          "status": "completed"
+        },
+        {
+          "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "number": 2,
+          "status": "completed"
+        },
+        {
+          "name": "Find the app's release",
+          "conclusion": "success",
+          "number": 3,
+          "status": "completed"
+        },
+        {
+          "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "number": 6,
+          "status": "completed"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "number": 7,
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "id": 132019410267,
+      "name": "windows-sabotage",
+      "conclusion": "skipped",
+      "run_id": 43443418565,
+      "run_attempt": 2,
+      "head_sha": "fca3bb08f9066b230aade01098c2f767dbabedae",
+      "check_run_url": "https://api.github.com/repos/WGSExtract/wgsextract-cli/check-runs/132019410267",
+      "runner_id": null,
+      "runner_name": null,
+      "steps": []
+    },
+    {
+      "id": 132019426694,
+      "name": "windows",
+      "conclusion": "success",
+      "run_id": 43443418565,
+      "run_attempt": 2,
+      "head_sha": "fca3bb08f9066b230aade01098c2f767dbabedae",
+      "check_run_url": "https://api.github.com/repos/WGSExtract/wgsextract-cli/check-runs/132019426694",
+      "runner_id": 1000027398,
+      "runner_name": "GitHub Actions 1000027398",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "number": 1,
+          "status": "completed"
+        },
+        {
+          "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "number": 2,
+          "status": "completed"
+        },
+        {
+          "name": "Install, use, update and uninstall as a fresh Windows user",
+          "conclusion": "success",
+          "number": 3,
+          "status": "completed"
+        },
+        {
+          "name": "Upload evidence",
+          "conclusion": "success",
+          "number": 4,
+          "status": "completed"
+        },
+        {
+          "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "number": 8,
+          "status": "completed"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "number": 9,
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "id": 132035104536,
+      "name": "macos-app (tree)",
+      "conclusion": "failure",
+      "run_id": 43443418565,
+      "run_attempt": 2,
+      "head_sha": "fca3bb08f9066b230aade01098c2f767dbabedae",
+      "check_run_url": "https://api.github.com/repos/WGSExtract/wgsextract-cli/check-runs/132035104536",
+      "runner_id": 1000027777,
+      "runner_name": "GitHub Actions 1000027777",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "number": 1,
+          "status": "completed"
+        },
+        {
+          "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "number": 2,
+          "status": "completed"
+        },
+        {
+          "name": "Run actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0",
+          "conclusion": "success",
+          "number": 3,
+          "status": "completed"
+        },
+        {
+          "name": "Use the image's newest Xcode (the released SwiftUI app's runner needs Swift 6.2+)",
+          "conclusion": "success",
+          "number": 4,
+          "status": "completed"
+        },
+        {
+          "name": "Get the app built from this tree",
+          "conclusion": "failure",
+          "number": 5,
+          "status": "completed"
+        },
+        {
+          "name": "Download the app's DMG",
+          "conclusion": "skipped",
+          "number": 6,
+          "status": "completed"
+        },
+        {
+          "name": "Check out the app's source (for its bundle-test runner)",
+          "conclusion": "skipped",
+          "number": 7,
+          "status": "completed"
+        },
+        {
+          "name": "Install, use and uninstall the app as the runner's macOS user",
+          "conclusion": "skipped",
+          "number": 8,
+          "status": "completed"
+        },
+        {
+          "name": "Set up Pixi",
+          "conclusion": "skipped",
+          "number": 9,
+          "status": "completed"
+        },
+        {
+          "name": "Judge the evidence",
+          "conclusion": "skipped",
+          "number": 10,
+          "status": "completed"
+        },
+        {
+          "name": "Every corruption of the evidence must fail the oracle",
+          "conclusion": "skipped",
+          "number": 11,
+          "status": "completed"
+        },
+        {
+          "name": "Upload evidence",
+          "conclusion": "success",
+          "number": 12,
+          "status": "completed"
+        },
+        {
+          "name": "Post Run actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0",
+          "conclusion": "skipped",
+          "number": 23,
+          "status": "completed"
+        },
+        {
+          "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "number": 24,
+          "status": "completed"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "number": 25,
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "id": 132035104627,
+      "name": "windows-app (tree)",
+      "conclusion": "success",
+      "run_id": 43443418565,
+      "run_attempt": 2,
+      "head_sha": "fca3bb08f9066b230aade01098c2f767dbabedae",
+      "check_run_url": "https://api.github.com/repos/WGSExtract/wgsextract-cli/check-runs/132035104627",
+      "runner_id": 1000027759,
+      "runner_name": "GitHub Actions 1000027759",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "number": 1,
+          "status": "completed"
+        },
+        {
+          "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "number": 2,
+          "status": "completed"
+        },
+        {
+          "name": "Get the app built from this tree",
+          "conclusion": "success",
+          "number": 3,
+          "status": "completed"
+        },
+        {
+          "name": "Download the app's installer",
+          "conclusion": "success",
+          "number": 4,
+          "status": "completed"
+        },
+        {
+          "name": "Install, use and uninstall the app as a fresh Windows user",
+          "conclusion": "success",
+          "number": 5,
+          "status": "completed"
+        },
+        {
+          "name": "Upload evidence",
+          "conclusion": "success",
+          "number": 6,
+          "status": "completed"
+        },
+        {
+          "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "number": 12,
+          "status": "completed"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "number": 13,
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "id": 132035104632,
+      "name": "linux-app (tree)",
+      "conclusion": "success",
+      "run_id": 43443418565,
+      "run_attempt": 2,
+      "head_sha": "fca3bb08f9066b230aade01098c2f767dbabedae",
+      "check_run_url": "https://api.github.com/repos/WGSExtract/wgsextract-cli/check-runs/132035104632",
+      "runner_id": 1000027771,
+      "runner_name": "GitHub Actions 1000027771",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "number": 1,
+          "status": "completed"
+        },
+        {
+          "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "number": 2,
+          "status": "completed"
+        },
+        {
+          "name": "Set up Pixi",
+          "conclusion": "success",
+          "number": 3,
+          "status": "completed"
+        },
+        {
+          "name": "Get the app built from this tree",
+          "conclusion": "success",
+          "number": 4,
+          "status": "completed"
+        },
+        {
+          "name": "Download the app's .deb",
+          "conclusion": "success",
+          "number": 5,
+          "status": "completed"
+        },
+        {
+          "name": "Install, use and uninstall the app in a fresh Ubuntu container",
+          "conclusion": "success",
+          "number": 6,
+          "status": "completed"
+        },
+        {
+          "name": "Every corruption of the evidence must fail the oracle",
+          "conclusion": "success",
+          "number": 7,
+          "status": "completed"
+        },
+        {
+          "name": "Upload evidence",
+          "conclusion": "success",
+          "number": 8,
+          "status": "completed"
+        },
+        {
+          "name": "Post Set up Pixi",
+          "conclusion": "success",
+          "number": 15,
+          "status": "completed"
+        },
+        {
+          "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "number": 16,
+          "status": "completed"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "number": 17,
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "id": 132043746373,
+      "name": "windows-judge",
+      "conclusion": "success",
+      "run_id": 43443418565,
+      "run_attempt": 2,
+      "head_sha": "fca3bb08f9066b230aade01098c2f767dbabedae",
+      "check_run_url": "https://api.github.com/repos/WGSExtract/wgsextract-cli/check-runs/132043746373",
+      "runner_id": 1000027784,
+      "runner_name": "GitHub Actions 1000027784",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "number": 1,
+          "status": "completed"
+        },
+        {
+          "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "number": 2,
+          "status": "completed"
+        },
+        {
+          "name": "Set up Pixi",
+          "conclusion": "success",
+          "number": 3,
+          "status": "completed"
+        },
+        {
+          "name": "Run actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+          "conclusion": "success",
+          "number": 4,
+          "status": "completed"
+        },
+        {
+          "name": "Judge the Windows evidence",
+          "conclusion": "success",
+          "number": 5,
+          "status": "completed"
+        },
+        {
+          "name": "Post Set up Pixi",
+          "conclusion": "success",
+          "number": 9,
+          "status": "completed"
+        },
+        {
+          "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "number": 10,
+          "status": "completed"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "number": 11,
+          "status": "completed"
+        }
+      ]
+    }
+  ]
+}

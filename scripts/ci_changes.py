@@ -53,9 +53,12 @@ def routes(
     paths: list[str],
     *,
     force_install_lab: bool = False,
+    draft: bool = False,
     repository: Path = ROOT,
 ) -> dict[str, bool]:
-    result = dict.fromkeys(("cli", "docs", "native", "site", "install"), False)
+    result = dict.fromkeys(
+        ("cli", "docs", "native", "site", "install", "fast", "draft_cli"), False
+    )
     result["install"] = force_install_lab
     for path in paths:
         readers = set().union(
@@ -95,6 +98,11 @@ def routes(
         # Unknown paths deliberately fail open to the full CLI matrix.
         result["cli"] = True
         result["docs"] = True
+    if draft:
+        result["fast"] = bool(paths)
+        result["draft_cli"] = result["cli"]
+        for area in ("cli", "native", "site", "install"):
+            result[area] = False
     return result
 
 
@@ -104,6 +112,7 @@ def main() -> None:
     parser.add_argument("--head", required=True)
     parser.add_argument("--force-install-lab", action="store_true")
     parser.add_argument("--label-event", action="store_true")
+    parser.add_argument("--draft", action="store_true")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     changed = (
@@ -122,7 +131,7 @@ def main() -> None:
         )
     )
     paths = changed.decode().rstrip("\0").split("\0") if changed else []
-    selected = routes(paths, force_install_lab=args.force_install_lab)
+    selected = routes(paths, force_install_lab=args.force_install_lab, draft=args.draft)
     output = "".join(f"{key}={str(value).lower()}\n" for key, value in selected.items())
     output += (
         "python_files="
@@ -131,6 +140,7 @@ def main() -> None:
         )
         + "\n"
     )
+    output += "routed=true\n"
     print(output, end="")
     if args.output:
         with args.output.open("a", encoding="utf-8") as stream:

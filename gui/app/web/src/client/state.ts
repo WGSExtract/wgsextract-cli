@@ -58,9 +58,11 @@ export function createInitialState(): WebUIState {
         setupPromptDismissed: false,
         terminalCopyFeedback: false,
         terminalEntries: [],
+        jobHistory: [],
         activeTerminalIndex: 0,
         aboutDialogVisible: false,
-        isTerminalVisible: true,
+        // Basic starts collapsed; loading the bundle applies the saved Advanced choice (see terminal-visibility.ts).
+        isTerminalVisible: false,
         isSidebarVisible: localStorage.getItem("wgsextractGui.sidebarVisible") !== "false",
         pendingConfirmation: null,
         pendingPrerequisites: null,

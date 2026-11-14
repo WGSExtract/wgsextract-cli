@@ -10,7 +10,8 @@ import { captureKeyedScrollStates, captureScrollState, restoreKeyedScrollStates,
 import { runSetup } from "./operations-setup.js";
 import { state } from "./state.js";
 import { initializeTauriUpdater } from "./tauri-updater.js";
-import { appendTerminal, discardPendingTerminalOutput, ensureMainTerminal, renderTerminalPane, renderTerminalToggle, terminalTabs } from "./terminal.js";
+import { appendTerminal, discardPendingTerminalOutput, ensureMainTerminal, renderTerminalPane, terminalTabs } from "./terminal.js";
+import { applyUIModeTerminalVisibilityIfChanged } from "./terminal-visibility.js";
 import { renderUpdatePopover } from "./view/update.js";
 import { renderPrerequisitesDialog } from "./view/prerequisites.js";
 import { renderBundleHeader, renderConfirmationDialog, renderNavigation, renderUIModeSwitch, renderPage, renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID } from "./view.js";
@@ -44,6 +45,8 @@ async function bootstrap(locale?: string) {
         state.colorTheme = normalizeColorTheme(bundle.bundleState?.colorTheme);
         state.webUIFont = bundle.bundleState?.webUIFont === "sfPro" ? "sfPro" : "system";
         state.uiMode = normalizeUIMode(bundle.bundleState?.uiMode);
+        // At launch, or when a loaded bundle changes the mode; a reload in the same mode (a language change, say) keeps the pane as it was.
+        applyUIModeTerminalVisibilityIfChanged();
         state.setupRun = bundle.bundleState?.setupRun ?? null;
         state.appVersion = bundle.appVersion ?? "";
         state.workspaceLocation = bundle.workspaceLocation ?? null;
@@ -145,8 +148,7 @@ function render() {
       ${renderSetupGlobalStatusBar()}
       <main class="page-panel" data-page-panel-id="${escapeAttribute(activePage?.id ?? "")}">${activePage ? renderPage(activePage) : ""}</main>
       ${state.isTerminalVisible ? `<div class="terminal-resizer" data-terminal-resizer role="separator" aria-orientation="horizontal" aria-label="Resize command output" tabindex="0"></div>` : ""}
-      ${state.isTerminalVisible ? renderTerminalPane() : ""}
-      ${state.isTerminalVisible ? "" : renderTerminalToggle()}
+      ${renderTerminalPane()}
     </div>
     ${state.isSidebarVisible ? "" : `<button type="button" class="sidebar-toggle sidebar-toggle-floating" data-sidebar-toggle title="${escapeAttribute(sidebarToggleTitle())}" aria-label="${escapeAttribute(sidebarToggleTitle())}">${renderIcon("sidebar.left", undefined, "▶")}</button>`}
     ${renderUpdatePopover()}

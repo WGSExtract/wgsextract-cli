@@ -69,6 +69,7 @@ class ReplayGitHub(GitHub):
         self.refuse_retry = False
         self.comment_fetches: Counter[int] = Counter()
         self.next_comment_id = 1
+        self.issue_mutations: Counter[int] = Counter()
 
     def evidence(self, job: dict[str, Any]) -> Evidence:
         if self.use_transport:
@@ -198,11 +199,17 @@ class ReplayGitHub(GitHub):
                 query = parse_qs(url.query)
                 state = query.get("state", ["all"])[0]
                 labels = set(query.get("labels", [""])[0].split(",")) - {""}
+                creator = query.get("creator", [None])[0]
                 issues = [
                     issue
                     for issue in reversed(self.issues)
                     if (state == "all" or issue["state"] == state)
-                    and labels <= set(issue.get("labels", []))
+                    and (creator is None or issue["user"]["login"] == creator)
+                    and labels
+                    <= {
+                        label["name"] if isinstance(label, dict) else label
+                        for label in issue.get("labels", [])
+                    }
                 ]
                 return copy.deepcopy(issues)
             assert data is not None
@@ -229,19 +236,40 @@ class ReplayGitHub(GitHub):
             return copy.deepcopy(comment)
         if parts[0] == "issues":
             number = int(parts[1])
+            stored = next(
+                (issue for issue in self.issues if issue["number"] == number), None
+            )
+            labels = (
+                {
+                    label["name"] if isinstance(label, dict) else label
+                    for label in stored.get("labels", [])
+                }
+                if stored is not None
+                else set(self.labels)
+            )
             if parts[-1] == "labels":
                 if method == "GET":
-                    return [{"name": label} for label in self.labels]
+                    return [{"name": label} for label in labels]
                 assert data is not None
-                self.labels.update(data["labels"])
-                return None
+                self.issue_mutations[number] += 1
+                labels.update(data["labels"])
+                if stored is not None:
+                    stored["labels"] = sorted(labels)
+                else:
+                    self.labels.update(labels)
+                return [{"name": label} for label in labels]
             if method == "DELETE":
-                self.labels.discard(parts[-1])
+                self.issue_mutations[number] += 1
+                labels.discard(parts[-1])
+                if stored is not None:
+                    stored["labels"] = sorted(labels)
+                else:
+                    self.labels.discard(parts[-1])
                 if self.on_label_delete:
                     callback = self.on_label_delete
                     self.on_label_delete = None
                     callback()
-                return None
+                return [{"name": label} for label in labels]
             if parts[-1] == "comments":
                 comments = self.comments.setdefault(number, [])
                 if method == "GET":
@@ -265,6 +293,7 @@ class ReplayGitHub(GitHub):
                     callback()
                 return copy.deepcopy(comment)
             assert data is not None
+            self.issue_mutations[number] += 1
             issue = next(item for item in self.issues if item["number"] == number)
             issue.update(data)
             return copy.deepcopy(issue)
@@ -300,9 +329,23 @@ def test_lost_before_first_step_is_retried_once_and_audited() -> None:
     Observer(api).process(api.run)
     assert api.retried == [job["id"]]
     api.run["run_attempt"] = 2
-    api.jobs[2] = [job]
+    api.jobs[2] = [dict(job, id=job["id"] + 1, run_attempt=2)]
     Observer(api).process(api.run)
     assert api.retried == [job["id"]]
+
+
+def test_failed_required_gate_does_not_block_lost_runner_retry() -> None:
+    # Merge queue (#758) review: the `required` summary fails with a lost
+    # dependency; the automatic retry must still rerun the lost job.
+    api = ReplayGitHub()
+    api.run["name"] = "PR area checks"
+    lost = recorded("lost_runner")
+    gate = dict(recorded("test_failure"), id=lost["id"] + 1, name="required")
+    api.jobs[1] = [lost, gate]
+    api.run["conclusion"] = "failure"
+    Observer(api).process(api.run)
+    assert api.retried == [lost["id"]]
+    assert "lost runner" in ledger_comments(api)[0]
 
 
 def test_superseded_zero_step_cancellation_does_not_restart_old_head() -> None:
@@ -356,7 +399,8 @@ def test_mirror_outage_has_a_finite_retry_budget() -> None:
     api.evidence_text = ""
     for attempt in (1, 2, 3):
         api.run["run_attempt"] = attempt
-        api.jobs[attempt] = [recorded("test_failure")]
+        job = recorded("test_failure")
+        api.jobs[attempt] = [dict(job, id=job["id"] + attempt, run_attempt=attempt)]
         Observer(api).process(api.run)
     assert len(api.retried) == 2
     assert "mirror/network" in ledger_comments(api)[0]

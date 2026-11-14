@@ -203,19 +203,19 @@ def _serve_mcp_http(
         raise UsageError(f"Can't listen on 127.0.0.1:{port}: {e}") from None
     url = f"http://127.0.0.1:{sock.getsockname()[1]}{PATH}"
     mode = " (jobs allowed)" if allow_jobs else " (read-only queries)"
-    _announce(
-        f"WGS Extract MCP server (streamable HTTP) on {url}{mode}",
-        url,
-        token,
-        discovery,
-        guard,
-        f"Clients send it as 'Authorization: Bearer {token}'.",
-        ready_json=ready_json,
-    )
     try:
+        # Discovery precedes HTTP startup, so protect it from early Ctrl-C too.
+        _announce(
+            f"WGS Extract MCP server (streamable HTTP) on {url}{mode}",
+            url,
+            token,
+            discovery,
+            guard,
+            f"Clients send it as 'Authorization: Bearer {token}'.",
+            ready_json=ready_json,
+        )
         serve(McpTools(manager, guard, allow_jobs=allow_jobs), token, sock)
     except (KeyboardInterrupt, SystemExit):
-        # uvicorn shuts down gracefully, then re-raises the signal.
         logging.info("Stopping the MCP server.")
     finally:
         sock.close()
@@ -238,16 +238,16 @@ def _serve_http(
     except OSError as e:
         raise UsageError(f"Can't listen on 127.0.0.1:{port}: {e}") from None
     url = server.url + "/v1"
-    _announce(
-        f"WGS Extract server on {url}",
-        url,
-        token,
-        discovery,
-        guard,
-        f"Try: curl -H 'Authorization: Bearer {token}' {url}/ops",
-        ready_json=ready_json,
-    )
     try:
+        _announce(
+            f"WGS Extract server on {url}",
+            url,
+            token,
+            discovery,
+            guard,
+            f"Try: curl -H 'Authorization: Bearer {token}' {url}/ops",
+            ready_json=ready_json,
+        )
         server.serve_forever()
     except (KeyboardInterrupt, SystemExit):
         logging.info("Stopping the server.")

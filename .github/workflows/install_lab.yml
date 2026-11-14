@@ -473,8 +473,8 @@ jobs:
           pattern: install-lab-windows*
           path: out/installlab
       # Each evidence set is judged; a sabotaged run passes only by failing on
-      # the checks its sabotage breaks. Evidence a Windows job failed to upload
-      # is missing here, and fails this job.
+      # the checks its sabotage breaks. Keep judging available app evidence if
+      # another app matrix job failed before it could upload anything.
       - name: Judge the Windows evidence
         env:
           EXPECTED: >-
@@ -483,6 +483,9 @@ jobs:
             ${{ env.EXTENDED_SCENARIOS == 'true' && 'install-lab-windows-app-pinned install-lab-windows-sabotage-noop-installer install-lab-windows-sabotage-fake-launcher install-lab-windows-sabotage-break-samtools install-lab-windows-sabotage-leftover install-lab-windows-sabotage-skip-uninstall' || '' }}
         run: |
           status=0
+          read -r -a expected <<< "$EXPECTED"
+          EXPECTED=$(python3 -m scripts.ci_windows_evidence \
+            --root out/installlab --app-job-result '${{ needs.windows-app.result }}' "${expected[@]}")
           for name in $EXPECTED; do
             results=out/installlab/$name
             [ -d "$results/results" ] && results=$results/results
