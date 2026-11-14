@@ -1,4 +1,5 @@
 import re
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 import pytest
@@ -82,6 +83,17 @@ def test_910_pr_workflows_allocate_no_draft_runners_and_wake_on_readiness(
         )
 
 
+def test_910_setup_push_trigger_does_not_allocate_runners_for_draft_branches() -> None:
+    setup = (WORKFLOWS / "copilot-setup-steps.yml").read_text()
+    push = re.search(r"^  push:\n((?:    .*\n)*)", setup, re.MULTILINE)
+    assert push
+    branches = re.search(r"branches: \[([^]]+)\]", push[1])
+    assert branches
+    patterns = [pattern.strip().strip("'\"") for pattern in branches[1].split(",")]
+    assert any(fnmatchcase("main", pattern) for pattern in patterns)
+    assert not any(fnmatchcase("ci/draft-pr", pattern) for pattern in patterns)
+
+
 def test_910_redrafting_cancels_the_separate_install_lab_label_lane() -> None:
     """Redrafting must enter both ready-run groups without allocating a runner."""
     area = (WORKFLOWS / "pr_ci.yml").read_text()
@@ -99,6 +111,18 @@ def test_910_redrafting_cancels_the_separate_install_lab_label_lane() -> None:
     assert label_group[1] != code_run
     assert "converted_to_draft" in cancellation
     assert "cancel-in-progress: true" in cancellation
+
+
+@pytest.mark.parametrize("job", ["required", "ready-gate"])
+def test_876_summary_gates_stop_when_the_workflow_is_cancelled(job: str) -> None:
+    workflow = (policy.ROOT / ".github/workflows/pr_ci.yml").read_text()
+    block = workflow.split(f"\n  {job}:\n", 1)[1].split("\n  required:", 1)[0]
+    condition = block.split("    if:", 1)[1].split("    runs-on:", 1)[0]
+    # CI contract: !cancelled() overrides implicit success() without keeping
+    # gates alive on workflow cancellation like always() does.
+    assert "!cancelled()" in condition
+    assert "always()" not in condition
+    assert "success()" not in condition
 
 
 def write_workflow(root: Path, uses: str) -> None:

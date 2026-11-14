@@ -242,8 +242,9 @@ jobs:
   required:
     name: required${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
     needs: [changes, draft-fast, docs, python-lint, ubuntu, gitleaks, native-smoke, pages]
-    # Report failed dependencies, but let whole-run cancellation stop this
-    # gate. Draft events allocate no runner, including this summary.
+    # Run after failed dependencies, but let whole-run cancellation stop this
+    # gate. A cancelled dependency in an otherwise active run still fails below.
+    # Draft events allocate no runner, including this summary.
     if: ${{ !cancelled() && github.event.pull_request.draft != true && !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
     runs-on: ubuntu-latest
     timeout-minutes: 2

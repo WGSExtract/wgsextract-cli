@@ -18,3 +18,8 @@ producer before its first step; the tree-app consumer then failed to download
 `tauri-macos-arm64`. The annotation responses and selected error log lines are
 recorded separately. Counterfactual regressions alter only the relevant job,
 step or failure message.
+
+`cancelled_draft_gate.json` records selected run/job fields from draft run
+43579850651 on the worktree-cleanup PR, retrieved on 2026-11-14. Concurrency
+cancelled its dependencies, but the `always()` summary reported failure.
+Readiness tests replay that stale rollup alongside counterfactual replacements.

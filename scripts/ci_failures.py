@@ -225,6 +225,21 @@ class Observer(IssueReports):
             return []
         return self.non_flaky(self.failures(main))
 
+    def retry_head_current(self, run: dict[str, Any]) -> bool:
+        """A historical ready payload must not restart a now-draft PR."""
+        prs = run.get("pull_requests", [])
+        if not prs:
+            return str(run["event"]) != "pull_request"
+        for pr in prs:
+            pull = self.gh.api("GET", f"pulls/{int(pr['number'])}")
+            if (
+                pull["state"] == "open"
+                and pull.get("draft") is False
+                and pull["head"]["sha"] == run["head_sha"]
+            ):
+                return True
+        return False
+
     def audit_retry(self, run: dict[str, Any], failures: list[Failure]) -> None:
         if len(failures) == 1 and failures[0].source_attempt == run["run_attempt"]:
             endpoint = f"actions/jobs/{failures[0].job_id}/rerun"
@@ -260,13 +275,7 @@ class Observer(IssueReports):
             or latest["id"] != run["id"]
             or latest["status"] != "completed"
             or latest["run_attempt"] != run["run_attempt"]
-            or (
-                run.get("pull_requests")
-                and not any(
-                    Quarantine(self.gh).head(int(pr["number"])) == run["head_sha"]
-                    for pr in run["pull_requests"]
-                )
-            )
+            or not self.retry_head_current(run)
         ):
             self.finish_retry_audit(
                 receipt,
@@ -330,6 +339,9 @@ class Observer(IssueReports):
         # A mixed run needs a code fix, not an infrastructure retry that will
         # strand old job IDs or restart deliberately cancelled queued siblings.
         if not all(retryable(failure, rerun_tests=rerun_tests) for failure in failures):
+            return 0
+        if not self.retry_head_current(run):
+            print("PR head is no longer ready; not restarting historical CI.")
             return 0
         self.audit_retry(run, failures)
         return 0
