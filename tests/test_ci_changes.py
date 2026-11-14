@@ -443,10 +443,11 @@ def test_802_ready_transition_changes_during_validation_fail_closed(
     )
 
 
-# GitHub Actions runs these workflow steps in Linux bash; on Windows "bash" is
-# WSL's launcher, which needs an installed distribution.
+# GitHub Actions runs these workflow steps in Linux's bash 5. On Windows "bash"
+# is WSL's launcher, with no distribution installed, and macOS's bash 3.2
+# fails on an empty "${flags[@]}" under `set -u`.
 LINUX_BASH = pytest.mark.skipif(
-    sys.platform == "win32", reason="workflow steps run in Linux bash"
+    not sys.platform.startswith("linux"), reason="workflow steps run in Linux bash"
 )
 
 
