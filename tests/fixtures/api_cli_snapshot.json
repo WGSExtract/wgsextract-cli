@@ -14269,7 +14269,7 @@
       "default": false,
       "dest": "no_ref_inference",
       "exclusive_group": null,
-      "help": "VCF: use genotyped positions only (targeted panels); otherwise --ref is required.",
+      "help": "VCF: use explicit genotypes only; otherwise --ref supplies bases inside callable reference blocks, never at unassessed sites.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
