@@ -6,12 +6,16 @@ on:
     paths:
       - .github/workflows/copilot-setup-steps.yml
       - .github/actions/apt-install/**
+      - .github/actions/download-cache/**
+      - .github/actions/setup-gui/**
       - .github/actions/setup-pixi/**
       - "!**/*.md"
   pull_request:
     paths:
       - .github/workflows/copilot-setup-steps.yml
       - .github/actions/apt-install/**
+      - .github/actions/download-cache/**
+      - .github/actions/setup-gui/**
       - .github/actions/setup-pixi/**
       - "!**/*.md"
 
@@ -35,17 +39,8 @@ jobs:
         run: pixi run wgsextract --help >/dev/null
       # The desktop app (gui/): its Node tooling, and the Linux libraries its
       # Tauri shell builds against.
-      - name: Install the app's Linux system dependencies
-        timeout-minutes: 30
-        uses: ./.github/actions/apt-install
+      - name: Set up the app's Node tooling and Linux libraries
+        timeout-minutes: 45
+        uses: ./.github/actions/setup-gui
         with:
-          packages: >-
-            libgtk-3-dev
-            libwebkit2gtk-4.1-dev
-            libayatana-appindicator3-dev
-            librsvg2-dev
-            patchelf
-      - name: Set up Node.js
-        uses: ./.github/actions/setup-node
-      - name: Install the app's dependencies
-        run: npm ci --prefix gui/app
+          tauri-linux-libraries: "true"

@@ -1,0 +1,107 @@
+name: Set up the desktop app toolchain
+description: >-
+  Node and the app's npm dependencies, plus on request the Rust toolchain and
+  Tauri's Linux libraries (to build the app) or the CLI's Python dependencies
+  (for the app's tests). Downloads use the main-owned caches.
+inputs:
+  npm-install:
+    description: >-
+      Install gui/app's npm dependencies: "ci", "ci-ignore-scripts" (lint and
+      tests, no install scripts) or "none".
+    required: false
+    default: ci
+  rust:
+    description: Install the current stable Rust toolchain ("true" or "false").
+    required: false
+    default: "false"
+  tauri-linux-libraries:
+    description: >-
+      On Linux, install the libraries Tauri builds against ("true" or "false").
+    required: false
+    default: "false"
+  extra-apt-packages:
+    description: More Ubuntu packages to install with the Tauri libraries.
+    required: false
+    default: ""
+  cli-python:
+    description: >-
+      Set up Python with the CLI's dependencies, which the app's tests use to
+      parse bundle commands ("true" or "false").
+    required: false
+    default: "false"
+  cache:
+    description: >-
+      Use the Cargo and apt download caches ("true" or "false"). A release
+      passes "false", to build from what upstream serves. npm downloads are
+      always cached; npm ci checks them against package-lock.json.
+    required: false
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: "24"
+        package-manager-cache: false
+    - shell: bash
+      run: npm config set cache "$GITHUB_WORKSPACE/.npm"
+    - uses: ./.github/actions/download-cache
+      with:
+        path: .npm
+        key: npm-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gui/app/package-lock.json') }}
+
+    # The hosted runners ship rustup; Tauri builds with the current stable.
+    - name: Set up Rust
+      if: inputs.rust == 'true'
+      shell: bash
+      run: |
+        rustup toolchain install stable --profile minimal
+        rustup default stable
+        rustc --version
+    # The crates Cargo.lock names, checked against its hashes when used. Not
+    # the build tree: it is large, and a release builds from scratch.
+    - name: Cache Cargo downloads
+      if: inputs.rust == 'true' && inputs.cache == 'true'
+      uses: ./.github/actions/download-cache
+      with:
+        path: |
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/git/db
+        key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gui/app/web/packagers/tauri/Cargo.lock') }}
+
+    - name: Install Tauri's Linux libraries
+      if: inputs.tauri-linux-libraries == 'true' && runner.os == 'Linux'
+      uses: ./.github/actions/apt-install
+      with:
+        cache: ${{ inputs.cache }}
+        packages: >-
+          libgtk-3-dev
+          libwebkit2gtk-4.1-dev
+          libayatana-appindicator3-dev
+          librsvg2-dev
+          patchelf
+          ${{ inputs.extra-apt-packages }}
+
+    - name: Install the app's npm dependencies
+      if: inputs.npm-install != 'none'
+      shell: bash
+      working-directory: gui/app
+      env:
+        MODE: ${{ inputs.npm-install }}
+      run: |
+        case "$MODE" in
+          ci) npm ci ;;
+          ci-ignore-scripts) npm ci --ignore-scripts ;;
+          *) echo "::error::npm-install must be ci, ci-ignore-scripts or none, not '$MODE'."; exit 1 ;;
+        esac
+
+    - name: Set up Python
+      if: inputs.cli-python == 'true'
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: "3.13"
+    - name: Install the CLI's dependencies
+      if: inputs.cli-python == 'true'
+      shell: bash
+      run: python -m pip install --quiet --editable .
