@@ -84,6 +84,10 @@ def test_composite_actions_are_held_to_the_same_policy(
             "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0",
             "setup-gui",
         ),
+        (
+            "Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3",
+            "rust-cache",
+        ),
     ],
 )
 def test_wrapped_actions_are_used_only_through_the_shared_action(
@@ -125,3 +129,43 @@ def test_new_github_queue_schema_is_validated_despite_actionlint_lag(
     assert (not errors) == valid
     if not valid:
         assert any("queue" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("workflow", "action"),
+    [
+        ("gui-build", "rust-cache"),
+        ("gui-tauri-installer", "rust-cache"),
+        ("linux_aligners", "compiler-cache"),
+        ("macos_aligners", "compiler-cache"),
+        ("linux_deepvariant", "compiler-cache"),
+        ("macos_deepvariant", "compiler-cache"),
+        ("windows_tools", "compiler-cache"),
+        ("glimpse2", "compiler-cache"),
+    ],
+)
+def test_916_expensive_builds_use_trusted_shared_cache(
+    workflow: str, action: str
+) -> None:
+    text = (policy.ROOT / f".github/workflows/{workflow}.yml").read_text()
+    # CI contract: compile jobs cannot bypass the shared trust boundary.
+    assert f"uses: ./.github/actions/{action}" in text
+    assert "uses: actions/cache" not in text
+
+
+@pytest.mark.parametrize("action", ["compiler-cache", "rust-cache"])
+def test_916_pr_refs_cannot_save_compiler_caches(action: str) -> None:
+    text = (policy.ROOT / f".github/actions/{action}/action.yml").read_text()
+    if action == "rust-cache":
+        condition = text.split("save-if:", 1)[1]
+    else:
+        condition = text.split("- name: Save successful compiler objects", 1)[1]
+        condition = condition.split("uses:", 1)[0]
+    # CI contract: the only non-main writer is the owner's isolated dispatch
+    # experiment. Neither PR events nor PR merge/head refs qualify.
+    assert "github.ref == 'refs/heads/main'" in condition
+    assert "github.event_name == 'workflow_dispatch'" in condition
+    assert "github.ref == 'refs/heads/ci/916-compiler-cache'" in condition
+    assert "github.actor == 'theontho'" in condition
+    assert "pull_request" not in condition
+    assert "measure-916-" in text
