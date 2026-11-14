@@ -131,7 +131,7 @@ jobs:
         shell: bash
         run: |
           coverage=()
-          if [ "${{ github.event_name }}" != pull_request ]; then
+          if [ "${{ github.event_name }}" != pull_request ] && [ "${{ github.event_name }}" != merge_group ]; then
             coverage+=(--cov=wgsextract_cli --cov-report=xml:out/coverage.xml)
           fi
           pixi run test-ci --ci-tier ${{ matrix.tier }} --ci-shard ${{ matrix.shard }} "${coverage[@]}"

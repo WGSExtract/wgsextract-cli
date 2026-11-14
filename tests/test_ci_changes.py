@@ -260,6 +260,12 @@ def test_757_landing_accepts_one_green_check_not_a_fixed_matrix_size(
             "workflow": "PR area checks",
             "link": "https://github.com/owner/repo/actions/runs/10/job/102",
         },
+        {
+            "name": "required",
+            "bucket": "pass",
+            "workflow": "PR area checks",
+            "link": "https://github.com/owner/repo/actions/runs/10/job/103",
+        },
         *[{"bucket": bucket} for bucket in buckets[1:]],
     ]
     assert checks_ready(checks, run_id=10) is ready
@@ -313,6 +319,12 @@ def test_802_landing_requires_completed_non_draft_validation_from_one_run(
             "workflow": "PR area checks",
             "link": f"https://github.com/owner/repo/actions/runs/{routing_run}/job/112",
         },
+        {
+            "name": "required",
+            "bucket": "pass",
+            "workflow": "PR area checks",
+            "link": "https://github.com/owner/repo/actions/runs/11/job/113",
+        },
     ]
     assert checks_ready(checks, run_id=11) is ready
 
@@ -363,7 +375,7 @@ def test_802_redrafting_the_same_head_cannot_reuse_validation_before_latest_read
             "workflow": "PR area checks",
             "link": f"https://github.com/owner/repo/actions/runs/10/job/{job}",
         }
-        for job, name in enumerate(("changes", "Ready PR area checks"), 100)
+        for job, name in enumerate(("changes", "required", "Ready PR area checks"), 100)
     ]
     assert not checks_ready(old_checks, run_id=expected_run)
     if new_run_registered:
@@ -382,11 +394,15 @@ def test_802_newest_ready_run_must_finish_without_falling_back_to_an_older_succe
     unrelated["head_sha"] = "another-head"
     other_pr = area_run(23, "2026-11-13T16:21:03Z")
     other_pr["pull_requests"] = [{"number": 999}]
+    queue_run = area_run(24, "2026-11-13T16:21:04Z")
+    queue_run["event"] = "merge_group"
+    queue_run["display_title"] = "PR area checks / checks_requested / queue"
     runs = [
         area_run(20, "2026-11-13T16:20:01Z"),
         area_run(21, "2026-11-13T16:21:01Z", action="synchronize", status=status),
         unrelated,
         other_pr,
+        queue_run,
     ]
     assert latest_ready_run(
         runs,
@@ -500,6 +516,66 @@ def test_802_ready_gate_fails_for_missing_routing_or_failed_selected_checks(
         text=True,
     )
     assert (result.returncode == 0) is ready
+
+
+@pytest.mark.parametrize(
+    ("routing_result", "routed", "ubuntu_result", "ready"),
+    [
+        ("success", "true", "success", True),
+        ("success", "", "success", False),
+        ("failure", "true", "success", False),
+        ("success", "true", "failure", False),
+        ("success", "true", "cancelled", False),
+    ],
+)
+def test_802_queue_required_summary_accepts_its_small_matrix_but_not_missing_routing(
+    routing_result: str, routed: str, ubuntu_result: str, ready: bool
+) -> None:
+    needs = {
+        "changes": {"result": routing_result},
+        "ubuntu": {"result": ubuntu_result},
+        "gitleaks": {"result": "success"},
+        **{
+            job: {"result": "skipped"}
+            for job in ("draft-fast", "docs", "python-lint", "native-smoke", "pages")
+        },
+    }
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            workflow_shell("Require routing and every selected required job to pass"),
+        ],
+        env={**os.environ, "NEEDS": json.dumps(needs), "ROUTED": routed},
+        capture_output=True,
+        text=True,
+    )
+    assert (result.returncode == 0) is ready
+
+
+@pytest.mark.parametrize("required_bucket", [None, "pending", "skipping", "pass"])
+def test_802_enqueue_requires_the_passing_required_check_from_the_current_pr_run(
+    required_bucket: str | None,
+) -> None:
+    checks = [
+        {
+            "name": name,
+            "bucket": "pass",
+            "workflow": "PR area checks",
+            "link": f"https://github.com/owner/repo/actions/runs/10/job/{job}",
+        }
+        for job, name in enumerate(("changes", "Ready PR area checks"), 100)
+    ]
+    if required_bucket:
+        checks.append(
+            {
+                "name": "required",
+                "bucket": required_bucket,
+                "workflow": "PR area checks",
+                "link": "https://github.com/owner/repo/actions/runs/10/job/102",
+            }
+        )
+    assert checks_ready(checks, run_id=10) is (required_bucket == "pass")
 
 
 def test_757_landing_cli_rejects_an_empty_check_report() -> None:

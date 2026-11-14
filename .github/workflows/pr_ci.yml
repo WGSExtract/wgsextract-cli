@@ -1,9 +1,11 @@
 name: PR area checks
-run-name: PR area checks / ${{ github.event.action }} / ${{ github.event.pull_request.draft && 'draft' || 'ready' }}
+run-name: PR area checks / ${{ github.event.action }} / ${{ github.event_name == 'merge_group' && 'queue' || github.event.pull_request.draft && 'draft' || 'ready' }}
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, labeled, unlabeled]
+  # The merge queue retests only the required set below against the latest main.
+  merge_group:
 
 permissions:
   contents: read
@@ -37,8 +39,8 @@ jobs:
       - name: Route the complete PR diff
         id: diff
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
           FORCE_INSTALL: ${{ contains(github.event.pull_request.labels.*.name, 'run-install-lab') }}
           LABEL_EVENT: ${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
           DRAFT: ${{ github.event.pull_request.draft }}
@@ -145,24 +147,29 @@ jobs:
     uses: ./.github/workflows/ubuntu_ci.yml
   macos:
     needs: changes
-    if: needs.changes.outputs.cli == 'true'
+    if: needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
     uses: ./.github/workflows/macos_ci.yml
   windows:
     needs: changes
-    if: needs.changes.outputs.cli == 'true'
+    if: needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
     uses: ./.github/workflows/windows_ci.yml
   arm64:
     needs: changes
-    if: needs.changes.outputs.cli == 'true'
+    if: needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
     uses: ./.github/workflows/linux_arm64.yml
   smoke:
     needs: changes
-    if: needs.changes.outputs.cli == 'true'
+    if: needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
     uses: ./.github/workflows/cli_smoke.yml
   install:
     needs: changes
-    if: needs.changes.outputs.install == 'true'
+    if: needs.changes.outputs.install == 'true' && github.event_name != 'merge_group'
     uses: ./.github/workflows/install_lab.yml
+
+  # The secret scan covers every PR and queue group, docs-only ones included.
+  gitleaks:
+    if: ${{ !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
+    uses: ./.github/workflows/gitleaks.yml
 
   native-smoke:
     name: Native CLI smoke${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
@@ -202,10 +209,11 @@ jobs:
 
   ready-gate:
     name: Ready PR area checks${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
-    needs: [changes, draft-fast, docs, python-lint, ubuntu, macos, windows, arm64, smoke, install, native-smoke, pages]
+    needs: [changes, required, draft-fast, docs, python-lint, ubuntu, macos, windows, arm64, smoke, install, native-smoke, pages]
     if: >-
       ${{
         always() &&
+        github.event_name == 'pull_request' &&
         !github.event.pull_request.draft &&
         !contains(fromJSON('["labeled","unlabeled"]'), github.event.action)
       }}
@@ -225,3 +233,31 @@ jobs:
           test "$CHECKS_FAILED" = false
           test "$CHECKS_CANCELLED" = false
           echo "All area-selected checks passed for this non-draft PR run."
+
+  # The one required check for main's ruleset and merge queue (#758, merge queue). Path
+  # routing skips jobs, so require this summary rather than each job. The
+  # macOS, Windows, ARM64, smoke and Install Lab jobs stay advisory on PRs
+  # (more runner losses) and don't run in the queue.
+  required:
+    name: required${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
+    needs: [changes, draft-fast, docs, python-lint, ubuntu, gitleaks, native-smoke, pages]
+    # always(): a cancelled or failed dependency must report failure here, not
+    # leave a skipped check that GitHub would count as passing.
+    if: ${{ always() && !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require routing and every selected required job to pass
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          ROUTED: ${{ needs.changes.outputs.routed }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          results = {job: need["result"] for job, need in json.loads(os.environ["NEEDS"]).items()}
+          print("\n".join(f"{job}: {result}" for job, result in results.items()))
+          # Path routing may skip a job only when routing itself succeeded.
+          bad = [job for job, result in results.items() if result not in {"success", "skipped"}]
+          if results["changes"] != "success" or os.environ["ROUTED"] != "true" or bad:
+              sys.exit(f"::error::Required checks did not pass: {', '.join(bad) or 'changes'}")
+          PY

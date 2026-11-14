@@ -34,13 +34,20 @@ def checks_ready(checks: list[dict[str, Any]], *, run_id: int | None = None) -> 
             if check.get("workflow") == "PR area checks"
             and str(check.get("link", "")).startswith(f"{run}/job/")
         ]
-        if any(
-            check.get("name") == "changes" and check.get("bucket") == "pass"
-            for check in run_checks
-        ) and all(
-            check.get("bucket") == "skipping"
-            for check in run_checks
-            if check.get("name") == "Draft lint and fast tests"
+        if (
+            any(
+                check.get("name") == "changes" and check.get("bucket") == "pass"
+                for check in run_checks
+            )
+            and any(
+                check.get("name") == "required" and check.get("bucket") == "pass"
+                for check in run_checks
+            )
+            and all(
+                check.get("bucket") == "skipping"
+                for check in run_checks
+                if check.get("name") == "Draft lint and fast tests"
+            )
         ):
             return True
     return False

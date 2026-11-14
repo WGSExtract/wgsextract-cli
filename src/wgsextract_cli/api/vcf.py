@@ -1097,7 +1097,7 @@ class VcfDeepvariantParams(_CallerParams):
     )
     gpu: bool = param(
         False,
-        help="NVIDIA GPU (x86-64 Linux): WGS via wgse-deepvariant if set up, "
+        help="NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, "
         "else Parabricks; Ultima: Google's GPU image (README).",
         action="store_true",
     )
