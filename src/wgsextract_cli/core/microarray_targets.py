@@ -73,7 +73,7 @@ HG18_TO_HG19_CHAIN = ChainSource(
     "f1e57673d8f306ea4ed1553ea5fc2001b3cc3d149eef501fc97305b3b3e2a9d6",
 )
 # Bump when the builder's output changes, so libraries rebuild their target.
-TARGET_VERSION = 3
+TARGET_VERSION = 4
 _VERSION_LINE = f"##wgsextract_microarray_target_version={TARGET_VERSION}\n"
 # In order of precedence for a position's ID.
 _FORMATS = [

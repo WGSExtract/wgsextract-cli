@@ -30,7 +30,7 @@ def _templates(root: Path) -> Path:
 # NCBI36 chr3:999000-1000000 sits 1000 bp later on GRCh37.
 _HG18_CHAIN_NAME = "hg18ToHg19.over.chain.gz"
 _HG18_CHAIN = "chain 1000 chr3 2000000 + 999000 1000000 chr3 2000000 + 1000000 1001000 1\n1000\n\n"
-_VERSION = "##wgsextract_microarray_target_version=3"
+_VERSION = "##wgsextract_microarray_target_version=4"
 
 
 def test_markers_are_the_union_of_the_grch37_templates(tmp_path):

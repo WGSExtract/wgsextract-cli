@@ -1,8 +1,9 @@
 """Cache exact reverse-chain projections, never inferred forward-chain inverses.
 
 A site is lifted only when the chain places it exactly once on a primary
-chromosome and no other source site lands on the same position; every other
-site is dropped (a no-call in vendor files) and counted by reason."""
+chromosome and no other source site lands on, or has a placement at, the same
+position; every other site is dropped (a no-call in vendor files) and counted
+by reason."""
 
 from __future__ import annotations
 
@@ -45,7 +46,8 @@ class Placement(NamedTuple):
 
 class LiftoverCounts(NamedTuple):
     """Source sites by outcome. ``ambiguous``: the chain places the site more
-    than once; ``collision``: distinct source sites land on one position."""
+    than once; ``collision``: its one placement is shared with a different
+    source site (that site's only placement or one of several)."""
 
     lifted: int = 0
     unmapped: int = 0
@@ -119,11 +121,16 @@ def _project(
     lifter = LiftOver(chain)
     rows = []
     reasons: Counter[str] = Counter()
+    # Positions that more than one source site may claim; none of them is lifted.
+    clashing: set[tuple[str, int]] = set()
     for index, (chrom, position) in enumerate(coordinates):
         try:
-            placement = sole_placement(lifter.convert_coordinate(chrom, position - 1))
+            hits = lifter.convert_coordinate(chrom, position - 1)
         except (ValueError, TypeError):
-            placement = "unmapped"
+            hits = None
+        placement = sole_placement(hits)
+        if placement == "ambiguous":
+            clashing.update((hit[0], hit[1] + 1) for hit in hits or ())
         if isinstance(placement, str):
             reasons[placement] += 1
         elif placement.chrom not in _CODES:
@@ -139,7 +146,6 @@ def _project(
             )
     # Repeated rows of one source site may share a target; distinct sites may not.
     first: dict[tuple[str, int], tuple[str, int]] = {}
-    clashing = set()
     for row in rows:
         target, source = (row.chrom, row.position), coordinates[row.source_index]
         if first.setdefault(target, source) != source:

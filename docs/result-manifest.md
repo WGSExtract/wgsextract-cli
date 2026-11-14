@@ -241,7 +241,9 @@ Other commands' metrics:
   CombinedKit's sites: `liftover_lifted`, and the no-calls by reason,
   `liftover_unmapped`, `liftover_alt_contig`, `liftover_ambiguous` (more than
   one placement) and `liftover_collision` (sharing an hg19 position with a
-  different site).
+  different site, or with one of its several placements). Each vendor kit and
+  the kept `combined_kit_hg19` carry the same counts, so a rerun that reuses
+  them reports them too.
 - `vep` records `inputs`, `succeeded`, `skipped` and `failed`, and `variants`
   per annotated VCF; a directory of inputs writes `vep.manifest.json`.
 - Reference installers (`ref library --install`, `ref bootstrap`, the

@@ -92,7 +92,9 @@ from ._microarray_combined import (
     record_aadr,
     record_kept,
     record_kit,
+    record_liftover,
     record_microarray_run,
+    replay_liftover,
 )
 from ._microarray_vcf import (
     _alignment_chromosomes,
@@ -195,6 +197,7 @@ def _convert_microarray_outputs(
         converter = functools.partial(converter, quirks=quirks)
 
     template_search_roots = _template_search_roots(ref_fasta, lib)
+    liftover: dict[str, int] = {}
     requested_formats = params.formats.split(",") if formats is None else formats
 
     # 3. Liftover if needed (vendor templates use hg19 coordinates)
@@ -223,20 +226,11 @@ def _convert_microarray_outputs(
             )
         except (OSError, ValueError) as e:
             raise WGSExtractError(f"Microarray liftover failed: {e}") from e
-        current_result().add_metrics(
-            **{f"liftover_{reason}": n for reason, n in lifted._asdict().items()}
-        )
-        if lifted.ambiguous or lifted.collision:
-            warn(
-                "liftover_ambiguous",
-                f"{lifted.ambiguous:,} sites have more than one hg19 placement and "
-                f"{lifted.collision:,} share an hg19 position with another site; "
-                "they are exported as no-calls rather than placed arbitrarily.",
-                ambiguous=lifted.ambiguous,
-                collision=lifted.collision,
-            )
+        # Kept on the outputs too, so a run that reuses them reports them.
+        liftover = {f"liftover_{key}": n for key, n in lifted._asdict().items()}
+        record_liftover(liftover)
         final_txt = hg19_txt
-        record_kept(hg19_txt, outdir, "combined_kit_hg19")
+        record_kept(hg19_txt, outdir, "combined_kit_hg19", liftover)
         logging.info(f"Liftover took {time.time() - start_lift:.2f}s")
 
     # 4. Convert to vendor formats
@@ -317,7 +311,7 @@ def _convert_microarray_outputs(
             )
         except (OSError, ValueError, WGSExtractError) as e:
             raise WGSExtractError(f"Failed to generate {real_fmt}: {e}") from e
-        record_kit(output_file, real_fmt, tallies[real_fmt])
+        record_kit(output_file, real_fmt, tallies[real_fmt], liftover)
         logging.info(f"Generated {output_file}")
     fmt_duration = time.time() - start_fmt
     logging.info(f"Format conversion (all) took {fmt_duration:.2f}s")
@@ -828,6 +822,7 @@ def _finish_run(
             if (tally := unit.tally()) is not None:
                 tallies.setdefault(unit.key, tally)
             autosomal = autosomal or unit.autosomal()
+    replay_liftover()
     if combined_kit and Path(combined_kit).is_file():
         autosomal = warn_about_genotypes(
             combined_kit, tallies, check_no_calls=not params.region

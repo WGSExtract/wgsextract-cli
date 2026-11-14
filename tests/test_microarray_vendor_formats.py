@@ -402,7 +402,7 @@ def test_liftover_complements_genotypes_in_inverted_regions(tmp_path):
 
 # hg38 chr1:101 has two chain placements (hg19 chr1:201 and chr1:301); chr1:1001
 # one; chr2:1 lies on an inverted block (hg19 chr2:1000); chr3:5 and chr3:105
-# both land on hg19 chr3:505.
+# both land on hg19 chr3:505; chr5:1 lands on chr1:301, one of chr1:101's.
 MULTI_MAPPING = (
     "chain 100 chr1 10000 + 100 110 chr1 10000 + 200 210 1\n10",
     "chain 90 chr1 10000 + 100 110 chr1 10000 + 300 310 2\n10",
@@ -410,6 +410,7 @@ MULTI_MAPPING = (
     "chain 70 chr2 10000 + 0 10 chr2 1000 - 0 10 4\n10",
     "chain 60 chr3 10000 + 0 10 chr3 10000 + 500 510 5\n10",
     "chain 50 chr3 10000 + 100 110 chr3 10000 + 500 510 6\n10",
+    "chain 40 chr5 10000 + 0 10 chr1 10000 + 300 310 7\n10",
 )
 
 
@@ -432,6 +433,7 @@ def test_issue_853_multiply_placed_sites_are_no_calls_not_first_hit(tmp_path):
         ("rsCol1", "3", "5", "AA"),
         ("rsCol2", "3", "105", "GG"),
         ("rsGone", "1", "9000", "CT"),
+        ("rsShare", "5", "1", "TT"),
     ]
     result = CommandResult(command="microarray")
     with collecting(result):
@@ -458,10 +460,10 @@ def test_issue_853_multiply_placed_sites_are_no_calls_not_first_hit(tmp_path):
         "liftover_unmapped": 1,
         "liftover_alt_contig": 0,
         "liftover_ambiguous": 1,
-        "liftover_collision": 2,
+        "liftover_collision": 3,
     }
     [warning] = [w for w in result.warnings if w.code == "liftover_ambiguous"]
-    assert warning.details == {"ambiguous": 1, "collision": 2}
+    assert warning.details == {"ambiguous": 1, "collision": 3}
 
 
 def test_issue_853_cached_projection_keeps_rejection_counts(tmp_path):
