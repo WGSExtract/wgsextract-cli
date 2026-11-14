@@ -681,6 +681,9 @@ HG00096_AMBIGUOUS = {
 }
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Cyrius is not supported on Windows"
+)
 @pytest.mark.parametrize(
     ("fields", "status", "value", "confidence", "outside_call"),
     [
