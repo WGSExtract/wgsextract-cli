@@ -1,0 +1,17 @@
+name: Probe 822 old-ref GUI build
+
+# Temporary (removed before ready): builds a ref that predates setup-gui.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/zz-probe-822.yml
+
+permissions:
+  contents: read
+
+jobs:
+  old-ref:
+    uses: ./.github/workflows/gui-build.yml
+    with:
+      ref: 6c0dcbfd5adb214fff38a1f3373fa8b1bda19ff0
+      targets: '["tauri-linux"]'
