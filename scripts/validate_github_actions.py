@@ -14,6 +14,9 @@ USES_RE = re.compile(
     r"^(?P<indent>\s*)(?:-\s+)?uses:\s+(?P<target>['\"]?[^'\"\s#]+['\"]?)"
     r"(?:\s+#\s*(?P<comment>.*))?\s*$"
 )
+# Remote actions that only one local composite action may wrap, so their pins
+# and inputs (such as the Pixi version and cache policy) live in one place.
+WRAPPED_ACTIONS = {"prefix-dev/setup-pixi": ".github/actions/setup-pixi/action.yml"}
 PINNED_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 VERSION_RE = re.compile(r"^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 
@@ -108,6 +111,13 @@ def validate_workflows() -> list[str]:
 
             action, ref = target.rsplit("@", 1)
             normalized_action = action.lower()
+            wrapper = WRAPPED_ACTIONS.get(normalized_action)
+            if wrapper and workflow.relative_to(ROOT).as_posix() != wrapper:
+                errors.append(
+                    f"{workflow}:{line_number}: use ./{Path(wrapper).parent.as_posix()}"
+                    f" instead of {normalized_action}"
+                )
+                continue
             if normalized_action not in ALLOWED_ACTIONS:
                 errors.append(
                     f"{workflow}:{line_number}: add {normalized_action} to "

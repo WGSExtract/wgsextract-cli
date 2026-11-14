@@ -12,6 +12,7 @@ on:
       - src/wgsextract_cli/commands/vcf/callers.py
       - tests/test_gkl_windows.py
       - .github/workflows/gkl_windows.yml
+      - .github/actions/setup-pixi/**
       - pixi.toml
       - pixi.lock
       - "!**/*.md"
@@ -41,11 +42,9 @@ jobs:
           msystem: UCRT64
           update: true
           install: make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-libgomp
-      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+      - uses: ./.github/actions/setup-pixi
         with:
-          pixi-version: v0.82.0
-          run-install: false
-          cache: false
+          install: "false"
       - name: Build static JNI kernels
         shell: pwsh
         env:

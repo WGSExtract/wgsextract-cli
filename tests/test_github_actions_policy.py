@@ -61,6 +61,25 @@ def test_composite_actions_are_held_to_the_same_policy(
     assert any("full commit SHA" in item for item in policy.validate_workflows())
 
 
+def test_setup_pixi_is_used_only_through_the_shared_action(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue 822: direct setup-pixi steps bypassed the one Pixi pin and cache policy."""
+    uses = (
+        "uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3"
+    )
+    write_workflow(tmp_path, uses)
+    action = tmp_path / ".github" / "actions" / "setup-pixi"
+    action.mkdir(parents=True)
+    (action / "action.yml").write_text(
+        f"runs:\n  using: composite\n  steps:\n    - {uses}\n"
+    )
+    monkeypatch.setattr(policy, "ROOT", tmp_path)
+    errors = policy.validate_workflows()
+    assert len(errors) == 1
+    assert "test.yml" in errors[0] and "./.github/actions/setup-pixi" in errors[0]
+
+
 @pytest.mark.parametrize(
     ("queue", "cancel", "valid"),
     [("max", "false", True), ("max", "true", False), ("all", "false", False)],

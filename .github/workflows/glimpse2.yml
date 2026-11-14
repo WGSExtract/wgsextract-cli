@@ -15,6 +15,7 @@ on:
       - tests/fixtures/imputation_hg002/**
       - tests/test_imputation.py
       - .github/workflows/glimpse2.yml
+      - .github/actions/setup-pixi/**
       - "!**/*.md"
   workflow_dispatch:
     inputs:
@@ -53,10 +54,9 @@ jobs:
           pacman -Q > out/msys2-packages-used.txt
 
       - name: Set up Pixi
-        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+        uses: ./.github/actions/setup-pixi
         with:
-          run-install: false
-          cache: false
+          install: "false"
 
       - name: Build and test the package
         shell: pwsh
