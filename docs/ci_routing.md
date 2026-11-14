@@ -164,15 +164,24 @@ replace those gates with a nonempty structured report:
 ```sh
 set -o pipefail
 gh pr checks "$PR" --watch --interval 90
-gh pr checks "$PR" --json bucket,name,workflow,link | python scripts/pr_checks_ready.py
+gh pr checks "$PR" --json bucket,name,workflow,link | python scripts/pr_checks_ready.py --pr "$PR"
 ```
 
 The validator requires a passing `Ready PR area checks` gate and a passing
 `changes` job from the same workflow run, with draft-fast absent or skipped
 in that run. That gate runs
 only on non-draft, non-label events after all selected area jobs succeed.
+Routing uses `set -euo pipefail`; the final gate fails on a routing failure
+or a missing completion output, rather than accepting an all-skipped matrix.
 It rejects old draft-only passes/skips (including the gap before the ready
 run registers), empty reports, pending, failed, cancelled and unknown statuses.
+`--pr` is required: the validator reads the latest ready-for-review event and
+current head from GitHub, then selects the newest non-draft area run for that
+PR/head after the event and requires it to have completed successfully.
+Run titles encode event action and
+draft state so label-only runs are excluded. Earlier same-SHA ready runs cannot
+satisfy a later ready transition; missing metadata and state changes fail closed.
+Use `--repo OWNER/REPO` when running outside the repository checkout.
 Verify the PR is non-draft, its head SHA has not changed, and check
 reviews/threads and mergeability separately; merge with `--match-head-commit`.
 The autopilot skill

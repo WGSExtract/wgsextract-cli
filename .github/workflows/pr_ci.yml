@@ -1,4 +1,5 @@
 name: PR area checks
+run-name: PR area checks / ${{ github.event.action }} / ${{ github.event.pull_request.draft && 'draft' || 'ready' }}
 
 on:
   pull_request:
@@ -27,6 +28,7 @@ jobs:
       fast: ${{ steps.diff.outputs.fast }}
       draft_cli: ${{ steps.diff.outputs.draft_cli }}
       python_files: ${{ steps.diff.outputs.python_files }}
+      routed: ${{ steps.diff.outputs.routed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -41,6 +43,7 @@ jobs:
           LABEL_EVENT: ${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
           DRAFT: ${{ github.event.pull_request.draft }}
         run: |
+          set -euo pipefail
           flags=()
           if [ "$FORCE_INSTALL" = true ]; then flags+=(--force-install-lab); fi
           if [ "$LABEL_EVENT" = true ]; then flags+=(--label-event); fi
@@ -48,7 +51,7 @@ jobs:
           python3 scripts/ci_changes.py --base "$BASE" --head "$HEAD" "${flags[@]}" --output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
 
   draft-fast:
-    name: Draft lint and fast tests
+    name: Draft lint and fast tests${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
     needs: changes
     if: needs.changes.outputs.fast == 'true'
     runs-on: ubuntu-latest
@@ -199,17 +202,26 @@ jobs:
 
   ready-gate:
     name: Ready PR area checks${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
-    needs: [changes, draft-fast, docs, python-lint, ubuntu, macos, windows, arm64, install, native-smoke, pages]
+    needs: [changes, draft-fast, docs, python-lint, ubuntu, macos, windows, arm64, smoke, install, native-smoke, pages]
     if: >-
       ${{
         always() &&
         !github.event.pull_request.draft &&
-        !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) &&
-        needs.changes.result == 'success' &&
-        !contains(needs.*.result, 'failure') &&
-        !contains(needs.*.result, 'cancelled')
+        !contains(fromJSON('["labeled","unlabeled"]'), github.event.action)
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
-      - run: echo "All area-selected checks passed for this non-draft PR run."
+      - name: Require complete routing and successful selected checks
+        env:
+          ROUTING_RESULT: ${{ needs.changes.result }}
+          ROUTED: ${{ needs.changes.outputs.routed }}
+          CHECKS_FAILED: ${{ contains(needs.*.result, 'failure') }}
+          CHECKS_CANCELLED: ${{ contains(needs.*.result, 'cancelled') }}
+        run: |
+          set -euo pipefail
+          test "$ROUTING_RESULT" = success
+          test "$ROUTED" = true
+          test "$CHECKS_FAILED" = false
+          test "$CHECKS_CANCELLED" = false
+          echo "All area-selected checks passed for this non-draft PR run."

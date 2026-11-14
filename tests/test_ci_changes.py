@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from scripts import pr_checks_ready
 from scripts.ci_changes import routes
 from scripts.ci_test_dependencies import DOCS_TEST_MODULES
 from scripts.ci_test_dependencies import test_inputs as referenced_inputs
-from scripts.pr_checks_ready import checks_ready
+from scripts.pr_checks_ready import checks_ready, latest_ready_run
 
 
 @pytest.mark.parametrize(
@@ -77,6 +80,7 @@ def test_757_install_lab_label_does_not_repeat_the_cli_matrix() -> None:
         "fast": "false",
         "draft_cli": "false",
         "python_files": "[]",
+        "routed": "true",
     }
 
 
@@ -258,7 +262,7 @@ def test_757_landing_accepts_one_green_check_not_a_fixed_matrix_size(
         },
         *[{"bucket": bucket} for bucket in buckets[1:]],
     ]
-    assert checks_ready(checks) is ready
+    assert checks_ready(checks, run_id=10) is ready
 
 
 def test_802_old_draft_passes_and_skips_cannot_land_before_ready_ci_registers() -> None:
@@ -275,7 +279,7 @@ def test_802_old_draft_passes_and_skips_cannot_land_before_ready_ci_registers() 
         ],
         *[{"name": name, "bucket": "pass"} for name in ("changes", "lint", "docs")],
     ]
-    assert not checks_ready(checks)
+    assert not checks_ready(checks, run_id=10)
 
 
 @pytest.mark.parametrize(
@@ -310,13 +314,198 @@ def test_802_landing_requires_completed_non_draft_validation_from_one_run(
             "link": f"https://github.com/owner/repo/actions/runs/{routing_run}/job/112",
         },
     ]
-    assert checks_ready(checks) is ready
+    assert checks_ready(checks, run_id=11) is ready
+
+
+def area_run(
+    run_id: int,
+    created_at: str,
+    *,
+    action: str = "ready_for_review",
+    draft: bool = False,
+    status: str = "completed",
+) -> dict[str, Any]:
+    return {
+        "id": run_id,
+        "name": "PR area checks",
+        "event": "pull_request",
+        "head_sha": "same-head",
+        "display_title": f"PR area checks / {action} / {'draft' if draft else 'ready'}",
+        "created_at": created_at,
+        "status": status,
+        "conclusion": "success" if status == "completed" else None,
+        "pull_requests": [{"number": 802}],
+    }
+
+
+@pytest.mark.parametrize("new_run_registered", [False, True])
+def test_802_redrafting_the_same_head_cannot_reuse_validation_before_latest_readiness(
+    new_run_registered: bool,
+) -> None:
+    runs = [
+        area_run(10, "2026-11-13T16:00:00Z"),
+        area_run(11, "2026-11-13T16:10:00Z", action="labeled", draft=True),
+        area_run(12, "2026-11-13T16:20:01Z", action="labeled"),
+    ]
+    if new_run_registered:
+        runs.append(area_run(13, "2026-11-13T16:20:02Z"))
+    expected_run = latest_ready_run(
+        runs,
+        head_sha="same-head",
+        ready_since="2026-11-13T16:20:00Z",
+        pr_number=802,
+    )
+    assert expected_run == (13 if new_run_registered else None)
+    old_checks = [
+        {
+            "name": name,
+            "bucket": "pass",
+            "workflow": "PR area checks",
+            "link": f"https://github.com/owner/repo/actions/runs/10/job/{job}",
+        }
+        for job, name in enumerate(("changes", "Ready PR area checks"), 100)
+    ]
+    assert not checks_ready(old_checks, run_id=expected_run)
+    if new_run_registered:
+        fresh_checks = [
+            {**check, "link": check["link"].replace("/runs/10/", "/runs/13/")}
+            for check in old_checks
+        ]
+        assert checks_ready(fresh_checks, run_id=expected_run)
+
+
+@pytest.mark.parametrize("status", ["queued", "in_progress", "completed"])
+def test_802_newest_ready_run_must_finish_without_falling_back_to_an_older_success(
+    status: str,
+) -> None:
+    unrelated = area_run(22, "2026-11-13T16:21:02Z")
+    unrelated["head_sha"] = "another-head"
+    other_pr = area_run(23, "2026-11-13T16:21:03Z")
+    other_pr["pull_requests"] = [{"number": 999}]
+    runs = [
+        area_run(20, "2026-11-13T16:20:01Z"),
+        area_run(21, "2026-11-13T16:21:01Z", action="synchronize", status=status),
+        unrelated,
+        other_pr,
+    ]
+    assert latest_ready_run(
+        runs,
+        head_sha="same-head",
+        ready_since="2026-11-13T16:20:00Z",
+        pr_number=802,
+    ) == (21 if status == "completed" else None)
+
+
+@pytest.mark.parametrize("redrafted_during_discovery", [False, True])
+def test_802_ready_transition_changes_during_validation_fail_closed(
+    monkeypatch: pytest.MonkeyPatch, redrafted_during_discovery: bool
+) -> None:
+    snapshot = {
+        "headRefOid": "same-head",
+        "isDraft": False,
+        "createdAt": "2026-11-13T16:00:00Z",
+        "timelineItems": {
+            "nodes": [{"id": "ready-1", "createdAt": "2026-11-13T16:20:00Z"}]
+        },
+    }
+    after = {
+        **snapshot,
+        "timelineItems": {
+            "nodes": [{"id": "ready-2", "createdAt": "2026-11-13T16:30:00Z"}]
+        },
+    }
+    snapshots = iter([snapshot, after if redrafted_during_discovery else snapshot])
+
+    def github_response(*arguments: str) -> Any:
+        if arguments[:2] == ("api", "graphql"):
+            return {"data": {"repository": {"pullRequest": next(snapshots)}}}
+        return [{"workflow_runs": [area_run(20, "2026-11-13T16:20:01Z")]}]
+
+    monkeypatch.setattr(pr_checks_ready, "github_json", github_response)
+    assert pr_checks_ready.current_ready_run(802, "owner/repo") == (
+        None if redrafted_during_discovery else 20
+    )
+
+
+def workflow_shell(step_name: str) -> str:
+    workflow = (
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "pr_ci.yml"
+    ).read_text()
+    step = workflow.split(f"      - name: {step_name}\n", 1)[1]
+    lines = step.split("        run: |\n", 1)[1].splitlines()
+    command = []
+    for line in lines:
+        if line and not line.startswith("          "):
+            break
+        command.append(line[10:])
+    return "\n".join(command)
+
+
+@pytest.mark.parametrize("base", ["HEAD", "not-a-git-revision"])
+def test_802_router_exception_cannot_be_hidden_by_the_summary_pipeline(
+    tmp_path: Path, base: str
+) -> None:
+    output = tmp_path / "outputs"
+    result = subprocess.run(
+        ["bash", "-c", workflow_shell("Route the complete PR diff")],
+        cwd=Path(__file__).resolve().parents[1],
+        env={
+            **os.environ,
+            "BASE": base,
+            "HEAD": "HEAD",
+            "FORCE_INSTALL": "false",
+            "LABEL_EVENT": "false",
+            "DRAFT": "false",
+            "GITHUB_OUTPUT": str(output),
+            "GITHUB_STEP_SUMMARY": str(tmp_path / "summary"),
+        },
+        capture_output=True,
+        text=True,
+    )
+    if base == "HEAD":
+        assert result.returncode == 0
+        assert "routed=true" in output.read_text()
+    else:
+        assert result.returncode != 0
+        assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    ("routing_result", "routed", "failed", "cancelled", "ready"),
+    [
+        ("success", "", "false", "false", False),
+        ("failure", "true", "true", "false", False),
+        ("success", "true", "true", "false", False),
+        ("success", "true", "false", "true", False),
+        ("success", "true", "false", "false", True),
+    ],
+)
+def test_802_ready_gate_fails_for_missing_routing_or_failed_selected_checks(
+    routing_result: str, routed: str, failed: str, cancelled: str, ready: bool
+) -> None:
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            workflow_shell("Require complete routing and successful selected checks"),
+        ],
+        env={
+            **os.environ,
+            "ROUTING_RESULT": routing_result,
+            "ROUTED": routed,
+            "CHECKS_FAILED": failed,
+            "CHECKS_CANCELLED": cancelled,
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert (result.returncode == 0) is ready
 
 
 def test_757_landing_cli_rejects_an_empty_check_report() -> None:
     script = Path(__file__).resolve().parents[1] / "scripts" / "pr_checks_ready.py"
     result = subprocess.run(
-        [sys.executable, str(script)],
+        [sys.executable, str(script), "--pr", "802"],
         input=json.dumps([]),
         capture_output=True,
         text=True,

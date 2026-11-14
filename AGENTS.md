@@ -111,5 +111,5 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
 - Fix real issues that CI finds, or fix CI itself when the failure is in CI rather than in the code.
 - Collect all open review threads, fix or decline them together, run local checks, then push **one batch per review round**, not one push per thread. Resolve handled threads only after the fixes are pushed or the refusal is posted.
 - Notify the owning agent when new threads appear; handle them within one hour or hand off explicitly. Transfer CI waits to the supervisor/watcher, not an implementer's polling loop.
-- After marking ready, require the current head's non-draft area run, not stale draft passes/skips: `gh pr checks --json bucket,name,workflow,link | python scripts/pr_checks_ready.py`. Verify non-draft/head SHA, reviews and mergeability separately; merge with `--match-head-commit`.
+- After marking ready, require the current head's latest non-draft area run after the latest ready transition: `gh pr checks "$PR" --json bucket,name,workflow,link | python scripts/pr_checks_ready.py --pr "$PR"`. Verify reviews and mergeability separately; merge with `--match-head-commit`.
 - Once the PR is in a passable state, merge it. That means CI is green, no material threads are unresolved, and the local checks pass.

@@ -140,6 +140,7 @@ def main() -> None:
         )
         + "\n"
     )
+    output += "routed=true\n"
     print(output, end="")
     if args.output:
         with args.output.open("a", encoding="utf-8") as stream:

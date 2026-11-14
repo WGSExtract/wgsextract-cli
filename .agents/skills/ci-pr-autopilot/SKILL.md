@@ -164,12 +164,16 @@ Only resolve a thread after one of these is true:
 
 Check counts depend on the PR's changed areas. Never wait for a fixed minimum
 number of checks (such as the old `scratch/merge_when_clean.sh` threshold of
-more than five). Use `gh pr checks --json bucket,name,workflow,link` with
-`python scripts/pr_checks_ready.py`: require a passing `Ready PR area checks`
+more than five). Use `gh pr checks "$PR" --json bucket,name,workflow,link` with
+`python scripts/pr_checks_ready.py --pr "$PR"`: require a passing `Ready PR area checks`
 gate and passing `changes` job from the **same run**, with draft-fast absent
 or skipped there and no failing, pending, cancelled or unknown checks. The gate runs only
 after all area-selected checks finish on a non-draft, non-label event.
 Old draft passes/skips, or a not-yet-registered ready run, are not success.
+The validator queries GitHub for the current PR head and latest ready transition,
+selects the newest non-draft, non-label area run since that transition, and
+requires checks from that exact run. Redrafting the same SHA cannot reuse old
+validation. Missing metadata, pending runs and PR changes during discovery fail closed.
 Verify that the PR is non-draft and the checks still refer to the current
 head SHA immediately before merging; use `--match-head-commit` with that SHA.
 Recheck review threads separately.
