@@ -443,6 +443,14 @@ def test_802_ready_transition_changes_during_validation_fail_closed(
     )
 
 
+# GitHub Actions runs these workflow steps in Linux's bash 5. On Windows "bash"
+# is WSL's launcher, with no distribution installed, and macOS's bash 3.2
+# fails on an empty "${flags[@]}" under `set -u`.
+LINUX_BASH = pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="workflow steps run in Linux bash"
+)
+
+
 def workflow_shell(step_name: str) -> str:
     workflow = (
         Path(__file__).resolve().parents[1] / ".github" / "workflows" / "pr_ci.yml"
@@ -457,6 +465,7 @@ def workflow_shell(step_name: str) -> str:
     return "\n".join(command)
 
 
+@LINUX_BASH
 @pytest.mark.parametrize("base", ["HEAD", "not-a-git-revision"])
 def test_802_router_exception_cannot_be_hidden_by_the_summary_pipeline(
     tmp_path: Path, base: str
@@ -486,6 +495,7 @@ def test_802_router_exception_cannot_be_hidden_by_the_summary_pipeline(
         assert not output.exists()
 
 
+@LINUX_BASH
 @pytest.mark.parametrize(
     ("routing_result", "routed", "failed", "cancelled", "ready"),
     [
@@ -518,6 +528,7 @@ def test_802_ready_gate_fails_for_missing_routing_or_failed_selected_checks(
     assert (result.returncode == 0) is ready
 
 
+@LINUX_BASH
 @pytest.mark.parametrize(
     ("routing_result", "routed", "ubuntu_result", "ready"),
     [
