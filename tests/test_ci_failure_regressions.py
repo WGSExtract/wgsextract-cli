@@ -101,7 +101,10 @@ def test_same_head_label_only_router_run_does_not_supersede_real_validation(
     infrastructure: bool,
 ) -> None:
     api = ReplayGitHub()
-    api.run["name"] = "PR area checks"
+    api.run.update(
+        name="PR area checks / synchronize / ready",
+        path=".github/workflows/pr_ci.yml",
+    )
     api.jobs[1][0]["name"] = "macos / test-macos"
     api.other_runs = [dict(api.run, id=999, conclusion="success")]
     api.run_jobs[999] = [
@@ -129,7 +132,10 @@ def test_same_head_label_only_router_run_does_not_supersede_real_validation(
 
 def test_label_run_for_a_new_head_still_supersedes_old_validation() -> None:
     api = ReplayGitHub()
-    api.run["name"] = "PR area checks"
+    api.run.update(
+        name="PR area checks / synchronize / ready",
+        path=".github/workflows/pr_ci.yml",
+    )
     api.other_runs = [dict(api.run, id=999, head_sha="b" * 40)]
     api.annotation_text = "The hosted runner lost communication with the server"
     Observer(api).process(api.run)
