@@ -13,6 +13,7 @@ import pytest
 
 from scripts import pr_checks_ready
 from scripts.ci_changes import routes, site_validation
+from scripts.ci_select_tests import ci_path, select_tests
 from scripts.ci_test_dependencies import (
     DOCS_ONLY_SCRIPTS,
     DOCS_TEST_TARGETS,
@@ -39,7 +40,7 @@ from scripts.pr_checks_ready import checks_ready, latest_ready_run
         (["src/wgsextract_cli/commands/info.py"], {"cli"}),
         (["pixi.lock"], {"cli", "install"}),
         (["scripts/installlab/lab.py"], {"cli", "install"}),
-        ([".github/actions/download-cache/action.yml"], {"cli", "install"}),
+        ([".github/actions/download-cache/action.yml"], {"docs"}),
         (["install.sh"], {"cli", "install"}),
         (["uninstall.sh"], {"cli", "install"}),
         (["uninstall_windows.bat"], {"cli", "install"}),
@@ -88,6 +89,16 @@ def test_757_install_lab_label_does_not_repeat_the_cli_matrix() -> None:
         "draft_cli": "false",
         "python_files": "[]",
         "routed": "true",
+        "tests": "[]",
+        "ci": "false",
+        "ubuntu_tests": "[]",
+        "macos_tests": "[]",
+        "windows_tests": "[]",
+        "arm64_tests": "[]",
+        "ubuntu_smoke": "false",
+        "macos_smoke": "false",
+        "windows_smoke": "false",
+        "arm64_smoke": "false",
     }
 
 
@@ -137,10 +148,18 @@ def test_757_reviewed_test_inputs_never_bypass_pytest(path: str) -> None:
 
 def test_757_every_test_referenced_input_selects_pytest() -> None:
     for path, readers in referenced_inputs().items():
+        if ci_path(path):
+            assert not routes([path])["cli"], path
+            assert select_tests([path]), path
+            continue
         readers = readers - {
             "tests/test_ci_changes.py",
+            "tests/test_ci_selection.py",
             "tests/test_github_actions_policy.py",
         }
+        readers = frozenset(
+            reader for reader in readers if Path(reader).name.startswith("test_")
+        )
         if not readers:
             continue
         if path.endswith(".md") and path not in GENERATED_DOCS:

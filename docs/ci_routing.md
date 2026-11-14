@@ -14,7 +14,7 @@ bioinformatics environment. The OS matrix and Install Lab wait until
 Test dependencies take precedence over area exclusions. The router scans the
 root test suite's imports, path literals, composed pathlib paths and directory
 globs without executing tests. Inputs read only by the lightweight docs modules
-select that pytest job; other referenced inputs select the full CLI matrix.
+select that pytest job; other referenced inputs select their affected test files.
 The map is deliberately conservative, including some fixture-data literals.
 Product Python changes, including native and GUI/site Python, select CLI pytest
 and explicit changed-file lint. Known docs/CI generator scripts and lightweight
@@ -27,7 +27,8 @@ adds fatal-error Ruff checks without imposing unrelated root formatting.
 |---|---|---|
 | Hand-written Markdown, including `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, native READMEs | Only site-source validation if a site source changes; otherwise no docs job | <1 (previously ~125) |
 | Generated API/command reference only | Its freshness check in the cheap docs lane | 1–3 |
-| CLI source/tests | Four-OS CLI matrix (including freshness), CodeQL | ~90–100 (previously ~125) |
+| CLI source/tests | Affected test files on four OSes, input-selected freshness, CodeQL | Depends on graph reachability; full-suite fallback remains |
+| `.github/**`, `scripts/ci_*.py` | actionlint and CI policy/routing/readiness; one-OS smoke for changed matrix workflow | Small checks, not the full CLI matrix |
 | Installer, packaging, Pixi lock/manifest, CLI entry points | Above plus Install Lab and applicable package checks | ~125; no intended coverage reduction |
 | Native source only | Native build/ctest/package workflows and CLI help smoke | Native build cost + <1; removes ~125 of unrelated checks |
 | Site Markdown only | Site-source validation, plus command freshness for generated CLI cards | <1–3 |
@@ -41,6 +42,48 @@ depends on the proportion of docs/site/native PR pushes and must be measured
 after deployment.
 
 ## Coverage
+
+### Per-test PR selection
+
+`scripts/ci_select_tests.py` selects individual test files, not whole areas.
+Its AST import graph follows transitive imports, relative imports,
+`from package import submodule`, and package initializers. Literal
+`command_handler` targets and the finite `CommandRegistration` registry from
+#804 (lazy CLI startup) are resolved without importing application code.
+Unresolved dynamic imports conservatively include their readers; if a CLI
+entry-point test reaches one, selection fails open to `all`. Literal module
+names used by subprocesses and patch targets also participate.
+
+Tests are selected when they reach a changed Python module, directly change,
+or read a changed path/glob recorded by `test_inputs`. Changes to conftest,
+helpers, shared fixtures, the dependency manifests/lockfile and unknown paths
+select `all`. Deleted Python modules also fail open. Eager package
+initializers can legitimately connect many tests: this selector does not
+pretend a lazy runtime dispatch is narrower than the static graph.
+
+The `changes` job publishes `tests` and per-OS selections as JSON test-file
+arrays or `all`. Reusable OS workflows pass them through
+`scripts/ci_run_tests.py` to `pixi run test-ci`; existing tiers, stable module
+shards and Ubuntu-only partitions apply **within** that set. Empty selections
+skip jobs, and empty tier/shard partitions exit successfully. Selections are
+validated and passed as argv, never evaluated as shell text.
+
+`.github/**` and `scripts/ci_*.py` changes select actionlint and the CI
+policy/routing/readiness regressions, not the CLI matrix or Install Lab.
+Changing an OS matrix workflow additionally exercises **only that OS** in
+one lightweight smoke job. Mixed product/CI changes union their coverage.
+Extra generated-genome, imputation, ONT and Windows vep-rs checks run only
+when their test files are affected. Main pushes, nightly/manual runs and
+merge-queue Ubuntu validation retain full-suite coverage.
+
+Replay with `pixi run python scripts/ci_select_replay.py --limit 50 --output
+out/914`. It records each merged PR's files, selected fraction, failed
+head-run test names from Actions logs, unavailable logs and misses.
+Runner-minute savings are a linear estimate against the documented
+125-minute baseline, **not measured billing savings**; environment setup and
+fixed jobs do not scale linearly. The replay uses the current graph and
+latest PR head, not historical imports or every earlier push. Main/nightly
+misses must become selector regressions rather than suppressed failures.
 
 The lightweight documentation job installs the package, pytest and jsonschema
 **only when its selected Python tests are nonempty**, never for prose alone.
@@ -66,9 +109,10 @@ neither; site prose runs both source validators with system Python and no
 package installation. This does not build Pages for a Markdown-only PR.
 Version/changelog prose does not run release-script tests.
 
-When the full CLI lane is selected, `docs_tests` is empty: its existing pytest
-suite already collects API freshness, CLI snapshot and help checks, plus the
-other light test modules. Freshness therefore runs in one lane, not both.
+When the CLI lane is selected, `docs_tests` is empty: affected freshness checks
+are collected through their imports and declared inputs in that selection.
+Freshness therefore runs in one lane, not both. CI-only policy checks likewise
+run in their dedicated job, not again in the documentation job.
 The same routing/output contract applies to PR and merge-queue diffs, and
 `required` still waits for the selected docs or CLI checks. For example,
 `site_src/cli.md` cannot bypass the generated-card freshness assertion, and
@@ -129,14 +173,14 @@ independent, disjoint pytest tiers in parallel:
   benchmark-module, pipeline-interoperability, contig-calling, microarray-reuse,
   native-aligner and DeepVariant modules listed there. Whole modules retain
   their shared fixtures and the existing shared-smoke scheduler.
-- Generated chrM and whole-genome end-to-end tests still run on every OS
-  (after the integration tier on x64). The separately configured imputation,
-  ONT and Windows vep-rs checks remain in place.
+- Affected generated chrM and whole-genome end-to-end tests run on each selected
+  OS (after the integration tier on x64). Separately configured imputation,
+  ONT and Windows vep-rs checks retain their environments when affected.
 
-Both tiers run on every CLI-routed PR, not only main: the existing conservative
-area router includes all Python, tool/configuration and test-input changes.
-Both run on non-prose main pushes and nightly too. ARM64 retains its complete
-suite in one job. No slow suite is demoted to nightly-only coverage.
+Both tiers partition the affected files on CLI-routed PRs; an empty partition
+passes without testing unrelated files. Non-prose main pushes, merge-queue
+Ubuntu and nightly runs retain full coverage. ARM64 runs its selection in one
+job. No slow suite is demoted to nightly-only coverage.
 Only `test_genotyping.py` (pure genotype parsing/repeat classification) is
 Ubuntu-x64-only in CI. Real-tool genotyping commands remain cross-platform.
 Ordinary local pytest still collects everything; the opt-in `--ci-tier` and

@@ -13,6 +13,7 @@ from pathlib import Path
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from scripts.ci_select_tests import CI_TESTS, ci_path, os_selection, select_tests  # noqa: E402
 from scripts.ci_test_dependencies import (  # noqa: E402
     DOCS_ONLY_SCRIPTS,
     DOCS_TEST_MODULES,
@@ -77,6 +78,8 @@ def routes(
     )
     result["install"] = force_install_lab
     for path in paths:
+        if ci_path(path):
+            continue
         if path.endswith(".md") or path in GENERATED_DOCS:
             continue
         docs_python = (
@@ -117,6 +120,7 @@ def routes(
             continue
         # Unknown paths deliberately fail open to the full CLI matrix.
         result["cli"] = True
+    result["cli"] = result["cli"] and bool(select_tests(paths, repository=repository))
     if draft:
         result["fast"] = bool(paths) and any(
             result[area] for area in ("cli", "native", "site", "install")
@@ -137,6 +141,7 @@ def main() -> None:
     parser.add_argument("--force-install-lab", action="store_true")
     parser.add_argument("--label-event", action="store_true")
     parser.add_argument("--draft", action="store_true")
+    parser.add_argument("--full-suite", action="store_true")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     changed = (
@@ -156,13 +161,31 @@ def main() -> None:
     )
     paths = changed.decode().rstrip("\0").split("\0") if changed else []
     selected = routes(paths, force_install_lab=args.force_install_lab, draft=args.draft)
+    tests = "all" if args.full_suite else select_tests(paths)
+    if args.full_suite:
+        selected["cli"] = True
     output = "".join(f"{key}={str(value).lower()}\n" for key, value in selected.items())
     output += (
         "docs_tests="
-        + json.dumps(docs_test_targets(paths, cli=selected["cli"]))
+        + json.dumps(
+            [
+                target
+                for target in docs_test_targets(paths, cli=selected["cli"])
+                if not (any(ci_path(path) for path in paths) and target in CI_TESTS)
+            ]
+        )
         + "\n"
         + f"site_validation={str(site_validation(paths) and not selected['site']).lower()}\n"
     )
+    output += "tests=" + (tests if isinstance(tests, str) else json.dumps(tests)) + "\n"
+    for os, targets in os_selection(paths, tests, cli=selected["cli"]).items():
+        output += (
+            f"{os}_tests="
+            + (targets if isinstance(targets, str) else json.dumps(targets))
+            + "\n"
+        )
+        output += f"{os}_smoke={str(not selected['cli'] and bool(targets)).lower()}\n"
+    output += f"ci={str(any(ci_path(path) for path in paths)).lower()}\n"
     output += (
         "python_files="
         + json.dumps(

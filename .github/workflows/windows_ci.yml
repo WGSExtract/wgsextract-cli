@@ -10,6 +10,13 @@ on:
     paths-ignore:
       - "**/*.md"
   workflow_call:
+    inputs:
+      tests:
+        type: string
+        default: all
+      smoke-only:
+        type: boolean
+        default: false
   schedule:
     - cron: "11 6 * * *"
   workflow_dispatch:
@@ -22,7 +29,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  workflow-smoke:
+    if: inputs.smoke-only && github.event_name == 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: dev
+      - name: Exercise changed workflow with smoke tests
+        shell: bash
+        env:
+          TEST_SELECTION: ${{ inputs.tests }}
+        run: pixi run python scripts/ci_run_tests.py --selection "$TEST_SELECTION"
   test-windows:
+    if: "!inputs.smoke-only && inputs.tests != '[]'"
     name: test-windows (${{ matrix.label }})
     strategy:
       fail-fast: false
@@ -51,7 +73,7 @@ jobs:
       # This environment is deliberately not restored by setup-pixi above:
       # prove that a fresh install uses the published, SHA-256-pinned package.
       - name: Install pinned imputation tools from scratch
-        if: matrix.tier == 'integration'
+        if: matrix.tier == 'integration' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))
         run: |
           if (Test-Path .pixi/envs/imputation) {
             Remove-Item -Recurse -Force .pixi/envs/imputation
@@ -59,7 +81,7 @@ jobs:
           pixi install --locked -e imputation
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Impute HG002 with the pinned Windows tools (no skips)
-        if: matrix.tier == 'integration'
+        if: matrix.tier == 'integration' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))
         run: |
           New-Item -ItemType Directory -Force out | Out-Null
           pixi run pytest tests/test_imputation.py -p no:randomly -rs -o addopts="" --basetemp=out/imputation-tmp --junitxml=out/imputation-e2e.xml
@@ -70,12 +92,14 @@ jobs:
         run: pixi run wgsextract deps check
       - name: Run Tests
         shell: bash
+        env:
+          TEST_SELECTION: ${{ github.event_name == 'pull_request' && inputs.tests || 'all' }}
         run: |
           coverage=()
           if [ "${{ github.event_name }}" != pull_request ]; then
             coverage+=(--cov=wgsextract_cli --cov-report=xml:out/coverage.xml)
           fi
-          pixi run test-ci --ci-tier ${{ matrix.tier }} --ci-shard ${{ matrix.shard }} --ci-skip-independent "${coverage[@]}"
+          pixi run python scripts/ci_run_tests.py --selection "$TEST_SELECTION" -- --ci-tier ${{ matrix.tier }} --ci-shard ${{ matrix.shard }} --ci-skip-independent "${coverage[@]}"
       - name: Publish test timings and non-gating coverage
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -86,7 +110,7 @@ jobs:
             out/pytest.xml
             out/imputation-e2e.xml
       - name: Annotate with vep-rs end to end (no skips)
-        if: matrix.tier == 'integration'
+        if: matrix.tier == 'integration' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_vep_rs.py'))
         run: |
           pixi run python -c "from wgsextract_cli.core.dependencies import get_tool_path as g; assert g('vep-rs') and g('vep-cache-builder'), 'vep-rs environment missing'"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
@@ -95,5 +119,5 @@ jobs:
           pixi run python -c "import sys, xml.etree.ElementTree as ET; s = ET.parse('out/vep-rs-e2e.xml').getroot().find('testsuite'); n = int(s.get('skipped')); print(s.get('tests'), 'tests,', n, 'skipped'); sys.exit(n > 0)"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Run end-to-end tests on generated data
-        if: matrix.tier == 'integration'
+        if: matrix.tier == 'integration' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_e2e_'))
         run: pixi run test-e2e-fake

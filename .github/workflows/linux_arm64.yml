@@ -7,6 +7,13 @@ on:
     paths-ignore:
       - "**/*.md"
   workflow_call:
+    inputs:
+      tests:
+        type: string
+        default: all
+      smoke-only:
+        type: boolean
+        default: false
   schedule:
     - cron: "11 6 * * *"
   workflow_dispatch:
@@ -19,7 +26,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  workflow-smoke:
+    if: inputs.smoke-only && github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: dev
+      - name: Exercise changed workflow with smoke tests
+        env:
+          TEST_SELECTION: ${{ inputs.tests }}
+        run: pixi run python scripts/ci_run_tests.py --selection "$TEST_SELECTION"
   native-arm64:
+    if: "!inputs.smoke-only && inputs.tests != '[]'"
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     steps:
@@ -43,13 +64,17 @@ jobs:
         run: scripts/test_install_sh.sh
       - name: Run tests and native generated-genome end-to-end suite
         shell: bash
+        env:
+          TEST_SELECTION: ${{ github.event_name == 'pull_request' && inputs.tests || 'all' }}
         run: |
           coverage=()
           if [ "${{ github.event_name }}" != pull_request ]; then
             coverage+=(--cov=wgsextract_cli --cov-report=xml:out/coverage.xml)
           fi
-          pixi run test-ci --ci-skip-independent "${coverage[@]}"
-          pixi run pytest --fake-data tests/test_e2e_fast_chrM.py tests/test_e2e_full_genome.py --basetemp=out/arm64-e2e-tmp --junitxml=out/arm64-e2e.xml
+          pixi run python scripts/ci_run_tests.py --selection "$TEST_SELECTION" -- --ci-skip-independent "${coverage[@]}"
+          if [ "$TEST_SELECTION" = all ] || [[ "$TEST_SELECTION" == *tests/test_e2e_* ]]; then
+            pixi run pytest --fake-data tests/test_e2e_fast_chrM.py tests/test_e2e_full_genome.py --basetemp=out/arm64-e2e-tmp --junitxml=out/arm64-e2e.xml
+          fi
       - name: Publish native test evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

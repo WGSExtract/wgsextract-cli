@@ -22,6 +22,12 @@ Only request `help --all --json --full` when the entire schema dump is needed.
 
 ## Python Formatting & Linting
 
+PR pytest selection follows the static import graph and test file inputs
+(`scripts/ci_select_tests.py`); uncertainty fails open. CI-only edits run
+policy/routing/readiness tests, with one-OS smoke for changed matrix workflows.
+Main/nightly and merge-queue Ubuntu keep full coverage. See `docs/ci_routing.md`;
+add a selector regression for any missed test, never weaken the safety net.
+
 - **Always** run `pixi run ruff check --fix {file_path}` and `pixi run ruff format {file_path}` after editing a Python file in this directory.
 - **Always** run `pixi run mypy {file_path}` (or `pixi run mypy src/wgsextract_cli`) to check for type errors before concluding a task.
 - Run these commands from the repository root. Dev tools (ruff, mypy, pytest, pre-commit) live in the `dev` Pixi environment; `pixi run <tool>` selects it automatically.

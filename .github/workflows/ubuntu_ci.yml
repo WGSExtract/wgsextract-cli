@@ -7,6 +7,13 @@ on:
     paths-ignore:
       - "**/*.md"
   workflow_call:
+    inputs:
+      tests:
+        type: string
+        default: all
+      smoke-only:
+        type: boolean
+        default: false
   schedule:
     - cron: "11 6 * * *"
   workflow_dispatch:
@@ -19,7 +26,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  workflow-smoke:
+    if: inputs.smoke-only && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: dev
+      - name: Exercise changed workflow with smoke tests
+        env:
+          TEST_SELECTION: ${{ inputs.tests }}
+        run: pixi run python scripts/ci_run_tests.py --selection "$TEST_SELECTION"
   lint:
+    if: "!inputs.smoke-only"
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -42,6 +63,7 @@ jobs:
       - name: Advisory test-smell annotations (never fails)
         run: pixi run -e lint -x python scripts/test_smells.py --base HEAD^1 --github
   test-ubuntu:
+    if: "!inputs.smoke-only && inputs.tests != '[]'"
     name: test-ubuntu (${{ matrix.label }})
     strategy:
       fail-fast: false
@@ -131,16 +153,18 @@ jobs:
           key: hs38-v1-${{ hashFiles('src/wgsextract_cli/assets/reference/seed_genomes.csv', 'src/wgsextract_cli/core/ref_library/catalog.py') }}
       - name: Run Tests
         shell: bash
+        env:
+          TEST_SELECTION: ${{ github.event_name == 'pull_request' && inputs.tests || 'all' }}
         run: |
           coverage=()
           if [ "${{ github.event_name }}" != pull_request ] && [ "${{ github.event_name }}" != merge_group ]; then
             coverage+=(--cov=wgsextract_cli --cov-report=xml:out/coverage.xml)
           fi
-          pixi run test-ci --ci-tier ${{ matrix.tier }} --ci-shard ${{ matrix.shard }} "${coverage[@]}"
+          pixi run python scripts/ci_run_tests.py --selection "$TEST_SELECTION" -- --ci-tier ${{ matrix.tier }} --ci-shard ${{ matrix.shard }} "${coverage[@]}"
       # The app's bundle commands must still parse with this CLI (#538); GUI CI
       # checks the bundle side, this catches a CLI flag dropped or renamed.
       - name: Check the app's bundle commands parse with this CLI
-        if: matrix.label == 'core-1'
+        if: matrix.label == 'core-1' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_cli_parser.py'))
         working-directory: gui
         run: pixi run python -m unittest discover -s tests/wgsextract
       - name: Publish test timings and non-gating coverage
@@ -154,10 +178,11 @@ jobs:
       # Each extract, call and annotate command run end to end on generated chrM
       # and whole-genome data; about 30 s, no downloads.
       - name: Run end-to-end tests on generated data
-        if: matrix.tier == 'integration'
+        if: matrix.tier == 'integration' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_e2e_'))
         run: pixi run test-e2e-fake
 
   imputation:
+    if: "!inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))"
     # GLIMPSE2 and Beagle from the opt-in imputation environment on HG002 1x
     # reads and chip genotypes (tests/fixtures/imputation_hg002).
     runs-on: ubuntu-latest
@@ -180,6 +205,7 @@ jobs:
   # ONT end to end on real GIAB HG002 R10.4.1 reads (tests/fixtures/ont_hg002):
   # align with minimap2, then Sniffles from the opt-in pacbio environment.
   ont-hg002:
+    if: "!inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_ont_hg002.py') || contains(inputs.tests, 'tests/test_phasing.py') || contains(inputs.tests, 'tests/test_somalier_relate.py'))"
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
