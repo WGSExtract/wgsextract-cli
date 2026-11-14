@@ -3,7 +3,12 @@
 from pathlib import Path
 
 from wgsextract_cli.core.alignment_metadata import get_bam_header
-from wgsextract_cli.core.reference_assets import header_sequences, read_fai_lengths
+from wgsextract_cli.core.bgzf import is_bgzf
+from wgsextract_cli.core.reference_assets import (
+    header_sequences,
+    read_fai_lengths,
+    sequence_dictionary,
+)
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 
@@ -14,9 +19,17 @@ def validate_calling_reference(alignment: str, fasta: str) -> None:
     content is checked only where both dictionaries provide an M5 checksum.
     """
     sequences = header_sequences(get_bam_header(alignment))
-    if not Path(fasta + ".fai").is_file():
+    if not Path(fasta + ".fai").is_file() and not (
+        fasta.lower().endswith(".gz") and not is_bgzf(fasta)
+    ):
         run_command(["samtools", "faidx", fasta])
     lengths = read_fai_lengths(fasta)
+    if not lengths and fasta.lower().endswith(".gz"):
+        # Ordinary gzip cannot be faidx'd. Callers with plain_reference()
+        # still support it; samtools dict can inspect it without decoding reads.
+        lengths = {
+            row["SN"]: int(row["LN"]) for row in sequence_dictionary(fasta) or ()
+        }
     if not sequences or not lengths:
         raise WGSExtractError(
             "Cannot validate the calling reference: missing alignment SQ or FASTA index."

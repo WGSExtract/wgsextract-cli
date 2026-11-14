@@ -1,5 +1,6 @@
 """Wrong-reference regressions run against real FASTA/BAM/CRAM fixtures."""
 
+import gzip
 from pathlib import Path
 
 import pytest
@@ -47,3 +48,11 @@ def test_wrong_reference_851_rejects_same_length_md5_when_available(tmp_path):
     run_command(["samtools", "dict", "-o", str(tmp_path / "wrong.dict"), str(wrong)])
     with pytest.raises(WGSExtractError, match="sequence MD5 differs"):
         validate_calling_reference(sample.cram, str(wrong))
+
+
+def test_wrong_reference_851_accepts_matching_ordinary_gzip(tmp_path):
+    sample = snp_sample(tmp_path)
+    compressed = tmp_path / "ordinary.fa.gz"
+    compressed.write_bytes(gzip.compress(Path(sample.ref).read_bytes()))
+    validate_calling_reference(sample.bam, str(compressed))
+    assert not Path(str(compressed) + ".fai").exists()
