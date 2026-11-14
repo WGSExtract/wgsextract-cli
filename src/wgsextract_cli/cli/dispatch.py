@@ -51,6 +51,7 @@ def checks_alignment_input(path: str) -> bool:
 INPUT_ARGS = {
     "input": "input",
     "vcf_input": "vcf_input",
+    "proband": "proband",
     "r1": "fastq_r1",
     "r2": "fastq_r2",
 }

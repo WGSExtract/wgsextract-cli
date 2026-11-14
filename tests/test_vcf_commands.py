@@ -438,7 +438,8 @@ def test_report_of_another_sample_leaves_out_a_run_on_vcf_input(tmp_path, capsys
 
 @needs_bcftools
 def test_trio_proband_overrides_input_in_the_manifest(tmp_path, capsys):
-    """Issue #900: --proband is the child's VCF read, not --input."""
+    """Issue #900: --proband is the child's VCF read, not --input, also when
+    the run fails before reading it."""
     body = "{c}\t10\tv\tA\tG\t50\tPASS\t.\tGT:GQ\t0/1:99\n"
     gq = '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="q">\n'
     child, mom, dad, other = (
@@ -452,6 +453,38 @@ def test_trio_proband_overrides_input_in_the_manifest(tmp_path, capsys):
     assert _inputs(result) == [
         ("proband", "child.vcf.gz"), ("mother", "mom.vcf.gz"), ("father", "dad.vcf.gz")
     ]  # fmt: skip
+    # A run that fails before reading the parents still names the child.
+    failed = _cli_json(capsys, "vcf", "trio", "--proband", child, "--mother", mom,
+                       "--input", other, "--outdir", str(tmp_path / "out"))  # fmt: skip
+    assert failed["status"] == "failed"
+    assert _inputs(failed) == [("proband", "child.vcf.gz")]
+
+
+@needs_bcftools
+def test_trio_on_a_vcf_only_genome_is_the_genomes_report_vcf(tmp_path, capsys):
+    """Issue #900 review: a --genome trio records the child as its proband, and
+    the genome's report still names that VCF as the sample's."""
+    body = "{c}\t10\tv\tA\tG\t50\tPASS\t.\tGT:GQ\t0/1:99\n"
+    gq = '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="q">\n'
+    genome = tmp_path / "genomes" / "child"
+    genome.mkdir(parents=True)
+    config = tmp_path / "config.toml"
+    config.write_text(f"dataset_library = {json.dumps(str(genome.parent))}\n")
+    _write_vcf(genome / "child.vcf.gz", body, sample="S", header=gq)
+    mom, dad = (
+        _write_vcf(tmp_path / f"{name}.vcf.gz", body, sample="S", header=gq)
+        for name in ("mom", "dad")
+    )
+    trio = _cli_json(capsys, "--config", str(config), "vcf", "trio", "--genome",
+                     "child", "--mother", mom,
+                     "--father", dad, "--mode", "denovo")  # fmt: skip
+    assert trio["status"] == "ok", trio["error"]
+    assert _inputs(trio)[0] == ("proband", "child.vcf.gz")
+
+    report = _cli_json(capsys, "--config", str(config), "report", "--genome", "child")
+    assert report["status"] == "ok", report["error"]
+    document = next(o["path"] for o in report["outputs"] if o["path"].endswith(".json"))
+    assert json.loads(Path(document).read_text())["sample"]["vcf"] == "child.vcf.gz"
 
 
 @needs_bcftools

@@ -58,7 +58,7 @@ run actually launched.
 `vcf table`, `vcf to-fasta`, `vcf trio`, `qc vcf`) records just that one, as
 `vcf_input` or `input` after the option that named it, even when both
 `--vcf-input` and `--input` are given; its `provenance.params` show the other
-as `null`. `vcf trio --proband` reads the proband instead of either. `vcf phase`
+as `null`. `vcf trio --proband` reads the proband (role `proband`) instead of either. `vcf phase`
 reads both: its reads as `input` and its calls as `vcf_input`.
 
 ### Fingerprints
