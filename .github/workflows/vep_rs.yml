@@ -11,6 +11,7 @@ on:
     paths:
       - packaging/vep-rs/**
       - .github/workflows/vep_rs.yml
+      - .github/actions/setup-pixi/**
       - "!**/*.md"
   workflow_dispatch:
     inputs:

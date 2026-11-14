@@ -15,6 +15,7 @@ on:
       - tests/fixtures/imputation_hg002/**
       - tests/test_imputation.py
       - .github/workflows/glimpse2.yml
+      - .github/actions/setup-pixi/**
       - "!**/*.md"
   workflow_dispatch:
     inputs:

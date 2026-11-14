@@ -12,6 +12,7 @@ on:
       - src/wgsextract_cli/commands/vcf/callers.py
       - tests/test_gkl_windows.py
       - .github/workflows/gkl_windows.yml
+      - .github/actions/setup-pixi/**
       - pixi.toml
       - pixi.lock
       - "!**/*.md"

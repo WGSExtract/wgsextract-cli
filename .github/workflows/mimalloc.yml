@@ -13,6 +13,7 @@ on:
     paths:
       - packaging/mimalloc/**
       - .github/workflows/mimalloc.yml
+      - .github/actions/setup-pixi/**
       - "!**/*.md"
   workflow_dispatch:
     inputs:

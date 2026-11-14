@@ -12,6 +12,7 @@ on:
     paths:
       - packaging/windows/**
       - .github/workflows/windows_tools.yml
+      - .github/actions/setup-pixi/**
       - "!**/*.md"
   workflow_dispatch:
     inputs:

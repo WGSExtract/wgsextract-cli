@@ -21,6 +21,7 @@ on:
       - packaging/wgse-bwa-mem3/**
       - packaging/wgse-minimap2/**
       - .github/workflows/linux_aligners.yml
+      - .github/actions/setup-pixi/**
       - "!**/*.md"
   push:
     branches: [main]
