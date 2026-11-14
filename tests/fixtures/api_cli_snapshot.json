@@ -20575,7 +20575,7 @@
       "default": false,
       "dest": "no_preflight",
       "exclusive_group": null,
-      "help": "Run even without the disk or RAM the run needs (not recommended).",
+      "help": "Run despite too little disk or RAM (not recommended).",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -35840,7 +35840,7 @@
       "default": false,
       "dest": "no_preflight",
       "exclusive_group": null,
-      "help": "Run even without the disk or RAM the run needs (not recommended).",
+      "help": "Run despite too little disk or RAM (not recommended).",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -37087,7 +37087,7 @@
       "default": false,
       "dest": "no_preflight",
       "exclusive_group": null,
-      "help": "Run even without the disk or RAM the run needs (not recommended).",
+      "help": "Run despite too little disk or RAM (not recommended).",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
