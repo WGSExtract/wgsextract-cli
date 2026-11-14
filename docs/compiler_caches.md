@@ -28,7 +28,10 @@ Remove those experimental entries through the Actions cache UI after measuring.
 ## Keys and budget
 
 Native keys contain OS, architecture, compiler version/target (and macOS SDK),
-build family and recipe hash. ccache also hashes the actual compiler binary,
+build family, recipe hash and source content hash. A restore prefix permits
+reuse across source edits only within the same recipe/toolchain family. Cache
+entries are immutable, so a source edit can publish its newly compiled objects.
+ccache also hashes the actual compiler binary,
 including the conda compiler when a recipe selects one. Recipes include
 toolchain variant manifests in their keys; changing a recipe forces a cold
 build. Rattler uses `--no-build-id` to avoid timestamped work paths defeating
@@ -49,7 +52,7 @@ on 2026-11-14. GitHub evicts least-recently-used caches at the repository's 10 G
 limit. This rollout reserves roughly 2.5 GB of that budget; it does not claim
 extra quota or silently remove other workflows' caches. Monitor eviction and
 hit rates before widening coverage or retaining multiple recipe generations.
-There are no run-id/SHA-per-push native keys or broad restore prefixes.
+There are no run-id/SHA-per-push native keys or cross-recipe restore prefixes.
 
 ## Inventory exclusions
 

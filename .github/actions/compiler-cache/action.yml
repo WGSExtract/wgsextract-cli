@@ -10,6 +10,9 @@ inputs:
   recipe:
     description: Hash of the build recipe and compiler/SDK selection.
     required: true
+  source:
+    description: Source content hash; defaults to the native and packaging trees.
+    default: ""
   compiler:
     description: Compiler executable whose version and target identify the toolchain.
     default: cc
@@ -41,6 +44,7 @@ runs:
         CCACHE: ${{ inputs.executable }}
         SCOPE: ${{ inputs.scope }}
         RECIPE: ${{ inputs.recipe }}
+        SOURCE: ${{ inputs.source || hashFiles('native/**', 'packaging/**') }}
         PHASE: ${{ inputs.phase }}
       run: |
         cd "$GITHUB_WORKSPACE"
@@ -54,15 +58,11 @@ runs:
            [ "$GITHUB_ACTOR" = theontho ]; then
           namespace=measure-916-compiler-v1
         fi
-        echo "key=${namespace}-${RUNNER_OS}-${RUNNER_ARCH}-${SCOPE}-${compiler_hash}-${RECIPE}" >> "$GITHUB_OUTPUT"
+        prefix="${namespace}-${RUNNER_OS}-${RUNNER_ARCH}-${SCOPE}-${compiler_hash}-${RECIPE}-"
+        echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+        echo "key=${prefix}${SOURCE}" >> "$GITHUB_OUTPUT"
         if [ "$PHASE" = restore ]; then
           mkdir -p out/compiler-cache
-          export CCACHE_DIR="$GITHUB_WORKSPACE/out/compiler-cache"
-          # ccache rechecks source, headers, compiler contents and command flags.
-          # No sloppiness / timestamp bypasses, including tagged release builds.
-          "$CCACHE" --set-config=cache_dir="$GITHUB_WORKSPACE/out/compiler-cache"
-          "$CCACHE" --set-config=max_size=128M
-          "$CCACHE" --set-config=base_dir="$GITHUB_WORKSPACE"
           if [ "$RUNNER_OS" = Windows ]; then
             mkdir -p out/compiler-wrappers
             cp "$CCACHE" out/compiler-wrappers/gcc.exe
@@ -83,6 +83,9 @@ runs:
       with:
         path: out/compiler-cache
         key: ${{ steps.key.outputs.key }}
+        # A source edit can extend a trusted cache without crossing recipe,
+        # toolchain, OS, architecture or measurement namespaces.
+        restore-keys: ${{ steps.key.outputs.prefix }}
     - name: Start this build's compiler statistics
       if: inputs.phase == 'restore'
       shell: bash
@@ -93,6 +96,13 @@ runs:
       run: |
         # A restored directory includes its old statistics. Reset after restore,
         # not before it, so the summary describes this run's compilation only.
+        export CCACHE_DIR="$GITHUB_WORKSPACE/out/compiler-cache"
+        "$CCACHE" --set-config=max_size=128M
+        "$CCACHE" --set-config=base_dir="$GITHUB_WORKSPACE"
+        # Revalidate compiler contents; never allow stale timestamps/sloppiness
+        # in a restored configuration to alter release compilation semantics.
+        "$CCACHE" --set-config=compiler_check=content
+        "$CCACHE" --set-config=sloppiness=
         "$CCACHE" --zero-stats
         echo "Compiler cache hit=${HIT}; key=${KEY}" >> "$GITHUB_STEP_SUMMARY"
     - name: Report and bound compiler objects
@@ -109,6 +119,7 @@ runs:
     - name: Save successful compiler objects
       if: >-
         inputs.phase == 'save' &&
+        github.event_name != 'pull_request' && github.event_name != 'pull_request_target' &&
         (github.ref == 'refs/heads/main' ||
          (github.event_name == 'workflow_dispatch' &&
           github.ref == 'refs/heads/ci/916-compiler-cache' && github.actor == 'theontho'))

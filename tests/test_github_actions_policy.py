@@ -165,6 +165,8 @@ def test_916_expensive_builds_use_trusted_shared_cache(
         ("refs/tags/v1.0.0", "push", "theontho", False),
         ("refs/heads/main", "push", "theontho", True),
         ("refs/heads/main", "schedule", "theontho", True),
+        ("refs/heads/main", "pull_request_target", "theontho", False),
+        ("refs/heads/main", "pull_request", "theontho", False),
         ("refs/heads/ci/916-compiler-cache", "pull_request", "theontho", False),
         ("refs/heads/ci/916-compiler-cache", "push", "theontho", False),
         ("refs/heads/ci/916-compiler-cache", "workflow_dispatch", "external", False),
@@ -208,11 +210,12 @@ def test_916_pr_refs_cannot_save_compiler_caches(
             return (
                 all(truth_values) if isinstance(node.op, ast.And) else any(truth_values)
             )
-        if isinstance(node, ast.Compare) and all(
-            isinstance(operator, ast.Eq) for operator in node.ops
-        ):
-            results = [matches(value) for value in [node.left, *node.comparators]]
-            return all(value == results[0] for value in results[1:])
+        if isinstance(node, ast.Compare) and len(node.ops) == 1:
+            left, right = matches(node.left), matches(node.comparators[0])
+            if isinstance(node.ops[0], ast.Eq):
+                return left == right
+            if isinstance(node.ops[0], ast.NotEq):
+                return left != right
         raise AssertionError(f"Unreviewed writer condition: {ast.dump(node)}")
 
     assert matches(tree.body) is expected
