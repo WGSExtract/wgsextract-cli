@@ -1204,9 +1204,10 @@ SV_FREQ, SV_COMMON, ...) from gnomAD-SV and gnomAD-LR as
 `sv_freq_annotated.vcf.gz`, and one row per SV in `sv_freq.tsv`.
 
 For the SV calls of `vcf sv` (Delly, Sniffles, pbsv) and `vcf cnv`,
-or any VCF of SVs. A call matches a gnomAD SV of a compatible type by
-reciprocal overlap (deletions, duplications, inversions, CNVs) or by
-breakpoint distance and size similarity (insertions).
+or any VCF of SVs. A call matches a gnomAD SV of the same type by
+reciprocal overlap (deletions, duplications, inversions) or by
+breakpoint distance and size similarity (insertions). Nondirectional
+CNV carrier frequencies and cross-type INS/DUP matches are excluded.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -1217,7 +1218,7 @@ breakpoint distance and size similarity (insertions).
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `gnomad_sv_file` | `Path \| None` | `None` (config `gnomad_sv_path`) | `--gnomad-sv-file` | gnomAD-SV table (default: the library's, from 'ref gnomad-sv'). |
 | `gnomad_lr_file` | `Path \| None` | `None` (config `gnomad_lr_sv_path`) | `--gnomad-lr-file` | gnomAD-LR table (default: the library's; GRCh38). |
-| `min_overlap` | `float` | `0.5` | `--min-overlap` | Minimum reciprocal overlap for DEL/DUP/INV/CNV (default 0.5). |
+| `min_overlap` | `float` | `0.5` | `--min-overlap` | Minimum reciprocal overlap for same-type DEL/DUP/INV (default 0.5). |
 | `max_distance` | `int` | `500` | `--max-distance` | Maximum insertion breakpoint distance, bp (default 500). |
 | `min_size_similarity` | `float` | `0.5` | `--min-size-similarity` | Minimum insertion size similarity (default 0.5). |
 | `common_af` | `float` | `0.01` | `--common-af` | AF from which an SV is common (default 0.01). |

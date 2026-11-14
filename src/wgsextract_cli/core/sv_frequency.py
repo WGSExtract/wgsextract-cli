@@ -4,15 +4,16 @@ the gnomAD-SV and gnomAD-LR sites tables (`ref gnomad-sv`).
 SV calls rarely share exact breakpoints with a population catalogue, so a call
 matches a catalogue SV by the rule truvari and SVAFotate use:
 
-- Deletions, duplications, inversions and CNVs: compatible types and a
+- Deletions, duplications and inversions: the same type and a
   reciprocal overlap of at least ``min_overlap`` (default 50%, the usual
   CNV/SV standard): the shared span divided by the longer of the two.
 - Insertions: start positions at most ``max_distance`` bp apart (default 500,
   truvari's ``--refdist``) and sizes at least ``min_size_similarity`` alike
-  (shorter / longer, default 0.5) when both sizes are known. A tandem
-  duplication is an insertion of a copy, so insertions and duplications
-  are compared this way too (long-read callers report many tandem
-  duplications as insertions).
+  (shorter / longer, default 0.5) when both sizes are known. Insertions and
+  duplications are not interchangeable without sequence-equivalence evidence.
+
+Nondirectional CNV catalogue rows are not used: their pooled gain/loss
+carrier frequency is not a direction-specific allele frequency.
 
 Breakends and translocations (BND, TRA, CTX) and complex SVs are not
 annotated. Of all the catalogue SVs that match, the one with the highest
@@ -43,12 +44,11 @@ CLASSES = (COMMON, LOW, RARE, NOVEL)
 MIN_SV_LENGTH = 50
 
 _OVERLAP_TYPES = {
-    "DEL": ("DEL", "CNV"),
-    "DUP": ("DUP", "CNV"),
+    "DEL": ("DEL",),
+    "DUP": ("DUP",),
     "INV": ("INV",),
-    "CNV": ("DEL", "DUP", "CNV"),
 }
-_POINT_TYPES = {"INS": ("INS", "DUP"), "DUP": ("INS",)}
+_POINT_TYPES = {"INS": ("INS",)}
 _SYMBOLIC = re.compile(r"^<([A-Za-z0-9]+)")
 
 
@@ -297,7 +297,7 @@ def frequency_class(
 INFO_HEADERS = (
     '##INFO=<ID=SV_AF,Number=1,Type=Float,Description="Population allele '
     "frequency of the matching gnomAD SV (the highest across the catalogues "
-    'searched; for gnomAD multi-allelic CNVs, the non-reference carrier frequency)">',
+    'searched; excludes nondirectional CNV carrier frequencies)">',
     '##INFO=<ID=SV_POPMAX_AF,Number=1,Type=Float,Description="Highest '
     'genetic-ancestry-group allele frequency of the matching gnomAD SV">',
     '##INFO=<ID=SV_AF_ID,Number=1,Type=String,Description="ID of the matching '
@@ -305,7 +305,7 @@ INFO_HEADERS = (
     '##INFO=<ID=SV_AF_SOURCE,Number=1,Type=String,Description="Catalogue of the '
     'matching SV (e.g. gnomAD-SV_v4.1, gnomAD-LR_0.1)">',
     '##INFO=<ID=SV_AF_MATCH,Number=1,Type=Float,Description="Match quality, 0-1: '
-    "the reciprocal overlap (DEL/DUP/INV/CNV), else the mean of breakpoint "
+    "the reciprocal overlap (same-type DEL/DUP/INV), else the mean of breakpoint "
     'closeness and size similarity (INS)">',
     '##INFO=<ID=SV_FREQ,Number=1,Type=String,Description="Population frequency '
     "class: common (SV_AF >= {common}), low, rare (SV_AF < {rare}) or novel (no "

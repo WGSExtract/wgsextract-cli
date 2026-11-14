@@ -215,7 +215,8 @@ def test_sv_calls_get_their_population_frequency(library, calls, tmp_path):
     assert "SV_COMMON" not in records["ins_rare"]
     assert records["dup_low"]["SV_FREQ"] == "low"
     assert records["inv_common"]["SV_AF_ID"] == "gINV"
-    assert records["cnv_common"]["SV_AF_ID"] == "gCNV"
+    assert records["cnv_common"]["SV_FREQ"] == "novel"
+    assert "SV_AF" not in records["cnv_common"]
     # Too little reciprocal overlap; and gnomAD's own filtered site doesn't count.
     assert records["del_novel"]["SV_FREQ"] == "novel"
     assert records["del_filtered_in_gnomad"]["SV_FREQ"] == "novel"
@@ -223,8 +224,8 @@ def test_sv_calls_get_their_population_frequency(library, calls, tmp_path):
     assert "SV_FREQ" not in records["bnd"] and "SV_FREQ" not in records["snv"]
 
     assert result.metrics["svs"] == 7
-    assert result.metrics["sv_matched"] == 5
-    assert result.metrics["sv_common"] == 3 and result.metrics["sv_novel"] == 2
+    assert result.metrics["sv_matched"] == 4
+    assert result.metrics["sv_common"] == 2 and result.metrics["sv_novel"] == 3
     with open(_output(result, "sv_frequencies"), newline="") as stream:
         rows = list(csv.DictReader(stream, delimiter="\t"))
     assert {r["id"]: r["sv_freq"] for r in rows}["ins_rare"] == "rare"
@@ -241,8 +242,8 @@ def test_a_stricter_overlap_leaves_imprecise_calls_unmatched(library, calls, tmp
 
 def test_sequence_resolved_long_read_calls_match(library, tmp_path):
     """Sniffles/pbsv and benchmark VCFs spell SVs out as sequence, often with
-    no SVTYPE; a tandem duplication called as an insertion matches gnomAD's
-    duplication."""
+    no SVTYPE. Sequence alone does not establish that an insertion is the
+    catalogue's duplication."""
     deletion = "A" * 1951
     vcf = _bgzip_vcf(
         tmp_path / "seq.vcf.gz",
@@ -255,7 +256,62 @@ def test_sequence_resolved_long_read_calls_match(library, tmp_path):
 
     assert records["seq_del"]["SV_AF_ID"] == "gDEL"
     assert records["seq_ins"]["SV_AF_ID"] == "gINS"
-    assert records["ins_dup"]["SV_AF_ID"] == "gDUP"
+    assert records["ins_dup"]["SV_FREQ"] == "novel"
+    assert "SV_AF" not in records["ins_dup"]
+
+
+def test_issue_847_opposite_cnv_frequency_and_unproven_ins_dup_equivalence(
+    library, tmp_path
+):
+    """Pooled gain/loss carriers and nearby DUPs are not allele frequencies."""
+    vcf = _bgzip_vcf(
+        tmp_path / "direction.vcf.gz",
+        _CALLS_HEADER
+        + "\n".join(
+            [
+                "chr1\t10100\tsame_del\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=12050\tGT\t0/1",
+                "chr1\t10100\topposite_dup\tN\t<DUP>\t.\tPASS\tSVTYPE=DUP;END=12050\tGT\t0/1",
+                "chr1\t20150\tsame_ins_unknown_sequence\tN\t<INS>\t.\tPASS\tSVTYPE=INS;SVLEN=310\tGT\t0/1",
+                "chr1\t20150\tdup_not_ins\tN\t<DUP>\t.\tPASS\tSVTYPE=DUP;END=20460\tGT\t0/1",
+                "chr1\t30000\tins_not_dup\tN\t<INS>\t.\tPASS\tSVTYPE=INS;SVLEN=400\tGT\t0/1",
+                "chr1\t30000\tsame_dup\tN\t<DUP>\t.\tPASS\tSVTYPE=DUP;END=30400\tGT\t0/1",
+                "chr1\t65000\tloss_from_pooled\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=78000\tGT\t0/1",
+                "chr1\t65000\tgain_from_pooled\tN\t<DUP>\t.\tPASS\tSVTYPE=DUP;END=78000\tGT\t0/1",
+                "chr1\t65000\tgeneric_cnv\tN\t<CNV>\t.\tPASS\tSVTYPE=CNV;END=78000\tGT\t0/1",
+            ]
+        )
+        + "\n",
+    )
+    result = _sv_freq(vcf, library, tmp_path / "out")
+    records = _records(_output(result, "annotated_vcf"))
+    for ident, af, catalogue_id in [
+        ("same_del", "0.3", "gDEL"),
+        ("same_dup", "0.005", "gDUP"),
+        ("same_ins_unknown_sequence", "0.0004", "gINS"),
+    ]:
+        assert records[ident]["SV_AF"] == af
+        assert records[ident]["SV_AF_ID"] == catalogue_id
+        assert records[ident]["SV_AF_SOURCE"] == "gnomAD-SV_v4.1"
+    unmatched = {
+        "opposite_dup",
+        "dup_not_ins",
+        "ins_not_dup",
+        "loss_from_pooled",
+        "gain_from_pooled",
+        "generic_cnv",
+    }
+    for ident in unmatched:
+        assert records[ident]["SV_FREQ"] == "novel"
+        assert (
+            not {"SV_AF", "SV_POPMAX_AF", "SV_AF_ID", "SV_AF_SOURCE", "SV_COMMON"}
+            & records[ident].keys()
+        )
+    with open(_output(result, "sv_frequencies"), newline="") as stream:
+        rows = {r["id"]: r for r in csv.DictReader(stream, delimiter="\t")}
+    assert all(
+        rows[ident]["sv_af"] == "" and rows[ident]["sv_af_source"] == ""
+        for ident in unmatched
+    )
 
 
 def _bare_table(path, source, build):
@@ -332,4 +388,4 @@ def test_vcf_table_and_report_show_sv_frequencies(library, calls, tmp_path):
     assert section["status"] == "ok"
     assert [f["value"] for f in section["findings"]] == ["rare (AF < 0.001)"]
     assert section["findings"][0]["label"].startswith("INS chr1:20150")
-    assert section["counts"]["common"] == 3 and section["counts"]["novel"] == 2
+    assert section["counts"]["common"] == 2 and section["counts"]["novel"] == 3
