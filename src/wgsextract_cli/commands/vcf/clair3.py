@@ -12,7 +12,7 @@ import sys
 import tempfile
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import lru_cache, partial
 from pathlib import Path
 
 from wgsextract_cli.api._cli import cli_handler
@@ -64,7 +64,7 @@ from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 
-from .basic import plain_reference, record_variants, setup_caller
+from .basic import CallerSetup, plain_reference, record_variants, setup_caller
 from .callers import write_region_bed
 
 CLAIR3 = "run_clair3.sh"
@@ -690,7 +690,8 @@ def temp_space(
 
 
 def run_clair3(params: VcfClair3Params) -> None:
-    """``vcf clair3``: Clair3 on Nanopore reads into ``clair3.vcf.gz``."""
+    from .caller_ploidy import call_partitioned
+
     require_supported_platform()
     gpu = verify_gpu() if params.gpu else None
     if gpu:
@@ -702,7 +703,21 @@ def run_clair3(params: VcfClair3Params) -> None:
     else:
         verify_dependencies([CLAIR3, "samtools", "bcftools", "tabix"])
         log_dependency_info([CLAIR3])
-    setup = setup_caller(params)
+    call_partitioned(
+        params, setup_caller(params), "clair3", partial(_run_clair3, gpu=gpu)
+    )
+
+
+def _run_clair3(
+    params: VcfClair3Params,
+    sample_ploidy: int = 2,
+    setup: CallerSetup | None = None,
+    record: bool = True,
+    *,
+    gpu: GpuSetup | None = None,
+) -> None:
+    """``vcf clair3``: Clair3 on Nanopore reads into ``clair3.vcf.gz``."""
+    setup = setup or setup_caller(params)
     threads, outdir, ref = setup.threads, setup.outdir, setup.ref
     input_file, region = str(params.input), params.region
     detected = setup.platform
@@ -760,6 +775,8 @@ def run_clair3(params: VcfClair3Params) -> None:
                 str(Path(run_work, "regions.bed")) if bed else None, sample,
                 gpu.devices if gpu else (),
             )  # fmt: skip
+            if sample_ploidy == 1:
+                command.append("--haploid_precise")
             try:
                 if gpu:
                     weights = [str(Path(run_model, name)) for name in MODEL_FILES]
@@ -801,7 +818,8 @@ def run_clair3(params: VcfClair3Params) -> None:
         with safe_output(out_vcf) as staged:
             run_command(["bcftools", "view", "-Oz", "-o", staged, named])
     ensure_vcf_indexed(out_vcf)
-    record_variants(out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region))
+    if record:
+        record_variants(out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region))
 
 
 cmd_clair3 = cli_handler(VcfClair3Params, run_clair3)

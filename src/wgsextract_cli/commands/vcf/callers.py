@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from functools import partial
 from pathlib import Path
 
 from wgsextract_cli.api._cli import cli_handler
@@ -32,7 +33,7 @@ from wgsextract_cli.core.utils import (
 )
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 
-from .basic import plain_reference, record_variants, setup_caller
+from .basic import CallerSetup, plain_reference, record_variants, setup_caller
 from .gatk_scatter import call_scattered, scatter_intervals
 
 
@@ -58,13 +59,14 @@ def _prepare_gatk_input(
     logging.info(f"Preparing regional BAM for GATK from CRAM input ({region})...")
     try:
         samtools = get_tool_path("samtools")
-        regions = region_items(region, commas=True)
+        bed = Path(region).is_file()
+        regions = [] if bed else region_items(region, commas=True)
         run_command(
             [
                 samtools,
                 "view",
                 "-bh",
-                *(["-M"] if len(regions) > 1 else []),
+                *(["-M", "-L", region] if bed else ["-M"] if len(regions) > 1 else []),
                 "-T",
                 ref,
                 "-o",
@@ -87,6 +89,8 @@ def _gatk_region_args(region: str | None, outdir: str) -> tuple[list[str], str |
     as a file path and fails on the ':'; a .intervals file reads the same everywhere."""
     if not region:
         return [], None
+    if Path(region).is_file():
+        return ["-L", java_local_path(region)], None
     # A new file, never one a link at a fixed name points to.
     fd, intervals = tempfile.mkstemp(
         dir=outdir, prefix=".gatk_region_", suffix=".intervals"
@@ -127,6 +131,9 @@ def _cleanup_gatk_temp_input(temp_input: str | None) -> None:
 
 def write_region_bed(region: str, lengths: dict[str, int], bed: str) -> None:
     """chr1:1000-1050,chr2 (1-based, inclusive) as BED (0-based, half-open)."""
+    if Path(region).is_file():
+        shutil.copyfile(region, bed)
+        return
     with open(bed, "w", newline="\n") as f:
         for part in (r.strip() for r in region.split(",") if r.strip()):
             contig, _, span = part.partition(":")
@@ -181,7 +188,7 @@ def run_freebayes(params: VcfFreebayesParams) -> None:
     record_variants(out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region))
 
 
-def _gatk_gpu(params: VcfGatkParams) -> None:
+def _gatk_gpu(params: VcfGatkParams, setup: CallerSetup | None = None) -> None:
     """HaplotypeCaller on an NVIDIA GPU (Parabricks), which reads CRAM itself."""
     from wgsextract_cli.core.parabricks import (
         call_variants,
@@ -194,7 +201,7 @@ def _gatk_gpu(params: VcfGatkParams) -> None:
     fit = plan_gpu_memory(
         "haplotypecaller", "gatk", check=not params.no_gpu_memory_check
     )
-    setup = setup_caller(params)
+    setup = setup or setup_caller(params)
     outdir, ref = setup.outdir, setup.ref
     input_file, region = str(params.input), params.region
     if ultima.alignment_is_ultima(input_file):
@@ -208,13 +215,34 @@ def _gatk_gpu(params: VcfGatkParams) -> None:
 
 
 def run_gatk(params: VcfGatkParams) -> None:
+    from .caller_ploidy import call_partitioned
+
+    require_native_tool("gatk")
+    if params.gpu and params.scatter:
+        raise UsageError("GATK --scatter cannot be combined with --gpu.")
+    call_partitioned(
+        params,
+        setup_caller(params),
+        "gatk",
+        partial(_run_gatk, stage_region=params.region is not None),
+    )
+
+
+def _run_gatk(
+    params: VcfGatkParams,
+    sample_ploidy: int = 2,
+    setup: CallerSetup | None = None,
+    record: bool = True,
+    *,
+    stage_region: bool = True,
+) -> None:
     """``vcf gatk``: HaplotypeCaller into ``gatk.vcf.gz``, or Parabricks."""
     require_native_tool("gatk")
     scatter = params.scatter
     if params.gpu:
         if scatter:
             raise UsageError("GATK --scatter cannot be combined with --gpu.")
-        _gatk_gpu(params)
+        _gatk_gpu(params, setup)
         return
     verify_dependencies(
         ["gatk", "samtools", *(["bcftools", "tabix"] if scatter else [])]
@@ -225,7 +253,7 @@ def run_gatk(params: VcfGatkParams) -> None:
             "compression remains Java-based. Runtime and numeric annotations may differ "
             "from Linux; check GATK's kernel-selection logs."
         )
-    setup = setup_caller(params)
+    setup = setup or setup_caller(params)
     _threads, outdir, ref, lib = setup.threads, setup.outdir, setup.ref, setup.lib
     input_file, region = str(params.input), params.region
     shards = scatter_intervals(ref, region, _threads) if scatter else []
@@ -277,7 +305,7 @@ def run_gatk(params: VcfGatkParams) -> None:
 
     try:
         gatk_input, temp_gatk_input = _prepare_gatk_input(
-            input_file, region, ref, outdir
+            input_file, region if stage_region else None, ref, outdir
         )
         if shards:
             with tempfile.TemporaryDirectory(
@@ -293,6 +321,8 @@ def run_gatk(params: VcfGatkParams) -> None:
                             "-I",
                             java_local_path(gatk_input),
                             *flow_args,
+                            "--sample-ploidy",
+                            str(sample_ploidy),
                         ],
                         shards,
                         staged,
@@ -300,9 +330,10 @@ def run_gatk(params: VcfGatkParams) -> None:
                         gatk_tmp,
                     )
             ensure_vcf_indexed(out_vcf)
-            record_variants(
-                out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region)
-            )
+            if record:
+                record_variants(
+                    out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region)
+                )
             return
         cmd = (
             [
@@ -318,13 +349,17 @@ def run_gatk(params: VcfGatkParams) -> None:
                 java_local_path(gatk_tmp),
             ]
             + flow_args
+            + ["--sample-ploidy", str(sample_ploidy)]
             + region_args
         )
         with safe_output(out_vcf) as staged:
             cmd[cmd.index("-O") + 1] = java_local_path(staged)
             run_command(cmd)
         ensure_vcf_indexed(out_vcf)
-        record_variants(out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region))
+        if record:
+            record_variants(
+                out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region)
+            )
     except subprocess.CalledProcessError as e:
         logging.error(f"GATK failed: {e}")
         if input_file.lower().endswith(".cram"):

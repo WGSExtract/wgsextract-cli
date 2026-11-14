@@ -1120,6 +1120,29 @@ def test_path_guard_checks_the_library_of_a_home_relative_fasta(
         PathGuard([genomes]).check(find(op).params(ref="~/lib/genomes/x.fa"))
 
 
+@pytest.mark.parametrize("op", ["vcf/freebayes", "vcf/clair3", "vcf/gatk"])
+@pytest.mark.parametrize("filename", ["outside.bed", "outside with spaces, commas.bed"])
+def test_caller_region_beds_cannot_escape_serve_allow(tmp_path, op, filename):
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    outside = tmp_path / filename
+    outside.write_text("chr20\t0\t100\n")
+    with pytest.raises(RequestError) as refused:
+        PathGuard([allowed]).check(
+            params_from_json(
+                find(op), {"input": str(allowed / "s.bam"), "region": str(outside)}
+            )
+        )
+    assert refused.value.code == "path_not_allowed"
+    inside = allowed / filename
+    inside.write_text("chr20\t0\t100\n")
+    PathGuard([allowed]).check(
+        params_from_json(
+            find(op), {"input": str(allowed / "s.bam"), "region": str(inside)}
+        )
+    )
+
+
 @pytest.mark.parametrize("op", ["vcf/impute", "ref/imputation"])
 def test_732_imputation_checks_the_library_above_an_allowed_fasta(tmp_path, op):
     genomes = tmp_path / "library" / "genomes"

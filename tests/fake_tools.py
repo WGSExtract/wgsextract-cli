@@ -258,6 +258,8 @@ if not os.path.isdir(tmp):
     sys.exit(f"A USER ERROR has occurred: --tmp-dir {{tmp}} does not exist")
 if " " in tmp:
     sys.exit("htsjdk.tribble.TribbleException: Unable to automatically instantiate codec")
+if state.get("require_cram") and not alignment.endswith(".cram"):
+    sys.exit("This qualification requires direct CRAM input, not BAM staging")
 if alignment.endswith(".cram") and not state["reads_cram"]:
     sys.exit("htsjdk.samtools.cram.CRAMException: CRAM version 3.1 is not supported")
 intervals = open(local("-L")).read().split() if "-L" in opts else []
@@ -278,13 +280,15 @@ for contig, action in state["on_contig"].items():
         with open(state["pids"], "a") as pids:
             pids.write(f"{{os.getpid()}} {{java.pid}}\\n")
         time.sleep(60)
-regions = ["-r", ",".join(intervals)] if intervals else []
+regions = (["-R", local("-L")] if local("-L").endswith(".bed")
+           else ["-r", ",".join(intervals)]) if intervals else []
 mpileup = subprocess.Popen(
     [{bcftools!r}, "mpileup", "-f", ref, *regions, "-Ou", alignment],
     stdout=subprocess.PIPE,
 )
 call = subprocess.run(
-    [{bcftools!r}, "call", "-mv", "-Oz", "-o", out], stdin=mpileup.stdout
+    [{bcftools!r}, "call", "--ploidy", opts.get("--sample-ploidy", "2"),
+     "-mv", "-Oz", "-o", out], stdin=mpileup.stdout
 )
 sys.exit(mpileup.wait() or call.returncode)
 """
@@ -334,7 +338,8 @@ import json, os, select, subprocess, sys
 if sys.argv[1:] in ([], ["-v"], ["--version"], ["-h"], ["--help"]):
     print("Clair3 v{version}")
     sys.exit(0)
-opts = dict(arg[2:].split("=", 1) for arg in sys.argv[1:])
+opts = dict((arg[2:].split("=", 1) if "=" in arg else (arg[2:], "true"))
+            for arg in sys.argv[1:])
 # Clair3's GNU parallel reads stdin: it must be closed, or the run waits on it.
 ready, _, _ = select.select([0], [], [], 0.5)
 with open(opts["bam_fn"], "rb") as reads:
@@ -396,7 +401,9 @@ mpileup = subprocess.Popen(
     [{bcftools!r}, "mpileup", "-f", opts["ref_fn"], *regions, "-Ou", opts["bam_fn"]],
     stdout=subprocess.PIPE,
 )
-subprocess.run([{bcftools!r}, "call", "-mv", "-Oz", "-o", calls], stdin=mpileup.stdout, check=True)
+ploidy = "1" if "haploid_precise" in opts else "2"
+subprocess.run([{bcftools!r}, "call", "--ploidy", ploidy, "-mv", "-Oz", "-o", calls],
+               stdin=mpileup.stdout, check=True)
 with open(os.path.join(out, "sample.txt"), "w") as names:
     names.write(opts["sample_name"] + "\\n")
 # Like Clair3, name its inputs in the header.
@@ -532,6 +539,10 @@ work, shards = opts["intermediate_results_dir"], int(opts["num_shards"])
 examples = f"{work}/make_examples.tfrecord@{shards}.gz"
 outputs = f"{work}/call_variants_output.tfrecord.gz"
 regions = f' --regions "{opts["regions"]}"' if "regions" in opts else ""
+ploidy = "".join(
+    f' --{flag} "{opts[flag]}"' for flag in ("haploid_contigs", "par_regions_bed")
+    if flag in opts
+)
 model = opts.get("customized_model", f"/opt/models/{opts['model_type'].lower()}")
 extra = {}
 for flag in ("call_variants_extra_args", "postprocess_variants_extra_args"):
@@ -547,7 +558,7 @@ commands = [
     f'--checkpoint "{model}"{extra.get("call_variants_extra_args", "")}',
     f'time {bindir}/postprocess_variants --ref "{opts["ref"]}" --infile "{outputs}" '
     f'--outfile "{opts["output_vcf"]}" --cpus "{opts.get("postprocess_cpus", shards)}"'
-    f'{extra.get("postprocess_variants_extra_args", "")}',
+    f'{extra.get("postprocess_variants_extra_args", "")}{ploidy}',
 ]
 print("".join(f"\n***** Running the command:*****\n{c}\n\n" for c in commands))
 """
@@ -614,7 +625,7 @@ shard = shard_names(opts["examples"])[task]
 
 def write():
     with open(shard, "w") as out:
-        json.dump({"ref": ref, "reads": reads}, out)
+        json.dump({"ref": ref, "reads": reads, "regions": opts.get("regions")}, out)
 
 
 fail_here("make_examples", task, write)
@@ -651,10 +662,43 @@ with open(opts["infile"]) as source:
 
 
 def write():
+    selection = called.get("regions")
+    regions = []
+    lengths = dict((r.split()[0], int(r.split()[1]))
+                   for r in open(called["ref"] + ".fai"))
+    if selection:
+        from wgsextract_cli.core.region_selection import selected_intervals
+        bed = opts["outfile"] + ".bed"
+        with open(bed, "w") as out:
+            for chrom, spans in selected_intervals(selection, lengths).items():
+                for start, end in spans:
+                    out.write(f"{chrom}\t{start}\t{end}\n")
+        regions = ["-R", bed]
+    ploidy = []
+    if opts.get("haploid_contigs"):
+        par = {}
+        for line in open(opts["par_regions_bed"]):
+            chrom, start, end = line.split()
+            par.setdefault(chrom, []).append((int(start), int(end)))
+        table = opts["outfile"] + ".ploidy"
+        with open(table, "w") as out:
+            for chrom in opts["haploid_contigs"].split(","):
+                cursor = 0
+                for start, end in sorted(par.get(chrom, [])) + [(lengths[chrom], lengths[chrom])]:
+                    if start > cursor:
+                        out.write(f"{chrom} {cursor + 1} {start} * 1\n")
+                    cursor = end
+            out.write("* * * * 2\n")
+        ploidy = ["--ploidy-file", table]
     mpileup = subprocess.Popen(
-        [BCFTOOLS, "mpileup", "-f", called["ref"], "-Ou", called["reads"]], stdout=subprocess.PIPE
+        [BCFTOOLS, "mpileup", "-f", called["ref"], *regions, "-Ou", called["reads"]], stdout=subprocess.PIPE
     )
-    subprocess.run([BCFTOOLS, "call", "-mv", "-Oz", "-o", opts["outfile"]], stdin=mpileup.stdout, check=True)
+    output = opts["outfile"] + ".haploid.vcf.gz" if ploidy else opts["outfile"]
+    subprocess.run([BCFTOOLS, "call", *ploidy, "-mv", "-Oz", "-o", output], stdin=mpileup.stdout, check=True)
+    if ploidy:
+        # Google's haploid recalibration retains homozygous diploid GT encoding.
+        subprocess.run([BCFTOOLS, "+fixploidy", output, "-Oz", "-o", opts["outfile"],
+                        "--", "-f", "2"], check=True)
     subprocess.run([BCFTOOLS, "index", "-t", opts["outfile"]], check=True)
 
 
@@ -843,7 +887,7 @@ class FakeDeepVariant:
 
 
 _FAKE_DOCKER = r"""
-import json, os, re, signal, subprocess, sys, time
+import json, os, re, shlex, signal, subprocess, sys, time
 
 
 def state():
@@ -938,7 +982,14 @@ elif args[0] == "run":
             not os.path.exists(path) or any(
                 os.path.commonpath([os.path.realpath(path), os.path.realpath(m)])
                 == os.path.realpath(m) for m in mounts))
-    paths = [p for arg in command for p in re.findall(r"/[^\s\"']+", arg)]
+    words = shlex.split(command[2]) if command[:2] == ["/bin/bash", "-c"] else command
+    paths = []
+    for word in words:
+        value = word.split("=", 1)[-1] if word.startswith("--") and "=" in word else word
+        if value.startswith("/"):
+            paths.append(value)
+        else:
+            paths.extend(re.findall(r"/[^\s\"']+", value))
     paths += [env.get("HOME"), env.get("TMPDIR"), opts.get("-w")]
     for path in paths:
         # The image's own folders, and its /tmp (HOME when none is given).
