@@ -565,3 +565,32 @@ def test_cli_vcf_rejected_calls_cannot_be_reference_filled(
     assert len(list(out.glob("AADR_*/input_CombinedKit.txt"))) == 2
     assert len((out / "input_AADR_1240k.geno").read_text().splitlines()) == 5
     assert (out / "input_AADR_ho.geno").read_text() == expected
+
+
+@needs_tools("bcftools", "bgzip", "tabix", "samtools")
+def test_issue_853_changing_aadr_panels_regenerates_vendor_kits(tmp_path, markers):
+    """Issue 853: AADR panel sites join the CombinedKit and so can change which
+    vendor positions liftover rejects as collisions; a vendor kit made with
+    other panels must not be reused."""
+    library = tmp_path / "library"
+    fasta = _fasta(library / "genomes" / "hg19.fa")
+    templates = library / "microarray" / "raw_file_templates"
+    for part, text in (("head", "# h\n"), ("body", "rs1\t1\t100\n")):
+        (templates / part).mkdir(parents=True)
+        (templates / part / "23andMe_V3.txt").write_text(text)
+    vcf = _plain_vcf(tmp_path / "input.vcf")
+    outdir = tmp_path / "out"
+
+    def vendor_kit_reused(formats: str) -> bool:
+        result = CommandResult(command="microarray")
+        with collecting(result):
+            run_wgsextract(
+                "microarray", "--input", str(vcf), "--ref", str(fasta),
+                "--formats", formats, "--outdir", str(outdir),
+            )  # fmt: skip
+        [kit] = [o for o in result.outputs if o.role == "vendor_kit"]
+        return bool(kit.metrics.get("reused"))
+
+    assert not vendor_kit_reused("23andme_v3")
+    assert vendor_kit_reused("23andme_v3")
+    assert not vendor_kit_reused("23andme_v3,aadr_1240k")

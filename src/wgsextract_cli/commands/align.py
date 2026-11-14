@@ -80,7 +80,7 @@ from wgsextract_cli.core.samtools_commands import (
     sort_memory,
     written_index,
 )
-from wgsextract_cli.core.sequencing import input_platform
+from wgsextract_cli.core.sequencing import input_platform, pacbio_platform
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -324,18 +324,6 @@ def select_aligner(job: AlignJob) -> str:
 
 # Parabricks minimap2 presets for this command's long-read presets.
 _GPU_MINIMAP2_PRESETS = {"map-hifi": "map-hifi", "map-ont": "map-ont"}
-
-
-def pacbio_platform(header: str) -> str:
-    """ "clr" when every read group is of subreads (READTYPE=SUBREAD), else
-    "pacbio" (HiFi/CCS)."""
-    types = {
-        field.split("=", 1)[1].upper()
-        for group in ultima.read_groups(header)
-        for field in group.get("DS", "").split(";")
-        if field.upper().startswith("READTYPE=")
-    }
-    return "clr" if types == {"SUBREAD"} else "pacbio"
 
 
 def _alignment_file_platform(job: AlignJob) -> str | None:

@@ -136,10 +136,11 @@ def run_sv_freq(params: VcfSvFreqParams) -> None:
         )
     logging.info(
         f"{summary.matched:,} of {summary.annotatable:,} SVs ({fraction:.1%}) are "
-        f"in gnomAD: {summary.classes[svf.COMMON]:,} common, "
+        f"eligible same-type matches in gnomAD: {summary.classes[svf.COMMON]:,} common, "
         f"{summary.classes[svf.LOW]:,} low-frequency, "
-        f"{summary.classes[svf.RARE]:,} rare; {summary.classes[svf.NOVEL]:,} not "
-        f"found. Output: {out_vcf}"
+        f"{summary.classes[svf.RARE]:,} rare; {summary.classes[svf.NOVEL]:,} with "
+        f"no eligible same-type match (nondirectional CNVs are unassessed, "
+        f"not evidence of absence). Output: {out_vcf}"
     )
 
 

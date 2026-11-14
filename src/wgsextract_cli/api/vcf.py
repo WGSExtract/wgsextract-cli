@@ -35,6 +35,7 @@ from ._shared import (
     input_param,
     memory_param,
     no_gpu_memory_check_param,
+    no_preflight_param,
     optional_input_param,
     outdir_param,
     ref_param,
@@ -473,9 +474,10 @@ class VcfSvFreqParams(_AnnotatorParams):
     ``sv_freq_annotated.vcf.gz``, and one row per SV in ``sv_freq.tsv``.
 
     For the SV calls of ``vcf sv`` (Delly, Sniffles, pbsv) and ``vcf cnv``,
-    or any VCF of SVs. A call matches a gnomAD SV of a compatible type by
-    reciprocal overlap (deletions, duplications, inversions, CNVs) or by
-    breakpoint distance and size similarity (insertions)."""
+    or any VCF of SVs. A call matches a gnomAD SV of the same type by
+    reciprocal overlap (deletions, duplications, inversions) or by
+    breakpoint distance and size similarity (insertions). Nondirectional
+    CNV carrier frequencies and cross-type INS/DUP matches are excluded."""
 
     COMMAND = "vcf sv-freq"
 
@@ -489,7 +491,7 @@ class VcfSvFreqParams(_AnnotatorParams):
     )
     min_overlap: float = param(
         0.5,
-        help="Minimum reciprocal overlap for DEL/DUP/INV/CNV (default 0.5).",
+        help="Minimum reciprocal overlap for same-type DEL/DUP/INV (default 0.5).",
     )
     max_distance: int = param(
         500,
@@ -961,22 +963,24 @@ class VcfSvParams(_CallerParams):
     or ``sniffles.vcf.gz``.
 
     ``caller`` picks the tool; otherwise Sniffles for ONT input (detected or
-    ``ont``) and long reads, pbsv (else Sniffles) for ``pacbio``, else delly.
+    ``ont``) and long reads, pbsv (else Sniffles) for PacBio input (detected
+    or ``pacbio``), else delly. The ``caller_reason`` metric says why.
     """
 
     COMMAND = "vcf sv"
 
     caller: str | None = param(
         None,
-        help="SV caller to use (default: sniffles for detected ONT, else delly; "
-        "pbsv/sniffles with --pacbio; sniffles with --ont or --long-read). "
+        help="SV caller to use (default: sniffles for ONT or --long-read, "
+        "pbsv/sniffles for PacBio, detected or flagged; else delly). "
         "pbsv is PacBio-only and is refused for ONT reads.",
         choices=SV_CALLERS,
     )
     pacbio: bool = param(
         False,
         help="PacBio HiFi/CCS data: use pbsv (or sniffles if pbsv is missing) "
-        "with CCS thresholds.",
+        "with CCS thresholds. Detected PacBio gets this automatically, without "
+        "CCS thresholds for subreads (CLR).",
         action="store_true",
     )
     ont: bool = param(
@@ -1110,6 +1114,7 @@ class VcfDeepvariantParams(_CallerParams):
         action="store_true",
     )
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
+    no_preflight: bool = no_preflight_param()
     qc_min_depth: float | None = depth_param()
     restart: bool = restart_param()
     force_steps: tuple[str, ...] | None = force_steps_param(DEEPVARIANT_STEPS)
@@ -1143,11 +1148,7 @@ class VcfClair3Params(_CallerParams):
         "Docker; see docs/ont.md).",
         action="store_true",
     )
-    no_preflight: bool = param(
-        False,
-        help="Skip the up-front disk space check (not recommended).",
-        action="store_true",
-    )
+    no_preflight: bool = no_preflight_param()
     qc_min_depth: float | None = depth_param()
 
 
@@ -1303,8 +1304,8 @@ def sv(
     cancel: CancelToken | None = None,
     check: bool = True,
 ) -> CommandResult:
-    """Call SVs; output role ``structural_variants``, and the ``caller``
-    metric names the tool chosen."""
+    """Call SVs; output role ``structural_variants``, the ``caller`` metric
+    names the tool chosen and ``caller_reason`` why."""
     from wgsextract_cli.commands.vcf.structural import run_sv
 
     return execute(params, run_sv, progress=progress, cancel=cancel, check=check)
