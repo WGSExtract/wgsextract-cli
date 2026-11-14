@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 from collections.abc import Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, TypeVar
@@ -42,6 +43,7 @@ from wgsextract_cli.core.dependency_checks import (
 from wgsextract_cli.core.fastq_validation import (
     check_primary_reads,
     fastq_input,
+    stage_read_input,
     validate_fastq,
 )
 from wgsextract_cli.core.genome_library import pair_stem
@@ -199,6 +201,7 @@ class AlignJob:
     # What the chunks read: r1, or a remote r1 with its local index.
     chunk_input: str | None = None
     exact_reads: int | None = None
+    read_cleanup: ExitStack | None = None
 
     @classmethod
     def of(cls: type[_Job], params: Params) -> _Job:
@@ -216,12 +219,16 @@ def run_align(params: AlignParams) -> None:
     """The ``align`` operation (``api.align.align``)."""
     add_read_inputs(params.r1, params.r2)
     job = AlignJob.of(params)
-    if job.r1 and not _is_alignment_file(job.r1) and fastq_input(job.r1):
-        logging.info("Validating complete FASTQ input and exact paired read counts...")
-        statistics = validate_fastq(job.r1, job.r2)
-        job.input_reads = InputReads(*statistics)
-        job.exact_reads = statistics.reads
-    with atomic_output_mode(True):
+    for field in ("r1", "r2"):
+        path = getattr(job, field)
+        if path:
+            setattr(job, field, str(Path(path).expanduser()))
+    # Detecting the first read name would consume a one-shot stream.
+    # Long-read streams need an explicit platform before choosing their tools.
+    if job.r1 and not Path(job.r1).is_file() and not job.platform:
+        job.platform = "illumina"
+    with ExitStack() as cleanup, atomic_output_mode(True):
+        job.read_cleanup = cleanup
         run(job)
 
 
@@ -1079,6 +1086,7 @@ def _prepare_alignment(
     *,
     read_paths: list[str] | None = None,
     samtools_sort: bool = True,
+    validate_reads: bool = True,
 ) -> _AlignSetup:
     """With ``samtools_sort`` (the output is sorted by samtools, not the
     aligner), the setup's memory is the sort's per-thread memory: sort_memory
@@ -1123,7 +1131,26 @@ def _prepare_alignment(
     if job.r2:
         # Both mates go into one output, so it shouldn't be named after R1.
         stem = pair_stem(stem)
-    return _AlignSetup(threads, memory, outdir, resolved_ref, stem, job.r1)
+    setup = _AlignSetup(threads, memory, outdir, resolved_ref, stem, job.r1)
+    return _validated_read_setup(job, setup) if validate_reads else setup
+
+
+def _validated_read_setup(job: AlignJob, setup: _AlignSetup) -> _AlignSetup:
+    if job.read_cleanup is None or _is_alignment_file(setup.r1):
+        return setup
+    for field in ("r1", "r2"):
+        path = getattr(job, field)
+        if path:
+            staged = stage_read_input(
+                path, configured_temp_directory() or setup.outdir, job.read_cleanup
+            )
+            setattr(job, field, staged)
+    if job.r1 and fastq_input(job.r1):
+        logging.info("Validating complete FASTQ input and exact paired read counts...")
+        statistics = validate_fastq(job.r1, job.r2)
+        job.input_reads = InputReads(*statistics)
+        job.exact_reads = statistics.reads
+    return setup._replace(r1=job.r1 or setup.r1)
 
 
 def record_alignment(out_path: str, aligner: str, ref: str) -> None:
@@ -1326,11 +1353,14 @@ def _bwa_setup(
     reference's index and ALT contig list in place."""
     tool = short_read_tool(job)
     tools = ["samtools"] if tool == "bwa-mem3" else [tool, "samtools"]
-    setup = _prepare_alignment(job, tools, task, read_paths=read_paths)
+    setup = _prepare_alignment(
+        job, tools, task, read_paths=read_paths, validate_reads=False
+    )
     mem3 = None
     if tool == "bwa-mem3":
         mem3 = bwa_mem3_command(job)
         require_bwa_mem3_index(setup.ref)
+    setup = _validated_read_setup(job, setup)
     samblaster = bool(job.r2) and get_tool_path("samblaster") is not None
     if job.input_reads is not None:
         reads, read_length = job.input_reads
@@ -1711,9 +1741,12 @@ def _align_gpu_bwa(job: AlignJob) -> None:
     the same index, ALT contigs and read group as align_bwa."""
     from wgsextract_cli.core.parabricks import host_path, verify_parabricks
 
-    setup = _prepare_alignment(job, ["samtools"], "GPU alignment", samtools_sort=False)
+    setup = _prepare_alignment(
+        job, ["samtools"], "GPU alignment", samtools_sort=False, validate_reads=False
+    )
     verify_parabricks()
     fit = _gpu_memory_options(job, "fq2bam")
+    setup = _validated_read_setup(job, setup)
     ensure_bwa_index(setup.ref)
     ensure_bwa_alt_file(setup.ref)
     # fq2bam requires a PU (platform unit) in the read group.
@@ -1730,10 +1763,15 @@ def _align_gpu_minimap2(job: AlignJob, preset: str) -> None:
     if job.r2:
         raise UsageError("Long-read alignment takes single-end input; drop --r2.")
     setup = _prepare_alignment(
-        job, ["samtools"], "GPU long-read alignment", samtools_sort=False
+        job,
+        ["samtools"],
+        "GPU long-read alignment",
+        samtools_sort=False,
+        validate_reads=False,
     )
     verify_parabricks()
     fit = _gpu_memory_options(job, "minimap2")
+    setup = _validated_read_setup(job, setup)
     reads = host_path(setup.r1)
     in_arg = "--in-bam" if reads.lower().endswith(".bam") else "--in-fq"
     sample = job.sample or pair_stem(setup.stem)
@@ -1958,6 +1996,9 @@ def _minimap2_command(
 
 
 def align_minimap2(job: AlignJob) -> None:
+    if is_long_read(job) and job.r2:
+        raise UsageError("Long reads are single-end: drop --r2.")
+    preset = _minimap2_preset(job)
     setup = _prepare_alignment(job, ["minimap2", "samtools"], "Minimap2 alignment")
 
     ext = ".cram" if job.format == "CRAM" else ".bam"
@@ -1968,7 +2009,6 @@ def align_minimap2(job: AlignJob) -> None:
             input=job.r1, output=out_bam, tool="Minimap2"
         )
     )
-    preset = _minimap2_preset(job)
     logging.info("Using minimap2 preset %s for %s reads.", preset, job.platform)
     duplicates = duplicate_marker(paired=bool(job.r2)) if preset == "sr" else None
     read_files = [path for path in (job.r1, job.r2) if path]
@@ -2113,16 +2153,15 @@ def align_pbmm2(job: AlignJob) -> None:
         raise UsageError(
             "pbmm2 writes sorted BAM. Convert to CRAM with 'bam to-cram' after alignment."
         )
-    setup = _prepare_alignment(
-        job, ["pbmm2", "samtools"], "PacBio alignment", samtools_sort=False
-    )
-
     preset_arg = job.preset or ("subread" if job.platform == "clr" else "ccs")
     if preset_arg not in _PBMM2_PRESETS:
         raise UsageError(
             "PacBio pbmm2 alignment supports --preset map-hifi, map-pb, ccs, or subread."
         )
     preset = _PBMM2_PRESETS[preset_arg]
+    setup = _prepare_alignment(
+        job, ["pbmm2", "samtools"], "PacBio alignment", samtools_sort=False
+    )
 
     out_bam = str(Path(setup.outdir, f"{setup.stem}_aligned.bam"))
     sample = job.sample or setup.stem.split(".")[0]

@@ -131,6 +131,12 @@ are accepted). Truncated FASTQ or gzip input is an error. For FASTQ inputs,
 the completed alignment must contain exactly one primary record per input
 read; secondary and supplementary records do not count as extra reads.
 Validated outputs replace previous alignments only after the check passes.
+Setup and platform checks precede the scan. API cancellation interrupts
+validation cooperatively. Named pipes and standard input are spooled under
+`--tmp-dir` (otherwise `--outdir`) before validation; allow disk space for the
+complete stream. Read names and output filenames still use the original inputs.
+Pass `--platform` for long-read streams; unlabelled streams use Illumina defaults
+without consuming their first read for platform detection.
 
 Persistent logging is off by default. Use a **new, dedicated** path:
 
@@ -541,7 +547,7 @@ repair commands: edit the reported file directly, or select a valid file with
 
 BWA and bwa-mem2 indexes require every nonempty index file. Builds use an exclusive lock and a staged prefix; an interrupted build is rebuilt on the next run instead of being trusted.
 
-`--atomic-output` (or `atomic_outputs = true` in config.toml) opts align/realign, SNP/InDel/GATK/FreeBayes callers, and main extract writers into publishing completed files by rename, with indexes generated afterward. A failed write preserves a previous output. The default remains unchanged because staged paths change tool provenance headers. `--no-atomic-output` disables a configured opt-in. This does not add resume/skip behavior.
+`align` always publishes completed files atomically, including with `--no-atomic-output`, so validation failures preserve previous alignments. `--atomic-output` (or `atomic_outputs = true` in config.toml) opts realign, SNP/InDel/GATK/FreeBayes callers, and main extract writers into publishing completed files by rename, with indexes generated afterward. A failed write preserves a previous output. Other commands retain the opt-in default because staged paths change tool provenance headers and can need extra disk space. `--no-atomic-output` disables their configured opt-in, but never disables alignment validation/publication safety. This does not add resume/skip behavior.
 
 ```toml
 # Defaults for --input and --outdir
