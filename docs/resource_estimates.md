@@ -353,10 +353,11 @@ GPU image) as the work folder's peak, sampled every 2 s:
 | the whole genome ([#431](https://github.com/WGSExtract/wgsextract-cli/issues/431) whole-genome run, 6 threads) | 3,088 Mb | 99.7 GiB | 35 B |
 | all of chr20 on the CPU | 64.4 Mb | 61 MB | 0.9 B |
 
-Before starting, `vcf clair3` samples the reads' mean depth over the bases they
-cover (about 200 windows of 1 kb), interpolates the bytes per base above (held
-flat beyond 6x and 43x), adds 45% (all of chr20 needed 1.44x the 10 Mb slice's
-rate) and multiplies by the bases Clair3 calls: the `--region`, or else chr1-22,
+Before starting, `vcf clair3` samples the reads' mean depth (about 200 windows
+of 1 kb) over the `--region`, taking its shallowest chromosome group (a man's
+chrX), or else over the bases the reads cover. It interpolates the bytes per
+base above (held flat beyond 6x and 43x), adds 45% (all of chr20 needed 1.44x
+the 10 Mb slice's rate) and multiplies by the bases Clair3 calls: the `--region`, or else chr1-22,
 X and Y on the contigs the index places reads on. That asks for about 131 GiB
 for a 43x whole genome, 273 GiB at 15x and 449 GiB at 10x. The CPU mode is
 budgeted at 2 bytes per base (about 6 GiB for a whole genome). The disk row
@@ -371,9 +372,10 @@ Preflight: Clair3 on the GPU stores every full-alignment tensor first: 3,088 Mb 
 Unlike the warning-only rows of other callers, a `LOW` row refuses to start,
 since Clair3 would otherwise fail after hours of pileup calling and phasing;
 `--no-preflight` runs anyway. With too little disk, choose an `--outdir` with
-room or call a few chromosomes at a time with `--region`. On a compressing
-filesystem (btrfs with zstd), the 99.7 GiB took about 60 GB of the disk; the
-estimate doesn't count on that.
+room or call a few chromosomes at a time with `--region`. A CRAM 3.0 copy
+that an older Clair3 build needs is checked again once it is written. On a
+compressing filesystem (btrfs with zstd), the 99.7 GiB took about 60 GB of the
+disk; the estimate doesn't count on that.
 
 ## Whole-genome ONT requirements
 

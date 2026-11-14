@@ -39,6 +39,7 @@ from wgsextract_cli.core.genotype_qc import (
     CHR_Y,
     contigs_with_reads,
     covered_depths,
+    region_targets,
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import warn_if_no_variants
@@ -611,8 +612,13 @@ def clair3_errors(output: Path, limit: int = 8) -> str:
 
 def called_bases(reads: str, ref: str, intervals: Intervals | None) -> int:
     """Reference bases Clair3 calls: the region's, else chr1-22, X and Y
-    (its default), on the contigs the index places reads on."""
-    with_reads = contigs_with_reads(reads, ref)
+    (its default), on the contigs the index places reads on (all of them
+    when the index can't say)."""
+    try:
+        with_reads = contigs_with_reads(reads, ref)
+    except (OSError, ValueError, subprocess.SubprocessError, WGSExtractError) as e:
+        logging.debug(f"Could not list the contigs with reads in {reads}: {e}")
+        with_reads = {}
     if intervals:
         return sum(
             end - start
@@ -624,10 +630,17 @@ def called_bases(reads: str, ref: str, intervals: Intervals | None) -> int:
     return sum(n for contig, n in lengths.items() if contig in _MAJOR_CONTIGS)
 
 
-def mean_depth(reads: str, ref: str) -> float | None:
-    """The reads' sampled mean depth over the bases they cover: autosomes',
-    else the sex chromosomes'. None when it can't be sampled."""
+def mean_depth(reads: str, ref: str, region: str | None) -> float | None:
+    """The reads' sampled mean depth: over ``region`` (its shallowest
+    chromosome group, such as a man's chrX), else over the bases they cover,
+    autosomes first. None when it can't be sampled."""
     try:
+        if region:
+            found = covered_depths(
+                reads, region_targets(region), region=region, ref=ref
+            )
+            if depth := min((d for d in found.values() if d > 0), default=0.0):
+                return depth
         depths = covered_depths(reads, (AUTOSOMES, CHR_X, CHR_Y), ref=ref)
     except (OSError, ValueError, WGSExtractError) as error:
         logging.debug(f"Could not sample the depth of {reads}: {error}")
@@ -635,37 +648,45 @@ def mean_depth(reads: str, ref: str) -> float | None:
     return depths.get(AUTOSOMES) or max(depths.values(), default=0.0) or None
 
 
-def check_temp_space(
-    reads: str,
-    ref: str,
-    intervals: Intervals | None,
-    outdir: str,
-    gpu: bool,
-    *,
-    enforce: bool = True,
-) -> None:
-    """Report Clair3's work folder's peak beside the output and refuse a run
-    that wouldn't fit (#811): it fails hours in otherwise."""
+@dataclass(frozen=True)
+class TempSpace:
+    """What Clair3's work folder holds at its peak: ``bases`` called at
+    ``depth`` (None when unknown), on the GPU or not."""
+
+    bases: int
+    depth: float | None
+    gpu: bool
+
+    def check(self, outdir: str, *, enforce: bool = True) -> None:
+        """Report the peak beside the output and refuse a run that wouldn't
+        fit (#811): it fails hours in otherwise."""
+        estimate = estimate_clair3(outdir, self.bases, gpu=self.gpu, depth=self.depth)
+        report_resources(estimate)
+        (disk,) = estimate.resources
+        if not enforce or disk.status != "LOW":
+            return
+        assert disk.estimated_bytes is not None and disk.available_bytes is not None
+        mode = "on the GPU " if self.gpu else ""
+        raise WGSExtractError(
+            f"Clair3 {mode}needs about {math.ceil(disk.estimated_bytes / GIB)} GiB "
+            f"of temporary space at {outdir} for {self.bases / 1e6:,.0f} Mb, but "
+            f"{disk.available_bytes / GIB:.0f} GiB is free. Free up space, choose an "
+            "--outdir on a bigger disk or a smaller --region, or rerun with "
+            "--no-preflight to override (not recommended)."
+        )
+
+
+def temp_space(
+    reads: str, ref: str, intervals: Intervals | None, region: str | None, gpu: bool
+) -> TempSpace | None:
+    """Clair3's temporary space for ``reads``, or None when its called bases
+    can't be counted."""
     try:
         bases = called_bases(reads, ref, intervals)
-    except (OSError, ValueError, subprocess.SubprocessError, WGSExtractError) as e:
+    except (OSError, ValueError) as e:
         logging.warning(f"Clair3's temporary space wasn't estimated: {e}")
-        return
-    depth = mean_depth(reads, ref) if gpu else None
-    estimate = estimate_clair3(outdir, bases, gpu=gpu, depth=depth)
-    report_resources(estimate)
-    (disk,) = estimate.resources
-    if not enforce or disk.status != "LOW":
-        return
-    assert disk.estimated_bytes is not None and disk.available_bytes is not None
-    mode = "on the GPU " if gpu else ""
-    raise WGSExtractError(
-        f"Clair3 {mode}needs about {math.ceil(disk.estimated_bytes / GIB)} GiB of "
-        f"temporary space at {outdir} for {bases / 1e6:,.0f} Mb, but "
-        f"{disk.available_bytes / GIB:.0f} GiB is free. Free up space, choose an "
-        "--outdir on a bigger disk or a smaller --region, or rerun with "
-        "--no-preflight to override (not recommended)."
-    )
+        return None
+    return TempSpace(bases, mean_depth(reads, ref, region) if gpu else None, gpu)
 
 
 def run_clair3(params: VcfClair3Params) -> None:
@@ -712,10 +733,9 @@ def run_clair3(params: VcfClair3Params) -> None:
                 raise WGSExtractError(
                     f"Invalid Clair3 region selection: {region}: {error}"
                 ) from error
-        check_temp_space(
-            input_file, use_ref, intervals, outdir, gpu is not None,
-            enforce=not params.no_preflight,
-        )  # fmt: skip
+        space = temp_space(input_file, use_ref, intervals, region, gpu is not None)
+        if space:
+            space.check(outdir, enforce=not params.no_preflight)
         reads = input_file
         if needs_cram30_staging(gpu.version if gpu else clair3_version()):
             staging = Path(work, "reads")
@@ -724,6 +744,9 @@ def run_clair3(params: VcfClair3Params) -> None:
                 input_file, use_ref, str(staging), threads, intervals,
                 tool="Clair3", why=_CRAM31_BUG,
             )  # fmt: skip
+            if space and reads != input_file:
+                # The staged copy stays beside the tensors while Clair3 runs.
+                space.check(outdir, enforce=not params.no_preflight)
         output = str(Path(work, "clair3"))
         # Absolute, so the header's paths can be told apart and restored.
         abs_reads, abs_ref, abs_work = (

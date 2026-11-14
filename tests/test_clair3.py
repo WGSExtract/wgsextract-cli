@@ -1,4 +1,6 @@
+import gzip
 import hashlib
+import logging
 import os
 import platform
 import shutil
@@ -714,13 +716,20 @@ def test_gpu_refuses_before_calling_when_its_tensors_wont_fit(
 
 
 @needs_tools("samtools", "bcftools", "tabix")
+@pytest.mark.parametrize("index", ["bai", "plain crai"])
 def test_temp_space_is_sized_for_the_contigs_the_reads_are_on(
-    tmp_path, clair3_gpu, monkeypatch
+    tmp_path, clair3_gpu, monkeypatch, index
 ):
     """#811: without --region Clair3 calls chr1-22, X and Y where the index
     places reads, so reads on one 3 kb contig of a 103 kb reference are sized
-    for that contig, not the whole reference."""
+    for that contig, not the whole reference; also from an uncompressed CRAI
+    (Copilot on #819)."""
     reads = clair3_gpu.reads
+    path = reads.bam
+    if index == "plain crai":
+        path = reads.cram
+        crai = Path(f"{path}.crai")
+        crai.write_bytes(gzip.decompress(crai.read_bytes()))
     ref = tmp_path / "genome.fa"
     ref.write_text(Path(reads.ref).read_text() + ">chr2\n" + "ACGT" * 25_000 + "\n")
     run_command(["samtools", "faidx", str(ref)])
@@ -730,11 +739,32 @@ def test_temp_space_is_sized_for_the_contigs_the_reads_are_on(
     assert room.estimated_bytes
     volumes.free[clair3_gpu.out] = room.estimated_bytes / GIB
     run_wgsextract(
-        "vcf", "clair3", "--input", reads.bam, "--ref", str(ref), "--gpu",
+        "vcf", "clair3", "--input", path, "--ref", str(ref), "--gpu",
         "--outdir", str(clair3_gpu.out),
         "--model", str(make_model(tmp_path, "my_r1041_model")),
     )  # fmt: skip
     assert clair3_gpu.clair3.runs()
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+def test_region_is_sized_at_its_own_depth(tmp_path, clair3_gpu, caplog):
+    """#811 (Copilot on #819): a region shallower than the rest of the reads
+    (a man's chrX, or here chr1:1-3000 with reads over 500-2500) is sized at
+    its own depth, which needs more tensors."""
+    caplog.set_level(logging.INFO)
+    reads = clair3_gpu.reads
+    bed = tmp_path / "region.bed"
+    bed.write_text("chr1\t0\t3000\n")
+    bedcov = run_command(
+        ["samtools", "bedcov", "-j", str(bed), reads.bam], capture_output=True
+    ).stdout
+    depth = int(bedcov.split()[3]) / 3000
+    run_wgsextract(
+        "vcf", "clair3", "--input", reads.bam, "--ref", reads.ref, "--gpu",
+        "--outdir", str(clair3_gpu.out), "-r", "chr1:1-3000",
+        "--model", str(make_model(tmp_path, "my_r1041_model")),
+    )  # fmt: skip
+    assert f" at {depth:.0f}x." in caplog.text
 
 
 def test_gpu_estimate_covers_the_measured_whole_genome_and_shallow_reads(tmp_path):
