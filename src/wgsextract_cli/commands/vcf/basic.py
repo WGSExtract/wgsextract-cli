@@ -134,6 +134,7 @@ def caller_setup(
     ref: str | None,
     region: str | None,
     qc_min_depth: float | None,
+    allow_reference_subset: bool = False,
 ) -> CallerSetup:
     """Resolve threads, output folder and reference FASTA for a BAM/CRAM caller,
     and warn about alignment problems and low depth."""
@@ -156,6 +157,15 @@ def caller_setup(
     if resolved_ref:
         paths_to_check["--ref"] = resolved_ref
     verify_paths_exist(paths_to_check)
+    if not resolved_ref or not Path(resolved_ref).is_file():
+        raise WGSExtractError(
+            LOG_MESSAGES["ref_required_for"].format(task="variant calling")
+        )
+    from wgsextract_cli.core.calling_reference import validate_calling_reference
+
+    validate_calling_reference(
+        input_file, resolved_ref, allow_reference_subset=allow_reference_subset
+    )
     platform = input_platform(input_file, resolved_ref)
     warn_mixed_platforms(
         input_file,
@@ -202,7 +212,9 @@ class CallerParams(Protocol):
     def qc_min_depth(self) -> float | None: ...
 
 
-def setup_caller(params: CallerParams) -> CallerSetup:
+def setup_caller(
+    params: CallerParams, *, allow_reference_subset: bool = False
+) -> CallerSetup:
     """``caller_setup`` for a BAM/CRAM caller's Params."""
     return caller_setup(
         os.fspath(params.input),
@@ -211,6 +223,7 @@ def setup_caller(params: CallerParams) -> CallerSetup:
         ref=os.fspath(params.ref) if params.ref else None,
         region=params.region,
         qc_min_depth=params.qc_min_depth,
+        allow_reference_subset=allow_reference_subset,
     )
 
 
