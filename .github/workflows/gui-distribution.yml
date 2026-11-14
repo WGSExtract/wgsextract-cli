@@ -13,6 +13,7 @@ name: GUI distribution
 #   a packaging break shows up before a release needs it.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main ]
     paths:
       - ".github/workflows/gui-build.yml"
@@ -57,6 +58,7 @@ concurrency:
 
 jobs:
   tauri:
+    if: ${{ github.event.pull_request.draft != true }}
     uses: ./.github/workflows/gui-build.yml
     with:
       ref: ${{ inputs.ref || inputs.tag || github.sha }}
@@ -70,7 +72,7 @@ jobs:
     permissions:
       contents: write
     needs: tauri
-    if: inputs.tag != ''
+    if: github.event.pull_request.draft != true && inputs.tag != ''
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ inputs.tag }}

@@ -1,8 +1,85 @@
+import re
 from pathlib import Path
 
 import pytest
 
 from scripts import validate_github_actions as policy
+
+WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+
+
+def top_level_conjuncts(expression: str) -> list[str]:
+    """Find mandatory conditions without treating a nested OR as a bypass."""
+    expression = expression.strip().removeprefix("${{").removesuffix("}}").strip()
+    atoms = []
+    start = depth = 0
+    quoted = False
+    for index, character in enumerate(expression):
+        if character == "'":
+            quoted = not quoted
+        if quoted:
+            continue
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+        elif depth == 0 and expression[index : index + 2] == "||":
+            return []
+        elif depth == 0 and expression[index : index + 2] == "&&":
+            atoms.append(expression[start:index].strip())
+            start = index + 2
+    atoms.append(expression[start:].strip())
+    return atoms
+
+
+@pytest.mark.parametrize(
+    "workflow", sorted(WORKFLOWS.glob("*.y*ml")), ids=lambda p: p.name
+)
+def test_910_pr_workflows_allocate_no_draft_runners_and_wake_on_readiness(
+    workflow: Path,
+) -> None:
+    """Check scheduler gates, including reusable callers and failure summaries."""
+    text = workflow.read_text()
+    events = list(
+        re.finditer(
+            r"^  (pull_request(?:_target)?):\s*\n((?:    .*\n|\n)*)",
+            text,
+            re.MULTILINE,
+        )
+    )
+    if not events:
+        return
+    for event in events:
+        types = re.search(r"^    types: \[([^]]+)\]", event[2], re.MULTILINE)
+        assert types and "ready_for_review" in types[1], workflow.name
+
+    # The indentation is the Actions mapping structure, not step-level `if`s.
+    jobs = re.split(r"^  ([\w-]+):\s*\n", text.split("\njobs:\n", 1)[1], flags=re.M)
+    for name, body in zip(jobs[1::2], jobs[2::2], strict=True):
+        match = re.search(r"^    if: (.*(?:\n      .*)*)", body, re.MULTILINE)
+        expression = match[1] if match else ""
+        if expression.startswith((">-", "|")):
+            expression = " ".join(expression.splitlines()[1:])
+        atoms = top_level_conjuncts(expression)
+        draft_blocked = any(
+            atom
+            in {
+                "github.event.pull_request.draft != true",
+                "github.event.pull_request.draft == false",
+                "!github.event.pull_request.draft",
+            }
+            for atom in atoms
+        )
+        non_pr_only = any(
+            re.fullmatch(
+                r"github\.event_name == '(?:workflow_dispatch|workflow_run|schedule|push|merge_group)'",
+                atom,
+            )
+            for atom in atoms
+        )
+        assert draft_blocked or non_pr_only, (
+            f"{workflow.name}: {name} can run on drafts"
+        )
 
 
 def write_workflow(root: Path, uses: str) -> None:

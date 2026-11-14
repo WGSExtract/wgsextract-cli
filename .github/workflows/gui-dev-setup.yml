@@ -4,6 +4,7 @@ name: GUI developer setup
 # with no user tools on PATH, the way a new app contributor runs it.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main ]
     paths:
       - "gui/**"
@@ -33,6 +34,7 @@ defaults:
 
 jobs:
   setup:
+    if: ${{ github.event.pull_request.draft != true }}
     name: GUI setup (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45

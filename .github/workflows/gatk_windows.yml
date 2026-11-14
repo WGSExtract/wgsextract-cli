@@ -3,6 +3,7 @@ name: GATK native Windows smoke
 # The desktop app (gui/) has its own CI (gui-*.yml); app-only changes skip this.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [main]
     paths:
       - "packaging/windows/**"
@@ -33,6 +34,7 @@ concurrency:
 
 jobs:
   gatk-smoke:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: windows-latest
     timeout-minutes: 20
     steps:

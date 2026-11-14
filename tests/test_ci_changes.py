@@ -353,6 +353,27 @@ def area_run(
     }
 
 
+def test_910_readiness_validates_without_any_preceding_draft_run() -> None:
+    assert (
+        latest_ready_run(
+            [],
+            head_sha="same-head",
+            ready_since="2026-11-13T16:20:00Z",
+            pr_number=802,
+        )
+        is None
+    )
+    assert (
+        latest_ready_run(
+            [area_run(13, "2026-11-13T16:20:02Z")],
+            head_sha="same-head",
+            ready_since="2026-11-13T16:20:00Z",
+            pr_number=802,
+        )
+        == 13
+    )
+
+
 @pytest.mark.parametrize("new_run_registered", [False, True])
 def test_802_redrafting_the_same_head_cannot_reuse_validation_before_latest_readiness(
     new_run_registered: bool,

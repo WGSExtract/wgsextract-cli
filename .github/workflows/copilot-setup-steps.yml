@@ -11,6 +11,7 @@ on:
       - .github/actions/setup-pixi/**
       - "!**/*.md"
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - .github/workflows/copilot-setup-steps.yml
       - .github/actions/apt-install/**
@@ -24,6 +25,7 @@ env:
 
 jobs:
   copilot-setup-steps:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 59
     permissions:

@@ -9,6 +9,7 @@ name: macOS Aligners
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main ]
     paths:
       - native/**
@@ -36,6 +37,7 @@ concurrency:
 
 jobs:
   build:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: macos-15
     timeout-minutes: 60
     steps:

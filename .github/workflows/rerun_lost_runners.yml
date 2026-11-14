@@ -21,7 +21,7 @@ on:
   schedule:
     - cron: '17 8 * * 1'
   pull_request_target:
-    types: [synchronize, closed]
+    types: [synchronize, closed, ready_for_review]
 
 permissions: {}
 
@@ -66,6 +66,7 @@ jobs:
   clear-old-quarantine:
     if: >-
       github.event_name == 'pull_request_target' &&
+      github.event.pull_request.draft != true &&
       contains(github.event.pull_request.labels.*.name, 'ci-red-main')
     runs-on: ubuntu-latest
     timeout-minutes: 2

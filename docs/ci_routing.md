@@ -4,11 +4,22 @@ PR area checks diffs the PR's **base...head**, not just the latest commit.
 `--no-renames` includes deletions and both sides of moves. Unknown paths run
 the full CLI matrix; mixed PRs run the union of their areas.
 
-Drafts retain the documentation route and run lint/routing-policy tests.
-When the diff selects CLI tests, they also run the lightweight product subset
-(`test_microarray_vendor_formats.py`, `test_table_writer.py`), without a
-bioinformatics environment. The OS matrix and Install Lab wait until
-`ready_for_review`; readiness recomputes the complete diff.
+Drafts run **no CI runner jobs**, including documentation and secret checks.
+Before `gh pr ready`, run `pixi run lint`, the routing/workflow-policy tests,
+relevant product tests and type checks, documentation freshness checks if docs
+changed, and `pixi run pre-commit run gitleaks --all-files` locally. The former
+draft product subset was `test_microarray_vendor_formats.py` and
+`test_table_writer.py`; use relevant tests rather than relying on remote draft
+validation. `ready_for_review` recomputes the complete diff and runs the same
+area-selected checks as a ready PR push.
+
+GitHub Actions has no workflow-level `if`. Job-level draft conditions are
+evaluated before runner allocation (and before expanding a matrix); reusable
+workflow callers have the same gate. Skipped workflow records may appear, but
+use no runner. Every PR workflow includes `ready_for_review`. Workflows with
+cancelling concurrency retain a runner-free `converted_to_draft` event in the
+same concurrency group to cancel in-flight ready runs. Pushes, schedules,
+manual dispatches, workflow calls and merge groups retain their existing gates.
 
 Test dependencies take precedence over area exclusions. The router scans the
 root test suite's imports, path literals, composed pathlib paths and directory
@@ -22,6 +33,7 @@ adds fatal-error Ruff checks without imposing unrelated root formatting.
 
 | PR changes | Checks selected (in addition to routing and the secret scan) | Estimated runner-minutes/push |
 |---|---|---|
+| Any draft PR | None; validate locally before readiness | 0 |
 | Markdown, including `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, native READMEs | Documentation freshness | 1–3 (previously ~125) |
 | CLI source/tests | Four-OS CLI matrix, docs, CodeQL | ~90–100 (previously ~125) |
 | Installer, packaging, Pixi lock/manifest, CLI entry points | Above plus Install Lab and applicable package checks | ~125; no intended coverage reduction |
@@ -59,7 +71,7 @@ the job's pytest selection and its coverage classification. For example,
 
 There is no existing general Markdown link/anchor checker. Pages source checks
 also run both site builders and the app's site-source validator, without
-deployment permissions. The secret scan remains on **all PRs and queue groups**,
+deployment permissions. The secret scan remains on **all ready PRs and queue groups**,
 including docs: routing must not hide a secret in prose.
 
 The OS workflows and Install Lab run unconditionally on main pushes and nightly,
@@ -69,7 +81,7 @@ only. Releases and manual dispatches remain available. Install Lab can be
 forced on any PR with the `run-install-lab` label. Only this label is actionable:
 adding it runs Install Lab without repeating the matrix; other labels are ignored.
 Label runs cannot cancel a code-validation run. Routing, documentation, lint
-and summary label checks have distinct names. Draft-fast, native smoke and
+and summary label checks have distinct names. The now-skipped draft-fast, native smoke and
 Pages checks use static names so skipped jobs do not expose raw name expressions.
 The landing validator scopes area checks to the selected ready run.
 Its nightly run includes the former weekly negative
@@ -153,21 +165,23 @@ These are individual baselines, not 20-run medians. The targets in
 the implementation PR reports the observed sample and any remaining gap.
 
 PR area checks also accepts non-main target branches, so its routing can be
-verified with a docs-only draft PR against the implementation branch before
+verified with a docs-only ready PR against the implementation branch before
 the routing itself lands. Other main-only workflow triggers are unchanged.
 
 ## Landing checks
 
 `main` lands through a merge queue whose only required status check is
-`required`, a dependency summary in PR area checks. It runs for every PR, docs-only
+`required`, a dependency summary in PR area checks. It runs for every ready PR, docs-only
 included, and for every merge-queue group. It passes when routing succeeded
 and every required job passed or was skipped by area routing; a failed or
-cancelled job fails it. `always()` keeps it reporting when a dependency fails,
-because GitHub counts a skipped required check as passing.
+cancelled job fails it in an otherwise active run. `!cancelled()` keeps it
+reporting after failed dependencies while allowing whole-run cancellation to
+stop the summary, compatible with #897 (cancellation-safe required gate).
+Drafts cannot enter the queue and need no `required` result.
 
 | Event | Jobs `required` waits for | Not required |
 |---|---|---|
-| Pull request | routing, draft lint/fast tests when applicable, documentation freshness, changed Python lint, CI Ubuntu (lint, tests, imputation, ONT), secret scan, native CLI smoke, Pages checks | macOS, Windows, ARM64, package smoke, Install Lab, CodeQL, GUI and native workflows: advisory |
+| Ready pull request | routing, documentation freshness, changed Python lint, CI Ubuntu (lint, tests, imputation, ONT), secret scan, native CLI smoke, Pages checks | macOS, Windows, ARM64, package smoke, Install Lab, CodeQL, GUI and native workflows: advisory |
 | Merge-queue group | the same set, routed by the group's diff against `main` | not run |
 
 The required set stays on fast Ubuntu jobs. The other OS jobs, which more

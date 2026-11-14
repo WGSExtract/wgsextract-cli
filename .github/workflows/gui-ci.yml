@@ -7,6 +7,7 @@ on:
   push:
     branches: [ main ]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main ]
     paths:
       - "gui/**"
@@ -34,6 +35,7 @@ defaults:
 
 jobs:
   workflows:
+    if: ${{ github.event.pull_request.draft != true }}
     name: GUI workflow lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -54,6 +56,7 @@ jobs:
           pixi run -e lint -x python scripts/validate_github_actions.py
 
   checks:
+    if: ${{ github.event.pull_request.draft != true }}
     name: GUI lint and test (Linux)
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -73,6 +76,7 @@ jobs:
         run: python3 tools/tasks.py ci
 
   test:
+    if: ${{ github.event.pull_request.draft != true }}
     name: GUI test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
