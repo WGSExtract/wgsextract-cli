@@ -80,12 +80,22 @@ def run_report(params: ReportParams) -> None:
                 f"{section['title']}: {section.get('error', 'the run failed')}",
                 section=name,
             )
+        for warning in section["warnings"]:
+            if warning["code"] == pr.NEWER_ATTEMPT_FAILED:
+                result.warn(
+                    pr.NEWER_ATTEMPT_FAILED,
+                    f"{section['title']}: {warning['message']}",
+                    section=name,
+                )
     result.set_details(report)
 
     human_output(f"Report of {report['sample']['name']} ({folder})")
     for section in sections.values():
         line = section["summary"] or section["status"].replace("_", " ")
         human_output(f"  {section['title']}: {line}")
+        for warning in section["warnings"]:
+            if warning["code"] == pr.NEWER_ATTEMPT_FAILED:
+                human_output(f"    newer attempt failed: {warning['message']}")
         for missing in section["missing"]:
             human_output(f"    not run: {missing['what']}: {missing['command']}")
     human_output(f"\n{pr.NOT_DIAGNOSIS} Open {html_path}")

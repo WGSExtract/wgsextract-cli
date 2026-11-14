@@ -25,7 +25,7 @@ import json
 import os
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from importlib import resources
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -57,6 +57,9 @@ SCHEMA_ID = "wgsextract.report/1"
 SCHEMA_RESOURCE = "assets/schemas/wgsextract.report.1.schema.json"
 GUIDE = "docs/personal-report.md"
 NOT_DIAGNOSIS = "Technical result, not diagnosis."
+# Section warning: a newer attempt failed; the section shows an older result.
+NEWER_ATTEMPT_FAILED = "newer_attempt_failed"
+_ENDED = {"failed": "failed", "cancelled": "was cancelled"}
 DISCLAIMER = (
     "This report summarises technical results of software run on this "
     "computer; it is not a diagnosis or medical advice. "
@@ -366,7 +369,8 @@ def sample_sources(
 
 
 def latest(sources: Sequence[Source], match: Callable[[Source], bool]) -> Source | None:
-    """The newest successful matching run, else the newest failed one."""
+    """The newest successful matching run, else the newest failed one. A
+    newer failed attempt it passes over is reported by :meth:`_Context.latest`."""
     hits = [s for s in sources if match(s)]
     ok = [s for s in hits if s.status == "ok"]
     return max(ok or hits, key=lambda s: s.finished, default=None)
@@ -424,6 +428,18 @@ class _Context:
     alignment: str | None
     vcf: str | None
     gene_list: str | Path | None = None
+    # A selected run's manifest -> the newer attempt that failed after it.
+    superseded: dict[str, Source] = field(default_factory=dict)
+
+    def latest(self, match: Callable[[Source], bool]) -> Source | None:
+        """:func:`latest` of this sample's runs, remembering the newest
+        attempt when it is newer than the run chosen (so it failed)."""
+        chosen = latest(self.sources, match)
+        hits = [s for s in self.sources if match(s)]
+        newest = max(hits, key=lambda s: s.finished, default=None)
+        if chosen and newest and newest.finished > chosen.finished:
+            self.superseded[_key(chosen.manifest)] = newest
+        return chosen
 
     def rel(self, path: Path | str | None) -> str | None:
         """``path`` relative to the sample folder ('/'-separated), or absolute
@@ -512,16 +528,39 @@ def _section(
         "findings": [],
         "missing": [],
         "warnings": [w for s in used for w in s.warnings()],
-        "sources": [
+        "sources": [],
+    }
+    for s in used:
+        newer = ctx.superseded.get(_key(s.manifest))
+        section["sources"].append(
             {
                 "command": s.command,
                 "status": s.status,
                 "finished": s.finished or None,
                 "manifest": ctx.rel(s.manifest),
+                "latest_attempt": None
+                if newer is None
+                else {
+                    "command": newer.command,
+                    "status": newer.status,
+                    "finished": newer.finished or None,
+                    "manifest": ctx.rel(newer.manifest),
+                },
             }
-            for s in used
-        ],
-    }
+        )
+        if newer is not None:
+            error = (newer.document.get("error") or {}).get("message")
+            section["warnings"].append(
+                {
+                    "code": NEWER_ATTEMPT_FAILED,
+                    "message": f"The newest {newer.command} run"
+                    f" ({newer.finished or 'time not recorded'})"
+                    f" {_ENDED.get(newer.status, f'ended {newer.status}')}"
+                    + (f": {error}" if error else "")
+                    + f". Shown is the older {s.status} run of {s.finished},"
+                    " which may be out of date.",
+                }
+            )
     errors = [
         f"{s.command}: {(s.document.get('error') or {}).get('message', s.status)}"
         for s in failed
@@ -557,10 +596,10 @@ def _quality_label(
 
 
 def _overview(ctx: _Context) -> dict[str, Any]:
-    info = latest(ctx.sources, _command("info"))
-    run = latest(ctx.sources, _command("qc contamination"))
+    info = ctx.latest(_command("info"))
+    run = ctx.latest(_command("qc contamination"))
     run = run if run is not None and run.status == "ok" else None
-    trio = latest(ctx.sources, _command("vcf trio"))
+    trio = ctx.latest(_command("vcf trio"))
     trio = trio if trio is not None and trio.status == "ok" else None
     section = _section("overview", [info, run, trio], ctx)
     facts = []
@@ -716,8 +755,8 @@ def _number(value: Any, unit: str = "") -> str:
 
 
 def _lineage(ctx: _Context) -> dict[str, Any]:
-    y = latest(ctx.sources, _command("lineage y-haplogroup"))
-    mt = latest(ctx.sources, _command("lineage mt-haplogroup"))
+    y = ctx.latest(_command("lineage y-haplogroup"))
+    mt = ctx.latest(_command("lineage mt-haplogroup"))
     section = _section("lineage", [y, mt], ctx)
     from wgsextract_cli.commands._lineage_links import tree_links
 
@@ -781,7 +820,7 @@ ANCESTRY_NOTE = (
 
 
 def _ancestry(ctx: _Context) -> dict[str, Any]:
-    source = latest(ctx.sources, _command("qc ancestry"))
+    source = ctx.latest(_command("qc ancestry"))
     section = _section("ancestry", [source], ctx)
     section["note"] = ANCESTRY_NOTE
     section["components"] = []
@@ -857,11 +896,9 @@ def _worst(labels: Iterable[str]) -> str:
 
 
 def _pharmacogenomics(ctx: _Context) -> dict[str, Any]:
-    pharmcat = latest(
-        ctx.sources, _command_or_role("vcf pharmcat", "pharmcat_phenotypes")
-    )
-    cyrius = latest(ctx.sources, _command("typing cyp2d6"))
-    hla = latest(ctx.sources, _command("typing hla"))
+    pharmcat = ctx.latest(_command_or_role("vcf pharmcat", "pharmcat_phenotypes"))
+    cyrius = ctx.latest(_command("typing cyp2d6"))
+    hla = ctx.latest(_command("typing hla"))
     section = _section("pharmacogenomics", [pharmcat, cyrius, hla], ctx)
     if pharmcat is not None and pharmcat.status == "ok":
         _pharmcat_findings(section, pharmcat, ctx)
@@ -1012,7 +1049,7 @@ def _cyrius_finding(section: dict[str, Any], source: Source, ctx: _Context) -> N
 
 
 def _carrier_screening(ctx: _Context) -> dict[str, Any]:
-    smn = latest(ctx.sources, _command("typing smn"))
+    smn = ctx.latest(_command("typing smn"))
     section = _section("carrier_screening", [smn], ctx)
     if smn is not None and smn.status == "ok":
         _smn_finding(section, smn, ctx)
@@ -1187,7 +1224,7 @@ def _float(value: Any) -> float | None:
 
 
 def _clinvar(ctx: _Context) -> dict[str, Any]:
-    source = latest(ctx.sources, _command_or_role("vcf clinvar", "clinvar_pathogenic"))
+    source = ctx.latest(_command_or_role("vcf clinvar", "clinvar_pathogenic"))
     section = _section("clinvar", [source], ctx)
     described = gene_lists.describe(ctx.gene_list)
     section["title"] = SECTIONS["clinvar"].format(gene_list=described["name"])
@@ -1358,7 +1395,7 @@ _NOT_CARRIED = {"0/0", "0|0", "./.", ".|.", ".", "0"}
 
 
 def _structural_variants(ctx: _Context) -> dict[str, Any]:
-    source = latest(ctx.sources, _command_or_role("vcf sv-freq", "sv_frequencies"))
+    source = ctx.latest(_command_or_role("vcf sv-freq", "sv_frequencies"))
     section = _section("structural_variants", [source], ctx)
     if source is None or source.status != "ok":
         command = ctx.command_for("vcf sv-freq", "sv.vcf.gz", "vcf.gz")
@@ -1620,7 +1657,7 @@ def _geneinfo(call: Mapping[str, Any]) -> list[str]:
 
 
 def _microarray(ctx: _Context) -> dict[str, Any]:
-    source = latest(ctx.sources, _command("microarray"))
+    source = ctx.latest(_command("microarray"))
     section = _section("microarray", [source], ctx)
     section["files"] = []
     if source is None or source.status != "ok":
@@ -1857,6 +1894,7 @@ th{background:#f6f8fa;font-weight:600}td.n{text-align:right;white-space:nowrap}
 .low{background:#ffebe9;color:#a40e26}.not_assessed{background:#eaeef2;color:#424a53}
 .status{font-size:11px;font-weight:600;padding:0 5px;border-radius:3px;background:#eaeef2}
 .status.ok{background:#dafbe1}.status.failed{background:#ffebe9}
+.stale{background:#ffebe9;border:1px solid #cf222e;padding:3px 8px}
 code{font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#f6f8fa;padding:0 3px}
 ul{margin:2px 0;padding-left:18px}
 @media print{body{margin:0}a{color:inherit}}
@@ -1880,6 +1918,20 @@ def _h(value: Any) -> str:
 
 def _link(text: str, href: str | None) -> str:
     return f'<a href="{_h(href)}">{_h(text)}</a>' if href else _h(text)
+
+
+def _source_links(
+    source: Mapping[str, Any], link: Callable[[str, str | None], str]
+) -> str:
+    """A section source as 'command (status, finished)', linked to its
+    manifest, then the newer attempt that failed after it, if any."""
+
+    def label(run: Mapping[str, Any]) -> str:
+        when = f", {run['finished']}" if run["finished"] else ""
+        return link(f"{run['command']} ({run['status']}{when})", run["manifest"])
+
+    newer = source.get("latest_attempt")
+    return label(source) + (f"; newest attempt: {label(newer)}" if newer else "")
 
 
 def render_html(report: Mapping[str, Any], base: str = ".") -> str:
@@ -1912,6 +1964,11 @@ def render_html(report: Mapping[str, Any], base: str = ".") -> str:
             out.append(f"<p>{_h(section['summary'])}</p>")
         if section.get("error"):
             out.append(f"<p><b>Failed:</b> {_h(section['error'])}</p>")
+        out.extend(
+            f'<p class="stale"><b>Newer attempt failed:</b> {_h(w["message"])}</p>'
+            for w in section["warnings"]
+            if w["code"] == NEWER_ATTEMPT_FAILED
+        )
         out.extend(_html_section_body(name, section, base))
         if section["findings"]:
             out.append(_html_findings(section["findings"], report, base))
@@ -1924,16 +1981,14 @@ def render_html(report: Mapping[str, Any], base: str = ".") -> str:
                 for m in section["missing"]
             )
             out.append("</ul>")
-        if section["warnings"]:
+        warnings = [w for w in section["warnings"] if w["code"] != NEWER_ATTEMPT_FAILED]
+        if warnings:
             out.append("<ul>")
-            out.extend(
-                f'<li class="muted">⚠ {_h(w["message"])}</li>'
-                for w in section["warnings"]
-            )
+            out.extend(f'<li class="muted">⚠ {_h(w["message"])}</li>' for w in warnings)
             out.append("</ul>")
         if section["sources"]:
             links = ", ".join(
-                _link(f"{s['command']} ({s['status']})", _href(s["manifest"], base))
+                _source_links(s, lambda text, f: _link(text, _href(f, base)))
                 for s in section["sources"]
             )
             out.append(f'<p class="muted">Sources: {links}</p>')
@@ -2147,6 +2202,9 @@ def render_markdown(report: Mapping[str, Any], base: str = ".") -> str:
             out += ["", _md(section["summary"])]
         if section.get("error"):
             out += ["", f"**Failed:** {_md(section['error'])}"]
+        for w in section["warnings"]:
+            if w["code"] == NEWER_ATTEMPT_FAILED:
+                out += ["", f"**Newer attempt failed:** {_md(w['message'])}"]
         if name == "overview" and section["facts"]:
             out += [
                 "",
@@ -2259,12 +2317,13 @@ def render_markdown(report: Mapping[str, Any], base: str = ".") -> str:
                 f"- {_md(m['what'])}: {_md_code(m['command'])}"
                 for m in section["missing"]
             ]
-        if section["warnings"]:
+        warnings = [w for w in section["warnings"] if w["code"] != NEWER_ATTEMPT_FAILED]
+        if warnings:
             out.append("")
-            out += [f"- ⚠ {_md(w['message'])}" for w in section["warnings"]]
+            out += [f"- ⚠ {_md(w['message'])}" for w in warnings]
         if section["sources"]:
             links = ", ".join(
-                _md_link(f"{s['command']} ({s['status']})", _href(s["manifest"], base))
+                _source_links(s, lambda text, f: _md_link(text, _href(f, base)))
                 for s in section["sources"]
             )
             out += ["", f"Sources: {links}"]

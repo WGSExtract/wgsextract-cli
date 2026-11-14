@@ -247,8 +247,10 @@ Other commands' metrics:
   `benchmark.manifest.json` in the run directory.
 - `report` records its documents, the source manifests it read (role
   `manifest`), the number of `findings` (and `findings_<label>` per
-  confidence label) and each section's status (`section_<name>`); its
-  `details` is the `wgsextract.report/1` document
+  confidence label) and each section's status (`section_<name>`), with a
+  `section_failed` warning per failed section and a `newer_attempt_failed`
+  warning per section showing an older result than the step's newest,
+  failed attempt; its `details` is the `wgsextract.report/1` document
   ([personal-report.md](personal-report.md)).
 
 `repair` in pipe mode (no `--input`) streams to stdout, so `--json` is a usage

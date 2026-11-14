@@ -203,16 +203,33 @@
         },
         "sources": {
           "type": "array",
-          "description": "The result manifests the section was built from.",
+          "description": "The result manifests the section was built from: the selected evidence's status and finish time, and the newest attempt when that is newer.",
           "items": {
             "type": "object",
-            "required": ["command", "status", "finished", "manifest"],
+            "required": ["command", "status", "finished", "manifest", "latest_attempt"],
             "additionalProperties": false,
             "properties": {
               "command": {"type": "string"},
               "status": {"type": "string"},
               "finished": {"type": ["string", "null"]},
-              "manifest": {"type": ["string", "null"]}
+              "manifest": {"type": ["string", "null"]},
+              "latest_attempt": {
+                "description": "The sample's newest run of the same step when it is newer than this one, so it failed or was cancelled (the section also has a newer_attempt_failed warning); null when this run is the newest.",
+                "oneOf": [
+                  {"type": "null"},
+                  {
+                    "type": "object",
+                    "required": ["command", "status", "finished", "manifest"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {"type": "string"},
+                      "status": {"type": "string"},
+                      "finished": {"type": ["string", "null"]},
+                      "manifest": {"type": ["string", "null"]}
+                    }
+                  }
+                ]
+              }
             }
           }
         }

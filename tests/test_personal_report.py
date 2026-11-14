@@ -1324,6 +1324,84 @@ def test_failed_pharmcat_and_clinvar_runs_show_their_errors(sample):
     ]
 
 
+def test_859_newer_failed_clinvar_attempt_is_shown_beside_the_older_evidence(
+    sample, tmp_path
+):
+    # Issue 859: an older successful ClinVar run hid a newer failed attempt.
+    results = tmp_path / "newer-failure"
+    results.mkdir()
+    vcf = sample / "HG002.vcf.gz"
+    _manifest(
+        results,
+        "clinvar_pathogenic.vcf",
+        "vcf clinvar",
+        inputs=((vcf, "vcf_input"),),
+        outputs=((results / "clinvar_pathogenic.vcf.gz", "clinvar_pathogenic"),),
+        status="failed",
+        error="ClinVar file not found",
+        finished="2026-01-02T00:00:00+00:00",
+    )
+    other = _touch(tmp_path / "other.vcf.gz")
+    _manifest(
+        results,
+        "theirs",
+        "vcf clinvar",
+        inputs=((other, "vcf_input"),),
+        outputs=((results / "theirs.vcf.gz", "clinvar_pathogenic"),),
+        status="failed",
+        error="another sample's failure",
+        finished="2026-02-01T00:00:00+00:00",
+    )
+    code, out = _cli("report", "--workspace", str(sample), "--results", str(results))
+    assert code == 0, out
+    assert "newer attempt failed" in out
+
+    document = json.loads((sample / "HG002_personal_report.json").read_text())
+    jsonschema.validate(document, pr.load_schema())
+    clinvar = document["sections"]["clinvar"]
+    assert clinvar["status"] == "ok"
+    assert "BRCA2 Pathogenic" in {f["label"] for f in clinvar["findings"]}
+    [source] = clinvar["sources"]
+    assert (source["status"], source["finished"]) == ("ok", "2025-01-01T00:00:00+00:00")
+    assert source["latest_attempt"] == {
+        "command": "vcf clinvar",
+        "status": "failed",
+        "finished": "2026-01-02T00:00:00+00:00",
+        "manifest": "../newer-failure/clinvar_pathogenic.vcf.manifest.json",
+    }
+    [stale] = [w for w in clinvar["warnings"] if w["code"] == "newer_attempt_failed"]
+    assert "ClinVar file not found" in stale["message"]
+    assert "another sample" not in json.dumps(document)
+    lineage = document["sections"]["lineage"]["sources"]
+    assert [s["latest_attempt"] for s in lineage] == [None]
+
+    for page in ("HG002_personal_report.html", "HG002_personal_report.md"):
+        text = (sample / page).read_text()
+        assert "Newer attempt failed:" in text
+        assert "ClinVar file not found" in text
+        assert "vcf clinvar (failed, 2026-01-02T00:00:00+00:00)" in text
+        assert "vcf clinvar (ok, 2025-01-01T00:00:00+00:00)" in text
+
+    manifest = json.loads((sample / "HG002_personal_report.manifest.json").read_text())
+    assert [w["details"]["section"] for w in manifest["warnings"]
+            if w["code"] == "newer_attempt_failed"] == ["clinvar"]  # fmt: skip
+
+
+def test_859_a_rerun_that_succeeds_after_a_failure_is_not_stale(sample):
+    _manifest(
+        sample,
+        "cv-failed",
+        "vcf clinvar",
+        inputs=((sample / "HG002.vcf.gz", "vcf_input"),),
+        status="failed",
+        finished="2024-12-01T00:00:00+00:00",
+    )
+    clinvar = pr.build_report(sample)["sections"]["clinvar"]
+    assert clinvar["status"] == "ok"
+    assert [s["latest_attempt"] for s in clinvar["sources"]] == [None]
+    assert "newer_attempt_failed" not in {w["code"] for w in clinvar["warnings"]}
+
+
 def test_messages_from_runs_keep_paths_out_of_the_documents(sample, tmp_path):
     table = sample / "clinvar_pathogenic.confidence.tsv"
     elsewhere = tmp_path / "secret-home" / "ref" / "clinvar.vcf.gz"
