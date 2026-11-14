@@ -334,6 +334,20 @@ def test_lost_before_first_step_is_retried_once_and_audited() -> None:
     assert api.retried == [job["id"]]
 
 
+def test_failed_required_gate_does_not_block_lost_runner_retry() -> None:
+    # Merge queue (#758) review: the `required` summary fails with a lost
+    # dependency; the automatic retry must still rerun the lost job.
+    api = ReplayGitHub()
+    api.run["name"] = "PR area checks"
+    lost = recorded("lost_runner")
+    gate = dict(recorded("test_failure"), id=lost["id"] + 1, name="required")
+    api.jobs[1] = [lost, gate]
+    api.run["conclusion"] = "failure"
+    Observer(api).process(api.run)
+    assert api.retried == [lost["id"]]
+    assert "lost runner" in ledger_comments(api)[0]
+
+
 def test_superseded_zero_step_cancellation_does_not_restart_old_head() -> None:
     api = ReplayGitHub()
     api.jobs[1] = [recorded("lost_runner")]

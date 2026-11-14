@@ -222,17 +222,29 @@ filters are all identical to Google's, as is a synthetic genome's VCF
 ### Installing on Linux
 
 From a checkout of this repository, `pixi install -e deepvariant` installs the
-CUDA build from `linux-deepvariant-1`, pinned by its checksum (about 3.9 GB;
-needs an NVIDIA driver for CUDA 12), and `vcf deepvariant` finds it there
-without `PATH`; download and unpack the weights as below and set
-`deepvariant_weights`. Otherwise, download the `linux-deepvariant-1`
-prerelease into an empty directory and check it:
+CUDA build from `linux-deepvariant-2` (0.3.0), pinned by its checksum (about
+3.9 GB; needs an NVIDIA driver for CUDA 12), and `vcf deepvariant` finds it
+there without `PATH`. A `wgse-deepvariant` on `PATH` comes first, so remove an
+older standalone install (such as 0.2.0, which sends ONT reads to Google's
+image) from `PATH`. Then download, check and unpack just the weights, which
+have the WGS and ONT_R104 models, and set `deepvariant_weights` in
+`config.toml` to the `wgse-deepvariant-weights-1.10.0` folder (see below):
+
+```bash
+mkdir wgse-deepvariant-weights && cd wgse-deepvariant-weights
+gh release download linux-deepvariant-2 -R WGSExtract/wgsextract-cli \
+  -p 'wgse-deepvariant-weights-*' -p SHA256SUMS
+sha256sum -c --ignore-missing SHA256SUMS && tar -xzf wgse-deepvariant-weights-1.10.0.tar.gz
+```
+
+Otherwise, download the whole `linux-deepvariant-2` prerelease into an empty
+directory and check it:
 
 ```bash
 mkdir wgse-deepvariant && cd wgse-deepvariant
-gh release download linux-deepvariant-1 -R WGSExtract/wgsextract-cli
+gh release download linux-deepvariant-2 -R WGSExtract/wgsextract-cli
 sha256sum -c SHA256SUMS
-tar -xzf wgse-deepvariant-weights-1.10.0-wgs.tar.gz
+tar -xzf wgse-deepvariant-weights-1.10.0.tar.gz
 ```
 
 Continue only if every file reports `OK`. Then install the package into a Pixi
@@ -246,7 +258,7 @@ channels = ["conda-forge", "bioconda"]
 platforms = [{ name = "linux-64-cuda", platform = "linux-64", cuda = "12" }]
 
 [dependencies]
-wgse-deepvariant = { path = "./wgse-deepvariant-0.2.0-linux64_cuda129_wgse_0.conda" }
+wgse-deepvariant = { path = "./wgse-deepvariant-0.3.0-linux64_cuda129_wgse_0.conda" }
 ```
 
 ```bash
@@ -264,14 +276,12 @@ echo "export PATH=\"$PWD/.pixi/envs/default/bin:\$PATH\"" >> ~/.bashrc   # or ~/
 ```
 
 Then set `deepvariant_weights` in `config.toml` to the weights folder, as on a
-Mac; `vcf deepvariant` runs WGS calls with it on the CPU, and
-`vcf deepvariant --gpu` on the GPU instead of Parabricks (WES and PacBio
-still use Parabricks; see [docs/hardware.md](../../docs/hardware.md)). ONT
-reads take it too from 0.3.0, the first build after `linux-deepvariant-1`,
-with the weights archive that has both models
-(`wgse-deepvariant-weights-1.10.0`); with 0.2.0 they keep Google's image and
-Parabricks, and with WGS-only weights the run stops at the missing ONT_R104
-files.
+Mac; `vcf deepvariant` runs WGS and ONT (ONT_R104) calls with it on the CPU,
+and `vcf deepvariant --gpu` on the GPU instead of Parabricks (WES and PacBio
+still use Parabricks; see [docs/hardware.md](../../docs/hardware.md)). With
+0.2.0 (`linux-deepvariant-1`) ONT reads keep Google's image and Parabricks,
+and with its WGS-only weights (`wgse-deepvariant-weights-1.10.0-wgs`) an ONT
+run stops at the missing ONT_R104 files.
 
 To build it, `cmake -S native/deepvariant` in an environment with conda-forge's
 `libabseil`, `libprotobuf`, `re2`, `htslib`, `libboost-headers`, `zlib` and

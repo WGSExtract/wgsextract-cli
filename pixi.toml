@@ -190,18 +190,19 @@ platforms = ["linux-64", "linux-aarch64", "osx-arm64"]
 clair3 = ">=2.0.5,<3"
 
 # wgse-deepvariant (`vcf deepvariant`; native/deepvariant/README.md):
-# DeepVariant 1.10.0's WGS model without Docker, with call_variants on an
-# NVIDIA GPU for `--gpu` (CUDA 12.9) or the CPU. Opt-in environment
-# (`pixi install -e deepvariant`, about 4 GB) for Linux x86-64 with an NVIDIA
-# driver: only it takes the workspace's linux-64-cuda platform (every other
-# environment takes feature.standard-platforms). WGS Extract's build from packaging/wgse-deepvariant (workflow
-# linux_deepvariant.yml), published as linux-deepvariant-1 and pinned by URL
+# DeepVariant 1.10.0's WGS and ONT_R104 models without Docker, with
+# call_variants on an NVIDIA GPU for `--gpu` (CUDA 12.9) or the CPU. Opt-in
+# environment (`pixi install -e deepvariant`, about 4 GB) for Linux x86-64 with
+# an NVIDIA driver: only it takes the workspace's linux-64-cuda platform (every
+# other environment takes feature.standard-platforms). WGS Extract's build from
+# packaging/wgse-deepvariant (workflow linux_deepvariant.yml), published as
+# linux-deepvariant-2 and pinned by URL
 # and SHA-256; its weights are a separate download (deepvariant_weights).
 [feature.deepvariant]
 platforms = ["linux-64-cuda"]
 
 [feature.deepvariant.dependencies]
-wgse-deepvariant = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/linux-deepvariant-1/wgse-deepvariant-0.2.0-linux64_cuda129_wgse_0.conda", sha256 = "31bf9d7c88d134e7ba1c90ee101e3cf72b3e966f75588008b753d5a0da9fe219" }
+wgse-deepvariant = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/linux-deepvariant-2/wgse-deepvariant-0.3.0-linux64_cuda129_wgse_0.conda", sha256 = "e5ad2e951c0cc6224a2f3ff784b5d76ef259a4e8f47adfd6dccc0e4066be9a02" }
 
 # modkit summarizes Nanopore/PacBio base-modification (MM/ML) tags into
 # bedMethyl (`methylation pileup`). Opt-in environment (`pixi install -e modkit`);
