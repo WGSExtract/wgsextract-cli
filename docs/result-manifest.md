@@ -53,6 +53,14 @@ it instead of parsing log text or guessing output file names.
 Tool versions are probed only when a document is emitted, and only for tools the
 run actually launched.
 
+`inputs` lists only the files the run reads. A command that reads one VCF
+(`vcf annotate`, `vcf clinvar` and the other annotators, `vcf filter`,
+`vcf table`, `vcf to-fasta`, `vcf trio`, `qc vcf`) records just that one, as
+`vcf_input` or `input` after the option that named it, even when both
+`--vcf-input` and `--input` are given; its `provenance.params` show the other
+as `null`. `vcf trio --proband` reads the proband instead of either. `vcf phase`
+reads both: its reads as `input` and its calls as `vcf_input`.
+
 ### Fingerprints
 
 Inputs, outputs and the reference carry a `wgse-fp1:<sha256 hex>` fingerprint.
