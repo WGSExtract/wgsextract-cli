@@ -504,6 +504,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         ploidy_file=ploidy_file,
         liftover_chain=lib.liftover_chain,
         sample=vcf_sample,
+        aadr_panels=aadr_panels,
     )
     units, unit_formats = _output_units(
         params, outdir, base_name, indel_bindings, bool(aadr_panels), table_format
