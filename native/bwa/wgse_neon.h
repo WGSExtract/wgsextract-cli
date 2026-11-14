@@ -5,10 +5,17 @@
  * files use are defined; each has NEON's exact lane semantics. */
 #pragma once
 
+/* GCC 12 and clang have __builtin_shufflevector; older compilers keep upstream's code. */
+#if defined(__has_builtin)
+#if __has_builtin(__builtin_shufflevector)
+#define WGSE_HAVE_SHUFFLEVECTOR 1
+#endif
+#endif
+
 #if defined(__ARM_NEON)
 #include <arm_neon.h>
 #define WGSE_NEON 1
-#elif defined(__x86_64__) && defined(__SSE2__)
+#elif defined(__x86_64__) && defined(__SSE2__) && defined(WGSE_HAVE_SHUFFLEVECTOR)
 #include <emmintrin.h>
 #include <stdint.h>
 #define WGSE_NEON 1
