@@ -15,7 +15,11 @@ def checks_ready(checks: list[dict[str, Any]], *, run_id: int | None = None) -> 
     if (
         run_id is None
         or not checks
-        or any(check.get("bucket") not in {"pass", "skipping"} for check in checks)
+        or any(
+            check.get("workflow") != "PR area checks"
+            and check.get("bucket") not in {"pass", "skipping"}
+            for check in checks
+        )
     ):
         return False
     for gate in checks:
@@ -35,7 +39,8 @@ def checks_ready(checks: list[dict[str, Any]], *, run_id: int | None = None) -> 
             and str(check.get("link", "")).startswith(f"{run}/job/")
         ]
         if (
-            any(
+            all(check.get("bucket") in {"pass", "skipping"} for check in run_checks)
+            and any(
                 check.get("name") == "changes" and check.get("bucket") == "pass"
                 for check in run_checks
             )

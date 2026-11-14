@@ -53,7 +53,7 @@ jobs:
           python3 scripts/ci_changes.py --base "$BASE" --head "$HEAD" "${flags[@]}" --output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
 
   draft-fast:
-    name: Draft lint and fast tests${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
+    name: Draft lint and fast tests
     needs: changes
     if: needs.changes.outputs.fast == 'true'
     runs-on: ubuntu-latest
@@ -172,7 +172,7 @@ jobs:
     uses: ./.github/workflows/gitleaks.yml
 
   native-smoke:
-    name: Native CLI smoke${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
+    name: Native CLI smoke
     needs: changes
     if: needs.changes.outputs.native == 'true'
     runs-on: ubuntu-latest
@@ -191,7 +191,7 @@ jobs:
           wgsextract deps check --help
 
   pages:
-    name: Pages source checks${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
+    name: Pages source checks
     needs: changes
     if: needs.changes.outputs.site == 'true'
     runs-on: ubuntu-latest

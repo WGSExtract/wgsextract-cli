@@ -169,6 +169,8 @@ more than five). Use `gh pr checks "$PR" --json bucket,name,workflow,link` with
 gate, `required` check and passing `changes` job from the **same run**, with draft-fast absent
 or skipped there and no failing, pending, cancelled or unknown checks. The gate runs only
 after all area-selected checks finish on a non-draft, non-label event.
+Area checks are evaluated only from that selected run; cancelled/failed older
+draft runs cannot block it. Every other workflow's reported checks must remain clean.
 Old draft passes/skips, or a not-yet-registered ready run, are not success.
 The validator queries GitHub for the current PR head and latest ready transition,
 selects the newest non-draft, non-label area run since that transition, and

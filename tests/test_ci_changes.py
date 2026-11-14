@@ -578,6 +578,48 @@ def test_802_enqueue_requires_the_passing_required_check_from_the_current_pr_run
     assert checks_ready(checks, run_id=10) is (required_bucket == "pass")
 
 
+@pytest.mark.parametrize(
+    ("workflow", "failed_run", "bucket", "ready"),
+    [
+        ("PR area checks", 10, "cancel", True),
+        ("PR area checks", 10, "fail", True),
+        ("PR area checks", 11, "cancel", False),
+        ("PR area checks", 11, "fail", False),
+        ("Secret Scan", 10, "cancel", False),
+        ("Secret Scan", 10, "fail", False),
+    ],
+)
+def test_802_cancelled_draft_checks_do_not_poison_the_selected_ready_run(
+    workflow: str, failed_run: int, bucket: str, ready: bool
+) -> None:
+    checks = [
+        {
+            "name": name,
+            "bucket": "pass",
+            "workflow": "PR area checks",
+            "link": f"https://github.com/owner/repo/actions/runs/11/job/{job}",
+        }
+        for job, name in enumerate(("changes", "required", "Ready PR area checks"), 110)
+    ]
+    checks.extend(
+        [
+            {
+                "name": "Draft lint and fast tests${{ label suffix }}",
+                "bucket": "skipping",
+                "workflow": "PR area checks",
+                "link": "https://github.com/owner/repo/actions/runs/11/job/113",
+            },
+            {
+                "name": "Draft lint and fast tests",
+                "bucket": bucket,
+                "workflow": workflow,
+                "link": f"https://github.com/owner/repo/actions/runs/{failed_run}/job/100",
+            },
+        ]
+    )
+    assert checks_ready(checks, run_id=11) is ready
+
+
 def test_757_landing_cli_rejects_an_empty_check_report() -> None:
     script = Path(__file__).resolve().parents[1] / "scripts" / "pr_checks_ready.py"
     result = subprocess.run(

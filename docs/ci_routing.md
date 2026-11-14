@@ -68,8 +68,10 @@ unfiltered main coverage and runs nightly; PRs scan code/configuration paths
 only. Releases and manual dispatches remain available. Install Lab can be
 forced on any PR with the `run-install-lab` label. Only this label is actionable:
 adding it runs Install Lab without repeating the matrix; other labels are ignored.
-Label runs cannot cancel a code-validation run, and skipped label-event checks
-have distinct names so they cannot supersede real documentation checks.
+Label runs cannot cancel a code-validation run. Routing, documentation, lint
+and summary label checks have distinct names. Draft-fast, native smoke and
+Pages checks use static names so skipped jobs do not expose raw name expressions.
+The landing validator scopes area checks to the selected ready run.
 Its nightly run includes the former weekly negative
 controls and pinned-release scenarios.
 
@@ -193,7 +195,9 @@ only on non-draft, non-label events after all selected area jobs succeed.
 Routing uses `set -euo pipefail`; the final gate fails on a routing failure
 or a missing completion output, rather than accepting an all-skipped matrix.
 It rejects old draft-only passes/skips (including the gap before the ready
-run registers), empty reports, pending, failed, cancelled and unknown statuses.
+run registers), empty reports, and pending, failed, cancelled or unknown statuses
+in the selected area run or any other workflow. Stale area checks from earlier
+draft/label runs do not block a passing ready run.
 `--pr` is required: the validator reads the latest ready-for-review event and
 current head from GitHub, then selects the newest non-draft area run for that
 PR/head after the event and requires it to have completed successfully.
