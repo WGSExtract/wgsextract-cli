@@ -47,6 +47,10 @@ class Call:
     base: str
     reads: int
     percentage: float
+    description: str = ""
+    genotype: str | None = None
+    filter: str | None = None
+    gq: float | None = None
 
 
 @dataclass(frozen=True)
@@ -95,7 +99,10 @@ def read_markers(path: Path) -> list[Marker]:
 
 
 def gt_call(ref: str, alts: str, genotype: str) -> Call | None:
-    allele = genotype.replace("|", "/").split("/")[0]
+    alleles = genotype.replace("|", "/").split("/")
+    if len(set(alleles)) != 1:
+        return None
+    allele = alleles[0]
     if allele in (".", ""):
         return None
     try:
@@ -116,8 +123,7 @@ def ad_call(ref: str, alts: str, depths: str) -> Call:
     highest_base = (
         max(alt_reads, key=lambda base: alt_reads[base]) if alt_reads else "NA"
     )
-    # Upstream compares ref only with the highest-depth alternate, *not* all AD.
-    total = ref_reads + highest
+    total = sum(counts)
     ref_perc = round(ref_reads / total * 100, 1) if total else 0
     alt_perc = round(highest / total * 100, 1) if total else 0
     if ref_perc >= alt_perc:
@@ -176,21 +182,12 @@ def match_markers(
     *,
     min_reads: int = 10,
     majority: int = 90,
-    reference_sequence: str | None = None,
 ) -> tuple[list[Observation], list[Observation]]:
     passing, failed = [], []
     for marker in sorted(markers, key=lambda value: value.pos):
         call = calls.get(marker.pos)
         if call is None:
-            if reference_sequence and 0 < marker.pos <= len(reference_sequence):
-                base = reference_sequence[marker.pos - 1]
-                if base in ("A", "T", "G", "C") and base in (
-                    marker.ancestral,
-                    marker.derived,
-                ):
-                    state = "A" if base == marker.ancestral else "D"
-                    passing.append(Observation(marker, Call(base, 0, 100.0), state))
-            continue
+            call = Call("NA", 0, 0, "Unassessed position")
         state = (
             "A"
             if call.base == marker.ancestral
@@ -198,8 +195,10 @@ def match_markers(
             if call.base == marker.derived
             else "NA"
         )
-        description = ""
-        if call.reads == 0:
+        description = call.description
+        if description:
+            state = "NA"
+        elif call.reads == 0:
             state = "NA"
             description = "Position with zero reads"
         elif state == "NA":

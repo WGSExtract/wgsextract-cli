@@ -10,11 +10,15 @@
 import csv
 import json
 import logging
+import math
 import subprocess
 import tempfile
+from bisect import bisect_right
 from collections import Counter
+from dataclasses import replace
 from pathlib import Path
 
+from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import vcf_index_chromosomes
 
@@ -43,7 +47,13 @@ CREDIT = (
 Y_NAMES = ("Y", "chrY")
 
 
-def _query_vcf(path: Path) -> tuple[dict[int, Call], bool]:
+def _query_vcf(
+    path: Path,
+    *,
+    positions: set[int] | None = None,
+    reference_sequence: str | None = None,
+    min_quality: int = 20,
+) -> tuple[dict[int, Call], bool]:
     samples = run_command(
         ["bcftools", "query", "-l", str(path)], capture_output=True
     ).stdout.splitlines()
@@ -53,7 +63,10 @@ def _query_vcf(path: Path) -> tuple[dict[int, Call], bool]:
         ["bcftools", "view", "-h", str(path)], capture_output=True
     ).stdout
     has_ad = "##FORMAT=<ID=AD," in header
-    field = "AD" if has_ad else "GT"
+    fields = [
+        f"%{field}" if f"##FORMAT=<ID={field}," in header else "."
+        for field in ("GT", "AD", "DP", "GQ", "MIN_DP")
+    ]
     region_args: list[str] = []
     if any(Path(str(path) + suffix).is_file() for suffix in (".tbi", ".csi")):
         contigs = vcf_index_chromosomes(path)
@@ -70,7 +83,9 @@ def _query_vcf(path: Path) -> tuple[dict[int, Call], bool]:
             "-i",
             'CHROM="Y" || CHROM="chrY"',
             "-f",
-            f"%CHROM\\t%POS\\t%REF\\t%ALT[\\t%{field}]\\n",
+            "%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\t%FILTER[\\t"
+            + "\\t".join(fields)
+            + "]\\n",
             str(path),
         ],
         capture_output=True,
@@ -79,15 +94,74 @@ def _query_vcf(path: Path) -> tuple[dict[int, Call], bool]:
         raise WGSExtractError("Input VCF has no records on chromosome Y.")
     calls = {}
     seen = set()
+    marker_positions = sorted(positions or ())
     for line in text.splitlines():
-        _, position, ref, alt, value = line.split("\t")
+        _, position, end, ref, alt, site_filter, gt, ad, dp, gq, min_dp = line.split(
+            "\t"
+        )
         pos = int(position)
         if pos in seen:
             continue
         seen.add(pos)
-        call = ad_call(ref, alt, value) if has_ad else gt_call(ref, alt, value)
-        if call is not None:
-            calls[pos] = call
+        genotype = gt_call(ref, alt, gt)
+        quality = float(gq) if gq != "." else None
+        reads = (
+            int(min_dp if min_dp != "." else dp) if min_dp != "." or dp != "." else 0
+        )
+        description = ""
+        if site_filter != "PASS":
+            description = "Filtered or unassessed variant"
+        elif "." in gt.replace("|", "/").split("/") or gt == "":
+            description = "Missing genotype"
+        elif genotype is None:
+            description = "Ambiguous or unsupported Y genotype"
+        elif quality is not None and (
+            not math.isfinite(quality) or quality < min_quality
+        ):
+            description = "Below genotype quality"
+        call = Call(
+            genotype.base if genotype else "NA",
+            reads,
+            100.0,
+            description,
+            gt,
+            site_filter,
+            quality,
+        )
+        if not description and ad != ".":
+            evidence = ad_call(ref, alt, ad)
+            call = replace(
+                call,
+                reads=min(reads, evidence.reads)
+                if dp != "." or min_dp != "."
+                else evidence.reads,
+                percentage=evidence.percentage,
+            )
+            if genotype and evidence.base != genotype.base:
+                call = replace(call, description="Genotype and allele depths disagree")
+        elif not description and dp == "." and min_dp == ".":
+            call = replace(call, description="Missing depth evidence")
+        calls[pos] = call
+        # A FASTA supplies bases, not callability. Only an explicit reference
+        # block can prove that an otherwise absent marker was assessed.
+        if (
+            reference_sequence
+            and positions
+            and int(end) > pos
+            and len(ref) == 1
+            and alt in (".", "<NON_REF>", "<*>")
+            and genotype
+            and genotype.base == ref
+        ):
+            first = bisect_right(marker_positions, pos)
+            last = bisect_right(
+                marker_positions, min(int(end), len(reference_sequence))
+            )
+            for marker_pos in marker_positions[first:last]:
+                calls.setdefault(
+                    marker_pos,
+                    replace(call, base=reference_sequence[marker_pos - 1]),
+                )
     return calls, has_ad
 
 
@@ -224,15 +298,17 @@ def analyze(
     try:
         with tempfile.TemporaryDirectory(prefix="work-", dir=output) as temp:
             reference_sequence = None
-            effective_min_reads = min_reads
             if is_vcf:
-                calls, has_ad = _query_vcf(input_path)
-                total_reads = "VCF"
-                if not has_ad:
-                    effective_min_reads = 1
                 if not no_ref_inference:
                     assert reference is not None
                     reference_sequence = _reference_sequence(reference)
+                calls, _ = _query_vcf(
+                    input_path,
+                    positions={m.pos for m in markers},
+                    reference_sequence=reference_sequence,
+                    min_quality=quality,
+                )
+                total_reads = "VCF"
             else:
                 calls, total_reads = _alignment_calls(
                     input_path, {m.pos for m in markers}, Path(temp), reference, quality
@@ -240,9 +316,8 @@ def analyze(
             passing, failed = match_markers(
                 markers,
                 calls,
-                min_reads=effective_min_reads,
+                min_reads=min_reads,
                 majority=majority,
-                reference_sequence=reference_sequence,
             )
         ordered = write_marker_tables(folder, sample, predictor.tree, passing, failed)
         haplotypes = link_markers(
@@ -251,6 +326,12 @@ def analyze(
         )
         scores = predictor.predict(haplotypes, min_score)
         counts = Counter(o.description for o in failed)
+        if is_vcf and failed:
+            warn(
+                "y_evidence_rejected",
+                f"{len(failed)} Y markers are unknown or failed evidence QC; see {folder / (sample + '.fmf')}.",
+                counts=json.dumps(counts, sort_keys=True),
+            )
         (folder / f"{sample}.info").write_text(
             f"Total of mapped reads: {total_reads}\n"
             f"Markers with haplogroup information: {len(passing)}\n"

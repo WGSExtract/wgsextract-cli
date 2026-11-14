@@ -7,6 +7,7 @@ import logging
 import random
 import sys
 import textwrap
+from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -28,6 +29,7 @@ from wgsextract_cli.core.mito_reference import (
     RCRS_MD5,
     pinned_sequences,
 )
+from wgsextract_cli.core.results import CommandResult, collecting
 from wgsextract_cli.core.utils import WGSExtractError
 from wgsextract_cli.ydna.yleaf_native.trees import MANIFEST
 
@@ -114,6 +116,145 @@ _KIT_BODY = (
 # --- y-haplogroup ------------------------------------------------------------
 
 
+def _y_rows(output: Path, suffix: str) -> list[dict[str, str]]:
+    with (output / f"yleaf/kit/kit.{suffix}").open() as stream:
+        return list(csv.DictReader(stream, delimiter="\t"))
+
+
+@pytest.mark.parametrize("heterozygote", ["0/1", "1/0", "0|1", "1|0"])
+@pytest.mark.parametrize("with_ad", [False, True])
+def test_855_y_no_call_filtered_and_gt_order_are_unknown(
+    tmp_path, native_tables, heterozygote, with_ad
+):
+    meta = (
+        '##FILTER=<ID=LowQual,Description="Failed quality">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">\n'
+    )
+    if with_ad:
+        meta += '##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allele depths">\n'
+    records = [
+        (100, "PASS", "1", "20", "60", "0,20"),
+        (110, "PASS", "1/1", "20", "60", "0,20"),
+        (120, "LowQual", "1/1", "20", "60", "0,20"),
+        (130, "PASS", "./.", "20", "60", "0,20"),
+        (140, "PASS", heterozygote, "20", "60", "0,20"),
+        (150, "PASS", ".", "20", "60", "20,0"),
+        (160, "PASS", "1", "20", "5", "0,20"),
+    ]
+    body = "".join(
+        f"chrY\t{pos}\t.\tA\tG\t60\t{flt}\t.\tGT:DP:GQ"
+        + (":AD" if with_ad else "")
+        + f"\t{gt}:{dp}:{gq}"
+        + (f":{ad}" if with_ad else "")
+        + "\n"
+        for pos, flt, gt, dp, gq, ad in records
+    )
+    vcf = _vcf(tmp_path / "kit.vcf.gz", {"chrY": 1000}, body, meta)
+    reference = write_fasta(tmp_path / "reference.fa", {"chrY": "A" * 1000})
+    output = tmp_path / "output"
+    result = CommandResult(command="lineage y-haplogroup")
+    with collecting(result):
+        run_wgsextract(
+            "lineage",
+            "y-haplogroup",
+            "--input",
+            vcf,
+            "--build",
+            "hg38",
+            "--ref",
+            str(reference),
+            "--outdir",
+            str(output),
+        )
+    passing = _y_rows(output, "out")
+    failed = _y_rows(output, "fmf")
+    assert [(r["pos"], r["state"]) for r in passing] == [("100", "D"), ("110", "D")]
+    assert len(failed) == 7
+    assert {r["state"] for r in failed} == {"NA"}
+    assert (
+        next(r for r in failed if r["pos"] == "151")["Description"]
+        == "Unassessed position"
+    )
+    assert any(w.code == "y_evidence_rejected" for w in result.warnings)
+
+
+@pytest.mark.parametrize("build", ["hg19", "hg38", "t2t"])
+def test_855_y_callable_reference_block_not_fasta_absence(
+    tmp_path, native_tables, build
+):
+    meta = (
+        '##INFO=<ID=END,Number=1,Type=Integer,Description="Block end">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Minimum depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">\n'
+    )
+    body = (
+        "chrY\t100\t.\tA\tG\t60\tPASS\t.\tGT:DP:GQ\t1:20:60\n"
+        "chrY\t110\t.\tA\tG\t60\tPASS\t.\tGT:DP:GQ\t1/1:20:60\n"
+        "chrY\t135\t.\tA\t<NON_REF>\t60\tPASS\tEND=160\tGT:MIN_DP:GQ\t0/0:20:60\n"
+        "chrY\t150\t.\tA\tG\t60\tPASS\t.\tGT:DP:GQ\t./.:20:60\n"
+    )
+    vcf = _vcf(tmp_path / "kit.vcf.gz", {"chrY": 1000}, body, meta)
+    reference = write_fasta(tmp_path / "reference.fa", {"chrY": "A" * 1000})
+    output = tmp_path / "output"
+    run_wgsextract(
+        "lineage",
+        "y-haplogroup",
+        "--input",
+        vcf,
+        "--build",
+        build,
+        "--ref",
+        str(reference),
+        "--outdir",
+        str(output),
+    )
+    passing = _y_rows(output, "out")
+    assert Counter(r["state"] for r in passing) == {"D": 2, "A": 4}
+    assert {r["pos"] for r in _y_rows(output, "fmf")} == {"120", "130", "150"}
+    assert all(int(r["reads"]) == 20 for r in passing)
+
+
+@pytest.mark.parametrize(
+    ("format_field", "sample"),
+    [
+        ("GT:DP", "1:."),
+        ("GT:DP", "1:0"),
+        ("GT:DP", "1:9"),
+        ("GT:AD:DP", "0/0:0,20:20"),
+        ("GT:AD:DP", "1:.:."),
+    ],
+)
+def test_855_y_missing_depth_and_ad_gt_disagreement_cannot_predict(
+    tmp_path, native_tables, format_field, sample
+):
+    meta = (
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allele depths">\n'
+    )
+    vcf = _vcf(
+        tmp_path / "kit.vcf.gz",
+        {"chrY": 1000},
+        f"chrY\t100\t.\tA\tG\t60\tPASS\t.\t{format_field}\t{sample}\n",
+        meta,
+    )
+    output = tmp_path / "output"
+    with pytest.raises(WGSExtractError, match="could not predict"):
+        run_wgsextract(
+            "lineage",
+            "y-haplogroup",
+            "--input",
+            vcf,
+            "--build",
+            "hg38",
+            "--no-ref-inference",
+            "--outdir",
+            str(output),
+        )
+    assert not _y_rows(output, "out")
+
+
 @pytest.mark.parametrize("tree_links", [False, True])
 def test_y_haplogroup_from_vcf_uses_native_markers_only_on_chry(
     tmp_path,
@@ -125,7 +266,12 @@ def test_y_haplogroup_from_vcf_uses_native_markers_only_on_chry(
         f"chrY\t{pos}\t.\tA\tG\t50\tPASS\t.\tGT\t{gt}\n"
         for pos, gt in ((100, 1), (110, 1), (120, 1), (130, 1), (140, 0), (150, 0))
     )
-    vcf = _vcf(tmp_path / "kit.vcf.gz", _HG38, body, "##reference=GRCh38.fa\n")
+    vcf = _vcf(
+        tmp_path / "kit.vcf.gz",
+        _HG38,
+        body.replace("\tGT\t", "\tGT:DP\t").replace("\n", ":20\n"),
+        '##reference=GRCh38.fa\n##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n',
+    )
     run_wgsextract(
         "lineage", "y-haplogroup", "--input", vcf, "--outdir", str(tmp_path / "o"),
         "--no-ref-inference",

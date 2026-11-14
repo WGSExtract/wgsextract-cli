@@ -37,11 +37,11 @@ def _predictor(tree: str = "yfull") -> Predictor:
     return Predictor(selected.tree_file, selected.qc)
 
 
-def test_vcf_calling_preserves_upstream_ad_denominator_and_gt_first_allele():
-    assert ad_call("A", "G,T", "10,9,9") == Call("A", 10, 52.6)
-    assert ad_call("A", "G,T", "0,10,10") == Call("G", 10, 100.0)
+def test_vcf_calling_counts_all_alleles_and_rejects_mixed_gt():
+    assert ad_call("A", "G,T", "10,9,9") == Call("A", 10, 35.7)
+    assert ad_call("A", "G,T", "0,10,10") == Call("G", 10, 50.0)
     assert ad_call("A", "G", ".,.") == Call("A", 0, 0)
-    assert gt_call("A", "G,T", "2|1") == Call("T", 1, 100.0)
+    assert gt_call("A", "G,T", "2|1") is None
     assert gt_call("A", "G", "./1") is None
 
 
@@ -62,16 +62,16 @@ def test_matching_filters_sequentially_and_never_infers_failed_observed_sites():
         4: Call("G", 10, 89.9),
         5: Call("G", 10, 90),
     }
-    passing, failed = match_markers(markers, calls, reference_sequence="AAAAAG")
+    passing, failed = match_markers(markers, calls)
     assert [(o.marker.pos, o.state, o.call.reads) for o in passing] == [
         (5, "D", 10),
-        (6, "D", 0),
     ]
     assert [o.description for o in failed] == [
         "Position with zero reads",
         "Discordant genotype",
         "Below read threshold",
         "Below base majority",
+        "Unassessed position",
     ]
 
 
@@ -138,8 +138,11 @@ def _y_vcf(path: Path, positions: tuple[int, ...], contig: str = "Y") -> Path:
         "##fileformat=VCFv4.2\n"
         f"##contig=<ID={contig},length=1000>\n"
         '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
-        + "".join(f"{contig}\t{p}\t.\tA\tG\t50\tPASS\t.\tGT\t1\n" for p in positions)
+        + "".join(
+            f"{contig}\t{p}\t.\tA\tG\t50\tPASS\t.\tGT:DP\t1:20\n" for p in positions
+        )
     )
     return path
 

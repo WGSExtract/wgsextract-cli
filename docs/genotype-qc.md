@@ -87,6 +87,25 @@ workspace; nothing is measured unless you run `qc contamination`.
 
 ## After: genotype rates
 
+### Y-haplogroup VCF evidence
+
+`lineage y-haplogroup` counts only `FILTER=PASS` haploid or homozygous
+genotypes. Missing calls, heterozygotes (in either allele order), failed
+filters and unassessed positions are unknown, never ancestral or derived
+evidence. The `.fmf` report explains rejected markers and the structured
+`y_evidence_rejected` warning summarises them.
+
+VCF evidence must meet `--min-reads` using AD, DP or a reference block's
+MIN_DP; GT-only files without depth are not assigned an artificial read.
+When present, GQ must meet `--base-quality`. AD must agree with GT, and base
+majority uses all reported allele depths.
+
+A FASTA supplies reference bases, not evidence that a site was called.
+Reference inference is limited to explicit callable gVCF reference blocks
+(`END` with reference GT and adequate depth/quality); an explicit no-call
+inside a block remains unknown. `--no-ref-inference` disables block expansion
+for targeted panels.
+
 After `microarray` writes its files, the autosomal genotypes are checked:
 
 - **Homozygosity of the CombinedKit's called genotypes.** Directly sequenced
