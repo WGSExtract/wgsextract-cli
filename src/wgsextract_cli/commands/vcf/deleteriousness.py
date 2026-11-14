@@ -89,6 +89,7 @@ def run_cadd(params: VcfCaddParams) -> None:
                 ann_out,
                 work,
                 "CADD indel",
+                _CADD_HEADER,
                 threads=params.threads,
                 reference=lib.fasta,
             )

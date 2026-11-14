@@ -220,7 +220,10 @@ def _compose(query: str, resource: str, work: str, thresholds: vc.Thresholds) ->
     output = Path(work, "composed.vcf")
     with sqlite3.connect(Path(work, "snvs.sqlite")) as db:
         db.execute("CREATE TABLE snvs (chrom TEXT, pos INTEGER, record TEXT)")
-        db.execute("CREATE TABLE alleles (chrom TEXT, pos TEXT, ref TEXT, alt TEXT)")
+        db.execute(
+            "CREATE TABLE alleles (chrom TEXT, pos INTEGER, ref TEXT, alt TEXT, end INTEGER, record TEXT)"
+        )
+        db.execute("CREATE VIRTUAL TABLE spans USING rtree(record_id, start, end)")
         with gzip.open(query, "rt") as source, output.open("w") as handle:
             header = []
             for line in source:
@@ -239,8 +242,15 @@ def _compose(query: str, resource: str, work: str, thresholds: vc.Thresholds) ->
                 if line.startswith("#"):
                     continue
                 f = line.rstrip().split("\t")
+                info = dict(item.partition("=")[::2] for item in f[7].split(";"))
+                end = max(int(f[1]) + len(f[3]) - 1, int(info.get("END", f[1])))
+                inserted = db.execute(
+                    "INSERT INTO alleles VALUES (?, ?, ?, ?, ?, ?)",
+                    (f[0], int(f[1]), f[3], f[4], end, line.rstrip()),
+                )
                 db.execute(
-                    "INSERT INTO alleles VALUES (?, ?, ?, ?)", (f[0], f[1], f[3], f[4])
+                    "INSERT INTO spans VALUES (?, ?, ?)",
+                    (inserted.lastrowid, int(f[1]), end),
                 )
                 if len(f) == 10 and len(f[3]) == len(f[4]) == 1:
                     db.execute(
@@ -285,7 +295,19 @@ def _compose(query: str, resource: str, work: str, thresholds: vc.Thresholds) ->
                             break
                         parts.append(part)
                     else:
-                        combined = _combined(target, parts, header, thresholds)
+                        part_keys = {(int(p[1]), p[3], p[4]) for p in parts}
+                        start, end = int(target[1]), int(target[1]) + len(ref) - 1
+                        overlaps = db.execute(
+                            "SELECT a.pos, a.ref, a.alt, a.record FROM spans s JOIN alleles a ON a.rowid=s.record_id "
+                            "WHERE s.start<=? AND s.end>=? AND a.chrom=? AND a.pos<=? AND a.end>=?",
+                            (end, start, target[0], end, start),
+                        )
+                        extras = [
+                            str(row[3]).split("\t")
+                            for row in overlaps
+                            if (row[0], row[1], row[2]) not in part_keys
+                        ]
+                        combined = _combined(target, parts, header, thresholds, extras)
                         if combined:
                             handle.write("\t".join(combined) + "\n")
                             emitted.add(key)
@@ -312,6 +334,7 @@ def _combined(
     parts: list[list[str]],
     header: list[str],
     thresholds: vc.Thresholds,
+    extras: list[list[str]],
 ) -> list[str] | None:
     if len(parts) < 2:
         return None
@@ -323,6 +346,21 @@ def _combined(
     if len(set(ps)) != 1 or ps[0] == ".":
         return None
     carried = [all(g[h] == "1" for g in gts) for h in (0, 1)]
+    for extra in extras:
+        if len(extra) != 10:
+            return None
+        fmt = dict(zip(extra[8].split(":"), extra[9].split(":"), strict=False))
+        gt = fmt.get("GT", ".")
+        if gt in {"0", "0/0", "0|0"}:
+            continue
+        extra_gt = gt.split("|")
+        if (
+            len(extra_gt) != 2
+            or not set(extra_gt) <= {"0", "1"}
+            or fmt.get("PS", ".") != ps[0]
+        ):
+            return None
+        carried = [c and a == "0" for c, a in zip(carried, extra_gt, strict=True)]
     if not any(carried):
         return None
     if any(

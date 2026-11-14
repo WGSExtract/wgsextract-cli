@@ -275,6 +275,7 @@
             },
             "original_record": {"type": ["string", "null"]},
             "mnv_components": {"type": ["string", "null"]},
+            "mnv_residual_copies": {"type": ["integer", "null"], "minimum": 1, "maximum": 2},
             "chrom": {"type": "string"},
             "pos": {"type": ["integer", "null"]},
             "ref": {"type": ["string", "null"]},

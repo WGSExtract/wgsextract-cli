@@ -241,7 +241,7 @@ class TestVcfChainAnnotateSmoke:
         # Place it in genomes/ so it matches ReferenceLibrary logic
         self.ref_to_use = os.path.join(self.refdir, "genomes", "hg38.fa")
         with open(self.ref_to_use, "w") as f:
-            f.write(">chr1\nACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT\n")
+            f.write(">chr1\n" + "A" * 1000 + "\n")
 
         dict_path = self.ref_to_use.replace(".fa", ".dict")
         with open(dict_path, "w") as f:

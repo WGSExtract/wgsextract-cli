@@ -9,7 +9,7 @@ from urllib.parse import unquote
 import pytest
 
 from tests.htslib_helpers import needs_htslib, write_fasta
-from wgsextract_cli.api.vcf import VcfClinvarParams, clinvar
+from wgsextract_cli.api.vcf import VcfCaddParams, VcfClinvarParams, cadd, clinvar
 from wgsextract_cli.core import personal_report, variant_table
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -368,3 +368,114 @@ def test_836_unavailable_resource_alt_contigs_do_not_block_primary_findings(tmp_
         if w["code"] == "annotation_contigs_not_in_reference"
     ]
     assert warning["details"]["count"] == 1
+
+
+@pytest.mark.parametrize(("extra_gt", "expected"), [("0|1", 0), ("1|0", 1), ("0/1", 0)])
+def test_837_intervening_variant_must_not_invent_a_different_pathogenic_mnv(
+    tmp_path, extra_gt, expected
+):
+    ref = write_fasta(tmp_path / "ref.fa", {"1": SEQ})
+    sample = vcf(
+        tmp_path / "sample.vcf",
+        [
+            "11 . C A 99 PASS . GT:PS 0|1:11",
+            f"12 . C T 99 PASS . GT:PS {extra_gt}:11",
+            "13 . G A 99 PASS . GT:PS 0|1:11",
+        ],
+    )
+    resource = vcf(
+        tmp_path / "clinvar.vcf",
+        [
+            "11 VCVgap CCG ACA . PASS CLNSIG=Pathogenic;CLNDN=MAP GT 0/1",
+        ],
+        resource=True,
+    )
+    assert len(records(annotate(tmp_path / "out", sample, resource, ref))) == expected
+
+
+def test_837_overlapping_deletion_prevents_a_false_mnv_on_that_haplotype(tmp_path):
+    ref = write_fasta(tmp_path / "ref.fa", {"1": SEQ})
+    sample = vcf(
+        tmp_path / "sample.vcf",
+        [
+            "10 . TC T 99 PASS . GT:PS 0|1:11",
+            "11 . C A 99 PASS . GT:PS 0|1:11",
+            "12 . C A 99 PASS . GT:PS 0|1:11",
+        ],
+    )
+    resource = vcf(
+        tmp_path / "clinvar.vcf",
+        [
+            "11 VCVmnv CC AA . PASS CLNSIG=Pathogenic;CLNDN=MAP GT 0/1",
+        ],
+        resource=True,
+    )
+    assert records(annotate(tmp_path / "out", sample, resource, ref)) == []
+
+
+def test_837_mnv_deduplication_preserves_the_pathogenic_copy_on_the_other_haplotype(
+    tmp_path,
+):
+    ref = write_fasta(tmp_path / "ref.fa", {"1": SEQ})
+    sample = vcf(
+        tmp_path / "sample.vcf",
+        [
+            "11 . C A 99 PASS . GT:PS 1|1:11",
+            "12 . C A 99 PASS . GT:PS 0|1:11",
+        ],
+    )
+    resource = vcf(
+        tmp_path / "clinvar.vcf",
+        [
+            "11 VCVcomponent C A . PASS CLNSIG=Pathogenic;CLNDN=MAP;GENEINFO=MUTYH:4595 GT 0/1",
+            "11 VCVmnv CC AA . PASS CLNSIG=Pathogenic;CLNDN=MAP;GENEINFO=MUTYH:4595 GT 0/1",
+        ],
+        resource=True,
+    )
+    out = tmp_path / "out"
+    annotate(out, sample, resource, ref)
+    section = report(out)["sections"]["clinvar"]
+    (gene,) = section["genes"]
+    assert (gene["heterozygous"], gene["homozygous"], gene["status"]) == (
+        2,
+        0,
+        "biallelic",
+    )
+    (residual,) = [
+        f for f in section["findings"] if f["variant"]["mnv_residual_copies"]
+    ]
+    assert residual["variant"]["genotype"] == "1|1"
+    assert residual["variant"]["mnv_residual_copies"] == 1
+
+
+def test_836_shared_normalization_preserves_cadd_snv_and_indel_scores(tmp_path):
+    ref = write_fasta(tmp_path / "ref.fa", {"1": SEQ})
+    sample = vcf(
+        tmp_path / "sample.vcf",
+        [
+            "6 . AA A 99 PASS . GT 0/1",
+            "11 . C A 99 PASS . GT 0/1",
+        ],
+    )
+    snvs, indels = tmp_path / "snv.tsv", tmp_path / "indel.tsv"
+    header = "#Chrom\tPos\tRef\tAlt\tRawScore\tPHRED\n"
+    snvs.write_text(header + "1\t11\tC\tA\t0.8\t30\n")
+    indels.write_text(header + "1\t5\tAA\tA\t0.9\t40\n")
+    out = tmp_path / "out"
+    result = cadd(
+        VcfCaddParams(
+            vcf_input=sample,
+            ref=ref,
+            cadd_file=snvs,
+            cadd_indel_file=indels,
+            outdir=out,
+            threads=1,
+        )
+    )
+    assert result.status == "ok"
+    found = records(out / "cadd_annotated.vcf.gz")
+    assert [(r[1], r[3], r[4]) for r in found] == [("2", "CA", "C"), ("11", "C", "A")]
+    assert all(
+        f"CADD_PHRED={score}" in row[7]
+        for row, score in zip(found, [40, 30], strict=True)
+    )

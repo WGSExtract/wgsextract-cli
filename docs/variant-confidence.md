@@ -38,7 +38,11 @@ bases have the same non-missing PS and share a called ALT haplotype. Opposite
 haplotypes, unphased or missing calls, different phase sets and imputed calls
 are not composed. `WGSE_MNV_COMPONENTS` preserves each component's phase,
 metrics and original provenance. Components remain in the annotated VCF;
-the report counts the combined finding only once. A composed MNV is at most
+intervening or overlapping calls must also be phase-compatible with the
+entire combined allele. The report counts the combined finding only once,
+but preserves a component's additional pathogenic copy on the other
+haplotype (showing the original genotype and the residual copy count).
+A composed MNV is at most
 moderate sequencing confidence: individual allele depths do not measure
 read support for the combined allele, and a low-confidence component makes
 the MNV low confidence.

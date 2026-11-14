@@ -906,6 +906,9 @@ def test_vcf_input_end_to_end_with_clinvar(
         tmp_path / "me.vcf.gz",
         [(100, "a", "50", "."), (200, "b", "50", "."), (300, "c", "50", ".")],
     )
+    from tests.htslib_helpers import reference_for_vcf
+
+    reference_for_vcf(lib / "genomes" / "hg38.fa.gz", calls)
     out = tmp_path / "out"
     main(["--config", str(cfg), "analyze", "comprehensive", "--vcf-inputs", calls,
           "--outdir", str(out), "--threads", "1"])  # fmt: skip

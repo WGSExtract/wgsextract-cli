@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from importlib import resources
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
-from urllib.parse import quote, unquote
+from urllib.parse import quote
 
 from wgsextract_cli import __version__
 from wgsextract_cli.core import (
@@ -170,6 +170,11 @@ FINDING_COLUMNS: tuple[Column, ...] = (
     ),
     Column(
         "mnv_components", TEXT, "Phase-supported MNV components (URL-encoded JSON)."
+    ),
+    Column(
+        "mnv_residual_copies",
+        INTEGER,
+        "Pathogenic component copies outside a composed MNV; the original genotype is retained.",
     ),
 )
 
@@ -1212,33 +1217,7 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
         for c in labelled
         if variant_confidence.is_pathogenic(str(c.get("CLNSIG") or ""))
     ]
-    covered = set()
-    for call in calls:
-        try:
-            for component in json.loads(
-                unquote(str(call.get(clinical_evidence.COMPONENTS) or "[]"))
-            ):
-                covered.add(
-                    (
-                        str(component["chrom"]).removeprefix("chr"),
-                        str(component["pos"]),
-                        component["ref"],
-                        component["alt"],
-                    )
-                )
-        except (ValueError, KeyError, TypeError):
-            continue
-    calls = [
-        c
-        for c in calls
-        if (
-            str(c.get("chrom")).removeprefix("chr"),
-            str(c.get("pos")),
-            c.get("ref"),
-            c.get("alt"),
-        )
-        not in covered
-    ]
+    calls = clinical_evidence.nonredundant_calls(calls)
     conflicts, _ = _labelled_calls(
         source, "clinvar_conflicts", "clinvar_conflict_table"
     )
@@ -1280,6 +1259,10 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
             for g in genes
             if g.note
         ]
+        if call.get("_mnv_residual_copies"):
+            notes.append(
+                f"{call['_mnv_residual_copies']} additional pathogenic copy outside the composed MNV; original genotype shown"
+            )
         findings.append(
             _finding(
                 "clinvar",
@@ -1321,6 +1304,7 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
                     "clinical_evidence": review,
                     "original_record": call.get(clinical_evidence.ORIGIN) or None,
                     "mnv_components": call.get(clinical_evidence.COMPONENTS) or None,
+                    "mnv_residual_copies": call.get("_mnv_residual_copies"),
                 },
             )
         )
@@ -1540,9 +1524,17 @@ def _gene_calls(
     from one diploid call (``1/2``) are on opposite copies: biallelic."""
     het = hom = hemi = partial = 0
     split_alts: dict[str, set[str]] = {}
+    phase_haplotypes: dict[str, set[int]] = {}
     for call in calls:
         zygosity = str(call.get("zygosity") or "")
-        alleles = re.split(r"[/|]", str(call.get("genotype") or ""))
+        gt = str(call.get("_gene_genotype") or call.get("genotype") or "")
+        alleles = re.split(r"[/|]", gt)
+        if call.get("_gene_genotype"):
+            zygosity = "het" if alleles.count("1") == 1 else "hom"
+        if ps := call.get("_mnv_phase_set"):
+            phase_haplotypes.setdefault(str(ps), set()).update(
+                h for h, allele in enumerate(gt.split("|")) if allele == "1"
+            )
         if zygosity == "het" and "." in alleles:
             partial += 1
         elif zygosity == "het":
@@ -1558,7 +1550,11 @@ def _gene_calls(
             hemi += 1
     status = None
     if gene.recessive:
-        if hom or any(len(alts) > 1 for alts in split_alts.values()):
+        if (
+            hom
+            or any(len(alts) > 1 for alts in split_alts.values())
+            or any(haps == {0, 1} for haps in phase_haplotypes.values())
+        ):
             status = "biallelic"
         elif hemi or partial or het >= 2:
             status = "possible_biallelic"
@@ -1829,6 +1825,7 @@ def table_rows(report: Mapping[str, Any]) -> list[list[Value]]:
                 clinical.get("conflict_evidence"),
                 v.get("original_record"),
                 v.get("mnv_components"),
+                v.get("mnv_residual_copies"),
             ]
         )
     return rows

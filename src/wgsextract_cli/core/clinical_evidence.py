@@ -1,6 +1,9 @@
 """ClinVar assertion support, separate from the sequencing call's confidence."""
 
-from collections.abc import Mapping
+import json
+from collections.abc import Mapping, Sequence
+from typing import Any
+from urllib.parse import unquote
 
 IDENTITY = "WGSE_CLINVAR_ID"
 STARS = "WGSE_CLINVAR_STARS"
@@ -37,3 +40,60 @@ def review_evidence(info: Mapping[str, object]) -> dict[str, object]:
         "conflict": conflicting,
         "conflict_evidence": conflict or None,
     }
+
+
+def nonredundant_calls(calls: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Subtract only the component copies established by a composed MNV."""
+
+    def key(call: Mapping[str, Any]) -> tuple[str, str, str, str]:
+        return (
+            str(call.get("chrom")).removeprefix("chr"),
+            str(call.get("pos")),
+            str(call.get("ref")),
+            str(call.get("alt")),
+        )
+
+    covered: dict[tuple[str, str, str, str], tuple[str, set[int]]] = {}
+    annotated = [dict(call) for call in calls]
+    for call in annotated:
+        try:
+            parts = json.loads(unquote(str(call.get(COMPONENTS) or "[]")))
+            if not parts:
+                continue
+            fmt = dict(
+                zip(
+                    parts[0]["format"].split(":"),
+                    parts[0]["sample"].split(":"),
+                    strict=False,
+                )
+            )
+            ps = fmt["PS"]
+            haplotypes = {
+                h
+                for h, allele in enumerate(str(call.get("genotype", "")).split("|"))
+                if allele == "1"
+            }
+            call["_mnv_phase_set"] = ps
+            for component in parts:
+                covered.setdefault(key(component), (ps, set()))[1].update(haplotypes)
+        except (ValueError, KeyError, TypeError, IndexError, AttributeError):
+            continue
+    result = []
+    for call in annotated:
+        coverage = covered.get(key(call))
+        if coverage is not None:
+            ps, haplotypes = coverage
+            gt = str(call.get("genotype", "")).split("|")
+            if len(gt) == 2 and set(gt) <= {"0", "1"}:
+                remaining = [
+                    "1" if allele == "1" and h not in haplotypes else "0"
+                    for h, allele in enumerate(gt)
+                ]
+                copies = remaining.count("1")
+                if not copies:
+                    continue
+                call["_gene_genotype"] = "|".join(remaining)
+                call["_mnv_phase_set"] = ps
+                call["_mnv_residual_copies"] = copies
+        result.append(call)
+    return result
