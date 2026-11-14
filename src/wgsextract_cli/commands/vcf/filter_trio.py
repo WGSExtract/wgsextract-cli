@@ -21,6 +21,7 @@ from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
+    popen,
     run_command,
 )
 from wgsextract_cli.core.variant_files import (
@@ -172,16 +173,52 @@ cmd_filter = vcf_input_handler(VcfFilterParams, run_filter)
 # here is ./. after the merge; GT="." never matches it), "AA" is hom-alt ("hom"
 # would also match 0/0).
 _TRIO_FILTERS = {
-    # Child het, both parents ref or missing.
-    "denovo": '{p}="het" && ({m}="ref" || {m}="mis") && ({f}="ref" || {f}="mis")',
+    # Child het, both parents assessed reference.
+    "denovo": '{p}="het" && {m}="ref" && {f}="ref"',
     # Child hom-alt, both parents het.
     "recessive": '{p}="AA" && {m}="het" && {f}="het"',
-    # Simplified: child het, exactly one parent het, the other ref/missing.
-    "comphet": (
-        '{p}="het" && (({m}="het" && ({f}="ref" || {f}="mis")) '
-        '|| (({m}="ref" || {m}="mis") && {f}="het"))'
-    ),
+    # Simplified: child het, exactly one parent het, the other reference.
+    "comphet": ('{p}="het" && (({m}="het" && {f}="ref") || ({m}="ref" && {f}="het"))'),
 }
+
+
+def _vcf_trio_expressions(
+    mode: str, merged_vcf: str, p_idx: int, m_idx: int, f_idx: int
+) -> tuple[str, str | None]:
+    p, m, f = (f"GT[{i}]" for i in (p_idx, m_idx, f_idx))
+    pattern = _TRIO_FILTERS[mode].format(p=p, m=m, f=f)
+    if mode == "recessive":
+        return pattern, None
+    header = run_command(
+        ["bcftools", "view", "-h", merged_vcf], capture_output=True
+    ).stdout
+
+    def confidence(idx: int) -> tuple[str, str]:
+        if "##FORMAT=<ID=GQ," not in header:
+            # Valid expressions even without a GQ field.
+            return (
+                f'(GT[{idx}]="ref" && GT[{idx}]="het")',
+                f'(GT[{idx}]="ref" || GT[{idx}]!="ref")',
+            )
+        assessed = f'(GT[{idx}]!~"\\." && GQ[{idx}]!="." && GQ[{idx}]>=20)'
+        uncertain = f'(GT[{idx}]~"\\." || GQ[{idx}]="." || GQ[{idx}]<20)'
+        if "##FORMAT=<ID=FT," in header:
+            passed = f'(FT[{idx}]="PASS" || FT[{idx}]=".")'
+            failed = f'(FT[{idx}]!="PASS" && FT[{idx}]!=".")'
+            assessed = f"({assessed} && {passed})"
+            uncertain = f"({uncertain} || {failed})"
+        return assessed, uncertain
+
+    (ma, mu), (fa, fu) = confidence(m_idx), confidence(f_idx)
+    confident = f"({ma} && {fa})"
+    uncertain = f"({mu} || {fu})"
+    mr, fr = f'({m}="ref" || {mu})', f'({f}="ref" || {fu})'
+    if mode == "denovo":
+        possible = f'{p}="het" && {mr} && {fr}'
+    else:
+        mh, fh = f'({m}="het" || {mu})', f'({f}="het" || {fu})'
+        possible = f'{p}="het" && (({mh} && {fr}) || ({mr} && {fh}))'
+    return f"({pattern}) && {confident}", f"({possible}) && {uncertain}"
 
 
 def trio_sample_indices(p_vcf: str, m_vcf: str, f_vcf: str) -> tuple[int, int, int]:
@@ -204,16 +241,19 @@ def _summarize_trio_output(mode: str, out_vcf: str) -> None:
     """Log the mode's variant (and HIGH impact) counts and record its output."""
     metrics: dict[str, int | None] = {"variants": None}
     try:
-        total = run_command(["bcftools", "view", "-H", out_vcf], capture_output=True)
-        metrics["variants"] = total.stdout.count(chr(10))
+        metrics["variants"] = vcf_record_count(out_vcf)
         summary = f"{mode.upper()} results: {metrics['variants']} total variants"
         header = run_command(["bcftools", "view", "-h", out_vcf], capture_output=True)
         if "ID=CSQ," in header.stdout:
-            high = run_command(
-                ["bcftools", "view", "-H", "-i", 'CSQ~"HIGH"', out_vcf],
-                capture_output=True,
-            )
-            metrics["high_impact"] = high.stdout.count(chr(10))
+            command = ["bcftools", "query", "-i", 'CSQ~"HIGH"', "-f", "%POS\n", out_vcf]
+            with tempfile.TemporaryFile(dir=Path(out_vcf).parent) as err:
+                with popen(
+                    command, stdout=subprocess.PIPE, stderr=err, text=True
+                ) as proc:
+                    assert proc.stdout is not None
+                    metrics["high_impact"] = sum(1 for _ in proc.stdout)
+                    if proc.wait():
+                        raise subprocess.CalledProcessError(proc.returncode, command)
             summary += f", {metrics['high_impact']} HIGH impact"
         logging.info(summary)
     except (OSError, subprocess.SubprocessError) as e:
@@ -282,6 +322,20 @@ def run_trio(params: VcfTrioParams) -> None:
     p_vcf = ensure_vcf_prepared(proband)
     m_vcf = ensure_vcf_prepared(mother)
     f_vcf = ensure_vcf_prepared(father)
+    for mode in modes:
+        names = [f"trio_{mode}.vcf.gz"]
+        if mode in ("denovo", "comphet"):
+            names.append(f"trio_{mode}_inconclusive.vcf.gz")
+        for name in names:
+            output = Path(outdir, name)
+            if output.exists() and any(
+                output.samefile(path)
+                for path in (proband, mother, father, p_vcf, m_vcf, f_vcf)
+            ):
+                raise UsageError(
+                    f"vcf trio would overwrite its input {output}; "
+                    "choose another --outdir."
+                )
     p_idx, m_idx, f_idx = trio_sample_indices(p_vcf, m_vcf, f_vcf)
     region_args = ["-r", params.region] if params.region else []
     gvcf_args = _gvcf_merge_args(params, [p_vcf, m_vcf, f_vcf])
@@ -318,8 +372,8 @@ def run_trio(params: VcfTrioParams) -> None:
             logging.info(
                 LOG_MESSAGES["vcf_trio_analysis"].format(mode=mode, output=out_vcf)
             )
-            filter_expr = _TRIO_FILTERS[mode].format(
-                p=f"GT[{p_idx}]", m=f"GT[{m_idx}]", f=f"GT[{f_idx}]"
+            filter_expr, inconclusive_expr = _vcf_trio_expressions(
+                mode, merged_vcf, p_idx, m_idx, f_idx
             )
             try:
                 remove_index(out_vcf)
@@ -335,40 +389,30 @@ def run_trio(params: VcfTrioParams) -> None:
                 ) from e
             logging.info(LOG_MESSAGES["vcf_trio_complete"].format(output=out_vcf))
             _summarize_trio_output(mode, out_vcf)
-            if mode == "denovo":
-                _warn_if_parental_refs_unconfident(out_vcf, m_idx, f_idx)
+            if inconclusive_expr:
+                inconclusive = str(Path(outdir, f"trio_{mode}_inconclusive.vcf.gz"))
+                remove_index(inconclusive)
+                run_command(
+                    ["bcftools", "view", "-i", inconclusive_expr, "-Oz", "-o",
+                     inconclusive, merged_vcf],
+                    capture_output=True,
+                )  # fmt: skip
+                ensure_vcf_indexed(inconclusive)
+                _summarize_trio_output(f"{mode}_inconclusive", inconclusive)
+                count = vcf_record_count(inconclusive)
+                if count:
+                    warn(
+                        "inconclusive_parent_genotypes",
+                        f"{count:,} {mode} candidates have inconclusive inheritance: "
+                        "a parental genotype is missing, partial, filtered, "
+                        "or lacks GQ >=20. "
+                        f"They are not classified as {mode}; see {inconclusive}.",
+                        count=count,
+                        mode=mode,
+                    )
 
 
 cmd_trio = vcf_input_handler(VcfTrioParams, run_trio)
-
-
-def _warn_if_parental_refs_unconfident(out_vcf: str, m_idx: int, f_idx: int) -> None:
-    """De novo calls from VCFs rest on the parents' 0/0 calls; from gVCF reference
-    blocks (often GQ 0, from another pipeline) those say nothing, and the de novo
-    list fills with inherited variants."""
-    try:
-        total = int(
-            run_command(
-                ["bcftools", "index", "--nrecords", out_vcf], capture_output=True
-            ).stdout.strip()
-        )
-        weak = run_command(
-            ["bcftools", "view", "-H", "-i", f"GQ[{m_idx}]<20 || GQ[{f_idx}]<20"]
-            + [out_vcf],
-            capture_output=True,
-        ).stdout.count("\n")
-    except (OSError, subprocess.SubprocessError, ValueError):
-        return  # no GQ to judge by
-    if total >= 100 and weak > total // 2:
-        warn(
-            "unconfident_parent_genotypes",
-            f"{weak:,} of these {total:,} de novo calls rest on a parent's reference "
-            "call with GQ under 20, which doesn't show the parent lacks the variant. "
-            "For real de novo calls, give the three BAM/CRAMs instead (--proband, "
-            "--mother, --father): they're genotyped jointly from the reads.",
-            count=weak,
-            total=total,
-        )
 
 
 def _trio_from_alignments(
