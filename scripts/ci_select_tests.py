@@ -45,6 +45,7 @@ class ImportGraph:
                     name = ".".join(parts[:-1] if parts[-1] == "__init__" else parts)
                     self.files[name] = file
         self.edges: dict[str, set[str]] = {}
+        self.fixture_cache: dict[Path, set[str]] = {}
         self.unsafe: set[str] = set()
         for name, file in self.files.items():
             try:
@@ -55,6 +56,8 @@ class ImportGraph:
                 self.unsafe.add(name)
 
     def module(self, name: str) -> set[str]:
+        if name.split(".")[0].startswith("test_") and f"tests.{name}" in self.files:
+            name = f"tests.{name}"
         parts = name.split(".")
         return {
             ".".join(parts[:length])
@@ -67,6 +70,9 @@ class ImportGraph:
         package = name if file.name == "__init__.py" else name.rpartition(".")[0]
         result = self.module(package) - {name}
         nodes = list(ast.walk(tree))
+        parents = {
+            child: node for node in nodes for child in ast.iter_child_nodes(node)
+        }
         dynamic_names = {"__import__"}
         lazy_names = {"command_handler"}
         for node in nodes:
@@ -103,11 +109,16 @@ class ImportGraph:
                 # Includes patch targets, subprocess -m and literal import_module.
                 if node.value.startswith("wgsextract_cli."):
                     result.update(self.module(node.value))
-                if name.startswith("tests.") and node.value in {
-                    "wgsextract",
-                    "wgsextract-cli",
-                    "wgsextract_cli",
-                }:
+                if (
+                    name.startswith("tests.")
+                    and node.value
+                    in {
+                        "wgsextract",
+                        "wgsextract-cli",
+                        "wgsextract_cli",
+                    }
+                    and isinstance(parents.get(node), (ast.List, ast.Tuple))
+                ):
                     result.update(self.module("wgsextract_cli.main"))
             elif isinstance(node, ast.Call):
                 func = node.func
@@ -216,6 +227,22 @@ class ImportGraph:
             pending.extend(self.edges.get(current, set()) - seen)
         return seen
 
+    def fixture_dependencies(self, directory: Path) -> set[str]:
+        """Tests implicitly import conftest and its shared helper dependencies."""
+        if directory in self.fixture_cache:
+            return self.fixture_cache[directory]
+        dependencies: set[str] = set()
+
+        for parent in (directory, *directory.parents):
+            if not parent.is_relative_to(self.root):
+                break
+            conftest = parent / "conftest.py"
+            if conftest.is_file():
+                name = ".".join(conftest.relative_to(self.root).with_suffix("").parts)
+                dependencies.update(self.reaches(name))
+        self.fixture_cache[directory] = dependencies
+        return dependencies
+
 
 @cache
 def import_graph(root: Path = ROOT) -> ImportGraph:
@@ -237,11 +264,19 @@ def select_tests(paths: list[str], *, repository: Path = ROOT) -> list[str] | st
     by_path = {
         file.relative_to(root).as_posix(): name for name, file in graph.files.items()
     }
+    closures = {
+        test: graph.reaches(name) | graph.fixture_dependencies((root / test).parent)
+        for test, name in tests.items()
+    }
     for path in paths:
         if ci_path(path):
             selected.update(test for test in CI_TESTS if test in tests)
             continue
         if path in {"pyproject.toml", "pixi.toml", "pixi.lock"}:
+            return "all"
+        if path.startswith("src/wgsextract_cli/assets/"):
+            # Runtime resource readers are not yet part of the literal-input
+            # scanner. A direct test reader must not hide indirect consumers.
             return "all"
         if path.startswith("tests/") and (
             Path(path).name == "conftest.py"
@@ -255,9 +290,12 @@ def select_tests(paths: list[str], *, repository: Path = ROOT) -> list[str] | st
             for pattern, modules in inputs.items()
             if path == pattern or fnmatch.fnmatchcase(path, pattern)
             for test in modules
-            if test in tests
         }
-        selected.update(readers)
+        selected.update(readers & tests.keys())
+        reader_modules = {by_path[reader] for reader in readers if reader in by_path}
+        selected.update(
+            test for test, reached in closures.items() if reached & reader_modules
+        )
         if path in tests:
             selected.add(path)
         if path in by_path:
@@ -270,8 +308,7 @@ def select_tests(paths: list[str], *, repository: Path = ROOT) -> list[str] | st
         ):
             return "all"
     if changed_modules:
-        for test, name in tests.items():
-            reached = graph.reaches(name)
+        for test, reached in closures.items():
             if reached & graph.unsafe:
                 if (
                     "wgsextract_cli.main" in reached

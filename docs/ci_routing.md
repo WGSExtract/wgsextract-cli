@@ -53,6 +53,9 @@ Its AST import graph follows transitive imports, relative imports,
 Unresolved dynamic imports conservatively include their readers; if a CLI
 entry-point test reaches one, selection fails open to `all`. Literal module
 names used by subprocesses and patch targets also participate.
+Applicable conftest modules are implicit imports of every test. Shared helper
+imports therefore participate transitively too, including sibling test
+modules used as helpers; their literal file inputs propagate to importers.
 
 Tests are selected when they reach a changed Python module, directly change,
 or read a changed path/glob recorded by `test_inputs`. Changes to conftest,
@@ -60,6 +63,12 @@ helpers, shared fixtures, the dependency manifests/lockfile and unknown paths
 select `all`. Deleted Python modules also fail open. Eager package
 initializers can legitimately connect many tests: this selector does not
 pretend a lazy runtime dispatch is narrower than the static graph.
+The current shared fixture helper imports the typed API, whose eager package
+initializer connects almost all application modules. Those changes can
+select the whole suite even without the explicit `all` fallback. Narrowing
+that shared dependency requires a separate fixture/API refactor, not dropping
+edges from this safety graph. Packaged application assets currently fail open
+because the test-input scanner does not inspect runtime resource consumers.
 
 The `changes` job publishes `tests` and per-OS selections as JSON test-file
 arrays or `all`. Reusable OS workflows pass them through

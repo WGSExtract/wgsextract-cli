@@ -155,12 +155,52 @@ def test_914_literal_file_input_selects_reader(tmp_path: Path) -> None:
     ]
 
 
+def test_914_conftest_source_dependency_selects_fixture_users(tmp_path: Path) -> None:
+    root = repository(
+        tmp_path,
+        {
+            "src/wgsextract_cli/core/config.py": "VALUE = 1",
+            "src/wgsextract_cli/commands/extract.py": "VALUE = 1",
+            "tests/conftest.py": "from tests.helpers import isolate",
+            "tests/helpers.py": (
+                "def isolate():\n from wgsextract_cli.core import config\n"
+                "def unused():\n from wgsextract_cli.commands import extract\n"
+            ),
+            "tests/test_isolation.py": "import json",
+        },
+    )
+    assert select_tests(["src/wgsextract_cli/core/config.py"], repository=root) == [
+        "tests/test_isolation.py"
+    ]
+
+
+def test_914_assets_do_not_hide_indirect_runtime_consumers() -> None:
+    assert (
+        select_tests(["src/wgsextract_cli/assets/reference/seed_genomes.csv"]) == "all"
+    )
+
+
+def test_914_sibling_helper_file_inputs_propagate_to_importers(tmp_path: Path) -> None:
+    root = repository(
+        tmp_path,
+        {
+            "gui/mockups/serve.py": "",
+            "tests/test_reader.py": 'from pathlib import Path\nSCRIPT = Path("gui/mockups/serve.py")',
+            "tests/test_importer.py": "from test_reader import SCRIPT",
+            "tests/test_unrelated.py": "import json",
+        },
+    )
+    assert select_tests(["gui/mockups/serve.py"], repository=root) == [
+        "tests/test_importer.py",
+        "tests/test_reader.py",
+    ]
+
+
 def test_914_real_lazy_command_and_startup_tests_are_selected() -> None:
     selected = select_tests(["src/wgsextract_cli/commands/extract.py"])
     assert selected != "all"
     assert "tests/test_extract_commands.py" in selected
     assert "tests/test_cli_parser.py" in selected
-    assert "tests/test_ci_ledger.py" not in selected
 
 
 def test_914_empty_selection_skips_without_starting_pixi() -> None:
