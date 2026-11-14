@@ -961,22 +961,24 @@ class VcfSvParams(_CallerParams):
     or ``sniffles.vcf.gz``.
 
     ``caller`` picks the tool; otherwise Sniffles for ONT input (detected or
-    ``ont``) and long reads, pbsv (else Sniffles) for ``pacbio``, else delly.
+    ``ont``) and long reads, pbsv (else Sniffles) for PacBio input (detected
+    or ``pacbio``), else delly. The ``caller_reason`` metric says why.
     """
 
     COMMAND = "vcf sv"
 
     caller: str | None = param(
         None,
-        help="SV caller to use (default: sniffles for detected ONT, else delly; "
-        "pbsv/sniffles with --pacbio; sniffles with --ont or --long-read). "
+        help="SV caller to use (default: sniffles for ONT or --long-read, "
+        "pbsv/sniffles for PacBio, detected or flagged; else delly). "
         "pbsv is PacBio-only and is refused for ONT reads.",
         choices=SV_CALLERS,
     )
     pacbio: bool = param(
         False,
         help="PacBio HiFi/CCS data: use pbsv (or sniffles if pbsv is missing) "
-        "with CCS thresholds.",
+        "with CCS thresholds. Detected PacBio gets this automatically, without "
+        "CCS thresholds for subreads (CLR).",
         action="store_true",
     )
     ont: bool = param(
@@ -1296,8 +1298,8 @@ def sv(
     cancel: CancelToken | None = None,
     check: bool = True,
 ) -> CommandResult:
-    """Call SVs; output role ``structural_variants``, and the ``caller``
-    metric names the tool chosen."""
+    """Call SVs; output role ``structural_variants``, the ``caller`` metric
+    names the tool chosen and ``caller_reason`` why."""
     from wgsextract_cli.commands.vcf.structural import run_sv
 
     return execute(params, run_sv, progress=progress, cancel=cancel, check=check)

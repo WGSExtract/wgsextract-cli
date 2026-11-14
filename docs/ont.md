@@ -366,10 +366,20 @@ DeepVariant stays the default. Results on all of chr20 are under
 explicitly, and the platform-neutral `--long-read` selects Sniffles for any
 long-read data. pbsv is PacBio-only, so it is refused for ONT (detected or
 `--ont`), whether chosen by `--caller pbsv` or by `--pacbio`'s pbsv default. `--ont`/`--long-read` with `--caller delly`, and `--ont`
-with `--pacbio`, are rejected; an explicit `--caller delly` on detected ONT runs
-but warns that Delly is a short-read caller. PacBio behavior is unchanged:
-`--pacbio` still prefers pbsv (falling back to Sniffles) with CCS thresholds,
-and PacBio input without flags still uses Delly.
+with `--pacbio`, are rejected; an explicit `--caller delly` on detected ONT or
+PacBio reads runs but warns (a `short_read_sv_caller` manifest warning) that
+Delly is a short-read caller.
+
+PacBio input gets a long-read caller too, whether detected (read group
+`PL:PACBIO`) or declared with `--pacbio`: pbsv when installed, else Sniffles.
+HiFi reads get pbsv's CCS thresholds; detected subreads (CLR, every read group's
+`DS` naming `READTYPE=SUBREAD`) keep its defaults, as does an explicit
+`--caller pbsv` unless `--ccs` is added. When neither pbsv nor
+Sniffles is installed, `vcf sv` stops and names the `pacbio` Pixi environment
+that provides them, rather than silently falling back to Delly; it never
+installs them. Pass `--caller delly` to use Delly anyway. The result manifest's
+`caller` metric names the tool and `caller_reason` says why it was chosen (for
+example `detected PacBio HiFi reads`, `--pacbio`, or `--caller`).
 
 ```sh
 wgsextract vcf sv -i hg002-ont.bam --ref chr20.fa \
@@ -838,7 +848,8 @@ Expose `ONT_R104` and `--ont` for DeepVariant, preserve an unset model for
 automatic selection, and show its chemistry and architecture restrictions.
 For `vcf clair3`, expose `--model` (leave it unset for config or metadata
 selection) and hide the command on Windows. For `vcf sv`, expose `--ont`/`--long-read`, leave `--caller` unset for
-automatic Sniffles selection, and do not offer pbsv for ONT input.
+automatic Sniffles (ONT) or pbsv/Sniffles (PacBio) selection, and do not offer
+pbsv for ONT input.
 For `methylation pileup`, leave `--context`, `--5hmc` and `--combine-strands`
 unset so `config.toml` applies, hide the command on Windows, and show its
 bedMethyl and summary outputs.

@@ -83,7 +83,7 @@ from wgsextract_cli.core.samtools_commands import (
     regular_files_bytes,
     sort_memory,
 )
-from wgsextract_cli.core.sequencing import input_platform
+from wgsextract_cli.core.sequencing import input_platform, pacbio_platform
 from wgsextract_cli.core.steps import (
     Decision,
     Step,
@@ -394,7 +394,7 @@ def _single_end_pacbio(input_path: str, cram_opt: list[str]) -> str | None:
     sample = unpaired_sample(input_path, cram_opt=cram_opt)
     if not sample.records or sample.unpaired != sample.records:
         return None
-    platform = align_cmd.pacbio_platform(
+    platform = pacbio_platform(
         get_bam_header(input_path, cram_opt[1] if cram_opt else None)
     )
     logging.info(

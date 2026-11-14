@@ -244,7 +244,7 @@ SV_VCF = (
 
 
 _FAKE_CALLER = """\
-import gzip, json, sys
+import gzip, json, os, subprocess, sys
 name, args = {name!r}, sys.argv[1:]
 if args in (["--version"], ["--help"]):
     print(name, "2.0.0")
@@ -263,9 +263,14 @@ if name == state["fail"]:
     sys.exit(3)
 vcf = open({header!r}).read() + state["records"]
 if args[:1] == ["discover"]:
-    open(args[-1], "wb").write(b"svsig")
+    with open(args[-1], "wb") as svsig:
+        subprocess.run(["bgzip", "-c"], input=b"# svsig\\nX\\t0\\tchr1\\t100\\n",
+                       stdout=svsig, check=True)
 elif args[:1] == ["call"]:
-    assert open(args[-2], "rb").read() == b"svsig"
+    assert gzip.open(args[-2]).read().startswith(b"# svsig")
+    # Like pbsv, a --region call reads the signatures through their index.
+    if "--region" in args and not os.path.exists(args[-2] + ".tbi"):
+        sys.exit("Index doesn't exist")
     open(args[-1], "w").write(vcf)
 else:
     open(args[args.index("--vcf") + 1], "w").write(vcf)
@@ -335,6 +340,13 @@ def _long_read_bam(tmp_path: Path, name: str = "hifi", platform: str = "") -> st
          f"r1\t0\tchr1\t100\t60\t4M\t*\t0\t0\tACGT\tIIII{tag}"],
         tmp_path / f"{name}.bam",
     )  # fmt: skip
+
+
+def _sv(bam: str, ref: str, outdir: Path, check: bool = True, **options):
+    params = VcfSvParams(
+        input=Path(bam), ref=Path(ref), outdir=outdir, threads=1, **options
+    )
+    return api.vcf.sv(params, check=check)
 
 
 @pytest.fixture
@@ -413,13 +425,17 @@ def test_pbsv_reads_a_cram_decoded_with_the_given_reference(tmp_path, long_read)
 
 
 @needs_htslib
-def test_pacbio_falls_back_to_sniffles_without_pbsv(tmp_path, request):
+@pytest.mark.parametrize("pacbio", [True, False])
+def test_pacbio_falls_back_to_sniffles_without_pbsv(tmp_path, request, pacbio):
+    # #852: detected PacBio reads fall back the same way as --pacbio.
     bindir = only_tools(request, "samtools", "bcftools", "bgzip", "tabix")
     callers = _LongReadCallers(bindir, tools=("sniffles",))
     ref = write_fasta(tmp_path / "ref.fa", {"chr1": "ACGT" * 15_000})
     out = tmp_path / "out"
-    _run("sv", _long_read_bam(tmp_path), str(ref), out, "--pacbio")
+    bam = _platform_bam(tmp_path, "PACBIO")
+    result = _sv(bam, str(ref), out, pacbio=pacbio)
     assert [c[0] for c in callers.calls] == ["sniffles"]
+    assert "pbsv not installed" in str(result.metrics["caller_reason"])
     assert _records(out / "sniffles.vcf.gz") == [("chr1", "30000", "32000")]
 
 
@@ -534,19 +550,64 @@ def test_pbsv_is_refused_for_ont_reads(tmp_path, long_read, flags):
 
 
 @needs_htslib
-def test_pacbio_input_keeps_delly_default_and_pbsv(tmp_path, long_read):
+@pytest.mark.parametrize(
+    ("readtypes", "hifi"),
+    [
+        ([""], True),
+        (["READTYPE=SUBREAD"], False),
+        # A group without READTYPE may be HiFi: not all subreads.
+        (["READTYPE=SUBREAD", ""], True),
+    ],
+)
+def test_detected_pacbio_defaults_to_a_long_read_caller(
+    tmp_path, long_read, readtypes, hifi
+):
+    # #852: PacBio input detected from its read group still ran Delly, a
+    # short-read caller, unless --pacbio was passed.
     callers, _bam, ref = long_read
-    bam = _platform_bam(tmp_path, "PACBIO")
-    params = VcfSvParams(input=Path(bam), ref=Path(ref))
-    assert structural._select_sv_caller(params).caller == "delly"
-    _run("sv", bam, ref, tmp_path / "out", "--long-read", "--caller", "pbsv")
+    groups = [
+        f"@RG\tID:{i}\tSM:S\tPL:PACBIO" + (f"\tDS:{ds}" if ds else "")
+        for i, ds in enumerate(readtypes)
+    ]
+    bam = sam_to_bam(
+        ["@HD\tVN:1.6\tSO:coordinate", "@SQ\tSN:chr1\tLN:60000", *groups,
+         "r1\t0\tchr1\t100\t60\t4M\t*\t0\t0\tACGT\tIIII\tRG:Z:0"],
+        tmp_path / "pacbio.bam",
+    )  # fmt: skip
+    kind = "HiFi" if hifi else "CLR"
+    result = _sv(bam, ref, tmp_path / "out")
+    assert result.metrics["caller"] == "pbsv"
+    assert result.metrics["caller_reason"] == f"detected PacBio {kind} reads"
+    (out,) = [o for o in result.outputs if o.role == "structural_variants"]
+    assert _records(Path(out.path)) == [("chr1", "30000", "32000")]
+    discover, call = callers.calls
+    # contract: HiFi reads get pbsv's CCS thresholds, subreads (CLR) don't
+    assert ("--hifi" in discover, "--ccs" in call) == (hifi, hifi)
+
+    # Explicit choices still win: --long-read picks Sniffles, --caller pbsv.
+    callers.clear()
+    result = _sv(bam, ref, tmp_path / "lr", long_read=True)
+    assert result.metrics["caller"] == "sniffles"
+    callers.clear()
+    result = _sv(bam, ref, tmp_path / "pb", long_read=True, caller="pbsv")
+    assert result.metrics["caller_reason"] == "--caller"
     assert [c[:2] for c in callers.calls] == [["pbsv", "discover"], ["pbsv", "call"]]
-    callers.clear()
-    _run("sv", bam, ref, tmp_path / "lr", "--long-read")
-    assert [c[0] for c in callers.calls] == ["sniffles"]
-    callers.clear()
-    _run("sv", bam, ref, tmp_path / "pb", "--pacbio")
-    assert [c[0] for c in callers.calls] == ["pbsv", "pbsv"]
+
+
+@needs_htslib
+@pytest.mark.parametrize("pacbio", [True, False])
+def test_pacbio_without_pbsv_or_sniffles_refuses(tmp_path, request, pacbio):
+    # #852: the long-read default is checked, never installed.
+    only_tools(request, "samtools", "bcftools", "bgzip", "tabix")
+    ref = str(write_fasta(tmp_path / "ref.fa", {"chr1": "ACGT" * 15_000}))
+    bam = _platform_bam(tmp_path, "PACBIO")
+    failed = _sv(bam, ref, tmp_path / "out", check=False, pacbio=pacbio)
+    assert failed.exit_code == 3 and failed.error is not None
+    assert failed.error.kind == "missing_dependency"
+    assert "neither pbsv nor Sniffles is installed" in failed.error.message
+    assert "pacbio Pixi environment" in failed.error.message
+    assert "--caller delly" in failed.error.message
+    assert not failed.outputs
 
 
 @pytest.mark.parametrize(
@@ -566,11 +627,17 @@ def test_contradictory_long_read_flags_are_rejected(tmp_path, flags, message):
 
 
 @needs_htslib
-def test_explicit_delly_on_ont_warns(tmp_path, long_read, caplog):
-    _callers, _bam, ref = long_read
-    params = VcfSvParams(
-        input=Path(_platform_bam(tmp_path, "ONT")), ref=Path(ref), caller="delly"
+@pytest.mark.parametrize("platform", ["ONT", "PACBIO"])
+def test_explicit_delly_on_long_reads_warns(tmp_path, long_read, platform):
+    # The override stays deliberate and visible on the manifest (Delly itself
+    # can't estimate a library from one read, so the run fails afterwards).
+    callers, _bam, ref = long_read
+    bam = _platform_bam(tmp_path, platform)
+    result = _sv(bam, ref, tmp_path / "out", check=False, caller="delly")
+    assert (result.metrics["caller"], result.metrics["caller_reason"]) == (
+        "delly",
+        "--caller",
     )
-    with caplog.at_level(logging.WARNING):
-        assert structural._select_sv_caller(params).caller == "delly"
-    assert "not validated for ONT" in caplog.text
+    (warning,) = [w for w in result.warnings if w.code == "short_read_sv_caller"]
+    assert "not validated" in warning.message
+    assert callers.calls == []
