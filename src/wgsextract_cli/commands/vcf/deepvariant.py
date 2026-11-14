@@ -2,6 +2,7 @@ import contextlib
 import glob
 import hashlib
 import logging
+import math
 import os
 import platform
 import re
@@ -28,12 +29,16 @@ from wgsextract_cli.core.containers import (
     run_container,
 )
 from wgsextract_cli.core.cram_staging import (
+    cram_version,
+    indexed_slice_bytes,
     needs_cram30,
     region_intervals,
     stage_cram30,
+    staging_bytes,
 )
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
+from wgsextract_cli.core.genotype_qc import contigs_with_reads
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.native_support import is_arm64_docker_host, require_native_tool
 from wgsextract_cli.core.output_checks import warn_if_no_variants
@@ -43,14 +48,20 @@ from wgsextract_cli.core.region_selection import (
     region_items,
 )
 from wgsextract_cli.core.resource_estimates import (
+    GENOME_BASES,
     GIB,
+    HostRequirement,
     PostprocessPlan,
+    PreflightEstimate,
+    calling_hours,
+    check_host_requirement,
     dv_calling_regions,
     estimate_resources,
     plan_dv_postprocess,
     preflight_resources,
 )
 from wgsextract_cli.core.results import warn
+from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.sequencing import input_platform, refuse_mixed_platforms
 from wgsextract_cli.core.steps import Decision, Step, StepJournal, resume_policy
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
@@ -282,17 +293,129 @@ def _container_regions(region: str) -> str:
     )
 
 
-def _available_memory(setup: str | None) -> int | None:
-    """Free host RAM, capped by the Docker engine's (e.g. Docker Desktop's VM)."""
+def _docker_memory(setup: str | None) -> int | None:
+    """The Docker engine's memory (e.g. Docker Desktop's VM), when it reports it."""
+    if setup is None:
+        return None
+    engine = docker_info(setup, "{{.MemTotal}}").strip()
+    return int(engine) if engine.isdigit() and int(engine) > 0 else None
+
+
+def _available_memory(engine: int | None) -> int | None:
+    """Free host RAM, capped by the Docker ``engine``'s memory."""
     try:
         available = alignment_memory.available_memory()
     except OSError:
         return None
-    if setup is not None:
-        engine = docker_info(setup, "{{.MemTotal}}").strip()
-        if engine.isdigit() and int(engine) > 0:
-            available = min(available, int(engine))
-    return available
+    return available if engine is None else min(available, engine)
+
+
+def _selected_share(
+    reads: str, ref: str, intervals: dict[str, list[tuple[int, int]]]
+) -> float | None:
+    """The share of ``reads``' data in ``intervals``: their CRAI slices, or
+    all the BAM index's reads on each contig they touch (reads can crowd
+    into a capture region). None when the index can't say."""
+    try:
+        if cram_version(reads) is not None:
+            size = Path(reads).stat().st_size
+            selected = indexed_slice_bytes(reads, ref, intervals)
+            return None if selected is None or not size else min(1.0, selected / size)
+        if not alignment_index(reads):
+            return None
+        from wgsextract_cli.commands.info.metrics import parse_idxstats
+
+        stats, *_ = parse_idxstats(reads)
+    except (OSError, ValueError, subprocess.SubprocessError, WGSExtractError):
+        return None
+    total = sum(stat["mapped"] + stat["unmapped"] for stat in stats)
+    picked = sum(stat["mapped"] for stat in stats if stat["name"] in intervals)
+    return picked / total if total else None
+
+
+def _host_requirement(
+    estimate: PreflightEstimate | None,
+    floor: PreflightEstimate | None,
+    *,
+    input_file: str,
+    ref: str,
+    region: str | None,
+    threads: int,
+    model_type: str,
+    native: bool,
+    native_gpu: bool,
+    staged_reads: bool,
+    work: Path,
+    engine: int | None,
+) -> HostRequirement:
+    """DeepVariant's host requirement (#690): the estimate's disk (for a
+    --region, the share of the input's data it selects, else all of it)
+    beside any CRAM 3.0 copy; its RAM, and the least it can run in
+    (``floor``: one thread, a batch of 256); and its time for the bases it
+    calls on contigs with reads."""
+    lengths = read_fai_lengths(ref)
+    try:
+        regions = dv_calling_regions(lengths, region) or []
+    except (OSError, ValueError) as error:
+        logging.debug("DeepVariant's calling regions weren't sized: %s", error)
+        regions = []
+    intervals: dict[str, list[tuple[int, int]]] = {}
+    for contig, start, end in regions:
+        intervals.setdefault(contig, []).append((start, end))
+    # Without resolved intervals (no .fai), keep the whole-input bound.
+    selected = (
+        _selected_share(input_file, ref, intervals) if region and intervals else None
+    )
+    share = 1.0 if selected is None else selected
+    disk: list[tuple[str, int | None]] = []
+    memory = None
+    for row in estimate.resources if estimate else ():
+        if row.resource == "memory":
+            memory = row.estimated_bytes
+        elif row.paths:
+            needed = row.estimated_bytes
+            disk.append(
+                (row.paths[0], None if needed is None else math.ceil(needed * share))
+            )
+    if staged_reads:
+        try:
+            copy: int | None = staging_bytes(
+                input_file, ref, intervals if region else None
+            )
+        except OSError:
+            copy = None
+        disk.append((str(work), copy))
+    try:
+        with_reads = contigs_with_reads(input_file, ref)
+    except (OSError, ValueError, subprocess.SubprocessError, WGSExtractError):
+        with_reads = {}
+    called = sum(
+        end - start
+        for contig, start, end in regions
+        if not with_reads or contig in with_reads
+    )
+    caller = (
+        "deepvariant-ont"
+        if model_type == "ONT_R104"
+        else ("wgse-deepvariant-gpu" if native_gpu else "wgse-deepvariant")
+        if native
+        else "deepvariant"
+    )
+    hours = (
+        None
+        if model_type == "WES"
+        else calling_hours(caller, called or int(GENOME_BASES), threads)
+    )
+    capacity = None
+    if engine is not None:
+        capacity = min(engine, alignment_memory.total_memory())
+    least = next(
+        (r.estimated_bytes for r in floor.resources if r.resource == "memory"), None
+    ) if floor else None  # fmt: skip
+    return HostRequirement(
+        "DeepVariant", tuple(disk), memory, threads, hours,
+        memory_floor=least, memory_capacity=capacity,
+    )  # fmt: skip
 
 
 def _supports_num_partitions(
@@ -804,7 +927,8 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
         if image
         else None
     )
-    available = _available_memory(setup)
+    engine = _docker_memory(setup)
+    available = _available_memory(engine)
     # wgse-deepvariant's postprocess_variants is one process (estimate_resources).
     postprocess = (
         None
@@ -870,22 +994,51 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                 model_type, ref, reads, str(work / Path(out_vcf).name), shards, work,
                 region, checkpoint, batch_size, postprocess, int(threads),
             )  # fmt: skip
-        if not journal.dry_run and not any(journal.recorded(s) for s in STEPS):
-            preflight_resources(
-                lambda: estimate_resources(
+        if not journal.dry_run:
+            # A rerun with finished stages needs less than this: it warns.
+            fresh = not any(journal.recorded(s) for s in STEPS)
+
+            def estimate_with(
+                threads: str, batch: int, plan: PostprocessPlan | None
+            ) -> PreflightEstimate:
+                return estimate_resources(
                     "deepvariant",
                     input_paths=[input_file],
                     output_dir=outdir,
                     reference=ref,
                     threads=threads,
                     region=region,
-                    inference_batch_size=batch_size or CALL_VARIANTS_BATCH,
+                    inference_batch_size=batch,
                     deepvariant_model=model_type,
-                    postprocess_plan=postprocess,
+                    postprocess_plan=plan,
                     available_ram=available,
                     deepvariant_native=bool(native),
                 )
+
+            batch = batch_size or CALL_VARIANTS_BATCH
+            estimate = preflight_resources(
+                lambda: estimate_with(threads, batch, postprocess)
             )
+            try:
+                # The least it can run in: one thread, a batch of 256.
+                floor: PreflightEstimate | None = estimate_with(
+                    "1", min(batch, 256), None
+                )
+            except (OSError, ValueError):
+                floor = None
+            check_host_requirement(
+                _host_requirement(
+                    estimate, floor, input_file=input_file, ref=ref, region=region,
+                    threads=int(threads), model_type=model_type,
+                    native=bool(native), native_gpu=native_gpu,
+                    staged_reads=staged_reads, work=work, engine=engine,
+                ),
+                enforce=fresh and not params.no_preflight,
+                unenforced="--no-preflight" if fresh else "finished stages are kept",
+                disk_advice="Free up space, choose an --outdir on a bigger disk "
+                "or call a --region.",
+                memory_advice="Lower --batch-size or --threads.",
+            )  # fmt: skip
         recorded_image: dict[str, str | None] = {"image": local_dv}
         if native:
             recorded_image["version"] = native.version

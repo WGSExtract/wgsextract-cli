@@ -28,6 +28,7 @@ from ._shared import (
     input_param,
     memory_param,
     no_gpu_memory_check_param,
+    no_preflight_param,
     optional_input_param,
     outdir_param,
     ref_param,
@@ -286,11 +287,7 @@ class RealignParams(Params):
         "chunk. Needs a coordinate-sorted, indexed input; ignored with "
         "--keep-fastq.",
     )
-    no_preflight: bool = param(
-        False,
-        help="Skip the up-front disk space check (not recommended).",
-        action="store_true",
-    )
+    no_preflight: bool = no_preflight_param()
     restart: bool = restart_param()
     force_steps: tuple[str, ...] | None = force_steps_param(REALIGN_STEPS)
     dry_run: bool = dry_run_param()

@@ -860,7 +860,7 @@ settings and tools are unchanged.
 | `keep_fastq` | `bool` | `False` | `--keep-fastq` | Keep the FASTQs extracted from --input after alignment (default: delete them); ONT and PacBio reads are then extracted to one tagged <input stem>.fastq.gz. FASTQs passed with --r1/--r2 or reused from an earlier extraction are never deleted. |
 | `force_extract` | `bool` | `False` | `--force-extract` | Re-extract FASTQs even if a matching pair already exists next to the BAM. |
 | `chunk_size` | `str` | `'4G'` | `--chunk-size` | Realign ONT and PacBio reads in chunks of about this much of the input (K, M, G or T; 0: in one pass). Temporary files then stay chunk-sized and an interrupted run resumes at its first unfinished chunk. Needs a coordinate-sorted, indexed input; ignored with --keep-fastq. |
-| `no_preflight` | `bool` | `False` | `--no-preflight` | Skip the up-front disk space check (not recommended). |
+| `no_preflight` | `bool` | `False` | `--no-preflight` | Run despite too little disk or RAM (not recommended). |
 | `restart` | `bool` | `False` | `--force`, `--no-resume` | Rerun every step, ignoring the steps an earlier run completed. |
 | `force_steps` | `tuple[str, ...] \| None` | `None` | `--force-step` | Steps to rerun with the steps that use their outputs; None reruns none. Steps: extract, align, index. One of: `extract`, `align`, `index` |
 | `dry_run` | `bool` | `False` | `--dry-run` | Log which steps would run or be skipped, and why, and run none. |
@@ -1440,6 +1440,7 @@ Google's ULTIMA GPU image runs the stages with call_variants on the GPU.
 | `batch_size` | `int \| None` | `None` | `--batch-size` | call_variants batch size (upstream default: 1024; not Parabricks). Use 256 to lower TensorFlow peak RAM without changing models or precision; --threads controls make_examples shards, not this batch. |
 | `gpu` | `bool` | `False` | `--gpu` | NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, else Parabricks; Ultima: Google's GPU image (README). |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
+| `no_preflight` | `bool` | `False` | `--no-preflight` | Run despite too little disk or RAM (not recommended). |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 | `restart` | `bool` | `False` | `--force`, `--no-resume` | Rerun every step, ignoring the steps an earlier run completed. |
 | `force_steps` | `tuple[str, ...] \| None` | `None` | `--force-step` | Steps to rerun with the steps that use their outputs; None reruns none. Steps: stage_reads, make_examples, call_variants, postprocess_variants. One of: `stage_reads`, `make_examples`, `call_variants`, `postprocess_variants` |
@@ -1463,7 +1464,7 @@ Call with Clair3; output role `variants`.
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chr20:1-1000000) |
 | `model` | `str \| None` | `None` | `--model` | Clair3 model directory, or the name of a bundled model, matching the reads' basecaller (e.g. r1041_e82_400bps_sup_v500). Overrides config clair3_model; default: chosen from the basecaller metadata. |
 | `gpu` | `bool` | `False` | `--gpu` | Call on an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, Docker; see docs/ont.md). |
-| `no_preflight` | `bool` | `False` | `--no-preflight` | Skip the up-front disk space check (not recommended). |
+| `no_preflight` | `bool` | `False` | `--no-preflight` | Run despite too little disk or RAM (not recommended). |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 
 ### `api.vcf.phase(VcfPhaseParams)`

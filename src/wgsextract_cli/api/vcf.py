@@ -35,6 +35,7 @@ from ._shared import (
     input_param,
     memory_param,
     no_gpu_memory_check_param,
+    no_preflight_param,
     optional_input_param,
     outdir_param,
     ref_param,
@@ -1110,6 +1111,7 @@ class VcfDeepvariantParams(_CallerParams):
         action="store_true",
     )
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
+    no_preflight: bool = no_preflight_param()
     qc_min_depth: float | None = depth_param()
     restart: bool = restart_param()
     force_steps: tuple[str, ...] | None = force_steps_param(DEEPVARIANT_STEPS)
@@ -1138,11 +1140,7 @@ class VcfClair3Params(_CallerParams):
         "Docker; see docs/ont.md).",
         action="store_true",
     )
-    no_preflight: bool = param(
-        False,
-        help="Skip the up-front disk space check (not recommended).",
-        action="store_true",
-    )
+    no_preflight: bool = no_preflight_param()
     qc_min_depth: float | None = depth_param()
 
 

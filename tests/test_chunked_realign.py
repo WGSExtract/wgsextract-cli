@@ -15,6 +15,7 @@ import subprocess
 import sys
 import uuid
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 
@@ -454,31 +455,36 @@ def _kill_chunked_run(tmp_path, ont, out, die, after):
     return argv
 
 
+class _Usage(NamedTuple):
+    total: float
+    used: float
+    free: float
+
+
 @pytest.mark.skipif(platform.system() == "Windows", reason="bash PATH shims")
 @needs_tools("samtools", "minimap2")
 def test_resuming_needs_only_the_disk_space_left_to_fill(tmp_path, ont, monkeypatch):
     """#578 review: the preflight asked a resumed run for the whole run's
     space, ignoring the chunks it had kept, so a run killed late on a nearly
     full disk could not resume."""
-    from wgsextract_cli.commands import realign
+    from wgsextract_cli.core.results import CommandResult, collecting
     from wgsextract_cli.core.utils import WGSExtractError
-    from wgsextract_cli.core.warnings import GB
 
     out = tmp_path / "out"
     argv = _kill_chunked_run(tmp_path, ont, out, GROUP_SORT, 2)
     kept = sum(f.stat().st_size for f in out.rglob("*.chunks/**/*") if f.is_file())
     assert kept
-    asked = []
+    fresh = CommandResult(command="realign")
     with monkeypatch.context() as patch:
-        patch.setattr(
-            realign, "check_free_space", lambda _path, gb: asked.append(gb) or False
-        )
-        with pytest.raises(WGSExtractError, match="Insufficient free disk space"):
+        patch.setattr(shutil, "disk_usage", lambda _path: _Usage(1, 1, 0))
+        with collecting(fresh), pytest.raises(WGSExtractError, match="GiB disk on"):
             run_wgsextract("realign", *argv[:5], str(tmp_path / "fresh"), *argv[6:])
+    assert fresh.details
+    (needed,) = [d["needed_bytes"] for d in fresh.details["host_requirement"]["disk"]]
     # Too little for a fresh run, enough for the rest of this one.
-    free = asked[0] * GB - kept / 2
-    monkeypatch.setattr(shutil, "disk_usage", lambda _path: (10 * free, 0, free))
-    with pytest.raises(WGSExtractError, match="Insufficient free disk space"):
+    free = needed - kept / 2
+    monkeypatch.setattr(shutil, "disk_usage", lambda _path: _Usage(10 * free, 0, free))
+    with pytest.raises(WGSExtractError, match="GiB disk on"):
         run_wgsextract("realign", *argv[:5], str(tmp_path / "fresh"), *argv[6:])
 
     run_wgsextract("realign", *argv)
