@@ -313,7 +313,7 @@ skips this); make_examples and postprocess_variants stay on the CPU. Its RAM
 estimate is the Mac build's (#647), which covers what Linux used.
 
 Measured (#719) on a Ryzen 5 5600X with an RTX 3090, `--threads 4`, from the
-`linux-deepvariant-1` package, on HG002's 35x NovaSeq BAM (GRCh38 no-alt), chr1
+`linux-deepvariant-1` package (0.2.0), on HG002's 35x NovaSeq BAM (GRCh38 no-alt), chr1
 and chr20: 823,376 sites, 270,091 call_variants examples. Google's
 `google/deepvariant:1.10.0` image ran with 4 CPUs on the same host.
 
