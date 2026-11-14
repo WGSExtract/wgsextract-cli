@@ -160,7 +160,8 @@ Sources and their licenses:
   nonprofit organizations only, and redistribution must keep its liftOver
   README with the chains. `data_manifest.json` records those terms under
   `third_party`, and the CLI installs the README (`UCSC-liftOver-README.txt`,
-  verbatim) beside each chain it unpacks.
+  verbatim) beside each chain it unpacks. `scripts/sync_yleaf.py` packs the
+  README beside the chains in future packs; the v4.1.6 packs predate that.
 * **theytree.com**: not supported. WGS Extract doesn't fetch or redistribute
   it, because it has no known export or license
   ([#584](https://github.com/WGSExtract/wgsextract-cli/issues/584)). A tree
@@ -243,8 +244,9 @@ A valid cache works offline; an uncached offline run reports what is missing.
    The script diffs the prediction, tree, extraction/constants source against
    the recorded base and reports data changes. It creates deterministic gzip
    tarballs per build and prediction directory, a source-pinned file/archive
-   manifest (with UCSC's chain terms under `third_party`), `SHA256SUMS`, the
-   upstream GPL license and, when a pack has UCSC chains, UCSC's liftOver README.
+   manifest (with UCSC's chain terms under `third_party`), `SHA256SUMS` and the
+   upstream GPL license. A pack with UCSC chains also carries UCSC's liftOver
+   README beside them.
 3. Review/port algorithm changes, preserving original attribution. Run focused
    tests, upstream parity (below), and real male WGS parity for each build.
    Only then repeat with `--write-manifest` to update package data pins and
@@ -255,7 +257,7 @@ A valid cache works offline; an uncached offline run reports what is missing.
    ```sh
    gh release create yleaf-data-vNEXT out/yleaf-native/vNEXT/* \
      --draft --target main --title "Yleaf data vNEXT" \
-     --notes "Unmodified Yleaf tables; upstream source/tag/commit, GPL license and UCSC chain README in assets."
+     --notes "Unmodified Yleaf tables; upstream source/tag/commit and GPL license in assets; UCSC's chain README inside the packs that have chains."
    ```
 
    Check uploaded draft assets with `gh release download` and `SHA256SUMS`.

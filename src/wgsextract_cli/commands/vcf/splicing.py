@@ -149,7 +149,7 @@ def run_pharmgkb(params: VcfPharmgkbParams) -> None:
         if source:
             result = current_result()
             result.set_details({**(result.details or {}), "pharmgkb_source": source})
-        else:
+        if not (source.get("license") and source.get("retrieved")):
             warn(
                 "pharmgkb_provenance_missing",
                 f"{pharmgkb_file} records no ClinPGx licence or retrieval date; "

@@ -158,5 +158,10 @@ def _place_notices(root: Path, third_party: dict[str, Any]) -> None:
             continue
         notice = Path(__file__).with_name(terms["notice"]).read_bytes()
         target = (root / name).parent / terms["notice"]
-        if not target.is_file() or target.read_bytes() != notice:
-            target.write_bytes(notice)
+        if target.is_symlink() or not target.is_file() or target.read_bytes() != notice:
+            # Staged and renamed, so an existing symlink is replaced, not followed.
+            with tempfile.NamedTemporaryFile(
+                dir=target.parent, prefix=".notice-", delete=False
+            ) as staged:
+                staged.write(notice)
+            Path(staged.name).replace(target)

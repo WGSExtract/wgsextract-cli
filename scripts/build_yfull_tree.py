@@ -71,9 +71,9 @@ YTREE_REPO = "https://github.com/YFullTeam/YTree"
 YBROWSE_URL = "http://ybrowse.org/gbrowse2/gff/snps_hg38.csv"
 # YBrowse's grant, as in the header of its snps_hg38.vcf.gz; it names no version.
 YBROWSE_COPYRIGHT = "CC-BY-SA Thomas Krahn YSEQ (2022)."
-LICENSE = "CC-BY-4.0 tree; CC-BY-SA YBrowse positions"
 TREE_LICENSE = "CC-BY-4.0"
 POSITIONS_LICENSE = "CC-BY-SA (version not stated)"
+LICENSE = f"{TREE_LICENSE} tree; {POSITIONS_LICENSE} YBrowse positions"
 # Module id -> its reference-library folder and release archive stem.
 MODULES = {"tree": "yfull-tree", "positions": "yfull-ybrowse-positions"}
 RELEASE_URL = "https://github.com/WGSExtract/wgsextract-cli/releases/download"
@@ -491,6 +491,12 @@ def main() -> None:
         "date": source["committed"],
         "license": LICENSE,
         "source": tree_source,
+        "terms": (
+            f"YTree: {YTREE_REPO}/blob/{source['commit']}/LICENSE.md "
+            f"({TREE_LICENSE}). YBrowse positions ({YBROWSE_URL}, retrieved "
+            f'{ybrowse_date}): YBrowse\'s files state "{YBROWSE_COPYRIGHT}" with no '
+            "CC-BY-SA version."
+        ),
         "data": "modules",
         "modules": modules,
     }

@@ -360,7 +360,15 @@ def test_864_installed_ucsc_chain_has_its_licence_readme_beside_it(
     )
     root = data.ensure_data("hg38", tmp_path)
     assert not list(root.rglob("*README*"))  # no chain installed, no notice
+    # PR #902 review: an existing symlink at the notice path must be replaced,
+    # never written through.
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep")
+    (root / "t2t").mkdir()
+    (root / "t2t" / data.UCSC_README).symlink_to(victim)
     root = data.ensure_data("t2t", tmp_path)
+    assert victim.read_text() == "keep"
+    assert not (root / "t2t" / data.UCSC_README).is_symlink()
     readme = (root / "t2t" / data.UCSC_README).read_text()
     assert "redistribution of UCSC Chain Files" in " ".join(readme.split())
 
