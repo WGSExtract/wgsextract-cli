@@ -33,6 +33,9 @@ gnomAD-LR) plus the table.
 Only PASS sites with an allele frequency are kept, plus gnomAD-SV's
 multi-allelic CNVs, whose frequency is the non-reference carrier frequency
 (`CN_NONREF_FREQ`). Breakends, translocations and complex SVs are left out.
+Pooled CNV rows are retained in the installed table for provenance, but are
+not used for `SV_AF`: their non-reference **carrier** denominator and pooled
+gain/loss directions do not describe a direction-specific allele frequency.
 gnomAD-LR contributes its SV alleles of 50 bp or more (deletions,
 insertions and tandem duplications), not its tandem-repeat alleles.
 
@@ -52,15 +55,18 @@ in repeats and segmental duplications that short reads miss.
 SV calls rarely share exact breakpoints with a catalogue SV, so a call
 matches a catalogue SV by the rules truvari and SVAFotate use:
 
-- **Deletions, duplications, inversions and CNVs**: compatible types (a CNV
-  matches a deletion, duplication or CNV) and a reciprocal overlap of at
+- **Deletions, duplications and inversions**: the same event type and a reciprocal overlap of at
   least `--min-overlap` (default 0.5): the shared span divided by the longer
   of the two.
 - **Insertions**: starts at most `--max-distance` bp apart (default 500,
   truvari's default) and sizes at least `--min-size-similarity` alike
-  (shorter / longer; default 0.5) when both are known. Insertions and
-  duplications are compared this way too, since long-read callers report many
-  tandem duplications as insertions.
+  (shorter / longer; default 0.5) when both are known. Only insertion-to-insertion
+  matches are used. A nearby duplication of similar size is insufficient
+  evidence of sequence equivalence, even for sequence-resolved insertions.
+- **Nondirectional CNVs**: neither matched to DEL/DUP nor to other CNVs;
+  without direction-specific allele frequencies, their frequency is left
+  unset (`novel`). This also applies to copy-number symbolic calls such as
+  `<CN0>` recorded as `SVTYPE=CNV`; no baseline ploidy is guessed.
 - Calls are recognised from `SVTYPE` and `END`/`SVLEN` (Delly, Sniffles,
   pbsv, `vcf cnv`'s `<CN0>`... alleles), or, for sequence-resolved VCFs
   without `SVTYPE`, from the REF and ALT lengths (50 bp or more).
@@ -89,7 +95,7 @@ could look up; other records pass through unchanged:
 | `SV_POPMAX_AF` | Its highest genetic-ancestry-group frequency. |
 | `SV_AF_ID`, `SV_AF_SOURCE` | Its ID and catalogue (`gnomAD-SV_v4.1`, `gnomAD-SV_v2.1`, `gnomAD-LR_0.1`). |
 | `SV_AF_MATCH` | Match quality, 0-1: the reciprocal overlap, or for insertions the mean of breakpoint closeness and size similarity. |
-| `SV_FREQ` | `common` (AF ≥ `--common-af`, default 0.01), `low`, `rare` (AF < `--rare-af`, default 0.001) or `novel` (no match). |
+| `SV_FREQ` | `common` (AF ≥ `--common-af`, default 0.01), `low`, `rare` (AF < `--rare-af`, default 0.001) or `novel` (no eligible same-type match; nondirectional CNVs are unassessed). |
 | `SV_COMMON` | Flag: a common SV. |
 
 `sv_freq.tsv` has one row per SV with the same values. The result manifest's
@@ -98,11 +104,32 @@ fills its `sv_af` and `sv_freq` columns from the VCF, and `report` lists
 each carried PASS SV with `SV_FREQ=rare` in its "Rare structural variants"
 section, labelled "rare (AF < 0.001)".
 
-"Novel" means not in these catalogues, which is not the same as rare: many
+"Novel" means no eligible same-type match in these catalogues, which is not the same as rare: many
 novel calls are caller artefacts or SVs in repeats that short reads cannot
 resolve.
+The same-type geometric matches are population screening annotations, not
+proof of sequence-level allele equivalence, particularly for insertions
+whose sequence is unknown.
+The VCF INFO description, run log, and personal report use "no eligible
+same-type match" rather than implying absence from gnomAD. Nondirectional
+CNV comparisons are unassessed even when a pooled CNV is present in the
+catalogue; their `novel` label is not evidence of absence or rarity.
 
 ## Validation on HG002
+
+On 2026-11-14, the direction-specific matcher annotated the complete GIAB
+HG002 v5.0q SV benchmark with real bcftools and the installed gnomAD tables:
+
+| VCF | Catalogues | SVs | Matched | Common | Low | Rare | No eligible match |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| GRCh38 | gnomAD-SV v4.1 + gnomAD-LR | 46,504 | 33,107 | 29,150 | 3,007 | 950 | 13,397 |
+| GRCh37 | gnomAD-SV v2.1 | 36,051 | 5,657 | 4,810 | 197 | 650 | 30,394 |
+
+### Historical permissive matching
+
+The measurements below predate the direction-specific matching fix and used
+the former permissive CNV and INS/DUP matching rules; they are historical,
+not accuracy or match-rate claims for the current matcher.
 
 On 2026-11-10, against the GIAB HG002 v5.0q SV benchmark (SVs of 50 bp or
 more from `HG002_GRCh38_v5.0q_stvar.vcf.gz`, 46,504 calls; GRCh37 36,051)

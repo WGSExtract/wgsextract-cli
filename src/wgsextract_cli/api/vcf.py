@@ -474,9 +474,10 @@ class VcfSvFreqParams(_AnnotatorParams):
     ``sv_freq_annotated.vcf.gz``, and one row per SV in ``sv_freq.tsv``.
 
     For the SV calls of ``vcf sv`` (Delly, Sniffles, pbsv) and ``vcf cnv``,
-    or any VCF of SVs. A call matches a gnomAD SV of a compatible type by
-    reciprocal overlap (deletions, duplications, inversions, CNVs) or by
-    breakpoint distance and size similarity (insertions)."""
+    or any VCF of SVs. A call matches a gnomAD SV of the same type by
+    reciprocal overlap (deletions, duplications, inversions) or by
+    breakpoint distance and size similarity (insertions). Nondirectional
+    CNV carrier frequencies and cross-type INS/DUP matches are excluded."""
 
     COMMAND = "vcf sv-freq"
 
@@ -490,7 +491,7 @@ class VcfSvFreqParams(_AnnotatorParams):
     )
     min_overlap: float = param(
         0.5,
-        help="Minimum reciprocal overlap for DEL/DUP/INV/CNV (default 0.5).",
+        help="Minimum reciprocal overlap for same-type DEL/DUP/INV (default 0.5).",
     )
     max_distance: int = param(
         500,
