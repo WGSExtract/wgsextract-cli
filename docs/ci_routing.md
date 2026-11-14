@@ -132,6 +132,59 @@ also run both site builders and the app's site-source validator, without
 deployment permissions. The secret scan remains on **all PRs and queue groups**,
 including docs: routing must not hide a secret in prose.
 
+### Writer self-certification
+
+Run `agent-coord run --cores 4 --mem 8G --label "PR certification" -- just certify`
+on a shared Linux host, after pushing a clean PR branch and before marking ready.
+Each worktree needs its own prepared Pixi environments; certification uses
+`--no-install`, never installs dependencies. `--platform-only` and `--generic-only`
+can divide work across machines. All selected tier/shard tests run locally,
+with at most four workers. Logs and junit evidence live in `out/certify/<sha>/`.
+The status summary contains the actual hostname, executed test count, elapsed
+seconds and full log SHA-256. A new push needs new certification.
+
+The router accepts only the latest successful `local-ci/<platform>` or
+`local-ci/generic` status on the exact same-repository PR head, whose creator has
+write, maintain or admin permission. Forks, unknown permissions, failed/stale
+statuses and API errors fail closed. Status reads need `statuses: read`;
+the collaborator-permission endpoint needs repository **Metadata: read** for
+fine-grained tokens (implicitly available to `GITHUB_TOKEN`). Local posting
+needs **Commit statuses: write**, PR commenting needs **Issues: write** or
+**Pull requests: write**, and reading a private repository needs the matching
+read access. Classic `gh` authentication with `repo` works. No admin/write token
+is supplied to CI to make routing work.
+
+This is a writer attestation, not proof of execution: writers can already push
+to main, so the trust boundary is unchanged. Read-only contributors cannot
+attest away checks. The host is detected, never overridden: Linux x64 skips
+only Ubuntu tests, macOS ARM64 only `macos-latest`, Windows x64 only Windows,
+Linux ARM64 only ARM64. macOS x64 is recorded but does not cover ARM64 runners.
+Generic files are conservatively classified from static test signals and known
+pure fixtures; unknown fixtures/helpers and subprocess, tool, platform,
+permission, signal, symlink or line-ending signals remain platform-sensitive.
+Shared autouse config/cache/signal isolation is reviewed harness infrastructure.
+Uncertified PRs run generic tests once on Ubuntu; main/nightly keep their
+existing coverage. Generic certification also covers lint, strict typecheck,
+workflow/routing policy, selected docs checks and routed site validation/builds.
+
+Gitleaks, CodeQL, Install Lab, native/app/aligner builds and package/benchmark
+smoke stay on GitHub when routed. Merge groups never consume attestations:
+`required` still tests the merged result. Both gates accept certified skips
+only after routing succeeds.
+
+For macOS remotely, push the branch, then SSH to randy-mini, fetch it into a
+clean dedicated worktree with its own prepared Pixi environment, and run
+`just certify --platform-only` there. Acquire the machine's `agent-coord` lock
+first, check other owners, and reserve resources leaving **25 GiB RAM free**.
+Use that host's existing authenticated `gh` session; never forward credentials.
+The remote script verifies the pushed SHA again before posting its macOS ARM64
+status. Run Linux plus generic locally, then `gh pr ready`.
+
+Measured baseline: Linux x64 certification saves about **22 runner-minutes**,
+plus about **3 minutes** for the generic jobs (excluding kept smoke jobs).
+macOS ARM64 adds about **33 minutes**, Windows about **24**, Linux ARM64 about
+**10**; these are full-suite estimates and sparse selected PRs save less.
+
 ### Main-push prose filters
 
 CI Ubuntu, macOS, Windows and ARM64, CLI smoke, Linux aligners/DeepVariant,
@@ -165,8 +218,41 @@ Label runs cannot cancel a code-validation run. Routing, documentation, lint
 and summary label checks have distinct names. Draft-fast, native smoke and
 Pages checks use static names so skipped jobs do not expose raw name expressions.
 The landing validator scopes area checks to the selected ready run.
-Its nightly run includes the former weekly negative
-controls and pinned-release scenarios.
+Its nightly run includes the former weekly negative controls and pinned-release
+scenarios.
+
+### Main-push macOS capacity
+
+Main pushes supersede older main-push runs independently in Install Lab, GUI
+distribution, CI macOS, CLI package/benchmark smoke, macOS Aligners,
+macOS DeepVariant, GUI CI and GUI developer setup. Their concurrency groups
+separate push, PR, nightly and manual events. Nightly/manual runs keep unique
+run-ID groups and are not cancelled by pushes. Reusable workflows use literal
+workflow-specific prefixes, not the caller's `github.workflow`; tagged GUI
+distribution calls also keep unique, non-cancelling groups, including a release
+caller with a push event. Release publishing and `app_run` artifact selection
+are unchanged.
+Main-push retries (`run_attempt > 1`) also use independent run-ID groups:
+rerunning an old commit cannot cancel the newest first-attempt main push.
+
+The eight workflows previously submitted **13–14 macOS jobs per main merge**:
+CI macOS 3, smoke 2, Install Lab 2–3 (one extra if it builds the tree app),
+GUI distribution 2, and one each for Aligners, DeepVariant, GUI CI and GUI
+developer setup. A CLI-only merge outside installer/packaging paths now submits
+**5** (CI macOS plus smoke); docs-only submits the same 5. Relevant app/native
+merges still run the matching workflows. Coalescing limits each workflow's
+main-push backlog to its newest run; it does not promise a fixed saving in
+runner-minutes or a measured queue-wait target.
+
+The failure observer treats a cancelled superseded main run as obsolete:
+no retry, red-main update or flake exemption from its partial passes.
+Cancelled runs do not replace the last conclusive main failure/success used
+for PR comparisons, including an earlier failed attempt of a cancelled retry.
+A relevant newer main push or nightly success still closes that workflow's
+red-main bug. Nightly results refresh the baseline after fixes outside the push
+route; unrelated path-filtered pushes do not falsely mark it green.
+Manual/nightly retries remain independent and can report confirmed recoveries
+even when another run of their event exists.
 
 ### CLI test time and tiers
 
@@ -365,3 +451,15 @@ the validator rejects direct `actions/setup-node` steps. `gui-build.yml` can
 build an older ref, so it replaces that ref's `.github/actions` with the run's
 own before using it. `gui-dev-setup.yml` deliberately bypasses it: it tests the
 app's own bootstrap on runners without user tools.
+
+CI Ubuntu, CI macOS, CI Windows and CI Linux ARM64 keep their own triggers,
+concurrency groups and workflow names, but run the CLI suite through one
+reusable workflow, `os_tests.yml`. Its `os` input selects the installer checks,
+Windows imputation and vep-rs, and ARM64 checks; `reference: true` (Ubuntu and
+macOS) adds the hg19ToHg38 chain and hs38 reference library. ARM64 passes one
+`tier: all, shard: all` matrix entry, the `--ci-tier`/`--ci-shard` defaults, so
+it collects the same tests as before. Its jobs report as `test-ubuntu / core-1`
+on main and `ubuntu / test-ubuntu / core-1` in PR area checks; ARM64's single job is
+`native-arm64 / native`. Each job uploads `tests-<os>-<label>`. The workflow has
+no concurrency group of its own, so the OS calls in one run never cancel each
+other.

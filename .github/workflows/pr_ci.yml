@@ -21,6 +21,9 @@ jobs:
     if: ${{ !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) || github.event.label.name == 'run-install-lab' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      statuses: read
     outputs:
       cli: ${{ steps.diff.outputs.cli }}
       docs: ${{ steps.diff.outputs.docs }}
@@ -43,6 +46,12 @@ jobs:
       macos_smoke: ${{ steps.diff.outputs.macos_smoke }}
       windows_smoke: ${{ steps.diff.outputs.windows_smoke }}
       arm64_smoke: ${{ steps.diff.outputs.arm64_smoke }}
+      generic_tests: ${{ steps.diff.outputs.generic_tests }}
+      linux_x64: ${{ steps.cert.outputs.linux_x64 }}
+      linux_arm64: ${{ steps.cert.outputs.linux_arm64 }}
+      macos_arm64: ${{ steps.cert.outputs.macos_arm64 }}
+      windows_x64: ${{ steps.cert.outputs.windows_x64 }}
+      generic: ${{ steps.cert.outputs.generic }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -65,6 +74,12 @@ jobs:
           if [ "$DRAFT" = true ]; then flags+=(--draft); fi
           if [ "${FULL_SUITE:-false}" = true ]; then flags+=(--full-suite); fi
           python3 scripts/ci_changes.py --base "$BASE" --head "$HEAD" "${flags[@]}" --output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Read exact-head writer certifications
+        id: cert
+        if: github.event_name == 'pull_request' && !github.event.pull_request.draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci_certifications.py --event "$GITHUB_EVENT_PATH" --repository "$GITHUB_REPOSITORY" --output "$GITHUB_OUTPUT"
 
   draft-fast:
     name: Draft lint and fast tests
@@ -104,7 +119,7 @@ jobs:
   docs:
     name: Documentation freshness${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
     needs: changes
-    if: needs.changes.outputs.docs == 'true' && (needs.changes.outputs.docs_tests != '[]' || needs.changes.outputs.site_validation == 'true')
+    if: needs.changes.outputs.generic != 'true' && needs.changes.outputs.docs == 'true' && (needs.changes.outputs.docs_tests != '[]' || needs.changes.outputs.site_validation == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -134,7 +149,7 @@ jobs:
   python-lint:
     name: Changed Python lint${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
     needs: changes
-    if: needs.changes.outputs.python_files != '' && needs.changes.outputs.python_files != '[]'
+    if: needs.changes.outputs.generic != 'true' && needs.changes.outputs.python_files != '' && needs.changes.outputs.python_files != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -166,28 +181,30 @@ jobs:
 
   ubuntu:
     needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.ubuntu_tests != '[]' && !github.event.pull_request.draft
+    if: needs.changes.result == 'success' && !(needs.changes.outputs.linux_x64 == 'true' && needs.changes.outputs.generic == 'true') && needs.changes.outputs.ubuntu_tests != '[]' && !github.event.pull_request.draft
     uses: ./.github/workflows/ubuntu_ci.yml
     with:
       tests: ${{ needs.changes.outputs.ubuntu_tests }}
       smoke-only: ${{ needs.changes.outputs.ubuntu_smoke == 'true' }}
+      platform-certified: ${{ needs.changes.outputs.linux_x64 == 'true' }}
+      generic-certified: ${{ needs.changes.outputs.generic == 'true' }}
   macos:
     needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.macos_tests != '[]' && github.event_name != 'merge_group' && !github.event.pull_request.draft
+    if: needs.changes.result == 'success' && needs.changes.outputs.macos_arm64 != 'true' && needs.changes.outputs.macos_tests != '[]' && github.event_name != 'merge_group' && !github.event.pull_request.draft
     uses: ./.github/workflows/macos_ci.yml
     with:
       tests: ${{ needs.changes.outputs.macos_tests }}
       smoke-only: ${{ needs.changes.outputs.macos_smoke == 'true' }}
   windows:
     needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.windows_tests != '[]' && github.event_name != 'merge_group' && !github.event.pull_request.draft
+    if: needs.changes.result == 'success' && needs.changes.outputs.windows_x64 != 'true' && needs.changes.outputs.windows_tests != '[]' && github.event_name != 'merge_group' && !github.event.pull_request.draft
     uses: ./.github/workflows/windows_ci.yml
     with:
       tests: ${{ needs.changes.outputs.windows_tests }}
       smoke-only: ${{ needs.changes.outputs.windows_smoke == 'true' }}
   arm64:
     needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.arm64_tests != '[]' && github.event_name != 'merge_group' && !github.event.pull_request.draft
+    if: needs.changes.result == 'success' && needs.changes.outputs.linux_arm64 != 'true' && needs.changes.outputs.arm64_tests != '[]' && github.event_name != 'merge_group' && !github.event.pull_request.draft
     uses: ./.github/workflows/linux_arm64.yml
     with:
       tests: ${{ needs.changes.outputs.arm64_tests }}
@@ -195,7 +212,7 @@ jobs:
 
   ci-policy:
     needs: changes
-    if: needs.changes.outputs.ci == 'true'
+    if: needs.changes.outputs.ci == 'true' && needs.changes.outputs.generic != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -219,6 +236,19 @@ jobs:
     needs: changes
     if: needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
     uses: ./.github/workflows/cli_smoke.yml
+  generic:
+    needs: changes
+    if: needs.changes.outputs.generic != 'true' && needs.changes.outputs.generic_tests != '[]' && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: dev
+      - env:
+          TEST_SELECTION: ${{ needs.changes.outputs.generic_tests }}
+        run: pixi run python scripts/ci_run_tests.py --selection "$TEST_SELECTION"
+        shell: bash
   install:
     needs: changes
     if: needs.changes.outputs.install == 'true' && github.event_name != 'merge_group'
@@ -251,7 +281,7 @@ jobs:
   pages:
     name: Pages source checks
     needs: changes
-    if: needs.changes.outputs.site == 'true'
+    if: needs.changes.outputs.site == 'true' && needs.changes.outputs.generic != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -267,7 +297,7 @@ jobs:
 
   ready-gate:
     name: Ready PR area checks${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
-    needs: [changes, required, draft-fast, docs, python-lint, ci-policy, ubuntu, macos, windows, arm64, smoke, install, native-smoke, pages]
+    needs: [changes, required, draft-fast, docs, python-lint, ci-policy, generic, ubuntu, macos, windows, arm64, smoke, install, native-smoke, pages]
     if: >-
       ${{
         !cancelled() &&
@@ -298,7 +328,7 @@ jobs:
   # (more runner losses) and don't run in the queue.
   required:
     name: required${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
-    needs: [changes, draft-fast, docs, python-lint, ci-policy, ubuntu, gitleaks, native-smoke, pages]
+    needs: [changes, draft-fast, docs, python-lint, ci-policy, generic, ubuntu, gitleaks, native-smoke, pages]
     # Run after failed dependencies, but let whole-run cancellation stop this
     # gate. A cancelled dependency in an otherwise active run still fails below.
     if: ${{ !cancelled() && !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
