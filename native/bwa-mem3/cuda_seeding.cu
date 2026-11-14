@@ -136,6 +136,36 @@ private:
     PinnedBuffer<int64_t> host_rows_, host_values_;
 };
 
+// Copies `bytes` from pageable host memory to the GPU through two pinned 64 MiB buffers, the
+// CPU filling one while the other crosses PCIe: several times faster than a pageable copy.
+void upload(void *device, const void *host, size_t bytes) {
+    constexpr size_t chunk = size_t(64) << 20;
+    PinnedBuffer<uint8_t> staging(2 * chunk);
+    wgse_gpu_stream stream = nullptr;
+    wgse_gpu_event sent[2] = {};
+    check(WGSE_GPU(StreamCreateWithFlags)(&stream, WGSE_GPU(StreamNonBlocking)), "stream");
+    try {
+        for (auto &event : sent)
+            check(WGSE_GPU(EventCreateWithFlags)(&event, WGSE_GPU(EventDisableTiming)), "event");
+        for (size_t offset = 0, k = 0; offset < bytes; offset += chunk, k ^= 1) {
+            const size_t n = std::min(chunk, bytes - offset);
+            uint8_t *buffer = staging.data() + k * chunk;
+            if (offset >= 2 * chunk) check(WGSE_GPU(EventSynchronize)(sent[k]), "suffix-array upload");
+            std::copy_n(static_cast<const uint8_t *>(host) + offset, n, buffer);
+            check(WGSE_GPU(MemcpyAsync)(static_cast<uint8_t *>(device) + offset, buffer, n,
+                WGSE_GPU(MemcpyHostToDevice), stream), "suffix-array upload");
+            check(WGSE_GPU(EventRecord)(sent[k], stream), "suffix-array upload");
+        }
+        check(WGSE_GPU(StreamSynchronize)(stream), "suffix-array upload");
+    } catch (...) {
+        for (auto event : sent) if (event) (void)WGSE_GPU(EventDestroy)(event);
+        (void)WGSE_GPU(StreamDestroy)(stream);
+        throw;
+    }
+    for (auto event : sent) (void)WGSE_GPU(EventDestroy)(event);
+    (void)WGSE_GPU(StreamDestroy)(stream);
+}
+
 // As many contexts as mate rescue keeps: a worker waiting for one costs more than its 2 MiB.
 size_t sa_context_count() { return std::clamp<unsigned>(std::thread::hardware_concurrency(), 4, 16); }
 
@@ -258,10 +288,8 @@ public:
             }
             sa_ms_.reserve(entries);
             sa_ls_.reserve(entries);
-            check(WGSE_GPU(Memcpy)(sa_ms_.data(), ms, entries * sizeof(int8_t),
-                WGSE_GPU(MemcpyHostToDevice)), "suffix-array upload");
-            check(WGSE_GPU(Memcpy)(sa_ls_.data(), ls, entries * sizeof(uint32_t),
-                WGSE_GPU(MemcpyHostToDevice)), "suffix-array upload");
+            upload(sa_ms_.data(), ms, entries * sizeof(int8_t));
+            upload(sa_ls_.data(), ls, entries * sizeof(uint32_t));
             for (size_t i = 0; i < contexts; ++i)
                 sa_contexts_.push_back(std::make_unique<SaContext>(ordinal_));
             sa_free_.reserve(contexts);

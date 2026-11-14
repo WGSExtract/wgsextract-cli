@@ -114,8 +114,12 @@ public:
               SeedingLimits{size_t(batch_reads), max_length, capacity})) {
         if (sa_wanted && sa_usable) {
             std::string reason;
+            const auto start = Clock::now();
             if (device_->enable_sa(fmi->sa_ms_byte_data(), fmi->sa_ls_word_data(),
                     size_t(fmi->sa_sample_count()), int(fmi->sa_compx), fmi->count_data(), reason)) {
+                fprintf(stderr, "[wgse-bwa-mem3] GPU suffix-array lookups: %.0f MiB uploaded in %.2f s\n",
+                    double(fmi->sa_ms_byte_size_bytes() + fmi->sa_ls_word_size_bytes()) / 1048576,
+                    std::chrono::duration<double>(Clock::now() - start).count());
                 std::lock_guard<std::mutex> lock(sa_mutex);
                 sa_device = device_;
                 sa_fmi = fmi;
