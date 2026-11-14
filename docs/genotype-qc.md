@@ -87,6 +87,43 @@ workspace; nothing is measured unless you run `qc contamination`.
 
 ## After: genotype rates
 
+### Y-haplogroup VCF evidence
+
+`lineage y-haplogroup` counts only `FILTER=PASS` haploid or homozygous
+genotypes. Missing calls, heterozygotes (in either allele order), failed
+filters and unassessed positions are unknown, never ancestral or derived
+evidence. The `.fmf` report explains rejected markers and the structured
+`y_evidence_rejected` warning summarises them.
+
+VCF evidence must meet `--min-reads` using AD, DP or a reference block's
+MIN_DP; GT-only files without depth are not assigned an artificial read.
+When present, GQ must meet `--base-quality`. AD must agree with GT, and base
+majority uses all reported allele depths.
+
+A FASTA supplies reference bases, not evidence that a site was called.
+Reference inference is limited to explicit callable gVCF reference blocks
+(`END` with reference GT, adequate quality, and a block-wide FORMAT/MIN_DP
+or single-sample INFO/MIN_DP meeting the read threshold). DP/AD at a block's
+first position or its average DP does not prove interior callability. An explicit no-call
+inside a block remains unknown. `--no-ref-inference` disables block expansion
+for targeted panels.
+
+`vcf snp` and other raw bcftools caller outputs may have `FILTER=.`, meaning
+no site-filter assessment was performed. They are deliberately not treated
+as PASS. Assess caller output explicitly before Y analysis, choosing a
+threshold suitable for your data, for example:
+
+```sh
+bcftools filter --exclude 'QUAL<20' --soft-filter LowQual --mode + \
+  -Oz -o assessed.vcf.gz snps.vcf.gz
+bcftools index assessed.vcf.gz
+wgsextract lineage y-haplogroup --input assessed.vcf.gz --ref reference.fa
+```
+
+This preserves existing failed filters and marks assessed passing sites
+PASS. Genotype, depth, GQ and callable reference-block checks still apply;
+filtering does not turn absent sites or no-calls into evidence.
+
 After `microarray` writes its files, the autosomal genotypes are checked:
 
 - **Homozygosity of the CombinedKit's called genotypes.** Directly sequenced

@@ -1635,12 +1635,12 @@ or single-sample VCF/BCF. Outputs go to `yleaf/` in the output folder.
 | `build` | `str \| None` | `None` | `--build` | Override the detected reference build for this run. One of: `hg19`, `hg38`, `t2t` |
 | `tree` | `str \| None` | `None` (config `y_tree`) | `--tree` | Haplogroup tree: yfull (the pinned YFull YTree release), yfull_v10 (YFull 10.01), ftdna, isogg, or a config.toml [y_trees.<id>] tree (default: config y_tree, else yfull). |
 | `tree_file` | `Path \| None` | `None` | `--tree-file` | A Yleaf-format tree JSON to use instead of --tree, with its markers in --pos-file; QC1 backbone checks are skipped. |
-| `min_reads` | `int` | `10` | `--min-reads` | Reads needed at a marker position for it to be used. |
-| `base_quality` | `int` | `20` | `--base-quality` | Minimum base quality of a read at a marker position. |
+| `min_reads` | `int` | `10` | `--min-reads` | Reads needed at a marker; VCF requires AD, DP or callable-block MIN_DP. |
+| `base_quality` | `int` | `20` | `--base-quality` | Minimum read base quality; VCF also checks GQ when present. |
 | `base_majority` | `int` | `90` | `--base-majority` | Percentage of reads at a marker that must agree on the base. |
 | `min_score` | `float` | `0.95` | `--min-score` | Minimum QC score of a reported haplogroup prediction. |
 | `ancient` | `bool` | `False` | `--ancient` | Use ancient-DNA marker tables. |
-| `no_ref_inference` | `bool` | `False` | `--no-ref-inference` | VCF: use genotyped positions only (targeted panels); otherwise --ref is required. |
+| `no_ref_inference` | `bool` | `False` | `--no-ref-inference` | VCF: use explicit genotypes only; otherwise --ref supplies bases inside callable reference blocks, never at unassessed sites. |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 
 ### `api.lineage.y_str(YStrParams)`
