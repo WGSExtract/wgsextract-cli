@@ -288,10 +288,16 @@ def test_trio_with_same_sample_name_and_mixed_contig_names(tmp_path):
 
     def trio_vcf(name: str, contig: str, gts: tuple[str, str, str]) -> str:
         body = "".join(
-            f"{{c}}\t{pos}\ts{i}\tA\tG\t50\tPASS\t.\tGT\t{gt}\n"
+            f"{{c}}\t{pos}\ts{i}\tA\tG\t50\tPASS\t.\tGT:GQ\t{gt}:99\n"
             for i, (pos, gt) in enumerate(zip((10, 20, 30), gts, strict=True), 1)
         )
-        return _write_vcf(tmp_path / name, body, contig, sample="S")
+        return _write_vcf(
+            tmp_path / name,
+            body,
+            contig,
+            sample="S",
+            header='##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">\n',
+        )
 
     child = trio_vcf("child.vcf.gz", "chr1", ("0/1", "0/1", "1/1"))
     mom = trio_vcf("mom.vcf.gz", "1", ("0/0", "0/1", "0/1"))
