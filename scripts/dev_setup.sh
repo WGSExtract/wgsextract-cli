@@ -35,6 +35,12 @@ fail() {
 }
 
 step "Checking prerequisites"
+if [ "$(uname -s)" = "Darwin" ]; then
+    for folder in out scratch tmp; do
+        mkdir -p "$folder"
+        touch "$folder/.metadata_never_index"
+    done
+fi
 command -v git >/dev/null 2>&1 || fail "git is required: https://git-scm.com/downloads"
 if [ "$(uname -s)" = "Darwin" ] && ! xcode-select -p >/dev/null 2>&1; then
     fail "Install the Xcode Command Line Tools first: xcode-select --install"
@@ -51,7 +57,7 @@ if ! command -v pixi >/dev/null 2>&1; then
     curl -fsSL https://pixi.sh/install.sh | sh
     command -v pixi >/dev/null 2>&1 || fail "Pixi installed but isn't on PATH; open a new terminal and rerun."
 fi
-note "$(pixi --version)"
+sh "$ROOT/scripts/check_pixi_version.sh"
 
 step "Installing the default and dev environments (first run downloads a few GB)"
 pixi install --locked
