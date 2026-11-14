@@ -1490,6 +1490,21 @@ def test_838_failed_trio_alone_does_not_fail_sample_overview(tmp_path):
     assert not overview.get("error")
 
 
+def test_issue_846_failed_str_does_not_fail_sample_overview(tmp_path):
+    alignment = _touch(tmp_path / "sample.bam")
+    _manifest(
+        tmp_path,
+        "str",
+        "typing str",
+        inputs=((alignment, "alignment"),),
+        status="failed",
+    )
+    overview = pr.build_report(tmp_path, input_file=alignment)["sections"]["overview"]
+    assert overview["status"] == "not_run"
+    assert not overview.get("error")
+    assert "section_failed" not in {w["code"] for w in overview["warnings"]}
+
+
 def _overview_contamination(report: dict) -> tuple[Any, set[str]]:
     overview = report["sections"]["overview"]
     value = next(
