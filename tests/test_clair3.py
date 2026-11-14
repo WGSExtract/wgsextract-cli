@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.disk_volumes import GIB, Volumes
 from tests.fake_tools import (
     FakeClair3,
     FakeDocker,
@@ -28,6 +29,7 @@ from wgsextract_cli.cli.parser import build_parser
 from wgsextract_cli.cli.platform_support import verify_platform_support
 from wgsextract_cli.commands.vcf import clair3
 from wgsextract_cli.core.dependencies import clear_tool_caches
+from wgsextract_cli.core.resource_estimates import estimate_clair3
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
     UsageError,
@@ -685,3 +687,64 @@ def test_gpu_is_refused_where_clair3_has_no_gpu_build(monkeypatch, host, machine
     monkeypatch.setattr(platform, "machine", lambda: machine)
     with pytest.raises(UsageError, match="x86-64 Linux with an NVIDIA GPU"):
         run_wgsextract("vcf", "clair3", "--input", "reads.bam", "--gpu")
+
+
+# Clair3's temporary space (#811) ---------------------------------------------
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+def test_gpu_refuses_before_calling_when_its_tensors_wont_fit(
+    tmp_path, clair3_gpu, monkeypatch, caplog
+):
+    """#811: Clair3's GPU mode writes every full-alignment tensor beside the
+    output before predicting any (about 100 GiB for a whole genome), so a
+    disk without room is refused up front, not hours in."""
+    clair3_gpu.out.mkdir()
+    volumes = Volumes(monkeypatch)
+    volumes.free[clair3_gpu.out] = 0
+    model = make_model(tmp_path, "my_r1041_model")
+    with pytest.raises(WGSExtractError, match=r"temporary space .*--no-preflight"):
+        gpu_call(clair3_gpu, model)
+    assert clair3_gpu.clair3.runs() == []
+    assert not (clair3_gpu.out / "clair3.vcf.gz").exists()
+
+    gpu_call(clair3_gpu, model, "--no-preflight")
+    assert vcf_calls(clair3_gpu.out / "clair3.vcf.gz") == clair3_gpu.reads.calls[:1]
+    assert "Preflight disk   LOW" in caplog.text
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+def test_temp_space_is_sized_for_the_contigs_the_reads_are_on(
+    tmp_path, clair3_gpu, monkeypatch
+):
+    """#811: without --region Clair3 calls chr1-22, X and Y where the index
+    places reads, so reads on one 3 kb contig of a 103 kb reference are sized
+    for that contig, not the whole reference."""
+    reads = clair3_gpu.reads
+    ref = tmp_path / "genome.fa"
+    ref.write_text(Path(reads.ref).read_text() + ">chr2\n" + "ACGT" * 25_000 + "\n")
+    run_command(["samtools", "faidx", str(ref)])
+    clair3_gpu.out.mkdir()
+    volumes = Volumes(monkeypatch)
+    room = estimate_clair3(str(clair3_gpu.out), 10 * 3000, gpu=True).resources[0]
+    assert room.estimated_bytes
+    volumes.free[clair3_gpu.out] = room.estimated_bytes / GIB
+    run_wgsextract(
+        "vcf", "clair3", "--input", reads.bam, "--ref", str(ref), "--gpu",
+        "--outdir", str(clair3_gpu.out),
+        "--model", str(make_model(tmp_path, "my_r1041_model")),
+    )  # fmt: skip
+    assert clair3_gpu.clair3.runs()
+
+
+def test_gpu_estimate_covers_the_measured_whole_genome_and_shallow_reads(tmp_path):
+    """#811: the 43x HG002 whole genome peaked at 99.7 GiB of tensors; the
+    estimate covers it, and shallower reads (more low-quality candidates)
+    need more."""
+
+    def gib(depth: float) -> float:
+        estimate = estimate_clair3(str(tmp_path), 3_088_269_832, gpu=True, depth=depth)
+        return (estimate.resources[0].estimated_bytes or 0) / GIB
+
+    assert 99.7 < gib(43) < 1.5 * 99.7
+    assert gib(10) > 3 * gib(43)

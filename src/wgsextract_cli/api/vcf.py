@@ -1130,6 +1130,11 @@ class VcfClair3Params(_CallerParams):
         "Docker; see docs/ont.md).",
         action="store_true",
     )
+    no_preflight: bool = param(
+        False,
+        help="Skip the up-front disk space check (not recommended).",
+        action="store_true",
+    )
     qc_min_depth: float | None = depth_param()
 
 

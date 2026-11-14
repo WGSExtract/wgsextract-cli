@@ -14,8 +14,8 @@ whole-genome runtimes. See [imputation](imputation.md) for accuracy and limits.
 ## Other pipelines
 
 Native `align` (BWA/BWA-MEM2 and minimap2), `realign`, `bam sort`, `bam to-bam`,
-`bam to-cram`, and `vcf snp`/`indel`/`gatk`/`deepvariant` (CPU, every platform)
-report estimates before starting their heavy pipelines. For example:
+`bam to-cram`, `vcf snp`/`indel`/`gatk`/`deepvariant` (CPU, every platform) and
+`vcf clair3` report estimates before starting their heavy pipelines. For example:
 
 ```text
 Preflight align: estimated peak / available (GiB)
@@ -31,12 +31,14 @@ output directory is checked against its nearest existing ancestor, without
 creating it. Available RAM uses the existing native psutil API; disk space uses
 Python's native `disk_usage`, including Windows drives.
 
-`LOW` warns. Existing refusal policies are unchanged: explicitly selected
-BWA-MEM2 refuses inadequate RAM, BWA warns, auto can fall back to BWA, and
-realignment/whole-file sorting retain their existing disk guards. `--no-preflight`
-still bypasses realignment's disk refusal, not its memory guard; informational
-estimates are still printed. Realignment reports before FASTQ extraction and
-alignment reports again when the final aligner is selected.
+`LOW` warns. Some commands also refuse: explicitly selected
+BWA-MEM2 refuses inadequate RAM, BWA warns, auto can fall back to BWA,
+realignment/whole-file sorting retain their existing disk guards, and `vcf
+clair3` refuses too little disk for its temporary files. `--no-preflight`
+bypasses realignment's and Clair3's disk refusals, not realignment's memory
+guard; informational estimates are still printed. Realignment reports before
+FASTQ extraction and alignment reports again when the final aligner is
+selected.
 
 The memory estimate is the selected aligner's. On Linux, bwa-mem3 standing in
 for bwa (`--compat=bwa-mem`, chosen first since #736) needs about twice bwa's
@@ -326,7 +328,52 @@ start-up checks (about 130 s on a whole-genome CRAM) and WhatsHap phasing
 one-second samples, so the CPUs limit the speed-up.
 
 On a whole genome the GPU mode needs much more disk than the CPU mode: it
-writes every full-alignment tensor before predicting any (see below).
+writes every full-alignment tensor before predicting any (below).
+
+### Clair3's temporary space
+
+Clair3 works in a `.wgse_clair3_*` folder in the output directory. In its GPU
+mode, Clair3 2.0.5 first writes a tensor of 89 x 33 x 8 bytes (23.5 kB) for
+every full-alignment candidate (`tmp/full_alignment_output/*.npy`, 10,000 per file),
+then predicts and deletes them; the CPU mode pipes each tensor to the network.
+Clair3 has no option to stream or batch them: `--chunk_size` changes only how
+the candidates are split into files, and `--var_pct_full`/`--ref_pct_full`
+change which are called, and so the calls. The candidates are a share of the
+pileup calls, and shallower reads give more low-quality ones. Measured on the
+HG002 ONT R10.4.1 reads (`r1041_e82_400bps_sup_v400`, 4 threads, Clair3 2.0.5's
+GPU image) as the work folder's peak, sampled every 2 s:
+
+| Reads (mean depth) | Called | Peak | Per base |
+| --- | ---: | ---: | ---: |
+| chr20:10-20 Mb (43x) | 10 Mb | 314 MB | 31 B |
+| the same, subsampled to 33x / 22x / 15x | 10 Mb | 332 / 415 / 646 MB | 33 / 42 / 65 B |
+| the same, subsampled to 11x / 6x / 4x | 10 Mb | 1.05 / 1.23 / 1.05 GB | 105 / 123 / 105 B |
+| chr20:10-11 Mb (43x) | 1 Mb | 33 MB | 33 B |
+| all of chr20 (43x) | 64.4 Mb | 2.92 GB | 45 B |
+| the whole genome ([#431](https://github.com/WGSExtract/wgsextract-cli/issues/431) whole-genome run, 6 threads) | 3,088 Mb | 99.7 GiB | 35 B |
+| all of chr20 on the CPU | 64.4 Mb | 61 MB | 0.9 B |
+
+Before starting, `vcf clair3` samples the reads' mean depth over the bases they
+cover (about 200 windows of 1 kb), interpolates the bytes per base above (held
+flat beyond 6x and 43x), adds 45% (all of chr20 needed 1.44x the 10 Mb slice's
+rate) and multiplies by the bases Clair3 calls: the `--region`, or else chr1-22,
+X and Y on the contigs the index places reads on. That asks for about 131 GiB
+for a 43x whole genome, 273 GiB at 15x and 449 GiB at 10x. The CPU mode is
+budgeted at 2 bytes per base (about 6 GiB for a whole genome). The disk row
+reports it:
+
+```text
+Preflight clair3: estimated peak / available (GiB)
+Preflight disk   LOW     138.06 / 95.69 GiB at /data/hg002
+Preflight: Clair3 on the GPU stores every full-alignment tensor first: 3,088 Mb at 33x.
+```
+
+Unlike the warning-only rows of other callers, a `LOW` row refuses to start,
+since Clair3 would otherwise fail after hours of pileup calling and phasing;
+`--no-preflight` runs anyway. With too little disk, choose an `--outdir` with
+room or call a few chromosomes at a time with `--region`. On a compressing
+filesystem (btrfs with zstd), the 99.7 GiB took about 60 GB of the disk; the
+estimate doesn't count on that.
 
 ## Whole-genome ONT requirements
 
@@ -343,8 +390,8 @@ accuracy and caveats are in
 | `rtg vcfeval` of one whole-genome VCF | 4 | 1 min | 7.2 GB | |
 
 Both callers read a primary-only CRAM 3.0 copy (81.4 GB) of the realigned
-output. Clair3's temporary space isn't checked before it starts yet
-([#811](https://github.com/WGSExtract/wgsextract-cli/issues/811)). The realign
+output. `vcf clair3` checks [its temporary space](#clair3s-temporary-space)
+before it starts. The realign
 preflight budgets the output at 1.7x the input CRAM ([long-read
 disk](#long-read-disk)); this genome needed 1.79x, about 9 GB more, so leave
 some room beyond what it asks for.
