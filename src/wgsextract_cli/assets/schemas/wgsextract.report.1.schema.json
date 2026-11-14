@@ -241,6 +241,28 @@
         "value": {"type": "string"},
         "detail": {"type": ["string", "null"]},
         "gene": {"type": ["string", "null"]},
+        "pgx": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "alternatives", "phenotype_consistent", "source"],
+          "properties": {
+            "status": {"enum": ["resolved", "ambiguous", "no_call"]},
+            "phenotype_consistent": {"type": "boolean"},
+            "source": {"const": "PharmCAT"},
+            "alternatives": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["diplotype", "phenotype"],
+                "properties": {
+                  "diplotype": {"type": "string"},
+                  "phenotype": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
         "note": {"type": ["string", "null"], "description": "A caveat from the gene list, e.g. only biallelic calls are reportable."},
         "confidence": {"enum": ["high", "moderate", "low", "not_assessed"]},
         "confidence_reasons": {"type": "array", "items": {"type": "string"}},

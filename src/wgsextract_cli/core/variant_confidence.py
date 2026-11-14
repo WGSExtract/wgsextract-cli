@@ -87,6 +87,10 @@ LOW_REASONS = {
     "strand_bias": "alt reads come mostly from one strand",
     "low_qd": "variant quality is low for its depth (QD below 2)",
     "no_call_metrics": "no depth, genotype quality or allele counts to judge by",
+    "no_call": "the sample has no called genotype",
+    "reference_overlap": "conflicting records overlap the reference span",
+    "reference_gap": "the whole reference span is not covered",
+    "reference_metrics_unknown": "reference depth or genotype quality is unknown",
     "imputed": "the genotype was imputed from a reference panel (`vcf impute`), "
     "not read from the sample",
 }
@@ -309,11 +313,13 @@ def classify(
     caller: str = "unknown",
     samples: int = 1,
     contaminated: bool = False,
+    reference: bool = False,
 ) -> CallConfidence | None:
     """The confidence of ALT number ``alt`` (1-based), or None when the sample
     doesn't carry it."""
-    copies = sum(allele == str(alt) for allele in alleles)
-    if not copies:
+    copies = sum(allele == ("0" if reference else str(alt)) for allele in alleles)
+    no_call = reference and (not alleles or any(a != "0" for a in alleles))
+    if not copies and not no_call:
         return None
     zygosity = (
         "haploid" if len(alleles) == 1 else ("hom" if copies == len(alleles) else "het")
@@ -321,6 +327,8 @@ def classify(
     kind = "snv" if len(ref) == len(alt_allele) == 1 else "indel"
     low: list[str] = []
     moderate: list[str] = []
+    if no_call:
+        low.append("no_call")
 
     if filters not in {"PASS", "."}:
         low.append("filtered")
@@ -334,6 +342,9 @@ def classify(
     counts_info = info if samples == 1 else {}
     scale = 0.5 if zygosity == "haploid" else 1.0
     depth = _depth(fmt, counts_info, split)
+    minimum_depth = _number(fmt.get("MIN_DP")) if reference else None
+    if minimum_depth is not None:
+        depth = minimum_depth if depth is None else min(depth, minimum_depth)
     if depth is None:
         moderate.append("depth_unknown")
     elif depth < thresholds.min_depth * scale:
@@ -348,9 +359,13 @@ def classify(
         low.append("low_gq")
     elif gq < thresholds.high_gq:
         moderate.append("moderate_gq")
+    if reference and (depth is None or gq is None):
+        low.append("reference_metrics_unknown")
 
     fraction = _alt_fraction(alt, n_alts, fmt, counts_info, split)
-    if fraction is None:
+    if reference:
+        fraction = None
+    elif fraction is None:
         moderate.append("allele_balance_unknown")
     elif zygosity == "het":
         if not HET_LOW_FRACTION[0] <= fraction <= HET_LOW_FRACTION[1]:
@@ -378,7 +393,7 @@ def classify(
     ):
         low.append("strand_bias")
 
-    qd = _number(info.get("QD")) if caller == "gatk" else None
+    qd = _number(info.get("QD")) if caller == "gatk" and not reference else None
     if qd is not None and qd < MIN_QD:
         low.append("low_qd")
 
@@ -556,6 +571,7 @@ def label_records(
     keep_findings: bool = True,
     suppress_rare_imputed: bool = True,
     contamination: float | None = None,
+    include_reference: bool = False,
 ) -> Iterator[str | ConfidenceSummary]:
     """Label VCF text lines; yields output lines, then the summary last.
 
@@ -608,10 +624,14 @@ def label_records(
             alleles = re.split(r"[/|]", fmt.get("GT", "."))
         labels: list[str] = []
         reasons: list[str] = []
+        reference_record = include_reference and (
+            all(a in {"0", "."} for a in alleles)
+            or all(a in SYMBOLIC_REFERENCE_ALTS or a == "." for a in alts)
+        )
         for index, alt_allele in enumerate(alts, start=1):
             result = (
                 None
-                if alt_allele in SYMBOLIC_REFERENCE_ALTS
+                if alt_allele in SYMBOLIC_REFERENCE_ALTS and not reference_record
                 else classify(
                     alt=index,
                     alleles=alleles,
@@ -626,8 +646,24 @@ def label_records(
                     caller=summary.caller,
                     samples=max(len(fields) - 9, 1),
                     contaminated=contamination is not None,
+                    reference=reference_record,
                 )
             )
+            if reference_record and index > 1:
+                continue
+            if result is not None and reference_record:
+                support_reasons = info.get("PGX_REASONS", "").split("|")
+                result.reasons.extend(
+                    reason
+                    for reason in support_reasons
+                    if reason in REASONS and reason not in result.reasons
+                )
+                if any(reason in LOW_REASONS for reason in result.reasons):
+                    result.label = LOW
+                for reason in ("reference_overlap", "reference_gap"):
+                    if reason in info:
+                        result.label = LOW
+                        result.reasons.append(reason)
             if result is None:
                 labels.append(".")
                 reasons.append(".")
@@ -712,6 +748,7 @@ def label_vcf(
     keep_findings: bool = True,
     suppress_rare_imputed: bool = True,
     samples: Sequence[PathInput | None] = (),
+    include_reference: bool = False,
 ) -> ConfidenceSummary:
     """Write source_vcf's records (those matching the bcftools ``include``
     expression, within ``regions_file``) with confidence labels to out_vcf,
@@ -742,6 +779,7 @@ def label_vcf(
         keep_findings=keep_findings,
         suppress_rare_imputed=suppress_rare_imputed,
         contamination=freemix,
+        include_reference=include_reference,
     )
 
     def reader_failed() -> bool:

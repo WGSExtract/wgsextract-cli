@@ -90,6 +90,22 @@ confidence summary retains **all** imputed calls, including rare ones, as
 low-confidence evidence. Suppression from clinical findings must not remove
 that evidence and accidentally raise a diplotype's confidence.
 
+PharmCAT reference evidence is also retained in `<stem>.confidence.tsv`, with
+`PGX_STATE` distinguishing supported reference, low-quality reference, absent
+sites, explicit no-calls, gaps and overlap conflicts. Only reference genotypes
+with known depth and GQ meeting the configured minimums reach the matcher;
+`MIN_DP`, when present in a block, is the depth floor. Reference calls do not
+require ALT allele balance or variant QD. Haploid reference uses the same
+halved depth thresholds as haploid ALT.
+
+Multi-base reference fills use the extracted release's
+`pharmcat_positions.vcf.bgz` (or `.vcf`) definition REF, not a guessed span.
+Every base must have exactly one compatible reference observation and the
+same ploidy, with no gaps or overlapping ALT/no-call records. The sidecar
+keeps the worst supporting depth and GQ; an unknown metric stays unknown.
+Unsupported reference is passed as a no-call, never silently promoted to
+`0/0`. Expansion is bounded to gene regions, even for chromosome-sized blocks.
+
 Contamination applies to the whole sample, not one call: another person's
 reads can turn a homozygous site heterozygous or add an allele the sample
 doesn't carry. The estimate is read from the sample workspace, so it applies

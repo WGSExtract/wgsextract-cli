@@ -159,6 +159,50 @@ def _tsv(path: Path) -> dict[tuple[str, str], dict[str, str]]:
 
 
 @needs_htslib
+def test_843_variant_table_keeps_ambiguous_pharmcat_alternatives(
+    annotated_vcf, tmp_path
+):
+    phenotype = tmp_path / "ambiguous.phenotype.json"
+    phenotype.write_text(
+        json.dumps(
+            {
+                "geneReports": {
+                    "CYP2C19": {
+                        "recommendationDiplotypes": [
+                            {
+                                "allele1": {"name": "*1"},
+                                "allele2": {"name": allele},
+                                "phenotypes": [name],
+                            }
+                            for allele, name in (
+                                ("*1", "Normal Metabolizer"),
+                                ("*2", "Intermediate Metabolizer"),
+                            )
+                        ],
+                    }
+                }
+            }
+        )
+    )
+    out = tmp_path / "out"
+    run_wgsextract(
+        "vcf",
+        "table",
+        "--vcf-input",
+        annotated_vcf,
+        "--outdir",
+        str(out),
+        "--pharmcat-json",
+        str(phenotype),
+    )
+    gene = _tsv(out / "sample_variants.tsv")["600", "T"]
+    assert gene["pharmcat_diplotype"] == "Ambiguous: *1/*1 OR *1/*2"
+    assert "no definitive guidance" in gene["pharmcat_phenotype"]
+    assert "Normal Metabolizer" in gene["pharmcat_phenotype"]
+    assert "Intermediate Metabolizer" in gene["pharmcat_phenotype"]
+
+
+@needs_htslib
 def test_vcf_table_flattens_annotations_one_row_per_carried_allele(
     annotated_vcf, tmp_path
 ):

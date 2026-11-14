@@ -41,7 +41,7 @@ def test_an_extracted_release_in_the_library_is_found(tmp_path):
     assert pharmcat_directory(Namespace(pharmcat_dir=None), lib) == str(release)
 
 
-def test_summary_lists_called_genes_and_skips_unknown(tmp_path):
+def test_summary_lists_called_genes_and_preserves_unknown(tmp_path):
     phenotype = tmp_path / "s.phenotype.json"
     phenotype.write_text(
         json.dumps(
@@ -68,9 +68,14 @@ def test_summary_lists_called_genes_and_skips_unknown(tmp_path):
             }
         )
     )
-    assert summarize(str(phenotype)) == [
-        ("CYP2C19", "*17/*17", "Ultrarapid Metabolizer")
-    ]
+    called, unknown = summarize(str(phenotype))
+    assert (called.gene, called.diplotype, called.phenotype) == (
+        "CYP2C19",
+        "*17/*17",
+        "Ultrarapid Metabolizer",
+    )
+    assert unknown.status == "no_call"
+    assert unknown.alternatives == [{"diplotype": "Unknown/Unknown", "phenotype": "-"}]
 
 
 def test_outside_calls_merge_and_reject_a_gene_called_twice(tmp_path):
@@ -115,9 +120,18 @@ shutil.copy(args[0], here / "seen.vcf.gz")
 if (here / "exit").exists():
     sys.exit(int((here / "exit").read_text()))
 (out / f"{bf}.report.html").write_text("<html></html>")
-(out / f"{bf}.phenotype.json").write_text(json.dumps({"geneReports": {"CYP2C19": {
+if (here / "omit-phenotypes").exists():
+    sys.exit(0)
+genes = {"CYP2C19": {
     "recommendationDiplotypes": [{"allele1": {"name": "*1"}, "allele2": {
-        "name": "*17"}, "phenotypes": ["Rapid Metabolizer"]}]}}}))
+        "name": "*17"}, "phenotypes": ["Rapid Metabolizer"]}]}}
+if outside.exists():
+    for line in outside.read_text().splitlines():
+        gene, genotype = line.split("\\t")[:2]
+        a, b = genotype.split("/")
+        genes[gene] = {"recommendationDiplotypes": [
+            {"allele1": {"name": a}, "allele2": {"name": b}, "phenotypes": ["Outside call"]}]}
+(out / f"{bf}.phenotype.json").write_text(json.dumps({"geneReports": genes}))
 """
 
 REF_SEQS = {"chr1": "ACGT" * 100, "chr2": "TTGCA" * 80}
@@ -131,6 +145,10 @@ def _release(directory: Path) -> Path:
     (directory / "pharmcat.jar").write_text("")
     (directory / "pharmcat_regions.bed").write_text(
         "chr1\t100\t200\tPX=CYP2C19\nchr2\t10\t50\tPX=DPYD\n"
+    )
+    (directory / "pharmcat_positions.vcf").write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=400>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
     )
     plain = write_fasta(directory / "reference.fna", REF_SEQS)
     with open(directory / REFERENCE_FASTA, "wb") as f:
@@ -195,7 +213,7 @@ def test_pharmcat_runs_its_pipeline_on_the_gene_regions_in_its_names(
     prepared = Path(run["argv"][0])
     assert prepared.name == "prepared.vcf.gz"
     assert prepared.parent.parent == out
-    assert run["argv"][1:] == ["-o", str(out), "-bf", "HG002.hard-filtered", "-reporterHtml",
+    assert run["argv"][1:] == ["-o", str(prepared.parent / "outputs"), "-bf", "HG002.hard-filtered", "-reporterHtml",
                                "-reporterJson", "--absent-to-ref"]  # fmt: skip
     assert run["cwd"] == str(out)
     assert run["outside"] is None
@@ -213,10 +231,10 @@ def test_pharmcat_runs_its_pipeline_on_the_gene_regions_in_its_names(
     rows = [line.split("\t") for line in table if not line.startswith("#")]
     columns = rows[0]
     assert [dict(zip(columns, row, strict=True)) for row in rows[1:]] == [
-        {"chrom": "1", "pos": "150", "ref": _base(150), "alt": "T",
+        {"chrom": "chr1", "pos": "150", "ref": _base(150), "alt": "T",
          "genotype": "0/1", "zygosity": "het", "confidence": "moderate",
          "reasons": "gq_unknown", "depth": "20", "genotype_quality": "",
-         "alt_fraction": "0.500", "gene": "CYP2C19"}
+         "alt_fraction": "0.500", "gene": "CYP2C19", "PGX_STATE": ""}
     ]  # fmt: skip
     assert "CYP2C19   *1/*17" in caplog.text and "Rapid Metabolizer" in caplog.text
     assert f"PharmCAT report: {out / 'HG002.hard-filtered.report.html'}" in caplog.text
@@ -267,9 +285,10 @@ def test_issue_622_windows_report_says_cyp2d6_not_called_with_spaced_paths(
         api.VcfPharmcatParams(vcf_input=Path(vcf), pharmcat_dir=release, outdir=out)
     )
     assert (out / "my genome.phenotype.json").is_file()
-    assert json.loads((release / "run.json").read_text())["argv"][1:3] == [
+    argv = json.loads((release / "run.json").read_text())["argv"]
+    assert argv[1:3] == [
         "-o",
-        str(out),
+        str(Path(argv[0]).parent / "outputs"),
     ]
     assert "CYP2D6 not called" in caplog.text
     assert [w.details["gene"] for w in result.warnings if w.code == "no_call"] == [
@@ -317,7 +336,7 @@ def test_pharmcat_input_expands_gvcf_blocks_to_reference_positions(tmp_path):
                              str(work))  # fmt: skip
     rows = [line.split("\t") for line in _view(prepared, "-H")]
     assert [(r[1], r[3], r[4], r[9]) for r in rows] == [
-        *((str(p), _base(p), "<*>", "0/0") for p in range(95, 104)),
+        *((str(p), _base(p), ".", "./.") for p in range(101, 104)),
         ("104", _base(104), "T,<*>", "0/1"),
     ]
 
@@ -360,19 +379,187 @@ def test_pharmcat_merges_outside_calls_where_its_pipeline_looks(
 
 
 @needs_htslib
-def test_pharmcat_warns_about_outside_calls_left_from_a_previous_run(
+def test_845_stale_outside_calls_do_not_change_rerun_phenotypes_or_provenance(
     tmp_path, pharmcat_env, caplog
 ):
     release = _release(tmp_path / "pharmcat")
     vcf = _vcf(tmp_path / "s.vcf.gz", SNPS)
-    (tmp_path / "s.outside.tsv").write_text("CYP2D6\t*1/*1\n")
-    run_wgsextract("vcf", "pharmcat", "--vcf-input", vcf, "--pharmcat-dir",
-                   str(release))  # fmt: skip
-
+    outside = tmp_path / "calls.tsv"
+    outside.write_text("CYP2D6\t*1/*1\n")
+    first = api.vcf.pharmcat(
+        api.VcfPharmcatParams(
+            vcf_input=Path(vcf),
+            pharmcat_dir=release,
+            outdir=tmp_path,
+            outside_call=(outside,),
+        )
+    )
+    assert (
+        json.loads((release / "run.json").read_text())["outside"] == outside.read_text()
+    )
+    consumed = [f for f in first.inputs if f.role == "pharmcat_outside_call"]
+    assert len(consumed) == 1 and consumed[0].fingerprint
+    assert Path(consumed[0].path) == outside
+    assert "CYP2D6" in {g["gene"] for g in first.details["pharmcat_genes"]}
+    # A different input retaining the output basename must not inherit the call.
+    _vcf(tmp_path / "s.vcf.gz", SNPS.replace("0/1", "1/1"))
+    second = api.vcf.pharmcat(
+        api.VcfPharmcatParams(
+            vcf_input=Path(vcf),
+            pharmcat_dir=release,
+            outdir=tmp_path,
+        )
+    )
     run = json.loads((release / "run.json").read_text())
-    assert run["outside"] == "CYP2D6\t*1/*1\n"
-    assert "will also use the outside calls" in caplog.text
-    assert "pass them with --outside-call" not in caplog.text
+    assert run["outside"] is None
+    assert not [f for f in second.inputs if f.role == "pharmcat_outside_call"]
+    assert not [f for f in second.outputs if f.role == "pharmcat_outside_calls"]
+    assert second.metrics["pharmcat_genes_resolved"] == 1
+    assert "CYP2D6" not in {g["gene"] for g in second.details["pharmcat_genes"]}
+
+
+@needs_htslib
+def test_845_missing_new_phenotypes_cannot_publish_a_stale_outside_call_result(
+    tmp_path, pharmcat_env
+):
+    release = _release(tmp_path / "pharmcat")
+    vcf = _vcf(tmp_path / "s.vcf.gz", SNPS)
+    previous = tmp_path / "s.phenotype.json"
+    previous.write_text('{"geneReports":{"CYP2D6":{"old":true}}}')
+    old_report = tmp_path / "s.report.html"
+    old_report.write_text("previous report")
+    (release / "omit-phenotypes").write_text("")
+    with pytest.raises(WGSExtractError, match="readable phenotypes"):
+        run_wgsextract(
+            "vcf", "pharmcat", "--vcf-input", vcf, "--pharmcat-dir", str(release)
+        )
+    assert json.loads(previous.read_text())["geneReports"]["CYP2D6"]["old"]
+    assert old_report.read_text() == "previous report"
+    assert not list(tmp_path.glob(".wgse_pharmcat_*"))
+
+
+QUALITY_HEADER = (
+    '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">\n'
+    '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read depth">\n'
+)
+
+
+def _span_definition(release):
+    (release / "pharmcat_regions.bed").write_text("chr1\t100\t110\tPX=CYP2C19\n")
+    with (release / "pharmcat_positions.vcf").open("a") as stream:
+        stream.write(
+            f"chr1\t105\t.\t{_base(105)}{_base(106)}\t{_base(105)}\t.\tPASS\t.\n"
+        )
+
+
+@needs_htslib
+def test_842_weak_reference_block_keeps_low_gq_in_user_confidence(
+    tmp_path, pharmcat_env
+):
+    release = _release(tmp_path / "pharmcat")
+    _span_definition(release)
+    vcf = _vcf(
+        tmp_path / "weak.vcf.gz",
+        f"{{c}}\t100\t.\t{_base(100)}\t<NON_REF>\t.\tPASS\tEND=110\tGT:DP:GQ\t0/0:30:2\n",
+        header=QUALITY_HEADER,
+    )
+    result = api.vcf.pharmcat(
+        api.VcfPharmcatParams(
+            vcf_input=Path(vcf),
+            pharmcat_dir=release,
+            outdir=tmp_path / "out",
+        )
+    )
+    prepared = [row.split("\t") for row in _view(release / "seen.vcf.gz", "-H")]
+    assert all(row[9] == "./." for row in prepared)
+    summary = next(c for c in result.details["confidence"] if c["role"] == "pgx_calls")
+    single = next(
+        f for f in summary["findings"] if f["pos"] == 105 and len(f["ref"]) == 1
+    )
+    assert single["confidence"] == "low"
+    assert single["genotype"] == "0/0"
+    assert single["genotype_quality"] == 2
+    assert "low_gq" in single["reasons"]
+    assert single["PGX_STATE"] == "low_quality_reference"
+    assert "low_gq" in (tmp_path / "out" / "weak.confidence.tsv").read_text()
+
+
+@needs_htslib
+@pytest.mark.parametrize(
+    ("body", "genotype", "state", "gq", "depth"),
+    [
+        ("100\t110\t0/0:40:60", "0/0", "reference", 60, 40),
+        ("100\t105\t0/0:40:60|106\t110\t0/0:20:25", "0/0", "reference", 25, 20),
+        ("100\t105\t0/0:40:60|107\t110\t0/0:40:60", "./.", "reference_gap", 60, 40),
+        ("100\t110\t0/0:40:60|ALT", "./.", "overlap_conflict", 60, 40),
+        ("100\t110\t0:10:60", "0", "reference", 60, 10),
+        ("100\t110\t0/0:40:.", "./.", "low_quality_reference", None, 40),
+        ("100\t110\t./.:40:60", "./.", "explicit_no_call", 60, 40),
+        (
+            "100\t105\t0/0:40:60|106\t110\t0/0:40:.",
+            "./.",
+            "low_quality_reference",
+            None,
+            40,
+        ),
+        ("100\t110\t0/0:.:60", "./.", "low_quality_reference", 60, None),
+        (
+            "100\t105\t0/0:40:60|105\t110\t0/0:40:60",
+            "./.",
+            "overlap_conflict",
+            60,
+            40,
+        ),
+        (
+            "100\t105\t0/0:40:60|106\t110\t0:40:60",
+            "./.",
+            "overlap_conflict",
+            60,
+            40,
+        ),
+        ("100\t110\t0/0:.:.", "./.", "low_quality_reference", None, None),
+        ("", "./.", "absent", None, None),
+    ],
+)
+def test_842_missing_multibase_fill_requires_conflict_free_whole_span(
+    tmp_path, body, genotype, state, gq, depth
+):
+    release = _release(tmp_path / "pharmcat")
+    _span_definition(release)
+    lines = []
+    for block in body.split("|") if body else []:
+        if block == "ALT":
+            lines.append(
+                f"{{c}}\t106\t.\t{_base(106)}\tT\t50\tPASS\t.\tGT:DP:GQ\t0/1:40:60\n"
+            )
+        else:
+            start, end, gt = block.split("\t")
+            lines.append(
+                f"{{c}}\t{start}\t.\t{_base(int(start))}\t<NON_REF>\t.\tPASS\tEND={end}\tGT:DP:GQ\t{gt}\n"
+            )
+    vcf = _vcf(tmp_path / "span.vcf.gz", "".join(lines), header=QUALITY_HEADER)
+    work = tmp_path / "work"
+    work.mkdir()
+    prepared = prepare_input(
+        vcf, str(release), str(release / REFERENCE_FASTA), str(work)
+    )
+    rows = [r.split("\t") for r in _view(prepared, "-H")]
+    multi = next(r for r in rows if r[1] == "105" and len(r[3]) == 2)
+    assert (multi[3], multi[4], multi[9]) == (
+        _base(105) + _base(106),
+        _base(105),
+        genotype,
+    )
+    confidence = pharmcat.label_pgx_calls(vcf, str(work), api.VcfPharmcatParams())
+    finding = next(
+        f.manifest() for f in confidence.findings if f.pos == 105 and len(f.ref) == 2
+    )
+    assert finding["PGX_STATE"] == state
+    assert finding["genotype_quality"] == gq and finding["depth"] == depth
+    if genotype == "./.":
+        assert finding["confidence"] == "low"
+    else:
+        assert finding["confidence"] in {"high", "moderate"}
 
 
 @needs_htslib

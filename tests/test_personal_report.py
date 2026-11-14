@@ -829,6 +829,64 @@ def test_pharmcat_genes_take_their_weakest_labelled_call(sample):
     assert genes["CYP2D6"]["confidence"] == "high"  # Cyrius
 
 
+@pytest.mark.parametrize(
+    ("phenotypes", "status", "consistent"),
+    [
+        (["Normal Metabolizer", "Intermediate Metabolizer"], "ambiguous", False),
+        (["Normal Metabolizer", "Normal Metabolizer"], "ambiguous", True),
+        ([], "no_call", False),
+    ],
+)
+def test_843_ambiguous_pgx_is_one_gene_without_definitive_conflicting_guidance(
+    sample, phenotypes, status, consistent
+):
+    phenotype = sample / "ambiguous.phenotype.json"
+    alternatives = [
+        {"allele1": {"name": "*1"}, "allele2": {"name": allele}, "phenotypes": [name]}
+        for allele, name in zip(("*1", "*2"), phenotypes, strict=False)
+    ]
+    if not alternatives:
+        alternatives = [
+            {"allele1": {"name": "Unknown"}, "allele2": {"name": "Unknown"}}
+        ]
+    phenotype.write_text(
+        json.dumps(
+            {
+                "geneReports": {
+                    "CYP2C19": {
+                        "recommendationDiplotypes": alternatives,
+                    }
+                }
+            }
+        )
+    )
+    _manifest(
+        sample,
+        "ambiguous",
+        "vcf pharmcat",
+        inputs=((sample / "HG002.vcf.gz", "input"),),
+        outputs=((phenotype, "pharmcat_phenotypes"),),
+    )
+    report = pr.build_report(sample)
+    section = report["sections"]["pharmacogenomics"]
+    (gene,) = [f for f in section["findings"] if f["gene"] == "CYP2C19"]
+    assert gene["pgx"]["status"] == status
+    assert gene["pgx"]["phenotype_consistent"] is consistent
+    assert gene["pgx"]["source"] == "PharmCAT"
+    assert gene["evidence"]["file"] == phenotype.name
+    assert gene["evidence"]["manifest"]
+    assert gene["confidence"] == "low"
+    assert len(gene["pgx"]["alternatives"]) == len(alternatives)
+    if status == "ambiguous":
+        assert "*1/*1 OR *1/*2" in gene["value"]
+        assert "1 ambiguous gene(s)" in section["summary"]
+        assert "Ambiguous:" in pr.render_markdown(report)
+        assert "Ambiguous:" in pr.render_html(report)
+    if not consistent:
+        assert "no definitive guidance" in gene["detail"]
+    jsonschema.validate(report, pr.load_schema())
+
+
 def test_low_coverage_warning_lowers_a_haplogroup_label(sample):
     _manifest(
         sample,
