@@ -1,6 +1,7 @@
 """Local polygenic sums, with explicit missingness and research-only labels.
 
-Percentiles are withheld until score-specific ancestry calibration is available.
+Curated GRCh38 scores also get an ancestry-adjusted percentile against the
+HGDP+1KG reference (docs/pgs.md), or a reason it is withheld.
 """
 
 from __future__ import annotations

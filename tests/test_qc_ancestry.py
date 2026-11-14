@@ -139,6 +139,9 @@ def test_all_sites_vcf_and_microarray_file(tmp_path, sample):
     result = _run(sample, vcf)
     assert result.exit_code == 0, result.error
     _close_to_truth(_k7(tmp_path / "s.ancestry.tsv"), 0.05)
+    # #617: the PCA projection polygenic scores use, from every site.
+    assert result.metrics["ancestry_pca_sites_fraction"] == 1.0
+    assert "ancestry_pc1" in result.metrics
 
     raw = raw_23andme(sample, tmp_path / "kit.txt")
     # The build of a microarray file is found from its positions.

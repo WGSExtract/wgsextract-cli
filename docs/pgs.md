@@ -117,16 +117,89 @@ match rate and reason counts, build, sample, scoring-file SHA-256, licence,
 citation and research warning. `--json` prints the usual result-manifest
 document for scripts; the typed API is `api.score.pgs(api.ScorePgsParams(...))`.
 
-**Percentile unavailable: needs a score-specific reference distribution.**
-`percentile` is always null in this release. At less than `--min-match`
-(default 0.75), status is `below_match_threshold` and `pgs_low_match` warns
-that a percentile is refused. Otherwise status is
-`reference_calibration_unavailable`. Confidence is `low` or `uncalibrated`,
-never a claim of clinical validity.
+### Ancestry-adjusted percentiles
 
-The HGDP+1KG reference used by `qc ancestry` already contains reusable PCA
-loadings and training PCs. It does **not** contain the reference individuals'
-genotypes at arbitrary scoring sites or their score distributions. Building
-those distributions, scoring the same matched variants, ancestry adjustment
-and report integration are Phase 2 of issue #617, not an approximation made
-from ancestry proportions or a published population mean.
+For the curated scores on **GRCh38**, `score pgs` also places the score
+against the HGDP+1KG reference samples, adjusted for the sample's genetic
+ancestry, the way the PGS Catalog Calculator (`pgsc_calc`, its
+`pgscatalog.calc` 0.3.1 ancestry step) does:
+
+1. **The reference.** The unrelated HGDP and 1000 Genomes samples the
+   [`qc ancestry`](ancestry.md) PCA was trained on (gnomAD v3.1 HGDP+1KG, CC0)
+   were scored with the same variant rules as your sample, on pgsc_calc's own
+   HGDP+1kGP reference genotypes. That panel lacks 149 of the 3,129 samples,
+   all 28 Oceanians among them (gnomAD's sample QC), so 2,980 remain: AFR 605,
+   AMR 361, CSA 603, EAS 667, EUR 607, MID 137. There is no Oceanian
+   group. Only the scoring-file rows the reference has (the *calibration set*) count toward the calibrated score; the
+   published reference file holds those rows, their reference allele
+   frequencies, the reference samples' scores and the fitted models, not
+   genotypes or scoring files. It is the GitHub release `pgs-ref-1`
+   (38 MB), downloaded into `<library>/pgs/` the first time a
+   curated score is run, and checked against a pinned SHA-256. Each score is
+   tied to the SHA-256 of the Catalog file it was built from; if the Catalog
+   changes that file, or you supply your own, there is no percentile.
+2. **Your ancestry.** Your genotypes at the ~187,000 ancestry sites are
+   projected onto the reference's 10 principal components (the `qc ancestry`
+   PCA; `qc ancestry` reports the same `ancestry_pc1`…`ancestry_pc10`).
+3. **The adjustment** (`pgscatalog.calc`'s methods, reimplemented):
+   - **Adjusted percentile** (headline): `Z_norm2`, your score minus a mean
+     and divided by an SD that both depend on PCs 1-4, fitted jointly on the
+     reference (Khan et al. 2022, Nat Med; eMERGE GIRA), and its normal
+     percentile.
+   - `z_norm1`: only the mean adjusted (Khera et al. 2019, Circulation).
+   - **Empirical percentile**: your score's percentile among the reference
+     samples of the region you are most similar to (Mahalanobis distance on
+     PCs 1-5: AFR, AMR, CSA, EAS, EUR or MID), when that match isn't
+     low-confidence (p < 1e-10).
+
+Calibration rows your VCF has no genotype for are filled in with the mean
+dosage of the reference region you are most similar to, as pgsc_calc fills in
+missing genotypes with reference frequencies. The error this adds is about the
+square root of the imputed share of the score's variance, in SD units (on
+real HG002 and HG005 gaps, 0.05-0.17 SD); `percentile_interval` is the
+resulting 95% interval. The
+percentile is **withheld** (`percentile_status`, and a `pgs_uncalibrated`
+warning saying why) when:
+
+| `percentile_status` | Meaning |
+| :--- | :--- |
+| `calibrated` | reported (not withheld) |
+| `below_match_threshold` | under `--min-match` of the scoring rows matched |
+| `reference_calibration_unavailable` | not a curated Catalog file on GRCh38 (custom files, uncurated IDs, GRCh37) |
+| `calibration_coverage_too_low` | more than 5% of the calibrated score's variance would be filled in |
+| `ancestry_projection_unavailable` | the VCF can't give ancestry genotypes (a gVCF, or variants-only but not a whole genome) |
+| `ancestry_projection_incomplete` | under 90% of the ancestry sites have a genotype |
+| `ancestry_outside_reference` | your PCs are outside the reference samples' range (p < 1e-10) |
+
+When it is reported, `confidence` is `medium`, or `low` with a
+`pgs_ancestry_mismatch` warning when the score was developed in ancestries
+other than the reference region you are most similar to. It is never
+`high`: a percentile says where your score falls among reference genomes,
+not your risk, and a score predicts less well outside the ancestry it was
+developed in, whatever the adjustment. At less than `--min-match` (default
+0.75), `pgs_low_match` also warns, and confidence is `low`.
+
+The JSON's `ancestry_calibration` holds the calibrated score, calibration
+counts and imputed variance share, the PCs, the most similar population and
+its similarity, the empirical percentile and Z, `z_norm1`, `z_norm2` and
+`percentile_interval`. The
+manifest's metrics add `percentile` and `z_adjusted`; the TSV adds
+`z_adjusted` and `percentile_status`.
+
+**Validation** (#617, on lin-big, 2026-11-14):
+
+- **Same rules as your sample.** For 3 reference samples and all 11 scores,
+  `score pgs`'s own scorer, run on their genotypes exported as a VCF, gives
+  the reference sums to 2.7e-6 (plink2's printed precision).
+- **Same adjustment as pgscatalog.calc 0.3.1.** Given the same reference,
+  PCs and scores, `compare_ancestry` (Mahalanobis) and `pgs_adjust` agree on
+  the most similar region for every one of the 962 reference samples outside
+  the training set and the GIAB samples, on Z_norm1 and Z_norm2 within 0.0024,
+  and on the empirical percentile exactly (apart from ties within rounding).
+  pgscatalog.calc's default RandomForest picks the same region for 97%.
+- **Calibrated out of sample.** Across those 962 samples, Z_norm2 has mean
+  within ±0.3 and SD 0.82-1.10 in each region (MID: 21 samples), and 92-99%
+  fall within ±1.96.
+- **GIAB VCFs.** HG001's GIAB v4.2.1 VCF and confident BED give calibrated
+  scores within 0.18 SD of its genotypes in the reference panel, as expected
+  from its imputed share.

@@ -2,6 +2,7 @@ import csv
 import gzip
 import io
 import json
+import math
 import shutil
 import subprocess
 from dataclasses import replace
@@ -9,9 +10,11 @@ from http.client import IncompleteRead
 from pathlib import Path
 from urllib.response import addinfourl
 
+import numpy as np
 import pytest
 
 from wgsextract_cli import api
+from wgsextract_cli.core import ancestry_reference, pgs_reference
 from wgsextract_cli.core.pgs import CURATED
 from wgsextract_cli.main import main
 
@@ -531,3 +534,231 @@ def test_617_curated_ids_match_catalog_traits() -> None:
             label,
             pgs_id,
         )
+
+
+# --- Ancestry-adjusted percentiles (#617 Phase 2) ------------------------------
+
+TRAINING = 40  # reference training samples: 20 "EUR" around PC 0, 20 "AFR" at PC1 = 10
+
+
+def _calibrated_world(
+    folder: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    offset_pc: float = 0.0,
+    calibrate_rows: int = 40,
+) -> dict:
+    """A fake genome with the ancestry reference beside it (5 PCs; the
+    sample's projection is ``offset_pc`` on PC1), a 40-row scoring file at its
+    sites, and a PGS reference for that file pinned in place of the published
+    one. Its model: Z_norm2 = (calibrated score - 1) / 2 at any PCs."""
+    from tests.ancestry_helpers import build, calls_vcf
+
+    world = build(folder, [1, 0, 0, 0, 0, 0, 0])
+    npz = folder / "ancestry" / "wgsextract-ancestry-hgdp1kg-v1.npz"
+    with np.load(npz) as data:
+        arrays = {k: data[k] for k in data.files}
+    n = len(world["sites"])
+    freq = np.full(n, 0.5, dtype=np.float32)
+    # Every site's standardised genotype adds the same to PC1, so the
+    # sample's PC1 is offset_pc whatever its genotypes: z sums to the offset.
+    z = (world["genotypes"] - 1.0) / np.sqrt(0.5)
+    loadings = np.zeros((n, 5), dtype=np.float32)
+    if offset_pc:
+        loadings[:, 0] = offset_pc / z.sum()
+    rng = np.random.default_rng(3)
+    scores = rng.normal(size=(TRAINING, 5)).astype(np.float32)
+    scores[TRAINING // 2 :, 0] += 10
+    arrays.update(
+        pca_frequency=freq,
+        pca_loadings=loadings,
+        pca_scores=scores,
+        pca_population=np.array(["CEU"] * 20 + ["YRI"] * 20),
+        pca_region=np.array(["EUR"] * 20 + ["AFR"] * 20),
+    )
+    np.savez_compressed(npz, **arrays)  # type: ignore[arg-type]
+    monkeypatch.setattr(ancestry_reference, "SHA256", _sha(npz))
+
+    rows = [
+        (site, g)
+        for site, g in zip(world["sites"], world["genotypes"], strict=True)
+        if site[2] + site[3] not in ("AT", "TA", "CG", "GC")
+    ][:40]
+    scoring = folder / "score.txt"
+    with scoring.open("w") as f:
+        f.write("#genome_build=GRCh38\n#trait_reported=Synthetic\n#license=CC0-1.0\n")
+        f.write("chr_name\tchr_position\teffect_allele\tother_allele\teffect_weight\n")
+        f.writelines(f"{c}\t{p}\t{alt}\t{ref}\t0.1\n" for (c, p, ref, alt), _ in rows)
+    mask = np.zeros(40, dtype=bool)
+    mask[:calibrate_rows] = True
+    populations = {}
+    for name, rows_ in (
+        ("ALL", slice(None)),
+        ("EUR", slice(0, 20)),
+        ("AFR", slice(20, 40)),
+    ):
+        x = scores[rows_].astype(np.float64)
+        centred = x - x.mean(axis=0)
+        populations[name] = {
+            "n": len(x),
+            "location": x.mean(axis=0).tolist(),
+            "precision": np.linalg.pinv(centred.T @ centred / len(x)).tolist(),
+        }
+    training_scores = np.linspace(0.0, 3.9, TRAINING)
+    info = {
+        "version": 1,
+        "build": "GRCh38",
+        "method": "test",
+        "ancestry_reference_sha256": _sha(npz),
+        "n_popcomp": 5,
+        "n_normalization": 4,
+        "frequency_regions": ["AFR", "EUR"],
+        "populations": populations,
+        "scores": {
+            "PGS999999": {
+                "scoring_file_sha256": _sha(scoring),
+                "rows": 40,
+                "calibration_rows": calibrate_rows,
+                "model": {
+                    "regions": {
+                        r: {
+                            "n": 20,
+                            "mean": float(training_scores[s].mean()),
+                            "std": float(training_scores[s].std()),
+                        }
+                        for r, s in (("EUR", slice(0, 20)), ("AFR", slice(20, 40)))
+                    },
+                    "pc_mean": [0.0] * 4,
+                    "pc_std": [1.0] * 4,
+                    "pgs_offset": 0.0,
+                    "norm1_coef": [1.0, 0, 0, 0, 0],
+                    "norm1_resid_std": 2.0,
+                    "norm2_mu_coef": [1.0, 0, 0, 0, 0],
+                    "norm2_var_coef": [float(np.log(4.0)), 0, 0, 0, 0],
+                },
+            }
+        },
+    }
+    (folder / "pgs").mkdir()
+    reference = folder / "pgs" / pgs_reference.NAME
+    np.savez_compressed(
+        reference,
+        PGS999999_rows=np.packbits(mask),
+        PGS999999_frequency=np.full((calibrate_rows, 2), 32768, dtype=np.uint16),
+        PGS999999_scores=training_scores,
+        training_rows=np.arange(TRAINING, dtype=np.int32),
+        info=np.array(json.dumps(info)),
+    )
+    monkeypatch.setattr(pgs_reference, "SHA256", _sha(reference))
+    monkeypatch.setattr(pgs_reference, "SCORES", {_sha(scoring): "PGS999999"})
+    vcf = calls_vcf(world, folder / "sample.vcf.gz", variants_only=False)
+    expected = sum(0.1 * g for _, g in rows)
+    return {
+        "fasta": world["fasta"],
+        "vcf": vcf,
+        "scoring": scoring,
+        "expected": expected,
+        "scored": [(f"chr{c}", str(p)) for (c, p, _, _), _ in rows],
+    }
+
+
+def _sha(path: Path) -> str:
+    import hashlib
+
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _calibrated(world: dict, outdir: Path) -> object:
+    return api.score.pgs(
+        api.ScorePgsParams(
+            input=world["vcf"],
+            build="GRCh38",
+            scoring_file=world["scoring"],
+            ref=world["fasta"],
+            outdir=outdir,
+        ),
+        check=False,
+    )
+
+
+def test_617_percentile_is_adjusted_for_the_samples_ancestry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = _calibrated_world(tmp_path / "genome", monkeypatch)
+    result = _calibrated(world, tmp_path / "out")
+    assert result.exit_code == 0, result.error
+    z = (world["expected"] - 1.0) / 2.0
+    assert result.details["percentile_status"] == "calibrated"
+    assert result.details["z_adjusted"] == pytest.approx(z)
+    assert result.metrics["percentile"] == pytest.approx(
+        50 * (1 + math.erf(z / math.sqrt(2))), abs=0.05
+    )
+    calibration = result.details["ancestry_calibration"]
+    assert calibration["most_similar_population"] == "EUR"
+    assert calibration["calibration_variants_imputed"] == 0
+    assert calibration["empirical_reference_samples"] == 20
+    assert "pgs_uncalibrated" not in {w.code for w in result.warnings}
+    assert "pgs_research_only" in {w.code for w in result.warnings}
+    table = next(Path(f.path) for f in result.outputs if f.role == "pgs_table")
+    row = next(csv.DictReader(table.open(), delimiter="\t"))
+    assert row["percentile_status"] == "calibrated"
+    assert row["disclaimer"].startswith("Research use only; not a diagnosis.")
+
+
+def test_617_percentile_withheld_when_ancestry_is_outside_the_reference(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = _calibrated_world(tmp_path / "genome", monkeypatch, offset_pc=400.0)
+    result = _calibrated(world, tmp_path / "out")
+    assert result.exit_code == 0, result.error
+    assert result.details["percentile"] is None
+    assert result.details["percentile_status"] == "ancestry_outside_reference"
+    assert result.details["ancestry_calibration"]["pcs"][0] == pytest.approx(
+        400.0, rel=1e-3
+    )
+    assert "pgs_uncalibrated" in {w.code for w in result.warnings}
+
+
+def test_617_missing_reference_scored_variants_withhold_the_percentile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Calibration rows the sample lacks are imputed; too many withhold it."""
+    world = _calibrated_world(tmp_path / "genome", monkeypatch)
+    # Drop 4 of the 40 calibration sites from the sample's VCF: 10% of the
+    # calibrated score's variance is then imputed (the bound is 5%).
+    plain = tmp_path / "partial.vcf"
+    lines = subprocess.run(
+        ["bcftools", "view", str(world["vcf"])],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+    dropped = set(world["scored"][:4])
+    plain.write_text(
+        "\n".join(
+            line
+            for line in lines
+            if line.startswith("#") or tuple(line.split("\t")[:2]) not in dropped
+        )
+        + "\n"
+    )
+    world["vcf"] = plain
+    result = _calibrated(world, tmp_path / "out")
+    assert result.exit_code == 0, result.error
+    assert result.details["percentile"] is None
+    assert result.details["percentile_status"] == "calibration_coverage_too_low"
+    calibration = result.details["ancestry_calibration"]
+    assert calibration["calibration_variants_imputed"] == 4
+    assert calibration["imputed_variance_share"] == pytest.approx(0.1)
+
+
+def test_617_uncalibrated_scoring_file_never_downloads_the_reference(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def no_network(*args: object, **kwargs: object) -> bool:
+        raise AssertionError("download attempted")
+
+    monkeypatch.setattr("wgsextract_cli.core.pgs_reference.download_file", no_network)
+    result = api.score.pgs(_params(tmp_path, min_match=0.1))
+    assert result.details["percentile_status"] == "reference_calibration_unavailable"
+    assert result.details["percentile"] is None
