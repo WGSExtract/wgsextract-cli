@@ -7,7 +7,7 @@ from typing import Any
 
 from scripts.ci_failures import Observer
 from scripts.ci_github import Evidence
-from tests.test_ci_failures import ReplayGitHub, ledger_comments, recorded
+from tests.test_ci_failures import ReplayGitHub, ledger_comments, passed_job, recorded
 
 
 class InstallLabReplay(ReplayGitHub):
@@ -92,6 +92,8 @@ def test_repeated_consumer_failures_do_not_spend_the_unretried_root_budget() -> 
         for job in recorded("lost_upstream_jobs_attempt_2")["jobs"]
         if job["name"] != "app-build / Tauri (tauri-macos-arm64)"
     ]
+    root = next(job for job in api.jobs[1] if job["id"] == 131947396559)
+    api.jobs[2].append(copy.deepcopy(root))
     Observer(api).process(api.run)
     assert api.rerun_scopes == ["rerun"]
     assert 131947396559 in api.retried
@@ -121,3 +123,91 @@ def test_main_lost_dependency_does_not_quarantine_an_unrelated_pr_failure() -> N
     api.jobs[1] = [job for job in api.jobs[1] if job["id"] == 131964780747]
     assert Observer(api).process(api.run) == 0
     assert "ci-red-main" not in api.labels
+
+
+def test_cancelled_download_consumer_cannot_restart_deliberately_cancelled_run() -> (
+    None
+):
+    api = InstallLabReplay()
+    api.run["conclusion"] = "cancelled"
+    consumer = next(job for job in api.jobs[1] if job["id"] == 131964780747)
+    consumer["conclusion"] = "cancelled"
+    next(step for step in consumer["steps"] if step["conclusion"] == "failure")[
+        "conclusion"
+    ] = "cancelled"
+    Observer(api).process(api.run)
+    assert api.retried == []
+
+
+def windows_loss() -> InstallLabReplay:
+    api = InstallLabReplay()
+    jobs = {job["name"]: job for job in api.jobs[1]}
+    mac_producer = jobs["app-build / Tauri (tauri-macos-arm64)"]
+    mac_producer.update(
+        conclusion="success", steps=[{"name": "Build", "conclusion": "success"}]
+    )
+    mac_consumer = jobs["macos-app (tree)"]
+    mac_consumer["conclusion"] = "success"
+    for step in mac_consumer["steps"]:
+        if step["conclusion"] == "failure":
+            step["conclusion"] = "success"
+    producer = jobs["app-build / Tauri (tauri-windows)"]
+    producer.update(conclusion="cancelled", steps=[], runner_id=0, runner_name="")
+    consumer = jobs["windows-app (tree)"]
+    consumer["conclusion"] = "failure"
+    failed_number = next(
+        step["number"]
+        for step in consumer["steps"]
+        if step["name"] == "Get the app built from this tree"
+    )
+    for step in consumer["steps"]:
+        if step["name"] == "Get the app built from this tree":
+            step["conclusion"] = "failure"
+        elif step["number"] > failed_number and not step["name"].startswith(
+            ("Upload evidence", "Post ")
+        ):
+            step["conclusion"] = "skipped"
+    evidence = api.evidence_by_job[131964780747]
+    api.evidence_by_job[int(consumer["id"])] = Evidence(
+        failures=evidence.failures.replace("tauri-macos-arm64", "tauri-windows"),
+        log=evidence.log.replace("tauri-macos-arm64", "tauri-windows"),
+    )
+    return api
+
+
+def test_lost_windows_producer_and_app_consumer_are_recovered_together() -> None:
+    api = windows_loss()
+    Observer(api).process(api.run)
+    assert api.rerun_scopes == ["rerun"]
+    assert {131947396603, 131964780692} <= set(api.retried)
+    assert not any(issue["title"].startswith("main is red:") for issue in api.issues)
+
+
+def test_genuine_windows_judge_failure_is_not_hidden_by_lost_app_artifact() -> None:
+    api = windows_loss()
+    judge = next(job for job in api.jobs[1] if job["name"] == "windows-judge")
+    judge["conclusion"] = "failure"
+    next(
+        step for step in judge["steps"] if step["name"] == "Judge the Windows evidence"
+    )["conclusion"] = "failure"
+    api.evidence_by_job[int(judge["id"])] = Evidence(
+        failures="Process completed with exit code 1.",
+        log="FAIL workload.help: installed CLI returned invalid output",
+    )
+    Observer(api).process(api.run)
+    assert api.retried == []
+
+
+def test_carried_forward_success_is_not_new_recovery_evidence() -> None:
+    api = ReplayGitHub()
+    api.run.update(run_attempt=2, conclusion="success")
+    passed = passed_job()
+    passed.update(id=passed["id"] + 1, run_attempt=2)
+    api.jobs[2] = [passed]
+    Observer(api).process(api.run)
+    bug = api.issues[0]
+    api.api("PATCH", f"issues/{bug['number']}", {"state": "closed"})
+    api.run["run_attempt"] = 3
+    api.jobs[3] = [copy.deepcopy(passed)]
+    Observer(api).process(api.run)
+    assert bug["state"] == "closed"

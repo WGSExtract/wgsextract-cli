@@ -126,6 +126,7 @@ def classify_lost_dependencies(failures: list[Failure]) -> None:
     for failure in failures:
         if (
             failure.classification != "test failure"
+            or failure.conclusion != "failure"
             or not failure.missing_artifacts
             or not all(artifact in producers for artifact in failure.missing_artifacts)
         ):

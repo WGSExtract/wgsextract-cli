@@ -300,7 +300,7 @@ def test_lost_before_first_step_is_retried_once_and_audited() -> None:
     Observer(api).process(api.run)
     assert api.retried == [job["id"]]
     api.run["run_attempt"] = 2
-    api.jobs[2] = [job]
+    api.jobs[2] = [dict(job, id=job["id"] + 1, run_attempt=2)]
     Observer(api).process(api.run)
     assert api.retried == [job["id"]]
 
@@ -356,7 +356,8 @@ def test_mirror_outage_has_a_finite_retry_budget() -> None:
     api.evidence_text = ""
     for attempt in (1, 2, 3):
         api.run["run_attempt"] = attempt
-        api.jobs[attempt] = [recorded("test_failure")]
+        job = recorded("test_failure")
+        api.jobs[attempt] = [dict(job, id=job["id"] + attempt, run_attempt=attempt)]
         Observer(api).process(api.run)
     assert len(api.retried) == 2
     assert "mirror/network" in ledger_comments(api)[0]

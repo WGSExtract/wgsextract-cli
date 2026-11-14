@@ -22,6 +22,7 @@ failures and are not automatically retried.
 - Deliberate cancellations after steps are left alone.
 - Budgets count executions of each job across attempts. A single current-attempt
   job is retried directly; multiple failed jobs use one failed-jobs request.
+  A carried-forward entry with the same job ID is not a new execution or pass.
   Multiple cancelled jobs (or an older cancelled job left by a manual job-only
   retry) require a whole-run retry: GitHub rejects old job IDs and the
   failed-jobs endpoint does not guarantee retrying cancellations. This rare
@@ -38,6 +39,10 @@ failures and are not automatically retried.
   producer's one-retry budget. Repeated consumer-only failures do not spend
   that root budget. Unrelated failures still block automatic retries. This
   classification also prevents false red-main bugs/quarantine.
+- Windows evidence judging omits a missing app evidence set only when the app
+  job already failed/cancelled. Available app evidence, the regular Windows
+  installer evidence and sabotage evidence still go through the unchanged
+  oracle/mutation checks; a missing required set still fails judging.
 - Before retrying, the script verifies that this is the latest run and attempt
   for the workflow, event, branch **and head repository**. Fork branch names
   cannot accidentally supersede another repository's run.
