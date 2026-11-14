@@ -971,7 +971,8 @@ class VcfSvParams(_CallerParams):
     pacbio: bool = param(
         False,
         help="PacBio HiFi/CCS data: use pbsv (or sniffles if pbsv is missing) "
-        "with CCS thresholds (detected PacBio input selects this automatically).",
+        "with CCS thresholds. Detected PacBio gets this automatically, without "
+        "CCS thresholds for subreads (CLR).",
         action="store_true",
     )
     ont: bool = param(

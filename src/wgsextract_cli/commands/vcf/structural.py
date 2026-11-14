@@ -29,6 +29,7 @@ from wgsextract_cli.core.sequencing import (
 )
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import (
+    MissingDependencyError,
     UsageError,
     WGSExtractError,
     popen,
@@ -381,7 +382,7 @@ def _pacbio_caller(source: str) -> tuple[str, str]:
     env = f"the {PIXI_TOOL_ENVS['sniffles']} Pixi environment"
     if install := pixi_install_command("sniffles"):
         env += f"; install it with: {install}"
-    raise WGSExtractError(
+    raise MissingDependencyError(
         "PacBio reads need a long-read SV caller, but neither pbsv nor Sniffles "
         f"is installed (both come in {env}). Pass --caller delly to use the "
         "short-read caller anyway."

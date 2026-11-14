@@ -551,18 +551,27 @@ def test_pbsv_is_refused_for_ont_reads(tmp_path, long_read, flags):
 
 @needs_htslib
 @pytest.mark.parametrize(
-    ("readtype", "hifi"), [("", True), ("READTYPE=SUBREAD", False)]
+    ("readtypes", "hifi"),
+    [
+        ([""], True),
+        (["READTYPE=SUBREAD"], False),
+        # A group without READTYPE may be HiFi: not all subreads.
+        (["READTYPE=SUBREAD", ""], True),
+    ],
 )
 def test_detected_pacbio_defaults_to_a_long_read_caller(
-    tmp_path, long_read, readtype, hifi
+    tmp_path, long_read, readtypes, hifi
 ):
     # #852: PacBio input detected from its read group still ran Delly, a
     # short-read caller, unless --pacbio was passed.
     callers, _bam, ref = long_read
-    rg = "@RG\tID:1\tSM:S\tPL:PACBIO" + (f"\tDS:{readtype}" if readtype else "")
+    groups = [
+        f"@RG\tID:{i}\tSM:S\tPL:PACBIO" + (f"\tDS:{ds}" if ds else "")
+        for i, ds in enumerate(readtypes)
+    ]
     bam = sam_to_bam(
-        ["@HD\tVN:1.6\tSO:coordinate", "@SQ\tSN:chr1\tLN:60000", rg,
-         "r1\t0\tchr1\t100\t60\t4M\t*\t0\t0\tACGT\tIIII\tRG:Z:1"],
+        ["@HD\tVN:1.6\tSO:coordinate", "@SQ\tSN:chr1\tLN:60000", *groups,
+         "r1\t0\tchr1\t100\t60\t4M\t*\t0\t0\tACGT\tIIII\tRG:Z:0"],
         tmp_path / "pacbio.bam",
     )  # fmt: skip
     kind = "HiFi" if hifi else "CLR"
@@ -593,7 +602,8 @@ def test_pacbio_without_pbsv_or_sniffles_refuses(tmp_path, request, pacbio):
     ref = str(write_fasta(tmp_path / "ref.fa", {"chr1": "ACGT" * 15_000}))
     bam = _platform_bam(tmp_path, "PACBIO")
     failed = _sv(bam, ref, tmp_path / "out", check=False, pacbio=pacbio)
-    assert failed.exit_code and failed.error is not None
+    assert failed.exit_code == 3 and failed.error is not None
+    assert failed.error.kind == "missing_dependency"
     assert "neither pbsv nor Sniffles is installed" in failed.error.message
     assert "pacbio Pixi environment" in failed.error.message
     assert "--caller delly" in failed.error.message
