@@ -104,6 +104,11 @@ coverage, X0-like/discordant dosage, Y-only extracts and unsupported assemblies
 (including T2T) may remain `Unknown`. No supporting-marker or clinical accuracy
 claim is made.
 
+An unavailable measurement (for example, a missing index or CRAM reference)
+is not persisted as observed evidence. It is retried on the next call; a
+cached `info` result with that failure is also recomputed after prerequisites
+are restored.
+
 An `Unknown` call **refuses sex-dependent bcftools ploidy**, rather than assuming
 female X/Y ploidy. Declare sex with `wgsextract sample set --input FILE --sex
 Male` (or `Female`), or explicitly choose numeric `--ploidy` or a

@@ -61,6 +61,7 @@ from .metrics import (
     MIN_LONG_READ_MAPPED_PCT,
     MIN_LONG_READ_N50,
     SEX_INFERENCE_VERSION,
+    SEX_MEASUREMENT_UNAVAILABLE,
     IdxStat,
     SexCall,
     contig_key,
@@ -112,6 +113,13 @@ def _load_cache(path: str, signature: dict[str, int]) -> dict[str, Any]:
         return {}
     if not isinstance(data, dict) or data.get("input_signature") != signature:
         logging.debug(f"Ignoring stale cache {path} (input changed or old format)")
+        return {}
+    call = data.get("sex_call")
+    if (
+        isinstance(call, list)
+        and len(call) == 3
+        and call[1] == SEX_MEASUREMENT_UNAVAILABLE
+    ):
         return {}
     logging.debug(f"Cache file found: {path}")
     return data

@@ -8,10 +8,14 @@ from tests.htslib_helpers import needs_htslib, run_wgsextract, vcf_calls
 from tests.sex_fixtures import sex_bam
 from tests.test_sample_ploidy import _snp_bam
 from wgsextract_cli import api
-from wgsextract_cli.commands.info.metrics import infer_sex_call, parse_idxstats
+from wgsextract_cli.commands.info.metrics import (
+    infer_sex_call,
+    parse_idxstats,
+    sample_sex,
+)
 from wgsextract_cli.core.results import CommandResult, collecting
 from wgsextract_cli.core.sample_workspace import SampleWorkspace
-from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 pytestmark = needs_htslib
 
@@ -118,3 +122,24 @@ def test_issue_856_info_preserves_observed_and_declared_sex(tmp_path: Path) -> N
     assert result.metrics["declared_sex"] == "Female"
     assert result.details is not None and result.details["sex_call"][0] == "Male"
     assert SampleWorkspace(tmp_path).overrides(bam)["sex"] == "Female"
+
+
+def test_issue_856_unknown_measurement_recovers_after_index_restored(
+    tmp_path: Path,
+) -> None:
+    bam = sex_bam(tmp_path / "S.bam")
+    run_wgsextract("sample", "set", "--input", bam, "--platform", "illumina")
+    Path(bam + ".bai").unlink()
+    first = api.info.info(
+        api.InfoParams(input=Path(bam), detailed=True, outdir=tmp_path)
+    )
+    assert first.metrics["sex"] == "Unknown"
+    assert SampleWorkspace(tmp_path).detected("sex", bam) is None
+    run_command(["samtools", "index", bam])
+    assert sample_sex(bam) == "Male"
+    second = api.info.info(
+        api.InfoParams(input=Path(bam), detailed=True, outdir=tmp_path)
+    )
+    assert second.metrics["sex"] == "Male"
+    observed = SampleWorkspace(tmp_path).detected("sex", bam)
+    assert observed is not None and observed.confidence == "medium"

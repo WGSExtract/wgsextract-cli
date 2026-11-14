@@ -356,6 +356,7 @@ def load_n_counts(ref_path: str | None) -> dict[str, int]:
 # Stored with a cached "gender" so caches made by an older infer_sex are
 # recomputed rather than trusted; bump it in sample_workspace.FACTS.
 SEX_INFERENCE_VERSION = sample_workspace.FACTS["sex"].version
+SEX_MEASUREMENT_UNAVAILABLE = "non-PAR measurement unavailable"
 
 
 class SexCall(NamedTuple):
@@ -392,7 +393,7 @@ def infer_sex_call(
         depths = sampled_depth(alignment, contigs, reference=reference)
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
         logging.warning(f"Could not measure sex-chromosome depth: {e}")
-        return unknown
+        return SexCall("Unknown", SEX_MEASUREMENT_UNAVAILABLE, "low")
     autosomes = [depths[c] for c in ("7", "19") if c in depths]
     if not autosomes or "X" not in depths or "Y" not in depths:
         return unknown
@@ -426,9 +427,14 @@ def record_sex(input_path: str, call: SexCall) -> None:
             sex_method=call.method,
             sex_confidence=call.confidence,
         )
-        sample_workspace.record(
-            "sex", input_path, call.sex, method=call.method, confidence=call.confidence
-        )
+        if call.method != SEX_MEASUREMENT_UNAVAILABLE:
+            sample_workspace.record(
+                "sex",
+                input_path,
+                call.sex,
+                method=call.method,
+                confidence=call.confidence,
+            )
 
 
 def cached_info(
@@ -467,8 +473,9 @@ def sample_sex(
     input_path: str, outdir: str | None = None, *, reference: str | None = None
 ) -> str:
     """The sample's sex: the user's override or the recorded call in its sample
-    workspace, else `info`'s cached metrics for this file (counting chrY reads
-    in a CRAM takes about a minute), else samtools idxstats. A new call is
+    workspace, else `info`'s cached metrics for this file, else sampled
+    non-PAR depth. A CRAM needs only its header and indexed windows, not a
+    whole-file idxstats scan. A new call is
     recorded in the workspace. An override is still checked against the reads,
     once per file revision, since it changes how chrX and chrY are called."""
     effective = str(
@@ -495,18 +502,39 @@ def _detect_sex(
     input_path: str, outdir: str | None, reference: str | None = None
 ) -> tuple[str, str | None]:
     info = cached_info(input_path, outdir)
+    cached_call = info.get("sex_call") if info else None
     # A call cached by an older infer_sex is recomputed rather than trusted
-    if info and info.get("sex_inference_version") == SEX_INFERENCE_VERSION:
-        cached_call = info.get("sex_call")
-        call = (
-            SexCall(*cached_call)
-            if isinstance(cached_call, list) and len(cached_call) == 3
-            else SexCall("Unknown", "cache lacks observed confidence", "low")
-        )
+    if (
+        info
+        and info.get("sex_inference_version") == SEX_INFERENCE_VERSION
+        and isinstance(cached_call, list)
+        and len(cached_call) == 3
+        and cached_call[1] != SEX_MEASUREMENT_UNAVAILABLE
+    ):
+        call = SexCall(*cached_call)
     else:
         logging.info("Checking chrX/chrY coverage to infer the sample's sex...")
         try:
-            idx_stats, *_ = parse_idxstats(input_path)
+            if input_path.lower().endswith(".cram"):
+                header = run_command(
+                    ["samtools", "view", "-H", input_path], capture_output=True
+                ).stdout
+                idx_stats = []
+                for line in header.splitlines():
+                    if line.startswith("@SQ\t"):
+                        fields = dict(
+                            field.split(":", 1) for field in line.split("\t")[1:]
+                        )
+                        idx_stats.append(
+                            IdxStat(
+                                name=fields["SN"],
+                                length=int(fields["LN"]),
+                                mapped=0,
+                                unmapped=0,
+                            )
+                        )
+            else:
+                idx_stats, *_ = parse_idxstats(input_path)
         except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
             logging.warning(f"Could not check chrY coverage of {input_path}: {e}")
             return "Unknown", None
