@@ -224,9 +224,21 @@ filters are all identical to Google's, as is a synthetic genome's VCF
 From a checkout of this repository, `pixi install -e deepvariant` installs the
 CUDA build from `linux-deepvariant-2` (0.3.0), pinned by its checksum (about
 3.9 GB; needs an NVIDIA driver for CUDA 12), and `vcf deepvariant` finds it
-there without `PATH`; download and unpack the weights as below and set
-`deepvariant_weights`. Otherwise, download the `linux-deepvariant-2`
-prerelease into an empty directory and check it:
+there without `PATH`. A `wgse-deepvariant` on `PATH` comes first, so remove an
+older standalone install (such as 0.2.0, which sends ONT reads to Google's
+image) from `PATH`. Then download, check and unpack just the weights, which
+have the WGS and ONT_R104 models, and set `deepvariant_weights` in
+`config.toml` to the `wgse-deepvariant-weights-1.10.0` folder (see below):
+
+```bash
+mkdir wgse-deepvariant-weights && cd wgse-deepvariant-weights
+gh release download linux-deepvariant-2 -R WGSExtract/wgsextract-cli \
+  -p 'wgse-deepvariant-weights-*' -p SHA256SUMS
+sha256sum -c --ignore-missing SHA256SUMS && tar -xzf wgse-deepvariant-weights-1.10.0.tar.gz
+```
+
+Otherwise, download the whole `linux-deepvariant-2` prerelease into an empty
+directory and check it:
 
 ```bash
 mkdir wgse-deepvariant && cd wgse-deepvariant
@@ -235,12 +247,7 @@ sha256sum -c SHA256SUMS
 tar -xzf wgse-deepvariant-weights-1.10.0.tar.gz
 ```
 
-Continue only if every file reports `OK`. The weights folder,
-`wgse-deepvariant-weights-1.10.0`, has the WGS and ONT_R104 models. (With
-`pixi install -e deepvariant`, `gh release download linux-deepvariant-2 -R
-WGSExtract/wgsextract-cli -p 'wgse-deepvariant-weights-*' -p SHA256SUMS` and
-`sha256sum -c --ignore-missing SHA256SUMS` fetch and check just the weights.)
-Then install the package into a Pixi
+Continue only if every file reports `OK`. Then install the package into a Pixi
 environment of its own, with this `pixi.toml` beside it (for the CPU-only
 build, name `..._cpu_wgse_0.conda` and drop `cuda = "12"`):
 
