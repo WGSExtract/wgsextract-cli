@@ -207,8 +207,10 @@ def test_vcf_aliases_and_region_limits_never_call_absent_contigs(
     source.write_text(
         f"##fileformat=VCFv4.2\n##contig=<ID={chrom},length=1000>\n"
         '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">\n'
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample\n"
-        f"{chrom}\t700\t.\tCGT\tC\t.\tPASS\t.\tGT\t{genotype}\n"
+        f"{chrom}\t700\t.\tCGT\tC\t.\tPASS\t.\tGT:DP:GQ\t{genotype}:30:60\n"
     )
     if input_kind == "indexed_vcf":
         prepared = bgzip_index(source)
@@ -392,8 +394,10 @@ def test_haploid_indels_follow_each_verified_vendor_ploidy_style(
     source.write_text(
         f"##fileformat=VCFv4.2\n##contig=<ID={reference_chrom},length=1000>\n"
         '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">\n'
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample\n"
-        f"{reference_chrom}\t700\t.\tCGT\tC\t.\tPASS\t.\tGT\t{gt}\n"
+        f"{reference_chrom}\t700\t.\tCGT\tC\t.\tPASS\t.\tGT:DP:GQ\t{gt}:30:60\n"
     )
     calls = call_manifest_indels(
         dict.fromkeys(

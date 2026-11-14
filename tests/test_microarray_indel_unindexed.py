@@ -29,8 +29,10 @@ def test_cli_prepares_unindexed_sources_without_changing_originals(
     source.write_text(
         "##fileformat=VCFv4.2\n##contig=<ID=1,length=1000>\n"
         '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">\n'
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample\n"
-        "1\t700\t.\tCGT\tC\t.\tPASS\t.\tGT\t0/1\n"
+        "1\t700\t.\tCGT\tC\t.\tPASS\t.\tGT:DP:GQ\t0/1:30:60\n"
     )
     if kind == "bcf":
         binary = source.with_suffix(".bcf")

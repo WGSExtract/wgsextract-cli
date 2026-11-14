@@ -102,22 +102,23 @@ class MicroarrayParams(Params):
     min_gq: int | None = param(
         None,
         help="Minimum sample GQ; missing GQ becomes a no-call (default: config or "
-        "0, disabled)",
+        "20; 0 disables filtering)",
     )
     min_dp: int | None = param(
         None,
         help="Minimum sample DP; missing DP becomes a no-call (default: config or "
-        "0, disabled)",
+        "10; 0 disables filtering)",
     )
     assume_hom_ref: bool | None = param(
         None,
         help="Assume absent VCF markers are reference on represented contigs "
-        "(default: config or true)",
+        "(unsafe opt-in; default: config or false; also requires --min-dp 0 "
+        "--min-gq 0)",
         action="boolean_optional",
     )
     exclude_filtered: bool | None = param(
         None,
-        help="No-call VCF records failing FILTER (default: config or false)",
+        help="No-call VCF records failing FILTER (default: config or true)",
         action="boolean_optional",
     )
     call_reasons: bool | None = param(

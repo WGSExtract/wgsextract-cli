@@ -119,14 +119,17 @@ that GATK's Best Practices preprocessing starts from.
     `<*>` or `.` with `END=`, as GATK, DeepVariant and DRAGEN write them;
     Sequencing.com's "genome" VCFs are DRAGEN gVCFs) and reads each target
     SNP from the block or variant covering it.
-  - A target inside a `0/0` block is a reference call. A target inside a
+  - A target inside a `0/0` block is a reference call only when the block
+    passes the same DP/GQ/FILTER gates as alternate calls (default DP ≥10,
+    GQ ≥20, no failing FILTER). `MIN_DP`, when available, supplies block-wide
+    minimum depth instead of block-start DP. A target inside a
     `./.` block is a no-call, and so is a target that no record covers. Where
     a block overlaps a variant record, the variant wins.
   - This applies to GRCh37, GRCh38 and T2T/CHM13 gVCFs alike.
-  - In a plain VCF, by contrast, an absent site is assumed to be the reference
-    (`--assume-hom-ref`). Pass `--assume-hom-ref` (or set `microarray_assume_hom_ref` in
-    `config.toml`) to force that behaviour on
-    a gVCF as well.
+  - Absent sites in plain VCFs are also no-calls by default. Unsafe legacy
+    absence-as-reference output requires `--assume-hom-ref --min-dp 0 --min-gq 0`
+    (or matching `microarray_*` settings in `config.toml`). This does not
+    establish that a site was assessed, in either a VCF or a gVCF.
 - **Builds.**
   - Microarray kits need the VCF's build in your reference library; pass it
     with `--ref`. Reference-block bases come from that FASTA, whose `chr1`

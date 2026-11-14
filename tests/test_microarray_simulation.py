@@ -232,7 +232,7 @@ def test_reference_model_alias_genome_calls_male_x_haploid(tmp_path):
     fasta = _renamed_library(tmp_path / "reference", "GRCh37.fa")
     bam = _bam(tmp_path / "male.bam", _genome(), {**MALE, "rsX": "AG"})
 
-    _microarray(bam, str(fasta), tmp_path / "out")
+    _microarray(bam, str(fasta), tmp_path / "out", "--min-gq", "0")
 
     assert _genotypes(tmp_path / "out" / "male_23andMe_V3.txt")["rsX"] in ("AA", "GG")
 
@@ -349,8 +349,8 @@ def test_vcf_reason_only_preserves_unsupported_records_and_existing_calls(
             tmp_path / "reasons" / f"unsupported_{suffix}"
         ).read_bytes()
     report = _rows(tmp_path / "reasons/unsupported_CombinedKit_reasons.tsv")
-    assert report["rsHet"][-2:] == ["AC", "called"]
-    assert report["rsAlt"][-2:] == ["AA", "assumed_hom_ref"]
+    assert report["rsHet"][-2:] == ["--", "unsupported_allele"]
+    assert report["rsAlt"][-2:] == ["--", "unsupported_allele"]
 
 
 @pytest.mark.parametrize(
@@ -444,8 +444,31 @@ def test_a_missing_target_file_is_reported_before_calling(tmp_path, library):
 
 
 def _vcf(
-    path: Path, contigs: tuple[str, ...], records: list[str], extra_headers: str = ""
+    path: Path,
+    contigs: tuple[str, ...],
+    records: list[str],
+    extra_headers: str = "",
+    *,
+    evidence: bool = True,
 ) -> str:
+    if evidence:
+        for name, description in (("DP", "Depth"), ("GQ", "Quality")):
+            if f"ID={name}," not in extra_headers:
+                extra_headers += f'##FORMAT=<ID={name},Number=1,Type=Integer,Description="{description}">\n'
+        prepared = []
+        for record in records:
+            parts = record.replace(" ", "\t").split("\t")
+            if len(parts) != 10:
+                raise ValueError("Expected a single-sample VCF fixture record")
+            formats, values = parts[8].split(":"), parts[9].split(":")
+            values += ["."] * (len(formats) - len(values))
+            for name, value in (("DP", "30"), ("GQ", "60")):
+                if name not in formats:
+                    formats.append(name)
+                    values.append(value)
+            parts[8], parts[9] = ":".join(formats), ":".join(values)
+            prepared.append("\t".join(parts))
+        records = prepared
     path.write_text(
         "##fileformat=VCFv4.2\n"
         + "".join(f"##contig=<ID={c},length={LENGTH}>\n" for c in contigs)
@@ -465,11 +488,14 @@ FEMALE_VCF = [
 ]
 
 
-def test_vcf_input_fills_absent_targets_with_the_reference(tmp_path, library):
+def test_vcf_legacy_opt_in_fills_absent_targets_with_the_reference(tmp_path, library):
     fasta, _ = library
     vcf = _vcf(tmp_path / "female.vcf", ("1", "X", "Y", "MT"), FEMALE_VCF)
 
-    _microarray(vcf, fasta, tmp_path / "out")
+    _microarray(
+        vcf, fasta, tmp_path / "out", "--assume-hom-ref", "--min-dp", "0",
+        "--min-gq", "0",
+    )  # fmt: skip
 
     kit = _genotypes(tmp_path / "out" / "female_23andMe_V3.txt")
     assert {k: v for k, v in kit.items() if k != "rsY"} == {
@@ -561,11 +587,109 @@ def test_vcf_missing_quality_cannot_pass_an_enabled_threshold(
     tmp_path, quality_library
 ):
     fasta, _ = quality_library
-    vcf = _vcf(tmp_path / "female.vcf", ("1", "X", "Y", "MT"), FEMALE_VCF)
+    vcf = _vcf(
+        tmp_path / "female.vcf", ("1", "X", "Y", "MT"), FEMALE_VCF, evidence=False
+    )
     _microarray(vcf, fasta, tmp_path / "out", "--min-gq", "10", "--call-reasons")
     report = _rows(tmp_path / "out/female_CombinedKit_reasons.tsv")
-    assert report["rsHet"][-2:] == ["--", "missing_gq"]
-    assert report["rsRef"][-2:] == ["--", "missing_gq"]
+    assert report["rsHet"][-2:] == ["--", "missing_dp"]
+    assert report["rsRef"][-2:] == ["--", "absent_from_vcf"]
+
+
+def test_absent_sites_and_weak_exports_are_no_calls_by_default(tmp_path, library):
+    """Absent-site and weak-export regression: never invent reference calls."""
+    fasta, _ = library
+    headers = (
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">\n'
+        '##FILTER=<ID=LowQual,Description="Filtered">\n'
+    )
+    vcf = _vcf(
+        tmp_path / "weak.vcf", ("1",), [
+            "1 1000 . A C 1 LowQual . GT:DP:GQ 0/1:1:1",
+            "1 2000 . A C 50 PASS . GT:DP:GQ 0/1:1:60",
+            "1 3000 . A C 50 PASS . GT:DP:GQ 0/1:30:1",
+            "1 4000 . A C 50 PASS . GT:DP:GQ 0/0:30:60",
+        ], headers,
+    )  # fmt: skip
+    result = api.microarray.generate(
+        api.MicroarrayParams(
+            input=Path(vcf), ref=Path(fasta), outdir=tmp_path / "out",
+            formats="23andme_v3,ftdna_v2", threads=1, call_reasons=True,
+        )
+    )  # fmt: skip
+    report = _rows(tmp_path / "out/weak_CombinedKit_reasons.tsv")
+    assert report["rsHet"][-2:] == ["--", "filtered"]
+    assert report["rsAlt"][-2:] == ["--", "low_dp"]
+    assert report["rsRef"][-2:] == ["--", "low_gq"]
+    assert report["rsLowMapq"][-2:] == ["AA", "called"]
+    assert report["rsNoReads"][-2:] == ["--", "absent_from_vcf"]
+    counts = result.metrics
+    assert counts["call_reason_filtered"] == counts["call_reason_low_dp"] == 1
+    assert counts["call_reason_low_gq"] == counts["call_reason_absent_from_vcf"] == 1
+    exported = _genotypes(tmp_path / "out/weak_23andMe_V3.txt")
+    assert exported["rsLowMapq"] == "AA"
+    assert all(
+        exported[rsid] == "--" for rsid in ("rsHet", "rsAlt", "rsRef", "rsNoReads")
+    )
+
+
+@pytest.mark.parametrize(
+    ("sample", "record_filter", "expected", "reason"),
+    [
+        ("0/0:30:60:30", "PASS", "AA", "called"),
+        ("0/0:30:60:1", "PASS", "--", "low_dp"),
+        ("0/0:30:1:30", "PASS", "--", "low_gq"),
+        ("0/0:30:60:30", "LowQual", "--", "filtered"),
+        ("0/0:30:.:30", "PASS", "--", "missing_gq"),
+    ],
+)
+@pytest.mark.parametrize("minimum_only", [False, True])
+def test_weak_reference_block_interiors_do_not_export_as_reference(
+    tmp_path, library, sample, record_filter, expected, reason, minimum_only
+):
+    fasta, _ = library
+    headers = (
+        '##INFO=<ID=END,Number=1,Type=Integer,Description="End">\n'
+        '##ALT=<ID=NON_REF,Description="Any other allele">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Minimum depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">\n'
+        '##FILTER=<ID=LowQual,Description="Filtered">\n'
+    )
+    fields = "GT:DP:GQ:MIN_DP"
+    if minimum_only:
+        headers = headers.replace(
+            '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n', ""
+        )
+        values = sample.split(":")
+        sample = ":".join([values[0], *values[2:]])
+        fields = "GT:GQ:MIN_DP"
+    vcf = _vcf(
+        tmp_path / "block.g.vcf", ("1",),
+        [f"1 900 . A <NON_REF> . {record_filter} END=3500 {fields} {sample}"],
+        headers, evidence=False,
+    )  # fmt: skip
+    _microarray(vcf, fasta, tmp_path / "out", "--call-reasons")
+    report = _rows(tmp_path / "out/block.g_CombinedKit_reasons.tsv")
+    assert report["rsHet"][-2:] == [expected, reason]
+    assert report["rsRef"][-2:] == [expected, reason]
+    assert report["rsNoReads"][-2:] == ["--", "absent_from_vcf"]
+
+
+@pytest.mark.parametrize(("field", "reason"), [("DP", "low_dp"), ("GQ", "low_gq")])
+def test_partial_quality_header_fixture_retains_weak_evidence(
+    tmp_path, library, field, reason
+):
+    fasta, _ = library
+    vcf = _vcf(
+        tmp_path / "partial.vcf", ("1",),
+        [f"1 1000 . A C 50 PASS . GT:{field} 0/1:1"],
+        f'##FORMAT=<ID={field},Number=1,Type=Integer,Description="Evidence">\n',
+    )  # fmt: skip
+    _microarray(vcf, fasta, tmp_path / "out", "--call-reasons")
+    report = _rows(tmp_path / "out/partial_CombinedKit_reasons.tsv")
+    assert report["rsHet"][-2:] == ["--", reason]
 
 
 def test_strand_mask_uses_site_alleles_not_just_the_called_genotype(
@@ -597,7 +721,7 @@ def test_strand_mask_uses_site_alleles_not_just_the_called_genotype(
     assert report["rsRef"][-2:] == ["--", "strand_ambiguous"]
     assert report["rsAlt"][-2:] == ["CC", "called"]
     assert report["rsLowMapq"][-2:] == ["TT", "called"]
-    assert report["rsNoReads"][-2:] == ["AA", "assumed_hom_ref"]
+    assert report["rsNoReads"][-2:] == ["--", "absent_from_vcf"]
 
 
 def test_alignment_strand_mask_does_not_infer_a_mitochondrial_probe_strand(
@@ -687,9 +811,9 @@ def test_vcf_input_region_in_the_vcfs_naming_style(tmp_path, library):
     assert kit == {
         "rsHet": "AC",
         "rsAlt": "CC",
-        "rsRef": "AA",
+        "rsRef": "--",
         "rsLowMapq": "--",
-        "rsNoReads": "AA",
+        "rsNoReads": "--",
     }
 
 

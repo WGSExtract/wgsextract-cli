@@ -1047,19 +1047,13 @@ Build the consensus (role `consensus_fasta`, and `liftover_chain` with
 
 CLI: `wgsextract vcf trio`.
 
-Filter the trio; output roles `trio_<mode>` and, for VCF de novo/comphet,
-`trio_<mode>_inconclusive` (and `trio_joint`,
+Filter the trio; output roles `trio_<mode>` (and `trio_joint`,
 `trio_denovo_isolated` from BAM/CRAMs).
 
 `VcfTrioParams`: Calls matching an inheritance mode in a child and both parents, as
 `trio_<mode>.vcf.gz`. Three VCFs are merged; three BAM/CRAMs are first
 genotyped jointly from the reads (`trio_joint.vcf.gz`), which de novo
-calls need. VCF de novo and comphet classification requires complete
-parental genotypes with GQ >=20 and no failed FORMAT/FT filter; missing,
-filtered or weak evidence is written to
-`trio_<mode>_inconclusive.vcf.gz`, preserving the parental genotypes.
-Sparse variant-only VCFs do not establish parental reference calls.
-Covering gVCF reference blocks are assessed when a matching --ref is given.
+calls need.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -1729,10 +1723,10 @@ settings) and then to the documented default.
 | `strand_ambiguous` | `str \| None` | `None` | `--strand-ambiguous` | Keep/no-call biallelic A/T or C/G input SNPs; unknown probe alleles are not inferred (default: config or keep) One of: `keep`, `no-call` |
 | `resolve_rsids` | `bool \| None` | `None` | `--resolve-rsids` | Resolve packaged dbSNP aliases and no-call retired/ambiguous marker IDs (default: config or false) |
 | `quirks` | `str \| None` | `None` | `--quirks` | corrected: forward-strand calls; vendor: reverse-strand calls where a template's vendor revision reported them so (default: config or corrected) One of: `corrected`, `vendor` |
-| `min_gq` | `int \| None` | `None` | `--min-gq` | Minimum sample GQ; missing GQ becomes a no-call (default: config or 0, disabled) |
-| `min_dp` | `int \| None` | `None` | `--min-dp` | Minimum sample DP; missing DP becomes a no-call (default: config or 0, disabled) |
-| `assume_hom_ref` | `bool \| None` | `None` | `--assume-hom-ref` | Assume absent VCF markers are reference on represented contigs (default: config or true) |
-| `exclude_filtered` | `bool \| None` | `None` | `--exclude-filtered` | No-call VCF records failing FILTER (default: config or false) |
+| `min_gq` | `int \| None` | `None` | `--min-gq` | Minimum sample GQ; missing GQ becomes a no-call (default: config or 20; 0 disables filtering) |
+| `min_dp` | `int \| None` | `None` | `--min-dp` | Minimum sample DP; missing DP becomes a no-call (default: config or 10; 0 disables filtering) |
+| `assume_hom_ref` | `bool \| None` | `None` | `--assume-hom-ref` | Assume absent VCF markers are reference on represented contigs (unsafe opt-in; default: config or false; also requires --min-dp 0 --min-gq 0) |
+| `exclude_filtered` | `bool \| None` | `None` | `--exclude-filtered` | No-call VCF records failing FILTER (default: config or true) |
 | `call_reasons` | `bool \| None` | `None` | `--call-reasons` | Also write CombinedKit_reasons.tsv with explicit reasons (default: config or false) |
 | `aadr_sample_id` | `str` | `'sample'` | `--aadr-sample-id` | Non-identifying sample label for AADR .fam/.ind (default: sample) |
 | `aadr_sex` | `str` | `'U'` | `--aadr-sex` | AADR metadata sex only; does not change genotype calling (default: U) One of: `U`, `M`, `F` |
@@ -2311,12 +2305,8 @@ Call CYP2D6 star alleles with Cyrius (see `TypingCyp2d6Params`).
 `TypingCyp2d6Params`: Call CYP2D6 star alleles, including copy-number and CYP2D6/CYP2D7
 hybrids, with Cyrius (about 30x WGS). On GRCh38 with chr22 ALT contigs,
 the locus's reads are first realigned to primary chr22 (needs `ref`
-and minimap2). Only a PASS call Cyrius matched uniquely becomes a PharmCAT
-outside call. Metrics: `cyp2d6_genotype`, `cyp2d6_filter`,
-`cyp2d6_call_status` (resolved, unresolved or no_call),
-`cyp2d6_call_info`, `cyp2d6_raw_star_alleles`, `cyp2d6_cnv_group`,
-`cyp2d6_cyp2d7_copy_number` (CYP2D6 and CYP2D7 together, normally 4) and
-`median_depth`.
+and minimap2). Metrics: `cyp2d6_genotype`, `cyp2d6_filter`,
+`cyp2d6_copy_number` and `median_depth`.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |

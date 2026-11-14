@@ -37,7 +37,8 @@ def test_filtered_and_nonfinite_quality_are_explicit_no_calls():
     policy = quality.MicroarrayQuality(min_gq=10, exclude_filtered=True)
     assert policy.rejection("10", "25", "q10") == "filtered"
     assert policy.rejection("10", "inf", "PASS") == "missing_gq"
-    assert quality.MicroarrayQuality().rejection(".", ".", "q10") is None
+    legacy = quality.MicroarrayQuality(min_dp=0, min_gq=0, exclude_filtered=False)
+    assert legacy.rejection(".", ".", "q10") is None
 
 
 def test_quality_does_not_silently_select_a_sample(monkeypatch, tmp_path):
