@@ -28,13 +28,18 @@ from wgsextract_cli.core.alignment_memory import (
     estimate_mapping_memory,
 )
 from wgsextract_cli.core.alignment_metadata import cram_encoded_with, get_bam_header
-from wgsextract_cli.core.atomic_output import atomic_outputs_enabled, safe_output
+from wgsextract_cli.core.atomic_output import (
+    atomic_output_mode,
+    atomic_outputs_enabled,
+    safe_output,
+)
 from wgsextract_cli.core.chunked_alignment import Chunk, ChunkedAlignment
 from wgsextract_cli.core.dependencies import get_tool_path as get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
+from wgsextract_cli.core.fastq_validation import check_primary_reads, validate_fastq
 from wgsextract_cli.core.genome_library import pair_stem
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.native_aligners import (
@@ -189,6 +194,7 @@ class AlignJob:
     resume_chunks: bool = False
     # What the chunks read: r1, or a remote r1 with its local index.
     chunk_input: str | None = None
+    exact_reads: int | None = None
 
     @classmethod
     def of(cls: type[_Job], params: Params) -> _Job:
@@ -205,7 +211,13 @@ class AlignJob:
 def run_align(params: AlignParams) -> None:
     """The ``align`` operation (``api.align.align``)."""
     add_read_inputs(params.r1, params.r2)
-    run(AlignJob.of(params))
+    job = AlignJob.of(params)
+    if job.r1 and job.r1.lower().endswith((".fq", ".fastq", ".fq.gz", ".fastq.gz")):
+        statistics = validate_fastq(job.r1, job.r2)
+        job.input_reads = InputReads(*statistics)
+        job.exact_reads = statistics.reads
+    with atomic_output_mode(True):
+        run(job)
 
 
 def add_read_inputs(r1: Path | None, r2: Path | None) -> None:
@@ -1215,6 +1227,7 @@ def run_streamed_alignment(
     duplicates: str | None,
     upstream: list[Sequence[object]] | None = None,
     expected_reads: int | None = None,
+    exact_reads: int | None = None,
 ) -> None:
     """Run the aligner (after any upstream stages feeding it), mark duplicates
     (with duplicate_marker's choice, or not at all for long reads: None), sort,
@@ -1251,6 +1264,8 @@ def run_streamed_alignment(
                 heartbeat=True,
                 expected_reads=expected_reads,
             )
+            if exact_reads is not None:
+                check_primary_reads(staged, exact_reads, ref)
 
 
 # SAM-spec @RG PL values for --platform.
@@ -1479,6 +1494,7 @@ def align_bwa(
             duplicates=duplicate_marker(paired=bool(job.r2)),
             upstream=list(upstream) if upstream else None,
             expected_reads=job.read_count,
+            exact_reads=job.exact_reads,
         )
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
         raise WGSExtractError(f"{aligner.binary} alignment failed: {e}") from e
@@ -1572,6 +1588,7 @@ def align_ultima(job: AlignJob, cram_opt: list[str] | None = None) -> None:
                 job.format,
                 tmp,
                 expected_reads=job.read_count,
+                exact_reads=job.exact_reads,
             )
         except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
             raise WGSExtractError(f"{aligner.binary} alignment failed: {e}") from e
@@ -1592,6 +1609,7 @@ def _sort_and_mark_ultima(
     tmp: str,
     *,
     expected_reads: int | None = None,
+    exact_reads: int | None = None,
 ) -> None:
     """Sort the aligner's output, mark duplicates with Picard's flow mode (GATK),
     or samtools markdup when GATK is missing, then index."""
@@ -1612,6 +1630,7 @@ def _sort_and_mark_ultima(
             duplicates="markdup",
             upstream=stages[:-1],
             expected_reads=expected_reads,
+            exact_reads=exact_reads,
         )
         return
     sorted_bam = str(Path(tmp, "sorted.bam"))
@@ -1653,6 +1672,8 @@ def _sort_and_mark_ultima(
                     ["samtools", "view", "-C", "-@", setup.threads, "-T", setup.ref]
                     + ["-o", staged, marked]
                 )
+            if exact_reads is not None:
+                check_primary_reads(staged, exact_reads, setup.ref)
         logging.info(LOG_MESSAGES["indexing_output"])
         _index_output(out_path, threads=setup.threads)
 
@@ -1818,6 +1839,8 @@ def _gpu_align(
                     ["samtools", "view", "-C", "-@", setup.threads, "-T", setup.ref]
                     + ["-o", staged, pb_out]
                 )
+            if job.exact_reads is not None:
+                check_primary_reads(staged, job.exact_reads, setup.ref)
             Path(pb_out.rsplit(".", 1)[0] + "_chrs.txt").unlink(missing_ok=True)
         if convert or atomic_outputs_enabled():
             _index_output(out_path, threads=setup.threads)
@@ -2065,6 +2088,7 @@ def align_minimap2(job: AlignJob) -> None:
             ref=setup.ref,
             duplicates=duplicates,
             upstream=upstream or None,
+            exact_reads=job.exact_reads,
         )
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
         raise WGSExtractError(f"{aligner.binary} alignment failed: {e}") from e
@@ -2113,6 +2137,8 @@ def align_pbmm2(job: AlignJob) -> None:
         with safe_output(out_bam) as staged:
             cmd[4] = staged
             run_command(cmd)
+            if job.exact_reads is not None:
+                check_primary_reads(staged, job.exact_reads, setup.ref)
         logging.info(LOG_MESSAGES["indexing_output"])
         _index_output(out_bam, threads=setup.threads)
     except (OSError, subprocess.SubprocessError) as e:

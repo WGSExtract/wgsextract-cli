@@ -1,0 +1,135 @@
+"""Regression for unequal mates silently losing reads during alignment."""
+
+import gzip
+import random
+
+import pytest
+
+from tests.htslib_helpers import needs_tools, write_fasta, write_read_pairs
+from wgsextract_cli import api
+from wgsextract_cli.commands.align import run_streamed_alignment
+from wgsextract_cli.core.atomic_output import atomic_output_mode
+from wgsextract_cli.core.utils import WGSExtractError, run_command
+
+pytestmark = needs_tools("bwa", "samtools")
+
+
+@pytest.fixture
+def reads(tmp_path):
+    rng = random.Random(848)
+    seq = "".join(rng.choice("ACGT") for _ in range(8000))
+    ref = write_fasta(tmp_path / "ref.fa", {"chr1": seq})
+    r1, r2 = tmp_path / "reads_R1.fq", tmp_path / "reads_R2.fq"
+    write_read_pairs(seq, r1, r2, [100, 500, 1000])
+    return ref, r1, r2, seq
+
+
+def _align(tmp_path, ref, r1, r2=None):
+    return api.align.align(
+        api.AlignParams(
+            r1=r1, r2=r2, ref=ref, outdir=tmp_path / "aligned",
+            aligner="bwa", native_aligners="off", threads=1, memory="16M",
+        )
+    )  # fmt: skip
+
+
+@pytest.mark.parametrize("damage", ["short_r1", "short_r2", "names", "fastq", "gzip"])
+def test_unequal_mates_and_truncated_reads_preserve_previous_alignment(
+    tmp_path, reads, damage
+):
+    ref, r1, r2, _ = reads
+    result = _align(tmp_path, ref, r1, r2)
+    bam = tmp_path / "aligned/reads_aligned.bam"
+    original = bam.read_bytes()
+    index = bam.with_suffix(".bam.bai")
+    original_index = index.read_bytes()
+    if damage.startswith("short"):
+        mate = r1 if damage == "short_r1" else r2
+        mate.write_text("\n".join(mate.read_text().splitlines()[:-4]) + "\n")
+        message = "read count mismatch"
+    elif damage == "names":
+        r2.write_text(r2.read_text().replace("@p2", "@other"))
+        message = "read name mismatch"
+    elif damage == "fastq":
+        r2.write_text(r2.read_text()[:-20])
+        message = "truncated FASTQ"
+    else:
+        compressed = r2.with_suffix(".fq.gz")
+        compressed.write_bytes(gzip.compress(r2.read_bytes())[:-6])
+        r2 = compressed
+        message = "complete FASTQ"
+    with pytest.raises(api.CommandFailed, match=message):
+        _align(tmp_path, ref, r1, r2)
+    assert bam.read_bytes() == original
+    assert index.read_bytes() == original_index
+    assert result.metrics["input_reads"] == result.metrics["primary_records"] == 6
+
+
+@pytest.mark.parametrize("paired", [True, False])
+def test_matched_and_single_end_reads_have_exact_primary_accounting(
+    tmp_path, reads, paired
+):
+    ref, r1, r2, seq = reads
+    # A chimeric read produces supplementary records; they are not extra reads.
+    chimera = seq[2000:2400] + seq[6000:6400]
+    with r1.open("a") as out:
+        out.write(f"@chimera/1\n{chimera}\n+\n{'I' * len(chimera)}\n")
+    if paired:
+        with r2.open("a") as out:
+            out.write(f"@chimera/2\n{seq[2500:2600]}\n+\n{'I' * 100}\n")
+    result = _align(tmp_path, ref, r1, r2 if paired else None)
+    bam = next(output.path for output in result.outputs if output.role == "alignment")
+    primary = int(
+        run_command(
+            ["samtools", "view", "-c", "-F", "0x900", bam], capture_output=True
+        ).stdout
+    )
+    supplementary = int(
+        run_command(
+            ["samtools", "view", "-c", "-f", "0x800", bam], capture_output=True
+        ).stdout
+    )
+    assert primary == (8 if paired else 4)
+    assert supplementary > 0
+    assert result.metrics["input_reads"] == result.metrics["primary_records"] == primary
+
+
+def test_primary_count_gate_ignores_secondary_records_and_preserves_output(
+    tmp_path, reads
+):
+    """A successful process is not enough: validate its exact primary count."""
+    ref, _, _, seq = reads
+    sam = tmp_path / "mapper.sam"
+    sam.write_text(
+        "@HD\tVN:1.6\tSO:unsorted\n@SQ\tSN:chr1\tLN:8000\n"
+        + "".join(
+            f"p0\t{flag}\tchr1\t101\t60\t100M\t*\t0\t0\t{seq[100:200]}\t{'I' * 100}\n"
+            for flag in (0, 256, 2048)
+        )
+    )
+    bam = tmp_path / "mapped.bam"
+    with atomic_output_mode(True):
+        run_streamed_alignment(
+            ["samtools", "view", "-h", str(sam)], str(bam),
+            threads="1", memory="16M", fmt="BAM", ref=str(ref),
+            duplicates=None, expected_reads=999, exact_reads=1,
+        )  # fmt: skip
+    previous = bam.read_bytes()
+    assert (
+        int(
+            run_command(
+                ["samtools", "view", "-c", str(bam)], capture_output=True
+            ).stdout
+        )
+        == 3
+    )
+    with (
+        atomic_output_mode(True),
+        pytest.raises(WGSExtractError, match="2 input reads"),
+    ):
+        run_streamed_alignment(
+            ["samtools", "view", "-h", str(sam)], str(bam),
+            threads="1", memory="16M", fmt="BAM", ref=str(ref),
+            duplicates=None, expected_reads=2, exact_reads=2,
+        )  # fmt: skip
+    assert bam.read_bytes() == previous

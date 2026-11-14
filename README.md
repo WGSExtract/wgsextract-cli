@@ -125,6 +125,13 @@ alignment/caller arguments and generated genomic files are unchanged. Per-contig
 calling (`vcf snp`/`indel` and `microarray` with more than one thread) reports each
 finished contig on the terminal's progress line and as a `contig` progress event.
 
+`align` validates every FASTQ record before mapping: paired files must have
+equal read counts and matching names in order (`/1` and `/2` mate suffixes
+are accepted). Truncated FASTQ or gzip input is an error. For FASTQ inputs,
+the completed alignment must contain exactly one primary record per input
+read; secondary and supplementary records do not count as extra reads.
+Validated outputs replace previous alignments only after the check passes.
+
 Persistent logging is off by default. Use a **new, dedicated** path:
 
 ```sh
