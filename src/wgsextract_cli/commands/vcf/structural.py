@@ -12,16 +12,21 @@ from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import VcfCnvParams, VcfSvParams
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.cram_staging import stage_bam
-from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.dependencies import PIXI_TOOL_ENVS, get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count, warn_if_no_variants
+from wgsextract_cli.core.pixi_tools import pixi_install_command
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
-from wgsextract_cli.core.results import current_result
-from wgsextract_cli.core.sequencing import input_platform, refuse_mixed_platforms
+from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.sequencing import (
+    input_platform,
+    pacbio_platform,
+    refuse_mixed_platforms,
+)
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -261,6 +266,11 @@ def run_sv_pbsv(params: VcfSvParams) -> None:
         call_cmd.extend([pbsv_ref, svsig, raw_vcf])
         try:
             run_command(discover_cmd)
+            if region:
+                # pbsv call --region reads the signatures through a tabix index.
+                run_command(
+                    ["tabix", "-c", "#", "-s", "3", "-b", "4", "-e", "4", svsig]
+                )
             run_command(call_cmd)
         except subprocess.CalledProcessError as e:
             raise WGSExtractError(
@@ -334,8 +344,9 @@ def run_sv_sniffles(params: VcfSvParams) -> None:
 
 
 def _detected_platform(params: VcfSvParams, choice: str | None = None) -> str | None:
-    """Platform of the input alignment, decoding CRAM with the resolved --ref;
-    with ``choice`` (the option that picks a caller), mixed platforms refuse."""
+    """Platform of the input alignment ("clr" for PacBio subreads), decoding
+    CRAM with the resolved --ref; with ``choice`` (the option that picks a
+    caller), mixed platforms refuse."""
     input_file = str(params.input)
     if not Path(input_file).is_file():
         return None
@@ -347,18 +358,39 @@ def _detected_platform(params: VcfSvParams, choice: str | None = None) -> str | 
     platform = input_platform(input_file, lib.fasta)
     if platform is None and choice:
         refuse_mixed_platforms(input_file, lib.fasta, choice)
+    if platform == "pacbio":
+        return pacbio_platform(get_bam_header(input_file, lib.fasta))
     return platform
 
 
 def _select_sv_caller(params: VcfSvParams) -> VcfSvParams:
-    """``params`` with the caller chosen (and ``ccs`` set for ``pacbio``)."""
-    return dataclasses.replace(
-        params, caller=_sv_caller(params), ccs=params.ccs or params.pacbio
+    """``params`` with the caller chosen (and ``ccs`` set for HiFi), recording
+    the caller and why on the result manifest."""
+    caller, reason, hifi = _sv_caller(params)
+    current_result().add_metrics(caller=caller, caller_reason=reason)
+    return dataclasses.replace(params, caller=caller, ccs=params.ccs or hifi)
+
+
+def _pacbio_caller(source: str) -> tuple[str, str]:
+    """pbsv when installed, else Sniffles, for PacBio reads (``source`` says how
+    they were identified); refuses when neither is installed."""
+    if get_tool_path("pbsv") is not None:
+        return "pbsv", source
+    if get_tool_path("sniffles") is not None:
+        return "sniffles", f"{source}; pbsv not installed"
+    env = f"the {PIXI_TOOL_ENVS['sniffles']} Pixi environment"
+    if install := pixi_install_command("sniffles"):
+        env += f"; install it with: {install}"
+    raise WGSExtractError(
+        "PacBio reads need a long-read SV caller, but neither pbsv nor Sniffles "
+        f"is installed (both come in {env}). Pass --caller delly to use the "
+        "short-read caller anyway."
     )
 
 
-def _sv_caller(params: VcfSvParams) -> str:
-    """Explicit flags win; only detected ONT changes the Delly default."""
+def _sv_caller(params: VcfSvParams) -> tuple[str, str, bool]:
+    """(caller, why, HiFi thresholds): explicit flags win, then the detected
+    platform (Sniffles for ONT, pbsv or Sniffles for PacBio), else Delly."""
     caller = params.caller
     pacbio, ont, long_read = params.pacbio, params.ont, params.long_read
     if pacbio and ont:
@@ -374,10 +406,13 @@ def _sv_caller(params: VcfSvParams) -> str:
         "use --caller sniffles (the ONT default)."
     )
     if pacbio:
-        caller = caller or ("pbsv" if get_tool_path("pbsv") is not None else "sniffles")
-        if caller == "pbsv" and _detected_platform(params) == "ont":
+        if caller:
+            chosen, reason = caller, "--caller"
+        else:
+            chosen, reason = _pacbio_caller("--pacbio")
+        if chosen == "pbsv" and _detected_platform(params) == "ont":
             raise pbsv_ont_error
-        return caller
+        return chosen, reason, True
     detected = None
     if not ont and (caller in ("pbsv", "delly") or (not caller and not long_read)):
         detected = _detected_platform(
@@ -385,30 +420,34 @@ def _sv_caller(params: VcfSvParams) -> str:
         )
     if caller == "pbsv" and (ont or detected == "ont"):
         raise pbsv_ont_error
-    if ont or long_read:
-        return caller or "sniffles"
     if caller:
-        if caller == "delly" and detected == "ont":
-            logging.warning(
-                "Delly is a short-read SV caller and is not validated for ONT; "
-                "Sniffles is the ONT default."
+        if caller == "delly" and detected in ("ont", "pacbio", "clr"):
+            name = "ONT" if detected == "ont" else "PacBio"
+            warn(
+                "short_read_sv_caller",
+                f"Delly is a short-read SV caller and is not validated for {name} "
+                "reads; drop --caller delly for the long-read default.",
+                platform=name,
             )
-        return caller
+        return caller, "--caller", False
+    if ont or long_read:
+        return "sniffles", "--ont" if ont else "--long-read", False
     if detected == "ont":
         logging.info("Detected ONT reads: calling structural variants with Sniffles.")
-        return "sniffles"
-    if detected == "pacbio":
+        return "sniffles", "detected ONT reads", False
+    if detected in ("pacbio", "clr"):
+        kind = "PacBio HiFi" if detected == "pacbio" else "PacBio CLR"
+        chosen, reason = _pacbio_caller(f"detected {kind} reads")
         logging.info(
-            "Detected PacBio reads; keeping the Delly default. Pass --pacbio for "
-            "pbsv/Sniffles."
+            f"Detected {kind} reads: calling structural variants with {chosen}."
         )
-    return "delly"
+        return chosen, reason, detected == "pacbio"
+    return "delly", "short-read default", False
 
 
 def run_sv(params: VcfSvParams) -> None:
     """``vcf sv``: delly, pbsv or Sniffles, as ``_select_sv_caller`` picks."""
     params = _select_sv_caller(params)
-    current_result().add_metrics(caller=params.caller)
     if params.caller == "pbsv":
         run_sv_pbsv(params)
         return

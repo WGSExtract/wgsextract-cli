@@ -1342,14 +1342,15 @@ Call CNVs; output role `copy_number_variants`.
 
 CLI: `wgsextract vcf sv`.
 
-Call SVs; output role `structural_variants`, and the `caller`
-metric names the tool chosen.
+Call SVs; output role `structural_variants`, the `caller` metric
+names the tool chosen and `caller_reason` why.
 
 `VcfSvParams`: Call structural variants into `sv.vcf.gz` (delly), `pbsv.vcf.gz`
 or `sniffles.vcf.gz`.
 
 `caller` picks the tool; otherwise Sniffles for ONT input (detected or
-`ont`) and long reads, pbsv (else Sniffles) for `pacbio`, else delly.
+`ont`) and long reads, pbsv (else Sniffles) for PacBio input (detected
+or `pacbio`), else delly. The `caller_reason` metric says why.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -1358,8 +1359,8 @@ or `sniffles.vcf.gz`.
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region |
-| `caller` | `str \| None` | `None` | `--caller` | SV caller to use (default: sniffles for detected ONT, else delly; pbsv/sniffles with --pacbio; sniffles with --ont or --long-read). pbsv is PacBio-only and is refused for ONT reads. One of: `delly`, `pbsv`, `sniffles` |
-| `pacbio` | `bool` | `False` | `--pacbio` | PacBio HiFi/CCS data: use pbsv (or sniffles if pbsv is missing) with CCS thresholds. |
+| `caller` | `str \| None` | `None` | `--caller` | SV caller to use (default: sniffles for ONT or --long-read, pbsv/sniffles for PacBio, detected or flagged; else delly). pbsv is PacBio-only and is refused for ONT reads. One of: `delly`, `pbsv`, `sniffles` |
+| `pacbio` | `bool` | `False` | `--pacbio` | PacBio HiFi/CCS data: use pbsv (or sniffles if pbsv is missing) with CCS thresholds (detected PacBio input selects this automatically). |
 | `ont` | `bool` | `False` | `--ont` | Oxford Nanopore data: use Sniffles (detected ONT input selects it automatically). |
 | `long_read` | `bool` | `False` | `--long-read` | Long-read data from any platform: use Sniffles unless --caller selects pbsv for PacBio reads. |
 | `ccs` | `bool` | `False` | `--ccs` | Use pbsv CCS/HiFi thresholds when --caller pbsv is selected. |
