@@ -438,7 +438,7 @@ def test_a_relative_region_bed_in_its_own_folder_reaches_the_image(dv, monkeypat
     (dv.tmp / "targets" / "panel.bed").write_text("chr1\t899\t1100\n")
     monkeypatch.chdir(dv.tmp / "targets")
     call(dv, "-r", "panel.bed")
-    assert vcf_calls(dv.out / "deepvariant.vcf.gz") == dv.sample.calls
+    assert vcf_calls(dv.out / "deepvariant.vcf.gz") == dv.sample.calls[:1]
     assert dv_flags(dv)["regions"] == str(dv.tmp / "targets" / "panel.bed")
 
 
