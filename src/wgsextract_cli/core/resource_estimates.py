@@ -26,6 +26,7 @@ Operation = Literal[
     "indel",
     "gatk",
     "deepvariant",
+    "clair3",
     "vep-download",
     "vep",
     "impute",
@@ -1058,6 +1059,20 @@ VEP_RS_BUILD_MEMORY = 12 * GIB
 # Peak memory of `vep run` on a whole genome: vep-rs on its built cache (6
 # threads, HG002), Ensembl VEP (6 forks).
 VEP_RUN_MEMORY = {"vep-rs": 8 * GIB, "ensembl": int(1.5 * GIB)}
+# Clair3 2.0.5's work folder at its peak on the GPU, in bytes per called
+# reference base by mean depth (#811; HG002 ONT R10.4.1, chr20:10-20 Mb
+# subsampled from 43x). The GPU mode writes every full-alignment tensor (23.5 kB
+# per candidate) before predicting any, and shallower reads send it more
+# low-quality candidates. The whole genome (43x) needed 1.1x the slice's rate
+# and all of chr20 1.44x, hence the margin; the CPU mode pipes the tensors
+# (chr20: 0.9 bytes per base).
+CLAIR3_GPU_BYTES_PER_BASE = (
+    (6.3, 122.6), (10.7, 104.7), (15.1, 64.6), (21.6, 41.5), (32.6, 33.2),
+    (43.4, 31.4),
+)  # fmt: skip
+CLAIR3_GPU_MARGIN = 1.45
+CLAIR3_ASSUMED_DEPTH = 30.0
+CLAIR3_CPU_BYTES_PER_BASE = 2.0
 
 
 def estimate_vep_download(cache_dir: str, variations: bool) -> PreflightEstimate:
@@ -1087,6 +1102,43 @@ def estimate_vep_run(engine: str) -> PreflightEstimate:
         "vep",
         (ResourceEstimate("memory", VEP_RUN_MEMORY[engine], _available_memory(), {}),),
         (),
+    )
+
+
+def _clair3_gpu_bytes_per_base(depth: float) -> float:
+    """Interpolated in depth; held flat beyond the measured depths."""
+    points = CLAIR3_GPU_BYTES_PER_BASE
+    if depth <= points[0][0]:
+        return points[0][1]
+    for (d0, b0), (d1, b1) in zip(points, points[1:], strict=False):
+        if depth <= d1:
+            return b0 + (b1 - b0) * (depth - d0) / (d1 - d0)
+    return points[-1][1]
+
+
+def estimate_clair3(
+    output_dir: str, bases: int, *, gpu: bool, depth: float | None = None
+) -> PreflightEstimate:
+    """Peak of Clair3's work folder beside the output for ``bases`` called
+    reference bases at ``depth`` (#811)."""
+    _, free = _disk_space(output_dir)
+    notes = []
+    if gpu:
+        if depth is None:
+            depth = CLAIR3_ASSUMED_DEPTH
+            notes.append(f"Read depth unknown; Clair3's tensors sized for {depth:g}x.")
+        rate = _clair3_gpu_bytes_per_base(depth) * CLAIR3_GPU_MARGIN
+        notes.append(
+            f"Clair3 on the GPU stores every full-alignment tensor first: "
+            f"{bases / 1e6:,.0f} Mb at {depth:.0f}x."
+        )
+    else:
+        rate = CLAIR3_CPU_BYTES_PER_BASE
+    work = math.ceil(bases * rate)
+    return PreflightEstimate(
+        "clair3",
+        (ResourceEstimate("disk", work, free, {"work": work}, (output_dir,)),),
+        tuple(notes),
     )
 
 

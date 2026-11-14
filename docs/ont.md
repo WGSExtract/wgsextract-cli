@@ -255,6 +255,17 @@ model still comes from `--model`, `clair3_model` or the reads' metadata, as
 on the CPU, and is checked the same way; a bundled model name needs the
 `clair3` Pixi environment, otherwise pass the model's directory.
 
+The GPU mode needs far more disk than the CPU mode: Clair3 2.0.5 writes every
+full-alignment tensor into its work folder in the output directory before the
+GPU predicts any, about 100 GiB for a 43x whole genome and two to four times
+that for 6-15x reads, which send it more low-quality candidates. Clair3 has
+no option to stream or batch them. `vcf clair3` samples the reads' depth,
+estimates this peak for the bases it calls and refuses to start when the
+output directory's disk lacks it (`--no-preflight` overrides; see
+[Clair3's temporary space](resource_estimates.md#clair3s-temporary-space)).
+Choose an `--outdir` on a disk with room, or call a whole genome in
+`--region` batches (for example a few chromosomes at a time).
+
 On the HG002 chr20:10-11 Mb slice below, `--gpu` gave the same 1,829 calls
 as the CPU (alleles, genotypes and filters; QUAL within 0.19, GQ within 1).
 On all of chr20 it took 8.5 min instead of 10.3 min on 4 CPUs
@@ -716,10 +727,11 @@ whole-genome ONT run from these numbers:
   output), before its own work directory.
 - **Clair3's GPU temporary files.** Clair3 2.0.5's GPU mode writes every
   full-alignment tensor (here 460 files of about 230 MB) before the GPU predicts
-  any, then deletes them: about 1 GiB per 1% of the genome at 51x. The CPU
-  mode streams them. `vcf clair3` doesn't check
-  for this space yet
-  ([#811](https://github.com/WGSExtract/wgsextract-cli/issues/811)).
+  any, then deletes them: about 1 GiB per 1% of the genome at 51x, and more
+  for shallower reads. The CPU mode streams them. `vcf clair3` now estimates
+  this space and refuses to start without it
+  ([#811](https://github.com/WGSExtract/wgsextract-cli/issues/811); see
+  [Clair3's temporary space](resource_estimates.md#clair3s-temporary-space)).
 - **Scaling from a slice.** chr20 with `--gpu` and 6 threads took 599 s, which
   scales to about 8 h; the whole genome took 2.5 h. The earlier 4-thread
   projections (above) were 32 h for `realign`, 25 h for DeepVariant and 8 h
