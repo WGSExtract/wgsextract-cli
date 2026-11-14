@@ -1,5 +1,5 @@
 name: Shared Pixi environment
-description: Restore one lockfile-keyed environment per OS; only the matrix seeds it.
+description: Install the pinned Pixi; restore one lockfile-keyed environment per OS that only the matrix seeds.
 inputs:
   environments:
     description: Space-separated environments to install.
@@ -10,10 +10,24 @@ inputs:
   writer:
     description: Whether this job is the designated main-branch writer.
     default: "false"
+  install:
+    description: Install environments; "false" installs only the Pixi binary, with no cache.
+    default: "true"
+  locked:
+    description: Require pixi.lock to match the manifest (pixi install --locked).
+    default: "true"
 runs:
   using: composite
   steps:
+    # The only Pixi version pin in CI; the cache key below reads it back.
+    - name: Install pinned Pixi
+      uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+      with:
+        pixi-version: v0.82.0
+        run-install: false
+        cache: false
     - name: Key the non-relocatable Pixi environment
+      if: inputs.install == 'true'
       id: key
       shell: bash
       env:
@@ -25,29 +39,40 @@ runs:
         else
           hash=(shasum -a 256)
         fi
+        version=$(pixi --version | tr -d '\r')
+        version=v${version#pixi }
         workspace_hash=$(printf '%s' "$GITHUB_WORKSPACE" | "${hash[@]}" | cut -d' ' -f1)
-        echo "key=pixi-v2-${RUNNER_OS}-${RUNNER_ARCH}-v0.82.0-${SCOPE}-${LOCK_HASH}-${workspace_hash}" >> "$GITHUB_OUTPUT"
+        echo "key=pixi-v2-${RUNNER_OS}-${RUNNER_ARCH}-${version}-${SCOPE}-${LOCK_HASH}-${workspace_hash}" >> "$GITHUB_OUTPUT"
     - name: Restore shared environment
+      if: inputs.install == 'true'
       id: restore
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: .pixi
         key: ${{ steps.key.outputs.key }}
-    - name: Install pinned Pixi and selected environments
-      uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
-      with:
-        pixi-version: v0.82.0
-        locked: true
-        environments: ${{ inputs.environments }}
-        cache: false
+    - name: Install selected environments
+      if: inputs.install == 'true'
+      shell: bash
+      env:
+        ENVIRONMENTS: ${{ inputs.environments }}
+        LOCKED: ${{ inputs.locked }}
+      run: |
+        flags=()
+        if [ "$LOCKED" = true ]; then flags+=(--locked); fi
+        for environment in $ENVIRONMENTS; do
+          echo "::group::pixi install -e $environment ${flags[*]}"
+          pixi install -e "$environment" "${flags[@]}"
+          echo "::endgroup::"
+        done
     - name: Publish environment cache hit
+      if: inputs.install == 'true'
       shell: bash
       env:
         HIT: ${{ steps.restore.outputs.cache-hit == 'true' }}
         KEY: ${{ steps.key.outputs.key }}
       run: echo "Pixi cache hit=${HIT}; key=${KEY}" >> "$GITHUB_STEP_SUMMARY"
     - name: Seed the shared environment from main only
-      if: inputs.writer == 'true' && github.ref == 'refs/heads/main' && steps.restore.outputs.cache-hit != 'true'
+      if: inputs.install == 'true' && inputs.writer == 'true' && github.ref == 'refs/heads/main' && steps.restore.outputs.cache-hit != 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: .pixi

@@ -108,6 +108,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
+      # A retry may verify an unpublished older tag that predates the current CI
+      # helpers, so install Pixi from this run's commit before checking it out.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Pixi
+        uses: ./.github/actions/setup-pixi
+        with:
+          install: "false"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.resolve.outputs.sha }}
@@ -134,16 +143,8 @@ jobs:
               sys.exit(f"Tag {tag} doesn't match: {wrong}")
           print(f"{tag} matches {', '.join(versions)}")
           EOF
-      - name: Set up Pixi
-        # A retry may verify an unpublished older tag without current CI helpers.
-        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
-        with:
-          pixi-version: v0.82.0
-          locked: true
-          environments: >-
-            default
-            dev
-          cache: false
+      - name: Install the tag's locked environments
+        run: pixi install --locked -e default -e dev
       - name: Lint and type check
         run: |
           pixi run lint
