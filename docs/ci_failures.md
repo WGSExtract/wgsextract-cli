@@ -145,7 +145,7 @@ landing callers as well.
 For the PR-only **PR area checks** router, job prefixes (`ubuntu /`, `macos /`,
 `windows /`, `arm64 /`, `install /`) select the corresponding reusable workflow's
 main push run, rather than looking for a nonexistent main run of the router.
-The label and issue notify agents through the normal bug-first queue; no host
+The label and issue notify agents through the normal issue queue; no host
 credentials or external notification service is needed.
 
 Run an audited retry from the repository root:
