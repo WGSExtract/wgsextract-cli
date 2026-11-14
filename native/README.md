@@ -31,8 +31,8 @@ printed by `--version`.
 
 The `macos-aligners-17` (Apple Silicon) prerelease has `wgse-bwa` 0.13.0,
 `wgse-bwa-mem2` 0.5.3, `wgse-bwa-mem3` 0.4.0 and `wgse-minimap2` 0.4.0.
-The `linux-aligners-3` (Linux x86-64 and ARM64) prerelease has `wgse-bwa`
-0.12.1, plus `wgse-bwa-mem3` 0.4.0 and `wgse-minimap2` 0.4.0 for Linux
+The `linux-aligners-4` (Linux x86-64 and ARM64) prerelease has `wgse-bwa`
+0.14.0, plus `wgse-bwa-mem3` 0.4.0 and `wgse-minimap2` 0.4.0 for Linux
 x86-64. The steps below install the
 Apple Silicon executables; on Linux, see
 [Linux x86-64 and NVIDIA GPUs](#linux-x86-64-and-nvidia-gpus-cuda). Earlier published `wgse-bwa`
@@ -42,8 +42,8 @@ when no dense side file is present. With a side file it refuses: those builds
 read it automatically and cannot honor the run's opt-in setting. Upgrade to
 0.12.1, or remove the side files with
 `wgsextract ref dense-sa --ref <fasta> --delete`.
-The 0.13.0 and 0.14.0 optimizations described below require a build from this
-revision until an updated prerelease is published.
+On Linux, `linux-aligners-4` has the 0.13.0 and 0.14.0 optimizations
+described below.
 
 The `macos-aligners-17` prerelease speeds up `wgse-bwa` CPU alignment with
 exact mate-rescue window pruning, compact-key region sorting and NEON
@@ -1019,7 +1019,7 @@ average (`power.txt`, `power-samples.tsv`).
 
 `wgse-bwa` also builds for Linux x86-64 and ARM64, as conda packages
 (`packaging/wgse-bwa`, built by `.github/workflows/linux_aligners.yml` and
-published as `linux-aligners-*` prereleases; `linux-aligners-3` has 0.12.1, and
+published as `linux-aligners-*` prereleases; `linux-aligners-4` has 0.14.0, and
 `wgse-bwa-mem3` 0.4.0 for x86-64, see
 [below](#wgse-bwa-mem3-on-linux-x86-64)).
 Download the package for your machine, check it against the SHA-256 digest
@@ -1028,9 +1028,9 @@ together with its runtime libraries (installing a local package file doesn't
 resolve dependencies). The CLI finds `wgse-bwa` on `PATH`:
 
 ```bash
-PKG=wgse-bwa-0.12.1-linux64_wgse_0.conda   # wgse-bwa-0.12.1-linuxaarch64_wgse_0.conda on ARM64
-gh release download linux-aligners-3 -R WGSExtract/wgsextract-cli -p "$PKG" --clobber
-gh release view linux-aligners-3 -R WGSExtract/wgsextract-cli --json assets \
+PKG=wgse-bwa-0.14.0-linux64_wgse_0.conda   # wgse-bwa-0.14.0-linuxaarch64_wgse_0.conda on ARM64
+gh release download linux-aligners-4 -R WGSExtract/wgsextract-cli -p "$PKG" --clobber
+gh release view linux-aligners-4 -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
   grep -F "  $PKG" | sha256sum -c &&
 conda create -y -n wgse-bwa -c conda-forge "libgcc>=14" "libstdcxx>=14" "libzlib>=1.3.2,<2" &&
@@ -1131,8 +1131,8 @@ above, in its own environment:
 
 ```bash
 PKG=wgse-bwa-mem3-0.4.0-linux64_wgse_0.conda
-gh release download linux-aligners-3 -R WGSExtract/wgsextract-cli -p "$PKG" --clobber
-gh release view linux-aligners-3 -R WGSExtract/wgsextract-cli --json assets \
+gh release download linux-aligners-4 -R WGSExtract/wgsextract-cli -p "$PKG" --clobber
+gh release view linux-aligners-4 -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
   grep -F "  $PKG" | sha256sum -c &&
 conda create -y -n wgse-bwa-mem3 -c conda-forge "libgcc>=14" "libstdcxx>=14" \
@@ -1191,14 +1191,14 @@ minimap2 2.31 as on a Mac (`tests/upstream.sh`).
 
 Its conda package (`packaging/wgse-minimap2`, 0.4.0, with the CUDA backend
 below) is built by the same workflow and published next to `wgse-bwa` in the
-`linux-aligners-*` prereleases, from `linux-aligners-3`.
+`linux-aligners-*` prereleases, from `linux-aligners-3` (now `linux-aligners-4`).
 On `PATH`, `align` and `realign` run it in minimap2's place. For long reads
 they add `--backend auto`, so it uses the GPU when one is usable
 ([docs/hardware.md](../docs/hardware.md#nvidia-gpus-without-parabricks-wgse-bwa---cuda)).
 Install it as `wgse-bwa-mem3` above, in its own environment:
 
 ```bash
-TAG=linux-aligners-3 PKG=wgse-minimap2-0.4.0-linux64_wgse_0.conda
+TAG=linux-aligners-4 PKG=wgse-minimap2-0.4.0-linux64_wgse_0.conda
 gh release download "$TAG" -R WGSExtract/wgsextract-cli -p "$PKG" --clobber
 gh release view "$TAG" -R WGSExtract/wgsextract-cli --json assets \
   --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' |
