@@ -13,8 +13,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-macos-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-macos-${{ github.event_name }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'pull_request') && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
 jobs:
   test-macos:

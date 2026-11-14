@@ -280,11 +280,16 @@ class Observer(IssueReports):
         )
 
     def process(self, run: dict[str, Any], *, rerun_tests: bool = False) -> int:
-        self.report_recoveries(run)
         latest = self.latest(run)
-        if latest is None or latest["id"] != run["id"]:
+        superseded = latest is None or latest["id"] != run["id"]
+        # Partial passes in a cancelled, superseded run must not create flake
+        # exemptions. Completed successful retries still report recoveries.
+        if not (superseded and run["conclusion"] == "cancelled"):
+            self.report_recoveries(run)
+        if superseded:
             print("Superseded run; not rerunning or changing main status.")
             return 0
+        assert latest is not None
         if (
             latest["run_attempt"] != run["run_attempt"]
             or latest["status"] != "completed"

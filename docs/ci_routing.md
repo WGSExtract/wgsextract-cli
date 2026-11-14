@@ -62,8 +62,11 @@ also run both site builders and the app's site-source validator, without
 deployment permissions. The secret scan remains on **all PRs and queue groups**,
 including docs: routing must not hide a secret in prose.
 
-The OS workflows and Install Lab run unconditionally on main pushes and nightly,
-as do the GUI and native workflows covered by area routing. CodeQL retains
+The OS workflows and CLI package/benchmark smoke run unconditionally on main
+pushes and nightly. Install Lab's main-push paths match the installer/packaging
+route above; GUI CI, GUI developer setup, GUI distribution, macOS Aligners and
+macOS DeepVariant use their PR path filters on main pushes too. All retain
+unfiltered nightly coverage. CodeQL retains
 unfiltered main coverage and runs nightly; PRs scan code/configuration paths
 only. Releases and manual dispatches remain available. Install Lab can be
 forced on any PR with the `run-install-lab` label. Only this label is actionable:
@@ -72,8 +75,35 @@ Label runs cannot cancel a code-validation run. Routing, documentation, lint
 and summary label checks have distinct names. Draft-fast, native smoke and
 Pages checks use static names so skipped jobs do not expose raw name expressions.
 The landing validator scopes area checks to the selected ready run.
-Its nightly run includes the former weekly negative
-controls and pinned-release scenarios.
+Its nightly run includes the former weekly negative controls and pinned-release
+scenarios.
+
+### Main-push macOS capacity
+
+Main pushes supersede older main-push runs independently in Install Lab, GUI
+distribution, CI macOS, CLI package/benchmark smoke, macOS Aligners,
+macOS DeepVariant, GUI CI and GUI developer setup. Their concurrency groups
+separate push, PR, nightly and manual events. Nightly/manual runs keep unique
+run-ID groups and are not cancelled by pushes. Reusable workflows use literal
+workflow-specific prefixes, not the caller's `github.workflow`; tagged GUI
+distribution calls also keep unique, non-cancelling groups, including a release
+caller with a push event. Release publishing and `app_run` artifact selection
+are unchanged.
+
+The eight workflows previously submitted **13–14 macOS jobs per main merge**:
+CI macOS 3, smoke 2, Install Lab 2–3 (one extra if it builds the tree app),
+GUI distribution 2, and one each for Aligners, DeepVariant, GUI CI and GUI
+developer setup. A CLI-only merge outside installer/packaging paths now submits
+**5** (CI macOS plus smoke); docs-only submits the same 5. Relevant app/native
+merges still run the matching workflows. Coalescing limits each workflow's
+main-push backlog to its newest run; it does not promise a fixed saving in
+runner-minutes or a measured queue-wait target.
+
+The failure observer treats a cancelled superseded main run as obsolete:
+no retry, red-main update or flake exemption from its partial passes.
+Cancelled runs do not replace the last conclusive main failure/success used
+for PR comparisons. A relevant newer main success still closes that workflow's
+red-main bug; unrelated path-filtered pushes do not falsely mark it green.
 
 ### CLI test time and tiers
 
@@ -172,7 +202,8 @@ because GitHub counts a skipped required check as passing.
 
 The required set stays on fast Ubuntu jobs. The other OS jobs, which more
 often lose runners or wait for capacity, stay advisory so they can't stall the
-queue; main pushes and nightly runs still run them in full. A job-level `needs:` summary in one workflow, rather than polling the
+queue; main pushes run selected advisory workflows in full and nightly runs cover
+all paths. A job-level `needs:` summary in one workflow, rather than polling the
 checks API, reports exactly once per run with no extra permissions or timeout.
 The queue's `merge_group` events ignore `paths:` filters, so routing uses the
 group's `base_sha...head_sha` diff, keeping docs-only groups to a few minutes.
