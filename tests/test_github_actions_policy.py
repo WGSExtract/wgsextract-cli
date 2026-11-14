@@ -146,6 +146,14 @@ HEAVY_PUSH_WORKFLOWS = CLI_PUSH_WORKFLOWS | {
     "gui-tauri-installer.yml",
     "codeql.yml",
 }
+AREA_PUSH_WORKFLOWS = {
+    "install_lab.yml",
+    "gui-distribution.yml",
+    "gui-ci.yml",
+    "gui-dev-setup.yml",
+    "macos_aligners.yml",
+    "macos_deepvariant.yml",
+}
 
 
 def github_glob_matches(path: str, pattern: str) -> bool:
@@ -330,19 +338,17 @@ def triggered_workflows(paths: list[str], event: str = "push") -> set[str]:
         ["docs/developer_setup.md", "native/README.md"],
         [".github/copilot-instructions.md", "gui/AGENTS.md"],
         ["docs/nested/new-prose.md"],
+        ["native/deepvariant/README.md", "gui/app/README.md", "packaging/README.md"],
     ],
 )
 def test_docs_fast_path_909_does_not_start_heavy_push_ci(paths: list[str]) -> None:
     triggered = triggered_workflows(paths)
-    assert not triggered & HEAVY_PUSH_WORKFLOWS
-    assert "gitleaks.yml" in triggered
-    assert "pages.yml" not in triggered
+    assert triggered == {"gitleaks.yml"}
 
 
 def test_docs_fast_path_909_keeps_pages_for_handwritten_site_prose() -> None:
     triggered = triggered_workflows(["site_src/new-guide.md"])
-    assert {"gitleaks.yml", "pages.yml"} <= triggered
-    assert not triggered & HEAVY_PUSH_WORKFLOWS
+    assert triggered == {"gitleaks.yml", "pages.yml"}
 
 
 @pytest.mark.parametrize(
@@ -362,7 +368,7 @@ def test_docs_fast_path_909_generated_markdown_never_starts_heavy_suites(
     reference: str,
 ) -> None:
     triggered = triggered_workflows([reference])
-    assert not triggered & HEAVY_PUSH_WORKFLOWS
+    assert not triggered & (HEAVY_PUSH_WORKFLOWS | AREA_PUSH_WORKFLOWS)
     assert "gitleaks.yml" in triggered
     assert triggered_workflows([reference], "pull_request") == {"pr_ci.yml"}
     assert not routes([reference])["cli"]
@@ -374,6 +380,7 @@ def test_docs_fast_path_909_generated_markdown_never_starts_heavy_suites(
 def test_docs_fast_path_909_does_not_hide_mixed_code_pushes(code: str) -> None:
     triggered = triggered_workflows(["README.md", code])
     assert HEAVY_PUSH_WORKFLOWS | {"gitleaks.yml"} <= triggered
+    assert "os_tests.yml" not in triggered
 
 
 def test_github_path_filters_reinclude_only_matching_files_in_order() -> None:

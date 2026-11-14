@@ -40,6 +40,7 @@ class ReplayGitHub(GitHub):
         self.main_by_workflow: dict[str, dict[str, Any]] = {}
         self.other_runs: list[dict[str, Any]] = []
         self.run_jobs: dict[int, list[dict[str, Any]]] = {}
+        self.attempt_runs: dict[tuple[int, int], dict[str, Any]] = {}
         self.jobs: dict[int, list[dict[str, Any]]] = {1: [recorded("test_failure")]}
         self.main_jobs: list[dict[str, Any]] = []
         self.issues: list[dict[str, Any]] = []
@@ -130,7 +131,13 @@ class ReplayGitHub(GitHub):
                 selected = self.main_by_workflow.get(parts[2])
             if self.superseded and not main_query:
                 selected = dict(self.run, id=999)
-            candidates = [selected] if selected else []
+            query = parse_qs(url.query)
+            candidates = [
+                run
+                for run in self.other_runs
+                if run["head_branch"] == query["branch"][0]
+                and ("event" not in query or run["event"] == query["event"][0])
+            ] + ([selected] if selected else [])
             if main_query:
                 if self.last_completed_main:
                     candidates.append(self.last_completed_main)
@@ -138,8 +145,6 @@ class ReplayGitHub(GitHub):
                     candidates = [
                         run for run in candidates if run["status"] == "completed"
                     ]
-            else:
-                candidates = self.other_runs + candidates
             return {"workflow_runs": copy.deepcopy(candidates)}
         if parts[:2] == ["actions", "runs"]:
             if len(parts) == 2:
@@ -174,6 +179,8 @@ class ReplayGitHub(GitHub):
                 )
                 return None
             attempt = int(parts[4])
+            if len(parts) == 5:
+                return copy.deepcopy(self.attempt_runs[int(parts[2]), attempt])
             jobs = (
                 self.main_jobs
                 if any(
@@ -526,6 +533,54 @@ def test_red_main_opens_updates_and_closes_a_bug_with_test_and_commit() -> None:
     assert issue["state"] == "closed"
 
 
+@pytest.mark.parametrize("status", ["queued", "in_progress", "completed"])
+@pytest.mark.parametrize("same_sha", [False, True])
+def test_903_cancelled_main_push_cannot_retry_or_change_red_main(
+    status: str, same_sha: bool
+) -> None:
+    api = ReplayGitHub()
+    newer, cancelled = recorded("superseded_main_runs")
+    api.run = dict(cancelled, conclusion="failure", run_attempt=1)
+    observer = Observer(api)
+    observer.process(api.run)
+    red_bug = api.issues[0]
+    original_body = red_bug["body"]
+    original_comments = copy.deepcopy(api.comments)
+
+    api.run = cancelled
+    api.other_runs = [dict(newer, status=status)]
+    if same_sha:
+        api.other_runs[0]["head_sha"] = cancelled["head_sha"]
+    # A partial retry passes the previously failing test, while another test
+    # fails and a queued sibling never starts. None may revive the old push.
+    api.jobs[2] = [
+        passed_job(),
+        dict(recorded("test_failure"), id=101, name="other test"),
+        recorded("lost_runner"),
+    ]
+    assert observer.process(api.run, rerun_tests=True) == 0
+    assert api.retried == []
+    assert api.issues == [red_bug]
+    assert red_bug["state"] == "open"
+    assert red_bug["body"] == original_body
+    assert api.comments == original_comments
+
+    api.run = dict(newer, conclusion="success", status="completed")
+    api.other_runs = []
+    assert observer.process(api.run) == 0
+    assert red_bug["state"] == "closed"
+
+
+def test_903_latest_cancelled_main_runner_loss_is_still_retried() -> None:
+    api = ReplayGitHub()
+    _, api.run = recorded("superseded_main_runs")
+    api.run["run_attempt"] = 1
+    api.jobs[1] = [recorded("lost_runner")]
+    Observer(api).process(api.run)
+    assert api.retried == [api.jobs[1][0]["id"]]
+    assert "lost runner" in ledger_comments(api)[0]
+
+
 def test_pr_matching_red_main_is_labelled_and_never_rerun_even_with_landing_override() -> (
     None
 ):
@@ -540,7 +595,7 @@ def test_pr_matching_red_main_is_labelled_and_never_rerun_even_with_landing_over
 @pytest.mark.parametrize(
     ("prefix", "job_name", "workflow", "workflow_name"),
     [
-        ("macos", "test-macos", "macos_ci.yml", "CI macOS"),
+        ("macos", "test-macos / core-1", "macos_ci.yml", "CI macOS"),
         pytest.param(
             "smoke",
             "smoke (ubuntu-latest, package)",

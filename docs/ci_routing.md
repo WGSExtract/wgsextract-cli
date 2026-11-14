@@ -81,19 +81,23 @@ including docs: routing must not hide a secret in prose.
 
 ### Main-push prose filters
 
-CI Ubuntu, macOS, Windows and ARM64, CLI smoke, Linux aligners/DeepVariant,
+The four OS trigger wrappers (CI Ubuntu, macOS, Windows and ARM64), CLI smoke, Linux aligners/DeepVariant,
 GATK/GKL on Windows, GUI Tauri installer and CodeQL use
 `paths-ignore: ["**/*.md"]` on main pushes, with no generated-reference or
 changelog exceptions. Mixed Markdown/code pushes still run normally.
+`os_tests.yml` is reusable-only; it inherits the filtered wrappers' invocation
+and cannot start independently on a push or PR.
 Generated references legitimately change with code inputs; the PR/merge-queue
 docs or CLI lane already checked freshness before `required` passed.
 The secret scan remains unfiltered on every main push; Pages retains its
 existing site-source filters.
 
 Install Lab, GUI distribution/CI/developer setup and macOS aligners/DeepVariant
-are intentionally left to #904 (main-push coalescing) to avoid conflicting edits.
-Until those filters land, these six workflows still start for prose-only main
-pushes. The fast-path target is only gitleaks, plus Pages for site sources.
+retain the area-scoped main-push filters from #904 (main-push coalescing),
+including the final `!**/*.md` exclusion. Their PR triggers use the same
+Markdown exclusion (Install Lab is invoked through PR area routing).
+A Markdown-only main push therefore starts only gitleaks, plus Pages for
+site sources; none of these six workflows or the OS suite starts.
 See AGENTS.md, "Docs fast path", for the narrower direct-push permission:
 policy files and generated/test-checked references still require PRs.
 
@@ -112,8 +116,42 @@ Label runs cannot cancel a code-validation run. Routing, documentation, lint
 and summary label checks have distinct names. Draft-fast, native smoke and
 Pages checks use static names so skipped jobs do not expose raw name expressions.
 The landing validator scopes area checks to the selected ready run.
-Its nightly run includes the former weekly negative
-controls and pinned-release scenarios.
+Its nightly run includes the former weekly negative controls and pinned-release
+scenarios.
+
+### Main-push macOS capacity
+
+Main pushes supersede older main-push runs independently in Install Lab, GUI
+distribution, CI macOS, CLI package/benchmark smoke, macOS Aligners,
+macOS DeepVariant, GUI CI and GUI developer setup. Their concurrency groups
+separate push, PR, nightly and manual events. Nightly/manual runs keep unique
+run-ID groups and are not cancelled by pushes. Reusable workflows use literal
+workflow-specific prefixes, not the caller's `github.workflow`; tagged GUI
+distribution calls also keep unique, non-cancelling groups, including a release
+caller with a push event. Release publishing and `app_run` artifact selection
+are unchanged.
+Main-push retries (`run_attempt > 1`) also use independent run-ID groups:
+rerunning an old commit cannot cancel the newest first-attempt main push.
+
+The eight workflows previously submitted **13–14 macOS jobs per main merge**:
+CI macOS 3, smoke 2, Install Lab 2–3 (one extra if it builds the tree app),
+GUI distribution 2, and one each for Aligners, DeepVariant, GUI CI and GUI
+developer setup. A CLI-only merge outside installer/packaging paths now submits
+**5** (CI macOS plus smoke); Markdown-only submits **0** macOS jobs after the
+prose filters. Relevant app/native
+merges still run the matching workflows. Coalescing limits each workflow's
+main-push backlog to its newest run; it does not promise a fixed saving in
+runner-minutes or a measured queue-wait target.
+
+The failure observer treats a cancelled superseded main run as obsolete:
+no retry, red-main update or flake exemption from its partial passes.
+Cancelled runs do not replace the last conclusive main failure/success used
+for PR comparisons, including an earlier failed attempt of a cancelled retry.
+A relevant newer main push or nightly success still closes that workflow's
+red-main bug. Nightly results refresh the baseline after fixes outside the push
+route; unrelated path-filtered pushes do not falsely mark it green.
+Manual/nightly retries remain independent and can report confirmed recoveries
+even when another run of their event exists.
 
 ### CLI test time and tiers
 
@@ -202,8 +240,9 @@ the routing itself lands. Other main-only workflow triggers are unchanged.
 `required`, a dependency summary in PR area checks. It runs for every PR, docs-only
 included, and for every merge-queue group. It passes when routing succeeded
 and every required job passed or was skipped by area routing; a failed or
-cancelled job fails it. `always()` keeps it reporting when a dependency fails,
-because GitHub counts a skipped required check as passing.
+cancelled job fails it. `!cancelled()` keeps it reporting when a dependency fails
+without starting it after workflow cancellation; the landing validator rejects
+cancelled runs because GitHub counts a skipped required check as passing.
 
 | Event | Jobs `required` waits for | Not required |
 |---|---|---|
@@ -212,7 +251,8 @@ because GitHub counts a skipped required check as passing.
 
 The required set stays on fast Ubuntu jobs. The other OS jobs, which more
 often lose runners or wait for capacity, stay advisory so they can't stall the
-queue; selected main pushes and nightly runs still run them in full. A job-level `needs:` summary in one workflow, rather than polling the
+queue; main pushes run selected advisory workflows in full and nightly runs cover
+all paths. A job-level `needs:` summary in one workflow, rather than polling the
 checks API, reports exactly once per run with no extra permissions or timeout.
 The queue's `merge_group` events ignore `paths:` filters, so routing uses the
 group's `base_sha...head_sha` diff, keeping docs-only groups to a few minutes.
@@ -309,3 +349,15 @@ the validator rejects direct `actions/setup-node` steps. `gui-build.yml` can
 build an older ref, so it replaces that ref's `.github/actions` with the run's
 own before using it. `gui-dev-setup.yml` deliberately bypasses it: it tests the
 app's own bootstrap on runners without user tools.
+
+CI Ubuntu, CI macOS, CI Windows and CI Linux ARM64 keep their own triggers,
+concurrency groups and workflow names, but run the CLI suite through one
+reusable workflow, `os_tests.yml`. Its `os` input selects the installer checks,
+Windows imputation and vep-rs, and ARM64 checks; `reference: true` (Ubuntu and
+macOS) adds the hg19ToHg38 chain and hs38 reference library. ARM64 passes one
+`tier: all, shard: all` matrix entry, the `--ci-tier`/`--ci-shard` defaults, so
+it collects the same tests as before. Its jobs report as `test-ubuntu / core-1`
+on main and `ubuntu / test-ubuntu / core-1` in PR area checks; ARM64's single job is
+`native-arm64 / native`. Each job uploads `tests-<os>-<label>`. The workflow has
+no concurrency group of its own, so the OS calls in one run never cancel each
+other.
