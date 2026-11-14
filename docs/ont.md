@@ -373,7 +373,8 @@ Delly is a short-read caller.
 PacBio input gets a long-read caller too, whether detected (read group
 `PL:PACBIO`) or declared with `--pacbio`: pbsv when installed, else Sniffles.
 HiFi reads get pbsv's CCS thresholds; detected subreads (CLR, every read group's
-`DS` naming `READTYPE=SUBREAD`) keep its defaults. When neither pbsv nor
+`DS` naming `READTYPE=SUBREAD`) keep its defaults, as does an explicit
+`--caller pbsv` unless `--ccs` is added. When neither pbsv nor
 Sniffles is installed, `vcf sv` stops and names the `pacbio` Pixi environment
 that provides them, rather than silently falling back to Delly; it never
 installs them. Pass `--caller delly` to use Delly anyway. The result manifest's
