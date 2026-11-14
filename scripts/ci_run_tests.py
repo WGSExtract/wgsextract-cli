@@ -13,6 +13,13 @@ if __package__ in {None, ""}:
 
 from scripts.ci_test_tiers import SINGLE_OS_MODULES  # noqa: E402
 
+SEPARATE_SUITES = {
+    "test_e2e_fast_chrM.py",
+    "test_e2e_full_genome.py",
+    "test_microarray_real_data.py",
+    "test_smoke_real_full.py",
+}
+
 
 def test_targets(selection: str) -> list[str] | None:
     if selection == "all":
@@ -38,7 +45,7 @@ def main() -> None:
     parser.add_argument("pytest_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     targets = test_targets(args.selection)
-    if args.generic_only or args.platform_only:
+    if args.generic_only:
         targets = [
             target
             for target in (
@@ -46,7 +53,11 @@ def main() -> None:
                 if targets is not None
                 else sorted(path.as_posix() for path in Path("tests").glob("test_*.py"))
             )
-            if (Path(target).name in SINGLE_OS_MODULES) == args.generic_only
+            if Path(target).name in SINGLE_OS_MODULES
+        ]
+    if targets is not None:
+        targets = [
+            target for target in targets if Path(target).name not in SEPARATE_SUITES
         ]
     if targets == []:
         print("No affected tests; skipping pytest.")
@@ -54,6 +65,8 @@ def main() -> None:
     options = args.pytest_args
     if options[:1] == ["--"]:
         options = options[1:]
+    if args.platform_only:
+        options.append("--ci-skip-independent")
     result = subprocess.run(["pixi", "run", "test-ci", *options, *(targets or [])])
     # A sparse selection may contain no tests in this tier/hash shard.
     if result.returncode == 5 and targets is not None:

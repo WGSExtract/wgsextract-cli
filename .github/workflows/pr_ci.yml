@@ -109,7 +109,7 @@ jobs:
         run: |
           python -m pip install --quiet -e . pytest jsonschema
           mkdir -p out
-          python -m pytest -q tests/test_ci_changes.py tests/test_github_actions_policy.py --basetemp=out/draft-tests
+          python -m pytest -q tests/test_ci_changes.py tests/test_ci_selection.py tests/test_ci_certify.py tests/test_ci_scheduling.py tests/test_github_actions_policy.py --basetemp=out/draft-tests
 
       - name: Fast product unit tests for CLI changes
         if: needs.changes.outputs.draft_cli == 'true'
@@ -231,7 +231,7 @@ jobs:
           python-version: "3.13"
       - run: |
           python -m pip install --quiet -e . pytest jsonschema
-          python -m pytest -q tests/test_ci_changes.py tests/test_ci_selection.py tests/test_github_actions_policy.py --basetemp=out/ci-policy
+          python -m pytest -q tests/test_ci_changes.py tests/test_ci_selection.py tests/test_ci_certify.py tests/test_ci_scheduling.py tests/test_github_actions_policy.py --basetemp=out/ci-policy
   smoke:
     needs: changes
     if: needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'

@@ -25,7 +25,7 @@ INTEGRATION_MODULES = frozenset(
 SENSITIVE = re.compile(
     r"subprocess|platform|sys\.|os\.|shutil|signal|chmod|symlink|newline|"
     r"line.?ending|CRLF|\\r|samtools|bcftools|bwa|tool|shell|"
-    r"Popen|check_output|check_call|exec|importlib|__import__|"
+    r"Popen|check_output|check_call|exec|eval|compile|importlib|__import__|"
     r"getfixturevalue|pytest_plugins|usefixtures|runner|CliRunner",
     re.IGNORECASE,
 )

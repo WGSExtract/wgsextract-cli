@@ -133,6 +133,20 @@ def test_923_stale_pr_head_refuses(
         validate_head(pr, "abc", "owner/repo")
 
 
+def test_923_local_fork_refuses(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    subprocess.run(["git", "init", "-q"], check=True)
+    with pytest.raises(ValueError, match="fork"):
+        validate_head(
+            {"head": {"repo": {"full_name": "outsider/fork"}, "sha": "abc"}},
+            "abc",
+            "owner/repo",
+        )
+
+
 @pytest.mark.parametrize(
     ("system", "machine", "expected"),
     [

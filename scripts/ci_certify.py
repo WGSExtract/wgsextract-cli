@@ -54,11 +54,14 @@ def validate_head(pr: dict[str, Any], sha: str, repository: str) -> None:
 
 
 def pr_head() -> tuple[str, dict[str, Any], str]:
-    repository = json.loads(
+    remote = json.loads(
         subprocess.check_output(
-            ["gh", "repo", "view", "--json", "nameWithOwner"], text=True
+            ["gh", "repo", "view", "--json", "nameWithOwner,isFork"], text=True
         )
-    )["nameWithOwner"]
+    )
+    if remote["isFork"]:
+        raise ValueError("Refusing fork repository")
+    repository = remote["nameWithOwner"]
     number = json.loads(
         subprocess.check_output(["gh", "pr", "view", "--json", "number"], text=True)
     )["number"]
@@ -239,7 +242,7 @@ def generic_commands(paths: list[str], targets: list[str] | str) -> list[list[st
         [*pixi, "actionlint"],
         [*pixi, "python", "scripts/validate_github_actions.py"],
         [*pixi, "python", "scripts/validate_site_sources.py"],
-        [*pixi, "pytest", *CI_TESTS, "tests/test_ci_certify.py"],
+        [*pixi, "pytest", *CI_TESTS],
     ]
     python_files = [
         path for path in paths if path.endswith(".py") and Path(path).is_file()

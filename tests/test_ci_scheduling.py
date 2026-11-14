@@ -98,7 +98,7 @@ def pytest_addoption(parser):
     )
     pytester.makepyfile(
         test_realign="def test_real_workflow(): pass",
-        test_genotyping="def test_genotype(): pass",
+        test_version_sync="def test_versions(): pass",
         test_new_feature="def test_new_feature(): pass",
     )
     flags = ["--ci-skip-independent"] if skip else []

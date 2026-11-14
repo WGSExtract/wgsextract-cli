@@ -28,7 +28,7 @@ def certifications(
     head = pr.get("head", {})
     if (
         not pr
-        or head.get("repo", {}).get("full_name") != repository
+        or (head.get("repo") or {}).get("full_name") != repository
         or not head.get("sha")
     ):
         return set()
@@ -55,7 +55,7 @@ def certifications(
                 # Status objects don't have a sha field; their API URL does.
                 if not status.get("url", "").endswith(f"/statuses/{sha}"):
                     continue
-                creator = status.get("creator", {}).get("login")
+                creator = (status.get("creator") or {}).get("login")
                 if not creator:
                     continue
                 if creator not in permissions:
