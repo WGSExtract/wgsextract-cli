@@ -344,7 +344,7 @@ class Oracle:
         for line in query.splitlines():
             chrom, pos, tgt = line.split("\t")
             truth[(chrom, pos)] = "".join(sorted(tgt.replace("|", "").replace("/", "")))
-        expected: dict[tuple[str, str], str] = {}
+        expected: dict[tuple[str, str], tuple[str, str]] = {}
         query = self.run_tool(
             "bcftools", "query", "-u", "-f",
             "%CHROM\t%POS\t[%TGT\t%DP\t%GQ]\t%REF\t%ALT\t%QUAL\t%FILTER\n",
@@ -359,19 +359,30 @@ class Oracle:
             # their QUAL measures confidence in reference, not an ALT call.
             if gq == "." and alt == "." and genotype == ref * 2:
                 gq = qual
-            try:
-                depth, quality = float(dp), float(gq)
-                confident = (
-                    math.isfinite(depth)
-                    and depth >= 10
-                    and math.isfinite(quality)
-                    and quality >= 20
-                    and record_filter in {".", "PASS"}
-                )
-            except ValueError:
-                confident = False
             valid = len(genotype) == 2 and set(genotype) <= set("ACGT")
-            expected[(chrom, pos)] = genotype if confident and valid else "--"
+            reason = (
+                "called"
+                if valid
+                else "missing_gt"
+                if genotype in {"", ".", ".."}
+                else "unsupported_allele"
+            )
+            if record_filter not in {".", "PASS"}:
+                reason = "filtered"
+            else:
+                for field, threshold, value in (("dp", 10, dp), ("gq", 20, gq)):
+                    try:
+                        measured = float(value)
+                    except ValueError:
+                        reason = f"missing_{field}"
+                        break
+                    if not math.isfinite(measured) or measured < 0:
+                        reason = f"missing_{field}"
+                        break
+                    if measured < threshold:
+                        reason = f"low_{field}"
+                        break
+            expected[(chrom, pos)] = (genotype if reason == "called" else "--", reason)
 
         reasons: dict[tuple[str, str], tuple[str, str]] = {}
         report = self.output("microarray", "HG00096.hg19-mini_CombinedKit_reasons.tsv")
@@ -388,13 +399,15 @@ class Oracle:
                 continue
             _rsid, chrom, pos, genotype = line.rstrip("\n").split("\t")[:4]
             key = (chrom, pos)
+            if key in seen:
+                policy_errors += 1
+                continue
             seen.add(key)
             genotype = "".join(sorted(genotype))
-            policy_errors += genotype != expected.get(key, "--")
+            expected_genotype, expected_reason = expected.get(key, ("--", "missing_gt"))
+            policy_errors += genotype != expected_genotype
             reported, reason = reasons.get(key, ("", ""))
-            reason_errors += reported != genotype or (
-                (reason == "called") != (genotype != "--")
-            )
+            reason_errors += reported != genotype or reason != expected_reason
             if key in truth:
                 total += 1
                 if genotype == "--":
@@ -403,10 +416,13 @@ class Oracle:
                     called += 1
                     agree += genotype == truth[key]
         eligible = sum(
-            genotype != "--" for key, genotype in expected.items() if key in truth
+            genotype != "--"
+            for key, (genotype, _reason) in expected.items()
+            if key in truth
         )
         missing = sum(
-            genotype != "--" and key not in seen for key, genotype in expected.items()
+            genotype != "--" and key not in seen
+            for key, (genotype, _reason) in expected.items()
         )
         concordance = agree / max(called, 1)
         self.record(
