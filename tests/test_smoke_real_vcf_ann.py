@@ -30,7 +30,7 @@ class TestVcfAnnotationSmoke:
         # Create dummy hg38 ref
         self.fake_hg38 = os.path.join(self.refdir, "genomes", "hg38.fa")
         with open(self.fake_hg38, "w") as f:
-            f.write(">chr1\nACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT\n")
+            f.write(">chr1\n" + "A" * 199 + "C" + "A" * 800 + "\n")
 
         # Create a dummy .dict file so ReferenceLibrary can find SN count
         self.fake_dict = self.fake_hg38.replace(".fa", ".dict")

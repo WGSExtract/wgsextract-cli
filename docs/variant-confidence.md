@@ -22,6 +22,43 @@ first run through these commands is a technical check, not a clinical result.
 
 ## Where the labels appear
 
+### ClinVar review evidence is not sequencing confidence
+
+`vcf clinvar` requires a matching indexed FASTA (`--ref`, or the resolved
+reference library). It normalizes working copies of both inputs with
+`bcftools norm -f` and splits multiallelics before matching; incompatible
+REF bases or contig lengths fail rather than being silently corrected.
+Original alleles and sample fields remain in `WGSE_ORIGINAL` (URL-encoded
+JSON), alongside `OLD_MULTIALLELIC` provenance. Originals are not rewritten.
+Shared VCF and allele-table annotation uses this normalization when a
+reference is resolved.
+
+Single-sample phased SNVs can recover a ClinVar MNV only when all changed
+bases have the same non-missing PS and share a called ALT haplotype. Opposite
+haplotypes, unphased or missing calls, different phase sets and imputed calls
+are not composed. `WGSE_MNV_COMPONENTS` preserves each component's phase,
+metrics and original provenance. Components remain in the annotated VCF;
+the report counts the combined finding only once. A composed MNV is at most
+moderate sequencing confidence: individual allele depths do not measure
+read support for the combined allele, and a low-confidence component makes
+the MNV low confidence.
+
+`CLNREVSTAT`, `CLNSIGCONF`, `CLNVC` and the resource's record ID
+(`WGSE_CLINVAR_ID`) are retained in annotations and confidence tables.
+`WGSE_CLINVAR_STARS` and `WGSE_CLINVAR_REVIEW` describe **assertion review**:
+0 stars without assertion criteria, 1 with criteria, 2 for multiple submitters
+without conflicts, 3 for expert-panel review, and 4 for practice guidelines.
+Missing review status stays unknown, not an inferred zero-star assertion.
+These tiers do not alter the technical sequencing label. A well-sequenced
+call with no assertion criteria is not equivalent clinical evidence to an
+expert-panel assertion.
+
+`clinvar_conflicts.vcf.gz` and `clinvar_conflicts.confidence.tsv` retain
+conflicting classifications and their submitter distributions for review.
+They are not consensus P/LP findings and do not contribute to report gene
+carrier/biallelic counts. Review tiers, conflict evidence and ClinVar IDs
+appear in `vcf table` and the report's JSON, findings table, HTML and Markdown.
+
 - **VCF**: `INFO/WGSE_CONF` (`Number=A`: `high`, `moderate`, `low`, or `.` for an
   ALT the sample doesn't carry) and `INFO/WGSE_CONF_REASONS` (the reason codes
   for each ALT, joined by `|`). A `##wgsextract_confidence` header line records

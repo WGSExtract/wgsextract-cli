@@ -139,6 +139,7 @@ def run_gnomad(params: VcfGnomadParams) -> None:
         "gnomAD",
         header,
         threads=params.threads,
+        reference=lib.fasta,
     )
 
     record_annotated(ann_out)

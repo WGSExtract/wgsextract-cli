@@ -24,6 +24,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from urllib.parse import unquote
 
+from wgsextract_cli.core import clinical_evidence as ce
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.table_writer import Column
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
@@ -121,6 +122,31 @@ COLUMNS: tuple[Column, ...] = (
         "genotype_probability",
         REAL,
         "Probability of the sample's genotype (largest FORMAT/GP), for imputed calls.",
+    ),
+    Column("clinvar_id", TEXT, "ClinVar resource record ID (not the sample rsID)."),
+    Column(
+        "clinvar_review_status", TEXT, "ClinVar CLNREVSTAT assertion review status."
+    ),
+    Column(
+        "clinvar_review_stars",
+        INTEGER,
+        "ClinVar review stars (0-4), not sequencing confidence.",
+    ),
+    Column(
+        "clinvar_review_tier",
+        TEXT,
+        "ClinVar assertion support tier, not sequencing confidence.",
+    ),
+    Column(
+        "clinvar_conflict_evidence",
+        TEXT,
+        "ClinVar conflicting submitter classifications (CLNSIGCONF).",
+    ),
+    Column(
+        "original_record", TEXT, "Original allele and sample fields (URL-encoded JSON)."
+    ),
+    Column(
+        "mnv_components", TEXT, "Phase-supported MNV components (URL-encoded JSON)."
     ),
 )
 COLUMN_NAMES = tuple(column.name for column in COLUMNS)
@@ -537,6 +563,7 @@ def variant_rows(
                 (ann or {}).get("HGVS.p")
             )
             diplotype, phenotype = pharmcat.get(gene or "", (None, None))
+            review = ce.review_evidence(info)
             yield (
                 chrom,
                 pos,
@@ -573,4 +600,11 @@ def variant_rows(
                 _value(info.get("SV_FREQ")),
                 int(IMPUTED_TAG in info),
                 gp,
+                _value(info.get(ce.IDENTITY)),
+                _value(info.get("CLNREVSTAT")),
+                _to_int(str(review["stars"])),
+                str(review["review_tier"]) if "CLNSIG" in info else None,
+                _value(info.get("CLNSIGCONF")),
+                _value(info.get(ce.ORIGIN)),
+                _value(info.get(ce.COMPONENTS)),
             )

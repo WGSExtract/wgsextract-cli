@@ -1,6 +1,8 @@
 """Skip markers and tiny indexed files for tests that run samtools/bcftools/htslib."""
 
+import gzip
 import random
+import subprocess
 from argparse import Namespace
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -51,6 +53,60 @@ def write_fasta(path: Path, seqs: Mapping[str, str]) -> Path:
     root = prepared_files(content, samtools, ("ref.fa", "ref.fa.fai"), build)
     copy_prepared(root / "ref.fa", path)
     copy_prepared(root / "ref.fa.fai", Path(str(path) + ".fai"))
+    return path
+
+
+def reference_for_vcf(path: Path, vcf: str | Path, *resources: str | Path) -> Path:
+    """A compressed synthetic reference consistent with the fixture's REF bases.
+
+    Stream homopolymer chunks so chromosome-scale coordinate fixtures do not
+    require a chromosome-sized Python string or an uncompressed disk copy.
+    """
+    from wgsextract_cli.core.reference_resolver import header_contig_lengths
+
+    header = run_command(
+        ["bcftools", "view", "-h", str(vcf)], capture_output=True
+    ).stdout
+    lengths = header_contig_lengths(header)
+    edits: dict[str, dict[int, str]] = {chrom: {} for chrom in lengths}
+    from wgsextract_cli.core.variant_files import match_chromosome_name
+
+    for file in (vcf, *resources):
+        opener = gzip.open if str(file).endswith(".gz") else open
+        with opener(file, "rt") as source:
+            for line in source:
+                if line.startswith("#"):
+                    continue
+                chrom, pos, _, ref, *_ = line.split("\t")
+                chrom = match_chromosome_name(chrom, lengths) or chrom
+                for offset, base in enumerate(ref):
+                    edits[chrom][int(pos) - 1 + offset] = base
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("wb") as output:
+        process = subprocess.Popen(
+            [get_tool_path("bgzip"), "-c"], stdin=subprocess.PIPE, stdout=output
+        )
+        assert process.stdin is not None
+        try:
+            for chrom, length in lengths.items():
+                process.stdin.write(f">{chrom}\n".encode())
+                positions = sorted(edits[chrom].items())
+                index = 0
+                for start in range(0, length, 1_000_000):
+                    chunk = bytearray(b"A" * min(1_000_000, length - start))
+                    while index < len(positions) and positions[index][0] < start + len(
+                        chunk
+                    ):
+                        pos, base = positions[index]
+                        chunk[pos - start] = ord(base)
+                        index += 1
+                    process.stdin.write(chunk)
+                process.stdin.write(b"\n")
+        finally:
+            process.stdin.close()
+            if process.wait():
+                raise RuntimeError("bgzip failed creating the synthetic reference")
+    run_command(["samtools", "faidx", str(path)], capture_output=True)
     return path
 
 

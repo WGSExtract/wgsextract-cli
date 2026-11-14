@@ -64,6 +64,7 @@ def run_cadd(params: VcfCaddParams) -> None:
             "CADD",
             _CADD_HEADER,
             threads=params.threads,
+            reference=lib.fasta,
         )
     else:
         indel_tsv = prepare_tabix_annotation(indel_file, "CADD indel")
@@ -79,6 +80,7 @@ def run_cadd(params: VcfCaddParams) -> None:
                 "CADD",
                 _CADD_HEADER,
                 threads=params.threads,
+                reference=lib.fasta,
             )
             annotate_vcf(
                 snv_out,
@@ -88,6 +90,7 @@ def run_cadd(params: VcfCaddParams) -> None:
                 work,
                 "CADD indel",
                 threads=params.threads,
+                reference=lib.fasta,
             )
 
     run_min_score_filter(

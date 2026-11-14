@@ -264,7 +264,9 @@ def normalize_vcf_chromosomes(
     if not mapping:
         return vcf_path
 
-    fd, map_file = tempfile.mkstemp(suffix=".txt")
+    fd, map_file = tempfile.mkstemp(
+        suffix=".txt", dir=workdir or str(Path(vcf_path).parent)
+    )
     with os.fdopen(fd, "w", newline="\n") as f:
         f.write("\n".join(f"{source} {target}" for source, target in mapping))
 

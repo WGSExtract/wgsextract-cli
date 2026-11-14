@@ -3,6 +3,7 @@ import subprocess
 from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfClinvarParams, VcfRevelParams
+from wgsextract_cli.core import clinical_evidence as ce
 from wgsextract_cli.core import variant_confidence
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -27,10 +28,25 @@ from .basic import vcf_input_handler
 CLINVAR_ANNOTATED = "clinvar_annotated.vcf.gz"
 CLINVAR_PATHOGENIC = "clinvar_pathogenic.vcf.gz"
 # GENEINFO (SYMBOL:GeneID|...) names the genes ClinVar placed the variant in.
-CLINVAR_COLUMNS = ("CLNSIG", "CLNDN", "GENEINFO")
+CLINVAR_COLUMNS = (
+    "CLNSIG",
+    "CLNDN",
+    "GENEINFO",
+    "CLNREVSTAT",
+    "CLNSIGCONF",
+    "CLNVC",
+    ce.IDENTITY,
+    ce.STARS,
+    ce.TIER,
+)
 # The record each call was split from, so a report knows that two ALTs of one
 # 1/2 call are on opposite copies.
-CLINVAR_TABLE_COLUMNS = (*CLINVAR_COLUMNS, variant_confidence.SPLIT_TAG)
+CLINVAR_TABLE_COLUMNS = (
+    *CLINVAR_COLUMNS,
+    variant_confidence.SPLIT_TAG,
+    ce.ORIGIN,
+    ce.COMPONENTS,
+)
 REVEL_ANNOTATED = "revel_annotated.vcf.gz"
 
 
@@ -44,17 +60,22 @@ def run_clinvar(params: VcfClinvarParams) -> None:
         resource(params.clinvar_file, lib.clinvar_vcf), "vcf_clinvar_missing", "clinvar"
     )
     logging.info(LOG_MESSAGES["vcf_clinvar_resolve"].format(path=clinvar_vcf))
+    if not lib.fasta:
+        raise WGSExtractError(
+            "ClinVar matching requires a reference FASTA; pass --ref with the matching reference."
+        )
 
     # Transfer CLNSIG (significance), CLNDN (disease name) and, when the
     # ClinVar file has it, GENEINFO. The input's own GENEINFO is dropped, so
     # any left names ClinVar's genes.
     clinvar_vcf = ensure_vcf_prepared(clinvar_vcf)
     input_vcf = ensure_vcf_prepared(input_file)
-    geneinfo = "##INFO=<ID=GENEINFO,"
+    header = _vcf_header(clinvar_vcf)
+    input_header = _vcf_header(input_vcf)
     columns = [
         c
         for c in CLINVAR_COLUMNS
-        if c != "GENEINFO" or geneinfo in _vcf_header(clinvar_vcf)
+        if f"##INFO=<ID={c}," in header or c in (ce.IDENTITY, ce.STARS, ce.TIER)
     ]
     ann_out = str(Path(outdir, CLINVAR_ANNOTATED))
     annotate_vcf(
@@ -65,18 +86,26 @@ def run_clinvar(params: VcfClinvarParams) -> None:
         outdir,
         "ClinVar",
         threads=params.threads,
-        remove=("INFO/GENEINFO",) if geneinfo in _vcf_header(input_vcf) else (),
+        reference=lib.fasta,
+        compose_mnvs=True,
+        compose_thresholds=variant_confidence.thresholds_from(params),
+        remove=tuple(
+            f"INFO/{c}" for c in CLINVAR_COLUMNS if f"##INFO=<ID={c}," in input_header
+        ),
     )
 
     path_out = str(Path(outdir, CLINVAR_PATHOGENIC))
     logging.info(LOG_MESSAGES["vcf_clinvar_filtering"].format(output=path_out))
     # Substring match also covers Pathogenic/Likely_pathogenic combinations.
     try:
+        include = '(CLNSIG ~ "Pathogenic" || CLNSIG ~ "Likely_pathogenic") && CLNSIG !~ "Conflicting"'
+        if "CLNSIGCONF" in columns:
+            include += ' && CLNSIGCONF = "."'
         summary = variant_confidence.label_vcf(
             ann_out,
             path_out,
             variant_confidence.thresholds_from(params),
-            include='CLNSIG ~ "Pathogenic" || CLNSIG ~ "Likely_pathogenic"',
+            include=include,
             summary_columns=CLINVAR_TABLE_COLUMNS,
             samples=(input_file,),
         )
@@ -98,6 +127,37 @@ def run_clinvar(params: VcfClinvarParams) -> None:
         clinical=summary.carried,
     )
     record_annotated(ann_out)
+    from wgsextract_cli.core.results import current_result
+
+    conflicts = str(Path(outdir, "clinvar_conflicts.vcf.gz"))
+    conflict_expr = 'CLNSIG ~ "Conflicting"'
+    if "CLNSIGCONF" in columns:
+        conflict_expr += ' || CLNSIGCONF != "."'
+    conflict_summary = variant_confidence.label_vcf(
+        ann_out,
+        conflicts,
+        variant_confidence.thresholds_from(params),
+        include=conflict_expr,
+        summary_columns=CLINVAR_TABLE_COLUMNS,
+        samples=(input_file,),
+    )
+    conflict_table = str(Path(outdir, "clinvar_conflicts.confidence.tsv"))
+    variant_confidence.write_table(
+        conflict_table,
+        conflict_summary,
+        CLINVAR_TABLE_COLUMNS,
+        "ClinVar conflicting assertions (not consensus P/LP)",
+    )
+    if conflict_summary.carried:
+        variant_confidence.record(
+            conflict_summary,
+            output=conflicts,
+            role="clinvar_conflicts",
+            what="ClinVar conflicting assertions",
+        )
+    else:
+        current_result().add_output(conflicts, "clinvar_conflicts")
+    current_result().add_output(conflict_table, "clinvar_conflict_table", kind="tsv")
     logging.info(LOG_MESSAGES["vcf_clinvar_done"].format(output=path_out))
 
 
@@ -127,6 +187,7 @@ def run_revel(params: VcfRevelParams) -> None:
             outdir,
             "REVEL",
             threads=params.threads,
+            reference=lib.fasta,
         )
     else:
         # Annovar REVEL TSV: #Chr, Start, End, Ref, Alt, REVEL
@@ -139,6 +200,7 @@ def run_revel(params: VcfRevelParams) -> None:
             "REVEL",
             ['##INFO=<ID=REVEL,Number=1,Type=Float,Description="REVEL score">'],
             threads=params.threads,
+            reference=lib.fasta,
         )
 
     run_min_score_filter(

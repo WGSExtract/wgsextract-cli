@@ -366,7 +366,12 @@ class VcfTrioParams(_VcfFileParams):
 class VcfClinvarParams(_AnnotatorParams):
     """ClinVar significance and disease (CLNSIG, CLNDN) as
     ``clinvar_annotated.vcf.gz``; the pathogenic and likely pathogenic calls,
-    with confidence labels, as ``clinvar_pathogenic.vcf.gz``."""
+    with sequencing confidence labels, as ``clinvar_pathogenic.vcf.gz``.
+    Matching requires an indexed reference FASTA (``ref``, else the library).
+    Both copies are reference-normalized; phase-supported SNVs can match MNVs.
+    Review status, stars and ClinVar identity remain separate from sequencing
+    confidence. Conflicting assertions go to ``clinvar_conflicts.vcf.gz`` and
+    their own confidence table, not the consensus pathogenic subset."""
 
     COMMAND = "vcf clinvar"
 

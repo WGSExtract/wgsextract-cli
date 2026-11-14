@@ -556,7 +556,7 @@
     ],
     "defaults": {
      "_command": "align",
-     "func": "cli_AlignParams"
+     "func": "run_align"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -1223,7 +1223,7 @@
     ],
     "defaults": {
      "_command": "analyze batch-gen",
-     "func": "cli_AnalyzeBatchGenParams"
+     "func": "run_batch_gen"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -1675,7 +1675,7 @@
     ],
     "defaults": {
      "_command": "analyze comprehensive",
-     "func": "cli_AnalyzeComprehensiveParams"
+     "func": "run_comprehensive"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -2350,7 +2350,7 @@
     ],
     "defaults": {
      "_command": "bam identify",
-     "func": "cli_BamIdentifyParams"
+     "func": "cmd_identify"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -2659,7 +2659,7 @@
     ],
     "defaults": {
      "_command": "bam index",
-     "func": "cli_BamIndexParams"
+     "func": "cmd_index"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -3046,7 +3046,7 @@
     ],
     "defaults": {
      "_command": "bam merge",
-     "func": "cli_BamMergeParams"
+     "func": "cmd_merge"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -3388,7 +3388,7 @@
     ],
     "defaults": {
      "_command": "bam sort",
-     "func": "cli_BamSortParams"
+     "func": "cmd_sort"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -3730,7 +3730,7 @@
     ],
     "defaults": {
      "_command": "bam to-bam",
-     "func": "cli_BamToBamParams"
+     "func": "cmd_tobam"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -4092,7 +4092,7 @@
     ],
     "defaults": {
      "_command": "bam to-cram",
-     "func": "cli_BamToCramParams"
+     "func": "cmd_tocram"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -4882,7 +4882,7 @@
     ],
     "defaults": {
      "_command": "bam unalign",
-     "func": "cli_BamUnalignParams"
+     "func": "cmd_unalign"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -5191,7 +5191,7 @@
     ],
     "defaults": {
      "_command": "bam unindex",
-     "func": "cli_BamUnindexParams"
+     "func": "cmd_unindex"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -5500,7 +5500,7 @@
     ],
     "defaults": {
      "_command": "bam unsort",
-     "func": "cli_BamUnsortParams"
+     "func": "cmd_unsort"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -5937,7 +5937,7 @@
     ],
     "defaults": {
      "_command": "basecall",
-     "func": "cli_BasecallParams"
+     "func": "run_basecall"
     },
     "description": "Basecall Nanopore POD5 signal with ONT's Dorado (optional; install it yourself) into an unaligned BAM that keeps the MM/ML methylation tags and feeds `align --r1`. Picks the GPU (Apple silicon, else NVIDIA) or CPU, downloads hac/sup models into the wgsextract cache, and can re-basecall only a panel's reads with sup.",
     "formatter_class": "HelpFormatter",
@@ -6511,7 +6511,7 @@
     ],
     "defaults": {
      "_command": "benchmark",
-     "func": "cli_BenchmarkParams"
+     "func": "run_benchmark"
     },
     "description": null,
     "formatter_class": "RawTextHelpFormatter",
@@ -7157,7 +7157,7 @@
     ],
     "defaults": {
      "_command": "deps check",
-     "func": "cli_DepsCheckParams"
+     "func": "run"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -7922,7 +7922,7 @@
     ],
     "defaults": {
      "_command": "example-genome download",
-     "func": "cli_ExampleGenomeDownloadParams"
+     "func": "run_download"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -8263,7 +8263,7 @@
     ],
     "defaults": {
      "_command": "example-genome list",
-     "func": "cli_ExampleGenomeListParams"
+     "func": "run_list"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -8988,7 +8988,7 @@
     ],
     "defaults": {
      "_command": "extract bam-subset",
-     "func": "cli_BamSubsetParams"
+     "func": "cmd_bam_subset"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -9330,7 +9330,7 @@
     ],
     "defaults": {
      "_command": "extract custom",
-     "func": "cli_CustomParams"
+     "func": "cmd_custom"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -9639,7 +9639,7 @@
     ],
     "defaults": {
      "_command": "extract mito-fasta",
-     "func": "cli_MitoFastaParams"
+     "func": "cmd_mito_fasta"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -9948,7 +9948,7 @@
     ],
     "defaults": {
      "_command": "extract mito-vcf",
-     "func": "cli_MitoVcfParams"
+     "func": "cmd_mito_vcf"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -10257,7 +10257,7 @@
     ],
     "defaults": {
      "_command": "extract mt-bam",
-     "func": "cli_MtBamParams"
+     "func": "cmd_mt_bam"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -10635,7 +10635,7 @@
     ],
     "defaults": {
      "_command": "extract region",
-     "func": "cli_ExtractRegionParams"
+     "func": "cmd_region"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -10960,7 +10960,7 @@
     ],
     "defaults": {
      "_command": "extract unmapped",
-     "func": "cli_UnmappedParams"
+     "func": "cmd_unmapped"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -11269,7 +11269,7 @@
     ],
     "defaults": {
      "_command": "extract y-mt-extract",
-     "func": "cli_YMtExtractParams"
+     "func": "cmd_y_mt_extract"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -11594,7 +11594,7 @@
     ],
     "defaults": {
      "_command": "extract ydna-bam",
-     "func": "cli_YdnaBamParams"
+     "func": "cmd_ydna_bam"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -11919,7 +11919,7 @@
     ],
     "defaults": {
      "_command": "extract ydna-vcf",
-     "func": "cli_YdnaVcfParams"
+     "func": "cmd_ydna_vcf"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -13053,7 +13053,7 @@
     ],
     "defaults": {
      "_command": "info chip",
-     "func": "cli_ChipParams"
+     "func": "run"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -13807,7 +13807,7 @@
     ],
     "defaults": {
      "_command": "lineage mt-haplogroup",
-     "func": "cli_MtHaplogroupParams"
+     "func": "cmd_mtdna"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -14312,7 +14312,7 @@
     ],
     "defaults": {
      "_command": "lineage y-haplogroup",
-     "func": "cli_YHaplogroupParams"
+     "func": "cmd_ydna"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -14714,7 +14714,7 @@
     ],
     "defaults": {
      "_command": "lineage y-str",
-     "func": "cli_YStrParams"
+     "func": "cmd_ystr"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -15433,7 +15433,7 @@
     ],
     "defaults": {
      "_command": "methylation pileup",
-     "func": "cli_MethylationPileupParams"
+     "func": "run_pileup"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -16065,7 +16065,7 @@
     ],
     "defaults": {
      "_command": "microarray",
-     "func": "cli_MicroarrayParams"
+     "func": "run"
     },
     "description": null,
     "formatter_class": "RawTextHelpFormatter",
@@ -16444,7 +16444,7 @@
     ],
     "defaults": {
      "_command": "pet-align",
-     "func": "cli_PetAlignParams"
+     "func": "run_pet"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -17166,7 +17166,7 @@
     ],
     "defaults": {
      "_command": "qc ancestry",
-     "func": "cli_QcAncestryParams"
+     "func": "cmd_ancestry"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -17510,7 +17510,7 @@
     ],
     "defaults": {
      "_command": "qc contamination",
-     "func": "cli_QcContaminationParams"
+     "func": "cmd_contamination"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -17942,7 +17942,7 @@
     ],
     "defaults": {
      "_command": "qc fake-data",
-     "func": "cli_FakeDataParams"
+     "func": "cmd_fake_data"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -18283,7 +18283,7 @@
     ],
     "defaults": {
      "_command": "qc fastp",
-     "func": "cli_FastpParams"
+     "func": "cmd_fastp"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -18592,7 +18592,7 @@
     ],
     "defaults": {
      "_command": "qc fastqc",
-     "func": "cli_FastqcParams"
+     "func": "cmd_fastqc"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -18917,7 +18917,7 @@
     ],
     "defaults": {
      "_command": "qc multiqc",
-     "func": "cli_MultiqcParams"
+     "func": "cmd_multiqc"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -19226,7 +19226,7 @@
     ],
     "defaults": {
      "_command": "qc multiqc-metrics",
-     "func": "cli_MultiqcMetricsParams"
+     "func": "cmd_multiqc_metrics"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -19617,7 +19617,7 @@
     ],
     "defaults": {
      "_command": "qc relate",
-     "func": "cli_RelateParams"
+     "func": "cmd_relate"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -19942,7 +19942,7 @@
     ],
     "defaults": {
      "_command": "qc vcf",
-     "func": "cli_QcVcfParams"
+     "func": "cmd_vcf_qc"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -20622,7 +20622,7 @@
     ],
     "defaults": {
      "_command": "realign",
-     "func": "cli_RealignParams"
+     "func": "run_realign"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -21409,7 +21409,7 @@
     ],
     "defaults": {
      "_command": "ref aadr",
-     "func": "_install_or_delete.<locals>.handler"
+     "func": "cmd_aadr"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -21734,7 +21734,7 @@
     ],
     "defaults": {
      "_command": "ref alphamissense",
-     "func": "cli_RefAlphamissenseParams"
+     "func": "run_alphamissense"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -22075,7 +22075,7 @@
     ],
     "defaults": {
      "_command": "ref ancestry",
-     "func": "_install_or_delete.<locals>.handler"
+     "func": "cmd_ancestry_reference"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -22384,7 +22384,7 @@
     ],
     "defaults": {
      "_command": "ref bootstrap",
-     "func": "cli_RefBootstrapParams"
+     "func": "cmd_bootstrap"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -22712,7 +22712,7 @@
     ],
     "defaults": {
      "_command": "ref cadd",
-     "func": "cli_RefCaddParams"
+     "func": "run_cadd"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -23021,7 +23021,7 @@
     ],
     "defaults": {
      "_command": "ref clinvar",
-     "func": "cli_RefClinvarParams"
+     "func": "run_clinvar"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -23671,7 +23671,7 @@
     ],
     "defaults": {
      "_command": "ref download",
-     "func": "cli_RefDownloadParams"
+     "func": "cmd_download"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -23996,7 +23996,7 @@
     ],
     "defaults": {
      "_command": "ref gene-map",
-     "func": "cli_RefGeneMapParams"
+     "func": "cmd_gene_map"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -24324,7 +24324,7 @@
     ],
     "defaults": {
      "_command": "ref gerp",
-     "func": "cli_RefGerpParams"
+     "func": "run_gerp"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -24652,7 +24652,7 @@
     ],
     "defaults": {
      "_command": "ref gnomad",
-     "func": "cli_RefGnomadParams"
+     "func": "run_gnomad"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -25031,7 +25031,7 @@
     ],
     "defaults": {
      "_command": "ref gnomad-sv",
-     "func": "_install_or_delete.<locals>.handler"
+     "func": "cmd_gnomad_sv"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -25388,7 +25388,7 @@
     ],
     "defaults": {
      "_command": "ref imputation",
-     "func": "_install_or_delete.<locals>.handler"
+     "func": "cmd_imputation"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -25716,7 +25716,7 @@
     ],
     "defaults": {
      "_command": "ref index",
-     "func": "cli_RefIndexParams"
+     "func": "cmd_index"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -26382,7 +26382,7 @@
     ],
     "defaults": {
      "_command": "ref pharmgkb",
-     "func": "cli_RefPharmgkbParams"
+     "func": "run_pharmgkb"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -26710,7 +26710,7 @@
     ],
     "defaults": {
      "_command": "ref phylop",
-     "func": "cli_RefPhylopParams"
+     "func": "run_phylop"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -27019,7 +27019,7 @@
     ],
     "defaults": {
      "_command": "ref revel",
-     "func": "cli_RefRevelParams"
+     "func": "run_revel"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -27360,7 +27360,7 @@
     ],
     "defaults": {
      "_command": "ref somalier",
-     "func": "_install_or_delete.<locals>.handler"
+     "func": "cmd_somalier"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -27685,7 +27685,7 @@
     ],
     "defaults": {
      "_command": "ref spliceai",
-     "func": "cli_RefSpliceaiParams"
+     "func": "run_spliceai"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -28367,7 +28367,7 @@
     ],
     "defaults": {
      "_command": "ref verify",
-     "func": "cli_RefVerifyParams"
+     "func": "cmd_ref_verify"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -28724,7 +28724,7 @@
     ],
     "defaults": {
      "_command": "ref ybrowse",
-     "func": "_install_or_delete.<locals>.handler"
+     "func": "cmd_ybrowse"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -30076,7 +30076,7 @@
     ],
     "defaults": {
      "_command": "report",
-     "func": "cli_ReportParams"
+     "func": "run_report"
     },
     "description": "Summarise a sample's results (overview, QC, lineage, pharmacogenomics including HLA, ClinVar pathogenic calls in ACMG SF genes with carrier status, microarray files) as a local HTML, Markdown and JSON report with confidence-labelled findings. Reads earlier runs' result manifests and runs no analysis; its only network call downloads a built-in gene list once. Technical results, not diagnosis.",
     "formatter_class": "HelpFormatter",
@@ -30854,7 +30854,7 @@
     ],
     "defaults": {
      "_command": "score pgs",
-     "func": "cli_ScorePgsParams"
+     "func": "run_pgs"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -31535,7 +31535,7 @@
     ],
     "defaults": {
      "_command": "sign create",
-     "func": "cli_SignCreateParams"
+     "func": "create_manifest"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -31922,7 +31922,7 @@
     ],
     "defaults": {
      "_command": "sign verify",
-     "func": "cli_SignVerifyParams"
+     "func": "verify_manifest"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -32567,7 +32567,7 @@
     ],
     "defaults": {
      "_command": "typing cyp2d6",
-     "func": "cli_TypingCyp2d6Params"
+     "func": "cmd_cyp2d6"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -32892,7 +32892,7 @@
     ],
     "defaults": {
      "_command": "typing hla",
-     "func": "cli_TypingHlaParams"
+     "func": "cmd_hla"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -33201,7 +33201,7 @@
     ],
     "defaults": {
      "_command": "typing smn",
-     "func": "cli_TypingSmnParams"
+     "func": "cmd_smn"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -33565,7 +33565,7 @@
     ],
     "defaults": {
      "_command": "typing str",
-     "func": "cli_TypingStrParams"
+     "func": "cmd_str"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -34373,7 +34373,7 @@
     ],
     "defaults": {
      "_command": "vcf alphamissense",
-     "func": "cli_VcfAlphamissenseParams"
+     "func": "cmd_alphamissense"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -34730,7 +34730,7 @@
     ],
     "defaults": {
      "_command": "vcf annotate",
-     "func": "cli_VcfAnnotateParams"
+     "func": "cmd_annotate"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -35103,7 +35103,7 @@
     ],
     "defaults": {
      "_command": "vcf cadd",
-     "func": "cli_VcfCaddParams"
+     "func": "cmd_cadd"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -35460,7 +35460,7 @@
     ],
     "defaults": {
      "_command": "vcf chain-annotate",
-     "func": "cli_VcfChainAnnotateParams"
+     "func": "cmd_chain_annotate"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -35850,7 +35850,7 @@
     ],
     "defaults": {
      "_command": "vcf clair3",
-     "func": "cli_VcfClair3Params"
+     "func": "cmd_clair3"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -36229,7 +36229,7 @@
     ],
     "defaults": {
      "_command": "vcf clinvar",
-     "func": "cli_VcfClinvarParams"
+     "func": "cmd_clinvar"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -36604,7 +36604,7 @@
     ],
     "defaults": {
      "_command": "vcf cnv",
-     "func": "cli_VcfCnvParams"
+     "func": "cmd_cnv"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -37135,7 +37135,7 @@
     ],
     "defaults": {
      "_command": "vcf deepvariant",
-     "func": "cli_VcfDeepvariantParams"
+     "func": "cmd_deepvariant"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -37525,7 +37525,7 @@
     ],
     "defaults": {
      "_command": "vcf filter",
-     "func": "cli_VcfFilterParams"
+     "func": "cmd_filter"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -37867,7 +37867,7 @@
     ],
     "defaults": {
      "_command": "vcf freebayes",
-     "func": "cli_VcfFreebayesParams"
+     "func": "cmd_freebayes"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -38257,7 +38257,7 @@
     ],
     "defaults": {
      "_command": "vcf gatk",
-     "func": "cli_VcfGatkParams"
+     "func": "cmd_gatk"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -38614,7 +38614,7 @@
     ],
     "defaults": {
      "_command": "vcf gerp",
-     "func": "cli_VcfGerpParams"
+     "func": "cmd_gerp"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -39009,7 +39009,7 @@
     ],
     "defaults": {
      "_command": "vcf gnomad",
-     "func": "cli_VcfGnomadParams"
+     "func": "cmd_gnomad"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -39382,7 +39382,7 @@
     ],
     "defaults": {
      "_command": "vcf impute",
-     "func": "cli_VcfImputeParams"
+     "func": "cmd_impute"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -39792,7 +39792,7 @@
     ],
     "defaults": {
      "_command": "vcf indel",
-     "func": "cli_VcfIndelParams"
+     "func": "cmd_indel"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -40203,7 +40203,7 @@
     ],
     "defaults": {
      "_command": "vcf pharmcat",
-     "func": "cli_VcfPharmcatParams"
+     "func": "cmd_pharmcat"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -40544,7 +40544,7 @@
     ],
     "defaults": {
      "_command": "vcf pharmgkb",
-     "func": "cli_VcfPharmgkbParams"
+     "func": "cmd_pharmgkb"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -40937,7 +40937,7 @@
     ],
     "defaults": {
      "_command": "vcf phase",
-     "func": "cli_VcfPhaseParams"
+     "func": "cmd_phase"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -41294,7 +41294,7 @@
     ],
     "defaults": {
      "_command": "vcf phylop",
-     "func": "cli_VcfPhylopParams"
+     "func": "cmd_phylop"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -41651,7 +41651,7 @@
     ],
     "defaults": {
      "_command": "vcf revel",
-     "func": "cli_VcfRevelParams"
+     "func": "cmd_revel"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -42061,7 +42061,7 @@
     ],
     "defaults": {
      "_command": "vcf snp",
-     "func": "cli_VcfSnpParams"
+     "func": "cmd_snp"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -42402,7 +42402,7 @@
     ],
     "defaults": {
      "_command": "vcf spliceai",
-     "func": "cli_VcfSpliceaiParams"
+     "func": "cmd_spliceai"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -42844,7 +42844,7 @@
     ],
     "defaults": {
      "_command": "vcf sv",
-     "func": "cli_VcfSvParams"
+     "func": "cmd_sv"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -43281,7 +43281,7 @@
     ],
     "defaults": {
      "_command": "vcf sv-freq",
-     "func": "cli_VcfSvFreqParams"
+     "func": "cmd_sv_freq"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -43706,7 +43706,7 @@
     ],
     "defaults": {
      "_command": "vcf table",
-     "func": "cli_VcfTableParams"
+     "func": "cmd_table"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -44153,7 +44153,7 @@
     ],
     "defaults": {
      "_command": "vcf to-fasta",
-     "func": "cli_VcfToFastaParams"
+     "func": "cmd_to_fasta"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -44599,7 +44599,7 @@
     ],
     "defaults": {
      "_command": "vcf trio",
-     "func": "cli_VcfTrioParams"
+     "func": "cmd_trio"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -45366,7 +45366,7 @@
     ],
     "defaults": {
      "_command": "vep download",
-     "func": "cli_VepDownloadParams"
+     "func": "cli_vep_download"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -45921,7 +45921,7 @@
     ],
     "defaults": {
      "_command": "vep run",
-     "func": "cli_VepRunParams"
+     "func": "cli_vep_run"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -46316,7 +46316,7 @@
     ],
     "defaults": {
      "_command": "vep verify",
-     "func": "cli_VepVerifyParams"
+     "func": "cli_vep_verify"
     },
     "description": null,
     "formatter_class": "HelpFormatter",
@@ -46345,7 +46345,7 @@
    "debug": true,
    "full_help": false,
    "full_size": false,
-   "func": "cli_BenchmarkParams",
+   "func": "run_benchmark",
    "genome": null,
    "input": null,
    "json": false,
@@ -46379,7 +46379,7 @@
    "context": null,
    "debug": false,
    "full_help": false,
-   "func": "cli_MethylationPileupParams",
+   "func": "run_pileup",
    "genome": null,
    "hydroxymethyl": null,
    "input": "x.bam",
@@ -46410,7 +46410,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfSnpParams",
+   "func": "cmd_snp",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -46448,7 +46448,7 @@
    "fast": false,
    "format": "CRAM",
    "full_help": false,
-   "func": "cli_AlignParams",
+   "func": "run_align",
    "genome": null,
    "gpu": true,
    "input": null,
@@ -46489,7 +46489,7 @@
    "fast": false,
    "format": "BAM",
    "full_help": false,
-   "func": "cli_AlignParams",
+   "func": "run_align",
    "genome": null,
    "gpu": false,
    "input": null,
@@ -46530,7 +46530,7 @@
    "fast": false,
    "format": "BAM",
    "full_help": false,
-   "func": "cli_AlignParams",
+   "func": "run_align",
    "genome": null,
    "gpu": false,
    "input": null,
@@ -46566,7 +46566,7 @@
    "debug": false,
    "directory": "d",
    "full_help": false,
-   "func": "cli_AnalyzeBatchGenParams",
+   "func": "run_batch_gen",
    "genome": null,
    "input": null,
    "json": false,
@@ -46594,7 +46594,7 @@
    "debug": false,
    "directory": "d",
    "full_help": false,
-   "func": "cli_AnalyzeBatchGenParams",
+   "func": "run_batch_gen",
    "genome": null,
    "input": null,
    "json": false,
@@ -46631,7 +46631,7 @@
     "snp"
    ],
    "full_help": false,
-   "func": "cli_AnalyzeComprehensiveParams",
+   "func": "run_comprehensive",
    "genome": null,
    "input": null,
    "json": false,
@@ -46673,7 +46673,7 @@
    "dry_run": false,
    "force_steps": null,
    "full_help": false,
-   "func": "cli_AnalyzeComprehensiveParams",
+   "func": "run_comprehensive",
    "genome": null,
    "input": null,
    "json": false,
@@ -46709,7 +46709,7 @@
    "dry_run": false,
    "force_steps": null,
    "full_help": false,
-   "func": "cli_AnalyzeComprehensiveParams",
+   "func": "run_comprehensive",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -46738,7 +46738,7 @@
    "command": "bam",
    "debug": false,
    "full_help": false,
-   "func": "cli_BamIdentifyParams",
+   "func": "cmd_identify",
    "genome": null,
    "input": "x.cram",
    "json": false,
@@ -46763,7 +46763,7 @@
    "command": "bam",
    "debug": false,
    "full_help": false,
-   "func": "cli_BamIndexParams",
+   "func": "cmd_index",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -46792,7 +46792,7 @@
    "cram": false,
    "debug": false,
    "full_help": false,
-   "func": "cli_BamMergeParams",
+   "func": "cmd_merge",
    "genome": null,
    "input": null,
    "inputs": [
@@ -46827,7 +46827,7 @@
    "cram": true,
    "debug": false,
    "full_help": false,
-   "func": "cli_BamMergeParams",
+   "func": "cmd_merge",
    "genome": null,
    "input": null,
    "inputs": [
@@ -46860,7 +46860,7 @@
    "command": "bam",
    "debug": false,
    "full_help": false,
-   "func": "cli_BamSortParams",
+   "func": "cmd_sort",
    "gene": "BRCA1",
    "genome": null,
    "input": "x.bam",
@@ -46890,7 +46890,7 @@
    "command": "bam",
    "debug": false,
    "full_help": false,
-   "func": "cli_BamSortParams",
+   "func": "cmd_sort",
    "gene": null,
    "genome": null,
    "input": "x.cram",
@@ -46918,7 +46918,7 @@
    "command": "bam",
    "debug": false,
    "full_help": false,
-   "func": "cli_BamToBamParams",
+   "func": "cmd_tobam",
    "gene": null,
    "genome": null,
    "input": "x.cram",
@@ -46948,7 +46948,7 @@
    "cram_version": "3.1",
    "debug": false,
    "full_help": false,
-   "func": "cli_BamToCramParams",
+   "func": "cmd_tocram",
    "gene": null,
    "genome": null,
    "input": "x.bam",
@@ -46978,7 +46978,7 @@
    "cram_version": "3.0",
    "debug": false,
    "full_help": false,
-   "func": "cli_BamToCramParams",
+   "func": "cmd_tocram",
    "gene": "KCNQ2",
    "genome": null,
    "input": "x.bam",
@@ -47072,7 +47072,7 @@
    "command": "bam",
    "debug": false,
    "full_help": false,
-   "func": "cli_BamUnalignParams",
+   "func": "cmd_unalign",
    "gene": "BRCA2",
    "genome": null,
    "input": "x.bam",
@@ -47105,7 +47105,7 @@
    "command": "bam",
    "debug": false,
    "full_help": false,
-   "func": "cli_BamUnalignParams",
+   "func": "cmd_unalign",
    "gene": null,
    "genome": null,
    "input": "x.bam",
@@ -47135,7 +47135,7 @@
    "command": "bam",
    "debug": false,
    "full_help": false,
-   "func": "cli_BamUnindexParams",
+   "func": "cmd_unindex",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -47161,7 +47161,7 @@
    "command": "bam",
    "debug": false,
    "full_help": false,
-   "func": "cli_BamUnsortParams",
+   "func": "cmd_unsort",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -47191,7 +47191,7 @@
    "debug": false,
    "full_help": false,
    "full_size": false,
-   "func": "cli_BenchmarkParams",
+   "func": "run_benchmark",
    "genome": null,
    "input": null,
    "json": false,
@@ -47230,7 +47230,7 @@
    "debug": false,
    "full_help": false,
    "full_size": false,
-   "func": "cli_BenchmarkParams",
+   "func": "run_benchmark",
    "genome": null,
    "input": null,
    "json": false,
@@ -47269,7 +47269,7 @@
    "debug": false,
    "full_help": false,
    "full_size": false,
-   "func": "cli_BenchmarkParams",
+   "func": "run_benchmark",
    "genome": null,
    "input": null,
    "json": false,
@@ -47308,7 +47308,7 @@
    "debug": false,
    "full_help": false,
    "full_size": false,
-   "func": "cli_BenchmarkParams",
+   "func": "run_benchmark",
    "genome": null,
    "input": null,
    "json": false,
@@ -47349,7 +47349,7 @@
    "debug": false,
    "full_help": false,
    "full_size": true,
-   "func": "cli_BenchmarkParams",
+   "func": "run_benchmark",
    "genome": null,
    "input": null,
    "json": false,
@@ -47389,7 +47389,7 @@
    "debug": false,
    "full_help": false,
    "full_size": false,
-   "func": "cli_BenchmarkParams",
+   "func": "run_benchmark",
    "genome": null,
    "input": null,
    "json": false,
@@ -47428,7 +47428,7 @@
    "debug": false,
    "full_help": false,
    "full_size": false,
-   "func": "cli_BenchmarkParams",
+   "func": "run_benchmark",
    "genome": null,
    "input": null,
    "json": false,
@@ -47468,7 +47468,7 @@
    "debug": false,
    "full_help": false,
    "full_size": false,
-   "func": "cli_BenchmarkParams",
+   "func": "run_benchmark",
    "genome": null,
    "input": null,
    "json": false,
@@ -47496,7 +47496,7 @@
    "command": "deps",
    "debug": false,
    "full_help": false,
-   "func": "cli_DepsCheckParams",
+   "func": "run",
    "genome": null,
    "input": null,
    "json": false,
@@ -47523,7 +47523,7 @@
    "command": "deps",
    "debug": true,
    "full_help": false,
-   "func": "cli_DepsCheckParams",
+   "func": "run",
    "genome": null,
    "input": null,
    "json": false,
@@ -47557,7 +47557,7 @@
    "examples_cmd": "download",
    "force": false,
    "full_help": false,
-   "func": "cli_ExampleGenomeDownloadParams",
+   "func": "run_download",
    "genome": null,
    "input": null,
    "json": false,
@@ -47593,7 +47593,7 @@
    "examples_cmd": "download",
    "force": false,
    "full_help": false,
-   "func": "cli_ExampleGenomeDownloadParams",
+   "func": "run_download",
    "genome": null,
    "input": null,
    "json": false,
@@ -47631,7 +47631,7 @@
    "examples_cmd": "download",
    "force": true,
    "full_help": false,
-   "func": "cli_ExampleGenomeDownloadParams",
+   "func": "run_download",
    "genome": null,
    "input": null,
    "json": false,
@@ -47659,7 +47659,7 @@
    "debug": false,
    "examples_cmd": "list",
    "full_help": false,
-   "func": "cli_ExampleGenomeListParams",
+   "func": "run_list",
    "genome": null,
    "input": null,
    "json": false,
@@ -47692,7 +47692,7 @@
    "ext_cmd": "bam-subset",
    "fraction": 0.5,
    "full_help": false,
-   "func": "cli_BamSubsetParams",
+   "func": "cmd_bam_subset",
    "gene": "BRCA1",
    "genome": null,
    "input": "x.bam",
@@ -47722,7 +47722,7 @@
    "ext_cmd": "bam-subset",
    "fraction": 0.25,
    "full_help": false,
-   "func": "cli_BamSubsetParams",
+   "func": "cmd_bam_subset",
    "gene": null,
    "genome": null,
    "input": "x.bam",
@@ -47751,7 +47751,7 @@
    "debug": false,
    "ext_cmd": "custom",
    "full_help": false,
-   "func": "cli_CustomParams",
+   "func": "cmd_custom",
    "gene": "KCNQ2",
    "genome": null,
    "input": "x.bam",
@@ -47779,7 +47779,7 @@
    "debug": false,
    "ext_cmd": "custom",
    "full_help": false,
-   "func": "cli_CustomParams",
+   "func": "cmd_custom",
    "gene": null,
    "genome": null,
    "input": "x.bam",
@@ -47808,7 +47808,7 @@
    "debug": false,
    "ext_cmd": "mito-fasta",
    "full_help": false,
-   "func": "cli_MitoFastaParams",
+   "func": "cmd_mito_fasta",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -47835,7 +47835,7 @@
    "debug": false,
    "ext_cmd": "mito-vcf",
    "full_help": false,
-   "func": "cli_MitoVcfParams",
+   "func": "cmd_mito_vcf",
    "genome": null,
    "input": "x.cram",
    "json": false,
@@ -47860,7 +47860,7 @@
    "debug": false,
    "ext_cmd": "mt-bam",
    "full_help": false,
-   "func": "cli_MtBamParams",
+   "func": "cmd_mt_bam",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -47889,7 +47889,7 @@
    "ext_cmd": "region",
    "formats": "bam",
    "full_help": false,
-   "func": "cli_ExtractRegionParams",
+   "func": "cmd_region",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -47920,7 +47920,7 @@
    "ext_cmd": "region",
    "formats": "bam,vcf",
    "full_help": false,
-   "func": "cli_ExtractRegionParams",
+   "func": "cmd_region",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -47950,7 +47950,7 @@
    "ext_cmd": "unmapped",
    "fastq": true,
    "full_help": false,
-   "func": "cli_UnmappedParams",
+   "func": "cmd_unmapped",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -47976,7 +47976,7 @@
    "debug": false,
    "ext_cmd": "y-mt-extract",
    "full_help": false,
-   "func": "cli_YMtExtractParams",
+   "func": "cmd_y_mt_extract",
    "genome": null,
    "input": "x.bam",
    "json": true,
@@ -48002,7 +48002,7 @@
    "debug": false,
    "ext_cmd": "ydna-bam",
    "full_help": false,
-   "func": "cli_YdnaBamParams",
+   "func": "cmd_ydna_bam",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -48029,7 +48029,7 @@
    "debug": false,
    "ext_cmd": "ydna-vcf",
    "full_help": false,
-   "func": "cli_YdnaVcfParams",
+   "func": "cmd_ydna_vcf",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -48187,7 +48187,7 @@
    "debug": false,
    "detailed": false,
    "full_help": false,
-   "func": "cli_ChipParams",
+   "func": "run",
    "genome": null,
    "info_cmd": "chip",
    "input": "kit.txt",
@@ -48247,7 +48247,7 @@
    "contamination": false,
    "debug": false,
    "full_help": false,
-   "func": "cli_MtHaplogroupParams",
+   "func": "cmd_mtdna",
    "genome": null,
    "haplocheck_path": null,
    "haplogrep_path": null,
@@ -48279,7 +48279,7 @@
    "contamination": false,
    "debug": false,
    "full_help": false,
-   "func": "cli_MtHaplogroupParams",
+   "func": "cmd_mtdna",
    "genome": null,
    "haplocheck_path": null,
    "haplogrep_path": "h.jar",
@@ -48322,7 +48322,7 @@
    "command": "lineage",
    "debug": false,
    "full_help": false,
-   "func": "cli_YHaplogroupParams",
+   "func": "cmd_ydna",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -48358,7 +48358,7 @@
    "command": "lineage",
    "debug": false,
    "full_help": false,
-   "func": "cli_YStrParams",
+   "func": "cmd_ystr",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -48391,7 +48391,7 @@
    "context": null,
    "debug": false,
    "full_help": false,
-   "func": "cli_MethylationPileupParams",
+   "func": "run_pileup",
    "genome": null,
    "hydroxymethyl": null,
    "input": null,
@@ -48421,7 +48421,7 @@
    "context": null,
    "debug": false,
    "full_help": false,
-   "func": "cli_MethylationPileupParams",
+   "func": "run_pileup",
    "genome": null,
    "hydroxymethyl": null,
    "input": "x.bam",
@@ -48453,7 +48453,7 @@
    "context": "all",
    "debug": false,
    "full_help": false,
-   "func": "cli_MethylationPileupParams",
+   "func": "run_pileup",
    "genome": null,
    "hydroxymethyl": true,
    "input": "x.bam",
@@ -48485,7 +48485,7 @@
    "context": null,
    "debug": false,
    "full_help": false,
-   "func": "cli_MethylationPileupParams",
+   "func": "run_pileup",
    "genome": null,
    "hydroxymethyl": false,
    "input": "x.bam",
@@ -48517,7 +48517,7 @@
    "context": null,
    "debug": false,
    "full_help": false,
-   "func": "cli_MethylationPileupParams",
+   "func": "run_pileup",
    "genome": null,
    "hydroxymethyl": null,
    "input": "x.cram",
@@ -48551,7 +48551,7 @@
    "exclude_filtered": null,
    "formats": "all",
    "full_help": false,
-   "func": "cli_MicroarrayParams",
+   "func": "run",
    "genome": null,
    "indel_manifest": [],
    "input": "x.bam",
@@ -48611,7 +48611,7 @@
    "exclude_filtered": true,
    "formats": "23andme_v5,ancestry_v2",
    "full_help": false,
-   "func": "cli_MicroarrayParams",
+   "func": "run",
    "genome": null,
    "indel_manifest": [
     "a=b.csv",
@@ -48656,7 +48656,7 @@
    "debug": false,
    "format": "CRAM",
    "full_help": false,
-   "func": "cli_PetAlignParams",
+   "func": "run_pet",
    "genome": null,
    "input": null,
    "json": false,
@@ -48685,7 +48685,7 @@
    "debug": false,
    "format": "BAM",
    "full_help": false,
-   "func": "cli_PetAlignParams",
+   "func": "run_pet",
    "genome": null,
    "input": null,
    "json": false,
@@ -48717,7 +48717,7 @@
    "debug": false,
    "full_help": false,
    "full_size": false,
-   "func": "cli_FakeDataParams",
+   "func": "cmd_fake_data",
    "genome": null,
    "input": null,
    "json": false,
@@ -48750,7 +48750,7 @@
    "debug": false,
    "full_help": false,
    "full_size": true,
-   "func": "cli_FakeDataParams",
+   "func": "cmd_fake_data",
    "genome": null,
    "input": null,
    "json": false,
@@ -48780,7 +48780,7 @@
    "command": "qc",
    "debug": false,
    "full_help": false,
-   "func": "cli_FastpParams",
+   "func": "cmd_fastp",
    "genome": null,
    "input": null,
    "json": false,
@@ -48807,7 +48807,7 @@
    "command": "qc",
    "debug": false,
    "full_help": false,
-   "func": "cli_FastqcParams",
+   "func": "cmd_fastqc",
    "genome": null,
    "input": "a.fq",
    "json": false,
@@ -48834,7 +48834,7 @@
    "debug": false,
    "force": true,
    "full_help": false,
-   "func": "cli_MultiqcParams",
+   "func": "cmd_multiqc",
    "genome": null,
    "input": "d",
    "json": false,
@@ -48860,7 +48860,7 @@
    "command": "qc",
    "debug": false,
    "full_help": false,
-   "func": "cli_MultiqcMetricsParams",
+   "func": "cmd_multiqc_metrics",
    "genome": null,
    "input": "d",
    "json": false,
@@ -48888,7 +48888,7 @@
    "command": "qc",
    "debug": false,
    "full_help": false,
-   "func": "cli_RelateParams",
+   "func": "cmd_relate",
    "genome": null,
    "input": null,
    "inputs": [
@@ -48921,7 +48921,7 @@
    "command": "qc",
    "debug": false,
    "full_help": false,
-   "func": "cli_QcVcfParams",
+   "func": "cmd_vcf_qc",
    "genome": null,
    "input": null,
    "json": false,
@@ -48947,7 +48947,7 @@
    "command": "qc",
    "debug": false,
    "full_help": false,
-   "func": "cli_QcVcfParams",
+   "func": "cmd_vcf_qc",
    "genome": null,
    "input": "x.vcf.gz",
    "json": false,
@@ -48986,7 +48986,7 @@
    ],
    "format": "BAM",
    "full_help": false,
-   "func": "cli_RealignParams",
+   "func": "run_realign",
    "genome": null,
    "gpu": false,
    "input": "x.bam",
@@ -49041,7 +49041,7 @@
    ],
    "format": "CRAM",
    "full_help": false,
-   "func": "cli_RealignParams",
+   "func": "run_realign",
    "genome": null,
    "gpu": true,
    "input": "x.bam",
@@ -49089,7 +49089,7 @@
    "force_steps": null,
    "format": "BAM",
    "full_help": false,
-   "func": "cli_RealignParams",
+   "func": "run_realign",
    "genome": null,
    "gpu": false,
    "input": "x.bam",
@@ -49137,7 +49137,7 @@
    "force_steps": null,
    "format": "BAM",
    "full_help": false,
-   "func": "cli_RealignParams",
+   "func": "run_realign",
    "genome": null,
    "gpu": false,
    "input": "x.bam",
@@ -49185,7 +49185,7 @@
    "force_steps": null,
    "format": "BAM",
    "full_help": false,
-   "func": "cli_RealignParams",
+   "func": "run_realign",
    "genome": null,
    "gpu": false,
    "input": "x.cram",
@@ -49224,7 +49224,7 @@
    "debug": false,
    "delete": false,
    "full_help": false,
-   "func": "_install_or_delete.<locals>.handler",
+   "func": "cmd_aadr",
    "genome": null,
    "input": null,
    "install": true,
@@ -49249,7 +49249,7 @@
    "debug": false,
    "delete": false,
    "full_help": false,
-   "func": "cli_RefAlphamissenseParams",
+   "func": "run_alphamissense",
    "genome": null,
    "input": null,
    "json": false,
@@ -49274,7 +49274,7 @@
    "command": "ref",
    "debug": false,
    "full_help": false,
-   "func": "cli_RefBootstrapParams",
+   "func": "cmd_bootstrap",
    "genome": null,
    "input": null,
    "json": false,
@@ -49300,7 +49300,7 @@
    "command": "ref",
    "debug": false,
    "full_help": false,
-   "func": "cli_RefCaddParams",
+   "func": "run_cadd",
    "genome": null,
    "input": null,
    "json": false,
@@ -49325,7 +49325,7 @@
    "command": "ref",
    "debug": false,
    "full_help": false,
-   "func": "cli_RefClinvarParams",
+   "func": "run_clinvar",
    "genome": null,
    "input": null,
    "json": false,
@@ -49377,7 +49377,7 @@
    "command": "ref",
    "debug": false,
    "full_help": false,
-   "func": "cli_RefDownloadParams",
+   "func": "cmd_download",
    "genome": null,
    "input": null,
    "json": false,
@@ -49405,7 +49405,7 @@
    "debug": false,
    "delete": true,
    "full_help": false,
-   "func": "cli_RefGeneMapParams",
+   "func": "cmd_gene_map",
    "genome": null,
    "input": null,
    "json": false,
@@ -49429,7 +49429,7 @@
    "command": "ref",
    "debug": false,
    "full_help": false,
-   "func": "cli_RefGerpParams",
+   "func": "run_gerp",
    "genome": null,
    "input": null,
    "json": false,
@@ -49455,7 +49455,7 @@
    "command": "ref",
    "debug": false,
    "full_help": false,
-   "func": "cli_RefGnomadParams",
+   "func": "run_gnomad",
    "genome": null,
    "input": null,
    "json": false,
@@ -49485,7 +49485,7 @@
    "debug": false,
    "delete": false,
    "full_help": false,
-   "func": "_install_or_delete.<locals>.handler",
+   "func": "cmd_gnomad_sv",
    "genome": null,
    "input": null,
    "install": true,
@@ -49515,7 +49515,7 @@
    "debug": false,
    "delete": true,
    "full_help": false,
-   "func": "_install_or_delete.<locals>.handler",
+   "func": "cmd_imputation",
    "genome": null,
    "input": null,
    "install": false,
@@ -49545,7 +49545,7 @@
    "debug": false,
    "delete": false,
    "full_help": false,
-   "func": "_install_or_delete.<locals>.handler",
+   "func": "cmd_imputation",
    "genome": null,
    "input": null,
    "install": true,
@@ -49573,7 +49573,7 @@
    "command": "ref",
    "debug": false,
    "full_help": false,
-   "func": "cli_RefIndexParams",
+   "func": "cmd_index",
    "genome": null,
    "input": null,
    "json": false,
@@ -49652,7 +49652,7 @@
    "debug": false,
    "delete": false,
    "full_help": false,
-   "func": "cli_RefPharmgkbParams",
+   "func": "run_pharmgkb",
    "genome": null,
    "input": null,
    "json": false,
@@ -49678,7 +49678,7 @@
    "command": "ref",
    "debug": false,
    "full_help": false,
-   "func": "cli_RefPhylopParams",
+   "func": "run_phylop",
    "genome": null,
    "input": null,
    "json": false,
@@ -49701,7 +49701,7 @@
    "command": "ref",
    "debug": false,
    "full_help": false,
-   "func": "cli_RefRevelParams",
+   "func": "run_revel",
    "genome": null,
    "input": null,
    "json": false,
@@ -49728,7 +49728,7 @@
    "debug": false,
    "delete": false,
    "full_help": false,
-   "func": "_install_or_delete.<locals>.handler",
+   "func": "cmd_somalier",
    "genome": null,
    "input": null,
    "install": true,
@@ -49753,7 +49753,7 @@
    "debug": false,
    "delete": false,
    "full_help": false,
-   "func": "cli_RefSpliceaiParams",
+   "func": "run_spliceai",
    "genome": null,
    "input": null,
    "json": false,
@@ -49836,7 +49836,7 @@
    "command": "ref",
    "debug": false,
    "full_help": false,
-   "func": "cli_RefVerifyParams",
+   "func": "cmd_ref_verify",
    "genome": null,
    "input": null,
    "json": false,
@@ -49863,7 +49863,7 @@
    "debug": false,
    "delete": false,
    "full_help": false,
-   "func": "_install_or_delete.<locals>.handler",
+   "func": "cmd_ybrowse",
    "genome": null,
    "input": null,
    "install": true,
@@ -49972,7 +49972,7 @@
    "command": "report",
    "debug": false,
    "full_help": false,
-   "func": "cli_ReportParams",
+   "func": "run_report",
    "gene_list": null,
    "genome": null,
    "input": null,
@@ -50005,7 +50005,7 @@
    "command": "report",
    "debug": false,
    "full_help": false,
-   "func": "cli_ReportParams",
+   "func": "run_report",
    "gene_list": null,
    "genome": null,
    "input": "x.cram",
@@ -50039,7 +50039,7 @@
    "confident_bed": null,
    "debug": false,
    "full_help": false,
-   "func": "cli_ScorePgsParams",
+   "func": "run_pgs",
    "genome": null,
    "input": "s.vcf.gz",
    "json": true,
@@ -50075,7 +50075,7 @@
    "confident_bed": null,
    "debug": false,
    "full_help": false,
-   "func": "cli_ScorePgsParams",
+   "func": "run_pgs",
    "genome": null,
    "input": "s.vcf.gz",
    "json": false,
@@ -50107,7 +50107,7 @@
    "command": "sign",
    "debug": false,
    "full_help": false,
-   "func": "cli_SignCreateParams",
+   "func": "create_manifest",
    "genome": null,
    "input": null,
    "json": false,
@@ -50141,7 +50141,7 @@
    "command": "sign",
    "debug": false,
    "full_help": false,
-   "func": "cli_SignCreateParams",
+   "func": "create_manifest",
    "genome": null,
    "input": null,
    "json": false,
@@ -50174,7 +50174,7 @@
    "command": "sign",
    "debug": false,
    "full_help": false,
-   "func": "cli_SignVerifyParams",
+   "func": "verify_manifest",
    "genome": null,
    "identity": "me",
    "input": null,
@@ -50206,7 +50206,7 @@
    "command": "sign",
    "debug": false,
    "full_help": false,
-   "func": "cli_SignVerifyParams",
+   "func": "verify_manifest",
    "genome": null,
    "identity": null,
    "input": null,
@@ -50236,7 +50236,7 @@
    "command": "sign",
    "debug": false,
    "full_help": false,
-   "func": "cli_SignVerifyParams",
+   "func": "verify_manifest",
    "genome": null,
    "identity": null,
    "input": null,
@@ -50267,7 +50267,7 @@
    "command": "typing",
    "debug": false,
    "full_help": false,
-   "func": "cli_TypingCyp2d6Params",
+   "func": "cmd_cyp2d6",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -50294,7 +50294,7 @@
    "command": "typing",
    "debug": false,
    "full_help": false,
-   "func": "cli_TypingHlaParams",
+   "func": "cmd_hla",
    "genome": null,
    "hla_index": "h.fa",
    "input": "x.cram",
@@ -50323,7 +50323,7 @@
    "command": "typing",
    "debug": false,
    "full_help": false,
-   "func": "cli_TypingSmnParams",
+   "func": "cmd_smn",
    "genome": null,
    "input": "x.cram",
    "json": false,
@@ -50352,7 +50352,7 @@
    "command": "typing",
    "debug": false,
    "full_help": false,
-   "func": "cli_TypingStrParams",
+   "func": "cmd_str",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -50380,7 +50380,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfAlphamissenseParams",
+   "func": "cmd_alphamissense",
    "genome": null,
    "input": "x.vcf.gz",
    "json": false,
@@ -50409,7 +50409,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfAlphamissenseParams",
+   "func": "cmd_alphamissense",
    "genome": null,
    "input": "x.vcf.gz",
    "json": false,
@@ -50439,7 +50439,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfAnnotateParams",
+   "func": "cmd_annotate",
    "genome": null,
    "input": "y.bam",
    "json": false,
@@ -50469,7 +50469,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfAnnotateParams",
+   "func": "cmd_annotate",
    "genome": null,
    "input": "x.vcf.gz",
    "json": false,
@@ -50499,7 +50499,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfCaddParams",
+   "func": "cmd_cadd",
    "genome": null,
    "input": "x.vcf.gz",
    "json": false,
@@ -50529,7 +50529,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfCaddParams",
+   "func": "cmd_cadd",
    "genome": null,
    "input": "x.vcf.gz",
    "json": false,
@@ -50558,7 +50558,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfChainAnnotateParams",
+   "func": "cmd_chain_annotate",
    "genome": null,
    "input": null,
    "json": false,
@@ -50587,7 +50587,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfChainAnnotateParams",
+   "func": "cmd_chain_annotate",
    "genome": null,
    "input": "x.vcf.gz",
    "json": false,
@@ -50616,7 +50616,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfClair3Params",
+   "func": "cmd_clair3",
    "genome": null,
    "gpu": false,
    "input": "x.bam",
@@ -50650,7 +50650,7 @@
    "confidence_gq": null,
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfClinvarParams",
+   "func": "cmd_clinvar",
    "genome": null,
    "input": "x.vcf.gz",
    "json": false,
@@ -50683,7 +50683,7 @@
    "confidence_gq": null,
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfClinvarParams",
+   "func": "cmd_clinvar",
    "genome": null,
    "input": "x.vcf.gz",
    "json": false,
@@ -50716,7 +50716,7 @@
    ],
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfClinvarParams",
+   "func": "cmd_clinvar",
    "genome": null,
    "input": "x.vcf.gz",
    "json": false,
@@ -50743,7 +50743,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfCnvParams",
+   "func": "cmd_cnv",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -50775,7 +50775,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfCnvParams",
+   "func": "cmd_cnv",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -50814,7 +50814,7 @@
     "call_variants"
    ],
    "full_help": false,
-   "func": "cli_VcfDeepvariantParams",
+   "func": "cmd_deepvariant",
    "genome": null,
    "gpu": false,
    "input": "x.bam",
@@ -50856,7 +50856,7 @@
    "dry_run": false,
    "force_steps": null,
    "full_help": false,
-   "func": "cli_VcfDeepvariantParams",
+   "func": "cmd_deepvariant",
    "genome": null,
    "gpu": true,
    "input": "x.bam",
@@ -50896,7 +50896,7 @@
    "dry_run": false,
    "force_steps": null,
    "full_help": false,
-   "func": "cli_VcfDeepvariantParams",
+   "func": "cmd_deepvariant",
    "genome": null,
    "gpu": false,
    "input": "x.bam",
@@ -50934,7 +50934,7 @@
    "exclude_near_gaps": true,
    "expr": null,
    "full_help": false,
-   "func": "cli_VcfFilterParams",
+   "func": "cmd_filter",
    "gene": null,
    "genome": null,
    "input": "x.vcf.gz",
@@ -50966,7 +50966,7 @@
    "exclude_near_gaps": false,
    "expr": "QUAL>30",
    "full_help": false,
-   "func": "cli_VcfFilterParams",
+   "func": "cmd_filter",
    "gene": "BRCA1",
    "genome": null,
    "input": "x.vcf.gz",
@@ -50996,7 +50996,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfFreebayesParams",
+   "func": "cmd_freebayes",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -51025,7 +51025,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfGatkParams",
+   "func": "cmd_gatk",
    "genome": null,
    "gpu": true,
    "input": "x.bam",
@@ -51057,7 +51057,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfGatkParams",
+   "func": "cmd_gatk",
    "genome": null,
    "gpu": false,
    "input": "x.cram",
@@ -51089,7 +51089,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfGerpParams",
+   "func": "cmd_gerp",
    "genome": null,
    "gerp_file": "g.bw",
    "input": "x.vcf.gz",
@@ -51123,7 +51123,7 @@
    "confidence_gq": null,
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfGnomadParams",
+   "func": "cmd_gnomad",
    "genome": null,
    "gnomad_file": null,
    "input": "x.vcf.gz",
@@ -51155,7 +51155,7 @@
    "confidence_gq": null,
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfGnomadParams",
+   "func": "cmd_gnomad",
    "genome": null,
    "gnomad_file": "g.vcf.gz",
    "input": "x.vcf.gz",
@@ -51186,7 +51186,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfImputeParams",
+   "func": "cmd_impute",
    "genome": null,
    "input": null,
    "json": false,
@@ -51217,7 +51217,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfImputeParams",
+   "func": "cmd_impute",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -51247,7 +51247,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfIndelParams",
+   "func": "cmd_indel",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -51286,7 +51286,7 @@
    ],
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfPharmcatParams",
+   "func": "cmd_pharmcat",
    "genome": null,
    "input": "x.vcf.gz",
    "json": false,
@@ -51322,7 +51322,7 @@
    "confidence_gq": null,
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfPharmcatParams",
+   "func": "cmd_pharmcat",
    "genome": null,
    "input": "x.vcf.gz",
    "json": false,
@@ -51351,7 +51351,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfPharmgkbParams",
+   "func": "cmd_pharmgkb",
    "genome": null,
    "input": "x.vcf.gz",
    "json": false,
@@ -51382,7 +51382,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfPhaseParams",
+   "func": "cmd_phase",
    "genome": null,
    "haplotag": true,
    "input": "x.bam",
@@ -51414,7 +51414,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfPhylopParams",
+   "func": "cmd_phylop",
    "genome": null,
    "input": "x.vcf.gz",
    "json": false,
@@ -51444,7 +51444,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfRevelParams",
+   "func": "cmd_revel",
    "genome": null,
    "input": "x.vcf.gz",
    "json": false,
@@ -51474,7 +51474,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfSnpParams",
+   "func": "cmd_snp",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -51508,7 +51508,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfSnpParams",
+   "func": "cmd_snp",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -51540,7 +51540,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfSpliceaiParams",
+   "func": "cmd_spliceai",
    "genome": null,
    "input": "x.vcf.gz",
    "json": false,
@@ -51572,7 +51572,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfSvParams",
+   "func": "cmd_sv",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -51608,7 +51608,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfSvParams",
+   "func": "cmd_sv",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -51641,7 +51641,7 @@
    "common_af": 0.01,
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfSvFreqParams",
+   "func": "cmd_sv_freq",
    "genome": null,
    "gnomad_lr_file": null,
    "gnomad_sv_file": null,
@@ -51676,7 +51676,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfTableParams",
+   "func": "cmd_table",
    "genome": null,
    "input": "x.vcf.gz",
    "json": false,
@@ -51711,7 +51711,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfTableParams",
+   "func": "cmd_table",
    "genome": null,
    "input": "x.vcf.gz",
    "json": false,
@@ -51745,7 +51745,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfToFastaParams",
+   "func": "cmd_to_fasta",
    "genome": null,
    "haplotype": "1",
    "include_filtered": false,
@@ -51780,7 +51780,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfToFastaParams",
+   "func": "cmd_to_fasta",
    "genome": null,
    "haplotype": "iupac",
    "include_filtered": true,
@@ -51816,7 +51816,7 @@
    "command": "vcf",
    "debug": false,
    "full_help": false,
-   "func": "cli_VcfToFastaParams",
+   "func": "cmd_to_fasta",
    "genome": null,
    "haplotype": "iupac",
    "include_filtered": false,
@@ -51851,7 +51851,7 @@
    "debug": false,
    "father": "f.vcf",
    "full_help": false,
-   "func": "cli_VcfTrioParams",
+   "func": "cmd_trio",
    "genome": null,
    "input": null,
    "json": false,
@@ -51890,7 +51890,7 @@
    "debug": false,
    "father": "f.bam",
    "full_help": false,
-   "func": "cli_VcfTrioParams",
+   "func": "cmd_trio",
    "genome": null,
    "input": "p.bam",
    "json": false,
@@ -51922,7 +51922,7 @@
    "debug": false,
    "engine": null,
    "full_help": false,
-   "func": "cli_VepDownloadParams",
+   "func": "cli_vep_download",
    "genome": null,
    "input": null,
    "json": false,
@@ -51956,7 +51956,7 @@
    "debug": false,
    "engine": null,
    "full_help": false,
-   "func": "cli_VepDownloadParams",
+   "func": "cli_vep_download",
    "genome": null,
    "input": null,
    "json": false,
@@ -51989,7 +51989,7 @@
    "debug": false,
    "engine": null,
    "full_help": false,
-   "func": "cli_VepDownloadParams",
+   "func": "cli_vep_download",
    "genome": null,
    "input": null,
    "json": false,
@@ -52026,7 +52026,7 @@
    "force": true,
    "format": "vcf",
    "full_help": false,
-   "func": "cli_VepRunParams",
+   "func": "cli_vep_run",
    "genome": null,
    "input": "d",
    "json": false,
@@ -52070,7 +52070,7 @@
    "force": false,
    "format": "vcf",
    "full_help": false,
-   "func": "cli_VepRunParams",
+   "func": "cli_vep_run",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -52111,7 +52111,7 @@
    "force": false,
    "format": "vcf",
    "full_help": false,
-   "func": "cli_VepRunParams",
+   "func": "cli_vep_run",
    "genome": null,
    "input": "x.bam",
    "json": false,
@@ -52149,7 +52149,7 @@
    "force": false,
    "format": "vcf",
    "full_help": false,
-   "func": "cli_VepRunParams",
+   "func": "cli_vep_run",
    "genome": null,
    "input": "x.vcf.gz",
    "json": false,
@@ -52189,7 +52189,7 @@
    "force": false,
    "format": "tab",
    "full_help": false,
-   "func": "cli_VepRunParams",
+   "func": "cli_vep_run",
    "genome": null,
    "input": "x.vcf.gz",
    "json": false,
@@ -52226,7 +52226,7 @@
    "debug": false,
    "engine": null,
    "full_help": false,
-   "func": "cli_VepVerifyParams",
+   "func": "cli_vep_verify",
    "genome": null,
    "input": null,
    "json": false,
@@ -52257,7 +52257,7 @@
    "debug": false,
    "engine": null,
    "full_help": false,
-   "func": "cli_VepVerifyParams",
+   "func": "cli_vep_verify",
    "genome": null,
    "input": null,
    "json": false,
