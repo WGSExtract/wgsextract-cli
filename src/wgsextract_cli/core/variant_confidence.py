@@ -625,7 +625,12 @@ def label_records(
         labels: list[str] = []
         reasons: list[str] = []
         reference_record = include_reference and (
-            all(a in {"0", "."} for a in alleles)
+            (
+                all(a in {"0", "."} for a in alleles)
+                and not any(
+                    a.startswith("<") and a not in SYMBOLIC_REFERENCE_ALTS for a in alts
+                )
+            )
             or all(a in SYMBOLIC_REFERENCE_ALTS or a == "." for a in alts)
         )
         for index, alt_allele in enumerate(alts, start=1):

@@ -105,6 +105,9 @@ same ploidy, with no gaps or overlapping ALT/no-call records. The sidecar
 keeps the worst supporting depth and GQ; an unknown metric stays unknown.
 Unsupported reference is passed as a no-call, never silently promoted to
 `0/0`. Expansion is bounded to gene regions, even for chromosome-sized blocks.
+Absent definitions stay absent in the matcher input, distinct from explicit
+no-calls. The existing opt-in `--absent-to-ref` may infer those sites as
+reference in PharmCAT, but their sidecar evidence remains absent/low.
 
 Contamination applies to the whole sample, not one call: another person's
 reads can turn a homozygous site heterozygous or add an allele the sample

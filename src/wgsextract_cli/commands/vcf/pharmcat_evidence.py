@@ -47,6 +47,21 @@ def _usable(call: vc.CallConfidence) -> bool:
     )
 
 
+def _worst_metrics(supporting: list[vc.CallConfidence]) -> list[str]:
+    metrics = []
+    for attr in ("depth", "genotype_quality"):
+        values = [getattr(call, attr) for call in supporting]
+        known = [v for v in values if v is not None]
+        metrics.append(
+            f"{min(known):g}" if known and len(known) == len(values) else "."
+        )
+    return metrics
+
+
+def _support_reasons(supporting: list[vc.CallConfidence]) -> str:
+    return "|".join(sorted({reason for call in supporting for reason in call.reasons}))
+
+
 def expand(
     source: str,
     directory: str,
@@ -104,15 +119,28 @@ def expand(
     reference_records: set[int] = set()
     output: list[list[str]] = []
     for index, fields in enumerate(records):
+        if "GT" not in fields[8].split(":"):
+            fields[8], fields[9] = (
+                ("GT", "./.")
+                if fields[8] == "."
+                else ("GT:" + fields[8], "./.:" + fields[9])
+            )
         chrom, start = fields[0], int(fields[1])
         alleles = re.split(r"[/|]", _format(fields).get("GT", "."))
-        is_ref = all(a in {"0", "."} for a in alleles)
+        structural = any(
+            a.startswith("<") and a not in vc.SYMBOLIC_REFERENCE_ALTS
+            for a in fields[4].split(",")
+        )
+        is_ref = not structural and all(a in {"0", "."} for a in alleles)
         symbolic = all(
             a in vc.SYMBOLIC_REFERENCE_ALTS or a == "." for a in fields[4].split(",")
         )
         end = int(_info(fields[7]).get("END", str(start + len(fields[3]) - 1)))
-        if not symbolic and not any(a.startswith("<") for a in fields[4].split(",")):
+        if not symbolic and (not structural or all(a == "0" for a in alleles)):
             end = start + len(fields[3]) - 1
+        calls[index] = _reference_call(
+            fields, thresholds, vc.mapping_quality_kind(header)
+        )
         for reg_chrom, reg_start, reg_end in regions:
             if chrom == reg_chrom:
                 for pos in range(max(start, reg_start + 1), min(end, reg_end) + 1):
@@ -121,9 +149,6 @@ def expand(
                         indices.append(index)
         if is_ref or symbolic:
             reference_records.add(index)
-            calls[index] = _reference_call(
-                fields, thresholds, vc.mapping_quality_kind(header)
-            )
         else:
             output.append(fields)
     for locus, indices in observations.items():
@@ -141,6 +166,20 @@ def expand(
         if len(indices) != 1:
             state = "overlap_conflict"
             info["reference_overlap"] = ""
+            supporting = [calls[index] for index in indices]
+            metrics = _worst_metrics(supporting)
+            ploidies = {
+                len(re.split(r"[/|]", _format(records[index]).get("GT", ".")))
+                for index in indices
+            }
+            genotype = (
+                _format(fields).get("GT", "./.")
+                if len(ploidies) == 1
+                and all("no_call" not in c.reasons for c in supporting)
+                else "./."
+            )
+            fields[8], fields[9] = "GT:DP:GQ", f"{genotype}:{metrics[0]}:{metrics[1]}"
+            info["PGX_REASONS"] = _support_reasons(supporting)
         info["PGX_STATE"] = state
         fields[7] = ";".join(k + ("=" + v if v else "") for k, v in info.items())
         output.append(fields)
@@ -188,13 +227,7 @@ def expand(
             )
         )
         # Never hide one unknown metric behind another block's known value.
-        metrics = []
-        for attr in ("depth", "genotype_quality"):
-            values = [getattr(call, attr) for call in supporting]
-            known = [v for v in values if v is not None]
-            metrics.append(
-                f"{min(known):g}" if known and len(known) == len(values) else "."
-            )
+        metrics = _worst_metrics(supporting)
         observed_reference = (
             not gap
             and not conflict
@@ -208,11 +241,9 @@ def expand(
             else "./."
         )
         span_info = f"PGX_STATE={state}"
-        supporting_reasons = sorted(
-            {reason for call in supporting for reason in call.reasons}
-        )
+        supporting_reasons = _support_reasons(supporting)
         if supporting_reasons:
-            span_info += ";PGX_REASONS=" + "|".join(supporting_reasons)
+            span_info += ";PGX_REASONS=" + supporting_reasons
         if gap:
             span_info += ";reference_gap"
         if conflict or not matches or len(ploidies) > 1:
@@ -238,6 +269,8 @@ def expand(
         '##INFO=<ID=reference_gap,Number=0,Type=Flag,Description="Incomplete reference span">',
         '##INFO=<ID=reference_overlap,Number=0,Type=Flag,Description="Conflicting reference span">',
     ]
+    if not any(line.startswith("##FORMAT=<ID=GT,") for line in header):
+        extra.append('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">')
     for metric in ("DP", "GQ"):
         if not any(line.startswith(f"##FORMAT=<ID={metric},") for line in header):
             extra.append(
@@ -255,6 +288,8 @@ def expand(
             for original in output:
                 fields = original.copy()
                 record_state = _info(fields[7]).get("PGX_STATE")
+                if mask and record_state == "absent":
+                    continue
                 if mask and record_state and record_state != "reference":
                     fmt = fields[9].split(":")
                     gt_index = fields[8].split(":").index("GT")

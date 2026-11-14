@@ -453,6 +453,106 @@ def _span_definition(release):
 
 
 @needs_htslib
+@pytest.mark.parametrize(
+    ("fmt", "value", "extra", "reason", "depth"),
+    [
+        ("DP:GQ", "40:60", "", "no_call", 40),
+        (
+            "GT:DP:MIN_DP:GQ",
+            "0/0:40:2:60",
+            '##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Minimum block depth">\n',
+            "low_depth",
+            2,
+        ),
+    ],
+)
+def test_842_missing_genotype_and_minimum_block_depth_never_become_confident_reference(
+    tmp_path, fmt, value, extra, reason, depth
+):
+    release = _release(tmp_path / "pharmcat")
+    _span_definition(release)
+    vcf = _vcf(
+        tmp_path / "weak-block.vcf.gz",
+        f"{{c}}\t100\t.\t{_base(100)}\t<NON_REF>\t.\tPASS\tEND=110\t{fmt}\t{value}\n",
+        header=QUALITY_HEADER + extra,
+    )
+    work = tmp_path / "work"
+    work.mkdir()
+    prepared = prepare_input(
+        vcf, str(release), str(release / REFERENCE_FASTA), str(work)
+    )
+    assert all(row.split("\t")[9] == "./." for row in _view(prepared, "-H"))
+    confidence = pharmcat.label_pgx_calls(vcf, str(work), api.VcfPharmcatParams())
+    (multi,) = [f.manifest() for f in confidence.findings if len(f.ref) == 2]
+    assert multi["confidence"] == "low"
+    assert multi["depth"] == depth and multi["genotype_quality"] == 60
+    assert reason in multi["reasons"]
+
+
+@needs_htslib
+def test_842_structural_reference_does_not_establish_sequence_confidence_in_end_span(
+    tmp_path,
+):
+    release = _release(tmp_path / "pharmcat")
+    _span_definition(release)
+    vcf = _vcf(
+        tmp_path / "sv.vcf.gz",
+        f"{{c}}\t101\t.\t{_base(101)}\t<DEL>\t.\tPASS\tEND=110\tGT:DP:GQ\t0/0:40:60\n",
+        header=QUALITY_HEADER,
+    )
+    work = tmp_path / "work"
+    work.mkdir()
+    prepared = prepare_input(
+        vcf, str(release), str(release / REFERENCE_FASTA), str(work)
+    )
+    assert not [r for r in _view(prepared, "-H") if len(r.split("\t")[3]) == 2]
+    confidence = pharmcat.label_pgx_calls(vcf, str(work), api.VcfPharmcatParams())
+    (finding,) = [f.manifest() for f in confidence.findings if f.pos == 105]
+    assert finding["PGX_STATE"] == "absent"
+    assert finding["confidence"] == "low"
+    assert finding["depth"] is None and finding["genotype_quality"] is None
+
+
+@needs_htslib
+@pytest.mark.parametrize("no_call_first", [False, True])
+def test_842_overlapping_no_call_keeps_worst_quality_for_single_and_multibase_definitions(
+    tmp_path, no_call_first
+):
+    release = _release(tmp_path / "pharmcat")
+    _span_definition(release)
+    with (release / "pharmcat_positions.vcf").open("a") as stream:
+        stream.write(f"chr1\t105\t.\t{_base(105)}\tT\t.\tPASS\t.\n")
+    rows = [
+        f"{{c}}\t105\t.\t{_base(105)}\t<NON_REF>\t.\tPASS\tEND=110\tGT:DP:GQ\t0/0:40:60\n",
+        f"{{c}}\t105\t.\t{_base(105)}\tT\t.\tPASS\t.\tGT:DP:GQ\t./.:2:1\n",
+    ]
+    if no_call_first:
+        rows.reverse()
+    vcf = _vcf(tmp_path / "overlap.vcf.gz", "".join(rows), header=QUALITY_HEADER)
+    work = tmp_path / "work"
+    work.mkdir()
+    prepared = prepare_input(
+        vcf, str(release), str(release / REFERENCE_FASTA), str(work)
+    )
+    assert all(
+        r.split("\t")[9] == "./."
+        for r in _view(prepared, "-H")
+        if r.split("\t")[1] == "105"
+    )
+    confidence = pharmcat.label_pgx_calls(vcf, str(work), api.VcfPharmcatParams())
+    findings = [f.manifest() for f in confidence.findings if f.pos == 105]
+    assert {len(f["ref"]) for f in findings} == {1, 2}
+    for finding in findings:
+        assert finding["confidence"] == "low"
+        assert finding["PGX_STATE"] == "overlap_conflict"
+        assert finding["genotype"] == "./."
+        assert finding["depth"] == 2 and finding["genotype_quality"] == 1
+        assert {"no_call", "low_depth", "low_gq", "reference_overlap"} <= set(
+            finding["reasons"]
+        )
+
+
+@needs_htslib
 def test_842_weak_reference_block_keeps_low_gq_in_user_confidence(
     tmp_path, pharmcat_env
 ):
@@ -544,12 +644,16 @@ def test_842_missing_multibase_fill_requires_conflict_free_whole_span(
         vcf, str(release), str(release / REFERENCE_FASTA), str(work)
     )
     rows = [r.split("\t") for r in _view(prepared, "-H")]
-    multi = next(r for r in rows if r[1] == "105" and len(r[3]) == 2)
-    assert (multi[3], multi[4], multi[9]) == (
-        _base(105) + _base(106),
-        _base(105),
-        genotype,
-    )
+    multi_rows = [r for r in rows if r[1] == "105" and len(r[3]) == 2]
+    if state == "absent":
+        assert not multi_rows
+    else:
+        (multi,) = multi_rows
+        assert (multi[3], multi[4], multi[9]) == (
+            _base(105) + _base(106),
+            _base(105),
+            genotype,
+        )
     confidence = pharmcat.label_pgx_calls(vcf, str(work), api.VcfPharmcatParams())
     finding = next(
         f.manifest() for f in confidence.findings if f.pos == 105 and len(f.ref) == 2
