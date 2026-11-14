@@ -56,6 +56,18 @@ warning.
 
 ## Rules
 
+These are **germline** rules, not a validated somatic evidence scheme.
+Mutect2 (`##source=Mutect2` or its `##GATKCommandLine` header) is identified
+separately from germline GATK. Its carried calls are labelled `low` with
+`unsupported_somatic` (and `filtered` when applicable), regardless of VAF;
+no germline balance, GQ or hard-filter threshold is applied. Here `low`
+means **unassessable under this scheme**, not that the somatic call is wrong.
+Descriptive depth and allele fractions remain in the table, but zygosity is
+`unassessed`. A structured `unsupported_somatic_confidence` warning explains
+the limitation; the VCF header and manifest record `Policy=unsupported_somatic`
+and `policy: unsupported_somatic`, respectively (otherwise `germline`).
+Neither a low VAF nor this policy establishes CHIP or a tumour diagnosis.
+
 Each carried ALT allele is judged on the evidence its caller wrote. The worst
 rule wins: any `low` reason makes the call `low`; otherwise any `moderate`
 reason makes it `moderate`; otherwise it is `high`.
