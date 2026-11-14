@@ -62,7 +62,7 @@ def test_matching_filters_sequentially_and_never_infers_failed_observed_sites():
         4: Call("G", 10, 89.9),
         5: Call("G", 10, 90),
     }
-    passing, failed = match_markers(markers, calls)
+    passing, failed = match_markers(markers, calls, report_absence=True)
     assert [(o.marker.pos, o.state, o.call.reads) for o in passing] == [
         (5, "D", 10),
     ]

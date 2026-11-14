@@ -108,6 +108,22 @@ first position or its average DP does not prove interior callability. An explici
 inside a block remains unknown. `--no-ref-inference` disables block expansion
 for targeted panels.
 
+`vcf snp` and other raw bcftools caller outputs may have `FILTER=.`, meaning
+no site-filter assessment was performed. They are deliberately not treated
+as PASS. Assess caller output explicitly before Y analysis, choosing a
+threshold suitable for your data, for example:
+
+```sh
+bcftools filter --exclude 'QUAL<20' --soft-filter LowQual --mode + \
+  -Oz -o assessed.vcf.gz snps.vcf.gz
+bcftools index assessed.vcf.gz
+wgsextract lineage y-haplogroup --input assessed.vcf.gz --ref reference.fa
+```
+
+This preserves existing failed filters and marks assessed passing sites
+PASS. Genotype, depth, GQ and callable reference-block checks still apply;
+filtering does not turn absent sites or no-calls into evidence.
+
 After `microarray` writes its files, the autosomal genotypes are checked:
 
 - **Homozygosity of the CombinedKit's called genotypes.** Directly sequenced

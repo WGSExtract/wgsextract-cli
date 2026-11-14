@@ -182,11 +182,14 @@ def match_markers(
     *,
     min_reads: int = 10,
     majority: int = 90,
+    report_absence: bool = False,
 ) -> tuple[list[Observation], list[Observation]]:
     passing, failed = [], []
     for marker in sorted(markers, key=lambda value: value.pos):
         call = calls.get(marker.pos)
         if call is None:
+            if not report_absence:
+                continue
             call = Call("NA", 0, 0, "Unassessed position")
         state = (
             "A"

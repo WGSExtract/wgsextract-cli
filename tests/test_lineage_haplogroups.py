@@ -30,7 +30,7 @@ from wgsextract_cli.core.mito_reference import (
     pinned_sequences,
 )
 from wgsextract_cli.core.results import CommandResult, collecting
-from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.ydna.yleaf_native.trees import MANIFEST
 
 # Haplogrep's trees are downloaded; serve a tiny one instead.
@@ -119,6 +119,71 @@ _KIT_BODY = (
 def _y_rows(output: Path, suffix: str) -> list[dict[str, str]]:
     with (output / f"yleaf/kit/kit.{suffix}").open() as stream:
         return list(csv.DictReader(stream, delimiter="\t"))
+
+
+def test_855_unfiltered_caller_vcf_needs_explicit_quality_assessment(
+    tmp_path, native_tables
+):
+    meta = (
+        '##INFO=<ID=END,Number=1,Type=Integer,Description="Block end">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Block minimum">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">\n'
+    )
+    body = (
+        "chrY\t100\t.\tA\tG\t60\t.\t.\tGT:DP:GQ\t1:20:60\n"
+        "chrY\t110\t.\tA\tG\t60\t.\t.\tGT:DP:GQ\t1:20:60\n"
+        "chrY\t120\t.\tA\tG\t5\t.\t.\tGT:DP:GQ\t1:20:60\n"
+        "chrY\t135\t.\tA\t<NON_REF>\t60\t.\tEND=160\tGT:MIN_DP:GQ\t0:20:60\n"
+    )
+    raw = _vcf(tmp_path / "raw.vcf.gz", {"chrY": 1000}, body, meta)
+    reference = write_fasta(tmp_path / "reference.fa", {"chrY": "A" * 1000})
+    with pytest.raises(WGSExtractError, match="could not predict"):
+        run_wgsextract(
+            "lineage",
+            "y-haplogroup",
+            "--input",
+            raw,
+            "--build",
+            "hg38",
+            "--ref",
+            str(reference),
+            "--outdir",
+            str(tmp_path / "unassessed"),
+        )
+    assessed = tmp_path / "kit.vcf.gz"
+    run_command(
+        [
+            "bcftools",
+            "filter",
+            "--exclude",
+            "QUAL<20",
+            "--soft-filter",
+            "LowQual",
+            "--mode",
+            "+",
+            "-Oz",
+            "-o",
+            str(assessed),
+            raw,
+        ]
+    )
+    run_command(["bcftools", "index", str(assessed)])
+    output = tmp_path / "assessed"
+    run_wgsextract(
+        "lineage",
+        "y-haplogroup",
+        "--input",
+        str(assessed),
+        "--build",
+        "hg38",
+        "--ref",
+        str(reference),
+        "--outdir",
+        str(output),
+    )
+    assert Counter(row["state"] for row in _y_rows(output, "out")) == {"D": 2, "A": 5}
+    assert {row["pos"] for row in _y_rows(output, "fmf")} == {"120", "130"}
 
 
 @pytest.mark.parametrize("heterozygote", ["0/1", "1/0", "0|1", "1|0"])
@@ -543,6 +608,7 @@ def test_y_haplogroup_from_cram_decodes_with_the_reference(tmp_path, native_tabl
         "lineage", "y-haplogroup", "--input", bam, "--ref", str(ref),
     )  # fmt: skip
     bam_prediction = (tmp_path / "yleaf/hg_prediction.hg").read_text()
+    assert _y_rows(tmp_path, "fmf") == []
 
     from wgsextract_cli.core.utils import run_command
 
@@ -553,6 +619,7 @@ def test_y_haplogroup_from_cram_decodes_with_the_reference(tmp_path, native_tabl
         "lineage", "y-haplogroup", "--input", cram, "--ref", str(ref),
     )  # fmt: skip
     assert (tmp_path / "yleaf/hg_prediction.hg").read_text() == bam_prediction
+    assert _y_rows(tmp_path, "fmf") == []
 
 
 def test_y_haplogroup_from_cram_without_a_reference_fails(

@@ -338,6 +338,7 @@ def analyze(
                 calls,
                 min_reads=min_reads,
                 majority=majority,
+                report_absence=is_vcf,
             )
         ordered = write_marker_tables(folder, sample, predictor.tree, passing, failed)
         haplotypes = link_markers(
