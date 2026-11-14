@@ -36,11 +36,11 @@ GNOMAD_COLUMNS = ("GNOMAD_AF",)
 def run_phylop(params: VcfPhylopParams) -> None:
     verify_dependencies(["bcftools", "tabix", "bgzip"])
     log_dependency_info(["bcftools", "tabix", "bgzip"])
-    input_file, outdir, lib = annotation_context(params)
+    input_file, outdir, lib = annotation_context(params, PHYLOP_ANNOTATED)
     logging.info(LOG_MESSAGES["vcf_phylop_start"].format(input=input_file))
 
     phylop_file = require_annotation_file(
-        resource(params.phylop_file, lib.phylop_file), "vcf_phylop_missing", "phylop"
+        resource(params, "phylop_file", lib.phylop_file), "vcf_phylop_missing", "phylop"
     )
     logging.info(LOG_MESSAGES["vcf_phylop_resolve"].format(path=phylop_file))
 
@@ -110,11 +110,11 @@ def _annotate_from_phylop_table(
 def run_gnomad(params: VcfGnomadParams) -> None:
     verify_dependencies(["bcftools", "tabix"])
     log_dependency_info(["bcftools", "tabix"])
-    input_file, outdir, lib = annotation_context(params)
+    input_file, outdir, lib = annotation_context(params, GNOMAD_ANNOTATED)
     logging.info(f"Annotating VCF with gnomAD data: {input_file}")
 
     gnomad_file = require_annotation_file(
-        resource(params.gnomad_file, lib.gnomad_vcf), "vcf_gnomad_missing", "gnomad"
+        resource(params, "gnomad_file", lib.gnomad_vcf), "vcf_gnomad_missing", "gnomad"
     )
     logging.info(f"Using gnomAD file: {gnomad_file}")
 

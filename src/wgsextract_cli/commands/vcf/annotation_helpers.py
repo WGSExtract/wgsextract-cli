@@ -1,5 +1,4 @@
 import logging
-import os
 import subprocess
 import tempfile
 from collections.abc import Iterator, Sequence
@@ -7,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
 
+from wgsextract_cli.api._params import param_fields
 from wgsextract_cli.api.vcf import _VcfFileParams
 from wgsextract_cli.core.bgzf import is_bgzf
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -15,10 +15,11 @@ from wgsextract_cli.core.output_checks import (
     vcf_record_count,
     warn_if_nothing_annotated,
 )
-from wgsextract_cli.core.paths import absolute_path
+from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.utils import (
+    UsageError,
     WGSExtractError,
     get_resource_defaults,
     run_command,
@@ -38,11 +39,15 @@ VCF_SUFFIXES = (".vcf", ".vcf.gz", ".vcf.bgz")
 
 
 def annotation_context(
-    params: _VcfFileParams,
+    params: _VcfFileParams, output: str
 ) -> tuple[str, str, ReferenceLibrary]:
+    """The input VCF, output folder and reference library of an annotator
+    that writes ``output`` there; a run that fails before writing it leaves
+    a failed-attempt manifest beside it."""
     input_file = require_vcf_input(params)
-    outdir = os.fspath(params.outdir or absolute_path(input_file).parent)
+    outdir = expand_path(params.outdir or absolute_path(input_file).parent)
     Path(outdir).mkdir(parents=True, exist_ok=True)
+    current_result().expect_output(Path(outdir, output))
     md5_sig = (
         calculate_bam_md5(input_file, None)
         if input_file.lower().endswith((".bam", ".cram"))
@@ -52,9 +57,26 @@ def annotation_context(
     return input_file, outdir, lib
 
 
-def resource(given: Path | None, default: str | None) -> str | None:
-    """An annotation data file: the one given, else the library's."""
-    return os.fspath(given) if given else default
+def resource(params: _VcfFileParams, field: str, default: str | None) -> str | None:
+    """An annotation data file: the one given by ``field``'s option (or its
+    config.toml setting), which must exist, else the library's."""
+    given = getattr(params, field)
+    if not given:
+        return default
+    path = expand_path(given)
+    if not Path(path).is_file():
+        spec = next(f for f in param_fields(type(params)) if f.name == field)
+        key = (
+            "resource_not_found"
+            if params.explicitly_set(field)
+            else ("resource_not_found_in_config")
+        )
+        raise UsageError(
+            LOG_MESSAGES[key].format(
+                flag=spec.flags[0], path=path, setting=spec.spec.config_key
+            )
+        )
+    return path
 
 
 def require_annotation_file(file_path: str | None, message_key: str, ann: str) -> str:

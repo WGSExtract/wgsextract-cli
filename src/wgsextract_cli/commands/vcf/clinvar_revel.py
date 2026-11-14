@@ -37,11 +37,13 @@ REVEL_ANNOTATED = "revel_annotated.vcf.gz"
 def run_clinvar(params: VcfClinvarParams) -> None:
     verify_dependencies(["bcftools", "tabix"])
     log_dependency_info(["bcftools", "tabix"])
-    input_file, outdir, lib = annotation_context(params)
+    input_file, outdir, lib = annotation_context(params, CLINVAR_PATHOGENIC)
     logging.info(LOG_MESSAGES["vcf_clinvar_start"].format(input=input_file))
 
     clinvar_vcf = require_annotation_file(
-        resource(params.clinvar_file, lib.clinvar_vcf), "vcf_clinvar_missing", "clinvar"
+        resource(params, "clinvar_file", lib.clinvar_vcf),
+        "vcf_clinvar_missing",
+        "clinvar",
     )
     logging.info(LOG_MESSAGES["vcf_clinvar_resolve"].format(path=clinvar_vcf))
 
@@ -108,11 +110,11 @@ def _vcf_header(vcf: str) -> str:
 def run_revel(params: VcfRevelParams) -> None:
     verify_dependencies(["bcftools", "tabix"])
     log_dependency_info(["bcftools", "tabix"])
-    input_file, outdir, lib = annotation_context(params)
+    input_file, outdir, lib = annotation_context(params, REVEL_ANNOTATED)
     logging.info(LOG_MESSAGES["vcf_revel_start"].format(input=input_file))
 
     revel_file = require_annotation_file(
-        resource(params.revel_file, lib.revel_file), "vcf_revel_missing", "revel"
+        resource(params, "revel_file", lib.revel_file), "vcf_revel_missing", "revel"
     )
     logging.info(LOG_MESSAGES["vcf_revel_resolve"].format(path=revel_file))
 
