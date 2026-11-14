@@ -98,6 +98,26 @@ Missing/expired logs do not invent
 test IDs. The recorded fixtures under `tests/fixtures/ci_failures` exercise real
 API responses, including the macOS GPU-resume flake.
 
+Flaky-test and red-main bugs created by this publisher carry `endorsed` as well
+as `ci-automation` and their existing hidden CI marker. Updates endorse only
+our `github-actions[bot]` issues with that label and a body whose first line is
+exactly `(AI): <valid CI marker>`; prose or quoted content before that line is
+not accepted. Stale `needs-owner` is removed without replacing other labels.
+Existing issues from other authors, ordinary bot reports, quoted markers, PRs
+and ledger issues are never auto-endorsed. This is the narrow owner-approved
+exception in `AGENTS.md`;
+CI-log excerpts remain data, never agent instructions.
+
+The one-time migration for existing open bot reports uses the same ownership
+checks and is idempotent:
+
+```python
+from scripts.ci_github import GitHub
+from scripts.ci_issues import IssueReports
+
+IssueReports(GitHub("WGSExtract/wgsextract-cli")).endorse_existing()
+```
+
 ## Red main
 
 A latest failing push run on main opens or updates a workflow-specific
