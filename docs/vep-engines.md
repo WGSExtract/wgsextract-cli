@@ -26,6 +26,18 @@ wgsextract vep run --engine ensembl --input sample.vcf.gz
 Both write the same `<input stem>_vep.vcf.gz` with a VEP `CSQ` field and the same
 field names, so `vcf table`, `vcf trio` and the report read either.
 
+### BAM/CRAM provisional calls
+
+BAM/CRAM input first runs bcftools mpileup and multiallelic calling, discovering
+both SNPs and small indels before annotation. `--region` restricts discovery;
+`--ref` must match the alignment, and the ploidy options control calling.
+Indel calls discard stale bcftools bias tags (SNP values are retained), and
+reference normalization resolves IUPAC ambiguity codes to valid VCF alleles.
+This convenience stage is not a validated clinical discovery pipeline: it does
+not discover structural variants or guarantee small-variant sensitivity.
+For reviewed calls from another caller, supply its VCF/BCF directly; VEP
+annotates those records without recalling variants.
+
 ### Upgrading from Ensembl VEP
 
 vep-rs became the default after Ensembl VEP. If you choose no engine, have

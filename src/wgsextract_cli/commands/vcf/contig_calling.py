@@ -52,6 +52,8 @@ from wgsextract_cli.core.resource_estimates import bcftools_batches as _batches
 from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 
+from .call_cleanup import indel_cleanup_pipeline
+
 # htslib's errmod_cal shuffles (draws for) a column's bases above 255.
 _DRAW_DEPTH = 256
 # Below this many bases a column's alive reads stay under mpileup's -d 250
@@ -156,30 +158,7 @@ def _pipeline(
     return [
         mpileup,
         [*call, "-Ou"],
-        # Stale copies from the last SNP site (bcftools 1.24 cannot suppress
-        # MQSBZ with mpileup -a), which also depend on the previous contig.
-        [
-            "bcftools",
-            "annotate",
-            "--no-version",
-            "-x",
-            "INFO/BQBZ,INFO/MQSBZ",
-            "-Ou",
-        ],  # fmt: skip
-        # VCF requires IUPAC reference codes to resolve to a concrete base (R -> A).
-        [
-            "bcftools",
-            "norm",
-            "--check-ref",
-            "ws",
-            "-f",
-            ref,
-            "--threads",
-            threads,
-            "-Oz",
-            "-o",
-            output,
-        ],  # fmt: skip
+        *indel_cleanup_pipeline(ref, output, threads),
     ]
 
 
