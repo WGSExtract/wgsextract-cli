@@ -22,7 +22,14 @@ it instead of parsing log text or guessing output file names.
   write no file, except `info --format`, whose manifest is named after the first table
   (`<input>_chromosomes.parquet.manifest.json`).
   A failed run that registered outputs still writes its manifest, with
-  `status: "failed"`. A manifest never replaces this run's `--log-file`; when
+  `status: "failed"`. So does a failed run that had already chosen its output
+  folder, even with no outputs yet, so `report` can see the failed attempt:
+  the `vcf` annotators (`clinvar`, `gnomad`, `cadd`, `revel`, `phylop`,
+  `gerp`, `spliceai`, `alphamissense`, `pharmgkb`, `sv-freq`) once they know
+  their input and output folder, and the commands that name their manifest
+  after the run, such as `vcf trio` and `analyze`. The manifest has the name a
+  successful run's would, so a failed attempt replaces the manifest of an
+  earlier run in the same folder; run again in another folder to keep both. A manifest never replaces this run's `--log-file`; when
   the two would share a name, the manifest is skipped with a warning.
 - **`--json`.** This global option prints the same document to stdout
   *instead of* the human-readable result, for every command. Logs, progress
@@ -155,7 +162,10 @@ How refusals are classified:
   `--r1`, `methylation --combine-strands` with a non-CpG context, `sign verify
   --allowed-signers` without `--identity`, a non-positive `benchmark
   --coverage` or `--target-count`, `qc fake-data --legacy-bam --full-size`,
-  `example-genome download --method aspera` without a key, and options
+  `example-genome download --method aspera` without a key, a resource file
+  option of a `vcf` annotator (`--clinvar-file`, `--gnomad-file`,
+  `--cadd-indel-file`, `--gnomad-sv-file`, ..., or its config.toml setting)
+  that names no file, and options
   this platform cannot honour while the command itself can run: `--gpu` off
   Linux x86-64, and `--aligner pbmm2` on Windows. Choosing different options
   fixes the run.

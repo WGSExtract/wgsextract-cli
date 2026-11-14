@@ -513,6 +513,12 @@ class CommandResult:
         """Name the manifest ``<stem>.manifest.json`` instead of after an output."""
         self._manifest_stem = Path(stem).expanduser().absolute()
 
+    def name_manifest_after(self, output: str | os.PathLike[str]) -> None:
+        """Name the manifest after ``output`` before it is registered, so a run
+        that fails before writing it still leaves its failed manifest there."""
+        path = manifest_path_for(Path(output).expanduser().absolute())
+        self._manifest_stem = path.with_name(path.name.removesuffix(MANIFEST_SUFFIX))
+
     def record_tool_command(self, command: Sequence[str]) -> None:
         tools = tools_in_command(command)
         with self._lock:

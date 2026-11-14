@@ -4,6 +4,7 @@ downloads that install those sources."""
 
 import gzip
 import io
+import json
 import os
 import re
 import subprocess
@@ -14,6 +15,7 @@ from unittest.mock import patch
 import pytest
 
 from tests.htslib_helpers import needs_tools, run_wgsextract
+from tests.smoke_utils import run_cli
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -861,3 +863,57 @@ def test_interrupted_table_compression_is_redone(tmp_path):
     prepared = annotation_helpers.prepare_tabix_annotation(str(plain), "REVEL")
     with gzip.open(prepared, "rt") as f:
         assert len(f.read().splitlines()) == 1 + len(rows)
+
+
+# --- a missing resource file (issue 894) ----------------------------------------
+
+
+@needs_bcftools
+@pytest.mark.parametrize(
+    "argv, flag, manifest",
+    [
+        (["clinvar"], "--clinvar-file", "clinvar_pathogenic.vcf.manifest.json"),
+        (["cadd", "--cadd-file", "{exists}"], "--cadd-indel-file",
+         "cadd_annotated.vcf.manifest.json"),
+        (["sv-freq"], "--gnomad-sv-file", "sv_freq_annotated.vcf.manifest.json"),
+    ],
+)  # fmt: skip
+def test_issue_894_missing_resource_is_a_usage_error_with_a_failed_manifest(
+    tmp_path, argv, flag, manifest
+):
+    """A missing --clinvar-file was "An unexpected error occurred: [Errno 2]"
+    (exit 1) and left nothing in the output folder for report to find."""
+    sample = _sample(tmp_path, SAMPLE_ROWS)
+    exists = tmp_path / "present.tsv.gz"
+    exists.write_bytes(b"")
+    missing = tmp_path / "res" / "missing.vcf.gz"
+    outdir = tmp_path / "out"
+    rc, _, stderr = run_cli(
+        ["vcf", *(a.format(exists=exists) for a in argv), flag, str(missing),
+         "--vcf-input", sample, "--outdir", str(outdir)]
+    )  # fmt: skip
+    assert rc == 2, stderr
+    assert "unexpected error" not in stderr
+    assert f"{flag} file not found: {missing}" in stderr
+    assert os.listdir(outdir) == [manifest]
+    document = json.loads((outdir / manifest).read_text())
+    assert document["status"] == "failed"
+    assert document["exit_code"] == 2
+    assert document["error"]["kind"] == "usage"
+    assert flag in document["error"]["message"]
+    # report links the failed attempt to the sample through its input.
+    assert [i["path"] for i in document["inputs"]] == [sample]
+
+
+@needs_bcftools
+def test_issue_894_missing_configured_resource_names_its_setting(tmp_path):
+    sample = _sample(tmp_path, SAMPLE_ROWS)
+    missing = tmp_path / "missing.vcf.gz"
+    config = tmp_path / "config.toml"
+    config.write_text(f"clinvar_vcf_path = {json.dumps(str(missing))}\n")
+    rc, _, stderr = run_cli(
+        ["--config", str(config), "vcf", "clinvar", "--vcf-input", sample,
+         "--outdir", str(tmp_path / "out")]
+    )  # fmt: skip
+    assert rc == 2, stderr
+    assert f"--clinvar-file file not found: {missing} (clinvar_vcf_path" in stderr

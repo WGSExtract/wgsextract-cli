@@ -37,11 +37,11 @@ PHARMGKB_ANNOTATED = "pharmgkb_annotated.vcf.gz"
 def run_spliceai(params: VcfSpliceaiParams) -> None:
     verify_dependencies(["bcftools", "tabix"])
     log_dependency_info(["bcftools", "tabix"])
-    input_file, outdir, lib = annotation_context(params)
+    input_file, outdir, lib = annotation_context(params, SPLICEAI_ANNOTATED)
     logging.info(f"Annotating VCF with SpliceAI scores: {input_file}")
 
     spliceai_file = require_annotation_file(
-        resource(params.spliceai_file, lib.spliceai_vcf),
+        resource(params, "spliceai_file", lib.spliceai_vcf),
         "vcf_spliceai_missing",
         "spliceai",
     )
@@ -62,11 +62,11 @@ def run_spliceai(params: VcfSpliceaiParams) -> None:
 def run_alphamissense(params: VcfAlphamissenseParams) -> None:
     verify_dependencies(["bcftools", "tabix"])
     log_dependency_info(["bcftools", "tabix"])
-    input_file, outdir, lib = annotation_context(params)
+    input_file, outdir, lib = annotation_context(params, ALPHAMISSENSE_ANNOTATED)
     logging.info(f"Annotating VCF with AlphaMissense scores: {input_file}")
 
     am_file = require_annotation_file(
-        resource(params.am_file, lib.alphamissense_vcf),
+        resource(params, "am_file", lib.alphamissense_vcf),
         "vcf_alphamissense_missing",
         "alphamissense",
     )
@@ -115,10 +115,10 @@ def run_alphamissense(params: VcfAlphamissenseParams) -> None:
 def run_pharmgkb(params: VcfPharmgkbParams) -> None:
     verify_dependencies(["bcftools", "tabix"])
     log_dependency_info(["bcftools", "tabix"])
-    input_file, outdir, lib = annotation_context(params)
+    input_file, outdir, lib = annotation_context(params, PHARMGKB_ANNOTATED)
     logging.info(f"Annotating VCF with PharmGKB data: {input_file}")
 
-    pharmgkb_file = resource(params.pharmgkb_file, lib.pharmgkb_vcf)
+    pharmgkb_file = resource(params, "pharmgkb_file", lib.pharmgkb_vcf)
     # Without a library, the build comes from the VCF's own header.
     build = lib.build or get_vcf_build(input_file)
     if not pharmgkb_file and build and not is_hg38_build(build):
