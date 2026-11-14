@@ -217,7 +217,8 @@ def test_required_summary_and_lost_artifact_cascade_do_not_block_each_other() ->
     api = InstallLabReplay()
     api.run.update(
         id=100,
-        name="PR area checks",
+        name="PR area checks / synchronize / ready",
+        path=".github/workflows/pr_ci.yml",
         head_branch="feature",
         event="pull_request",
         pull_requests=[{"number": 123}],

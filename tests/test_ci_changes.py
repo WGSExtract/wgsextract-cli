@@ -337,12 +337,15 @@ def area_run(
     draft: bool = False,
     status: str = "completed",
 ) -> dict[str, Any]:
+    title = f"PR area checks / {action} / {'draft' if draft else 'ready'}"
+    # The Actions API reports the run-name as both `name` and `display_title`.
     return {
         "id": run_id,
-        "name": "PR area checks",
+        "name": title,
+        "path": ".github/workflows/pr_ci.yml",
         "event": "pull_request",
         "head_sha": "same-head",
-        "display_title": f"PR area checks / {action} / {'draft' if draft else 'ready'}",
+        "display_title": title,
         "created_at": created_at,
         "status": status,
         "conclusion": "success" if status == "completed" else None,
@@ -640,3 +643,19 @@ def test_757_landing_cli_rejects_an_empty_check_report() -> None:
         text=True,
     )
     assert result.returncode == 1
+
+
+def test_867_ready_run_found_by_workflow_file_not_run_name() -> None:
+    """#867: the Actions API reports pr_ci.yml's run-name as `name`, so every
+    PR was rejected. The ready run is found by its workflow file, and a run of
+    another workflow with the same title is not taken for it."""
+    ready = area_run(30, "2026-11-13T16:21:00Z", action="synchronize")
+    other_workflow = area_run(31, "2026-11-13T16:22:00Z", action="synchronize")
+    other_workflow["path"] = ".github/workflows/ubuntu_ci.yml"
+    found = pr_checks_ready.latest_ready_run(
+        [ready, other_workflow],
+        head_sha="same-head",
+        ready_since="2026-11-13T16:20:00Z",
+        pr_number=802,
+    )
+    assert found == 30

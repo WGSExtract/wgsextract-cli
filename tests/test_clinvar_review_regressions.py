@@ -115,6 +115,39 @@ def test_837_two_mnvs_proven_on_one_haplotype_report_carrier(tmp_path):
     assert (gene["heterozygous"], gene["status"]) == (2, "carrier")
 
 
+@pytest.mark.parametrize(
+    ("genotype", "phase_set", "status", "phase"),
+    [
+        ("0|1", "11", "carrier", "cis"),
+        ("1|0", "11", "biallelic", "trans"),
+        ("0|1", "12", "possible_biallelic", "unknown"),
+    ],
+)
+def test_837_composed_mnv_and_phased_snv_share_report_phase_rules(
+    tmp_path, genotype, phase_set, status, phase
+):
+    ref = write_fasta(tmp_path / "ref.fa", {"1": SEQ})
+    sample = vcf(
+        tmp_path / "sample.vcf",
+        [
+            *PARTS,
+            f"16 . C T 99 PASS . GT:PS {genotype}:{phase_set}",
+        ],
+    )
+    resource = vcf(
+        tmp_path / "resource.vcf",
+        [
+            MNV,
+            "16 VCVsnv C T . PASS CLNSIG=Pathogenic;CLNDN=MAP;GENEINFO=MUTYH:4595 GT 0/1",
+        ],
+        resource=True,
+    )
+    out = tmp_path / "out"
+    annotate(out, sample, resource, ref)
+    (gene,) = report(out)["sections"]["clinvar"]["genes"]
+    assert (gene["status"], gene["phase"]) == (status, phase)
+
+
 def test_841_table_keeps_review_vectors_separate_for_each_alt(tmp_path):
     sample = vcf(
         tmp_path / "sample.vcf",

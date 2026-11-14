@@ -5,6 +5,7 @@ import json
 import sqlite3
 from bisect import bisect_right
 from collections.abc import Sequence
+from contextlib import closing
 from pathlib import Path
 from urllib.parse import quote
 
@@ -50,7 +51,10 @@ def table_as_vcf(
         query_names = {
             c: match_chromosome_name(c, available) for c in vcf_chromosomes(snv_query)
         }
-        with gzip.open(snv_query, "rt") as query, regions.open("w") as loci:
+        with (
+            gzip.open(snv_query, "rt") as query,
+            regions.open("w", newline="\n") as loci,
+        ):
             for line in query:
                 if line.startswith("#"):
                     continue
@@ -62,11 +66,11 @@ def table_as_vcf(
                     if chrom:
                         loci.write(f"{chrom}\t{row[1]}\t{row[1]}\n")
         subset = Path(work, "snv-scores.tsv")
-        with subset.open("w") as selected:
+        with subset.open("w", newline="\n") as selected:
             if regions.stat().st_size:
                 run_command(["tabix", "-R", str(regions), source], stdout=selected)
     contigs = []
-    with output.open("w") as handle:
+    with output.open("w", newline="\n") as handle:
         handle.write("##fileformat=VCFv4.2\n")
         for line in Path(reference + ".fai").read_text().splitlines():
             name, length, *_ = line.split("\t")
@@ -132,7 +136,7 @@ def _text_copy(
                 ce.TIER: "ClinVar review tier; not sequencing confidence",
             }
         )
-    with output.open("w") as handle:
+    with output.open("w", newline="\n") as handle:
         for line in text.splitlines():
             if line.startswith("#CHROM"):
                 for contig in vcf_chromosomes(source):
@@ -345,12 +349,12 @@ def _compose(query: str, resource: str, work: str, thresholds: vc.Thresholds) ->
                 compact.append((start, end))
         merged[chrom] = ([s for s, _ in compact], [e for _, e in compact])
     output = Path(work, "composed.vcf")
-    with sqlite3.connect(Path(work, "snvs.sqlite")) as db:
+    with closing(sqlite3.connect(Path(work, "snvs.sqlite"))) as db, db:
         db.execute(
             "CREATE TABLE alleles (chrom TEXT, pos INTEGER, ref TEXT, alt TEXT, end INTEGER, record TEXT)"
         )
         db.execute("CREATE VIRTUAL TABLE spans USING rtree(record_id, start, end)")
-        with gzip.open(query, "rt") as source, output.open("w") as handle:
+        with gzip.open(query, "rt") as source, output.open("w", newline="\n") as handle:
             header = []
             for line in source:
                 if line.startswith("#"):
@@ -479,7 +483,8 @@ def _compose(query: str, resource: str, work: str, thresholds: vc.Thresholds) ->
     ensure_vcf_indexed(candidates)
     union_header = Path(work, "mnv-header.txt")
     union_header.write_text(
-        run_command(["bcftools", "view", "-h", candidates], capture_output=True).stdout
+        run_command(["bcftools", "view", "-h", candidates], capture_output=True).stdout,
+        newline="\n",
     )
     aligned_query = str(Path(work, "query-with-mnv-header.vcf.gz"))
     run_command(

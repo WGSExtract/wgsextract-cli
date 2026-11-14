@@ -91,11 +91,11 @@ fully phased calls restricted to one haplotype retain carrier status.
 - **TSV** beside the VCF (`clinvar_pathogenic.confidence.tsv`,
   `gnomad_af_lt_<AF>.confidence.tsv`, `significant_<type>_<name>.confidence.tsv`,
   `<name>.confidence.tsv` for PharmCAT): one row per carried call with
-  `confidence`, `reasons`, `depth`, `genotype_quality`, `alt_fraction`, the
-  zygosity and the relevant annotations (`CLNSIG`, `CLNDN`, `GENEINFO` and the split record's
-  `OLD_MULTIALLELIC`, `GNOMAD_AF`, the
-  PharmCAT `gene`, ...). Its `#` header lines state the thresholds and the
-  disclaimer above.
+  `confidence`, `reasons`, `depth`, `genotype_quality`, `alt_fraction`,
+  `phase_set` (`FORMAT/PS`, empty when the call has none), the genotype and
+  zygosity and the relevant annotations (`CLNSIG`, `CLNDN`, `GENEINFO` and the
+  split record's `OLD_MULTIALLELIC`, `GNOMAD_AF`, the PharmCAT `gene`, ...).
+  Its `#` header lines state the thresholds and the disclaimer above.
 - **Result manifest** ([result-manifest.md](result-manifest.md)): metrics
   `confidence_high`, `confidence_moderate`, `confidence_low` and
   `confidence_not_carried`; warnings `low_confidence_findings` and, for ClinVar

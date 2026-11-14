@@ -64,7 +64,8 @@ def normalized_resource(
                             asdict(w) for w in current_result().warnings[before:]
                         ],
                     }
-                )
+                ),
+                newline="\n",
             )
         current_result().add_metrics(annotation_normalization_cache_hit=False)
         return str(output)
