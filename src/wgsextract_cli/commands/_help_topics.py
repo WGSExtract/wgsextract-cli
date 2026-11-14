@@ -136,8 +136,11 @@ details removed, for you to review before sending.
     "scripting": HelpTopic(
         "Use wgsextract from scripts and AI agents.",
         """\
-'help --all --json' lists every command with its options, examples and
-outputs (schema wgsextract.help/1); 'help <command> --json' gives one. The
+'help --all --json' is a compact index: path, summary, tier and key flags
+(schema wgsextract.help-index/1). Navigate index -> command:
+'help <command> --json' gives full options, examples and outputs
+(schema wgsextract.help/1). Use '--all --json --full' for the complete dump.
+Key flags are discovery hints, not a complete invocation. The
 commands of the typed Python API also carry a JSON Schema of their
 parameters ("input_schema"; "x-cli-flag" names each flag and
 "x-cli-positional" each positional argument). "tools" are the

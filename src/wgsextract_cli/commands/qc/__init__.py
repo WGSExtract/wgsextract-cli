@@ -1,42 +1,20 @@
-import argparse
 import logging
 import os
 from os import fspath
 from pathlib import Path
-from typing import Any
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
-from wgsextract_cli.api._params import Params
-from wgsextract_cli.api.qc import (
-    FakeDataParams,
-    FastpParams,
-    FastqcParams,
-    MultiqcMetricsParams,
-    MultiqcParams,
-    QcAncestryParams,
-    QcContaminationParams,
-    QcVcfParams,
-    RelateParams,
-)
+from wgsextract_cli.api._cli import cli_handler
+from wgsextract_cli.api.qc import FakeDataParams, RelateParams
+from wgsextract_cli.cli.registration.qc import register as register
 from wgsextract_cli.core.builds import fake_data_library_code
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.reference_assets import reference_genomes_dir
 from wgsextract_cli.core.results import current_result
 
-from .ancestry import cmd_ancestry
-from .commands import (
-    cmd_fastp,
-    cmd_fastqc,
-    cmd_multiqc,
-    cmd_multiqc_metrics,
-    cmd_vcf_qc,
-)
-from .contamination import cmd_contamination
 from .fake_data import (
     generate_fake_genomics_data,
 )
@@ -106,51 +84,6 @@ def run_fake_data(params: FakeDataParams) -> None:
         target_md5=target_md5,
         legacy_bam=params.legacy_bam,
     )
-
-
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser("qc", help=CLI_HELP["cmd_qc"])
-    qc_subs = parser.add_subparsers(dest="qc_cmd", required=True)
-    commands: tuple[tuple[str, type[Params], Any, str], ...] = (
-        ("fastp", FastpParams, cmd_fastp, CLI_HELP["cmd_fastp"]),
-        ("fastqc", FastqcParams, cmd_fastqc, CLI_HELP["cmd_fastqc"]),
-        (
-            "multiqc",
-            MultiqcParams,
-            cmd_multiqc,
-            "Combine existing FastQC reports, bcftools stats and WGS Extract "
-            "result manifests into one local HTML report.",
-        ),
-        (
-            "multiqc-metrics",
-            MultiqcMetricsParams,
-            cmd_multiqc_metrics,
-            "Write MultiQC custom-content files (wgsextract_*_mqc.json) from "
-            "result manifests; MultiQC isn't needed.",
-        ),
-        ("vcf", QcVcfParams, cmd_vcf_qc, CLI_HELP["cmd_vcf-qc"]),
-        ("relate", RelateParams, cmd_relate, CLI_HELP["cmd_qc-relate"]),
-        (
-            "ancestry",
-            QcAncestryParams,
-            cmd_ancestry,
-            CLI_HELP["cmd_qc-ancestry"],
-        ),
-        (
-            "contamination",
-            QcContaminationParams,
-            cmd_contamination,
-            CLI_HELP["cmd_qc-contamination"],
-        ),
-        ("fake-data", FakeDataParams, cmd_fake_data, CLI_HELP["cmd_fake-data"]),
-    )
-    for name, cls, func, help_text in commands:
-        sub = qc_subs.add_parser(name, parents=[base_parser], help=help_text)
-        add_arguments(sub, cls)
-        sub.set_defaults(func=func)
 
 
 cmd_fake_data = cli_handler(FakeDataParams, run_fake_data)

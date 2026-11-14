@@ -3,6 +3,15 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## New
 
+- Genotype imputation now works natively on **Windows x64**:
+  `pixi install -e imputation` installs GLIMPSE2 2.0.1 from our `glimpse2-1`
+  release (pinned by URL and SHA-256), Beagle and native OpenJDK.
+  `ref imputation` prepares the GRCh38 panel; `vcf impute` imputes
+  low-coverage reads or genotype-only VCFs with downstream imputed-call labels.
+  No MSYS2 or WSL is needed at runtime. GLIMPSE2 phase requires AVX2/FMA;
+  Windows ARM64, Linux ARM64 and Apple Silicon remain unsupported.
+  See [imputation.md](../imputation.md).
+
 - `score pgs` computes research-only local polygenic score sums from a VCF,
   with 11 curated PGS Catalog IDs, arbitrary IDs (with a warning), and custom
   scoring files. JSON, TSV and the manifest report missingness, licence and
@@ -37,17 +46,20 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   whose files are checked against their published hashes; only the WGS model
   is qualified. `deepvariant_native = "off"` keeps the Docker image instead.
   See [native/deepvariant/README.md](../../native/deepvariant/README.md).
-- `vcf deepvariant` also runs `wgse-deepvariant` on Linux x86-64 (0.2.0, the
-  new `linux-deepvariant` conda packages): DeepVariant 1.10.0's WGS model
-  without Docker, on the CPU, or with `--gpu` on an NVIDIA GPU through CUDA
-  instead of Parabricks (call_variants for HG002 chr20 in 20 s on an RTX 3090,
+- `vcf deepvariant` also runs `wgse-deepvariant` on Linux x86-64 (0.3.0, the
+  new `linux-deepvariant` conda packages): DeepVariant 1.10.0's WGS and
+  ONT_R104 models without Docker, on the CPU, or with `--gpu` on an NVIDIA
+  GPU through CUDA instead of Parabricks (call_variants for HG002 chr20 in 20 s on an RTX 3090,
   against 79 s for Google's GPU image and 15 minutes for its CPU image on 4
   threads), with the same sites,
-  genotypes and filters as Google's image. With it installed, `--gpu` uses it
-  for the WGS model; `deepvariant_native = "off"` keeps Parabricks. Other
-  models keep Google's image and Parabricks.
-- `pixi install -e deepvariant` installs `wgse-deepvariant`'s CUDA build on
-  Linux x86-64 into an opt-in Pixi environment, where `vcf deepvariant` finds it.
+  genotypes and filters as Google's image; on HG002's ONT chr20, 2 of 387,476
+  sites differ, outside GIAB's confident regions. With it installed, `--gpu`
+  uses it for both models; `deepvariant_native = "off"` keeps Parabricks.
+  Other models keep Google's image and Parabricks. Its weights
+  (`wgse-deepvariant-weights-1.10.0`) are a separate download.
+- `pixi install -e deepvariant` installs `wgse-deepvariant` 0.3.0's CUDA build
+  on Linux x86-64 into an opt-in Pixi environment, where `vcf deepvariant`
+  finds it.
 
 - `wgsextract ref dense-sa` builds `wgse-bwa`'s optional dense suffix-array
   file for a reference (0.80 GB for hs38; `--list` and `--delete` too), and

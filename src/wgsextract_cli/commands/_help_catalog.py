@@ -1,6 +1,6 @@
 """Examples and outputs for every runnable command (the help contract).
 
-Each command's ``--help`` ends with these, ``wgsextract help --all --json``
+Each command's ``--help`` ends with these, ``wgsextract help <command> --json``
 and docs/commands.md publish them, and tests/test_cli_help.py checks that
 every runnable command has an entry and that every example parses.
 

@@ -1,25 +1,25 @@
 """Pet Analysis command for aligning and calling variants in non-human species."""
 
-import argparse
 import logging
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api.pet import PetAlignParams
+from wgsextract_cli.cli.registration.pet import register as register
 from wgsextract_cli.core.alignment_memory import check_mapping_memory
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
 from wgsextract_cli.core.genome_library import pair_stem
-from wgsextract_cli.core.messages import CLI_HELP, LOG_MESSAGES
+from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.read_counts import fastq_input_reads
 from wgsextract_cli.core.reference_assets import is_fasta_path, reference_genomes_dir
 from wgsextract_cli.core.results import current_result
+from wgsextract_cli.core.samtools_commands import regular_files_bytes, sort_memory
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -51,17 +51,6 @@ _SPECIES_REFERENCES = {
 }
 
 
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser(
-        "pet-align", parents=[base_parser], help=CLI_HELP["cmd_pet-align"]
-    )
-    add_arguments(parser, PetAlignParams)
-    parser.set_defaults(func=cli_handler(PetAlignParams, run_pet))
-
-
 @dataclass(kw_only=True)
 class PetJob(AlignJob):
     """A pet alignment: an alignment of one species' reads, then calling."""
@@ -86,6 +75,9 @@ def run(job: PetJob) -> None:
     verify_paths_exist(paths_to_check)
 
     threads, memory = get_resource_defaults(job.threads, job.memory)
+    memory = sort_memory(
+        threads, memory, input_bytes=regular_files_bytes(paths_to_check.values())
+    )
 
     if not job.ref:
         raise UsageError(LOG_MESSAGES["ref_required"])

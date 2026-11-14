@@ -95,6 +95,29 @@ command line (`-p … -`); file extraction stayed byte-identical. Streaming wrot
 38% less (HG00096 113 → 75 MiB, HG002 316 → 196 MiB) at the same wall time and
 within 3% of the same peak RSS.
 
+## samtools sort buffers
+
+`samtools sort -@ N -m M` mallocs all N × M bytes when it starts, and the kernel
+refuses an allocation larger than RAM plus swap however few reads arrive: the
+sort fails with `couldn't allocate memory for bam_mem` and the aligner then dies
+of a broken pipe (#781). `--memory`, including `auto`'s floor of 1 GiB per
+thread, can ask for more. So `align`, `realign`, `pet`, `bam sort` and
+`bam to-ubam` give each sort the smallest of:
+
+- `--memory` per thread;
+- what its read files can fill: 96 bytes of records per byte of input (the
+  bound minimap2's estimate uses below), split across the threads, when every
+  input is a local file;
+- half of this computer's RAM, split across the threads,
+
+and logs when that lowers `--memory`. The input bound never goes below 16M per
+thread, but half the RAM is a hard limit, down to samtools' minimum of 1M. Records and their order are unchanged: a sort that
+fits its input sorts in memory, and a sort that spills merges its spills stably.
+Alignment memory checks count the sort's reservation (threads × `-m`) at
+least, as well as what its reads fill. `realign`'s checks before extracting
+FASTQs use the requested `--memory`, so they never ask for less than its
+alignment uses.
+
 ## minimap2 (long reads)
 
 minimap2 builds its index from the reference FASTA in memory on every run;
@@ -154,7 +177,7 @@ genome-wide). The figures are bytes per byte of input CRAM (BAM inputs count
 | --- | ---: | ---: |
 | samtools sort spills | 3.0 | whole-genome run 2.65–2.8 when stopped at 12% of the input; full-hs38 slice 3.35 |
 | Extra spill while sort merges 32 spill files into one | 33 × 0.65 × `--memory` per thread, up to the spills | samtools 1.24's merge |
-| Output CRAM / BAM | 1.7 / 2.6 | slice CRAM 1.90 (1.91 bases per base); genome-wide about 1.5 |
+| Output CRAM / BAM | 1.7 / 2.6 | slice CRAM 1.90 (1.91 bases per base); whole genome 1.79 (#431) |
 | Tagged bgzipped FASTQ (`realign`) | 1.45 | 1.39 |
 
 `realign --tmp-dir` on another volume needs the spills there, and the output and
@@ -249,8 +272,9 @@ CPU image.
 
 On Linux x86-64, `vcf deepvariant --gpu` uses
 [wgse-deepvariant](../native/deepvariant/README.md#linux-x86-64-and-nvidia-gpus-cuda)
-only for the WGS model, when it is installed, `deepvariant_weights` is set and
-`deepvariant_native` isn't `off`; WES, PacBio and ONT still run Parabricks, and
+only for the WGS model (and from 0.3.0 ONT_R104), when it is installed,
+`deepvariant_weights` is set and `deepvariant_native` isn't `off`; WES and
+PacBio still run Parabricks, and
 Ultima Google's GPU image, with the memory needs above. This pipeline runs only
 call_variants on the GPU and
 checks just before it that GPU 0 has 3 GiB free (`--no-gpu-memory-check`
@@ -258,7 +282,7 @@ skips this); make_examples and postprocess_variants stay on the CPU. Its RAM
 estimate is the Mac build's (#647), which covers what Linux used.
 
 Measured (#719) on a Ryzen 5 5600X with an RTX 3090, `--threads 4`, from the
-`linux-deepvariant-1` package, on HG002's 35x NovaSeq BAM (GRCh38 no-alt), chr1
+`linux-deepvariant-1` package (0.2.0), on HG002's 35x NovaSeq BAM (GRCh38 no-alt), chr1
 and chr20: 823,376 sites, 270,091 call_variants examples. Google's
 `google/deepvariant:1.10.0` image ran with 4 CPUs on the same host.
 
@@ -300,6 +324,30 @@ The GPU halved pileup and full-alignment calling (283 s to 159 s). Clair3's
 start-up checks (about 130 s on a whole-genome CRAM) and WhatsHap phasing
 (about 205 s) stay on the CPU, and the GPU was busy in only about 5% of
 one-second samples, so the CPUs limit the speed-up.
+
+On a whole genome the GPU mode needs much more disk than the CPU mode: it
+writes every full-alignment tensor before predicting any (see below).
+
+## Whole-genome ONT requirements
+
+Measured on the whole HG002 ONT R10.4.1 CRAM (103.7 GB, about 51x, hs38;
+[#431](https://github.com/WGSExtract/wgsextract-cli/issues/431)). Details,
+accuracy and caveats are in
+[ONT whole-genome requirements](ont.md#whole-genome-ont-requirements).
+
+| Step | Host, threads | Wall time | Peak RAM | Disk |
+| --- | --- | ---: | ---: | --- |
+| `realign`, chunked, streamed from the URL, `--memory 512M` | Apple M1 16 GB, 7 | 21.4 h | 10.5 GB (minimap2) | 185.5 GB output (1.79x input); preflight asked for about 211 GiB |
+| `vcf deepvariant --ont`, Google's CPU image | Ryzen 5 5600X, 10 | 11.3 h | not recorded | from the 81.4 GB primary-only CRAM 3.0 copy: work directory not recorded, 150 GB was enough; CRAM 3.1 input also needs about 1.95x its size free for a staged CRAM 3.0 copy |
+| `vcf clair3 --gpu` | Ryzen 5 5600X + RTX 3090, 6 | 2.5 h | 15.2 GiB, GPU 6.1 GiB | about 100 GiB temporary (full-alignment tensors, about 1 GiB per 1% of the genome) |
+| `rtg vcfeval` of one whole-genome VCF | 4 | 1 min | 7.2 GB | |
+
+Both callers read a primary-only CRAM 3.0 copy (81.4 GB) of the realigned
+output. Clair3's temporary space isn't checked before it starts yet
+([#811](https://github.com/WGSExtract/wgsextract-cli/issues/811)). The realign
+preflight budgets the output at 1.7x the input CRAM ([long-read
+disk](#long-read-disk)); this genome needed 1.79x, about 9 GB more, so leave
+some room beyond what it asks for.
 
 ## Preflight behaviour
 

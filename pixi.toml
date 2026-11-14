@@ -190,18 +190,19 @@ platforms = ["linux-64", "linux-aarch64", "osx-arm64"]
 clair3 = ">=2.0.5,<3"
 
 # wgse-deepvariant (`vcf deepvariant`; native/deepvariant/README.md):
-# DeepVariant 1.10.0's WGS model without Docker, with call_variants on an
-# NVIDIA GPU for `--gpu` (CUDA 12.9) or the CPU. Opt-in environment
-# (`pixi install -e deepvariant`, about 4 GB) for Linux x86-64 with an NVIDIA
-# driver: only it takes the workspace's linux-64-cuda platform (every other
-# environment takes feature.standard-platforms). WGS Extract's build from packaging/wgse-deepvariant (workflow
-# linux_deepvariant.yml), published as linux-deepvariant-1 and pinned by URL
+# DeepVariant 1.10.0's WGS and ONT_R104 models without Docker, with
+# call_variants on an NVIDIA GPU for `--gpu` (CUDA 12.9) or the CPU. Opt-in
+# environment (`pixi install -e deepvariant`, about 4 GB) for Linux x86-64 with
+# an NVIDIA driver: only it takes the workspace's linux-64-cuda platform (every
+# other environment takes feature.standard-platforms). WGS Extract's build from
+# packaging/wgse-deepvariant (workflow linux_deepvariant.yml), published as
+# linux-deepvariant-2 and pinned by URL
 # and SHA-256; its weights are a separate download (deepvariant_weights).
 [feature.deepvariant]
 platforms = ["linux-64-cuda"]
 
 [feature.deepvariant.dependencies]
-wgse-deepvariant = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/linux-deepvariant-1/wgse-deepvariant-0.2.0-linux64_cuda129_wgse_0.conda", sha256 = "31bf9d7c88d134e7ba1c90ee101e3cf72b3e966f75588008b753d5a0da9fe219" }
+wgse-deepvariant = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/linux-deepvariant-2/wgse-deepvariant-0.3.0-linux64_cuda129_wgse_0.conda", sha256 = "e5ad2e951c0cc6224a2f3ff784b5d76ef259a4e8f47adfd6dccc0e4066be9a02" }
 
 # modkit summarizes Nanopore/PacBio base-modification (MM/ML) tags into
 # bedMethyl (`methylation pileup`). Opt-in environment (`pixi install -e modkit`);
@@ -261,8 +262,9 @@ openjdk = ">=17"
 [feature.imputation.target.unix.dependencies]
 glimpse-bio = "==2.0.1"
 
-# win-64 GLIMPSE2 URL + SHA-256 follows the first glimpse2-N release.
-# Until then Windows validates manually supplied tools, never installs them.
+# Our native Windows build; upstream Bioconda has no win-64 package.
+[feature.imputation.target.win-64.dependencies]
+glimpse-bio = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/glimpse2-1/glimpse-bio-2.0.1-win64_wgse_1.conda", sha256 = "a7a970ab79957d08a44e1eedbe3cee7f36a86078d9880a84e25bbb06d2906184" }
 
 [feature.vep]
 platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
@@ -383,7 +385,7 @@ ruff = "ruff"
 mypy = "mypy"
 pre-commit = "pre-commit"
 test = "pytest --ignore=tests/test_e2e_fast_chrM.py --ignore=tests/test_e2e_full_genome.py --ignore=tests/test_microarray_real_data.py"
-test-ci = "python -c \"from pathlib import Path; Path('out').mkdir(exist_ok=True)\" && pytest -n auto --dist loadgroup --cov=wgsextract_cli --cov-report=term-missing:skip-covered --cov-report=xml:out/coverage.xml --junitxml=out/pytest.xml --durations=25 --basetemp=out/pytest-tmp --ignore=tests/test_e2e_fast_chrM.py --ignore=tests/test_e2e_full_genome.py --ignore=tests/test_microarray_real_data.py"
+test-ci = "python -c \"from pathlib import Path; Path('out').mkdir(exist_ok=True)\" && pytest -n auto --dist loadgroup --junitxml=out/pytest.xml --durations=60 --basetemp=out/pytest-tmp --ignore=tests/test_e2e_fast_chrM.py --ignore=tests/test_e2e_full_genome.py --ignore=tests/test_microarray_real_data.py --ignore=tests/test_smoke_real_full.py"
 test-e2e = "pytest tests/test_e2e_fast_chrM.py tests/test_e2e_full_genome.py tests/test_microarray_real_data.py"
 test-e2e-fake = "pytest --fake-data tests/test_e2e_fast_chrM.py tests/test_e2e_full_genome.py"
 test-remote = "pytest -m remote tests/test_remote_resources.py tests/test_remote_downloads.py tests/test_remote_benchmark.py"

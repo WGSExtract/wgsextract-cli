@@ -32,13 +32,12 @@
       label: anchor ? anchor.label : "Whole page",
       title: anchor ? "Note on " + (anchor.annot || "page") : "Page note",
       onSave: function (text) {
-        WGSM.notes.apply({
+        return WGSM.notes.apply({
           op: "add",
           note: { id: WGSM.uid("n"), author: WGSM.notes.author(), text: text, anchor: anchor, context: context() },
         }).then(function () {
-          WGSM.toast("Note saved" + (WGSM.notes.mode === "server" ? " to feedback/" + WGSM.page.id + ".json" : " in this browser"));
-        }, function (err) {
-          WGSM.toast("Couldn't save: " + err.message, "circle-alert");
+          WGSM.toast("Note saved" + (WGSM.notes.shared ? " to the shared review server" :
+            WGSM.notes.mode === "server" ? " to feedback/" + WGSM.page.id + ".json" : " in this browser"));
         });
       },
     });
@@ -173,6 +172,7 @@
         WGSM.pins.schedule();
         if (WGSM.params.get("pins") === "0") WGSM.annotate.pinsHidden = true;
         if (WGSM.params.has("notes")) WGSM.panel.toggle(true);
+        if (WGSM.params.has("note")) WGSM.panel.open(WGSM.params.get("note"));
         if (WGSM.params.has("annotate")) setMode(true);
       });
     },

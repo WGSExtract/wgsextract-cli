@@ -135,6 +135,7 @@ jobs:
           print(f"{tag} matches {', '.join(versions)}")
           EOF
       - name: Set up Pixi
+        # A retry may verify an unpublished older tag without current CI helpers.
         uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
           pixi-version: v0.82.0
@@ -142,8 +143,7 @@ jobs:
           environments: >-
             default
             dev
-          # PR runs restore main's environment; writing their own crowds it out.
-          cache-write: ${{ github.ref == 'refs/heads/main' }}
+          cache: false
       - name: Lint and type check
         run: |
           pixi run lint

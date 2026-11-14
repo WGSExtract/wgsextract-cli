@@ -322,12 +322,7 @@ class TestResourceDefaults(unittest.TestCase):
         class FakeMemory:
             total = 16 * (1024**3)
 
-        class FakePsutil:
-            @staticmethod
-            def virtual_memory():
-                return FakeMemory()
-
-        with patch.object(resource_policy, "psutil", FakePsutil):
+        with patch("psutil.virtual_memory", return_value=FakeMemory()):
             threads, memory = resource_policy.get_resource_defaults(0, None)
 
         self.assertEqual(threads, "1")

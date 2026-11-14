@@ -1,0 +1,193 @@
+name: PR area checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  # The merge queue retests only the required set below against the latest main.
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A label must not cancel the in-flight validation of the PR's code.
+  group: pr-area-${{ github.ref }}-${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && format('label-{0}', github.event.label.name) || 'diff' }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: changes${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
+    if: ${{ !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) || github.event.label.name == 'run-install-lab' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      cli: ${{ steps.diff.outputs.cli }}
+      docs: ${{ steps.diff.outputs.docs }}
+      native: ${{ steps.diff.outputs.native }}
+      site: ${{ steps.diff.outputs.site }}
+      install: ${{ steps.diff.outputs.install }}
+      python_files: ${{ steps.diff.outputs.python_files }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Route the complete PR diff
+        id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+          FORCE_INSTALL: ${{ contains(github.event.pull_request.labels.*.name, 'run-install-lab') }}
+          LABEL_EVENT: ${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
+        run: |
+          flags=()
+          if [ "$FORCE_INSTALL" = true ]; then flags+=(--force-install-lab); fi
+          if [ "$LABEL_EVENT" = true ]; then flags+=(--label-event); fi
+          python3 scripts/ci_changes.py --base "$BASE" --head "$HEAD" "${flags[@]}" --output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  docs:
+    name: Documentation freshness${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Install only Python documentation test dependencies
+        run: python -m pip install --quiet -e . pytest jsonschema
+      - name: Check API reference, command reference, CLI snapshot and help topics
+        run: |
+          mkdir -p out
+          python -c 'import subprocess, sys; from scripts.ci_test_dependencies import DOCS_TEST_TARGETS; subprocess.run([sys.executable, "-m", "pytest", "-q", *DOCS_TEST_TARGETS, "--basetemp=out/docs-tmp"], check=True)'
+          python scripts/validate_site_sources.py
+
+  python-lint:
+    name: Changed Python lint${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
+    needs: changes
+    if: needs.changes.outputs.python_files != '' && needs.changes.outputs.python_files != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: lint
+          scope: lint
+      - name: Lint explicitly named files even under normally excluded GUI paths
+        env:
+          PYTHON_FILES: ${{ needs.changes.outputs.python_files }}
+        run: |
+          pixi run -e lint -x python - <<'PY'
+          import json, os, subprocess, sys
+          files = json.loads(os.environ["PYTHON_FILES"])
+          cli = [path for path in files if not path.startswith("gui/")]
+          gui = [path for path in files if path.startswith("gui/")]
+          if cli:
+              subprocess.run(["ruff", "check", "--no-force-exclude", "--", *cli], check=True)
+              subprocess.run(["ruff", "format", "--check", "--no-force-exclude", "--", *cli], check=True)
+          if gui:
+              # GUI Python has its own style policy; preserve its compile gate
+              # and add fatal-error lint rather than imposing root formatting.
+              subprocess.run([sys.executable, "-m", "compileall", "-q", *gui], check=True)
+              subprocess.run(["ruff", "check", "--isolated", "--target-version", "py313", "--select", "E9,F63,F7,F82", "--", *gui], check=True)
+          PY
+
+  ubuntu:
+    needs: changes
+    if: needs.changes.outputs.cli == 'true'
+    uses: ./.github/workflows/ubuntu_ci.yml
+  macos:
+    needs: changes
+    if: needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
+    uses: ./.github/workflows/macos_ci.yml
+  windows:
+    needs: changes
+    if: needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
+    uses: ./.github/workflows/windows_ci.yml
+  arm64:
+    needs: changes
+    if: needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
+    uses: ./.github/workflows/linux_arm64.yml
+  smoke:
+    needs: changes
+    if: needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
+    uses: ./.github/workflows/cli_smoke.yml
+  install:
+    needs: changes
+    if: needs.changes.outputs.install == 'true' && github.event_name != 'merge_group'
+    uses: ./.github/workflows/install_lab.yml
+
+  # The secret scan covers every PR and queue group, docs-only ones included.
+  gitleaks:
+    if: ${{ !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
+    uses: ./.github/workflows/gitleaks.yml
+
+  native-smoke:
+    name: Native CLI smoke${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: python -m pip install --quiet -e .
+      - run: |
+          wgsextract --help
+          wgsextract realign --help
+          wgsextract deps check --help
+
+  pages:
+    name: Pages source checks${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
+    needs: changes
+    if: needs.changes.outputs.site == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: |
+          python3 scripts/validate_site_sources.py
+          python3 scripts/build_site.py
+          python3 gui/scripts/validate_site_sources.py
+          python3 gui/scripts/build_site.py
+          test -d gui/mockups
+
+  # The one required check for main's ruleset and merge queue (#758). Path
+  # routing skips jobs, so require this summary rather than each job. The
+  # macOS, Windows, ARM64, smoke and Install Lab jobs stay advisory on PRs
+  # (more runner losses) and don't run in the queue.
+  required:
+    name: required${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
+    needs: [changes, docs, python-lint, ubuntu, gitleaks, native-smoke, pages]
+    # always(): a cancelled or failed dependency must report failure here, not
+    # leave a skipped check that GitHub would count as passing.
+    if: ${{ always() && !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require routing and every selected required job to pass
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          results = {job: need["result"] for job, need in json.loads(os.environ["NEEDS"]).items()}
+          print("\n".join(f"{job}: {result}" for job, result in results.items()))
+          # Path routing may skip a job only when routing itself succeeded.
+          bad = [job for job, result in results.items() if result not in {"success", "skipped"}]
+          if results["changes"] != "success" or bad:
+              sys.exit(f"::error::Required checks did not pass: {', '.join(bad) or 'changes'}")
+          PY

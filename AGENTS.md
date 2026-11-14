@@ -8,6 +8,14 @@ When outputting test run results, logs, or stdout captures, **always** put them 
 
 Do not add new environment-variable configuration. Put persistent configuration in config.toml settings, and use command-line parameters for run-specific overrides.
 
+## Discover CLI commands
+
+Navigate index → command: `pixi run wgsextract help --all --json` gives a
+compact index (path, summary, tier, key flags). Pick a path, then read
+`pixi run wgsextract help <command> --json` for its full options, required
+arguments, examples and typed input schema before building an invocation.
+Only request `help --all --json --full` when the entire schema dump is needed.
+
 ## The desktop app (`gui/`)
 
 `gui/` is the WGS Extract desktop app (formerly the gui-for-cli repository): TypeScript, Tauri and its own Python tooling, with its own [AGENTS.md](gui/AGENTS.md), which applies to work there. Root ruff, mypy and pytest skip `gui/`; check app changes with `just gui-ci` (or `just gui-test`, `just gui-lint`), which GUI CI (`.github/workflows/gui-*.yml`) runs for changes under `gui/`. The app and the CLI release together as one `vX.Y.Z`; see `docs/releasing.md`.
@@ -39,9 +47,10 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
 
 - **Queue.** The open issues are the work queue. Take them in this order:
   1. open `bug` issues, oldest first; bugs come before new features and roadmap items
-  2. the "Up next" list at the top of the roadmap tracking issue (label `roadmap`), in the order listed; it overrides milestones
-  3. the oldest open milestone
-  4. the rest of the roadmap tracking issue
+  2. open `efficiency` issues (CI cost, tests, flakes, process, token use), oldest first; they come before roadmap work because they speed up everything else. Tracking issues such as #764 (development efficiency tracking) are indexes, not tasks: work their linked issues
+  3. the "Up next" list at the top of the roadmap tracking issue (label `roadmap`), in the order listed; it overrides milestones
+  4. the oldest open milestone
+  5. the rest of the roadmap tracking issue
 - **Machine labels.** A `machine-*` label (for example `machine-lin-3090`) claims an issue for one machine. The label's description names the agent that owns it: the agent on that machine, or the supervisor that drives it remotely (randy-mini, Azure VMs).
   - An issue carries at most one machine label. Every other agent skips a labelled issue; an owner moves it by swapping the label. To coordinate, comment on the issue.
   - **Only that machine can do it:** label the issue in advance (for example, it needs that machine's GPU). The label stays on even while nobody works on it.
@@ -92,5 +101,6 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
 
 - Fix review comments that are legitimate, then resolve their threads. Reply `(AI): Reason: ...` to the ones you decline, then resolve those too.
 - Fix real issues that CI finds, or fix CI itself when the failure is in CI rather than in the code.
-- Push follow-up commits and wait for CI to rerun.
-- Once the PR is in a passable state, merge it. That means CI is green, no material threads are unresolved, and the local checks pass.
+- Push follow-up commits and wait for CI to rerun. For a suspected flake or lost runner, rerun only the failed jobs (`gh run rerun RUN --failed`), not the whole run or a new push.
+- Don't update a branch just because it's BEHIND main. Update it only when it's DIRTY (conflicts) or main changed the same area (generated files, the help budget); the merge queue tests it against the latest main anyway.
+- Once the PR is in a passable state, land it through the merge queue: `gh pr merge PR --auto --squash --match-head-commit SHA`. Passable means every check is green (the advisory macOS, Windows, ARM64, smoke and Install Lab jobs too, or their failures explained), no material threads are unresolved, and the local checks pass. The queue reruns only the `required` check; if it drops the PR, fix or rerun the failure and enqueue again. Never bypass the queue.

@@ -20,6 +20,7 @@ jobs:
         with:
           pixi-version: v0.83.0
           run-install: false
+          cache: false
       - name: Install the unchanged locked x64 environment
         run: |
           if ([Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -ne "X64" -or

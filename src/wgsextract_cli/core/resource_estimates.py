@@ -88,6 +88,10 @@ NATIVE_DV_INFERENCE_BYTES_PER_EXAMPLE = 12 * 1024**2
 NATIVE_DV_RECORD_BYTES_PER_BASE = 0.6
 NATIVE_DV_CONTIG_BYTES_PER_BASE = 10.0
 NATIVE_DV_EXAMPLES_PER_INPUT_BYTE = 0.8
+# #739: for ONT_R104, postprocess_variants first merges every read's phase in
+# each region (282,000 records for HG002 ONT chr20); 48 times that, a whole
+# genome's worth, took 4.2 GiB, about 0.055 bytes per byte of its 81 GB CRAM.
+NATIVE_DV_PHASE_MERGE_BYTES_PER_INPUT_BYTE = 0.06
 
 
 @dataclass(frozen=True)
@@ -565,6 +569,12 @@ def estimate_resources(
                     sum(contig_bases.values()) * NATIVE_DV_RECORD_BYTES_PER_BASE
                     + max(contig_bases.values(), default=0)
                     * NATIVE_DV_CONTIG_BYTES_PER_BASE
+                ),
+                NATIVE_DV_BASE_BYTES
+                + (
+                    math.ceil((size or 0) * NATIVE_DV_PHASE_MERGE_BYTES_PER_INPUT_BYTE)
+                    if deepvariant_model == "ONT_R104"
+                    else 0
                 ),
             ),
             "driver_headroom": GIB,

@@ -139,6 +139,10 @@ otherwise on the CPU, with the same records either way. The manifest records
   16 GiB and 12 threads gives 1 GiB each, 12 GiB in total. With bwa-mem2,
   sorting is capped at 256 MiB per thread to leave room for its index; bwa
   keeps the full `--memory`.
+- `samtools sort` reserves all of its threads' memory when it starts, so every
+  sort gets at most half the RAM in total and no more than its input can fill
+  (see [resource_estimates.md](resource_estimates.md#samtools-sort-buffers)).
+  The log says when this lowers `--memory`; the output is the same.
 - Before a native BWA run, the CLI prints a memory and disk preflight. More
   threads use more memory; when it reports `LOW`, lower `--threads` or
   `--memory`, or use `--aligner bwa`. Threads are never lowered automatically.
@@ -271,16 +275,22 @@ On Linux x86-64, WGS Extract's `wgse-deepvariant` 0.2.0 or later (DeepVariant
 runs call_variants on an NVIDIA GPU through CUDA, or on the CPU.
 
 - **When it runs:** with `deepvariant_native = "auto"` (the default),
-  `wgse-deepvariant` installed (on `PATH`, or `pixi install -e deepvariant`) and
-  `deepvariant_weights` set, `vcf deepvariant`
+  `wgse-deepvariant` installed (on `PATH`, or `pixi install -e deepvariant`,
+  which installs 0.3.0 from `linux-deepvariant-2`) and `deepvariant_weights`
+  set to its weights folder (`wgse-deepvariant-weights-1.10.0`, with both
+  models), `vcf deepvariant`
   calls the WGS model with it instead of Google's image: on the CPU, or with
-  `--gpu` on the GPU instead of Parabricks. Until `deepvariant_weights` is set,
+  `--gpu` on the GPU instead of Parabricks; from 0.3.0, ONT reads' ONT_R104
+  model too (#739). Until `deepvariant_weights` is set,
   an installed build is ignored. Other models, `--checkpoint` and
   Ultima reads keep Google's image and Parabricks; `deepvariant_native = "off"`
   keeps them for everything.
 - **Same calls:** the same sites, genotypes and filters as Google's image on
   HG002 chr20, and the same GIAB v4.2.1 counts; QUAL differs by at most 0.5
-  and GQ by 1 at a few thousand of 210,390 sites, as on a Mac.
+  and GQ by 1 at a few thousand of 210,390 sites, as on a Mac. On HG002's ONT
+  chr20, 2 of 387,476 sites differ (outside GIAB's confident regions), with the
+  same GIAB counts, and the same phased genotypes and phase sets elsewhere;
+  call_variants took 45 s on the GPU against 22 minutes in Google's CPU image.
 - **What it needs:** the NVIDIA driver; no Docker and no Parabricks licence.
   Before its first stage, `--gpu` checks that the build has CUDA (the cuda129
   package) and that `nvidia-smi` sees a GPU; before call_variants, that GPU 0
@@ -466,7 +476,7 @@ give no meaningful benefit.
   Parabricks' DeepVariant and HaplotypeCaller, about a minute for chr20 on the
   RTX 3090 (**measured**). CPU DeepVariant is much slower. On Linux x86-64,
   [wgse-deepvariant](#deepvariant-on-nvidia-gpus-without-parabricks-wgse-deepvariant)
-  runs DeepVariant's WGS model on the GPU without Docker or Parabricks:
+  runs DeepVariant's WGS and ONT_R104 models on the GPU without Docker or Parabricks:
   call_variants for chr20 in about 20 seconds (**measured**). Apple Silicon has
   [wgse-deepvariant](../native/deepvariant/README.md), a native build with
   call_variants on the GPU: chr20 in about 5 minutes on an M1 Pro, with the

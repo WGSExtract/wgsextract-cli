@@ -16,7 +16,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/extend_oracle.c.in" "${CMAKE_CURRENT_SOURCE_DIR}/mem_stages.c.in"
     "${CMAKE_CURRENT_SOURCE_DIR}/sort_oracle.c.in" "${CMAKE_CURRENT_SOURCE_DIR}/pac_oracle.c.in"
     "${CMAKE_CURRENT_SOURCE_DIR}/ksw_oracle.c.in" "${CMAKE_CURRENT_SOURCE_DIR}/extend_neon.c.in"
-    "${CMAKE_CURRENT_SOURCE_DIR}/fastmap_stages.c.in")
+    "${CMAKE_CURRENT_SOURCE_DIR}/fastmap_stages.c.in" "${CMAKE_CURRENT_SOURCE_DIR}/occ_oracle.c.in")
 file(READ "${bwa_SOURCE_DIR}/bwamem.c" mem_source)
 seam_replace(mem_source "mem_collect_intv(opt, bwt, len, seq, aux);"
     "if (!wgse_metal_take(opt, bwt, seq, &aux->mem)) {\n\t\tmem_collect_intv(opt, bwt, len, seq, aux);\n\t\twgse_metal_locate(opt, bwt, &aux->mem);\n\t}")
@@ -53,7 +53,7 @@ file(WRITE "${generated}/bwamem.c"
 file(READ "${bwa_SOURCE_DIR}/bwamem_pair.c" pair_source)
 set(rescue_call "aln = ksw_align2(l_ms, seq, re - rb, ref, 5, opt->mat, opt->o_del, opt->e_del, opt->o_ins, opt->e_ins, xtra, 0);")
 seam_replace(pair_source "${rescue_call}"
-    "if (!wgse_metal_matesw(opt, ms, seq, l_ms, ref, is_rev, rb, re, xtra, &aln))\n\t\t\t\t${rescue_call}")
+    "if (!wgse_metal_matesw(opt, ms, seq, l_ms, ref, is_rev, rb, re, xtra, &aln))\n\t\t\t\taln = wgse_rescue_align(opt, l_ms, seq, re - rb, ref, xtra);")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/rescue_oracle.c.in" rescue_source)
 file(WRITE "${generated}/bwamem_pair.c"
     "#include \"metal_backend.h\"\n${pair_source}\n${rescue_source}")
@@ -87,7 +87,14 @@ seam_replace(bwt_source
 # An abandoned GPU command (watchdog) may still read the shared index.
 seam_replace(bwt_source "free(bwt->sa); free(bwt->bwt);"
     "wgse_metal_free(bwt->sa); wgse_metal_free(bwt->bwt);")
-file(WRITE "${generated}/bwt.c" "#include \"metal_backend.h\"\n${bwt_source}")
+# bwt_occ4() and bwt_2occ4() count with NEON (occ_oracle.c.in); upstream's are renamed.
+seam_replace(bwt_source "void bwt_occ4(const bwt_t *bwt, bwtint_t k, bwtint_t cnt[4])\n{"
+    "static void bwt_occ4_upstream(const bwt_t *bwt, bwtint_t k, bwtint_t cnt[4])\n{")
+seam_replace(bwt_source
+    "void bwt_2occ4(const bwt_t *bwt, bwtint_t k, bwtint_t l, bwtint_t cntk[4], bwtint_t cntl[4])\n{"
+    "static void bwt_2occ4_upstream(const bwt_t *bwt, bwtint_t k, bwtint_t l, bwtint_t cntk[4], bwtint_t cntl[4])\n{")
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/occ_oracle.c.in" occ_oracle_source)
+file(WRITE "${generated}/bwt.c" "#include \"metal_backend.h\"\n${bwt_source}\n${occ_oracle_source}")
 
 # With Metal, map the next chunk while this one pairs (fastmap_stages.c.in).
 file(READ "${bwa_SOURCE_DIR}/fastmap.c" fastmap_source)

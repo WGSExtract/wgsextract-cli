@@ -17,6 +17,7 @@ on:
       - tests/test_windows_arm64.py
       - tests/test_pixi_hash_restore.py
       - .github/workflows/windows_arm64.yml
+      - "!**/*.md"
 
 permissions:
   contents: read
@@ -59,6 +60,7 @@ jobs:
         with:
           pixi-version: v0.83.0
           run-install: false
+          cache: false
       - name: Check out pinned MSVC dependency recipes
         if: matrix.recipe != 'python' && matrix.recipe != 'python-source' && matrix.recipe != 'samblaster' && matrix.recipe != 'openjdk' && matrix.recipe != 'fastqc' && matrix.recipe != 'haplogrep3' && matrix.recipe != 'haplocheck' && matrix.recipe != 'setuptools'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -122,6 +124,7 @@ jobs:
         with:
           pixi-version: v0.83.0
           run-install: false
+          cache: false
       - name: Fresh checksum-pinned candidate installation
         shell: pwsh
         run: |

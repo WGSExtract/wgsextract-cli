@@ -55,6 +55,28 @@ def pytest_xdist_make_scheduler(config: pytest.Config, log: Any) -> Any:
 def pytest_addoption(parser: pytest.Parser) -> None:
     group = parser.getgroup("wgsextract", "WGS Extract real-data test inputs")
     group.addoption(
+        "--ci-tier",
+        choices=("all", "core", "integration"),
+        default="all",
+        help="Partition CI suites without changing the default local collection.",
+    )
+    group.addoption(
+        "--ci-skip-independent",
+        action="store_true",
+        help="Leave reviewed OS-independent tests to Ubuntu x64 CI.",
+    )
+    group.addoption(
+        "--ci-shard",
+        choices=("all", "0/2", "1/2"),
+        default="all",
+        help="Split the core tier by stable module hash, retaining module fixtures.",
+    )
+    group.addoption(
+        "--ci-require-real-data",
+        action="store_true",
+        help="Fail real-data smoke setup instead of skipping missing benchmark data.",
+    )
+    group.addoption(
         "--yleaf-upstream", help="Local tagged Yleaf checkout for optional parity."
     )
     group.addoption(
@@ -100,6 +122,28 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     group.addoption(
         "--pet-species", default="dog", help="Species for the real pet-align test."
     )
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    from scripts.ci_test_tiers import SINGLE_OS_MODULES, module_shard, test_tier
+
+    tier = config.getoption("--ci-tier")
+    skip_independent = config.getoption("--ci-skip-independent")
+    shard = config.getoption("--ci-shard")
+    if tier == "all" and not skip_independent and shard == "all":
+        return
+    selected, deselected = [], []
+    for item in items:
+        keep = (tier == "all" or test_tier(str(item.path)) == tier) and not (
+            skip_independent and item.path.name in SINGLE_OS_MODULES
+        )
+        if shard != "all":
+            keep = keep and module_shard(str(item.path)) == int(shard[0])
+        (selected if keep else deselected).append(item)
+    items[:] = selected
+    config.hook.pytest_deselected(items=deselected)
 
 
 _CHECKOUT_STATE = repo_root() / "state"

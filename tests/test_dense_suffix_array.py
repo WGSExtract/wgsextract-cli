@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from tests.htslib_helpers import write_fasta
+from tests.prepared_data import sparse_truncate
 from tests.test_alignment_commands import _samtools, _short_reads
 from tests.test_native_aligners import (  # noqa: F401 (fixtures)
     _align,
@@ -236,8 +237,7 @@ def test_680_709_736_routing_keeps_dense_sa_only_for_wgse_bwa(
     if setup in {"dense exceeds budget", "cpu fallback"}:
         # A sparse file makes the requested index exceed the GPU budget
         # without allocating its contents; bwa-mem3 doesn't load this file.
-        with side.open("r+b") as handle:
-            handle.truncate(8 * 1024**3)
+        sparse_truncate(side, 8 * 1024**3)
         ram(8 * 1024**3)
 
     bam, result = _align(
