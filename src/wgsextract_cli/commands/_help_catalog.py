@@ -313,7 +313,9 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         f"wgsextract vcf pharmcat {_VCF_IN}",
     ),
     "vcf trio": _h(
-        "trio_<mode>.vcf.gz (+ .tbi); from alignments, also trio_joint.vcf.gz "
+        "trio_<mode>.vcf.gz (+ .tbi); VCF denovo/comphet also write "
+        "trio_<mode>_inconclusive.vcf.gz for missing/weak parental evidence; "
+        "from alignments, also trio_joint.vcf.gz "
         "(and trio_denovo_isolated.vcf.gz for --mode denovo). The manifest is "
         "trio.manifest.json.",
         "wgsextract vcf trio --proband child.vcf.gz --mother mother.vcf.gz "

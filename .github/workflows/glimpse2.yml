@@ -100,25 +100,16 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: glimpse2-win-64
-          path: glimpse2
-      - name: Publish the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.release_tag }}
-        run: |
-          case "$TAG" in glimpse2-*) ;; *) echo "Tag must start with glimpse2-" >&2; exit 1 ;; esac
-          mkdir -p out
-          {
-            echo "GLIMPSE2 (odelaneau/GLIMPSE, MIT) built natively for Windows, as a conda package that Pixi installs."
-            echo "Built from packaging/glimpse2 at ${GITHUB_SHA} by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
-            echo
-            echo "| Package | SHA-256 |"
-            echo "| --- | --- |"
-            for f in glimpse2/*.conda; do echo "| $(basename "$f") | \`$(sha256sum "$f" | cut -d' ' -f1)\` |"; done
-          } > out/notes.md
-          gh release create "$TAG" glimpse2/*.conda glimpse2/msys2-packages-used.txt \
-            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "GLIMPSE2 for Windows $TAG" \
-            --notes-file out/notes.md --prerelease --latest=false
+          persist-credentials: false
+      - uses: ./.github/actions/publish-native-release
+        with:
+          tag: ${{ inputs.release_tag }}
+          tag-prefix: glimpse2-
+          title: GLIMPSE2 for Windows ${{ inputs.release_tag }}
+          source: packaging/glimpse2
+          artifacts: glimpse2-win-64
+          extra-assets: msys2-packages-used.txt
+          description: |
+            GLIMPSE2 (odelaneau/GLIMPSE, MIT) built natively for Windows, as a conda package that Pixi installs.

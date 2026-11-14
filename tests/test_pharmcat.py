@@ -216,7 +216,7 @@ def test_pharmcat_runs_its_pipeline_on_the_gene_regions_in_its_names(
         {"chrom": "1", "pos": "150", "ref": _base(150), "alt": "T",
          "genotype": "0/1", "zygosity": "het", "confidence": "moderate",
          "reasons": "gq_unknown", "depth": "20", "genotype_quality": "",
-         "alt_fraction": "0.500", "gene": "CYP2C19"}
+         "alt_fraction": "0.500", "phase_set": "", "gene": "CYP2C19"}
     ]  # fmt: skip
     assert "CYP2C19   *1/*17" in caplog.text and "Rapid Metabolizer" in caplog.text
     assert f"PharmCAT report: {out / 'HG002.hard-filtered.report.html'}" in caplog.text
