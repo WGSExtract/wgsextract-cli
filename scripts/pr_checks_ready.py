@@ -27,25 +27,31 @@ def checks_ready(
                 latest[workflow]["id"]
             ):
                 latest[workflow] = metadata
-        # Do not fall back to an old pass while a replacement has no jobs yet.
-        if any(
-            run["status"] != "completed"
-            or run["conclusion"] not in {"success", "skipped", "neutral"}
-            for run in latest.values()
-            if run["path"] != ".github/workflows/pr_ci.yml"
-        ):
-            return False
-        current_ids = {int(run["id"]) for run in latest.values()}
+        reported_workflows = set()
         filtered = []
         for check in checks:
-            match = re.search(r"/actions/runs/(\d+)(?:/|$)", str(check.get("link", "")))
-            if match and check.get("workflow") != "PR area checks":
+            if check.get("workflow") != "PR area checks":
+                match = re.search(
+                    r"/actions/runs/(\d+)(?:/|$)", str(check.get("link", ""))
+                )
+                if not match:
+                    return False
                 check_run = int(match[1])
                 if check_run not in known:
                     return False
-                if check_run not in current_ids:
+                workflow = int(known[check_run]["workflow_id"])
+                reported_workflows.add(workflow)
+                if check_run != int(latest[workflow]["id"]):
                     continue
             filtered.append(check)
+        # A reported workflow's replacement may not have registered jobs yet.
+        # Unrelated workflows on the same SHA do not contribute PR checks.
+        if any(
+            latest[workflow]["status"] != "completed"
+            or latest[workflow]["conclusion"] not in {"success", "skipped", "neutral"}
+            for workflow in reported_workflows
+        ):
+            return False
         checks = filtered
     if (
         run_id is None
@@ -184,6 +190,7 @@ def current_ready_run(
         for page in pages
         for run in page["workflow_runs"]
         if run["head_sha"] == pr["headRefOid"]
+        # This helper validates PRs before enqueueing, not merge-group SHAs.
         and run["event"] != "merge_group"
         and (
             run["event"] != "pull_request"

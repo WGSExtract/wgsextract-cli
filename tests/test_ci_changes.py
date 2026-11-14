@@ -648,8 +648,10 @@ def test_757_landing_cli_rejects_an_empty_check_report() -> None:
 
 
 @pytest.mark.parametrize("latest_conclusion", ["success", "failure", "cancelled", None])
+@pytest.mark.parametrize("reported", [False, True])
 def test_876_superseded_workflow_checks_do_not_hide_the_latest_result(
     latest_conclusion: str | None,
+    reported: bool,
 ) -> None:
     fixture = json.loads(
         (
@@ -713,10 +715,40 @@ def test_876_superseded_workflow_checks_do_not_hide_the_latest_result(
                 "link": f"https://github.com/owner/repo/actions/runs/{replacement['id']}/job/31",
             }
         )
+    if not reported:
+        checks = [check for check in checks if check["workflow"] == "PR area checks"]
     assert checks_ready(
         checks, run_id=ready["id"], runs=[replacement, draft, scan, ready]
-    ) is (latest_conclusion == "success")
-    assert not checks_ready(checks, run_id=ready["id"], runs=[draft, ready])
+    ) is (not reported or latest_conclusion == "success")
+    assert checks_ready(checks, run_id=ready["id"], runs=[draft, ready]) is (
+        not reported
+    )
+
+
+@pytest.mark.parametrize(
+    "link",
+    [
+        "",
+        "https://external.example/check/30",
+        "https://github.com/owner/repo/actions/runs/not-a-run/job/30",
+        "https://github.com/owner/repo/actions/runs/999/job/30",
+    ],
+)
+def test_876_unverifiable_passing_check_cannot_establish_readiness(link: str) -> None:
+    ready = {**area_run(20, "2026-11-13T16:20:01Z"), "workflow_id": 416978936}
+    checks = [
+        {
+            "name": name,
+            "bucket": "pass",
+            "workflow": "PR area checks",
+            "link": f"https://github.com/owner/repo/actions/runs/20/job/{i}",
+        }
+        for i, name in enumerate(("changes", "required", "Ready PR area checks"))
+    ]
+    checks.append(
+        {"name": "unverified", "bucket": "pass", "workflow": "Other", "link": link}
+    )
+    assert not checks_ready(checks, run_id=20, runs=[ready])
 
 
 def test_876_recorded_pr_run_with_empty_associations_is_still_verified(

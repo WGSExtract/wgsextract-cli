@@ -170,11 +170,14 @@ gate, `required` check and passing `changes` job from the **same run**, with dra
 or skipped there and no failing, pending, cancelled or unknown checks. The gate runs only
 after all area-selected checks finish on a non-draft, non-label event.
 Area checks are evaluated only from that selected run; cancelled/failed older
-draft runs cannot block it. For every other Actions workflow on the head SHA,
+draft runs cannot block it. For every other Actions workflow represented in the
+PR's reported checks on the head SHA,
 evaluate only its newest run (by workflow ID), including its run conclusion:
 superseded cancelled/failed checks cannot block a clean replacement, but a latest
 cancelled, failing, pending or not-yet-registered run cannot reuse an older pass.
-External checks and checks without verifiable run metadata still fail closed.
+Checks without verifiable Actions run metadata, including external checks,
+fail closed. Unrelated workflows that contribute no reported PR checks do not
+block readiness.
 Old draft passes/skips, or a not-yet-registered ready run, are not success.
 The validator queries GitHub for the current PR head and latest ready transition,
 selects the newest non-draft, non-label area run since that transition, and
