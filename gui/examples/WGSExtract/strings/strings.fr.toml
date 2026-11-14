@@ -269,7 +269,7 @@
 "pages.library.summary" = "Gérer les données de référence : index, cartes de gènes, jeux de données d’annotation et caches VEP utilisés par les workflows d’alignement et d’effet de variants avancés."  # i18n-source-hash:dc6921dc
 "pages.reference-genomes.title" = "Génomes de référence"  # i18n-source-hash:90c45943
 "pages.reference-genomes.summary" = "Gérer les génomes de référence dont l’outil a besoin pour l’alignement, le décodage des fichiers CRAM, ainsi que l’interprétation et la création de fichiers VCF."  # i18n-source-hash:81e4f33f
-"pages.datasets.title" = "Jeux de données"  # i18n-source-hash:93a7f224
+"pages.datasets.title" = "Mes génomes"  # i18n-source-hash:9a77a24c
 "pages.datasets.summary" = "Un emplacement commun pour télécharger et gérer les jeux de données utilisateur : vos propres fichiers de résultats WGS d’un fournisseur de tests, ou des échantillons de recherche téléchargés pour l’outil."  # i18n-source-hash:e2583d3d
 "sections.library.library-paths.title" = "Chemins de la bibliothèque"  # i18n-source-hash:ed1e39b6
 "controls.library.library-paths.ref_path.label" = "Chemin des données de référence"  # i18n-source-hash:5bb4450f

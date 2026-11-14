@@ -153,6 +153,7 @@
         },
         {
           "id": "multiqc-directory",
+          "primaryInput": "multiqc_directory",
           "title": "actions.fastq.post-v063.multiqc-directory.title",
           "tooltip": "actions.fastq.post-v063.multiqc.tooltip",
           "command": {
@@ -176,6 +177,7 @@
         },
         {
           "id": "multiqc-metrics",
+          "primaryInput": "multiqc_directory",
           "title": "actions.cli.multiqc-metrics.title",
           "tooltip": "actions.cli.multiqc-metrics.tooltip",
           "advancedOnly": true,

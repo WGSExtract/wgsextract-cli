@@ -794,6 +794,7 @@
         },
         {
           "id": "ref-download",
+          "primaryInput": "ref_url",
           "title": "actions.cli.ref-download.title",
           "tooltip": "actions.cli.ref-download.tooltip",
           "advancedOnly": true,

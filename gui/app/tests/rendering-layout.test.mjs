@@ -57,12 +57,69 @@ test("a rows checkbox group without a group name does not indent its options", a
 
 test("the command output toggle never floats over the output", async () => {
   // UI audit: the show/hide button sat on top of the last lines of output and the result summary.
-  const { state, renderTerminalPane, renderTerminalToggle } = await clientView();
+  const { state, renderTerminalPane } = await clientView();
+  const headerToggle = /<header class="terminal-header">[\s\S]*data-terminal-toggle[\s\S]*<\/header>/;
   state.isTerminalVisible = true;
-  assert.match(renderTerminalPane(), /<header class="terminal-header">[\s\S]*data-terminal-toggle[\s\S]*<\/header>/);
+  assert.match(renderTerminalPane(), headerToggle);
 
   state.isTerminalVisible = false;
-  assert.match(renderTerminalToggle(), /class="terminal-toggle" data-terminal-toggle/);
+  assert.match(renderTerminalPane(), headerToggle);
+});
+
+test("collapsing the Jobs pane keeps its row of job tabs and flips the arrow", async () => {
+  const { state, renderTerminalPane, appendTerminal } = await clientView();
+  appendTerminal("command", "Sort BAM");
+
+  state.isTerminalVisible = true;
+  let html = renderTerminalPane();
+  assert.match(html, /data-terminal-tab="1"[\s\S]*Sort BAM/);
+  assert.match(html, /class="terminal-log"/);
+  assert.match(html, /aria-expanded="true"[^>]*>[\s\S]*⌄/);
+
+  state.isTerminalVisible = false;
+  html = renderTerminalPane();
+  assert.match(html, /class="terminal-panel collapsed"/);
+  assert.match(html, /data-terminal-tab="1"[\s\S]*Sort BAM/);
+  assert.doesNotMatch(html, /class="terminal-log"/);
+  assert.match(html, /aria-expanded="false"[^>]*>[\s\S]*⌃/);
+});
+
+test("job tabs keep the newest next to the pane buttons, and a job opened from the list moves there", async () => {
+  // User request: as tabs pile up, the oldest drop off the left so Copy and Hide stay in view.
+  const { state, renderTerminalPane, appendTerminal, openJob } = await clientView();
+  const first = appendTerminal("command", "First");
+  appendTerminal("command", "Second");
+  appendTerminal("command", "Third");
+  const strip = () => renderTerminalPane().match(/<div class="terminal-job-tabs">([\s\S]*?)<\/div>/)[1];
+  const titles = () => [...strip().matchAll(/<span>([^<]+)<\/span>/g)].map(([, title]) => title);
+
+  assert.match(renderTerminalPane(), /<div class="terminal-tabs">\s*<span class="terminal-tab-wrap[^"]*main/);
+  assert.deepEqual(titles(), ["Third", "Second", "First"]);
+
+  openJob(first);
+  assert.deepEqual(titles(), ["First", "Third", "Second"]);
+  assert.equal(state.terminalEntries[state.activeTerminalIndex].title, "First");
+});
+
+test("while the Jobs list shows, the tab row holds only Jobs; collapsed or on another tab it shows the job tabs", async () => {
+  // User request: the Jobs list's rows repeat the job tabs, so showing both looked duplicated.
+  const { state, renderTerminalPane, appendTerminal } = await clientView();
+  appendTerminal("command", "First");
+  appendTerminal("command", "Second");
+  const titles = () => [...renderTerminalPane().match(/<div class="terminal-job-tabs">([\s\S]*?)<\/div>/)[1].matchAll(/<span>([^<]+)<\/span>/g)].map(([, title]) => title);
+
+  state.activeTerminalIndex = 0;
+  state.isTerminalVisible = true;
+  assert.deepEqual(titles(), []);
+  assert.match(renderTerminalPane(), /<div class="terminal-tabs">\s*<span class="terminal-tab-wrap active main/);
+  assert.match(renderTerminalPane(), /class="jobs-table"[\s\S]*First/);
+
+  state.isTerminalVisible = false;
+  assert.deepEqual(titles(), ["Second", "First"]);
+
+  state.isTerminalVisible = true;
+  state.activeTerminalIndex = 1;
+  assert.deepEqual(titles(), ["Second", "First"]);
 });
 
 test("an action without a disk estimate shows no empty precheck banner", async () => {

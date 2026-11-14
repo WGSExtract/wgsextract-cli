@@ -347,6 +347,11 @@
           "description": "The command line the manifest's prerequisite check is given for this action, interpolated like command arguments, when its executable is a wrapper the check can't read. See docs/prerequisites.md.",
           "type": "array",
           "items": { "type": "string" }
+        },
+        "primaryInput": {
+          "description": "The placeholder (without braces) naming the job's main input, shown in the app's Jobs list. Without it, the list shows the first file path control the command uses, skipping folders; give it when that would be an output, a folder input or a URL.",
+          "type": "string",
+          "minLength": 1
         }
       }
     },

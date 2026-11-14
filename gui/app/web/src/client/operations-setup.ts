@@ -4,6 +4,7 @@ import { errorMessage } from "./model.js";
 import { scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
 import { appendTerminal, appendTerminalOutput, runningActionControllers } from "./terminal.js";
+import { findTerminalEntry } from "./terminal-output.js";
 import { persistBundleState } from "./operations-state.js";
 import { resolveSetupPreflight } from "./operations-setup-preflight.js";
 import type { SetupRun, SetupStepResult, TerminalEntry } from "../../../shared/types.js";
@@ -38,7 +39,7 @@ export async function runSetup() {
     runningSetup = controller;
     runningActionControllers.set(setupID, controller);
     scheduleRender();
-    const entry = () => state.terminalEntries.find((candidate) => candidate.id === setupID);
+    const entry = () => findTerminalEntry(setupID);
     try {
         await apiStream<SetupStreamEvent>(
             "/api/setup/stream",
@@ -55,7 +56,7 @@ export async function runSetup() {
         const message = controller.signal.aborted ? "Setup cancelled." : errorMessage(error);
         const tab = entry();
         if (tab) {
-            tab.kind = "error";
+            tab.kind = controller.signal.aborted ? "cancelled" : "error";
             tab.body = [tab.body, message].filter(Boolean).join("\n");
         }
         state.setupRun = { status: "failed", results: state.setupRun?.results ?? [], error: message, completedAt: new Date().toISOString() };
@@ -120,13 +121,25 @@ function applySetupEvent(event: SetupStreamEvent, tab: TerminalEntry | undefined
         case "complete":
             clearSetupElapsedTimer();
             state.setupRun = { ...event.result, completedAt: new Date().toISOString(), currentStepID: null, currentStepStartedAt: null, currentStepElapsedMs: 0 };
-            tab.kind = event.result?.status === "failed" ? "error" : "success";
+            tab.kind = setupJobKind(event.result?.status);
             if (event.result?.error) {
                 tab.body = [tab.body, event.result.error].filter(Boolean).join("\n");
             }
             break;
     }
     scheduleRender();
+}
+
+/** A finished setup run's tab and Jobs row: an optional step that failed finishes it with warnings. */
+function setupJobKind(status: unknown): string {
+    switch (status) {
+        case "failed":
+            return "error";
+        case "warning":
+            return "warning";
+        default:
+            return "success";
+    }
 }
 
 function startSetupElapsedTimer(stepID: string) {

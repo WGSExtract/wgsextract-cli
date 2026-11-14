@@ -269,7 +269,7 @@
 "pages.library.summary" = "Gerencie dados de referência: índices, mapas de genes, conjuntos de dados de anotação e caches VEP usados por fluxos de trabalho de alinhamento e efeitos avançados de variantes."  # i18n-source-hash:dc6921dc
 "pages.reference-genomes.title" = "Genomas de referência"  # i18n-source-hash:90c45943
 "pages.reference-genomes.summary" = "Gerencie os genomas de referência de que a ferramenta precisa para alinhamento, decodificação de arquivos CRAM e interpretação e criação de arquivos VCF."  # i18n-source-hash:81e4f33f
-"pages.datasets.title" = "Conjuntos de dados"  # i18n-source-hash:93a7f224
+"pages.datasets.title" = "Meus genomas"  # i18n-source-hash:9a77a24c
 "pages.datasets.summary" = "Um lugar comum para baixar e gerenciar os conjuntos de dados do usuário: seus próprios arquivos de resultados de WGS de um fornecedor de testes ou amostras de pesquisa baixadas para usar com a ferramenta."  # i18n-source-hash:e2583d3d
 "sections.library.library-paths.title" = "Caminhos da biblioteca"  # i18n-source-hash:ed1e39b6
 "controls.library.library-paths.ref_path.label" = "Caminho dos dados de referência"  # i18n-source-hash:5bb4450f
