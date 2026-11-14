@@ -211,6 +211,79 @@ def test_thresholds_must_not_cross():
 
 
 @needs_bcftools
+@pytest.mark.parametrize(
+    "header",
+    [
+        "##source=Mutect2\n",
+        "##GATKCommandLine=<ID=Mutect2,CommandLine=Mutect2>\n",
+        "##source=HaplotypeCaller\n##source=Mutect2\n",
+    ],
+)
+def test_bug_862_mutect2_germline_policy_is_explicit(tmp_path, header):
+    sample = _vcf(
+        tmp_path / "somatic.vcf.gz",
+        [
+            "100 low_vaf C T 99 PASS . GT:DP:GQ:AD 0/1:100:99:90,10",
+            "200 balanced A G 99 PASS . GT:DP:GQ:AD 0/1:100:99:50,50",
+        ],
+        header=header,
+    )
+    out = tmp_path / "out"
+    document = _run(
+        tmp_path,
+        "vcf",
+        "clinvar",
+        "--vcf-input",
+        sample,
+        "--clinvar-file",
+        _clinvar(tmp_path),
+        "--outdir",
+        str(out),
+    )
+    assert _labels(out / "clinvar_pathogenic.vcf.gz") == [
+        "100:low:unsupported_somatic",
+        "200:low:unsupported_somatic",
+    ]
+    rows = _table(out / "clinvar_pathogenic.confidence.tsv")
+    assert rows[0]["alt_fraction"] == "0.100"
+    assert rows[0]["zygosity"] == "unassessed"
+    confidence = document["details"]["confidence"][0]
+    assert confidence["caller"] == "mutect2"
+    assert confidence["policy"] == "unsupported_somatic"
+    warnings = {w["code"]: w for w in document["warnings"]}
+    assert warnings["unsupported_somatic_confidence"]["details"]["policy"] == (
+        "unsupported_somatic"
+    )
+
+
+@needs_bcftools
+def test_bug_862_germline_gatk_keeps_imbalance_safeguard(tmp_path):
+    sample = _vcf(
+        tmp_path / "germline.vcf.gz",
+        ["100 low_vaf C T 99 PASS . GT:DP:GQ:AD 0/1:100:99:90,10"],
+        header="##source=HaplotypeCaller\n",
+    )
+    document = _run(
+        tmp_path,
+        "vcf",
+        "clinvar",
+        "--vcf-input",
+        sample,
+        "--clinvar-file",
+        _clinvar(tmp_path),
+        "--outdir",
+        str(tmp_path / "out"),
+    )
+    assert _labels(tmp_path / "out/clinvar_pathogenic.vcf.gz") == [
+        "100:low:allele_imbalance"
+    ]
+    assert document["details"]["confidence"][0]["policy"] == "germline"
+    assert "unsupported_somatic_confidence" not in {
+        w["code"] for w in document["warnings"]
+    }
+
+
+@needs_bcftools
 def test_rare_variant_output_is_labelled(tmp_path):
     sample = _vcf(tmp_path / "s.vcf.gz", CALLS[:3])
     gnomad = _vcf(
