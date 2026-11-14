@@ -166,7 +166,7 @@ def _call_variants_for_vep(
     ) as sex_args:
         run_pipeline(
             [
-                ["bcftools", "mpileup", "-B", "-I", "-C", "50", "-f", ref, "-Ou"]
+                ["bcftools", "mpileup", "-B", "-C", "50", "-f", ref, "-Ou"]
                 + region_args
                 + [bam_path],
                 ["bcftools", "call", *ploidy_args, *sex_args, "-mv", "-P", "0"]

@@ -3,6 +3,7 @@ line and writes what VEP would (a bgzipped copy of its input, or a text table)."
 
 import json
 import os
+import random
 import shutil
 import sys
 import threading
@@ -417,6 +418,44 @@ def test_bam_input_calls_variants_in_region_then_annotates(tmp_path, fake_vep):
     assert _value(cmd, "--fasta") == fasta
     calls = vcf_calls(tmp_path / "s_vep.vcf.gz")
     assert [(c[0], c[1], c[4]) for c in calls] == [("chr1", "301", "1")]
+
+
+@pytest.mark.parametrize("region", [None, "chr1:1-150"])
+def test_839_bam_to_vep_keeps_supported_deletion(tmp_path, fake_vep, region):
+    rng = random.Random(839)
+    genome = "".join(rng.choice("ACGT") for _ in range(150))
+    fasta = write_fasta(tmp_path / "ref.fa", {"chr1": genome})
+    seq = genome[:50] + genome[51:]
+    bam = sam_to_bam(
+        [
+            "@HD\tVN:1.6\tSO:coordinate",
+            "@SQ\tSN:chr1\tLN:150",
+            "@RG\tID:rg\tSM:child",
+            *[
+                f"r{i}\t0\tchr1\t1\t60\t50M1D99M\t*\t0\t0\t{seq}\t{'I' * 149}\tRG:Z:rg"
+                for i in range(30)
+            ],
+        ],
+        tmp_path / "deletion.bam",
+    )
+    result = api.vep.run(
+        VepRunParams(
+            input=Path(bam),
+            ref=fasta,
+            region=region,
+            threads=1,
+            ploidy="2",
+            vep_cache=tmp_path,
+        )
+    )
+
+    assert result.status == "ok"
+    output = tmp_path / "deletion_vep.vcf.gz"
+    calls = vcf_calls(output, "chr1:1-150")
+    assert any(len(ref) == len(alt) + 1 and gt == "1/1" for _, _, ref, alt, gt in calls)
+    assert any(
+        o.role == "vep_annotated" and Path(o.path) == output for o in result.outputs
+    )
 
 
 def test_bam_input_is_called_with_the_ploidy_file(tmp_path, fake_vep):
