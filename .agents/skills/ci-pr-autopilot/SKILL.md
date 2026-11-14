@@ -160,7 +160,7 @@ Documentation-only PRs deliberately skip the OS matrix and Install Lab.
 Repeat until complete or blocked:
 
 1. Refresh PR state, review threads, reviews, commits, mergeability, and checks.
-2. If new failing CI exists, diagnose, fix, test, commit, push, and wait.
+2. If new failing CI exists, diagnose, fix, test, commit, push, and wait. For a suspected flake or lost runner, rerun only the failed jobs (`gh run rerun RUN --failed`). Don't update the branch only because it is BEHIND the base.
 3. If new actionable review feedback exists, fix or refuse with `(AI): Reason: ...`, commit, push if changed, and resolve handled threads.
 4. If changes were pushed, wait for new CI results before merging.
 5. If CI is pending, wait and poll at a reasonable interval. Avoid tight loops.
@@ -206,6 +206,8 @@ Only land the PR when all conditions are true:
 - Mergeability is clean and branch protection allows merge.
 
 Use the repository's normal merge method. If uncertain, inspect allowed merge methods or existing project convention. Prefer `gh pr merge --auto` when branch protection requires queued/auto merge, otherwise use the repo's standard method. Do not use admin override.
+
+In WGS Extract, land through the merge queue with `gh pr merge PR --auto --squash --match-head-commit SHA` once every check (advisory ones included) is green. The queue retests only the `required` check against the latest `main`; if it drops the PR, fix or rerun the failure and enqueue again.
 
 After merging:
 

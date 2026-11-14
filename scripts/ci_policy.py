@@ -18,8 +18,11 @@ ROUTED_MAIN = {
     "arm64": "linux_arm64.yml",
     "smoke": "cli_smoke.yml",
     "install": "install_lab.yml",
+    "gitleaks": "gitleaks.yml",
     "Documentation freshness": "ubuntu_ci.yml",
 }
+# PR area checks' summary gate only mirrors its dependencies' results.
+SUMMARY_JOBS = {"required"}
 
 
 def safe(value: str) -> str:

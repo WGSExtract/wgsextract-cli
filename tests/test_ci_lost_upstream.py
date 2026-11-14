@@ -211,3 +211,22 @@ def test_carried_forward_success_is_not_new_recovery_evidence() -> None:
     api.jobs[3] = [copy.deepcopy(passed)]
     Observer(api).process(api.run)
     assert bug["state"] == "closed"
+
+
+def test_required_summary_and_lost_artifact_cascade_do_not_block_each_other() -> None:
+    api = InstallLabReplay()
+    api.run.update(
+        id=100,
+        name="PR area checks",
+        head_branch="feature",
+        event="pull_request",
+        pull_requests=[{"number": 123}],
+    )
+    for job in api.jobs[1]:
+        job["name"] = "install / " + job["name"]
+    gate = dict(recorded("test_failure"), id=999999999, name="required")
+    api.jobs[1].append(gate)
+    Observer(api).process(api.run)
+    assert api.rerun_scopes == ["rerun"]
+    assert {131947396559, 131964780747} <= set(api.retried)
+    assert str(gate["id"]) not in ledger_comments(api)[0]
