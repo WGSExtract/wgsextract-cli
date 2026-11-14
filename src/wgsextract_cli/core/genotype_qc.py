@@ -12,6 +12,7 @@ import io
 import logging
 import re
 import tempfile
+import zlib
 from collections.abc import Collection, Iterable, Mapping
 from pathlib import Path
 
@@ -413,7 +414,10 @@ def contigs_with_reads(alignment: str, ref: str | None) -> dict[str, int]:
     with open(index, "rb") as f:
         data = f.read()
     # samtools writes CRAI gzipped, but plain text is valid too.
-    text = gzip.decompress(data) if data[:2] == b"\x1f\x8b" else data
+    try:
+        text = gzip.decompress(data) if data[:2] == b"\x1f\x8b" else data
+    except (EOFError, zlib.error) as error:
+        raise ValueError(f"Unreadable index {index}: {error}") from error
     ids = {int(line.split(b"\t", 1)[0]) for line in text.splitlines() if line.strip()}
     return dict(names[i] for i in sorted(ids) if 0 <= i < len(names))
 

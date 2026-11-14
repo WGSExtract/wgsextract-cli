@@ -1443,8 +1443,11 @@ def _structural_variants(ctx: _Context) -> dict[str, Any]:
     section["summary"] = (
         f"{sum(counts.values())} carried PASS SVs: {counts['common']} common "
         f"(AF >= {common:g}), {counts['low']} low-frequency, {counts['rare']} rare "
-        f"(AF < {rare:g}) and {counts['novel']} not in gnomAD. Common SVs are "
-        "unlikely to cause rare disease; rare and novel ones are worth a look."
+        f"(AF < {rare:g}) and {counts['novel']} with no eligible same-type match. "
+        "Nondirectional CNVs are unassessed, not evidence of absence from gnomAD. "
+        "Other unmatched calls may reflect catalogue gaps or caller artefacts, "
+        "not rarity. Common SVs are unlikely to cause rare disease; "
+        "rare matched SVs may warrant investigation."
     )
     return section
 

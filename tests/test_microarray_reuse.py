@@ -6,6 +6,7 @@ reference or option, a newly requested format, or a missing or corrupt sidecar
 regenerates exactly what is affected.
 """
 
+import gzip
 import json
 import os
 import subprocess
@@ -15,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from tests.htslib_helpers import needs_htslib
+from tests.htslib_helpers import needs_htslib, write_fasta
 from tests.smoke_utils import state_directory_setting
 from tests.test_microarray_library import MARKERS, _library, _sample_bam
 
@@ -154,3 +155,53 @@ def test_a_missing_or_corrupt_sidecar_regenerates(run: Any, damage: str) -> None
     assert after[KIT] == before[KIT]  # its own sidecar is intact
     assert not _reused(outdir)[V3]
     assert json.loads(sidecar.read_text())["inputs"]["unit"] == "23andMe_V3"
+
+
+def test_issue_853_reused_hg38_outputs_keep_the_liftover_counts(
+    tmp_path: Path,
+) -> None:
+    """Issue 853: a rerun that reuses hg38 vendor kits still reports how the
+    liftover placed the sites, including the ambiguous one it left out."""
+    library = tmp_path / "reference"
+    _, seq = _library(library)
+    identity = "chain 1 chr1 5000 + 0 5000 chr1 5000 + 0 5000 1\n5000\n\n"
+    (library / "hg19ToHg38.over.chain.gz").write_bytes(gzip.compress(identity.encode()))
+    # rs103 (chr1:3000) gets a second hg19 placement.
+    (library / "microarray" / "hg38ToHg19.over.chain.gz").write_bytes(
+        gzip.compress(
+            (
+                identity
+                + "chain 1 chr1 5000 + 2990 3010 chr1 5000 + 4000 4020 2\n20\n\n"
+            ).encode()
+        )
+    )
+    fasta = write_fasta(library / "genomes" / "hs38.fa", {"chr1": seq})
+    bam = _sample_bam(tmp_path, seq)
+    config = tmp_path / "config.toml"
+    config.write_text(
+        f'reference_library = "{library.as_posix()}"\n'
+        + state_directory_setting(tmp_path)
+    )
+    outdir = tmp_path / "out"
+    manifests = []
+    for _ in range(2):
+        subprocess.run(
+            [sys.executable, "-m", "wgsextract_cli.main", "--config", str(config)]
+            + ["microarray", "--formats", "23andme_v3", "--input", bam]
+            + ["--ref", str(fasta), "--outdir", str(outdir)],
+            check=True,
+        )
+        manifests.append(
+            json.loads((outdir / "sample_microarray.manifest.json").read_text())
+        )
+
+    assert _genotypes(outdir / V3) == {"rs101": "AC", "rs102": "CC", "rs103": "--"}
+    assert _reused(outdir)[V3]
+    for manifest in manifests:
+        metrics = manifest["metrics"]
+        assert (metrics["liftover_lifted"], metrics["liftover_ambiguous"]) == (2, 1)
+        assert [
+            w["details"]
+            for w in manifest["warnings"]
+            if w["code"] == "liftover_ambiguous"
+        ] == [{"ambiguous": 1, "collision": 0}]
