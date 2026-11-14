@@ -15,6 +15,8 @@ import tempfile
 from collections import Counter
 from pathlib import Path
 
+from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.reference_models import sequence_lengths
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import vcf_index_chromosomes
 
@@ -114,12 +116,13 @@ def _alignment_calls(
     reference: Path | None,
     quality: int,
 ) -> tuple[dict[int, Call], str]:
-    stats = run_command(["samtools", "idxstats", str(path)], capture_output=True).stdout
-    rows = [line.split("\t") for line in stats.splitlines()]
-    name = next((name for name in Y_NAMES if any(r[0] == name for r in rows)), None)
+    lengths = sequence_lengths(
+        get_bam_header(str(path), str(reference) if reference else None)
+    )
+    name = next((name for name in Y_NAMES if name in lengths), None)
     if not name:
         raise WGSExtractError("Input alignment has no Y chromosome.")
-    total_reads = str(sum(int(row[2]) for row in rows))
+    total_reads = "not assessed (regional Y query)"
     bed = work / "positions.txt"
     bed.write_text(
         "".join(f"{name}\t{pos}\n" for pos in sorted(positions)),

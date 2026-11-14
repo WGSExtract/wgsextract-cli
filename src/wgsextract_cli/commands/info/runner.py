@@ -866,6 +866,67 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
         Path(outdir).mkdir(parents=True, exist_ok=True)
     logging.debug(f"Output directory: {str(absolute_path(outdir))}")
 
+    if region:
+        # Header lengths are enough to choose sampled windows. Regional work
+        # must not gather global read counts, sex, or first-record QC.
+        stats = [
+            IdxStat(name=name, length=length, mapped=0, unmapped=0)
+            for name, length in sequence_lengths(header).items()
+        ]
+        coverage = _coverage_map(
+            info_cmd, input_file, resolved_ref, stats, outdir, region
+        )
+        current_result().set_details({"region": region, "breadth": coverage})
+        if as_csv:
+            stream = io.StringIO(newline="")
+            writer = csv.writer(stream, lineterminator="\n")
+            writer.writerow(["Seq Name", "Breadth Coverage"])
+            writer.writerows(coverage.items())
+            human_output(stream.getvalue(), end="")
+        else:
+            human_output(
+                f"Region: {region}\nSeq Name\tBreadth Coverage\n"
+                + "".join(f"{name}\t{breadth}\n" for name, breadth in coverage.items())
+            )
+        if table_format:
+            path = table_path(
+                Path(
+                    outdir, Path(input_file).name + region_file_tag(region) + "_breadth"
+                ),
+                table_format,
+            )
+            write_table(
+                path,
+                [CHROMOSOME_TABLE[0], CHROMOSOME_TABLE[-1]],
+                [
+                    (name, float(value.lstrip("~").rstrip("% ").strip()))
+                    for name, value in coverage.items()
+                ],
+                table_format,
+                metadata={
+                    **metadata,
+                    "breadth": "sampled estimate (coverage-sample)"
+                    if info_cmd == "coverage-sample"
+                    else "exact (calculate-coverage)",
+                },
+            )
+            current_result().add_output(path, "coverage_table")
+        if isinstance(params, CalculateCoverageParams) and params.with_bins:
+            from .bins import run_depth_bins
+
+            bins_path = run_depth_bins(
+                input_file,
+                resolved_ref,
+                sequence_lengths(header),
+                outdir,
+                region,
+                "tsv",
+                metadata,
+                reuse=True,
+            )
+            current_result().add_output(bins_path, "coverage_bins")
+        return
+
     user_fasta = ref if ref and is_fasta_path(ref) else None
     ref_model = _guess_ref_model(md5_sig, header, user_fasta)
 

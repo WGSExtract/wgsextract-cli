@@ -297,6 +297,7 @@ def test_y_haplogroup_refuses_a_female_sample_before_yleaf(tmp_path):
     """A female genome's mismapped chrY reads made Yleaf "predict" BT* with a full
     QC score; the command must say there is no Y instead."""
     bam = _xy_bam(tmp_path / "sample.bam", x_reads=30, y_reads=1)
+    _info_cache(bam, "Female")
 
     with pytest.raises(WGSExtractError, match="appears female"):
         run_wgsextract("lineage", "y-haplogroup", "--input", bam)
