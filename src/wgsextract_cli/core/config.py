@@ -105,6 +105,11 @@ KNOWN_SETTINGS = {
         "wgse-bwa-mem3 and wgse-minimap2 when on PATH (auto, the default) or "
         "never (off); Linux: Bioconda's bwa-mem3 in place of bwa/bwa-mem2",
     ),
+    "output_profile": (
+        "default",
+        "`align`/`realign`: default keeps --format; archive selects lossless "
+        "CRAM 3.1 (not GATK-readable); calling selects compatible CRAM 3.0",
+    ),
     "prefer_native_gpu": (
         False,
         "`align`/`realign`: prefer wgse-bwa's native GPU even above the RAM "

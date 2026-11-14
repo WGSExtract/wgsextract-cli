@@ -11,6 +11,7 @@ from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import VcfFreebayesParams, VcfGatkParams
 from wgsextract_cli.core import ultima
 from wgsextract_cli.core.atomic_output import safe_output
+from wgsextract_cli.core.cram_staging import needs_cram30
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.messages import LOG_MESSAGES
@@ -44,11 +45,13 @@ def _prepare_gatk_input(
         return input_file, None
 
     if not region:
-        logging.warning(
-            "GATK may not support CRAM 3.1 directly. For whole-genome CRAM input, "
-            "convert to BAM first with 'wgsextract bam to-bam' or pass --region for "
-            "automatic regional conversion."
-        )
+        if needs_cram30(input_file):
+            raise UsageError(
+                "GATK cannot read CRAM 3.1 archive output directly. Use "
+                "--output-profile calling when aligning, convert with "
+                "'wgsextract bam to-bam', or pass --region for automatic "
+                "regional conversion."
+            )
         return input_file, None
 
     fd, temp_bam = tempfile.mkstemp(

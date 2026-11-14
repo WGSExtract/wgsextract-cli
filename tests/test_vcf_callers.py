@@ -204,15 +204,36 @@ def test_gatk_cuts_a_regional_cram_to_a_bam_it_can_read(genome, gatk, tmp_path, 
 
 
 def test_gatk_reads_a_whole_cram_without_converting_it(genome, gatk, tmp_path, capsys):
-    """Without a region there's no cut to a BAM; a GATK that reads CRAM gets it."""
+    """CRAM 3.0 calling output is read directly, without a compatibility copy."""
     ref = _reference_copy(genome, tmp_path / "ref")
+    cram = str(tmp_path / "calling.cram")
+    run_command(["samtools", "view", "-C", "-T", ref,
+                 "--output-fmt-option", "version=3.0", "-o", cram, genome.bam])  # fmt: skip
+    run_command(["samtools", "index", cram])
     outdir = tmp_path / "out"
-    result, _ = _gatk(capsys, genome, genome.cram, ref, outdir, tmp_path / "scratch")
+    result, _ = _gatk(capsys, genome, cram, ref, outdir, tmp_path / "scratch")
 
     assert result["status"] == "ok", result["error"]
     assert vcf_calls(outdir / "gatk.vcf.gz") == genome.calls
     # contract: the whole CRAM is read in place, not copied to a BAM first.
-    assert [run[run.index("-I") + 1] for run in gatk.runs()] == [genome.cram]
+    assert [run[run.index("-I") + 1] for run in gatk.runs()] == [cram]
+
+
+def test_691_gatk_refuses_whole_archive_cram_with_a_compatible_output_hint(
+    genome, gatk, tmp_path, capsys
+):
+    ref = _reference_copy(genome, tmp_path / "ref")
+    cram = str(tmp_path / "archive.cram")
+    run_command(["samtools", "view", "-C", "-T", ref,
+                 "--output-fmt-option", "archive", "--output-fmt-option", "version=3.1",
+                 "-o", cram, genome.bam])  # fmt: skip
+    run_command(["samtools", "index", cram])
+    result, _ = _gatk(capsys, genome, cram, ref, tmp_path / "out", tmp_path / "scratch")
+    assert result["status"] == "failed"
+    assert result["exit_code"] == 2
+    assert "--output-profile calling" in result["error"]["message"]
+    assert not (tmp_path / "out" / "gatk.vcf.gz").exists()
+    assert list((tmp_path / "scratch").iterdir()) == []
 
 
 def test_gatk_region_cant_be_read_as_a_samtools_option(genome, gatk, tmp_path, capsys):

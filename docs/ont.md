@@ -48,6 +48,45 @@ signature matches, **before** its read names are probed. A failed CRAM read-name
 is an error, never a silent fallback to paired short-read extraction.
 The usual realignment disk-space preflight also applies to streamed ONT reads.
 
+### Lossless output profiles
+
+`align` and `realign` accept `--output-profile default|archive|calling`.
+The default leaves `--format` and the installed encoder's defaults unchanged.
+The other profiles select CRAM regardless of `--format`:
+
+| Profile | Encoding | Readers |
+| --- | --- | --- |
+| `archive` | CRAM 3.1, samtools' archive compression | Modern htslib; not GATK directly |
+| `calling` | CRAM 3.0, normal compression | GATK and older htslib-based callers, including DeepVariant |
+
+Both are lossless: full supplementary SEQ/QUAL, soft clipping and MM/ML/MN
+tags are retained. Archive trades encoding time for smaller files; savings
+depend on the reads. Calling avoids DeepVariant's CRAM 3.1 compatibility
+copy, not every caller's other staging requirements. Native pbmm2 only
+writes BAM: select `--aligner minimap2` to use a CRAM profile for PacBio.
+GPU alignment writes BAM first and converts it with samtools for these
+profiles, so it needs temporary space for that BAM too.
+
+```bash
+wgsextract realign --input ont.cram --ref hs38.fa --output-profile archive
+wgsextract align --r1 reads_R1.fastq.gz --r2 reads_R2.fastq.gz \
+  --ref hs38.fa --output-profile calling
+```
+
+Set `output_profile = "calling"` (or `"archive"`) in `config.toml` for a
+persistent default; `--output-profile default` overrides it. The typed API
+and server expose the same `output_profile` option. The result manifest
+records the effective profile in `metrics.output_profile`. Changing the
+profile invalidates realign's completed alignment and chunk resume state.
+Installed samtools is checked for the requested options and version before
+mapping; WGS Extract does not install it.
+
+`info`, extraction and bcftools calling read both profiles. Older
+DeepVariant/Clair3 builds use the existing temporary compatible copy for
+archive output. Whole-file GATK calling refuses CRAM 3.1 clearly; use
+calling output, convert to BAM (`bam to-bam`), or specify `vcf gatk
+--region` for the existing regional BAM conversion.
+
 ### Chunked realignment
 
 A whole-genome ONT realignment runs for days. In one pass, its sort spills

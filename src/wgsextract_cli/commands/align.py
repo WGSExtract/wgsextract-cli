@@ -35,6 +35,7 @@ from wgsextract_cli.core.atomic_output import (
     safe_output,
 )
 from wgsextract_cli.core.chunked_alignment import Chunk, ChunkedAlignment
+from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path as get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -64,6 +65,10 @@ from wgsextract_cli.core.native_aligners import (
 )
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.output_checks import record_alignment_output
+from wgsextract_cli.core.output_profiles import (
+    output_profile_options,
+    validate_output_profile,
+)
 from wgsextract_cli.core.paths import absolute_path, java_local_path
 from wgsextract_cli.core.pixi_tools import pixi_install_command
 from wgsextract_cli.core.read_counts import (
@@ -181,6 +186,7 @@ class AlignJob:
     sample: str | None = None
     long_read: bool = False
     format: str = "BAM"
+    output_profile: str | None = None
     # bwa-mem3's --fast speed preset, whose alignments differ from BWA's.
     fast: bool = False
     # auto or off: WGS Extract's Apple Silicon aligner builds (native_aligners).
@@ -206,9 +212,19 @@ class AlignJob:
     @classmethod
     def of(cls: type[_Job], params: Params) -> _Job:
         """The job of ``params``' fields that it shares."""
-        return cls(
+        job = cls(
             **job_values(params, cls), memory_explicit=params.explicitly_set("memory")
         )
+        if params.COMMAND not in ("align", "realign"):
+            return job
+        job.output_profile = (
+            job.output_profile or settings.get("output_profile") or "default"
+        )
+        output_profile_options(job.output_profile)
+        if job.output_profile != "default":
+            job.format = "CRAM"
+        current_result().add_metrics(output_profile=job.output_profile)
+        return job
 
     @property
     def read_count(self) -> int | None:
@@ -1080,6 +1096,7 @@ def _prepare_alignment(
     aligner), the setup's memory is the sort's per-thread memory: sort_memory
     of --memory for these reads."""
     verify_dependencies(tools)
+    validate_output_profile(job.output_profile or "default")
     log_dependency_info(tools)
     threads, memory = get_resource_defaults(job.threads, job.memory)
 
@@ -1207,7 +1224,13 @@ def duplicate_marker(paired: bool) -> str:
 
 
 def _sort_and_mark_stages(
-    out_path: str, *, threads: str, memory: str, fmt: str, ref: str
+    out_path: str,
+    *,
+    threads: str,
+    memory: str,
+    fmt: str,
+    ref: str,
+    output_profile: str = "default",
 ) -> list[list[str]]:
     """samtools fixmate | sort | markdup, writing and indexing out_path. The
     sorted stream goes straight into markdup uncompressed, so the output is
@@ -1216,6 +1239,8 @@ def _sort_and_mark_stages(
     directory = configured_temp_directory()
     tmp = str(Path(directory, "align")) if directory else f"{out_path}.tmp"
     out_fmt = ["-O", "CRAM", "--reference", ref] if fmt == "CRAM" else ["-O", "BAM"]
+    if fmt == "CRAM":
+        out_fmt += output_profile_options(output_profile)
     return [
         ["samtools", "fixmate", "-m", "-u", "-", "-"],
         ["samtools", "sort", "-@", threads, "-m", memory, "-u", "-T", tmp, "-"],
@@ -1248,6 +1273,7 @@ def run_streamed_alignment(
     upstream: list[Sequence[object]] | None = None,
     expected_reads: int | None = None,
     exact_reads: int | None = None,
+    output_profile: str = "default",
 ) -> None:
     """Run the aligner (after any upstream stages feeding it), mark duplicates
     (with duplicate_marker's choice, or not at all for long reads: None), sort,
@@ -1268,13 +1294,20 @@ def run_streamed_alignment(
                 sam_input=True,
                 write_index=True,
             )
+            if fmt == "CRAM":
+                sort += output_profile_options(output_profile)
             if duplicates == "samblaster":
                 logging.info("Using samblaster for marking duplicates...")
                 stages += [["samblaster"], sort]
             elif duplicates == "markdup":
                 logging.info("Marking duplicates with samtools markdup...")
                 stages += _sort_and_mark_stages(
-                    staged, threads=threads, memory=memory, fmt=fmt, ref=ref
+                    staged,
+                    threads=threads,
+                    memory=memory,
+                    fmt=fmt,
+                    ref=ref,
+                    output_profile=output_profile,
                 )
             else:
                 stages.append(sort)
@@ -1513,6 +1546,7 @@ def align_bwa(
             threads=setup.threads,
             memory=setup.memory,
             fmt=job.format,
+            output_profile=job.output_profile or "default",
             ref=setup.ref,
             duplicates=duplicate_marker(paired=bool(job.r2)),
             upstream=list(upstream) if upstream else None,
@@ -1610,6 +1644,7 @@ def align_ultima(job: AlignJob, cram_opt: list[str] | None = None) -> None:
                 setup,
                 job.format,
                 tmp,
+                output_profile=job.output_profile or "default",
                 expected_reads=job.read_count,
                 exact_reads=job.exact_reads,
             )
@@ -1633,6 +1668,7 @@ def _sort_and_mark_ultima(
     *,
     expected_reads: int | None = None,
     exact_reads: int | None = None,
+    output_profile: str = "default",
 ) -> None:
     """Sort the aligner's output, mark duplicates with Picard's flow mode (GATK),
     or samtools markdup when GATK is missing, then index."""
@@ -1654,6 +1690,7 @@ def _sort_and_mark_ultima(
             upstream=stages[:-1],
             expected_reads=expected_reads,
             exact_reads=exact_reads,
+            output_profile=output_profile,
         )
         return
     sorted_bam = str(Path(tmp, "sorted.bam"))
@@ -1693,6 +1730,7 @@ def _sort_and_mark_ultima(
             if fmt == "CRAM":
                 run_command(
                     ["samtools", "view", "-C", "-@", setup.threads, "-T", setup.ref]
+                    + output_profile_options(output_profile)
                     + ["-o", staged, marked]
                 )
             if exact_reads is not None:
@@ -1840,7 +1878,9 @@ def _gpu_align(
     from wgsextract_cli.core.parabricks import host_path, run_pbrun
 
     out_path = _gpu_output_path(job, setup)
-    convert = out_path.endswith(".cram") and setup.ref.lower().endswith(".gz")
+    convert = out_path.endswith(".cram") and (
+        setup.ref.lower().endswith(".gz") or job.output_profile not in (None, "default")
+    )
     pb_out = out_path.removesuffix(".cram") + ".bam" if convert else out_path
     logging.info(
         LOG_MESSAGES["aligning_reads"].format(
@@ -1868,6 +1908,7 @@ def _gpu_align(
             if convert:
                 run_command(
                     ["samtools", "view", "-C", "-@", setup.threads, "-T", setup.ref]
+                    + output_profile_options(job.output_profile or "default")
                     + ["-o", staged, pb_out]
                 )
             if job.exact_reads is not None:
@@ -2093,6 +2134,7 @@ def align_minimap2(job: AlignJob) -> None:
                 chunks=job.chunks,
                 reference=setup.ref,
                 format=job.format,
+                output_profile=job.output_profile or "default",
                 threads=setup.threads,
                 memory=setup.memory,
                 mapper=align_cmd,
@@ -2118,6 +2160,7 @@ def align_minimap2(job: AlignJob) -> None:
             threads=setup.threads,
             memory=setup.memory,
             fmt=job.format,
+            output_profile=job.output_profile or "default",
             ref=setup.ref,
             duplicates=duplicates,
             upstream=upstream or None,

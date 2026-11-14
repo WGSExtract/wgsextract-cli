@@ -625,6 +625,11 @@ def _align_step(
             "preset": job.preset,
             "long_read": bool(job.long_read),
             "format": job.format,
+            **(
+                {"output_profile": job.output_profile}
+                if job.output_profile not in (None, "default")
+                else {}
+            ),
             "sample": job.sample,
             "gpu": bool(job.gpu),
             "ref": None if reference else job.ref,
