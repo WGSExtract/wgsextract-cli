@@ -1169,10 +1169,10 @@ def test_batch_size_reaches_call_variants_without_changing_shards(dv):
 
 @pytest.fixture
 def genome_fai(dv):
-    """The reference's index says chr1 is 3 Gbp: a whole genome's worth of
-    postprocess_variants partitions."""
+    """Extra reference contigs model a whole genome's postprocess partitions
+    without making the alignment's chr1 dictionary incompatible."""
     fai = Path(f"{dv.sample.ref}.fai")
-    fai.write_text(fai.read_text().replace("\t3000\t", "\t3000000000\t", 1))
+    fai.write_text(fai.read_text() + "unobserved\t2999997000\t0\t60\t61\n")
 
 
 def postprocess(dv):
