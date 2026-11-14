@@ -254,8 +254,13 @@ mem3_seam(fmi_source "    cp_occ = (CP_OCC *)_mm_malloc(cp_occ_bytes, 64);"
 # watchdog gives up, a command may still read it, and the index is left to the process's exit.
 mem3_seam(fmi_source "FMI_search::~FMI_search()\n{\n"
     "FMI_search::~FMI_search()\n{\n    if (wgse_mem3_seed_release(this)) return;\n")
+# GPU suffix-array lookups (--gpu-sa on, CUDA): get_sa_entries_prefetch's staged rows are
+# walked on the GPU, into the same slots, instead of in its lanes.
+mem3_seam(fmi_source "    while(i<id && j<sa_batch_size)"
+    "    const bool wgse_gpu_sa = wgse_mem3_sa_resolve(this, pos_ar,\n        remap ? ks_dst.data() : nullptr, id, coordArray, drop_sentinel_offset);\n    while(!wgse_gpu_sa && i<id && j<sa_batch_size)")
+mem3_seam(fmi_source "    while (all_quit < id)" "    while (!wgse_gpu_sa && all_quit < id)")
 file(WRITE "${mem3_src}/FMI_search.cpp"
-    "class FMI_search;\nbool wgse_mem3_seed_release(const FMI_search *fmi);\n${fmi_source}")
+    "#include <cstdint>\nclass FMI_search;\nbool wgse_mem3_seed_release(const FMI_search *fmi);\nbool wgse_mem3_sa_resolve(const FMI_search *fmi, const int64_t *rows, const int64_t *slots,\n    int64_t count, int64_t *coordinates, int drop_sentinel_offset);\n${fmi_source}")
 file(READ "${mem3_SOURCE_DIR}/src/bwamem.cpp" bwamem_source)
 mem3_seam(bwamem_source "                       int64_t &tot_smem,\n                       int tid)\n{\n"
     "                       int64_t &tot_smem,\n                       int tid)\n{\n    {\n        SMEM *wgse_smems = nullptr;\n        if (wgse_mem3_seed_collect(fmi, opt, seq_, nseq, mmc, tot_smem, tid, wgse_smems))\n            return wgse_smems;\n    }\n")
@@ -374,10 +379,13 @@ if(BUILD_TESTING)
         set(gpu_specs "parity|--gpu-seed-wait|--gpu-inject-interruptions|2")
     elseif(WGSE_CUDA)
         set(gpu cuda)
-        # Mate rescue on the GPU (CUDA only): off, failed, and hung.
+        # Mate rescue on the GPU (CUDA only): off, failed, and hung; and suffix-array lookups
+        # on the GPU (CUDA only, --gpu-sa on): used, and hung.
         set(gpu_specs "parity|--gpu-seed-wait" "no_rescue_parity|--gpu-rescue|off"
             "rescue_failure_parity|--gpu-inject-rescue-failure"
-            "rescue_watchdog|--gpu-inject-hang|rescue")
+            "rescue_watchdog|--gpu-inject-hang|rescue"
+            "sa_parity|--gpu-seed-wait|--gpu-sa|on"
+            "sa_watchdog|--gpu-seed-wait|--gpu-sa|on|--gpu-inject-hang|sa")
     endif()
     if(gpu)
         list(APPEND gpu_specs "seed_verify|--gpu-seed-wait|--gpu-verify-seeds"

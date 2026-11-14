@@ -12,8 +12,9 @@
 # --gpu-inject-extension-failure (or --gpu-inject-hang, a command the GPU watchdog gives up
 # on) the CPU must report scoring them instead (and --metal or --cuda must then exit 1, with the same
 # records; --gpu-inject-seed-failure likewise for seeding). With --gpu-seed-wait the GPU's
-# SMEMs must have been used (and, with --gpu-verify-seeds, match upstream's). With
-# --physical-memory below the run's needs, every alignment must warn about memory.
+# SMEMs must have been used (and, with --gpu-verify-seeds, match upstream's), and with
+# --gpu-sa on the GPU must have looked up suffix-array values. With --physical-memory below
+# the run's needs, every alignment must warn about memory.
 # Usage: upstream.sh <wgse-bwa-mem3> <bwa-mem3-upstream> <work-dir> [wgse-bwa-mem3 options]
 set -eu
 # shellcheck source=native/tests/seeded_random.sh
@@ -106,6 +107,14 @@ awk "$seeded_random"'BEGIN {
         }
         printf "@o%d\n%s\n+\n%s\n", p, left, quality(length(left)) > "odd_1.fq"
         printf "@o%d\n%s\n+\n%s\n", p, right, quality(length(right)) > "odd_2.fq"
+    }
+    # Pairs from the first bases of chr1: suffix-array lookups of their seeds can walk to the
+    # sentinel row, whose value --compat=bwa-mem2 reports differently.
+    for (p = 1; p <= 12; p++) {
+        left = substr(sequence[1], p, 150)
+        right = reverse_complement(substr(sequence[1], p + 300, 150))
+        printf "@s%d\n%s\n+\n%s\n", p, left, quality(150) > "reads_1.fq"
+        printf "@s%d\n%s\n+\n%s\n", p, right, quality(150) > "reads_2.fq"
     }
 }
 function random(n,    s, piece, i) {
@@ -208,6 +217,11 @@ case " $wgse_options " in
         for log in wgse.*.pe.log; do
             grep -q 'CPU fallback: GPU mate rescue failed: GPU watchdog: a CUDA command (rescue)' "$log"
         done
+    elif [ "$label" = sa ]; then
+        # Another stage's command may time out first while the GPU is held.
+        for log in wgse.*.log; do
+            grep -q 'CPU fallback: GPU suffix-array lookups failed: GPU watchdog: a CUDA command (sa)' "$log"
+        done
     else for log in wgse.*.log; do
         grep -Eq "CPU fallback: GPU seed extension failed \(GPU watchdog: a (Metal|CUDA) command \($label" \
             "$log"
@@ -242,6 +256,11 @@ case " $wgse_options " in
         *" --gpu-verify-seeds "*) grep -q ' seed_mismatches=0 ' "$log" ;;
         esac
     done
+    # Suffix-array lookups run on the GPU only with --gpu-sa on.
+    case " $wgse_options " in
+    *" --gpu-sa on "*) for log in wgse.*.log; do grep -Eq 'sa_gpu_rows=[1-9]' "$log"; done ;;
+    *) if grep -q 'sa_calls=' wgse.*.log; then exit 1; fi ;;
+    esac
     # With CUDA, the GPU rescues mates of pairs unless --gpu-rescue off.
     case " $wgse_options " in
     *" --gpu-rescue off "*) if grep -q 'rescue_calls=' wgse.*.log; then exit 1; fi ;;
