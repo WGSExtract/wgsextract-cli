@@ -59,7 +59,7 @@ runs:
           if [ -z "$found" ]; then echo "No release asset matches $1" >&2; return 1; fi
           while IFS=$'\t' read -r name file; do
             if [ -e "$staged/$name" ]; then echo "Duplicate release asset $name" >&2; return 1; fi
-            cp "$file" "$staged/"
+            cp "$file" "$staged/" || return 1
             echo "$name"
           done <<< "$found"
         }

@@ -2,7 +2,6 @@
 
 import hashlib
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -14,8 +13,8 @@ ACTION = Path(__file__).resolve().parents[1] / (
 )
 
 pytestmark = pytest.mark.skipif(
-    sys.platform == "win32" or shutil.which("sha256sum") is None,
-    reason="the step runs in bash on an Ubuntu runner",
+    not sys.platform.startswith("linux"),
+    reason="the step uses GNU find and sha256sum on an Ubuntu runner",
 )
 
 
