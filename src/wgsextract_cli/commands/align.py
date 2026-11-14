@@ -39,7 +39,11 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.fastq_validation import check_primary_reads, validate_fastq
+from wgsextract_cli.core.fastq_validation import (
+    check_primary_reads,
+    fastq_input,
+    validate_fastq,
+)
 from wgsextract_cli.core.genome_library import pair_stem
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.native_aligners import (
@@ -212,7 +216,8 @@ def run_align(params: AlignParams) -> None:
     """The ``align`` operation (``api.align.align``)."""
     add_read_inputs(params.r1, params.r2)
     job = AlignJob.of(params)
-    if job.r1 and job.r1.lower().endswith((".fq", ".fastq", ".fq.gz", ".fastq.gz")):
+    if job.r1 and not _is_alignment_file(job.r1) and fastq_input(job.r1):
+        logging.info("Validating complete FASTQ input and exact paired read counts...")
         statistics = validate_fastq(job.r1, job.r2)
         job.input_reads = InputReads(*statistics)
         job.exact_reads = statistics.reads
@@ -2129,8 +2134,10 @@ def align_pbmm2(job: AlignJob) -> None:
     )
     cmd = ["pbmm2", "align", setup.ref, setup.r1, out_bam, "--sort"]
     cmd += ["--preset", preset, "--sample", sample, "-j", setup.threads]
-    if preset == "SUBREAD":
+    if preset == "SUBREAD" and job.exact_reads is None:
         cmd.append("--median-filter")
+    if job.exact_reads is not None:
+        cmd.append("--unmapped")
     if setup.r1.lower().endswith((".fastq", ".fastq.gz", ".fq", ".fq.gz")):
         cmd.extend(["--rg", f"@RG\\tID:{setup.stem}\\tSM:{sample}"])
     try:

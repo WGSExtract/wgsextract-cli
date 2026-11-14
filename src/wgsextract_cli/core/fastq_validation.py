@@ -1,35 +1,63 @@
 """Exact streaming FASTQ validation before publishing an alignment."""
 
 import gzip
+import zlib
 from collections.abc import Iterator
+from contextlib import nullcontext
 from itertools import zip_longest
+from pathlib import Path
 
 from wgsextract_cli.core.read_counts import FastqStatistics
 from wgsextract_cli.core.utils import WGSExtractError
 
 
-def _records(path: str) -> Iterator[tuple[bytes, int]]:
-    opener = gzip.open if path.lower().endswith(".gz") else open
+def fastq_input(path: str) -> bool:
+    """FASTA and FASTQ are distinguished by content, not filename suffix."""
+    if not Path(path).is_file():
+        raise WGSExtractError(f"Read input must be a regular file: {path}")
     try:
-        with opener(path, "rb") as stream:
-            while header := stream.readline():
-                sequence = stream.readline().rstrip(b"\r\n")
-                plus = stream.readline()
-                quality = stream.readline().rstrip(b"\r\n")
-                name = header[1:].split()
-                if (
-                    not header.startswith(b"@")
-                    or not name
-                    or not sequence
-                    or not plus.startswith(b"+")
-                    or len(sequence) != len(quality)
-                ):
-                    raise WGSExtractError(f"Invalid or truncated FASTQ: {path}")
-                token = name[0]
-                if token.endswith((b"/1", b"/2")):
-                    token = token[:-2]
-                yield token, len(sequence)
-    except (OSError, EOFError) as error:
+        with open(path, "rb") as raw:
+            compressed = raw.read(2) == b"\x1f\x8b"
+            raw.seek(0)
+            with (
+                gzip.GzipFile(fileobj=raw) if compressed else nullcontext(raw) as stream
+            ):
+                return stream.read(1) != b">"
+    except (OSError, EOFError, zlib.error) as error:
+        raise WGSExtractError(f"Cannot read complete FASTQ {path}: {error}") from error
+
+
+def _records(path: str) -> Iterator[tuple[bytes, int]]:
+    if not Path(path).is_file():
+        raise WGSExtractError(f"FASTQ input must be a regular file: {path}")
+    try:
+        with open(path, "rb") as raw:
+            compressed = raw.read(2) == b"\x1f\x8b"
+            raw.seek(0)
+            with (
+                gzip.GzipFile(fileobj=raw) if compressed else nullcontext(raw) as stream
+            ):
+                while header := stream.readline():
+                    name = header[1:].split()
+                    if not header.startswith(b"@") or not name:
+                        raise WGSExtractError(f"Invalid or truncated FASTQ: {path}")
+                    bases = 0
+                    while line := stream.readline():
+                        if line.startswith(b"+"):
+                            break
+                        bases += len(line.rstrip(b"\r\n"))
+                    if not line or not bases:
+                        raise WGSExtractError(f"Invalid or truncated FASTQ: {path}")
+                    qualities = 0
+                    while qualities < bases and (line := stream.readline()):
+                        qualities += len(line.rstrip(b"\r\n"))
+                    if qualities != bases:
+                        raise WGSExtractError(f"Invalid or truncated FASTQ: {path}")
+                    token = name[0]
+                    if token.endswith((b"/1", b"/2")):
+                        token = token[:-2]
+                    yield token, bases
+    except (OSError, EOFError, zlib.error) as error:
         raise WGSExtractError(f"Cannot read complete FASTQ {path}: {error}") from error
 
 

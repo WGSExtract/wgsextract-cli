@@ -33,7 +33,9 @@ def _align(tmp_path, ref, r1, r2=None):
     )  # fmt: skip
 
 
-@pytest.mark.parametrize("damage", ["short_r1", "short_r2", "names", "fastq", "gzip"])
+@pytest.mark.parametrize(
+    "damage", ["short_r1", "short_r2", "names", "fastq", "gzip", "unequal_bgz"]
+)
 def test_unequal_mates_and_truncated_reads_preserve_previous_alignment(
     tmp_path, reads, damage
 ):
@@ -43,9 +45,16 @@ def test_unequal_mates_and_truncated_reads_preserve_previous_alignment(
     original = bam.read_bytes()
     index = bam.with_suffix(".bam.bai")
     original_index = index.read_bytes()
-    if damage.startswith("short"):
+    if damage.startswith("short") or damage == "unequal_bgz":
         mate = r1 if damage == "short_r1" else r2
         mate.write_text("\n".join(mate.read_text().splitlines()[:-4]) + "\n")
+        if damage == "unequal_bgz":
+            compressed = r1.with_suffix(".data")
+            compressed.write_bytes(gzip.compress(r1.read_bytes()))
+            r1 = compressed
+            compressed = r2.with_suffix(".fastq.bgz")
+            compressed.write_bytes(gzip.compress(r2.read_bytes()))
+            r2 = compressed
         message = "read count mismatch"
     elif damage == "names":
         r2.write_text(r2.read_text().replace("@p2", "@other"))
@@ -66,8 +75,9 @@ def test_unequal_mates_and_truncated_reads_preserve_previous_alignment(
 
 
 @pytest.mark.parametrize("paired", [True, False])
+@pytest.mark.parametrize("wrapped", [False, True])
 def test_matched_and_single_end_reads_have_exact_primary_accounting(
-    tmp_path, reads, paired
+    tmp_path, reads, paired, wrapped
 ):
     ref, r1, r2, seq = reads
     # A chimeric read produces supplementary records; they are not extra reads.
@@ -77,6 +87,16 @@ def test_matched_and_single_end_reads_have_exact_primary_accounting(
     if paired:
         with r2.open("a") as out:
             out.write(f"@chimera/2\n{seq[2500:2600]}\n+\n{'I' * 100}\n")
+    if wrapped:
+        for path in (r1, r2):
+            lines = path.read_text().splitlines()
+            path.write_text(
+                "\n".join(
+                    "\n".join((line[:40], line[40:])) if index % 4 in (1, 3) else line
+                    for index, line in enumerate(lines)
+                )
+                + "\n"
+            )
     result = _align(tmp_path, ref, r1, r2 if paired else None)
     bam = next(output.path for output in result.outputs if output.role == "alignment")
     primary = int(
