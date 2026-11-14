@@ -1085,6 +1085,30 @@ of the time in SMEM seeding, a quarter in seed extension, a fifth in mate rescue
 and an eighth in suffix-array locate. With `--cuda` the CPU does the chaining,
 the sorts and reference fetches that remain, and spends a quarter as much time.
 
+From 0.14.0 the CPU backend also runs the NEON seed extension and reference
+unpacking on x86-64 (described above). On the same machine and tier at 8
+threads (`bench.sh` with `bwa:cpu`, four interleaved rounds, medians; both
+`wgse-bwa` builds with conda-forge's gcc and the package's flags), every run
+with upstream's records:
+
+| | Wall | CPU time | Peak RSS |
+| --- | ---: | ---: | ---: |
+| upstream BWA 0.7.19 (Bioconda) | 465.3 s | 3644 s | 5.2 GiB |
+| `wgse-bwa` 0.13.0 (CPU) | 402.0 s (−14%) | 3083 s | 5.2 GiB |
+| `wgse-bwa` 0.14.0 (CPU) | 350.3 s (−25%) | 2698 s | 5.2 GiB |
+
+The machine was shared, so the rounds varied: 0.14.0 took 10–26% less time
+than 0.13.0 in each. In the quietest round it took 290.1 s, against 392.9 s for
+0.13.0 and 454.2 s for upstream (−36%). Two other builds of 0.14.0 were within
+that noise in two rounds, against the package's build in the same rounds:
+built for x86-64-v3 throughout (+0.5% and −10%), and with jemalloc preloaded
+(−1.4% and −4%). The package keeps the baseline build,
+whose extension kernel already has its AVX2 copy, and the system allocator.
+Transparent huge pages are a host setting: this machine runs them `always`. On
+a Zen 4 VM, `always` instead of `madvise` cut `wgse-bwa`'s time by about 6% in
+one round (#671, the x86-64 CPU research). Set it in `/sys/kernel/mm/transparent_hugepage/enabled`, or
+with `transparent_hugepage=always` on the kernel command line.
+
 On the same machine and tier, bwa-mem3 0.16.0 `--compat=bwa-mem` on the CPU
 (as `wgse-bwa-mem3`, below) took 97.7 s and 761 s of CPU time, with the same records
 as BWA: faster than `wgse-bwa --cuda`. So `align` and `realign` on Linux run
