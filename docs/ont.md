@@ -548,6 +548,9 @@ wgsextract typing str --input sample.cram --ref hs38.fa.gz
   `repeat_unconfirmed`, count in `unconfirmed_repeats` rather than the normal
   range or `flagged_repeats`, and appear in the personal report's overview
   warnings.
+  If clipped reads independently suggest an unsized expansion, the unresolved
+  call also retains `repeat_outside_normal_range`, its `flagged_repeats` count,
+  and the clinical-confirmation warning.
 - LongTR has no threads; `--threads` runs chromosomes in parallel. It drops
   reads below mean base quality 30, which leaves most ONT R9.4.1 loci
   uncalled; R9 reads (named in the header) get an `r9_reads` warning

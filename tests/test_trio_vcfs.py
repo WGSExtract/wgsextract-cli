@@ -111,7 +111,13 @@ def test_trio_modes_report_their_inheritance_patterns(tmp_path):
     # The VCF path neither clusters nor leaves its merge behind.
     assert sorted(p.name for p in out.iterdir()) == [
         f"trio_{m}.vcf.gz{s}"
-        for m in ("comphet", "denovo", "recessive")
+        for m in (
+            "comphet",
+            "comphet_inconclusive",
+            "denovo",
+            "denovo_inconclusive",
+            "recessive",
+        )
         for s in ("", ".tbi")
     ]
 
@@ -284,10 +290,10 @@ def _many(start: int, gt: str) -> list[str]:
     [
         (5, 120, True),  # GQ-0-like reference calls: inherited variants slip in
         (99, 120, False),  # confident reference calls
-        (5, 99, False),  # too few calls to judge
+        (5, 99, True),  # even one weak reference cannot establish inheritance
     ],
 )
-def test_denovo_warns_when_parental_reference_calls_are_weak(
+def test_838_weak_parental_reference_is_inconclusive_not_denovo(
     tmp_path, caplog, mother_gq, count, warned
 ):
     child = [f"{100 + 10 * i} v{i} A G 0/1:99" for i in range(count)]
@@ -295,12 +301,15 @@ def test_denovo_warns_when_parental_reference_calls_are_weak(
     father = [f"{100 + 10 * i} . A . 0/0:99" for i in range(count)]
     with caplog.at_level(logging.WARNING):
         _run_trio(_trio(tmp_path, child, mother, father), tmp_path / "out")
-    assert len(_ids(tmp_path / "out" / "trio_denovo.vcf.gz")) == count
-    assert ("rest on a parent's reference call with GQ under 20" in caplog.text) == (
-        warned
+    assert len(_ids(tmp_path / "out" / "trio_denovo.vcf.gz")) == (
+        0 if warned else count
     )
+    assert len(_ids(tmp_path / "out" / "trio_denovo_inconclusive.vcf.gz")) == (
+        count if warned else 0
+    )
+    assert ("inconclusive inheritance" in caplog.text) == warned
     if warned:
-        assert f"{count:,} of these {count:,} de novo calls" in caplog.text
+        assert f"{count:,} denovo candidates" in caplog.text
 
 
 def test_parental_reference_block_starting_at_the_site_counts_as_reference(
@@ -310,14 +319,14 @@ def test_parental_reference_block_starting_at_the_site_counts_as_reference(
     files = _trio(
         tmp_path,
         child=["1000 denovo A G 0/1:99"],
-        mother=["1000 . A <NON_REF> 0/0:0|END=2000"],
+        mother=["1000 . A <NON_REF> 0/0:99|END=2000"],
         father=["1000 . A <NON_REF> 0/0:99|END=2000"],
     )
     _run_trio(files, tmp_path / "out")
     assert _ids(tmp_path / "out" / "trio_denovo.vcf.gz") == ["denovo"]
 
 
-def test_parent_without_a_record_counts_as_missing(tmp_path):
+def test_838_sparse_parent_vcf_is_inconclusive_in_denovo_and_comphet(tmp_path):
     files = _trio(
         tmp_path,
         child=["100 denovo A G 0/1:99", "200 comphet A G 0/1:99"],
@@ -326,8 +335,50 @@ def test_parent_without_a_record_counts_as_missing(tmp_path):
         father=["900 . C T 0/1:99"],
     )
     _run_trio(files, tmp_path / "out", "--mode", "all")
-    assert _ids(tmp_path / "out" / "trio_denovo.vcf.gz") == ["denovo"]
-    assert _ids(tmp_path / "out" / "trio_comphet.vcf.gz") == ["comphet"]
+    assert _ids(tmp_path / "out" / "trio_denovo.vcf.gz") == []
+    assert _ids(tmp_path / "out" / "trio_comphet.vcf.gz") == []
+    assert _ids(tmp_path / "out" / "trio_denovo_inconclusive.vcf.gz") == ["denovo"]
+    assert _ids(tmp_path / "out" / "trio_comphet_inconclusive.vcf.gz") == [
+        "denovo",
+        "comphet",
+    ]
+
+
+@pytest.mark.parametrize("gt", ["./.", "0/.", "./1", "0/0"])
+@pytest.mark.parametrize("gq", [".", "5", "99"])
+def test_838_missing_partial_or_unassessed_parent_is_reported_inconclusive(
+    tmp_path, gt, gq
+):
+    from wgsextract_cli import api
+    from wgsextract_cli.core import personal_report
+
+    child, mother, father = _trio(
+        tmp_path,
+        child=["100 candidate A G 0/1:99"],
+        mother=[f"100 . A G {gt}:{gq}"],
+        father=["100 . A . 0/0:99"],
+    )
+    out = tmp_path / "out"
+    result = api.vcf.trio(
+        api.VcfTrioParams(
+            proband=Path(child), mother=Path(mother), father=Path(father), outdir=out
+        )
+    )
+    confident = gt == "0/0" and gq == "99"
+    assert result.status == "ok"
+    assert _ids(out / "trio_denovo.vcf.gz") == (["candidate"] if confident else [])
+    unresolved = out / "trio_denovo_inconclusive.vcf.gz"
+    assert _ids(unresolved) == ([] if confident else ["candidate"])
+    if not confident:
+        assert result.metrics["denovo_inconclusive_variants"] == 1
+        assert "inconclusive_parent_genotypes" in {w.code for w in result.warnings}
+        query = subprocess.run(
+            [get_tool_path("bcftools"), "query", "-f", "[%GT ]\n", str(unresolved)],
+            capture_output=True, text=True, check=True,
+        ).stdout.split()  # fmt: skip
+        assert query == ["0/1", gt, "0/0"]
+        report = personal_report.build_report(out)
+        assert "inconclusive inheritance" in personal_report.render_markdown(report)
 
 
 def test_a_parents_other_allele_does_not_hide_a_denovo(tmp_path):
@@ -404,7 +455,9 @@ def test_gvcf_parents_reference_blocks_are_filled_in_at_the_childs_site(tmp_path
     mother = _vcf(
         tmp_path / "mother.vcf.gz", ["100 . T <*> 0/0:40|END=1000"], header=block
     )
-    father = _vcf(tmp_path / "father.vcf.gz", ["900 inh T A 0/1:50"])
+    father = _vcf(
+        tmp_path / "father.vcf.gz", ["500 . T . 0/0:50", "900 inh T A 0/1:50"]
+    )
     out = tmp_path / "out"
     _run_trio((child, mother, father), out, "--ref", str(ref))
 
@@ -415,6 +468,114 @@ def test_gvcf_parents_reference_blocks_are_filled_in_at_the_childs_site(tmp_path
         capture_output=True, text=True, check=True,
     ).stdout.split()  # fmt: skip
     assert genotypes[:2] == ["0/1", "0/0"]
+
+
+@pytest.mark.parametrize("genotype", ["./.:99", "0/.:99", "0/0:5", "0/0:."])
+def test_838_covering_gvcf_parent_block_preserves_inconclusive_state(
+    tmp_path, genotype
+):
+    from tests.htslib_helpers import write_fasta
+
+    ref = write_fasta(tmp_path / "ref.fa", {"chr1": "T" * 1200})
+    block = '##ALT=<ID=NON_REF,Description="Any other allele">\n'
+    child = _vcf(tmp_path / "child.vcf.gz", ["500 candidate T A 0/1:50"])
+    parents = [
+        _vcf(
+            tmp_path / f"{role}.vcf.gz",
+            [f"100 . T <NON_REF> {gt}|END=1000"],
+            header=block,
+        )
+        for role, gt in (("mother", genotype), ("father", "0/0:99"))
+    ]
+    out = tmp_path / "out"
+    _run_trio((child, *parents), out, "--ref", str(ref))
+    assert _ids(out / "trio_denovo.vcf.gz") == []
+    assert _ids(out / "trio_denovo_inconclusive.vcf.gz") == ["candidate"]
+
+
+def test_838_parent_without_gq_field_is_unassessed(tmp_path):
+    files = []
+    for role, gt in (("child", "0/1"), ("mother", "0/0"), ("father", "0/0")):
+        plain = tmp_path / f"{role}.vcf"
+        plain.write_text(
+            "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=100000>\n"
+            '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+            f"#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{role}\n"
+            f"chr1\t100\tcandidate\tA\tG\t50\tPASS\t.\tGT\t{gt}\n"
+        )
+        files.append(bgzip_index(plain))
+    out = tmp_path / "out"
+    _run_trio(files, out)
+    assert _ids(out / "trio_denovo.vcf.gz") == []
+    assert _ids(out / "trio_denovo_inconclusive.vcf.gz") == ["candidate"]
+
+
+@pytest.mark.parametrize("parent_filter", ["PASS", ".", "LowDP", "LowDP;LowGQ"])
+def test_838_filtered_parent_is_inconclusive_despite_high_gq(tmp_path, parent_filter):
+    files = []
+    for role, genotypes, ft in (
+        ("child", ("0/1", "0/1"), "PASS"),
+        ("mother", ("0/0", "0/1"), parent_filter),
+        ("father", ("0/0", "0/0"), "PASS"),
+    ):
+        plain = tmp_path / f"{role}.vcf"
+        plain.write_text(
+            HEADER
+            + '##FORMAT=<ID=FT,Number=1,Type=String,Description="Genotype filter">\n'
+            + f"#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{role}\n"
+            + "".join(
+                f"chr1\t{pos}\t{vid}\tA\tG\t50\tPASS\t.\tGT:GQ:FT\t{gt}:99:{ft}\n"
+                for pos, vid, gt in zip(
+                    (100, 200), ("denovo", "comphet"), genotypes, strict=True
+                )
+            )
+        )
+        files.append(bgzip_index(plain))
+    out = tmp_path / "out"
+    _run_trio(files, out, "--mode", "all")
+    passed = parent_filter in ("PASS", ".")
+    assert _ids(out / "trio_denovo.vcf.gz") == (["denovo"] if passed else [])
+    assert _ids(out / "trio_comphet.vcf.gz") == (["comphet"] if passed else [])
+    assert _ids(out / "trio_denovo_inconclusive.vcf.gz") == (
+        [] if passed else ["denovo", "comphet"]
+    )
+    assert _ids(out / "trio_comphet_inconclusive.vcf.gz") == (
+        [] if passed else ["denovo", "comphet"]
+    )
+
+
+@pytest.mark.parametrize("alias", ["original", "prepared", "hardlink"])
+def test_838_inconclusive_output_cannot_overwrite_a_trio_input(tmp_path, alias):
+    import os
+
+    files = list(
+        _trio(
+            tmp_path,
+            child=["100 candidate A G 0/1:99"],
+            mother=["100 . A G ./.:."],
+            father=["100 . A G ./.:."],
+        )
+    )
+    output = tmp_path / "trio_denovo_inconclusive.vcf.gz"
+    if alias == "prepared":
+        import gzip
+
+        plain = output.with_suffix("")
+        with gzip.open(files[0], "rt") as source:
+            plain.write_text(source.read())
+        files[0] = str(plain)
+    elif alias == "original":
+        Path(files[0]).rename(output)
+        Path(files[0] + ".tbi").rename(str(output) + ".tbi")
+        files[0] = str(output)
+    else:
+        os.link(files[1], output)
+    before = [Path(path).read_bytes() for path in files]
+    with pytest.raises(WGSExtractError, match="overwrite its input"):
+        _run_trio(files, tmp_path)
+    assert [Path(path).read_bytes() for path in files] == before
+    assert _ids(files[0] if alias != "prepared" else output) == ["candidate"]
+    assert not (tmp_path / "trio_denovo.vcf.gz").exists()
 
 
 @pytest.mark.parametrize(

@@ -24,7 +24,7 @@ import jsonschema
 import pytest
 from markdown_it import MarkdownIt
 
-from tests.htslib_helpers import needs_tools
+from tests.htslib_helpers import needs_htslib, needs_tools
 from wgsextract_cli import api
 from wgsextract_cli.core import gene_lists
 from wgsextract_cli.core import personal_report as pr
@@ -237,6 +237,7 @@ def sample(tmp_path: Path) -> Path:
         metrics={
             "cyp2d6_genotype": "*1/*2",
             "cyp2d6_filter": "PASS",
+            "cyp2d6_call_status": "resolved",
             "median_depth": 31.0,
         },
     )
@@ -558,6 +559,165 @@ def test_two_pathogenic_alts_of_one_call_are_biallelic(sample, calls, status):
     assert f"MUTYH {status.replace('_', ' ')}" in clinvar_section["summary"]
 
 
+# Public MUTYH P/LP variants on GRCh38 (issue #840's reproduction).
+MUTYH_CALLS = ((45329439, "T", "A"), (45330515, "C", "A"))
+
+
+def _phased_mutyh_report(
+    tmp_path: Path, calls: list[str], calls_from: str = "table"
+) -> tuple[dict, str]:
+    """Run vcf clinvar and report (CLI) on a one-sample GRCh38 VCF of MUTYH
+    calls, each "POS REF ALT FORMAT VALUES" (DP30, GQ99, AD15,15 added),
+    every ALT of them a ClinVar P/LP MUTYH record; MUTYH's report gene and
+    the HTML page's text. With ``calls_from`` "manifest" the report reads the
+    run's manifest findings (its confidence table gone), "truncated" too but
+    as if the manifest listed only some."""
+    header = "".join(
+        f"##FORMAT=<ID={tag},Number={number},Type={kind},Description=\"{tag}\">\n"
+        for tag, number, kind in (("GT", 1, "String"), ("PS", 1, "Integer"),
+                                  ("DP", 1, "Integer"), ("GQ", 1, "Integer"),
+                                  ("AD", "R", "Integer"))
+    )  # fmt: skip
+    rows = []
+    for call in calls:
+        pos, ref, alt, keys, values = call.split()
+        ad = ",".join(["15"] * (alt.count(",") + 2))
+        rows.append(
+            f"{pos} . {ref} {alt} 50 PASS . {keys}:DP:GQ:AD {values}:30:99:{ad}"
+        )
+    vcf = _vcf_on_1(tmp_path / "HG002.vcf.gz", header, rows)
+    info = "".join(
+        f'##INFO=<ID={tag},Number=.,Type=String,Description="{tag}">\n'
+        for tag in ("CLNSIG", "CLNDN", "GENEINFO")
+    )
+    known = {
+        (c.split()[0], c.split()[1], a) for c in calls for a in c.split()[2].split(",")
+    }
+    clinvar = _vcf_on_1(
+        tmp_path / "clinvar.vcf.gz",
+        info,
+        [f"{pos} {i} {ref} {alt} . . CLNSIG=Pathogenic;CLNDN=MAP;GENEINFO=MUTYH:4595"
+         for i, (pos, ref, alt) in enumerate(sorted(known))],
+    )  # fmt: skip
+    results, out = tmp_path / "clinvar", tmp_path / "report"
+    code, log = _cli("vcf", "clinvar", "--vcf-input", vcf, "--clinvar-file", clinvar,
+                     "--outdir", str(results))  # fmt: skip
+    assert code == 0, log
+    if calls_from != "table":
+        (manifest,) = results.glob("clinvar_pathogenic*.manifest.json")
+        document = json.loads(manifest.read_text())
+        document["outputs"] = [
+            o for o in document["outputs"] if o["role"] != "confidence_table"
+        ]
+        if calls_from == "truncated":
+            for entry in document["details"]["confidence"]:
+                entry["findings_truncated"] = True
+        manifest.write_text(json.dumps(document))
+    code, log = _cli("report", "--input", vcf, "--results", str(results),
+                     "--outdir", str(out))  # fmt: skip
+    assert code == 0, log
+    (document,) = out.glob("*_personal_report.json")
+    report = json.loads(document.read_text())
+    jsonschema.validate(report, pr.load_schema())
+    (mutyh,) = report["sections"]["clinvar"]["genes"]
+    page = _Page()
+    page.feed(next(out.glob("*_personal_report.html")).read_text())
+    return {**mutyh, "summary": report["sections"]["clinvar"]["summary"]}, " ".join(
+        page.text
+    )
+
+
+def _vcf_on_1(path: Path, header: str, rows: list[str]) -> str:
+    """A bgzipped GRCh38 VCF on contig 1; each row is space-separated from POS on."""
+    path.with_suffix("").write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=1,length=248956422>\n"
+        + header
+        + "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+        + "".join("1\t" + "\t".join(r.split()) + "\n" for r in rows)
+    )
+    run_command(["bgzip", "-f", str(path.with_suffix(""))])
+    run_command(["tabix", "-f", "-p", "vcf", str(path)])
+    return str(path)
+
+
+@needs_tools("bcftools", "bgzip", "tabix")
+@pytest.mark.parametrize(
+    ("second", "status", "phase", "shown"),
+    [
+        ("0|1", "carrier", "cis", "on the same copy (cis)"),
+        ("1|0", "biallelic", "trans", "on opposite copies (trans)"),
+    ],
+)
+def test_known_cis_and_trans_mutyh_calls_get_different_statuses(
+    tmp_path, second, status, phase, shown
+):
+    # Issue #840: both proven cis and proven trans MUTYH pairs showed
+    # "Possible biallelic"; phasing in one PS block settles which it is.
+    (first_pos, first_ref, first_alt), (pos, ref, alt) = MUTYH_CALLS
+    mutyh, page = _phased_mutyh_report(
+        tmp_path,
+        [f"{first_pos} {first_ref} {first_alt} GT:PS 0|1:45329439",
+         f"{pos} {ref} {alt} GT:PS {second}:45329439"],
+    )  # fmt: skip
+    assert (mutyh["heterozygous"], mutyh["status"], mutyh["phase"]) == (
+        2,
+        status,
+        phase,
+    )
+    assert f"MUTYH {status} ({phase})" in mutyh["summary"]
+    assert shown in mutyh["status_text"]
+    assert shown in page
+    assert "PS 45329439" in page
+
+
+@needs_tools("bcftools", "bgzip", "tabix")
+@pytest.mark.parametrize(
+    ("second", "calls_from", "status", "phase"),
+    [
+        ("0|1", "manifest", "carrier", "cis"),
+        ("1|0", "manifest", "biallelic", "trans"),
+        # Review of #877: more calls could break a cis carrier, not a trans pair.
+        ("0|1", "truncated", None, None),
+        ("1|0", "truncated", "biallelic", "trans"),
+    ],
+)
+def test_known_phase_survives_reading_the_manifest_findings(
+    tmp_path, second, calls_from, status, phase
+):
+    # Issue #840: without the confidence table the report reads the calls'
+    # phase sets from the run's manifest.
+    (first_pos, first_ref, first_alt), (pos, ref, alt) = MUTYH_CALLS
+    mutyh, _ = _phased_mutyh_report(
+        tmp_path,
+        [f"{first_pos} {first_ref} {first_alt} GT:PS 0|1:45329439",
+         f"{pos} {ref} {alt} GT:PS {second}:45329439"],
+        calls_from,
+    )  # fmt: skip
+    assert (mutyh["status"], mutyh["phase"]) == (status, phase)
+
+
+@needs_tools("bcftools", "bgzip", "tabix")
+@pytest.mark.parametrize(
+    ("calls", "phase"),
+    [
+        # Issue #840: pipes in different phase sets were phased separately.
+        (["45329439 T A GT:PS 0|1:100", "45330515 C A GT:PS 1|0:200"], "unknown"),
+        # A missing PS doesn't say which pipes were phased together ...
+        (["45329439 T A GT:PS 0|1:.", "45330515 C A GT:PS 1|0:."], "unknown"),
+        # ... nor does a VCF phased without PS (e.g. statistical phasing).
+        (["45329439 T A GT 0|1", "45330515 C A GT 1|0"], "unknown"),
+        # A partly called genotype doesn't show its other copy.
+        (["45329439 T A GT:PS 1|.:100", "45330515 C A GT:PS 0|1:100"], None),
+        # Two ALTs of a triploid call share a PS, but it keeps a reference copy.
+        (["45329439 T A,G GT:PS 0|1|2:100"], "unknown"),
+    ],
+)  # fmt: skip
+def test_phase_that_is_not_known_stays_possible_biallelic(tmp_path, calls, phase):
+    mutyh, _ = _phased_mutyh_report(tmp_path, calls)
+    assert (mutyh["status"], mutyh["phase"]) == ("possible_biallelic", phase)
+    assert "phase is unknown" in mutyh["status_text"]
+
+
 def test_a_split_tag_without_alt_numbers_proves_nothing(sample):
     # Review of #485: an input normalized elsewhere may carry a four-field
     # OLD_MULTIALLELIC (no ALT number); two het calls sharing its record part
@@ -632,6 +792,7 @@ def test_a_list_without_inheritance_counts_calls_but_gives_no_status(sample, tmp
             "homozygous": 1,
             "hemizygous": 0,
             "partial": 0,
+            "phase": None,
             "confidence": "high",
             "status": None,
             "status_text": "",
@@ -775,6 +936,20 @@ def test_pgx_and_lineage_labels_come_from_the_callers_evidence(sample):
     (mt,) = sections["lineage"]["findings"]
     assert (mt["value"], mt["confidence"]) == ("H1a", "high")
     assert any("H1a" in link["url"] for link in mt["links"])
+
+
+def test_cyp2d6_from_runs_before_issue_844_is_not_high_or_called_d6_copies(sample):
+    # Issue 844: older runs recorded Cyrius's CYP2D6+CYP2D7 Total_CN as
+    # cyp2d6_copy_number and no Call_info, so a unique match is unproven.
+    manifest = sample / "HG002_cyp2d6.manifest.json"
+    data = json.loads(manifest.read_text())
+    del data["metrics"]["cyp2d6_call_status"]
+    data["metrics"]["cyp2d6_copy_number"] = 4
+    manifest.write_text(json.dumps(data))
+    (cyp2d6,) = pr.build_report(sample)["sections"]["pharmacogenomics"]["findings"]
+    assert (cyp2d6["value"], cyp2d6["confidence"]) == ("*1/*2", "moderate")
+    assert cyp2d6["confidence_reasons"] == ["call_info_unknown"]
+    assert "CYP2D6+CYP2D7 copy number 4" in cyp2d6["detail"]
 
 
 def test_pharmcat_genes_take_their_weakest_labelled_call(sample):
@@ -1262,6 +1437,72 @@ def test_report_from_an_alignment_needs_no_samtools(sample, monkeypatch):
     assert code == 0, out
     result = api.report.build(api.ReportParams(input=cram, outdir=sample / "out2"))
     assert result.exit_code == 0
+
+
+@needs_htslib
+def test_838_cli_proband_inconclusive_warning_survives_selected_input_report(tmp_path):
+    paths = {}
+    for role, gt in (("child", "0/1"), ("mother", "./."), ("father", "./.")):
+        path = tmp_path / f"{role}.vcf"
+        path.write_text(
+            "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000>\n"
+            '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+            f"#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{role}\n"
+            f"chr1\t100\tcandidate\tA\tG\t50\tPASS\t.\tGT\t{gt}\n"
+        )
+        paths[role] = str(path)
+    code, output = _cli(
+        "vcf",
+        "trio",
+        "--proband",
+        paths["child"],
+        "--mother",
+        paths["mother"],
+        "--father",
+        paths["father"],
+        "--outdir",
+        str(tmp_path),
+    )
+    assert code == 0, output
+    reportdir = tmp_path / "report"
+    code, output = _cli("report", "--input", paths["child"], "--outdir", str(reportdir))
+    assert code == 0, output
+    document = json.loads((reportdir / "child_personal_report.json").read_text())
+    overview = document["sections"]["overview"]
+    assert "inconclusive_parent_genotypes" in {w["code"] for w in overview["warnings"]}
+    assert (
+        "inconclusive inheritance"
+        in (reportdir / "child_personal_report.md").read_text()
+    )
+    # Family members are not merged into the child's sample identity.
+    for role in ("mother", "father"):
+        report = pr.build_report(tmp_path, input_file=Path(paths[role]))
+        assert not report["sections"]["overview"]["sources"]
+
+
+def test_838_failed_trio_alone_does_not_fail_sample_overview(tmp_path):
+    child = _touch(tmp_path / "child.vcf")
+    _manifest(
+        tmp_path, "trio", "vcf trio", inputs=((child, "proband"),), status="failed"
+    )
+    overview = pr.build_report(tmp_path, input_file=child)["sections"]["overview"]
+    assert overview["status"] == "not_run"
+    assert not overview.get("error")
+
+
+def test_issue_846_failed_str_does_not_fail_sample_overview(tmp_path):
+    alignment = _touch(tmp_path / "sample.bam")
+    _manifest(
+        tmp_path,
+        "str",
+        "typing str",
+        inputs=((alignment, "alignment"),),
+        status="failed",
+    )
+    overview = pr.build_report(tmp_path, input_file=alignment)["sections"]["overview"]
+    assert overview["status"] == "not_run"
+    assert not overview.get("error")
+    assert "section_failed" not in {w["code"] for w in overview["warnings"]}
 
 
 def _overview_contamination(report: dict) -> tuple[Any, set[str]]:

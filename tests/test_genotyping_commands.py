@@ -573,11 +573,11 @@ CYRIUS_RESULT = {
     "Total_CN_raw": 3.04,
     "Spacer_CN_raw": 2.01,
     "Variants_called": ["g.42126611C>G", "g.42127941G>A"],
-    "CNV_group": "dup",
+    "CNV_group": "cn3",
     "Genotype": "*1/*2x2",
     "Filter": "PASS",
     "Raw_star_allele": ["*1_*2_*2"],
-    "Call_info": "pass_",
+    "Call_info": "unique_match",
     "Exon9_CN": 3,
     "CNV_consensus": "dup",
     "d67_snp_call": "3,3",
@@ -632,26 +632,23 @@ def test_cyp2d6_runs_cyrius_on_the_input_and_writes_the_pharmcat_call(
         "NA12878.cyrius.tsv.manifest.json",
     }
     assert (out / "NA12878.cyp2d6.pharmcat.tsv").read_text() == "CYP2D6\t*1/*2x2\n"
-    assert (
-        "CYP2D6: *1/*2x2 (filter PASS, 3 copies; raw 3.04; median depth 31.2x)"
-        in caplog.text
-    )
+    assert "CYP2D6: *1/*2x2, resolved" in caplog.text
     assert result.metrics["cyp2d6_genotype"] == "*1/*2x2"
-    assert result.metrics["cyp2d6_copy_number"] == 3
+    assert result.metrics["cyp2d6_call_status"] == "resolved"
 
 
 @pytest.mark.parametrize(
     ("result", "pharmcat", "warning"),
     [
         (
-            {"Genotype": "*1/*4x2", "Filter": "LowQ_high_CN", "Total_CN": 4},
-            "CYP2D6\t*1/*4x2\n",
-            "4 or more copies",
+            {"Genotype": "*1/*4x5", "Filter": "LowQ_high_CN", "Total_CN": 8},
+            None,
+            "about 6 or more CYP2D6 copies; CYP2D6+CYP2D7 copy number 8",
         ),
         (
             {"Genotype": "*1/*4;*4/*10", "Filter": "More_than_one_possible_genotype"},
             None,
-            "couldn't settle on one genotype (More_than_one_possible_genotype)",
+            "couldn't settle on one genotype (More_than_one_possible_genotype;",
         ),
         (
             {"Genotype": None, "Filter": None, "Total_CN": None, "Median_depth": 8.4},
@@ -670,6 +667,78 @@ def test_cyp2d6_writes_only_calls_cyrius_stands_behind(
     run_wgsextract("typing", "cyp2d6", "-i", path)
     assert (stale.read_text() if stale.exists() else None) == pharmcat
     assert warning in caplog.text
+
+
+# Issue 844: Cyrius's Total_CN (CYP2D6+CYP2D7) was reported as CYP2D6 copies,
+# and a PASS call it picked from several candidates went to PharmCAT as if
+# unique. HG00096's published computational call, not laboratory truth.
+HG00096_AMBIGUOUS = {
+    "Genotype": "*1/*4",
+    "Filter": "PASS",
+    "Total_CN": 4,
+    "CNV_group": "cn2",
+    "Call_info": "pick_common_allele",
+    "Raw_star_allele": ["*1_*4", "*39_*4.009"],
+}
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Cyrius is not supported on Windows"
+)
+@pytest.mark.parametrize(
+    ("fields", "status", "value", "confidence", "outside_call"),
+    [
+        (
+            HG00096_AMBIGUOUS,
+            "unresolved",
+            "unresolved (Cyrius: *1/*4)",
+            "low",
+            None,
+        ),
+        (
+            {
+                **HG00096_AMBIGUOUS,
+                "Call_info": "unique_match",
+                "Raw_star_allele": ["*1_*4"],
+            },
+            "resolved",
+            "*1/*4",
+            "high",
+            "CYP2D6\t*1/*4\n",
+        ),
+    ],  # fmt: skip
+)
+def test_cyp2d6_ambiguous_cyrius_pick_is_unresolved_not_exported(
+    tmp_path, cyrius, capsys, fields, status, value, confidence, outside_call
+):
+    path = bam(tmp_path / "NA12878.bam", pair("p", "chr22", 42_127_000))
+    cyrius.set_result(**fields)
+    main(["typing", "cyp2d6", "-i", path, "--config", str(tmp_path / "config.toml")])
+
+    pharmcat = tmp_path / "NA12878.cyp2d6.pharmcat.tsv"
+    assert (pharmcat.read_text() if pharmcat.exists() else None) == outside_call
+    assert (
+        (tmp_path / "NA12878.cyrius.tsv").read_text().endswith("NA12878\t*1/*4\tPASS\n")
+    )
+    manifest = json.loads((tmp_path / "NA12878.cyrius.tsv.manifest.json").read_text())
+    metrics = manifest["metrics"]
+    assert metrics["cyp2d6_call_status"] == status
+    assert metrics["cyp2d6_call_info"] == fields["Call_info"]
+    assert metrics["cyp2d6_raw_star_alleles"] == ";".join(fields["Raw_star_allele"])
+    assert metrics["cyp2d6_cyp2d7_copy_number"] == 4
+    assert metrics["cyp2d6_cnv_group"] == "cn2"
+    assert "cyp2d6_copy_number" not in metrics
+    assert "CYP2D6+CYP2D7 copy number 4" in capsys.readouterr().err
+    ambiguous = [w for w in manifest["warnings"] if w["code"] == "genotype_ambiguous"]
+    assert len(ambiguous) == (status == "unresolved")
+
+    (finding,) = build_report(tmp_path)["sections"]["pharmacogenomics"]["findings"]
+    assert (finding["value"], finding["confidence"]) == (value, confidence)
+    assert "CYP2D6+CYP2D7 copy number 4" in finding["detail"]
+    assert "4 copies" not in finding["detail"]
+    if status == "unresolved":
+        assert finding["confidence_reasons"] == ["genotype_unresolved"]
+        assert "candidates *1_*4;*39_*4.009" in finding["detail"]
 
 
 def test_cyp2d6_names_three_copies_as_pharmcat_does(tmp_path, cyrius):
@@ -1029,8 +1098,20 @@ def test_str_all_normal_has_no_warnings(tmp_path, eh, caplog):
         ),
     ],
 )
+@pytest.mark.parametrize("clipped", [False, True], ids=["unclipped", "clipped"])
 def test_issue_846_all_weak_fxn_and_incomplete_recessive_typing_output(
-    tmp_path, monkeypatch, eh, locus, alleles, reads, coverage, sex, status, uncertain
+    tmp_path,
+    monkeypatch,
+    eh,
+    caplog,
+    locus,
+    alleles,
+    reads,
+    coverage,
+    sex,
+    status,
+    uncertain,
+    clipped,
 ):
     """Keep caller sizes, but never diagnose from all-weak or missing copies."""
     template = tmp_path / "strkit.json"
@@ -1064,7 +1145,14 @@ pathlib.Path(opt("--vcf")).write_text("##fileformat=VCFv4.2\\n")
     )
     catalog = tmp_path / "strkit.bed"
     catalog.write_text(f"chr1\t1000\t1060\tID={locus};MOTIF=GAA\n")
-    path = bam(tmp_path / "s.bam", pair("p", "chr1", 1000))
+    caplog.set_level(logging.INFO)
+    alignments = pair("p", "chr1", 1000)
+    if clipped:
+        alignments += [
+            f"clip{i}\t0\tchr1\t1001\t60\t100S100M\t*\t0\t0\t{SEQ * 2}\t{'I' * 200}"
+            for i in range(3)
+        ]
+    path = bam(tmp_path / "s.bam", alignments)
     out = tmp_path / "out"
     result = api.genotyping.repeats(
         api.TypingStrParams(
@@ -1083,10 +1171,19 @@ pathlib.Path(opt("--vcf")).write_text("##fileformat=VCFv4.2\\n")
     assert row["status"].split(" (")[0] == status
     assert result.metrics["unconfirmed_repeats"] == int(uncertain)
     if uncertain:
-        assert result.metrics["flagged_repeats"] == 0
-        [warning] = result.warnings
-        assert warning.code == "repeat_unconfirmed"
+        assert result.metrics["flagged_repeats"] == int(clipped)
+        warnings = {w.code: w for w in result.warnings}
+        assert set(warnings) == (
+            {"repeat_unconfirmed", "repeat_outside_normal_range"}
+            if clipped
+            else {"repeat_unconfirmed"}
+        )
+        warning = warnings["repeat_unconfirmed"]
         assert locus in warning.message and "unresolved" in warning.message
+        assert "0 of 1 disease repeats" in caplog.text
+        if clipped:
+            assert "3 reads clipped" in row["status"]
+            assert "isn't a diagnosis" in caplog.text
         report_warnings = build_report(out)["sections"]["overview"]["warnings"]
         assert any(
             w["code"] == "repeat_unconfirmed" and "unresolved" in w["message"]

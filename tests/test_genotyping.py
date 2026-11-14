@@ -45,21 +45,29 @@ def test_cyrius_genome_follows_build_and_contig_names():
 
 
 @pytest.mark.parametrize(
-    ("genotype", "filter_", "outside_call"),
+    ("genotype", "filter_", "call_info", "outside_call"),
     [
-        ("*1/*2x2", "PASS", "*1/*2x2"),
-        ("*1/*4;*4/*10", "More_than_one_possible_genotype", None),
-        ("None", "Not_assigned_to_haplotypes", None),
-    ],
+        ("*1/*2x2", "PASS", "unique_match", "*1/*2x2"),
+        # Issue 844: a PASS pick among candidates, or Cyrius's LowQ_high_CN.
+        ("*1/*4", "PASS", "pick_common_allele", None),
+        ("*1/*4x5", "LowQ_high_CN", "unique_match", None),
+        (
+            "*1/*4;*4/*10",
+            "More_than_one_possible_genotype",
+            "more_than_one_match",
+            None,
+        ),
+        ("None", "Not_assigned_to_haplotypes", "unique_match", None),
+    ],  # fmt: skip
 )
 def test_only_settled_cyrius_calls_go_to_pharmcat(
-    tmp_path, genotype, filter_, outside_call
+    tmp_path, genotype, filter_, call_info, outside_call
 ):
     path = tmp_path / "s.cyrius.json"
     path.write_text(
         json.dumps(
-            {"s": {"Genotype": genotype, "Filter": filter_, "Total_CN": 3,
-                   "Total_CN_raw": 3.02, "Median_depth": 31.0}}
+            {"s": {"Genotype": genotype, "Filter": filter_, "Call_info": call_info,
+                   "Total_CN": 3, "Total_CN_raw": 3.02, "Median_depth": 31.0}}
         )
     )  # fmt: skip
     assert parse_cyrius(str(path)).outside_call == outside_call

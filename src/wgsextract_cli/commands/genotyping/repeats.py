@@ -341,6 +341,8 @@ def write_summary(
                 flagged.append(("repeat_unavailable", variant_id, line))
             elif status.startswith("unresolved"):
                 flagged.append(("repeat_unconfirmed", variant_id, line))
+                if call.clipped_reads:
+                    flagged.append(("repeat_outside_normal_range", variant_id, line))
             elif status.removesuffix(note) not in ("normal", "-", "no call"):
                 flagged.append(("repeat_outside_normal_range", variant_id, line))
             elif note:
@@ -473,10 +475,13 @@ def run_str(params: TypingStrParams, *, debug: bool = False) -> None:
     flagged = [w for w in warnings if w[0] == "repeat_outside_normal_range"]
     classified = sum(1 for c in calls if c.variant_id in THRESHOLDS and c.alleles)
     uncertain = sum(w[0] == "repeat_unconfirmed" for w in warnings)
-    logging.info(
-        f"{classified - len(flagged) - uncertain} of {classified} disease repeats are in the "
-        "normal range."
+    non_normal = {locus for code, locus, _ in warnings if code != "repeat_unavailable"}
+    normal = sum(
+        1
+        for c in calls
+        if c.variant_id in THRESHOLDS and c.alleles and c.variant_id not in non_normal
     )
+    logging.info(f"{normal} of {classified} disease repeats are in the normal range.")
     result = current_result()
     result.set_reference(reference)
     result.add_output(summary, "repeat_summary")
