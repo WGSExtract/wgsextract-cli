@@ -8,7 +8,7 @@ on:
     branches: [ main ]
     paths:
       - ".github/workflows/gui-tauri-installer.yml"
-      - ".github/actions/setup-node/**"
+      - ".github/actions/setup-gui/**"
       - ".github/actions/download-cache/**"
       - "gui/examples/**"
       - "gui/app/**"
@@ -43,20 +43,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: ./.github/actions/setup-node
-
-      - name: Install dependencies
-        run: npm ci
-        working-directory: gui/app
-
-      - name: Cache Cargo downloads (not the redundant multi-GB target tree)
-        uses: ./.github/actions/download-cache
+      - name: Set up the app toolchain
+        uses: ./.github/actions/setup-gui
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gui/app/web/packagers/tauri/Cargo.lock') }}
+          rust: "true"
 
       - name: Build Tauri installer
         shell: pwsh
