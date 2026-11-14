@@ -5,13 +5,48 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from datetime import datetime
 from typing import Any
 
 
-def checks_ready(checks: list[dict[str, Any]], *, run_id: int | None = None) -> bool:
+def checks_ready(
+    checks: list[dict[str, Any]],
+    *,
+    run_id: int | None = None,
+    runs: list[dict[str, Any]] | None = None,
+) -> bool:
+    if runs is not None:
+        latest: dict[int, dict[str, Any]] = {}
+        known = {int(run["id"]): run for run in runs}
+        for metadata in runs:
+            workflow = int(metadata["workflow_id"])
+            if workflow not in latest or int(metadata["id"]) > int(
+                latest[workflow]["id"]
+            ):
+                latest[workflow] = metadata
+        # Do not fall back to an old pass while a replacement has no jobs yet.
+        if any(
+            run["status"] != "completed"
+            or run["conclusion"] not in {"success", "skipped", "neutral"}
+            for run in latest.values()
+            if run["path"] != ".github/workflows/pr_ci.yml"
+        ):
+            return False
+        current_ids = {int(run["id"]) for run in latest.values()}
+        filtered = []
+        for check in checks:
+            match = re.search(r"/actions/runs/(\d+)(?:/|$)", str(check.get("link", "")))
+            if match and check.get("workflow") != "PR area checks":
+                check_run = int(match[1])
+                if check_run not in known:
+                    return False
+                if check_run not in current_ids:
+                    continue
+            filtered.append(check)
+        checks = filtered
     if (
         run_id is None
         or not checks
@@ -64,6 +99,8 @@ def latest_ready_run(
     head_sha: str,
     ready_since: str,
     pr_number: int,
+    head_branch: str | None = None,
+    head_repository: str | None = None,
 ) -> int | None:
     titles = {
         f"PR area checks / {action} / ready"
@@ -80,7 +117,16 @@ def latest_ready_run(
         and run["display_title"] in titles
         and datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
         >= datetime.fromisoformat(ready_since.replace("Z", "+00:00"))
-        and any(pr["number"] == pr_number for pr in run["pull_requests"])
+        and (
+            any(pr["number"] == pr_number for pr in run["pull_requests"])
+            or (
+                not run["pull_requests"]
+                and head_branch is not None
+                and head_repository is not None
+                and run.get("head_branch") == head_branch
+                and run.get("head_repository", {}).get("full_name") == head_repository
+            )
+        )
     ]
     if not candidates:
         return None
@@ -94,13 +140,15 @@ def github_json(*arguments: str) -> Any:
     return json.loads(subprocess.check_output(["gh", *arguments], text=True))
 
 
-def current_ready_run(pr_number: int, repository: str) -> int | None:
+def current_ready_run(
+    pr_number: int, repository: str
+) -> tuple[int | None, list[dict[str, Any]]]:
     owner, name = repository.split("/")
     query = """
     query($owner:String!, $name:String!, $number:Int!) {
       repository(owner:$owner, name:$name) {
         pullRequest(number:$number) {
-          headRefOid isDraft createdAt
+          headRefOid headRefName headRepository { nameWithOwner } isDraft createdAt
           timelineItems(last:1, itemTypes:[READY_FOR_REVIEW_EVENT]) {
             nodes { ... on ReadyForReviewEvent { id createdAt } }
           }
@@ -122,25 +170,44 @@ def current_ready_run(pr_number: int, repository: str) -> int | None:
     )
     pr = github_json(*arguments)["data"]["repository"]["pullRequest"]
     if not pr or pr["isDraft"]:
-        return None
+        return None, []
     events = pr["timelineItems"]["nodes"]
     ready_since = events[-1]["createdAt"] if events else pr["createdAt"]
     pages = github_json(
         "api",
         "--paginate",
         "--slurp",
-        f"repos/{repository}/actions/workflows/pr_ci.yml/runs"
-        f"?event=pull_request&head_sha={pr['headRefOid']}&per_page=100",
+        f"repos/{repository}/actions/runs?head_sha={pr['headRefOid']}&per_page=100",
     )
+    runs = [
+        run
+        for page in pages
+        for run in page["workflow_runs"]
+        if run["head_sha"] == pr["headRefOid"]
+        and run["event"] != "merge_group"
+        and (
+            run["event"] != "pull_request"
+            or any(item["number"] == pr_number for item in run["pull_requests"])
+            # GitHub can omit PR associations even for same-repository PR runs.
+            or (
+                not run["pull_requests"]
+                and run.get("head_branch") == pr["headRefName"]
+                and run.get("head_repository", {}).get("full_name")
+                == pr["headRepository"]["nameWithOwner"]
+            )
+        )
+    ]
     run_id = latest_ready_run(
-        [run for page in pages for run in page["workflow_runs"]],
+        runs,
         head_sha=pr["headRefOid"],
         ready_since=ready_since,
         pr_number=pr_number,
+        head_branch=pr.get("headRefName"),
+        head_repository=(pr.get("headRepository") or {}).get("nameWithOwner"),
     )
     if github_json(*arguments)["data"]["repository"]["pullRequest"] != pr:
-        return None
-    return run_id
+        return None, []
+    return run_id, runs
 
 
 def main() -> int:
@@ -156,7 +223,7 @@ def main() -> int:
             args.repo
             or github_json("repo", "view", "--json", "nameWithOwner")["nameWithOwner"]
         )
-        run_id = current_ready_run(args.pr, repository)
+        run_id, runs = current_ready_run(args.pr, repository)
     except (
         subprocess.CalledProcessError,
         OSError,
@@ -166,7 +233,7 @@ def main() -> int:
     ) as exc:
         print(f"Cannot establish current ready-run validation: {exc}", file=sys.stderr)
         return 1
-    if not checks_ready(checks, run_id=run_id):
+    if not checks_ready(checks, run_id=run_id, runs=runs):
         print(
             "Checks are incomplete/failing or lack validation for the latest ready run.",
             file=sys.stderr,
