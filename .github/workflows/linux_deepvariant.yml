@@ -20,6 +20,8 @@ on:
       - "!**/*.md"
   push:
     branches: [main]
+    paths-ignore:
+      - "**/*.md"
   schedule:
     - cron: "47 6 * * *"
   workflow_dispatch:

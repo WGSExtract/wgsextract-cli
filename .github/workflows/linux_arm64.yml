@@ -4,6 +4,8 @@ name: CI Linux ARM64
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**/*.md"
   workflow_call:
   schedule:
     - cron: "11 6 * * *"
