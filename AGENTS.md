@@ -76,11 +76,19 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
   - Iterate in the comments. Implement only after the issue's author, or an owner, explicitly approves (for example "go ahead").
 - **Execution.**
   - Each issue gets its own branch and worktree. Implementer sub-agents get complete context.
-  - An independent review agent reviews the PR.
+  - Open PRs as drafts (`gh pr create --draft`). Before `gh pr ready`, run an independent review agent, fix its findings, run `pixi run lint` and the relevant local tests/type checks, and self-review the diff against AGENTS.md.
+  - Mark ready only when local review and checks pass: readiness triggers Copilot review and the area-selected full matrix. Drafts retain documentation checks, run lint/routing tests, and run fast product unit tests for CLI changes; they skip the CLI matrix and Install Lab.
+  - Keep Copilot review on readiness plus explicit re-requests. Ruleset `15885247` already has `review_on_push=false` and `review_draft_pull_requests=false` (checked 2026-11-13); don't change repository settings yourself.
   - The PR uses `Fixes #N` and lands under the babysitting rules below.
   - Heavy compute goes through the host's resource coordinator, short timing runs included; running outside it starves everyone else's queue. On a host without one, check the load first and keep to a share that leaves room for others.
   - Agents work only in their own worktree. The main checkout stays on `main`; never check out a branch there, reviews included.
   - Validation evidence goes in `out/` and is summarised on the issue or PR.
+- **Agent budget.** Keep at most **two active implementers per machine**; queue the rest. Start a fresh agent per PR/task, not unrelated follow-up messages to an old agent. Retire it at its stop rule or handoff.
+  - Pass paths, commit IDs, acceptance criteria and a bounded objective; point to files instead of pasting histories, logs or instruction files.
+  - Write `out/<issue>/handoff.md` with state, commits, checks/log paths, blockers and next action. Before retiring a waiting agent, get the supervisor's acknowledgement of watcher/lease ownership and the resume trigger.
+  - Wait outside model context: use a background shell blocking on `gh run watch RUN --exit-status`, a resource lease or a result-file watcher, with completion/failure notification. Don't loop over status reads or capped wait tools; keep attached watchers owned until completion or explicitly adopted.
+  - Implementers hand CI to the supervisor/watcher after pushing; wake a fresh, narrowly scoped agent only for actionable failures or threads. Supervisors message only the responsible active agent, never broadcast to idle agents.
+  - Record weekly tokens/AIU per merged PR, context per call, threads and pushes per PR in `out/efficiency/`. Baselines: #763 (review churn), 3–5 threads/PR and ~125 runner-minutes/push; #765 (agent token waste), M1 Pro prompt tokens grew ~6× at ~30 PRs/day and lin-big agents reached 410–434k input tokens/call.
 - **Long runs (whole genomes, or roughly an hour or more).** Lessons from #431 (`out/431/retro.md`):
   - **Size first:** run 1–2% of the data, record wall time, peak memory, temp disk and output size, and post the scaled-up table on the issue before choosing a host.
   - **Build what's missing first:** if the slice shows the job won't fit or can't resume, fix that as its own PR on small data before starting the full run.
@@ -102,6 +110,9 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
 
 - Fix review comments that are legitimate, then resolve their threads. Reply `(AI): Reason: ...` to the ones you decline, then resolve those too.
 - Fix real issues that CI finds, or fix CI itself when the failure is in CI rather than in the code.
+- Collect all open review threads, fix or decline them together, run local checks, then push **one batch per review round**, not one push per thread. Resolve handled threads only after the fixes are pushed or the refusal is posted.
+- Notify the owning agent when new threads appear; handle them within one hour or hand off explicitly. Transfer CI waits to the supervisor/watcher, not an implementer's polling loop.
+- Before enqueueing, require the current head's latest non-draft area run after the latest ready transition, including its passing `required` check: `gh pr checks "$PR" --json bucket,name,workflow,link | python scripts/pr_checks_ready.py --pr "$PR"`. Verify reviews and mergeability separately.
 - Push follow-up commits and wait for CI to rerun. For a suspected flake or lost runner, rerun only the failed jobs (`gh run rerun RUN --failed`), not the whole run or a new push.
 - Don't update a branch just because it's BEHIND main. Update it only when it's DIRTY (conflicts) or main changed the same area (generated files, the help budget); the merge queue tests it against the latest main anyway.
-- Once the PR is in a passable state, land it through the merge queue: `gh pr merge PR --auto --squash --match-head-commit SHA`. Passable means every check is green (the advisory macOS, Windows, ARM64, smoke and Install Lab jobs too, or their failures explained), no material threads are unresolved, and the local checks pass. The queue reruns only the `required` check; if it drops the PR, fix or rerun the failure and enqueue again. Never bypass the queue.
+- Once passable, enqueue with `gh pr merge PR --squash --auto --match-head-commit SHA`, not a direct merge. Passable means every check is green (the advisory macOS, Windows, ARM64, smoke and Install Lab jobs too, or their failures explained), no material threads are unresolved, and local checks pass. The queue retests the `required` set against latest main, not the PR-only readiness gate; if it drops the PR, fix or rerun the failure and enqueue again. Never bypass the queue.

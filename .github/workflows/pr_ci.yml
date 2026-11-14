@@ -1,8 +1,9 @@
 name: PR area checks
+run-name: PR area checks / ${{ github.event.action }} / ${{ github.event_name == 'merge_group' && 'queue' || github.event.pull_request.draft && 'draft' || 'ready' }}
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, labeled, unlabeled]
   # The merge queue retests only the required set below against the latest main.
   merge_group:
 
@@ -26,7 +27,10 @@ jobs:
       native: ${{ steps.diff.outputs.native }}
       site: ${{ steps.diff.outputs.site }}
       install: ${{ steps.diff.outputs.install }}
+      fast: ${{ steps.diff.outputs.fast }}
+      draft_cli: ${{ steps.diff.outputs.draft_cli }}
       python_files: ${{ steps.diff.outputs.python_files }}
+      routed: ${{ steps.diff.outputs.routed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -39,11 +43,49 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
           FORCE_INSTALL: ${{ contains(github.event.pull_request.labels.*.name, 'run-install-lab') }}
           LABEL_EVENT: ${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
+          DRAFT: ${{ github.event.pull_request.draft }}
         run: |
+          set -euo pipefail
           flags=()
           if [ "$FORCE_INSTALL" = true ]; then flags+=(--force-install-lab); fi
           if [ "$LABEL_EVENT" = true ]; then flags+=(--label-event); fi
+          if [ "$DRAFT" = true ]; then flags+=(--draft); fi
           python3 scripts/ci_changes.py --base "$BASE" --head "$HEAD" "${flags[@]}" --output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  draft-fast:
+    name: Draft lint and fast tests
+    needs: changes
+    if: needs.changes.outputs.fast == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: lint
+          scope: lint
+      - name: Lint, workflow policy and type checks
+        run: |
+          pixi run -e lint -x ruff check .
+          pixi run -e lint -x python scripts/validate_site_sources.py
+          pixi run -e lint -x actionlint
+          pixi run -e lint -x python scripts/validate_github_actions.py
+          pixi run -e lint -x mypy src/wgsextract_cli
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Fast routing and workflow regressions
+        run: |
+          python -m pip install --quiet -e . pytest jsonschema
+          mkdir -p out
+          python -m pytest -q tests/test_ci_changes.py tests/test_github_actions_policy.py --basetemp=out/draft-tests
+
+      - name: Fast product unit tests for CLI changes
+        if: needs.changes.outputs.draft_cli == 'true'
+        run: |
+          python -m pytest -q tests/test_microarray_vendor_formats.py tests/test_table_writer.py --basetemp=out/draft-unit-tests
 
   docs:
     name: Documentation freshness${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
@@ -130,7 +172,7 @@ jobs:
     uses: ./.github/workflows/gitleaks.yml
 
   native-smoke:
-    name: Native CLI smoke${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
+    name: Native CLI smoke
     needs: changes
     if: needs.changes.outputs.native == 'true'
     runs-on: ubuntu-latest
@@ -149,7 +191,7 @@ jobs:
           wgsextract deps check --help
 
   pages:
-    name: Pages source checks${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
+    name: Pages source checks
     needs: changes
     if: needs.changes.outputs.site == 'true'
     runs-on: ubuntu-latest
@@ -165,13 +207,40 @@ jobs:
           python3 gui/scripts/build_site.py
           test -d gui/mockups
 
-  # The one required check for main's ruleset and merge queue (#758). Path
+  ready-gate:
+    name: Ready PR area checks${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
+    needs: [changes, required, draft-fast, docs, python-lint, ubuntu, macos, windows, arm64, smoke, install, native-smoke, pages]
+    if: >-
+      ${{
+        always() &&
+        github.event_name == 'pull_request' &&
+        !github.event.pull_request.draft &&
+        !contains(fromJSON('["labeled","unlabeled"]'), github.event.action)
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Require complete routing and successful selected checks
+        env:
+          ROUTING_RESULT: ${{ needs.changes.result }}
+          ROUTED: ${{ needs.changes.outputs.routed }}
+          CHECKS_FAILED: ${{ contains(needs.*.result, 'failure') }}
+          CHECKS_CANCELLED: ${{ contains(needs.*.result, 'cancelled') }}
+        run: |
+          set -euo pipefail
+          test "$ROUTING_RESULT" = success
+          test "$ROUTED" = true
+          test "$CHECKS_FAILED" = false
+          test "$CHECKS_CANCELLED" = false
+          echo "All area-selected checks passed for this non-draft PR run."
+
+  # The one required check for main's ruleset and merge queue (#758, merge queue). Path
   # routing skips jobs, so require this summary rather than each job. The
   # macOS, Windows, ARM64, smoke and Install Lab jobs stay advisory on PRs
   # (more runner losses) and don't run in the queue.
   required:
     name: required${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
-    needs: [changes, docs, python-lint, ubuntu, gitleaks, native-smoke, pages]
+    needs: [changes, draft-fast, docs, python-lint, ubuntu, gitleaks, native-smoke, pages]
     # always(): a cancelled or failed dependency must report failure here, not
     # leave a skipped check that GitHub would count as passing.
     if: ${{ always() && !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
@@ -181,6 +250,7 @@ jobs:
       - name: Require routing and every selected required job to pass
         env:
           NEEDS: ${{ toJSON(needs) }}
+          ROUTED: ${{ needs.changes.outputs.routed }}
         run: |
           python3 - <<'PY'
           import json, os, sys
@@ -188,6 +258,6 @@ jobs:
           print("\n".join(f"{job}: {result}" for job, result in results.items()))
           # Path routing may skip a job only when routing itself succeeded.
           bad = [job for job, result in results.items() if result not in {"success", "skipped"}]
-          if results["changes"] != "success" or bad:
+          if results["changes"] != "success" or os.environ["ROUTED"] != "true" or bad:
               sys.exit(f"::error::Required checks did not pass: {', '.join(bad) or 'changes'}")
           PY
