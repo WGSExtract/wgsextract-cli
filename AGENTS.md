@@ -101,5 +101,6 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
 
 - Fix review comments that are legitimate, then resolve their threads. Reply `(AI): Reason: ...` to the ones you decline, then resolve those too.
 - Fix real issues that CI finds, or fix CI itself when the failure is in CI rather than in the code.
-- Push follow-up commits and wait for CI to rerun.
-- Once the PR is in a passable state, merge it. That means CI is green, no material threads are unresolved, and the local checks pass.
+- Push follow-up commits and wait for CI to rerun. For a suspected flake or lost runner, rerun only the failed jobs (`gh run rerun RUN --failed`), not the whole run or a new push.
+- Don't update a branch just because it's BEHIND main. Update it only when it's DIRTY (conflicts) or main changed the same area (generated files, the help budget); the merge queue tests it against the latest main anyway.
+- Once the PR is in a passable state, land it through the merge queue: `gh pr merge PR --auto --squash --match-head-commit SHA`. Passable means every check is green (the advisory macOS, Windows, ARM64, smoke and Install Lab jobs too, or their failures explained), no material threads are unresolved, and the local checks pass. The queue reruns only the `required` check; if it drops the PR, fix or rerun the failure and enqueue again. Never bypass the queue.

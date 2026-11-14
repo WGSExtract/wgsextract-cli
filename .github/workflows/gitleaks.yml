@@ -1,17 +1,18 @@
 name: Secret Scan
 
+# PR area checks calls this on every PR and merge-queue group.
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # A called workflow's github.workflow is its caller's name.
+  group: gitleaks-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

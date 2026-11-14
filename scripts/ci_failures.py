@@ -18,6 +18,7 @@ from scripts.ci_issues import IssueReports
 from scripts.ci_policy import (
     BAD,
     ROUTED_MAIN,
+    SUMMARY_JOBS,
     Failure,
     classify,
     matches,
@@ -101,6 +102,10 @@ class Observer(IssueReports):
                 failure.executions = executions[job["name"]]
                 failure.source_attempt = attempt
                 failures.append(failure)
+        # A summary gate fails with its dependencies and reruns with them, so
+        # it must not turn a retryable runner loss into a mixed failure.
+        if any(failure.job not in SUMMARY_JOBS for failure in failures):
+            failures = [f for f in failures if f.job not in SUMMARY_JOBS]
         return failures
 
     def flaky_marker(self, test: str) -> str:
