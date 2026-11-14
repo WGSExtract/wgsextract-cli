@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -332,7 +333,7 @@ class Oracle:
     def _microarray(self, dataset: Path) -> None:
         # The 23andMe file uses real hg19 positions, which the rebased mini genome
         # doesn't cover, so it is all no-calls; the CombinedKit uses the dataset's
-        # own targets and must agree with HG00096's 1000 Genomes genotypes.
+        # own targets. At 5x, weak sites must be no-calls, not wrong genotypes.
         kit_23andme = self.output("microarray", "HG00096.hg19-mini_23andMe_V5.txt")
         rows_23andme = sum(1 for line in kit_23andme.open() if not line.startswith("#"))
         truth: dict[tuple[str, str], str] = {}
@@ -343,21 +344,85 @@ class Oracle:
         for line in query.splitlines():
             chrom, pos, tgt = line.split("\t")
             truth[(chrom, pos)] = "".join(sorted(tgt.replace("|", "").replace("/", "")))
-        agree = total = 0
+        expected: dict[tuple[str, str], str] = {}
+        query = self.run_tool(
+            "bcftools", "query", "-u", "-f",
+            "%CHROM\t%POS\t[%TGT\t%DP\t%GQ]\t%REF\t%ALT\t%QUAL\t%FILTER\n",
+            str(self.output("microarray", "HG00096.hg19-mini_combined.vcf.gz")),
+        )  # fmt: skip
+        for line in query.splitlines():
+            chrom, pos, tgt, dp, gq, ref, alt, qual, record_filter = line.split("\t")
+            genotype = "".join(sorted(tgt.replace("|", "").replace("/", "")))
+            if len(genotype) == 1:
+                genotype *= 2
+            # Internal single-sample bcftools reference calls can omit GQ;
+            # their QUAL measures confidence in reference, not an ALT call.
+            if gq == "." and alt == "." and genotype == ref * 2:
+                gq = qual
+            try:
+                depth, quality = float(dp), float(gq)
+                confident = (
+                    math.isfinite(depth)
+                    and depth >= 10
+                    and math.isfinite(quality)
+                    and quality >= 20
+                    and record_filter in {".", "PASS"}
+                )
+            except ValueError:
+                confident = False
+            valid = len(genotype) == 2 and set(genotype) <= set("ACGT")
+            expected[(chrom, pos)] = genotype if confident and valid else "--"
+
+        reasons: dict[tuple[str, str], tuple[str, str]] = {}
+        report = self.output("microarray", "HG00096.hg19-mini_CombinedKit_reasons.tsv")
+        with report.open() as source:
+            for line in source:
+                if not line.startswith("#"):
+                    _rsid, chrom, pos, genotype, reason = line.rstrip("\n").split("\t")
+                    reasons[(chrom, pos)] = (genotype, reason)
+        agree = total = called = no_calls = policy_errors = reason_errors = 0
+        seen: set[tuple[str, str]] = set()
         kit = self.output("microarray", "HG00096.hg19-mini_CombinedKit.txt")
         for line in kit.open():
             if line.startswith("#"):
                 continue
             _rsid, chrom, pos, genotype = line.rstrip("\n").split("\t")[:4]
-            if (chrom, pos) in truth:
+            key = (chrom, pos)
+            seen.add(key)
+            genotype = "".join(sorted(genotype))
+            policy_errors += genotype != expected.get(key, "--")
+            reported, reason = reasons.get(key, ("", ""))
+            reason_errors += reported != genotype or (
+                (reason == "called") != (genotype != "--")
+            )
+            if key in truth:
                 total += 1
-                agree += "".join(sorted(genotype)) == truth[(chrom, pos)]
-        concordance = agree / max(total, 1)
+                if genotype == "--":
+                    no_calls += 1
+                else:
+                    called += 1
+                    agree += genotype == truth[key]
+        eligible = sum(
+            genotype != "--" for key, genotype in expected.items() if key in truth
+        )
+        missing = sum(
+            genotype != "--" and key not in seen for key, genotype in expected.items()
+        )
+        concordance = agree / max(called, 1)
         self.record(
             "output.microarray",
-            rows_23andme > 600_000 and total >= 1500 and concordance >= 0.95,
-            f"23andMe rows {rows_23andme}; CombinedKit {agree}/{total} genotypes "
-            f"match 1000 Genomes ({concordance:.1%})",
+            rows_23andme > 600_000
+            and total >= 1500
+            and eligible > 0
+            and called == eligible
+            and not missing
+            and not policy_errors
+            and not reason_errors
+            and concordance >= 0.95,
+            f"23andMe rows {rows_23andme}; CombinedKit {agree}/{called} callable "
+            f"genotypes match 1000 Genomes ({concordance:.1%}); {no_calls}/{total} "
+            f"no-calls; {policy_errors} policy errors, {reason_errors} reason errors, "
+            f"{missing} eligible sites missing",
         )
 
     def _align(self) -> None:
