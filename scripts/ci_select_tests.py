@@ -24,8 +24,10 @@ OS_WORKFLOWS = {
 
 
 def ci_path(path: str) -> bool:
-    return path.startswith(".github/") or (
-        path.startswith("scripts/ci_") and path.endswith(".py")
+    return (
+        path in CI_TESTS
+        or path.startswith(".github/")
+        or (path.startswith("scripts/ci_") and path.endswith(".py"))
     )
 
 

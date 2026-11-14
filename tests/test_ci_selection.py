@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts.ci_changes import routes
 from scripts.ci_select_tests import CI_TESTS, os_selection, select_tests
 from scripts.ci_test_dependencies import ROOT
 
@@ -62,6 +63,12 @@ def test_914_workflow_only_selects_ci_tests_and_only_changed_os_smoke() -> None:
     matrix = os_selection(paths, selection, cli=False)
     assert matrix["macos"]
     assert not any(matrix[os] for os in ("ubuntu", "windows", "arm64"))
+
+
+def test_914_selector_regressions_do_not_start_the_cli_matrix() -> None:
+    paths = ["scripts/ci_select_tests.py", "tests/test_ci_selection.py"]
+    assert not routes(paths)["cli"]
+    assert select_tests(paths) == sorted(CI_TESTS)
 
 
 def test_914_lazy_registry_command_selects_its_tests(tmp_path: Path) -> None:

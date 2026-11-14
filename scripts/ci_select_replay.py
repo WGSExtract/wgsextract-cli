@@ -131,9 +131,15 @@ def replay(
             f"PR {number}: {len(selected)}/{len(all_tests)}, {len(failures)} failed runs",
             flush=True,
         )
+    return summarize(records, output, baseline_minutes, len(all_tests))
+
+
+def summarize(
+    records: list[dict[str, Any]], output: Path, baseline_minutes: float, count: int
+) -> dict[str, Any]:
     summary = {
         "prs": len(records),
-        "test_files": len(all_tests),
+        "test_files": count,
         "mean_selected_percent": mean(record["selected_percent"] for record in records),
         "estimated_runner_minutes_saved": sum(
             record["estimated_minutes_saved"] for record in records
@@ -160,16 +166,43 @@ def replay(
     return summary
 
 
+def replay_cached(output: Path, baseline_minutes: float) -> dict[str, Any]:
+    """Re-evaluate saved PR files/failures without repeating GitHub downloads."""
+    records = json.loads((output / "replay.json").read_text(encoding="utf-8"))
+    all_tests = {
+        file.relative_to(ROOT).as_posix()
+        for file in (ROOT / "tests").rglob("test_*.py")
+    }
+    for record in records:
+        selection = select_tests(record["paths"])
+        selected = all_tests if selection == "all" else set(selection)
+        record.update(
+            selection=selection,
+            selected_percent=100 * len(selected) / len(all_tests),
+            estimated_minutes_saved=baseline_minutes
+            * (1 - len(selected) / len(all_tests)),
+            misses=sorted(set(record["failed_test_files"]) - selected),
+        )
+    (output / "replay.json").write_text(
+        json.dumps(records, indent=2) + "\n", encoding="utf-8"
+    )
+    return summarize(records, output, baseline_minutes, len(all_tests))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", default="WGSExtract/wgsextract-cli")
     parser.add_argument("--limit", type=int, default=50)
     parser.add_argument("--output", type=Path, default=Path("out/914"))
     parser.add_argument("--baseline-minutes", type=float, default=125)
+    parser.add_argument("--reuse-evidence", action="store_true")
     args = parser.parse_args()
     print(
         json.dumps(
-            replay(args.repo, args.limit, args.output, args.baseline_minutes), indent=2
+            replay_cached(args.output, args.baseline_minutes)
+            if args.reuse_evidence
+            else replay(args.repo, args.limit, args.output, args.baseline_minutes),
+            indent=2,
         )
     )
 
