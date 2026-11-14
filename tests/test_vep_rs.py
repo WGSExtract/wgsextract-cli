@@ -420,3 +420,118 @@ def test_a_failed_download_is_reported_not_the_ones_it_stopped(tmp_path, monkeyp
     assert result.status != "ok"
     assert "phenotype_feature.txt.gz failed its checksum" in str(result.error)
     assert "gff3" not in str(result.error)
+
+
+# --- T2T-CHM13v2.0 (#630) ---------------------------------------------------
+# Ensembl publishes CHM13's gene set as a rapid release, each folder with an
+# md5sum.txt; the fixture gene stands in for it, on contig 1.
+
+_CHM13 = "T2T-CHM13v2.0"
+_RR = "rapid-release/species/Homo_sapiens/GCA_009914755.4/ensembl"
+_GTF = (
+    '1\tensembl\ttranscript\t1001\t1300\t.\t+\t.\tgene_id "ENSG00000000001"; '
+    'transcript_id "ENST00000000001";\n'
+)
+
+
+def _chm13_files(**override: bytes) -> dict[str, bytes]:
+    import hashlib
+
+    stem = "Homo_sapiens-GCA_009914755.4"
+    files = {
+        f"{_RR}/geneset/2022_07/{stem}-2022_07-genes.gff3.gz": _gz(
+            (FIXTURES / "genes.gff3").read_bytes()
+        ),
+        f"{_RR}/geneset/2022_07/{stem}-2022_07-genes.gtf.gz": _gz(_GTF.encode()),
+        f"{_RR}/geneset/2022_07/{stem}-2022_07-pep.fa.gz": _gz(
+            (FIXTURES / "protein.fa").read_bytes()
+        ),
+        f"{_RR}/genome/{stem}-unmasked.fa.gz": _gz(
+            (FIXTURES / "genome.fa").read_bytes()
+        ),
+    }
+    listings: dict[str, str] = {}
+    for path, data in files.items():
+        folder, name = path.rsplit("/", 1)
+        listings[folder] = listings.get(folder, "") + (
+            f"{hashlib.md5(data).hexdigest()}  {name}\n"
+        )
+    for path, data in override.items():
+        files[next(p for p in files if p.endswith(path))] = data
+    files |= {f"{f}/md5sum.txt": text.encode() for f, text in listings.items()}
+    return files
+
+
+def _download_chm13(tmp_path, monkeypatch, files):
+    from tests.disk_volumes import Volumes
+    from wgsextract_cli.commands import _vep_resources as vr
+
+    Volumes(monkeypatch).free[tmp_path] = 100
+    monkeypatch.setattr(sys.stderr, "isatty", lambda: False)
+    with serving(None, files) as srv:
+        for mirror in vr.VEP_MIRRORS:
+            monkeypatch.setitem(vr.VEP_MIRRORS, mirror, srv.base)
+        return api.vep.download(
+            VepDownloadParams(assembly=_CHM13, vep_cache=tmp_path / "c"), check=False
+        )
+
+
+@needs_vep_rs
+def test_download_builds_a_chm13_cache_that_vep_run_annotates_with(
+    tmp_path, monkeypatch
+):
+    """#630: `vep download --assembly T2T-CHM13v2.0` builds vep-rs's cache from
+    Ensembl's CHM13 gene set, and `vep run` on a CHM13 VCF uses it."""
+    result = _download_chm13(tmp_path, monkeypatch, _chm13_files())
+
+    assert result.status == "ok"
+    version_dir = tmp_path / "c" / "vep-rs" / "homo_sapiens" / f"116_{_CHM13}"
+    assert [o.path for o in result.outputs] == [str(version_dir)]
+    # Ensembl has no CHM13 known variants to build from.
+    assert "vep_variations_unavailable" in {w.code for w in result.warnings}
+    verified = api.vep.verify(
+        VepVerifyParams(assembly=_CHM13, vep_cache=tmp_path / "c"), check=False
+    )
+    assert verified.status == "ok"
+
+    # A CHM13 VCF, known by its chr1 length: no --assembly needed.
+    vcf = tmp_path / "chm13.vcf"
+    vcf.write_text(_VCF.replace("length=3000", "length=248387328"))
+    run = api.vep.run(
+        VepRunParams(input=Path(bgzip_index(vcf)), vep_cache=tmp_path / "c")
+    )
+
+    assert run.metrics["engine"] == "vep-rs"
+    csq = _csq(str(tmp_path / "chm13_vep.vcf.gz"))
+    assert csq[1014]["Consequence"] == "missense_variant"
+    assert csq[1014]["SYMBOL"] == "TINY1"
+
+
+@needs_vep_rs
+def test_a_chm13_download_failing_its_md5_builds_nothing(tmp_path, monkeypatch):
+    files = _chm13_files(**{"pep.fa.gz": _gz(b">changed\nM\n")})
+
+    result = _download_chm13(tmp_path, monkeypatch, files)
+
+    assert result.status != "ok"
+    assert "pep.fa.gz failed its checksum" in str(result.error)
+    assert not (tmp_path / "c" / "vep-rs" / "homo_sapiens").exists()
+
+
+@pytest.mark.parametrize("command", ["run", "download"])
+def test_ensembl_vep_is_refused_for_chm13_naming_vep_rs(tmp_path, command):
+    """#630: Ensembl VEP has no CHM13 cache; vep-rs has."""
+    if command == "run":
+        params: object = VepRunParams(
+            input=Path(_input(tmp_path)), engine="ensembl", vep_assembly=_CHM13
+        )
+    else:
+        params = VepDownloadParams(
+            engine="ensembl", assembly=_CHM13, vep_cache=tmp_path / "c"
+        )
+
+    result = getattr(api.vep, command)(params, check=False)
+
+    assert result.status != "ok"
+    assert "--engine vep-rs" in str(result.error)
+    assert not (tmp_path / "c").exists()
