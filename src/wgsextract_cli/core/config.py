@@ -105,6 +105,12 @@ KNOWN_SETTINGS = {
         "wgse-bwa-mem3 and wgse-minimap2 when on PATH (auto, the default) or "
         "never (off); Linux: Bioconda's bwa-mem3 in place of bwa/bwa-mem2",
     ),
+    "prefer_native_gpu": (
+        False,
+        "`align`/`realign`: prefer wgse-bwa's native GPU even above the RAM "
+        "budget after normal sort step-down; retain explicit memory, otherwise "
+        "cap default/config sort at 256M (may swap heavily)",
+    ),
     "dense_suffix_array": (
         False,
         "`align`/`realign`: wgse-bwa reads the reference's dense suffix-array "

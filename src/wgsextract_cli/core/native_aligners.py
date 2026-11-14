@@ -149,6 +149,17 @@ class NativeAligner:
 
 
 @dataclass(frozen=True)
+class NativeMemoryDecision:
+    """Why a native BWA plan exceeded its memory budget, and what ran."""
+
+    reason: str
+    estimate_bytes: int
+    budget_bytes: int
+    sort_memory_requested: str
+    sort_memory_actual: str
+
+
+@dataclass(frozen=True)
 class AlignerCommand:
     """How to run an aligner: upstream ``tool`` itself, or ``native`` (on its
     GPU, Metal or CUDA, when ``gpu``) in its place. ``options`` are bwa-mem3's
@@ -160,6 +171,7 @@ class AlignerCommand:
     gpu: bool = False
     options: tuple[str, ...] = ()
     dense_sa: Path | None = None
+    memory_decision: NativeMemoryDecision | None = None
 
     @property
     def dense_sa_bytes(self) -> int:
@@ -226,6 +238,15 @@ class AlignerCommand:
             native_aligner_version=self.native.version,
             native_aligner_backend=self.backend,
         )
+        if self.memory_decision:
+            decision = self.memory_decision
+            result.add_metrics(
+                native_aligner_backend_reason=decision.reason,
+                native_aligner_memory_estimate_bytes=decision.estimate_bytes,
+                native_aligner_memory_budget_bytes=decision.budget_bytes,
+                native_aligner_sort_memory_requested=decision.sort_memory_requested,
+                native_aligner_sort_memory_actual=decision.sort_memory_actual,
+            )
         if self.dense_sa:
             from wgsextract_cli.core.dense_suffix_array import interval_of
 
@@ -273,6 +294,13 @@ class AlignerCommand:
             f"Aligning with {self.native.binary} {self.native.version}{options} on "
             f"{backend} ({self.native.path}); its alignments are {output}.{dense}"
         )
+
+
+def native_gpu_preference(value: bool | None) -> bool:
+    """The explicit speed preference, else config.toml's opt-in."""
+    from wgsextract_cli.core.config import settings
+
+    return value if value is not None else bool(settings.get("prefer_native_gpu"))
 
 
 def native_setting(value: str | None) -> str:

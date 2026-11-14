@@ -40,6 +40,46 @@ guard; informational estimates are still printed. Realignment reports before
 FASTQ extraction and alignment reports again when the final aligner is
 selected.
 
+Native `wgse-bwa` GPU selection must satisfy **physical RAM less
+2 GiB of OS headroom**. Low momentary available RAM alone warns rather than
+moving large-RAM hosts to CPU; streaming realignment keeps its existing
+available-RAM guard. Sort memory is lowered through the existing candidates down to
+256M per thread. An over-budget CPU estimate is not a larger GPU allowance:
+if no GPU plan fits, the CPU backend runs. When the CPU pipeline with the
+requested sort memory is also over budget, sort memory is capped at 256M per
+thread without increasing already smaller requests. Workers and fixed
+`-K 100000000` are unchanged,
+preserving alignment identity. The CLI reports the resolved CPU/backend and
+sort-memory estimate rather than the rejected GPU plan. A conservative CPU
+estimate can still be `LOW`; CPU compression, occupied swap and cumulative
+SSD swap traffic must not be conflated
+([#747](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
+The read-only `estimate_resources` API does not change settings itself:
+callers supply their resolved backend allowance and sort memory.
+`--prefer-native-gpu` / config `prefer_native_gpu = true` applies only after
+normal GPU sort step-down fails, replacing CPU fallback at the risk of heavy
+swap. Explicit `--memory` is retained; default/config memory is capped at
+256M, subject to general sort limits. The manifest's
+`native_aligner_backend_reason`, `native_aligner_memory_estimate_bytes`,
+`native_aligner_memory_budget_bytes`, `native_aligner_sort_memory_requested`
+and `native_aligner_sort_memory_actual` explain fallback or opt-in and survive
+resume. The fallback estimate is the smallest considered GPU plan, not the
+selected CPU pipeline's estimate.
+Reasons are `memory_budget_cpu`, `memory_budget_metal_low_sort` (or CUDA),
+and `prefer_gpu`; preference reasons/journal changes occur only when it
+replaces the CPU plan.
+On the measured 16 GiB M1 whole HG002 35x run, automatic CPU4/sort256
+reported 19.22 GiB / 10.78 GiB available and completed with identical ordered
+records. Swap-out fell from 1,116.92 to 47.87 GiB, **not zero**, while alignment
+wall time rose from 5.40 to 13.63 hours. This is a conservative safety/speed
+trade-off, not evidence that the estimate should shrink to the 7.60 GiB RSS.
+See the [whole validation and options](apple-silicon-16gb.md#whole-genome-validation-of-the-ram-adaptive-fallback).
+The approved whole Metal/sort256 comparison took **5.08 h** with identical
+records, but **378.39 GiB swap-out**, versus CPU's 47.87 GiB. It failed the
+under-200-GiB gate, so it does not justify reducing the working-set estimate
+or making an over-budget GPU plan the default. Its native footprint/wired
+peaks were 10.409/5.551 GiB despite only 8.633 GiB largest-child RSS.
+
 The memory estimate is the selected aligner's. On Linux, bwa-mem3 standing in
 for bwa (`--compat=bwa-mem`, chosen first since #736) needs about twice bwa's
 RAM (5M pairs on hs38: 14.7 GiB peak at 16 threads against bwa's 6.6 GiB;
@@ -518,7 +558,7 @@ filesystem for reference-index storage.
   was enough, but only 37.42 GiB remained at the observed minimum. These
   different envelopes are not allocation guarantees or equivalent measures.
   Retain the conservative disk coefficients and additional free-space margin.
-  [The measured stage table](apple-silicon-16gb.md#current-defaults-macos-aligners-16-and-mimalloc)
+  [The historical measured stage table](apple-silicon-16gb.md#historical-metal-run-macos-aligners-16-and-mimalloc)
   records the exact run and resume conditions.
 - **macOS RSS is not the uncompressed working set.** That run's startup RAM
   estimate was 22.02 GiB against 10.80 GiB available. The largest process

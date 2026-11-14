@@ -85,6 +85,20 @@ def _dense_suffix_array_param() -> Any:
     )
 
 
+def _prefer_native_gpu_param() -> Any:
+    return param(
+        None,
+        help="If no GPU plan fits the RAM budget even after the sort-memory "
+        "step-down, use the GPU anyway instead of the slower CPU path; may swap "
+        "heavily. Default: config prefer_native_gpu, else off.",
+        doc="Prefer native GPU speed over the RAM-budget CPU fallback. Sort "
+        "memory is stepped down first; explicit --memory is kept, otherwise "
+        "at most 256M per thread. May swap heavily.",
+        action="boolean_optional",
+        config_key="prefer_native_gpu",
+    )
+
+
 GPU_HELP = (
     "Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, "
     "minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU "
@@ -148,6 +162,7 @@ class AlignParams(Params):
     )
     fast: bool = _fast_param()
     native_aligners: str | None = _native_aligners_param()
+    prefer_native_gpu: bool | None = _prefer_native_gpu_param()
     dense_suffix_array: bool | None = _dense_suffix_array_param()
     gpu: bool = param(False, help=GPU_HELP, action="store_true")
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
@@ -221,6 +236,7 @@ class RealignParams(Params):
     )
     fast: bool = _fast_param()
     native_aligners: str | None = _native_aligners_param()
+    prefer_native_gpu: bool | None = _prefer_native_gpu_param()
     dense_suffix_array: bool | None = _dense_suffix_array_param()
     gpu: bool = param(False, help=GPU_HELP, action="store_true")
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
