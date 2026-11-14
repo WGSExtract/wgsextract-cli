@@ -608,6 +608,21 @@ def test_mt_haplogroup_refuses_a_vcf_called_against_chm13_827(tmp_path, evidence
     assert not (tmp_path / "calls.jsonl").exists()
 
 
+def test_mt_haplogroup_refuses_mtdna_split_over_two_contigs_827(tmp_path):
+    """#827: an MT contig's rCRS md5 mustn't vouch for chrM records too."""
+    body = (
+        "MT\t73\t.\tA\tG\t50\tPASS\t.\tGT\t1\nchrM\t263\t.\tA\tG\t50\tPASS\t.\tGT\t1\n"
+    )
+    vcf = _vcf(tmp_path / "kit.vcf.gz", {"MT": 16_569, "chrM": 16_569}, body)
+    plain = tmp_path / "plain.vcf"
+    plain.write_bytes(gzip.decompress(Path(vcf).read_bytes()))
+    with pytest.raises(WGSExtractError, match="records on MT, chrM"):
+        run_wgsextract(
+            "lineage", "mt-haplogroup", "--input", str(plain),
+            "--haplogrep-path", _haplogrep(tmp_path),
+        )  # fmt: skip
+
+
 @pytest.mark.parametrize(
     ("ref", "md5"), [("A", ""), ("A", "0" * 32), ("C", ""), ("A", RCRS_MD5)]
 )
