@@ -20,6 +20,9 @@ use no runner. Every PR workflow includes `ready_for_review`. Workflows with
 cancelling concurrency retain a runner-free `converted_to_draft` event in the
 same concurrency group to cancel in-flight ready runs. Pushes, schedules,
 manual dispatches, workflow calls and merge groups retain their existing gates.
+The runner-free `pr_draft_cancel.yml` workflow also cancels the separate
+Install Lab label group on redrafting/readiness, without letting ordinary
+label events cancel code validation.
 
 Test dependencies take precedence over area exclusions. The router scans the
 root test suite's imports, path literals, composed pathlib paths and directory

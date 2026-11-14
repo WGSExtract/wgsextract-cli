@@ -82,6 +82,25 @@ def test_910_pr_workflows_allocate_no_draft_runners_and_wake_on_readiness(
         )
 
 
+def test_910_redrafting_cancels_the_separate_install_lab_label_lane() -> None:
+    """Redrafting must enter both ready-run groups without allocating a runner."""
+    area = (WORKFLOWS / "pr_ci.yml").read_text()
+    cancellation = (WORKFLOWS / "pr_draft_cancel.yml").read_text()
+    area_group = re.search(r"^  group: (.*)", area, re.MULTILINE)
+    label_group = re.search(r"^  group: (.*)", cancellation, re.MULTILINE)
+    assert area_group and label_group
+    label_run = re.sub(
+        r"\$\{\{ contains\(.*\}\}",
+        "label-run-install-lab",
+        area_group[1],
+    )
+    code_run = re.sub(r"\$\{\{ contains\(.*\}\}", "diff", area_group[1])
+    assert label_group[1] == label_run
+    assert label_group[1] != code_run
+    assert "converted_to_draft" in cancellation
+    assert "cancel-in-progress: true" in cancellation
+
+
 def write_workflow(root: Path, uses: str) -> None:
     directory = root / ".github" / "workflows"
     directory.mkdir(parents=True)
