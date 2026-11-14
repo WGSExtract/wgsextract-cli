@@ -360,6 +360,7 @@ def run_chm13(
             str(directory),
             ploidy_args,
             region=region_args[1] if region_args else None,
+            reference=ref_fasta,
         ) as sex_args:
             out_vcf, target = _prepare_microarray_vcf(
                 params=params,

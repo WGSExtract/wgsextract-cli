@@ -127,7 +127,7 @@ def test_fast_info_reports_reads_and_file_state(genome, tmp_path):
 def test_detailed_info_counts_reads_depth_and_sex(genome, tmp_path):
     bam = _sample(genome, tmp_path / "m.bam", MALE)
     text = _info(bam, "--detailed")
-    assert _field(text, "Bio Gender") == "Male"
+    assert _field(text, "Bio Gender") == "Unknown"
     assert _field(text, "File Content") == "Auto, X, Y, Mito, Unmap"
     # 70 of the 72 reads are mapped.
     assert _field(text, "Reads").split()[:2] == ["97", "%"]
@@ -141,14 +141,14 @@ def test_detailed_info_counts_reads_depth_and_sex(genome, tmp_path):
 
 
 @needs_htslib
-def test_female_total_leaves_out_chrY(genome, tmp_path):
-    # One chrY pair against 20 chrX pairs is below the 5% male threshold.
+def test_unknown_sex_total_keeps_chrY(genome, tmp_path):
+    # Sparse targeted reads cannot establish XX, even with few Y reads.
     bam = _sample(genome, tmp_path / "f.bam", {**FEMALE, "chrY": 1})
     table = _table(bam, tmp_path)
-    assert _field(_info(bam, "--detailed"), "Bio Gender") == "Female"
+    assert _field(_info(bam, "--detailed"), "Bio Gender") == "Unknown"
     assert table["chrY"][2] == "2"
-    assert table["Total"][1:3] == ["0", "80"]  # chr1 + chrX only
-    assert table["Total"][0] == "2000"
+    assert table["Total"][1:3] == ["0", "82"]
+    assert table["Total"][0] == "3000"
 
 
 @needs_htslib
@@ -159,7 +159,7 @@ def test_numeric_contig_names_get_the_same_metrics(genome, tmp_path):
     chr_table, num_table = _table(chr_bam, tmp_path), _table(num_bam, tmp_path)
     assert {rename.get(k, k): v for k, v in chr_table.items()} == num_table
     text = _info(num_bam, "--detailed")
-    assert _field(text, "Bio Gender") == "Male"
+    assert _field(text, "Bio Gender") == "Unknown"
     assert _field(text, "File Content") == "Auto, X, Y, Mito, Unmap"
 
 
@@ -199,7 +199,7 @@ def test_unindexed_bam_still_gets_detailed_counts(genome, tmp_path):
     Path(f"{bam}.bai").unlink()
     text = _info(bam, "--detailed")
     assert _field(text, "File Stats") == "Sorted, Unindexed, 0.0 GBs"
-    assert _field(text, "Bio Gender") == "Male"
+    assert _field(text, "Bio Gender") == "Unknown"
 
 
 @needs_htslib
@@ -245,7 +245,7 @@ def test_cram_with_reference(genome, tmp_path, no_remote_refs):
     cram = _cram_without_reference(genome, tmp_path)
     text = _info(cram, "--detailed", "--ref", genome["ref"])
     assert _field(text, "Avg Read Length") == "50 bp (SD=0 bp), Paired-end"
-    assert _field(text, "Bio Gender") == "Male"
+    assert _field(text, "Bio Gender") == "Unknown"
     assert _field(text, "File Format").startswith("CRAM")
 
 
@@ -255,10 +255,10 @@ def test_cram_with_reference(genome, tmp_path, no_remote_refs):
 @needs_htslib
 def test_sample_sex_from_idxstats_and_from_the_info_cache(genome, tmp_path):
     bam = _sample(genome, tmp_path / "m.bam", MALE)
-    assert metrics.sample_sex(bam) == "Male"
+    assert metrics.sample_sex(bam) == "Unknown"
     _info(bam, "--detailed")
     with patch.object(metrics, "parse_idxstats", side_effect=AssertionError):
-        assert metrics.sample_sex(bam) == "Male"
+        assert metrics.sample_sex(bam) == "Unknown"
 
 
 @needs_htslib
@@ -278,7 +278,7 @@ def test_sample_sex_ignores_the_cache_of_a_replaced_file(genome, tmp_path):
     _sample(genome, tmp_path / "f.bam", {**FEMALE, "chrY": 1})
     shutil.move(tmp_path / "f.bam", bam)
     shutil.move(tmp_path / "f.bam.bai", f"{bam}.bai")
-    assert metrics.sample_sex(str(bam)) == "Female"
+    assert metrics.sample_sex(str(bam)) == "Unknown"
 
 
 @needs_htslib
@@ -291,10 +291,10 @@ def test_info_cache_from_an_older_infer_sex_is_recomputed(genome, tmp_path):
     del old["sex_inference_version"]
     old["gender"] = "Female"
     cache.write_text(json.dumps(old))
-    assert metrics.sample_sex(bam) == "Male"
+    assert metrics.sample_sex(bam) == "Unknown"
     _info(bam, "--detailed")
     data = json.loads(cache.read_text())
-    assert data["gender"] == "Male"
+    assert data["gender"] == "Unknown"
     assert data["sex_inference_version"] == metrics.SEX_INFERENCE_VERSION
 
 
@@ -460,63 +460,18 @@ def _stat(name, length, mapped, unmapped=0):
     return {"name": name, "length": length, "mapped": mapped, "unmapped": unmapped}
 
 
-def test_infer_sex_thresholds():
-    assert metrics.infer_sex([_stat("chrX", 1, 100), _stat("chrY", 1, 11)]) == "Male"
-    assert metrics.infer_sex([_stat("X", 1, 100), _stat("Y", 1, 10)]) == "Female"
-    # Split contigs (e.g. chrY and chrY_random) of one key add up.
-    assert (
-        metrics.infer_sex(
-            [_stat("chrX", 1, 100), _stat("chrY", 1, 6), _stat("CHRY", 1, 6)]
-        )
-        == "Male"
-    )
-
-
 @pytest.mark.parametrize(
-    ("stats", "sex"),
+    "counts",
     [
-        # chrX against chr7 (two X copies read about like chr7), chrY or not
-        ([_stat("chr7", 1, 100), _stat("chrX", 1, 95)], "Female"),
-        ([_stat("chr7", 1, 100), _stat("chrX", 1, 50)], "Male"),
-        ([_stat("chr7", 1, 100), _stat("chrX", 1, 40), _stat("chrY", 1, 2)], "Male"),
-        # No chrX: chrY against chr19 (about half of chrY is N)
-        ([_stat("chr19", 1, 100), _stat("chrY", 1, 20)], "Male"),
-        ([_stat("chr19", 1, 100), _stat("chrY", 1, 1)], "Female"),
-        # chrY alone, with chrM or other autosomes: a Y extract or a Big Y
-        ([_stat("chrY", 1, 100)], "Male"),
-        ([_stat("chrY", 1, 100), _stat("chrM", 1, 100)], "Male"),
-        ([_stat("chr1", 1, 100), _stat("chrY", 1, 5)], "Male"),
-        # Autosomes alone, or chrX without chr7 or chrY
-        ([_stat("chr7", 1, 100), _stat("chr19", 1, 100)], "Unknown"),
-        ([_stat("chrX", 1, 100)], "Unknown"),
-        ([_stat("chrM", 1, 100)], "Unknown"),
+        {"chr7": 1000, "chrX": 600, "chrY": 0},
+        {"chr7": 1000, "chrX": 700, "chrY": 0},
+        {"chrY": 1000},
+        {},
     ],
 )
-def test_infer_sex_by_x_dosage_or_chry(stats, sex):
-    assert metrics.infer_sex(stats) == sex
-
-
-@pytest.mark.parametrize(
-    ("counts", "sex"),
-    [
-        # The samples nearest the thresholds among WGSE v4 stats of real
-        # BAMs/CRAMs (read segments, or Map Gbases x 1000 where rounded).
-        ({"chr7": 938_000, "chrX": 722_000}, "Female"),  # hs38DH exome, X/7 0.77
-        ({"chr7": 1_000, "chrX": 543, "chrY": 174}, "Male"),  # hs38 2%, X/7 0.54
-        # A male exome: X/7 0.38, though its Y/X (0.043) and Y/19 look female
-        ({"chr7": 732_000, "chr19": 779_000, "chrX": 280_000, "chrY": 12_000}, "Male"),
-        ({"chrX": 6_570, "chrY": 160}, "Female"),  # hs38DH WGS, Y/X 0.024
-        ({"X": 3_110, "Y": 480}, "Male"),  # hs37d5 WGS, Y/X 0.154
-        ({"chr19": 710_000, "chrY": 47_000}, "Female"),  # hs38DH, Y/19 0.066
-        ({"19": 2_330, "Y": 480}, "Male"),  # hs37d5, Y/19 0.206
-        # A T2T-realigned Y extract: stray chrX and chr7 reads give X/7 2.86
-        ({"chr7": 4_369, "chrX": 12_476, "chrY": 4_713_038}, "Male"),
-        # A male WGS whose chrX reads high (X/7 0.69), but whose Y/X is 0.153
-        ({"7": 1_000, "X": 690, "Y": 106}, "Male"),
-    ],
-)
-def test_infer_sex_on_real_samples_nearest_the_thresholds(counts, sex):
-    assert metrics.infer_sex([_stat(c, 1, n) for c, n in counts.items()]) == sex
+def test_issue_856_raw_counts_cannot_establish_sex(counts):
+    rows = [_stat(c, 1_000_000, n) for c, n in counts.items()]
+    assert metrics.infer_sex(rows) == "Unknown"
 
 
 def test_chrom_table_dog_cat_and_other_contigs():

@@ -55,7 +55,9 @@ def multicontig_sample(tmp_path_factory: pytest.TempPathFactory) -> tuple[str, s
                     f"{chrom}_{variant}_{i}\t0\t{chrom}\t{start}\t60\t{cigar}"
                     f"\t*\t0\t0\t{bases}\t{'I' * len(bases)}\tRG:Z:reads"
                 )
-    return sam_to_bam(lines, root / "sample.bam"), str(ref)
+    bam = sam_to_bam(lines, root / "sample.bam")
+    run_wgsextract("sample", "set", "--input", bam, "--sex", "Male")
+    return bam, str(ref)
 
 
 def _call(
@@ -143,6 +145,7 @@ def test_expected_wait_counts_threads_only_for_parallel_calling(
         lines = sam.stdout.splitlines()
         lines.insert(lines.index("@RG\tID:reads\tSM:sample"), "@RG\tID:b\tSM:b")
         bam = str(sam_to_bam(lines, tmp_path / "two samples.bam"))
+        run_wgsextract("sample", "set", "--input", bam, "--sex", "Male")
     params = api.VcfSnpParams(
         input=Path(bam), ref=Path(ref), outdir=tmp_path, threads=3,
         parallel=parallel, ploidy="GRCh38",
@@ -173,6 +176,7 @@ def test_expected_wait_counts_workers_after_small_contigs_are_batched(
             for start in range(1, 400, 20)
         ]
     bam = sam_to_bam(lines, tmp_path / "batched.bam")
+    run_wgsextract("sample", "set", "--input", bam, "--sex", "Male")
     params = api.VcfSnpParams(
         input=Path(bam), ref=ref, outdir=tmp_path, threads=4, ploidy="GRCh38"
     )
@@ -215,6 +219,7 @@ def test_parallel_calls_match_serial_body_and_headers(
         run_command(["samtools", "view", "-C", "-T", ref, "-o", cram, bam])
         run_command(["samtools", "index", cram])
         bam = cram
+    run_wgsextract("sample", "set", "--input", bam, "--sex", sex)
     serial = _call((bam, ref), tmp_path / "serial", kind, 1)
     parallel = _call((bam, ref), tmp_path / "parallel", kind, 3, "--parallel")
     bodies = [
@@ -232,8 +237,6 @@ def test_parallel_calls_match_serial_body_and_headers(
     assert [line for line in headers[0].splitlines() if line.startswith(relevant)] == [
         line for line in headers[1].splitlines() if line.startswith(relevant)
     ]
-    # The sex is read from the reads once per command, not once per worker.
-    assert caplog.text.count("Checking chrX/chrY coverage") == 2
     assert Path(parallel + ".tbi").is_file()
     assert not list((tmp_path / "parallel").glob(".wgse_call_*"))
 

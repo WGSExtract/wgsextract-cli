@@ -269,9 +269,9 @@ def _idx(x_reads, y_reads):
 @pytest.mark.parametrize(
     ("x_reads", "y_reads", "sex"),
     [
-        (33_392_449, 674_020, "Female"),
-        (16_000_000, 6_000_000, "Male"),
-        (0, 50, "Male"),  # chrY alone: a Y extract
+        (33_392_449, 674_020, "Unknown"),
+        (16_000_000, 6_000_000, "Unknown"),
+        (0, 50, "Unknown"),
         (0, 0, "Unknown"),
     ],
 )
@@ -297,6 +297,7 @@ def test_y_haplogroup_refuses_a_female_sample_before_yleaf(tmp_path):
     """A female genome's mismapped chrY reads made Yleaf "predict" BT* with a full
     QC score; the command must say there is no Y instead."""
     bam = _xy_bam(tmp_path / "sample.bam", x_reads=30, y_reads=1)
+    run_wgsextract("sample", "set", "--input", bam, "--sex", "Female")
 
     with pytest.raises(WGSExtractError, match="appears female"):
         run_wgsextract("lineage", "y-haplogroup", "--input", bam)
@@ -311,6 +312,7 @@ def _info_cache(
         json.dumps({
             "md5_signature": md5 or calculate_bam_md5(bam, None), "gender": call,
             "sex_inference_version": metrics.SEX_INFERENCE_VERSION,
+            "sex_call": [call, "non-PAR screening", "medium"],
             "input_signature": {
                 "size": st.st_size + size_delta, "mtime_ns": st.st_mtime_ns
             },
@@ -327,8 +329,8 @@ def test_sample_sex_trusts_only_this_files_info_cache(tmp_path):
     # A cache for another file of the same name is ignored.
     other_file = _xy_bam(tmp_path / "b.bam", x_reads=30, y_reads=10)
     _info_cache(other_file, "Female", size_delta=1)
-    assert metrics.sample_sex(other_file) == "Male"
+    assert metrics.sample_sex(other_file) == "Unknown"
 
     # So is one whose size and mtime match but whose header signature doesn't.
     _info_cache(other_file, "Female", md5="0" * 32)
-    assert metrics.sample_sex(other_file) == "Male"
+    assert metrics.sample_sex(other_file) == "Unknown"

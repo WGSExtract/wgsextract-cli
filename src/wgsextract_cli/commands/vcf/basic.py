@@ -334,7 +334,9 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
 
     with (
         safe_output(out_vcf) as staged,
-        sex_samples_args(input_file, outdir, ploidy, region=params.region) as sex_args,
+        sex_samples_args(
+            input_file, outdir, ploidy, region=params.region, reference=ref
+        ) as sex_args,
     ):
         call_small_variants(
             input_file,

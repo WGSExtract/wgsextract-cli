@@ -12,7 +12,8 @@ from unittest.mock import patch
 import jsonschema
 import pytest
 
-from tests.htslib_helpers import needs_htslib, sam_to_bam, write_fasta
+from tests.htslib_helpers import needs_htslib, write_fasta
+from tests.sex_fixtures import distributed_alignment
 from wgsextract_cli import api
 from wgsextract_cli.commands.info import metrics
 from wgsextract_cli.core import genotype_qc, sample_workspace
@@ -45,15 +46,12 @@ def seqs(tmp_path_factory):
 
 
 def _bam(seqs, path: Path, counts: dict[str, int]) -> str:
-    header = [f"@SQ\tSN:{c}\tLN:{n}" for c, n in LENGTHS.items()]
-    reads = []
-    for contig, n in counts.items():
-        for i in range(n):
-            pos = 1 + (i * 13) % 900
-            name = f"A00123:8:HABCDEFXX:2:1101:{list(LENGTHS).index(contig)}:{i}"
-            seq = seqs[contig][pos - 1 : pos + 49]
-            reads.append(f"{name}\t0\t{contig}\t{pos}\t60\t50M\t*\t0\t0\t{seq}\t{QUAL}")
-    return sam_to_bam(header + reads, path)
+    return distributed_alignment(
+        path,
+        x_depth=counts.get("chrX", 0) // 5,
+        y_depth=2 if counts.get("chrY", 0) else 0,
+        auto_depth=counts.get("chr7", 0) // 5,
+    )
 
 
 @pytest.fixture
@@ -74,23 +72,18 @@ def _cli(*argv: str) -> tuple[int, str]:
     return code, out.getvalue()
 
 
-def _idxstats_counter():
-    return patch.object(metrics, "parse_idxstats", wraps=metrics.parse_idxstats)
-
-
 @needs_htslib
 def test_sex_is_detected_once_then_read_back(seqs, folder):
     bam = _bam(seqs, folder / "s.bam", MALE)
-    with _idxstats_counter() as idxstats:
-        assert metrics.sample_sex(bam) == "Male"
-        assert metrics.sample_sex(bam) == "Male"
-    assert idxstats.call_count == 1
+    assert metrics.sample_sex(bam) == "Male"
+    Path(bam + ".bai").unlink()
+    assert metrics.sample_sex(bam) == "Male"
 
     fact = SampleWorkspace(folder).detected("sex", bam)
     assert fact is not None and fact.value == "Male"
     assert (fact.method, fact.confidence, fact.file) == (
-        "chrY/chrX mapped-read ratio",
-        "high",
+        "GRCh37/38 sampled non-PAR depth / autosomal depth (screening)",
+        "medium",
         "s.bam",
     )
     assert fact.by and fact.by.startswith("wgsextract ") and fact.at
@@ -102,9 +95,7 @@ def test_a_replaced_file_is_detected_again(seqs, folder):
     assert metrics.sample_sex(bam) == "Male"
     # Realigned into the same name, now a different sample's reads.
     _bam(seqs, folder / "s.bam", FEMALE)
-    with _idxstats_counter() as idxstats:
-        assert metrics.sample_sex(bam) == "Female"
-    assert idxstats.call_count == 1
+    assert metrics.sample_sex(bam) == "Female"
     assert SampleWorkspace(folder).detected("sex", bam).value == "Female"
 
 
@@ -114,10 +105,10 @@ def test_a_genome_run_uses_its_folder_for_inputs_kept_elsewhere(seqs, tmp_path):
     genome.mkdir()
     elsewhere.mkdir()
     bam = _bam(seqs, elsewhere / "s.bam", MALE)
-    with active_workspace(genome, [bam]), _idxstats_counter() as idxstats:
+    with active_workspace(genome, [bam]):
         metrics.sample_sex(bam)
+        Path(bam + ".bai").unlink()
         metrics.sample_sex(bam)
-    assert idxstats.call_count == 1
     assert SampleWorkspace(genome).detected("sex", bam).file == str(Path(bam))
     assert not (elsewhere / WORKSPACE_FILE).exists()
 
@@ -131,11 +122,10 @@ def test_override_wins_and_changes_the_ploidy_bcftools_gets(seqs, folder):
 
     code, _ = _cli("sample", "set", "--input", bam, "--sex", "m")
     assert code == 0
-    with _idxstats_counter() as idxstats:
-        with sex_samples_args(bam, str(folder), ["--ploidy", "GRCh38"]) as args:
-            assert args[0] == "--samples-file"
-            assert Path(args[1]).read_text().endswith("\tM\n")
-    assert idxstats.call_count == 0
+    Path(bam + ".bai").unlink()
+    with sex_samples_args(bam, str(folder), ["--ploidy", "GRCh38"]) as args:
+        assert args[0] == "--samples-file"
+        assert Path(args[1]).read_text().endswith("\tM\n")
 
     code, out = _cli("--json", "sample", "show", "--input", bam)
     shown = json.loads(out)["details"]
@@ -175,9 +165,7 @@ def test_info_records_what_later_commands_read(seqs, folder):
 
     # Without info's own cache, the sex comes from the workspace alone.
     Path(f"{bam}.wgse_info.json").unlink()
-    with _idxstats_counter() as idxstats:
-        assert metrics.sample_sex(bam) == "Male"
-    assert idxstats.call_count == 0
+    assert metrics.sample_sex(bam) == "Male"
     first = genotype_qc.target_depths(bam, str(folder))
     with patch.object(genotype_qc, "_counted_depths", side_effect=AssertionError):
         again = genotype_qc.target_depths(bam, str(folder))
@@ -268,10 +256,8 @@ def test_api_set_show_unset(folder):
 def test_unusable_workspace_is_ignored_and_left_alone(seqs, folder, text, caplog):
     (folder / WORKSPACE_FILE).write_text(text)
     bam = _bam(seqs, folder / "s.bam", FEMALE)
-    with _idxstats_counter() as idxstats:
-        assert metrics.sample_sex(bam) == "Female"
-        assert metrics.sample_sex(bam) == "Female"
-    assert idxstats.call_count == 2
+    assert metrics.sample_sex(bam) == "Female"
+    assert metrics.sample_sex(bam) == "Female"
     assert (folder / WORKSPACE_FILE).read_text() == text
     assert f"Ignoring {folder / WORKSPACE_FILE}" in caplog.text
     code, _ = _cli("sample", "set", "--workspace", str(folder), "--sex", "Male")
@@ -288,9 +274,7 @@ def test_older_workspace_keeps_overrides_and_redetects(seqs, folder):
         f'[detected."s.bam"]\nfingerprint = "{fp}"\n'
         '[detected."s.bam".sex]\nvalue = "Male"\nversion = 2\n'
     )
-    with _idxstats_counter() as idxstats:
-        assert metrics.sample_sex(bam) == "Female"
-    assert idxstats.call_count == 1
+    assert metrics.sample_sex(bam) == "Female"
     raw = sample_workspace.tomllib.loads((folder / WORKSPACE_FILE).read_text())
     assert raw["schema"] == sample_workspace.SCHEMA_ID
     assert raw["override"] == {"platform": "ont"}
@@ -311,9 +295,7 @@ def test_a_fact_from_an_older_detector_is_shown_but_not_used(seqs, folder):
     details = api.sample.show(api.SampleShowParams(input=Path(bam))).details
     assert "sex" not in details["effective"]
     assert details["files"]["s.bam"]["facts"]["sex"]["value"] == "Male"
-    with _idxstats_counter() as idxstats:
-        assert metrics.sample_sex(bam) == "Female"
-    assert idxstats.call_count == 1
+    assert metrics.sample_sex(bam) == "Female"
 
 
 @needs_htslib
@@ -341,10 +323,9 @@ def test_read_only_folder_never_fails_a_command(seqs, folder):
 @needs_htslib
 def test_inputs_outside_sample_folders_are_not_recorded(seqs, tmp_path):
     bam = _bam(seqs, tmp_path / "s.bam", MALE)
-    with _idxstats_counter() as idxstats:
-        metrics.sample_sex(bam)
-        metrics.sample_sex(bam)
-    assert idxstats.call_count == 2
+    assert metrics.sample_sex(bam) == "Male"
+    Path(bam + ".bai").unlink()
+    assert metrics.sample_sex(bam) == "Unknown"
     assert not (tmp_path / WORKSPACE_FILE).exists()
 
 
@@ -401,13 +382,11 @@ def test_an_override_the_reads_contradict_is_warned_about(seqs, folder):
     # checked (in a later run).
     later = CommandResult(command="vcf snp")
     with (
-        _idxstats_counter() as idxstats,
         patch.object(sample_workspace, "_checked", set()),
         collecting(later),
     ):
         assert metrics.sample_sex(bam) == "Male"
         assert input_platform(bam) == "ont"
-    assert idxstats.call_count == 0
     assert {w.code for w in later.warnings} == {
         "sex_override_differs",
         "platform_override_differs",
