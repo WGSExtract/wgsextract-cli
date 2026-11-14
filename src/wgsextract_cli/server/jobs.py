@@ -17,6 +17,7 @@ import os
 import secrets
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections.abc import Iterable, Mapping
@@ -534,13 +535,16 @@ def _kill_tree(pid: int) -> None:
 
 
 def write_private_json(path: Path, data: Mapping[str, Any]) -> None:
-    """Write ``data`` readable by this user only (it holds the token)."""
+    """Atomically publish ``data`` readable by this user only."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with contextlib.suppress(FileNotFoundError):
-        path.unlink()
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
-        json.dump(data, f, indent=1)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+            json.dump(data, f, indent=1)
+        os.replace(temporary, path)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(temporary)
 
 
 # In precedence order: a trio's proband overrides its other inputs.

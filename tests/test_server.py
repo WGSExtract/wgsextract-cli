@@ -34,9 +34,10 @@ from tests.smoke_utils import ensure_fake_data, get_cli_command
 from wgsextract_cli.api._params import json_schema
 from wgsextract_cli.core import results
 from wgsextract_cli.core.config import get_config_path, settings
+from wgsextract_cli.core.last_run import state_directory
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 from wgsextract_cli.server.http_api import Server
-from wgsextract_cli.server.jobs import JobManager
+from wgsextract_cli.server.jobs import JobManager, write_private_json
 from wgsextract_cli.server.operations import (
     PathGuard,
     RequestError,
@@ -2042,6 +2043,96 @@ def test_serve_command_publishes_its_address_and_cleans_up(tmp_path, work):
     if sys.platform != "win32":
         assert proc.returncode == 0
         assert not discovery.exists()
+
+
+def interrupt_serve_announcement(
+    work: Path, stop_signal: int, *args: str
+) -> subprocess.CompletedProcess[str]:
+    # The OS stream boundary: interrupt at the ready line, before HTTP startup,
+    # rather than depending on subprocess scheduling.
+    code = f"""
+import os, signal, sys
+from wgsextract_cli.main import main
+class InterruptOnReady:
+    def write(self, text):
+        result = sys.__stdout__.write(text)
+        if '"url"' in text:
+            sys.__stdout__.flush()
+            os.kill(os.getpid(), {stop_signal})
+        return result
+    def flush(self):
+        sys.__stdout__.flush()
+sys.stdout = InterruptOnReady()
+main()
+"""
+    return subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            code,
+            "serve",
+            "--ready-json",
+            "--allow",
+            str(work),
+            *args,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signal delivery")
+@pytest.mark.parametrize("stop_signal", [signal.SIGINT, signal.SIGTERM])
+def test_799_interrupting_http_discovery_announcement_exits_cleanly(
+    work: Path, stop_signal: int
+) -> None:
+    proc = interrupt_serve_announcement(work, stop_signal)
+    assert json.loads(proc.stdout)["url"].startswith("http://127.0.0.1:")
+    assert proc.returncode == 0
+    assert not (state_directory() / "server" / "server.json").exists()
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_799_interrupted_private_json_never_publishes_partial_data(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing: bool
+) -> None:
+    path = tmp_path / "server.json"
+    previous = {"pid": 123, "token": "previous"}
+    if existing:
+        write_private_json(path, previous)
+    visible: list[str | None] = []
+    modes: list[int] = []
+    fdopen = os.fdopen
+
+    @contextlib.contextmanager
+    def interrupted_fdopen(fd: int, *args: Any, **kwargs: Any) -> Iterator[Any]:
+        with fdopen(fd, *args, **kwargs) as stream:
+
+            class InterruptedWriter:
+                def write(self, text: str) -> int:
+                    stream.write(text)
+                    stream.flush()
+                    visible.append(path.read_text() if path.exists() else None)
+                    modes.append(os.fstat(stream.fileno()).st_mode & 0o777)
+                    raise KeyboardInterrupt
+
+            yield InterruptedWriter()
+
+    # OS file-stream boundary: interrupt after the first real JSON write.
+    monkeypatch.setattr(os, "fdopen", interrupted_fdopen)
+    with pytest.raises(KeyboardInterrupt):
+        write_private_json(path, {"pid": 456, "token": "replacement"})
+    assert len(visible) == 1
+    if existing:
+        assert json.loads(visible[0] or "") == previous
+        assert json.loads(path.read_text()) == previous
+    else:
+        assert visible == [None]
+        assert not path.exists()
+    if sys.platform != "win32":
+        assert modes == [0o600]
+    assert set(tmp_path.iterdir()) == ({path} if existing else set())
 
 
 def test_serve_exits_with_its_parent_and_frees_the_state_folder(work):
