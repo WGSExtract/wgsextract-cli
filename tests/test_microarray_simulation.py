@@ -451,12 +451,24 @@ def _vcf(
     *,
     evidence: bool = True,
 ) -> str:
-    if evidence and "ID=DP," not in extra_headers and "ID=GQ," not in extra_headers:
-        extra_headers += (
-            '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
-            '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">\n'
-        )
-        records = [r.replace(" GT ", " GT:DP:GQ ") + ":30:60" for r in records]
+    if evidence:
+        for name, description in (("DP", "Depth"), ("GQ", "Quality")):
+            if f"ID={name}," not in extra_headers:
+                extra_headers += f'##FORMAT=<ID={name},Number=1,Type=Integer,Description="{description}">\n'
+        prepared = []
+        for record in records:
+            parts = record.replace(" ", "\t").split("\t")
+            if len(parts) != 10:
+                raise ValueError("Expected a single-sample VCF fixture record")
+            formats, values = parts[8].split(":"), parts[9].split(":")
+            values += ["."] * (len(formats) - len(values))
+            for name, value in (("DP", "30"), ("GQ", "60")):
+                if name not in formats:
+                    formats.append(name)
+                    values.append(value)
+            parts[8], parts[9] = ":".join(formats), ":".join(values)
+            prepared.append("\t".join(parts))
+        records = prepared
     path.write_text(
         "##fileformat=VCFv4.2\n"
         + "".join(f"##contig=<ID={c},length={LENGTH}>\n" for c in contigs)
@@ -656,13 +668,28 @@ def test_weak_reference_block_interiors_do_not_export_as_reference(
     vcf = _vcf(
         tmp_path / "block.g.vcf", ("1",),
         [f"1 900 . A <NON_REF> . {record_filter} END=3500 {fields} {sample}"],
-        headers,
+        headers, evidence=False,
     )  # fmt: skip
     _microarray(vcf, fasta, tmp_path / "out", "--call-reasons")
     report = _rows(tmp_path / "out/block.g_CombinedKit_reasons.tsv")
     assert report["rsHet"][-2:] == [expected, reason]
     assert report["rsRef"][-2:] == [expected, reason]
     assert report["rsNoReads"][-2:] == ["--", "absent_from_vcf"]
+
+
+@pytest.mark.parametrize(("field", "reason"), [("DP", "low_dp"), ("GQ", "low_gq")])
+def test_partial_quality_header_fixture_retains_weak_evidence(
+    tmp_path, library, field, reason
+):
+    fasta, _ = library
+    vcf = _vcf(
+        tmp_path / "partial.vcf", ("1",),
+        [f"1 1000 . A C 50 PASS . GT:{field} 0/1:1"],
+        f'##FORMAT=<ID={field},Number=1,Type=Integer,Description="Evidence">\n',
+    )  # fmt: skip
+    _microarray(vcf, fasta, tmp_path / "out", "--call-reasons")
+    report = _rows(tmp_path / "out/partial_CombinedKit_reasons.tsv")
+    assert report["rsHet"][-2:] == ["--", reason]
 
 
 def test_strand_mask_uses_site_alleles_not_just_the_called_genotype(
