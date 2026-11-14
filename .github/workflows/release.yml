@@ -153,6 +153,12 @@ jobs:
         run: pixi run test
       - name: Build and smoke test the package
         run: pixi run package-smoke
+      # The shared action's post step reloads it from the workspace.
+      - name: Restore this run's CI helpers for post-job steps
+        if: always()
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
   # The "Protect release tags" ruleset doesn't let the workflow token create
   # v* tags, so the tag is pushed with a deploy key the ruleset lets through.

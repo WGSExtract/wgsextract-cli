@@ -328,6 +328,7 @@ jobs:
           args=()
           if [ "$CLI" = tree ]; then args+=(--cli-from-tree); fi
           python scripts/installlab/lab.py run host --gui-repo "$APP_SOURCE" --dmg "$DMG" "${args[@]}" --no-judge --out out/installlab/ci-macos-app
+      # After the scenario, whose app installs and removes its own ~/.pixi.
       # Restore only: this job has run the app repository's code, and a cache
       # saved here would be restored by this repository's other jobs.
       - name: Set up Pixi
