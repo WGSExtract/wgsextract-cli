@@ -87,26 +87,18 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: macos-aligners
-          path: macos-aligners
-      - name: Publish the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.release_tag }}
-        run: |
-          case "$TAG" in macos-aligners-*) ;; *) echo "Tag must start with macos-aligners-" >&2; exit 1 ;; esac
-          {
-            echo "Optional Apple Silicon (macOS 13+, arm64) rebuilds of BWA 0.7.19, BWA-MEM2 2.3, bwa-mem3 0.16.0 and minimap2 2.31. Not used by the wgsextract CLI yet."
-            echo "All align on the CPU by default. The EXPERIMENTAL --metal flags offload seeding, locate, seed extension and mate rescue (wgse-bwa), seeding, seed extension and mate rescue (wgse-bwa-mem2), seeding and seed extension (wgse-bwa-mem3), or base-level gap fills of long reads (wgse-minimap2) to the GPU."
-            echo "Built from native/ at ${GITHUB_SHA} by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
-            echo "See native/README.md for usage, benchmarks and licences."
-            echo
-            echo "| Package | SHA-256 |"
-            echo "| --- | --- |"
-            for f in macos-aligners/*.tar.gz; do echo "| $(basename "$f") | \`$(sha256sum "$f" | cut -d' ' -f1)\` |"; done
-          } > notes.md
-          gh release create "$TAG" macos-aligners/*.tar.gz \
-            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "macOS aligners $TAG" \
-            --notes-file notes.md --prerelease --latest=false
+          persist-credentials: false
+      - uses: ./.github/actions/publish-native-release
+        with:
+          tag: ${{ inputs.release_tag }}
+          tag-prefix: macos-aligners-
+          title: macOS aligners ${{ inputs.release_tag }}
+          source: native/
+          artifacts: macos-aligners
+          assets: "*.tar.gz"
+          description: |
+            Optional Apple Silicon (macOS 13+, arm64) rebuilds of BWA 0.7.19, BWA-MEM2 2.3, bwa-mem3 0.16.0 and minimap2 2.31. Not used by the wgsextract CLI yet.
+            All align on the CPU by default. The EXPERIMENTAL --metal flags offload seeding, locate, seed extension and mate rescue (wgse-bwa), seeding, seed extension and mate rescue (wgse-bwa-mem2), seeding and seed extension (wgse-bwa-mem3), or base-level gap fills of long reads (wgse-minimap2) to the GPU.
+            See native/README.md for usage, benchmarks and licences.
