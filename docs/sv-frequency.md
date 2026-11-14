@@ -95,7 +95,7 @@ could look up; other records pass through unchanged:
 | `SV_POPMAX_AF` | Its highest genetic-ancestry-group frequency. |
 | `SV_AF_ID`, `SV_AF_SOURCE` | Its ID and catalogue (`gnomAD-SV_v4.1`, `gnomAD-SV_v2.1`, `gnomAD-LR_0.1`). |
 | `SV_AF_MATCH` | Match quality, 0-1: the reciprocal overlap, or for insertions the mean of breakpoint closeness and size similarity. |
-| `SV_FREQ` | `common` (AF ≥ `--common-af`, default 0.01), `low`, `rare` (AF < `--rare-af`, default 0.001) or `novel` (no match). |
+| `SV_FREQ` | `common` (AF ≥ `--common-af`, default 0.01), `low`, `rare` (AF < `--rare-af`, default 0.001) or `novel` (no eligible same-type match; nondirectional CNVs are unassessed). |
 | `SV_COMMON` | Flag: a common SV. |
 
 `sv_freq.tsv` has one row per SV with the same values. The result manifest's
@@ -110,6 +110,10 @@ resolve.
 The same-type geometric matches are population screening annotations, not
 proof of sequence-level allele equivalence, particularly for insertions
 whose sequence is unknown.
+The VCF INFO description, run log, and personal report use "no eligible
+same-type match" rather than implying absence from gnomAD. Nondirectional
+CNV comparisons are unassessed even when a pooled CNV is present in the
+catalogue; their `novel` label is not evidence of absence or rarity.
 
 ## Validation on HG002
 

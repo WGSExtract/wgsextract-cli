@@ -1047,13 +1047,19 @@ Build the consensus (role `consensus_fasta`, and `liftover_chain` with
 
 CLI: `wgsextract vcf trio`.
 
-Filter the trio; output roles `trio_<mode>` (and `trio_joint`,
+Filter the trio; output roles `trio_<mode>` and, for VCF de novo/comphet,
+`trio_<mode>_inconclusive` (and `trio_joint`,
 `trio_denovo_isolated` from BAM/CRAMs).
 
 `VcfTrioParams`: Calls matching an inheritance mode in a child and both parents, as
 `trio_<mode>.vcf.gz`. Three VCFs are merged; three BAM/CRAMs are first
 genotyped jointly from the reads (`trio_joint.vcf.gz`), which de novo
-calls need.
+calls need. VCF de novo and comphet classification requires complete
+parental genotypes with GQ >=20 and no failed FORMAT/FT filter; missing,
+filtered or weak evidence is written to
+`trio_<mode>_inconclusive.vcf.gz`, preserving the parental genotypes.
+Sparse variant-only VCFs do not establish parental reference calls.
+Covering gVCF reference blocks are assessed when a matching --ref is given.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -2306,8 +2312,12 @@ Call CYP2D6 star alleles with Cyrius (see `TypingCyp2d6Params`).
 `TypingCyp2d6Params`: Call CYP2D6 star alleles, including copy-number and CYP2D6/CYP2D7
 hybrids, with Cyrius (about 30x WGS). On GRCh38 with chr22 ALT contigs,
 the locus's reads are first realigned to primary chr22 (needs `ref`
-and minimap2). Metrics: `cyp2d6_genotype`, `cyp2d6_filter`,
-`cyp2d6_copy_number` and `median_depth`.
+and minimap2). Only a PASS call Cyrius matched uniquely becomes a PharmCAT
+outside call. Metrics: `cyp2d6_genotype`, `cyp2d6_filter`,
+`cyp2d6_call_status` (resolved, unresolved or no_call),
+`cyp2d6_call_info`, `cyp2d6_raw_star_alleles`, `cyp2d6_cnv_group`,
+`cyp2d6_cyp2d7_copy_number` (CYP2D6 and CYP2D7 together, normally 4) and
+`median_depth`.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |

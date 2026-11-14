@@ -74,6 +74,10 @@ REASONS = {
     "low_coverage": "the run warned that coverage is too low for reliable calls",
     "caller_filter": "the caller flagged the call (its filter did not pass)",
     "no_call": "the caller made no call",
+    "genotype_unresolved": "the caller's variants fit more than one diplotype, "
+    "so it picked one; no outside call was exported",
+    "call_info_unknown": "the run predates recording whether the call was a "
+    "unique match; rerun it",
     "evidence_mismatch": "the evidence file no longer matches the run's result",
     "no_labelled_calls": "the gene has no labelled variant calls; a reference "
     "(*1) allele rests on coverage alone",
@@ -96,7 +100,7 @@ SECTIONS = {
 _ALIGNMENT_SUFFIXES = (".bam", ".cram")
 _VCF_SUFFIXES = (".vcf.gz", ".vcf.bgz", ".vcf", ".bcf")
 # Manifest input roles naming the sample's own files
-SAMPLE_ROLES = ("input", "vcf_input")
+SAMPLE_ROLES = ("input", "vcf_input", "proband")
 _OVERVIEW_FACTS = (
     ("sex", "Sex"),
     ("platform", "Platform"),
@@ -556,7 +560,9 @@ def _overview(ctx: _Context) -> dict[str, Any]:
     info = latest(ctx.sources, _command("info"))
     run = latest(ctx.sources, _command("qc contamination"))
     run = run if run is not None and run.status == "ok" else None
-    section = _section("overview", [info, run], ctx)
+    trio = latest(ctx.sources, _command("vcf trio"))
+    trio = trio if trio is not None and trio.status == "ok" else None
+    section = _section("overview", [info, run, trio], ctx)
     facts = []
     for name, label in _OVERVIEW_FACTS:
         fact = ctx.fact(name)
@@ -940,12 +946,15 @@ def _cyrius_finding(section: dict[str, Any], source: Source, ctx: _Context) -> N
     metrics = source.metrics
     genotype = metrics.get("cyp2d6_genotype")
     status = metrics.get("cyp2d6_filter")
+    call_status = metrics.get("cyp2d6_call_status")
     depth = metrics.get("median_depth")
     thresholds = variant_confidence.thresholds_from()
     if not genotype:
         label, reasons = variant_confidence.LOW, ["no_call"]
     elif status != "PASS":
         label, reasons = variant_confidence.LOW, ["caller_filter"]
+    elif call_status == "unresolved":
+        label, reasons = variant_confidence.LOW, ["genotype_unresolved"]
     elif not isinstance(depth, (int, float)):
         label, reasons = variant_confidence.MODERATE, ["depth_unknown"]
     elif depth < thresholds.min_depth:
@@ -954,26 +963,47 @@ def _cyrius_finding(section: dict[str, Any], source: Source, ctx: _Context) -> N
         label, reasons = variant_confidence.MODERATE, ["moderate_depth"]
     else:
         label, reasons = variant_confidence.HIGH, []
-    copies = metrics.get("cyp2d6_copy_number")
+    if genotype and call_status is None and label == variant_confidence.HIGH:
+        # Runs from before Cyrius's Call_info was recorded can't show the call
+        # was a unique match.
+        label, reasons = variant_confidence.MODERATE, ["call_info_unknown"]
+    # Cyrius's Total_CN, recorded as cyp2d6_copy_number by older runs, counts
+    # CYP2D6 and CYP2D7 together.
+    copies = metrics.get("cyp2d6_cyp2d7_copy_number", metrics.get("cyp2d6_copy_number"))
+    candidates = metrics.get("cyp2d6_raw_star_alleles")
     detail = ", ".join(
         x
         for x in (
             f"filter {status}" if status else "",
-            f"{copies} copies" if copies is not None else "",
+            f"Cyrius call {metrics['cyp2d6_call_info']}"
+            if metrics.get("cyp2d6_call_info")
+            else "",
+            f"candidates {candidates}" if candidates else "",
+            f"CNV group {metrics['cyp2d6_cnv_group']}"
+            if metrics.get("cyp2d6_cnv_group")
+            else "",
+            f"CYP2D6+CYP2D7 copy number {copies}" if copies is not None else "",
             f"median depth {_number(depth, 'x')}" if depth is not None else "",
         )
         if x
     )
+    if not genotype:
+        value = "no call"
+    elif call_status == "unresolved" or (call_status is None and status != "PASS"):
+        value = f"unresolved (Cyrius: {genotype})"
+    else:
+        value = str(genotype)
     section["findings"].append(
         _finding(
             "pharmacogenomics",
             "CYP2D6 diplotype (Cyrius)",
-            str(genotype or "no call"),
+            value,
             detail=detail or None,
             gene="CYP2D6",
             confidence=label,
             reasons=reasons,
-            basis="Cyrius filter and median depth vs. confidence thresholds",
+            basis="Cyrius filter, call uniqueness and median depth vs. confidence "
+            "thresholds",
             evidence=ctx.rel(source.output("cyp2d6_calls", "cyrius_report")),
             region="gene CYP2D6",
             manifest=ctx.rel(source.manifest),
@@ -1249,6 +1279,7 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
                     "depth": _int(call.get("depth")),
                     "genotype_quality": _int(call.get("genotype_quality")),
                     "alt_fraction": _float(call.get("alt_fraction")),
+                    "phase_set": str(call.get("phase_set") or "") or None,
                 },
             )
         )
@@ -1307,8 +1338,7 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
             }
         )
     flagged = [
-        f"{g['gene']} {g['status'].replace('_', ' ')}"
-        + ("" if g["confidence"] == "high" else f" ({_confidence_text(g)})")
+        f"{g['gene']} {g['status'].replace('_', ' ')}" + _qualifiers(g)
         for g in section["genes"]
         if g["status"]
     ]
@@ -1413,8 +1443,11 @@ def _structural_variants(ctx: _Context) -> dict[str, Any]:
     section["summary"] = (
         f"{sum(counts.values())} carried PASS SVs: {counts['common']} common "
         f"(AF >= {common:g}), {counts['low']} low-frequency, {counts['rare']} rare "
-        f"(AF < {rare:g}) and {counts['novel']} not in gnomAD. Common SVs are "
-        "unlikely to cause rare disease; rare and novel ones are worth a look."
+        f"(AF < {rare:g}) and {counts['novel']} with no eligible same-type match. "
+        "Nondirectional CNVs are unassessed, not evidence of absence from gnomAD. "
+        "Other unmatched calls may reflect catalogue gaps or caller artefacts, "
+        "not rarity. Common SVs are unlikely to cause rare disease; "
+        "rare matched SVs may warrant investigation."
     )
     return section
 
@@ -1424,9 +1457,17 @@ GENE_STATUS = {
     "biallelic": "a homozygous P/LP call, or P/LP calls of two ALTs of one "
     "multi-allelic call (such as 1/2): both copies affected",
     "possible_biallelic": "possibly both copies affected: two or more "
-    "heterozygous P/LP calls whose phase is unknown (they may be on the same "
-    "copy), or a call whose other allele was not called",
+    "heterozygous P/LP calls whose phase is unknown (unphased, or in different "
+    "phase sets, so they may be on the same copy), or a call whose other "
+    "allele was not called",
     "carrier": "one heterozygous P/LP call: one copy affected",
+}
+# The same statuses when the phase set (FORMAT/PS) of the calls decided them.
+PHASED_STATUS = {
+    "biallelic": "heterozygous P/LP calls phased on opposite copies (trans) "
+    "in one phase set: both copies affected",
+    "carrier": "heterozygous P/LP calls all phased on the same copy (cis) in "
+    "one phase set: one copy affected",
 }
 
 
@@ -1440,17 +1481,39 @@ def _split_index(origin: Sequence[str]) -> bool:
     )
 
 
+def _phased_copy(
+    call: Mapping[str, Any], alleles: Sequence[str]
+) -> tuple[tuple[str, str], int] | None:
+    """The phase set (chromosome, FORMAT/PS) of a heterozygous diploid call
+    phased within one, and the copy (0 or 1) carrying its ALT; None when its
+    phase is unknown. Pipes without a PS don't say which calls were phased
+    together, so they compare nothing."""
+    genotype = str(call.get("genotype") or "")
+    phase_set = str(call.get("phase_set") or "")
+    if "/" in genotype or "|" not in genotype or phase_set in ("", "."):
+        return None
+    carried = [i for i, allele in enumerate(alleles) if allele != "0"]
+    if len(alleles) != 2 or len(carried) != 1:
+        return None
+    return (str(call.get("chrom") or ""), phase_set), carried[0]
+
+
 def _gene_calls(
     gene: gene_lists.Gene, calls: Sequence[Mapping[str, Any]], complete: bool = True
 ) -> dict[str, Any]:
     """A listed gene's P/LP calls by zygosity, and for a gene the list reports
     only when biallelic (AR) whether this sample is a carrier or (possibly)
-    biallelic, with the weakest confidence of those calls. Phase is not
-    known, and a haploid or partly called genotype (``1/.``) doesn't show the
-    other copy, so these make the gene only possibly biallelic. Two ALTs split
-    from one diploid call (``1/2``) are on opposite copies: biallelic."""
-    het = hom = hemi = partial = 0
+    biallelic, with the weakest confidence of those calls.
+
+    Heterozygous calls are on known copies only when phased (``0|1``) in one
+    phase set (FORMAT/PS): on one copy (cis) they leave the other unaffected,
+    on opposite copies (trans) they affect both. So are two ALTs split from
+    one diploid call (``1/2``). Calls of unknown phase, or in different phase
+    sets, make the gene only possibly biallelic, as does a haploid or partly
+    called genotype (``1/.``), which doesn't show the other copy."""
+    het = hom = hemi = partial = unphased = 0
     split_alts: dict[str, set[str]] = {}
+    phase_sets: dict[tuple[str, str], set[int]] = {}
     for call in calls:
         zygosity = str(call.get("zygosity") or "")
         alleles = re.split(r"[/|]", str(call.get("genotype") or ""))
@@ -1463,20 +1526,42 @@ def _gene_calls(
             origin = str(call.get(variant_confidence.SPLIT_TAG) or "").split("|")
             if len(alleles) == 2 and _split_index(origin):
                 split_alts.setdefault("|".join(origin[:4]), set()).add(origin[4])
+            if copy := _phased_copy(call, alleles):
+                phase_sets.setdefault(copy[0], set()).add(copy[1])
+            else:
+                unphased += 1
         elif zygosity == "hom":
             hom += 1
         elif zygosity == "haploid":
             hemi += 1
+    split_trans = any(len(alts) > 1 for alts in split_alts.values())
+    phased_trans = any(len(copies) > 1 for copies in phase_sets.values())
+    # Calls of one phase set on one copy are one allele; others may each be.
+    alleles_seen = unphased + len(phase_sets)
+    phase = None
+    if het >= 2:
+        if split_trans or phased_trans:
+            phase = "trans"
+        elif alleles_seen == 1:
+            phase = "cis"
+        else:
+            phase = "unknown"
     status = None
     if gene.recessive:
-        if hom or any(len(alts) > 1 for alts in split_alts.values()):
+        if hom or split_trans or phased_trans:
             status = "biallelic"
-        elif hemi or partial or het >= 2:
+        elif hemi or partial or alleles_seen >= 2:
             status = "possible_biallelic"
         elif het:
             status = "carrier"
     if not complete and status != "biallelic":
         status = None
+    if not complete and phase != "trans":
+        phase = None
+    # Phase sets decided it: no homozygous call or split 1/2 already did.
+    by_phase = (status, phase) == ("carrier", "cis") or (
+        status == "biallelic" and not hom and not split_trans
+    )
     order = {label: i for i, label in enumerate(CONFIDENCE)}
     labels = [str(c.get("confidence") or NOT_ASSESSED) for c in calls]
     return {
@@ -1486,10 +1571,26 @@ def _gene_calls(
         "homozygous": hom,
         "hemizygous": hemi,
         "partial": partial,
+        "phase": phase,
         "confidence": max(labels, key=lambda label: order.get(label, len(order))),
         "status": status,
-        "status_text": GENE_STATUS.get(status or "", ""),
+        "status_text": (PHASED_STATUS if by_phase else GENE_STATUS).get(
+            status or "", ""
+        ),
     }
+
+
+def _qualifiers(gene: Mapping[str, Any]) -> str:
+    """' (cis; low-confidence calls)': the known phase behind the status, and
+    the calls' confidence when not high."""
+    known = (gene["status"], gene["phase"]) in {
+        ("carrier", "cis"),
+        ("biallelic", "trans"),
+    }
+    parts = [gene["phase"]] if known else []
+    if gene["confidence"] != "high":
+        parts.append(_confidence_text(gene))
+    return f" ({'; '.join(parts)})" if parts else ""
 
 
 def _confidence_text(gene: Mapping[str, Any]) -> str:
@@ -1954,7 +2055,11 @@ def _call_text(v: Mapping[str, Any]) -> str:
     head = " ".join(str(x) for x in (allele, v.get("genotype"), v.get("zygosity")) if x)
     tail = [
         f"{label} {v[key]}"
-        for label, key in (("DP", "depth"), ("GQ", "genotype_quality"))
+        for label, key in (
+            ("DP", "depth"),
+            ("GQ", "genotype_quality"),
+            ("PS", "phase_set"),
+        )
         if v.get(key) is not None
     ]
     return ", ".join([head, *tail])

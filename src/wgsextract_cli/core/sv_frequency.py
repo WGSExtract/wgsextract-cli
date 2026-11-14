@@ -308,8 +308,9 @@ INFO_HEADERS = (
     "the reciprocal overlap (same-type DEL/DUP/INV), else the mean of breakpoint "
     'closeness and size similarity (INS)">',
     '##INFO=<ID=SV_FREQ,Number=1,Type=String,Description="Population frequency '
-    "class: common (SV_AF >= {common}), low, rare (SV_AF < {rare}) or novel (no "
-    'matching gnomAD SV)">',
+    "class: common (SV_AF >= {common}), low, rare (SV_AF < {rare}) or novel "
+    "(no eligible same-type match; nondirectional CNVs are unassessed, not "
+    'evidence of absence from gnomAD)">',
     '##INFO=<ID=SV_COMMON,Number=0,Type=Flag,Description="Common SV: SV_AF >= '
     '{common}">',
 )

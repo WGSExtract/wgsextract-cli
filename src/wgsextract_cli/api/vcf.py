@@ -327,7 +327,12 @@ class VcfTrioParams(_VcfFileParams):
     """Calls matching an inheritance mode in a child and both parents, as
     ``trio_<mode>.vcf.gz``. Three VCFs are merged; three BAM/CRAMs are first
     genotyped jointly from the reads (``trio_joint.vcf.gz``), which de novo
-    calls need."""
+    calls need. VCF de novo and comphet classification requires complete
+    parental genotypes with GQ >=20 and no failed FORMAT/FT filter; missing,
+    filtered or weak evidence is written to
+    ``trio_<mode>_inconclusive.vcf.gz``, preserving the parental genotypes.
+    Sparse variant-only VCFs do not establish parental reference calls.
+    Covering gVCF reference blocks are assessed when a matching --ref is given."""
 
     COMMAND = "vcf trio"
 
@@ -690,7 +695,8 @@ def trio(
     cancel: CancelToken | None = None,
     check: bool = True,
 ) -> CommandResult:
-    """Filter the trio; output roles ``trio_<mode>`` (and ``trio_joint``,
+    """Filter the trio; output roles ``trio_<mode>`` and, for VCF de novo/comphet,
+    ``trio_<mode>_inconclusive`` (and ``trio_joint``,
     ``trio_denovo_isolated`` from BAM/CRAMs)."""
     from wgsextract_cli.commands.vcf.filter_trio import run_trio
 

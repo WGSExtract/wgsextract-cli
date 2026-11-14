@@ -9,6 +9,7 @@ import dataclasses
 import gzip
 import hashlib
 import json
+import logging
 import subprocess
 from pathlib import Path
 
@@ -261,7 +262,7 @@ def test_sequence_resolved_long_read_calls_match(library, tmp_path):
 
 
 def test_issue_847_opposite_cnv_frequency_and_unproven_ins_dup_equivalence(
-    library, tmp_path
+    library, tmp_path, caplog
 ):
     """Pooled gain/loss carriers and nearby DUPs are not allele frequencies."""
     vcf = _bgzip_vcf(
@@ -282,7 +283,9 @@ def test_issue_847_opposite_cnv_frequency_and_unproven_ins_dup_equivalence(
         )
         + "\n",
     )
-    result = _sv_freq(vcf, library, tmp_path / "out")
+    caplog.set_level(logging.INFO)
+    folder = tmp_path / "out"
+    result = _sv_freq(vcf, library, folder)
     records = _records(_output(result, "annotated_vcf"))
     for ident, af, catalogue_id in [
         ("same_del", "0.3", "gDEL"),
@@ -311,6 +314,27 @@ def test_issue_847_opposite_cnv_frequency_and_unproven_ins_dup_equivalence(
     assert all(
         rows[ident]["sv_af"] == "" and rows[ident]["sv_af_source"] == ""
         for ident in unmatched
+    )
+    assert "no eligible same-type match" in caplog.text
+    assert "CNVs are unassessed" in caplog.text
+    report = api.report.build(api.ReportParams(workspace=folder))
+    document = json.loads(Path(_output(report, "report_json")).read_text())
+    summary = document["sections"]["structural_variants"]["summary"]
+    assert "no eligible same-type match" in summary
+    assert "CNVs are unassessed" in summary
+    assert "not in gnomAD" not in summary
+    headers = subprocess.run(
+        ["bcftools", "view", "-h", str(_output(result, "annotated_vcf"))],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    freq_header = next(
+        line for line in headers.splitlines() if line.startswith("##INFO=<ID=SV_FREQ,")
+    )
+    assert (
+        "no eligible same-type match" in freq_header
+        and "CNVs are unassessed" in freq_header
     )
 
 
