@@ -1,3 +1,5 @@
+import ast
+import re
 from pathlib import Path
 
 import pytest
@@ -154,18 +156,65 @@ def test_916_expensive_builds_use_trusted_shared_cache(
 
 
 @pytest.mark.parametrize("action", ["compiler-cache", "rust-cache"])
-def test_916_pr_refs_cannot_save_compiler_caches(action: str) -> None:
+@pytest.mark.parametrize(
+    ("ref", "event", "actor", "expected"),
+    [
+        ("refs/pull/916/merge", "pull_request", "theontho", False),
+        ("refs/pull/916/merge", "pull_request", "external", False),
+        ("refs/heads/feature", "push", "theontho", False),
+        ("refs/tags/v1.0.0", "push", "theontho", False),
+        ("refs/heads/main", "push", "theontho", True),
+        ("refs/heads/main", "schedule", "theontho", True),
+        ("refs/heads/ci/916-compiler-cache", "pull_request", "theontho", False),
+        ("refs/heads/ci/916-compiler-cache", "push", "theontho", False),
+        ("refs/heads/ci/916-compiler-cache", "workflow_dispatch", "external", False),
+        ("refs/heads/ci/916-compiler-cache", "workflow_dispatch", "theontho", True),
+    ],
+)
+def test_916_pr_refs_cannot_save_compiler_caches(
+    action: str, ref: str, event: str, actor: str, expected: bool
+) -> None:
     text = (policy.ROOT / f".github/actions/{action}/action.yml").read_text()
     if action == "rust-cache":
         condition = text.split("save-if:", 1)[1]
     else:
         condition = text.split("- name: Save successful compiler objects", 1)[1]
         condition = condition.split("uses:", 1)[0]
-    # CI contract: the only non-main writer is the owner's isolated dispatch
-    # experiment. Neither PR events nor PR merge/head refs qualify.
-    assert "github.ref == 'refs/heads/main'" in condition
-    assert "github.event_name == 'workflow_dispatch'" in condition
-    assert "github.ref == 'refs/heads/ci/916-compiler-cache'" in condition
-    assert "github.actor == 'theontho'" in condition
-    assert "pull_request" not in condition
-    assert "measure-916-" in text
+    values = {
+        "github.ref": ref,
+        "github.event_name": event,
+        "github.actor": actor,
+        "inputs.phase": "save",
+        "inputs.writer": "true",
+    }
+    for name, value in values.items():
+        condition = condition.replace(name, repr(value))
+    condition = (
+        condition.split("if:", 1)[-1]
+        .replace(">-", "")
+        .replace("${{", "")
+        .replace("}}", "")
+    )
+    condition = condition.replace("&&", " and ").replace("||", " or ")
+    tree = ast.parse(" ".join(condition.split()), mode="eval")
+
+    # CI contract: evaluate the actual writer guard for PR, tag, main and
+    # owner dispatch contexts, without executing code from a workflow.
+    def matches(node: ast.AST) -> bool | str:
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.BoolOp):
+            truth_values = [bool(matches(value)) for value in node.values]
+            return (
+                all(truth_values) if isinstance(node.op, ast.And) else any(truth_values)
+            )
+        if isinstance(node, ast.Compare) and all(
+            isinstance(operator, ast.Eq) for operator in node.ops
+        ):
+            results = [matches(value) for value in [node.left, *node.comparators]]
+            return all(value == results[0] for value in results[1:])
+        raise AssertionError(f"Unreviewed writer condition: {ast.dump(node)}")
+
+    assert matches(tree.body) is expected
+    if ref.startswith("refs/pull/"):
+        assert re.search(r"measure-916-[a-z]+-v1", text)

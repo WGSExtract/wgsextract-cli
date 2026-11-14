@@ -63,7 +63,6 @@ runs:
           "$CCACHE" --set-config=cache_dir="$GITHUB_WORKSPACE/out/compiler-cache"
           "$CCACHE" --set-config=max_size=128M
           "$CCACHE" --set-config=base_dir="$GITHUB_WORKSPACE"
-          "$CCACHE" --zero-stats
           if [ "$RUNNER_OS" = Windows ]; then
             mkdir -p out/compiler-wrappers
             cp "$CCACHE" out/compiler-wrappers/gcc.exe
@@ -84,6 +83,18 @@ runs:
       with:
         path: out/compiler-cache
         key: ${{ steps.key.outputs.key }}
+    - name: Start this build's compiler statistics
+      if: inputs.phase == 'restore'
+      shell: bash
+      env:
+        CCACHE: ${{ inputs.executable }}
+        KEY: ${{ steps.key.outputs.key }}
+        HIT: ${{ steps.restore.outputs.cache-hit == 'true' }}
+      run: |
+        # A restored directory includes its old statistics. Reset after restore,
+        # not before it, so the summary describes this run's compilation only.
+        "$CCACHE" --zero-stats
+        echo "Compiler cache hit=${HIT}; key=${KEY}" >> "$GITHUB_STEP_SUMMARY"
     - name: Report and bound compiler objects
       if: inputs.phase == 'save'
       shell: bash
