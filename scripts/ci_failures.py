@@ -29,6 +29,12 @@ from scripts.ci_policy import (
 from scripts.ci_quarantine import Quarantine
 
 
+def is_pr_area_run(run: dict[str, Any]) -> bool:
+    """A run of pr_ci.yml. The Actions API reports its run-name ("PR area
+    checks / ACTION / SCOPE") as the run's name, so match its file (#867)."""
+    return run.get("path") == ".github/workflows/pr_ci.yml"
+
+
 class Observer(IssueReports):
     def __init__(self, github: GitHub) -> None:
         super().__init__(github)
@@ -75,7 +81,7 @@ class Observer(IssueReports):
                 continue
             if (
                 not branch
-                and run["name"] == "PR area checks"
+                and is_pr_area_run(run)
                 and item["id"] != run["id"]
                 and item["head_sha"] == run["head_sha"]
                 and self.scope(item) != self.scope(run)
@@ -299,7 +305,7 @@ class Observer(IssueReports):
                 if failure.classification != "test failure":
                     continue
                 source = str(run["workflow_id"])
-                if run["name"] == "PR area checks":
+                if is_pr_area_run(run):
                     source = ROUTED_MAIN.get(failure.job.split(" / ", 1)[0], "")
                 if not source:
                     continue

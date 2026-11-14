@@ -338,7 +338,10 @@ def test_failed_required_gate_does_not_block_lost_runner_retry() -> None:
     # Merge queue (#758) review: the `required` summary fails with a lost
     # dependency; the automatic retry must still rerun the lost job.
     api = ReplayGitHub()
-    api.run["name"] = "PR area checks"
+    api.run.update(
+        name="PR area checks / synchronize / ready",
+        path=".github/workflows/pr_ci.yml",
+    )
     lost = recorded("lost_runner")
     gate = dict(recorded("test_failure"), id=lost["id"] + 1, name="required")
     api.jobs[1] = [lost, gate]
@@ -551,7 +554,10 @@ def test_routed_pr_job_compares_reusable_main_not_pr_only_wrapper(
     prefix: str, job_name: str, workflow: str, workflow_name: str
 ) -> None:
     api = ReplayGitHub()
-    api.run["name"] = "PR area checks"
+    api.run.update(
+        name="PR area checks / synchronize / ready",
+        path=".github/workflows/pr_ci.yml",
+    )
     api.jobs[1][0]["name"] = f"{prefix} / {job_name}"
     if prefix == "smoke":
         api.annotation_text = ""

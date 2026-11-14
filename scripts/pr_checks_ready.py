@@ -72,7 +72,9 @@ def latest_ready_run(
     candidates = [
         run
         for run in runs
-        if run["name"] == "PR area checks"
+        # #867: the API reports the run-name ("PR area checks / ACTION / ready")
+        # as `name`, so match the workflow by its file.
+        if run.get("path") == ".github/workflows/pr_ci.yml"
         and run["event"] == "pull_request"
         and run["head_sha"] == head_sha
         and run["display_title"] in titles
