@@ -1191,7 +1191,8 @@ minimap2 2.31 as on a Mac (`tests/upstream.sh`).
 
 Its conda package (`packaging/wgse-minimap2`, 0.4.0, with the CUDA backend
 below) is built by the same workflow and published next to `wgse-bwa` in the
-`linux-aligners-*` prereleases, from `linux-aligners-3` (now `linux-aligners-4`).
+`linux-aligners-*` prereleases (first in `linux-aligners-3`; the commands below
+use `linux-aligners-4`).
 On `PATH`, `align` and `realign` run it in minimap2's place. For long reads
 they add `--backend auto`, so it uses the GPU when one is usable
 ([docs/hardware.md](../docs/hardware.md#nvidia-gpus-without-parabricks-wgse-bwa---cuda)).
