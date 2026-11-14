@@ -647,7 +647,7 @@ def test_cyp2d6_runs_cyrius_on_the_input_and_writes_the_pharmcat_call(
         (
             {"Genotype": "*1/*4;*4/*10", "Filter": "More_than_one_possible_genotype"},
             None,
-            "couldn't settle on one genotype (More_than_one_possible_genotype",
+            "couldn't settle on one genotype (More_than_one_possible_genotype;",
         ),
         (
             {"Genotype": None, "Filter": None, "Total_CN": None, "Median_depth": 8.4},
@@ -690,7 +690,7 @@ HG00096_AMBIGUOUS = {
         (
             HG00096_AMBIGUOUS,
             "unresolved",
-            "unresolved (Cyrius's pick: *1/*4)",
+            "unresolved (Cyrius: *1/*4)",
             "low",
             None,
         ),

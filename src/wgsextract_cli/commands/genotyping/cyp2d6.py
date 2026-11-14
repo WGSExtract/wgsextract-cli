@@ -107,6 +107,10 @@ def _text(value: object) -> str | None:
     return str(value) if value not in (None, "", "None") else None
 
 
+def _present(*parts: str | None) -> str:
+    return "; ".join(p for p in parts if p) or "no details"
+
+
 def parse_cyrius(json_path: str) -> CyriusCall:
     with open(json_path) as f:
         result = next(iter(json.load(f).values()))
@@ -277,12 +281,18 @@ def run_cyp2d6(params: TypingCyp2d6Params) -> None:
         cyp2d6_cyp2d7_copy_number=call.total_cn,
         median_depth=call.median_depth,
     )
+    cn = call.total_cn if call.total_cn is not None else "?"
+    facts = _present(
+        f"filter {call.filter}" if call.filter else "",
+        f"Cyrius {call.call_info}" if call.call_info else "",
+        f"candidates {alternatives}" if alternatives else "",
+        f"CNV group {call.cnv_group}" if call.cnv_group else "",
+        f"CYP2D6+CYP2D7 copy number {cn}, raw {call.total_cn_raw}",
+        f"median depth {depth}",
+    )
     logging.info(
         f"CYP2D6: {call.genotype or 'no call'}, {call.status.replace('_', ' ')} "
-        f"(filter {call.filter}, Cyrius {call.call_info}; candidates "
-        f"{alternatives}; CNV group {call.cnv_group}; CYP2D6+CYP2D7 copy number "
-        f"{call.total_cn if call.total_cn is not None else '?'}, raw "
-        f"{call.total_cn_raw}; median depth {depth})"
+        f"({facts})"
     )
     if call.filter == "LowQ_high_CN":
         warn(
@@ -296,9 +306,9 @@ def run_cyp2d6(params: TypingCyp2d6Params) -> None:
     elif call.genotype and not call.resolved:
         warn(
             "genotype_ambiguous",
-            f"Cyrius couldn't settle on one genotype ({call.filter}, "
-            f"{call.call_info}; candidates {alternatives}); no PharmCAT outside "
-            "call was written.",
+            "Cyrius couldn't settle on one genotype "
+            f"({_present(call.filter, call.call_info, alternatives)}); no "
+            "PharmCAT outside call was written.",
             gene="CYP2D6",
             filter=call.filter,
             call_info=call.call_info,

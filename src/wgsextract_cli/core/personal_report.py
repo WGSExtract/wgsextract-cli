@@ -988,7 +988,7 @@ def _cyrius_finding(section: dict[str, Any], source: Source, ctx: _Context) -> N
     if not genotype:
         value = "no call"
     elif call_status == "unresolved" or (call_status is None and status != "PASS"):
-        value = f"unresolved (Cyrius's pick: {genotype})"
+        value = f"unresolved (Cyrius: {genotype})"
     else:
         value = str(genotype)
     section["findings"].append(
