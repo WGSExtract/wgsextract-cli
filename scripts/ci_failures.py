@@ -21,6 +21,7 @@ from scripts.ci_policy import (
     SUMMARY_JOBS,
     Failure,
     classify,
+    classify_lost_dependencies,
     matches,
     retryable,
     safe,
@@ -87,13 +88,23 @@ class Observer(IssueReports):
         latest_jobs: dict[str, tuple[dict[str, Any], int]] = {}
         all_jobs: list[tuple[dict[str, Any], int]] = []
         executions: Counter[str] = Counter()
+        seen: dict[int, int] = {}
+        counted: set[int] = set()
         for attempt in range(1, run["run_attempt"] + 1):
             for job in self.jobs(run, attempt):
-                all_jobs.append((job, attempt))
+                job_id = int(job["id"])
+                actual_attempt = seen.setdefault(
+                    job_id, int(job.get("run_attempt", attempt))
+                )
+                all_jobs.append((job, actual_attempt))
                 if job.get("conclusion") == "skipped" and job["name"] in latest_jobs:
                     continue
-                latest_jobs[job["name"]] = job, attempt
-                if job.get("conclusion") != "skipped":
+                previous = latest_jobs.get(job["name"])
+                if previous is not None and actual_attempt < previous[1]:
+                    continue
+                latest_jobs[job["name"]] = job, actual_attempt
+                if job.get("conclusion") != "skipped" and job_id not in counted:
+                    counted.add(job_id)
                     executions[job["name"]] += 1
         failures = []
         for job, attempt in all_jobs if history else latest_jobs.values():
@@ -106,6 +117,8 @@ class Observer(IssueReports):
         # it must not turn a retryable runner loss into a mixed failure.
         if any(failure.job not in SUMMARY_JOBS for failure in failures):
             failures = [f for f in failures if f.job not in SUMMARY_JOBS]
+        if not history:
+            classify_lost_dependencies(failures)
         return failures
 
     def flaky_marker(self, test: str) -> str:
@@ -125,6 +138,7 @@ class Observer(IssueReports):
             (job["name"], step["name"])
             for job in self.jobs(run, run["run_attempt"])
             if job.get("conclusion") == "success"
+            and int(job.get("run_attempt", run["run_attempt"])) == run["run_attempt"]
             for step in job.get("steps", [])
             if step.get("conclusion") == "success"
         }
