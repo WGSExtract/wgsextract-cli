@@ -421,6 +421,7 @@ class CommandResult:
         self._tools: set[str] = set()
         self._tool_versions: dict[str, str] = {}
         self._manifest_stem: Path | None = None
+        self._failed_attempt: Path | None = None
         self._clock = time.monotonic()
         self._text_lock = threading.RLock()
         self._text: list[str] = []
@@ -513,11 +514,15 @@ class CommandResult:
         """Name the manifest ``<stem>.manifest.json`` instead of after an output."""
         self._manifest_stem = Path(stem).expanduser().absolute()
 
-    def name_manifest_after(self, output: str | os.PathLike[str]) -> None:
-        """Name the manifest after ``output`` before it is registered, so a run
-        that fails before writing it still leaves its failed manifest there."""
+    def expect_output(self, output: str | os.PathLike[str]) -> None:
+        """The run will write ``output``. If it fails before registering any
+        output, its manifest is ``<output>.failed.manifest.json`` (named as
+        :func:`manifest_path_for` does), so the failed attempt is on record
+        without replacing an earlier run's manifest; the next manifest written
+        under the output's own name removes it."""
         path = manifest_path_for(Path(output).expanduser().absolute())
-        self._manifest_stem = path.with_name(path.name.removesuffix(MANIFEST_SUFFIX))
+        stem = path.name.removesuffix(MANIFEST_SUFFIX)
+        self._failed_attempt = path.with_name(f"{stem}.failed{MANIFEST_SUFFIX}")
 
     def record_tool_command(self, command: Sequence[str]) -> None:
         tools = tools_in_command(command)
@@ -547,7 +552,7 @@ class CommandResult:
                 return manifest_path_for(record.path)
         for record in self.outputs:
             return Path(record.path, Path(record.path).name + MANIFEST_SUFFIX)
-        return None
+        return self._failed_attempt if self.status != "ok" else None
 
     def finalize(self, *, probe_tools: bool = True) -> None:
         """Stat the outputs and fill in timing and tool versions."""
@@ -592,6 +597,8 @@ class CommandResult:
         except BaseException:
             self.manifest = previous
             raise
+        if self._failed_attempt is not None and path != self._failed_attempt:
+            self._failed_attempt.unlink(missing_ok=True)
         return path
 
 

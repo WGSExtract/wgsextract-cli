@@ -870,27 +870,25 @@ def test_interrupted_table_compression_is_redone(tmp_path):
 
 @needs_bcftools
 @pytest.mark.parametrize(
-    "argv, flag, manifest",
+    "command, flag, manifest",
     [
-        (["clinvar"], "--clinvar-file", "clinvar_pathogenic.vcf.manifest.json"),
-        (["cadd", "--cadd-file", "{exists}"], "--cadd-indel-file",
-         "cadd_annotated.vcf.manifest.json"),
-        (["sv-freq"], "--gnomad-sv-file", "sv_freq_annotated.vcf.manifest.json"),
+        ("clinvar", "--clinvar-file", "clinvar_pathogenic.vcf.failed.manifest.json"),
+        # Named even with no CADD SNV resource installed.
+        ("cadd", "--cadd-indel-file", "cadd_annotated.vcf.failed.manifest.json"),
+        ("sv-freq", "--gnomad-sv-file", "sv_freq_annotated.vcf.failed.manifest.json"),
     ],
 )  # fmt: skip
 def test_issue_894_missing_resource_is_a_usage_error_with_a_failed_manifest(
-    tmp_path, argv, flag, manifest
+    tmp_path, command, flag, manifest
 ):
     """A missing --clinvar-file was "An unexpected error occurred: [Errno 2]"
     (exit 1) and left nothing in the output folder for report to find."""
     sample = _sample(tmp_path, SAMPLE_ROWS)
-    exists = tmp_path / "present.tsv.gz"
-    exists.write_bytes(b"")
     missing = tmp_path / "res" / "missing.vcf.gz"
     outdir = tmp_path / "out"
     rc, _, stderr = run_cli(
-        ["vcf", *(a.format(exists=exists) for a in argv), flag, str(missing),
-         "--vcf-input", sample, "--outdir", str(outdir)]
+        ["vcf", command, flag, str(missing), "--vcf-input", sample,
+         "--outdir", str(outdir)]
     )  # fmt: skip
     assert rc == 2, stderr
     assert "unexpected error" not in stderr
@@ -906,6 +904,31 @@ def test_issue_894_missing_resource_is_a_usage_error_with_a_failed_manifest(
 
 
 @needs_bcftools
+def test_issue_894_failed_attempt_keeps_the_earlier_result_until_a_rerun(tmp_path):
+    sample = _sample(tmp_path, SAMPLE_ROWS)
+    clinvar = _vcf(tmp_path / "clinvar.vcf.gz",
+                   ["100 c1 C T . . CLNSIG=Pathogenic;CLNDN=x GT 0/1"],
+                   info=("CLNSIG", "CLNDN"))  # fmt: skip
+    outdir = tmp_path / "out"
+    ok = outdir / "clinvar_pathogenic.vcf.manifest.json"
+    failed = outdir / "clinvar_pathogenic.vcf.failed.manifest.json"
+
+    def run(resource: Path | str) -> int:
+        argv = ["vcf", "clinvar", "--clinvar-file", str(resource),
+                "--vcf-input", sample, "--outdir", str(outdir)]  # fmt: skip
+        return run_cli(argv)[0]
+
+    assert run(clinvar) == 0
+    earlier = ok.read_text()
+    assert run(tmp_path / "missing.vcf.gz") == 2
+    assert ok.read_text() == earlier
+    assert json.loads(failed.read_text())["status"] == "failed"
+    assert run(clinvar) == 0
+    assert json.loads(ok.read_text())["status"] == "ok"
+    assert not failed.exists()
+
+
+@needs_bcftools
 def test_issue_894_missing_configured_resource_names_its_setting(tmp_path):
     sample = _sample(tmp_path, SAMPLE_ROWS)
     missing = tmp_path / "missing.vcf.gz"
@@ -916,4 +939,5 @@ def test_issue_894_missing_configured_resource_names_its_setting(tmp_path):
          "--outdir", str(tmp_path / "out")]
     )  # fmt: skip
     assert rc == 2, stderr
-    assert f"--clinvar-file file not found: {missing} (clinvar_vcf_path" in stderr
+    assert f"--clinvar-file file not found: {missing}" in stderr
+    assert "clinvar_vcf_path in config.toml" in stderr

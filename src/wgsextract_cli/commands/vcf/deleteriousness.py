@@ -41,10 +41,10 @@ def run_cadd(params: VcfCaddParams) -> None:
     input_file, outdir, lib = annotation_context(params, CADD_ANNOTATED)
     logging.info(LOG_MESSAGES["vcf_cadd_start"].format(input=input_file))
 
+    indel_file = resource(params, "cadd_indel_file", lib.cadd_indel_file)
     snv_file = require_annotation_file(
         resource(params, "cadd_file", lib.cadd_file), "vcf_cadd_missing", "cadd"
     )
-    indel_file = resource(params, "cadd_indel_file", lib.cadd_indel_file)
     logging.info(LOG_MESSAGES["vcf_cadd_resolve"].format(path=snv_file))
     if indel_file:
         logging.info(LOG_MESSAGES["vcf_cadd_resolve"].format(path=indel_file))

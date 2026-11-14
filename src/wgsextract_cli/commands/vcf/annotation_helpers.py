@@ -1,5 +1,4 @@
 import logging
-import os
 import subprocess
 import tempfile
 from collections.abc import Iterator, Sequence
@@ -43,12 +42,12 @@ def annotation_context(
     params: _VcfFileParams, output: str
 ) -> tuple[str, str, ReferenceLibrary]:
     """The input VCF, output folder and reference library of an annotator
-    whose result manifest is named after ``output`` in that folder, so a run
-    that fails before writing it still leaves a failed manifest there."""
+    that writes ``output`` there; a run that fails before writing it leaves
+    a failed-attempt manifest beside it."""
     input_file = require_vcf_input(params)
-    outdir = os.fspath(params.outdir or absolute_path(input_file).parent)
+    outdir = expand_path(params.outdir or absolute_path(input_file).parent)
     Path(outdir).mkdir(parents=True, exist_ok=True)
-    current_result().name_manifest_after(Path(outdir, output))
+    current_result().expect_output(Path(outdir, output))
     md5_sig = (
         calculate_bam_md5(input_file, None)
         if input_file.lower().endswith((".bam", ".cram"))
@@ -67,14 +66,14 @@ def resource(params: _VcfFileParams, field: str, default: str | None) -> str | N
     path = expand_path(given)
     if not Path(path).is_file():
         spec = next(f for f in param_fields(type(params)) if f.name == field)
-        source = (
-            ""
+        key = (
+            "resource_not_found"
             if params.explicitly_set(field)
-            else LOG_MESSAGES["resource_from_config"].format(key=spec.spec.config_key)
+            else ("resource_not_found_in_config")
         )
         raise UsageError(
-            LOG_MESSAGES["resource_not_found"].format(
-                flag=spec.flags[0], path=path, source=source
+            LOG_MESSAGES[key].format(
+                flag=spec.flags[0], path=path, setting=spec.spec.config_key
             )
         )
     return path
