@@ -195,25 +195,26 @@ macOS ARM64 adds about **33 minutes**, Windows about **24**, Linux ARM64 about
 
 ### Main-push prose filters
 
-CI Ubuntu, macOS, Windows and ARM64, CLI smoke, Linux aligners/DeepVariant,
+The four OS trigger wrappers (CI Ubuntu, macOS, Windows and ARM64), CLI smoke, Linux aligners/DeepVariant,
 GATK/GKL on Windows, GUI Tauri installer and CodeQL use
 `paths-ignore: ["**/*.md"]` on main pushes, with no generated-reference or
 changelog exceptions. Mixed Markdown/code pushes still run normally.
+`os_tests.yml` is reusable-only and cannot start independently on a push or PR.
 Generated references legitimately change with code inputs; the PR/merge-queue
 docs or CLI lane already checked freshness before `required` passed.
 The secret scan remains unfiltered on every main push; Pages retains its
 existing site-source filters.
 
 Install Lab, GUI distribution/CI/developer setup and macOS aligners/DeepVariant
-are intentionally left to #904 (main-push coalescing) to avoid conflicting edits.
-Until those filters land, these six workflows still start for prose-only main
-pushes. The fast-path target is only gitleaks, plus Pages for site sources.
+retain the area-scoped main-push filters from #904 (main-push coalescing),
+including their final Markdown exclusion. A prose-only main push therefore
+starts only gitleaks, plus Pages for site sources.
 See AGENTS.md, "Docs fast path", for the narrower direct-push permission:
 policy files and generated/test-checked references still require PRs.
 
 All standalone `pull_request` workflows exclude prose-only Markdown diffs
-through ordered path exclusions (including Developer setup and Linux bwa-mem3
-parity). Only `pr_ci.yml` starts: its router retains input-selected documentation
+through ordered path exclusions or exact non-Markdown includes (Developer setup
+and Linux bwa-mem3 parity). Only `pr_ci.yml` starts: its router retains input-selected documentation
 freshness, gitleaks and `required`, including generated-reference checks.
 Mixed diffs still select the union of applicable code areas. PR event types
 and job-level draft gates are managed separately by #910 (draft PR CI gating).

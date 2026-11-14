@@ -111,10 +111,25 @@ def run_layer(
                     f"--junitxml={xml}",
                     f"--basetemp={directory / f'tmp-{index}'}",
                 ]
-            stream.write(f"\n$ {json.dumps(command)}\n")
+            cwd = (
+                "gui"
+                if command[:6]
+                == [
+                    "pixi",
+                    "run",
+                    "--no-install",
+                    "python",
+                    "-m",
+                    "unittest",
+                ]
+                else None
+            )
+            stream.write(f"\n$ {json.dumps(command)} (cwd={cwd or '.'})\n")
             stream.flush()
             print(f"{name}: {' '.join(command[:7])}", flush=True)
-            subprocess.run(command, stdout=stream, stderr=subprocess.STDOUT, check=True)
+            subprocess.run(
+                command, cwd=cwd, stdout=stream, stderr=subprocess.STDOUT, check=True
+            )
             if xml.exists():
                 cases = list(ET.parse(xml).iter("testcase"))
                 count += sum(case.find("skipped") is None for case in cases)
@@ -255,7 +270,7 @@ def platform_commands(
                 "unittest",
                 "discover",
                 "-s",
-                "gui/tests/wgsextract",
+                "tests/wgsextract",
             ]
         )
     if host == "windows-x64":

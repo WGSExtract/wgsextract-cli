@@ -92,6 +92,17 @@ def pure_fixtures(path: Path) -> bool:
                 alias.name == "subprocess" for alias in node.names
             ):
                 return False
+            if isinstance(node, ast.ImportFrom) and (
+                node.module == "subprocess"
+                or (
+                    node.module == "os"
+                    and any(
+                        alias.name in {"system", "popen", "spawn"}
+                        for alias in node.names
+                    )
+                )
+            ):
+                return False
             if isinstance(node, ast.Call) and (
                 ast.unparse(node.func).split(".")[-1]
                 in {

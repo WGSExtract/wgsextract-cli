@@ -1,5 +1,7 @@
+import json
 import re
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -144,11 +146,21 @@ HEAVY_PUSH_WORKFLOWS = CLI_PUSH_WORKFLOWS | {
     "gui-tauri-installer.yml",
     "codeql.yml",
 }
+AREA_PUSH_WORKFLOWS = {
+    "install_lab.yml",
+    "gui-distribution.yml",
+    "gui-ci.yml",
+    "gui-dev-setup.yml",
+    "macos_aligners.yml",
+    "macos_deepvariant.yml",
+}
 
 
 def github_glob_matches(path: str, pattern: str) -> bool:
     """Evaluate the *, ** subset used here, including root files and dotfiles."""
-    assert not any(char in pattern for char in "?[]+\\")
+    assert not any(char in pattern for char in "?[]+\\"), (
+        f"Unsupported GitHub filter pattern: {pattern!r}"
+    )
     expression = ""
     index = 0
     while index < len(pattern):
@@ -179,15 +191,84 @@ def github_paths_select(paths: list[str], patterns: list[str]) -> bool:
     return False
 
 
+def yaml_flow_value(text: str) -> object:
+    """Read flow lists/maps and string scalars used by event filters."""
+    tokens = re.findall(
+        r""""(?:\\.|[^"\\])*"|'(?:''|[^'])*'|[{}\[\],:]|[^{}\[\],:\s]+""", text
+    )
+    index = 0
+
+    def parse() -> object:
+        nonlocal index
+        token = tokens[index]
+        index += 1
+        if token in ("[", "{"):
+            closing = "]" if token == "[" else "}"
+            items: list[object] = []
+            mapping: dict[str, object] = {}
+            while tokens[index] != closing:
+                item = parse()
+                if token == "{":
+                    assert isinstance(item, str) and tokens[index] == ":"
+                    index += 1
+                    mapping[item] = parse()
+                else:
+                    items.append(item)
+                if tokens[index] == closing:
+                    break
+                assert tokens[index] == ","
+                index += 1
+            index += 1
+            return mapping if token == "{" else items
+        if token.startswith('"'):
+            return json.loads(token)
+        if token.startswith("'"):
+            return token[1:-1].replace("''", "'")
+        return None if token in ("null", "~") else token
+
+    result = parse()
+    assert index == len(tokens), f"Unsupported YAML flow value: {text!r}"
+    return result
+
+
 def event_path_filters(workflow: Path, event: str) -> dict[str, list[str]] | None:
-    """Read Actions' block event/list subset without adding docs-job dependencies."""
-    text = workflow.read_text()
-    on = re.search(r"^(?:on|'on'|\"on\"):\s*(?:#.*)?$", text, re.MULTILINE)
+    """Read block/flow event filters without adding docs-job dependencies."""
+    on = re.search(
+        r"^(?:on|'on'|\"on\"):(?P<value>[^\n]*)$", workflow.read_text(), re.MULTILINE
+    )
     assert on is not None, f"Unsupported event syntax in {workflow.name}"
+    filter_keys = {"branches", "branches-ignore", "paths", "paths-ignore"}
+
+    def filters_from(value: object) -> dict[str, list[str]]:
+        if value is None:
+            return {}
+        assert isinstance(value, dict), workflow.name
+        filters = {}
+        for key in filter_keys & value.keys():
+            patterns = value[key]
+            assert isinstance(patterns, list) and all(
+                isinstance(pattern, str) for pattern in patterns
+            ), workflow.name
+            filters[key] = cast(list[str], patterns)
+        return filters
+
+    inline = on["value"].partition("#")[0].strip()
+    if inline:
+        events = yaml_flow_value(inline)
+        if isinstance(events, str):
+            return {} if event == events else None
+        if isinstance(events, list):
+            return {} if event in events else None
+        assert isinstance(events, dict), workflow.name
+        return filters_from(events[event]) if event in events else None
+
+    text = workflow.read_text()
     lines = text[on.end() :].splitlines()
     in_event = False
     filters: dict[str, list[str]] = {}
     list_key = None
+    event_indent = None
+    key_indent = None
     for line in lines:
         content = line.partition("#")[0].rstrip()
         if not content.strip():
@@ -195,32 +276,34 @@ def event_path_filters(workflow: Path, event: str) -> dict[str, list[str]] | Non
         indent = len(content) - len(content.lstrip())
         if indent == 0:
             break
-        if indent == 2:
+        if event_indent is None:
+            event_indent = indent
+        if indent == event_indent:
             if in_event:
                 break
-            in_event = content.strip() == f"{event}:"
+            name, _, value = content.strip().partition(":")
+            in_event = name.strip("'\"") == event
+            if in_event and value.strip():
+                return filters_from(yaml_flow_value(value.strip()))
             continue
         if not in_event:
             continue
-        if indent == 4:
+        if list_key is not None and content.strip().startswith("- "):
+            assert key_indent is not None and indent >= key_indent, workflow.name
+            filters[list_key].append(cast(str, yaml_flow_value(content.strip()[2:])))
+            continue
+        if key_indent is None:
+            key_indent = indent
+        if indent == key_indent:
             key, _, value = content.strip().partition(":")
-            list_key = (
-                key
-                if key in {"branches", "branches-ignore", "paths", "paths-ignore"}
-                else None
-            )
+            list_key = key if key in filter_keys else None
             if list_key is not None:
                 filters[list_key] = []
                 if value.strip():
-                    value = value.strip()
-                    assert value.startswith("[") and value.endswith("]"), workflow.name
-                    filters[list_key] = [
-                        item.strip().strip("'\"") for item in value[1:-1].split(",")
-                    ]
+                    filters.update(
+                        filters_from({list_key: yaml_flow_value(value.strip())})
+                    )
                     list_key = None
-        elif list_key is not None:
-            assert indent == 6 and content.strip().startswith("- "), workflow.name
-            filters[list_key].append(content.strip()[2:].strip("'\""))
     return filters if in_event else None
 
 
@@ -255,19 +338,17 @@ def triggered_workflows(paths: list[str], event: str = "push") -> set[str]:
         ["docs/developer_setup.md", "native/README.md"],
         [".github/copilot-instructions.md", "gui/AGENTS.md"],
         ["docs/nested/new-prose.md"],
+        ["native/deepvariant/README.md", "gui/app/README.md", "packaging/README.md"],
     ],
 )
 def test_docs_fast_path_909_does_not_start_heavy_push_ci(paths: list[str]) -> None:
     triggered = triggered_workflows(paths)
-    assert not triggered & HEAVY_PUSH_WORKFLOWS
-    assert "gitleaks.yml" in triggered
-    assert "pages.yml" not in triggered
+    assert triggered == {"gitleaks.yml"}
 
 
 def test_docs_fast_path_909_keeps_pages_for_handwritten_site_prose() -> None:
     triggered = triggered_workflows(["site_src/new-guide.md"])
-    assert {"gitleaks.yml", "pages.yml"} <= triggered
-    assert not triggered & HEAVY_PUSH_WORKFLOWS
+    assert triggered == {"gitleaks.yml", "pages.yml"}
 
 
 @pytest.mark.parametrize(
@@ -287,7 +368,7 @@ def test_docs_fast_path_909_generated_markdown_never_starts_heavy_suites(
     reference: str,
 ) -> None:
     triggered = triggered_workflows([reference])
-    assert not triggered & HEAVY_PUSH_WORKFLOWS
+    assert not triggered & (HEAVY_PUSH_WORKFLOWS | AREA_PUSH_WORKFLOWS)
     assert "gitleaks.yml" in triggered
     assert triggered_workflows([reference], "pull_request") == {"pr_ci.yml"}
     assert not routes([reference])["cli"]
@@ -299,6 +380,7 @@ def test_docs_fast_path_909_generated_markdown_never_starts_heavy_suites(
 def test_docs_fast_path_909_does_not_hide_mixed_code_pushes(code: str) -> None:
     triggered = triggered_workflows(["README.md", code])
     assert HEAVY_PUSH_WORKFLOWS | {"gitleaks.yml"} <= triggered
+    assert "os_tests.yml" not in triggered
 
 
 def test_github_path_filters_reinclude_only_matching_files_in_order() -> None:
@@ -333,6 +415,36 @@ def test_filter_reader_keeps_push_and_pr_paths_separate(tmp_path: Path) -> None:
     assert not github_paths_select(["README.md"], push["paths"])
     assert any(github_glob_matches("docs/api.md", path) for path in pr["paths-ignore"])
     assert event_path_filters(workflow, "merge_group") is None
+
+
+@pytest.mark.parametrize(
+    "events",
+    [
+        "on: {push: {paths: ['**', '!**/*.md']}, pull_request: null}\n",
+        "on:\n    push: {paths: ['**', '!**/*.md']}\n",
+        "on:\n    push:\n        paths:\n            - '**'\n            - '!**/*.md'\n",
+        "on:\n    push:\n        paths:\n        - '**'\n        - '!**/*.md'\n",
+    ],
+)
+def test_review_911_filter_reader_accepts_flow_and_relative_indentation(
+    tmp_path: Path, events: str
+) -> None:
+    workflow = tmp_path / "flow.yml"
+    workflow.write_text(f"name: formatting regression\n{events}jobs: {{}}\n")
+    push = event_path_filters(workflow, "push")
+    assert push is not None
+    assert not github_paths_select(["docs/api.md"], push["paths"])
+    assert github_paths_select(["src/main.py"], push["paths"])
+
+
+@pytest.mark.parametrize("events", ["on: push\n", "on: [push, workflow_dispatch]\n"])
+def test_review_911_inline_events_keep_unfiltered_pushes(
+    tmp_path: Path, events: str
+) -> None:
+    workflow = tmp_path / "inline.yml"
+    workflow.write_text(events)
+    assert event_path_filters(workflow, "push") == {}
+    assert event_path_filters(workflow, "pull_request") is None
 
 
 @pytest.mark.parametrize(
