@@ -1586,7 +1586,9 @@ full Haplogrep row (`haplogrep`), `haplogrep_version`, the `tree`
 called first; needs the reference) or a VCF, into
 `haplogrep_results.txt`; the tree is downloaded once into the reference
 library. With `contamination`, haplocheck also looks for a mixture of
-two haplogroups (`haplocheck_contamination.txt`).
+two haplogroups (`haplocheck_contamination.txt`). Haplogrep reads
+rCRS positions, so a chrM that isn't the rCRS is refused: hg19's Yoruba
+sequence, or CHM13v2.0's original chrM, which is as long but rotated.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |

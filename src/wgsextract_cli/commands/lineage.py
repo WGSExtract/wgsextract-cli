@@ -22,6 +22,12 @@ from wgsextract_cli.core.haplogrep_trees import (
     write_config,
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES, SYSTEM_MESSAGES
+from wgsextract_cli.core.mito_reference import (
+    CHM13_CHRM,
+    CHM13_CHRM_MD5,
+    refs_from_chm13,
+    rotated_mito,
+)
 from wgsextract_cli.core.paths import absolute_path, java_local_path
 from wgsextract_cli.core.reference_assets import resolve_reference_library
 from wgsextract_cli.core.reference_models import MITO_BY_LENGTH, sequence_lengths
@@ -170,8 +176,8 @@ def run_mt_haplogroup(params: MtHaplogroupParams, *, tree_links: bool = False) -
             _haplocheck_path(params.haplocheck_path), "haplocheck.jar"
         )
         tools.append("haplocheck")
-        if is_alignment:
-            tools.append("samtools")
+    if is_alignment:
+        tools.append("samtools")
     verify_dependencies(["bcftools"] + (["samtools"] if "samtools" in tools else []))
     log_dependency_info(tools)
 
@@ -220,7 +226,7 @@ def run_mt_haplogroup(params: MtHaplogroupParams, *, tree_links: bool = False) -
 
             cram_opt = ["-T", lib.fasta] if input_lower.endswith(".cram") else []
             chr_m = get_chr_name(input_file, "MT", cram_opt)
-            _require_rcrs(input_file, chr_m, cram_opt)
+            _require_rcrs(input_file, chr_m, cram_opt, lib.fasta)
             if haplocheck_cmd:
                 _require_one_sample(get_bam_header(input_file, cram_opt))
             warn_low_depth(
@@ -393,17 +399,66 @@ def _read_tsv(path: str | Path, tool: str) -> list[dict[str, str]]:
         raise WGSExtractError(f"{tool} did not write {path}: {e}") from e
 
 
-def _require_rcrs(path: str, chr_m: str, cram_opt: list[str] | None = None) -> None:
-    """Refuse an mtDNA sequence that isn't the rCRS Haplogrep's positions assume."""
-    length = sequence_lengths(get_bam_header(path, cram_opt)).get(chr_m)
-    if length is None or MITO_BY_LENGTH.get(length) == "rCRS":
-        return
-    if MITO_BY_LENGTH.get(length) == "Yoruba":
-        raise WGSExtractError(SYSTEM_MESSAGES["YorubaWarning"])
-    raise WGSExtractError(
-        f"{chr_m} is {length} bp, not the 16569 bp rCRS that Haplogrep's "
-        "positions refer to."
-    )
+def _require_rcrs(
+    path: str,
+    chr_m: str,
+    cram_opt: list[str] | None = None,
+    fasta: str | None = None,
+) -> None:
+    """Refuse an mtDNA sequence that isn't the rCRS Haplogrep's positions assume.
+
+    Length alone can't tell (#827): CHM13v2.0's chrM is as long as the rCRS but
+    rotated, so the header's MD5, the reference's sequence or, for a VCF, its
+    REF alleles decide.
+    """
+    header = get_bam_header(path, cram_opt)
+    length = sequence_lengths(header).get(chr_m)
+    if length is not None and MITO_BY_LENGTH.get(length) != "rCRS":
+        if MITO_BY_LENGTH.get(length) == "Yoruba":
+            raise WGSExtractError(SYSTEM_MESSAGES["YorubaWarning"])
+        raise WGSExtractError(
+            f"{chr_m} is {length} bp, not the 16569 bp rCRS that Haplogrep's "
+            "positions refer to."
+        )
+    found = CHM13_CHRM if _header_md5(header, chr_m) == CHM13_CHRM_MD5 else None
+    if found is None and fasta:
+        sequence = run_command(
+            ["samtools", "faidx", fasta, chr_m], capture_output=True, check=False
+        )
+        if sequence.returncode == 0:
+            found = rotated_mito("".join(sequence.stdout.splitlines()[1:]))
+    if found is None and path.lower().endswith(VCF_SUFFIXES):
+        query = ["bcftools", "query", "-f", "%POS\\t%REF\\n", path]
+        rows = (
+            line.split("\t")
+            for line in run_command(query, capture_output=True).stdout.splitlines()
+        )
+        if refs_from_chm13((int(pos), ref) for pos, ref in rows):
+            found = CHM13_CHRM
+    if found:
+        raise WGSExtractError(
+            f"{chr_m} is {found}, not the rCRS: its positions aren't the ones "
+            "Haplogrep classifies, so the haplogroup would be wrong. Use an "
+            "alignment or VCF made against a reference whose chrM is the rCRS "
+            "(hg38, hs37d5, or CHM13v2.0's rCRS analysis set); `wgsextract "
+            "realign` re-maps a BAM or CRAM."
+        )
+
+
+def _header_md5(header: str, contig: str) -> str | None:
+    """The MD5 a BAM @SQ (M5) or VCF ##contig (md5) line gives ``contig``."""
+    for line in header.splitlines():
+        if line.startswith("@SQ"):
+            tags = dict(f.split(":", 1) for f in line.split("\t")[1:] if ":" in f)
+            if tags.get("SN") == contig:
+                return tags.get("M5", "").lower() or None
+        elif line.startswith("##contig=<"):
+            fields = dict(
+                f.split("=", 1) for f in line[10:].rstrip(">").split(",") if "=" in f
+            )
+            if fields.get("ID") == contig:
+                return fields.get("md5", "").lower() or None
+    return None
 
 
 def _scalar(value: str | None) -> Scalar:
