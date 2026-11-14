@@ -18,7 +18,7 @@ from pathlib import Path
 
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.genotyping import TypingStrParams
-from wgsextract_cli.commands.info.metrics import sample_sex
+from wgsextract_cli.commands.info.metrics import sample_sex_evidence
 from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.results import current_result, warn
@@ -239,13 +239,20 @@ def _catalog(aln: Alignment, catalog: Path | None) -> str:
 
 
 def _sex(aln: Alignment, sex: str | None) -> str:
-    if sex:
-        return sex
-    inferred = sample_sex(aln.path, aln.outdir, reference=aln.reference).lower()
+    effective, observed, declared = sample_sex_evidence(
+        aln.path, aln.outdir, reference=aln.reference
+    )
+    inferred = sex or effective.lower()
+    current_result().add_metrics(
+        effective_sex=inferred,
+        declared_sex=sex or declared,
+        observed_sex=observed.sex,
+        sex_method=observed.method,
+        sex_confidence=observed.confidence,
+    )
     if inferred in ("male", "female"):
-        logging.info(f"Sample sex: {inferred} (from chrX/chrY coverage)")
         return inferred
-    raise WGSExtractError(
+    raise UsageError(
         "Unknown sample sex: refusing sex-dependent repeat ploidy. "
         "Declare --sex male|female or set the sample's sex override."
     )

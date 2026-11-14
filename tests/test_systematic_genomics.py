@@ -40,6 +40,10 @@ def fake_data_dir(tmp_path_factory):
     )
     assert rc == 0, f"Fake data generation failed. STDOUT: {stdout}\nSTDERR: {stderr}"
     assert os.path.exists(ref_path), f"Fake reference was not created at {ref_path}"
+    rc, stdout, stderr = run_cli(
+        ["sample", "set", "--input", os.path.join(outdir, "fake.bam"), "--sex", "Male"]
+    )
+    assert rc == 0, f"Declaring fixture sex failed: {stdout}\n{stderr}"
 
     # Generate a dummy SNP tab for microarray testing
     # Format: CHROM\tPOS\tID

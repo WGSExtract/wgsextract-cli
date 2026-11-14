@@ -118,7 +118,7 @@ def test_custom_ploidy_rules_for_the_requested_contigs_are_respected(
 ):
     ploidy = f"# CHROM FROM TO SEX PLOIDY\n{male_contig} 1 100 M 1\n* * * * 2\n"
     assert _male_samples_file(tmp_path / "region", ploidy, "chr20:1-100") is needed
-    assert _male_samples_file(tmp_path / "whole", ploidy, None)
+    assert _male_samples_file(tmp_path / "whole", ploidy, None) is (male_contig == "*")
 
 
 @pytest.mark.parametrize(

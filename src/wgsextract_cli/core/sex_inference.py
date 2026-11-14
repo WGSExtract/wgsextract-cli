@@ -8,12 +8,12 @@ from wgsextract_cli.core.utils import run_command
 
 
 def nonpar_interval(chrom: str, length: int) -> tuple[int, int] | None:
-    """Central non-PAR interval, in inclusive GRCh37/38 reference coordinates."""
+    """Non-PAR sampling interval, excluding the assembly's Yq12 N block."""
     intervals = {
         ("X", 155270560): (2699521, 154931043),
-        ("Y", 59373566): (2649521, 59034049),
+        ("Y", 59373566): (2649521, 28819361),
         ("X", 156040895): (2781480, 155701382),
-        ("Y", 57227415): (2781480, 56887902),
+        ("Y", 57227415): (2781480, 26673214),
     }
     return intervals.get((chrom, length))
 

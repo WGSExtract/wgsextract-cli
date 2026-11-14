@@ -334,7 +334,7 @@ def _positions(vcf: Path) -> list[str]:
     [("--proband", False), ("--input", False), ("--input", True)],
     ids=["proband-bam", "input-bam", "input-cram"],
 )
-def test_trio_from_alignments_infers_sex_and_isolates_the_de_novo(
+def test_trio_from_alignments_declared_sex_and_isolates_the_de_novo(
     tmp_path, input_option, cram
 ):
     ref, (child, mother, father) = _sexed_trio(tmp_path, proband_y_reads=20)
@@ -356,7 +356,7 @@ def test_trio_from_alignments_infers_sex_and_isolates_the_de_novo(
         run_wgsextract(
             "vcf", "trio", input_option, child, "--mother", mother, "--father",
             father, "--ref", ref, "--region", "chr20", "--mode", "all",
-            "--threads", "1", "--outdir", str(out),
+            "--threads", "1", "--outdir", str(out), "--proband-sex", "male",
         )  # fmt: skip
 
     sexes, _ref, ploidy = joint.call_args.args[1:4]
@@ -399,23 +399,19 @@ def test_trio_from_alignments_needs_a_sex_and_a_ploidy(tmp_path):
     assert joint.call_args.args[3] == ["--ploidy-file", str(ploidy_txt)]
     assert _positions(out / "trio_denovo.vcf.gz") == ["1000"]
 
-    unknown_sex = patch(
-        "wgsextract_cli.commands.info.metrics.sample_sex", return_value="Unknown"
-    )
     with (
         patch.object(filter_trio, "ReferenceLibrary", _Hg38Library),
-        unknown_sex,
         pytest.raises(WGSExtractError, match="pass --proband-sex"),
     ):
-        run_wgsextract(*argv)
+        run_wgsextract(*argv, "--region", "chrX")
     with (
         patch.object(filter_trio, "ReferenceLibrary", _Hg38Library),
-        unknown_sex,
         patch.object(
             filter_trio, "joint_trio_vcf", wraps=filter_trio.joint_trio_vcf
         ) as joint,
+        pytest.raises(WGSExtractError, match="has no variants"),
     ):
-        run_wgsextract(*argv, "--proband-sex", "male")
+        run_wgsextract(*argv, "--region", "chrX", "--proband-sex", "male")
     assert joint.call_args.args[1] == ["M", "F", "M"]
 
 

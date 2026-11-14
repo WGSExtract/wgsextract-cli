@@ -420,13 +420,6 @@ def record_sex(input_path: str, call: SexCall) -> None:
     """Record observed sex, including Unknown, in the workspace, which warns when it
     contradicts the user's override."""
     if call.sex in (*sample_workspace.SEXES, "Unknown"):
-        from wgsextract_cli.core.results import current_result
-
-        current_result().add_metrics(
-            observed_sex=call.sex,
-            sex_method=call.method,
-            sex_confidence=call.confidence,
-        )
         if call.method != SEX_MEASUREMENT_UNAVAILABLE:
             sample_workspace.record(
                 "sex",
@@ -478,29 +471,45 @@ def sample_sex(
     whole-file idxstats scan. A new call is
     recorded in the workspace. An override is still checked against the reads,
     once per file revision, since it changes how chrX and chrY are called."""
-    effective = str(
-        sample_workspace.resolve(
-            "sex", input_path, lambda: _detect_sex(input_path, outdir, reference)
-        )
-    )
-    from wgsextract_cli.core.results import current_result
+    return sample_sex_evidence(input_path, outdir, reference=reference)[0]
+
+
+def sample_sex_evidence(
+    input_path: str, outdir: str | None = None, *, reference: str | None = None
+) -> tuple[str, SexCall, str | None]:
+    """Effective sex, observed evidence and declaration, without writing
+    command-wide metrics (a multi-sample caller must associate them per sample)."""
+    call = SexCall("Unknown", "measurement not available", "low")
+
+    def detect() -> tuple[str, str | None]:
+        nonlocal call
+        call = _detect_sex(input_path, outdir, reference)
+        return call.sex, call.method
+
+    effective = str(sample_workspace.resolve("sex", input_path, detect))
 
     workspace = sample_workspace.workspace_for(input_path)
     declared = workspace.overrides(input_path).get("sex") if workspace else None
     fact = workspace.detected("sex", input_path) if workspace else None
     if fact:
-        current_result().add_metrics(
-            observed_sex=fact.value,
-            sex_method=fact.method,
-            sex_confidence=fact.confidence,
+        confidence: Confidence = (
+            "high"
+            if fact.confidence == "high"
+            else "medium"
+            if fact.confidence == "medium"
+            else "low"
         )
-    current_result().add_metrics(effective_sex=effective, declared_sex=declared)
-    return effective
+        call = SexCall(
+            str(fact.value),
+            fact.method or "recorded evidence",
+            confidence,
+        )
+    return effective, call, str(declared) if declared is not None else None
 
 
 def _detect_sex(
     input_path: str, outdir: str | None, reference: str | None = None
-) -> tuple[str, str | None]:
+) -> SexCall:
     info = cached_info(input_path, outdir)
     cached_call = info.get("sex_call") if info else None
     # A call cached by an older infer_sex is recomputed rather than trusted
@@ -515,32 +524,21 @@ def _detect_sex(
     else:
         logging.info("Checking chrX/chrY coverage to infer the sample's sex...")
         try:
-            if input_path.lower().endswith(".cram"):
-                header = run_command(
-                    ["samtools", "view", "-H", input_path], capture_output=True
-                ).stdout
-                idx_stats = []
-                for line in header.splitlines():
-                    if line.startswith("@SQ\t"):
-                        fields = dict(
-                            field.split(":", 1) for field in line.split("\t")[1:]
-                        )
-                        idx_stats.append(
-                            IdxStat(
-                                name=fields["SN"],
-                                length=int(fields["LN"]),
-                                mapped=0,
-                                unmapped=0,
-                            )
-                        )
-            else:
-                idx_stats, *_ = parse_idxstats(input_path)
+            from wgsextract_cli.core.reference_models import sequence_lengths
+
+            header = run_command(
+                ["samtools", "view", "-H", input_path], capture_output=True
+            ).stdout
+            idx_stats = [
+                IdxStat(name=name, length=length, mapped=0, unmapped=0)
+                for name, length in sequence_lengths(header).items()
+            ]
         except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
             logging.warning(f"Could not check chrY coverage of {input_path}: {e}")
-            return "Unknown", None
+            return SexCall("Unknown", SEX_MEASUREMENT_UNAVAILABLE, "low")
         call = infer_sex_call(idx_stats, alignment=input_path, reference=reference)
     record_sex(input_path, call)
-    return call.sex, call.method
+    return call
 
 
 def parse_idxstats(filepath: str) -> tuple[list[IdxStat], int, int, int]:

@@ -997,6 +997,8 @@ def test_str_sizes_repeats_and_flags_those_outside_the_normal_range(
     assert "isn't a diagnosis" in caplog.text
     assert {"NA12878.str.json", "NA12878.str.vcf", "NA12878.str.tsv"} <= outputs(out)
     assert (result.metrics["sex"], result.metrics["flagged_repeats"]) == ("male", 2)
+    assert result.metrics["observed_sex"] == "Unknown"
+    assert result.metrics["declared_sex"] == result.metrics["effective_sex"] == "male"
     assert {w.code for w in result.warnings} == {"repeat_outside_normal_range"}
 
 

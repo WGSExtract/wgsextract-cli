@@ -114,11 +114,9 @@ def _load_cache(path: str, signature: dict[str, int]) -> dict[str, Any]:
     if not isinstance(data, dict) or data.get("input_signature") != signature:
         logging.debug(f"Ignoring stale cache {path} (input changed or old format)")
         return {}
-    call = data.get("sex_call")
     if (
-        isinstance(call, list)
-        and len(call) == 3
-        and call[1] == SEX_MEASUREMENT_UNAVAILABLE
+        data.get("gender")
+        and data.get("sex_inference_version") != SEX_INFERENCE_VERSION
     ):
         return {}
     logging.debug(f"Cache file found: {path}")
@@ -888,6 +886,12 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
     table_stem = Path(outdir, Path(input_file).name + region_file_tag(region))
     signature = _input_signature(input_file)
     data = _load_cache(json_cache, signature)
+    call = data.get("sex_call")
+    sex_unavailable = (
+        isinstance(call, list)
+        and len(call) == 3
+        and call[1] == SEX_MEASUREMENT_UNAVAILABLE
+    )
     # Classifying the header is cheap, so it is redone every run. A cache made
     # when it said otherwise (older detection, or a different --ref) is stale,
     # including its chromosome table, which depends on the build.
@@ -942,6 +946,7 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
             )
             and not data.get("mapping_failed")
             and data.get("sex_inference_version") == SEX_INFERENCE_VERSION
+            and (not sex_unavailable or alignment_index(input_file) is None)
         ):
             logging.debug("Cache hit for detailed metrics.")
             if data.get("depth_needs_index"):

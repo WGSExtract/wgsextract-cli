@@ -32,7 +32,7 @@ fingerprint = "wgse-fp1:9b1c…"
 value = "Male"
 method = "GRCh37/38 sampled non-PAR depth / autosomal depth (screening)"
 confidence = "medium"
-version = 3
+version = 4
 by = "wgsextract 0.9.0 info"
 at = "2026-11-04T22:18:27+00:00"
 
@@ -77,6 +77,7 @@ at = "2026-11-04T22:31:02+00:00"
 | `somalier_sex` | `qc relate` (chrX heterozygosity, chrY depth) | checked against `sex`: a disagreement is a `sex_mismatch` warning |
 | `superpopulation` | `qc relate` with `ref somalier --install` | shown by `sample show` |
 | `ancestry` | `qc ancestry` (K=7 reference proportions of at least 0.5%) | the personal report; shown by `sample show` |
+| `contamination` | `qc contamination` (VerifyBamID2 FREEMIX) | the contamination warning of `vcf snp`/`indel`, `microarray` and `lineage`; confidence labels of rare and clinical findings in the genome folder; the personal report |
 
 ### Sex evidence and Unknown ploidy
 
@@ -92,6 +93,9 @@ telomeric gaps. Mean aligned-base depth is divided by the sampled base
 length and compared with mean depth of available chr7/chr19 windows, not raw
 cross-chromosome read counts. MAPQ/baseQ below 20 and unmapped, secondary,
 supplementary, duplicate and QC-failed reads are excluded.
+For Y, the sampled interval ends before the Yq12 N block (at 28,819,361 in
+GRCh37 and 26,673,214 in GRCh38), rather than diluting the denominator with
+unmappable assembly gaps. X uses the full central non-PAR interval.
 
 The screen requires autosomal depth at least 3x, autosomal breadth at least 50%,
 X breadth at least 30%, and agreement between the sampled autosomal depths.
@@ -107,16 +111,19 @@ claim is made.
 An unavailable measurement (for example, a missing index or CRAM reference)
 is not persisted as observed evidence. It is retried on the next call; a
 cached `info` result with that failure is also recomputed after prerequisites
-are restored.
+are restored; other cached metrics are retained while an index is still missing.
+Detection reads alignment headers for both BAM and CRAM, so an unindexed BAM
+does not undergo a whole-file `idxstats` scan just to discover it cannot be sampled.
 
 An `Unknown` call **refuses sex-dependent bcftools ploidy**, rather than assuming
 female X/Y ploidy. Declare sex with `wgsextract sample set --input FILE --sex
 Male` (or `Female`), or explicitly choose numeric `--ploidy` or a
 sex-independent custom ploidy file. Autosomal-only regions and sex-independent
 ploidy need no sex scan.
+For whole-file calls, the alignment's header supplies the called contigs.
+Autosomal-only trio calls likewise do not require a proband sex.
 `typing str` likewise refuses Unknown sex-dependent repeat ploidy; its
 run-specific `--sex male|female` option is an explicit declaration.
-| `contamination` | `qc contamination` (VerifyBamID2 FREEMIX) | the contamination warning of `vcf snp`/`indel`, `microarray` and `lineage`; confidence labels of rare and clinical findings in the genome folder; the personal report |
 
 ## Commands
 

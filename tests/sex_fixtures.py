@@ -5,7 +5,7 @@ from pathlib import Path
 from tests.htslib_helpers import sam_to_bam
 
 
-def sex_bam(
+def distributed_alignment(
     path: Path,
     *,
     x_depth: int = 2,
@@ -23,9 +23,9 @@ def sex_bam(
     )
     # Independently specified interior and boundary locations, in SAM coordinates.
     intervals = (
-        {"X": (2699521, 154931043), "Y": (2649521, 59034049)}
+        {"X": (2699521, 154931043), "Y": (2649521, 28819361)}
         if build == "GRCh37"
-        else {"X": (2781480, 155701382), "Y": (2781480, 56887902)}
+        else {"X": (2781480, 155701382), "Y": (2781480, 26673214)}
     )
     rows = [f"@SQ\tSN:chr{c}\tLN:{n}" for c, n in lengths.items()]
     rows.append("@RG\tID:r\tSM:S")
@@ -39,7 +39,12 @@ def sex_bam(
         lo, hi = intervals.get(chrom, (1, lengths[chrom]))
         starts = [lo + (hi - lo + 1 - 10_000) * i // 10 for i in (1, 3, 5, 7, 9)]
         if par_only and chrom in {"X", "Y"}:
-            starts = [lo - 10_000, hi + 1]
+            par2 = (
+                (154931044 if chrom == "X" else 59034050)
+                if build == "GRCh37"
+                else (155701383 if chrom == "X" else 56887903)
+            )
+            starts = [lo - 10_000, par2]
         for window in starts:
             for offset in range(0, 100 if narrow_x and chrom == "X" else 10_000, 100):
                 for copy in range(depth):

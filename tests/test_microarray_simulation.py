@@ -89,7 +89,9 @@ def _library(root: Path) -> tuple[str, dict[str, str]]:
     return str(fasta), seqs
 
 
-def _bam(path: Path, seqs: dict[str, str], genotypes: dict[str, str]) -> str:
+def _bam(
+    path: Path, seqs: dict[str, str], genotypes: dict[str, str], *, sex: str = "Male"
+) -> str:
     """30 reads over each marker in genotypes; rsLowMapq's have MAPQ 5."""
     lines = [f"@SQ\tSN:{c}\tLN:{LENGTH}" for c in CONTIGS] + ["@RG\tID:s\tSM:s"]
     for rsid, chrom, pos in MARKERS:
@@ -104,7 +106,9 @@ def _bam(path: Path, seqs: dict[str, str], genotypes: dict[str, str]) -> str:
                 f"{rsid}{i}\t0\t{chrom}\t{start}\t{mapq}\t100M\t*\t0\t0\t"
                 f"{''.join(read)}\t{'I' * 100}\tRG:Z:s"
             )
-    return sam_to_bam(lines, path)
+    bam = sam_to_bam(lines, path)
+    run_wgsextract("sample", "set", "--input", bam, "--sex", sex)
+    return bam
 
 
 def _rows(path: Path, sep: str = "\t") -> dict[str, list[str]]:
@@ -260,7 +264,7 @@ def test_hg38_without_a_liftover_chain_fails_before_calling(tmp_path):
 
 def test_female_x_is_diploid_and_y_is_a_no_call(tmp_path, library):
     fasta, seqs = library
-    bam = _bam(tmp_path / "female.bam", seqs, FEMALE)
+    bam = _bam(tmp_path / "female.bam", seqs, FEMALE, sex="Female")
 
     _microarray(bam, fasta, tmp_path / "out")
 
@@ -727,6 +731,7 @@ def test_hg38_input_is_lifted_to_the_hg19_templates(tmp_path, monkeypatch):
                     f"{''.join(read)}\t{'I' * 100}\tRG:Z:s"
                 )
     bam = sam_to_bam(lines, tmp_path / "sample.bam")
+    run_wgsextract("sample", "set", "--input", bam, "--sex", "Male")
     library = tmp_path / "configured-library"
     monkeypatch.setitem(settings, "reference_library", str(library))
 
@@ -762,7 +767,9 @@ def _deep_bam(path: Path, seqs: dict[str, str]) -> str:
                 f"{rsid}{i}\t{16 * (i % 2)}\t{chrom}\t{start}\t60\t100M\t*\t0\t0\t"
                 f"{''.join(read)}\t{quals}\tRG:Z:s"
             )
-    return sam_to_bam(lines, path)
+    bam = sam_to_bam(lines, path)
+    run_wgsextract("sample", "set", "--input", bam, "--sex", "Male")
+    return bam
 
 
 def _records(directory: Path) -> list[str]:
