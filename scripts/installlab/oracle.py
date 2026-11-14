@@ -385,13 +385,18 @@ class Oracle:
             expected[(chrom, pos)] = (genotype if reason == "called" else "--", reason)
 
         reasons: dict[tuple[str, str], tuple[str, str]] = {}
+        reason_errors = 0
         report = self.output("microarray", "HG00096.hg19-mini_CombinedKit_reasons.tsv")
         with report.open() as source:
             for line in source:
                 if not line.startswith("#"):
                     _rsid, chrom, pos, genotype, reason = line.rstrip("\n").split("\t")
-                    reasons[(chrom, pos)] = (genotype, reason)
-        agree = total = called = no_calls = policy_errors = reason_errors = 0
+                    key = (chrom, pos)
+                    if key in reasons:
+                        reason_errors += 1
+                        continue
+                    reasons[key] = (genotype, reason)
+        agree = total = called = no_calls = policy_errors = 0
         seen: set[tuple[str, str]] = set()
         kit = self.output("microarray", "HG00096.hg19-mini_CombinedKit.txt")
         for line in kit.open():

@@ -102,6 +102,8 @@ def test_918_five_x_no_calls_are_not_genotype_disagreements(
         "duplicate_weak",
         "wrong_weak_reason",
         "missing_weak_reason",
+        "duplicate_reason",
+        "duplicate_correct_reason",
     ],
 )
 def test_918_oracle_rejects_confidence_policy_drift(
@@ -129,6 +131,15 @@ def test_918_oracle_rejects_confidence_policy_drift(
         )
     elif corruption == "duplicate_weak":
         kit.write_text(kit.read_text() + "rs7\t20\t7\t--\n")
+    elif corruption == "duplicate_reason":
+        reasons.write_text(
+            reasons.read_text().replace(
+                "rs7\t20\t7\t--\tlow_dp",
+                "rs7\t20\t7\t--\tlow_gq\nrs7\t20\t7\t--\tlow_dp",
+            )
+        )
+    elif corruption == "duplicate_correct_reason":
+        reasons.write_text(reasons.read_text() + "rs7\t20\t7\t--\tlow_dp\n")
     else:
         replacement = "low_gq" if corruption == "wrong_weak_reason" else ""
         reasons.write_text(
