@@ -408,10 +408,11 @@ the check, or is older than the oldest supported release, raises the
 - **Dense suffix-array file (optional).** `wgse-bwa` 0.11.0 and later can
   read a side file beside the reference's BWA index that holds the
   suffix-array position of every 16th row, so it locates seeds with shorter
-  walks: the same alignments, 11.5% faster on the CPU and 7.7% faster on the
-  GPU for 5M read pairs on hs38. The file takes 0.80 GB on disk for hs38 and
-  as much RAM while aligning. It is opt-in and never built or used
-  automatically:
+  walks: the same alignments for 5M read pairs on hs38, 11.5% faster on the
+  CPU and 7.7% faster with `--metal` on an M1 Pro, and 7.7% faster on the CPU
+  but only 1.3% with `--cuda` on a Ryzen 5 5600X with an RTX 3090. The file
+  takes 0.80 GB on disk for hs38 and as much RAM while aligning. It is opt-in
+  and never built or used automatically:
   - `wgsextract ref dense-sa --ref <fasta>` builds it with `wgse-bwa
     densify-sa` (it shows the disk it will take first; `--interval 8`, `4` or
     `2` makes a larger, faster file), `--list` shows the FASTA's files and the
