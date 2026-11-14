@@ -14,7 +14,7 @@
 {"flags":["--debug"],"dest":"debug","type":"flag","help":"Enable verbose debug logging."},
 {"flags":["--log-file"],"dest":"log_file","type":"string","help":"Write a DEBUG run log and companion provenance JSON (must be a new file)."},
 {"flags":["--keep-awake","--no-keep-awake"],"dest":"keep_awake","type":"flag","help":"Best-effort idle/sleep inhibition during this command; --no-keep-awake disables it."},
-{"flags":["--atomic-output","--no-atomic-output"],"dest":"atomic_output","type":"flag","help":"Opt in to atomic main-output publication; staged tool provenance paths may differ."},
+{"flags":["--atomic-output","--no-atomic-output"],"dest":"atomic_output","type":"flag","help":"Opt in to atomic publication (align always uses it, even with --no-atomic-output); staged tool provenance paths may differ."},
 {"flags":["--config"],"dest":"config_path","type":"string","help":"Read and save settings in this config.toml instead of the per-user one."},
 {"flags":["--result-file"],"dest":"_result_file","type":"string","help":"==SUPPRESS=="},
 {"flags":["--parent-pid"],"dest":"parent_pid","type":"integer","help":"Parent Process ID to monitor."}
