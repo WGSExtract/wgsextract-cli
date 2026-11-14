@@ -23,6 +23,11 @@ from tests.htslib_helpers import (
 )
 from tests.yleaf_helpers import native_tables as native_tables
 from wgsextract_cli.commands._lineage_ydna import _yleaf_build
+from wgsextract_cli.core.mito_reference import (
+    CHM13_CHRM_MD5,
+    RCRS_MD5,
+    pinned_sequences,
+)
 from wgsextract_cli.core.utils import WGSExtractError
 from wgsextract_cli.ydna.yleaf_native.trees import MANIFEST
 
@@ -521,6 +526,117 @@ def test_mt_haplogroup_refuses_or_warns_on_yoruba_mtdna(tmp_path, caplog):
             assert "Yoruba" in str(e)
             return
     assert "Yoruba" in caplog.text
+
+
+def _mito_on(tmp_path: Path, mito: str, m5: str = "") -> tuple[str, Path]:
+    """A BAM on a chrM-only reference, its reads carrying ALT C at 1-based 2011."""
+    assert mito[2010] != "C"
+    ref = write_fasta(tmp_path / "ref.fa", {"chrM": mito})
+    sq = f"@SQ\tSN:chrM\tLN:{len(mito)}" + (f"\tM5:{m5}" if m5 else "")
+    reads = _reads("chrM", mito, 12, start=1990, snp=2010)
+    return sam_to_bam([sq, *reads], tmp_path / "kit.bam"), ref
+
+
+@pytest.mark.parametrize("chrm", ["CHM13", "rotated", "origin split", "M5"])
+def test_mt_haplogroup_refuses_a_chrm_that_is_not_rcrs_positions_827(tmp_path, chrm):
+    """#827: CHM13's chrM is the rCRS's length but rotated 576 bp, so it passed
+    the length check and Haplogrep classified shifted positions."""
+    rcrs, chm13 = pinned_sequences()
+    mito = {
+        "CHM13": chm13,
+        "rotated": rcrs[576:] + rcrs[:576],
+        "origin split": rcrs[1:] + rcrs[:1],  # its first 40 bp cross the end
+        "M5": rcrs,
+    }[chrm]
+    # M5: the header says CHM13 even though --ref is (wrongly) an rCRS FASTA.
+    bam, ref = _mito_on(tmp_path, mito, m5=CHM13_CHRM_MD5 if chrm == "M5" else "")
+    with pytest.raises(WGSExtractError, match="not the rCRS") as error:
+        run_wgsextract(
+            "lineage", "mt-haplogroup", "--input", bam, "--ref", str(ref),
+            "--haplogrep-path", _haplogrep(tmp_path),
+        )  # fmt: skip
+    assert ("is CHM13v2.0's chrM" in str(error.value)) is (chrm in ("CHM13", "M5"))
+    assert "realign" in str(error.value)
+    assert not (tmp_path / "calls.jsonl").exists()  # Haplogrep never ran
+
+
+@pytest.mark.parametrize("chrm", ["rCRS", "unrecognised"])
+def test_mt_haplogroup_warns_unless_the_chrm_is_confirmed_rcrs_827(tmp_path, chrm):
+    rcrs = pinned_sequences()[0]
+    mito = rcrs if chrm == "rCRS" else rcrs[::-1].replace("C", "G")
+    bam, ref = _mito_on(tmp_path, mito)
+    result = _classify(
+        bam, tmp_path / "o", ref=ref, haplogrep_path=_haplogrep(tmp_path)
+    )
+    unconfirmed = "mt_reference_unconfirmed" in {w.code for w in result.warnings}
+    assert unconfirmed is (chrm == "unrecognised")
+    (call,) = _calls(tmp_path)
+    assert [r[:2] + r[3:4] for r in call["records"]] == [["chrM", "2011", "C"]]
+
+
+@pytest.mark.parametrize(
+    "evidence",
+    ["REF alleles", "stale rCRS md5", "contig md5", "quoted md5", "plain VCF md5"],
+)
+def test_mt_haplogroup_refuses_a_vcf_called_against_chm13_827(tmp_path, evidence):
+    """#827: a VCF called against CHM13 reads as rCRS positions to Haplogrep."""
+    rcrs, chm13 = pinned_sequences()
+    sites = [73, 263, 750, 2706, 7028]
+    if evidence in ("REF alleles", "stale rCRS md5"):
+        md5 = RCRS_MD5 if evidence == "stale rCRS md5" else ""
+        meta = f"##contig=<ID=chrM,length=16569,md5={md5}>\n" if md5 else ""
+        refs = chm13
+    else:
+        md5 = f'"{CHM13_CHRM_MD5}"' if evidence == "quoted md5" else CHM13_CHRM_MD5
+        meta, refs = f"##contig=<ID=chrM,length=16569,md5={md5}>\n", rcrs
+    body = "".join(
+        f"chrM\t{p}\t.\t{refs[p - 1]}\t{'T' if refs[p - 1] != 'T' else 'G'}"
+        "\t50\tPASS\t.\tGT\t1\n"
+        for p in sites
+    )
+    contigs = {} if meta else {"chrM": 16_569}
+    vcf = _vcf(tmp_path / "kit.vcf.gz", contigs, body, meta)
+    if evidence == "plain VCF md5":
+        plain = tmp_path / "plain.vcf"  # can't be indexed, so its chrM is a guess
+        plain.write_bytes(gzip.decompress(Path(vcf).read_bytes()))
+        vcf = str(plain)
+    with pytest.raises(WGSExtractError, match="CHM13v2.0's chrM, not the rCRS"):
+        run_wgsextract(
+            "lineage", "mt-haplogroup", "--input", vcf,
+            "--haplogrep-path", _haplogrep(tmp_path),
+        )  # fmt: skip
+    assert not (tmp_path / "calls.jsonl").exists()
+
+
+def test_mt_haplogroup_refuses_mtdna_split_over_two_contigs_827(tmp_path):
+    """#827: an MT contig's rCRS md5 mustn't vouch for chrM records too."""
+    body = (
+        "MT\t73\t.\tA\tG\t50\tPASS\t.\tGT\t1\nchrM\t263\t.\tA\tG\t50\tPASS\t.\tGT\t1\n"
+    )
+    vcf = _vcf(tmp_path / "kit.vcf.gz", {"MT": 16_569, "chrM": 16_569}, body)
+    plain = tmp_path / "plain.vcf"
+    plain.write_bytes(gzip.decompress(Path(vcf).read_bytes()))
+    with pytest.raises(WGSExtractError, match="records on MT, chrM"):
+        run_wgsextract(
+            "lineage", "mt-haplogroup", "--input", str(plain),
+            "--haplogrep-path", _haplogrep(tmp_path),
+        )  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("ref", "md5"), [("A", ""), ("A", "0" * 32), ("C", ""), ("A", RCRS_MD5)]
+)
+def test_mt_haplogroup_vcf_warns_unless_its_chrm_is_confirmed_rcrs_827(
+    tmp_path, ref, md5
+):
+    """#827: rCRS and CHM13 share the A at 73, so only an rCRS md5 confirms
+    it; an unknown md5 or a REF neither has (C) proves nothing either."""
+    meta = f"##contig=<ID=chrM,length=16569,md5={md5}>\n" if md5 else ""
+    body = f"chrM\t73\t.\t{ref}\tG\t50\tPASS\t.\tGT\t1\n"
+    vcf = _vcf(tmp_path / "kit.vcf.gz", {} if md5 else {"chrM": 16_569}, body, meta)
+    result = _classify(vcf, tmp_path / "o", haplogrep_path=_haplogrep(tmp_path))
+    warned = "mt_reference_unconfirmed" in {w.code for w in result.warnings}
+    assert warned is (md5 != RCRS_MD5)
 
 
 @pytest.mark.parametrize(

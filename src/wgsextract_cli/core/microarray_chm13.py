@@ -17,6 +17,7 @@ from wgsextract_cli.core.microarray_site_map import (
     SiteMap,
     load_site_map,
 )
+from wgsextract_cli.core.mito_reference import CHM13_CHRM_MD5
 from wgsextract_cli.core.utils import WGSExtractError, popen
 
 
@@ -123,7 +124,7 @@ def load_chm13_catalogue(
             )
         if set(contigs) != set(_CHROMS):
             raise ValueError("CHM13 reference profile needs all 25 primary chromosomes")
-        if contigs["chrM"].md5 != "ec493a132ac4823aa696e37109f64972":
+        if contigs["chrM"].md5 != CHM13_CHRM_MD5:
             raise ValueError("Unsupported CHM13 mitochondrial sequence")
         par = tuple(
             PARInterval(

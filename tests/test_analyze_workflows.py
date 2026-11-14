@@ -26,6 +26,7 @@ from tests.smoke_utils import state_directory_setting
 from wgsextract_cli.commands import _analyze_workflows as wf
 from wgsextract_cli.core.config import get_config_path
 from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
+from wgsextract_cli.core.mito_reference import CHM13_CHRM_MD5
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.main import main
 
@@ -262,12 +263,12 @@ def fake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeSteps:
     return FakeSteps(tmp_path / "fake-steps", monkeypatch)
 
 
-def _bam(path: Path, sample: str = "S") -> str:
+def _bam(path: Path, sample: str = "S", *sq: str) -> str:
     if not get_tool_path("samtools"):
         pytest.skip("samtools missing")
     path.parent.mkdir(parents=True, exist_ok=True)
     return sam_to_bam(
-        ["@HD\tVN:1.6\tSO:coordinate", "@SQ\tSN:chr1\tLN:10000",
+        ["@HD\tVN:1.6\tSO:coordinate", "@SQ\tSN:chr1\tLN:10000", *sq,
          f"@RG\tID:rg\tSM:{sample}"],
         path,
     )  # fmt: skip
@@ -530,6 +531,21 @@ def test_failed_y_haplogroup_warns_and_still_calls_variants(
 
     fake.fail = set()
     assert fake.run("--input", bam, "--outdir", str(out)).ran == ["y-haplogroup"]
+
+
+@needs_bcftools
+def test_chm13_chrm_skips_the_mt_haplogroup_but_still_calls_variants_827(
+    fake: FakeSteps, tmp_path: Path
+) -> None:
+    # #827: mt-haplogroup now refuses CHM13's rotated chrM; that refusal
+    # mustn't stop a comprehensive run of a CHM13 genome.
+    chrm = f"@SQ\tSN:chrM\tLN:16569\tM5:{CHM13_CHRM_MD5}"
+    bam = _bam(tmp_path / "in" / "chm13.bam", "S", chrm)
+    run = fake.run("--input", bam, "--outdir", str(tmp_path / "o"))
+    assert run.code == 0
+    assert run.ran == [step for step in _ALL_STEPS if step != "mt-haplogroup"]
+    codes = [w["code"] for w in run.document.get("warnings") or []]
+    assert "mt_haplogroup_skipped" in codes
 
 
 # --- analyze comprehensive: resuming ---------------------------------------------

@@ -106,6 +106,8 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `gvcf_reference_missing`, `unconfident_parent_genotypes` | `vcf trio` | A gVCF trio has no `--ref`, so reference blocks count only where they start at a variant; de novo calls rest on a parent's low-quality reference call (`count`, `total`). |
 | `no_indel_scores` | `vcf cadd` | The CADD indel file is missing, so indels are not scored. |
 | `contigs_skipped` | `vcf to-fasta` | VCF contigs absent from the reference were left out (`count`). |
+| `mt_reference_unconfirmed` | `lineage mt-haplogroup` | Nothing confirms the chrM is the rCRS whose positions Haplogrep classifies: no rCRS header MD5, a reference chrM that isn't a recognisable rCRS, or VCF REF alleles that CHM13's rotated chrM fits too. CHM13's chrM itself is refused. |
+| `mt_haplogroup_skipped` | `analyze comprehensive` | The alignment's chrM isn't the rCRS (CHM13's, hg19's Yoruba), so `lineage mt-haplogroup` would refuse it; the analysis went on without an mtDNA haplogroup. |
 | `y_haplogroup_failed` | `analyze comprehensive` | `lineage y-haplogroup` failed (often too few chrY reads); the analysis went on without it, and a rerun retries it. |
 | `annotation_skipped`, `annotation_failed` | `vcf chain-annotate`, `analyze` | One annotation was skipped (`annotation`, `reason`) or failed. |
 | `read_groups_mixed`, `read_group_conflict` | `bam unalign`, `bam merge` | Read groups differ in a way that loses or merges information. |

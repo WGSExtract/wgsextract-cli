@@ -22,6 +22,13 @@ from wgsextract_cli.core.haplogrep_trees import (
     write_config,
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES, SYSTEM_MESSAGES
+from wgsextract_cli.core.mito_reference import (
+    CHM13_CHRM,
+    CHM13_CHRM_MD5,
+    RCRS_MD5,
+    mito_origin,
+    ref_agreement,
+)
 from wgsextract_cli.core.paths import absolute_path, java_local_path
 from wgsextract_cli.core.reference_assets import resolve_reference_library
 from wgsextract_cli.core.reference_models import MITO_BY_LENGTH, sequence_lengths
@@ -43,6 +50,7 @@ from wgsextract_cli.core.utils import (
 )
 from wgsextract_cli.core.variant_files import (
     calculate_bam_md5,
+    chromosome_aliases,
     get_bam_header,
     get_chr_name,
     verify_paths_exist,
@@ -170,8 +178,8 @@ def run_mt_haplogroup(params: MtHaplogroupParams, *, tree_links: bool = False) -
             _haplocheck_path(params.haplocheck_path), "haplocheck.jar"
         )
         tools.append("haplocheck")
-        if is_alignment:
-            tools.append("samtools")
+    if is_alignment:
+        tools.append("samtools")
     verify_dependencies(["bcftools"] + (["samtools"] if "samtools" in tools else []))
     log_dependency_info(tools)
 
@@ -220,7 +228,7 @@ def run_mt_haplogroup(params: MtHaplogroupParams, *, tree_links: bool = False) -
 
             cram_opt = ["-T", lib.fasta] if input_lower.endswith(".cram") else []
             chr_m = get_chr_name(input_file, "MT", cram_opt)
-            _require_rcrs(input_file, chr_m, cram_opt)
+            _require_rcrs(input_file, chr_m, cram_opt, lib.fasta)
             if haplocheck_cmd:
                 _require_one_sample(get_bam_header(input_file, cram_opt))
             warn_low_depth(
@@ -393,17 +401,122 @@ def _read_tsv(path: str | Path, tool: str) -> list[dict[str, str]]:
         raise WGSExtractError(f"{tool} did not write {path}: {e}") from e
 
 
-def _require_rcrs(path: str, chr_m: str, cram_opt: list[str] | None = None) -> None:
-    """Refuse an mtDNA sequence that isn't the rCRS Haplogrep's positions assume."""
-    length = sequence_lengths(get_bam_header(path, cram_opt)).get(chr_m)
-    if length is None or MITO_BY_LENGTH.get(length) == "rCRS":
-        return
-    if MITO_BY_LENGTH.get(length) == "Yoruba":
-        raise WGSExtractError(SYSTEM_MESSAGES["YorubaWarning"])
-    raise WGSExtractError(
-        f"{chr_m} is {length} bp, not the 16569 bp rCRS that Haplogrep's "
-        "positions refer to."
+def _require_rcrs(
+    path: str,
+    chr_m: str,
+    cram_opt: list[str] | None = None,
+    fasta: str | None = None,
+) -> None:
+    """Refuse an mtDNA sequence that isn't the rCRS Haplogrep's positions
+    assume, and warn of one nothing confirms as the rCRS."""
+    problem, confirmed = _mito_check(path, chr_m, cram_opt, fasta)
+    if problem:
+        raise WGSExtractError(problem)
+    if not confirmed:
+        warn(
+            "mt_reference_unconfirmed",
+            f"{chr_m} isn't confirmed as the rCRS whose positions Haplogrep "
+            "classifies; check that it was called against an rCRS chrM (such "
+            "as hg38's or hs37d5's), or the haplogroup may be wrong.",
+        )
+
+
+def alignment_mito_problem(alignment: str, ref: str | None) -> str | None:
+    """Why ``lineage mt-haplogroup`` would refuse this BAM/CRAM's chrM, or None
+    (also when that can't be told here: the command reports it then)."""
+    try:
+        lib = ReferenceLibrary(
+            ref, calculate_bam_md5(alignment, None), input_path=alignment
+        )
+        cram = alignment.lower().endswith(".cram")
+        cram_opt = ["-T", lib.fasta] if cram and lib.fasta else []
+        chr_m = get_chr_name(alignment, "MT", cram_opt)
+        return _mito_check(alignment, chr_m, cram_opt, lib.fasta)[0]
+    except (WGSExtractError, OSError, subprocess.SubprocessError):
+        return None
+
+
+def _mito_check(
+    path: str,
+    chr_m: str,
+    cram_opt: list[str] | None = None,
+    fasta: str | None = None,
+) -> tuple[str | None, bool]:
+    """Why Haplogrep can't use ``path``'s chrM (or None), and whether it is
+    confirmed as the rCRS.
+
+    Length alone can't tell (#827): CHM13v2.0's chrM is as long as the rCRS but
+    rotated. A CHM13 MD5 in the header settles it; otherwise an alignment's
+    reference or a VCF's REF alleles decide, ahead of an rCRS MD5.
+    """
+    rows: list[list[str]] = []
+    if path.lower().endswith(VCF_SUFFIXES):
+        query = ["bcftools", "query", "-f", "%CHROM\\t%POS\\t%REF\\n", path]
+        out = run_command(query, capture_output=True).stdout
+        rows = [line.split("\t") for line in out.splitlines() if line]
+        names = sorted({row[0] for row in rows})
+        if len(names) > 1:
+            return f"{path} has mtDNA records on {', '.join(names)}; use one.", False
+        # A plain VCF's chromosome name is a guess: its records have the real one.
+        chr_m = names[0] if names else chr_m
+    header = get_bam_header(path, cram_opt)
+    length = sequence_lengths(header).get(chr_m)
+    if length is not None and MITO_BY_LENGTH.get(length) != "rCRS":
+        if MITO_BY_LENGTH.get(length) == "Yoruba":
+            return SYSTEM_MESSAGES["YorubaWarning"], False
+        return (
+            f"{chr_m} is {length} bp, not the 16569 bp rCRS that Haplogrep's "
+            "positions refer to.",
+            False,
+        )
+    md5 = _header_md5(header, chr_m)
+    origin = {CHM13_CHRM_MD5: CHM13_CHRM, RCRS_MD5: "rCRS"}.get(md5 or "")
+    if fasta and origin != CHM13_CHRM:
+        # The reference variants are called against outranks the header.
+        sequence = _fasta_mito(fasta, chr_m)
+        origin = (mito_origin(sequence) if sequence else None) or origin
+    elif rows and origin != CHM13_CHRM:
+        # The VCF's REFs outrank an rCRS md5 its header may carry over.
+        rcrs, chm13 = ref_agreement((int(row[1]), row[2]) for row in rows)
+        if rcrs != chm13:  # REFs both references share prove nothing
+            origin = "rCRS" if rcrs else CHM13_CHRM
+    if origin in (None, "rCRS"):
+        return None, origin == "rCRS"
+    return (
+        f"{chr_m} is {origin}, not the rCRS: its positions aren't the ones "
+        "Haplogrep classifies, so the haplogroup would be wrong. Use an "
+        "alignment or VCF made against a reference whose chrM is the rCRS "
+        "(hg38, hs37d5, or CHM13v2.0's rCRS analysis set); `wgsextract "
+        "realign` re-maps a BAM or CRAM.",
+        False,
     )
+
+
+def _fasta_mito(fasta: str, chr_m: str) -> str | None:
+    """The FASTA's mitochondrial sequence under any of its names, or None."""
+    for name in dict.fromkeys((chr_m, *chromosome_aliases(chr_m))):
+        result = run_command(
+            ["samtools", "faidx", fasta, name], capture_output=True, check=False
+        )
+        if result.returncode == 0 and result.stdout.count("\n") > 1:
+            return "".join(result.stdout.splitlines()[1:])
+    return None
+
+
+def _header_md5(header: str, contig: str) -> str | None:
+    """The MD5 a BAM @SQ (M5) or VCF ##contig (md5) line gives ``contig``."""
+    for line in header.splitlines():
+        if line.startswith("@SQ"):
+            tags = dict(f.split(":", 1) for f in line.split("\t")[1:] if ":" in f)
+            if tags.get("SN") == contig:
+                return tags.get("M5", "").lower() or None
+        elif line.startswith("##contig=<"):
+            fields = dict(
+                f.split("=", 1) for f in line[10:].rstrip(">").split(",") if "=" in f
+            )
+            if fields.get("ID") == contig:
+                return fields.get("md5", "").strip("\"'").lower() or None
+    return None
 
 
 def _scalar(value: str | None) -> Scalar:

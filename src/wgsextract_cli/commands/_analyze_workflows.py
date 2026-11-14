@@ -12,6 +12,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, TypedDict
 
+from wgsextract_cli.commands.lineage import alignment_mito_problem
 from wgsextract_cli.core import variant_confidence
 from wgsextract_cli.core.config import config_args
 from wgsextract_cli.core.haplogrep_trees import configured_tree_spec
@@ -614,6 +615,17 @@ def run_bam_chain(
         # 4. Y-lineage only if it's NOT female
         if name == "y-haplogroup" and gender == "Female":
             logging.info("Skipping Y-lineage analysis for female genome.")
+            continue
+        if name == "mt-haplogroup" and (
+            problem := alignment_mito_problem(input_file, job.ref)
+        ):
+            # A reference whose chrM isn't the rCRS (hg19's, CHM13's) has no
+            # mt haplogroup, but its variants can still be called.
+            warn(
+                "mt_haplogroup_skipped",
+                f"No mtDNA haplogroup: {problem} Continuing without it.",
+                step=name,
+            )
             continue
         command = [*command, "--input", input_file, "--outdir", outdir]
         tools = ["samtools", "bcftools"]
