@@ -69,9 +69,10 @@ def linux_x86(monkeypatch):
 
 
 @pytest.fixture
-def dv(tmp_path, monkeypatch, linux_x86):
+def dv(tmp_path, monkeypatch, linux_x86, ram):
     """Reads, Google's image in a fake Docker, 64 GiB of free RAM, and no
     run_deepvariant on PATH."""
+    ram(64 * GIB)
     require_bare_name_fakes()
     require_runnable("samtools", "bcftools", "tabix")
     (tmp_path / "reads").mkdir()
@@ -462,7 +463,8 @@ def big_cram(dv, monkeypatch):
 
 def test_staging_needs_disk_for_the_whole_input_or_the_selected_slices(dv, big_cram):
     big_cram.volumes.sizes[Path(big_cram.path)] = 16 * GIB
-    with pytest.raises(WGSExtractError, match=r"Insufficient free disk.*~32\.00 GiB"):
+    # #690: the requirement counts the CRAM 3.0 copy before anything runs.
+    with pytest.raises(WGSExtractError, match=r"requirement: it needs ~\d+ GiB disk"):
         call(dv, reads=big_cram.path)
     assert not list(dv.out.rglob("reads.cram"))
     assert dv.deepvariant.runs("make_examples") == []
@@ -471,8 +473,10 @@ def test_staging_needs_disk_for_the_whole_input_or_the_selected_slices(dv, big_c
     call(dv, "-r", "chr1:900-1000", reads=big_cram.path)
     assert dv.deepvariant.runs("make_examples")
     big_cram.volumes.free[dv.out] = 63 / 1024
+    # Staging checks its slices itself, past --no-preflight's estimate.
     with pytest.raises(WGSExtractError, match=r"~0\.06 GiB"):
-        call(dv, "-r", "chr1:900-1100", reads=big_cram.path, out=dv.out / "again")
+        call(dv, "-r", "chr1:900-1100", "--no-preflight", reads=big_cram.path,
+             out=dv.out / "again")  # fmt: skip
 
 
 @pytest.mark.parametrize("compressed", [False, True])
@@ -1849,3 +1853,36 @@ def test_a_gpu_plan_needs_no_gpu_driver(ultima_gpu, monkeypatch, capsys):
     gpu_call(ultima_gpu, "--dry-run")
     assert re.search(r"call_variants +run", capsys.readouterr().out)
     assert ultima_gpu.deepvariant.stages() == []
+
+
+def test_deepvariant_states_its_host_requirement_and_refuses_too_little_ram(
+    dv, monkeypatch, ram, caplog
+):
+    """#690: the whole-genome DeepVariant run of #431 found its RAM need by
+    running into it. It now states disk, RAM and time before it starts,
+    warns when its settings need more RAM than this computer has, and
+    refuses one with less than it needs on one thread at a batch of 256,
+    unless --no-preflight."""
+    caplog.set_level("INFO")
+    ram(12 * GIB)
+    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 12 * GIB)
+    call(dv)
+    assert re.search(
+        r"this DeepVariant run needs \S+ GiB disk on .*, ~\d+ GiB RAM, "
+        r"~[\d.]+ (h|min) on 4 threads",
+        caplog.text,
+    )
+    assert "it may swap or be killed" in caplog.text
+    assert dv.deepvariant.runs("make_examples")
+
+    ram(4 * GIB)
+    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 4 * GIB)
+    dv.deepvariant.clear()
+    with pytest.raises(
+        WGSExtractError,
+        match=r"at least ~[\d.]+ GiB RAM, but this computer has 4\.0 GiB",
+    ):
+        call(dv, out=dv.tmp / "small")
+    assert dv.deepvariant.runs("make_examples") == []
+    call(dv, "--no-preflight", out=dv.tmp / "small")
+    assert dv.deepvariant.runs("make_examples")

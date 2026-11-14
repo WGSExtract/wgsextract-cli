@@ -49,9 +49,11 @@ _BCFTOOLS_JOBS_PER_WORKER = 16
 # HG002 ONT (PAO83395.pass.cram) onto hs38: the whole genome's sort spills
 # reached 2.8x by 12% of the input. A chr20 slice whose supplementary
 # alignments add 1.93x its bases, against 1.42-1.70x elsewhere, came to 3.35x
-# as spills and 1.9x as CRAM; scaled to a 1.55x genome, 2.7x and 1.5x.
+# as spills and 1.9x as CRAM; scaled to a 1.55x genome, 2.7x and 1.5x. The
+# whole genome's CRAM came to 1.79x (#431), 5% above the 1.7x first budgeted
+# from the slice; BAM's slice-scaled 2.6x is raised by the same 5% (#690).
 LONG_READ_SPILL_PER_CRAM_BYTE = 3.0
-LONG_READ_OUTPUT_PER_CRAM_BYTE = {"CRAM": 1.7, "BAM": 2.6}
+LONG_READ_OUTPUT_PER_CRAM_BYTE = {"CRAM": 1.8, "BAM": 2.75}
 LONG_READ_FASTQ_PER_CRAM_BYTE = 1.45
 # The same reads as level-6 BAM, bgzipped and plain tagged FASTQ.
 _LONG_READ_BYTES_PER_CRAM_BYTE = {"bam": 1.76, "gz": 1.39, "plain": 3.3}
@@ -287,11 +289,8 @@ class LongReadDisk:
     fastq: int
 
 
-def long_read_disk(
-    input_path: str, input_bytes: int, output_format: str, sort_buffer_bytes: float
-) -> LongReadDisk:
-    """Scale by the input's size, not by short-read per-read sizes: one long
-    read takes tens of kilobytes. ``sort_buffer_bytes`` is -m times threads."""
+def long_read_cram_bytes(input_path: str, input_bytes: int) -> float:
+    """The size of long reads' ``input_bytes`` as CRAM."""
     name = input_path.lower()
     kind = "cram" if name.endswith(".cram") else "bam" if name.endswith(".bam") else ""
     if not kind:
@@ -301,7 +300,15 @@ def long_read_disk(
                 kind = "gz" if handle.read(2) == b"\x1f\x8b" else "plain"
         except OSError:
             kind = "gz" if name.endswith((".gz", ".bgz", ".bgzf")) else "plain"
-    cram = max(0, input_bytes) / _LONG_READ_BYTES_PER_CRAM_BYTE.get(kind, 1)
+    return max(0, input_bytes) / _LONG_READ_BYTES_PER_CRAM_BYTE.get(kind, 1)
+
+
+def long_read_disk(
+    input_path: str, input_bytes: int, output_format: str, sort_buffer_bytes: float
+) -> LongReadDisk:
+    """Scale by the input's size, not by short-read per-read sizes: one long
+    read takes tens of kilobytes. ``sort_buffer_bytes`` is -m times threads."""
+    cram = long_read_cram_bytes(input_path, input_bytes)
     spill = cram * LONG_READ_SPILL_PER_CRAM_BYTE
     merging = _SORT_CONSOLIDATED_FILES * sort_buffer_bytes * _SORT_SPILL_PER_BUFFER_BYTE
     return LongReadDisk(
@@ -1012,12 +1019,18 @@ class ParabricksPlan:
         )
 
 
-def preflight_resources(estimate: Callable[[], PreflightEstimate]) -> None:
-    """Best-effort CLI reporting; the GUI estimator remains strict."""
+def preflight_resources(
+    estimate: Callable[[], PreflightEstimate],
+) -> PreflightEstimate | None:
+    """Best-effort CLI reporting; the GUI estimator remains strict. Returns
+    the estimate it reported, if any."""
     try:
-        report_resources(estimate())
+        reported = estimate()
+        report_resources(reported)
     except (ValueError, OSError, subprocess.SubprocessError) as exc:
         logging.warning("resource estimate unavailable: %s", exc)
+        return None
+    return reported
 
 
 def report_resources(estimate: PreflightEstimate) -> None:
@@ -1046,6 +1059,263 @@ def report_resources(estimate: PreflightEstimate) -> None:
         )
     for note in estimate.notes:
         logging.info("Preflight: %s", note)
+
+
+# Approximate run times (#690), in thread-hours: a run on N threads takes about
+# this over N hours. No step scales perfectly with threads and CPUs differ, so
+# they only say whether a run takes minutes, hours or days.
+# Short-read alignment per read base: 5M HG002 2x150 pairs (1.5 Gb) on hs38, 8
+# threads of a Ryzen 5 5600X (#674/#736): bwa 472.5 s, wgse-bwa --cuda 131.4 s,
+# bwa-mem3 --compat=bwa-mem 97.7 s. bwa-mem2 is assumed as fast as bwa-mem3.
+_TIMED_BASES = 1.5e9
+ALIGN_THREAD_SECONDS_PER_BASE = {
+    "bwa": 472.5 * 8 / _TIMED_BASES,
+    "bwa-gpu": 131.4 * 8 / _TIMED_BASES,
+    "bwa-mem3": 97.7 * 8 / _TIMED_BASES,
+}
+# Extraction and sorting around the aligner: the 35x realign on a 16 GB M1
+# spent 23 of its 362 minutes extracting FASTQs.
+REALIGN_TIME_OVERHEAD = 1.15
+# minimap2 -Y realigned the 103.7 GB HG002 ONT CRAM in 21.4 h on 7 threads of
+# an Apple M1 (#431).
+LONG_READ_THREAD_SECONDS_PER_CRAM_BYTE = 21.4 * 3600 * 7 / 103.7e9
+# Calling a whole genome (about 3.1 Gb), in thread-hours.
+GENOME_BASES = 3.1e9
+CALLER_THREAD_HOURS = {
+    # Google's CPU image on 30x short reads: 15 h on 4 threads (projected from
+    # chr1 and chr20).
+    "deepvariant": 60.0,
+    # Google's CPU image on 51x ONT R10.4.1: 11.3 h on 10 threads (#431); also
+    # used for wgse-deepvariant's ONT model, which isn't timed on a genome.
+    "deepvariant-ont": 113.0,
+    # wgse-deepvariant on 30x short reads: 7 h on 4 threads, 3 h with --gpu
+    # (projected).
+    "wgse-deepvariant": 28.0,
+    "wgse-deepvariant-gpu": 12.0,
+    # Clair3 on 42x ONT: chr20 in 10.3 min on 4 CPUs, about 8 h for a genome
+    # (projected); with --gpu the 51x genome took 2.5 h on 6 threads (#431).
+    "clair3": 33.0,
+    "clair3-gpu": 15.0,
+}
+# Clair3's peak RAM, 15.2 GiB on 6 threads with --gpu (#431). Its CPU mode
+# isn't measured on a genome, so a computer short of it is warned, not refused.
+CLAIR3_MEMORY = 16 * GIB
+
+
+def alignment_hours(engine: str, gpu: bool, bases: float, threads: int) -> float:
+    """Approximate hours for a short-read realignment of ``bases`` read bases."""
+    if engine == "bwa":
+        rate = ALIGN_THREAD_SECONDS_PER_BASE["bwa-gpu" if gpu else "bwa"]
+    else:
+        rate = ALIGN_THREAD_SECONDS_PER_BASE["bwa-mem3"]
+    return bases * rate * REALIGN_TIME_OVERHEAD / max(1, threads) / 3600
+
+
+def long_read_alignment_hours(path: str, input_bytes: int, threads: int) -> float:
+    """Approximate hours for minimap2 to realign long reads of this size."""
+    cram = long_read_cram_bytes(path, input_bytes)
+    return cram * LONG_READ_THREAD_SECONDS_PER_CRAM_BYTE / max(1, threads) / 3600
+
+
+def calling_hours(caller: str, bases: int, threads: int) -> float:
+    """Approximate hours for ``caller`` (a CALLER_THREAD_HOURS key) to call
+    ``bases`` reference bases."""
+    return CALLER_THREAD_HOURS[caller] * bases / GENOME_BASES / max(1, threads)
+
+
+def _size(value: int) -> str:
+    """``~12 GiB``, ``~1.5 GiB`` or ``<0.1 GiB``, rounded up."""
+    gib = value / GIB
+    if gib < 0.1:
+        return "<0.1 GiB"
+    return f"~{math.ceil(gib) if gib >= 10 else math.ceil(gib * 10) / 10:g} GiB"
+
+
+def _duration(hours: float) -> str:
+    if hours < 1:
+        return f"~{max(1, round(hours * 60))} min"
+    return f"~{hours:.1f} h" if hours < 10 else f"~{hours:.0f} h"
+
+
+@dataclass(frozen=True)
+class Volume:
+    """The disk a run needs on one filesystem (None when unknown), and its
+    free space."""
+
+    paths: tuple[str, ...]
+    needed: int | None
+    free: int | None
+
+    @property
+    def short(self) -> bool:
+        return (
+            self.needed is not None
+            and self.free is not None
+            and self.needed > self.free
+        )
+
+
+@dataclass(frozen=True)
+class HostRequirement:
+    """What a run needs of this computer (#690): disk in each directory
+    (bytes, None when unknown), RAM at its settings (``memory``) and the
+    least it can't run without (``memory_floor``, None when unknown), and
+    approximate hours on its threads. ``memory_capacity`` replaces this
+    computer's RAM, as a Docker VM's memory does."""
+
+    operation: str
+    disk: tuple[tuple[str, int | None], ...]
+    memory: int | None
+    threads: int
+    hours: float | None
+    memory_floor: int | None = None
+    memory_capacity: int | None = None
+
+    def volumes(self) -> list[Volume]:
+        """The disk needs summed by filesystem."""
+        grouped: dict[object, Volume] = {}
+        for path, needed in self.disk:
+            device, free = _disk_space(path)
+            old = grouped.get(device)
+            if old is None:
+                grouped[device] = Volume((path,), needed, free)
+                continue
+            total = (
+                None if old.needed is None or needed is None else old.needed + needed
+            )
+            paths = old.paths if path in old.paths else (*old.paths, path)
+            grouped[device] = Volume(paths, total, old.free)
+        return list(grouped.values())
+
+    def line(self, volumes: Sequence[Volume]) -> str:
+        """``this realign run needs ~X GiB disk on PATH, ~Y GiB RAM, ~Z h on N
+        threads``."""
+        disks = [
+            f"{'? GiB' if v.needed is None else _size(v.needed)} "
+            f"{'' if i else 'disk '}on {', '.join(v.paths)}"
+            for i, v in enumerate(volumes)
+        ]
+        memory = (
+            "RAM not estimated" if self.memory is None else f"{_size(self.memory)} RAM"
+        )
+        time = "time not estimated" if self.hours is None else _duration(self.hours)
+        threads = f"{self.threads} thread{'' if self.threads == 1 else 's'}"
+        return (
+            f"this {self.operation} run needs {' and '.join(disks) or 'no disk'}, "
+            f"{memory}, {time} on {threads}"
+        )
+
+    def shortfalls(
+        self, volumes: Sequence[Volume], capacity: int | None
+    ) -> tuple[list[str], list[str]]:
+        """What this computer lacks: what refuses the run (too little free
+        disk, or less RAM than the run's floor), and what is only warned
+        about (less RAM than these settings need)."""
+        refusals = [
+            f"{_size(v.needed or 0)} disk on {', '.join(v.paths)}, "
+            f"but {(v.free or 0) / GIB:.1f} GiB is free"
+            for v in volumes
+            if v.short
+        ]
+        cautions = []
+        has = f"this computer has {(capacity or 0) / GIB:.1f} GiB"
+        if self.memory_floor is not None and capacity and self.memory_floor > capacity:
+            refusals.append(f"at least {_size(self.memory_floor)} RAM, but {has}")
+        elif self.memory is not None and capacity and self.memory > capacity:
+            cautions.append(f"{_size(self.memory)} RAM at these settings, but {has}")
+        return refusals, cautions
+
+
+def check_host_requirement(
+    requirement: HostRequirement,
+    *,
+    enforce: bool,
+    disk_advice: str = "",
+    memory_advice: str = "",
+) -> None:
+    """Print the one-line host requirement, record it on the result
+    (``details.host_requirement``) and refuse a run this computer can't meet:
+    too little free disk, or less RAM than the run can't do without. Less
+    RAM than its settings need is warned about. With ``enforce`` False
+    (``--no-preflight``) refusals are warnings too. The advice says how to
+    make the run fit the disk or the RAM."""
+    from .results import current_result, warn
+    from .utils import WGSExtractError
+
+    volumes = requirement.volumes()
+    capacity = requirement.memory_capacity
+    if capacity is None:
+        try:
+            capacity = alignment_memory.total_memory()
+        except OSError:
+            capacity = None
+    refusals, cautions = requirement.shortfalls(volumes, capacity)
+    line = requirement.line(volumes)
+    logging.log(
+        logging.WARNING if refusals or cautions else logging.INFO,
+        "Host requirement: %s (time approximate).",
+        line,
+    )
+    result = current_result()
+    hours = requirement.hours
+    result.set_details(
+        {
+            **(result.details or {}),
+            "host_requirement": {
+                "operation": requirement.operation,
+                "line": line,
+                "disk": [
+                    {
+                        "paths": list(v.paths),
+                        "needed_bytes": v.needed,
+                        "free_bytes": v.free,
+                    }
+                    for v in volumes
+                ],
+                "memory_bytes": requirement.memory,
+                "memory_floor_bytes": requirement.memory_floor,
+                "memory_capacity_bytes": capacity,
+                "threads": requirement.threads,
+                "approximate_hours": None if hours is None else float(f"{hours:.2g}"),
+                "shortfalls": refusals + cautions,
+                "enforced": enforce,
+            },
+        }
+    )
+    disk_short = any(v.short for v in volumes)
+    memory_short = bool(cautions) or len(refusals) > sum(v.short for v in volumes)
+    details: dict[str, str | int | float | bool | None] = {
+        "operation": requirement.operation,
+        "disk_short": disk_short,
+        "memory_short": memory_short,
+    }
+    fit = "".join(
+        f" {advice}"
+        for advice, short in ((disk_advice, disk_short), (memory_advice, memory_short))
+        if advice and short
+    )
+    if cautions and not refusals:
+        warn(
+            "host_requirement_memory",
+            f"This {requirement.operation} run needs {cautions[0]}; it may swap "
+            f"or be killed.{fit}",
+            operation=requirement.operation,
+        )
+    if not refusals:
+        return
+    message = (
+        f"This computer can't meet this {requirement.operation} run's "
+        f"requirement: it needs {'; '.join(refusals + cautions)}."
+    )
+    if not enforce:
+        warn(
+            "host_requirement", f"{message} Running anyway (--no-preflight).", **details
+        )
+        return
+    result.warn("host_requirement", message, **details)
+    raise WGSExtractError(
+        f"{message}{fit} Rerun with --no-preflight to override (not recommended)."
+    )
 
 
 # vep-rs's GRCh38 cache, built by `vep download --engine vep-rs` (#602, measured

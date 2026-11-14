@@ -178,6 +178,16 @@ def check_confidence(params: Any) -> None:
     thresholds_from(params)
 
 
+def no_preflight_param() -> Any:
+    return param(
+        False,
+        help="Run even without the disk or RAM the run needs (not recommended).",
+        doc="Run even when this computer lacks the free disk or the RAM the "
+        "printed host requirement asks for (not recommended).",
+        action="store_true",
+    )
+
+
 def no_gpu_memory_check_param() -> Any:
     return param(
         False,

@@ -1,4 +1,5 @@
 import gzip
+import json
 import logging
 import os
 import random
@@ -212,7 +213,7 @@ def test_ont_realign_honors_disk_space_preflight(
     else:
         with pytest.raises(
             WGSExtractError,
-            match=f"Insufficient free disk space at {re.escape(str(out))}",
+            match=f"realign run's requirement: .* GiB disk on {re.escape(str(out))},",
         ):
             run_wgsextract(*argv)
         assert not (out / "ont_aligned.bam").exists()
@@ -236,8 +237,73 @@ def test_ont_realign_reports_ample_disk_space_without_a_warning(
     caplog.set_level(logging.INFO)
     run_wgsextract("realign", "--input", bam, "--ref", str(ref), "--outdir",
                    str(tmp_path / "out"), "--threads", "1", "--memory", "256M")  # fmt: skip
-    disk = [r for r in caplog.records if "Realign pre-flight" in r.getMessage()]
+    disk = [r for r in caplog.records if "Host requirement" in r.getMessage()]
     assert disk and all(r.levelno < logging.WARNING for r in disk)
+
+
+def _main_json(capsys, *argv: str) -> tuple[int, dict, str]:
+    """Run the CLI with --json: its exit status, result document and log."""
+    from wgsextract_cli.main import main
+
+    try:
+        main([*argv, "--json"])
+        code = 0
+    except SystemExit as exit:
+        code = int(exit.code or 0)
+    printed = capsys.readouterr()
+    return code, json.loads(printed.out), printed.err
+
+
+@needs_tools("samtools", "minimap2")
+def test_realign_states_its_host_requirement_and_refuses_what_this_computer_lacks(
+    tmp_path, monkeypatch, genome_ref, ram, capsys
+):
+    """#690: the whole-genome ONT realign of #431 found its disk and RAM
+    needs by running into them. realign now states them in one line before
+    it starts and refuses a computer without them, unless --no-preflight."""
+    genome, ref = genome_ref
+    seq = genome[500:2500]
+    bam = sam_to_bam(
+        [
+            "@RG\tID:r\tPL:ONT\tSM:s",
+            f"{UUID}\t4\t*\t0\t0\t*\t*\t0\t0\t{seq}\t{'I' * len(seq)}",
+        ],
+        tmp_path / "ont.bam",
+    )
+    out = tmp_path / "out"
+    out.mkdir()
+    volumes = Volumes(monkeypatch)
+    volumes.free[out] = 50
+    # As big as a whole genome's reads.
+    volumes.sizes[Path(bam).absolute()] = 100 * GIB
+    argv = ["realign", "--input", bam, "--ref", str(ref), "--outdir", str(out),
+            "--threads", "4", "--memory", "256M"]  # fmt: skip
+
+    code, result, log = _main_json(capsys, *argv)
+    assert code == 1 and result["status"] == "failed"
+    assert "host_requirement" in [w["code"] for w in result["warnings"]]
+    need = result["details"]["host_requirement"]
+    (disk,) = need["disk"]
+    assert disk["paths"] == [str(out)]
+    assert disk["needed_bytes"] > disk["free_bytes"] == 50 * GIB
+    assert need["approximate_hours"] > 1 and need["threads"] == 4
+    assert re.search(
+        rf"this realign run needs ~\d+ GiB disk on {re.escape(str(out))}, "
+        r"~[\d.]+ GiB RAM, ~[\d.]+ h on 4 threads",
+        log,
+    )
+    assert "--no-preflight" in result["error"]["message"]
+    assert not (out / "ont_aligned.bam").exists()
+
+    volumes.free[out] = 10_000
+    ram(GIB)
+    code, result, _ = _main_json(capsys, *argv)
+    assert code == 1
+    assert "RAM, but this computer has 1.0 GiB" in result["error"]["message"]
+
+    code, result, _ = _main_json(capsys, *argv, "--no-preflight")
+    assert code == 0 and (out / "ont_aligned.bam").is_file()
+    assert "host_requirement" in [w["code"] for w in result["warnings"]]
 
 
 @needs_tools("samtools", "minimap2")

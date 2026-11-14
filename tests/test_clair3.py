@@ -3,6 +3,7 @@ import hashlib
 import logging
 import os
 import platform
+import re
 import shutil
 import sys
 import tempfile
@@ -705,7 +706,10 @@ def test_gpu_refuses_before_calling_when_its_tensors_wont_fit(
     volumes = Volumes(monkeypatch)
     volumes.free[clair3_gpu.out] = 0
     model = make_model(tmp_path, "my_r1041_model")
-    with pytest.raises(WGSExtractError, match=r"temporary space .*--no-preflight"):
+    with pytest.raises(
+        WGSExtractError,
+        match=r"Clair3 run's requirement: .*GiB disk on .*--no-preflight",
+    ):
         gpu_call(clair3_gpu, model)
     assert clair3_gpu.clair3.runs() == []
     assert not (clair3_gpu.out / "clair3.vcf.gz").exists()
@@ -778,3 +782,22 @@ def test_gpu_estimate_covers_the_measured_whole_genome_and_shallow_reads(tmp_pat
 
     assert 99.7 < gib(43) < 1.5 * 99.7
     assert gib(10) > 3 * gib(43)
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+def test_clair3_states_its_host_requirement_and_only_warns_short_of_ram(
+    tmp_path, clair3_gpu, ram, caplog
+):
+    """#690: Clair3 states its disk, RAM and time before it starts. Its RAM
+    is one measured --gpu run's (#431), so a computer with less is warned,
+    not refused."""
+    caplog.set_level(logging.INFO)
+    ram(4 * GIB)
+    gpu_call(clair3_gpu, make_model(tmp_path, "my_r1041_model"))
+    assert re.search(
+        r"this Clair3 run needs \S+ GiB disk on .*, ~\d+ GiB RAM, "
+        r"~[\d.]+ (h|min) on \d+ threads?",
+        caplog.text,
+    )
+    assert clair3_gpu.clair3.runs()
+    assert (clair3_gpu.out / "clair3.vcf.gz").is_file()

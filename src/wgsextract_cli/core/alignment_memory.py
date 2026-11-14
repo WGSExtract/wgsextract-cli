@@ -115,6 +115,13 @@ class MappingMemory(NamedTuple):
     def total(self) -> int:
         return sum(self)
 
+    @property
+    def essential(self) -> int:
+        """What the aligner can't run without: its index and working memory,
+        and the pipeline's base overhead. The sort's buffers, samblaster's
+        table and read-scaled transients can swap, slowly (#690)."""
+        return self.index_resident + self.working + _PIPELINE_OVERHEAD_BYTES
+
 
 def available_memory() -> int:
     """Reclaimable physical memory, using psutil's native API on Windows too."""
@@ -123,58 +130,79 @@ def available_memory() -> int:
     return min(available, capped) if capped is not None else available
 
 
-def _cgroup_available_memory(
+def total_memory() -> int:
+    """All the memory a run here could ever have: the computer's RAM, or a
+    Linux cgroup's lower limit, and never less than is available now."""
+    total = int(psutil.virtual_memory().total)
+    limits = [limit for _, limit in _cgroup_limits()]
+    return max(min([total, *limits]), available_memory())
+
+
+def _cgroup_limits(
     membership: Path = Path("/proc/self/cgroup"),
     root: Path = Path("/sys/fs/cgroup"),
     mountinfo: Path = Path("/proc/self/mountinfo"),
-) -> int | None:
-    """Honor Linux cgroup-v2 ancestor caps, not just the host's free RAM."""
+) -> list[tuple[Path, int]]:
+    """This process's cgroup-v2 group and its ancestors that cap memory, with
+    their memory.max."""
     try:
         relative = next(
             line[3:]
             for line in membership.read_text().splitlines()
             if line.startswith("0::")
         )
-        path = PurePosixPath(relative)
-        if ".." in path.parts:
-            group = root
-        else:
-            mounted = _cgroup_mount_root(root, mountinfo)
-            try:
-                path = path.relative_to(mounted)
-            except ValueError:
-                # Membership may already be relative to a cgroup namespace.
-                path = PurePosixPath(relative.lstrip("/"))
-            group = root / str(path)
-        # A container can expose only the namespace root rather than the
-        # host-relative membership path.
-        if not group.is_dir():
-            group = root
-        budgets = []
-        while True:
-            try:
-                limit = (group / "memory.max").read_text().strip()
-                if limit != "max":
-                    current = int((group / "memory.current").read_text())
-                    reclaimable = 0
-                    try:
-                        for line in (group / "memory.stat").read_text().splitlines():
-                            name, value = line.split()
-                            if name == "inactive_file":
-                                reclaimable = int(value)
-                    except (OSError, ValueError):
-                        pass
-                    budgets.append(
-                        min(int(limit), max(0, int(limit) - current + reclaimable))
-                    )
-            except (OSError, ValueError):
-                pass
-            if group == root:
-                break
-            group = group.parent
-        return min(budgets) if budgets else None
     except (OSError, StopIteration):
-        return None
+        return []
+    path = PurePosixPath(relative)
+    if ".." in path.parts:
+        group = root
+    else:
+        mounted = _cgroup_mount_root(root, mountinfo)
+        try:
+            path = path.relative_to(mounted)
+        except ValueError:
+            # Membership may already be relative to a cgroup namespace.
+            path = PurePosixPath(relative.lstrip("/"))
+        group = root / str(path)
+    # A container can expose only the namespace root rather than the
+    # host-relative membership path.
+    if not group.is_dir():
+        group = root
+    limits = []
+    while True:
+        try:
+            limit = (group / "memory.max").read_text().strip()
+            if limit != "max":
+                limits.append((group, int(limit)))
+        except (OSError, ValueError):
+            pass
+        if group == root:
+            return limits
+        group = group.parent
+
+
+def _cgroup_available_memory(
+    membership: Path = Path("/proc/self/cgroup"),
+    root: Path = Path("/sys/fs/cgroup"),
+    mountinfo: Path = Path("/proc/self/mountinfo"),
+) -> int | None:
+    """Honor Linux cgroup-v2 ancestor caps, not just the host's free RAM."""
+    budgets = []
+    for group, limit in _cgroup_limits(membership, root, mountinfo):
+        try:
+            current = int((group / "memory.current").read_text())
+        except (OSError, ValueError):
+            continue
+        reclaimable = 0
+        try:
+            for line in (group / "memory.stat").read_text().splitlines():
+                name, value = line.split()
+                if name == "inactive_file":
+                    reclaimable = int(value)
+        except (OSError, ValueError):
+            pass
+        budgets.append(min(limit, max(0, limit - current + reclaimable)))
+    return min(budgets) if budgets else None
 
 
 def _cgroup_mount_root(root: Path, mountinfo: Path) -> PurePosixPath:
