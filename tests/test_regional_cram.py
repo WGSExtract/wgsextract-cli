@@ -47,9 +47,12 @@ def regional_cram(tmp_path):
 
 
 @pytest.mark.parametrize("command", ["calculate-coverage", "coverage-sample"])
+@pytest.mark.parametrize("table_format", ["tsv", "parquet"])
 def test_854_regional_cram_coverage_never_scans_other_contigs(
-    regional_cram, tmp_path, caplog, command
+    regional_cram, tmp_path, caplog, command, table_format
 ):
+    if table_format == "parquet":
+        parquet = pytest.importorskip("pyarrow.parquet")
     cram, reference = regional_cram
     caplog.set_level(logging.DEBUG)
     result = CommandResult(command=f"info {command}")
@@ -66,7 +69,7 @@ def test_854_regional_cram_coverage_never_scans_other_contigs(
             "--outdir",
             str(tmp_path / command),
             "--format",
-            "tsv",
+            table_format,
         )
     assert result.details["breadth"] == {
         "Y": "~100 %" if command == "coverage-sample" else "100 %"
@@ -76,8 +79,45 @@ def test_854_regional_cram_coverage_never_scans_other_contigs(
     # happens to find another chromosome's reference in a machine-wide cache.
     assert "idxstats" not in caplog.text
     assert not list((tmp_path / command).glob("*.wgse_info.json"))
-    table = next((tmp_path / command).glob("*_breadth.tsv"))
-    assert "100 %" in table.read_text()
+    table = next((tmp_path / command).glob(f"*_breadth.{table_format}"))
+    if table_format == "parquet":
+        typed = parquet.read_table(table)
+        assert typed.to_pylist() == [{"seq_name": "Y", "breadth_pct": 100.0}]
+        assert str(typed.schema.field("breadth_pct").type) == "double"
+        assert typed.schema.metadata[b"breadth"] == (
+            b"sampled estimate (coverage-sample)"
+            if command == "coverage-sample"
+            else b"exact (calculate-coverage)"
+        )
+    else:
+        with table.open() as stream:
+            rows = list(csv.DictReader(stream, delimiter="\t"))
+        assert rows == [{"seq_name": "Y", "breadth_pct": "100"}]
+
+
+@pytest.mark.parametrize("command", ["calculate-coverage", "coverage-sample"])
+def test_854_regional_coverage_csv_has_no_prose(
+    regional_cram, tmp_path, capsys, command
+):
+    cram, reference = regional_cram
+    run_wgsextract(
+        "info",
+        "--csv",
+        command,
+        "--input",
+        str(cram),
+        "--ref",
+        str(reference),
+        "--region",
+        "chrY:80-179",
+        "--outdir",
+        str(tmp_path / command),
+    )
+    rows = list(csv.reader(capsys.readouterr().out.splitlines()))
+    assert rows == [
+        ["Seq Name", "Breadth Coverage"],
+        ["Y", "~100 %" if command == "coverage-sample" else "100 %"],
+    ]
 
 
 def test_854_yhap_cram_uses_only_indexed_y_evidence(

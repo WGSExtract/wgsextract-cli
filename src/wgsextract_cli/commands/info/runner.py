@@ -877,10 +877,17 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
             info_cmd, input_file, resolved_ref, stats, outdir, region
         )
         current_result().set_details({"region": region, "breadth": coverage})
-        human_output(
-            f"Region: {region}\nSeq Name\tBreadth Coverage\n"
-            + "".join(f"{name}\t{breadth}\n" for name, breadth in coverage.items())
-        )
+        if as_csv:
+            stream = io.StringIO(newline="")
+            writer = csv.writer(stream, lineterminator="\n")
+            writer.writerow(["Seq Name", "Breadth Coverage"])
+            writer.writerows(coverage.items())
+            human_output(stream.getvalue(), end="")
+        else:
+            human_output(
+                f"Region: {region}\nSeq Name\tBreadth Coverage\n"
+                + "".join(f"{name}\t{breadth}\n" for name, breadth in coverage.items())
+            )
         if table_format:
             path = table_path(
                 Path(
@@ -890,10 +897,18 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
             )
             write_table(
                 path,
-                [Column("sequence", "TEXT"), Column("breadth", "TEXT")],
-                list(coverage.items()),
+                [CHROMOSOME_TABLE[0], CHROMOSOME_TABLE[-1]],
+                [
+                    (name, float(value.lstrip("~").rstrip("% ").strip()))
+                    for name, value in coverage.items()
+                ],
                 table_format,
-                metadata=metadata,
+                metadata={
+                    **metadata,
+                    "breadth": "sampled estimate (coverage-sample)"
+                    if info_cmd == "coverage-sample"
+                    else "exact (calculate-coverage)",
+                },
             )
             current_result().add_output(path, "coverage_table")
         if isinstance(params, CalculateCoverageParams) and params.with_bins:

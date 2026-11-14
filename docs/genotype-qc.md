@@ -13,6 +13,9 @@ Regional `info calculate-coverage` and `info coverage-sample` runs use the
 alignment index directly, without gathering whole-file counts or sex. They
 report only the region's breadth, leave the global info cache unchanged, and
 with `--format` export `<input>_<region>_breadth.tsv` (or `.parquet`).
+Exports use numeric `breadth_pct` values; Parquet's `breadth` metadata
+distinguishes exact coverage from a sampled estimate. `info --csv` retains
+pure CSV output for regional requests.
 Run `info --detailed` separately for global metrics.
 
 `lineage y-haplogroup` likewise extracts evidence only on chrY. Its sex guard
