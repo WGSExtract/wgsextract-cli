@@ -365,49 +365,67 @@ class SexCall(NamedTuple):
 
 
 def infer_sex(idx_stats: list[IdxStat]) -> str:
-    """ "Male", "Female" or "Unknown" from the X dosage against a similar-sized
-    autosome (chr7), else from chrY reads against chrX or chr19 (~ Y's size).
-    A file of chrY (and chrM) alone is a male's: a Y extract or a Big Y test."""
+    """Conservative sex evidence from index counts; counts alone cannot
+    distinguish capture scope, PAR reads or atypical X dosage."""
     return infer_sex_call(idx_stats).sex
 
 
-def infer_sex_call(idx_stats: list[IdxStat]) -> SexCall:
-    """`infer_sex` with the rule that decided it and how sure that rule is."""
-    mapped: dict[str, int] = {}
-    for s in idx_stats:
-        if s["name"] != "*":
-            key = contig_key(s["name"])
-            mapped[key] = mapped.get(key, 0) + s["mapped"]
-    x_reads, y_reads = mapped.get("X", 0), mapped.get("Y", 0)
-    c7_reads, c19_reads = mapped.get("7", 0), mapped.get("19", 0)
-    # Thresholds sit between the sexes as seen in real WGS, low-pass and exome
-    # samples (hs37, hs38 and T2T). Y/X is 0.15+ for male WGS and at most 0.05
-    # for females, so a male-level chrY settles it, even where chrX reads high
-    # or a realigned Y extract has a few stray chrX reads. A male exome
-    # captures few chrY targets (Y/X 0.04-0.07), so X/chr7 is checked next:
-    # 0.77-1.17 for females and 0.38-0.60 for males, exomes included.
-    if x_reads > 0 and y_reads > x_reads * 0.10:
-        return SexCall("Male", "chrY/chrX mapped-read ratio", "high")
-    if x_reads > 0 and c7_reads > 0:
-        # Two X copies read about like chr7, one X about half of it
-        sex = "Female" if x_reads > c7_reads * 0.65 else "Male"
-        return SexCall(sex, "chrX/chr7 mapped-read ratio", "high")
-    if x_reads > 0 and y_reads > 0:
-        # Females still pick up a few mismapped chrY reads
-        return SexCall("Female", "few chrY reads against chrX", "low")
-    if y_reads > 0 and c19_reads > 0:
-        # About half of chrY is N, so a male's Y is ~0.2-0.5 of chr19
-        sex = "Male" if y_reads > c19_reads * 0.12 else "Female"
-        return SexCall(sex, "chrY/chr19 mapped-read ratio", "medium")
-    if y_reads > 0:
-        return SexCall("Male", "chrY reads without chrX", "medium")
-    return SexCall("Unknown", "no chrX or chrY reads", "low")
+def infer_sex_call(
+    idx_stats: list[IdxStat],
+    *,
+    alignment: str | None = None,
+    reference: str | None = None,
+) -> SexCall:
+    """Screen GRCh37/38 non-PAR depth against autosomal depth, with breadth
+    gates for sparse/targeted assays. Index counts alone do not settle sex."""
+    from wgsextract_cli.core.sex_inference import sampled_depth
+
+    unknown = SexCall("Unknown", "insufficient non-PAR depth or assay scope", "low")
+    if alignment is None:
+        return unknown
+    contigs = {
+        contig_key(row["name"]): (row["name"], row["length"])
+        for row in idx_stats
+        if contig_key(row["name"]) in {"7", "19", "X", "Y"}
+    }
+    try:
+        depths = sampled_depth(alignment, contigs, reference=reference)
+    except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
+        logging.warning(f"Could not measure sex-chromosome depth: {e}")
+        return unknown
+    autosomes = [depths[c] for c in ("7", "19") if c in depths]
+    if not autosomes or "X" not in depths or "Y" not in depths:
+        return unknown
+    auto = sum(d for d, _ in autosomes) / len(autosomes)
+    x, x_breadth = depths["X"]
+    y, _ = depths["Y"]
+    if (
+        auto < 3
+        or min(b for _, b in autosomes) < 0.5
+        or x_breadth < 0.3
+        or any(not 0.7 <= d / auto <= 1.3 for d, _ in autosomes)
+    ):
+        return unknown
+    x_ratio, y_ratio = x / auto, y / auto
+    method = "GRCh37/38 sampled non-PAR depth / autosomal depth (screening)"
+    if 0.35 <= x_ratio <= 0.65 and 0.1 <= y_ratio <= 0.8:
+        return SexCall("Male", method, "medium")
+    if 0.8 <= x_ratio <= 1.2 and y_ratio < 0.05:
+        return SexCall("Female", method, "medium")
+    return SexCall("Unknown", "atypical or discordant non-PAR dosage", "low")
 
 
 def record_sex(input_path: str, call: SexCall) -> None:
-    """Record a known sex in the sample workspace, which warns when it
+    """Record observed sex, including Unknown, in the workspace, which warns when it
     contradicts the user's override."""
-    if call.sex in sample_workspace.SEXES:
+    if call.sex in (*sample_workspace.SEXES, "Unknown"):
+        from wgsextract_cli.core.results import current_result
+
+        current_result().add_metrics(
+            observed_sex=call.sex,
+            sex_method=call.method,
+            sex_confidence=call.confidence,
+        )
         sample_workspace.record(
             "sex", input_path, call.sex, method=call.method, confidence=call.confidence
         )
@@ -445,24 +463,46 @@ def cached_info(
     return None
 
 
-def sample_sex(input_path: str, outdir: str | None = None) -> str:
+def sample_sex(
+    input_path: str, outdir: str | None = None, *, reference: str | None = None
+) -> str:
     """The sample's sex: the user's override or the recorded call in its sample
     workspace, else `info`'s cached metrics for this file (counting chrY reads
     in a CRAM takes about a minute), else samtools idxstats. A new call is
     recorded in the workspace. An override is still checked against the reads,
     once per file revision, since it changes how chrX and chrY are called."""
-    return str(
+    effective = str(
         sample_workspace.resolve(
-            "sex", input_path, lambda: _detect_sex(input_path, outdir)
+            "sex", input_path, lambda: _detect_sex(input_path, outdir, reference)
         )
     )
+    from wgsextract_cli.core.results import current_result
+
+    workspace = sample_workspace.workspace_for(input_path)
+    declared = workspace.overrides(input_path).get("sex") if workspace else None
+    fact = workspace.detected("sex", input_path) if workspace else None
+    if fact:
+        current_result().add_metrics(
+            observed_sex=fact.value,
+            sex_method=fact.method,
+            sex_confidence=fact.confidence,
+        )
+    current_result().add_metrics(effective_sex=effective, declared_sex=declared)
+    return effective
 
 
-def _detect_sex(input_path: str, outdir: str | None) -> tuple[str, str | None]:
+def _detect_sex(
+    input_path: str, outdir: str | None, reference: str | None = None
+) -> tuple[str, str | None]:
     info = cached_info(input_path, outdir)
     # A call cached by an older infer_sex is recomputed rather than trusted
     if info and info.get("sex_inference_version") == SEX_INFERENCE_VERSION:
-        call = SexCall(str(info["gender"]), "cached `info --detailed` call", "high")
+        cached_call = info.get("sex_call")
+        call = (
+            SexCall(*cached_call)
+            if isinstance(cached_call, list) and len(cached_call) == 3
+            else SexCall("Unknown", "cache lacks observed confidence", "low")
+        )
     else:
         logging.info("Checking chrX/chrY coverage to infer the sample's sex...")
         try:
@@ -470,7 +510,7 @@ def _detect_sex(input_path: str, outdir: str | None) -> tuple[str, str | None]:
         except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
             logging.warning(f"Could not check chrY coverage of {input_path}: {e}")
             return "Unknown", None
-        call = infer_sex_call(idx_stats)
+        call = infer_sex_call(idx_stats, alignment=input_path, reference=reference)
     record_sex(input_path, call)
     return call.sex, call.method
 

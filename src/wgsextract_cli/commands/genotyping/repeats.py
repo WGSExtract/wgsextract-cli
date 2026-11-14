@@ -241,16 +241,14 @@ def _catalog(aln: Alignment, catalog: Path | None) -> str:
 def _sex(aln: Alignment, sex: str | None) -> str:
     if sex:
         return sex
-    inferred = sample_sex(aln.path, aln.outdir).lower()
+    inferred = sample_sex(aln.path, aln.outdir, reference=aln.reference).lower()
     if inferred in ("male", "female"):
         logging.info(f"Sample sex: {inferred} (from chrX/chrY coverage)")
         return inferred
-    warn(
-        "sex_unknown",
-        "Couldn't infer the sample's sex; treating it as female (two X "
-        "alleles). Pass --sex if that's wrong.",
+    raise WGSExtractError(
+        "Unknown sample sex: refusing sex-dependent repeat ploidy. "
+        "Declare --sex male|female or set the sample's sex override."
     )
-    return "female"
 
 
 def _format_alleles(call: RepeatCall) -> tuple[str, str]:

@@ -30,9 +30,9 @@ fingerprint = "wgse-fp1:9b1c…"
 
 [detected."HG002.cram".sex]
 value = "Male"
-method = "chrY/chrX mapped-read ratio"
-confidence = "high"
-version = 2
+method = "GRCh37/38 sampled non-PAR depth / autosomal depth (screening)"
+confidence = "medium"
+version = 3
 by = "wgsextract 0.9.0 info"
 at = "2026-11-04T22:18:27+00:00"
 
@@ -69,7 +69,7 @@ at = "2026-11-04T22:31:02+00:00"
 
 | Fact | Detected by | Used by |
 | :--- | :--- | :--- |
-| `sex` | `info --detailed`, or chrX/chrY/chr7 read counts on first use | `lineage y-haplogroup`, `extract ydna`, chrX/chrY ploidy in `vcf snp`/`indel`, `microarray` and `vep`, `typing str`, `vcf trio` (proband) |
+| `sex` | `info --detailed`, or sampled non-PAR/autosomal depth on first use | `lineage y-haplogroup`, `extract ydna`, chrX/chrY ploidy in `vcf snp`/`indel`, `microarray` and `vep`, `typing str`, `vcf trio` (proband) |
 | `platform` | read-group `PL` tag, else the first read name | `vcf snp`, `vcf deepvariant`, `vcf sv`, `methylation`, `align` |
 | `build` | header contig MD5s or lengths | reference resolution for every command |
 | `target_depths` | `info --detailed`, else a read count on first use | the low-depth warning of `vcf snp`/`indel`, `microarray` and `lineage` |
@@ -77,6 +77,40 @@ at = "2026-11-04T22:31:02+00:00"
 | `somalier_sex` | `qc relate` (chrX heterozygosity, chrY depth) | checked against `sex`: a disagreement is a `sex_mismatch` warning |
 | `superpopulation` | `qc relate` with `ref somalier --install` | shown by `sample show` |
 | `ancestry` | `qc ancestry` (K=7 reference proportions of at least 0.5%) | the personal report; shown by `sample show` |
+
+### Sex evidence and Unknown ploidy
+
+Observed sex and a declared override remain separate: `info` reports the
+observed call, method and confidence (including `Unknown`/`low`) in its result
+manifest; `declared_sex` records the override, when present. The workspace keeps
+the declaration under `[override]` and the observed call under `[detected]`.
+
+For GRCh37 and GRCh38 chromosome lengths, inference samples five dispersed
+10 kb windows per chromosome. X/Y windows lie strictly between the build's PAR1
+and PAR2 boundaries, at 10%, 30%, 50%, 70% and 90% of that interval to avoid
+telomeric gaps. Mean aligned-base depth is divided by the sampled base
+length and compared with mean depth of available chr7/chr19 windows, not raw
+cross-chromosome read counts. MAPQ/baseQ below 20 and unmapped, secondary,
+supplementary, duplicate and QC-failed reads are excluded.
+
+The screen requires autosomal depth at least 3x, autosomal breadth at least 50%,
+X breadth at least 30%, and agreement between the sampled autosomal depths.
+X/autosome 0.35–0.65 with Y/autosome 0.1–0.8 supports `Male`; X/autosome
+0.8–1.2 with Y/autosome below 0.05 supports `Female`. These deliberately
+conservative heuristics return **medium**, not high confidence. They are not
+validated sensitivity/specificity estimates or a karyotype diagnosis. Sampled
+windows cannot certify an assay's scope; exomes, narrow capture, very low
+coverage, X0-like/discordant dosage, Y-only extracts and unsupported assemblies
+(including T2T) may remain `Unknown`. No supporting-marker or clinical accuracy
+claim is made.
+
+An `Unknown` call **refuses sex-dependent bcftools ploidy**, rather than assuming
+female X/Y ploidy. Declare sex with `wgsextract sample set --input FILE --sex
+Male` (or `Female`), or explicitly choose numeric `--ploidy` or a
+sex-independent custom ploidy file. Autosomal-only regions and sex-independent
+ploidy need no sex scan.
+`typing str` likewise refuses Unknown sex-dependent repeat ploidy; its
+run-specific `--sex male|female` option is an explicit declaration.
 | `contamination` | `qc contamination` (VerifyBamID2 FREEMIX) | the contamination warning of `vcf snp`/`indel`, `microarray` and `lineage`; confidence labels of rare and clinical findings in the genome folder; the personal report |
 
 ## Commands
@@ -121,7 +155,7 @@ file's own.
 
 Commands still check an override against the reads: the recorded fact, else a
 cheap detection (the read groups or first read name for the platform; chrX/chrY
-read counts, once per file revision, for sex). When they disagree, the command
+sampled non-PAR depth, once per file revision, for sex). When they disagree, the command
 uses the override and warns `sex_override_differs` or
 `platform_override_differs`, with the file, the detected value and the
 override, in its [result manifest](result-manifest.md).

@@ -12,7 +12,8 @@ from unittest.mock import patch
 import jsonschema
 import pytest
 
-from tests.htslib_helpers import needs_htslib, sam_to_bam, write_fasta
+from tests.htslib_helpers import needs_htslib, write_fasta
+from tests.sex_fixtures import sex_bam
 from wgsextract_cli import api
 from wgsextract_cli.commands.info import metrics
 from wgsextract_cli.core import genotype_qc, sample_workspace
@@ -45,15 +46,12 @@ def seqs(tmp_path_factory):
 
 
 def _bam(seqs, path: Path, counts: dict[str, int]) -> str:
-    header = [f"@SQ\tSN:{c}\tLN:{n}" for c, n in LENGTHS.items()]
-    reads = []
-    for contig, n in counts.items():
-        for i in range(n):
-            pos = 1 + (i * 13) % 900
-            name = f"A00123:8:HABCDEFXX:2:1101:{list(LENGTHS).index(contig)}:{i}"
-            seq = seqs[contig][pos - 1 : pos + 49]
-            reads.append(f"{name}\t0\t{contig}\t{pos}\t60\t50M\t*\t0\t0\t{seq}\t{QUAL}")
-    return sam_to_bam(header + reads, path)
+    return sex_bam(
+        path,
+        x_depth=counts.get("chrX", 0) // 5,
+        y_depth=2 if counts.get("chrY", 0) else 0,
+        auto_depth=counts.get("chr7", 0) // 5,
+    )
 
 
 @pytest.fixture
@@ -89,8 +87,8 @@ def test_sex_is_detected_once_then_read_back(seqs, folder):
     fact = SampleWorkspace(folder).detected("sex", bam)
     assert fact is not None and fact.value == "Male"
     assert (fact.method, fact.confidence, fact.file) == (
-        "chrY/chrX mapped-read ratio",
-        "high",
+        "GRCh37/38 sampled non-PAR depth / autosomal depth (screening)",
+        "medium",
         "s.bam",
     )
     assert fact.by and fact.by.startswith("wgsextract ") and fact.at

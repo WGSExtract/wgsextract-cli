@@ -6,14 +6,13 @@ so a man's chrY gets ploidy 0 (no calls at all) and his chrX is diploid.
 """
 
 import contextlib
-import logging
 import re
 import subprocess
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
-from wgsextract_cli.core.utils import run_command
+from wgsextract_cli.core.utils import UsageError, run_command
 
 
 def alignment_samples(alignment: str) -> list[str]:
@@ -99,10 +98,15 @@ def _sex_aware(ploidy_args: list[str], region: str | None = None) -> bool:
 
 @contextlib.contextmanager
 def sex_samples_args(
-    alignment: str, directory: str, ploidy_args: list[str], *, region: str | None = None
+    alignment: str,
+    directory: str,
+    ploidy_args: list[str],
+    *,
+    region: str | None = None,
+    reference: str | None = None,
 ) -> Iterator[list[str]]:
     """`--samples-file` listing a male alignment's samples as M (none for a
-    female or unknown one, which bcftools already calls as F). Regions whose
+    female). Unknown sex refuses sex-dependent calling. Regions whose
     ploidy is the same for both sexes need no whole-alignment sex scan."""
     from wgsextract_cli.commands.info.metrics import sample_sex
 
@@ -111,13 +115,14 @@ def sex_samples_args(
     ):
         yield []
         return
-    sex = sample_sex(alignment, directory)
-    if sex != "Male":
-        if sex != "Female":
-            logging.warning(
-                f"Couldn't tell the sex of {alignment}; chrX/chrY are called as for "
-                "a woman."
-            )
+    sex = sample_sex(alignment, directory, reference=reference)
+    if sex not in {"Male", "Female"}:
+        raise UsageError(
+            f"Unknown sex for {alignment}: refusing sex-dependent ploidy. "
+            "Declare sex with `sample set --input FILE --sex Male|Female`, "
+            "or explicitly choose numeric --ploidy or a sex-independent ploidy file."
+        )
+    if sex == "Female":
         yield []
         return
     with tempfile.NamedTemporaryFile(

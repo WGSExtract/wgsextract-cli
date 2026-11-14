@@ -56,7 +56,7 @@
           "type": "string",
           "pattern": "^wgse-fp1:[0-9a-f]{64}$"
         },
-        "sex": { "$ref": "#/$defs/fact", "properties": { "value": { "enum": ["Male", "Female"] } } },
+        "sex": { "$ref": "#/$defs/fact", "properties": { "value": { "enum": ["Male", "Female", "Unknown"] } } },
         "platform": {
           "$ref": "#/$defs/fact",
           "properties": {
