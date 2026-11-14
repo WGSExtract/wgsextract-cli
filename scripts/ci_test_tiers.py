@@ -26,7 +26,8 @@ SENSITIVE = re.compile(
     r"subprocess|platform|sys\.|os\.|shutil|signal|chmod|symlink|newline|"
     r"line.?ending|CRLF|\\r|samtools|bcftools|bwa|tool|shell|"
     r"Popen|check_output|check_call|exec|eval|compile|importlib|__import__|"
-    r"getfixturevalue|pytest_plugins|usefixtures|runner|CliRunner",
+    r"getfixturevalue|pytest_plugins|usefixtures|runner|CliRunner|"
+    r"\bfixture\b|pytest\.main|runpytest|getattr|globals\(|locals\(|vars\(",
     re.IGNORECASE,
 )
 # Shared autouse isolation is infrastructure, not a shell-out fixture. Unknown
@@ -63,6 +64,65 @@ PURE_IMPORTS = {
     "tomli",
     "typing",
 }
+HARNESS_FIXTURES = {
+    "_isolate_session_config",
+    "_isolate_user_config",
+    "_no_segmented_size_probe",
+    "_fresh_tool_caches",
+    "_restore_signal_handlers",
+}
+
+
+def pure_fixtures(path: Path) -> bool:
+    root = Path(__file__).resolve().parents[1]
+    for directory in (path.parent, *path.parent.parents):
+        if not directory.is_relative_to(root):
+            break
+        conftest = directory / "conftest.py"
+        if not conftest.is_file():
+            continue
+        tree = ast.parse(conftest.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign) and any(
+                isinstance(target, ast.Name) and target.id == "pytest_plugins"
+                for target in node.targets
+            ):
+                return False
+            if isinstance(node, ast.Import) and any(
+                alias.name == "subprocess" for alias in node.names
+            ):
+                return False
+            if isinstance(node, ast.Call) and (
+                ast.unparse(node.func).split(".")[-1]
+                in {
+                    "run_command",
+                    "Popen",
+                    "check_call",
+                    "check_output",
+                    "system",
+                    "exec",
+                    "eval",
+                }
+            ):
+                return False
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if node.name in PURE_FIXTURES:
+                return False
+            for decorator in node.decorator_list:
+                if not isinstance(decorator, ast.Call):
+                    continue
+                for keyword in decorator.keywords:
+                    if keyword.arg == "autouse" and not (
+                        isinstance(keyword.value, ast.Constant)
+                        and keyword.value.value is False
+                    ):
+                        if (
+                            conftest != root / "tests/conftest.py"
+                            or node.name not in HARNESS_FIXTURES
+                        ):
+                            return False
+    return True
 
 
 def pure_imports(path: Path, tree: ast.Module) -> bool:
@@ -127,7 +187,11 @@ def generic_test(path: Path) -> bool:
         return False
     if SENSITIVE.search(ast.unparse(tree)):
         return False
-    if not pure_imports(path, tree):
+    try:
+        imports_safe = pure_imports(path, tree) and pure_fixtures(path)
+    except (OSError, UnicodeError, SyntaxError, KeyError):
+        return False
+    if not imports_safe:
         return False
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -147,7 +211,14 @@ def generic_test(path: Path) -> bool:
                 if "fixture" in decorators:
                     return False
             if node.name.startswith("test_"):
-                parameters = {a.arg for a in node.args.args} - {"self"}
+                if node.args.vararg or node.args.kwarg:
+                    return False
+                parameters = {
+                    a.arg
+                    for a in (
+                        node.args.posonlyargs + node.args.args + node.args.kwonlyargs
+                    )
+                } - {"self"}
                 parametrized: set[str] = set()
                 for decorator in node.decorator_list:
                     if (
@@ -155,6 +226,15 @@ def generic_test(path: Path) -> bool:
                         and ast.unparse(decorator.func) == "pytest.mark.parametrize"
                         and decorator.args
                     ):
+                        if any(
+                            keyword.arg == "indirect"
+                            and not (
+                                isinstance(keyword.value, ast.Constant)
+                                and keyword.value.value is False
+                            )
+                            for keyword in decorator.keywords
+                        ):
+                            return False
                         argument = decorator.args[0]
                         if isinstance(argument, ast.Constant) and isinstance(
                             argument.value, str

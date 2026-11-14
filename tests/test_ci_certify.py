@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from scripts.ci_certifications import certifications
-from scripts.ci_certify import host_platform, validate_head
+from scripts.ci_certify import host_platform, run_layer, validate_head
 from scripts.ci_test_tiers import generic_test
 
 
@@ -35,6 +36,8 @@ def attestations(
         if "/permission" in endpoint:
             if permission is None:
                 raise subprocess.CalledProcessError(403, ["gh"])
+            if permission == "missing-field":
+                return {}
             return {"permission": permission}
         if "/statuses?" in endpoint:
             status = {
@@ -64,6 +67,7 @@ def test_923_writer_can_certify_only_host_platform(permission: str) -> None:
         {"stale": True},
         {"state": "failure"},
         {"permission": None},
+        {"permission": "missing-field"},
         {"failed_latest": True},
     ],
 )
@@ -91,6 +95,9 @@ def test_923_merge_group_never_uses_certifications() -> None:
         "from tests.helpers import data\ndef test_data(): assert data",
         "from wgsextract_cli.core.utils import run_command\ndef test_command(): run_command(['true'])",
         "import urllib.request\ndef test_network(): assert urllib.request.urlopen('x')",
+        "import pytest\n@pytest.mark.parametrize('cache', [1], indirect=True)\ndef test_cache(cache): assert cache",
+        "def test_cache(*, cache): assert cache",
+        "from pytest import fixture as f\n@f\ndef tmp_path(): return launch_external_program()\ndef test_cache(tmp_path): assert tmp_path",
     ],
 )
 def test_923_sensitive_or_uncertain_tests_remain_multiplatform(
@@ -106,6 +113,16 @@ def test_923_pure_parsing_test_runs_once(tmp_path: Path) -> None:
     path = tmp_path / "test_example.py"
     path.write_text("import json\ndef test_parse(): assert json.loads('1') == 1")
     assert generic_test(path)
+
+
+def test_923_unknown_autouse_fixture_cannot_hide_shell_out(tmp_path: Path) -> None:
+    path = tmp_path / "test_example.py"
+    path.write_text("def test_parse(): assert 1 == 1")
+    (tmp_path / "conftest.py").write_text(
+        "import pytest\n@pytest.fixture(autouse=True)\n"
+        "def bootstrap(): return launch_external_program()"
+    )
+    assert not generic_test(path)
 
 
 def test_923_dirty_checkout_refuses_before_any_status(
@@ -176,6 +193,28 @@ def test_923_clean_but_moved_local_head_refuses(
             "old",
             "owner/repo",
         )
+
+
+def test_923_linting_the_test_runner_does_not_turn_lint_into_pytest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _, log = run_layer(
+        "generic",
+        [
+            [
+                sys.executable,
+                "-c",
+                "import argparse; p=argparse.ArgumentParser(); p.add_argument('path'); "
+                "p.parse_args(); print('validation completed')",
+                "scripts/ci_run_tests.py",
+            ]
+        ],
+        "regression",
+        1,
+    )
+    assert "validation completed" in Path(log).read_text()
 
 
 @pytest.mark.parametrize(

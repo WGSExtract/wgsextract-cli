@@ -140,7 +140,11 @@ Each worktree needs its own prepared Pixi environments; certification uses
 `--no-install`, never installs dependencies. `--platform-only` and `--generic-only`
 can divide work across machines. All selected tier/shard tests run locally,
 with at most four workers. Logs and junit evidence live in `out/certify/<sha>/`.
-The status summary contains the actual hostname, executed test count, elapsed
+Full suites require the same prepared environments as CI: default/dev/vep-rs
+on Ubuntu and macOS, plus gatk on Windows; default/dev/vep on Linux ARM64.
+Missing VEP-rs tools or CI environments refuse certification rather than quietly
+skipping their tests. Ubuntu's imputation and ONT supplemental suites forbid skips.
+The status summary contains the actual hostname, executed pytest count, elapsed
 seconds and full log SHA-256. A new push needs new certification.
 
 The router accepts only the latest successful `local-ci/<platform>` or
@@ -162,6 +166,10 @@ Linux ARM64 only ARM64. macOS x64 is recorded but does not cover ARM64 runners.
 Generic files are conservatively classified from static test signals and known
 pure fixtures; unknown fixtures/helpers and subprocess, tool, platform,
 permission, signal, symlink or line-ending signals remain platform-sensitive.
+Imported product modules must also be proven free of those signals; the first
+rollout proves only the version-consistency module generic. Parsing tests whose
+import closures include command/tool helpers stay cross-platform rather than
+being optimistically marked generic.
 Shared autouse config/cache/signal isolation is reviewed harness infrastructure.
 Uncertified PRs run generic tests once on Ubuntu; main/nightly keep their
 existing coverage. Generic certification also covers lint, strict typecheck,
@@ -181,7 +189,7 @@ The remote script verifies the pushed SHA again before posting its macOS ARM64
 status. Run Linux plus generic locally, then `gh pr ready`.
 
 Measured baseline: Linux x64 certification saves about **22 runner-minutes**,
-plus about **3 minutes** for the generic jobs (excluding kept smoke jobs).
+plus the routed generic jobs (roughly **1–3 minutes**, with package smoke kept).
 macOS ARM64 adds about **33 minutes**, Windows about **24**, Linux ARM64 about
 **10**; these are full-suite estimates and sparse selected PRs save less.
 
@@ -276,8 +284,9 @@ Both tiers partition the affected files on CLI-routed PRs; an empty partition
 passes without testing unrelated files. Non-prose main pushes, merge-queue
 Ubuntu and nightly runs retain full coverage. ARM64 runs its selection in one
 job. No slow suite is demoted to nightly-only coverage.
-Only `test_genotyping.py` (pure genotype parsing/repeat classification) is
-Ubuntu-x64-only in CI. Real-tool genotyping commands remain cross-platform.
+The statically proven generic set runs once on Ubuntu x64 (or locally under
+`local-ci/generic` on PRs). Uncertain imports, including genotype command/tool
+helpers, remain cross-platform.
 Ordinary local pytest still collects everything; the opt-in `--ci-tier` and
 `--ci-skip-independent` and `--ci-shard` flags implement these CI-only partitions.
 

@@ -67,7 +67,14 @@ def certifications(
             if len(statuses) < 100:
                 return valid
             page += 1
-    except (subprocess.SubprocessError, OSError, ValueError, KeyError, TypeError):
+    except (
+        subprocess.SubprocessError,
+        OSError,
+        ValueError,
+        KeyError,
+        TypeError,
+        AttributeError,
+    ):
         return set()
 
 

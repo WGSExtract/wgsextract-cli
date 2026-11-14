@@ -91,7 +91,19 @@ def run_layer(
         stream.write(f"{sha} {name} {platform.node()}\n")
         for index, command in enumerate(commands):
             xml = directory / f"tests-{index}.xml"
-            if "pytest" in command or "scripts/ci_run_tests.py" in command:
+            pytest_command = command[:4] == [
+                "pixi",
+                "run",
+                "--no-install",
+                "pytest",
+            ] or command[:5] == [
+                "pixi",
+                "run",
+                "--no-install",
+                "python",
+                "scripts/ci_run_tests.py",
+            ]
+            if pytest_command:
                 command = [
                     *command,
                     "-n",
@@ -121,10 +133,10 @@ def run_layer(
                         f"CI's no-skips suite needs installed tools: {xml}"
                     )
         duration = round(time.monotonic() - started)
-        stream.write(f"\nExecuted {count} tests in {duration}s\n")
+        stream.write(f"\nExecuted {count} pytest tests in {duration}s\n")
     digest = hashlib.sha256(log.read_bytes()).hexdigest()
     # GitHub status descriptions are limited to 140 characters.
-    summary = f"{platform.node()[:25]} {count} tests {duration}s sha256:{digest}"
+    summary = f"{platform.node()[:25]} {count} pytest {duration}s sha256:{digest}"
     return summary, str(log)
 
 
@@ -137,6 +149,35 @@ def platform_commands(
     if not targets:
         return commands
     if not smoke:
+        environments = {
+            "linux-x64": ["default", "dev", "vep-rs"],
+            "macos-arm64": ["default", "dev", "vep-rs"],
+            "macos-x64": ["default", "dev", "vep-rs"],
+            "windows-x64": ["default", "dev", "gatk", "vep-rs"],
+            "linux-arm64": ["default", "dev", "vep"],
+        }[host]
+        commands.append(
+            [
+                *pixi,
+                "python",
+                "-c",
+                "from pathlib import Path; "
+                f"names={environments!r}; "
+                "missing=[n for n in names if not Path('.pixi/envs', n).is_dir()]; "
+                "assert not missing, f'Required CI environments missing: {missing}'",
+            ]
+        )
+        if "vep-rs" in environments:
+            commands.append(
+                [
+                    *pixi,
+                    "python",
+                    "-c",
+                    "from wgsextract_cli.core.dependencies import get_tool_path as g; "
+                    "assert g('vep-rs') and g('vep-cache-builder'), "
+                    "'Required CI VEP-rs tools missing'",
+                ]
+            )
         if host.startswith("windows"):
             commands.append(
                 [
@@ -291,6 +332,14 @@ def generic_commands(paths: list[str], targets: list[str] | str) -> list[list[st
     if routes(paths)["site"]:
         for script in ("scripts/build_site.py", "gui/scripts/build_site.py"):
             commands.append([*pixi, "python", script])
+        commands.append(
+            [
+                *pixi,
+                "python",
+                "-c",
+                "from pathlib import Path; assert Path('gui/mockups').is_dir()",
+            ]
+        )
     commands.append(
         [
             *pixi,
