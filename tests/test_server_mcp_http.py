@@ -52,9 +52,20 @@ class Served:
 
 
 @contextlib.contextmanager
-def _serve(*args: str) -> Iterator[Served]:
+def _serve(
+    *args: str,
+    command: list[str] | None = None,
+    stop_signal: int | None = None,
+) -> Iterator[Served]:
     proc = subprocess.Popen(
-        [*get_cli_command(), "serve", "--mcp-transport", "http", "--ready-json", *args],
+        [
+            *(command or get_cli_command()),
+            "serve",
+            "--mcp-transport",
+            "http",
+            "--ready-json",
+            *args,
+        ],
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         text=True,
@@ -76,7 +87,8 @@ def _serve(*args: str) -> Iterator[Served]:
     finally:
         if proc.poll() is None:
             proc.send_signal(
-                signal.SIGINT if sys.platform != "win32" else signal.SIGTERM
+                stop_signal
+                or (signal.SIGINT if sys.platform != "win32" else signal.SIGTERM)
             )
         proc.wait(60)
 
@@ -151,6 +163,37 @@ def test_mcp_http_listens_on_loopback_only_and_cleans_up(work):
     if sys.platform != "win32":
         assert served.proc.returncode == 0
         assert not served.discovery.exists()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signal delivery")
+@pytest.mark.parametrize("stop_signal", [signal.SIGINT, signal.SIGTERM])
+def test_799_delayed_shutdown_signal_exits_cleanly(
+    work: Path, stop_signal: int
+) -> None:
+    # The OS boundary: macOS can defer delivery of uvicorn's replayed signal
+    # until after the serve command's exception guard. Flush it after main
+    # returns to reproduce that ordering without a timing-dependent sleep.
+    code = """
+import signal
+from wgsextract_cli.main import main
+raise_signal = signal.raise_signal
+pending = []
+signal.raise_signal = pending.append
+try:
+    main()
+finally:
+    for signum in pending:
+        raise_signal(signum)
+"""
+    with _serve(
+        "--allow",
+        str(work),
+        command=[sys.executable, "-c", code],
+        stop_signal=stop_signal,
+    ) as served:
+        assert served.discovery.exists()
+    assert served.proc.returncode == 0
+    assert not served.discovery.exists()
 
 
 def test_mcp_http_runs_tool_calls(work, fake_data):

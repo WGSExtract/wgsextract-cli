@@ -8,12 +8,14 @@ per-launch bearer token and a local Host and Origin, as the HTTP API does.
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import logging
+import signal
 import socket
 import sys
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any
 
 from wgsextract_cli import __version__
@@ -180,9 +182,27 @@ def build_app(tools: McpTools, token: str, port: int) -> ASGIApp:
 
 
 def serve(tools: McpTools, token: str, sock: socket.socket) -> None:
-    """Serve until interrupted: Ctrl-C or SIGTERM stops it gracefully, then
-    is raised again."""
+    """Serve until Ctrl-C or SIGTERM, with a successful graceful shutdown."""
     import uvicorn
+    from uvicorn.server import HANDLED_SIGNALS
+
+    class Server(uvicorn.Server):
+        @contextlib.contextmanager
+        def capture_signals(self) -> Iterator[None]:
+            if threading.current_thread() is not threading.main_thread():
+                yield
+                return
+            handlers = {
+                sig: signal.signal(sig, self.handle_exit) for sig in HANDLED_SIGNALS
+            }
+            try:
+                yield
+            finally:
+                for sig, handler in handlers.items():
+                    signal.signal(sig, handler)
+            # Uvicorn normally replays the signal to the previous CLI handler.
+            # On macOS it may arrive after the caller's exception guard (#799).
+            # A server stop is success, not an interrupted extraction.
 
     port = sock.getsockname()[1]
     config = uvicorn.Config(
@@ -193,4 +213,4 @@ def serve(tools: McpTools, token: str, sock: socket.socket) -> None:
         server_header=False,
         timeout_graceful_shutdown=5,
     )
-    uvicorn.Server(config).run(sockets=[sock])
+    Server(config).run(sockets=[sock])

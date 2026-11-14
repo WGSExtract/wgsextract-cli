@@ -215,7 +215,7 @@ def _serve_mcp_http(
     try:
         serve(McpTools(manager, guard, allow_jobs=allow_jobs), token, sock)
     except (KeyboardInterrupt, SystemExit):
-        # uvicorn shuts down gracefully, then re-raises the signal.
+        # An interrupt before the HTTP server installs its signal handlers.
         logging.info("Stopping the MCP server.")
     finally:
         sock.close()

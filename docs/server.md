@@ -251,6 +251,9 @@ MCP Python SDK: `pip install 'wgsextract-cli[mcp]'`, or `pixi run -e mcp`
 from a source checkout (the `dev` environment has it too). Without it, the
 command stops and says so; stdio needs nothing extra.
 
+Once running, Ctrl-C or SIGTERM gracefully stops the MCP HTTP server with
+exit status 0 and removes its `mcp.json` discovery file.
+
 ```console
 $ wgsextract serve --mcp-transport http --allow ~/wgs
 WGS Extract MCP server (streamable HTTP) on http://127.0.0.1:41874/mcp (read-only queries)
