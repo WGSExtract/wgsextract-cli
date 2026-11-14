@@ -556,7 +556,8 @@ def _overview(ctx: _Context) -> dict[str, Any]:
     info = latest(ctx.sources, _command("info"))
     run = latest(ctx.sources, _command("qc contamination"))
     run = run if run is not None and run.status == "ok" else None
-    section = _section("overview", [info, run], ctx)
+    trio = latest(ctx.sources, _command("vcf trio"))
+    section = _section("overview", [info, run, trio], ctx)
     facts = []
     for name, label in _OVERVIEW_FACTS:
         fact = ctx.fact(name)
