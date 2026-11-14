@@ -9,3 +9,12 @@ Trimmed GitHub REST API responses recorded on 2026-11-13:
 
 Tests change branch, attempt, conclusion and resource IDs to replay cancellation,
 recovery and red-main scenarios without changing production GitHub resources.
+
+The `lost_upstream_*` fixtures were recorded on 2026-11-14 from Install Lab run
+43443418565 at commit `fca3bb08f9066b230aade01098c2f767dbabedae`, attempts 1 and 2.
+Each jobs fixture retains all 12 job outcomes, runner identity and step
+name/status/conclusion/number fields. Both attempts lost the macOS ARM64 Tauri
+producer before its first step; the tree-app consumer then failed to download
+`tauri-macos-arm64`. The annotation responses and selected error log lines are
+recorded separately. Counterfactual regressions alter only the relevant job,
+step or failure message.

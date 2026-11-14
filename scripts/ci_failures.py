@@ -20,6 +20,7 @@ from scripts.ci_policy import (
     ROUTED_MAIN,
     Failure,
     classify,
+    classify_lost_dependencies,
     matches,
     retryable,
     safe,
@@ -101,6 +102,8 @@ class Observer(IssueReports):
                 failure.executions = executions[job["name"]]
                 failure.source_attempt = attempt
                 failures.append(failure)
+        if not history:
+            classify_lost_dependencies(failures)
         return failures
 
     def flaky_marker(self, test: str) -> str:

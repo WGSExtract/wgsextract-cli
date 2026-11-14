@@ -30,6 +30,14 @@ failures and are not automatically retried.
 - All outstanding failures must be eligible. A mixed test/infra failure needs a
   code fix, and a deliberately cancelled started job prevents restarting its
   queued zero-step siblings. No automatic request is made at attempt ten.
+- A missing-artifact download can be a consequence of a lost producer, not a
+  code failure. When its failure annotation names the exact target of a
+  zero-step lost build job in the same run, and the consumer has no failed tests
+  or additional failed steps, it is classified as lost-runner infrastructure
+  too. The whole run is retried, including producer and consumers, with the
+  producer's one-retry budget. Repeated consumer-only failures do not spend
+  that root budget. Unrelated failures still block automatic retries. This
+  classification also prevents false red-main bugs/quarantine.
 - Before retrying, the script verifies that this is the latest run and attempt
   for the workflow, event, branch **and head repository**. Fork branch names
   cannot accidentally supersede another repository's run.
