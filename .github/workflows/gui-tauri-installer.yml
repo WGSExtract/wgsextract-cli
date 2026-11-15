@@ -5,6 +5,7 @@ name: GUI Tauri installer
 # inputs change.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main ]
     paths:
       - ".github/workflows/gui-tauri-installer.yml"
@@ -27,7 +28,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
   cancel-in-progress: true
 
 permissions:
@@ -39,6 +40,7 @@ defaults:
 
 jobs:
   windows:
+    if: ${{ github.event.pull_request.draft != true }}
     name: Windows installer lifecycle
     runs-on: windows-latest
     timeout-minutes: 45
@@ -49,6 +51,9 @@ jobs:
         uses: ./.github/actions/setup-gui
         with:
           rust: "true"
+
+      - name: Restore Rust dependencies
+        uses: ./.github/actions/rust-cache
 
       - name: Build Tauri installer
         shell: pwsh

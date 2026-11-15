@@ -233,7 +233,7 @@ import json, os, subprocess, sys, time
 state = json.load(open({state!r}))
 args = sys.argv[1:]
 if args[:1] == ["--version"]:
-    print("The Genome Analysis Toolkit (GATK) v4.6.2.0")
+    print("The Genome Analysis Toolkit (GATK) v" + state.get("version", "4.6.2.0"))
     sys.exit(0)
 if args[:1] == ["--java-options"]:
     args = args[2:]

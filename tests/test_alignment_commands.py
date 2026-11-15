@@ -1,3 +1,4 @@
+import json
 import math
 import os
 import random
@@ -26,7 +27,8 @@ from wgsextract_cli.commands import align
 from wgsextract_cli.commands._extract_helpers import alignments_to_fastq
 from wgsextract_cli.commands.align import AlignJob
 from wgsextract_cli.core.config import settings
-from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.cram_staging import cram_version, needs_cram30
+from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 
@@ -78,6 +80,263 @@ def _samtools(*args):
 def _programs(bam):
     """The @PG lines of an alignment's header."""
     return [line for line in _samtools("view", "-H", bam).splitlines() if "@PG" in line]
+
+
+@needs_tools("bwa", "samtools", "bcftools", "tabix")
+@pytest.mark.parametrize("paired", [True, False])
+def test_691_lossless_profiles_are_readable_by_calling_extract_and_info(
+    tmp_path, paired
+):
+    reads = _short_reads(tmp_path)
+    records = []
+    calls = []
+    for profile in ("default", "archive", "calling"):
+        out = tmp_path / profile
+        result = api.align.align(
+            api.AlignParams(
+                r1=reads.r1,
+                r2=reads.r2 if paired else None,
+                ref=reads.ref,
+                outdir=out,
+                format="CRAM",
+                output_profile=profile,
+                native_aligners="off",
+                aligner="bwa",
+                threads=1,
+                memory="64M",
+            )
+        )
+        (output,) = out.glob("*_aligned.cram")
+        assert result.metrics["output_profile"] == profile
+        assert result.manifest is not None
+        assert (
+            json.loads(Path(result.manifest).read_text())["metrics"]["output_profile"]
+            == profile
+        )
+        if profile != "default":
+            assert cram_version(str(output)) == (3, 1 if profile == "archive" else 0)
+        if profile == "calling":
+            assert not needs_cram30(str(output))
+        records.append(
+            [
+                (*fields[:11], tuple(sorted(fields[11:])))
+                for line in _samtools("view", "-T", reads.ref, str(output)).splitlines()
+                if (fields := line.split("\t"))
+            ]
+        )
+        api.vcf.snp(
+            api.VcfSnpParams(
+                input=output,
+                ref=reads.ref,
+                outdir=out / "calls",
+                threads=1,
+                ploidy="2",
+            )
+        )
+        calls.append(vcf_calls(out / "calls" / "snps.vcf.gz"))
+        api.extract.custom(
+            api.CustomParams(
+                input=output,
+                ref=reads.ref,
+                outdir=out / "extract",
+                region="chr1",
+            )
+        )
+        (extracted,) = (out / "extract").glob("*.bam")
+        assert int(_samtools("view", "-c", str(extracted))) == len(records[-1])
+        info = api.info.info(api.InfoParams(input=output, ref=reads.ref, cache=False))
+        assert info.status == "ok"
+    assert records[0] == records[1] == records[2]
+    assert calls[0] == calls[1] == calls[2]
+
+
+@needs_tools("bwa", "samtools")
+def test_691_config_profile_selects_cram_and_explicit_default_preserves_bam(
+    tmp_path, monkeypatch, caplog
+):
+    reads = _short_reads(tmp_path)
+    monkeypatch.setitem(settings, "output_profile", "calling")
+    caplog.set_level("INFO")
+    for profile, output_format, suffix in (
+        (None, None, "cram"),
+        ("default", None, "bam"),
+        (None, "BAM", "bam"),
+    ):
+        out = tmp_path / f"{suffix}-{profile or 'configured'}"
+        result = api.align.align(
+            api.AlignParams(
+                r1=reads.r1,
+                r2=reads.r2,
+                ref=reads.ref,
+                outdir=out,
+                output_profile=profile,
+                format=output_format,
+                native_aligners="off",
+                aligner="bwa",
+                threads=1,
+                memory="64M",
+            )
+        )
+        output = out / f"reads_aligned.{suffix}"
+        assert output.is_file()
+        assert result.metrics["output_profile"] == (
+            "calling" if suffix == "cram" else "default"
+        )
+        if suffix == "cram":
+            assert cram_version(str(output)) == (3, 0)
+    assert "config output_profile=calling" in caplog.text
+
+
+@needs_tools("bwa", "samtools")
+def test_691_desktop_style_explicit_bam_overrides_config_profile(tmp_path, monkeypatch):
+    reads = _short_reads(tmp_path)
+    monkeypatch.setitem(settings, "output_profile", "archive")
+    out = tmp_path / "out"
+    run_wgsextract(
+        "align", "--r1", reads.r1, "--r2", reads.r2, "--ref", reads.ref,
+        "--format", "BAM", "--outdir", str(out), "--aligner", "bwa",
+        "--native-aligners", "off", "--threads", "1", "--memory", "64M",
+    )  # fmt: skip
+    output = out / "reads_aligned.bam"
+    assert output.is_file()
+    _samtools("quickcheck", str(output))
+    assert not list(out.glob("*.cram"))
+
+
+@needs_tools("bwa", "samtools")
+def test_691_unsupported_encoder_fails_before_writing_an_alignment(
+    tmp_path, monkeypatch
+):
+    require_bare_name_fakes()
+    reads = _short_reads(tmp_path)
+    bindir = tmp_path / "bin"
+    python_tool(
+        bindir,
+        "samtools",
+        "import sys\n"
+        "if '--version' in sys.argv:\n"
+        "    print('samtools 1.10')\n"
+        "else:\n"
+        "    print('unsupported CRAM output option', file=sys.stderr)\n"
+        "    sys.exit(1)\n",
+    )
+    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+    clear_tool_caches()
+    out = tmp_path / "out"
+    result = api.align.align(
+        api.AlignParams(
+            r1=reads.r1,
+            r2=reads.r2,
+            ref=reads.ref,
+            outdir=out,
+            output_profile="archive",
+            native_aligners="off",
+            aligner="bwa",
+            threads=1,
+            memory="64M",
+        ),
+        check=False,
+    )
+    assert result.status == "failed"
+    assert result.error is not None
+    assert "samtools cannot write the archive" in result.error.message
+    assert not out.exists() or not list(out.glob("*_aligned.*"))
+
+
+@needs_tools("samtools")
+def test_691_realign_checks_encoder_before_extracting_fastqs(tmp_path, monkeypatch):
+    require_bare_name_fakes()
+    sample = snp_sample(tmp_path / "input")
+    samtools = get_tool_path("samtools")
+    bindir = tmp_path / "bin"
+    python_tool(
+        bindir,
+        "samtools",
+        "import subprocess, sys\n"
+        "if '--output-fmt-option' in sys.argv: sys.exit('unsupported CRAM option')\n"
+        f"sys.exit(subprocess.call([{samtools!r}, *sys.argv[1:]]))\n",
+    )
+    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+    clear_tool_caches()
+    out = tmp_path / "out"
+    result = api.align.realign(
+        api.RealignParams(
+            input=sample.bam,
+            ref=sample.ref,
+            outdir=out,
+            platform="illumina",
+            output_profile="archive",
+            native_aligners="off",
+        ),
+        check=False,
+    )
+    assert result.error is not None
+    assert "cannot write the archive" in result.error.message
+    assert not list(out.rglob("*.fastq*"))
+    assert not list(out.rglob("*_aligned.*"))
+
+
+def test_691_explicit_pbmm2_has_a_profile_specific_error(tmp_path):
+    result = api.align.align(
+        api.AlignParams(
+            r1=tmp_path / "reads.fq",
+            platform="hifi",
+            aligner="pbmm2",
+            output_profile="calling",
+        ),
+        check=False,
+    )
+    assert result.exit_code == 2
+    assert result.error is not None
+    assert (
+        "pbmm2" in result.error.message and "--aligner minimap2" in result.error.message
+    )
+
+
+@pytest.mark.parametrize("command", ["align", "realign"])
+@needs_tools("samtools")
+def test_691_explicit_bam_conflicts_with_cram_profile_before_running(tmp_path, command):
+    sample = snp_sample(tmp_path / "input")
+    params = (
+        api.AlignParams(
+            r1=tmp_path / "reads.fq", format="BAM", output_profile="archive"
+        )
+        if command == "align"
+        else api.RealignParams(input=sample.bam, format="BAM", output_profile="archive")
+    )
+    run = api.align.align if command == "align" else api.align.realign
+    result = run(params, check=False)
+    assert result.exit_code == 2
+    assert result.error is not None and "--format BAM" in result.error.message
+    assert "--output-profile default" in result.error.message
+
+
+@needs_tools("samtools", "minimap2")
+def test_691_config_cram_profile_uses_minimap2_instead_of_auto_pbmm2(
+    tmp_path, monkeypatch
+):
+    require_bare_name_fakes()
+    reads = _short_reads(tmp_path)
+    bindir = tmp_path / "bin"
+    python_tool(bindir, "pbmm2", "raise RuntimeError('pbmm2 cannot write CRAM')\n")
+    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+    clear_tool_caches()
+    monkeypatch.setitem(settings, "output_profile", "calling")
+    out = tmp_path / "out"
+    result = api.align.align(
+        api.AlignParams(
+            r1=reads.r1,
+            ref=reads.ref,
+            outdir=out,
+            platform="hifi",
+            native_aligners="off",
+            threads=1,
+            memory="64M",
+        )
+    )
+    assert result.metrics["aligner"] == "minimap2"
+    (output,) = out.glob("*_aligned.cram")
+    assert cram_version(str(output)) == (3, 0)
 
 
 @pytest.mark.parametrize(

@@ -1,6 +1,7 @@
 import ctypes
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -11,8 +12,9 @@ from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import VcfFreebayesParams, VcfGatkParams
 from wgsextract_cli.core import ultima
 from wgsextract_cli.core.atomic_output import safe_output
+from wgsextract_cli.core.cram_staging import needs_cram30
 from wgsextract_cli.core.dependencies import get_tool_path
-from wgsextract_cli.core.dependency_checks import verify_dependencies
+from wgsextract_cli.core.dependency_checks import get_tool_version, verify_dependencies
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.output_checks import warn_if_no_variants
@@ -44,11 +46,6 @@ def _prepare_gatk_input(
         return input_file, None
 
     if not region:
-        logging.warning(
-            "GATK may not support CRAM 3.1 directly. For whole-genome CRAM input, "
-            "convert to BAM first with 'wgsextract bam to-bam' or pass --region for "
-            "automatic regional conversion."
-        )
         return input_file, None
 
     fd, temp_bam = tempfile.mkstemp(
@@ -219,6 +216,24 @@ def run_gatk(params: VcfGatkParams) -> None:
     verify_dependencies(
         ["gatk", "samtools", *(["bcftools", "tabix"] if scatter else [])]
     )
+    if (
+        Path(params.input).is_file()
+        and not params.region
+        and needs_cram30(str(params.input))
+    ):
+        version = get_tool_version("gatk") or ""
+        match = re.search(
+            r"(?:GATK|Genome Analysis Toolkit)[^\n]*?\bv?(\d+)\.(\d+)\.(\d+)",
+            version,
+            re.IGNORECASE,
+        )
+        if match and tuple(map(int, match.groups())) < (4, 7, 0):
+            raise UsageError(
+                f"GATK {'.'.join(match.groups())} cannot read CRAM 3.1 directly; "
+                "GATK 4.7 or newer can. Upgrade GATK, use --output-profile "
+                "calling when aligning, convert to BAM, or pass --region "
+                "for automatic regional conversion."
+            )
     if sys.platform == "win32":
         logging.warning(
             "Native Windows GATK uses AVX OpenMP PairHMM and AVX2 Smith-Waterman; "

@@ -255,7 +255,7 @@ def _input_reference_opts(input_p: str, ref_p: str | None) -> list[str]:
     return ["--input-fmt-option", f"reference={opts[1]}"] if opts else []
 
 
-def _is_fresh_output(path: str, input_p: str) -> bool:
+def is_fresh_output(path: str, input_p: str) -> bool:
     """True when ``path`` is a non-empty file written after ``input_p`` last changed."""
     try:
         return (
@@ -328,7 +328,7 @@ def run_full_coverage(
     if legacy_p:
         candidates.append((legacy_p, _parse_legacy_bincvg))
     for cached, parser in candidates:
-        if _is_fresh_output(cached, input_p):
+        if is_fresh_output(cached, input_p):
             try:
                 covered = parser(cached)
             except (OSError, ValueError, IndexError) as exc:

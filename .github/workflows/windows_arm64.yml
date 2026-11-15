@@ -8,6 +8,7 @@ on:
         type: boolean
         default: false
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - packaging/windows-arm64/**
       - scripts/audit_windows_arm64.ps1
@@ -24,7 +25,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: windows-arm64-qualification-${{ github.ref }}
+  group: windows-arm64-qualification-${{ github.ref }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -32,7 +33,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.calling_control_only
     uses: ./.github/workflows/windows_arm64_calling_control.yml
   qualify:
-    if: github.event_name != 'workflow_dispatch' || !inputs.calling_control_only
+    if: github.event.pull_request.draft != true && (github.event_name != 'workflow_dispatch' || !inputs.calling_control_only)
     runs-on: windows-11-arm
     timeout-minutes: 60
     strategy:
@@ -97,7 +98,7 @@ jobs:
 
   pipeline:
     needs: qualify
-    if: always() && !cancelled() && (github.event_name != 'workflow_dispatch' || !inputs.calling_control_only)
+    if: always() && !cancelled() && github.event.pull_request.draft != true && (github.event_name != 'workflow_dispatch' || !inputs.calling_control_only)
     runs-on: windows-11-arm
     timeout-minutes: 15
     steps:

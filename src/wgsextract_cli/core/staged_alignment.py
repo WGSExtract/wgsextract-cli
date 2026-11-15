@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.output_profiles import OUTPUT_PROFILES, output_profile_options
 from wgsextract_cli.core.results import current_result, fingerprint, warn
 from wgsextract_cli.core.samtools_commands import indexed_output, parse_memory
 from wgsextract_cli.core.temp_directory import configured_temp_directory
@@ -200,6 +201,7 @@ def run_staged_alignment(
     read_length: float | None = None,
     expected_reads: int | None = None,
     chunk_records: int | None = None,
+    output_profile: str = "default",
 ) -> Path:
     """Keep validated stages on failure; caller removes work only after output checks."""
     workspace = workspace_path(out_path)
@@ -327,6 +329,8 @@ def run_staged_alignment(
                         fmt,
                         "--reference",
                         ref,
+                        "--output-profile",
+                        output_profile,
                     ]
                 ],
                 description="Staged merge",
@@ -521,7 +525,13 @@ def _merge(options: argparse.Namespace) -> None:
     encoding = (
         ["-O", "BAM,level=3"]
         if options.format == "BAM"
-        else ["-O", "CRAM", "--reference", options.reference]
+        else [
+            "-O",
+            "CRAM",
+            "--reference",
+            options.reference,
+            *output_profile_options(options.output_profile),
+        ]
     )
     encoder = subprocess.Popen(
         [
@@ -567,6 +577,7 @@ def main() -> None:
     parser.add_argument("--output")
     parser.add_argument("--format", choices=("BAM", "CRAM"), default="BAM")
     parser.add_argument("--reference")
+    parser.add_argument("--output-profile", choices=OUTPUT_PROFILES, default="default")
     options = parser.parse_args()
 
     def interrupted(signum: int, frame: Any) -> None:

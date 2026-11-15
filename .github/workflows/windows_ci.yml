@@ -1,8 +1,6 @@
 name: CI Windows
 
-# Native Windows, as users run it: every tool comes from the Pixi environment
-# (WGS Extract's own Windows builds of the bioinformatics tools). Lint and type
-# checks run on Ubuntu.
+# Native Windows uses the same published Pixi tools as users.
 # pr_ci.yml selects PRs; main pushes and nightly runs retain the full matrix.
 on:
   push:
@@ -10,6 +8,13 @@ on:
     paths-ignore:
       - "**/*.md"
   workflow_call:
+    inputs:
+      tests:
+        type: string
+        default: all
+      smoke-only:
+        type: boolean
+        default: false
   schedule:
     - cron: "11 6 * * *"
   workflow_dispatch:
@@ -23,9 +28,12 @@ concurrency:
 
 jobs:
   test-windows:
+    if: inputs.tests != '[]'
     uses: ./.github/workflows/os_tests.yml
     with:
       os: windows
       runner: windows-latest
       timeout-minutes: 45
       environments: default dev gatk vep-rs
+      tests: ${{ inputs.tests || 'all' }}
+      smoke-only: ${{ inputs.smoke-only == true }}

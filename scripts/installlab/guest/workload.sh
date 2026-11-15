@@ -46,7 +46,9 @@ step y_haplo     "$WGSE" lineage y-haplogroup --input "$BAM" --ref "$REF" --outd
 # Keep predictions/evidence, not downloaded tables or the fresh user's private lock.
 rm -rf "$OUT/reference/yleaf" "$OUT/reference/haplogrep3"
 step snp         "$WGSE" vcf snp --input "$BAM" --ref "$REF" --region 20 --ploidy 2 --outdir "$OUT/snp"
-step microarray  "$WGSE" microarray --input "$BAM" --ref "$REF" --ref-vcf-tab "$TARGETS" --formats 23andme_v5 --outdir "$OUT/microarray"
+# This 5x sample deliberately uses the product's confidence defaults. Weak
+# evidence is no-called; the reason table explains that to the user and oracle.
+step microarray  "$WGSE" microarray --input "$BAM" --ref "$REF" --ref-vcf-tab "$TARGETS" --formats 23andme_v5 --call-reasons --outdir "$OUT/microarray"
 step align       "$WGSE" align --r1 "$R1" --r2 "$R2" --ref "$REF" --outdir "$OUT/align"
 # The scenario explicitly installed this optional environment before the workload.
 step gatk        "$WGSE" vcf gatk --input "$BAM" --ref "$REF" --region 20:1-200000 --outdir "$OUT/gatk"

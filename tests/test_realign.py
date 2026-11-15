@@ -17,11 +17,13 @@ from tests.fake_tools import FakeParabricks
 from tests.htslib_helpers import needs_tools, sam_to_bam, write_fasta
 from tests.prepared_data import sparse_truncate
 from wgsextract_cli.api.align import RealignParams
+from wgsextract_cli.api.align import realign as realign_api
 from wgsextract_cli.commands import realign
 from wgsextract_cli.commands.realign import RealignJob
 from wgsextract_cli.core import alignment_memory, parabricks
 from wgsextract_cli.core.alignment_memory import MappingMemory
 from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.cram_staging import cram_version
 from wgsextract_cli.core.read_counts import AlignmentSample, UnpairedSample
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
@@ -108,6 +110,41 @@ def test_realign_bam_to_new_reference(tmp_path, genome_and_ref):
         "x_aligned.bam.bai",
         "x_aligned.bam.steps.json",
     ]
+
+
+@needs_tools("bwa", "samtools")
+def test_691_switching_profile_rewrites_cached_realign_output(tmp_path, genome_and_ref):
+    genome, ref = genome_and_ref
+    source, pairs = _old_alignment(tmp_path, genome)
+    outdir = tmp_path / "out"
+    output = outdir / "x_aligned.cram"
+    for profile, version in (("archive", (3, 1)), ("calling", (3, 0))):
+        result = realign_api(
+            _args(
+                source,
+                ref=ref,
+                outdir=outdir,
+                output_profile=profile,
+                native_aligners="off",
+                aligner="bwa",
+            )
+        )
+        assert result.metrics["output_profile"] == profile
+        assert cram_version(str(output)) == version
+        assert int(_view("view", "-T", ref, "-c", str(output))) == 2 * pairs
+    mtime = output.stat().st_mtime_ns
+    result = realign_api(
+        _args(
+            source,
+            ref=ref,
+            outdir=outdir,
+            output_profile="calling",
+            native_aligners="off",
+            aligner="bwa",
+        )
+    )
+    assert result.metrics["output_profile"] == "calling"
+    assert output.stat().st_mtime_ns == mtime
 
 
 @needs_tools("bwa", "samtools")

@@ -557,6 +557,18 @@ def test_unalign_writes_mates_in_step_in_sequenced_orientation(genome, tmp_path)
     assert not list(tmp_path.glob(".collate_*"))
 
 
+def test_unalign_names_the_fastqs_after_the_input_by_default(genome, tmp_path):
+    """#825: the app's Unalign to FASTQ relied on a wrapper to name them."""
+    bam = tmp_path / "sample.bam"
+    shutil.copy(genome["bam"], bam)
+    _bam("unalign", "--input", str(bam), "--outdir", str(tmp_path / "o"))
+    names = []
+    for mate in (1, 2):
+        with gzip.open(tmp_path / "o" / f"sample_R{mate}.fastq.gz", "rt") as fastq:
+            names.append([line[1:].split()[0] for line in fastq.readlines()[::4]])
+    assert names[0] == names[1] and "p0" in names[0]
+
+
 def test_unalign_region_drops_mates_outside_it(genome, tmp_path):
     _bam(
         "unalign", "--input", genome["bam"], "--outdir", str(tmp_path),

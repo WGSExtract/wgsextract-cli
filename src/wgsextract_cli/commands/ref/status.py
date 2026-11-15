@@ -19,6 +19,7 @@ from wgsextract_cli.core import (
 from wgsextract_cli.core.aadr_resources import aadr_2m_path
 from wgsextract_cli.core.config import dataset_library, settings
 from wgsextract_cli.core.gene_map import are_gene_maps_installed
+from wgsextract_cli.core.mini_genome import status as test_genome_status
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_assets import (
     build_hint,
@@ -72,6 +73,12 @@ def build_ref_status(params: RefStatusParams) -> dict[str, Any]:
         return _build_ref_status(params)
 
 
+def dataset_library_for(ref: Path | None, datasets: Path | None) -> Path:
+    """``datasets``, else config dataset_library, else ``datasets`` beside the
+    reference library ``ref`` names (``_resolve_reference_library``)."""
+    return Path(_resolve_dataset_library(datasets, _resolve_reference_library(ref)))
+
+
 def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
     reflib = _resolve_reference_library(params.ref)
     datasets = _resolve_dataset_library(params.dataset_library, reflib)
@@ -90,7 +97,7 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
         reflib, "pharmgkb", build, [".vcf.gz", ".vcf.bgz", ".tsv.gz"]
     )
     annotation_argument = annotation_vcf or annotation_file
-    test_genome = _test_genome_status(datasets)
+    test_genome = test_genome_status(Path(datasets))
     aadr_file = aadr_2m_path(reflib)
     aadr = {"installed": aadr_file.is_file(), "file": str(aadr_file)}
 
@@ -416,25 +423,6 @@ def _mappability_map_status(reflib: str) -> dict[str, Any]:
     return {
         "installed": all(Path(path).is_file() for path in files.values()),
         "files": files,
-    }
-
-
-def _test_genome_status(datasets: str) -> dict[str, Any]:
-    path = str(Path(datasets, "wgsextract-benchmark-hg19-mini"))
-    partial = str(
-        Path(datasets, ".downloads", "wgsextract-benchmark-hg19-mini.zip.partial")
-    )
-    installed = Path(path).is_dir() and Path(path, "genome-config.toml").is_file()
-    if installed:
-        status = "installed"
-    elif Path(partial).is_file():
-        status = "incomplete"
-    else:
-        status = "missing"
-    return {
-        "installed": installed,
-        "status": status,
-        "path": path,
     }
 
 

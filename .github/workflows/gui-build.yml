@@ -84,6 +84,12 @@ jobs:
           extra-apt-packages: rpm zstd
           cache: ${{ inputs.tag == '' }}
 
+      - name: Restore Rust dependencies
+        uses: ./.github/actions/rust-cache
+        with:
+          # A caller rebuilding an arbitrary ref must not seed main's cache.
+          writer: ${{ inputs.ref == github.sha && inputs.tag == '' }}
+
       # Tauri signs and notarizes the macOS app when these variables are set:
       # https://v2.tauri.app/distribute/sign/macos/
       - name: Configure macOS signing and notarization

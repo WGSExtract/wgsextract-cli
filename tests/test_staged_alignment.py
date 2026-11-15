@@ -99,6 +99,50 @@ def test_issue872_compressed_parts_preserve_duplicate_flags_and_rg_order(tmp_pat
     assert result.metrics["alignment_mode"] == "staged_metal"
 
 
+@pytest.mark.parametrize(
+    "profile,version", [("archive", b"\x03\x01"), ("calling", b"\x03\x00")]
+)
+@needs_tools("bwa", "samtools", "samblaster")
+def test_issue872_staged_merge_honours_lossless_output_profile(
+    tmp_path, profile, version
+):
+    reads = _short_reads(tmp_path)
+    ordinary, _ = _align(reads, reads.ref, tmp_path / "ordinary")
+    output = str(tmp_path / "staged.cram")
+    run_streamed_alignment(
+        [
+            "bwa",
+            "mem",
+            "-K",
+            "100000000",
+            "-R",
+            read_group("reads"),
+            reads.ref,
+            reads.r1,
+            reads.r2,
+        ],
+        output,
+        threads="2",
+        memory="16M",
+        fmt="CRAM",
+        ref=reads.ref,
+        duplicates="samblaster",
+        staged_mode=True,
+        expected_reads=280,
+        exact_reads=280,
+        output_profile=profile,
+    )
+    with Path(output).open("rb") as stream:
+        assert stream.read(6) == b"CRAM" + version
+    expected = _samtools("view", ordinary)
+    actual = _samtools("view", "--reference", reads.ref, output)
+    assert [line.split("\t")[:11] for line in actual.splitlines()] == [
+        line.split("\t")[:11] for line in expected.splitlines()
+    ]
+    assert Path(output + ".crai").is_file()
+    assert not workspace_path(output).exists()
+
+
 @needs_tools("bwa", "samtools", "samblaster")
 def test_issue872_failed_encoding_resumes_validated_parts_without_remapping(tmp_path):
     reads = _short_reads(tmp_path)

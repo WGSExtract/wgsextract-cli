@@ -104,6 +104,17 @@ of failed tests only (`tmp_path_retention_policy = "failed"`).
    both on Linux, updating from the latest release.
 5. `uninstall.sh --yes --remove-config --remove-pixi`, then the final snapshot.
 
+The mini genome has **5x coverage**, below microarray's default DP ≥10/GQ ≥20
+evidence gates. The scenario keeps those real-user defaults and requests
+`--call-reasons`; it does not disable filtering to make the fixture pass.
+The oracle independently checks each exported call/no-call against the called
+VCF's sample depth, confidence and FILTER (using internal reference-call QUAL
+when bcftools omits GQ). All eligible calls must be retained, weak sites must be
+no-calls, and their reason table must agree. At least 1,500 truth sites must be
+represented and some callable sites must remain; an all-no-call kit cannot
+pass. At least 95% of the **callable** genotypes must match 1000 Genomes. No-calls
+at weak sites are expected, not genotype disagreements.
+
 ## The macOS app
 
 `lab.py run macos --gui-repo gui` tests the WGS Extract app
