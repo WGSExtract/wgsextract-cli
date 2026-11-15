@@ -124,6 +124,24 @@ def call(dv, *options, reads=None, out=None, threads="4"):
     )  # fmt: skip
 
 
+@pytest.mark.parametrize("contig", ["chrM", "chrY", "chrX"])
+@pytest.mark.parametrize("bounded", [False, True])
+def test_963_par_free_haploid_calls_do_not_pass_an_empty_par_bed(dv, contig, bounded):
+    dv.sample = snp_sample(dv.tmp / "hg38", contig=contig)
+    if contig != "chrM":
+        run_wgsextract("sample", "set", "--input", dv.sample.bam, "--sex", "Male")
+    call(dv, *(["--region", contig] if bounded else []))
+    calls = [
+        (*row[:-1], row[-1].replace("|", "/"))
+        for row in vcf_calls(dv.out / "deepvariant.vcf.gz")
+    ]
+    assert calls == dv.sample.calls
+    plan = dv.deepvariant.runs("run_deepvariant")[-1]["opts"]
+    # contract: PAR-free haploid selections need haploid control, not an empty BED.
+    assert plan["haploid_contigs"] == contig
+    assert "par_regions_bed" not in plan
+
+
 def rerun(dv, *options, **kwargs):
     """Forget earlier runs, stop failing and call again."""
     dv.deepvariant.fail(None)
