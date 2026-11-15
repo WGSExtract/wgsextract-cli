@@ -20,6 +20,13 @@ the result manifest's `details` (fields in [api.md](api.md), `library_list`).
 lookup gives up after 8 s). Sizes found are kept for 30 days in the library's `.remote-sizes.json`,
 and later listings show them without going online.
 
+## The test genome
+
+`wgsextract ref test-genome --install` downloads and verifies the small
+HG00096 dataset. Its human-readable status identifies it as **WGS Extract hg19
+mini benchmark genome**, the same title shown by the app. The status and path
+are also available in the JSON result's `details`.
+
 ## Deleting a genome
 
 `wgsextract ref library --delete CODE` (or the file name, such as

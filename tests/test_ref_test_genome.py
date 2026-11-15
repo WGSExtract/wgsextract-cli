@@ -116,6 +116,32 @@ def test_a_download_that_fails_its_hash_installs_nothing(
     assert not (datasets / ".downloads" / f"{mini_genome.DATASET_ID}.zip").exists()
 
 
+@pytest.mark.parametrize(
+    "plan_path",
+    [
+        "scripts/installlab/gui/wgsextract-plan.json",
+        "gui/examples/WGSExtract/test-plans/fresh-install-default-hg19-test-genome.json",
+    ],
+    ids=["install-lab", "fresh-install"],
+)
+def test_issue_801_download_satisfies_app_required_output(
+    tmp_path, published, capsys, plan_path
+):
+    datasets = tmp_path / "datasets"
+    plan = json.loads((Path(__file__).resolve().parents[1] / plan_path).read_text())
+    download = next(
+        step
+        for step in plan["steps"]
+        if step.get("actionID") == "test-dataset-download"
+    )
+
+    main(["ref", "test-genome", "--install", "--dataset-library", str(datasets)])
+
+    output = capsys.readouterr().out
+    assert all(text in output for text in download["requiredOutput"])
+    assert (datasets / mini_genome.DATASET_ID / "S.bam").is_file()
+
+
 def test_a_partial_download_is_incomplete_and_deleted(tmp_path, capsys):
     datasets = tmp_path / "datasets"
     partial = datasets / ".downloads" / f"{mini_genome.DATASET_ID}.zip.partial"
