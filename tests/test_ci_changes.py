@@ -1014,6 +1014,79 @@ def test_876_unverifiable_passing_check_cannot_establish_readiness(link: str) ->
     assert not checks_ready(checks, run_id=20, runs=[ready])
 
 
+@pytest.mark.parametrize(
+    ("bucket", "changes", "ready"),
+    [
+        ("pass", {}, True),
+        ("pass", {"app": {"slug": "some-other-app"}}, False),
+        ("pass", {"head_sha": "older-head"}, False),
+        ("pass", {"status": "in_progress", "conclusion": None}, False),
+        ("fail", {"conclusion": "failure"}, False),
+        ("pass", {"conclusion": "failure"}, False),
+        (
+            "pass",
+            {"html_url": "https://github.com/other/repo/runs/132889584422"},
+            False,
+        ),
+    ],
+)
+def test_962_codeql_app_check_run_is_verified_against_the_pr_head(
+    monkeypatch: pytest.MonkeyPatch,
+    bucket: str,
+    changes: dict[str, Any],
+    ready: bool,
+) -> None:
+    repository = "WGSExtract/wgsextract-cli"
+    link = f"https://github.com/{repository}/runs/132889584422"
+    # Shape of PR #956's code-scanning check run: an app check, not an Actions job.
+    codeql = {
+        "id": 132889584422,
+        "name": "CodeQL",
+        "head_sha": "same-head",
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": link,
+        "app": {"slug": "github-advanced-security"},
+        **changes,
+    }
+
+    def response(*arguments: str) -> Any:
+        assert arguments == ("api", f"repos/{repository}/check-runs/132889584422")
+        return codeql
+
+    monkeypatch.setattr(pr_checks_ready, "github_json", response)
+    ready_run = {**area_run(20, "2026-11-13T16:20:01Z"), "workflow_id": 416978936}
+    checks = [
+        {
+            "name": name,
+            "bucket": "pass",
+            "workflow": "PR area checks",
+            "link": f"https://github.com/{repository}/actions/runs/20/job/{i}",
+        }
+        for i, name in enumerate(("changes", "required", "Ready PR area checks"))
+    ]
+    checks.append({"name": "CodeQL", "bucket": bucket, "workflow": "", "link": link})
+    check_runs = pr_checks_ready.app_check_runs(checks, repository)
+    assert (
+        checks_ready(
+            checks,
+            run_id=20,
+            runs=[ready_run],
+            check_runs=check_runs,
+            repository=repository,
+        )
+        is ready
+    )
+    # An app check under another repository is never trusted.
+    assert not checks_ready(
+        [*checks[:-1], {**checks[-1], "link": "https://github.com/a/b/runs/1"}],
+        run_id=20,
+        runs=[ready_run],
+        check_runs=check_runs,
+        repository=repository,
+    )
+
+
 def test_876_recorded_pr_run_with_empty_associations_is_still_verified(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

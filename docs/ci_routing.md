@@ -552,7 +552,11 @@ It rejects old draft-only passes/skips (including the gap before the ready
 run registers), empty reports, and pending, failed, cancelled or unknown statuses
 in the selected area run or other reported workflows. Reported checks are
 verified against their latest matching workflow runs; unrelated and superseded
-draft/label runs do not block a passing ready run.
+draft/label runs do not block a passing ready run. App check runs (linked as
+`/runs/ID` rather than `/actions/runs/ID`) count only when the check-runs API
+confirms the same repository, the PR head SHA, a completed success, neutral or
+skipped conclusion, and an allow-listed app (CodeQL's
+`github-advanced-security`); any other non-Actions check fails closed.
 `--pr` is required: the validator reads the latest ready-for-review event and
 current head from GitHub, then selects the newest non-draft area run for that
 PR/head after the event and requires it to have completed successfully.
