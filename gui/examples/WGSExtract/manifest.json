@@ -102,8 +102,7 @@
     "format": "wgsextract.result/1",
     "executables": [
       "{{bundleRoot}}/scripts/run-wgsextract.sh",
-      "{{bundleRoot}}/scripts/run-wgsextract-vcf.sh",
-      "{{bundleRoot}}/scripts/unalign-to-fastq.sh"
+      "{{bundleRoot}}/scripts/run-wgsextract-vcf.sh"
     ],
     "arguments": [
       "--result-file",

@@ -24,10 +24,21 @@
       "title": "sections.datasets.test-dataset.title",
       "subtitle": "sections.datasets.test-dataset.summary",
       "dataSource": {
-        "path": "scripts/library-state.sh",
+        "path": "scripts/run-wgsextract.sh",
         "arguments": [
-          "{{ref_path}}",
-          "{{dataset_library}}"
+          "ref",
+          "status",
+          "--values"
+        ],
+        "optionalArguments": [
+          [
+            "--ref",
+            "{{ref_path}}"
+          ],
+          [
+            "--dataset-library",
+            "{{dataset_library}}"
+          ]
         ]
       },
       "actions": [

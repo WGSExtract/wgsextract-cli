@@ -113,10 +113,12 @@ CLI: `wgsextract info calculate-coverage`.
 Exact coverage; outputs the coverage table (or the depth-bins TSV).
 
 `CalculateCoverageParams`: Exact per-chromosome breadth and depth of coverage (`samtools coverage`).
+`status` reads nothing: its `details` say whether the whole-file
+reports `with_bins` writes are `current` (both newer than the input).
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
-| `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to describe. |
+| `input` | `Path \| None` | `None` | `--input`, `-i` | BAM or CRAM to describe. Required unless status. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
@@ -125,6 +127,7 @@ Exact coverage; outputs the coverage table (or the depth-bins TSV).
 | `by` | `Path \| None` | `None` | `--by` | Report depth per target of this BED (e.g. from 'panel bed'): mean, median and the fraction at >=10x, 20x, 30x and --min-depth, plus the on- versus off-target enrichment |
 | `min_depth` | `int` | `30` | `--min-depth` | With --by, list targets whose mean depth is below this (default: 30) |
 | `table_format` | `str \| None` | `None` | `--format` | Also save the per-chromosome table and the QC stats as <input>_chromosomes and <input>_qc .tsv or .parquet (needs pyarrow); implies --detailed; None saves none. With bins or by, that table's format instead (None: tsv). One of: `tsv`, `parquet` |
+| `status` | `bool` | `False` | `--status` | Only report whether the with_bins reports in outdir are newer than the input; details ``current``, ``coverage``, ``coverage_bins``. |
 
 ### `api.info.coverage_sample(CoverageSampleParams)`
 
@@ -479,7 +482,8 @@ CLI: `wgsextract bam unalign`.
 Write FASTQs (output roles `fastq_r1`, `fastq_r2` and, with `se`,
 `fastq_single`; the `read_groups` metric counts the input's).
 
-`BamUnalignParams`: Write the reads back to paired FASTQs, name-sorted so mates line up.
+`BamUnalignParams`: Write the reads back to paired FASTQs, name-sorted so mates line up:
+`<input>_R1.fastq.gz` and `_R2` unless `r1`/`r2` name them.
 Reads without a mate go to `se` when set. Warns when the input has more
 than one read group, which FASTQ can't keep apart.
 
@@ -490,8 +494,8 @@ than one read group, which FASTQ can't keep apart.
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
-| `r1` | `str` | required | `--r1` | Read 1 FASTQ to write: a bare name goes in outdir, a path is used as given. |
-| `r2` | `str` | required | `--r2` | Read 2 FASTQ to write: a bare name goes in outdir, a path is used as given. |
+| `r1` | `str \| None` | `None` | `--r1` | Read 1 FASTQ (default ``<input>_R1.fastq.gz``) to write: a bare name goes in outdir, a path is used as given. |
+| `r2` | `str \| None` | `None` | `--r2` | Read 2 FASTQ (default ``<input>_R2.fastq.gz``) to write: a bare name goes in outdir, a path is used as given. |
 | `se` | `str \| None` | `None` | `--se` | FASTQ for reads without a mate to write: a bare name goes in outdir, a path is used as given. |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Region (chrY:10000-20000), comma-separated regions, or a BED file to limit the output to. |
 | `gene` | `str \| None` | `None` | `--gene` | A gene name (e.g. BRCA1) to limit the output to, looked up in the reference library's gene map (hg19/hg38 only); the region wins when both are set. |
@@ -597,11 +601,15 @@ CLI: `wgsextract qc fastqc`.
 Run FastQC (output roles `fastqc_report_html` and `fastqc_report_zip`).
 
 `FastqcParams`: A FastQC report on a FASTQ, BAM or SAM file as `<input>_fastqc.html`
-and `.zip`. Module PASS/WARN/FAIL counts and the read count are metrics.
+and `.zip`, and on `r2` too when set. Module PASS/WARN/FAIL counts and
+the read count are metrics (`r2_`-prefixed for `r2`). With `r2`,
+`multiqc` merges the reports in `outdir` into `multiqc_report.html`.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | FASTQ, BAM or SAM file. |
+| `r2` | `Path \| None` | `None` | `--r2` | Read 2 FASTQ, reported on too. |
+| `multiqc` | `bool` | `False` | `--multiqc` | With r2, merge the reports in outdir into ``multiqc_report.html``, replacing an earlier one. |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 

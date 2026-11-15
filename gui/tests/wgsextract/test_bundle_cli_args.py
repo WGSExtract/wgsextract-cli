@@ -39,17 +39,13 @@ PLACEHOLDER = re.compile(r"\{\{([^}]+)\}\}")
 # Scripts that end in a `wgsextract` invocation, and scripts that never do.
 CLI_SCRIPTS = {
     "bootstrap-reference-library.sh",
-    "fastqc-reads.sh",
-    "library-state.sh",
     "run-wgsextract-vcf.sh",
     "run-wgsextract.sh",
-    "unalign-to-fastq.sh",
 }
 NON_CLI_SCRIPTS = {
     "bootstrap-wgsextract-config.sh",
     "check-preinstalled-pixi.sh",
     "check-xcode-command-line-tools.sh",
-    "coverage-state.py",
     "setup-wgsextract-pixi.sh",
     "uninstall-wgsextract.sh",
 }
@@ -553,27 +549,6 @@ class BundleCommandTests(unittest.TestCase):
         ):
             with self.subTest(command=label):
                 self.assertIsNone(error, f"wgsextract {' '.join(argv)}")
-
-    def test_library_state_forwards_annotation_inputs(self) -> None:
-        argv = self.sandbox.run_cli_script(
-            "library-state.sh", ["/ref", "/datasets", "/ann.vcf.gz", "/in.vcf.gz"]
-        )
-        self.assertEqual(
-            argv,
-            [
-                "ref",
-                "status",
-                "--values",
-                "--ref",
-                "/ref",
-                "--dataset-library",
-                "/datasets",
-                "--annotation-vcf",
-                "/ann.vcf.gz",
-                "--input",
-                "/in.vcf.gz",
-            ],
-        )
 
     def test_vcf_wrapper_adds_ploidy_for_reference_fasta(self) -> None:
         bam = self.sandbox.values["bam_path"]

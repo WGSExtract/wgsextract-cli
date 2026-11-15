@@ -21,7 +21,7 @@
 ],
 "commands":[
 {"path":"info","tier":"core","summary":"Check a BAM/CRAM: reference build, file health, coverage.","key_flags":["--detailed","--format","--no-cache","--csv"]},
-{"path":"info calculate-coverage","tier":"core","summary":"Generate a full breadth-of-coverage report.","key_flags":["--region","--bins","--with-bins","--by","--min-depth","--format"]},
+{"path":"info calculate-coverage","tier":"core","summary":"Generate a full breadth-of-coverage report.","key_flags":["--region","--bins","--with-bins","--by","--min-depth","--format","--status"]},
 {"path":"info coverage-sample","tier":"core","summary":"Quickly estimate per-chromosome breadth of coverage by sampling ~1,000 evenly spaced, length-weighted 1 kb windows.","key_flags":["--region","--format"]},
 {"path":"info chip","tier":"core","summary":"Identify the vendor, chip and revision of a consumer microarray raw-data file (23andMe, AncestryDNA, MyHeritage, FTDNA, ...) from its header and marker set, with a confidence score and the matching --formats template.","key_flags":["--list"]},
 {"path":"microarray","tier":"core","summary":"Make 23andMe/AncestryDNA-style raw-data files to upload.","key_flags":["--formats","--format","--sample","--region"]},
@@ -119,7 +119,7 @@
 {"path":"bam merge","tier":"advanced","summary":"Merge several coordinate-sorted BAM/CRAM files (e.g. per-lane files) aligned to the same reference into one indexed file.","key_flags":["--output","--cram","--attach-rg","--sample"]},
 {"path":"bam to-ubam","tier":"advanced","summary":"Convert an aligned BAM/CRAM or FASTQ reads into a queryname-sorted unaligned BAM (uBAM) for GATK pipelines.","key_flags":["--r1","--r2","--sample","--library","--platform"]},
 {"path":"qc fastp","tier":"advanced","summary":"An ultra-fast all-in-one pre-processor.","key_flags":["--r1","--r2"]},
-{"path":"qc fastqc","tier":"advanced","summary":"The industry-standard quality check for raw reads.","key_flags":[]},
+{"path":"qc fastqc","tier":"advanced","summary":"The industry-standard quality check for raw reads.","key_flags":["--r2","--multiqc"]},
 {"path":"qc multiqc","tier":"advanced","summary":"Combine existing FastQC reports, bcftools stats and WGS Extract result manifests into one local HTML report.","key_flags":["--force"]},
 {"path":"qc multiqc-metrics","tier":"advanced","summary":"Write MultiQC custom-content files (wgsextract_*_mqc.json) from result manifests; MultiQC isn't needed.","key_flags":[]},
 {"path":"qc vcf","tier":"advanced","summary":"Generate statistical reports for your VCF file to check the quality and distribution of your variant calls.","key_flags":["--vcf-input"]},

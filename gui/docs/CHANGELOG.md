@@ -16,6 +16,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - WGSExtract's Datasets page is now **My Genomes**.
 - WGSExtract's Reference Genomes delete button runs `wgsextract ref library --delete`, and its `delete-reference-genome` scripts are gone. It asks first and refreshes the table as before; it now also removes the bwa-mem2 index, dense suffix-array files and run manifests, and refuses while another run is building the genome's bwa index.
 - WGSExtract's My Genomes test genome buttons run `wgsextract ref test-genome --install` and `--delete`, and the `test-genome-library` scripts are gone. Installing still downloads the SHA-256-pinned zip into the dataset library's `.downloads` folder (now resuming an interrupted download) and unpacks it with its `genome-config.toml`; deleting still removes both, and now unlinks a linked dataset folder instead of refusing.
+- WGSExtract's last wrapper scripts are gone: Unalign to FASTQ runs `wgsextract bam unalign` (which now names the FASTQs `<input>_R1.fastq.gz` and `_R2` itself), FastQC runs `wgsextract qc fastqc --r2 … --multiqc`, the BAM page's Detailed Coverage button reads `wgsextract --json info calculate-coverage --status` through `transforms/coverage-status.mjs`, and the library, microarray, VCF and My Genomes sections read `wgsextract ref status --values` directly. FastQC runs now also save a result document.
 
 ## [0.8.7] - 2026-11-11
 

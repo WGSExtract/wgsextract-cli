@@ -255,57 +255,6 @@ test("WGSExtract keeps platform scripts out of the shared script root", async ()
   assert.deepEqual(rootScripts.filter((script) => platformScripts.has(script)).sort(), []);
 });
 
-test("WGSExtract Windows library state delegates to CLI status", async (t) => {
-  if (process.platform !== "win32") {
-    t.skip("Windows data source behavior is platform-specific.");
-    return;
-  }
-
-  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-  const sourceScript = path.join(repoRoot, "examples", "WGSExtract", "scripts", "windows", "library-state.ps1");
-  const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-wgsextract-library-state-"));
-  const scriptRoot = path.join(tempRoot, "scripts");
-  const script = path.join(scriptRoot, "library-state.ps1");
-  const refPath = path.join(tempRoot, "reference");
-  const genomeLibrary = path.join(tempRoot, "genomes");
-  const annotationVcf = path.join(tempRoot, "annotation.vcf.gz");
-  const inputVcf = path.join(tempRoot, "input.hg38.vcf.gz");
-  const processManager = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
-
-  try {
-    await mkdir(scriptRoot, { recursive: true });
-    await cp(sourceScript, script);
-    await writeFile(path.join(scriptRoot, "run-wgsextract.ps1"), [
-      "Set-Content -LiteralPath (Join-Path $PSScriptRoot 'calls.log') -Encoding utf8 -Value ($args -join '|')",
-      "'{\"values\":{\"library.testGenomeStatus\":\"from-cli\"}}'",
-      "exit 0",
-      "",
-    ].join("\r\n"));
-    const result = await processManager.runProcess("powershell.exe", [
-      "-NoProfile",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-File",
-      script,
-      refPath,
-      genomeLibrary,
-      annotationVcf,
-      inputVcf,
-    ], {});
-    assert.equal(result.exitCode, 0, result.stderr);
-    const state = JSON.parse(result.stdout);
-    assert.equal(state.values["library.testGenomeStatus"], "from-cli");
-    const call = await readFile(path.join(scriptRoot, "calls.log"), "utf8");
-    assert.match(call, new RegExp(`ref\\|status\\|--values\\|--ref\\|${escapeRegExp(refPath)}`));
-    assert.match(call, new RegExp(`--dataset-library\\|${escapeRegExp(genomeLibrary)}`));
-    assert.match(call, new RegExp(`--annotation-vcf\\|${escapeRegExp(annotationVcf)}`));
-    assert.match(call, new RegExp(`--input\\|${escapeRegExp(inputVcf)}`));
-  } finally {
-    await processManager.terminateAllProcesses();
-    await rm(tempRoot, { force: true, recursive: true });
-  }
-});
-
 test("WGSExtract Windows config bootstrap includes the dataset and reference genome library defaults", async (t) => {
   if (process.platform !== "win32") {
     t.skip("Windows config bootstrap behavior is platform-specific.");

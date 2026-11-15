@@ -257,6 +257,56 @@ def test_with_bins_follows_the_coverage_table_and_reuses_both_reports(
     assert capsys.readouterr().out.endswith(bins_text)
 
 
+@needs_samtools
+def test_status_says_whether_with_bins_would_show_its_reports_again(tmp_path, capsys):
+    """#825: the app's Detailed Coverage button asks this instead of a script."""
+    import json
+    import os
+
+    from wgsextract_cli.main import main
+
+    lines = ["@SQ\tSN:chrY\tLN:4", "r1\t0\tchrY\t1\t60\t1M\t*\t0\t0\tA\tI"]
+    bam = sam_to_bam(lines, tmp_path / "tiny.bam")
+    out = tmp_path / "o"
+
+    def status(*input_args: str) -> dict:
+        main(["--json", "info", "calculate-coverage", "--status", *input_args])
+        return json.loads(capsys.readouterr().out)["details"]
+
+    assert status("--input", bam, "--outdir", str(out))["current"] is False
+    assert not out.exists()  # a status run makes nothing
+    run_wgsextract(
+        "info",
+        "calculate-coverage",
+        "--with-bins",
+        "--input",
+        bam,
+        "--outdir",
+        str(out),
+    )
+    capsys.readouterr()
+    details = status("--input", bam, "--outdir", str(out))
+    assert details["current"] is True
+    assert Path(details["coverage_bins"]) == out / "tiny.bam_coverage_bins.tsv"
+
+    later = Path(details["coverage"]).stat().st_mtime + 10
+    os.utime(bam, (later, later))  # the BAM changed after its reports
+    assert status("--input", bam, "--outdir", str(out))["current"] is False
+    # No BAM chosen yet, or one that isn't there: nothing is current.
+    assert status("--input", "")["current"] is False
+    assert status("--input", str(tmp_path / "missing.bam"))["current"] is False
+
+
+@pytest.mark.parametrize("extra", [["--bins"], ["--by", "targets.bed"], ["-r", "chrY"]])
+def test_status_is_refused_with_bins_by_or_region(tmp_path, extra):
+    from wgsextract_cli.core.utils import UsageError
+
+    with pytest.raises(UsageError, match="--status"):
+        run_wgsextract(
+            "info", "calculate-coverage", "--status", *extra, "--input", "x.bam"
+        )
+
+
 @pytest.mark.parametrize("extra", [["--bins"], ["--by", "targets.bed"]])
 def test_with_bins_is_refused_with_bins_or_by(tmp_path, extra):
     from wgsextract_cli.core.utils import UsageError

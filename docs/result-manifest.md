@@ -227,7 +227,7 @@ Other commands' metrics:
   its `read_groups`.
 - `qc fastp` records read counts before and after filtering, the Q30 rate and
   duplication rate; `qc fastqc` the module pass/warn/fail counts and total
-  sequences; `qc vcf` the `bcftools stats` totals (records, SNPs, indels,
+  sequences (`r2_`-prefixed for `--r2`); `qc vcf` the `bcftools stats` totals (records, SNPs, indels,
   ts/tv).
 - `analyze` reads each step's result document (the steps still print their
   tables and results) and includes the step's manifest (role

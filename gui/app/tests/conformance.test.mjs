@@ -240,8 +240,9 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
 
   const databaseTools = library.sections.find((section) => section.id === "databases-tools");
   assert.ok(databaseTools, "databases and tools section exists");
-  assert.equal(databaseTools.dataSource.path, "scripts/library-state.sh");
-  assert.deepEqual(databaseTools.dataSource.arguments, ["{{ref_path}}", "{{dataset_library}}"]);
+  assert.equal(databaseTools.dataSource.path, "scripts/run-wgsextract.sh");
+  assert.deepEqual(databaseTools.dataSource.arguments, ["ref", "status", "--values"]);
+  assert.deepEqual(databaseTools.dataSource.optionalArguments, [["--ref", "{{ref_path}}"], ["--dataset-library", "{{dataset_library}}"]]);
   assert.ok(databaseTools.actions.find((action) => action.id === "annotation-vcf-download"));
   assert.ok(databaseTools.actions.find((action) => action.id === "spliceai-download"));
   assert.ok(databaseTools.actions.find((action) => action.id === "alphamissense-download"));
@@ -357,8 +358,9 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   const annotate = bundle.manifest.pages
     .find((page) => page.id === "vcf")
     .sections.find((section) => section.id === "vcf-annotation");
-  assert.equal(annotate.dataSource.path, "scripts/library-state.sh");
-  assert.deepEqual(annotate.dataSource.arguments, ["{{ref_path}}", "{{dataset_library}}", "{{vcf_ann_vcf}}", "{{vcf_path}}"]);
+  assert.equal(annotate.dataSource.path, "scripts/run-wgsextract.sh");
+  assert.deepEqual(annotate.dataSource.arguments, ["ref", "status", "--values"]);
+  assert.deepEqual(annotate.dataSource.optionalArguments.slice(2), [["--annotation-vcf", "{{vcf_ann_vcf}}"], ["--input", "{{vcf_path}}"]]);
   const annotateAction = annotate.actions.find((action) => action.id === "vcf-annotate");
   const spliceaiAction = annotate.actions.find((action) => action.id === "vcf-spliceai");
   const alphamissenseAction = annotate.actions.find((action) => action.id === "vcf-alphamissense");
