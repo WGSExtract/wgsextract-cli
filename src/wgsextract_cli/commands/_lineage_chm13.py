@@ -23,6 +23,8 @@ from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 # ALT alleles that stand for "no other allele" in all-sites VCFs and gVCFs.
 _NO_ALT = {".", "<*>", "<NON_REF>", "<X>"}
+# Haplogrep 3 counts a VCF heteroplasmy only above this level (--hetLevel).
+_HET_LEVEL = 0.9
 
 
 def _rows(vcf: str, fields: str) -> list[list[str]]:
@@ -31,46 +33,98 @@ def _rows(vcf: str, fields: str) -> list[list[str]]:
     return [line.split("\t") for line in out.splitlines() if line]
 
 
-def _allele(gt: str) -> int | None:
-    """The allele a genotype gives the sample: its only one, or for a mixed
-    (heteroplasmic) call its ALT. None when it is a no-call."""
-    called = [int(a) for a in gt.replace("|", "/").split("/") if a.isdigit()]
-    if not called:
-        return None
-    return max(called, key=lambda a: (called.count(a), a))
+def _called(gt: str) -> list[int]:
+    """The alleles a genotype calls; empty for a no-call."""
+    return [int(a) for a in gt.replace("|", "/").split("/") if a.isdigit()]
+
+
+def _allele(called: list[int], af: str, alleles: int) -> tuple[int, bool]:
+    """The allele a call gives the sample, and whether it is the sample's own
+    rather than a pick from a mixture.
+
+    A mixed (heteroplasmic) call with levels (FORMAT/AF, as Mutect2 writes for
+    every call) is read as Haplogrep reads one: the allele above its het level,
+    or else the reference, since Haplogrep leaves the mixture out. Without
+    levels a mixture gives its ALT.
+    """
+    if len(set(called)) == 1:
+        return called[0], True
+    try:
+        levels = [float(level) for level in af.split(",")]
+    except ValueError:
+        levels = []
+    if len(levels) != alleles - 1:
+        return max(called, key=lambda a: (called.count(a), a)), False
+    levels.insert(0, 1 - sum(levels))
+    major = max(range(len(levels)), key=levels.__getitem__)
+    return (major, True) if levels[major] > _HET_LEVEL else (0, False)
+
+
+def _sample(vcf: str) -> str:
+    """The name of ``vcf``'s one sample; refuses multi-sample and sites-only
+    VCFs, whose calls can't be read as one person's sequence."""
+    samples = run_command(["bcftools", "query", "-l", vcf], capture_output=True)
+    names = samples.stdout.split()
+    if len(names) != 1:
+        raise WGSExtractError(
+            "Mapping CHM13 chrM calls onto the rCRS needs a single-sample VCF; "
+            f"this one has {len(names) or 'no'} samples."
+        )
+    return names[0]
+
+
+def _differing() -> dict[int, tuple[int, str, str]]:
+    """CHM13 positions whose base isn't the rCRS's (9631, rCRS 10208), as
+    ``chm13_to_rcrs`` gives them."""
+    return {q: v for q, v in chm13_to_rcrs().items() if v[1] != v[2]}
 
 
 def _sample_bases(vcf: str) -> tuple[dict[int, str], str]:
     """The bases the one sample of ``vcf`` has at each called CHM13 position,
     and its name.
 
-    Reference calls (``bcftools call`` without ``-v``, or gVCF blocks) cover
-    their span; a SNP or indel call replaces the bases it spans.
+    Every call covers its REF span (``bcftools call`` without ``-v``, gVCF
+    blocks, and the anchor or padding bases a variant record keeps); a SNP or
+    indel call then replaces the bases it changes. A mixture where CHM13 and
+    the rCRS differ, without an allele above Haplogrep's het level, is refused:
+    which allele the sample has there decides the rCRS variant, and a mixture
+    can't be restated as one.
     """
-    samples = run_command(["bcftools", "query", "-l", vcf], capture_output=True)
-    names = samples.stdout.split()
-    if len(names) != 1:
-        raise WGSExtractError(
-            "Mapping CHM13 chrM calls onto the rCRS needs a single-sample VCF; "
-            f"{vcf} has {len(names)} samples."
-        )
+    name = _sample(vcf)
     chm13 = pinned_sequences()[1]
+    differing = _differing()
     reference: dict[int, str] = {}
     changes: list[tuple[int, str, str]] = []
-    for pos, end, ref, alts, gt in _rows(vcf, "%POS\t%END\t%REF\t%ALT[\t%GT]\n"):
-        allele = _allele(gt)
+    header = run_command(["bcftools", "view", "-h", vcf], capture_output=True)
+    af = "[\t%AF]" if "##FORMAT=<ID=AF," in header.stdout else "\t."
+    for pos, end, ref, alts, gt, levels in _rows(
+        vcf, f"%POS\t%END\t%REF\t%ALT[\t%GT]{af}\n"
+    ):
+        called = _called(gt)
         alleles = [ref, *alts.split(",")]
-        if allele is None or allele >= len(alleles) or alleles[allele] in _NO_ALT:
-            continue
-        if alleles[allele].startswith("<"):  # a symbolic allele, such as <DEL>
+        if not called or max(called) >= len(alleles):
             continue
         start = int(pos)
-        if allele == 0:
-            for q in range(start, max(int(end), start + len(ref) - 1) + 1):
-                if 1 <= q <= len(chm13):
-                    reference[q] = chm13[q - 1]
-        else:
-            changes.append((start, ref.upper(), alleles[allele].upper()))
+        span = range(start, max(int(end), start + len(ref) - 1) + 1)
+        index, own = _allele(called, levels, len(alleles))
+        if not own and (sites := [q for q in span if q in differing]):
+            p, r, c = differing[sites[0]]
+            raise WGSExtractError(
+                f"The VCF has a mixed call ({gt}) at CHM13 chrM {sites[0]}, rCRS "
+                f"{p}, where CHM13 has {c} and the rCRS {r}, and no allele above "
+                f"Haplogrep's {_HET_LEVEL} heteroplasmy level: mapping it onto the "
+                "rCRS needs the one allele the sample has there. Call haploid "
+                "(`bcftools call --ploidy 1`), or use the BAM or CRAM."
+            )
+        allele = alleles[index]
+        # No other allele, a symbolic one (such as <DEL>), or a spanning deletion.
+        if allele in _NO_ALT or allele.startswith("<") or allele == "*":
+            continue
+        for q in span:
+            if 1 <= q <= len(chm13):
+                reference[q] = chm13[q - 1]
+        if index:
+            changes.append((start, ref.upper(), allele.upper()))
     bases = dict(reference)
     # SNPs first, so an indel that overlaps one decides the bases it spans.
     for start, ref, alt in sorted(changes, key=lambda c: len(c[1]) != len(c[2])):
@@ -90,16 +144,18 @@ def _sample_bases(vcf: str) -> tuple[dict[int, str], str]:
             bases[start] = alt
         for q in span:
             bases[q] = ""
-    return bases, names[0]
+    return bases, name
 
 
 def has_reference_calls(vcf: str) -> bool:
-    """Whether ``vcf`` calls sites as the reference (all sites or a gVCF), so
-    a position without a variant is known to match it."""
-    for alts, gt in _rows(vcf, "%ALT[\t%GT]\n"):
-        if alts in _NO_ALT or _allele(gt) == 0:
-            return True
-    return False
+    """Whether ``vcf`` has records calling sites as the reference alone (all
+    sites or a gVCF), so a position without a variant is known to match it.
+
+    Only records without a real ALT count: a 0/0 genotype on a real ALT can
+    come from a variants-only cohort subset or a DeepVariant RefCall.
+    """
+    _sample(vcf)
+    return any(set(row[0].split(",")) <= _NO_ALT for row in _rows(vcf, "%ALT\n"))
 
 
 def map_to_rcrs(vcf: str, chr_m: str, out: str) -> dict[int, str]:
@@ -189,11 +245,23 @@ def _contig(chr_m: str) -> str:
 
 def _flip(fields: list[str], rcrs_base: str, chm13_base: str) -> list[str] | None:
     """A mutserve call at a site where CHM13's base isn't the rCRS's, restated
-    against the rCRS base; None when the sample has only the rCRS base."""
-    if fields[4] != rcrs_base:
-        return fields  # a third allele: an rCRS variant all the same
+    against the rCRS base; None when the sample has only the rCRS base.
+
+    A mixture of CHM13's base and a third allele is refused: one rCRS record
+    with the same level would make CHM13's base the rCRS's, so haplocheck
+    would read the wrong major allele."""
     keys = fields[8].split(":")
     values = dict(zip(keys, fields[9].split(":"), strict=False))
+    if fields[4] != rcrs_base:
+        if len(set(_called(values.get("GT", "")))) < 2:
+            return fields  # a third allele alone: an rCRS variant all the same
+        raise WGSExtractError(
+            f"mutserve called a mixture of {chm13_base} and {fields[4]} at CHM13 "
+            f"chrM {fields[1]}, where the rCRS has {rcrs_base}; haplocheck's "
+            "rCRS VCF can't hold both levels against that base. Run "
+            "--contamination on an alignment to an rCRS reference (hg38 or "
+            "hs37d5), or without --contamination."
+        )
     if values.get("GT") == "1":
         return None
     values["GT"] = {"0/1": "1/0", "1/0": "0/1"}.get(values.get("GT", ""), "0/1")

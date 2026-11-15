@@ -515,11 +515,14 @@ def _mito_check(
         # The reference variants are called against outranks the header.
         sequence = _fasta_mito(fasta, chr_m)
         called_on = mito_origin(sequence) if sequence else None
-        if origin == CHM13_CHRM and called_on != CHM13_CHRM:
+        # Either way round, reads aligned to one chrM would be called against
+        # the other's positions.
+        if origin and origin != called_on and (called_on or origin == CHM13_CHRM):
+            actual = f"is {called_on}" if called_on else "isn't"
             return (
-                f"{chr_m} is {CHM13_CHRM} in the alignment's header, but the "
-                f"reference's ({fasta}) isn't. Pass the CHM13v2.0 reference it "
-                "was aligned to with --ref.",
+                f"{chr_m} is {origin} in the alignment's header, but the "
+                f"reference's ({fasta}) {actual}. Pass the reference it was "
+                "aligned to with --ref.",
                 None,
             )
         origin = called_on or origin

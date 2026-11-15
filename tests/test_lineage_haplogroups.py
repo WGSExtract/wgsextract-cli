@@ -23,6 +23,7 @@ from tests.htslib_helpers import (
     write_fasta,
 )
 from tests.yleaf_helpers import native_tables as native_tables
+from wgsextract_cli.api import CommandFailed
 from wgsextract_cli.commands._lineage_ydna import _yleaf_build
 from wgsextract_cli.core.mito_reference import (
     CHM13_CHRM_MD5,
@@ -969,6 +970,127 @@ def test_mt_haplogroup_contamination_needs_the_alignment_on_chm13_832(tmp_path):
     assert not (tmp_path / "calls.jsonl").exists()
 
 
+_CHM13_META = (
+    f"##contig=<ID=chrM,length=16569,md5={CHM13_CHRM_MD5}>\n"
+    '##INFO=<ID=END,Number=1,Type=Integer,Description="end">\n'
+)
+
+
+@pytest.mark.parametrize(
+    ("site", "af", "expected"),
+    [
+        (9631, "", None),
+        (9631, "0.5", None),
+        # Mutect2 writes 0/1 even for a homoplasmy; Haplogrep's level decides.
+        (9631, "0.99", []),
+        (9631, "0.05", [["10208", "T", "C"]]),
+        (174, "", [["750", "A", "G"]]),
+    ],
+)
+def test_mt_haplogroup_refuses_a_mixed_call_at_rcrs_10208_on_chm13_832(
+    tmp_path, site, af, expected
+):
+    """PR #927 review: a CHM13 0/1 9631 C>T read as T, so the sample's C
+    vanished at rCRS 10208. A mixture there is refused unless its level
+    (FORMAT/AF) puts one allele above Haplogrep's 0.9; one elsewhere still
+    reads as its ALT, as on an rCRS VCF."""
+    chm13 = pinned_sequences()[1]
+    alt = "T" if site == 9631 else "G"
+    fmt, level = ("GT:AF", f":{af}") if af else ("GT", "")
+    body = (
+        f"chrM\t{site - 1}\t.\t{chm13[site - 2]}\t.\t50\tPASS\t.\tGT\t0/0\n"
+        f"chrM\t{site}\t.\t{chm13[site - 1]}\t{alt}\t50\tPASS\t.\t{fmt}\t0/1{level}\n"
+    )
+    meta = _CHM13_META + '##FORMAT=<ID=AF,Number=A,Type=Float,Description="l">\n'
+    vcf = _vcf(tmp_path / "kit.vcf.gz", {}, body, meta)
+    if expected is None:
+        with pytest.raises(CommandFailed, match=r"mixed call.*rCRS 10208"):
+            _classify(vcf, tmp_path / "o", haplogrep_path=_haplogrep(tmp_path))
+        assert not (tmp_path / "calls.jsonl").exists()
+    else:
+        _classify(vcf, tmp_path / "o", haplogrep_path=_haplogrep(tmp_path))
+        (call,) = _calls(tmp_path)
+        assert [r[1:4] for r in call["records"]] == expected
+
+
+@pytest.mark.parametrize("alt", ["CA", "C"])
+def test_mt_haplogroup_keeps_the_anchor_of_a_chm13_gvcf_record_832(tmp_path, alt):
+    """PR #927 review: a gVCF's 9631 CT>CA (or CT>C) keeps CHM13's C at
+    9631, but with no reference block over it that C was dropped, and with it
+    rCRS 10208C."""
+    chm13 = pinned_sequences()[1]
+    assert chm13[9630:9632] == "CT"
+    body = (
+        f"chrM\t1\t.\t{chm13[0]}\t<NON_REF>\t.\tPASS\tEND=100\tGT\t0/0\n"
+        f"chrM\t9631\t.\tCT\t{alt},<NON_REF>\t50\tPASS\t.\tGT\t1/1\n"
+    )
+    vcf = _vcf(tmp_path / "kit.vcf.gz", {}, body, _CHM13_META)
+    _classify(vcf, tmp_path / "o", haplogrep_path=_haplogrep(tmp_path))
+    (call,) = _calls(tmp_path)
+    assert ["10208", "T", "C"] in [r[1:4] for r in call["records"]]
+    if alt == "CA":
+        assert ["10209", "T", "A"] in [r[1:4] for r in call["records"]]
+
+
+def _chm13_vcf(path: Path, samples: list[str], refcall: str) -> str:
+    """A CHM13 chrM VCF of ``samples`` with 750G (at CHM13 174) and a 9631
+    C>T row each sample calls ``refcall``; sites only without samples."""
+    chm13 = pinned_sequences()[1]
+    rows = [(174, chm13[173], "G", "1"), (9631, "C", "T", refcall)]
+    header = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO"
+    if samples:
+        header += "\tFORMAT\t" + "\t".join(samples)
+    body = "".join(
+        f"chrM\t{pos}\t.\t{ref}\t{alt}\t50\tPASS\t."
+        + ("\tGT" + f"\t{gt}" * len(samples) if samples else "")
+        + "\n"
+        for pos, ref, alt, gt in rows
+    )
+    plain = path.with_suffix("")
+    plain.write_text(
+        "##fileformat=VCFv4.2\n" + _CHM13_META
+        + '##FORMAT=<ID=GT,Number=1,Type=String,Description="g">\n'
+        + header + "\n" + body
+    )  # fmt: skip
+    return bgzip_index(plain, path)
+
+
+@pytest.mark.parametrize(
+    ("shape", "error"),
+    [
+        ("RefCall", "variants only"),
+        ("two samples", "single-sample VCF.*has 2 samples"),
+        ("sites only", "single-sample VCF.*has no samples"),
+    ],
+)
+def test_mt_haplogroup_needs_reference_only_records_on_chm13_832(
+    tmp_path, shape, error
+):
+    """PR #927 review: a 0/0 on a real ALT (a DeepVariant RefCall, a cohort
+    subset) passed for all-sites calls and dropped 10208C; multi-sample and
+    sites-only VCFs crashed unpacking genotypes."""
+    samples = {"RefCall": ["kit"], "two samples": ["kit", "mum"], "sites only": []}
+    vcf = _chm13_vcf(tmp_path / "kit.vcf.gz", samples[shape], "0/0")
+    with pytest.raises(CommandFailed, match=error):
+        _classify(vcf, tmp_path / "o", haplogrep_path=_haplogrep(tmp_path))
+    assert not (tmp_path / "calls.jsonl").exists()
+
+
+def test_mt_haplogroup_refuses_an_rcrs_header_on_a_chm13_reference_832(tmp_path):
+    """PR #927 review: an alignment whose header gives the rCRS's M5, run with
+    a CHM13 --ref, was called against CHM13 and mapped as if aligned to it."""
+    chm13 = pinned_sequences()[1]
+    bam, ref = _mito_on(tmp_path, chm13, m5=RCRS_MD5)
+    with pytest.raises(WGSExtractError) as error:
+        run_wgsextract(
+            "lineage", "mt-haplogroup", "--input", bam, "--ref", str(ref),
+            "--haplogrep-path", _haplogrep(tmp_path),
+        )  # fmt: skip
+    assert "rCRS in the alignment's header" in str(error.value)
+    assert "CHM13v2.0's chrM" in str(error.value) and "--ref" in str(error.value)
+    assert not (tmp_path / "calls.jsonl").exists()
+
+
 @pytest.mark.parametrize(
     ("ref", "md5"), [("A", ""), ("A", "0" * 32), ("C", ""), ("A", RCRS_MD5)]
 )
@@ -1189,3 +1311,25 @@ def test_contamination_check_maps_chm13_heteroplasmies_onto_rcrs_832(
         (tmp_path / "o" / "haplocheck_contamination.raw.txt").open(), delimiter="\t"
     )
     assert row["Overall Homoplasmies"] == "2"  # 750G and 10208C
+
+
+@needs_haplogrep3
+@needs_tools("haplocheck")
+def test_contamination_check_refuses_a_third_allele_mixture_at_10208_832(
+    tmp_path, mini_tree
+):
+    """PR #927 review: mutserve's CHM13 9631 C>A at 10% became rCRS 10208
+    T>A at 10%, so haplocheck read 90% T where the sample has 90% C."""
+    chm13 = pinned_sequences()[1]
+    ref = write_fasta(tmp_path / "ref.fa", {"chrM": chm13})
+    reads = _reads("chrM", chm13, 90, start=9600)
+    mixed = _reads("chrM", chm13, 10, start=9600, snp=9630, alt="A")
+    reads += [read.replace("chrM_", "mixed_", 1) for read in mixed]
+    # mutserve calls a heteroplasmy only when both strands carry it.
+    reads = [
+        r.replace("\t0\t", "\t16\t", 1) if i % 2 else r for i, r in enumerate(reads)
+    ]
+    bam = sam_to_bam([f"@SQ\tSN:chrM\tLN:{len(chm13)}", *reads], tmp_path / "k.bam")
+    with pytest.raises(CommandFailed, match=r"mixture of C and A.*rCRS has T"):
+        _classify(bam, tmp_path / "o", ref=ref, contamination=True)
+    assert not (tmp_path / "o" / "haplocheck_contamination.raw.txt").exists()
