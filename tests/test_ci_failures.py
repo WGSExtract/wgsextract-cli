@@ -343,17 +343,25 @@ def test_lost_before_first_step_is_retried_once_and_audited() -> None:
     assert api.retried == [job["id"]]
 
 
-def test_failed_required_gate_does_not_block_lost_runner_retry() -> None:
-    # Merge queue (#758) review: the `required` summary fails with a lost
-    # dependency; the automatic retry must still rerun the lost job.
+@pytest.mark.parametrize(
+    "summaries", [("required",), ("required", "Ready PR area checks")]
+)
+def test_949_failed_summary_gates_do_not_block_lost_runner_retry(
+    summaries: tuple[str, ...],
+) -> None:
     api = ReplayGitHub()
     api.run.update(
         name="PR area checks / synchronize / ready",
         path=".github/workflows/pr_ci.yml",
     )
     lost = recorded("lost_runner")
-    gate = dict(recorded("test_failure"), id=lost["id"] + 1, name="required")
-    api.jobs[1] = [lost, gate]
+    api.jobs[1] = [
+        lost,
+        *[
+            dict(recorded("test_failure"), id=lost["id"] + index, name=name)
+            for index, name in enumerate(summaries, 1)
+        ],
+    ]
     api.run["conclusion"] = "failure"
     Observer(api).process(api.run)
     assert api.retried == [lost["id"]]
