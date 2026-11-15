@@ -270,6 +270,8 @@ def cmd_library(args: argparse.Namespace) -> None:
     """Interactive or non-interactive library manager."""
     if args.list:
         return cmd_library_list(args)
+    if getattr(args, "remote_sizes", False):
+        raise UsageError("--remote-sizes goes with --list.")
     if args.install:
         return _cli_library(args)
 

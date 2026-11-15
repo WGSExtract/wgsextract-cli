@@ -1960,12 +1960,22 @@ each mirror that hosts it.
 
 CLI: `wgsextract ref library --list`.
 
-List the library. `details` has `library`, `genomes` (`code`,
-`label`, `file`, `status`, `size`, and whether its `n_counts` and
-a `vep_cache` for its assembly are in the library) and
-`resources` (`gene_maps`, then per build `clinvar`, `revel`,
-`phylop` and `gnomad`, each true when installed); `text` is the
-CLI's table.
+List the library. `details` has `library`, `genomes_dir` (the
+folder its genomes are in), `genomes` and `resources`.
+
+Each of `genomes`, in catalog order, has the catalog's `code`,
+`label`, `source` (the mirror), `file` (the name in `genomes_dir`),
+`url`, `description`, `sn_count` (sequences in the FASTA) and
+`build` (`hg19`, `hg38`, `t2t` or null), then its `status`
+(`installed` with its `.fai`, `unindexed`, `incomplete` (a
+`.partial` download) or `missing`), `size_bytes` (the FASTA or
+partial download with its `.fai`, `.gzi` and `.dict`; 0 when none)
+and `size` (the same, as text), `remote_bytes` (the download size, or
+null when not known: cached, or looked up with `remote_sizes`), and
+whether its `n_counts` and a `vep_cache` for its assembly are in the
+library. `resources` has `gene_maps`, then per build `clinvar`,
+`revel`, `phylop` and `gnomad`, each true when installed. `text`
+is the CLI's table.
 
 `RefLibraryListParams`: List the catalog's genomes with their status in the library (installed,
 unindexed, incomplete or missing), size, N counts and VEP cache, then the
@@ -1974,6 +1984,7 @@ gene maps and annotation data it holds.
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference library folder, or a FASTA in it (default: config reference_fasta's library, else reference_library, else the default library). |
+| `remote_sizes` | `bool` | `False` | `--remote-sizes` | Look up the download size of each genome whose size isn't cached (HTTP HEAD or FTP SIZE, ~8 s at most) and save it in the library's cache for 30 days. |
 
 ### `api.ref.status(RefStatusParams)`
 

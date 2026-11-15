@@ -3,11 +3,18 @@
 import gzip
 import hashlib
 import io
+import json
 import logging
 import random
+import socket
+import socketserver
 import sys
+import threading
+import time
 import zipfile
 from argparse import Namespace
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -48,6 +55,7 @@ from wgsextract_cli.core.annotation_resources import (
 from wgsextract_cli.core.bigwig_resources import GERP_URLS, PHYLOP_URLS
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.gene_map import GENE_MAP_URLS
+from wgsextract_cli.core.ref_library import remote_sizes
 from wgsextract_cli.core.reference_assets import (
     read_fai_lengths,
     reference_dict_path,
@@ -376,15 +384,25 @@ def test_api_library_list_gives_the_listing_as_details_and_text(
     details = result.details
     assert details["library"] == str(lib)
     by_code = {g["code"]: g for g in details["genomes"]}
+    assert details["genomes_dir"] == str(lib / "genomes")
     assert by_code["hg38"] == {
         "code": "hg38",
         "label": "hg38 (YSEQ)",
+        "source": None,
         "file": "hg38.fa.gz",
+        "url": None,
+        "description": "",
+        "sn_count": None,
+        "build": "hg38",
         "status": "installed",
+        "size_bytes": 2 * 1024 * 1024 + len("chr1\t1\n"),
         "size": "2.0 MiB",
+        "remote_bytes": None,
         "n_counts": True,
         "vep_cache": True,
     }
+    # #825: a partial download's bytes count, so the GUI can show progress.
+    assert by_code["hs37d5"]["size_bytes"] == 1
     assert (by_code["hs37d5"]["status"], by_code["hs37d5"]["vep_cache"]) == (
         "incomplete",
         False,
@@ -434,6 +452,105 @@ def test_library_list_defaults_to_the_configured_fastas_library(
     assert result.details["library"] == str(other.parent)
     assert f"REFERENCE LIBRARY: {other.parent}" in result.text
     assert _rows(result.text)["hg38 (YSEQ)"] == ["UNINDEXED", "1 B"]
+
+
+@contextmanager
+def _ftp_serving(sizes: dict[str, int]) -> Iterator[str]:
+    """An anonymous FTP server that answers SIZE for ``sizes``' paths."""
+
+    class Handler(socketserver.StreamRequestHandler):
+        def handle(self) -> None:
+            self.wfile.write(b"220 ready\r\n")
+            for line in self.rfile:
+                command, _, arg = line.decode().strip().partition(" ")
+                command = command.upper()
+                replies = {"USER": "331 ok", "PASS": "230 ok", "TYPE": "200 ok"}
+                reply = replies.get(command, "221 bye" if command == "QUIT" else "502")
+                if command == "SIZE":
+                    reply = f"213 {sizes[arg]}" if arg in sizes else "550 none"
+                self.wfile.write(f"{reply}\r\n".encode())
+                if command == "QUIT":
+                    return
+
+    server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, args=(0.01,), daemon=True).start()
+    try:
+        yield f"ftp://127.0.0.1:{server.server_address[1]}"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def _catalog(monkeypatch, urls: dict[str, str]) -> None:
+    genomes = [
+        {"code": code, "source": "Test", "final": f"{code}.fa.gz", "url": url,
+         "label": code}
+        for code, url in urls.items()
+    ]  # fmt: skip
+    monkeypatch.setattr(core_commands, "get_available_genomes", lambda: genomes)
+
+
+def _remote_bytes(result) -> dict[str, int | None]:
+    return {g["code"]: g["remote_bytes"] for g in result.details["genomes"]}
+
+
+def test_library_list_looks_up_download_sizes_once_and_reports_them_offline(
+    tmp_path, monkeypatch
+):
+    # #825: the GUI's catalog script probed download sizes (HTTP HEAD, FTP
+    # SIZE) and cached them in the library; ref library --list does now.
+    with (
+        serving(data=None, files={"a.fa.gz": b"x" * 1000}) as http,
+        _ftp_serving({"/pub/b.fa.gz": 4321}) as ftp,
+    ):
+        _catalog(
+            monkeypatch,
+            {
+                "a": http.url_for("a.fa.gz"),
+                "b": f"{ftp}/pub/b.fa.gz",
+                "gone": http.url_for("gone.fa.gz"),
+            },
+        )
+        params = RefLibraryListParams(ref=tmp_path, remote_sizes=True)
+        sizes = _remote_bytes(api.ref.library_list(params))
+        assert sizes == {"a": 1000, "b": 4321, "gone": None}
+        asked = len(http.requests)
+        assert _remote_bytes(api.ref.library_list(params)) == sizes
+        assert len(http.requests) == asked + 1  # only the unknown size again
+
+    offline = api.ref.library_list(RefLibraryListParams(ref=tmp_path))
+    assert _remote_bytes(offline) == sizes
+    assert _rows(offline.text)["a"] == ["MISSING", "", "download 1000 B"]
+
+
+def test_download_sizes_give_up_on_a_server_that_never_answers(tmp_path, monkeypatch):
+    # #825: a stalled network must not stall the listing or cache a guess.
+    monkeypatch.setattr(remote_sizes, "PROBE_TIMEOUT", 0.2)
+    monkeypatch.setattr(remote_sizes, "BUDGET_SECONDS", 0.5)
+    with socket.create_server(("127.0.0.1", 0)) as silent:
+        port = silent.getsockname()[1]
+        _catalog(monkeypatch, {"a": f"http://127.0.0.1:{port}/a.fa.gz"})
+        start = time.monotonic()
+        result = api.ref.library_list(
+            RefLibraryListParams(ref=tmp_path, remote_sizes=True)
+        )
+        assert time.monotonic() - start < 3
+    assert _remote_bytes(result) == {"a": None}
+    assert not (tmp_path / remote_sizes.CACHE_FILE).exists()
+
+
+def test_ref_library_remote_sizes_flag_goes_with_list(tmp_path, monkeypatch, capsys):
+    with serving(data=None, files={"a.fa.gz": b"x" * 10}) as http:
+        _catalog(monkeypatch, {"a": http.url_for("a.fa.gz")})
+        main(["--json", "ref", "library", "--list", "--remote-sizes",
+              "--ref", str(tmp_path)])  # fmt: skip
+    details = json.loads(capsys.readouterr().out)["details"]
+    assert [g["remote_bytes"] for g in details["genomes"]] == [10]
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["ref", "library", "--remote-sizes", "--ref", str(tmp_path)])
+    assert exit_info.value.code == 2
+    assert "--remote-sizes goes with --list" in capsys.readouterr().err
 
 
 # --- ref library --install / interactive menu -----------------------------------

@@ -25758,7 +25758,7 @@
    }
   },
   "ref library": {
-   "help": "usage: wgsextract ref library [-h] [--install INSTALL] [--list]\n\noptions:\n  -h, --help         show this help message and exit\n  --install INSTALL  Non-interactively install a genome by its code (e.g., hs38) or index (e.g.,\n                     9).\n  --list             Non-interactively list all available genomes and their status.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref library --list\n  wgsextract ref library --install hs38\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): the chosen reference genome and its\n  indexes.\n\nneeds:\n  bcftools, bgzip, curl, htsfile, samtools, tabix; depends on download speed.\n",
+   "help": "usage: wgsextract ref library [-h] [--install INSTALL] [--list] [--remote-sizes]\n\noptions:\n  -h, --help         show this help message and exit\n  --install INSTALL  Non-interactively install a genome by its code (e.g., hs38) or index (e.g.,\n                     9).\n  --list             Non-interactively list all available genomes and their status.\n  --remote-sizes     Look up download sizes online (cached 30 days; at most ~8 s).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref library --list\n  wgsextract ref library --install hs38\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): the chosen reference genome and its\n  indexes.\n\nneeds:\n  bcftools, bgzip, curl, htsfile, samtools, tabix; depends on download speed.\n",
    "parser": {
     "actions": [
      {
@@ -26068,6 +26068,22 @@
       "nargs": 0,
       "option_strings": [
        "--list"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "remote_sizes",
+      "exclusive_group": null,
+      "help": "Look up download sizes online (cached 30 days; at most ~8 s).",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--remote-sizes"
       ],
       "required": false,
       "type": null
@@ -49672,6 +49688,7 @@
    "quiet": false,
    "ref": "lib",
    "ref_cmd": "library",
+   "remote_sizes": false,
    "threads": null,
    "tmp_dir": null
   },
@@ -49699,6 +49716,7 @@
    "quiet": false,
    "ref": null,
    "ref_cmd": "library",
+   "remote_sizes": false,
    "threads": null,
    "tmp_dir": null
   },

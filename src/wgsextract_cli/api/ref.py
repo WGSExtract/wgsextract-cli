@@ -366,6 +366,16 @@ class RefLibraryListParams(_InLibrary, Params):
         shared=True,
         config_key="reference_fasta",
     )
+    remote_sizes: bool = param(
+        False,
+        help="Look up download sizes online (cached 30 days; at most ~8 s).",
+        flags=("--remote-sizes",),
+        action="store_true",
+        doc="Look up the download size of each genome whose size isn't cached "
+        "(HTTP HEAD or FTP SIZE, ~8 s at most) and save it in the library's "
+        "cache for 30 days.",
+        writes=True,
+    )
 
     def implied_paths(self) -> Iterator[tuple[str, Path]]:
         from ._params import with_config_defaults
@@ -380,7 +390,8 @@ class RefLibraryListParams(_InLibrary, Params):
             yield "ref", self.library()
 
     def write_folders(self) -> Iterator[Path]:
-        return iter(())
+        # --remote-sizes caches the sizes it finds in the library.
+        return iter([self.library()] if self.remote_sizes else [])
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -740,12 +751,22 @@ def library_list(
     cancel: CancelToken | None = None,
     check: bool = True,
 ) -> CommandResult:
-    """List the library. ``details`` has ``library``, ``genomes`` (``code``,
-    ``label``, ``file``, ``status``, ``size``, and whether its ``n_counts`` and
-    a ``vep_cache`` for its assembly are in the library) and
-    ``resources`` (``gene_maps``, then per build ``clinvar``, ``revel``,
-    ``phylop`` and ``gnomad``, each true when installed); ``text`` is the
-    CLI's table."""
+    """List the library. ``details`` has ``library``, ``genomes_dir`` (the
+    folder its genomes are in), ``genomes`` and ``resources``.
+
+    Each of ``genomes``, in catalog order, has the catalog's ``code``,
+    ``label``, ``source`` (the mirror), ``file`` (the name in ``genomes_dir``),
+    ``url``, ``description``, ``sn_count`` (sequences in the FASTA) and
+    ``build`` (``hg19``, ``hg38``, ``t2t`` or null), then its ``status``
+    (``installed`` with its ``.fai``, ``unindexed``, ``incomplete`` (a
+    ``.partial`` download) or ``missing``), ``size_bytes`` (the FASTA or
+    partial download with its ``.fai``, ``.gzi`` and ``.dict``; 0 when none)
+    and ``size`` (the same, as text), ``remote_bytes`` (the download size, or
+    null when not known: cached, or looked up with ``remote_sizes``), and
+    whether its ``n_counts`` and a ``vep_cache`` for its assembly are in the
+    library. ``resources`` has ``gene_maps``, then per build ``clinvar``,
+    ``revel``, ``phylop`` and ``gnomad``, each true when installed. ``text``
+    is the CLI's table."""
     from wgsextract_cli.commands.ref.core_commands import run_library_list
 
     return execute(

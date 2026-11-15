@@ -1309,6 +1309,18 @@ def test_ref_library_list_is_a_query_with_the_listing_as_details(client, work):
     details = job["result"]["details"]
     assert details["library"] == str(work)
     assert {g["code"]: g["status"] for g in details["genomes"]}["hs38"] == ("unindexed")
+    assert details["genomes_dir"] == str(work / "genomes")
+    assert {g["code"]: g["size_bytes"] for g in details["genomes"]}["hs38"] == 1
+
+
+def test_read_only_library_list_cannot_look_up_download_sizes():
+    # #825: remote_sizes writes the library's size cache, so read-only MCP
+    # refuses it.
+    op = find("ref/library-list")
+    assert "remote_sizes" not in op.schema(read_only=True)["properties"]
+    with pytest.raises(RequestError) as refused:
+        params_from_json(op, {"remote_sizes": True}, read_only=True)
+    assert refused.value.code == "read_only"
 
 
 def test_ref_library_requests_must_name_a_genome():
