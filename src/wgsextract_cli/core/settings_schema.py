@@ -185,6 +185,12 @@ class Settings:
         choices=AUTO_OFF,
         fold_case=True,
     )
+    output_profile: str = setting(
+        "default",
+        "`align`/`realign`: default keeps --format; archive selects lossless "
+        "CRAM 3.1 (GATK 4.7+); calling selects compatible CRAM 3.0",
+        choices=("default", "archive", "calling"),
+    )
     prefer_native_gpu: bool = setting(
         False,
         "`align`/`realign`: prefer wgse-bwa's native GPU even above the RAM "

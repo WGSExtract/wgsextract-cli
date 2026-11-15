@@ -12,13 +12,14 @@ from them, say); elsewhere only to the file it was measured on.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Final
 
 from wgsextract_cli.core import sample_workspace
 from wgsextract_cli.core.config import typed_settings
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.results import current_result, warn
 
-FACT = "contamination"
+FACT: Final = "contamination"
 GUIDE = "docs/contamination.md"
 WARNING = "sample_contamination"
 
@@ -50,7 +51,7 @@ def contaminated(file: PathInput | None) -> float | None:
     ``qc_max_contamination``, else None."""
     threshold = max_contamination()
     fact = sample_contamination(file)
-    if fact is None or not threshold:
+    if fact is None or not threshold or not isinstance(fact.value, (str, int, float)):
         return None
     try:
         value = float(fact.value)

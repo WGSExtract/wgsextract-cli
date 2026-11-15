@@ -226,16 +226,21 @@ def vcf_index_chromosomes(vcf_path: PathInput) -> list[str]:
     ]
 
 
-def vcf_chromosomes(vcf_path: PathInput) -> list[str]:
-    """All declared and indexed contigs, including those without records."""
-    declared = [
+def vcf_header_chromosomes(header: str) -> list[str]:
+    """Declared contig IDs, whether or not their lengths are known."""
+    return [
         match.group(1)
         for match in re.finditer(
             r"^##contig=<.*?\bID=([^,>]+)",
-            get_bam_header(vcf_path),
+            header,
             re.MULTILINE,
         )
     ]
+
+
+def vcf_chromosomes(vcf_path: PathInput) -> list[str]:
+    """All declared and indexed contigs, including those without records."""
+    declared = vcf_header_chromosomes(get_bam_header(vcf_path))
     return list(dict.fromkeys([*declared, *vcf_index_chromosomes(vcf_path)]))
 
 

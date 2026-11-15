@@ -15,6 +15,60 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.mark.parametrize(
+    "compiler",
+    ["usr/bin/clang", "Toolchains/XcodeDefault.xctoolchain/usr/bin/clang", None],
+    ids=["command-line-tools", "full-xcode", "missing-compiler"],
+)
+def test_issue_801_macos_preflight_does_not_initialize_developer_state(
+    tmp_path: Path,
+    compiler: str | None,
+) -> None:
+    developer = tmp_path / "selected developer"
+    if compiler:
+        clang = developer / compiler
+        clang.parent.mkdir(parents=True)
+        clang.write_text("#!/bin/sh\nexit 0\n")
+        clang.chmod(0o755)
+    home = tmp_path / "home"
+    home.mkdir()
+    select = tmp_path / "xcode-select"
+    select.write_text(f"#!/bin/sh\nprintf '%s\\n' '{developer}'\n")
+    select.chmod(0o755)
+    xcrun = tmp_path / "xcrun"
+    xcrun.write_text('#!/bin/sh\nmkdir -p "$HOME/Library/Developer/CoreSimulator"\n')
+    xcrun.chmod(0o755)
+    source = (ROOT / "install.sh").read_text()
+    preflight = source.split("verify_xcode_command_line_tools() {", 1)[1].split(
+        "\nresolve_latest_release_tag()", 1
+    )[0]
+    preflight = preflight.replace("/usr/bin/xcode-select", f"'{select}'").replace(
+        "/usr/bin/xcrun", f"'{xcrun}'"
+    )
+
+    result = subprocess.run(
+        [
+            str(SH),
+            "-c",
+            "log() { printf '%s\\n' \"$*\"; }\nOS_NAME=Darwin\n"
+            "verify_xcode_command_line_tools() {"
+            + preflight
+            + "\nverify_xcode_command_line_tools",
+        ],
+        env={**os.environ, "HOME": str(home)},
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == (0 if compiler else 1), result.stderr
+    assert not list(home.iterdir())
+    if compiler:
+        assert str(developer) in result.stdout
+    else:
+        assert "clang is not available" in result.stderr
+
+
 @pytest.mark.parametrize("architecture", ["aarch64", "arm64"])
 @pytest.mark.parametrize(
     "parent_path", [True, False], ids=["with-path", "without-path"]

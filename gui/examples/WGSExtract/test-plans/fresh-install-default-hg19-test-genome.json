@@ -50,7 +50,7 @@
         }
       },
       "requiredOutput": [
-        "WGS Extract hg19 mini benchmark genome"
+        "Test genome: installed"
       ],
       "timeoutSeconds": 1800
     },

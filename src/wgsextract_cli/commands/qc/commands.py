@@ -137,13 +137,15 @@ def _fastp_summary(report: str) -> dict[str, int | float]:
 
 def run_fastqc(params: FastqcParams) -> None:
     input_path = fspath(params.input)
+    r2 = fspath(params.r2) if params.r2 else None
 
     from wgsextract_cli.core.variant_files import verify_paths_exist
 
-    verify_paths_exist({"--input": input_path})
-
-    verify_dependencies(["fastqc"])
-    log_dependency_info(["fastqc"])
+    verify_paths_exist({"--input": input_path, **({"--r2": r2} if r2 else {})})
+    multiqc = bool(r2 and params.multiqc)
+    tools = ["fastqc", *(["multiqc"] if multiqc else [])]
+    verify_dependencies(tools)
+    log_dependency_info(tools)
 
     threads, _ = get_resource_defaults(params.threads, None)
     outdir = (
@@ -156,6 +158,19 @@ def run_fastqc(params: FastqcParams) -> None:
     logging.debug(f"Output directory: {str(absolute_path(outdir))}")
     Path(outdir).mkdir(parents=True, exist_ok=True)
 
+    current_result().add_metrics(**_fastqc_report(input_path, outdir, threads))
+    if r2:
+        current_result().add_input(r2, "fastq_r2")
+        summary = _fastqc_report(r2, outdir, threads)
+        current_result().add_metrics(**{f"r2_{k}": v for k, v in summary.items()})
+    if multiqc:
+        _multiqc_report(
+            MultiqcParams(input=Path(outdir), outdir=Path(outdir), force=True)
+        )
+
+
+def _fastqc_report(input_path: str, outdir: str, threads: str) -> dict[str, int]:
+    """Run FastQC on one file into outdir; its summary metrics."""
     logging.info(LOG_MESSAGES["running_fastqc"].format(input=input_path))
     stem = fastqc_stem(input_path)
     names = (stem + ".html", stem + ".zip")
@@ -183,13 +198,13 @@ def run_fastqc(params: FastqcParams) -> None:
     result.add_output(report_html, "fastqc_report_html")
     result.add_output(report_zip, "fastqc_report_zip")
     summary = _fastqc_summary(report_zip)
-    result.add_metrics(**summary)
     if summary.get("total_sequences") == 0:
         warn(
             "no_reads",
             f"{input_path} has no reads, so the FastQC report is empty.",
             path=input_path,
         )
+    return summary
 
 
 def fastqc_stem(path: str) -> str:
@@ -276,6 +291,12 @@ def run_multiqc_metrics(params: MultiqcMetricsParams) -> None:
 
 
 def run_multiqc(params: MultiqcParams) -> None:
+    current_result().add_metrics(manifests=_multiqc_report(params))
+
+
+def _multiqc_report(params: MultiqcParams) -> int:
+    """Write the report (output role ``multiqc_report``); the number of result
+    manifests it shows."""
     source = absolute_path(params.input)
     if not source.is_file() and not source.is_dir():
         raise WGSExtractError(
@@ -355,10 +376,9 @@ def run_multiqc(params: MultiqcParams) -> None:
                     ) from e
     except (OSError, subprocess.SubprocessError) as e:
         raise WGSExtractError(f"MultiQC failed: {e}") from e
-    result = current_result()
-    result.add_output(report, "multiqc_report")
-    result.add_metrics(manifests=len(documents))
+    current_result().add_output(report, "multiqc_report")
     logging.info("MultiQC report: %s", report)
+    return len(documents)
 
 
 def run_vcf_qc(params: QcVcfParams) -> None:

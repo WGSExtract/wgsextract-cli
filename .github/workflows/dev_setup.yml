@@ -15,13 +15,14 @@ on:
       - pixi.lock
       - .pre-commit-config.yaml
       - .github/workflows/dev_setup.yml
+      - "!**/*.md"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
   cancel-in-progress: true
 
 jobs:

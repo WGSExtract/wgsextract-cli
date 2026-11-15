@@ -35,7 +35,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: macos-deepvariant-${{ github.event_name }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}
+  group: macos-deepvariant-${{ github.event_name }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
   # Nightly and release dispatches must not compete with main pushes.
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 }}
 
@@ -83,6 +83,11 @@ jobs:
       - name: Install the smoke test's samtools
         run: brew install samtools
 
+      - uses: ./.github/actions/compiler-cache
+        with:
+          scope: deepvariant-metal
+          recipe: ${{ hashFiles('native/deepvariant/**/CMakeLists.txt', '.github/workflows/macos_deepvariant.yml') }}
+
       - name: Build
         run: |
           cmake -S native/deepvariant -B out/build -DCMAKE_BUILD_TYPE=Release
@@ -118,6 +123,12 @@ jobs:
           name: macos-deepvariant
           path: out/packages/*.tar.gz
           if-no-files-found: error
+
+      - uses: ./.github/actions/compiler-cache
+        with:
+          phase: save
+          scope: deepvariant-metal
+          recipe: ${{ hashFiles('native/deepvariant/**/CMakeLists.txt', '.github/workflows/macos_deepvariant.yml') }}
 
   publish:
     if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''

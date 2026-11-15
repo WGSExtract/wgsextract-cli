@@ -50,8 +50,11 @@
           "title": "actions.fastq.fastq-inputs.fastqc.title",
           "tooltip": "actions.fastq.fastq-inputs.fastqc.tooltip",
           "command": {
-            "executable": "{{bundleRoot}}/scripts/fastqc-reads.sh",
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
+              "qc",
+              "fastqc",
+              "--input",
               "{{fastq_r1}}"
             ],
             "optionalArguments": [

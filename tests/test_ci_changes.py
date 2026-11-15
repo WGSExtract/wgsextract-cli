@@ -13,6 +13,7 @@ import pytest
 
 from scripts import pr_checks_ready
 from scripts.ci_changes import routes, site_validation
+from scripts.ci_select_tests import ci_path, select_tests
 from scripts.ci_test_dependencies import (
     DOCS_ONLY_SCRIPTS,
     DOCS_TEST_TARGETS,
@@ -39,7 +40,7 @@ from scripts.pr_checks_ready import checks_ready, latest_ready_run
         (["src/wgsextract_cli/commands/info.py"], {"cli"}),
         (["pixi.lock"], {"cli", "install"}),
         (["scripts/installlab/lab.py"], {"cli", "install"}),
-        ([".github/actions/download-cache/action.yml"], {"cli", "install"}),
+        ([".github/actions/download-cache/action.yml"], {"docs"}),
         (["install.sh"], {"cli", "install"}),
         (["uninstall.sh"], {"cli", "install"}),
         (["uninstall_windows.bat"], {"cli", "install"}),
@@ -88,6 +89,18 @@ def test_757_install_lab_label_does_not_repeat_the_cli_matrix() -> None:
         "draft_cli": "false",
         "python_files": "[]",
         "routed": "true",
+        "tests": "[]",
+        "ci": "false",
+        "ci_tests": "[]",
+        "generic_tests": "[]",
+        "ubuntu_tests": "[]",
+        "macos_tests": "[]",
+        "windows_tests": "[]",
+        "arm64_tests": "[]",
+        "ubuntu_smoke": "false",
+        "macos_smoke": "false",
+        "windows_smoke": "false",
+        "arm64_smoke": "false",
     }
 
 
@@ -137,10 +150,24 @@ def test_757_reviewed_test_inputs_never_bypass_pytest(path: str) -> None:
 
 def test_757_every_test_referenced_input_selects_pytest() -> None:
     for path, readers in referenced_inputs().items():
+        if ci_path(path):
+            assert not routes([path])["cli"], path
+            selected_tests = select_tests([path])
+            actual_readers = {
+                reader for reader in readers if Path(reader).name.startswith("test_")
+            }
+            assert selected_tests == "all" or actual_readers <= set(selected_tests), (
+                path
+            )
+            continue
         readers = readers - {
             "tests/test_ci_changes.py",
+            "tests/test_ci_selection.py",
             "tests/test_github_actions_policy.py",
         }
+        readers = frozenset(
+            reader for reader in readers if Path(reader).name.startswith("test_")
+        )
         if not readers:
             continue
         if path.endswith(".md") and path not in GENERATED_DOCS:
@@ -308,8 +335,12 @@ def test_913_light_checks_run_only_for_their_own_inputs(
     path: str, targets: list[str]
 ) -> None:
     selected = routes([path])
-    assert not selected["cli"]
-    assert selected["docs"]
+    if path == "scripts/build_mockup_previews.py":
+        # Its non-light imported readers now run in the product lane.
+        assert selected["cli"]
+    else:
+        assert not selected["cli"]
+        assert selected["docs"]
     assert docs_test_targets([path]) == targets
 
 
@@ -348,7 +379,7 @@ def test_757_landing_accepts_one_green_check_not_a_fixed_matrix_size(
 ) -> None:
     checks = [
         {
-            "name": "Ready PR area checks",
+            "name": "required",
             "bucket": buckets[0] if buckets else "pending",
             "workflow": "PR area checks",
             "link": "https://github.com/owner/repo/actions/runs/10/job/100",
@@ -366,7 +397,7 @@ def test_757_landing_accepts_one_green_check_not_a_fixed_matrix_size(
             "link": "https://github.com/owner/repo/actions/runs/10/job/102",
         },
         {
-            "name": "required",
+            "name": "Ready PR area checks",
             "bucket": "pass",
             "workflow": "PR area checks",
             "link": "https://github.com/owner/repo/actions/runs/10/job/103",
@@ -597,6 +628,28 @@ def workflow_shell(step_name: str) -> str:
 
 
 @LINUX_BASH
+def test_914_ci_policy_creates_out_on_a_fresh_checkout(tmp_path: Path) -> None:
+    test = tmp_path / "tests" / "test_policy_input.py"
+    test.parent.mkdir()
+    test.write_text("def test_temp_input(tmp_path):\n assert tmp_path.is_dir()\n")
+    script = workflow_shell("Run affected CI policy and routing tests")
+    # The Python environment is already installed; exercise local bootstrap,
+    # not the package-install network boundary.
+    script = "\n".join(
+        line for line in script.splitlines() if "pip install" not in line
+    )
+    result = subprocess.run(
+        ["bash", "-c", script],
+        cwd=tmp_path,
+        env={**os.environ, "CI_TESTS": json.dumps(["tests/test_policy_input.py"])},
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "out" / "ci-policy").is_dir()
+
+
+@LINUX_BASH
 @pytest.mark.parametrize("base", ["HEAD", "not-a-git-revision"])
 def test_802_router_exception_cannot_be_hidden_by_the_summary_pipeline(
     tmp_path: Path, base: str
@@ -677,6 +730,7 @@ def test_802_queue_required_summary_accepts_its_small_matrix_but_not_missing_rou
         "changes": {"result": routing_result},
         "ubuntu": {"result": ubuntu_result},
         "gitleaks": {"result": "success"},
+        "ready-gate": {"result": "skipped"},
         **{
             job: {"result": "skipped"}
             for job in ("draft-fast", "docs", "python-lint", "native-smoke", "pages")
@@ -688,11 +742,105 @@ def test_802_queue_required_summary_accepts_its_small_matrix_but_not_missing_rou
             "-c",
             workflow_shell("Require routing and every selected required job to pass"),
         ],
-        env={**os.environ, "NEEDS": json.dumps(needs), "ROUTED": routed},
+        env={
+            **os.environ,
+            "NEEDS": json.dumps(needs),
+            "ROUTED": routed,
+            "EVENT_NAME": "merge_group",
+        },
         capture_output=True,
         text=True,
     )
     assert (result.returncode == 0) is ready
+
+
+@LINUX_BASH
+@pytest.mark.parametrize(
+    ("windows_result", "ready"),
+    [("failure", False), ("cancelled", False), ("success", True), ("skipped", True)],
+)
+def test_949_required_consumes_area_verdict_for_windows_failure_or_certified_skip(
+    windows_result: str, ready: bool
+) -> None:
+    area = subprocess.run(
+        [
+            "bash",
+            "-c",
+            workflow_shell("Require complete routing and successful selected checks"),
+        ],
+        env={
+            **os.environ,
+            "ROUTING_RESULT": "success",
+            "ROUTED": "true",
+            "CHECKS_FAILED": str(windows_result == "failure").lower(),
+            "CHECKS_CANCELLED": str(windows_result == "cancelled").lower(),
+        },
+        capture_output=True,
+        text=True,
+    )
+    needs = {
+        "changes": {"result": "success"},
+        "ubuntu": {"result": "success"},
+        "gitleaks": {"result": "success"},
+        "ready-gate": {"result": "success" if area.returncode == 0 else "failure"},
+    }
+    required = subprocess.run(
+        [
+            "bash",
+            "-c",
+            workflow_shell("Require routing and every selected required job to pass"),
+        ],
+        env={
+            **os.environ,
+            "NEEDS": json.dumps(needs),
+            "ROUTED": "true",
+            "EVENT_NAME": "pull_request",
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert (required.returncode == 0) is ready
+    if not ready:
+        assert "ready-gate" in required.stderr
+
+
+@LINUX_BASH
+def test_949_pr_required_rejects_a_skipped_area_gate() -> None:
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            workflow_shell("Require routing and every selected required job to pass"),
+        ],
+        env={
+            **os.environ,
+            "NEEDS": json.dumps(
+                {
+                    "changes": {"result": "success"},
+                    "ready-gate": {"result": "skipped"},
+                }
+            ),
+            "ROUTED": "true",
+            "EVENT_NAME": "pull_request",
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "ready-gate" in result.stderr
+
+
+def test_949_landing_uses_required_instead_of_a_separate_area_gate_check() -> None:
+    checks = [
+        {
+            "name": name,
+            "bucket": "pass",
+            "workflow": "PR area checks",
+            "link": f"https://github.com/owner/repo/actions/runs/10/job/{job}",
+        }
+        for job, name in enumerate(("changes", "required"), 100)
+    ]
+    assert checks_ready(checks, run_id=10)
 
 
 @pytest.mark.parametrize("required_bucket", [None, "pending", "skipping", "pass"])
@@ -877,6 +1025,79 @@ def test_876_unverifiable_passing_check_cannot_establish_readiness(link: str) ->
     assert not checks_ready(checks, run_id=20, runs=[ready])
 
 
+@pytest.mark.parametrize(
+    ("bucket", "changes", "ready"),
+    [
+        ("pass", {}, True),
+        ("pass", {"app": {"slug": "some-other-app"}}, False),
+        ("pass", {"head_sha": "older-head"}, False),
+        ("pass", {"status": "in_progress", "conclusion": None}, False),
+        ("fail", {"conclusion": "failure"}, False),
+        ("pass", {"conclusion": "failure"}, False),
+        (
+            "pass",
+            {"html_url": "https://github.com/other/repo/runs/132889584422"},
+            False,
+        ),
+    ],
+)
+def test_962_codeql_app_check_run_is_verified_against_the_pr_head(
+    monkeypatch: pytest.MonkeyPatch,
+    bucket: str,
+    changes: dict[str, Any],
+    ready: bool,
+) -> None:
+    repository = "WGSExtract/wgsextract-cli"
+    link = f"https://github.com/{repository}/runs/132889584422"
+    # Shape of PR #956's code-scanning check run: an app check, not an Actions job.
+    codeql = {
+        "id": 132889584422,
+        "name": "CodeQL",
+        "head_sha": "same-head",
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": link,
+        "app": {"slug": "github-advanced-security"},
+        **changes,
+    }
+
+    def response(*arguments: str) -> Any:
+        assert arguments == ("api", f"repos/{repository}/check-runs/132889584422")
+        return codeql
+
+    monkeypatch.setattr(pr_checks_ready, "github_json", response)
+    ready_run = {**area_run(20, "2026-11-13T16:20:01Z"), "workflow_id": 416978936}
+    checks = [
+        {
+            "name": name,
+            "bucket": "pass",
+            "workflow": "PR area checks",
+            "link": f"https://github.com/{repository}/actions/runs/20/job/{i}",
+        }
+        for i, name in enumerate(("changes", "required", "Ready PR area checks"))
+    ]
+    checks.append({"name": "CodeQL", "bucket": bucket, "workflow": "", "link": link})
+    check_runs = pr_checks_ready.app_check_runs(checks, repository)
+    assert (
+        checks_ready(
+            checks,
+            run_id=20,
+            runs=[ready_run],
+            check_runs=check_runs,
+            repository=repository,
+        )
+        is ready
+    )
+    # An app check under another repository is never trusted.
+    assert not checks_ready(
+        [*checks[:-1], {**checks[-1], "link": "https://github.com/a/b/runs/1"}],
+        run_id=20,
+        runs=[ready_run],
+        check_runs=check_runs,
+        repository=repository,
+    )
+
+
 def test_876_recorded_pr_run_with_empty_associations_is_still_verified(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -933,7 +1154,12 @@ def test_876_active_run_cannot_pass_with_a_failed_or_timed_out_dependency(
             "-c",
             workflow_shell("Require routing and every selected required job to pass"),
         ],
-        env={**os.environ, "NEEDS": json.dumps(needs), "ROUTED": "true"},
+        env={
+            **os.environ,
+            "NEEDS": json.dumps(needs),
+            "ROUTED": "true",
+            "EVENT_NAME": "merge_group",
+        },
         capture_output=True,
         text=True,
     )

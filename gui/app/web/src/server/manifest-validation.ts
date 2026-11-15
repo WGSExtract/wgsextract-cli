@@ -81,6 +81,11 @@ export function validateDataSource(value: LooseRecord, path: string): void {
     if (value.workingDirectory != null) {
         validateBundledScriptPath(value.workingDirectory, `${path}.workingDirectory`);
     }
+    if (value.transform != null) {
+        const transform = value.transform as LooseRecord;
+        validateBundledScriptPath(transform.module, `${path}.transform.module`);
+        requireNonEmpty(transform.export, `${path}.transform.export`);
+    }
 }
 
 export function validateConditions(conditions: readonly ConditionSpec[] | undefined, path: string): void {

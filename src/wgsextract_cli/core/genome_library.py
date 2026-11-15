@@ -140,7 +140,7 @@ def _load_or_create_genome_config(genome_dir: Path) -> dict[str, Any]:
 
     if additions or not config_path.exists():
         try:
-            _write_genome_config(config_path, {**raw, **additions})
+            write_genome_config(config_path, {**raw, **additions})
         except OSError as e:  # a read-only genome folder still works
             logging.warning(f"Couldn't save {config_path}: {e}")
 
@@ -181,7 +181,7 @@ def _discover_genome_files(genome_dir: Path, config: dict[str, Any]) -> dict[str
     return discovered
 
 
-def _write_genome_config(config_path: Path, config: dict[str, Any]) -> None:
+def write_genome_config(config_path: Path, config: dict[str, Any]) -> None:
     """Write the known path keys (or commented placeholders), keeping any other keys."""
     lines = [
         "# WGS Extract per-genome configuration",

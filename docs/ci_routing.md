@@ -26,10 +26,19 @@ The runner-free `pr_draft_cancel.yml` workflow also cancels the separate
 Install Lab label group on redrafting/readiness, without letting ordinary
 label events cancel code validation.
 
+Draft-payload events other than `converted_to_draft` use a separate `-draft`
+concurrency group. GitHub may deliver a draft `synchronize` event after
+`ready_for_review`; its skipped jobs must not cancel the full ready run.
+This isolation applies to every PR workflow with cancelling concurrency, not
+just area routing. Ready pushes still supersede earlier ready runs, and
+`converted_to_draft` deliberately enters the ready group to stop active work.
+Non-PR groups are unchanged. No live-state lookup runner is needed: drafts
+still allocate zero runners, and readiness always retains its own full run.
+
 Test dependencies take precedence over area exclusions. The router scans the
 root test suite's imports, path literals, composed pathlib paths and directory
 globs without executing tests. Inputs read only by the lightweight docs modules
-select that pytest job; other referenced inputs select the full CLI matrix.
+select that pytest job; other referenced inputs select their affected test files.
 The map is deliberately conservative, including some fixture-data literals.
 Product Python changes, including native and GUI/site Python, select CLI pytest
 and explicit changed-file lint. Known docs/CI generator scripts and lightweight
@@ -43,7 +52,8 @@ adds fatal-error Ruff checks without imposing unrelated root formatting.
 | Any draft PR | None; validate locally before readiness | 0 |
 | Hand-written Markdown, including `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, native READMEs | Only site-source validation if a site source changes; otherwise no docs job | <1 (previously ~125) |
 | Generated API/command reference only | Its freshness check in the cheap docs lane | 1–3 |
-| CLI source/tests | Four-OS CLI matrix (including freshness), CodeQL | ~90–100 (previously ~125) |
+| CLI source/tests | Affected test files on four OSes, input-selected freshness, CodeQL | Depends on graph reachability; full-suite fallback remains |
+| `.github/**`, `scripts/ci_*.py` | actionlint and CI policy/routing/readiness; one-OS smoke for changed matrix workflow | Small checks, not the full CLI matrix |
 | Installer, packaging, Pixi lock/manifest, CLI entry points | Above plus Install Lab and applicable package checks | ~125; no intended coverage reduction |
 | Native source only | Native build/ctest/package workflows and CLI help smoke | Native build cost + <1; removes ~125 of unrelated checks |
 | Site Markdown only | Site-source validation, plus command freshness for generated CLI cards | <1–3 |
@@ -57,6 +67,191 @@ depends on the proportion of docs/site/native PR pushes and must be measured
 after deployment.
 
 ## Coverage
+
+### Writer self-certification
+
+#### One-time machine / checkout preparation
+
+Use the Pixi version pinned in `.github/actions/setup-pixi/action.yml` (or a
+compatible version exposing locked wheel URLs and SHA-256 values). Ensure `pixi`
+is on PATH in non-interactive shells too; an unconfigured mise shim is not a
+working Pixi installation. Install environments explicitly, just as CI does:
+
+```sh
+pixi install --locked -e default -e dev
+just certify-setup
+```
+
+`certify-setup` downloads the exact PyPI wheels in `pixi list --locked`, checks
+their lockfile SHA-256, retains them under `out/certify/inputs/wheels/`, and
+validates the installed environments against them. It does not install tools,
+rebuild dependencies from source, change the lockfile, or publish attestations.
+Re-run it after lockfile updates and for each new checkout; Pixi environments
+are non-relocatable and editable packages must refer to that checkout.
+Already verified downloads are reused; incomplete or incorrect downloads never
+replace a verified archive.
+
+For **full Ubuntu/macOS product suites**, install the supplemental environments
+needed by the selection (normally `vep-rs`; `imputation`, `pacbio`, `phasing`,
+and `somalier` for their routed tests), then retain their wheels too:
+
+```sh
+pixi install --locked -e vep-rs
+just certify-setup -e default -e dev -e vep-rs --reference
+```
+
+Repeated `-e` replaces the default environment list. `--reference` retains the
+bootstrap release archive after verifying its pinned SHA-256, safely extracts
+missing support files, fetches the pinned liftOver chain (with the same mirror
+fallback as CI), and invokes CI's normal hs38 catalog installer. It then
+validates all reference bytes, including the catalog-pinned full genome.
+This can download several GiB; run under the resource coordinator on shared
+hosts. Existing conflicting bootstrap files are not overwritten: the refusal
+identifies the file to move aside before repeating setup.
+An older or modified hs38 FASTA must likewise be moved aside with its indexes
+before rerunning setup; the normal catalog installer reuses an existing FASTA
+rather than replacing it with the pinned copy.
+
+References use `reference_library` in config.toml, falling back to `reference/`.
+To reuse a machine's existing library across worktrees, configure that path
+using normal CLI configuration rather than copying the multi-GiB genome.
+Each checkout still needs the retained bootstrap archive and wheel archives.
+Generic-only and CI-policy-only certifications do not need reference setup.
+
+#### Certifying a PR
+
+Before marking a pushed owner PR ready, run `just certify` on a clean checkout.
+On shared Linux hosts use
+`agent-coord run --cores 4 --mem 8G --label "PR certification" -- just certify`.
+`--platform-only` / `--generic-only` divide the layers across machines.
+The host platform is detected, never overridden; Linux x64 cannot certify ARM64,
+macOS or Windows. All selected tiers/shards run locally in full, without CI's
+passed-test cache. Lint, strict typing, changed-file lint, routed docs/site checks
+and the selector's complete affected CI-policy union form the generic layer.
+Logs/JUnit live in `out/certify/<sha>/<layer>/`; successful exact-head statuses
+include machine, test count, duration and the full log SHA-256.
+
+Certification never provisions its execution environments, including inside the
+nested pytest runner (the installer regression still exercises its own isolated
+installation sandbox, exactly as CI does). Prepared default/dev environments are mandatory,
+with vep-rs for Ubuntu/macOS, gatk/vep-rs for Windows, vep for Linux ARM64, and
+the routed supplemental tools. Installed conda URLs/builds/checksums and Python
+versions/RECORD integrity must match `pixi list --locked`. Retain each pinned
+PyPI wheel as `out/certify/inputs/wheels/<sha256>.whl`: validation checks its
+lock SHA-256 and compares installed files with the wheel, without downloading or
+installing it. Missing archives refuse certification. Editable Python packages
+must point to this checkout. Dependency updates require explicitly refreshed
+environments and `just certify-setup` artifacts matching the new lock; stale versions or
+changed wheel URLs/hashes cannot reuse old provenance. Both layers enforce this.
+Ubuntu/macOS full suites also require the retained bootstrap archive at
+`out/certify/inputs/wgsextract-reference-bootstrap.tar.gz` with its
+pinned SHA-256, byte-matching installed bootstrap support files, the pinned hg19-to-hg38
+chain and pinned hs38 genome. Retain the bootstrap archive separately when preparing
+certification inputs: the normal bootstrap command removes it after extraction.
+Missing or unprovable reference inputs refuse certification with the missing
+path and setup command; no downloads occur during certification.
+
+The router executes only the verifier from the PR's **base SHA**, before checking
+out PR code, with isolated Python. A missing base verifier or any change to the
+verifier file falls back to hosted checks. Therefore the bootstrap PR adding the
+verifier cannot itself skip hosted tests; its first trusted skip can happen only
+after landing. Forks are excluded before the verifier executes. The verifier
+accepts only the latest successful status on the exact same-repository head,
+created by an account with write, maintain or admin permission. Missing
+permissions and API errors fail closed. Writers can already push to main:
+this is an attestation at the same trust boundary, not proof against a malicious
+writer. CI needs `statuses: read` and the collaborator-permission API's
+**Metadata: read** (implicit in `GITHUB_TOKEN`); local `gh` needs commit-status
+write and PR-comment write access. No privileged token is given to PR code.
+
+Generic classification rejects uncertain imports/fixtures, subprocess/tool use,
+platform branches, concrete pathlib operations, permissions, signals, symlinks
+and line-ending behavior. Currently no existing module is proven generic under
+these deliberately strict rules; modules remain platform-sensitive until proven.
+Uncertified generic tests run once on Ubuntu; main/nightly behavior is unchanged.
+Gitleaks, CodeQL, Install Lab, native/app builds and package/benchmark smoke stay
+hosted when routed. Merge groups never consume attestations. `required` and the
+ready-gate accept certified skips only after successful routing, and the landing
+validator relies on the current ready run rather than treating status contexts as
+standalone workflow runs. Failed/pending certificates allow hosted fallback.
+Setup refusals, missing inputs and interruptions clear pending attestations with
+`error` (“Not certified … hosted CI covers this SHA”), not `failure`. Only a
+test runner report containing failed tests produces `failure`. Landing still
+requires the passing hosted ready run; non-success local attestations never
+make that otherwise-passing run fail the landing gate.
+
+For macOS remotely, push the branch, acquire randy-mini's coordinator lock, and
+SSH to a dedicated clean worktree with prepared Pixi environments. Leave 25 GiB
+RAM free and run `just certify --platform-only` there using its existing `gh`
+authentication; never forward credentials. Run Linux plus generic locally.
+Whole-suite baseline savings are about 22 Linux runner-minutes plus 1–3 generic
+minutes (package smoke remains), or about 33 additional minutes for macOS ARM64.
+Sparse selected PRs save less.
+
+### Per-test PR selection
+
+`scripts/ci_select_tests.py` selects individual test files, not whole areas.
+Its AST import graph follows transitive imports, relative imports,
+`from package import submodule`, and package initializers. Literal
+`command_handler` targets and the finite `CommandRegistration` registry from
+#804 (lazy CLI startup) are resolved without importing application code.
+Unresolved dynamic imports conservatively include their readers; if a CLI
+entry-point test reaches one, selection fails open to `all`. Literal module
+names used by subprocesses and patch targets also participate.
+Applicable conftest modules are implicit imports of every test. Shared helper
+imports therefore participate transitively too, including sibling test
+modules used as helpers; their literal file inputs propagate to importers.
+
+Tests are selected when they reach a changed Python module, directly change,
+or read a changed path/glob recorded by `test_inputs`. Changes to conftest,
+helpers, shared fixtures, the dependency manifests/lockfile and unknown paths
+select `all`. Deleted Python modules also fail open. Eager package
+initializers can legitimately connect many tests: this selector does not
+pretend a lazy runtime dispatch is narrower than the static graph.
+The current shared fixture helper imports the typed API, whose eager package
+initializer connects almost all application modules. Those changes can
+select the whole suite even without the explicit `all` fallback. Narrowing
+that shared dependency requires a separate fixture/API refactor, not dropping
+edges from this safety graph. Non-Python application resources currently fail open
+because the test-input scanner does not inspect runtime resource consumers.
+Explicitly declared generated documentation inputs retain their freshness lane.
+
+The `changes` job publishes `tests` and per-OS selections as JSON test-file
+arrays or `all`. The four OS wrappers forward these inputs to the shared
+`os_tests.yml` workflow, which passes them through
+`scripts/ci_run_tests.py` to `pixi run test-ci`; existing tiers, stable module
+shards and Ubuntu-only partitions apply **within** that set. Empty selections
+skip jobs, and empty tier/shard partitions exit successfully. Selections are
+validated and passed as argv, never evaluated as shell text. Explicit paths
+are filtered using the `test-ci` task's ignore rules so generated-genome and
+real-data suites remain exclusively in their dedicated steps.
+
+Non-Markdown `.github/**` and `scripts/ci_*.py` changes select actionlint and the CI
+policy/routing/readiness regressions, not the CLI matrix or Install Lab.
+`ci_tests` includes their actual transitive script/action readers as well as
+the baseline policy checks; the CI job executes that complete selection.
+Changing an OS matrix workflow additionally exercises **only that OS** in
+one lightweight smoke job; changing shared `os_tests.yml` exercises all four
+OS smoke jobs. Mixed product/CI changes union their coverage. Declared docs
+freshness modules join a product selection before the docs lane is suppressed.
+Extra generated-genome, imputation, ONT and Windows vep-rs checks run only
+when their test files are affected. Main pushes and nightly/manual runs
+retain full-suite coverage; merge-queue Ubuntu runs the full suite minus files
+the test cache already saw pass on main.
+
+Local callers can use
+`pixi run python scripts/ci_changes.py --base origin/main --head HEAD --print-tests`.
+Stdout is only the JSON file array or `all`; no GitHub credentials or output
+file is required. `select_tests(paths, repository=...)` remains importable.
+
+Replay with `pixi run python scripts/ci_select_replay.py --limit 50 --output
+out/914`. It records each merged PR's files, selected fraction, failed
+head-run test names from Actions logs, unavailable logs and misses.
+Runner-minute savings are a linear estimate against the documented
+125-minute baseline, **not measured billing savings**; environment setup and
+fixed jobs do not scale linearly. The replay uses the current graph and
+latest PR head, not historical imports or every earlier push. Main/nightly
+misses must become selector regressions rather than suppressed failures.
 
 The lightweight documentation job installs the package, pytest and jsonschema
 **only when its selected Python tests are nonempty**, never for prose alone.
@@ -82,13 +277,69 @@ neither; site prose runs both source validators with system Python and no
 package installation. This does not build Pages for a Markdown-only PR.
 Version/changelog prose does not run release-script tests.
 
-When the full CLI lane is selected, `docs_tests` is empty: its existing pytest
-suite already collects API freshness, CLI snapshot and help checks, plus the
-other light test modules. Freshness therefore runs in one lane, not both.
+When the CLI lane is selected, `docs_tests` is empty: affected freshness checks
+are collected through their imports and declared inputs in that selection.
+Freshness therefore runs in one lane, not both. CI-only policy checks likewise
+run in their dedicated job, not again in the documentation job.
 The same routing/output contract applies to PR and merge-queue diffs, and
 `required` still waits for the selected docs or CLI checks. For example,
 `site_src/cli.md` cannot bypass the generated-card freshness assertion, and
 `native/bench/power.py` runs its unit tests through CLI pytest.
+
+### Test result cache
+
+On top of the selection, `scripts/ci_test_cache.py` (#915, Bazel-style test
+result cache) skips a PR's test files whose **exact dependency hash** already
+passed. A test file's hash covers:
+
+- every tracked file whose change would make `select_tests` pick it (its
+  import closure, conftest dependencies and declared file inputs, evaluated
+  one file at a time with the selector itself);
+- every file whose change makes the selector fall back to `all` (`pixi.lock`,
+  `pixi.toml`, `pyproject.toml`, runtime resources, shared fixtures and
+  helpers, unknown paths);
+- how tests run: `os_tests.yml`, the four OS callers, `setup-pixi`, the
+  runner, tier and cache scripts;
+- the job (OS, tier, shard, OS-independent skip), Python version, platform
+  and runner image (`ImageOS`, `ImageVersion`). Coverage flags are excluded.
+
+Equal hashes therefore mean the two trees differ only in files the selector
+would not run that test for, so a cache skip is never less safe than #914's
+selection (a regression test checks this for edits, additions and deletions).
+Hashes only see files that exist; each recorded pass also keeps the names of
+its tree's files whose deletion selects `all`, and a pass is reused only if
+none of them has since been deleted.
+
+Each `os_tests.yml` matrix job keeps one manifest of passed hashes:
+
+| Event | Reads | Records after a passing run |
+|---|---|---|
+| Main push, nightly, manual dispatch on main | nothing (runs the full suite) | `test-pass-v1-<os>-<label>-main-<run>` |
+| Ready PR push or `ready_for_review` | latest `-main-` and this PR's latest `-pr-` manifest | `test-pass-v1-<os>-<label>-pr-<run>` |
+| Merge group | latest `-main-` manifest | nothing |
+| Other refs | nothing (runs uncached) | nothing |
+
+A lookup is exact set membership, so a stale, corrupt, evicted or missing
+manifest can only re-run tests, never skip one whose inputs changed. A run
+records only when pytest exits successfully (or finds nothing to collect in a
+sparse partition); failed or cancelled runs record nothing. A cache entry is
+saved only when it learned new hashes. Manifests keep 14 days, 4,000 hashes
+and eight trees' names (tens of KB each), so they cannot crowd out Pixi caches.
+
+**Security.** GitHub scopes caches by ref: a PR run writes only to
+`refs/pull/<n>/merge`, readable by later runs of that PR alone, and can read the
+base branch's (main's) caches. Only `push`, `schedule` and `workflow_dispatch`
+runs can write main's scope. A PR therefore cannot poison what main or other
+PRs read; at most it can skip its own tests, which its own workflow edits could
+do anyway. Merge groups read only main's manifest (owner decision,
+2026-11-15): a skipped file's every tracked input matches a tree that passed
+on main. Main pushes and nightly always run the full suite, so an undeclared
+input the hash misses fails the next main run instead of going unnoticed.
+
+Each test job's summary lists the cache-skipped files, where they passed
+(`main` or `pr`) and their hashes. To estimate savings, run
+`pixi run python scripts/ci_cache_replay.py --limit 60 --junit <main pytest.xml...>`;
+it replays consecutive ready runs of merged PRs.
 
 There is no existing general Markdown link/anchor checker. Pages source checks
 also run both site builders and the app's site-source validator, without
@@ -183,16 +434,16 @@ independent, disjoint pytest tiers in parallel:
   benchmark-module, pipeline-interoperability, contig-calling, microarray-reuse,
   native-aligner and DeepVariant modules listed there. Whole modules retain
   their shared fixtures and the existing shared-smoke scheduler.
-- Generated chrM and whole-genome end-to-end tests still run on every OS
-  (after the integration tier on x64). The separately configured imputation,
-  ONT and Windows vep-rs checks remain in place.
+- Affected generated chrM and whole-genome end-to-end tests run on each selected
+  OS (after the integration tier on x64). Separately configured imputation,
+  ONT and Windows vep-rs checks retain their environments when affected.
 
-Both tiers run on every CLI-routed PR, not only main: the existing conservative
-area router includes all Python, tool/configuration and test-input changes.
-Both run on non-prose main pushes and nightly too. ARM64 retains its complete
-suite in one job. No slow suite is demoted to nightly-only coverage.
-Only `test_genotyping.py` (pure genotype parsing/repeat classification) is
-Ubuntu-x64-only in CI. Real-tool genotyping commands remain cross-platform.
+Both tiers partition the affected files on CLI-routed PRs; an empty partition
+passes without testing unrelated files. Non-prose main pushes and nightly runs
+retain full coverage; merge-queue Ubuntu skips only cache hits from main. ARM64 runs its selection in one
+job. No slow suite is demoted to nightly-only coverage.
+Only the statically proven generic set is Ubuntu-x64-only in CI. Genotyping
+modules whose import closure includes command/tool behavior remain cross-platform.
 Ordinary local pytest still collects everything; the opt-in `--ci-tier` and
 `--ci-skip-independent` and `--ci-shard` flags implement these CI-only partitions.
 
@@ -265,16 +516,20 @@ required check as passing.
 
 | Event | Jobs `required` waits for | Not required |
 |---|---|---|
-| Ready pull request | routing, documentation freshness, changed Python lint, CI Ubuntu (lint, tests, imputation, ONT), secret scan, native CLI smoke, Pages checks | macOS, Windows, ARM64, package smoke, Install Lab, CodeQL, GUI and native workflows: advisory |
-| Merge-queue group | the same set, routed by the group's diff against `main` | not run |
+| Ready pull request | routing, documentation freshness, changed Python lint, CI policy, selected CI Ubuntu checks, secret scan, native CLI smoke, Pages checks, and the area gate covering selected macOS, Windows, ARM64, package smoke and Install Lab jobs | separate CodeQL, GUI and native workflows |
+| Merge-queue group | full Ubuntu CLI suite (less test files cached as passed on main) plus ancillary required checks selected by the group's diff | other OSes, package smoke and Install Lab not run |
 
-The required set stays on fast Ubuntu jobs. The other OS jobs, which more
-often lose runners or wait for capacity, stay advisory so they can't stall the
-queue; main pushes run selected advisory workflows in full and nightly runs cover
-all paths. A job-level `needs:` summary in one workflow, rather than polling the
+On PRs, `required` waits for the existing `ready-gate` verdict and requires it
+to succeed, so enabling auto-merge cannot bypass a failing selected OS job.
+Routing/selection skips and valid self-certifications remain accepted by that
+gate. The area gate does not depend on `required`, avoiding a dependency cycle.
+Merge groups skip the area gate and retain the same smaller required set;
+main pushes run selected workflows in full and nightly runs cover all paths.
+A job-level `needs:` summary in one workflow, rather than polling the
 checks API, reports exactly once per run with no extra permissions or timeout.
 The queue's `merge_group` events ignore `paths:` filters, so routing uses the
-group's `base_sha...head_sha` diff, keeping docs-only groups to a few minutes.
+group's `base_sha...head_sha` diff for ancillary lanes; Ubuntu retains full
+test coverage even for docs-only groups.
 
 Agents enqueue with `gh pr merge PR --squash --auto --match-head-commit SHA` after
 every check, advisory ones included, is green, and don't update branches that
@@ -287,16 +542,21 @@ gh pr checks "$PR" --watch --interval 90
 gh pr checks "$PR" --json bucket,name,workflow,link | python scripts/pr_checks_ready.py --pr "$PR"
 ```
 
-The validator requires a passing `Ready PR area checks` gate, `required` check
-and `changes` job from the same workflow run, with draft-fast absent or skipped
-in that run. That gate runs
-only on non-draft, non-label events after all selected area jobs succeed.
+The validator requires a passing `required` check (which includes the area-gate
+verdict on PRs) and `changes` job from the same workflow run, with draft-fast
+absent or skipped in that run. The area gate runs
+only on non-draft, non-label events after all selected area jobs finish.
 Routing uses `set -euo pipefail`; the final gate fails on a routing failure
 or a missing completion output, rather than accepting an all-skipped matrix.
 It rejects old draft-only passes/skips (including the gap before the ready
 run registers), empty reports, and pending, failed, cancelled or unknown statuses
-in the selected area run or any other workflow. Stale area checks from earlier
-draft/label runs do not block a passing ready run.
+in the selected area run or other reported workflows. Reported checks are
+verified against their latest matching workflow runs; unrelated and superseded
+draft/label runs do not block a passing ready run. App check runs (linked as
+`/runs/ID` rather than `/actions/runs/ID`) count only when the check-runs API
+confirms the same repository, the PR head SHA, a completed success, neutral or
+skipped conclusion, and an allow-listed app (CodeQL's
+`github-advanced-security`); any other non-Actions check fails closed.
 `--pr` is required: the validator reads the latest ready-for-review event and
 current head from GitHub, then selects the newest non-draft area run for that
 PR/head after the event and requires it to have completed successfully.
@@ -330,6 +590,7 @@ publish exact hit/miss and key in each job summary.
 | liftOver chain | A new run-id key on each download | One checksum key (<0.001 GB), main-only writes |
 | apt | PR cold misses could save duplicates | Main-only writes (~0.1–0.3 GB) |
 | PharmCAT reference | Up to two infrequently reused ~1 GB OS-specific entries | Not cached; leave space for the common tool environments |
+| Test results (#915) | None | One small passed-hash manifest per OS test job, saved only when it learns new hashes |
 
 Target steady state is roughly **6.6–7 GB**, leaving headroom for CodeQL-managed
 caches and lockfile rollover. This is a size plan, not an asserted measured

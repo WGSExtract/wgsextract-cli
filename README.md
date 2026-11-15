@@ -254,6 +254,10 @@ wgsextract qc fastqc --input sample_R2.fastq.gz --outdir out/fastqc
 wgsextract qc multiqc --input out/fastqc --outdir out/combined
 ```
 
+`qc fastqc --input sample_R1.fastq.gz --r2 sample_R2.fastq.gz --multiqc` does
+both mates and merges the reports in its `--outdir` in one run, replacing an
+earlier `multiqc_report.html` there.
+
 It writes one standalone `multiqc_report.html` (no parsed-data directory).
 `--input` accepts a report file or directory; without `--outdir`, the report goes
 beside the input file or into the input directory. Existing reports require

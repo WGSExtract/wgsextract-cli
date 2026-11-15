@@ -113,18 +113,21 @@ CLI: `wgsextract info calculate-coverage`.
 Exact coverage; outputs the coverage table (or the depth-bins TSV).
 
 `CalculateCoverageParams`: Exact per-chromosome breadth and depth of coverage (`samtools coverage`).
+`status` reads nothing: its `details` say whether the whole-file
+reports `with_bins` writes are `current` (both newer than the input).
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
-| `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to describe. |
+| `input` | `Path \| None` | `None` | `--input`, `-i` | BAM or CRAM to describe. Required unless status. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
-| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
+| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000); with --by, declare the assessed scope (all targets must fit inside it); otherwise the whole alignment header is the assessed scope |
 | `bins` | `bool` | `False` | `--bins` | Report exact per-contig depth 0, 1-3, 4-7 and 8+ breadth in one streaming pass. |
 | `with_bins` | `bool` | `False` | `--with-bins` | After the coverage table, also report the --bins depth breadth; an up-to-date whole-file bins report is shown again instead of rescanned. |
 | `by` | `Path \| None` | `None` | `--by` | Report depth per target of this BED (e.g. from 'panel bed'): mean, median and the fraction at >=10x, 20x, 30x and --min-depth, plus the on- versus off-target enrichment |
 | `min_depth` | `int` | `30` | `--min-depth` | With --by, list targets whose mean depth is below this (default: 30) |
 | `table_format` | `str \| None` | `None` | `--format` | Also save the per-chromosome table and the QC stats as <input>_chromosomes and <input>_qc .tsv or .parquet (needs pyarrow); implies --detailed; None saves none. With bins or by, that table's format instead (None: tsv). One of: `tsv`, `parquet` |
+| `status` | `bool` | `False` | `--status` | Only report whether the with_bins reports in outdir are newer than the input; details ``current``, ``coverage``, ``coverage_bins``. |
 
 ### `api.info.coverage_sample(CoverageSampleParams)`
 
@@ -479,7 +482,8 @@ CLI: `wgsextract bam unalign`.
 Write FASTQs (output roles `fastq_r1`, `fastq_r2` and, with `se`,
 `fastq_single`; the `read_groups` metric counts the input's).
 
-`BamUnalignParams`: Write the reads back to paired FASTQs, name-sorted so mates line up.
+`BamUnalignParams`: Write the reads back to paired FASTQs, name-sorted so mates line up:
+`<input>_R1.fastq.gz` and `_R2` unless `r1`/`r2` name them.
 Reads without a mate go to `se` when set. Warns when the input has more
 than one read group, which FASTQ can't keep apart.
 
@@ -490,8 +494,8 @@ than one read group, which FASTQ can't keep apart.
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
-| `r1` | `str` | required | `--r1` | Read 1 FASTQ to write: a bare name goes in outdir, a path is used as given. |
-| `r2` | `str` | required | `--r2` | Read 2 FASTQ to write: a bare name goes in outdir, a path is used as given. |
+| `r1` | `str \| None` | `None` | `--r1` | Read 1 FASTQ (default ``<input>_R1.fastq.gz``) to write: a bare name goes in outdir, a path is used as given. |
+| `r2` | `str \| None` | `None` | `--r2` | Read 2 FASTQ (default ``<input>_R2.fastq.gz``) to write: a bare name goes in outdir, a path is used as given. |
 | `se` | `str \| None` | `None` | `--se` | FASTQ for reads without a mate to write: a bare name goes in outdir, a path is used as given. |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Region (chrY:10000-20000), comma-separated regions, or a BED file to limit the output to. |
 | `gene` | `str \| None` | `None` | `--gene` | A gene name (e.g. BRCA1) to limit the output to, looked up in the reference library's gene map (hg19/hg38 only); the region wins when both are set. |
@@ -597,11 +601,15 @@ CLI: `wgsextract qc fastqc`.
 Run FastQC (output roles `fastqc_report_html` and `fastqc_report_zip`).
 
 `FastqcParams`: A FastQC report on a FASTQ, BAM or SAM file as `<input>_fastqc.html`
-and `.zip`. Module PASS/WARN/FAIL counts and the read count are metrics.
+and `.zip`, and on `r2` too when set. Module PASS/WARN/FAIL counts and
+the read count are metrics (`r2_`-prefixed for `r2`). With `r2`,
+`multiqc` merges the reports in `outdir` into `multiqc_report.html`.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | FASTQ, BAM or SAM file. |
+| `r2` | `Path \| None` | `None` | `--r2` | Read 2 FASTQ, reported on too. |
+| `multiqc` | `bool` | `False` | `--multiqc` | With r2, merge the reports in outdir into ``multiqc_report.html``, replacing an earlier one. |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 
@@ -814,7 +822,8 @@ workspace.
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `sample` | `str \| None` | `None` | `--sample` | Sample name for the read group (default: the reads' file name). |
 | `long_read` | `bool` | `False` | `--long-read` | Treat the reads as long reads (PacBio/ONT) and align them with pbmm2 or minimap2. |
-| `format` | `str` | `'BAM'` | `--format` | Output format: BAM or CRAM (written with the target reference). One of: `BAM`, `CRAM` |
+| `format` | `str \| None` | `None` | `--format` | Default: BAM. CRAM is written with the target reference. One of: `BAM`, `CRAM` |
+| `output_profile` | `str \| None` | `None` (config `output_profile`) | `--output-profile` | Lossless output: default keeps --format; archive selects CRAM 3.1 (GATK >=4.7); calling selects CRAM 3.0. Default: config output_profile, else default. See docs/ont.md. One of: `default`, `archive`, `calling` |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | An aligned BAM/CRAM of the same sample whose header picks the reference from the library when ref is unset. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `input_ref` | `Path \| None` | `None` | `--input-ref` | Reference FASTA a CRAM --r1 was encoded with (default: --ref when its sequence names, lengths and MD5s match the CRAM). |
@@ -853,13 +862,14 @@ settings and tools are unchanged.
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `platform` | `str \| None` | `None` | `--platform` | Sequencing platform (default: detected from read groups or read names, else illumina). One of: `illumina`, `dnbseq`, `ultima`, `pacbio`, `hifi`, `clr`, `ont`, `nanopore` |
 | `preset` | `str \| None` | `None` | `--preset` | minimap2/pbmm2 preset. One of: `sr`, `map-pb`, `map-hifi`, `map-ont`, `ccs`, `subread` |
-| `input_ref` | `Path \| None` | `None` | `--input-ref` | Reference FASTA the input CRAM was encoded with (default: --ref when its sequence names, lengths and MD5s match the CRAM, else the FASTA in the reference library whose sequence dictionary matches). --ref is the reference to realign to. |
+| `input_ref` | `Path \| None` | `None` | `--input-ref` | FASTA decoding the input CRAM, not the target --ref. Default: --ref if sequence names, lengths and MD5s match, else the matching reference-library FASTA. |
 | `sample` | `str \| None` | `None` | `--sample` | Sample name to embed in read-group metadata. |
 | `long_read` | `bool` | `False` | `--long-read` | Treat input as long-read data (PacBio/ONT). |
-| `format` | `str` | `'BAM'` | `--format` | Output format: BAM or CRAM (written with the target reference). One of: `BAM`, `CRAM` |
-| `keep_fastq` | `bool` | `False` | `--keep-fastq` | Keep the FASTQs extracted from --input after alignment (default: delete them); ONT and PacBio reads are then extracted to one tagged <input stem>.fastq.gz. FASTQs passed with --r1/--r2 or reused from an earlier extraction are never deleted. |
+| `format` | `str \| None` | `None` | `--format` | Default: BAM. CRAM is written with the target reference. One of: `BAM`, `CRAM` |
+| `output_profile` | `str \| None` | `None` (config `output_profile`) | `--output-profile` | Lossless output: default keeps --format; archive selects CRAM 3.1 (GATK >=4.7); calling selects CRAM 3.0. Default: config output_profile, else default. See docs/ont.md. One of: `default`, `archive`, `calling` |
+| `keep_fastq` | `bool` | `False` | `--keep-fastq` | Keep extracted FASTQs (normally deleted): pairs, or one tagged <input stem>.fastq.gz for ONT/PacBio. Supplied or reused FASTQs are never deleted. |
 | `force_extract` | `bool` | `False` | `--force-extract` | Re-extract FASTQs even if a matching pair already exists next to the BAM. |
-| `chunk_size` | `str` | `'4G'` | `--chunk-size` | Realign ONT and PacBio reads in chunks of about this much of the input (K, M, G or T; 0: in one pass). Temporary files then stay chunk-sized and an interrupted run resumes at its first unfinished chunk. Needs a coordinate-sorted, indexed input; ignored with --keep-fastq. |
+| `chunk_size` | `str` | `'4G'` | `--chunk-size` | ONT/PacBio input per chunk (K/M/G/T; 0: one pass). Resumes unfinished chunks and bounds temporary files. Requires sorted, indexed input; ignored with --keep-fastq. |
 | `no_preflight` | `bool` | `False` | `--no-preflight` | Run despite too little disk or RAM (not recommended). |
 | `restart` | `bool` | `False` | `--force`, `--no-resume` | Rerun every step, ignoring the steps an earlier run completed. |
 | `force_steps` | `tuple[str, ...] \| None` | `None` | `--force-step` | Steps to rerun with the steps that use their outputs; None reruns none. Steps: extract, align, index. One of: `extract`, `align`, `index` |
@@ -923,7 +933,9 @@ Call SNPs; the `snps` output carries the record count in its metrics.
 `VcfSnpParams`: Call SNPs from a BAM/CRAM into `snps.vcf.gz`.
 
 Ploidy comes from `ploidy` or `ploidy_file`, else the reference
-library's ploidy file, else bcftools' built-in GRCh37/GRCh38 table.
+library's ploidy file, else bcftools' built-in GRCh37/GRCh38 table for
+the build of the input, or of a FASTA outside any library (its chr1
+length, `.dict` assembly, header description or file name).
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -1411,7 +1423,7 @@ Call with GATK; output role `variants`.
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `region` | `str \| None` | `None` | `-r`, `--region` | Comma-separated region(s) to call (e.g. chrM); with gpu, an item may be a BED file of them. |
+| `region` | `str \| None` | `None` | `-r`, `--region` | Comma-separated region(s) to call (e.g. chrM), or a BED file. |
 | `scatter` | `bool` | `False` | `--scatter` | Opt-in Ultima flow-mode interval scattering, bounded by --threads and available RAM (6 GiB per worker, 4 GiB Java heap). Can change genotypes/annotations away from interval boundaries; default: one unscattered process. |
 | `gpu` | `bool` | `False` | `--gpu` | Call on an NVIDIA GPU with Parabricks (Linux, Docker; see README). |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
@@ -1960,12 +1972,22 @@ each mirror that hosts it.
 
 CLI: `wgsextract ref library --list`.
 
-List the library. `details` has `library`, `genomes` (`code`,
-`label`, `file`, `status`, `size`, and whether its `n_counts` and
-a `vep_cache` for its assembly are in the library) and
-`resources` (`gene_maps`, then per build `clinvar`, `revel`,
-`phylop` and `gnomad`, each true when installed); `text` is the
-CLI's table.
+List the library. `details` has `library`, `genomes_dir` (the
+folder its genomes are in), `genomes` and `resources`.
+
+Each of `genomes`, in catalog order, has the catalog's `code`,
+`label`, `source` (the mirror), `file` (the name in `genomes_dir`),
+`url`, `description`, `sn_count` (sequences in the FASTA) and
+`build` (`hg19`, `hg38`, `t2t` or null), then its `status`
+(`installed` with its `.fai`, `unindexed`, `incomplete` (a
+`.partial` download) or `missing`), `size_bytes` (the FASTA or
+partial download with its `.fai`, `.gzi` and `.dict`; 0 when none)
+and `size` (the same, as text), `remote_bytes` (the download size, or
+null when not known: cached, or looked up with `remote_sizes`), and
+whether its `n_counts` and a `vep_cache` for its assembly are in the
+library. `resources` has `gene_maps`, then per build `clinvar`,
+`revel`, `phylop` and `gnomad`, each true when installed. `text`
+is the CLI's table.
 
 `RefLibraryListParams`: List the catalog's genomes with their status in the library (installed,
 unindexed, incomplete or missing), size, N counts and VEP cache, then the
@@ -1973,6 +1995,24 @@ gene maps and annotation data it holds.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference library folder, or a FASTA in it (default: config reference_fasta's library, else reference_library, else the default library). |
+| `remote_sizes` | `bool` | `False` | `--remote-sizes` | Look up the download size of each genome whose size isn't cached (HTTP HEAD or FTP SIZE, ~8 s at most) and save it in the library's cache for 30 days. |
+
+### `api.ref.library_delete(RefLibraryDeleteParams)`
+
+CLI: `wgsextract ref library --delete`.
+
+Delete `params.genome`; nothing installed is no error. `details`
+has `library`, `genomes_dir`, the genome's `code` and `file`,
+`deleted` (the paths deleted, the FASTA first) and `bytes_freed`.
+
+`RefLibraryDeleteParams`: Delete a catalog genome from the library's genomes folder: its FASTA,
+a partial download, its indexes and sequence dictionary. Its N counts,
+which the library bootstrap ships, stay.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `genome` | `str \| None` | `None` | `--delete` | The genome's catalog code (e.g. hs38) or file name (e.g. hs38.fa.gz) (required). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference library folder, or a FASTA in it (default: config reference_fasta's library, else reference_library, else the default library). |
 
 ### `api.ref.status(RefStatusParams)`
@@ -1989,8 +2029,30 @@ ploidy and mappability files, and the test genome.
 | --- | --- | --- | --- | --- |
 | `ref` | `Path \| None` | `None` | `--ref` | Reference library folder, or a FASTA in it (default: config reference_library, else reference_fasta's library, else the default library). |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | A BAM/CRAM or VCF whose build picks the annotation files to report. |
-| `dataset_library` | `Path \| None` | `None` | `--dataset-library` | Dataset library folder for the test dataset's status (default: config dataset_library, else ``datasets`` beside the reference library). |
+| `dataset_library` | `Path \| None` | `None` | `--dataset-library` | Dataset library folder for the test genome (default: config dataset_library, else ``datasets`` beside the reference library). |
 | `annotation_vcf` | `Path \| None` | `None` | `--annotation-vcf` | Custom annotation VCF path to include in readiness checks. |
+
+### `api.ref.test_genome(RefTestGenomeParams)`
+
+CLI: `wgsextract ref test-genome`.
+
+Report, install or delete the test genome. `details` has the dataset
+`library`, `installed`, `status` (`installed`, `incomplete`
+while a download is partial, else `missing`) and `path` (its
+folder), as afterwards; `install` adds `changed` (false when it was
+already complete), `delete` adds `deleted` (the paths deleted) and
+`bytes_freed`.
+
+`RefTestGenomeParams`: The test genome: the small hg19 benchmark dataset (1000 Genomes
+HG00096) in the dataset library. Reports whether it is installed;
+`install` downloads it (SHA-256 pinned) and `delete` deletes it.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `ref` | `Path \| None` | `None` | `--ref` | Reference library folder, or a FASTA in it (default: config reference_library, else reference_fasta's library, else the default library). |
+| `dataset_library` | `Path \| None` | `None` | `--dataset-library` | Dataset library folder for the test genome (default: config dataset_library, else ``datasets`` beside the reference library). |
+| `install` | `bool` | `False` | `--install` | Download the test genome (84 MB, SHA-256 checked) and unpack it. |
+| `delete` | `bool` | `False` | `--delete` | Delete the test genome and its download. |
 
 ### `api.ref.gene_map(RefGeneMapParams)`
 

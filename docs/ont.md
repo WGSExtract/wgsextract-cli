@@ -48,6 +48,58 @@ signature matches, **before** its read names are probed. A failed CRAM read-name
 is an error, never a silent fallback to paired short-read extraction.
 The usual realignment disk-space preflight also applies to streamed ONT reads.
 
+### Lossless output profiles
+
+`align` and `realign` accept `--output-profile default|archive|calling`.
+The default leaves `--format` and the installed encoder's defaults unchanged.
+The other profiles select CRAM when `--format` is omitted. An explicit
+profile conflicts with `--format BAM` and is refused; use
+`--output-profile default` for BAM. When the profile comes from config.toml
+instead, explicit `--format BAM` wins and the effective profile is default
+(logged at info level), including in the desktop app and Python API:
+
+| Profile | Encoding | Readers |
+| --- | --- | --- |
+| `archive` | CRAM 3.1, samtools' archive compression | Modern htslib and GATK 4.7+ |
+| `calling` | CRAM 3.0, normal compression | GATK and older htslib-based callers, including DeepVariant |
+
+Both are lossless: full supplementary SEQ/QUAL, soft clipping and MM/ML/MN
+tags are retained. Archive trades encoding time for smaller files; savings
+depend on the reads. Calling avoids DeepVariant's CRAM 3.1 compatibility
+copy, not every caller's other staging requirements. Native pbmm2 only
+writes BAM: auto selects minimap2 for PacBio CRAM profiles, while explicit
+`--aligner pbmm2` is refused with a profile-specific message.
+GPU alignment writes BAM first and converts it with samtools for these
+profiles, so it needs temporary space for that BAM too.
+
+On one 5M-pair HG002 short-read observation, archive reduced size by **9.4%**,
+but writing was **1.9× slower**, SNP calling took **12% longer**, and peak
+RSS during writing/calling was **2.71 vs 1.53 GB (about 1.8×)** compared
+with default CRAM 3.1. These are single warm-cache observations on a shared
+M1 Pro, not established performance guarantees; the trade-off depends on
+the reads and reader.
+
+```bash
+wgsextract realign --input ont.cram --ref hs38.fa --output-profile archive
+wgsextract align --r1 reads_R1.fastq.gz --r2 reads_R2.fastq.gz \
+  --ref hs38.fa --output-profile calling
+```
+
+Set `output_profile = "calling"` (or `"archive"`) in `config.toml` for a
+persistent default; `--output-profile default` overrides it. The typed API
+and server expose the same `output_profile` option. The result manifest
+records the effective profile in `metrics.output_profile`. Changing the
+profile invalidates realign's completed alignment and chunk resume state.
+Installed samtools is checked for the requested options and version before
+mapping; WGS Extract does not install it.
+
+`info`, extraction and bcftools calling read both profiles. Older
+DeepVariant/Clair3 builds use the existing temporary compatible copy for
+archive output. GATK 4.7 and newer read CRAM 3.1 directly; whole-file
+calling with an identified older GATK is refused before making a .dict. Use
+calling output, convert to BAM (`bam to-bam`), or specify `vcf gatk
+--region` for the existing regional BAM conversion.
+
 ### Chunked realignment
 
 A whole-genome ONT realignment runs for days. In one pass, its sort spills
@@ -292,8 +344,16 @@ the same records as 2.0.3, from CRAM 3.1, CRAM 3.0 and BAM input (vcfeval F1
 0.979 against GIAB v4.2.1). On an Apple M1 it took 44 s, and 1,786 of its
 1,827 calls matched the 1,829 Linux calls in alleles and genotype. The rest
 were mostly multi-allelic homopolymer indels, and qualities differ slightly,
-because CPU floating-point results differ between ARM64 and x86-64. Its F1 was
-0.978. Linux ARM64 has not been run here.
+because floating-point results can differ between CPU backends. Its F1 was
+0.978.
+
+On Linux ARM64 (Ubuntu 24.04, Ampere Altra, Azure `Standard_D4ps_v5`,
+4 cores, 16 GiB RAM), the native `clair3` Pixi environment installed
+successfully. The same realigned 1 Mb slice, supplied as CRAM 3.1 with the
+full hs38 reference, took **95.77 s wall and 0.52 GiB peak RSS** through the
+CLI with 4 threads (2026-11-15). All **1,829 sites, alleles, genotypes and
+FILTER values matched Linux x86-64**; only two QUAL values differed, by
+0.01. Both used Clair3 2.0.5 and CPU PyTorch 2.14.1.
 
 ```sh
 wgsextract vcf clair3 -i hg002-ont.bam --ref chr20.fa \
@@ -637,6 +697,18 @@ contig counts as neither on nor off target unless the BED names it. Depth
 follows `samtools depth`'s defaults, like `--bins`: deletions and duplicates
 don't count, overlapping mates do. BED contig names may use `chr1` or `1`
 style either way.
+
+The assessed scope defaults to **the whole alignment header**, not just contigs
+with reads. For a regional BAM retaining a full reference header, explicitly
+declare the assessed contig or 1-based inclusive interval with `--region chr20`
+or `--region chr20:100001-200000`. With `--by`, every target must fit inside
+that scope (outside targets are refused rather than silently clipped).
+The off-target depth sum and denominator then use only assessed nuclear bases
+outside the merged targets. Capture and whole-genome BAMs should retain the
+whole-header default: unsequenced off-target contigs still count in the assay.
+The scope is recorded in the manifest's `provenance.params.region`, the
+`assessed_scope` metric and the text summary; regional output names include
+the scope so they do not overwrite whole-header reports.
 
 ## Validation on GIAB HG002
 

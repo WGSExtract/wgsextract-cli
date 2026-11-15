@@ -35,6 +35,7 @@ from wgsextract_cli.core.atomic_output import (
     safe_output,
 )
 from wgsextract_cli.core.chunked_alignment import Chunk, ChunkedAlignment
+from wgsextract_cli.core.config import settings, typed_settings
 from wgsextract_cli.core.dependencies import get_tool_path as get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -64,6 +65,10 @@ from wgsextract_cli.core.native_aligners import (
 )
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.output_checks import record_alignment_output
+from wgsextract_cli.core.output_profiles import (
+    output_profile_options,
+    validate_output_profile,
+)
 from wgsextract_cli.core.paths import absolute_path, java_local_path
 from wgsextract_cli.core.pixi_tools import pixi_install_command
 from wgsextract_cli.core.read_counts import (
@@ -92,6 +97,7 @@ from wgsextract_cli.core.samtools_commands import (
     written_index,
 )
 from wgsextract_cli.core.sequencing import input_platform, pacbio_platform
+from wgsextract_cli.core.staged_alignment import workspace_path as workspace_path
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -181,6 +187,7 @@ class AlignJob:
     sample: str | None = None
     long_read: bool = False
     format: str = "BAM"
+    output_profile: str | None = None
     # bwa-mem3's --fast speed preset, whose alignments differ from BWA's.
     fast: bool = False
     # auto or off: WGS Extract's Apple Silicon aligner builds (native_aligners).
@@ -202,13 +209,36 @@ class AlignJob:
     chunk_input: str | None = None
     exact_reads: int | None = None
     read_cleanup: ExitStack | None = None
+    retire_fastqs: tuple[str, ...] = ()
 
     @classmethod
     def of(cls: type[_Job], params: Params) -> _Job:
         """The job of ``params``' fields that it shares."""
-        return cls(
+        job = cls(
             **job_values(params, cls), memory_explicit=params.explicitly_set("memory")
         )
+        if params.COMMAND not in ("align", "realign"):
+            return job
+        job.output_profile = job.output_profile or typed_settings().output_profile
+        output_profile_options(job.output_profile)
+        job.format = job.format or "BAM"
+        if job.output_profile != "default":
+            if getattr(params, "format", None) == "BAM":
+                if params.explicitly_set("output_profile"):
+                    raise UsageError(
+                        f"--output-profile {job.output_profile} writes CRAM, not "
+                        "explicit --format BAM. Use --output-profile default "
+                        "for BAM, or --format CRAM."
+                    )
+                logging.info(
+                    "Using explicit --format BAM instead of config output_profile=%s.",
+                    job.output_profile,
+                )
+                job.output_profile = "default"
+            else:
+                job.format = "CRAM"
+        current_result().add_metrics(output_profile=job.output_profile)
+        return job
 
     @property
     def read_count(self) -> int | None:
@@ -312,6 +342,7 @@ def select_aligner(job: AlignJob) -> str:
     if aligner == "auto":
         if (
             job.platform in PACBIO_PLATFORMS
+            and job.output_profile in (None, "default")
             and not _needs_read_extraction(job.r1)
             and get_tool_path("pbmm2") is not None
         ):
@@ -334,6 +365,11 @@ def select_aligner(job: AlignJob) -> str:
                 "--gpu aligns with Parabricks' own BWA-MEM; use --aligner bwa or auto."
             )
     elif aligner == "pbmm2":
+        if job.output_profile not in (None, "default"):
+            raise UsageError(
+                f"pbmm2 cannot write --output-profile {job.output_profile}; "
+                "use --aligner minimap2 for CRAM profiles."
+            )
         if job.platform in {"ont", "nanopore"}:
             raise UsageError(
                 "pbmm2 only aligns PacBio reads; use --aligner minimap2 for ONT."
@@ -590,6 +626,7 @@ def streaming_mapping_fits(
     additional_ram_bytes: int,
     gpu_bytes: int = 0,
     dense_sa_bytes: int = 0,
+    staged: bool = False,
 ) -> bool:
     estimate = estimate_mapping_memory(
         ref,
@@ -602,6 +639,7 @@ def streaming_mapping_fits(
         read_length=read_length,
         gpu_bytes=gpu_bytes,
         dense_sa_bytes=dense_sa_bytes,
+        staged=staged,
     )
     return estimate.total + additional_ram_bytes <= available_memory()
 
@@ -788,6 +826,52 @@ def _bwa_gpu_fit(
     if fitting is None:
         requested_memory = memory
         gpu_estimate = needed(candidates[-1])
+        staged_estimate = None
+        if native.gpu == "metal" and samblaster:
+            chunk_memory = (
+                memory if job.memory_explicit or settings.get("memory_limit") else "2G"
+            )
+            chunk_amount, chunk_unit = parse_memory(chunk_memory)
+            if chunk_amount * (1024 if chunk_unit == "G" else 1) > 2048:
+                chunk_memory = "2G"
+            staged_estimate = (
+                estimate_mapping_memory(
+                    ref,
+                    tool,
+                    threads=str(min(3, int(threads))),
+                    memory=chunk_memory,
+                    samblaster=True,
+                    reads=reads,
+                    platform=job.platform,
+                    read_length=read_length,
+                    gpu_bytes=gpu,
+                    dense_sa_bytes=dense_sa_bytes,
+                    staged=True,
+                ).total
+                + additional_ram_bytes
+            )
+            if staged_estimate <= budget:
+                logging.info(
+                    "Separating Metal alignment from duplicate marking/sorting: "
+                    "estimated %.1f GiB against %.1f GiB; compressed staged checkpoints.",
+                    staged_estimate / 1024**3,
+                    budget / 1024**3,
+                )
+                return AlignerCommand(
+                    tool,
+                    native,
+                    gpu=True,
+                    dense_sa=dense_sa,
+                    staged=True,
+                    memory_decision=NativeMemoryDecision(
+                        "memory_budget_metal_staged",
+                        staged_estimate,
+                        budget,
+                        memory,
+                        chunk_memory,
+                        staged_estimate,
+                    ),
+                ), chunk_memory
         logging.info(
             f"Running {native.binary} on the CPU: with its {_gpu_name(native)} GPU backend "
             f"the alignment is estimated to need {gpu_estimate / 1024**3:.1f} "
@@ -808,7 +892,12 @@ def _bwa_gpu_fit(
             native,
             dense_sa=dense_sa,
             memory_decision=NativeMemoryDecision(
-                "memory_budget_cpu", gpu_estimate, budget, requested_memory, memory
+                "memory_budget_cpu",
+                gpu_estimate,
+                budget,
+                requested_memory,
+                memory,
+                staged_estimate,
             ),
         )
     else:
@@ -1080,6 +1169,7 @@ def _prepare_alignment(
     aligner), the setup's memory is the sort's per-thread memory: sort_memory
     of --memory for these reads."""
     verify_dependencies(tools)
+    validate_output_profile(job.output_profile or "default")
     log_dependency_info(tools)
     threads, memory = get_resource_defaults(job.threads, job.memory)
 
@@ -1207,7 +1297,13 @@ def duplicate_marker(paired: bool) -> str:
 
 
 def _sort_and_mark_stages(
-    out_path: str, *, threads: str, memory: str, fmt: str, ref: str
+    out_path: str,
+    *,
+    threads: str,
+    memory: str,
+    fmt: str,
+    ref: str,
+    output_profile: str = "default",
 ) -> list[list[str]]:
     """samtools fixmate | sort | markdup, writing and indexing out_path. The
     sorted stream goes straight into markdup uncompressed, so the output is
@@ -1216,6 +1312,8 @@ def _sort_and_mark_stages(
     directory = configured_temp_directory()
     tmp = str(Path(directory, "align")) if directory else f"{out_path}.tmp"
     out_fmt = ["-O", "CRAM", "--reference", ref] if fmt == "CRAM" else ["-O", "BAM"]
+    if fmt == "CRAM":
+        out_fmt += output_profile_options(output_profile)
     return [
         ["samtools", "fixmate", "-m", "-u", "-", "-"],
         ["samtools", "sort", "-@", threads, "-m", memory, "-u", "-T", tmp, "-"],
@@ -1248,6 +1346,10 @@ def run_streamed_alignment(
     upstream: list[Sequence[object]] | None = None,
     expected_reads: int | None = None,
     exact_reads: int | None = None,
+    staged_mode: bool = False,
+    retire_fastqs: Sequence[str] = (),
+    read_length: float | None = None,
+    output_profile: str = "default",
 ) -> None:
     """Run the aligner (after any upstream stages feeding it), mark duplicates
     (with duplicate_marker's choice, or not at all for long reads: None), sort,
@@ -1256,6 +1358,44 @@ def run_streamed_alignment(
     from wgsextract_cli.core.atomic_output import safe_output
 
     partial = [out_path, written_index(out_path)]
+    if staged_mode:
+        from wgsextract_cli.core.staged_alignment import run_staged_alignment
+
+        workspace = None
+        try:
+            with cleanup_files(
+                on_failure=partial, preserve_outputs=atomic_outputs_enabled()
+            ):
+                with safe_output(out_path) as staged:
+                    workspace = run_staged_alignment(
+                        [*(upstream or []), list(align_cmd)],
+                        out_path,
+                        staged,
+                        memory=memory,
+                        fmt=fmt,
+                        ref=ref,
+                        retire_fastqs=retire_fastqs,
+                        read_length=read_length,
+                        expected_reads=expected_reads,
+                        output_profile=output_profile,
+                    )
+                    if exact_reads is not None:
+                        check_primary_reads(staged, exact_reads, ref)
+        except BaseException:
+            if workspace is not None:
+                warn(
+                    "staged_alignment_retained",
+                    f"Staged checkpoints retained in {workspace}; rerun unchanged inputs to resume.",
+                    workspace=str(workspace),
+                )
+            raise
+        try:
+            shutil.rmtree(workspace)
+        except OSError as error:
+            logging.warning(
+                "Could not remove staged workspace %s: %s", workspace, error
+            )
+        return
     with cleanup_files(on_failure=partial, preserve_outputs=atomic_outputs_enabled()):
         with safe_output(out_path) as staged:
             stages: list[Sequence[object]] = [*(upstream or []), list(align_cmd)]
@@ -1268,13 +1408,20 @@ def run_streamed_alignment(
                 sam_input=True,
                 write_index=True,
             )
+            if fmt == "CRAM":
+                sort += output_profile_options(output_profile)
             if duplicates == "samblaster":
                 logging.info("Using samblaster for marking duplicates...")
                 stages += [["samblaster"], sort]
             elif duplicates == "markdup":
                 logging.info("Marking duplicates with samtools markdup...")
                 stages += _sort_and_mark_stages(
-                    staged, threads=threads, memory=memory, fmt=fmt, ref=ref
+                    staged,
+                    threads=threads,
+                    memory=memory,
+                    fmt=fmt,
+                    ref=ref,
+                    output_profile=output_profile,
                 )
             else:
                 stages.append(sort)
@@ -1377,6 +1524,8 @@ def _bwa_setup(
             additional_ram_bytes=additional_ram_bytes,
         )
         setup = setup._replace(memory=memory)
+    if aligner.staged:
+        setup = setup._replace(threads=str(min(3, int(setup.threads))))
     # The memory model of the aligner that runs (bwa-mem3 in another's place,
     # or wgse-bwa-mem2 without the .0123 file).
     engine = aligner.engine
@@ -1394,6 +1543,7 @@ def _bwa_setup(
         additional_ram_bytes=additional_ram_bytes,
         gpu_bytes=gpu_bytes,
         dense_sa_bytes=aligner.dense_sa_bytes,
+        staged=aligner.staged,
     ):
         raise StreamingMemoryUnavailable("Collation exceeds available alignment RAM")
     preflight_resources(
@@ -1415,6 +1565,17 @@ def _bwa_setup(
             additional_ram_bytes=additional_ram_bytes,
             gpu_bytes=gpu_bytes,
             dense_sa_bytes=aligner.dense_sa_bytes,
+            staged=aligner.staged,
+            retire_fastqs=job.retire_fastqs,
+            staged_workspace=(
+                str(
+                    workspace_path(
+                        aligned_output_path(setup.outdir, setup.r1, job.r2, job.format)
+                    )
+                )
+                if aligner.staged
+                else None
+            ),
             output_format=job.format,
             duplicate_marking=(
                 "gatk-flow"
@@ -1436,6 +1597,7 @@ def _bwa_setup(
             additional_ram_bytes=additional_ram_bytes,
             gpu_bytes=gpu_bytes,
             dense_sa_bytes=aligner.dense_sa_bytes,
+            staged=aligner.staged,
             required=requested_aligner(job) == "bwa-mem2",
             label=stand_in_label(aligner),
         )
@@ -1513,11 +1675,15 @@ def align_bwa(
             threads=setup.threads,
             memory=setup.memory,
             fmt=job.format,
+            output_profile=job.output_profile or "default",
             ref=setup.ref,
             duplicates=duplicate_marker(paired=bool(job.r2)),
             upstream=list(upstream) if upstream else None,
             expected_reads=job.read_count,
             exact_reads=job.exact_reads,
+            staged_mode=aligner.staged,
+            retire_fastqs=job.retire_fastqs,
+            read_length=job.input_reads.read_length if job.input_reads else None,
         )
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
         raise WGSExtractError(f"{aligner.binary} alignment failed: {e}") from e
@@ -1610,6 +1776,7 @@ def align_ultima(job: AlignJob, cram_opt: list[str] | None = None) -> None:
                 setup,
                 job.format,
                 tmp,
+                output_profile=job.output_profile or "default",
                 expected_reads=job.read_count,
                 exact_reads=job.exact_reads,
             )
@@ -1633,6 +1800,7 @@ def _sort_and_mark_ultima(
     *,
     expected_reads: int | None = None,
     exact_reads: int | None = None,
+    output_profile: str = "default",
 ) -> None:
     """Sort the aligner's output, mark duplicates with Picard's flow mode (GATK),
     or samtools markdup when GATK is missing, then index."""
@@ -1654,6 +1822,7 @@ def _sort_and_mark_ultima(
             upstream=stages[:-1],
             expected_reads=expected_reads,
             exact_reads=exact_reads,
+            output_profile=output_profile,
         )
         return
     sorted_bam = str(Path(tmp, "sorted.bam"))
@@ -1693,6 +1862,7 @@ def _sort_and_mark_ultima(
             if fmt == "CRAM":
                 run_command(
                     ["samtools", "view", "-C", "-@", setup.threads, "-T", setup.ref]
+                    + output_profile_options(output_profile)
                     + ["-o", staged, marked]
                 )
             if exact_reads is not None:
@@ -1840,7 +2010,9 @@ def _gpu_align(
     from wgsextract_cli.core.parabricks import host_path, run_pbrun
 
     out_path = _gpu_output_path(job, setup)
-    convert = out_path.endswith(".cram") and setup.ref.lower().endswith(".gz")
+    convert = out_path.endswith(".cram") and (
+        setup.ref.lower().endswith(".gz") or job.output_profile not in (None, "default")
+    )
     pb_out = out_path.removesuffix(".cram") + ".bam" if convert else out_path
     logging.info(
         LOG_MESSAGES["aligning_reads"].format(
@@ -1868,6 +2040,7 @@ def _gpu_align(
             if convert:
                 run_command(
                     ["samtools", "view", "-C", "-@", setup.threads, "-T", setup.ref]
+                    + output_profile_options(job.output_profile or "default")
                     + ["-o", staged, pb_out]
                 )
             if job.exact_reads is not None:
@@ -2093,6 +2266,7 @@ def align_minimap2(job: AlignJob) -> None:
                 chunks=job.chunks,
                 reference=setup.ref,
                 format=job.format,
+                output_profile=job.output_profile or "default",
                 threads=setup.threads,
                 memory=setup.memory,
                 mapper=align_cmd,
@@ -2118,6 +2292,7 @@ def align_minimap2(job: AlignJob) -> None:
             threads=setup.threads,
             memory=setup.memory,
             fmt=job.format,
+            output_profile=job.output_profile or "default",
             ref=setup.ref,
             duplicates=duplicates,
             upstream=upstream or None,

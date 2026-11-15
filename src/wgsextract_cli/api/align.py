@@ -17,6 +17,7 @@ from typing import Any
 
 from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.native_aligners import SETTINGS as NATIVE_ALIGNER_SETTINGS
+from wgsextract_cli.core.output_profiles import OUTPUT_PROFILES
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
 
@@ -105,7 +106,18 @@ GPU_HELP = (
     "minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU "
     "alignment to retain MM/ML methylation tags."
 )
-_FORMAT_DOC = "Output format: BAM or CRAM (written with the target reference)."
+_FORMAT_DOC = "Default: BAM. CRAM is written with the target reference."
+
+
+def _output_profile_param() -> Any:
+    return param(
+        None,
+        help="Lossless output: default keeps --format; archive selects CRAM 3.1 "
+        "(GATK >=4.7); calling selects CRAM 3.0. Default: config output_profile, "
+        "else default. See docs/ont.md.",
+        choices=OUTPUT_PROFILES,
+        config_key="output_profile",
+    )
 
 
 def _fast_param() -> Any:
@@ -177,9 +189,13 @@ class AlignParams(Params):
         "pbmm2 or minimap2.",
         action="store_true",
     )
-    format: str = param(
-        "BAM", help="Output format", doc=_FORMAT_DOC, choices=("BAM", "CRAM")
+    format: str | None = param(
+        None,
+        help="Output format (default: BAM)",
+        doc=_FORMAT_DOC,
+        choices=("BAM", "CRAM"),
     )
+    output_profile: str | None = _output_profile_param()
     input: Path | None = optional_input_param(
         "An aligned BAM/CRAM of the same sample whose header picks the "
         "reference from the library when ref is unset."
@@ -250,10 +266,9 @@ class RealignParams(Params):
     preset: str | None = param(None, help="minimap2/pbmm2 preset.", choices=PRESETS)
     input_ref: Path | None = param(
         None,
-        help="Reference FASTA the input CRAM was encoded with (default: --ref "
-        "when its sequence names, lengths and MD5s match the CRAM, else the "
-        "FASTA in the reference library whose sequence dictionary matches). "
-        "--ref is the reference to realign to.",
+        help="FASTA decoding the input CRAM, not the target --ref. Default: "
+        "--ref if sequence names, lengths and MD5s match, else the matching "
+        "reference-library FASTA.",
         path="file",
     )
     sample: str | None = param(
@@ -262,15 +277,18 @@ class RealignParams(Params):
     long_read: bool = param(
         False, help="Treat input as long-read data (PacBio/ONT).", action="store_true"
     )
-    format: str = param(
-        "BAM", help="Output format.", doc=_FORMAT_DOC, choices=("BAM", "CRAM")
+    format: str | None = param(
+        None,
+        help="Output format (default: BAM)",
+        doc=_FORMAT_DOC,
+        choices=("BAM", "CRAM"),
     )
+    output_profile: str | None = _output_profile_param()
     keep_fastq: bool = param(
         False,
-        help="Keep the FASTQs extracted from --input after alignment (default: "
-        "delete them); ONT and PacBio reads are then extracted to one tagged "
-        "<input stem>.fastq.gz. FASTQs passed with --r1/--r2 or reused from an earlier "
-        "extraction are never deleted.",
+        help="Keep extracted FASTQs (normally deleted): pairs, or one tagged "
+        "<input stem>.fastq.gz for ONT/PacBio. Supplied or reused FASTQs are "
+        "never deleted.",
         action="store_true",
     )
     force_extract: bool = param(
@@ -281,11 +299,9 @@ class RealignParams(Params):
     )
     chunk_size: str = param(
         "4G",
-        help="Realign ONT and PacBio reads in chunks of about this much of "
-        "the input (K, M, G or T; 0: in one pass). Temporary files then stay "
-        "chunk-sized and an interrupted run resumes at its first unfinished "
-        "chunk. Needs a coordinate-sorted, indexed input; ignored with "
-        "--keep-fastq.",
+        help="ONT/PacBio input per chunk (K/M/G/T; 0: one pass). Resumes "
+        "unfinished chunks and bounds temporary files. Requires sorted, "
+        "indexed input; ignored with --keep-fastq.",
     )
     no_preflight: bool = no_preflight_param()
     restart: bool = restart_param()

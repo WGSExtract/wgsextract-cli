@@ -39,21 +39,13 @@ PLACEHOLDER = re.compile(r"\{\{([^}]+)\}\}")
 # Scripts that end in a `wgsextract` invocation, and scripts that never do.
 CLI_SCRIPTS = {
     "bootstrap-reference-library.sh",
-    "fastqc-reads.sh",
-    "library-state.sh",
-    "run-wgsextract-vcf.sh",
     "run-wgsextract.sh",
-    "unalign-to-fastq.sh",
 }
 NON_CLI_SCRIPTS = {
     "bootstrap-wgsextract-config.sh",
     "check-preinstalled-pixi.sh",
     "check-xcode-command-line-tools.sh",
-    "coverage-state.py",
-    "delete-reference-genome.sh",
-    "list-reference-genomes.py",
     "setup-wgsextract-pixi.sh",
-    "test-genome-library.py",
     "uninstall-wgsextract.sh",
 }
 
@@ -438,6 +430,12 @@ def script_name(path: str) -> str:
 EXCLUSIVE_FLAGS = (("--tree", "--tree-file"), ("--public-key", "--allowed-signers"))
 
 
+def data_source_arguments(source: dict) -> list[str]:
+    """A data source's arguments with all its optional groups."""
+    groups = source.get("optionalArguments", [])
+    return source.get("arguments", []) + [arg for group in groups for arg in group]
+
+
 def bundle_commands() -> Iterator[tuple[str, str, list[str]]]:
     """Yield (label, script, arguments) for everything the bundle can run.
 
@@ -462,7 +460,7 @@ def bundle_commands() -> Iterator[tuple[str, str, list[str]]]:
                 yield (
                     f"{label}:dataSource",
                     script_name(source["path"]),
-                    source.get("arguments", []),
+                    data_source_arguments(source),
                 )
             actions = list(section.get("actions", []))
             for control in section.get("controls", []):
@@ -470,14 +468,14 @@ def bundle_commands() -> Iterator[tuple[str, str, list[str]]]:
                     yield (
                         f"{label}/{control['id']}:dataSource",
                         script_name(source["path"]),
-                        source.get("arguments", []),
+                        data_source_arguments(source),
                     )
                 for setting in control.get("settings", []):
                     if source := setting.get("dataSource"):
                         yield (
                             f"{label}/{setting['id']}:dataSource",
                             script_name(source["path"]),
-                            source.get("arguments", []),
+                            data_source_arguments(source),
                         )
                 actions += control.get("rowActions", [])
             for action in actions:
@@ -550,51 +548,6 @@ class BundleCommandTests(unittest.TestCase):
         ):
             with self.subTest(command=label):
                 self.assertIsNone(error, f"wgsextract {' '.join(argv)}")
-
-    def test_library_state_forwards_annotation_inputs(self) -> None:
-        argv = self.sandbox.run_cli_script(
-            "library-state.sh", ["/ref", "/datasets", "/ann.vcf.gz", "/in.vcf.gz"]
-        )
-        self.assertEqual(
-            argv,
-            [
-                "ref",
-                "status",
-                "--values",
-                "--ref",
-                "/ref",
-                "--dataset-library",
-                "/datasets",
-                "--annotation-vcf",
-                "/ann.vcf.gz",
-                "--input",
-                "/in.vcf.gz",
-            ],
-        )
-
-    def test_vcf_wrapper_adds_ploidy_for_reference_fasta(self) -> None:
-        bam = self.sandbox.values["bam_path"]
-        fasta = self.sandbox.values["ref_fasta"]
-        library = self.sandbox.values["ref_path"]
-        self.assertEqual(
-            self.sandbox.run_cli_script(
-                "run-wgsextract-vcf.sh", ["snp", "--input", bam, "--ref", fasta]
-            ),
-            ["vcf", "snp", "--input", bam, "--ref", fasta, "--ploidy", "GRCh38"],
-        )
-        # A library directory is left to the CLI, which finds its ploidy file.
-        self.assertEqual(
-            self.sandbox.run_cli_script(
-                "run-wgsextract-vcf.sh", ["indel", "--input", bam, "--ref", library]
-            ),
-            ["vcf", "indel", "--input", bam, "--ref", library],
-        )
-        self.assertEqual(
-            self.sandbox.run_cli_script(
-                "run-wgsextract-vcf.sh", ["snp", "--ref", fasta, "--ploidy", "1"]
-            ),
-            ["vcf", "snp", "--ref", fasta, "--ploidy", "1"],
-        )
 
 
 if __name__ == "__main__":

@@ -252,7 +252,7 @@ def read_length(alignment: str, outdir: str | None = None) -> float:
     from wgsextract_cli.commands.info.metrics import cached_info, run_body_sample
 
     fact = sample_workspace.known("read_length", alignment)
-    if fact is not None:
+    if fact is not None and isinstance(fact.value, (str, int, float)):
         return float(fact.value)
     cached = cached_info(alignment, outdir, "avg_read_len")
     avg_len = float(cached["avg_read_len"]) if cached else 0.0

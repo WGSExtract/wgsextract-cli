@@ -56,6 +56,30 @@ void fail(const std::string &reason, bool batch) {
     batch_failed = batch;
 }
 
+// Suffix-array lookups on the GPU (--gpu-sa on), on the seeder's device once it has the
+// sampled suffix array: sa_device, for the index sa_fmi, guarded by sa_mutex.
+std::atomic<bool> sa_wanted{false}, sa_usable{true};
+std::mutex sa_mutex;
+std::shared_ptr<SeedingDevice> sa_device;
+const FMI_search *sa_fmi = nullptr;
+// Guarded by stats_mutex.
+std::string sa_failure;
+bool sa_batch_failed = false, sa_reported = false;
+uint64_t sa_calls = 0, sa_rows = 0;
+double sa_seconds = 0;
+
+void sa_fail(const std::string &reason, bool batch) {
+    {
+        std::lock_guard<std::mutex> lock(stats_mutex);
+        if (!sa_usable.exchange(false)) return;
+        sa_failure = reason;
+        sa_batch_failed = batch;
+    }
+    std::lock_guard<std::mutex> lock(sa_mutex);
+    sa_device.reset();
+    sa_fmi = nullptr;
+}
+
 // Read i of a batch: its SMEMs are smems[offsets[i]..] if counts[i].status == seed_ok.
 struct Batch {
     std::vector<SeedCount> counts;
@@ -88,10 +112,36 @@ public:
         : fmi_(fmi), device_(make_seeding_device(fmi->wgse_cp_occ(),
               size_t((fmi->reference_seq_len >> CP_SHIFT) + 1) * sizeof(CP_OCC),
               SeedingLimits{size_t(batch_reads), max_length, capacity})) {
+        if (sa_wanted && sa_usable) {
+            std::string reason;
+            const auto start = Clock::now();
+            if (device_->enable_sa(fmi->sa_ms_byte_data(), fmi->sa_ls_word_data(),
+                    size_t(fmi->sa_sample_count()), int(fmi->sa_compx), fmi->count_data(), reason)) {
+                fprintf(stderr, "[wgse-bwa-mem3] GPU suffix-array lookups: %.0f MiB uploaded in %.2f s\n",
+                    double(fmi->sa_ms_byte_size_bytes() + fmi->sa_ls_word_size_bytes()) / 1048576,
+                    std::chrono::duration<double>(Clock::now() - start).count());
+                std::lock_guard<std::mutex> lock(sa_mutex);
+                sa_device = device_;
+                sa_fmi = fmi;
+            } else {
+                fprintf(stderr, "[wgse-bwa-mem3] GPU suffix-array lookups are off: %s; they run "
+                    "on the CPU\n", reason.c_str());
+                sa_fail(reason, false);
+                std::lock_guard<std::mutex> lock(stats_mutex);
+                sa_reported = true;
+            }
+        }
         thread_ = std::thread([this] { loop(); });
     }
 
     ~Seeder() {
+        {
+            std::lock_guard<std::mutex> lock(sa_mutex);
+            if (sa_fmi == fmi_) {
+                sa_device.reset();
+                sa_fmi = nullptr;
+            }
+        }
         {
             std::lock_guard<std::mutex> lock(mutex_);
             quit_ = true;
@@ -153,7 +203,8 @@ public:
 
 private:
     FMI_search *fmi_;
-    std::unique_ptr<SeedingDevice> device_;
+    // Shared with suffix-array lookups that may still be running when the seeder stops.
+    std::shared_ptr<SeedingDevice> device_;
     std::mutex mutex_;
     std::condition_variable changed_;
     std::deque<std::shared_ptr<Chunk>> pending_;
@@ -312,6 +363,31 @@ void wgse_mem3_seed_set_enabled(bool value) { enabled = value; }
 void wgse_mem3_seed_set_verify(bool value) { verify = value; }
 void wgse_mem3_seed_set_wait(bool value) { wait_for_batches = value; }
 void wgse_mem3_seed_inject_failure() { inject_failure = true; }
+void wgse_mem3_seed_set_sa(bool value) { sa_wanted = value; }
+
+bool wgse_mem3_sa_resolve(const FMI_search *fmi, const int64_t *rows, const int64_t *slots,
+    int64_t count, int64_t *coordinates, int drop_sentinel_offset) {
+    if (count <= 0 || !sa_wanted || !sa_usable) return false;
+    std::shared_ptr<SeedingDevice> device;
+    {
+        std::lock_guard<std::mutex> lock(sa_mutex);
+        if (sa_fmi != fmi) return false;
+        device = sa_device;
+    }
+    if (!device) return false;
+    double seconds;
+    try {
+        seconds = device->resolve_sa(rows, slots, size_t(count), coordinates, drop_sentinel_offset != 0);
+    } catch (const std::exception &error) {
+        sa_fail(error.what(), true);
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(stats_mutex);
+    ++sa_calls;
+    sa_rows += uint64_t(count);
+    sa_seconds += seconds;
+    return true;
+}
 
 void wgse_mem3_seed_preseed(FMI_search *fmi, const mem_opt_t *opt, const bseq1_t *seqs, int n) {
     if (!enabled || !usable || n <= 0 || opt->meth_mode) return;
@@ -494,7 +570,15 @@ bool wgse_mem3_seed_finish() {
         seeder.reset();
     }
     std::lock_guard<std::mutex> lock(stats_mutex);
-    if (!chunks && usable) return false;
+    if (sa_wanted && (sa_calls || !sa_usable)) {
+        fprintf(stderr, "[wgse-bwa-mem3] sa_calls=%llu sa_gpu_rows=%llu sa_gpu_s=%.2f\n",
+            (unsigned long long)sa_calls, (unsigned long long)sa_rows, sa_seconds);
+        if (!sa_usable && !sa_reported)
+            fprintf(stderr, "[wgse-bwa-mem3] %s: %s; the CPU looked up the rest\n",
+                sa_batch_failed ? "CPU fallback: GPU suffix-array lookups failed"
+                    : "GPU suffix-array lookups are off", sa_failure.c_str());
+    }
+    if (!chunks && usable) return sa_batch_failed;
     fprintf(stderr, "[wgse-bwa-mem3] seed_chunks=%llu seed_reads=%llu seed_gpu_reads=%llu "
         "seed_cpu_reads=%llu seed_long_reads=%llu seed_overflow_reads=%llu seed_hits=%llu seed_misses=%llu seed_mismatches=%llu seed_batches=%llu "
         "seed_late_batches=%llu seed_gpu_s=%.2f\n",
@@ -507,5 +591,5 @@ bool wgse_mem3_seed_finish() {
         fprintf(stderr, "[wgse-bwa-mem3] %s: %s; seeding ran on the CPU\n",
             batch_failed ? "CPU fallback: GPU seeding failed" : "GPU seeding is off",
             failure_reason.c_str());
-    return batch_failed;
+    return batch_failed || sa_batch_failed;
 }

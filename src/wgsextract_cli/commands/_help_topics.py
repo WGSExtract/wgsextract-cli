@@ -68,7 +68,9 @@ in the genome-config.toml it creates in the folder.
   wgsextract info --genome joe
   wgsextract microarray --genome joe --formats 23andme_v5
 
-'example-genome download' puts public example datasets in the library.
+'example-genome download' puts public example datasets in the library, and
+'ref test-genome --install' a small hg19 one to try commands on
+(--genome wgsextract-benchmark-hg19-mini).
 Reference genomes never go there: they live in reference_genome_library
 (default: genomes/ in the reference library).
 """,

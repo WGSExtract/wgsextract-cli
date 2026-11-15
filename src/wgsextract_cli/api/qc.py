@@ -56,11 +56,27 @@ class FastpParams(Params):
 @dataclass(frozen=True, kw_only=True)
 class FastqcParams(Params):
     """A FastQC report on a FASTQ, BAM or SAM file as ``<input>_fastqc.html``
-    and ``.zip``. Module PASS/WARN/FAIL counts and the read count are metrics."""
+    and ``.zip``, and on ``r2`` too when set. Module PASS/WARN/FAIL counts and
+    the read count are metrics (``r2_``-prefixed for ``r2``). With ``r2``,
+    ``multiqc`` merges the reports in ``outdir`` into ``multiqc_report.html``."""
 
     COMMAND = "qc fastqc"
 
     input: Path = input_param("FASTQ, BAM or SAM file.")
+    r2: Path | None = param(
+        None,
+        help="Read 2 FASTQ, reported on too",
+        path="file",
+        doc="Read 2 FASTQ, reported on too.",
+    )
+    multiqc: bool = param(
+        False,
+        help="With --r2, merge the reports in --outdir into multiqc_report.html, "
+        "replacing an earlier one",
+        action="store_true",
+        doc="With r2, merge the reports in outdir into ``multiqc_report.html``, "
+        "replacing an earlier one.",
+    )
     outdir: Path | None = outdir_param()
     threads: int | None = threads_param()
 

@@ -8,6 +8,39 @@ original source (NCBI, EBI, UCSC, AWS) is listed after it as an `-Alt` row,
 and the install falls back to it automatically. The original servers have
 been slow and unreliable, so the copies come first (#701).
 
+## Listing the library
+
+`wgsextract ref library --list` shows every catalog row (one per source) with
+its state in your library: installed (with its `.fai`), unindexed, incomplete
+(a `.partial` download) or missing, and its size on disk. `--json` prints it as
+the result manifest's `details` (fields in [api.md](api.md), `library_list`).
+
+`--remote-sizes` also looks up each genome's download size from its source
+(HTTP `HEAD`, FTP `SIZE`; each network wait times out after 4 s, and the
+lookup gives up after 8 s). Sizes found are kept for 30 days in the library's `.remote-sizes.json`,
+and later listings show them without going online.
+
+## The test genome
+
+`wgsextract ref test-genome --install` downloads and verifies the small
+HG00096 dataset. Its human-readable status identifies it as **WGS Extract hg19
+mini benchmark genome**, the same title shown by the app. The status and path
+are also available in the JSON result's `details`.
+
+## Deleting a genome
+
+`wgsextract ref library --delete CODE` (or the file name, such as
+`hs38.fa.gz`) deletes a catalog genome from the library's genomes folder, as
+the app's Library page does: the FASTA, a partial download, its `.fai`,
+`.gzi` and `.dict`, the bwa and bwa-mem2 indexes, dense suffix-array files,
+their run manifests and an interrupted index build's staging folders. Its N
+counts stay, since the library bootstrap ships them for every catalog genome.
+Only files in the genomes folder itself are deleted; a link there is removed,
+not what it points to. While another run builds its bwa index or dense
+suffix array, the delete is refused. With `--json`, the result's `details`
+lists the deleted paths and the bytes freed (fields in [api.md](api.md),
+`library_delete`).
+
 ## How a copy is made and checked
 
 - **Made like an install:** the [Mirror reference genomes](../.github/workflows/mirror_reference_genomes.yml)

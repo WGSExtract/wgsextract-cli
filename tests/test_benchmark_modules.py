@@ -49,6 +49,7 @@ from wgsextract_cli.commands.benchmark.models import (
 from wgsextract_cli.core import dev_download_cache
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.mini_genome import extract_zip_safely
 from wgsextract_cli.core.ref_library import downloads
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.main import main
@@ -513,16 +514,16 @@ def test_extract_zip_refuses_entries_outside_the_target(tmp_path, entry):
     with zipfile.ZipFile(bad, "w") as zf:
         zf.writestr("ok.txt", "fine")
         zf.writestr(entry, "evil")
-    with pytest.raises(WGSExtractError, match="Unsafe benchmark dataset zip entry"):
-        environment._extract_zip_safely(bad, tmp_path / "out")
+    with pytest.raises(WGSExtractError, match="Unsafe dataset zip entry"):
+        extract_zip_safely(bad, tmp_path / "out")
     assert not (tmp_path / "evil.txt").exists()
     assert not (tmp_path / "out" / "ok.txt").exists()
 
 
 def test_extract_zip_reports_non_zip(tmp_path):
     (tmp_path / "x.zip").write_text("not a zip")
-    with pytest.raises(WGSExtractError, match="Invalid benchmark dataset zip"):
-        environment._extract_zip_safely(tmp_path / "x.zip", tmp_path / "out")
+    with pytest.raises(WGSExtractError, match="Invalid dataset zip"):
+        extract_zip_safely(tmp_path / "x.zip", tmp_path / "out")
 
 
 @needs_htslib

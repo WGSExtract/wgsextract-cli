@@ -748,12 +748,18 @@ def test_commands_report_before_work(
         monkeypatch.setattr(module, "require_native_tool", lambda _tool: None)
     monkeypatch.setattr(module, "log_dependency_info", lambda *_: None, raising=False)
     ref = None
-    if module in (bam, basic):
+    if module in (bam, basic, callers):
         source, ref = _tiny_bam(tmp_path)
     if module is not bam:
+        from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+
         setup = basic.CallerSetup(
-            "1", str(tmp_path), "", ref if module is basic else None, None
-        )  # type: ignore[arg-type]
+            "1",
+            str(tmp_path),
+            str(ref),
+            ReferenceLibrary(str(ref), input_path=str(source)),
+            None,
+        )
         monkeypatch.setattr(module, "setup_caller", lambda _params: setup)
 
     def reported(build):
