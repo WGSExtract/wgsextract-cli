@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -64,6 +65,8 @@ def transport(
     state: str = "success",
     code: int = 0,
     binding: str | None = None,
+    before_binding: str | None = None,
+    layer: str = "macos-arm64",
     disconnect: bool = False,
     moved_pr: bool = False,
     lock_refused: bool = False,
@@ -92,11 +95,13 @@ def transport(
             if terminated:
                 os.kill(os.getpid(), signal.SIGTERM)
             result = {
-                "sha_before": pr["head"]["sha"],
+                "sha_before": before_binding
+                if before_binding is not None
+                else pr["head"]["sha"],
                 "sha_after": binding if binding is not None else pr["head"]["sha"],
                 "base": pr["base"]["sha"],
                 "platform": "macos-arm64",
-                "layer": "macos-arm64",
+                "layer": layer,
                 "state": state,
             }
             output = "live remote test output\n"
@@ -170,12 +175,20 @@ def test_972_remote_success_streams_and_posts_local_log_digest(
         ({"state": "error", "code": 2}, "error"),
         ({"binding": "d" * 40}, "error"),
         ({"binding": ""}, "error"),
+        ({"before_binding": "d" * 40}, "error"),
         ({"disconnect": True, "code": 255}, "error"),
         ({"moved_pr": True}, "error"),
         ({"state": "success", "code": 1}, "error"),
         ({"lock_refused": True}, "error"),
         ({"cleanup_refused": True}, "error"),
-        ({"terminated": True}, "error"),
+        pytest.param(
+            {"terminated": True},
+            "error",
+            marks=pytest.mark.skipif(
+                sys.platform == "win32",
+                reason="Windows TerminateProcess cannot deliver a catchable SIGTERM",
+            ),
+        ),
     ],
 )
 def test_972_refusals_never_publish_test_failure(
@@ -208,8 +221,26 @@ def test_972_shell_payload_in_sha_is_refused_without_execution(
     assert locks == ["lock", "unlock"]
 
 
+def test_972_generic_only_posts_only_its_remote_layer(
+    remote_pr: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    statuses, locks = transport(monkeypatch, remote_pr, layer="generic")
+    certify_remote(
+        REPOSITORY,
+        remote_pr,
+        remote_pr["head"]["sha"],
+        argparse.Namespace(platform_only=False, generic_only=True, workers=1),
+    )
+    assert [status["state"] for status in statuses] == ["pending", "success"]
+    assert {status["context"] for status in statuses} == {"local-ci/generic"}
+    assert locks == ["lock", "unlock"]
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX SSH process groups")
 def test_972_disconnect_reaps_remote_test_children(tmp_path: Path) -> None:
+    if shutil.disk_usage(tmp_path).free < 30 * 1024**3:
+        pytest.skip("Remote supervisor integration needs its 30 GiB disk reserve")
     child_script = (
         "import subprocess, sys, time; "
         "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(300)']); "
