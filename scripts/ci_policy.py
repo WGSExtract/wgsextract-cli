@@ -21,8 +21,8 @@ ROUTED_MAIN = {
     "gitleaks": "gitleaks.yml",
     "Documentation freshness": "ubuntu_ci.yml",
 }
-# PR area checks' summary gate only mirrors its dependencies' results.
-SUMMARY_JOBS = {"required"}
+# PR area checks' summary gates only mirror their dependencies' results.
+SUMMARY_JOBS = {"required", "Ready PR area checks"}
 
 
 def safe(value: str) -> str:
