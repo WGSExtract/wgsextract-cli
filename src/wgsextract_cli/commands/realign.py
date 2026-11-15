@@ -55,6 +55,7 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.native_aligners import AlignerCommand, native_gpu_preference
+from wgsextract_cli.core.output_profiles import validate_output_profile
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.read_counts import (
     alignment_sample,
@@ -455,6 +456,7 @@ def _single_end_pacbio(input_path: str, cram_opt: list[str]) -> str | None:
 
 def run(params: RealignParams) -> None:
     job = RealignJob.of(params)
+    validate_output_profile(job.output_profile or "default")
     if is_url(job.input):
         check_url(job.input)
         remote_file(job.input)  # Reachable, or an error naming it.
@@ -625,6 +627,11 @@ def _align_step(
             "preset": job.preset,
             "long_read": bool(job.long_read),
             "format": job.format,
+            **(
+                {"output_profile": job.output_profile}
+                if job.output_profile not in (None, "default")
+                else {}
+            ),
             "sample": job.sample,
             "gpu": bool(job.gpu),
             "ref": None if reference else job.ref,

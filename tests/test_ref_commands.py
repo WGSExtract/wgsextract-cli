@@ -371,12 +371,15 @@ def test_library_list_reports_genome_status_and_resources(tmp_path, genomes, cap
     assert rows["REVEL (hg38)"] == ["MISSING"]
 
 
-def test_api_library_list_gives_the_listing_as_details_and_text(
-    tmp_path, genomes, capsys
+@pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=["lf", "crlf"])
+def test_issue_947_api_library_list_gives_the_listing_as_details_and_text(
+    tmp_path, genomes, capsys, newline
 ):
     # #478: the listing is the result's details; a FASTA in the library's
     # genomes folder names that library.
     lib = _fake_library(tmp_path / "lib")
+    index = lib / "genomes" / "hg38.fa.gz.fai"
+    index.write_text("chr1\t1\n", newline=newline)
 
     result = api.ref.library_list(
         RefLibraryListParams(ref=lib / "genomes" / "hg38.fa.gz")
@@ -397,7 +400,7 @@ def test_api_library_list_gives_the_listing_as_details_and_text(
         "sn_count": None,
         "build": "hg38",
         "status": "installed",
-        "size_bytes": 2 * 1024 * 1024 + len("chr1\t1\n"),
+        "size_bytes": 2 * 1024 * 1024 + len(index.read_bytes()),
         "size": "2.0 MiB",
         "remote_bytes": None,
         "n_counts": True,

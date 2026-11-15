@@ -141,7 +141,7 @@ def gatk(tmp_path, monkeypatch) -> FakeGatk:
     require_runnable("samtools", "bcftools", "tabix")
     bcftools = shutil.which("bcftools") or pytest.skip("bcftools is not on PATH")
     bindir = tmp_path / "bin"
-    fake = FakeGatk(bindir, bcftools)
+    fake = FakeGatk(bindir, bcftools, version="4.7.0.0")
     # The OS temp folder, where GATK's temp dir goes without a --tmp-dir.
     (tmp_path / "systemp").mkdir()
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / "systemp"))
@@ -213,6 +213,26 @@ def test_gatk_reads_a_whole_cram_without_converting_it(genome, gatk, tmp_path, c
     assert vcf_calls(outdir / "gatk.vcf.gz") == genome.calls
     # contract: the whole CRAM is read in place, not copied to a BAM first.
     assert [run[run.index("-I") + 1] for run in gatk.runs()] == [genome.cram]
+
+
+def test_691_gatk_refuses_whole_archive_cram_with_a_compatible_output_hint(
+    genome, gatk, tmp_path, capsys
+):
+    gatk.set(version="4.6.2.0")
+    ref = _reference_copy(genome, tmp_path / "ref")
+    cram = str(tmp_path / "archive.cram")
+    run_command(["samtools", "view", "-C", "-T", ref,
+                 "--output-fmt-option", "archive", "--output-fmt-option", "version=3.1",
+                 "-o", cram, genome.bam])  # fmt: skip
+    run_command(["samtools", "index", cram])
+    result, _ = _gatk(capsys, genome, cram, ref, tmp_path / "out", tmp_path / "scratch")
+    assert result["status"] == "failed"
+    assert result["exit_code"] == 2
+    assert "--output-profile calling" in result["error"]["message"]
+    assert "GATK 4.7" in result["error"]["message"]
+    assert not (tmp_path / "ref" / "ref.dict").exists()
+    assert not (tmp_path / "out" / "gatk.vcf.gz").exists()
+    assert list((tmp_path / "scratch").iterdir()) == []
 
 
 def test_gatk_region_cant_be_read_as_a_samtools_option(genome, gatk, tmp_path, capsys):

@@ -84,7 +84,7 @@ def checks_ready(
         return False
     for gate in checks:
         if (
-            gate.get("name") != "Ready PR area checks"
+            gate.get("name") != "required"
             or gate.get("workflow") != "PR area checks"
             or gate.get("bucket") != "pass"
         ):
@@ -102,10 +102,6 @@ def checks_ready(
             all(check.get("bucket") in {"pass", "skipping"} for check in run_checks)
             and any(
                 check.get("name") == "changes" and check.get("bucket") == "pass"
-                for check in run_checks
-            )
-            and any(
-                check.get("name") == "required" and check.get("bucket") == "pass"
                 for check in run_checks
             )
             and all(
