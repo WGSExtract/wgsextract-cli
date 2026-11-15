@@ -350,7 +350,8 @@ jobs:
   # routing skips jobs, so require this summary rather than each job. PRs
   # also require the area verdict; queue groups retain their smaller matrix.
   required:
-    name: required
+    # A late skipped draft suite must never satisfy the ready run's required check.
+    name: ${{ github.event.pull_request.draft && 'required (draft)' || 'required' }}
     needs: [changes, draft-fast, docs, python-lint, ci-policy, generic, ubuntu, gitleaks, native-smoke, pages, ready-gate]
     # Run after failed dependencies, but let whole-run cancellation stop this
     # gate. A cancelled dependency in an otherwise active run still fails below.

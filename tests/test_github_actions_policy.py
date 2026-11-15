@@ -267,9 +267,28 @@ def test_954_label_events_cannot_shadow_the_required_suite(action: str) -> None:
     assert "pr_ci.yml" not in triggered_workflows(
         [".github/workflows/pr_ci.yml"], "pull_request", action=action
     )
+
+
+def test_954_late_skipped_draft_cannot_satisfy_pending_ready_required() -> None:
     workflow = (WORKFLOWS / "pr_ci.yml").read_text()
     required = workflow.split("\n  required:\n", 1)[1]
-    assert re.search(r"^    name: required$", required, re.MULTILINE)
+    name = re.search(r"^    name: (.+)$", required, re.MULTILINE)
+    assert name
+    condition = re.fullmatch(
+        r"\$\{\{ github.event.pull_request.draft && '([^']+)' \|\| '([^']+)' \}\}",
+        name[1],
+    )
+    assert condition, "Draft and ready suites must use distinct merge-check names"
+    draft_name, ready_name = condition.groups()
+    checks = [
+        (ready_name, "pending"),
+        (draft_name, "skipped"),
+    ]
+    # A skipped check is accepted by GitHub; it must not replace real validation.
+    matching = [state for check_name, state in checks if check_name == "required"]
+    assert matching == ["pending"]
+    # GitHub can leave a skipped job's expression unrendered; that is safe too.
+    assert name[1] != "required"
 
 
 @pytest.mark.parametrize("job", ["required", "ready-gate"])
