@@ -58,6 +58,7 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
   3. the "Up next" list at the top of the roadmap tracking issue (label `roadmap`), in the order listed; it overrides milestones
   4. the oldest open milestone
   5. the rest of the roadmap tracking issue
+  - Skip issues labelled `check-later` (parked by an owner, for example waiting on a future release or an owner decision), and don't list them as blocked or waiting in status reports. An owner removes the label to bring one back.
 - **Machine labels.** A `machine-*` label (for example `machine-lin-3090`) claims an issue for one machine. The label's description names the agent that owns it: the agent on that machine, or the supervisor that drives it remotely (randy-mini, Azure VMs).
   - An issue carries at most one machine label. Every other agent skips a labelled issue; an owner moves it by swapping the label. To coordinate, comment on the issue.
   - **Only that machine can do it:** label the issue in advance (for example, it needs that machine's GPU). The label stays on even while nobody works on it.
