@@ -88,6 +88,7 @@ from wgsextract_cli.core.resource_estimates import (
     estimate_resources,
     preflight_resources,
 )
+from wgsextract_cli.core.resource_policy import stage_thread_plan
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.samtools_commands import (
     indexed_output,
@@ -510,6 +511,7 @@ def short_read_aligner(
     ref: str,
     *,
     threads: str = "1",
+    alignment_threads: str | None = None,
     memory: str = "512M",
     samblaster: bool = True,
     reads: int | None = None,
@@ -531,6 +533,7 @@ def short_read_aligner(
         ref,
         model,
         threads=threads,
+        alignment_threads=alignment_threads,
         memory=memory,
         samblaster=samblaster,
         reads=reads,
@@ -579,6 +582,7 @@ def short_read_command(
         requested_aligner(job),
         ref,
         threads=threads,
+        alignment_threads=str(stage_thread_plan(job.threads).alignment),
         memory=memory,
         samblaster=samblaster,
         reads=reads,
@@ -616,6 +620,7 @@ def streaming_mapping_fits(
     tool: str,
     *,
     threads: str,
+    alignment_threads: str | None = None,
     memory: str,
     samblaster: bool,
     reads: int | None,
@@ -630,6 +635,7 @@ def streaming_mapping_fits(
         ref,
         tool,
         threads=threads,
+        alignment_threads=alignment_threads,
         memory=short_read_sort_memory(tool, memory, log=False),
         samblaster=samblaster,
         reads=reads,
@@ -789,6 +795,9 @@ def _bwa_gpu_fit(
             ref,
             tool,
             threads=threads,
+            alignment_threads=str(
+                stage_thread_plan(job.threads, metal=bool(gpu_bytes)).alignment
+            ),
             memory=sort_memory,
             samblaster=samblaster,
             reads=reads,
@@ -832,22 +841,34 @@ def _bwa_gpu_fit(
             chunk_amount, chunk_unit = parse_memory(chunk_memory)
             if chunk_amount * (1024 if chunk_unit == "G" else 1) > 2048:
                 chunk_memory = "2G"
-            staged_estimate = (
-                estimate_mapping_memory(
-                    ref,
-                    tool,
-                    threads=str(min(3, int(threads))),
-                    memory=chunk_memory,
-                    samblaster=True,
-                    reads=reads,
-                    platform=job.platform,
-                    read_length=read_length,
-                    gpu_bytes=gpu,
-                    dense_sa_bytes=dense_sa_bytes,
-                    staged=True,
-                ).total
-                + additional_ram_bytes
-            )
+            chunk_amount, chunk_unit = parse_memory(chunk_memory)
+            chunk_mib = chunk_amount * (1024 if chunk_unit == "G" else 1)
+            chunk_candidates = [chunk_memory] + [
+                f"{step}M" for step in (1024, 512, 256) if step < chunk_mib
+            ]
+            for chunk_memory in chunk_candidates:
+                staged_estimate = (
+                    estimate_mapping_memory(
+                        ref,
+                        tool,
+                        threads=threads,
+                        alignment_threads=str(
+                            stage_thread_plan(job.threads, metal=True).alignment
+                        ),
+                        memory=chunk_memory,
+                        samblaster=True,
+                        reads=reads,
+                        platform=job.platform,
+                        read_length=read_length,
+                        gpu_bytes=gpu,
+                        dense_sa_bytes=dense_sa_bytes,
+                        staged=True,
+                    ).total
+                    + additional_ram_bytes
+                )
+                if staged_estimate <= budget:
+                    break
+            assert staged_estimate is not None
             if staged_estimate <= budget:
                 logging.info(
                     "Separating Metal alignment from duplicate marking/sorting: "
@@ -987,6 +1008,9 @@ def bwa_mem3_stand_in(
             ref,
             engine,
             threads=threads,
+            alignment_threads=str(
+                stage_thread_plan(job.threads, metal=bool(gpu_bytes)).alignment
+            ),
             memory=memory,
             samblaster=samblaster,
             reads=reads,
@@ -1128,6 +1152,8 @@ class _AlignSetup(NamedTuple):
     ref: str
     stem: str
     r1: str
+    alignment_threads: str | None = None
+    compression_threads: str | None = None
 
 
 def _require_unambiguous_library(ref: str | None, task: str) -> None:
@@ -1207,7 +1233,16 @@ def _prepare_alignment(
     if job.r2:
         # Both mates go into one output, so it shouldn't be named after R1.
         stem = pair_stem(stem)
-    setup = _AlignSetup(threads, memory, outdir, resolved_ref, stem, job.r1)
+    setup = _AlignSetup(
+        threads,
+        memory,
+        outdir,
+        resolved_ref,
+        stem,
+        job.r1,
+        str(stage_thread_plan(job.threads).alignment),
+        str(stage_thread_plan(job.threads).compression),
+    )
     return _validated_read_setup(job, setup) if validate_reads else setup
 
 
@@ -1348,6 +1383,7 @@ def run_streamed_alignment(
     retire_fastqs: Sequence[str] = (),
     read_length: float | None = None,
     output_profile: str = "default",
+    compression_threads: str | None = None,
 ) -> None:
     """Run the aligner (after any upstream stages feeding it), mark duplicates
     (with duplicate_marker's choice, or not at all for long reads: None), sort,
@@ -1370,6 +1406,8 @@ def run_streamed_alignment(
                         out_path,
                         staged,
                         memory=memory,
+                        threads=threads,
+                        compression_threads=compression_threads,
                         fmt=fmt,
                         ref=ref,
                         retire_fastqs=retire_fastqs,
@@ -1522,8 +1560,9 @@ def _bwa_setup(
             additional_ram_bytes=additional_ram_bytes,
         )
         setup = setup._replace(memory=memory)
-    if aligner.staged:
-        setup = setup._replace(threads=str(min(3, int(setup.threads))))
+    plan = stage_thread_plan(job.threads, metal=aligner.gpu)
+    plan.record()
+    setup = setup._replace(alignment_threads=str(plan.alignment))
     # The memory model of the aligner that runs (bwa-mem3 in another's place,
     # or wgse-bwa-mem2 without the .0123 file).
     engine = aligner.engine
@@ -1533,6 +1572,7 @@ def _bwa_setup(
         setup.ref,
         model,
         threads=setup.threads,
+        alignment_threads=setup.alignment_threads,
         memory=setup.memory,
         samblaster=samblaster,
         reads=reads,
@@ -1554,6 +1594,7 @@ def _bwa_setup(
             temp_dir=configured_temp_directory(),
             reference=setup.ref,
             threads=setup.threads,
+            alignment_threads=setup.alignment_threads,
             memory=setup.memory,
             aligner=model,
             samblaster=samblaster,
@@ -1587,6 +1628,7 @@ def _bwa_setup(
             setup.ref,
             model,
             threads=setup.threads,
+            alignment_threads=setup.alignment_threads,
             memory=setup.memory,
             samblaster=samblaster,
             reads=reads,
@@ -1612,7 +1654,7 @@ def _bwa_setup(
     elif engine == "bwa":
         ensure_bwa_index(setup.ref)
     ensure_bwa_alt_file(setup.ref)
-    print_warning("ButtonBWAAlign", threads=setup.threads)
+    print_warning("ButtonBWAAlign", threads=setup.alignment_threads or setup.threads)
     return setup, aligner
 
 
@@ -1657,7 +1699,7 @@ def align_bwa(
     if aligner.bwa_mem3_mode == "fast":
         warn_bwa_mem3_fast(aligner.binary)
     align_cmd = [
-        *aligner.mem_argv(), "-K", BWA_BATCH_BASES, "-t", setup.threads,
+        *aligner.mem_argv(), "-K", BWA_BATCH_BASES, "-t", setup.alignment_threads or setup.threads,
         "-R", read_group(setup.stem, job.sample, job.platform),
     ]  # fmt: skip
     align_cmd += [setup.ref, setup.r1]
@@ -1680,6 +1722,7 @@ def align_bwa(
             expected_reads=job.read_count,
             exact_reads=job.exact_reads,
             staged_mode=aligner.staged,
+            compression_threads=setup.compression_threads,
             retire_fastqs=job.retire_fastqs,
             read_length=job.input_reads.read_length if job.input_reads else None,
         )
@@ -1732,7 +1775,14 @@ def align_ultima(job: AlignJob, cram_opt: list[str] | None = None) -> None:
         )
     )
     aligner.record()
-    bwa = [*aligner.mem_argv(), "-K", BWA_BATCH_BASES, "-t", setup.threads, "-Y"]
+    bwa = [
+        *aligner.mem_argv(),
+        "-K",
+        BWA_BATCH_BASES,
+        "-t",
+        setup.alignment_threads or setup.threads,
+        "-Y",
+    ]
     with tempfile.TemporaryDirectory(
         dir=configured_temp_directory() or setup.outdir, prefix=".wgse_ug_"
     ) as tmp:
@@ -1859,7 +1909,15 @@ def _sort_and_mark_ultima(
             Path(sorted_bam).unlink(missing_ok=True)
             if fmt == "CRAM":
                 run_command(
-                    ["samtools", "view", "-C", "-@", setup.threads, "-T", setup.ref]
+                    [
+                        "samtools",
+                        "view",
+                        "-C",
+                        "-@",
+                        setup.compression_threads or setup.threads,
+                        "-T",
+                        setup.ref,
+                    ]
                     + output_profile_options(output_profile)
                     + ["-o", staged, marked]
                 )
@@ -2037,7 +2095,15 @@ def _gpu_align(
             )
             if convert:
                 run_command(
-                    ["samtools", "view", "-C", "-@", setup.threads, "-T", setup.ref]
+                    [
+                        "samtools",
+                        "view",
+                        "-C",
+                        "-@",
+                        setup.compression_threads or setup.threads,
+                        "-T",
+                        setup.ref,
+                    ]
                     + output_profile_options(job.output_profile or "default")
                     + ["-o", staged, pb_out]
                 )
@@ -2130,6 +2196,9 @@ def _minimap2_command(
             ref,
             "minimap2",
             threads=threads,
+            alignment_threads=str(
+                stage_thread_plan(job.threads, metal=bool(gpu_bytes)).alignment
+            ),
             memory=memory,
             samblaster=samblaster,
             reads=reads,
@@ -2191,6 +2260,9 @@ def align_minimap2(job: AlignJob) -> None:
         read_length=read_length,
         input_bytes=input_bytes,
     )
+    plan = stage_thread_plan(job.threads, metal=aligner.gpu)
+    plan.record()
+    setup = setup._replace(alignment_threads=str(plan.alignment))
     gpu_bytes = aligner_gpu_bytes(aligner, setup.ref, read_count)
     # realign checked a chunked alignment's disk space, chunk by chunk.
     if not job.chunks:
@@ -2202,6 +2274,7 @@ def align_minimap2(job: AlignJob) -> None:
                 temp_dir=configured_temp_directory(),
                 reference=setup.ref,
                 threads=setup.threads,
+                alignment_threads=setup.alignment_threads,
                 memory=setup.memory,
                 aligner="minimap2",
                 preset=preset,
@@ -2217,6 +2290,7 @@ def align_minimap2(job: AlignJob) -> None:
         setup.ref,
         "minimap2",
         threads=setup.threads,
+        alignment_threads=setup.alignment_threads,
         memory=setup.memory,
         samblaster=duplicates == "samblaster",
         reads=read_count,
@@ -2228,7 +2302,7 @@ def align_minimap2(job: AlignJob) -> None:
     )
     aligner.announce()
     aligner.record()
-    align_cmd = [*aligner.argv(), "-ax", preset, "-t", setup.threads]
+    align_cmd = [*aligner.argv(), "-ax", preset, "-t", str(plan.alignment)]
     upstream: list[Sequence[object]] = []
     reads = setup.r1
     # realign --keep-fastq aligns a FASTQ, so it passes its BAM/CRAM's.
@@ -2268,10 +2342,16 @@ def align_minimap2(job: AlignJob) -> None:
                 threads=setup.threads,
                 memory=setup.memory,
                 mapper=align_cmd,
+                compression_threads=setup.compression_threads,
                 # Building the index uses no GPU.
                 indexer=[
                     *replace(aligner, gpu=False).argv(),
-                    *("-x", preset, "-t", setup.threads),
+                    *(
+                        "-x",
+                        preset,
+                        "-t",
+                        str(stage_thread_plan(job.threads).alignment),
+                    ),
                 ],
                 reads=["samtools", "fastq", "-n", "-T", LONG_READ_TAGS, "-"],
                 decode=job.input_cram_opt or [],
@@ -2333,7 +2413,14 @@ def align_pbmm2(job: AlignJob) -> None:
         )
     )
     cmd = ["pbmm2", "align", setup.ref, setup.r1, out_bam, "--sort"]
-    cmd += ["--preset", preset, "--sample", sample, "-j", setup.threads]
+    cmd += [
+        "--preset",
+        preset,
+        "--sample",
+        sample,
+        "-j",
+        setup.alignment_threads or setup.threads,
+    ]
     if preset == "SUBREAD" and job.exact_reads is None:
         cmd.append("--median-filter")
     if job.exact_reads is not None:

@@ -26,6 +26,7 @@ from wgsextract_cli import api
 from wgsextract_cli.commands import align
 from wgsextract_cli.commands._extract_helpers import alignments_to_fastq
 from wgsextract_cli.commands.align import AlignJob
+from wgsextract_cli.core import runtime
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.cram_staging import cram_version, needs_cram30
 from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
@@ -80,6 +81,80 @@ def _samtools(*args):
 def _programs(bam):
     """The @PG lines of an alignment's header."""
     return [line for line in _samtools("view", "-H", bam).splitlines() if "@PG" in line]
+
+
+@needs_tools("bwa", "samtools")
+def test_968_auto_and_explicit_stage_threads_preserve_records(tmp_path, monkeypatch):
+    reads = _short_reads(tmp_path)
+    _m1_core_levels(monkeypatch)
+    records = []
+    for label, threads, configured, expected in (
+        (
+            "auto",
+            None,
+            "auto",
+            {"alignment": 8, "sort": 4, "markdup": 4, "compression": 8, "calling": 8},
+        ),
+        (
+            "explicit",
+            2,
+            "auto",
+            dict.fromkeys(
+                ("alignment", "sort", "markdup", "compression", "calling"), 2
+            ),
+        ),
+        (
+            "config",
+            None,
+            3,
+            dict.fromkeys(
+                ("alignment", "sort", "markdup", "compression", "calling"), 3
+            ),
+        ),
+    ):
+        monkeypatch.setitem(settings, "cpu_threads", configured)
+        out = tmp_path / label
+        result = api.align.align(
+            api.AlignParams(
+                r1=reads.r1,
+                r2=reads.r2,
+                ref=reads.ref,
+                outdir=out,
+                threads=threads,
+                memory="64M",
+                aligner="bwa",
+                native_aligners="off",
+            )
+        )
+        assert result.status == "ok", result.error
+        assert result.manifest is not None
+        manifest = json.loads(Path(result.manifest).read_text())
+        assert manifest["provenance"]["params"]["thread_plan"] == expected
+        (bam,) = out.glob("*_aligned.bam")
+        records.append(_samtools("view", str(bam)))
+        assert Path(str(bam) + ".bai").is_file()
+    assert records[0] == records[1] == records[2]
+
+
+def _m1_core_levels(monkeypatch):
+    original_run = subprocess.run
+
+    def sysctl_boundary(command, *args, **kwargs):
+        if command[0] == "sysctl":
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                "hw.perflevel0.name: Performance\n"
+                "hw.perflevel0.physicalcpu: 4\n"
+                "hw.perflevel1.name: Efficiency\n"
+                "hw.perflevel1.physicalcpu: 4\n",
+                "",
+            )
+        return original_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(runtime.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(runtime.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(runtime.subprocess, "run", sysctl_boundary)
 
 
 @needs_tools("bwa", "samtools", "bcftools", "tabix")

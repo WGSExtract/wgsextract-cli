@@ -88,6 +88,7 @@ from wgsextract_cli.core.resource_estimates import (
     long_read_disk,
     preflight_resources,
 )
+from wgsextract_cli.core.resource_policy import stage_thread_plan
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.samtools_commands import (
     parse_memory,
@@ -274,7 +275,7 @@ def _require(
             "realign",
             (*(needs.staged_disk or tuple(disk)), *needs.disk),
             needs.memory,
-            min(3, int(threads)) if needs.staged_disk else int(threads),
+            int(threads),
             needs.hours,
             memory_floor=needs.floor,
         ),
@@ -312,7 +313,9 @@ def _minimap2_needs(
     hours = None
     if preset != "sr":
         size = sum(input_size(path) for path in paths)
-        hours = long_read_alignment_hours(paths[0], size, int(threads))
+        hours = long_read_alignment_hours(
+            paths[0], size, stage_thread_plan(job.threads).alignment
+        )
     counted = resolved is not None and (
         reference_bases(resolved) > 0
         or not resolved.lower().endswith((".gz", ".bgz", ".bgzf"))
@@ -320,7 +323,12 @@ def _minimap2_needs(
     try:
         sorting = sort_memory(threads, memory, input_bytes=files, log=False)
         need = estimate_mapping_memory(
-            resolved, "minimap2", threads=threads, memory=sorting, **options
+            resolved,
+            "minimap2",
+            threads=threads,
+            alignment_threads=str(stage_thread_plan(job.threads).alignment),
+            memory=sorting,
+            **options,
         ).total
         least = (
             least_mapping_memory(resolved, "minimap2", **options) if counted else None
@@ -875,7 +883,12 @@ def _realign_long_reads(
                 run_pipeline(
                     [
                         align_cmd.long_read_fastq_command(job.input, decode),
-                        ["bgzip", "-@", threads, "-c"],
+                        [
+                            "bgzip",
+                            "-@",
+                            str(stage_thread_plan(job.threads).compression),
+                            "-c",
+                        ],
                     ],
                     stdout=handle,
                     description="FASTQ extraction",
@@ -1105,7 +1118,7 @@ def _run_steps(
         # One collate bucket is resident while BWA maps; reserve it alongside.
         additional_ram_bytes = collate_working_memory(
             job.input,
-            threads,
+            str(stage_thread_plan(job.threads).compression),
             memory,
             records=reads,
             max_record_bytes=sample.max_record_bytes,
@@ -1129,6 +1142,9 @@ def _run_steps(
                 target,
                 aligner.memory_model,
                 threads=threads,
+                alignment_threads=str(
+                    stage_thread_plan(job.threads, metal=aligner.gpu).alignment
+                ),
                 memory=aligner_memory,
                 samblaster=samblaster,
                 reads=reads,
@@ -1189,6 +1205,9 @@ def _run_steps(
             target,
             aligner.memory_model,
             threads=threads,
+            alignment_threads=str(
+                stage_thread_plan(job.threads, metal=aligner.gpu).alignment
+            ),
             memory=aligner_memory,
             samblaster=samblaster,
             reads=reads,
@@ -1270,7 +1289,7 @@ def _run_steps(
         try:
             with paired_fastq_stream(
                 job.input,
-                threads=threads,
+                threads=str(stage_thread_plan(job.threads).compression),
                 memory=memory,
                 temp_parent=outdir,
                 cram_opt=cram_opt,
@@ -1329,7 +1348,7 @@ def _run_steps(
                 job.input,
                 staged_r1,
                 staged_r2,
-                threads=threads,
+                threads=str(stage_thread_plan(job.threads).compression),
                 memory=memory,
                 temp_parent=outdir,
                 cram_opt=cram_opt,
@@ -1518,6 +1537,7 @@ def _report_resource_estimates(
 
     def estimate() -> PreflightEstimate:
         effective_threads = threads
+        alignment_threads = str(stage_thread_plan(job.threads).alignment)
         samblaster = align_cmd.duplicate_marker(paired=paired) == "samblaster"
         resolved = reference if reference and Path(reference).is_file() else None
         tool = align_cmd.short_read_tool(job)
@@ -1544,12 +1564,13 @@ def _report_resource_estimates(
                 additional_ram_bytes=additional_ram_bytes,
             )
             chosen.append(aligner)
+            alignment_threads = str(
+                stage_thread_plan(job.threads, metal=aligner.gpu).alignment
+            )
             tool = aligner.memory_model
             gpu_bytes = align_cmd.aligner_gpu_bytes(aligner, resolved, reads)
             dense_sa_bytes = aligner.dense_sa_bytes
             staged = aligner.staged
-            if staged:
-                effective_threads = str(min(3, int(threads)))
             if reference_bases(resolved) > 0:
                 # Without the reference's size (its .fai or BWA's .ann) a
                 # human reference stands in, even for a tiny one.
@@ -1574,6 +1595,7 @@ def _report_resource_estimates(
             temp_dir=configured_temp_directory(),
             reference=resolved,
             threads=effective_threads,
+            alignment_threads=alignment_threads,
             memory=sorting,
             aligner=tool,
             samblaster=samblaster,
@@ -1639,7 +1661,7 @@ def _report_resource_estimates(
         engine,
         bool(chosen and chosen[0].gpu),
         count * length,
-        min(3, int(threads)) if chosen and chosen[0].staged else int(threads),
+        stage_thread_plan(job.threads, metal=bool(chosen and chosen[0].gpu)).alignment,
     )
     staged_disk = (
         tuple(

@@ -153,8 +153,11 @@ resume. The fallback estimate is the smallest considered GPU plan, not the
 selected CPU pipeline's estimate.
 For paired Metal BWA, automatic selection also tries compressed staging before
 CPU fallback. RAM is the larger of the aligner/checkpoint-writer phase and
-the duplicate-marking/sort phase, not their sum. BWA is capped at three workers
-only in that mode; the fixed scientific batch size remains K100M.
+the duplicate-marking/sort phase, not their sum. Mapper and sort thread budgets
+come from the resolved [stage plan](hardware.md#apple-silicon-stage-plan), including
+explicit overrides; all sort workers' buffers count toward the estimate.
+The per-thread staged sort budget can step down to 256M to fit, while the
+fixed scientific batch size remains K100M.
 Disk is the per-filesystem phase maximum: generated FASTQs plus raw checkpoint,
 raw plus compressed marked parts, then parts plus final output. Owned generated
 FASTQs retire after alignment unless kept; the raw checkpoint retires only after

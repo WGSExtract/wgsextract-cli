@@ -126,6 +126,8 @@ def _preflight_sort_space(
 
 def _setup(
     params: BamSortParams | BamToCramParams | BamToBamParams | BamUnalignParams,
+    *,
+    sort: bool = False,
 ) -> tuple[str, BaseArgs, str | None]:
     """The input, its resources and reference, and the region or gene's
     coordinates."""
@@ -138,6 +140,7 @@ def _setup(
         threads=params.threads,
         memory=getattr(params, "memory", None),
         region=params.region,
+        stage="sort" if sort else "compression",
     )
     region = region_or_gene(params.region, params.gene, params.input, base.ref)
     return fspath(params.input), base, region
@@ -161,7 +164,7 @@ def run_identify(params: BamIdentifyParams) -> None:
 
 
 def run_sort(params: BamSortParams) -> None:
-    input_path, base, region = _setup(params)
+    input_path, base, region = _setup(params, sort=True)
     threads, memory, outdir, cram_opt, resolved_ref = base
     memory = sort_memory(threads, memory, input_bytes=regular_files_bytes([input_path]))
 

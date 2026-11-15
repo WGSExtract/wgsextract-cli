@@ -53,7 +53,7 @@ DEFAULT_CONFIG = """# WGS Extract Configuration
 
 # --- Analysis Settings ---
 # System resources
-# threads = "auto"  # Apple Silicon perf cores, otherwise all cores
+# threads = "auto"  # Per-stage Apple Silicon core-layout plan; all cores elsewhere
 # memory = "2G"  # per thread; "auto" uses 25% of RAM split across threads
 # keep_awake = false  # opt-in best-effort sleep inhibition during commands
 

@@ -78,6 +78,38 @@ def _contig_events(events: list[api.ProgressEvent]) -> list[tuple[str, float]]:
 
 
 @needs_htslib
+@pytest.mark.parametrize("kind", ["snp", "indel"])
+def test_968_auto_calling_budget_keeps_calls_identical_to_explicit_override(
+    multicontig_sample, tmp_path, monkeypatch, kind
+):
+    from tests.test_alignment_commands import _m1_core_levels
+    from wgsextract_cli.core.config import settings
+
+    _m1_core_levels(monkeypatch)
+    monkeypatch.setitem(settings, "cpu_threads", "auto")
+    bam, ref = multicontig_sample
+    calls = []
+    for threads, expected in ((None, 8), (2, 2)):
+        params = {
+            "input": bam,
+            "ref": ref,
+            "outdir": tmp_path / str(threads),
+            "threads": threads,
+            "ploidy": "GRCh38",
+        }
+        if kind == "snp":
+            result = api.vcf.snp(api.VcfSnpParams(**params))
+        else:
+            result = api.vcf.indel(api.VcfIndelParams(**params))
+        assert result.provenance.params["thread_plan"]["calling"] == expected
+        output = tmp_path / str(threads) / f"{kind}s.vcf.gz"
+        calls.append(
+            run_command(["bcftools", "view", "-H", output], capture_output=True).stdout
+        )
+    assert calls[0] and calls[0] == calls[1]
+
+
+@needs_htslib
 def test_parallel_calling_reports_each_finished_contig(
     multicontig_sample: tuple[str, str], tmp_path: Path
 ) -> None:

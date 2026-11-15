@@ -81,6 +81,36 @@ def genome_and_ref(tmp_path):
 
 
 @needs_tools("bwa", "samtools")
+def test_968_realign_auto_plan_survives_extraction_and_matches_explicit_threads(
+    tmp_path, genome_and_ref, monkeypatch
+):
+    from tests.test_alignment_commands import _m1_core_levels
+
+    _m1_core_levels(monkeypatch)
+    monkeypatch.setitem(settings, "cpu_threads", "auto")
+    genome, ref = genome_and_ref
+    source, _ = _old_alignment(tmp_path, genome)
+    records = []
+    for threads, alignment, sort in ((None, 8, 4), (2, 2, 2)):
+        result = realign_api(
+            _args(
+                source,
+                threads=threads,
+                ref=ref,
+                outdir=tmp_path / str(threads),
+                aligner="bwa",
+                native_aligners="off",
+            )
+        )
+        plan = result.provenance.params["thread_plan"]
+        assert plan["alignment"] == alignment
+        assert plan["sort"] == sort
+        (output,) = (tmp_path / str(threads)).glob("*_aligned.bam")
+        records.append(_view("view", str(output)))
+    assert records[0] == records[1]
+
+
+@needs_tools("bwa", "samtools")
 def test_realign_bam_to_new_reference(tmp_path, genome_and_ref):
     genome, ref = genome_and_ref
     source, pairs = _old_alignment(tmp_path, genome)

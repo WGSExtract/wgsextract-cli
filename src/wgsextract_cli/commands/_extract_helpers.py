@@ -7,7 +7,7 @@ import tempfile
 from collections.abc import Callable, Iterator, Sequence
 from os import devnull, fspath
 from pathlib import Path
-from typing import IO, NamedTuple
+from typing import IO, Literal, NamedTuple
 
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled
 from wgsextract_cli.core.messages import LOG_MESSAGES
@@ -48,6 +48,7 @@ def base_args(
     threads: int | str | None,
     memory: str | None,
     region: str | None = None,
+    stage: Literal["sort", "compression"] = "compression",
 ) -> BaseArgs:
     """Validate the input, create the output directory and resolve the reference."""
     if not input_path:
@@ -56,7 +57,7 @@ def base_args(
     verify_paths_exist({"--input": input_path})
     logging.debug(f"Input file: {str(absolute_path(input_path))}")
 
-    threads, memory = get_resource_defaults(threads, memory)
+    threads, memory = get_resource_defaults(threads, memory, stage=stage)
     outdir = fspath(outdir) if outdir else str(absolute_path(input_path).parent)
     Path(outdir).mkdir(parents=True, exist_ok=True)
     logging.debug(f"Output directory: {str(absolute_path(outdir))}")
