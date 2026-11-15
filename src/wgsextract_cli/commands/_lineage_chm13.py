@@ -121,7 +121,7 @@ def map_to_rcrs(vcf: str, chr_m: str, out: str) -> dict[int, str]:
         for pos, ref, alt in rcrs_variants(bases)
     ]
     plain = tmp / "rcrs_unnormalised.vcf"
-    plain.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    plain.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     run_command(["bcftools", "norm", "-f", rcrs_fa, "-Oz", "-o", out, str(plain)])
     return bases
 
@@ -177,7 +177,7 @@ def lift_heteroplasmies(
     lines = [*meta, _contig(chr_m), columns]
     lines += ["\t".join(f) for _p, f in sorted(records, key=lambda r: r[0])]
     plain = Path(out).with_suffix("")
-    plain.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    plain.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     run_command(["bcftools", "view", "-Oz", "-o", out, str(plain)])
     return out
 
@@ -206,5 +206,7 @@ def _rcrs_fasta(tmp: Path, chr_m: str) -> str:
     rcrs = pinned_sequences()[0]
     path = tmp / "rcrs.fa"
     lines = [rcrs[i : i + 70] for i in range(0, len(rcrs), 70)]
-    path.write_text(f">{chr_m}\n" + "\n".join(lines) + "\n", encoding="utf-8")
+    path.write_text(
+        f">{chr_m}\n" + "\n".join(lines) + "\n", encoding="utf-8", newline="\n"
+    )
     return str(path)
