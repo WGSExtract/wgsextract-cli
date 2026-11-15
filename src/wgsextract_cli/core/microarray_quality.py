@@ -1,4 +1,4 @@
-"""Opt-in microarray call policies; legacy defaults deliberately remain unchanged."""
+"""Microarray calls require explicit, sufficiently confident sample evidence."""
 
 from __future__ import annotations
 
@@ -15,10 +15,10 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class MicroarrayQuality:
-    min_gq: int = 0
-    min_dp: int = 0
-    assume_hom_ref: bool = True
-    exclude_filtered: bool = False
+    min_gq: int = 20
+    min_dp: int = 10
+    assume_hom_ref: bool = False
+    exclude_filtered: bool = True
     call_reasons: bool = False
 
     @property
@@ -50,10 +50,10 @@ class MicroarrayQuality:
 def quality_policy(params: MicroarrayParams) -> MicroarrayQuality:
     values: dict[str, Any] = {}
     for key, default in (
-        ("min_gq", 0),
-        ("min_dp", 0),
-        ("assume_hom_ref", True),
-        ("exclude_filtered", False),
+        ("min_gq", 20),
+        ("min_dp", 10),
+        ("assume_hom_ref", False),
+        ("exclude_filtered", True),
         ("call_reasons", False),
     ):
         value = getattr(params, key, None)

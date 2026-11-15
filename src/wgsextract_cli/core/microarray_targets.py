@@ -16,6 +16,7 @@ import logging
 import os
 import subprocess
 import tempfile
+from collections import Counter
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +25,7 @@ from pyliftover import LiftOver
 
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.file_lock import build_lock as _build_lock
+from wgsextract_cli.core.microarray_coordinates import sole_placement
 from wgsextract_cli.core.microarray_utils import (
     _chrom_for_liftover,
     _resolve_templates_roots,
@@ -176,20 +178,23 @@ def _lift_to_hg38(
 ) -> dict[tuple[str, int], str]:
     lifter = LiftOver(chain)
     lifted: dict[tuple[str, int], str] = {}
-    lost = 0
+    lost: Counter[str] = Counter()
     for (chrom, pos), rsid in markers.items():
         if chrom == "chrM":
             # UCSC's hg19 chrM is the Yoruba sequence; the templates' MT, like
             # hg38's chrM, is the rCRS.
             lifted.setdefault((chrom, pos), rsid)
             continue
-        hits = lifter.convert_coordinate(chrom, pos - 1)
+        hit = sole_placement(lifter.convert_coordinate(chrom, pos - 1))
         # One-to-one onto a primary chromosome only.
-        if not hits or "_" in hits[0][0]:
-            lost += 1
+        if isinstance(hit, str) or "_" in hit.chrom:
+            lost[hit if isinstance(hit, str) else "alt_contig"] += 1
             continue
-        lifted.setdefault((hits[0][0], hits[0][1] + 1), rsid)
-    logging.info(f"Lifted {len(lifted):,} chip markers to hg38 ({lost:,} didn't lift).")
+        lifted.setdefault((hit.chrom, hit.position + 1), rsid)
+    logging.info(
+        f"Lifted {len(lifted):,} chip markers to hg38 "
+        f"({sum(lost.values()):,} didn't lift: {dict(lost)})."
+    )
     return lifted
 
 

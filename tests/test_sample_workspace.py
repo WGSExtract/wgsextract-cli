@@ -4,6 +4,7 @@ older or newer wgsextract.sample.toml degrades gracefully."""
 
 import io
 import json
+import subprocess
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -177,6 +178,59 @@ def test_info_records_what_later_commands_read(seqs, folder):
     # A mean of mixed-length reads, as from long or trimmed reads.
     raw["detected"]["s.bam"]["read_length"]["value"] = 149.5
     jsonschema.validate(raw, sample_workspace.load_schema())
+
+
+def test_typed_sample_schema_preserves_version_one_extensions(folder):
+    """The typed spec must not close extension keys accepted by sample/1."""
+    reads = folder / "s.bam"
+    reads.write_bytes(b"workspace fingerprint input")
+    workspace = SampleWorkspace(folder)
+    workspace.set_overrides({"platform": "ont"}, reads)
+    workspace.record("read_length", reads, 149.5, method="reads", confidence="high")
+    workspace.record_output(folder / "run.manifest.json", "info", "cancelled")
+    raw = sample_workspace.tomllib.loads(workspace.path.read_text())
+    raw["future_top_level"] = {"nested": [1, "kept"]}
+    raw["detected"]["s.bam"]["future_fact"] = {
+        **raw["detected"]["s.bam"]["read_length"],
+        "value": {"future_value": True},
+        "future_metadata": "kept",
+    }
+    raw["outputs"]["run.manifest.json"]["future_metadata"] = "kept"
+    schema = sample_workspace.load_schema()
+    jsonschema.validate(raw, schema)
+
+    workspace.path.write_text(sample_workspace.render(raw))
+    (folder / "run.manifest.json").write_text("{}")
+    workspace.record("sex", reads, "Male", method="reads", confidence="high")
+    workspace.set_overrides({"platform": "nanopore"}, reads)
+    workspace.record_output(folder / "next.manifest.json", "info", "ok")
+    retained = sample_workspace.tomllib.loads(workspace.path.read_text())
+    assert retained["future_top_level"] == raw["future_top_level"]
+    assert (
+        retained["detected"]["s.bam"]["future_fact"]
+        == raw["detected"]["s.bam"]["future_fact"]
+    )
+    assert retained["outputs"]["run.manifest.json"]["future_metadata"] == "kept"
+    jsonschema.validate(retained, schema)
+
+    raw["override"]["s.bam"]["future_override"] = "not an allowed fact"
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(raw, schema)
+    del raw["override"]["s.bam"]["future_override"]
+    raw["detected"]["s.bam"]["read_length"]["value"] = -0.5
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(raw, schema)
+
+
+def test_typed_sample_schema_does_not_ship_stale_contracts():
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "scripts/gen_output_schemas.py", "--check"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_depths_missing_a_target_are_estimated_again(folder):

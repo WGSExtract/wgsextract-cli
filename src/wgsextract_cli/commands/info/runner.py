@@ -32,6 +32,7 @@ from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_assets import is_fasta_path
 from wgsextract_cli.core.reference_models import identify_reference, sequence_lengths
 from wgsextract_cli.core.results import current_result, human_output, warn
+from wgsextract_cli.core.sample_types import is_platform
 from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.sequencing import (
     mixed_platforms_message,
@@ -81,6 +82,7 @@ from .metrics import (
 from .render import (
     MAPPING_UNAVAILABLE,
     exact_mapped_read_pct,
+    is_fresh_output,
     region_file_tag,
     render_info,
     run_full_coverage,
@@ -324,7 +326,7 @@ def _record_facts(data: dict[str, Any], input_file: str, header: str) -> None:
             confidence="high",
         )
     platform = platform_from_metadata(header, data.get("first_qname"))
-    if platform:
+    if is_platform(platform):
         has_pl = any(group.get("PL") for group in read_groups(header))
         sample_workspace.record(
             "platform",
@@ -764,12 +766,42 @@ def _mapped_reads(
     }
 
 
+def _coverage_status(params: CalculateCoverageParams) -> None:
+    """Whether the whole-file reports ``--with-bins`` writes exist and are newer
+    than the input, so a run would show them again instead of rescanning."""
+    reports: dict[str, Path] = {}
+    if params.input:
+        source = Path(params.input).expanduser()
+        folder = Path(params.outdir).expanduser() if params.outdir else source.parent
+        reports = {
+            role: folder / f"{source.name}{suffix}"
+            for role, suffix in (
+                ("coverage", "_coverage.tsv"),
+                ("coverage_bins", "_coverage_bins.tsv"),
+            )
+        }
+    current = bool(reports) and all(
+        is_fresh_output(str(path), str(source)) for path in reports.values()
+    )
+    current_result().set_details(
+        {"current": current, **{role: str(path) for role, path in reports.items()}}
+    )
+    human_output(
+        "Coverage reports: "
+        + ("current" if current else "not current")
+        + "".join(f"\n  {path}" for path in reports.values())
+    )
+
+
 def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
     """``info`` and its coverage subcommands; ``as_csv`` prints the detailed
     table as CSV (CLI only)."""
     from wgsextract_cli.core.variant_files import resolve_reference
     from wgsextract_cli.core.warnings import print_warning
 
+    if isinstance(params, CalculateCoverageParams) and params.status:
+        _coverage_status(params)
+        return
     start_time = time.time()
     verify_dependencies(["samtools"])
     log_dependency_info(["samtools"])
@@ -878,6 +910,67 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
     if outdir_arg and (cache or detailed):
         Path(outdir).mkdir(parents=True, exist_ok=True)
     logging.debug(f"Output directory: {str(absolute_path(outdir))}")
+
+    if region:
+        # Header lengths are enough to choose sampled windows. Regional work
+        # must not gather global read counts, sex, or first-record QC.
+        stats = [
+            IdxStat(name=name, length=length, mapped=0, unmapped=0)
+            for name, length in sequence_lengths(header).items()
+        ]
+        coverage = _coverage_map(
+            info_cmd, input_file, resolved_ref, stats, outdir, region
+        )
+        current_result().set_details({"region": region, "breadth": coverage})
+        if as_csv:
+            stream = io.StringIO(newline="")
+            writer = csv.writer(stream, lineterminator="\n")
+            writer.writerow(["Seq Name", "Breadth Coverage"])
+            writer.writerows(coverage.items())
+            human_output(stream.getvalue(), end="")
+        else:
+            human_output(
+                f"Region: {region}\nSeq Name\tBreadth Coverage\n"
+                + "".join(f"{name}\t{breadth}\n" for name, breadth in coverage.items())
+            )
+        if table_format:
+            path = table_path(
+                Path(
+                    outdir, Path(input_file).name + region_file_tag(region) + "_breadth"
+                ),
+                table_format,
+            )
+            write_table(
+                path,
+                [CHROMOSOME_TABLE[0], CHROMOSOME_TABLE[-1]],
+                [
+                    (name, float(value.lstrip("~").rstrip("% ").strip()))
+                    for name, value in coverage.items()
+                ],
+                table_format,
+                metadata={
+                    **metadata,
+                    "breadth": "sampled estimate (coverage-sample)"
+                    if info_cmd == "coverage-sample"
+                    else "exact (calculate-coverage)",
+                },
+            )
+            current_result().add_output(path, "coverage_table")
+        if isinstance(params, CalculateCoverageParams) and params.with_bins:
+            from .bins import run_depth_bins
+
+            bins_path = run_depth_bins(
+                input_file,
+                resolved_ref,
+                sequence_lengths(header),
+                outdir,
+                region,
+                "tsv",
+                metadata,
+                reuse=True,
+            )
+            current_result().add_output(bins_path, "coverage_bins")
+        return
 
     user_fasta = ref if ref and is_fasta_path(ref) else None
     ref_model = _guess_ref_model(md5_sig, header, user_fasta)

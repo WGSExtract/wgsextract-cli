@@ -155,6 +155,37 @@ def test_hg38_target_uses_the_librarys_chain(tmp_path):
 
 
 @needs_tools("bgzip", "tabix")
+def test_issue_853_targets_skip_markers_with_several_placements(tmp_path):
+    templates = _templates(tmp_path)
+    # A second placement for NCBI36 chr3:999999 and for hg19 chr7:5000.
+    (tmp_path / _HG18_CHAIN_NAME).write_bytes(
+        gzip.compress(
+            (
+                _HG18_CHAIN + "chain 900 chr3 2000000 + 999000 1000000 chr3 2000000 + "
+                "1500000 1501000 2\n1000\n\n"
+            ).encode()
+        )
+    )
+    (tmp_path / "hg19ToHg38.over.chain.gz").write_bytes(
+        gzip.compress(
+            (
+                _CHAIN
+                + "chain 800 chr7 10000 + 4000 6000 chr7 10000 + 0 2000 3\n2000\n\n"
+                "chain 700 chr7 10000 + 4000 6000 chr7 10000 + 8000 10000 4\n2000\n\n"
+            ).encode()
+        )
+    )
+
+    hg19 = mt.build_genome_wide_target(str(tmp_path), "hg19", [str(templates)])
+    hg38 = mt.build_genome_wide_target(str(tmp_path), "hg38", [str(templates)])
+
+    with gzip.open(hg19, "rt") as f:
+        assert "rs6" not in f.read()
+    with gzip.open(hg38, "rt") as f:
+        assert f.read().splitlines()[2:] == ["chr1\t1100\trs1", "chrM\t73\trs4"]
+
+
+@needs_tools("bgzip", "tabix")
 def test_a_target_from_an_older_builder_is_rebuilt(tmp_path):
     templates = _templates(tmp_path)
     out = Path(mt.genome_wide_target_path(str(tmp_path), "hg19"))

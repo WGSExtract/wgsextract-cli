@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+import jsonschema
 import pytest
 
 from tests.htslib_helpers import needs_htslib, run_wgsextract, vcf_calls
@@ -15,7 +16,7 @@ from wgsextract_cli.commands.info.metrics import (
     sample_sex,
 )
 from wgsextract_cli.core.results import CommandResult, collecting
-from wgsextract_cli.core.sample_workspace import SampleWorkspace
+from wgsextract_cli.core.sample_workspace import SampleWorkspace, load_schema, tomllib
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 pytestmark = needs_htslib
@@ -70,6 +71,10 @@ def test_issue_856_unknown_sex_ploidy_refuses_until_explicit_override(
     observed = SampleWorkspace(tmp_path / "sample").detected("sex", bam)
     assert observed is not None
     assert observed.value == "Unknown" and observed.confidence == "low"
+    jsonschema.validate(
+        tomllib.loads((tmp_path / "sample" / "wgsextract.sample.toml").read_text()),
+        load_schema(),
+    )
     numeric_out = tmp_path / "numeric"
     run_wgsextract(
         "vcf",
@@ -207,3 +212,16 @@ def test_issue_856_multisample_detection_does_not_publish_last_sample_sex(
     assert (
         "observed_sex" not in result.metrics and "effective_sex" not in result.metrics
     )
+
+
+def test_issue_856_header_only_policy_keeps_no_scan_unknown_unrecorded(
+    tmp_path: Path,
+) -> None:
+    bam = distributed_alignment(tmp_path / "S.bam")
+    run_wgsextract("sample", "set", "--input", bam, "--platform", "illumina")
+    assert sample_sex(bam, allow_scan=False) == "Unknown"
+    workspace = SampleWorkspace(tmp_path)
+    assert workspace.detected("sex", bam) is None
+    assert sample_sex(bam) == "Male"
+    Path(bam + ".bai").unlink()
+    assert sample_sex(bam, allow_scan=False) == "Male"

@@ -163,7 +163,8 @@ def run_y_haplogroup(params: YHaplogroupParams, *, tree_links: bool = False) -> 
     # (BT* with hundreds of exclusions, at full QC score); say there's no Y.
     if (
         input_lower.endswith((".bam", ".cram"))
-        and sample_sex(input_file, outdir_arg, reference=lib.fasta) == "Female"
+        and sample_sex(input_file, outdir_arg, reference=lib.fasta, allow_scan=False)
+        == "Female"
     ):
         raise WGSExtractError(
             f"{input_file} has almost no chrY reads (the sample appears female), "

@@ -366,10 +366,20 @@ DeepVariant stays the default. Results on all of chr20 are under
 explicitly, and the platform-neutral `--long-read` selects Sniffles for any
 long-read data. pbsv is PacBio-only, so it is refused for ONT (detected or
 `--ont`), whether chosen by `--caller pbsv` or by `--pacbio`'s pbsv default. `--ont`/`--long-read` with `--caller delly`, and `--ont`
-with `--pacbio`, are rejected; an explicit `--caller delly` on detected ONT runs
-but warns that Delly is a short-read caller. PacBio behavior is unchanged:
-`--pacbio` still prefers pbsv (falling back to Sniffles) with CCS thresholds,
-and PacBio input without flags still uses Delly.
+with `--pacbio`, are rejected; an explicit `--caller delly` on detected ONT or
+PacBio reads runs but warns (a `short_read_sv_caller` manifest warning) that
+Delly is a short-read caller.
+
+PacBio input gets a long-read caller too, whether detected (read group
+`PL:PACBIO`) or declared with `--pacbio`: pbsv when installed, else Sniffles.
+HiFi reads get pbsv's CCS thresholds; detected subreads (CLR, every read group's
+`DS` naming `READTYPE=SUBREAD`) keep its defaults, as does an explicit
+`--caller pbsv` unless `--ccs` is added. When neither pbsv nor
+Sniffles is installed, `vcf sv` stops and names the `pacbio` Pixi environment
+that provides them, rather than silently falling back to Delly; it never
+installs them. Pass `--caller delly` to use Delly anyway. The result manifest's
+`caller` metric names the tool and `caller_reason` says why it was chosen (for
+example `detected PacBio HiFi reads`, `--pacbio`, or `--caller`).
 
 ```sh
 wgsextract vcf sv -i hg002-ont.bam --ref chr20.fa \
@@ -539,6 +549,18 @@ wgsextract typing str --input sample.cram --ref hs38.fa.gz
   `repeat_unconfirmed` warning. The limits are low because true expansions
   are thinly read: on the PureTarget set below, STRkit read a 1.2 kb DMPK
   expansion in 2 of 247 reads, and LongTR an FXN one in 1 of 1.
+  When every called allele is low support, the status is `unresolved`, not
+  pathogenic or normal. Expected ploidy is two autosomal copies and one X
+  copy for males or two for females (the explicit or inferred `--sex`).
+  A missing allele is not evidence of homozygosity: incomplete recessive
+  calls are `unresolved`, even when the observed allele is expanded.
+  Raw sizes remain in the TSV and caller files. These unresolved calls emit
+  `repeat_unconfirmed`, count in `unconfirmed_repeats` rather than the normal
+  range or `flagged_repeats`, and appear in the personal report's overview
+  warnings.
+  If clipped reads independently suggest an unsized expansion, the unresolved
+  call also retains `repeat_outside_normal_range`, its `flagged_repeats` count,
+  and the clinical-confirmation warning.
 - LongTR has no threads; `--threads` runs chromosomes in parallel. It drops
   reads below mean base quality 30, which leaves most ONT R9.4.1 loci
   uncalled; R9 reads (named in the header) get an `r9_reads` warning
@@ -713,6 +735,11 @@ whole-genome ONT run from these numbers:
 | `vcf deepvariant --ont` (Google's 1.10.0 CPU image) | Ryzen 5 5600X; 10 | 11.3 h: make_examples 4.9 h, call_variants 6.2 h, postprocess_variants 12 min | not recorded | work directory not recorded (fitted in 150 GB); VCF 231 MB |
 | `vcf clair3 --gpu` (Clair3 2.0.5 GPU image) | Ryzen 5 5600X, RTX 3090; 6 | 2.5 h: pileup 76 min, WhatsHap phasing 42 min, full-alignment 29 min | 15.2 GiB; GPU 6.1 GiB | **about 100 GiB** of temporary files in the output directory (below); VCF 79 MB |
 
+- **Before you start.** `realign`, `vcf deepvariant` and `vcf clair3` print
+  this computer's requirement in one line, and refuse to start without the
+  disk, or the least RAM, it needs (`--no-preflight` overrides): for this CRAM
+  on 7 threads, realign asks for about 221 GiB, 26 GiB of RAM and 21 h
+  ([host requirement](resource_estimates.md#whole-genome-host-requirement)).
 - **Slow chunks.** Most realign chunks took about 30 min; those holding
   pericentromeric satellite reads (chr1 q12, the chr4 centromere, chrX q with
   chrY and the alts) took about 2 h each.
@@ -838,7 +865,8 @@ Expose `ONT_R104` and `--ont` for DeepVariant, preserve an unset model for
 automatic selection, and show its chemistry and architecture restrictions.
 For `vcf clair3`, expose `--model` (leave it unset for config or metadata
 selection) and hide the command on Windows. For `vcf sv`, expose `--ont`/`--long-read`, leave `--caller` unset for
-automatic Sniffles selection, and do not offer pbsv for ONT input.
+automatic Sniffles (ONT) or pbsv/Sniffles (PacBio) selection, and do not offer
+pbsv for ONT input.
 For `methylation pileup`, leave `--context`, `--5hmc` and `--combine-strands`
 unset so `config.toml` applies, hide the command on Windows, and show its
 bedMethyl and summary outputs.

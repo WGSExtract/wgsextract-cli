@@ -31,22 +31,53 @@ import logging
 import os
 import sys
 from collections.abc import Callable, Iterable, Iterator, Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, get_args, overload
 
 import tomli_w
 
 from wgsextract_cli import __version__
 from wgsextract_cli.core.paths import PathInput, absolute_path
+from wgsextract_cli.core.sample_state import WorkspaceState, table
+from wgsextract_cli.core.sample_types import (
+    SCHEMA_ID as SCHEMA_ID,
+)
+from wgsextract_cli.core.sample_types import (
+    Confidence as Confidence,
+)
+from wgsextract_cli.core.sample_types import (
+    FactName,
+    ObservedSex,
+    OverrideChanges,
+    Platform,
+    Sex,
+    Status,
+    Superpopulation,
+    is_platform,
+    is_sex,
+)
+from wgsextract_cli.core.sample_view import (
+    FactView,
+    FileStatus,
+    FileView,
+    WorkspaceView,
+)
+
+if TYPE_CHECKING:
+    from wgsextract_cli.core.sample_document import (
+        FileOverride,
+        Overrides,
+        RecordedFact,
+        WorkspaceOutput,
+    )
 
 if sys.version_info >= (3, 11):
     import tomllib
 else:
     import tomli as tomllib
 
-SCHEMA_ID = "wgsextract.sample/1"
 SCHEMA_RESOURCE = "assets/schemas/wgsextract.sample.1.schema.json"
 WORKSPACE_FILE = "wgsextract.sample.toml"
 _SCHEMA_PREFIX = "wgsextract.sample/"
@@ -60,8 +91,8 @@ _HEADER = (
     "# [outputs]; comments are not kept.\n\n"
 )
 
-SEXES = ("Male", "Female")
-PLATFORMS = ("illumina", "ont", "pacbio", "ultima", "dnbseq")
+SEXES: tuple[str, ...] = get_args(Sex)
+PLATFORMS: tuple[str, ...] = get_args(Platform)
 _ALIASES = {
     "m": "Male",
     "f": "Female",
@@ -74,7 +105,6 @@ _ALIASES = {
 }
 
 Source = Literal["override", "detected"]
-Confidence = Literal["high", "medium", "low"]
 
 
 @dataclass(frozen=True)
@@ -92,7 +122,7 @@ class FactSpec:
     def overridable(self) -> bool:
         return self.choices is not None
 
-    def normalize(self, value: str) -> str:
+    def normalize(self, value: object) -> str:
         """The canonical spelling of a user's value; ValueError if not allowed."""
         assert self.choices is not None
         text = str(value).strip()
@@ -156,7 +186,7 @@ class Fact:
     """A fact in effect: the user's override or a current detected value."""
 
     name: str
-    value: Any
+    value: object
     source: Source
     file: str | None = None
     fingerprint: str | None = None
@@ -179,16 +209,27 @@ class Fact:
             + (f": {detail}" if detail else "")
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        return {k: v for k, v in asdict(self).items() if v is not None}
-
-
-@dataclass
-class _Document:
-    raw: dict[str, Any]
-    exists: bool = False
-    writable: bool = True
-    problem: str | None = None
+    def to_dict(self) -> FactView:
+        result: FactView = {
+            "name": self.name,
+            "value": self.value,
+            "source": self.source,
+        }
+        if self.file is not None:
+            result["file"] = self.file
+        if self.fingerprint is not None:
+            result["fingerprint"] = self.fingerprint
+        if self.method is not None:
+            result["method"] = self.method
+        if self.confidence is not None:
+            result["confidence"] = self.confidence
+        if self.version is not None:
+            result["version"] = self.version
+        if self.by is not None:
+            result["by"] = self.by
+        if self.at is not None:
+            result["at"] = self.at
+        return result
 
 
 # --- fingerprints ------------------------------------------------------------
@@ -258,22 +299,22 @@ class SampleWorkspace:
 
     # --- reading ---------------------------------------------------------------
 
-    def _read(self) -> _Document:
+    def _read(self) -> WorkspaceState:
         try:
             with open(self.path, "rb") as stream:
-                raw = tomllib.load(stream)
+                raw: dict[str, object] = tomllib.load(stream)
         except FileNotFoundError:
-            return _Document({"schema": SCHEMA_ID})
+            return WorkspaceState({"schema": SCHEMA_ID})
         except OSError as e:
-            return _Document({}, True, False, f"unreadable: {e}")
+            return WorkspaceState({}, True, False, f"unreadable: {e}")
         except (tomllib.TOMLDecodeError, UnicodeDecodeError) as e:
-            return _Document({}, True, False, f"not valid TOML: {e}")
+            return WorkspaceState({}, True, False, f"not valid TOML: {e}")
         schema = raw.get("schema")
         if schema == SCHEMA_ID:
             malformed = _malformed(raw)
             if malformed:
-                return _Document({}, True, False, malformed)
-            return _Document(raw, True)
+                return WorkspaceState({}, True, False, malformed)
+            return WorkspaceState(raw, True)
         version = None
         if isinstance(schema, str) and schema.startswith(_SCHEMA_PREFIX):
             with contextlib.suppress(ValueError):
@@ -283,14 +324,14 @@ class SampleWorkspace:
             # detect everything again.
             raw.pop("detected", None)
             raw["schema"] = SCHEMA_ID
-            return _Document(raw, True, True, f"older schema {schema!r}; upgraded")
+            return WorkspaceState(raw, True, True, f"older schema {schema!r}; upgraded")
         if version is not None:
-            return _Document(
+            return WorkspaceState(
                 {}, True, False, f"written by a newer wgsextract ({schema})"
             )
-        return _Document({}, True, False, f"unknown schema {schema!r}")
+        return WorkspaceState({}, True, False, f"unknown schema {schema!r}")
 
-    def _load(self) -> _Document:
+    def _load(self) -> WorkspaceState:
         doc = self._read()
         if doc.problem and not doc.writable:
             _warn_once(
@@ -316,7 +357,7 @@ class SampleWorkspace:
         root = absolute_path(str(library))
         return self.folder != root and self.folder.is_relative_to(root)
 
-    def _valid(self, name: str, value: Any) -> str | None:
+    def _valid(self, name: str, value: object) -> str | None:
         spec = FACTS.get(name)
         if spec is None or not spec.overridable:
             _warn_once(f"{self.path}: ignoring unknown override {name!r}.")
@@ -327,14 +368,12 @@ class SampleWorkspace:
             _warn_once(f"{self.path}: ignoring override: {e}.")
             return None
 
-    def folder_overrides(self, doc: _Document | None = None) -> dict[str, str]:
+    def folder_overrides(self, doc: WorkspaceState | None = None) -> dict[str, str]:
         """The folder-wide overrides in effect: person facts, in a genome
         folder. Others are reported once and ignored."""
-        table = (doc or self._load()).raw.get("override")
-        if not isinstance(table, dict):
-            return {}
+        values = (doc or self._load()).section("override")
         found: dict[str, str] = {}
-        for name, value in table.items():
+        for name, value in values.items():
             if isinstance(value, dict):
                 continue
             valid = self._valid(name, value)
@@ -358,12 +397,12 @@ class SampleWorkspace:
         return found
 
     def file_overrides(
-        self, file: PathInput, doc: _Document | None = None
+        self, file: PathInput, doc: WorkspaceState | None = None
     ) -> dict[str, str]:
         """``file``'s own overrides, while it is the revision they were set on."""
-        table = (doc or self._load()).raw.get("override")
-        entry = table.get(self.key(file)) if isinstance(table, dict) else None
-        if not isinstance(entry, dict):
+        values = (doc or self._load()).section("override")
+        entry = table(values.get(self.key(file)))
+        if not entry:
             return {}
         if entry.get("fingerprint") != file_fingerprint(file):
             _warn_once(
@@ -378,7 +417,7 @@ class SampleWorkspace:
         }
 
     def overrides(
-        self, file: PathInput | None = None, doc: _Document | None = None
+        self, file: PathInput | None = None, doc: WorkspaceState | None = None
     ) -> dict[str, str]:
         """The overrides in effect for ``file`` (folder-wide ones without it)."""
         doc = doc or self._load()
@@ -392,17 +431,17 @@ class SampleWorkspace:
         name: str,
         file: PathInput,
         *,
-        doc: _Document | None = None,
+        doc: WorkspaceState | None = None,
     ) -> Fact | None:
         """The fact detected from this very file (same fingerprint) by the
         current detector version."""
         doc = doc or self._load()
         key = self.key(file)
-        entry = (doc.raw.get("detected") or {}).get(key)
-        if not isinstance(entry, dict):
+        entry = table(doc.section("detected").get(key))
+        if not entry:
             return None
-        fact = entry.get(name)
-        if not isinstance(fact, dict) or "value" not in fact:
+        fact = table(entry.get(name))
+        if "value" not in fact:
             return None
         spec = FACTS.get(name)
         if spec is None or fact.get("version") != spec.version:
@@ -410,14 +449,14 @@ class SampleWorkspace:
         current = file_fingerprint(file)
         if current is None or entry.get("fingerprint") != current:
             return None
-        return _detected_fact(name, key, entry["fingerprint"], fact)
+        return _detected_fact(name, key, _text(entry["fingerprint"]), fact)
 
     def detected_facts(self, name: str) -> list[Fact]:
         """``name`` as detected from each file still as it was, newest first."""
         doc = self._load()
         found = [
             fact
-            for key in (doc.raw.get("detected") or {})
+            for key in doc.section("detected")
             if (fact := self.detected(name, self.file_path(key), doc=doc))
         ]
         return sorted(found, key=lambda fact: fact.at or "", reverse=True)
@@ -437,7 +476,7 @@ class SampleWorkspace:
     # --- writing ---------------------------------------------------------------
 
     def _update(
-        self, mutate: Callable[[dict[str, Any]], bool], *, strict: bool = False
+        self, mutate: Callable[[WorkspaceState], bool], *, strict: bool = False
     ) -> bool:
         """Apply ``mutate`` to the document under the workspace lock; write it
         if it reports a change. Best effort unless ``strict``."""
@@ -457,7 +496,7 @@ class SampleWorkspace:
                             "delete it first."
                         )
                     return False
-                if not mutate(doc.raw):
+                if not mutate(doc):
                     return False
                 doc.raw["schema"] = SCHEMA_ID
                 atomic_write(self.path, render(doc.raw).encode("utf-8"))
@@ -469,21 +508,109 @@ class SampleWorkspace:
             logging.debug(f"Not recording sample facts in {self.path}: {e}")
             return False
 
+    @overload
     def record(
         self,
-        name: str,
+        name: Literal["sex"],
         file: PathInput,
-        value: Any,
+        value: ObservedSex | None,
+        *,
+        method: str,
+        confidence: Confidence,
+    ) -> bool: ...
+
+    @overload
+    def record(
+        self,
+        name: Literal["somalier_sex"],
+        file: PathInput,
+        value: Sex | None,
+        *,
+        method: str,
+        confidence: Confidence,
+    ) -> bool: ...
+
+    @overload
+    def record(
+        self,
+        name: Literal["platform"],
+        file: PathInput,
+        value: Platform | None,
+        *,
+        method: str,
+        confidence: Confidence,
+    ) -> bool: ...
+
+    @overload
+    def record(
+        self,
+        name: Literal["superpopulation"],
+        file: PathInput,
+        value: Superpopulation | None,
+        *,
+        method: str,
+        confidence: Confidence,
+    ) -> bool: ...
+
+    @overload
+    def record(
+        self,
+        name: Literal["build"],
+        file: PathInput,
+        value: str | None,
+        *,
+        method: str,
+        confidence: Confidence,
+    ) -> bool: ...
+
+    @overload
+    def record(
+        self,
+        name: Literal["read_length", "mean_coverage", "contamination"],
+        file: PathInput,
+        value: float | None,
+        *,
+        method: str,
+        confidence: Confidence,
+    ) -> bool: ...
+
+    @overload
+    def record(
+        self,
+        name: Literal["target_depths", "ancestry"],
+        file: PathInput,
+        value: dict[str, float] | None,
+        *,
+        method: str,
+        confidence: Confidence,
+    ) -> bool: ...
+
+    def record(
+        self,
+        name: FactName,
+        file: PathInput,
+        value: object,
         *,
         method: str,
         confidence: Confidence,
     ) -> bool:
         """Record a detected fact for this revision of ``file``."""
+        return self._record(name, file, value, method=method, confidence=confidence)
+
+    def _record(
+        self,
+        name: FactName,
+        file: PathInput,
+        value: object,
+        *,
+        method: str,
+        confidence: Confidence,
+    ) -> bool:
         fingerprint = file_fingerprint(file)
         if fingerprint is None or value is None:
             return False
         key = self.key(file)
-        new = {
+        new: RecordedFact = {
             "value": value,
             "method": method,
             "confidence": confidence,
@@ -492,28 +619,13 @@ class SampleWorkspace:
             "at": _now(),
         }
 
-        def mutate(raw: dict[str, Any]) -> bool:
-            detected = raw.get("detected")
-            if not isinstance(detected, dict):
-                detected = raw["detected"] = {}
-            entry = detected.get(key)
-            if not isinstance(entry, dict) or entry.get("fingerprint") != fingerprint:
-                # A replaced file's facts all go.
-                entry = detected[key] = {"fingerprint": fingerprint}
-            old = entry.get(name)
-            # The first method to find a value keeps the credit; rewriting it
-            # whenever another method agrees would churn the file.
-            if isinstance(old, dict) and all(
-                old.get(k) == new[k] for k in ("value", "version")
-            ):
-                return False
-            entry[name] = new
-            return True
+        def mutate(doc: WorkspaceState) -> bool:
+            return doc.record(name, key, fingerprint, new)
 
         return self._update(mutate)
 
     def set_overrides(
-        self, values: Mapping[str, str | None], file: PathInput | None = None
+        self, values: OverrideChanges, file: PathInput | None = None
     ) -> dict[str, str]:
         """Set (or, for None, remove) overrides: a person fact folder-wide in a
         genome folder, anything else for ``file`` alone. Returns the overrides
@@ -555,96 +667,82 @@ class SampleWorkspace:
             )
         key = self.key(file) if file is not None else None
 
-        def mutate(raw: dict[str, Any]) -> bool:
-            table = raw.get("override")
-            if not isinstance(table, dict):
-                table = raw["override"] = {}
-            before = {
-                k: dict(v) if isinstance(v, dict) else v for k, v in table.items()
-            }
-            entry = table.get(key) if key else None
-            if (
-                key
-                and per_file
-                and (
-                    not isinstance(entry, dict)
-                    or entry.get("fingerprint") != fingerprint
-                )
-            ):
-                entry = table[key] = {"fingerprint": fingerprint}
-            for name, value in changes.items():
-                if name in shared:
-                    table[name] = value
-                elif name in per_file:
-                    assert isinstance(entry, dict)
-                    entry[name] = value
-                else:
-                    table.pop(name, None)
-                    if isinstance(entry, dict):
-                        entry.pop(name, None)
-            if isinstance(entry, dict) and set(entry) <= {"fingerprint"}:
-                table.pop(key, None)
-            if not table:
-                raw.pop("override")
-            return table != before or not self.path.exists()
+        shared_values: Overrides = {}
+        own_values: FileOverride | None = None
+        if per_file:
+            assert fingerprint is not None
+            own_values = {"fingerprint": fingerprint}
+        sex = changes.get("sex")
+        if is_sex(sex):
+            if "sex" in shared:
+                shared_values["sex"] = sex
+            elif own_values is not None:
+                own_values["sex"] = sex
+        platform = changes.get("platform")
+        if is_platform(platform) and own_values is not None:
+            own_values["platform"] = platform
+        removed = set(changes) - shared - per_file
+
+        def mutate(doc: WorkspaceState) -> bool:
+            return doc.override(key, shared_values, own_values, removed)
 
         self._update(mutate, strict=True)
         return self.overrides(file)
 
-    def record_output(self, manifest: PathInput, command: str, status: str) -> bool:
+    def record_output(self, manifest: PathInput, command: str, status: Status) -> bool:
         """Index a result manifest written in this workspace."""
         key = self.key(manifest)
-        entry = {"command": command, "status": status, "at": _now()}
+        entry: WorkspaceOutput = {"command": command, "status": status, "at": _now()}
 
-        def mutate(raw: dict[str, Any]) -> bool:
-            outputs = raw.get("outputs")
-            if not isinstance(outputs, dict):
-                outputs = raw["outputs"] = {}
-            for old in [k for k in outputs if not self.file_path(k).exists()]:
-                del outputs[old]
-            outputs[key] = entry
+        def mutate(doc: WorkspaceState) -> bool:
+            retained = {k for k in doc.section("outputs") if self.file_path(k).exists()}
+            doc.output(key, entry, retained)
             return True
 
         return self._update(mutate)
 
     # --- reporting -------------------------------------------------------------
 
-    def _status(self, key: str, entry: Mapping[str, Any]) -> str:
+    def _status(self, key: str, entry: Mapping[str, object]) -> FileStatus:
         """Whether the file ``entry`` describes is unchanged, changed or gone."""
         current = file_fingerprint(self.file_path(key))
         if current is None:
             return "missing"
         return "current" if current == entry.get("fingerprint") else "changed"
 
-    def describe(self, file: PathInput | None = None) -> dict[str, Any]:
+    def describe(self, file: PathInput | None = None) -> WorkspaceView:
         """The workspace as JSON-ready data, for ``sample show`` and the API."""
         doc = self._load()
-        files: dict[str, Any] = {}
-        for key, entry in (doc.raw.get("detected") or {}).items():
-            if not isinstance(entry, dict):
+        files: dict[str, FileView] = {}
+        for key, value in doc.section("detected").items():
+            if not isinstance(value, dict):
                 continue
+            entry = table(value)
             files[key] = {
                 "status": self._status(key, entry),
                 "fingerprint": entry.get("fingerprint"),
                 "facts": {
                     name: _detected_fact(
-                        name, key, entry.get("fingerprint"), fact
+                        name, key, _text(entry.get("fingerprint")), table(fact)
                     ).to_dict()
                     for name, fact in entry.items()
                     if isinstance(fact, dict) and "value" in fact
                 },
             }
-        for key, entry in (doc.raw.get("override") or {}).items():
-            if not isinstance(entry, dict):
+        for key, value in doc.section("override").items():
+            if not isinstance(value, dict):
                 continue
-            listed = files.setdefault(key, {"facts": {}})
+            entry = table(value)
+            listed = files.setdefault(
+                key, {"facts": {}, "status": self._status(key, entry)}
+            )
             listed["overrides"] = {
                 "status": self._status(key, entry),
                 "fingerprint": entry.get("fingerprint"),
                 "values": {k: v for k, v in entry.items() if k != "fingerprint"},
             }
             listed.setdefault("status", listed["overrides"]["status"])
-        data: dict[str, Any] = {
+        data: WorkspaceView = {
             "schema": SCHEMA_ID,
             "workspace": str(self.folder),
             "path": str(self.path),
@@ -653,7 +751,9 @@ class SampleWorkspace:
             "genome_folder": self.is_genome_folder,
             "overrides": self.folder_overrides(doc),
             "files": files,
-            "outputs": doc.raw.get("outputs") or {},
+            "outputs": {
+                key: table(value) for key, value in doc.section("outputs").items()
+            },
         }
         if file is not None:
             data["file"] = self.key(file)
@@ -665,7 +765,7 @@ class SampleWorkspace:
         return data
 
 
-def _malformed(raw: Mapping[str, Any]) -> str | None:
+def _malformed(raw: Mapping[str, object]) -> str | None:
     """What makes a current-schema document unusable, if anything."""
     for section in ("override", "detected", "outputs"):
         table = raw.get(section, {})
@@ -684,7 +784,7 @@ def _malformed(raw: Mapping[str, Any]) -> str | None:
 
 
 def _detected_fact(
-    name: str, key: str, fingerprint: str | None, fact: Mapping[str, Any]
+    name: str, key: str, fingerprint: str | None, fact: Mapping[str, object]
 ) -> Fact:
     version = fact.get("version")
     return Fact(
@@ -701,11 +801,11 @@ def _detected_fact(
     )
 
 
-def _text(value: Any) -> str | None:
+def _text(value: object) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def render(raw: Mapping[str, Any]) -> str:
+def render(raw: Mapping[str, object]) -> str:
     """The TOML text: schema first, then [override], [detected], [outputs]."""
     order = ("schema", "override", "detected", "outputs")
     ordered = {k: raw[k] for k in order if k in raw}
@@ -817,10 +917,87 @@ def recording_paused() -> Iterator[None]:
         _recording = previous
 
 
+@overload
 def record(
-    name: str,
+    name: Literal["sex"],
     file: PathInput | None,
-    value: Any,
+    value: ObservedSex | None,
+    *,
+    method: str,
+    confidence: Confidence,
+) -> bool: ...
+
+
+@overload
+def record(
+    name: Literal["somalier_sex"],
+    file: PathInput | None,
+    value: Sex | None,
+    *,
+    method: str,
+    confidence: Confidence,
+) -> bool: ...
+
+
+@overload
+def record(
+    name: Literal["platform"],
+    file: PathInput | None,
+    value: Platform | None,
+    *,
+    method: str,
+    confidence: Confidence,
+) -> bool: ...
+
+
+@overload
+def record(
+    name: Literal["superpopulation"],
+    file: PathInput | None,
+    value: Superpopulation | None,
+    *,
+    method: str,
+    confidence: Confidence,
+) -> bool: ...
+
+
+@overload
+def record(
+    name: Literal["build"],
+    file: PathInput | None,
+    value: str | None,
+    *,
+    method: str,
+    confidence: Confidence,
+) -> bool: ...
+
+
+@overload
+def record(
+    name: Literal["read_length", "mean_coverage", "contamination"],
+    file: PathInput | None,
+    value: float | None,
+    *,
+    method: str,
+    confidence: Confidence,
+) -> bool: ...
+
+
+@overload
+def record(
+    name: Literal["target_depths", "ancestry"],
+    file: PathInput | None,
+    value: dict[str, float] | None,
+    *,
+    method: str,
+    confidence: Confidence,
+) -> bool: ...
+
+
+def record(
+    name: FactName,
+    file: PathInput | None,
+    value: object,
     *,
     method: str,
     confidence: Confidence,
@@ -830,7 +1007,9 @@ def record(
     workspace = workspace_for(file)
     if workspace is None or file is None or not _recording:
         return False
-    recorded = workspace.record(name, file, value, method=method, confidence=confidence)
+    recorded = workspace._record(
+        name, file, value, method=method, confidence=confidence
+    )
     check_override(name, file, value, method)
     return recorded
 
@@ -839,7 +1018,7 @@ _checked: set[tuple[str, str]] = set()
 
 
 def check_override(
-    name: str, file: PathInput | None, detected: Any, method: str | None
+    name: str, file: PathInput | None, detected: object, method: str | None
 ) -> None:
     """Warn, into the result manifest, when the reads contradict the override
     in effect for ``file``: it changes the algorithm, so a wrong one must not

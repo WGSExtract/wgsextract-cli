@@ -72,9 +72,11 @@ you start yourself:
   samtools and tabix after `--`.
 - **Deleting needs an opt-in.** Requests that delete data a command didn't
   make are refused (403 `destructive`) unless the server was started with
-  `--allow-destructive`: `bam unindex`, `sample unset`, and
-  `ref gene-map` and `ref dense-sa` with `delete`. Over MCP, `bam_unindex` and `sample_unset`
-  are offered only then, and their tools carry `destructiveHint`.
+  `--allow-destructive`: `bam unindex`, `sample unset`,
+  `ref library-delete` (`ref library --delete`), and `ref gene-map`,
+  `ref dense-sa` and `ref test-genome` with `delete`. Over MCP, `bam_unindex`, `sample_unset` and
+  `ref_library_delete` are offered only then, and their tools carry
+  `destructiveHint`.
   Regenerating a command's own outputs (`restart`, `force_*`) isn't
   deleting in this sense.
 - Parameters that name programs to run, such as `haplogrep_path`, or that
@@ -194,7 +196,8 @@ curl -H "Authorization: ******" \
   the API's `CancelToken`: tools stop, and the manifest is written with
   status `cancelled` (exit code 130). If the job is still running 30 seconds
   later, it is killed. As on the CLI, partial outputs are kept unless the
-  `atomic_outputs` setting is on.
+  `atomic_outputs` setting is on. `align` is an always-atomic exception: its
+  failed or cancelled validation/writes preserve previous completed outputs.
 - **Persistence.** Job records are kept in `<state>/server/jobs/<id>.json`,
   so a restarted server still lists the earlier jobs and their results. Jobs
   that were queued or running when a server stopped are marked

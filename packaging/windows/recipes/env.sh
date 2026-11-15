@@ -8,6 +8,14 @@ set -euo pipefail
 export MSYSTEM=UCRT64
 export PATH="/ucrt64/bin:/usr/bin:$PATH"
 
+# CI opts in by creating this directory through the shared cache action.
+# Masquerading wrappers also cover upstream Makefiles that hard-code gcc/g++.
+cache_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/out
+if [ -f "$cache_root/compiler-cache/ccache.conf" ]; then
+    export CCACHE_DIR="$(cygpath -m "$cache_root/compiler-cache")"
+    export PATH="$cache_root/compiler-wrappers:$PATH"
+fi
+
 # rattler-build supplies the package prefix.
 # shellcheck disable=SC2153
 PREFIX_U=$(cygpath -u "$PREFIX")

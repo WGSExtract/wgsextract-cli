@@ -20,6 +20,7 @@ from wgsextract_cli.core.constants import (
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_assets import n_count_paths
+from wgsextract_cli.core.sample_types import is_observed_sex
 from wgsextract_cli.core.sample_workspace import Confidence
 from wgsextract_cli.core.sequencing import platform_from_metadata
 from wgsextract_cli.core.ultima import is_ultima_header
@@ -419,7 +420,7 @@ def infer_sex_call(
 def record_sex(input_path: str, call: SexCall) -> None:
     """Record observed sex, including Unknown, in the workspace, which warns when it
     contradicts the user's override."""
-    if call.sex in (*sample_workspace.SEXES, "Unknown"):
+    if is_observed_sex(call.sex):
         if call.method != SEX_MEASUREMENT_UNAVAILABLE:
             sample_workspace.record(
                 "sex",
@@ -463,19 +464,31 @@ def cached_info(
 
 
 def sample_sex(
-    input_path: str, outdir: str | None = None, *, reference: str | None = None
+    input_path: str,
+    outdir: str | None = None,
+    *,
+    reference: str | None = None,
+    allow_scan: bool = True,
 ) -> str:
     """The sample's sex: the user's override or the recorded call in its sample
     workspace, else `info`'s cached metrics for this file, else sampled
     non-PAR depth. A CRAM needs only its header and indexed windows, not a
     whole-file idxstats scan. A new call is
     recorded in the workspace. An override is still checked against the reads,
-    once per file revision, since it changes how chrX and chrY are called."""
-    return sample_sex_evidence(input_path, outdir, reference=reference)[0]
+    once per file revision, since it changes how chrX and chrY are called.
+    With ``allow_scan=False``, use recorded/cached evidence only, without
+    recording an Unknown call when no evidence is available."""
+    return sample_sex_evidence(
+        input_path, outdir, reference=reference, allow_scan=allow_scan
+    )[0]
 
 
 def sample_sex_evidence(
-    input_path: str, outdir: str | None = None, *, reference: str | None = None
+    input_path: str,
+    outdir: str | None = None,
+    *,
+    reference: str | None = None,
+    allow_scan: bool = True,
 ) -> tuple[str, SexCall, str | None]:
     """Effective sex, observed evidence and declaration, without writing
     command-wide metrics (a multi-sample caller must associate them per sample)."""
@@ -483,7 +496,7 @@ def sample_sex_evidence(
 
     def detect() -> tuple[str, str | None]:
         nonlocal call
-        call = _detect_sex(input_path, outdir, reference)
+        call = _detect_sex(input_path, outdir, reference, allow_scan=allow_scan)
         return call.sex, call.method
 
     effective = str(sample_workspace.resolve("sex", input_path, detect))
@@ -508,7 +521,11 @@ def sample_sex_evidence(
 
 
 def _detect_sex(
-    input_path: str, outdir: str | None, reference: str | None = None
+    input_path: str,
+    outdir: str | None,
+    reference: str | None = None,
+    *,
+    allow_scan: bool = True,
 ) -> SexCall:
     info = cached_info(input_path, outdir)
     cached_call = info.get("sex_call") if info else None
@@ -521,6 +538,8 @@ def _detect_sex(
         and cached_call[1] != SEX_MEASUREMENT_UNAVAILABLE
     ):
         call = SexCall(*cached_call)
+    elif not allow_scan:
+        return SexCall("Unknown", SEX_MEASUREMENT_UNAVAILABLE, "low")
     else:
         logging.info("Checking chrX/chrY coverage to infer the sample's sex...")
         try:

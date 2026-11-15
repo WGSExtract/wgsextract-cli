@@ -902,3 +902,9 @@ def test_long_read_disk_covers_the_measured_spills_and_cram_output():
         "PAO83395.pass.cram", 10_728_434_251, "CRAM", 4 * 192 * mib
     )
     assert genome.spill > 42_570_898_460
+    # measured (#431, #690): realigned whole, the 103.7 GB CRAM came to
+    # 185.5 GB of CRAM, 1.79x where 1.7x was first budgeted.
+    whole = resources.long_read_disk(
+        "PAO83395.pass.cram", 103_700_000_000, "CRAM", 7 * 512 * mib
+    )
+    assert whole.output >= 185_500_000_000
