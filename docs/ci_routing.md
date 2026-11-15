@@ -180,10 +180,41 @@ test runner report containing failed tests produces `failure`. Landing still
 requires the passing hosted ready run; non-success local attestations never
 make that otherwise-passing run fail the landing gate.
 
-For macOS remotely, push the branch, acquire randy-mini's coordinator lock, and
-SSH to a dedicated clean worktree with prepared Pixi environments. Leave 25 GiB
-RAM free and run `just certify --platform-only` there using its existing `gh`
-authentication; never forward credentials. Run Linux plus generic locally.
+For macOS remotely, push the branch and run on lin-mid:
+
+```sh
+just certify --remote randy-mini
+```
+
+The controller enforces the same clean, pushed, same-repository open-PR and
+writer checks as local certification. It acquires `agent-coord lock randy-mini`
+for the entire remote operation and releases it even on refusal. A busy lock
+refuses without disturbing its owner; retry only after the owner releases it.
+Only the registered `randy-mini` SSH alias and public WGSExtract repository are
+supported. SSH agent/port/environment forwarding is disabled; neither `gh` nor
+a GitHub token is installed or sent to the Mac.
+
+The remote bootstrap fetches the exact head and base SHAs over public HTTPS,
+then creates/reuses `~/src/wgsextract-cli/scratch/certify-<head-sha>` as a
+detached worktree. Branch names never enter a remote shell command. Prepare
+that worktree's locked Pixi environments explicitly as above; missing tools
+refuse rather than being installed. The worker runs `certify-setup` if retained
+wheels or reference inputs need preparation, then uses the same macOS ARM64
+selection and generic commands as local certification. `--platform-only` skips
+the generic layer when it already ran locally; `--generic-only` runs only generic.
+This explicit remote input-setup phase may download pinned archives; the test
+phase still uses `--no-install`.
+
+The Mac must start setup with 30 GiB disk free. A one-second watchdog stops the
+worker and its child process group below 26 GiB, leaving headroom for the
+required 25 GiB reserve. No sudo, reboot, reverse SSH, or access to
+`/Users/randy` is needed. The worker checks platform, clean tree and HEAD before
+and after execution. Logs stream to lin-mid under
+`out/certify/<sha>/remote-randy-mini/<layer>/run.log`; only lin-mid publishes
+`local-ci/macos-arm64` and (if requested) `local-ci/generic`, with the machine
+name and full streamed-log SHA-256. Missing/mismatched results, disk refusals,
+SSH failures and interruptions produce `error`; verified failed-test reports
+produce `failure`. Run Linux certification separately on lin-mid.
 Whole-suite baseline savings are about 22 Linux runner-minutes plus 1–3 generic
 minutes (package smoke remains), or about 33 additional minutes for macOS ARM64.
 Sparse selected PRs save less.

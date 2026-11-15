@@ -85,7 +85,12 @@ def pr_head() -> tuple[str, dict[str, Any], str]:
 
 
 def run_layer(
-    name: str, commands: list[list[str]], sha: str, workers: int
+    name: str,
+    commands: list[list[str]],
+    sha: str,
+    workers: int,
+    *,
+    stream_output: bool = False,
 ) -> tuple[str, str]:
     directory = Path("out/certify") / sha / name
     directory.mkdir(parents=True, exist_ok=True)
@@ -140,13 +145,32 @@ def run_layer(
             stream.flush()
             print(f"{name}: {' '.join(command[:7])}", flush=True)
             try:
-                subprocess.run(
-                    command,
-                    cwd=cwd,
-                    stdout=stream,
-                    stderr=subprocess.STDOUT,
-                    check=True,
-                )
+                if stream_output:
+                    with subprocess.Popen(
+                        command,
+                        cwd=cwd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                    ) as process:
+                        assert process.stdout is not None
+                        for line in process.stdout:
+                            stream.write(line)
+                            print(line, end="", flush=True)
+                        if process.wait():
+                            raise subprocess.CalledProcessError(
+                                process.returncode, command
+                            )
+                else:
+                    subprocess.run(
+                        command,
+                        cwd=cwd,
+                        stdout=stream,
+                        stderr=subprocess.STDOUT,
+                        check=True,
+                    )
             except subprocess.CalledProcessError as error:
                 if pytest_command and xml.is_file():
                     if any(
@@ -402,30 +426,15 @@ def generic_commands(paths: list[str], targets: list[str] | str) -> list[list[st
     return commands
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--platform-only", action="store_true")
-    mode.add_argument("--generic-only", action="store_true")
-    parser.add_argument("--workers", type=int, choices=range(1, 5), default=4)
-    args = parser.parse_args()
-    repository, pr, sha = pr_head()
-    host = host_platform()
-    subprocess.run(["git", "fetch", "origin", pr["base"]["sha"]], check=True)
+def changed_paths(base: str, sha: str) -> list[str]:
     changed = subprocess.check_output(
-        [
-            "git",
-            "diff",
-            "--name-only",
-            "--no-renames",
-            "-z",
-            f"{pr['base']['sha']}...{sha}",
-            "--",
-        ]
+        ["git", "diff", "--name-only", "--no-renames", "-z", f"{base}...{sha}", "--"]
     )
-    paths = changed.decode().rstrip("\0").split("\0") if changed else []
+    return changed.decode().rstrip("\0").split("\0") if changed else []
+
+
+def selection(paths: list[str], host: str) -> tuple[bool, list[str] | str]:
     selected = routes(paths)
-    targets = select_tests(paths)
     os = {
         "linux-x64": "ubuntu",
         "linux-arm64": "arm64",
@@ -433,10 +442,61 @@ def main() -> None:
         "macos-x64": "macos",
         "windows-x64": "windows",
     }[host]
-    platform_targets = os_selection(paths, targets, cli=selected["cli"])[os]
+    return selected["cli"], os_selection(
+        paths, select_tests(paths), cli=selected["cli"]
+    )[os]
+
+
+def required_environments(
+    name: str, host: str, cli: bool, targets: list[str] | str
+) -> list[str]:
+    environments = ["default", "dev"]
+    if name == "generic" or not cli or not targets:
+        return environments
+    environments += ["vep" if host == "linux-arm64" else "vep-rs"]
+    if host == "windows-x64":
+        environments.append("gatk")
+    if host in {"linux-x64", "windows-x64"} and (
+        targets == "all" or "tests/test_imputation.py" in targets
+    ):
+        environments.append("imputation")
+    if host == "linux-x64" and (
+        targets == "all"
+        or any(
+            path in targets
+            for path in (
+                "tests/test_ont_hg002.py",
+                "tests/test_phasing.py",
+                "tests/test_somalier_relate.py",
+            )
+        )
+    ):
+        environments += ["pacbio", "phasing", "somalier"]
+    return environments
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--platform-only", action="store_true")
+    mode.add_argument("--generic-only", action="store_true")
+    parser.add_argument("--remote", choices=["randy-mini"])
+    parser.add_argument("--workers", type=int, choices=range(1, 5), default=4)
+    args = parser.parse_args()
+    repository, pr, sha = pr_head()
+    if args.remote:
+        from scripts.ci_certify_remote import certify_remote
+
+        certify_remote(repository, pr, sha, args)
+        return
+    host = host_platform()
+    subprocess.run(["git", "fetch", "origin", pr["base"]["sha"]], check=True)
+    paths = changed_paths(pr["base"]["sha"], sha)
+    targets = select_tests(paths)
+    cli, platform_targets = selection(paths, host)
     layers = {}
     if not args.generic_only:
-        layers[host] = platform_commands(host, platform_targets, not selected["cli"])
+        layers[host] = platform_commands(host, platform_targets, not cli)
     if not args.platform_only:
         layers["generic"] = generic_commands(paths, targets)
     summaries = []
@@ -446,29 +506,9 @@ def main() -> None:
             name: str = name,
             commands: list[list[str]] = commands,
         ) -> tuple[str, str]:
-            environments = ["default", "dev"]
-            if name != "generic" and selected["cli"] and platform_targets:
-                environments += ["vep" if host == "linux-arm64" else "vep-rs"]
-                if host == "windows-x64":
-                    environments.append("gatk")
-                if host in {"linux-x64", "windows-x64"} and (
-                    platform_targets == "all"
-                    or "tests/test_imputation.py" in platform_targets
-                ):
-                    environments.append("imputation")
-                if host == "linux-x64" and (
-                    platform_targets == "all"
-                    or any(
-                        path in platform_targets
-                        for path in (
-                            "tests/test_ont_hg002.py",
-                            "tests/test_phasing.py",
-                            "tests/test_somalier_relate.py",
-                        )
-                    )
-                ):
-                    environments += ["pacbio", "phasing", "somalier"]
-            validate_environments(environments)
+            validate_environments(
+                required_environments(name, host, cli, platform_targets)
+            )
             summary, log = run_layer(name, commands, sha, args.workers)
             validate_head(
                 gh_api(f"repos/{repository}/pulls/{pr['number']}"), sha, repository
