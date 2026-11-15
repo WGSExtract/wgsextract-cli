@@ -17,6 +17,7 @@ USES_RE = re.compile(
 # Remote actions that only one local composite action may wrap, so their pins
 # and inputs (such as the Pixi version and cache policy) live in one place.
 WRAPPED_ACTIONS = {
+    "swatinem/rust-cache": ".github/actions/rust-cache/action.yml",
     "actions/setup-node": ".github/actions/setup-gui/action.yml",
     "prefix-dev/setup-pixi": ".github/actions/setup-pixi/action.yml",
 }
@@ -27,6 +28,7 @@ VERSION_RE = re.compile(r"^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 # Each version/SHA lives in its workflow, so Dependabot need not update a
 # duplicate table. Adding a new action source still requires an explicit review.
 ALLOWED_ACTIONS = {
+    "swatinem/rust-cache",
     "actions/cache",
     "actions/cache/restore",
     "actions/cache/save",

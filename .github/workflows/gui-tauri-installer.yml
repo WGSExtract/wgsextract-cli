@@ -52,6 +52,9 @@ jobs:
         with:
           rust: "true"
 
+      - name: Restore Rust dependencies
+        uses: ./.github/actions/rust-cache
+
       - name: Build Tauri installer
         shell: pwsh
         run: python tools/tasks.py package tauri

@@ -48,6 +48,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - uses: ./.github/actions/compiler-cache
+        with:
+          scope: aligners-metal
+          recipe: ${{ hashFiles('native/**/CMakeLists.txt', '.github/workflows/macos_aligners.yml') }}
+
       - name: Build and test (development build)
         run: |
           cmake -S native -B out/build-test -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_BASE_DIR="$PWD/out/deps"
@@ -85,6 +90,12 @@ jobs:
           name: macos-aligners
           path: out/packages/*.tar.gz
           if-no-files-found: error
+
+      - uses: ./.github/actions/compiler-cache
+        with:
+          phase: save
+          scope: aligners-metal
+          recipe: ${{ hashFiles('native/**/CMakeLists.txt', '.github/workflows/macos_aligners.yml') }}
 
   publish:
     if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''

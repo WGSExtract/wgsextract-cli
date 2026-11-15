@@ -1,3 +1,4 @@
+import ast
 import json
 import re
 from fnmatch import fnmatchcase
@@ -205,6 +206,10 @@ def test_composite_actions_are_held_to_the_same_policy(
             "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0",
             "setup-gui",
         ),
+        (
+            "Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3",
+            "rust-cache",
+        ),
     ],
 )
 def test_wrapped_actions_are_used_only_through_the_shared_action(
@@ -246,6 +251,96 @@ def test_new_github_queue_schema_is_validated_despite_actionlint_lag(
     assert (not errors) == valid
     if not valid:
         assert any("queue" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("workflow", "action"),
+    [
+        ("gui-build", "rust-cache"),
+        ("gui-tauri-installer", "rust-cache"),
+        ("linux_aligners", "compiler-cache"),
+        ("macos_aligners", "compiler-cache"),
+        ("linux_deepvariant", "compiler-cache"),
+        ("macos_deepvariant", "compiler-cache"),
+        ("windows_tools", "compiler-cache"),
+        ("glimpse2", "compiler-cache"),
+    ],
+)
+def test_916_expensive_builds_use_trusted_shared_cache(
+    workflow: str, action: str
+) -> None:
+    text = (policy.ROOT / f".github/workflows/{workflow}.yml").read_text()
+    # CI contract: compile jobs cannot bypass the shared trust boundary.
+    assert f"uses: ./.github/actions/{action}" in text
+    assert "uses: actions/cache" not in text
+
+
+@pytest.mark.parametrize("action", ["compiler-cache", "rust-cache"])
+@pytest.mark.parametrize(
+    ("ref", "event", "actor", "expected"),
+    [
+        ("refs/pull/916/merge", "pull_request", "theontho", False),
+        ("refs/pull/916/merge", "pull_request", "external", False),
+        ("refs/heads/feature", "push", "theontho", False),
+        ("refs/tags/v1.0.0", "push", "theontho", False),
+        ("refs/heads/main", "push", "theontho", True),
+        ("refs/heads/main", "schedule", "theontho", True),
+        ("refs/heads/main", "pull_request_target", "theontho", False),
+        ("refs/heads/main", "pull_request", "theontho", False),
+        ("refs/heads/ci/916-compiler-cache", "pull_request", "theontho", False),
+        ("refs/heads/ci/916-compiler-cache", "push", "theontho", False),
+        ("refs/heads/ci/916-compiler-cache", "workflow_dispatch", "external", False),
+        ("refs/heads/ci/916-compiler-cache", "workflow_dispatch", "theontho", True),
+    ],
+)
+def test_916_pr_refs_cannot_save_compiler_caches(
+    action: str, ref: str, event: str, actor: str, expected: bool
+) -> None:
+    text = (policy.ROOT / f".github/actions/{action}/action.yml").read_text()
+    if action == "rust-cache":
+        condition = text.split("save-if:", 1)[1]
+    else:
+        condition = text.split("- name: Save successful compiler objects", 1)[1]
+        condition = condition.split("uses:", 1)[0]
+    values = {
+        "github.ref": ref,
+        "github.event_name": event,
+        "github.actor": actor,
+        "inputs.phase": "save",
+        "inputs.writer": "true",
+    }
+    for name, value in values.items():
+        condition = condition.replace(name, repr(value))
+    condition = (
+        condition.split("if:", 1)[-1]
+        .replace(">-", "")
+        .replace("${{", "")
+        .replace("}}", "")
+    )
+    condition = condition.replace("&&", " and ").replace("||", " or ")
+    tree = ast.parse(" ".join(condition.split()), mode="eval")
+
+    # CI contract: evaluate the actual writer guard for PR, tag, main and
+    # owner dispatch contexts, without executing code from a workflow.
+    def matches(node: ast.AST) -> bool | str:
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.BoolOp):
+            truth_values = [bool(matches(value)) for value in node.values]
+            return (
+                all(truth_values) if isinstance(node.op, ast.And) else any(truth_values)
+            )
+        if isinstance(node, ast.Compare) and len(node.ops) == 1:
+            left, right = matches(node.left), matches(node.comparators[0])
+            if isinstance(node.ops[0], ast.Eq):
+                return left == right
+            if isinstance(node.ops[0], ast.NotEq):
+                return left != right
+        raise AssertionError(f"Unreviewed writer condition: {ast.dump(node)}")
+
+    assert matches(tree.body) is expected
+    if ref.startswith("refs/pull/"):
+        assert re.search(r"measure-916-[a-z]+-v1", text)
 
 
 CLI_PUSH_WORKFLOWS = {

@@ -83,13 +83,18 @@ jobs:
           name: deepvariant-weights-linux
           path: out/weights
 
+      - uses: ./.github/actions/compiler-cache
+        with:
+          scope: deepvariant-conda
+          recipe: ${{ hashFiles('packaging/wgse-deepvariant/**', 'native/deepvariant/**/CMakeLists.txt', '.github/workflows/linux_deepvariant.yml') }}
+
       - name: Build the packages
         # The CUDA build needs a driver only to call on the GPU: CONDA_OVERRIDE_CUDA
         # lets the GPU-less runner solve and install it.
         env:
           CONDA_OVERRIDE_CUDA: "12.9"
         run: |
-          pixi exec --spec rattler-build==0.77.0 rattler-build build -c conda-forge -c bioconda --recipe-dir packaging/wgse-deepvariant \
+          pixi exec --spec rattler-build==0.77.0 rattler-build build --no-build-id -c conda-forge -c bioconda --recipe-dir packaging/wgse-deepvariant \
             -m packaging/wgse-deepvariant/variants.yaml --output-dir out/conda --target-platform linux-64
 
       - name: Smoke-test both builds on the CPU
@@ -108,6 +113,12 @@ jobs:
                 native/deepvariant/tests/smoke.sh "$(command -v wgse-deepvariant)" out/weights "out/smoke-$0"
               ' "$build"
           done
+
+      - uses: ./.github/actions/compiler-cache
+        with:
+          phase: save
+          scope: deepvariant-conda
+          recipe: ${{ hashFiles('packaging/wgse-deepvariant/**', 'native/deepvariant/**/CMakeLists.txt', '.github/workflows/linux_deepvariant.yml') }}
 
       - name: Package the weights
         run: |
