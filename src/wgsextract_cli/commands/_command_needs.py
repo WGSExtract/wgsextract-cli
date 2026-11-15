@@ -167,7 +167,9 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf gerp": _n(MINUTES, "bcftools", "bgzip", "tabix", optional="samtools"),
     "vcf spliceai": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf alphamissense": _n(MINUTES, *_VCF, optional="bgzip samtools"),
-    "vcf pharmcat": _n(MINUTES, "bcftools", "pharmcat", "tabix", optional="bgzip"),
+    "vcf pharmcat": _n(
+        MINUTES, "bcftools", "pharmcat", "samtools", "tabix", optional="bgzip"
+    ),
     "vcf chain-annotate": _n(MINUTES, *_VCF, optional="bgzip samtools vep vep-rs"),
     # Minutes with vep-rs, the default; hours with Ensembl VEP.
     "vep run": _n(MINUTES, "bcftools", "tabix", "vep-rs", optional="samtools vep"),
