@@ -29,12 +29,24 @@
           "kind": "libraryList",
           "tooltip": "controls.library.genome-management.reference_genomes.tooltip",
           "dataSource": {
-            "path": "scripts/list-reference-genomes.py",
+            "path": "scripts/run-wgsextract.sh",
             "arguments": [
-              "items",
-              "{{ref_path}}",
-              "{{reference_genome_library}}"
-            ]
+              "--json",
+              "ref",
+              "library",
+              "--list",
+              "--remote-sizes"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ]
+            ],
+            "transform": {
+              "module": "transforms/reference-genomes.mjs",
+              "export": "items"
+            }
           },
           "columns": [
             {

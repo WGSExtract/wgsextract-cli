@@ -236,7 +236,7 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   assert.equal(referenceGenomePaths.controls[0].id, "reference_genome_library");
   assert.equal(referenceGenomePaths.controls[0].label, "Reference Genomes Library Path");
   const genomeTable = genomesPage.sections.find((section) => section.id === "genome-management").controls[0];
-  assert.deepEqual(genomeTable.dataSource.arguments, ["items", "{{ref_path}}", "{{reference_genome_library}}"]);
+  assert.deepEqual(genomeTable.dataSource.transform, { module: "transforms/reference-genomes.mjs", export: "items" });
 
   const databaseTools = library.sections.find((section) => section.id === "databases-tools");
   assert.ok(databaseTools, "databases and tools section exists");
@@ -328,7 +328,7 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   assert.equal(microarrayRefControl.emptyText, "None loaded. See Reference Genomes page to add.");
   // The library folder, like the other reference dropdowns: the selected FASTA
   // is not a library, so with it the list emptied once a genome was chosen.
-  assert.deepEqual(microarrayRefControl.dataSource.arguments, ["options", "{{ref_path}}", "{{reference_genome_library}}"]);
+  assert.deepEqual(microarrayRefControl.dataSource.optionalArguments, [["--ref", "{{ref_path}}"]]);
   assert.equal(
     conditionMatches(microarrayAction.disabledWhen[0], {
       fieldValues: { bam_path: "sample.cram.crai" },

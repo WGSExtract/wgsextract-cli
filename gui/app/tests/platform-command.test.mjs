@@ -146,8 +146,8 @@ test("routes Windows script files through platform interpreters", async (t) => {
   assert.deepEqual(result.args.slice(0, 5), ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"]);
   assert.equal(result.args[5], script);
   assert.deepEqual(result.args.slice(6), ["deps", "check"]);
-  assert.deepEqual(await platformCommand(path.resolve("..", "examples", "WGSExtract", "scripts", "shared", "list_reference_genomes.py"), ["options"]), {
+  assert.deepEqual(await platformCommand(path.resolve("..", "examples", "WGSExtract", "scripts", "shared", "coverage_state.py"), ["options"]), {
     executable: "python",
-    args: [path.resolve("..", "examples", "WGSExtract", "scripts", "shared", "list_reference_genomes.py"), "options"],
+    args: [path.resolve("..", "examples", "WGSExtract", "scripts", "shared", "coverage_state.py"), "options"],
   });
 });

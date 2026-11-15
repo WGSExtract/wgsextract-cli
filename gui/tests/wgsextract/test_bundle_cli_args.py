@@ -51,7 +51,6 @@ NON_CLI_SCRIPTS = {
     "check-xcode-command-line-tools.sh",
     "coverage-state.py",
     "delete-reference-genome.sh",
-    "list-reference-genomes.py",
     "setup-wgsextract-pixi.sh",
     "test-genome-library.py",
     "uninstall-wgsextract.sh",
@@ -438,6 +437,12 @@ def script_name(path: str) -> str:
 EXCLUSIVE_FLAGS = (("--tree", "--tree-file"), ("--public-key", "--allowed-signers"))
 
 
+def data_source_arguments(source: dict) -> list[str]:
+    """A data source's arguments with all its optional groups."""
+    groups = source.get("optionalArguments", [])
+    return source.get("arguments", []) + [arg for group in groups for arg in group]
+
+
 def bundle_commands() -> Iterator[tuple[str, str, list[str]]]:
     """Yield (label, script, arguments) for everything the bundle can run.
 
@@ -462,7 +467,7 @@ def bundle_commands() -> Iterator[tuple[str, str, list[str]]]:
                 yield (
                     f"{label}:dataSource",
                     script_name(source["path"]),
-                    source.get("arguments", []),
+                    data_source_arguments(source),
                 )
             actions = list(section.get("actions", []))
             for control in section.get("controls", []):
@@ -470,14 +475,14 @@ def bundle_commands() -> Iterator[tuple[str, str, list[str]]]:
                     yield (
                         f"{label}/{control['id']}:dataSource",
                         script_name(source["path"]),
-                        source.get("arguments", []),
+                        data_source_arguments(source),
                     )
                 for setting in control.get("settings", []):
                     if source := setting.get("dataSource"):
                         yield (
                             f"{label}/{setting['id']}:dataSource",
                             script_name(source["path"]),
-                            source.get("arguments", []),
+                            data_source_arguments(source),
                         )
                 actions += control.get("rowActions", [])
             for action in actions:

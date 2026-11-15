@@ -359,12 +359,23 @@
           "kind": "dropdown",
           "tooltip": "controls.fastq.fastq-inputs.ref_fasta.tooltip",
           "dataSource": {
-            "path": "scripts/list-reference-genomes.py",
+            "path": "scripts/run-wgsextract.sh",
             "arguments": [
-              "options",
-              "{{ref_path}}",
-              "{{reference_genome_library}}"
-            ]
+              "--json",
+              "ref",
+              "library",
+              "--list"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ]
+            ],
+            "transform": {
+              "module": "transforms/reference-genomes.mjs",
+              "export": "options"
+            }
           },
           "emptyText": "controls.reference-genome.emptyText"
         },
@@ -642,12 +653,23 @@
           "kind": "dropdown",
           "tooltip": "controls.info-bam.realign-commands.realign_ref.tooltip",
           "dataSource": {
-            "path": "scripts/list-reference-genomes.py",
+            "path": "scripts/run-wgsextract.sh",
             "arguments": [
-              "options",
-              "{{ref_path}}",
-              "{{reference_genome_library}}"
-            ]
+              "--json",
+              "ref",
+              "library",
+              "--list"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ]
+            ],
+            "transform": {
+              "module": "transforms/reference-genomes.mjs",
+              "export": "options"
+            }
           },
           "emptyText": "controls.reference-genome.emptyText"
         },
