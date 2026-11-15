@@ -344,8 +344,16 @@ the same records as 2.0.3, from CRAM 3.1, CRAM 3.0 and BAM input (vcfeval F1
 0.979 against GIAB v4.2.1). On an Apple M1 it took 44 s, and 1,786 of its
 1,827 calls matched the 1,829 Linux calls in alleles and genotype. The rest
 were mostly multi-allelic homopolymer indels, and qualities differ slightly,
-because CPU floating-point results differ between ARM64 and x86-64. Its F1 was
-0.978. Linux ARM64 has not been run here.
+because floating-point results can differ between CPU backends. Its F1 was
+0.978.
+
+On Linux ARM64 (Ubuntu 24.04, Ampere Altra, Azure `Standard_D4ps_v5`,
+4 cores, 16 GiB RAM), the native `clair3` Pixi environment installed
+successfully. The same realigned 1 Mb slice, supplied as CRAM 3.1 with the
+full hs38 reference, took **95.77 s wall and 0.52 GiB peak RSS** through the
+CLI with 4 threads (2026-11-15). All **1,829 sites, alleles, genotypes and
+FILTER values matched Linux x86-64**; only two QUAL values differed, by
+0.01. Both used Clair3 2.0.5 and CPU PyTorch 2.14.1.
 
 ```sh
 wgsextract vcf clair3 -i hg002-ont.bam --ref chr20.fa \
