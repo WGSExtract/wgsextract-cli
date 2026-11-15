@@ -185,7 +185,7 @@ def _percentile_of_score(values: np.ndarray, score: float) -> float:
     tolerance = 1e-5 * max(1.0, abs(score))
     left = int((values < score - tolerance).sum())
     right = int((values <= score + tolerance).sum())
-    return (left + right + (1 if right > left else 0)) * 50.0 / values.size
+    return float((left + right + (1 if right > left else 0)) * 50.0 / values.size)
 
 
 def similarity(reference: PgsReference, pcs: np.ndarray) -> dict[str, Any]:
