@@ -22,6 +22,7 @@ from wgsextract_cli.api.ref import (
     RefGnomadSvParams,
     RefImputationParams,
     RefIndexParams,
+    RefLibraryDeleteParams,
     RefLibraryListParams,
     RefLibraryParams,
     RefMicroarrayTargetsParams,
@@ -254,6 +255,7 @@ def register(
         help="Non-interactively list all available genomes and their status.",
     )
     add_arguments(library, RefLibraryListParams)
+    add_arguments(library, RefLibraryDeleteParams)
     status = add(
         "status",
         RefStatusParams,

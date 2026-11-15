@@ -65,7 +65,7 @@
 {"path":"ref dense-sa","tier":"setup","summary":"Build wgse-bwa's optional dense suffix-array file for a FASTA (0.8 GB for hs38; align reads it with --dense-suffix-array), list or delete it.","key_flags":["--interval","--list","--delete"]},
 {"path":"ref count-ns","tier":"setup","summary":"Calculate the percentage of 'N' (unknown) bases in a genome.","key_flags":[]},
 {"path":"ref verify","tier":"setup","summary":"Ensure your reference genome file isn't corrupted and has all the necessary companion files (indexes, dicts).","key_flags":[]},
-{"path":"ref library","tier":"setup","summary":"Opens the interactive reference manager to help you organize and download genomic data.","key_flags":["--install","--list","--remote-sizes"]},
+{"path":"ref library","tier":"setup","summary":"Opens the interactive reference manager to help you organize and download genomic data.","key_flags":["--install","--list","--remote-sizes","--delete"]},
 {"path":"ref status","tier":"setup","summary":"Report reference library asset status.","key_flags":["--dataset-library","--annotation-vcf","--values"]},
 {"path":"ref needs","tier":"setup","summary":"Report the reference genome or annotation data a command line needs that isn't installed, and how to install it.","key_flags":["--report-json"]},
 {"path":"ref gene-map","tier":"setup","summary":"Download or delete lightweight gene-to-coordinate mapping files (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1).","key_flags":["--delete"]},

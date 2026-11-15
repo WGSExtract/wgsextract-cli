@@ -345,18 +345,8 @@ class RefLibraryParams(_InLibrary, Params):
             )
 
 
-@dataclass(frozen=True, kw_only=True)
-class RefLibraryListParams(_InLibrary, Params):
-    """List the catalog's genomes with their status in the library (installed,
-    unindexed, incomplete or missing), size, N counts and VEP cache, then the
-    gene maps and annotation data it holds."""
-
-    # The server operation (ref/library-list) and MCP tool keep this name; the
-    # CLI has no such subcommand and lists with 'ref library --list' (#352).
-    COMMAND = "ref library-list"
-    CLI_COMMAND = "ref library --list"
-
-    ref: Path | None = param(
+def _library_ref_param() -> Any:
+    return param(
         None,
         doc="Reference library folder, or a FASTA in it (default: config "
         "reference_fasta's library, else reference_library, else the default "
@@ -366,16 +356,10 @@ class RefLibraryListParams(_InLibrary, Params):
         shared=True,
         config_key="reference_fasta",
     )
-    remote_sizes: bool = param(
-        False,
-        help="Look up download sizes online (cached 30 days; at most ~8 s).",
-        flags=("--remote-sizes",),
-        action="store_true",
-        doc="Look up the download size of each genome whose size isn't cached "
-        "(HTTP HEAD or FTP SIZE, ~8 s at most) and save it in the library's "
-        "cache for 30 days.",
-        writes=True,
-    )
+
+
+class _ConfiguredLibrary(_InLibrary, Params):
+    """An operation on the library ``ref`` names, else the configured FASTA's."""
 
     def implied_paths(self) -> Iterator[tuple[str, Path]]:
         from ._params import with_config_defaults
@@ -389,9 +373,64 @@ class RefLibraryListParams(_InLibrary, Params):
         else:
             yield "ref", self.library()
 
+
+@dataclass(frozen=True, kw_only=True)
+class RefLibraryListParams(_ConfiguredLibrary):
+    """List the catalog's genomes with their status in the library (installed,
+    unindexed, incomplete or missing), size, N counts and VEP cache, then the
+    gene maps and annotation data it holds."""
+
+    # The server operation (ref/library-list) and MCP tool keep this name; the
+    # CLI has no such subcommand and lists with 'ref library --list' (#352).
+    COMMAND = "ref library-list"
+    CLI_COMMAND = "ref library --list"
+
+    ref: Path | None = _library_ref_param()
+    remote_sizes: bool = param(
+        False,
+        help="Look up download sizes online (cached 30 days; at most ~8 s).",
+        flags=("--remote-sizes",),
+        action="store_true",
+        doc="Look up the download size of each genome whose size isn't cached "
+        "(HTTP HEAD or FTP SIZE, ~8 s at most) and save it in the library's "
+        "cache for 30 days.",
+        writes=True,
+    )
+
     def write_folders(self) -> Iterator[Path]:
         # --remote-sizes caches the sizes it finds in the library.
         return iter([self.library()] if self.remote_sizes else [])
+
+
+@dataclass(frozen=True, kw_only=True)
+class RefLibraryDeleteParams(_ConfiguredLibrary):
+    """Delete a catalog genome from the library's genomes folder: its FASTA,
+    a partial download, its indexes and sequence dictionary. Its N counts,
+    which the library bootstrap ships, stay."""
+
+    # As ref library-list: the CLI deletes with 'ref library --delete'.
+    COMMAND = "ref library-delete"
+    CLI_COMMAND = "ref library --delete"
+    DELETES = True
+
+    genome: str | None = param(
+        None,
+        help="Delete a catalog genome (code or file name) and its indexes.",
+        flags=("--delete",),
+        metavar="GENOME",
+        dest="delete",
+        doc="The genome's catalog code (e.g. hs38) or file name (e.g. "
+        "hs38.fa.gz) (required).",
+    )
+    ref: Path | None = _library_ref_param()
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if not self.genome:
+            raise UsageError(
+                "Set genome to a catalog genome's code or file name; "
+                "`wgsextract ref library --list` lists them."
+            )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -771,6 +810,23 @@ def library_list(
 
     return execute(
         params, run_library_list, progress=progress, cancel=cancel, check=check
+    )
+
+
+def library_delete(
+    params: RefLibraryDeleteParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Delete ``params.genome``; nothing installed is no error. ``details``
+    has ``library``, ``genomes_dir``, the genome's ``code`` and ``file``,
+    ``deleted`` (the paths deleted, the FASTA first) and ``bytes_freed``."""
+    from wgsextract_cli.commands.ref.library_commands import run_library_delete
+
+    return execute(
+        params, run_library_delete, progress=progress, cancel=cancel, check=check
     )
 
 

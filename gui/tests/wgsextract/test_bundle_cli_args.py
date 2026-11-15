@@ -50,7 +50,6 @@ NON_CLI_SCRIPTS = {
     "check-preinstalled-pixi.sh",
     "check-xcode-command-line-tools.sh",
     "coverage-state.py",
-    "delete-reference-genome.sh",
     "setup-wgsextract-pixi.sh",
     "test-genome-library.py",
     "uninstall-wgsextract.sh",

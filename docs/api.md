@@ -1986,6 +1986,23 @@ gene maps and annotation data it holds.
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference library folder, or a FASTA in it (default: config reference_fasta's library, else reference_library, else the default library). |
 | `remote_sizes` | `bool` | `False` | `--remote-sizes` | Look up the download size of each genome whose size isn't cached (HTTP HEAD or FTP SIZE, ~8 s at most) and save it in the library's cache for 30 days. |
 
+### `api.ref.library_delete(RefLibraryDeleteParams)`
+
+CLI: `wgsextract ref library --delete`.
+
+Delete `params.genome`; nothing installed is no error. `details`
+has `library`, `genomes_dir`, the genome's `code` and `file`,
+`deleted` (the paths deleted, the FASTA first) and `bytes_freed`.
+
+`RefLibraryDeleteParams`: Delete a catalog genome from the library's genomes folder: its FASTA,
+a partial download, its indexes and sequence dictionary. Its N counts,
+which the library bootstrap ships, stay.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `genome` | `str \| None` | `None` | `--delete` | The genome's catalog code (e.g. hs38) or file name (e.g. hs38.fa.gz) (required). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference library folder, or a FASTA in it (default: config reference_fasta's library, else reference_library, else the default library). |
+
 ### `api.ref.status(RefStatusParams)`
 
 CLI: `wgsextract ref status`.

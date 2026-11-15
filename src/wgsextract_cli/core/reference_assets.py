@@ -49,6 +49,15 @@ def fasta_prefix(fasta: PathInput) -> str:
     return FASTA_SUFFIX_RE.sub("", fspath(fasta))
 
 
+# Files made from a genome's FASTA beside it: download state, indexes, aligner indexes.
+GENOME_SIDECARS = (
+    ".partial", ".partial.source", ".partial.segments",
+    ".fai", ".gzi", ".dict", ".alt",
+    ".amb", ".ann", ".bwt", ".pac", ".sa", ".bwa.pending", ".bwa.complete",
+    ".0123", ".bwt.2bit.64", ".bwa-mem2.pending", ".bwa-mem2.complete",
+)  # fmt: skip
+
+
 def reference_dict_path(fasta: PathInput) -> str:
     """Sequence dictionary path GATK/Picard expect: hg38.fa.gz -> hg38.dict."""
     return fasta_prefix(fasta) + ".dict"

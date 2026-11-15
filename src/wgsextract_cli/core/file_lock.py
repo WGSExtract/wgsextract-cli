@@ -84,6 +84,13 @@ def _abandoned(path: Path, timeout: float) -> bool:
         return time.time() - path.stat().st_mtime > timeout
 
 
+def held(lock: str, timeout: float = 1800) -> bool:
+    """Whether a live run holds ``build_lock(lock)``. Call it inside
+    ``exclusive_lock(Path(lock))`` so no builder takes the lock meanwhile."""
+    path = Path(lock)
+    return path.exists() and not _abandoned(path, timeout)
+
+
 @contextlib.contextmanager
 def build_lock(lock: str, timeout: float = 1800) -> Iterator[None]:
     """Reclaim dead local owners, never evict a live hour-long index builder."""

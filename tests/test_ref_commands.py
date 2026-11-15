@@ -55,6 +55,7 @@ from wgsextract_cli.core.annotation_resources import (
 )
 from wgsextract_cli.core.bigwig_resources import GERP_URLS, PHYLOP_URLS
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.file_lock import build_lock
 from wgsextract_cli.core.gene_map import GENE_MAP_URLS
 from wgsextract_cli.core.ref_library import remote_sizes
 from wgsextract_cli.core.reference_assets import (
@@ -833,6 +834,123 @@ def test_library_menu_resumes_an_incomplete_download(
 def test_library_menu_installs_a_missing_genome(tmp_path, monkeypatch, menu_library):
     _menu(monkeypatch, tmp_path, ["3"])
     _assert_installed(tmp_path, "dog.fa.gz")
+
+
+# --- ref library --delete --------------------------------------------------------
+# #825: the app's delete button runs `ref library --delete` instead of its own
+# script.
+
+
+def _delete(lib: Path, genome: str, capsys) -> dict:
+    main(["--json", "ref", "library", "--delete", genome, "--ref", str(lib)])
+    return json.loads(capsys.readouterr().out)
+
+
+@needs_tools("curl", "samtools", "bcftools", "tabix", "bgzip", "htsfile", "bwa")
+def test_issue_825_library_delete_removes_a_genome_and_what_was_made_from_it(
+    tmp_path, server, catalog, capsys
+):
+    catalog += [_genome(server, "tiny"), _genome(server, "other")]
+    lib = tmp_path / "lib"
+    _install(lib, "tiny")
+    _install(lib, "other")
+    genomes = lib / "genomes"
+    fasta = genomes / "tiny.fa.gz"
+    api.ref.index(RefIndexParams(ref=fasta, aligner="bwa"))
+    Path(f"{fasta}.wgse-sa16").write_bytes(b"dense")
+    (genomes / "tiny_ncnt.csv").write_text("")  # the bootstrap ships N counts
+    kept = {"tiny_ncnt.csv", *(p.name for p in genomes.glob("other*"))}
+    # The index build left its lock's guard, which isn't listed as deleted.
+    made = {
+        p.name: p.stat().st_size
+        for p in genomes.iterdir()
+        if p.name not in kept and not p.name.endswith(".guard")
+    }
+    capsys.readouterr()
+
+    result = _delete(lib, "TINY", capsys)
+
+    assert result["status"] == "ok"
+    assert sorted(p.name for p in genomes.iterdir()) == sorted(kept)
+    details = result["details"]
+    assert details["deleted"][0] == str(fasta)
+    assert {Path(p).name for p in details["deleted"]} == set(made)
+    assert details["bytes_freed"] == sum(made.values())
+    assert _delete(lib, "tiny.fa.gz", capsys)["details"]["deleted"] == []
+
+
+@pytest.mark.parametrize("name", ["../hg38.fa.gz", "genomes/hg38.fa.gz", "ABS", "x"])
+def test_issue_825_library_delete_takes_only_catalog_genomes(
+    tmp_path, genomes, capsys, name
+):
+    lib = _fake_library(tmp_path / "lib")
+    before = _files(lib / "genomes")
+    if name == "ABS":
+        name = str(lib / "genomes" / "hg38.fa.gz")
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["ref", "library", "--delete", name, "--ref", str(lib)])
+
+    assert exit_info.value.code == 2
+    assert "not a catalog genome" in capsys.readouterr().err
+    assert _files(lib / "genomes") == before
+
+
+def test_issue_825_library_delete_unlinks_a_link_not_what_it_points_to(
+    tmp_path, genomes, capsys
+):
+    lib = _fake_library(tmp_path / "lib")
+    elsewhere = tmp_path / "elsewhere" / "hs37d5.fa.gz"
+    elsewhere.parent.mkdir()
+    elsewhere.write_bytes(b"genome")
+    (lib / "genomes" / "hs37d5.fa.gz").symlink_to(elsewhere)
+
+    details = _delete(lib, "hs37d5", capsys)["details"]
+
+    assert sorted(Path(p).name for p in details["deleted"]) == [
+        "hs37d5.fa.gz",
+        "hs37d5.fa.gz.partial",
+    ]
+    assert elsewhere.read_bytes() == b"genome"
+
+
+def test_issue_825_library_delete_refuses_a_folder_among_the_genomes_files(
+    tmp_path, genomes
+):
+    lib = _fake_library(tmp_path / "lib")
+    (lib / "genomes" / "hg38.fa.gz.bwt").mkdir()
+    before = sorted(p.name for p in (lib / "genomes").iterdir())
+
+    result = api.ref.library_delete(
+        api.RefLibraryDeleteParams(ref=lib, genome="hg38"), check=False
+    )
+
+    assert result.status == "failed" and "is a folder" in result.error.message
+    assert sorted(p.name for p in (lib / "genomes").iterdir()) == before
+
+
+def test_issue_825_library_delete_waits_for_no_index_build(tmp_path, genomes):
+    lib = _fake_library(tmp_path / "lib")
+    fasta = lib / "genomes" / "hg38.fa.gz"
+    params = api.RefLibraryDeleteParams(ref=lib, genome="hg38.fa.gz")
+
+    with build_lock(f"{fasta}.bwa-index.lock"):
+        result = api.ref.library_delete(params, check=False)
+    assert result.status == "failed" and "Another run" in result.error.message
+    assert fasta.exists()
+
+    # A lock its run left behind when it died doesn't stop the delete.
+    Path(f"{fasta}.dense-sa.lock").write_text(
+        json.dumps({"pid": 2**22 + 1, "created": 0, "host": socket.gethostname()})
+    )
+    result = api.ref.library_delete(params)
+    assert not fasta.exists()
+    assert sorted(p.name for p in (lib / "genomes").iterdir()) == [
+        "UU_Cfam_GSD_1.0_ncnt.csv",
+        "chm13v2.0.fa.gz",
+        "hg38_ncnt.csv",
+        "hs37d5.fa.gz.partial",
+    ]
 
 
 # --- ref gene-map / resource downloads / bootstrap ------------------------------

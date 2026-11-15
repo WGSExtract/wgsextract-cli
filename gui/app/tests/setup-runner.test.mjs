@@ -572,37 +572,6 @@ test("WGSExtract POSIX runtime wrapper rejects BAM and CRAM index inputs", async
   }
 });
 
-test("WGSExtract Windows reference delete treats missing files as no-op", async (t) => {
-  if (process.platform !== "win32") {
-    t.skip("Windows delete script behavior is platform-specific.");
-    return;
-  }
-
-  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-  const script = path.join(repoRoot, "examples", "WGSExtract", "scripts", "windows", "delete-reference-genome.ps1");
-  const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-wgsextract-delete-ref-"));
-  const reference = path.join(tempRoot, "reference");
-  const processManager = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
-
-  try {
-    await mkdir(path.join(reference, "genomes"), { recursive: true });
-    const result = await processManager.runProcess("powershell.exe", [
-      "-NoProfile",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-File",
-      script,
-      reference,
-      "missing.fa",
-    ], {});
-    assert.equal(result.exitCode, 0, result.stderr);
-    assert.match(`${result.stdout}\n${result.stderr}`, /No files found/);
-  } finally {
-    await processManager.terminateAllProcesses();
-    await rm(tempRoot, { force: true, recursive: true });
-  }
-});
-
 test("WGSExtract Windows VCF wrapper adds the FASTA build's ploidy", async (t) => {
   if (process.platform !== "win32") {
     t.skip("Windows PowerShell wrapper behavior is platform-specific.");

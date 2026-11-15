@@ -1067,11 +1067,13 @@ def test_server_does_not_offer_benchmark():
 def test_path_guard_covers_every_ref_path(op, field, value):
     # #346: the ref commands became server operations; each file or library
     # they read or write must be inside an allowed folder.
-    guard = PathGuard([r"C:\data"], pathmod=_RecordingFlavour())
+    guard = PathGuard([r"C:\data"], allow_destructive=True, pathmod=_RecordingFlavour())
     paths = [item.name for name, item in _REF_PATHS if name == op]
     allowed = {name: rf"C:\data\{name}" for name in paths}
     if op == "ref/library":
         allowed["install"] = "hg38"
+    if op == "ref/library-delete":
+        allowed["genome"] = "hg38"
     guard.check(params_from_json(find(op), allowed))
     with pytest.raises(RequestError) as refused:
         guard.check(params_from_json(find(op), {**allowed, field: value}))
@@ -2314,6 +2316,7 @@ _BASE_REQUESTS: dict[str, dict[str, Any]] = {
     "panel/bed": {"genes": ["BRCA1"]},
     "qc/vcf": {"input": _FILE},
     "ref/library": {"install": "hs38"},
+    "ref/library-delete": {"genome": "hs38", "ref": _DATA},
     "ref/library-list": {"ref": _DATA},
     "ref/imputation": {"ref": _DATA},
     "report": {"input": _FILE},
@@ -2427,6 +2430,7 @@ def test_deleting_data_needs_allow_destructive(tmp_path, work, fake_data):
         assert listed["bam/unindex"]["destructive"] is True
         assert listed["ref/gene-map"]["destructive"] is True
         assert listed["ref/dense-sa"]["destructive"] is True
+        assert listed["ref/library-delete"]["destructive"] is True
         assert "destructive" not in listed["bam/index"]
         status, response = client.request(
             "POST", "/ops/bam/unindex", {"input": str(bam)}
@@ -2438,6 +2442,11 @@ def test_deleting_data_needs_allow_destructive(tmp_path, work, fake_data):
         assert (status, response["error"]["code"]) == (403, "destructive")
         status, response = client.request(
             "POST", "/ops/ref/dense-sa", {"ref": str(bam), "delete": True}
+        )
+        assert (status, response["error"]["code"]) == (403, "destructive")
+        # #825: deleting a library genome, as the app's delete button does.
+        status, response = client.request(
+            "POST", "/ops/ref/library-delete", {"ref": str(work), "genome": "hs38"}
         )
         assert (status, response["error"]["code"]) == (403, "destructive")
         assert client.request("GET", "/jobs")[1]["jobs"] == []
@@ -2455,11 +2464,13 @@ def test_mcp_offers_deleting_tools_only_with_allow_destructive(work):
     names = {t["name"]: t for t in default.request("tools/list", {})["result"]["tools"]}
     assert default.close() == 0
     assert "bam_unindex" not in names and "sample_unset" not in names
+    assert "ref_library_delete" not in names
     assert names["ref_gene_map"]["annotations"]["destructiveHint"] is False
     allowed = Mcp("--allow", str(work), "--allow-jobs", "--allow-destructive")
     names = {t["name"]: t for t in allowed.request("tools/list", {})["result"]["tools"]}
     assert names["bam_unindex"]["annotations"]["destructiveHint"] is True
     assert names["ref_gene_map"]["annotations"]["destructiveHint"] is True
+    assert names["ref_library_delete"]["annotations"]["destructiveHint"] is True
     assert names["bam_index"]["annotations"]["destructiveHint"] is False
     assert allowed.close() == 0
 

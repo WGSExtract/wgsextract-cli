@@ -187,11 +187,18 @@
               "role": "destructive",
               "tooltip": "actions.library.genome-management.ref-delete.tooltip",
               "command": {
-                "executable": "{{bundleRoot}}/scripts/delete-reference-genome.sh",
+                "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
                 "arguments": [
-                  "{{ref_path}}",
-                  "{{row.final}}",
-                  "{{reference_genome_library}}"
+                  "ref",
+                  "library",
+                  "--delete",
+                  "{{row.final}}"
+                ],
+                "optionalArguments": [
+                  [
+                    "--ref",
+                    "{{ref_path}}"
+                  ]
                 ]
               },
               "iconName": "delete",

@@ -20,6 +20,20 @@ the result manifest's `details` (fields in [api.md](api.md), `library_list`).
 lookup gives up after 8 s). Sizes found are kept for 30 days in the library's `.remote-sizes.json`,
 and later listings show them without going online.
 
+## Deleting a genome
+
+`wgsextract ref library --delete CODE` (or the file name, such as
+`hs38.fa.gz`) deletes a catalog genome from the library's genomes folder, as
+the app's Library page does: the FASTA, a partial download, its `.fai`,
+`.gzi` and `.dict`, the bwa and bwa-mem2 indexes, dense suffix-array files,
+their run manifests and an interrupted index build's staging folders. Its N
+counts stay, since the library bootstrap ships them for every catalog genome.
+Only files in the genomes folder itself are deleted; a link there is removed,
+not what it points to. While another run builds its bwa index or dense
+suffix array, the delete is refused. With `--json`, the result's `details`
+lists the deleted paths and the bytes freed (fields in [api.md](api.md),
+`library_delete`).
+
 ## How a copy is made and checked
 
 - **Made like an install:** the [Mirror reference genomes](../.github/workflows/mirror_reference_genomes.yml)

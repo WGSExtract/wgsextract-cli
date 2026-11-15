@@ -19,6 +19,7 @@ it instead of parsing log text or guessing output file names.
   sample chosen from a multi-sample VCF). `vcf trio` always writes
   `trio.manifest.json`, whichever modes ran.
   Report-only commands (`info`, `info chip`, `ref status`, `ref library --list`)
+  and deletions (`ref library --delete`, `vep delete`, `--delete` options)
   write no file, except `info --format`, whose manifest is named after the first table
   (`<input>_chromosomes.parquet.manifest.json`).
   A failed run that registered outputs still writes its manifest, with
