@@ -24,7 +24,7 @@ are explicitly refused rather than silently interpreted as diploid.
   the PAR BED is omitted when the selected haploid contigs have no diploid PAR
   intervals (for example chrM or male non-PAR-only chrX/chrY calls), because
   DeepVariant cannot read an empty BED. Haploid contig handling still applies.
-  ploidy-zero intervals are excluded from its region selection. The generated
+  Ploidy-zero intervals are excluded from its region selection. The generated
   BEDs are atomically published, immutable, content-addressed inputs in
   `.deepvariant.policy` beside (not inside) its cleaned work folder. Concurrent
   planning and work cleanup cannot rewrite or delete an active run's policy.
