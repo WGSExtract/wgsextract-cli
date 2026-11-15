@@ -15,6 +15,10 @@ CONTEXTS = {f"local-ci/{name}" for name in (*PLATFORMS, "generic")}
 WRITERS = {"write", "maintain", "admin"}
 
 
+class CertificationTestFailure(subprocess.CalledProcessError):
+    """A test runner produced a report containing failed tests."""
+
+
 def post_status(
     repository: str, sha: str, name: str, state: str, description: str
 ) -> None:
@@ -48,7 +52,7 @@ def publish_certification(
         summary, log = operation()
         post(repository, sha, name, "success", summary)
         return summary, log
-    except BaseException:
+    except BaseException as error:
         # A stopped process must never leave a pending or old green attestation.
         # SIGKILL/power loss is unavoidable; pending still fails closed.
         try:
@@ -56,8 +60,12 @@ def publish_certification(
                 repository,
                 sha,
                 name,
-                "failure",
-                "Local certification failed; see out/certify",
+                "failure" if isinstance(error, CertificationTestFailure) else "error",
+                (
+                    "Local tests failed; see out/certify"
+                    if isinstance(error, CertificationTestFailure)
+                    else "Not certified: setup/refusal/interruption; hosted CI covers this SHA"
+                ),
             )
         except BaseException as cleanup:
             print(f"Unable to clear pending certification: {cleanup}", file=sys.stderr)

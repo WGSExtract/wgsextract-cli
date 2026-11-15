@@ -14,12 +14,19 @@ from typing import Any
 
 import pytest
 
-from scripts.ci_certifications import certifications, publish_certification
+from scripts.ci_certifications import (
+    CertificationTestFailure,
+    certifications,
+    publish_certification,
+)
 from scripts.ci_certify import host_platform, run_layer, validate_head
 from scripts.ci_certify_inputs import (
     check_packages,
+    check_wheel,
+    locked_packages,
     validate_bootstrap,
 )
+from scripts.ci_certify_setup import prepare_wheels
 from scripts.ci_test_tiers import generic_test
 from scripts.pr_checks_ready import checks_ready
 
@@ -87,6 +94,7 @@ def test_923_writer_can_certify_only_host_platform(permission: str) -> None:
         {"permission": "read"},
         {"stale": True},
         {"state": "failure"},
+        {"state": "error"},
         {"permission": None},
         {"permission": "missing-field"},
         {"failed_latest": True},
@@ -296,6 +304,32 @@ def test_923_attestations_do_not_break_landing_when_ready_run_proves_coverage(
     assert not checks_ready(checks, run_id=10, runs=runs)
 
 
+@pytest.mark.parametrize("layer", ["linux-x64", "generic"])
+def test_951_setup_error_does_not_block_passing_hosted_ready_run(layer: str) -> None:
+    url = "https://github.com/owner/repo/actions/runs/10/job/"
+    checks = [
+        {
+            "name": name,
+            "workflow": "PR area checks",
+            "bucket": "pass",
+            "link": url + str(index),
+        }
+        for index, name in enumerate(("changes", "required", "Ready PR area checks"))
+    ]
+    checks.append(
+        {
+            "name": f"local-ci/{layer}",
+            "workflow": "",
+            "bucket": "fail",
+            "link": "",
+            "state": "ERROR",
+        }
+    )
+    assert checks_ready(checks, run_id=10)
+    checks[1]["bucket"] = "fail"
+    assert not checks_ready(checks, run_id=10)
+
+
 def test_923_installed_tool_must_match_lock_url_and_digest(tmp_path: Path) -> None:
     records = tmp_path / "conda-meta"
     records.mkdir()
@@ -313,6 +347,100 @@ def test_923_installed_tool_must_match_lock_url_and_digest(tmp_path: Path) -> No
     record.write_text(json.dumps({**package, "sha256": "b" * 64}))
     with pytest.raises(ValueError, match="pixi.lock"):
         check_packages(tmp_path, [package])
+
+
+def test_951_missing_environment_names_install_and_setup_remedy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ValueError) as caught:
+        locked_packages("dev")
+    assert str(Path(".pixi/envs/dev")) in str(caught.value)
+    assert "pixi install --locked -e dev" in str(caught.value)
+    assert "just certify-setup -e dev" in str(caught.value)
+
+
+def test_951_missing_wheel_names_exact_archive_and_setup_remedy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import importlib.metadata
+
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ValueError) as caught:
+        check_wheel(
+            tmp_path,
+            importlib.metadata.PathDistribution(tmp_path),
+            {"name": "sample", "sha256": "a" * 64},
+        )
+    assert "sample" in str(caught.value)
+    assert str(Path("out/certify/inputs/wheels") / f"{'a' * 64}.whl") in str(
+        caught.value
+    )
+    assert f"just certify-setup -e {tmp_path.name}" in str(caught.value)
+
+
+def test_951_missing_bootstrap_names_archive_and_reference_remedy(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError) as caught:
+        validate_bootstrap(tmp_path, "bootstrap.tar.gz", "a" * 64)
+    assert str(tmp_path / "bootstrap.tar.gz") in str(caught.value)
+    assert "just certify-setup --reference" in str(caught.value)
+
+
+@pytest.mark.parametrize("field", ["url", "sha256"])
+@pytest.mark.parametrize("null_value", [False, True])
+def test_951_missing_pixi_list_metadata_identifies_field_and_pixi_remedy(
+    field: str, null_value: bool
+) -> None:
+    package: dict[str, Any] = {
+        "kind": "pypi",
+        "name": "sample",
+        "version": "1.0",
+        "url": "https://example.invalid/sample.whl",
+        "sha256": "a" * 64,
+    }
+    if null_value:
+        package[field] = None
+    else:
+        del package[field]
+    with pytest.raises(ValueError) as caught:
+        prepare_wheels([package])
+    assert field in str(caught.value)
+    assert "pixi list --locked --json" in str(caught.value)
+    assert ".github/actions/setup-pixi/action.yml" in str(caught.value)
+    assert "just certify-setup" in str(caught.value)
+
+
+def test_951_setup_retains_only_lock_verified_wheels_and_reuses_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    wheel = tmp_path / "sample.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("sample.py", "version = '1.0'\n")
+    data = wheel.read_bytes()
+    checksum = hashlib.sha256(data).hexdigest()
+    package = {
+        "kind": "pypi",
+        "name": "sample",
+        "version": "1.0",
+        "url": wheel.as_uri(),
+        "sha256": checksum,
+    }
+    prepare_wheels([package])
+    retained = Path("out/certify/inputs/wheels") / f"{checksum}.whl"
+    assert retained.read_bytes() == data
+    wheel.unlink()
+    prepare_wheels([package])
+    retained.write_bytes(b"corrupted cached wheel")
+    wheel.write_bytes(data)
+    prepare_wheels([package])
+    assert retained.read_bytes() == data
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        prepare_wheels([{**package, "sha256": "f" * 64}])
+    assert not retained.with_name(f"{'f' * 64}.whl").exists()
+    assert not list(retained.parent.glob("*.part"))
 
 
 def test_923_stale_or_modified_python_dependency_cannot_certify(
@@ -393,7 +521,7 @@ def test_923_interruption_or_postrun_failure_clears_pending_without_masking_orig
 
     def post(repo: str, sha: str, name: str, state: str, description: str) -> None:
         states.append(state)
-        if cleanup_fails and state == "failure":
+        if cleanup_fails and state == "error":
             raise OSError("GitHub unavailable during cleanup")
 
     original = error("original failure")
@@ -404,4 +532,68 @@ def test_923_interruption_or_postrun_failure_clears_pending_without_masking_orig
     with pytest.raises(error) as caught:
         publish_certification("owner/repo", "sha", "generic", operation, post)
     assert caught.value is original
-    assert states == ["pending", "failure"]
+    assert states == ["pending", "error"]
+
+
+def test_951_missing_setup_marks_uncertified_not_failed(
+    tmp_path: Path,
+) -> None:
+    posted: list[tuple[str, str]] = []
+
+    def post(repo: str, sha: str, name: str, state: str, description: str) -> None:
+        posted.append((state, description))
+
+    def operation() -> tuple[str, str]:
+        validate_bootstrap(tmp_path, "missing-bootstrap.tar.gz", "a" * 64)
+        raise AssertionError("Missing input must refuse")
+
+    with pytest.raises(ValueError, match="missing-bootstrap"):
+        publish_certification("owner/repo", "sha", "linux-x64", operation, post)
+    assert [state for state, _ in posted] == ["pending", "error"]
+    assert "Not certified" in posted[-1][1]
+    assert "hosted CI covers this SHA" in posted[-1][1]
+
+
+@pytest.mark.parametrize(
+    ("source", "extra", "expected"),
+    [
+        ("def test_failure():\n    assert False\n", [], "failure"),
+        ("import missing_certification_dependency\n", [], "error"),
+        (
+            "def test_success():\n    pass\n",
+            ["--unknown-certification-option"],
+            "error",
+        ),
+    ],
+)
+def test_951_only_executed_test_failures_post_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source: str,
+    extra: list[str],
+    expected: str,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pytest.ini").write_text("[pytest]\n")
+    test = tmp_path / "test_failure.py"
+    test.write_text(source)
+    stale = Path("out/certify/failed-tests/linux-x64/tests-0.xml")
+    stale.parent.mkdir(parents=True)
+    stale.write_text("<testsuite><testcase><failure/></testcase></testsuite>")
+    states: list[str] = []
+
+    def post(repo: str, sha: str, name: str, state: str, description: str) -> None:
+        states.append(state)
+
+    def operation() -> tuple[str, str]:
+        return run_layer(
+            "linux-x64",
+            [[sys.executable, "-m", "pytest", str(test), "-c", "pytest.ini", *extra]],
+            "failed-tests",
+            1,
+        )
+
+    with pytest.raises(subprocess.CalledProcessError) as caught:
+        publish_certification("owner/repo", "sha", "linux-x64", operation, post)
+    assert isinstance(caught.value, CertificationTestFailure) == (expected == "failure")
+    assert states == ["pending", expected]

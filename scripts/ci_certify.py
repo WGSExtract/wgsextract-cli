@@ -16,7 +16,12 @@ from typing import Any
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.ci_certifications import WRITERS, gh_api, publish_certification  # noqa: E402
+from scripts.ci_certifications import (  # noqa: E402
+    WRITERS,
+    CertificationTestFailure,
+    gh_api,
+    publish_certification,
+)
 from scripts.ci_certify_inputs import validate_environments  # noqa: E402
 from scripts.ci_changes import documentation_targets, routes, site_validation  # noqa: E402
 from scripts.ci_select_tests import ci_test_targets, os_selection, select_tests  # noqa: E402
@@ -96,19 +101,26 @@ def run_layer(
         stream.write(f"{sha} {name} {platform.node()}\n")
         for index, command in enumerate(commands):
             xml = directory / f"tests-{index}.xml"
-            pytest_command = command[:4] == [
-                "pixi",
-                "run",
-                "--no-install",
-                "pytest",
-            ] or command[:5] == [
-                "pixi",
-                "run",
-                "--no-install",
-                "python",
-                "scripts/ci_run_tests.py",
-            ]
+            pytest_command = (
+                command[1:3] == ["-m", "pytest"]
+                or command[:4]
+                == [
+                    "pixi",
+                    "run",
+                    "--no-install",
+                    "pytest",
+                ]
+                or command[:5]
+                == [
+                    "pixi",
+                    "run",
+                    "--no-install",
+                    "python",
+                    "scripts/ci_run_tests.py",
+                ]
+            )
             if pytest_command:
+                xml.unlink(missing_ok=True)
                 command = [
                     *command,
                     "-n",
@@ -132,9 +144,24 @@ def run_layer(
             stream.write(f"\n$ {json.dumps(command)} (cwd={cwd or '.'})\n")
             stream.flush()
             print(f"{name}: {' '.join(command[:7])}", flush=True)
-            subprocess.run(
-                command, cwd=cwd, stdout=stream, stderr=subprocess.STDOUT, check=True
-            )
+            try:
+                subprocess.run(
+                    command,
+                    cwd=cwd,
+                    stdout=stream,
+                    stderr=subprocess.STDOUT,
+                    check=True,
+                )
+            except subprocess.CalledProcessError as error:
+                if pytest_command and xml.is_file():
+                    if any(
+                        case.find("failure") is not None
+                        for case in ET.parse(xml).iter("testcase")
+                    ):
+                        raise CertificationTestFailure(
+                            error.returncode, error.cmd
+                        ) from error
+                raise
             if xml.exists():
                 cases = list(ET.parse(xml).iter("testcase"))
                 count += sum(case.find("skipped") is None for case in cases)
