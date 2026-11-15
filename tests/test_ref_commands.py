@@ -8,6 +8,7 @@ import logging
 import random
 import socket
 import socketserver
+import subprocess
 import sys
 import threading
 import time
@@ -537,6 +538,31 @@ def test_download_sizes_give_up_on_a_server_that_never_answers(tmp_path, monkeyp
         assert time.monotonic() - start < 3
     assert _remote_bytes(result) == {"a": None}
     assert not (tmp_path / remote_sizes.CACHE_FILE).exists()
+
+
+def test_download_size_lookup_does_not_hold_up_the_process_exit(tmp_path):
+    # PR #938 review: probes outlived the budget on pool threads that the
+    # interpreter joins at exit, so the CLI ran on for each probe's timeout.
+    script = (
+        "import sys\n"
+        "from pathlib import Path\n"
+        "from wgsextract_cli.core.ref_library import remote_sizes as r\n"
+        "r.PROBE_TIMEOUT, r.BUDGET_SECONDS = 30, 0.3\n"
+        "print(r.refresh_sizes(Path(sys.argv[1]), [sys.argv[2]]))\n"
+    )
+    with socket.create_server(("127.0.0.1", 0)) as silent:
+        url = f"http://127.0.0.1:{silent.getsockname()[1]}/a.fa.gz"
+        start = time.monotonic()
+        done = subprocess.run(
+            [sys.executable, "-c", script, str(tmp_path), url],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        elapsed = time.monotonic() - start
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == "{}"
+    assert elapsed < 10
 
 
 def test_ref_library_remote_sizes_flag_goes_with_list(tmp_path, monkeypatch, capsys):

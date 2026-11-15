@@ -13,9 +13,10 @@ from __future__ import annotations
 import ftplib
 import json
 import logging
+import queue
+import threading
 import time
 from collections.abc import Iterable
-from concurrent.futures import ThreadPoolExecutor, wait
 from http.client import HTTPException
 from pathlib import Path
 from urllib.parse import urlparse
@@ -82,6 +83,39 @@ def probe_size(url: str) -> int | None:
     return int(length) if length and length.isdigit() else None
 
 
+def _probe_all(urls: list[str]) -> dict[str, int]:
+    """Probe ``urls`` on ``WORKERS`` daemon threads for ``BUDGET_SECONDS`` at
+    most. Daemon threads, so a probe still waiting on a socket or DNS when the
+    budget runs out holds up neither the listing nor the process's exit."""
+    todo: queue.SimpleQueue[str] = queue.SimpleQueue()
+    for url in urls:
+        todo.put(url)
+    found: dict[str, int] = {}
+    lock = threading.Lock()
+    deadline = time.monotonic() + BUDGET_SECONDS
+
+    def work() -> None:
+        while time.monotonic() < deadline:
+            try:
+                url = todo.get_nowait()
+            except queue.Empty:
+                return
+            if size := probe_size(url):
+                with lock:
+                    found[url] = size
+
+    workers = [
+        threading.Thread(target=work, daemon=True)
+        for _ in range(min(WORKERS, len(urls)))
+    ]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(max(0.0, deadline - time.monotonic()))
+    with lock:
+        return dict(found)
+
+
 def refresh_sizes(library: Path, urls: Iterable[str]) -> dict[str, int]:
     """Probe the ``urls`` whose cached size is missing or stale, save what was
     found, and return every cached size."""
@@ -96,12 +130,7 @@ def refresh_sizes(library: Path, urls: Iterable[str]) -> dict[str, int]:
     )
     if not stale:
         return cached_sizes(library)
-    pool = ThreadPoolExecutor(max_workers=WORKERS)
-    futures = {pool.submit(probe_size, url): url for url in stale}
-    done, _ = wait(futures, timeout=BUDGET_SECONDS)
-    # Requests still running end at their own timeout; nobody waits for them.
-    pool.shutdown(wait=False, cancel_futures=True)
-    found = {futures[f]: size for f in done if (size := f.result())}
+    found = _probe_all(stale)
     logging.info("Found the download size of %d of %d genomes.", len(found), len(stale))
     # A library that doesn't exist yet holds no genomes to cache sizes for.
     if found and library.is_dir():

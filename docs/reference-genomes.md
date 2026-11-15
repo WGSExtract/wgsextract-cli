@@ -16,8 +16,8 @@ its state in your library: installed (with its `.fai`), unindexed, incomplete
 the result manifest's `details` (fields in [api.md](api.md), `library_list`).
 
 `--remote-sizes` also looks up each genome's download size from its source
-(HTTP `HEAD`, FTP `SIZE`; each request times out after 4 s, the lookup after
-8 s). Sizes found are kept for 30 days in the library's `.remote-sizes.json`,
+(HTTP `HEAD`, FTP `SIZE`; each network wait times out after 4 s, and the
+lookup gives up after 8 s). Sizes found are kept for 30 days in the library's `.remote-sizes.json`,
 and later listings show them without going online.
 
 ## How a copy is made and checked
