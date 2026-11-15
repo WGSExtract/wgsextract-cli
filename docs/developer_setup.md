@@ -91,6 +91,9 @@ When you add or rename a command:
 Run `just regen` (or `pixi run python scripts/regen.py`) after changing CLI/API
 help. It updates the API snapshot, `docs/api.md`, `docs/commands.md`, the bundled
 compact discovery index, and the generated command cards in `site_src/cli.md`.
+It also generates the public sample-workspace JSON Schema from the output
+types in `core/sample_document.py`. Output types use `TypedDict` and
+`Annotated` constraints; `core/output_schema.py` rejects unsupported annotations.
 Keep these committed: readers,
 release archives and freshness tests need them without running Python.
 

@@ -34,19 +34,28 @@ from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 import tomli_w
 
 from wgsextract_cli import __version__
 from wgsextract_cli.core.paths import PathInput, absolute_path
+from wgsextract_cli.core.sample_types import (
+    SCHEMA_ID as SCHEMA_ID,
+)
+from wgsextract_cli.core.sample_types import (
+    Confidence as Confidence,
+)
+from wgsextract_cli.core.sample_types import Platform, Sex, Status
+
+if TYPE_CHECKING:
+    from wgsextract_cli.core.sample_document import RecordedFact, WorkspaceOutput
 
 if sys.version_info >= (3, 11):
     import tomllib
 else:
     import tomli as tomllib
 
-SCHEMA_ID = "wgsextract.sample/1"
 SCHEMA_RESOURCE = "assets/schemas/wgsextract.sample.1.schema.json"
 WORKSPACE_FILE = "wgsextract.sample.toml"
 _SCHEMA_PREFIX = "wgsextract.sample/"
@@ -60,8 +69,8 @@ _HEADER = (
     "# [outputs]; comments are not kept.\n\n"
 )
 
-SEXES = ("Male", "Female")
-PLATFORMS = ("illumina", "ont", "pacbio", "ultima", "dnbseq")
+SEXES: tuple[str, ...] = get_args(Sex)
+PLATFORMS: tuple[str, ...] = get_args(Platform)
 _ALIASES = {
     "m": "Male",
     "f": "Female",
@@ -74,7 +83,6 @@ _ALIASES = {
 }
 
 Source = Literal["override", "detected"]
-Confidence = Literal["high", "medium", "low"]
 
 
 @dataclass(frozen=True)
@@ -473,7 +481,7 @@ class SampleWorkspace:
         self,
         name: str,
         file: PathInput,
-        value: Any,
+        value: object,
         *,
         method: str,
         confidence: Confidence,
@@ -483,7 +491,7 @@ class SampleWorkspace:
         if fingerprint is None or value is None:
             return False
         key = self.key(file)
-        new = {
+        new: RecordedFact = {
             "value": value,
             "method": method,
             "confidence": confidence,
@@ -591,10 +599,10 @@ class SampleWorkspace:
         self._update(mutate, strict=True)
         return self.overrides(file)
 
-    def record_output(self, manifest: PathInput, command: str, status: str) -> bool:
+    def record_output(self, manifest: PathInput, command: str, status: Status) -> bool:
         """Index a result manifest written in this workspace."""
         key = self.key(manifest)
-        entry = {"command": command, "status": status, "at": _now()}
+        entry: WorkspaceOutput = {"command": command, "status": status, "at": _now()}
 
         def mutate(raw: dict[str, Any]) -> bool:
             outputs = raw.get("outputs")
@@ -820,7 +828,7 @@ def recording_paused() -> Iterator[None]:
 def record(
     name: str,
     file: PathInput | None,
-    value: Any,
+    value: object,
     *,
     method: str,
     confidence: Confidence,

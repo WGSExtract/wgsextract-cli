@@ -15,6 +15,11 @@ creates the workspace there.
 
 ## What it records
 
+The bundled `assets/schemas/wgsextract.sample.1.schema.json` is generated from
+the Python types in `core/sample_document.py` (`scripts/regen.py` regenerates it).
+It describes the TOML document below, not the JSON view returned by `sample show`.
+Unknown document keys and detected facts remain compatible with schema version 1.
+
 ```toml
 schema = "wgsextract.sample/1"
 
