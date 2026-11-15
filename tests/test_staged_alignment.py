@@ -3,6 +3,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -10,16 +11,17 @@ import psutil
 import pytest
 
 from tests.htslib_helpers import needs_tools, write_fasta
+from tests.prepared_data import sparse_truncate
 from tests.test_alignment_commands import _samtools, _short_reads
 from wgsextract_cli import api
-from wgsextract_cli.commands.align import read_group
+from wgsextract_cli.commands.align import read_group, run_streamed_alignment
 from wgsextract_cli.core import native_aligners, results
 from wgsextract_cli.core.alignment_memory import bwa_gpu_memory, estimate_mapping_memory
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.resource_estimates import estimate_resources
 from wgsextract_cli.core.staged_alignment import run_staged_alignment, workspace_path
-from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.utils import WGSExtractError, run_pipeline
 
 GIB = 1024**3
 
@@ -40,8 +42,8 @@ def _align(reads, ref, out, *, native="off", prefer=None):
 
 
 @pytest.mark.parametrize("fmt", ["BAM", "CRAM"])
+@needs_tools("bwa", "samtools", "samblaster")
 def test_issue872_compressed_parts_preserve_duplicate_flags_and_rg_order(tmp_path, fmt):
-    needs_tools("bwa", "samtools", "samblaster")
     reads = _short_reads(tmp_path)
     ref = str(
         write_fasta(
@@ -75,7 +77,8 @@ def test_issue872_compressed_parts_preserve_duplicate_flags_and_rg_order(tmp_pat
             memory="16M",
             fmt=fmt,
             ref=ref,
-            chunk_records=7,
+            chunk_records=3,
+            expected_reads=280,
         )
     actual = (
         _samtools("view", output)
@@ -96,8 +99,8 @@ def test_issue872_compressed_parts_preserve_duplicate_flags_and_rg_order(tmp_pat
     assert result.metrics["alignment_mode"] == "staged_metal"
 
 
+@needs_tools("bwa", "samtools", "samblaster")
 def test_issue872_failed_encoding_resumes_validated_parts_without_remapping(tmp_path):
-    needs_tools("bwa", "samtools", "samblaster")
     reads = _short_reads(tmp_path)
     _align(reads, reads.ref, tmp_path / "baseline")
     command = [
@@ -125,6 +128,7 @@ def test_issue872_failed_encoding_resumes_validated_parts_without_remapping(tmp_
             fmt="BAM",
             ref=reads.ref,
             chunk_records=7,
+            expected_reads=280,
         )
     workspace = workspace_path(output)
     checkpoint = (workspace / "parts.json").read_bytes()
@@ -141,6 +145,7 @@ def test_issue872_failed_encoding_resumes_validated_parts_without_remapping(tmp_
             fmt="BAM",
             ref=reads.ref,
             chunk_records=7,
+            expected_reads=280,
         )
     (workspace / "parts.json").write_bytes(checkpoint)
     run_staged_alignment(
@@ -151,6 +156,7 @@ def test_issue872_failed_encoding_resumes_validated_parts_without_remapping(tmp_
         fmt="BAM",
         ref=reads.ref,
         chunk_records=7,
+        expected_reads=280,
     )
     assert (workspace / "parts.json").read_bytes() == checkpoint
     assert _samtools("view", output) == _samtools(
@@ -158,8 +164,8 @@ def test_issue872_failed_encoding_resumes_validated_parts_without_remapping(tmp_
     )
 
 
+@needs_tools("bwa", "samtools", "samblaster")
 def test_issue872_real_metal_physical_gate_and_speed_preference(tmp_path, monkeypatch):
-    needs_tools("bwa", "samtools", "samblaster")
     native = native_aligners.find_native_aligner("bwa", "auto", quiet=True)
     if native is None or not native.metal_available or native.tool != "bwa":
         pytest.skip("Genuine wgse-bwa Metal hardware/build required")
@@ -217,8 +223,8 @@ def test_issue872_real_metal_physical_gate_and_speed_preference(tmp_path, monkey
     assert "alignment_mode" not in preferred.metrics
 
 
+@needs_tools("bwa", "samtools", "samblaster")
 def test_issue872_staged_disk_estimate_does_not_double_count_phase_storage(tmp_path):
-    needs_tools("bwa", "samtools", "samblaster")
     reads = _short_reads(tmp_path)
     _align(reads, reads.ref, tmp_path / "baseline")
     estimate = estimate_resources(
@@ -237,13 +243,185 @@ def test_issue872_staged_disk_estimate_does_not_double_count_phase_storage(tmp_p
     disks = [row for row in estimate.resources if row.resource == "disk"]
     assert len(disks) == 1
     assert disks[0].estimated_bytes is not None
-    # contract: the measured 35x staged envelope fits about 200 GiB, not 430 GiB.
-    assert disks[0].estimated_bytes < 200 * GIB
+    # contract: phase maxima plus safety reserve stay below250GiB, not430GiB.
+    assert 200 * GIB < disks[0].estimated_bytes < 250 * GIB
     assert "temporary" not in disks[0].components
 
 
+@needs_tools("bwa", "samtools", "samblaster")
+def test_issue872_staged_estimate_includes_extraction_reserve_and_raw_resume_credit(
+    tmp_path,
+):
+    reads = _short_reads(tmp_path)
+    _align(reads, reads.ref, tmp_path / "baseline")
+    options = {
+        "input_paths": [reads.r1, reads.r2],
+        "output_dir": str(tmp_path),
+        "reference": reads.ref,
+        "reads": 835260415,
+        "read_length": 150,
+        "memory": "2G",
+        "staged": True,
+    }
+    one = estimate_resources("realign", threads="3", **options)
+    many = estimate_resources("realign", threads="16", **options)
+    assert one.resources == many.resources
+    workspace = tmp_path / "checkpoint"
+    workspace.mkdir()
+    raw = workspace / "unsorted.bam"
+    sparse_truncate(raw, 80 * GIB)
+    (workspace / "alignment.json").write_text("{}", newline="\n")
+    resumed = estimate_resources(
+        "realign", threads="3", staged_workspace=str(workspace), **options
+    )
+
+    def disk(estimate):
+        return next(
+            row.estimated_bytes for row in estimate.resources if row.resource == "disk"
+        )
+
+    assert disk(one) - disk(resumed) == 80 * GIB
+    extraction = estimate_resources(
+        "realign", threads="3", extract_fastq=True, **options
+    )
+    assert disk(extraction) >= disk(one)
+    compact_reads = tmp_path / "large.bam"
+    sparse_truncate(compact_reads, 40 * GIB)
+    extraction_peak = estimate_resources(
+        "realign",
+        input_paths=[str(compact_reads)],
+        output_dir=str(tmp_path),
+        reference=reads.ref,
+        reads=280,
+        threads="3",
+        memory="2G",
+        staged=True,
+        extract_fastq=True,
+    )
+    assert disk(extraction_peak) >= 138 * GIB
+    unindexed = _short_reads(tmp_path / "missing-index")
+    missing = estimate_resources(
+        "align",
+        input_paths=[unindexed.r1, unindexed.r2],
+        output_dir=str(tmp_path),
+        reference=unindexed.ref,
+        reads=835260415,
+        threads="3",
+        memory="2G",
+        staged=True,
+    )
+    assert any(
+        row.components.get("reference_indexes", 0) > 0
+        for row in missing.resources
+        if row.resource == "disk"
+    )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX ownership and mode protection")
+@needs_tools("bwa", "samtools", "samblaster")
+def test_issue872_rejects_shared_checkpoint_permissions(tmp_path):
+    reads = _short_reads(tmp_path)
+    output = str(tmp_path / "private.bam")
+    workspace = workspace_path(output)
+    workspace.mkdir(mode=0o755)
+    workspace.chmod(0o755)
+    with pytest.raises(WGSExtractError, match="0700"):
+        run_staged_alignment(
+            [["bwa", "mem", reads.ref, reads.r1, reads.r2]],
+            output,
+            output,
+            memory="16M",
+            fmt="BAM",
+            ref=reads.ref,
+            expected_reads=280,
+        )
+
+
+@needs_tools("bwa", "samtools", "samblaster")
+def test_issue872_post_merge_validation_reports_retained_workspace(tmp_path):
+    reads = _short_reads(tmp_path)
+    _align(reads, reads.ref, tmp_path / "baseline")
+    output = str(tmp_path / "invalid-count.bam")
+    result = results.CommandResult(command="align")
+    with results.collecting(result), pytest.raises(WGSExtractError):
+        run_streamed_alignment(
+            [
+                "bwa",
+                "mem",
+                "-K",
+                "100000000",
+                "-R",
+                read_group("reads"),
+                reads.ref,
+                reads.r1,
+                reads.r2,
+            ],
+            output,
+            threads="2",
+            memory="16M",
+            fmt="BAM",
+            ref=reads.ref,
+            duplicates="samblaster",
+            staged_mode=True,
+            expected_reads=280,
+            exact_reads=999,
+        )
+    warning = next(w for w in result.warnings if w.code == "staged_alignment_retained")
+    assert str(workspace_path(output)) in warning.message
+    assert (workspace_path(output) / "parts.json").is_file()
+
+
+@needs_tools("bwa", "samtools", "samblaster")
+def test_issue872_stream_resume_ignores_only_collation_scratch_path(tmp_path):
+    reads = _short_reads(tmp_path)
+    baseline, _ = _align(reads, reads.ref, tmp_path / "baseline")
+    output = str(tmp_path / "streamed.bam")
+
+    def commands(scratch):
+        return [
+            ["samtools", "collate", "-u", "-O", "-T", scratch, baseline],
+            ["samtools", "fastq", "-n", "-"],
+            [
+                "bwa",
+                "mem",
+                "-p",
+                "-K",
+                "100000000",
+                "-R",
+                read_group("reads"),
+                reads.ref,
+                "-",
+            ],
+        ]
+
+    with pytest.raises(WGSExtractError):
+        run_staged_alignment(
+            commands(tmp_path / "collate-first"),
+            output,
+            str(tmp_path),
+            memory="16M",
+            fmt="BAM",
+            ref=reads.ref,
+            expected_reads=280,
+            chunk_records=7,
+        )
+    checkpoint = (workspace_path(output) / "parts.json").read_bytes()
+    run_staged_alignment(
+        commands(tmp_path / "collate-second"),
+        output,
+        output,
+        memory="16M",
+        fmt="BAM",
+        ref=reads.ref,
+        expected_reads=280,
+        chunk_records=7,
+    )
+    assert (workspace_path(output) / "parts.json").read_bytes() == checkpoint
+    assert len(_samtools("view", output).splitlines()) == 280
+
+
+@needs_tools("bwa", "samtools", "samblaster")
 def test_issue872_owned_fastqs_retire_only_after_validated_alignment(tmp_path):
-    needs_tools("bwa", "samtools", "samblaster")
     reads = _short_reads(tmp_path)
     baseline, _ = _align(reads, reads.ref, tmp_path / "baseline")
     expected = _samtools("view", baseline)
@@ -257,6 +435,7 @@ def test_issue872_owned_fastqs_retire_only_after_validated_alignment(tmp_path):
             fmt="BAM",
             ref=reads.ref,
             retire_fastqs=owned,
+            expected_reads=280,
         )
     assert all(Path(path).is_file() for path in owned)
     output = str(tmp_path / "owned.bam")
@@ -282,14 +461,15 @@ def test_issue872_owned_fastqs_retire_only_after_validated_alignment(tmp_path):
         ref=reads.ref,
         retire_fastqs=owned,
         chunk_records=7,
+        expected_reads=280,
     )
     assert not any(Path(path).exists() for path in owned)
     assert _samtools("view", output) == expected
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX process-group cancellation")
+@needs_tools("samtools")
 def test_issue872_cancelled_staged_worker_reaps_its_sort_child(tmp_path):
-    needs_tools("samtools")
     samtools = get_tool_path("samtools")
     assert samtools is not None
     worker = subprocess.Popen(
@@ -339,3 +519,73 @@ def test_issue872_cancelled_staged_worker_reaps_its_sort_child(tmp_path):
             worker.wait()
         if child_pid and psutil.pid_exists(child_pid):
             psutil.Process(child_pid).kill()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX process-group cancellation")
+@needs_tools("samtools")
+def test_issue872_event_cancellation_reaps_staged_sort_child(tmp_path):
+    samtools = get_tool_path("samtools")
+    assert samtools
+    header = tmp_path / "input.sam"
+    header.write_text(
+        "@HD\tVN:1.6\n@SQ\tSN:chr1\tLN:1000\n@RG\tID:r\tSM:r\n"
+        "read\t4\t*\t0\t0\t*\t*\t0\t0\tA\tF\tRG:Z:r\n",
+        newline="\n",
+    )
+    cancel = threading.Event()
+    observed = []
+    done = threading.Event()
+
+    def watch():
+        while not done.wait(0.01):
+            for child in psutil.Process().children(recursive=True):
+                try:
+                    if (
+                        child.name().startswith("samtools")
+                        and "sort" in child.cmdline()
+                    ):
+                        observed.append(child.pid)
+                        cancel.set()
+                        return
+                except psutil.Error:
+                    pass
+
+    thread = threading.Thread(target=watch, daemon=True)
+    thread.start()
+    try:
+        with (
+            header.open("rb") as source,
+            pytest.raises(WGSExtractError, match="cancelled"),
+        ):
+            run_pipeline(
+                [
+                    [
+                        sys.executable,
+                        "-c",
+                        "import sys,time;sys.stdout.buffer.write(sys.stdin.buffer.read());"
+                        "sys.stdout.buffer.flush();time.sleep(20)",
+                    ],
+                    [
+                        sys.executable,
+                        "-m",
+                        "wgsextract_cli.core.staged_alignment",
+                        "mark",
+                        "--workspace",
+                        tmp_path,
+                        "--samtools",
+                        samtools,
+                        "--memory",
+                        "16M",
+                        "--chunk-records",
+                        "1000",
+                    ],
+                ],
+                stdin=source,
+                cancel_event=cancel,
+                stderr_dir=tmp_path,
+            )
+        assert observed
+        assert all(not psutil.pid_exists(pid) for pid in observed)
+    finally:
+        done.set()
+        thread.join(timeout=2)

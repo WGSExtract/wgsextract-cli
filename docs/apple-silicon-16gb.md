@@ -130,8 +130,9 @@ Whole HG00235x validation for #872 (low-memory Metal) retained all835,260,415
 ordered SAM records: **4.50h alignment**, **6.44h alignment plus postprocessing
 and verification**, **0.073GiB swap-out**, and **42.31GiB minimum free disk**.
 Including FASTQ preparation took6.83h. The raw checkpoint was81.54GiB, marked
-compressed parts78.69GiB, and final BAM47.23GiB; plan roughly200GiB of free
-workspace for this input, more if keeping extracted FASTQs. Parts replace the
+compressed parts78.69GiB, and final BAM47.23GiB; conservative preflight now
+allows roughly 230GiB including extraction, bounded intermediate merging and
+the safety reserve, more if keeping extracted FASTQs. Parts replace the
 raw checkpoint before merging, rather than accumulating huge sort-temp copies.
 
 An explicit speed preference still permits the faster, over-budget concurrent

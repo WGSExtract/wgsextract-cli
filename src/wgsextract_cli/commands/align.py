@@ -1318,23 +1318,33 @@ def run_streamed_alignment(
     if staged_mode:
         from wgsextract_cli.core.staged_alignment import run_staged_alignment
 
-        with cleanup_files(
-            on_failure=partial, preserve_outputs=atomic_outputs_enabled()
-        ):
-            with safe_output(out_path) as staged:
-                workspace = run_staged_alignment(
-                    [*(upstream or []), list(align_cmd)],
-                    out_path,
-                    staged,
-                    memory=memory,
-                    fmt=fmt,
-                    ref=ref,
-                    retire_fastqs=retire_fastqs,
-                    read_length=read_length,
-                    expected_reads=expected_reads,
+        workspace = None
+        try:
+            with cleanup_files(
+                on_failure=partial, preserve_outputs=atomic_outputs_enabled()
+            ):
+                with safe_output(out_path) as staged:
+                    workspace = run_staged_alignment(
+                        [*(upstream or []), list(align_cmd)],
+                        out_path,
+                        staged,
+                        memory=memory,
+                        fmt=fmt,
+                        ref=ref,
+                        retire_fastqs=retire_fastqs,
+                        read_length=read_length,
+                        expected_reads=expected_reads,
+                    )
+                    if exact_reads is not None:
+                        check_primary_reads(staged, exact_reads, ref)
+        except BaseException:
+            if workspace is not None:
+                warn(
+                    "staged_alignment_retained",
+                    f"Staged checkpoints retained in {workspace}; rerun unchanged inputs to resume.",
+                    workspace=str(workspace),
                 )
-                if exact_reads is not None:
-                    check_primary_reads(staged, exact_reads, ref)
+            raise
         try:
             shutil.rmtree(workspace)
         except OSError as error:

@@ -161,7 +161,10 @@ FASTQs retire after alignment unless kept; the raw checkpoint retires only after
 all marked parts are durable. Existing resumable checkpoints and owned-read
 retirement are credited, never user-provided read files.
 The HG00235x calibration budgets108/115 bytes per short input read for raw/marked
-BAM checkpoints and2 GiB rolling scratch; longer reads scale those allowances.
+BAM checkpoints and2 GiB rolling scratch; longer reads scale those allowances. Preflight also
+includes the guard's safety reserve once per guarded filesystem, the extraction
+collation phase, and one bounded intermediate merge group. Merge fan-in stays
+at64 regardless of the operating system's file-descriptor limit.
 
 Reasons are `memory_budget_cpu`, `memory_budget_metal_staged`,
 `memory_budget_metal_low_sort` (or CUDA),

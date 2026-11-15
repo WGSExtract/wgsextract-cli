@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import threading
@@ -27,19 +28,33 @@ GIB = 1024**3
 _FAN_IN = 64
 
 
-def _save(path: Path, value: Any) -> None:
-    staged = path.with_suffix(".new")
-    with staged.open("w") as stream:
-        json.dump(value, stream)
-        stream.flush()
-        os.fsync(stream.fileno())
-    staged.replace(path)
+def safety_reserve(reads: int | None) -> int:
+    return int(min(25 * GIB, max(64 * 1024**2, (reads or 680_000_000) * 64)) * 1.08)
+
+
+def _sync_directory(path: Path) -> None:
     if os.name != "nt":
-        descriptor = os.open(path.parent, os.O_RDONLY)
+        descriptor = os.open(path, os.O_RDONLY)
         try:
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
+
+
+def _sync_file(path: Path) -> None:
+    # Windows _commit requires a descriptor opened with write access.
+    with path.open("r+b") as stream:
+        os.fsync(stream.fileno())
+
+
+def _save(path: Path, value: Any) -> None:
+    staged = path.with_suffix(".new")
+    with staged.open("w", encoding="utf-8", newline="\n") as stream:
+        json.dump(value, stream)
+        stream.flush()
+        os.fsync(stream.fileno())
+    staged.replace(path)
+    _sync_directory(path.parent)
 
 
 def _identity(path: Path) -> dict[str, Any]:
@@ -120,6 +135,13 @@ def _contract(
         args: list[Any] = []
         for index, argument in enumerate(command):
             value = str(argument)
+            if (
+                index
+                and str(command[index - 1]) == "-T"
+                and "collate" in map(str, command)
+            ):
+                args.append("<collation-scratch>")
+                continue
             path = Path(shutil.which(value) or value) if index == 0 else Path(value)
             # Recreated temporary FASTQs have new paths but the same content.
             args.append(_identity(path) if path.is_file() else value)
@@ -129,8 +151,7 @@ def _contract(
 
 @contextmanager
 def _disk_guard(paths: Sequence[Path], reads: int | None) -> Iterator[threading.Event]:
-    reserve = min(25 * GIB, max(64 * 1024**2, (reads or 680_000_000) * 64))
-    limit = int(reserve * 1.08)
+    limit = safety_reserve(reads)
     cancelled = threading.Event()
     finished = threading.Event()
     minimum = [min(shutil.disk_usage(path).free for path in paths)]
@@ -184,7 +205,13 @@ def run_staged_alignment(
     workspace = workspace_path(out_path)
     if workspace.is_symlink():
         raise WGSExtractError("Staged workspace must not be a symbolic link")
-    workspace.mkdir(parents=True, exist_ok=True)
+    workspace.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if os.name != "nt":
+        info = workspace.stat()
+        if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077:
+            raise WGSExtractError(
+                "Staged workspace must be owned by this user with mode 0700"
+            )
     amount, unit = parse_memory(memory)
     size = int(amount * (GIB if unit == "G" else 1024**2))
     chunks = chunk_records or max(
@@ -248,8 +275,7 @@ def run_staged_alignment(
                         expected_reads=expected_reads,
                     )
                     run_command([samtools, "quickcheck", "-v", partial])
-                    with partial.open("rb") as stream:
-                        os.fsync(stream.fileno())
+                    _sync_file(partial)
                     partial.replace(raw)
                     _save(state, {"contract": contract, "output": _identity(raw)})
             for path in retire_fastqs:
@@ -350,8 +376,8 @@ def _mark(options: argparse.Namespace) -> None:
         if writer.wait():
             raise WGSExtractError("Staged chunk sorter failed")
         subprocess.run([options.samtools, "quickcheck", "-v", path], check=True)
-        with path.open("rb") as stream:
-            os.fsync(stream.fileno())
+        _sync_file(path)
+        _sync_directory(parts_dir)
         manifest["parts"].append(
             {
                 "name": str(path.relative_to(workspace)),
@@ -426,16 +452,6 @@ def _merge(options: argparse.Namespace) -> None:
         if stale.name not in referenced:
             stale.unlink()
     fan_in = _FAN_IN
-    try:
-        import resource
-
-        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-        wanted = max(soft, len(parts) + 64)
-        if hard == resource.RLIM_INFINITY or wanted <= hard:
-            resource.setrlimit(resource.RLIMIT_NOFILE, (wanted, hard))
-            fan_in = max(fan_in, len(parts))
-    except (ImportError, OSError, ValueError):
-        pass
     while len(parts) > fan_in:
         replacement = []
         for start in range(0, len(parts), fan_in):
@@ -443,7 +459,9 @@ def _merge(options: argparse.Namespace) -> None:
             target = workspace / f"merge-{uuid.uuid4().hex}.bam"
             listing = workspace / "merge.list"
             listing.write_text(
-                "".join(str(workspace / p["name"]) + "\n" for p in group)
+                "".join(str(workspace / p["name"]) + "\n" for p in group),
+                encoding="utf-8",
+                newline="\n",
             )
             subprocess.run(
                 [
@@ -463,8 +481,7 @@ def _merge(options: argparse.Namespace) -> None:
                 ],
                 check=True,
             )
-            with target.open("rb") as stream:
-                os.fsync(stream.fileno())
+            _sync_file(target)
             part = {
                 "name": target.name,
                 "bytes": target.stat().st_size,
@@ -478,7 +495,11 @@ def _merge(options: argparse.Namespace) -> None:
                 (workspace / old["name"]).unlink()
         parts = replacement
     listing = workspace / "merge.list"
-    listing.write_text("".join(str(workspace / p["name"]) + "\n" for p in parts))
+    listing.write_text(
+        "".join(str(workspace / p["name"]) + "\n" for p in parts),
+        encoding="utf-8",
+        newline="\n",
+    )
     merger = subprocess.Popen(
         [
             options.samtools,

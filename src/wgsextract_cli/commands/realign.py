@@ -273,7 +273,7 @@ def _require(
             "realign",
             (*(needs.staged_disk or tuple(disk)), *needs.disk),
             needs.memory,
-            int(threads),
+            min(3, int(threads)) if needs.staged_disk else int(threads),
             needs.hours,
             memory_floor=needs.floor,
         ),
@@ -1510,6 +1510,7 @@ def _report_resource_estimates(
     floors: list[int] = []
 
     def estimate() -> PreflightEstimate:
+        effective_threads = threads
         samblaster = align_cmd.duplicate_marker(paired=paired) == "samblaster"
         resolved = reference if reference and Path(reference).is_file() else None
         tool = align_cmd.short_read_tool(job)
@@ -1540,6 +1541,8 @@ def _report_resource_estimates(
             gpu_bytes = align_cmd.aligner_gpu_bytes(aligner, resolved, reads)
             dense_sa_bytes = aligner.dense_sa_bytes
             staged = aligner.staged
+            if staged:
+                effective_threads = str(min(3, int(threads)))
             if reference_bases(resolved) > 0:
                 # Without the reference's size (its .fai or BWA's .ann) a
                 # human reference stands in, even for a tiny one.
@@ -1563,7 +1566,7 @@ def _report_resource_estimates(
             output_dir=outdir,
             temp_dir=configured_temp_directory(),
             reference=resolved,
-            threads=threads,
+            threads=effective_threads,
             memory=sorting,
             aligner=tool,
             samblaster=samblaster,
@@ -1626,7 +1629,10 @@ def _report_resource_estimates(
         count = math.ceil(size / (12 if cram else 80))
     length = read_length or (300 if job.platform == "ultima" else 150)
     hours = alignment_hours(
-        engine, bool(chosen and chosen[0].gpu), count * length, int(threads)
+        engine,
+        bool(chosen and chosen[0].gpu),
+        count * length,
+        min(3, int(threads)) if chosen and chosen[0].staged else int(threads),
     )
     staged_disk = (
         tuple(

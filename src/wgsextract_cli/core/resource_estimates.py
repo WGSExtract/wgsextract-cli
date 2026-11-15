@@ -390,6 +390,8 @@ def estimate_resources(
     ``postprocess_plan`` and the ``available_ram`` it was sized against (for
     example capped by Docker's VM); otherwise both are derived here.
     """
+    if staged:
+        threads = str(min(3, int(threads)))
     count = int(threads)
     if (
         count < 1
@@ -511,6 +513,7 @@ def estimate_resources(
             scale = max(1, (read_length or 150) / 150)
             raw = math.ceil(disk_reads * 108 * scale)
             parts = math.ceil(disk_reads * 115 * scale)
+            merge_group = min(parts, math.ceil(64 * 2_000_000 * 115 * scale))
             scratch = 2 * GIB
             temporary = raw + parts + scratch
             place = temp_dir or output_dir
@@ -537,9 +540,27 @@ def estimate_resources(
                 [
                     *staged_retained,
                     (place, "sorted_parts", parts),
+                    (place, "merge_generation", merge_group),
+                ],
+                [
+                    *staged_retained,
+                    (place, "sorted_parts", parts),
                     (output_dir, "output", output),
                 ],
             ]
+            if extract_fastq:
+                from wgsextract_cli.core.warnings import get_free_space_needed
+
+                spill, final = get_free_space_needed(
+                    size or 0, sort_type="Name", is_cram=cram_input, reads=disk_reads
+                )
+                staged_phases.insert(
+                    0,
+                    [
+                        (place, "extraction_collate", spill * GIB),
+                        (fastq_dir or output_dir, "extracted_fastqs", final * GIB),
+                    ],
+                )
             if staged_workspace:
                 work = Path(staged_workspace)
                 checkpoint = work / "parts.json"
@@ -556,13 +577,14 @@ def estimate_resources(
                 if complete:
                     staged_phases = [
                         fq,
+                        [*staged_retained, (place, "merge_generation", merge_group)],
                         [*staged_retained, (output_dir, "output", output)],
                     ]
                 elif (work / "alignment.json").is_file() and (
                     work / "unsorted.bam"
                 ).is_file():
                     credit = (work / "unsorted.bam").stat().st_size
-                    for phase in staged_phases[:2]:
+                    for phase in staged_phases:
                         phase.append((str(work), "existing_checkpoint", -credit))
             for path in retire_fastqs:
                 if Path(path).is_file():
@@ -577,6 +599,16 @@ def estimate_resources(
                 "Disk allows 108/115 bytes per short input read for raw/marked checkpoints "
                 "and 2 GiB rolling scratch (HG002 35x calibration)."
             )
+            from wgsextract_cli.core.staged_alignment import safety_reserve
+
+            reserve = safety_reserve(reads)
+            for phase in staged_phases:
+                devices: set[object] = set()
+                for path in (place, output_dir):
+                    device, _ = _disk_space(path)
+                    if device not in devices:
+                        phase.append((path, "disk_safety_reserve", reserve))
+                        devices.add(device)
         if long_read is not None:
             output, temporary = long_read.output, long_read.spill
             notes.append(
@@ -619,7 +651,19 @@ def estimate_resources(
                     (
                         str(Path(reference).parent),
                         "reference_indexes",
-                        mapping.index_resident * 2,
+                        (
+                            alignment_memory.estimate_mapping_memory(
+                                reference,
+                                aligner,
+                                threads=threads,
+                                memory=memory,
+                                samblaster=samblaster,
+                                reads=reads,
+                            ).index_resident
+                            if staged
+                            else mapping.index_resident
+                        )
+                        * 2,
                     )
                 )
                 notes.append(
