@@ -521,63 +521,6 @@ test("WGSExtract POSIX runtime wrapper rejects BAM and CRAM index inputs", async
   }
 });
 
-test("WGSExtract Windows VCF wrapper adds the FASTA build's ploidy", async (t) => {
-  if (process.platform !== "win32") {
-    t.skip("Windows PowerShell wrapper behavior is platform-specific.");
-    return;
-  }
-
-  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-  const sourceScripts = path.join(repoRoot, "examples", "WGSExtract", "scripts", "windows");
-  const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-wgsextract-vcf-wrapper-"));
-  const scriptsRoot = path.join(tempRoot, "scripts");
-  const genomeRoot = path.join(tempRoot, "genomes", "wgsextract-benchmark-hg19-mini");
-  const referenceRoot = path.join(tempRoot, "reference");
-  const processManager = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
-  const runWrapper = (ref) => processManager.runProcess("powershell.exe", [
-    "-NoProfile",
-    "-ExecutionPolicy",
-    "Bypass",
-    "-File",
-    path.join(scriptsRoot, "run-wgsextract-vcf.ps1"),
-    "snp",
-    "--input",
-    path.join(genomeRoot, "HG00096.hg19-mini.cram"),
-    "--ref",
-    ref,
-  ], {});
-
-  try {
-    await cp(sourceScripts, scriptsRoot, { recursive: true });
-    await mkdir(genomeRoot, { recursive: true });
-    await mkdir(referenceRoot, { recursive: true });
-    const fastaPath = path.join(genomeRoot, "hg19-mini.fa.gz");
-    await writeFile(fastaPath, "");
-    await writeFile(path.join(scriptsRoot, "run-wgsextract.ps1"), [
-      "param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Rest)",
-      "Set-Content -LiteralPath (Join-Path $PSScriptRoot 'calls.log') -Encoding utf8 -Value ($Rest -join '|')",
-      "exit 0",
-      "",
-    ].join("\r\n"));
-    const callsLog = path.join(scriptsRoot, "calls.log");
-
-    let result = await runWrapper(fastaPath);
-    assert.equal(result.exitCode, 0, result.stderr);
-    let call = await readFile(callsLog, "utf8");
-    assert.match(call, new RegExp(`vcf\\|snp\\|.*--ref\\|${escapeRegExp(fastaPath)}\\|--ploidy\\|GRCh37`));
-
-    // A reference library resolves its own ploidy file in the CLI.
-    result = await runWrapper(referenceRoot);
-    assert.equal(result.exitCode, 0, result.stderr);
-    call = await readFile(callsLog, "utf8");
-    assert.match(call, new RegExp(`--ref\\|${escapeRegExp(referenceRoot)}`));
-    assert.doesNotMatch(call, /--ploidy/);
-  } finally {
-    await processManager.terminateAllProcesses();
-    await rm(tempRoot, { force: true, recursive: true });
-  }
-});
-
 test("runs WGSExtract POSIX setup scripts from nested script folders", async (t) => {
   if (process.platform === "win32") {
     t.skip("This regression covers POSIX packaged setup script paths.");

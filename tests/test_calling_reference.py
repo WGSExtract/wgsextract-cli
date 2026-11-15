@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from tests.htslib_helpers import needs_tools, sam_to_bam, snp_sample, write_fasta
+from tests.htslib_helpers import (
+    needs_tools,
+    sam_to_bam,
+    snp_sample,
+    vcf_calls,
+    write_fasta,
+)
 from wgsextract_cli import api
 from wgsextract_cli.api.vcf import VcfSnpParams
 from wgsextract_cli.core.calling_reference import validate_calling_reference
@@ -73,3 +79,62 @@ def test_wrong_reference_851_structural_subset_still_checks_shared_lengths(tmp_p
     )
     with pytest.raises(WGSExtractError, match="input length 101"):
         validate_calling_reference(bam, str(fasta), allow_reference_subset=True)
+
+
+def _standalone_fasta(tmp_path, sample, header: str) -> Path:
+    """The sample's reference copied outside any library under a name that
+    names no build, with ``header`` as its header line."""
+    sequence = Path(sample.ref).read_text().splitlines()[1]
+    fasta = tmp_path / "standalone" / "genome.fa"
+    fasta.parent.mkdir()
+    fasta.write_text(f">{header}\n{sequence}\n")
+    return fasta
+
+
+@pytest.mark.parametrize(
+    ("header", "assembly", "ploidy"),
+    [
+        ("chr1 Homo sapiens chromosome 1, GRCh38.p14 Primary Assembly", None, "GRCh38"),
+        ("chr1", "GRCh37", "GRCh37"),
+    ],
+    ids=["header-description", "dict-assembly"],
+)
+def test_ploidy_825_comes_from_a_standalone_fasta(tmp_path, header, assembly, ploidy):
+    # The GUI guessed --ploidy from the FASTA's name in a wrapper script, so a
+    # FASTA outside a library whose name names no build could not be called.
+    sample = snp_sample(tmp_path)
+    fasta = _standalone_fasta(tmp_path, sample, header)
+    if assembly:
+        dictionary = fasta.with_suffix(".dict")
+        run_command(
+            ["samtools", "dict", "-a", assembly, "-o", str(dictionary), str(fasta)]
+        )
+    output = tmp_path / "calls"
+    api.vcf.snp(
+        VcfSnpParams(input=Path(sample.bam), ref=fasta, outdir=output, threads=1)
+    )
+    vcf = output / "snps.vcf.gz"
+    assert vcf_calls(vcf) == sample.calls
+    header_lines = run_command(
+        ["bcftools", "view", "-h", str(vcf)], capture_output=True
+    ).stdout
+    call_command = next(
+        line for line in header_lines.splitlines() if "bcftools_callCommand" in line
+    )
+    # contract: the build's sex-chromosome ploidy table is what the calls assume.
+    assert f"--ploidy {ploidy}" in call_command
+
+
+def test_ploidy_825_still_required_when_a_fasta_names_no_build(tmp_path):
+    sample = snp_sample(tmp_path)
+    result = api.vcf.snp(
+        VcfSnpParams(
+            input=Path(sample.bam),
+            ref=_standalone_fasta(tmp_path, sample, "chr1"),
+            outdir=tmp_path / "calls",
+            threads=1,
+        ),
+        check=False,
+    )
+    assert result.status == "failed"
+    assert "--ploidy" in str(result.error)

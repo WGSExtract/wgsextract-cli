@@ -301,12 +301,12 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
     .find((page) => page.id === "extract")
     .sections.find((section) => section.id === "variant-calling");
   const snpAction = variantCalling.actions.find((action) => action.id === "vcf-snp");
-  assert.equal(snpAction.command.executable, "{{bundleRoot}}/scripts/run-wgsextract-vcf.sh");
-  assert.deepEqual(snpAction.command.arguments.slice(0, 2), ["snp", "--input"]);
+  assert.equal(snpAction.command.executable, "{{bundleRoot}}/scripts/run-wgsextract.sh");
+  assert.deepEqual(snpAction.command.arguments.slice(0, 3), ["vcf", "snp", "--input"]);
   assert.equal(snpAction.estimatedDurationMinutes, 34);
   const indelAction = variantCalling.actions.find((action) => action.id === "vcf-indel");
-  assert.equal(indelAction.command.executable, "{{bundleRoot}}/scripts/run-wgsextract-vcf.sh");
-  assert.deepEqual(indelAction.command.arguments.slice(0, 2), ["indel", "--input"]);
+  assert.equal(indelAction.command.executable, "{{bundleRoot}}/scripts/run-wgsextract.sh");
+  assert.deepEqual(indelAction.command.arguments.slice(0, 3), ["vcf", "indel", "--input"]);
   assert.equal(indelAction.estimatedDurationMinutes, 34);
   const defaultVcfPath = settings.settings.find((setting) => setting.id === "vcf_path");
   assert.equal(defaultVcfPath.defaultDirectory, "{{dataset_library}}");
