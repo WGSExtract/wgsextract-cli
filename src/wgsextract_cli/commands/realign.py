@@ -271,7 +271,7 @@ def _require(
     check_host_requirement(
         HostRequirement(
             "realign",
-            (*disk, *needs.disk),
+            (*(needs.staged_disk or tuple(disk)), *needs.disk),
             needs.memory,
             int(threads),
             needs.hours,
@@ -1335,7 +1335,17 @@ def _run_steps(
         statistics = fastq_input_statistics(r1_path, r2_path)
         read_length = statistics.read_length if statistics is not None else None
     align_job = replace(
-        job, r1=r1_path, r2=r2_path, input_reads=InputReads(reads, read_length)
+        job,
+        r1=r1_path,
+        r2=r2_path,
+        input_reads=InputReads(reads, read_length),
+        retire_fastqs=(r1_path, r2_path)
+        if (
+            extract_decision is not None
+            and not job.keep_fastq
+            and (extract_decision.run or extract_decision.metrics.get("temporary"))
+        )
+        else (),
     )
     if align_decision is None:
         align_decision = journal.decide(
@@ -1344,7 +1354,11 @@ def _run_steps(
     try:
         _align(journal, align_decision, lambda: align_cmd.run(align_job))
     except BaseException:
-        if need_extract and not job.keep_fastq:
+        if (
+            need_extract
+            and not job.keep_fastq
+            and any(Path(path).exists() for path in (r1_path, r2_path))
+        ):
             from wgsextract_cli.core.temp_directory import retain_temporary_directory
 
             directory = retain_temporary_directory()
@@ -1369,7 +1383,10 @@ def _run_steps(
     if temporary and not job.keep_fastq:
         for path in (r1_path, r2_path):
             try:
-                Path(path).unlink()
+                Path(path).unlink(
+                    missing_ok=current_result().metrics.get("alignment_mode")
+                    == "staged_metal"
+                )
             except OSError as exc:
                 logging.warning("Could not remove %s: %s", path, exc)
         journal.retire("extract", [r1_path, r2_path])
@@ -1471,6 +1488,7 @@ class _Needs(NamedTuple):
     floor: int | None = None
     hours: float | None = None
     disk: tuple[tuple[str, int], ...] = ()
+    staged_disk: tuple[tuple[str, int], ...] = ()
 
 
 def _report_resource_estimates(
@@ -1504,6 +1522,7 @@ def _report_resource_estimates(
         )
         sorting = align_cmd.short_read_sort_memory(tool, filled, log=False)
         gpu_bytes = dense_sa_bytes = 0
+        staged = False
         if resolved:
             # The aligner that will run, bwa-mem3 standing in included.
             aligner, sorting = _short_read_plan(
@@ -1520,6 +1539,7 @@ def _report_resource_estimates(
             tool = aligner.memory_model
             gpu_bytes = align_cmd.aligner_gpu_bytes(aligner, resolved, reads)
             dense_sa_bytes = aligner.dense_sa_bytes
+            staged = aligner.staged
             if reference_bases(resolved) > 0:
                 # Without the reference's size (its .fai or BWA's .ann) a
                 # human reference stands in, even for a tiny one.
@@ -1534,6 +1554,7 @@ def _report_resource_estimates(
                         read_length=read_length,
                         gpu_bytes=gpu_bytes,
                         dense_sa_bytes=dense_sa_bytes,
+                        staged=staged,
                     )
                 )
         return estimate_resources(
@@ -1552,6 +1573,24 @@ def _report_resource_estimates(
             additional_ram_bytes=additional_ram_bytes,
             gpu_bytes=gpu_bytes,
             dense_sa_bytes=dense_sa_bytes,
+            staged=staged,
+            keep_fastq=job.keep_fastq,
+            staged_workspace=(
+                str(
+                    align_cmd.workspace_path(
+                        align_cmd.aligned_output_path(
+                            outdir,
+                            input_paths[0],
+                            None
+                            if need_extract
+                            else (input_paths[1] if len(input_paths) > 1 else None),
+                            job.format,
+                        )
+                    )
+                )
+                if staged
+                else None
+            ),
             output_format=job.format,
             extract_fastq=need_extract,
             fastq_dir=outdir if job.keep_fastq else configured_temp_directory(),
@@ -1589,4 +1628,19 @@ def _report_resource_estimates(
     hours = alignment_hours(
         engine, bool(chosen and chosen[0].gpu), count * length, int(threads)
     )
-    return _Needs(ram, floors[0] if floors else None, hours, indexes)
+    staged_disk = (
+        tuple(
+            (row.paths[0], row.estimated_bytes)
+            for row in (reported.resources if reported else ())
+            if row.resource == "disk" and row.paths and row.estimated_bytes is not None
+        )
+        if chosen and chosen[0].staged
+        else ()
+    )
+    return _Needs(
+        ram,
+        floors[0] if floors else None,
+        hours,
+        () if staged_disk else indexes,
+        staged_disk,
+    )

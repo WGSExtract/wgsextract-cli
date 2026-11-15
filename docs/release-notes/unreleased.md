@@ -3,6 +3,15 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## New
 
+- Low-memory Macs retain Metal BWA rather than the slower CPU fallback when
+  compressed staging fits the existing physical-RAM gate. Alignment no longer
+  overlaps duplicate marking/sorting; bounded compressed BAM checkpoints avoid
+  large temporary consolidations. Whole HG00235x on the 16GB M1 matched all
+  ordered SAM records in 6.44h including verification, with 0.073GiB swap-out
+  and 42.31GiB minimum free disk. The explicit GPU speed preference still
+  permits over-budget concurrent execution. See
+  [the 16GB measurements](../apple-silicon-16gb.md#defaults-for-16-gb).
+
 - Genotype imputation now works natively on **Windows x64**:
   `pixi install -e imputation` installs GLIMPSE2 2.0.1 from our `glimpse2-1`
   release (pinned by URL and SHA-256), Beagle and native OpenJDK.

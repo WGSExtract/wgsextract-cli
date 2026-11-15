@@ -151,9 +151,23 @@ swap. Explicit `--memory` is retained; default/config memory is capped at
 and `native_aligner_sort_memory_actual` explain fallback or opt-in and survive
 resume. The fallback estimate is the smallest considered GPU plan, not the
 selected CPU pipeline's estimate.
-Reasons are `memory_budget_cpu`, `memory_budget_metal_low_sort` (or CUDA),
+For paired Metal BWA, automatic selection also tries compressed staging before
+CPU fallback. RAM is the larger of the aligner/checkpoint-writer phase and
+the duplicate-marking/sort phase, not their sum. BWA is capped at three workers
+only in that mode; the fixed scientific batch size remains K100M.
+Disk is the per-filesystem phase maximum: generated FASTQs plus raw checkpoint,
+raw plus compressed marked parts, then parts plus final output. Owned generated
+FASTQs retire after alignment unless kept; the raw checkpoint retires only after
+all marked parts are durable. Existing resumable checkpoints and owned-read
+retirement are credited, never user-provided read files.
+The HG00235x calibration budgets108/115 bytes per short input read for raw/marked
+BAM checkpoints and2 GiB rolling scratch; longer reads scale those allowances.
+
+Reasons are `memory_budget_cpu`, `memory_budget_metal_staged`,
+`memory_budget_metal_low_sort` (or CUDA),
 and `prefer_gpu`; preference reasons/journal changes occur only when it
-replaces the CPU plan.
+replaces the RAM-safe plan. `alignment_mode="staged_metal"` and the checkpoint,
+chunk-record, compression-level and minimum-free-byte metrics identify staging.
 On the measured 16 GiB M1 whole HG002 35x run, automatic CPU4/sort256
 reported 19.22 GiB / 10.78 GiB available and completed with identical ordered
 records. Swap-out fell from 1,116.92 to 47.87 GiB, **not zero**, while alignment

@@ -100,9 +100,13 @@ The test suite passed on the M1 (5,826 tests in 6 min 21 s).
 
 Automatic `wgse-bwa` GPU selection now requires the pipeline estimate to fit
 physical RAM less OS headroom. It first lowers
-sort memory, down to 256M per thread. If no GPU plan fits, it selects CPU;
+sort memory, down to 256M per thread. If no concurrent GPU plan fits, paired
+Metal BWA can instead align into a compressed checkpoint, then mark duplicates
+and sort after BWA exits. This staged plan still must fit the physical-RAM
+budget; CPU remains the fallback when even staging does not fit.
 an also-over-budget CPU sort is capped at 256M without increasing smaller
-requests. Workers and fixed K100M are unchanged for record identity.
+requests. Concurrent plans keep their workers; every plan retains fixed K100M
+for record identity.
 Low momentary available memory alone does not force a large-RAM host onto
 CPU; streaming realignment retains its available-memory guard.
 `--prefer-native-gpu` (or `prefer_native_gpu = true` in `config.toml`)
@@ -111,7 +115,28 @@ explicit `--memory` is retained; default/config memory is capped at 256M,
 subject to general sort limits. `--no-prefer-native-gpu` disables
 the config preference for one run.
 
-A whole short-read genome on this Mac can therefore use **CPU**, not Metal.
+A whole short-read genome on this Mac normally uses **staged Metal** when the
+concurrent pipeline is too large. The manifest records
+`alignment_mode="staged_metal"` and
+`native_aligner_backend_reason="memory_budget_metal_staged"`.
+Only staged alignment caps BWA at three workers; K100M remains fixed.
+Postprocessing uses compressed level3 BAM chunks, up to2 GiB per single sort
+(a smaller explicit/config memory limit is retained), followed by a bounded
+merge. Generated FASTQs are removed after the validated alignment checkpoint
+unless `--keep-fastq`; user-provided FASTQs are never deleted. Failed stages
+retain checkpoints in the reported workspace for unchanged-input recovery.
+
+Whole HG00235x validation for #872 (low-memory Metal) retained all835,260,415
+ordered SAM records: **4.50h alignment**, **6.44h alignment plus postprocessing
+and verification**, **0.073GiB swap-out**, and **42.31GiB minimum free disk**.
+Including FASTQ preparation took6.83h. The raw checkpoint was81.54GiB, marked
+compressed parts78.69GiB, and final BAM47.23GiB; plan roughly200GiB of free
+workspace for this input, more if keeping extracted FASTQs. Parts replace the
+raw checkpoint before merging, rather than accumulating huge sort-temp copies.
+
+An explicit speed preference still permits the faster, over-budget concurrent
+GPU plan; it can swap heavily. Otherwise CPU remains possible if the staged
+plan cannot fit.
 Check the manifest's `native_aligner_backend` and the selected sort memory
 in the log/BAM program header rather than assuming a GPU-paced overnight run.
 The conservative CPU estimate may still be `LOW`; this is not a guarantee of
@@ -480,6 +505,9 @@ as swap-free or assume that a near-budget case needs the same trade-off.
 
 ### Three-mode whole-genome comparison
 
+These concurrent/CPU trials preceded compressed staged Metal. Their default
+recommendation is superseded by [the current 16GB defaults](#defaults-for-16-gb).
+
 The approved third run used the same HG002 35x reads, whose regenerated full
 FASTQ sizes and fingerprints match both earlier cases, and published
 wgse-bwa 0.12.1 with four workers/K100M. `--prefer-native-gpu --memory 256M`
@@ -523,6 +551,8 @@ free space restored to about 203 GiB.
   sort memory. The whole validation reduced traffic to 47.87 GiB, not zero,
   at 13 h 38 min rather than 5 h 24 min for alignment.
   See [#747, low-memory realignment](https://github.com/WGSExtract/wgsextract-cli/issues/747).
+  Staged Metal subsequently retained the same records in 6.44h with 0.073GiB
+  swap-out; it is now tried before CPU when the concurrent plan cannot fit.
 - **Close what you can before `realign` and check its chosen backend.**
   CPU fallback can take substantially longer than the old GPU measurements;
   more workers add memory and are not an automatic speed improvement.

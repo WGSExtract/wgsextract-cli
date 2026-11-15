@@ -35,6 +35,7 @@ from wgsextract_cli.core.atomic_output import (
     safe_output,
 )
 from wgsextract_cli.core.chunked_alignment import Chunk, ChunkedAlignment
+from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path as get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -92,6 +93,7 @@ from wgsextract_cli.core.samtools_commands import (
     written_index,
 )
 from wgsextract_cli.core.sequencing import input_platform, pacbio_platform
+from wgsextract_cli.core.staged_alignment import workspace_path as workspace_path
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -202,6 +204,7 @@ class AlignJob:
     chunk_input: str | None = None
     exact_reads: int | None = None
     read_cleanup: ExitStack | None = None
+    retire_fastqs: tuple[str, ...] = ()
 
     @classmethod
     def of(cls: type[_Job], params: Params) -> _Job:
@@ -590,6 +593,7 @@ def streaming_mapping_fits(
     additional_ram_bytes: int,
     gpu_bytes: int = 0,
     dense_sa_bytes: int = 0,
+    staged: bool = False,
 ) -> bool:
     estimate = estimate_mapping_memory(
         ref,
@@ -602,6 +606,7 @@ def streaming_mapping_fits(
         read_length=read_length,
         gpu_bytes=gpu_bytes,
         dense_sa_bytes=dense_sa_bytes,
+        staged=staged,
     )
     return estimate.total + additional_ram_bytes <= available_memory()
 
@@ -788,6 +793,52 @@ def _bwa_gpu_fit(
     if fitting is None:
         requested_memory = memory
         gpu_estimate = needed(candidates[-1])
+        staged_estimate = None
+        if native.gpu == "metal" and samblaster:
+            chunk_memory = (
+                memory if job.memory_explicit or settings.get("memory_limit") else "2G"
+            )
+            chunk_amount, chunk_unit = parse_memory(chunk_memory)
+            if chunk_amount * (1024 if chunk_unit == "G" else 1) > 2048:
+                chunk_memory = "2G"
+            staged_estimate = (
+                estimate_mapping_memory(
+                    ref,
+                    tool,
+                    threads=str(min(3, int(threads))),
+                    memory=chunk_memory,
+                    samblaster=True,
+                    reads=reads,
+                    platform=job.platform,
+                    read_length=read_length,
+                    gpu_bytes=gpu,
+                    dense_sa_bytes=dense_sa_bytes,
+                    staged=True,
+                ).total
+                + additional_ram_bytes
+            )
+            if staged_estimate <= budget:
+                logging.info(
+                    "Separating Metal alignment from duplicate marking/sorting: "
+                    "estimated %.1f GiB against %.1f GiB; compressed staged checkpoints.",
+                    staged_estimate / 1024**3,
+                    budget / 1024**3,
+                )
+                return AlignerCommand(
+                    tool,
+                    native,
+                    gpu=True,
+                    dense_sa=dense_sa,
+                    staged=True,
+                    memory_decision=NativeMemoryDecision(
+                        "memory_budget_metal_staged",
+                        staged_estimate,
+                        budget,
+                        memory,
+                        chunk_memory,
+                        staged_estimate,
+                    ),
+                ), chunk_memory
         logging.info(
             f"Running {native.binary} on the CPU: with its {_gpu_name(native)} GPU backend "
             f"the alignment is estimated to need {gpu_estimate / 1024**3:.1f} "
@@ -808,7 +859,12 @@ def _bwa_gpu_fit(
             native,
             dense_sa=dense_sa,
             memory_decision=NativeMemoryDecision(
-                "memory_budget_cpu", gpu_estimate, budget, requested_memory, memory
+                "memory_budget_cpu",
+                gpu_estimate,
+                budget,
+                requested_memory,
+                memory,
+                staged_estimate,
             ),
         )
     else:
@@ -1248,6 +1304,9 @@ def run_streamed_alignment(
     upstream: list[Sequence[object]] | None = None,
     expected_reads: int | None = None,
     exact_reads: int | None = None,
+    staged_mode: bool = False,
+    retire_fastqs: Sequence[str] = (),
+    read_length: float | None = None,
 ) -> None:
     """Run the aligner (after any upstream stages feeding it), mark duplicates
     (with duplicate_marker's choice, or not at all for long reads: None), sort,
@@ -1256,6 +1315,33 @@ def run_streamed_alignment(
     from wgsextract_cli.core.atomic_output import safe_output
 
     partial = [out_path, written_index(out_path)]
+    if staged_mode:
+        from wgsextract_cli.core.staged_alignment import run_staged_alignment
+
+        with cleanup_files(
+            on_failure=partial, preserve_outputs=atomic_outputs_enabled()
+        ):
+            with safe_output(out_path) as staged:
+                workspace = run_staged_alignment(
+                    [*(upstream or []), list(align_cmd)],
+                    out_path,
+                    staged,
+                    memory=memory,
+                    fmt=fmt,
+                    ref=ref,
+                    retire_fastqs=retire_fastqs,
+                    read_length=read_length,
+                    expected_reads=expected_reads,
+                )
+                if exact_reads is not None:
+                    check_primary_reads(staged, exact_reads, ref)
+        try:
+            shutil.rmtree(workspace)
+        except OSError as error:
+            logging.warning(
+                "Could not remove staged workspace %s: %s", workspace, error
+            )
+        return
     with cleanup_files(on_failure=partial, preserve_outputs=atomic_outputs_enabled()):
         with safe_output(out_path) as staged:
             stages: list[Sequence[object]] = [*(upstream or []), list(align_cmd)]
@@ -1377,6 +1463,8 @@ def _bwa_setup(
             additional_ram_bytes=additional_ram_bytes,
         )
         setup = setup._replace(memory=memory)
+    if aligner.staged:
+        setup = setup._replace(threads=str(min(3, int(setup.threads))))
     # The memory model of the aligner that runs (bwa-mem3 in another's place,
     # or wgse-bwa-mem2 without the .0123 file).
     engine = aligner.engine
@@ -1394,6 +1482,7 @@ def _bwa_setup(
         additional_ram_bytes=additional_ram_bytes,
         gpu_bytes=gpu_bytes,
         dense_sa_bytes=aligner.dense_sa_bytes,
+        staged=aligner.staged,
     ):
         raise StreamingMemoryUnavailable("Collation exceeds available alignment RAM")
     preflight_resources(
@@ -1415,6 +1504,17 @@ def _bwa_setup(
             additional_ram_bytes=additional_ram_bytes,
             gpu_bytes=gpu_bytes,
             dense_sa_bytes=aligner.dense_sa_bytes,
+            staged=aligner.staged,
+            retire_fastqs=job.retire_fastqs,
+            staged_workspace=(
+                str(
+                    workspace_path(
+                        aligned_output_path(setup.outdir, setup.r1, job.r2, job.format)
+                    )
+                )
+                if aligner.staged
+                else None
+            ),
             output_format=job.format,
             duplicate_marking=(
                 "gatk-flow"
@@ -1436,6 +1536,7 @@ def _bwa_setup(
             additional_ram_bytes=additional_ram_bytes,
             gpu_bytes=gpu_bytes,
             dense_sa_bytes=aligner.dense_sa_bytes,
+            staged=aligner.staged,
             required=requested_aligner(job) == "bwa-mem2",
             label=stand_in_label(aligner),
         )
@@ -1518,6 +1619,9 @@ def align_bwa(
             upstream=list(upstream) if upstream else None,
             expected_reads=job.read_count,
             exact_reads=job.exact_reads,
+            staged_mode=aligner.staged,
+            retire_fastqs=job.retire_fastqs,
+            read_length=job.input_reads.read_length if job.input_reads else None,
         )
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
         raise WGSExtractError(f"{aligner.binary} alignment failed: {e}") from e
