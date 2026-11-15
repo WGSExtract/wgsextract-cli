@@ -56,6 +56,12 @@ from wgsextract_cli.core.variant_files import (
     verify_paths_exist,
 )
 
+from ._lineage_chm13 import (
+    has_reference_calls,
+    lift_heteroplasmies,
+    map_to_rcrs,
+    site_depths,
+)
 from ._lineage_ydna import (
     VCF_SUFFIXES,
     extract_vcf_chromosome,
@@ -192,6 +198,8 @@ def run_mt_haplogroup(params: MtHaplogroupParams, *, tree_links: bool = False) -
     out_file = str(Path(outdir, "haplogrep_results.txt"))
 
     reference = None
+    mapped = False
+    bases: dict[int, str] = {}
     contamination: dict[str, str] | None = None
     contamination_outputs: list[tuple[Path, str]] = []
 
@@ -228,7 +236,7 @@ def run_mt_haplogroup(params: MtHaplogroupParams, *, tree_links: bool = False) -
 
             cram_opt = ["-T", lib.fasta] if input_lower.endswith(".cram") else []
             chr_m = get_chr_name(input_file, "MT", cram_opt)
-            _require_rcrs(input_file, chr_m, cram_opt, lib.fasta)
+            mapped = _require_rcrs(input_file, chr_m, cram_opt, lib.fasta)
             if haplocheck_cmd:
                 _require_one_sample(get_bam_header(input_file, cram_opt))
             warn_low_depth(
@@ -238,26 +246,51 @@ def run_mt_haplogroup(params: MtHaplogroupParams, *, tree_links: bool = False) -
                 ref=lib.fasta,
                 min_depth=params.qc_min_depth,
             )
+            # CHM13's chrM is mapped onto the rCRS, which needs calls at every
+            # site: one matching CHM13 at 10208 carries 10208C against the rCRS.
+            calls = str(Path(tmp, "chm13_sites.vcf.gz")) if mapped else temp_vcf
             run_pipeline(
                 [
                     ["bcftools", "mpileup", "-Ou", "-r", chr_m, "-f", lib.fasta]
                     + [input_file],
-                    ["bcftools", "call", "--ploidy", "1", "-mv", "-Oz", "-o"]
-                    + [temp_vcf],
+                    ["bcftools", "call", "--ploidy", "1", "-m"]
+                    + ([] if mapped else ["-v"])
+                    + ["-Oz", "-o", calls],
                 ],
                 stdout=subprocess.DEVNULL,
                 description="Mitochondrial variant calling",
             )
+            if mapped:
+                bases = map_to_rcrs(calls, chr_m, temp_vcf)
             if haplocheck_cmd:
                 contamination_vcf = _call_heteroplasmies(
                     haplocheck_cmd, params, input_file, lib.fasta, chr_m, Path(tmp)
                 )
+                if mapped:
+                    contamination_vcf = Path(
+                        lift_heteroplasmies(
+                            str(Path(tmp, contamination_vcf)),
+                            bases,
+                            site_depths(calls),
+                            chr_m,
+                            str(Path(tmp, "heteroplasmies.rcrs.vcf.gz")),
+                        )
+                    ).name
             input_file = temp_vcf
         else:
             # Filter VCF to chrM to avoid Haplogrep errors on large VCFs
             chr_m = extract_vcf_chromosome(input_file, "MT", temp_vcf)
-            _require_rcrs(temp_vcf, chr_m)
+            mapped = _require_rcrs(temp_vcf, chr_m)
             input_file = temp_vcf
+            if mapped:
+                if haplocheck_cmd:
+                    raise WGSExtractError(
+                        "--contamination can't use a VCF called on CHM13v2.0's "
+                        "chrM: its heteroplasmy levels aren't mapped onto the "
+                        "rCRS. Use the BAM or CRAM instead."
+                    )
+                input_file = str(Path(tmp, "mtdna.rcrs.vcf.gz"))
+                map_to_rcrs(temp_vcf, chr_m, input_file)
             if haplocheck_cmd:
                 _require_heteroplasmy_levels(temp_vcf)
                 contamination_vcf = temp_vcf
@@ -289,7 +322,8 @@ def run_mt_haplogroup(params: MtHaplogroupParams, *, tree_links: bool = False) -
         details={
             "haplogrep_version": version,
             "tree": {"id": tree.id, "version": tree.version, "name": tree.name},
-        },
+        }
+        | ({"mt_reference": f"{CHM13_CHRM}, mapped onto the rCRS"} if mapped else {}),
         contamination=contamination,
     )
     for path, role in contamination_outputs:
@@ -406,19 +440,24 @@ def _require_rcrs(
     chr_m: str,
     cram_opt: list[str] | None = None,
     fasta: str | None = None,
-) -> None:
+) -> bool:
     """Refuse an mtDNA sequence that isn't the rCRS Haplogrep's positions
-    assume, and warn of one nothing confirms as the rCRS."""
-    problem, confirmed = _mito_check(path, chr_m, cram_opt, fasta)
+    assume, unless it is CHM13v2.0's chrM, which is mapped onto the rCRS
+    (True); warn of one nothing confirms as the rCRS."""
+    problem, origin = _mito_check(path, chr_m, cram_opt, fasta)
     if problem:
         raise WGSExtractError(problem)
-    if not confirmed:
+    if origin == CHM13_CHRM:
+        logging.info(f"{chr_m} is {CHM13_CHRM}: mapping its calls onto the rCRS.")
+        return True
+    if origin is None:
         warn(
             "mt_reference_unconfirmed",
             f"{chr_m} isn't confirmed as the rCRS whose positions Haplogrep "
             "classifies; check that it was called against an rCRS chrM (such "
             "as hg38's or hs37d5's), or the haplogroup may be wrong.",
         )
+    return False
 
 
 def alignment_mito_problem(alignment: str, ref: str | None) -> str | None:
@@ -441,9 +480,10 @@ def _mito_check(
     chr_m: str,
     cram_opt: list[str] | None = None,
     fasta: str | None = None,
-) -> tuple[str | None, bool]:
-    """Why Haplogrep can't use ``path``'s chrM (or None), and whether it is
-    confirmed as the rCRS.
+) -> tuple[str | None, str | None]:
+    """Why Haplogrep can't use ``path``'s chrM (or None), and its origin:
+    "rCRS", CHM13_CHRM (mapped onto the rCRS, #832), or None when nothing
+    confirms either.
 
     Length alone can't tell (#827): CHM13v2.0's chrM is as long as the rCRS but
     rotated. A CHM13 MD5 in the header settles it; otherwise an alignment's
@@ -456,39 +496,62 @@ def _mito_check(
         rows = [line.split("\t") for line in out.splitlines() if line]
         names = sorted({row[0] for row in rows})
         if len(names) > 1:
-            return f"{path} has mtDNA records on {', '.join(names)}; use one.", False
+            return f"{path} has mtDNA records on {', '.join(names)}; use one.", None
         # A plain VCF's chromosome name is a guess: its records have the real one.
         chr_m = names[0] if names else chr_m
     header = get_bam_header(path, cram_opt)
     length = sequence_lengths(header).get(chr_m)
     if length is not None and MITO_BY_LENGTH.get(length) != "rCRS":
         if MITO_BY_LENGTH.get(length) == "Yoruba":
-            return SYSTEM_MESSAGES["YorubaWarning"], False
+            return SYSTEM_MESSAGES["YorubaWarning"], None
         return (
             f"{chr_m} is {length} bp, not the 16569 bp rCRS that Haplogrep's "
             "positions refer to.",
-            False,
+            None,
         )
     md5 = _header_md5(header, chr_m)
     origin = {CHM13_CHRM_MD5: CHM13_CHRM, RCRS_MD5: "rCRS"}.get(md5 or "")
-    if fasta and origin != CHM13_CHRM:
+    if fasta:
         # The reference variants are called against outranks the header.
         sequence = _fasta_mito(fasta, chr_m)
-        origin = (mito_origin(sequence) if sequence else None) or origin
+        called_on = mito_origin(sequence) if sequence else None
+        # Either way round, reads aligned to one chrM would be called against
+        # the other's positions.
+        if origin and origin != called_on and (called_on or origin == CHM13_CHRM):
+            actual = f"is {called_on}" if called_on else "isn't"
+            return (
+                f"{chr_m} is {origin} in the alignment's header, but the "
+                f"reference's ({fasta}) {actual}. Pass the reference it was "
+                "aligned to with --ref.",
+                None,
+            )
+        origin = called_on or origin
     elif rows and origin != CHM13_CHRM:
         # The VCF's REFs outrank an rCRS md5 its header may carry over.
         rcrs, chm13 = ref_agreement((int(row[1]), row[2]) for row in rows)
         if rcrs != chm13:  # REFs both references share prove nothing
             origin = "rCRS" if rcrs else CHM13_CHRM
     if origin in (None, "rCRS"):
-        return None, origin == "rCRS"
+        return None, origin
+    if origin == CHM13_CHRM and (fasta or not rows or has_reference_calls(path)):
+        return None, origin
+    if origin == CHM13_CHRM:
+        return (
+            f"{chr_m} is {CHM13_CHRM}, whose positions aren't the rCRS's that "
+            "Haplogrep classifies, and this VCF has variants only: mapping it "
+            "onto the rCRS needs calls at every site, since a sample matching "
+            "CHM13 at 10208 has no record there yet carries 10208C against the "
+            "rCRS. Use the BAM or CRAM, or a VCF called at all sites (`bcftools "
+            "call -m` without `-v`, or a gVCF).",
+            origin,
+        )
     return (
         f"{chr_m} is {origin}, not the rCRS: its positions aren't the ones "
         "Haplogrep classifies, so the haplogroup would be wrong. Use an "
         "alignment or VCF made against a reference whose chrM is the rCRS "
-        "(hg38, hs37d5, or CHM13v2.0's rCRS analysis set); `wgsextract "
-        "realign` re-maps a BAM or CRAM.",
-        False,
+        "(hg38, hs37d5, or CHM13v2.0's rCRS analysis set), or CHM13v2.0's own "
+        "chrM; `wgsextract realign` re-maps a BAM or CRAM.",
+        origin,
     )
 
 
