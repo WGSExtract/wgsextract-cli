@@ -13,7 +13,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tests.htslib_helpers import bgzip_index, needs_tools, run_wgsextract, write_fasta
+from tests.htslib_helpers import (
+    bgzip_index,
+    needs_tools,
+    reference_for_vcf,
+    run_wgsextract,
+    write_fasta,
+)
 from wgsextract_cli import api
 from wgsextract_cli.api import VcfFreebayesParams
 from wgsextract_cli.commands.vcf.basic import CallerSetup
@@ -387,12 +393,16 @@ def _sample_and_other(tmp_path: Path) -> tuple[str, str]:
     )
 
 
-def _clinvar(tmp_path: Path) -> str:
-    return _write_vcf(
+def _clinvar(tmp_path: Path, sample: str) -> tuple[str, ...]:
+    """`vcf clinvar` options for a one-entry ClinVar file and the sample's
+    reference (ClinVar matching needs --ref)."""
+    clinvar = _write_vcf(
         tmp_path / "clinvar.vcf.gz",
         "{c}\t10\tc\tA\tG\t.\t.\tCLNSIG=Pathogenic;CLNDN=D\n",
         header=CLINVAR_HEADER,
     )
+    ref = reference_for_vcf(tmp_path / "ref" / "ref.fa.gz", sample)
+    return ("--clinvar-file", clinvar, "--ref", str(ref))
 
 
 @needs_bcftools
@@ -410,7 +420,7 @@ def test_manifest_lists_only_the_vcf_input_read(tmp_path, capsys, command, statu
     --vcf-input, but its manifest listed both, for failed runs too."""
     sample, other = _sample_and_other(tmp_path)
     out = tmp_path / "out"
-    extra = ("--clinvar-file", _clinvar(tmp_path)) if command[1] == "clinvar" else ()
+    extra = _clinvar(tmp_path, sample) if command[1] == "clinvar" else ()
     result = _cli_json(capsys, *command, "--input", other, "--vcf-input", sample,
                        *extra, "--outdir", str(out))  # fmt: skip
     assert result["status"] == status
@@ -427,7 +437,7 @@ def test_report_of_another_sample_leaves_out_a_run_on_vcf_input(tmp_path, capsys
     sample, other = _sample_and_other(tmp_path)
     results = tmp_path / "results"
     _cli_json(capsys, "vcf", "clinvar", "--input", other, "--vcf-input", sample,
-              "--clinvar-file", _clinvar(tmp_path), "--outdir", str(results))  # fmt: skip
+              *_clinvar(tmp_path, sample), "--outdir", str(results))  # fmt: skip
 
     def sources(vcf: str) -> list[str]:
         report = _cli_json(capsys, "report", "--input", vcf, "--results", str(results))
