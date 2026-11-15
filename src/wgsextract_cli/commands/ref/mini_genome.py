@@ -37,8 +37,8 @@ def run_test_genome(params: RefTestGenomeParams) -> None:
     current_result().set_details({"library": str(datasets), **state, **extra})
     if not params.delete:
         human_output(
-            "WGS Extract hg19 mini benchmark genome: "
-            f"{state['status']} ({state['path']})"
+            "WGS Extract hg19 mini benchmark genome\n"
+            f"Test genome: {state['status']} ({state['path']})"
         )
 
 

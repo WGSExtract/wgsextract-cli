@@ -116,16 +116,23 @@ def test_a_download_that_fails_its_hash_installs_nothing(
     assert not (datasets / ".downloads" / f"{mini_genome.DATASET_ID}.zip").exists()
 
 
-def test_issue_801_download_satisfies_app_required_output(tmp_path, published, capsys):
+@pytest.mark.parametrize(
+    "plan_path",
+    [
+        "scripts/installlab/gui/wgsextract-plan.json",
+        "gui/examples/WGSExtract/test-plans/fresh-install-default-hg19-test-genome.json",
+    ],
+    ids=["install-lab", "fresh-install"],
+)
+def test_issue_801_download_satisfies_app_required_output(
+    tmp_path, published, capsys, plan_path
+):
     datasets = tmp_path / "datasets"
-    plan = json.loads(
-        (
-            Path(__file__).resolve().parents[1]
-            / "scripts/installlab/gui/wgsextract-plan.json"
-        ).read_text()
-    )
+    plan = json.loads((Path(__file__).resolve().parents[1] / plan_path).read_text())
     download = next(
-        step for step in plan["steps"] if step["id"] == "download_test_genome"
+        step
+        for step in plan["steps"]
+        if step.get("actionID") == "test-dataset-download"
     )
 
     main(["ref", "test-genome", "--install", "--dataset-library", str(datasets)])
