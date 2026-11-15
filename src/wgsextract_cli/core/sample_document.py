@@ -5,6 +5,7 @@ from typing import Annotated, TypedDict
 from .output_schema import Constraints, Shape
 from .sample_types import (
     Confidence,
+    ObservedSex,
     Platform,
     SampleSchema,
     Sex,
@@ -39,6 +40,10 @@ class RecordedFact(FactMetadata):
 
 class SexFact(FactMetadata):
     value: Sex
+
+
+class ObservedSexFact(FactMetadata):
+    value: ObservedSex
 
 
 class PlatformFact(FactMetadata):
@@ -80,7 +85,7 @@ class FileFingerprint(TypedDict):
 
 
 class DetectedFile(FileFingerprint, total=False):
-    sex: SexFact
+    sex: ObservedSexFact
     platform: PlatformFact
     build: BuildFact
     somalier_sex: SexFact
@@ -142,6 +147,7 @@ SAMPLE_SHAPES: dict[object, Shape] = {
     Platform: Shape("platform"),
     RecordedFact: Shape("fact"),
     SexFact: Shape("sex_fact"),
+    ObservedSexFact: Shape("observed_sex_fact"),
     PlatformFact: Shape("platform_fact"),
     BuildFact: Shape("build_fact"),
     SuperpopulationFact: Shape("superpopulation_fact"),

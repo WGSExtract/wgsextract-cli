@@ -63,6 +63,8 @@ def genome(tmp_path_factory):
         header + [r for c in ("chr1", "chr7", "chrX", "chrM") for r in reads(c)],
         root / "female.bam",
     )
+    run_wgsextract("sample", "set", "--input", male, "--sex", "Male")
+    run_wgsextract("sample", "set", "--input", female, "--sex", "Female")
     return {"ref": str(ref), "seqs": seqs, "male": male, "female": female}
 
 

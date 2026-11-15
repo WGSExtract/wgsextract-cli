@@ -62,6 +62,7 @@ from .metrics import (
     MIN_LONG_READ_MAPPED_PCT,
     MIN_LONG_READ_N50,
     SEX_INFERENCE_VERSION,
+    SEX_MEASUREMENT_UNAVAILABLE,
     IdxStat,
     SexCall,
     contig_key,
@@ -115,6 +116,11 @@ def _load_cache(path: str, signature: dict[str, int]) -> dict[str, Any]:
     if not isinstance(data, dict) or data.get("input_signature") != signature:
         logging.debug(f"Ignoring stale cache {path} (input changed or old format)")
         return {}
+    if (
+        data.get("gender")
+        and data.get("sex_inference_version") != SEX_INFERENCE_VERSION
+    ):
+        return {}
     logging.debug(f"Cache file found: {path}")
     return data
 
@@ -134,7 +140,7 @@ def _print_detailed(
     data: dict[str, Any], as_csv: bool, sample: tuple[str, str]
 ) -> None:
     _note_mixed_platforms(data, *sample)
-    _record_info(data)
+    _record_info(data, sample[0])
     _record_facts(data, *sample)
     if as_csv:
         human_output(data["chrom_table_csv"], end="")
@@ -276,7 +282,7 @@ def _export_chromosomes(
 
 def _print_fast(data: dict[str, Any], sample: tuple[str, str]) -> None:
     _note_mixed_platforms(data, *sample)
-    _record_info(data)
+    _record_info(data, sample[0])
     _record_facts(data, *sample)
     human_output(render_info(data, detailed=False))
 
@@ -288,7 +294,6 @@ _PRIVATE_KEYS = {
     "depth_needs_index",
     "input_signature",
     "first_qname",
-    "sex_call",
     # samtools' raw error names local paths; the warning explains it instead.
     "read_sample_error",
 }
@@ -343,9 +348,9 @@ def _record_facts(data: dict[str, Any], input_file: str, header: str) -> None:
         and data.get("sex_inference_version") == SEX_INFERENCE_VERSION
     ):
         call = data.get("sex_call") or (
-            data["gender"],
-            "cached `info --detailed` call",
-            "high",
+            "Unknown",
+            "cache lacks observed confidence",
+            "low",
         )
         record_sex(input_file, SexCall(*call))
     ard = (data.get("metrics") or {}).get("ard_mapped")
@@ -361,7 +366,7 @@ def _record_facts(data: dict[str, Any], input_file: str, header: str) -> None:
         )
 
 
-def _record_info(data: dict[str, Any]) -> None:
+def _record_info(data: dict[str, Any], input_file: str) -> None:
     """Put the metrics `info` reports on the result manifest."""
     result = current_result()
     details = {k: v for k, v in data.items() if k not in _PRIVATE_KEYS}
@@ -394,6 +399,12 @@ def _record_info(data: dict[str, Any]) -> None:
     _record_unread_reads(data)
     if "gender" in data:
         result.add_metrics(sex=data["gender"], **data.get("metrics", {}))
+        call = data.get("sex_call")
+        if call:
+            result.add_metrics(sex_method=call[1], sex_confidence=call[2])
+        workspace = sample_workspace.workspace_for(input_file)
+        if workspace:
+            result.add_metrics(declared_sex=workspace.overrides(input_file).get("sex"))
         if data["gender"] == "Unknown":
             result.warn(
                 "sex_unknown",
@@ -616,6 +627,8 @@ def _detailed_metrics(
     coverage_map: dict[str, str],
     n_counts: dict[str, int],
     mapped_bases: dict[str, float] | None = None,
+    input_file: str | None = None,
+    reference: str | None = None,
 ) -> dict[str, Any]:
     total_reads = sum(s["mapped"] + s["unmapped"] for s in idx_stats)
     avg_len = data["avg_read_len"]
@@ -627,7 +640,7 @@ def _detailed_metrics(
         if s["name"] != "*":
             key = contig_key(s["name"])
             mapped_by_key[key] = mapped_by_key.get(key, 0) + s["mapped"]
-    call = infer_sex_call(idx_stats)
+    call = infer_sex_call(idx_stats, alignment=input_file, reference=reference)
     gender = call.sex
 
     chrom_table = generate_chrom_table(
@@ -967,6 +980,12 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
     table_stem = Path(outdir, Path(input_file).name + region_file_tag(region))
     signature = _input_signature(input_file)
     data = _load_cache(json_cache, signature)
+    call = data.get("sex_call")
+    sex_unavailable = (
+        isinstance(call, list)
+        and len(call) == 3
+        and call[1] == SEX_MEASUREMENT_UNAVAILABLE
+    )
     # Classifying the header is cheap, so it is redone every run. A cache made
     # when it said otherwise (older detection, or a different --ref) is stale,
     # including its chromosome table, which depends on the build.
@@ -1021,6 +1040,7 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
             )
             and not data.get("mapping_failed")
             and data.get("sex_inference_version") == SEX_INFERENCE_VERSION
+            and (not sex_unavailable or alignment_index(input_file) is None)
         ):
             logging.debug("Cache hit for detailed metrics.")
             if data.get("depth_needs_index"):
@@ -1091,6 +1111,8 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
             coverage_map,
             load_n_counts(resolved_ref),
             mapped_bases,
+            input_file,
+            resolved_ref,
         )
     )
 

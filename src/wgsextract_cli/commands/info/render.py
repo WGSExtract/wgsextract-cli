@@ -148,7 +148,7 @@ def render_info(data: Mapping[str, Any], detailed: bool = False) -> str:
             f"{LOG_MESSAGES['info_file_content']:<28}{data.get('file_content', 'Unknown')}"
         )
 
-    if data.get("gender") and data.get("gender") != "Unknown":
+    if data.get("gender"):
         output_lines.append(
             f"{LOG_MESSAGES['info_bio_gender']:<28}{data.get('gender')}"
         )
@@ -204,7 +204,7 @@ def render_info(data: Mapping[str, Any], detailed: bool = False) -> str:
             "  SNs             - Total count of named sequences in the reference.",
             "",
             "OTHER:",
-            "  Bio Gender      - Predicted biological sex based on X/Y ratio.",
+            "  Bio Gender      - Non-PAR depth screening; Unknown if insufficient.",
             "  Avg Read Length - Mean base pairs per read (SD = standard deviation).",
             "  Avg Insert Size - Mean distance between pairs (inner + reads).",
             "  Read N50        - Long reads: half the bases are in reads at least",
