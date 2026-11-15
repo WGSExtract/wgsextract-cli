@@ -137,7 +137,7 @@ def test_by_excludes_bins(tmp_path):
 
 
 @needs_samtools
-@pytest.mark.parametrize("region", [None, "chr20", "chr20:1-10"])
+@pytest.mark.parametrize("region", [None, "chr20", "chr20:1-10", "20", "20:1-10"])
 def test_bug_861_regional_bam_denominators_retain_full_header(tmp_path, region):
     # chr1 remains in the header, without reads: never infer assay scope from it.
     sample = sam_to_bam(
@@ -160,9 +160,13 @@ def test_bug_861_regional_bam_denominators_retain_full_header(tmp_path, region):
             min_depth=1,
         )
     )
-    off_bases, off_depth = {None: (1015, 15), "chr20": (15, 15), "chr20:1-10": (5, 5)}[
-        region
-    ]
+    off_bases, off_depth = {
+        None: (1015, 15),
+        "chr20": (15, 15),
+        "chr20:1-10": (5, 5),
+        "20": (15, 15),
+        "20:1-10": (5, 5),
+    }[region]
     assert result.metrics["target_bases"] == 5
     assert result.metrics["off_target_bases"] == off_bases
     assert result.metrics["on_target_mean_depth"] == 2
@@ -186,3 +190,9 @@ def test_bug_861_regional_bam_denominators_retain_full_header(tmp_path, region):
 def test_bug_861_invalid_or_outside_target_scope_is_refused(tmp_path, region):
     with pytest.raises(api.CommandFailed, match="--region"):
         _coverage(tmp_path, "chr1\t2\t8\tA\n", region=region)
+
+
+@needs_samtools
+def test_bug_861_invalid_scope_explains_interval_syntax(tmp_path):
+    with pytest.raises(api.CommandFailed, match="1-based inclusive"):
+        _coverage(tmp_path, "chr1\t2\t8\tA\n", region="chr1:invalid")

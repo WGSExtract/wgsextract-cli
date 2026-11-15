@@ -344,9 +344,14 @@ def _assessed_spans(
         chrom, _, span = region.rpartition(":")
         match = re.fullmatch(r"(\d[\d,]*)(?:-(\d[\d,]*))?", span)
         if match is None:
-            raise UsageError(f"Invalid --region: {region}")
+            raise UsageError(
+                f"Invalid --region: {region}. Expected a contig (chr20) or a "
+                "1-based inclusive interval (chr20:100001-200000)."
+            )
         start = int(match[1].replace(",", "")) - 1
         end = int(match[2].replace(",", "")) if match[2] else None
+    if chrom not in lengths:
+        chrom = next((c for c in _contig_aliases(chrom) if c in lengths), chrom)
     if chrom not in lengths:
         raise UsageError(f"--region names a contig the alignment lacks: {chrom}")
     end = lengths[chrom] if end is None else end
@@ -376,7 +381,9 @@ def run_target_coverage(
         span = assessed.get(target.chrom)
         if span is None or not span[0] <= target.start < target.end <= span[1]:
             raise UsageError(
-                f"--by target {target.name} is outside the assessed --region {region}."
+                f"--by target {target.name} ({target.chrom}:{target.start + 1}-"
+                f"{target.end}) is outside the assessed scope "
+                f"{region or 'whole alignment header'} (--region)."
             )
     order = {name: i for i, name in enumerate(lengths)}
     merged = _merged(targets, order)
