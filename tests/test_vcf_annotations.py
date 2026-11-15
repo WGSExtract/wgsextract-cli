@@ -926,10 +926,12 @@ def test_issue_894_failed_attempt_keeps_the_earlier_result_until_a_rerun(tmp_pat
     outdir = tmp_path / "out"
     ok = outdir / "clinvar_pathogenic.vcf.manifest.json"
     failed = outdir / "clinvar_pathogenic.vcf.failed.manifest.json"
+    reference = reference_for_vcf(tmp_path / "ref.fa.gz", sample)
 
     def run(resource: Path | str) -> int:
         argv = ["vcf", "clinvar", "--clinvar-file", str(resource),
-                "--vcf-input", sample, "--outdir", str(outdir)]  # fmt: skip
+                "--vcf-input", sample, "--outdir", str(outdir),
+                "--ref", str(reference)]  # fmt: skip
         return run_cli(argv)[0]
 
     assert run(clinvar) == 0
