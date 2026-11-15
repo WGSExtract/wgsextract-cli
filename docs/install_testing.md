@@ -92,7 +92,8 @@ of failed tests only (`tmp_path_retention_policy = "failed"`).
 3. The workload (`guest/workload.sh`) on the HG00096 mini genome: `--help`,
    `deps check`, `ref bootstrap` (a real GitHub release download with digest
    verification), `info` on BAM and CRAM, `extract mt-bam` / `mito-vcf`,
-   `lineage mt-haplogroup` / `y-haplogroup`, `vcf snp`, `microarray`, `align`
+   `lineage mt-haplogroup` / `y-haplogroup`, `vcf snp`, `sample set --sex Male`,
+   `microarray`, `align`
    (bwa, from FASTQs), `vcf gatk` (after explicitly installing the optional
    `gatk` Pixi environment), and a command that must fail.
 4. Update by rerunning the installer; a marker in `app/reference/` must survive,
@@ -114,6 +115,11 @@ no-calls, and their reason table must agree. At least 1,500 truth sites must be
 represented and some callable sites must remain; an all-no-call kit cannot
 pass. At least 95% of the **callable** genotypes must match 1000 Genomes. No-calls
 at weak sites are expected, not genotype disagreements.
+
+The mini genome has no chrX reads, so its sex reads as Unknown and microarray
+refuses sex-dependent ploidy. HG00096 is male, so the workload declares it with
+`sample set --sex Male` first, as the refusal tells a user to, and the app's
+plan does the same with its Sample overrides action.
 
 ## The macOS app
 

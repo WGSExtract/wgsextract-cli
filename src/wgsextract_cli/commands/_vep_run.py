@@ -13,6 +13,12 @@ from typing import Any
 from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.api.vep import VepRunParams
 from wgsextract_cli.core import read_scope
+from wgsextract_cli.core.alignment_metadata import get_vcf_build
+from wgsextract_cli.core.builds import (
+    build_from_path,
+    canonical_build,
+    ploidy_for_build,
+)
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -41,8 +47,10 @@ from wgsextract_cli.core.variant_files import (
 
 from ._analyze_workflows import detect_vcf_type
 from ._vep_engines import (
+    CHM13,
     VepEngine,
     refuse_unsupported_args,
+    require_assembly,
     resolve_engine,
     vep_engine,
 )
@@ -123,20 +131,20 @@ def _vep_input_files(input_path: str) -> list[str]:
     return input_files
 
 
+# The reference library's build of each assembly VEP annotates against.
+_ASSEMBLY_BUILDS = {"GRCh38": "hg38", "GRCh37": "hg19", CHM13: "t2t"}
+
+
 def _apply_forced_assembly(lib: ReferenceLibrary, vep_assembly: str | None) -> None:
     """Make the library agree with the explicit assembly override."""
     if not vep_assembly:
         return
-    forced_build = "hg38" if vep_assembly == "GRCh38" else "hg19"
+    forced_build = _ASSEMBLY_BUILDS[vep_assembly]
     lib.build = forced_build
     if not lib.fasta:
         return
-    f_lower = str(lib.fasta).lower()
-    is_hg38_path = "hg38" in f_lower or "grch38" in f_lower
-    is_hg19_path = "hg19" in f_lower or "grch37" in f_lower or "hs37d5" in f_lower
-    if (forced_build == "hg38" and is_hg19_path) or (
-        forced_build == "hg19" and is_hg38_path
-    ):
+    fasta_build = build_from_path(str(lib.fasta))
+    if fasta_build and fasta_build != forced_build:
         logging.warning(
             f"Discarding auto-resolved FASTA '{lib.fasta}' because it conflicts "
             f"with --assembly {vep_assembly}"
@@ -160,7 +168,8 @@ def _call_variants_for_vep(
     elif lib.ploidy_file:
         ploidy_args = ["--ploidy-file", lib.ploidy_file]
     else:
-        ploidy_args = ["--ploidy", "GRCh38" if lib.build == "hg38" else "GRCh37"]
+        build = canonical_build(lib.build) or "hg19"
+        ploidy_args = ["--ploidy", ploidy_for_build(build)]
 
     with sex_samples_args(
         bam_path,
@@ -198,12 +207,15 @@ def _build_vep_command(
     vep_cmd += ["-i", vep_input_vcf, "-o", output_file, "--fork", threads]
     vep_cmd.append({"vcf": "--vcf", "json": "--json", "tab": "--tab"}[params.format])
 
-    if params.vep_assembly:
-        vep_cmd += ["--assembly", params.vep_assembly]
-    elif lib.build and "38" in lib.build:
-        vep_cmd += ["--assembly", "GRCh38"]
-    elif lib.build and ("37" in lib.build or "19" in lib.build):
-        vep_cmd += ["--assembly", "GRCh37"]
+    # Without a reference library, the VCF's own contigs name the assembly.
+    assembly = (
+        params.vep_assembly
+        or _assembly_of(lib.build)
+        or _assembly_of(get_vcf_build(vep_input_vcf))
+    )
+    require_assembly(engine, assembly)
+    if assembly:
+        vep_cmd += ["--assembly", assembly]
 
     if lib.fasta:
         vep_cmd += ["--fasta", lib.fasta]
@@ -238,6 +250,12 @@ def _build_vep_command(
     if params.vep_args:
         vep_cmd += shlex.split(params.vep_args)
     return vep_cmd
+
+
+def _assembly_of(build: str | None) -> str | None:
+    """VEP's name for a reference build, if it has one."""
+    canonical = canonical_build(build)
+    return next((a for a, b in _ASSEMBLY_BUILDS.items() if b == canonical), None)
 
 
 def _check_cache_version(
@@ -448,6 +466,7 @@ def run_vep(params: VepRunParams) -> None:
         logging.warning(notice)
         current_result().warn("vep_engine_fallback", notice, engine=engine.name)
     params = replace(params, engine=engine.name)
+    require_assembly(engine, params.vep_assembly)
     refuse_unsupported_args(engine, params.vep_args)
     preflight_resources(lambda: estimate_vep_run(engine.name))
     tool = "vep-rs" if engine.name == "vep-rs" else "vep"

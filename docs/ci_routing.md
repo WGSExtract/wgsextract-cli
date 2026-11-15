@@ -22,9 +22,7 @@ draft payload, in addition to the PR area's gates on its OS callers.
 Workflows with cancelling concurrency retain a runner-free `converted_to_draft`
 event in the same concurrency group to cancel in-flight ready runs. Pushes, schedules,
 manual dispatches, workflow calls and merge groups retain their existing gates.
-The runner-free `pr_draft_cancel.yml` workflow also cancels the separate
-Install Lab label group on redrafting/readiness, without letting ordinary
-label events cancel code validation.
+Install Lab shares the code-validation run and is cancelled with it on redrafting.
 
 Draft-payload events other than `converted_to_draft` use a separate `-draft`
 concurrency group. GitHub may deliver a draft `synchronize` event after
@@ -32,6 +30,9 @@ concurrency group. GitHub may deliver a draft `synchronize` event after
 This isolation applies to every PR workflow with cancelling concurrency, not
 just area routing. Ready pushes still supersede earlier ready runs, and
 `converted_to_draft` deliberately enters the ready group to stop active work.
+Draft summaries also use a different check name from `required`: GitHub accepts
+skipped checks as passing, so a delayed draft suite must not satisfy the ready
+run's merge requirement while its selected checks are still pending.
 Non-PR groups are unchanged. No live-state lookup runner is needed: drafts
 still allocate zero runners, and readiness always retains its own full run.
 
@@ -180,10 +181,51 @@ test runner report containing failed tests produces `failure`. Landing still
 requires the passing hosted ready run; non-success local attestations never
 make that otherwise-passing run fail the landing gate.
 
-For macOS remotely, push the branch, acquire randy-mini's coordinator lock, and
-SSH to a dedicated clean worktree with prepared Pixi environments. Leave 25 GiB
-RAM free and run `just certify --platform-only` there using its existing `gh`
-authentication; never forward credentials. Run Linux plus generic locally.
+For macOS remotely, push the branch and run on lin-mid:
+
+```sh
+just certify --remote randy-mini
+```
+
+The controller enforces the same clean, pushed, same-repository open-PR and
+writer checks as local certification. It acquires `agent-coord lock randy-mini`
+for the entire remote operation and releases it even on refusal. A busy lock
+refuses without disturbing its owner; retry only after the owner releases it.
+Only the registered `randy-mini` SSH alias and public WGSExtract repository are
+supported. SSH agent/port/environment forwarding is disabled; neither `gh` nor
+a GitHub token is installed or sent to the Mac.
+
+The remote bootstrap fetches the exact head and base SHAs over public HTTPS,
+then creates/reuses `~/src/wgsextract-cli/scratch/certify-<head-sha>` as a
+detached worktree. Branch names never enter a remote shell command. Prepare
+that worktree's locked Pixi environments explicitly as above; missing tools
+refuse rather than being installed. The worker runs `certify-setup` if retained
+wheels or reference inputs need preparation, then uses the same macOS ARM64
+selection and generic commands as local certification. `--platform-only` skips
+the generic layer when it already ran locally; `--generic-only` runs only generic.
+This explicit remote input-setup phase may download pinned archives; the test
+phase still uses `--no-install`.
+
+The Mac must start setup with 30 GiB disk free. A one-second watchdog stops the
+worker and its child process group below 26 GiB, leaving headroom for the
+required 25 GiB reserve. The controller sends five-second heartbeats; a lost
+connection or 30 seconds without a heartbeat cancels the entire remote process
+group, including setup and test children. SIGTERM follows the refusal/cleanup
+path. A fresh SSH connection requests cancellation and confirms termination
+before the controller releases the lock, including after transport failures.
+If that confirmation fails the lock deliberately remains held: retry once SSH
+is reachable, or confirm the matching control ID has a `.done` marker under
+`~/src/wgsextract-cli/out/certify/remote-control/` before manually unlocking.
+An abruptly killed controller (SIGKILL/power loss) likewise leaves its lock for
+recovery; never break it while the remote supervisor may still be running.
+No sudo, reboot, reverse SSH, or access to
+`/Users/randy` is needed. The worker checks platform, clean tree and HEAD before
+and after execution. Logs stream to lin-mid under
+`out/certify/<sha>/remote-randy-mini/<layer>/run.log`; only lin-mid publishes
+`local-ci/macos-arm64` and (if requested) `local-ci/generic`, with the machine
+name and full streamed-log SHA-256. Missing/mismatched results, disk refusals,
+SSH failures and interruptions produce `error`; verified failed-test reports
+produce `failure`. Run Linux certification separately on lin-mid.
 Whole-suite baseline savings are about 22 Linux runner-minutes plus 1–3 generic
 minutes (package smoke remains), or about 33 additional minutes for macOS ARM64.
 Sparse selected PRs save less.
@@ -377,11 +419,14 @@ and job-level draft gates are managed separately by #910 (draft PR CI gating).
 
 Merge-group routing, nightly schedules, reusable calls, releases and manual
 dispatches retain their coverage. Install Lab can be
-forced on any PR with the `run-install-lab` label. Only this label is actionable:
-adding it runs Install Lab without repeating the matrix; other labels are ignored.
-Label runs cannot cancel a code-validation run. Routing, documentation, lint
-and summary label checks have distinct names. The now-skipped draft-fast, native smoke and
-Pages checks use static names so skipped jobs do not expose raw name expressions.
+forced on any PR with the `run-install-lab` label. Normal PR runs read this routing
+label live from GitHub, rather than from a possibly delayed event payload.
+Adding or removing labels does not start or cancel PR area checks: a skipped label
+suite can shadow the passing `required` check and block the merge queue.
+To apply a routing-label change immediately, toggle the PR to draft and then
+ready (`gh pr ready --undo PR`, then `gh pr ready PR`); otherwise the next push
+uses the current labels. The new ready run validates the complete diff, not just
+Install Lab. Other labels do not affect routing.
 The landing validator scopes area checks to the selected ready run.
 Its nightly run includes the former weekly negative controls and pinned-release
 scenarios.
@@ -545,7 +590,7 @@ gh pr checks "$PR" --json bucket,name,workflow,link | python scripts/pr_checks_r
 The validator requires a passing `required` check (which includes the area-gate
 verdict on PRs) and `changes` job from the same workflow run, with draft-fast
 absent or skipped in that run. The area gate runs
-only on non-draft, non-label events after all selected area jobs finish.
+only on non-draft PR events after all selected area jobs finish.
 Routing uses `set -euo pipefail`; the final gate fails on a routing failure
 or a missing completion output, rather than accepting an all-skipped matrix.
 It rejects old draft-only passes/skips (including the gap before the ready

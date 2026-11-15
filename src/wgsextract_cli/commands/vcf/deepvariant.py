@@ -966,10 +966,12 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
     haploid = sorted({i.chrom for i in ploidy if i.ploidy == 1})
     par = None
     if haploid:
-        par = write_intervals(
-            absolute_path(Path(outdir, ".deepvariant.policy", "par.bed")),
-            [i for i in ploidy if i.chrom in haploid and i.ploidy == 2],
-        )
+        par_intervals = [i for i in ploidy if i.chrom in haploid and i.ploidy == 2]
+        if par_intervals:
+            par = write_intervals(
+                absolute_path(Path(outdir, ".deepvariant.policy", "par.bed")),
+                par_intervals,
+            )
     # wgse-deepvariant's htslib (1.25, ARM) decodes CRAM 3.1 correctly.
     staged_reads = not native and needs_cram30(input_file)
     reads = str(work / "reads" / "reads.cram") if staged_reads else input_file
@@ -1025,13 +1027,9 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                 region, checkpoint, batch_size, postprocess, int(threads),
             )  # fmt: skip
             if haploid:
-                assert par is not None
-                dv_args += [
-                    "--haploid_contigs",
-                    ",".join(haploid),
-                    "--par_regions_bed",
-                    host_path(par),
-                ]
+                dv_args += ["--haploid_contigs", ",".join(haploid)]
+                if par is not None:
+                    dv_args += ["--par_regions_bed", host_path(par)]
         if not journal.dry_run:
             # A rerun with finished stages needs less than this: it warns.
             fresh = not any(journal.recorded(s) for s in STEPS)

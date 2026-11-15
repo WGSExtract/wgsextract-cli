@@ -23,7 +23,15 @@ it instead of parsing log text or guessing output file names.
   write no file, except `info --format`, whose manifest is named after the first table
   (`<input>_chromosomes.parquet.manifest.json`).
   A failed run that registered outputs still writes its manifest, with
-  `status: "failed"`. A manifest never replaces this run's `--log-file`; when
+  `status: "failed"`. A `vcf` annotator (`clinvar`, `gnomad`, `cadd`,
+  `revel`, `phylop`, `gerp`, `spliceai`, `alphamissense`, `pharmgkb`,
+  `sv-freq`) that fails before registering any output, such as on a missing
+  resource file, still records the attempt, so `report` can show it: as
+  `<output>.failed.manifest.json` (`clinvar_pathogenic.vcf.failed.manifest.json`),
+  leaving an earlier run's manifest in the folder as it was. The next manifest
+  written under the output's own name removes it. Commands that name their
+  manifest after the run, such as `vcf trio` and `analyze`, write it on failure
+  as on success. A manifest never replaces this run's `--log-file`; when
   the two would share a name, the manifest is skipped with a warning.
 - **`--json`.** This global option prints the same document to stdout
   *instead of* the human-readable result, for every command. Logs, progress
@@ -114,8 +122,8 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `gvcf_reference_missing`, `inconclusive_parent_genotypes` | `vcf trio` | A gVCF trio has no `--ref`, so reference blocks count only where they start at a variant; missing, partial or unassessed parental genotypes prevent inheritance classification. Inconclusive candidates are written separately (`count`, `mode`) and included in the personal report's overview warnings. |
 | `no_indel_scores` | `vcf cadd` | The CADD indel file is missing, so indels are not scored. |
 | `contigs_skipped` | `vcf to-fasta` | VCF contigs absent from the reference were left out (`count`). |
-| `mt_reference_unconfirmed` | `lineage mt-haplogroup` | Nothing confirms the chrM is the rCRS whose positions Haplogrep classifies: no rCRS header MD5, a reference chrM that isn't a recognisable rCRS, or VCF REF alleles that CHM13's rotated chrM fits too. CHM13's chrM itself is refused. |
-| `mt_haplogroup_skipped` | `analyze comprehensive` | The alignment's chrM isn't the rCRS (CHM13's, hg19's Yoruba), so `lineage mt-haplogroup` would refuse it; the analysis went on without an mtDNA haplogroup. |
+| `mt_reference_unconfirmed` | `lineage mt-haplogroup` | Nothing confirms the chrM is the rCRS whose positions Haplogrep classifies: no rCRS header MD5, a reference chrM that isn't a recognisable rCRS, or VCF REF alleles that CHM13's rotated chrM fits too. CHM13's own chrM is mapped onto the rCRS instead (`details.mt_reference`). |
+| `mt_haplogroup_skipped` | `analyze comprehensive` | `lineage mt-haplogroup` would refuse the alignment's chrM (hg19's Yoruba, another rotation of the rCRS, or a CHM13 header without CHM13's chrM in the reference); the analysis went on without an mtDNA haplogroup. |
 | `y_haplogroup_failed` | `analyze comprehensive` | `lineage y-haplogroup` failed (often too few chrY reads); the analysis went on without it, and a rerun retries it. |
 | `annotation_skipped`, `annotation_failed` | `vcf chain-annotate`, `analyze` | One annotation was skipped (`annotation`, `reason`) or failed. |
 | `read_groups_mixed`, `read_group_conflict` | `bam unalign`, `bam merge` | Read groups differ in a way that loses or merges information. |
@@ -163,7 +171,10 @@ How refusals are classified:
   `--r1`, `methylation --combine-strands` with a non-CpG context, `sign verify
   --allowed-signers` without `--identity`, a non-positive `benchmark
   --coverage` or `--target-count`, `qc fake-data --legacy-bam --full-size`,
-  `example-genome download --method aspera` without a key, and options
+  `example-genome download --method aspera` without a key, a resource file
+  option of a `vcf` annotator (`--clinvar-file`, `--gnomad-file`,
+  `--cadd-indel-file`, `--gnomad-sv-file` and the rest, or its config.toml setting)
+  that names no file, and options
   this platform cannot honour while the command itself can run: `--gpu` off
   Linux x86-64, and `--aligner pbmm2` on Windows. Choosing different options
   fixes the run.
@@ -262,8 +273,10 @@ Other commands' metrics:
   `benchmark.manifest.json` in the run directory.
 - `report` records its documents, the source manifests it read (role
   `manifest`), the number of `findings` (and `findings_<label>` per
-  confidence label) and each section's status (`section_<name>`); its
-  `details` is the `wgsextract.report/1` document
+  confidence label) and each section's status (`section_<name>`), with a
+  `section_failed` warning per failed section and a `newer_attempt_failed`
+  warning per section showing an older result than the step's newest,
+  failed attempt; its `details` is the `wgsextract.report/1` document
   ([personal-report.md](personal-report.md)).
 
 `repair` in pipe mode (no `--input`) streams to stdout, so `--json` is a usage
