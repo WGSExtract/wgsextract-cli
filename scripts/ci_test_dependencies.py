@@ -8,6 +8,7 @@ extra tests; they must never suppress an actual repository dependency.
 from __future__ import annotations
 
 import ast
+import fnmatch
 import os
 from collections import defaultdict
 from functools import cache
@@ -31,6 +32,112 @@ DOCS_TEST_TARGETS = (
 DOCS_TEST_MODULES = frozenset(
     target for target in DOCS_TEST_TARGETS if "::" not in target
 )
+GENERATED_DOCS = frozenset(
+    {
+        "docs/api.md",
+        "docs/commands.md",
+        "site_src/cli.md",
+        "tests/fixtures/api_cli_snapshot.json",
+        "src/wgsextract_cli/assets/cli/help-index.json",
+    }
+)
+DOCS_TARGET_INPUTS = {
+    "tests/test_api.py::test_api_docs_are_up_to_date": (
+        "src/wgsextract_cli/api/**",
+        "scripts/gen_api_docs.py",
+        "docs/api.md",
+    ),
+    "tests/test_api_cli_parity.py": (
+        "src/wgsextract_cli/**",
+        "tests/cli_snapshot.py",
+        "tests/fixtures/api_cli_snapshot.json",
+    ),
+    "tests/test_cli_help.py": (
+        "src/wgsextract_cli/**",
+        "scripts/gen_command_docs.py",
+        "docs/commands.md",
+        "site_src/cli.md",
+    ),
+    "tests/test_regen.py": (
+        "scripts/regen*",
+        "scripts/gen_api_docs.py",
+        "scripts/gen_command_docs.py",
+        "tests/cli_snapshot.py",
+        "justfile",
+    ),
+    "tests/test_bump_version.py": (
+        "scripts/bump_version*",
+        "gui/scripts/bump-wgsextract-cli.py",
+        "justfile",
+    ),
+    "tests/test_build_mockup_previews.py": (
+        "gui/mockups/**",
+        "scripts/build_mockup_previews.py",
+    ),
+    "tests/test_ci_changes.py": (
+        "scripts/ci_*.py",
+        "scripts/pr_checks_ready.py",
+        ".github/**",
+        "tests/*.py",
+    ),
+    "tests/test_github_actions_policy.py": (
+        "scripts/ci_*.py",
+        "scripts/validate_github_actions.py",
+        ".github/**",
+    ),
+}
+DOCS_ONLY_SCRIPTS = frozenset(
+    {
+        "scripts/gen_api_docs.py",
+        "scripts/gen_command_docs.py",
+        "scripts/regen.py",
+        "scripts/bump_version.py",
+        "gui/scripts/bump-wgsextract-cli.py",
+        "scripts/build_mockup_previews.py",
+        "scripts/pr_checks_ready.py",
+        "scripts/validate_github_actions.py",
+        "scripts/validate_site_sources.py",
+    }
+)
+
+
+def docs_test_targets(
+    paths: list[str], *, cli: bool = False, repository: Path = ROOT
+) -> list[str]:
+    """Select light checks; a full CLI lane already collects all these tests."""
+    if cli:
+        return []
+    selected = set()
+    inputs = test_inputs(repository)
+    for path in paths:
+        if path.endswith(".md") and path not in GENERATED_DOCS:
+            continue
+        # Literal reads complement the declared transitive inputs. Inferred
+        # fixture globs (e.g. f"scripts/{generator}") are too broad for this lane.
+        readers = inputs.get(path, frozenset())
+        for target in DOCS_TEST_TARGETS:
+            module = target.split("::")[0]
+            # Routing/policy fixtures mention arbitrary paths rather than reading them.
+            discovered = (
+                path not in GENERATED_DOCS
+                and module in readers
+                and module
+                not in {
+                    "tests/test_ci_changes.py",
+                    "tests/test_github_actions_policy.py",
+                    "tests/test_api.py",
+                }
+            )
+            if (
+                path == module
+                or discovered
+                or any(
+                    fnmatch.fnmatchcase(path, pattern)
+                    for pattern in DOCS_TARGET_INPUTS[target]
+                )
+            ):
+                selected.add(target)
+    return [target for target in DOCS_TEST_TARGETS if target in selected]
 
 
 class TestInputs:

@@ -69,9 +69,10 @@ def linux_x86(monkeypatch):
 
 
 @pytest.fixture
-def dv(tmp_path, monkeypatch, linux_x86):
+def dv(tmp_path, monkeypatch, linux_x86, ram):
     """Reads, Google's image in a fake Docker, 64 GiB of free RAM, and no
     run_deepvariant on PATH."""
+    ram(64 * GIB)
     require_bare_name_fakes()
     require_runnable("samtools", "bcftools", "tabix")
     (tmp_path / "reads").mkdir()
@@ -319,6 +320,28 @@ def test_apple_arm_refuses_ont_including_automatic_selection(apple, selection):
 # CRAM 3.1 staging -----------------------------------------------------------
 
 
+def test_691_calling_profile_reaches_deepvariant_without_a_compatibility_copy(dv):
+    from wgsextract_cli.commands.align import run_streamed_alignment
+
+    output = dv.tmp / "calling.cram"
+    run_streamed_alignment(
+        ["samtools", "view", "-h", dv.sample.bam],
+        str(output),
+        threads="1",
+        memory="64M",
+        fmt="CRAM",
+        ref=dv.sample.ref,
+        duplicates=None,
+        output_profile="calling",
+    )
+    call(dv, reads=str(output))
+    (examples,) = dv.deepvariant.runs("make_examples")
+    assert Path(examples["reads"]).resolve() == output.resolve()
+    assert examples["cram_version"] == [3, 0]
+    assert vcf_calls(dv.out / "deepvariant.vcf.gz") == dv.sample.calls
+    assert not (dv.out / deepvariant.WORK_DIRECTORY).exists()
+
+
 @pytest.mark.parametrize("reads", ["bam", "3.0", "3.1", "3.1 named .bam"])
 def test_only_cram_31_is_staged_as_indexed_cram_30(dv, caplog, reads):
     """The images' htslib can't decode CRAM 3.1 (the fake fails on it), so
@@ -438,7 +461,7 @@ def test_a_relative_region_bed_in_its_own_folder_reaches_the_image(dv, monkeypat
     (dv.tmp / "targets" / "panel.bed").write_text("chr1\t899\t1100\n")
     monkeypatch.chdir(dv.tmp / "targets")
     call(dv, "-r", "panel.bed")
-    assert vcf_calls(dv.out / "deepvariant.vcf.gz") == dv.sample.calls
+    assert vcf_calls(dv.out / "deepvariant.vcf.gz") == dv.sample.calls[:1]
     assert dv_flags(dv)["regions"] == str(dv.tmp / "targets" / "panel.bed")
 
 
@@ -462,7 +485,8 @@ def big_cram(dv, monkeypatch):
 
 def test_staging_needs_disk_for_the_whole_input_or_the_selected_slices(dv, big_cram):
     big_cram.volumes.sizes[Path(big_cram.path)] = 16 * GIB
-    with pytest.raises(WGSExtractError, match=r"Insufficient free disk.*~32\.00 GiB"):
+    # #690: the requirement counts the CRAM 3.0 copy before anything runs.
+    with pytest.raises(WGSExtractError, match=r"requirement: it needs ~\d+ GiB disk"):
         call(dv, reads=big_cram.path)
     assert not list(dv.out.rglob("reads.cram"))
     assert dv.deepvariant.runs("make_examples") == []
@@ -471,8 +495,10 @@ def test_staging_needs_disk_for_the_whole_input_or_the_selected_slices(dv, big_c
     call(dv, "-r", "chr1:900-1000", reads=big_cram.path)
     assert dv.deepvariant.runs("make_examples")
     big_cram.volumes.free[dv.out] = 63 / 1024
+    # Staging checks its slices itself, past --no-preflight's estimate.
     with pytest.raises(WGSExtractError, match=r"~0\.06 GiB"):
-        call(dv, "-r", "chr1:900-1100", reads=big_cram.path, out=dv.out / "again")
+        call(dv, "-r", "chr1:900-1100", "--no-preflight", reads=big_cram.path,
+             out=dv.out / "again")  # fmt: skip
 
 
 @pytest.mark.parametrize("compressed", [False, True])
@@ -483,8 +509,9 @@ def test_capture_staging_counts_the_selected_slices_not_the_genome_fraction(
     Path(f"{big_cram.path}.crai").write_bytes(
         gzip.compress(data) if compressed else data
     )
+    # Staging's own check, past --no-preflight's requirement (#690).
     with pytest.raises(WGSExtractError, match=r"~32\.00 GiB"):
-        call(dv, "-r", "chr1:10-20", reads=big_cram.path)
+        call(dv, "-r", "chr1:10-20", "--no-preflight", reads=big_cram.path)
 
 
 @pytest.mark.parametrize(
@@ -507,10 +534,12 @@ def test_an_unreadable_crai_bounds_staging_by_the_whole_input(dv, big_cram, inde
         index.write_bytes(index_data)
     big_cram.volumes.free[dv.out] = 1.5
     with pytest.raises(WGSExtractError, match=r"~2\.00 GiB"):
-        call(dv, "-r", "chr1:10", reads=big_cram.path)
+        call(dv, "-r", "chr1:10", "--no-preflight", reads=big_cram.path)
 
 
-def test_crai_slices_follow_the_header_order_and_shared_slices_count_once(dv):
+def test_crai_slices_follow_the_header_order_and_shared_slices_count_once(
+    dv, monkeypatch
+):
     """Slices of 1 GiB units: chrM and chr20 share the first one."""
     work = dv.tmp / "two"
     work.mkdir()
@@ -520,6 +549,9 @@ def test_crai_slices_follow_the_header_order_and_shared_slices_count_once(dv):
     lines += ["@SQ\tSN:chr20\tLN:1000", "r1\t0\tchrM\t1\t60\t4M\t*\t0\t0\tACGT\tIIII"]
     sample = SimpleNamespace(ref=str(ref), bam=sam_to_bam(lines, work / "two.bam"))
     cram = as_cram(sample, "3.1")
+    dv.out.mkdir()
+    volumes = Volumes(monkeypatch)
+    volumes.free[dv.out] = 350
     Path(f"{cram}.crai").write_text(
         f"0\t1\t100\t100\t10\t{200 * GIB}\n"
         f"1\t1\t100\t100\t10\t{200 * GIB}\n"
@@ -533,7 +565,7 @@ def test_crai_slices_follow_the_header_order_and_shared_slices_count_once(dv):
         with pytest.raises(WGSExtractError, match=rf"needs ~{needs} GiB"):
             run_wgsextract(
                 "vcf", "deepvariant", "--input", cram, "--ref", str(ref),
-                "--outdir", str(dv.out), "-r", region,
+                "--outdir", str(dv.out), "-r", region, "--no-preflight",
             )  # fmt: skip
 
 
@@ -1169,10 +1201,10 @@ def test_batch_size_reaches_call_variants_without_changing_shards(dv):
 
 @pytest.fixture
 def genome_fai(dv):
-    """The reference's index says chr1 is 3 Gbp: a whole genome's worth of
-    postprocess_variants partitions."""
+    """Extra reference contigs model a whole genome's postprocess partitions
+    without making the alignment's chr1 dictionary incompatible."""
     fai = Path(f"{dv.sample.ref}.fai")
-    fai.write_text(fai.read_text().replace("\t3000\t", "\t3000000000\t", 1))
+    fai.write_text(fai.read_text() + "unobserved\t2999997000\t0\t60\t61\n")
 
 
 def postprocess(dv):
@@ -1849,3 +1881,55 @@ def test_a_gpu_plan_needs_no_gpu_driver(ultima_gpu, monkeypatch, capsys):
     gpu_call(ultima_gpu, "--dry-run")
     assert re.search(r"call_variants +run", capsys.readouterr().out)
     assert ultima_gpu.deepvariant.stages() == []
+
+
+def test_deepvariant_states_its_host_requirement_and_refuses_too_little_ram(
+    dv, monkeypatch, ram, caplog
+):
+    """#690: the whole-genome DeepVariant run of #431 found its RAM need by
+    running into it. It now states disk, RAM and time before it starts,
+    warns when its settings need more RAM than this computer has, and
+    refuses one with less than it needs on one thread at a batch of 256,
+    unless --no-preflight."""
+    caplog.set_level("INFO")
+    ram(12 * GIB)
+    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 12 * GIB)
+    call(dv)
+    assert re.search(
+        r"this DeepVariant run needs \S+ GiB disk on .*, ~\d+ GiB RAM, "
+        r"~[\d.]+ (h|min) on 4 threads",
+        caplog.text,
+    )
+    assert "it may swap or be killed" in caplog.text
+    assert dv.deepvariant.runs("make_examples")
+
+    ram(4 * GIB)
+    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 4 * GIB)
+    dv.deepvariant.clear()
+    with pytest.raises(
+        WGSExtractError,
+        match=r"at least ~[\d.]+ GiB RAM, but this computer has 4\.0 GiB",
+    ):
+        call(dv, out=dv.tmp / "small")
+    assert dv.deepvariant.runs("make_examples") == []
+    call(dv, "--no-preflight", out=dv.tmp / "small")
+    assert dv.deepvariant.runs("make_examples")
+
+
+def test_deepvariant_rerun_with_finished_stages_warns_instead_of_refusing(
+    dv, monkeypatch, ram, caplog
+):
+    """#690 review: a rerun that keeps finished stages printed no host
+    requirement; it now does, and warns of a shortfall without refusing,
+    since the kept stages need less than a fresh run."""
+    dv.deepvariant.fail("call_variants")
+    with pytest.raises(WGSExtractError):
+        call(dv)
+    ram(4 * GIB)
+    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 4 * GIB)
+    caplog.clear()
+    with caplog.at_level("INFO"):
+        rerun(dv)
+    assert "this DeepVariant run needs" in caplog.text
+    assert "Running anyway (finished stages are kept)" in caplog.text
+    assert dv.deepvariant.stages() == ["call_variants", "postprocess_variants"]

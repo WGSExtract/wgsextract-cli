@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from wgsextract_cli.core import mini_genome
 from wgsextract_cli.core.results import human_output
 
 
@@ -49,15 +50,11 @@ EXCLUDED_OPERATIONS = "VEP, DeepVariant, Yleaf, Haplogrep"
 PROGRESS_STEP_WIDTH = 68
 
 
-DEFAULT_REAL_DATASET_URL = (
-    "https://github.com/WGSExtract/wgsextract-cli/releases/download/v0.1.0/"
-    "wgsextract-benchmark-hg19-mini.zip"
-)
+# The test genome `ref test-genome` installs.
+DEFAULT_REAL_DATASET_URL = mini_genome.URL
 
 
-DEFAULT_REAL_DATASET_SHA256 = (
-    "ad0f8070dc5ca35c4a6de540493a81df082d160417f747ae68d9c098c110a9f6"
-)
+DEFAULT_REAL_DATASET_SHA256 = mini_genome.SHA256
 
 
 THOUSAND_GENOMES_FTP_ROOT = "https://ftp.1000genomes.ebi.ac.uk/vol1/ftp"

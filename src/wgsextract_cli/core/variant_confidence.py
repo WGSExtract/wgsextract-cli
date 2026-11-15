@@ -30,6 +30,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import IO, Any
 
+from wgsextract_cli.core import clinical_evidence
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.config import KNOWN_SETTINGS, settings
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
@@ -79,6 +80,8 @@ RARE_IMPUTED_AF = 0.01
 SPLIT_TAG = "OLD_MULTIALLELIC"
 
 LOW_REASONS = {
+    "unsupported_somatic": "Mutect2 somatic calls are not assessable by the "
+    "germline confidence scheme",
     "filtered": "the caller's FILTER did not pass",
     "low_depth": "read depth below the minimum",
     "low_gq": "genotype quality below the minimum",
@@ -87,6 +90,10 @@ LOW_REASONS = {
     "strand_bias": "alt reads come mostly from one strand",
     "low_qd": "variant quality is low for its depth (QD below 2)",
     "no_call_metrics": "no depth, genotype quality or allele counts to judge by",
+    "no_call": "the sample has no called genotype",
+    "reference_overlap": "conflicting records overlap the reference span",
+    "reference_gap": "the whole reference span is not covered",
+    "reference_metrics_unknown": "reference depth or genotype quality is unknown",
     "imputed": "the genotype was imputed from a reference panel (`vcf impute`), "
     "not read from the sample",
 }
@@ -163,13 +170,17 @@ GQ_HELP = (
 
 
 _CALLER_MARKERS = (
+    (
+        "mutect2",
+        re.compile(r'^##source="?Mutect2\b', re.I),
+    ),
     ("deepvariant", re.compile(r"^##DeepVariant_version", re.I)),
     ("dragen", re.compile(r"^##(DRAGENCommandLine|source=DRAGEN)", re.I)),
     ("clair3", re.compile(r"^##source=Clair3|^##clair3", re.I)),
     (
         "gatk",
         re.compile(
-            r"^##(GATKCommandLine|source=(HaplotypeCaller|GenotypeGVCFs|Mutect2))", re.I
+            r"^##(GATKCommandLine|source=(HaplotypeCaller|GenotypeGVCFs))", re.I
         ),
     ),  # fmt: skip
     ("freebayes", re.compile(r"^##source=freeBayes", re.I)),
@@ -192,10 +203,28 @@ def mapping_quality_kind(header_lines: Iterable[str]) -> str:
 def detect_caller(header_lines: Iterable[str]) -> str:
     """The variant caller named in a VCF header, or "unknown"."""
     lines = list(header_lines)
+    for line in lines:
+        if line.lower().startswith("##gatkcommandline=<") and line.endswith(">"):
+            # Consume quoted values whole, so text such as ",ID=Mutect2"
+            # inside CommandLine is not mistaken for an attribute.
+            attributes = re.findall(
+                r'(?:^|,)\s*([^=,]+)=(?:"((?:\\.|[^"\\])*)"|([^,]*))',
+                line.partition("<")[2][:-1],
+            )
+            if any(
+                key.strip().lower() == "id"
+                and (quoted or plain).strip().lower() == "mutect2"
+                for key, quoted, plain in attributes
+            ):
+                return "mutect2"
     for caller, marker in _CALLER_MARKERS:
         if any(marker.match(line) for line in lines):
             return caller
     return "unknown"
+
+
+def _confidence_policy(caller: str) -> str:
+    return "unsupported_somatic" if caller == "mutect2" else "germline"
 
 
 def _number(value: str | None) -> float | None:
@@ -309,11 +338,13 @@ def classify(
     caller: str = "unknown",
     samples: int = 1,
     contaminated: bool = False,
+    reference: bool = False,
 ) -> CallConfidence | None:
     """The confidence of ALT number ``alt`` (1-based), or None when the sample
     doesn't carry it."""
-    copies = sum(allele == str(alt) for allele in alleles)
-    if not copies:
+    copies = sum(allele == ("0" if reference else str(alt)) for allele in alleles)
+    no_call = reference and (not alleles or any(a != "0" for a in alleles))
+    if not copies and not no_call:
         return None
     zygosity = (
         "haploid" if len(alleles) == 1 else ("hom" if copies == len(alleles) else "het")
@@ -321,9 +352,24 @@ def classify(
     kind = "snv" if len(ref) == len(alt_allele) == 1 else "indel"
     low: list[str] = []
     moderate: list[str] = []
+    if no_call:
+        low.append("no_call")
 
     if filters not in {"PASS", "."}:
         low.append("filtered")
+    if caller == "mutect2":
+        # Preserve descriptive counts, but never interpret somatic GT/GQ/VAF
+        # against germline genotype expectations or hard-filter thresholds.
+        split = SPLIT_TAG in info
+        counts_info = info if samples == 1 else {}
+        return CallConfidence(
+            LOW,
+            [*low, "unsupported_somatic"],
+            "unassessed",
+            _depth(fmt, counts_info, split),
+            _number(fmt.get("GQ")),
+            _alt_fraction(alt, n_alts, fmt, counts_info, split),
+        )
     if IMPUTED_TAG in info:
         # No reads behind it to judge: its own probability is in FORMAT/GP.
         return CallConfidence(LOW, [*low, "imputed"], zygosity, None, None, None)
@@ -334,6 +380,9 @@ def classify(
     counts_info = info if samples == 1 else {}
     scale = 0.5 if zygosity == "haploid" else 1.0
     depth = _depth(fmt, counts_info, split)
+    minimum_depth = _number(fmt.get("MIN_DP")) if reference else None
+    if minimum_depth is not None:
+        depth = minimum_depth if depth is None else min(depth, minimum_depth)
     if depth is None:
         moderate.append("depth_unknown")
     elif depth < thresholds.min_depth * scale:
@@ -348,9 +397,13 @@ def classify(
         low.append("low_gq")
     elif gq < thresholds.high_gq:
         moderate.append("moderate_gq")
+    if reference and (depth is None or gq is None):
+        low.append("reference_metrics_unknown")
 
     fraction = _alt_fraction(alt, n_alts, fmt, counts_info, split)
-    if fraction is None:
+    if reference:
+        fraction = None
+    elif fraction is None:
         moderate.append("allele_balance_unknown")
     elif zygosity == "het":
         if not HET_LOW_FRACTION[0] <= fraction <= HET_LOW_FRACTION[1]:
@@ -378,7 +431,7 @@ def classify(
     ):
         low.append("strand_bias")
 
-    qd = _number(info.get("QD")) if caller == "gatk" else None
+    qd = _number(info.get("QD")) if caller == "gatk" and not reference else None
     if qd is not None and qd < MIN_QD:
         low.append("low_qd")
 
@@ -497,6 +550,7 @@ class ConfidenceSummary:
             "output": None if output is None else str(Path(output).absolute()),
             "sample": self.sample,
             "caller": self.caller,
+            "policy": _confidence_policy(self.caller),
             "thresholds": asdict(self.thresholds),
             "contamination": self.contamination,
             "counts": {label: self.counts[label] for label in LABELS},
@@ -522,6 +576,7 @@ def _header_lines(
         f'##INFO=<ID={REASONS_TAG},Number=A,Type=String,Description="Reason codes '
         f'behind {CONF_TAG}, joined by | ({GUIDE})">',
         f"##wgsextract_confidence=<Scheme={SCHEME},Caller={caller},"
+        f"Policy={_confidence_policy(caller)},"
         f"MinDepth={t.min_depth:g},HighDepth={t.high_depth:g},"
         f"MinGQ={t.min_gq:g},HighGQ={t.high_gq:g}{freemix}>",
     ]
@@ -560,6 +615,7 @@ def label_records(
     keep_findings: bool = True,
     suppress_rare_imputed: bool = True,
     contamination: float | None = None,
+    include_reference: bool = False,
 ) -> Iterator[str | ConfidenceSummary]:
     """Label VCF text lines; yields output lines, then the summary last.
 
@@ -588,6 +644,19 @@ def label_records(
                 sample=columns[9] if len(columns) > 9 else None,
                 contamination=contamination,
             )
+            if caller == "mutect2" and not any(
+                warning.code == "unsupported_somatic_confidence"
+                for warning in current_result().warnings
+            ):
+                warn(
+                    "unsupported_somatic_confidence",
+                    "Mutect2 somatic calls cannot be assessed by the germline "
+                    "confidence scheme; carried calls are labelled low with "
+                    "unsupported_somatic, not germline allele-imbalance reasons. "
+                    "This is not a CHIP or tumour diagnosis.",
+                    caller=caller,
+                    policy="unsupported_somatic",
+                )
             if len(columns) > 10:
                 warn(
                     "confidence_first_sample_only",
@@ -612,10 +681,19 @@ def label_records(
             alleles = re.split(r"[/|]", fmt.get("GT", "."))
         labels: list[str] = []
         reasons: list[str] = []
+        reference_record = include_reference and (
+            (
+                all(a in {"0", "."} for a in alleles)
+                and not any(
+                    a.startswith("<") and a not in SYMBOLIC_REFERENCE_ALTS for a in alts
+                )
+            )
+            or all(a in SYMBOLIC_REFERENCE_ALTS or a == "." for a in alts)
+        )
         for index, alt_allele in enumerate(alts, start=1):
             result = (
                 None
-                if alt_allele in SYMBOLIC_REFERENCE_ALTS
+                if alt_allele in SYMBOLIC_REFERENCE_ALTS and not reference_record
                 else classify(
                     alt=index,
                     alleles=alleles,
@@ -630,14 +708,44 @@ def label_records(
                     caller=summary.caller,
                     samples=max(len(fields) - 9, 1),
                     contaminated=contamination is not None,
+                    reference=reference_record,
                 )
             )
+            if reference_record and index > 1:
+                continue
+            if result is not None and reference_record:
+                support_reasons = info.get("PGX_REASONS", "").split("|")
+                result.reasons.extend(
+                    reason
+                    for reason in support_reasons
+                    if reason in REASONS and reason not in result.reasons
+                )
+                if any(reason in LOW_REASONS for reason in result.reasons):
+                    result.label = LOW
+                for reason in ("reference_overlap", "reference_gap"):
+                    if reason in info:
+                        result.label = LOW
+                        result.reasons.append(reason)
             if result is None:
                 labels.append(".")
                 reasons.append(".")
                 if alt_allele not in SYMBOLIC_REFERENCE_ALTS:
                     summary.not_carried += 1
                 continue
+            component_label = info.get(clinical_evidence.COMPONENT_CONF)
+            if component_label in LABELS:
+                if LABELS.index(component_label) > LABELS.index(result.label):
+                    result.label = component_label
+                result.reasons = sorted(
+                    set(result.reasons)
+                    | {
+                        r
+                        for r in info.get(
+                            clinical_evidence.COMPONENT_REASONS, ""
+                        ).split("|")
+                        if r in REASONS
+                    }
+                )
             labels.append(result.label)
             reasons.append("|".join(result.reasons) or ".")
             if suppress_rare_imputed and rare_imputed(info, index):
@@ -717,6 +825,7 @@ def label_vcf(
     keep_findings: bool = True,
     suppress_rare_imputed: bool = True,
     samples: Sequence[PathInput | None] = (),
+    include_reference: bool = False,
 ) -> ConfidenceSummary:
     """Write source_vcf's records (those matching the bcftools ``include``
     expression, within ``regions_file``) with confidence labels to out_vcf,
@@ -747,6 +856,7 @@ def label_vcf(
         keep_findings=keep_findings,
         suppress_rare_imputed=suppress_rare_imputed,
         contamination=freemix,
+        include_reference=include_reference,
     )
 
     def reader_failed() -> bool:

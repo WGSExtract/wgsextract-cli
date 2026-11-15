@@ -12,15 +12,18 @@ from typing import NamedTuple
 
 import pytest
 
+from tests.disk_volumes import GIB, Volumes
 from tests.fake_tools import FakeParabricks
 from tests.htslib_helpers import needs_tools, sam_to_bam, write_fasta
 from tests.prepared_data import sparse_truncate
 from wgsextract_cli.api.align import RealignParams
+from wgsextract_cli.api.align import realign as realign_api
 from wgsextract_cli.commands import realign
 from wgsextract_cli.commands.realign import RealignJob
 from wgsextract_cli.core import alignment_memory, parabricks
 from wgsextract_cli.core.alignment_memory import MappingMemory
 from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.cram_staging import cram_version
 from wgsextract_cli.core.read_counts import AlignmentSample, UnpairedSample
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
@@ -107,6 +110,41 @@ def test_realign_bam_to_new_reference(tmp_path, genome_and_ref):
         "x_aligned.bam.bai",
         "x_aligned.bam.steps.json",
     ]
+
+
+@needs_tools("bwa", "samtools")
+def test_691_switching_profile_rewrites_cached_realign_output(tmp_path, genome_and_ref):
+    genome, ref = genome_and_ref
+    source, pairs = _old_alignment(tmp_path, genome)
+    outdir = tmp_path / "out"
+    output = outdir / "x_aligned.cram"
+    for profile, version in (("archive", (3, 1)), ("calling", (3, 0))):
+        result = realign_api(
+            _args(
+                source,
+                ref=ref,
+                outdir=outdir,
+                output_profile=profile,
+                native_aligners="off",
+                aligner="bwa",
+            )
+        )
+        assert result.metrics["output_profile"] == profile
+        assert cram_version(str(output)) == version
+        assert int(_view("view", "-T", ref, "-c", str(output))) == 2 * pairs
+    mtime = output.stat().st_mtime_ns
+    result = realign_api(
+        _args(
+            source,
+            ref=ref,
+            outdir=outdir,
+            output_profile="calling",
+            native_aligners="off",
+            aligner="bwa",
+        )
+    )
+    assert result.metrics["output_profile"] == "calling"
+    assert output.stat().st_mtime_ns == mtime
 
 
 @needs_tools("bwa", "samtools")
@@ -245,13 +283,13 @@ class _Fakes:
         self.align(args)
 
 
-_DISK = re.compile(r"Realign pre-flight: ~(\d+) GB .*\(extract (\d+)\+(\d+), align")
+_DISK = re.compile(r"Host requirement: this realign run needs (<0\.1|~[\d.]+) GiB disk")
 
 
-def _disk_preflights(caplog) -> list[tuple[int, int]]:
-    """(GB needed, of which GB of FASTQs kept until alignment) per pre-flight."""
+def _disk_needs(caplog) -> list[float]:
+    """The GiB of disk each host requirement line asks for (0 for <0.1)."""
     found = [_DISK.search(r.getMessage()) for r in caplog.records]
-    return [(int(m[1]), int(m[3])) for m in found if m]
+    return [0.0 if m[1] == "<0.1" else float(m[1][1:]) for m in found if m]
 
 
 def _preflight_gib(caplog, kind: str) -> float:
@@ -611,13 +649,7 @@ def test_preflight_needs_room_for_the_extraction_only_when_extracting(
         "get_free_space_needed",
         lambda _size, sort_type, **_k: estimates[sort_type],
     )
-    asked = []
-
-    def no_room(path, gb):
-        asked.append((path, gb))
-        return False
-
-    monkeypatch.setattr(realign, "check_free_space", no_room)
+    Volumes(monkeypatch).free[tmp_path] = 0
     reads = tmp_path / "reads.fq"
     reads.write_text("")
     args = _args(
@@ -629,9 +661,11 @@ def test_preflight_needs_room_for_the_extraction_only_when_extracting(
 
     # Extraction's temp space is freed before alignment; its FASTQs are not:
     # max(10, 4 + 3 + 2) when extracting, 3 + 2 when not.
-    with pytest.raises(WGSExtractError, match=f"needs ~{needed} GB.*--no-preflight"):
+    with pytest.raises(
+        WGSExtractError,
+        match=f"~{needed} GiB disk on {re.escape(str(tmp_path))},.*--no-preflight",
+    ):
         realign.run(args)
-    assert asked == [(str(tmp_path), needed)]
     assert fakes.extracted == [] and fakes.aligned == []
 
 
@@ -646,18 +680,15 @@ def test_stream_preflight_drops_only_the_fastqs_between_collate_and_sort(
         "get_free_space_needed",
         lambda _size, sort_type, **_k: estimates[sort_type],
     )
-    asked = []
-    monkeypatch.setattr(
-        realign, "check_free_space", lambda path, gb: asked.append(gb) or False
-    )
-    for streaming in (False, True):
-        with pytest.raises(WGSExtractError):
-            realign._preflight_disk_space(
-                str(source), str(tmp_path), not streaming, 100, streaming=streaming
-            )
+    asked = [
+        realign._disk_requirements(
+            str(source), str(tmp_path), not streaming, 100, streaming=streaming
+        )
+        for streaming in (False, True)
+    ]
     # Files: max(10, 8 + 3 + 2). Streaming: collate's spills drain as the
     # sorter's grow, so max(10, 3 + 2).
-    assert asked == [13, 10]
+    assert asked == [[(str(tmp_path), 13 * GIB)], [(str(tmp_path), 10 * GIB)]]
 
 
 @pytest.mark.parametrize("requested", ["bwa", "bwa-mem2", "auto"])
@@ -747,10 +778,11 @@ def test_whole_genome_input_streams_when_its_collate_bucket_fits_ram(
 
 
 def test_ample_disk_space_is_not_reported_as_a_warning(
-    tmp_path, monkeypatch, source, roomy_disk, caplog
+    tmp_path, monkeypatch, source, roomy_disk, ram, caplog
 ):
     """Issue #549: every realign warned "~N GB free space required" though
     the disk had room; only a shortfall is worth a warning."""
+    ram(128 * GIB)
     _Fakes(monkeypatch)
     monkeypatch.setattr(realign, "indexed_read_count", lambda *_a: 800_000_000)
     with caplog.at_level(logging.INFO):
@@ -772,17 +804,18 @@ def test_late_stream_memory_change_retries_file_extraction(
     monkeypatch.setattr(realign.align_cmd, "align_bwa", unavailable)
     realign.run(_args(source, aligner="bwa", no_preflight=False))
     # Rechecked for FASTQ files kept until alignment, which streaming has none of.
-    (_, streamed), (_, extracted) = _disk_preflights(caplog)
-    assert streamed == 0 and extracted > 0
+    streamed, extracted = _disk_needs(caplog)
+    assert extracted > streamed
     assert len(fakes.extracted) == 1 and len(fakes.aligned) == 1
     assert not list(tmp_path.glob(".collate_*"))
 
 
 @pytest.mark.parametrize("provided_fastqs", [False, True])
 def test_realign_uses_actual_input_count_before_extraction_for_memory_and_disk(
-    tmp_path, monkeypatch, source, provided_fastqs, roomy_disk, caplog
+    tmp_path, monkeypatch, source, provided_fastqs, roomy_disk, ram, caplog
 ):
     caplog.set_level(logging.INFO)
+    ram(128 * GIB)
     _Fakes(monkeypatch)
     ref = tmp_path / "ref.fa"
     ref.write_text(">c\nA\n")
@@ -819,7 +852,7 @@ def test_realign_uses_actual_input_count_before_extraction_for_memory_and_disk(
     expected = 2 if provided_fastqs else 800_000_000
     assert budgets == [("memory", expected), ("align", expected)]
     # 800 million reads need room on disk; two reads in a 4-byte input don't.
-    ((needed, _),) = _disk_preflights(caplog)
+    (needed,) = _disk_needs(caplog)
     assert (needed > 0) == (not provided_fastqs)
 
 
@@ -849,12 +882,9 @@ def test_ultima_realign_counts_index_once_and_passes_through_unknown_counts(
     )
     assert calls == ["idxstats", ("align", reads)]
     # The count sizes the disk check; unknown, the 4-byte input's size does.
-    preflights = _disk_preflights(caplog)
-    if no_preflight:
-        assert preflights == []
-    else:
-        ((needed, _),) = preflights
-        assert (needed > 0) == (reads is not None)
+    # --no-preflight still prints the requirement.
+    (needed,) = _disk_needs(caplog)
+    assert (needed > 0) == (reads is not None)
 
 
 @needs_tools("samtools")

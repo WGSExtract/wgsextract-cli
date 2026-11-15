@@ -132,10 +132,12 @@ def test_combined_kit_alignment_mode_doubles_haploid_calls(tmp_path):
     vcf.write_text(
         "##fileformat=VCFv4.2\n##contig=<ID=chr1>\n##contig=<ID=chrY>\n"
         '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">\n'
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
-        "chrY\t5\trsY\tA\t.\t50\tPASS\t.\tGT\t0\n"
-        "chr1\t6\trsMiss\tA\t.\t50\tPASS\t.\tGT\t./.\n"
-        "chr1\t7\trsHet\tA\tG\t50\tPASS\t.\tGT\t0/1\n"
+        "chrY\t5\trsY\tA\t.\t50\tPASS\t.\tGT:DP:GQ\t0:30:60\n"
+        "chr1\t6\trsMiss\tA\t.\t50\tPASS\t.\tGT:DP:GQ\t./.:30:60\n"
+        "chr1\t7\trsHet\tA\tG\t50\tPASS\t.\tGT:DP:GQ\t0/1:30:60\n"
     )
     kit = _microarray_combined._write_microarray_combined_kit(
         params=microarray_params(region=None),
@@ -269,9 +271,9 @@ def _idx(x_reads, y_reads):
 @pytest.mark.parametrize(
     ("x_reads", "y_reads", "sex"),
     [
-        (33_392_449, 674_020, "Female"),
-        (16_000_000, 6_000_000, "Male"),
-        (0, 50, "Male"),  # chrY alone: a Y extract
+        (33_392_449, 674_020, "Unknown"),
+        (16_000_000, 6_000_000, "Unknown"),
+        (0, 50, "Unknown"),
         (0, 0, "Unknown"),
     ],
 )
@@ -297,6 +299,7 @@ def test_y_haplogroup_refuses_a_female_sample_before_yleaf(tmp_path):
     """A female genome's mismapped chrY reads made Yleaf "predict" BT* with a full
     QC score; the command must say there is no Y instead."""
     bam = _xy_bam(tmp_path / "sample.bam", x_reads=30, y_reads=1)
+    run_wgsextract("sample", "set", "--input", bam, "--sex", "Female")
 
     with pytest.raises(WGSExtractError, match="appears female"):
         run_wgsextract("lineage", "y-haplogroup", "--input", bam)
@@ -311,6 +314,7 @@ def _info_cache(
         json.dumps({
             "md5_signature": md5 or calculate_bam_md5(bam, None), "gender": call,
             "sex_inference_version": metrics.SEX_INFERENCE_VERSION,
+            "sex_call": [call, "non-PAR screening", "medium"],
             "input_signature": {
                 "size": st.st_size + size_delta, "mtime_ns": st.st_mtime_ns
             },
@@ -327,8 +331,8 @@ def test_sample_sex_trusts_only_this_files_info_cache(tmp_path):
     # A cache for another file of the same name is ignored.
     other_file = _xy_bam(tmp_path / "b.bam", x_reads=30, y_reads=10)
     _info_cache(other_file, "Female", size_delta=1)
-    assert metrics.sample_sex(other_file) == "Male"
+    assert metrics.sample_sex(other_file) == "Unknown"
 
     # So is one whose size and mtime match but whose header signature doesn't.
     _info_cache(other_file, "Female", md5="0" * 32)
-    assert metrics.sample_sex(other_file) == "Male"
+    assert metrics.sample_sex(other_file) == "Unknown"

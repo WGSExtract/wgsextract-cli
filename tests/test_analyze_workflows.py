@@ -186,8 +186,11 @@ class FakeSteps:
         data = home / "data"
         data.mkdir()
         self.config = get_config_path().read_text()
-        # An empty library, so only the configured data counts as installed.
+        # The FASTA is installed; annotation availability comes from config.
         (home / "library").mkdir()
+        genomes = home / "library" / "genomes"
+        genomes.mkdir()
+        (genomes / "hg38.fa").write_text(">chr1\n" + "A" * 1000 + "\n")
         self.settings: dict[str, object] = {"reference_library": str(home / "library")}
         for ann, key in _ANNOTATION_DATA.items():
             (data / ann).write_text(f"{ann} release 1")
@@ -670,6 +673,29 @@ def test_updated_reference_or_annotation_data_redo_the_steps_that_read_them(
 
 
 @needs_bcftools
+def test_858_edited_file_in_vep_cache_reruns_annotation(
+    fake: FakeSteps, bam: str, tmp_path: Path
+) -> None:
+    # Issue #858: a changed file inside VEP's cache directory kept old results.
+    release = Path(str(fake.settings["vep_cache_directory"]), "homo_sapiens", "116")
+    release.mkdir(parents=True)
+    (release / "info.txt").write_text("release-one")
+    out = tmp_path / "out"
+    fake.run("--input", bam, "--outdir", str(out))
+    assert fake.run("--input", bam, "--outdir", str(out)).ran == []
+
+    (release / "info.txt").write_text("release-two")
+    # A later edit: a second on, for filesystems with coarse timestamps.
+    mtime = (release / "info.txt").stat().st_mtime_ns + 1_000_000_000
+    os.utime(release / "info.txt", ns=(mtime, mtime))
+    run = fake.run("--input", bam, "--outdir", str(out))
+    assert run.ran == _ALL_STEPS[5:]
+    assert list(fake.annotated()) == [
+        str(out / "snps.vcf.gz"), str(out / "indels.vcf.gz")
+    ]  # fmt: skip
+
+
+@needs_bcftools
 def test_dry_run_plans_and_forced_steps_rerun_with_what_uses_them(
     fake: FakeSteps, bam: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -906,6 +932,9 @@ def test_vcf_input_end_to_end_with_clinvar(
         tmp_path / "me.vcf.gz",
         [(100, "a", "50", "."), (200, "b", "50", "."), (300, "c", "50", ".")],
     )
+    from tests.htslib_helpers import reference_for_vcf
+
+    reference_for_vcf(lib / "genomes" / "hg38.fa.gz", calls)
     out = tmp_path / "out"
     main(["--config", str(cfg), "analyze", "comprehensive", "--vcf-inputs", calls,
           "--outdir", str(out), "--threads", "1"])  # fmt: skip

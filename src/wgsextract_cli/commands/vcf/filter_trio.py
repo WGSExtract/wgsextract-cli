@@ -470,10 +470,13 @@ def _trio_from_alignments(
             f"No ploidy for reference build {lib.build or 'unknown'}: add a ploidy "
             "file to the reference library (see 'wgsextract ref bootstrap')."
         )
-    # The parents' sexes are their roles; the proband's comes from chrX/chrY.
+    from wgsextract_cli.core.sample_ploidy import sex_dependent_ploidy
+
+    sex_dependent = sex_dependent_ploidy(ploidy_args, contigs=set(called[0]))
+    # An arbitrary sex code is harmless only when all called ploidies agree.
     proband_sex = params.proband_sex
-    if not proband_sex:
-        inferred = sample_sex(proband, outdir)
+    if not proband_sex and sex_dependent:
+        inferred = sample_sex(proband, outdir, reference=lib.fasta)
         if inferred not in ("Male", "Female"):
             raise WGSExtractError(
                 f"Couldn't tell the proband's sex from {proband}'s chrX/chrY coverage; "

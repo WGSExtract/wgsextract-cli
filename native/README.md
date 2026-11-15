@@ -1109,6 +1109,27 @@ a Zen 4 VM, `always` instead of `madvise` cut `wgse-bwa`'s time by about 6% in
 one round (#671, the x86-64 CPU research). Set it in `/sys/kernel/mm/transparent_hugepage/enabled`, or
 with `transparent_hugepage=always` on the kernel command line.
 
+The optional dense suffix-array file (`hs38.fa.wgse-sa16`, described above)
+was measured with 0.14.0 on the same machine and tier at 8 threads
+(`bench.sh`, two interleaved rounds against `--dense-sa off`, medians), every
+run with upstream's records:
+
+| | Wall | CPU time | Peak RSS |
+| --- | ---: | ---: | ---: |
+| CPU, `--dense-sa off` | 370.1 s | 2833 s | 5.2 GiB |
+| CPU, with the file | 341.7 s (−7.7%) | 2610 s | 6.0 GiB |
+| `--cuda`, `--dense-sa off` | 126.8 s | 898 s | 6.3 GiB |
+| `--cuda`, with the file | 125.2 s (−1.3%) | 889 s | 7.0 GiB |
+
+The CPU gain (7.5% and 7.8% in the two rounds) fits `perf`'s eighth of the
+time in locate. With `--cuda` the file cut the GPU's locate time from 11.1 to
+9.6 s, but mate rescue and extension dominate there; after 20M reads the GPU
+builds the same denser sample itself. An interval-8 file (2.40 GB) was within
+noise of the interval-16 file in two more rounds on a busier machine: 335.8
+against 345.0 s, but −16% in one round and +11% in the other, with 15% less CPU
+time in one round and the same in the other. It peaked at 7.5 GiB against
+6.0 GiB.
+
 On the same machine and tier, bwa-mem3 0.16.0 `--compat=bwa-mem` on the CPU
 (as `wgse-bwa-mem3`, below) took 97.7 s and 761 s of CPU time, with the same records
 as BWA: faster than `wgse-bwa --cuda`. So `align` and `realign` on Linux run
@@ -1179,6 +1200,13 @@ On x86-64, `perf` puts a fifth of the CPU backend's time in mate rescue
 lookups and an eighth in the 8-bit extension. Suffix-array lookups stay on the
 CPU: the sampled suffix array would add about 4 GiB of GPU memory to the
 occurrence table's 6 GiB.
+
+A denser suffix-array sample (`re-sa -u 2`, every 4th row instead of every
+8th) gave no clear gain here either. In two interleaved rounds on the full-5m
+tier at 8 threads, it took 107.7 s against 107.0 s in the default mode and
+108.0 s against 110.8 s with `--compat=bwa-mem` (means; single runs varied
+by ±5%), with the same records. It raised the peak RSS from 10.5 to 14.1 GiB,
+so the packages keep upstream's sample.
 
 ### wgse-minimap2 on Linux x86-64
 

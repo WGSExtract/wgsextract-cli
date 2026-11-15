@@ -3,6 +3,8 @@ name: CLI package and benchmark smoke
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**/*.md"
   workflow_call:
   schedule:
     - cron: "11 6 * * *"
@@ -12,8 +14,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: cli-smoke-${{ github.ref }}
-  cancel-in-progress: true
+  group: cli-smoke-${{ github.event_name }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 }}
 
 jobs:
   smoke:

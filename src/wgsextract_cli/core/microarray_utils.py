@@ -10,6 +10,11 @@ from typing import TextIO, TypedDict
 
 from pyliftover import LiftOver
 
+from wgsextract_cli.core.microarray_coordinates import (
+    LiftoverCounts,
+    project_coordinates,
+    sole_placement,
+)
 from wgsextract_cli.core.microarray_identity import MicroarrayIdentity, resolve_rsid
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
@@ -204,13 +209,16 @@ def ncbi36_to_grch37(
     lifter: LiftOver, chrom: str, pos: str
 ) -> tuple[str, str, bool] | None:
     """An NCBI36 template position on GRCh37 (vendor chromosome naming), and
-    whether it lies in a region inverted between the builds."""
+    whether it lies in a region inverted between the builds; None unless the
+    chain places it exactly once on a primary chromosome."""
     if not pos.isdigit():
         return None
-    hits = lifter.convert_coordinate(_chrom_for_liftover(chrom), int(pos) - 1)
-    if not hits or "_" in hits[0][0]:
+    hit = sole_placement(
+        lifter.convert_coordinate(_chrom_for_liftover(chrom), int(pos) - 1)
+    )
+    if isinstance(hit, str) or "_" in hit.chrom:
         return None
-    return _chrom_from_liftover(hits[0][0]), str(hits[0][1] + 1), hits[0][2] == "-"
+    return _chrom_from_liftover(hit.chrom), str(hit.position + 1), hit.strand == "-"
 
 
 def _resolve_templates_for_format(
@@ -242,15 +250,15 @@ def liftover_hg38_to_hg19(
     templates_dir: TemplateSearchInput = None,
     *,
     reflib_dir: str | None = None,
-) -> None:
+) -> LiftoverCounts:
     """
-    Performs liftover from hg38 to hg19 using pyliftover.
+    Performs liftover from hg38 to hg19 using pyliftover; returns the sites'
+    outcomes. Unmapped, alternate-contig, multiply-placed and colliding sites are
+    left out, so vendor files report them as no-calls.
     Ported from legacy program/hg38tohg19.py.
     """
     if not Path(chain_file).exists():
         raise FileNotFoundError(f"Liftover chain file not found: {chain_file}")
-
-    from wgsextract_cli.core.microarray_coordinates import project_coordinates
 
     headers: list[str] = []
     records: list[tuple[str, str]] = []
@@ -275,12 +283,13 @@ def liftover_hg38_to_hg19(
             records.append((snp_id, result))
             coordinates.append((_chrom_for_liftover(chrom), position))
 
-    projections, bad_chrom, bad_pos = project_coordinates(
-        coordinates, chain_file, reflib_dir
-    )
-    if bad_chrom or bad_pos:
+    projections, counts = project_coordinates(coordinates, chain_file, reflib_dir)
+    if counts.lifted < len(coordinates):
         logging.warning(
-            f"Liftover partially failed: {bad_chrom} to AltContig, {bad_pos} not in new model"
+            f"Liftover left out {len(coordinates) - counts.lifted:,} sites: "
+            f"{counts.unmapped:,} not in hg19, {counts.alt_contig:,} on an alternate "
+            f"contig, {counts.ambiguous:,} placed more than once, "
+            f"{counts.collision:,} sharing an hg19 position with another site."
         )
 
     with open(output_txt, "w", newline="\n") as f:
@@ -302,6 +311,7 @@ def liftover_hg38_to_hg19(
                 result = sort_alleles(result.translate(_COMPLEMENT))
             out_chrom = _chrom_from_liftover(projection.chrom)
             f.write(f"{snp_id}\t{out_chrom}\t{projection.position}\t{result}\n")
+    return counts
 
 
 # Ported from legacy program/aconv.py logic

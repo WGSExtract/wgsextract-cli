@@ -6,6 +6,7 @@ name: PharmCAT Linux/Windows parity
 # except for their timestamp (#622).
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [main]
     paths:
       - pixi.toml
@@ -54,7 +55,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
   cancel-in-progress: true
 
 env:
@@ -63,6 +64,7 @@ env:
 
 jobs:
   pharmcat:
+    if: ${{ github.event.pull_request.draft != true }}
     strategy:
       fail-fast: false
       matrix:
@@ -113,6 +115,7 @@ jobs:
           if-no-files-found: error
 
   parity:
+    if: ${{ github.event.pull_request.draft != true }}
     needs: pharmcat
     runs-on: ubuntu-latest
     timeout-minutes: 5

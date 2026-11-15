@@ -22,6 +22,67 @@ first run through these commands is a technical check, not a clinical result.
 
 ## Where the labels appear
 
+### ClinVar review evidence is not sequencing confidence
+
+`vcf clinvar` requires a matching indexed FASTA (`--ref`, or the resolved
+reference library). It normalizes working copies of both inputs with
+`bcftools norm -f` and splits multiallelics before matching; incompatible
+REF bases or contig lengths fail rather than being silently corrected.
+Original alleles and sample fields remain in `WGSE_ORIGINAL` (URL-encoded
+JSON), alongside `OLD_MULTIALLELIC` provenance. Originals are not rewritten.
+Shared VCF and allele-table annotation uses this normalization when a
+reference is resolved.
+
+Complete normalized resources are reused in the output folder's
+`.wgse_normalized_resources/` cache, keyed to the resource, FASTA/index file
+identities, conversion schema and bcftools version. Changed inputs invalidate
+the cache. Canonical CADD SNV, REVEL and AlphaMissense tables instead use tabix
+lookups at the normalized query's SNV positions, avoiding whole-table scans;
+selected resource records still undergo REF validation. Composition indexes
+only query records overlapping candidate MNV spans.
+
+The known UCSC hg19 Yoruba chrM (16,571 bases) versus GRCh37 ClinVar rCRS MT
+(16,569 bases) incompatibility excludes **resource** mitochondrial records
+with a counted `annotation_mito_reference_incompatible` warning, so compatible
+autosomal findings remain available. Sample validation and other REF/build
+mismatches remain strict.
+
+Single-sample phased SNVs can recover a ClinVar MNV only when every base differs
+between REF and ALT and all component
+bases have the same non-missing PS and share a called ALT haplotype. Opposite
+haplotypes, unphased or missing calls, different phase sets and imputed calls
+are not composed. `WGSE_MNV_COMPONENTS` preserves each component's phase,
+metrics and original provenance. Components remain in the annotated VCF;
+intervening or overlapping calls must also be phase-compatible with the
+entire combined allele. The report counts the combined finding only once,
+but preserves a component's additional pathogenic copy on the other
+haplotype (showing the original genotype and the residual copy count).
+A composed MNV is at most
+moderate sequencing confidence: individual allele depths do not measure
+read support for the combined allele, and a low-confidence component makes
+the MNV low confidence.
+
+`CLNREVSTAT`, `CLNSIGCONF`, `CLNVC` and the resource's record ID
+(`WGSE_CLINVAR_ID`) are retained in annotations and confidence tables.
+`WGSE_CLINVAR_STARS` and `WGSE_CLINVAR_REVIEW` describe **assertion review**:
+0 stars without assertion criteria, 1 with criteria, 2 for multiple submitters
+without conflicts, 3 for expert-panel review, and 4 for practice guidelines.
+Missing review status stays unknown, not an inferred zero-star assertion.
+These tiers do not alter the technical sequencing label. A well-sequenced
+call with no assertion criteria is not equivalent clinical evidence to an
+expert-panel assertion.
+
+`clinvar_conflicts.vcf.gz` and `clinvar_conflicts.confidence.tsv` retain
+conflicting classifications and their submitter distributions for review.
+Their manifest confidence metrics use the `clinvar_conflict_confidence_*`
+prefix and `low_confidence_conflicts` warning, without changing the pathogenic
+subset's `confidence_*` totals or warnings.
+They are not consensus P/LP findings and do not contribute to report gene
+carrier/biallelic counts. Review tiers, conflict evidence and ClinVar IDs
+appear in `vcf table` and the report's JSON, findings table, HTML and Markdown.
+Deduplication is scoped to the genes whose evidence a composed MNV replaces;
+fully phased calls restricted to one haplotype retain carrier status.
+
 - **VCF**: `INFO/WGSE_CONF` (`Number=A`: `high`, `moderate`, `low`, or `.` for an
   ALT the sample doesn't carry) and `INFO/WGSE_CONF_REASONS` (the reason codes
   for each ALT, joined by `|`). A `##wgsextract_confidence` header line records
@@ -56,6 +117,18 @@ warning.
 
 ## Rules
 
+These are **germline** rules, not a validated somatic evidence scheme.
+Mutect2 (`##source=Mutect2` or its `##GATKCommandLine` header) is identified
+separately from germline GATK. Its carried calls are labelled `low` with
+`unsupported_somatic` (and `filtered` when applicable), regardless of VAF;
+no germline balance, GQ or hard-filter threshold is applied. Here `low`
+means **unassessable under this scheme**, not that the somatic call is wrong.
+Descriptive depth and allele fractions remain in the table, but zygosity is
+`unassessed`. A structured `unsupported_somatic_confidence` warning explains
+the limitation; the VCF header and manifest record `Policy=unsupported_somatic`
+and `policy: unsupported_somatic`, respectively (otherwise `germline`).
+Neither a low VAF nor this policy establishes CHIP or a tumour diagnosis.
+
 Each carried ALT allele is judged on the evidence its caller wrote. The worst
 rule wins: any `low` reason makes the call `low`; otherwise any `moderate`
 reason makes it `moderate`; otherwise it is `high`.
@@ -89,6 +162,29 @@ PharmCAT still uses the input genotypes when deriving diplotypes, so its
 confidence summary retains **all** imputed calls, including rare ones, as
 low-confidence evidence. Suppression from clinical findings must not remove
 that evidence and accidentally raise a diplotype's confidence.
+
+PharmCAT reference evidence is also retained in `<stem>.confidence.tsv`, with
+`PGX_STATE` distinguishing supported reference, low-quality reference, absent
+sites, explicit no-calls, gaps and overlap conflicts. Only reference genotypes
+with known depth and GQ meeting the configured minimums reach the matcher;
+`MIN_DP`, when present in a block, is the depth floor. Reference calls do not
+require ALT allele balance or variant QD. Haploid reference uses the same
+halved depth thresholds as haploid ALT.
+Reference confidence rows cover only PharmCAT definition sites and the bases
+required by their REF spans, including absent-definition evidence. Weak reference
+blocks elsewhere in a gene are not evidence for its diplotype and do not lower
+the reported gene confidence.
+
+Multi-base reference fills use the extracted release's
+`pharmcat_positions.vcf.bgz` (or `.vcf`) definition REF, not a guessed span.
+Every base must have exactly one compatible reference observation and the
+same ploidy, with no gaps or overlapping ALT/no-call records. The sidecar
+keeps the worst supporting depth and GQ; an unknown metric stays unknown.
+Unsupported reference is passed as a no-call, never silently promoted to
+`0/0`. Expansion is bounded to gene regions, even for chromosome-sized blocks.
+Absent definitions stay absent in the matcher input, distinct from explicit
+no-calls. The existing opt-in `--absent-to-ref` may infer those sites as
+reference in PharmCAT, but their sidecar evidence remains absent/low.
 
 Contamination applies to the whole sample, not one call: another person's
 reads can turn a homozygous site heterozygous or add an allele the sample

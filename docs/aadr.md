@@ -45,11 +45,11 @@ The 2M panel contains **2,142,271** GRCh37 SNPs, including every current v66.p1
 alleles. It is **not** the separate 1,243,531-site `2M_compatibility` panel.
 It is excluded from `--formats all`; legacy panel choices and defaults are unchanged.
 Selecting `aadr_2m,aadr_1240k,aadr_ho` writes each panel separately.
-For a variant-only VCF, legacy reference-fill eligibility is evaluated against
+Absent sites in variant-only VCFs are no-calls by default. With the unsafe
+`--assume-hom-ref --min-dp 0 --min-gq 0` opt-in, reference-fill eligibility is evaluated against
 the original legacy target set: a 2M-only hit cannot turn a previously missing
 legacy chromosome into homozygous reference. Sparse VCFs can therefore have
-different absent-site calls in the two panels. Use `--no-assume-hom-ref` to
-avoid the inherited reference-filling assumption.
+different absent-site calls in the two panels under that opt-in policy.
 
 **Genetic maps are not interchangeable:** the official 2M genetic distance
 differs at **1,200,251** legacy 1240K sites (**583,490** HO sites). Each export
