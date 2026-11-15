@@ -384,6 +384,8 @@ def overlaps(work: Path, panel: Path) -> None:
             for p in hits:
                 pairs.append((f"{chrom}:{start}:{ref}:{alt}", f"{chrom}:{p}"))
                 starts.add((chrom, start))
+    if zstd.returncode:
+        raise subprocess.CalledProcessError(zstd.returncode, zstd.args)
     print(
         f"{len(pairs):,} SNV/non-SNV overlaps at {len(starts):,} record starts",
         flush=True,

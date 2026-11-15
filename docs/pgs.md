@@ -141,6 +141,9 @@ ancestry, the way the PGS Catalog Calculator (`pgsc_calc`, its
 2. **Your ancestry.** Your genotypes at the ~187,000 ancestry sites are
    projected onto the reference's 10 principal components (the `qc ancestry`
    PCA; `qc ancestry` reports the same `ancestry_pc1`…`ancestry_pc10`).
+   Site- or sample-filtered calls are left out. For a whole-genome
+   variants-only VCF, absent sites count as homozygous reference, only
+   inside `--confident-bed` when one is given.
 3. **The adjustment** (`pgscatalog.calc`'s methods, reimplemented):
    - **Adjusted percentile** (headline): `Z_norm2`, your score minus a mean
      and divided by an SD that both depend on PCs 1-4, fitted jointly on the
@@ -154,10 +157,16 @@ ancestry, the way the PGS Catalog Calculator (`pgsc_calc`, its
 
 Calibration rows your VCF has no genotype for are filled in with the mean
 dosage of the reference region you are most similar to, as pgsc_calc fills in
-missing genotypes with reference frequencies. The error this adds is about the
-square root of the imputed share of the score's variance, in SD units (on
-real HG002 and HG005 gaps, 0.05-0.17 SD); `percentile_interval` is the
-resulting 95% interval. The
+missing genotypes with reference frequencies. The error this adds
+(`imputation_error_sd`, in units of `Z_norm2`'s fitted SD at your PCs) is the
+imputed rows' variance under that region's frequencies, inflated by the
+score's linkage disequilibrium there (the reference samples' score variance
+over the summed per-variant variance). Assuming the imputed rows share the
+whole score's LD makes it an upper bound for scores of many correlated
+variants: on real HG002 and HG005 gaps it is 0.06-0.18 SD where the measured
+error is 0.05-0.16 SD, and without the inflation it would be half the
+measured error for PGS000027. `percentile_interval` is the resulting 95%
+interval. The
 percentile is **withheld** (`percentile_status`, and a `pgs_uncalibrated`
 warning saying why) when:
 
@@ -166,6 +175,7 @@ warning saying why) when:
 | `calibrated` | reported (not withheld) |
 | `below_match_threshold` | under `--min-match` of the scoring rows matched |
 | `reference_calibration_unavailable` | not a curated Catalog file on GRCh38 (custom files, uncurated IDs, GRCh37) |
+| `reference_unavailable` | a curated file, but the HGDP+1KG reference couldn't be downloaded or verified (the reason says why) |
 | `calibration_coverage_too_low` | more than 5% of the calibrated score's variance would be filled in |
 | `ancestry_projection_unavailable` | the VCF can't give ancestry genotypes (a gVCF, or variants-only but not a whole genome) |
 | `ancestry_projection_incomplete` | under 90% of the ancestry sites have a genotype |
@@ -173,7 +183,9 @@ warning saying why) when:
 
 When it is reported, `confidence` is `medium`, or `low` with a
 `pgs_ancestry_mismatch` warning when the score was developed in ancestries
-other than the reference region you are most similar to. It is never
+other than the reference region you are most similar to. The development
+ancestry is pinned with each calibrated scoring file, so it holds for a
+`--scoring-file` copy without the Catalog's metadata. It is never
 `high`: a percentile says where your score falls among reference genomes,
 not your risk, and a score predicts less well outside the ancestry it was
 developed in, whatever the adjustment. At less than `--min-match` (default
@@ -181,8 +193,8 @@ developed in, whatever the adjustment. At less than `--min-match` (default
 
 The JSON's `ancestry_calibration` holds the calibrated score, calibration
 counts and imputed variance share, the PCs, the most similar population and
-its similarity, the empirical percentile and Z, `z_norm1`, `z_norm2` and
-`percentile_interval`. The
+its similarity, the empirical percentile and Z, `z_norm1`, `z_norm2`,
+`imputation_error_sd` and `percentile_interval`. The
 manifest's metrics add `percentile` and `z_adjusted`; the TSV adds
 `z_adjusted` and `percentile_status`.
 

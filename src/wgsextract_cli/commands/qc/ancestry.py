@@ -28,8 +28,12 @@ from collections.abc import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from wgsextract_cli.core.pgs import IntervalIndex
 
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api._runtime import cancel_event
@@ -266,9 +270,11 @@ def vcf_genotypes(
     *,
     sample: str | None = None,
     build: str | None = None,
+    confident: IntervalIndex | None = None,
 ) -> Genotypes:
     """A VCF sample's genotypes at the reference sites (also used by `score
-    pgs` for its PCA projection)."""
+    pgs` for its PCA projection). A whole-genome variants-only VCF's absent
+    sites are hom-ref, only inside ``confident`` when it is given."""
     verify_dependencies(["bcftools"])
     header = run_command(["bcftools", "view", "-h", vcf], capture_output=True).stdout
     lengths = header_contig_lengths(header)
@@ -296,13 +302,13 @@ def vcf_genotypes(
         ((_contig(int(c), chr_prefix), int(p)), i)
         for i, (c, p) in enumerate(zip(sites.chrom, sites.pos, strict=True))
     )
-    query = ["bcftools", "query", "-T", str(regions), "-s", sample,
-             "-f", "%CHROM\t%POS\t%REF\t%ALT\t%FILTER[\t%GT]\n", vcf]  # fmt: skip
+    query = ["bcftools", "query", "--allow-undef-tags", "-T", str(regions), "-s", sample,
+             "-f", "%CHROM\t%POS\t%REF\t%ALT\t%FILTER[\t%GT\t%FT]\n", vcf]  # fmt: skip
     called: dict[int, int] = {}
     unknown: set[int] = set()
     ref_only = passing = 0
     for line in run_command(query, capture_output=True).stdout.splitlines():
-        contig, pos, ref, alts, filt, gt = line.split("\t")
+        contig, pos, ref, alts, filt, gt, sample_filter = line.split("\t")
         names = alts.split(",")
         for i in lookup.get((contig, int(pos)), ()):
             if ref.upper() != sites.ref[i] or i in called:
@@ -310,7 +316,8 @@ def vcf_genotypes(
             k = names.index(sites.alt[i]) + 1 if sites.alt[i] in names else None
             if k is None and not set(names) <= {".", "<*>", "<NON_REF>"}:
                 continue
-            dosage = _dosage(gt, k) if filt in _PASSING else None
+            passed = filt in _PASSING and sample_filter in _PASSING
+            dosage = _dosage(gt, k) if passed else None
             if dosage is None:
                 unknown.add(i)
                 continue
@@ -342,7 +349,11 @@ def vcf_genotypes(
                 f"whole-genome VCF. See {GUIDE}."
             )
         for i in range(len(sites.pos)):
-            if i not in called and i not in unknown:
+            if i in called or i in unknown:
+                continue
+            if confident is None or confident.contains(
+                str(int(sites.chrom[i])), int(sites.pos[i])
+            ):
                 called[i] = 0
                 filled += 1
     order = sorted(called)

@@ -49,7 +49,7 @@ every use. `ref ancestry --delete` removes it. It covers GRCh38, GRCh37/hg19
 | Input | Genotypes | Notes |
 | :--- | :--- | :--- |
 | BAM/CRAM | read counts at the sites (`bcftools mpileup`, MAPQ and base quality 20), as genotype likelihoods | Low coverage gives wider intervals, not biased proportions. Needs its index, and the reference FASTA for a CRAM. |
-| VCF | the sample's calls (REF and the site's ALT; filtered or other-allele calls are unknown) | `--sample` picks one sample of a multi-sample VCF. gVCFs are refused. |
+| VCF | the sample's calls (REF and the site's ALT; site- or sample-filtered (`FORMAT/FT`) and other-allele calls are unknown) | `--sample` picks one sample of a multi-sample VCF. gVCFs are refused. |
 | Microarray raw data | the genotypes at the chip's markers that are reference sites | 23andMe, AncestryDNA, FTDNA, MyHeritage and similar layouts (`.txt`, `.csv`, `.zip`, `.gz`). The build is found from the positions. |
 
 A variants-only VCF omits hom-ref sites. For a whole-genome call set, a

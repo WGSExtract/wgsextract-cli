@@ -2,7 +2,6 @@
 
 import csv
 import json
-import math
 import tempfile
 from contextlib import ExitStack
 from pathlib import Path
@@ -61,7 +60,7 @@ def run_pgs(params: ScorePgsParams) -> None:
         result.add_input(params.confident_bed, "confident_bed")
     if params.ref:
         result.add_input(params.ref, "reference")
-    calibration = _calibration(scoring, params)
+    calibration, reference_problem = _calibration(scoring, params)
     report("pgs", "Indexing observed calls on disk")
     with (
         tempfile.TemporaryDirectory(prefix=".pgs-", dir=outdir) as work,
@@ -86,9 +85,9 @@ def run_pgs(params: ScorePgsParams) -> None:
             keep_ambiguous=bool(params.keep_ambiguous),
             calibration=calibration.accumulator if calibration else None,
         )
-        if calibration is not None:
+        if calibration is not None and data["match_rate"] >= data["minimum_match_rate"]:
             report("pgs", "Projecting the sample onto the ancestry PCA")
-            calibration.project(params, genotypes.sample, Path(work))
+            calibration.project(params, genotypes.sample, Path(work), confident)
         if matched_file is not None and data["score_sum"] is not None:
             report("pgs", "Cross-checking matched calls with PLINK 2")
             data["plink2_crosscheck"] = pgs_plink.crosscheck(
@@ -101,7 +100,7 @@ def run_pgs(params: ScorePgsParams) -> None:
             match_rate=data["match_rate"],
             minimum=data["minimum_match_rate"],
         )
-    _calibrate(data, calibration, path)
+    _calibrate(data, calibration, reference_problem)
     if data["match_counts"].get("unsupported"):
         warn(
             "pgs_unsupported_variants",
@@ -203,7 +202,13 @@ class _Calibration:
         self.training_regions: Any = None
         self.problem: str | None = None
 
-    def project(self, params: ScorePgsParams, sample: str, work: Path) -> None:
+    def project(
+        self,
+        params: ScorePgsParams,
+        sample: str,
+        work: Path,
+        confident: pgs.ConfidentBed | None,
+    ) -> None:
         from wgsextract_cli.commands.qc.ancestry import pca_projection, vcf_genotypes
 
         try:
@@ -219,7 +224,12 @@ class _Calibration:
                     "the ancestry reference isn't the one the PGS reference was built on"
                 )
             genotypes = vcf_genotypes(
-                str(params.input), ancestry, work, sample=sample, build="hg38"
+                str(params.input),
+                ancestry,
+                work,
+                sample=sample,
+                build="hg38",
+                confident=confident,
             )
             self.pcs, self.pca_sites = pca_projection(genotypes, ancestry)
             self.training_regions = self.reference.training_regions(
@@ -231,20 +241,20 @@ class _Calibration:
 
 def _calibration(
     scoring: pgs.ScoringFile, params: ScorePgsParams
-) -> _Calibration | None:
-    """The calibration of this exact scoring file, when the reference has one."""
+) -> tuple[_Calibration | None, str | None]:
+    """The calibration of this exact scoring file, when the reference has one,
+    or why the reference couldn't be loaded."""
     pgs_id = pgs_reference.SCORES.get(scoring.provenance()["sha256"])
     if pgs_id is None or params.build != pgs_reference.BUILD:
-        return None
+        return None, None
     try:
         reference = pgs_reference.load(
             pgs_reference.library_for(str(params.ref) if params.ref else None),
             cancel=cancel_event(),
         )
     except WGSExtractError as exc:
-        warn("pgs_calibration_unavailable", f"PGS reference not available: {exc}")
-        return None
-    return _Calibration(reference, pgs_id)
+        return None, str(exc)
+    return _Calibration(reference, pgs_id), None
 
 
 # Catalog ancestry categories (development samples, else GWAS) that cover each
@@ -260,19 +270,6 @@ _CATALOG_REGIONS = {
 }
 
 
-def _development_ancestry(catalog_metadata: Path) -> set[str]:
-    try:
-        info = json.loads(catalog_metadata.read_text(encoding="utf-8"))
-        stages = info.get("ancestry_distribution") or {}
-        stage = stages.get("dev") or stages.get("gwas") or {}
-    except (OSError, ValueError, AttributeError):
-        return set()
-    groups = set(stage.get("dist") or {})
-    for multi in stage.get("multi") or []:
-        groups.add(multi.split("_", 1)[-1])
-    return groups
-
-
 def _withhold(data: dict[str, Any], status: str, reason: str) -> None:
     data.update(percentile=None, percentile_status=status,
                 percentile_unavailable_reason=reason)  # fmt: skip
@@ -282,7 +279,9 @@ def _withhold(data: dict[str, Any], status: str, reason: str) -> None:
 
 
 def _calibrate(
-    data: dict[str, Any], calibration: _Calibration | None, scoring_path: Path
+    data: dict[str, Any],
+    calibration: _Calibration | None,
+    reference_problem: str | None,
 ) -> None:
     """Fill the percentile fields, or say why there is none."""
     data["z_adjusted"] = None
@@ -290,6 +289,10 @@ def _calibrate(
     if data["match_rate"] < data["minimum_match_rate"]:
         _withhold(data, "below_match_threshold",
                   "too few scoring variants matched.")  # fmt: skip
+        return
+    if reference_problem is not None:
+        _withhold(data, "reference_unavailable",
+                  f"the HGDP+1KG reference couldn't be loaded: {reference_problem}")  # fmt: skip
         return
     if calibration is None:
         _withhold(data, "reference_calibration_unavailable",
@@ -334,9 +337,10 @@ def _calibrate(
         return
     a.update(pgs_reference.adjust(reference, calibration.pgs_id, result.total, calibration.pcs,
                                   calibration.training_regions, a["most_similar_population"]))  # fmt: skip
-    # The error the imputed rows add is about the square root of their share
-    # of the score's variance, in SD units (measured in #617; docs/pgs.md).
-    spread = 1.96 * math.sqrt(result.imputed_share)
+    a["imputation_error_sd"] = pgs_reference.imputation_sd(
+        reference, calibration.pgs_id, result, calibration.pcs,
+        calibration.training_regions, a["most_similar_population"])  # fmt: skip
+    spread = 1.96 * a["imputation_error_sd"]
     a["percentile_interval"] = [
         round(pgs_reference.normal_percentile(a["z_norm2"] - spread), 1),
         round(pgs_reference.normal_percentile(a["z_norm2"] + spread), 1),
@@ -350,11 +354,17 @@ def _calibrate(
         percentile_unavailable_reason=None,
         confidence="medium",
     )
-    development = _development_ancestry(
-        scoring_path.with_name(f"{data['pgs_id']}.json")
-    )
+    development = pgs_reference.DEVELOPMENT_ANCESTRY.get(calibration.pgs_id)
     region = a["most_similar_population"]
-    if development and not development & _CATALOG_REGIONS.get(region, set()):
+    if development is None:
+        data["confidence"] = "low"
+        warn(
+            "pgs_ancestry_unknown",
+            "The ancestry the score was developed in is unknown, so it may "
+            "predict less well for this sample.",
+            most_similar_population=region,
+        )
+    elif not development & _CATALOG_REGIONS.get(region, set()):
         data["confidence"] = "low"
         warn(
             "pgs_ancestry_mismatch",

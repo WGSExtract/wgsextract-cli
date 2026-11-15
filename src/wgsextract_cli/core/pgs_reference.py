@@ -63,6 +63,23 @@ SCORES: dict[str, str] = {
     "3472bfce02685c1de9cb34bdccc07efcb0c5560b50cbbc5f049bb952bc173204": "PGS000070",
     "e08b794c10f1ca4628c7f8de4082d8ac0182079f72f8138ef19052eaa0b4e358": "PGS000087",
 }
+# The Catalog ancestry categories each score was developed in (its
+# ``ancestry_distribution``: development samples, else GWAS; ``multi`` entries
+# by their second part), pinned with the files above so a copied scoring file
+# without its metadata JSON keeps them.
+DEVELOPMENT_ANCESTRY: dict[str, frozenset[str]] = {
+    "PGS000004": frozenset({"EUR"}),
+    "PGS000018": frozenset({"MAE", "EUR", "NR"}),
+    "PGS000020": frozenset({"EUR"}),
+    "PGS000027": frozenset({"EUR"}),
+    "PGS000038": frozenset({"EUR"}),
+    "PGS000063": frozenset({"EUR"}),
+    "PGS000065": frozenset({"AFR", "AMR", "EAS", "EUR", "SAS"}),
+    "PGS000067": frozenset({"EUR"}),
+    "PGS000070": frozenset({"EAS", "EUR"}),
+    "PGS000087": frozenset({"EUR"}),
+    "PGS000297": frozenset({"NR", "EUR"}),
+}
 # Validated bounds (docs/pgs.md, measured in #617): at most this share of the
 # calibrated score's variance may come from imputed rows; at least this share
 # of the ancestry sites must have a genotype; and pgscatalog.calc's
@@ -78,6 +95,8 @@ class Calibrated:
     matched: int
     imputed: int
     imputed_share: float  # of the calibrated score's variance
+    imputed_variance: float  # summed over the imputed rows
+    site_variance: float  # summed over all calibration rows
 
 
 class Accumulator:
@@ -118,13 +137,14 @@ class Accumulator:
         dosage = np.where(missing, 2 * f, self.dosage)
         variance = self.weight**2 * 2 * f * (1 - f)
         total_variance = float(variance.sum())
+        imputed_variance = float(variance[missing].sum())
         return Calibrated(
             total=float(self.weight @ dosage),
             matched=int((~missing).sum()),
             imputed=int(missing.sum()),
-            imputed_share=float(variance[missing].sum()) / total_variance
-            if total_variance
-            else 1.0,
+            imputed_share=imputed_variance / total_variance if total_variance else 1.0,
+            imputed_variance=imputed_variance,
+            site_variance=total_variance,
         )
 
 
@@ -233,8 +253,8 @@ def adjust(
     y = score - model["pgs_offset"]
     c1 = np.asarray(model["norm1_coef"])
     z1 = (y - (c1[0] + xn @ c1[1:])) / model["norm1_resid_std"]
-    mu, var = np.asarray(model["norm2_mu_coef"]), np.asarray(model["norm2_var_coef"])
-    z2 = (y - (mu[0] + xn @ mu[1:])) / math.sqrt(math.exp(var[0] + xn @ var[1:]))
+    mu = np.asarray(model["norm2_mu_coef"])
+    z2 = (y - (mu[0] + xn @ mu[1:])) / norm2_sd(reference, pgs_id, pcs)
     return {
         "empirical_percentile": _percentile_of_score(region_scores, score),
         "empirical_z": (score - region["mean"]) / region["std"],
@@ -243,6 +263,42 @@ def adjust(
         "z_norm2": float(z2),
         "adjusted_percentile": normal_percentile(float(z2)),
     }
+
+
+def norm2_sd(reference: PgsReference, pgs_id: str, pcs: np.ndarray) -> float:
+    """Z_norm2's fitted SD of the calibrated score at the sample's PCs."""
+    import numpy as np
+
+    model = reference.info["scores"][pgs_id]["model"]
+    k4 = int(reference.info["n_normalization"])
+    xn = (np.asarray(pcs[:k4], dtype=np.float64) - model["pc_mean"]) / model["pc_std"]
+    var = np.asarray(model["norm2_var_coef"])
+    return math.sqrt(math.exp(var[0] + xn @ var[1:]))
+
+
+def imputation_sd(
+    reference: PgsReference,
+    pgs_id: str,
+    result: Calibrated,
+    pcs: np.ndarray,
+    training_regions: np.ndarray,
+    closest: str,
+) -> float:
+    """The SD the imputed rows add to Z_norm2: their summed per-site variance,
+    times the score's LD inflation in the closest region (its reference
+    samples' score variance over the summed per-site variance, at least 1),
+    over Z_norm2's fitted SD. The inflation assumes the imputed rows are in as
+    much LD as the whole score, which bounds the error from above for scores
+    of many correlated variants (docs/pgs.md)."""
+    region_scores = reference.training_scores(pgs_id)[training_regions == closest]
+    inflation = (
+        max(1.0, float(region_scores.var()) / result.site_variance)
+        if result.site_variance and region_scores.size > 1
+        else 1.0
+    )
+    return math.sqrt(result.imputed_variance * inflation) / norm2_sd(
+        reference, pgs_id, pcs
+    )
 
 
 def normal_percentile(z: float) -> float:
@@ -255,8 +311,12 @@ def library_for(ref: str | None) -> str:
     return resolve_reference_library(library_roots(ref).resource_root(FOLDER))
 
 
+def folder(reflib: str | None = None) -> Path:
+    return Path(resolve_reference_library(reflib), FOLDER)
+
+
 def path(reflib: str | None = None) -> Path:
-    return Path(resolve_reference_library(reflib), FOLDER) / NAME
+    return folder(reflib) / NAME
 
 
 def _sha256(file: Path) -> str:

@@ -547,14 +547,27 @@ def _calibrated_world(
     *,
     offset_pc: float = 0.0,
     calibrate_rows: int = 40,
+    whole_genome: bool = False,
+    development: frozenset[str] | None = frozenset({"EUR"}),
 ) -> dict:
     """A fake genome with the ancestry reference beside it (5 PCs; the
     sample's projection is ``offset_pc`` on PC1), a 40-row scoring file at its
     sites, and a PGS reference for that file pinned in place of the published
-    one. Its model: Z_norm2 = (calibrated score - 1) / 2 at any PCs."""
+    one, developed in ``development``. Its model: Z_norm2 = (calibrated score
+    - 1) / 2 at any PCs. ``whole_genome`` spreads the sites over 22 small
+    autosomes, so a variants-only VCF of them passes as a whole genome."""
     from tests.ancestry_helpers import build, calls_vcf
 
-    world = build(folder, [1, 0, 0, 0, 0, 0, 0])
+    shape = (
+        {
+            "contigs": tuple(f"chr{c}" for c in range(1, 23)),
+            "length": 40_000,
+            "sites_per_contig": 100,
+        }
+        if whole_genome
+        else {}
+    )
+    world = build(folder, [1, 0, 0, 0, 0, 0, 0], **shape)
     npz = folder / "ancestry" / "wgsextract-ancestry-hgdp1kg-v1.npz"
     with np.load(npz) as data:
         arrays = {k: data[k] for k in data.files}
@@ -651,9 +664,15 @@ def _calibrated_world(
     )
     monkeypatch.setattr(pgs_reference, "SHA256", _sha(reference))
     monkeypatch.setattr(pgs_reference, "SCORES", {_sha(scoring): "PGS999999"})
+    monkeypatch.setattr(
+        pgs_reference,
+        "DEVELOPMENT_ANCESTRY",
+        {} if development is None else {"PGS999999": development},
+    )
     vcf = calls_vcf(world, folder / "sample.vcf.gz", variants_only=False)
     expected = sum(0.1 * g for _, g in rows)
     return {
+        "world": world,
         "fasta": world["fasta"],
         "vcf": vcf,
         "scoring": scoring,
@@ -668,7 +687,7 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _calibrated(world: dict, outdir: Path) -> object:
+def _calibrated(world: dict, outdir: Path, **options: object) -> object:
     return api.score.pgs(
         api.ScorePgsParams(
             input=world["vcf"],
@@ -676,9 +695,30 @@ def _calibrated(world: dict, outdir: Path) -> object:
             scoring_file=world["scoring"],
             ref=world["fasta"],
             outdir=outdir,
+            **options,
         ),
         check=False,
     )
+
+
+def _drop_scored(world: dict, count: int, plain: Path) -> None:
+    """Drop the first ``count`` scored sites from the sample's VCF."""
+    lines = subprocess.run(
+        ["bcftools", "view", str(world["vcf"])],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+    dropped = set(world["scored"][:count])
+    plain.write_text(
+        "\n".join(
+            line
+            for line in lines
+            if line.startswith("#") or tuple(line.split("\t")[:2]) not in dropped
+        )
+        + "\n"
+    )
+    world["vcf"] = plain
 
 
 def test_617_percentile_is_adjusted_for_the_samples_ancestry(
@@ -726,23 +766,7 @@ def test_617_missing_reference_scored_variants_withhold_the_percentile(
     world = _calibrated_world(tmp_path / "genome", monkeypatch)
     # Drop 4 of the 40 calibration sites from the sample's VCF: 10% of the
     # calibrated score's variance is then imputed (the bound is 5%).
-    plain = tmp_path / "partial.vcf"
-    lines = subprocess.run(
-        ["bcftools", "view", str(world["vcf"])],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.splitlines()
-    dropped = set(world["scored"][:4])
-    plain.write_text(
-        "\n".join(
-            line
-            for line in lines
-            if line.startswith("#") or tuple(line.split("\t")[:2]) not in dropped
-        )
-        + "\n"
-    )
-    world["vcf"] = plain
+    _drop_scored(world, 4, tmp_path / "partial.vcf")
     result = _calibrated(world, tmp_path / "out")
     assert result.exit_code == 0, result.error
     assert result.details["percentile"] is None
@@ -762,3 +786,180 @@ def test_617_uncalibrated_scoring_file_never_downloads_the_reference(
     result = api.score.pgs(_params(tmp_path, min_match=0.1))
     assert result.details["percentile_status"] == "reference_calibration_unavailable"
     assert result.details["percentile"] is None
+
+
+def _codes(result: object) -> set[str]:
+    return {w.code for w in result.warnings}  # type: ignore[attr-defined]
+
+
+def test_617_pr925_confident_bed_limits_hom_ref_ancestry_sites(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR #925 review: a variants-only VCF's absent ancestry sites outside
+    --confident-bed were filled as hom-ref, passing the 90% coverage gate."""
+    from tests.ancestry_helpers import calls_vcf
+
+    world = _calibrated_world(tmp_path / "genome", monkeypatch, whole_genome=True)
+    world["vcf"] = calls_vcf(
+        world["world"], tmp_path / "variants.vcf.gz", variants_only=True
+    )
+    everywhere = tmp_path / "all.bed"
+    everywhere.write_text("".join(f"chr{c}\t0\t40000\n" for c in range(1, 23)))
+    half = tmp_path / "half.bed"
+    half.write_text("".join(f"chr{c}\t0\t40000\n" for c in range(1, 12)))
+
+    whole = _calibrated(world, tmp_path / "all", confident_bed=everywhere)
+    assert whole.exit_code == 0, whole.error
+    assert whole.details["ancestry_calibration"]["pca_sites_fraction"] == 1.0
+    assert whole.details["percentile_status"] == "calibrated"
+
+    result = _calibrated(world, tmp_path / "half", confident_bed=half)
+    assert result.exit_code == 0, result.error
+    calibration = result.details["ancestry_calibration"]
+    genotypes = world["world"]["genotypes"]
+    outside = slice(len(genotypes) // 2, None)
+    # Inside the BED every site counts; outside it only the listed variants.
+    assert calibration["pca_sites_fraction"] == pytest.approx(
+        (len(genotypes) // 2 + int((genotypes[outside] > 0).sum())) / len(genotypes)
+    )
+    assert result.details["percentile_status"] == "ancestry_projection_incomplete"
+    assert result.details["percentile"] is None
+
+
+def test_617_pr925_sample_filtered_calls_dont_count_toward_ancestry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR #925 review: calls failing the sample's FORMAT/FT counted toward the
+    ancestry PCs and the 90% coverage gate."""
+    from tests.ancestry_helpers import calls_vcf
+
+    world = _calibrated_world(tmp_path / "genome", monkeypatch)
+    sites = len(world["world"]["sites"])
+    # The scored sites are among the first 100; fail a third of the others.
+    world["vcf"] = calls_vcf(
+        world["world"],
+        tmp_path / "ft.vcf.gz",
+        variants_only=False,
+        failed=frozenset(range(sites - sites // 3, sites)),
+    )
+    result = _calibrated(world, tmp_path / "out")
+    assert result.exit_code == 0, result.error
+    calibration = result.details["ancestry_calibration"]
+    assert calibration["pca_sites_fraction"] == pytest.approx(
+        (sites - sites // 3) / sites
+    )
+    assert result.details["percentile_status"] == "ancestry_projection_incomplete"
+
+
+@pytest.mark.parametrize(
+    ("development", "confidence", "warning"),
+    [
+        (frozenset({"EUR"}), "medium", None),
+        (frozenset({"AFR"}), "low", "pgs_ancestry_mismatch"),
+        (None, "low", "pgs_ancestry_unknown"),
+    ],
+)
+def test_617_pr925_development_ancestry_holds_without_catalog_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    development: frozenset[str] | None,
+    confidence: str,
+    warning: str | None,
+) -> None:
+    """PR #925 review: a pinned scoring file given by --scoring-file, without
+    the Catalog's metadata JSON beside it, stayed `medium` and lost
+    pgs_ancestry_mismatch."""
+    world = _calibrated_world(tmp_path / "genome", monkeypatch, development=development)
+    assert not list(world["scoring"].parent.glob("*.json"))
+    result = _calibrated(world, tmp_path / "out")
+    assert result.exit_code == 0, result.error
+    assert result.details["percentile_status"] == "calibrated"
+    assert result.details["confidence"] == confidence
+    mismatch = {"pgs_ancestry_mismatch", "pgs_ancestry_unknown"}
+    assert _codes(result) & mismatch == ({warning} if warning else set())
+
+
+def test_617_pr925_low_match_skips_the_ancestry_projection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR #925 review: a score already below --min-match still downloaded the
+    ancestry reference and reread the VCF for a projection it discarded."""
+
+    def no_network(*args: object, **kwargs: object) -> bool:
+        raise AssertionError("ancestry reference download attempted")
+
+    world = _calibrated_world(tmp_path / "genome", monkeypatch)
+    _drop_scored(world, 4, tmp_path / "partial.vcf")
+    (tmp_path / "genome" / "ancestry" / "wgsextract-ancestry-hgdp1kg-v1.npz").unlink()
+    monkeypatch.setattr(
+        "wgsextract_cli.core.ancestry_reference.download_file", no_network
+    )
+    result = _calibrated(world, tmp_path / "out", min_match=0.95)
+    assert result.exit_code == 0, result.error
+    assert result.details["percentile_status"] == "below_match_threshold"
+    assert "pgs_low_match" in _codes(result)
+
+
+def test_617_pr925_reference_download_failure_is_its_own_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR #925 review: a curated score whose reference couldn't be downloaded
+    was reported as having no reference distribution at all."""
+    world = _calibrated_world(tmp_path / "genome", monkeypatch)
+    (tmp_path / "genome" / "pgs" / pgs_reference.NAME).unlink()
+    monkeypatch.setattr(
+        "wgsextract_cli.core.pgs_reference.download_file", lambda *a, **k: False
+    )
+    result = _calibrated(world, tmp_path / "out")
+    assert result.exit_code == 0, result.error
+    assert result.details["percentile"] is None
+    assert result.details["percentile_status"] == "reference_unavailable"
+    assert "Could not download" in result.details["percentile_unavailable_reason"]
+    assert "pgs_uncalibrated" in _codes(result)
+
+
+def test_617_pr925_interval_scales_imputed_variance_by_the_fitted_sd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR #925 review: the 95% interval took the imputed share of the summed
+    per-site variance as Z_norm2 units, not the imputed rows' variance (with
+    the score's LD) over Z_norm2's fitted SD (2 here)."""
+    world = _calibrated_world(tmp_path / "genome", monkeypatch)
+    _drop_scored(world, 1, tmp_path / "partial.vcf")
+    result = _calibrated(world, tmp_path / "out")
+    assert result.exit_code == 0, result.error
+    assert result.details["percentile_status"] == "calibrated"
+    z = result.details["z_adjusted"]
+    # Weight 0.1 at frequency 0.5: per-row variance 0.1^2 * 2 * 0.25; the
+    # EUR reference scores' variance over the 40 rows' sum is the LD inflation.
+    row = 0.1**2 * 0.5
+    inflation = float(np.linspace(0.0, 3.9, TRAINING)[:20].var()) / (40 * row)
+    error = math.sqrt(row * inflation) / 2
+    calibration = result.details["ancestry_calibration"]
+    assert calibration["imputation_error_sd"] == pytest.approx(error, rel=1e-3)
+    low, high = calibration["percentile_interval"]
+    assert low == pytest.approx(
+        pgs_reference.normal_percentile(z - 1.96 * error), abs=0.06
+    )
+    assert high == pytest.approx(
+        pgs_reference.normal_percentile(z + 1.96 * error), abs=0.06
+    )
+
+
+def test_617_pr925_score_declares_the_library_folders_it_downloads_into(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR #925 review: first-use reference downloads into the shared library
+    weren't declared, so the server could run two such jobs at once."""
+    world = _calibrated_world(tmp_path / "genome", monkeypatch)
+    params = api.ScorePgsParams(
+        input=world["vcf"],
+        build="GRCh38",
+        scoring_file=world["scoring"],
+        ref=world["fasta"],
+        outdir=tmp_path / "out",
+    )
+    library = tmp_path / "genome"
+    assert {library / "pgs", library / "ancestry"} <= {
+        Path(f).resolve() for f in params.write_folders()
+    }
