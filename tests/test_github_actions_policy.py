@@ -55,6 +55,120 @@ def top_level_conjuncts(expression: str) -> list[str]:
     return atoms
 
 
+def workflow_concurrency(workflow: Path) -> dict[str, str]:
+    """Read workflow-level concurrency without assuming a YAML indent width."""
+    lines = workflow.read_text().splitlines()
+    start = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if re.fullmatch(r"concurrency:\s*(?:#.*)?", line)
+        ),
+        None,
+    )
+    if start is None:
+        return {}
+    fields = {}
+    for line in lines[start + 1 :]:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if not line[0].isspace():
+            break
+        key, separator, value = line.strip().partition(":")
+        if separator:
+            fields[key] = value.strip()
+    return fields
+
+
+def draft_concurrency_group(workflow: Path, *, draft: bool, action: str) -> str:
+    """Render the draft-dependent expression; keep identical PR context opaque."""
+    group = workflow_concurrency(workflow)["group"]
+
+    def render(expression: re.Match[str]) -> str:
+        source = expression[1]
+        if "github.event.pull_request.draft" not in source:
+            return expression[0]
+        source = source.replace("github.event.pull_request.draft", repr(draft))
+        source = source.replace("github.event.action", repr(action))
+        tree = ast.parse(
+            source.replace("&&", " and ").replace("||", " or ").strip(), mode="eval"
+        )
+
+        def value(node: ast.AST) -> object:
+            if isinstance(node, ast.Constant):
+                return node.value
+            if isinstance(node, ast.BoolOp):
+                result = value(node.values[0])
+                for child in node.values[1:]:
+                    if (isinstance(node.op, ast.And) and not result) or (
+                        isinstance(node.op, ast.Or) and result
+                    ):
+                        return result
+                    result = value(child)
+                return result
+            if isinstance(node, ast.Compare) and len(node.ops) == 1:
+                left, right = value(node.left), value(node.comparators[0])
+                if isinstance(node.ops[0], ast.NotEq):
+                    return left != right
+                if isinstance(node.ops[0], ast.Eq):
+                    return left == right
+            raise AssertionError(f"Unsupported concurrency expression: {source}")
+
+        return str(value(tree.body))
+
+    return re.sub(r"\$\{\{(.*?)\}\}", render, group)
+
+
+@pytest.mark.parametrize(
+    "workflow", sorted(WORKFLOWS.glob("*.yml")), ids=lambda p: p.name
+)
+def test_936_late_draft_payload_cannot_supersede_readiness(workflow: Path) -> None:
+    if all(
+        event_path_filters(workflow, event) is None
+        for event in ("pull_request", "pull_request_target")
+    ):
+        pytest.skip("No PR trigger; draft payload cannot supersede readiness")
+    concurrency = workflow_concurrency(workflow)
+    if concurrency.get("cancel-in-progress", "false") == "false":
+        pytest.skip("No cancelling workflow concurrency")
+    if workflow.name == "pr_draft_cancel.yml":
+        pytest.skip("Runner-free cancellation helper; covered by label-lane regression")
+    ready = draft_concurrency_group(workflow, draft=False, action="ready_for_review")
+    delayed = draft_concurrency_group(workflow, draft=True, action="synchronize")
+    assert delayed != ready, workflow.name
+    assert draft_concurrency_group(workflow, draft=False, action="synchronize") == ready
+    assert (
+        draft_concurrency_group(workflow, draft=True, action="converted_to_draft")
+        == ready
+    )
+
+
+@pytest.mark.parametrize("indent", ["  ", "    "])
+@pytest.mark.parametrize(
+    "trigger",
+    [
+        "on:\n  pull_request:\n    types: [synchronize, ready_for_review]\n",
+        "on:\n    pull_request: {types: [synchronize, ready_for_review]}\n",
+        "on: {pull_request: {types: [synchronize, ready_for_review]}}\n",
+    ],
+)
+def test_936_draft_race_regression_accepts_yaml_formatting(
+    tmp_path: Path, indent: str, trigger: str
+) -> None:
+    workflow = tmp_path / "workflow.yml"
+    workflow.write_text(
+        trigger
+        + "concurrency:\n"
+        + f"{indent}group: pr-${{{{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}}}\n"
+        + f"{indent}cancel-in-progress: true\n"
+        + "jobs:\n  run:\n    steps:\n      - env:\n          group: not-workflow-concurrency\n"
+    )
+    assert event_path_filters(workflow, "pull_request") is not None
+    assert draft_concurrency_group(workflow, draft=True, action="synchronize") != (
+        draft_concurrency_group(workflow, draft=False, action="ready_for_review")
+    )
+
+
 @pytest.mark.parametrize(
     "workflow", sorted(WORKFLOWS.glob("*.y*ml")), ids=lambda p: p.name
 )
@@ -142,11 +256,19 @@ def test_910_redrafting_cancels_the_separate_install_lab_label_lane() -> None:
     label_group = re.search(r"^  group: (.*)", cancellation, re.MULTILINE)
     assert area_group and label_group
     label_run = re.sub(
-        r"\$\{\{ contains\(.*\}\}",
+        r"\$\{\{ contains\(.*?\}\}",
         "label-run-install-lab",
-        area_group[1],
+        draft_concurrency_group(
+            WORKFLOWS / "pr_ci.yml", draft=True, action="converted_to_draft"
+        ),
     )
-    code_run = re.sub(r"\$\{\{ contains\(.*\}\}", "diff", area_group[1])
+    code_run = re.sub(
+        r"\$\{\{ contains\(.*?\}\}",
+        "diff",
+        draft_concurrency_group(
+            WORKFLOWS / "pr_ci.yml", draft=True, action="converted_to_draft"
+        ),
+    )
     assert label_group[1] == label_run
     assert label_group[1] != code_run
     assert "converted_to_draft" in cancellation

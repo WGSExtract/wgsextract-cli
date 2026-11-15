@@ -26,6 +26,15 @@ The runner-free `pr_draft_cancel.yml` workflow also cancels the separate
 Install Lab label group on redrafting/readiness, without letting ordinary
 label events cancel code validation.
 
+Draft-payload events other than `converted_to_draft` use a separate `-draft`
+concurrency group. GitHub may deliver a draft `synchronize` event after
+`ready_for_review`; its skipped jobs must not cancel the full ready run.
+This isolation applies to every PR workflow with cancelling concurrency, not
+just area routing. Ready pushes still supersede earlier ready runs, and
+`converted_to_draft` deliberately enters the ready group to stop active work.
+Non-PR groups are unchanged. No live-state lookup runner is needed: drafts
+still allocate zero runners, and readiness always retains its own full run.
+
 Test dependencies take precedence over area exclusions. The router scans the
 root test suite's imports, path literals, composed pathlib paths and directory
 globs without executing tests. Inputs read only by the lightweight docs modules
