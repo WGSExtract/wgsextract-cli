@@ -10,7 +10,7 @@ test("routes POSIX Python scripts through python3", async (t) => {
     t.skip("POSIX command resolution is platform-specific.");
     return;
   }
-  const script = path.resolve("..", "examples", "WGSExtract", "scripts", "posix", "test-genome-library.py");
+  const script = path.resolve("..", "examples", "WGSExtract", "scripts", "posix", "coverage-state.py");
   assert.deepEqual(await platformCommand(script, ["download"]), {
     executable: "python3",
     args: [script, "download"],
@@ -23,7 +23,7 @@ test("reports resolved POSIX action script paths", async (t) => {
     return;
   }
   const bundleRoot = path.resolve("..", "examples", "WGSExtract");
-  const script = path.join(bundleRoot, "scripts", "posix", "test-genome-library.py");
+  const script = path.join(bundleRoot, "scripts", "posix", "coverage-state.py");
   const calls = [];
   const events = [];
 
@@ -31,7 +31,7 @@ test("reports resolved POSIX action script paths", async (t) => {
     {
       title: "Download Test Genome",
       command: {
-        executable: "{{bundleRoot}}/scripts/test-genome-library.py",
+        executable: "{{bundleRoot}}/scripts/coverage-state.py",
         arguments: ["download", "{{genome_library}}"],
       },
     },
@@ -65,7 +65,7 @@ test("reports non-zero POSIX action results through complete events", async (t) 
     return;
   }
   const bundleRoot = path.resolve("..", "examples", "WGSExtract");
-  const script = path.join(bundleRoot, "scripts", "posix", "test-genome-library.py");
+  const script = path.join(bundleRoot, "scripts", "posix", "coverage-state.py");
   const calls = [];
   const events = [];
 
@@ -73,7 +73,7 @@ test("reports non-zero POSIX action results through complete events", async (t) 
     {
       title: "Download Test Genome",
       command: {
-        executable: "{{bundleRoot}}/scripts/test-genome-library.py",
+        executable: "{{bundleRoot}}/scripts/coverage-state.py",
         arguments: ["download", "{{genome_library}}"],
       },
     },

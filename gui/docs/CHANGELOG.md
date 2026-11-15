@@ -15,6 +15,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - An action can name its main input with `primaryInput` (a placeholder), shown in the Jobs list's File column; without it the list shows the first file path control the command uses. WGSExtract sets it where that would be an output or a folder (MultiQC, Generate Batch, reference downloads).
 - WGSExtract's Datasets page is now **My Genomes**.
 - WGSExtract's Reference Genomes delete button runs `wgsextract ref library --delete`, and its `delete-reference-genome` scripts are gone. It asks first and refreshes the table as before; it now also removes the bwa-mem2 index, dense suffix-array files and run manifests, and refuses while another run is building the genome's bwa index.
+- WGSExtract's My Genomes test genome buttons run `wgsextract ref test-genome --install` and `--delete`, and the `test-genome-library` scripts are gone. Installing still downloads the SHA-256-pinned zip into the dataset library's `.downloads` folder (now resuming an interrupted download) and unpacks it with its `genome-config.toml`; deleting still removes both, and now unlinks a linked dataset folder instead of refusing.
 
 ## [0.8.7] - 2026-11-11
 

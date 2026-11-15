@@ -162,6 +162,7 @@ from .ref import (
     RefSomalierParams,
     RefSpliceaiParams,
     RefStatusParams,
+    RefTestGenomeParams,
     RefVerifyParams,
     RefYbrowseParams,
 )
@@ -280,6 +281,7 @@ __all__ = [
     "RefSomalierParams",
     "RefSpliceaiParams",
     "RefStatusParams",
+    "RefTestGenomeParams",
     "RefVerifyParams",
     "RefYbrowseParams",
     "RepairFtdnaBamParams",

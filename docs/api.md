@@ -2017,8 +2017,30 @@ ploidy and mappability files, and the test genome.
 | --- | --- | --- | --- | --- |
 | `ref` | `Path \| None` | `None` | `--ref` | Reference library folder, or a FASTA in it (default: config reference_library, else reference_fasta's library, else the default library). |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | A BAM/CRAM or VCF whose build picks the annotation files to report. |
-| `dataset_library` | `Path \| None` | `None` | `--dataset-library` | Dataset library folder for the test dataset's status (default: config dataset_library, else ``datasets`` beside the reference library). |
+| `dataset_library` | `Path \| None` | `None` | `--dataset-library` | Dataset library folder for the test genome (default: config dataset_library, else ``datasets`` beside the reference library). |
 | `annotation_vcf` | `Path \| None` | `None` | `--annotation-vcf` | Custom annotation VCF path to include in readiness checks. |
+
+### `api.ref.test_genome(RefTestGenomeParams)`
+
+CLI: `wgsextract ref test-genome`.
+
+Report, install or delete the test genome. `details` has the dataset
+`library`, `installed`, `status` (`installed`, `incomplete`
+while a download is partial, else `missing`) and `path` (its
+folder), as afterwards; `install` adds `changed` (false when it was
+already complete), `delete` adds `deleted` (the paths deleted) and
+`bytes_freed`.
+
+`RefTestGenomeParams`: The test genome: the small hg19 benchmark dataset (1000 Genomes
+HG00096) in the dataset library. Reports whether it is installed;
+`install` downloads it (SHA-256 pinned) and `delete` deletes it.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `ref` | `Path \| None` | `None` | `--ref` | Reference library folder, or a FASTA in it (default: config reference_library, else reference_fasta's library, else the default library). |
+| `dataset_library` | `Path \| None` | `None` | `--dataset-library` | Dataset library folder for the test genome (default: config dataset_library, else ``datasets`` beside the reference library). |
+| `install` | `bool` | `False` | `--install` | Download the test genome (84 MB, SHA-256 checked) and unpack it. |
+| `delete` | `bool` | `False` | `--delete` | Delete the test genome and its download. |
 
 ### `api.ref.gene_map(RefGeneMapParams)`
 

@@ -433,15 +433,8 @@ class RefLibraryDeleteParams(_ConfiguredLibrary):
             )
 
 
-@dataclass(frozen=True, kw_only=True)
-class RefStatusParams(Params):
-    """What the reference library holds, as the result's ``details``: genomes
-    and their indexes, annotation data, gene maps, VEP cache, PharmCAT,
-    ploidy and mappability files, and the test genome."""
-
-    COMMAND = "ref status"
-
-    ref: Path | None = param(
+def _status_ref_param() -> Any:
+    return param(
         None,
         doc="Reference library folder, or a FASTA in it (default: config "
         "reference_library, else reference_fasta's library, else the "
@@ -450,16 +443,45 @@ class RefStatusParams(Params):
         path="file_or_directory",
         shared=True,
     )
+
+
+def _dataset_library_param(help: str) -> Any:
+    return param(
+        None,
+        help=help,
+        doc="Dataset library folder for the test genome (default: config "
+        "dataset_library, else ``datasets`` beside the reference library).",
+        path="directory",
+        hidden_flags=("--genome-library",),
+    )
+
+
+def _datasets_beside(ref: Path | None, datasets: Path | None) -> Iterator[Path]:
+    """The ``datasets`` folder beside the library ``ref`` names, which a
+    command uses with neither ``datasets`` nor config dataset_library set."""
+    from wgsextract_cli.core.config import dataset_library
+
+    if ref is None or datasets is not None or dataset_library():
+        return
+    library = _library_named(ref)
+    if library.is_absolute():  # a relative ref is refused as it is
+        yield library.parent / "datasets"
+
+
+@dataclass(frozen=True, kw_only=True)
+class RefStatusParams(Params):
+    """What the reference library holds, as the result's ``details``: genomes
+    and their indexes, annotation data, gene maps, VEP cache, PharmCAT,
+    ploidy and mappability files, and the test genome."""
+
+    COMMAND = "ref status"
+
+    ref: Path | None = _status_ref_param()
     input: Path | None = optional_input_param(
         "A BAM/CRAM or VCF whose build picks the annotation files to report."
     )
-    dataset_library: Path | None = param(
-        None,
-        help="Dataset library directory used for test dataset status.",
-        doc="Dataset library folder for the test dataset's status (default: "
-        "config dataset_library, else ``datasets`` beside the reference library).",
-        path="directory",
-        hidden_flags=("--genome-library",),
+    dataset_library: Path | None = _dataset_library_param(
+        "Dataset library directory used for test dataset status."
     )
     annotation_vcf: Path | None = param(
         None,
@@ -468,18 +490,65 @@ class RefStatusParams(Params):
     )
 
     def implied_paths(self) -> Iterator[tuple[str, Path]]:
-        from wgsextract_cli.core.config import dataset_library
-
         if self.ref is None:
             return
-        library = _library_named(self.ref)
-        yield "ref", library
-        if (
-            self.dataset_library is None
-            and not dataset_library()
-            and library.is_absolute()  # a relative ref is refused as it is
-        ):
-            yield "ref", library.parent / "datasets"
+        yield "ref", _library_named(self.ref)
+        for datasets in _datasets_beside(self.ref, self.dataset_library):
+            yield "ref", datasets
+
+
+@dataclass(frozen=True, kw_only=True)
+class RefTestGenomeParams(Params):
+    """The test genome: the small hg19 benchmark dataset (1000 Genomes
+    HG00096) in the dataset library. Reports whether it is installed;
+    ``install`` downloads it (SHA-256 pinned) and ``delete`` deletes it."""
+
+    COMMAND = "ref test-genome"
+
+    ref: Path | None = _status_ref_param()
+    dataset_library: Path | None = _dataset_library_param(
+        "Dataset library to install into (default: config dataset_library, "
+        "else datasets beside the reference library)."
+    )
+    install: bool = param(
+        False,
+        help="Download the test genome (84 MB, SHA-256 checked) and unpack it.",
+        action="store_true",
+        writes=True,
+        exclusive="test-genome-mode",
+    )
+    delete: bool = param(
+        False,
+        help="Delete the test genome and its download.",
+        action="store_true",
+        deletes=True,
+        exclusive="test-genome-mode",
+    )
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.install and self.delete:
+            raise UsageError("--install and --delete can't be used together.")
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        if self.ref is not None:
+            yield "ref", _library_named(self.ref)
+        for datasets in _datasets_beside(self.ref, self.dataset_library):
+            yield "ref", datasets
+        unset = self.ref is None and self.dataset_library is None
+        if (self.install or self.delete) and unset:
+            # The folder written is then config's dataset_library or the one
+            # beside the default library, which must be allowed too.
+            yield "dataset_library", self._datasets()
+
+    def _datasets(self) -> Path:
+        from wgsextract_cli.commands.ref.status import dataset_library_for
+
+        return dataset_library_for(self.ref, self.dataset_library)
+
+    def write_folders(self) -> Iterator[Path]:
+        if self.install or self.delete:
+            yield self._datasets()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -841,6 +910,26 @@ def status(
     from wgsextract_cli.commands.ref.status import run_status
 
     return execute(params, run_status, progress=progress, cancel=cancel, check=check)
+
+
+def test_genome(
+    params: RefTestGenomeParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Report, install or delete the test genome. ``details`` has the dataset
+    ``library``, ``installed``, ``status`` (``installed``, ``incomplete``
+    while a download is partial, else ``missing``) and ``path`` (its
+    folder), as afterwards; ``install`` adds ``changed`` (false when it was
+    already complete), ``delete`` adds ``deleted`` (the paths deleted) and
+    ``bytes_freed``."""
+    from wgsextract_cli.commands.ref.mini_genome import run_test_genome
+
+    return execute(
+        params, run_test_genome, progress=progress, cancel=cancel, check=check
+    )
 
 
 def gene_map(

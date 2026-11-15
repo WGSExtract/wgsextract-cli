@@ -184,6 +184,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     ),
     "ref status": _n(SECONDS, scale=""),
     "ref needs": _n(SECONDS, scale=""),
+    "ref test-genome": _n(DOWNLOAD, optional="curl"),
     "ref bootstrap": _n(DOWNLOAD, optional="curl"),
     "ref aadr": _n(DOWNLOAD, optional="curl"),
     "ref somalier": _n(DOWNLOAD, optional="curl"),

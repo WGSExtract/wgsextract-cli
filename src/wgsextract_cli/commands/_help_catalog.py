@@ -358,6 +358,13 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "Prints the reference library's status; writes no files.",
         "wgsextract ref status",
     ),
+    "ref test-genome": _h(
+        "In the dataset library: wgsextract-benchmark-hg19-mini/ with its "
+        "genome-config.toml, and the verified zip in .downloads (--delete "
+        "removes both). Without --install or --delete, prints its status.",
+        "wgsextract ref test-genome --install",
+        "wgsextract --json ref test-genome",
+    ),
     "ref needs": _h(
         "Prints the missing reference genome or annotation data and the command "
         "that installs each; writes no files. With --json, the result's "

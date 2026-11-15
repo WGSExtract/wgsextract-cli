@@ -256,16 +256,13 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   assert.ok(datasets.sections.find((section) => section.id === "example-datasets"), "Example Datasets are on Datasets");
   const downloadAction = testDataset.actions.find((action) => action.id === "test-dataset-download");
   assert.ok(downloadAction, "test genome download action exists");
-  assert.deepEqual(
-    downloadAction.command.arguments,
-    ["download", "{{dataset_library}}"],
-  );
+  const libraryArguments = [["--ref", "{{ref_path}}"], ["--dataset-library", "{{dataset_library}}"]];
+  assert.deepEqual(downloadAction.command.arguments, ["ref", "test-genome", "--install"]);
+  assert.deepEqual(downloadAction.command.optionalArguments, libraryArguments);
   const deleteAction = testDataset.actions.find((action) => action.id === "test-dataset-delete");
   assert.ok(deleteAction, "test genome delete action exists");
-  assert.deepEqual(
-    deleteAction.command.arguments,
-    ["delete", "{{dataset_library}}"],
-  );
+  assert.deepEqual(deleteAction.command.arguments, ["ref", "test-genome", "--delete"]);
+  assert.deepEqual(deleteAction.command.optionalArguments, libraryArguments);
   assert.ok(deleteAction.confirm);
 
   const installStep = bundle.manifest.setup.steps.find((step) => step.id === "install-wgsextract");

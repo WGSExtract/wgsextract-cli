@@ -2431,6 +2431,7 @@ def test_deleting_data_needs_allow_destructive(tmp_path, work, fake_data):
         assert listed["ref/gene-map"]["destructive"] is True
         assert listed["ref/dense-sa"]["destructive"] is True
         assert listed["ref/library-delete"]["destructive"] is True
+        assert listed["ref/test-genome"]["destructive"] is True
         assert "destructive" not in listed["bam/index"]
         status, response = client.request(
             "POST", "/ops/bam/unindex", {"input": str(bam)}
@@ -2447,6 +2448,13 @@ def test_deleting_data_needs_allow_destructive(tmp_path, work, fake_data):
         # #825: deleting a library genome, as the app's delete button does.
         status, response = client.request(
             "POST", "/ops/ref/library-delete", {"ref": str(work), "genome": "hs38"}
+        )
+        assert (status, response["error"]["code"]) == (403, "destructive")
+        # #825: deleting the test genome, as the app's Datasets page does.
+        status, response = client.request(
+            "POST",
+            "/ops/ref/test-genome",
+            {"dataset_library": str(work), "delete": True},
         )
         assert (status, response["error"]["code"]) == (403, "destructive")
         assert client.request("GET", "/jobs")[1]["jobs"] == []

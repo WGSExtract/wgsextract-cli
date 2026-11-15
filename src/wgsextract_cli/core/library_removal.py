@@ -1,4 +1,5 @@
-"""Deleting what the ``ref`` and ``vep`` installers put in a reference library.
+"""Deleting what the ``ref`` and ``vep`` installers put in a reference library,
+and the test genome ``ref test-genome`` puts in the dataset library.
 
 Each ``*_paths`` function lists what one installer leaves: its files, their
 indexes and an interrupted download's leftovers. ``remove`` deletes them, and
@@ -13,6 +14,7 @@ from collections.abc import Iterable, Iterator
 from glob import escape
 from pathlib import Path, PureWindowsPath
 
+from wgsextract_cli.core import mini_genome
 from wgsextract_cli.core.aadr_resources import aadr_2m_path
 from wgsextract_cli.core.file_lock import exclusive_lock, held
 from wgsextract_cli.core.reference_assets import (
@@ -195,6 +197,25 @@ def remove_genome(folder: Path, name: str) -> dict[Path, int]:
         for guard in guards if deleted else ours:
             guard.unlink(missing_ok=True)
     return {path: sizes[path] for path in removed if path in sizes}
+
+
+def remove_test_genome(datasets: Path) -> dict[Path, int]:
+    """Delete the test genome's folder, its zip with any partial download of
+    it and an interrupted install; then ``.downloads`` if left empty. Return
+    each deleted path with the bytes it freed; a link goes as the link."""
+    zip_path = mini_genome.archive(datasets)
+    found = [
+        path
+        for path in (
+            mini_genome.folder(datasets),
+            mini_genome.staging(datasets),
+            *_with_sidecars(zip_path),
+        )
+        if path.exists() or path.is_symlink()
+    ]
+    sizes = {path: _size(path) for path in found}
+    removed = remove(found, [mini_genome.downloads(datasets)])
+    return {path: sizes[path] for path in removed}
 
 
 def remove(paths: Iterable[Path], made_folders: Iterable[Path] = ()) -> list[Path]:
