@@ -106,14 +106,14 @@ GPU_HELP = (
     "minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU "
     "alignment to retain MM/ML methylation tags."
 )
-_FORMAT_DOC = "Output format: BAM or CRAM (written with the target reference)."
+_FORMAT_DOC = "None uses BAM; CRAM is written with the target reference."
 
 
 def _output_profile_param() -> Any:
     return param(
         None,
         help="Lossless output: default keeps --format; archive selects CRAM 3.1 "
-        "(not GATK); calling selects CRAM 3.0. Default: config output_profile, "
+        "(GATK >=4.7); calling selects CRAM 3.0. Default: config output_profile, "
         "else default. See docs/ont.md.",
         choices=OUTPUT_PROFILES,
         config_key="output_profile",
@@ -189,8 +189,11 @@ class AlignParams(Params):
         "pbmm2 or minimap2.",
         action="store_true",
     )
-    format: str = param(
-        "BAM", help="Output format", doc=_FORMAT_DOC, choices=("BAM", "CRAM")
+    format: str | None = param(
+        None,
+        help="Output format (default: BAM)",
+        doc=_FORMAT_DOC,
+        choices=("BAM", "CRAM"),
     )
     output_profile: str | None = _output_profile_param()
     input: Path | None = optional_input_param(
@@ -274,8 +277,11 @@ class RealignParams(Params):
     long_read: bool = param(
         False, help="Treat input as long-read data (PacBio/ONT).", action="store_true"
     )
-    format: str = param(
-        "BAM", help="Output format.", doc=_FORMAT_DOC, choices=("BAM", "CRAM")
+    format: str | None = param(
+        None,
+        help="Output format (default: BAM)",
+        doc=_FORMAT_DOC,
+        choices=("BAM", "CRAM"),
     )
     output_profile: str | None = _output_profile_param()
     keep_fastq: bool = param(

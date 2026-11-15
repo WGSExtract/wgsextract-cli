@@ -537,7 +537,9 @@ def test_an_unreadable_crai_bounds_staging_by_the_whole_input(dv, big_cram, inde
         call(dv, "-r", "chr1:10", "--no-preflight", reads=big_cram.path)
 
 
-def test_crai_slices_follow_the_header_order_and_shared_slices_count_once(dv):
+def test_crai_slices_follow_the_header_order_and_shared_slices_count_once(
+    dv, monkeypatch
+):
     """Slices of 1 GiB units: chrM and chr20 share the first one."""
     work = dv.tmp / "two"
     work.mkdir()
@@ -547,6 +549,9 @@ def test_crai_slices_follow_the_header_order_and_shared_slices_count_once(dv):
     lines += ["@SQ\tSN:chr20\tLN:1000", "r1\t0\tchrM\t1\t60\t4M\t*\t0\t0\tACGT\tIIII"]
     sample = SimpleNamespace(ref=str(ref), bam=sam_to_bam(lines, work / "two.bam"))
     cram = as_cram(sample, "3.1")
+    dv.out.mkdir()
+    volumes = Volumes(monkeypatch)
+    volumes.free[dv.out] = 350
     Path(f"{cram}.crai").write_text(
         f"0\t1\t100\t100\t10\t{200 * GIB}\n"
         f"1\t1\t100\t100\t10\t{200 * GIB}\n"

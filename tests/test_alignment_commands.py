@@ -220,6 +220,101 @@ def test_691_unsupported_encoder_fails_before_writing_an_alignment(
     assert not out.exists() or not list(out.glob("*_aligned.*"))
 
 
+@needs_tools("samtools")
+def test_691_realign_checks_encoder_before_extracting_fastqs(tmp_path, monkeypatch):
+    require_bare_name_fakes()
+    sample = snp_sample(tmp_path / "input")
+    samtools = get_tool_path("samtools")
+    bindir = tmp_path / "bin"
+    python_tool(
+        bindir,
+        "samtools",
+        "import subprocess, sys\n"
+        "if '--output-fmt-option' in sys.argv: sys.exit('unsupported CRAM option')\n"
+        f"sys.exit(subprocess.call([{samtools!r}, *sys.argv[1:]]))\n",
+    )
+    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+    clear_tool_caches()
+    out = tmp_path / "out"
+    result = api.align.realign(
+        api.RealignParams(
+            input=sample.bam,
+            ref=sample.ref,
+            outdir=out,
+            platform="illumina",
+            output_profile="archive",
+            native_aligners="off",
+        ),
+        check=False,
+    )
+    assert result.error is not None
+    assert "cannot write the archive" in result.error.message
+    assert not list(out.rglob("*.fastq*"))
+    assert not list(out.rglob("*_aligned.*"))
+
+
+def test_691_explicit_pbmm2_has_a_profile_specific_error(tmp_path):
+    result = api.align.align(
+        api.AlignParams(
+            r1=tmp_path / "reads.fq",
+            platform="hifi",
+            aligner="pbmm2",
+            output_profile="calling",
+        ),
+        check=False,
+    )
+    assert result.exit_code == 2
+    assert result.error is not None
+    assert (
+        "pbmm2" in result.error.message and "--aligner minimap2" in result.error.message
+    )
+
+
+@pytest.mark.parametrize("command", ["align", "realign"])
+@needs_tools("samtools")
+def test_691_explicit_bam_conflicts_with_cram_profile_before_running(tmp_path, command):
+    sample = snp_sample(tmp_path / "input")
+    params = (
+        api.AlignParams(
+            r1=tmp_path / "reads.fq", format="BAM", output_profile="archive"
+        )
+        if command == "align"
+        else api.RealignParams(input=sample.bam, format="BAM", output_profile="archive")
+    )
+    run = api.align.align if command == "align" else api.align.realign
+    result = run(params, check=False)
+    assert result.exit_code == 2
+    assert result.error is not None and "--format BAM" in result.error.message
+
+
+@needs_tools("samtools", "minimap2")
+def test_691_config_cram_profile_uses_minimap2_instead_of_auto_pbmm2(
+    tmp_path, monkeypatch
+):
+    require_bare_name_fakes()
+    reads = _short_reads(tmp_path)
+    bindir = tmp_path / "bin"
+    python_tool(bindir, "pbmm2", "raise RuntimeError('pbmm2 cannot write CRAM')\n")
+    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+    clear_tool_caches()
+    monkeypatch.setitem(settings, "output_profile", "calling")
+    out = tmp_path / "out"
+    result = api.align.align(
+        api.AlignParams(
+            r1=reads.r1,
+            ref=reads.ref,
+            outdir=out,
+            platform="hifi",
+            native_aligners="off",
+            threads=1,
+            memory="64M",
+        )
+    )
+    assert result.metrics["aligner"] == "minimap2"
+    (output,) = out.glob("*_aligned.cram")
+    assert cram_version(str(output)) == (3, 0)
+
+
 @pytest.mark.parametrize(
     ("overrides", "expected"),
     [

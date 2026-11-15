@@ -108,7 +108,7 @@ KNOWN_SETTINGS = {
     "output_profile": (
         "default",
         "`align`/`realign`: default keeps --format; archive selects lossless "
-        "CRAM 3.1 (not GATK-readable); calling selects compatible CRAM 3.0",
+        "CRAM 3.1 (GATK 4.7+); calling selects compatible CRAM 3.0",
     ),
     "prefer_native_gpu": (
         False,

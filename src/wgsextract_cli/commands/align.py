@@ -221,7 +221,13 @@ class AlignJob:
             job.output_profile or settings.get("output_profile") or "default"
         )
         output_profile_options(job.output_profile)
+        job.format = job.format or "BAM"
         if job.output_profile != "default":
+            if getattr(params, "format", None) == "BAM":
+                raise UsageError(
+                    f"--output-profile {job.output_profile} writes CRAM, not "
+                    "explicit --format BAM. Omit --format or use --format CRAM."
+                )
             job.format = "CRAM"
         current_result().add_metrics(output_profile=job.output_profile)
         return job
@@ -328,6 +334,7 @@ def select_aligner(job: AlignJob) -> str:
     if aligner == "auto":
         if (
             job.platform in PACBIO_PLATFORMS
+            and job.output_profile in (None, "default")
             and not _needs_read_extraction(job.r1)
             and get_tool_path("pbmm2") is not None
         ):
@@ -350,6 +357,11 @@ def select_aligner(job: AlignJob) -> str:
                 "--gpu aligns with Parabricks' own BWA-MEM; use --aligner bwa or auto."
             )
     elif aligner == "pbmm2":
+        if job.output_profile not in (None, "default"):
+            raise UsageError(
+                f"pbmm2 cannot write --output-profile {job.output_profile}; "
+                "use --aligner minimap2 for CRAM profiles."
+            )
         if job.platform in {"ont", "nanopore"}:
             raise UsageError(
                 "pbmm2 only aligns PacBio reads; use --aligner minimap2 for ONT."

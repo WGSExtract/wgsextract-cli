@@ -52,18 +52,20 @@ The usual realignment disk-space preflight also applies to streamed ONT reads.
 
 `align` and `realign` accept `--output-profile default|archive|calling`.
 The default leaves `--format` and the installed encoder's defaults unchanged.
-The other profiles select CRAM regardless of `--format`:
+The other profiles select CRAM when `--format` is omitted; explicit
+`--format BAM` conflicts and is refused:
 
 | Profile | Encoding | Readers |
 | --- | --- | --- |
-| `archive` | CRAM 3.1, samtools' archive compression | Modern htslib; not GATK directly |
+| `archive` | CRAM 3.1, samtools' archive compression | Modern htslib and GATK 4.7+ |
 | `calling` | CRAM 3.0, normal compression | GATK and older htslib-based callers, including DeepVariant |
 
 Both are lossless: full supplementary SEQ/QUAL, soft clipping and MM/ML/MN
 tags are retained. Archive trades encoding time for smaller files; savings
 depend on the reads. Calling avoids DeepVariant's CRAM 3.1 compatibility
 copy, not every caller's other staging requirements. Native pbmm2 only
-writes BAM: select `--aligner minimap2` to use a CRAM profile for PacBio.
+writes BAM: auto selects minimap2 for PacBio CRAM profiles, while explicit
+`--aligner pbmm2` is refused with a profile-specific message.
 GPU alignment writes BAM first and converts it with samtools for these
 profiles, so it needs temporary space for that BAM too.
 
@@ -83,7 +85,8 @@ mapping; WGS Extract does not install it.
 
 `info`, extraction and bcftools calling read both profiles. Older
 DeepVariant/Clair3 builds use the existing temporary compatible copy for
-archive output. Whole-file GATK calling refuses CRAM 3.1 clearly; use
+archive output. GATK 4.7 and newer read CRAM 3.1 directly; whole-file
+calling with an identified older GATK is refused before making a .dict. Use
 calling output, convert to BAM (`bam to-bam`), or specify `vcf gatk
 --region` for the existing regional BAM conversion.
 
