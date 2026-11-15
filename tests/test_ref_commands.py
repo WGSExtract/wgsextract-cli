@@ -3,11 +3,19 @@
 import gzip
 import hashlib
 import io
+import json
 import logging
 import random
+import socket
+import socketserver
+import subprocess
 import sys
+import threading
+import time
 import zipfile
 from argparse import Namespace
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -47,7 +55,9 @@ from wgsextract_cli.core.annotation_resources import (
 )
 from wgsextract_cli.core.bigwig_resources import GERP_URLS, PHYLOP_URLS
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.file_lock import build_lock
 from wgsextract_cli.core.gene_map import GENE_MAP_URLS
+from wgsextract_cli.core.ref_library import remote_sizes
 from wgsextract_cli.core.reference_assets import (
     read_fai_lengths,
     reference_dict_path,
@@ -376,15 +386,25 @@ def test_api_library_list_gives_the_listing_as_details_and_text(
     details = result.details
     assert details["library"] == str(lib)
     by_code = {g["code"]: g for g in details["genomes"]}
+    assert details["genomes_dir"] == str(lib / "genomes")
     assert by_code["hg38"] == {
         "code": "hg38",
         "label": "hg38 (YSEQ)",
+        "source": None,
         "file": "hg38.fa.gz",
+        "url": None,
+        "description": "",
+        "sn_count": None,
+        "build": "hg38",
         "status": "installed",
+        "size_bytes": 2 * 1024 * 1024 + len("chr1\t1\n"),
         "size": "2.0 MiB",
+        "remote_bytes": None,
         "n_counts": True,
         "vep_cache": True,
     }
+    # #825: a partial download's bytes count, so the GUI can show progress.
+    assert by_code["hs37d5"]["size_bytes"] == 1
     assert (by_code["hs37d5"]["status"], by_code["hs37d5"]["vep_cache"]) == (
         "incomplete",
         False,
@@ -434,6 +454,130 @@ def test_library_list_defaults_to_the_configured_fastas_library(
     assert result.details["library"] == str(other.parent)
     assert f"REFERENCE LIBRARY: {other.parent}" in result.text
     assert _rows(result.text)["hg38 (YSEQ)"] == ["UNINDEXED", "1 B"]
+
+
+@contextmanager
+def _ftp_serving(sizes: dict[str, int]) -> Iterator[str]:
+    """An anonymous FTP server that answers SIZE for ``sizes``' paths."""
+
+    class Handler(socketserver.StreamRequestHandler):
+        def handle(self) -> None:
+            self.wfile.write(b"220 ready\r\n")
+            for line in self.rfile:
+                command, _, arg = line.decode().strip().partition(" ")
+                command = command.upper()
+                replies = {"USER": "331 ok", "PASS": "230 ok", "TYPE": "200 ok"}
+                reply = replies.get(command, "221 bye" if command == "QUIT" else "502")
+                if command == "SIZE":
+                    reply = f"213 {sizes[arg]}" if arg in sizes else "550 none"
+                self.wfile.write(f"{reply}\r\n".encode())
+                if command == "QUIT":
+                    return
+
+    server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, args=(0.01,), daemon=True).start()
+    try:
+        yield f"ftp://127.0.0.1:{server.server_address[1]}"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def _catalog(monkeypatch, urls: dict[str, str]) -> None:
+    genomes = [
+        {"code": code, "source": "Test", "final": f"{code}.fa.gz", "url": url,
+         "label": code}
+        for code, url in urls.items()
+    ]  # fmt: skip
+    monkeypatch.setattr(core_commands, "get_available_genomes", lambda: genomes)
+
+
+def _remote_bytes(result) -> dict[str, int | None]:
+    return {g["code"]: g["remote_bytes"] for g in result.details["genomes"]}
+
+
+def test_library_list_looks_up_download_sizes_once_and_reports_them_offline(
+    tmp_path, monkeypatch
+):
+    # #825: the GUI's catalog script probed download sizes (HTTP HEAD, FTP
+    # SIZE) and cached them in the library; ref library --list does now.
+    with (
+        serving(data=None, files={"a.fa.gz": b"x" * 1000}) as http,
+        _ftp_serving({"/pub/b.fa.gz": 4321}) as ftp,
+    ):
+        _catalog(
+            monkeypatch,
+            {
+                "a": http.url_for("a.fa.gz"),
+                "b": f"{ftp}/pub/b.fa.gz",
+                "gone": http.url_for("gone.fa.gz"),
+            },
+        )
+        params = RefLibraryListParams(ref=tmp_path, remote_sizes=True)
+        sizes = _remote_bytes(api.ref.library_list(params))
+        assert sizes == {"a": 1000, "b": 4321, "gone": None}
+        asked = len(http.requests)
+        assert _remote_bytes(api.ref.library_list(params)) == sizes
+        assert len(http.requests) == asked + 1  # only the unknown size again
+
+    offline = api.ref.library_list(RefLibraryListParams(ref=tmp_path))
+    assert _remote_bytes(offline) == sizes
+    assert _rows(offline.text)["a"] == ["MISSING", "", "download 1000 B"]
+
+
+def test_download_sizes_give_up_on_a_server_that_never_answers(tmp_path, monkeypatch):
+    # #825: a stalled network must not stall the listing or cache a guess.
+    monkeypatch.setattr(remote_sizes, "PROBE_TIMEOUT", 0.2)
+    monkeypatch.setattr(remote_sizes, "BUDGET_SECONDS", 0.5)
+    with socket.create_server(("127.0.0.1", 0)) as silent:
+        port = silent.getsockname()[1]
+        _catalog(monkeypatch, {"a": f"http://127.0.0.1:{port}/a.fa.gz"})
+        start = time.monotonic()
+        result = api.ref.library_list(
+            RefLibraryListParams(ref=tmp_path, remote_sizes=True)
+        )
+        assert time.monotonic() - start < 3
+    assert _remote_bytes(result) == {"a": None}
+    assert not (tmp_path / remote_sizes.CACHE_FILE).exists()
+
+
+def test_download_size_lookup_does_not_hold_up_the_process_exit(tmp_path):
+    # PR #938 review: probes outlived the budget on pool threads that the
+    # interpreter joins at exit, so the CLI ran on for each probe's timeout.
+    script = (
+        "import sys\n"
+        "from pathlib import Path\n"
+        "from wgsextract_cli.core.ref_library import remote_sizes as r\n"
+        "r.PROBE_TIMEOUT, r.BUDGET_SECONDS = 30, 0.3\n"
+        "print(r.refresh_sizes(Path(sys.argv[1]), [sys.argv[2]]))\n"
+    )
+    with socket.create_server(("127.0.0.1", 0)) as silent:
+        url = f"http://127.0.0.1:{silent.getsockname()[1]}/a.fa.gz"
+        start = time.monotonic()
+        done = subprocess.run(
+            [sys.executable, "-c", script, str(tmp_path), url],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        elapsed = time.monotonic() - start
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == "{}"
+    assert elapsed < 10
+
+
+def test_ref_library_remote_sizes_flag_goes_with_list(tmp_path, monkeypatch, capsys):
+    with serving(data=None, files={"a.fa.gz": b"x" * 10}) as http:
+        _catalog(monkeypatch, {"a": http.url_for("a.fa.gz")})
+        main(["--json", "ref", "library", "--list", "--remote-sizes",
+              "--ref", str(tmp_path)])  # fmt: skip
+    details = json.loads(capsys.readouterr().out)["details"]
+    assert [g["remote_bytes"] for g in details["genomes"]] == [10]
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["ref", "library", "--remote-sizes", "--ref", str(tmp_path)])
+    assert exit_info.value.code == 2
+    assert "--remote-sizes goes with --list" in capsys.readouterr().err
 
 
 # --- ref library --install / interactive menu -----------------------------------
@@ -690,6 +834,123 @@ def test_library_menu_resumes_an_incomplete_download(
 def test_library_menu_installs_a_missing_genome(tmp_path, monkeypatch, menu_library):
     _menu(monkeypatch, tmp_path, ["3"])
     _assert_installed(tmp_path, "dog.fa.gz")
+
+
+# --- ref library --delete --------------------------------------------------------
+# #825: the app's delete button runs `ref library --delete` instead of its own
+# script.
+
+
+def _delete(lib: Path, genome: str, capsys) -> dict:
+    main(["--json", "ref", "library", "--delete", genome, "--ref", str(lib)])
+    return json.loads(capsys.readouterr().out)
+
+
+@needs_tools("curl", "samtools", "bcftools", "tabix", "bgzip", "htsfile", "bwa")
+def test_issue_825_library_delete_removes_a_genome_and_what_was_made_from_it(
+    tmp_path, server, catalog, capsys
+):
+    catalog += [_genome(server, "tiny"), _genome(server, "other")]
+    lib = tmp_path / "lib"
+    _install(lib, "tiny")
+    _install(lib, "other")
+    genomes = lib / "genomes"
+    fasta = genomes / "tiny.fa.gz"
+    api.ref.index(RefIndexParams(ref=fasta, aligner="bwa"))
+    Path(f"{fasta}.wgse-sa16").write_bytes(b"dense")
+    (genomes / "tiny_ncnt.csv").write_text("")  # the bootstrap ships N counts
+    kept = {"tiny_ncnt.csv", *(p.name for p in genomes.glob("other*"))}
+    # The index build left its lock's guard, which isn't listed as deleted.
+    made = {
+        p.name: p.stat().st_size
+        for p in genomes.iterdir()
+        if p.name not in kept and not p.name.endswith(".guard")
+    }
+    capsys.readouterr()
+
+    result = _delete(lib, "TINY", capsys)
+
+    assert result["status"] == "ok"
+    assert sorted(p.name for p in genomes.iterdir()) == sorted(kept)
+    details = result["details"]
+    assert details["deleted"][0] == str(fasta)
+    assert {Path(p).name for p in details["deleted"]} == set(made)
+    assert details["bytes_freed"] == sum(made.values())
+    assert _delete(lib, "tiny.fa.gz", capsys)["details"]["deleted"] == []
+
+
+@pytest.mark.parametrize("name", ["../hg38.fa.gz", "genomes/hg38.fa.gz", "ABS", "x"])
+def test_issue_825_library_delete_takes_only_catalog_genomes(
+    tmp_path, genomes, capsys, name
+):
+    lib = _fake_library(tmp_path / "lib")
+    before = _files(lib / "genomes")
+    if name == "ABS":
+        name = str(lib / "genomes" / "hg38.fa.gz")
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["ref", "library", "--delete", name, "--ref", str(lib)])
+
+    assert exit_info.value.code == 2
+    assert "not a catalog genome" in capsys.readouterr().err
+    assert _files(lib / "genomes") == before
+
+
+def test_issue_825_library_delete_unlinks_a_link_not_what_it_points_to(
+    tmp_path, genomes, capsys
+):
+    lib = _fake_library(tmp_path / "lib")
+    elsewhere = tmp_path / "elsewhere" / "hs37d5.fa.gz"
+    elsewhere.parent.mkdir()
+    elsewhere.write_bytes(b"genome")
+    (lib / "genomes" / "hs37d5.fa.gz").symlink_to(elsewhere)
+
+    details = _delete(lib, "hs37d5", capsys)["details"]
+
+    assert sorted(Path(p).name for p in details["deleted"]) == [
+        "hs37d5.fa.gz",
+        "hs37d5.fa.gz.partial",
+    ]
+    assert elsewhere.read_bytes() == b"genome"
+
+
+def test_issue_825_library_delete_refuses_a_folder_among_the_genomes_files(
+    tmp_path, genomes
+):
+    lib = _fake_library(tmp_path / "lib")
+    (lib / "genomes" / "hg38.fa.gz.bwt").mkdir()
+    before = sorted(p.name for p in (lib / "genomes").iterdir())
+
+    result = api.ref.library_delete(
+        api.RefLibraryDeleteParams(ref=lib, genome="hg38"), check=False
+    )
+
+    assert result.status == "failed" and "is a folder" in result.error.message
+    assert sorted(p.name for p in (lib / "genomes").iterdir()) == before
+
+
+def test_issue_825_library_delete_waits_for_no_index_build(tmp_path, genomes):
+    lib = _fake_library(tmp_path / "lib")
+    fasta = lib / "genomes" / "hg38.fa.gz"
+    params = api.RefLibraryDeleteParams(ref=lib, genome="hg38.fa.gz")
+
+    with build_lock(f"{fasta}.bwa-index.lock"):
+        result = api.ref.library_delete(params, check=False)
+    assert result.status == "failed" and "Another run" in result.error.message
+    assert fasta.exists()
+
+    # A lock its run left behind when it died doesn't stop the delete.
+    Path(f"{fasta}.dense-sa.lock").write_text(
+        json.dumps({"pid": 2**22 + 1, "created": 0, "host": socket.gethostname()})
+    )
+    result = api.ref.library_delete(params)
+    assert not fasta.exists()
+    assert sorted(p.name for p in (lib / "genomes").iterdir()) == [
+        "UU_Cfam_GSD_1.0_ncnt.csv",
+        "chm13v2.0.fa.gz",
+        "hg38_ncnt.csv",
+        "hs37d5.fa.gz.partial",
+    ]
 
 
 # --- ref gene-map / resource downloads / bootstrap ------------------------------

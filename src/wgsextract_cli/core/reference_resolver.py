@@ -20,6 +20,7 @@ from wgsextract_cli.core.constants import REF_GENOME_FILENAMES
 from wgsextract_cli.core.paths import PathInput, expand_path
 from wgsextract_cli.core.reference_assets import (
     build_hint,
+    fasta_build,
     find_fasta_by_signature,
     find_reference_fasta,
     find_reference_target_tab,
@@ -296,8 +297,7 @@ class ReferenceLibrary:
                 confidence="high",
             )
         if not build and self.fasta:
-            build = build_from_chr1_length(read_fai_lengths(self.fasta))
-            build = build or build_from_path(self.fasta)
+            build = fasta_build(self.fasta)
         assert self.root is not None
         return (
             build

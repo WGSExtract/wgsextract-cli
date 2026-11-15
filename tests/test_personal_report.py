@@ -531,6 +531,8 @@ def _bgzipped_vcf(path: Path, info: str, rows: list[str]) -> str:
     ],
 )  # fmt: skip
 def test_two_pathogenic_alts_of_one_call_are_biallelic(sample, calls, status):
+    from tests.htslib_helpers import reference_for_vcf
+
     chrom, pos = _mid("MUTYH")
     fields = {"pos": pos, "next": pos + 5}
     vcf = _bgzipped_vcf(
@@ -546,8 +548,9 @@ def test_two_pathogenic_alts_of_one_call_are_biallelic(sample, calls, status):
         [f"{p} {i} A {alt} . . CLNSIG=Pathogenic;CLNDN=MAP;GENEINFO=MUTYH:4595 GT 0/1"
          for i, (p, alt) in enumerate([(pos, "C"), (pos, "G"), (pos + 5, "G")])],
     )  # fmt: skip
+    reference = reference_for_vcf(sample / "ref.fa.gz", vcf)
     code, _ = _cli("vcf", "clinvar", "--vcf-input", vcf, "--clinvar-file", clinvar,
-                   "--outdir", str(sample))  # fmt: skip
+                   "--outdir", str(sample), "--ref", str(reference))  # fmt: skip
     assert code == 0
     clinvar_section = pr.build_report(sample)["sections"]["clinvar"]
     (mutyh,) = clinvar_section["genes"]
@@ -595,13 +598,16 @@ def _phased_mutyh_report(
     }
     clinvar = _vcf_on_1(
         tmp_path / "clinvar.vcf.gz",
-        info,
-        [f"{pos} {i} {ref} {alt} . . CLNSIG=Pathogenic;CLNDN=MAP;GENEINFO=MUTYH:4595"
+        info + '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n',
+        [f"{pos} {i} {ref} {alt} . . CLNSIG=Pathogenic;CLNDN=MAP;GENEINFO=MUTYH:4595 GT 0/1"
          for i, (pos, ref, alt) in enumerate(sorted(known))],
     )  # fmt: skip
     results, out = tmp_path / "clinvar", tmp_path / "report"
+    from tests.htslib_helpers import reference_for_vcf
+
+    reference = reference_for_vcf(tmp_path / "ref.fa.gz", vcf, clinvar)
     code, log = _cli("vcf", "clinvar", "--vcf-input", vcf, "--clinvar-file", clinvar,
-                     "--outdir", str(results))  # fmt: skip
+                     "--outdir", str(results), "--ref", str(reference))  # fmt: skip
     assert code == 0, log
     if calls_from != "table":
         (manifest,) = results.glob("clinvar_pathogenic*.manifest.json")
@@ -1488,6 +1494,21 @@ def test_838_failed_trio_alone_does_not_fail_sample_overview(tmp_path):
     overview = pr.build_report(tmp_path, input_file=child)["sections"]["overview"]
     assert overview["status"] == "not_run"
     assert not overview.get("error")
+
+
+def test_issue_846_failed_str_does_not_fail_sample_overview(tmp_path):
+    alignment = _touch(tmp_path / "sample.bam")
+    _manifest(
+        tmp_path,
+        "str",
+        "typing str",
+        inputs=((alignment, "alignment"),),
+        status="failed",
+    )
+    overview = pr.build_report(tmp_path, input_file=alignment)["sections"]["overview"]
+    assert overview["status"] == "not_run"
+    assert not overview.get("error")
+    assert "section_failed" not in {w["code"] for w in overview["warnings"]}
 
 
 def _overview_contamination(report: dict) -> tuple[Any, set[str]]:

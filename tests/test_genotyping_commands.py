@@ -2,6 +2,7 @@
 with T1K, Cyrius and ExpansionHunter replaced by scripts that log their command
 line and write output in each tool's format."""
 
+import csv
 import json
 import logging
 import random
@@ -1009,6 +1010,190 @@ def test_str_all_normal_has_no_warnings(tmp_path, eh, caplog):
                    "--catalog", str(eh.catalog), "--sex", "female")  # fmt: skip
     assert "1 of 1 disease repeats are in the normal range." in caplog.text
     assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+@pytest.mark.parametrize(
+    ("locus", "alleles", "reads", "coverage", "sex", "status", "uncertain"),
+    [
+        pytest.param(
+            "FXN",
+            [304, 304],
+            [1, 1],
+            100,
+            "female",
+            "unresolved",
+            True,
+            id="all-weak-FXN",
+        ),
+        pytest.param(
+            "FXN",
+            [400],
+            [],
+            30,
+            "female",
+            "unresolved",
+            True,
+            id="incomplete-recessive-call",
+        ),
+        pytest.param(
+            "FXN",
+            [9],
+            [],
+            30,
+            "female",
+            "unresolved",
+            True,
+            id="incomplete-normal-call",
+        ),
+        pytest.param(
+            "FXN",
+            [304, 304],
+            [10, 10],
+            20,
+            "female",
+            "pathogenic",
+            False,
+            id="supported-biallelic",
+        ),
+        pytest.param(
+            "FXN",
+            [304, 304],
+            [1, 1],
+            1,
+            "female",
+            "pathogenic",
+            False,
+            id="thin-but-supported-biallelic",
+        ),
+        pytest.param(
+            "DMPK",
+            [12, 463],
+            [245, 2],
+            247,
+            "female",
+            "pathogenic",
+            False,
+            id="supported-dominant",
+        ),
+        pytest.param("AR", [45], [10], 10, "male", "pathogenic", False, id="male-XR"),
+        pytest.param(
+            "AR",
+            [45],
+            [10],
+            10,
+            "female",
+            "unresolved",
+            True,
+            id="female-incomplete-XR",
+        ),
+        pytest.param(
+            "AR",
+            [21, 45],
+            [10, 10],
+            20,
+            "female",
+            "carrier",
+            False,
+            id="female-XR-carrier",
+        ),
+    ],
+)
+@pytest.mark.parametrize("clipped", [False, True], ids=["unclipped", "clipped"])
+def test_issue_846_all_weak_fxn_and_incomplete_recessive_typing_output(
+    tmp_path,
+    monkeypatch,
+    eh,
+    caplog,
+    locus,
+    alleles,
+    reads,
+    coverage,
+    sex,
+    status,
+    uncertain,
+    clipped,
+):
+    """Keep caller sizes, but never diagnose from all-weak or missing copies."""
+    template = tmp_path / "strkit.json"
+    template.write_text(
+        json.dumps(
+            {
+                "results": [
+                    {
+                        "locus_id": locus,
+                        "motif": "GAA",
+                        "contig": "chr1",
+                        "start": 1000,
+                        "end": 1060,
+                        "call": alleles,
+                        "reads": {str(n): {} for n in range(coverage)},
+                        "peaks": {"n_reads": reads},
+                    }
+                ]
+            }
+        )
+    )
+    fake_tools(
+        monkeypatch,
+        tmp_path,
+        {
+            "strkit": f"""
+pathlib.Path(opt("--json")).write_text(pathlib.Path({str(template)!r}).read_text())
+pathlib.Path(opt("--vcf")).write_text("##fileformat=VCFv4.2\\n")
+"""
+        },
+    )
+    catalog = tmp_path / "strkit.bed"
+    catalog.write_text(f"chr1\t1000\t1060\tID={locus};MOTIF=GAA\n")
+    caplog.set_level(logging.INFO)
+    alignments = pair("p", "chr1", 1000)
+    if clipped:
+        alignments += [
+            f"clip{i}\t0\tchr1\t1001\t60\t100S100M\t*\t0\t0\t{SEQ * 2}\t{'I' * 200}"
+            for i in range(3)
+        ]
+    path = bam(tmp_path / "s.bam", alignments)
+    out = tmp_path / "out"
+    result = api.genotyping.repeats(
+        api.TypingStrParams(
+            input=Path(path),
+            ref=eh.ref,
+            catalog=catalog,
+            outdir=out,
+            caller="strkit",
+            sex=sex,
+            threads=1,
+        )
+    )
+    with (out / "s.str.tsv").open() as stream:
+        [row] = csv.DictReader(stream, delimiter="\t")
+    assert row["genotype"] == "/".join(map(str, alleles))
+    assert row["status"].split(" (")[0] == status
+    assert result.metrics["unconfirmed_repeats"] == int(uncertain)
+    if uncertain:
+        assert result.metrics["flagged_repeats"] == int(clipped)
+        warnings = {w.code: w for w in result.warnings}
+        assert set(warnings) == (
+            {"repeat_unconfirmed", "repeat_outside_normal_range"}
+            if clipped
+            else {"repeat_unconfirmed"}
+        )
+        warning = warnings["repeat_unconfirmed"]
+        assert locus in warning.message and "unresolved" in warning.message
+        assert "0 of 1 disease repeats" in caplog.text
+        if clipped:
+            assert "3 reads clipped" in row["status"]
+            assert "isn't a diagnosis" in caplog.text
+        report_warnings = build_report(out)["sections"]["overview"]["warnings"]
+        assert any(
+            w["code"] == "repeat_unconfirmed" and "unresolved" in w["message"]
+            for w in report_warnings
+        )
+        assert (
+            "low read support" in row["status"]
+            if reads and len(alleles) == 2
+            else ("incomplete call" in row["status"])
+        )
 
 
 @pytest.mark.skipif(

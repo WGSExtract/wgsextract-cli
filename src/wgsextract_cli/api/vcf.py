@@ -93,7 +93,9 @@ class VcfSnpParams(_SmallVariantParams):
     """Call SNPs from a BAM/CRAM into ``snps.vcf.gz``.
 
     Ploidy comes from ``ploidy`` or ``ploidy_file``, else the reference
-    library's ploidy file, else bcftools' built-in GRCh37/GRCh38 table.
+    library's ploidy file, else bcftools' built-in GRCh37/GRCh38 table for
+    the build of the input, or of a FASTA outside any library (its chr1
+    length, ``.dict`` assembly, header description or file name).
     """
 
     COMMAND = "vcf snp"
@@ -372,7 +374,12 @@ class VcfTrioParams(_VcfFileParams):
 class VcfClinvarParams(_AnnotatorParams):
     """ClinVar significance and disease (CLNSIG, CLNDN) as
     ``clinvar_annotated.vcf.gz``; the pathogenic and likely pathogenic calls,
-    with confidence labels, as ``clinvar_pathogenic.vcf.gz``."""
+    with sequencing confidence labels, as ``clinvar_pathogenic.vcf.gz``.
+    Matching requires an indexed reference FASTA (``ref``, else the library).
+    Both copies are reference-normalized; phase-supported SNVs can match MNVs.
+    Review status, stars and ClinVar identity remain separate from sequencing
+    confidence. Conflicting assertions go to ``clinvar_conflicts.vcf.gz`` and
+    their own confidence table, not the consensus pathogenic subset."""
 
     COMMAND = "vcf clinvar"
 

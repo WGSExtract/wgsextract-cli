@@ -19,6 +19,7 @@ it instead of parsing log text or guessing output file names.
   sample chosen from a multi-sample VCF). `vcf trio` always writes
   `trio.manifest.json`, whichever modes ran.
   Report-only commands (`info`, `info chip`, `ref status`, `ref library --list`)
+  and deletions (`ref library --delete`, `vep delete`, `--delete` options)
   write no file, except `info --format`, whose manifest is named after the first table
   (`<input>_chromosomes.parquet.manifest.json`).
   A failed run that registered outputs still writes its manifest, with
@@ -63,6 +64,8 @@ would take minutes. The mtime is not hashed, so a copied file keeps its
 fingerprint. Only regular files are read. A named pipe, `/dev/stdin` or a process
 substitution is recorded with `size_bytes` and `fingerprint` set to `null` and
 is never opened, so the command still gets its whole stream.
+`align` separately spools one-shot read streams before validating and mapping
+them; fingerprint collection itself still never consumes stream input.
 
 A fingerprint identifies a file cheaply ("is this the same BAM as last time?").
 It is not an integrity check: an edit outside the sampled blocks that keeps the
@@ -118,7 +121,7 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `few_modification_tags`, `opposite_strand_modifications`, `pacbio_5hmc_limited`, `unknown_platform` | `methylation` | The input's MM/ML modification tags are sparse, strand-mixed, or from a platform with limited calls. |
 | `genotype_ambiguous`, `high_copy_number`, `no_call` | `typing` | A star-allele or HLA call is ambiguous, has extra copies, or failed (`gene`). For CYP2D6, an ambiguous call (`filter`, `call_info`, `candidates`) or Cyrius's `LowQ_high_CN` (about 6 or more CYP2D6 copies; `cyp2d6_cyp2d7_copies`) writes no PharmCAT outside call. |
 | `repeat_outside_normal_range` | `typing repeats` | A repeat length is outside its normal range (`locus`). |
-| `repeat_unconfirmed`, `repeat_unavailable` | `typing str` | Only a low-support allele (one read) puts the repeat outside its normal range; the build's catalog lacks the repeat (NOTCH2NLC on hg19) (`locus`). |
+| `repeat_unconfirmed`, `repeat_unavailable` | `typing str` | A low-support allele alone changes the grade, all called alleles have low support, or missing expected copies leave the call unresolved; the build's catalog lacks the repeat (NOTCH2NLC on hg19) (`locus`). |
 | `output_exists`, `input_failed` | `vep` | An input was skipped because its output exists (`path`), or failed while the batch went on. |
 | `vep_info_missing`, `chromosomes_missing` | `vep verify` | The VEP cache lacks its `info.txt` or chromosome directories (`chromosomes`). |
 | `dict_missing` | `ref verify` | The reference has no sequence dictionary. |
@@ -224,7 +227,7 @@ Other commands' metrics:
   its `read_groups`.
 - `qc fastp` records read counts before and after filtering, the Q30 rate and
   duplication rate; `qc fastqc` the module pass/warn/fail counts and total
-  sequences; `qc vcf` the `bcftools stats` totals (records, SNPs, indels,
+  sequences (`r2_`-prefixed for `--r2`); `qc vcf` the `bcftools stats` totals (records, SNPs, indels,
   ts/tv).
 - `analyze` reads each step's result document (the steps still print their
   tables and results) and includes the step's manifest (role

@@ -18,7 +18,7 @@ from wgsextract_cli.api.ref import (
     RefVerifyParams,
 )
 from wgsextract_cli.core import bwa_mem2
-from wgsextract_cli.core.annotation_resources import get_genome_size
+from wgsextract_cli.core.annotation_resources import genome_bytes
 from wgsextract_cli.core.bgzf import open_decompressed
 from wgsextract_cli.core.builds import build_from_path, canonical_build
 from wgsextract_cli.core.constants import REFERENCE_MODELS
@@ -26,7 +26,7 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.download_progress import redact_urls
+from wgsextract_cli.core.download_progress import format_bytes, redact_urls
 from wgsextract_cli.core.gene_map import are_gene_maps_installed
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path
@@ -35,11 +35,13 @@ from wgsextract_cli.core.ref_library.catalog import (
     get_genome_status,
 )
 from wgsextract_cli.core.ref_library.downloads import download_file
+from wgsextract_cli.core.ref_library.remote_sizes import cached_sizes, refresh_sizes
 from wgsextract_cli.core.reference_assets import (
     fasta_prefix,
     n_count_paths,
     read_fai_lengths,
     reference_dict_path,
+    reference_genomes_dir,
     sequence_signature,
     verify_sequence_signature,
 )
@@ -331,21 +333,36 @@ def _annotation_resources(reflib_dir: str) -> dict[str, dict[str, bool]]:
 
 
 def run_library_list(params: RefLibraryListParams) -> None:
-    """The library's genomes and annotation data, as ``details`` and the CLI's
-    table."""
+    """The catalog's genomes with their state in the library, and its
+    annotation data, as ``details`` and the CLI's table."""
     reflib_dir = str(params.library())
+    catalog = get_available_genomes()
+    library = Path(reflib_dir)
+    remote = (
+        refresh_sizes(library, (g["url"] or "" for g in catalog))
+        if params.remote_sizes
+        else cached_sizes(library)
+    )
     genomes = []
     vep_labels: list[str | None] = []
-    for g in get_available_genomes():
+    for g in catalog:
         status = get_genome_status(g["final"], reflib_dir)
+        size_bytes = genome_bytes(g["final"], reflib_dir)
         vep_labels.append(_vep_cache(g, reflib_dir))
         genomes.append(
             {
                 "code": g["code"],
                 "label": g["label"],
+                "source": g.get("source"),
                 "file": g["final"],
+                "url": g.get("url"),
+                "description": g.get("description") or "",
+                "sn_count": g.get("sn_count"),
+                "build": _catalog_build(g),
                 "status": status,
-                "size": get_genome_size(g["final"], reflib_dir),
+                "size_bytes": size_bytes,
+                "size": format_bytes(size_bytes) if size_bytes else "",
+                "remote_bytes": remote.get(g.get("url") or ""),
                 # Bootstrap ships every catalog genome's N-counts; they matter
                 # once it's here.
                 "n_counts": status != "missing" and has_ref_ns(g["final"], reflib_dir),
@@ -357,6 +374,7 @@ def run_library_list(params: RefLibraryListParams) -> None:
     current_result().set_details(
         {
             "library": reflib_dir,
+            "genomes_dir": reference_genomes_dir(reflib_dir),
             "genomes": genomes,
             "resources": {"gene_maps": gene_maps, **builds},
         }
@@ -371,6 +389,8 @@ def run_library_list(params: RefLibraryListParams) -> None:
         details = ["N-counts"] if row["n_counts"] else []
         if vep:
             details.append(vep)
+        if not row["size_bytes"] and row["remote_bytes"]:
+            details.append(f"download {format_bytes(row['remote_bytes'])}")
         human_output(
             f"{row['label']:<40} {row['status'].upper():<15} {row['size']:<10} "
             f"{', '.join(details)}"

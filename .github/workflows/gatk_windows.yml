@@ -3,6 +3,7 @@ name: GATK native Windows smoke
 # The desktop app (gui/) has its own CI (gui-*.yml); app-only changes skip this.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [main]
     paths:
       - "packaging/windows/**"
@@ -19,6 +20,8 @@ on:
       - "!**/*.md"
   push:
     branches: [main]
+    paths-ignore:
+      - "**/*.md"
   schedule:
     - cron: "53 6 * * *"
   workflow_dispatch:
@@ -28,11 +31,12 @@ permissions:
 
 # Only pull requests share a group: a new push supersedes the PR's older run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   gatk-smoke:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: windows-latest
     timeout-minutes: 20
     steps:

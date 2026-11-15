@@ -19,6 +19,7 @@ import pytest
 from tests.htslib_helpers import needs_htslib, write_fasta
 from tests.smoke_utils import state_directory_setting
 from tests.test_microarray_library import MARKERS, _library, _sample_bam
+from wgsextract_cli.core.microarray_targets import build_genome_wide_target
 
 pytestmark = needs_htslib
 
@@ -39,6 +40,11 @@ def run(tmp_path: Path) -> Any:
         (templates / part / "23andMe_V5_2025.txt").write_bytes(
             (templates / part / "23andMe_V3.txt").read_bytes()
         )
+    # Issue 926: the library's genome-wide target, built from its own template.
+    # Left to the first run, it took the CLI's packaged chip templates too: 1.6M
+    # markers, then a copy for the 5 kb genome's contigs, ~15 MB through bgzip
+    # per run; on CI macOS one of those writes failed.
+    build_genome_wide_target(str(library), "hg19", [str(library)])
     bam = _sample_bam(tmp_path, seq)
     config = tmp_path / "config.toml"
     config.write_text(

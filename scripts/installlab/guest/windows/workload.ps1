@@ -39,7 +39,8 @@ foreach ($Cache in @("reference/yleaf", "reference/haplogrep3")) {
     }
 }
 W "snp" @("vcf", "snp", "--input", $BAM, "--ref", $REF, "--region", "20", "--ploidy", "2", "--outdir", (Join-Path $Out "snp"))
-W "microarray" @("microarray", "--input", $BAM, "--ref", $REF, "--ref-vcf-tab", $TARGETS, "--formats", "23andme_v5", "--outdir", (Join-Path $Out "microarray"))
+# The 5x fixture uses the real confidence defaults; explain weak-site no-calls.
+W "microarray" @("microarray", "--input", $BAM, "--ref", $REF, "--ref-vcf-tab", $TARGETS, "--formats", "23andme_v5", "--call-reasons", "--outdir", (Join-Path $Out "microarray"))
 W "align" @("align", "--r1", $R1, "--r2", $R2, "--ref", $REF, "--outdir", (Join-Path $Out "align"))
 W "gatk" @("vcf", "gatk", "--input", $BAM, "--ref", $REF, "--region", "20:1-200000", "--outdir", (Join-Path $Out "gatk"))
 W "must_fail" @("info", "--input", (Join-Path $Data "does-not-exist.bam"), "--outdir", (Join-Path $Out "must_fail"))

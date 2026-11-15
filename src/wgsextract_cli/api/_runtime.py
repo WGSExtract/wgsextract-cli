@@ -287,6 +287,10 @@ def execute(
 def _prepare(params: Params, result: CommandResult) -> None:
     """What dispatch does before a command: record and check the input, make
     the output folder."""
+    from wgsextract_cli.cli.dispatch import checks_alignment_input, reports_status
+
+    if reports_status(params):
+        return
     input_path = getattr(params, "input", None)
     if isinstance(input_path, str) and is_url(input_path):
         check_public(input_path)  # Before a secret in it is recorded.
@@ -295,8 +299,6 @@ def _prepare(params: Params, result: CommandResult) -> None:
         input_path = input_path.expanduser()
         if input_path.exists():
             result.add_input(input_path, "input")
-        from wgsextract_cli.cli.dispatch import checks_alignment_input
-
         if input_path.suffix.lower() in {".bam", ".cram"} and checks_alignment_input(
             params.COMMAND
         ):

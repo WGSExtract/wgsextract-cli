@@ -19,6 +19,7 @@ const defaultTests = [
   "tests/quick-uninstall.test.mjs",
   "tests/wgsextract-missing-pixi-environment.test.mjs",
   "tests/example-bundles.test.mjs",
+  "tests/wgsextract-reference-genomes.test.mjs",
   "tests/workspace.test.mjs",
   "tests/workspace-location.test.mjs",
   "tests/platform.test.mjs",
