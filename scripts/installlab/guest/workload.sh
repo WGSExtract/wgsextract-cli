@@ -46,6 +46,10 @@ step y_haplo     "$WGSE" lineage y-haplogroup --input "$BAM" --ref "$REF" --outd
 # Keep predictions/evidence, not downloaded tables or the fresh user's private lock.
 rm -rf "$OUT/reference/yleaf" "$OUT/reference/haplogrep3"
 step snp         "$WGSE" vcf snp --input "$BAM" --ref "$REF" --region 20 --ploidy 2 --outdir "$OUT/snp"
+# HG00096 is a male 1000 Genomes sample, but the mini genome has no chrX reads, so
+# its sex is Unknown and microarray refuses sex-dependent ploidy (#975). Declare
+# it as the refusal tells a user to.
+step sample_sex  "$WGSE" sample set --input "$BAM" --sex Male
 # This 5x sample deliberately uses the product's confidence defaults. Weak
 # evidence is no-called; the reason table explains that to the user and oracle.
 step microarray  "$WGSE" microarray --input "$BAM" --ref "$REF" --ref-vcf-tab "$TARGETS" --formats 23andme_v5 --call-reasons --outdir "$OUT/microarray"
