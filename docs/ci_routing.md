@@ -108,6 +108,9 @@ validates all reference bytes, including the catalog-pinned full genome.
 This can download several GiB; run under the resource coordinator on shared
 hosts. Existing conflicting bootstrap files are not overwritten: the refusal
 identifies the file to move aside before repeating setup.
+An older or modified hs38 FASTA must likewise be moved aside with its indexes
+before rerunning setup; the normal catalog installer reuses an existing FASTA
+rather than replacing it with the pinned copy.
 
 References use `reference_library` in config.toml, falling back to `reference/`.
 To reuse a machine's existing library across worktrees, configure that path

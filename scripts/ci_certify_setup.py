@@ -49,10 +49,19 @@ def prepare_wheels(packages: list[dict[str, Any]]) -> None:
     for package in packages:
         if package["kind"] != "pypi" or package.get("version") is None:
             continue
-        url = package.get("url", "")
-        checksum = package.get("sha256", "")
-        if not url.endswith(".whl") or not checksum:
-            raise ValueError(f"{package['name']}: pixi.lock has no pinned wheel")
+        missing = [field for field in ("url", "sha256") if not package.get(field)]
+        if missing:
+            raise ValueError(
+                f"{package['name']}: pixi list --locked --json is missing "
+                f"{', '.join(missing)}; use CI's Pixi version pinned in "
+                ".github/actions/setup-pixi/action.yml, then rerun just certify-setup"
+            )
+        url = package["url"]
+        checksum = package["sha256"]
+        if not url.endswith(".whl"):
+            raise ValueError(
+                f"{package['name']}: locked Python artifact is not a wheel"
+            )
         destination = INPUTS / "wheels" / f"{checksum}.whl"
         fetch_verified(url, destination, checksum)
         print(f"Verified wheel: {package['name']}", flush=True)

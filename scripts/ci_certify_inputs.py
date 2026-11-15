@@ -240,7 +240,8 @@ def validate_reference() -> None:
     ):
         raise ValueError(
             f"Prepared pinned hs38 reference is missing or corrupt in {root / 'genomes'}; "
-            "run just certify-setup --reference"
+            f"move any existing {hs38['final']} FASTA and its indexes aside, "
+            "then run just certify-setup --reference to obtain the pinned copy"
         )
 
 

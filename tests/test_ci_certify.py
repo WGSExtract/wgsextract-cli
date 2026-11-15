@@ -349,7 +349,7 @@ def test_951_missing_environment_names_install_and_setup_remedy(
     monkeypatch.chdir(tmp_path)
     with pytest.raises(ValueError) as caught:
         locked_packages("dev")
-    assert ".pixi/envs/dev" in str(caught.value)
+    assert str(Path(".pixi/envs/dev")) in str(caught.value)
     assert "pixi install --locked -e dev" in str(caught.value)
     assert "just certify-setup -e dev" in str(caught.value)
 
@@ -367,7 +367,9 @@ def test_951_missing_wheel_names_exact_archive_and_setup_remedy(
             {"name": "sample", "sha256": "a" * 64},
         )
     assert "sample" in str(caught.value)
-    assert f"out/certify/inputs/wheels/{'a' * 64}.whl" in str(caught.value)
+    assert str(Path("out/certify/inputs/wheels") / f"{'a' * 64}.whl") in str(
+        caught.value
+    )
     assert f"just certify-setup -e {tmp_path.name}" in str(caught.value)
 
 
@@ -378,6 +380,30 @@ def test_951_missing_bootstrap_names_archive_and_reference_remedy(
         validate_bootstrap(tmp_path, "bootstrap.tar.gz", "a" * 64)
     assert str(tmp_path / "bootstrap.tar.gz") in str(caught.value)
     assert "just certify-setup --reference" in str(caught.value)
+
+
+@pytest.mark.parametrize("field", ["url", "sha256"])
+@pytest.mark.parametrize("null_value", [False, True])
+def test_951_missing_pixi_list_metadata_identifies_field_and_pixi_remedy(
+    field: str, null_value: bool
+) -> None:
+    package: dict[str, Any] = {
+        "kind": "pypi",
+        "name": "sample",
+        "version": "1.0",
+        "url": "https://example.invalid/sample.whl",
+        "sha256": "a" * 64,
+    }
+    if null_value:
+        package[field] = None
+    else:
+        del package[field]
+    with pytest.raises(ValueError) as caught:
+        prepare_wheels([package])
+    assert field in str(caught.value)
+    assert "pixi list --locked --json" in str(caught.value)
+    assert ".github/actions/setup-pixi/action.yml" in str(caught.value)
+    assert "just certify-setup" in str(caught.value)
 
 
 def test_951_setup_retains_only_lock_verified_wheels_and_reuses_them(
