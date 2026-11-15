@@ -31,13 +31,34 @@ on:
         description: Install the hs38 reference library the reference-backed tests read.
         type: boolean
         default: false
+      tests:
+        description: JSON affected test files, or all for safety runs.
+        type: string
+        default: all
+      smoke-only:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
+  workflow-smoke:
+    if: github.event.pull_request.draft != true && inputs.smoke-only && github.event_name == 'pull_request' && inputs.tests != '[]'
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: dev
+      - name: Exercise changed workflow with smoke tests
+        shell: bash
+        env:
+          TEST_SELECTION: ${{ inputs.tests }}
+        run: pixi run python scripts/ci_run_tests.py --selection "$TEST_SELECTION"
   test:
-    if: ${{ github.event.pull_request.draft != true }}
+    if: ${{ github.event.pull_request.draft != true && !inputs.smoke-only && inputs.tests != '[]' }}
     name: ${{ matrix.label }}
     strategy:
       fail-fast: false
@@ -149,7 +170,7 @@ jobs:
       # This environment is deliberately not restored by setup-pixi above:
       # prove that a fresh install uses the published, SHA-256-pinned package.
       - name: Install pinned imputation tools from scratch
-        if: inputs.os == 'windows' && matrix.tier == 'integration'
+        if: inputs.os == 'windows' && matrix.tier == 'integration' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))
         shell: pwsh
         run: |
           if (Test-Path .pixi/envs/imputation) {
@@ -158,7 +179,7 @@ jobs:
           pixi install --locked -e imputation
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Impute HG002 with the pinned Windows tools (no skips)
-        if: inputs.os == 'windows' && matrix.tier == 'integration'
+        if: inputs.os == 'windows' && matrix.tier == 'integration' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force out | Out-Null
@@ -170,6 +191,7 @@ jobs:
         shell: bash
         env:
           EVENT: ${{ github.event_name }}
+          TEST_SELECTION: ${{ github.event_name == 'pull_request' && inputs.tests || 'all' }}
           TIER: ${{ matrix.tier }}
           SHARD: ${{ matrix.shard }}
           # Ubuntu x64 alone runs the reviewed OS-independent tests.
@@ -180,15 +202,15 @@ jobs:
           if [ "$EVENT" != pull_request ] && [ "$EVENT" != merge_group ]; then
             args+=(--cov=wgsextract_cli --cov-report=xml:out/coverage.xml)
           fi
-          pixi run test-ci "${args[@]}"
+          pixi run python scripts/ci_run_tests.py --selection "$TEST_SELECTION" -- "${args[@]}"
       # The app's bundle commands must still parse with this CLI (#538); GUI CI
       # checks the bundle side, this catches a CLI flag dropped or renamed.
       - name: Check the app's bundle commands parse with this CLI
-        if: inputs.os == 'ubuntu' && strategy.job-index == 0
+        if: inputs.os == 'ubuntu' && strategy.job-index == 0 && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_cli_parser.py'))
         working-directory: gui
         run: pixi run python -m unittest discover -s tests/wgsextract
       - name: Annotate with vep-rs end to end (no skips)
-        if: inputs.os == 'windows' && matrix.tier == 'integration'
+        if: inputs.os == 'windows' && matrix.tier == 'integration' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_vep_rs.py'))
         shell: pwsh
         run: |
           pixi run python -c "from wgsextract_cli.core.dependencies import get_tool_path as g; assert g('vep-rs') and g('vep-cache-builder'), 'vep-rs environment missing'"
@@ -200,7 +222,7 @@ jobs:
       # Each extract, call and annotate command run end to end on generated chrM
       # and whole-genome data; about 30 s, no downloads.
       - name: Run end-to-end tests on generated data
-        if: matrix.tier != 'core'
+        if: matrix.tier != 'core' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_e2e_'))
         run: pixi run test-e2e-fake --junitxml=out/e2e-fake.xml
       - name: Publish test timings and non-gating coverage
         if: always()

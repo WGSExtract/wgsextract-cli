@@ -7,6 +7,13 @@ on:
     paths-ignore:
       - "**/*.md"
   workflow_call:
+    inputs:
+      tests:
+        type: string
+        default: all
+      smoke-only:
+        type: boolean
+        default: false
   schedule:
     - cron: "11 6 * * *"
   workflow_dispatch:
@@ -20,6 +27,7 @@ concurrency:
 
 jobs:
   test-macos:
+    if: inputs.tests != '[]'
     uses: ./.github/workflows/os_tests.yml
     with:
       os: macos
@@ -27,3 +35,5 @@ jobs:
       timeout-minutes: 90
       environments: default dev vep-rs
       reference: true
+      tests: ${{ inputs.tests || 'all' }}
+      smoke-only: ${{ inputs.smoke-only == true }}
