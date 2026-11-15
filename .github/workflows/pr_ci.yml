@@ -4,7 +4,8 @@ run-name: PR area checks / ${{ github.event.action }} / ${{ github.event_name ==
 on:
   pull_request:
     # converted_to_draft enters concurrency to cancel ready work; all jobs skip.
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, labeled, unlabeled]
+    # Labels must not create skipped suites that shadow the passing required check.
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   # The merge queue retests only the required set below against the latest main.
   merge_group:
 
@@ -13,19 +14,19 @@ permissions:
 
 concurrency:
   # Isolate delayed draft payloads from readiness; redrafting still cancels ready work.
-  # A label must not cancel the in-flight validation of the PR's code.
-  group: pr-area-${{ github.ref }}-${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && format('label-{0}', github.event.label.name) || 'diff' }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
+  group: pr-area-${{ github.ref }}-diff${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
   cancel-in-progress: true
 
 jobs:
   changes:
-    name: changes${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
-    if: ${{ github.event.pull_request.draft != true && (!contains(fromJSON('["labeled","unlabeled"]'), github.event.action) || github.event.label.name == 'run-install-lab') }}
+    name: changes
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
       statuses: read
+      pull-requests: read
     outputs:
       cli: ${{ steps.diff.outputs.cli }}
       docs: ${{ steps.diff.outputs.docs }}
@@ -84,15 +85,17 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
           HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
-          FORCE_INSTALL: ${{ contains(github.event.pull_request.labels.*.name, 'run-install-lab') }}
-          LABEL_EVENT: ${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           DRAFT: ${{ github.event.pull_request.draft }}
           FULL_SUITE: ${{ github.event_name == 'merge_group' }}
         run: |
           set -euo pipefail
           flags=()
-          if [ "$FORCE_INSTALL" = true ]; then flags+=(--force-install-lab); fi
-          if [ "$LABEL_EVENT" = true ]; then flags+=(--label-event); fi
+          if [ -n "$PR_NUMBER" ]; then
+            force_install=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq 'any(.labels[]; .name == "run-install-lab")')
+            if [ "$force_install" = true ]; then flags+=(--force-install-lab); fi
+          fi
           if [ "$DRAFT" = true ]; then flags+=(--draft); fi
           if [ "${FULL_SUITE:-false}" = true ]; then flags+=(--full-suite); fi
           python3 scripts/ci_changes.py --base "$BASE" --head "$HEAD" "${flags[@]}" --output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
@@ -133,7 +136,7 @@ jobs:
           python -m pytest -q tests/test_microarray_vendor_formats.py tests/test_table_writer.py --basetemp=out/draft-unit-tests
 
   docs:
-    name: Documentation freshness${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
+    name: Documentation freshness
     needs: changes
     if: github.event.pull_request.draft != true && needs.changes.outputs.generic != 'true' && needs.changes.outputs.docs == 'true' && (needs.changes.outputs.docs_tests != '[]' || needs.changes.outputs.site_validation == 'true')
     runs-on: ubuntu-latest
@@ -163,7 +166,7 @@ jobs:
           python3 gui/scripts/validate_site_sources.py
 
   python-lint:
-    name: Changed Python lint${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
+    name: Changed Python lint
     needs: changes
     if: github.event.pull_request.draft != true && needs.changes.outputs.generic != 'true' && needs.changes.outputs.python_files != '' && needs.changes.outputs.python_files != '[]'
     runs-on: ubuntu-latest
@@ -278,7 +281,7 @@ jobs:
 
   # The secret scan covers every ready PR and queue group, docs-only ones included.
   gitleaks:
-    if: ${{ github.event.pull_request.draft != true && !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
+    if: ${{ github.event.pull_request.draft != true }}
     uses: ./.github/workflows/gitleaks.yml
 
   native-smoke:
@@ -318,14 +321,13 @@ jobs:
           test -d gui/mockups
 
   ready-gate:
-    name: Ready PR area checks${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
+    name: Ready PR area checks
     needs: [changes, draft-fast, docs, python-lint, ci-policy, generic, ubuntu, macos, windows, arm64, smoke, install, native-smoke, pages]
     if: >-
       ${{
         !cancelled() &&
         github.event_name == 'pull_request' &&
-        !github.event.pull_request.draft &&
-        !contains(fromJSON('["labeled","unlabeled"]'), github.event.action)
+        !github.event.pull_request.draft
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 1
@@ -348,12 +350,13 @@ jobs:
   # routing skips jobs, so require this summary rather than each job. PRs
   # also require the area verdict; queue groups retain their smaller matrix.
   required:
-    name: required${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
+    # A late skipped draft suite must never satisfy the ready run's required check.
+    name: ${{ github.event.pull_request.draft && 'required (draft)' || 'required' }}
     needs: [changes, draft-fast, docs, python-lint, ci-policy, generic, ubuntu, gitleaks, native-smoke, pages, ready-gate]
     # Run after failed dependencies, but let whole-run cancellation stop this
     # gate. A cancelled dependency in an otherwise active run still fails below.
     # Draft events allocate no runner, including this summary.
-    if: ${{ !cancelled() && github.event.pull_request.draft != true && !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
+    if: ${{ !cancelled() && github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

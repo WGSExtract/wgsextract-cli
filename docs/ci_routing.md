@@ -22,9 +22,7 @@ draft payload, in addition to the PR area's gates on its OS callers.
 Workflows with cancelling concurrency retain a runner-free `converted_to_draft`
 event in the same concurrency group to cancel in-flight ready runs. Pushes, schedules,
 manual dispatches, workflow calls and merge groups retain their existing gates.
-The runner-free `pr_draft_cancel.yml` workflow also cancels the separate
-Install Lab label group on redrafting/readiness, without letting ordinary
-label events cancel code validation.
+Install Lab shares the code-validation run and is cancelled with it on redrafting.
 
 Draft-payload events other than `converted_to_draft` use a separate `-draft`
 concurrency group. GitHub may deliver a draft `synchronize` event after
@@ -32,6 +30,9 @@ concurrency group. GitHub may deliver a draft `synchronize` event after
 This isolation applies to every PR workflow with cancelling concurrency, not
 just area routing. Ready pushes still supersede earlier ready runs, and
 `converted_to_draft` deliberately enters the ready group to stop active work.
+Draft summaries also use a different check name from `required`: GitHub accepts
+skipped checks as passing, so a delayed draft suite must not satisfy the ready
+run's merge requirement while its selected checks are still pending.
 Non-PR groups are unchanged. No live-state lookup runner is needed: drafts
 still allocate zero runners, and readiness always retains its own full run.
 
@@ -418,11 +419,14 @@ and job-level draft gates are managed separately by #910 (draft PR CI gating).
 
 Merge-group routing, nightly schedules, reusable calls, releases and manual
 dispatches retain their coverage. Install Lab can be
-forced on any PR with the `run-install-lab` label. Only this label is actionable:
-adding it runs Install Lab without repeating the matrix; other labels are ignored.
-Label runs cannot cancel a code-validation run. Routing, documentation, lint
-and summary label checks have distinct names. The now-skipped draft-fast, native smoke and
-Pages checks use static names so skipped jobs do not expose raw name expressions.
+forced on any PR with the `run-install-lab` label. Normal PR runs read this routing
+label live from GitHub, rather than from a possibly delayed event payload.
+Adding or removing labels does not start or cancel PR area checks: a skipped label
+suite can shadow the passing `required` check and block the merge queue.
+To apply a routing-label change immediately, toggle the PR to draft and then
+ready (`gh pr ready --undo PR`, then `gh pr ready PR`); otherwise the next push
+uses the current labels. The new ready run validates the complete diff, not just
+Install Lab. Other labels do not affect routing.
 The landing validator scopes area checks to the selected ready run.
 Its nightly run includes the former weekly negative controls and pinned-release
 scenarios.
@@ -586,7 +590,7 @@ gh pr checks "$PR" --json bucket,name,workflow,link | python scripts/pr_checks_r
 The validator requires a passing `required` check (which includes the area-gate
 verdict on PRs) and `changes` job from the same workflow run, with draft-fast
 absent or skipped in that run. The area gate runs
-only on non-draft, non-label events after all selected area jobs finish.
+only on non-draft PR events after all selected area jobs finish.
 Routing uses `set -euo pipefail`; the final gate fails on a routing failure
 or a missing completion output, rather than accepting an all-skipped matrix.
 It rejects old draft-only passes/skips (including the gap before the ready

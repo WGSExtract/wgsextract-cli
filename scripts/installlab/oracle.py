@@ -45,6 +45,7 @@ WORKLOAD_STEPS = [
     "mt_haplo",
     "y_haplo",
     "snp",
+    "sample_sex",
     "microarray",
     "align",
     "gatk",

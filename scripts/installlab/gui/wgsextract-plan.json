@@ -211,6 +211,22 @@
       }
     },
     {
+      "id": "sample_sex",
+      "kind": "action",
+      "pageID": "workflows",
+      "sectionID": "sample-overrides",
+      "actionID": "sample-set",
+      "timeoutSeconds": 600,
+      "inputs": {
+        "fieldValues": {
+          "sample_sex": "Male"
+        }
+      },
+      "requiredOutput": [
+        "sex = Male"
+      ]
+    },
+    {
       "id": "microarray",
       "kind": "action",
       "pageID": "microarray",
