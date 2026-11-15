@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -12,7 +14,8 @@ from typing import Any
 
 import pytest
 
-from scripts.ci_certify_remote import HOST, REPOSITORY, RESULT, certify_remote
+from scripts.ci_certify_remote import REPOSITORY, RESULT, certify_remote
+from scripts.ci_certify_ssh import CANCEL, HOST, SUPERVISOR, ssh_command
 
 
 @pytest.fixture
@@ -64,6 +67,8 @@ def transport(
     disconnect: bool = False,
     moved_pr: bool = False,
     lock_refused: bool = False,
+    cleanup_refused: bool = False,
+    terminated: bool = False,
 ) -> tuple[list[dict[str, str]], list[str]]:
     popen = subprocess.Popen
     statuses: list[dict[str, str]] = []
@@ -73,6 +78,19 @@ def transport(
         output = ""
         exit_code = 0
         if command[0] == "ssh":
+            if command[-1] == ssh_command(CANCEL)[-1]:
+                return popen(
+                    [
+                        sys.executable,
+                        "-c",
+                        "import sys; sys.stdin.readline(); "
+                        f"print('stopped'); sys.exit({int(cleanup_refused)})",
+                    ],
+                    *args,
+                    **kwargs,
+                )
+            if terminated:
+                os.kill(os.getpid(), signal.SIGTERM)
             result = {
                 "sha_before": pr["head"]["sha"],
                 "sha_after": binding if binding is not None else pr["head"]["sha"],
@@ -107,7 +125,7 @@ def transport(
             [
                 sys.executable,
                 "-c",
-                f"import sys; sys.stdin.read() if {command[0] == 'ssh'!r} else None; "
+                f"import sys; sys.stdin.readline() if {command[0] == 'ssh'!r} else None; "
                 f"sys.stdout.write({output!r}); sys.exit({exit_code})",
             ],
             *args,
@@ -156,6 +174,8 @@ def test_972_remote_success_streams_and_posts_local_log_digest(
         ({"moved_pr": True}, "error"),
         ({"state": "success", "code": 1}, "error"),
         ({"lock_refused": True}, "error"),
+        ({"cleanup_refused": True}, "error"),
+        ({"terminated": True}, "error"),
     ],
 )
 def test_972_refusals_never_publish_test_failure(
@@ -168,7 +188,11 @@ def test_972_refusals_never_publish_test_failure(
     with pytest.raises((ValueError, subprocess.SubprocessError)):
         certify(remote_pr)
     assert [status["state"] for status in statuses] == ["pending", expected]
-    assert locks == (["lock"] if options.get("lock_refused") else ["lock", "unlock"])
+    assert locks == (
+        ["lock"]
+        if options.get("lock_refused") or options.get("cleanup_refused")
+        else ["lock", "unlock"]
+    )
 
 
 def test_972_shell_payload_in_sha_is_refused_without_execution(
@@ -182,3 +206,38 @@ def test_972_shell_payload_in_sha_is_refused_without_execution(
     assert statuses[-1]["state"] == "error"
     assert not Path("owned").exists()
     assert locks == ["lock", "unlock"]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX SSH process groups")
+def test_972_disconnect_reaps_remote_test_children(tmp_path: Path) -> None:
+    child_script = (
+        "import subprocess, sys, time; "
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(300)']); "
+        "print(child.pid, flush=True); time.sleep(300)"
+    )
+    run_id = "a" * 32
+    with subprocess.Popen(
+        [sys.executable, "-u", "-c", SUPERVISOR],
+        env={**os.environ, "HOME": str(tmp_path)},
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    ) as process:
+        assert process.stdin is not None and process.stdout is not None
+        process.stdin.write(json.dumps({"id": run_id, "script": child_script}) + "\n")
+        process.stdin.flush()
+        pid = int(process.stdout.readline())
+        process.stdin.close()
+        assert process.wait(timeout=15) == 2
+        output = process.stdout.read()
+    assert "disconnected" in output
+    control = tmp_path / "src/wgsextract-cli/out/certify/remote-control"
+    assert (control / (run_id + ".done")).is_file()
+    status = subprocess.run(
+        ["ps", "-o", "stat=", "-p", str(pid)],
+        text=True,
+        stdout=subprocess.PIPE,
+        check=False,
+    )
+    assert not status.stdout.strip() or status.stdout.strip().startswith("Z")

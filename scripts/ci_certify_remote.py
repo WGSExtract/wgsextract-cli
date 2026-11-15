@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import re
+import signal
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -16,9 +17,9 @@ from scripts.ci_certifications import (
     publish_certification,
 )
 from scripts.ci_certify import validate_head
+from scripts.ci_certify_ssh import HOST, RemoteStillRunning, stream_remote
 
 RESULT = "WGSE_CERTIFICATION_RESULT "
-HOST = "randy-mini"
 REPOSITORY = "WGSExtract/wgsextract-cli"
 
 # Only literal code enters the remote shell. PR metadata travels as Python data
@@ -76,42 +77,7 @@ def remote_layer(
     directory = Path("out/certify") / sha / f"remote-{HOST}" / name
     directory.mkdir(parents=True, exist_ok=True)
     log = directory / "run.log"
-    last = ""
-    command = [
-        "ssh",
-        "-T",
-        "-o",
-        "BatchMode=yes",
-        "-o",
-        "ForwardAgent=no",
-        "-o",
-        "ClearAllForwardings=yes",
-        "-o",
-        "SendEnv=-*",
-        HOST,
-        "python3 -u -",
-    ]
-    with log.open("w", encoding="utf-8") as stream:
-        stream.write(f"{sha} {name} {HOST}\n")
-        stream.flush()
-        with subprocess.Popen(
-            command,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        ) as process:
-            assert process.stdin is not None and process.stdout is not None
-            process.stdin.write(script)
-            process.stdin.close()
-            for line in process.stdout:
-                stream.write(line)
-                stream.flush()
-                print(line, end="", flush=True)
-                last = line
-            code = process.wait()
+    code, last = stream_remote(script, log)
     if not last.startswith(RESULT):
         raise ValueError(f"Remote transport/setup refused (exit {code}); see {log}")
     result = json.loads(last.removeprefix(RESULT))
@@ -125,7 +91,7 @@ def remote_layer(
         raise ValueError(f"Remote SHA/platform binding failed; see {log}")
     validate_head(gh_api(f"repos/{repository}/pulls/{pr['number']}"), sha, repository)
     if code == 1 and result.get("state") == "failure":
-        raise CertificationTestFailure(code, command)
+        raise CertificationTestFailure(code, ["ssh", HOST])
     if code or result.get("state") != "success":
         raise ValueError(f"Remote certification refused; see {log}")
     digest = hashlib.sha256(log.read_bytes()).hexdigest()
@@ -139,7 +105,13 @@ def certify_remote(
         [] if args.platform_only else ["generic"]
     )
     locked = False
+    release_lock = True
     summaries = []
+
+    def interrupted(signum: int, frame: Any) -> None:
+        raise ValueError(f"Certification interrupted by signal {signum}")
+
+    previous = signal.signal(signal.SIGTERM, interrupted)
     try:
         for name in layers:
 
@@ -151,12 +123,18 @@ def certify_remote(
                         check=True,
                     )
                     locked = True
-                return remote_layer(repository, pr, sha, name, args.workers)
+                nonlocal release_lock
+                try:
+                    return remote_layer(repository, pr, sha, name, args.workers)
+                except RemoteStillRunning:
+                    release_lock = False
+                    raise
 
             summary, log = publish_certification(repository, sha, name, operation)
             summaries.append(f"{name}: {summary} (log `{log}`)")
     finally:
-        if locked:
+        signal.signal(signal.SIGTERM, previous)
+        if locked and release_lock:
             subprocess.run(["agent-coord", "unlock", HOST], check=True)
     subprocess.run(
         [

@@ -207,7 +207,17 @@ phase still uses `--no-install`.
 
 The Mac must start setup with 30 GiB disk free. A one-second watchdog stops the
 worker and its child process group below 26 GiB, leaving headroom for the
-required 25 GiB reserve. No sudo, reboot, reverse SSH, or access to
+required 25 GiB reserve. The controller sends five-second heartbeats; a lost
+connection or 30 seconds without a heartbeat cancels the entire remote process
+group, including setup and test children. SIGTERM follows the refusal/cleanup
+path. A fresh SSH connection requests cancellation and confirms termination
+before the controller releases the lock, including after transport failures.
+If that confirmation fails the lock deliberately remains held: retry once SSH
+is reachable, or confirm the matching control ID has a `.done` marker under
+`~/src/wgsextract-cli/out/certify/remote-control/` before manually unlocking.
+An abruptly killed controller (SIGKILL/power loss) likewise leaves its lock for
+recovery; never break it while the remote supervisor may still be running.
+No sudo, reboot, reverse SSH, or access to
 `/Users/randy` is needed. The worker checks platform, clean tree and HEAD before
 and after execution. Logs stream to lin-mid under
 `out/certify/<sha>/remote-randy-mini/<layer>/run.log`; only lin-mid publishes

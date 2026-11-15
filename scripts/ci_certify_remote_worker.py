@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import os
 import shutil
-import signal
 import subprocess
 import sys
-import threading
 from pathlib import Path
 
 if __package__ in {None, ""}:
@@ -101,27 +98,5 @@ def main() -> int:
     return code
 
 
-def guarded_main() -> int:
-    """Keep a one-GiB safety margin while setup and tests write outputs."""
-    stopped = threading.Event()
-
-    def monitor() -> None:
-        while not stopped.wait(1):
-            if shutil.disk_usage(Path.cwd()).free < 26 * 1024**3:
-                print("Remote disk reserve reached; stopping certification", flush=True)
-                os.killpg(os.getpgrp(), signal.SIGTERM)
-                return
-
-    # The worker owns its process group, including nested test/setup processes.
-    os.setpgrp()
-    watcher = threading.Thread(target=monitor, daemon=True)
-    watcher.start()
-    try:
-        return main()
-    finally:
-        stopped.set()
-        watcher.join()
-
-
 if __name__ == "__main__":
-    raise SystemExit(guarded_main())
+    raise SystemExit(main())
