@@ -454,7 +454,7 @@ def _chm13_files(**override: bytes) -> dict[str, bytes]:
     for path, data in files.items():
         folder, name = path.rsplit("/", 1)
         listings[folder] = listings.get(folder, "") + (
-            f"{hashlib.md5(data).hexdigest()}  {name}\n"
+            f"{hashlib.md5(data, usedforsecurity=False).hexdigest()}  {name}\n"
         )
     for path, data in override.items():
         files[next(p for p in files if p.endswith(path))] = data

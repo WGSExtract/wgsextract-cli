@@ -149,10 +149,12 @@ def require_assembly(engine: VepEngine, assembly: str | None) -> None:
     """Refuse an assembly ``engine`` has no cache for."""
     if assembly and assembly not in engine.assemblies:
         others = [e.name for e in ENGINES.values() if assembly in e.assemblies]
-        raise WGSExtractError(
-            f"{engine.label} has no {assembly} cache; use --engine "
-            f"{' or '.join(others)}."
+        hint = (
+            f"use --engine {' or '.join(others)}."
+            if others
+            else f"supported assemblies are {', '.join(ASSEMBLIES)}."
         )
+        raise WGSExtractError(f"{engine.label} has no {assembly} cache; {hint}")
 
 
 def _refuses(engine: VepEngine, token: str) -> bool:

@@ -1362,8 +1362,10 @@ def estimate_vep_download(
 ) -> PreflightEstimate:
     """Disk and memory a vep-rs cache build needs: the downloads and the
     unpacked genome stay until the cache beside them is complete."""
+    from wgsextract_cli.commands._vep_engines import CHM13
+
     _, free = _disk_space(cache_dir)
-    if assembly == "T2T-CHM13v2.0":
+    if assembly == CHM13:
         components, memory = dict(VEP_RS_CHM13_BYTES), VEP_RS_CHM13_BUILD_MEMORY
     else:
         components = {
