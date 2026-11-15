@@ -171,6 +171,11 @@ hosted when routed. Merge groups never consume attestations. `required` and the
 ready-gate accept certified skips only after successful routing, and the landing
 validator relies on the current ready run rather than treating status contexts as
 standalone workflow runs. Failed/pending certificates allow hosted fallback.
+Setup refusals, missing inputs and interruptions clear pending attestations with
+`error` (“Not certified … hosted CI covers this SHA”), not `failure`. Only a
+test runner report containing failed tests produces `failure`. Landing still
+requires the passing hosted ready run; non-success local attestations never
+make that otherwise-passing run fail the landing gate.
 
 For macOS remotely, push the branch, acquire randy-mini's coordinator lock, and
 SSH to a dedicated clean worktree with prepared Pixi environments. Leave 25 GiB
