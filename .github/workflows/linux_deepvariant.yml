@@ -10,6 +10,7 @@ name: Linux DeepVariant
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main ]
     paths:
       - native/deepvariant/**
@@ -45,6 +46,7 @@ env:
 
 jobs:
   weights:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -64,6 +66,7 @@ jobs:
           if-no-files-found: error
 
   build:
+    if: ${{ github.event.pull_request.draft != true }}
     needs: weights
     runs-on: ubuntu-latest
     timeout-minutes: 120

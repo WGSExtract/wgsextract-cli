@@ -1,5 +1,6 @@
 import json
 import re
+from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import cast
 
@@ -7,6 +8,122 @@ import pytest
 
 from scripts import validate_github_actions as policy
 from scripts.ci_changes import routes
+
+WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+
+
+def top_level_conjuncts(expression: str) -> list[str]:
+    """Find mandatory conditions without treating a nested OR as a bypass."""
+    expression = expression.strip().removeprefix("${{").removesuffix("}}").strip()
+    atoms = []
+    start = depth = 0
+    quoted = False
+    for index, character in enumerate(expression):
+        if character == "'":
+            quoted = not quoted
+        if quoted:
+            continue
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+        elif depth == 0 and expression[index : index + 2] == "||":
+            return []
+        elif depth == 0 and expression[index : index + 2] == "&&":
+            atoms.append(expression[start:index].strip())
+            start = index + 2
+    atoms.append(expression[start:].strip())
+    return atoms
+
+
+@pytest.mark.parametrize(
+    "workflow", sorted(WORKFLOWS.glob("*.y*ml")), ids=lambda p: p.name
+)
+def test_910_pr_workflows_allocate_no_draft_runners_and_wake_on_readiness(
+    workflow: Path,
+) -> None:
+    """Check scheduler gates, including reusable callers and failure summaries."""
+    text = workflow.read_text()
+    events = list(
+        re.finditer(
+            r"^  (pull_request(?:_target)?):\s*\n((?:    .*\n|\n)*)",
+            text,
+            re.MULTILINE,
+        )
+    )
+    if not events:
+        return
+    for event in events:
+        types = re.search(r"^    types: \[([^]]+)\]", event[2], re.MULTILINE)
+        assert types and "ready_for_review" in types[1], workflow.name
+
+    # The indentation is the Actions mapping structure, not step-level `if`s.
+    jobs = re.split(r"^  ([\w-]+):\s*\n", text.split("\njobs:\n", 1)[1], flags=re.M)
+    for name, body in zip(jobs[1::2], jobs[2::2], strict=True):
+        match = re.search(r"^    if: (.*(?:\n      .*)*)", body, re.MULTILINE)
+        expression = match[1] if match else ""
+        if expression.startswith((">-", "|")):
+            expression = " ".join(expression.splitlines()[1:])
+        atoms = top_level_conjuncts(expression)
+        draft_blocked = any(
+            atom
+            in {
+                "github.event.pull_request.draft != true",
+                "github.event.pull_request.draft == false",
+                "!github.event.pull_request.draft",
+            }
+            for atom in atoms
+        )
+        non_pr_only = any(
+            re.fullmatch(
+                r"github\.event_name == '(?:workflow_dispatch|workflow_run|schedule|push|merge_group)'",
+                atom,
+            )
+            for atom in atoms
+        )
+        assert draft_blocked or non_pr_only, (
+            f"{workflow.name}: {name} can run on drafts"
+        )
+
+
+def test_910_shared_os_suite_skips_drafts_before_expanding_the_runner_matrix() -> None:
+    workflow = (WORKFLOWS / "os_tests.yml").read_text()
+    job = workflow.split("\njobs:\n", 1)[1].split("\n    steps:", 1)[0]
+    condition = re.search(r"^    if: (.*)", job, re.MULTILINE)
+    assert condition
+    assert "github.event.pull_request.draft != true" in top_level_conjuncts(
+        condition[1]
+    )
+
+
+def test_910_setup_push_trigger_does_not_allocate_runners_for_draft_branches() -> None:
+    setup = (WORKFLOWS / "copilot-setup-steps.yml").read_text()
+    push = re.search(r"^  push:\n((?:    .*\n)*)", setup, re.MULTILINE)
+    assert push
+    branches = re.search(r"branches: \[([^]]+)\]", push[1])
+    assert branches
+    patterns = [pattern.strip().strip("'\"") for pattern in branches[1].split(",")]
+    assert any(fnmatchcase("main", pattern) for pattern in patterns)
+    assert not any(fnmatchcase("ci/draft-pr", pattern) for pattern in patterns)
+
+
+def test_910_redrafting_cancels_the_separate_install_lab_label_lane() -> None:
+    """Redrafting must enter both ready-run groups without allocating a runner."""
+    area = (WORKFLOWS / "pr_ci.yml").read_text()
+    cancellation = (WORKFLOWS / "pr_draft_cancel.yml").read_text()
+    area_group = re.search(r"^  group: (.*)", area, re.MULTILINE)
+    label_group = re.search(r"^  group: (.*)", cancellation, re.MULTILINE)
+    assert area_group and label_group
+    label_run = re.sub(
+        r"\$\{\{ contains\(.*\}\}",
+        "label-run-install-lab",
+        area_group[1],
+    )
+    code_run = re.sub(r"\$\{\{ contains\(.*\}\}", "diff", area_group[1])
+    assert label_group[1] == label_run
+    assert label_group[1] != code_run
+    assert "converted_to_draft" in cancellation
+    assert "cancel-in-progress: true" in cancellation
 
 
 @pytest.mark.parametrize("job", ["required", "ready-gate"])
@@ -237,7 +354,7 @@ def event_path_filters(workflow: Path, event: str) -> dict[str, list[str]] | Non
         r"^(?:on|'on'|\"on\"):(?P<value>[^\n]*)$", workflow.read_text(), re.MULTILINE
     )
     assert on is not None, f"Unsupported event syntax in {workflow.name}"
-    filter_keys = {"branches", "branches-ignore", "paths", "paths-ignore"}
+    filter_keys = {"branches", "branches-ignore", "paths", "paths-ignore", "types"}
 
     def filters_from(value: object) -> dict[str, list[str]]:
         if value is None:
@@ -307,12 +424,18 @@ def event_path_filters(workflow: Path, event: str) -> dict[str, list[str]] | Non
     return filters if in_event else None
 
 
-def triggered_workflows(paths: list[str], event: str = "push") -> set[str]:
+def triggered_workflows(
+    paths: list[str], event: str = "push", *, action: str = "synchronize"
+) -> set[str]:
     selected = set()
     for workflow in (policy.ROOT / ".github/workflows").glob("*.yml"):
         push = event_path_filters(workflow, event)
         if push is None:
             continue
+        if event in {"pull_request", "pull_request_target"}:
+            types = push.get("types", ["opened", "synchronize", "reopened"])
+            if action not in types:
+                continue
         assert not ("paths" in push and "paths-ignore" in push), workflow.name
         if "branches" in push and not github_paths_select(["main"], push["branches"]):
             continue
@@ -329,6 +452,15 @@ def triggered_workflows(paths: list[str], event: str = "push") -> set[str]:
             continue
         selected.add(workflow.name)
     return selected
+
+
+def test_910_docs_readiness_preserves_path_filters_and_runner_free_cancellation() -> (
+    None
+):
+    assert triggered_workflows(["README.md"], "pull_request") == {"pr_ci.yml"}
+    assert triggered_workflows(
+        ["README.md"], "pull_request", action="ready_for_review"
+    ) == {"pr_ci.yml", "pr_draft_cancel.yml"}
 
 
 @pytest.mark.parametrize(

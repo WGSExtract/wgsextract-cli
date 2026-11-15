@@ -10,6 +10,7 @@ name: Linux bwa-mem3 parity
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [main]
     paths:
       - .github/workflows/linux_bwa_mem3.yml
@@ -24,6 +25,7 @@ concurrency:
 
 jobs:
   parity:
+    if: ${{ github.event.pull_request.draft != true }}
     strategy:
       fail-fast: false
       matrix:

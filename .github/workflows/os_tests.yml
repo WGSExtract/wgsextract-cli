@@ -37,6 +37,7 @@ permissions:
 
 jobs:
   test:
+    if: ${{ github.event.pull_request.draft != true }}
     name: ${{ matrix.label }}
     strategy:
       fail-fast: false
