@@ -1,5 +1,7 @@
+import ast
 import json
 import re
+from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import cast
 
@@ -7,6 +9,164 @@ import pytest
 
 from scripts import validate_github_actions as policy
 from scripts.ci_changes import routes
+
+
+@pytest.mark.parametrize(
+    "workflow",
+    [
+        "ubuntu_ci.yml",
+        "macos_ci.yml",
+        "windows_ci.yml",
+        "linux_arm64.yml",
+    ],
+)
+def test_906_selected_tests_survive_shared_workflow_boundary(workflow: str) -> None:
+    source = (policy.ROOT / ".github/workflows" / workflow).read_text()
+    # CI contract: the shared suite must receive both PR selection and smoke mode.
+    assert "uses: ./.github/workflows/os_tests.yml" in source
+    assert "tests: ${{ inputs.tests || 'all' }}" in source
+    assert "smoke-only: ${{ inputs.smoke-only == true }}" in source
+
+
+WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+
+
+def test_923_fork_code_cannot_write_certification_outputs() -> None:
+    source = (WORKFLOWS / "pr_ci.yml").read_text()
+    before_route = source.split("      - name: Route the complete PR diff", 1)[0]
+    trusted, verifier = before_route.split(
+        "      - name: Read writer certifications using only base code", 1
+    )
+    # CI trust contract: checkout base code and run it before any head checkout.
+    assert "ref: ${{ github.event.pull_request.base.sha }}" in trusted
+    assert "path: .certification-base" in trusted
+    step = verifier.split("      - uses: actions/checkout@", 1)[0]
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in step
+    assert "working-directory: .certification-base" in step
+    assert "python3 -I scripts/ci_certifications.py" in step
+    assert "else\n" in step and "retaining all hosted checks" in step
+
+
+def top_level_conjuncts(expression: str) -> list[str]:
+    """Find mandatory conditions without treating a nested OR as a bypass."""
+    expression = expression.strip().removeprefix("${{").removesuffix("}}").strip()
+    atoms = []
+    start = depth = 0
+    quoted = False
+    for index, character in enumerate(expression):
+        if character == "'":
+            quoted = not quoted
+        if quoted:
+            continue
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+        elif depth == 0 and expression[index : index + 2] == "||":
+            return []
+        elif depth == 0 and expression[index : index + 2] == "&&":
+            atoms.append(expression[start:index].strip())
+            start = index + 2
+    atoms.append(expression[start:].strip())
+    return atoms
+
+
+@pytest.mark.parametrize(
+    "workflow", sorted(WORKFLOWS.glob("*.y*ml")), ids=lambda p: p.name
+)
+def test_910_pr_workflows_allocate_no_draft_runners_and_wake_on_readiness(
+    workflow: Path,
+) -> None:
+    """Check scheduler gates, including reusable callers and failure summaries."""
+    text = workflow.read_text()
+    events = list(
+        re.finditer(
+            r"^  (pull_request(?:_target)?):\s*\n((?:    .*\n|\n)*)",
+            text,
+            re.MULTILINE,
+        )
+    )
+    if not events:
+        return
+    for event in events:
+        types = re.search(r"^    types: \[([^]]+)\]", event[2], re.MULTILINE)
+        assert types and "ready_for_review" in types[1], workflow.name
+
+    # The indentation is the Actions mapping structure, not step-level `if`s.
+    jobs = re.split(r"^  ([\w-]+):\s*\n", text.split("\njobs:\n", 1)[1], flags=re.M)
+    for name, body in zip(jobs[1::2], jobs[2::2], strict=True):
+        match = re.search(r"^    if: (.*(?:\n      .*)*)", body, re.MULTILINE)
+        expression = match[1] if match else ""
+        if expression.startswith((">-", "|")):
+            expression = " ".join(expression.splitlines()[1:])
+        atoms = top_level_conjuncts(expression)
+        draft_blocked = any(
+            atom
+            in {
+                "github.event.pull_request.draft != true",
+                "github.event.pull_request.draft == false",
+                "!github.event.pull_request.draft",
+            }
+            for atom in atoms
+        )
+        non_pr_only = any(
+            re.fullmatch(
+                r"github\.event_name == '(?:workflow_dispatch|workflow_run|schedule|push|merge_group)'",
+                atom,
+            )
+            for atom in atoms
+        )
+        assert draft_blocked or non_pr_only, (
+            f"{workflow.name}: {name} can run on drafts"
+        )
+
+
+@pytest.mark.parametrize("job_name", ["workflow-smoke", "test"])
+def test_910_shared_os_suite_skips_drafts_before_expanding_the_runner_matrix(
+    job_name: str,
+) -> None:
+    workflow = (WORKFLOWS / "os_tests.yml").read_text()
+    job = re.split(
+        r"^  [\w-]+:\s*$",
+        workflow.split(f"\n  {job_name}:\n", 1)[1],
+        maxsplit=1,
+        flags=re.MULTILINE,
+    )[0]
+    condition = re.search(r"^    if: (.*)", job, re.MULTILINE)
+    assert condition
+    assert "github.event.pull_request.draft != true" in top_level_conjuncts(
+        condition[1]
+    )
+
+
+def test_910_setup_push_trigger_does_not_allocate_runners_for_draft_branches() -> None:
+    setup = (WORKFLOWS / "copilot-setup-steps.yml").read_text()
+    push = re.search(r"^  push:\n((?:    .*\n)*)", setup, re.MULTILINE)
+    assert push
+    branches = re.search(r"branches: \[([^]]+)\]", push[1])
+    assert branches
+    patterns = [pattern.strip().strip("'\"") for pattern in branches[1].split(",")]
+    assert any(fnmatchcase("main", pattern) for pattern in patterns)
+    assert not any(fnmatchcase("ci/draft-pr", pattern) for pattern in patterns)
+
+
+def test_910_redrafting_cancels_the_separate_install_lab_label_lane() -> None:
+    """Redrafting must enter both ready-run groups without allocating a runner."""
+    area = (WORKFLOWS / "pr_ci.yml").read_text()
+    cancellation = (WORKFLOWS / "pr_draft_cancel.yml").read_text()
+    area_group = re.search(r"^  group: (.*)", area, re.MULTILINE)
+    label_group = re.search(r"^  group: (.*)", cancellation, re.MULTILINE)
+    assert area_group and label_group
+    label_run = re.sub(
+        r"\$\{\{ contains\(.*\}\}",
+        "label-run-install-lab",
+        area_group[1],
+    )
+    code_run = re.sub(r"\$\{\{ contains\(.*\}\}", "diff", area_group[1])
+    assert label_group[1] == label_run
+    assert label_group[1] != code_run
+    assert "converted_to_draft" in cancellation
+    assert "cancel-in-progress: true" in cancellation
 
 
 @pytest.mark.parametrize("job", ["required", "ready-gate"])
@@ -88,6 +248,10 @@ def test_composite_actions_are_held_to_the_same_policy(
             "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0",
             "setup-gui",
         ),
+        (
+            "Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3",
+            "rust-cache",
+        ),
     ],
 )
 def test_wrapped_actions_are_used_only_through_the_shared_action(
@@ -129,6 +293,96 @@ def test_new_github_queue_schema_is_validated_despite_actionlint_lag(
     assert (not errors) == valid
     if not valid:
         assert any("queue" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("workflow", "action"),
+    [
+        ("gui-build", "rust-cache"),
+        ("gui-tauri-installer", "rust-cache"),
+        ("linux_aligners", "compiler-cache"),
+        ("macos_aligners", "compiler-cache"),
+        ("linux_deepvariant", "compiler-cache"),
+        ("macos_deepvariant", "compiler-cache"),
+        ("windows_tools", "compiler-cache"),
+        ("glimpse2", "compiler-cache"),
+    ],
+)
+def test_916_expensive_builds_use_trusted_shared_cache(
+    workflow: str, action: str
+) -> None:
+    text = (policy.ROOT / f".github/workflows/{workflow}.yml").read_text()
+    # CI contract: compile jobs cannot bypass the shared trust boundary.
+    assert f"uses: ./.github/actions/{action}" in text
+    assert "uses: actions/cache" not in text
+
+
+@pytest.mark.parametrize("action", ["compiler-cache", "rust-cache"])
+@pytest.mark.parametrize(
+    ("ref", "event", "actor", "expected"),
+    [
+        ("refs/pull/916/merge", "pull_request", "theontho", False),
+        ("refs/pull/916/merge", "pull_request", "external", False),
+        ("refs/heads/feature", "push", "theontho", False),
+        ("refs/tags/v1.0.0", "push", "theontho", False),
+        ("refs/heads/main", "push", "theontho", True),
+        ("refs/heads/main", "schedule", "theontho", True),
+        ("refs/heads/main", "pull_request_target", "theontho", False),
+        ("refs/heads/main", "pull_request", "theontho", False),
+        ("refs/heads/ci/916-compiler-cache", "pull_request", "theontho", False),
+        ("refs/heads/ci/916-compiler-cache", "push", "theontho", False),
+        ("refs/heads/ci/916-compiler-cache", "workflow_dispatch", "external", False),
+        ("refs/heads/ci/916-compiler-cache", "workflow_dispatch", "theontho", True),
+    ],
+)
+def test_916_pr_refs_cannot_save_compiler_caches(
+    action: str, ref: str, event: str, actor: str, expected: bool
+) -> None:
+    text = (policy.ROOT / f".github/actions/{action}/action.yml").read_text()
+    if action == "rust-cache":
+        condition = text.split("save-if:", 1)[1]
+    else:
+        condition = text.split("- name: Save successful compiler objects", 1)[1]
+        condition = condition.split("uses:", 1)[0]
+    values = {
+        "github.ref": ref,
+        "github.event_name": event,
+        "github.actor": actor,
+        "inputs.phase": "save",
+        "inputs.writer": "true",
+    }
+    for name, value in values.items():
+        condition = condition.replace(name, repr(value))
+    condition = (
+        condition.split("if:", 1)[-1]
+        .replace(">-", "")
+        .replace("${{", "")
+        .replace("}}", "")
+    )
+    condition = condition.replace("&&", " and ").replace("||", " or ")
+    tree = ast.parse(" ".join(condition.split()), mode="eval")
+
+    # CI contract: evaluate the actual writer guard for PR, tag, main and
+    # owner dispatch contexts, without executing code from a workflow.
+    def matches(node: ast.AST) -> bool | str:
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.BoolOp):
+            truth_values = [bool(matches(value)) for value in node.values]
+            return (
+                all(truth_values) if isinstance(node.op, ast.And) else any(truth_values)
+            )
+        if isinstance(node, ast.Compare) and len(node.ops) == 1:
+            left, right = matches(node.left), matches(node.comparators[0])
+            if isinstance(node.ops[0], ast.Eq):
+                return left == right
+            if isinstance(node.ops[0], ast.NotEq):
+                return left != right
+        raise AssertionError(f"Unreviewed writer condition: {ast.dump(node)}")
+
+    assert matches(tree.body) is expected
+    if ref.startswith("refs/pull/"):
+        assert re.search(r"measure-916-[a-z]+-v1", text)
 
 
 CLI_PUSH_WORKFLOWS = {
@@ -237,7 +491,7 @@ def event_path_filters(workflow: Path, event: str) -> dict[str, list[str]] | Non
         r"^(?:on|'on'|\"on\"):(?P<value>[^\n]*)$", workflow.read_text(), re.MULTILINE
     )
     assert on is not None, f"Unsupported event syntax in {workflow.name}"
-    filter_keys = {"branches", "branches-ignore", "paths", "paths-ignore"}
+    filter_keys = {"branches", "branches-ignore", "paths", "paths-ignore", "types"}
 
     def filters_from(value: object) -> dict[str, list[str]]:
         if value is None:
@@ -307,12 +561,18 @@ def event_path_filters(workflow: Path, event: str) -> dict[str, list[str]] | Non
     return filters if in_event else None
 
 
-def triggered_workflows(paths: list[str], event: str = "push") -> set[str]:
+def triggered_workflows(
+    paths: list[str], event: str = "push", *, action: str = "synchronize"
+) -> set[str]:
     selected = set()
     for workflow in (policy.ROOT / ".github/workflows").glob("*.yml"):
         push = event_path_filters(workflow, event)
         if push is None:
             continue
+        if event in {"pull_request", "pull_request_target"}:
+            types = push.get("types", ["opened", "synchronize", "reopened"])
+            if action not in types:
+                continue
         assert not ("paths" in push and "paths-ignore" in push), workflow.name
         if "branches" in push and not github_paths_select(["main"], push["branches"]):
             continue
@@ -329,6 +589,15 @@ def triggered_workflows(paths: list[str], event: str = "push") -> set[str]:
             continue
         selected.add(workflow.name)
     return selected
+
+
+def test_910_docs_readiness_preserves_path_filters_and_runner_free_cancellation() -> (
+    None
+):
+    assert triggered_workflows(["README.md"], "pull_request") == {"pr_ci.yml"}
+    assert triggered_workflows(
+        ["README.md"], "pull_request", action="ready_for_review"
+    ) == {"pr_ci.yml", "pr_draft_cancel.yml"}
 
 
 @pytest.mark.parametrize(

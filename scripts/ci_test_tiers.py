@@ -33,8 +33,6 @@ SENSITIVE = re.compile(
 # Shared autouse isolation is infrastructure, not a shell-out fixture. Unknown
 # requested fixtures are deliberately rejected rather than guessed from names.
 PURE_FIXTURES = {
-    "tmp_path",
-    "tmp_path_factory",
     "monkeypatch",
     "capsys",
     "caplog",
@@ -54,7 +52,6 @@ PURE_IMPORTS = {
     "json",
     "logging",
     "math",
-    "pathlib",
     "pytest",
     "re",
     "statistics",
@@ -76,13 +73,13 @@ HARNESS_FIXTURES = {
 def pure_fixtures(path: Path) -> bool:
     root = Path(__file__).resolve().parents[1]
     for directory in (path.parent, *path.parent.parents):
-        if not directory.is_relative_to(root):
-            break
         conftest = directory / "conftest.py"
         if not conftest.is_file():
             continue
         tree = ast.parse(conftest.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
+            if isinstance(node, ast.Name) and node.id == "pytest_plugins":
+                return False
             if isinstance(node, ast.Assign) and any(
                 isinstance(target, ast.Name) and target.id == "pytest_plugins"
                 for target in node.targets
@@ -146,7 +143,7 @@ def pure_imports(path: Path, tree: ast.Module) -> bool:
         if path.is_relative_to(root)
         else ""
     )
-    dependencies = graph.reaches(module) - {module}
+    dependencies = set(graph.reaches(module)) - {module}
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             imports = (

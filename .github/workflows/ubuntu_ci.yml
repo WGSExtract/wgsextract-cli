@@ -14,10 +14,10 @@ on:
       smoke-only:
         type: boolean
         default: false
-      generic-certified:
+      platform-certified:
         type: boolean
         default: false
-      platform-certified:
+      generic-certified:
         type: boolean
         default: false
   schedule:
@@ -64,12 +64,12 @@ jobs:
       timeout-minutes: 90
       environments: default dev vep-rs
       reference: true
-      tests: ${{ inputs.tests }}
-      smoke-only: ${{ inputs.smoke-only }}
+      tests: ${{ inputs.tests || 'all' }}
+      smoke-only: ${{ inputs.smoke-only == true }}
       skip-generic: ${{ github.event_name == 'pull_request' }}
 
   imputation:
-    if: "!inputs.platform-certified && !inputs.smoke-only && (inputs.tests == 'all' || contains(inputs.tests, 'tests/test_imputation.py'))"
+    if: "!inputs.platform-certified && !inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))"
     # GLIMPSE2 and Beagle from the opt-in imputation environment on HG002 1x
     # reads and chip genotypes (tests/fixtures/imputation_hg002).
     runs-on: ubuntu-latest
@@ -92,7 +92,7 @@ jobs:
   # ONT end to end on real GIAB HG002 R10.4.1 reads (tests/fixtures/ont_hg002):
   # align with minimap2, then Sniffles from the opt-in pacbio environment.
   ont-hg002:
-    if: "!inputs.platform-certified && !inputs.smoke-only && (inputs.tests == 'all' || contains(inputs.tests, 'tests/test_ont_hg002.py') || contains(inputs.tests, 'tests/test_phasing.py') || contains(inputs.tests, 'tests/test_somalier_relate.py'))"
+    if: "!inputs.platform-certified && !inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_ont_hg002.py') || contains(inputs.tests, 'tests/test_phasing.py') || contains(inputs.tests, 'tests/test_somalier_relate.py'))"
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

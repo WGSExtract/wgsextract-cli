@@ -26,7 +26,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ARM64 keeps its complete suite in one job (docs/ci_routing.md).
   native-arm64:
     if: inputs.tests != '[]'
     uses: ./.github/workflows/os_tests.yml
@@ -36,5 +35,5 @@ jobs:
       timeout-minutes: 90
       environments: default dev vep
       matrix: '[{"tier": "all", "shard": "all", "label": "native"}]'
-      tests: ${{ inputs.tests }}
-      smoke-only: ${{ inputs.smoke-only }}
+      tests: ${{ inputs.tests || 'all' }}
+      smoke-only: ${{ inputs.smoke-only == true }}

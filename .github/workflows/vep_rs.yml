@@ -7,6 +7,7 @@ name: vep-rs
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main ]
     paths:
       - packaging/vep-rs/**
@@ -30,6 +31,7 @@ concurrency:
 
 jobs:
   build:
+    if: ${{ github.event.pull_request.draft != true }}
     strategy:
       fail-fast: false
       matrix:

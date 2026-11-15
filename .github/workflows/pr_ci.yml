@@ -3,6 +3,7 @@ run-name: PR area checks / ${{ github.event.action }} / ${{ github.event_name ==
 
 on:
   pull_request:
+    # converted_to_draft enters concurrency to cancel ready work; all jobs skip.
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, labeled, unlabeled]
   # The merge queue retests only the required set below against the latest main.
   merge_group:
@@ -18,7 +19,7 @@ concurrency:
 jobs:
   changes:
     name: changes${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
-    if: ${{ !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) || github.event.label.name == 'run-install-lab' }}
+    if: ${{ github.event.pull_request.draft != true && (!contains(fromJSON('["labeled","unlabeled"]'), github.event.action) || github.event.label.name == 'run-install-lab') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -38,6 +39,7 @@ jobs:
       routed: ${{ steps.diff.outputs.routed }}
       tests: ${{ steps.diff.outputs.tests }}
       ci: ${{ steps.diff.outputs.ci }}
+      ci_tests: ${{ steps.diff.outputs.ci_tests }}
       ubuntu_tests: ${{ steps.diff.outputs.ubuntu_tests }}
       macos_tests: ${{ steps.diff.outputs.macos_tests }}
       windows_tests: ${{ steps.diff.outputs.windows_tests }}
@@ -53,6 +55,25 @@ jobs:
       windows_x64: ${{ steps.cert.outputs.windows_x64 }}
       generic: ${{ steps.cert.outputs.generic }}
     steps:
+      - name: Check out the trusted base verifier
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .certification-base
+          persist-credentials: false
+      - name: Read writer certifications using only base code
+        id: cert
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        working-directory: .certification-base
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f scripts/ci_certifications.py ]; then
+            python3 -I scripts/ci_certifications.py --event "$GITHUB_EVENT_PATH" --repository "$GITHUB_REPOSITORY" --output "$GITHUB_OUTPUT"
+          else
+            echo "Trusted base has no verifier; retaining all hosted checks."
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -74,17 +95,11 @@ jobs:
           if [ "$DRAFT" = true ]; then flags+=(--draft); fi
           if [ "${FULL_SUITE:-false}" = true ]; then flags+=(--full-suite); fi
           python3 scripts/ci_changes.py --base "$BASE" --head "$HEAD" "${flags[@]}" --output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Read exact-head writer certifications
-        id: cert
-        if: github.event_name == 'pull_request' && !github.event.pull_request.draft
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/ci_certifications.py --event "$GITHUB_EVENT_PATH" --repository "$GITHUB_REPOSITORY" --output "$GITHUB_OUTPUT"
 
   draft-fast:
     name: Draft lint and fast tests
     needs: changes
-    if: needs.changes.outputs.fast == 'true'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.fast == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -107,9 +122,9 @@ jobs:
           python-version: "3.13"
       - name: Fast routing and workflow regressions
         run: |
-          python -m pip install --quiet -e . pytest jsonschema
+          python -m pip install --quiet -e . pytest pytest-xdist jsonschema
           mkdir -p out
-          python -m pytest -q tests/test_ci_changes.py tests/test_ci_selection.py tests/test_ci_certify.py tests/test_ci_scheduling.py tests/test_github_actions_policy.py --basetemp=out/draft-tests
+          python -m pytest -q tests/test_ci_changes.py tests/test_github_actions_policy.py --basetemp=out/draft-tests
 
       - name: Fast product unit tests for CLI changes
         if: needs.changes.outputs.draft_cli == 'true'
@@ -119,7 +134,7 @@ jobs:
   docs:
     name: Documentation freshness${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
     needs: changes
-    if: needs.changes.outputs.generic != 'true' && needs.changes.outputs.docs == 'true' && (needs.changes.outputs.docs_tests != '[]' || needs.changes.outputs.site_validation == 'true')
+    if: github.event.pull_request.draft != true && needs.changes.outputs.generic != 'true' && needs.changes.outputs.docs == 'true' && (needs.changes.outputs.docs_tests != '[]' || needs.changes.outputs.site_validation == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -149,7 +164,7 @@ jobs:
   python-lint:
     name: Changed Python lint${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
     needs: changes
-    if: needs.changes.outputs.generic != 'true' && needs.changes.outputs.python_files != '' && needs.changes.outputs.python_files != '[]'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.generic != 'true' && needs.changes.outputs.python_files != '' && needs.changes.outputs.python_files != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -181,7 +196,7 @@ jobs:
 
   ubuntu:
     needs: changes
-    if: needs.changes.result == 'success' && !(needs.changes.outputs.linux_x64 == 'true' && needs.changes.outputs.generic == 'true') && needs.changes.outputs.ubuntu_tests != '[]' && !github.event.pull_request.draft
+    if: github.event.pull_request.draft != true && needs.changes.result == 'success' && !(needs.changes.outputs.linux_x64 == 'true' && needs.changes.outputs.generic == 'true') && needs.changes.outputs.ubuntu_tests != '[]'
     uses: ./.github/workflows/ubuntu_ci.yml
     with:
       tests: ${{ needs.changes.outputs.ubuntu_tests }}
@@ -190,21 +205,21 @@ jobs:
       generic-certified: ${{ needs.changes.outputs.generic == 'true' }}
   macos:
     needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.macos_arm64 != 'true' && needs.changes.outputs.macos_tests != '[]' && github.event_name != 'merge_group' && !github.event.pull_request.draft
+    if: github.event.pull_request.draft != true && needs.changes.outputs.macos_arm64 != 'true' && needs.changes.result == 'success' && needs.changes.outputs.macos_tests != '[]' && github.event_name != 'merge_group'
     uses: ./.github/workflows/macos_ci.yml
     with:
       tests: ${{ needs.changes.outputs.macos_tests }}
       smoke-only: ${{ needs.changes.outputs.macos_smoke == 'true' }}
   windows:
     needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.windows_x64 != 'true' && needs.changes.outputs.windows_tests != '[]' && github.event_name != 'merge_group' && !github.event.pull_request.draft
+    if: github.event.pull_request.draft != true && needs.changes.outputs.windows_x64 != 'true' && needs.changes.result == 'success' && needs.changes.outputs.windows_tests != '[]' && github.event_name != 'merge_group'
     uses: ./.github/workflows/windows_ci.yml
     with:
       tests: ${{ needs.changes.outputs.windows_tests }}
       smoke-only: ${{ needs.changes.outputs.windows_smoke == 'true' }}
   arm64:
     needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.linux_arm64 != 'true' && needs.changes.outputs.arm64_tests != '[]' && github.event_name != 'merge_group' && !github.event.pull_request.draft
+    if: github.event.pull_request.draft != true && needs.changes.outputs.linux_arm64 != 'true' && needs.changes.result == 'success' && needs.changes.outputs.arm64_tests != '[]' && github.event_name != 'merge_group'
     uses: ./.github/workflows/linux_arm64.yml
     with:
       tests: ${{ needs.changes.outputs.arm64_tests }}
@@ -212,7 +227,7 @@ jobs:
 
   ci-policy:
     needs: changes
-    if: needs.changes.outputs.ci == 'true' && needs.changes.outputs.generic != 'true'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.generic != 'true' && needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -229,19 +244,25 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13"
-      - run: |
-          python -m pip install --quiet -e . pytest jsonschema
-          python -m pytest -q tests/test_ci_changes.py tests/test_ci_selection.py tests/test_ci_certify.py tests/test_ci_scheduling.py tests/test_github_actions_policy.py --basetemp=out/ci-policy
+      - name: Run affected CI policy and routing tests
+        env:
+          CI_TESTS: ${{ needs.changes.outputs.ci_tests }}
+        run: |
+          python -m pip install --quiet -e . pytest pytest-xdist jsonschema
+          mkdir -p out
+          python -c 'import json, os, subprocess, sys; subprocess.run([sys.executable, "-m", "pytest", "-q", *json.loads(os.environ["CI_TESTS"]), "--basetemp=out/ci-policy"], check=True)'
   smoke:
     needs: changes
-    if: needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
     uses: ./.github/workflows/cli_smoke.yml
   generic:
     needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.generic != 'true' && needs.changes.outputs.generic_tests != '[]' && !github.event.pull_request.draft
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft != true && needs.changes.outputs.generic != 'true' && needs.changes.outputs.generic_tests != '[]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-pixi
         with:
           environments: dev
@@ -251,18 +272,18 @@ jobs:
         shell: bash
   install:
     needs: changes
-    if: needs.changes.outputs.install == 'true' && github.event_name != 'merge_group'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.install == 'true' && github.event_name != 'merge_group'
     uses: ./.github/workflows/install_lab.yml
 
-  # The secret scan covers every PR and queue group, docs-only ones included.
+  # The secret scan covers every ready PR and queue group, docs-only ones included.
   gitleaks:
-    if: ${{ !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
+    if: ${{ github.event.pull_request.draft != true && !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
     uses: ./.github/workflows/gitleaks.yml
 
   native-smoke:
     name: Native CLI smoke
     needs: changes
-    if: needs.changes.outputs.native == 'true'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.native == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -281,7 +302,7 @@ jobs:
   pages:
     name: Pages source checks
     needs: changes
-    if: needs.changes.outputs.site == 'true' && needs.changes.outputs.generic != 'true'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.generic != 'true' && needs.changes.outputs.site == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -331,7 +352,8 @@ jobs:
     needs: [changes, draft-fast, docs, python-lint, ci-policy, generic, ubuntu, gitleaks, native-smoke, pages]
     # Run after failed dependencies, but let whole-run cancellation stop this
     # gate. A cancelled dependency in an otherwise active run still fails below.
-    if: ${{ !cancelled() && !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
+    # Draft events allocate no runner, including this summary.
+    if: ${{ !cancelled() && github.event.pull_request.draft != true && !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

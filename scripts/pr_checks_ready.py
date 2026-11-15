@@ -18,6 +18,25 @@ def checks_ready(
     run_id: int | None = None,
     runs: list[dict[str, Any]] | None = None,
 ) -> bool:
+    # Attestations are inputs to the ready run, not independent Actions jobs.
+    # A failed/missing attestation falls back to hosted checks in that run.
+    checks = [
+        check
+        for check in checks
+        if not (
+            not check.get("workflow")
+            and not check.get("link")
+            and check.get("name")
+            in {
+                "local-ci/linux-x64",
+                "local-ci/linux-arm64",
+                "local-ci/macos-arm64",
+                "local-ci/macos-x64",
+                "local-ci/windows-x64",
+                "local-ci/generic",
+            }
+        )
+    ]
     if runs is not None:
         latest: dict[int, dict[str, Any]] = {}
         known = {int(run["id"]): run for run in runs}

@@ -9,6 +9,20 @@ Extract warns about this; it never changes, blocks or deletes outputs.
 
 ## Before: mean depth
 
+Regional `info calculate-coverage` and `info coverage-sample` runs use the
+alignment index directly, without gathering whole-file counts or sex. They
+report only the region's breadth, leave the global info cache unchanged, and
+with `--format` export `<input>_<region>_breadth.tsv` (or `.parquet`).
+Exports use numeric `breadth_pct` values; Parquet's `breadth` metadata
+distinguishes exact coverage from a sampled estimate. `info --csv` retains
+pure CSV output for regional requests.
+Run `info --detailed` separately for global metrics.
+
+`lineage y-haplogroup` likewise extracts evidence only on chrY. Its sex guard
+uses an existing sample fact or current info cache; without one, sex remains
+unknown rather than triggering a whole-CRAM scan. Its `Total_reads` field says
+`not assessed (regional Y query)`, not a fabricated whole-genome read count.
+
 Before `microarray`, the `vcf` callers (`snp`, `indel`, `freebayes`, `gatk`,
 `deepvariant`, `sv`, `cnv`) and the haplogroup commands (`lineage
 y-haplogroup`, `lineage mt-haplogroup`), a BAM/CRAM input's mean depth is

@@ -91,6 +91,7 @@ def test_757_install_lab_label_does_not_repeat_the_cli_matrix() -> None:
         "routed": "true",
         "tests": "[]",
         "ci": "false",
+        "ci_tests": "[]",
         "generic_tests": "[]",
         "ubuntu_tests": "[]",
         "macos_tests": "[]",
@@ -151,7 +152,13 @@ def test_757_every_test_referenced_input_selects_pytest() -> None:
     for path, readers in referenced_inputs().items():
         if ci_path(path):
             assert not routes([path])["cli"], path
-            assert select_tests([path]), path
+            selected_tests = select_tests([path])
+            actual_readers = {
+                reader for reader in readers if Path(reader).name.startswith("test_")
+            }
+            assert selected_tests == "all" or actual_readers <= set(selected_tests), (
+                path
+            )
             continue
         readers = readers - {
             "tests/test_ci_changes.py",
@@ -317,8 +324,12 @@ def test_913_light_checks_run_only_for_their_own_inputs(
     path: str, targets: list[str]
 ) -> None:
     selected = routes([path])
-    assert not selected["cli"]
-    assert selected["docs"]
+    if path == "scripts/build_mockup_previews.py":
+        # Its non-light imported readers now run in the product lane.
+        assert selected["cli"]
+    else:
+        assert not selected["cli"]
+        assert selected["docs"]
     assert docs_test_targets([path]) == targets
 
 
@@ -467,6 +478,27 @@ def area_run(
     }
 
 
+def test_910_readiness_validates_without_any_preceding_draft_run() -> None:
+    assert (
+        latest_ready_run(
+            [],
+            head_sha="same-head",
+            ready_since="2026-11-13T16:20:00Z",
+            pr_number=802,
+        )
+        is None
+    )
+    assert (
+        latest_ready_run(
+            [area_run(13, "2026-11-13T16:20:02Z")],
+            head_sha="same-head",
+            ready_since="2026-11-13T16:20:00Z",
+            pr_number=802,
+        )
+        == 13
+    )
+
+
 @pytest.mark.parametrize("new_run_registered", [False, True])
 def test_802_redrafting_the_same_head_cannot_reuse_validation_before_latest_readiness(
     new_run_registered: bool,
@@ -582,6 +614,28 @@ def workflow_shell(step_name: str) -> str:
             break
         command.append(line[10:])
     return "\n".join(command)
+
+
+@LINUX_BASH
+def test_914_ci_policy_creates_out_on_a_fresh_checkout(tmp_path: Path) -> None:
+    test = tmp_path / "tests" / "test_policy_input.py"
+    test.parent.mkdir()
+    test.write_text("def test_temp_input(tmp_path):\n assert tmp_path.is_dir()\n")
+    script = workflow_shell("Run affected CI policy and routing tests")
+    # The Python environment is already installed; exercise local bootstrap,
+    # not the package-install network boundary.
+    script = "\n".join(
+        line for line in script.splitlines() if "pip install" not in line
+    )
+    result = subprocess.run(
+        ["bash", "-c", script],
+        cwd=tmp_path,
+        env={**os.environ, "CI_TESTS": json.dumps(["tests/test_policy_input.py"])},
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "out" / "ci-policy").is_dir()
 
 
 @LINUX_BASH

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,55 @@ from typing import Any
 PLATFORMS = ("linux-x64", "linux-arm64", "macos-arm64", "macos-x64", "windows-x64")
 CONTEXTS = {f"local-ci/{name}" for name in (*PLATFORMS, "generic")}
 WRITERS = {"write", "maintain", "admin"}
+
+
+def post_status(
+    repository: str, sha: str, name: str, state: str, description: str
+) -> None:
+    subprocess.run(
+        [
+            "gh",
+            "api",
+            f"repos/{repository}/statuses/{sha}",
+            "-f",
+            f"state={state}",
+            "-f",
+            f"context=local-ci/{name}",
+            "-f",
+            f"description={description}",
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        timeout=30,
+    )
+
+
+def publish_certification(
+    repository: str,
+    sha: str,
+    name: str,
+    operation: Callable[[], tuple[str, str]],
+    post: Callable[[str, str, str, str, str], None] = post_status,
+) -> tuple[str, str]:
+    try:
+        post(repository, sha, name, "pending", "Local certification running")
+        summary, log = operation()
+        post(repository, sha, name, "success", summary)
+        return summary, log
+    except BaseException:
+        # A stopped process must never leave a pending or old green attestation.
+        # SIGKILL/power loss is unavoidable; pending still fails closed.
+        try:
+            post(
+                repository,
+                sha,
+                name,
+                "failure",
+                "Local certification failed; see out/certify",
+            )
+        except BaseException as cleanup:
+            print(f"Unable to clear pending certification: {cleanup}", file=sys.stderr)
+        raise
 
 
 def gh_api(endpoint: str) -> Any:
@@ -35,6 +85,18 @@ def certifications(
     sha = head["sha"]
     valid: set[str] = set()
     try:
+        base = pr.get("base", {}).get("sha")
+        if not base:
+            return set()
+        verifier = f"repos/{repository}/contents/scripts/ci_certifications.py"
+        trusted = api(f"{verifier}?ref={base}")
+        candidate = api(f"{verifier}?ref={sha}")
+        if (
+            not isinstance(trusted.get("sha"), str)
+            or not trusted["sha"]
+            or trusted["sha"] != candidate.get("sha")
+        ):
+            return set()
         combined = api(f"repos/{repository}/commits/{sha}/status?per_page=100")
         if combined.get("sha") != sha:
             return set()

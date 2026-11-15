@@ -60,6 +60,7 @@ class ReplayGitHub(GitHub):
         self.use_transport = False
         self.pr_sha: str | None = None
         self.pr_state = "open"
+        self.pr_draft = False
         self.on_label_delete: Callable[[], None] | None = None
         self.on_audit: Callable[[], None] | None = None
         self.runs: list[dict[str, Any]] = []
@@ -110,6 +111,7 @@ class ReplayGitHub(GitHub):
         if parts[0] == "pulls":
             return {
                 "state": self.pr_state,
+                "draft": self.pr_draft,
                 "head": {"sha": self.pr_sha or self.run["head_sha"]},
             }
         if parts[0] == "check-runs":
@@ -366,6 +368,33 @@ def test_superseded_zero_step_cancellation_does_not_restart_old_head() -> None:
     Observer(api).process(api.run)
     assert api.retried == []
     assert api.issues == []
+
+
+@pytest.mark.parametrize("during_audit", [False, True])
+def test_910_redrafted_install_lab_cancellation_cannot_restart_ready_payload(
+    during_audit: bool,
+) -> None:
+    api = ReplayGitHub()
+    api.run.update(
+        name="PR area checks / labeled / ready",
+        path=".github/workflows/pr_ci.yml",
+        conclusion="cancelled",
+    )
+    lost = dict(recorded("lost_runner"), name="install / build")
+    label = dict(
+        lost, id=lost["id"] + 1, name="changes (label event)", conclusion="skipped"
+    )
+    api.jobs[1] = [lost, label]
+    if during_audit:
+        api.on_audit = lambda: setattr(api, "pr_draft", True)
+    else:
+        api.pr_draft = True
+    Observer(api).process(api.run)
+    assert api.retried == []
+    if during_audit:
+        assert "Retry not dispatched" in ledger_comments(api)[0]
+    else:
+        assert api.issues == []
 
 
 def test_lost_runner_after_a_step_is_also_retried() -> None:

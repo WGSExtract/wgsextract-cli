@@ -8,6 +8,7 @@ name: Windows Tools
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main ]
     paths:
       - packaging/windows/**
@@ -31,6 +32,7 @@ concurrency:
 
 jobs:
   build:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
@@ -48,6 +50,7 @@ jobs:
         run: |
           mkdir -p out
           grep -v '^#' packaging/windows/msys2-packages.txt | xargs pacman -S --needed --noconfirm --noprogressbar
+          pacman -S --needed --noconfirm --noprogressbar mingw-w64-ucrt-x86_64-ccache
           pacman -Q > out/msys2-packages-used.txt
 
       - name: Set up Pixi
@@ -55,14 +58,29 @@ jobs:
         with:
           install: "false"
 
+      - uses: ./.github/actions/compiler-cache
+        with:
+          scope: windows-tools
+          recipe: ${{ hashFiles('packaging/windows/**', '.github/workflows/windows_tools.yml') }}
+          compiler: ${{ steps.msys2.outputs.msys2-location }}/ucrt64/bin/gcc.exe
+          executable: ${{ steps.msys2.outputs.msys2-location }}/ucrt64/bin/ccache.exe
+
       - name: Build the packages
         shell: pwsh
         env:
           MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
         run: |
-          pixi exec --spec rattler-build==0.77.0 rattler-build build --recipe-dir packaging/windows/recipes `
+          pixi exec --spec rattler-build==0.77.0 rattler-build build --no-build-id --recipe-dir packaging/windows/recipes `
             --output-dir out/conda --target-platform win-64
           Move-Item out/msys2-packages-used.txt out/conda/win-64/
+
+      - uses: ./.github/actions/compiler-cache
+        with:
+          phase: save
+          scope: windows-tools
+          recipe: ${{ hashFiles('packaging/windows/**', '.github/workflows/windows_tools.yml') }}
+          compiler: ${{ steps.msys2.outputs.msys2-location }}/ucrt64/bin/gcc.exe
+          executable: ${{ steps.msys2.outputs.msys2-location }}/ucrt64/bin/ccache.exe
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

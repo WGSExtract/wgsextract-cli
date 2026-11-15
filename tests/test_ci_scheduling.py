@@ -79,8 +79,8 @@ def test_second():
         ("all", False, 3, 0),
         ("core", False, 2, 1),
         ("integration", False, 1, 2),
-        ("all", True, 2, 1),
-        ("core", True, 1, 2),
+        ("all", True, 3, 0),
+        ("core", True, 2, 1),
     ],
 )
 def test_761_ci_tiers_preserve_every_test_including_new_modules(
@@ -98,7 +98,7 @@ def pytest_addoption(parser):
     )
     pytester.makepyfile(
         test_realign="def test_real_workflow(): pass",
-        test_version_sync="def test_versions(): pass",
+        test_genotyping="def test_genotype(): pass",
         test_new_feature="def test_new_feature(): pass",
     )
     flags = ["--ci-skip-independent"] if skip else []

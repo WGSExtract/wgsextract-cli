@@ -31,13 +31,14 @@ on:
         description: Install the hs38 reference library the reference-backed tests read.
         type: boolean
         default: false
+      skip-generic:
+        type: boolean
+        default: false
       tests:
+        description: JSON affected test files, or all for safety runs.
         type: string
         default: all
       smoke-only:
-        type: boolean
-        default: false
-      skip-generic:
         type: boolean
         default: false
 
@@ -46,19 +47,21 @@ permissions:
 
 jobs:
   workflow-smoke:
-    if: inputs.smoke-only && github.event_name == 'pull_request'
+    if: github.event.pull_request.draft != true && inputs.smoke-only && github.event_name == 'pull_request' && inputs.tests != '[]'
     runs-on: ${{ inputs.runner }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pixi
         with:
           environments: dev
-      - env:
+      - name: Exercise changed workflow with smoke tests
+        shell: bash
+        env:
           TEST_SELECTION: ${{ inputs.tests }}
         run: pixi run python scripts/ci_run_tests.py --selection "$TEST_SELECTION"
-        shell: bash
   test:
-    if: "!inputs.smoke-only"
+    if: ${{ github.event.pull_request.draft != true && !inputs.smoke-only && inputs.tests != '[]' }}
     name: ${{ matrix.label }}
     strategy:
       fail-fast: false
@@ -170,7 +173,7 @@ jobs:
       # This environment is deliberately not restored by setup-pixi above:
       # prove that a fresh install uses the published, SHA-256-pinned package.
       - name: Install pinned imputation tools from scratch
-        if: inputs.os == 'windows' && matrix.tier == 'integration' && (inputs.tests == 'all' || contains(inputs.tests, 'tests/test_imputation.py'))
+        if: inputs.os == 'windows' && matrix.tier == 'integration' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))
         shell: pwsh
         run: |
           if (Test-Path .pixi/envs/imputation) {
@@ -179,7 +182,7 @@ jobs:
           pixi install --locked -e imputation
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Impute HG002 with the pinned Windows tools (no skips)
-        if: inputs.os == 'windows' && matrix.tier == 'integration' && (inputs.tests == 'all' || contains(inputs.tests, 'tests/test_imputation.py'))
+        if: inputs.os == 'windows' && matrix.tier == 'integration' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force out | Out-Null
@@ -187,30 +190,66 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           pixi run python -c "import sys, xml.etree.ElementTree as ET; s = ET.parse('out/imputation-e2e.xml').getroot().find('testsuite'); assert s is not None; n = int(s.get('tests', '0')); skipped = int(s.get('skipped', '0')); print(n, 'tests,', skipped, 'skipped'); sys.exit(n == 0 or skipped > 0)"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      # Test result cache (#915): PRs skip test files whose exact dependency
+      # hash already passed on main or on an earlier push of the same PR. Only
+      # main (push, nightly, dispatch) writes the -main- entries PRs read; a
+      # PR's own entries are scoped to its ref. Merge groups run uncached.
+      - name: Restore test hashes that passed on main
+        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' && github.event_name != 'merge_group'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/test-cache/main
+          key: test-pass-v1-${{ inputs.os }}-${{ matrix.label }}-main-${{ github.run_id }}
+          restore-keys: test-pass-v1-${{ inputs.os }}-${{ matrix.label }}-main-
+      - name: Restore test hashes that passed earlier on this PR
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/test-cache/pr
+          key: test-pass-v1-${{ inputs.os }}-${{ matrix.label }}-pr-${{ github.run_id }}
+          restore-keys: test-pass-v1-${{ inputs.os }}-${{ matrix.label }}-pr-
       - name: Run Tests
         shell: bash
         env:
           EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          TEST_SELECTION: ${{ github.event_name == 'pull_request' && inputs.tests || 'all' }}
           TIER: ${{ matrix.tier }}
           SHARD: ${{ matrix.shard }}
+          OS: ${{ inputs.os }}
           # Ubuntu x64 alone runs the reviewed OS-independent tests.
           SKIP_INDEPENDENT: ${{ inputs.os != 'ubuntu' || inputs.skip-generic }}
-          TEST_SELECTION: ${{ github.event_name == 'pull_request' && inputs.tests || 'all' }}
         run: |
           args=(--ci-tier "$TIER" --ci-shard "$SHARD")
           if [ "$SKIP_INDEPENDENT" = true ]; then args+=(--ci-skip-independent); fi
           if [ "$EVENT" != pull_request ] && [ "$EVENT" != merge_group ]; then
             args+=(--cov=wgsextract_cli --cov-report=xml:out/coverage.xml)
           fi
-          pixi run python scripts/ci_run_tests.py --selection "$TEST_SELECTION" -- "${args[@]}"
+          cache=(--cache-job "os=$OS tier=$TIER shard=$SHARD skip-independent=$SKIP_INDEPENDENT")
+          if [ "$EVENT" = pull_request ]; then
+            cache+=(--cache-read main=out/test-cache/main/passed.json)
+            cache+=(--cache-read pr=out/test-cache/pr/passed.json)
+            cache+=(--cache-record out/test-cache/pr/passed.json --summary "$GITHUB_STEP_SUMMARY")
+          elif [ "$REF" = refs/heads/main ] && [ "$EVENT" != merge_group ]; then
+            cache+=(--cache-record out/test-cache/main/passed.json)
+          else
+            cache=()
+          fi
+          pixi run python scripts/ci_run_tests.py --selection "$TEST_SELECTION" "${cache[@]}" -- "${args[@]}"
+      - name: Save test hashes that passed
+        if: hashFiles('out/test-cache/main.updated', 'out/test-cache/pr.updated') != ''
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/test-cache/${{ github.event_name == 'pull_request' && 'pr' || 'main' }}
+          key: test-pass-v1-${{ inputs.os }}-${{ matrix.label }}-${{ github.event_name == 'pull_request' && 'pr' || 'main' }}-${{ github.run_id }}-${{ github.run_attempt }}
       # The app's bundle commands must still parse with this CLI (#538); GUI CI
       # checks the bundle side, this catches a CLI flag dropped or renamed.
       - name: Check the app's bundle commands parse with this CLI
-        if: inputs.os == 'ubuntu' && strategy.job-index == 0 && (inputs.tests == 'all' || contains(inputs.tests, 'tests/test_cli_parser.py'))
+        if: inputs.os == 'ubuntu' && strategy.job-index == 0 && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_cli_parser.py'))
         working-directory: gui
         run: pixi run python -m unittest discover -s tests/wgsextract
       - name: Annotate with vep-rs end to end (no skips)
-        if: inputs.os == 'windows' && matrix.tier == 'integration' && (inputs.tests == 'all' || contains(inputs.tests, 'tests/test_vep_rs.py'))
+        if: inputs.os == 'windows' && matrix.tier == 'integration' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_vep_rs.py'))
         shell: pwsh
         run: |
           pixi run python -c "from wgsextract_cli.core.dependencies import get_tool_path as g; assert g('vep-rs') and g('vep-cache-builder'), 'vep-rs environment missing'"
@@ -222,7 +261,7 @@ jobs:
       # Each extract, call and annotate command run end to end on generated chrM
       # and whole-genome data; about 30 s, no downloads.
       - name: Run end-to-end tests on generated data
-        if: matrix.tier != 'core' && (inputs.tests == 'all' || contains(inputs.tests, 'tests/test_e2e_'))
+        if: matrix.tier != 'core' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_e2e_'))
         run: pixi run test-e2e-fake --junitxml=out/e2e-fake.xml
       - name: Publish test timings and non-gating coverage
         if: always()

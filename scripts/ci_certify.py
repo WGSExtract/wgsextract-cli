@@ -16,10 +16,10 @@ from typing import Any
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.ci_certifications import WRITERS, gh_api  # noqa: E402
-from scripts.ci_changes import routes, site_validation  # noqa: E402
-from scripts.ci_select_tests import CI_TESTS, os_selection, select_tests  # noqa: E402
-from scripts.ci_test_dependencies import docs_test_targets  # noqa: E402
+from scripts.ci_certifications import WRITERS, gh_api, publish_certification  # noqa: E402
+from scripts.ci_certify_inputs import validate_environments  # noqa: E402
+from scripts.ci_changes import documentation_targets, routes, site_validation  # noqa: E402
+from scripts.ci_select_tests import ci_test_targets, os_selection, select_tests  # noqa: E402
 
 
 def host_platform() -> str:
@@ -193,6 +193,10 @@ def platform_commands(
                     "'Required CI VEP-rs tools missing'",
                 ]
             )
+        if host in {"linux-x64", "macos-x64", "macos-arm64"}:
+            commands.append(
+                [*pixi, "python", "scripts/ci_certify_inputs.py", "--reference"]
+            )
         if host.startswith("windows"):
             commands.append(
                 [
@@ -299,8 +303,10 @@ def generic_commands(paths: list[str], targets: list[str] | str) -> list[list[st
         [*pixi, "actionlint"],
         [*pixi, "python", "scripts/validate_github_actions.py"],
         [*pixi, "python", "scripts/validate_site_sources.py"],
-        [*pixi, "pytest", *CI_TESTS],
     ]
+    policy = ci_test_targets(paths)
+    if policy:
+        commands.append([*pixi, "pytest", *policy])
     python_files = [
         path for path in paths if path.endswith(".py") and Path(path).is_file()
     ]
@@ -339,7 +345,7 @@ def generic_commands(paths: list[str], targets: list[str] | str) -> list[list[st
                 ],
             ]
         )
-    docs = docs_test_targets(paths, cli=routes(paths)["cli"])
+    docs = documentation_targets(paths, targets)
     if docs:
         commands.append([*pixi, "pytest", *docs])
     if site_validation(paths) or routes(paths)["site"]:
@@ -408,59 +414,41 @@ def main() -> None:
         layers["generic"] = generic_commands(paths, targets)
     summaries = []
     for name, commands in layers.items():
-        endpoint = f"repos/{repository}/statuses/{sha}"
-        subprocess.run(
-            [
-                "gh",
-                "api",
-                endpoint,
-                "-f",
-                "state=pending",
-                "-f",
-                f"context=local-ci/{name}",
-                "-f",
-                "description=Local certification running",
-            ],
-            check=True,
-            stdout=subprocess.DEVNULL,
-        )
-        try:
+
+        def operation(
+            name: str = name,
+            commands: list[list[str]] = commands,
+        ) -> tuple[str, str]:
+            environments = ["default", "dev"]
+            if name != "generic" and selected["cli"] and platform_targets:
+                environments += ["vep" if host == "linux-arm64" else "vep-rs"]
+                if host == "windows-x64":
+                    environments.append("gatk")
+                if host in {"linux-x64", "windows-x64"} and (
+                    platform_targets == "all"
+                    or "tests/test_imputation.py" in platform_targets
+                ):
+                    environments.append("imputation")
+                if host == "linux-x64" and (
+                    platform_targets == "all"
+                    or any(
+                        path in platform_targets
+                        for path in (
+                            "tests/test_ont_hg002.py",
+                            "tests/test_phasing.py",
+                            "tests/test_somalier_relate.py",
+                        )
+                    )
+                ):
+                    environments += ["pacbio", "phasing", "somalier"]
+            validate_environments(environments)
             summary, log = run_layer(name, commands, sha, args.workers)
-        except (subprocess.SubprocessError, ValueError):
-            subprocess.run(
-                [
-                    "gh",
-                    "api",
-                    endpoint,
-                    "-f",
-                    "state=failure",
-                    "-f",
-                    f"context=local-ci/{name}",
-                    "-f",
-                    "description=Local certification failed; see out/certify",
-                ],
-                check=True,
-                stdout=subprocess.DEVNULL,
+            validate_head(
+                gh_api(f"repos/{repository}/pulls/{pr['number']}"), sha, repository
             )
-            raise
-        validate_head(
-            gh_api(f"repos/{repository}/pulls/{pr['number']}"), sha, repository
-        )
-        subprocess.run(
-            [
-                "gh",
-                "api",
-                f"repos/{repository}/statuses/{sha}",
-                "-f",
-                "state=success",
-                "-f",
-                f"context=local-ci/{name}",
-                "-f",
-                f"description={summary}",
-            ],
-            check=True,
-            stdout=subprocess.DEVNULL,
-        )
+            return summary, log
+
+        summary, log = publish_certification(repository, sha, name, operation)
         summaries.append(f"{name}: {summary} (log `{log}`)")
     subprocess.run(
         [
