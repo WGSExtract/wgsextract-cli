@@ -35,13 +35,13 @@ def check_wheel(
     if not expected or not re.fullmatch(r"[a-f0-9]{64}", expected):
         raise ValueError(
             f"{package['name']}: pinned wheel SHA-256 is missing from pixi list; "
-            "use CI's Pixi version and run just certify-setup"
+            f"use CI's Pixi version and run just certify-setup -e {prefix.name}"
         )
     wheel = Path("out/certify/inputs/wheels") / f"{expected}.whl"
     if not wheel.is_file() or digest(wheel) != expected:
         raise ValueError(
             f"{package['name']}: retain the pinned wheel at {wheel} before certification; "
-            "missing or corrupt wheel archive; run just certify-setup"
+            f"missing or corrupt wheel archive; run just certify-setup -e {prefix.name}"
         )
     with zipfile.ZipFile(wheel) as archive:
         for member in archive.infolist():

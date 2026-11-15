@@ -337,7 +337,7 @@ def test_951_missing_wheel_names_exact_archive_and_setup_remedy(
         )
     assert "sample" in str(caught.value)
     assert f"out/certify/inputs/wheels/{'a' * 64}.whl" in str(caught.value)
-    assert "just certify-setup" in str(caught.value)
+    assert f"just certify-setup -e {tmp_path.name}" in str(caught.value)
 
 
 def test_951_missing_bootstrap_names_archive_and_reference_remedy(
