@@ -105,6 +105,11 @@ of failed tests only (`tmp_path_retention_policy = "failed"`).
    both on Linux, updating from the latest release.
 5. `uninstall.sh --yes --remove-config --remove-pixi`, then the final snapshot.
 
+The CLI workloads and app test plan explicitly declare HG00096's known male
+sex through `sample set` before running the analyses. This rebased mini genome
+has no informative chrX assay, so coverage-based inference correctly returns
+Unknown; the lab must not bypass the product's unknown-sex ploidy safeguard.
+
 The mini genome has **5x coverage**, below microarray's default DP ≥10/GQ ≥20
 evidence gates. The scenario keeps those real-user defaults and requests
 `--call-reasons`; it does not disable filtering to make the fixture pass.
@@ -445,9 +450,16 @@ answers, rather than apt's misleading "Unable to locate package curl". The
 container's apt then uses the same mirrors for the app's own `.deb`.
 
 To try an app fix before releasing it, run the *GUI distribution* workflow
-(`gui-distribution.yml`) on its branch, then this workflow with that run's ID:
-`gh workflow run install_lab.yml -f app_run=<run id>`. The app jobs then test
-that run's builds, and `macos-app` checks out the app source at its commit.
+(`gui-distribution.yml`) on its branch, then this workflow on the **same commit**:
+`gh workflow run install_lab.yml --ref <branch> -f app_run=<run id>`.
+Only successful first-party GUI distribution runs from push, schedule or manual
+events are accepted; PR runs and mismatched commits are rejected before any app
+job starts. To test an unmerged build, dispatch both workflows on that branch,
+not on `main`: unmerged code must never execute in main's cache context.
+The app jobs test that run's builds, and `macos-app` checks out the validated
+immutable commit. Release sources likewise resolve a published release's tag
+to its immutable commit (including annotated tags). App jobs restore Pixi
+caches only; they never publish them.
 The latest app release is this repository's latest release once it carries the
 app; until then, the latest of the former gui-for-cli repository.
 

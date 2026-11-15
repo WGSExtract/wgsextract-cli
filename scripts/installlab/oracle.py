@@ -38,6 +38,7 @@ WORKLOAD_STEPS = [
     "help",
     "deps",
     "bootstrap",
+    "sample_sex",
     "info",
     "info_cram",
     "mt_bam",

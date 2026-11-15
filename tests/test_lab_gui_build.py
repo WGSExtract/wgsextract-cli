@@ -6,7 +6,89 @@ from pathlib import Path
 
 import pytest
 
+from scripts.installlab import app_source
+
 LAB_SCRIPTS = Path(__file__).resolve().parents[1] / "scripts" / "installlab"
+
+
+@pytest.mark.parametrize("event", ["push", "schedule", "workflow_dispatch"])
+def test_cache_poisoning_accepts_only_the_invoking_commit(monkeypatch, event):
+    revision = "a" * 40
+    run = {
+        "head_repository": {"full_name": "WGSExtract/wgsextract-cli"},
+        "path": ".github/workflows/gui-distribution.yml",
+        "event": event,
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": revision,
+    }
+    monkeypatch.setattr(app_source, "github_json", lambda endpoint: run)
+    assert (
+        app_source.resolve_revision("WGSExtract/wgsextract-cli", "123", "", revision)
+        == revision
+    )
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"head_sha": "b" * 40},
+        {"head_repository": {"full_name": "outsider/fork"}},
+        {"path": ".github/workflows/untrusted.yml"},
+        {"event": "pull_request"},
+        {"event": "pull_request_target"},
+        {"status": "in_progress"},
+        {"conclusion": "failure"},
+        {"head_sha": None},
+    ],
+)
+def test_cache_poisoning_rejects_untrusted_app_runs(monkeypatch, changes):
+    revision = "a" * 40
+    run = {
+        "head_repository": {"full_name": "WGSExtract/wgsextract-cli"},
+        "path": ".github/workflows/gui-distribution.yml",
+        "event": "workflow_dispatch",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": revision,
+        **changes,
+    }
+    monkeypatch.setattr(app_source, "github_json", lambda endpoint: run)
+    with pytest.raises(ValueError, match="successful first-party"):
+        app_source.resolve_revision("WGSExtract/wgsextract-cli", "123", "", revision)
+
+
+@pytest.mark.parametrize("annotated", [False, True])
+@pytest.mark.parametrize(
+    "repository", ["WGSExtract/wgsextract-cli", "WGSExtract/gui-for-cli"]
+)
+def test_cache_poisoning_pins_published_release_sources(
+    monkeypatch, annotated, repository
+):
+    revision = "a" * 40
+    commit = {"type": "commit", "sha": revision}
+    responses = {
+        f"repos/{repository}/releases/tags/v1.0": {
+            "tag_name": "v1.0",
+            "draft": False,
+        },
+        f"repos/{repository}/git/ref/tags/v1.0": {
+            "object": {"type": "tag", "sha": "b" * 40} if annotated else commit
+        },
+        f"repos/{repository}/git/tags/{'b' * 40}": {"object": commit},
+    }
+    monkeypatch.setattr(app_source, "github_json", responses.__getitem__)
+    assert app_source.resolve_revision(repository, "", "v1.0", "c" * 40) == revision
+
+
+def test_cache_poisoning_refuses_unpublished_app_sources(monkeypatch):
+    monkeypatch.setattr(
+        app_source,
+        "github_json",
+        lambda endpoint: {"tag_name": "v1.0", "draft": True},
+    )
+    with pytest.raises(ValueError, match="published"):
+        app_source.resolve_revision("WGSExtract/wgsextract-cli", "", "v1.0", "a" * 40)
 
 
 @pytest.fixture

@@ -37,6 +37,9 @@ step deps        "$WGSE" deps check
 # The reference library bootstrap is a real download (GitHub release asset with a
 # verified digest); microarray needs its vendor templates.
 step bootstrap   "$WGSE" ref bootstrap --ref "$OUT/reference"
+# HG00096 is male, but the rebased mini genome has no informative chrX assay.
+# Declare the fixture metadata rather than weakening unknown-sex ploidy checks.
+step sample_sex  "$WGSE" sample set --input "$BAM" --sex Male
 step info        "$WGSE" info --input "$BAM" --ref "$REF" --outdir "$OUT/info" --detailed
 step info_cram   "$WGSE" info --input "$CRAM" --ref "$REF" --outdir "$OUT/info_cram"
 step mt_bam      "$WGSE" extract mt-bam --input "$BAM" --ref "$REF" --outdir "$OUT/mt_bam"

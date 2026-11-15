@@ -140,6 +140,19 @@
       ]
     },
     {
+      "id": "declare_fixture_sex",
+      "kind": "action",
+      "pageID": "workflows",
+      "sectionID": "sample-overrides",
+      "actionID": "sample-set",
+      "timeoutSeconds": 60,
+      "inputs": {
+        "fieldValues": {
+          "sample_sex": "Male"
+        }
+      }
+    },
+    {
       "id": "info",
       "kind": "action",
       "pageID": "info-bam",

@@ -287,15 +287,13 @@ def resolve_platform(
             return "ultima"
     if detected == "ont":
         logging.info(
-            "Detected %s reads: selecting platform-specific alignment defaults.",
-            detected,
+            "Detected ont reads: selecting platform-specific alignment defaults."
         )
         return detected
     if detected and detected != "illumina":
         logging.info(
-            "Detected %s reads; retaining existing Illumina alignment defaults. "
-            "Use --platform to request different defaults explicitly.",
-            detected,
+            "Detected non-Illumina reads; retaining existing Illumina alignment defaults. "
+            "Use --platform to request different defaults explicitly."
         )
     return "illumina"
 

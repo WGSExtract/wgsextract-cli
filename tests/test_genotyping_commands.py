@@ -1000,6 +1000,7 @@ def test_str_sizes_repeats_and_flags_those_outside_the_normal_range(
     assert (result.metrics["sex"], result.metrics["flagged_repeats"]) == ("male", 2)
     assert result.metrics["observed_sex"] == "Unknown"
     assert result.metrics["declared_sex"] == result.metrics["effective_sex"] == "male"
+    assert not any("Sample sex:" in record.getMessage() for record in caplog.records)
     assert {w.code for w in result.warnings} == {"repeat_outside_normal_range"}
 
 
