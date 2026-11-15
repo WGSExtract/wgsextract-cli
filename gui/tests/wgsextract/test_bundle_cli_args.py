@@ -41,7 +41,6 @@ CLI_SCRIPTS = {
     "bootstrap-reference-library.sh",
     "fastqc-reads.sh",
     "library-state.sh",
-    "run-wgsextract-vcf.sh",
     "run-wgsextract.sh",
     "unalign-to-fastq.sh",
 }
@@ -570,30 +569,6 @@ class BundleCommandTests(unittest.TestCase):
                 "--input",
                 "/in.vcf.gz",
             ],
-        )
-
-    def test_vcf_wrapper_adds_ploidy_for_reference_fasta(self) -> None:
-        bam = self.sandbox.values["bam_path"]
-        fasta = self.sandbox.values["ref_fasta"]
-        library = self.sandbox.values["ref_path"]
-        self.assertEqual(
-            self.sandbox.run_cli_script(
-                "run-wgsextract-vcf.sh", ["snp", "--input", bam, "--ref", fasta]
-            ),
-            ["vcf", "snp", "--input", bam, "--ref", fasta, "--ploidy", "GRCh38"],
-        )
-        # A library directory is left to the CLI, which finds its ploidy file.
-        self.assertEqual(
-            self.sandbox.run_cli_script(
-                "run-wgsextract-vcf.sh", ["indel", "--input", bam, "--ref", library]
-            ),
-            ["vcf", "indel", "--input", bam, "--ref", library],
-        )
-        self.assertEqual(
-            self.sandbox.run_cli_script(
-                "run-wgsextract-vcf.sh", ["snp", "--ref", fasta, "--ploidy", "1"]
-            ),
-            ["vcf", "snp", "--ref", fasta, "--ploidy", "1"],
         )
 
 

@@ -1278,8 +1278,9 @@
           "tooltip": "actions.vcf.variant-calling.vcf-snp.tooltip",
           "estimatedDurationMinutes": 34,
           "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract-vcf.sh",
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
+              "vcf",
               "snp",
               "--input",
               "{{bam_path}}"
@@ -1306,8 +1307,9 @@
           "tooltip": "actions.vcf.variant-calling.vcf-indel.tooltip",
           "estimatedDurationMinutes": 34,
           "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract-vcf.sh",
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
+              "vcf",
               "indel",
               "--input",
               "{{bam_path}}"

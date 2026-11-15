@@ -923,7 +923,9 @@ Call SNPs; the `snps` output carries the record count in its metrics.
 `VcfSnpParams`: Call SNPs from a BAM/CRAM into `snps.vcf.gz`.
 
 Ploidy comes from `ploidy` or `ploidy_file`, else the reference
-library's ploidy file, else bcftools' built-in GRCh37/GRCh38 table.
+library's ploidy file, else bcftools' built-in GRCh37/GRCh38 table for
+the build of the input, or of a FASTA outside any library (its chr1
+length, `.dict` assembly, header description or file name).
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |

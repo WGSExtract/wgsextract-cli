@@ -9,6 +9,7 @@ from typing import Any
 
 from wgsextract_cli.core.builds import (
     BUILD_PATH_TOKENS,
+    build_from_chr1_length,
     build_from_path,
     canonical_build,
 )
@@ -163,6 +164,50 @@ def read_fai_lengths(fasta: PathInput) -> dict[str, int]:
     except (OSError, ValueError):
         return {}
     return lengths
+
+
+def fasta_build(fasta: PathInput) -> str | None:
+    """The build a FASTA declares itself to be ("hg19", "hg38" or "t2t"), from
+    its chr1 length (.fai, else .dict), the .dict's AS assembly tags, the
+    description on its first header line, then its name; None when nothing
+    names one. Nothing here reads the sequence."""
+    dict_path = Path(reference_dict_path(fasta))
+    try:
+        dictionary = (
+            header_sequences(dict_path.read_text()) if dict_path.is_file() else []
+        )
+    except (OSError, UnicodeDecodeError):
+        dictionary = []
+    lengths = read_fai_lengths(fasta) or {
+        row["SN"]: int(row["LN"])
+        for row in dictionary
+        if "SN" in row and row.get("LN", "").isdigit()
+    }
+    build = build_from_chr1_length(lengths)
+    for assembly in sorted({row["AS"] for row in dictionary if "AS" in row}):
+        build = build or canonical_build(assembly) or build_from_path(assembly)
+    return (
+        build
+        or build_from_path(_fasta_description(fasta))
+        or build_from_path(fspath(fasta))
+    )
+
+
+def _fasta_description(fasta: PathInput) -> str:
+    """The text after the name on a FASTA's first header line, such as
+    Ensembl's "dna:chromosome chromosome:GRCh38:1:..." or NCBI's
+    "Homo sapiens chromosome 1, GRCh38.p14 Primary Assembly"."""
+    import gzip
+
+    path = fspath(fasta)
+    opener = gzip.open if path.lower().endswith(".gz") else open
+    try:
+        with opener(path, "rb") as handle:
+            line = handle.readline(4096)
+    except (OSError, EOFError):
+        return ""
+    parts = line[1:].decode("utf-8", "replace").split(None, 1)
+    return parts[1].strip() if line.startswith(b">") and len(parts) == 2 else ""
 
 
 def sequence_signature(contig_lengths: dict[str, int]) -> str:

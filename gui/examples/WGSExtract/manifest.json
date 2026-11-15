@@ -102,7 +102,6 @@
     "format": "wgsextract.result/1",
     "executables": [
       "{{bundleRoot}}/scripts/run-wgsextract.sh",
-      "{{bundleRoot}}/scripts/run-wgsextract-vcf.sh",
       "{{bundleRoot}}/scripts/unalign-to-fastq.sh"
     ],
     "arguments": [
@@ -136,11 +135,7 @@
       ]
     },
     "executables": {
-      "{{bundleRoot}}/scripts/run-wgsextract.sh": [],
-      // Runs `wgsextract vcf snp|indel ...`.
-      "{{bundleRoot}}/scripts/run-wgsextract-vcf.sh": [
-        "vcf"
-      ]
+      "{{bundleRoot}}/scripts/run-wgsextract.sh": []
     },
     "kindLabels": {
       "genome": "prerequisites.kinds.genome",
