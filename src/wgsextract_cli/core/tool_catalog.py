@@ -106,10 +106,10 @@ PLATFORM_ONLY_TOOLS = {
     "somalier": ("linux", "darwin"),
     "whatshap": ("linux", "darwin"),
     "longphase": ("linux", "darwin"),
-    "GLIMPSE2_phase": ("linux", "darwin", "win32"),
-    "GLIMPSE2_ligate": ("linux", "darwin", "win32"),
-    "GLIMPSE2_chunk": ("linux", "darwin", "win32"),
-    "GLIMPSE2_split_reference": ("linux", "darwin", "win32"),
+    "GLIMPSE2_phase": ("linux", "win32"),
+    "GLIMPSE2_ligate": ("linux", "win32"),
+    "GLIMPSE2_chunk": ("linux", "win32"),
+    "GLIMPSE2_split_reference": ("linux", "win32"),
 }
 
 
@@ -130,7 +130,7 @@ def clair3_host_supported() -> bool:
 def imputation_host_supported() -> bool:
     """Hosts with the opt-in GLIMPSE2/Beagle environment."""
     system = "linux" if sys.platform.startswith("linux") else sys.platform
-    return system in {"linux", "darwin", "win32"} and platform.machine().lower() in {
+    return system in {"linux", "win32"} and platform.machine().lower() in {
         "x86_64",
         "amd64",
     }
@@ -141,7 +141,7 @@ def _x86_deepvariant_host() -> bool:
     run the native image instead (`vcf deepvariant`, `deps check`)."""
     from wgsextract_cli.core.native_support import is_arm64_docker_host
 
-    return not is_arm64_docker_host()
+    return sys.platform.startswith("linux") and not is_arm64_docker_host()
 
 
 def _native_deepvariant_host() -> bool:

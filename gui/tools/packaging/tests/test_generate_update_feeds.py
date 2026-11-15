@@ -35,7 +35,7 @@ class GenerateUpdateFeedsTests(unittest.TestCase):
             )
             self.assertEqual(payload["platforms"]["windows-x86_64"]["signature"], "signature")
 
-    def test_tauri_feed_includes_macos_archives_by_arch(self) -> None:
+    def test_957_tauri_feed_excludes_intel_macos_even_with_old_assets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir_name:
             tmp_dir = Path(tmp_dir_name)
             for arch in ("x64", "aarch64"):
@@ -63,7 +63,7 @@ class GenerateUpdateFeedsTests(unittest.TestCase):
                     "url": "https://github.com/WGSExtract/wgsextract-cli/releases/download/v0.1.4/WGSExtract_aarch64.app.tar.gz",
                 },
             )
-            self.assertEqual(payload["platforms"]["darwin-x86_64"]["signature"], "x64-signature")
+            self.assertNotIn("darwin-x86_64", payload["platforms"])
 
     def test_tauri_feed_skips_unsigned_macos_archive(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir_name:

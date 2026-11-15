@@ -4,7 +4,7 @@ name: GLIMPSE2 Windows
 # doesn't, on every change to it, and publishes the package to a release when
 # asked: Actions > GLIMPSE2 Windows > Run workflow, with a new tag such as
 # glimpse2-2. Then pin pixi.toml's imputation feature to the asset's URL and
-# SHA-256. Linux and Intel macOS use Bioconda's glimpse-bio.
+# SHA-256. Linux x86-64 uses Bioconda's glimpse-bio; macOS is unsupported.
 
 on:
   pull_request:

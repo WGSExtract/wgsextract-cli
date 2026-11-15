@@ -44,7 +44,7 @@ Tauri wraps the Web UI in a native window, bundles the Node runtime, and adds na
 - Configuration and workspaces stay in platform-standard app data directories. WGSExtract settings preserve TOML boolean and numeric types; invalid saved types warn and use defaults without rewriting the file.
 - `app/web/packagers/tauri` supplies the Rust desktop shell. Installers take their app name and version from the embedded bundle; the WGSExtract app's version is the release tag of the CLI it bundles.
 
-Tagged releases build on Windows, macOS, and Linux with a signed Tauri updater feed. macOS has separate signed, notarized Apple Silicon and Intel builds, not a universal DMG. Windows and Linux packages are x64; native ARM64 packaging for those platforms is still a follow-up.
+Tagged releases build on Windows, macOS, and Linux with a signed Tauri updater feed. macOS has a signed, notarized Apple Silicon build only. Windows and Linux packages are x64; native ARM64 packaging for those platforms is still a follow-up.
 
 [Distribution details](https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/docs/distribution.md) cover packaging, signing, updates, and uninstall hooks. Earlier SwiftUI, Sparkle, and Electron implementations are not part of the current app.
 :::

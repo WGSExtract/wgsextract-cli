@@ -1081,11 +1081,12 @@ def test_an_amd64_image_on_an_arm64_engine_is_refused_whatever_the_host_says(dv)
     assert dv.docker.runs() == []
 
 
-def test_intel_mac_runs_googles_image(dv, monkeypatch):
+def test_957_intel_mac_cannot_run_googles_image(dv, monkeypatch):
     monkeypatch.setattr(sys, "platform", "darwin")
     _mac_sysctl(dv, "0")
-    call(dv)
-    assert {r["image"] for r in dv.docker.runs()} == {deepvariant.DEFAULT_IMAGE}
+    with pytest.raises(WGSExtractError, match="Intel macOS.*v0.8.7"):
+        call(dv)
+    assert dv.docker.runs() == []
 
 
 # Linux ARM64 ------------------------------------------------------------------

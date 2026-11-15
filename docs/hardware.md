@@ -51,7 +51,7 @@ bwa-mem2's.
 The ~1.3× speedup is what we measured. bwa-mem2's authors **published** up to
 3.5× on one thread and 2.4× on one socket of an Intel Xeon Skylake with
 AVX-512 ([Vasimuddin et al., IPDPS 2019](https://arxiv.org/abs/1907.12931)).
-Bioconda's x86-64 bwa-mem2 (Linux, Intel Macs) picks its SSE4.1, SSE4.2, AVX, AVX2 or AVX-512 kernels at
+Bioconda's x86-64 bwa-mem2 (Linux) picks its SSE4.1, SSE4.2, AVX, AVX2 or AVX-512 kernels at
 run time, so newer CPUs gain more.
 
 **ARM (Apple Silicon, Linux ARM64).** The ARM bwa-mem2 builds translate those

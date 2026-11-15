@@ -18,6 +18,26 @@ from wgsextract_cli.main import main
 _RECORD = "import sys\nopen({log!r}, 'a').write({tool!r} + '\\n')\n"
 
 
+def test_957_cli_refuses_intel_macos_before_reading_input(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    python_tool(tools, "sysctl", 'print("0")')
+    monkeypatch.setenv("PATH", str(tools))
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    out = tmp_path / "output"
+    with pytest.raises(SystemExit) as error:
+        main(["info", "--input", "missing.bam", "--outdir", str(out)])
+    assert error.value.code == 1
+    message = capsys.readouterr().err
+    assert "Intel macOS is no longer supported" in message
+    assert "v0.8.7" in message
+    assert "Apple Silicon" in message
+    assert not out.exists()
+
+
 @pytest.fixture
 def arm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     """Linux ARM64 with programs it mustn't start on PATH: x86-only GATK, and

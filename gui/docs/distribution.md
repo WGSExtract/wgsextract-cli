@@ -123,7 +123,7 @@ the same pair rather than generating a new password. Do not run GUI distribution
 until the retry succeeds. Successful uploads remove the local recovery files;
 otherwise remove those specific files once recovery is complete.
 
-The macOS release builds natively on an Apple Silicon runner and an Intel runner, producing separate arm64 and x64 apps, DMGs, and updater archives.
+The macOS release builds natively on an Apple Silicon runner, producing only arm64 apps, DMGs, and updater archives. Intel macOS is unsupported; v0.8.7 is the last supporting release and its existing assets remain available. Intel apps no longer receive updates.
 
 ### Bundling a new WGSExtract CLI release
 
@@ -178,7 +178,7 @@ python3 gui/tools/packaging/generate_update_feeds.py \
 ```
 
 It writes `latest.json` with `windows-x86_64`, `linux-x86_64`, and
-`darwin-aarch64`/`darwin-x86_64` entries for every signed artifact it finds.
+`darwin-aarch64` entries for signed Apple Silicon artifacts. Intel macOS assets are ignored.
 Release builds set `PACKAGE_APP_VERSION` from the tag name so the packaged apps and
 the feed agree on the update version.
 

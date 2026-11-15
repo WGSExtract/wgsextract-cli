@@ -99,8 +99,8 @@ function targetPlatformArch(argv) {
 }
 
 function nodeDistributionPlatformArch(osPlatform, osArch) {
-  if (osPlatform === "darwin" && (osArch === "arm64" || osArch === "x64")) {
-    return `darwin-${osArch}`;
+  if (osPlatform === "darwin" && osArch === "arm64") {
+    return "darwin-arm64";
   }
   if (osPlatform === "win32" && (osArch === "arm64" || osArch === "x64")) {
     return `win-${osArch}`;

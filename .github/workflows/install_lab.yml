@@ -174,7 +174,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   # Unsigned, as a local build: the oracle then requires the platform's
-  # signature check to refuse it. Intel macOS isn't tested here. A platform
+  # signature check to refuse it. macOS means Apple Silicon only. A platform
   # whose build failed fails its own tree job (no artifact); the pinned jobs,
   # which use the release, still run.
   app-build:

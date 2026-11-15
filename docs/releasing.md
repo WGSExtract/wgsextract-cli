@@ -55,7 +55,7 @@ it.
    `vX.Y.Z` tag and publishes the release as the latest with the notes file.
    `install.sh` installs the latest published release. Its last job then calls
    `gui-distribution.yml`, which builds the app at the tagged commit on Linux,
-   macOS (Apple Silicon and Intel) and Windows, signs and notarizes the macOS
+   macOS (Apple Silicon only) and Windows, signs and notarizes the macOS
    app, and adds the installers and the updater feed (`latest.json`) to the
    same release; installed apps update from the latest release's
    `latest.json`. The app's version is the tag's. The native Windows

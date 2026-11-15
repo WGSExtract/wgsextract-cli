@@ -42,7 +42,7 @@ each sample's ploidy and isn't supported yet. A chip VCF with contigs named
 GRCh38; for a lengthless header, supply the matching GRCh38 FASTA index with
 `bcftools reheader --fai GRCh38.fa.fai` first.
 
-The optional environment supports **x86-64 Linux, Windows x64 and Intel macOS**.
+The optional environment supports **x86-64 Linux and Windows x64**.
 On Windows, `pixi install -e imputation` installs our native GLIMPSE2 2.0.1
 package from the `glimpse2-1` release, pinned by URL and SHA-256 in `pixi.toml`,
 alongside conda-forge's native OpenJDK and the pinned noarch Beagle jar.

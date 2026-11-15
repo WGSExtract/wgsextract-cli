@@ -31,7 +31,6 @@ def checks_ready(
                 "local-ci/linux-x64",
                 "local-ci/linux-arm64",
                 "local-ci/macos-arm64",
-                "local-ci/macos-x64",
                 "local-ci/windows-x64",
                 "local-ci/generic",
             }

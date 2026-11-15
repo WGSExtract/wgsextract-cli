@@ -282,7 +282,7 @@ directory and are removed after the run.
 ONT-trained small-variant caller. It is optional, and DeepVariant remains the
 default ONT caller. The Pixi environment pins Clair3 2.0.5 or newer, which
 Bioconda builds for **Linux x86-64, Linux ARM64 and Apple Silicon macOS**.
-It is not available on Windows (use WSL2) or Intel Macs. Install it into its
+It is not available on Windows (use WSL2). macOS requires Apple Silicon. Install it into its
 own Pixi environment with `pixi install -e clair3`. The CLI checks for it but
 never installs it.
 
@@ -546,7 +546,7 @@ wgsextract vcf phase --input sample.cram --vcf-input calls.vcf.gz --ref hs38.fa.
 - The result manifest records `heterozygous_variants`, `phased_variants`,
   `phased_pct`, `phase_blocks` and `block_n50_bp` (block span = last minus
   first phased position, as `whatshap stats` measures it).
-- Linux and macOS only. LongPhase has no Intel-Mac build; WhatsHap is used there.
+- Linux and Apple Silicon macOS only.
 
 Measured on HG002 against the GIAB v4.2.1 phased benchmark
 (`whatshap compare`, all assessed pairs), 4 cores:

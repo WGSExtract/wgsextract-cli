@@ -313,7 +313,13 @@ def test_impute_without_an_installed_panel_says_how_to_install_it(tmp_path):
 
 @pytest.mark.parametrize(
     ("system", "machine"),
-    [("win32", "ARM64"), ("darwin", "arm64"), ("linux", "aarch64"), ("linux", "arm64")],
+    [
+        ("win32", "ARM64"),
+        ("darwin", "arm64"),
+        ("darwin", "x86_64"),
+        ("linux", "aarch64"),
+        ("linux", "arm64"),
+    ],
 )
 @pytest.mark.parametrize("operation", ["impute", "install"])
 def test_732_unsupported_platform_reports_gate_before_tools(
@@ -321,9 +327,7 @@ def test_732_unsupported_platform_reports_gate_before_tools(
 ):
     monkeypatch.setattr(sys, "platform", system)
     monkeypatch.setattr(platform, "machine", lambda: machine)
-    with pytest.raises(
-        api.CommandFailed, match="x86-64 Linux, Windows and Intel macOS"
-    ):
+    with pytest.raises(api.CommandFailed, match="x86-64 Linux and Windows x64"):
         if operation == "install":
             api.ref.imputation(
                 api.RefImputationParams(ref=tmp_path, chromosomes="chr20")

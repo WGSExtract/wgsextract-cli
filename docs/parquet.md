@@ -75,8 +75,8 @@ which Python lacks it, and suggests `--format tsv`. To add it:
   package with its `parquet` extra (`pip install '.[parquet]'` from a
   checkout).
 
-pyarrow publishes builds for Linux x86-64 and ARM64, macOS (Intel and Apple
-silicon) and Windows x86-64, which covers every Pixi platform WGS Extract
+pyarrow publishes builds for Linux x86-64 and ARM64, Apple Silicon macOS
+and Windows x86-64, which covers every Pixi platform WGS Extract
 supports. It has **no Windows ARM64 build** on PyPI or conda-forge, so on the
 native Windows ARM64 Python being qualified in
 [`packaging/windows-arm64`](../packaging/windows-arm64/README.md),

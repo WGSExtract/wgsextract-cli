@@ -91,12 +91,10 @@ jobs:
           done < <(list "$VARIANTS")
           jobs='[]'
           while read -r runner; do
-            [[ $runner =~ ^[A-Za-z0-9._-]+$ ]] || { echo "::error::bad runner $runner"; exit 1; }
+            [[ $runner =~ ^macos-(15|26|latest)$ ]] || { echo "::error::unsupported Apple Silicon runner $runner"; exit 1; }
             while read -r tier; do
               [[ $tier =~ ^[a-z0-9-]+$ ]] || { echo "::error::bad tier $tier"; exit 1; }
               jobs=$(jq -c --arg runner "$runner" --arg tier "$tier" '. + [{runner: $runner, tier: $tier}]' <<< "$jobs")
-              # Intel runners only check that the arm64 builds refuse to start, which needs one job.
-              [[ $runner != *intel* && $runner != macos-13* ]] || break
             done < <(list "$TIERS")
           done < <(list "$RUNNERS")
           if [ "$variants" = '[]' ] || [ "$jobs" = '[]' ]; then
@@ -204,21 +202,6 @@ jobs:
           pattern: bench-bin-*
           path: bins
           merge-multiple: true
-
-      - name: Check that Intel Macs refuse the arm64 builds
-        if: runner.arch != 'ARM64'
-        run: |
-          for binary in bins/*/wgse-*; do
-            chmod +x "$binary"
-            status=0
-            { "$binary" --version; } 2> err.txt || status=$?
-            cat err.txt
-            if [ "$status" = 0 ] || ! grep -q 'Bad CPU type' err.txt; then
-              echo "::error::$binary exited $status"
-              exit 1
-            fi
-          done
-          echo "Intel runner: the arm64 builds refuse to start (as expected); nothing to benchmark." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fetch the data
         if: runner.arch == 'ARM64'

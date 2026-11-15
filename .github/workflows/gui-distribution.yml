@@ -1,7 +1,7 @@
 name: GUI distribution
 
-# Builds the WGS Extract desktop app (gui/) for Linux, macOS (Apple Silicon and
-# Intel) and Windows.
+# Builds the WGS Extract desktop app (gui/) for Linux, macOS (Apple Silicon)
+# and Windows.
 # - Run by hand (Actions > GUI distribution > Run workflow, or
 #   `gh workflow run gui-distribution.yml --ref BRANCH`): builds the installers
 #   as artifacts, to try a change before releasing it.

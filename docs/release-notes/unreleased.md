@@ -1,6 +1,16 @@
 <!-- Notes for the next release. PRs add user-facing entries here as they
 land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
+## Removed
+
+- macOS now means **Apple Silicon only**. Intel (x86-64) macOS support,
+  builds, DMGs, update-feed entries, CI runners and Pixi environments have
+  been removed. [v0.8.7](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.7)
+  is the last supporting release; its existing assets stay published.
+  Intel users of the desktop app stop receiving updates. The installer and
+  CLI refuse Intel Macs with this guidance. Linux and Windows x86-64 remain
+  supported.
+
 ## New
 
 - Genotype imputation now works natively on **Windows x64**:

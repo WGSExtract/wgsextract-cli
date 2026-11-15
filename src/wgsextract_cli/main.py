@@ -13,6 +13,7 @@ from .cli.bootstrap import (
 from .cli.help import print_full_help, run_help
 from .cli.parser import build_parser, config_path_from_argv, parse_args
 from .core.config import reload_settings, set_config_path
+from .core.native_support import require_supported_macos
 from .core.run_log import RunLogError, run_logging
 from .core.utils import WGSExtractError
 
@@ -21,6 +22,11 @@ __all__ = ["main"]
 
 def main(argv: Sequence[str] | None = None) -> None:
     configure_stdio_encoding()
+    try:
+        require_supported_macos()
+    except WGSExtractError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from None
     set_config_path(config_path_from_argv(sys.argv[1:] if argv is None else argv))
     try:
         reload_settings()

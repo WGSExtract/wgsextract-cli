@@ -20,7 +20,7 @@ on:
         description: A JSON list of the installers to build, by artifact name.
         required: false
         type: string
-        default: '["tauri-linux", "tauri-macos-arm64", "tauri-macos-x64", "tauri-windows"]'
+        default: '["tauri-linux", "tauri-macos-arm64", "tauri-windows"]'
 
 permissions:
   contents: read
@@ -28,7 +28,7 @@ permissions:
 jobs:
   tauri:
     name: Tauri (${{ matrix.artifact_name }})
-    runs-on: ${{ fromJSON('{"tauri-linux":"ubuntu-24.04","tauri-macos-arm64":"macos-latest","tauri-macos-x64":"macos-15-intel","tauri-windows":"windows-latest"}')[matrix.artifact_name] }}
+    runs-on: ${{ fromJSON('{"tauri-linux":"ubuntu-24.04","tauri-macos-arm64":"macos-latest","tauri-windows":"windows-latest"}')[matrix.artifact_name] }}
     timeout-minutes: 90
     strategy:
       fail-fast: false

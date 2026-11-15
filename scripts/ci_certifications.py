@@ -10,7 +10,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-PLATFORMS = ("linux-x64", "linux-arm64", "macos-arm64", "macos-x64", "windows-x64")
+PLATFORMS = ("linux-x64", "linux-arm64", "macos-arm64", "windows-x64")
 CONTEXTS = {f"local-ci/{name}" for name in (*PLATFORMS, "generic")}
 WRITERS = {"write", "maintain", "admin"}
 

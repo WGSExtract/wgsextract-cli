@@ -44,7 +44,6 @@ auto_hero: false
           <strong>Download for Apple Silicon</strong>
           <span>Signed and notarized .dmg</span>
         </a>
-        <a class="download-note" href="https://github.com/WGSExtract/wgsextract-cli/releases/download/v0.8.7/WGSExtract_0.8.7_x64.dmg">Intel Mac .dmg</a>
       </article>
       <article class="card download-card linux-card">
         <div class="platform-heading">
@@ -98,7 +97,7 @@ auto_hero: false
 ## Install and start
 
 - **Windows (x64):** run the `.exe` installer, then launch WGSExtract. If SmartScreen appears, follow the steps above only for an installer downloaded from this project's releases.
-- **macOS:** choose Apple Silicon or Intel, open the `.dmg`, and drag WGSExtract to Applications. The app and disk images are signed and notarized.
+- **macOS (Apple Silicon only):** open the `.dmg` and drag WGSExtract to Applications. The app and disk image are signed and notarized. Intel Macs are no longer supported: [v0.8.7](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.7) is the last supporting release, its assets remain available, and Intel apps stop receiving updates.
 - **Linux (x86_64):** make the AppImage executable (`chmod +x WGSExtract_0.8.7_amd64.AppImage`) and run it, or install the `.deb`, `.rpm`, or Arch package with your distro's package manager.
 
 On first launch, run the bundle's setup to install the pinned CLI and its runtime tools; downloads need a network connection. Windows CLI setup runs natively without WSL or MSYS2. Reference data and optional tools have separate requirements; install the resources needed for your chosen workflow before running it. Linux and Windows ARM64 desktop installers are not yet published.

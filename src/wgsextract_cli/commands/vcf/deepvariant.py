@@ -89,8 +89,8 @@ _CRAM31_BUG = (
     "to every image."
 )
 _SETUP = (
-    "DeepVariant runs from Google's Docker image on x86-64 Linux and Intel "
-    "Macs: install Docker, then docker pull {image}. "
+    "DeepVariant runs from Google's Docker image on x86-64 Linux: "
+    "install Docker, then docker pull {image}. "
     "Or put Google's run_deepvariant on PATH."
 )
 

@@ -31,6 +31,17 @@ def test_906_selected_tests_survive_shared_workflow_boundary(workflow: str) -> N
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 
 
+def test_957_workflows_only_offer_apple_silicon_macos() -> None:
+    for workflow in WORKFLOWS.glob("*.yml"):
+        source = workflow.read_text()
+        for removed in ("macos-15-intel", "macos-13", "tauri-macos-x64", "osx-64"):
+            assert removed not in source, f"{workflow.name}: {removed}"
+    build = (WORKFLOWS / "gui-build.yml").read_text()
+    match = re.search(r"default: '(\[\"tauri-.*\])'", build)
+    assert match is not None
+    assert json.loads(match[1]) == ["tauri-linux", "tauri-macos-arm64", "tauri-windows"]
+
+
 def test_923_fork_code_cannot_write_certification_outputs() -> None:
     source = (WORKFLOWS / "pr_ci.yml").read_text()
     before_route = source.split("      - name: Route the complete PR diff", 1)[0]

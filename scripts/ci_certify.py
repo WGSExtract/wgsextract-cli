@@ -29,7 +29,12 @@ def host_platform() -> str:
     arch = {"x86_64": "x64", "amd64": "x64", "arm64": "arm64", "aarch64": "arm64"}.get(
         platform.machine().lower()
     )
-    if not system or not arch or (system == "windows" and arch != "x64"):
+    if (
+        not system
+        or not arch
+        or (system == "windows" and arch != "x64")
+        or (system == "macos" and arch != "arm64")
+    ):
         raise ValueError("Unsupported certification host")
     return f"{system}-{arch}"
 
@@ -167,7 +172,6 @@ def platform_commands(
         environments = {
             "linux-x64": ["default", "dev", "vep-rs"],
             "macos-arm64": ["default", "dev", "vep-rs"],
-            "macos-x64": ["default", "dev", "vep-rs"],
             "windows-x64": ["default", "dev", "gatk", "vep-rs"],
             "linux-arm64": ["default", "dev", "vep"],
         }[host]
@@ -193,7 +197,7 @@ def platform_commands(
                     "'Required CI VEP-rs tools missing'",
                 ]
             )
-        if host in {"linux-x64", "macos-x64", "macos-arm64"}:
+        if host in {"linux-x64", "macos-arm64"}:
             commands.append(
                 [*pixi, "python", "scripts/ci_certify_inputs.py", "--reference"]
             )
@@ -211,7 +215,7 @@ def platform_commands(
             )
         else:
             commands.append(["bash", "scripts/test_install_sh.sh"])
-        if host in {"linux-x64", "macos-arm64", "macos-x64"}:
+        if host in {"linux-x64", "macos-arm64"}:
             commands.append([*pixi, "bash", "scripts/verify_tools.sh"])
         else:
             commands.append([*pixi, "wgsextract", "deps", "check"])
@@ -403,7 +407,6 @@ def main() -> None:
         "linux-x64": "ubuntu",
         "linux-arm64": "arm64",
         "macos-arm64": "macos",
-        "macos-x64": "macos",
         "windows-x64": "windows",
     }[host]
     platform_targets = os_selection(paths, targets, cli=selected["cli"])[os]

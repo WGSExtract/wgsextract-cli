@@ -8,6 +8,15 @@ import sys
 from wgsextract_cli.core.utils import WGSExtractError
 
 
+def require_supported_macos() -> None:
+    if sys.platform == "darwin" and not _apple_silicon():
+        raise WGSExtractError(
+            "Intel macOS is no longer supported. The last supporting release is "
+            "v0.8.7: https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.7. "
+            "macOS now requires Apple Silicon."
+        )
+
+
 def is_linux_arm64() -> bool:
     return sys.platform.startswith("linux") and platform.machine().lower() in {
         "aarch64",
@@ -60,5 +69,6 @@ def tool_unsupported_reason(tool: str) -> str | None:
 
 
 def require_native_tool(tool: str) -> None:
+    require_supported_macos()
     if reason := tool_unsupported_reason(tool):
         raise WGSExtractError(reason)

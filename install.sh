@@ -25,6 +25,14 @@ fail() {
     exit 1
 }
 
+OS_NAME="$(uname -s)"
+if [ "$OS_NAME" = "Darwin" ]; then
+    case "$(uname -m)" in
+        arm64|aarch64) ;;
+        *) fail "Intel macOS is no longer supported. The last supporting release is v0.8.7: https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.7. macOS now requires Apple Silicon." ;;
+    esac
+fi
+
 toml_string() {
     # TOML basic string: escape backslashes and double quotes.
     printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"
@@ -215,12 +223,10 @@ verify_pixi_download() {
     # v0.82.0 release asset SHA-256s. Update these together with PIXI_VERSION.
     case "$2" in
         pixi-aarch64-apple-darwin.tar.gz) expected="3b48bd27de4db31381dc1d5b3d069c98852c0e923aefa30dae0452a088c0810e" ;;
-        pixi-x86_64-apple-darwin.tar.gz) expected="a0e5dc45a2ced8987a4df3c597d96528c87089ea3481ed4bb7c27404699540f1" ;;
         pixi-aarch64-unknown-linux-musl.tar.gz) expected="b18dadba196c0c77781533184ec3e7757422c0ae9bed0047ff7ca1c688c0f62b" ;;
         pixi-x86_64-unknown-linux-musl.tar.gz) expected="d305406a7630aab6484419833f9204b2fe9ea40632da8bb536496f123ca86e7f" ;;
         pixi-riscv64gc-unknown-linux-gnu.tar.gz) expected="03261cc2fa85e6167d99af219bf8d49a608306cb6c6a8ac30f7113b3d925a33b" ;;
         pixi-aarch64-apple-darwin) expected="92aa551c67a56ec0ba105fa20c3f48094b02586de523e24b96974ba1f092455b" ;;
-        pixi-x86_64-apple-darwin) expected="db4bd6dc3a5f88f2d94cf2e1f8a377b53d3aaac95b45b058854fbf53919d6d36" ;;
         pixi-aarch64-unknown-linux-musl) expected="c6e3c4d98bb41560b5cfdebbe6cbf766f3547603a0fb96e1450a6ccff74b5e14" ;;
         pixi-x86_64-unknown-linux-musl) expected="1dff1db704884f078c44b4c7fb3c5bc6f946fc3d1fa679edf214ad79187a9c64" ;;
         pixi-riscv64gc-unknown-linux-gnu) expected="e34c641729f54bc32c67bc70c07ba2a3fbdc0fbb5651f0d175ea30b42096d74c" ;;
@@ -437,7 +443,6 @@ remove_legacy_gui_launchers() {
         "$INSTALL_DIR/WGS Extract Web GUI.command"
 }
 
-OS_NAME="$(uname -s)"
 case "$OS_NAME" in
     Darwin|Linux)
         ;;

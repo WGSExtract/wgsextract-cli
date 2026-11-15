@@ -79,7 +79,6 @@ def write_tauri_latest_json(
     add_tauri_platform(platforms, artifacts, "windows-x86_64", [r".*-setup\.exe$"], base_url)
     add_tauri_platform(platforms, artifacts, "linux-x86_64", [r".*\.AppImage$"], base_url)
     add_tauri_platform(platforms, artifacts, "darwin-aarch64", [r".*_aarch64\.app\.tar\.gz$"], base_url)
-    add_tauri_platform(platforms, artifacts, "darwin-x86_64", [r".*_x64\.app\.tar\.gz$"], base_url)
 
     if not platforms:
         return False

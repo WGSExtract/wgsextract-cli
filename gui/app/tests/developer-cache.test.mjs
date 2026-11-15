@@ -1,7 +1,19 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { developerCacheDir } from "../scripts/developer-cache.mjs";
+
+test("957: Tauri runtime packaging refuses Intel macOS before downloading", () => {
+  const result = spawnSync(process.execPath, [
+    fileURLToPath(new URL("../scripts/prepare-tauri-node.mjs", import.meta.url)),
+    "--target", "darwin-x64",
+  ], { encoding: "utf8" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Unsupported Tauri Node runtime platform: darwin-x64/);
+  assert.equal(result.stdout, "");
+});
 
 // Worktrees share one Tauri Node download only if the cache is outside the checkout.
 test("developer cache is the per-user platform cache, outside any checkout", () => {

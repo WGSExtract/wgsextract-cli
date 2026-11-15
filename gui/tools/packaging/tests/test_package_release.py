@@ -10,9 +10,10 @@ import package_release  # noqa: E402
 
 
 class MacOSUpdaterArchiveTests(unittest.TestCase):
-    def test_arch_maps_apple_silicon_and_intel(self) -> None:
+    def test_957_macos_packaging_refuses_intel(self) -> None:
         self.assertEqual(package_release.macos_updater_arch("arm64"), "aarch64")
-        self.assertEqual(package_release.macos_updater_arch("x86_64"), "x64")
+        with self.assertRaisesRegex(ValueError, "Apple Silicon"):
+            package_release.macos_updater_arch("x86_64")
 
     def test_archives_and_signatures_gain_arch_suffix(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir_name:

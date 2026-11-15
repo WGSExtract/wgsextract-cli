@@ -248,7 +248,6 @@ def test_923_linting_the_test_runner_does_not_turn_lint_into_pytest(
         ("Linux", "x86_64", "linux-x64"),
         ("Linux", "aarch64", "linux-arm64"),
         ("Darwin", "arm64", "macos-arm64"),
-        ("Darwin", "x86_64", "macos-x64"),
         ("Windows", "AMD64", "windows-x64"),
     ],
 )
@@ -261,6 +260,13 @@ def test_923_status_platform_is_detected_not_claimed(
     monkeypatch.setattr("platform.system", lambda: system)
     monkeypatch.setattr("platform.machine", lambda: machine)
     assert host_platform() == expected
+
+
+def test_957_intel_macos_cannot_certify(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("platform.system", lambda: "Darwin")
+    monkeypatch.setattr("platform.machine", lambda: "x86_64")
+    with pytest.raises(ValueError, match="Unsupported certification host"):
+        host_platform()
 
 
 @pytest.mark.parametrize("bucket", ["pass", "fail", "pending"])

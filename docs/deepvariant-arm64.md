@@ -136,7 +136,7 @@ TensorFlow libraries, and the ELF modules inside all three Bazel ZIPs using
 Do not substitute the community image on the strength of its F1 claims: its
 scientific changes are not equivalent to this source build.
 
-x64 Linux and Intel macOS defaults and commands are unchanged. Qualification evidence,
+x64 Linux defaults and commands are unchanged. macOS requires Apple Silicon. Qualification evidence,
 unnormalized VCF differences, matched-vCPU timings and cloud cost are recorded
 in the task's `out/arm64/deepvariant/report.md`; a draft PR does not by itself
 establish full-genome or performance qualification.

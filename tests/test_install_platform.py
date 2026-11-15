@@ -15,6 +15,38 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.mark.parametrize("architecture", ["x86_64", "i386"])
+def test_957_installer_refuses_intel_macos_before_installing(
+    tmp_path: Path, architecture: str
+) -> None:
+    commands = tmp_path / "commands"
+    commands.mkdir()
+    uname = commands / "uname"
+    uname.write_text(
+        f'#!/bin/sh\ncase "$1" in -s) echo Darwin;; -m) echo {architecture};; esac\n'
+    )
+    uname.chmod(0o755)
+    installation = tmp_path / "installation"
+    result = subprocess.run(
+        [str(SH), str(ROOT / "install.sh")],
+        env={
+            **os.environ,
+            "PATH": str(commands),
+            "HOME": str(tmp_path),
+            "WGSEXTRACT_INSTALL_DIR": str(installation),
+        },
+        input="",
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 1
+    assert "Intel macOS is no longer supported" in result.stderr
+    assert "v0.8.7" in result.stderr
+    assert "Apple Silicon" in result.stderr
+    assert not installation.exists()
+
+
 @pytest.mark.parametrize("architecture", ["aarch64", "arm64"])
 @pytest.mark.parametrize(
     "parent_path", [True, False], ids=["with-path", "without-path"]

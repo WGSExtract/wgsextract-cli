@@ -559,9 +559,10 @@ def test_deps_check_lists_clair3_only_where_it_runs(host, monkeypatch, machine, 
     [
         ("linux", "x86_64", True),
         ("darwin", "arm64", False),
+        ("darwin", "x86_64", False),
         ("linux", "aarch64", False),
     ],
-    ids=["linux-x86", "apple-silicon", "linux-arm"],
+    ids=["linux-x86", "apple-silicon", "unsupported-intel-mac", "linux-arm"],
 )
 def test_deps_check_lists_run_deepvariant_only_where_it_is_used(
     host, monkeypatch, system, machine, listed

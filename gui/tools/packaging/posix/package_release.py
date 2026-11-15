@@ -65,7 +65,9 @@ def copy_optional_matching_artifacts(bundle_dir: Path, dest: Path, patterns: lis
 def macos_updater_arch(machine: str) -> str:
     """Tauri names updater archives `<App>.app.tar.gz` without an architecture;
     the release feed keys macOS platforms by an `_<arch>` filename suffix."""
-    return "aarch64" if machine.lower() in {"arm64", "aarch64"} else "x64"
+    if machine.lower() not in {"arm64", "aarch64"}:
+        raise ValueError("macOS packaging requires Apple Silicon")
+    return "aarch64"
 
 
 def stage_macos_updater_archives(bundle_dir: Path, dest: Path, arch: str) -> None:
@@ -124,14 +126,16 @@ def resolve_tauri_archlinux_appimage(bundle_dir: Path) -> Path:
 
 
 def stage_tauri_release() -> None:
+    macos_arch = macos_updater_arch(platform.machine()) if sys.platform == "darwin" else None
     run(["npm", "--prefix", "app", "run", "tauri:dist"])
     dest = release_path("TAURI_RELEASE_DIR", "tauri")
     reset_dir(dest)
     bundle_dir = repo(TAURI_BUNDLE_DIR)
     if sys.platform == "darwin":
+        assert macos_arch is not None
         copy_matching_artifacts(bundle_dir, dest, ["macos/*.app", "dmg/*.dmg"])
         notarize_dmgs(sorted(dest.glob("*.dmg")))
-        stage_macos_updater_archives(bundle_dir, dest, macos_updater_arch(platform.machine()))
+        stage_macos_updater_archives(bundle_dir, dest, macos_arch)
     elif sys.platform.startswith("linux"):
         copy_matching_artifacts(bundle_dir, dest, ["deb/*.deb"])
         copy_matching_artifacts(bundle_dir, dest, ["rpm/*.rpm"])

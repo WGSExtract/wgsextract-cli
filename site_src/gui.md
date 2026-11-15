@@ -41,7 +41,7 @@ Use the x64 setup executable (`_x64-setup.exe`) for a normal graphical install. 
 
 ::: card
 ### macOS
-Use a DMG package, then drag the app into Applications when prompted. Choose the `aarch64.dmg` for Apple Silicon or `x64.dmg` for Intel.
+Use the `aarch64.dmg` for Apple Silicon, then drag the app into Applications when prompted. Intel macOS is no longer supported; v0.8.7 is the last supporting release, its existing assets stay available, and Intel apps no longer receive updates.
 :::
 
 ::: card
