@@ -147,8 +147,6 @@ def test_936_late_draft_payload_cannot_supersede_readiness(workflow: Path) -> No
     concurrency = workflow_concurrency(workflow)
     if concurrency.get("cancel-in-progress", "false") == "false":
         pytest.skip("No cancelling workflow concurrency")
-    if workflow.name == "pr_draft_cancel.yml":
-        pytest.skip("Runner-free cancellation helper; covered by label-lane regression")
     ready = draft_concurrency_group(workflow, draft=False, action="ready_for_review")
     delayed = draft_concurrency_group(workflow, draft=True, action="synchronize")
     assert delayed != ready, workflow.name
@@ -264,31 +262,14 @@ def test_910_setup_push_trigger_does_not_allocate_runners_for_draft_branches() -
     assert not any(fnmatchcase("ci/draft-pr", pattern) for pattern in patterns)
 
 
-def test_910_redrafting_cancels_the_separate_install_lab_label_lane() -> None:
-    """Redrafting must enter both ready-run groups without allocating a runner."""
-    area = (WORKFLOWS / "pr_ci.yml").read_text()
-    cancellation = (WORKFLOWS / "pr_draft_cancel.yml").read_text()
-    area_group = re.search(r"^  group: (.*)", area, re.MULTILINE)
-    label_group = re.search(r"^  group: (.*)", cancellation, re.MULTILINE)
-    assert area_group and label_group
-    label_run = re.sub(
-        r"\$\{\{ contains\(.*?\}\}",
-        "label-run-install-lab",
-        draft_concurrency_group(
-            WORKFLOWS / "pr_ci.yml", draft=True, action="converted_to_draft"
-        ),
+@pytest.mark.parametrize("action", ["labeled", "unlabeled"])
+def test_954_label_events_cannot_shadow_the_required_suite(action: str) -> None:
+    assert "pr_ci.yml" not in triggered_workflows(
+        [".github/workflows/pr_ci.yml"], "pull_request", action=action
     )
-    code_run = re.sub(
-        r"\$\{\{ contains\(.*?\}\}",
-        "diff",
-        draft_concurrency_group(
-            WORKFLOWS / "pr_ci.yml", draft=True, action="converted_to_draft"
-        ),
-    )
-    assert label_group[1] == label_run
-    assert label_group[1] != code_run
-    assert "converted_to_draft" in cancellation
-    assert "cancel-in-progress: true" in cancellation
+    workflow = (WORKFLOWS / "pr_ci.yml").read_text()
+    required = workflow.split("\n  required:\n", 1)[1]
+    assert re.search(r"^    name: required$", required, re.MULTILINE)
 
 
 @pytest.mark.parametrize("job", ["required", "ready-gate"])
@@ -736,7 +717,7 @@ def test_910_docs_readiness_preserves_path_filters_and_runner_free_cancellation(
     assert triggered_workflows(["README.md"], "pull_request") == {"pr_ci.yml"}
     assert triggered_workflows(
         ["README.md"], "pull_request", action="ready_for_review"
-    ) == {"pr_ci.yml", "pr_draft_cancel.yml"}
+    ) == {"pr_ci.yml"}
 
 
 @pytest.mark.parametrize(
