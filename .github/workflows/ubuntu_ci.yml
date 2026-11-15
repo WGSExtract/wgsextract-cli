@@ -58,8 +58,8 @@ jobs:
       timeout-minutes: 90
       environments: default dev vep-rs
       reference: true
-      tests: ${{ inputs.tests }}
-      smoke-only: ${{ inputs.smoke-only }}
+      tests: ${{ inputs.tests || 'all' }}
+      smoke-only: ${{ inputs.smoke-only == true }}
 
   imputation:
     if: "!inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))"

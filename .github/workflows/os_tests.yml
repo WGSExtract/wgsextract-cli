@@ -44,7 +44,7 @@ permissions:
 
 jobs:
   workflow-smoke:
-    if: inputs.smoke-only && github.event_name == 'pull_request' && inputs.tests != '[]'
+    if: github.event.pull_request.draft != true && inputs.smoke-only && github.event_name == 'pull_request' && inputs.tests != '[]'
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 15
     steps:
@@ -58,7 +58,7 @@ jobs:
           TEST_SELECTION: ${{ inputs.tests }}
         run: pixi run python scripts/ci_run_tests.py --selection "$TEST_SELECTION"
   test:
-    if: "!inputs.smoke-only && inputs.tests != '[]'"
+    if: ${{ github.event.pull_request.draft != true && !inputs.smoke-only && inputs.tests != '[]' }}
     name: ${{ matrix.label }}
     strategy:
       fail-fast: false

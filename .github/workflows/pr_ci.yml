@@ -3,6 +3,7 @@ run-name: PR area checks / ${{ github.event.action }} / ${{ github.event_name ==
 
 on:
   pull_request:
+    # converted_to_draft enters concurrency to cancel ready work; all jobs skip.
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, labeled, unlabeled]
   # The merge queue retests only the required set below against the latest main.
   merge_group:
@@ -18,7 +19,7 @@ concurrency:
 jobs:
   changes:
     name: changes${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
-    if: ${{ !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) || github.event.label.name == 'run-install-lab' }}
+    if: ${{ github.event.pull_request.draft != true && (!contains(fromJSON('["labeled","unlabeled"]'), github.event.action) || github.event.label.name == 'run-install-lab') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -70,7 +71,7 @@ jobs:
   draft-fast:
     name: Draft lint and fast tests
     needs: changes
-    if: needs.changes.outputs.fast == 'true'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.fast == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -105,7 +106,7 @@ jobs:
   docs:
     name: Documentation freshness${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
     needs: changes
-    if: needs.changes.outputs.docs == 'true' && (needs.changes.outputs.docs_tests != '[]' || needs.changes.outputs.site_validation == 'true')
+    if: github.event.pull_request.draft != true && needs.changes.outputs.docs == 'true' && (needs.changes.outputs.docs_tests != '[]' || needs.changes.outputs.site_validation == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -135,7 +136,7 @@ jobs:
   python-lint:
     name: Changed Python lint${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
     needs: changes
-    if: needs.changes.outputs.python_files != '' && needs.changes.outputs.python_files != '[]'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.python_files != '' && needs.changes.outputs.python_files != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -167,28 +168,28 @@ jobs:
 
   ubuntu:
     needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.ubuntu_tests != '[]' && !github.event.pull_request.draft
+    if: github.event.pull_request.draft != true && needs.changes.result == 'success' && needs.changes.outputs.ubuntu_tests != '[]'
     uses: ./.github/workflows/ubuntu_ci.yml
     with:
       tests: ${{ needs.changes.outputs.ubuntu_tests }}
       smoke-only: ${{ needs.changes.outputs.ubuntu_smoke == 'true' }}
   macos:
     needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.macos_tests != '[]' && github.event_name != 'merge_group' && !github.event.pull_request.draft
+    if: github.event.pull_request.draft != true && needs.changes.result == 'success' && needs.changes.outputs.macos_tests != '[]' && github.event_name != 'merge_group'
     uses: ./.github/workflows/macos_ci.yml
     with:
       tests: ${{ needs.changes.outputs.macos_tests }}
       smoke-only: ${{ needs.changes.outputs.macos_smoke == 'true' }}
   windows:
     needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.windows_tests != '[]' && github.event_name != 'merge_group' && !github.event.pull_request.draft
+    if: github.event.pull_request.draft != true && needs.changes.result == 'success' && needs.changes.outputs.windows_tests != '[]' && github.event_name != 'merge_group'
     uses: ./.github/workflows/windows_ci.yml
     with:
       tests: ${{ needs.changes.outputs.windows_tests }}
       smoke-only: ${{ needs.changes.outputs.windows_smoke == 'true' }}
   arm64:
     needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.arm64_tests != '[]' && github.event_name != 'merge_group' && !github.event.pull_request.draft
+    if: github.event.pull_request.draft != true && needs.changes.result == 'success' && needs.changes.outputs.arm64_tests != '[]' && github.event_name != 'merge_group'
     uses: ./.github/workflows/linux_arm64.yml
     with:
       tests: ${{ needs.changes.outputs.arm64_tests }}
@@ -196,7 +197,7 @@ jobs:
 
   ci-policy:
     needs: changes
-    if: needs.changes.outputs.ci == 'true'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -222,22 +223,22 @@ jobs:
           python -c 'import json, os, subprocess, sys; subprocess.run([sys.executable, "-m", "pytest", "-q", *json.loads(os.environ["CI_TESTS"]), "--basetemp=out/ci-policy"], check=True)'
   smoke:
     needs: changes
-    if: needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
     uses: ./.github/workflows/cli_smoke.yml
   install:
     needs: changes
-    if: needs.changes.outputs.install == 'true' && github.event_name != 'merge_group'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.install == 'true' && github.event_name != 'merge_group'
     uses: ./.github/workflows/install_lab.yml
 
-  # The secret scan covers every PR and queue group, docs-only ones included.
+  # The secret scan covers every ready PR and queue group, docs-only ones included.
   gitleaks:
-    if: ${{ !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
+    if: ${{ github.event.pull_request.draft != true && !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
     uses: ./.github/workflows/gitleaks.yml
 
   native-smoke:
     name: Native CLI smoke
     needs: changes
-    if: needs.changes.outputs.native == 'true'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.native == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -256,7 +257,7 @@ jobs:
   pages:
     name: Pages source checks
     needs: changes
-    if: needs.changes.outputs.site == 'true'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.site == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -306,7 +307,8 @@ jobs:
     needs: [changes, draft-fast, docs, python-lint, ci-policy, ubuntu, gitleaks, native-smoke, pages]
     # Run after failed dependencies, but let whole-run cancellation stop this
     # gate. A cancelled dependency in an otherwise active run still fails below.
-    if: ${{ !cancelled() && !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
+    # Draft events allocate no runner, including this summary.
+    if: ${{ !cancelled() && github.event.pull_request.draft != true && !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

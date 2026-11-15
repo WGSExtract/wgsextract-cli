@@ -7,6 +7,7 @@ on:
   schedule:
     - cron: "41 6 * * 1"
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main ]
     paths:
       - .github/workflows/remote_resources.yml
@@ -41,6 +42,7 @@ concurrency:
 
 jobs:
   remote-resources:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

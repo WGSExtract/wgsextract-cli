@@ -35,5 +35,5 @@ jobs:
       timeout-minutes: 90
       environments: default dev vep
       matrix: '[{"tier": "all", "shard": "all", "label": "native"}]'
-      tests: ${{ inputs.tests }}
-      smoke-only: ${{ inputs.smoke-only }}
+      tests: ${{ inputs.tests || 'all' }}
+      smoke-only: ${{ inputs.smoke-only == true }}

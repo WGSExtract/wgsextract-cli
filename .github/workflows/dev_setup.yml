@@ -4,6 +4,7 @@ name: Developer setup
 # setup-pixi, the way a new contributor runs them.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main ]
     paths:
       - scripts/dev_setup.sh
@@ -26,6 +27,7 @@ concurrency:
 
 jobs:
   setup:
+    if: ${{ github.event.pull_request.draft != true }}
     strategy:
       fail-fast: false
       matrix:

@@ -35,5 +35,5 @@ jobs:
       runner: windows-latest
       timeout-minutes: 45
       environments: default dev gatk vep-rs
-      tests: ${{ inputs.tests }}
-      smoke-only: ${{ inputs.smoke-only }}
+      tests: ${{ inputs.tests || 'all' }}
+      smoke-only: ${{ inputs.smoke-only == true }}
