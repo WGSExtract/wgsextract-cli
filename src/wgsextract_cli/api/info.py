@@ -55,11 +55,13 @@ class InfoParams(Params):
 
 @dataclass(frozen=True, kw_only=True)
 class CalculateCoverageParams(Params):
-    """Exact per-chromosome breadth and depth of coverage (``samtools coverage``)."""
+    """Exact per-chromosome breadth and depth of coverage (``samtools coverage``).
+    ``status`` reads nothing: its ``details`` say whether the whole-file
+    reports ``with_bins`` writes are ``current`` (both newer than the input)."""
 
     COMMAND = "info calculate-coverage"
 
-    input: Path = input_param(_ALIGNMENT, "--input required.")
+    input: Path | None = optional_input_param(_ALIGNMENT + " Required unless status.")
     ref: Path | None = ref_param()
     outdir: Path | None = outdir_param()
     region: str | None = param(
@@ -102,16 +104,28 @@ class CalculateCoverageParams(Params):
         doc=f"{_TABLES}; None saves none. With bins or by, that table's "
         "format instead (None: tsv).",
     )
+    status: bool = param(
+        False,
+        help="Only report whether the --with-bins reports in --outdir are "
+        "newer than the input (current), so a run would show them again",
+        action="store_true",
+        doc="Only report whether the with_bins reports in outdir are newer "
+        "than the input; details ``current``, ``coverage``, ``coverage_bins``.",
+    )
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        if self.by is not None and self.bins:
-            from wgsextract_cli.core.utils import UsageError
+        from wgsextract_cli.core.utils import UsageError
 
+        if self.input is None and not self.status:
+            raise UsageError("--input required.")
+        if self.status and (self.region or self.bins or self.by is not None):
+            raise UsageError(
+                "--status can't be combined with --region, --bins or --by."
+            )
+        if self.by is not None and self.bins:
             raise UsageError("--by can't be combined with --bins.")
         if self.with_bins and (self.bins or self.by is not None):
-            from wgsextract_cli.core.utils import UsageError
-
             raise UsageError("--with-bins can't be combined with --bins or --by.")
 
 

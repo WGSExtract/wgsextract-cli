@@ -236,12 +236,13 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   assert.equal(referenceGenomePaths.controls[0].id, "reference_genome_library");
   assert.equal(referenceGenomePaths.controls[0].label, "Reference Genomes Library Path");
   const genomeTable = genomesPage.sections.find((section) => section.id === "genome-management").controls[0];
-  assert.deepEqual(genomeTable.dataSource.arguments, ["items", "{{ref_path}}", "{{reference_genome_library}}"]);
+  assert.deepEqual(genomeTable.dataSource.transform, { module: "transforms/reference-genomes.mjs", export: "items" });
 
   const databaseTools = library.sections.find((section) => section.id === "databases-tools");
   assert.ok(databaseTools, "databases and tools section exists");
-  assert.equal(databaseTools.dataSource.path, "scripts/library-state.sh");
-  assert.deepEqual(databaseTools.dataSource.arguments, ["{{ref_path}}", "{{dataset_library}}"]);
+  assert.equal(databaseTools.dataSource.path, "scripts/run-wgsextract.sh");
+  assert.deepEqual(databaseTools.dataSource.arguments, ["ref", "status", "--values"]);
+  assert.deepEqual(databaseTools.dataSource.optionalArguments, [["--ref", "{{ref_path}}"], ["--dataset-library", "{{dataset_library}}"]]);
   assert.ok(databaseTools.actions.find((action) => action.id === "annotation-vcf-download"));
   assert.ok(databaseTools.actions.find((action) => action.id === "spliceai-download"));
   assert.ok(databaseTools.actions.find((action) => action.id === "alphamissense-download"));
@@ -256,16 +257,13 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   assert.ok(datasets.sections.find((section) => section.id === "example-datasets"), "Example Datasets are on Datasets");
   const downloadAction = testDataset.actions.find((action) => action.id === "test-dataset-download");
   assert.ok(downloadAction, "test genome download action exists");
-  assert.deepEqual(
-    downloadAction.command.arguments,
-    ["download", "{{dataset_library}}"],
-  );
+  const libraryArguments = [["--ref", "{{ref_path}}"], ["--dataset-library", "{{dataset_library}}"]];
+  assert.deepEqual(downloadAction.command.arguments, ["ref", "test-genome", "--install"]);
+  assert.deepEqual(downloadAction.command.optionalArguments, libraryArguments);
   const deleteAction = testDataset.actions.find((action) => action.id === "test-dataset-delete");
   assert.ok(deleteAction, "test genome delete action exists");
-  assert.deepEqual(
-    deleteAction.command.arguments,
-    ["delete", "{{dataset_library}}"],
-  );
+  assert.deepEqual(deleteAction.command.arguments, ["ref", "test-genome", "--delete"]);
+  assert.deepEqual(deleteAction.command.optionalArguments, libraryArguments);
   assert.ok(deleteAction.confirm);
 
   const installStep = bundle.manifest.setup.steps.find((step) => step.id === "install-wgsextract");
@@ -303,12 +301,12 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
     .find((page) => page.id === "extract")
     .sections.find((section) => section.id === "variant-calling");
   const snpAction = variantCalling.actions.find((action) => action.id === "vcf-snp");
-  assert.equal(snpAction.command.executable, "{{bundleRoot}}/scripts/run-wgsextract-vcf.sh");
-  assert.deepEqual(snpAction.command.arguments.slice(0, 2), ["snp", "--input"]);
+  assert.equal(snpAction.command.executable, "{{bundleRoot}}/scripts/run-wgsextract.sh");
+  assert.deepEqual(snpAction.command.arguments.slice(0, 3), ["vcf", "snp", "--input"]);
   assert.equal(snpAction.estimatedDurationMinutes, 34);
   const indelAction = variantCalling.actions.find((action) => action.id === "vcf-indel");
-  assert.equal(indelAction.command.executable, "{{bundleRoot}}/scripts/run-wgsextract-vcf.sh");
-  assert.deepEqual(indelAction.command.arguments.slice(0, 2), ["indel", "--input"]);
+  assert.equal(indelAction.command.executable, "{{bundleRoot}}/scripts/run-wgsextract.sh");
+  assert.deepEqual(indelAction.command.arguments.slice(0, 3), ["vcf", "indel", "--input"]);
   assert.equal(indelAction.estimatedDurationMinutes, 34);
   const defaultVcfPath = settings.settings.find((setting) => setting.id === "vcf_path");
   assert.equal(defaultVcfPath.defaultDirectory, "{{dataset_library}}");
@@ -328,7 +326,7 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   assert.equal(microarrayRefControl.emptyText, "None loaded. See Reference Genomes page to add.");
   // The library folder, like the other reference dropdowns: the selected FASTA
   // is not a library, so with it the list emptied once a genome was chosen.
-  assert.deepEqual(microarrayRefControl.dataSource.arguments, ["options", "{{ref_path}}", "{{reference_genome_library}}"]);
+  assert.deepEqual(microarrayRefControl.dataSource.optionalArguments, [["--ref", "{{ref_path}}"]]);
   assert.equal(
     conditionMatches(microarrayAction.disabledWhen[0], {
       fieldValues: { bam_path: "sample.cram.crai" },
@@ -360,8 +358,9 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   const annotate = bundle.manifest.pages
     .find((page) => page.id === "vcf")
     .sections.find((section) => section.id === "vcf-annotation");
-  assert.equal(annotate.dataSource.path, "scripts/library-state.sh");
-  assert.deepEqual(annotate.dataSource.arguments, ["{{ref_path}}", "{{dataset_library}}", "{{vcf_ann_vcf}}", "{{vcf_path}}"]);
+  assert.equal(annotate.dataSource.path, "scripts/run-wgsextract.sh");
+  assert.deepEqual(annotate.dataSource.arguments, ["ref", "status", "--values"]);
+  assert.deepEqual(annotate.dataSource.optionalArguments.slice(2), [["--annotation-vcf", "{{vcf_ann_vcf}}"], ["--input", "{{vcf_path}}"]]);
   const annotateAction = annotate.actions.find((action) => action.id === "vcf-annotate");
   const spliceaiAction = annotate.actions.find((action) => action.id === "vcf-spliceai");
   const alphamissenseAction = annotate.actions.find((action) => action.id === "vcf-alphamissense");

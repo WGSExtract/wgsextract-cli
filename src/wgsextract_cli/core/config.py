@@ -211,14 +211,14 @@ KNOWN_SETTINGS = {
         "`methylation pileup`: sum both strands of each CpG into one row",
     ),
     "default_input_vcf": (None, "Default input VCF file"),
-    "microarray_min_gq": (0, "Microarray minimum sample GQ (0 disables filtering)"),
-    "microarray_min_dp": (0, "Microarray minimum sample DP (0 disables filtering)"),
+    "microarray_min_gq": (20, "Microarray minimum sample GQ (0 disables filtering)"),
+    "microarray_min_dp": (10, "Microarray minimum sample DP (0 disables filtering)"),
     "microarray_assume_hom_ref": (
-        True,
+        False,
         "Treat absent VCF markers on represented contigs as homozygous reference",
     ),
     "microarray_exclude_filtered": (
-        False,
+        True,
         "Write microarray no-calls for VCF FILTER values other than PASS or .",
     ),
     "microarray_call_reasons": (

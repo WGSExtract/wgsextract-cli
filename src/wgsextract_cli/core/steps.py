@@ -6,7 +6,8 @@ finishes, the step journal (``<output>.steps.json``, beside the workflow's
 main output) records:
 
 - a key from the step's params, tool versions and definition version
-- each input's fingerprint and, when an earlier step made it, that step's run
+- each input's fingerprint (for a directory, of every file's relative path,
+  size and mtime) and, when an earlier step made it, that step's run
 - each output's size and fingerprint
 
 On a later run the step is skipped when its key matches, its inputs are
@@ -34,6 +35,7 @@ import hashlib
 import json
 import logging
 import os
+import stat
 import time
 import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -52,6 +54,7 @@ if TYPE_CHECKING:
 SCHEMA = "wgsextract.steps/1"
 JOURNAL_SUFFIX = ".steps.json"
 RUN_TAG = "WGSEXTRACT_STEP_RUN"
+DIRECTORY_FINGERPRINT_PREFIX = "wgse-dir1:"
 
 
 @dataclass(frozen=True)
@@ -164,6 +167,83 @@ def _fingerprint(path: Path) -> str | None:
     from wgsextract_cli.core.sample_workspace import file_fingerprint
 
     return file_fingerprint(path)
+
+
+def _transient(name: str) -> bool:
+    """Lock files and staged partial outputs, which come and go while a
+    directory's data stays the same."""
+    return name.endswith((".lock", ".guard")) or (
+        name.startswith(".") and ".partial" in name
+    )
+
+
+def _name_bytes(text: str) -> bytes:
+    # File names that aren't valid UTF-8 reach Python as lone surrogates.
+    return text.encode("utf-8", "surrogateescape")
+
+
+def _link_target(path: str) -> str:
+    try:
+        return os.readlink(path)
+    except OSError:
+        return "?"
+
+
+def _directory_identity(root: Path) -> dict[str, Any]:
+    """The identity of a directory's contents, without reading any file.
+
+    Hashes each file's path relative to ``root``, size and mtime (ns), in
+    sorted order, so adding, removing, renaming, resizing or rewriting a file
+    changes it. Symbolic links are followed (each directory once), and their
+    targets hashed too, so repointing one changes it. A folder that can't be
+    listed, ``root`` included, is hashed as unreadable. Costs one stat per
+    file, so a VEP cache of tens of thousands of files takes well under a
+    second.
+    """
+    digest = hashlib.sha256(b"wgse-dir1\0")
+    files = total = 0
+    seen: set[tuple[int, int]] = set()
+    pending = [(root, "")]
+    while pending:
+        directory, prefix = pending.pop()
+        try:
+            info = directory.stat()
+            if (info.st_dev, info.st_ino) in seen:
+                continue
+            seen.add((info.st_dev, info.st_ino))
+            with os.scandir(directory) as listing:
+                entries = sorted(listing, key=lambda entry: entry.name)
+        except OSError:
+            digest.update(_name_bytes(f"{prefix}\0unreadable\n"))
+            continue
+        subdirectories = []
+        for entry in entries:
+            if _transient(entry.name):
+                continue
+            name = prefix + entry.name
+            with contextlib.suppress(OSError):
+                if entry.is_symlink():
+                    target = _link_target(entry.path)
+                    digest.update(_name_bytes(f"{name}\0link\0{target}\n"))
+            try:
+                info = entry.stat()
+            except OSError:
+                digest.update(_name_bytes(f"{name}\0unreadable\n"))
+                continue
+            if stat.S_ISDIR(info.st_mode):
+                subdirectories.append((Path(entry.path), name + "/"))
+            elif stat.S_ISREG(info.st_mode):
+                files += 1
+                total += info.st_size
+                line = f"{name}\0{info.st_size}\0{info.st_mtime_ns}\n"
+                digest.update(_name_bytes(line))
+        # Depth first, in name order: the same tree always hashes the same.
+        pending.extend(reversed(subdirectories))
+    return {
+        "files": files,
+        "size": total,
+        "fingerprint": DIRECTORY_FINGERPRINT_PREFIX + digest.hexdigest(),
+    }
 
 
 def _report(message: str) -> None:
@@ -447,6 +527,7 @@ class StepJournal:
             item["fingerprint"] = _fingerprint(resolved)
         elif resolved.is_dir():
             item["kind"] = "directory"
+            item.update(_directory_identity(resolved))
         else:
             item["missing"] = True
         return item
@@ -562,17 +643,30 @@ class StepJournal:
             if item.get("from_step") and item.get("from_run") != old.get("from_run"):
                 return f"step {item['from_step']} rebuilt its {role}"
             if item.get("fingerprint") != old.get("fingerprint"):
-                return f"its {role} {item['path']} changed"
+                return self._changed(role, item["path"], old)
         # Inputs a step reported only once it ran (a child command's data files).
         for role, old in recorded.items():
             if role in inputs or old.get("declared", True):
                 continue
             path = Path(old["path"])
             if old.get("kind") == "directory" and path.is_dir():
-                continue
-            if not path.is_file() or _fingerprint(path) != old.get("fingerprint"):
-                return f"its {role} {path} changed"
+                now = _directory_identity(path)["fingerprint"]
+            elif path.is_file():
+                now = _fingerprint(path)
+            else:
+                return self._changed(role, path, old)
+            if now != old.get("fingerprint"):
+                return self._changed(role, path, old)
         return None
+
+    @staticmethod
+    def _changed(role: str, path: PathInput, old: Mapping[str, Any]) -> str:
+        if old.get("kind") == "directory" and not old.get("fingerprint"):
+            return (
+                f"its {role} {path} is a directory whose contents an earlier "
+                "wgsextract didn't record"
+            )
+        return f"its {role} {path} changed"
 
     def _stale_output(self, step: Step, record: Mapping[str, Any]) -> str | None:
         outputs = {

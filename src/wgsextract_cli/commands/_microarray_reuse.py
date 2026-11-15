@@ -57,9 +57,12 @@ def run_inputs(
     ploidy_file: str | None,
     liftover_chain: str | None,
     sample: str | None,
+    aadr_panels: Iterable[str] = (),
 ) -> dict[str, Any]:
     """The inputs shared by every unit; options are resolved through
-    config.toml, so changing a ``microarray_*`` setting counts too."""
+    config.toml, so changing a ``microarray_*`` setting counts too. The AADR
+    panels count because their sites join the CombinedKit, which can change
+    which vendor positions the hg38-to-hg19 liftover rejects as collisions."""
     return {
         "cli_version": __version__,
         "input": file_identity(input_path),
@@ -73,6 +76,7 @@ def run_inputs(
         "quality": asdict(quality_policy(params)),
         "identity": asdict(identity_policy(params)),
         "quirks": quirks_mode(params),
+        "aadr_panels": sorted(aadr_panels),
     }
 
 
