@@ -183,6 +183,7 @@ public:
     virtual ~Device() = default;
     // "Metal", "CUDA" or "Vulkan", for messages.
     virtual const char *name() const = 0;
+    virtual const char *description() const { return name(); }
     // Whether the device seeds and locates (attach, seed, attach_sa, locate,
     // densify) and rescues mates. A device that does neither only extends
     // seeds; the CPU then seeds, locates and rescues as its backend does.
@@ -250,6 +251,8 @@ struct DeviceOptions {
     // The watchdog's floor: a wait for the GPU fails after the larger of this
     // and 20 times the slowest batch of its stage (CUDA).
     double watchdog_seconds = 60;
+    // Test the discrete-memory path on a unified-memory GPU.
+    bool force_staging = false;
     // Test hook: hang the first GPU work of the stage this names (a prefix of
     // collect_seeds, locate_rows, rescue_align or extend) as a hung GPU would.
     // Metal withholds the command and gives up after 2 s; CUDA, which hangs only

@@ -100,7 +100,7 @@ enum class Backend { cpu, metal, cuda, vulkan, automatic };
 // Whether the GPU backend's device can run the kernels (automatic: this
 // build's GPU, Metal on macOS and CUDA elsewhere), with the reason if not.
 bool wgse_gpu_available(Backend backend, std::string &reason);
-bool wgse_gpu_probe(Backend backend, std::string &reason);
+bool wgse_gpu_probe(Backend backend, std::string &reason, std::string *description = nullptr);
 bool wgse_gpu_hardware_supported(Backend backend);
 // "Metal" or "CUDA": the selected device, or the backend's.
 const char *wgse_gpu_name(Backend backend);
@@ -128,6 +128,7 @@ void wgse_inject_gpu_interruptions(size_t every);
 void wgse_set_gpu_watchdog_seconds(double seconds);
 // Hangs the first GPU work of the stage label names (see DeviceOptions::hang_label).
 void wgse_inject_gpu_hang(const char *label);
+void wgse_force_vulkan_staging();
 void wgse_set_gpu_locate(bool enable);
 void wgse_set_gpu_locate_dense(unsigned shift);
 void wgse_set_gpu_locate_dense_after(size_t reads);

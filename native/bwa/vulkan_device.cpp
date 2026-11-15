@@ -12,11 +12,7 @@
 
 #include "gpu_device.h"
 #include "extend_spv.h"
-
-#define VK_NO_PROTOTYPES
-#include <vulkan/vulkan.h>
-
-#include <dlfcn.h>
+#include "../vulkan-common/runtime.h"
 
 #include <algorithm>
 #include <atomic>
@@ -30,88 +26,8 @@
 namespace wgse::gpu {
 namespace {
 
-#define WGSE_VK_FUNCTIONS(X) \
-    X(vkDestroyInstance) X(vkEnumeratePhysicalDevices) X(vkGetPhysicalDeviceProperties) \
-    X(vkGetPhysicalDeviceProperties2) X(vkGetPhysicalDeviceQueueFamilyProperties) \
-    X(vkGetPhysicalDeviceMemoryProperties) X(vkGetPhysicalDeviceFeatures2) \
-    X(vkCreateDevice) X(vkDestroyDevice) X(vkGetDeviceQueue) X(vkDeviceWaitIdle) \
-    X(vkCreateBuffer) X(vkDestroyBuffer) X(vkGetBufferMemoryRequirements) \
-    X(vkAllocateMemory) X(vkFreeMemory) X(vkBindBufferMemory) X(vkMapMemory) X(vkUnmapMemory) \
-    X(vkCreateShaderModule) X(vkDestroyShaderModule) X(vkCreateDescriptorSetLayout) \
-    X(vkDestroyDescriptorSetLayout) X(vkCreatePipelineLayout) X(vkDestroyPipelineLayout) \
-    X(vkCreateComputePipelines) X(vkDestroyPipeline) X(vkCreateDescriptorPool) \
-    X(vkDestroyDescriptorPool) X(vkAllocateDescriptorSets) X(vkFreeDescriptorSets) X(vkUpdateDescriptorSets) \
-    X(vkCreateCommandPool) X(vkDestroyCommandPool) X(vkResetCommandPool) \
-    X(vkAllocateCommandBuffers) X(vkBeginCommandBuffer) X(vkEndCommandBuffer) \
-    X(vkCmdBindPipeline) X(vkCmdBindDescriptorSets) X(vkCmdPushConstants) X(vkCmdDispatch) \
-    X(vkCmdPipelineBarrier) X(vkCmdCopyBuffer) X(vkQueueSubmit) X(vkCreateFence) \
-    X(vkDestroyFence) X(vkWaitForFences) X(vkResetFences)
-
-// The loader and its entry points; null members if it or a function is missing.
-struct Vk {
-    void *library = nullptr;
-    PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = nullptr;
-    PFN_vkCreateInstance vkCreateInstance = nullptr;
-    PFN_vkEnumerateInstanceVersion vkEnumerateInstanceVersion = nullptr;
-#define WGSE_VK_MEMBER(name) PFN_##name name = nullptr;
-    WGSE_VK_FUNCTIONS(WGSE_VK_MEMBER)
-#undef WGSE_VK_MEMBER
-};
-
-Vk &vk() {
-    static Vk table;
-    return table;
-}
-
-// Opens the loader once; false (with a reason) if there is none.
-bool open_loader(std::string &reason) {
-    Vk &v = vk();
-    if (v.vkGetInstanceProcAddr) return true;
-    for (const char *name : {"libvulkan.so.1", "libvulkan.so"}) {
-        v.library = dlopen(name, RTLD_NOW | RTLD_LOCAL);
-        if (v.library) break;
-    }
-    if (!v.library) {
-        reason = "no Vulkan loader (libvulkan.so.1)";
-        return false;
-    }
-    v.vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(
-        dlsym(v.library, "vkGetInstanceProcAddr"));
-    if (!v.vkGetInstanceProcAddr) {
-        reason = "the Vulkan loader has no vkGetInstanceProcAddr";
-        return false;
-    }
-    v.vkCreateInstance = reinterpret_cast<PFN_vkCreateInstance>(
-        v.vkGetInstanceProcAddr(nullptr, "vkCreateInstance"));
-    v.vkEnumerateInstanceVersion = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
-        v.vkGetInstanceProcAddr(nullptr, "vkEnumerateInstanceVersion"));
-    return v.vkCreateInstance != nullptr;
-}
-
-bool load_instance_functions(VkInstance instance) {
-    Vk &v = vk();
-    bool ok = true;
-#define WGSE_VK_LOAD(name) \
-    v.name = reinterpret_cast<PFN_##name>(v.vkGetInstanceProcAddr(instance, #name)); \
-    ok = ok && v.name;
-    WGSE_VK_FUNCTIONS(WGSE_VK_LOAD)
-#undef WGSE_VK_LOAD
-    return ok;
-}
-
-// A Vulkan structure of type `type`, zeroed.
-template <class T>
-T make(VkStructureType type) {
-    T value{};
-    value.sType = type;
-    return value;
-}
-
-void check(VkResult result, const char *what) {
-    if (result != VK_SUCCESS)
-        throw std::runtime_error(std::string("Vulkan ") + what + " failed (VkResult "
-            + std::to_string(int(result)) + ")");
-}
+using namespace wgse::vulkan;
+using Vk = Runtime;
 
 // Jobs per submission; see the comment at the top.
 constexpr size_t submit_jobs = 8192;
@@ -133,9 +49,9 @@ struct Candidate {
     VkPhysicalDevice device = VK_NULL_HANDLE;
     VkPhysicalDeviceProperties properties{};
     uint32_t queue_family = 0;
-    // 0, or the subgroup size to require (VK_EXT_subgroup_size_control) when
-    // the default is not a multiple of 16.
+    // Zero uses the device's default fixed subgroup size.
     uint32_t required_subgroup = 0;
+    bool subgroup_extension = false;
     int rank = 0;
 };
 
@@ -145,13 +61,28 @@ std::string assess(VkPhysicalDevice device, Candidate &c) {
     c.device = device;
     v.vkGetPhysicalDeviceProperties(device, &c.properties);
     const auto &p = c.properties;
-    if (VK_API_VERSION_MINOR(p.apiVersion) < 1 && VK_API_VERSION_MAJOR(p.apiVersion) == 1)
+    if (p.apiVersion < VK_API_VERSION_1_1)
         return "Vulkan 1.1 or newer is needed";
     if (p.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU) return "a CPU (software) device";
+    if (p.limits.maxComputeWorkGroupInvocations < workgroup
+        || p.limits.maxComputeWorkGroupSize[0] < workgroup
+        || p.limits.maxPushConstantsSize < sizeof(Push)
+        || p.limits.maxPerStageDescriptorStorageBuffers < 4)
+        return "insufficient compute, push-constant or storage-buffer limits";
     auto size_control = make<VkPhysicalDeviceSubgroupSizeControlProperties>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES);
     auto subgroup = make<VkPhysicalDeviceSubgroupProperties>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES);
-    const bool v13 = VK_API_VERSION_MINOR(p.apiVersion) >= 3;
-    subgroup.pNext = v13 ? &size_control : nullptr;
+    const bool v13 = p.apiVersion >= VK_API_VERSION_1_3;
+    uint32_t count = 0;
+    check(v.vkEnumerateDeviceExtensionProperties(device, nullptr, &count, nullptr), "extensions");
+    std::vector<VkExtensionProperties> extensions(count);
+    check(v.vkEnumerateDeviceExtensionProperties(device, nullptr, &count, extensions.data()),
+        "extensions");
+    const bool size_extension = std::any_of(extensions.begin(), extensions.end(),
+        [](const VkExtensionProperties &e) {
+            return strcmp(e.extensionName, VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME) == 0;
+        });
+    const bool size_supported = v13 || size_extension;
+    subgroup.pNext = size_supported ? &size_control : nullptr;
     auto properties2 = make<VkPhysicalDeviceProperties2>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2);
     properties2.pNext = &subgroup;
     v.vkGetPhysicalDeviceProperties2(device, &properties2);
@@ -159,22 +90,31 @@ std::string assess(VkPhysicalDevice device, Candidate &c) {
         || (subgroup.supportedOperations & required_operations) != required_operations)
         return "no subgroup vote and shuffle operations in compute shaders";
     c.required_subgroup = 0;
-    if (subgroup.subgroupSize % 16 || subgroup.subgroupSize > workgroup) {
-        auto features13 = make<VkPhysicalDeviceVulkan13Features>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES);
+    {
+        auto control_features = make<VkPhysicalDeviceSubgroupSizeControlFeatures>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES);
         auto features = make<VkPhysicalDeviceFeatures2>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2);
-        features.pNext = &features13;
-        if (v13) v.vkGetPhysicalDeviceFeatures2(device, &features);
-        const bool control = v13 && features13.subgroupSizeControl
+        features.pNext = &control_features;
+        if (size_supported) v.vkGetPhysicalDeviceFeatures2(device, &features);
+        const bool full = size_supported && control_features.computeFullSubgroups;
+        const bool control = control_features.subgroupSizeControl
             && (size_control.requiredSubgroupSizeStages & VK_SHADER_STAGE_COMPUTE_BIT);
-        for (uint32_t size : {32u, 16u, 64u})
-            if (control && size >= size_control.minSubgroupSize
-                && size <= size_control.maxSubgroupSize && size <= workgroup) {
-                c.required_subgroup = size;
+        bool found = false;
+        for (uint32_t size : {subgroup.subgroupSize, 32u, 16u, 64u})
+            if (full && (size == subgroup.subgroupSize || (control
+                    && size >= size_control.minSubgroupSize
+                    && size <= size_control.maxSubgroupSize)) && size >= 16
+                && size <= workgroup && size % 16 == 0
+                && workgroup / size <= size_control.maxComputeWorkgroupSubgroups) {
+                c.required_subgroup = size == subgroup.subgroupSize ? 0 : size;
+                c.subgroup_extension = !v13;
+                found = true;
                 break;
             }
-        if (!c.required_subgroup)
-            return "its subgroup size (" + std::to_string(subgroup.subgroupSize)
-                + ") is not a multiple of 16";
+        if (!found)
+            return "no full compute subgroups with a fixed size divisible by 16"
+                " (size=" + std::to_string(subgroup.subgroupSize)
+                + ", full=" + std::to_string(control_features.computeFullSubgroups)
+                + ", max=" + std::to_string(size_control.maxComputeWorkgroupSubgroups) + ")";
     }
     uint32_t families = 0;
     v.vkGetPhysicalDeviceQueueFamilyProperties(device, &families, nullptr);
@@ -196,13 +136,6 @@ std::string assess(VkPhysicalDevice device, Candidate &c) {
         : p.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ? 2 : 1;
     return "";
 }
-
-struct Buffer {
-    VkBuffer buffer = VK_NULL_HANDLE;
-    VkDeviceMemory memory = VK_NULL_HANDLE;
-    void *mapped = nullptr;
-    VkDeviceSize size = 0;
-};
 
 // Set when a batch misses its deadline or the device is lost: nothing is
 // destroyed afterwards, since that would wait for the hung work.
@@ -228,26 +161,38 @@ class VulkanDevice final : public Device {
 public:
     VulkanDevice(VkInstance instance, const Candidate &c, const DeviceOptions &options)
         : instance_(instance), physical_(c.device), properties_(c.properties),
-          family_(c.queue_family), deadline_floor_(options.watchdog_seconds) {
-        Vk &v = vk();
-        v.vkGetPhysicalDeviceMemoryProperties(physical_, &memory_);
-        integrated_ = properties_.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
-        snprintf(name_, sizeof name_, "Vulkan");
-        const float priority = 1;
-        auto queue = make<VkDeviceQueueCreateInfo>(VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO);
-        queue.queueFamilyIndex = family_;
-        queue.queueCount = 1;
-        queue.pQueuePriorities = &priority;
-        auto features13 = make<VkPhysicalDeviceVulkan13Features>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES);
-        features13.subgroupSizeControl = c.required_subgroup ? VK_TRUE : VK_FALSE;
-        auto create = make<VkDeviceCreateInfo>(VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO);
-        create.pNext = c.required_subgroup ? &features13 : nullptr;
-        create.queueCreateInfoCount = 1;
-        create.pQueueCreateInfos = &queue;
-        check(v.vkCreateDevice(physical_, &create, nullptr, &device_), "device creation");
-        v.vkGetDeviceQueue(device_, family_, 0, &queue_);
-        build_pipelines(c.required_subgroup);
-        completer_ = std::thread(&VulkanDevice::complete_loop, this);
+          family_(c.queue_family), deadline_floor_(options.watchdog_seconds),
+          inject_hang_(!options.hang_label.empty()
+              && std::string("extend").find(options.hang_label) == 0) {
+        try {
+            Vk &v = vk();
+            v.vkGetPhysicalDeviceMemoryProperties(physical_, &memory_);
+            integrated_ = properties_.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU
+                && !options.force_staging;
+            const float priority = 1;
+            auto queue = make<VkDeviceQueueCreateInfo>(VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO);
+            queue.queueFamilyIndex = family_;
+            queue.queueCount = 1;
+            queue.pQueuePriorities = &priority;
+            auto control_features = make<VkPhysicalDeviceSubgroupSizeControlFeatures>(
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES);
+            control_features.subgroupSizeControl = c.required_subgroup ? VK_TRUE : VK_FALSE;
+            control_features.computeFullSubgroups = VK_TRUE;
+            const char *extension = VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME;
+            auto create = make<VkDeviceCreateInfo>(VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO);
+            create.pNext = &control_features;
+            create.enabledExtensionCount = c.subgroup_extension ? 1 : 0;
+            create.ppEnabledExtensionNames = c.subgroup_extension ? &extension : nullptr;
+            create.queueCreateInfoCount = 1;
+            create.pQueueCreateInfos = &queue;
+            check(v.vkCreateDevice(physical_, &create, nullptr, &device_), "device creation");
+            v.vkGetDeviceQueue(device_, family_, 0, &queue_);
+            build_pipelines(c.required_subgroup);
+            completer_ = std::thread(&VulkanDevice::complete_loop, this);
+        } catch (...) {
+            cleanup();
+            throw;
+        }
     }
 
     ~VulkanDevice() override {
@@ -258,19 +203,11 @@ public:
         completion_changed_.notify_all();
         if (completer_.joinable()) completer_.join();
         if (vulkan_hung) return;
-        Vk &v = vk();
-        v.vkDeviceWaitIdle(device_);
-        for (VkPipeline pipeline : pipelines_)
-            if (pipeline) v.vkDestroyPipeline(device_, pipeline, nullptr);
-        if (shader_) v.vkDestroyShaderModule(device_, shader_, nullptr);
-        if (layout_) v.vkDestroyPipelineLayout(device_, layout_, nullptr);
-        if (set_layout_) v.vkDestroyDescriptorSetLayout(device_, set_layout_, nullptr);
-        if (descriptor_pool_) v.vkDestroyDescriptorPool(device_, descriptor_pool_, nullptr);
-        v.vkDestroyDevice(device_, nullptr);
-        v.vkDestroyInstance(instance_, nullptr);
+        cleanup();
     }
 
-    const char *name() const override { return name_; }
+    const char *name() const override { return "Vulkan"; }
+    const char *description() const override { return properties_.deviceName; }
 
     bool seeds() const override { return false; }
     bool rescues() const override { return false; }
@@ -296,7 +233,8 @@ public:
         // extend.comp reads bases as 32-bit words.
         const size_t base_bytes = (std::max<size_t>(bases, 1) + 3) / 4 * 4;
         const VkMemoryPropertyFlags host = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
-            | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+            | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT
+            | (integrated_ ? VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT : 0);
         const VkBufferUsageFlags usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
             | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         b->host_bases = allocate(base_bytes, usage, host);
@@ -383,7 +321,6 @@ public:
                 VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
             check(v.vkEndCommandBuffer(upload), "command recording");
         }
-        std::vector<VkCommandBuffer> chunks;
         for (size_t low = 0; low < count; low += submit_jobs) {
             const size_t high = std::min(count, low + submit_jobs);
             size_t sides[2];
@@ -434,19 +371,27 @@ public:
                 VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
             check(v.vkEndCommandBuffer(download), "command recording");
         }
-        {
+        // Withhold the test submission rather than hang a display-driving shader.
+        // The unsignalled fence still exercises the real timeout.
+        const bool withhold = inject_hang_.exchange(false);
+        std::lock_guard<std::mutex> completion_lock(completion_mutex_);
+        pending_.push_back({&b, Clock::now(), std::move(done)});
+        try {
             // One GPU job per command buffer; the last signals the batch's fence.
             std::lock_guard<std::mutex> lock(queue_mutex_);
-            for (size_t i = 0; i < used; ++i) {
+            for (size_t i = 0; !withhold && i < used; ++i) {
                 auto submit = make<VkSubmitInfo>(VK_STRUCTURE_TYPE_SUBMIT_INFO);
                 submit.commandBufferCount = 1;
                 submit.pCommandBuffers = &b.commands[i];
                 check(v.vkQueueSubmit(queue_, 1, &submit, i + 1 == used ? b.fence : VK_NULL_HANDLE),
                     "submission");
             }
+        } catch (...) {
+            // Some commands may already be in flight; never free their buffers.
+            vulkan_hung = true;
+            pending_.pop_back();
+            throw;
         }
-        std::lock_guard<std::mutex> lock(completion_mutex_);
-        pending_.push_back({&b, Clock::now(), std::move(done)});
         completion_changed_.notify_one();
     }
 
@@ -487,7 +432,6 @@ private:
     VkPhysicalDeviceMemoryProperties memory_{};
     uint32_t family_;
     bool integrated_ = false;
-    char name_[16];
     VkDevice device_ = VK_NULL_HANDLE;
     VkQueue queue_ = VK_NULL_HANDLE;
     VkShaderModule shader_ = VK_NULL_HANDLE;
@@ -497,16 +441,33 @@ private:
     VkPipeline pipelines_[extend_classes] = {};
     std::mutex queue_mutex_, descriptor_mutex_;
     double deadline_floor_, slowest_ = 0;
+    std::atomic<bool> inject_hang_{false};
     std::mutex completion_mutex_;
     std::condition_variable completion_changed_;
     std::deque<Pending> pending_;
     bool stopping_ = false;
     std::thread completer_;
 
+    void cleanup() {
+        Vk &v = vk();
+        if (device_) {
+            for (VkPipeline pipeline : pipelines_)
+                if (pipeline) v.vkDestroyPipeline(device_, pipeline, nullptr);
+            if (shader_) v.vkDestroyShaderModule(device_, shader_, nullptr);
+            if (layout_) v.vkDestroyPipelineLayout(device_, layout_, nullptr);
+            if (set_layout_) v.vkDestroyDescriptorSetLayout(device_, set_layout_, nullptr);
+            if (descriptor_pool_) v.vkDestroyDescriptorPool(device_, descriptor_pool_, nullptr);
+            v.vkDestroyDevice(device_, nullptr);
+        }
+        v.vkDestroyInstance(instance_, nullptr);
+    }
+
     Buffer allocate(size_t bytes, VkBufferUsageFlags usage, VkMemoryPropertyFlags wanted) {
         Vk &v = vk();
         Buffer b;
         b.size = std::max<size_t>(bytes, 16);
+        if (b.size > properties_.limits.maxStorageBufferRange)
+            throw std::runtime_error("Vulkan: batch exceeds maxStorageBufferRange");
         auto create = make<VkBufferCreateInfo>(VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO);
         create.size = b.size;
         create.usage = usage;
@@ -534,9 +495,14 @@ private:
             v.vkDestroyBuffer(device_, b.buffer, nullptr);
             check(result, "memory allocation");
         }
-        check(v.vkBindBufferMemory(device_, b.buffer, b.memory, 0), "memory binding");
-        if (wanted & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
-            check(v.vkMapMemory(device_, b.memory, 0, VK_WHOLE_SIZE, 0, &b.mapped), "mapping");
+        try {
+            check(v.vkBindBufferMemory(device_, b.buffer, b.memory, 0), "memory binding");
+            if (wanted & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+                check(v.vkMapMemory(device_, b.memory, 0, VK_WHOLE_SIZE, 0, &b.mapped), "mapping");
+        } catch (...) {
+            free(b);
+            throw;
+        }
         return b;
     }
 
@@ -596,7 +562,9 @@ private:
             const VkSpecializationInfo specialization{3, entries, sizeof constants, constants};
             auto create = make<VkComputePipelineCreateInfo>(VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO);
             create.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                required_subgroup ? &subgroup : nullptr, 0, VK_SHADER_STAGE_COMPUTE_BIT, shader_,
+                required_subgroup ? &subgroup : nullptr,
+                VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT,
+                VK_SHADER_STAGE_COMPUTE_BIT, shader_,
                 "main", &specialization};
             create.layout = layout_;
             check(v.vkCreateComputePipelines(device_, VK_NULL_HANDLE, 1, &create, nullptr,
@@ -617,12 +585,19 @@ private:
             std::string error;
             Vk &v = vk();
             const double allowed = std::max(deadline_floor_, 20 * slowest_);
-            const VkResult result = v.vkWaitForFences(device_, 1, &next.buffers->fence, VK_TRUE,
-                uint64_t(allowed * 1e9));
+            const double remaining = std::max(0., allowed - seconds(next.submitted));
+            const VkResult result = vulkan_hung ? VK_ERROR_DEVICE_LOST
+                : v.vkWaitForFences(device_, 1, &next.buffers->fence, VK_TRUE,
+                    uint64_t(remaining * 1e9));
             const double elapsed = seconds(next.submitted);
             if (result == VK_SUCCESS) {
                 slowest_ = std::max(slowest_, elapsed);
-                v.vkResetFences(device_, 1, &next.buffers->fence);
+                const VkResult reset = v.vkResetFences(device_, 1, &next.buffers->fence);
+                if (reset != VK_SUCCESS) {
+                    vulkan_hung = true;
+                    outcome = Outcome::failed;
+                    error = "Vulkan fence reset failed";
+                }
             } else {
                 vulkan_hung = true;
                 outcome = Outcome::failed;
@@ -662,12 +637,14 @@ bool find_device(VkInstance &instance, Candidate &best, std::string &reason) {
     }
     if (!load_instance_functions(instance)) {
         reason = "the Vulkan loader lacks required functions";
+        if (v.vkDestroyInstance) v.vkDestroyInstance(instance, nullptr);
         return false;
     }
+    try {
     uint32_t count = 0;
-    v.vkEnumeratePhysicalDevices(instance, &count, nullptr);
+    check(v.vkEnumeratePhysicalDevices(instance, &count, nullptr), "device enumeration");
     std::vector<VkPhysicalDevice> devices(count);
-    v.vkEnumeratePhysicalDevices(instance, &count, devices.data());
+    check(v.vkEnumeratePhysicalDevices(instance, &count, devices.data()), "device enumeration");
     std::string why;
     for (VkPhysicalDevice device : devices) {
         Candidate c;
@@ -684,14 +661,19 @@ bool find_device(VkInstance &instance, Candidate &best, std::string &reason) {
         return false;
     }
     return true;
+    } catch (const std::exception &error) {
+        reason = error.what();
+        v.vkDestroyInstance(instance, nullptr);
+        return false;
+    }
 }
 } // namespace
 
 std::unique_ptr<Device> make_vulkan_device(const DeviceOptions &options, std::string &reason) {
     VkInstance instance = VK_NULL_HANDLE;
     Candidate best;
-    if (!find_device(instance, best, reason)) return nullptr;
     try {
+        if (!find_device(instance, best, reason)) return nullptr;
         return std::make_unique<VulkanDevice>(instance, best, options);
     } catch (const std::exception &error) {
         reason = error.what();

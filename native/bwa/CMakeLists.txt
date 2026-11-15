@@ -113,10 +113,6 @@ if(WGSE_VULKAN)
     target_compile_definitions(wgse_bwa_core PRIVATE WGSE_HAVE_VULKAN=1)
     target_link_libraries(wgse_bwa_core PRIVATE Vulkan::Headers ${CMAKE_DL_LIBS})
 endif()
-if(WGSE_VULKAN)
-    target_compile_definitions(wgse_bwa_core PRIVATE WGSE_HAVE_VULKAN=1)
-    target_link_libraries(wgse_bwa_core PRIVATE Vulkan::Headers ${CMAKE_DL_LIBS})
-endif()
 
 add_executable(wgse-bwa main.cpp)
 target_compile_definitions(wgse-bwa PRIVATE WGSE_VERSION="${WGSE_BWA_VERSION}")
@@ -186,10 +182,17 @@ if(BUILD_TESTING)
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/extend_parity.sh"
         $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/extend-parity")
     if(WGSE_VULKAN)
+        add_executable(extend_gpu_check tests/extend_gpu_check.cpp)
+        target_compile_options(extend_gpu_check PRIVATE -Wall -Wextra -Werror)
+        target_link_libraries(extend_gpu_check PRIVATE wgse_bwa_core)
+        add_test(NAME bwa_vulkan_extend_kernel COMMAND extend_gpu_check)
+        add_test(NAME bwa_vulkan_extend_staging COMMAND extend_gpu_check staged)
+        set_tests_properties(bwa_vulkan_extend_kernel bwa_vulkan_extend_staging
+            PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 90)
         add_test(NAME bwa_vulkan_extend_parity
             COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/extend_parity.sh"
             $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/vulkan-extend-parity" --vulkan)
-        set_tests_properties(bwa_vulkan_extend_parity PROPERTIES SKIP_RETURN_CODE 77)
+        set_tests_properties(bwa_vulkan_extend_parity PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 90)
     endif()
     # Exit 77 means the machine has no unified-memory Metal device.
     set_tests_properties(bwa_smoke bwa_gpu_rescue_parity bwa_metal_watchdog

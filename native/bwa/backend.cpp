@@ -2179,9 +2179,13 @@ std::unique_ptr<Device> make_device(Backend backend, std::string &reason) {
 }
 } // namespace
 
-bool wgse_gpu_probe(Backend backend, std::string &reason) {
-    return make_device(backend, reason) != nullptr;
+bool wgse_gpu_probe(Backend backend, std::string &reason, std::string *description) {
+    auto probed = make_device(backend, reason);
+    if (description) *description = probed ? probed->description() : "";
+    return probed != nullptr;
 }
+
+void wgse_force_vulkan_staging() { device_options.force_staging = true; }
 
 bool wgse_gpu_available(Backend backend, std::string &reason) {
     // The device is kept for wgse_set_backend, so its kernels build once.

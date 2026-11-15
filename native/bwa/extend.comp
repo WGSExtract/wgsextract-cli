@@ -187,7 +187,10 @@ void main()
     const bool right = p.right != 0u;
     const int lane = int(gl_SubgroupInvocationID) % lanes;
     segment_base = gl_SubgroupInvocationID - uint(lane);
-    const uint slot = gl_GlobalInvocationID.x / uint(lanes);
+    // Vulkan does not relate LocalInvocationIndex to SubgroupInvocationID.
+    // Full, fixed-size subgroups make this indexing and the shuffles agree.
+    const uint slot = (gl_WorkGroupID.x * gl_WorkGroupSize.x
+        + gl_SubgroupID * gl_SubgroupSize + gl_SubgroupInvocationID) / uint(lanes);
     const bool valid = slot < p.count;
     const uint index = valid ? order[p.first + slot] : 0u;
     Job job = Job(0u, 0u, 0u, 0u, 1u, 0u, 0u, 0u, 0u);

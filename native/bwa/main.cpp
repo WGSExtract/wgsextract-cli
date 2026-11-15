@@ -14,6 +14,19 @@ constexpr const char *name = "wgse-bwa";
 constexpr const char *version = WGSE_VERSION;
 constexpr const char *engine_version = "0.7.19";
 
+std::string json_string(const std::string &value) {
+    std::string out = "\"";
+    for (unsigned char c : value) {
+        if (c == '"' || c == '\\') out += '\\';
+        if (c < 32) {
+            char escaped[7];
+            snprintf(escaped, sizeof escaped, "\\u%04x", c);
+            out += escaped;
+        } else out += char(c);
+    }
+    return out + '"';
+}
+
 void help() {
     printf("%s %s (BWA %s rebuilt)\n"
         "Usage: %s [--metal | --cuda | --vulkan | --backend cpu|metal|cuda|vulkan|auto] <command> [arguments]\n"
@@ -120,6 +133,9 @@ int run(int argc, char **argv) {
             }
             wgse_inject_gpu_interruptions(static_cast<size_t>(every));
             command_index += 2;
+        } else if (strcmp(option, "--vulkan-staging") == 0) {
+            wgse_force_vulkan_staging();
+            ++command_index;
         } else if (strcmp(option, "--gpu-inject-hang") == 0) {
             if (argc <= command_index + 1) {
                 fprintf(stderr, "--gpu-inject-hang requires a stage name prefix\n");
@@ -307,9 +323,11 @@ int run(int argc, char **argv) {
             fprintf(stderr, "Usage: %s capabilities --json [index]\n", name);
             return 2;
         }
-        auto probe = [](Backend backend) {
+        std::string vulkan_device;
+        auto probe = [&](Backend backend) {
             std::string reason;
-            const bool usable = wgse_gpu_probe(backend, reason);
+            const bool usable = wgse_gpu_probe(backend, reason,
+                backend == Backend::vulkan ? &vulkan_device : nullptr);
             if (!usable)
                 fprintf(stderr, "%s unavailable: %s\n", wgse_gpu_name(backend), reason.c_str());
             return usable;
@@ -325,6 +343,7 @@ int run(int argc, char **argv) {
             "\"metal_hardware_supported\":%s,\"cuda_available\":%s,"
             "\"cuda_hardware_supported\":%s,\"vulkan_available\":%s,"
             "\"vulkan_hardware_supported\":%s,"
+            "\"vulkan_device\":%s,"
             "\"cpu_available\":true,\"max_gpu_query_length\":%u,"
             "\"dense_suffix_array\":true%s%s}\n",
             version, engine_version, metal ? "true" : "false",
@@ -333,6 +352,7 @@ int run(int argc, char **argv) {
             wgse_gpu_hardware_supported(Backend::cuda) ? "true" : "false",
             vulkan ? "true" : "false",
             wgse_gpu_hardware_supported(Backend::vulkan) ? "true" : "false",
+            vulkan ? json_string(vulkan_device).c_str() : "null",
             static_cast<unsigned>(seed_max_length),
             argc > command_index + 2 ? ",\"dense_sa\":" : "",
             argc > command_index + 2 ? wgse_dense_sa_json(argv[command_index + 2]).c_str() : "");

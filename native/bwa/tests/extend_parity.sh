@@ -150,3 +150,32 @@ same cpu.sam failed-metal.sam
     pairs-R2.fq > failed-auto.sam 2> failed-auto.log
 grep -q 'CPU fallback: injected GPU extension failure' failed-auto.log
 same cpu.sam failed-auto.sam
+
+if [ "$gpu" = --vulkan ]; then
+    # Regression: unused/reset fences used to deadlock buffer destruction.
+    # The discrete-memory staging path must preserve the same records on UMA.
+    "$aligner" --vulkan-staging --gpu-extend-verify --vulkan mem -t 4 \
+        reference.fa pairs-R1.fq pairs-R2.fq > staged.sam 2> staged.log
+    same cpu.sam staged.sam
+    test "$(metric staged.log extend_hits)" -gt 0
+    test "$(metric staged.log extend_mismatches)" -eq 0
+
+    # Withhold a submission rather than hang a shader on the display GPU.
+    for backend in vulkan auto; do
+        status=0
+        "$aligner" --gpu-watchdog-seconds .05 --gpu-inject-hang extend \
+            --backend "$backend" mem -t 4 reference.fa pairs-R1.fq pairs-R2.fq \
+            > "watchdog-$backend.sam" 2> "watchdog-$backend.log" || status=$?
+        if [ "$backend" = vulkan ]; then test "$status" -eq 1
+        else test "$status" -eq 0; fi
+        grep -q 'GPU watchdog' "watchdog-$backend.log"
+        same cpu.sam "watchdog-$backend.sam"
+    done
+    # Driver absence must not prevent CPU alignment or advertise a usable GPU.
+    VK_DRIVER_FILES=/wgse-missing-vulkan-driver.json "$aligner" capabilities --json \
+        > absent.json 2> absent.log
+    grep -q '"vulkan_available":false' absent.json
+    VK_DRIVER_FILES=/wgse-missing-vulkan-driver.json "$aligner" --backend auto mem -t 4 \
+        reference.fa pairs-R1.fq pairs-R2.fq > absent.sam 2>> absent.log
+    same cpu.sam absent.sam
+fi

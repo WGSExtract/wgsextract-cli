@@ -1,4 +1,5 @@
-The Metal seeding traversal, suffix-array locate, mate-rescue alignment and seed extension are
+The Metal and CUDA seeding traversal, suffix-array locate, mate-rescue alignment,
+and seed extension (also ported to Vulkan) are
 adapted from BWA's bwt.c, bwamem.c, bwamem_pair.c and ksw.c. These upstream portions are provided under the
 following licence:
 
