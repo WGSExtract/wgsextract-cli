@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dashboard · Direction B · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="direction.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="b-home" data-direction="B" data-shell="b" data-nav="home" data-title="Dashboard">
+<div class="page page--wide" data-annot-id="page">
+  <header class="page-header" data-annot-id="header">
+    <div class="page-header__text">
+      <h1>Dashboard</h1>
+      <p class="small subtle">mac-studio · WGS Extract 0.9.0 · server <code>127.0.0.1:41873</code> · 1 job at a time</p>
+    </div>
+    <div class="btn-group">
+      <button class="btn" type="button" data-palette><i data-icon="play"></i>New job <kbd>⌘K</kbd></button>
+      <a class="btn btn--primary" href="../c/add-file.html"><i data-icon="plus"></i>Add samples</a>
+    </div>
+  </header>
+
+  <div class="b-grid">
+    <div class="stat b-span-3" data-annot-id="sys-cpu"><span class="stat__label">CPU · 12 cores</span><span class="row"><span class="ring" style="--v: 96"><span></span></span><span class="stat__value">96<small>%</small></span></span><span class="stat__delta">bwa-mem2 · 11.6 cores</span></div>
+    <div class="stat b-span-3" data-annot-id="sys-mem"><span class="stat__label">Memory</span><span class="row"><span class="ring" style="--v: 67"><span></span></span><span class="stat__value">21.4<small> / 32 GB</small></span></span><span class="stat__delta">peak estimate 18.1 GB</span></div>
+    <div class="stat b-span-3" data-annot-id="sys-disk"><span class="stat__label">Disk · /Volumes/Genomes</span><span class="row"><span class="ring" style="--v: 38; --progress: var(--c-success)"><span></span></span><span class="stat__value">1.1<small> TB free</small></span></span><span class="stat__delta">Macintosh HD: 412 GB free</span></div>
+    <div class="stat b-span-3" data-annot-id="sys-gpu"><span class="stat__label">GPU · Apple M2 Max</span><span class="row"><span class="ring" style="--v: 0"><span></span></span><span class="stat__value">Idle</span></span><span class="stat__delta">Metal aligners ready · no CUDA</span></div>
+
+    <section class="b-span-12 section" data-annot-id="samples">
+      <div class="section__head">
+        <h2>Samples</h2>
+        <div class="input-icon" style="width: 240px"><i data-icon="funnel" class="icon--sm"></i><input class="input input--sm" placeholder="Filter: build:GRCh38 type:cram" aria-label="Filter samples"></div>
+      </div>
+      <div class="b-bulk" data-annot-id="bulk"><strong>2 selected</strong><span class="grow"></span><button class="btn btn--sm" type="button" data-toast="Queued 2 microarray jobs">Microarray</button><button class="btn btn--sm" type="button" data-toast="Queued 2 haplogroup jobs">Haplogroups</button><button class="btn btn--sm" type="button" data-toast="Queued qc/relate for 2 samples">Relate</button><button class="btn btn--sm" type="button" data-palette>More…</button></div>
+      <div data-render="library-table" data-select="1" data-picked="hg002,hg004"></div>
+    </section>
+
+    <section class="b-span-8 section" data-annot-id="outputs">
+      <h2>Recent outputs</h2>
+      <div class="table-wrap">
+        <table class="table table--compact table--stack" aria-label="Recent outputs">
+          <thead><tr><th>Output</th><th>Operation</th><th>Sample</th><th class="num">Size</th><th>Finished</th><th class="actions"><span class="visually-hidden">Actions</span></th></tr></thead>
+          <tbody>
+            <tr><td><code>HG002.ancestry.tsv</code></td><td data-label="Operation"><code>qc/ancestry</code></td><td data-label="Sample">HG002</td><td class="num" data-label="Size">2 KB</td><td data-label="Finished">06:22</td><td class="actions"><button class="btn btn--sm btn--ghost" type="button" data-toast="Opened the manifest">Manifest</button></td></tr>
+            <tr><td><code>yleaf/HG002.out</code></td><td data-label="Operation"><code>lineage/y-haplogroup</code></td><td data-label="Sample">HG002</td><td class="num" data-label="Size">48 KB</td><td data-label="Finished">06:15</td><td class="actions"><button class="btn btn--sm btn--ghost" type="button" data-toast="Opened the manifest">Manifest</button></td></tr>
+            <tr><td><code>haplogrep/HG002_chrM.txt</code></td><td data-label="Operation"><code>lineage/mt-haplogroup</code></td><td data-label="Sample">HG002</td><td class="num" data-label="Size">3 KB</td><td data-label="Finished">06:10</td><td class="actions"><button class="btn btn--sm btn--ghost" type="button" data-toast="Opened the manifest">Manifest</button></td></tr>
+            <tr><td><code>HG004_CombinedKit.zip</code></td><td data-label="Operation"><code>microarray</code></td><td data-label="Sample">HG004</td><td class="num" data-label="Size">29 MB</td><td data-label="Finished">Nov 8</td><td class="actions"><button class="btn btn--sm btn--ghost" type="button" data-toast="Opened the manifest">Manifest</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <section class="b-span-4 section" data-annot-id="queue">
+      <div class="section__head"><h2>Queue</h2><a class="small" href="../c/jobs.html">All</a></div>
+      <div data-render="jobs" data-filter="active" data-limit="2"></div>
+      <pre class="b-log" tabindex="0" aria-label="Live log of the running job"><code>09:56:10 align 412,118,004 / 876,231,560 (47.0%)
+09:56:40 align 413,902,551 / 876,231,560 (47.2%)
+09:57:10 align 415,688,203 / 876,231,560 (47.4%)</code></pre>
+    </section>
+
+  </div>
+</div>
+</body>
+</html>

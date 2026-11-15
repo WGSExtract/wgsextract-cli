@@ -1,0 +1,14 @@
+/* WGS Extract design system: link this one file. Order matters: tokens,
+ * then base, then components. */
+@import url("tokens.css");
+@import url("base.css");
+@import url("components/layout.css");
+@import url("components/nav.css");
+@import url("components/buttons.css");
+@import url("components/forms.css");
+@import url("components/cards.css");
+@import url("components/tables.css");
+@import url("components/progress.css");
+@import url("components/feedback.css");
+@import url("components/overlays.css");
+@import url("components/charts.css");

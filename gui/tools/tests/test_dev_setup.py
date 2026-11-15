@@ -45,7 +45,7 @@ class DesktopPrerequisiteTests(unittest.TestCase):
                 source = (
                     'const fs = require("node:fs"), path = require("node:path");'
                     f"const root = process.env[{json.dumps(variable)}];"
-                    "const name = process.env.GUI_FOR_CLI_APP_SUPPORT_NAME;"
+                    "const name = process.env.WGSEXTRACT_GUI_APP_DATA_NAME;"
                     'const marker = path.join(root, name, "state.json");'
                     "fs.mkdirSync(path.dirname(marker), {recursive:true});"
                     'fs.writeFileSync(marker, "smoke");'
@@ -60,7 +60,7 @@ class DesktopPrerequisiteTests(unittest.TestCase):
                 with patch.dict(
                     setup.os.environ,
                     {
-                        "GUI_FOR_CLI_APP_SUPPORT_NAME": "personal-ui",
+                        "WGSEXTRACT_GUI_APP_DATA_NAME": "personal-ui",
                         "HOME": str(personal),
                         "LOCALAPPDATA": str(personal),
                         "XDG_DATA_HOME": str(personal),
@@ -72,7 +72,7 @@ class DesktopPrerequisiteTests(unittest.TestCase):
                     else:
                         setup.smoke([node, "-e", source])
                     self.assertEqual(
-                        setup.os.environ["GUI_FOR_CLI_APP_SUPPORT_NAME"], "personal-ui"
+                        setup.os.environ["WGSEXTRACT_GUI_APP_DATA_NAME"], "personal-ui"
                     )
                 line = next(
                     line

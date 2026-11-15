@@ -48,6 +48,58 @@ signature matches, **before** its read names are probed. A failed CRAM read-name
 is an error, never a silent fallback to paired short-read extraction.
 The usual realignment disk-space preflight also applies to streamed ONT reads.
 
+### Lossless output profiles
+
+`align` and `realign` accept `--output-profile default|archive|calling`.
+The default leaves `--format` and the installed encoder's defaults unchanged.
+The other profiles select CRAM when `--format` is omitted. An explicit
+profile conflicts with `--format BAM` and is refused; use
+`--output-profile default` for BAM. When the profile comes from config.toml
+instead, explicit `--format BAM` wins and the effective profile is default
+(logged at info level), including in the desktop app and Python API:
+
+| Profile | Encoding | Readers |
+| --- | --- | --- |
+| `archive` | CRAM 3.1, samtools' archive compression | Modern htslib and GATK 4.7+ |
+| `calling` | CRAM 3.0, normal compression | GATK and older htslib-based callers, including DeepVariant |
+
+Both are lossless: full supplementary SEQ/QUAL, soft clipping and MM/ML/MN
+tags are retained. Archive trades encoding time for smaller files; savings
+depend on the reads. Calling avoids DeepVariant's CRAM 3.1 compatibility
+copy, not every caller's other staging requirements. Native pbmm2 only
+writes BAM: auto selects minimap2 for PacBio CRAM profiles, while explicit
+`--aligner pbmm2` is refused with a profile-specific message.
+GPU alignment writes BAM first and converts it with samtools for these
+profiles, so it needs temporary space for that BAM too.
+
+On one 5M-pair HG002 short-read observation, archive reduced size by **9.4%**,
+but writing was **1.9× slower**, SNP calling took **12% longer**, and peak
+RSS during writing/calling was **2.71 vs 1.53 GB (about 1.8×)** compared
+with default CRAM 3.1. These are single warm-cache observations on a shared
+M1 Pro, not established performance guarantees; the trade-off depends on
+the reads and reader.
+
+```bash
+wgsextract realign --input ont.cram --ref hs38.fa --output-profile archive
+wgsextract align --r1 reads_R1.fastq.gz --r2 reads_R2.fastq.gz \
+  --ref hs38.fa --output-profile calling
+```
+
+Set `output_profile = "calling"` (or `"archive"`) in `config.toml` for a
+persistent default; `--output-profile default` overrides it. The typed API
+and server expose the same `output_profile` option. The result manifest
+records the effective profile in `metrics.output_profile`. Changing the
+profile invalidates realign's completed alignment and chunk resume state.
+Installed samtools is checked for the requested options and version before
+mapping; WGS Extract does not install it.
+
+`info`, extraction and bcftools calling read both profiles. Older
+DeepVariant/Clair3 builds use the existing temporary compatible copy for
+archive output. GATK 4.7 and newer read CRAM 3.1 directly; whole-file
+calling with an identified older GATK is refused before making a .dict. Use
+calling output, convert to BAM (`bam to-bam`), or specify `vcf gatk
+--region` for the existing regional BAM conversion.
+
 ### Chunked realignment
 
 A whole-genome ONT realignment runs for days. In one pass, its sort spills
@@ -238,10 +290,53 @@ Clair3 2.0.5 bundles htslib 1.24 and reads CRAM 3.1 itself. Older Clair3
 builds on `PATH` can't decode some CRAM 3.1 blocks (#604), so for them the
 command calls from a temporary CRAM 3.0 copy.
 
-Clair3 runs on the CPU. Its `--use_gpu` mode needs CUDA, but Bioconda's Linux
-builds depend on CPU-only PyTorch, and Clair3 2.0.5 has no Apple GPU (MPS)
-path, although the macOS PyTorch has MPS. The command therefore has no
-`--gpu` option.
+Clair3 runs on the CPU by default. `vcf clair3 --gpu` runs its neural
+networks on an NVIDIA GPU instead, from HKU's CUDA image of the same Clair3
+2.0.5, pinned by digest (`docker pull
+hkubal/clair3:v2.0.5_gpu@sha256:3f660a693142db0aa8361a58fb6379fc6e3eeead20916eaae5614bd00d21cbeb`,
+about 4.5 GB; `clair3_gpu_image` in `config.toml` for another build). It needs
+x86-64 Linux (or WSL2), the NVIDIA driver, Docker and the NVIDIA Container
+Toolkit; the CLI checks for them and the image but installs nothing. Clair3
+starts a GPU worker only on a GPU with 7.8 GiB free, so the command gives it
+only such GPUs and refuses to start when none has; each worker used 1.0-1.3
+GB of GPU memory here. It also refuses an image whose PyTorch can't use the
+GPU, where Clair3 would quietly call on the CPU, and holds the container to
+`--threads` CPUs. A custom image's Clair3 version is read from the image,
+not its tag, to decide whether CRAM 3.1 reads need a CRAM 3.0 copy. The
+model still comes from `--model`, `clair3_model` or the reads' metadata, as
+on the CPU, and is checked the same way; a bundled model name needs the
+`clair3` Pixi environment, otherwise pass the model's directory.
+
+The GPU mode needs far more disk than the CPU mode: Clair3 2.0.5 writes every
+full-alignment tensor into its work folder in the output directory before the
+GPU predicts any, about 100 GiB for a 43x whole genome and two to four times
+that for 6-15x reads, which send it more low-quality candidates. Clair3 has
+no option to stream or batch them. `vcf clair3` samples the reads' depth,
+estimates this peak for the bases it calls and refuses to start when the
+output directory's disk lacks it (`--no-preflight` overrides; see
+[Clair3's temporary space](resource_estimates.md#clair3s-temporary-space)).
+Choose an `--outdir` on a disk with room, or call a whole genome in
+`--region` batches (for example a few chromosomes at a time).
+
+On the HG002 chr20:10-11 Mb slice below, `--gpu` gave the same 1,829 calls
+as the CPU (alleles, genotypes and filters; QUAL within 0.19, GQ within 1).
+On all of chr20 it took 8.5 min instead of 10.3 min on 4 CPUs
+([resource estimates](resource_estimates.md#clair3-on-the-gpu)), with
+the same vcfeval F1 (0.9785), but about 2,700 of the 144,543 records (1.8%)
+were missing, extra or genotyped differently. About two thirds lie in the
+25.5-32 Mb pericentromere, where depths pass 216x: Clair3 2.0.5's GPU mode
+stores pileup counts as 8-bit integers, so counts above 127 wrap, and skips
+the CPU mode's scaling of such deep pileups; every pileup call whose quality
+changed by 1 or more was deeper than 100x. With both fixed by hand, the
+pileup calls matched the CPU's (QUAL within 0.03), but 6 of 360,471 flipped
+near a threshold, which changes WhatsHap's phasing and so about 1,000
+full-alignment calls, with the same F1.
+
+The Pixi environment can't use the GPU itself: Bioconda's Linux Clair3
+depends on CPU-only PyTorch (`pytorch-cpu`), so its `--use_gpu` falls back to
+the CPU, and Clair3 2.0.5 has no Apple GPU (MPS) path, although the macOS
+PyTorch has MPS. With conda-forge's CUDA PyTorch swapped in by hand,
+Bioconda's own Clair3 ran on the GPU and gave the same calls (#639).
 
 On the HG002 chr20:10-11 Mb slice (R10.4.1 sup v4.0.0 reads, model
 `r1041_e82_400bps_sup_v400`, 4 threads), Clair3 2.0.5 on Linux x86-64 gave
@@ -323,10 +418,20 @@ DeepVariant stays the default. Results on all of chr20 are under
 explicitly, and the platform-neutral `--long-read` selects Sniffles for any
 long-read data. pbsv is PacBio-only, so it is refused for ONT (detected or
 `--ont`), whether chosen by `--caller pbsv` or by `--pacbio`'s pbsv default. `--ont`/`--long-read` with `--caller delly`, and `--ont`
-with `--pacbio`, are rejected; an explicit `--caller delly` on detected ONT runs
-but warns that Delly is a short-read caller. PacBio behavior is unchanged:
-`--pacbio` still prefers pbsv (falling back to Sniffles) with CCS thresholds,
-and PacBio input without flags still uses Delly.
+with `--pacbio`, are rejected; an explicit `--caller delly` on detected ONT or
+PacBio reads runs but warns (a `short_read_sv_caller` manifest warning) that
+Delly is a short-read caller.
+
+PacBio input gets a long-read caller too, whether detected (read group
+`PL:PACBIO`) or declared with `--pacbio`: pbsv when installed, else Sniffles.
+HiFi reads get pbsv's CCS thresholds; detected subreads (CLR, every read group's
+`DS` naming `READTYPE=SUBREAD`) keep its defaults, as does an explicit
+`--caller pbsv` unless `--ccs` is added. When neither pbsv nor
+Sniffles is installed, `vcf sv` stops and names the `pacbio` Pixi environment
+that provides them, rather than silently falling back to Delly; it never
+installs them. Pass `--caller delly` to use Delly anyway. The result manifest's
+`caller` metric names the tool and `caller_reason` says why it was chosen (for
+example `detected PacBio HiFi reads`, `--pacbio`, or `--caller`).
 
 ```sh
 wgsextract vcf sv -i hg002-ont.bam --ref chr20.fa \
@@ -455,8 +560,9 @@ Measured on HG002 against the GIAB v4.2.1 phased benchmark
 
 "Hets phased" counts every heterozygous record in the input, including Clair3's
 low-quality ones; WhatsHap's block-wise Hamming distance on chr20 was 5.4%
-against LongPhase's 0.8%. No whole-genome phasing run was made: it needs a
-whole-genome call set (#431). Scaling the chr20 time (about 2% of the genome),
+against LongPhase's 0.8%. No whole-genome phasing run has been made; the
+whole-genome call sets now exist
+([whole-genome ONT requirements](#whole-genome-ont-requirements)). Scaling the chr20 time (about 2% of the genome),
 LongPhase would take about 40 minutes on 4 cores.
 
 ## Repeat expansions
@@ -495,6 +601,18 @@ wgsextract typing str --input sample.cram --ref hs38.fa.gz
   `repeat_unconfirmed` warning. The limits are low because true expansions
   are thinly read: on the PureTarget set below, STRkit read a 1.2 kb DMPK
   expansion in 2 of 247 reads, and LongTR an FXN one in 1 of 1.
+  When every called allele is low support, the status is `unresolved`, not
+  pathogenic or normal. Expected ploidy is two autosomal copies and one X
+  copy for males or two for females (the explicit or inferred `--sex`).
+  A missing allele is not evidence of homozygosity: incomplete recessive
+  calls are `unresolved`, even when the observed allele is expanded.
+  Raw sizes remain in the TSV and caller files. These unresolved calls emit
+  `repeat_unconfirmed`, count in `unconfirmed_repeats` rather than the normal
+  range or `flagged_repeats`, and appear in the personal report's overview
+  warnings.
+  If clipped reads independently suggest an unsized expansion, the unresolved
+  call also retains `repeat_outside_normal_range`, its `flagged_repeats` count,
+  and the clinical-confirmation warning.
 - LongTR has no threads; `--threads` runs chromosomes in parallel. It drops
   reads below mean base quality 30, which leaves most ONT R9.4.1 loci
   uncalled; R9 reads (named in the header) get an `r9_reads` warning
@@ -572,6 +690,18 @@ follows `samtools depth`'s defaults, like `--bins`: deletions and duplicates
 don't count, overlapping mates do. BED contig names may use `chr1` or `1`
 style either way.
 
+The assessed scope defaults to **the whole alignment header**, not just contigs
+with reads. For a regional BAM retaining a full reference header, explicitly
+declare the assessed contig or 1-based inclusive interval with `--region chr20`
+or `--region chr20:100001-200000`. With `--by`, every target must fit inside
+that scope (outside targets are refused rather than silently clipped).
+The off-target depth sum and denominator then use only assessed nuclear bases
+outside the merged targets. Capture and whole-genome BAMs should retain the
+whole-header default: unsequenced off-target contigs still count in the assay.
+The scope is recorded in the manifest's `provenance.params.region`, the
+`assessed_scope` metric and the text summary; regional output names include
+the scope so they do not overwrite whole-header reports.
+
 ## Validation on GIAB HG002
 
 ONT's public HG002 R10.4.1 run (`PAO83395`, giab_2023.05, sup v4.0.0 with
@@ -628,8 +758,9 @@ limit and was killed, so plan for at least 16 GB of RAM for ONT alignment.
 not fit, and suggest `--threads` and `--memory` that do; see
 [resource estimates](resource_estimates.md#minimap2-long-reads).
 Scaled from chr20 (2.1% of the genome), a 51x whole genome on 4 threads would
-take about 32 h to realign, 25 h for DeepVariant and 8 h for Clair3. Whole-genome
-small-variant accuracy was therefore measured on chr20 only.
+take about 32 h to realign, 25 h for DeepVariant and 8 h for Clair3. The
+whole genome was later realigned and called on larger hosts; see
+[whole-genome ONT requirements](#whole-genome-ont-requirements).
 The read-only features were run on ONT's whole-genome CRAM (PAO83395, 104 GB,
 about 51x, GRCh38 analysis set), without realigning it:
 
@@ -654,6 +785,60 @@ Unplaced, alt and decoy contigs under 1 Mb share one pooled sample, which
 sets the Other row. Sampling needs the BAM/CRAM index: without one, `info`
 warns, falls back to the record estimate and caches it until an index appears.
 Unaligned reads have no depth to sample, so it is cached as zero.
+
+### Whole-genome ONT requirements
+
+The whole of `PAO83395.pass.cram` (103.7 GB CRAM 3.1, 7.93 M primary reads,
+about 51x) was realigned to hs38 and called with both callers
+([#431](https://github.com/WGSExtract/wgsextract-cli/issues/431)). Plan a
+whole-genome ONT run from these numbers:
+
+| Step | Host, threads | Wall time | Peak RAM | Disk |
+| --- | --- | ---: | ---: | --- |
+| `realign --format CRAM --memory 512M`, streamed from the URL, [chunked](#chunked-realignment) (26 chunks) | Apple M1, 16 GB; 7 | 21.4 h (457,208 CPU s) | 10.5 GB (minimap2; its index build alone 9.8 GB) | output 185.5 GB CRAM 3.1 (1.79x the input); preflight asked for about 211 GiB in the output directory with the index and the largest chunk |
+| `vcf deepvariant --ont` (Google's 1.10.0 CPU image) | Ryzen 5 5600X; 10 | 11.3 h: make_examples 4.9 h, call_variants 6.2 h, postprocess_variants 12 min | not recorded | work directory not recorded (fitted in 150 GB); VCF 231 MB |
+| `vcf clair3 --gpu` (Clair3 2.0.5 GPU image) | Ryzen 5 5600X, RTX 3090; 6 | 2.5 h: pileup 76 min, WhatsHap phasing 42 min, full-alignment 29 min | 15.2 GiB; GPU 6.1 GiB | **about 100 GiB** of temporary files in the output directory (below); VCF 79 MB |
+
+- **Before you start.** `realign`, `vcf deepvariant` and `vcf clair3` print
+  this computer's requirement in one line, and refuse to start without the
+  disk, or the least RAM, it needs (`--no-preflight` overrides): for this CRAM
+  on 7 threads, realign asks for about 221 GiB, 26 GiB of RAM and 21 h
+  ([host requirement](resource_estimates.md#whole-genome-host-requirement)).
+- **Slow chunks.** Most realign chunks took about 30 min; those holding
+  pericentromeric satellite reads (chr1 q12, the chr4 centromere, chrX q with
+  chrY and the alts) took about 2 h each.
+- **Unchunked realign** would also need about 260 GB of sort spills beside the
+  output; see [long-read disk](resource_estimates.md#long-read-disk).
+- **Primary-only copy for calling.** Both callers read a primary-only
+  CRAM 3.0 copy of the realigned output (81.4 GB), not the 185.5 GB CRAM 3.1,
+  so their disk figures apply to that input. Older Clair3 builds can't read
+  some CRAM 3.1 blocks (#604); Clair3 2.0.5 reads CRAM 3.1 directly. Given
+  CRAM 3.1, DeepVariant's container stages a CRAM 3.0 copy itself and first
+  requires free space of about 1.95x the input (about 362 GB for the 185.5 GB
+  output), before its own work directory.
+- **Clair3's GPU temporary files.** Clair3 2.0.5's GPU mode writes every
+  full-alignment tensor (here 460 files of about 230 MB) before the GPU predicts
+  any, then deletes them: about 1 GiB per 1% of the genome at 51x, and more
+  for shallower reads. The CPU mode streams them. `vcf clair3` now estimates
+  this space and refuses to start without it
+  ([#811](https://github.com/WGSExtract/wgsextract-cli/issues/811); see
+  [Clair3's temporary space](resource_estimates.md#clair3s-temporary-space)).
+- **Scaling from a slice.** chr20 with `--gpu` and 6 threads took 599 s, which
+  scales to about 8 h; the whole genome took 2.5 h. The earlier 4-thread
+  projections (above) were 32 h for `realign`, 25 h for DeepVariant and 8 h
+  for Clair3 on the CPU.
+
+Accuracy against GIAB v4.2.1 inside its benchmark regions (`rtg vcfeval` 3.13
+with `--ref-overlap`, PASS calls; SNVs are biallelic SNPs, indels everything
+else):
+
+| Caller | SNV recall / precision / F1 | Indel recall / precision / F1 |
+| --- | --- | --- |
+| `vcf deepvariant --ont` | 0.9986 / 0.9988 / 0.9987 | 0.880 / 0.863 / 0.871 |
+| `vcf clair3 --gpu` (`r1041_e82_400bps_sup_v400`) | 0.9952 / 0.9977 / 0.9965 | 0.837 / 0.903 / 0.869 |
+
+Clair3's lower SNV recall on the whole genome may come partly from its GPU
+mode's handling of pileups deeper than 127x ([Clair3](#clair3-optional)).
 
 ### Read lengths and mapping rate
 
@@ -696,13 +881,12 @@ position and CIGAR, which took it from 156 s to 46 s on the whole-genome CRAM.
 The whole-genome truth took a 32-minute pass.
 `qc vcf` ran on the chr20 DeepVariant VCF (106,665 PASS SNVs, Ts/Tv 1.74).
 
-Small-variant calling on the whole genome was not run: 32 h of realignment
-plus 25 h of DeepVariant on 4 shared cores would not show anything that chr20
-does not, since the callers work per region. The whole-genome run instead
-covers what chr20 cannot: sex and haplogroup inference, the genome-wide
-microarray export and SV calling across all chromosomes; a whole-genome
-small-variant run is tracked in
-[#431](https://github.com/WGSExtract/wgsextract-cli/issues/431).
+Small-variant calling on the whole genome was not part of this run (32 h of
+realignment plus 25 h of DeepVariant on 4 shared cores); it covered what chr20
+cannot: sex and haplogroup inference, the genome-wide microarray export and SV
+calling across all chromosomes. The whole genome was later realigned and
+called on larger hosts; see
+[whole-genome ONT requirements](#whole-genome-ont-requirements).
 
 ### Data and CI fixture
 
@@ -745,7 +929,8 @@ Expose `ONT_R104` and `--ont` for DeepVariant, preserve an unset model for
 automatic selection, and show its chemistry and architecture restrictions.
 For `vcf clair3`, expose `--model` (leave it unset for config or metadata
 selection) and hide the command on Windows. For `vcf sv`, expose `--ont`/`--long-read`, leave `--caller` unset for
-automatic Sniffles selection, and do not offer pbsv for ONT input.
+automatic Sniffles (ONT) or pbsv/Sniffles (PacBio) selection, and do not offer
+pbsv for ONT input.
 For `methylation pileup`, leave `--context`, `--5hmc` and `--combine-strands`
 unset so `config.toml` applies, hide the command on Windows, and show its
 bedMethyl and summary outputs.

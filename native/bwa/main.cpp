@@ -4,7 +4,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -14,10 +16,11 @@ constexpr const char *engine_version = "0.7.19";
 
 void help() {
     printf("%s %s (BWA %s rebuilt)\n"
-        "Usage: %s [--metal | --cuda | --vulkan | --backend cpu|metal|cuda|vulkan|auto] <command>\n"
-        "       [arguments]\n"
+        "Usage: %s [--metal | --cuda | --vulkan | --backend cpu|metal|cuda|vulkan|auto] <command> [arguments]\n"
         "  <command>                 a BWA command such as index or mem (run %s alone to list them)\n"
-        "  capabilities --json       report GPU availability\n"
+        "  capabilities --json [index]  report GPU availability (and the index's side files)\n"
+        "  densify-sa [-i N] <index>    write denser suffix-array samples for faster mem\n"
+        "  --dense-sa on|off          enable or disable reading those samples\n"
         "  --version                 print executable and engine version\n"
         "Options precede the command and affect only mem. The default CPU backend is BWA's\n"
         "code, with some steps replaced by exact batched versions (identical output).\n"
@@ -44,6 +47,30 @@ bool parse_backend(const char *value, Backend &backend) {
     return true;
 }
 
+// densify-sa [-i INTERVAL] [-t THREADS] <index>
+int densify(int argc, char **argv) {
+    unsigned interval = 16, threads = std::thread::hardware_concurrency();
+    int i = 1;
+    for (; i + 1 < argc && argv[i][0] == '-'; i += 2) {
+        char *end = nullptr;
+        const long value = strtol(argv[i + 1], &end, 10);
+        if (end == argv[i + 1] || *end || value < 1 || value > 1024) break;
+        if (strcmp(argv[i], "-i") == 0) interval = unsigned(value);
+        else if (strcmp(argv[i], "-t") == 0) threads = unsigned(value);
+        else break;
+    }
+    if (i + 1 != argc) {
+        fprintf(stderr, "Usage: %s densify-sa [-i INTERVAL] [-t THREADS] <index>\n"
+            "Writes <index>.wgse-sa<INTERVAL>: the suffix-array position of every\n"
+            "INTERVALth row (a power of two below the index's own interval; default 16),\n"
+            "derived from the index's samples. mem then reads it and locates seeds with\n"
+            "shorter walks, with identical output, if the machine has at least 16 GiB of memory\n"
+            "and the file takes at most an eighth of it (the densest such file).\n", name);
+        return 2;
+    }
+    return wgse_densify_sa(argv[i], interval, std::max(1u, threads));
+}
+
 int run(int argc, char **argv) {
     int command_index = 1;
     Backend backend = Backend::cpu;
@@ -64,6 +91,18 @@ int run(int argc, char **argv) {
                 return 2;
             }
             command_index += 2;
+        } else if (strcmp(option, "--dense-sa") == 0) {
+            const char *value = argc > command_index + 1 ? argv[command_index + 1] : "";
+            bool force = false;
+#ifdef WGSE_METAL_BENCHMARK_TOOLS
+            force = strcmp(value, "force") == 0;
+#endif
+            if (!force && strcmp(value, "on") && strcmp(value, "off")) {
+                fprintf(stderr, "--dense-sa requires on or off\n");
+                return 2;
+            }
+            wgse_set_dense_sa_files(strcmp(value, "off") != 0, force);
+            command_index += 2;
 #ifdef WGSE_METAL_BENCHMARK_TOOLS
         } else if (strcmp(option, "--gpu-inject-failure") == 0) {
             wgse_inject_gpu_failure();
@@ -82,8 +121,12 @@ int run(int argc, char **argv) {
             wgse_inject_gpu_interruptions(static_cast<size_t>(every));
             command_index += 2;
         } else if (strcmp(option, "--gpu-inject-hang") == 0) {
-            wgse_inject_gpu_hang();
-            ++command_index;
+            if (argc <= command_index + 1) {
+                fprintf(stderr, "--gpu-inject-hang requires a stage name prefix\n");
+                return 2;
+            }
+            wgse_inject_gpu_hang(argv[command_index + 1]);
+            command_index += 2;
         } else if (strcmp(option, "--gpu-watchdog-seconds") == 0) {
             const char *value = argc > command_index + 1 ? argv[command_index + 1] : "";
             char *end = nullptr;
@@ -257,12 +300,13 @@ int run(int argc, char **argv) {
         printf("%s %s; BWA %s\n", name, version, engine_version);
         return 0;
     }
+    if (command == "densify-sa") return densify(argc - command_index, argv + command_index);
     if (command == "capabilities") {
-        if (argc != command_index + 2 || strcmp(argv[command_index + 1], "--json")) {
-            fprintf(stderr, "Usage: %s capabilities --json\n", name);
+        if (argc < command_index + 2 || argc > command_index + 3
+            || strcmp(argv[command_index + 1], "--json")) {
+            fprintf(stderr, "Usage: %s capabilities --json [index]\n", name);
             return 2;
         }
-        // Each GPU this build has is reported; the others are unavailable.
         auto probe = [](Backend backend) {
             std::string reason;
             const bool usable = wgse_gpu_probe(backend, reason);
@@ -281,14 +325,17 @@ int run(int argc, char **argv) {
             "\"metal_hardware_supported\":%s,\"cuda_available\":%s,"
             "\"cuda_hardware_supported\":%s,\"vulkan_available\":%s,"
             "\"vulkan_hardware_supported\":%s,"
-            "\"cpu_available\":true,\"max_gpu_query_length\":%u}\n",
+            "\"cpu_available\":true,\"max_gpu_query_length\":%u,"
+            "\"dense_suffix_array\":true%s%s}\n",
             version, engine_version, metal ? "true" : "false",
             wgse_gpu_hardware_supported(Backend::metal) ? "true" : "false",
             cuda ? "true" : "false",
             wgse_gpu_hardware_supported(Backend::cuda) ? "true" : "false",
             vulkan ? "true" : "false",
             wgse_gpu_hardware_supported(Backend::vulkan) ? "true" : "false",
-            static_cast<unsigned>(seed_max_length));
+            static_cast<unsigned>(seed_max_length),
+            argc > command_index + 2 ? ",\"dense_sa\":" : "",
+            argc > command_index + 2 ? wgse_dense_sa_json(argv[command_index + 2]).c_str() : "");
         return 0;
     }
     if (command_index == 1) {

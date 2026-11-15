@@ -1,46 +1,39 @@
 name: CI Ubuntu
 
-# The desktop app (gui/) has its own CI (gui-*.yml); app-only changes skip this.
+# pr_ci.yml selects PRs; main pushes and nightly runs retain the full matrix.
 on:
   push:
     branches: [ main ]
-    paths:
-      - "**"
-      - "!gui/**"
-      - "!.github/workflows/gui-*.yml"
-      # tests/test_bump_version.py bumps the app's CLI pin in these.
-      - gui/scripts/bump-wgsextract-cli.py
-      - gui/examples/WGSExtract/scripts/wgsextract-release-tag.txt
-      - gui/examples/WGSExtract/manifest.json
-      - gui/docs/distribution.md
-      - gui/docs/CHANGELOG.md
-      - gui/app/tests/conformance.test.mjs
-      - gui/tools/packaging/tests/test_embedded_branding.py
-  pull_request:
-    branches: [ main ]
-    paths:
-      - "**"
-      - "!gui/**"
-      - "!.github/workflows/gui-*.yml"
-      # tests/test_bump_version.py bumps the app's CLI pin in these.
-      - gui/scripts/bump-wgsextract-cli.py
-      - gui/examples/WGSExtract/scripts/wgsextract-release-tag.txt
-      - gui/examples/WGSExtract/manifest.json
-      - gui/docs/distribution.md
-      - gui/docs/CHANGELOG.md
-      - gui/app/tests/conformance.test.mjs
-      - gui/tools/packaging/tests/test_embedded_branding.py
+    paths-ignore:
+      - "**/*.md"
+  workflow_call:
+    inputs:
+      tests:
+        type: string
+        default: all
+      smoke-only:
+        type: boolean
+        default: false
+      platform-certified:
+        type: boolean
+        default: false
+      generic-certified:
+        type: boolean
+        default: false
+  schedule:
+    - cron: "11 6 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-ubuntu-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   lint:
+    if: "!inputs.smoke-only && !inputs.generic-certified"
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -48,11 +41,11 @@ jobs:
         with:
           fetch-depth: 2
       - name: Set up lint-only Pixi environment
-        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+        uses: ./.github/actions/setup-pixi
         with:
-          pixi-version: v0.82.0
-          locked: true
           environments: lint
+          scope: lint
+          writer: "true"
       - name: Lint, workflow validation and strict type check
         run: |
           pixi run -e lint -x ruff check .
@@ -63,77 +56,50 @@ jobs:
       - name: Advisory test-smell annotations (never fails)
         run: pixi run -e lint -x python scripts/test_smells.py --base HEAD^1 --github
   test-ubuntu:
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Set up Pixi
-        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
-        with:
-          pixi-version: v0.82.0
-          locked: true
-          environments: >-
-            default
-            dev
-      - name: Test installer
-        run: scripts/test_install_sh.sh
-      - name: Verify Tools
-        run: chmod +x scripts/verify_tools.sh && pixi run scripts/verify_tools.sh
-      - name: Configure and Bootstrap Library
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          pixi run python -c "from wgsextract_cli.core.config import save_config; save_config({'reference_library': 'reference'})"
-          pixi run python -m wgsextract_cli.main ref bootstrap --ref reference
-      - name: Cache public hs38 reference
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: reference/genomes
-          key: hs38-v1-${{ hashFiles('src/wgsextract_cli/assets/reference/seed_genomes.csv', 'src/wgsextract_cli/core/ref_library/catalog.py') }}
-      - name: Install Reference Genome
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: pixi run python -m wgsextract_cli.main ref library --install hs38 --ref reference
-      - name: Build and Smoke Test Package
-        run: pixi run package-smoke
-      - name: Run Benchmark
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          pixi run wgsextract benchmark --dataset real --profile smoke
-          echo "Benchmark timing is published in this job summary."
-      - name: Run Tests
-        run: pixi run test-ci
-      # The app's bundle commands must still parse with this CLI (#538); GUI CI
-      # checks the bundle side, this catches a CLI flag dropped or renamed.
-      - name: Check the app's bundle commands parse with this CLI
-        working-directory: gui
-        run: pixi run python -m unittest discover -s tests/wgsextract
-      - name: Publish test timings and non-gating coverage
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: tests-ubuntu
-          path: |
-            out/coverage.xml
-            out/pytest.xml
-      # Each extract, call and annotate command run end to end on generated chrM
-      # and whole-genome data; about 30 s, no downloads.
-      - name: Run end-to-end tests on generated data
-        run: pixi run test-e2e-fake
+    if: "!inputs.platform-certified && inputs.tests != '[]'"
+    uses: ./.github/workflows/os_tests.yml
+    with:
+      os: ubuntu
+      runner: ubuntu-latest
+      timeout-minutes: 90
+      environments: default dev vep-rs
+      reference: true
+      tests: ${{ inputs.tests || 'all' }}
+      smoke-only: ${{ inputs.smoke-only == true }}
+      skip-generic: ${{ github.event_name == 'pull_request' }}
 
-  # ONT end to end on real GIAB HG002 R10.4.1 reads (tests/fixtures/ont_hg002):
-  # align with minimap2, then Sniffles from the opt-in pacbio environment.
-  ont-hg002:
+  imputation:
+    if: "!inputs.platform-certified && !inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))"
+    # GLIMPSE2 and Beagle from the opt-in imputation environment on HG002 1x
+    # reads and chip genotypes (tests/fixtures/imputation_hg002).
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Pixi
-        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+        uses: ./.github/actions/setup-pixi
         with:
-          pixi-version: v0.82.0
-          locked: true
+          environments: >-
+            dev
+            imputation
+      - name: Run imputation tests
+        shell: bash
+        run: |
+          mkdir -p out
+          pixi run -e dev pytest tests/test_imputation.py -rs | tee out/imputation.txt
+          ! grep -q skipped out/imputation.txt
+
+  # ONT end to end on real GIAB HG002 R10.4.1 reads (tests/fixtures/ont_hg002):
+  # align with minimap2, then Sniffles from the opt-in pacbio environment.
+  ont-hg002:
+    if: "!inputs.platform-certified && !inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_ont_hg002.py') || contains(inputs.tests, 'tests/test_phasing.py') || contains(inputs.tests, 'tests/test_somalier_relate.py'))"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Pixi
+        uses: ./.github/actions/setup-pixi
+        with:
           environments: >-
             dev
             pacbio

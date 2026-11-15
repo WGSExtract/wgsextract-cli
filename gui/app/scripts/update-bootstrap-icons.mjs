@@ -1,6 +1,7 @@
-import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseIconMapToml } from "../dist/shared/icon-map.js";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const webuiRoot = path.resolve(scriptDir, "..");
@@ -27,14 +28,22 @@ await writeFile(
 );
 
 const fullCSS = await readFile(fullStylesheet, "utf8");
-const iconsSource = await readFile(path.join(webuiRoot, "web", "src", "client", "icons.ts"), "utf8");
-const bootstrapMapMatch = /export const bootstrapIconMap = \{([\s\S]*?)\n\};/.exec(iconsSource);
-if (!bootstrapMapMatch) {
-  throw new Error("Failed to extract bootstrapIconMap from web/src/client/icons.ts");
+// The Web UI only loads the critical subset: every Bootstrap icon the built-in and example icon maps name.
+const guiRoot = path.resolve(webuiRoot, "..");
+const examplesRoot = path.join(guiRoot, "examples");
+const iconMapPaths = [
+  path.join(guiRoot, "resources", "BuiltinIconMap", "iconmap.toml"),
+  ...(await readdir(examplesRoot, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => path.join(examplesRoot, entry.name, "iconmap.toml")),
+];
+const iconNames = new Set(["copy"]);
+for (const iconMapPath of iconMapPaths) {
+  const text = await readFile(iconMapPath, "utf8").catch((error) => (error.code === "ENOENT" ? "" : Promise.reject(error)));
+  for (const name of Object.values(parseIconMapToml(text).bootstrap ?? {})) {
+    iconNames.add(name);
+  }
 }
-
-const iconNames = new Set([...bootstrapMapMatch[1].matchAll(/:\s*"([^"]+)"/g)].map((match) => match[1]));
-iconNames.add("copy");
 
 const firstIconRule = /^\.bi-[\w-]+::before \{/m.exec(fullCSS);
 if (!firstIconRule?.index) {
@@ -46,7 +55,7 @@ const prelude = fullCSS
   .replace(
     /\/\*![\s\S]*?\*\//,
     `/*!
- * Bootstrap Icons v${packageJSON.version} critical subset for GUI for CLI.
+ * Bootstrap Icons v${packageJSON.version} critical subset for WGS Extract GUI.
  * Copyright 2019-2024 The Bootstrap Authors
  * Licensed under MIT (https://github.com/twbs/icons/blob/main/LICENSE)
  */`,

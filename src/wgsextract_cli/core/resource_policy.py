@@ -1,7 +1,5 @@
 from collections.abc import Callable
 
-import psutil
-
 from wgsextract_cli.core.runtime import (
     ThreadTuningProfile,
     default_thread_tuning_profile,
@@ -42,6 +40,8 @@ def get_resource_defaults(
     if memory_arg is not None and str(memory_arg).strip().lower() != "auto":
         memory = str(memory_arg)
     else:
+        import psutil
+
         total_mem_gb = psutil.virtual_memory().total / (1024**3)
         safe_mem = max(2, int(total_mem_gb * 0.25))
         mem_per_thread = max(1, safe_mem // threads_count)

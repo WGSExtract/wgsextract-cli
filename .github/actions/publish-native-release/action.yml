@@ -1,0 +1,95 @@
+name: Publish native packages
+description: Download build artifacts and publish them as a prerelease whose notes list each asset's SHA-256.
+inputs:
+  tag:
+    description: Release tag to create.
+    required: true
+  tag-prefix:
+    description: Prefix the tag must start with.
+    required: true
+  title:
+    description: Release title.
+    required: true
+  description:
+    description: Notes text before the provenance line.
+    required: true
+  source:
+    description: Repository paths the assets were built from.
+    required: true
+  artifacts:
+    description: Name pattern of this run's artifacts to download.
+    required: true
+  assets:
+    description: Space-separated file-name globs, searched in every artifact, to hash and upload.
+    default: "*.conda"
+  extra-assets:
+    description: Space-separated file names uploaded without a hash row.
+    default: ""
+  sha256sums:
+    description: Also upload a SHA256SUMS file covering the hashed assets.
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        pattern: ${{ inputs.artifacts }}
+        path: out/release/download
+    - name: Publish the release
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TAG: ${{ inputs.tag }}
+        PREFIX: ${{ inputs.tag-prefix }}
+        TITLE: ${{ inputs.title }}
+        DESCRIPTION: ${{ inputs.description }}
+        SOURCE: ${{ inputs.source }}
+        ASSETS: ${{ inputs.assets }}
+        EXTRA: ${{ inputs.extra-assets }}
+        SUMS: ${{ inputs.sha256sums }}
+      run: |
+        set -u
+        case "$TAG" in "$PREFIX"*) ;; *) echo "Tag must start with $PREFIX" >&2; exit 1 ;; esac
+        staged=out/release/assets
+        mkdir -p "$staged"
+        # Copies each matching file once, sorted by name, and prints its staged name.
+        stage() {
+          local found
+          found=$(find out/release/download -type f -name "$1" -printf '%f\t%p\n' | LC_ALL=C sort)
+          if [ -z "$found" ]; then echo "No release asset matches $1" >&2; return 1; fi
+          while IFS=$'\t' read -r name file; do
+            if [ -e "$staged/$name" ]; then echo "Duplicate release asset $name" >&2; return 1; fi
+            cp "$file" "$staged/" || return 1
+            echo "$name"
+          done <<< "$found"
+        }
+        set -f
+        hashed=() extra=()
+        for pattern in $ASSETS; do
+          names=$(stage "$pattern")
+          while IFS= read -r name; do hashed+=("$name"); done <<< "$names"
+        done
+        for pattern in $EXTRA; do
+          names=$(stage "$pattern")
+          while IFS= read -r name; do extra+=("$name"); done <<< "$names"
+        done
+        set +f
+        if [ "$SUMS" = true ]; then
+          (cd "$staged" && sha256sum -- "${hashed[@]}" > SHA256SUMS)
+          extra+=(SHA256SUMS)
+        fi
+        {
+          printf '%s\n' "${DESCRIPTION%$'\n'}"
+          echo "Built from ${SOURCE} at ${GITHUB_SHA} by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
+          echo
+          echo "| Asset | SHA-256 |"
+          echo "| --- | --- |"
+          for name in "${hashed[@]}"; do
+            echo "| $name | \`$(sha256sum "$staged/$name" | cut -d' ' -f1)\` |"
+          done
+        } > out/release/notes.md
+        files=()
+        for name in "${hashed[@]}" "${extra[@]}"; do files+=("$staged/$name"); done
+        gh release create "$TAG" "${files[@]}" \
+          --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TITLE" \
+          --notes-file out/release/notes.md --prerelease --latest=false

@@ -22,6 +22,8 @@ from wgsextract_cli.core.utils import (
     run_command,
 )
 
+from ._vep_rs_cache import build_vep_rs_cache, verify_vep_rs_cache
+
 if TYPE_CHECKING:
     from wgsextract_cli.api.vep import (
         VepDeleteParams,
@@ -141,6 +143,10 @@ def _verify_vep_tarball(base_url: str, target_path: str, filename: str) -> None:
 
 
 def run_vep_download(params: VepDownloadParams) -> None:
+    engine = params.resolved_engine()
+    if engine.name == "vep-rs":
+        build_vep_rs_cache(params, VEP_MIRRORS[params.mirror])
+        return
     verify_dependencies(["curl", "tar"])
 
     species, vep_version = params.species, params.vep_version
@@ -184,9 +190,14 @@ def run_vep_download(params: VepDownloadParams) -> None:
 def run_vep_delete(params: VepDeleteParams) -> None:
     from wgsextract_cli.core import library_removal
 
-    cache_root = params.cache_root()
+    cache_root = params.engine_cache_root()
     paths = library_removal.vep_release_paths(
         cache_root, params.species, params.vep_version, params.assembly
+    )
+    # vep-rs's resumable downloads of the release.
+    paths.append(
+        cache_root
+        / f".download-{params.species}-{params.vep_version}_{params.assembly}"
     )
     for path in paths:
         _require_in_scope(path)
@@ -297,6 +308,9 @@ def _prefix_contig_header_line(line: str) -> str:
 
 
 def run_vep_verify(params: VepVerifyParams) -> None:
+    if params.resolved_engine().name == "vep-rs":
+        verify_vep_rs_cache(params)
+        return
     vep_version, species, assembly = (
         params.vep_version,
         params.species,

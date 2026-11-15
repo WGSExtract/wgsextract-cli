@@ -14,9 +14,13 @@ For memory and disk planning, see [resource estimates](resource_estimates.md).
 `--aligner auto` (the default) aligns short reads with bwa-mem2 when all of
 these hold, and with bwa otherwise:
 
-- bwa-mem2 is installed (it is in the default environment on Linux, macOS and
-  Windows);
-- the reference already has a full bwa-mem2 index, including its `.0123` file;
+- bwa-mem2 will run: upstream bwa-mem2 is installed (it is in the default
+  environment on Linux, macOS and Windows), or, on Apple Silicon with native
+  aligners on, `wgse-bwa-mem2` 0.5.0 or later is (upstream bwa-mem2 isn't
+  needed then);
+- the reference already has the bwa-mem2 index that aligner reads: the full
+  index for upstream bwa-mem2 (and `wgse-bwa-mem2` before 0.5.0), without the
+  `.0123` file for `wgse-bwa-mem2` 0.5.0 and later;
 - the estimated alignment pipeline fits in the RAM available now.
 
 Auto never downloads or builds the index. When the index is missing but would
@@ -37,8 +41,12 @@ Few computers can build the bwa-mem2 index, so
 `wgsextract ref index --aligner bwa-mem2 --ref REF` downloads the published
 one (17 GB) for hs38DH and Broad's GRCh38, whose sequences are the same. For
 other references it builds the index only when the computer has the memory.
-The alignments are identical to bwa's, so the choice affects time and memory
-only.
+bwa-mem2 is a reimplementation of bwa's algorithm, but its records are not
+identical to bwa's: on 5M HG002 read pairs on hs38 the record hashes differ
+(bwa family `e2febf171215d840`, bwa-mem2 family `dff39743a72242de`). Each
+family is reproducible: `wgse-bwa` and `wgse-bwa-mem3 --compat=bwa-mem` write
+bwa's records, `wgse-bwa-mem2` and `wgse-bwa-mem3 --compat=bwa-mem2` write
+bwa-mem2's.
 
 The ~1.3× speedup is what we measured. bwa-mem2's authors **published** up to
 3.5× on one thread and 2.4× on one socket of an Intel Xeon Skylake with
@@ -58,11 +66,69 @@ time. As guidance only, a whole human genome needs a computer with 32 GB or
 more for bwa-mem2; since the 30x estimate at 6 threads is ~29 GiB, auto picks
 bwa whenever less than that is free. Smaller inputs need less.
 
-For now auto asks this of upstream bwa-mem2, even on a Mac with `wgse-bwa-mem2`
-0.5.0 or later, which maps without the `.0123` file and needs about 6 GiB less
-for hs38: auto still wants the `.0123` file and counts it, and picks bwa
-otherwise (where `wgse-bwa-mem3` may then stand in). `--aligner bwa-mem2` uses
-`wgse-bwa-mem2`'s own needs (see [Apple Silicon](#apple-silicon-metal)).
+With `wgse-bwa-mem2` 0.5.0 or later installed (and native aligners on), auto
+uses its estimate, which leaves out the `.0123` file it doesn't load (about
+6 GiB less for hs38; see [Apple Silicon](#apple-silicon-metal)), and the
+reference needs no `.0123` file. On a 16 GB Mac a 30x genome still doesn't fit,
+so auto keeps bwa there (`wgse-bwa`). `wgse-bwa-mem3` alone doesn't make auto
+pick bwa-mem2: it already stands in for bwa with bwa's records. When auto
+picks bwa-mem2, `wgse-bwa-mem3` stands in for it only when its own estimate
+also fits the RAM available; otherwise `wgse-bwa-mem2` aligns.
+
+Records: because bwa and bwa-mem2 write different records, a change in
+auto's choice changes the BAM, not just its `@PG` header and the result
+manifest. On a Mac that gains `wgse-bwa-mem2` 0.5.0 or later, or with a
+reference that has bwa-mem2's index without `.0123`, auto can now pick
+bwa-mem2 where it used to pick bwa, and a re-run gives a different BAM; it
+logs when it does. To compare runs, pin the aligner with `--aligner bwa` (or
+`--aligner bwa-mem2`).
+
+### bwa-mem3 on Linux
+
+[bwa-mem3](https://github.com/fulcrumgenomics/bwa-mem3) writes bwa's exact
+records with `--compat=bwa-mem` and bwa-mem2's with `--compat=bwa-mem2`, from
+bwa-mem2's index without its `.0123` file, several times faster. Bioconda's
+build needs a newer htslib than the default environment's samtools, so it has
+its own environment; install it with `pixi install --locked -e bwa-mem3` (Linux
+and macOS). On Linux, when it is installed and the reference has bwa-mem2's
+index, `align` and `realign` run it in place of bwa or bwa-mem2 (whichever
+`--aligner` or `auto` chose), under the same memory rules as `wgse-bwa-mem3` on
+a Mac ([Apple Silicon](#apple-silicon-metal)): in bwa's place its pipeline must
+fit the RAM available, so on 16 GB computers bwa usually runs. Ultima reads keep
+BWA. `--native-aligners off` (or `native_aligners = "off"`) turns this off. A
+bwa-mem3 older than 0.16.0, or one whose `bwa-mem3 version` fails, raises the
+`native_aligner_unusable` warning and bwa or bwa-mem2 runs. The result manifest
+records `native_aligner` `bwa-mem3` and `bwa_mem3_mode`, as on a Mac.
+
+**Measured** with `wgsextract align` on the first 5M HG002 read pairs (30x
+NovaSeq) on hs38, 16 threads, BAM output, two rounds in reversed order, on
+Azure 16-vCPU, 64 GiB VMs with Ubuntu 24.04. The records were the same with and
+without bwa-mem3 (SHA-256 of `samtools view`, 10,062,598 records):
+
+| Computer | `--aligner bwa` | with bwa-mem3 | `--aligner bwa-mem2` | with bwa-mem3 |
+| :--- | ---: | ---: | ---: | ---: |
+| ARM64: Cobalt 100 (Neoverse N2), D16pds_v6 | 295 s, 287 s | 52 s, 51 s (−82%) | 245 s, 243 s | 53 s, 53 s (−78%) |
+| x86-64: AMD EPYC 9V74 (Zen 4), D16ads_v6 | 342 s, 334 s | 55 s, 56 s (−84%) | 181 s, 181 s | 57 s, 57 s (−69%) |
+
+Peak memory was 14.7 GiB with bwa-mem3, against 6.6 GiB with bwa and 18.7 GiB
+with bwa-mem2. The `Linux bwa-mem3 parity` workflow checks Bioconda's build
+against bwa's and bwa-mem2's records on GitHub's x86-64 and ARM64 runners.
+
+Bioconda's x86-64 bwa-mem3 0.16.0 crashes at startup (in its bundled
+allocator) on glibc 2.44, as on current Arch Linux; it ran on Ubuntu 24.04's
+glibc 2.39 (#727). The CLI's version check catches that: standing in, it warns
+(`native_aligner_unusable`, naming the crash and the computer's glibc) and bwa
+or bwa-mem2 aligns; `--aligner bwa-mem3` and `--fast` stop before aligning
+with an error that says so.
+
+On Linux x86-64, WGS Extract's `wgse-bwa-mem3` 0.4.0 or later (bwa-mem3 0.16.0
+without that allocator, from the `linux-aligners-*` prereleases; see
+[native/README.md](../native/README.md#wgse-bwa-mem3-on-linux-x86-64)) stands
+in the same way, ahead of Bioconda's, when it's on `PATH`. It runs
+`--backend auto`: on an NVIDIA GPU when its capabilities report
+`cuda_available` (**experimental**: seeding, seed extension and mate rescue),
+otherwise on the CPU, with the same records either way. The manifest records
+`native_aligner` `wgse-bwa-mem3` and `native_aligner_backend` `cuda` or `cpu`.
 
 ### Threads and memory
 
@@ -71,8 +137,14 @@ otherwise (where `wgse-bwa-mem3` may then stand in). `--aligner bwa-mem2` uses
 - `--memory` is the sort memory per thread. `auto` uses 25% of RAM (at least
   2 GB) split across the threads, with at least 1 GiB per thread; for example
   16 GiB and 12 threads gives 1 GiB each, 12 GiB in total. With bwa-mem2,
-  sorting is capped at 256 MiB per thread to leave room for its index; bwa
-  keeps the full `--memory`.
+  sorting is capped at 256 MiB per thread to leave room for its index.
+  Native `wgse-bwa` can also lower the requested sort budget
+  when fitting its GPU pipeline, or cap an over-budget CPU fallback at 256M
+  per thread as described below.
+- `samtools sort` reserves all of its threads' memory when it starts, so every
+  sort gets at most half the RAM in total and no more than its input can fill
+  (see [resource_estimates.md](resource_estimates.md#samtools-sort-buffers)).
+  The log says when this lowers `--memory`; the output is the same.
 - Before a native BWA run, the CLI prints a memory and disk preflight. More
   threads use more memory; when it reports `LOW`, lower `--threads` or
   `--memory`, or use `--aligner bwa`. Threads are never lowered automatically.
@@ -142,6 +214,104 @@ What `--gpu` refuses:
 - **PacBio CLR/subreads**: there is no GPU preset.
 - **`--aligner bwa-mem2`**: Parabricks runs its own BWA-MEM; use `auto` or `bwa`.
 
+## NVIDIA GPUs without Parabricks (`wgse-bwa --cuda`)
+
+On Linux x86-64, WGS Extract's `wgse-bwa` 0.10.0 or later (bwa 0.7.19) can run
+on an NVIDIA GPU, as `wgse-bwa --metal` does on a Mac
+([native/README.md](../native/README.md#linux-x86-64-and-nvidia-gpus-cuda)).
+It writes bwa's exact alignments and is **experimental**.
+
+- **When it runs:** with `native_aligners = "auto"` (the default), `align` and
+  `realign` run `wgse-bwa --backend auto` in place of bwa when it's on `PATH`.
+  It uses the GPU when its capabilities report `cuda_available`, and otherwise
+  aligns on the CPU. If the GPU fails during a run, it finishes on the CPU with
+  the same alignments.
+- **Order on Linux (bwa's records):** [bwa-mem3](#bwa-mem3-on-linux)
+  `--compat=bwa-mem` (`wgse-bwa-mem3`, on its own GPU, else Bioconda's) when
+  it's installed, runs and fits; otherwise `wgse-bwa`
+  on the GPU when it fits in RAM; otherwise `wgse-bwa` on the CPU (0.14.0
+  took a quarter less time than bwa on the machine below, in bwa's RAM);
+  otherwise bwa. All write the same records. bwa-mem3 goes first even with a GPU: on an
+  RTX 3090 with a Ryzen 5 5600X (5M HG002 pairs on hs38, 8 threads), bwa-mem3
+  0.16.0 `--compat=bwa-mem` on the CPU took 97.7 s (761 s of CPU time) and
+  `wgse-bwa --cuda` 131.4 s (1006 s), against upstream bwa's 472.5 s, all with
+  bwa's records (**measured**, #674/#736; bwa-mem3 as `wgse-bwa-mem3`, the same
+  engine built without Bioconda's malloc override, which crashes on that
+  host's glibc 2.44).
+- **What it needs:** only the NVIDIA driver; no Docker and no Parabricks
+  licence. It checks the GPU's free memory before uploading the index (about
+  4.7 GiB for hs38). It needs about 0.75 GiB more RAM than bwa, and the same
+  sort-memory reduction as on a Mac applies.
+- **Provenance:** the result manifest records `native_aligner_backend` as `cuda`.
+- **`--gpu`:** still means Parabricks, which also sorts and marks duplicates on
+  the GPU.
+
+Long reads work the same way with `wgse-minimap2` 0.4.0 or later (minimap2
+2.31), which also writes its upstream aligner's exact alignments
+([native/README.md](../native/README.md#wgse-minimap2-on-linux-x86-64)):
+
+- **When it runs:** `align` and `realign` run `wgse-minimap2 --backend auto` in
+  place of minimap2 for ONT, HiFi and other long reads. Its base-level gap fills
+  run on the GPU and the rest on the CPU. Short reads (`sr`) stay entirely on the
+  CPU.
+- **Gain (measured):** on the RTX 3090 machine above (8 threads), 40k HiFi reads
+  took 20.4 s against 32.5 s on its CPU backend and 45.6 s with Bioconda's
+  minimap2. 47k ONT reads, which spend most of their time chaining, took 100.7 s
+  against 111.6 s.
+- **What it needs:** about 0.7 GiB of GPU memory, which it checks for (keeping
+  1 GiB spare) before using the GPU. It needs about 1 GiB more RAM. When only
+  that extra RAM wouldn't fit, it runs on the CPU. On a Mac, `wgse-minimap2`
+  still runs on the CPU.
+
+On Linux ARM64 (for example Graviton, Ampere or Cobalt), the linux-aarch64
+`wgse-bwa` package has no GPU backend; its CPU backend runs bwa's steps with
+the same exact NEON replacements as on a Mac, and `align` and `realign` run it
+in place of bwa the same way (`native_aligner_backend` is `cpu`). On a 16-vCPU Cobalt 100 (Neoverse N2), wgse-bwa 0.10.0
+aligned the first 5M HG002 pairs on hs38 in 224 s against Bioconda bwa's 282 s
+(−20%, median of three interleaved rounds, 16 threads, `-K 10000000`), with
+the same alignments (**measured**, `native/bench/bench.sh`).
+
+## DeepVariant on NVIDIA GPUs without Parabricks (`wgse-deepvariant`)
+
+On Linux x86-64, WGS Extract's `wgse-deepvariant` 0.2.0 or later (DeepVariant
+1.10.0 without Docker; [native/deepvariant/README.md](../native/deepvariant/README.md#linux-x86-64-and-nvidia-gpus-cuda))
+runs call_variants on an NVIDIA GPU through CUDA, or on the CPU.
+
+- **When it runs:** with `deepvariant_native = "auto"` (the default),
+  `wgse-deepvariant` installed (on `PATH`, or `pixi install -e deepvariant`,
+  which installs 0.3.0 from `linux-deepvariant-2`) and `deepvariant_weights`
+  set to its weights folder (`wgse-deepvariant-weights-1.10.0`, with both
+  models), `vcf deepvariant`
+  calls the WGS model with it instead of Google's image: on the CPU, or with
+  `--gpu` on the GPU instead of Parabricks; from 0.3.0, ONT reads' ONT_R104
+  model too (#739). Until `deepvariant_weights` is set,
+  an installed build is ignored. Other models, `--checkpoint` and
+  Ultima reads keep Google's image and Parabricks; `deepvariant_native = "off"`
+  keeps them for everything.
+- **Same calls:** the same sites, genotypes and filters as Google's image on
+  HG002 chr20, and the same GIAB v4.2.1 counts; QUAL differs by at most 0.5
+  and GQ by 1 at a few thousand of 210,390 sites, as on a Mac. On HG002's ONT
+  chr20, 2 of 387,476 sites differ (outside GIAB's confident regions), with the
+  same GIAB counts, and the same phased genotypes and phase sets elsewhere;
+  call_variants took 45 s on the GPU against 22 minutes in Google's CPU image.
+- **What it needs:** the NVIDIA driver; no Docker and no Parabricks licence.
+  Before its first stage, `--gpu` checks that the build has CUDA (the cuda129
+  package) and that `nvidia-smi` sees a GPU; before call_variants, that GPU 0
+  has 3 GiB free
+  (`--no-gpu-memory-check` overrides it): it used 2.3 GiB at its default batch
+  of 256 on an RTX 3090. `--gpu` never falls back to the CPU: a GPU that fails
+  stops the run, which resumes from its finished stages.
+- **How much faster (measured, HG002 35x, 4 threads, RTX 3090):** on chr1
+  and chr20 (823,376 sites, 270,091 call_variants examples), `vcf deepvariant
+  --gpu` took 17 minutes end to end (call_variants 72 s), against 41 minutes
+  without `--gpu` and 93 minutes for Google's CPU image (call_variants 50
+  minutes), with the same GIAB v4.2.1 counts. On chr20 alone call_variants took
+  19.5 s, against 79 s for Google's own TensorFlow GPU image on the same GPU.
+  For a 30x genome, about ten times chr1 and chr20, that is about 3 hours on 4
+  threads with the GPU, mostly make_examples, against about 15 hours for
+  Google's CPU image (**projected**). See
+  [resource estimates](resource_estimates.md#deepvariant-on-the-gpu-with-wgse-deepvariant).
+
 ## Apple Silicon (Metal)
 
 WGS Extract publishes its own builds of four aligners for Apple Silicon Macs:
@@ -181,23 +351,53 @@ the check, or is older than the oldest supported release, raises the
 
   Otherwise `wgse-bwa` or `wgse-bwa-mem2` runs as below. Ultima reads keep
   BWA. The records are the same either way; see the parity results below.
-- **Metal.** `wgse-bwa`, `wgse-bwa-mem2` and `wgse-bwa-mem3` run with
-  `--backend auto`, using the GPU when their capabilities report
-  `metal_available`. If the GPU fails during
-  a run, they finish on the CPU with the same alignments. `wgse-minimap2` runs on
-  the CPU.
+- **Metal.** These builds normally run with `--backend auto` when their
+  capabilities report `metal_available`; `wgse-bwa` also applies its
+  GPU-specific RAM-fit check below. Stand-in selection uses the rules above.
+  An explicit `--aligner bwa-mem3` or `--fast` selects its Metal backend from
+  capabilities and may continue after a `LOW` memory warning: those explicit
+  paths do **not** use `wgse-bwa`'s GPU-fit guard. If the GPU fails during a
+  run, the builds finish on the CPU with the same alignments.
+  `wgse-minimap2` runs on the CPU.
 - **Memory.** `wgse-bwa`'s GPU backend needs about 0.75 GiB more than bwa (8.76
   against 7.96 GB peak for 5M read pairs on hs38 at 8 threads), and 0.76 GiB
   more for a denser suffix-array sample after 20M reads. When the alignment's
-  memory estimate with it exceeds the Mac's RAM less 2 GiB, the sort memory per
-  thread is lowered (768M, 512M, 384M, then 256M; sorting more often doesn't
-  change the output). When the CPU run's own estimate is larger than that, as
-  for a 30x genome on a 16 GB Mac, the GPU run only has to fit within it: the
-  CPU run would go ahead regardless, about four times slower.
-  When `realign` streams reads from the input into the aligner, the estimate
-  must also fit the RAM available when it starts, so the GPU never pushes it
-  to extracting FASTQs. If even 256M doesn't fit,
-  `wgse-bwa` runs on the CPU. The batch size (`-K`) never changes.
+  memory estimate exceeds the Mac's **physical RAM less 2 GiB**, the sort
+  memory per thread is lowered (768M, 512M, 384M,
+  then 256M; sorting more often doesn't change the output). This also applies
+  when realignment extracts FASTQs rather than streaming them.
+  An oversized CPU estimate does **not** make an oversized GPU plan safe.
+  Without a speed override, paired Metal BWA tries a staged plan next:
+  at most three BWA workers write a compressed checkpoint, then duplicate
+  marking and bounded compressed sorting run after the aligner exits.
+  This plan must also fit the same physical-RAM budget. Its manifest mode is
+  `alignment_mode="staged_metal"`, reason `memory_budget_metal_staged`.
+  If even staging cannot fit (or for CUDA), `wgse-bwa` runs on the CPU. If its pipeline with the
+  requested sort memory is also over budget, sort memory is capped at 256M
+  per thread; an already smaller budget is retained. The conservative CPU
+  estimate can still report `LOW`: this is not a reservation or a guarantee of RAM fit.
+  Momentarily low available RAM warns without forcing a large-RAM host onto
+  CPU; streaming realignment retains its existing available-RAM check.
+  CPU fallback was about **2.5× slower** on the measured 16 GB M1 whole genome.
+  To favor speed despite the swap risk, pass **`--prefer-native-gpu`** or set
+  **`prefer_native_gpu = true`** in `config.toml`. Normal GPU-fit sort step-down
+  runs first. Only when none fits does the preference permit the concurrent
+  GPU plan instead of RAM-safe staging/CPU fallback:
+  explicit `--memory` is retained, while default/config memory is capped at
+  256M, subject to general sort limits. `--no-prefer-native-gpu` overrides config.
+  The manifest records `native_aligner_backend_reason="memory_budget_cpu"` on
+  fallback (`"prefer_gpu"` on opt-in), estimate/budget bytes and requested/
+  actual sort memory; a fitting stepped-down Metal plan uses
+  `"memory_budget_metal_low_sort"` (CUDA: `"memory_budget_cuda_low_sort"`).
+  A resumed run retains these diagnostics; an ineffective preference changes
+  neither the reason nor the journal key.
+  Whole 35x Metal/sort256 retained exact records at 5.08 h, but still moved
+  378.39 GiB swap-out versus CPU's 47.87 GiB: it failed the under-200-GiB
+  gate, so CPU remains the automatic low-memory choice when no GPU plan fits.
+  Workers and the batch size (`-K 100000000`) never change. Reducing K changes
+  alignment records, including MAPQ and duplicate flags, so it is not an
+  identity-preserving memory adjustment
+  ([#747](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
   `wgse-bwa-mem2` is chosen only when
   bwa-mem2's own (CPU) memory estimate fits, so a GPU too small for its index
   tables, where it finishes on the CPU, still fits. Before 0.5.0 that estimate
@@ -209,8 +409,42 @@ the check, or is older than the oldest supported release, raises the
 - **Provenance.** The `@PG` header names the binary that ran and its version
   (for example `VN:0.7.19-r1273-wgse-0.7.1`). The result manifest lists it under
   `tools` and records the `native_aligner`, `native_aligner_version` and
-  `native_aligner_backend` (`metal` or `cpu`) metrics; bwa-mem3 runs also
+  `native_aligner_backend` (`metal`, `cuda` on Linux, or `cpu`) metrics; bwa-mem3 runs also
   record `bwa_mem3_mode` (`compat=bwa-mem`, `compat=bwa-mem2` or `fast`).
+- **Dense suffix-array file (optional).** `wgse-bwa` 0.11.0 and later can
+  read a side file beside the reference's BWA index that holds the
+  suffix-array position of every 16th row, so it locates seeds with shorter
+  walks: the same alignments for 5M read pairs on hs38, 11.5% faster on the
+  CPU and 7.7% faster with `--metal` on an M1 Pro, and 7.7% faster on the CPU
+  but only 1.3% with `--cuda` on a Ryzen 5 5600X with an RTX 3090. The file
+  takes 0.80 GB on disk for hs38 and as much RAM while aligning. It is opt-in
+  and never built or used automatically:
+  - `wgsextract ref dense-sa --ref <fasta>` builds it with `wgse-bwa
+    densify-sa` (it shows the disk it will take first; `--interval 8`, `4` or
+    `2` makes a larger file with shorter walks; on x86 Linux interval 8 wasn't
+    clearly faster than 16), `--list` shows the FASTA's files and the
+    one `wgse-bwa` would read here, and `--delete` removes them.
+  - `align` and `realign` read it with `--dense-suffix-array`, or
+    `dense_suffix_array = true` in `config.toml` (`--no-dense-suffix-array`
+    turns that off for a run). Otherwise wgse-bwa 0.12.1 or later gets
+    `--dense-sa off`, so a file left beside the index isn't read.
+    Production 0.11.0 and 0.12.0 cannot parse that switch: the CLI omits it
+    when no side file exists, but refuses alignment if one is present.
+    Upgrade to 0.12.1 or delete the side files with
+    `wgsextract ref dense-sa --ref <fasta> --delete`;
+    those older builds cannot safely honor the opt-in setting.
+    The memory estimate counts the file as index memory (with the GPU it
+    replaces the denser sample the GPU
+    would build after 20M reads), and the manifest records
+    `dense_suffix_array_interval`.
+  - It is used only when `wgse-bwa` aligns. When another aligner runs, such
+    as `wgse-bwa-mem3` standing in for bwa or bwa-mem2 (faster, with the same
+    records), or bwa-mem2 chosen by `--aligner auto`, that aligner is kept.
+    Asked to use the file, a run that can't (another aligner, no file,
+    `wgse-bwa` missing or older than 0.11.0, or a file `wgse-bwa` won't read:
+    it needs 16 GiB of RAM or more, a file of at most an eighth of it, and an
+    intact file made from this index) raises the `dense_suffix_array_unused`
+    warning and aligns without it.
 
 `--aligner bwa-mem3` asks for bwa-mem3 itself: `wgse-bwa-mem3` on Apple
 Silicon, else (or with `--native-aligners off`) `bwa-mem3` on `PATH`, for
@@ -235,6 +469,29 @@ The builds are `macos-aligners-N` prerelease assets; see
 command, and a whole genome from `realign` to `report`, on the smallest Apple
 Silicon Mac.
 
+### bcftools with mimalloc
+
+On macOS about a third of `bcftools mpileup`'s time goes to the system
+allocator. `wgse-mimalloc` is WGS Extract's build of
+[mimalloc](https://github.com/microsoft/mimalloc) 3.6.1 with malloc override on
+(conda-forge's has it off), from [packaging/mimalloc](../packaging/mimalloc).
+The published [wgse-mimalloc-1 package](https://github.com/WGSExtract/wgsextract-cli/releases/tag/wgse-mimalloc-1)
+is pinned by URL and SHA-256 and included in the default Pixi environment on
+Apple Silicon; `pixi install --locked` installs it alongside bcftools.
+When it is installed in bcftools' environment, `vcf snp` and `vcf indel` start
+their bcftools processes, and only those, with `DYLD_INSERT_LIBRARIES` pointing
+at it (`mimalloc = "auto"`, the default; `--mimalloc off` or `mimalloc = "off"`
+in `config.toml` turns this off). The CLI never installs it at runtime.
+
+The records are the same. On 5M HG002 read pairs on hs38 with 9 threads on the
+M1 Pro (medians of 3 interleaved runs), `vcf snp` took 102 s against 132 s and
+`vcf indel` 155 s against 193 s, with a quarter less CPU time.
+Each run first checks that bcftools loads the library (macOS drops `DYLD_*`
+variables for protected binaries, and a damaged file stops it starting); if not,
+or if `DYLD_INSERT_LIBRARIES` is already set, bcftools runs with the system
+allocator and the log says why. The result manifest's `bcftools_allocator`
+metric (`mimalloc` or `system`) records which ran. Linux isn't covered yet.
+
 `vcf clair3` runs on Apple Silicon on the CPU only: Clair3 2.0.5 has no Metal
 (MPS) path; see [docs/ont.md](ont.md#clair3-optional).
 
@@ -252,7 +509,12 @@ give no meaningful benefit.
   turns hours into tens of minutes. A rented cloud GPU works too.
 - **Variant calling:** `vcf deepvariant --gpu` and `vcf gatk --gpu` run
   Parabricks' DeepVariant and HaplotypeCaller, about a minute for chr20 on the
-  RTX 3090 (**measured**). CPU DeepVariant is much slower, especially on Apple
-  Silicon, which runs the x86-64 image under emulation. Linux ARM64 has a
+  RTX 3090 (**measured**). CPU DeepVariant is much slower. On Linux x86-64,
+  [wgse-deepvariant](#deepvariant-on-nvidia-gpus-without-parabricks-wgse-deepvariant)
+  runs DeepVariant's WGS and ONT_R104 models on the GPU without Docker or Parabricks:
+  call_variants for chr20 in about 20 seconds (**measured**). Apple Silicon has
+  [wgse-deepvariant](../native/deepvariant/README.md), a native build with
+  call_variants on the GPU: chr20 in about 5 minutes on an M1 Pro, with the
+  same calls as Google's image (**measured**). Linux ARM64 has a
   [native CPU build](deepvariant-arm64.md); native Windows has no DeepVariant
   ([Windows](windows.md)).

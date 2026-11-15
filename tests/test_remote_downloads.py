@@ -29,10 +29,17 @@ pytestmark = pytest.mark.remote
 
 
 def _catalog_urls() -> list[str]:
-    # The loaded catalog, and the built-in lists it replaces when seed_genomes.csv
-    # is present (they're used when it isn't).
-    genomes = [*get_available_genomes(), *FALLBACK_GENOMES, *PET_GENOMES]
-    return [str(g["url"]).strip() for g in genomes if g.get("url")]
+    """Where each genome installs from first: in the loaded catalog, and in the
+    built-in lists it replaces when seed_genomes.csv is present. That is our
+    GitHub copy (#701); the original hosts after it are slow and flaky, and
+    the few genomes we may not copy are left out for the same reason."""
+    urls = []
+    for genomes in (get_available_genomes(), [*FALLBACK_GENOMES, *PET_GENOMES]):
+        first: dict[str, dict] = {}
+        for genome in genomes:
+            first.setdefault(genome["final"], genome)
+        urls += [g["url"].strip() for g in first.values() if g["source"] == "GitHub"]
+    return urls
 
 
 def _download_urls() -> list[str]:

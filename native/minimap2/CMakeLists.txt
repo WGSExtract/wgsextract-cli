@@ -5,15 +5,18 @@ FetchContent_Declare(minimap2
     URL https://github.com/lh3/minimap2/archive/refs/tags/v2.31.tar.gz
     URL_HASH SHA256=bff334a0e4512644e2f3e29944aeec408f49450f4f74dc39fe89e5273869255b
     SOURCE_SUBDIR unused)
-# Also declared by bwa-mem2; the first declaration wins, so keep them identical.
-FetchContent_Declare(neon
-    URL https://github.com/DLTcollab/sse2neon/archive/refs/tags/v1.8.0.tar.gz
-    URL_HASH SHA256=e251746e3b761f3f0de1ad462b1efe53532341b6b0498d394765fceb85ce8a46
-    SOURCE_SUBDIR unused)
-FetchContent_MakeAvailable(minimap2 neon)
+FetchContent_MakeAvailable(minimap2)
+if(APPLE)
+    # Also declared by bwa-mem2; the first declaration wins, so keep them identical.
+    FetchContent_Declare(neon
+        URL https://github.com/DLTcollab/sse2neon/archive/refs/tags/v1.8.0.tar.gz
+        URL_HASH SHA256=e251746e3b761f3f0de1ad462b1efe53532341b6b0498d394765fceb85ce8a46
+        SOURCE_SUBDIR unused)
+    FetchContent_MakeAvailable(neon)
+endif()
 
 # Bump when the wgse-minimap2 package changes; it is versioned separately from minimap2.
-set(WGSE_MINIMAP2_VERSION 0.2.0)
+set(WGSE_MINIMAP2_VERSION 0.4.0)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${generated}/intrinsics")
 foreach(header emmintrin.h smmintrin.h)
@@ -77,11 +80,12 @@ minimap2_seam(index_source "\tkt_pipeline(n_threads < 3? n_threads : 3, worker_p
     "\twgse_n_threads = n_threads;
 \tkt_pipeline(n_threads < 3? n_threads : 3, wgse_worker_pipeline, &pl, 3);")
 file(WRITE "${generated}/index.c" "${index_source}\n#include \"wgse_index.inc\"\n")
-# misc.c: anchor radix sorts skip passes that cannot change the order.
+# misc.c: anchor radix sorts skip passes that cannot change the order, and
+# radix_sort_128x replays the in-place sort's passes out of place (wgse_sort128.inc).
 file(READ "${minimap2_SOURCE_DIR}/misc.c" misc_source)
 minimap2_seam(misc_source "#include \"ksort.h\"\n" "#include \"wgse_ksort.h\"\n")
 minimap2_seam(misc_source "KRADIX_SORT_INIT(128x, mm128_t, sort_key_128x, 8)"
-    "WGSE_KRADIX_SORT_INIT(128x, mm128_t, sort_key_128x, 8)")
+    "WGSE_KRADIX_SORT_BASE(128x, mm128_t, sort_key_128x)\n#include \"wgse_sort128.inc\"")
 minimap2_seam(misc_source "KRADIX_SORT_INIT(64, uint64_t, sort_key_64, 8)"
     "WGSE_KRADIX_SORT_INIT(64, uint64_t, sort_key_64, 8)")
 file(WRITE "${generated}/misc.c" "${misc_source}")
@@ -102,12 +106,12 @@ file(WRITE "${generated}/seed.c" "${seed_source}")
 # sketch.c: sketch part of a sequence, for index construction on several threads.
 file(READ "${minimap2_SOURCE_DIR}/sketch.c" sketch_source)
 file(WRITE "${generated}/sketch.c" "${sketch_source}\n#include \"wgse_sketch.inc\"\n")
-# --metal (metal_ksw.h): align.c queues each read's gap fills for the GPU before
+# --metal (ksw_gpu.h): align.c queues each read's gap fills for the GPU before
 # aligning it and takes the results of identical fills; map.c runs several reads
 # per CPU thread as fibers, so reads waiting for the GPU leave their thread to others.
 file(READ "${minimap2_SOURCE_DIR}/align.c" align_source)
 minimap2_seam(align_source "#include \"ksw2.h\"\n"
-    "#include \"ksw2.h\"\n#include \"metal_ksw.h\"\n
+    "#include \"ksw2.h\"\n#include \"ksw_gpu.h\"\n
 static void wgse_ksw_prefetch(void *km, const mm_mapopt_t *opt, const mm_idx_t *mi, int qlen,
 \tuint8_t *qseq0[2], int n_regs, const mm_reg1_t *regs, const mm128_t *a);
 ")
@@ -119,7 +123,7 @@ minimap2_seam(align_source "\tmemset(&ez, 0, sizeof(ksw_extz_t));\n\tfor (i = 0;
 file(WRITE "${generated}/align.c" "${align_source}\n#include \"wgse_align.inc\"\n")
 file(READ "${minimap2_SOURCE_DIR}/map.c" map_source)
 minimap2_seam(map_source "mm_tbuf_t *mm_tbuf_init(void)\n"
-    "#include \"metal_ksw.h\"\nmm_tbuf_t *mm_tbuf_init(void)\n")
+    "#include \"ksw_gpu.h\"\nmm_tbuf_t *mm_tbuf_init(void)\n")
 minimap2_seam(map_source "\tif (b->km) {\n\t\tkm_stat(b->km, &kmst);"
     "\tif (b->km && wgse_ksw_km_check(b->km, opt->cap_kalloc)) {\n\t\tkm_stat(b->km, &kmst);")
 minimap2_seam(map_source "\t\t\tkm_destroy(b->km);\n\t\t\tb->km = km_init();\n"
@@ -136,8 +140,8 @@ minimap2_seam(map_source "\t\tfor (i = 0; i < p->n_threads; ++i) mm_tbuf_destroy
     "\t\tfor (i = 0; i < wgse_ksw_workers(p->n_threads); ++i) mm_tbuf_destroy(s->buf[i]);")
 file(WRITE "${generated}/map.c" "${map_source}")
 
-# Mirrors upstream's Makefile OBJS for an aarch64 (arm_neon) build, less the ksw2
-# extension kernels, which are built below.
+# Mirrors upstream's Makefile OBJS (the same on aarch64, arm_neon, and x86-64), less the
+# ksw2 extension kernels, which are built below.
 set(minimap2_names
     kthread kalloc bseq sdust options lchain hit jump
     format pe esterr splitidx ksw2_ll_sse)
@@ -148,31 +152,85 @@ list(TRANSFORM minimap2_seamed PREPEND "${generated}/" OUTPUT_VARIABLE minimap2_
 list(TRANSFORM minimap2_sources APPEND ".c")
 list(PREPEND minimap2_sources ${minimap2_common_sources})
 
-set(WGSE_MINIMAP2_KSW2 sse41 CACHE STRING
-    "ksw2 extension kernels: sse41 (sse2neon 1.8.0) or sse2 (upstream's NEON build)")
-set_property(CACHE WGSE_MINIMAP2_KSW2 PROPERTY STRINGS sse41 sse2)
-add_library(wgse_minimap2_ksw2 OBJECT
-    "${minimap2_SOURCE_DIR}/ksw2_extz2_sse.c" "${minimap2_SOURCE_DIR}/ksw2_extd2_sse.c"
-    "${minimap2_SOURCE_DIR}/ksw2_exts2_sse.c")
-if(WGSE_MINIMAP2_KSW2 STREQUAL "sse41")
-    # Upstream's x86 build picks either kernel at run time; they give identical results.
-    # The SSE4.1 one maps its max and blend operations to single NEON instructions.
-    target_compile_definitions(wgse_minimap2_ksw2 PRIVATE __SSE2__ __SSE4_1__ SSE2NEON_SUPPRESS_WARNINGS)
-    target_include_directories(wgse_minimap2_ksw2 SYSTEM PRIVATE
-        "${generated}/intrinsics" "${neon_SOURCE_DIR}")
-elseif(WGSE_MINIMAP2_KSW2 STREQUAL "sse2")
-    target_compile_definitions(wgse_minimap2_ksw2 PRIVATE KSW_SSE2_ONLY __SSE2__)
-    target_include_directories(wgse_minimap2_ksw2 SYSTEM PRIVATE "${minimap2_SOURCE_DIR}/sse2neon")
+if(APPLE)
+    set(WGSE_MINIMAP2_KSW2 neon CACHE STRING
+        "ksw2 extension kernels: neon (ksw_extd2 written for NEON, the others sse41), sse41 (sse2neon 1.8.0) or sse2 (upstream's NEON build)")
+    set_property(CACHE WGSE_MINIMAP2_KSW2 PROPERTY STRINGS neon sse41 sse2)
 else()
-    message(FATAL_ERROR "WGSE_MINIMAP2_KSW2 must be sse41 or sse2")
+    # Upstream's x86-64 build: SSE4.1 and SSE2 kernels, picked at run time (ksw2_dispatch.c).
+    set(WGSE_MINIMAP2_KSW2 x86)
 endif()
-target_include_directories(wgse_minimap2_ksw2 SYSTEM PRIVATE "${minimap2_SOURCE_DIR}")
-target_compile_definitions(wgse_minimap2_ksw2 PRIVATE HAVE_KALLOC)
-target_compile_options(wgse_minimap2_ksw2 PRIVATE -UNDEBUG -fsigned-char -Wno-unused-function)
+# The ksw2 extension kernels for mode as object libraries named after name; their objects
+# are in ${name}_objects.
+function(minimap2_ksw2_library name mode)
+    set(kernels ksw2_extz2_sse ksw2_extd2_sse ksw2_exts2_sse)
+    list(TRANSFORM kernels PREPEND "${minimap2_SOURCE_DIR}/")
+    list(TRANSFORM kernels APPEND ".c")
+    if(mode STREQUAL "x86")
+        # One object per kernel and instruction set, as upstream's Makefile compiles them.
+        set(objects)
+        foreach(isa sse41 sse2)
+            add_library(${name}_${isa} OBJECT ${kernels})
+            target_compile_definitions(${name}_${isa} PRIVATE KSW_CPU_DISPATCH HAVE_KALLOC)
+            if(isa STREQUAL "sse41")
+                target_compile_options(${name}_${isa} PRIVATE -msse4.1)
+            else()
+                target_compile_definitions(${name}_${isa} PRIVATE KSW_SSE2_ONLY)
+                target_compile_options(${name}_${isa} PRIVATE -msse2 -mno-sse4.1)
+            endif()
+            target_include_directories(${name}_${isa} SYSTEM PRIVATE "${minimap2_SOURCE_DIR}")
+            target_compile_options(${name}_${isa} PRIVATE -UNDEBUG -Wno-unused-function)
+            list(APPEND objects $<TARGET_OBJECTS:${name}_${isa}>)
+        endforeach()
+        add_library(${name} OBJECT "${minimap2_SOURCE_DIR}/ksw2_dispatch.c")
+        target_compile_definitions(${name} PRIVATE KSW_CPU_DISPATCH)
+        target_include_directories(${name} SYSTEM PRIVATE "${minimap2_SOURCE_DIR}")
+        set(${name}_objects $<TARGET_OBJECTS:${name}> ${objects} PARENT_SCOPE)
+        return()
+    endif()
+    set(extd2 "${minimap2_SOURCE_DIR}/ksw2_extd2_sse.c")
+    if(mode STREQUAL "neon")
+        set(extd2 "${CMAKE_CURRENT_SOURCE_DIR}/wgse_ksw2_extd2.c")
+        set(mode sse41)
+    endif()
+    add_library(${name} OBJECT
+        "${minimap2_SOURCE_DIR}/ksw2_extz2_sse.c" "${extd2}" "${minimap2_SOURCE_DIR}/ksw2_exts2_sse.c")
+    if(mode STREQUAL "sse41")
+        # Upstream's x86 build picks either kernel at run time; they give identical results.
+        # The SSE4.1 one maps its max and blend operations to single NEON instructions.
+        target_compile_definitions(${name} PRIVATE __SSE2__ __SSE4_1__ SSE2NEON_SUPPRESS_WARNINGS)
+        target_include_directories(${name} SYSTEM PRIVATE
+            "${generated}/intrinsics" "${neon_SOURCE_DIR}")
+    elseif(mode STREQUAL "sse2")
+        target_compile_definitions(${name} PRIVATE KSW_SSE2_ONLY __SSE2__)
+        target_include_directories(${name} SYSTEM PRIVATE "${minimap2_SOURCE_DIR}/sse2neon")
+    else()
+        message(FATAL_ERROR "WGSE_MINIMAP2_KSW2 must be neon, sse41 or sse2")
+    endif()
+    target_include_directories(${name} SYSTEM PRIVATE "${minimap2_SOURCE_DIR}")
+    target_compile_definitions(${name} PRIVATE HAVE_KALLOC)
+    target_compile_options(${name} PRIVATE -UNDEBUG -fsigned-char -Wno-unused-function)
+    set(${name}_objects $<TARGET_OBJECTS:${name}> PARENT_SCOPE)
+endfunction()
+minimap2_ksw2_library(wgse_minimap2_ksw2 ${WGSE_MINIMAP2_KSW2})
+
+if(WGSE_CUDA)
+    # The CUDA device (ksw_cuda.cu): ksw_fill.cuh's kernels, ported from metal_ksw.mm's.
+    add_library(wgse_minimap2_cuda STATIC ksw_cuda.cu)
+    target_include_directories(wgse_minimap2_cuda PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../gpu-common")
+    target_include_directories(wgse_minimap2_cuda SYSTEM PRIVATE "${minimap2_SOURCE_DIR}")
+    target_compile_options(wgse_minimap2_cuda PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:--Werror=all-warnings -Xcompiler=-Wall,-Wextra>)
+    target_link_libraries(wgse_minimap2_cuda PUBLIC CUDA::cudart_static)
+endif()
 
 function(minimap2_target_settings target)
     target_include_directories(${target} SYSTEM PUBLIC "${minimap2_SOURCE_DIR}")
-    target_include_directories(${target} SYSTEM PRIVATE "${minimap2_SOURCE_DIR}/sse2neon")
+    if(APPLE)
+        # Its emmintrin.h maps the SSE2 intrinsics of ksw2_ll_sse.c to NEON.
+        target_include_directories(${target} SYSTEM PRIVATE "${minimap2_SOURCE_DIR}/sse2neon")
+    endif()
     target_compile_definitions(${target} PRIVATE HAVE_KALLOC _FILE_OFFSET_BITS=64)
     # Upstream asserts stay on, as in its own and Bioconda's builds.
     target_compile_options(${target} PRIVATE -UNDEBUG -fsigned-char
@@ -181,24 +239,45 @@ function(minimap2_target_settings target)
 endfunction()
 
 function(wgse_minimap2_executable name core)
-    add_library(${core} STATIC ${minimap2_sources} metal_ksw.mm
-        $<TARGET_OBJECTS:wgse_minimap2_ksw2>)
+    # The gap-fill offload (ksw_gpu.h): ksw_host.cpp's engine on Metal (macOS) or CUDA
+    # (Linux with -DWGSE_CUDA=ON), else every fill on the CPU.
+    if(APPLE)
+        set(gpu_sources ksw_host.cpp metal_ksw.mm)
+    elseif(WGSE_CUDA)
+        set(gpu_sources ksw_host.cpp)
+    else()
+        set(gpu_sources ksw_gpu_none.cpp)
+    endif()
+    add_library(${core} STATIC ${minimap2_sources} ${gpu_sources}
+        ${wgse_minimap2_ksw2_objects})
     minimap2_target_settings(${core})
     target_include_directories(${core} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
-    target_link_libraries(${core} PRIVATE wgse_metal_common)
-    set_source_files_properties(metal_ksw.mm PROPERTIES COMPILE_OPTIONS
-        "-fobjc-arc;-Wall;-Wextra;-Werror")
+    set_source_files_properties(${gpu_sources} PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Werror")
+    if(WGSE_CUDA)
+        target_link_libraries(${core} PRIVATE wgse_minimap2_cuda)
+    endif()
+    if(APPLE)
+        target_link_libraries(${core} PRIVATE wgse_metal_common)
+        set_source_files_properties(metal_ksw.mm PROPERTIES COMPILE_OPTIONS
+            "-fobjc-arc;-Wall;-Wextra;-Werror")
+    endif()
     target_compile_definitions(${core} PRIVATE
         WGSE_PG_VERSION="2.31-r1302-wgse-${WGSE_MINIMAP2_VERSION}")
 
-    add_executable(${name} main.mm)
+    add_executable(${name} main.cpp)
     target_compile_definitions(${name} PRIVATE WGSE_VERSION="${WGSE_MINIMAP2_VERSION}")
     if(BUILD_TESTING)
         # Hidden tuning and failure-injection flags for tests and benchmarks only.
         target_compile_definitions(${name} PRIVATE WGSE_METAL_BENCHMARK_TOOLS=1)
     endif()
-    target_compile_options(${name} PRIVATE -fobjc-arc -Wall -Wextra -Werror)
-    target_link_libraries(${name} PRIVATE ${core} wgse_metal_common)
+    target_compile_options(${name} PRIVATE -Wall -Wextra -Werror)
+    target_link_libraries(${name} PRIVATE ${core})
+    if(APPLE)
+        # The Objective-C++ autorelease pool around minimap2's main.
+        set_source_files_properties(main.cpp PROPERTIES LANGUAGE OBJCXX)
+        target_compile_options(${name} PRIVATE -fobjc-arc)
+        target_link_libraries(${name} PRIVATE wgse_metal_common)
+    endif()
 endfunction()
 
 wgse_minimap2_executable(wgse-minimap2 wgse_minimap2_core)
@@ -217,12 +296,51 @@ if(BUILD_TESTING)
     add_test(NAME minimap2_segments COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/segments.sh"
         $<TARGET_FILE:wgse-minimap2> $<TARGET_FILE:wgse-minimap2-segments>
         "${CMAKE_CURRENT_BINARY_DIR}/segments")
-    # Unmodified upstream sources, to check that the seams change no index or alignment.
+    if(WGSE_MINIMAP2_KSW2 STREQUAL "neon")
+        # The NEON ksw_extd2 against upstream's, on random alignments over every flag and scoring.
+        add_library(minimap2_ksw2_fuzz_upstream OBJECT "${minimap2_SOURCE_DIR}/ksw2_extd2_sse.c")
+        target_compile_definitions(minimap2_ksw2_fuzz_upstream PRIVATE
+            __SSE2__ __SSE4_1__ SSE2NEON_SUPPRESS_WARNINGS HAVE_KALLOC ksw_extd2_sse=upstream_ksw_extd2)
+        target_include_directories(minimap2_ksw2_fuzz_upstream SYSTEM PRIVATE
+            "${generated}/intrinsics" "${neon_SOURCE_DIR}" "${minimap2_SOURCE_DIR}")
+        add_executable(minimap2-ksw2-fuzz tests/ksw2_fuzz.c wgse_ksw2_extd2.c "${minimap2_SOURCE_DIR}/kalloc.c"
+            $<TARGET_OBJECTS:minimap2_ksw2_fuzz_upstream>)
+        target_include_directories(minimap2-ksw2-fuzz SYSTEM PRIVATE "${minimap2_SOURCE_DIR}")
+        target_compile_definitions(minimap2-ksw2-fuzz PRIVATE HAVE_KALLOC)
+        foreach(target minimap2_ksw2_fuzz_upstream minimap2-ksw2-fuzz)
+            target_compile_options(${target} PRIVATE -UNDEBUG -fsigned-char -Wno-unused-function)
+        endforeach()
+        add_test(NAME minimap2_ksw2_fuzz COMMAND minimap2-ksw2-fuzz 20000 1)
+    endif()
+    if(APPLE OR WGSE_CUDA)
+        # The GPU gap fills against upstream's ksw_extd2_sse (skipped without a usable GPU).
+        add_executable(minimap2-ksw-gpu-fuzz tests/ksw_gpu_fuzz.cpp)
+        target_include_directories(minimap2-ksw-gpu-fuzz PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+        target_compile_definitions(minimap2-ksw-gpu-fuzz PRIVATE HAVE_KALLOC)
+        target_compile_options(minimap2-ksw-gpu-fuzz PRIVATE -Wall -Wextra -Werror)
+        target_link_libraries(minimap2-ksw-gpu-fuzz PRIVATE wgse_minimap2_core)
+        add_test(NAME minimap2_ksw_gpu_fuzz COMMAND minimap2-ksw-gpu-fuzz 60 1)
+        set_tests_properties(minimap2_ksw_gpu_fuzz PROPERTIES SKIP_RETURN_CODE 77)
+    endif()
+    # The anchor sort against upstream's in-place radix sort, including the order of equal keys.
+    add_executable(minimap2-sort128-fuzz tests/sort128_fuzz.c)
+    target_include_directories(minimap2-sort128-fuzz PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_include_directories(minimap2-sort128-fuzz SYSTEM PRIVATE "${minimap2_SOURCE_DIR}")
+    target_compile_options(minimap2-sort128-fuzz PRIVATE -UNDEBUG -Wno-unused-function)
+    target_link_libraries(minimap2-sort128-fuzz PRIVATE Threads::Threads)
+    add_test(NAME minimap2_sort128_fuzz COMMAND minimap2-sort128-fuzz 3000 1)
+    # Unmodified upstream sources, to check that the seams and the NEON ksw_extd2 change
+    # no index or alignment.
+    if(WGSE_MINIMAP2_KSW2 STREQUAL "neon")
+        minimap2_ksw2_library(minimap2_upstream_ksw2 sse41)
+    else()
+        minimap2_ksw2_library(minimap2_upstream_ksw2 ${WGSE_MINIMAP2_KSW2})
+    endif()
     add_executable(minimap2-upstream
         ${minimap2_common_sources} "${minimap2_SOURCE_DIR}/main.c" "${minimap2_SOURCE_DIR}/index.c"
         "${minimap2_SOURCE_DIR}/misc.c" "${minimap2_SOURCE_DIR}/seed.c"
         "${minimap2_SOURCE_DIR}/sketch.c" "${minimap2_SOURCE_DIR}/align.c"
-        "${minimap2_SOURCE_DIR}/map.c" $<TARGET_OBJECTS:wgse_minimap2_ksw2>)
+        "${minimap2_SOURCE_DIR}/map.c" ${minimap2_upstream_ksw2_objects})
     minimap2_target_settings(minimap2-upstream)
     add_test(NAME minimap2_upstream_parity COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
         $<TARGET_FILE:wgse-minimap2> $<TARGET_FILE:minimap2-upstream>
@@ -234,8 +352,10 @@ install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../../LICENSE" DESTINATION share/lice
     RENAME WGSE-LICENSE)
 install(FILES "${minimap2_SOURCE_DIR}/LICENSE.txt" DESTINATION share/licenses/wgse-minimap2
     RENAME MINIMAP2-LICENSE)
-install(FILES "${neon_SOURCE_DIR}/LICENSE" DESTINATION share/licenses/wgse-minimap2
-    RENAME sse2neon-LICENSE)
+if(APPLE)
+    install(FILES "${neon_SOURCE_DIR}/LICENSE" DESTINATION share/licenses/wgse-minimap2
+        RENAME sse2neon-LICENSE)
+endif()
 # wgse_ksort.h adapts ksort.h, whose MIT notice differs from minimap2's.
 file(READ "${minimap2_SOURCE_DIR}/ksort.h" ksort_source)
 string(REGEX MATCH "/\\* The MIT License[^*]*\\*/" ksort_license "${ksort_source}")

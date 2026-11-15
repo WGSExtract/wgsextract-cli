@@ -9,10 +9,17 @@ from typing import Any
 
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.ref import RefStatusParams
-from wgsextract_cli.core import bwa_mem2, sample_workspace, somalier_resources
+from wgsextract_cli.core import (
+    ancestry_reference,
+    bwa_mem2,
+    gnomad_sv,
+    sample_workspace,
+    somalier_resources,
+)
 from wgsextract_cli.core.aadr_resources import aadr_2m_path
 from wgsextract_cli.core.config import dataset_library, settings
 from wgsextract_cli.core.gene_map import are_gene_maps_installed
+from wgsextract_cli.core.mini_genome import status as test_genome_status
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_assets import (
     build_hint,
@@ -66,6 +73,12 @@ def build_ref_status(params: RefStatusParams) -> dict[str, Any]:
         return _build_ref_status(params)
 
 
+def dataset_library_for(ref: Path | None, datasets: Path | None) -> Path:
+    """``datasets``, else config dataset_library, else ``datasets`` beside the
+    reference library ``ref`` names (``_resolve_reference_library``)."""
+    return Path(_resolve_dataset_library(datasets, _resolve_reference_library(ref)))
+
+
 def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
     reflib = _resolve_reference_library(params.ref)
     datasets = _resolve_dataset_library(params.dataset_library, reflib)
@@ -84,7 +97,7 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
         reflib, "pharmgkb", build, [".vcf.gz", ".vcf.bgz", ".tsv.gz"]
     )
     annotation_argument = annotation_vcf or annotation_file
-    test_genome = _test_genome_status(datasets)
+    test_genome = test_genome_status(Path(datasets))
     aadr_file = aadr_2m_path(reflib)
     aadr = {"installed": aadr_file.is_file(), "file": str(aadr_file)}
 
@@ -108,6 +121,14 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
         "somalier": {
             "installed": somalier_resources.installed(reflib),
             "file": str(somalier_resources.folder(reflib)),
+        },
+        "ancestry": {
+            "installed": ancestry_reference.installed(reflib),
+            "file": str(ancestry_reference.path(reflib)),
+        },
+        "gnomadSv": {
+            f"{source}_{build}": gnomad_sv.installed(reflib, source, build)
+            for source, build in gnomad_sv.CATALOGUES
         },
         "ybrowse": _ybrowse_status(reflib),
         "geneMap": {
@@ -161,6 +182,11 @@ def ref_status_values(status: dict[str, Any]) -> dict[str, str]:
         "library.pharmgkbFile": status["pharmgkb"]["file"],
         "library.aadrInstalled": _json_bool(status["aadr"]["installed"]),
         "library.somalierInstalled": _json_bool(status["somalier"]["installed"]),
+        "library.ancestryInstalled": _json_bool(status["ancestry"]["installed"]),
+        **{
+            f"library.gnomadSv_{key}Installed": _json_bool(value)
+            for key, value in status["gnomadSv"].items()
+        },
         "library.ybrowseInstalled": _json_bool(status["ybrowse"]["installed"]),
         **{
             f"library.{key}Installed": _json_bool(
@@ -188,6 +214,9 @@ def print_ref_status(status: dict[str, Any]) -> None:
     human_output(f"Gene maps: {_status_label(status['geneMap']['installed'])}")
     human_output(f"AADR 2M panel: {_path_status(status['aadr'])}")
     human_output(f"somalier sites/1KG: {_path_status(status['somalier'])}")
+    human_output(f"Ancestry reference: {_path_status(status['ancestry'])}")
+    sv_tables = [k for k, v in status["gnomadSv"].items() if v]
+    human_output(f"gnomAD SV tables: {', '.join(sv_tables) or 'not installed'}")
     human_output(f"yBrowse GRCh38: {_path_status(status['ybrowse'])}")
     human_output(f"Microarray targets: {_path_status(status['annotationVcf'])}")
     human_output(f"Test genome: {status['testGenome']['status']}")
@@ -275,14 +304,18 @@ def _ybrowse_status(reflib: str) -> dict[str, Any]:
 
 
 def _vep_cache_status(lib: ReferenceLibrary, reflib: str) -> dict[str, Any]:
+    from wgsextract_cli.commands._vep_engines import configured_engine
+
     path = lib.vep_cache or str(Path(reflib, "vep"))
-    species = str(Path(path, "homo_sapiens"))
+    # The cache of the engine `vep run`, `verify` and `delete` would use.
+    engine = configured_engine([Path(path)], to_run=False)
+    species = str(Path(engine.cache_root(Path(path)), "homo_sapiens"))
     versions = (
         sorted(name for name in os.listdir(species) if Path(species, name).is_dir())
         if Path(species).is_dir()
         else []
     )
-    return {"path": path, "versions": versions}
+    return {"path": path, "engine": engine.name, "versions": versions}
 
 
 def _pharmcat_status(reflib: str) -> dict[str, Any]:
@@ -390,25 +423,6 @@ def _mappability_map_status(reflib: str) -> dict[str, Any]:
     return {
         "installed": all(Path(path).is_file() for path in files.values()),
         "files": files,
-    }
-
-
-def _test_genome_status(datasets: str) -> dict[str, Any]:
-    path = str(Path(datasets, "wgsextract-benchmark-hg19-mini"))
-    partial = str(
-        Path(datasets, ".downloads", "wgsextract-benchmark-hg19-mini.zip.partial")
-    )
-    installed = Path(path).is_dir() and Path(path, "genome-config.toml").is_file()
-    if installed:
-        status = "installed"
-    elif Path(partial).is_file():
-        status = "incomplete"
-    else:
-        status = "missing"
-    return {
-        "installed": installed,
-        "status": status,
-        "path": path,
     }
 
 

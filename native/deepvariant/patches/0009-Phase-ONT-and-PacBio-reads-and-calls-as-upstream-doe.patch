@@ -1,0 +1,913 @@
+From 9818e1166a108a576c480f9e76fa58430627a02e Mon Sep 17 00:00:00 2001
+From: "Mahyar (Mac) McDonald" <22130+theontho@users.noreply.github.com>
+Date: Fri, 13 Nov 2026 13:08:30 -0800
+Subject: [PATCH] Phase ONT and PacBio reads and calls as upstream does
+ (wgsextract #739)
+
+With --phase_reads (the ONT_R104 and PacBio models), the port's
+make_examples phased reads with DirectPhasing only for the small model's
+features, and differed from upstream's make_examples_core.py elsewhere:
+
+- It never wrote the phases into the reads' HP tags, so the pileups were
+  not sorted by haplotype and their haplotype channel was 0.
+- DirectPhasing read the padded region again from the BAM, without the
+  partition's read cap, instead of phasing the partition's own reads. Now,
+  as upstream, alleles are counted over the region padded by 20% (each
+  side) from the reads overlapping the region, DirectPhasing phases those
+  reads with every candidate of the padded region, their HP tags are
+  replaced with the phases (dropped when phasing is skipped above 5,000
+  candidates), and the candidates are cut back to the region. Regions
+  without candidates are phased (and recorded) too.
+- MakeExamplesOptions.realigner_options was empty unless reads were
+  realigned, so the alt-aligned pileups (diff_channels) aligned reads to
+  each alt haplotype with all-zero scores. It now holds the realigner
+  flags' options, as upstream's does.
+- --output_phase_info adds ALT_PS, PS_CONTIG and FIRST_VARIANT_IN_BLOCK to
+  each candidate (upstream's add_phasing_to_candidate), which the fuzzy
+  read-support channel (ONT) uses, and the small model tags a candidate
+  MID=small_model as upstream's does. The port's own per-region PS and
+  is_phased on big-model candidates, which upstream doesn't set, are gone.
+- --output_local_read_phasing writes each phased read's phase by region
+  (regions numbered in reference order across tasks); a failed write fails
+  the stage.
+
+postprocess_variants phases genotypes from ALT_PS (upstream's
+maybe_phase_genotype) and, with --phased_reads_input_path, merges the
+regions' read phases (upstream's merge_phased_reads, now built) and stitches
+phase sets across regions (postprocess_variants.cc's StitchPhaseSets),
+writing PS where upstream's records have it. The merge runs before the calls
+are read, and an unreadable shard or switches file fails the stage rather
+than treating regions as matching. Calls without ALT_PS (the trio path's
+own phasing) keep their phase. run passes these flags for the
+PACBIO and ONT models, as run_deepvariant does.
+
+On a 1 Mb HG002 ONT R10.4.1 slice the examples (images and variant protos),
+the small model's calls (probabilities within 2.4e-6), the read phases and
+the VCF's sites, phased genotypes, filters and phase sets match
+google/deepvariant:1.10.0's.
+---
+ deepvariant/native/CMakeLists.txt        |   2 +
+ deepvariant/native/cli.cc                |  23 +-
+ deepvariant/native/make_examples_main.cc | 394 +++++++++++++++--------
+ deepvariant/native/postprocess_main.cc   | 201 +++++++++++-
+ 4 files changed, 480 insertions(+), 140 deletions(-)
+
+diff --git a/deepvariant/native/CMakeLists.txt b/deepvariant/native/CMakeLists.txt
+index 2d39acc..5ebd47c 100644
+--- a/deepvariant/native/CMakeLists.txt
++++ b/deepvariant/native/CMakeLists.txt
+@@ -332,10 +332,12 @@ target_link_libraries(dv_make_examples_lib PUBLIC
+ add_library(dv_postprocess_lib STATIC
+   "${CMAKE_CURRENT_SOURCE_DIR}/postprocess_main.cc"
+   "${CMAKE_CURRENT_SOURCE_DIR}/haplotypes.cc"
++  "${CMAKE_CURRENT_SOURCE_DIR}/../merge_phased_reads.cc"
+ )
+ target_include_directories(dv_postprocess_lib PUBLIC ${ME_INCLUDE_DIRS})
+ target_compile_options(dv_postprocess_lib PRIVATE ${ME_COMPILE_OPTS})
+ target_link_libraries(dv_postprocess_lib PUBLIC
++  re2::re2
+   dv_tfrecord
+   proto_dv
+   proto_nucleus
+diff --git a/deepvariant/native/cli.cc b/deepvariant/native/cli.cc
+index b806f42..28f7bba 100644
+--- a/deepvariant/native/cli.cc
++++ b/deepvariant/native/cli.cc
+@@ -1060,6 +1060,14 @@ int RunAll(int argc, char** argv) {
+                             expects);
+   }
+ 
++  const bool phase_vcf = [&] {
++    std::string mt = model_type;
++    for (char& c : mt) c = static_cast<char>(std::toupper(c));
++    return mt == "PACBIO" || mt == "ONT";
++  }();
++  const std::string read_phasing_spec =
++      absl::StrCat(tmp_dir, "/read-phasing@1.tsv");
++
+   // ── Stage 1: make_examples (single in-process call, --threads=N) ─────────
+   // Internally fans out N worker threads (each with its own
+   // SamReader / IndexedFastaReader / ExamplesGenerator / SmallModel) writing
+@@ -1109,12 +1117,17 @@ int RunAll(int argc, char** argv) {
+       }
+       me_args.push_back(absl::StrCat("--alt_aligned_pileup=", aap));
+     }
+-    // Phase 9 / Step 4c — forward --use_direct_phasing to make_examples.
+-    // When true, big-model candidates get is_phased + PS info field;
+-    // default false → byte-identical baseline.
+     if (absl::GetFlag(FLAGS_use_direct_phasing)) {
+       me_args.push_back("--use_direct_phasing=true");
+     }
++    // run_deepvariant phases the VCF for the PacBio and ONT models: make_examples
++    // records each candidate's allele phases and the reads' phases, and
++    // postprocess_variants writes phased genotypes with stitched phase sets.
++    if (phase_vcf) {
++      me_args.push_back("--output_phase_info=true");
++      me_args.push_back(
++          absl::StrCat("--output_local_read_phasing=", read_phasing_spec));
++    }
+   }
+ 
+   // ── Stage 2: call_variants ────────────────────────────────────────────────
+@@ -1165,6 +1178,10 @@ int RunAll(int argc, char** argv) {
+     }
+     // Per-model postprocess flags (e.g. WES multiallelic_mode=min).
+     for (const auto& f : PostprocessModelFlags(model_type)) pp_args.push_back(f);
++    if (phase_vcf) {
++      pp_args.push_back(
++          absl::StrCat("--phased_reads_input_path=", read_phasing_spec));
++    }
+   }
+ 
+   // --dry_run prints each stage as a command (run_deepvariant's format), so a
+diff --git a/deepvariant/native/make_examples_main.cc b/deepvariant/native/make_examples_main.cc
+index 8c35f70..ada09e1 100644
+--- a/deepvariant/native/make_examples_main.cc
++++ b/deepvariant/native/make_examples_main.cc
+@@ -15,6 +15,7 @@
+ #include <cstdint>
+ #include <cstdio>
+ #include <cstdlib>
++#include <filesystem>
+ #include <fstream>
+ #include <limits>
+ #include <memory>
+@@ -77,16 +78,22 @@ ABSL_FLAG(double, p_error, 1e-3,
+ ABSL_FLAG(bool, include_med_dp, false,
+           "Emit MED_DP info field in gVCF rows (median DP per block). "
+           "Mirrors upstream's --include_med_dp.");
++ABSL_FLAG(std::string, output_local_read_phasing, "",
++          "Write each phased read's phase per region as a TSV "
++          "(fragment_name, phase, region_order), as upstream's make_examples "
++          "--output_local_read_phasing does; postprocess_variants "
++          "--phased_reads_input_path stitches phase sets across regions with "
++          "it. A name@N.tsv spec writes shard --task_id of N.");
++ABSL_FLAG(bool, output_phase_info, false,
++          "Add upstream's phasing info fields (ALT_PS, PS_CONTIG, "
++          "FIRST_VARIANT_IN_BLOCK) to each candidate after DirectPhasing, as "
++          "make_examples --output_phase_info does. The fuzzy read-support "
++          "channel and postprocess_variants' phased genotypes use them.");
+ ABSL_FLAG(bool, use_direct_phasing, false,
+-          "Phase 9 / Step 4 — run upstream's DirectPhasing algorithm "
+-          "(deepvariant/direct_phasing.{h,cc}, Boost-graph max-weight "
+-          "phasing) on candidates+reads per region, mark each candidate's "
+-          "VariantCall.is_phased and info[\"PS\"] before TFRecord emit. "
+-          "Default false to preserve baseline (matches our shipping "
+-          "default; upstream's Python default is true). Wired in both "
+-          "the trio (~line 1731) and solo (~line 2210) worker paths; "
+-          "PS info field is populated from the per-region "
+-          "position_to_ps map (commit fbead42f).");
++          "Run upstream's DirectPhasing (deepvariant/direct_phasing.{h,cc}) "
++          "on each region's reads, as --phase_reads does. In the trio path "
++          "it also marks each candidate's VariantCall.is_phased and "
++          "info[\"PS\"].");
+ ABSL_FLAG(bool, enable_methylation_calling, false,
+           "Phase 9 / Step 2 — read MM/ML SAM tags for base "
+           "modifications (5mC). When true, AlleleCounter computes "
+@@ -402,7 +409,97 @@ using namespace learning::genomics::deepvariant;  // NOLINT
+ 
+ namespace {
+ 
++// dv_constants.PHASE_READS_REGION_PADDING_PCT and --phase_max_candidates'
++// default.
++constexpr int64_t kPhaseReadsRegionPaddingPct = 20;
++constexpr int64_t kPhaseMaxCandidates = 5000;
++
++// Upstream's make_examples_core.py constants for inferring an allele's phase
++// from the phases of the reads that support it.
++constexpr int kMinDiffReadsForAllelePhase = 3;
++constexpr int kMaxNumReadsForOppositePhase = 2;
++
++int PhasedGenotypeFromCounts(int phase_1_count, int phase_2_count) {
++  if (phase_1_count > phase_2_count &&
++      phase_1_count - phase_2_count > kMinDiffReadsForAllelePhase &&
++      phase_2_count <= kMaxNumReadsForOppositePhase) {
++    return 1;
++  }
++  if (phase_2_count > phase_1_count &&
++      phase_2_count - phase_1_count > kMinDiffReadsForAllelePhase &&
++      phase_1_count <= kMaxNumReadsForOppositePhase) {
++    return 2;
++  }
++  return 0;
++}
++
++// Port of upstream's RegionProcessor.add_phasing_to_candidate
++// (make_examples_core.py): ALT_PS holds a phase (0, 1 or 2) for REF and each
++// alt allele, from DirectPhasing's phased variants where it phased the
++// candidate and otherwise from the phases of the reads supporting each
++// allele. `read_phases` holds the reads phased 1 or 2.
++void AddPhasingToCandidates(
++    const std::vector<
++        ::learning::genomics::deepvariant::PhasedVariant>& phased_variants,
++    const std::unordered_map<std::string, int8_t>& read_phases,
++    const std::string& phase_contig,
++    std::vector<DeepVariantCall>* candidates) {
++  size_t pv_index = 0;
++  for (auto& candidate : *candidates) {
++    auto* variant = candidate.mutable_variant();
++    const int n_alleles = variant->alternate_bases_size() + 1;
++    if (pv_index < phased_variants.size() &&
++        variant->start() == phased_variants[pv_index].position) {
++      const auto& pv = phased_variants[pv_index];
++      // Upstream names REF "REF" here, as DirectPhasing does.
++      std::vector<std::string> alleles = {"REF"};
++      for (const auto& alt : variant->alternate_bases()) alleles.push_back(alt);
++      const auto alt_1 = std::find(alleles.begin(), alleles.end(),
++                                   pv.phase_1_bases);
++      const auto alt_2 = std::find(alleles.begin(), alleles.end(),
++                                   pv.phase_2_bases);
++      if (alt_1 != alleles.end() && alt_2 != alleles.end()) {
++        std::vector<int> phased_genotype(n_alleles, 0);
++        phased_genotype[alt_1 - alleles.begin()] = 1;
++        phased_genotype[alt_2 - alleles.begin()] = 2;
++        nucleus::SetInfoField("ALT_PS", phased_genotype, variant);
++        nucleus::SetInfoField("PS_CONTIG", phase_contig, variant);
++        nucleus::SetInfoField("FIRST_VARIANT_IN_BLOCK", pv.is_first_in_block,
++                              variant);
++      }
++      ++pv_index;
++      continue;
++    }
++    auto count = [&](const std::string& read_name, int* phases) {
++      auto it = read_phases.find(read_name);
++      if (it != read_phases.end()) ++phases[it->second];
++    };
++    std::vector<int> phased_genotype(n_alleles, 0);
++    for (int allele = 0; allele < n_alleles; ++allele) {
++      int phases[3] = {0, 0, 0};
++      if (allele == 0) {
++        for (const auto& info : candidate.ref_support_ext().read_infos()) {
++          count(info.read_name(), phases);
++        }
++      } else {
++        auto it = candidate.allele_support().find(
++            variant->alternate_bases(allele - 1));
++        if (it != candidate.allele_support().end()) {
++          for (const auto& name : it->second.read_names()) count(name, phases);
++        }
++      }
++      phased_genotype[allele] = PhasedGenotypeFromCounts(phases[1], phases[2]);
++    }
++    nucleus::SetInfoField("ALT_PS", phased_genotype, variant);
++    nucleus::SetInfoField("PS_CONTIG", phase_contig, variant);
++    nucleus::SetInfoField("FIRST_VARIANT_IN_BLOCK", false, variant);
++  }
++}
++
+ // Build the MakeExamplesOptions proto for calling mode from flags.
++::learning::genomics::deepvariant::RealignerOptions
++RealignerOptionsFromFlags();
++
+ MakeExamplesOptions BuildOptions(const std::string& sample_name,
+                                  int task_id, int num_shards) {
+   MakeExamplesOptions opts;
+@@ -432,6 +529,10 @@ MakeExamplesOptions BuildOptions(const std::string& sample_name,
+   // window in every mode. Without it, a read whose only overlap with the
+   // window is a long deletion becomes a blank row sorted by its start.
+   opts.set_trim_reads_for_pileup(true);
++  // Upstream fills realigner_options from the realigner flags whether or not
++  // reads are realigned: alt-aligned pileups align reads to each alt
++  // haplotype with its aln_config. Left empty, every score was 0.
++  *opts.mutable_realigner_options() = RealignerOptionsFromFlags();
+   {
+     const bool split = absl::GetFlag(FLAGS_split_skip_reads);
+     if (split) opts.mutable_realigner_options()->set_split_skip_reads(true);
+@@ -1372,6 +1473,31 @@ int RunMakeExamples(int argc, char** argv) {
+   // ── Atomic region cursor: workers fetch_add to claim regions. ────────────
+   std::atomic<size_t> next_region{0};
+ 
++  // Regions are numbered in reference order across all tasks (tasks take
++  // contiguous blocks of them), so postprocess_variants' merge of the read
++  // phases, which walks region numbers in order, meets them in that order.
++  int64_t region_order_offset = 0;
++  for (int t = 0; t < task_id; ++t) {
++    region_order_offset += ShardRegions(partitioned, t, num_shards).size();
++  }
++  std::ofstream read_phasing_out;
++  std::mutex read_phasing_mu;
++  {
++    const std::string spec = absl::GetFlag(FLAGS_output_local_read_phasing);
++    if (!spec.empty()) {
++      const std::string path = ShardName(spec, task_id);
++      const auto parent = std::filesystem::path(path).parent_path();
++      std::error_code ec;
++      if (!parent.empty()) std::filesystem::create_directories(parent, ec);
++      read_phasing_out.open(path);
++      if (!read_phasing_out) {
++        LOG(ERROR) << "Cannot write " << path;
++        return 1;
++      }
++      read_phasing_out << "fragment_name\tphase\tregion_order\n";
++    }
++  }
++
+   // Per-thread output paths. We use the standard `name-NNNNN-of-NNNNN`
+   // shard naming so downstream stages that already understand the `@N`
+   // shard spec (call_variants / postprocess via TFRecordReader) can read
+@@ -2173,9 +2299,35 @@ int RunMakeExamples(int argc, char** argv) {
+     }
+     DV_SIGNPOST_INTERVAL_END(Realigner);
+ 
++    // With --phase_reads, upstream (make_examples_core.py, region
++    // processing) counts alleles over the region padded on each side by
++    // PHASE_READS_REGION_PADDING_PCT (20%) of its length, from the same
++    // reads (those overlapping the unpadded region). DirectPhasing then
++    // phases those reads with every candidate of the padded region, and the
++    // candidates are cut back to the region afterwards.
++    const bool phase_reads = opts.phase_reads();
++    nucleus::genomics::v1::Range effective_region = region;
++    if (phase_reads) {
++      const int64_t pad =
++          (static_cast<int64_t>(region.end()) - region.start()) *
++          kPhaseReadsRegionPaddingPct / 100;
++      auto contig_or = ref_reader->Contig(region.reference_name());
++      const int64_t contig_n = contig_or.ok()
++          ? contig_or.ValueOrDie()->n_bases()
++          : static_cast<int64_t>(region.end()) + pad;
++      effective_region.set_start(
++          std::max<int64_t>(0, static_cast<int64_t>(region.start()) - pad));
++      effective_region.set_end(
++          std::min<int64_t>(contig_n, static_cast<int64_t>(region.end()) + pad));
++    }
++    const int left_padding =
++        static_cast<int>(region.start() - effective_region.start());
++    const int right_padding =
++        static_cast<int>(effective_region.end() - region.end());
++
+     // First pass: find candidate positions (no ref-read tracking yet).
+     DV_SIGNPOST_INTERVAL_BEGIN(AlleleCounterProbe, region_str.c_str());
+-    AlleleCounter probe(ref_reader.get(), region, {},
++    AlleleCounter probe(ref_reader.get(), effective_region, {},
+                         opts.allele_counter_options());
+     // Upstream counts alleles over in_memory_sam_reader.query(region): the
+     // realigned reads that still overlap the region. A read the realigner
+@@ -2192,7 +2344,7 @@ int RunMakeExamples(int argc, char** argv) {
+     // of whether candidates exist). Postprocess merges these with the
+     // variant TFRecord via nucleus::MergeAndWriteVariantsAndNonVariants.
+     if (gvcf_writer) {
+-      auto summaries = probe.SummaryCounts(0, 0);
++      auto summaries = probe.SummaryCounts(left_padding, right_padding);
+       auto gvcf_rows = MakeGvcfRows(
+           summaries, sample_name,
+           absl::GetFlag(FLAGS_p_error),
+@@ -2207,7 +2359,9 @@ int RunMakeExamples(int argc, char** argv) {
+     }
+ 
+     auto probe_candidates = caller.CallsFromAlleleCounter(probe);
+-    if (probe_candidates.empty()) continue;
++    // With --phase_reads upstream phases (and records) a region's reads
++    // even when it has no candidates.
++    if (probe_candidates.empty() && !phase_reads) continue;
+ 
+     // Second pass: rerun AlleleCounter with the candidate positions known
+     // up-front. AlleleCounter only retains REF-supporting reads in its
+@@ -2225,8 +2379,8 @@ int RunMakeExamples(int argc, char** argv) {
+         candidate_positions.end());
+ 
+     DV_SIGNPOST_INTERVAL_BEGIN(AlleleCounterMain, region_str.c_str());
+-    AlleleCounter counter(ref_reader.get(), region, candidate_positions,
+-                          opts.allele_counter_options());
++    AlleleCounter counter(ref_reader.get(), effective_region,
++                          candidate_positions, opts.allele_counter_options());
+     for (const auto& r : working_reads) {
+       if (nucleus::ReadOverlapsRegion(r, region)) counter.Add(r, sample_name);
+     }
+@@ -2234,112 +2388,97 @@ int RunMakeExamples(int argc, char** argv) {
+ 
+     std::vector<DeepVariantCall> candidates =
+         caller.CallsFromAlleleCounter(counter);
+-    if (candidates.empty()) continue;
++    if (candidates.empty() && !phase_reads) continue;
+ 
+-    total_candidates += candidates.size();
+-
+-    // Phase 5.5d/14 — DirectPhasing runs BEFORE small_model dispatch so the
+-    // 106-feature haplotype-expanded small_model (PacBio/ONT) sees the same
+-    // per-read phase that upstream's FeatureEncoder does. Upstream order
+-    // (make_examples_core.py):
+-    //   1. direct_phasing.phase_reads(candidates, reads) → read_phases dict
+-    //   2. small_model invoked with FeatureEncoder(haplotype, read_phases)
+-    //   3. variant phasing via dp.GetPhasedVariants() → is_phased + PS
+-    // Pre-fix: small_model used BAM HP tags (whatshap haplotag from BAM
+-    // PG line) — these can disagree with DirectPhasing's per-region output
+-    // at phase-block boundaries. Sites where BAM HP=0 (unphased) but
+-    // DirectPhasing assigns HP=1/2 produce different 106-feature vectors,
+-    // flipping small_model GQ across the dispatch threshold.
+-    // After-fix: DP output keyed by `fragment_name + "/" + read_number`
+-    // (matches allelecounter.cc::ReadKey) overrides BAM HP tags. Only run
+-    // when --use_direct_phasing OR --small_model_use_haplotypes is set;
+-    // otherwise we'd waste cycles on WGS/WES paths where it has no effect.
++    // DirectPhasing runs before the small model, as upstream's does
++    // (make_examples_core.py, candidates_in_region): it phases the reads
++    // overlapping the padded region (here the same reads as the pileups', in
++    // the same order) with every candidate of the padded region, and
++    // replaces each read's HP tag with its phase (0, 1 or 2). The pileups
++    // sort rows and fill the haplotype channel from that tag, and the
++    // 106-feature small model splits its counts by it.
+     ::learning::genomics::deepvariant::DirectPhasing dp(
+         opts.direct_phasing_options());
+     bool dp_ran = false;
+     std::unordered_map<std::string, int8_t> read_hp_tags;
+     {
+       const bool need_phasing =
+-          absl::GetFlag(FLAGS_use_direct_phasing) ||
+-          absl::GetFlag(FLAGS_small_model_use_haplotypes);
++          phase_reads || absl::GetFlag(FLAGS_use_direct_phasing);
+       if (need_phasing) {
+-        // BUG FIX (chr20:23.97-23.99M PacBio FN cluster, 0e15ddb2 diagnosis):
+-        // upstream make_examples_core.py:2308-2317 expands the region by 20%
+-        // (`PHASE_READS_REGION_PADDING_PCT = 20`) before fetching reads for
+-        // DirectPhasing. Reads spanning region boundaries provide the
+-        // SNP-graph context that lets DP correctly split reads across HP=1
+-        // vs HP=2 in dense haplotype blocks. Without padding, DP collapses
+-        // all 49 alt-supporting reads at chr20:23973486 onto a single
+-        // haplotype, so the small_model sees "100% reads on one HP, other
+-        // HP empty" → predicts homref (Docker correctly splits → predicts
+-        // HET).
+-        //
+-        // Fix: re-fetch reads from a 20%-padded region for DP. We do NOT
+-        // change `working_reads` itself (still used downstream for the
+-        // candidate-emitting AlleleCounter, pileup encoder, etc.) — only
+-        // the DP input set. Upstream uses raw BAM reads (not realigned)
+-        // for DP; we mirror that by re-Querying the SAM reader.
+-        const int64_t region_len =
+-            static_cast<int64_t>(region.end()) -
+-            static_cast<int64_t>(region.start());
+-        const int64_t pad = std::max<int64_t>(1, region_len * 20 / 100);
+-        // contig_n in this scope: re-derive locally (the outer realigner
+-        // block's contig_n is out of scope here when realigner is disabled).
+-        auto contig_or_dp = ref_reader->Contig(region.reference_name());
+-        const int64_t contig_n_dp =
+-            contig_or_dp.ok()
+-                ? contig_or_dp.ValueOrDie()->n_bases()
+-                : static_cast<int64_t>(region.end()) + pad;
+-        nucleus::genomics::v1::Range padded_region;
+-        padded_region.set_reference_name(region.reference_name());
+-        padded_region.set_start(std::max<int64_t>(0,
+-            static_cast<int64_t>(region.start()) - pad));
+-        padded_region.set_end(std::min<int64_t>(contig_n_dp,
+-            static_cast<int64_t>(region.end()) + pad));
+-
+-        std::vector<nucleus::genomics::v1::Read> phasing_reads;
+-        auto phasing_or = sam_reader->Query(padded_region);
+-        if (phasing_or.ok()) {
+-          auto& phasing_iter = phasing_or.ValueOrDie();
+-          nucleus::genomics::v1::Read tmp;
+-          while (true) {
+-            auto next = phasing_iter->Next(&tmp);
+-            if (!next.ok() || !next.ValueOrDie()) break;
+-            phasing_reads.push_back(std::move(tmp));
++        std::vector<nucleus::genomics::v1::Read*> reads_to_phase;
++        for (auto& r : working_reads) {
++          if (nucleus::ReadOverlapsRegion(r, effective_region)) {
++            reads_to_phase.push_back(&r);
+           }
+-          phasing_iter->Release().IgnoreError();
+         }
+-        // Defensive fallback: if the padded query returned nothing (e.g.,
+-        // sam_reader transient failure), fall through to working_reads.
+-        const auto& dp_reads_src =
+-            phasing_reads.empty() ? working_reads : phasing_reads;
+-
+-        std::vector<
+-            nucleus::ConstProtoPtr<const nucleus::genomics::v1::Read>>
+-            dp_read_ptrs;
+-        dp_read_ptrs.reserve(dp_reads_src.size());
+-        for (const auto& r : dp_reads_src) dp_read_ptrs.emplace_back(&r);
+-        auto so = dp.PhaseReads(absl::MakeSpan(candidates),
++        // Upstream drops existing HP values even when it skips phasing, so
++        // the BAM's own haplotags never reach the pileups.
++        for (auto* r : reads_to_phase) {
++          (*r->mutable_info())["HP"].clear_values();
++        }
++        if (static_cast<int64_t>(candidates.size()) > kPhaseMaxCandidates) {
++          LOG(INFO) << "Skip phasing: " << candidates.size()
++                    << " candidates in " << region_str;
++        } else {
++          std::vector<
++              nucleus::ConstProtoPtr<const nucleus::genomics::v1::Read>>
++              dp_read_ptrs;
++          dp_read_ptrs.reserve(reads_to_phase.size());
++          for (auto* r : reads_to_phase) dp_read_ptrs.emplace_back(r);
++          auto so = dp.PhaseReads(absl::MakeSpan(candidates),
+                                   absl::MakeSpan(dp_read_ptrs));
+-        if (so.ok()) {
+-          dp_ran = true;
+-          const std::vector<int>& phases = so.ValueOrDie();
+-          // phases[i] corresponds to dp_reads_src[i]: 0/1/2.
+-          for (size_t i = 0;
+-               i < dp_reads_src.size() && i < phases.size(); ++i) {
+-            if (phases[i] == 0) continue;  // HP_0 default; skip to save memory
+-            const auto& r = dp_reads_src[i];
+-            read_hp_tags[r.fragment_name() + "/" +
+-                         std::to_string(r.read_number())] =
+-                static_cast<int8_t>(phases[i]);
++          if (so.ok()) {
++            dp_ran = true;
++            const std::vector<int>& phases = so.ValueOrDie();
++            for (size_t i = 0;
++                 i < reads_to_phase.size() && i < phases.size(); ++i) {
++              auto* r = reads_to_phase[i];
++              (*r->mutable_info())["HP"].add_values()->set_int_value(
++                  phases[i]);
++              if (phases[i] == 0) continue;  // absent means HP 0
++              read_hp_tags[r->fragment_name() + "/" +
++                           std::to_string(r->read_number())] =
++                  static_cast<int8_t>(phases[i]);
++            }
++            const int64_t region_order = region_order_offset + i + 1;
++            if (read_phasing_out.is_open()) {
++              std::string lines;
++              for (size_t r = 0;
++                   r < reads_to_phase.size() && r < phases.size(); ++r) {
++                absl::StrAppend(&lines, reads_to_phase[r]->fragment_name(),
++                                "/", reads_to_phase[r]->read_number(), "\t",
++                                phases[r], "\t", region_order, "\n");
++              }
++              std::lock_guard<std::mutex> lock(read_phasing_mu);
++              read_phasing_out << lines;
++            }
++            if (absl::GetFlag(FLAGS_output_phase_info)) {
++              AddPhasingToCandidates(
++                  dp.GetPhasedVariants(), read_hp_tags,
++                  absl::StrCat(opts.task_id(), "-", region_order),
++                  &candidates);
++            }
++          } else {
++            LOG(WARNING) << "DirectPhasing failed in " << region_str << ": "
++                         << so.status();
+           }
+         }
+       }
++      if (phase_reads) {
++        candidates.erase(
++            std::remove_if(candidates.begin(), candidates.end(),
++                           [&](const DeepVariantCall& c) {
++                             return c.variant().start() < region.start() ||
++                                    c.variant().start() >= region.end();
++                           }),
++            candidates.end());
++      }
+       // Fallback: if DP didn't run or failed and we still need haplotype
+       // features, use BAM HP tags (whatshap haplotag in PacBio BAMs).
+       // Guards against regression for users running --small_model_use_haplotypes
+       // without --use_direct_phasing on a pre-haplotagged BAM.
+-      if (!dp_ran && absl::GetFlag(FLAGS_small_model_use_haplotypes)) {
++      if (!phase_reads && !dp_ran &&
++          absl::GetFlag(FLAGS_small_model_use_haplotypes)) {
+         for (const auto& r : working_reads) {
+           auto hp_it = r.info().find("HP");
+           if (hp_it == r.info().end() ||
+@@ -2354,6 +2493,9 @@ int RunMakeExamples(int argc, char** argv) {
+       }
+     }
+ 
++    if (candidates.empty()) continue;
++    total_candidates += candidates.size();
++
+     // Small-model first-pass dispatch. Mirror of upstream
+     // `SmallModelVariantCaller.call_variants` + `make_small_model_examples.
+     // get_set_of_allele_indices`:
+@@ -2418,6 +2560,14 @@ int RunMakeExamples(int argc, char** argv) {
+             // emitted with both indices so postprocess merge can route it
+             // correctly.
+             CallVariantsOutput cvo = MakeSmallModelCvo(c, idx_set, probs);
++            // Upstream's small model tags the candidate itself, so a big-model
++            // example for another alt set of it carries MID=small_model too
++            // (call_variants then overwrites it).
++            if (c.variant().calls_size() > 0) {
++              nucleus::SetInfoField(
++                  "MID", std::string("small_model"),
++                  c.mutable_variant()->mutable_calls(0));
++            }
+             std::string serialized;
+             cvo.SerializeToString(&serialized);
+             small_cvo_writer->WriteRecord(serialized);
+@@ -2443,38 +2593,6 @@ int RunMakeExamples(int argc, char** argv) {
+     DV_SIGNPOST_INTERVAL_END(SmallModel);
+     if (big_candidates.empty()) continue;
+ 
+-    // Phase 9 / Step 4b + 5.5d/14 — variant phasing now reuses the `dp`
+-    // object built before small_model dispatch (no second PhaseReads
+-    // call). Walks GetPhasedVariants() to mark each big_candidate's
+-    // VariantCall.is_phased = true and emit PS info field. The phase
+-    // set ID is per-region (= start of block); cross-region stitching
+-    // is a follow-up that mirrors upstream's stitch_phase_sets.
+-    if (dp_ran && absl::GetFlag(FLAGS_use_direct_phasing)) {
+-      const auto phased = dp.GetPhasedVariants();
+-      // Walk in order; track current phase set (= start of block).
+-      int64_t current_ps = -1;
+-      std::map<int64_t, int64_t> position_to_ps;
+-      for (const auto& pv : phased) {
+-        if (pv.is_first_in_block) current_ps = pv.position;
+-        if (current_ps >= 0 && pv.phase_1_bases != pv.phase_2_bases) {
+-          position_to_ps[pv.position] = current_ps;
+-        }
+-      }
+-      for (auto& c : big_candidates) {
+-        const int64_t pos = c.variant().start();
+-        auto it = position_to_ps.find(pos);
+-        if (it == position_to_ps.end()) continue;
+-        if (c.variant().calls_size() == 0) continue;
+-        auto* call = c.mutable_variant()->mutable_calls(0);
+-        call->set_is_phased(true);
+-        // Phase 9 / Step 4c — emit PS info field. PS = position of
+-        // first variant in block (1-based, VCF convention). Mirrors
+-        // upstream's stitch_phase_sets first-pass per-region output.
+-        const int ps_id = static_cast<int>(it->second + 1);
+-        nucleus::SetInfoField("PS", ps_id, call);
+-      }
+-    }
+-
+     // Wrap in ConstProtoPtr for ExamplesGenerator API.
+     std::vector<nucleus::ConstProtoPtr<DeepVariantCall>> cand_ptrs;
+     cand_ptrs.reserve(big_candidates.size());
+@@ -2533,6 +2651,14 @@ int RunMakeExamples(int argc, char** argv) {
+     }
+     for (auto& w : workers) w.join();
+   }
++  if (read_phasing_out.is_open()) {
++    read_phasing_out.close();
++    if (read_phasing_out.fail()) {
++      LOG(ERROR) << "Writing " << absl::GetFlag(FLAGS_output_local_read_phasing)
++                 << " failed";
++      return 1;
++    }
++  }
+ 
+   // ── Sum per-thread stats ─────────────────────────────────────────────────
+   WorkerStats agg;
+diff --git a/deepvariant/native/postprocess_main.cc b/deepvariant/native/postprocess_main.cc
+index aebcf68..536a4db 100644
+--- a/deepvariant/native/postprocess_main.cc
++++ b/deepvariant/native/postprocess_main.cc
+@@ -21,6 +21,7 @@
+ #include <climits>
+ #include <cmath>
+ #include <cstdint>
++#include <fstream>
+ #include <map>
+ #include <memory>
+ #include <set>
+@@ -28,6 +29,7 @@
+ #include <utility>
+ #include <vector>
+ 
++#include "deepvariant/merge_phased_reads.h"
+ #include "deepvariant/native/haplotypes.h"
+ #include "deepvariant/native/tfrecord.h"
+ #include "deepvariant/protos/deepvariant.pb.h"
+@@ -99,6 +101,15 @@ ABSL_FLAG(bool, process_somatic, false,
+ ABSL_FLAG(std::string, multiallelic_mode, "product",
+           "Multi-allelic CVO fusion: product (WGS default) or min (WES).");
+ 
++ABSL_FLAG(std::string, phased_reads_input_path, "",
++          "Read phases from make_examples --output_local_read_phasing "
++          "(name@N.tsv). With it, phased genotypes get a phase set (PS) "
++          "stitched across make_examples regions, as upstream's "
++          "postprocess_variants --phased_reads_input_path does.");
++ABSL_FLAG(std::string, phased_reads_switches_output_path, "",
++          "Where to write each region's phase switch status; defaults to "
++          "phased_reads_switches.tsv beside --phased_reads_input_path.");
++
+ namespace deepvariant {
+ 
+ using learning::genomics::deepvariant::CallVariantsOutput;
+@@ -109,6 +120,148 @@ namespace {
+ 
+ constexpr int kMaxPhred = 99;
+ 
++// Port of upstream postprocess_variants.py:maybe_phase_genotype. ALT_PS
++// (make_examples --output_phase_info) holds a haplotype (0, 1 or 2) for REF
++// and each of the candidate's alt alleles; a genotype whose two alleles sit
++// on different haplotypes is phased and ordered by haplotype. As upstream,
++// ALT_PS keeps the candidate's allele indexing when alleles were pruned.
++void MaybePhaseGenotype(const Variant& variant, VariantCall* call) {
++  const auto ps_contig = variant.info().find("PS_CONTIG");
++  const auto alt_ps = variant.info().find("ALT_PS");
++  if (ps_contig == variant.info().end() ||
++      ps_contig->second.values_size() == 0 ||
++      ps_contig->second.values(0).string_value().empty() ||
++      alt_ps == variant.info().end() || alt_ps->second.values_size() == 0) {
++    return;  // the trio path's own is_phased and PS stay as they are
++  }
++  call->set_is_phased(false);
++  const auto& phase_info = alt_ps->second.values();
++  const int g0 = call->genotype(0);
++  const int g1 = call->genotype(1);
++  if (std::max(g0, g1) >= phase_info.size() || std::min(g0, g1) < 0) {
++    LOG(WARNING) << "Genotype " << g0 << "/" << g1
++                 << " is out of range for phase info at "
++                 << variant.reference_name() << ":" << variant.start() + 1
++                 << ". Phasing was not applied.";
++    return;
++  }
++  const int h0 = phase_info.Get(g0).int_value();
++  const int h1 = phase_info.Get(g1).int_value();
++  if (h0 == 0 || h1 == 0 || h0 == h1) return;
++  const int genotype[2] = {g0, g1};
++  call->clear_genotype();
++  call->add_genotype(genotype[h0 - 1]);
++  call->add_genotype(genotype[h1 - 1]);
++  call->set_is_phased(true);
++}
++
++// Port of upstream postprocess_variants.cc's phase-set stitching
++// (StitchPhaseSets): walks the calls in reference order, continues a phase
++// set across make_examples regions unless the region starts a new block or
++// shares too few phased reads with the previous one, flips the genotype of
++// a region whose read phases were switched, and writes PS.
++enum class StitchingStatus { kMatch = 0, kSwitch = 1, kNotEnoughOverlap = 2 };
++
++struct PhaseSetInfo {
++  std::string shard = "-1";
++  std::string region = "-1";
++  StitchingStatus status = StitchingStatus::kMatch;
++  bool is_first_variant_in_phase_set = false;
++  int64_t phase_set_start = -1;
++  bool was_phased_successfully = false;
++  bool is_null() const { return shard == "-1" && region == "-1"; }
++};
++
++class PhaseSetStitcher {
++ public:
++  explicit PhaseSetStitcher(const std::string& switches_path) {
++    std::ifstream in(switches_path);
++    std::string line;
++    while (std::getline(in, line)) {
++      if (line.empty()) continue;
++      std::vector<std::string> parts = absl::StrSplit(line, '\t');
++      int status = 0;
++      CHECK(parts.size() == 3 && absl::SimpleAtoi(parts[2], &status))
++          << "Invalid line in switches file: " << line;
++      status_[{parts[0], parts[1]}] = status;
++    }
++    LOG(INFO) << "Loaded " << status_.size() << " entries from switches file.";
++  }
++
++  void Stitch(Variant* variant) {
++    PhaseSetInfo info = Next(*variant);
++    MaybeSwapPhase(variant, info);
++    previous_ = info;
++    if (variant->calls(0).is_phased()) {
++      previous_.was_phased_successfully = true;
++    }
++  }
++
++ private:
++  PhaseSetInfo Next(const Variant& variant) const {
++    const auto it = variant.info().find("PS_CONTIG");
++    if (it == variant.info().end() || it->second.values_size() == 0) {
++      return previous_;
++    }
++    std::vector<std::string> parts =
++        absl::StrSplit(it->second.values(0).string_value(), '-');
++    CHECK_EQ(parts.size(), 2u)
++        << "Invalid PS_CONTIG: " << it->second.values(0).string_value();
++    const auto status_it = status_.find({parts[0], parts[1]});
++    const StitchingStatus status = static_cast<StitchingStatus>(
++        status_it == status_.end() ? 0 : status_it->second);
++    const auto new_set = [&] {
++      PhaseSetInfo info;
++      info.shard = parts[0];
++      info.region = parts[1];
++      info.status = status;
++      info.is_first_variant_in_phase_set = true;
++      info.phase_set_start = variant.start();
++      return info;
++    };
++    if (previous_.is_null()) return new_set();
++    if (parts[0] == previous_.shard && parts[1] == previous_.region) {
++      PhaseSetInfo info = previous_;
++      if (previous_.was_phased_successfully) {
++        info.is_first_variant_in_phase_set = false;
++      }
++      return info;
++    }
++    const auto first = variant.info().find("FIRST_VARIANT_IN_BLOCK");
++    const bool first_in_block = first != variant.info().end() &&
++                                first->second.values_size() > 0 &&
++                                first->second.values(0).bool_value();
++    if (first_in_block || status == StitchingStatus::kNotEnoughOverlap) {
++      return new_set();
++    }
++    PhaseSetInfo info;
++    info.shard = previous_.shard;
++    info.region = previous_.region;
++    info.status = status;
++    info.phase_set_start = previous_.phase_set_start;
++    return info;
++  }
++
++  static void MaybeSwapPhase(Variant* variant, const PhaseSetInfo& info) {
++    if (!variant->info().count("PS_CONTIG") ||
++        !variant->info().count("ALT_PS") || !variant->calls(0).is_phased()) {
++      return;
++    }
++    VariantCall* call = variant->mutable_calls(0);
++    if (info.status == StitchingStatus::kSwitch &&
++        call->genotype(0) != call->genotype(1)) {
++      const int g0 = call->genotype(0);
++      call->set_genotype(0, call->genotype(1));
++      call->set_genotype(1, g0);
++    }
++    nucleus::SetInfoField("PS", static_cast<int>(info.phase_set_start + 1),
++                          call);
++  }
++
++  std::map<std::pair<std::string, std::string>, int> status_;
++  PhaseSetInfo previous_;
++};
++
+ // Mirror of nucleus/util/variant_utils.py:simplify_alleles — strips
+ // the longest common POSTFIX shared by all (ref, alts), leaving at
+ // least 1 base on every allele. Then updates variant.reference_bases,
+@@ -417,11 +570,11 @@ nucleus::genomics::v1::VcfHeader MakeVcfHeader(
+       {"DP",     "1", "Integer", "Read depth"},
+       {"AD",     "R", "Integer", "Allelic depths for ref and alt alleles"},
+       {"VAF",    "A", "Float",   "Variant allele fractions"},
++      // Phased genotypes' phase set (with --phased_reads_input_path), where
++      // upstream's records have it.
++      {"PS",     "1", "Integer", "Phase set"},
+       {"MID",    "1", "String",  "Model identifier (small_model | deepvariant)"},
+       {"PL",     "G", "Integer", "Phred-scaled genotype likelihoods"},
+-      // Phase 9 / Step 4c — emitted only when --use_direct_phasing=true;
+-      // declared unconditionally for consistent header schema.
+-      {"PS",     "1", "Integer", "Phase set ID (1-based position of block start)"},
+   };
+   for (const auto& f : fmts) {
+     auto* fi = hdr.add_formats();
+@@ -484,6 +637,41 @@ int RunPostprocessVariants(int argc, char** argv) {
+   }
+ 
+   // ── Read the CallVariantsOutput records, by contig ─────────────────────
++  // Upstream merges the regions' read phases first, recording whether each
++  // region's phases match or are switched against the previous region's.
++  // The merge holds every read phase (about 4 GB for a 30x ONT genome), so it
++  // runs, and frees them, before the calls are read.
++  std::unique_ptr<PhaseSetStitcher> stitcher;
++  if (const std::string phased_reads =
++          absl::GetFlag(FLAGS_phased_reads_input_path);
++      !phased_reads.empty()) {
++    std::string switches = absl::GetFlag(FLAGS_phased_reads_switches_output_path);
++    if (switches.empty()) {
++      const size_t slash = phased_reads.rfind('/');
++      switches = absl::StrCat(
++          slash == std::string::npos ? "" : phased_reads.substr(0, slash + 1),
++          "phased_reads_switches.tsv");
++    }
++    // The merge skips shards it can't read and treats a region it has no
++    // switch status for as matching, so check both.
++    for (const auto& shard : ExpandShards(phased_reads)) {
++      if (!std::ifstream(shard)) {
++        LOG(ERROR) << "Cannot read phased reads file " << shard;
++        return 1;
++      }
++    }
++    {
++      ::learning::genomics::deepvariant::Merger merger;
++      merger.LoadFromFiles(phased_reads);
++      merger.MergeReads(switches);
++    }
++    if (!std::ifstream(switches)) {
++      LOG(ERROR) << "Cannot write phase switches file " << switches;
++      return 1;
++    }
++    stitcher = std::make_unique<PhaseSetStitcher>(switches);
++  }
++
+   // --infile: comma-separated files or "name@N" shard specs, read in order.
+   // Records are kept serialized (~16x smaller than parsed protos) and parsed
+   // one contig at a time, so memory follows the largest contig, not the
+@@ -548,6 +736,7 @@ int RunPostprocessVariants(int argc, char** argv) {
+   const double qual_filter = absl::GetFlag(FLAGS_qual_filter);
+   const double homref_min_gq = absl::GetFlag(FLAGS_cnn_homref_call_min_gq);
+ 
++
+   int written = 0;
+   int refcall = 0;
+   int nocall = 0;
+@@ -813,6 +1002,7 @@ int RunPostprocessVariants(int argc, char** argv) {
+       call->clear_genotype();
+       call->add_genotype(j);
+       call->add_genotype(k);
++      MaybePhaseGenotype(variant, call);
+ 
+       // Propagate MID from any of the source CVOs. If at least one CVO in
+       // this site's group was tagged as a small_model hit, use that;
+@@ -1011,6 +1201,11 @@ int RunPostprocessVariants(int argc, char** argv) {
+       LOG(INFO) << "PON filter: " << pon_hits << " variants tagged PON.";
+     }
+ 
++    if (stitcher) {
++      for (auto& v : contig_variants) {
++        if (v.calls_size() > 0) stitcher->Stitch(&v);
++      }
++    }
+     for (const auto& v : contig_variants) {
+       if (v.filter_size() > 0) {
+         const std::string& f = v.filter(0);
+-- 
+2.56.0
+

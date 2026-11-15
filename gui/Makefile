@@ -6,7 +6,7 @@ TASKS := $(PYTHON) tools/tasks.py
 export BUNDLE PORT RELEASE_DIR
 
 .PHONY: help setup precheck lint test ci build build-tauri run dev tauri package package-windows-cross clean \
-	dup dup-ci cloc site
+	dup dup-ci cloc site mockups
 
 ##@ General
 
@@ -36,6 +36,9 @@ build: ## Compile the TypeScript Web UI.
 
 build-tauri: ## Build the Tauri desktop app for this host.
 	$(TASKS) build tauri
+
+mockups: ## Serve the UI redesign mockups and save review notes (mockups/README.md).
+	python3 mockups/serve.py
 
 ##@ Quality
 

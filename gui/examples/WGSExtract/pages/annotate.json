@@ -255,6 +255,26 @@
           "advancedOnly": true
         },
         {
+          "id": "vep_engine",
+          "label": "controls.cli.vep_engine.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "vep-rs",
+              "title": "options.cli.value.vep-rs.title"
+            },
+            {
+              "id": "ensembl",
+              "title": "options.cli.value.ensembl.title"
+            }
+          ],
+          "tooltip": "controls.cli.vep_engine.tooltip"
+        },
+        {
           "id": "vep_vcf_type",
           "label": "controls.cli.vep_vcf_type.label",
           "kind": "dropdown",
@@ -383,6 +403,10 @@
               [
                 "--preset",
                 "{{vep_preset}}"
+              ],
+              [
+                "--engine",
+                "{{vep_engine}}"
               ],
               [
                 "--vcf-type",

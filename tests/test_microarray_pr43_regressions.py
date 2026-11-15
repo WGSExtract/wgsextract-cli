@@ -28,6 +28,7 @@ from wgsextract_cli.core.microarray_utils import (
     resolve_format_key,
     write_formatted_line,
 )
+from wgsextract_cli.core.results import CommandResult, collecting
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 
 LENGTH = 400
@@ -126,8 +127,11 @@ def _indexed_targets(path: Path, rows: list[str]) -> str:
 
 
 def _kit(tmp_path: Path, *, is_vcf: bool, out_vcf: str, fasta: str, targets: str):
+    """Exercise the legacy reference-fill policy explicitly, never by default."""
     combined_kit = _microarray_combined._write_microarray_combined_kit(
-        params=microarray_params(region=None),
+        params=microarray_params(
+            region=None, assume_hom_ref=True, min_dp=0, min_gq=0, exclude_filtered=False
+        ),
         outdir=str(tmp_path),
         base_name="sample",
         is_vcf=is_vcf,
@@ -256,7 +260,7 @@ def test_liftover_accepts_prefixed_chromosome_names(tmp_path):
 
         def convert_coordinate(self, chrom, pos):
             seen_chroms.append(chrom)
-            return [(chrom, pos + 10)]
+            return [(chrom, pos + 10, "+", 1)]
 
     with patch("wgsextract_cli.core.microarray_coordinates.LiftOver", FakeLiftOver):
         liftover_hg38_to_hg19(str(input_txt), str(output_txt), str(chain_file))
@@ -472,3 +476,52 @@ def test_the_cli_refuses_an_unknown_format_before_touching_input_or_outdir(
     assert exit_info.value.code == 2
     assert "Unknown microarray format '../../x'" in capsys.readouterr().err
     assert not outdir.exists()
+
+
+@needs_htslib
+def test_imputed_low_confidence_genotypes_become_no_calls_not_reference(tmp_path):
+    # #621: an ImpLowConf genotype dropped from the hits would be filled in as
+    # homozygous reference; it must be exported as a no-call.
+    fasta = write_fasta(tmp_path / "ref.fa", {"chr1": GENOME})
+    low_ref = GENOME[101]
+    low_alt = "G" if low_ref != "G" else "T"
+    imputed = tmp_path / "imputed.vcf"
+    imputed.write_text(
+        "##fileformat=VCFv4.2\n"
+        f"##contig=<ID=chr1,length={LENGTH}>\n"
+        '##FILTER=<ID=ImpLowConf,Description="low">\n'
+        '##INFO=<ID=IMP,Number=0,Type=Flag,Description="Imputed">\n'
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        '##wgsextract_imputation=<Tool=GLIMPSE2,Version="2.0.1",Panel="p">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+        "chr1\t100\t.\tA\tT\t.\tPASS\tIMP\tGT\t0/1\n"
+        f"chr1\t102\t.\t{low_ref}\t{low_alt}\t.\tImpLowConf\tIMP\tGT\t1/1\n"
+    )
+    vcf = bgzip_index(imputed)
+    targets = _indexed_targets(
+        tmp_path / "targets.tab.gz",
+        ["chr1 100 rsOk A", f"chr1 102 rsLow {low_ref}", "chr1 103 rsNotInPanel C"],
+    )
+    result = CommandResult("microarray")
+
+    with collecting(result):
+        out_vcf, _ = _microarray_vcf._prepare_microarray_vcf(
+            params=microarray_params(input=vcf, parallel=False, region=None),
+            outdir=str(tmp_path),
+            base_name="sample",
+            is_vcf=True,
+            ref_vcf_tab=targets,
+            region_args=[],
+            ploidy_args=["--ploidy", "2"],
+            ref_fasta=str(fasta),
+            threads="1",
+            start_vcf=0.0,
+            out_vcf=str(tmp_path / "sample_combined.vcf.gz"),
+        )
+    rows = _kit(
+        tmp_path, is_vcf=True, out_vcf=out_vcf, fasta=str(fasta), targets=targets
+    )
+
+    calls = {row.split("\t")[0]: row.split("\t")[3] for row in rows}
+    assert calls == {"rsOk": "AT", "rsLow": "--", "rsNotInPanel": "--"}
+    assert "imputed_vcf" in {w.code for w in result.warnings}

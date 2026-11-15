@@ -1,0 +1,181 @@
+/* Dense data tables. On narrow containers a table with .table--stack turns
+ * each row into a card (labels from data-label). */
+
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-surface-2);
+  color: var(--c-text-3);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table td {
+  height: var(--row-h);
+  padding: var(--sp-1) var(--sp-3);
+  border-bottom: 1px solid var(--c-border);
+  vertical-align: middle;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.table tbody tr:hover td {
+  background: var(--c-surface-2);
+}
+
+.table tr[aria-selected="true"] td {
+  background: var(--c-primary-soft);
+}
+
+.table .num,
+.table th.num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.table .actions {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.table__name {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  font-weight: var(--fw-medium);
+}
+
+.table__name a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.table__name a:hover {
+  color: var(--c-primary);
+  text-decoration: underline;
+}
+
+.table__sub {
+  font-size: var(--fs-xs);
+  color: var(--c-text-3);
+  font-weight: var(--fw-regular);
+}
+
+.table--compact td {
+  height: 30px;
+}
+
+/* Inline bar inside a cell (coverage, proportion) */
+.cell-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.cell-bar__track {
+  flex: 1;
+  height: 6px;
+  min-width: 40px;
+  border-radius: var(--r-pill);
+  background: var(--c-surface-3);
+  overflow: hidden;
+}
+
+.cell-bar__fill {
+  height: 100%;
+  width: var(--v, 0%);
+  border-radius: inherit;
+  background: var(--bar, var(--c-primary));
+}
+
+@container app (max-width: 720px) {
+  .table--stack thead {
+    display: none;
+  }
+
+  .table--stack,
+  .table--stack tbody,
+  .table--stack tr,
+  .table--stack td {
+    display: block;
+    width: 100%;
+  }
+
+  .table--stack tr {
+    padding: var(--sp-3) var(--sp-4);
+    border-bottom: 1px solid var(--c-border);
+  }
+
+  .table--stack tbody tr:last-child {
+    border-bottom: 0;
+  }
+
+  .table--stack td {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    height: auto;
+    padding: 2px 0;
+    border: 0;
+    text-align: right;
+  }
+
+  .table--stack td::before {
+    content: attr(data-label);
+    color: var(--c-text-3);
+    text-align: left;
+  }
+
+  .table--stack td[data-label=""]::before,
+  .table--stack td:first-child::before {
+    content: none;
+  }
+
+  .table--stack td:first-child {
+    padding-bottom: var(--sp-2);
+    text-align: left;
+  }
+
+  .table--stack td.hide-phone {
+    display: none;
+  }
+
+  .table--stack td.actions {
+    width: 100%;
+    justify-content: flex-end;
+    padding-top: var(--sp-2);
+  }
+
+  .table--stack td.actions::before,
+  .table--stack td.actions:empty {
+    display: none;
+  }
+
+  .table--stack tbody tr:hover td {
+    background: none;
+  }
+}

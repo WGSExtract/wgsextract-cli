@@ -21,6 +21,7 @@ from wgsextract_cli.api.vcf import (
 )
 from wgsextract_cli.core import read_scope, ultima
 from wgsextract_cli.core.alignment_health import warn_about_alignment
+from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.builds import is_hg37_build, is_hg38_build, ploidy_for_build
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependency_checks import (
@@ -29,6 +30,7 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.genotype_qc import region_targets, warn_low_depth
 from wgsextract_cli.core.messages import LOG_MESSAGES
+from wgsextract_cli.core.mimalloc import bcftools_environment
 from wgsextract_cli.core.output_checks import vcf_record_count, warn_if_no_variants
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
@@ -51,7 +53,7 @@ from wgsextract_cli.core.variant_files import (
     ensure_vcf_prepared,
     verify_paths_exist,
 )
-from wgsextract_cli.core.warnings import print_warning
+from wgsextract_cli.core.warnings import indexed_read_count, print_warning
 
 from .contig_calling import call_small_variants, calling_contigs, calling_jobs
 
@@ -132,6 +134,7 @@ def caller_setup(
     ref: str | None,
     region: str | None,
     qc_min_depth: float | None,
+    allow_reference_subset: bool = False,
 ) -> CallerSetup:
     """Resolve threads, output folder and reference FASTA for a BAM/CRAM caller,
     and warn about alignment problems and low depth."""
@@ -154,6 +157,15 @@ def caller_setup(
     if resolved_ref:
         paths_to_check["--ref"] = resolved_ref
     verify_paths_exist(paths_to_check)
+    if not resolved_ref or not Path(resolved_ref).is_file():
+        raise WGSExtractError(
+            LOG_MESSAGES["ref_required_for"].format(task="variant calling")
+        )
+    from wgsextract_cli.core.calling_reference import validate_calling_reference
+
+    validate_calling_reference(
+        input_file, resolved_ref, allow_reference_subset=allow_reference_subset
+    )
     platform = input_platform(input_file, resolved_ref)
     warn_mixed_platforms(
         input_file,
@@ -200,7 +212,9 @@ class CallerParams(Protocol):
     def qc_min_depth(self) -> float | None: ...
 
 
-def setup_caller(params: CallerParams) -> CallerSetup:
+def setup_caller(
+    params: CallerParams, *, allow_reference_subset: bool = False
+) -> CallerSetup:
     """``caller_setup`` for a BAM/CRAM caller's Params."""
     return caller_setup(
         os.fspath(params.input),
@@ -209,6 +223,7 @@ def setup_caller(params: CallerParams) -> CallerSetup:
         ref=os.fspath(params.ref) if params.ref else None,
         region=params.region,
         qc_min_depth=params.qc_min_depth,
+        allow_reference_subset=allow_reference_subset,
     )
 
 
@@ -290,6 +305,7 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
     setup = setup_caller(params)
     threads, outdir, ref = setup.threads, setup.outdir, setup.ref
     parallel = int(threads) > 1 if params.parallel is None else params.parallel
+    contigs = calling_contigs(input_file, ref, threads, params.region, parallel)
     preflight_resources(
         lambda: estimate_resources(
             task,
@@ -297,11 +313,18 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
             output_dir=outdir,
             reference=ref,
             threads=threads,
+            reads=(
+                indexed_read_count(input_file, threads)
+                if Path(input_file).suffix.lower() == ".bam"
+                else None
+            ),
             region=params.region,
             parallel=parallel,
+            bcftools_contigs=contigs,
+            alignment_header=get_bam_header(input_file),
         )
     )
-    contigs = calling_contigs(input_file, ref, threads, params.region, parallel)
+    environment = bcftools_environment(params.mimalloc)
     # One bcftools stream uses one core however many threads were given (#583).
     _, workers = calling_jobs(contigs, threads)
     print_warning(
@@ -324,7 +347,9 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
 
     with (
         safe_output(out_vcf) as staged,
-        sex_samples_args(input_file, outdir, ploidy, region=params.region) as sex_args,
+        sex_samples_args(
+            input_file, outdir, ploidy, region=params.region, reference=ref
+        ) as sex_args,
     ):
         call_small_variants(
             input_file,
@@ -336,6 +361,7 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
             call_args=[*ploidy, *sex_args, *prior],
             indels=indels,
             contigs=contigs,
+            environment=environment,
         )
     ensure_vcf_indexed(out_vcf)
     record_variants(

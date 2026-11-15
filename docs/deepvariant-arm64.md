@@ -59,6 +59,55 @@ packaged for checksum auditing, not enabled: each requires its own real-data
 qualification before a future implementation can permit it. Parabricks
 `--gpu` remains unavailable.
 
+## Apple Silicon Macs
+
+On a Mac, prefer `wgse-deepvariant`, WGS Extract's native Apple Silicon build
+of DeepVariant 1.10.0 ([native/deepvariant](../native/deepvariant/README.md)):
+it needs no Docker, runs call_variants on the GPU and makes the same PASS
+calls, genotypes and filters as Google's image. On HG003's whole genome (0.1.1, an
+M1 Pro, 2 h 42 min) its PASS calls, genotypes and filters match Google's
+published VCF (two QUAL-0 RefCalls differ) and hap.py against GIAB v4.2.1
+gives identical counts; the details are in its
+[README](../native/deepvariant/README.md#same-results-as-googles-image).
+Install it and its weights from a `macos-deepvariant` release (0.1.1 or later),
+put it on `PATH`, and name the weights folder in
+`config.toml`:
+
+```toml
+deepvariant_weights = "/path/to/wgse-deepvariant-weights-1.10.0-wgs"
+```
+
+`vcf deepvariant` then runs it instead of Docker, through the same resumable
+stages (an interrupted make_examples reruns in full). Before each run it checks
+the build's version and every weight file against its published SHA-256, and
+stops with the setup steps if either is wrong. Only the WGS model is
+qualified: WES, PacBio, ONT, Ultima and `--checkpoint` are refused. A region
+selection of any size (literals, BED files or both) is passed to it as one BED
+file, and CRAM 3.1 is read directly (its htslib is 1.25 on ARM, without the
+x86 image's rANS bug). call_variants' GPU batch follows the Mac's memory, so
+16 GB Macs fit. To use the Docker image below even with `wgse-deepvariant`
+installed, set `deepvariant_native = "off"`.
+
+Without it, Docker Desktop on Apple Silicon runs a Linux aarch64 VM, so `vcf deepvariant`
+takes the same native path there: the default image is the one above, and the
+engine and image architectures are checked the same way. Google's
+`google/deepvariant` image is linux/amd64 only; under Docker Desktop's x86-64
+emulation (QEMU or Rosetta) TensorFlow finds no AVX and aborts (exit 134) in
+the first stage, so an amd64 image is refused before any input is prepared.
+This holds under Rosetta too: Apple Silicon is detected from the Mac
+(`sysctl hw.optional.arm64`), and on every path the image's architecture is
+checked against the Docker engine's.
+Without `wgse-deepvariant` or a native image, use `vcf clair3` for ONT reads, `vcf snp`/`vcf indel`
+for short reads, or an x86-64 host.
+
+`build.sh` runs only on Linux aarch64: build there and move the image with
+`docker save` / `docker load`. The image uses generic AArch64 code (TensorFlow
+and oneDNN choose kernels at run time, and the build adds no `-march`), which
+the Apple M-series cores run; this has not yet been run on a Mac. Give Docker
+Desktop's VM enough memory for `call_variants` (about 26 GiB at the default
+batch size; see `--batch-size` below), since the CLI caps its plan by the VM's
+memory, not the Mac's. Native Apple-GPU options are researched in #647.
+
 ## Source and numerical provenance
 
 - Official scientific source: Google `v1.10.0`,
@@ -87,7 +136,7 @@ TensorFlow libraries, and the ELF modules inside all three Bazel ZIPs using
 Do not substitute the community image on the strength of its F1 claims: its
 scientific changes are not equivalent to this source build.
 
-x64/Linux and macOS defaults and commands are unchanged. Qualification evidence,
+x64 Linux and Intel macOS defaults and commands are unchanged. Qualification evidence,
 unnormalized VCF differences, matched-vCPU timings and cloud cost are recorded
 in the task's `out/arm64/deepvariant/report.md`; a draft PR does not by itself
 establish full-genome or performance qualification.

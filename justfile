@@ -41,6 +41,14 @@ run *args:
 help:
     pixi run wgsextract --help
 
+# Regenerate the API snapshot, API docs, command docs and site command cards
+regen:
+    pixi run python scripts/regen.py
+
+# After resolving source conflicts, regenerate and stage generated references
+regen-resolve:
+    pixi run python scripts/regen.py --resolve
+
 # Unit and integration tests; extra args go to pytest, e.g. `just test -k microarray`
 [positional-arguments]
 [unix]
@@ -71,6 +79,34 @@ fmt:
 # mypy on src/wgsextract_cli
 typecheck:
     pixi run typecheck
+
+# Retain verified wheels; add --reference for full Ubuntu/macOS reference inputs
+[positional-arguments]
+[unix]
+certify-setup *args:
+    pixi run --no-install python scripts/ci_certify_setup.py "$@"
+
+[extension(".ps1")]
+[positional-arguments]
+[script("powershell.exe", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File")]
+[windows]
+certify-setup *args:
+    pixi run --no-install python scripts/ci_certify_setup.py @args
+    exit $LASTEXITCODE
+
+# Attest the clean pushed PR head; reserve shared-host resources around this recipe
+[positional-arguments]
+[unix]
+certify *args:
+    pixi run --no-install python scripts/ci_certify.py "$@"
+
+[extension(".ps1")]
+[positional-arguments]
+[script("powershell.exe", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File")]
+[windows]
+certify *args:
+    pixi run --no-install python scripts/ci_certify.py @args
+    exit $LASTEXITCODE
 
 # Format, lint, typecheck and test
 check: fmt lint typecheck test
@@ -146,6 +182,18 @@ gui-build-tauri:
 [working-directory("gui")]
 gui-package:
     uv run --locked python tools/tasks.py package tauri
+
+# Serve the UI redesign mockups and save review notes (gui/mockups/README.md)
+[unix]
+[working-directory("gui")]
+mockups *args:
+    python3 mockups/serve.py {{args}}
+
+# Serve the UI redesign mockups and save review notes (gui/mockups/README.md)
+[windows]
+[working-directory("gui")]
+mockups *args:
+    python mockups/serve.py {{args}}
 
 # Regenerate the app's site into gui/site/ (published at /app/ on Pages)
 [working-directory("gui")]

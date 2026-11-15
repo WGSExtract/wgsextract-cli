@@ -1,0 +1,31 @@
+name: Main-owned download cache
+description: Restore lockfile-keyed downloads on every branch, save misses only on main.
+inputs:
+  path:
+    description: Download directories to cache.
+    required: true
+  key:
+    description: Immutable dependency key (include the lockfile hash).
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Restore downloads
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ inputs.path }}
+        key: ${{ inputs.key }}
+    # Register a post-job save after the package manager populates the cache.
+    - name: Save downloads after a main-branch miss
+      if: github.ref == 'refs/heads/main' && steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ inputs.path }}
+        key: ${{ inputs.key }}
+    - name: Publish download cache hit
+      shell: bash
+      env:
+        HIT: ${{ steps.restore.outputs.cache-hit == 'true' }}
+        KEY: ${{ inputs.key }}
+      run: echo "Download cache hit=${HIT}; key=${KEY}" >> "$GITHUB_STEP_SUMMARY"

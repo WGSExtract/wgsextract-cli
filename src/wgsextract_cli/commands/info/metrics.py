@@ -5,6 +5,7 @@ import math
 import os
 import re
 import subprocess
+import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, NamedTuple, TypedDict
@@ -19,6 +20,7 @@ from wgsextract_cli.core.constants import (
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_assets import n_count_paths
+from wgsextract_cli.core.sample_types import is_observed_sex
 from wgsextract_cli.core.sample_workspace import Confidence
 from wgsextract_cli.core.sequencing import platform_from_metadata
 from wgsextract_cli.core.ultima import is_ultima_header
@@ -113,9 +115,33 @@ class BodySample(NamedTuple):
     lengths: tuple[int, ...] = ()
     # The sample reached the end of the file, so it holds every read.
     complete: bool = False
+    # Why no reads could be sampled (samtools' last error lines), or None.
+    error: str | None = None
 
 
 BODY_SAMPLE_RECORDS = 20000
+# samtools' stderr lines kept to explain a sample that found no reads.
+_ERROR_TAIL_LINES = 6
+
+
+def _error_tail(stderr: Any) -> str:
+    """The last few lines samtools wrote to ``stderr`` (a temporary file)."""
+    try:
+        stderr.seek(0)
+        lines = stderr.read().decode("utf-8", "replace").splitlines()
+    except (OSError, ValueError):
+        return ""
+    return "\n".join(line for line in lines[-_ERROR_TAIL_LINES:] if line.strip())
+
+
+def is_missing_cram_reference(error: str | None) -> bool:
+    """samtools could not decode a CRAM because its reference wasn't found."""
+    if not error:
+        return False
+    return any(
+        marker in error
+        for marker in ("cram_get_ref", "refs_load_fai", "Unable to fetch reference")
+    )
 
 
 def run_body_sample(filepath: str, cram_opt: Sequence[str]) -> BodySample:
@@ -129,14 +155,18 @@ def run_body_sample(filepath: str, cram_opt: Sequence[str]) -> BodySample:
     primary_lengths = []
     first_qname = None
     complete = False
+    error = None
 
     proc = None
+    # A file, not a pipe: samtools may write many warnings while we read only
+    # stdout, and a full stderr pipe would stall it.
+    stderr = tempfile.TemporaryFile()
     try:
         proc = popen(
             cmd,
             stdout=subprocess.PIPE,
             text=True,
-            stderr=subprocess.DEVNULL,
+            stderr=stderr,
         )
         assert proc.stdout is not None
         for _ in range(BODY_SAMPLE_RECORDS):
@@ -188,6 +218,13 @@ def run_body_sample(filepath: str, cram_opt: Sequence[str]) -> BodySample:
             if proc.stdout:
                 proc.stdout.close()
             proc.wait()
+        if count == 0:
+            error = _error_tail(stderr) or None
+            if error is None and proc is not None and proc.returncode:
+                error = f"samtools view exited with status {proc.returncode}"
+        stderr.close()
+    if error:
+        logging.debug(f"No reads sampled from {filepath}: {error}")
 
     avg_len = total_len / count if count > 0 else 0
     avg_tlen = sum(tlen_values) / len(tlen_values) if len(tlen_values) > 0 else 0
@@ -213,6 +250,7 @@ def run_body_sample(filepath: str, cram_opt: Sequence[str]) -> BodySample:
         first_qname,
         tuple(primary_lengths),
         complete,
+        error,
     )
 
 
@@ -319,6 +357,7 @@ def load_n_counts(ref_path: str | None) -> dict[str, int]:
 # Stored with a cached "gender" so caches made by an older infer_sex are
 # recomputed rather than trusted; bump it in sample_workspace.FACTS.
 SEX_INFERENCE_VERSION = sample_workspace.FACTS["sex"].version
+SEX_MEASUREMENT_UNAVAILABLE = "non-PAR measurement unavailable"
 
 
 class SexCall(NamedTuple):
@@ -328,52 +367,68 @@ class SexCall(NamedTuple):
 
 
 def infer_sex(idx_stats: list[IdxStat]) -> str:
-    """ "Male", "Female" or "Unknown" from the X dosage against a similar-sized
-    autosome (chr7), else from chrY reads against chrX or chr19 (~ Y's size).
-    A file of chrY (and chrM) alone is a male's: a Y extract or a Big Y test."""
+    """Conservative sex evidence from index counts; counts alone cannot
+    distinguish capture scope, PAR reads or atypical X dosage."""
     return infer_sex_call(idx_stats).sex
 
 
-def infer_sex_call(idx_stats: list[IdxStat]) -> SexCall:
-    """`infer_sex` with the rule that decided it and how sure that rule is."""
-    mapped: dict[str, int] = {}
-    for s in idx_stats:
-        if s["name"] != "*":
-            key = contig_key(s["name"])
-            mapped[key] = mapped.get(key, 0) + s["mapped"]
-    x_reads, y_reads = mapped.get("X", 0), mapped.get("Y", 0)
-    c7_reads, c19_reads = mapped.get("7", 0), mapped.get("19", 0)
-    # Thresholds sit between the sexes as seen in real WGS, low-pass and exome
-    # samples (hs37, hs38 and T2T). Y/X is 0.15+ for male WGS and at most 0.05
-    # for females, so a male-level chrY settles it, even where chrX reads high
-    # or a realigned Y extract has a few stray chrX reads. A male exome
-    # captures few chrY targets (Y/X 0.04-0.07), so X/chr7 is checked next:
-    # 0.77-1.17 for females and 0.38-0.60 for males, exomes included.
-    if x_reads > 0 and y_reads > x_reads * 0.10:
-        return SexCall("Male", "chrY/chrX mapped-read ratio", "high")
-    if x_reads > 0 and c7_reads > 0:
-        # Two X copies read about like chr7, one X about half of it
-        sex = "Female" if x_reads > c7_reads * 0.65 else "Male"
-        return SexCall(sex, "chrX/chr7 mapped-read ratio", "high")
-    if x_reads > 0 and y_reads > 0:
-        # Females still pick up a few mismapped chrY reads
-        return SexCall("Female", "few chrY reads against chrX", "low")
-    if y_reads > 0 and c19_reads > 0:
-        # About half of chrY is N, so a male's Y is ~0.2-0.5 of chr19
-        sex = "Male" if y_reads > c19_reads * 0.12 else "Female"
-        return SexCall(sex, "chrY/chr19 mapped-read ratio", "medium")
-    if y_reads > 0:
-        return SexCall("Male", "chrY reads without chrX", "medium")
-    return SexCall("Unknown", "no chrX or chrY reads", "low")
+def infer_sex_call(
+    idx_stats: list[IdxStat],
+    *,
+    alignment: str | None = None,
+    reference: str | None = None,
+) -> SexCall:
+    """Screen GRCh37/38 non-PAR depth against autosomal depth, with breadth
+    gates for sparse/targeted assays. Index counts alone do not settle sex."""
+    from wgsextract_cli.core.sex_inference import sampled_depth
+
+    unknown = SexCall("Unknown", "insufficient non-PAR depth or assay scope", "low")
+    if alignment is None:
+        return unknown
+    contigs = {
+        contig_key(row["name"]): (row["name"], row["length"])
+        for row in idx_stats
+        if contig_key(row["name"]) in {"7", "19", "X", "Y"}
+    }
+    try:
+        depths = sampled_depth(alignment, contigs, reference=reference)
+    except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
+        logging.warning(f"Could not measure sex-chromosome depth: {e}")
+        return SexCall("Unknown", SEX_MEASUREMENT_UNAVAILABLE, "low")
+    autosomes = [depths[c] for c in ("7", "19") if c in depths]
+    if not autosomes or "X" not in depths or "Y" not in depths:
+        return unknown
+    auto = sum(d for d, _ in autosomes) / len(autosomes)
+    x, x_breadth = depths["X"]
+    y, _ = depths["Y"]
+    if (
+        auto < 3
+        or min(b for _, b in autosomes) < 0.5
+        or x_breadth < 0.3
+        or any(not 0.7 <= d / auto <= 1.3 for d, _ in autosomes)
+    ):
+        return unknown
+    x_ratio, y_ratio = x / auto, y / auto
+    method = "GRCh37/38 sampled non-PAR depth / autosomal depth (screening)"
+    if 0.35 <= x_ratio <= 0.65 and 0.1 <= y_ratio <= 0.8:
+        return SexCall("Male", method, "medium")
+    if 0.8 <= x_ratio <= 1.2 and y_ratio < 0.05:
+        return SexCall("Female", method, "medium")
+    return SexCall("Unknown", "atypical or discordant non-PAR dosage", "low")
 
 
 def record_sex(input_path: str, call: SexCall) -> None:
-    """Record a known sex in the sample workspace, which warns when it
+    """Record observed sex, including Unknown, in the workspace, which warns when it
     contradicts the user's override."""
-    if call.sex in sample_workspace.SEXES:
-        sample_workspace.record(
-            "sex", input_path, call.sex, method=call.method, confidence=call.confidence
-        )
+    if is_observed_sex(call.sex):
+        if call.method != SEX_MEASUREMENT_UNAVAILABLE:
+            sample_workspace.record(
+                "sex",
+                input_path,
+                call.sex,
+                method=call.method,
+                confidence=call.confidence,
+            )
 
 
 def cached_info(
@@ -408,34 +463,101 @@ def cached_info(
     return None
 
 
-def sample_sex(input_path: str, outdir: str | None = None) -> str:
+def sample_sex(
+    input_path: str,
+    outdir: str | None = None,
+    *,
+    reference: str | None = None,
+    allow_scan: bool = True,
+) -> str:
     """The sample's sex: the user's override or the recorded call in its sample
-    workspace, else `info`'s cached metrics for this file (counting chrY reads
-    in a CRAM takes about a minute), else samtools idxstats. A new call is
+    workspace, else `info`'s cached metrics for this file, else sampled
+    non-PAR depth. A CRAM needs only its header and indexed windows, not a
+    whole-file idxstats scan. A new call is
     recorded in the workspace. An override is still checked against the reads,
-    once per file revision, since it changes how chrX and chrY are called."""
-    return str(
-        sample_workspace.resolve(
-            "sex", input_path, lambda: _detect_sex(input_path, outdir)
+    once per file revision, since it changes how chrX and chrY are called.
+    With ``allow_scan=False``, use recorded/cached evidence only, without
+    recording an Unknown call when no evidence is available."""
+    return sample_sex_evidence(
+        input_path, outdir, reference=reference, allow_scan=allow_scan
+    )[0]
+
+
+def sample_sex_evidence(
+    input_path: str,
+    outdir: str | None = None,
+    *,
+    reference: str | None = None,
+    allow_scan: bool = True,
+) -> tuple[str, SexCall, str | None]:
+    """Effective sex, observed evidence and declaration, without writing
+    command-wide metrics (a multi-sample caller must associate them per sample)."""
+    call = SexCall("Unknown", "measurement not available", "low")
+
+    def detect() -> tuple[str, str | None]:
+        nonlocal call
+        call = _detect_sex(input_path, outdir, reference, allow_scan=allow_scan)
+        return call.sex, call.method
+
+    effective = str(sample_workspace.resolve("sex", input_path, detect))
+
+    workspace = sample_workspace.workspace_for(input_path)
+    declared = workspace.overrides(input_path).get("sex") if workspace else None
+    fact = workspace.detected("sex", input_path) if workspace else None
+    if fact:
+        confidence: Confidence = (
+            "high"
+            if fact.confidence == "high"
+            else "medium"
+            if fact.confidence == "medium"
+            else "low"
         )
-    )
+        call = SexCall(
+            str(fact.value),
+            fact.method or "recorded evidence",
+            confidence,
+        )
+    return effective, call, str(declared) if declared is not None else None
 
 
-def _detect_sex(input_path: str, outdir: str | None) -> tuple[str, str | None]:
+def _detect_sex(
+    input_path: str,
+    outdir: str | None,
+    reference: str | None = None,
+    *,
+    allow_scan: bool = True,
+) -> SexCall:
     info = cached_info(input_path, outdir)
+    cached_call = info.get("sex_call") if info else None
     # A call cached by an older infer_sex is recomputed rather than trusted
-    if info and info.get("sex_inference_version") == SEX_INFERENCE_VERSION:
-        call = SexCall(str(info["gender"]), "cached `info --detailed` call", "high")
+    if (
+        info
+        and info.get("sex_inference_version") == SEX_INFERENCE_VERSION
+        and isinstance(cached_call, list)
+        and len(cached_call) == 3
+        and cached_call[1] != SEX_MEASUREMENT_UNAVAILABLE
+    ):
+        call = SexCall(*cached_call)
+    elif not allow_scan:
+        return SexCall("Unknown", SEX_MEASUREMENT_UNAVAILABLE, "low")
     else:
         logging.info("Checking chrX/chrY coverage to infer the sample's sex...")
         try:
-            idx_stats, *_ = parse_idxstats(input_path)
+            from wgsextract_cli.core.reference_models import sequence_lengths
+
+            header = run_command(
+                ["samtools", "view", "-H", input_path], capture_output=True
+            ).stdout
+            idx_stats = [
+                IdxStat(name=name, length=length, mapped=0, unmapped=0)
+                for name, length in sequence_lengths(header).items()
+            ]
         except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
             logging.warning(f"Could not check chrY coverage of {input_path}: {e}")
-            return "Unknown", None
-        call = infer_sex_call(idx_stats)
+            return SexCall("Unknown", SEX_MEASUREMENT_UNAVAILABLE, "low")
+        call = infer_sex_call(idx_stats, alignment=input_path, reference=reference)
     record_sex(input_path, call)
-    return call.sex, call.method
+    return call
 
 
 def parse_idxstats(filepath: str) -> tuple[list[IdxStat], int, int, int]:

@@ -1,14 +1,12 @@
 """``report``: a sample's results as a local HTML, Markdown and JSON report."""
 
-import argparse
 import json
 from pathlib import Path
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api.report import ReportParams
+from wgsextract_cli.cli.registration.report import register as register
 from wgsextract_cli.core import personal_report as pr
 from wgsextract_cli.core.atomic_output import safe_output
-from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.results import current_result, human_output
 from wgsextract_cli.core.table_writer import (
     check_format,
@@ -92,20 +90,6 @@ def run_report(params: ReportParams) -> None:
             human_output(f"    not run: {missing['what']}: {missing['command']}")
     human_output(f"\n{pr.NOT_DIAGNOSIS} Open {html_path}")
     human_output(f"Also: {md_path.name}, {json_path.name}, {table.name}")
-
-
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser(
-        "report",
-        parents=[base_parser],
-        help=CLI_HELP["cmd_report"],
-        description=CLI_HELP["cmd_report"],
-    )
-    add_arguments(parser, ReportParams)
-    parser.set_defaults(func=cli_handler(ReportParams, run_report))
 
 
 __all__ = ["register", "run_report"]

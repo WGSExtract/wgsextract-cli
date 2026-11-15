@@ -1,6 +1,8 @@
 #!/bin/sh
 # GPU mate rescue (mem_matesw's ksw_align2) must leave the paired SAM unchanged.
 set -eu
+# shellcheck source=native/tests/seeded_random.sh
+. "$(dirname "$0")/../../tests/seeded_random.sh"
 aligner=$1
 work=$2
 mkdir -p "$work"
@@ -20,13 +22,13 @@ metric() {
 # hits, and pairs in three orientations. Every third mate has a mismatch every
 # 12 bp and often an indel, so it has no exact 19-mer seed and is only placed by
 # mate rescue.
-awk 'BEGIN {
-    srand(364)
+awk "$seeded_random"'BEGIN {
+    seed(364)
     split("A C G T", base, " ")
-    for (i = 1; i <= 160000; ++i) random = random base[int(rand() * 4) + 1]
+    for (i = 1; i <= 160000; ++i) random = random base[int(rnd() * 4) + 1]
     repeat = substr(random, 40001, 3000)
     copy = repeat
-    for (i = 50; i < 3000; i += 97) copy = substr(copy, 1, i - 1) base[int(rand() * 4) + 1] substr(copy, i + 1)
+    for (i = 50; i < 3000; i += 97) copy = substr(copy, 1, i - 1) base[int(rnd() * 4) + 1] substr(copy, i + 1)
     ref = substr(random, 1, 41500) copy substr(random, 44501)
     print ">chr\n" ref > "reference.fa"
     complement["A"] = "T"; complement["C"] = "G"; complement["G"] = "C"; complement["T"] = "A"
@@ -34,18 +36,18 @@ awk 'BEGIN {
     split("151 151 151 101 76 250 300", lengths, " ")
     for (p = 1; p <= 1500; ++p) {
         n = lengths[1 + p % 7]
-        insert = 350 + int(rand() * 150)
-        start = p % 5 == 0 ? 39000 + int(rand() * 6000) : 1 + int(rand() * (length(ref) - insert))
+        insert = 350 + int(rnd() * 150)
+        start = p % 5 == 0 ? 39000 + int(rnd() * 6000) : 1 + int(rnd() * (length(ref) - insert))
         left = substr(ref, start, n)
         right = substr(ref, start + insert - n, n)
         if (p % 3 == 0) {
-            for (i = 1 + int(rand() * 12); i <= n; i += 12) right = substr(right, 1, i - 1) (substr(right, i, 1) == "A" ? "C" : "A") substr(right, i + 1)
+            for (i = 1 + int(rnd() * 12); i <= n; i += 12) right = substr(right, 1, i - 1) (substr(right, i, 1) == "A" ? "C" : "A") substr(right, i + 1)
             # Insertions and deletions exercise the striped lazy-F and E updates.
-            at = 10 + int(rand() * (n - 20))
-            gap = 1 + int(rand() * 4)
+            at = 10 + int(rnd() * (n - 20))
+            gap = 1 + int(rnd() * 4)
             if (p % 6 == 0) {
                 inserted = ""
-                for (i = 1; i <= gap; ++i) inserted = inserted base[int(rand() * 4) + 1]
+                for (i = 1; i <= gap; ++i) inserted = inserted base[int(rnd() * 4) + 1]
                 right = substr(right, 1, at) inserted substr(right, at + 1, n - at - gap)
             } else if (p % 9 == 0) {
                 right = substr(right, 1, at) substr(right, at + gap + 1) substr(ref, start + insert, gap)
@@ -68,6 +70,36 @@ awk 'BEGIN {
     }
 }'
 "$aligner" index reference.fa > index.log 2>&1
+
+# Regression (#548): a GPU command that never completes and that macOS reports
+# no error for (as on a hung paravirtual GPU) is given up by the watchdog; the
+# run finishes on the CPU with the same records. --gpu-inject-hang withholds
+# the first command of a stage and gives up after 2 s.
+if [ "${3:-}" = watchdog ]; then
+    "$aligner" capabilities --json > capabilities.json
+    if ! grep -q '"metal_available":true' capabilities.json; then
+        grep -q '"metal_hardware_supported":true' capabilities.json && exit 1
+        exit 77
+    fi
+    "$aligner" mem -t 4 -K 20000 reference.fa pairs-R1.fq pairs-R2.fq > cpu-hang.sam \
+        2> cpu-hang.log
+    for stage in seed_prefixes collect_smems rescue_align extend; do
+        status=0
+        "$aligner" --metal --gpu-inject-hang "$stage" --gpu-policy all --gpu-rescue-batch 7 \
+            mem -t 4 -K 20000 reference.fa pairs-R1.fq pairs-R2.fq > "hang-$stage.sam" \
+            2> "hang-$stage.log" || status=$?
+        test "$status" -eq 1
+        grep -q "GPU watchdog: a Metal command ($stage" "hang-$stage.log"
+        grep -q 'Metal execution failed (alignments were completed on the CPU)' "hang-$stage.log"
+        same cpu-hang.sam "hang-$stage.sam"
+        "$aligner" --backend auto --gpu-inject-hang "$stage" --gpu-policy all \
+            --gpu-rescue-batch 7 mem -t 4 -K 20000 reference.fa pairs-R1.fq pairs-R2.fq \
+            > "hang-auto-$stage.sam" 2> "hang-auto-$stage.log"
+        grep -q "GPU watchdog: a Metal command ($stage" "hang-auto-$stage.log"
+        same cpu-hang.sam "hang-auto-$stage.sam"
+    done
+    exit 0
+fi
 
 # The CPU backend's exact replacements of upstream code (balanced work units,
 # each pair's rescue windows aligned together, pointer sorts, reference windows
@@ -148,6 +180,11 @@ for threads in 1 4; do
     run "t$threads" -t "$threads"
     test "$(metric "metal-t$threads.log" rescue_hits)" -gt 1000
 done
+# Regression (PR #684 review): one watchdog thread per stretch of GPU work, not
+# one per command (hundreds of rescue batches of 7 pairs here).
+test "$(metric metal-t4.log rescue_batches)" -gt 100
+test "$(metric metal-t4.log watchdog_threads)" -ge 1
+test "$(metric metal-t4.log watchdog_threads)" -le 3
 # Small chunks, each paired separately.
 run chunks -t 4 -K 20000
 test "$(metric metal-chunks.log rescue_hits)" -gt 0
@@ -199,13 +236,13 @@ test "$(metric metal-norescue.log rescue_batches)" -eq 0
 # A large mismatch penalty saturates ksw_u8 on exact 151 bp mates (which -k 160
 # keeps from seeding); upstream then runs an empty reverse pass, so the GPU
 # declines those windows and mem_matesw() computes them as upstream does.
-awk 'BEGIN {
-    srand(7)
+awk "$seeded_random"'BEGIN {
+    seed(7)
     while ((getline line < "reference.fa") > 0) if (line !~ /^>/) ref = ref line
     complement["A"] = "T"; complement["C"] = "G"; complement["G"] = "C"; complement["T"] = "A"
     for (p = 1; p <= 200; ++p) {
-        start = 1 + int(rand() * (length(ref) - 500))
-        right = substr(ref, start + 380 + int(rand() * 40) - 151, 151)
+        start = 1 + int(rnd() * (length(ref) - 500))
+        right = substr(ref, start + 380 + int(rnd() * 40) - 151, 151)
         two = ""
         for (i = 151; i >= 1; --i) two = two complement[substr(right, i, 1)]
         q1 = q2 = ""

@@ -13,13 +13,38 @@ name: GUI distribution
 #   a packaging break shows up before a release needs it.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main ]
     paths:
       - ".github/workflows/gui-build.yml"
       - ".github/workflows/gui-distribution.yml"
+      - ".github/actions/apt-install/**"
+      - ".github/actions/download-cache/**"
+      - ".github/actions/setup-gui/**"
       - "gui/app/web/packagers/**"
+      - "gui/app/scripts/**"
+      - "gui/app/package.json"
+      - "gui/app/package-lock.json"
       - "gui/tools/packaging/**"
       - "gui/tools/tasks.py"
+      - "!**/*.md"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/gui-build.yml"
+      - ".github/workflows/gui-distribution.yml"
+      - ".github/actions/apt-install/**"
+      - ".github/actions/download-cache/**"
+      - ".github/actions/setup-gui/**"
+      - "gui/app/web/packagers/**"
+      - "gui/app/scripts/**"
+      - "gui/app/package.json"
+      - "gui/app/package-lock.json"
+      - "gui/tools/packaging/**"
+      - "gui/tools/tasks.py"
+      - "!**/*.md"
+  schedule:
+    - cron: "31 6 * * *"
   workflow_dispatch:
     inputs:
       tag:
@@ -42,8 +67,15 @@ on:
 permissions:
   contents: read
 
+# Called releases inherit the caller's event/workflow: give them a unique group,
+# and never cancel a tagged build. Nightly/manual runs are independent too.
+concurrency:
+  group: gui-distribution-${{ github.event_name }}-${{ inputs.tag == '' && (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
+  cancel-in-progress: ${{ inputs.tag == '' && (github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1) }}
+
 jobs:
   tauri:
+    if: ${{ github.event.pull_request.draft != true }}
     uses: ./.github/workflows/gui-build.yml
     with:
       ref: ${{ inputs.ref || inputs.tag || github.sha }}
@@ -57,7 +89,7 @@ jobs:
     permissions:
       contents: write
     needs: tauri
-    if: inputs.tag != ''
+    if: github.event.pull_request.draft != true && inputs.tag != ''
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ inputs.tag }}

@@ -16,8 +16,14 @@ from typing import TYPE_CHECKING, Any, TextIO
 from wgsextract_cli.core import ultima
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.download_progress import CancelEvent
+from wgsextract_cli.core.imputed_vcf import (
+    LOW_CONFIDENCE_FILTER,
+    describe,
+    imputation_info,
+)
 from wgsextract_cli.core.microarray_quality import quality_policy
 from wgsextract_cli.core.progress import ContigProgress
+from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.utils import (
     WGSExtractError,
@@ -383,7 +389,15 @@ def _expand_gvcf_targets(
             records.open("w", newline="\n") as out,
             regions.open("w", newline="\n") as wanted,
         ):
+            depth_defined = False
             for line in source:
+                if line.startswith("##FORMAT=<ID=DP,"):
+                    depth_defined = True
+                if line.startswith("#CHROM") and not depth_defined:
+                    out.write(
+                        "##FORMAT=<ID=DP,Number=1,Type=Integer,"
+                        'Description="Conservative block depth">\n'
+                    )
                 fields = line.rstrip("\n").split("\t")
                 end = None
                 if not line.startswith("#") and fields[4] in _REFERENCE_BLOCK_ALTS:
@@ -403,6 +417,20 @@ def _expand_gvcf_targets(
                 if end is None or not fasta_chrom:
                     out.write(line)
                     continue
+                # MIN_DP is a block-wide lower bound; DP may describe only
+                # its first base and must not certify every interior target.
+                formats = fields[8].split(":")
+                if "MIN_DP" in formats:
+                    minimum = formats.index("MIN_DP")
+                    depth = formats.index("DP") if "DP" in formats else len(formats)
+                    if depth == len(formats):
+                        formats.append("DP")
+                        fields[8] = ":".join(formats)
+                    for sample in range(9, len(fields)):
+                        values = fields[sample].split(":")
+                        values += ["."] * (len(formats) - len(values))
+                        values[depth] = values[minimum]
+                        fields[sample] = ":".join(values)
                 inside = targets.get(fields[0], array("l"))
                 variants = called.get(fields[0], set())
                 first = bisect_left(inside, int(fields[1]))
@@ -436,6 +464,30 @@ def _expand_gvcf_targets(
             ],
             description="gVCF target expansion",
         )
+
+
+def _no_call_low_confidence_imputed(vcf: str, outdir: str, base_name: str) -> str:
+    """For a `vcf impute` VCF, its low-confidence genotypes as no-calls: left
+    out, the kit would fill them in as homozygous reference."""
+    header = run_command(["bcftools", "view", "-h", vcf], capture_output=True)
+    imputed = imputation_info(header.stdout.splitlines())
+    if imputed is None:
+        return vcf
+    warn(
+        "imputed_vcf",
+        f"{Path(vcf).name} is {describe(imputed)}: the kit's genotypes are "
+        f"predicted from a reference panel; those marked {LOW_CONFIDENCE_FILTER} "
+        "are exported as no-calls.",
+        tool=imputed.get("Tool"),
+        panel=imputed.get("Panel"),
+    )
+    out = str(Path(outdir, f"{base_name}_imputed_hits.vcf.gz"))
+    run_command(
+        ["bcftools", "filter", "--set-GTs", ".", "-e",
+         f'FILTER~"{LOW_CONFIDENCE_FILTER}"', "-Oz", "-o", out, vcf]
+    )  # fmt: skip
+    ensure_vcf_indexed(out)
+    return out
 
 
 def _prepare_microarray_vcf(
@@ -487,8 +539,8 @@ def _prepare_microarray_vcf(
         logging.info(
             f"VCF input detected. Extracting target SNPs from {str(params.input)}..."
         )
-        # For VCF input, we intersect our targets with the input VCF.
-        # Any missing targets are assumed to be homozygous reference.
+        # Missing targets stay absent; the exporter applies the explicit
+        # callability policy instead of inferring reference from absence.
         try:
             # Step 1: Get actual variants from the input VCF that match our targets
             hit_vcf = str(Path(outdir, f"{base_name}_hits.vcf.gz"))
@@ -511,6 +563,7 @@ def _prepare_microarray_vcf(
                     + ["-Oz", "-o", hit_vcf, str(params.input)]
                 )
             ensure_vcf_indexed(hit_vcf)
+            hit_vcf = _no_call_low_confidence_imputed(hit_vcf, outdir, base_name)
 
             # Step 2: Since we need a complete file for the templates, we'll
             # handle the "Reference Filling" during the extraction to CombinedKit.txt

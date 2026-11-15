@@ -89,6 +89,14 @@ def _table(path: Path) -> list[dict[str, str]]:
 
 def _run(tmp_path: Path, *argv: str) -> dict:
     """Run a command as `wgsextract` does and return its result manifest."""
+    if argv[:2] == ("vcf", "clinvar"):
+        from tests.htslib_helpers import reference_for_vcf
+
+        sample = argv[argv.index("--vcf-input") + 1]
+        reference = reference_for_vcf(
+            tmp_path / "ref.fa.gz", sample, argv[argv.index("--clinvar-file") + 1]
+        )
+        argv = (*argv, "--ref", str(reference))
     args, _ = parse_args(*build_parser(), list(argv))
     try:
         dispatch_command(args, set())
@@ -208,6 +216,93 @@ def test_command_line_thresholds_override_the_defaults(tmp_path):
 def test_thresholds_must_not_cross():
     with pytest.raises(UsageError, match="LOW <= HIGH"):
         Thresholds(min_depth=20, high_depth=10, min_gq=20, high_gq=30)
+
+
+@needs_bcftools
+@pytest.mark.parametrize(
+    "header",
+    [
+        "##source=Mutect2\n",
+        "##GATKCommandLine=<ID=Mutect2,CommandLine=Mutect2>\n",
+        '##GATKCommandLine=<ID="Mutect2",CommandLine=Mutect2>\n',
+        '##GATKCommandLine=<CommandLine="Mutect2, --argument",ID=Mutect2>\n',
+        '##GATKCommandLine=<CommandLine="Mutect2",ID="Mutect2">\n',
+        "##source=HaplotypeCaller\n##source=Mutect2\n",
+    ],
+)
+def test_bug_862_mutect2_germline_policy_is_explicit(tmp_path, header):
+    sample = _vcf(
+        tmp_path / "somatic.vcf.gz",
+        [
+            "100 low_vaf C T 99 PASS . GT:DP:GQ:AD 0/1:100:99:90,10",
+            "200 balanced A G 99 PASS . GT:DP:GQ:AD 0/1:100:99:50,50",
+        ],
+        header=header,
+    )
+    out = tmp_path / "out"
+    document = _run(
+        tmp_path,
+        "vcf",
+        "clinvar",
+        "--vcf-input",
+        sample,
+        "--clinvar-file",
+        _clinvar(tmp_path),
+        "--outdir",
+        str(out),
+    )
+    assert _labels(out / "clinvar_pathogenic.vcf.gz") == [
+        "100:low:unsupported_somatic",
+        "200:low:unsupported_somatic",
+    ]
+    rows = _table(out / "clinvar_pathogenic.confidence.tsv")
+    assert float(rows[0]["alt_fraction"]) == pytest.approx(0.1)
+    assert rows[0]["zygosity"] == "unassessed"
+    confidence = document["details"]["confidence"][0]
+    assert confidence["caller"] == "mutect2"
+    assert confidence["policy"] == "unsupported_somatic"
+    warnings = {w["code"]: w for w in document["warnings"]}
+    assert warnings["unsupported_somatic_confidence"]["details"]["policy"] == (
+        "unsupported_somatic"
+    )
+    assert (
+        sum(w["code"] == "unsupported_somatic_confidence" for w in document["warnings"])
+        == 1
+    )
+
+
+@needs_bcftools
+@pytest.mark.parametrize(
+    "header",
+    [
+        "##source=HaplotypeCaller\n",
+        '##GATKCommandLine=<CommandLine="example,ID=Mutect2",ID=HaplotypeCaller>\n',
+    ],
+)
+def test_bug_862_germline_gatk_keeps_imbalance_safeguard(tmp_path, header):
+    sample = _vcf(
+        tmp_path / "germline.vcf.gz",
+        ["100 low_vaf C T 99 PASS . GT:DP:GQ:AD 0/1:100:99:90,10"],
+        header=header,
+    )
+    document = _run(
+        tmp_path,
+        "vcf",
+        "clinvar",
+        "--vcf-input",
+        sample,
+        "--clinvar-file",
+        _clinvar(tmp_path),
+        "--outdir",
+        str(tmp_path / "out"),
+    )
+    assert _labels(tmp_path / "out/clinvar_pathogenic.vcf.gz") == [
+        "100:low:allele_imbalance"
+    ]
+    assert document["details"]["confidence"][0]["policy"] == "germline"
+    assert "unsupported_somatic_confidence" not in {
+        w["code"] for w in document["warnings"]
+    }
 
 
 @needs_bcftools
@@ -423,3 +518,53 @@ def test_multisample_site_totals_are_not_one_samples_evidence():
         (finding,) = list(label_records(text.splitlines(), t))[-1].findings
     assert finding.confidence.label == "moderate"
     assert finding.confidence.reasons == ["depth_unknown", "allele_balance_unknown"]
+
+
+@needs_bcftools
+def test_imputed_rare_variants_are_never_listed_as_clinvar_findings(tmp_path):
+    # #621: imputation can't see a rare allele the reads don't show, so a rare
+    # imputed ClinVar hit must not reach the findings; a common one is listed
+    # as low confidence, with the reason.
+    imputed = (
+        '##INFO=<ID=IMP,Number=0,Type=Flag,Description="Imputed genotype">\n'
+        '##INFO=<ID=RAF,Number=A,Type=Float,Description="Panel AF">\n'
+        '##INFO=<ID=AF,Number=A,Type=Float,Description="Target sample AF">\n'
+        '##INFO=<ID=AC,Number=A,Type=Integer,Description="Panel AC">\n'
+        '##INFO=<ID=AN,Number=1,Type=Integer,Description="Panel AN">\n'
+        '##INFO=<ID=WGSE_PANEL_AC,Number=A,Type=Integer,Description="Stable panel AC">\n'
+        '##INFO=<ID=WGSE_PANEL_AN,Number=1,Type=Integer,Description="Stable panel AN">\n'
+        '##FORMAT=<ID=GP,Number=G,Type=Float,Description="GP">\n'
+        '##wgsextract_imputation=<Tool=GLIMPSE2,Version="2.0.1",Panel="p">\n'
+    )
+    calls = [
+        "100 common C T . PASS IMP;RAF=0.2 GT:GP 0/1:0.01,0.98,0.01",
+        "200 rare A G . PASS IMP;RAF=0.002 GT:GP 0/1:0.02,0.97,0.01",
+        "300 sequenced G A 50 PASS . GT:AD:DP:GQ 0/1:15,15:30:99",
+        # #621: a Beagle heterozygote's target AF=0.5 must not hide a rare panel allele.
+        "400 beagle_rare G T . PASS IMP;AF=0.5;WGSE_PANEL_AC=4;WGSE_PANEL_AN=6404 GT:GP 0/1:0.01,0.98,0.01",
+        "500 external G T . PASS IMP;AF=0.5 GT:GP 0/1:0.01,0.98,0.01",
+        "600 beagle_common G T . PASS IMP;WGSE_PANEL_AC=2000;WGSE_PANEL_AN=6404 GT:GP 0/1:0.01,0.98,0.01",
+    ]
+    sample = _vcf(tmp_path / "s.vcf.gz", calls, header=imputed)
+    subset = tmp_path / "subset.vcf.gz"
+    # #732: phasing selects a sample; ordinary AC/AN are rewritten to 1/2.
+    run_command(["bcftools", "view", "-s", "S", "-Oz", "-o", str(subset), sample])
+    sample = str(subset)
+    clinvar = _vcf(
+        tmp_path / "clinvar.vcf.gz",
+        [f"{c.split()[0]} {c.split()[1]} {c.split()[2]} {c.split()[3]} . . "
+         "CLNSIG=Pathogenic GT 0/1" for c in calls],
+    )  # fmt: skip
+    out = tmp_path / "out"
+    document = _run(tmp_path, "vcf", "clinvar", "--vcf-input", sample,
+                    "--clinvar-file", clinvar, "--outdir", str(out))  # fmt: skip
+
+    rows = _table(out / "clinvar_pathogenic.confidence.tsv")
+    assert [(r["pos"], r["confidence"], r["reasons"]) for r in rows] == [
+        ("100", "low", "imputed"),
+        ("300", "high", ""),
+        ("600", "low", "imputed"),
+    ]  # fmt: skip
+    warnings = {w["code"]: w for w in document["warnings"]}
+    assert warnings["rare_imputed_not_listed"]["details"]["count"] == 3
+    assert warnings["unconfirmed_clinical_findings"]["details"]["count"] == 3

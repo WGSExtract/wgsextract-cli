@@ -6,6 +6,7 @@ name: PharmCAT Linux/Windows parity
 # except for their timestamp (#622).
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [main]
     paths:
       - pixi.toml
@@ -26,6 +27,7 @@ on:
       - tests/fixtures/pharmcat_hg002/**
       - scripts/compare_pharmcat_phenotypes.py
       - .github/workflows/pharmcat_e2e.yml
+      - "!**/*.md"
   push:
     branches: [main]
     paths:
@@ -53,7 +55,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
   cancel-in-progress: true
 
 env:
@@ -62,6 +64,7 @@ env:
 
 jobs:
   pharmcat:
+    if: ${{ github.event.pull_request.draft != true }}
     strategy:
       fail-fast: false
       matrix:
@@ -70,10 +73,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+      - uses: ./.github/actions/setup-pixi
         with:
-          pixi-version: v0.82.0
-          locked: true
           environments: >-
             default
             pharmcat
@@ -82,17 +83,13 @@ jobs:
         run: |
           dir="$RUNNER_TEMP/Pharm CAT"
           mkdir -p "$dir"
-          curl -fsSL -o "$RUNNER_TEMP/pharmcat.tar.gz" \
+          curl -fsSL --retry 5 --retry-all-errors --connect-timeout 20 -o "$RUNNER_TEMP/pharmcat.tar.gz" \
             "https://github.com/PharmGKB/PharmCAT/releases/download/v$PHARMCAT_VERSION/pharmcat-pipeline-$PHARMCAT_VERSION.tar.gz"
           echo "$PHARMCAT_SHA256  $RUNNER_TEMP/pharmcat.tar.gz" | sha256sum -c -
           # Relative paths: Git Bash's tar reads "D:" as a remote host.
           cd "$RUNNER_TEMP" && tar -xzf pharmcat.tar.gz -C "Pharm CAT"
-      # PharmCAT fetches its GRCh38 reference (about 1 GB) on first use.
-      - name: Cache PharmCAT's reference
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ runner.temp }}/Pharm CAT/reference.fna.bgz*
-          key: pharmcat-reference-zenodo-7288118-${{ runner.os }}
+      # Its infrequent 1 GB reference downloads must not evict the shared tool
+      # environments (separate Linux/Windows entries would consume ~2 GB).
       - name: Check tools
         run: pixi run wgsextract deps check --tool pharmcat_python
       - name: vcf pharmcat on HG002 (paths with spaces)
@@ -118,6 +115,7 @@ jobs:
           if-no-files-found: error
 
   parity:
+    if: ${{ github.event.pull_request.draft != true }}
     needs: pharmcat
     runs-on: ubuntu-latest
     timeout-minutes: 5

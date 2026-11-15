@@ -18,6 +18,7 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.paths import PathInput, absolute_path
 from wgsextract_cli.core.results import current_result
+from wgsextract_cli.core.samtools_commands import regular_files_bytes, sort_memory
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -226,6 +227,9 @@ def run_to_ubam(params: BamToUbamParams) -> None:
     log_dependency_info(["samtools"])
 
     threads, memory = get_resource_defaults(params.threads, params.memory)
+    memory = sort_memory(
+        threads, memory, input_bytes=regular_files_bytes(p for p in (source, r2) if p)
+    )
     outdir = Path(params.outdir) if params.outdir else absolute_path(source).parent
     outdir.mkdir(parents=True, exist_ok=True)
     out_file = outdir / f"{_input_stem(source)}_unaligned.bam"

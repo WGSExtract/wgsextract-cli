@@ -21,6 +21,7 @@ GKL = "Genomics Kernel Library: native numerical kernels used to accelerate GATK
 GPU = "Graphics Processing Unit: a parallel processor used by optional NVIDIA Parabricks workflows."
 GQ = "Genotype Quality: a Phred-scaled measure of confidence in a called genotype."
 DP = "Read Depth: the number of reads contributing evidence at a genomic position."
+GUI = "Graphical User Interface of windows with menus, buttons and pages to adjust settings before initiating a command to the back-end CLI."
 GSA = "Global Screening Array: an Illumina microarray platform used by several consumer testing services."
 HO = "Human Origins: a research microarray marker panel included in AADR exports."
 GPL = "GNU General Public License: the open-source license used by this project."

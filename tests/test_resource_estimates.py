@@ -5,17 +5,21 @@ import logging
 import platform as host_platform
 import random
 import subprocess
+import sys
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from tests.htslib_helpers import needs_tools, run_wgsextract, sam_to_bam, write_fasta
+from tests.prepared_data import sparse_truncate
 from wgsextract_cli import api
 from wgsextract_cli.commands import align, bam, realign
-from wgsextract_cli.commands.vcf import basic, callers
+from wgsextract_cli.commands.vcf import basic, callers, contig_calling
 from wgsextract_cli.core import alignment_memory
 from wgsextract_cli.core import resource_estimates as resources
+from wgsextract_cli.core.alignment_metadata import get_bam_header
 
 GIB = 1024**3
 H2_READS = 679_639_896
@@ -24,7 +28,8 @@ H2_READS = 679_639_896
 def test_arm_deepvariant_inference_floor_survives_fewer_shards_and_small_regions(
     source, tmp_path, monkeypatch, caplog
 ):
-    monkeypatch.setattr(resources, "is_linux_arm64", lambda: True)
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(host_platform, "machine", lambda: "aarch64")
     monkeypatch.setattr(alignment_memory, "available_memory", lambda: 24 * GIB)
     options = {
         "input_paths": [str(source)],
@@ -70,6 +75,34 @@ def _whole_genome(tmp_path):
     return resources.dv_calling_regions(HS38DH, None), ref
 
 
+def test_native_ont_deepvariant_budgets_the_read_phase_merge_739(tmp_path, monkeypatch):
+    """#739: wgse-deepvariant's ONT postprocess first merges every read's
+    phase, about 4.2 GiB for HG002's 81 GB whole-genome ONT CRAM."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(host_platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 64 * GIB)
+    cram = tmp_path / "PAO83395.cram"
+    sparse_truncate(cram, 81_375_294_252)
+    _regions, ref = _whole_genome(tmp_path)
+    options = {
+        "input_paths": [str(cram)],
+        "output_dir": str(tmp_path),
+        "reference": str(ref),
+        "threads": "4",
+        "inference_batch_size": 256,
+        "deepvariant_native": True,
+    }
+
+    def stage(model):
+        estimate = resources.estimate_resources(
+            "deepvariant", deepvariant_model=model, **options
+        )
+        return estimate.resources[0].components["largest_sequential_stage"]
+
+    assert stage("ONT_R104") > stage("WGS")
+    assert stage("ONT_R104") > 4.2 * GIB + GIB
+
+
 def test_dv_partitions_reproduce_the_173_whole_genome_run(tmp_path):
     regions, _ref = _whole_genome(tmp_path)
     # postprocess_variants' logged partitions: chr1-3, 4-7, 8-12, 13-20, chr21+.
@@ -82,7 +115,8 @@ def test_dv_partitions_reproduce_the_173_whole_genome_run(tmp_path):
 def test_whole_genome_deepvariant_budgets_postprocess_on_x86(
     source, tmp_path, monkeypatch
 ):
-    monkeypatch.setattr(resources, "is_linux_arm64", lambda: False)
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(host_platform, "machine", lambda: "x86_64")
     monkeypatch.setattr(alignment_memory, "available_memory", lambda: 64 * GIB)
     _regions, ref = _whole_genome(tmp_path)
     options = {
@@ -436,7 +470,7 @@ def test_realign_includes_extracted_fastqs_only_when_needed(tmp_path, source):
     reuse = resources.estimate_resources("realign", **options)
     assert (
         extract.resources[1].estimated_bytes - reuse.resources[1].estimated_bytes
-        == 7_500_000
+        == extract.resources[1].components["extracted_fastqs"]
     )
     assert extract.resources[0].estimated_bytes == reuse.resources[0].estimated_bytes
 
@@ -475,6 +509,222 @@ def test_variant_worker_memory_and_regional_gatk_conversion(tmp_path, source):
     assert any("whole input" in note for note in gatk.notes)
 
 
+@pytest.fixture
+def hg002_slice_metadata(tmp_path):
+    source = tmp_path / "hg002.bam"
+    # #722's measured BAM size; the read-only estimator needs only file metadata.
+    sparse_truncate(source, 670_545_706)
+    _, reference = _whole_genome(tmp_path)
+    with Path(f"{reference}.fai").open("a") as stream:
+        for number in range(430):
+            stream.write(f"alt{number}\t1000\t0\t60\t61\n")
+    return source, reference
+
+
+def test_722_extracted_fastq_budget_covers_full_quality_hg002_slice(
+    tmp_path, hg002_slice_metadata
+):
+    source, reference = hg002_slice_metadata
+    estimate = resources.estimate_resources(
+        "realign",
+        input_paths=[str(source)],
+        output_dir=str(tmp_path),
+        reference=str(reference),
+        reads=10_971_483,
+        extract_fastq=True,
+    )
+    disk = next(row for row in estimate.resources if row.resource == "disk")
+    # Actual completed R1/R2 outputs retained by the #722 SIGINT run.
+    assert disk.components["extracted_fastqs"] >= 460_014_704 + 477_371_236
+
+
+@pytest.mark.parametrize("operation", ["snp", "indel"])
+def test_722_bcftools_preflight_does_not_falsely_report_small_slice_disk_low(
+    tmp_path, monkeypatch, hg002_slice_metadata, operation
+):
+    source, reference = hg002_slice_metadata
+    monkeypatch.setattr(
+        resources.shutil,
+        "disk_usage",
+        lambda _path: SimpleNamespace(free=64 * 1024**2),
+    )
+    estimate = resources.estimate_resources(
+        operation,
+        input_paths=[str(source)],
+        output_dir=str(tmp_path / "out"),
+        reference=str(reference),
+        threads="4",
+        parallel=operation == "indel",
+        available_ram=14 * GIB,
+    )
+    disk = next(row for row in estimate.resources if row.resource == "disk")
+    # Serial SNPs and non-replaying indels fit; parallel SNPs also reserve replay.
+    assert disk.status == "OK"
+
+
+@pytest.mark.parametrize("operation", ["snp", "indel"])
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"parallel": False, "threads": "4"},
+        {"parallel": True, "threads": "1"},
+        {"parallel": True, "threads": "4", "region": "chr1:1-10"},
+        {"parallel": True, "threads": "4", "bcftools_contigs": {}},
+    ],
+)
+def test_729_serial_calling_does_not_charge_nonexistent_parts(
+    tmp_path, monkeypatch, hg002_slice_metadata, operation, options
+):
+    source, reference = hg002_slice_metadata
+    monkeypatch.setattr(
+        resources.shutil,
+        "disk_usage",
+        lambda _path: SimpleNamespace(free=16 * 1024**2),
+    )
+    estimate = resources.estimate_resources(
+        operation,
+        input_paths=[str(source)],
+        output_dir=str(tmp_path / "out"),
+        reference=str(reference),
+        temp_dir=str(tmp_path / "unused"),
+        **options,
+    )
+    disk = next(row for row in estimate.resources if row.resource == "disk")
+    assert disk.status == "OK"
+    assert "temporary" not in disk.components
+    assert str(tmp_path / "unused") not in disk.paths
+
+
+def test_729_unresolved_parallel_plan_does_not_claim_serial_disk_usage(
+    tmp_path, source
+):
+    estimate = resources.estimate_resources(
+        "snp",
+        input_paths=[str(source)],
+        output_dir=str(tmp_path),
+        threads="4",
+        parallel=True,
+    )
+    disk = next(row for row in estimate.resources if row.resource == "disk")
+    assert disk.status == "UNKNOWN"
+
+
+@pytest.fixture
+def batched_header_sample(tmp_path):
+    rng = random.Random(729)
+    names = [f"chrSmall{i:04d}_" + "x" * 48 for i in range(600)]
+    sequences = {"chrBig": "ACGT" * 25_000}
+    sequences.update(
+        {
+            name: "".join(rng.choice("ACGT") for _ in range(1000)) if i < 2 else "A"
+            for i, name in enumerate(names)
+        }
+    )
+    reference = write_fasta(tmp_path / "header.fa", sequences)
+    lines = ["@HD\tVN:1.6\tSO:coordinate"]
+    lines += [f"@SQ\tSN:{name}\tLN:{len(seq)}" for name, seq in sequences.items()]
+    lines += ["@RG\tID:r\tSM:sample"]
+    for i, (name, seq) in enumerate(sequences.items()):
+        if name in names[:2]:
+            for start in range(1, 701):
+                bases = list(seq[start - 1 : start + 299])
+                if 201 <= start <= 500 and rng.random() < 0.5:
+                    bases[500 - start] = "ACGT"[("ACGT".index(seq[499]) + 1) % 4]
+                quality = "".join(chr(33 + rng.randint(15, 40)) for _ in bases)
+                lines.append(
+                    f"r{i}_{start}\t0\t{name}\t{start}\t60\t300M\t*\t0\t0\t"
+                    f"{''.join(bases)}\t{quality}\tRG:Z:r"
+                )
+        else:
+            bases = seq[:100]
+            lines.append(
+                f"r{i}\t0\t{name}\t1\t60\t{len(bases)}M\t*\t0\t0\t"
+                f"{bases}\t{'I' * len(bases)}\tRG:Z:r"
+            )
+    return str(sam_to_bam(lines, tmp_path / "header.bam")), str(reference)
+
+
+@needs_tools("samtools", "bcftools")
+@pytest.mark.parametrize("operation", ["snp", "indel"])
+def test_729_batched_headers_cover_real_deep_replay_without_overcharging_indels(
+    tmp_path, monkeypatch, batched_header_sample, operation
+):
+    alignment, reference = batched_header_sample
+    selected = contig_calling.calling_contigs(alignment, reference, "2", None, True)
+    options = {
+        "input_paths": [alignment],
+        "output_dir": str(tmp_path),
+        "reference": reference,
+        "threads": "2",
+        "parallel": True,
+        "bcftools_contigs": selected,
+        "alignment_header": get_bam_header(alignment),
+    }
+    estimate = resources.estimate_resources(operation, **options)
+    disk = next(row for row in estimate.resources if row.resource == "disk")
+    original = contig_calling.tempfile.TemporaryDirectory
+    observed = {}
+
+    @contextmanager
+    def measure_work(*args, **kwargs):
+        with original(*args, **kwargs) as work:
+            yield work
+            if Path(work).name.startswith(".wgse_call_"):
+                files = [path for path in Path(work).rglob("*") if path.is_file()]
+                observed["bytes"] = sum(path.stat().st_size for path in files)
+                observed["raw_parts"] = any(path.suffix == ".vcf" for path in files)
+
+    # OS boundary: inspect real files immediately before temporary cleanup.
+    monkeypatch.setattr(contig_calling.tempfile, "TemporaryDirectory", measure_work)
+    output = str(tmp_path / f"{operation}.vcf.gz")
+    contig_calling.call_small_variants(
+        alignment,
+        reference,
+        output,
+        threads="2",
+        region=None,
+        profile=[],
+        call_args=["--ploidy", "2", "-P", "0"],
+        contigs=selected,
+        indels=operation == "indel",
+    )
+    assert Path(output).is_file()
+    assert disk.components["temporary"] >= observed["bytes"]
+    assert observed["raw_parts"] == (operation == "snp")
+    if operation == "indel":
+        monkeypatch.setattr(
+            resources.shutil,
+            "disk_usage",
+            lambda _path: SimpleNamespace(free=8 * 1024**2),
+        )
+        checked = resources.estimate_resources(operation, **options)
+        assert (
+            next(row for row in checked.resources if row.resource == "disk").status
+            == "OK"
+        )
+
+
+@pytest.mark.parametrize("operation", ["snp", "indel"])
+def test_722_vcf_budget_with_known_read_count_is_independent_of_bam_cram_storage(
+    tmp_path, hg002_slice_metadata, operation
+):
+    source, reference = hg002_slice_metadata
+    cram = tmp_path / "hg002.cram"
+    sparse_truncate(cram, 100_000_000)
+    budgets = []
+    for alignment in (source, cram):
+        estimate = resources.estimate_resources(
+            operation,
+            input_paths=[str(alignment)],
+            output_dir=str(tmp_path),
+            reference=str(reference),
+            reads=11_140_364,
+        )
+        disk = next(row for row in estimate.resources if row.resource == "disk")
+        budgets.append(disk.components["output"])
+    assert budgets[0] == budgets[1]
+
+
 class Reported(Exception):
     pass
 
@@ -485,8 +735,8 @@ class Reported(Exception):
         pytest.param(bam, bam.cmd_sort, "sort", marks=needs_tools("samtools")),
         pytest.param(bam, bam.cmd_tocram, "to-cram", marks=needs_tools("samtools")),
         pytest.param(bam, bam.cmd_tobam, "to-bam", marks=needs_tools("samtools")),
-        (basic, basic.cmd_snp, "snp"),
-        (basic, basic.cmd_indel, "indel"),
+        pytest.param(basic, basic.cmd_snp, "snp", marks=needs_tools("samtools")),
+        pytest.param(basic, basic.cmd_indel, "indel", marks=needs_tools("samtools")),
         (callers, callers.cmd_gatk, "gatk"),
     ],
 )
@@ -497,10 +747,19 @@ def test_commands_report_before_work(
     if operation == "gatk":
         monkeypatch.setattr(module, "require_native_tool", lambda _tool: None)
     monkeypatch.setattr(module, "log_dependency_info", lambda *_: None, raising=False)
-    if module is bam:
-        source, _ref = _tiny_bam(tmp_path)
-    else:
-        setup = basic.CallerSetup("1", str(tmp_path), "", None, None)  # type: ignore[arg-type]
+    ref = None
+    if module in (bam, basic, callers):
+        source, ref = _tiny_bam(tmp_path)
+    if module is not bam:
+        from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+
+        setup = basic.CallerSetup(
+            "1",
+            str(tmp_path),
+            str(ref),
+            ReferenceLibrary(str(ref), input_path=str(source)),
+            None,
+        )
         monkeypatch.setattr(module, "setup_caller", lambda _params: setup)
 
     def reported(build):
@@ -649,3 +908,9 @@ def test_long_read_disk_covers_the_measured_spills_and_cram_output():
         "PAO83395.pass.cram", 10_728_434_251, "CRAM", 4 * 192 * mib
     )
     assert genome.spill > 42_570_898_460
+    # measured (#431, #690): realigned whole, the 103.7 GB CRAM came to
+    # 185.5 GB of CRAM, 1.79x where 1.7x was first budgeted.
+    whole = resources.long_read_disk(
+        "PAO83395.pass.cram", 103_700_000_000, "CRAM", 7 * 512 * mib
+    )
+    assert whole.output >= 185_500_000_000

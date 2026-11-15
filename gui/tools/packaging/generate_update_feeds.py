@@ -86,7 +86,7 @@ def write_tauri_latest_json(
 
     payload = {
         "version": version,
-        "notes": f"GUI for CLI {version}",
+        "notes": f"WGS Extract GUI {version}",
         "pub_date": datetime.now(timezone.utc).isoformat(),
         "platforms": platforms,
     }

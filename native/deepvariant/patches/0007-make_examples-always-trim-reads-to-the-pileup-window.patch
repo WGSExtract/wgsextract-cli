@@ -1,0 +1,44 @@
+From 9bf8a4d5c29d4e1bea46bdaa18a0e3a9cfe00d86 Mon Sep 17 00:00:00 2001
+From: Mac <22130+theontho@users.noreply.github.com>
+Date: Thu, 12 Nov 2026 02:09:57 -0800
+Subject: [PATCH] make_examples: always trim reads to the pileup window, as
+ upstream does (wgsextract #647)
+
+google/deepvariant's make_examples_options.py sets trim_reads_for_pileup
+whenever --alt_aligned_pileup is set, and that flag always holds a mode
+name ('none' included). Without trimming, a read whose only overlap with
+a candidate's window is a long deletion becomes a blank pileup row
+sorted by its start, ahead of the reads that do cover the window; on
+HG003 this changed 20 low-quality records (none in GIAB confident
+regions) across 6 loci.
+---
+ deepvariant/native/make_examples_main.cc | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/deepvariant/native/make_examples_main.cc b/deepvariant/native/make_examples_main.cc
+index 913a88b..8c35f70 100644
+--- a/deepvariant/native/make_examples_main.cc
++++ b/deepvariant/native/make_examples_main.cc
+@@ -195,7 +195,7 @@ ABSL_FLAG(std::string, channel_list_preset, "",
+ ABSL_FLAG(bool, sort_by_haplotypes, false,
+           "Sort reads by HP tag in pileup (long-read models).");
+ ABSL_FLAG(bool, trim_reads_for_pileup, false,
+-          "Trim reads to pileup window before encoding.");
++          "Ignored: reads are always trimmed to the pileup window, as upstream does.");
+ ABSL_FLAG(bool, phase_reads, false,
+           "Phase reads using HP SAM tag.");
+ ABSL_FLAG(bool, parse_sam_aux_fields, false,
+@@ -426,7 +426,12 @@ MakeExamplesOptions BuildOptions(const std::string& sample_name,
+   // Long-read behavioral flags.
+   opts.set_phase_reads(absl::GetFlag(FLAGS_phase_reads));
+   opts.set_parse_sam_aux_fields(absl::GetFlag(FLAGS_parse_sam_aux_fields));
+-  opts.set_trim_reads_for_pileup(absl::GetFlag(FLAGS_trim_reads_for_pileup));
++  // Upstream make_examples_options.py turns trimming on whenever
++  // --alt_aligned_pileup is set, and that flag always holds a mode name
++  // ('none' included), so google/deepvariant trims reads to the pileup
++  // window in every mode. Without it, a read whose only overlap with the
++  // window is a long deletion becomes a blank row sorted by its start.
++  opts.set_trim_reads_for_pileup(true);
+   {
+     const bool split = absl::GetFlag(FLAGS_split_skip_reads);
+     if (split) opts.mutable_realigner_options()->set_split_skip_reads(true);

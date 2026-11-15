@@ -8,7 +8,7 @@ export interface NavigatorPlatformInfo {
 }
 
 export interface TauriGlobalInfo {
-  __GUI_FOR_CLI_TAURI__?: unknown;
+  __WGSEXTRACT_GUI_TAURI__?: unknown;
   __TAURI__?: unknown;
   __TAURI_INTERNALS__?: unknown;
 }
@@ -27,7 +27,7 @@ export function effectiveWebUIFont(
 }
 
 export function isTauriRuntime(globalInfo: TauriGlobalInfo = globalThis as TauriGlobalInfo) {
-  return Boolean(globalInfo.__GUI_FOR_CLI_TAURI__ || globalInfo.__TAURI_INTERNALS__ || globalInfo.__TAURI__);
+  return Boolean(globalInfo.__WGSEXTRACT_GUI_TAURI__ || globalInfo.__TAURI_INTERNALS__ || globalInfo.__TAURI__);
 }
 
 export function shouldRenderInPageBundleLoader(globalInfo: TauriGlobalInfo = globalThis as TauriGlobalInfo) {

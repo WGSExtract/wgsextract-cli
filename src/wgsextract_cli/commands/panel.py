@@ -1,16 +1,14 @@
 """``panel bed``: genes and presets to a BED of padded, merged target regions."""
 
-import argparse
 import hashlib
 import logging
 from pathlib import Path
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api.panel import PanelBedParams
+from wgsextract_cli.cli.registration.panel import register as register
 from wgsextract_cli.core import panel
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.builds import build_from_chr1_length
-from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.panel_presets import PRESETS, preset_genes
 from wgsextract_cli.core.reference_assets import read_fai_lengths
 from wgsextract_cli.core.results import Scalar, current_result, human_output, warn
@@ -194,24 +192,6 @@ def run_panel_bed(params: PanelBedParams) -> None:
             "Contigs are named chr1..chrM; give --ref with the FASTA MinKNOW uses "
             "if it names them otherwise."
         )
-
-
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser(
-        "panel", parents=[base_parser], help=CLI_HELP["cmd_panel"]
-    )
-    subs = parser.add_subparsers(dest="panel_cmd", required=True)
-    sub = subs.add_parser(
-        "bed",
-        parents=[base_parser],
-        help=CLI_HELP["cmd_panel-bed"],
-        description=CLI_HELP["cmd_panel-bed"],
-    )
-    add_arguments(sub, PanelBedParams)
-    sub.set_defaults(func=cli_handler(PanelBedParams, run_panel_bed))
 
 
 __all__ = ["register", "run_panel_bed"]

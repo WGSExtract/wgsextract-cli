@@ -103,12 +103,35 @@ KNOWN_SETTINGS = {
         None,
         "Apple Silicon: `align`/`realign` use wgse-bwa, wgse-bwa-mem2, "
         "wgse-bwa-mem3 and wgse-minimap2 when on PATH (auto, the default) or "
-        "never (off)",
+        "never (off); Linux: Bioconda's bwa-mem3 in place of bwa/bwa-mem2",
+    ),
+    "output_profile": (
+        "default",
+        "`align`/`realign`: default keeps --format; archive selects lossless "
+        "CRAM 3.1 (GATK 4.7+); calling selects compatible CRAM 3.0",
+    ),
+    "prefer_native_gpu": (
+        False,
+        "`align`/`realign`: prefer wgse-bwa's native GPU even above the RAM "
+        "budget after normal sort step-down; retain explicit memory, otherwise "
+        "cap default/config sort at 256M (may swap heavily)",
+    ),
+    "dense_suffix_array": (
+        False,
+        "`align`/`realign`: wgse-bwa reads the reference's dense suffix-array "
+        "file from `ref dense-sa` (opt-in; used only when wgse-bwa aligns; "
+        "holds it in RAM, 0.8 GB for hs38)",
     ),
     "dorado_models_directory": (
         None,
         "Folder `basecall` downloads Dorado models into (default: the "
         "wgsextract cache's dorado-models)",
+    ),
+    "mimalloc": (
+        None,
+        "Apple Silicon: `vcf snp`/`vcf indel` run bcftools with WGS Extract's "
+        "wgse-mimalloc allocator when it's installed (auto, the default) or "
+        "never (off)",
     ),
     "haplocheck_executable": (None, "Path to the haplocheck executable or JAR"),
     "report_gene_list": (
@@ -133,6 +156,10 @@ KNOWN_SETTINGS = {
     ),
     "jar_directory": (None, "Directory for JAR tools"),
     "vep_cache_directory": (None, "Path to VEP cache"),
+    "vep_engine": (
+        None,
+        "Engine `vep run` annotates with: vep-rs (default) or ensembl",
+    ),
     "pharmcat_directory": (None, "Extracted PharmCAT pipeline release"),
     "parabricks_image": (
         None,
@@ -144,6 +171,16 @@ KNOWN_SETTINGS = {
         "DeepVariant Docker image for CPU calling (default "
         "google/deepvariant:1.10.0 on x64; local "
         "localhost/wgsextract-deepvariant:1.10.0-arm64 on Linux ARM64)",
+    ),
+    "deepvariant_native": (
+        None,
+        "`vcf deepvariant` runs wgse-deepvariant (Apple Silicon, Linux x86-64) "
+        "when it is on PATH (auto, the default) or never (off)",
+    ),
+    "deepvariant_weights": (
+        None,
+        "Folder of the weights wgse-deepvariant calls with (from its "
+        "macos-deepvariant or linux-deepvariant release)",
     ),
     "deepvariant_ultima_image": (
         None,
@@ -161,6 +198,11 @@ KNOWN_SETTINGS = {
         "Clair3 ONT model for `vcf clair3`: a model directory or the name of one "
         "Clair3 bundles (default: chosen from the reads' basecaller metadata)",
     ),
+    "clair3_gpu_image": (
+        None,
+        "Clair3 GPU Docker image for `vcf clair3 --gpu` (default "
+        "hkubal/clair3:v2.0.5_gpu, pinned by digest)",
+    ),
     "methylation_context": (
         "cpg",
         "`methylation pileup` context: cpg (CpG sites) or all (every cytosine)",
@@ -174,14 +216,14 @@ KNOWN_SETTINGS = {
         "`methylation pileup`: sum both strands of each CpG into one row",
     ),
     "default_input_vcf": (None, "Default input VCF file"),
-    "microarray_min_gq": (0, "Microarray minimum sample GQ (0 disables filtering)"),
-    "microarray_min_dp": (0, "Microarray minimum sample DP (0 disables filtering)"),
+    "microarray_min_gq": (20, "Microarray minimum sample GQ (0 disables filtering)"),
+    "microarray_min_dp": (10, "Microarray minimum sample DP (0 disables filtering)"),
     "microarray_assume_hom_ref": (
-        True,
+        False,
         "Treat absent VCF markers on represented contigs as homozygous reference",
     ),
     "microarray_exclude_filtered": (
-        False,
+        True,
         "Write microarray no-calls for VCF FILTER values other than PASS or .",
     ),
     "microarray_call_reasons": (
@@ -258,10 +300,21 @@ KNOWN_SETTINGS = {
     "cadd_indel_tsv_path": (None, "Path to CADD indel TSV data"),
     "gerp_bigwig_path": (None, "Path to GERP++ RS bigWig data"),
     "gnomad_vcf_path": (None, "Path to gnomAD VCF data"),
+    "gnomad_sv_path": (None, "Path to a gnomAD-SV sites table (ref gnomad-sv)"),
+    "gnomad_lr_sv_path": (
+        None,
+        "Path to a gnomAD-LR SV sites table (ref gnomad-sv --source lr)",
+    ),
     "spliceai_vcf_path": (None, "Path to SpliceAI VCF data"),
     "alphamissense_vcf_path": (None, "Path to AlphaMissense VCF data"),
     "pharmgkb_vcf_path": (None, "Path to PharmGKB data"),
     "signing_key": (None, "OpenSSH private key used by `sign create`"),
+    "pgs_scoring_file": (None, "Custom scoring TSV[.gz], overriding Catalog weights"),
+    "pgs_min_match": (0.75, "Minimum PGS match fraction for percentile eligibility"),
+    "pgs_keep_ambiguous": (
+        False,
+        "Keep palindromic SNPs only with independently verified forward-strand alleles",
+    ),
     "pet_r1_fastq": (None, "Test: Path to PET R1 reads"),
     "pet_r2_fastq": (None, "Test: Path to PET R2 reads"),
     "pet_reference_fasta": (None, "Test: Path to PET reference genome"),
@@ -287,6 +340,7 @@ FRACTION_SETTINGS = frozenset(
         "qc_max_autosomal_homozygosity",
         "qc_max_no_call_rate",
         "qc_max_contamination",
+        "pgs_min_match",
     }
 )
 
@@ -304,6 +358,7 @@ PATH_SETTINGS = {
     "haplocheck_executable",
     "dorado_executable",
     "dorado_models_directory",
+    "deepvariant_weights",
     "jar_directory",
     "vep_cache_directory",
     "pharmcat_directory",
@@ -320,10 +375,13 @@ PATH_SETTINGS = {
     "cadd_indel_tsv_path",
     "gerp_bigwig_path",
     "gnomad_vcf_path",
+    "gnomad_sv_path",
+    "gnomad_lr_sv_path",
     "spliceai_vcf_path",
     "alphamissense_vcf_path",
     "pharmgkb_vcf_path",
     "signing_key",
+    "pgs_scoring_file",
     "pet_r1_fastq",
     "pet_r2_fastq",
     "pet_reference_fasta",

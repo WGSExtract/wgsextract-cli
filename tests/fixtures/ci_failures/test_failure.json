@@ -1,0 +1,186 @@
+{
+  "id": 131653455642,
+  "run_id": 43354532088,
+  "head_sha": "3b03347d12b758367156c454c5b3ea06bf7da830",
+  "conclusion": "failure",
+  "name": "test-macos",
+  "steps": [
+    {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 1,
+      "started_at": "2026-11-13T02:48:13Z",
+      "completed_at": "2026-11-13T02:48:18Z"
+    },
+    {
+      "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 2,
+      "started_at": "2026-11-13T02:48:18Z",
+      "completed_at": "2026-11-13T02:48:28Z"
+    },
+    {
+      "name": "Set up Pixi",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 3,
+      "started_at": "2026-11-13T02:48:28Z",
+      "completed_at": "2026-11-13T02:51:45Z"
+    },
+    {
+      "name": "Test installer",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 4,
+      "started_at": "2026-11-13T02:51:45Z",
+      "completed_at": "2026-11-13T02:55:39Z"
+    },
+    {
+      "name": "Verify Tools",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 5,
+      "started_at": "2026-11-13T02:55:39Z",
+      "completed_at": "2026-11-13T02:55:43Z"
+    },
+    {
+      "name": "Pinned hg19ToHg38 chain checksum",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 6,
+      "started_at": "2026-11-13T02:55:43Z",
+      "completed_at": "2026-11-13T02:55:44Z"
+    },
+    {
+      "name": "Restore the hg19ToHg38 liftOver chain",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 7,
+      "started_at": "2026-11-13T02:55:44Z",
+      "completed_at": "2026-11-13T02:55:45Z"
+    },
+    {
+      "name": "Keep a restored chain only if it has the pinned SHA-256",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 8,
+      "started_at": "2026-11-13T02:55:45Z",
+      "completed_at": "2026-11-13T02:55:45Z"
+    },
+    {
+      "name": "Configure and Bootstrap Library",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 9,
+      "started_at": "2026-11-13T02:55:45Z",
+      "completed_at": "2026-11-13T02:55:55Z"
+    },
+    {
+      "name": "Check the downloaded chain before caching it",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 10,
+      "started_at": "2026-11-13T02:55:55Z",
+      "completed_at": "2026-11-13T02:55:55Z"
+    },
+    {
+      "name": "Cache the downloaded hg19ToHg38 liftOver chain",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 11,
+      "started_at": "2026-11-13T02:55:55Z",
+      "completed_at": "2026-11-13T02:55:55Z"
+    },
+    {
+      "name": "Cache public hs38 reference",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 12,
+      "started_at": "2026-11-13T02:55:55Z",
+      "completed_at": "2026-11-13T02:56:06Z"
+    },
+    {
+      "name": "Install Reference Genome",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 13,
+      "started_at": "2026-11-13T02:56:06Z",
+      "completed_at": "2026-11-13T02:57:49Z"
+    },
+    {
+      "name": "Build and Smoke Test Package",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 14,
+      "started_at": "2026-11-13T02:57:49Z",
+      "completed_at": "2026-11-13T02:58:05Z"
+    },
+    {
+      "name": "Run Benchmark",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 15,
+      "started_at": "2026-11-13T02:58:05Z",
+      "completed_at": "2026-11-13T02:59:53Z"
+    },
+    {
+      "name": "Run Tests",
+      "status": "completed",
+      "conclusion": "failure",
+      "number": 16,
+      "started_at": "2026-11-13T02:59:53Z",
+      "completed_at": "2026-11-13T03:23:42Z"
+    },
+    {
+      "name": "Publish test timings and non-gating coverage",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 17,
+      "started_at": "2026-11-13T03:23:42Z",
+      "completed_at": "2026-11-13T03:23:43Z"
+    },
+    {
+      "name": "Run end-to-end tests on generated data",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 18,
+      "started_at": "2026-11-13T03:23:43Z",
+      "completed_at": "2026-11-13T03:23:43Z"
+    },
+    {
+      "name": "Post Cache public hs38 reference",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 34,
+      "started_at": "2026-11-13T03:23:43Z",
+      "completed_at": "2026-11-13T03:23:43Z"
+    },
+    {
+      "name": "Post Set up Pixi",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 35,
+      "started_at": "2026-11-13T03:23:43Z",
+      "completed_at": "2026-11-13T03:23:43Z"
+    },
+    {
+      "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 36,
+      "started_at": "2026-11-13T03:23:43Z",
+      "completed_at": "2026-11-13T03:23:44Z"
+    },
+    {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 37,
+      "started_at": "2026-11-13T03:23:44Z",
+      "completed_at": "2026-11-13T03:23:47Z"
+    }
+  ],
+  "check_run_url": "https://api.github.com/repos/WGSExtract/wgsextract-cli/check-runs/131653455642"
+}

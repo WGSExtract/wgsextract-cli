@@ -1,6 +1,6 @@
 """What each runnable command needs, and how long it typically takes.
 
-Each command's ``--help``, ``wgsextract help --all --json`` and
+Each command's ``--help``, ``wgsextract help <command> --json`` and
 docs/commands.md publish this. ``tools`` are the external tools every
 documented run needs; ``optional`` are those only some options or inputs use
 (an alternative caller or aligner, a VCF instead of a BAM, a download, or a
@@ -111,7 +111,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
         HOURS,
         *_SAM,
         optional=(
-            "bcftools bgzip bwa bwa-mem2 curl gatk minimap2 pbmm2 sambamba samblaster"
+            "bcftools bgzip bwa bwa-mem2 bwa-mem3 curl gatk minimap2 pbmm2 sambamba samblaster"
         ),
     ),
     "basecall": _n(
@@ -120,7 +120,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "align": _n(
         HOURS,
         *_SAM,
-        optional="bcftools bwa bwa-mem2 curl gatk minimap2 pbmm2 sambamba samblaster",
+        optional="bcftools bwa bwa-mem2 bwa-mem3 curl gatk minimap2 pbmm2 sambamba samblaster",
     ),
     "vcf snp": _n(HOURS, *_CALL),
     "vcf indel": _n(HOURS, *_CALL),
@@ -130,6 +130,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf clinvar": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf revel": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf gnomad": _n(MINUTES, *_VCF, optional="bgzip samtools"),
+    "vcf sv-freq": _n(MINUTES, "bcftools", "bgzip", "tabix", optional="samtools"),
     "vcf pharmgkb": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf to-fasta": _n(MINUTES, "bcftools", "bgzip", "samtools", "tabix"),
     "vcf trio": _n(MINUTES, *_CALL, optional="bgzip"),
@@ -138,11 +139,26 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf freebayes": _n(HOURS, "bcftools", "freebayes", "samtools", "tabix"),
     "vcf gatk": _n(HOURS, "gatk", "samtools", "tabix", optional="bcftools"),
     "vcf deepvariant": _n(
-        HOURS, "samtools", "tabix", optional="bcftools docker run_deepvariant sambamba"
+        HOURS,
+        "samtools",
+        "tabix",
+        optional="bcftools docker run_deepvariant wgse-deepvariant sambamba",
     ),
     "vcf clair3": _n(
-        HOURS, "bcftools", "run_clair3.sh", "samtools", "tabix", optional="sambamba"
+        HOURS,
+        "bcftools",
+        "samtools",
+        "tabix",
+        optional="docker run_clair3.sh sambamba",
     ),
+    "vcf impute": _n(
+        HOURS,
+        "bcftools",
+        "bgzip",
+        "samtools",
+        "tabix",
+        optional="GLIMPSE2_ligate GLIMPSE2_phase",
+    ),  # fmt: skip
     "vcf phase": _n(
         HOURS, "bcftools", "samtools", "tabix", optional="longphase whatshap"
     ),
@@ -151,23 +167,39 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf gerp": _n(MINUTES, "bcftools", "bgzip", "tabix", optional="samtools"),
     "vcf spliceai": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf alphamissense": _n(MINUTES, *_VCF, optional="bgzip samtools"),
-    "vcf pharmcat": _n(MINUTES, "bcftools", "pharmcat", "tabix", optional="bgzip"),
-    "vcf chain-annotate": _n(MINUTES, *_VCF, optional="bgzip samtools vep"),
-    "vep run": _n(HOURS, "bcftools", "tabix", "vep", optional="samtools"),
-    "vep download": _n(DOWNLOAD, "curl", "tar"),
+    "vcf pharmcat": _n(
+        MINUTES, "bcftools", "pharmcat", "samtools", "tabix", optional="bgzip"
+    ),
+    "vcf chain-annotate": _n(MINUTES, *_VCF, optional="bgzip samtools vep vep-rs"),
+    # Minutes with vep-rs, the default; hours with Ensembl VEP.
+    "vep run": _n(MINUTES, "bcftools", "tabix", "vep-rs", optional="samtools vep"),
+    "vep download": _n(DOWNLOAD, "samtools", "vep-cache-builder", optional="curl tar"),
     "vep verify": _n(SECONDS, scale=""),
     "vep delete": _n(SECONDS, scale=""),
     "ref download": _n(DOWNLOAD, optional="curl"),
     "ref index": _n(HOURS, *_SAM, optional="bwa bwa-mem2 curl", scale=REFERENCE),
     "ref count-ns": _n(MINUTES, scale=REFERENCE),
+    "ref dense-sa": _n(MINUTES, scale=REFERENCE),
     "ref verify": _n(MINUTES, *_SAM, scale=REFERENCE),
     "ref library": _n(
         DOWNLOAD, "bcftools", "bgzip", "curl", "htsfile", "samtools", "tabix"
     ),
     "ref status": _n(SECONDS, scale=""),
+    "ref needs": _n(SECONDS, scale=""),
+    "ref test-genome": _n(DOWNLOAD, optional="curl"),
     "ref bootstrap": _n(DOWNLOAD, optional="curl"),
     "ref aadr": _n(DOWNLOAD, optional="curl"),
     "ref somalier": _n(DOWNLOAD, optional="curl"),
+    "ref ancestry": _n(DOWNLOAD, optional="curl"),
+    "ref gnomad-sv": _n(DOWNLOAD, "bcftools", "bgzip", "tabix", optional="curl"),
+    "ref imputation": _n(
+        DOWNLOAD,
+        "bcftools",
+        "GLIMPSE2_chunk",
+        "GLIMPSE2_phase",
+        "GLIMPSE2_split_reference",
+        "tabix",
+    ),  # fmt: skip
     "ref ybrowse": _n(DOWNLOAD, "bgzip", "tabix"),
     "ref microarray-targets": _n(MINUTES),
     "ref gene-map": _n(DOWNLOAD, optional="curl"),
@@ -198,13 +230,15 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "bam merge": _n(HOURS, *_SAM, optional="bcftools"),
     "bam to-ubam": _n(HOURS, *_SAM, optional="bcftools"),
     "qc fastp": _n(MINUTES, "fastp"),
-    "qc fastqc": _n(HOURS, "fastqc"),
+    "qc fastqc": _n(HOURS, "fastqc", optional="bcftools multiqc"),
     "qc multiqc": _n(SECONDS, "multiqc", optional="bcftools fastqc", scale=""),
     "qc multiqc-metrics": _n(SECONDS, scale=""),
     "qc vcf": _n(MINUTES, "bcftools"),
     "qc relate": _n(
         MINUTES, "bcftools", "samtools", "somalier", optional="bgzip tabix"
     ),
+    "qc ancestry": _n(MINUTES, "samtools", optional="bcftools curl"),
+    "score pgs": _n(MINUTES, "bcftools", optional="plink2"),
     "qc contamination": _n(MINUTES, "samtools", "verifybamid2", optional="bcftools"),
     "qc fake-data": _n(
         SECONDS,
@@ -220,6 +254,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "analyze comprehensive": _n(HOURS, *_CALL),
     "analyze batch-gen": _n(INSTANT),
     "typing cyp2d6": _n(MINUTES, "cyrius", "minimap2", "samtools", optional="bcftools"),
+    "typing smn": _n(MINUTES, "smn_caller.py", "samtools", optional="bcftools"),
     "typing hla": _n(
         MINUTES, "run-t1k", "samtools", "t1k-build.pl", optional="bcftools"
     ),

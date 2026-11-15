@@ -1,0 +1,345 @@
+/* Cards, stat tiles, badges, file-type marks and key-value lists. */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+  padding: var(--sp-4);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+}
+
+.card--flush {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.card--raised {
+  box-shadow: var(--shadow-1);
+}
+
+.card--interactive {
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+
+.card--interactive:hover {
+  border-color: var(--c-border-strong);
+  box-shadow: var(--shadow-2);
+  color: inherit;
+}
+
+.card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.card--flush > .card__header {
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.card__title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.card__footer {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.card--flush > .card__footer {
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--c-border);
+}
+
+.card__body {
+  padding: var(--sp-4);
+}
+
+/* Task/action card: big icon + title + one line, used on home and file pages */
+.action {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  min-height: 64px;
+}
+
+.action:hover {
+  border-color: var(--c-primary);
+  color: inherit;
+}
+
+.action__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-md);
+  background: var(--tone-soft, var(--c-primary-soft));
+  color: var(--tone, var(--c-primary));
+}
+
+.action__title {
+  font-weight: var(--fw-semibold);
+}
+
+.action__desc {
+  font-size: var(--fs-sm);
+  color: var(--c-text-2);
+}
+
+.action > .icon:last-child {
+  color: var(--c-text-3);
+}
+
+/* Stat tile */
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+}
+
+.stat__label {
+  font-size: var(--fs-xs);
+  color: var(--c-text-3);
+}
+
+.stat__value {
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.stat__value small {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-2);
+}
+
+.stat__delta {
+  font-size: var(--fs-xs);
+  color: var(--c-text-2);
+}
+
+.stats {
+  display: grid;
+  gap: var(--sp-3);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+/* Badges: status and small labels */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: var(--r-pill);
+  background: var(--c-surface-3);
+  color: var(--c-text-2);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.badge .icon {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2.25;
+}
+
+.badge--success {
+  background: var(--c-success-soft);
+  color: var(--c-success);
+}
+
+.badge--warn {
+  background: var(--c-warn-soft);
+  color: var(--c-warn);
+}
+
+.badge--danger {
+  background: var(--c-danger-soft);
+  color: var(--c-danger);
+}
+
+.badge--info {
+  background: var(--c-info-soft);
+  color: var(--c-info);
+}
+
+.badge--primary {
+  background: var(--c-primary-soft);
+  color: var(--c-primary-soft-text);
+}
+
+.badge--accent {
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
+}
+
+.badge--outline {
+  background: transparent;
+  border: 1px solid var(--c-border-strong);
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dot, var(--c-text-3));
+  flex: none;
+}
+
+.dot--success {
+  --dot: var(--c-success);
+}
+
+.dot--warn {
+  --dot: var(--c-warn);
+}
+
+.dot--danger {
+  --dot: var(--c-danger);
+}
+
+.dot--info {
+  --dot: var(--c-info);
+}
+
+/* File-type mark: coloured tile with the type's icon; the text label sits
+ * next to it, never inside the image, so it can be localised. */
+.ft {
+  --ft: var(--ft-fasta);
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--ft) 14%, transparent);
+  color: var(--ft);
+  flex: none;
+}
+
+.ft--sm {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-sm);
+}
+
+.ft--sm .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.ft--lg {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--r-lg);
+}
+
+.ft--lg .icon {
+  width: 28px;
+  height: 28px;
+}
+
+.ft-label {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--r-xs);
+  background: color-mix(in srgb, var(--ft) 12%, transparent);
+  /* Darker (or, in dark mode, lighter) than the hue so small text passes AA */
+  color: color-mix(in srgb, var(--ft) 75%, var(--c-text));
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.03em;
+}
+
+[data-ft="bam"] {
+  --ft: var(--ft-bam);
+}
+
+[data-ft="cram"] {
+  --ft: var(--ft-cram);
+}
+
+[data-ft="fastq"] {
+  --ft: var(--ft-fastq);
+}
+
+[data-ft="vcf"] {
+  --ft: var(--ft-vcf);
+}
+
+[data-ft="raw"] {
+  --ft: var(--ft-raw);
+}
+
+[data-ft="fasta"] {
+  --ft: var(--ft-fasta);
+}
+
+/* Key-value list for file details and job parameters */
+.kv {
+  display: grid;
+  grid-template-columns: minmax(110px, max-content) 1fr;
+  gap: var(--sp-1) var(--sp-4);
+  font-size: var(--fs-sm);
+}
+
+.kv dt {
+  color: var(--c-text-3);
+}
+
+.kv dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Avatar / initials for note authors and paired devices */
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--avatar, var(--c-primary));
+  color: #fff;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  flex: none;
+}

@@ -1,12 +1,15 @@
 """Skip markers and tiny indexed files for tests that run samtools/bcftools/htslib."""
 
+import gzip
 import random
+import subprocess
 from argparse import Namespace
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 import pytest
 
+from tests.prepared_data import cacheable_tool, copy_prepared, prepared_files
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import run_command
 
@@ -33,9 +36,77 @@ def bgzip_index(plain_vcf: str | Path, out: str | Path | None = None) -> str:
 
 def write_fasta(path: Path, seqs: Mapping[str, str]) -> Path:
     """Write a FASTA, one line per sequence, and faidx it."""
+    content = "".join(f">{name}\n{seq}\n" for name, seq in seqs.items()).encode()
+    samtools = get_tool_path("samtools")
+    assert samtools is not None
+    if not cacheable_tool(samtools):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+        run_command([samtools, "faidx", str(path)])
+        return path
+
+    def build(root: Path) -> None:
+        fasta = root / "ref.fa"
+        fasta.write_bytes(content)
+        run_command([samtools, "faidx", str(fasta)])
+
+    root = prepared_files(content, samtools, ("ref.fa", "ref.fa.fai"), build)
+    copy_prepared(root / "ref.fa", path)
+    copy_prepared(root / "ref.fa.fai", Path(str(path) + ".fai"))
+    return path
+
+
+def reference_for_vcf(path: Path, vcf: str | Path, *resources: str | Path) -> Path:
+    """A compressed synthetic reference consistent with the fixture's REF bases.
+
+    Stream homopolymer chunks so chromosome-scale coordinate fixtures do not
+    require a chromosome-sized Python string or an uncompressed disk copy.
+    """
+    from wgsextract_cli.core.reference_resolver import header_contig_lengths
+
+    header = run_command(
+        ["bcftools", "view", "-h", str(vcf)], capture_output=True
+    ).stdout
+    lengths = header_contig_lengths(header)
+    edits: dict[str, dict[int, str]] = {chrom: {} for chrom in lengths}
+    from wgsextract_cli.core.variant_files import match_chromosome_name
+
+    for file in (vcf, *resources):
+        opener = gzip.open if str(file).endswith(".gz") else open
+        with opener(file, "rt") as source:
+            for line in source:
+                if line.startswith("#"):
+                    continue
+                chrom, pos, _, ref, *_ = line.split("\t")
+                chrom = match_chromosome_name(chrom, lengths) or chrom
+                for offset, base in enumerate(ref):
+                    edits[chrom][int(pos) - 1 + offset] = base
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("".join(f">{name}\n{seq}\n" for name, seq in seqs.items()))
-    run_command([get_tool_path("samtools"), "faidx", str(path)])
+    with path.open("wb") as output:
+        process = subprocess.Popen(
+            [get_tool_path("bgzip"), "-c"], stdin=subprocess.PIPE, stdout=output
+        )
+        assert process.stdin is not None
+        try:
+            for chrom, length in lengths.items():
+                process.stdin.write(f">{chrom}\n".encode())
+                positions = sorted(edits[chrom].items())
+                index = 0
+                for start in range(0, length, 1_000_000):
+                    chunk = bytearray(b"A" * min(1_000_000, length - start))
+                    while index < len(positions) and positions[index][0] < start + len(
+                        chunk
+                    ):
+                        pos, base = positions[index]
+                        chunk[pos - start] = ord(base)
+                        index += 1
+                    process.stdin.write(chunk)
+                process.stdin.write(b"\n")
+        finally:
+            process.stdin.close()
+            if process.wait():
+                raise RuntimeError("bgzip failed creating the synthetic reference")
+    run_command(["samtools", "faidx", str(path)], capture_output=True)
     return path
 
 
@@ -44,8 +115,22 @@ def sam_to_bam(lines: Iterable[str], bam_path: Path) -> str:
     sam = bam_path.with_suffix(".sam")
     sam.write_text("\n".join(lines) + "\n")
     samtools = get_tool_path("samtools")
-    run_command([samtools, "sort", "-o", str(bam_path), str(sam)])
-    run_command([samtools, "index", str(bam_path)])
+    assert samtools is not None
+    if not cacheable_tool(samtools):
+        run_command([samtools, "sort", "-o", str(bam_path), str(sam)])
+        run_command([samtools, "index", str(bam_path)])
+        return str(bam_path)
+    content = sam.read_bytes()
+
+    def build(root: Path) -> None:
+        cached_sam = root / "s.sam"
+        cached_sam.write_bytes(content)
+        run_command([samtools, "sort", "-o", str(root / "s.bam"), str(cached_sam)])
+        run_command([samtools, "index", str(root / "s.bam")])
+
+    root = prepared_files(content, samtools, ("s.bam", "s.bam.bai"), build)
+    copy_prepared(root / "s.bam", bam_path)
+    copy_prepared(root / "s.bam.bai", Path(str(bam_path) + ".bai"))
     return str(bam_path)
 
 

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Microarray · Direction B · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="direction.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="b-microarray" data-direction="B" data-shell="b" data-nav="microarray" data-title="microarray">
+<div class="page page--wide" data-annot-id="page">
+  <header class="page-header" data-annot-id="header">
+    <div class="page-header__text">
+      <h1>Microarray <code class="small subtle">microarray</code></h1>
+      <p class="small muted">A combined 23andMe-style kit plus the selected vendor or AADR formats, from BAM, CRAM or VCF. Runs once per selected sample.</p>
+    </div>
+  </header>
+
+  <div class="b-grid">
+    <div class="b-span-8 stack stack--lg">
+      <section class="card" data-annot-id="inputs">
+        <div class="card__header"><h2 class="card__title">Samples <span class="badge">2</span></h2><span class="xsmall subtle"><code>input</code> · one job each</span></div>
+        <div class="row row--wrap">
+          <button class="chip" type="button" data-toggle-pressed aria-pressed="true"><i data-icon="file-cram"></i>HG002 · CRAM · 31×</button>
+          <button class="chip" type="button" data-toggle-pressed aria-pressed="true"><i data-icon="file-vcf"></i>HG004 · VCF</button>
+          <button class="chip" type="button" data-toggle-pressed aria-pressed="false"><i data-icon="file-bam"></i>HG003 · BAM · busy</button>
+          <button class="chip" type="button" data-toggle-pressed aria-pressed="false"><i data-icon="file-bam"></i>Nebula · needs index</button>
+        </div>
+      </section>
+
+      <section class="card card--flush" data-annot-id="matrix">
+        <div class="card__header"><h2 class="card__title">Formats</h2><span class="xsmall subtle"><code>formats</code> · combined kit always written</span><button class="btn btn--sm btn--ghost" type="button" data-toast="Selected the newest version of every vendor">Latest of each</button></div>
+        <div class="table-wrap" style="border: 0; border-radius: 0">
+          <table class="table b-matrix" aria-label="Formats by vendor and version">
+            <thead><tr><th>Vendor</th><th>Versions</th><th class="num">Markers</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Combined</strong></td><td><button class="chip" type="button" aria-pressed="true" disabled>all</button></td><td class="num">≈ 2 M</td></tr>
+              <tr><td>23andMe</td><td><div class="row row--wrap"><button class="chip" type="button" data-toggle-pressed aria-pressed="false">v2</button><button class="chip" type="button" data-toggle-pressed aria-pressed="false">v3</button><button class="chip" type="button" data-toggle-pressed aria-pressed="false">v4</button><button class="chip" type="button" data-toggle-pressed aria-pressed="true">v5</button><button class="chip" type="button" data-toggle-pressed aria-pressed="false">v5 2025</button><button class="chip" type="button" data-toggle-pressed aria-pressed="false">v3+v5</button><button class="chip" type="button" data-toggle-pressed aria-pressed="false">API</button></div></td><td class="num">638 k</td></tr>
+              <tr><td>AncestryDNA</td><td><div class="row row--wrap"><button class="chip" type="button" data-toggle-pressed aria-pressed="false">v1</button><button class="chip" type="button" data-toggle-pressed aria-pressed="true">v2</button><button class="chip" type="button" data-toggle-pressed aria-pressed="false">v2 2021</button><button class="chip" type="button" data-toggle-pressed aria-pressed="false">v2 2024</button></div></td><td class="num">668 k</td></tr>
+              <tr><td>FamilyTreeDNA</td><td><div class="row row--wrap"><button class="chip" type="button" data-toggle-pressed aria-pressed="false">v1 Affy</button><button class="chip" type="button" data-toggle-pressed aria-pressed="false">v2</button><button class="chip" type="button" data-toggle-pressed aria-pressed="true">v3</button></div></td><td class="num">630 k</td></tr>
+              <tr><td>Living DNA</td><td><div class="row row--wrap"><button class="chip" type="button" data-toggle-pressed aria-pressed="false">v1</button><button class="chip" type="button" data-toggle-pressed aria-pressed="false">v2</button></div></td><td class="num">700 k</td></tr>
+              <tr><td>MyHeritage</td><td><div class="row row--wrap"><button class="chip" type="button" data-toggle-pressed aria-pressed="false">v1</button><button class="chip" type="button" data-toggle-pressed aria-pressed="true">v2</button><button class="chip" type="button" data-toggle-pressed aria-pressed="false">GSA 2025</button><button class="chip" type="button" data-toggle-pressed aria-pressed="false">GSA 609,424</button></div></td><td class="num">610 k</td></tr>
+              <tr><td>Nucleus</td><td><button class="chip" type="button" data-toggle-pressed aria-pressed="false">2025</button></td><td class="num">650 k</td></tr>
+              <tr><td>AADR <span class="xsmall subtle">v66.p1, GRCh37</span></td><td><div class="row row--wrap"><button class="chip" type="button" data-toggle-pressed aria-pressed="false">1240K</button><button class="chip" type="button" data-toggle-pressed aria-pressed="false">HO</button><button class="chip" type="button" data-toggle-pressed aria-pressed="false">1240K+HO</button><button class="chip" type="button" disabled aria-pressed="false" title="Run ref aadr --install first">2M</button></div></td><td class="num">1.2 M</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card" data-annot-id="options">
+        <h2 class="card__title">Options</h2>
+        <div class="grid" style="--grid-min: 300px; gap: 0 var(--sp-5)">
+          <div class="field-row"><span class="field-row__label">strand_ambiguous</span><select class="select select--sm" aria-label="strand_ambiguous"><option>keep</option><option>no-call</option></select></div>
+          <div class="field-row"><span class="field-row__label">quirks</span><select class="select select--sm" aria-label="quirks"><option>corrected</option><option>vendor</option></select></div>
+          <div class="field-row"><span class="field-row__label">min_gq</span><input class="input input--sm" type="number" value="0" aria-label="min_gq"></div>
+          <div class="field-row"><span class="field-row__label">min_dp</span><input class="input input--sm" type="number" value="0" aria-label="min_dp"></div>
+          <div class="field-row"><span class="field-row__label">table_format</span><select class="select select--sm" aria-label="table_format"><option>none</option><option>tsv</option><option>parquet</option></select></div>
+          <div class="field-row"><span class="field-row__label">threads</span><input class="input input--sm" type="number" value="12" aria-label="threads"></div>
+          <div class="field-row"><span class="field-row__label">resolve_rsids</span><label class="switch"><input type="checkbox" role="switch" aria-label="resolve_rsids"></label></div>
+          <div class="field-row"><span class="field-row__label">call_reasons</span><label class="switch"><input type="checkbox" role="switch" aria-label="call_reasons"></label></div>
+          <div class="field-row"><span class="field-row__label">assume_hom_ref (VCF)</span><label class="switch"><input type="checkbox" role="switch" checked aria-label="assume_hom_ref"></label></div>
+          <div class="field-row"><span class="field-row__label">parallel</span><label class="switch"><input type="checkbox" role="switch" checked aria-label="parallel"></label></div>
+        </div>
+      </section>
+    </div>
+
+    <aside class="b-span-4 stack" data-annot-id="inspector">
+      <div class="card">
+        <h2 class="card__title">Preflight</h2>
+        <ul class="checks">
+          <li data-state="ok"><i data-icon="circle-check"></i><span>HG002: hs38 found, 31× (call rate ≈ 99.6%)</span></li>
+          <li data-state="warn"><i data-icon="triangle-alert"></i><span>HG004 is a variants-only VCF; absent markers become hom-ref (<code>assume_hom_ref</code>)</span></li>
+          <li data-state="ok"><i data-icon="circle-check"></i><span>Targets <code>All_SNPs_hg38_ref.tab.gz</code> installed</span></li>
+          <li data-state="ok"><i data-icon="clock"></i><span>≈ 12 + 3 min · 2 jobs · ≈ 160 MB</span></li>
+        </ul>
+        <button class="btn btn--primary btn--block" type="button" data-toast="Queued 2 microarray jobs">Queue 2 jobs</button>
+      </div>
+      <div class="card">
+        <div class="card__header"><h2 class="card__title">Request</h2><button class="btn btn--sm btn--ghost" type="button" data-toast="Copied"><i data-icon="copy"></i>Copy</button></div>
+        <pre class="b-log" tabindex="0"><code>POST /v1/ops/microarray
+{"input": "…/HG002/HG002.GRCh38.30x.cram",
+ "formats": "all,23andme_v5,ancestry_v2,
+             ftdna_v3,myheritage_v2",
+ "threads": 12}</code></pre>
+        <pre class="b-log" tabindex="0"><code>wgsextract microarray \
+  --input …/HG002.GRCh38.30x.cram \
+  --formats all,23andme_v5,ancestry_v2,ftdna_v3,myheritage_v2</code></pre>
+      </div>
+    </aside>
+  </div>
+</div>
+</body>
+</html>

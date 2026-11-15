@@ -159,6 +159,50 @@ def _tsv(path: Path) -> dict[tuple[str, str], dict[str, str]]:
 
 
 @needs_htslib
+def test_843_variant_table_keeps_ambiguous_pharmcat_alternatives(
+    annotated_vcf, tmp_path
+):
+    phenotype = tmp_path / "ambiguous.phenotype.json"
+    phenotype.write_text(
+        json.dumps(
+            {
+                "geneReports": {
+                    "CYP2C19": {
+                        "recommendationDiplotypes": [
+                            {
+                                "allele1": {"name": "*1"},
+                                "allele2": {"name": allele},
+                                "phenotypes": [name],
+                            }
+                            for allele, name in (
+                                ("*1", "Normal Metabolizer"),
+                                ("*2", "Intermediate Metabolizer"),
+                            )
+                        ],
+                    }
+                }
+            }
+        )
+    )
+    out = tmp_path / "out"
+    run_wgsextract(
+        "vcf",
+        "table",
+        "--vcf-input",
+        annotated_vcf,
+        "--outdir",
+        str(out),
+        "--pharmcat-json",
+        str(phenotype),
+    )
+    gene = _tsv(out / "sample_variants.tsv")["600", "T"]
+    assert gene["pharmcat_diplotype"] == "Ambiguous: *1/*1 OR *1/*2"
+    assert "no definitive guidance" in gene["pharmcat_phenotype"]
+    assert "Normal Metabolizer" in gene["pharmcat_phenotype"]
+    assert "Intermediate Metabolizer" in gene["pharmcat_phenotype"]
+
+
+@needs_htslib
 def test_vcf_table_flattens_annotations_one_row_per_carried_allele(
     annotated_vcf, tmp_path
 ):
@@ -443,3 +487,31 @@ def test_vcf_table_parquet_holds_the_tsv_rows(annotated_vcf, tmp_path, monkeypat
     assert metadata[b"input"] == str(Path(annotated_vcf).absolute()).encode()
     assert b"sorted_by" in metadata
     assert len(metadata[b"source_sha256"]) == 64
+
+
+def test_imputed_genotypes_are_marked_with_their_probability():
+    # #621: imputed rows must be told apart from sequenced ones.
+    imputed = _record(
+        "chr1", "800", ".", "C", "T", ".", "ImpLowConf", "IMP;RAF=0.3",
+        "GT:DS:GP", "0/1:0.8:0.25,0.7,0.05",
+    )  # fmt: skip
+    called = _record("chr1", "900", ".", "G", "A", "30", "PASS", ".", "GT", "1/1")
+    rows = _rows([imputed, called])
+    assert (
+        rows[("800", "T")]["imputed"],
+        rows[("800", "T")]["genotype_probability"],
+    ) == (1, 0.7)
+    assert rows[("800", "T")]["filter"] == "ImpLowConf"
+    assert (
+        rows[("900", "A")]["imputed"],
+        rows[("900", "A")]["genotype_probability"],
+    ) == (0, None)
+
+
+@pytest.mark.parametrize("gp", ["255,0,20", "-1,1,1", "0,inf,1"])
+def test_732_non_probability_gp_never_becomes_a_probability(gp):
+    record = _record(
+        "chr1", "800", ".", "C", "T", ".", "PASS", ".",
+        "GT:GP", f"0/1:{gp}",
+    )  # fmt: skip
+    assert _rows([record])[("800", "T")]["genotype_probability"] is None

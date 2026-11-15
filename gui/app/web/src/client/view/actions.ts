@@ -25,9 +25,10 @@ export function renderActions(actions: ActionSpec[], context: CommandContext, ow
       const command = displayCommand(action.command, resolvedContext);
       const tooltipText = actionTooltipText(action.tooltip ?? command, disabledText ?? (isLoadingPrecheck ? state.labels.refreshingTitle : ""));
       const roleClass = action.role === "destructive" ? "danger" : action.role === "secondary" ? "secondary" : "primary";
+      const showsPrecheck = Boolean(precheck?.message);
       return `
-        <span class="action-stack ${compact ? "compact" : ""}" data-tooltip="${escapeAttribute(tooltipText)}" ${disabledText || isLoadingPrecheck ? 'tabindex="0"' : ""}>
-          ${precheck ? renderPrecheckBanner(precheck) : isLoadingPrecheck ? renderLoadingInline(state.labels.refreshingTitle) : ""}
+        <span class="action-stack${compact ? " compact" : ""}${showsPrecheck ? " has-precheck" : ""}" data-tooltip="${escapeAttribute(tooltipText)}" ${disabledText || isLoadingPrecheck ? 'tabindex="0"' : ""}>
+          ${showsPrecheck && precheck ? renderPrecheckBanner(precheck) : isLoadingPrecheck ? renderLoadingInline(state.labels.refreshingTitle) : ""}
           ${state.actionPrecheckErrors.has(precheckKey)
             ? renderInlineError(state.actionPrecheckErrors.get(precheckKey), `<button type="button" data-retry-precheck="${escapeAttribute(precheckKey)}">${escapeHTML(state.labels.retryButtonTitle)}</button>`)
             : ""}
@@ -51,7 +52,7 @@ function actionEstimate(action: ActionSpec) {
   const label = estimatedDurationLabel(action.estimatedDurationMinutes);
   const accessibleLabel = escapeAttribute(`Estimated time ${label}`);
   return label
-    ? `<span class="action-estimate" title="${accessibleLabel}" aria-label="${accessibleLabel}"><span aria-hidden="true">${renderIcon("clock", "🕒", "🕒")}</span><span>${escapeHTML(label)}</span></span>`
+    ? `<span class="action-estimate" title="${accessibleLabel}" aria-label="${accessibleLabel}"><span aria-hidden="true">${renderIcon("clock", undefined, "🕒")}</span><span>${escapeHTML(label)}</span></span>`
     : "";
 }
 
@@ -98,10 +99,12 @@ function normalizedPlaceholderLabelKey(placeholder: string) {
 }
 
 export function renderPrecheckBanner(precheck: PrecheckResult) {
-  const icon = precheck.severity === "warning" ? "⚠️" : "💽";
+  const icon = precheck.severity === "warning"
+    ? renderIcon("exclamationmark.triangle.fill", undefined, "⚠️")
+    : renderIcon("internaldrive", undefined, "💽");
   return `
     <span class="precheck-banner ${escapeAttribute(precheck.severity)}">
-      <span aria-hidden="true">${icon}</span>
+      <span class="precheck-icon" aria-hidden="true">${icon}</span>
       <span><strong>${escapeHTML(precheck.title)}</strong><span>${escapeHTML(precheck.message)}</span></span>
     </span>
   `;

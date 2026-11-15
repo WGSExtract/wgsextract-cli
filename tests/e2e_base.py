@@ -24,6 +24,7 @@ from wgsextract_cli.core.dependencies import (
     is_pixi_tool_command,
     pixi_env_prefix,
 )
+from wgsextract_cli.core.native_support import is_arm64_docker_host
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 from wgsextract_cli.core.warnings import EXPECTED_TIME
@@ -120,7 +121,10 @@ def _print_report(mode: str, results: list[E2EResult]) -> None:
 
 @pytest.mark.real_config
 def _deepvariant_image() -> bool:
-    """Whether Docker can run Google's DeepVariant image (pulled already)."""
+    """Whether Docker has a DeepVariant image this host can run: on an ARM64
+    host or engine (Apple Silicon too, even under Rosetta) only a linux/arm64
+    one on an ARM64 engine, as Google's amd64 image aborts under emulation
+    (#665)."""
     import subprocess
 
     from wgsextract_cli.commands.vcf.deepvariant import deepvariant_image
@@ -128,8 +132,17 @@ def _deepvariant_image() -> bool:
     docker = shutil.which("docker")
     if not docker:
         return False
-    inspect = [docker, "image", "inspect", deepvariant_image()]
-    return subprocess.run(inspect, capture_output=True).returncode == 0
+    fmt = "{{.Os}}/{{.Architecture}}"
+    inspect = [docker, "image", "inspect", "--format", fmt, deepvariant_image()]
+    found = subprocess.run(inspect, capture_output=True, text=True)
+    if found.returncode:
+        return False
+    info = [docker, "info", "--format", "{{.Architecture}}"]
+    engine = subprocess.run(info, capture_output=True, text=True).stdout.strip()
+    arm64_engine = engine.lower() in {"aarch64", "arm64"}
+    if arm64_engine or is_arm64_docker_host():
+        return arm64_engine and found.stdout.strip() == "linux/arm64"
+    return True
 
 
 class E2EBase:
@@ -359,8 +372,11 @@ class E2EBase:
         )
 
     def test_38_vcf_deepvariant_chrm(self) -> None:
-        if shutil.which("run_deepvariant") is None and not _deepvariant_image():
-            pytest.skip("neither run_deepvariant nor Google's DeepVariant image")
+        launcher = shutil.which("run_deepvariant") and not is_arm64_docker_host()
+        if not launcher and not _deepvariant_image():
+            pytest.skip(
+                "neither run_deepvariant nor a DeepVariant image this host runs"
+            )
         self.run_real(
             "38 vcf deepvariant (chrM)",
             [

@@ -19,7 +19,7 @@ def load_page(source: Path) -> Page:
         eyebrow=require(metadata, "eyebrow"),
         heading=require(metadata, "heading"),
         lede=require(metadata, "lede"),
-        footer_title=metadata.get("footer_title", "GUI for CLI"),
+        footer_title=metadata.get("footer_title", "WGS Extract GUI"),
         footer_text=metadata.get(
             "footer_text",
             "Turn CLI bundles into desktop apps without rewriting the tool.",

@@ -53,36 +53,42 @@ jobs:
           ref: ${{ inputs.ref }}
           persist-credentials: false
 
+      # This run's CI helpers, which an older ref being rebuilt may predate.
+      # They replace the ref's own, because local actions (and their post
+      # steps) resolve ./.github/actions in the workspace.
+      - name: Checkout CI helpers
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: gui/out/ci-helpers
+          sparse-checkout: .github/actions
+          persist-credentials: false
+      - name: Use this run's CI helpers
+        shell: bash
+        working-directory: .
+        run: |
+          rm -rf .github/actions
+          mkdir -p .github
+          cp -R gui/out/ci-helpers/.github/actions .github/actions
+
       - name: Configure release version
         if: env.RELEASE_TAG != ''
         shell: bash
         run: echo "PACKAGE_APP_VERSION=${RELEASE_TAG#v}" >> "$GITHUB_ENV"
 
-      - name: Setup Node
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - name: Set up the app toolchain
+        timeout-minutes: 60
+        uses: ./.github/actions/setup-gui
         with:
-          node-version: "24"
+          rust: "true"
+          tauri-linux-libraries: "true"
+          extra-apt-packages: rpm zstd
+          cache: ${{ inputs.tag == '' }}
 
-      # The hosted runners ship rustup; Tauri builds with the current stable.
-      - name: Setup Rust
-        shell: bash
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
-          rustc --version
-
-      - name: Install Linux system dependencies
-        if: matrix.artifact_name == 'tauri-linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libgtk-3-dev \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            rpm \
-            zstd
+      - name: Restore Rust dependencies
+        uses: ./.github/actions/rust-cache
+        with:
+          # A caller rebuilding an arbitrary ref must not seed main's cache.
+          writer: ${{ inputs.ref == github.sha && inputs.tag == '' }}
 
       # Tauri signs and notarizes the macOS app when these variables are set:
       # https://v2.tauri.app/distribute/sign/macos/
@@ -137,9 +143,6 @@ jobs:
             echo "::error::Releases need notarization credentials (App Store Connect API key or Apple ID)."
             exit 1
           fi
-
-      - name: Install dependencies
-        run: npm ci --prefix app
 
       - name: Package Tauri app
         run: python3 tools/tasks.py package tauri

@@ -8,6 +8,7 @@ on:
         type: boolean
         default: false
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - packaging/windows-arm64/**
       - scripts/audit_windows_arm64.ps1
@@ -17,12 +18,14 @@ on:
       - tests/test_windows_arm64.py
       - tests/test_pixi_hash_restore.py
       - .github/workflows/windows_arm64.yml
+      - .github/actions/setup-pixi/**
+      - "!**/*.md"
 
 permissions:
   contents: read
 
 concurrency:
-  group: windows-arm64-qualification-${{ github.ref }}
+  group: windows-arm64-qualification-${{ github.ref }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -30,7 +33,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.calling_control_only
     uses: ./.github/workflows/windows_arm64_calling_control.yml
   qualify:
-    if: github.event_name != 'workflow_dispatch' || !inputs.calling_control_only
+    if: github.event.pull_request.draft != true && (github.event_name != 'workflow_dispatch' || !inputs.calling_control_only)
     runs-on: windows-11-arm
     timeout-minutes: 60
     strategy:
@@ -55,10 +58,9 @@ jobs:
           python -m pytest tests/test_windows_arm64.py tests/test_dependency_probes.py packaging/windows-arm64/tests/test_prepare_fastp.py packaging/windows-arm64/tests/test_prepare_setuptools.py packaging/windows-arm64/tests/test_setuptools_purl.py packaging/windows-arm64/tests/test_audit_java_archives.py --basetemp=out/pytest-arm64 --junitxml=out/windows-arm64-tests.xml
           if ($LASTEXITCODE) { throw "ARM64 qualification tests failed" }
       - name: Set up native Pixi
-        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+        uses: ./.github/actions/setup-pixi
         with:
-          pixi-version: v0.83.0
-          run-install: false
+          install: "false"
       - name: Check out pinned MSVC dependency recipes
         if: matrix.recipe != 'python' && matrix.recipe != 'python-source' && matrix.recipe != 'samblaster' && matrix.recipe != 'openjdk' && matrix.recipe != 'fastqc' && matrix.recipe != 'haplogrep3' && matrix.recipe != 'haplocheck' && matrix.recipe != 'setuptools'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -96,7 +98,7 @@ jobs:
 
   pipeline:
     needs: qualify
-    if: always() && !cancelled() && (github.event_name != 'workflow_dispatch' || !inputs.calling_control_only)
+    if: always() && !cancelled() && github.event.pull_request.draft != true && (github.event_name != 'workflow_dispatch' || !inputs.calling_control_only)
     runs-on: windows-11-arm
     timeout-minutes: 15
     steps:
@@ -118,10 +120,9 @@ jobs:
           pattern: windows-arm64-qualification-*
           path: out/integration/packages
       - name: Set up native candidate installer Pixi
-        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+        uses: ./.github/actions/setup-pixi
         with:
-          pixi-version: v0.83.0
-          run-install: false
+          install: "false"
       - name: Fresh checksum-pinned candidate installation
         shell: pwsh
         run: |

@@ -15,7 +15,7 @@ from tests.fake_tools import FakePixi, python_tool
 from wgsextract_cli import api
 from wgsextract_cli.cli.parser import build_parser
 from wgsextract_cli.core import dependency_checks, pixi_tools, windows_arm64
-from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     check_all_dependencies,
     get_tool_version,
@@ -387,6 +387,35 @@ def test_check_all_dependencies_marks_crashing_tools_missing(host):
     assert "install --locked" in by_name["minimap2"]["version"]
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="wgse-deepvariant is for Linux and macOS"
+)
+def test_deps_check_follows_wgse_deepvariant_into_its_pixi_environment_719(
+    host, fake_pixi, monkeypatch
+):
+    """#748 review: the install hint keeps the weights step, and the
+    environment, which has no Python, is found once installed even where the
+    host has no `python`."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    prefix = fake_pixi.env("deepvariant", locked=("wgse-deepvariant",), installed=False)
+    (prefix / "bin" / "python").unlink()
+    fake_pixi.set(host_python=False)
+    python_tool(prefix / "bin", "wgse-deepvariant", 'print("deepvariant 0.2.0")')
+
+    (missing,) = check_all_dependencies([], ["wgse-deepvariant"])["optional"]
+    assert missing["path"] is None
+    assert "install --locked" in missing["version"]
+    assert "-e deepvariant" in missing["version"]
+    assert "deepvariant_weights" in missing["version"]
+
+    fake_pixi.install("deepvariant")
+    clear_tool_caches()
+    (found,) = check_all_dependencies([], ["wgse-deepvariant"])["optional"]
+    assert found["path"] is not None
+    assert found["version"] == "deepvariant 0.2.0"
+
+
 def test_a_slow_lockfile_query_still_gives_the_install_hint(
     host, fake_pixi, tmp_path, monkeypatch
 ):
@@ -522,6 +551,32 @@ def test_deps_check_lists_clair3_only_where_it_runs(host, monkeypatch, machine, 
 
     assert ("run_clair3.sh" in rows) == listed
     assert ("run_clair3.sh" in rows.get("available", "")) != listed
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX fake tools")
+@pytest.mark.parametrize(
+    ("system", "machine", "listed"),
+    [
+        ("linux", "x86_64", True),
+        ("darwin", "arm64", False),
+        ("linux", "aarch64", False),
+    ],
+    ids=["linux-x86", "apple-silicon", "linux-arm"],
+)
+def test_deps_check_lists_run_deepvariant_only_where_it_is_used(
+    host, monkeypatch, system, machine, listed
+):
+    """#665: ARM64 hosts, Apple Silicon too, run only the native image, never
+    Google's x86-64 run_deepvariant, so `deps check` names it unavailable."""
+    _mandatory_tools(host)
+    _tool(host, "run_deepvariant", 'print("1.10.0")')
+    monkeypatch.setattr(sys, "platform", system)
+    monkeypatch.setattr(platform, "machine", lambda: machine)
+
+    rows, _ = _report(monkeypatch, "utf-8")
+
+    assert ("run_deepvariant" in rows) == listed
+    assert ("run_deepvariant" in rows.get("available", "")) != listed
 
 
 @posix_pixi

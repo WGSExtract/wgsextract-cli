@@ -7,7 +7,6 @@ summary. modkit is an optional tool from its own Pixi environment; it is
 checked, never installed.
 """
 
-import argparse
 import contextlib
 import gzip
 import logging
@@ -20,9 +19,9 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.api.methylation import MethylationPileupParams
+from wgsextract_cli.cli.registration.methylation import register as register
 from wgsextract_cli.commands._extract_helpers import cleanup_files
 from wgsextract_cli.commands.vcf.basic import plain_reference
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled, safe_output
@@ -33,7 +32,6 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.genotype_qc import contigs_with_reads
-from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.reference_assets import input_stem, read_fai_lengths
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
@@ -755,17 +753,3 @@ def run_pileup(params: MethylationPileupParams) -> None:
             f"sites >= 80%, {summary.low_sites_percent:.1f}% <= 20%."
         )
     logging.info(f"Summary written to {out_summary}")
-
-
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser("methylation", help=CLI_HELP["cmd_methylation"])
-    subs = parser.add_subparsers(dest="methylation_cmd", required=True)
-
-    pileup = subs.add_parser(
-        "pileup", parents=[base_parser], help=CLI_HELP["cmd_methylation-pileup"]
-    )
-    add_arguments(pileup, MethylationPileupParams)
-    pileup.set_defaults(func=cli_handler(MethylationPileupParams, run_pileup))

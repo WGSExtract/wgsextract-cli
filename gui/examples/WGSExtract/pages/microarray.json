@@ -24,12 +24,23 @@
           "kind": "dropdown",
           "tooltip": "controls.microarray.microarray-inputs.ref_fasta.tooltip",
           "dataSource": {
-            "path": "scripts/list-reference-genomes.py",
+            "path": "scripts/run-wgsextract.sh",
             "arguments": [
-              "options",
-              "{{ref_path}}",
-              "{{reference_genome_library}}"
-            ]
+              "--json",
+              "ref",
+              "library",
+              "--list"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ]
+            ],
+            "transform": {
+              "module": "transforms/reference-genomes.mjs",
+              "export": "options"
+            }
           },
           "emptyText": "controls.reference-genome.emptyText"
         },
@@ -227,10 +238,21 @@
       "iconName": "microarray-grid",
       "textIcon": "▦",
       "dataSource": {
-        "path": "scripts/library-state.sh",
+        "path": "scripts/run-wgsextract.sh",
         "arguments": [
-          "{{ref_path}}",
-          "{{dataset_library}}"
+          "ref",
+          "status",
+          "--values"
+        ],
+        "optionalArguments": [
+          [
+            "--ref",
+            "{{ref_path}}"
+          ],
+          [
+            "--dataset-library",
+            "{{dataset_library}}"
+          ]
         ]
       },
       "controls": [
@@ -408,12 +430,14 @@
               "microarray",
               "--input",
               "{{bam_path}}",
-              "--ref",
-              "{{ref_fasta}}",
               "--formats",
               "{{microarray_formats}}"
             ],
             "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_fasta}}"
+              ],
               [
                 "--outdir",
                 "{{out_dir}}"
@@ -489,6 +513,7 @@
     {
       "id": "chip",
       "title": "sections.cli.chip.title",
+      "iconName": "chip",
       "textIcon": "🔍",
       "advancedOnly": true,
       "controls": [

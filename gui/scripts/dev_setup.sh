@@ -57,7 +57,7 @@ if ! command -v node >/dev/null 2>&1 || ! node -e 'process.exit(Number(process.v
         if command -v sha256sum >/dev/null 2>&1; then sha256sum -c node.sha256
         else shasum -a 256 -c node.sha256; fi
     )
-    node_root="$HOME/.local/share/gui-for-cli"
+    node_root="$HOME/.local/share/wgsextract-gui-dev"
     mkdir -p "$node_root"
     tar -xzf "tmp/dev-setup/$archive" -C "$node_root"
     for tool in node npm npx; do
@@ -79,7 +79,7 @@ if [ -f "$HOME/.bash_profile" ]; then login_profile="$HOME/.bash_profile"
 elif [ -f "$HOME/.bash_login" ]; then login_profile="$HOME/.bash_login"; fi
 for profile in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc" "$login_profile"; do
     if ! grep -F "$path_line" "$profile" >/dev/null 2>&1; then
-        printf '\n# GUI for CLI developer tools\n%s\n' "$path_line" >> "$profile"
+        printf '\n# WGS Extract GUI developer tools\n%s\n' "$path_line" >> "$profile"
         tools_changed=true
     fi
 done

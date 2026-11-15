@@ -8,11 +8,11 @@ Workflow:
        previously extracted FASTQ files (common naming patterns: ``<base>_R1.fastq.gz``, ``<base>.r1.fq.gz``,
        etc). If found, reuse them rather than re-extracting.
      - Otherwise stream paired FASTQ into BWA, or extract when files are needed.
-  2. Pre-flight resource check: estimate disk space for both the extraction
-     stage (if needed) and the alignment stage, and refuse to start unless
-     enough free space is available at the output directory. This avoids the
-     classic failure mode of running an alignment for hours only to crash at
-     the sort stage because of disk pressure.
+  2. Host requirement: estimate disk space for both the extraction stage (if
+     needed) and the alignment stage, RAM and time, print them in one line,
+     and refuse to start without the disk or the least RAM the run needs
+     (#690). This avoids the classic failure mode of running an alignment for
+     hours only to crash at the sort stage because of disk pressure.
   3. Delegate to the existing align command.
 
 Extraction (when FASTQs are written to files) and alignment are steps (see
@@ -20,20 +20,27 @@ core.steps): a rerun after a crash or kill skips an alignment or extraction
 that finished, and redoes the one that didn't.
 """
 
-import argparse
 import logging
 import math
+import os
 import shutil
+import stat
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, NamedTuple, cast
 from urllib.parse import urlsplit
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api.align import RealignParams
+from wgsextract_cli.cli.registration.realign import register as register
 from wgsextract_cli.core import bwa_mem2, ultima
-from wgsextract_cli.core.alignment_memory import available_memory, check_mapping_memory
+from wgsextract_cli.core.alignment_memory import (
+    available_memory,
+    check_mapping_memory,
+    estimate_mapping_memory,
+    least_mapping_memory,
+    reference_bases,
+)
 from wgsextract_cli.core.alignment_metadata import cram_encoded_with, get_bam_header
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.chunked_alignment import (
@@ -47,8 +54,8 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.messages import CLI_HELP
-from wgsextract_cli.core.native_aligners import AlignerCommand
+from wgsextract_cli.core.native_aligners import AlignerCommand, native_gpu_preference
+from wgsextract_cli.core.output_profiles import validate_output_profile
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.read_counts import (
     alignment_sample,
@@ -72,14 +79,22 @@ from wgsextract_cli.core.remote_input import (
 )
 from wgsextract_cli.core.resource_estimates import (
     GIB,
+    HostRequirement,
     PreflightEstimate,
+    alignment_hours,
+    check_host_requirement,
     estimate_resources,
+    long_read_alignment_hours,
     long_read_disk,
     preflight_resources,
 )
 from wgsextract_cli.core.results import current_result
-from wgsextract_cli.core.samtools_commands import parse_memory
-from wgsextract_cli.core.sequencing import input_platform
+from wgsextract_cli.core.samtools_commands import (
+    parse_memory,
+    regular_files_bytes,
+    sort_memory,
+)
+from wgsextract_cli.core.sequencing import input_platform, pacbio_platform
 from wgsextract_cli.core.steps import (
     Decision,
     Step,
@@ -99,7 +114,6 @@ from wgsextract_cli.core.variant_files import (
     verify_paths_exist,
 )
 from wgsextract_cli.core.warnings import (
-    check_free_space,
     get_free_space_needed,
     indexed_read_count,
 )
@@ -124,19 +138,6 @@ _FASTQ_PATTERNS: list[tuple[str, str]] = [
     ("_1.fastq.gz", "_2.fastq.gz"),
     ("_1.fq.gz", "_2.fq.gz"),
 ]
-
-
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser(
-        "realign",
-        parents=[base_parser],
-        help=CLI_HELP["cmd_realign"],
-    )
-    add_arguments(parser, RealignParams)
-    parser.set_defaults(func=cli_handler(RealignParams, run_realign))
 
 
 @dataclass(kw_only=True)
@@ -170,7 +171,7 @@ def _find_existing_fastqs(input_path: str, outdir: str) -> tuple[str, str] | Non
     return None
 
 
-def _preflight_disk_space(
+def _disk_requirements(
     input_path: str,
     outdir: str,
     need_extract: bool,
@@ -178,8 +179,8 @@ def _preflight_disk_space(
     keep_fastq: bool = False,
     *,
     streaming: bool = False,
-) -> None:
-    """Estimate the peak disk usage and bail out if outdir lacks space."""
+) -> list[tuple[str, int]]:
+    """The peak disk use (bytes) in each directory a short-read realign writes."""
     file_size = Path(input_path).stat().st_size
     is_cram = input_path.lower().endswith(".cram")
 
@@ -194,52 +195,29 @@ def _preflight_disk_space(
     align_temp_gb, align_final_gb = get_free_space_needed(
         file_size, sort_type="Coord", is_cram=is_cram, reads=reads
     )
-    scratch = configured_temp_directory()
-    if scratch and Path(scratch).stat().st_dev != Path(outdir).stat().st_dev:
-        retained_fastq = extract_final_gb if keep_fastq else 0
-        staged_fastq = 0 if keep_fastq else extract_final_gb
-        requirements = [
-            (outdir, retained_fastq + align_final_gb),
-            (
-                scratch,
-                staged_fastq + max(extract_temp_gb, align_temp_gb),
-            ),
-        ]
-        for directory, gigabytes in requirements:
-            logging.info(
-                "Realign pre-flight: ~%d GB free space required at %s.",
-                gigabytes,
-                directory,
-            )
-            if not check_free_space(directory, gigabytes):
-                raise WGSExtractError(
-                    f"Insufficient free disk space at {directory} for realign (needs ~{gigabytes} GB)."
-                )
-        return
-
-    # Collate writes every bucket before it emits a read, then deletes each one as
-    # it drains while the sorter's spills grow. Streaming therefore peaks like
-    # file extraction without the FASTQs between the two stages.
-    total_gb = max(extract_temp_gb, extract_final_gb + align_temp_gb + align_final_gb)
-    logging.info(
-        "Realign pre-flight: ~%d GB free space required at %s "
-        "(extract %d+%d, align %d+%d).",
-        total_gb,
-        outdir,
+    logging.debug(
+        "Realign disk: extract %d+%d GB, align %d+%d GB (temporary+final).",
         extract_temp_gb,
         extract_final_gb,
         align_temp_gb,
         align_final_gb,
     )
-    if not check_free_space(outdir, total_gb):
-        raise WGSExtractError(
-            f"Insufficient free disk space at {outdir} for realign "
-            f"(needs ~{total_gb} GB). Free up space or rerun with "
-            "--no-preflight to override (not recommended)."
-        )
+    scratch = configured_temp_directory()
+    if scratch and Path(scratch).stat().st_dev != Path(outdir).stat().st_dev:
+        retained_fastq = extract_final_gb if keep_fastq else 0
+        staged_fastq = 0 if keep_fastq else extract_final_gb
+        return [
+            (outdir, (retained_fastq + align_final_gb) * GIB),
+            (scratch, (staged_fastq + max(extract_temp_gb, align_temp_gb)) * GIB),
+        ]
+    # Collate writes every bucket before it emits a read, then deletes each one as
+    # it drains while the sorter's spills grow. Streaming therefore peaks like
+    # file extraction without the FASTQs between the two stages.
+    total_gb = max(extract_temp_gb, extract_final_gb + align_temp_gb + align_final_gb)
+    return [(outdir, total_gb * GIB)]
 
 
-def _preflight_long_read_disk_space(
+def _long_read_disk_requirements(
     input_path: str,
     outdir: str,
     *,
@@ -250,7 +228,7 @@ def _preflight_long_read_disk_space(
     plan: ChunkPlan | None = None,
     reference: str | None = None,
     done_bytes: int = 0,
-) -> None:
+) -> list[tuple[str, int]]:
     """Long reads stream into the aligner without a collate: the peak is the
     sorter's spills beside its output, and an extracted FASTQ when kept. A
     chunked alignment (``plan``) spills one chunk at a time, but keeps the
@@ -273,22 +251,84 @@ def _preflight_long_read_disk_space(
         output = max(0, output - done_bytes)
     scratch = configured_temp_directory()
     if scratch and Path(scratch).stat().st_dev != Path(outdir).stat().st_dev:
-        requirements = [(outdir, output + fastq), (scratch, spill)]
-    else:
-        requirements = [(outdir, spill + output + fastq)]
-    for directory, needed in requirements:
-        gigabytes = math.ceil(needed / GIB)
-        logging.info(
-            "Realign pre-flight: ~%d GB free space required at %s.",
-            gigabytes,
-            directory,
+        return [(outdir, output + fastq), (scratch, spill)]
+    return [(outdir, spill + output + fastq)]
+
+
+def _disk_fits(disk: list[tuple[str, int]]) -> bool:
+    """Whether every directory's filesystem has room for its share of ``disk``."""
+    requirement = HostRequirement("realign", tuple(disk), None, 1, None)
+    return not any(volume.short for volume in requirement.volumes())
+
+
+def _require(
+    job: "RealignJob",
+    disk: list[tuple[str, int]],
+    threads: str,
+    needs: "_Needs",
+) -> None:
+    """Print realign's host requirement and refuse what this computer lacks,
+    unless --no-preflight (#690)."""
+    check_host_requirement(
+        HostRequirement(
+            "realign",
+            (*(needs.staged_disk or tuple(disk)), *needs.disk),
+            needs.memory,
+            min(3, int(threads)) if needs.staged_disk else int(threads),
+            needs.hours,
+            memory_floor=needs.floor,
+        ),
+        enforce=not job.no_preflight,
+        disk_advice="Free up space or choose an --outdir on a bigger disk.",
+        memory_advice="Lower --threads or --memory.",
+    )
+
+
+def _minimap2_needs(
+    job: "RealignJob",
+    paths: list[str],
+    reference: str | None,
+    threads: str,
+    memory: str,
+    *,
+    reads: int | None = None,
+    samblaster: bool = False,
+) -> "_Needs":
+    """minimap2's RAM at these settings and what it can't run without (its
+    index), as align sizes them for the read files ``paths`` (local files
+    bound its sort and batches; a URL doesn't), and for long reads the
+    approximate hours to realign them. The floor needs the reference's base
+    count: a gzipped FASTA's size only bounds it loosely."""
+    files = regular_files_bytes(paths)
+    resolved = reference if reference and Path(reference).is_file() else None
+    preset = align_cmd._minimap2_preset(job)
+    options: dict[str, Any] = {
+        "samblaster": samblaster,
+        "reads": reads,
+        "platform": job.platform,
+        "preset": preset,
+        "input_bytes": files,
+    }
+    hours = None
+    if preset != "sr":
+        size = sum(input_size(path) for path in paths)
+        hours = long_read_alignment_hours(paths[0], size, int(threads))
+    counted = resolved is not None and (
+        reference_bases(resolved) > 0
+        or not resolved.lower().endswith((".gz", ".bgz", ".bgzf"))
+    )
+    try:
+        sorting = sort_memory(threads, memory, input_bytes=files, log=False)
+        need = estimate_mapping_memory(
+            resolved, "minimap2", threads=threads, memory=sorting, **options
+        ).total
+        least = (
+            least_mapping_memory(resolved, "minimap2", **options) if counted else None
         )
-        if not check_free_space(directory, needed / GIB):
-            raise WGSExtractError(
-                f"Insufficient free disk space at {directory} for realign "
-                f"(needs ~{gigabytes} GB). Free up space or rerun with "
-                "--no-preflight to override (not recommended)."
-            )
+    except (OSError, ValueError) as error:
+        logging.debug("minimap2's memory wasn't estimated: %s", error)
+        return _Needs(hours=hours)
+    return _Needs(need, least, hours)
 
 
 def _long_read_reference(job: RealignJob, target: str | None) -> str | None:
@@ -403,7 +443,7 @@ def _single_end_pacbio(input_path: str, cram_opt: list[str]) -> str | None:
     sample = unpaired_sample(input_path, cram_opt=cram_opt)
     if not sample.records or sample.unpaired != sample.records:
         return None
-    platform = align_cmd.pacbio_platform(
+    platform = pacbio_platform(
         get_bam_header(input_path, cram_opt[1] if cram_opt else None)
     )
     logging.info(
@@ -416,6 +456,7 @@ def _single_end_pacbio(input_path: str, cram_opt: list[str]) -> str | None:
 
 def run(params: RealignParams) -> None:
     job = RealignJob.of(params)
+    validate_output_profile(job.output_profile or "default")
     if is_url(job.input):
         check_url(job.input)
         remote_file(job.input)  # Reachable, or an error naming it.
@@ -464,7 +505,7 @@ def run(params: RealignParams) -> None:
         if align_cmd.bwa_mem3_build(
             job, "bwa-mem2", target
         ) is None and not align_cmd.bwa_mem2_index_ready(
-            align_cmd.bwa_mem2_memory_model(job), target
+            align_cmd.bwa_mem2_memory_model(job.native_aligners), target
         ):
             bwa_mem2.check_index(target)
     if selected_aligner == "bwa-mem3" and not job.gpu:
@@ -522,7 +563,8 @@ def _check_gpu(job: RealignJob) -> None:
 
 
 def _check_long_read_options(job: RealignJob) -> None:
-    """realign streams long reads from the BAM/CRAM into CPU minimap2."""
+    """realign streams long reads from the BAM/CRAM into minimap2 (not
+    Parabricks; wgse-minimap2, on its NVIDIA GPU where it can)."""
     if job.aligner == "pbmm2":
         if job.platform not in align_cmd.PACBIO_PLATFORMS:
             raise UsageError(
@@ -538,8 +580,8 @@ def _check_long_read_options(job: RealignJob) -> None:
         )
     if job.gpu:
         raise UsageError(
-            "realign aligns long reads on the CPU with minimap2, keeping their "
-            "MM/ML tags; drop --gpu."
+            "realign aligns long reads with minimap2, not Parabricks, keeping "
+            "their MM/ML tags; drop --gpu."
         )
     parse_size(job.chunk_size)
     if job.aligner == "auto":
@@ -585,15 +627,59 @@ def _align_step(
             "preset": job.preset,
             "long_read": bool(job.long_read),
             "format": job.format,
+            **(
+                {"output_profile": job.output_profile}
+                if job.output_profile not in (None, "default")
+                else {}
+            ),
             "sample": job.sample,
             "gpu": bool(job.gpu),
             "ref": None if reference else job.ref,
             # Only when set, so earlier runs' journals still match.
             **({"fast": True} if job.fast else {}),
+            **(
+                {"prefer_native_gpu": True}
+                if aligner in align_cmd.BWA_ALIGNERS
+                and _native_gpu_preference_changes_plan(job, target, reads)
+                else {}
+            ),
         },
         tools=_align_tools(aligner, job.platform, bool(job.gpu)),
         # 2: a CRAM's chunked realign could drop unplaced reads (#655).
         version=2 if aligner == "minimap2" and _is_cram(job.input) else 1,
+    )
+
+
+def _native_gpu_preference_changes_plan(
+    job: RealignJob, target: str | None, reads: dict[str, str | None]
+) -> bool:
+    """Key the speed preference only when normal native GPU plans cannot fit."""
+    if (
+        not native_gpu_preference(job.prefer_native_gpu)
+        or job.gpu
+        or not target
+        or not Path(target).is_file()
+        or align_cmd.short_read_tool(job) not in align_cmd.BWA_ALIGNERS
+    ):
+        return False
+    threads, memory = get_resource_defaults(job.threads, job.memory)
+    r1, r2 = reads.get("fastq_r1"), reads.get("fastq_r2")
+    paths = [path for path in (r1, r2) if path] or [job.input]
+    memory = sort_memory(threads, memory, input_bytes=regular_files_bytes(paths))
+    statistics = fastq_input_statistics(r1, r2) if r1 else None
+    count = statistics.reads if statistics else indexed_read_count(job.input, threads)
+    plan, _ = _short_read_plan(
+        job,
+        target,
+        threads=threads,
+        memory=memory,
+        samblaster=align_cmd.duplicate_marker(paired=bool(r2) or not r1)
+        == "samblaster",
+        reads=count,
+        read_length=statistics.read_length if statistics else None,
+    )
+    return (
+        plan.memory_decision is not None and plan.memory_decision.reason == "prefer_gpu"
     )
 
 
@@ -666,7 +752,8 @@ def _resume_alignment(
 def _native_aligner_metrics(metrics: Mapping[str, Any]) -> dict[str, Any]:
     """The metrics naming the Apple Silicon aligner build that made an
     alignment, and bwa-mem3's output mode (AlignerCommand.record), kept in
-    the journal for a resume."""
+    the journal for a resume, including the native_aligner-prefixed memory
+    decision, estimate/budget bytes and requested/actual sort memory."""
     return {
         key: value
         for key, value in metrics.items()
@@ -744,22 +831,28 @@ def _realign_long_reads(
     if not plan and workdir.exists():
         logging.info("Removing %s, left by an interrupted chunked run.", workdir)
         shutil.rmtree(workdir)
-    if not job.no_preflight:
-        _preflight_long_read_disk_space(
-            job.input,
-            outdir,
-            output_format=job.format,
-            extract=bool(extract_decision and extract_decision.run),
-            threads=threads,
-            memory=memory,
-            plan=plan,
-            # The FASTA alignment resolves (from the input's signature
-            # without --ref), whose index the chunks build.
-            reference=_long_read_reference(job, target) if plan else None,
-            # An interrupted run's chunks are kept or, if they can't be
-            # resumed, deleted: either way, that space counts as free.
-            done_bytes=_tree_bytes(workdir),
-        )
+    # The FASTA alignment resolves (from the input's signature without
+    # --ref): minimap2 indexes it, as do the chunks.
+    reference = _long_read_reference(job, target)
+    disk = _long_read_disk_requirements(
+        job.input,
+        outdir,
+        output_format=job.format,
+        extract=bool(extract_decision and extract_decision.run),
+        threads=threads,
+        memory=memory,
+        plan=plan,
+        reference=reference if plan else None,
+        # An interrupted run's chunks are kept or, if they can't be
+        # resumed, deleted: either way, that space counts as free.
+        done_bytes=_tree_bytes(workdir),
+    )
+    _require(
+        job,
+        disk,
+        threads,
+        _minimap2_needs(job, [job.input], reference, threads, memory),
+    )
     # samtools fastq's -T lists tags; the reference needs --reference.
     decode = ["--reference", cram_opt[1]] if cram_opt else []
     align_job = replace(
@@ -851,7 +944,7 @@ def _run_steps(
             return
         # Single-end reads with flow tags: streamed into the aligner, no FASTQs.
         reads = indexed_read_count(job.input, threads)
-        _report_resource_estimates(
+        needs = _report_resource_estimates(
             job,
             target,
             outdir,
@@ -862,13 +955,13 @@ def _run_steps(
             need_extract=False,
             paired=False,
         )
-        if not job.no_preflight:
-            _preflight_disk_space(
-                job.input,
-                outdir,
-                need_extract=False,
-                reads=reads,
-            )
+        disk = _disk_requirements(job.input, outdir, need_extract=False, reads=reads)
+        _require(
+            job,
+            disk,
+            threads,
+            needs,
+        )
         align_job = replace(job, r1=job.input, input_reads=InputReads(reads))
         cram_reference = _input_cram_reference(job)
         _align(
@@ -917,6 +1010,11 @@ def _run_steps(
             journal, journal.decide(align_step), out_path, target, threads
         )
         return
+
+    if not job.r1 and not job.force_extract and not job.keep_fastq:
+        recovered = _recover_retained_fastqs(journal, extract_step, staged, staging)
+        if recovered is not None:
+            extract_step, staged = recovered
 
     extract_decision: Decision | None = None
     if job.r1:
@@ -1038,6 +1136,7 @@ def _run_steps(
                 read_length=read_length,
                 additional_ram_bytes=additional_ram_bytes,
                 gpu_bytes=align_cmd.aligner_gpu_bytes(aligner, target, reads),
+                dense_sa_bytes=aligner.dense_sa_bytes,
             )
         if not fits:
             logging.info(
@@ -1048,8 +1147,9 @@ def _run_steps(
             )
             streaming = False
             additional_ram_bytes = 0
+    needs = _Needs()
     if selected_aligner in align_cmd.BWA_ALIGNERS and not job.gpu:
-        _report_resource_estimates(
+        needs = _report_resource_estimates(
             job,
             target,
             outdir,
@@ -1061,6 +1161,17 @@ def _run_steps(
             paired=bool(r2_path),
             read_length=read_length,
             additional_ram_bytes=additional_ram_bytes,
+        )
+    elif selected_aligner == "minimap2" and not job.gpu:
+        # Short reads with --aligner minimap2 (--preset sr).
+        needs = _minimap2_needs(
+            job,
+            [job.input] if need_extract else [p for p in (r1_path, r2_path) if p],
+            target,
+            threads,
+            memory,
+            reads=reads,
+            samblaster=align_cmd.duplicate_marker(paired=bool(r2_path)) == "samblaster",
         )
     if job.aligner == "bwa-mem2" and target and Path(target).is_file():
         # As align's: bwa-mem2, or wgse-bwa-mem3 in its place, must fit.
@@ -1085,13 +1196,14 @@ def _run_steps(
             platform=job.platform,
             additional_ram_bytes=0,
             gpu_bytes=align_cmd.aligner_gpu_bytes(aligner, target, reads),
+            dense_sa_bytes=aligner.dense_sa_bytes,
             required=True,
             label=align_cmd.stand_in_label(aligner),
         )
 
-    # 2. Disk-space pre-flight.
-    if not job.no_preflight and align_cmd.is_long_read(job) and job.r1:
-        _preflight_long_read_disk_space(
+    # 2. The host requirement: disk, RAM and time.
+    if align_cmd.is_long_read(job) and job.r1:
+        disk = _long_read_disk_requirements(
             job.r1,
             outdir,
             output_format=job.format,
@@ -1099,26 +1211,24 @@ def _run_steps(
             threads=threads,
             memory=memory,
         )
-    elif not job.no_preflight:
-        try:
-            _preflight_disk_space(
-                job.input,
-                outdir,
-                need_extract=need_extract and not streaming,
-                reads=reads,
-                keep_fastq=job.keep_fastq,
-                streaming=streaming,
-            )
-        except WGSExtractError:
-            if not streaming:
-                raise
+        needs = _minimap2_needs(job, [job.r1], target, threads, memory)
+    else:
+        disk = _disk_requirements(
+            job.input,
+            outdir,
+            need_extract=need_extract and not streaming,
+            reads=reads,
+            keep_fastq=job.keep_fastq,
+            streaming=streaming,
+        )
+        if streaming and not job.no_preflight and not _disk_fits(disk):
             logging.info(
                 "Streaming spills do not fit available disk; extracting "
                 "FASTQs without changing the aligner."
             )
             streaming = False
             additional_ram_bytes = 0
-            _report_resource_estimates(
+            needs = _report_resource_estimates(
                 job,
                 target,
                 outdir,
@@ -1130,13 +1240,19 @@ def _run_steps(
                 paired=bool(r2_path),
                 read_length=read_length,
             )
-            _preflight_disk_space(
+            disk = _disk_requirements(
                 job.input,
                 outdir,
                 need_extract=True,
                 reads=reads,
                 keep_fastq=job.keep_fastq,
             )
+    _require(
+        job,
+        disk,
+        threads,
+        needs,
+    )
 
     if streaming:
         logging.info(
@@ -1174,7 +1290,7 @@ def _run_steps(
                 "Available RAM changed before streaming started; extracting "
                 "FASTQs without changing the aligner."
             )
-            _report_resource_estimates(
+            needs = _report_resource_estimates(
                 job,
                 target,
                 outdir,
@@ -1186,14 +1302,14 @@ def _run_steps(
                 paired=bool(r2_path),
                 read_length=read_length,
             )
-            if not job.no_preflight:
-                _preflight_disk_space(
-                    job.input,
-                    outdir,
-                    need_extract=True,
-                    reads=reads,
-                    keep_fastq=job.keep_fastq,
-                )
+            disk = _disk_requirements(
+                job.input,
+                outdir,
+                need_extract=True,
+                reads=reads,
+                keep_fastq=job.keep_fastq,
+            )
+            _require(job, disk, threads, needs)
         else:
             return
 
@@ -1226,7 +1342,17 @@ def _run_steps(
         statistics = fastq_input_statistics(r1_path, r2_path)
         read_length = statistics.read_length if statistics is not None else None
     align_job = replace(
-        job, r1=r1_path, r2=r2_path, input_reads=InputReads(reads, read_length)
+        job,
+        r1=r1_path,
+        r2=r2_path,
+        input_reads=InputReads(reads, read_length),
+        retire_fastqs=(r1_path, r2_path)
+        if (
+            extract_decision is not None
+            and not job.keep_fastq
+            and (extract_decision.run or extract_decision.metrics.get("temporary"))
+        )
+        else (),
     )
     if align_decision is None:
         align_decision = journal.decide(
@@ -1235,14 +1361,19 @@ def _run_steps(
     try:
         _align(journal, align_decision, lambda: align_cmd.run(align_job))
     except BaseException:
-        if need_extract and not job.keep_fastq:
+        if (
+            need_extract
+            and not job.keep_fastq
+            and any(Path(path).exists() for path in (r1_path, r2_path))
+        ):
             from wgsextract_cli.core.temp_directory import retain_temporary_directory
 
             directory = retain_temporary_directory()
             if directory:
                 logging.warning(
                     "Alignment failed; extracted FASTQs are retained in %s. "
-                    "Rerun with --r1 and --r2 pointing to:\n  %s\n  %s\n"
+                    "Rerun the same command to reuse them, or set --r1 and --r2 to:\n"
+                    "  %s\n  %s\n"
                     "Remove the retained workspace after recovery.",
                     directory,
                     r1_path,
@@ -1259,7 +1390,10 @@ def _run_steps(
     if temporary and not job.keep_fastq:
         for path in (r1_path, r2_path):
             try:
-                Path(path).unlink()
+                Path(path).unlink(
+                    missing_ok=current_result().metrics.get("alignment_mode")
+                    == "staged_metal"
+                )
             except OSError as exc:
                 logging.warning("Could not remove %s: %s", path, exc)
         journal.retire("extract", [r1_path, r2_path])
@@ -1269,6 +1403,59 @@ def _run_steps(
     else:  # kept by the --keep-fastq run that extracted them
         current_result().add_input(r1_path, "fastq_r1")
         current_result().add_input(r2_path, "fastq_r2")
+
+
+def _recover_retained_fastqs(
+    journal: StepJournal,
+    extract_step: Step,
+    staged: tuple[str, str],
+    staging: str,
+) -> tuple[Step, tuple[str, str]] | None:
+    """Recover a private sibling workspace only after journal validation."""
+    previous = journal.check(extract_step)
+    if previous.metrics.get("temporary") is not True:
+        return None
+    try:
+        retained = tuple(journal.resolve(output["path"]) for output in previous.outputs)
+        resolved = tuple(path.resolve() for path in retained)
+        workspace = Path(staging).resolve()
+        if len(retained) != 2:
+            return None
+        sibling_workspace = (
+            workspace.name.startswith(".wgse_run_")
+            and resolved[0].parent == resolved[1].parent
+            and resolved[0].parent.name.startswith(".wgse_run_")
+            and resolved[0].parent.parent == workspace.parent
+        )
+        matching_names = tuple(path.name for path in resolved) == tuple(
+            Path(path).name for path in staged
+        )
+        if not sibling_workspace or not matching_names:
+            return None
+        if os.name == "posix":
+            # Windows temporary-directory access is controlled by its OS ACLs.
+            directory, *files = [
+                path.stat() for path in (resolved[0].parent, *resolved)
+            ]
+            private_owner = all(
+                item.st_uid == os.geteuid() and not item.st_mode & 0o022
+                for item in (directory, *files)
+            )
+            regular_pair = stat.S_ISDIR(directory.st_mode) and all(
+                stat.S_ISREG(item.st_mode) for item in files
+            )
+            root = workspace.parent.stat()
+            trusted_root = root.st_uid in (0, os.geteuid()) and (
+                not root.st_mode & 0o022 or bool(root.st_mode & stat.S_ISVTX)
+            )
+            if not private_owner or not regular_pair or not trusted_root:
+                return None
+    except OSError:
+        return None
+    recovered = replace(extract_step, outputs=tuple(str(path) for path in retained))
+    if journal.check(recovered).run:
+        return None
+    return recovered, (str(retained[0]), str(retained[1]))
 
 
 def _short_read_plan(
@@ -1299,6 +1486,18 @@ def _short_read_plan(
     )
 
 
+class _Needs(NamedTuple):
+    """An alignment's RAM at its settings and what it can't run without (its
+    floor), each None when not estimated, its approximate hours, and disk it
+    needs beyond the alignment's (reference indexes to build)."""
+
+    memory: int | None = None
+    floor: int | None = None
+    hours: float | None = None
+    disk: tuple[tuple[str, int], ...] = ()
+    staged_disk: tuple[tuple[str, int], ...] = ()
+
+
 def _report_resource_estimates(
     job: RealignJob,
     reference: str | None,
@@ -1312,35 +1511,70 @@ def _report_resource_estimates(
     paired: bool,
     read_length: float | None = None,
     additional_ram_bytes: int = 0,
-) -> None:
+) -> _Needs:
+    """Report the alignment's resource estimates; return its RAM and time."""
+    chosen: list[AlignerCommand] = []
+    floors: list[int] = []
+
     def estimate() -> PreflightEstimate:
+        effective_threads = threads
         samblaster = align_cmd.duplicate_marker(paired=paired) == "samblaster"
         resolved = reference if reference and Path(reference).is_file() else None
         tool = align_cmd.short_read_tool(job)
-        sort_memory = align_cmd.short_read_sort_memory(tool, memory, log=False)
-        gpu_bytes = 0
+        # As align lowers it for what the reads can fill (#781).
+        filled = sort_memory(
+            threads,
+            memory,
+            input_bytes=regular_files_bytes([p for p in input_paths if p]),
+            log=False,
+        )
+        sorting = align_cmd.short_read_sort_memory(tool, filled, log=False)
+        gpu_bytes = dense_sa_bytes = 0
+        staged = False
         if resolved:
             # The aligner that will run, bwa-mem3 standing in included.
-            aligner, sort_memory = _short_read_plan(
+            aligner, sorting = _short_read_plan(
                 job,
                 resolved,
                 threads=threads,
-                memory=memory,
+                memory=filled,
                 samblaster=samblaster,
                 reads=reads,
                 read_length=read_length,
                 additional_ram_bytes=additional_ram_bytes,
             )
-            tool = aligner.engine
+            chosen.append(aligner)
+            tool = aligner.memory_model
             gpu_bytes = align_cmd.aligner_gpu_bytes(aligner, resolved, reads)
+            dense_sa_bytes = aligner.dense_sa_bytes
+            staged = aligner.staged
+            if staged:
+                effective_threads = str(min(3, int(threads)))
+            if reference_bases(resolved) > 0:
+                # Without the reference's size (its .fai or BWA's .ann) a
+                # human reference stands in, even for a tiny one.
+                floors.append(
+                    least_mapping_memory(
+                        resolved,
+                        tool,
+                        memory=sorting,
+                        samblaster=samblaster,
+                        reads=reads,
+                        platform=job.platform,
+                        read_length=read_length,
+                        gpu_bytes=gpu_bytes,
+                        dense_sa_bytes=dense_sa_bytes,
+                        staged=staged,
+                    )
+                )
         return estimate_resources(
             "realign",
             input_paths=[path for path in input_paths if path],
             output_dir=outdir,
             temp_dir=configured_temp_directory(),
             reference=resolved,
-            threads=threads,
-            memory=sort_memory,
+            threads=effective_threads,
+            memory=sorting,
             aligner=tool,
             samblaster=samblaster,
             reads=reads,
@@ -1348,6 +1582,25 @@ def _report_resource_estimates(
             read_length=read_length,
             additional_ram_bytes=additional_ram_bytes,
             gpu_bytes=gpu_bytes,
+            dense_sa_bytes=dense_sa_bytes,
+            staged=staged,
+            keep_fastq=job.keep_fastq,
+            staged_workspace=(
+                str(
+                    align_cmd.workspace_path(
+                        align_cmd.aligned_output_path(
+                            outdir,
+                            input_paths[0],
+                            None
+                            if need_extract
+                            else (input_paths[1] if len(input_paths) > 1 else None),
+                            job.format,
+                        )
+                    )
+                )
+                if staged
+                else None
+            ),
             output_format=job.format,
             extract_fastq=need_extract,
             fastq_dir=outdir if job.keep_fastq else configured_temp_directory(),
@@ -1359,4 +1612,48 @@ def _report_resource_estimates(
             ),
         )
 
-    preflight_resources(estimate)
+    reported = preflight_resources(estimate)
+    # BWA builds a missing index beside the reference before it aligns.
+    indexes = tuple(
+        (row.paths[0], row.components["reference_indexes"])
+        for row in (reported.resources if reported else ())
+        if row.paths and "reference_indexes" in row.components
+    )
+    ram = (
+        next(
+            (r.estimated_bytes for r in reported.resources if r.resource == "memory"),
+            None,
+        )
+        if reported
+        else None
+    )
+    engine = chosen[0].engine if chosen else align_cmd.short_read_tool(job)
+    count = reads
+    if count is None:
+        # As estimate_resources infers it from the input's size.
+        size = sum(input_size(path) for path in input_paths if path)
+        cram = bool(input_paths) and input_paths[0].lower().endswith(".cram")
+        count = math.ceil(size / (12 if cram else 80))
+    length = read_length or (300 if job.platform == "ultima" else 150)
+    hours = alignment_hours(
+        engine,
+        bool(chosen and chosen[0].gpu),
+        count * length,
+        min(3, int(threads)) if chosen and chosen[0].staged else int(threads),
+    )
+    staged_disk = (
+        tuple(
+            (row.paths[0], row.estimated_bytes)
+            for row in (reported.resources if reported else ())
+            if row.resource == "disk" and row.paths and row.estimated_bytes is not None
+        )
+        if chosen and chosen[0].staged
+        else ()
+    )
+    return _Needs(
+        ram,
+        floors[0] if floors else None,
+        hours,
+        () if staged_disk else indexes,
+        staged_disk,
+    )

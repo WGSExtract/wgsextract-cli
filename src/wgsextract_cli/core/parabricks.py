@@ -6,7 +6,6 @@ missing.
 """
 
 import logging
-import os
 import subprocess
 import sys
 import tempfile
@@ -20,6 +19,7 @@ from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.containers import (
     docker,
     docker_info,
+    link_chain,
     require_image,
     run_container,
 )
@@ -206,19 +206,6 @@ def run_pbrun(tool: str, args: list[str], paths: Iterable[str | None]) -> None:
         raise WGSExtractError(f"Parabricks {tool} failed: {e}") from e
 
 
-def _link_chain(path: str) -> list[str]:
-    """``path`` and, if it is a symlink, each file it leads to. pbrun takes an
-    interval file's format from its name, so a link (``panel.bed`` to a store's
-    ``dataset_7.dat``) is passed as itself, and every folder on the way to its
-    target is mounted so the link still opens in the container."""
-    chain = [path]
-    while Path(chain[-1]).is_symlink() and len(chain) <= 40:
-        link = chain[-1]
-        chain.append(host_path(os.path.join(os.path.dirname(link), os.readlink(link))))
-    target = str(Path(path).resolve())
-    return chain if target in chain else [*chain, target]
-
-
 def call_variants(
     tool: str,
     input_path: str,
@@ -250,5 +237,5 @@ def call_variants(
             + ["--out-variants", host_path(out_vcf), "--tmp-dir", host_path(tmp)]
             + intervals
             + (extra or []),
-            [ref, input_path, out_vcf, tmp, *(p for b in beds for p in _link_chain(b))],
+            [ref, input_path, out_vcf, tmp, *(p for b in beds for p in link_chain(b))],
         )

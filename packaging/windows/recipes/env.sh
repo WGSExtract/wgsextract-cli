@@ -8,13 +8,21 @@ set -euo pipefail
 export MSYSTEM=UCRT64
 export PATH="/ucrt64/bin:/usr/bin:$PATH"
 
+# CI opts in by creating this directory through the shared cache action.
+# Masquerading wrappers also cover upstream Makefiles that hard-code gcc/g++.
+cache_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/out
+if [ -f "$cache_root/compiler-cache/ccache.conf" ]; then
+    export CCACHE_DIR="$(cygpath -m "$cache_root/compiler-cache")"
+    export PATH="$cache_root/compiler-wrappers:$PATH"
+fi
+
 # rattler-build supplies the package prefix.
 # shellcheck disable=SC2153
 PREFIX_U=$(cygpath -u "$PREFIX")
 BIN="$PREFIX_U/Library/bin"
 mkdir -p "$BIN"
 
-COMPAT=$(cygpath -u "$RECIPE_DIR")/../../compat
+COMPAT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../compat" && pwd)
 COMPAT_INC="$COMPAT/include"
 mkdir -p "$SRC_DIR/.wgse"
 COMPAT_OBJ=$(cygpath -u "$SRC_DIR")/.wgse/wgse_compat.o
@@ -74,8 +82,8 @@ codec-test:
 	./.wgse-cram-buffers.exe
 MAKEFILE
         make -f .wgse-cram-stop.mk codec-test CC=gcc CFLAGS="$OPT $STATIC_LDFLAGS" \
-            CODEC_TEST="$(cygpath -u "$RECIPE_DIR")/../../tests/cram_stop.c" \
-            SEQ_TEST="$(cygpath -u "$RECIPE_DIR")/../../tests/bam_seq.c" \
-            BUFFER_TEST="$(cygpath -u "$RECIPE_DIR")/../../tests/cram_buffers.c" CODEC_LIBS="$HTS_LIBS"
+            CODEC_TEST="$COMPAT/../tests/cram_stop.c" \
+            SEQ_TEST="$COMPAT/../tests/bam_seq.c" \
+            BUFFER_TEST="$COMPAT/../tests/cram_buffers.c" CODEC_LIBS="$HTS_LIBS"
     )
 }

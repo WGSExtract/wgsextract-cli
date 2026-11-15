@@ -168,11 +168,14 @@ def real_dataset(pytestconfig: pytest.Config) -> RealDataset:
         or _dataset_from_benchmark_cache()
     )
     if dataset is None:
-        pytest.skip(
+        message = (
             "real smoke data not configured; pass --real-input/--real-vcf/--real-ref, "
             "enable real_genome_tests_enabled with real_genome_test_path in the CLI "
             "config.toml, or run the real benchmark smoke first"
         )
+        if pytestconfig.getoption("--ci-require-real-data"):
+            pytest.fail(message)
+        pytest.skip(message)
     return replace(
         dataset,
         region=pytestconfig.getoption("real_region"),

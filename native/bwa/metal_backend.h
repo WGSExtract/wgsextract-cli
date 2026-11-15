@@ -17,6 +17,8 @@ int wgse_metal_enabled(void);
 // option asks for upstream's code.
 int wgse_fast_cpu(void);
 void *wgse_metal_calloc(size_t count, size_t size);
+// free(), except while a GPU command the watchdog abandoned may still read it.
+void wgse_metal_free(void *memory);
 int wgse_metal_map(const mem_opt_t *opt, const bwt_t *bwt, int n, bseq1_t *seqs,
     void (*worker)(void *, long, int), void *data);
 // mem_collect_intv()'s ks_introsort() of its intervals (mem_stages.c.in).
@@ -48,6 +50,11 @@ int wgse_metal_pair(const mem_opt_t *opt, const bntseq_t *bns, const uint8_t *pa
 // exactly these inputs for the pair this thread is finishing.
 int wgse_metal_matesw(const mem_opt_t *opt, const uint8_t *ms, uint8_t *seq, int l_ms,
     uint8_t *ref, int is_rev, int64_t rb, int64_t re, int xtra, kswr_t *aln);
+// mem_matesw()'s ksw_align2() for a window no batch aligned: upstream's on the
+// rows bwa-mem3's exact pruning keeps, or a result mem_matesw() drops when it
+// proves no row yields one it keeps (upstream's on every row with --cpu-upstream).
+kswr_t wgse_rescue_align(const mem_opt_t *opt, int l_ms, uint8_t *seq, int tlen,
+    uint8_t *ref, int xtra);
 
 // Appended to the generated bwamem_pair.c: reports each mate-rescue alignment
 // mem_sam_pe() may run for the pair, with mem_matesw()'s inputs.
@@ -76,6 +83,10 @@ void wgse_worker1_finish(void *data, long i, void *chains);
 uint8_t *wgse_fetch_window(const bntseq_t *bns, const uint8_t *pac, int64_t *beg, int64_t mid,
     int64_t *end, int *rid);
 
+// After main_mem() loads the index: reads the densest denser suffix-array side
+// file (<prefix>.wgse-sa<interval>, dense_sa.h) this machine has room for.
+void wgse_index_loaded(const char *prefix, const bwt_t *bwt);
+
 // Upstream main(), renamed in the generated main.c.
 int wgse_bwa_main(int argc, char *argv[]);
 
@@ -87,14 +98,16 @@ int wgse_bwa_main(int argc, char *argv[]);
 enum class Backend { cpu, metal, cuda, vulkan, automatic };
 
 // Whether the GPU backend's device can run the kernels (automatic: this
-// build's GPU, Metal on macOS, elsewhere CUDA and then Vulkan), with the
-// reason if not.
+// build's GPU, Metal on macOS and CUDA elsewhere), with the reason if not.
 bool wgse_gpu_available(Backend backend, std::string &reason);
-bool wgse_gpu_hardware_supported(Backend backend);
-// Like wgse_gpu_available, but starts and releases a device of its own.
 bool wgse_gpu_probe(Backend backend, std::string &reason);
-// "Metal", "CUDA" or "Vulkan": the selected device, or the backend's.
+bool wgse_gpu_hardware_supported(Backend backend);
+// "Metal" or "CUDA": the selected device, or the backend's.
 const char *wgse_gpu_name(Backend backend);
+// Writes <prefix>.wgse-sa<interval> from the index's samples; returns an exit status.
+int wgse_densify_sa(const char *prefix, unsigned interval, unsigned threads);
+// The side files an index has and the interval mem would load, as a JSON object.
+std::string wgse_dense_sa_json(const char *prefix);
 // Must precede alignment; a GPU backend without a usable device leaves the CPU's.
 void wgse_set_backend(Backend backend);
 bool wgse_gpu_execution_failed(std::string &reason);
@@ -111,10 +124,10 @@ void wgse_inject_locate_failure();
 // Reports the first commit of every nth piece of GPU work as interrupted by
 // macOS, so it is committed again.
 void wgse_inject_gpu_interruptions(size_t every);
-// The GPU watchdog's floor in seconds (CUDA and Vulkan).
+// The GPU watchdog's floor in seconds (CUDA).
 void wgse_set_gpu_watchdog_seconds(double seconds);
-// Occupies the GPU past the watchdog's limit before the first rescue batch (CUDA).
-void wgse_inject_gpu_hang();
+// Hangs the first GPU work of the stage label names (see DeviceOptions::hang_label).
+void wgse_inject_gpu_hang(const char *label);
 void wgse_set_gpu_locate(bool enable);
 void wgse_set_gpu_locate_dense(unsigned shift);
 void wgse_set_gpu_locate_dense_after(size_t reads);
@@ -127,6 +140,8 @@ void wgse_set_gpu_rescue_batch(size_t pairs);
 void wgse_inject_rescue_failure();
 // Also run each GPU or batched CPU rescue alignment with ksw_align2() and count differences.
 void wgse_verify_gpu_rescue();
+// Whether mem loads denser suffix-array side files, and whether regardless of memory.
+void wgse_set_dense_sa_files(bool enable, bool force);
 // The CPU backend runs upstream's code for every step (default: the exact
 // batched replacements of wgse_fast_cpu()).
 void wgse_set_cpu_upstream();

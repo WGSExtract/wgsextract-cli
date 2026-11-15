@@ -1,7 +1,7 @@
 [project]
-name = "gui-for-cli-dev-tools"
+name = "wgsextract-gui-dev-tools"
 version = "0.1.0"
-description = "Python development tooling for GUI for CLI"
+description = "Python development tooling for WGS Extract GUI"
 requires-python = ">=3.11"
 dependencies = []
 

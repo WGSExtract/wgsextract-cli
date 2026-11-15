@@ -91,6 +91,9 @@ file(WRITE "${mem2_src}/FMI_search.h" "${fmi_header}")
 file(READ "${mem2_SOURCE_DIR}/src/FMI_search.cpp" fmi_source)
 mem2_seam(fmi_source "(CP_OCC *)_mm_malloc(cp_occ_size * sizeof(CP_OCC), 64)) == NULL"
     "(CP_OCC *)wgse_metal_index_alloc(cp_occ_size * sizeof(CP_OCC))) == NULL")
+# An abandoned GPU command (watchdog) may still read the checkpoints.
+mem2_seam(fmi_source "    if(cp_occ)\n        _mm_free(cp_occ);"
+    "    if(cp_occ)\n        wgse_metal_index_free(cp_occ);")
 # Suffix-array locate: an SMEM yields min(s, max_occ) rows, but upstream sizes
 # its row buffers by the sum of s (megabytes for repeats, faulted in on every
 # read), and its precedence slip `pos & SA_COMPX_MASK == 0` means sampled rows
@@ -171,7 +174,7 @@ mem2_seam(bwamem_source "${ref_window}\n        } else { // forward strand"
     "#else\n            seq = ref_string ? ref_string + beg : wgse_ref_window(l_pac, pac, beg, end);\n#endif\n        } else { // forward strand")
 mem2_seam(bwamem_source "${ref_window}"
     "#else\n            seq = ref_string ? ref_string + beg : wgse_ref_window(l_pac, pac, beg, end);\n#endif")
-# mem_sort_dedup_patch()'s sorts move pointers instead of regions (native/bwa/sort_oracle.c.in).
+# mem_sort_dedup_patch()'s sorts move compact keys instead of regions (native/bwa/sort_oracle.c.in).
 mem2_seam(bwamem_source "    ks_introsort(mem_ars2, n, a); // sort by the END position, not START!"
     "    if (wgse_exact_cpu()) wgse_sort_alnreg_by_end(n, a);\n    else ks_introsort(mem_ars2, n, a);")
 mem2_seam(bwamem_source "    n = m;\n    ks_introsort(mem_ars, n, a);"
@@ -193,6 +196,7 @@ mem2_seam(bntseq_source "\t\t\tfor (k = end_f; k > beg_f; --k) {\n\t\t\t\tseq[l+
 mem2_seam(bntseq_source "\t\t\tfor (k = beg; k < end; ++k) {\n\t\t\t\tseq[l++] = _get_pac(pac, k);\n\t\t\t}"
     "\t\t\tif (wgse_exact_cpu()) wgse_unpack_pac(pac, beg, end, seq);\n\t\t\telse for (k = beg; k < end; ++k) {\n\t\t\t\tseq[l++] = _get_pac(pac, k);\n\t\t\t}")
 file(READ "${bwa_dir}/pac_oracle.c.in" pac_oracle)
+configure_file("${bwa_dir}/wgse_neon.h" "${mem2_src}/wgse_neon.h" COPYONLY)
 file(WRITE "${mem2_src}/bntseq.cpp" "#include \"metal_backend.h\"
 #include \"rescue_backend.h\"
 ${bntseq_source}
@@ -313,7 +317,7 @@ target_compile_options(metal_backend PRIVATE -fobjc-arc -Wall -Wextra -Werror)
 target_link_libraries(metal_backend PUBLIC mem2_core mem2_rescue_prune wgse_metal_common)
 add_executable(wgse-bwa-mem2 main.cpp)
 target_link_libraries(wgse-bwa-mem2 PRIVATE metal_backend)
-set(WGSE_BWA_MEM2_VERSION 0.5.0)
+set(WGSE_BWA_MEM2_VERSION 0.5.3)
 target_compile_definitions(wgse-bwa-mem2 PRIVATE WGSE_VERSION="${WGSE_BWA_MEM2_VERSION}")
 target_compile_options(wgse-bwa-mem2 PRIVATE -Wall -Wextra -Werror)
 
@@ -331,6 +335,9 @@ if(BUILD_TESTING)
     add_test(NAME bwa_mem2_rescue_parity
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/rescue_parity.sh"
         $<TARGET_FILE:wgse-bwa-mem2> "${CMAKE_CURRENT_BINARY_DIR}/rescue-parity")
+    add_test(NAME bwa_mem2_watchdog
+        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/rescue_parity.sh"
+        $<TARGET_FILE:wgse-bwa-mem2> "${CMAKE_CURRENT_BINARY_DIR}/watchdog" watchdog)
     add_test(NAME bwa_mem2_seed_parity
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/seed_parity.sh"
         $<TARGET_FILE:wgse-bwa-mem2> "${CMAKE_CURRENT_BINARY_DIR}/seed-parity")

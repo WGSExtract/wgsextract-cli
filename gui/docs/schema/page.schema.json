@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/WGSExtract/wgsextract-cli/gui/schema/page.schema.json",
-  "title": "GUI for CLI Bundle Page",
+  "title": "WGS Extract GUI Bundle Page",
   "type": "object",
   "required": ["id", "title", "summary", "sections"],
   "additionalProperties": false,
@@ -289,12 +289,28 @@
           "items": { "type": "string" },
           "default": []
         },
+        "optionalArguments": {
+          "type": "array",
+          "items": { "type": "array", "items": { "type": "string" } },
+          "default": [],
+          "description": "Argument groups added after arguments; a group is left out when any placeholder in it is empty."
+        },
         "environment": {
           "type": "object",
           "additionalProperties": { "type": "string" },
           "default": {}
         },
-        "workingDirectory": { "$ref": "#/$defs/bundledRelativePath" }
+        "workingDirectory": { "$ref": "#/$defs/bundledRelativePath" },
+        "transform": {
+          "type": "object",
+          "required": ["module", "export"],
+          "additionalProperties": false,
+          "description": "Maps the JSON the command prints to the payload: the app calls the named export of the bundle's ES module with the parsed output and shows what it returns.",
+          "properties": {
+            "module": { "$ref": "#/$defs/bundledRelativePath" },
+            "export": { "type": "string", "minLength": 1 }
+          }
+        }
       }
     },
     "bundledRelativePath": {
@@ -342,7 +358,17 @@
         "precheck": { "$ref": "#/$defs/actionPrecheck" },
         "confirm": { "$ref": "#/$defs/actionConfirmation" },
         "command": { "$ref": "#/$defs/command" },
-        "serverOperation": { "$ref": "#/$defs/serverOperation" }
+        "serverOperation": { "$ref": "#/$defs/serverOperation" },
+        "prerequisiteArguments": {
+          "description": "The command line the manifest's prerequisite check is given for this action, interpolated like command arguments, when its executable is a wrapper the check can't read. See docs/prerequisites.md.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "primaryInput": {
+          "description": "The placeholder (without braces) naming the job's main input, shown in the app's Jobs list. Without it, the list shows the first file path control the command uses, skipping folders; give it when that would be an output, a folder input or a URL.",
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "serverOperation": {

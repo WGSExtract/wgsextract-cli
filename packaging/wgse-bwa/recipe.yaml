@@ -1,7 +1,8 @@
 context:
   # native/bwa/CMakeLists.txt's WGSE_BWA_VERSION.
-  version: "0.10.0"
+  version: "0.14.0"
   bwa_version: "0.7.19"
+  mem3_version: "0.16.0"
 
 package:
   name: wgse-bwa
@@ -15,12 +16,17 @@ source:
   - url: https://github.com/lh3/bwa/archive/refs/tags/v${{ bwa_version }}.tar.gz
     sha256: cdff5db67652c5b805a3df08c4e813a822c65791913eccfb3cf7d528588f37bc
     target_directory: bwa
+  # The exact rescue-pruning headers linked through native/bwa-mem2's adapter.
+  - url: https://github.com/fg-labs/bwa-mem3/archive/refs/tags/v${{ mem3_version }}.tar.gz
+    sha256: 28f7e4be7cf359e97b59f2925bb67b27905058c13e6c8af08507b13f2c10662c
+    target_directory: mem3
 
 build:
   number: 0
   string: ${{ target_platform | replace('-', '') }}_wgse_${{ build_number }}
+  # linux-64 with the CUDA backend; linux-aarch64 with the CPU backend (#672).
   skip:
-    - not (linux and x86_64)
+    - not linux
   script:
     - bash "$RECIPE_DIR/build.sh"
   # The CUDA runtime is linked statically, so the package needs only the
@@ -30,34 +36,42 @@ build:
   dynamic_linking:
     missing_dso_allowlist:
       - libcuda.so.1
-  ignore_run_exports:
-    from_package:
-      - ${{ compiler('cuda') }}
-    by_name:
-      - cuda-version
 
 requirements:
   build:
     - ${{ compiler('c') }}
     - ${{ compiler('cxx') }}
-    - ${{ compiler('cuda') }}
+    - if: x86_64
+      then: ${{ compiler('cuda') }}
     - ${{ stdlib('c') }}
     - cmake >=3.24
     - ninja
   host:
-    - cuda-version ${{ cuda_compiler_version }}.*
-    - cuda-cudart-dev
-    - cuda-cudart-static
+    - if: x86_64
+      then:
+        - cuda-version ${{ cuda_compiler_version }}.*
+        - cuda-cudart-dev
+        - cuda-cudart-static
     - zlib
+  # Statically linked: neither the shared runtime cuda-cudart-dev exports nor a
+  # CUDA version is needed at run time.
+  ignore_run_exports:
+    from_package:
+      - ${{ compiler('cuda') }}
+    by_name:
+      - cuda-cudart
+      - cuda-version
 
 tests:
   - script:
       - wgse-bwa --version
+      - test -s "$PREFIX/share/licenses/wgse-bwa/BWA-MEM3-LICENSE"
       - wgse-bwa capabilities --json
       - wgse-bwa capabilities --json | grep -q '"cuda_hardware_supported":'
   - files:
       source:
         - native/tests/smoke.sh
+        - native/tests/seeded_random.sh
     requirements:
       run:
         - gawk
@@ -65,6 +79,7 @@ tests:
       # Indexes and aligns a synthetic genome on the CPU, and on the GPU too
       # when the build machine has one.
       - bash native/tests/smoke.sh "$(command -v wgse-bwa)" smoke metal
+      - bash native/tests/smoke.sh "$(command -v wgse-bwa)" smoke-dense-sa dense-sa
 
 about:
   homepage: https://github.com/WGSExtract/wgsextract-cli/tree/main/native
@@ -72,7 +87,9 @@ about:
   license_file:
     - LICENSE
     - bwa/COPYING
+    - mem3/LICENSE
     - native/bwa/SEEDING-LICENSE
   summary: >-
-    BWA 0.7.19 rebuilt by WGS Extract, with an experimental CUDA backend
-    (--cuda, --backend auto) that writes BWA's exact alignments.
+    BWA 0.7.19 rebuilt by WGS Extract with exact faster CPU steps (NEON on
+    ARM64, SSE2 and AVX2 on x86-64) and, on x86-64, an experimental CUDA
+    backend (--cuda, --backend auto); it writes BWA's exact alignments.

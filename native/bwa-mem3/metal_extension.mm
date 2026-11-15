@@ -1,5 +1,6 @@
 #include "metal_extension.h"
 
+#include "extension_host.h"
 #include "extension_source.h"
 #include "runtime.h"
 
@@ -9,72 +10,52 @@
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
-#include <filesystem>
 #include <mutex>
 #include <pthread.h>
-#include <sys/sysctl.h>
 #include <thread>
 
+using namespace wgse::mem3;
+
 namespace {
-
-// extension.metal's Parameters.
-struct Parameters {
-    int32_t count, bandwidth, open_deletion, extend_deletion, open_insertion, extend_insertion;
-    int32_t zdrop, end_bonus, max_substitution;
-    int8_t matrix[25];
-    bool simple_matrix;
-    uint8_t precision;
-};
-static_assert(sizeof(Parameters) == 64, "extension.metal's Parameters");
-static_assert(sizeof(WgseBswJob) == 15 * sizeof(int32_t), "extension.metal's Pair");
-
-bool same_scoring(const Parameters &a, const Parameters &b) {
-    return std::memcmp(&a.open_deletion, &b.open_deletion,
-        sizeof(Parameters) - offsetof(Parameters, open_deletion)) == 0;
-}
-
-bool scoring_less(const Parameters &a, const Parameters &b) {
-    return std::memcmp(&a.open_deletion, &b.open_deletion,
-        sizeof(Parameters) - offsetof(Parameters, open_deletion)) < 0;
-}
-
-uint64_t now_ns() {
-    return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::steady_clock::now().time_since_epoch()).count());
-}
-
-// One worker's getScores8 call, waiting for its results.
-struct Request {
-    WgseBswJob *jobs;
-    int32_t count;
-    const uint8_t *ref, *qer;
-    Parameters parameters;
-    size_t ref_bytes, qer_bytes;
-    uint64_t enqueued;
-    bool done = false, ok = false;
-};
 
 // Requests aggregated into one command buffer: one dispatch per scoring.
 struct Slot {
     enum Status { free, executing, completed } status = free;
-    id<MTLBuffer> pairs = nil, reference = nil, query = nil;
+    id<MTLBuffer> pairs = nil, reference = nil, query = nil, scratch = nil;
     std::vector<Request *> requests;
     std::vector<WgseBswJob> inputs; // to commit again after an interruption
-    std::vector<std::pair<int32_t, Parameters>> groups; // first pair, scoring
+    // Each pair's result, in the slot's order.
+    std::vector<WgseBswJob *> targets;
+    struct Group {
+        int32_t first, count;
+        bool long_pairs;
+        Parameters parameters;
+    };
+    std::vector<Group> groups;
     id<MTLCommandBuffer> command = nil;
     int attempt = 0;
     std::string failure;
 };
 
 constexpr int32_t max_pairs = 1 << 18;
+// A command buffer's DP state; a request with more is scored on the CPU.
+constexpr size_t max_scratch_cells = size_t(16) << 20;
 // Pairs worth a second command buffer while one runs; below it, they wait for the GPU.
 constexpr int32_t target_pairs = 8192;
+// Command buffers in flight: each holds too few pairs to fill the GPU, so several run at once.
+constexpr int slot_count = 2;
 
 std::atomic<bool> enabled{false}, failed{false}, inject_failure{false};
 std::mutex failure_mutex;
 std::string failure_reason;
+// backlog_calls: getScores8 calls scored on the CPU because the GPU's queue was over --gpu-backlog.
 std::atomic<uint64_t> calls{0}, batches{0}, pairs_total{0}, gpu_ns{0}, wait_ns{0},
-    cpu_fallbacks{0}, interruptions{0};
+    cpu_fallbacks{0}, interruptions{0}, backlog_calls{0}, gpu_busy_ns{0};
+double busy_end = 0;
+// Pairs queued for the GPU but not yet in a command buffer; above backlog, workers score
+// their own pairs on the CPU (0: never).
+std::atomic<int64_t> queued_pairs{0};
+int64_t backlog = 0;
 
 void fail(const std::string &reason) {
     std::lock_guard<std::mutex> lock(failure_mutex);
@@ -85,10 +66,30 @@ void fail(const std::string &reason) {
 class Engine {
 public:
     wgse::metal::Runtime runtime;
-    id<MTLComputePipelineState> pipeline = nil;
+    id<MTLComputePipelineState> pipeline = nil, long_pipeline = nil;
 
     Engine() {
-        if (runtime.device()) pipeline = runtime.compile(wgse_extension_source, "extend_batch");
+        id<MTLDevice> device = runtime.device();
+        id<MTLLibrary> library = device ? runtime.library(wgse_extension_source) : nil;
+        id<MTLFunction> function = [library newFunctionWithName:@"extend_striped"];
+        if (!function) return;
+        // One SIMD group per threadgroup leaves the compiler the most registers per thread.
+        MTLComputePipelineDescriptor *descriptor = [[MTLComputePipelineDescriptor alloc] init];
+        descriptor.computeFunction = function;
+        descriptor.maxTotalThreadsPerThreadgroup = lanes;
+        descriptor.threadGroupSizeIsMultipleOfThreadExecutionWidth = YES;
+        NSError *error = nil;
+        pipeline = [device newComputePipelineStateWithDescriptor:descriptor
+            options:MTLPipelineOptionNone reflection:nil error:&error];
+        if (pipeline && pipeline.threadExecutionWidth != NSUInteger(lanes)) pipeline = nil;
+        id<MTLFunction> long_function = [library newFunctionWithName:@"extend_long"];
+        if (pipeline && long_function) {
+            long_pipeline = [device newComputePipelineStateWithFunction:long_function error:&error];
+            if (long_pipeline && (long_pipeline.threadExecutionWidth != NSUInteger(lanes)
+                || long_pipeline.maxTotalThreadsPerThreadgroup < 4 * NSUInteger(lanes)))
+                long_pipeline = nil;
+        }
+        if (!long_pipeline) pipeline = nil;
     }
     ~Engine() {
         {
@@ -112,6 +113,7 @@ public:
         request.enqueued = now_ns();
         pending.push_back(&request);
         pending_pairs += request.count;
+        queued_pairs = pending_pairs;
         changed.notify_one();
         done.wait(lock, [&request] { return request.done; });
         wait_ns += now_ns() - request.enqueued;
@@ -123,70 +125,97 @@ private:
     std::condition_variable changed, done;
     std::vector<Request *> pending;
     int64_t pending_pairs = 0;
-    Slot slots[2];
+    Slot slots[slot_count];
     bool stopping = false;
     std::thread submitter;
 
-    static bool reserve(id<MTLDevice> device, id<MTLBuffer> __strong &buffer, size_t bytes) {
+    static bool reserve(id<MTLDevice> device, id<MTLBuffer> __strong &buffer, size_t bytes,
+        MTLResourceOptions options = MTLResourceStorageModeShared) {
         if (buffer && buffer.length >= bytes) return true;
         size_t capacity = 64 * 1024;
         while (capacity < bytes) capacity *= 2;
-        buffer = [device newBufferWithLength:capacity options:MTLResourceStorageModeShared];
+        buffer = [device newBufferWithLength:capacity options:options];
         return buffer != nil;
     }
 
-    // Takes pending requests, up to max_pairs, ordered by scoring. Holds the lock.
+    // Takes pending requests, up to max_pairs and max_scratch_cells, ordered by scoring.
+    // Holds the lock.
     void take(Slot &slot) {
         slot.requests.clear();
         int32_t count = 0;
+        size_t cells = 0;
         size_t kept = 0;
         for (Request *request : pending) {
-            if (count + request->count > max_pairs && count > 0) {
+            if (count > 0 && (count + request->count > max_pairs
+                || cells + request->scratch_cells > max_scratch_cells)) {
                 pending[kept++] = request;
                 continue;
             }
             slot.requests.push_back(request);
             count += request->count;
+            cells += request->scratch_cells;
         }
         pending.resize(kept);
         pending_pairs -= count;
+        queued_pairs = pending_pairs;
         std::stable_sort(slot.requests.begin(), slot.requests.end(),
             [](const Request *a, const Request *b) {
                 return scoring_less(a->parameters, b->parameters);
             });
     }
 
+    // Concatenates the slot's packed requests, rebasing their offsets.
     bool pack(Slot &slot) {
-        size_t count = 0, ref_bytes = 0, qer_bytes = 0;
+        // Once the watchdog gives up, an abandoned command may still use this
+        // slot's buffers: fail the requests to the CPU without packing.
+        slot.failure = wgse::metal::Runtime::hang();
+        if (!slot.failure.empty()) return false;
+        size_t count = 0, ref_words = 0, qer_words = 0, cells = 0;
         for (const Request *request : slot.requests) {
             count += size_t(request->count);
-            ref_bytes += request->ref_bytes;
-            qer_bytes += request->qer_bytes;
+            ref_words += request->ref_word_count;
+            qer_words += request->qer_word_count;
+            cells += request->scratch_cells;
         }
         id<MTLDevice> device = runtime.device();
         if (!reserve(device, slot.pairs, count * sizeof(WgseBswJob))
-            || !reserve(device, slot.reference, ref_bytes)
-            || !reserve(device, slot.query, qer_bytes)) {
+            || !reserve(device, slot.reference, ref_words * sizeof(uint32_t))
+            || !reserve(device, slot.query, qer_words * sizeof(uint32_t))
+            || !reserve(device, slot.scratch, cells * sizeof(uint32_t), MTLResourceStorageModePrivate)) {
             slot.failure = "Metal buffer allocation failed";
             return false;
         }
         auto *jobs = static_cast<WgseBswJob *>(slot.pairs.contents);
-        auto *reference = static_cast<uint8_t *>(slot.reference.contents);
-        auto *query = static_cast<uint8_t *>(slot.query.contents);
+        auto *reference = static_cast<uint32_t *>(slot.reference.contents);
+        auto *query = static_cast<uint32_t *>(slot.query.contents);
         slot.groups.clear();
-        size_t index = 0, rbase = 0, qbase = 0;
-        for (const Request *request : slot.requests) {
-            if (slot.groups.empty() || !same_scoring(slot.groups.back().second, request->parameters))
-                slot.groups.emplace_back(int32_t(index), request->parameters);
-            for (int32_t i = 0; i < request->count; ++i) {
-                WgseBswJob job = request->jobs[i];
-                std::memcpy(reference + rbase, request->ref + job.idr, size_t(job.len1));
-                std::memcpy(query + qbase, request->qer + job.idq, size_t(job.len2));
-                job.idr = int32_t(rbase);
-                job.idq = int32_t(qbase);
-                rbase += size_t(job.len1);
-                qbase += size_t(job.len2);
-                jobs[index++] = job;
+        slot.targets.resize(count);
+        size_t index = 0;
+        // The one-thread pairs, then the long ones, each in runs of one scoring.
+        for (const bool long_pairs : {false, true}) {
+            size_t rbase = 0, qbase = 0, sbase = 0;
+            for (const Request *request : slot.requests) {
+                const int32_t first = long_pairs ? request->count - request->long_count : 0;
+                const int32_t last = long_pairs ? request->count : request->count - request->long_count;
+                if (first < last && (slot.groups.empty() || slot.groups.back().long_pairs != long_pairs
+                    || !same_scoring(slot.groups.back().parameters, request->parameters)))
+                    slot.groups.push_back({int32_t(index), 0, long_pairs, request->parameters});
+                if (!long_pairs) {
+                    std::memcpy(reference + rbase, request->ref_words, request->ref_word_count * sizeof(uint32_t));
+                    std::memcpy(query + qbase, request->qer_words, request->qer_word_count * sizeof(uint32_t));
+                }
+                for (int32_t i = first; i < last; ++i) {
+                    WgseBswJob job = request->packed[i];
+                    slot.targets[index] = request->jobs + job.seqid;
+                    job.idr += int32_t(rbase);
+                    job.idq += int32_t(qbase);
+                    job.id += int32_t(sbase);
+                    jobs[index++] = job;
+                    ++slot.groups.back().count;
+                }
+                rbase += request->ref_word_count;
+                qbase += request->qer_word_count;
+                sbase += request->scratch_cells;
             }
         }
         slot.inputs.assign(jobs, jobs + count);
@@ -199,35 +228,40 @@ private:
             std::copy(slot.inputs.begin(), slot.inputs.end(),
                 static_cast<WgseBswJob *>(slot.pairs.contents));
         slot.command = [runtime.queue() commandBufferWithUnretainedReferences];
-        id<MTLComputeCommandEncoder> encoder = [slot.command computeCommandEncoder];
+        slot.command.label = @"extend";
+        // The dispatches write disjoint pairs and DP state, so they may run at once.
+        id<MTLComputeCommandEncoder> encoder = [slot.command
+            computeCommandEncoderWithDispatchType:MTLDispatchTypeConcurrent];
         if (!slot.command || !encoder) {
             slot.failure = "Metal command allocation failed";
             std::lock_guard<std::mutex> lock(mutex);
             slot.status = Slot::completed;
             return;
         }
-        [encoder setComputePipelineState:pipeline];
         [encoder setBuffer:slot.reference offset:0 atIndex:1];
         [encoder setBuffer:slot.query offset:0 atIndex:2];
-        const int32_t total = int32_t(slot.inputs.size());
-        for (size_t g = 0; g < slot.groups.size(); ++g) {
-            const int32_t first = slot.groups[g].first;
-            const int32_t last = g + 1 < slot.groups.size() ? slot.groups[g + 1].first : total;
-            Parameters parameters = slot.groups[g].second;
-            parameters.count = last - first;
-            [encoder setBuffer:slot.pairs offset:size_t(first) * sizeof(WgseBswJob) atIndex:0];
+        [encoder setBuffer:slot.scratch offset:0 atIndex:4];
+        for (const Slot::Group &group : slot.groups) {
+            Parameters parameters = group.parameters;
+            parameters.count = group.count;
+            [encoder setComputePipelineState:group.long_pairs ? long_pipeline : pipeline];
+            [encoder setBuffer:slot.pairs offset:size_t(group.first) * sizeof(WgseBswJob) atIndex:0];
             [encoder setBytes:&parameters length:sizeof(parameters) atIndex:3];
-            [encoder dispatchThreads:MTLSizeMake(NSUInteger(parameters.count) * 32, 1, 1)
-                threadsPerThreadgroup:MTLSizeMake(128, 1, 1)];
+            // Whole SIMD groups: a pair per thread, or per SIMD group for long pairs; the
+            // kernels skip the padding threads.
+            const NSUInteger threads = group.long_pairs ? NSUInteger(group.count) * lanes
+                : NSUInteger(group.count + lanes - 1) / lanes * lanes;
+            const NSUInteger per_group = group.long_pairs ? 4 * lanes : lanes;
+            [encoder dispatchThreads:MTLSizeMake((threads + per_group - 1) / per_group * per_group, 1, 1)
+                threadsPerThreadgroup:MTLSizeMake(per_group, 1, 1)];
         }
         [encoder endEncoding];
         Slot *finished = &slot;
-        [slot.command addCompletedHandler:^(id<MTLCommandBuffer>) {
+        wgse::metal::Runtime::commit(slot.command, ^(id<MTLCommandBuffer>) {
             std::lock_guard<std::mutex> lock(mutex);
             finished->status = Slot::completed;
             changed.notify_one();
-        }];
-        wgse::metal::Runtime::commit(slot.command);
+        }, @[slot.pairs, slot.reference, slot.query, slot.scratch]);
     }
 
     // Stores the results, or commits the slot again after an interruption.
@@ -243,25 +277,30 @@ private:
             return;
         }
         if (slot.failure.empty() && slot.command.status != MTLCommandBufferStatusCompleted)
-            slot.failure = slot.command.error ? slot.command.error.localizedDescription.UTF8String
-                : "Metal command did not complete";
+            slot.failure = wgse::metal::Runtime::describe(slot.command);
         if (slot.failure.empty() && inject_failure)
             slot.failure = "injected GPU extension failure (test)";
         if (slot.failure.empty()) {
             gpu_ns += uint64_t((slot.command.GPUEndTime - slot.command.GPUStartTime) * 1e9);
+            {
+                // Busy time: the union of the command buffers' GPU intervals (finish runs on
+                // the submitter thread only, in completion order).
+                const double start = std::max(slot.command.GPUStartTime, busy_end);
+                if (slot.command.GPUEndTime > start) gpu_busy_ns += uint64_t((slot.command.GPUEndTime - start) * 1e9);
+                busy_end = std::max(busy_end, slot.command.GPUEndTime);
+            }
             const auto *jobs = static_cast<const WgseBswJob *>(slot.pairs.contents);
-            size_t index = 0;
-            for (Request *request : slot.requests)
-                for (int32_t i = 0; i < request->count; ++i, ++index) {
-                    WgseBswJob &out = request->jobs[i];
-                    const WgseBswJob &in = jobs[index];
-                    out.score = in.score;
-                    out.tle = in.tle;
-                    out.gtle = in.gtle;
-                    out.qle = in.qle;
-                    out.gscore = in.gscore;
-                    out.max_off = in.max_off;
-                }
+            const size_t index = slot.targets.size();
+            for (size_t i = 0; i < index; ++i) {
+                const WgseBswJob &in = jobs[i];
+                WgseBswJob &out = *slot.targets[i];
+                out.score = in.score;
+                out.tle = in.tle;
+                out.gtle = in.gtle;
+                out.qle = in.qle;
+                out.gscore = in.gscore;
+                out.max_off = in.max_off;
+            }
             ++batches;
             pairs_total += index;
         } else {
@@ -327,10 +366,12 @@ bool wgse_mem3_bsw_available(std::string &reason) {
     Engine &e = engine();
     reason = e.failure();
     if (!reason.empty()) return false;
-    // Two slots of max_pairs pairs, each with its query and a reference of a few times that.
-    const uint64_t needed = 2ull * max_pairs * (sizeof(WgseBswJob) + 4 * wgse_mem3_max_gpu_query_length);
+    // slot_count slots of max_pairs pairs, each with its query (128 bytes for 256 bases, 8 a
+    // 32-bit word) and its reference (allowing three times that), and their DP state.
+    const uint64_t needed = uint64_t(slot_count) * (max_pairs * (sizeof(WgseBswJob) + 2 * wgse_mem3_max_gpu_query_length)
+        + max_scratch_cells * sizeof(uint32_t));
     id<MTLDevice> device = e.runtime.device();
-    if (device.maxBufferLength < needed / 2 || device.recommendedMaxWorkingSetSize < needed) {
+    if (device.maxBufferLength < needed / slot_count || device.recommendedMaxWorkingSetSize < needed) {
         reason = "the GPU's buffer limits are below the " + std::to_string(needed >> 20)
             + " MiB seed extension needs";
         return false;
@@ -348,35 +389,18 @@ WgseMem3MetalLimits wgse_mem3_metal_limits() {
     return limits;
 }
 
-namespace {
-std::atomic<uint64_t> physical_memory_override{0};
+const char *wgse_mem3_gpu_name() { return "Metal"; }
+
+bool wgse_mem3_gpu_hardware_supported() {
+    wgse::metal::Runtime runtime;
+    return runtime.device() != nil;
 }
 
-void wgse_mem3_set_physical_memory(uint64_t bytes) { physical_memory_override = bytes; }
-
-uint64_t wgse_mem3_physical_memory() {
-    if (physical_memory_override) return physical_memory_override;
-    uint64_t bytes = 0;
-    size_t size = sizeof(bytes);
-    return sysctlbyname("hw.memsize", &bytes, &size, nullptr, 0) == 0 ? bytes : 0;
+void wgse_mem3_gpu_inject_interruptions(size_t count) {
+    wgse::metal::Runtime::inject_interruptions(count);
 }
 
-void wgse_mem3_memory_preflight(const char *prefix, int64_t chunk_bases) {
-    // The index files bwa-mem3 loads, 1 GiB, and 24 bytes per base of a chunk, as for
-    // wgse-bwa-mem2's CPU backend: 11.3 GiB for hs38 with -K 10000000, which peaked at
-    // 10.7 GiB (10.9 GiB with --metal).
-    uint64_t need = (uint64_t(1) << 30) + uint64_t(std::max<int64_t>(0, chunk_bases)) * 24;
-    for (const char *suffix : {".bwt.2bit.64", ".pac"}) {
-        std::error_code error;
-        const uintmax_t size = std::filesystem::file_size(std::string(prefix) + suffix, error);
-        if (!error) need += size;
-    }
-    const uint64_t have = wgse_mem3_physical_memory();
-    if (have && have < need)
-        fprintf(stderr, "[wgse-bwa-mem3] warning: this run needs about %.1f GiB of memory but "
-            "this Mac has %.1f GiB; expect heavy paging and a much slower run\n",
-            double(need) / double(1ull << 30), double(have) / double(1ull << 30));
-}
+void wgse_mem3_gpu_inject_hang(const char *label) { wgse::metal::Runtime::inject_hang(label, 2); }
 
 bool wgse_mem3_bsw_start(std::string &reason) {
     if (!wgse_mem3_bsw_available(reason)) return false;
@@ -398,11 +422,12 @@ void wgse_mem3_bsw_inject_failure() {
 int wgse_mem3_bsw_finish() {
     if (!enabled) return 0;
     fprintf(stderr, "[wgse-bwa-mem3] extension_calls=%llu extension_cpu_calls=%llu "
-        "extension_batches=%llu extension_pairs=%llu extension_gpu_s=%.2f extension_wait_s=%.2f "
-        "extension_interruptions=%llu\n",
+        "extension_batches=%llu extension_pairs=%llu extension_gpu_s=%.2f extension_gpu_busy_s=%.2f extension_wait_s=%.2f "
+        "extension_interruptions=%llu extension_backlog_calls=%llu\n",
         (unsigned long long)calls.load(), (unsigned long long)cpu_fallbacks.load(),
         (unsigned long long)batches.load(), (unsigned long long)pairs_total.load(),
-        gpu_ns.load() * 1e-9, wait_ns.load() * 1e-9, (unsigned long long)interruptions.load());
+        gpu_ns.load() * 1e-9, gpu_busy_ns.load() * 1e-9, wait_ns.load() * 1e-9, (unsigned long long)interruptions.load(),
+        (unsigned long long)backlog_calls.load());
     if (!failed) return 0;
     std::lock_guard<std::mutex> lock(failure_mutex);
     fprintf(stderr, "[wgse-bwa-mem3] CPU fallback: GPU seed extension failed (%s); "
@@ -429,6 +454,16 @@ bool wgse_mem3_bsw_enabled() {
     return enabled && !failed;
 }
 
+bool wgse_mem3_bsw_busy() {
+    if (backlog <= 0 || queued_pairs.load(std::memory_order_relaxed) < backlog) return false;
+    ++backlog_calls;
+    return true;
+}
+
+void wgse_mem3_bsw_set_backlog(int64_t pairs) {
+    backlog = pairs;
+}
+
 bool wgse_mem3_bsw_score(WgseBswJob *jobs, int32_t count, const uint8_t *ref,
     const uint8_t *qer, const WgseBswScoring &scoring) {
     ++calls;
@@ -436,28 +471,9 @@ bool wgse_mem3_bsw_score(WgseBswJob *jobs, int32_t count, const uint8_t *ref,
         ++cpu_fallbacks;
         return false;
     }
-    Request request{jobs, count, ref, qer, {}, 0, 0, 0};
-    Parameters &p = request.parameters;
-    p.open_deletion = scoring.open_deletion;
-    p.extend_deletion = scoring.extend_deletion;
-    p.open_insertion = scoring.open_insertion;
-    p.extend_insertion = scoring.extend_insertion;
-    p.zdrop = scoring.zdrop;
-    p.end_bonus = scoring.end_bonus;
-    p.simple_matrix = true;
-    p.precision = 8;
-    const int8_t *m = scoring.matrix;
-    for (int i = 0; i < 25; ++i) {
-        p.matrix[i] = m[i];
-        p.max_substitution = std::max<int32_t>(p.max_substitution, m[i]);
-        const int r = i / 5, c = i % 5;
-        p.simple_matrix &= m[i] == (r == 4 || c == 4 ? m[24] : r == c ? m[0] : m[1]);
-    }
-    for (int32_t i = 0; i < count; ++i) {
-        request.ref_bytes += size_t(jobs[i].len1);
-        request.qer_bytes += size_t(jobs[i].len2);
-    }
-    if (!engine().score(request)) {
+    Request request{jobs, count, parameters(scoring), nullptr, nullptr, nullptr, 0, 0, 0, 0, 0};
+    pack(request, jobs, count, ref, qer);
+    if (request.scratch_cells > max_scratch_cells || !engine().score(request)) {
         ++cpu_fallbacks;
         return false;
     }

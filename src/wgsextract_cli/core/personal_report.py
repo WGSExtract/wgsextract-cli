@@ -34,6 +34,7 @@ from urllib.parse import quote
 
 from wgsextract_cli import __version__
 from wgsextract_cli.core import (
+    clinical_evidence,
     contamination,
     gene_lists,
     read_scope,
@@ -74,21 +75,33 @@ REASONS = {
     "low_coverage": "the run warned that coverage is too low for reliable calls",
     "caller_filter": "the caller flagged the call (its filter did not pass)",
     "no_call": "the caller made no call",
+    "genotype_unresolved": "the caller's variants fit more than one diplotype, "
+    "so it picked one; no outside call was exported",
+    "call_info_unknown": "the run predates recording whether the call was a "
+    "unique match; rerun it",
     "evidence_mismatch": "the evidence file no longer matches the run's result",
     "no_labelled_calls": "the gene has no labelled variant calls; a reference "
     "(*1) allele rests on coverage alone",
+    "uneven_coverage": "coverage is uneven, so copy-number calls may be unreliable",
+    "status_uncertain": "the caller couldn't settle the carrier/affected status",
+    "aligner_not_calibrated": "the input's aligner isn't one the caller is "
+    "calibrated on (bwa-like)",
+    "below_target_depth": "median depth is below the ~30x the caller is calibrated on",
 }
 SECTIONS = {
     "overview": "Sample overview",
     "lineage": "Lineage",
+    "ancestry": "Ancestry proportions",
     "pharmacogenomics": "Pharmacogenomics",
+    "carrier_screening": "Carrier screening by copy number",
     "clinvar": "ClinVar pathogenic / likely pathogenic in {gene_list} genes",
+    "structural_variants": "Rare structural variants",
     "microarray": "Microarray export",
 }
 _ALIGNMENT_SUFFIXES = (".bam", ".cram")
 _VCF_SUFFIXES = (".vcf.gz", ".vcf.bgz", ".vcf", ".bcf")
 # Manifest input roles naming the sample's own files
-SAMPLE_ROLES = ("input", "vcf_input")
+SAMPLE_ROLES = ("input", "vcf_input", "proband")
 _OVERVIEW_FACTS = (
     ("sex", "Sex"),
     ("platform", "Platform"),
@@ -118,7 +131,11 @@ _MICROARRAY_ROLES = ("combined_kit", "vendor_kit", "aadr")
 # spreadsheets. The JSON document holds the same findings with their links.
 TEXT, INTEGER, REAL = "TEXT", "INTEGER", "REAL"
 FINDING_COLUMNS: tuple[Column, ...] = (
-    Column("section", TEXT, "Report section: lineage, pharmacogenomics or clinvar."),
+    Column(
+        "section",
+        TEXT,
+        "Report section: lineage, pharmacogenomics, carrier_screening, clinvar or structural_variants.",
+    ),
     Column("label", TEXT, "What the finding is, e.g. 'BRCA2 Pathogenic'."),
     Column("value", TEXT, "The result: haplogroup, diplotype or ClinVar class."),
     Column("detail", TEXT, "Phenotype, condition or caller detail."),
@@ -139,6 +156,30 @@ FINDING_COLUMNS: tuple[Column, ...] = (
     Column("evidence_file", TEXT, "Evidence file, relative to the sample folder."),
     Column("evidence_region", TEXT, "Region of the evidence (chrom:pos, gene)."),
     Column("disclaimer", TEXT, "Technical result, not diagnosis."),
+    Column("clinvar_id", TEXT, "ClinVar resource record identity."),
+    Column("clinvar_review_status", TEXT, "CLNREVSTAT assertion review status."),
+    Column(
+        "clinvar_review_stars",
+        INTEGER,
+        "ClinVar review stars (0-4), not sequencing confidence.",
+    ),
+    Column("clinvar_review_tier", TEXT, "ClinVar assertion support tier."),
+    Column(
+        "clinvar_conflict_evidence",
+        TEXT,
+        "CLNSIGCONF conflicting submitter classifications.",
+    ),
+    Column(
+        "original_record", TEXT, "Original allele and sample fields (URL-encoded JSON)."
+    ),
+    Column(
+        "mnv_components", TEXT, "Phase-supported MNV components (URL-encoded JSON)."
+    ),
+    Column(
+        "mnv_residual_copies",
+        INTEGER,
+        "Pathogenic component copies outside a composed MNV; the original genotype is retained.",
+    ),
 )
 
 
@@ -544,7 +585,13 @@ def _overview(ctx: _Context) -> dict[str, Any]:
     info = latest(ctx.sources, _command("info"))
     run = latest(ctx.sources, _command("qc contamination"))
     run = run if run is not None and run.status == "ok" else None
-    section = _section("overview", [info, run], ctx)
+    repeat_run = latest(ctx.sources, _command("typing str"))
+    repeat_run = (
+        repeat_run if repeat_run is not None and repeat_run.status == "ok" else None
+    )
+    trio = latest(ctx.sources, _command("vcf trio"))
+    trio = trio if trio is not None and trio.status == "ok" else None
+    section = _section("overview", [info, run, trio, repeat_run], ctx)
     facts = []
     for name, label in _OVERVIEW_FACTS:
         fact = ctx.fact(name)
@@ -754,6 +801,61 @@ def _lineage(ctx: _Context) -> dict[str, Any]:
     return section
 
 
+ANCESTRY_NOTE = (
+    "Shares of the sample's genome best matched by reference components "
+    "learned from the HGDP and 1000 Genomes samples. Each is named after the "
+    "reference groups that carry it most; they are not ethnicities, and a "
+    "component is shared by many present-day populations."
+)
+
+
+def _ancestry(ctx: _Context) -> dict[str, Any]:
+    source = latest(ctx.sources, _command("qc ancestry"))
+    section = _section("ancestry", [source], ctx)
+    section["note"] = ANCESTRY_NOTE
+    section["components"] = []
+    if source is None or source.status != "ok":
+        _missing(
+            section,
+            "Ancestry proportions (qc ancestry)",
+            ctx.command_for("qc ancestry", ctx.alignment or ctx.vcf, "cram"),
+        )
+        return section
+    table = source.output("ancestry_table")
+    try:
+        with open(table or "", encoding="utf-8", newline="") as stream:
+            rows = list(csv.DictReader(stream, delimiter="\t"))
+    except (OSError, csv.Error):
+        rows = []
+    for row in rows:
+        try:
+            section["components"].append(
+                {
+                    "k": int(row["k"]),
+                    "name": row["component"],
+                    "region": row["region"],
+                    "proportion": float(row["proportion"]),
+                    "lower": float(row["lower_95"]),
+                    "upper": float(row["upper_95"]),
+                    "reference_populations": row["reference_populations"],
+                }
+            )
+        except (KeyError, ValueError):
+            continue
+    section["metrics"] = {
+        k: source.metrics[k]
+        for k in ("ancestry_sites", "ancestry_depth", "ancestry_confidence")
+        if k in source.metrics
+    }
+    section["evidence"] = ctx.rel(table)
+    top = [c for c in section["components"] if c["k"] == 7 and c["proportion"] >= 0.01]
+    section["summary"] = (
+        ", ".join(f"{c['name']} {c['proportion']:.0%}" for c in top[:4])
+        or "No proportions recorded."
+    )
+    return section
+
+
 def _labelled_calls(
     source: Source, role: str, table_role: str
 ) -> tuple[list[dict[str, Any]], bool]:
@@ -814,8 +916,24 @@ def _pharmacogenomics(ctx: _Context) -> dict[str, Any]:
             "HLA-A and HLA-B alleles (T1K)",
             ctx.command_for("typing hla", ctx.alignment, "cram"),
         )
-    count = len(section["findings"])
-    section["summary"] = f"{count} gene call{'s' * (count != 1)}." if count else ""
+    gene_statuses: dict[str, str] = {}
+    priority = {"resolved": 0, "ambiguous": 1, "no_call": 2}
+    for finding in section["findings"]:
+        status = (finding.get("pgx") or {}).get(
+            "status",
+            "no_call" if "no_call" in finding["confidence_reasons"] else "resolved",
+        )
+        previous = gene_statuses.get(finding["gene"], "no_call")
+        gene_statuses[finding["gene"]] = min(
+            (previous, status), key=priority.__getitem__
+        )
+    statuses: dict[str, set[str]] = {}
+    for gene, status in gene_statuses.items():
+        statuses.setdefault(status, set()).add(gene)
+    section["summary"] = "; ".join(
+        f"{len(genes)} {status.replace('_', '-')} gene(s)"
+        for status, genes in sorted(statuses.items())
+    )
     return section
 
 
@@ -836,7 +954,8 @@ def _pharmcat_findings(section: dict[str, Any], source: Source, ctx: _Context) -
             if gene:
                 calls.setdefault(gene, []).append(call)
     evidence = source.output("pharmcat_report", "pharmcat_phenotypes")
-    for gene, diplotype, phenotype in rows:
+    for row in rows:
+        gene, diplotype, phenotype = row.gene, row.diplotype, row.phenotype
         gene_calls = calls.get(gene, [])
         if gene_calls:
             label = _worst(str(c.get("confidence")) for c in gene_calls)
@@ -852,33 +971,44 @@ def _pharmcat_findings(section: dict[str, Any], source: Source, ctx: _Context) -
         else:
             label, reasons = NOT_ASSESSED, ["no_labelled_calls"]
             basis = "no labelled calls in the gene"
-        section["findings"].append(
-            _finding(
-                "pharmacogenomics",
-                f"{gene} diplotype (PharmCAT)",
-                diplotype,
-                detail=phenotype if phenotype != "-" else None,
-                gene=gene,
-                confidence=label,
-                reasons=reasons,
-                basis=basis,
-                evidence=ctx.rel(evidence),
-                region=f"gene {gene}",
-                manifest=ctx.rel(source.manifest),
-            )
+        if row.status != "resolved":
+            label = variant_confidence.LOW
+            reasons = sorted({*reasons, row.status})
+        finding = _finding(
+            "pharmacogenomics",
+            f"{gene} diplotype (PharmCAT)",
+            diplotype,
+            detail=phenotype if phenotype != "-" else None,
+            gene=gene,
+            confidence=label,
+            reasons=reasons,
+            basis=basis,
+            evidence=ctx.rel(evidence),
+            region=f"gene {gene}",
+            manifest=ctx.rel(source.manifest),
         )
+        finding["pgx"] = {
+            "status": row.status,
+            "alternatives": row.alternatives,
+            "phenotype_consistent": row.phenotype_consistent,
+            "source": "PharmCAT",
+        }
+        section["findings"].append(finding)
 
 
 def _cyrius_finding(section: dict[str, Any], source: Source, ctx: _Context) -> None:
     metrics = source.metrics
     genotype = metrics.get("cyp2d6_genotype")
     status = metrics.get("cyp2d6_filter")
+    call_status = metrics.get("cyp2d6_call_status")
     depth = metrics.get("median_depth")
     thresholds = variant_confidence.thresholds_from()
     if not genotype:
         label, reasons = variant_confidence.LOW, ["no_call"]
     elif status != "PASS":
         label, reasons = variant_confidence.LOW, ["caller_filter"]
+    elif call_status == "unresolved":
+        label, reasons = variant_confidence.LOW, ["genotype_unresolved"]
     elif not isinstance(depth, (int, float)):
         label, reasons = variant_confidence.MODERATE, ["depth_unknown"]
     elif depth < thresholds.min_depth:
@@ -887,28 +1017,147 @@ def _cyrius_finding(section: dict[str, Any], source: Source, ctx: _Context) -> N
         label, reasons = variant_confidence.MODERATE, ["moderate_depth"]
     else:
         label, reasons = variant_confidence.HIGH, []
-    copies = metrics.get("cyp2d6_copy_number")
+    if genotype and call_status is None and label == variant_confidence.HIGH:
+        # Runs from before Cyrius's Call_info was recorded can't show the call
+        # was a unique match.
+        label, reasons = variant_confidence.MODERATE, ["call_info_unknown"]
+    # Cyrius's Total_CN, recorded as cyp2d6_copy_number by older runs, counts
+    # CYP2D6 and CYP2D7 together.
+    copies = metrics.get("cyp2d6_cyp2d7_copy_number", metrics.get("cyp2d6_copy_number"))
+    candidates = metrics.get("cyp2d6_raw_star_alleles")
     detail = ", ".join(
         x
         for x in (
             f"filter {status}" if status else "",
-            f"{copies} copies" if copies is not None else "",
+            f"Cyrius call {metrics['cyp2d6_call_info']}"
+            if metrics.get("cyp2d6_call_info")
+            else "",
+            f"candidates {candidates}" if candidates else "",
+            f"CNV group {metrics['cyp2d6_cnv_group']}"
+            if metrics.get("cyp2d6_cnv_group")
+            else "",
+            f"CYP2D6+CYP2D7 copy number {copies}" if copies is not None else "",
             f"median depth {_number(depth, 'x')}" if depth is not None else "",
         )
         if x
     )
+    if not genotype:
+        value = "no call"
+    elif call_status == "unresolved" or (call_status is None and status != "PASS"):
+        value = f"unresolved (Cyrius: {genotype})"
+    else:
+        value = str(genotype)
     section["findings"].append(
         _finding(
             "pharmacogenomics",
             "CYP2D6 diplotype (Cyrius)",
-            str(genotype or "no call"),
+            value,
             detail=detail or None,
             gene="CYP2D6",
             confidence=label,
             reasons=reasons,
-            basis="Cyrius filter and median depth vs. confidence thresholds",
+            basis="Cyrius filter, call uniqueness and median depth vs. confidence "
+            "thresholds",
             evidence=ctx.rel(source.output("cyp2d6_calls", "cyrius_report")),
             region="gene CYP2D6",
+            manifest=ctx.rel(source.manifest),
+        )
+    )
+
+
+def _carrier_screening(ctx: _Context) -> dict[str, Any]:
+    smn = latest(ctx.sources, _command("typing smn"))
+    section = _section("carrier_screening", [smn], ctx)
+    if smn is not None and smn.status == "ok":
+        _smn_finding(section, smn, ctx)
+    else:
+        _missing(
+            section,
+            "SMN1/SMN2 copy number for SMA carrier status (SMNCopyNumberCaller, "
+            "~30x short-read WGS)",
+            ctx.command_for("typing smn", ctx.alignment, "cram"),
+        )
+    if section["findings"]:
+        section["summary"] = f"{section['findings'][0]['value']}."
+    return section
+
+
+def _smn_finding(section: dict[str, Any], source: Source, ctx: _Context) -> None:
+    from wgsextract_cli.commands.genotyping.smn import (
+        MAX_COVERAGE_MAD,
+        MIN_DEPTH,
+    )
+    from wgsextract_cli.commands.genotyping.smn import (
+        NOT_DIAGNOSIS as SMN_NOT_DIAGNOSIS,
+    )
+
+    metrics = source.metrics
+    smn1 = metrics.get("smn1_copy_number")
+    depth = metrics.get("median_depth")
+    mad = metrics.get("coverage_mad")
+    carrier, affected = metrics.get("sma_carrier"), metrics.get("sma_affected")
+    if smn1 is None:
+        label, reasons = variant_confidence.LOW, ["no_call"]
+        if any(w.get("code") == "low_coverage" for w in source.warnings()):
+            reasons = ["low_coverage"]
+    elif carrier is None or affected is None:
+        label, reasons = variant_confidence.LOW, ["status_uncertain"]
+    elif not str(metrics.get("smn_filter") or "").startswith("PASS"):
+        label, reasons = variant_confidence.LOW, ["caller_filter"]
+    elif any(w.get("code") == "aligner_not_calibrated" for w in source.warnings()):
+        label, reasons = variant_confidence.LOW, ["aligner_not_calibrated"]
+    elif isinstance(mad, (int, float)) and mad > MAX_COVERAGE_MAD:
+        label, reasons = variant_confidence.LOW, ["uneven_coverage"]
+    elif not isinstance(depth, (int, float)):
+        label, reasons = variant_confidence.MODERATE, ["depth_unknown"]
+    elif depth < MIN_DEPTH:
+        label, reasons = variant_confidence.LOW, ["low_depth"]
+    else:
+        label, reasons = variant_confidence.HIGH, []
+    if smn1 is None:
+        value = "no call"
+    elif smn1 == 0:
+        value = "0 SMN1 copies: consistent with SMA" + (
+            "" if affected else " (status uncertain)"
+        )
+    elif smn1 == 1:
+        value = "1 SMN1 copy: SMA carrier" + ("" if carrier else " (status uncertain)")
+    else:
+        value = f"{smn1} SMN1 copies: not a carrier by copy number"
+    g27134 = metrics.get("g27134tg_copy_number")
+    detail = ", ".join(
+        x
+        for x in (
+            f"SMN1 {smn1}" if smn1 is not None else "",
+            f"SMN2 {metrics.get('smn2_copy_number')}" if smn1 is not None else "",
+            f"g.27134T>G {g27134}" if g27134 is not None else "",
+            f"filter {metrics.get('smn_filter')}" if metrics.get("smn_filter") else "",
+            f"median depth {_number(depth, 'x')}" if depth is not None else "",
+        )
+        if x
+    )
+    note = SMN_NOT_DIAGNOSIS
+    if smn1 == 2:
+        note = (
+            "Two SMN1 copies can still be a silent (2+0) carrier, with both on one "
+            "chromosome"
+            + (", which g.27134T>G here makes more likely" if g27134 else "")
+            + ". "
+            + note
+        )
+    section["findings"].append(
+        _finding(
+            "carrier_screening",
+            "SMA carrier status (SMN1 copy number, SMNCopyNumberCaller)",
+            value,
+            detail=detail or None,
+            gene="SMN1",
+            note=note,
+            confidence=label,
+            reasons=reasons,
+            basis="SMNCopyNumberCaller filter, status and median depth vs. ~30x",
+            evidence=ctx.rel(source.output("smn_calls", "smn_report")),
+            region="genes SMN1, SMN2",
             manifest=ctx.rel(source.manifest),
         )
     )
@@ -1027,9 +1276,15 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
         for c in labelled
         if variant_confidence.is_pathogenic(str(c.get("CLNSIG") or ""))
     ]
+    conflicts, _ = _labelled_calls(
+        source, "clinvar_conflicts", "clinvar_conflict_table"
+    )
+    conflicts = [
+        c for c in conflicts if clinical_evidence.review_evidence(c)["conflict"]
+    ]
     gene_list = gene_lists.GeneList(described["id"], described["name"], ())
     unavailable = False
-    if calls:
+    if calls or conflicts:
         try:
             gene_list = gene_lists.load(ctx.gene_list)
         except gene_lists.GeneListUnavailable as error:
@@ -1037,21 +1292,36 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
             section["warnings"].append(
                 {"code": "gene_list_unavailable", "message": str(error)}
             )
+    if not unavailable:
+        for call in calls:
+            genes = _call_genes(
+                gene_list,
+                call,
+                build,
+                str(call.get("chrom") or ""),
+                _int(call.get("pos")),
+            )
+            call["_report_gene_symbols"] = [g.symbol for g in genes] if genes else []
+        calls = clinical_evidence.nonredundant_calls(calls)
     outside = unplaced = 0
     findings = []
     gene_calls: dict[str, tuple[gene_lists.Gene, list[Mapping[str, Any]]]] = {}
-    for call in () if unavailable else calls:
+    for call in () if unavailable else [*calls, *conflicts]:
+        review = clinical_evidence.review_evidence(call)
         pos = _int(call.get("pos"))
         chrom = str(call.get("chrom") or "")
         genes = _call_genes(gene_list, call, build, chrom, pos)
         if genes is None:
-            unplaced += 1
+            unplaced += not review["conflict"]
             continue
         if not genes:
-            outside += 1
+            outside += not review["conflict"]
             continue
-        for gene in genes:
-            gene_calls.setdefault(gene.symbol, (gene, []))[1].append(call)
+        if "_report_gene_symbols" in call:
+            genes = [g for g in genes if g.symbol in call["_report_gene_symbols"]]
+        if not review["conflict"]:
+            for gene in genes:
+                gene_calls.setdefault(gene.symbol, (gene, []))[1].append(call)
         significance = str(call.get("CLNSIG") or "").replace("_", " ")
         # A variant ClinVar places in several listed genes is one finding.
         symbols = "/".join(g.symbol for g in genes)
@@ -1060,18 +1330,36 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
             for g in genes
             if g.note
         ]
+        if call.get("_mnv_residual_copies"):
+            notes.append(
+                f"{call['_mnv_residual_copies']} additional pathogenic copy outside the composed MNV; original genotype shown"
+            )
         findings.append(
             _finding(
                 "clinvar",
                 f"{symbols} {significance}",
                 significance,
-                detail=str(call.get("CLNDN") or "").replace("_", " ") or None,
+                detail="; ".join(
+                    filter(
+                        None,
+                        [
+                            str(call.get("CLNDN") or "").replace("_", " "),
+                            f"ClinVar review: {review['stars'] if review['stars'] is not None else 'unknown'} stars ({review['review_tier']})",
+                            f"ClinVar ID: {review['id']}" if review["id"] else "",
+                            f"Conflicting assertions (not consensus P/LP): {review['conflict_evidence'] or significance}"
+                            if review["conflict"]
+                            else "",
+                        ],
+                    )
+                ),
                 gene=symbols,
                 note="; ".join(notes) or None,
                 confidence=str(call.get("confidence") or NOT_ASSESSED),
                 reasons=list(call.get("reasons") or []),
                 basis=variant_confidence.SCHEME,
-                evidence=ctx.rel(vcf),
+                evidence=ctx.rel(
+                    source.output("clinvar_conflicts") if review["conflict"] else vcf
+                ),
                 region=f"{chrom}:{pos}",
                 manifest=ctx.rel(source.manifest),
                 variant={
@@ -1084,6 +1372,14 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
                     "depth": _int(call.get("depth")),
                     "genotype_quality": _int(call.get("genotype_quality")),
                     "alt_fraction": _float(call.get("alt_fraction")),
+                    "clinical_evidence": review,
+                    "original_record": call.get(clinical_evidence.ORIGIN) or None,
+                    "mnv_components": call.get(clinical_evidence.COMPONENTS) or None,
+                    "mnv_residual_copies": call.get("_mnv_residual_copies"),
+                    "phase_set": str(
+                        call.get("_mnv_phase_set") or call.get("phase_set") or ""
+                    )
+                    or None,
                 },
             )
         )
@@ -1107,14 +1403,26 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
     section["build"] = build
     section["counts"] = {
         "carried": len(calls),
-        "in_gene_list": len(findings),
+        "in_gene_list": sum(
+            not f["variant"]["clinical_evidence"]["conflict"] for f in findings
+        ),
         "outside_gene_list": outside,
         "unplaced": unplaced,
         **{
-            label: sum(f["confidence"] == label for f in findings)
+            label: sum(
+                f["confidence"] == label
+                and not f["variant"]["clinical_evidence"]["conflict"]
+                for f in findings
+            )
             for label in variant_confidence.LABELS
         },
     }
+    if conflicts:
+        section["counts"]["conflicts_for_review"] = len(conflicts)
+        section["all_conflicts"] = ctx.rel(
+            source.output("clinvar_conflict_table")
+            or source.output("clinvar_conflicts")
+        )
     section["all_calls"] = ctx.rel(source.output("confidence_table") or vcf)
     if unavailable:
         section["counts"]["unplaced"] = len(calls)
@@ -1142,17 +1450,121 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
             }
         )
     flagged = [
-        f"{g['gene']} {g['status'].replace('_', ' ')}"
-        + ("" if g["confidence"] == "high" else f" ({_confidence_text(g)})")
+        f"{g['gene']} {g['status'].replace('_', ' ')}" + _qualifiers(g)
         for g in section["genes"]
         if g["status"]
     ]
     section["summary"] = (
-        f"{len(findings)} call{'s' * (len(findings) != 1)} in "
+        f"{section['counts']['in_gene_list']} call{'s' * (section['counts']['in_gene_list'] != 1)} in "
         f"{described['name']} genes; {outside} more elsewhere"
         + (f"; {unplaced} not placed" if unplaced else "")
         + (f". Recessive genes: {', '.join(flagged)}" if flagged else "")
+        + (
+            f"; {len(conflicts)} conflicting assertions for review (not consensus P/LP)"
+            if conflicts
+            else ""
+        )
         + "."
+    )
+    return section
+
+
+# Rare SVs listed as findings, rarest first; the rest are in the table.
+MAX_SV_FINDINGS = 100
+_NOT_CARRIED = {"0/0", "0|0", "./.", ".|.", ".", "0"}
+
+
+def _structural_variants(ctx: _Context) -> dict[str, Any]:
+    source = latest(ctx.sources, _command_or_role("vcf sv-freq", "sv_frequencies"))
+    section = _section("structural_variants", [source], ctx)
+    if source is None or source.status != "ok":
+        command = ctx.command_for("vcf sv-freq", "sv.vcf.gz", "vcf.gz")
+        if ctx.alignment:
+            command = (
+                f"{ctx.command_for('vcf sv', ctx.alignment, 'cram')}, then {command}"
+            )
+        _missing(section, "SV population frequencies (vcf sv-freq)", command)
+        return section
+    table = source.output("sv_frequencies")
+    rows: list[dict[str, str]] = []
+    if table is not None:
+        try:
+            with table.open(encoding="utf-8", newline="") as stream:
+                lines = (line for line in stream if not line.startswith("#"))
+                rows = list(csv.DictReader(lines, delimiter="\t"))
+        except (OSError, csv.Error):
+            rows = []
+    common = _float(source.metrics.get("common_af")) or 0.01
+    rare = _float(source.metrics.get("rare_af")) or 0.001
+    carried = [
+        r
+        for r in rows
+        if (r.get("genotype") or "") not in _NOT_CARRIED
+        and (r.get("filter") or "PASS") in ("PASS", ".")
+    ]
+    counts = {
+        label: sum(r.get("sv_freq") == label for r in carried)
+        for label in ("common", "low", "rare", "novel")
+    }
+    rare_rows = sorted(
+        (r for r in carried if r.get("sv_freq") == "rare"),
+        key=lambda r: _float(r.get("sv_af")) or 0.0,
+    )
+    findings = []
+    for r in rare_rows[:MAX_SV_FINDINGS]:
+        pos, end = _int(r.get("pos")), _int(r.get("end"))
+        af = _float(r.get("sv_af"))
+        size = f", {_number(_int(r.get('svlen')))} bp" if r.get("svlen") else ""
+        region = f"{r.get('chrom')}:{pos}" + (f"-{end}" if end and end != pos else "")
+        findings.append(
+            _finding(
+                "structural_variants",
+                f"{r.get('svtype')} {region}{size}",
+                f"rare (AF < {rare:g})",
+                detail=f"gnomAD AF {af:.2g} ({r.get('sv_af_source')} "
+                f"{r.get('sv_af_id')}; match {r.get('sv_af_match')})"
+                if af is not None
+                else None,
+                confidence=NOT_ASSESSED,
+                reasons=[],
+                basis="not assessed: frequency is from the gnomAD match, not "
+                "the call's read support",
+                evidence=ctx.rel(source.output("annotated_vcf")),
+                region=region,
+                manifest=ctx.rel(source.manifest),
+                variant={
+                    "chrom": r.get("chrom"),
+                    "pos": pos,
+                    "ref": None,
+                    "alt": f"<{r.get('svtype')}>",
+                    "genotype": r.get("genotype"),
+                    "zygosity": None,
+                    "depth": None,
+                    "genotype_quality": None,
+                    "alt_fraction": None,
+                },
+            )
+        )
+    section["findings"] = findings
+    section["all_svs"] = ctx.rel(table)
+    section["thresholds"] = {"common_af": common, "rare_af": rare}
+    section["counts"] = {**counts, "listed": len(findings)}
+    if len(rare_rows) > len(findings):
+        section["warnings"].append(
+            {
+                "code": "svs_truncated",
+                "message": f"Only the {len(findings)} rarest of {len(rare_rows)} "
+                "rare SVs are listed; see the full table.",
+            }
+        )
+    section["summary"] = (
+        f"{sum(counts.values())} carried PASS SVs: {counts['common']} common "
+        f"(AF >= {common:g}), {counts['low']} low-frequency, {counts['rare']} rare "
+        f"(AF < {rare:g}) and {counts['novel']} with no eligible same-type match. "
+        "Nondirectional CNVs are unassessed, not evidence of absence from gnomAD. "
+        "Other unmatched calls may reflect catalogue gaps or caller artefacts, "
+        "not rarity. Common SVs are unlikely to cause rare disease; "
+        "rare matched SVs may warrant investigation."
     )
     return section
 
@@ -1162,9 +1574,17 @@ GENE_STATUS = {
     "biallelic": "a homozygous P/LP call, or P/LP calls of two ALTs of one "
     "multi-allelic call (such as 1/2): both copies affected",
     "possible_biallelic": "possibly both copies affected: two or more "
-    "heterozygous P/LP calls whose phase is unknown (they may be on the same "
-    "copy), or a call whose other allele was not called",
+    "heterozygous P/LP calls whose phase is unknown (unphased, or in different "
+    "phase sets, so they may be on the same copy), or a call whose other "
+    "allele was not called",
     "carrier": "one heterozygous P/LP call: one copy affected",
+}
+# The same statuses when the phase set (FORMAT/PS) of the calls decided them.
+PHASED_STATUS = {
+    "biallelic": "heterozygous P/LP calls phased on opposite copies (trans) "
+    "in one phase set: both copies affected",
+    "carrier": "heterozygous P/LP calls all phased on the same copy (cis) in "
+    "one phase set: one copy affected",
 }
 
 
@@ -1178,20 +1598,45 @@ def _split_index(origin: Sequence[str]) -> bool:
     )
 
 
+def _phased_copy(
+    call: Mapping[str, Any], alleles: Sequence[str]
+) -> tuple[tuple[str, str], int] | None:
+    """The phase set (chromosome, FORMAT/PS) of a heterozygous diploid call
+    phased within one, and the copy (0 or 1) carrying its ALT; None when its
+    phase is unknown. Pipes without a PS don't say which calls were phased
+    together, so they compare nothing."""
+    genotype = str(call.get("_gene_genotype") or call.get("genotype") or "")
+    phase_set = str(call.get("_mnv_phase_set") or call.get("phase_set") or "")
+    if "/" in genotype or "|" not in genotype or phase_set in ("", "."):
+        return None
+    carried = [i for i, allele in enumerate(alleles) if allele != "0"]
+    if len(alleles) != 2 or len(carried) != 1:
+        return None
+    return (str(call.get("chrom") or ""), phase_set), carried[0]
+
+
 def _gene_calls(
     gene: gene_lists.Gene, calls: Sequence[Mapping[str, Any]], complete: bool = True
 ) -> dict[str, Any]:
     """A listed gene's P/LP calls by zygosity, and for a gene the list reports
     only when biallelic (AR) whether this sample is a carrier or (possibly)
-    biallelic, with the weakest confidence of those calls. Phase is not
-    known, and a haploid or partly called genotype (``1/.``) doesn't show the
-    other copy, so these make the gene only possibly biallelic. Two ALTs split
-    from one diploid call (``1/2``) are on opposite copies: biallelic."""
-    het = hom = hemi = partial = 0
+    biallelic, with the weakest confidence of those calls.
+
+    Heterozygous calls are on known copies only when phased (``0|1``) in one
+    phase set (FORMAT/PS): on one copy (cis) they leave the other unaffected,
+    on opposite copies (trans) they affect both. So are two ALTs split from
+    one diploid call (``1/2``). Calls of unknown phase, or in different phase
+    sets, make the gene only possibly biallelic, as does a haploid or partly
+    called genotype (``1/.``), which doesn't show the other copy."""
+    het = hom = hemi = partial = unphased = 0
     split_alts: dict[str, set[str]] = {}
+    phase_sets: dict[tuple[str, str], set[int]] = {}
     for call in calls:
         zygosity = str(call.get("zygosity") or "")
-        alleles = re.split(r"[/|]", str(call.get("genotype") or ""))
+        gt = str(call.get("_gene_genotype") or call.get("genotype") or "")
+        alleles = re.split(r"[/|]", gt)
+        if call.get("_gene_genotype"):
+            zygosity = "het" if alleles.count("1") == 1 else "hom"
         if zygosity == "het" and "." in alleles:
             partial += 1
         elif zygosity == "het":
@@ -1201,20 +1646,42 @@ def _gene_calls(
             origin = str(call.get(variant_confidence.SPLIT_TAG) or "").split("|")
             if len(alleles) == 2 and _split_index(origin):
                 split_alts.setdefault("|".join(origin[:4]), set()).add(origin[4])
+            if copy := _phased_copy(call, alleles):
+                phase_sets.setdefault(copy[0], set()).add(copy[1])
+            else:
+                unphased += 1
         elif zygosity == "hom":
             hom += 1
         elif zygosity == "haploid":
             hemi += 1
+    split_trans = any(len(alts) > 1 for alts in split_alts.values())
+    phased_trans = any(len(copies) > 1 for copies in phase_sets.values())
+    # Calls of one phase set on one copy are one allele; others may each be.
+    alleles_seen = unphased + len(phase_sets)
+    phase = None
+    if het >= 2:
+        if split_trans or phased_trans:
+            phase = "trans"
+        elif alleles_seen == 1:
+            phase = "cis"
+        else:
+            phase = "unknown"
     status = None
     if gene.recessive:
-        if hom or any(len(alts) > 1 for alts in split_alts.values()):
+        if hom or split_trans or phased_trans:
             status = "biallelic"
-        elif hemi or partial or het >= 2:
+        elif hemi or partial or alleles_seen >= 2:
             status = "possible_biallelic"
         elif het:
             status = "carrier"
     if not complete and status != "biallelic":
         status = None
+    if not complete and phase != "trans":
+        phase = None
+    # Phase sets decided it: no homozygous call or split 1/2 already did.
+    by_phase = (status, phase) == ("carrier", "cis") or (
+        status == "biallelic" and not hom and not split_trans
+    )
     order = {label: i for i, label in enumerate(CONFIDENCE)}
     labels = [str(c.get("confidence") or NOT_ASSESSED) for c in calls]
     return {
@@ -1224,10 +1691,26 @@ def _gene_calls(
         "homozygous": hom,
         "hemizygous": hemi,
         "partial": partial,
+        "phase": phase,
         "confidence": max(labels, key=lambda label: order.get(label, len(order))),
         "status": status,
-        "status_text": GENE_STATUS.get(status or "", ""),
+        "status_text": (PHASED_STATUS if by_phase else GENE_STATUS).get(
+            status or "", ""
+        ),
     }
+
+
+def _qualifiers(gene: Mapping[str, Any]) -> str:
+    """' (cis; low-confidence calls)': the known phase behind the status, and
+    the calls' confidence when not high."""
+    known = (gene["status"], gene["phase"]) in {
+        ("carrier", "cis"),
+        ("biallelic", "trans"),
+    }
+    parts = [gene["phase"]] if known else []
+    if gene["confidence"] != "high":
+        parts.append(_confidence_text(gene))
+    return f" ({'; '.join(parts)})" if parts else ""
 
 
 def _confidence_text(gene: Mapping[str, Any]) -> str:
@@ -1388,7 +1871,7 @@ def build_report(
     alignment, vcf = _choose_inputs(folder, input_file, sources, workspace)
     main_file = alignment or vcf
     described = workspace.describe(folder / main_file if main_file else None)
-    ctx = _Context(folder, sources, described, alignment, vcf, gene_list)
+    ctx = _Context(folder, sources, dict(described), alignment, vcf, gene_list)
     info = latest(sources, _command("info"))
     name = (
         input_stem(alignment or vcf or "")
@@ -1400,8 +1883,11 @@ def build_report(
     sections = {
         "overview": _overview(ctx),
         "lineage": _lineage(ctx),
+        "ancestry": _ancestry(ctx),
         "pharmacogenomics": _pharmacogenomics(ctx),
+        "carrier_screening": _carrier_screening(ctx),
         "clinvar": _clinvar(ctx),
+        "structural_variants": _structural_variants(ctx),
         "microarray": _microarray(ctx),
     }
     scrub = _path_scrubber(ctx)
@@ -1446,6 +1932,7 @@ def table_rows(report: Mapping[str, Any]) -> list[list[Value]]:
     rows: list[list[Value]] = []
     for f in findings(report):
         v = f["variant"] or {}
+        clinical = v.get("clinical_evidence") or {}
         rows.append(
             [
                 f["section"],
@@ -1467,6 +1954,14 @@ def table_rows(report: Mapping[str, Any]) -> list[list[Value]]:
                 f["evidence"]["file"],
                 f["evidence"]["region"],
                 f["disclaimer"],
+                clinical.get("id"),
+                clinical.get("review_status"),
+                clinical.get("stars"),
+                clinical.get("review_tier"),
+                clinical.get("conflict_evidence"),
+                v.get("original_record"),
+                v.get("mnv_components"),
+                v.get("mnv_residual_copies"),
             ]
         )
     return rows
@@ -1617,6 +2112,10 @@ def _html_section_body(name: str, section: Mapping[str, Any], base: str) -> list
                 f'<p class="muted">Every carried ClinVar P/LP call: '
                 f"{_link(section['all_calls'], _href(section['all_calls'], base))}</p>"
             )
+        if section.get("all_conflicts"):
+            out.append(
+                f"<p>Conflicting assertions for review (not consensus P/LP): {_link(section['all_conflicts'], _href(section['all_conflicts'], base))}</p>"
+            )
         if section.get("genes"):
             out.append("<table><tr><th>Gene</th><th>Inheritance</th>"
                        "<th>Heterozygous</th><th>Homozygous</th><th>Hemizygous</th>"
@@ -1639,6 +2138,31 @@ def _html_section_body(name: str, section: Mapping[str, Any], base: str) -> list
                     + "</td></tr>"
                 )
             out.append("</table>")
+    elif name == "ancestry" and section["components"]:
+        out.append(f'<p class="muted">{_h(section["note"])}</p>')
+        for k in sorted({c["k"] for c in section["components"]}):
+            out.append(
+                f"<h3>{'Continental' if k == 7 else 'Sub-continental'} (K={k})</h3>"
+                "<table><tr><th>Component</th><th>Share</th><th>95% interval</th>"
+                "<th></th><th>Most common in</th></tr>"
+            )
+            for c in section["components"]:
+                if c["k"] != k or c["upper"] < 0.005:
+                    continue
+                width = round(100 * c["proportion"])
+                out.append(
+                    f"<tr><td>{_h(c['name'])}</td>"
+                    f'<td class="n">{c["proportion"]:.1%}</td>'
+                    f'<td class="n">{c["lower"]:.1%}-{c["upper"]:.1%}</td>'
+                    f'<td><div style="background:#4a7;height:0.8em;width:{width}px">'
+                    f"</div></td><td>{_h(c['reference_populations'])}</td></tr>"
+                )
+            out.append("</table>")
+    elif name == "structural_variants" and section.get("all_svs"):
+        out.append(
+            f'<p class="muted">Every SV and its frequency: '
+            f"{_link(section['all_svs'], _href(section['all_svs'], base))}</p>"
+        )
     elif name == "microarray" and section["files"]:
         out.append("<table><tr><th>File</th><th>Format</th><th>Sites</th>"
                    "<th>Called</th><th>No-call rate</th></tr>")  # fmt: skip
@@ -1655,21 +2179,34 @@ def _html_section_body(name: str, section: Mapping[str, Any], base: str) -> list
     return out
 
 
+def _call_text(v: Mapping[str, Any]) -> str:
+    """'REF>ALT GT zygosity, DP n, GQ n', leaving out what the call lacks
+    (an SV has no REF, depth or GQ)."""
+    if not v:
+        return ""
+    allele = f"{v['ref']}>{v.get('alt')}" if v.get("ref") else str(v.get("alt") or "")
+    head = " ".join(str(x) for x in (allele, v.get("genotype"), v.get("zygosity")) if x)
+    tail = [
+        f"{label} {v[key]}"
+        for label, key in (
+            ("DP", "depth"),
+            ("GQ", "genotype_quality"),
+            ("PS", "phase_set"),
+        )
+        if v.get(key) is not None
+    ]
+    return ", ".join([head, *tail])
+
+
 def _html_findings(
     items: Sequence[Mapping[str, Any]], report: Mapping[str, Any], base: str
 ) -> str:
     reasons = report["confidence_reasons"]
     out = ["<table><tr><th>Finding</th><th>Result</th><th>Detail</th>"
-           "<th>Call</th><th>Confidence</th><th>Evidence</th><th></th></tr>"]  # fmt: skip
+           "<th>Call</th><th>Sequencing confidence</th><th>Evidence</th><th></th></tr>"]  # fmt: skip
     for f in items:
         v = f["variant"] or {}
-        call = (
-            f"{_h(v.get('ref'))}&gt;{_h(v.get('alt'))} {_h(v.get('genotype'))} "
-            f"{_h(v.get('zygosity'))}, DP {_h(v.get('depth'))}, GQ "
-            f"{_h(v.get('genotype_quality'))}"
-            if v
-            else ""
-        )
+        call = _h(_call_text(v))
         why = "; ".join(reasons.get(r, r) for r in f["confidence_reasons"])
         detail = _h(f["detail"]) + (f"<br><i>{_h(f['note'])}</i>" if f["note"] else "")
         links = " ".join(_link(x["label"], x["url"]) for x in f["links"])
@@ -1776,6 +2313,10 @@ def render_markdown(report: Mapping[str, Any], base: str = ".") -> str:
                 out.append(
                     f"Every carried ClinVar P/LP call: {_md_link(section['all_calls'], href)}"
                 )
+            if section.get("all_conflicts"):
+                out.append(
+                    f"Conflicting assertions for review (not consensus P/LP): {_md_link(section['all_conflicts'], _href(section['all_conflicts'], base))}"
+                )
             if section.get("genes"):
                 out += [
                     "",
@@ -1796,6 +2337,28 @@ def render_markdown(report: Mapping[str, Any], base: str = ".") -> str:
                         )
                         + " |"
                     )
+        if name == "ancestry" and section["components"]:
+            out += ["", f"_{_md(section['note'])}_"]
+            for k in sorted({c["k"] for c in section["components"]}):
+                out += [
+                    "",
+                    f"K={k}:",
+                    "",
+                    "| Component | Share | 95% interval | Most common in |",
+                    "|---|---|---|---|",
+                ]
+                out += [
+                    f"| {_md(c['name'])} | {c['proportion']:.1%} | "
+                    f"{c['lower']:.1%}-{c['upper']:.1%} | "
+                    f"{_md(c['reference_populations'])} |"
+                    for c in section["components"]
+                    if c["k"] == k and c["upper"] >= 0.005
+                ]
+        if name == "structural_variants" and section.get("all_svs"):
+            href = _href(section["all_svs"], base)
+            out.append(
+                f"Every SV and its frequency: {_md_link(section['all_svs'], href)}"
+            )
         if name == "microarray" and section["files"]:
             out += [
                 "",
@@ -1817,12 +2380,7 @@ def render_markdown(report: Mapping[str, Any], base: str = ".") -> str:
             ]
             for f in section["findings"]:
                 v = f["variant"] or {}
-                call = (
-                    f"{v.get('ref')}>{v.get('alt')} {v.get('genotype')} "
-                    f"{v.get('zygosity')}, DP {v.get('depth')}, GQ {v.get('genotype_quality')}"
-                    if v
-                    else ""
-                )
+                call = _call_text(v)
                 why = "; ".join(reasons.get(r, r) for r in f["confidence_reasons"])
                 links = " ".join(_md_link(x["label"], x["url"]) for x in f["links"])
                 detail = " — ".join(x for x in (f["detail"], f["note"]) if x)

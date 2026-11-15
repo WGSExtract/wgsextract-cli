@@ -1,10 +1,9 @@
-import argparse
 import contextlib
 import logging
 import subprocess
 from pathlib import Path
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
+from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.extract import (
     BamSubsetParams,
     CustomParams,
@@ -18,20 +17,20 @@ from wgsextract_cli.api.extract import (
     YMtExtractParams,
     _ExtractParams,
 )
+from wgsextract_cli.cli.registration.extract import register as register
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.messages import CLI_HELP, LOG_MESSAGES
+from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import (
     bam_has_reads,
     warn_if_no_reads,
     warn_if_no_variants,
 )
-from wgsextract_cli.core.ref_library.catalog import get_available_genomes
-from wgsextract_cli.core.reference_models import identify_reference
+from wgsextract_cli.core.ref_library.catalog import catalog_genome_for
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -61,33 +60,6 @@ _SAMTOOLS = ["samtools"]
 _CALLING_TOOLS = ["samtools", "bcftools", "tabix"]
 
 
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser(
-        "extract", help="Extract specific chromosomes or unmapped reads."
-    )
-    ext_subs = parser.add_subparsers(dest="ext_cmd", required=True)
-    for name, cls, func in (
-        ("mito-fasta", MitoFastaParams, cmd_mito_fasta),
-        ("mito-vcf", MitoVcfParams, cmd_mito_vcf),
-        ("mt-bam", MtBamParams, cmd_mt_bam),
-        ("bam-subset", BamSubsetParams, cmd_bam_subset),
-        ("ydna-bam", YdnaBamParams, cmd_ydna_bam),
-        ("ydna-vcf", YdnaVcfParams, cmd_ydna_vcf),
-        ("y-mt-extract", YMtExtractParams, cmd_y_mt_extract),
-        ("unmapped", UnmappedParams, cmd_unmapped),
-        ("custom", CustomParams, cmd_custom),
-        ("region", ExtractRegionParams, cmd_region),
-    ):
-        sub = ext_subs.add_parser(
-            name, parents=[base_parser], help=CLI_HELP[f"cmd_{name}"]
-        )
-        add_arguments(sub, cls)
-        sub.set_defaults(func=func)
-
-
 def _setup(params: _ExtractParams, tools: list[str]) -> BaseArgs:
     verify_dependencies(tools)
     log_dependency_info(tools)
@@ -115,19 +87,7 @@ def require_reference(
         if input_path:
             header = get_bam_header(input_path) or ""
             signature = calculate_bam_md5(input_path, header=header)
-            genomes = get_available_genomes()
-            genome = next((g for g in genomes if g["md5"] == signature), None)
-            model = identify_reference(header, signature)
-            if not genome and model and model.fasta:
-                genome = next(
-                    (
-                        g
-                        for g in genomes
-                        if g["final"] == model.fasta
-                        or g["url"].rsplit("/", 1)[-1] == model.fasta
-                    ),
-                    None,
-                )
+            genome = catalog_genome_for(header, signature)
             if genome:
                 hint = f" Install the matching reference explicitly: wgsextract ref library --install {genome['code']}"
         if not hint:
@@ -203,15 +163,15 @@ def _call_haploid_variants(bam: str, ref: str, out_vcf: str) -> int | None:
     return count
 
 
-def _warn_if_female(input_path: str, outdir: str) -> None:
+def _warn_if_female(input_path: str, outdir: str, reference: str | None = None) -> None:
     """A female sample's chrY reads are mismapped (PAR, X-transposed regions):
     the extraction succeeds but holds no Y DNA, so say so."""
     from .info.metrics import sample_sex
 
-    if sample_sex(input_path, outdir) == "Female":
+    if sample_sex(input_path, outdir, reference=reference) == "Female":
         warn(
             "sample_female",
-            f"{input_path} appears female (chrY has under 5% of chrX's reads), so "
+            f"{input_path} appears female from sampled non-PAR depth, so "
             "its chrY reads are mismapped ones: this output holds no Y-DNA.",
         )
 
@@ -331,7 +291,7 @@ def run_ydna_bam(params: YdnaBamParams) -> None:
     input_path = str(params.input)
 
     print_warning("ButtonYOnlyBAM", threads=base.threads)
-    _warn_if_female(input_path, base.outdir)
+    _warn_if_female(input_path, base.outdir, base.ref)
 
     chr_y = get_chr_name(input_path, "Y", base.cram_opt)
     use_poz = params.poz
@@ -384,7 +344,7 @@ def run_ydna_vcf(params: YdnaVcfParams) -> None:
     ref = require_reference(base.ref, "Y extraction", input_path)
 
     print_warning("ButtonYOnlyVCF", threads=base.threads)
-    _warn_if_female(input_path, base.outdir)
+    _warn_if_female(input_path, base.outdir, base.ref)
 
     chr_y = get_chr_name(input_path, "Y", base.cram_opt)
     out_bam = derive_output_path(input_path, base.outdir, "_Y_temp.bam")
@@ -409,7 +369,7 @@ def run_y_mt_extract(params: YMtExtractParams) -> None:
     input_path = str(params.input)
 
     print_warning("ButtonYMTBAM", threads=base.threads)
-    _warn_if_female(input_path, base.outdir)
+    _warn_if_female(input_path, base.outdir, base.ref)
 
     chr_y = get_chr_name(input_path, "Y", base.cram_opt)
     chr_m = get_chr_name(input_path, "MT", base.cram_opt)

@@ -35,12 +35,17 @@ export function renderTerminalText(entry: TerminalEntry | undefined): string {
     ].join("");
 }
 
+/** A tab's entry, or a job's whose tab is gone: a run keeps updating its Jobs row after its tab is dropped. */
+export function findTerminalEntry(id: string): TerminalEntry | undefined {
+    return state.terminalEntries.find((entry) => entry.id === id) ?? state.jobHistory.find((entry) => entry.id === id);
+}
+
 /**
  * Appends streamed process output to a tab. The visible terminal is updated in place once per frame,
  * without re-rendering the app, so chatty commands neither stall the UI nor disturb form focus.
  */
 export function appendTerminalOutput(entryID: string, text: string) {
-    const entry = state.terminalEntries.find((candidate) => candidate.id === entryID);
+    const entry = findTerminalEntry(entryID);
     if (!entry || !text) {
         return;
     }

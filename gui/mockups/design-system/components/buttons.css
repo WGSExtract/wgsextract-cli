@@ -1,0 +1,152 @@
+/* Buttons, icon buttons and button groups. */
+
+.btn {
+  --btn-bg: var(--c-surface);
+  --btn-fg: var(--c-text);
+  --btn-border: var(--c-border-strong);
+  --btn-bg-hover: var(--c-surface-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-height: var(--control-h);
+  min-width: var(--touch-min);
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--btn-border);
+  border-radius: var(--r-md);
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.btn:hover {
+  background: var(--btn-bg-hover);
+  color: var(--btn-fg);
+}
+
+.btn:active {
+  transform: translateY(0.5px);
+}
+
+.btn[disabled],
+.btn[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn--primary {
+  --btn-bg: var(--c-primary);
+  --btn-fg: var(--c-on-primary);
+  --btn-border: var(--c-primary);
+  --btn-bg-hover: var(--c-primary-hover);
+}
+
+.btn--accent {
+  --btn-bg: var(--c-accent);
+  --btn-fg: #fff;
+  --btn-border: var(--c-accent);
+  --btn-bg-hover: var(--c-accent);
+}
+
+[data-theme="dark"] .btn--accent {
+  --btn-fg: #1b0717;
+}
+
+.btn--soft {
+  --btn-bg: var(--c-primary-soft);
+  --btn-fg: var(--c-primary-soft-text);
+  --btn-border: transparent;
+  --btn-bg-hover: var(--c-primary-soft);
+}
+
+.btn--soft:hover {
+  border-color: var(--c-primary);
+}
+
+.btn--ghost {
+  --btn-bg: transparent;
+  --btn-border: transparent;
+  --btn-bg-hover: var(--c-surface-2);
+  --btn-fg: var(--c-text-2);
+}
+
+.btn--danger {
+  --btn-bg: var(--c-danger);
+  --btn-fg: #fff;
+  --btn-border: var(--c-danger);
+  --btn-bg-hover: var(--c-danger);
+}
+
+[data-theme="dark"] .btn--danger {
+  --btn-fg: #22070a;
+}
+
+.btn--danger-outline {
+  --btn-fg: var(--c-danger);
+  --btn-border: var(--c-danger);
+}
+
+.btn--sm {
+  gap: 6px;
+  min-height: var(--control-h-sm);
+  padding: 0 var(--sp-3);
+  font-size: var(--fs-sm);
+  border-radius: var(--r-sm);
+}
+
+.btn--lg {
+  min-height: var(--control-h-lg);
+  padding: 0 var(--sp-5);
+  font-size: var(--fs-lg);
+}
+
+.btn--block {
+  width: 100%;
+}
+
+.btn--icon {
+  padding: 0;
+  width: var(--control-h);
+  min-width: var(--control-h);
+}
+
+.btn--icon.btn--sm {
+  width: var(--control-h-sm);
+  min-width: var(--control-h-sm);
+}
+
+.btn .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.btn-group--end {
+  justify-content: flex-end;
+}
+
+/* A button that looks like a link, for inline actions in text */
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--c-primary);
+  font-weight: var(--fw-medium);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}

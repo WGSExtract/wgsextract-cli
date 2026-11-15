@@ -68,7 +68,9 @@ in the genome-config.toml it creates in the folder.
   wgsextract info --genome joe
   wgsextract microarray --genome joe --formats 23andme_v5
 
-'example-genome download' puts public example datasets in the library.
+'example-genome download' puts public example datasets in the library, and
+'ref test-genome --install' a small hg19 one to try commands on
+(--genome wgsextract-benchmark-hg19-mini).
 Reference genomes never go there: they live in reference_genome_library
 (default: genomes/ in the reference library).
 """,
@@ -136,8 +138,11 @@ details removed, for you to review before sending.
     "scripting": HelpTopic(
         "Use wgsextract from scripts and AI agents.",
         """\
-'help --all --json' lists every command with its options, examples and
-outputs (schema wgsextract.help/1); 'help <command> --json' gives one. The
+'help --all --json' is a compact index: path, summary, tier and key flags
+(schema wgsextract.help-index/1). Navigate index -> command:
+'help <command> --json' gives full options, examples and outputs
+(schema wgsextract.help/1). Use '--all --json --full' for the complete dump.
+Key flags are discovery hints, not a complete invocation. The
 commands of the typed Python API also carry a JSON Schema of their
 parameters ("input_schema"; "x-cli-flag" names each flag and
 "x-cli-positional" each positional argument). "tools" are the

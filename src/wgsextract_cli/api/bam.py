@@ -153,18 +153,25 @@ class BamToBamParams(_ConvertParams):
 
 @dataclass(frozen=True, kw_only=True)
 class BamUnalignParams(_ConvertParams):
-    """Write the reads back to paired FASTQs, name-sorted so mates line up.
+    """Write the reads back to paired FASTQs, name-sorted so mates line up:
+    ``<input>_R1.fastq.gz`` and ``_R2`` unless ``r1``/``r2`` name them.
     Reads without a mate go to ``se`` when set. Warns when the input has more
     than one read group, which FASTQ can't keep apart."""
 
     COMMAND = "bam unalign"
 
     memory: str | None = memory_param()
-    r1: str = _fastq_param(
-        "Read 1 FASTQ to write (a bare name goes in --outdir)", "Read 1 FASTQ", True
+    r1: str | None = _fastq_param(
+        "Read 1 FASTQ to write (a bare name goes in --outdir; default: "
+        "<input>_R1.fastq.gz)",
+        "Read 1 FASTQ (default ``<input>_R1.fastq.gz``)",
+        False,
     )
-    r2: str = _fastq_param(
-        "Read 2 FASTQ to write (a bare name goes in --outdir)", "Read 2 FASTQ", True
+    r2: str | None = _fastq_param(
+        "Read 2 FASTQ to write (a bare name goes in --outdir; default: "
+        "<input>_R2.fastq.gz)",
+        "Read 2 FASTQ (default ``<input>_R2.fastq.gz``)",
+        False,
     )
     se: str | None = _fastq_param(
         "FASTQ for reads without a mate (a bare name goes in --outdir)",
@@ -244,11 +251,11 @@ class BamMergeParams(Params):
 
 @dataclass(frozen=True, kw_only=True)
 class BamToUbamParams(Params):
-    """A queryname-sorted unaligned BAM, as GATK's pipelines start from, as
-    ``<input>_unaligned.bam``: from an aligned ``input`` (read-describing tags
-    kept, alignments dropped) or from FASTQ ``r1`` and optional ``r2``. Input
+    """A queryname-sorted unaligned BAM, as GATK's pipelines start from
+    (``<input>_unaligned.bam``), from an aligned ``input`` (read-describing
+    tags kept, alignments dropped) or FASTQ ``r1`` and optional ``r2``. Input
     without read groups gets one from ``sample``, ``library`` and
-    ``platform``, with the flowcell and lane parsed from the read names."""
+    ``platform``, with flowcell and lane parsed from the read names."""
 
     COMMAND = "bam to-ubam"
 

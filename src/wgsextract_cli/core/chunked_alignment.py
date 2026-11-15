@@ -419,6 +419,7 @@ class ChunkedAlignment:
     reads: list[str]
     decode: list[str]
     resume: bool = False
+    output_profile: str = "default"
 
     @property
     def workdir(self) -> Path:
@@ -462,14 +463,26 @@ class ChunkedAlignment:
 
     def _key(self, groups: list[Chunk]) -> str:
         def settings(argv: list[str]) -> list[str]:
-            # Threads don't change the alignment.
-            return [a for i, a in enumerate(argv) if "-t" not in argv[i - 1 : i] + [a]]
+            # Threads don't change the alignment, nor does the backend: --backend
+            # auto (the GPU's gap fills) writes the CPU's records, and comes and
+            # goes with the GPU's availability.
+            unkeyed = ("-t", "--backend")
+            return [
+                a
+                for i, a in enumerate(argv)
+                if not any(o in unkeyed for o in argv[i - 1 : i] + [a])
+            ]
 
         plan = {
             "input": self.input,
             "chunks": [[str(region) for region in chunk] for chunk in self.chunks],
             "groups": [[str(region) for region in group] for group in groups],
             "format": self.format,
+            **(
+                {"output_profile": self.output_profile}
+                if self.output_profile != "default"
+                else {}
+            ),
             "reference": self.reference,
             "mapper": settings(self.mapper),
             "indexer": settings(self.indexer),
@@ -672,8 +685,16 @@ class ChunkedAlignment:
         return ["samtools", "view", *options, "--region-file", str(bed), path]
 
     def _output_options(self) -> list[str]:
+        from wgsextract_cli.core.output_profiles import output_profile_options
+
         if self.format == "CRAM":
-            return ["-O", "CRAM", "--reference", self.reference]
+            return [
+                "-O",
+                "CRAM",
+                "--reference",
+                self.reference,
+                *output_profile_options(self.output_profile),
+            ]
         return ["-O", "BAM"]
 
     # --- steps -----------------------------------------------------------

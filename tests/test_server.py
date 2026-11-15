@@ -34,9 +34,10 @@ from tests.smoke_utils import ensure_fake_data, get_cli_command
 from wgsextract_cli.api._params import json_schema
 from wgsextract_cli.core import results
 from wgsextract_cli.core.config import get_config_path, settings
+from wgsextract_cli.core.last_run import state_directory
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 from wgsextract_cli.server.http_api import Server
-from wgsextract_cli.server.jobs import JobManager
+from wgsextract_cli.server.jobs import JobManager, write_private_json
 from wgsextract_cli.server.operations import (
     PathGuard,
     RequestError,
@@ -381,6 +382,34 @@ def test_hla_typing_building_its_library_index_waits_for_a_busy_library(
         status, second = client.request(
             "POST",
             "/ops/typing/hla",
+            {
+                "input": str(bam),
+                "ref": str(library / "genomes" / "ref.fa"),
+                "outdir": str(other),
+            },
+        )
+        assert status == 202, second
+        assert (first["status"], second["status"]) == ("running", "queued")
+
+
+def test_qc_ancestry_fetching_its_library_reference_waits_for_a_busy_folder(
+    tmp_path, work, fake_data, slow_coverage
+):
+    # #683 review: the first `qc ancestry` downloads its reference into
+    # <library>/ancestry; two such jobs at once raced on one .partial file.
+    bam, ref = fake_data
+    library = work / "library"
+    (library / "ancestry").mkdir(parents=True)
+    (library / "genomes").mkdir()
+    shutil.copy(ref, library / "genomes" / "ref.fa")
+    other = tmp_path / "other"
+    other.mkdir()
+    with _serve(tmp_path, [work, other, FAKE_DIR], max_jobs=2) as client:
+        busy = {"input": str(bam), "ref": str(ref), "outdir": str(library / "ancestry")}
+        first = client.request("POST", "/ops/info/calculate-coverage", busy)[1]
+        status, second = client.request(
+            "POST",
+            "/ops/qc/ancestry",
             {
                 "input": str(bam),
                 "ref": str(library / "genomes" / "ref.fa"),
@@ -1038,11 +1067,13 @@ def test_server_does_not_offer_benchmark():
 def test_path_guard_covers_every_ref_path(op, field, value):
     # #346: the ref commands became server operations; each file or library
     # they read or write must be inside an allowed folder.
-    guard = PathGuard([r"C:\data"], pathmod=_RecordingFlavour())
+    guard = PathGuard([r"C:\data"], allow_destructive=True, pathmod=_RecordingFlavour())
     paths = [item.name for name, item in _REF_PATHS if name == op]
     allowed = {name: rf"C:\data\{name}" for name in paths}
     if op == "ref/library":
         allowed["install"] = "hg38"
+    if op == "ref/library-delete":
+        allowed["genome"] = "hg38"
     guard.check(params_from_json(find(op), allowed))
     with pytest.raises(RequestError) as refused:
         guard.check(params_from_json(find(op), {**allowed, field: value}))
@@ -1089,6 +1120,114 @@ def test_path_guard_checks_the_library_of_a_home_relative_fasta(
     # A Python caller's Params are checked the same way.
     with pytest.raises(RequestError, match="outside the folders"):
         PathGuard([genomes]).check(find(op).params(ref="~/lib/genomes/x.fa"))
+
+
+@pytest.mark.parametrize("op", ["vcf/freebayes", "vcf/clair3", "vcf/gatk"])
+@pytest.mark.parametrize("filename", ["outside.bed", "outside with spaces, commas.bed"])
+def test_caller_region_beds_cannot_escape_serve_allow(tmp_path, op, filename):
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    outside = tmp_path / filename
+    outside.write_text("chr20\t0\t100\n")
+    with pytest.raises(RequestError) as refused:
+        PathGuard([allowed]).check(
+            params_from_json(
+                find(op), {"input": str(allowed / "s.bam"), "region": str(outside)}
+            )
+        )
+    assert refused.value.code == "path_not_allowed"
+    inside = allowed / filename
+    inside.write_text("chr20\t0\t100\n")
+    PathGuard([allowed]).check(
+        params_from_json(
+            find(op), {"input": str(allowed / "s.bam"), "region": str(inside)}
+        )
+    )
+
+
+@pytest.mark.parametrize("op", ["vcf/impute", "ref/imputation"])
+def test_732_imputation_checks_the_library_above_an_allowed_fasta(tmp_path, op):
+    genomes = tmp_path / "library" / "genomes"
+    genomes.mkdir(parents=True)
+    fasta = genomes / "hg38.fa"
+    fasta.write_text(">chr20\nA\n")
+    request = {"ref": str(fasta), "chromosomes": "chr20"}
+    if op == "vcf/impute":
+        request["vcf_input"] = str(genomes / "chip.vcf.gz")
+    params = params_from_json(find(op), request)
+    with pytest.raises(RequestError) as error:
+        PathGuard([genomes]).check(params)
+    assert error.value.code == "path_not_allowed"
+    PathGuard([tmp_path / "library"]).check(params)
+
+
+@pytest.mark.parametrize(
+    ("op", "delete"),
+    [("vcf/impute", False), ("ref/imputation", False), ("ref/imputation", True)],
+)
+@pytest.mark.parametrize("configured", ["reference_library", "reference_fasta"])
+def test_732_omitted_imputation_ref_cannot_escape_allowed_roots(
+    tmp_path, monkeypatch, op, delete, configured
+):
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    outside = tmp_path / "outside"
+    genomes = outside / "genomes"
+    genomes.mkdir(parents=True)
+    fasta = genomes / "hg38.fa"
+    fasta.write_text(">chr20\nA\n")
+    monkeypatch.delitem(settings, "reference_fasta", raising=False)
+    monkeypatch.setitem(settings, "reference_library", str(outside))
+    if configured == "reference_fasta":
+        monkeypatch.setitem(settings, "reference_library", str(allowed))
+        monkeypatch.setitem(settings, "reference_fasta", str(fasta))
+    request = {"chromosomes": "chr20"}
+    if op == "vcf/impute":
+        request["vcf_input"] = str(allowed / "chip.vcf.gz")
+    else:
+        request["delete"] = delete
+    with pytest.raises(RequestError) as error:
+        PathGuard([allowed], allow_destructive=True).check(
+            params_from_json(find(op), request)
+        )
+    assert error.value.code == "path_not_allowed"
+
+
+@pytest.mark.parametrize("op", ["vcf/impute", "ref/imputation"])
+@pytest.mark.parametrize("escape", ["panel-folder", "binary", "marker-path"])
+def test_732_imputation_rejects_escaping_panel_paths(tmp_path, op, escape):
+    from wgsextract_cli.core import imputation_panel
+
+    library, outside = tmp_path / "library", tmp_path / "outside"
+    library.mkdir()
+    outside.mkdir()
+    panel = imputation_panel.folder(str(library))
+    if escape == "panel-folder":
+        panel.parent.mkdir(parents=True)
+        try:
+            panel.symlink_to(outside, target_is_directory=True)
+        except OSError:
+            pytest.skip("symlinks are unavailable")
+    else:
+        chrom = panel / "chr20"
+        (chrom / "bins").mkdir(parents=True)
+        if escape == "binary":
+            target = outside / "ref.bin"
+            target.write_bytes(b"reference")
+            try:
+                (chrom / "bins" / "ref.bin").symlink_to(target)
+            except OSError:
+                pytest.skip("symlinks are unavailable")
+        else:
+            (chrom / ".installed.json").write_text(
+                json.dumps({"chunks": [["input", "output", str(outside / "ref.bin")]]})
+            )
+    request = {"ref": str(library), "chromosomes": "chr20"}
+    if op == "vcf/impute":
+        request["vcf_input"] = str(library / "chip.vcf.gz")
+    with pytest.raises(RequestError) as error:
+        PathGuard([library]).check(params_from_json(find(op), request))
+    assert error.value.code == "path_not_allowed"
 
 
 @pytest.mark.parametrize(
@@ -1195,6 +1334,18 @@ def test_ref_library_list_is_a_query_with_the_listing_as_details(client, work):
     details = job["result"]["details"]
     assert details["library"] == str(work)
     assert {g["code"]: g["status"] for g in details["genomes"]}["hs38"] == ("unindexed")
+    assert details["genomes_dir"] == str(work / "genomes")
+    assert {g["code"]: g["size_bytes"] for g in details["genomes"]}["hs38"] == 1
+
+
+def test_read_only_library_list_cannot_look_up_download_sizes():
+    # #825: remote_sizes writes the library's size cache, so read-only MCP
+    # refuses it.
+    op = find("ref/library-list")
+    assert "remote_sizes" not in op.schema(read_only=True)["properties"]
+    with pytest.raises(RequestError) as refused:
+        params_from_json(op, {"remote_sizes": True}, read_only=True)
+    assert refused.value.code == "read_only"
 
 
 def test_ref_library_requests_must_name_a_genome():
@@ -1454,7 +1605,7 @@ _EXAMPLE_PATHS = [
 
 _TYPING_PATHS = [
     (op, item)
-    for op in ("typing/cyp2d6", "typing/hla", "typing/str")
+    for op in ("typing/cyp2d6", "typing/hla", "typing/smn", "typing/str")
     for item in find(op).fields()
     if item.spec.path or item.spec.may_name_file
 ]
@@ -1518,7 +1669,7 @@ def test_path_guard_covers_every_typing_path(op, field, value):
 
 def test_typing_paths_cover_every_file():
     assert {(op, item.name) for op, item in _TYPING_PATHS} == {
-        *((f"typing/{name}", f) for name in ("cyp2d6", "hla", "str")
+        *((f"typing/{name}", f) for name in ("cyp2d6", "hla", "smn", "str")
           for f in ("input", "ref", "outdir")),
         ("typing/hla", "hla_index"), ("typing/str", "catalog"),
     }  # fmt: skip
@@ -1931,6 +2082,96 @@ def test_serve_command_publishes_its_address_and_cleans_up(tmp_path, work):
         assert not discovery.exists()
 
 
+def interrupt_serve_announcement(
+    work: Path, stop_signal: int, *args: str
+) -> subprocess.CompletedProcess[str]:
+    # The OS stream boundary: interrupt at the ready line, before HTTP startup,
+    # rather than depending on subprocess scheduling.
+    code = f"""
+import os, signal, sys
+from wgsextract_cli.main import main
+class InterruptOnReady:
+    def write(self, text):
+        result = sys.__stdout__.write(text)
+        if '"url"' in text:
+            sys.__stdout__.flush()
+            os.kill(os.getpid(), {stop_signal})
+        return result
+    def flush(self):
+        sys.__stdout__.flush()
+sys.stdout = InterruptOnReady()
+main()
+"""
+    return subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            code,
+            "serve",
+            "--ready-json",
+            "--allow",
+            str(work),
+            *args,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signal delivery")
+@pytest.mark.parametrize("stop_signal", [signal.SIGINT, signal.SIGTERM])
+def test_799_interrupting_http_discovery_announcement_exits_cleanly(
+    work: Path, stop_signal: int
+) -> None:
+    proc = interrupt_serve_announcement(work, stop_signal)
+    assert json.loads(proc.stdout)["url"].startswith("http://127.0.0.1:")
+    assert proc.returncode == 0
+    assert not (state_directory() / "server" / "server.json").exists()
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_799_interrupted_private_json_never_publishes_partial_data(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing: bool
+) -> None:
+    path = tmp_path / "server.json"
+    previous = {"pid": 123, "token": "previous"}
+    if existing:
+        write_private_json(path, previous)
+    visible: list[str | None] = []
+    modes: list[int] = []
+    fdopen = os.fdopen
+
+    @contextlib.contextmanager
+    def interrupted_fdopen(fd: int, *args: Any, **kwargs: Any) -> Iterator[Any]:
+        with fdopen(fd, *args, **kwargs) as stream:
+
+            class InterruptedWriter:
+                def write(self, text: str) -> int:
+                    stream.write(text)
+                    stream.flush()
+                    visible.append(path.read_text() if path.exists() else None)
+                    modes.append(os.fstat(stream.fileno()).st_mode & 0o777)
+                    raise KeyboardInterrupt
+
+            yield InterruptedWriter()
+
+    # OS file-stream boundary: interrupt after the first real JSON write.
+    monkeypatch.setattr(os, "fdopen", interrupted_fdopen)
+    with pytest.raises(KeyboardInterrupt):
+        write_private_json(path, {"pid": 456, "token": "replacement"})
+    assert len(visible) == 1
+    if existing:
+        assert json.loads(visible[0] or "") == previous
+        assert json.loads(path.read_text()) == previous
+    else:
+        assert visible == [None]
+        assert not path.exists()
+    if sys.platform != "win32":
+        assert modes == [0o600]
+    assert set(tmp_path.iterdir()) == ({path} if existing else set())
+
+
 def test_serve_exits_with_its_parent_and_frees_the_state_folder(work):
     # #523 review: a server orphaned by a hard-killed GUI kept the jobs folder's
     # lock, so every later server refused to start.
@@ -2094,10 +2335,14 @@ _BASE_REQUESTS: dict[str, dict[str, Any]] = {
     "extract/custom": {"region": "chrM"},
     "extract/region": {"formats": "bam"},
     "info/chip": {"input": _FILE},
+    "info/calculate-coverage": {"input": _FILE},
+    "vcf/impute": {"input": _FILE, "ref": _DATA},
     "panel/bed": {"genes": ["BRCA1"]},
     "qc/vcf": {"input": _FILE},
     "ref/library": {"install": "hs38"},
+    "ref/library-delete": {"genome": "hs38", "ref": _DATA},
     "ref/library-list": {"ref": _DATA},
+    "ref/imputation": {"ref": _DATA},
     "report": {"input": _FILE},
     "sample/show": {"input": _FILE},
     "sample/set": {"input": _FILE, "sex": "female"},
@@ -2112,6 +2357,7 @@ _COMPANIONS: dict[tuple[str, str], dict[str, Any]] = {
     ("basecall", "alignment"): {"alignment": _FILE, "regions_bed": _FILE},
     ("bam/to-ubam", "r1"): {"input": None, "r1": _FILE},
     ("bam/to-ubam", "r2"): {"input": None, "r1": _FILE},
+    ("vcf/impute", "vcf_input"): {"input": None, "vcf_input": _FILE},
 }
 
 
@@ -2207,6 +2453,9 @@ def test_deleting_data_needs_allow_destructive(tmp_path, work, fake_data):
         listed = {o["op"]: o for o in client.request("GET", "/ops")[1]["ops"]}
         assert listed["bam/unindex"]["destructive"] is True
         assert listed["ref/gene-map"]["destructive"] is True
+        assert listed["ref/dense-sa"]["destructive"] is True
+        assert listed["ref/library-delete"]["destructive"] is True
+        assert listed["ref/test-genome"]["destructive"] is True
         assert "destructive" not in listed["bam/index"]
         status, response = client.request(
             "POST", "/ops/bam/unindex", {"input": str(bam)}
@@ -2214,6 +2463,22 @@ def test_deleting_data_needs_allow_destructive(tmp_path, work, fake_data):
         assert (status, response["error"]["code"]) == (403, "destructive")
         status, response = client.request(
             "POST", "/ops/ref/gene-map", {"ref": str(work), "delete": True}
+        )
+        assert (status, response["error"]["code"]) == (403, "destructive")
+        status, response = client.request(
+            "POST", "/ops/ref/dense-sa", {"ref": str(bam), "delete": True}
+        )
+        assert (status, response["error"]["code"]) == (403, "destructive")
+        # #825: deleting a library genome, as the app's delete button does.
+        status, response = client.request(
+            "POST", "/ops/ref/library-delete", {"ref": str(work), "genome": "hs38"}
+        )
+        assert (status, response["error"]["code"]) == (403, "destructive")
+        # #825: deleting the test genome, as the app's Datasets page does.
+        status, response = client.request(
+            "POST",
+            "/ops/ref/test-genome",
+            {"dataset_library": str(work), "delete": True},
         )
         assert (status, response["error"]["code"]) == (403, "destructive")
         assert client.request("GET", "/jobs")[1]["jobs"] == []
@@ -2231,11 +2496,13 @@ def test_mcp_offers_deleting_tools_only_with_allow_destructive(work):
     names = {t["name"]: t for t in default.request("tools/list", {})["result"]["tools"]}
     assert default.close() == 0
     assert "bam_unindex" not in names and "sample_unset" not in names
+    assert "ref_library_delete" not in names
     assert names["ref_gene_map"]["annotations"]["destructiveHint"] is False
     allowed = Mcp("--allow", str(work), "--allow-jobs", "--allow-destructive")
     names = {t["name"]: t for t in allowed.request("tools/list", {})["result"]["tools"]}
     assert names["bam_unindex"]["annotations"]["destructiveHint"] is True
     assert names["ref_gene_map"]["annotations"]["destructiveHint"] is True
+    assert names["ref_library_delete"]["annotations"]["destructiveHint"] is True
     assert names["bam_index"]["annotations"]["destructiveHint"] is False
     assert allowed.close() == 0
 

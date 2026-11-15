@@ -24,11 +24,11 @@ test("uses SF Pro automatically on Apple operating systems", () => {
 
 test("detects Tauri runtime globals for native desktop UI affordances", () => {
   assert.equal(isTauriRuntime({}), false);
-  assert.equal(isTauriRuntime({ __GUI_FOR_CLI_TAURI__: true }), true);
+  assert.equal(isTauriRuntime({ __WGSEXTRACT_GUI_TAURI__: true }), true);
   assert.equal(isTauriRuntime({ __TAURI_INTERNALS__: {} }), true);
   assert.equal(isTauriRuntime({ __TAURI__: {} }), true);
   assert.equal(shouldRenderInPageBundleLoader({}), true);
-  assert.equal(shouldRenderInPageBundleLoader({ __GUI_FOR_CLI_TAURI__: true }), false);
+  assert.equal(shouldRenderInPageBundleLoader({ __WGSEXTRACT_GUI_TAURI__: true }), false);
   assert.equal(shouldRenderInPageBundleLoader({ __TAURI_INTERNALS__: {} }), false);
   assert.equal(shouldRenderInPageBundleLoader({ __TAURI__: {} }), false);
 });
@@ -46,7 +46,7 @@ test("resolves nested compiled WebUI modules safely", () => {
 });
 
 test("dev reload watches nested compiled source directories", async () => {
-  const tempRoot = await mkdtemp(nodePath.join(tmpdir(), "gui-for-cli-dev-reload-"));
+  const tempRoot = await mkdtemp(nodePath.join(tmpdir(), "wgsextract-gui-dev-reload-"));
   let closeWatcher = () => {};
   try {
     const distRoot = nodePath.join(tempRoot, "dist");
@@ -73,7 +73,7 @@ test("dev reload watches nested compiled source directories", async () => {
 });
 
 test("loads bundle distribution metadata", async () => {
-  const directory = await mkdtemp(joinedPath(tmpdir(), "gui-for-cli-bundle-metadata-"));
+  const directory = await mkdtemp(joinedPath(tmpdir(), "wgsextract-gui-bundle-metadata-"));
   try {
     await writeFile(joinedPath(directory, "manifest.json"), JSON.stringify({
       id: "metadata-bundle",
@@ -161,7 +161,7 @@ test("About dialog renders bundle and tool versions with clickable GitHub link",
   const previousWindow = globalThis.window;
   const previousLocalStorage = globalThis.localStorage;
   const localStorage = memoryStorage();
-  globalThis.window = { GUI_FOR_CLI_APPLICATION_NAME: "GUI for CLI", GUI_FOR_CLI_APPLICATION_VERSION: "9.8.7" };
+  globalThis.window = { WGSEXTRACT_GUI_APPLICATION_NAME: "WGS Extract GUI", WGSEXTRACT_GUI_APPLICATION_VERSION: "9.8.7" };
   globalThis.localStorage = localStorage;
   try {
     const { state } = await import("../dist/web/src/client/state.js");
@@ -172,14 +172,14 @@ test("About dialog renders bundle and tool versions with clickable GitHub link",
       uninstall: { steps: [] },
     };
 
-    assert.deepEqual(aboutVersionRows({ guiForCliVersion: state.applicationVersion, manifest: state.manifest }), [
-      { label: "GUI for CLI version", value: "9.8.7" },
+    assert.deepEqual(aboutVersionRows({ wgsextractGuiVersion: state.applicationVersion, manifest: state.manifest }), [
+      { label: "WGS Extract GUI version", value: "9.8.7" },
       { label: "Bundle version", value: "0.3.5" },
       { label: "Tool version", value: "WGS Extract CLI v0.3.5" },
     ]);
     const html = renderAboutDialog();
     assert.match(html, /MIT License/);
-    assert.match(html, /GUI for CLI version/);
+    assert.match(html, /WGS Extract GUI version/);
     assert.match(html, /Bundle version/);
     assert.match(html, /Tool version/);
     assert.match(html, /WGS Extract CLI v0\.3\.5/);
@@ -323,7 +323,7 @@ test("render scroll state restores only matching containers", async () => {
   assert.deepEqual(replacement, { scrollLeft: 13, scrollTop: 377 });
 });
 
-test("Tauri NSIS uninstall leaves deleting the app data to the uninstall steps, which keep a workspace in it", async () => {
+test("Tauri NSIS uninstall leaves deleting the app's data folder to the uninstall steps, which keep a workspace in it", async () => {
   const config = JSON.parse(await readFile(new URL("../web/packagers/tauri/tauri.conf.json", import.meta.url), "utf8"));
   const hooks = await readFile(new URL("../web/packagers/tauri/nsis-hooks.nsh", import.meta.url), "utf8");
   const preUninstall = hooks.slice(hooks.indexOf("!macro NSIS_HOOK_PREUNINSTALL"), hooks.indexOf("!macro NSIS_HOOK_POSTUNINSTALL"));
@@ -331,9 +331,22 @@ test("Tauri NSIS uninstall leaves deleting the app data to the uninstall steps, 
 
   assert.equal(config.bundle.windows.nsis.installerHooks, "nsis-hooks.nsh");
   assert.match(appDataBlock, /StrCpy \$3 "--remove-app-data"/);
-  // Otherwise Tauri's template deletes %LOCALAPPDATA%\<identifier> and %APPDATA%\<identifier> whole after this hook.
-  assert.match(appDataBlock, /StrCpy \$DeleteAppDataCheckboxState 0/);
+  // The app's data folder (WGSExtract-gui) isn't named for the identifier, so the folders Tauri's template
+  // deletes after this hook (the webview's and the logs') never hold a workspace: it may delete them.
+  assert.notEqual(config.identifier, "WGSExtract-gui");
+  assert.doesNotMatch(appDataBlock, /StrCpy \$DeleteAppDataCheckboxState 0/);
+  assert.doesNotMatch(preUninstall, /--app-data-name|\$\{BUNDLEID\}/);
   assert.doesNotMatch(hooks, /RmDir \/r "\$(LOCAL)?APPDATA\\\$\{BUNDLEID\}"/);
+});
+
+test("Tauri NSIS install removes an app up to 0.8.6 left in another folder, under its old identifier's key", async () => {
+  const hooks = await readFile(new URL("../web/packagers/tauri/nsis-hooks.nsh", import.meta.url), "utf8");
+  const preInstall = hooks.slice(hooks.indexOf("!macro NSIS_HOOK_PREINSTALL"), hooks.indexOf("!macro NSIS_HOOK_PREUNINSTALL"));
+
+  assert.match(preInstall, /ReadRegStr \$R9 SHCTX "Software\\guiforcli\\\$\{PRODUCTNAME\}" ""/);
+  // As an update: the old uninstaller then leaves what setup installed, which the new app moves itself.
+  assert.match(preInstall, /ExecWait '"\$R9\\uninstall\.exe" \/S \/UPDATE _\?=\$R9'/);
+  assert.match(preInstall, /DeleteRegKey SHCTX "Software\\guiforcli\\\$\{PRODUCTNAME\}"/);
 });
 
 test("Tauri NSIS uninstall always removes the install dir and per-user productName leftover", async () => {
@@ -354,7 +367,7 @@ test("Tauri NSIS uninstall always removes the install dir and per-user productNa
 });
 
 test("platform script resolution rejects paths that escape the bundle root", async () => {
-  const directory = await mkdtemp(joinedPath(tmpdir(), "gui-for-cli-platform-script-safe-"));
+  const directory = await mkdtemp(joinedPath(tmpdir(), "wgsextract-gui-platform-script-safe-"));
   try {
     await mkdir(joinedPath(directory, "scripts", "windows"), { recursive: true });
     await mkdir(joinedPath(directory, "scripts", "posix"), { recursive: true });

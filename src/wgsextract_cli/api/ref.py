@@ -117,6 +117,84 @@ class RefSomalierParams(_InLibrary, Params):
 
 
 @dataclass(frozen=True, kw_only=True)
+class RefImputationParams(_InLibrary, Params):
+    """Install SHA-256-pinned GRCh38 1000 Genomes 30x panel chromosomes
+    and prepare GLIMPSE2 binary references, or delete installed chromosomes."""
+
+    COMMAND = "ref imputation"
+
+    delete: bool = _delete_param("imputation panel chromosomes")
+    chromosomes: str | None = param(
+        None,
+        help="Chromosomes: chr20, chr1-22 or all (autosomes only).",
+    )
+    ref: Path | None = ref_param()
+    threads: int | None = threads_param()
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        from wgsextract_cli.core import imputation_panel
+
+        from ._params import with_config_defaults
+
+        filled = with_config_defaults(self)
+        if filled.ref is not None:
+            yield "ref", filled.ref.expanduser()
+        library = (
+            _library_named(filled.ref) if filled.ref is not None else filled.library()
+        )
+        yield "ref", library
+        for path in imputation_panel.guarded_paths(
+            os.fspath(library), self.chromosomes
+        ):
+            yield "ref", path
+
+
+@dataclass(frozen=True, kw_only=True)
+class RefAncestryParams(_InLibrary, Params):
+    """Install the hash-pinned ancestry reference of ``qc ancestry``, or
+    delete it."""
+
+    COMMAND = "ref ancestry"
+
+    delete: bool = _delete_param("ancestry reference")
+    ref: Path | None = ref_param()
+
+    def write_folders(self) -> Iterator[Path]:
+        from wgsextract_cli.core import ancestry_reference
+
+        yield from super().write_folders()
+        yield ancestry_reference.folder(os.fspath(self.library()))
+
+
+@dataclass(frozen=True, kw_only=True)
+class RefGnomadSvParams(_InLibrary, Params):
+    """Install the gnomAD structural-variant sites tables that ``vcf sv-freq``
+    matches SV calls against, or delete them. Each sites VCF is checked
+    against a pinned SHA-256, reduced to a small table and deleted. gnomAD
+    data have no use restriction.
+
+    ``sr``: gnomAD-SV v4.1 for GRCh38 (1.7 GB download) and v2.1 for GRCh37
+    (141 MB). ``lr``: the gnomAD-LR 0.1 beta long-read SVs, GRCh38 only,
+    streamed out of 53 GB of sites VCFs (one chromosome, up to 4.3 GB, at
+    a time)."""
+
+    COMMAND = "ref gnomad-sv"
+
+    source: str = param(
+        "sr",
+        help="sr: gnomAD-SV (GRCh38, GRCh37). lr: gnomAD-LR (GRCh38, 53 GB).",
+        choices=("sr", "lr"),
+    )
+    build: str | None = param(
+        None,
+        help="Only this build (default: all).",
+        choices=("hg38", "hg19"),
+    )
+    delete: bool = _delete_param("gnomAD SV tables")
+    ref: Path | None = ref_param()
+
+
+@dataclass(frozen=True, kw_only=True)
 class RefYbrowseParams(_InLibrary, Params):
     """Install a hash-pinned, sites-only GRCh38 yBrowse snapshot into the
     library, or delete the installed snapshots."""
@@ -163,6 +241,45 @@ class RefIndexParams(Params):
         "of memory to build.",
         choices=ALIGNER_INDEXES,
     )
+
+
+@dataclass(frozen=True, kw_only=True)
+class RefDenseSaParams(Params):
+    """Build wgse-bwa's optional dense suffix-array file for a FASTA's BWA
+    index (``<ref>.wgse-sa<interval>``, 0.8 GB for hs38 at 16), list the
+    FASTA's files, or delete them. Needs wgse-bwa 0.11.0 or later on PATH;
+    ``align``/``realign`` read the file only when asked
+    (``dense_suffix_array``)."""
+
+    COMMAND = "ref dense-sa"
+    WRITES_BESIDE = "ref"
+
+    ref: Path | None = _fasta_param()
+    interval: int = param(
+        16,
+        help="Store the suffix-array position of every Nth row. A smaller N "
+        "locates seeds faster but doubles the file each halving (0.8 GB for "
+        "hs38 at 16, the default).",
+        choices=(2, 4, 8, 16),
+        metavar="N",
+    )
+    list_files: bool = param(
+        False,
+        help="List the FASTA's dense suffix-array files, their size, and the "
+        "one wgse-bwa would read on this computer.",
+        flags=("--list",),
+        dest="list",
+        action="store_true",
+        exclusive="dense-sa-mode",
+    )
+    delete: bool = param(
+        False,
+        help="Delete the FASTA's dense suffix-array files.",
+        action="store_true",
+        deletes=True,
+        exclusive="dense-sa-mode",
+    )
+    threads: int | None = threads_param()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -228,18 +345,8 @@ class RefLibraryParams(_InLibrary, Params):
             )
 
 
-@dataclass(frozen=True, kw_only=True)
-class RefLibraryListParams(_InLibrary, Params):
-    """List the catalog's genomes with their status in the library (installed,
-    unindexed, incomplete or missing), size, N counts and VEP cache, then the
-    gene maps and annotation data it holds."""
-
-    # The server operation (ref/library-list) and MCP tool keep this name; the
-    # CLI has no such subcommand and lists with 'ref library --list' (#352).
-    COMMAND = "ref library-list"
-    CLI_COMMAND = "ref library --list"
-
-    ref: Path | None = param(
+def _library_ref_param() -> Any:
+    return param(
         None,
         doc="Reference library folder, or a FASTA in it (default: config "
         "reference_fasta's library, else reference_library, else the default "
@@ -249,6 +356,10 @@ class RefLibraryListParams(_InLibrary, Params):
         shared=True,
         config_key="reference_fasta",
     )
+
+
+class _ConfiguredLibrary(_InLibrary, Params):
+    """An operation on the library ``ref`` names, else the configured FASTA's."""
 
     def implied_paths(self) -> Iterator[tuple[str, Path]]:
         from ._params import with_config_defaults
@@ -262,8 +373,99 @@ class RefLibraryListParams(_InLibrary, Params):
         else:
             yield "ref", self.library()
 
+
+@dataclass(frozen=True, kw_only=True)
+class RefLibraryListParams(_ConfiguredLibrary):
+    """List the catalog's genomes with their status in the library (installed,
+    unindexed, incomplete or missing), size, N counts and VEP cache, then the
+    gene maps and annotation data it holds."""
+
+    # The server operation (ref/library-list) and MCP tool keep this name; the
+    # CLI has no such subcommand and lists with 'ref library --list' (#352).
+    COMMAND = "ref library-list"
+    CLI_COMMAND = "ref library --list"
+
+    ref: Path | None = _library_ref_param()
+    remote_sizes: bool = param(
+        False,
+        help="Look up download sizes online (cached 30 days; at most ~8 s).",
+        flags=("--remote-sizes",),
+        action="store_true",
+        doc="Look up the download size of each genome whose size isn't cached "
+        "(HTTP HEAD or FTP SIZE, ~8 s at most) and save it in the library's "
+        "cache for 30 days.",
+        writes=True,
+    )
+
     def write_folders(self) -> Iterator[Path]:
-        return iter(())
+        # --remote-sizes caches the sizes it finds in the library.
+        return iter([self.library()] if self.remote_sizes else [])
+
+
+@dataclass(frozen=True, kw_only=True)
+class RefLibraryDeleteParams(_ConfiguredLibrary):
+    """Delete a catalog genome from the library's genomes folder: its FASTA,
+    a partial download, its indexes and sequence dictionary. Its N counts,
+    which the library bootstrap ships, stay."""
+
+    # As ref library-list: the CLI deletes with 'ref library --delete'.
+    COMMAND = "ref library-delete"
+    CLI_COMMAND = "ref library --delete"
+    DELETES = True
+
+    genome: str | None = param(
+        None,
+        help="Delete a catalog genome (code or file name) and its indexes.",
+        flags=("--delete",),
+        metavar="GENOME",
+        dest="delete",
+        doc="The genome's catalog code (e.g. hs38) or file name (e.g. "
+        "hs38.fa.gz) (required).",
+    )
+    ref: Path | None = _library_ref_param()
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if not self.genome:
+            raise UsageError(
+                "Set genome to a catalog genome's code or file name; "
+                "`wgsextract ref library --list` lists them."
+            )
+
+
+def _status_ref_param() -> Any:
+    return param(
+        None,
+        doc="Reference library folder, or a FASTA in it (default: config "
+        "reference_library, else reference_fasta's library, else the "
+        "default library).",
+        flags=("--ref",),
+        path="file_or_directory",
+        shared=True,
+    )
+
+
+def _dataset_library_param(help: str) -> Any:
+    return param(
+        None,
+        help=help,
+        doc="Dataset library folder for the test genome (default: config "
+        "dataset_library, else ``datasets`` beside the reference library).",
+        path="directory",
+        hidden_flags=("--genome-library",),
+    )
+
+
+def _datasets_beside(ref: Path | None, datasets: Path | None) -> Iterator[Path]:
+    """The ``datasets`` folder beside the library ``ref`` names, which a
+    command uses with neither ``datasets`` nor config dataset_library set."""
+    from wgsextract_cli.core.config import dataset_library
+
+    if ref is None or datasets is not None or dataset_library():
+        return
+    library = _library_named(ref)
+    if library.is_absolute():  # a relative ref is refused as it is
+        yield library.parent / "datasets"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -274,25 +476,12 @@ class RefStatusParams(Params):
 
     COMMAND = "ref status"
 
-    ref: Path | None = param(
-        None,
-        doc="Reference library folder, or a FASTA in it (default: config "
-        "reference_library, else reference_fasta's library, else the "
-        "default library).",
-        flags=("--ref",),
-        path="file_or_directory",
-        shared=True,
-    )
+    ref: Path | None = _status_ref_param()
     input: Path | None = optional_input_param(
         "A BAM/CRAM or VCF whose build picks the annotation files to report."
     )
-    dataset_library: Path | None = param(
-        None,
-        help="Dataset library directory used for test dataset status.",
-        doc="Dataset library folder for the test dataset's status (default: "
-        "config dataset_library, else ``datasets`` beside the reference library).",
-        path="directory",
-        hidden_flags=("--genome-library",),
+    dataset_library: Path | None = _dataset_library_param(
+        "Dataset library directory used for test dataset status."
     )
     annotation_vcf: Path | None = param(
         None,
@@ -301,18 +490,65 @@ class RefStatusParams(Params):
     )
 
     def implied_paths(self) -> Iterator[tuple[str, Path]]:
-        from wgsextract_cli.core.config import dataset_library
-
         if self.ref is None:
             return
-        library = _library_named(self.ref)
-        yield "ref", library
-        if (
-            self.dataset_library is None
-            and not dataset_library()
-            and library.is_absolute()  # a relative ref is refused as it is
-        ):
-            yield "ref", library.parent / "datasets"
+        yield "ref", _library_named(self.ref)
+        for datasets in _datasets_beside(self.ref, self.dataset_library):
+            yield "ref", datasets
+
+
+@dataclass(frozen=True, kw_only=True)
+class RefTestGenomeParams(Params):
+    """The test genome: the small hg19 benchmark dataset (1000 Genomes
+    HG00096) in the dataset library. Reports whether it is installed;
+    ``install`` downloads it (SHA-256 pinned) and ``delete`` deletes it."""
+
+    COMMAND = "ref test-genome"
+
+    ref: Path | None = _status_ref_param()
+    dataset_library: Path | None = _dataset_library_param(
+        "Dataset library to install into (default: config dataset_library, "
+        "else datasets beside the reference library)."
+    )
+    install: bool = param(
+        False,
+        help="Download the test genome (84 MB, SHA-256 checked) and unpack it.",
+        action="store_true",
+        writes=True,
+        exclusive="test-genome-mode",
+    )
+    delete: bool = param(
+        False,
+        help="Delete the test genome and its download.",
+        action="store_true",
+        deletes=True,
+        exclusive="test-genome-mode",
+    )
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.install and self.delete:
+            raise UsageError("--install and --delete can't be used together.")
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        if self.ref is not None:
+            yield "ref", _library_named(self.ref)
+        for datasets in _datasets_beside(self.ref, self.dataset_library):
+            yield "ref", datasets
+        unset = self.ref is None and self.dataset_library is None
+        if (self.install or self.delete) and unset:
+            # The folder written is then config's dataset_library or the one
+            # beside the default library, which must be allowed too.
+            yield "dataset_library", self._datasets()
+
+    def _datasets(self) -> Path:
+        from wgsextract_cli.commands.ref.status import dataset_library_for
+
+        return dataset_library_for(self.ref, self.dataset_library)
+
+    def write_folders(self) -> Iterator[Path]:
+        if self.install or self.delete:
+            yield self._datasets()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -479,6 +715,49 @@ def somalier(
     return execute(params, run_somalier, progress=progress, cancel=cancel, check=check)
 
 
+def imputation(
+    params: RefImputationParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Install or delete panel chromosomes; output role ``reference_resource``."""
+    from wgsextract_cli.commands.ref.library_commands import run_imputation
+
+    return execute(
+        params, run_imputation, progress=progress, cancel=cancel, check=check
+    )
+
+
+def ancestry(
+    params: RefAncestryParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Install the resources; output role ``reference_resource``."""
+    from wgsextract_cli.commands.ref.library_commands import run_ancestry_reference
+
+    return execute(
+        params, run_ancestry_reference, progress=progress, cancel=cancel, check=check
+    )
+
+
+def gnomad_sv(
+    params: RefGnomadSvParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Install the tables; output role ``reference_resource``."""
+    from wgsextract_cli.commands.ref.library_commands import run_gnomad_sv
+
+    return execute(params, run_gnomad_sv, progress=progress, cancel=cancel, check=check)
+
+
 def ybrowse(
     params: RefYbrowseParams,
     *,
@@ -516,6 +795,20 @@ def index(
     from wgsextract_cli.commands.ref.core_commands import run_index
 
     return execute(params, run_index, progress=progress, cancel=cancel, check=check)
+
+
+def dense_sa(
+    params: RefDenseSaParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Build (output role ``reference_index``), list or delete the FASTA's
+    dense suffix-array files."""
+    from wgsextract_cli.commands.ref.dense_sa import run_dense_sa
+
+    return execute(params, run_dense_sa, progress=progress, cancel=cancel, check=check)
 
 
 def count_ns(
@@ -566,16 +859,43 @@ def library_list(
     cancel: CancelToken | None = None,
     check: bool = True,
 ) -> CommandResult:
-    """List the library. ``details`` has ``library``, ``genomes`` (``code``,
-    ``label``, ``file``, ``status``, ``size``, and whether its ``n_counts`` and
-    a ``vep_cache`` for its assembly are in the library) and
-    ``resources`` (``gene_maps``, then per build ``clinvar``, ``revel``,
-    ``phylop`` and ``gnomad``, each true when installed); ``text`` is the
-    CLI's table."""
+    """List the library. ``details`` has ``library``, ``genomes_dir`` (the
+    folder its genomes are in), ``genomes`` and ``resources``.
+
+    Each of ``genomes``, in catalog order, has the catalog's ``code``,
+    ``label``, ``source`` (the mirror), ``file`` (the name in ``genomes_dir``),
+    ``url``, ``description``, ``sn_count`` (sequences in the FASTA) and
+    ``build`` (``hg19``, ``hg38``, ``t2t`` or null), then its ``status``
+    (``installed`` with its ``.fai``, ``unindexed``, ``incomplete`` (a
+    ``.partial`` download) or ``missing``), ``size_bytes`` (the FASTA or
+    partial download with its ``.fai``, ``.gzi`` and ``.dict``; 0 when none)
+    and ``size`` (the same, as text), ``remote_bytes`` (the download size, or
+    null when not known: cached, or looked up with ``remote_sizes``), and
+    whether its ``n_counts`` and a ``vep_cache`` for its assembly are in the
+    library. ``resources`` has ``gene_maps``, then per build ``clinvar``,
+    ``revel``, ``phylop`` and ``gnomad``, each true when installed. ``text``
+    is the CLI's table."""
     from wgsextract_cli.commands.ref.core_commands import run_library_list
 
     return execute(
         params, run_library_list, progress=progress, cancel=cancel, check=check
+    )
+
+
+def library_delete(
+    params: RefLibraryDeleteParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Delete ``params.genome``; nothing installed is no error. ``details``
+    has ``library``, ``genomes_dir``, the genome's ``code`` and ``file``,
+    ``deleted`` (the paths deleted, the FASTA first) and ``bytes_freed``."""
+    from wgsextract_cli.commands.ref.library_commands import run_library_delete
+
+    return execute(
+        params, run_library_delete, progress=progress, cancel=cancel, check=check
     )
 
 
@@ -590,6 +910,26 @@ def status(
     from wgsextract_cli.commands.ref.status import run_status
 
     return execute(params, run_status, progress=progress, cancel=cancel, check=check)
+
+
+def test_genome(
+    params: RefTestGenomeParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Report, install or delete the test genome. ``details`` has the dataset
+    ``library``, ``installed``, ``status`` (``installed``, ``incomplete``
+    while a download is partial, else ``missing``) and ``path`` (its
+    folder), as afterwards; ``install`` adds ``changed`` (false when it was
+    already complete), ``delete`` adds ``deleted`` (the paths deleted) and
+    ``bytes_freed``."""
+    from wgsextract_cli.commands.ref.mini_genome import run_test_genome
+
+    return execute(
+        params, run_test_genome, progress=progress, cancel=cancel, check=check
+    )
 
 
 def gene_map(

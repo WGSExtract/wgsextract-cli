@@ -133,12 +133,13 @@ elif sub == "run":
         [os.path.join(prefix, b) for b in bins] + [os.environ.get("PATH", "")]
     )
     exe = shutil.which(command[0], path=path)
-    if exe is None and command[0] == "python":
+    if exe is None and command[0] == "python" and state["host_python"]:
         exe = sys.executable  # the host's Python
     if exe is None:
         sys.exit(f"pixi: {{command[0]}}: command not found")
     environ = dict(os.environ, PATH=path, CONDA_PREFIX=prefix, PIXI_ENVIRONMENT_NAME=env)
-    sys.exit(subprocess.run([exe, *command[1:]], env=environ).returncode)
+    code = subprocess.run([exe, *command[1:]], env=environ).returncode
+    sys.exit(128 - code if code < 0 else code)  # a signal, as a shell reports it
 """
 
 # An environment's Python: this interpreter, reporting the environment as its prefix.
@@ -180,6 +181,7 @@ class FakePixi:
             "list_returncode": 0,
             "list_walk_limit": None,
             "run_stdout": None,
+            "host_python": True,
         }
         self._save()
         self.host_bin = root / "host-bin"
@@ -196,8 +198,8 @@ class FakePixi:
 
     def set(self, **outputs: object) -> None:
         """Replace an answer: info_stdout, list_stdout/list_returncode,
-        list_walk_limit (files under the current directory `list` can size)
-        or run_stdout."""
+        list_walk_limit (files under the current directory `list` can size),
+        run_stdout or host_python (False: the host has no `python`)."""
         self._data.update(outputs)
         self._save()
 
@@ -231,7 +233,7 @@ import json, os, subprocess, sys, time
 state = json.load(open({state!r}))
 args = sys.argv[1:]
 if args[:1] == ["--version"]:
-    print("The Genome Analysis Toolkit (GATK) v4.6.2.0")
+    print("The Genome Analysis Toolkit (GATK) v" + state.get("version", "4.6.2.0"))
     sys.exit(0)
 if args[:1] == ["--java-options"]:
     args = args[2:]
@@ -256,6 +258,8 @@ if not os.path.isdir(tmp):
     sys.exit(f"A USER ERROR has occurred: --tmp-dir {{tmp}} does not exist")
 if " " in tmp:
     sys.exit("htsjdk.tribble.TribbleException: Unable to automatically instantiate codec")
+if state.get("require_cram") and not alignment.endswith(".cram"):
+    sys.exit("This qualification requires direct CRAM input, not BAM staging")
 if alignment.endswith(".cram") and not state["reads_cram"]:
     sys.exit("htsjdk.samtools.cram.CRAMException: CRAM version 3.1 is not supported")
 intervals = open(local("-L")).read().split() if "-L" in opts else []
@@ -276,13 +280,15 @@ for contig, action in state["on_contig"].items():
         with open(state["pids"], "a") as pids:
             pids.write(f"{{os.getpid()}} {{java.pid}}\\n")
         time.sleep(60)
-regions = ["-r", ",".join(intervals)] if intervals else []
+regions = (["-R", local("-L")] if local("-L").endswith(".bed")
+           else ["-r", ",".join(intervals)]) if intervals else []
 mpileup = subprocess.Popen(
     [{bcftools!r}, "mpileup", "-f", ref, *regions, "-Ou", alignment],
     stdout=subprocess.PIPE,
 )
 call = subprocess.run(
-    [{bcftools!r}, "call", "-mv", "-Oz", "-o", out], stdin=mpileup.stdout
+    [{bcftools!r}, "call", "--ploidy", opts.get("--sample-ploidy", "2"),
+     "-mv", "-Oz", "-o", out], stdin=mpileup.stdout
 )
 sys.exit(mpileup.wait() or call.returncode)
 """
@@ -329,10 +335,11 @@ class FakeGatk:
 _FAKE_CLAIR3 = """\
 import json, os, select, subprocess, sys
 
-if sys.argv[1:] in ([], ["--version"], ["-h"], ["--help"]):
+if sys.argv[1:] in ([], ["-v"], ["--version"], ["-h"], ["--help"]):
     print("Clair3 v{version}")
     sys.exit(0)
-opts = dict(arg[2:].split("=", 1) for arg in sys.argv[1:])
+opts = dict((arg[2:].split("=", 1) if "=" in arg else (arg[2:], "true"))
+            for arg in sys.argv[1:])
 # Clair3's GNU parallel reads stdin: it must be closed, or the run waits on it.
 ready, _, _ = select.select([0], [], [], 0.5)
 with open(opts["bam_fn"], "rb") as reads:
@@ -349,10 +356,19 @@ with open({log!r}, "a") as log:
     log.write(json.dumps(record) + "\\n")
 if not record["stdin_closed"]:
     sys.exit("parallel: stdin is still open")
+if opts.get("use_gpu") == "True" and not os.environ.get("FAKE_GPUS"):
+    sys.exit("[ERROR] No GPU available, Please disabling --use_gpu for variant calling, exiting.")
+# In a container (FakeDocker) only mounted folders are visible: a model file
+# linked to a folder that isn't mounted dangles.
+mounts = [m for m in os.environ.get("FAKE_MOUNTS", "").split(os.pathsep) if m]
+def visible(path):
+    return any(os.path.commonpath([os.path.realpath(path), os.path.realpath(m)])
+               == os.path.realpath(m) for m in mounts)
 if record["pythonpath"]:
     sys.exit("ImportError: Clair3's Python loaded modules from PYTHONPATH")
 for name in ("pileup.pt", "full_alignment.pt"):
-    if not os.path.isfile(os.path.join(opts["model_path"], name)):
+    weights = os.path.join(opts["model_path"], name)
+    if not os.path.isfile(weights) or (mounts and not visible(weights)):
         sys.exit(f"[ERROR] {{name}} not found in {{opts['model_path']}}")
 out = opts["output"]
 os.makedirs(out)
@@ -385,7 +401,9 @@ mpileup = subprocess.Popen(
     [{bcftools!r}, "mpileup", "-f", opts["ref_fn"], *regions, "-Ou", opts["bam_fn"]],
     stdout=subprocess.PIPE,
 )
-subprocess.run([{bcftools!r}, "call", "-mv", "-Oz", "-o", calls], stdin=mpileup.stdout, check=True)
+ploidy = "1" if "haploid_precise" in opts else "2"
+subprocess.run([{bcftools!r}, "call", "--ploidy", ploidy, "-mv", "-Oz", "-o", calls],
+               stdin=mpileup.stdout, check=True)
 with open(os.path.join(out, "sample.txt"), "w") as names:
     names.write(opts["sample_name"] + "\\n")
 # Like Clair3, name its inputs in the header.
@@ -413,8 +431,9 @@ class FakeClair3:
     if PYTHONPATH leaks in) and waits on an open stdin (it fails instead).
     Like the bundled htslib of Clair3 before 2.0.5 (``version``) it fails on
     CRAM 3.1 reads, reporting only on stdout and in its step logs; ``fail`` makes it fail that way on any
-    reads. Like Clair3 it calls nothing, yet exits 0, when a path it is
-    given contains a space. Each run's options, resolved model, reads' CRAM
+    reads. With ``--use_gpu=True`` it needs a container started with
+    ``--gpus`` (FakeDocker), as in HKU's GPU image. Like Clair3 it calls
+    nothing, yet exits 0, when a path it is given contains a space. Each run's options, resolved model, reads' CRAM
     version, region BED, stdin state and PYTHONPATH go to ``runs``.
     """
 
@@ -520,6 +539,10 @@ work, shards = opts["intermediate_results_dir"], int(opts["num_shards"])
 examples = f"{work}/make_examples.tfrecord@{shards}.gz"
 outputs = f"{work}/call_variants_output.tfrecord.gz"
 regions = f' --regions "{opts["regions"]}"' if "regions" in opts else ""
+ploidy = "".join(
+    f' --{flag} "{opts[flag]}"' for flag in ("haploid_contigs", "par_regions_bed")
+    if flag in opts
+)
 model = opts.get("customized_model", f"/opt/models/{opts['model_type'].lower()}")
 extra = {}
 for flag in ("call_variants_extra_args", "postprocess_variants_extra_args"):
@@ -535,7 +558,7 @@ commands = [
     f'--checkpoint "{model}"{extra.get("call_variants_extra_args", "")}',
     f'time {bindir}/postprocess_variants --ref "{opts["ref"]}" --infile "{outputs}" '
     f'--outfile "{opts["output_vcf"]}" --cpus "{opts.get("postprocess_cpus", shards)}"'
-    f'{extra.get("postprocess_variants_extra_args", "")}',
+    f'{extra.get("postprocess_variants_extra_args", "")}{ploidy}',
 ]
 print("".join(f"\n***** Running the command:*****\n{c}\n\n" for c in commands))
 """
@@ -602,7 +625,7 @@ shard = shard_names(opts["examples"])[task]
 
 def write():
     with open(shard, "w") as out:
-        json.dump({"ref": ref, "reads": reads}, out)
+        json.dump({"ref": ref, "reads": reads, "regions": opts.get("regions")}, out)
 
 
 fail_here("make_examples", task, write)
@@ -639,15 +662,136 @@ with open(opts["infile"]) as source:
 
 
 def write():
+    selection = called.get("regions")
+    regions = []
+    lengths = dict((r.split()[0], int(r.split()[1]))
+                   for r in open(called["ref"] + ".fai"))
+    if selection:
+        from wgsextract_cli.core.region_selection import selected_intervals
+        bed = opts["outfile"] + ".bed"
+        with open(bed, "w") as out:
+            for chrom, spans in selected_intervals(selection, lengths).items():
+                for start, end in spans:
+                    out.write(f"{chrom}\t{start}\t{end}\n")
+        regions = ["-R", bed]
+    ploidy = []
+    if opts.get("haploid_contigs"):
+        par = {}
+        for line in open(opts["par_regions_bed"]):
+            chrom, start, end = line.split()
+            par.setdefault(chrom, []).append((int(start), int(end)))
+        table = opts["outfile"] + ".ploidy"
+        with open(table, "w") as out:
+            for chrom in opts["haploid_contigs"].split(","):
+                cursor = 0
+                for start, end in sorted(par.get(chrom, [])) + [(lengths[chrom], lengths[chrom])]:
+                    if start > cursor:
+                        out.write(f"{chrom} {cursor + 1} {start} * 1\n")
+                    cursor = end
+            out.write("* * * * 2\n")
+        ploidy = ["--ploidy-file", table]
     mpileup = subprocess.Popen(
-        [BCFTOOLS, "mpileup", "-f", called["ref"], "-Ou", called["reads"]], stdout=subprocess.PIPE
+        [BCFTOOLS, "mpileup", "-f", called["ref"], *regions, "-Ou", called["reads"]], stdout=subprocess.PIPE
     )
-    subprocess.run([BCFTOOLS, "call", "-mv", "-Oz", "-o", opts["outfile"]], stdin=mpileup.stdout, check=True)
+    output = opts["outfile"] + ".haploid.vcf.gz" if ploidy else opts["outfile"]
+    subprocess.run([BCFTOOLS, "call", *ploidy, "-mv", "-Oz", "-o", output], stdin=mpileup.stdout, check=True)
+    if ploidy:
+        # Google's haploid recalibration retains homozygous diploid GT encoding.
+        subprocess.run([BCFTOOLS, "+fixploidy", output, "-Oz", "-o", opts["outfile"],
+                        "--", "-f", "2"], check=True)
     subprocess.run([BCFTOOLS, "index", "-t", opts["outfile"]], check=True)
 
 
 fail_here("postprocess_variants", None, write)
 write()
+"""
+
+
+_DV_WGSE = r"""
+argv = sys.argv[1:]
+if argv == ["--version"]:
+    print(f"wgse-deepvariant {state().get('wgse_version', '0.1.1')} (DeepVariant 1.10.0, build fake)")
+    print(f"native port — x86_64, Linux (call_variants: ONNX Runtime 1.31.1, {state().get('wgse_backends', 'CUDA or CPU')})")
+    sys.exit(0)
+command, opts = argv[0], options([a for a in argv[1:] if a != "--dry_run=true"])
+log({"tool": f"wgse-deepvariant {command}", "opts": opts,
+     "regions_bed": open(opts["regions"]).read() if opts.get("regions", "").endswith(".bed") else None})
+own_python()
+self = os.path.abspath(sys.argv[0])
+if command == "run":
+    if "--dry_run=true" not in argv:
+        sys.exit("this fake only plans: give --dry_run=true")
+    for flag in ("checkpoint", "small_model_path"):
+        if not os.path.exists(opts[flag]):
+            sys.exit(f"--{flag}: {opts[flag]} not found")
+    work, shards = opts["intermediate_results_dir"], int(opts["num_shards"])
+    examples, small = f"{work}/examples.tfrecord@{shards}.gz", f"{work}/small_cvo.tfrecord@{shards}"
+    regions = f" '--regions={opts['regions']}'" if "regions" in opts else ""
+    batch = f" --batch_size={opts['batch_size']}" if "batch_size" in opts else ""
+    for flag in ("inference_backend", "cpu_threads"):
+        if flag in opts:
+            batch += f" --{flag}={opts[flag]}"
+    commands = [
+        f"{self} make_examples --reads={opts['reads']} --ref={opts['ref']} --examples={examples} "
+        f"--threads={shards} --small_model={opts['small_model_path']} --small_model_cvo_outfile={small}{regions}",
+        f"{self} call_variants --examples={examples} --outfile={work}/cvo.tfrecord "
+        f"--checkpoint={opts['checkpoint']}{batch}",
+        f"{self} postprocess_variants --infile={small},{work}/cvo.tfrecord --ref={opts['ref']} "
+        f"--output_vcf_outfile={opts['output_vcf']}",
+    ]
+    print("".join(f"\n***** Running the command:*****\n{c}\n\n" for c in commands))
+elif command == "make_examples":
+    reads, ref = opts["reads"], opts["ref"]
+    if not any(os.path.exists(reads + s) for s in (".bai", ".crai", ".csi")):
+        sys.exit(f"[E::idx_find_and_load] Could not retrieve index file for '{reads}'")
+    for selection in (opts.get("regions") or "").split():
+        if selection.endswith((".bed", ".bed.gz")):
+            if not os.path.isfile(selection):
+                sys.exit(f"Cannot open regions BED {selection}")
+        elif not re.fullmatch(r"\S+:\d+-\d+", selection):
+            sys.exit(f"make_examples: can't parse region {selection}")
+
+
+    def write():
+        for shard in shard_names(opts["examples"]):
+            with open(shard, "w") as out:
+                json.dump({"ref": ref, "reads": reads}, out)
+        stem, n = opts["small_model_cvo_outfile"].split("@")
+        for i in range(int(n)):
+            open(f"{stem}-{i:05d}-of-{int(n):05d}", "w").close()
+
+
+    fail_here("make_examples", None, write)
+    write()
+elif command == "call_variants":
+    shards = shard_names(opts["examples"])
+    if not all(os.path.exists(s) for s in shards):
+        sys.exit(f"call_variants: missing examples {opts['examples']}")
+
+
+    def write():
+        with open(shards[0]) as source, open(opts["outfile"], "w") as out:
+            out.write(source.read())
+
+
+    fail_here("call_variants", None, write)
+    write()
+elif command == "postprocess_variants":
+    with open(opts["infile"].split(",")[-1]) as source:
+        called = json.load(source)
+
+
+    def write():
+        mpileup = subprocess.Popen(
+            [BCFTOOLS, "mpileup", "-f", called["ref"], "-Ou", called["reads"]], stdout=subprocess.PIPE
+        )
+        subprocess.run([BCFTOOLS, "call", "-mv", "-Oz", "-o", opts["output_vcf_outfile"]], stdin=mpileup.stdout, check=True)
+
+
+    fail_here("postprocess_variants", None, write)
+    write()
+else:
+    sys.exit(f"wgse-deepvariant: unknown command {command}")
 """
 
 
@@ -680,6 +824,11 @@ class FakeDeepVariant:
             ("postprocess_variants", _DV_POSTPROCESS_VARIANTS),
         ):
             python_tool(self.bin, name, header + body)
+        # WGS Extract's Apple Silicon build, in its own folder: on PATH only
+        # where a test puts it there.
+        self.native_bin = root / "native-bin"
+        self.native_bin.mkdir()
+        python_tool(self.native_bin, "wgse-deepvariant", header + _DV_WGSE)
 
     def _save(self) -> None:
         (self.root / "state.json").write_text(json.dumps(self._state))
@@ -703,6 +852,13 @@ class FakeDeepVariant:
         }  # fmt: skip
         self._save()
 
+    def set_native_version(self, version: str, backends: str = "CUDA or CPU") -> None:
+        """The version wgse-deepvariant --version reports, and its Linux
+        build's call_variants backends ("CPU only" for the cpu package)."""
+        self._state["wgse_version"] = version
+        self._state["wgse_backends"] = backends
+        self._save()
+
     def set_helpfull(self, text: str) -> None:
         """What postprocess_variants --helpfull prints."""
         self._state["helpfull"] = text
@@ -720,7 +876,9 @@ class FakeDeepVariant:
     def stages(self) -> list[str]:
         """The stages that started, in order (make_examples once per run)."""
         stage = {"parallel": "make_examples", "call_variants": "call_variants",
-                 "postprocess_variants": "postprocess_variants"}  # fmt: skip
+                 "postprocess_variants": "postprocess_variants",
+                 **{f"wgse-deepvariant {s}": s for s in
+                    ("make_examples", "call_variants", "postprocess_variants")}}  # fmt: skip
         return [stage[r["tool"]] for r in self.runs() if r["tool"] in stage]
 
     def clear(self) -> None:
@@ -729,7 +887,7 @@ class FakeDeepVariant:
 
 
 _FAKE_DOCKER = r"""
-import json, os, re, signal, subprocess, sys, time
+import json, os, re, shlex, signal, subprocess, sys, time
 
 
 def state():
@@ -803,7 +961,8 @@ elif args[0] == "run":
     name = opts.get("--name", "anonymous")
     log({"cmd": "run", "image": image, "name": name, "label": opts.get("--label"),
          "entrypoint": opts.get("--entrypoint"), "pull": opts.get("--pull"),
-         "gpus": opts.get("--gpus"), "env": env, "mounts": mounts,
+         "gpus": opts.get("--gpus"), "cpus": opts.get("--cpus"), "env": env,
+         "mounts": mounts,
          "command": command})
     if image not in st["images"]:
         sys.exit(f"docker: Error response from daemon: No such image: {image}")
@@ -823,19 +982,27 @@ elif args[0] == "run":
             not os.path.exists(path) or any(
                 os.path.commonpath([os.path.realpath(path), os.path.realpath(m)])
                 == os.path.realpath(m) for m in mounts))
-    paths = [p for arg in command for p in re.findall(r"/[^\s\"']+", arg)]
+    words = shlex.split(command[2]) if command[:2] == ["/bin/bash", "-c"] else command
+    paths = []
+    for word in words:
+        value = word.split("=", 1)[-1] if word.startswith("--") and "=" in word else word
+        if value.startswith("/"):
+            paths.append(value)
+        else:
+            paths.extend(re.findall(r"/[^\s\"']+", value))
     paths += [env.get("HOME"), env.get("TMPDIR"), opts.get("-w")]
     for path in paths:
         # The image's own folders, and its /tmp (HOME when none is given).
         if path and path != "/tmp" and not path.startswith(("/opt/", "/bin/", "/usr/")) and not visible(path):
             sys.exit(f"{path}: No such file or directory (not mounted in the container)")
-    if command[0].startswith("/opt/deepvariant/bin/"):
+    if command[0].startswith(("/opt/deepvariant/bin/", "/opt/bin/")):
         command[0] = os.path.join(DV_BIN, os.path.basename(command[0]))
     elif command[:2] == ["/bin/bash", "-c"]:
         command[2] = command[2].replace("/opt/deepvariant/bin/", DV_BIN + "/")
     container = {"PATH": f"{DV_BIN}:/usr/bin:/bin", **env, "FAKE_DV_IN_IMAGE": "1",
                  "FAKE_CONTAINER": name, "FAKE_OOM_DIR": os.path.join(ROOT, "oom"),
-                 "FAKE_GPUS": "1" if "--gpus" in opts else ""}
+                 "FAKE_GPUS": "1" if "--gpus" in opts else "",
+                 "FAKE_MOUNTS": os.pathsep.join(mounts)}
     record = os.path.join(running, name)
     process = subprocess.Popen(command, env=container, stdin=subprocess.DEVNULL, cwd=opts.get("-w"))
     with open(record, "w") as out:
@@ -851,8 +1018,8 @@ else:
 
 
 class FakeDocker:
-    """A `docker` in ``bindir`` whose images run FakeDeepVariant's tools from
-    ``dv_bin`` as /opt/deepvariant/bin.
+    """A `docker` in ``bindir`` whose images run the tools in ``dv_bin``
+    (FakeDeepVariant's, or FakeClair3's) as /opt/deepvariant/bin or /opt/bin.
 
     A container sees only the folders mounted into it (paths outside them
     fail), its ``-e`` environment and no stdin, and must run as the caller
@@ -1039,6 +1206,17 @@ elif tool in ("deepvariant", "haplotypecaller"):
 else:
     sys.exit(f"fake pbrun: unknown tool {tool}")
 """
+
+
+def fake_image_torch(bindir: Path, cuda: bool = True) -> None:
+    """A ``python`` in an image's ``bindir`` whose PyTorch reports CUDA when
+    ``cuda`` and the container was started with ``--gpus`` (FakeDocker)."""
+    python_tool(bindir, "python", (
+        "import os, sys\n"
+        "if 'torch.cuda.is_available()' not in ' '.join(sys.argv):\n"
+        "    sys.exit('fake image python: unexpected script')\n"
+        f"print({cuda!r} and bool(os.environ.get('FAKE_GPUS')))\n"
+    ))  # fmt: skip
 
 
 _FAKE_NVIDIA_SMI = r"""

@@ -1,0 +1,27 @@
+from __future__ import annotations
+
+import argparse
+
+from wgsextract_cli.api._cli import add_arguments
+from wgsextract_cli.api.sign import SignCreateParams, SignVerifyParams
+from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.core.messages import CLI_HELP
+
+
+def register(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    base_parser: argparse.ArgumentParser,
+) -> None:
+    parser = subparsers.add_parser("sign", help=CLI_HELP["cmd_sign"])
+    subs = parser.add_subparsers(dest="sign_cmd", required=True)
+    for name, cls, impl in (
+        ("create", SignCreateParams, "create_manifest"),
+        ("verify", SignVerifyParams, "verify_manifest"),
+    ):
+        sub = subs.add_parser(
+            name, parents=[base_parser], help=CLI_HELP[f"cmd_sign-{name}"]
+        )
+        add_arguments(sub, cls)
+        sub.set_defaults(
+            func=command_handler("wgsextract_cli.commands.sign", impl, cls)
+        )

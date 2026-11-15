@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Start · Direction A · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="direction.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="a-home" data-direction="A" data-shell="a" data-nav="home" data-title="Start">
+<div class="page" data-annot-id="page" style="max-width: 1040px">
+  <header class="stack stack--sm" style="text-align: center; padding: var(--sp-6) 0 var(--sp-2)" data-annot-id="greeting">
+    <h1 style="font-size: var(--fs-3xl)">What would you like to do?</h1>
+    <p class="muted">Pick a task. We’ll walk you through it and choose sensible settings.</p>
+  </header>
+
+  <div class="grid grid--fit" style="--grid-min: 220px" data-annot-id="tasks">
+    <a class="card card--interactive a-task" href="microarray.html" data-annot-id="task-microarray">
+      <span class="a-task__icon" style="--tone: var(--chart-1)"><i data-icon="chip" class="icon--xl"></i></span>
+      <span class="a-task__title">Make DNA-test files</span>
+      <span class="small muted">For GEDmatch, MyHeritage and others, to find relatives</span>
+    </a>
+    <a class="card card--interactive a-task" href="../c/ancestry.html" data-annot-id="task-ancestry">
+      <span class="a-task__icon" style="--tone: var(--chart-7)"><i data-icon="haplotree" class="icon--xl"></i></span>
+      <span class="a-task__title">Find my haplogroups and ancestry</span>
+      <span class="small muted">Paternal and maternal lines, population shares</span>
+    </a>
+    <a class="card card--interactive a-task" href="../c/convert.html" data-annot-id="task-convert">
+      <span class="a-task__icon" style="--tone: var(--chart-4)"><i data-icon="convert" class="icon--xl"></i></span>
+      <span class="a-task__title">Convert my file</span>
+      <span class="small muted">BAM, CRAM, FASTQ or VCF, for another site or to save space</span>
+    </a>
+    <a class="card card--interactive a-task" href="../c/file.html" data-annot-id="task-check">
+      <span class="a-task__icon" style="--tone: var(--chart-3)"><i data-icon="coverage" class="icon--xl"></i></span>
+      <span class="a-task__title">Check my file</span>
+      <span class="small muted">What it is, its quality, and what you can do with it</span>
+    </a>
+  </div>
+
+  <section class="section" data-annot-id="files">
+    <div class="section__head"><h2>Your files</h2><a class="btn btn--sm" href="../c/add-file.html"><i data-icon="plus"></i>Add</a></div>
+    <div data-render="library-cards" data-limit="3" data-min="260px"></div>
+  </section>
+
+  <section class="card a-continue" data-annot-id="continue">
+    <span class="ring ring--lg" style="--v: 47"><span>47%</span></span>
+    <div class="grow"><strong>Realigning HG003 to hs38</strong><div class="small muted">About 1 h 52 min left. You can close this window; we’ll notify you.</div></div>
+    <a class="btn" href="../c/jobs.html">See progress</a>
+  </section>
+</div>
+</body>
+</html>

@@ -1,11 +1,11 @@
 ---
 output: 'architecture.html'
-title: 'GUI for CLI architecture'
-description: 'GUI for CLI is one TypeScript app, packaged with Tauri for Windows, macOS, and Linux.'
-eyebrow: 'Architecture'
+title: 'WGS Extract GUI architecture'
+description: 'WGS Extract GUI is one TypeScript app, packaged with Tauri for Windows, macOS, and Linux.'
+eyebrow: 'GUI Architecture'
 heading: 'One TypeScript app, three desktops.'
-lede: 'GUI for CLI renders a CLI-tool bundle with a TypeScript Web UI and a local Node backend, and Tauri packages both as a native desktop app for Windows, macOS, and Linux.'
-actions: 'WGSExtract story|wgsextract.html|primary; Documentation|docs.html'
+lede: 'WGS Extract GUI renders a CLI-tool bundle with a TypeScript Web UI and a local Node backend, and Tauri packages both as a native desktop app for Windows, macOS, and Linux.'
+actions: 'WGS Extract GUI story|wgsextract.html|primary; Documentation|docs.html'
 footer_title: 'One codebase'
 footer_text: 'Bundle behavior lives in the shared TypeScript runtime; Tauri only hosts the window, menus, pickers, and updates.'
 ---

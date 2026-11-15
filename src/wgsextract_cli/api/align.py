@@ -17,6 +17,7 @@ from typing import Any
 
 from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.native_aligners import SETTINGS as NATIVE_ALIGNER_SETTINGS
+from wgsextract_cli.core.output_profiles import OUTPUT_PROFILES
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
 
@@ -28,6 +29,7 @@ from ._shared import (
     input_param,
     memory_param,
     no_gpu_memory_check_param,
+    no_preflight_param,
     optional_input_param,
     outdir_param,
     ref_param,
@@ -47,14 +49,55 @@ def _native_aligners_param() -> Any:
         help="On Apple Silicon, align with wgse-bwa, wgse-bwa-mem2 or "
         "wgse-minimap2 in place of bwa, bwa-mem2 or minimap2, and with "
         "wgse-bwa-mem3 in place of bwa or bwa-mem2 when the reference has "
-        "bwa-mem2's index and it fits in RAM, when they're on PATH (auto; same "
-        "alignments, faster, on the Metal GPU when it fits) or never (off). "
-        "Default: config native_aligners, else auto. Install them as "
-        "native/README.md describes.",
+        "bwa-mem2's index and it fits in RAM; on Linux (x86-64 and ARM64), with "
+        "wgse-bwa in place of bwa, and on x86-64 with wgse-bwa-mem3 as on Apple "
+        "Silicon and wgse-minimap2 in place of minimap2 (long reads' gap fills on "
+        "the NVIDIA GPU). Used when they're on PATH (auto; same alignments, "
+        "faster, on the Metal or NVIDIA GPU when it fits) or never (off). "
+        "On Linux without wgse-bwa-mem3, auto uses Bioconda's bwa-mem3 (`pixi "
+        "install -e bwa-mem3`) in its place, ahead of wgse-bwa. Default: config native_aligners, else "
+        "auto. Install the builds as native/README.md describes.",
         doc="auto (the default, or config native_aligners) uses WGS Extract's "
-        "Apple Silicon aligner builds when installed on PATH; off never does.",
+        "aligner builds (Apple Silicon; wgse-bwa on Linux, and wgse-bwa-mem3 and "
+        "wgse-minimap2 on x86-64) when installed on PATH, and on Linux without wgse-bwa-mem3 "
+        "Bioconda's bwa-mem3 in place of bwa or bwa-mem2; "
+        "off never does.",
         choices=NATIVE_ALIGNER_SETTINGS,
         config_key="native_aligners",
+    )
+
+
+def _dense_suffix_array_param() -> Any:
+    return param(
+        None,
+        help="Have wgse-bwa (0.11.0 or later) read the reference's dense "
+        "suffix-array file, built by `ref dense-sa`: the same alignments, "
+        "faster, holding the file in RAM (0.8 GB for hs38). Used only when "
+        "wgse-bwa aligns: otherwise (another aligner, such as wgse-bwa-mem3 "
+        "standing in, no file, or no such wgse-bwa) the run warns "
+        "(dense_suffix_array_unused) and aligns without it. Default: config "
+        "dense_suffix_array, else off.",
+        doc="Opt in to wgse-bwa's dense suffix-array file (``ref dense-sa``): "
+        "the same alignments, faster, with the file held in RAM. None uses "
+        "config dense_suffix_array, else off. Used only when wgse-bwa aligns; "
+        "otherwise (another aligner, no file, or no wgse-bwa that reads it) "
+        "the run warns (dense_suffix_array_unused).",
+        action="boolean_optional",
+        config_key="dense_suffix_array",
+    )
+
+
+def _prefer_native_gpu_param() -> Any:
+    return param(
+        None,
+        help="If no GPU plan fits the RAM budget even after the sort-memory "
+        "step-down, use the GPU anyway instead of the slower CPU path; may swap "
+        "heavily. Default: config prefer_native_gpu, else off.",
+        doc="Prefer native GPU speed over the RAM-budget CPU fallback. Sort "
+        "memory is stepped down first; explicit --memory is kept, otherwise "
+        "at most 256M per thread. May swap heavily.",
+        action="boolean_optional",
+        config_key="prefer_native_gpu",
     )
 
 
@@ -63,7 +106,18 @@ GPU_HELP = (
     "minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU "
     "alignment to retain MM/ML methylation tags."
 )
-_FORMAT_DOC = "Output format: BAM or CRAM (written with the target reference)."
+_FORMAT_DOC = "Default: BAM. CRAM is written with the target reference."
+
+
+def _output_profile_param() -> Any:
+    return param(
+        None,
+        help="Lossless output: default keeps --format; archive selects CRAM 3.1 "
+        "(GATK >=4.7); calling selects CRAM 3.0. Default: config output_profile, "
+        "else default. See docs/ont.md.",
+        choices=OUTPUT_PROFILES,
+        config_key="output_profile",
+    )
 
 
 def _fast_param() -> Any:
@@ -115,12 +169,14 @@ class AlignParams(Params):
         help="Aligner to use. Auto uses bwa-mem2 for short reads when the reference "
         "has its index (see `ref index`), else bwa; for long reads pbmm2 for PacBio "
         "when installed, otherwise minimap2. bwa-mem3 (wgse-bwa-mem3 on Apple "
-        "Silicon, else bwa-mem3 on PATH) writes bwa's exact records faster, "
+        "Silicon and Linux x86-64, else bwa-mem3 from PATH or its Pixi environment) writes bwa's exact records faster, "
         "from bwa-mem2's index.",
         choices=ALIGNERS,
     )
     fast: bool = _fast_param()
     native_aligners: str | None = _native_aligners_param()
+    prefer_native_gpu: bool | None = _prefer_native_gpu_param()
+    dense_suffix_array: bool | None = _dense_suffix_array_param()
     gpu: bool = param(False, help=GPU_HELP, action="store_true")
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
     sample: str | None = param(
@@ -133,9 +189,13 @@ class AlignParams(Params):
         "pbmm2 or minimap2.",
         action="store_true",
     )
-    format: str = param(
-        "BAM", help="Output format", doc=_FORMAT_DOC, choices=("BAM", "CRAM")
+    format: str | None = param(
+        None,
+        help="Output format (default: BAM)",
+        doc=_FORMAT_DOC,
+        choices=("BAM", "CRAM"),
     )
+    output_profile: str | None = _output_profile_param()
     input: Path | None = optional_input_param(
         "An aligned BAM/CRAM of the same sample whose header picks the "
         "reference from the library when ref is unset."
@@ -193,6 +253,8 @@ class RealignParams(Params):
     )
     fast: bool = _fast_param()
     native_aligners: str | None = _native_aligners_param()
+    prefer_native_gpu: bool | None = _prefer_native_gpu_param()
+    dense_suffix_array: bool | None = _dense_suffix_array_param()
     gpu: bool = param(False, help=GPU_HELP, action="store_true")
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
     platform: str | None = param(
@@ -204,10 +266,9 @@ class RealignParams(Params):
     preset: str | None = param(None, help="minimap2/pbmm2 preset.", choices=PRESETS)
     input_ref: Path | None = param(
         None,
-        help="Reference FASTA the input CRAM was encoded with (default: --ref "
-        "when its sequence names, lengths and MD5s match the CRAM, else the "
-        "FASTA in the reference library whose sequence dictionary matches). "
-        "--ref is the reference to realign to.",
+        help="FASTA decoding the input CRAM, not the target --ref. Default: "
+        "--ref if sequence names, lengths and MD5s match, else the matching "
+        "reference-library FASTA.",
         path="file",
     )
     sample: str | None = param(
@@ -216,15 +277,18 @@ class RealignParams(Params):
     long_read: bool = param(
         False, help="Treat input as long-read data (PacBio/ONT).", action="store_true"
     )
-    format: str = param(
-        "BAM", help="Output format.", doc=_FORMAT_DOC, choices=("BAM", "CRAM")
+    format: str | None = param(
+        None,
+        help="Output format (default: BAM)",
+        doc=_FORMAT_DOC,
+        choices=("BAM", "CRAM"),
     )
+    output_profile: str | None = _output_profile_param()
     keep_fastq: bool = param(
         False,
-        help="Keep the FASTQs extracted from --input after alignment (default: "
-        "delete them); ONT and PacBio reads are then extracted to one tagged "
-        "<input stem>.fastq.gz. FASTQs passed with --r1/--r2 or reused from an earlier "
-        "extraction are never deleted.",
+        help="Keep extracted FASTQs (normally deleted): pairs, or one tagged "
+        "<input stem>.fastq.gz for ONT/PacBio. Supplied or reused FASTQs are "
+        "never deleted.",
         action="store_true",
     )
     force_extract: bool = param(
@@ -235,17 +299,11 @@ class RealignParams(Params):
     )
     chunk_size: str = param(
         "4G",
-        help="Realign ONT and PacBio reads in chunks of about this much of "
-        "the input (K, M, G or T; 0: in one pass). Temporary files then stay "
-        "chunk-sized and an interrupted run resumes at its first unfinished "
-        "chunk. Needs a coordinate-sorted, indexed input; ignored with "
-        "--keep-fastq.",
+        help="ONT/PacBio input per chunk (K/M/G/T; 0: one pass). Resumes "
+        "unfinished chunks and bounds temporary files. Requires sorted, "
+        "indexed input; ignored with --keep-fastq.",
     )
-    no_preflight: bool = param(
-        False,
-        help="Skip the up-front disk space check (not recommended).",
-        action="store_true",
-    )
+    no_preflight: bool = no_preflight_param()
     restart: bool = restart_param()
     force_steps: tuple[str, ...] | None = force_steps_param(REALIGN_STEPS)
     dry_run: bool = dry_run_param()

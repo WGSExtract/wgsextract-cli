@@ -1,0 +1,19 @@
+# Offline tooling to build the qc ancestry reference (issue #620).
+# Not part of the CLI: `pixi run -m scripts/ancestry_reference/pixi.toml build ...`.
+[workspace]
+name = "wgsextract-ancestry-reference"
+channels = ["conda-forge", "bioconda"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.12.*"
+openjdk = "17.*"
+numpy = ">=2"
+plink2 = "*"
+bcftools = "*"
+samtools = "*"
+pyliftover = "*"
+
+[pypi-dependencies]
+hail = "==0.2.140"
+adamixture = "==1.9.3"

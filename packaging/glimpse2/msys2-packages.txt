@@ -1,0 +1,4 @@
+# Besides packaging/windows/msys2-packages.txt: Boost (static iostreams,
+# program_options and serialization) and zstd, which Boost's iostreams uses.
+mingw-w64-ucrt-x86_64-boost
+mingw-w64-ucrt-x86_64-zstd

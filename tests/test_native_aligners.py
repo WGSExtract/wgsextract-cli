@@ -1,32 +1,36 @@
 """``align`` and ``realign`` with WGS Extract's Apple Silicon aligner builds
 (wgse-bwa, wgse-bwa-mem3, wgse-minimap2) on PATH, and with bwa-mem3.
 
-The builds are faked at their boundary: a ``wgse-bwa`` that answers
+Most tests fake the builds at their boundary: a ``wgse-bwa`` that answers
 ``capabilities --json`` and otherwise runs the real bwa under its own name,
 as the real build does (its ``@PG`` CL names ``wgse-bwa`` and its backend
 option). The fake bwa-mem3 runs the real bwa or bwa-mem2 whose records its
 ``--compat`` mode writes. Apple Silicon, its GPU and the Mac's RAM are the
-mocked platform.
+mocked platform. The real-Metal #747 case instead uses the installed build
+and mocks only psutil; it skips when that hardware/build is unavailable.
 """
 
 import json
 from argparse import Namespace
 from pathlib import Path
 
+import psutil
 import pytest
 
 from tests.fake_tools import only_tools, python_tool
-from tests.htslib_helpers import run_wgsextract, write_fasta
+from tests.htslib_helpers import needs_tools, run_wgsextract, write_fasta
+from tests.prepared_data import sparse_truncate
 from tests.test_alignment_commands import _programs, _samtools, _short_reads
 from tests.test_realign import _args as _realign_args
 from tests.test_realign import _old_alignment
 from wgsextract_cli.commands import realign
 from wgsextract_cli.core import native_aligners, results
 from wgsextract_cli.core.alignment_memory import (
-    bwa_metal_memory,
+    bwa_gpu_memory,
     estimate_mapping_memory,
 )
 from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.samtools_commands import sort_memory
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 
 GIB = 1024**3
@@ -92,6 +96,29 @@ def apple_silicon(monkeypatch, ram):
 
 
 @pytest.fixture
+def linux_x86_64(monkeypatch, ram):
+    """A Linux x86-64 computer with 64 GiB of RAM."""
+    monkeypatch.setattr(
+        native_aligners,
+        "platform",
+        Namespace(system=lambda: "Linux", machine=lambda: "x86_64"),
+    )
+    ram(64 * GIB)
+
+
+def _cuda_capabilities(tool, cuda_available=True):
+    """A Linux build's capabilities (#674): CUDA, never Metal."""
+    return _capabilities(
+        tool,
+        version="0.10.0",
+        metal_available=False,
+        metal_hardware_supported=False,
+        cuda_available=cuda_available,
+        cuda_hardware_supported=cuda_available,
+    )
+
+
+@pytest.fixture
 def bwa_bin(request):
     return only_tools(request, "bwa", "samtools")
 
@@ -106,9 +133,10 @@ def _run(*argv):
 
 
 def _align(reads, out, *options, memory="1G"):
+    memory_options = ["--memory", memory] if memory is not None else []
     result = _run(
         "align", "--r1", reads.r1, "--r2", reads.r2, "--ref", reads.ref,
-        "--outdir", str(out), "--threads", "2", "--memory", memory, *options,
+        "--outdir", str(out), "--threads", "2", *memory_options, *options,
     )  # fmt: skip
     (bam,) = out.glob("*_aligned.bam")
     return str(bam), result
@@ -160,6 +188,71 @@ def test_auto_aligns_with_wgse_bwa_on_metal_and_names_it(tmp_path, bwa_bin):
     assert not native.warnings
 
 
+@pytest.mark.usefixtures("linux_x86_64")
+def test_linux_aligns_with_wgse_bwa_on_cuda_and_names_it(tmp_path, bwa_bin):
+    # #674: wgse-bwa's CUDA backend, used as the Metal one is.
+    reads = _short_reads(tmp_path)
+    _install_build(bwa_bin, "bwa", _cuda_capabilities("bwa"))
+
+    native_bam, native = _align(reads, tmp_path / "auto")
+    upstream_bam, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
+
+    assert _mapper(native_bam).startswith("wgse-bwa --backend auto mem ")
+    assert _samtools("view", native_bam) == _samtools("view", upstream_bam)
+    assert _native(native) == {
+        "native_aligner": "wgse-bwa",
+        "native_aligner_version": "0.10.0",
+        "native_aligner_backend": "cuda",
+    }
+    assert not native.warnings
+
+
+@pytest.mark.usefixtures("linux_x86_64")
+def test_linux_without_a_usable_nvidia_gpu_runs_wgse_bwa_on_the_cpu(tmp_path, bwa_bin):
+    reads = _short_reads(tmp_path)
+    _install_build(bwa_bin, "bwa", _cuda_capabilities("bwa", cuda_available=False))
+
+    bam, result = _align(reads, tmp_path / "out")
+
+    assert _mapper(bam).startswith("wgse-bwa mem ")
+    assert result.metrics["native_aligner_backend"] == "cpu"
+
+
+def test_linux_arm64_aligns_with_wgse_bwa_on_the_cpu(
+    tmp_path, bwa_bin, monkeypatch, ram
+):
+    # #672: the linux-aarch64 build has no CUDA backend; its CPU backend's NEON
+    # steps write bwa's exact records.
+    monkeypatch.setattr(
+        native_aligners,
+        "platform",
+        Namespace(system=lambda: "Linux", machine=lambda: "aarch64"),
+    )
+    ram(64 * GIB)
+    reads = _short_reads(tmp_path)
+    _install_build(bwa_bin, "bwa", _cuda_capabilities("bwa", cuda_available=False))
+
+    native_bam, native = _align(reads, tmp_path / "auto")
+    upstream_bam, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
+
+    assert _mapper(native_bam).startswith("wgse-bwa mem ")
+    assert _samtools("view", native_bam) == _samtools("view", upstream_bam)
+    assert _native(native) == {
+        "native_aligner": "wgse-bwa",
+        "native_aligner_version": "0.10.0",
+        "native_aligner_backend": "cpu",
+    }
+    assert not native.warnings
+
+
+@pytest.mark.usefixtures("linux_x86_64")
+def test_linux_uses_no_apple_silicon_only_build(bwa_bin):
+    # Only wgse-bwa is built for Linux; a wgse-bwa-mem2 on PATH is not used.
+    _install_build(bwa_bin, "bwa-mem2", _cuda_capabilities("bwa-mem2"), real="bwa")
+
+    assert native_aligners.find_native_aligner("bwa-mem2", "auto") is None
+
+
 @pytest.mark.usefixtures("apple_silicon")
 def test_config_turns_native_aligners_off(tmp_path, bwa_bin, monkeypatch):
     reads = _short_reads(tmp_path)
@@ -180,9 +273,7 @@ def test_a_bad_native_aligners_setting_is_refused(tmp_path, monkeypatch):
         _align(reads, tmp_path / "out")
 
 
-@pytest.mark.parametrize(
-    "machine", [("Darwin", "x86_64"), ("Linux", "aarch64"), ("Linux", "x86_64")]
-)
+@pytest.mark.parametrize("machine", [("Darwin", "x86_64"), ("Windows", "AMD64")])
 def test_other_computers_align_with_upstream_bwa(
     tmp_path, bwa_bin, monkeypatch, machine
 ):
@@ -265,6 +356,10 @@ def test_wgse_bwa_without_metal_aligns_on_the_cpu(tmp_path, bwa_bin):
     assert result.metrics["native_aligner_backend"] == "cpu"
 
 
+# A comment per read that makes _short_reads' files fill 2 threads' 1G sorts.
+_GENOME_SIZED = {"comment": 100_000}
+
+
 def _needed(reads, sort_memory):
     """The pipeline's memory estimate with wgse-bwa's GPU backend."""
     return estimate_mapping_memory(
@@ -275,7 +370,7 @@ def _needed(reads, sort_memory):
         samblaster=False,
         reads=2 * 140,
         read_length=100,
-        gpu_bytes=bwa_metal_memory(reads.ref, 2 * 140),
+        gpu_bytes=bwa_gpu_memory(reads.ref, 2 * 140),
     ).total
 
 
@@ -283,7 +378,7 @@ def _needed(reads, sort_memory):
 def test_a_mac_short_of_ram_for_metal_sorts_in_less_memory(tmp_path, bwa_bin, ram):
     # #480: a 16 GB Mac. Sorting with less memory leaves the output unchanged;
     # the batch size (-K) never changes.
-    reads = _short_reads(tmp_path)
+    reads = _short_reads(tmp_path, **_GENOME_SIZED)
     _install_build(bwa_bin, "bwa")
     upstream_bam, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
     ram(2 * GIB + (_needed(reads, "1G") + _needed(reads, "768M")) // 2)
@@ -298,7 +393,7 @@ def test_a_mac_short_of_ram_for_metal_sorts_in_less_memory(tmp_path, bwa_bin, ra
 
 @pytest.mark.usefixtures("apple_silicon")
 def test_a_mac_too_small_for_metal_runs_wgse_bwa_on_the_cpu(tmp_path, bwa_bin, ram):
-    reads = _short_reads(tmp_path)
+    reads = _short_reads(tmp_path, **_GENOME_SIZED)
     _install_build(bwa_bin, "bwa")
     ram(2 * GIB + _needed(reads, "256M") - GIB // 4)
 
@@ -310,23 +405,249 @@ def test_a_mac_too_small_for_metal_runs_wgse_bwa_on_the_cpu(tmp_path, bwa_bin, r
 
 
 @pytest.mark.usefixtures("apple_silicon")
-def test_a_genome_too_big_for_the_macs_ram_still_aligns_on_metal(
-    tmp_path, bwa_bin, ram
+def test_issue747_gpu_does_not_inherit_an_over_budget_cpu_floor(
+    tmp_path, bwa_bin, ram, caplog
 ):
-    # Issue #549: a 30x genome on a 16 GB M1 was estimated over RAM with or without
-    # the GPU, so wgse-bwa ran on the CPU, about 4x slower. Metal with less
-    # sort memory needs less than the CPU run with the default.
-    reads = _short_reads(tmp_path)
+    caplog.set_level("INFO")
+    reads = _short_reads(tmp_path, **_GENOME_SIZED)
     _install_build(bwa_bin, "bwa")
     upstream_bam, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
-    ram(2 * GIB + _needed(reads, "256M") - GIB)
+    budget = _needed(reads, "256M") - GIB // 4
+    ram(2 * GIB + budget)
 
     bam, result = _align(reads, tmp_path / "out")
 
-    assert _mapper(bam).startswith("wgse-bwa --backend auto mem -K 100000000 ")
-    assert _sort_memory(bam) == "512M"
+    assert _sort_memory(bam) == "256M"
     assert _samtools("view", bam) == _samtools("view", upstream_bam)
+    assert result.metrics["native_aligner_backend"] == "cpu"
+    assert result.metrics["native_aligner_backend_reason"] == "memory_budget_cpu"
+    assert result.metrics["native_aligner_memory_estimate_bytes"] > budget
+    assert result.metrics["native_aligner_memory_budget_bytes"] == budget
+    assert result.metrics["native_aligner_sort_memory_requested"] == "1G"
+    assert result.metrics["native_aligner_sort_memory_actual"] == "256M"
+    assert "2.5x slower" in caplog.text
+    assert "--prefer-native-gpu" in caplog.text
+
+
+@pytest.mark.parametrize("host", ["apple_silicon", "linux_x86_64"])
+def test_issue747_large_ram_host_keeps_gpu_when_momentary_available_is_low(
+    tmp_path, bwa_bin, ram, request, host
+):
+    request.getfixturevalue(host)
+    reads = _short_reads(tmp_path, **_GENOME_SIZED)
+    capabilities = _cuda_capabilities("bwa") if host == "linux_x86_64" else None
+    _install_build(bwa_bin, "bwa", capabilities)
+    ram(64 * GIB, available=GIB)
+
+    bam, result = _align(reads, tmp_path / "out")
+
+    assert result.metrics["native_aligner_backend"] == (
+        "cuda" if host == "linux_x86_64" else "metal"
+    )
+    assert _sort_memory(bam) == "1G"
+
+
+@pytest.mark.usefixtures("apple_silicon")
+@pytest.mark.parametrize("preference", ["flag", "config", "config_disabled_by_flag"])
+def test_issue747_speed_opt_in_preserves_gpu_and_explicit_sort_memory(
+    tmp_path, bwa_bin, ram, monkeypatch, preference
+):
+    reads = _short_reads(tmp_path, **_GENOME_SIZED)
+    _install_build(bwa_bin, "bwa")
+    control, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
+    cpu = _needed(reads, "384M") - bwa_gpu_memory(reads.ref, 2 * 140)
+    ram(2 * GIB + cpu - GIB // 4)
+    options = ["--prefer-native-gpu"] if preference == "flag" else []
+    if preference != "flag":
+        monkeypatch.setitem(settings, "prefer_native_gpu", True)
+    if preference == "config_disabled_by_flag":
+        options = ["--no-prefer-native-gpu"]
+
+    bam, result = _align(reads, tmp_path / "out", *options, memory="384M")
+
+    gpu = preference != "config_disabled_by_flag"
+    assert result.metrics["native_aligner_backend"] == ("metal" if gpu else "cpu")
+    assert _sort_memory(bam) == ("384M" if gpu else "256M")
+    assert result.metrics["native_aligner_backend_reason"] == (
+        "prefer_gpu" if gpu else "memory_budget_cpu"
+    )
+    assert _samtools("view", bam) == _samtools("view", control)
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_issue747_resume_preserves_fallback_explanation_and_speed_opt_in_reruns(
+    tmp_path, bwa_bin, ram
+):
+    reads = _short_reads(tmp_path, **_GENOME_SIZED)
+    _install_build(bwa_bin, "bwa")
+    source, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
+    ram(2 * GIB + _needed(reads, "256M") - GIB // 4)
+    out = tmp_path / "out"
+
+    def run(**options):
+        return _run_realign(
+            source, reads.ref, out, r1=reads.r1, r2=reads.r2,
+            memory="1G", threads=2, no_preflight=True, **options,
+        )  # fmt: skip
+
+    first = run()
+    (bam,) = out.glob("*_aligned.bam")
+    written = bam.stat().st_mtime_ns
+    resumed = run()
+    assert bam.stat().st_mtime_ns == written
+    assert _native(resumed) == _native(first)
+    assert resumed.metrics["native_aligner_backend_reason"] == "memory_budget_cpu"
+    assert (
+        resumed.metrics["native_aligner_memory_estimate_bytes"]
+        > (resumed.metrics["native_aligner_memory_budget_bytes"])
+    )
+    assert resumed.metrics["native_aligner_sort_memory_actual"] == _sort_memory(
+        str(bam)
+    )
+    control = _samtools("view", str(bam))
+
+    preferred = run(prefer_native_gpu=True)
+    assert bam.stat().st_mtime_ns != written
+    assert preferred.metrics["native_aligner_backend"] == "metal"
+    assert preferred.metrics["native_aligner_sort_memory_actual"] == _sort_memory(
+        str(bam)
+    )
+    assert _samtools("view", str(bam)) == control
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_issue747_preference_tries_gpu_sort_stepdown_before_over_budget_override(
+    tmp_path, bwa_bin, ram, monkeypatch
+):
+    reads = _short_reads(tmp_path, **_GENOME_SIZED)
+    _install_build(bwa_bin, "bwa")
+    control, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
+    ram(2 * GIB + (_needed(reads, "1G") + _needed(reads, "768M")) // 2)
+    monkeypatch.setitem(settings, "prefer_native_gpu", True)
+
+    bam, result = _align(reads, tmp_path / "out")
+
     assert result.metrics["native_aligner_backend"] == "metal"
+    assert _sort_memory(bam) == "768M"
+    assert (
+        result.metrics["native_aligner_backend_reason"]
+        == "memory_budget_metal_low_sort"
+    )
+    assert _samtools("view", bam) == _samtools("view", control)
+
+
+@pytest.mark.usefixtures("apple_silicon")
+@pytest.mark.parametrize("memory_source", ["default", "config", "explicit"])
+def test_issue747_over_budget_preference_preserves_only_explicit_sort_memory(
+    tmp_path, bwa_bin, ram, monkeypatch, memory_source
+):
+    reads = _short_reads(tmp_path, **_GENOME_SIZED)
+    _install_build(bwa_bin, "bwa")
+    cpu = _needed(reads, "384M") - bwa_gpu_memory(reads.ref, 2 * 140)
+    ram(2 * GIB + cpu - GIB // 4)
+    monkeypatch.setitem(settings, "prefer_native_gpu", True)
+    if memory_source == "config":
+        monkeypatch.setitem(settings, "memory_limit", "1G")
+
+    bam, result = _align(
+        reads,
+        tmp_path / "out",
+        memory="384M" if memory_source == "explicit" else None,
+    )
+
+    assert result.metrics["native_aligner_backend"] == "metal"
+    assert result.metrics["native_aligner_backend_reason"] == "prefer_gpu"
+    assert _sort_memory(bam) == ("384M" if memory_source == "explicit" else "256M")
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_issue747_preference_does_not_rerun_an_already_fitting_gpu_alignment(
+    tmp_path, bwa_bin, ram
+):
+    reads = _short_reads(tmp_path, **_GENOME_SIZED)
+    _install_build(bwa_bin, "bwa")
+    source, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
+    ram(2 * GIB + (_needed(reads, "1G") + _needed(reads, "768M")) // 2)
+    out = tmp_path / "out"
+    options = {
+        "r1": reads.r1,
+        "r2": reads.r2,
+        "memory": "1G",
+        "threads": 2,
+        "no_preflight": True,
+    }
+    first = _run_realign(source, reads.ref, out, **options)
+    (bam,) = out.glob("*_aligned.bam")
+    written = bam.stat().st_mtime_ns
+
+    resumed = _run_realign(source, reads.ref, out, prefer_native_gpu=True, **options)
+
+    assert bam.stat().st_mtime_ns == written
+    assert _native(first) == _native(resumed)
+    journal = json.loads(bam.with_suffix(".bam.steps.json").read_text())
+    assert "prefer_native_gpu" not in journal["steps"]["align"]["params"]
+
+
+@needs_tools("bwa", "samtools", "samblaster")
+def test_issue747_real_metal_realign_adapts_to_low_physical_memory(
+    tmp_path, monkeypatch
+):
+    native = native_aligners.find_native_aligner("bwa", "auto")
+    if native is None or native.gpu != "metal":
+        pytest.skip("Requires the installed real wgse-bwa Metal build")
+    reads = _short_reads(tmp_path)
+    (tmp_path / "old").mkdir()
+    source, pairs = _old_alignment(tmp_path, reads.genome)
+    memory = psutil.virtual_memory()
+    monkeypatch.setattr(
+        psutil,
+        "virtual_memory",
+        lambda: memory._replace(total=16 * GIB, available=14 * GIB),
+    )
+    baseline_out = tmp_path / "baseline"
+    baseline = _run_realign(
+        source, reads.ref, baseline_out, memory="1G", aligner="bwa", no_preflight=False
+    )
+    monkeypatch.setattr(
+        psutil,
+        "virtual_memory",
+        lambda: memory._replace(total=4 * GIB, available=2 * GIB),
+    )
+    low_out = tmp_path / "low-memory"
+    low = _run_realign(
+        source, reads.ref, low_out, memory="1G", aligner="bwa", no_preflight=False
+    )
+
+    baseline_bam = str(baseline_out / "x_aligned.bam")
+    low_bam = str(low_out / "x_aligned.bam")
+    assert baseline.metrics["native_aligner_backend"] == "metal"
+    assert low.metrics["native_aligner_backend"] == "cpu"
+    # Input sizing already bounds these tiny buffers; fallback must not raise them.
+    assert _sort_memory(low_bam) == _sort_memory(baseline_bam)
+    baseline_records = _samtools("view", baseline_bam)
+    assert len(baseline_records.splitlines()) == 2 * pairs
+    assert _samtools("view", low_bam) == baseline_records
+
+
+@pytest.mark.usefixtures("apple_silicon")
+@pytest.mark.parametrize(("memory", "cpu_fits"), [("100M", False), ("384M", True)])
+def test_issue747_cpu_fallback_retains_smaller_or_already_fitting_sort_budget(
+    tmp_path, bwa_bin, ram, memory, cpu_fits
+):
+    reads = _short_reads(tmp_path, **_GENOME_SIZED)
+    _install_build(bwa_bin, "bwa")
+    upstream_bam, _ = _align(
+        reads, tmp_path / "off", "--native-aligners", "off", memory=memory
+    )
+    cpu = _needed(reads, memory) - bwa_gpu_memory(reads.ref, 2 * 140)
+    budget = (cpu + _needed(reads, "256M")) // 2 if cpu_fits else cpu - GIB // 4
+    ram(2 * GIB + budget)
+
+    bam, result = _align(reads, tmp_path / "out", memory=memory)
+
+    assert _sort_memory(bam) == memory
+    assert result.metrics["native_aligner_backend"] == "cpu"
+    assert _samtools("view", bam) == _samtools("view", upstream_bam)
 
 
 @pytest.mark.usefixtures("apple_silicon")
@@ -404,7 +725,7 @@ def test_realign_keeps_streaming_when_only_metal_would_not_fit(tmp_path, bwa_bin
         platform="illumina", read_length=100,
     ).total  # fmt: skip
     # Room for bwa's pipeline and collation's few reads, but not for the GPU.
-    ram(16 * GIB, available=upstream + bwa_metal_memory(ref, reads) // 2)
+    ram(16 * GIB, available=upstream + bwa_gpu_memory(ref, reads) // 2)
     outdir = tmp_path / "out"
 
     result = _run_realign(source, ref, outdir)
@@ -443,11 +764,15 @@ sys.exit(aligner.wait())
 """
 
 
-def _install_bwa_mem3(bindir, name="wgse-bwa-mem3", capabilities=None, mem2="bwa-mem2"):
+def _install_bwa_mem3(
+    bindir, name="wgse-bwa-mem3", capabilities=None, mem2="bwa-mem2", real_bin=None
+):
     """The fake; ``mem2`` names the real aligner for --compat=bwa-mem2 (bwa
-    when the test's bwa-mem2 index can't be loaded)."""
-    real = {"bwa": str((bindir / "bwa").resolve())}
-    real["bwa-mem2"] = str((bindir / mem2).resolve())
+    when the test's bwa-mem2 index can't be loaded), in ``real_bin`` (else
+    ``bindir``)."""
+    real_bin = real_bin or bindir
+    real = {"bwa": str((real_bin / "bwa").resolve())}
+    real["bwa-mem2"] = str((real_bin / mem2).resolve())
     source = _FAKE_BWA_MEM3.format(
         capabilities=capabilities or _capabilities("bwa-mem3"), real=real, name=name
     )
@@ -459,10 +784,10 @@ def mem3_bin(request):
     return only_tools(request, "bwa", "bwa-mem2", "samtools")
 
 
-def _mem3_reads(tmp_path):
+def _mem3_reads(tmp_path, **options):
     """Reads whose reference has bwa's index and bwa-mem2's, which bwa-mem3
     maps with."""
-    reads = _short_reads(tmp_path)
+    reads = _short_reads(tmp_path, **options)
     for indexer in (["bwa", "index"], ["bwa-mem2", "index"]):
         _run_tool([*indexer, reads.ref])
     return reads
@@ -522,7 +847,7 @@ def test_without_bwa_mem2s_index_wgse_bwa_aligns_in_bwas_place(tmp_path, mem3_bi
 def test_a_mac_short_of_ram_for_bwa_mem3_aligns_with_bwa(tmp_path, mem3_bin, ram):
     # bwa-mem3's index takes about twice bwa's memory: on a Mac where only
     # bwa's pipeline fits, bwa aligns.
-    reads = _mem3_reads(tmp_path)
+    reads = _mem3_reads(tmp_path, **_GENOME_SIZED)
     _install_bwa_mem3(mem3_bin)
 
     def needed(engine, gpu_bytes=0):
@@ -578,13 +903,13 @@ def test_aligner_bwa_mem3_writes_bwas_records(tmp_path, mem3_bin):
 
 @pytest.mark.parametrize(
     ("machine", "options"),
-    [(("Linux", "x86_64"), ()), (("Darwin", "arm64"), ("--native-aligners", "off"))],
+    [(("Linux", "aarch64"), ()), (("Darwin", "arm64"), ("--native-aligners", "off"))],
 )
 def test_fast_aligns_with_bwa_mem3s_preset_and_warns(
     tmp_path, mem3_bin, monkeypatch, ram, machine, options
 ):
-    # Off Apple Silicon, or with native aligners off, bwa-mem3 from PATH runs
-    # even with wgse-bwa-mem3 installed.
+    # Where wgse-bwa-mem3 isn't built (Linux ARM64), or with native aligners
+    # off, bwa-mem3 from PATH runs even with wgse-bwa-mem3 installed.
     reads = _mem3_reads(tmp_path)
     _install_bwa_mem3(mem3_bin)
     _install_bwa_mem3(mem3_bin, name="bwa-mem3")
@@ -639,7 +964,8 @@ def test_bwa_mem3_without_bwa_mem3_fails_clearly(tmp_path, mem3_bin, options, ad
         _align(reads, tmp_path / "out", *options)
 
     message = str(raised.value)
-    assert "needs wgse-bwa-mem3 (Apple Silicon) or bwa-mem3" in message
+    assert "needs wgse-bwa-mem3" in message
+    assert "or bwa-mem3 (Bioconda" in message
     assert message.endswith(advice)
 
 
@@ -691,8 +1017,7 @@ def test_realign_fast_streams_into_bwa_mem3_and_a_resumed_run_still_warns(
 
 def _bloat_0123(ref):
     """Make bwa-mem2's .0123 file a sparse 64 GiB (so bwa-mem2 can't load it)."""
-    with open(ref + ".0123", "r+b") as index:
-        index.truncate(64 * GIB)
+    sparse_truncate(Path(ref + ".0123"), 64 * GIB)
 
 
 def _mem3_needed(reads, engine, available_reads=2 * 140, **options):
@@ -712,7 +1037,7 @@ def test_bwa_aligns_when_only_its_pipeline_fits_the_ram_available(
     # too little available it took bwa's place (and auto, having dropped
     # bwa-mem2 for low available RAM, picked the bigger stand-in). A sparse
     # .0123 makes bwa-mem2's index hs38-sized next to bwa-mem3's.
-    reads = _mem3_reads(tmp_path)
+    reads = _mem3_reads(tmp_path, **_GENOME_SIZED)
     _bloat_0123(reads.ref)
     _install_bwa_mem3(mem3_bin)
     bwa = _mem3_needed(reads, "bwa")
@@ -943,7 +1268,7 @@ def test_native_aligners_off_still_needs_bwa_mem2s_0123_file(tmp_path, mem3_bin)
     # #658 review: upstream bwa-mem2 reads the .0123 file, so with the
     # installed wgse-bwa-mem2 0.5.0 turned off align builds it first.
     reads = _mem3_reads(tmp_path)
-    Path(reads.ref + ".0123").unlink()
+    Path(reads.ref + ".0123").unlink(missing_ok=True)
     _install_wgse_bwa_mem2(mem3_bin, "0.5.0")
 
     bam, result = _align(
@@ -953,3 +1278,588 @@ def test_native_aligners_off_still_needs_bwa_mem2s_0123_file(tmp_path, mem3_bin)
     assert _mapper(bam, "bwa-mem2").startswith("bwa-mem2 mem ")
     assert "native_aligner" not in result.metrics
     assert Path(reads.ref + ".0123").is_file()
+
+
+# #672: on Linux, Bioconda's bwa-mem3 (its own Pixi environment, #591) stands
+# in for bwa and bwa-mem2 with --compat, as wgse-bwa-mem3 does on Apple Silicon.
+@pytest.fixture(params=["x86_64", "aarch64"])
+def linux(request, monkeypatch, ram):
+    """A Linux computer (x86-64 or ARM64) with 64 GiB of RAM."""
+    monkeypatch.setattr(
+        native_aligners,
+        "platform",
+        Namespace(system=lambda: "Linux", machine=lambda: request.param),
+    )
+    ram(64 * GIB)
+
+
+def _env_bwa_mem3(fake_pixi, mem3_bin, source=None):
+    """Bioconda's bwa-mem3, faked, in the installed bwa-mem3 environment."""
+    bindir = fake_pixi.env("bwa-mem3", locked=("bwa-mem3",)) / "bin"
+    if source is None:
+        return _install_bwa_mem3(bindir, name="bwa-mem3", real_bin=mem3_bin)
+    return python_tool(bindir, "bwa-mem3", source)
+
+
+@pytest.mark.usefixtures("linux")
+@pytest.mark.parametrize(
+    ("aligner", "compat"), [("bwa", "bwa-mem"), ("bwa-mem2", "bwa-mem2")]
+)
+def test_linux_bwa_mem3_from_its_environment_stands_in_with_the_same_records(
+    tmp_path, mem3_bin, fake_pixi, aligner, compat
+):
+    reads = _mem3_reads(tmp_path)
+    _env_bwa_mem3(fake_pixi, mem3_bin)
+
+    bam, result = _align(reads, tmp_path / "auto", "--aligner", aligner)
+    upstream_bam, upstream = _align(
+        reads, tmp_path / "off", "--aligner", aligner, "--native-aligners", "off"
+    )
+
+    # contract: --compat=<target> is what makes bwa-mem3 write the target's records.
+    assert _mapper(bam, aligner).startswith(f"bwa-mem3 mem --compat={compat} ")
+    assert _mapper(upstream_bam, aligner).startswith(f"{aligner} mem ")
+    assert _samtools("view", bam) == _samtools("view", upstream_bam)
+    assert result.metrics["aligner"] == aligner
+    assert result.metrics["bwa_mem3_mode"] == f"compat={compat}"
+    assert _native(result) == {
+        "native_aligner": "bwa-mem3",
+        "native_aligner_version": "0.16.0",
+        "native_aligner_backend": "cpu",
+    }
+    assert result.provenance.tools["bwa-mem3"] == "0.16.0"
+    assert "bwa_mem3_mode" not in upstream.metrics
+    assert not result.warnings
+
+
+_CRASHING_BWA_MEM3 = """\
+import os, signal
+
+os.kill(os.getpid(), signal.SIGSEGV)
+"""
+
+
+@pytest.mark.usefixtures("linux_x86_64")
+@pytest.mark.parametrize("cuda", [True, False])
+@pytest.mark.parametrize("options", [("--aligner", "bwa"), ()])
+def test_736_linux_prefers_bwa_mem3_to_wgse_bwa_on_cuda(
+    tmp_path, mem3_bin, fake_pixi, cuda, options
+):
+    # #736: on an RTX 3090, bwa-mem3 --compat=bwa-mem on the CPU (98 s) beat
+    # wgse-bwa --cuda (131 s) with the same records, yet the GPU went first.
+    reads = _mem3_reads(tmp_path)
+    # Without bwa-mem2's .0123 file auto keeps bwa's records.
+    Path(reads.ref + ".0123").unlink(missing_ok=True)
+    _install_build(mem3_bin, "bwa", _cuda_capabilities("bwa", cuda_available=cuda))
+    _env_bwa_mem3(fake_pixi, mem3_bin)
+
+    bam, result = _align(reads, tmp_path / "auto", *options)
+    upstream_bam, _ = _align(
+        reads, tmp_path / "off", "--aligner", "bwa", "--native-aligners", "off"
+    )
+
+    # contract: --compat=bwa-mem is what makes bwa-mem3 write bwa's records.
+    assert _mapper(bam).startswith("bwa-mem3 mem --compat=bwa-mem ")
+    assert _samtools("view", bam) == _samtools("view", upstream_bam)
+    assert result.metrics["aligner"] == "bwa"
+    assert result.metrics["native_aligner"] == "bwa-mem3"
+    assert result.metrics["native_aligner_backend"] == "cpu"
+    assert not result.warnings
+
+
+@pytest.mark.usefixtures("linux_x86_64")
+@pytest.mark.parametrize("why", ["crashes", "does not fit"])
+def test_736_wgse_bwa_on_cuda_aligns_when_bwa_mem3_cannot(
+    tmp_path, mem3_bin, fake_pixi, ram, why
+):
+    # #736 keeps wgse-bwa --cuda next, for a bwa-mem3 that crashes (#727) or
+    # whose pipeline doesn't fit the RAM available.
+    reads = _mem3_reads(tmp_path, **_GENOME_SIZED)
+    _install_build(mem3_bin, "bwa", _cuda_capabilities("bwa"))
+    _env_bwa_mem3(fake_pixi, mem3_bin, _CRASHING_BWA_MEM3 if why == "crashes" else None)
+    if why == "does not fit":
+        bwa = _mem3_needed(reads, "bwa")
+        stand_in = _mem3_needed(reads, "bwa-mem3")
+        assert stand_in > bwa  # so halfway leaves room for bwa only
+        ram(64 * GIB, available=(bwa + stand_in) // 2)
+
+    bam, result = _align(reads, tmp_path / "out", "--aligner", "bwa")
+    upstream_bam, _ = _align(
+        reads, tmp_path / "off", "--aligner", "bwa", "--native-aligners", "off"
+    )
+
+    assert _mapper(bam).startswith("wgse-bwa --backend auto mem ")
+    assert _samtools("view", bam) == _samtools("view", upstream_bam)
+    assert result.metrics["native_aligner"] == "wgse-bwa"
+    assert result.metrics["native_aligner_backend"] == "cuda"
+    if why == "crashes":
+        (warning,) = result.warnings
+        assert warning.code == "native_aligner_unusable"
+
+
+@pytest.mark.usefixtures("linux")
+@pytest.mark.parametrize(
+    ("source", "problem"),
+    [
+        # Bioconda's x86-64 build crashed at startup on glibc 2.44 (#672).
+        (_CRASHING_BWA_MEM3, "crashed (SIGSEGV)"),
+        ("print('0.15.0')\n", "its version '0.15.0' isn't 0.16.0 or later"),
+    ],
+)
+def test_linux_bwa_mem3_that_fails_its_check_warns_and_bwa_aligns(
+    tmp_path, mem3_bin, fake_pixi, source, problem
+):
+    reads = _mem3_reads(tmp_path)
+    _env_bwa_mem3(fake_pixi, mem3_bin, source)
+
+    bam, result = _align(reads, tmp_path / "out", "--aligner", "bwa")
+
+    assert _mapper(bam).startswith("bwa mem ")
+    (warning,) = result.warnings
+    assert warning.code == "native_aligner_unusable"
+    assert problem in warning.message
+    assert warning.details["aligner"] == "bwa"
+
+
+def _linux_wgse_bwa_mem3_capabilities(**overrides):
+    """The Linux x86-64 wgse-bwa-mem3 package's capabilities (#674)."""
+    document = {
+        "version": "0.4.0",
+        "metal_available": False,
+        "metal_hardware_supported": False,
+        "cuda_available": True,
+        "cuda_hardware_supported": True,
+        **overrides,
+    }
+    return _capabilities("bwa-mem3", **document)
+
+
+@pytest.mark.parametrize(
+    ("machine", "mapper", "native"),
+    [
+        (
+            "x86_64",
+            "wgse-bwa-mem3 --backend auto mem --compat=bwa-mem2 ",
+            ("wgse-bwa-mem3", "0.4.0", "cuda"),
+        ),
+        # wgse-bwa-mem3 is built for x86-64 only.
+        ("aarch64", "bwa-mem3 mem --compat=bwa-mem2 ", ("bwa-mem3", "0.16.0", "cpu")),
+    ],
+)
+def test_linux_x86_64_wgse_bwa_mem3_stands_in_before_biocondas_on_its_gpu(
+    tmp_path, mem3_bin, fake_pixi, monkeypatch, ram, machine, mapper, native
+):
+    # #674: the Linux package, found on PATH as wgse-bwa does, runs its CUDA
+    # backend in Bioconda's bwa-mem3's place, with the same records.
+    monkeypatch.setattr(
+        native_aligners,
+        "platform",
+        Namespace(system=lambda: "Linux", machine=lambda: machine),
+    )
+    ram(64 * GIB)
+    reads = _mem3_reads(tmp_path)
+    _install_bwa_mem3(mem3_bin, capabilities=_linux_wgse_bwa_mem3_capabilities())
+    _env_bwa_mem3(fake_pixi, mem3_bin)
+
+    bam, result = _align(reads, tmp_path / "auto", "--aligner", "bwa-mem2")
+    upstream_bam, _ = _align(
+        reads, tmp_path / "off", "--aligner", "bwa-mem2", "--native-aligners", "off"
+    )
+
+    assert _mapper(bam, "bwa-mem2").startswith(mapper)
+    assert _samtools("view", bam) == _samtools("view", upstream_bam)
+    assert _native(result) == dict(
+        zip(
+            ("native_aligner", "native_aligner_version", "native_aligner_backend"),
+            native,
+            strict=True,
+        )
+    )
+    assert not result.warnings
+
+
+@pytest.mark.usefixtures("linux_x86_64")
+@pytest.mark.parametrize("options", [("--aligner", "bwa"), ()])
+def test_linux_wgse_bwa_mem3_goes_ahead_of_wgse_bwa_on_cuda(
+    tmp_path, mem3_bin, fake_pixi, options
+):
+    # #742 review: with both packages installed, bwa's records come from
+    # wgse-bwa-mem3 (#736's order), on its own GPU.
+    reads = _mem3_reads(tmp_path)
+    # Without bwa-mem2's .0123 file auto keeps bwa's records.
+    Path(reads.ref + ".0123").unlink(missing_ok=True)
+    _install_build(mem3_bin, "bwa", _cuda_capabilities("bwa"))
+    _install_bwa_mem3(mem3_bin, capabilities=_linux_wgse_bwa_mem3_capabilities())
+    _env_bwa_mem3(fake_pixi, mem3_bin)
+
+    bam, result = _align(reads, tmp_path / "auto", *options)
+    upstream_bam, _ = _align(
+        reads, tmp_path / "off", "--aligner", "bwa", "--native-aligners", "off"
+    )
+
+    # contract: --compat=bwa-mem is what makes bwa-mem3 write bwa's records.
+    assert _mapper(bam).startswith("wgse-bwa-mem3 --backend auto mem --compat=bwa-mem ")
+    assert _samtools("view", bam) == _samtools("view", upstream_bam)
+    assert result.metrics["aligner"] == "bwa"
+    assert result.metrics["native_aligner"] == "wgse-bwa-mem3"
+    assert result.metrics["native_aligner_backend"] == "cuda"
+    assert not result.warnings
+
+
+@pytest.mark.usefixtures("linux_x86_64")
+@pytest.mark.parametrize(
+    ("bioconda", "mapper", "aligner"),
+    [
+        (None, "bwa-mem3 mem --compat=bwa-mem ", "bwa-mem3"),
+        ("print('0.15.0')\n", "bwa mem ", "bwa"),
+    ],
+)
+def test_linux_unusable_wgse_bwa_mem3_warns_naming_what_aligns_instead(
+    tmp_path, mem3_bin, fake_pixi, bioconda, mapper, aligner
+):
+    # #742 review: with Bioconda's bwa-mem3 unusable too, bwa aligns, and the
+    # warning must say so rather than name bwa-mem3.
+    reads = _mem3_reads(tmp_path)
+    build = _install_bwa_mem3(
+        mem3_bin, capabilities=_linux_wgse_bwa_mem3_capabilities(cpu_available=False)
+    )
+    _env_bwa_mem3(fake_pixi, mem3_bin, bioconda)
+
+    bam, result = _align(reads, tmp_path / "out", "--aligner", "bwa")
+
+    assert _mapper(bam).startswith(mapper)
+    warnings = {w.details["binary"]: w for w in result.warnings}
+    assert warnings["wgse-bwa-mem3"].code == "native_aligner_unusable"
+    assert warnings["wgse-bwa-mem3"].details == {
+        "binary": "wgse-bwa-mem3",
+        "path": str(build),
+        "aligner": aligner,
+    }
+
+
+@pytest.fixture
+def glibc_2_44(monkeypatch):
+    """The C library of the host where Bioconda's bwa-mem3 crashed (#727)."""
+    monkeypatch.setattr(
+        native_aligners.os,
+        "confstr",
+        lambda name: "glibc 2.44" if name == "CS_GNU_LIBC_VERSION" else None,
+        raising=False,  # Windows' os has no confstr.
+    )
+
+
+@pytest.mark.usefixtures("linux_x86_64", "glibc_2_44")
+def test_727_crashing_bwa_mem3_stand_in_falls_back_and_names_the_cause(
+    tmp_path, mem3_bin, fake_pixi
+):
+    # #727: Bioconda's bwa-mem3 0.16.0 segfaults at startup on glibc 2.44;
+    # standing in for bwa it must not take the alignment down with it.
+    reads = _mem3_reads(tmp_path)
+    _env_bwa_mem3(fake_pixi, mem3_bin, _CRASHING_BWA_MEM3)
+
+    bam, result = _align(reads, tmp_path / "out")
+
+    # Auto's next choice for these reads, bwa-mem2, aligns.
+    assert _mapper(bam, "bwa-mem2").startswith("bwa-mem2 mem ")
+    assert result.metrics["aligner"] == "bwa-mem2"
+    (warning,) = result.warnings
+    assert warning.code == "native_aligner_unusable"
+    assert warning.details["aligner"] == "bwa-mem2"
+    assert "SIGSEGV" in warning.message
+    assert "glibc 2.44" in warning.message and "#727" in warning.message
+
+
+@pytest.mark.usefixtures("linux_x86_64", "glibc_2_44")
+@pytest.mark.parametrize(
+    ("command", "options"),
+    [
+        ("align", ("--aligner", "bwa-mem3")),
+        ("align", ("--fast",)),
+        ("realign", ("--aligner", "bwa-mem3")),
+    ],
+)
+def test_727_explicit_bwa_mem3_that_crashes_stops_with_the_cause(
+    tmp_path, mem3_bin, fake_pixi, command, options
+):
+    # #727: --aligner bwa-mem3 ran the crashing build and failed with a bare
+    # "exit -11" and errors from samblaster and samtools sort downstream.
+    _env_bwa_mem3(fake_pixi, mem3_bin, _CRASHING_BWA_MEM3)
+    out = tmp_path / "out"
+    if command == "align":
+        reads = _mem3_reads(tmp_path)
+        run = lambda: _align(reads, out, *options)  # noqa: E731
+    else:
+        source, ref = _mem3_realign_source(tmp_path)
+        run = lambda: _run_realign(source, ref, out, aligner="bwa-mem3")  # noqa: E731
+
+    with pytest.raises(WGSExtractError) as raised:
+        run()
+
+    message = str(raised.value)
+    assert f"{' '.join(options)} needs bwa-mem3" in message
+    assert "crashed (SIGSEGV)" in message and "glibc 2.44" in message
+    assert not list(out.glob("*_aligned.*"))
+
+
+@pytest.mark.usefixtures("apple_silicon")
+@pytest.mark.parametrize("command", ["align", "realign"])
+def test_auto_aligns_with_wgse_bwa_mem2_0_5_0_without_upstream_or_0123(
+    tmp_path, mem3_bin, caplog, command
+):
+    # #660: auto took bwa-mem2 only with upstream bwa-mem2 on PATH and the
+    # .0123 file, neither of which wgse-bwa-mem2 0.5.0 needs. #664 review:
+    # realign's preflight still reported the .0123 file missing.
+    if command == "align":
+        reads = _mem3_reads(tmp_path)
+        ref = reads.ref
+    else:
+        source, ref = _mem3_realign_source(tmp_path)
+    Path(ref + ".0123").unlink()
+    (mem3_bin / "bwa-mem2").unlink()
+    _install_wgse_bwa_mem2(mem3_bin, "0.5.0")
+    outdir = tmp_path / "out"
+    caplog.set_level("INFO")
+
+    if command == "align":
+        bam, result = _align(reads, outdir)
+    else:
+        result = _run_realign(source, ref, outdir)
+        bam = str(outdir / "x_aligned.bam")
+
+    assert _mapper(bam, "bwa").startswith("wgse-bwa-mem2 mem ")
+    assert result.metrics["native_aligner"] == "wgse-bwa-mem2"
+    assert not Path(ref + ".0123").exists()
+    assert "Missing reference indexes" not in caplog.text
+
+
+@pytest.mark.usefixtures("apple_silicon")
+@pytest.mark.parametrize(
+    ("version", "options", "mapper"),
+    [
+        ("0.5.0", (), "wgse-bwa-mem2 mem "),
+        ("0.4.1", (), "wgse-bwa "),
+        ("0.5.0", ("--native-aligners", "off"), "bwa mem "),
+    ],
+)
+def test_auto_budgets_wgse_bwa_mem2_0_5_0_without_its_0123_file(
+    tmp_path, mem3_bin, ram, version, options, mapper
+):
+    # #660: auto counted the .0123 file that wgse-bwa-mem2 0.5.0 doesn't load,
+    # and picked bwa when only that build fit. Builds that load it, and
+    # upstream bwa-mem2, still count it.
+    reads = _mem3_reads(tmp_path)
+    _bloat_0123(reads.ref)
+    _install_wgse_bwa_mem2(mem3_bin, version)
+    _install_build(mem3_bin, "bwa", _capabilities("bwa", metal_available=False))
+    without_0123 = _mem3_needed(reads, "wgse-bwa-mem2", memory="256M")
+    ram(64 * GIB, available=without_0123 + 2 * GIB)
+
+    bam, _ = _align(reads, tmp_path / "out", *options)
+
+    assert _mapper(bam, "bwa").startswith(mapper)
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_auto_keeps_wgse_bwa_when_wgse_bwa_mem2_does_not_fit(tmp_path, mem3_bin, ram):
+    # #660: a 16 GB Mac whose available RAM can't hold even wgse-bwa-mem2
+    # 0.5.0's pipeline still aligns with wgse-bwa.
+    reads = _mem3_reads(tmp_path)
+    _install_wgse_bwa_mem2(mem3_bin, "0.5.0")
+    _install_build(mem3_bin, "bwa", _capabilities("bwa", metal_available=False))
+    ram(16 * GIB, available=_mem3_needed(reads, "wgse-bwa-mem2", memory="256M") // 2)
+
+    bam, result = _align(reads, tmp_path / "out")
+
+    assert _mapper(bam, "bwa").startswith("wgse-bwa ")
+    assert result.metrics["native_aligner"] == "wgse-bwa"
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_auto_keeps_wgse_bwa_mem2_when_only_it_fits_the_ram_available(
+    tmp_path, mem3_bin, ram
+):
+    # #664 review: auto chose bwa-mem2 because wgse-bwa-mem2 fit the RAM
+    # available, then the bigger wgse-bwa-mem3 stood in, checked only against
+    # this Mac's RAM less headroom, and started over budget.
+    reads = _mem3_reads(tmp_path)
+    Path(reads.ref + ".0123").unlink(missing_ok=True)
+    _install_bwa_mem3(mem3_bin, mem2="bwa")
+    _install_wgse_bwa_mem2(mem3_bin, "0.5.0")
+    mem2 = _mem3_needed(reads, "wgse-bwa-mem2", memory="256M")
+    stand_in = _mem3_needed(reads, "bwa-mem3", memory="256M", gpu_bytes=GIB // 4)
+    ram(64 * GIB, available=(mem2 + stand_in) // 2)
+
+    bam, result = _align(reads, tmp_path / "out")
+
+    assert _mapper(bam, "bwa").startswith("wgse-bwa-mem2 mem ")
+    assert "bwa_mem3_mode" not in result.metrics
+
+
+@pytest.mark.usefixtures("apple_silicon")
+@pytest.mark.parametrize("upstream", [True, False])
+def test_auto_names_the_aligner_it_uses_for_an_unusable_wgse_bwa_mem2(
+    tmp_path, mem3_bin, upstream
+):
+    # #664 review: auto's look at an unusable wgse-bwa-mem2 warned "Aligning
+    # with bwa-mem2 instead" when, without upstream bwa-mem2, bwa aligned.
+    reads = _mem3_reads(tmp_path)
+    if not upstream:
+        (mem3_bin / "bwa-mem2").unlink()
+    _install_build(mem3_bin, "bwa-mem2", status=1)
+
+    bam, result = _align(reads, tmp_path / "out")
+
+    if upstream:
+        assert _mapper(bam, "bwa-mem2").startswith("bwa-mem2 mem ")
+        (warning,) = result.warnings
+        assert warning.details["aligner"] == "bwa-mem2"
+    else:
+        assert _mapper(bam).startswith("bwa mem ")
+        assert not result.warnings
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_auto_with_only_wgse_bwa_mem3_keeps_bwas_records(tmp_path, mem3_bin):
+    # #660 owner rule: wgse-bwa-mem3 alone (no .0123 file, no upstream
+    # bwa-mem2) stands in for bwa with bwa's records; auto doesn't switch to
+    # bwa-mem2's.
+    reads = _mem3_reads(tmp_path)
+    Path(reads.ref + ".0123").unlink(missing_ok=True)
+    (mem3_bin / "bwa-mem2").unlink()
+    _install_bwa_mem3(mem3_bin, mem2="bwa")
+
+    _, result = _align(reads, tmp_path / "out")
+
+    assert result.metrics["aligner"] == "bwa"
+    assert result.metrics["bwa_mem3_mode"] == "compat=bwa-mem"
+
+
+# #674: wgse-minimap2 0.4.0 on Linux x86-64 runs long reads' gap fills on an
+# NVIDIA GPU with --backend auto; sr, older builds and ARM64 stay on the CPU.
+def _align_single(reads, out, *options):
+    result = _run(
+        "align", "--r1", reads.r1, "--ref", reads.ref, "--outdir", str(out),
+        "--threads", "2", "--memory", "1G", "--aligner", "minimap2", *options,
+    )  # fmt: skip
+    (bam,) = out.glob("*_aligned.bam")
+    return str(bam), result
+
+
+def _minimap2_cuda(version="0.4.0", cuda_available=True):
+    """The Linux x86-64 wgse-minimap2 package's capabilities on a CUDA machine
+    (cuda_available is false while its GPU's memory is taken)."""
+    return _capabilities(
+        "minimap2",
+        version=version,
+        metal_available=False,
+        metal_hardware_supported=False,
+        cuda_available=cuda_available,
+        cuda_hardware_supported=True,
+    )
+
+
+def _linux(monkeypatch, machine):
+    monkeypatch.setattr(
+        native_aligners,
+        "platform",
+        Namespace(system=lambda: "Linux", machine=lambda: machine),
+    )
+
+
+@pytest.mark.parametrize(
+    ("machine", "version", "options", "backend"),
+    [
+        ("x86_64", "0.4.0", ("--platform", "ont"), "cuda"),
+        ("x86_64", "0.4.0", ("--platform", "hifi"), "cuda"),
+        # Before 0.4.0 wgse-minimap2 had no --backend.
+        ("x86_64", "0.3.0", ("--platform", "ont"), "cpu"),
+        # wgse-minimap2 is built for Linux x86-64 only.
+        ("aarch64", "0.4.0", ("--platform", "ont"), None),
+    ],
+)
+def test_linux_long_reads_run_wgse_minimap2_on_cuda(
+    tmp_path, request, monkeypatch, ram, machine, version, options, backend
+):
+    _linux(monkeypatch, machine)
+    ram(64 * GIB)
+    bindir = only_tools(request, "minimap2", "samtools")
+    reads = _short_reads(tmp_path)
+    _install_build(bindir, "minimap2", _minimap2_cuda(version))
+
+    bam, result = _align_single(reads, tmp_path / "auto", *options)
+    upstream_bam, _ = _align_single(
+        reads, tmp_path / "off", *options, "--native-aligners", "off"
+    )
+
+    if backend is None:
+        assert _native(result) == {}
+    else:
+        assert result.metrics["native_aligner"] == "wgse-minimap2"
+        assert result.metrics["native_aligner_backend"] == backend
+    assert _samtools("view", bam) == _samtools("view", upstream_bam)
+    assert not result.warnings
+
+
+@pytest.mark.usefixtures("linux_x86_64")
+def test_linux_short_reads_keep_wgse_minimap2_on_the_cpu(tmp_path, request):
+    # sr's gap fills stay on the CPU even with --cuda, so no GPU is set up.
+    bindir = only_tools(request, "minimap2", "samtools")
+    reads = _short_reads(tmp_path)
+    _install_build(bindir, "minimap2", _minimap2_cuda())
+
+    bam, result = _align(reads, tmp_path / "out", "--aligner", "minimap2")
+
+    assert result.metrics["native_aligner"] == "wgse-minimap2"
+    assert result.metrics["native_aligner_backend"] == "cpu"
+    assert _samtools("view", "-c", bam) != "0\n"
+
+
+@pytest.mark.usefixtures("linux_x86_64")
+def test_linux_wgse_minimap2_without_ram_for_its_gpu_runs_on_the_cpu(
+    tmp_path, request, ram
+):
+    bindir = only_tools(request, "minimap2", "samtools")
+    reads = _short_reads(tmp_path)
+    _install_build(bindir, "minimap2", _minimap2_cuda())
+
+    size = Path(reads.r1).stat().st_size
+
+    def needed(gpu_bytes):
+        return estimate_mapping_memory(
+            reads.ref,
+            "minimap2",
+            threads="2",
+            # #781: the sort gets no more than these reads fill.
+            memory=sort_memory("2", "1G", input_bytes=size),
+            samblaster=False,
+            platform="ont",
+            read_length=100,
+            preset="map-ont",
+            input_bytes=size,
+            gpu_bytes=gpu_bytes,
+        ).total
+
+    # #752 review: just the CPU backend's estimate, which the GPU backend's
+    # (with its RAM's headroom too) exceeds.
+    ram(64 * GIB, needed(0))
+
+    bam, result = _align_single(reads, tmp_path / "out", "--platform", "ont")
+
+    assert result.metrics["native_aligner"] == "wgse-minimap2"
+    assert result.metrics["native_aligner_backend"] == "cpu"
+    assert _samtools("view", "-c", bam) != "0\n"
+
+
+@pytest.mark.usefixtures("linux_x86_64")
+def test_linux_wgse_minimap2_keeps_its_gpu_when_busy_at_the_first_probe(
+    tmp_path, request
+):
+    # #752 review: capabilities are asked once per process, and a GPU busy then
+    # reports cuda_available false; --backend auto checks it as each run starts.
+    bindir = only_tools(request, "minimap2", "samtools")
+    reads = _short_reads(tmp_path)
+    _install_build(bindir, "minimap2", _minimap2_cuda(cuda_available=False))
+
+    _, result = _align_single(reads, tmp_path / "out", "--platform", "hifi")
+
+    assert result.metrics["native_aligner_backend"] == "cuda"

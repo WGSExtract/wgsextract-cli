@@ -1,6 +1,8 @@
 import contextlib
 import glob
+import hashlib
 import logging
+import math
 import os
 import platform
 import re
@@ -15,7 +17,7 @@ from typing import Any
 
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import DEEPVARIANT_STEPS, VcfDeepvariantParams
-from wgsextract_cli.core import alignment_memory, ultima
+from wgsextract_cli.core import alignment_memory, native_deepvariant, ultima
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.containers import (
@@ -27,14 +29,18 @@ from wgsextract_cli.core.containers import (
     run_container,
 )
 from wgsextract_cli.core.cram_staging import (
+    cram_version,
+    indexed_slice_bytes,
     needs_cram30,
     region_intervals,
     stage_cram30,
+    staging_bytes,
 )
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
+from wgsextract_cli.core.genotype_qc import contigs_with_reads
 from wgsextract_cli.core.messages import LOG_MESSAGES
-from wgsextract_cli.core.native_support import is_linux_arm64, require_native_tool
+from wgsextract_cli.core.native_support import is_arm64_docker_host, require_native_tool
 from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_assets import read_fai_lengths
@@ -42,14 +48,20 @@ from wgsextract_cli.core.region_selection import (
     region_items,
 )
 from wgsextract_cli.core.resource_estimates import (
+    GENOME_BASES,
     GIB,
+    HostRequirement,
     PostprocessPlan,
+    PreflightEstimate,
+    calling_hours,
+    check_host_requirement,
     dv_calling_regions,
     estimate_resources,
     plan_dv_postprocess,
     preflight_resources,
 )
 from wgsextract_cli.core.results import warn
+from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.sequencing import input_platform, refuse_mixed_platforms
 from wgsextract_cli.core.steps import Decision, Step, StepJournal, resume_policy
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
@@ -77,8 +89,8 @@ _CRAM31_BUG = (
     "to every image."
 )
 _SETUP = (
-    "DeepVariant runs from Google's Docker image on Linux and macOS (Apple "
-    "Silicon emulates it, slowly): install Docker, then docker pull {image}. "
+    "DeepVariant runs from Google's Docker image on x86-64 Linux and Intel "
+    "Macs: install Docker, then docker pull {image}. "
     "Or put Google's run_deepvariant on PATH."
 )
 
@@ -90,16 +102,21 @@ def deepvariant_image(model_type: str = "WGS", gpu: bool = False) -> str:
         )
     if model_type == "ULTIMA":
         return str(settings.get("deepvariant_ultima_image") or DEFAULT_ULTIMA_IMAGE)
-    default = DEFAULT_ARM64_IMAGE if is_linux_arm64() else DEFAULT_IMAGE
+    default = DEFAULT_ARM64_IMAGE if is_arm64_docker_host() else DEFAULT_IMAGE
     return str(settings.get("deepvariant_image") or default)
 
 
 _ARM64_SETUP = (
-    "Build the native CPU DeepVariant 1.10.0 image with "
-    "packaging/deepvariant-arm64/build.sh (see docs/deepvariant-arm64.md); "
+    "Build the native CPU DeepVariant 1.10.0 image on Linux ARM64 with "
+    "packaging/deepvariant-arm64/build.sh (on a Mac, build it there and move "
+    "it with docker save / docker load; see docs/deepvariant-arm64.md); "
     "set deepvariant_image in config.toml if you "
     "use another local tag. Dependencies and images must already be installed. "
     "Google's x86 image, emulation and unaudited PATH launchers are not supported."
+)
+_ARM64_ALTERNATIVES = (
+    "Otherwise call variants with vcf clair3 (ONT reads), vcf snp and vcf indel "
+    "(bcftools, short reads), or run DeepVariant on an x86-64 host."
 )
 
 
@@ -107,8 +124,8 @@ def _require_arm64_wgs(model_type: str, checkpoint: str | None = None) -> None:
     if model_type != "WGS" or checkpoint:
         selection = "--checkpoint" if checkpoint else f"model {model_type}"
         raise WGSExtractError(
-            f"DeepVariant {selection} is not qualified on Linux ARM64; "
-            f"only the default WGS model is qualified. {_ARM64_SETUP}"
+            f"DeepVariant {selection} is not qualified on ARM64; "
+            f"only the default WGS model is qualified. {_ARM64_ALTERNATIVES}"
         )
 
 
@@ -118,25 +135,46 @@ def _verify_arm64_image(model_type: str = "WGS", checkpoint: str | None = None) 
     architecture = docker_info(_ARM64_SETUP, "{{.Architecture}}").strip().lower()
     if architecture not in {"aarch64", "arm64"}:
         raise WGSExtractError(
-            "DeepVariant requires a native ARM64 Docker engine on Linux ARM64; "
+            "DeepVariant requires a native ARM64 Docker engine on ARM64; "
             "an x64 engine or emulation is not supported."
         )
     image = deepvariant_image(model_type)
     require_image(
-        image, f"Native DeepVariant image isn't installed: {image}. {_ARM64_SETUP}"
+        image,
+        f"Native DeepVariant image isn't installed: {image}. {_ARM64_SETUP} "
+        f"{_ARM64_ALTERNATIVES}",
     )
-    inspected = run_command(
-        [docker(_ARM64_SETUP), "image", "inspect", "--format",
-         "{{.Os}}/{{.Architecture}}", image],
-        capture_output=True,
-        check=False,
-    )  # fmt: skip
-    if inspected.returncode or (inspected.stdout or "").strip() != "linux/arm64":
+    found = _image_platform(image, _ARM64_SETUP)
+    _refuse_emulated_amd64(image, architecture, found)
+    if found != "linux/arm64":
         raise WGSExtractError(
             f"DeepVariant image {image} must be linux/arm64; "
             "x86 images and emulation are not supported."
         )
     return image
+
+
+def _image_platform(image: str, setup: str) -> str:
+    """The image's ``os/architecture`` (``linux/amd64``), or "" if unknown."""
+    inspected = run_command(
+        [docker(setup), "image", "inspect", "--format",
+         "{{.Os}}/{{.Architecture}}", image],
+        capture_output=True,
+        check=False,
+    )  # fmt: skip
+    return (inspected.stdout or "").strip() if not inspected.returncode else ""
+
+
+def _refuse_emulated_amd64(image: str, engine: str, found: str) -> None:
+    """An amd64 image on an ARM64 engine aborts in its first stage (#665)."""
+    if engine in {"aarch64", "arm64"} and found == "linux/amd64":
+        raise WGSExtractError(
+            f"DeepVariant image {image} is linux/amd64 and can't run on this "
+            "ARM64 Docker engine: Google publishes DeepVariant for x86-64 only, "
+            "and Docker's x86-64 emulation (including Docker Desktop on Apple "
+            "Silicon) lacks the AVX instructions its TensorFlow needs, so it "
+            f"aborts (exit 134). {_ARM64_SETUP} {_ARM64_ALTERNATIVES}"
+        )
 
 
 def _model_type(
@@ -186,7 +224,7 @@ def _require_ont_x86(model_type: str) -> None:
     }:
         raise WGSExtractError(
             "DeepVariant ONT_R104 requires x86-64; it is not qualified on ARM64, "
-            "including Apple Silicon emulation. Use an x86-64 host."
+            "including Apple Silicon. Use vcf clair3, or an x86-64 host."
         )
 
 
@@ -233,6 +271,9 @@ def _verify_docker_image(model_type: str, gpu: bool = False) -> str:
         f"The DeepVariant image isn't downloaded: docker pull {image} "
         f"(set {setting} in config.toml for another version).",
     )
+    setup = _SETUP.format(image=image)
+    engine = docker_info(setup, "{{.Architecture}}").strip().lower()
+    _refuse_emulated_amd64(image, engine, _image_platform(image, setup))
     return image
 
 
@@ -252,17 +293,129 @@ def _container_regions(region: str) -> str:
     )
 
 
-def _available_memory(setup: str | None) -> int | None:
-    """Free host RAM, capped by the Docker engine's (e.g. Docker Desktop's VM)."""
+def _docker_memory(setup: str | None) -> int | None:
+    """The Docker engine's memory (e.g. Docker Desktop's VM), when it reports it."""
+    if setup is None:
+        return None
+    engine = docker_info(setup, "{{.MemTotal}}").strip()
+    return int(engine) if engine.isdigit() and int(engine) > 0 else None
+
+
+def _available_memory(engine: int | None) -> int | None:
+    """Free host RAM, capped by the Docker ``engine``'s memory."""
     try:
         available = alignment_memory.available_memory()
     except OSError:
         return None
-    if setup is not None:
-        engine = docker_info(setup, "{{.MemTotal}}").strip()
-        if engine.isdigit() and int(engine) > 0:
-            available = min(available, int(engine))
-    return available
+    return available if engine is None else min(available, engine)
+
+
+def _selected_share(
+    reads: str, ref: str, intervals: dict[str, list[tuple[int, int]]]
+) -> float | None:
+    """The share of ``reads``' data in ``intervals``: their CRAI slices, or
+    all the BAM index's reads on each contig they touch (reads can crowd
+    into a capture region). None when the index can't say."""
+    try:
+        if cram_version(reads) is not None:
+            size = Path(reads).stat().st_size
+            selected = indexed_slice_bytes(reads, ref, intervals)
+            return None if selected is None or not size else min(1.0, selected / size)
+        if not alignment_index(reads):
+            return None
+        from wgsextract_cli.commands.info.metrics import parse_idxstats
+
+        stats, *_ = parse_idxstats(reads)
+    except (OSError, ValueError, subprocess.SubprocessError, WGSExtractError):
+        return None
+    total = sum(stat["mapped"] + stat["unmapped"] for stat in stats)
+    picked = sum(stat["mapped"] for stat in stats if stat["name"] in intervals)
+    return picked / total if total else None
+
+
+def _host_requirement(
+    estimate: PreflightEstimate | None,
+    floor: PreflightEstimate | None,
+    *,
+    input_file: str,
+    ref: str,
+    region: str | None,
+    threads: int,
+    model_type: str,
+    native: bool,
+    native_gpu: bool,
+    staged_reads: bool,
+    work: Path,
+    engine: int | None,
+) -> HostRequirement:
+    """DeepVariant's host requirement (#690): the estimate's disk (for a
+    --region, the share of the input's data it selects, else all of it)
+    beside any CRAM 3.0 copy; its RAM, and the least it can run in
+    (``floor``: one thread, a batch of 256); and its time for the bases it
+    calls on contigs with reads."""
+    lengths = read_fai_lengths(ref)
+    try:
+        regions = dv_calling_regions(lengths, region) or []
+    except (OSError, ValueError) as error:
+        logging.debug("DeepVariant's calling regions weren't sized: %s", error)
+        regions = []
+    intervals: dict[str, list[tuple[int, int]]] = {}
+    for contig, start, end in regions:
+        intervals.setdefault(contig, []).append((start, end))
+    # Without resolved intervals (no .fai), keep the whole-input bound.
+    selected = (
+        _selected_share(input_file, ref, intervals) if region and intervals else None
+    )
+    share = 1.0 if selected is None else selected
+    disk: list[tuple[str, int | None]] = []
+    memory = None
+    for row in estimate.resources if estimate else ():
+        if row.resource == "memory":
+            memory = row.estimated_bytes
+        elif row.paths:
+            needed = row.estimated_bytes
+            disk.append(
+                (row.paths[0], None if needed is None else math.ceil(needed * share))
+            )
+    if staged_reads:
+        try:
+            copy: int | None = staging_bytes(
+                input_file, ref, intervals if region else None
+            )
+        except OSError:
+            copy = None
+        disk.append((str(work), copy))
+    try:
+        with_reads = contigs_with_reads(input_file, ref)
+    except (OSError, ValueError, subprocess.SubprocessError, WGSExtractError):
+        with_reads = {}
+    called = sum(
+        end - start
+        for contig, start, end in regions
+        if not with_reads or contig in with_reads
+    )
+    caller = (
+        "deepvariant-ont"
+        if model_type == "ONT_R104"
+        else ("wgse-deepvariant-gpu" if native_gpu else "wgse-deepvariant")
+        if native
+        else "deepvariant"
+    )
+    hours = (
+        None
+        if model_type == "WES"
+        else calling_hours(caller, called or int(GENOME_BASES), threads)
+    )
+    capacity = None
+    if engine is not None:
+        capacity = min(engine, alignment_memory.total_memory())
+    least = next(
+        (r.estimated_bytes for r in floor.resources if r.resource == "memory"), None
+    ) if floor else None  # fmt: skip
+    return HostRequirement(
+        "DeepVariant", tuple(disk), memory, threads, hours,
+        memory_floor=least, memory_capacity=capacity,
+    )  # fmt: skip
 
 
 def _supports_num_partitions(
@@ -410,6 +563,9 @@ _ULTIMA_GPU_SETUP = (
 ULTIMA_GPU_MIN_FREE = round(7.3 * GIB)
 # call_variants' default --batch_size, which that measurement used.
 CALL_VARIANTS_BATCH = 1024
+# Free GPU memory wgse-deepvariant's call_variants needs on CUDA at its default
+# batch (#719, RTX 3090, HG002 chr20): see NATIVE_CUDA_MIN_FREE's measurement.
+NATIVE_CUDA_MIN_FREE = 3 * GIB
 
 
 def _model_chosen(params: VcfDeepvariantParams) -> bool:
@@ -455,31 +611,43 @@ def _verify_ultima_gpu(params: VcfDeepvariantParams) -> None:
         docker_info(setup)
 
 
-def _check_gpu_free(check: bool, batch_size: int | None) -> None:
-    """Refuse (unless not ``check``) when a GPU lacks the memory call_variants
-    needs; just before it runs, so plans and finished reruns don't need one.
-    Every GPU is checked: the container gets them all."""
+def _check_gpu_free(
+    check: bool,
+    batch_size: int | None,
+    need: int = ULTIMA_GPU_MIN_FREE,
+    default_batch: int = CALL_VARIANTS_BATCH,
+    device: int | None = None,
+) -> None:
+    """Refuse (unless not ``check``) when a GPU lacks the ``need`` bytes
+    call_variants needs at its ``default_batch``; just before it runs, so
+    plans and finished reruns don't need one. Every GPU is checked (the
+    container gets them all), or only ``device`` (wgse-deepvariant's)."""
     from wgsextract_cli.core.parabricks import gpu_memory
 
-    gpus = gpu_memory()
+    gpus = [g for g in gpu_memory() if device is None or g.index == device]
     free = [gpu.free_bytes for gpu in gpus if gpu.free_bytes is not None]
     if not free:
         logging.warning("GPU memory is unknown; running call_variants anyway.")
         return
-    if check and batch_size not in (None, CALL_VARIANTS_BATCH):
+    if check and batch_size not in (None, default_batch):
         warn(
             "deepvariant_gpu_batch_size",
-            f"--batch-size {batch_size}: the {ULTIMA_GPU_MIN_FREE / GIB:.1f} GiB "
+            f"--batch-size {batch_size}: the {need / GIB:.1f} GiB "
             "free-GPU-memory check assumes call_variants' default batch of "
-            f"{CALL_VARIANTS_BATCH}, so it may pass a batch that runs out of GPU "
+            f"{default_batch}, so it may pass a batch that runs out of GPU "
             "memory or refuse one that fits.",
         )
     least = min(free)
-    if least >= ULTIMA_GPU_MIN_FREE:
+    if least >= need:
         return
     message = (
-        f"DeepVariant call_variants needs ~{ULTIMA_GPU_MIN_FREE / GIB:.1f} GiB of "
-        f"free memory on each GPU, but one has {least / GIB:.1f} GiB free "
+        f"DeepVariant call_variants needs ~{need / GIB:.1f} GiB of "
+        + (
+            "free memory on each GPU, but one"
+            if device is None
+            else f"free memory on GPU {device}, but it"
+        )
+        + f" has {least / GIB:.1f} GiB free "
         "(other programs are using it)."
     )
     if check:
@@ -515,6 +683,12 @@ def _deepvariant_parabricks(
     setup = caller or setup_caller(params)
     outdir, ref = setup.outdir, setup.ref
     input_file, region = str(params.input), params.region
+    from .caller_ploidy import calling_ploidy, require_diploid
+
+    require_diploid(
+        calling_ploidy(input_file, ref, setup.lib, outdir, region),
+        "Parabricks DeepVariant",
+    )
     _require_ont_x86(model_type)
     if model_type == "ONT_R104":
         _warn_ont_chemistry(input_file, ref)
@@ -528,6 +702,124 @@ def _deepvariant_parabricks(
     record_variants(out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region))
 
 
+def _native_gpu_preflight(native: native_deepvariant.NativeDeepVariant | None) -> None:
+    """Before --gpu's first unfinished stage: the build has CUDA and the
+    driver sees a GPU, so make_examples doesn't run for a GPU that isn't
+    there. Plans and finished reruns don't need one."""
+    from wgsextract_cli.core.parabricks import gpu_memory
+
+    if native is None:
+        return
+    if not native.cuda:
+        raise WGSExtractError(
+            f"--gpu: wgse-deepvariant ({native.path}) is the CPU-only build. "
+            "Install its cuda129 package, or call without --gpu."
+        )
+    if not any(gpu.index == 0 for gpu in gpu_memory()):
+        raise WGSExtractError(
+            "--gpu: nvidia-smi reports no NVIDIA GPU; install the NVIDIA "
+            "driver, or call without --gpu."
+        )
+
+
+def _native_model(path: str, model_type: str, checkpoint: str | None) -> bool:
+    """Whether wgse-deepvariant at ``path`` calls with this model here. On a
+    Mac, where Google's image can't run, the others are refused; on Linux
+    they run in the image (or Parabricks) as before, as do models the
+    installed build predates."""
+    if not checkpoint and model_type in native_deepvariant.models():
+        return native_deepvariant.qualified(path, model_type)
+    if sys.platform == "darwin":
+        selection = "--checkpoint" if checkpoint else f"model {model_type}"
+        raise WGSExtractError(
+            f"wgse-deepvariant runs only the WGS model; DeepVariant {selection} "
+            f"isn't qualified on Apple Silicon. {_ARM64_ALTERNATIVES}"
+        )
+    return False
+
+
+def _docker_args(
+    model_type: str,
+    ref: str,
+    reads: str,
+    vcf: str,
+    shards: int,
+    work: Path,
+    region: str | None,
+    checkpoint: str | None,
+    batch_size: int | None,
+    postprocess: PostprocessPlan | None,
+    threads: int,
+) -> list[str]:
+    """run_deepvariant's options, with the paths an image sees."""
+    args = [
+        "--model_type", model_type,
+        "--ref", host_path(ref),
+        "--reads", host_path(reads),
+        "--output_vcf", host_path(vcf),
+        "--num_shards", str(shards),
+        "--intermediate_results_dir", host_path(str(work)),
+        *(["--regions", _container_regions(region)] if region else []),
+    ]  # fmt: skip
+    if checkpoint:
+        args += ["--customized_model", host_path(checkpoint)]
+    if batch_size is not None:
+        args += ["--call_variants_extra_args", f"batch_size={batch_size}"]
+    return args + _postprocess_args(postprocess, threads)
+
+
+def _native_args(
+    native: native_deepvariant.NativeDeepVariant,
+    ref: str,
+    reads: str,
+    vcf: str,
+    shards: int,
+    work: Path,
+    region: str | None,
+    batch_size: int | None,
+    gpu: bool,
+    threads: int,
+) -> list[str]:
+    """wgse-deepvariant run's options. On Linux call_variants runs on the CPU,
+    or with ``gpu`` (--gpu) on an NVIDIA GPU, never silently on the CPU
+    instead. A selection goes to it as one BED of
+    the intervals it covers, in reference order (BED files, literals or
+    both, of any size: a command line holds at most 1 MiB on macOS), named
+    by its content so a changed selection reruns the stages."""
+    args = [
+        "run",
+        f"--model_type={native.model_type}",
+        f"--ref={ref}",
+        f"--reads={reads}",
+        f"--output_vcf={vcf}",
+        f"--num_shards={shards}",
+        f"--intermediate_results_dir={work}",
+        f"--checkpoint={native.checkpoint}",
+        f"--small_model_path={native.small_model}",
+    ]
+    if region:
+        lengths = read_fai_lengths(ref)
+        intervals = region_intervals(region, lengths, "DeepVariant")
+        bed = "".join(
+            f"{chrom}\t{start}\t{end}\n"
+            for chrom in lengths
+            for start, end in intervals.get(chrom, ())
+        )
+        path = work / _REGIONS / f"{hashlib.sha256(bed.encode()).hexdigest()[:16]}.bed"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(bed, newline="\n")
+        args.append(f"--regions={path}")
+    if batch_size is not None:
+        args.append(f"--batch_size={batch_size}")
+    if sys.platform != "darwin":
+        # This run's threads: the shard count a resumed run keeps may differ.
+        args += [
+            f"--inference_backend={'cuda' if gpu else 'cpu'}",
+            f"--cpu_threads={threads}",
+        ]
+    return args
+
+
 def run_deepvariant(params: VcfDeepvariantParams) -> None:
     """``vcf deepvariant``: DeepVariant into ``deepvariant.vcf.gz``, in
     resumable stages, or Parabricks."""
@@ -537,6 +829,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
         raise UsageError("DeepVariant --batch-size must be positive.")
     caller = None
     gpu = params.gpu
+    native_gpu = False
     if gpu:
         require_gpu_host()
         if params.region and any(
@@ -549,31 +842,63 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                 f"{params.region!r}"
             )
         model, caller = _gpu_model(params)
-        if model != "ULTIMA":
+        # wgse-deepvariant, when installed, calls its models on the GPU
+        # without Docker; Parabricks the rest (deepvariant_native = "off": all).
+        installed = native_deepvariant.installed()
+        native_gpu = installed is not None and _native_model(installed, model, None)
+        if native_gpu:
+            logging.info(
+                "Calling on the GPU with wgse-deepvariant (CUDA), without Docker "
+                'or Parabricks; deepvariant_native = "off" runs Parabricks instead.'
+            )
+        elif model != "ULTIMA":
             _deepvariant_parabricks(params, model, caller)
             return
-        # Parabricks has no ULTIMA model: Google's GPU image runs DeepVariant's
-        # stages, as on the CPU, with call_variants on the GPU.
-        logging.info(
-            "Ultima reads on the GPU: running DeepVariant's stages in Google's "
-            "experimental GPU image (Parabricks has no ULTIMA model)."
-        )
-        _verify_ultima_gpu(params)
+        else:
+            # Parabricks has no ULTIMA model: Google's GPU image runs
+            # DeepVariant's stages, as on the CPU, with call_variants on the GPU.
+            logging.info(
+                "Ultima reads on the GPU: running DeepVariant's stages in Google's "
+                "experimental GPU image (Parabricks has no ULTIMA model)."
+            )
+            _verify_ultima_gpu(params)
         if params.region:
             # --gpu's regions are comma-separated; DeepVariant's, spaced.
             params = replace(
                 params, region=" ".join(region_items(params.region, commas=True))
             )
     checkpoint = str(params.checkpoint) if params.checkpoint else None
+    native_path = native_deepvariant.installed() if native_gpu or not gpu else None
+    native = None
+    early_model = _model_type(params)
+    if native_path and sys.platform != "darwin" and not _model_chosen(params):
+        # On Linux the reads choose between wgse-deepvariant and the image,
+        # before the build is checked.
+        caller = caller or setup_caller(params)
+        early_model = _model_type(params, caller.ref, caller.platform)
+    if native_path and _native_model(native_path, early_model, checkpoint):
+        native = native_deepvariant.require(
+            native_path,
+            early_model,
+            weights=_model_chosen(params) or sys.platform != "darwin",
+        )
+    # The GPU image (Ultima) or Parabricks.
+    gpu_image = gpu and not native
     arm64_image = (
         _verify_arm64_image(_model_type(params), checkpoint)
-        if is_linux_arm64() and not gpu
+        if is_arm64_docker_host() and not gpu and not native
         else None
     )
     if not arm64_image:
         _require_ont_x86(_model_type(params))
-    local_dv = None if arm64_image or gpu else get_tool_path("run_deepvariant")
-    if not local_dv and not arm64_image and not gpu:
+    local_dv = (
+        native.path
+        if native
+        else None
+        if arm64_image or gpu_image
+        else get_tool_path("run_deepvariant")
+    )
+    if not local_dv and not arm64_image and not gpu_image:
         _verify_docker()
     verify_dependencies(["samtools", "tabix"])
     caller = caller or setup_caller(params)
@@ -582,6 +907,15 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
     model_type = _model_type(params, ref, caller.platform)
     if arm64_image:
         _require_arm64_wgs(model_type, checkpoint)
+    if native and (model_type != native.model_type or native.weights is None):
+        # The reads chose the model.
+        if _native_model(native.path, model_type, checkpoint):
+            native = native_deepvariant.require(native.path, model_type)
+        else:
+            native = None
+            local_dv = get_tool_path("run_deepvariant")
+            if not local_dv:
+                _verify_docker(model_type)
     _require_ont_x86(model_type)
     if model_type == "ONT_R104":
         _warn_ont_chemistry(input_file, ref)
@@ -589,23 +923,55 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
         # A local run_deepvariant is a release, which has no ULTIMA model yet.
         _verify_docker(model_type)
         local_dv = None
-    image = arm64_image or (None if local_dv else _verify_docker_image(model_type, gpu))
+    image = arm64_image or (
+        None if local_dv else _verify_docker_image(model_type, gpu_image)
+    )
     setup = (
         _ARM64_SETUP
         if arm64_image
-        else (_ULTIMA_GPU_SETUP if gpu else _SETUP).format(image=image)
+        else (_ULTIMA_GPU_SETUP if gpu_image else _SETUP).format(image=image)
         if image
         else None
     )
-    available = _available_memory(setup)
-    postprocess = _postprocess_plan(
-        model_type, ref, region, int(threads), available,
-        lambda: _supports_num_partitions(image, local_dv, setup),
+    engine = _docker_memory(setup)
+    available = _available_memory(engine)
+    # wgse-deepvariant's postprocess_variants is one process (estimate_resources).
+    postprocess = (
+        None
+        if native
+        else _postprocess_plan(
+            model_type, ref, region, int(threads), available,
+            lambda: _supports_num_partitions(image, local_dv, setup),
+        )
     )  # fmt: skip
     out_vcf = str(Path(outdir, "deepvariant.vcf.gz"))
     # Absolute, like the journal's paths, so stage files match their records.
     work = absolute_path(Path(outdir, WORK_DIRECTORY))
-    staged_reads = needs_cram30(input_file)
+    from .caller_ploidy import calling_ploidy, require_diploid, write_intervals
+
+    ploidy = calling_ploidy(input_file, ref, caller.lib, outdir, region, commas=False)
+    if native:
+        require_diploid(ploidy, "wgse-deepvariant")
+    if not any(i.ploidy for i in ploidy):
+        raise WGSExtractError("The sex/ploidy policy excludes every requested base.")
+    if any(i.ploidy == 0 for i in ploidy):
+        region = " ".join(
+            f"{i.chrom}:{i.start + 1}-{i.end}" for i in ploidy if i.ploidy
+        )
+        if len(region.encode()) > 500_000:
+            raise WGSExtractError(
+                "Ploidy exclusions require too many calling intervals; "
+                "select a smaller --region."
+            )
+    haploid = sorted({i.chrom for i in ploidy if i.ploidy == 1})
+    par = None
+    if haploid:
+        par = write_intervals(
+            absolute_path(Path(outdir, ".deepvariant.policy", "par.bed")),
+            [i for i in ploidy if i.chrom in haploid and i.ploidy == 2],
+        )
+    # wgse-deepvariant's htslib (1.25, ARM) decodes CRAM 3.1 correctly.
+    staged_reads = not native and needs_cram30(input_file)
     reads = str(work / "reads" / "reads.cram") if staged_reads else input_file
     region_files = [
         p for p in region_items(region or "", commas=False) if Path(p).is_file()
@@ -614,10 +980,21 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
         local_dv,
         arm64_image or image,
         bool(arm64_image),
-        [ref, input_file, out_vcf, str(work), checkpoint, *region_files],
+        [ref, input_file, out_vcf, str(work), checkpoint, *region_files, par],
         work,
+        preflight=(lambda: _native_gpu_preflight(native)) if native_gpu else None,
         gpu_check=(
-            (lambda: _check_gpu_free(not params.no_gpu_memory_check, batch_size))
+            (
+                lambda: _check_gpu_free(
+                    not params.no_gpu_memory_check,
+                    batch_size,
+                    NATIVE_CUDA_MIN_FREE,
+                    native_deepvariant.default_batch_size(),
+                    device=0,
+                )
+            )
+            if native_gpu
+            else (lambda: _check_gpu_free(not params.no_gpu_memory_check, batch_size))
             if gpu
             else None
         ),
@@ -625,45 +1002,84 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
     inputs: dict[str, str | None] = {
         "alignment": input_file,
         "reference": ref,
+        "ploidy_par": par,
         "launcher": local_dv if launcher.image is None else None,
         **{f"regions:{i}": path for i, path in enumerate(region_files)},
         **_checkpoint_files(checkpoint),
+        **(native.weight_files() if native else {}),
     }
 
     with StepJournal.for_output(
         out_vcf, "deepvariant", resume_policy(params)
     ) as journal:
         shards = _shard_count(journal, int(threads))
-        dv_args = [
-            "--model_type", model_type,
-            "--ref", host_path(ref),
-            "--reads", host_path(reads),
-            "--output_vcf", host_path(str(work / Path(out_vcf).name)),
-            "--num_shards", str(shards),
-            "--intermediate_results_dir", host_path(str(work)),
-            *(["--regions", _container_regions(region)] if region else []),
-        ]  # fmt: skip
-        if checkpoint:
-            dv_args += ["--customized_model", host_path(checkpoint)]
-        if batch_size is not None:
-            dv_args += ["--call_variants_extra_args", f"batch_size={batch_size}"]
-        dv_args += _postprocess_args(postprocess, int(threads))
-        if not journal.dry_run and not any(journal.recorded(s) for s in STEPS):
-            preflight_resources(
-                lambda: estimate_resources(
+        if native:
+            batch_size = batch_size or native_deepvariant.default_batch_size()
+            dv_args = _native_args(
+                native, ref, reads, str(work / Path(out_vcf).name), shards, work,
+                region, batch_size, native_gpu, int(threads),
+            )  # fmt: skip
+        else:
+            dv_args = _docker_args(
+                model_type, ref, reads, str(work / Path(out_vcf).name), shards, work,
+                region, checkpoint, batch_size, postprocess, int(threads),
+            )  # fmt: skip
+            if haploid:
+                assert par is not None
+                dv_args += [
+                    "--haploid_contigs",
+                    ",".join(haploid),
+                    "--par_regions_bed",
+                    host_path(par),
+                ]
+        if not journal.dry_run:
+            # A rerun with finished stages needs less than this: it warns.
+            fresh = not any(journal.recorded(s) for s in STEPS)
+
+            def estimate_with(
+                threads: str, batch: int, plan: PostprocessPlan | None
+            ) -> PreflightEstimate:
+                return estimate_resources(
                     "deepvariant",
                     input_paths=[input_file],
                     output_dir=outdir,
                     reference=ref,
                     threads=threads,
                     region=region,
-                    inference_batch_size=batch_size or CALL_VARIANTS_BATCH,
+                    inference_batch_size=batch,
                     deepvariant_model=model_type,
-                    postprocess_plan=postprocess,
+                    postprocess_plan=plan,
                     available_ram=available,
+                    deepvariant_native=bool(native),
                 )
+
+            batch = batch_size or CALL_VARIANTS_BATCH
+            estimate = preflight_resources(
+                lambda: estimate_with(threads, batch, postprocess)
             )
+            try:
+                # The least it can run in: one thread, a batch of 256.
+                floor: PreflightEstimate | None = estimate_with(
+                    "1", min(batch, 256), None
+                )
+            except (OSError, ValueError):
+                floor = None
+            check_host_requirement(
+                _host_requirement(
+                    estimate, floor, input_file=input_file, ref=ref, region=region,
+                    threads=int(threads), model_type=model_type,
+                    native=bool(native), native_gpu=native_gpu,
+                    staged_reads=staged_reads, work=work, engine=engine,
+                ),
+                enforce=fresh and not params.no_preflight,
+                unenforced="--no-preflight" if fresh else "finished stages are kept",
+                disk_advice="Free up space, choose an --outdir on a bigger disk "
+                "or call a --region.",
+                memory_advice="Lower --batch-size or --threads.",
+            )  # fmt: skip
         recorded_image: dict[str, str | None] = {"image": local_dv}
+        if native:
+            recorded_image["version"] = native.version
         if launcher.image:
             recorded_image = dict(image_record(launcher.image))
             _migrate_image(journal, launcher.image, recorded_image)
@@ -700,10 +1116,16 @@ cmd_deepvariant = cli_handler(VcfDeepvariantParams, run_deepvariant)
 STEPS = DEEPVARIANT_STEPS
 WORK_DIRECTORY = ".deepvariant.work"
 _COMMAND_MARK = "***** Running the command:*****"
-_STAGE_BINARY = re.compile(r"/(make_examples|call_variants|postprocess_variants)\s")
+# Google's stage tools (/opt/deepvariant/bin/make_examples) or wgse-deepvariant's
+# stage subcommands (wgse-deepvariant make_examples).
+_STAGE_BINARY = re.compile(r"[/ ](make_examples|call_variants|postprocess_variants)\s")
 # Settings that bound a stage's memory or CPU use but not what it writes.
-_RESOURCE_FLAGS = re.compile(r'\s--(?:cpus|num_partitions|batch_size)[= ]"?\d+"?')
+_RESOURCE_FLAGS = re.compile(
+    r'\s--(?:cpus|num_partitions|batch_size|cpu_threads)[= ]"?\d+"?'
+)
 _JOBLOG = ".make_examples.joblog"
+# wgse-deepvariant's selection BED, beside (not among) the stage outputs.
+_REGIONS = "regions"
 _DV_BIN = "/opt/deepvariant/bin"
 
 
@@ -775,6 +1197,7 @@ class _Launcher:
         paths: list[str | None],
         work: Path,
         gpu_check: Callable[[], None] | None = None,
+        preflight: Callable[[], None] | None = None,
     ):
         self.local = local
         self.image = image
@@ -783,6 +1206,14 @@ class _Launcher:
         self.work = work
         # A GPU image's check of the GPU, before the first stage that uses it.
         self.gpu_check = gpu_check
+        # A check before the first stage that runs.
+        self.preflight = preflight
+
+    def ready(self) -> None:
+        """Run the preflight check once, before a stage runs."""
+        if self.preflight is not None:
+            check, self.preflight = self.preflight, None
+            check()
 
     def launcher(self) -> str:
         return str(self.local) if not self.image else f"{_DV_BIN}/run_deepvariant"
@@ -890,6 +1321,7 @@ def _run_stages(
         plan = run([run.launcher(), *dv_args, "--dry_run=true"], capture=True)
     finally:
         if journal.dry_run:
+            shutil.rmtree(work / _REGIONS, ignore_errors=True)
             with contextlib.suppress(OSError):
                 work.rmdir()
     commands = _stage_commands(plan)
@@ -943,11 +1375,19 @@ def _run_stages(
         # A make_examples killed with the same inputs and settings keeps the
         # shards it finished (GNU parallel's job log); anything else restarts.
         resume = name == "make_examples" and decision.partial
+        if resume and not any("parallel " in c for c in commands[name]):
+            # wgse-deepvariant's make_examples is one process: no shard log.
+            logging.info(
+                "Rerunning make_examples in full: wgse-deepvariant can't keep "
+                "the shards an interrupted run finished."
+            )
+            resume = False
         if not resume:
             for stale in _stage_files(work, claimed):
                 stale.unlink()
             with contextlib.suppress(FileNotFoundError):
                 (work / _JOBLOG).unlink()
+        run.ready()
         with journal.running(decision, keep_partial=resume) as handle:
             if name == "stage_reads":
                 assert staging is not None

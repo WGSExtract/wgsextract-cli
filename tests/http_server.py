@@ -3,6 +3,7 @@ the network."""
 
 import hashlib
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -17,6 +18,7 @@ class RangeServer:
     these offsets are always cut off. head_status/get_status: answer HEAD/GET
     with this error; statuses[path]: answer requests for path with it.
     etags: send each file's ETag (a hash of its content), as S3 does.
+    delays[path]: seconds to wait before answering a GET for path.
     """
 
     def __init__(self, data: bytes | None = b"", files: dict[str, bytes] | None = None):
@@ -30,6 +32,7 @@ class RangeServer:
         self.bare_416 = False  # leave Content-Range out of 416s, as Ensembl does
         self.statuses: dict[str, int] = {}
         self.etags = False
+        self.delays: dict[str, float] = {}
         self.requests: list[tuple[str, str | None]] = []
         self.paths: list[str] = []
         server = self
@@ -65,6 +68,7 @@ class RangeServer:
                 self.end_headers()
 
             def do_GET(self):
+                time.sleep(server.delays.get(urlsplit(self.path).path.lstrip("/"), 0))
                 spec = self.headers.get("Range")
                 server.requests.append(("GET", spec))
                 data = self._body()

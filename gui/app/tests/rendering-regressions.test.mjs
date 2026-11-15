@@ -35,7 +35,7 @@ function wgsCommand(pageID, actionID, fieldValues = {}, checkedOptions = {}) {
 
 test("WGSExtract new options do not change default argv or selected formats", () => {
   assert.deepEqual(wgsCommand("microarray", "microarray-generate"), [
-    "microarray", "--input", "sample.bam", "--ref", "ref.fa", "--formats", "23andme_v35,23andme_v5,all",
+    "microarray", "--input", "sample.bam", "--formats", "23andme_v35,23andme_v5,all", "--ref", "ref.fa",
   ]);
   for (const [page, action, flag] of [
     ["extract", "region-y", "--poz"], ["extract", "region-y", "--ybrowse"],
@@ -69,7 +69,7 @@ test("WGSExtract opt-in policies render flags and preserve manifest paths with s
   test("WGSExtract AADR 2M is a Reference Data download that unlocks the 2M format", () => {
     const page = wgsPages.find((item) => item.id === "microarray");
     const section = page.sections.find((item) => item.id === "microarray-formats");
-    assert.match(section.dataSource.path, /library-state/, "the section reads library.aadrInstalled");
+    assert.deepEqual(section.dataSource.arguments, ["ref", "status", "--values"], "the section reads library.aadrInstalled");
     const formats = section.controls.find((control) => control.id === "microarray_formats");
     const twoM = formats.options.find((option) => option.id === "aadr_2m");
     assert.ok(twoM.disabledTooltip, "a disabled 2M says why");
@@ -85,7 +85,7 @@ test("WGSExtract opt-in policies render flags and preserve manifest paths with s
     assert.deepEqual(wgsCommand("microarray", "microarray-generate", {}, {
       microarray_formats: ["aadr_2m"],
     }), [
-      "microarray", "--input", "sample.bam", "--ref", "ref.fa", "--formats", "aadr_2m",
+      "microarray", "--input", "sample.bam", "--formats", "aadr_2m", "--ref", "ref.fa",
     ]);
     const library = wgsPages.find((item) => item.id === "library");
     const libraryActions = library.sections.flatMap((section) => section.actions ?? []);
@@ -95,8 +95,9 @@ test("WGSExtract opt-in policies render flags and preserve manifest paths with s
     assert.deepEqual(aadrArgs, [["ref", "aadr", "--install"], ["ref", "aadr", "--delete"]]);
     assert.ok(!wgsCommand("microarray", "microarray-generate").includes("aadr_2m"));
   });
-  assert.deepEqual(args.slice(5), [
+  assert.deepEqual(args.slice(3), [
     "--formats", "aadr_1240k,aadr_ho,myheritage_gsa_2025",
+    "--ref", "ref.fa",
     "--min-gq", "20", "--min-dp", "5", "--strand-ambiguous", "no-call",
     "--resolve-rsids", "--no-assume-hom-ref", "--exclude-filtered", "--call-reasons",
     "--aadr-sample-id", "research_sample", "--aadr-sex", "U",
@@ -149,11 +150,11 @@ test("WGSExtract targeted opt-ins are restricted to the relevant commands", () =
 test("WGSExtract FastQC runs on R1, adds R2 when chosen and merges with MultiQC only when asked", () => {
   const page = wgsPages.find((item) => item.id === "fastq");
   const action = page.sections.flatMap((section) => section.actions ?? []).find((item) => item.id === "fastqc");
-  assert.equal(action.command.executable, "{{bundleRoot}}/scripts/fastqc-reads.sh");
-  assert.deepEqual(wgsCommand("fastq", "fastqc", { fastq_r1: "reads R1.fq.gz" }), ["reads R1.fq.gz"]);
+  assert.equal(action.command.executable, "{{bundleRoot}}/scripts/run-wgsextract.sh");
+  assert.deepEqual(wgsCommand("fastq", "fastqc", { fastq_r1: "reads R1.fq.gz" }), ["qc", "fastqc", "--input", "reads R1.fq.gz"]);
   assert.deepEqual(wgsCommand("fastq", "fastqc", { fastq_r1: "r1.fq.gz", fastq_r2: "r2.fq.gz", out_dir: "qc out" }, {
     fastqc_multiqc: ["--multiqc"],
-  }), ["r1.fq.gz", "--r2", "r2.fq.gz", "--outdir", "qc out", "--multiqc"]);
+  }), ["qc", "fastqc", "--input", "r1.fq.gz", "--r2", "r2.fq.gz", "--outdir", "qc out", "--multiqc"]);
 });
 
 test("WGSExtract Run Haplogrep uses the Haplogrep installed with the CLI unless a path is set", () => {
@@ -173,7 +174,12 @@ test("WGSExtract Detailed Coverage adds the depth bins and, once run, only shows
   const { isActionVisible } = await import("../dist/shared/rendering.js");
   const page = wgsPages.find((item) => item.id === "info-bam");
   const section = page.sections.find((item) => item.id === "info-commands");
-  assert.deepEqual(section.dataSource, { path: "scripts/coverage-state.py", arguments: ["{{bam_path}}", "{{out_dir}}"] });
+  // No BAM chosen leaves --input out (Windows PowerShell 5.1 drops an empty argument): nothing is current.
+  assert.deepEqual(section.dataSource.arguments, ["--json", "info", "calculate-coverage", "--status"]);
+  assert.deepEqual(section.dataSource.optionalArguments, [["--input", "{{bam_path}}"], ["--outdir", "{{out_dir}}"]]);
+  const { values } = await import("../../examples/WGSExtract/transforms/coverage-status.mjs");
+  assert.deepEqual(values({ details: { current: true } }), { values: { coverage_done: "true" } });
+  assert.deepEqual(values({ details: { current: false } }), { values: { coverage_done: "false" } });
   assert.deepEqual(section.actions.slice(0, 5).map((action) => action.id), [
     "basic-info", "detailed-info", "coverage-sample", "calculate-coverage", "calculate-coverage-shown",
   ]);

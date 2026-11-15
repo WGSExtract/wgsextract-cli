@@ -3,6 +3,7 @@ line and writes what VEP would (a bgzipped copy of its input, or a text table)."
 
 import json
 import os
+import random
 import shutil
 import sys
 import threading
@@ -23,7 +24,7 @@ from tests.htslib_helpers import (
 )
 from wgsextract_cli import api
 from wgsextract_cli.api import VepRunParams
-from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 pytestmark = needs_htslib
 
@@ -57,6 +58,10 @@ def fake_vep(tmp_path, monkeypatch):
     """Install a fake `vep`; returns a function giving the logged command lines.
     ``fake_vep.install(exit_code=..., dirname=..., sleep=...)`` reinstalls it;
     with ``sleep`` it waits that many seconds after writing its outputs."""
+    from wgsextract_cli.core.config import settings
+
+    # These are Ensembl VEP's command lines; vep-rs has its own tests.
+    monkeypatch.setitem(settings, "vep_engine", "ensembl")
     log = tmp_path / "vep_calls.jsonl"
 
     def install(exit_code: int = 0, dirname: str = "fakebin", sleep: int = 0) -> None:
@@ -120,6 +125,32 @@ def test_vcf_run_writes_indexed_output_and_moves_report(tmp_path, fake_vep):
     assert _value(cmd, "--compress_output") == "bgzip"
     assert {"--vcf", "--offline", "--everything"} <= set(cmd)
     assert "--database" not in cmd and "--overlaps" not in cmd
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Ensembl VEP doesn't run on Windows"
+)
+def test_ensembl_only_setup_keeps_ensembl_vep_and_says_how_to_switch(
+    tmp_path, fake_vep, monkeypatch
+):
+    """vep-rs is the default engine (#602); a setup from before, with only
+    Ensembl VEP's cache, keeps working and is told how to switch."""
+    from wgsextract_cli.core.config import settings
+
+    monkeypatch.delitem(settings, "vep_engine", raising=False)
+    vcf = _vcf(tmp_path / "s.vcf.gz")
+    cache = tmp_path / "cache"
+    (cache / "homo_sapiens" / "116_GRCh38").mkdir(parents=True)
+
+    result = api.vep.run(
+        VepRunParams(input=Path(vcf), vep_cache=cache, vep_assembly="GRCh38")
+    )
+
+    assert len(fake_vep()) == 1
+    assert result.metrics["engine"] == "ensembl"
+    [notice] = [w for w in result.warnings if w.code == "vep_engine_fallback"]
+    assert "--engine ensembl" in notice.message
+    assert "vep download" in notice.message
 
 
 def test_existing_output_is_skipped_unless_forced(tmp_path, fake_vep):
@@ -389,6 +420,105 @@ def test_bam_input_calls_variants_in_region_then_annotates(tmp_path, fake_vep):
     assert [(c[0], c[1], c[4]) for c in calls] == [("chr1", "301", "1")]
 
 
+@pytest.mark.parametrize("region", [None, "chr1:1-150"])
+@pytest.mark.parametrize("iupac", [False, True])
+def test_839_bam_to_vep_keeps_supported_deletion(tmp_path, fake_vep, region, iupac):
+    rng = random.Random(839)
+    genome = "".join(rng.choice("ACGT") for _ in range(150))
+    reference = genome[:50] + "R" + genome[51:] if iupac else genome
+    fasta = write_fasta(tmp_path / "ref.fa", {"chr1": reference})
+    seq = genome[:50] + genome[51:]
+    bam = sam_to_bam(
+        [
+            "@HD\tVN:1.6\tSO:coordinate",
+            "@SQ\tSN:chr1\tLN:150",
+            "@RG\tID:rg\tSM:child",
+            *[
+                f"r{i}\t0\tchr1\t1\t60\t50M1D99M\t*\t0\t0\t{seq}\t{'I' * 149}\tRG:Z:rg"
+                for i in range(30)
+            ],
+        ],
+        tmp_path / "deletion.bam",
+    )
+    result = api.vep.run(
+        VepRunParams(
+            input=Path(bam),
+            ref=fasta,
+            region=region,
+            threads=1,
+            ploidy="2",
+            vep_cache=tmp_path,
+        )
+    )
+
+    assert result.status == "ok"
+    output = tmp_path / "deletion_vep.vcf.gz"
+    calls = vcf_calls(output, "chr1:1-150")
+    assert any(len(ref) == len(alt) + 1 and gt == "1/1" for _, _, ref, alt, gt in calls)
+    assert any(
+        o.role == "vep_annotated" and Path(o.path) == output for o in result.outputs
+    )
+    assert all(set(ref + alt) <= set("ACGTN") for _, _, ref, alt, _ in calls)
+
+
+@pytest.mark.parametrize("across_contigs", [False, True])
+def test_839_indel_after_snp_drops_stale_bias_but_snp_keeps_values(
+    tmp_path, fake_vep, across_contigs
+):
+    rng = random.Random(839)
+    genome = "".join(rng.choice("ACGT") for _ in range(400))
+    sequences = {"chr1": genome}
+    deletion_contig = "chr2" if across_contigs else "chr1"
+    if across_contigs:
+        sequences["chr2"] = genome
+    fasta = write_fasta(tmp_path / "ref.fa", sequences)
+    lines = ["@HD\tVN:1.6\tSO:coordinate"]
+    lines += [f"@SQ\tSN:{name}\tLN:400" for name in sequences]
+    lines += ["@RG\tID:rg\tSM:child"]
+    alt = next(base for base in "ACGT" if base != genome[50])
+    for i in range(30):
+        bases = list(genome[:100])
+        if i % 2:
+            bases[50] = alt
+        lines.append(
+            f"snp{i}\t{16 if i % 3 else 0}\tchr1\t1\t{50 + i % 10}\t100M\t*\t0\t0\t"
+            f"{''.join(bases)}\t{('I' if i % 2 else '?') * 100}\tRG:Z:rg"
+        )
+    seq = genome[200:250] + genome[251:350]
+    lines += [
+        f"del{i}\t0\t{deletion_contig}\t201\t60\t50M1D99M\t*\t0\t0\t"
+        f"{seq}\t{'I' * 149}\tRG:Z:rg"
+        for i in range(30)
+    ]
+    bam = sam_to_bam(lines, tmp_path / "mixed.bam")
+    result = api.vep.run(
+        VepRunParams(
+            input=Path(bam), ref=fasta, ploidy="2", threads=1, vep_cache=tmp_path
+        )
+    )
+    assert result.status == "ok"
+    output = tmp_path / "mixed_vep.vcf.gz"
+    rows = [
+        line.split("\t")
+        for line in run_command(
+            [
+                "bcftools",
+                "query",
+                "-f",
+                "%CHROM\t%POS\t%REF\t%ALT\t%INFO/BQBZ\t%INFO/MQSBZ\n",
+                str(output),
+            ],
+            capture_output=True,
+        ).stdout.splitlines()
+    ]
+    [snp] = [row for row in rows if len(row[2]) == len(row[3]) == 1]
+    [deletion] = [row for row in rows if len(row[2]) > len(row[3])]
+    assert snp[:2] == ["chr1", "51"]
+    assert "." not in snp[4:]
+    assert deletion[0] == deletion_contig
+    assert deletion[4:] == [".", "."]
+
+
 def test_bam_input_is_called_with_the_ploidy_file(tmp_path, fake_vep):
     fasta, bam = _bam_with_snps(tmp_path)
     ploidy = tmp_path / "haploid.txt"
@@ -521,7 +651,11 @@ def test_api_reads_a_home_relative_bam(tmp_path, fake_vep, monkeypatch):
 def _command(lib, **overrides):
     from wgsextract_cli.commands._vep_run import _build_vep_command
 
-    fields = {"input": Path("in.vcf.gz"), "vep_cache": Path("/no/such/cache")}
+    fields = {
+        "input": Path("in.vcf.gz"),
+        "vep_cache": Path("/no/such/cache"),
+        "engine": "ensembl",
+    }
     params = VepRunParams(**{**fields, **overrides})
     return _build_vep_command(params, "in.vcf.gz", "out.vcf", "snp-indel", lib, "2")
 

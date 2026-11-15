@@ -19,7 +19,7 @@ test("web bundle test runner streams setup and action progress", async () => {
   await writeFile(
     path.join(bundleRoot, "manifest.json"),
     JSON.stringify({
-      id: "dev.guiforcli.web-bundle-test-fixture",
+      id: "dev.wgsextract-gui.web-bundle-test-fixture",
       displayName: "Web Bundle Test Fixture",
       summary: "Fixture bundle.",
       setup: {
@@ -143,7 +143,7 @@ test("web bundle test runner names a plan action this app version doesn't have",
 
     assert.equal(report.status, "failed");
     assert.equal(report.summary.failed, 1);
-    const mismatch = /plan expects action main\/inputs\/missing-action, which this app version \(dev\.guiforcli\.web-bundle-test-fixture 1\.2\.3\) doesn't have/;
+    const mismatch = /plan expects action main\/inputs\/missing-action, which this app version \(dev\.wgsextract-gui\.web-bundle-test-fixture 1\.2\.3\) doesn't have/;
     assert.match(report.steps[0].error, mismatch);
     assert(events.some((event) => event.type === "message" && mismatch.test(event.text)));
   });
@@ -279,7 +279,7 @@ async function withWebBundleTestFixture(actionScript, callback) {
   await writeFile(
     path.join(bundleRoot, "manifest.json"),
     JSON.stringify({
-      id: "dev.guiforcli.web-bundle-test-fixture",
+      id: "dev.wgsextract-gui.web-bundle-test-fixture",
       version: "1.2.3",
       displayName: "Web Bundle Test Fixture",
       summary: "Fixture bundle.",
@@ -347,16 +347,16 @@ async function withWebBundleTestFixture(actionScript, callback) {
   }
 }
 
-async function dataSourceFixture(script) {
+async function dataSourceFixture(script, extra = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "gfc-web-bundle-data-source-"));
   const bundleRoot = path.join(root, "Bundle");
   await mkdir(path.join(bundleRoot, "scripts"), { recursive: true });
   await writeFile(path.join(bundleRoot, "scripts", "list.py"), script, "utf8");
-  const dataSource = { path: "scripts/list.py", arguments: ["{{library}}"] };
+  const dataSource = { path: "scripts/list.py", arguments: ["{{library}}"], ...extra };
   await writeFile(
     path.join(bundleRoot, "manifest.json"),
     JSON.stringify({
-      id: "dev.guiforcli.web-bundle-data-source-fixture",
+      id: "dev.wgsextract-gui.web-bundle-data-source-fixture",
       displayName: "Data Source Fixture",
       summary: "Fixture bundle.",
       pages: [
@@ -421,6 +421,68 @@ test("web bundle test runner loads data sources as the app does", async () => {
     assert.match(report.steps[0].command, /list\.py$/);
     assert.match(report.steps[2].error, /at least 2 options but the data source offered 1/);
     assert.match(report.steps[3].error, /plan expects data source main\/inputs\/missing, which this app version .* doesn't have/);
+  }
+  finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("web bundle test runner maps a data source's output with its transform, and checks what it returned", async () => {
+  const script = "import json, sys\nprint(json.dumps({'details': {'genomes': [sys.argv[1] + '/hg19.fa.gz']}}))\n";
+  const { root, bundleRoot, workspaceRoot } = await dataSourceFixture(script, { transform: { module: "transforms/genomes.mjs", export: "options" } });
+  await mkdir(path.join(bundleRoot, "transforms"));
+  await writeFile(
+    path.join(bundleRoot, "transforms", "genomes.mjs"),
+    "export const options = (output) => ({ options: output.details.genomes.map((id) => ({ id, title: id })) });\n",
+  );
+  try {
+    const report = await runBundleTest(
+      bundleRoot,
+      {
+        inputs: { fieldValues: { library: "/refs" } },
+        steps: [{ kind: "dataSource", pageID: "main", sectionID: "inputs", controlID: "genome", minimumOptions: 1, requiredOutput: ['"title": "/refs/hg19.fa.gz"'] }],
+      },
+      { workspaceURL: workspaceRoot },
+    );
+    assert.equal(report.status, "passed", report.steps[0].error);
+    assert.match(report.steps[0].output, /"options": \[/);
+  }
+  finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("web bundle test runner leaves out a data source's optional argument groups with an empty placeholder", async () => {
+  const script = "import json, sys\nprint(json.dumps({'options': [{'id': ' '.join(sys.argv[1:]), 'title': 'argv'}]}))\n";
+  const { root, bundleRoot, workspaceRoot } = await dataSourceFixture(script, { optionalArguments: [["--sample", "{{sample}}"], ["--library", "{{library}}"]] });
+  try {
+    const report = await runBundleTest(
+      bundleRoot,
+      {
+        inputs: { fieldValues: { library: "/refs" } },
+        steps: [{ kind: "dataSource", pageID: "main", sectionID: "inputs", controlID: "genome", requiredOutput: ['"/refs --library /refs"'], forbiddenOutput: ["--sample"] }],
+      },
+      { workspaceURL: workspaceRoot },
+    );
+    assert.equal(report.status, "passed", report.steps[0].error);
+  }
+  finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("web bundle test runner fails a data source whose transform module lacks the export", async () => {
+  const { root, bundleRoot, workspaceRoot } = await dataSourceFixture("print('{}')\n", { transform: { module: "transforms/genomes.mjs", export: "options" } });
+  await mkdir(path.join(bundleRoot, "transforms"));
+  await writeFile(path.join(bundleRoot, "transforms", "genomes.mjs"), "export const items = () => ({ items: [] });\n");
+  try {
+    const report = await runBundleTest(
+      bundleRoot,
+      { steps: [{ kind: "dataSource", pageID: "main", sectionID: "inputs", controlID: "genome" }] },
+      { workspaceURL: workspaceRoot },
+    );
+    assert.equal(report.status, "failed");
+    assert.match(report.steps[0].error, /transforms\/genomes\.mjs has no function options/);
   }
   finally {
     await rm(root, { recursive: true, force: true });

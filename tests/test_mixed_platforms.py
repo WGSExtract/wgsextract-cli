@@ -87,6 +87,18 @@ def test_sv_calling_refuses_to_pick_a_caller(reads, tmp_path):
     assert "illumina, ont" in str(error.value)
 
 
+def test_smn_typing_refuses_mixed_platforms_with_one_message(reads, tmp_path):
+    # SMNCopyNumberCaller is short-read only: no option can pick a platform.
+    with pytest.raises(UsageError, match="short-read") as error:
+        run_wgsextract(
+            "typing", "smn", "--input", reads.mixed, "--ref", reads.ref,
+            "--outdir", str(tmp_path),
+        )  # fmt: skip
+    assert "illumina, ont" in str(error.value)
+    assert "samtools split" in str(error.value)
+    assert not list(tmp_path.glob("*.smn.*"))
+
+
 @pytest.mark.parametrize("command", ["align", "realign"])
 def test_alignment_refuses_to_pick_a_preset(reads, tmp_path, command):
     reads_option = "--r1" if command == "align" else "--input"

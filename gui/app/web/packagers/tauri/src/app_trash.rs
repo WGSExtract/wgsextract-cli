@@ -47,7 +47,7 @@ pub(crate) fn remove_after_exit(dirs: &[PathBuf]) -> Result<(), String> {
         .args([
             "-c",
             r#"pid=$1; shift; while kill -0 "$pid" 2>/dev/null; do sleep 0.1; done; rm -rf -- "$@""#,
-            "gui-for-cli-uninstall",
+            "wgsextract-gui-uninstall",
         ])
         .arg(std::process::id().to_string())
         .args(dirs)

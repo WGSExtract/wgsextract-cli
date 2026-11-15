@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>All review notes · WGS Extract</title>
+<link rel="stylesheet" href="design-system/wgse.css">
+<link rel="stylesheet" href="shared/mockup.css">
+<link rel="stylesheet" href="shared/docs.css">
+<script src="shared/boot.js" defer></script>
+<script src="shared/annotate/all-notes.js" defer></script>
+</head>
+<body data-page-id="notes" data-shell="none" data-title="All review notes">
+<div class="doc">
+  <header class="doc__hero">
+    <span class="eyebrow">Shared review space</span>
+    <h1>All notes</h1>
+    <p>Every idea and page in one place. Open a note to reply or resolve it in place.
+      Without the review server, this lists notes available in this browser.</p>
+    <p><a href="index.html">Mockups</a> · <a href="preview/">Ideas</a></p>
+  </header>
+  <section class="card stack" aria-label="Review notes">
+    <div class="row" style="flex-wrap: wrap">
+      <label>Idea <input id="filter-idea" type="search" placeholder="All ideas"></label>
+      <label>Page <input id="filter-page" type="search" placeholder="All pages"></label>
+      <label>Author <input id="filter-author" type="search" placeholder="All authors"></label>
+      <label>Status <select id="filter-status"><option value="">All</option><option>open</option><option>resolved</option></select></label>
+    </div>
+    <div class="row">
+      <button class="btn" id="export-notes" type="button">Export all</button>
+      <label class="btn">Import <input id="import-notes" type="file" accept="application/json"></label>
+      <button class="btn" id="refresh-notes" type="button">Refresh</button>
+    </div>
+    <p id="notes-status" role="status">Loading notes…</p>
+    <ol id="all-notes" class="stack" style="padding-left: var(--sp-5)"></ol>
+  </section>
+</div>
+</body>
+</html>

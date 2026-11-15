@@ -13,9 +13,12 @@ import { takeNativePickerEndpoint } from "./path-picker.js";
 import { createProcessManager } from "./process-runner.js";
 import { takeApiToken } from "./request-guard.js";
 import { createRequestHandler } from "./routes.js";
+import { forgetSetupWithMissingTools } from "./setup-runner.js";
 import { prepareBundleWorkspace } from "./workspace.js";
 import { moveWorkspace } from "./workspace-move.js";
+import { migrateLegacyAppData } from "./workspace-location.js";
 import { errorMessage } from "./errors.js";
+import { leaveAppImageEnvironment } from "./appimage-environment.js";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const distRoot = path.resolve(serverDir, "../../..");
@@ -23,11 +26,13 @@ const packageRoot = path.resolve(distRoot, "..");
 const webRoot = path.join(packageRoot, "web");
 const repoRoot = path.resolve(packageRoot, "..");
 const args = parseArgs(process.argv.slice(2));
+// Before anything starts a program: the programs setup and actions run are the system's, not the AppImage's.
+leaveAppImageEnvironment();
 const sourceBundleRoot = path.resolve(args.bundle ?? path.join(repoRoot, "examples", "WGSExtract"));
 const port = Number(args.port ?? process.env.PORT ?? 8787);
 const host = args.host ?? "127.0.0.1";
 const defaultLocale = args.locale;
-const appVersion = process.env.GUI_FOR_CLI_APPLICATION_VERSION?.trim() || "";
+const appVersion = process.env.WGSEXTRACT_GUI_APPLICATION_VERSION?.trim() || "";
 const enableDevReload = process.env.WEBUI_DEV_RELOAD === "1";
 const launcherProvidedToken = Boolean(process.env.GFC_API_TOKEN);
 const apiToken = takeApiToken();
@@ -36,6 +41,7 @@ const portFile = process.env.GFC_PORT_FILE;
 delete process.env.GFC_PORT_FILE;
 
 const { runProcess, terminateAllProcesses } = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
+await migrateLegacyAppData();
 let bundleRuntime = await loadBundleRuntime(sourceBundleRoot, Boolean(args.bundle));
 let server: Server | undefined;
 let bundleChangeInFlight = false;
@@ -114,7 +120,7 @@ server = listeningServer;
 listeningServer.listen(port, host, () => {
     const address = listeningServer.address();
     const boundPort = typeof address === "object" && address ? address.port : port;
-    console.log(`GUI for CLI Web UI: http://${host}:${boundPort}/`);
+    console.log(`WGS Extract GUI Web UI: http://${host}:${boundPort}/`);
     console.log(`Bundle source: ${bundleRuntime.sourceBundleRoot}`);
     console.log(`Bundle workspace: ${bundleRuntime.bundleRoot}`);
     if (portFile) {
@@ -132,6 +138,7 @@ async function loadBundleRuntime(requestedSource: string, preload: boolean) {
     const sourceManifest = await loadManifestFromRoot(resolvedSourceBundleRoot);
     const resolvedBundleRoot = await prepareBundleWorkspace(sourceManifest, resolvedSourceBundleRoot);
     const manifest = await loadManifestFromRoot(resolvedBundleRoot);
+    await forgetSetupWithMissingTools(manifest, resolvedBundleRoot);
     return {
         sourceBundleRoot: resolvedSourceBundleRoot,
         bundleRoot: resolvedBundleRoot,

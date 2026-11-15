@@ -64,18 +64,19 @@ def test_an_agent_gets_from_top_level_help_to_a_23andme_file(tmp_path: Path):
     index_command = next(c for c in _quoted_commands(top) if "--json" in c)
     index = json.loads(_cli(*shlex.split(index_command)[1:]).stdout)
 
-    # 2. The index finds the command whose outputs are 23andMe files.
+    # 2. The compact index finds the command that makes 23andMe files.
     command = next(
-        c for c in index["commands"] if "23andme" in (c["outputs"] or "").lower()
+        c
+        for c in index["commands"]
+        if "23andme" in c["summary"].lower() and "make" in c["summary"].lower()
     )
-    assert command["runtime"] in {"seconds", "minutes"}
-    assert all(get_tool_path(tool) for tool in command["tools"])
 
     # 3. Its own help gives an example to adapt.
     detail = json.loads(_cli("help", *command["path"].split(), "--json").stdout)
-    example = next(
-        e for e in detail["commands"][0]["examples"] if "23andme" in e.lower()
-    )
+    command = detail["commands"][0]
+    assert command["runtime"] in {"seconds", "minutes"}
+    assert all(get_tool_path(tool) for tool in command["tools"])
+    example = next(e for e in command["examples"] if "23andme" in e.lower())
     words = shlex.split(example)[1:]
     globals_ = index["global_options"]
     input_flag = _flag(globals_, "input")

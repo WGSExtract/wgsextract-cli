@@ -1,8 +1,108 @@
 # CLI resource preflight and reusable estimates
 
+## Imputation
+
+`vcf impute` prints estimated memory and runtime before starting. HG002 chr20
+measurements at four threads: GLIMPSE2 phase/ligate 431–464 s and 2.2–3.1 GB
+peak RSS; Beagle 60 s and 3.4 GB. The memory preflight reserves a conservative
+4 GiB for GLIMPSE2 and 8 GiB for Beagle. Sequential chromosomes/chunks keep
+memory bounded; runtime scales with selected reference bases and thread count.
+The extrapolated whole-autosome GLIMPSE2 time is about 5.5 h at four threads,
+or 2.8 h at eight, excluding one-time panel preparation. These are not measured
+whole-genome runtimes. See [imputation](imputation.md) for accuracy and limits.
+
+## Whole-genome host requirement
+
+Before a run starts, `realign` (chunked or not), `vcf deepvariant` and `vcf
+clair3` print what it needs of this computer in one line, from the estimates
+below and the measured whole-genome runs:
+
+```text
+Host requirement: this realign run needs ~221 GiB disk on /data/hg002, ~26 GiB RAM, ~21 h on 7 threads (time approximate).
+```
+
+That is the HG002 ONT CRAM of
+[#431](https://github.com/WGSExtract/wgsextract-cli/issues/431) (103.7 GB,
+streamed from its URL, 26 chunks), which wrote 185.5 GB (172.8 GiB) of CRAM
+in 21.4 h on 7 threads of a 16 GB M1. The line names every filesystem the run
+writes to (the output directory, and a `temp_directory` on another disk) and
+sums what shares one.
+
+- **Disk** is what the run's own preflight checks:
+  - realign: extraction, sort spills and output ([long
+    reads](#long-read-disk)), and BWA's missing reference indexes;
+  - DeepVariant: its work directory and output, for a `--region` scaled to
+    the share of the input's data it selects (its CRAI slices, or all the BAM
+    index's reads on each contig it touches; the whole input when the index
+    can't say);
+  - [Clair3's temporary space](#clair3s-temporary-space);
+  - for both callers, the CRAM 3.0 copy an older build needs of CRAM 3.1
+    input, sized as staging sizes it.
+- **RAM** is the estimate at the run's settings, sort memory lowered as the
+  run lowers it: the aligner's ([minimap2](#minimap2-long-reads) or BWA's),
+  DeepVariant's largest stage, and 16 GiB for Clair3 (15.2 GiB measured with
+  `--gpu` on 6 threads).
+- **Time** is approximate. It scales a measured or projected whole-genome
+  time by the work (read bases, CRAM bytes or reference bases called) and
+  divides by the threads, which no step does perfectly, and CPUs differ. It
+  says whether a run takes minutes, hours or days:
+
+| Step | Thread-hours for a whole genome | From |
+| --- | ---: | --- |
+| Short-read realign, bwa | 0.70 per Gb of reads, plus 15% | 5M HG002 pairs: 472.5 s on 8 threads, Ryzen 5 5600X (#674) |
+| Short-read realign, `wgse-bwa` on a GPU | 0.19 per Gb, plus 15% | the same: 131.4 s |
+| Short-read realign, bwa-mem3 (bwa-mem2 assumed the same) | 0.15 per Gb, plus 15% | the same: 97.7 s |
+| Long-read realign, minimap2 | 1.4 per GB of CRAM | #431: 21.4 h on 7 threads for 103.7 GB |
+| Short-read realign, minimap2 `--preset sr`; Parabricks | not estimated | |
+| DeepVariant, Google's CPU image | 60 | 30x: 15 h on 4 threads (projected from chr1 and chr20) |
+| DeepVariant ONT model | 113 | #431: 11.3 h on 10 threads, 51x |
+| wgse-deepvariant, CPU / `--gpu` | 28 / 12 | 30x: 7 h / 3 h on 4 threads (projected) |
+| Clair3, CPU / `--gpu` | 33 / 15 | chr20 in 10.3 min on 4 CPUs (projected) / #431: 2.5 h on 6 threads |
+
+The extra 15% covers FASTQ extraction and sorting: the 35x realign on a 16 GB
+M1 spent 23 of its 362 minutes extracting. That run (830 million reads, 125
+Gb) took 6 h; the table predicts about 3.5 h on 8 threads for `wgse-bwa` on
+its GPU, which was timed on an RTX 3090. A 30x short-read genome is about 100
+Gb of reads: about 20 h for bwa on 4 threads. The callers count the bases
+they call on contigs the index places reads on.
+
+**Refusal.** The run stops before it writes anything when this computer
+can't meet the requirement:
+
+- a filesystem has less free space than the run needs on it, or
+- this computer has less RAM in total (or its cgroup or Docker VM allows
+  less) than the run can't do without: the aligner's index and working
+  memory on one thread (for minimap2's long reads, the larger of its index
+  build and its mapping: 11.9 GiB for #431's CRAM on hs38, whose index build
+  measured 11.17 GiB) or DeepVariant's largest stage on one thread at
+  `--batch-size 256`. Sort buffers, samblaster's table and read-scaled
+  transients can swap, slowly. The floor needs the reference's size (its
+  `.fai`, BWA's `.ann`, or for minimap2 an uncompressed FASTA's size);
+  without it there is none.
+
+Less RAM than the estimate at the run's settings is a structured
+`host_requirement_memory` warning, not a refusal: a 16 GB Mac realigned
+#431's whole genome on 7 threads by compressing memory and swapping. Lower
+`--threads`, `--memory` or DeepVariant's `--batch-size` to fit. Clair3's RAM,
+measured once, is only ever warned about. Free memory is the existing `LOW`
+rows' business.
+
+The refusal names the numbers and exits 1, with a `host_requirement` warning in
+the result. `--no-preflight` runs anyway, the requirement turned into that
+warning. With `--json`, or in the result manifest, `details.host_requirement`
+has the same data: `line`, `disk` (`paths`, `needed_bytes`, `free_bytes` per
+filesystem), `memory_bytes`, `memory_floor_bytes`, `memory_capacity_bytes`,
+`threads`, `approximate_hours`, `shortfalls` and `enforced`. A DeepVariant
+rerun that keeps finished stages needs less than a fresh one, so it only warns.
+`--dry-run` and Parabricks
+(`--gpu` for short reads, which has [its own check](#nvidia-gpus-parabricks))
+print no requirement.
+
+## Other pipelines
+
 Native `align` (BWA/BWA-MEM2 and minimap2), `realign`, `bam sort`, `bam to-bam`,
-`bam to-cram`, and `vcf snp`/`indel`/`gatk`/`deepvariant` (CPU, every platform)
-report estimates before starting their heavy pipelines. For example:
+`bam to-cram`, `vcf snp`/`indel`/`gatk`/`deepvariant` (CPU, every platform) and
+`vcf clair3` report estimates before starting their heavy pipelines. For example:
 
 ```text
 Preflight align: estimated peak / available (GiB)
@@ -18,12 +118,78 @@ output directory is checked against its nearest existing ancestor, without
 creating it. Available RAM uses the existing native psutil API; disk space uses
 Python's native `disk_usage`, including Windows drives.
 
-`LOW` warns. Existing refusal policies are unchanged: explicitly selected
-BWA-MEM2 refuses inadequate RAM, BWA warns, auto can fall back to BWA, and
-realignment/whole-file sorting retain their existing disk guards. `--no-preflight`
-still bypasses realignment's disk refusal, not its memory guard; informational
-estimates are still printed. Realignment reports before FASTQ extraction and
-alignment reports again when the final aligner is selected.
+`LOW` warns. Some commands also refuse: explicitly selected
+BWA-MEM2 refuses inadequate RAM, BWA warns, auto can fall back to BWA,
+whole-file sorting retains its disk guard, and `realign`, `vcf deepvariant`
+and `vcf clair3` refuse what their [host requirement](#whole-genome-host-requirement)
+can't get. `--no-preflight` bypasses those, not BWA-MEM2's memory guard;
+informational estimates are still printed. Realignment reports before FASTQ
+extraction and alignment reports again when the final aligner is selected.
+
+Native `wgse-bwa` GPU selection must satisfy **physical RAM less
+2 GiB of OS headroom**. Low momentary available RAM alone warns rather than
+moving large-RAM hosts to CPU; streaming realignment keeps its existing
+available-RAM guard. Sort memory is lowered through the existing candidates down to
+256M per thread. An over-budget CPU estimate is not a larger GPU allowance:
+if no GPU plan fits, the CPU backend runs. When the CPU pipeline with the
+requested sort memory is also over budget, sort memory is capped at 256M per
+thread without increasing already smaller requests. Workers and fixed
+`-K 100000000` are unchanged,
+preserving alignment identity. The CLI reports the resolved CPU/backend and
+sort-memory estimate rather than the rejected GPU plan. A conservative CPU
+estimate can still be `LOW`; CPU compression, occupied swap and cumulative
+SSD swap traffic must not be conflated
+([#747](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
+The read-only `estimate_resources` API does not change settings itself:
+callers supply their resolved backend allowance and sort memory.
+`--prefer-native-gpu` / config `prefer_native_gpu = true` applies only after
+normal GPU sort step-down fails, replacing CPU fallback at the risk of heavy
+swap. Explicit `--memory` is retained; default/config memory is capped at
+256M, subject to general sort limits. The manifest's
+`native_aligner_backend_reason`, `native_aligner_memory_estimate_bytes`,
+`native_aligner_memory_budget_bytes`, `native_aligner_sort_memory_requested`
+and `native_aligner_sort_memory_actual` explain fallback or opt-in and survive
+resume. The fallback estimate is the smallest considered GPU plan, not the
+selected CPU pipeline's estimate.
+For paired Metal BWA, automatic selection also tries compressed staging before
+CPU fallback. RAM is the larger of the aligner/checkpoint-writer phase and
+the duplicate-marking/sort phase, not their sum. BWA is capped at three workers
+only in that mode; the fixed scientific batch size remains K100M.
+Disk is the per-filesystem phase maximum: generated FASTQs plus raw checkpoint,
+raw plus compressed marked parts, then parts plus final output. Owned generated
+FASTQs retire after alignment unless kept; the raw checkpoint retires only after
+all marked parts are durable. Existing resumable checkpoints and owned-read
+retirement are credited, never user-provided read files.
+The HG00235x calibration budgets108/115 bytes per short input read for raw/marked
+BAM checkpoints and2 GiB rolling scratch; longer reads scale those allowances. Preflight also
+includes the guard's safety reserve once per guarded filesystem, the extraction
+collation phase, and one bounded intermediate merge group. Merge fan-in stays
+at64 regardless of the operating system's file-descriptor limit.
+
+Reasons are `memory_budget_cpu`, `memory_budget_metal_staged`,
+`memory_budget_metal_low_sort` (or CUDA),
+and `prefer_gpu`; preference reasons/journal changes occur only when it
+replaces the RAM-safe plan. `alignment_mode="staged_metal"` and the checkpoint,
+chunk-record, compression-level and minimum-free-byte metrics identify staging.
+On the measured 16 GiB M1 whole HG002 35x run, automatic CPU4/sort256
+reported 19.22 GiB / 10.78 GiB available and completed with identical ordered
+records. Swap-out fell from 1,116.92 to 47.87 GiB, **not zero**, while alignment
+wall time rose from 5.40 to 13.63 hours. This is a conservative safety/speed
+trade-off, not evidence that the estimate should shrink to the 7.60 GiB RSS.
+See the [whole validation and options](apple-silicon-16gb.md#whole-genome-validation-of-the-ram-adaptive-fallback).
+The approved whole Metal/sort256 comparison took **5.08 h** with identical
+records, but **378.39 GiB swap-out**, versus CPU's 47.87 GiB. It failed the
+under-200-GiB gate, so it does not justify reducing the working-set estimate
+or making an over-budget GPU plan the default. Its native footprint/wired
+peaks were 10.409/5.551 GiB despite only 8.633 GiB largest-child RSS.
+
+The memory estimate is the selected aligner's. On Linux, bwa-mem3 standing in
+for bwa (`--compat=bwa-mem`, chosen first since #736) needs about twice bwa's
+RAM (5M pairs on hs38: 14.7 GiB peak at 16 threads against bwa's 6.6 GiB;
+`wgse-bwa --cuda` peaked at 6.3 GiB at 8 threads), so it is taken only when its
+pipeline fits the RAM available; otherwise `wgse-bwa` (on its GPU when that
+fits) or bwa runs, and the preflight reports that aligner's estimate
+([hardware guide](hardware.md#bwa-mem3-on-linux)).
 
 Eligible paired BWA/bwa-mem2 realignment without `--keep-fastq` streams newly
 extracted reads (forced refresh of cached FASTQs at the exact output paths
@@ -73,6 +239,29 @@ same ordered records and header as file extraction except the BWA `@PG`
 command line (`-p … -`); file extraction stayed byte-identical. Streaming wrote
 38% less (HG00096 113 → 75 MiB, HG002 316 → 196 MiB) at the same wall time and
 within 3% of the same peak RSS.
+
+## samtools sort buffers
+
+`samtools sort -@ N -m M` mallocs all N × M bytes when it starts, and the kernel
+refuses an allocation larger than RAM plus swap however few reads arrive: the
+sort fails with `couldn't allocate memory for bam_mem` and the aligner then dies
+of a broken pipe (#781). `--memory`, including `auto`'s floor of 1 GiB per
+thread, can ask for more. So `align`, `realign`, `pet`, `bam sort` and
+`bam to-ubam` give each sort the smallest of:
+
+- `--memory` per thread;
+- what its read files can fill: 96 bytes of records per byte of input (the
+  bound minimap2's estimate uses below), split across the threads, when every
+  input is a local file;
+- half of this computer's RAM, split across the threads,
+
+and logs when that lowers `--memory`. The input bound never goes below 16M per
+thread, but half the RAM is a hard limit, down to samtools' minimum of 1M. Records and their order are unchanged: a sort that
+fits its input sorts in memory, and a sort that spills merges its spills stably.
+Alignment memory checks count the sort's reservation (threads × `-m`) at
+least, as well as what its reads fill. `realign`'s checks before extracting
+FASTQs use the requested `--memory`, so they never ask for less than its
+alignment uses.
 
 ## minimap2 (long reads)
 
@@ -133,12 +322,12 @@ genome-wide). The figures are bytes per byte of input CRAM (BAM inputs count
 | --- | ---: | ---: |
 | samtools sort spills | 3.0 | whole-genome run 2.65–2.8 when stopped at 12% of the input; full-hs38 slice 3.35 |
 | Extra spill while sort merges 32 spill files into one | 33 × 0.65 × `--memory` per thread, up to the spills | samtools 1.24's merge |
-| Output CRAM / BAM | 1.7 / 2.6 | slice CRAM 1.90 (1.91 bases per base); genome-wide about 1.5 |
+| Output CRAM / BAM | 1.8 / 2.75 | slice CRAM 1.90 (1.91 bases per base); whole genome 1.79 (#431) |
 | Tagged bgzipped FASTQ (`realign`) | 1.45 | 1.39 |
 
 `realign --tmp-dir` on another volume needs the spills there, and the output and
 FASTQ in the output directory. For the 103.7 GB HG002 ONT CRAM at `--threads 5
---memory 256M` that is about 316 GiB of scratch and 164 GiB of output plus 141
+--memory 256M` that is about 316 GiB of scratch and 174 GiB of output plus 141
 GiB of FASTQ. Before #474 the guard asked for 376 GiB of scratch; the
 whole-genome run stopped at 12% of its input had already spilled 33.6 GB.
 
@@ -224,10 +413,144 @@ TensorFlow takes most of the free GPU memory whatever it needs (22.7 GiB of
 the free 24 GiB GPU). make_examples and postprocess run on the CPU, as in the
 CPU image.
 
-Preflight is advisory: `preflight_resources()` guards estimation and reporting
-against `ValueError`, `OSError` and subprocess failures, warns that the resource
-estimate is unavailable, and lets the command continue. Existing dependency,
-memory and disk guards still enforce their own policies normally.
+### DeepVariant on the GPU with wgse-deepvariant
+
+On Linux x86-64, `vcf deepvariant --gpu` uses
+[wgse-deepvariant](../native/deepvariant/README.md#linux-x86-64-and-nvidia-gpus-cuda)
+only for the WGS model (and from 0.3.0 ONT_R104), when it is installed,
+`deepvariant_weights` is set and `deepvariant_native` isn't `off`; WES and
+PacBio still run Parabricks, and
+Ultima Google's GPU image, with the memory needs above. This pipeline runs only
+call_variants on the GPU and
+checks just before it that GPU 0 has 3 GiB free (`--no-gpu-memory-check`
+skips this); make_examples and postprocess_variants stay on the CPU. Its RAM
+estimate is the Mac build's (#647), which covers what Linux used.
+
+Measured (#719) on a Ryzen 5 5600X with an RTX 3090, `--threads 4`, from the
+`linux-deepvariant-1` package (0.2.0), on HG002's 35x NovaSeq BAM (GRCh38 no-alt), chr1
+and chr20: 823,376 sites, 270,091 call_variants examples. Google's
+`google/deepvariant:1.10.0` image ran with 4 CPUs on the same host.
+
+| Stage | Google's CPU image | wgse-deepvariant, CPU | wgse-deepvariant, `--gpu` |
+| --- | ---: | ---: | ---: |
+| make_examples | 41.4 min | 18.4 min | 15.7 min |
+| call_variants | 50.5 min | 22.7 min | 1.2 min |
+| postprocess_variants | 0.8 min | 0.1 min | 0.2 min |
+| End to end | 92.8 min | 41.3 min | 17.1 min |
+
+- **GPU memory:** 2.3 GiB at the default batch of 256 (chr20 and chr1+chr20
+  alike).
+- **Host RAM (chr20):** call_variants 1.5 GiB on the GPU or the CPU;
+  make_examples 0.2 GiB; postprocess_variants 0.8 GiB.
+- **Same calls:** the three runs call the same 823,376 sites with the same
+  genotypes and filters, and the same GIAB v4.2.1 counts in its confident
+  regions (TP 386,651, FP 488, FN 2,761). QUAL differs from Google's by at most
+  0.5 at 24,130 sites, and GQ by at most 2 except one RefCall site (99 against
+  69, same PL); the CPU and GPU builds differ at 31 sites (QUAL ±0.1, GQ ±1).
+- **A 30x genome** is about ten times chr1 and chr20: about 3 hours with
+  `--gpu` (call_variants about 12 minutes), 7 hours on the CPU and 15 hours in
+  Google's image, at 4 threads (**projected**). make_examples scales with
+  `--threads`.
+
+### Clair3 on the GPU
+
+`vcf clair3 --gpu` runs HKU's Clair3 2.0.5 GPU image and checks only that a
+GPU has 7.8 GiB free: Clair3 starts a full-alignment GPU worker for each
+8,000 MiB free and a pileup worker for each 5,000 MiB. On the same RTX 3090,
+all of chr20 of the HG002 ONT whole-genome CRAM (42x), 4 CPUs, Clair3's own
+run time:
+
+| Run | Time | GPU peak | Result |
+| --- | ---: | ---: | --- |
+| CPU (`clair3` Pixi environment) | 10.3 min | | vcfeval F1 0.9785 |
+| `--gpu` | 8.5 min | 6.1 GiB (4 pileup workers of 1.0–1.3 GiB) | F1 0.9785 |
+
+The GPU halved pileup and full-alignment calling (283 s to 159 s). Clair3's
+start-up checks (about 130 s on a whole-genome CRAM) and WhatsHap phasing
+(about 205 s) stay on the CPU, and the GPU was busy in only about 5% of
+one-second samples, so the CPUs limit the speed-up.
+
+On a whole genome the GPU mode needs much more disk than the CPU mode: it
+writes every full-alignment tensor before predicting any (below).
+
+### Clair3's temporary space
+
+Clair3 works in a `.wgse_clair3_*` folder in the output directory. In its GPU
+mode, Clair3 2.0.5 first writes a tensor of 89 x 33 x 8 bytes (23.5 kB) for
+every full-alignment candidate (`tmp/full_alignment_output/*.npy`, 10,000 per file),
+then predicts and deletes them; the CPU mode pipes each tensor to the network.
+Clair3 has no option to stream or batch them: `--chunk_size` changes only how
+the candidates are split into files, and `--var_pct_full`/`--ref_pct_full`
+change which are called, and so the calls. The candidates are a share of the
+pileup calls, and shallower reads give more low-quality ones. Measured on the
+HG002 ONT R10.4.1 reads (`r1041_e82_400bps_sup_v400`, 4 threads, Clair3 2.0.5's
+GPU image) as the work folder's peak, sampled every 2 s:
+
+| Reads (mean depth) | Called | Peak | Per base |
+| --- | ---: | ---: | ---: |
+| chr20:10-20 Mb (43x) | 10 Mb | 314 MB | 31 B |
+| the same, subsampled to 33x / 22x / 15x | 10 Mb | 332 / 415 / 646 MB | 33 / 42 / 65 B |
+| the same, subsampled to 11x / 6x / 4x | 10 Mb | 1.05 / 1.23 / 1.05 GB | 105 / 123 / 105 B |
+| chr20:10-11 Mb (43x) | 1 Mb | 33 MB | 33 B |
+| all of chr20 (43x) | 64.4 Mb | 2.92 GB | 45 B |
+| the whole genome ([#431](https://github.com/WGSExtract/wgsextract-cli/issues/431) whole-genome run, 6 threads) | 3,088 Mb | 99.7 GiB | 35 B |
+| all of chr20 on the CPU | 64.4 Mb | 61 MB | 0.9 B |
+
+Before starting, `vcf clair3` samples the reads' mean depth (about 200 windows
+of 1 kb) over the `--region`, taking its shallowest chromosome group (a man's
+chrX), or else over the bases the reads cover. It interpolates the bytes per
+base above (held flat beyond 6x and 43x), adds 45% (all of chr20 needed 1.44x
+the 10 Mb slice's rate) and multiplies by the bases Clair3 calls: the `--region`, or else chr1-22,
+X and Y on the contigs the index places reads on. That asks for about 131 GiB
+for a 43x whole genome, 273 GiB at 15x and 449 GiB at 10x. The CPU mode is
+budgeted at 2 bytes per base (about 6 GiB for a whole genome). The disk row
+reports it:
+
+```text
+Preflight clair3: estimated peak / available (GiB)
+Preflight disk   LOW     138.06 / 95.69 GiB at /data/hg002
+Preflight: Clair3 on the GPU stores every full-alignment tensor first: 3,088 Mb at 33x.
+```
+
+Unlike the warning-only rows of other callers, a `LOW` row refuses to start
+(through Clair3's [host requirement](#whole-genome-host-requirement)), since
+Clair3 would otherwise fail after hours of pileup calling and phasing;
+`--no-preflight` runs anyway. With too little disk, choose an `--outdir` with
+room or call a few chromosomes at a time with `--region`. A CRAM 3.0 copy
+that an older Clair3 build needs is checked again once it is written. On a
+compressing filesystem (btrfs with zstd), the 99.7 GiB took about 60 GB of the
+disk; the estimate doesn't count on that.
+
+## Whole-genome ONT requirements
+
+Measured on the whole HG002 ONT R10.4.1 CRAM (103.7 GB, about 51x, hs38;
+[#431](https://github.com/WGSExtract/wgsextract-cli/issues/431)). Details,
+accuracy and caveats are in
+[ONT whole-genome requirements](ont.md#whole-genome-ont-requirements).
+
+| Step | Host, threads | Wall time | Peak RAM | Disk |
+| --- | --- | ---: | ---: | --- |
+| `realign`, chunked, streamed from the URL, `--memory 512M` | Apple M1 16 GB, 7 | 21.4 h | 10.5 GB (minimap2) | 185.5 GB output (1.79x input); preflight asked for about 211 GiB |
+| `vcf deepvariant --ont`, Google's CPU image | Ryzen 5 5600X, 10 | 11.3 h | not recorded | from the 81.4 GB primary-only CRAM 3.0 copy: work directory not recorded, 150 GB was enough; CRAM 3.1 input also needs about 1.95x its size free for a staged CRAM 3.0 copy |
+| `vcf clair3 --gpu` | Ryzen 5 5600X + RTX 3090, 6 | 2.5 h | 15.2 GiB, GPU 6.1 GiB | about 100 GiB temporary (full-alignment tensors, about 1 GiB per 1% of the genome) |
+| `rtg vcfeval` of one whole-genome VCF | 4 | 1 min | 7.2 GB | |
+
+Both callers read a primary-only CRAM 3.0 copy (81.4 GB) of the realigned
+output. `vcf clair3` checks [its temporary space](#clair3s-temporary-space)
+before it starts. The realign preflight first budgeted the output at 1.7x
+the input CRAM; this genome needed 1.79x, so it now budgets 1.8x ([long-read
+disk](#long-read-disk)). Each of these steps prints its [host
+requirement](#whole-genome-host-requirement) first: for this CRAM on 7 threads,
+realign asks for about 221 GiB, 26 GiB of RAM (refusing below 11.9 GiB) and
+21 h.
+
+## Preflight behaviour
+
+The estimate rows are advisory: `preflight_resources()` guards estimation and
+reporting against `ValueError`, `OSError` and subprocess failures, warns that
+the resource estimate is unavailable, and lets the command continue. The
+[host requirement](#whole-genome-host-requirement) and existing dependency,
+memory and disk guards enforce their own policies.
 
 These are conservative estimates, **not reservations, memory limits or
 guarantees**. When size or free-space measurement is unavailable the row says
@@ -320,18 +643,81 @@ filesystem for reference-index storage.
   **8.63 GB CRAM**, plus a 1.14 MB CRAI. Do not extrapolate that unusually good
   compression to full-quality inputs.
 - The conservative disk envelope uses **120 bytes/read sort spill**,
-  **28 bytes/read CRAM**, **100 bytes/read BAM**, and **75 bytes/read extracted
+  **28 bytes/read CRAM**, **100 bytes/read BAM**, and **100 bytes/read extracted
   FASTQ**. At H2 depth this is **81.56 GB temporary sort space and 19.03 GB
   CRAM** (75.96 and 17.72 GiB), within the phase-2 planning ranges of 70–90 GB
   sort space and about 16–20 GB CRAM. Output indexes add 1% (at least 64 KiB).
   Existing reference indexes cost no new disk; missing ones receive an
   additional two-resident-index-size build allowance on the reference volume.
+  The FASTQ allowance was raised from 75 after #722's full-quality HG002
+  slice wrote 937.4 MB for 10,971,483 indexed records (85.4 bytes/record):
+  the files were 14% larger than the old budget. Known indexed counts avoid additional
+  uncertainty from BAM/CRAM compression-based count inference.
+- The full-quality HG002 **35x** run on a 16 GiB M1 (#722, `wgse-bwa`
+  0.12.1/Metal, four threads, automatically selected 512M sort memory) adds
+  whole-genome evidence to that slice calibration. Its 835,260,805 indexed
+  input records produced **71.11 GB extracted FASTQs** (85.1 bytes/record)
+  and a **46.38 GB BAM** (55.5 bytes/record). Sampled scratch including the
+  FASTQs peaked at 134.86 GiB, and scratch plus results at 166.15 GiB.
+  The initial advisory disk envelope was 259.81 GiB with missing reference
+  indexes; the normal realignment refusal check required about 204 GiB.
+  With the existing input and reference already on disk, 210.36 GiB free
+  was enough, but only 37.42 GiB remained at the observed minimum. These
+  different envelopes are not allocation guarantees or equivalent measures.
+  Retain the conservative disk coefficients and additional free-space margin.
+  [The historical measured stage table](apple-silicon-16gb.md#historical-metal-run-macos-aligners-16-and-mimalloc)
+  records the exact run and resume conditions.
+- **macOS RSS is not the uncompressed working set.** That run's startup RAM
+  estimate was 22.02 GiB against 10.80 GiB available. The largest process
+  peaked at 8.30 GiB RSS and the sampled concurrent pipeline at 10.11 GiB,
+  but 1,113.72/1,116.92 GiB of system-wide swap-in/out traffic coincided with
+  resumed alignment (`vm_stat` can't attribute it to a process; other desktop
+  apps were open), with sampled occupied swap up to 3.70 GiB and warning
+  memory pressure. Completion under compression/swap does not validate an
+  8–10 GiB working-set budget. This heavy swapping is tracked as product bug
+  [#747](https://github.com/WGSExtract/wgsextract-cli/issues/747): LOW memory
+  predicts the problem, but defaults do not yet adapt to avoid it.
+  The conservative RAM model is unchanged.
 - Ultima pipelines using GATK flow duplicate marking pass
   `duplicate_marking="gatk-flow"`. Their temporary budget includes retained
   sorted/marked BAMs: up to two BAMs (200 bytes/read) for CRAM output, rather
   than assuming only sort spill and final CRAM coexist.
-- VCF output uses 10% of input bytes, with another output-sized allowance for
-  per-contig files/concatenation (twice for GATK). Regional GATK CRAM conversion
+- bcftools compressed VCF output allows **1.6 bytes per inferred read for SNPs**
+  and **0.4 for indels**, at least 64 KiB. Without a supplied read count, BAM
+  and CRAM bytes are normalized using the existing 80/12 bytes-per-read
+  fallback, so input compression does not directly set the VCF budget.
+  The CLI supplies the cheap indexed BAM count; CRAM keeps the fallback
+  rather than decoding the file for preflight.
+  Serial calling (`--no-parallel`, one thread, an explicit region, or a
+  caller-resolved serial fallback) writes directly to the staged output and
+  reserves **no part/concatenation temporary space**.
+  Parallel calling uses the runtime's shared batching plan, not one part per
+  reference contig. Compressed batch headers are estimated from the complete
+  reference dictionary and supplied alignment header, with compression and
+  metadata headroom. Non-replaying indels reserve two output-sized data sets.
+  Parallel SNPs also reserve possible deep-site split/replay files: a full
+  uncompressed header for each split contig, both window and whole-contig
+  fallback splices, and reheadering, plus an eight-output-sized record-data
+  envelope. These files can coexist until publication, even though a shallow
+  run may not need replay. All of these files are charged to the output volume,
+  where the caller actually creates them.
+  The CLI supplies the resolved `bcftools_contigs` and `alignment_header`;
+  read-only API clients without that metadata conservatively use the reference
+  dictionary. If neither a reference index nor resolved contigs are available,
+  parallel temporary disk is reported unknown rather than assuming a serial run.
+  On #722's nominal-30x HG002
+  slice, the 670.5 MB BAM produced 2.95 MB SNP and 0.80 MB indel VCF.gz files;
+  the old tenth-of-input output estimate was 23×/84× high. The new budgets
+  retain several-fold headroom; depth, variant burden and compression vary.
+  The subsequent whole **35x** run produced 180.70 MB SNP and 47.75 MB
+  indel VCF.gz files from 835,260,415 realigned records. With the existing
+  result directories subtracted, the sampled incremental **temporary plus
+  new output** peaks were 0.497/0.056 GiB on the output volume, respectively.
+  These are combined peaks, not separate measurements of temporary files.
+  They support keeping the compressed-output budgets conservative rather
+  than replacing replay/header worst-case allowances with one run's peak.
+  GATK retains 10% of input bytes for output and twice that for temporary
+  storage. Regional GATK CRAM conversion
   also budgets a whole-input BAM upper bound on the output volume.
   GATK scattering additionally charges retained shard VCFs and their indexes to
   the **output volume**, where they coexist with the gathered output; JVM
@@ -352,6 +738,38 @@ filesystem for reference-index storage.
   a reservation or hard RSS cap. These non-alignment models
   are conservative heuristics, not measured guarantees for every caller, read
   length or depth.
+
+### Native DeepVariant
+
+`wgse-deepvariant` on Apple Silicon and Linux x86-64 has a separate
+sequential-stage model, not the TensorFlow partition model below.
+It allows a fixed base plus per-thread make_examples
+memory, batch-scaled GPU inference, and serialized whole-run records plus
+one parsed contig for postprocessing. RSS alone does not capture Metal's
+unified-memory footprint.
+
+Calibration in [#721](https://github.com/WGSExtract/wgsextract-cli/issues/721):
+**0.1.1**, six threads, batch 512, HG002 35x chr20 on a 16 GiB M1 peaked at
+**6.56 GB inference footprint**, with **0.843 GB workspace** from a 1.09 GB
+BAM. The temporary-disk allowance is shared by regional and whole-genome runs:
+**0.8 temporary bytes per input byte**.
+An earlier **0.1.0** whole-genome run used only 17.3 GB of workspace from a
+46.0 GB BAM, but lowering the shared allowance to that ratio would underbudget
+chr20. Its largest stage RSS was 3.70 GB, while Metal inference's measured
+peak footprint was **5.26 GB**. At batch 512, the inference-stage RAM envelope
+is **7 GiB** (1 GiB base plus 512 × 12 MiB), plus **1 GiB driver headroom**:
+**8 GiB total preflight RAM**, covering the footprint rather than RSS alone.
+The existing envelopes remain conservative.
+
+On Linux x86-64 (#719), call_variants peaked at **1.5 GiB host RAM** at batch
+256 on either CUDA or the CPU, also within the shared native RAM envelope.
+See the [Linux/CUDA measurements](../native/deepvariant/README.md#linux-x86-64-and-nvidia-gpus-cuda)
+for inference backend, GPU memory and qualification details.
+
+The [16 GB benchmark](apple-silicon-16gb.md#native-deepvariant) projects
+0.1.1 whole-genome wall time from measured 0.1.0 whole-genome time and the
+0.1.1/0.1.0 chr20 timing ratio. It is not a measured 0.1.1 whole-genome run;
+the estimator does not promise a wall time.
 
 ### DeepVariant postprocess_variants
 

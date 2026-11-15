@@ -1,0 +1,28 @@
+{
+  "about": "Review notes on the UI redesign mockups of the WGSExtract/wgsextract-cli repository (https://github.com/WGSExtract/wgsextract-cli). The mockups are static HTML, CSS and JavaScript in gui/mockups/ on branch main. This file holds the notes for one mockup page. Fields: \"page\" is the page id: <direction>-<name> is gui/mockups/directions/<direction>/<name>.html (for example c-home is directions/c/home.html); index, design-system and icons are gui/mockups/index.html, design-system/design-system.html and icons/icons.html. \"notes\" maps note ids to notes. In a note, anchor.annot is the data-annot-id of the element the note is pinned to (anchor.path is a CSS path below that element, x, y, w and h are fractions of its box, and a null anchor means the whole page); author is who wrote it; text is the note; status is open or resolved; replies is the thread; context is the viewport, theme and Basic/Advanced level it was written in. To act on the notes: read gui/mockups/README.md and gui/mockups/DESIGN.md first; for each open note, change the mockup HTML, CSS or the design system (gui/mockups/design-system/) to address it, keeping the design system consistent across pages; then add a reply with author \"AI\" whose text starts with \"(AI):\" and says what changed, and set status to resolved (or leave it open and ask a question in the reply). Keep the file's format (sorted keys, two-space indent) and check it with python3 gui/mockups/serve.py --check.",
+  "notes": {
+    "n6c6248a5b4": {
+      "anchor": {
+        "annot": "can-do",
+        "label": "can-do",
+        "path": "",
+        "x": 0.01,
+        "y": 0.02
+      },
+      "author": "AI",
+      "context": {
+        "depth": "basic",
+        "theme": "light",
+        "viewport": "fit"
+      },
+      "created": "2026-11-11T17:08:06Z",
+      "id": "n6c6248a5b4",
+      "replies": [],
+      "status": "open",
+      "text": "(AI): Are these the right next steps for a CRAM? What's missing for genealogists (e.g. a Y-DNA BAM for YFull, a mtDNA FASTA)?",
+      "updated": "2026-11-11T17:08:06Z"
+    }
+  },
+  "page": "c-file",
+  "title": "HG002 (son)"
+}

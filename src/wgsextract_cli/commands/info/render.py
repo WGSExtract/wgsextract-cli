@@ -148,7 +148,7 @@ def render_info(data: Mapping[str, Any], detailed: bool = False) -> str:
             f"{LOG_MESSAGES['info_file_content']:<28}{data.get('file_content', 'Unknown')}"
         )
 
-    if data.get("gender") and data.get("gender") != "Unknown":
+    if data.get("gender"):
         output_lines.append(
             f"{LOG_MESSAGES['info_bio_gender']:<28}{data.get('gender')}"
         )
@@ -204,7 +204,7 @@ def render_info(data: Mapping[str, Any], detailed: bool = False) -> str:
             "  SNs             - Total count of named sequences in the reference.",
             "",
             "OTHER:",
-            "  Bio Gender      - Predicted biological sex based on X/Y ratio.",
+            "  Bio Gender      - Non-PAR depth screening; Unknown if insufficient.",
             "  Avg Read Length - Mean base pairs per read (SD = standard deviation).",
             "  Avg Insert Size - Mean distance between pairs (inner + reads).",
             "  Read N50        - Long reads: half the bases are in reads at least",
@@ -255,7 +255,7 @@ def _input_reference_opts(input_p: str, ref_p: str | None) -> list[str]:
     return ["--input-fmt-option", f"reference={opts[1]}"] if opts else []
 
 
-def _is_fresh_output(path: str, input_p: str) -> bool:
+def is_fresh_output(path: str, input_p: str) -> bool:
     """True when ``path`` is a non-empty file written after ``input_p`` last changed."""
     try:
         return (
@@ -328,7 +328,7 @@ def run_full_coverage(
     if legacy_p:
         candidates.append((legacy_p, _parse_legacy_bincvg))
     for cached, parser in candidates:
-        if _is_fresh_output(cached, input_p):
+        if is_fresh_output(cached, input_p):
             try:
                 covered = parser(cached)
             except (OSError, ValueError, IndexError) as exc:

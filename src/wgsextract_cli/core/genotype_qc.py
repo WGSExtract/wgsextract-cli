@@ -12,6 +12,7 @@ import io
 import logging
 import re
 import tempfile
+import zlib
 from collections.abc import Collection, Iterable, Mapping
 from pathlib import Path
 
@@ -253,7 +254,7 @@ def read_length(alignment: str, outdir: str | None = None) -> float:
     from wgsextract_cli.commands.info.metrics import cached_info, run_body_sample
 
     fact = sample_workspace.known("read_length", alignment)
-    if fact is not None:
+    if fact is not None and isinstance(fact.value, (str, int, float)):
         return float(fact.value)
     cached = cached_info(alignment, outdir, "avg_read_len")
     avg_len = float(cached["avg_read_len"]) if cached else 0.0
@@ -410,8 +411,14 @@ def contigs_with_reads(alignment: str, ref: str | None) -> dict[str, int]:
         stats, *_ = parse_idxstats(alignment)
         return {s["name"]: s["length"] for s in stats if s["mapped"] and s["length"]}
     names = list(sequence_lengths(get_bam_header(alignment, ref)).items())
-    with gzip.open(index, "rt") as f:
-        ids = {int(line.split("\t", 1)[0]) for line in f if line.strip()}
+    with open(index, "rb") as f:
+        data = f.read()
+    # samtools writes CRAI gzipped, but plain text is valid too.
+    try:
+        text = gzip.decompress(data) if data[:2] == b"\x1f\x8b" else data
+    except (EOFError, zlib.error) as error:
+        raise ValueError(f"Unreadable index {index}: {error}") from error
+    ids = {int(line.split(b"\t", 1)[0]) for line in text.splitlines() if line.strip()}
     return dict(names[i] for i in sorted(ids) if 0 <= i < len(names))
 
 

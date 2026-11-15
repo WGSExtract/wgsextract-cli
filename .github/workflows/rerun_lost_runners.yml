@@ -1,38 +1,106 @@
 name: Rerun Lost Runners
 
-# A hosted runner sometimes dies mid-job ("The hosted runner lost communication
-# with the server"), most often on Windows. That says nothing
-# about the change, so rerun the failed jobs once; a failure the run itself
-# caused is left alone.
 on:
   workflow_run:
-    workflows: ["CI Ubuntu", "CI macOS", "CI Windows", "Install Lab", "GUI CI", "GUI Tauri installer"]
+    workflows:
+      - CI Ubuntu
+      - PR area checks
+      - CI macOS
+      - CI Windows
+      - CI Linux ARM64
+      - CLI package and benchmark smoke
+      - macOS DeepVariant
+      - macOS Aligners
+      - Linux Aligners
+      - Install Lab
+      - GUI CI
+      - GUI Tauri installer
+      - GUI developer setup
+      - GUI distribution
     types: [completed]
+  schedule:
+    - cron: '17 8 * * 1'
+  pull_request_target:
+    types: [synchronize, closed, ready_for_review]
 
-permissions:
-  actions: write
-  checks: read
+permissions: {}
+
+concurrency:
+  group: ci-failure-observer-${{ github.event_name == 'schedule' && 'weekly' || 'observations' }}
+  queue: max
+  cancel-in-progress: false
 
 jobs:
   rerun:
-    if: github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.run_attempt == 1
+    # Successful first attempts need no runner. Observe successful retries to
+    # report flakes, and main push/nightly successes to close workflow bugs.
+    if: >-
+      github.event_name == 'workflow_run' &&
+      (github.event.workflow_run.conclusion == 'failure' ||
+       github.event.workflow_run.conclusion == 'cancelled' ||
+       github.event.workflow_run.run_attempt > 1 ||
+       (github.event.workflow_run.head_branch == 'main' &&
+        contains(fromJSON('["push","schedule"]'), github.event.workflow_run.event)))
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+      checks: read
+      issues: write
+      pull-requests: read
     steps:
-      - name: Rerun if a runner was lost
+      # Never execute code from the untrusted workflow_run head or artifacts.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Classify failures and record bounded retries
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
-        run: |
-          set -euo pipefail
-          jobs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs" \
-            -q '.jobs[] | select(.conclusion == "failure") | .id')
-          for job in $jobs; do
-            if gh api "repos/$GITHUB_REPOSITORY/check-runs/$job/annotations" -q '.[].message' \
-                | grep -qE "lost communication with the server|runner has received a shutdown signal"; then
-              echo "Job $job lost its runner; rerunning the failed jobs of run $RUN_ID."
-              gh run rerun "$RUN_ID" --failed --repo "$GITHUB_REPOSITORY"
-              exit 0
-            fi
-          done
-          echo "No lost runner in run $RUN_ID; not rerunning."
+        run: >-
+          python3 -m scripts.ci_failures
+          --repository "$GITHUB_REPOSITORY"
+          --event "$GITHUB_EVENT_PATH"
+
+  clear-old-quarantine:
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      github.event.pull_request.draft != true &&
+      contains(github.event.pull_request.labels.*.name, 'ci-red-main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Reconcile labels with the PR's live head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 -m scripts.ci_failures
+          --repository "$GITHUB_REPOSITORY"
+          --event "$GITHUB_EVENT_PATH"
+
+  weekly-rollup:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Weekly retry rates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -m scripts.ci_failures --repository "$GITHUB_REPOSITORY" --rollup

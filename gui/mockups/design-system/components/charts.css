@@ -1,0 +1,275 @@
+/* Charts drawn with CSS: per-chromosome bars, stacked proportion bars with
+ * legends, confidence intervals, and haplogroup lineage paths. Values come in
+ * as custom properties (--v, --w, --lo, --hi) so markup stays data-only. */
+
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: var(--h, 120px);
+  padding-top: var(--sp-2);
+}
+
+.bars__col {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+  height: 100%;
+}
+
+.bars__bar {
+  width: 100%;
+  max-width: 22px;
+  height: var(--v, 0%);
+  min-height: 2px;
+  border-radius: 3px 3px 0 0;
+  background: var(--bar, color-mix(in srgb, var(--c-primary) 80%, var(--c-surface)));
+}
+
+.bars__bar[data-flag="low"] {
+  --bar: var(--c-warn);
+}
+
+.bars__bar[data-flag="sex"] {
+  --bar: var(--c-accent);
+}
+
+.bars__label {
+  font-size: 10px;
+  color: var(--c-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Reference line for the genome-wide mean */
+.bars-wrap {
+  position: relative;
+}
+
+.bars-wrap__mean {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--mean, 50%) * 0.86 + 18px);
+  border-top: 1px dashed var(--c-text-3);
+  pointer-events: none;
+}
+
+/* Stacked horizontal bar: segments sized by --w (a percentage) */
+.stacked {
+  display: flex;
+  height: var(--h, 28px);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--c-surface-3);
+}
+
+.stacked__seg {
+  width: var(--w);
+  min-width: 2px;
+  background: var(--seg);
+}
+
+.stacked__seg + .stacked__seg {
+  box-shadow: -1px 0 0 var(--c-surface);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-sm);
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--seg);
+  flex: none;
+}
+
+.seg-1 {
+  --seg: var(--chart-1);
+}
+
+.seg-2 {
+  --seg: var(--chart-2);
+}
+
+.seg-3 {
+  --seg: var(--chart-3);
+}
+
+.seg-4 {
+  --seg: var(--chart-4);
+}
+
+.seg-5 {
+  --seg: var(--chart-5);
+}
+
+.seg-6 {
+  --seg: var(--chart-6);
+}
+
+.seg-7 {
+  --seg: var(--chart-7);
+}
+
+/* Proportion with 95% interval: bar to the value, whisker lo..hi */
+.ci {
+  position: relative;
+  height: 14px;
+  min-width: 80px;
+  border-radius: 3px;
+  background: var(--c-surface-3);
+}
+
+.ci__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--v);
+  border-radius: 3px;
+  background: var(--seg, var(--c-primary));
+  opacity: 0.85;
+}
+
+.ci__whisker {
+  position: absolute;
+  top: 50%;
+  left: var(--lo);
+  width: calc(var(--hi) - var(--lo));
+  height: 0;
+  border-top: 1.5px solid var(--c-text);
+}
+
+.ci__whisker::before,
+.ci__whisker::after {
+  content: "";
+  position: absolute;
+  top: -5px;
+  height: 8px;
+  border-left: 1.5px solid var(--c-text);
+}
+
+.ci__whisker::before {
+  left: 0;
+}
+
+.ci__whisker::after {
+  right: 0;
+}
+
+/* Haplogroup lineage path: root at the top, the sample's haplogroup last */
+.hap-path {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hap-path__node {
+  position: relative;
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 28px;
+  font-size: var(--fs-sm);
+}
+
+.hap-path__node::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--c-border-strong);
+}
+
+.hap-path__node:first-child::before {
+  top: 50%;
+}
+
+.hap-path__node:last-child::before {
+  bottom: 50%;
+}
+
+.hap-path__dot {
+  position: relative;
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  margin-left: 5px;
+  border: 2px solid var(--c-border-strong);
+  border-radius: 50%;
+  background: var(--c-surface);
+}
+
+.hap-path__name {
+  font-family: var(--font-mono);
+  font-weight: var(--fw-medium);
+}
+
+.hap-path__meta {
+  font-size: var(--fs-xs);
+  color: var(--c-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.hap-path__node--gap .hap-path__name {
+  color: var(--c-text-3);
+  font-family: var(--font-sans);
+  font-style: italic;
+}
+
+.hap-path__node--gap::before {
+  background: repeating-linear-gradient(var(--c-border-strong) 0 3px, transparent 3px 6px);
+}
+
+.hap-path__node--leaf .hap-path__dot {
+  width: 16px;
+  height: 16px;
+  margin-left: 2px;
+  border-color: var(--hap, var(--c-primary));
+  background: var(--hap, var(--c-primary));
+  box-shadow: 0 0 0 4px var(--c-primary-soft);
+}
+
+.hap-path__node--leaf .hap-path__name {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+  color: var(--hap, var(--c-primary));
+}
+
+/* Big haplogroup result */
+.hap-result {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+}
+
+.hap-result__name {
+  font-family: var(--font-mono);
+  font-size: var(--fs-3xl);
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.02em;
+  color: var(--hap, var(--c-primary));
+}

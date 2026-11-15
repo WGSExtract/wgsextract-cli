@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Design system · WGS Extract mockups</title>
+<link rel="stylesheet" href="wgse.css">
+<link rel="stylesheet" href="../shared/mockup.css">
+<link rel="stylesheet" href="../shared/docs.css">
+<script src="../shared/boot.js" defer></script>
+</head>
+<body data-page-id="design-system" data-shell="none" data-title="Design system">
+<div class="doc" data-annot-id="doc">
+  <header class="doc__hero" data-annot-id="hero">
+    <span class="eyebrow">WGS Extract</span>
+    <h1>Design system</h1>
+    <p>Tokens and components for the redesigned app. Plain CSS custom properties and classes, no build step, no web fonts or CDNs (it works offline and loads nothing from third parties). Link <code>design-system/wgse.css</code>; switch light and dark with the moon/sun button above, or compare them side by side below.</p>
+    <nav class="doc-toc" aria-label="Sections">
+      <a class="chip" href="#color">Colour</a><a class="chip" href="#type">Type</a><a class="chip" href="#space">Space &amp; shape</a><a class="chip" href="#buttons">Buttons</a><a class="chip" href="#forms">Forms</a><a class="chip" href="#cards">Cards</a><a class="chip" href="#tables">Tables</a><a class="chip" href="#progress">Progress &amp; jobs</a><a class="chip" href="#feedback">Feedback</a><a class="chip" href="#nav">Navigation</a><a class="chip" href="#overlays">Overlays</a><a class="chip" href="#charts">Charts</a><a class="chip" href="#a11y">Accessibility</a><a class="chip" href="../icons/icons.html">Icons</a>
+    </nav>
+  </header>
+
+  <section class="doc-section" id="color" data-annot-id="ds-color">
+    <h2>Colour</h2>
+    <p>Neutrals carry most of the interface; blue means “you can act here”; the brand magenta marks results worth noticing. Semantic colours are for status only, always paired with an icon or word so colour isn’t the only signal. Text colours meet WCAG 2.2 AA (4.5:1) on every surface in both themes.</p>
+    <h3>Surfaces and text</h3>
+    <div data-render="swatches" data-tokens="--c-bg,--c-surface,--c-surface-2,--c-surface-3,--c-border,--c-border-strong,--c-text,--c-text-2,--c-text-3"></div>
+    <h3>Action, accent and status</h3>
+    <div data-render="swatches" data-tokens="--c-primary,--c-primary-soft,--c-accent,--c-accent-soft,--c-success,--c-success-soft,--c-warn,--c-warn-soft,--c-danger,--c-danger-soft,--c-info,--c-info-soft"></div>
+    <h3>File types and chart series</h3>
+    <p class="doc-note">Each file type keeps one hue everywhere: its mark, badge and any chart series. Chart series are ordered so neighbours differ in lightness as well as hue.</p>
+    <div data-render="swatches" data-tokens="--ft-bam,--ft-cram,--ft-fastq,--ft-vcf,--ft-raw,--ft-fasta,--chart-1,--chart-2,--chart-3,--chart-4,--chart-5,--chart-6,--chart-7"></div>
+    <h3>Light and dark side by side</h3>
+    <div class="grid" style="--grid-min: 320px" data-annot-id="theme-pair">
+      <div data-theme="light" class="demo__stage demo__stage--col" style="border-radius: var(--r-lg)"><div class="fixit"><span class="fixit__icon"><i data-icon="reference"></i></span><div class="fixit__title">This CRAM needs hs38d1</div><div class="fixit__body">0.9 GB download, about 4 minutes.</div><div class="fixit__actions"><button class="btn btn--sm btn--primary" type="button">Install</button><span class="badge badge--warn">Needs setup</span><span class="ft-label" data-ft="cram">CRAM</span></div></div></div>
+      <div data-theme="dark" class="demo__stage demo__stage--col" style="border-radius: var(--r-lg); color: var(--c-text)"><div class="fixit"><span class="fixit__icon"><i data-icon="reference"></i></span><div class="fixit__title">This CRAM needs hs38d1</div><div class="fixit__body">0.9 GB download, about 4 minutes.</div><div class="fixit__actions"><button class="btn btn--sm btn--primary" type="button">Install</button><span class="badge badge--warn">Needs setup</span><span class="ft-label" data-ft="cram">CRAM</span></div></div></div>
+    </div>
+  </section>
+
+  <section class="doc-section" id="type" data-annot-id="ds-type">
+    <h2>Type</h2>
+    <p>The platform’s own UI font (San Francisco, Segoe UI, Roboto/Noto) for text and its monospace for paths, haplogroups and commands. Desktop body text is 14 px for dense screens; phone layouts step it up to 16 px. Numbers in tables use tabular figures.</p>
+    <div class="demo"><div class="demo__stage demo__stage--col scale">
+      <div class="scale__row"><code>--fs-4xl 34</code><span style="font-size: var(--fs-4xl); font-weight: 600">My genomes</span></div>
+      <div class="scale__row"><code>--fs-3xl 28</code><span class="mono" style="font-size: var(--fs-3xl); font-weight: 700">J-ZS241</span></div>
+      <div class="scale__row"><code>--fs-2xl 22</code><span style="font-size: var(--fs-2xl); font-weight: 600">Page title</span></div>
+      <div class="scale__row"><code>--fs-xl 18</code><span style="font-size: var(--fs-xl); font-weight: 600">Section heading</span></div>
+      <div class="scale__row"><code>--fs-lg 16</code><span style="font-size: var(--fs-lg)">Phone body, lead text</span></div>
+      <div class="scale__row"><code>--fs-md 14</code><span>Desktop body: the default size of the app.</span></div>
+      <div class="scale__row"><code>--fs-sm 13</code><span class="small">Table cells, secondary text</span></div>
+      <div class="scale__row"><code>--fs-xs 12</code><span class="xsmall muted">Metadata, hints</span></div>
+      <div class="scale__row"><code>--fs-2xs 11</code><span class="eyebrow">Eyebrow label</span></div>
+    </div></div>
+  </section>
+
+  <section class="doc-section" id="space" data-annot-id="ds-space">
+    <h2>Space, shape, elevation and motion</h2>
+    <p>A 4 px grid. Controls are 32 px tall on desktop and 44 px (the minimum touch target) on phones and touch screens, from the same markup.</p>
+    <div class="grid" style="--grid-min: 300px">
+      <div class="demo"><div class="demo__stage demo__stage--col scale">
+        <div class="scale__row"><code>--sp-1 4</code><span class="space-bar" style="width: 4px"></span></div>
+        <div class="scale__row"><code>--sp-2 8</code><span class="space-bar" style="width: 8px"></span></div>
+        <div class="scale__row"><code>--sp-3 12</code><span class="space-bar" style="width: 12px"></span></div>
+        <div class="scale__row"><code>--sp-4 16</code><span class="space-bar" style="width: 16px"></span></div>
+        <div class="scale__row"><code>--sp-6 24</code><span class="space-bar" style="width: 24px"></span></div>
+        <div class="scale__row"><code>--sp-8 32</code><span class="space-bar" style="width: 32px"></span></div>
+        <div class="scale__row"><code>--sp-12 48</code><span class="space-bar" style="width: 48px"></span></div>
+      </div></div>
+      <div class="demo"><div class="demo__stage">
+        <div class="card" style="border-radius: var(--r-sm); box-shadow: var(--shadow-1)"><code>--r-sm</code><span class="xsmall subtle">--shadow-1</span></div>
+        <div class="card" style="border-radius: var(--r-lg); box-shadow: var(--shadow-2)"><code>--r-lg</code><span class="xsmall subtle">--shadow-2</span></div>
+        <div class="card" style="border-radius: var(--r-xl); box-shadow: var(--shadow-3)"><code>--r-xl</code><span class="xsmall subtle">--shadow-3</span></div>
+      </div><div class="demo__notes">Motion: <code>--dur-fast</code> 120 ms for hover, <code>--dur</code> 200 ms for toggles, <code>--dur-slow</code> 320 ms for sheets and progress. With “reduce motion” all three are 0 and loaders stop animating.</div></div>
+    </div>
+  </section>
+
+  <section class="doc-section" id="buttons" data-annot-id="ds-buttons">
+    <h2>Buttons</h2>
+    <div class="demo">
+      <div class="demo__stage">
+        <button class="btn btn--primary" type="button"><i data-icon="chip"></i>Make 2 files</button>
+        <button class="btn" type="button">Secondary</button>
+        <button class="btn btn--soft" type="button"><i data-icon="download"></i>Install</button>
+        <button class="btn btn--ghost" type="button">Ghost</button>
+        <button class="btn btn--danger" type="button">Remove</button>
+        <button class="btn btn--danger-outline" type="button">Cancel job</button>
+        <button class="btn btn--icon" type="button" aria-label="More"><i data-icon="ellipsis"></i></button>
+        <button class="btn btn--sm" type="button">Small</button>
+        <button class="btn btn--primary btn--lg" type="button">Large</button>
+        <button class="btn" type="button" disabled>Disabled</button>
+      </div>
+      <div class="demo__notes">One primary button per view, labelled with what it does (“Make 2 files”, not “Submit”). Destructive buttons say what goes and are never the default in a dialog. Icon-only buttons need <code>aria-label</code>.</div>
+    </div>
+  </section>
+
+  <section class="doc-section" id="forms" data-annot-id="ds-forms">
+    <h2>Forms and choices</h2>
+    <div class="grid" style="--grid-min: 340px">
+      <div class="demo"><div class="demo__stage demo__stage--col">
+        <div class="field"><label class="field__label" for="ds-name">Name in your library</label><input class="input" id="ds-name" value="HG005"><span class="field__hint">Shown instead of the file name</span></div>
+        <div class="field"><label class="field__label" for="ds-ref">Reference</label><select class="select" id="ds-ref"><option>hs38 (GRCh38) — installed</option></select></div>
+        <div class="field"><label class="field__label" for="ds-bad">Region</label><input class="input mono" id="ds-bad" value="-chrY" aria-invalid="true"><span class="field__error">A region can’t start with “-”.</span></div>
+        <label class="check"><input type="checkbox" checked><span>Measure coverage now</span></label>
+        <label class="switch"><input type="checkbox" role="switch" checked><span>Keep this computer awake</span></label>
+      </div><div class="demo__notes">Labels above fields on phones, beside them in dense desktop forms (<code>.field-row</code>, with the API parameter name under the label in Advanced). Errors say how to fix the value.</div></div>
+      <div class="demo"><div class="demo__stage demo__stage--col">
+        <div class="seg" data-seg="ds-seg" role="group" aria-label="Detail"><button class="seg__btn" type="button" value="7" aria-pressed="true">Continental</button><button class="seg__btn" type="button" value="12">Regional</button></div>
+        <div class="row row--wrap"><button class="chip" type="button" data-toggle-pressed aria-pressed="true">All <span class="chip__count">6</span></button><button class="chip" type="button" data-toggle-pressed aria-pressed="false">BAM / CRAM <span class="chip__count">3</span></button><button class="chip" type="button" data-toggle-pressed aria-pressed="false">VCF</button></div>
+        <button class="option" type="button" data-toggle-pressed aria-pressed="true"><span class="option__check"><i data-icon="check"></i></span><span class="option__title">GEDmatch</span><span class="option__meta">Combined kit · ≈ 2 M markers</span></button>
+      </div><div class="demo__notes">Segmented control for 2–4 exclusive views; chips for filters and multi-select; option cards when each choice needs a sentence of explanation. All are buttons with <code>aria-pressed</code>.</div></div>
+    </div>
+    <div class="demo"><div class="demo__stage demo__stage--col"><div class="dropzone" data-dropzone="#ds-drop-result"><span class="dropzone__icon"><i data-icon="file-up"></i></span><span class="dropzone__title">Drop genome files here</span><button class="btn btn--primary" type="button" data-browse>Choose files</button></div><div id="ds-drop-result" class="callout callout--success" hidden><i data-icon="circle-check"></i><span>Read the header: CRAM, GRCh38, indexed.</span></div></div><div class="demo__notes">Drop zone: also a normal button for keyboard and phone users. Detection results appear right below it.</div></div>
+  </section>
+
+  <section class="doc-section" id="cards" data-annot-id="ds-cards">
+    <h2>Cards, stats and badges</h2>
+    <div class="grid" style="--grid-min: 300px">
+      <a class="action" href="../directions/c/microarray.html"><span class="action__icon"><i data-icon="chip"></i></span><span><span class="action__title">Make DNA-test files</span><br><span class="action__desc">GEDmatch, MyHeritage… · 12 min</span></span><i data-icon="chevron-right"></i></a>
+      <div class="stat"><span class="stat__label">Mean coverage</span><span class="stat__value">31.4<small>×</small></span><span class="stat__delta">Good for everything here</span></div>
+    </div>
+    <div class="demo"><div class="demo__stage">
+      <span class="badge">Queued</span><span class="badge badge--primary">Running</span><span class="badge badge--success"><i data-icon="check"></i>Done</span><span class="badge badge--warn"><i data-icon="triangle-alert"></i>Needs setup</span><span class="badge badge--danger">Failed</span><span class="badge badge--info">Update</span><span class="badge badge--accent">New</span>
+      <span class="ft" data-ft="bam"><i data-icon="file-bam"></i></span><span class="ft" data-ft="cram"><i data-icon="file-cram"></i></span><span class="ft" data-ft="fastq"><i data-icon="file-fastq"></i></span><span class="ft" data-ft="vcf"><i data-icon="file-vcf"></i></span><span class="ft" data-ft="raw"><i data-icon="file-raw"></i></span><span class="ft" data-ft="fasta"><i data-icon="file-fasta"></i></span>
+      <span class="ft-label" data-ft="bam">BAM</span><span class="ft-label" data-ft="cram">CRAM</span><span class="ft-label" data-ft="fastq">FASTQ</span><span class="ft-label" data-ft="vcf">VCF</span><span class="ft-label" data-ft="raw">RAW</span>
+    </div><div class="demo__notes">Status badges always have a word; icons are optional. File-type marks (<code>.ft[data-ft]</code>) are icon-only tiles; the type name goes in an <code>.ft-label</code> beside them, so it can be translated.</div></div>
+  </section>
+
+  <section class="doc-section" id="tables" data-annot-id="ds-tables">
+    <h2>Dense tables</h2>
+    <p>Compact rows (36 px), sticky headers, right-aligned tabular numbers. Add <code>.table--stack</code> and <code>data-label</code> on cells and each row becomes a card on phones; mark columns that don’t matter there with <code>.hide-phone</code>. Switch the viewport to Phone above to see it.</p>
+    <div data-render="library-table" data-limit="3"></div>
+  </section>
+
+  <section class="doc-section" id="progress" data-annot-id="ds-progress">
+    <h2>Progress and jobs</h2>
+    <div class="demo"><div class="demo__stage demo__stage--col">
+      <div class="progress" role="progressbar" aria-valuenow="47" aria-valuemin="0" aria-valuemax="100" aria-label="Determinate"><div class="progress__fill" style="--v: 47%"></div></div>
+      <div class="progress progress--indeterminate" role="progressbar" aria-label="Indeterminate"><div class="progress__fill"></div></div>
+      <div class="row"><span class="ring" style="--v: 47"><span></span></span><span class="ring ring--lg" style="--v: 64"><span>64%</span></span><span class="spinner" aria-hidden="true"></span></div>
+      <div class="stages"><div class="stage" data-state="done"><div class="stage__bar"><span></span></div><div class="stage__label">Extract reads</div></div><div class="stage" data-state="running" style="--w: 4"><div class="stage__bar"><span style="--v: 47%"></span></div><div class="stage__label">Align</div></div><div class="stage" data-state="pending"><div class="stage__bar"><span></span></div><div class="stage__label">Sort + index</div></div></div>
+    </div><div class="demo__notes">Use determinate progress whenever the server reports it (<code>progress</code> events on <code>/v1/jobs/{id}/events</code>). Commands with step resume show their steps, sized by their typical share of the time, so “47%” of a 3-hour job reads honestly.</div></div>
+    <div data-render="jobs" data-filter="all" data-limit="4"></div>
+  </section>
+
+  <section class="doc-section" id="feedback" data-annot-id="ds-feedback">
+    <h2>Fix-it cards, callouts, toasts and empty states</h2>
+    <p>Problems are cards that say what happened, why it matters and what to do, with the fix as a button. Never a raw error string or a script path. Raw details (error code, log) are one click away for advanced users.</p>
+    <div class="grid" style="--grid-min: 320px">
+      <div class="fixit"><span class="fixit__icon"><i data-icon="hard-drive"></i></span><div class="fixit__title">Temporary files won’t fit</div><div class="fixit__body">Sorting needs about 12 GB; 8.4 GB is free on Macintosh HD.</div><div class="fixit__actions"><button class="btn btn--sm btn--soft" type="button">Use /Volumes/Genomes</button></div></div>
+      <div class="fixit fixit--danger"><span class="fixit__icon"><i data-icon="lock"></i></span><div class="fixit__title">Not allowed to open this folder</div><div class="fixit__body"><code>path_not_allowed</code>: ~/Desktop isn’t an allowed folder.</div><div class="fixit__actions"><button class="btn btn--sm btn--primary" type="button">Allow ~/Desktop</button></div></div>
+      <div class="callout"><i data-icon="info"></i><div>Callouts explain; they don’t demand action.</div></div>
+      <div class="callout callout--success"><i data-icon="circle-check"></i><div>Your library covers 5 of your 6 files.</div></div>
+    </div>
+    <div class="demo"><div class="demo__stage"><button class="btn" type="button" data-toast="Conversion started — see Jobs">Show a toast</button><div class="empty" style="padding: var(--sp-4)"><span class="empty__art"><i data-icon="helix"></i></span><span class="empty__title">Add your first genome</span></div><div class="stack stack--xs" style="width: 200px"><span class="skeleton" style="--w: 70%"></span><span class="skeleton" style="--w: 45%"></span></div></div></div>
+  </section>
+
+  <section class="doc-section" id="nav" data-annot-id="ds-nav">
+    <h2>Navigation</h2>
+    <p>Desktop: sidebar with the library and tasks, a top bar with search (⌘K), the job ring and the connection. Tablet: the sidebar becomes an icon rail. Phone: a bottom tab bar with five items. One shell, switched by container queries. See it live on <a href="../directions/c/home.html">My genomes</a> and switch the viewport.</p>
+    <div class="demo"><div class="demo__stage demo__stage--col">
+      <div class="tabs" role="tablist" aria-label="Demo tabs"><button class="tab" role="tab" aria-selected="true" aria-controls="ds-t1" id="ds-tab1">Overview</button><button class="tab" role="tab" aria-selected="false" aria-controls="ds-t2" id="ds-tab2">Results <span class="badge">4</span></button></div>
+      <div id="ds-t1" role="tabpanel" aria-labelledby="ds-tab1" class="small muted">Tabs switch views of one object; arrow keys move between them.</div>
+      <div id="ds-t2" role="tabpanel" aria-labelledby="ds-tab2" class="small muted" hidden>Second panel.</div>
+      <ol class="stepper" aria-label="Demo steps"><li class="stepper__item" data-state="done"><span class="stepper__label">Your file</span></li><li class="stepper__item" aria-current="step"><span class="stepper__label">Sites</span></li><li class="stepper__item"><span class="stepper__label">Check</span></li></ol>
+      <nav class="crumbs" aria-label="Breadcrumb"><a href="../directions/c/home.html">My genomes</a><span>/</span><span>HG002 (son)</span></nav>
+    </div></div>
+  </section>
+
+  <section class="doc-section" id="overlays" data-annot-id="ds-overlays">
+    <h2>Dialogs, sheets and the command palette</h2>
+    <div class="demo"><div class="demo__stage"><button class="btn" type="button" data-open="#ds-dialog">Open a dialog</button><button class="btn" type="button" data-open="#ds-sheet">Open a side sheet</button><button class="btn" type="button" data-palette><i data-icon="command"></i>Command palette</button><details class="disclosure" style="min-width: 260px"><summary>More options</summary><div class="disclosure__body small muted">Progressive disclosure for rarely changed settings.</div></details></div>
+    <div class="demo__notes">Dialogs confirm or collect a little input; anything longer is a page or a sheet. Destructive confirmations name the thing and its size, and focus the safe button.</div></div>
+  </section>
+
+  <section class="doc-section" id="charts" data-annot-id="ds-charts">
+    <h2>Charts</h2>
+    <p>Drawn with CSS from data attributes; each chart has a text alternative (<code>role="img"</code> with a summary, or a table next to it).</p>
+    <div class="grid" style="--grid-min: 340px">
+      <div class="card"><div data-render="coverage-bars"></div></div>
+      <div class="card"><div data-render="ancestry-bar" data-genome="hg002" data-legend="1"></div><div class="ci seg-1" style="--v: 52%; --lo: 49%; --hi: 55%"><div class="ci__fill"></div><div class="ci__whisker"></div></div></div>
+    </div>
+  </section>
+
+  <section class="doc-section" id="a11y" data-annot-id="ds-a11y">
+    <h2>Accessibility and localisation</h2>
+    <ul class="stack stack--sm" style="max-width: 76ch">
+      <li>Contrast: text ≥ 4.5:1, large text and UI parts ≥ 3:1, in both themes (checked with axe-core).</li>
+      <li>Keyboard: everything reachable with Tab, visible focus rings (<code>:focus-visible</code>), Escape closes overlays, arrow keys in tabs and the palette.</li>
+      <li>Touch: 44 px minimum targets on phones and coarse pointers.</li>
+      <li>Motion: honours “reduce motion”.</li>
+      <li>Screen readers: landmarks, labelled icon buttons, <code>role="progressbar"</code> with values, live region for toasts.</li>
+      <li>Localisation: no text in images or icons; layouts allow 40% longer strings (German, Portuguese); numbers and dates formatted per locale; sizes as “GB” with the locale’s decimal mark.</li>
+    </ul>
+  </section>
+</div>
+
+<dialog class="dialog" id="ds-dialog" role="alertdialog" aria-labelledby="ds-dialog-title">
+  <div class="dialog__header"><h2 class="dialog__title" id="ds-dialog-title">Remove ClinVar?</h2></div>
+  <div class="dialog__body"><p>Deletes 160 MB. Files you already annotated keep their ClinVar columns.</p></div>
+  <div class="dialog__footer"><button class="btn" type="button" data-close autofocus>Keep it</button><button class="btn btn--danger" type="button" data-close>Remove</button></div>
+</dialog>
+<dialog class="dialog sheet" id="ds-sheet" aria-labelledby="ds-sheet-title">
+  <div class="dialog__header"><h2 class="dialog__title" id="ds-sheet-title">Job details</h2><button class="btn btn--ghost btn--icon" type="button" data-close aria-label="Close"><i data-icon="x"></i></button></div>
+  <div class="dialog__body"><dl class="kv"><dt>Operation</dt><dd><code>realign</code></dd><dt>Status</dt><dd>Running · 47%</dd></dl></div>
+  <div class="dialog__footer"><button class="btn" type="button" data-close>Close</button></div>
+</dialog>
+</body>
+</html>

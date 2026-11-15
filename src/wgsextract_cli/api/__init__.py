@@ -29,7 +29,7 @@ Stability: the names exported here and the group modules (``api.extract``,
 ``api.lineage``, ``api.methylation``, ``api.microarray``, ``api.panel``, ``api.ref``,
 ``api.repair``, ``api.genotyping``, ``api.report``, ``api.sample``,
 ``api.support``, ``api.pet``, ``api.analyze``, ``api.sign``, ``api.deps``,
-``api.examples``, ``api.vep``, ``api.benchmark``) follow
+``api.examples``, ``api.vep``, ``api.benchmark``, ``api.score``) follow
 semantic versioning from the 1.0 release; adding fields with defaults is not
 a breaking change.
 Modules whose names start with ``_`` are private and may change at any time.
@@ -69,6 +69,7 @@ from . import (
     repair,
     report,
     sample,
+    score,
     sign,
     support,
     vcf,
@@ -112,7 +113,12 @@ from .extract import (
     YdnaVcfParams,
     YMtExtractParams,
 )
-from .genotyping import TypingCyp2d6Params, TypingHlaParams, TypingStrParams
+from .genotyping import (
+    TypingCyp2d6Params,
+    TypingHlaParams,
+    TypingSmnParams,
+    TypingStrParams,
+)
 from .info import CalculateCoverageParams, ChipParams, CoverageSampleParams, InfoParams
 from .lineage import MtHaplogroupParams, YHaplogroupParams, YStrParams
 from .methylation import MethylationPileupParams
@@ -125,6 +131,7 @@ from .qc import (
     FastqcParams,
     MultiqcMetricsParams,
     MultiqcParams,
+    QcAncestryParams,
     QcContaminationParams,
     QcVcfParams,
     RelateParams,
@@ -132,15 +139,20 @@ from .qc import (
 from .ref import (
     RefAadrParams,
     RefAlphamissenseParams,
+    RefAncestryParams,
     RefBootstrapParams,
     RefCaddParams,
     RefClinvarParams,
     RefCountNsParams,
+    RefDenseSaParams,
     RefDownloadParams,
     RefGeneMapParams,
     RefGerpParams,
     RefGnomadParams,
+    RefGnomadSvParams,
+    RefImputationParams,
     RefIndexParams,
+    RefLibraryDeleteParams,
     RefLibraryListParams,
     RefLibraryParams,
     RefMicroarrayTargetsParams,
@@ -150,12 +162,14 @@ from .ref import (
     RefSomalierParams,
     RefSpliceaiParams,
     RefStatusParams,
+    RefTestGenomeParams,
     RefVerifyParams,
     RefYbrowseParams,
 )
 from .repair import RepairFtdnaBamParams, RepairFtdnaVcfParams
 from .report import ReportParams
 from .sample import SampleSetParams, SampleShowParams, SampleUnsetParams
+from .score import ScorePgsParams
 from .sign import SignCreateParams, SignVerifyParams
 from .support import IssueReport, ReportIssueParams
 from .vcf import (
@@ -172,6 +186,7 @@ from .vcf import (
     VcfGatkParams,
     VcfGerpParams,
     VcfGnomadParams,
+    VcfImputeParams,
     VcfIndelParams,
     VcfPharmcatParams,
     VcfPharmgkbParams,
@@ -180,6 +195,7 @@ from .vcf import (
     VcfRevelParams,
     VcfSnpParams,
     VcfSpliceaiParams,
+    VcfSvFreqParams,
     VcfSvParams,
     VcfTableParams,
     VcfToFastaParams,
@@ -235,6 +251,7 @@ __all__ = [
     "PetAlignParams",
     "ProgressCallback",
     "ProgressEvent",
+    "QcAncestryParams",
     "QcContaminationParams",
     "QcVcfParams",
     "RealignParams",
@@ -245,20 +262,26 @@ __all__ = [
     "RefCaddParams",
     "RefClinvarParams",
     "RefCountNsParams",
+    "RefDenseSaParams",
     "RefDownloadParams",
     "RefGeneMapParams",
     "RefGerpParams",
     "RefGnomadParams",
+    "RefGnomadSvParams",
     "RefIndexParams",
+    "RefLibraryDeleteParams",
     "RefLibraryListParams",
     "RefLibraryParams",
     "RefMicroarrayTargetsParams",
     "RefPharmgkbParams",
     "RefPhylopParams",
     "RefRevelParams",
+    "RefAncestryParams",
+    "RefImputationParams",
     "RefSomalierParams",
     "RefSpliceaiParams",
     "RefStatusParams",
+    "RefTestGenomeParams",
     "RefVerifyParams",
     "RefYbrowseParams",
     "RepairFtdnaBamParams",
@@ -270,10 +293,12 @@ __all__ = [
     "SampleSetParams",
     "SampleShowParams",
     "SampleUnsetParams",
+    "ScorePgsParams",
     "SignCreateParams",
     "SignVerifyParams",
     "UnmappedParams",
     "TypingCyp2d6Params",
+    "TypingSmnParams",
     "TypingHlaParams",
     "TypingStrParams",
     "UsageError",
@@ -290,9 +315,11 @@ __all__ = [
     "VcfGatkParams",
     "VcfGerpParams",
     "VcfGnomadParams",
+    "VcfSvFreqParams",
     "VcfIndelParams",
     "VcfPharmcatParams",
     "VcfPharmgkbParams",
+    "VcfImputeParams",
     "VcfPhaseParams",
     "VcfPhylopParams",
     "VcfRevelParams",
@@ -332,6 +359,7 @@ __all__ = [
     "repair",
     "report",
     "sample",
+    "score",
     "sign",
     "support",
     "use_config",

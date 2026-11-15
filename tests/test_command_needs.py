@@ -101,7 +101,7 @@ def test_help_publishes_the_needs_in_text_and_json(capsys):
     for tool in (*needs.tools, *needs.optional, needs.runtime):
         assert tool in text
 
-    main(["help", "--all", "--json"])
+    main(["help", "--all", "--json", "--full"])
     commands = json.loads(capsys.readouterr().out)["commands"]
     for command in commands:
         declared = COMMAND_NEEDS[command["path"]]

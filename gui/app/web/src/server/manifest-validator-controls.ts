@@ -24,6 +24,13 @@ export function validateAction(action: ActionSpec, basePath: string): void {
     if (action.serverOperation != null) {
         validateServerOperation(action.serverOperation, `${basePath}.serverOperation`);
     }
+    const prerequisiteArguments: unknown = action.prerequisiteArguments;
+    if (prerequisiteArguments != null && !(Array.isArray(prerequisiteArguments) && prerequisiteArguments.every((argument) => typeof argument === "string"))) {
+        throw new BundleValidationError(`Invalid ${basePath}.prerequisiteArguments: expected an array of strings.`);
+    }
+    if (action.primaryInput != null) {
+        requireNonEmpty(action.primaryInput, `${basePath}.primaryInput`);
+    }
 }
 
 function validateServerOperation(operation: ServerOperationSpec, basePath: string): void {

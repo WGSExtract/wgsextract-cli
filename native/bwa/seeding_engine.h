@@ -287,6 +287,27 @@ public:
         return true;
     }
 
+    // Uses denser samples built elsewhere (dense_sa.h's layout, as densify
+    // builds them) in place: page-aligned storage of whole pages.
+    bool adopt(void *lo, size_t lo_bytes, void *hi, size_t hi_bytes, uint32_t shift) {
+        auto &p = *static_cast<LocateParameters *>(parameters.contents);
+        if (shift == 0 || (uint64_t(1) << shift) >= p.sa_intv || p.seq_len >> 33) return false;
+        id<MTLComputePipelineState> dense = runtime.compile(wgse_seeding_source,
+            "locate_rows_dense");
+        if (!dense) return false;
+        id<MTLBuffer> l = [runtime.device() newBufferWithBytesNoCopy:lo length:lo_bytes
+            options:MTLResourceStorageModeShared deallocator:nil];
+        id<MTLBuffer> h = [runtime.device() newBufferWithBytesNoCopy:hi length:hi_bytes
+            options:MTLResourceStorageModeShared deallocator:nil];
+        if (!l || !h) return false;
+        p.dense_shift = shift;
+        p.dense_entries = (p.seq_len / p.sa_intv + 1) * ((p.sa_intv >> shift) - 1);
+        low = l;
+        high = h;
+        pipeline = dense;
+        return true;
+    }
+
     void run(id<MTLBuffer> index, const std::vector<uint64_t> &input,
         std::vector<uint64_t> &output, size_t group) {
         kernel_seconds = 0;

@@ -1,0 +1,3 @@
+# Follow the files scripts name in "# shellcheck source=" (like -x), so the
+# variables a sourced helper reads count as used.
+external-sources=true

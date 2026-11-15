@@ -2,13 +2,17 @@ $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $PSCommandPath
 $scriptsRoot = Split-Path -Parent $scriptDir
-$bundleRoot = if ($env:GUI_FOR_CLI_BUNDLE_WORKSPACE) {
-    $env:GUI_FOR_CLI_BUNDLE_WORKSPACE
+$bundleRoot = if ($env:WGSEXTRACT_GUI_BUNDLE_WORKSPACE) {
+    $env:WGSEXTRACT_GUI_BUNDLE_WORKSPACE
 } else {
     Split-Path -Parent $scriptsRoot
 }
-$runtime = Join-Path $bundleRoot "runtime\wgsextract-cli"
-$manifestPath = Join-Path $runtime "install-manifest.json"
+# Setup installs the runtime in the app's data folder; apps up to 0.8.6 installed it in the workspace.
+$legacyRuntime = Join-Path $bundleRoot "runtime\wgsextract-cli"
+$runtimes = @(
+    if ($env:WGSEXTRACT_GUI_APP_DATA) { Join-Path $env:WGSEXTRACT_GUI_APP_DATA "runtime\wgsextract-cli" }
+    $legacyRuntime
+)
 
 # Something that could not be removed: keep going, then fail the uninstall step,
 # so the app (and its uninstaller) says so instead of reporting success.
@@ -260,13 +264,23 @@ function Invoke-ManifestItems {
     }
 }
 
-Invoke-ManifestItems -ManifestPath $manifestPath
-
-if (Test-Path -LiteralPath $runtime) {
-    Stop-RuntimeProcesses -RuntimePath $runtime
-    Remove-TreeWithRetry -LiteralPath $runtime
+foreach ($runtime in $runtimes) {
+    Invoke-ManifestItems -ManifestPath (Join-Path $runtime "install-manifest.json")
 }
-Write-Output "Removed WGS Extract runtime: $runtime"
+
+foreach ($runtime in $runtimes) {
+    if (Test-Path -LiteralPath $runtime) {
+        Stop-RuntimeProcesses -RuntimePath $runtime
+        Remove-TreeWithRetry -LiteralPath $runtime
+        Write-Output "Removed WGS Extract runtime: $runtime"
+    }
+}
+foreach ($runtime in $runtimes) {
+    $parent = Split-Path -Parent $runtime
+    if ((Test-Path -LiteralPath $parent) -and -not (Get-ChildItem -LiteralPath $parent -Force | Select-Object -First 1)) {
+        Remove-Item -LiteralPath $parent -Force -ErrorAction SilentlyContinue
+    }
+}
 if ($script:incomplete) {
     [Console]::Error.WriteLine("Some of what setup installed could not be removed (see the warnings above).")
     exit 1

@@ -2,6 +2,7 @@
 with T1K, Cyrius and ExpansionHunter replaced by scripts that log their command
 line and write output in each tool's format."""
 
+import csv
 import json
 import logging
 import random
@@ -572,11 +573,11 @@ CYRIUS_RESULT = {
     "Total_CN_raw": 3.04,
     "Spacer_CN_raw": 2.01,
     "Variants_called": ["g.42126611C>G", "g.42127941G>A"],
-    "CNV_group": "dup",
+    "CNV_group": "cn3",
     "Genotype": "*1/*2x2",
     "Filter": "PASS",
     "Raw_star_allele": ["*1_*2_*2"],
-    "Call_info": "pass_",
+    "Call_info": "unique_match",
     "Exon9_CN": 3,
     "CNV_consensus": "dup",
     "d67_snp_call": "3,3",
@@ -631,26 +632,23 @@ def test_cyp2d6_runs_cyrius_on_the_input_and_writes_the_pharmcat_call(
         "NA12878.cyrius.tsv.manifest.json",
     }
     assert (out / "NA12878.cyp2d6.pharmcat.tsv").read_text() == "CYP2D6\t*1/*2x2\n"
-    assert (
-        "CYP2D6: *1/*2x2 (filter PASS, 3 copies; raw 3.04; median depth 31.2x)"
-        in caplog.text
-    )
+    assert "CYP2D6: *1/*2x2, resolved" in caplog.text
     assert result.metrics["cyp2d6_genotype"] == "*1/*2x2"
-    assert result.metrics["cyp2d6_copy_number"] == 3
+    assert result.metrics["cyp2d6_call_status"] == "resolved"
 
 
 @pytest.mark.parametrize(
     ("result", "pharmcat", "warning"),
     [
         (
-            {"Genotype": "*1/*4x2", "Filter": "LowQ_high_CN", "Total_CN": 4},
-            "CYP2D6\t*1/*4x2\n",
-            "4 or more copies",
+            {"Genotype": "*1/*4x5", "Filter": "LowQ_high_CN", "Total_CN": 8},
+            None,
+            "about 6 or more CYP2D6 copies; CYP2D6+CYP2D7 copy number 8",
         ),
         (
             {"Genotype": "*1/*4;*4/*10", "Filter": "More_than_one_possible_genotype"},
             None,
-            "couldn't settle on one genotype (More_than_one_possible_genotype)",
+            "couldn't settle on one genotype (More_than_one_possible_genotype;",
         ),
         (
             {"Genotype": None, "Filter": None, "Total_CN": None, "Median_depth": 8.4},
@@ -669,6 +667,78 @@ def test_cyp2d6_writes_only_calls_cyrius_stands_behind(
     run_wgsextract("typing", "cyp2d6", "-i", path)
     assert (stale.read_text() if stale.exists() else None) == pharmcat
     assert warning in caplog.text
+
+
+# Issue 844: Cyrius's Total_CN (CYP2D6+CYP2D7) was reported as CYP2D6 copies,
+# and a PASS call it picked from several candidates went to PharmCAT as if
+# unique. HG00096's published computational call, not laboratory truth.
+HG00096_AMBIGUOUS = {
+    "Genotype": "*1/*4",
+    "Filter": "PASS",
+    "Total_CN": 4,
+    "CNV_group": "cn2",
+    "Call_info": "pick_common_allele",
+    "Raw_star_allele": ["*1_*4", "*39_*4.009"],
+}
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Cyrius is not supported on Windows"
+)
+@pytest.mark.parametrize(
+    ("fields", "status", "value", "confidence", "outside_call"),
+    [
+        (
+            HG00096_AMBIGUOUS,
+            "unresolved",
+            "unresolved (Cyrius: *1/*4)",
+            "low",
+            None,
+        ),
+        (
+            {
+                **HG00096_AMBIGUOUS,
+                "Call_info": "unique_match",
+                "Raw_star_allele": ["*1_*4"],
+            },
+            "resolved",
+            "*1/*4",
+            "high",
+            "CYP2D6\t*1/*4\n",
+        ),
+    ],  # fmt: skip
+)
+def test_cyp2d6_ambiguous_cyrius_pick_is_unresolved_not_exported(
+    tmp_path, cyrius, capsys, fields, status, value, confidence, outside_call
+):
+    path = bam(tmp_path / "NA12878.bam", pair("p", "chr22", 42_127_000))
+    cyrius.set_result(**fields)
+    main(["typing", "cyp2d6", "-i", path, "--config", str(tmp_path / "config.toml")])
+
+    pharmcat = tmp_path / "NA12878.cyp2d6.pharmcat.tsv"
+    assert (pharmcat.read_text() if pharmcat.exists() else None) == outside_call
+    assert (
+        (tmp_path / "NA12878.cyrius.tsv").read_text().endswith("NA12878\t*1/*4\tPASS\n")
+    )
+    manifest = json.loads((tmp_path / "NA12878.cyrius.tsv.manifest.json").read_text())
+    metrics = manifest["metrics"]
+    assert metrics["cyp2d6_call_status"] == status
+    assert metrics["cyp2d6_call_info"] == fields["Call_info"]
+    assert metrics["cyp2d6_raw_star_alleles"] == ";".join(fields["Raw_star_allele"])
+    assert metrics["cyp2d6_cyp2d7_copy_number"] == 4
+    assert metrics["cyp2d6_cnv_group"] == "cn2"
+    assert "cyp2d6_copy_number" not in metrics
+    assert "CYP2D6+CYP2D7 copy number 4" in capsys.readouterr().err
+    ambiguous = [w for w in manifest["warnings"] if w["code"] == "genotype_ambiguous"]
+    assert len(ambiguous) == (status == "unresolved")
+
+    (finding,) = build_report(tmp_path)["sections"]["pharmacogenomics"]["findings"]
+    assert (finding["value"], finding["confidence"]) == (value, confidence)
+    assert "CYP2D6+CYP2D7 copy number 4" in finding["detail"]
+    assert "4 copies" not in finding["detail"]
+    if status == "unresolved":
+        assert finding["confidence_reasons"] == ["genotype_unresolved"]
+        assert "candidates *1_*4;*39_*4.009" in finding["detail"]
 
 
 def test_cyp2d6_names_three_copies_as_pharmcat_does(tmp_path, cyrius):
@@ -883,7 +953,12 @@ def test_str_sizes_repeats_and_flags_those_outside_the_normal_range(
     out = tmp_path / "out"
     result = api.genotyping.repeats(
         api.TypingStrParams(
-            input=Path(path), ref=eh.ref, catalog=eh.catalog, outdir=out, threads=2
+            input=Path(path),
+            ref=eh.ref,
+            catalog=eh.catalog,
+            outdir=out,
+            threads=2,
+            sex="male",
         )
     )
 
@@ -894,10 +969,9 @@ def test_str_sizes_repeats_and_flags_those_outside_the_normal_range(
         "--reference": str(eh.ref),
         "--variant-catalog": str(eh.catalog),
         "--output-prefix": str(out / "NA12878.str"),
-        "--sex": "male",  # 2 chrY pairs to 10 chrX
+        "--sex": "male",
         "--threads": "2",
     }
-    assert "Sample sex: male (from chrX/chrY coverage)" in caplog.text
 
     rows = [
         line.split("\t") for line in (out / "NA12878.str.tsv").read_text().splitlines()
@@ -924,6 +998,8 @@ def test_str_sizes_repeats_and_flags_those_outside_the_normal_range(
     assert "isn't a diagnosis" in caplog.text
     assert {"NA12878.str.json", "NA12878.str.vcf", "NA12878.str.tsv"} <= outputs(out)
     assert (result.metrics["sex"], result.metrics["flagged_repeats"]) == ("male", 2)
+    assert result.metrics["observed_sex"] == "Unknown"
+    assert result.metrics["declared_sex"] == result.metrics["effective_sex"] == "male"
     assert {w.code for w in result.warnings} == {"repeat_outside_normal_range"}
 
 
@@ -940,6 +1016,190 @@ def test_str_all_normal_has_no_warnings(tmp_path, eh, caplog):
                    "--catalog", str(eh.catalog), "--sex", "female")  # fmt: skip
     assert "1 of 1 disease repeats are in the normal range." in caplog.text
     assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+@pytest.mark.parametrize(
+    ("locus", "alleles", "reads", "coverage", "sex", "status", "uncertain"),
+    [
+        pytest.param(
+            "FXN",
+            [304, 304],
+            [1, 1],
+            100,
+            "female",
+            "unresolved",
+            True,
+            id="all-weak-FXN",
+        ),
+        pytest.param(
+            "FXN",
+            [400],
+            [],
+            30,
+            "female",
+            "unresolved",
+            True,
+            id="incomplete-recessive-call",
+        ),
+        pytest.param(
+            "FXN",
+            [9],
+            [],
+            30,
+            "female",
+            "unresolved",
+            True,
+            id="incomplete-normal-call",
+        ),
+        pytest.param(
+            "FXN",
+            [304, 304],
+            [10, 10],
+            20,
+            "female",
+            "pathogenic",
+            False,
+            id="supported-biallelic",
+        ),
+        pytest.param(
+            "FXN",
+            [304, 304],
+            [1, 1],
+            1,
+            "female",
+            "pathogenic",
+            False,
+            id="thin-but-supported-biallelic",
+        ),
+        pytest.param(
+            "DMPK",
+            [12, 463],
+            [245, 2],
+            247,
+            "female",
+            "pathogenic",
+            False,
+            id="supported-dominant",
+        ),
+        pytest.param("AR", [45], [10], 10, "male", "pathogenic", False, id="male-XR"),
+        pytest.param(
+            "AR",
+            [45],
+            [10],
+            10,
+            "female",
+            "unresolved",
+            True,
+            id="female-incomplete-XR",
+        ),
+        pytest.param(
+            "AR",
+            [21, 45],
+            [10, 10],
+            20,
+            "female",
+            "carrier",
+            False,
+            id="female-XR-carrier",
+        ),
+    ],
+)
+@pytest.mark.parametrize("clipped", [False, True], ids=["unclipped", "clipped"])
+def test_issue_846_all_weak_fxn_and_incomplete_recessive_typing_output(
+    tmp_path,
+    monkeypatch,
+    eh,
+    caplog,
+    locus,
+    alleles,
+    reads,
+    coverage,
+    sex,
+    status,
+    uncertain,
+    clipped,
+):
+    """Keep caller sizes, but never diagnose from all-weak or missing copies."""
+    template = tmp_path / "strkit.json"
+    template.write_text(
+        json.dumps(
+            {
+                "results": [
+                    {
+                        "locus_id": locus,
+                        "motif": "GAA",
+                        "contig": "chr1",
+                        "start": 1000,
+                        "end": 1060,
+                        "call": alleles,
+                        "reads": {str(n): {} for n in range(coverage)},
+                        "peaks": {"n_reads": reads},
+                    }
+                ]
+            }
+        )
+    )
+    fake_tools(
+        monkeypatch,
+        tmp_path,
+        {
+            "strkit": f"""
+pathlib.Path(opt("--json")).write_text(pathlib.Path({str(template)!r}).read_text())
+pathlib.Path(opt("--vcf")).write_text("##fileformat=VCFv4.2\\n")
+"""
+        },
+    )
+    catalog = tmp_path / "strkit.bed"
+    catalog.write_text(f"chr1\t1000\t1060\tID={locus};MOTIF=GAA\n")
+    caplog.set_level(logging.INFO)
+    alignments = pair("p", "chr1", 1000)
+    if clipped:
+        alignments += [
+            f"clip{i}\t0\tchr1\t1001\t60\t100S100M\t*\t0\t0\t{SEQ * 2}\t{'I' * 200}"
+            for i in range(3)
+        ]
+    path = bam(tmp_path / "s.bam", alignments)
+    out = tmp_path / "out"
+    result = api.genotyping.repeats(
+        api.TypingStrParams(
+            input=Path(path),
+            ref=eh.ref,
+            catalog=catalog,
+            outdir=out,
+            caller="strkit",
+            sex=sex,
+            threads=1,
+        )
+    )
+    with (out / "s.str.tsv").open() as stream:
+        [row] = csv.DictReader(stream, delimiter="\t")
+    assert row["genotype"] == "/".join(map(str, alleles))
+    assert row["status"].split(" (")[0] == status
+    assert result.metrics["unconfirmed_repeats"] == int(uncertain)
+    if uncertain:
+        assert result.metrics["flagged_repeats"] == int(clipped)
+        warnings = {w.code: w for w in result.warnings}
+        assert set(warnings) == (
+            {"repeat_unconfirmed", "repeat_outside_normal_range"}
+            if clipped
+            else {"repeat_unconfirmed"}
+        )
+        warning = warnings["repeat_unconfirmed"]
+        assert locus in warning.message and "unresolved" in warning.message
+        assert "0 of 1 disease repeats" in caplog.text
+        if clipped:
+            assert "3 reads clipped" in row["status"]
+            assert "isn't a diagnosis" in caplog.text
+        report_warnings = build_report(out)["sections"]["overview"]["warnings"]
+        assert any(
+            w["code"] == "repeat_unconfirmed" and "unresolved" in w["message"]
+            for w in report_warnings
+        )
+        assert (
+            "low read support" in row["status"]
+            if reads and len(alleles) == 2
+            else ("incomplete call" in row["status"])
+        )
 
 
 @pytest.mark.skipif(
@@ -965,21 +1225,20 @@ def test_str_on_hg19_says_notch2nlc_is_unavailable(tmp_path, eh):
 
 
 @pytest.mark.parametrize(
-    ("x", "y", "sex", "warned"),
+    ("x", "y"),
     [
-        (10, 0, "female", True),  # chrX alone, with no chrY or chr7 to compare
-        (0, 0, "female", True),
-        (30, 1, "female", False),
-        (10, 2, "male", False),
+        (10, 0),
+        (0, 0),
+        (30, 1),
+        (10, 2),
     ],
 )
-def test_str_infers_sex_from_chrx_chry_reads(tmp_path, eh, caplog, x, y, sex, warned):
+def test_issue_856_str_refuses_unknown_sex_from_sparse_capture(tmp_path, eh, x, y):
     path = bam(tmp_path / "s.bam", _sex_reads(x, y) or pair("p", "chr1", 1000))
-    run_wgsextract("typing", "str", "-i", path, "--ref", str(eh.ref),
-                   "--catalog", str(eh.catalog))  # fmt: skip
-    [command] = eh.calls("ExpansionHunter")
-    assert command[command.index("--sex") + 1] == sex
-    assert ("Couldn't infer the sample's sex" in caplog.text) == warned
+    with pytest.raises(WGSExtractError, match="Unknown sample sex"):
+        run_wgsextract("typing", "str", "-i", path, "--ref", str(eh.ref),
+                       "--catalog", str(eh.catalog))  # fmt: skip
+    assert not eh.calls("ExpansionHunter")
 
 
 def test_str_prefers_info_cached_sex_and_an_explicit_sex(tmp_path, eh):
@@ -988,6 +1247,7 @@ def test_str_prefers_info_cached_sex_and_an_explicit_sex(tmp_path, eh):
     (tmp_path / "s.bam.wgse_info.json").write_text(
         json.dumps({
             "md5_signature": calculate_bam_md5(path, None), "gender": "Male",
+            "sex_call": ["Male", "non-PAR screening", "medium"],
             "sex_inference_version": SEX_INFERENCE_VERSION,
             "input_signature": {"size": st.st_size, "mtime_ns": st.st_mtime_ns},
         })
@@ -1057,3 +1317,233 @@ def test_str_default_catalog_matches_build_and_names(
     monkeypatch.setattr(repeats, "pixi_env_prefix", lambda env: None)
     with pytest.raises(WGSExtractError, match="pixi install -e expansionhunter"):
         repeats._catalog(aln, None)
+
+
+# --- typing smn ---------------------------------------------------------------
+
+SMN_CONTIGS = {**HG38, "chr5": 181_538_259}
+SMN1_EXON7 = 70_951_900
+
+FAKE_SMN_CALLER = """\
+work, prefix = opt("--outDir"), opt("--prefix")
+[reads] = pathlib.Path(opt("--manifest")).read_text().split()
+result = json.loads(pathlib.Path({result!r}).read_text())
+pathlib.Path(work, prefix + ".json").write_text(json.dumps({{"NA12878": result}}))
+pathlib.Path(work, prefix + ".tsv").write_text("Sample\\tresult\\n" + str(result))
+"""
+
+# SMNCopyNumberCaller's JSON for NA12878 (SMN_1kGP_results.tsv: 2 + 2 copies).
+SMN_RESULT = {
+    "Coverage_MAD": 0.07,
+    "Median_depth": 33.4,
+    "Full_length_CN_raw": 3.77,
+    "Total_CN_raw": 4.01,
+    "SMN1": 2,
+    "SMN2": 2,
+    "SMN2delta78": 0,
+    "isCarrier": False,
+    "isSMA": False,
+    "Info": "PASS:Majority",
+    "g27134TG_raw": 0.0,
+    "g27134TG_CN": 0,
+}
+
+
+@pytest.fixture
+def smn(tmp_path, monkeypatch):
+    result = tmp_path / "smn_result.json"
+    result.write_text(json.dumps(SMN_RESULT))
+    calls = fake_tools(
+        monkeypatch,
+        tmp_path,
+        {"smn_caller.py": FAKE_SMN_CALLER.format(result=str(result))},
+    )
+
+    def set_result(**fields):
+        result.write_text(json.dumps({**SMN_RESULT, **fields}))
+
+    return Namespace(calls=calls, set_result=set_result)
+
+
+def smn_bam(tmp_path, seq=SEQ, name="NA12878.bam"):
+    return bam(tmp_path / "in" / name, pair("p", "chr5", SMN1_EXON7, seq=seq),
+               SMN_CONTIGS)  # fmt: skip
+
+
+def manifest_warnings(result):
+    return {w["code"]: w for w in result.to_dict()["warnings"]}
+
+
+def test_smn_reports_copy_numbers_and_says_it_is_not_a_diagnosis(tmp_path, smn, caplog):
+    caplog.set_level(logging.INFO)
+    out = tmp_path / "out"
+    result = api.genotyping.smn(
+        api.TypingSmnParams(input=Path(smn_bam(tmp_path)), outdir=out)
+    )
+
+    [command] = smn.calls("smn_caller.py")
+    assert command[command.index("--genome") + 1] == "38"
+    assert outputs(out) == {
+        "NA12878.smn.tsv",
+        "NA12878.smn.json",
+        "NA12878.smn.tsv.manifest.json",
+    }
+    assert {o["role"] for o in result.to_dict()["outputs"]} == {
+        "smn_calls",
+        "smn_report",
+    }
+    assert result.metrics["smn1_copy_number"] == 2
+    assert result.metrics["smn2_copy_number"] == 2
+    assert result.metrics["sma_carrier"] is False
+    assert result.metrics["sma_affected"] is False
+    assert "SMN1: 2 copies, SMN2: 2 copies" in caplog.text
+    assert "not a diagnosis" in caplog.text
+    assert "2+0" in caplog.text
+    assert manifest_warnings(result) == {}
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="SMNCopyNumberCaller is not supported on Windows"
+)
+def test_smn_reports_a_carrier_and_its_report_finding(tmp_path, smn):
+    smn.set_result(SMN1=1, SMN2=3, isCarrier=True)
+    out = tmp_path / "out"
+    main(["typing", "smn", "-i", smn_bam(tmp_path), "-o", str(out),
+          "--config", str(tmp_path / "config.toml")])  # fmt: skip
+
+    section = build_report(out)["sections"]["carrier_screening"]
+    [finding] = section["findings"]
+    assert finding["value"] == "1 SMN1 copy: SMA carrier"
+    assert finding["confidence"] == "high"
+    assert "SMN2 3" in finding["detail"]
+    assert "not a diagnosis" in finding["note"]
+    assert finding["evidence"]["file"] == "NA12878.smn.tsv"
+
+
+def test_smn_flags_a_possible_silent_carrier(tmp_path, smn):
+    smn.set_result(g27134TG_CN=1)
+    result = api.genotyping.smn(
+        api.TypingSmnParams(input=Path(smn_bam(tmp_path)), outdir=tmp_path / "out")
+    )
+    warning = manifest_warnings(result)["possible_silent_carrier"]
+    assert "g.27134T>G" in warning["message"]
+    assert result.metrics["g27134tg_copy_number"] == 1
+
+
+@pytest.mark.parametrize(
+    ("depth", "reported"),
+    [(12.0, False), (29.9, False), (float("nan"), False), (30.0, True)],
+)
+def test_smn_withholds_calls_below_30x(tmp_path, smn, depth, reported):
+    # #619 asks for a 30x minimum; NaN (an empty sampling region) is no depth.
+    smn.set_result(Median_depth=depth)
+    out = tmp_path / "out"
+    result = api.genotyping.smn(api.TypingSmnParams(input=Path(smn_bam(tmp_path)),
+                                                    outdir=out))  # fmt: skip
+    assert (result.metrics["smn1_copy_number"] == 2) is reported
+    if reported:
+        assert "low_coverage" not in manifest_warnings(result)
+        return
+    details = manifest_warnings(result)["low_coverage"]["details"]
+    assert details["threshold"] == 30.0
+    # The caller's own files, which still hold its calls, aren't published as
+    # the calls.
+    assert not (out / "NA12878.smn.tsv").exists()
+    assert (out / "NA12878.smn.below_min_depth.json").exists()
+    [finding] = build_report(out)["sections"]["carrier_screening"]["findings"]
+    assert (finding["value"], finding["confidence"]) == ("no call", "low")
+
+
+def test_smn_rerun_with_unreadable_output_keeps_the_previous_calls(tmp_path, smn):
+    # PR #663 review: a failed rerun mustn't replace the evidence of the last run.
+    out = tmp_path / "out"
+    path = smn_bam(tmp_path)
+    api.genotyping.smn(api.TypingSmnParams(input=Path(path), outdir=out))
+    before = (out / "NA12878.smn.tsv").read_text()
+    (tmp_path / "smn_result.json").write_text('"not an object"')
+    with pytest.raises(WGSExtractError, match="unreadable"):
+        run_wgsextract("typing", "smn", "-i", path, "-o", str(out))
+    assert (out / "NA12878.smn.tsv").read_text() == before
+
+
+def test_smn_report_labels_a_caller_filter_low(tmp_path, smn):
+    # The caller can call SMN1 0 with FLCNnoCall when its full-length model fails.
+    smn.set_result(SMN1=0, SMN2="2-3", isSMA=True, Info="FLCNnoCall")
+    out = tmp_path / "out"
+    api.genotyping.smn(api.TypingSmnParams(input=Path(smn_bam(tmp_path)), outdir=out))
+    [finding] = build_report(out)["sections"]["carrier_screening"]["findings"]
+    assert finding["value"] == "0 SMN1 copies: consistent with SMA"
+    assert (finding["confidence"], finding["confidence_reasons"]) == (
+        "low",
+        ["caller_filter"],
+    )
+
+
+def test_smn_warns_when_the_caller_makes_no_call(tmp_path, smn):
+    smn.set_result(SMN1=None, isCarrier=None, isSMA=None, Info="Ambiguous")
+    result = api.genotyping.smn(
+        api.TypingSmnParams(input=Path(smn_bam(tmp_path)), outdir=tmp_path / "out")
+    )
+    assert manifest_warnings(result)["no_call"]["details"]["filter"] == "Ambiguous"
+
+
+@pytest.mark.parametrize("case", ["long_reads", "ont_read_group", "no_reads"])
+def test_smn_refuses_non_short_read_wgs_before_running_the_caller(tmp_path, smn, case):
+    header = ["@HD\tVN:1.6\tSO:coordinate"]
+    header += [f"@SQ\tSN:{n}\tLN:{length}" for n, length in SMN_CONTIGS.items()]
+    seq, pos = SEQ, SMN1_EXON7
+    if case == "long_reads":
+        seq = "".join(_RNG.choice("ACGT") for _ in range(5000))
+    elif case == "ont_read_group":
+        # Mixed: short reads at SMN, but an ONT read group in the file.
+        header += ["@RG\tID:a\tPL:ILLUMINA", "@RG\tID:b\tPL:ONT"]
+    else:
+        pos = 1_000_000
+    path = sam_to_bam(header + pair("p", "chr5", pos, seq=seq), tmp_path / "s.bam")
+    with pytest.raises(WGSExtractError, match="short-read|no reads at SMN"):
+        run_wgsextract("typing", "smn", "-i", path)
+    assert smn.calls("smn_caller.py") == []
+
+
+def test_smn_needs_chr_names_on_grch38(tmp_path, smn):
+    contigs = {k.removeprefix("chr"): v for k, v in SMN_CONTIGS.items()}
+    path = bam(tmp_path / "s.bam", pair("p", "5", SMN1_EXON7), contigs)
+    with pytest.raises(WGSExtractError, match="SMNCopyNumberCaller needs GRCh38"):
+        run_wgsextract("typing", "smn", "-i", path)
+
+
+def test_smn_without_its_environment_says_how_to_install_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(common, "pixi_env_tool", lambda tool: None)
+    with pytest.raises(WGSExtractError, match="pixi install -e smn"):
+        run_wgsextract("typing", "smn", "-i", smn_bam(tmp_path))
+
+
+def test_smn_report_names_one_copy_a_carrier_even_when_status_is_uncertain(
+    tmp_path, smn
+):
+    # PR #663 review: an unsettled isCarrier must not read "not a carrier".
+    smn.set_result(SMN1=1, SMN2=2, isCarrier=None)
+    out = tmp_path / "out"
+    api.genotyping.smn(api.TypingSmnParams(input=Path(smn_bam(tmp_path)), outdir=out))
+    [finding] = build_report(out)["sections"]["carrier_screening"]["findings"]
+    assert finding["value"] == "1 SMN1 copy: SMA carrier (status uncertain)"
+    assert finding["confidence_reasons"] == ["status_uncertain"]
+
+
+@pytest.mark.parametrize(
+    ("program", "warned"),
+    [("novoalign\tVN:V3.02.07", True), ("bwa\tVN:0.7.17", False), (None, False)],
+)
+def test_smn_warns_when_the_aligner_is_not_bwa_like(tmp_path, smn, program, warned):
+    # #619: GIAB's HG002 Novoalign BAM gave SMN1 1/SMN2 1; its bwa BAM the
+    # truth, 2/2.
+    header = ["@HD\tVN:1.6\tSO:coordinate"]
+    header += [f"@SQ\tSN:{n}\tLN:{length}" for n, length in SMN_CONTIGS.items()]
+    if program:
+        header.append(f"@PG\tID:{program.split()[0]}\tPN:{program}")
+    path = sam_to_bam(header + pair("p", "chr5", SMN1_EXON7), tmp_path / "s.bam")
+    out = tmp_path / "out"
+    result = api.genotyping.smn(api.TypingSmnParams(input=Path(path), outdir=out))
+    assert ("aligner_not_calibrated" in manifest_warnings(result)) is warned
+    [finding] = build_report(out)["sections"]["carrier_screening"]["findings"]
+    assert (finding["confidence"] == "low") is warned

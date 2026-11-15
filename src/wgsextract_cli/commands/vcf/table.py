@@ -121,13 +121,7 @@ def _pharmcat_calls(path: str | None) -> dict[str, tuple[str, str]]:
         calls = summarize(path)
     except (OSError, ValueError) as e:
         raise WGSExtractError(f"Could not read PharmCAT results {path}: {e}") from e
-    by_gene: dict[str, tuple[str, str]] = {}
-    for gene, diplotype, phenotype in calls:
-        if gene in by_gene:
-            old = by_gene[gene]
-            diplotype, phenotype = f"{old[0]}; {diplotype}", f"{old[1]}; {phenotype}"
-        by_gene[gene] = (diplotype, phenotype)
-    return by_gene
+    return {call.gene: (call.diplotype, call.phenotype) for call in calls}
 
 
 def _select_sample(vcf: str, requested: str | None) -> tuple[list[str], str | None]:

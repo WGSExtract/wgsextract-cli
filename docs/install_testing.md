@@ -104,6 +104,17 @@ of failed tests only (`tmp_path_retention_policy = "failed"`).
    both on Linux, updating from the latest release.
 5. `uninstall.sh --yes --remove-config --remove-pixi`, then the final snapshot.
 
+The mini genome has **5x coverage**, below microarray's default DP ≥10/GQ ≥20
+evidence gates. The scenario keeps those real-user defaults and requests
+`--call-reasons`; it does not disable filtering to make the fixture pass.
+The oracle independently checks each exported call/no-call against the called
+VCF's sample depth, confidence and FILTER (using internal reference-call QUAL
+when bcftools omits GQ). All eligible calls must be retained, weak sites must be
+no-calls, and their reason table must agree. At least 1,500 truth sites must be
+represented and some callable sites must remain; an all-no-call kit cannot
+pass. At least 95% of the **callable** genotypes must match 1000 Genomes. No-calls
+at weak sites are expected, not genotype disagreements.
+
 ## The macOS app
 
 `lab.py run macos --gui-repo gui` tests the WGS Extract app
@@ -115,7 +126,7 @@ be what passes. In the VM:
    Gatekeeper must accept a Developer ID build and must reject a local ad-hoc
    one (the base image has standard Gatekeeper policy, and every run records its status).
 2. The app is copied to `/Applications` as a drag install would, then
-   launched; it runs its own setup (`GUI_FOR_CLI_AUTO_RUN_SETUP`) and writes the
+   launched; it runs its own setup (`WGSEXTRACT_GUI_AUTO_RUN_SETUP`) and writes the
    result. Setup installs the CLI release the app pins, or this CLI tree with
    `--cli-from-tree`.
 3. The real actions run on the HG00096 mini genome through the same
@@ -128,7 +139,7 @@ be what passes. In the VM:
    list catalog genomes and the mini genome isn't one, so the plan first
    downloads hs38 (755 MB, from this repo's release) with the Library page's
    own download action, and each dropdown must then offer it.
-4. The app's own **Uninstall** (`GUI_FOR_CLI_AUTO_RUN_UNINSTALL`) runs the bundle's
+4. The app's own **Uninstall** (`WGSEXTRACT_GUI_AUTO_RUN_UNINSTALL`) runs the bundle's
    uninstall steps, removes the app's data and moves it to the Trash; the Trash
    is emptied and the machine must match the baseline. One exception: macOS's
    preferences daemon (cfprefsd) writes the app's deleted preferences file
@@ -227,7 +238,7 @@ the standard user Lab User:
    closed again.
 3. The app is opened on Lab User's desktop (through a scheduled task that only
    runs in their signed-in session) and runs its own setup
-   (`GUI_FOR_CLI_AUTO_RUN_SETUP`); the setup events it logs are the evidence.
+   (`WGSEXTRACT_GUI_AUTO_RUN_SETUP`); the setup events it logs are the evidence.
    The window must report that the page drew (`webAppRendered`). Then the
    window is closed, and nothing the app started may still run.
 4. The real actions run through the app's own runtime: its bundled Node and
@@ -268,7 +279,7 @@ way `make package PLATFORM=tauri` does, in an `amd64` `ubuntu:24.04` container
 user who may use `sudo`, as Ubuntu's first user can, with Xvfb as the display:
 `sudo apt install ./WGSExtract.deb`, the app runs its own setup, the plan's
 actions run through the app's bundled Node and runner, then the app's own
-**Uninstall** (File menu; `GUI_FOR_CLI_AUTO_RUN_UNINSTALL`), since a package
+**Uninstall** (File menu; `WGSEXTRACT_GUI_AUTO_RUN_UNINSTALL`), since a package
 manager can't remove what setup put in the user's home, and finally
 `sudo apt remove --autoremove`. The desktop entry must have been installed,
 and the home folder must end as it started.
@@ -387,23 +398,21 @@ and judged (and mutated) by a separate Linux job.
 
 ## In CI
 
-`.github/workflows/install_lab.yml` runs the lab on every pull request and push
-to `main`, and weekly. A change only to files that can't affect the app or its
-actions skips it: `gui/docs/`, Markdown under `gui/`, the app's tests
-(`gui/app/tests/`, `gui/tests/`, `gui/tools/packaging/tests/`) and the other
-`gui-*.yml` workflows (`gui-build.yml`, which builds the app tested here, still
-runs it). Any other `gui/` change runs it, so a renamed action is caught on its
-own pull request (#625). Within an hour of a new app release,
-`app_release_watch.yml` also starts the weekly run's full matrix on `main` for
+`.github/workflows/install_lab.yml` runs on every push to `main` and nightly.
+On PRs, `pr_ci.yml` calls it only for installer, packaging, Pixi, CLI entry-point
+or shipped app-bundle changes; the `run-install-lab` label forces it.
+See [CI routing and cache budget](ci_routing.md) for the routes and coverage.
+Within an hour of a new app release,
+`app_release_watch.yml` also starts the nightly run's full matrix on `main` for
 that release (`-f app_release=<tag>`; the run is named after it):
 
 | Job | Machine | What runs |
 | --- | --- | --- |
-| `linux` | a fresh `ubuntu:24.04` container on `ubuntu-latest` | the CLI; again into a folder with a space; an update from the latest release; weekly, `selftest` |
+| `linux` | a fresh `ubuntu:24.04` container on `ubuntu-latest` | the CLI; again into a folder with a space; an update from the latest release; nightly, `selftest` |
 | `linux-app` | the same | the app's `.deb`: the latest release, or built from the tree (see below) |
-| `macos` | a new account on `macos-latest` | the CLI; weekly, `selftest` |
+| `macos` | a new account on `macos-latest` | the CLI; nightly, `selftest` |
 | `macos-app` | the runner's signed-in account | the app's DMG, chosen the same way |
-| `windows` | a new standard user on `windows-latest` | the CLI; weekly, each sabotage on its own runner |
+| `windows` | a new standard user on `windows-latest` | the CLI; nightly, each sabotage on its own runner |
 | `windows-app` | a new standard user's desktop on `windows-latest` | the app's installer, chosen the same way |
 | `windows-judge` | `ubuntu-latest` | judges every Windows job's evidence |
 
@@ -417,10 +426,17 @@ builds the app unsigned from this commit for Linux, macOS arm64 and Windows
 (about 14–24 extra runner minutes), and the tree jobs test that build. The judge
 still requires the platform's signature check to refuse it. A plan step the app
 lacks fails as "the test plan expects action X, which this app version doesn't
-have". Weekly `pinned` jobs also test the release with the CLI release it pins,
+have". Nightly `pinned` jobs also test the release with the CLI release it pins,
 exactly as on a user's machine. A sabotaged run's evidence (`--sabotage --no-judge`) is judged as a negative
 control: `lab.py judge` passes it only if it fails on the checks the sabotage
 breaks.
+
+The `linux` jobs' container installs its prerequisites (`curl`,
+`ca-certificates` and, for the app, `sudo`, Xvfb and the rest) with
+`.github/actions/apt-install/apt-install.sh`: official Ubuntu mirrors in turn,
+bounded time, and an `Upstream package mirror unreachable` failure if none
+answers, rather than apt's misleading "Unable to locate package curl". The
+container's apt then uses the same mirrors for the app's own `.deb`.
 
 To try an app fix before releasing it, run the *GUI distribution* workflow
 (`gui-distribution.yml`) on its branch, then this workflow with that run's ID:

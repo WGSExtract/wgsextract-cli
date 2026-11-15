@@ -11,8 +11,15 @@ fi
 DEFAULT_RELEASE_TAG="${DEFAULT_RELEASE_TAG:-latest}"
 REQUESTED_REF="${WGSEXTRACT_REF:-${WGSEXTRACT_RELEASE_TAG:-$DEFAULT_RELEASE_TAG}}"
 
-bundle_root="${GUI_FOR_CLI_BUNDLE_WORKSPACE:-$(CDPATH= cd "$script_dir/../.." && pwd)}"
-INSTALL_DIR="${WGSEXTRACT_INSTALL_DIR:-$bundle_root/runtime/wgsextract-cli}"
+bundle_root="${WGSEXTRACT_GUI_BUNDLE_WORKSPACE:-$(CDPATH= cd "$script_dir/../.." && pwd)}"
+# The runtime goes in the app's data folder, apart from the user's files in the
+# workspace. Apps up to 0.8.6 installed it in the workspace (legacy_runtime).
+legacy_runtime="$bundle_root/runtime/wgsextract-cli"
+if [ -n "${WGSEXTRACT_GUI_APP_DATA:-}" ]; then
+  INSTALL_DIR="${WGSEXTRACT_INSTALL_DIR:-$WGSEXTRACT_GUI_APP_DATA/runtime/wgsextract-cli}"
+else
+  INSTALL_DIR="${WGSEXTRACT_INSTALL_DIR:-$legacy_runtime}"
+fi
 APP_DIR="$INSTALL_DIR/app"
 BIN_DIR="$INSTALL_DIR/bin"
 
@@ -141,3 +148,18 @@ log "Delegating WGS Extract CLI install to upstream install.sh..."
 # archive after shell syntax validation. The release tag file controls that pin.
 mkdir -p "$BIN_DIR"
 sh "$installer"
+
+# Once the runtime is installed in the app's data folder, the one an earlier
+# version installed in the workspace is unused: remove it. Its Pixi, cache and
+# environments are all inside it.
+if [ -d "$legacy_runtime" ] && [ "$(CDPATH= cd "$legacy_runtime" && pwd -P)" != "$(CDPATH= cd "$INSTALL_DIR" && pwd -P)" ]; then
+  log "Removing the runtime an earlier version installed in the workspace: $legacy_runtime"
+  if command -v pkill >/dev/null 2>&1; then
+    pkill -f "$legacy_runtime/" 2>/dev/null || true
+  fi
+  if rm -rf "$legacy_runtime"; then
+    rmdir "$bundle_root/runtime" 2>/dev/null || true
+  else
+    log "Could not remove all of $legacy_runtime; it is no longer used and can be deleted."
+  fi
+fi

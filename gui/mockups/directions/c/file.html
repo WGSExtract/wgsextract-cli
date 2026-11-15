@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>File detail · Direction C · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="c-file" data-direction="C" data-shell="c" data-nav="file" data-title="HG002 (son)" data-parent="My genomes|directions/c/home.html">
+<div class="page" data-annot-id="page">
+  <header class="page-header" data-annot-id="header">
+    <div class="row row--top grow" style="gap: var(--sp-4)">
+      <span class="ft ft--lg" data-ft="cram"><i data-icon="file-cram"></i></span>
+      <div class="page-header__text">
+        <h1>HG002 (son)</h1>
+        <div class="row row--wrap small">
+          <span class="ft-label" data-ft="cram">CRAM</span>
+          <span class="muted">GRCh38 · hs38</span><span class="subtle">·</span>
+          <span class="muted">16.8 GB</span><span class="subtle">·</span>
+          <span class="muted">Illumina, paired 2×150</span>
+          <span class="badge badge--success"><i data-icon="check"></i>Ready</span>
+        </div>
+        <code class="xsmall subtle adv-only">{{bundleWorkspace}}/genomes/HG002/HG002.GRCh38.30x.cram</code>
+      </div>
+    </div>
+    <div class="btn-group">
+      <a class="btn btn--primary" href="microarray.html"><i data-icon="chip"></i>Make DNA-test files</a>
+      <button class="btn btn--icon" type="button" aria-label="More actions" data-open="#file-more"><i data-icon="ellipsis"></i></button>
+    </div>
+  </header>
+
+  <div class="tabs" role="tablist" aria-label="File sections" data-annot-id="file-tabs">
+    <button class="tab" role="tab" id="t-overview" aria-controls="p-overview" aria-selected="true">Overview</button>
+    <button class="tab" role="tab" id="t-results" aria-controls="p-results" aria-selected="false">Results <span class="badge">4</span></button>
+    <button class="tab" role="tab" id="t-history" aria-controls="p-history" aria-selected="false">History</button>
+    <button class="tab adv-only" role="tab" id="t-details" aria-controls="p-details" aria-selected="false">Details</button>
+  </div>
+
+  <section id="p-overview" role="tabpanel" aria-labelledby="t-overview" class="split split--wide-side" data-annot-id="overview">
+    <div class="stack stack--lg">
+      <div class="stats" data-annot-id="file-stats">
+        <div class="stat"><span class="stat__label">Mean coverage</span><span class="stat__value">31.4<small>×</small></span><span class="stat__delta">Good for everything here</span></div>
+        <div class="stat"><span class="stat__label">Reads mapped</span><span class="stat__value">99.3<small>%</small></span><span class="stat__delta">876 M reads</span></div>
+        <div class="stat"><span class="stat__label">Read length</span><span class="stat__value">150 <small>bp</small></span><span class="stat__delta">Insert 412 bp</span></div>
+        <div class="stat adv-only"><span class="stat__label">Q30 bases</span><span class="stat__value">92.1<small>%</small></span><span class="stat__delta">Duplicates 7.8%</span></div>
+      </div>
+      <div class="card" data-annot-id="coverage">
+        <div class="card__header"><h2 class="card__title">Coverage by chromosome</h2><span class="row small subtle"><span class="dot" style="--dot: var(--c-accent)"></span>X and Y at half depth: male</span></div>
+        <div data-render="coverage-bars"></div>
+        <p class="xsmall subtle">From the index and a sample of the file, cached as <code>HG002.GRCh38.30x.cram.wgse_info.json</code>. <button class="link-btn adv-only" type="button" data-toast="Measuring coverage over the whole file (about 25 min)">Measure exactly</button></p>
+      </div>
+      <div class="card" data-annot-id="results-summary">
+        <div class="card__header"><h2 class="card__title">What we found</h2><a class="small" href="ancestry.html">All results</a></div>
+        <div class="grid" style="--grid-min: 180px">
+          <div class="stack stack--xs"><span class="eyebrow">Paternal (Y)</span><span class="mono" style="font-size: var(--fs-xl); font-weight: 700">J-ZS241</span><span class="xsmall subtle">YFull tree · QC 0.98</span></div>
+          <div class="stack stack--xs"><span class="eyebrow">Maternal (mtDNA)</span><span class="mono" style="font-size: var(--fs-xl); font-weight: 700">K1a1b1a</span><span class="xsmall subtle">PhyloTree 17 · 0.94</span></div>
+          <div class="stack stack--xs"><span class="eyebrow">DNA-test files</span><span style="font-size: var(--fs-xl); font-weight: 700">Not yet</span><a class="xsmall" href="microarray.html">Make them · 12 min</a></div>
+        </div>
+        <div data-render="ancestry-bar" data-genome="hg002" data-legend="1"></div>
+      </div>
+    </div>
+    <aside class="stack sticky" data-annot-id="can-do">
+      <h2>What you can do</h2>
+      <a class="action" href="microarray.html"><span class="action__icon"><i data-icon="chip"></i></span><span><span class="action__title">DNA-test files</span><br><span class="action__desc">GEDmatch, MyHeritage, FTDNA… · 12 min</span></span><i data-icon="chevron-right"></i></a>
+      <a class="action" href="ancestry.html"><span class="action__icon"><i data-icon="haplotree"></i></span><span><span class="action__title">Haplogroups &amp; ancestry</span><br><span class="action__desc">Done · Y-STR markers not run yet</span></span><i data-icon="chevron-right"></i></a>
+      <a class="action" href="convert.html"><span class="action__icon"><i data-icon="convert"></i></span><span><span class="action__title">Convert</span><br><span class="action__desc">To BAM, FASTQ or VCF</span></span><i data-icon="chevron-right"></i></a>
+      <a class="action adv-only" href="advanced.html"><span class="action__icon"><i data-icon="variant"></i></span><span><span class="action__title">Call variants</span><br><span class="action__desc">DeepVariant · about 2 h 30 min on this Mac</span></span><i data-icon="chevron-right"></i></a>
+      <a class="action adv-only" href="advanced.html"><span class="action__icon"><i data-icon="realign"></i></span><span><span class="action__title">Realign to T2T</span><br><span class="action__desc">bwa-mem2 · about 3 h · needs 95 GB free</span></span><i data-icon="chevron-right"></i></a>
+      <a class="action adv-only" href="advanced.html"><span class="action__icon"><i data-icon="extract"></i></span><span><span class="action__title">Extract Y or mtDNA</span><br><span class="action__desc">Small BAM/VCF for YFull or FTDNA</span></span><i data-icon="chevron-right"></i></a>
+      <button class="btn btn--ghost basic-only" type="button" data-palette><i data-icon="command"></i>More tools…</button>
+    </aside>
+  </section>
+
+  <section id="p-results" role="tabpanel" aria-labelledby="t-results" hidden data-annot-id="results">
+    <div class="table-wrap">
+      <table class="table table--stack" aria-label="Results for HG002">
+        <thead><tr><th>Result</th><th>Made</th><th>Files</th><th class="actions"><span class="visually-hidden">Actions</span></th></tr></thead>
+        <tbody>
+          <tr><td><div class="table__name"><i data-icon="y-lineage"></i>Y haplogroup J-ZS241</div></td><td data-label="Made">Today 06:15</td><td data-label="Files"><code>yleaf/</code> · 6 files</td><td class="actions"><a class="btn btn--sm" href="ancestry.html">View</a></td></tr>
+          <tr><td><div class="table__name"><i data-icon="mt-ring"></i>mtDNA haplogroup K1a1b1a</div></td><td data-label="Made">Today 06:10</td><td data-label="Files"><code>haplogrep/</code> · 3 files</td><td class="actions"><a class="btn btn--sm" href="ancestry.html">View</a></td></tr>
+          <tr><td><div class="table__name"><i data-icon="admixture"></i>Ancestry proportions</div></td><td data-label="Made">Today 06:22</td><td data-label="Files"><code>HG002.ancestry.tsv</code></td><td class="actions"><a class="btn btn--sm" href="ancestry.html">View</a></td></tr>
+          <tr><td><div class="table__name"><i data-icon="coverage"></i>File summary</div></td><td data-label="Made">Nov 2</td><td data-label="Files"><code>.wgse_info.json</code></td><td class="actions"><button class="btn btn--sm" type="button" data-toast="Opening the folder">Show in folder</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="p-history" role="tabpanel" aria-labelledby="t-history" hidden data-annot-id="history">
+    <div data-render="jobs" data-filter="all" data-genome="hg002"></div>
+  </section>
+
+  <section id="p-details" role="tabpanel" aria-labelledby="t-details" hidden class="split" data-annot-id="details">
+    <div class="card">
+      <h2 class="card__title">Header</h2>
+      <dl class="kv">
+        <dt>Format</dt><dd>CRAM 3.0, coordinate-sorted, indexed (.crai)</dd>
+        <dt>Reference</dt><dd>hs38 — 195 sequences, MD5s match your library copy</dd>
+        <dt>Read group</dt><dd><code>ID:HG002.1 PL:ILLUMINA SM:HG002 LB:HG002-lib1</code></dd>
+        <dt>Aligner</dt><dd>bwa-mem2 2.2.1, then samtools 1.21</dd>
+        <dt>Sequencer</dt><dd>Illumina NovaSeq 6000 (from read names) · paired 2×150</dd>
+        <dt>Sex</dt><dd>Male (X 0.50, Y 0.44 of autosomal depth)</dd>
+        <dt>Info cache</dt><dd><code>HG002.GRCh38.30x.cram.wgse_info.json</code></dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h2 class="card__title">Server calls</h2>
+      <dl class="kv xsmall">
+        <dt>Summary</dt><dd><code>info</code> (query, cached)</dd>
+        <dt>Coverage</dt><dd><code>info/calculate-coverage</code></dd>
+        <dt>Sequencer</dt><dd><code>bam/identify</code></dd>
+        <dt>Sample</dt><dd><code>sample/show</code>, <code>sample/set</code></dd>
+        <dt>Results</dt><dd><code>GET /v1/manifest</code>, <code>GET /v1/report</code></dd>
+      </dl>
+    </div>
+  </section>
+</div>
+
+<dialog class="dialog" id="file-more" aria-labelledby="file-more-title" data-annot-id="file-more">
+  <div class="dialog__header"><h2 class="dialog__title" id="file-more-title">HG002 (son)</h2><button class="btn btn--ghost btn--icon" type="button" data-close aria-label="Close"><i data-icon="x"></i></button></div>
+  <div class="dialog__body">
+    <button class="menu__item" type="button" data-close data-toast="Opening the folder"><i data-icon="folder-open"></i>Show in folder</button>
+    <button class="menu__item" type="button" data-close data-toast="Renamed"><i data-icon="pencil"></i>Rename sample</button>
+    <button class="menu__item" type="button" data-close data-toast="Checking file integrity (about 20 min)"><i data-icon="shield-check"></i>Check integrity</button>
+    <hr class="divider">
+    <button class="menu__item menu__item--danger" type="button" data-close data-toast="Removed from the library. The file itself is untouched."><i data-icon="trash-2"></i>Remove from library (keeps the file)</button>
+  </div>
+</dialog>
+</body>
+</html>

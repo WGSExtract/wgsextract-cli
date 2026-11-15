@@ -21,7 +21,10 @@ from tests.disk_volumes import GIB, Volumes
 from tests.fake_tools import (
     FakeDeepVariant,
     FakeDocker,
+    FakeParabricks,
+    FakePixi,
     fake_nvidia_smi,
+    python_tool,
     require_bare_name_fakes,
     set_gpus,
 )
@@ -35,7 +38,12 @@ from tests.htslib_helpers import (
 )
 from wgsextract_cli import api
 from wgsextract_cli.commands.vcf import deepvariant
-from wgsextract_cli.core import alignment_memory, containers
+from wgsextract_cli.core import (
+    alignment_memory,
+    containers,
+    native_deepvariant,
+    parabricks,
+)
 from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
@@ -61,9 +69,10 @@ def linux_x86(monkeypatch):
 
 
 @pytest.fixture
-def dv(tmp_path, monkeypatch, linux_x86):
+def dv(tmp_path, monkeypatch, linux_x86, ram):
     """Reads, Google's image in a fake Docker, 64 GiB of free RAM, and no
     run_deepvariant on PATH."""
+    ram(64 * GIB)
     require_bare_name_fakes()
     require_runnable("samtools", "bcftools", "tabix")
     (tmp_path / "reads").mkdir()
@@ -94,6 +103,16 @@ def arm64(dv, monkeypatch):
     monkeypatch.setattr(deepvariant.platform, "machine", lambda: "aarch64")
     dv.docker.set(arch="aarch64")
     dv.docker.add_image(deepvariant.DEFAULT_ARM64_IMAGE, platform="linux/arm64")
+    return dv
+
+
+@pytest.fixture
+def apple(dv, monkeypatch):
+    """An Apple Silicon Mac: Docker Desktop's Linux VM is aarch64, and only
+    Google's amd64 image is pulled."""
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(deepvariant.platform, "machine", lambda: "arm64")
+    dv.docker.set(arch="aarch64")
     return dv
 
 
@@ -290,18 +309,37 @@ def test_ont_conflicts_with_other_model_options(dv):
 
 
 @pytest.mark.parametrize("selection", [[], ["--ont"], ["--model-type", "ONT_R104"]])
-def test_apple_arm_refuses_ont_including_automatic_selection(
-    dv, monkeypatch, selection
-):
-    reads = other_sample(dv, ONT)
-    monkeypatch.setattr(deepvariant.platform, "machine", lambda: "arm64")
-    monkeypatch.setattr(sys, "platform", "darwin")
+def test_apple_arm_refuses_ont_including_automatic_selection(apple, selection):
+    apple.docker.add_image(deepvariant.DEFAULT_ARM64_IMAGE, platform="linux/arm64")
+    reads = other_sample(apple, ONT)
     with pytest.raises(WGSExtractError, match="ONT_R104.*not qualified on ARM64"):
-        call(dv, *selection, reads=reads.bam)
-    assert dv.docker.runs() == []
+        call(apple, *selection, reads=reads.bam)
+    assert apple.docker.runs() == []
 
 
 # CRAM 3.1 staging -----------------------------------------------------------
+
+
+def test_691_calling_profile_reaches_deepvariant_without_a_compatibility_copy(dv):
+    from wgsextract_cli.commands.align import run_streamed_alignment
+
+    output = dv.tmp / "calling.cram"
+    run_streamed_alignment(
+        ["samtools", "view", "-h", dv.sample.bam],
+        str(output),
+        threads="1",
+        memory="64M",
+        fmt="CRAM",
+        ref=dv.sample.ref,
+        duplicates=None,
+        output_profile="calling",
+    )
+    call(dv, reads=str(output))
+    (examples,) = dv.deepvariant.runs("make_examples")
+    assert Path(examples["reads"]).resolve() == output.resolve()
+    assert examples["cram_version"] == [3, 0]
+    assert vcf_calls(dv.out / "deepvariant.vcf.gz") == dv.sample.calls
+    assert not (dv.out / deepvariant.WORK_DIRECTORY).exists()
 
 
 @pytest.mark.parametrize("reads", ["bam", "3.0", "3.1", "3.1 named .bam"])
@@ -423,7 +461,7 @@ def test_a_relative_region_bed_in_its_own_folder_reaches_the_image(dv, monkeypat
     (dv.tmp / "targets" / "panel.bed").write_text("chr1\t899\t1100\n")
     monkeypatch.chdir(dv.tmp / "targets")
     call(dv, "-r", "panel.bed")
-    assert vcf_calls(dv.out / "deepvariant.vcf.gz") == dv.sample.calls
+    assert vcf_calls(dv.out / "deepvariant.vcf.gz") == dv.sample.calls[:1]
     assert dv_flags(dv)["regions"] == str(dv.tmp / "targets" / "panel.bed")
 
 
@@ -447,7 +485,8 @@ def big_cram(dv, monkeypatch):
 
 def test_staging_needs_disk_for_the_whole_input_or_the_selected_slices(dv, big_cram):
     big_cram.volumes.sizes[Path(big_cram.path)] = 16 * GIB
-    with pytest.raises(WGSExtractError, match=r"Insufficient free disk.*~32\.00 GiB"):
+    # #690: the requirement counts the CRAM 3.0 copy before anything runs.
+    with pytest.raises(WGSExtractError, match=r"requirement: it needs ~\d+ GiB disk"):
         call(dv, reads=big_cram.path)
     assert not list(dv.out.rglob("reads.cram"))
     assert dv.deepvariant.runs("make_examples") == []
@@ -456,8 +495,10 @@ def test_staging_needs_disk_for_the_whole_input_or_the_selected_slices(dv, big_c
     call(dv, "-r", "chr1:900-1000", reads=big_cram.path)
     assert dv.deepvariant.runs("make_examples")
     big_cram.volumes.free[dv.out] = 63 / 1024
+    # Staging checks its slices itself, past --no-preflight's estimate.
     with pytest.raises(WGSExtractError, match=r"~0\.06 GiB"):
-        call(dv, "-r", "chr1:900-1100", reads=big_cram.path, out=dv.out / "again")
+        call(dv, "-r", "chr1:900-1100", "--no-preflight", reads=big_cram.path,
+             out=dv.out / "again")  # fmt: skip
 
 
 @pytest.mark.parametrize("compressed", [False, True])
@@ -468,8 +509,9 @@ def test_capture_staging_counts_the_selected_slices_not_the_genome_fraction(
     Path(f"{big_cram.path}.crai").write_bytes(
         gzip.compress(data) if compressed else data
     )
+    # Staging's own check, past --no-preflight's requirement (#690).
     with pytest.raises(WGSExtractError, match=r"~32\.00 GiB"):
-        call(dv, "-r", "chr1:10-20", reads=big_cram.path)
+        call(dv, "-r", "chr1:10-20", "--no-preflight", reads=big_cram.path)
 
 
 @pytest.mark.parametrize(
@@ -492,10 +534,12 @@ def test_an_unreadable_crai_bounds_staging_by_the_whole_input(dv, big_cram, inde
         index.write_bytes(index_data)
     big_cram.volumes.free[dv.out] = 1.5
     with pytest.raises(WGSExtractError, match=r"~2\.00 GiB"):
-        call(dv, "-r", "chr1:10", reads=big_cram.path)
+        call(dv, "-r", "chr1:10", "--no-preflight", reads=big_cram.path)
 
 
-def test_crai_slices_follow_the_header_order_and_shared_slices_count_once(dv):
+def test_crai_slices_follow_the_header_order_and_shared_slices_count_once(
+    dv, monkeypatch
+):
     """Slices of 1 GiB units: chrM and chr20 share the first one."""
     work = dv.tmp / "two"
     work.mkdir()
@@ -505,6 +549,9 @@ def test_crai_slices_follow_the_header_order_and_shared_slices_count_once(dv):
     lines += ["@SQ\tSN:chr20\tLN:1000", "r1\t0\tchrM\t1\t60\t4M\t*\t0\t0\tACGT\tIIII"]
     sample = SimpleNamespace(ref=str(ref), bam=sam_to_bam(lines, work / "two.bam"))
     cram = as_cram(sample, "3.1")
+    dv.out.mkdir()
+    volumes = Volumes(monkeypatch)
+    volumes.free[dv.out] = 350
     Path(f"{cram}.crai").write_text(
         f"0\t1\t100\t100\t10\t{200 * GIB}\n"
         f"1\t1\t100\t100\t10\t{200 * GIB}\n"
@@ -518,7 +565,7 @@ def test_crai_slices_follow_the_header_order_and_shared_slices_count_once(dv):
         with pytest.raises(WGSExtractError, match=rf"needs ~{needs} GiB"):
             run_wgsextract(
                 "vcf", "deepvariant", "--input", cram, "--ref", str(ref),
-                "--outdir", str(dv.out), "-r", region,
+                "--outdir", str(dv.out), "-r", region, "--no-preflight",
             )  # fmt: skip
 
 
@@ -561,6 +608,486 @@ def test_staged_reads_are_kept_for_a_rerun_and_removed_after_success(
     assert visible(dv.out) == ["deepvariant.vcf.gz", "deepvariant.vcf.gz.tbi"]
 
 
+# Apple Silicon (#665) ---------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("configured", "message"),
+    [
+        (None, "Native DeepVariant image isn't installed"),
+        (deepvariant.DEFAULT_IMAGE, "is linux/amd64.*AVX.*exit 134"),
+    ],
+    ids=["default", "configured-google-image"],
+)
+def test_apple_silicon_refuses_googles_amd64_image_before_any_container(
+    apple, monkeypatch, configured, message
+):
+    """Google's amd64 image aborts under Docker Desktop's emulation (no AVX):
+    refuse up front and name what does run on a Mac."""
+    if configured:
+        monkeypatch.setitem(deepvariant.settings, "deepvariant_image", configured)
+    with pytest.raises(WGSExtractError, match=message) as error:
+        call(apple)
+    for alternative in ("vcf clair3", "vcf snp", "x86-64 host", "build.sh"):
+        assert alternative in str(error.value)
+    assert "docker pull" not in str(error.value)
+    assert apple.docker.runs() == []
+    assert not apple.out.exists() or visible(apple.out) == []
+
+
+def test_apple_silicon_runs_the_native_arm64_image(apple):
+    apple.docker.add_image(deepvariant.DEFAULT_ARM64_IMAGE, platform="linux/arm64")
+    call(apple)
+    assert {r["image"] for r in apple.docker.runs()} == {
+        deepvariant.DEFAULT_ARM64_IMAGE
+    }
+    assert visible(apple.out) == ["deepvariant.vcf.gz", "deepvariant.vcf.gz.tbi"]
+
+
+@pytest.fixture
+def mac_native(apple, monkeypatch):
+    """An Apple Silicon Mac with wgse-deepvariant on PATH and its weights
+    (stand-ins, whose hashes stand for the published ones) in config.toml."""
+    weights = apple.tmp / "weights"
+    (weights / "wgs_small_weights").mkdir(parents=True)
+    published = {}
+    for name in native_deepvariant.WEIGHTS_SHA256["WGS"]:
+        (weights / name).write_bytes(name.encode())
+        published[name] = hashlib.sha256(name.encode()).hexdigest()
+    monkeypatch.setitem(native_deepvariant.WEIGHTS_SHA256, "WGS", published)
+    monkeypatch.setitem(deepvariant.settings, "deepvariant_weights", str(weights))
+    monkeypatch.setenv(
+        "PATH", f"{apple.deepvariant.native_bin}{os.pathsep}{os.environ['PATH']}"
+    )
+    clear_tool_caches()
+    apple.weights = weights
+    return apple
+
+
+def test_apple_silicon_calls_with_wgse_deepvariant_without_docker_647(mac_native):
+    call(mac_native)
+    assert mac_native.docker.runs() == []
+    assert mac_native.deepvariant.stages() == STAGES
+    out = mac_native.out
+    assert visible(out) == ["deepvariant.vcf.gz", "deepvariant.vcf.gz.tbi"]
+    assert vcf_calls(out / "deepvariant.vcf.gz") == mac_native.sample.calls
+
+
+def test_wgse_deepvariant_resumes_after_a_failed_stage_647(mac_native):
+    mac_native.deepvariant.fail("call_variants")
+    with pytest.raises(WGSExtractError, match="rerun the same command to resume"):
+        call(mac_native)
+    rerun(mac_native)
+    assert mac_native.deepvariant.stages() == ["call_variants", "postprocess_variants"]
+    assert vcf_calls(mac_native.out / "deepvariant.vcf.gz") == mac_native.sample.calls
+
+
+def test_wgse_deepvariant_gets_a_selection_as_one_bed_of_its_intervals_647(
+    mac_native,
+):
+    bed = mac_native.tmp / "panel.bed"
+    bed.write_text("chr1\t1400\t1600\nchr1\t899\t1100\nchr1\t1050\t1200\n")
+    call(mac_native, "-r", f"{bed} chr1:2001-2100")
+    examples = mac_native.deepvariant.runs("wgse-deepvariant make_examples")[0]
+    # contract: wgse-deepvariant calls the selection's merged intervals, in order.
+    assert examples["regions_bed"] == (
+        "chr1\t899\t1200\nchr1\t1400\t1600\nchr1\t2000\t2100\n"
+    )
+    assert (mac_native.out / "deepvariant.vcf.gz").exists()
+
+
+def test_wgse_deepvariant_calls_a_selection_too_big_for_a_command_line_647(
+    mac_native,
+):
+    """A 100,000-interval BED (exome-sized) once became one --regions
+    argument longer than macOS's 1 MiB command-line limit: Argument list too
+    long, reported as a stage to resume that failed again on every rerun."""
+    sample, work = mac_native.sample, mac_native.tmp / "wide"
+    chr1 = Path(sample.ref).read_text().split("\n")[1]
+    ref = write_fasta(work / "ref.fa", {"chr1": chr1, "chrW": "ACGT" * 75_000})
+    header = run_command(
+        ["samtools", "view", "-H", sample.bam], capture_output=True
+    ).stdout.splitlines()
+    body = run_command(["samtools", "view", sample.bam], capture_output=True).stdout
+    header.insert(2, "@SQ\tSN:chrW\tLN:300000")
+    bam = sam_to_bam(header + body.splitlines(), work / "wide.bam")
+    bed = work / "exome.bed"
+    bed.write_text("".join(f"chrW\t{i}\t{i + 1}\n" for i in range(0, 300_000, 3)))
+    run_wgsextract(
+        "vcf", "deepvariant", "--input", bam, "--ref", str(ref),
+        "--outdir", str(mac_native.out), "--threads", "2", "-r", str(bed),
+    )  # fmt: skip
+    assert mac_native.deepvariant.stages() == STAGES
+    assert (mac_native.out / "deepvariant.vcf.gz").exists()
+
+
+def test_wgse_deepvariant_reruns_for_a_changed_selection_647(mac_native):
+    bed = mac_native.tmp / "panel.bed"
+    bed.write_text("chr1\t899\t1100\n")
+    call(mac_native, "-r", str(bed))
+    bed.write_text("chr1\t899\t1600\n")
+    rerun(mac_native, "-r", str(bed))
+    assert mac_native.deepvariant.stages() == STAGES
+
+
+def test_deepvariant_native_off_keeps_the_docker_image_647(mac_native, monkeypatch):
+    monkeypatch.setitem(deepvariant.settings, "deepvariant_native", "off")
+    mac_native.docker.add_image(deepvariant.DEFAULT_ARM64_IMAGE, platform="linux/arm64")
+    call(mac_native)
+    assert mac_native.deepvariant.runs("wgse-deepvariant make_examples") == []
+    assert {r["image"] for r in mac_native.docker.runs()} == {
+        deepvariant.DEFAULT_ARM64_IMAGE
+    }
+
+
+def test_wgse_deepvariant_reads_cram_31_without_staging_647(mac_native):
+    cram = as_cram(mac_native.sample, "3.1")
+    call(mac_native, reads=cram)
+    reads = mac_native.deepvariant.runs("wgse-deepvariant make_examples")[0]["opts"]
+    assert reads["reads"] == cram
+    assert vcf_calls(mac_native.out / "deepvariant.vcf.gz") == mac_native.sample.calls
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ("unset", "deepvariant_weights isn't set"),
+        ("missing", "wgs.dvw is missing"),
+        ("changed", "isn't the published one"),
+    ],
+)
+def test_wgse_deepvariant_needs_its_published_weights_647(
+    mac_native, monkeypatch, change, message
+):
+    if change == "unset":
+        monkeypatch.setitem(deepvariant.settings, "deepvariant_weights", None)
+    elif change == "missing":
+        (mac_native.weights / "wgs.dvw").unlink()
+    else:
+        (mac_native.weights / "wgs_small_weights" / "layer_2_bias.npy").write_text("x")
+    with pytest.raises(WGSExtractError, match=message) as error:
+        call(mac_native)
+    assert "native/deepvariant/README.md" in str(error.value)
+    assert mac_native.deepvariant.stages() == []
+
+
+@pytest.mark.parametrize(
+    "selection", [("--wes",), ("--pacbio",), ("--checkpoint", "x")]
+)
+def test_wgse_deepvariant_refuses_unqualified_models_647(mac_native, selection):
+    with pytest.raises(WGSExtractError, match="only the WGS model"):
+        call(mac_native, *selection)
+    assert mac_native.deepvariant.stages() == []
+    assert mac_native.docker.runs() == []
+
+
+def test_wgse_deepvariant_fits_a_16_gb_mac_647(mac_native, monkeypatch):
+    """The Linux ARM64 image's TensorFlow call_variants needs ~27 GiB; the
+    Mac build's GPU batch follows the Mac's memory and fits 16 GB."""
+    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 10 * GIB)
+    total = SimpleNamespace(total=16 * GIB, available=10 * GIB)
+    monkeypatch.setattr(native_deepvariant.psutil, "virtual_memory", lambda: total)
+    call(mac_native)
+    planned = mac_native.deepvariant.runs("wgse-deepvariant call_variants")[0]
+    assert planned["opts"]["batch_size"] == "512"
+    assert (mac_native.out / "deepvariant.vcf.gz").exists()
+
+
+def test_wgse_deepvariant_0_1_0_is_refused_for_its_pileup_drift_647(mac_native):
+    """0.1.0 didn't trim reads to the pileup window, so 20 HG003 records
+    differed from Google's VCF; 0.1.1 is the first build that matches."""
+    state = json.loads((mac_native.deepvariant.root / "state.json").read_text())
+    state["wgse_version"] = "0.1.0"
+    (mac_native.deepvariant.root / "state.json").write_text(json.dumps(state))
+    with pytest.raises(WGSExtractError, match=r"0\.1\.0 is too old.*0\.1\.1 or later"):
+        call(mac_native)
+    assert not (mac_native.out / "deepvariant.vcf.gz").exists()
+
+
+# Linux x86-64: wgse-deepvariant on the CPU or an NVIDIA GPU (#719) -----------
+
+
+@pytest.fixture
+def linux_native(dv, monkeypatch):
+    """Linux x86-64 with wgse-deepvariant 0.2.0 on PATH, its WGS weights
+    (stand-ins, whose hashes stand for the published ones), an RTX
+    3090 with nothing else on it, and Google's image but no Parabricks."""
+    weights = dv.tmp / "weights"
+    published = {}
+    for model, files in native_deepvariant.WEIGHTS_SHA256.items():
+        published[model] = {}
+        for name in files:
+            (weights / name).parent.mkdir(parents=True, exist_ok=True)
+            (weights / name).write_bytes(name.encode())
+            published[model][name] = hashlib.sha256(name.encode()).hexdigest()
+    monkeypatch.setattr(native_deepvariant, "WEIGHTS_SHA256", published)
+    monkeypatch.setitem(deepvariant.settings, "deepvariant_weights", str(weights))
+    dv.deepvariant.set_native_version("0.2.0")
+    dv.gpus = dv.tmp / "gpus.json"
+    set_gpus(dv.gpus, (24_576, 0))
+    fake_nvidia_smi(dv.docker.root.parent / "bin", dv.gpus)
+    monkeypatch.setenv(
+        "PATH", f"{dv.deepvariant.native_bin}{os.pathsep}{os.environ['PATH']}"
+    )
+    clear_tool_caches()
+    dv.weights = weights
+    return dv
+
+
+def native_inference(dv) -> dict:
+    (planned,) = dv.deepvariant.runs("wgse-deepvariant call_variants")
+    return planned["opts"]
+
+
+def test_linux_calls_with_wgse_deepvariant_on_the_cpu_without_docker_719(
+    linux_native,
+):
+    call(linux_native)
+    assert linux_native.docker.runs() == []
+    assert linux_native.deepvariant.stages() == STAGES
+    # contract: without --gpu, call_variants never takes the GPU.
+    assert native_inference(linux_native)["inference_backend"] == "cpu"
+    out = linux_native.out
+    assert visible(out) == ["deepvariant.vcf.gz", "deepvariant.vcf.gz.tbi"]
+    assert vcf_calls(out / "deepvariant.vcf.gz") == linux_native.sample.calls
+
+
+def test_gpu_calls_with_wgse_deepvariant_on_cuda_without_parabricks_719(
+    linux_native,
+):
+    call(linux_native, "--gpu", "-r", "chr1:1-1500,chr1:1501-3000")
+    assert linux_native.docker.runs() == []
+    # contract: --gpu runs call_variants on CUDA, never silently on the CPU.
+    assert native_inference(linux_native)["inference_backend"] == "cuda"
+    calls = vcf_calls(linux_native.out / "deepvariant.vcf.gz")
+    assert calls == linux_native.sample.calls
+
+
+def test_gpu_finds_wgse_deepvariant_in_its_pixi_environment_719(
+    linux_native, monkeypatch
+):
+    """`pixi install -e deepvariant` puts wgse-deepvariant in the workspace's
+    deepvariant environment, not on PATH; --gpu runs it from there."""
+    pixi = FakePixi(linux_native.tmp / "pixi", None)
+    bindir = pixi.env("deepvariant") / "bin"
+    for tool in linux_native.deepvariant.native_bin.iterdir():
+        shutil.move(tool, bindir / tool.name)
+    monkeypatch.setenv("PIXI_EXE", str(pixi.exe))
+    monkeypatch.delenv("PIXI_ENVIRONMENT_NAME", raising=False)
+    clear_tool_caches()
+    call(linux_native, "--gpu", "-r", "chr1:1-1500,chr1:1501-3000")
+    assert linux_native.docker.runs() == []
+    assert native_inference(linux_native)["inference_backend"] == "cuda"
+    calls = vcf_calls(linux_native.out / "deepvariant.vcf.gz")
+    assert calls == linux_native.sample.calls
+
+
+def test_an_unfinished_pixi_install_keeps_googles_image_719(linux_native, monkeypatch):
+    """#748 review: an interrupted `pixi install -e deepvariant` can leave the
+    binary without its libraries; only a finished install is used."""
+    pixi = FakePixi(linux_native.tmp / "pixi", None)
+    bindir = pixi.env("deepvariant", installed=False) / "bin"
+    for tool in linux_native.deepvariant.native_bin.iterdir():
+        shutil.move(tool, bindir / tool.name)
+    monkeypatch.setenv("PIXI_EXE", str(pixi.exe))
+    monkeypatch.delenv("PIXI_ENVIRONMENT_NAME", raising=False)
+    clear_tool_caches()
+    call(linux_native)
+    assert linux_native.deepvariant.runs("wgse-deepvariant call_variants") == []
+    assert linux_native.docker.runs() != []
+
+
+def test_gpu_with_deepvariant_native_off_runs_parabricks_719(
+    linux_native, monkeypatch, ram
+):
+    ram(128 * 10**9)  # above Parabricks' RAM floor
+    monkeypatch.setitem(deepvariant.settings, "deepvariant_native", "off")
+    host = FakeParabricks(linux_native.tmp / "gpu", parabricks.DEFAULT_IMAGE)
+    monkeypatch.setenv("PATH", f"{host.bin}{os.pathsep}{os.environ['PATH']}")
+    clear_tool_caches()
+    call(linux_native, "--gpu")
+    assert [tool for tool, _ in host.runs()] == ["deepvariant"]
+    assert linux_native.deepvariant.runs("wgse-deepvariant run") == []
+
+
+def test_a_busy_gpu_stops_wgse_deepvariant_before_call_variants_719(linux_native):
+    set_gpus(linux_native.gpus, (24_576, 24_576 - 2_048))
+    with pytest.raises(WGSExtractError, match="free memory on GPU 0"):
+        call(linux_native, "--gpu")
+    assert linux_native.deepvariant.stages() == ["make_examples"]
+
+    set_gpus(linux_native.gpus, (24_576, 0))
+    rerun(linux_native, "--gpu")
+    assert linux_native.deepvariant.stages() == [
+        "call_variants",
+        "postprocess_variants",
+    ]
+
+
+def test_ont_reads_keep_googles_image_and_parabricks_before_0_3_0_739(
+    linux_native, monkeypatch, ram
+):
+    """#739: wgse-deepvariant 0.2.0's ONT make_examples didn't phase reads as
+    Google's does, so it leaves ONT reads to Google's image and Parabricks."""
+    ram(128 * 10**9)  # above Parabricks' RAM floor
+    reads = other_sample(linux_native, ONT)
+    call(linux_native, reads=reads.bam)
+    assert linux_native.deepvariant.runs("wgse-deepvariant run") == []
+    assert {r["image"] for r in linux_native.docker.runs()} == {
+        deepvariant.DEFAULT_IMAGE
+    }
+
+    host = FakeParabricks(linux_native.tmp / "gpu", parabricks.DEFAULT_IMAGE)
+    monkeypatch.setenv("PATH", f"{host.bin}{os.pathsep}{os.environ['PATH']}")
+    clear_tool_caches()
+    call(linux_native, "--gpu", reads=reads.bam, out=linux_native.tmp / "gpu-out")
+    (run,) = host.runs()
+    # contract: Parabricks calls ONT reads with its ONT mode.
+    assert run[0] == "deepvariant" and "ont" in run[1]
+    assert linux_native.deepvariant.runs("wgse-deepvariant run") == []
+
+
+@pytest.mark.parametrize("gpu", [False, True])
+def test_ont_reads_call_with_wgse_deepvariant_0_3_0_739(linux_native, gpu):
+    """#739: from 0.3.0 wgse-deepvariant calls ONT reads as Google's image
+    does, on the CPU and, with --gpu, on CUDA instead of Parabricks."""
+    linux_native.deepvariant.set_native_version("0.3.0")
+    reads = other_sample(linux_native, ONT)
+    call(linux_native, *(["--gpu"] if gpu else []), reads=reads.bam)
+    assert linux_native.docker.runs() == []
+    (run,) = linux_native.deepvariant.runs("wgse-deepvariant run")
+    # contract: the ONT_R104 model, with its own checked weights.
+    assert run["opts"]["model_type"] == "ONT_R104"
+    assert run["opts"]["checkpoint"] == str(linux_native.weights / "ont_r104.dvw")
+    assert native_inference(linux_native)["inference_backend"] == (
+        "cuda" if gpu else "cpu"
+    )
+    assert visible(linux_native.out) == ["deepvariant.vcf.gz", "deepvariant.vcf.gz.tbi"]
+
+
+def test_ont_reads_need_the_ont_r104_weights_739(linux_native):
+    """#739: a weights folder from before 0.3.0 has only the WGS model's."""
+    linux_native.deepvariant.set_native_version("0.3.0")
+    shutil.rmtree(linux_native.weights / "ont_r104_small_weights")
+    reads = other_sample(linux_native, ONT)
+    with pytest.raises(WGSExtractError, match="ont_r104_small_weights.* is missing"):
+        call(linux_native, reads=reads.bam)
+    assert linux_native.deepvariant.stages() == []
+
+
+def test_linux_leaves_other_models_to_googles_image_719(linux_native):
+    call(linux_native, "--wes")
+    assert linux_native.deepvariant.runs("wgse-deepvariant run") == []
+    assert {r["image"] for r in linux_native.docker.runs()} == {
+        deepvariant.DEFAULT_IMAGE
+    }
+
+
+@pytest.mark.parametrize(
+    ("problem", "message"),
+    [("cpu build", "CPU-only build"), ("no gpu", "no NVIDIA GPU")],
+)
+def test_gpu_without_cuda_stops_before_make_examples_719(
+    linux_native, problem, message
+):
+    """#733 review: a CPU-only package or a missing driver was found only at
+    call_variants, after make_examples had run."""
+    if problem == "cpu build":
+        linux_native.deepvariant.set_native_version("0.2.0", "CPU only")
+    else:
+        set_gpus(linux_native.gpus, error="couldn't communicate with the NVIDIA driver")
+    with pytest.raises(WGSExtractError, match=message):
+        call(linux_native, "--gpu")
+    assert linux_native.deepvariant.stages() == []
+    # A plan needs no GPU.
+    call(linux_native, "--gpu", "--dry-run")
+
+
+def test_resumed_cpu_inference_uses_this_runs_threads_719(linux_native):
+    """#733 review: a resumed run kept its first run's shard count, and
+    CPU inference took that many threads instead of this run's."""
+    linux_native.deepvariant.fail("call_variants")
+    with pytest.raises(WGSExtractError, match="resume"):
+        call(linux_native, threads="4")
+    rerun(linux_native, threads="2")
+    assert native_inference(linux_native)["cpu_threads"] == "2"
+
+
+def test_an_old_build_doesnt_stop_ont_reads_using_googles_image_719(linux_native):
+    """#733 review: the build was checked as if for WGS before the reads
+    chose ONT_R104, which it doesn't call."""
+    linux_native.deepvariant.set_native_version("0.1.0")
+    reads = other_sample(linux_native, ONT)
+    call(linux_native, reads=reads.bam)
+    assert {r["image"] for r in linux_native.docker.runs()} == {
+        deepvariant.DEFAULT_IMAGE
+    }
+
+
+def test_linux_without_weights_set_keeps_googles_image_719(linux_native, monkeypatch):
+    """#733 review: an installed build without deepvariant_weights stopped
+    runs that Google's image (and Parabricks) used to make."""
+    monkeypatch.setitem(deepvariant.settings, "deepvariant_weights", None)
+    call(linux_native)
+    assert linux_native.deepvariant.runs("wgse-deepvariant run") == []
+    assert {r["image"] for r in linux_native.docker.runs()} == {
+        deepvariant.DEFAULT_IMAGE
+    }
+
+
+def test_linux_refuses_the_apple_silicon_only_wgse_deepvariant_719(linux_native):
+    linux_native.deepvariant.set_native_version("0.1.0")
+    with pytest.raises(WGSExtractError, match="0.1.0 is too old"):
+        call(linux_native)
+    assert linux_native.deepvariant.stages() == []
+
+
+def _mac_sysctl(dv, arm64: str) -> None:
+    """The Mac's sysctl: hw.optional.arm64 is 1 on Apple Silicon, 0 on Intel."""
+    body = f"import sys\nif sys.argv[1:] != ['-n', 'hw.optional.arm64']: sys.exit(1)\nprint({arm64!r})\n"
+    python_tool(dv.docker.root.parent / "bin", "sysctl", body)
+
+
+@pytest.fixture
+def rosetta(apple, monkeypatch):
+    """x86-64 Python under Rosetta on Apple Silicon: it reports x86_64."""
+    monkeypatch.setattr(deepvariant.platform, "machine", lambda: "x86_64")
+    _mac_sysctl(apple, "1")
+    return apple
+
+
+def test_rosetta_python_still_refuses_googles_amd64_image(rosetta, monkeypatch):
+    monkeypatch.setitem(
+        deepvariant.settings, "deepvariant_image", deepvariant.DEFAULT_IMAGE
+    )
+    with pytest.raises(WGSExtractError, match="is linux/amd64.*AVX"):
+        call(rosetta)
+    assert rosetta.docker.runs() == []
+
+
+def test_rosetta_python_runs_the_native_arm64_image(rosetta):
+    rosetta.docker.add_image(deepvariant.DEFAULT_ARM64_IMAGE, platform="linux/arm64")
+    call(rosetta)
+    assert {r["image"] for r in rosetta.docker.runs()} == {
+        deepvariant.DEFAULT_ARM64_IMAGE
+    }
+
+
+def test_an_amd64_image_on_an_arm64_engine_is_refused_whatever_the_host_says(dv):
+    """The engine/image pair is checked on the x86-64 path too (#665)."""
+    dv.docker.set(arch="aarch64")
+    with pytest.raises(WGSExtractError, match="is linux/amd64.*AVX"):
+        call(dv)
+    assert dv.docker.runs() == []
+
+
+def test_intel_mac_runs_googles_image(dv, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    _mac_sysctl(dv, "0")
+    call(dv)
+    assert {r["image"] for r in dv.docker.runs()} == {deepvariant.DEFAULT_IMAGE}
+
+
 # Linux ARM64 ------------------------------------------------------------------
 
 
@@ -568,7 +1095,7 @@ def test_staged_reads_are_kept_for_a_rerun_and_removed_after_success(
     ("engine", "image", "message"),
     [
         ("x86_64", "linux/arm64", "native ARM64 Docker engine"),
-        ("aarch64", "linux/amd64", "must be linux/arm64"),
+        ("aarch64", "linux/amd64", "is linux/amd64.*AVX"),
         ("aarch64", "", "must be linux/arm64"),
     ],
 )
@@ -674,10 +1201,10 @@ def test_batch_size_reaches_call_variants_without_changing_shards(dv):
 
 @pytest.fixture
 def genome_fai(dv):
-    """The reference's index says chr1 is 3 Gbp: a whole genome's worth of
-    postprocess_variants partitions."""
+    """Extra reference contigs model a whole genome's postprocess partitions
+    without making the alignment's chr1 dictionary incompatible."""
     fai = Path(f"{dv.sample.ref}.fai")
-    fai.write_text(fai.read_text().replace("\t3000\t", "\t3000000000\t", 1))
+    fai.write_text(fai.read_text() + "unobserved\t2999997000\t0\t60\t61\n")
 
 
 def postprocess(dv):
@@ -1354,3 +1881,55 @@ def test_a_gpu_plan_needs_no_gpu_driver(ultima_gpu, monkeypatch, capsys):
     gpu_call(ultima_gpu, "--dry-run")
     assert re.search(r"call_variants +run", capsys.readouterr().out)
     assert ultima_gpu.deepvariant.stages() == []
+
+
+def test_deepvariant_states_its_host_requirement_and_refuses_too_little_ram(
+    dv, monkeypatch, ram, caplog
+):
+    """#690: the whole-genome DeepVariant run of #431 found its RAM need by
+    running into it. It now states disk, RAM and time before it starts,
+    warns when its settings need more RAM than this computer has, and
+    refuses one with less than it needs on one thread at a batch of 256,
+    unless --no-preflight."""
+    caplog.set_level("INFO")
+    ram(12 * GIB)
+    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 12 * GIB)
+    call(dv)
+    assert re.search(
+        r"this DeepVariant run needs \S+ GiB disk on .*, ~\d+ GiB RAM, "
+        r"~[\d.]+ (h|min) on 4 threads",
+        caplog.text,
+    )
+    assert "it may swap or be killed" in caplog.text
+    assert dv.deepvariant.runs("make_examples")
+
+    ram(4 * GIB)
+    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 4 * GIB)
+    dv.deepvariant.clear()
+    with pytest.raises(
+        WGSExtractError,
+        match=r"at least ~[\d.]+ GiB RAM, but this computer has 4\.0 GiB",
+    ):
+        call(dv, out=dv.tmp / "small")
+    assert dv.deepvariant.runs("make_examples") == []
+    call(dv, "--no-preflight", out=dv.tmp / "small")
+    assert dv.deepvariant.runs("make_examples")
+
+
+def test_deepvariant_rerun_with_finished_stages_warns_instead_of_refusing(
+    dv, monkeypatch, ram, caplog
+):
+    """#690 review: a rerun that keeps finished stages printed no host
+    requirement; it now does, and warns of a shortfall without refusing,
+    since the kept stages need less than a fresh run."""
+    dv.deepvariant.fail("call_variants")
+    with pytest.raises(WGSExtractError):
+        call(dv)
+    ram(4 * GIB)
+    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 4 * GIB)
+    caplog.clear()
+    with caplog.at_level("INFO"):
+        rerun(dv)
+    assert "this DeepVariant run needs" in caplog.text
+    assert "Running anyway (finished stages are kept)" in caplog.text
+    assert dv.deepvariant.stages() == ["call_variants", "postprocess_variants"]

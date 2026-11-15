@@ -3,7 +3,7 @@ import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, wri
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parseFlatToml } from "../dist/shared/rendering.js";
 
@@ -11,7 +11,7 @@ const { bootstrapConfigFiles, loadBundleState, loadConfig, saveBundleState, save
 const { loadLocalizedBundle } = await import("../dist/web/src/server/bundle-loader.js");
 
 async function tempDirectory(t) {
-  const directory = await mkdtemp(path.join(tmpdir(), "gui-for-cli-config-store-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-config-store-"));
   t.after(() => rm(directory, { force: true, recursive: true }));
   return directory;
 }
@@ -64,6 +64,38 @@ test("atomic writes follow symlinks and keep file permissions", { skip: process.
   assert.equal(await readFile(target, "utf8"), "new\n");
   assert.equal((await stat(target)).mode & 0o777, 0o600);
   assert.ok((await lstat(link)).isSymbolicLink());
+});
+
+test("on Windows, saving waits out another process briefly holding the file open", { skip: process.platform !== "win32" && "Windows file sharing" }, async (t) => {
+  const directory = await tempDirectory(t);
+  const target = path.join(directory, "config.toml");
+  await writeFile(target, "old\n");
+  // Opened without delete sharing, as a reader or virus scanner may, which makes a rename over it fail.
+  // It lets go when told on stdin, so the test doesn't depend on how fast a busy runner schedules it.
+  const holder = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+    `$f = [IO.File]::Open('${target.replaceAll("'", "''")}', 'Open', 'Read', 'Read'); 'locked'; [void][Console]::In.ReadLine(); $f.Close(); 'released'`]);
+  t.after(() => holder.kill());
+  let output = "";
+  const said = (word) => new Promise((resolve, reject) => {
+    const check = () => output.includes(word) && resolve();
+    holder.stdout.on("data", (data) => {
+      output += String(data);
+      check();
+    });
+    holder.on("exit", (code) => reject(new Error(`the lock holder exited (${code}) before saying ${word}: ${output}`)));
+    check();
+  });
+  await said("locked");
+
+  // The first renames fail while the file is held; the save is still retrying when it's let go.
+  const saving = writeFileAtomically(target, "new\n");
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  holder.stdin.write("\n");
+  await said("released");
+  await saving;
+
+  assert.equal(await readFile(target, "utf8"), "new\n");
+  assert.deepEqual((await readdir(directory)).filter((name) => name.endsWith(".tmp")), []);
 });
 
 function parseSavedToml(text) {

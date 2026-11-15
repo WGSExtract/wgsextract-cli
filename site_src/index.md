@@ -68,7 +68,7 @@ auto_hero: false
 
 Use the pages below as a map for installing the tool, understanding WGS file types, and running common genome workflows safely.
 
-The current release is [v0.8.6](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.6){.inline-link}; its release notes say what it adds. Recent releases brought native Linux ARM64, Oxford Nanopore detection with Sniffles and optional Clair3 calling, CpG methylation pileups, Y-STR panels, queryable variant tables, result manifests (`--json`) and easier help, on top of native Windows tools and GATK acceleration, more microarray and AADR exports, resource preflight, and one-command developer setup. See [GitHub Releases](https://github.com/WGSExtract/wgsextract-cli/releases){.inline-link} for every release's notes.
+The current release is [v0.8.7](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.7){.inline-link}; its release notes say what it adds. Recent releases brought native Linux ARM64, Oxford Nanopore detection with Sniffles and optional Clair3 calling, CpG methylation pileups, Y-STR panels, queryable variant tables, result manifests (`--json`) and easier help, on top of native Windows tools and GATK acceleration, more microarray and AADR exports, resource preflight, and one-command developer setup. See [GitHub Releases](https://github.com/WGSExtract/wgsextract-cli/releases){.inline-link} for every release's notes.
 :::
 
 ::: grid three

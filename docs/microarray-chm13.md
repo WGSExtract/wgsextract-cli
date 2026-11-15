@@ -52,8 +52,10 @@ the CHM13 intervals, not GRCh38 defaults; chrM is haploid.
   The alignment route reuses the existing SNP-only caller (`mpileup -I`,
   `call -V indels`); it cannot discover every indel allele. Observed indel
   masking applies to supplied VCF records, not an indel-probe certification.
-* Variant-only VCF reference filling still honors `--assume-hom-ref`; depth/GQ
-  gates do not manufacture evidence at absent sites.
+* Absent variant-only VCF sites are no-calls by default, with the same DP ≥10,
+  GQ ≥20 and FILTER gates as GRCh37/38. Unsafe reference filling requires
+  `--assume-hom-ref --min-dp 0 --min-gq 0`; depth/GQ gates never manufacture
+  evidence at absent sites.
 
 Each invocation retains its native VCF, target and canonical CombinedKit in a
 private `CHM13_*` output subdirectory. `<sample>_CHM13_report.json` records reason

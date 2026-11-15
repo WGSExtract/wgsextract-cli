@@ -16,6 +16,7 @@ const CONFIG_FILE_PREFIXES = [
     "{{userConfig}}/",
     "{{applicationSupport}}/",
     "{{appConfig}}/",
+    "{{appData}}/",
     "~/",
 ];
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -79,6 +80,11 @@ export function validateDataSource(value: LooseRecord, path: string): void {
     validateBundledScriptPath(value.path, `${path}.path`);
     if (value.workingDirectory != null) {
         validateBundledScriptPath(value.workingDirectory, `${path}.workingDirectory`);
+    }
+    if (value.transform != null) {
+        const transform = value.transform as LooseRecord;
+        validateBundledScriptPath(transform.module, `${path}.transform.module`);
+        requireNonEmpty(transform.export, `${path}.transform.export`);
     }
 }
 

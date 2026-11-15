@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Advanced tools · Direction C · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="c-advanced" data-direction="C" data-shell="c" data-nav="advanced" data-title="Advanced tools">
+<div class="page page--wide" data-annot-id="page">
+  <header class="page-header" data-annot-id="header">
+    <div class="page-header__text">
+      <h1>Advanced tools</h1>
+      <p class="page-header__lead">Every operation of the WGS Extract server with all of its options. Forms are built from each operation’s parameter schema, so they always match the CLI.</p>
+    </div>
+  </header>
+
+  <div class="split split--three">
+    <nav class="stack stack--xs" aria-label="Tools" data-annot-id="tool-list">
+      <div class="input-icon"><i data-icon="search" class="icon--sm"></i><input class="input input--sm" type="search" placeholder="Filter all tools" aria-label="Filter tools"></div>
+      <div class="eyebrow sidebar__heading">Align &amp; call</div>
+      <a class="nav-item" href="#" aria-current="page"><i data-icon="realign"></i><span class="nav-item__label">Realign</span></a>
+      <a class="nav-item" href="#"><i data-icon="align"></i><span class="nav-item__label">Align FASTQ</span></a>
+      <a class="nav-item" href="#"><i data-icon="variant"></i><span class="nav-item__label">Call variants</span><span class="badge">5</span></a>
+      <a class="nav-item" href="#"><i data-icon="variant"></i><span class="nav-item__label">Structural variants</span></a>
+      <div class="eyebrow sidebar__heading">Quality</div>
+      <a class="nav-item" href="#"><i data-icon="qc"></i><span class="nav-item__label">Read QC</span><span class="badge">3</span></a>
+      <a class="nav-item" href="#"><i data-icon="qc"></i><span class="nav-item__label">Contamination</span></a>
+      <a class="nav-item" href="#"><i data-icon="relate"></i><span class="nav-item__label">Relatedness</span></a>
+      <div class="eyebrow sidebar__heading">Annotate</div>
+      <a class="nav-item" href="#"><i data-icon="annotate"></i><span class="nav-item__label">VEP</span></a>
+      <a class="nav-item" href="#"><i data-icon="annotate"></i><span class="nav-item__label">Add scores</span><span class="badge">11</span></a>
+      <a class="nav-item" href="#"><i data-icon="list"></i><span class="nav-item__label">Variant table</span></a>
+      <div class="eyebrow sidebar__heading">Extract</div>
+      <a class="nav-item" href="#"><i data-icon="extract"></i><span class="nav-item__label">Region or gene</span></a>
+      <a class="nav-item" href="#"><i data-icon="y-lineage"></i><span class="nav-item__label">Y and mtDNA</span><span class="badge">6</span></a>
+      <button class="btn btn--ghost btn--sm" type="button" data-palette><i data-icon="command"></i>All tools…</button>
+    </nav>
+
+    <section class="card" aria-labelledby="op-title" data-annot-id="op-form">
+      <div class="card__header">
+        <span class="action__icon"><i data-icon="realign"></i></span>
+        <div class="grow"><h2 class="card__title" id="op-title">Realign</h2><span class="xsmall subtle">Re-align a BAM/CRAM to another reference, possibly another build · <code>realign</code></span></div>
+        <button class="btn btn--sm btn--ghost" type="button" data-toast="Opened docs/hardware.md"><i data-icon="circle-help"></i>Docs</button>
+      </div>
+
+      <h3 class="eyebrow">Essentials</h3>
+      <div>
+        <div class="field-row"><span class="field-row__label">Input<code>input</code></span><div data-render="genome-pick" data-genome="hg003"></div></div>
+        <div class="field-row"><span class="field-row__label">Target reference<code>ref</code></span><select class="select" aria-label="Target reference"><option>hs38 (GRCh38, no alts) — installed</option><option>T2T-CHM13 v2.0 — install, 0.9 GB</option><option>hs37d5 (GRCh37) — installed</option></select></div>
+        <div class="field-row"><span class="field-row__label">Output<code>format</code></span><div class="seg" data-seg="fmt" role="group" aria-label="Output format"><button class="seg__btn" type="button" value="BAM">BAM</button><button class="seg__btn" type="button" value="CRAM" aria-pressed="true">CRAM</button></div></div>
+        <div class="field-row"><span class="field-row__label">Sample name<code>sample</code></span><input class="input" value="HG003" aria-label="Sample name"></div>
+      </div>
+
+      <h3 class="eyebrow">Aligner</h3>
+      <div>
+        <div class="field-row"><span class="field-row__label">Aligner<code>aligner</code></span><select class="select" aria-label="Aligner"><option>Auto: bwa-mem2 (fits in 32 GB)</option><option>bwa</option><option>bwa-mem2</option><option>bwa-mem3</option><option>minimap2</option></select></div>
+        <div class="field-row"><span class="field-row__label">Speed preset<code>fast</code></span><label class="switch"><input type="checkbox" role="switch"><span class="small">bwa-mem3 <code>--fast</code>: about twice as fast; alignments differ slightly</span></label></div>
+        <div class="field-row"><span class="field-row__label">Apple Silicon<code>native_aligners</code></span><div class="seg" data-seg="native" role="group" aria-label="Native aligners"><button class="seg__btn" type="button" value="auto" aria-pressed="true">Auto (Metal)</button><button class="seg__btn" type="button" value="off">Off</button></div></div>
+        <div class="field-row"><span class="field-row__label">NVIDIA GPU<code>gpu</code></span><label class="switch"><input type="checkbox" role="switch" disabled><span class="small subtle">No NVIDIA GPU on this Mac</span></label></div>
+      </div>
+
+      <details class="disclosure">
+        <summary>Resources and steps</summary>
+        <div class="disclosure__body">
+          <div class="field-row"><span class="field-row__label">CPU threads<code>threads</code></span><input class="input" type="number" value="12" aria-label="Threads" style="max-width: 120px"></div>
+          <div class="field-row"><span class="field-row__label">Memory per thread<code>memory</code></span><input class="input" value="2G" aria-label="Memory per thread" style="max-width: 120px"></div>
+          <div class="field-row"><span class="field-row__label">Keep FASTQs<code>keep_fastq</code></span><label class="switch"><input type="checkbox" role="switch"><span class="small">Keep the extracted reads (≈ 2×41 GB)</span></label></div>
+          <div class="field-row"><span class="field-row__label">Rerun steps<code>force_steps</code></span><div class="row row--wrap"><button class="chip" type="button" data-toggle-pressed aria-pressed="false">extract</button><button class="chip" type="button" data-toggle-pressed aria-pressed="false">align</button><button class="chip" type="button" data-toggle-pressed aria-pressed="false">index</button></div></div>
+          <div class="field-row"><span class="field-row__label">Start over<code>restart</code></span><label class="switch"><input type="checkbox" role="switch"><span class="small">Ignore steps an earlier run finished</span></label></div>
+        </div>
+      </details>
+
+      <div class="card__footer" style="justify-content: flex-end">
+        <button class="btn" type="button" data-toast="Dry run: extract → align → index would run; nothing skipped">Dry run</button>
+        <button class="btn btn--primary" type="button" data-toast="Started: Realign HG003 to hs38">Start realign</button>
+      </div>
+    </section>
+
+    <aside class="stack" data-annot-id="op-side">
+      <div class="card">
+        <h2 class="card__title">Preflight</h2>
+        <div>
+          <table class="table table--compact" aria-label="Estimated peak use">
+            <thead><tr><th><span class="visually-hidden">Resource</span></th><th class="num">Peak</th><th class="num">Free</th><th><span class="visually-hidden">Status</span></th></tr></thead>
+            <tbody>
+              <tr><td>Memory</td><td class="num">18.1 GB</td><td class="num">32 GB</td><td><span class="badge badge--success">OK</span></td></tr>
+              <tr><td>Genomes disk</td><td class="num">93.9 GB</td><td class="num">1.1 TB</td><td><span class="badge badge--success">OK</span></td></tr>
+              <tr><td>System disk</td><td class="num">12.0 GB</td><td class="num">8.4 GB</td><td><span class="badge badge--warn">Low</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="fixit" style="padding: var(--sp-3)">
+          <span class="fixit__icon"><i data-icon="hard-drive"></i></span>
+          <div class="fixit__title">Temporary files won’t fit on Macintosh HD</div>
+          <div class="fixit__body">Sorting needs about 12 GB of scratch space; 8.4 GB is free.</div>
+          <div class="fixit__actions"><button class="btn btn--sm btn--soft" type="button" data-toast="Temporary files will go to /Volumes/Genomes/tmp for this run">Use Genomes for temp files</button></div>
+        </div>
+        <p class="xsmall subtle">About 3 h 10 min with bwa-mem2 on 12 cores (Apple M2 Max).</p>
+      </div>
+      <div class="card">
+        <div class="card__header"><h2 class="card__title">Command</h2><button class="btn btn--sm btn--ghost" type="button" data-toast="Copied"><i data-icon="copy"></i>Copy</button></div>
+        <div class="seg" data-seg="cmdview" role="group" aria-label="Show as"><button class="seg__btn" type="button" value="cli" aria-pressed="true">CLI</button><button class="seg__btn" type="button" value="api">API</button></div>
+        <pre class="xsmall" data-when="cmdview:cli" style="margin: 0; white-space: pre-wrap; overflow-wrap: anywhere"><code>wgsextract realign \
+  --input /Volumes/Genomes/HG003/HG003.hs37d5.38x.bam \
+  --ref hs38 --format CRAM --sample HG003 \
+  --threads 12 --memory 2G</code></pre>
+        <pre class="xsmall" data-when="cmdview:api" hidden style="margin: 0; white-space: pre-wrap; overflow-wrap: anywhere"><code>POST /v1/ops/realign
+{"input": "/Volumes/Genomes/HG003/HG003.hs37d5.38x.bam",
+ "ref": "…/reference/genomes/hs38.fa.gz",
+ "format": "CRAM", "sample": "HG003",
+ "threads": 12, "memory": "2G"}</code></pre>
+      </div>
+    </aside>
+  </div>
+</div>
+</body>
+</html>

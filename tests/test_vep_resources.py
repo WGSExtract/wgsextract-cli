@@ -61,6 +61,14 @@ def test_preprocess_vcf_chr_prefix_reads_gzip_input(tmp_path):
     ]
 
 
+@pytest.fixture(autouse=True)
+def _ensembl_engine(monkeypatch):
+    """These are Ensembl VEP's cache commands; vep-rs's are in test_vep_rs."""
+    from wgsextract_cli.core.config import settings
+
+    monkeypatch.setitem(settings, "vep_engine", "ensembl")
+
+
 # --- vep download / verify ------------------------------------------------------
 # The cache downloads for real (download_file, curl, tar) from a local HTTP
 # server; only the mirror table is pointed at it.

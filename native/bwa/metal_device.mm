@@ -85,6 +85,13 @@ public:
         }
     }
 
+    bool adopt_dense(unsigned shift, uint32_t *low, size_t low_bytes, uint32_t *high,
+        size_t high_bytes) override {
+        @autoreleasepool {
+            return locator_ && locator_->adopt(low, low_bytes, high, high_bytes, shift);
+        }
+    }
+
     void rescue(const RescueParameters &p, const std::vector<uint8_t> &bases,
         const std::vector<RescueJob> &jobs, size_t row_bytes,
         std::vector<RescueResult> &results) override {
@@ -145,10 +152,20 @@ private:
 std::unique_ptr<Device> make_metal_device(const DeviceOptions &options, std::string &reason) {
     @autoreleasepool {
         wgse::metal::Runtime::inject_interruptions(options.interrupt_every);
+        if (!options.hang_label.empty())
+            wgse::metal::Runtime::inject_hang(options.hang_label, 2);
         auto device = std::make_unique<MetalDevice>(options);
         if (!device->kernel.available(reason)) return nullptr;
         return device;
     }
+}
+
+bool memory_unsettled() {
+    return wgse::metal::Runtime::unsettled() != 0;
+}
+
+size_t watchdog_threads() {
+    return wgse::metal::Runtime::watchdog_threads();
 }
 
 bool metal_hardware_supported() {

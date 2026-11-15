@@ -1,0 +1,266 @@
+/* Overlays: modal dialog, bottom/side sheet, menu, command palette.
+ * Dialogs are native <dialog> elements opened inside the app viewport (.vp)
+ * by shared/ui.js, so they stay inside the phone frame of the mockups; the
+ * app itself would use showModal(). */
+
+.dialog {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  height: fit-content;
+  margin: auto;
+  width: min(520px, calc(100% - 2 * var(--sp-4)));
+  max-height: calc(100% - 2 * var(--sp-8));
+  padding: 0;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-xl);
+  background: var(--c-surface);
+  color: var(--c-text);
+  box-shadow: var(--shadow-3);
+}
+
+.vp-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 39;
+  background: var(--c-overlay);
+  animation: fade-in var(--dur) var(--ease-out);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.dialog[open] {
+  display: flex;
+  flex-direction: column;
+  animation: dialog-in var(--dur) var(--ease-out);
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+.dialog__header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.dialog__title {
+  flex: 1;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+}
+
+.dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  overflow-y: auto;
+}
+
+.dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-5);
+  border-top: 1px solid var(--c-border);
+  background: var(--c-surface-2);
+  border-radius: 0 0 var(--r-xl) var(--r-xl);
+}
+
+.dialog--wide {
+  width: min(760px, calc(100% - 2 * var(--sp-4)));
+}
+
+/* Side sheet on desktop, bottom sheet on phone */
+.sheet {
+  inset: 0 0 0 auto;
+  margin: 0;
+  width: min(440px, 100%);
+  height: 100%;
+  max-height: 100%;
+  border-radius: 0;
+  border-width: 0 0 0 1px;
+}
+
+.sheet .dialog__footer {
+  border-radius: 0;
+  margin-top: auto;
+}
+
+.sheet[open] {
+  animation: sheet-in var(--dur-slow) var(--ease-out);
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+
+.sheet--bottom {
+  inset: auto 0 0;
+  margin: 0;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  max-height: 85%;
+  border-width: 1px 0 0;
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+}
+
+.sheet__grabber {
+  width: 36px;
+  height: 4px;
+  margin: var(--sp-2) auto 0;
+  border-radius: var(--r-pill);
+  background: var(--c-border-strong);
+}
+
+/* Command palette */
+.palette {
+  width: min(640px, calc(100% - 2 * var(--sp-4)));
+  bottom: auto;
+  top: 10%;
+}
+
+.palette__input {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.palette__input input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  font-size: var(--fs-lg);
+  outline: none;
+}
+
+.palette__list {
+  max-height: 380px;
+  margin: 0;
+  padding: var(--sp-2);
+  overflow-y: auto;
+  list-style: none;
+}
+
+.palette__group {
+  padding: var(--sp-2) var(--sp-3) var(--sp-1);
+}
+
+.palette__item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 40px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+
+.palette__item[aria-selected="true"],
+.palette__item:hover {
+  background: var(--c-primary-soft);
+}
+
+.palette__item .icon {
+  color: var(--c-text-3);
+}
+
+.palette__op {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  color: var(--c-text-3);
+}
+
+/* Popover menu */
+.menu {
+  min-width: 200px;
+  padding: var(--sp-1);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+  box-shadow: var(--shadow-2);
+}
+
+.menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: 32px;
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu__item:hover {
+  background: var(--c-surface-2);
+}
+
+.menu__item--danger {
+  color: var(--c-danger);
+}
+
+/* Disclosure (details/summary) used for "More options" */
+.disclosure {
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+}
+
+.disclosure > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--control-h-lg);
+  padding: 0 var(--sp-4);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+  list-style: none;
+}
+
+.disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.disclosure > summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-right: 2px solid var(--c-text-3);
+  border-bottom: 2px solid var(--c-text-3);
+  transform: rotate(45deg);
+  transition: transform var(--dur) var(--ease);
+}
+
+.disclosure[open] > summary::after {
+  transform: rotate(225deg);
+}
+
+.disclosure__body {
+  padding: 0 var(--sp-4) var(--sp-3);
+}

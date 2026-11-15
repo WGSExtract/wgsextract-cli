@@ -3,8 +3,8 @@ import path from "node:path";
 
 // Developer build caches live in the per-user cache directory, not the checkout, so every
 // worktree on the machine reuses one download. The name is distinct from the app's own
-// "gui-for-cli" support directory, which holds user configuration.
-const cacheName = "gui-for-cli-dev";
+// "wgsextract-gui" support directory, which holds user configuration.
+const cacheName = "wgsextract-gui-dev";
 
 export function developerCacheDir(
   subdirectory,

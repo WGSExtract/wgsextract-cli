@@ -359,12 +359,23 @@
           "kind": "dropdown",
           "tooltip": "controls.fastq.fastq-inputs.ref_fasta.tooltip",
           "dataSource": {
-            "path": "scripts/list-reference-genomes.py",
+            "path": "scripts/run-wgsextract.sh",
             "arguments": [
-              "options",
-              "{{ref_path}}",
-              "{{reference_genome_library}}"
-            ]
+              "--json",
+              "ref",
+              "library",
+              "--list"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ]
+            ],
+            "transform": {
+              "module": "transforms/reference-genomes.mjs",
+              "export": "options"
+            }
           },
           "emptyText": "controls.reference-genome.emptyText"
         },
@@ -642,12 +653,23 @@
           "kind": "dropdown",
           "tooltip": "controls.info-bam.realign-commands.realign_ref.tooltip",
           "dataSource": {
-            "path": "scripts/list-reference-genomes.py",
+            "path": "scripts/run-wgsextract.sh",
             "arguments": [
-              "options",
-              "{{ref_path}}",
-              "{{reference_genome_library}}"
-            ]
+              "--json",
+              "ref",
+              "library",
+              "--list"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ]
+            ],
+            "transform": {
+              "module": "transforms/reference-genomes.mjs",
+              "export": "options"
+            }
           },
           "emptyText": "controls.reference-genome.emptyText"
         },
@@ -1278,8 +1300,9 @@
           "tooltip": "actions.vcf.variant-calling.vcf-snp.tooltip",
           "estimatedDurationMinutes": 34,
           "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract-vcf.sh",
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
+              "vcf",
               "snp",
               "--input",
               "{{bam_path}}"
@@ -1306,8 +1329,9 @@
           "tooltip": "actions.vcf.variant-calling.vcf-indel.tooltip",
           "estimatedDurationMinutes": 34,
           "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract-vcf.sh",
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
+              "vcf",
               "indel",
               "--input",
               "{{bam_path}}"
@@ -1755,6 +1779,7 @@
     {
       "id": "typing",
       "title": "sections.cli.typing.title",
+      "iconName": "typing",
       "textIcon": "🧪",
       "advancedOnly": true,
       "controls": [
@@ -1864,6 +1889,7 @@
       "id": "phasing",
       "title": "sections.cli.phasing.title",
       "subtitle": "sections.cli.phasing.subtitle",
+      "iconName": "phasing",
       "textIcon": "🧬",
       "advancedOnly": true,
       "controls": [
@@ -1957,6 +1983,7 @@
     {
       "id": "panel",
       "title": "sections.cli.panel.title",
+      "iconName": "panel",
       "textIcon": "🎯",
       "advancedOnly": true,
       "controls": [

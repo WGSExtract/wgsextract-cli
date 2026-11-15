@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tests.htslib_helpers import bgzip_index, needs_tools, run_wgsextract
+from tests.htslib_helpers import bgzip_index, needs_tools, run_wgsextract, write_fasta
 from wgsextract_cli import api
 from wgsextract_cli.api import VcfFreebayesParams
 from wgsextract_cli.commands.vcf.basic import CallerSetup
@@ -183,6 +183,7 @@ def test_chain_uses_each_steps_known_output(tmp_path, monkeypatch, keep_awake):
 
     class Lib:
         clinvar_vcf = revel_file = "present"
+        fasta = "present"
 
         def __init__(self, *_a, **_k):
             pass
@@ -288,10 +289,16 @@ def test_trio_with_same_sample_name_and_mixed_contig_names(tmp_path):
 
     def trio_vcf(name: str, contig: str, gts: tuple[str, str, str]) -> str:
         body = "".join(
-            f"{{c}}\t{pos}\ts{i}\tA\tG\t50\tPASS\t.\tGT\t{gt}\n"
+            f"{{c}}\t{pos}\ts{i}\tA\tG\t50\tPASS\t.\tGT:GQ\t{gt}:99\n"
             for i, (pos, gt) in enumerate(zip((10, 20, 30), gts, strict=True), 1)
         )
-        return _write_vcf(tmp_path / name, body, contig, sample="S")
+        return _write_vcf(
+            tmp_path / name,
+            body,
+            contig,
+            sample="S",
+            header='##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">\n',
+        )
 
     child = trio_vcf("child.vcf.gz", "chr1", ("0/1", "0/1", "1/1"))
     mom = trio_vcf("mom.vcf.gz", "1", ("0/0", "0/1", "0/1"))
@@ -448,8 +455,9 @@ def test_clinvar_normalizes_contigs_and_leaves_no_temporaries(tmp_path):
     )
 
     outdir = tmp_path / "out"
+    reference = write_fasta(tmp_path / "ref.fa", {"chr1": "A" * 1000})
     args = argparse.Namespace(
-        input=sample, vcf_input=None, outdir=str(outdir), ref=None,
+        input=sample, vcf_input=None, outdir=str(outdir), ref=str(reference),
         clinvar_file=bgzip_index(clinvar),
     )  # fmt: skip
     with (
@@ -467,8 +475,12 @@ def test_clinvar_normalizes_contigs_and_leaves_no_temporaries(tmp_path):
     assert _query(str(outdir / "clinvar_pathogenic.vcf.gz"), "%POS\n") == ["10"]
     assert sorted(os.listdir(inputs)) == ["sample.vcf.gz", "sample.vcf.gz.tbi"]
     assert sorted(os.listdir(outdir)) == [
+        ".wgse_normalized_resources",
         "clinvar_annotated.vcf.gz",
         "clinvar_annotated.vcf.gz.tbi",
+        "clinvar_conflicts.confidence.tsv",
+        "clinvar_conflicts.vcf.gz",
+        "clinvar_conflicts.vcf.gz.tbi",
         "clinvar_pathogenic.confidence.tsv",
         "clinvar_pathogenic.vcf.gz",
         "clinvar_pathogenic.vcf.gz.tbi",
@@ -1062,7 +1074,7 @@ def test_vep_fast_preset_replaces_everything(tmp_path):
     def command(preset):
         params = api.VepRunParams(
             input=Path("in.vcf.gz"), vep_assembly="GRCh38", vep_cache=tmp_path,
-            preset=preset,
+            preset=preset, engine="ensembl",
         )  # fmt: skip
         lib = SimpleNamespace(build="hg38", fasta=None, vep_cache=None)
         return _build_vep_command(params, "in.vcf.gz", "out.vcf", "snp-indel", lib, "4")

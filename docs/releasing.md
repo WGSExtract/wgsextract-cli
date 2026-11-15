@@ -169,3 +169,25 @@ never become the latest release:
   The CLI does not use them yet. Each package carries its own version, printed
   by `--version`: bump `WGSE_BWA_VERSION` in `native/bwa/CMakeLists.txt` or the
   project version in `native/CMakeLists.txt` (`wgse-bwa-mem2`) when it changes.
+- **Linux aligners** (`linux-aligners-N`): Actions > Linux Aligners > Run
+  workflow. It publishes the `wgse-bwa` (x86-64 and ARM64), `wgse-bwa-mem3`
+  and `wgse-minimap2` (x86-64) conda packages built from `native/` by
+  `packaging/wgse-bwa`, `packaging/wgse-bwa-mem3` and `packaging/wgse-minimap2`,
+  with their CUDA backends on x86-64. Bump `WGSE_BWA_VERSION` in
+  `native/bwa/CMakeLists.txt`, `WGSE_BWA_MEM3_VERSION` in
+  `native/bwa-mem3/CMakeLists.txt` or `WGSE_MINIMAP2_VERSION` in
+  `native/minimap2/CMakeLists.txt` together with the recipe's `version`.
+- **macOS DeepVariant** (`macos-deepvariant-N`): Actions > macOS DeepVariant >
+  Run workflow. It publishes the Apple Silicon `wgse-deepvariant` tarball built
+  from `native/deepvariant/` and its WGS weights converted from Google's image,
+  with a `SHA256SUMS` (see
+  [native/deepvariant/README.md](../native/deepvariant/README.md)). Bump
+  `WGSE_DEEPVARIANT_VERSION` in `native/deepvariant/CMakeLists.txt` when the
+  package changes.
+- **Linux DeepVariant** (`linux-deepvariant-N`): Actions > Linux DeepVariant >
+  Run workflow. It publishes the Linux x86-64 `wgse-deepvariant` conda
+  packages (CUDA and CPU-only call_variants) built from `native/deepvariant/`
+  by `packaging/wgse-deepvariant`, and the WGS weights, with a `SHA256SUMS`.
+  Bump `WGSE_DEEPVARIANT_VERSION` and the recipe's `version` together, then
+  point pixi.toml's `deepvariant` feature at the new CUDA package's URL and
+  sha256 and run `pixi lock`.

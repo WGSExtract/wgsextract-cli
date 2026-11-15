@@ -80,6 +80,7 @@ int main(int argc, char **argv) {
         || strcmp(argv[command_index], "--gpu-rescue-verify") == 0
         || strcmp(argv[command_index], "--gpu-inject-rescue-failure") == 0
         || strcmp(argv[command_index], "--gpu-inject-interruptions") == 0
+        || strcmp(argv[command_index], "--gpu-inject-hang") == 0
         || strcmp(argv[command_index], "--gpu-policy") == 0
         || strcmp(argv[command_index], "--gpu-8bit") == 0
         || strcmp(argv[command_index], "--gpu-pipeline") == 0
@@ -144,6 +145,8 @@ int main(int argc, char **argv) {
             else if (strcmp(argv[command_index], "--gpu-seed-capacity") == 0)
                 wgse_set_gpu_seed_capacity(size_t(value));
             else wgse_inject_gpu_interruptions(size_t(value));
+        } else if (strcmp(argv[command_index], "--gpu-inject-hang") == 0) {
+            wgse_inject_gpu_hang(argv[command_index + 1]);
         } else if (strcmp(argv[command_index], "--gpu-pipeline") == 0) {
             std::string value = argv[command_index + 1];
             if (value != "on" && value != "off") return 2;

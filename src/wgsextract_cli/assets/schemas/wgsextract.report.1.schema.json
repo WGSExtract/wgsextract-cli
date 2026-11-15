@@ -40,7 +40,7 @@
     },
     "sections": {
       "type": "object",
-      "required": ["overview", "lineage", "pharmacogenomics", "clinvar", "microarray"],
+      "required": ["overview", "lineage", "pharmacogenomics", "clinvar", "structural_variants", "microarray"],
       "additionalProperties": false,
       "properties": {
         "overview": {
@@ -52,7 +52,33 @@
           }
         },
         "lineage": {"$ref": "#/$defs/section"},
+        "ancestry": {
+          "allOf": [{"$ref": "#/$defs/section"}],
+          "required": ["note", "components"],
+          "properties": {
+            "note": {"type": "string"},
+            "evidence": {"type": ["string", "null"]},
+            "metrics": {"type": "object"},
+            "components": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["k", "name", "region", "proportion", "lower", "upper", "reference_populations"],
+                "properties": {
+                  "k": {"type": "integer", "minimum": 1},
+                  "name": {"type": "string"},
+                  "region": {"type": "string"},
+                  "proportion": {"type": "number", "minimum": 0, "maximum": 1},
+                  "lower": {"type": "number", "minimum": 0, "maximum": 1},
+                  "upper": {"type": "number", "minimum": 0, "maximum": 1},
+                  "reference_populations": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
         "pharmacogenomics": {"$ref": "#/$defs/section"},
+        "carrier_screening": {"$ref": "#/$defs/section"},
         "clinvar": {
           "allOf": [{"$ref": "#/$defs/section"}],
           "required": ["gene_list"],
@@ -71,6 +97,7 @@
             },
             "build": {"enum": ["hg19", "hg38", null]},
             "all_calls": {"type": ["string", "null"], "description": "Every carried ClinVar P/LP call (confidence TSV), relative to the folder."},
+            "all_conflicts": {"type": ["string", "null"], "description": "Conflicting ClinVar assertions for review, not consensus P/LP, relative to the folder."},
             "counts": {
               "type": "object",
               "required": ["carried", "in_gene_list", "outside_gene_list", "high", "moderate", "low"],
@@ -81,7 +108,7 @@
               "description": "Each listed gene with P/LP calls, counted by zygosity.",
               "items": {
                 "type": "object",
-                "required": ["gene", "inheritance", "heterozygous", "homozygous", "hemizygous", "partial", "confidence", "status", "status_text"],
+                "required": ["gene", "inheritance", "heterozygous", "homozygous", "hemizygous", "partial", "phase", "confidence", "status", "status_text"],
                 "additionalProperties": false,
                 "properties": {
                   "gene": {"type": "string"},
@@ -90,11 +117,31 @@
                   "homozygous": {"type": "integer", "minimum": 0},
                   "hemizygous": {"type": "integer", "minimum": 0, "description": "Haploid calls (one allele in the genotype)."},
                   "partial": {"type": "integer", "minimum": 0, "description": "Calls whose other allele was not called (1/.)."},
+                  "phase": {"enum": ["trans", "cis", "unknown", null], "description": "The phase of two or more heterozygous calls: trans when two are on opposite copies (two ALTs of one call such as 1/2, or phased in one phase set), cis when all are phased on one copy in one phase set, else unknown (unphased, phased without a PS, or in different phase sets). Null for fewer than two, and when the calls are incomplete (calls_truncated) unless trans."},
                   "confidence": {"enum": ["high", "moderate", "low", "not_assessed"], "description": "The weakest confidence label of the gene's calls."},
-                  "status": {"enum": ["biallelic", "possible_biallelic", "carrier", null], "description": "For a gene the list reports only when biallelic (AR): biallelic (a homozygous call, or two ALTs of one multi-allelic call such as 1/2), possible_biallelic (two or more heterozygous calls with phase unknown, or a hemizygous or partly called genotype) or carrier (one heterozygous call). Null for other genes, and when the calls are incomplete (calls_truncated) unless biallelic."},
+                  "status": {"enum": ["biallelic", "possible_biallelic", "carrier", null], "description": "For a gene the list reports only when biallelic (AR): biallelic (a homozygous call, or two heterozygous calls in trans), possible_biallelic (two or more heterozygous calls not all phased together, or a hemizygous or partly called genotype) or carrier (one heterozygous call, or several in cis). Null for other genes, and when the calls are incomplete (calls_truncated) unless biallelic."},
                   "status_text": {"type": "string", "description": "The status explained; empty when status is null."}
                 }
               }
+            }
+          }
+        },
+        "structural_variants": {
+          "allOf": [{"$ref": "#/$defs/section"}],
+          "properties": {
+            "all_svs": {"type": ["string", "null"], "description": "Every SV with its frequency class (sv_freq.tsv), relative to the folder."},
+            "sources": {"type": "array"},
+            "thresholds": {
+              "type": "object",
+              "properties": {
+                "common_af": {"type": "number"},
+                "rare_af": {"type": "number"}
+              }
+            },
+            "counts": {
+              "type": "object",
+              "description": "Carried SVs by frequency class (common, low, rare, novel), and listed: the rare SVs shown as findings.",
+              "additionalProperties": {"type": "integer", "minimum": 0}
             }
           }
         },
@@ -191,11 +238,33 @@
       ],
       "additionalProperties": false,
       "properties": {
-        "section": {"enum": ["lineage", "pharmacogenomics", "clinvar"]},
+        "section": {"enum": ["lineage", "pharmacogenomics", "carrier_screening", "clinvar", "structural_variants"]},
         "label": {"type": "string", "minLength": 1},
         "value": {"type": "string"},
         "detail": {"type": ["string", "null"]},
         "gene": {"type": ["string", "null"]},
+        "pgx": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "alternatives", "phenotype_consistent", "source"],
+          "properties": {
+            "status": {"enum": ["resolved", "ambiguous", "no_call"]},
+            "phenotype_consistent": {"type": "boolean"},
+            "source": {"const": "PharmCAT"},
+            "alternatives": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["diplotype", "phenotype"],
+                "properties": {
+                  "diplotype": {"type": "string"},
+                  "phenotype": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
         "note": {"type": ["string", "null"], "description": "A caveat from the gene list, e.g. only biallelic calls are reportable."},
         "confidence": {"enum": ["high", "moderate", "low", "not_assessed"]},
         "confidence_reasons": {"type": "array", "items": {"type": "string"}},
@@ -215,6 +284,21 @@
           "required": ["chrom", "pos", "ref", "alt", "genotype", "zygosity", "depth", "genotype_quality", "alt_fraction"],
           "additionalProperties": false,
           "properties": {
+            "clinical_evidence": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {"type": ["string", "null"]},
+                "review_status": {"type": ["string", "null"]},
+                "stars": {"type": ["integer", "null"], "minimum": 0, "maximum": 4},
+                "review_tier": {"type": "string"},
+                "conflict": {"type": "boolean"},
+                "conflict_evidence": {"type": ["string", "null"]}
+              }
+            },
+            "original_record": {"type": ["string", "null"]},
+            "mnv_components": {"type": ["string", "null"]},
+            "mnv_residual_copies": {"type": ["integer", "null"], "minimum": 1, "maximum": 2},
             "chrom": {"type": "string"},
             "pos": {"type": ["integer", "null"]},
             "ref": {"type": ["string", "null"]},
@@ -223,7 +307,8 @@
             "zygosity": {"type": ["string", "null"]},
             "depth": {"type": ["integer", "null"]},
             "genotype_quality": {"type": ["integer", "null"]},
-            "alt_fraction": {"type": ["number", "null"]}
+            "alt_fraction": {"type": ["number", "null"]},
+            "phase_set": {"type": ["string", "null"], "description": "FORMAT/PS of a ClinVar call: calls phased (0|1) in one phase set are on known copies."}
           }
         },
         "links": {

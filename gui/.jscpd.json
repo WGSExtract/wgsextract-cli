@@ -23,6 +23,7 @@
     "**/package-lock.json",
     "**/Cargo.lock",
     "**/site/**",
+    "**/mockups/**",
     "**/examples/**/genomes/**",
     "**/examples/**/runtime/**",
     "**/examples/**/output/**",

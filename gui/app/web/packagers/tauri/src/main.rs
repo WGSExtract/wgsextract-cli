@@ -145,14 +145,14 @@ fn main() {
                   if (location.origin !== {origin:?}) {{
                     return;
                   }}
-                  window.__GUI_FOR_CLI_TAURI__ = true;
+                  window.__WGSEXTRACT_GUI_TAURI__ = true;
                   Object.defineProperty(window, "__GFC_API_TOKEN__", {{ value: {api_token:?}, writable: false, configurable: false }});
-                  window.GUI_FOR_CLI_APPLICATION_NAME = {application_name:?};
-                  window.GUI_FOR_CLI_APPLICATION_VERSION = {application_version:?};
-                  window.GUI_FOR_CLI_AUTO_UPDATE = {auto_update:?};
-                  window.GUI_FOR_CLI_AUTO_ACCEPT_UPDATE = {auto_accept_update:?};
-                  window.GUI_FOR_CLI_AUTO_UPDATE_DELAY_SECONDS = {auto_update_delay_seconds};
-                  window.GUI_FOR_CLI_AUTO_UPDATE_ACTION_DELAY_SECONDS = {auto_update_action_delay_seconds};
+                  window.WGSEXTRACT_GUI_APPLICATION_NAME = {application_name:?};
+                  window.WGSEXTRACT_GUI_APPLICATION_VERSION = {application_version:?};
+                  window.WGSEXTRACT_GUI_AUTO_UPDATE = {auto_update:?};
+                  window.WGSEXTRACT_GUI_AUTO_ACCEPT_UPDATE = {auto_accept_update:?};
+                  window.WGSEXTRACT_GUI_AUTO_UPDATE_DELAY_SECONDS = {auto_update_delay_seconds};
+                  window.WGSEXTRACT_GUI_AUTO_UPDATE_ACTION_DELAY_SECONDS = {auto_update_action_delay_seconds};
                   const started = performance.now();
                   let reported = false;
                   const notify = () => {{
@@ -175,7 +175,7 @@ fn main() {
                     subtree: true,
                     attributeFilter: ["data-state"]
                   }});
-                  window.addEventListener("gui-for-cli-rendered", notify);
+                  window.addEventListener("wgsextract-gui-rendered", notify);
                   document.addEventListener("DOMContentLoaded", notify);
                   window.addEventListener("load", notify);
                 }})();
@@ -188,6 +188,8 @@ fn main() {
             let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
                 .title(window_title(&application_name, &application_version))
                 .inner_size(1200.0, 800.0)
+                // Below this the Web UI's narrow layout no longer fits its controls.
+                .min_inner_size(640.0, 480.0)
                 .initialization_script(&init_script)
                 .on_document_title_changed(|window, title| {
                     let _ = window.set_title(&title);
@@ -219,7 +221,7 @@ fn main() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("failed to run GUI for CLI Tauri app");
+        .expect("failed to run WGS Extract GUI Tauri app");
 }
 
 /// Test harnesses (the Windows lifecycle/update scripts) set GFC_PORT_FILE to learn the backend port.
@@ -268,10 +270,15 @@ pub(crate) struct AppPaths {
     pub(crate) node_path: String,
     pub(crate) server_script: PathBuf,
     pub(crate) bundle_root: PathBuf,
-    pub(crate) app_support_name: String,
+    /// The backend's data folder (settings.json and the CLI runtime setup installs), apart from the
+    /// webview's and the logs' folders, which are named for the identifier.
+    pub(crate) app_data_name: String,
     /// The backend's output, so a failure that ends it can be diagnosed (in the app's log folder).
     pub(crate) backend_log: Option<PathBuf>,
 }
+
+/// The backend's default data folder name (paths.ts's defaultAppDataName).
+const APP_DATA_NAME: &str = "WGSExtract-gui";
 
 impl AppPaths {
     fn resolve(app: &tauri::App) -> Result<Self, Box<dyn std::error::Error>> {
@@ -280,7 +287,10 @@ impl AppPaths {
         let node_path = node_path(&repo_root)?;
         let server_script = repo_root.join("app/dist/web/src/server/main.js");
         let bundle_root = bundle_root(&repo_root);
-        let app_support_name = app.config().identifier.clone();
+        let app_data_name = std::env::var("WGSEXTRACT_GUI_APP_DATA_NAME")
+            .ok()
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or_else(|| APP_DATA_NAME.to_string());
         let backend_log = app
             .path()
             .app_log_dir()
@@ -301,7 +311,7 @@ impl AppPaths {
             node_path,
             server_script,
             bundle_root,
-            app_support_name,
+            app_data_name,
             backend_log,
         })
     }
@@ -309,7 +319,7 @@ impl AppPaths {
 
 fn repo_root(resource_root: PathBuf) -> Result<PathBuf, Box<dyn std::error::Error>> {
     if cfg!(debug_assertions) {
-        if let Some(path) = env::var_os("GUI_FOR_CLI_REPO_ROOT").map(PathBuf::from) {
+        if let Some(path) = env::var_os("WGSEXTRACT_GUI_REPO_ROOT").map(PathBuf::from) {
             return Ok(path);
         }
         return Ok(Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -335,7 +345,7 @@ fn node_path(repo_root: &Path) -> Result<String, Box<dyn std::error::Error>> {
     if !cfg!(debug_assertions) {
         return Err(format!("Bundled Node runtime not found: {}", bundled.display()).into());
     }
-    if let Ok(path) = env::var("GUI_FOR_CLI_NODE_PATH") {
+    if let Ok(path) = env::var("WGSEXTRACT_GUI_NODE_PATH") {
         return Ok(path);
     }
     if cfg!(unix) {
@@ -354,7 +364,7 @@ fn node_path(repo_root: &Path) -> Result<String, Box<dyn std::error::Error>> {
 
 fn bundle_root(repo_root: &Path) -> PathBuf {
     if cfg!(debug_assertions) {
-        if let Some(path) = env::var_os("GUI_FOR_CLI_BUNDLE").map(PathBuf::from) {
+        if let Some(path) = env::var_os("WGSEXTRACT_GUI_BUNDLE").map(PathBuf::from) {
             return path;
         }
     }

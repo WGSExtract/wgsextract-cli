@@ -28,6 +28,7 @@ from .dependencies import (
 from .tool_catalog import (
     INSTALL_HINTS,
     OPTIONAL_TOOLS,
+    PIXI_SETUP_HINTS,
     PIXI_TOOL_ENVS,
     optional_dependency_tools,
     required_dependency_tools,
@@ -188,7 +189,12 @@ def _version_output(stdout: str, stderr: str) -> str:
 
 
 # Tools whose version isn't printed by --version (bwa-mem2 prints its usage).
-VERSION_ARGS = {"bwa-mem2": "version", "bwa-mem3": "version"}
+# vep-cache-builder has no --version; its help's first line names it.
+VERSION_ARGS = {
+    "bwa-mem2": "version",
+    "bwa-mem3": "version",
+    "vep-cache-builder": "--help",
+}
 # samtools 1.10 added --write-index and the file##idx##index output name.
 MINIMUM_VERSIONS = {"bcftools": (1, 0), "samtools": (1, 10)}
 # Tools whose banner names them differently ("Haplogrep 3 3.2.2").
@@ -411,7 +417,7 @@ def _missing_tool_hint(tool: str) -> str | None:
         return f"Error: {unsupported}"
     command = pixi_install_command(tool)
     if command:
-        return f"Run: {command}"
+        return " ".join(filter(None, [f"Run: {command}", PIXI_SETUP_HINTS.get(tool)]))
     return INSTALL_HINTS.get(tool)
 
 

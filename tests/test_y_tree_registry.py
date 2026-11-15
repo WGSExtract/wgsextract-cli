@@ -38,9 +38,11 @@ def kit(tmp_path) -> str:
         "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=248956422>\n"
         "##contig=<ID=chrY,length=57227415>\n"
         '##FORMAT=<ID=GT,Number=1,Type=String,Description="g">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tkit\n"
         + "".join(
-            f"chrY\t{pos}\t.\tA\tG\t50\tPASS\t.\tGT\t{gt}\n" for pos, gt in GENOTYPES
+            f"chrY\t{pos}\t.\tA\tG\t50\tPASS\t.\tGT:DP\t{gt}:20\n"
+            for pos, gt in GENOTYPES
         )
     )
     return bgzip_index(plain)

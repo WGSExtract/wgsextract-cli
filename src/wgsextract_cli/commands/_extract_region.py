@@ -206,7 +206,9 @@ def _call_diploid_snps(
     logging.info(f"Calling autosome and chrX SNPs into {out_vcf}...")
     with (
         safe_output(out_vcf) as staged,
-        sex_samples_args(input_path, base.outdir, ploidy, region=region) as sex_args,
+        sex_samples_args(
+            input_path, base.outdir, ploidy, region=region, reference=ref
+        ) as sex_args,
     ):
         call_small_variants(
             input_path,

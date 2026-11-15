@@ -46,9 +46,9 @@ async function installEnvironment(envsDir, project, manifest) {
 
 function runInEnvironment(workspace, args, { dataSource }) {
   const env = { ...process.env, PIXI: workspace.pixi, WGSEXTRACT_APP_DIR: workspace.appDir };
-  delete env.GUI_FOR_CLI_DATA_SOURCE;
+  delete env.WGSEXTRACT_GUI_DATA_SOURCE;
   if (dataSource) {
-    env.GUI_FOR_CLI_DATA_SOURCE = "1";
+    env.WGSEXTRACT_GUI_DATA_SOURCE = "1";
   }
   return new Promise((resolve) => {
     const child = execFile("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", path.join(windowsScripts, "run-wgsextract-env.ps1"), ...args], { env, timeout: 60_000 },

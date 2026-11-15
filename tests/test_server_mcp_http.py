@@ -19,7 +19,7 @@ import pytest
 
 from tests.fake_tools import python_tool
 from tests.smoke_utils import get_cli_command
-from tests.test_server import FAKE_DIR
+from tests.test_server import FAKE_DIR, interrupt_serve_announcement
 from tests.test_server import fake_data as fake_data
 from tests.test_server import work as work
 from wgsextract_cli.core.last_run import state_directory
@@ -66,6 +66,12 @@ def _serve(*args: str) -> Iterator[Served]:
         info = json.loads(line)
         discovery = state_directory() / "server" / "mcp.json"
         assert json.loads(discovery.read_text()) == info
+        # The discovery line precedes uvicorn's startup/signal handlers.
+        # Wait for a real response before a quick test can interrupt startup.
+        status, _ = _post(
+            info["url"], INITIALIZE, {"Authorization": f"Bearer {info['token']}"}
+        )
+        assert status == 200
         yield Served(proc, info["url"], info["token"], discovery)
     finally:
         if proc.poll() is None:
@@ -145,6 +151,17 @@ def test_mcp_http_listens_on_loopback_only_and_cleans_up(work):
     if sys.platform != "win32":
         assert served.proc.returncode == 0
         assert not served.discovery.exists()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signal delivery")
+@pytest.mark.parametrize("stop_signal", [signal.SIGINT, signal.SIGTERM])
+def test_799_interrupting_discovery_announcement_exits_cleanly(
+    work: Path, stop_signal: int
+) -> None:
+    proc = interrupt_serve_announcement(work, stop_signal, "--mcp-transport", "http")
+    assert json.loads(proc.stdout)["url"].startswith("http://127.0.0.1:")
+    assert proc.returncode == 0
+    assert not (state_directory() / "server" / "mcp.json").exists()
 
 
 def test_mcp_http_runs_tool_calls(work, fake_data):

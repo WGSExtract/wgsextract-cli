@@ -90,12 +90,23 @@
               "kind": "dropdown",
               "tooltip": "controls.settings.settings-paths.ref_fasta.tooltip",
               "dataSource": {
-                "path": "scripts/list-reference-genomes.py",
+                "path": "scripts/run-wgsextract.sh",
                 "arguments": [
-                  "options",
-                  "{{ref_path}}",
-                  "{{reference_genome_library}}"
-                ]
+                  "--json",
+                  "ref",
+                  "library",
+                  "--list"
+                ],
+                "optionalArguments": [
+                  [
+                    "--ref",
+                    "{{ref_path}}"
+                  ]
+                ],
+                "transform": {
+                  "module": "transforms/reference-genomes.mjs",
+                  "export": "options"
+                }
               }
             },
             {
@@ -491,7 +502,7 @@
           }
         }
       ],
-      "iconName": "precheck",
+      "iconName": "bug-report",
       "textIcon": "🐞"
     }
   ],

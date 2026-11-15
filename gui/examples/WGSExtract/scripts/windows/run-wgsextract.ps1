@@ -51,12 +51,8 @@ for ($index = 0; $index -lt $args.Count; $index += 1) {
     }
 }
 
-if ($args.Count -gt 0 -and [string]$args[0] -eq "microarray") {
-    if (-not $microarrayRefPath) {
-        [Console]::Error.WriteLine("Reference genome is required before generating microarray kits.")
-        [Console]::Error.WriteLine("Install/download the reference library from the Library page or rerun setup, then choose an existing reference FASTA.")
-        exit 2
-    }
+# Without --ref, microarray uses the library genome matching the input.
+if ($args.Count -gt 0 -and [string]$args[0] -eq "microarray" -and $microarrayRefPath) {
     if (Test-Path -LiteralPath $microarrayRefPath -PathType Container) {
         [Console]::Error.WriteLine("Reference genome must be a FASTA file, not the reference library directory: $microarrayRefPath")
         [Console]::Error.WriteLine("Choose an installed reference FASTA from the Reference genome dropdown on the Microarray page.")
@@ -74,8 +70,8 @@ if ($args.Count -gt 0 -and [string]$args[0] -eq "microarray") {
 # The bundle's settings file is this runtime's config.toml, so what the CLI saves
 # (ref bootstrap's reference_library, for one) stays in the workspace instead of
 # the user's own CLI config, and leaves with the app.
-$workspace = if ($env:GUI_FOR_CLI_BUNDLE_WORKSPACE) { $env:GUI_FOR_CLI_BUNDLE_WORKSPACE } else { Split-Path -Parent (Split-Path -Parent $scriptDir) }
-$configPath = if ($env:GUI_FOR_CLI_CONFIG_PATH) { $env:GUI_FOR_CLI_CONFIG_PATH } else { Join-Path $workspace "config.toml" }
+$workspace = if ($env:WGSEXTRACT_GUI_BUNDLE_WORKSPACE) { $env:WGSEXTRACT_GUI_BUNDLE_WORKSPACE } else { Split-Path -Parent (Split-Path -Parent $scriptDir) }
+$configPath = if ($env:WGSEXTRACT_GUI_CONFIG_PATH) { $env:WGSEXTRACT_GUI_CONFIG_PATH } else { Join-Path $workspace "config.toml" }
 if ($env:WGSEXTRACT_FORWARD_STDIN -eq "1") {
     $input | & $runtime wgsextract --config $configPath @args
 } else {

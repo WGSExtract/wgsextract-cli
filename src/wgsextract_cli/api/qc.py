@@ -56,11 +56,27 @@ class FastpParams(Params):
 @dataclass(frozen=True, kw_only=True)
 class FastqcParams(Params):
     """A FastQC report on a FASTQ, BAM or SAM file as ``<input>_fastqc.html``
-    and ``.zip``. Module PASS/WARN/FAIL counts and the read count are metrics."""
+    and ``.zip``, and on ``r2`` too when set. Module PASS/WARN/FAIL counts and
+    the read count are metrics (``r2_``-prefixed for ``r2``). With ``r2``,
+    ``multiqc`` merges the reports in ``outdir`` into ``multiqc_report.html``."""
 
     COMMAND = "qc fastqc"
 
     input: Path = input_param("FASTQ, BAM or SAM file.")
+    r2: Path | None = param(
+        None,
+        help="Read 2 FASTQ, reported on too",
+        path="file",
+        doc="Read 2 FASTQ, reported on too.",
+    )
+    multiqc: bool = param(
+        False,
+        help="With --r2, merge the reports in --outdir into multiqc_report.html, "
+        "replacing an earlier one",
+        action="store_true",
+        doc="With r2, merge the reports in outdir into ``multiqc_report.html``, "
+        "replacing an earlier one.",
+    )
     outdir: Path | None = outdir_param()
     threads: int | None = threads_param()
 
@@ -137,13 +153,12 @@ SVD_PANEL_SUFFIXES = (".UD", ".mu", ".bed", ".V")
 
 @dataclass(frozen=True, kw_only=True)
 class QcContaminationParams(Params):
-    """Estimate how much of a BAM/CRAM's DNA comes from another person with
-    VerifyBamID2: the FREEMIX fraction, from reads at 1000 Genomes sites
-    (GRCh37/hg19 or GRCh38). Writes ``<stem>.contamination.selfSM`` and
-    ``.Ancestry``. Metrics: ``freemix``, ``freemix_sites``, ``freemix_depth``
-    and the ancestry PCs; the estimate is recorded as the sample's
-    ``contamination`` fact. VerifyBamID2 is optional (``pixi install -e
-    verifybamid2``) and unavailable on Windows."""
+    """Estimate how much of a BAM/CRAM's DNA comes from another person
+    (FREEMIX) with VerifyBamID2 at 1000 Genomes sites (GRCh37/hg19 or
+    GRCh38). Writes ``<stem>.contamination.selfSM`` and ``.Ancestry``.
+    Metrics: ``freemix``, ``freemix_sites``, ``freemix_depth`` and the
+    ancestry PCs; recorded as the sample's ``contamination`` fact. Optional
+    (``pixi install -e verifybamid2``); not on Windows."""
 
     COMMAND = "qc contamination"
 
@@ -249,6 +264,55 @@ class RelateParams(Params):
         ref = self.ref.expanduser() if self.ref else None
         if ref is not None and not ref.is_dir():
             yield ref.absolute().parent
+
+
+@dataclass(frozen=True, kw_only=True)
+class QcAncestryParams(Params):
+    """Admixture-style proportions of 7 continental and 12 sub-continental
+    HGDP+1KG reference components (not an ethnicity), with 95% intervals,
+    from a BAM/CRAM, VCF or microarray file. Writes ``<stem>.ancestry.tsv``
+    and the ``ancestry`` fact; see docs/ancestry.md."""
+
+    COMMAND = "qc ancestry"
+
+    input: Path = input_param(
+        "Indexed BAM or CRAM, VCF, or microarray raw-data file.",
+        "--input (a BAM, CRAM, VCF or microarray file) is required.",
+    )
+    ref: Path | None = ref_param()
+    outdir: Path | None = outdir_param()
+    threads: int | None = threads_param()
+    sample: str | None = param(
+        None,
+        help="The sample of a multi-sample VCF",
+        metavar="NAME",
+    )
+    build: str | None = param(
+        None,
+        help="The input's build, when its header doesn't tell",
+        choices=("hg19", "hg38", "t2t"),
+    )
+    bootstrap: int = param(
+        100,
+        help="Bootstrap replicates for the 95%% intervals; 0 skips them",
+        metavar="N",
+    )
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.bootstrap < 0:
+            raise UsageError("--bootstrap must be 0 or more.")
+
+    def write_folders(self) -> Iterator[Path]:
+        # The first run downloads the reference into the library.
+        from wgsextract_cli.core import ancestry_reference
+        from wgsextract_cli.core.paths import expand_path
+
+        from ._params import with_config_defaults
+
+        ref = with_config_defaults(self).ref
+        library = ancestry_reference.library_for(expand_path(ref) if ref else None)
+        yield ancestry_reference.folder(library)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -391,6 +455,19 @@ def relate(
     return execute(params, run_relate, progress=progress, cancel=cancel, check=check)
 
 
+def ancestry(
+    params: QcAncestryParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Estimate ancestry proportions (output role ``ancestry_table``)."""
+    from wgsextract_cli.commands.qc.ancestry import run_ancestry
+
+    return execute(params, run_ancestry, progress=progress, cancel=cancel, check=check)
+
+
 def fake_data(
     params: FakeDataParams,
     *,
@@ -411,9 +488,11 @@ __all__ = [
     "FastqcParams",
     "MultiqcMetricsParams",
     "MultiqcParams",
+    "QcAncestryParams",
     "QcContaminationParams",
     "QcVcfParams",
     "RelateParams",
+    "ancestry",
     "contamination",
     "fake_data",
     "fastp",

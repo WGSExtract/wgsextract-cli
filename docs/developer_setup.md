@@ -27,7 +27,21 @@ The script needs only git (and the Xcode Command Line Tools on macOS). It:
 5. Runs `wgsextract --version`, `wgsextract deps check` and the quick smoke tests.
 6. Lists anything else worth having: a git identity, the GitHub CLI (`gh`), and an AI coding agent.
 
+Pixi **0.82.0 or newer** is required (declared in `pixi.toml`, kept in
+agreement with CI). Setup checks existing installations before loading the
+manifest; it never updates them automatically. If yours is older, run
+`pixi self-update` and rerun setup.
+
 `deps check` marks tools in optional Pixi environments (GATK, VEP, DeepVariant, ...) as missing. That's expected: install one when you need it with the `pixi install` command `deps check` prints. When the script installs Pixi or `just`, open a new terminal before using them (or add `~/.pixi/bin`, `%USERPROFILE%\.pixi\bin` on Windows, to `PATH`). Rerun the script at any time; `just setup` does the same once `just` is installed. `--skip-tests` (`-SkipTests` on Windows) skips the smoke tests.
+
+### Benchmarking on macOS
+
+Setup creates `.metadata_never_index` in `out/`, `scratch/` and `tmp/`
+(safe to rerun). For existing indexed trees, also add those folders or the
+repository to **System Settings → Spotlight → Search Privacy**. Keep heavy
+benchmark inputs and outputs out of Photos libraries and Spotlight-indexed
+folders. Check volume indexing with `mdutil -s /` and thermal pressure with
+`pmset -g therm` before timing; wait for indexing and throttling to settle.
 
 ## Make a change
 
@@ -63,10 +77,82 @@ When you add or rename a command:
   summary in `COMMAND_TIERS` in `src/wgsextract_cli/commands/registry.py`.
 - Give every runnable command an example and an outputs line in
   `src/wgsextract_cli/commands/_help_catalog.py`.
+- Register its parser in `src/wgsextract_cli/cli/registration/`, keeping
+  execution imports inside handlers. `cli/_lazy.py` defers loading command
+  implementations until execution; help must not import scientific libraries.
 - Run `pixi run gen-command-docs` to regenerate `docs/commands.md` and the
-  command cards on the site's CLI page (`site_src/cli.md`).
+  command cards on the site's CLI page (`site_src/cli.md`), plus the bundled
+  `assets/cli/help-index.json` used for fast, configuration-independent discovery.
 
 `tests/test_cli_help.py` fails until all three are done.
+
+### Benchmark fixture ploidy
+
+The `benchmark` timing workload explicitly calls SNPs, indels and microarray
+sites with uniform diploid ploidy for generated data and the `real` mini-genome
+archive. Scaled, regional and low-depth fixtures cannot reliably infer sex;
+the benchmark is not a karyotype or genotype-accuracy validation. This override
+is passed only to those child commands and does not change the sample's
+declared/observed sex or weaken normal Unknown-sex refusal. Full-reference
+`real-1x`/`real-30x` runs retain build-specific ploidy.
+
+### Generated references and parallel PRs
+
+Run `just regen` (or `pixi run python scripts/regen.py`) after changing CLI/API
+help. It updates the API snapshot, `docs/api.md`, `docs/commands.md`, the bundled
+compact discovery index, and the generated command cards in `site_src/cli.md`.
+It also generates the public sample-workspace JSON Schema from the output
+types in `core/sample_document.py`. Output types use `TypedDict` and
+`Annotated` constraints; `core/output_schema.py` rejects unsupported annotations.
+Its supported subset is TypedDict, Literal, Annotated, primitives, unions,
+lists and string-keyed dicts; dataclasses, Enum, tuple and Mapping fields are
+not yet supported. Definition names and extension-key policies are supplied
+explicitly to each generation call, never registered globally. Workspace
+reads retain unrecognised TOML data in `WorkspaceState`; new fact/override/output
+records are written through the typed document models rather than casting
+unvalidated loaded data to those types.
+Keep these committed: readers,
+release archives and freshness tests need them without running Python.
+
+The setup scripts configure the `merge=generated` driver in `.gitattributes`.
+For an existing checkout, configure it once:
+
+```bash
+git config merge.generated.name "Keep generated references until regeneration"
+git config merge.generated.driver true
+```
+
+This is an **ours-style placeholder**, not an automatic generator: a merge
+driver runs before all source files are merged, so regeneration there could
+silently use inconsistent sources. Merge locally with `git merge --no-commit
+origin/main`, resolve and stage source conflicts, then run **`just regen-resolve`**
+(or `pixi run python scripts/regen.py --resolve`). It regenerates all references
+from the combined sources and stages them; it refuses unresolved source
+conflicts. Review the diff, run the freshness tests and commit the merge.
+The same command resolves generated-file conflicts without the driver installed.
+Site command cards share a file with hand-written content, so resolve any
+`site_src/cli.md` conflict as a source conflict before regenerating.
+
+GitHub **does not execute custom merge drivers**. If it reports generated-file
+conflicts, use the local workflow above and push the resolution; don't choose
+one side in GitHub's conflict editor or expect its Update branch button to
+regenerate. No freshness checks are bypassed. Re-run regeneration after *every*
+merge, even if Git reported no conflicts.
+
+Help-size tests gate each command's JSON (12,000 characters maximum) and the
+average (3,000), rather than a global total that every new command changes.
+The JSON and text-index totals are reported as test properties, not gates;
+the text index's existing per-line width check still catches bloated entries.
+The compact discovery index has a separate 60,000-character ceiling and a
+20,000-token approximation ceiling (word pieces plus JSON punctuation,
+without downloading a tokenizer model). Agents read this index first, then
+`wgsextract help <command> --json` for full schemas.
+
+The CLI help document is not the server protocol. HTTP discovery uses
+`GET /v1/ops` (summaries) then `GET /v1/ops/{op}` (full Params schema);
+MCP `tools/list` must include its protocol-required `inputSchema`. Both use
+the same typed Params definitions as per-command CLI help, not the compact
+help index, so their invocation schemas remain complete.
 
 The "Start from what you have" paths in both come from `JOURNEYS` in
 `registry.py`. To retire a command, don't delete it: add it to `DEPRECATIONS`
@@ -105,6 +191,8 @@ The project is developed with AI coding agents. [AGENTS.md](../AGENTS.md) holds 
 
 3. Review what it did: read the diff (`/diff` in Copilot CLI, or `git diff`), and check that the tests would fail without the change. Run the command yourself on real data when you have it.
 4. Have it push and open the pull request, then watch CI (`gh pr checks --watch`). Paste failures or review comments back to the agent until it's green.
+
+   A job that fails with **Upstream package mirror unreachable** couldn't reach Ubuntu's package mirrors; that is an outage, not your change. Ubuntu packages come through `.github/actions/apt-install`, which tries several official mirrors, gives up within minutes, and installs from its cache when it has one. `rerun_lost_runners.yml` reruns such jobs up to twice, normally recording each request in the current week's pinned **CI flake ledger**. Audit outages are logged without blocking runner recovery. It also recovers lost runners, reports confirmed flaky tests as bugs, and blocks retries matching red main. See [CI failure observation and retries](ci_failures.md) for the policy and the audited landing-script command.
 
 Keep each change small and state how you'll verify it. Most problems show up when the result is checked against real data, not in review.
 

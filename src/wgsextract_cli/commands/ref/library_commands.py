@@ -8,12 +8,16 @@ from wgsextract_cli.api._runtime import cancel_event
 from wgsextract_cli.api.ref import (
     RefAadrParams,
     RefAlphamissenseParams,
+    RefAncestryParams,
     RefBootstrapParams,
     RefCaddParams,
     RefClinvarParams,
     RefGeneMapParams,
     RefGerpParams,
     RefGnomadParams,
+    RefGnomadSvParams,
+    RefImputationParams,
+    RefLibraryDeleteParams,
     RefLibraryParams,
     RefMicroarrayTargetsParams,
     RefPharmgkbParams,
@@ -24,7 +28,13 @@ from wgsextract_cli.api.ref import (
     RefYbrowseParams,
     _Resource,
 )
-from wgsextract_cli.core import library_removal, somalier_resources
+from wgsextract_cli.core import (
+    ancestry_reference,
+    gnomad_sv,
+    library_removal,
+    read_scope,
+    somalier_resources,
+)
 from wgsextract_cli.core.aadr_resources import install_aadr_2m
 from wgsextract_cli.core.annotation_resources import (
     build_gnomad_af,
@@ -41,6 +51,7 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
+from wgsextract_cli.core.download_progress import format_bytes
 from wgsextract_cli.core.gene_map import (
     are_gene_maps_installed,
     delete_gene_maps,
@@ -61,7 +72,6 @@ from wgsextract_cli.core.reference_assets import (
     resolve_reference_library,
 )
 from wgsextract_cli.core.reference_processing import (
-    delete_genome,
     download_and_process_genome,
     download_gnomad,
 )
@@ -73,7 +83,7 @@ from wgsextract_cli.core.results import (
     manifest_path_for,
     record_changed_files,
 )
-from wgsextract_cli.core.utils import UsageError, WGSExtractError
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, get_resource_defaults
 
 from .core_commands import (
     cmd_library_list,
@@ -124,6 +134,41 @@ def run_somalier(params: RefSomalierParams) -> None:
     logging.info(f"Installed the {name} in {somalier_resources.folder(reflib)}")
 
 
+def run_ancestry_reference(params: RefAncestryParams) -> None:
+    reflib = _library(params.ref)
+    name = "ancestry reference (HGDP+1KG)"
+    if params.delete:
+        _delete(name, [ancestry_reference.folder(reflib)])
+        return
+    path = ancestry_reference.install(reflib, cancel=cancel_event())
+    current_result().add_output(path, "reference_resource")
+    logging.info(f"Installed the {name}: {path}")
+
+
+def run_gnomad_sv(params: RefGnomadSvParams) -> None:
+    reflib = _library(params.ref)
+    builds = [params.build] if params.build else ["hg38", "hg19"]
+    catalogues = [cat for b in builds if (cat := gnomad_sv.catalogue(params.source, b))]
+    if not catalogues:
+        raise UsageError(
+            f"gnomAD has no {params.source} SV catalogue for {params.build}; "
+            "gnomAD-LR (--source lr) is GRCh38 only."
+        )
+    name = ", ".join(f"{c.label} ({c.build})" for c in catalogues)
+    if params.delete:
+        _delete(
+            f"{name} tables",
+            [p for c in catalogues for p in gnomad_sv.delete(reflib, c)],
+        )
+        return
+    verify_dependencies(["bcftools", "bgzip", "tabix"])
+    for cat in catalogues:
+        logging.info(f"{cat.label}: {cat.licence}.")
+        table = gnomad_sv.install(reflib, cat, cancel=cancel_event())
+        current_result().add_output(table, "reference_resource")
+    logging.info(f"Installed {name} in {gnomad_sv.folder(reflib)}")
+
+
 def _delete(
     resource_name: str, paths: Sequence[Path], made_folders: Sequence[Path] = ()
 ) -> None:
@@ -132,6 +177,37 @@ def _delete(
         human_output(f"Deleted {resource_name}.")
     else:
         human_output(f"No {resource_name} installed; nothing to delete.")
+
+
+def run_imputation(params: RefImputationParams) -> None:
+    from wgsextract_cli.core import imputation_panel
+
+    imputation_panel.require_supported_platform()
+    reflib = _library(params.ref)
+    base = imputation_panel.folder(reflib)
+    if params.delete:
+        chroms = (
+            imputation_panel.chromosomes(params.chromosomes)
+            if params.chromosomes
+            else list(imputation_panel.AUTOSOMES)
+        )
+        _delete(
+            f"imputation panel ({', '.join(chroms)})",
+            [base / c for c in chroms if (base / c).exists()],
+            [base, base.parent],
+        )
+        return
+    chroms = imputation_panel.chromosomes(params.chromosomes)
+    verify_dependencies(["bcftools", "tabix", "GLIMPSE2_chunk",
+                         "GLIMPSE2_split_reference", "GLIMPSE2_phase"])  # fmt: skip
+    imputation_panel.check_disk(chroms, reflib)
+    threads, _memory = get_resource_defaults(params.threads, None)
+    for chrom in chroms:
+        path = imputation_panel.install_chromosome(
+            chrom, reflib, int(threads), cancel=cancel_event()
+        )
+        current_result().add_output(path, "reference_resource")
+        logging.info(f"Installed the {chrom} imputation panel in {path}")
 
 
 def run_ybrowse(params: RefYbrowseParams) -> None:
@@ -192,12 +268,67 @@ def run_library(params: RefLibraryParams) -> None:
     _install_from_mirrors(targets, reflib_dir)
 
 
+def run_library_delete(params: RefLibraryDeleteParams) -> None:
+    """Delete a catalog genome and what it left beside it in the genomes folder."""
+    genome = _catalog_genome(str(params.genome))
+    reflib = str(params.library())
+    _delete_genome(genome, reflib)
+
+
+def _catalog_genome(name: str) -> Mapping[str, str]:
+    """The catalog genome a code (any case) or file name names."""
+    for genome in get_available_genomes():
+        if name.upper() == genome["code"].upper() or name == genome["final"]:
+            return genome
+    raise UsageError(
+        f"{name!r} is not a catalog genome's code or file name; "
+        "`wgsextract ref library --list` lists them."
+    )
+
+
+def _delete_genome(genome: Mapping[str, str], reflib: str) -> None:
+    folder = Path(reference_genomes_dir(reflib))
+    if not read_scope.may_follow(folder):
+        raise WGSExtractError(
+            f"{folder} leads outside the folders this server may use; not deleting there."
+        )
+    deleted = library_removal.remove_genome(folder, genome["final"])
+    freed = sum(deleted.values())
+    current_result().set_details(
+        {
+            "library": reflib,
+            "genomes_dir": str(folder),
+            "code": genome["code"],
+            "file": genome["final"],
+            "deleted": [str(path) for path in deleted],
+            "bytes_freed": freed,
+        }
+    )
+    human_output(
+        f"Deleted {genome['final']} ({len(deleted)} files, {format_bytes(freed)}) "
+        f"from {folder}."
+        if deleted
+        else f"{genome['final']} isn't in {folder}; nothing to delete."
+    )
+
+
 def cmd_library(args: argparse.Namespace) -> None:
     """Interactive or non-interactive library manager."""
+    modes = {
+        "--list": args.list,
+        "--install": getattr(args, "install", None),
+        "--delete": getattr(args, "delete", None),
+    }
+    if len(chosen := [flag for flag, value in modes.items() if value]) > 1:
+        raise UsageError(f"{' and '.join(chosen)} can't be used together.")
     if args.list:
         return cmd_library_list(args)
-    if args.install:
+    if getattr(args, "remote_sizes", False):
+        raise UsageError("--remote-sizes goes with --list.")
+    if modes["--install"]:
         return _cli_library(args)
+    if modes["--delete"]:
+        return _cli_library_delete(args)
 
     verify_dependencies(_LIBRARY_DEPS)
     log_dependency_info(_LIBRARY_DEPS)
@@ -260,7 +391,7 @@ def cmd_library(args: argparse.Namespace) -> None:
             if action == "c":
                 return
             if action == "d":
-                delete_genome(genome["final"], reflib_dir)
+                _delete_genome(genome, reflib_dir)
                 return
         _install_genome(genome, reflib_dir, restart=restart)
     except (ValueError, EOFError, KeyboardInterrupt):
@@ -457,7 +588,11 @@ def run_microarray_targets(params: RefMicroarrayTargetsParams) -> None:
 cmd_aadr = cli_handler(RefAadrParams, run_aadr)
 cmd_ybrowse = cli_handler(RefYbrowseParams, run_ybrowse)
 cmd_somalier = cli_handler(RefSomalierParams, run_somalier)
+cmd_ancestry_reference = cli_handler(RefAncestryParams, run_ancestry_reference)
+cmd_gnomad_sv = cli_handler(RefGnomadSvParams, run_gnomad_sv)
+cmd_imputation = cli_handler(RefImputationParams, run_imputation)
 _cli_library = cli_handler(RefLibraryParams, run_library)
+_cli_library_delete = cli_handler(RefLibraryDeleteParams, run_library_delete)
 cmd_gene_map = cli_handler(RefGeneMapParams, run_gene_map)
 cmd_bootstrap = cli_handler(RefBootstrapParams, run_bootstrap)
 cmd_microarray_targets = cli_handler(RefMicroarrayTargetsParams, run_microarray_targets)

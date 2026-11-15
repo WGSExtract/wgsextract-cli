@@ -35,9 +35,9 @@ import hashlib
 import logging
 import os
 import tempfile
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from itertools import groupby
 from pathlib import Path
@@ -48,11 +48,12 @@ from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.progress import ContigProgress
 from wgsextract_cli.core.reference_assets import read_fai_lengths
 from wgsextract_cli.core.reference_resolver import header_contig_lengths
+from wgsextract_cli.core.resource_estimates import bcftools_batches as _batches
 from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 
-# Jobs per worker that small contigs are grouped into; see _batches.
-_JOBS_PER_WORKER = 16
+from .call_cleanup import indel_cleanup_pipeline
+
 # htslib's errmod_cal shuffles (draws for) a column's bases above 255.
 _DRAW_DEPTH = 256
 # Below this many bases a column's alive reads stay under mpileup's -d 250
@@ -91,26 +92,6 @@ def _bam_contigs(alignment: str, names: list[str]) -> set[str]:
         logging.debug("Calling every contig: idxstats failed: %s", error)
         return set(names)
     return mapped & set(names)
-
-
-def _batches(contigs: dict[str, int], workers: int) -> list[dict[str, int]]:
-    """Consecutive contigs grouped into jobs of at least 1/16 of a worker's
-    share of the bases, so thousands of small contigs (decoys, HLA, ALTs)
-    don't each start a pipeline. A contig that size or larger is its own job."""
-    limit = max(1, sum(contigs.values()) // (workers * _JOBS_PER_WORKER))
-    batches: list[dict[str, int]] = []
-    batch: dict[str, int] = {}
-    for name, length in contigs.items():
-        if length >= limit:
-            batches += [batch] if batch else []
-            batches.append({name: length})
-            batch = {}
-            continue
-        batch[name] = length
-        if sum(batch.values()) >= limit:
-            batches.append(batch)
-            batch = {}
-    return batches + ([batch] if batch else [])
 
 
 def _parallel_contigs(
@@ -177,30 +158,7 @@ def _pipeline(
     return [
         mpileup,
         [*call, "-Ou"],
-        # Stale copies from the last SNP site (bcftools 1.24 cannot suppress
-        # MQSBZ with mpileup -a), which also depend on the previous contig.
-        [
-            "bcftools",
-            "annotate",
-            "--no-version",
-            "-x",
-            "INFO/BQBZ,INFO/MQSBZ",
-            "-Ou",
-        ],  # fmt: skip
-        # VCF requires IUPAC reference codes to resolve to a concrete base (R -> A).
-        [
-            "bcftools",
-            "norm",
-            "--check-ref",
-            "ws",
-            "-f",
-            ref,
-            "--threads",
-            threads,
-            "-Oz",
-            "-o",
-            output,
-        ],  # fmt: skip
+        *indel_cleanup_pipeline(ref, output, threads),
     ]
 
 
@@ -285,6 +243,7 @@ def _pump(
     *,
     description: str,
     cancel_event: Event | None,
+    env: Mapping[str, str] | None = None,
 ) -> None:
     """Run ``source`` and let ``copy`` feed its output to each sink pipeline."""
     source_read, source_write = os.pipe()
@@ -299,6 +258,7 @@ def _pump(
                 stages,
                 stdin=stdin,
                 stdout=stdout,
+                env=env,
                 description=description,
                 cancel_event=cancel_event,
             )
@@ -435,6 +395,8 @@ class _ContigCaller:
     bands: bool = False
     workers: int = 1
     cancelled: Event | None = None
+    # Added to the calling bcftools' environment (mimalloc on Apple Silicon).
+    environment: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def description(self) -> str:
@@ -461,12 +423,15 @@ class _ContigCaller:
             bands=self.bands,
         )
         description = self.description + (f" ({label})" if label else "")
+        env = {**os.environ, **self.environment} if self.environment else None
         if listing is None:
-            run_pipeline(stages, description=description, cancel_event=self.cancelled)
+            run_pipeline(
+                stages, env=env, description=description, cancel_event=self.cancelled
+            )
         else:
             _pump(
                 stages[0], [stages[1:], [_dense_listing(listing)]], _tee,
-                description=description, cancel_event=self.cancelled,
+                description=description, cancel_event=self.cancelled, env=env,
             )  # fmt: skip
 
     def run_all(self, tasks: Sequence[Callable[[], None]]) -> None:
@@ -663,10 +628,14 @@ def call_small_variants(
     call_args: list[str],
     contigs: dict[str, int],
     indels: bool = False,
+    environment: Mapping[str, str] | None = None,
 ) -> None:
     """Call into ``output``: per-contig workers for ``contigs`` (from
-    `calling_contigs`), or one bcftools stream when it is empty."""
-    caller = _ContigCaller(alignment, ref, profile, call_args, indels)
+    `calling_contigs`), or one bcftools stream when it is empty.
+    ``environment`` is added to the calling bcftools processes' environment."""
+    caller = _ContigCaller(
+        alignment, ref, profile, call_args, indels, environment=dict(environment or {})
+    )
     if not contigs:
         caller.call(output, ["-r", region] if region else [], region, threads)
         return
@@ -706,7 +675,10 @@ def call_small_variants(
                 listings[-1] if replays else None,
             )  # fmt: skip
             tasks.append(partial(_then_report, call, progress, list(batch)))
-        caller.run_all(tasks)
+        # Longest jobs first, so a large contig late in the .fai (chrX) doesn't
+        # run alone at the end; parts keep their .fai order below.
+        order = sorted(range(len(batches)), key=lambda i: -sum(batches[i].values()))
+        caller.run_all([tasks[i] for i in order])
         if replays:
             parts = caller.match_one_stream(batches, parts, listings, work)
         # A file list avoids Windows' command-line length limit for references

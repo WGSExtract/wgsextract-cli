@@ -56,7 +56,7 @@ function runQuickUninstall(root, env = {}) {
 }
 
 test("the quick uninstall runs the uninstaller of an app installed outside AppData", { skip: !pwsh && "needs PowerShell" }, async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), "gui-for-cli-quick-uninstall-"));
+  const root = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-quick-uninstall-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   // The folder a user chose in the installer's wizard, on another drive and with a space in it.
   const installed = path.join(root, "D drive", "My Apps", "WGSExtract");
@@ -74,14 +74,18 @@ test("the quick uninstall runs the uninstaller of an app installed outside AppDa
 });
 
 test("PR #531 review: the quick uninstall deletes the app's data but keeps a workspace in it", { skip: !pwsh && "needs PowerShell" }, async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), "gui-for-cli-quick-uninstall-"));
+  const root = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-quick-uninstall-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const localAppData = path.join(root, "LocalAppData");
   const appData = path.join(localAppData, "test.quick.uninstall");
   const workspace = path.join(appData, "BundleWorkspaces", "wgs-extract");
   const notWorkspace = path.join(appData, "BundleWorkspaces", "spoofed");
   await mkdir(path.join(workspace, "reference"), { recursive: true });
-  await writeFile(path.join(workspace, ".bundle-workspace"), "GUI for CLI bundle workspace\n");
+  await writeFile(path.join(workspace, ".bundle-workspace"), "WGS Extract GUI workspace\n");
+  // One made by a release up to 0.8.7, with the older marker.
+  const oldWorkspace = path.join(appData, "BundleWorkspaces", "older");
+  await mkdir(oldWorkspace, { recursive: true });
+  await writeFile(path.join(oldWorkspace, ".bundle-workspace"), "GUI for CLI bundle workspace\n");
   await writeFile(path.join(workspace, "reference", "hg38.fa"), "the user's library");
   await mkdir(notWorkspace, { recursive: true });
   await writeFile(path.join(notWorkspace, ".bundle-workspace"), "something else\n");
@@ -94,6 +98,7 @@ test("PR #531 review: the quick uninstall deletes the app's data but keeps a wor
   assert.equal(result.error, null, result.output);
   assert.match(result.output, /Quick uninstall complete/);
   assert.equal(await readFile(path.join(workspace, "reference", "hg38.fa"), "utf8"), "the user's library");
+  assert.ok(existsSync(path.join(oldWorkspace, ".bundle-workspace")));
   for (const removed of [notWorkspace, path.join(appData, "settings.json"), path.join(appData, "EBWebView"), path.join(localAppData, "WGSExtract")]) {
     assert.equal(existsSync(removed), false, removed);
   }

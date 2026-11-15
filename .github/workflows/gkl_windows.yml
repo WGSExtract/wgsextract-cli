@@ -2,6 +2,7 @@ name: GKL native Windows
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [main]
     paths:
       - packaging/windows/**
@@ -12,15 +13,29 @@ on:
       - src/wgsextract_cli/commands/vcf/callers.py
       - tests/test_gkl_windows.py
       - .github/workflows/gkl_windows.yml
+      - .github/actions/setup-pixi/**
       - pixi.toml
       - pixi.lock
+      - "!**/*.md"
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+  schedule:
+    - cron: "53 6 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# Only pull requests share a group: a new push supersedes the PR's older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   native-gkl:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -31,10 +46,9 @@ jobs:
           msystem: UCRT64
           update: true
           install: make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-libgomp
-      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+      - uses: ./.github/actions/setup-pixi
         with:
-          pixi-version: v0.82.0
-          run-install: false
+          install: "false"
       - name: Build static JNI kernels
         shell: pwsh
         env:

@@ -23,10 +23,21 @@
       "id": "databases-tools",
       "title": "sections.library.databases-tools.title",
       "dataSource": {
-        "path": "scripts/library-state.sh",
+        "path": "scripts/run-wgsextract.sh",
         "arguments": [
-          "{{ref_path}}",
-          "{{dataset_library}}"
+          "ref",
+          "status",
+          "--values"
+        ],
+        "optionalArguments": [
+          [
+            "--ref",
+            "{{ref_path}}"
+          ],
+          [
+            "--dataset-library",
+            "{{dataset_library}}"
+          ]
         ]
       },
       "actions": [
@@ -615,6 +626,7 @@
     {
       "id": "annotation-downloads",
       "title": "sections.cli.annotation-downloads.title",
+      "iconName": "download",
       "textIcon": "⬇️",
       "advancedOnly": true,
       "controls": [
@@ -793,6 +805,7 @@
         },
         {
           "id": "ref-download",
+          "primaryInput": "ref_url",
           "title": "actions.cli.ref-download.title",
           "tooltip": "actions.cli.ref-download.tooltip",
           "advancedOnly": true,

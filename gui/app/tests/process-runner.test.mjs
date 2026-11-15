@@ -238,7 +238,7 @@ test("Windows admin wrapper script supports scheduled task automation mode", () 
     "C:\\Working Dir",
     {
       mode: "scheduled-task",
-      taskName: "GUI For CLI Admin Broker",
+      taskName: "WGS Extract GUI Admin Broker",
       queueDirectory: "C:\\Temp Queue",
     },
   );
@@ -246,7 +246,7 @@ test("Windows admin wrapper script supports scheduled task automation mode", () 
   assert.match(script, /\$requestDirectory = 'C:\\Temp Queue'/);
   assert.match(script, /launcherPath = 'C:\\Temp With Spaces\\launch\.ps1'/);
   assert.match(script, /workingDirectory = 'C:\\Working Dir'/);
-  assert.match(script, /& schtasks\.exe \/Run \/TN 'GUI For CLI Admin Broker'/);
+  assert.match(script, /& schtasks\.exe \/Run \/TN 'WGS Extract GUI Admin Broker'/);
   assert.match(script, /\$adminCommandCompleted = Test-Path -LiteralPath 'C:\\Temp\\exit-code\.txt'/);
   assert.doesNotMatch(script, /-Verb RunAs/);
 });
@@ -260,7 +260,7 @@ test("Windows admin wrapper script adds a deadline when a timeout is provided", 
     undefined,
     {
       mode: "scheduled-task",
-      taskName: "GUI For CLI Admin Broker",
+      taskName: "WGS Extract GUI Admin Broker",
       queueDirectory: "C:\\Temp Queue",
     },
     5_000,

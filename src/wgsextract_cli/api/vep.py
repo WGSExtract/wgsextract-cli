@@ -1,4 +1,5 @@
-"""``vep``: annotate variants with the Ensembl Variant Effect Predictor (VEP).
+"""``vep``: annotate variants with a Variant Effect Predictor (VEP): vep-rs, or
+Ensembl VEP.
 
 ``run`` annotates a VCF, BCF, BAM or CRAM, or every such file in a folder.
 A BAM or CRAM is first called with bcftools against ``ref``. Each input
@@ -8,13 +9,23 @@ already exists is skipped unless ``force``. The result's metrics count the
 inputs and how many succeeded, were skipped or failed; any failure fails the
 run.
 
-``download`` fetches Ensembl's indexed cache for ``species``, ``vep_version``
-and ``assembly``, checks it against Ensembl's CHECKSUMS and unpacks it into
-the cache folder; ``verify`` checks that an unpacked cache has its
+``download`` builds the engine's cache for ``species``, ``vep_version`` and
+``assembly``: vep-rs's from Ensembl's files, or Ensembl VEP's indexed cache,
+checked against Ensembl's CHECKSUMS and unpacked into the cache folder; ``verify`` checks that an unpacked cache has its
 ``info.txt`` and chromosome folders; ``delete`` removes one release and
 assembly from it. The cache folder is ``vep_cache``, else
 config ``vep_cache_directory``, else the ``vep`` folder of the reference
 library ``ref`` names, else ``~/.vep``.
+
+``engine`` picks the annotator: vep-rs (``vep-rs``, the default, which also
+runs on Windows) or Ensembl VEP (``ensembl``). Without an engine chosen, a
+run that finds only an Ensembl VEP cache keeps using Ensembl VEP and warns
+``vep_engine_fallback``. vep-rs has its own cache in
+the cache folder's ``vep-rs`` folder, which ``download`` builds from Ensembl's
+gene set, sequences and table dumps (with ``variations``, its known variants)
+and ``verify`` checks against the builder's checksums. A vep-rs run refuses
+options it would ignore (``--custom``, ``--database``) and has no database
+fallback. See docs/vep-engines.md.
 """
 
 from __future__ import annotations
@@ -23,13 +34,30 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from wgsextract_cli.core.messages import LOG_MESSAGES
+
+if TYPE_CHECKING:
+    from wgsextract_cli.commands._vep_engines import VepEngine
 from wgsextract_cli.core.results import CommandResult
 
 from ._params import Params, param
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import outdir_param, ref_param, threads_param
+
+
+def engine_param() -> Any:
+    return param(
+        None,
+        help="Engine: 'vep-rs' (default; fast Rust VEP, every platform) or "
+        "'ensembl' (Linux, macOS); each has its own cache",
+        doc="Engine, 'vep-rs' or 'ensembl' (default: config vep_engine, else "
+        "'vep-rs'; with only an Ensembl VEP cache, Ensembl VEP, warning "
+        "vep_engine_fallback).",
+        choices=("ensembl", "vep-rs"),
+        config_key="vep_engine",
+    )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -49,6 +77,7 @@ class VepRunParams(Params):
     ref: Path | None = ref_param()
     outdir: Path | None = outdir_param()
     threads: int | None = threads_param()
+    engine: str | None = engine_param()
     vep_cache: Path | None = param(
         None,
         help="Path to VEP cache directory (e.g., $HOME/.vep)",
@@ -139,6 +168,7 @@ def run(
 
 @dataclass(frozen=True, kw_only=True)
 class _VepCacheParams(Params):
+    engine: str | None = engine_param()
     species: str = param("homo_sapiens", help="Species name (default: homo_sapiens)")
     assembly: str = param(
         "GRCh38", help="Assembly (default: GRCh38)", choices=("GRCh37", "GRCh38")
@@ -183,9 +213,31 @@ class _VepCacheParams(Params):
         filled = with_config_defaults(self)
         return Path(vep_cache_root(filled.vep_cache, filled.ref))
 
+    def resolved_engine(self) -> VepEngine:
+        """The engine whose cache this command uses. ``download`` builds the
+        default's; ``verify`` and ``delete`` follow ``vep run``, so a setup
+        with only an Ensembl VEP cache works on that one."""
+        from wgsextract_cli.commands._vep_engines import resolve_engine, vep_engine
+
+        from ._params import with_config_defaults
+
+        chosen = with_config_defaults(self).engine
+        if self.COMMAND == "vep download":
+            return vep_engine(chosen)
+        return resolve_engine(chosen, [self.cache_root()], to_run=False)[0]
+
+    def engine_cache_root(self) -> Path:
+        """The folder holding the engine's caches: the cache folder itself for
+        Ensembl VEP, its ``vep-rs`` folder for vep-rs."""
+        return self.resolved_engine().cache_root(self.cache_root())
+
     def version_dir(self) -> Path:
         """The folder of this species, release and assembly in the cache."""
-        return self.cache_root() / self.species / f"{self.vep_version}_{self.assembly}"
+        return (
+            self.engine_cache_root()
+            / self.species
+            / f"{self.vep_version}_{self.assembly}"
+        )
 
     def implied_paths(self) -> Iterator[tuple[str, Path]]:
         yield "vep_cache", self.cache_root()
@@ -205,6 +257,14 @@ class VepDownloadParams(_VepCacheParams):
         "uk",
         help="Ensembl FTP mirror to use (default: uk)",
         choices=("ebi", "uk"),
+    )
+    variations: bool = param(
+        True,
+        help="vep-rs: include known variants (Existing_variation, frequencies; "
+        "~15 GB; default: on)",
+        doc="vep-rs: include Ensembl's known variants (Existing_variation, "
+        "1000 Genomes frequencies; ~15 GB).",
+        action="boolean_optional",
     )
 
     def write_folders(self) -> Iterator[Path]:

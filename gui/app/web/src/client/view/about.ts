@@ -10,9 +10,9 @@ type AboutSetupStep = BundleSetupStep & {
 };
 
 export function renderAboutDialog() {
-    const appName = String(state.applicationName || "GUI for CLI").trim();
+    const appName = String(state.applicationName || "WGS Extract GUI").trim();
     const versions = aboutVersionRows({
-        guiForCliVersion: state.appVersion || state.applicationVersion,
+        wgsextractGuiVersion: state.appVersion || state.applicationVersion,
         manifest: state.manifest,
     });
     return `
@@ -41,14 +41,14 @@ export function renderAboutDialog() {
 }
 
 export function aboutVersionRows({
-    guiForCliVersion,
+    wgsextractGuiVersion,
     manifest,
 }: {
-    guiForCliVersion?: unknown;
+    wgsextractGuiVersion?: unknown;
     manifest?: BundleManifest | null;
 }) {
     const rows: Array<[string, string]> = [
-        ["GUI for CLI version", stringValue(guiForCliVersion)],
+        ["WGS Extract GUI version", stringValue(wgsextractGuiVersion)],
         ["Bundle version", stringValue(manifest?.version)],
         ["Tool version", manifestToolVersion(manifest)],
     ];

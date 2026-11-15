@@ -6,10 +6,27 @@ name: CodeQL
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**/*.md"
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [main]
+    paths:
+      - "src/**"
+      - "**/*.py"
+      - "scripts/**"
+      - "tests/**"
+      - "packaging/**"
+      - "gui/**"
+      - ".github/**"
+      - "pixi.toml"
+      - "pixi.lock"
+      - "pyproject.toml"
+      - "!gui/mockups/**"
+      - "!gui/site_src/**"
+      - "!**/*.md"
   schedule:
-    - cron: "23 7 * * 1"
+    - cron: "23 7 * * *"
 
 permissions:
   actions: read
@@ -17,11 +34,12 @@ permissions:
   security-events: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
   cancel-in-progress: true
 
 jobs:
   analyze:
+    if: ${{ github.event.pull_request.draft != true }}
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 30

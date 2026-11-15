@@ -33,6 +33,17 @@ export type LabelTextKey =
     | "terminalCommandOutputLabel"
     | "terminalShowOutputLabel"
     | "terminalHideOutputLabel"
+    | "jobsEmptyLabel"
+    | "jobsColumnJobLabel"
+    | "jobsColumnStatusLabel"
+    | "jobsColumnStartedLabel"
+    | "jobsColumnFileLabel"
+    | "jobsStatusRunningLabel"
+    | "jobsStatusSucceededLabel"
+    | "jobsStatusWarningLabel"
+    | "jobsStatusFailedLabel"
+    | "jobsStatusCancelledLabel"
+    | "jobsMessagesLabel"
     | "sidebarShowLabel"
     | "sidebarHideLabel"
     | "openBundleWorkspaceTitle"
@@ -69,6 +80,11 @@ export type LabelTextKey =
     | "setupStepOkTitle"
     | "setupStepWarningTitle"
     | "setupStepFailedTitle"
+    | "setupStepKindScriptLabel"
+    | "setupStepKindPathToolLabel"
+    | "setupStepKindHomebrewPackageLabel"
+    | "setupStepKindPixiInstallLabel"
+    | "setupStepKindPixiRunLabel"
     | "chooseButtonTitle"
     | "pathPickerErrorTitle"
     | "settingsFileLabel"
@@ -109,7 +125,16 @@ export type LabelTextKey =
     | "resultDocumentTitle"
     | "resultUsageTitle"
     | "resultMissingDependencyTitle"
-    | "resultOpenSetupTitle";
+    | "resultOpenSetupTitle"
+    | "prerequisitesTitle"
+    | "prerequisitesMessage"
+    | "prerequisitesStillMissingMessage"
+    | "prerequisitesManualNote"
+    | "prerequisitesInstallButtonTitle"
+    | "prerequisitesContinueButtonTitle"
+    | "prerequisitesCancelButtonTitle"
+    | "prerequisitesCheckingTitle"
+    | "prerequisitesInstallTitleFormat";
 export interface Labels extends Partial<Record<LabelTextKey, string>> {
     libraryStatusLabels?: StringMap;
     libraryTagLabels?: StringMap;
@@ -256,7 +281,33 @@ export interface ActionSpec {
     disabledTooltip?: string;
     /** Runs the action as a job on the bundle's job server when it is available; `command` is the fallback. */
     serverOperation?: ServerOperationSpec;
+    /** The command line the bundle's prerequisite check is given for this action, when its executable is a wrapper the check can't read. */
+    prerequisiteArguments?: string[];
+    /** The placeholder naming the job's main input, shown in the Jobs list; else the first file path control the command uses. */
+    primaryInput?: string;
     [key: string]: unknown;
+}
+
+/**
+ * Checks, before an action runs, for data it needs that isn't installed yet (docs/prerequisites.md). `command`
+ * gets the action's command line appended and prints `{"missing": [MissingPrerequisite...]}`; each item's
+ * `installArguments` are run with `command.executable` to install it.
+ */
+export interface PrerequisitesSpec {
+    command: CommandSpec;
+    /** The executables whose actions are checked, each with the arguments put before the action's own. */
+    executables: Record<string, string[]>;
+    /** A string-table key per item kind, formatting `%{name}` into what the dialog lists, e.g. "%{name} reference genome". */
+    kindLabels?: StringMap;
+}
+
+/** One thing an action needs that isn't installed, as the bundle's prerequisite check reports it. */
+export interface MissingPrerequisite {
+    id: string;
+    kind: string;
+    name: string;
+    /** Arguments for the check's executable that install it, or null when the user has to provide it. */
+    installArguments: string[] | null;
 }
 
 /** An operation on the bundle's job server: `POST {url}/ops/{operation}` with `parameters` as the JSON body. */
@@ -322,6 +373,7 @@ export interface BundleManifest {
     exitCodeReference?: ExitCodeReference[];
     jobServer?: JobServerSpec;
     resultDocument?: ResultDocumentSpec;
+    prerequisites?: PrerequisitesSpec;
     [key: string]: unknown;
 }
 
@@ -506,6 +558,10 @@ export interface TerminalEntry {
     status?: TerminalStatus;
     /** The action's result document, when its command printed one. */
     result?: ResultDocument;
+    /** When a job (an action or setup run) started, in epoch milliseconds. */
+    startedAt?: number;
+    /** The main input file a job ran on, shown in the Jobs list. */
+    primaryFile?: string;
 }
 
 /** Identifies a section, control, or config setting in the loaded manifest. */
@@ -526,6 +582,16 @@ export interface PendingConfirmation {
     reference: ActionReference;
     context: CommandContext;
     input: string;
+}
+
+/** An action held back because data it needs isn't installed. */
+export interface PendingPrerequisites {
+    action: ActionSpec;
+    reference: ActionReference;
+    context: CommandContext;
+    missing: MissingPrerequisite[];
+    /** Set when the user said it was installed, or an install finished, and it still isn't. */
+    stillMissing: boolean;
 }
 
 export interface WebUIState {
@@ -579,11 +645,16 @@ export interface WebUIState {
     setupPromptDismissed: boolean;
     terminalCopyFeedback: boolean;
     terminalEntries: TerminalEntry[];
+    /** Every job run this session, oldest first, including ones whose tab was closed. */
+    jobHistory: TerminalEntry[];
     activeTerminalIndex: number;
     aboutDialogVisible: boolean;
     isTerminalVisible: boolean;
     isSidebarVisible: boolean;
     pendingConfirmation: PendingConfirmation | null;
+    pendingPrerequisites: PendingPrerequisites | null;
+    /** Set while an action's prerequisites are checked before it runs. */
+    checkingPrerequisites: boolean;
     activeTerminalID?: string;
     sidebarWidth: number;
     terminalHeight: number;

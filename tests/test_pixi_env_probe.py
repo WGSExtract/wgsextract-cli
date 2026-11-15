@@ -112,6 +112,7 @@ def test_a_script_off_the_path_runs_with_the_environments_python(fake_pixi):
         ("pbmm2", "pacbio", None),  # not in this platform's lockfile
         ("cyrius", "cyrius", "cyrius"),  # licensed: installed only on request
         ("cyrius_python", "cyrius", "cyrius"),
+        ("smn_caller.py", "smn", "smncopynumbercaller"),
         ("pharmcat_python", "pharmcat", "pandas"),
     ],
 )

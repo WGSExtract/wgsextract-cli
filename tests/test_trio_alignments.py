@@ -271,17 +271,19 @@ def test_a_proband_without_variants_has_nothing_to_genotype(tmp_path):
 
 
 def _sexed_trio(tmp_path: Path, proband_y_reads: int) -> tuple[str, list[str]]:
-    """A reference of chr20, chr7, chrX and chrY and the trio's BAMs on it: the
+    """A synthetic chr20, chr7, chrX and chrY reference and the trio's BAMs: the
     child has a de novo C at chr20:1,000; everyone has 20 chr7 reads, and the
     child proband_y_reads chrY reads, which tell its sex: a boy's single X has
     10 reads, everyone else's two X copies 20."""
     rng = random.Random(7)
     chr20 = "".join(rng.choice("ACGT") for _ in range(2000))
     chr20 = chr20[:999] + "A" + chr20[1000:]
-    sex = {n: "".join(rng.choice("ACGT") for _ in range(2000)) for n in "7XY"}
+    contig_sequences = {
+        n: "".join(rng.choice("ACGT") for _ in range(2000)) for n in "7XY"
+    }
     ref = write_fasta(
         tmp_path / "ref.fa",
-        {"chr20": chr20, "chr7": sex["7"], "chrX": sex["X"], "chrY": sex["Y"]},
+        {"chr20": chr20, **{f"chr{n}": seq for n, seq in contig_sequences.items()}},
     )
     bams = []
     for name in ("child", "mother", "father"):
@@ -300,7 +302,7 @@ def _sexed_trio(tmp_path: Path, proband_y_reads: int) -> tuple[str, list[str]]:
         for contig, count in (("7", 20), ("X", x_reads), ("Y", y_reads)):
             reads += [
                 f"{contig}{i}\t0\tchr{contig}\t{101 + i}\t60\t100M\t*\t0\t0\t"
-                f"{sex[contig][100 + i : 200 + i]}\t{'I' * 100}\tRG:Z:1"
+                f"{contig_sequences[contig][100 + i : 200 + i]}\t{'I' * 100}\tRG:Z:1"
                 for i in range(count)
             ]
         bams.append(sam_to_bam(header + reads, Path(bam)))
@@ -332,7 +334,7 @@ def _positions(vcf: Path) -> list[str]:
     [("--proband", False), ("--input", False), ("--input", True)],
     ids=["proband-bam", "input-bam", "input-cram"],
 )
-def test_trio_from_alignments_infers_sex_and_isolates_the_de_novo(
+def test_trio_from_alignments_declared_sex_and_isolates_the_de_novo(
     tmp_path, input_option, cram
 ):
     ref, (child, mother, father) = _sexed_trio(tmp_path, proband_y_reads=20)
@@ -354,7 +356,7 @@ def test_trio_from_alignments_infers_sex_and_isolates_the_de_novo(
         run_wgsextract(
             "vcf", "trio", input_option, child, "--mother", mother, "--father",
             father, "--ref", ref, "--region", "chr20", "--mode", "all",
-            "--threads", "1", "--outdir", str(out),
+            "--threads", "1", "--outdir", str(out), "--proband-sex", "male",
         )  # fmt: skip
 
     sexes, _ref, ploidy = joint.call_args.args[1:4]
@@ -397,23 +399,19 @@ def test_trio_from_alignments_needs_a_sex_and_a_ploidy(tmp_path):
     assert joint.call_args.args[3] == ["--ploidy-file", str(ploidy_txt)]
     assert _positions(out / "trio_denovo.vcf.gz") == ["1000"]
 
-    unknown_sex = patch(
-        "wgsextract_cli.commands.info.metrics.sample_sex", return_value="Unknown"
-    )
     with (
         patch.object(filter_trio, "ReferenceLibrary", _Hg38Library),
-        unknown_sex,
         pytest.raises(WGSExtractError, match="pass --proband-sex"),
     ):
-        run_wgsextract(*argv)
+        run_wgsextract(*argv, "--region", "chrX")
     with (
         patch.object(filter_trio, "ReferenceLibrary", _Hg38Library),
-        unknown_sex,
         patch.object(
             filter_trio, "joint_trio_vcf", wraps=filter_trio.joint_trio_vcf
         ) as joint,
+        pytest.raises(WGSExtractError, match="has no variants"),
     ):
-        run_wgsextract(*argv, "--proband-sex", "male")
+        run_wgsextract(*argv, "--region", "chrX", "--proband-sex", "male")
     assert joint.call_args.args[1] == ["M", "F", "M"]
 
 

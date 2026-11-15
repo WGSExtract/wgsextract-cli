@@ -6,6 +6,9 @@ Each writes ``<input stem>.*`` files in ``outdir``, else beside the input:
 * ``cyp2d6``: CYP2D6 star alleles, copy number and hybrids with Cyrius
   (``.cyrius.tsv``/``.json``), from the optional ``cyrius`` Pixi environment.
   Cyrius's PolyForm Strict license allows noncommercial use only.
+* ``smn``: SMN1/SMN2 copy number and SMA carrier status with
+  SMNCopyNumberCaller (``.smn.tsv``/``.json``), from the optional ``smn``
+  environment. A screening estimate, not a diagnosis.
 * ``hla``: HLA class I and II alleles with T1K (``.t1k_genotype.tsv``,
   ``.t1k_allele.tsv``/``.vcf``), from the optional ``t1k`` environment.
 * ``repeats`` (``typing str``): disease repeat expansions (``.str.tsv``), with
@@ -49,22 +52,40 @@ class _TypingParams(Params):
 @dataclass(frozen=True, kw_only=True)
 class TypingCyp2d6Params(_TypingParams):
     """Call CYP2D6 star alleles, including copy-number and CYP2D6/CYP2D7
-    hybrid alleles, with Cyrius; it needs about 30x whole-genome data. On a
-    GRCh38 reference with chr22 ALT contigs, the locus's reads are first
-    realigned to primary chr22 (needs ``ref`` and minimap2). Metrics:
-    ``cyp2d6_genotype``, ``cyp2d6_filter``, ``cyp2d6_copy_number`` and
+    hybrids, with Cyrius (about 30x WGS). On GRCh38 with chr22 ALT contigs,
+    the locus's reads are first realigned to primary chr22 (needs ``ref``
+    and minimap2). Only a PASS call Cyrius matched uniquely becomes a PharmCAT
+    outside call. Metrics: ``cyp2d6_genotype``, ``cyp2d6_filter``,
+    ``cyp2d6_call_status`` (resolved, unresolved or no_call),
+    ``cyp2d6_call_info``, ``cyp2d6_raw_star_alleles``, ``cyp2d6_cnv_group``,
+    ``cyp2d6_cyp2d7_copy_number`` (CYP2D6 and CYP2D7 together, normally 4) and
     ``median_depth``."""
 
     COMMAND = "typing cyp2d6"
 
 
 @dataclass(frozen=True, kw_only=True)
+class TypingSmnParams(_TypingParams):
+    """Call SMN1, SMN2 and SMN2Δ7–8 copy numbers with SMNCopyNumberCaller for
+    spinal muscular atrophy (SMA) carrier screening, not a diagnosis: one SMN1
+    copy is a carrier, none is affected; g.27134T>G, linked to "2+0" silent
+    carriers, is counted. Short-read WGS of at least 30x only; below 30x
+    median depth no calls are reported (files kept as
+    ``<stem>.smn.below_min_depth.*``), and non-bwa-like aligners get an
+    ``aligner_not_calibrated`` warning. Metrics: ``smn1_copy_number``,
+    ``smn2_copy_number``, ``smn2_delta78_copy_number``, ``sma_carrier``,
+    ``sma_affected``, ``g27134tg_copy_number``, ``smn_filter``,
+    ``median_depth`` and ``coverage_mad``."""
+
+    COMMAND = "typing smn"
+
+
+@dataclass(frozen=True, kw_only=True)
 class TypingHlaParams(_TypingParams):
-    """Type the HLA class I and II genes with T1K from the reads of the MHC,
-    the HLA decoys and chromosome 6 ALT contigs. Metrics: the diplotype of
-    HLA-A, -B, -C, -DRB1, -DQA1, -DQB1, -DPA1 and -DPB1 (None without a
-    confident call) and the IPD-IMGT/HLA release of the index
-    (``ipd_imgt_hla_release``). The outside-call file holds HLA-A and HLA-B."""
+    """Type HLA class I and II genes with T1K from reads of the MHC, HLA
+    decoys and chr6 ALT contigs. Metrics: diplotypes of HLA-A, -B, -C,
+    -DRB1, -DQA1, -DQB1, -DPA1 and -DPB1 (None without a confident call) and
+    ``ipd_imgt_hla_release``. The outside-call file holds HLA-A and HLA-B."""
 
     COMMAND = "typing hla"
 
@@ -107,13 +128,14 @@ class TypingHlaParams(_TypingParams):
 
 @dataclass(frozen=True, kw_only=True)
 class TypingStrParams(_TypingParams):
-    """Size the disease short tandem repeats (HTT, FMR1, C9ORF72, ...) and
-    flag those outside the normal range: with ExpansionHunter for short reads,
-    and LongTR (or STRkit) for Nanopore and PacBio reads, chosen by the reads'
-    platform. Sizing from reads isn't a diagnosis. Metrics: ``sex``,
-    ``repeat_caller``, ``disease_repeats`` and ``flagged_repeats``; each
-    flagged repeat is also a ``repeat_outside_normal_range`` warning (or
-    ``repeat_unconfirmed`` when only a one-read allele flags it, and
+    """Size disease short tandem repeats (HTT, FMR1, C9ORF72, ...) and flag
+    those outside the normal range, with ExpansionHunter for short reads and
+    LongTR (or STRkit) for Nanopore and PacBio; not a diagnosis. Metrics:
+    ``sex``, ``repeat_caller``, ``disease_repeats``, ``flagged_repeats`` and
+    ``unconfirmed_repeats``;
+    each flagged repeat is a ``repeat_outside_normal_range`` warning
+    (``repeat_unconfirmed`` for a low-support-only finding or an unresolved
+    all-weak or incomplete call,
     ``repeat_unavailable`` for NOTCH2NLC on hg19)."""
 
     COMMAND = "typing str"
@@ -155,6 +177,20 @@ def cyp2d6(
     return execute(params, run_cyp2d6, progress=progress, cancel=cancel, check=check)
 
 
+def smn(
+    params: TypingSmnParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Call SMN1/SMN2 copy number with SMNCopyNumberCaller (see
+    ``TypingSmnParams``)."""
+    from wgsextract_cli.commands.genotyping.smn import run_smn
+
+    return execute(params, run_smn, progress=progress, cancel=cancel, check=check)
+
+
 def hla(
     params: TypingHlaParams,
     *,
@@ -185,8 +221,10 @@ def repeats(
 __all__ = [
     "TypingCyp2d6Params",
     "TypingHlaParams",
+    "TypingSmnParams",
     "TypingStrParams",
     "cyp2d6",
     "hla",
     "repeats",
+    "smn",
 ]

@@ -22,6 +22,9 @@ Try: curl -H 'Authorization: Bearer 3q2Kx...' http://127.0.0.1:41873/v1/ops
 Stop with Ctrl-C.
 ```
 
+On macOS and Linux, Ctrl-C or SIGTERM stops either HTTP server with exit
+status 0 and removes its discovery file, even during the startup announcement.
+
 ## Security
 
 The server runs analyses with your permissions, so it only answers programs
@@ -31,8 +34,10 @@ you start yourself:
 - Every request except `GET /v1/health` needs `Authorization: Bearer <token>`.
   The token is new each time the server starts. It is printed to stderr and
   saved in `<state>/server/server.json` (mode 0600), along with the URL and
-  process id, so local clients can find it. The file is removed when the
-  server stops.
+  process id, so local clients can find it. Discovery files are published
+  atomically: an interrupted write cannot leave partial JSON or destroy
+  an earlier server's discovery file. The file is removed when the server
+  stops, unless a newer server has replaced it.
 - Requests whose `Host` header isn't `127.0.0.1:<port>` or `localhost:<port>`,
   and requests whose `Origin` is a different site, are refused. This stops a web page
   in your browser from reaching the server through DNS rebinding or
@@ -67,9 +72,11 @@ you start yourself:
   samtools and tabix after `--`.
 - **Deleting needs an opt-in.** Requests that delete data a command didn't
   make are refused (403 `destructive`) unless the server was started with
-  `--allow-destructive`: `bam unindex`, `sample unset` and
-  `ref gene-map` with `delete`. Over MCP, `bam_unindex` and `sample_unset`
-  are offered only then, and their tools carry `destructiveHint`.
+  `--allow-destructive`: `bam unindex`, `sample unset`,
+  `ref library-delete` (`ref library --delete`), and `ref gene-map`,
+  `ref dense-sa` and `ref test-genome` with `delete`. Over MCP, `bam_unindex`, `sample_unset` and
+  `ref_library_delete` are offered only then, and their tools carry
+  `destructiveHint`.
   Regenerating a command's own outputs (`restart`, `force_*`) isn't
   deleting in this sense.
 - Parameters that name programs to run, such as `haplogrep_path`, or that
@@ -189,7 +196,8 @@ curl -H "Authorization: ******" \
   the API's `CancelToken`: tools stop, and the manifest is written with
   status `cancelled` (exit code 130). If the job is still running 30 seconds
   later, it is killed. As on the CLI, partial outputs are kept unless the
-  `atomic_outputs` setting is on.
+  `atomic_outputs` setting is on. `align` is an always-atomic exception: its
+  failed or cancelled validation/writes preserve previous completed outputs.
 - **Persistence.** Job records are kept in `<state>/server/jobs/<id>.json`,
   so a restarted server still lists the earlier jobs and their results. Jobs
   that were queued or running when a server stopped are marked

@@ -17,6 +17,7 @@ MANDATORY_TOOLS = [
 
 OPTIONAL_TOOLS = [
     "bwa-mem2",
+    "bwa-mem3",
     "minimap2",
     "pbmm2",
     "pbsv",
@@ -29,14 +30,22 @@ OPTIONAL_TOOLS = [
     "delly",
     "freebayes",
     "vep",
+    "vep-rs",
+    "vep-cache-builder",
     "gatk",
     "run_deepvariant",
+    "wgse-deepvariant",
     "run_clair3.sh",
     "modkit",
     "verifybamid2",
     "somalier",
+    "plink2",
     "whatshap",
     "longphase",
+    "GLIMPSE2_phase",
+    "GLIMPSE2_ligate",
+    "GLIMPSE2_chunk",
+    "GLIMPSE2_split_reference",
     "curl",
     "java",
     "haplogrep3",
@@ -44,6 +53,7 @@ OPTIONAL_TOOLS = [
     "htsfile",
     "pharmcat_python",
     "cyrius",
+    "smn_caller.py",
     "run-t1k",
     "ExpansionHunter",
     "LongTR",
@@ -53,11 +63,23 @@ OPTIONAL_TOOLS = [
 
 # Optional tools users install themselves (no Pixi environment): how to.
 INSTALL_HINTS = {
+    "plink2": "Download PLINK 2 for your system from "
+    "https://www.cog-genomics.org/plink/2.0/ and put plink2 on PATH. "
+    "It is optional, used only by score pgs --plink2-check.",
     "dorado": "Dorado is ONT's basecaller and isn't installed with WGS Extract: "
     "download the release for your system from "
     "https://github.com/nanoporetech/dorado#installation, unpack it and put its "
     "bin folder on PATH, or set dorado_executable in config.toml (or pass "
     "basecall --dorado-path).",
+    "wgse-deepvariant": "wgse-deepvariant (DeepVariant without Docker): on "
+    "Linux `pixi install -e deepvariant` (NVIDIA driver) or the CPU-only "
+    "linux-deepvariant package on PATH, on a Mac a macos-deepvariant release on "
+    "PATH; set deepvariant_weights in config.toml (native/deepvariant/README.md).",
+}
+# What a tool still needs after its Pixi environment is installed.
+PIXI_SETUP_HINTS = {
+    "wgse-deepvariant": "then set deepvariant_weights in config.toml to its "
+    "weights folder (native/deepvariant/README.md).",
 }
 
 
@@ -71,8 +93,10 @@ def required_dependency_tools(include_python: bool = True) -> list[str]:
 # Optional tools the CLI only uses on some platforms (sys.platform prefixes).
 PLATFORM_ONLY_TOOLS = {
     "bwa-mem2": ("linux", "darwin", "win32"),
+    "bwa-mem3": ("linux", "darwin"),
     "sambamba": ("linux",),
     "cyrius": ("linux", "darwin"),
+    "smn_caller.py": ("linux", "darwin"),
     "run-t1k": ("linux", "darwin"),
     "ExpansionHunter": ("linux", "darwin"),
     "LongTR": ("linux", "darwin"),
@@ -82,6 +106,10 @@ PLATFORM_ONLY_TOOLS = {
     "somalier": ("linux", "darwin"),
     "whatshap": ("linux", "darwin"),
     "longphase": ("linux", "darwin"),
+    "GLIMPSE2_phase": ("linux", "darwin", "win32"),
+    "GLIMPSE2_ligate": ("linux", "darwin", "win32"),
+    "GLIMPSE2_chunk": ("linux", "darwin", "win32"),
+    "GLIMPSE2_split_reference": ("linux", "darwin", "win32"),
 }
 
 
@@ -99,9 +127,44 @@ def clair3_host_supported() -> bool:
     return (system, machine) in CLAIR3_HOSTS
 
 
+def imputation_host_supported() -> bool:
+    """Hosts with the opt-in GLIMPSE2/Beagle environment."""
+    system = "linux" if sys.platform.startswith("linux") else sys.platform
+    return system in {"linux", "darwin", "win32"} and platform.machine().lower() in {
+        "x86_64",
+        "amd64",
+    }
+
+
+def _x86_deepvariant_host() -> bool:
+    """Whether Google's run_deepvariant (x86-64) can be used: ARM64 hosts
+    run the native image instead (`vcf deepvariant`, `deps check`)."""
+    from wgsextract_cli.core.native_support import is_arm64_docker_host
+
+    return not is_arm64_docker_host()
+
+
+def _native_deepvariant_host() -> bool:
+    """Whether wgse-deepvariant (Apple Silicon, Linux x86-64) can be used."""
+    from wgsextract_cli.core.native_support import is_arm64_docker_host
+
+    if sys.platform == "darwin":
+        return is_arm64_docker_host()
+    return sys.platform.startswith("linux") and platform.machine().lower() in {
+        "x86_64",
+        "amd64",
+    }
+
+
 # Optional tools that need a particular OS and CPU.
 HOST_ONLY_TOOLS: dict[str, Callable[[], bool]] = {
     "run_clair3.sh": clair3_host_supported,
+    "run_deepvariant": _x86_deepvariant_host,
+    "wgse-deepvariant": _native_deepvariant_host,
+    "GLIMPSE2_phase": imputation_host_supported,
+    "GLIMPSE2_ligate": imputation_host_supported,
+    "GLIMPSE2_chunk": imputation_host_supported,
+    "GLIMPSE2_split_reference": imputation_host_supported,
 }
 
 
@@ -129,6 +192,8 @@ PIXI_TOOL_ENVS = {
     "fastqc": "default",
     "multiqc": "multiqc",
     "vep": "vep",
+    "vep-rs": "vep-rs",
+    "vep-cache-builder": "vep-rs",
     "haplogrep3": "default",
     "haplocheck": "default",
     "gatk": "gatk",
@@ -143,27 +208,36 @@ PIXI_TOOL_ENVS = {
     "samblaster": "default",
     "bwa": "default",
     "bwa-mem2": "default",
+    "bwa-mem3": "bwa-mem3",
     "minimap2": "default",
     "pbmm2": "pacbio",
     "pbsv": "pacbio",
     "sniffles": "pacbio",
     "htsfile": "default",
     "cyrius": "cyrius",
+    "smn_caller.py": "smn",
     "run-t1k": "t1k",
     "t1k-build.pl": "t1k",
     "ExpansionHunter": "expansionhunter",
     "LongTR": "longtr",
     "strkit": "strkit",
     "run_clair3.sh": "clair3",
+    "wgse-deepvariant": "deepvariant",
     "modkit": "modkit",
     "verifybamid2": "verifybamid2",
     "somalier": "somalier",
     "whatshap": "phasing",
     "longphase": "phasing",
+    "GLIMPSE2_phase": "imputation",
+    "GLIMPSE2_ligate": "imputation",
+    "GLIMPSE2_chunk": "imputation",
+    "GLIMPSE2_split_reference": "imputation",
     # Only through their own environments (never a `python` on PATH): pixi_env_tool.
     "pharmcat_python": "pharmcat",
     "cyrius_python": "cyrius",
 }
+# Environments without a Python of their own: their tools are probed from here.
+PIXI_ENVS_WITHOUT_PYTHON = frozenset({"deepvariant"})
 
 
 # Interpreters only their own Pixi environment provides (its packages matter).
@@ -189,14 +263,20 @@ WINDOWS_PIXI_SCRIPT_LAUNCHERS = {
 PIXI_TOOL_PACKAGES = {
     "gatk": "gatk4",
     "vep": "ensembl-vep",
+    "vep-cache-builder": "vep-rs",
     "pharmcat_python": "pandas",
     "cyrius_python": "cyrius",
+    "smn_caller.py": "smncopynumbercaller",
     "run-t1k": "t1k",
     "t1k-build.pl": "t1k",
     "ExpansionHunter": "expansionhunter",
     "LongTR": "longtr",
     "run_clair3.sh": "clair3",
     "modkit": "ont-modkit",
+    "GLIMPSE2_phase": "glimpse-bio",
+    "GLIMPSE2_ligate": "glimpse-bio",
+    "GLIMPSE2_chunk": "glimpse-bio",
+    "GLIMPSE2_split_reference": "glimpse-bio",
 }
 
 

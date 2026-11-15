@@ -19,6 +19,7 @@ it instead of parsing log text or guessing output file names.
   sample chosen from a multi-sample VCF). `vcf trio` always writes
   `trio.manifest.json`, whichever modes ran.
   Report-only commands (`info`, `info chip`, `ref status`, `ref library --list`)
+  and deletions (`ref library --delete`, `vep delete`, `--delete` options)
   write no file, except `info --format`, whose manifest is named after the first table
   (`<input>_chromosomes.parquet.manifest.json`).
   A failed run that registered outputs still writes its manifest, with
@@ -53,6 +54,10 @@ it instead of parsing log text or guessing output file names.
 Tool versions are probed only when a document is emitted, and only for tools the
 run actually launched.
 
+`align` and `realign` report the effective lossless output profile
+(`default`, `archive` or `calling`) in `metrics.output_profile`; see
+[output profiles](ont.md#lossless-output-profiles).
+
 ### Fingerprints
 
 Inputs, outputs and the reference carry a `wgse-fp1:<sha256 hex>` fingerprint.
@@ -63,6 +68,8 @@ would take minutes. The mtime is not hashed, so a copied file keeps its
 fingerprint. Only regular files are read. A named pipe, `/dev/stdin` or a process
 substitution is recorded with `size_bytes` and `fingerprint` set to `null` and
 is never opened, so the command still gets its whole stream.
+`align` separately spools one-shot read streams before validating and mapping
+them; fingerprint collection itself still never consumes stream input.
 
 A fingerprint identifies a file cheaply ("is this the same BAM as last time?").
 It is not an integrity check: an edit outside the sampled blocks that keeps the
@@ -72,7 +79,10 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 
 | Code | Raised by | Meaning |
 | --- | --- | --- |
-| `low_coverage` | `info --detailed`, variant calling, lineage, `microarray`, `methylation` | Depth is below a threshold (`depth`, `threshold`). |
+| `low_coverage` | `info --detailed`, variant calling, lineage, `microarray`, `methylation`, `typing smn` | Depth is below a threshold (`depth`, `threshold`). |
+| `aligner_not_calibrated` | `typing smn` | The @PG aligner isn't bwa-like (BWA, DRAGEN, Isaac), which SMNCopyNumberCaller is calibrated on (`aligner`). |
+| `possible_silent_carrier` | `typing smn` | Two SMN1 copies with g.27134T>G, associated with a 2+0 silent carrier (`g27134tg_copy_number`). |
+| `uneven_coverage`, `status_uncertain` | `typing smn` | Coverage MAD above 0.11 (`coverage_mad`); the caller couldn't settle carrier/affected status. |
 | `sex_unknown` | `info --detailed`, `typing repeats` | The sex could not be inferred from X/Y coverage. |
 | `long_reads` | `info --detailed` | Long-read data; the short-read tools give poor results. |
 | `short_read_n50` | `info` | Long reads' N50 is under 3 kb, which suggests degraded DNA or a failed library (`read_n50`, `exact`, `threshold`). |
@@ -80,11 +90,16 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `mapped_read_fraction_unavailable` | `info --detailed` | Long reads' mapped percentage could not be estimated: no read starts in the sampled windows (a small targeted file). |
 | `alt_unaware`, `duplicates_unmarked` | `info`, `vcf snp`/`indel`, `microarray` | The alignment has ALT contigs without ALT-aware mapping, or its duplicates are not marked. |
 | `high_homozygosity`, `low_homozygosity`, `high_no_call_rate` | `microarray` | Genotype statistics outside the expected range. |
+| `liftover_ambiguous` | `microarray` on hg38 | Sites the hg38-to-hg19 chain places more than once (`ambiguous`), or distinct sites that land on one hg19 position (`collision`), are exported as no-calls rather than placed arbitrarily. The run's `liftover_*` metrics count every outcome. |
 | `alignment_memory` | `align`, `realign` | minimap2 is estimated to need more RAM than is available (`aligner`, `estimated_gib`, `available_gib`, and `suggested_threads`/`suggested_memory` that fit, or `null`). The run continues. |
 | `aligner_stalled` | `align`, `realign` | The aligner reported no progress, and no stage of its pipeline used CPU, for 15 minutes (`tool`, `minutes`): it is waiting on its input or output. A quiet aligner whose pipeline is busy (a slow batch of centromeric long reads, or samtools collate reading the whole input first) is not stalled. |
+| `dense_suffix_array_unused` | `align`, `realign` asked to use the dense suffix-array file; `ref dense-sa` | It wasn't used (`reason`: `other_aligner` with the `aligner` that ran, `missing`, `unusable`, `wgse_bwa_too_old` or `no_wgse_bwa`; `path`, `version`); the alignment ran without it, with the same records. |
 | `native_aligner_unusable` | `align`, `realign` on Apple Silicon | A `wgse-bwa`, `wgse-bwa-mem2`, `wgse-bwa-mem3` or `wgse-minimap2` on `PATH` failed its `capabilities --json` check or is too old (`binary`, `path`, `aligner`); `aligner` ran instead. |
 | `bwa_mem3_fast` | `align`, `realign` with `--fast` | bwa-mem3's speed preset aligned the reads (`aligner`: the binary), so the alignments differ from BWA's (on 5M HG002 pairs, 3.5% of primary records were placed differently). |
 | `short_read_phasing`, `no_variants_phased` | `vcf phase` | The reads are not Nanopore or PacBio (`platform`), so read-backed phasing links few variants; or no heterozygous variant (`heterozygous_variants`) was phased. |
+| `high_depth_imputation` | `vcf impute` | The reads average more than 8x on the autosomes (`depth`): calling them directly is as accurate and keeps rare variants. |
+| `rare_imputed_not_listed` | `vcf clinvar`, `vcf gnomad --max-af`, `analyze` | Imputed alleles rarer than 1% in the panel (`count`) were left out of the findings. |
+| `imputed_vcf` | `qc vcf`, `microarray` | The VCF was written by `vcf impute` (`tool`, `panel`): its genotypes are predicted from a reference panel, not read from the sample. `microarray` exports its `ImpLowConf` genotypes as no-calls. |
 | `parabricks_low_memory` | `align`/`realign`/`vcf gatk` with `--gpu` | The GPU had too little free memory for the tool's default mode, so it ran with its low-memory option (`tool`, `option`, `gpu_free_gib`). |
 | `parabricks_host_memory` | `--gpu` commands | Less RAM is available than the Parabricks tool needs for a whole genome, though the computer has its minimum (`tool`, `needed_gib`, `available_gib`); the run continues and may be killed partway. |
 | `parabricks_memory` | `--gpu` commands with `--no-gpu-memory-check` | The GPU or host memory is below what the tool needs (`tool`); the run continues and may fail. |
@@ -96,9 +111,11 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `build_unknown`, `build_unsupported` | microarray, Y haplogroup | The reference build is unknown or unsupported by the tool. |
 | `chip_ambiguous` | `info chip` | Two catalogued revisions match equally well. |
 | `gaps_not_excluded` | `vcf filter --exclude-near-gaps` | The reference or its gap table was not found, so variants near gaps were kept. |
-| `gvcf_reference_missing`, `unconfident_parent_genotypes` | `vcf trio` | A gVCF trio has no `--ref`, so reference blocks count only where they start at a variant; de novo calls rest on a parent's low-quality reference call (`count`, `total`). |
+| `gvcf_reference_missing`, `inconclusive_parent_genotypes` | `vcf trio` | A gVCF trio has no `--ref`, so reference blocks count only where they start at a variant; missing, partial or unassessed parental genotypes prevent inheritance classification. Inconclusive candidates are written separately (`count`, `mode`) and included in the personal report's overview warnings. |
 | `no_indel_scores` | `vcf cadd` | The CADD indel file is missing, so indels are not scored. |
 | `contigs_skipped` | `vcf to-fasta` | VCF contigs absent from the reference were left out (`count`). |
+| `mt_reference_unconfirmed` | `lineage mt-haplogroup` | Nothing confirms the chrM is the rCRS whose positions Haplogrep classifies: no rCRS header MD5, a reference chrM that isn't a recognisable rCRS, or VCF REF alleles that CHM13's rotated chrM fits too. CHM13's chrM itself is refused. |
+| `mt_haplogroup_skipped` | `analyze comprehensive` | The alignment's chrM isn't the rCRS (CHM13's, hg19's Yoruba), so `lineage mt-haplogroup` would refuse it; the analysis went on without an mtDNA haplogroup. |
 | `y_haplogroup_failed` | `analyze comprehensive` | `lineage y-haplogroup` failed (often too few chrY reads); the analysis went on without it, and a rerun retries it. |
 | `annotation_skipped`, `annotation_failed` | `vcf chain-annotate`, `analyze` | One annotation was skipped (`annotation`, `reason`) or failed. |
 | `read_groups_mixed`, `read_group_conflict` | `bam unalign`, `bam merge` | Read groups differ in a way that loses or merges information. |
@@ -106,9 +123,9 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `read_name_collision`, `sample_name_assumed` | `bam merge` | Different reads in two runs share names (`inputs`), so name-based tools may pair them; no input names its sample, so `SM` is the output name (`sample`). |
 | `mod_tags_partial`, `mod_models_differ` | `bam merge` | Only some runs carry MM/ML tags (`inputs` lists those without), or the runs' basecalls name different modified-base models (`models`). |
 | `few_modification_tags`, `opposite_strand_modifications`, `pacbio_5hmc_limited`, `unknown_platform` | `methylation` | The input's MM/ML modification tags are sparse, strand-mixed, or from a platform with limited calls. |
-| `genotype_ambiguous`, `high_copy_number`, `no_call` | `typing` | A star-allele or HLA call is ambiguous, has extra copies, or failed (`gene`). |
+| `genotype_ambiguous`, `high_copy_number`, `no_call` | `typing` | A star-allele or HLA call is ambiguous, has extra copies, or failed (`gene`). For CYP2D6, an ambiguous call (`filter`, `call_info`, `candidates`) or Cyrius's `LowQ_high_CN` (about 6 or more CYP2D6 copies; `cyp2d6_cyp2d7_copies`) writes no PharmCAT outside call. |
 | `repeat_outside_normal_range` | `typing repeats` | A repeat length is outside its normal range (`locus`). |
-| `repeat_unconfirmed`, `repeat_unavailable` | `typing str` | Only a low-support allele (one read) puts the repeat outside its normal range; the build's catalog lacks the repeat (NOTCH2NLC on hg19) (`locus`). |
+| `repeat_unconfirmed`, `repeat_unavailable` | `typing str` | A low-support allele alone changes the grade, all called alleles have low support, or missing expected copies leave the call unresolved; the build's catalog lacks the repeat (NOTCH2NLC on hg19) (`locus`). |
 | `output_exists`, `input_failed` | `vep` | An input was skipped because its output exists (`path`), or failed while the batch went on. |
 | `vep_info_missing`, `chromosomes_missing` | `vep verify` | The VEP cache lacks its `info.txt` or chromosome directories (`chromosomes`). |
 | `dict_missing` | `ref verify` | The reference has no sequence dictionary. |
@@ -189,16 +206,20 @@ download`, `sign` and `report`.
 `align` and `realign` record the `aligner` (bwa, bwa-mem2, bwa-mem3, minimap2
 or pbmm2) and the alignment's `records`. When bwa-mem3 ran, `bwa_mem3_mode`
 records its output: `compat=bwa-mem` (bwa's records), `compat=bwa-mem2`
-(bwa-mem2's) or `fast`. When an Apple Silicon build ran in the aligner's
-place they also record `native_aligner` (for example `wgse-bwa`, or
+(bwa-mem2's) or `fast`. When one of WGS Extract's aligner builds ran in the
+aligner's place they also record `native_aligner` (for example `wgse-bwa`, or
 `wgse-bwa-mem3` standing in for bwa),
-`native_aligner_version` and `native_aligner_backend` (`metal` when it ran with
-`--backend auto`, which uses the GPU where it can and otherwise finishes on the
-CPU; `cpu` when it ran on the CPU only), and list the build under `tools`. For a
+`native_aligner_version` and `native_aligner_backend` (`metal` or `cuda`
+when it ran with `--backend auto` for that GPU, which uses the GPU where it can
+and otherwise finishes on the CPU, so the GPU may have done none of the work;
+`cpu` when it ran on the CPU only), and list the build under `tools`. For a
 BAM also `mapped_records` and `unmapped_records` (from the index, without
 decoding reads). CRAM counts come from container headers, which also count
 unmapped reads placed beside their mates, so a CRAM reports `records` only.
-Variant callers and annotators record `variants` per output VCF; filtered
+Variant callers and annotators record `variants` per output VCF;
+`vcf snp` and `vcf indel` also record `bcftools_allocator` (`mimalloc` when
+bcftools ran with wgse-mimalloc on Apple Silicon, else `system`; see
+[hardware.md](hardware.md#bcftools-with-mimalloc)); filtered
 outputs (`--min-score`, `--max-af`) are separate outputs with their own counts.
 
 Other commands' metrics:
@@ -210,7 +231,7 @@ Other commands' metrics:
   its `read_groups`.
 - `qc fastp` records read counts before and after filtering, the Q30 rate and
   duplication rate; `qc fastqc` the module pass/warn/fail counts and total
-  sequences; `qc vcf` the `bcftools stats` totals (records, SNPs, indels,
+  sequences (`r2_`-prefixed for `--r2`); `qc vcf` the `bcftools stats` totals (records, SNPs, indels,
   ts/tv).
 - `analyze` reads each step's result document (the steps still print their
   tables and results) and includes the step's manifest (role
@@ -219,9 +240,19 @@ Other commands' metrics:
   `info --detailed`; plus `sex` and `significant_variants`.
 - `methylation` records sites, median coverage and weighted percent modified
   per modification (and, with `--format parquet`, the `rows` of the
-  `bedmethyl_table`); `typing` the called genotypes (`cyp2d6_genotype`, one
-  diplotype per HLA gene, flagged repeats); `repair` the records read and
+  `bedmethyl_table`); `typing` the called genotypes (`cyp2d6_genotype` with
+  `cyp2d6_call_status`, Cyrius's `cyp2d6_call_info` and candidate
+  `cyp2d6_raw_star_alleles`, and `cyp2d6_cyp2d7_copy_number`, Cyrius's
+  combined CYP2D6+CYP2D7 copy number; one diplotype per HLA gene, flagged repeats, SMN1/SMN2 copy numbers with
+  `sma_carrier` and `sma_affected`); `repair` the records read and
   repaired.
+- `microarray` on hg38 input records how the hg38-to-hg19 liftover placed the
+  CombinedKit's sites: `liftover_lifted`, and the no-calls by reason,
+  `liftover_unmapped`, `liftover_alt_contig`, `liftover_ambiguous` (more than
+  one placement) and `liftover_collision` (sharing an hg19 position with a
+  different site, or with one of its several placements). Each vendor kit and
+  the kept `combined_kit_hg19` carry the same counts, so a rerun that reuses
+  them reports them too.
 - `vep` records `inputs`, `succeeded`, `skipped` and `failed`, and `variants`
   per annotated VCF; a directory of inputs writes `vep.manifest.json`.
 - Reference installers (`ref library --install`, `ref bootstrap`, the

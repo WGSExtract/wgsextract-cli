@@ -1,4 +1,3 @@
-import argparse
 import csv
 import logging
 import os
@@ -7,14 +6,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import TypedDict
 
-from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api._params import job_values
 from wgsextract_cli.api.analyze import AnalyzeBatchGenParams, AnalyzeComprehensiveParams
+from wgsextract_cli.cli.registration.analyze import register as register
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.messages import CLI_HELP, LOG_MESSAGES
+from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.steps import Step, StepJournal, resume_policy
@@ -342,32 +341,3 @@ def run_batch_gen(params: AnalyzeBatchGenParams) -> None:
     current_result().add_output(output_path, "batch_file")
     current_result().add_metrics(samples=len(samples))
     _print(f"Generated batch file with {len(samples)} samples.")
-
-
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser("analyze", help=CLI_HELP["cmd_analyze"])
-    analyze_subs = parser.add_subparsers(dest="analyze_cmd", required=True)
-
-    comp_parser = analyze_subs.add_parser(
-        "comprehensive", parents=[base_parser], help=CLI_HELP["cmd_comprehensive"]
-    )
-    add_arguments(comp_parser, AnalyzeComprehensiveParams)
-    comp_parser.set_defaults(
-        func=cli_handler(
-            AnalyzeComprehensiveParams,
-            run_comprehensive,
-            debug="debug",
-            keep_awake="keep_awake",
-        )
-    )
-
-    gen_batch_parser = analyze_subs.add_parser(
-        "batch-gen", parents=[base_parser], help=CLI_HELP["cmd_batch_gen"]
-    )
-    add_arguments(gen_batch_parser, AnalyzeBatchGenParams)
-    gen_batch_parser.set_defaults(
-        func=cli_handler(AnalyzeBatchGenParams, run_batch_gen)
-    )

@@ -1,0 +1,51 @@
+context:
+  version: "3.6.1"
+
+package:
+  name: wgse-mimalloc
+  version: ${{ version }}
+
+source:
+  url: https://github.com/microsoft/mimalloc/archive/v${{ version }}.tar.gz
+  sha256: 2672e6a99d4579fb4bb32d9de0d63aa424ce600d31fbfaf06eb74d940d2e07a6
+
+build:
+  number: 1
+  string: ${{ target_platform | replace('-', '') }}_wgse_${{ build_number }}
+  skip:
+    - not (osx and arm64)
+  script:
+    - bash "$RECIPE_DIR/build.sh"
+
+requirements:
+  build:
+    - ${{ compiler('c') }}
+    - ${{ stdlib('c') }}
+    - cmake
+    - ninja
+
+tests:
+  - files:
+      recipe:
+        - check_override.py
+    requirements:
+      run:
+        - python >=3.10
+    script:
+      - python check_override.py "$PREFIX/lib/wgse-mimalloc/libmimalloc.dylib"
+  # bioconda's bcftools, the process `vcf snp`/`vcf indel` inject it into.
+  - requirements:
+      run:
+        - bcftools 1.24.*
+    script:
+      - DYLD_INSERT_LIBRARIES="$PREFIX/lib/wgse-mimalloc/libmimalloc.dylib" MIMALLOC_VERBOSE=1 bcftools --version 2> stderr.txt
+      - grep -q '^mimalloc:' stderr.txt
+
+about:
+  homepage: https://github.com/microsoft/mimalloc
+  license: MIT
+  license_file: LICENSE
+  summary: >-
+    mimalloc built by WGS Extract with malloc override enabled, so it can be
+    injected into a process with DYLD_INSERT_LIBRARIES (conda-forge's mimalloc
+    is built without it). Installed as lib/wgse-mimalloc/libmimalloc.dylib.

@@ -2,7 +2,8 @@
 # Explicit lab provisioning, equivalent to the user's optional install command.
 # Usage: install-optional-tools.sh DIR...
 # Each DIR is searched in order for the installed CLI (*/app/pixi.toml): apps
-# since PR #531 install it in the workspace, older apps in their app data.
+# after 0.8.6 install it in their app data folder (WGSExtract-gui), apps since
+# PR #531 in the workspace, older apps in their identifier's app data.
 set -eu
 manifest=""
 for support in "$@"; do

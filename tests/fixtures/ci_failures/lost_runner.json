@@ -1,0 +1,9 @@
+{
+  "id": 131335012088,
+  "run_id": 43254852442,
+  "head_sha": "89002db8cf36c2de133838bc3ea522882bb71eaa",
+  "conclusion": "cancelled",
+  "name": "macos-app (tree)",
+  "steps": [],
+  "check_run_url": "https://api.github.com/repos/WGSExtract/wgsextract-cli/check-runs/131335012088"
+}

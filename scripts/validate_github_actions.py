@@ -8,11 +8,19 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-WORKFLOW_GLOB = ".github/workflows/*.y*ml"
+# Workflows, and the repository's own composite actions.
+WORKFLOW_GLOBS = (".github/workflows/*.y*ml", ".github/actions/*/action.y*ml")
 USES_RE = re.compile(
     r"^(?P<indent>\s*)(?:-\s+)?uses:\s+(?P<target>['\"]?[^'\"\s#]+['\"]?)"
     r"(?:\s+#\s*(?P<comment>.*))?\s*$"
 )
+# Remote actions that only one local composite action may wrap, so their pins
+# and inputs (such as the Pixi version and cache policy) live in one place.
+WRAPPED_ACTIONS = {
+    "swatinem/rust-cache": ".github/actions/rust-cache/action.yml",
+    "actions/setup-node": ".github/actions/setup-gui/action.yml",
+    "prefix-dev/setup-pixi": ".github/actions/setup-pixi/action.yml",
+}
 PINNED_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 VERSION_RE = re.compile(r"^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 
@@ -20,7 +28,10 @@ VERSION_RE = re.compile(r"^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 # Each version/SHA lives in its workflow, so Dependabot need not update a
 # duplicate table. Adding a new action source still requires an explicit review.
 ALLOWED_ACTIONS = {
+    "swatinem/rust-cache",
     "actions/cache",
+    "actions/cache/restore",
+    "actions/cache/save",
     "actions/checkout",
     "actions/configure-pages",
     "actions/deploy-pages",
@@ -47,10 +58,45 @@ def _is_local_or_docker_action(target: str) -> bool:
     return target.startswith(("./", "../", "docker://"))
 
 
+def validate_concurrency(text: str, workflow: Path) -> list[str]:
+    """Cover queue:max until actionlint understands GitHub's new schema key."""
+    errors = []
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        match = re.fullmatch(r"(\s*)concurrency:\s*(?:#.*)?", line)
+        if match is None:
+            continue
+        indent = len(match[1])
+        fields: dict[str, str] = {}
+        for child in lines[index + 1 :]:
+            content = child.partition("#")[0].strip()
+            if not content:
+                continue
+            child_indent = len(child) - len(child.lstrip())
+            if child_indent <= indent:
+                break
+            if child_indent == indent + 2 and ":" in content:
+                key, value = content.split(":", 1)
+                if key == "queue" and key in fields:
+                    errors.append(f"{workflow}:{index + 1}: duplicate queue key")
+                fields[key] = _strip_quotes(value.strip())
+        if "queue" in fields:
+            if fields["queue"] != "max":
+                errors.append(f"{workflow}:{index + 1}: queue must be max")
+            if fields.get("cancel-in-progress", "false") != "false":
+                errors.append(
+                    f"{workflow}:{index + 1}: queue:max conflicts with cancel-in-progress"
+                )
+    return errors
+
+
 def validate_workflows() -> list[str]:
     errors: list[str] = []
-    workflows = sorted(ROOT.glob(WORKFLOW_GLOB))
+    workflows = sorted(path for glob in WORKFLOW_GLOBS for path in ROOT.glob(glob))
     for workflow in workflows:
+        errors.extend(
+            validate_concurrency(workflow.read_text(encoding="utf-8"), workflow)
+        )
         for line_number, line in enumerate(
             workflow.read_text(encoding="utf-8").splitlines(), start=1
         ):
@@ -70,6 +116,13 @@ def validate_workflows() -> list[str]:
 
             action, ref = target.rsplit("@", 1)
             normalized_action = action.lower()
+            wrapper = WRAPPED_ACTIONS.get(normalized_action)
+            if wrapper and workflow.relative_to(ROOT).as_posix() != wrapper:
+                errors.append(
+                    f"{workflow}:{line_number}: use ./{Path(wrapper).parent.as_posix()}"
+                    f" instead of {normalized_action}"
+                )
+                continue
             if normalized_action not in ALLOWED_ACTIONS:
                 errors.append(
                     f"{workflow}:{line_number}: add {normalized_action} to "

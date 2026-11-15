@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.core.mimalloc import SETTINGS as MIMALLOC_SETTINGS
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.table_writer import FORMATS, table_format_type
 from wgsextract_cli.core.utils import UsageError
@@ -32,7 +33,9 @@ from ._shared import (
     dry_run_param,
     force_steps_param,
     input_param,
+    memory_param,
     no_gpu_memory_check_param,
+    no_preflight_param,
     optional_input_param,
     outdir_param,
     ref_param,
@@ -70,6 +73,14 @@ class _SmallVariantParams(Params):
         action="boolean_optional",
     )
     qc_min_depth: float | None = depth_param()
+    mimalloc: str | None = param(
+        None,
+        help="Apple Silicon: bcftools uses wgse-mimalloc if installed (auto) or "
+        "not (off). Default: config mimalloc, else auto.",
+        doc="auto: bcftools uses wgse-mimalloc on Apple Silicon if installed.",
+        choices=MIMALLOC_SETTINGS,
+        config_key="mimalloc",
+    )
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -82,7 +93,9 @@ class VcfSnpParams(_SmallVariantParams):
     """Call SNPs from a BAM/CRAM into ``snps.vcf.gz``.
 
     Ploidy comes from ``ploidy`` or ``ploidy_file``, else the reference
-    library's ploidy file, else bcftools' built-in GRCh37/GRCh38 table.
+    library's ploidy file, else bcftools' built-in GRCh37/GRCh38 table for
+    the build of the input, or of a FASTA outside any library (its chr1
+    length, ``.dict`` assembly, header description or file name).
     """
 
     COMMAND = "vcf snp"
@@ -317,7 +330,12 @@ class VcfTrioParams(_VcfFileParams):
     """Calls matching an inheritance mode in a child and both parents, as
     ``trio_<mode>.vcf.gz``. Three VCFs are merged; three BAM/CRAMs are first
     genotyped jointly from the reads (``trio_joint.vcf.gz``), which de novo
-    calls need."""
+    calls need. VCF de novo and comphet classification requires complete
+    parental genotypes with GQ >=20 and no failed FORMAT/FT filter; missing,
+    filtered or weak evidence is written to
+    ``trio_<mode>_inconclusive.vcf.gz``, preserving the parental genotypes.
+    Sparse variant-only VCFs do not establish parental reference calls.
+    Covering gVCF reference blocks are assessed when a matching --ref is given."""
 
     COMMAND = "vcf trio"
 
@@ -356,7 +374,12 @@ class VcfTrioParams(_VcfFileParams):
 class VcfClinvarParams(_AnnotatorParams):
     """ClinVar significance and disease (CLNSIG, CLNDN) as
     ``clinvar_annotated.vcf.gz``; the pathogenic and likely pathogenic calls,
-    with confidence labels, as ``clinvar_pathogenic.vcf.gz``."""
+    with sequencing confidence labels, as ``clinvar_pathogenic.vcf.gz``.
+    Matching requires an indexed reference FASTA (``ref``, else the library).
+    Both copies are reference-normalized; phase-supported SNVs can match MNVs.
+    Review status, stars and ClinVar identity remain separate from sequencing
+    confidence. Conflicting assertions go to ``clinvar_conflicts.vcf.gz`` and
+    their own confidence table, not the consensus pathogenic subset."""
 
     COMMAND = "vcf clinvar"
 
@@ -449,6 +472,63 @@ class VcfGnomadParams(_AnnotatorParams):
     def __post_init__(self) -> None:
         super().__post_init__()
         check_confidence(self)
+
+
+@dataclass(frozen=True, kw_only=True)
+class VcfSvFreqParams(_AnnotatorParams):
+    """Population frequencies of structural variants (SV_AF, SV_POPMAX_AF,
+    SV_FREQ, SV_COMMON, ...) from gnomAD-SV and gnomAD-LR as
+    ``sv_freq_annotated.vcf.gz``, and one row per SV in ``sv_freq.tsv``.
+
+    For the SV calls of ``vcf sv`` (Delly, Sniffles, pbsv) and ``vcf cnv``,
+    or any VCF of SVs. A call matches a gnomAD SV of the same type by
+    reciprocal overlap (deletions, duplications, inversions) or by
+    breakpoint distance and size similarity (insertions). Nondirectional
+    CNV carrier frequencies and cross-type INS/DUP matches are excluded."""
+
+    COMMAND = "vcf sv-freq"
+
+    gnomad_sv_file: Path | None = _resource_param(
+        "gnomAD-SV table (default: the library's, from 'ref gnomad-sv').",
+        "gnomad_sv_path",
+    )
+    gnomad_lr_file: Path | None = _resource_param(
+        "gnomAD-LR table (default: the library's; GRCh38).",
+        "gnomad_lr_sv_path",
+    )
+    min_overlap: float = param(
+        0.5,
+        help="Minimum reciprocal overlap for same-type DEL/DUP/INV (default 0.5).",
+    )
+    max_distance: int = param(
+        500,
+        help="Maximum insertion breakpoint distance, bp (default 500).",
+    )
+    min_size_similarity: float = param(
+        0.5,
+        help="Minimum insertion size similarity (default 0.5).",
+    )
+    common_af: float = param(
+        0.01,
+        help="AF from which an SV is common (default 0.01).",
+    )
+    rare_af: float = param(
+        0.001,
+        help="AF below which an SV is rare (default 0.001).",
+    )
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if not 0 < self.min_overlap <= 1:
+            raise UsageError("--min-overlap must be above 0 and at most 1.")
+        if not 0 <= self.min_size_similarity <= 1:
+            raise UsageError("--min-size-similarity must be between 0 and 1.")
+        if self.max_distance < 0:
+            raise UsageError("--max-distance must be at least 0.")
+        if not 0 < self.rare_af <= self.common_af <= 1:
+            raise UsageError(
+                "--rare-af and --common-af must satisfy 0 < rare <= common <= 1."
+            )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -623,7 +703,8 @@ def trio(
     cancel: CancelToken | None = None,
     check: bool = True,
 ) -> CommandResult:
-    """Filter the trio; output roles ``trio_<mode>`` (and ``trio_joint``,
+    """Filter the trio; output roles ``trio_<mode>`` and, for VCF de novo/comphet,
+    ``trio_<mode>_inconclusive`` (and ``trio_joint``,
     ``trio_denovo_isolated`` from BAM/CRAMs)."""
     from wgsextract_cli.commands.vcf.filter_trio import run_trio
 
@@ -715,6 +796,21 @@ def gnomad(
     from wgsextract_cli.commands.vcf.population import run_gnomad
 
     return _run_on_vcf(params, run_gnomad, progress, cancel, check)
+
+
+def sv_freq(
+    params: VcfSvFreqParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Annotate SVs with gnomAD-SV/gnomAD-LR frequencies; output roles
+    ``annotated_vcf`` and ``sv_frequencies`` (the table), with the counts per
+    frequency class in the metrics."""
+    from wgsextract_cli.commands.vcf.sv_frequency import run_sv_freq
+
+    return _run_on_vcf(params, run_sv_freq, progress, cancel, check)
 
 
 def spliceai(
@@ -874,22 +970,24 @@ class VcfSvParams(_CallerParams):
     or ``sniffles.vcf.gz``.
 
     ``caller`` picks the tool; otherwise Sniffles for ONT input (detected or
-    ``ont``) and long reads, pbsv (else Sniffles) for ``pacbio``, else delly.
+    ``ont``) and long reads, pbsv (else Sniffles) for PacBio input (detected
+    or ``pacbio``), else delly. The ``caller_reason`` metric says why.
     """
 
     COMMAND = "vcf sv"
 
     caller: str | None = param(
         None,
-        help="SV caller to use (default: sniffles for detected ONT, else delly; "
-        "pbsv/sniffles with --pacbio; sniffles with --ont or --long-read). "
+        help="SV caller to use (default: sniffles for ONT or --long-read, "
+        "pbsv/sniffles for PacBio, detected or flagged; else delly). "
         "pbsv is PacBio-only and is refused for ONT reads.",
         choices=SV_CALLERS,
     )
     pacbio: bool = param(
         False,
         help="PacBio HiFi/CCS data: use pbsv (or sniffles if pbsv is missing) "
-        "with CCS thresholds.",
+        "with CCS thresholds. Detected PacBio gets this automatically, without "
+        "CCS thresholds for subreads (CLR).",
         action="store_true",
     )
     ont: bool = param(
@@ -924,8 +1022,11 @@ class VcfFreebayesParams(_CallerParams):
 
     COMMAND = "vcf freebayes"
 
-    region: str | None = _region_param(
-        "Chromosomal region (e.g. chrM, chrY:10000-20000)"
+    region: str | None = param(
+        None,
+        help="Chromosomal region (e.g. chrM, chrY:10000-20000)",
+        flags=("-r", "--region"),
+        splits=_comma_items,
     )
     qc_min_depth: float | None = depth_param()
 
@@ -941,8 +1042,7 @@ class VcfGatkParams(_CallerParams):
         None,
         help="Chromosomal region (e.g. chrM)",
         flags=("-r", "--region"),
-        doc="Comma-separated region(s) to call (e.g. chrM); with gpu, an item "
-        "may be a BED file of them.",
+        doc="Comma-separated region(s) to call (e.g. chrM), or a BED file.",
         splits=_comma_items,
     )
     scatter: bool = param(
@@ -1016,11 +1116,12 @@ class VcfDeepvariantParams(_CallerParams):
     )
     gpu: bool = param(
         False,
-        help="Call on an NVIDIA GPU: Parabricks, or Google's ULTIMA GPU image "
-        "for Ultima reads (x86-64 Linux, Docker; see README).",
+        help="NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, "
+        "else Parabricks; Ultima: Google's GPU image (README).",
         action="store_true",
     )
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
+    no_preflight: bool = no_preflight_param()
     qc_min_depth: float | None = depth_param()
     restart: bool = restart_param()
     force_steps: tuple[str, ...] | None = force_steps_param(DEEPVARIANT_STEPS)
@@ -1034,7 +1135,12 @@ class VcfClair3Params(_CallerParams):
 
     COMMAND = "vcf clair3"
 
-    region: str | None = _region_param("Chromosomal region (e.g. chr20:1-1000000)")
+    region: str | None = param(
+        None,
+        help="Chromosomal region (e.g. chr20:1-1000000)",
+        flags=("-r", "--region"),
+        splits=_comma_items,
+    )
     model: str | None = param(
         None,
         help="Clair3 model directory, or the name of a bundled model, matching the "
@@ -1043,6 +1149,13 @@ class VcfClair3Params(_CallerParams):
         metavar="NAME|DIR",
         may_name_file=True,
     )
+    gpu: bool = param(
+        False,
+        help="Call on an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, "
+        "Docker; see docs/ont.md).",
+        action="store_true",
+    )
+    no_preflight: bool = no_preflight_param()
     qc_min_depth: float | None = depth_param()
 
 
@@ -1092,6 +1205,92 @@ class VcfPhaseParams(_CallerParams):
             yield Path(self.input).expanduser().absolute().parent
 
 
+@dataclass(frozen=True, kw_only=True)
+class VcfImputeParams(Params):
+    """Impute one GRCh38 sample's genotypes from the 1000 Genomes 30x panel
+    into ``imputed.vcf.gz``: low-coverage reads (``input``) with GLIMPSE2, or
+    a genotype-only VCF such as microarray calls (``vcf_input``) with Beagle 5.
+
+    Every imputed record carries INFO/IMP, the header a
+    ``##wgsextract_imputation`` line, and records whose most likely genotype
+    has GP below ``min_gp`` (GLIMPSE2: 0.9, Beagle: 0.95) are FILTERed
+    ``ImpLowConf``. Site INFO/DR2 is not a single-sample confidence measure:
+    ``min_info`` is an explicit opt-in site filter, meaningful only for
+    multi-sample cohorts. Install panel chromosomes with ``ref imputation``.
+    """
+
+    COMMAND = "vcf impute"
+
+    input: Path | None = optional_input_param(
+        "Low-coverage BAM or CRAM to impute with GLIMPSE2 (about 0.5-8x)."
+    )
+    vcf_input: Path | None = param(
+        None,
+        help="Genotype-only VCF (e.g. chip calls) to impute with Beagle instead.",
+        path="file",
+    )
+    ref: Path | None = ref_param()
+    outdir: Path | None = outdir_param()
+    threads: int | None = threads_param()
+    memory: str | None = memory_param()
+    chromosomes: str | None = param(
+        None,
+        help="Chromosomes, e.g. chr20 or chr1-22 (default: every installed one).",
+    )
+    min_gp: float | None = param(
+        None,
+        help="Minimum max GP (default: GLIMPSE2 0.9; Beagle 0.95).",
+        minimum=0.0,
+    )
+    min_info: float | None = param(
+        None,
+        help="Opt-in INFO/DR2 site filter; meaningful only for multi-sample cohorts.",
+        minimum=0.0,
+    )
+
+    @property
+    def gp_threshold(self) -> float:
+        """Effective per-genotype threshold, including explicit zero."""
+        if self.min_gp is not None:
+            return self.min_gp
+        return 0.9 if self.input is not None else 0.95
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if (self.input is None) == (self.vcf_input is None):
+            raise UsageError(
+                "Give either --input (low-coverage reads) or --vcf-input "
+                "(genotype-only VCF) to impute."
+            )
+
+    def write_folders(self) -> Iterator[Path]:
+        if self.outdir is None:
+            source = self.input or self.vcf_input
+            assert source is not None
+            yield Path(source).expanduser().absolute().parent
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        from wgsextract_cli.core import imputation_panel
+        from wgsextract_cli.core.reference_assets import (
+            resolve_reference_library,
+        )
+
+        from ._params import with_config_defaults
+        from .ref import _library_named
+
+        ref = with_config_defaults(self).ref
+        if ref is not None:
+            yield "ref", ref.expanduser()
+        library = (
+            _library_named(ref)
+            if ref is not None
+            else Path(resolve_reference_library())
+        )
+        yield "ref", library
+        for path in imputation_panel.guarded_paths(str(library), self.chromosomes):
+            yield "ref", path
+
+
 def cnv(
     params: VcfCnvParams,
     *,
@@ -1112,8 +1311,8 @@ def sv(
     cancel: CancelToken | None = None,
     check: bool = True,
 ) -> CommandResult:
-    """Call SVs; output role ``structural_variants``, and the ``caller``
-    metric names the tool chosen."""
+    """Call SVs; output role ``structural_variants``, the ``caller`` metric
+    names the tool chosen and ``caller_reason`` why."""
     from wgsextract_cli.commands.vcf.structural import run_sv
 
     return execute(params, run_sv, progress=progress, cancel=cancel, check=check)
@@ -1185,3 +1384,16 @@ def phase(
     from wgsextract_cli.commands.vcf.phasing import run_phase
 
     return execute(params, run_phase, progress=progress, cancel=cancel, check=check)
+
+
+def impute(
+    params: VcfImputeParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Impute a sample's genotypes; output role ``imputed_variants``."""
+    from wgsextract_cli.commands.vcf.imputation import run_impute
+
+    return execute(params, run_impute, progress=progress, cancel=cancel, check=check)

@@ -14,6 +14,7 @@ import subprocess
 import tarfile
 import threading
 import zipfile
+import zlib
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,7 @@ import pytest
 from tests.htslib_helpers import needs_htslib, needs_tools
 from tests.http_server import serving
 from wgsextract_cli.commands.ref import library_commands
+from wgsextract_cli.core import library_removal
 from wgsextract_cli.core import reference_processing as rp
 from wgsextract_cli.core.bgzf import ensure_bgzf, is_bgzf
 from wgsextract_cli.core.constants import BOOTSTRAP_FILENAME
@@ -44,7 +46,22 @@ def _bgzip(data: bytes) -> bytes:
     return subprocess.run(bgzip, input=data, capture_output=True, check=True).stdout
 
 
+def _razf(data: bytes) -> bytes:
+    """data as RAZF, laid out as NIH serves hs37d5: a gzip header whose extra
+    field is "RAZF" and a block size, then the deflate data and gzip trailer,
+    then RAZF's block index."""
+    deflater = zlib.compressobj(9, zlib.DEFLATED, -zlib.MAX_WBITS)
+    body = deflater.compress(data) + deflater.flush()
+    extra = b"RAZF" + struct.pack(">H", 0x8000)
+    header = b"\x1f\x8b\x08\x04" + bytes(6) + struct.pack("<H", len(extra))
+    trailer = struct.pack("<II", zlib.crc32(data), len(data))
+    index = struct.pack(">IIQQ", 1, 0, len(header + extra), len(data))
+    return header + extra + body + trailer + index
+
+
 def _compress(kind: str, data: bytes) -> bytes:
+    if kind == "razf":
+        return _razf(data)
     return _bgzip(data) if kind == "bgzf" else gzip.compress(data)
 
 
@@ -94,7 +111,7 @@ def _assert_installed(lib: Path, final: str) -> Path:
 
 
 @needs_htslib
-@pytest.mark.parametrize("kind", ["gzip", "bgzf"])
+@pytest.mark.parametrize("kind", ["gzip", "bgzf", "razf"])
 def test_download_installs_an_indexed_bgzf_genome(tmp_path, monkeypatch, kind):
     payload = _compress(kind, FASTA)
     _fake_download(monkeypatch, {_genome()["url"]: payload})
@@ -261,6 +278,37 @@ def test_corrupt_download_falls_through_to_the_next_mirror(tmp_path, monkeypatch
     _assert_installed(tmp_path, "hs38.fa.gz")
 
 
+# --- is_bgzf ------------------------------------------------------------------
+
+
+@needs_htslib
+def test_only_a_bc_extra_field_is_bgzf(tmp_path):
+    gzip_with_extra = gzip.compress(FASTA)
+    # Same bytes up to the extra field as BGZF: 1f 8b 08 04.
+    gzip_with_extra = (
+        gzip_with_extra[:3]
+        + b"\x04"
+        + gzip_with_extra[4:10]
+        + struct.pack("<H", 6)
+        + b"XY\x02\x00ab"
+        + gzip_with_extra[10:]
+    )
+    files = {
+        "bgzf": _bgzip(FASTA),
+        "razf": _razf(FASTA),
+        "gzip": gzip.compress(FASTA),
+        "other-extra": gzip_with_extra,
+        "plain": FASTA,
+        "empty": b"",
+    }
+    found = {}
+    for name, data in files.items():
+        path = tmp_path / name
+        path.write_bytes(data)
+        found[name] = is_bgzf(str(path))
+    assert found == {name: name == "bgzf" for name in files}
+
+
 # --- process_reference_file ---------------------------------------------------
 
 
@@ -295,7 +343,7 @@ def test_reference_tool_cancel_stops_the_process(tmp_path):
         rp._run_reference_tool(["false"], None)
 
 
-# --- delete_genome / has_ref_ns ----------------------------------------------
+# --- remove_genome / has_ref_ns ----------------------------------------------
 
 
 def _touch(*paths: Path) -> None:
@@ -304,7 +352,7 @@ def _touch(*paths: Path) -> None:
         path.write_text("x")
 
 
-def test_delete_genome_removes_every_sidecar_and_nothing_else(tmp_path):
+def test_remove_genome_removes_every_sidecar_and_nothing_else(tmp_path):
     g = tmp_path / "genomes"
     ours = [
         g / name
@@ -315,27 +363,28 @@ def test_delete_genome_removes_every_sidecar_and_nothing_else(tmp_path):
             "hs38.fa.gz.gzi",
             "hs38.fa.gz.dict",
             "hs38.dict",
-            "hs38_ncnt.csv",
-            "hs38_nbin.csv",
-            "hs38.wgse",
+            "hs38.fa.manifest.json",
+            "hs38.dict.manifest.json",
         )
     ]
-    others = [g / "hs38d1.fna.gz", g / "hs38d1.dict", g / "hs38d1_ncnt.csv"]
+    # #825: the N counts stay, as the bootstrap ships them for every genome.
+    others = [g / "hs38d1.fna.gz", g / "hs38d1.dict", g / "hs38_ncnt.csv"]
     _touch(*ours, *others)
-    assert rp.has_ref_ns("hs38.fa.gz", str(tmp_path))
 
-    assert rp.delete_genome("hs38.fa.gz", str(tmp_path))
+    assert set(library_removal.remove_genome(g, "hs38.fa.gz")) == set(ours)
     assert sorted(p.name for p in g.iterdir()) == sorted(p.name for p in others)
     assert get_genome_status("hs38.fa.gz", str(tmp_path)) == "missing"
-    assert not rp.has_ref_ns("hs38.fa.gz", str(tmp_path))
-    assert rp.delete_genome("hs38.fa.gz", str(tmp_path))  # nothing left: still fine
+    assert rp.has_ref_ns("hs38.fa.gz", str(tmp_path))
+    assert library_removal.remove_genome(g, "hs38.fa.gz") == {}  # nothing left
 
 
-def test_delete_genome_removes_download_state_and_aligner_indexes(tmp_path):
+def test_remove_genome_removes_download_state_and_aligner_indexes(tmp_path):
     g = tmp_path / "genomes"
-    suffixes = [".partial.segments", ".bwt", ".sa", ".0123", ".bwt.2bit.64", ".alt"]
+    suffixes = [".partial.segments", ".bwt", ".sa", ".0123", ".bwt.2bit.64", ".alt",
+                ".bwa.complete", ".bwa-mem2.pending", ".wgse-sa16"]  # fmt: skip
     _touch(*(g / f"hs38.fa.gz{s}" for s in suffixes))
-    rp.delete_genome("hs38.fa.gz", str(tmp_path))
+    _touch(g / ".hs38.fa.gz.bwa-index-1234" / "index.bwt")  # a killed build's
+    library_removal.remove_genome(g, "hs38.fa.gz")
     assert not list(g.iterdir())
 
 
@@ -461,12 +510,12 @@ def test_an_old_bootstrap_is_recognized_only_when_complete(tmp_path):
 
 
 def test_deleting_a_genome_keeps_an_old_bootstrap_installed_review_514(tmp_path):
-    """Deleting hs38 removes genomes/hs38_ncnt.csv, which a v0.1.0 bootstrap
-    also shipped; the library must stay bootstrapped."""
+    """genomes/hs38_ncnt.csv, which a v0.1.0 bootstrap also shipped, stays
+    when hs38 is deleted; the library stays bootstrapped."""
     for name in [*_BOOTSTRAP, "genomes/hs38_ncnt.csv", "genomes/hs38.fa.gz"]:
         _touch(tmp_path / name)
-    assert rp.delete_genome("hs38.fa.gz", str(tmp_path))
-    assert not (tmp_path / "genomes" / "hs38_ncnt.csv").exists()
+    library_removal.remove_genome(tmp_path / "genomes", "hs38.fa.gz")
+    assert not (tmp_path / "genomes" / "hs38.fa.gz").exists()
     assert rp.bootstrap_has_support_assets(str(tmp_path))
 
 

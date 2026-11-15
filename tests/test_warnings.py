@@ -67,10 +67,19 @@ def test_space_estimates_for_bam_and_compact_cram():
     # 680M reads, which needed ~50 GB of temp files and ~46 GB of FASTQ.
     size, reads = 7_859_324_055, 681_927_272
     assert get_free_space_needed(size, "Name", True) == (34, 14)
-    assert get_free_space_needed(size, "Name", True, reads) == (50, 47)
+    temporary, fastq = get_free_space_needed(size, "Name", True, reads)
+    assert temporary == 50 and fastq * GIB >= 46_000_000_000
     assert get_free_space_needed(size, "Coord", True, reads) == (50, 14)
     # A BAM whose size already exceeds the per-read figures keeps its estimate.
     assert get_free_space_needed(60 * GIB, "Coord", False, 10_000_000) == (120, 60)
+
+
+def test_722_realign_guard_covers_scaled_full_quality_hg002_fastqs():
+    # #722's retained R1/R2 sizes and indexed slice/full read counts.
+    measured = 460_014_704 + 477_371_236
+    scaled_pair = measured * 715_937_833 / 10_971_483
+    _, fastq = get_free_space_needed(39_457_302_165, "Name", False, reads=715_937_833)
+    assert fastq * GIB >= scaled_pair
 
 
 def test_realign_estimate_scales_with_cpus(caplog):

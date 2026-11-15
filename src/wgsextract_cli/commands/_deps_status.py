@@ -1,4 +1,5 @@
 import logging
+import platform
 import sys
 from typing import Any
 
@@ -99,7 +100,8 @@ def run(params: DepsCheckParams, *, debug: bool = False) -> None:
         human_output(f"{status} {tool['name']:<20} {source}{version}")
 
     if unavailable:
-        human_output(f"\nNot available on {sys.platform}: {', '.join(unavailable)}")
+        host = f"{sys.platform} {platform.machine()}"
+        human_output(f"\nNot available on {host}: {', '.join(unavailable)}")
 
     human_output("\n" + "=" * 60)
     missing = [tool["name"] for tool in results["mandatory"] if not tool["path"]]

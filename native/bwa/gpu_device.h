@@ -209,6 +209,13 @@ public:
     // (see sampled_position in backend.cpp). False if unsupported or out of memory.
     virtual bool densify(unsigned shift, size_t slice, const uint32_t **low,
         const uint32_t **high) = 0;
+    // Locates with denser samples read from a side file (dense_sa.h's layout) in
+    // place: page-aligned whole pages that outlive the device. False if unsupported.
+    virtual bool adopt_dense(unsigned shift, uint32_t *low, size_t low_bytes, uint32_t *high,
+        size_t high_bytes) {
+        (void)shift, (void)low, (void)low_bytes, (void)high, (void)high_bytes;
+        return false;
+    }
 
     // Mate rescue: results[i] is ksw_align2's result for jobs[i] unless its
     // status is rescue_cpu. Synchronous.
@@ -241,11 +248,13 @@ struct DeviceOptions {
     // as interrupted even if it completed, so its kernels run twice.
     size_t interrupt_every = 0;
     // The watchdog's floor: a wait for the GPU fails after the larger of this
-    // and 20 times the slowest batch of its stage (CUDA and Vulkan).
+    // and 20 times the slowest batch of its stage (CUDA).
     double watchdog_seconds = 60;
-    // Test hook (CUDA): occupy the GPU before the first rescue batch for twice
-    // the watchdog's limit, as a hung kernel would.
-    bool inject_hang = false;
+    // Test hook: hang the first GPU work of the stage this names (a prefix of
+    // collect_seeds, locate_rows, rescue_align or extend) as a hung GPU would.
+    // Metal withholds the command and gives up after 2 s; CUDA, which hangs only
+    // rescue_align, occupies the GPU for twice the watchdog's limit.
+    std::string hang_label;
 };
 std::unique_ptr<Device> make_metal_device(const DeviceOptions &options, std::string &reason);
 std::unique_ptr<Device> make_cuda_device(const DeviceOptions &options, std::string &reason);
@@ -254,4 +263,9 @@ std::unique_ptr<Device> make_vulkan_device(const DeviceOptions &options, std::st
 bool metal_hardware_supported();
 bool cuda_hardware_supported();
 bool vulkan_hardware_supported();
+// The Metal watchdog: whether a GPU command it gave up on may still read host
+// memory (so the index must not be freed), and the watchdog threads it has run.
+// Without Metal, false and 0. They outlive the device, which a failure drops.
+bool memory_unsettled();
+size_t watchdog_threads();
 } // namespace wgse::gpu

@@ -39,6 +39,7 @@ MIGRATED = (
     ("vcf", "cadd"),
     ("vcf", "gerp"),
     ("vcf", "gnomad"),
+    ("vcf", "sv-freq"),
     ("vcf", "spliceai"),
     ("vcf", "alphamissense"),
     ("vcf", "pharmgkb"),
@@ -53,6 +54,7 @@ MIGRATED = (
     ("vcf", "deepvariant"),
     ("vcf", "clair3"),
     ("vcf", "phase"),
+    ("vcf", "impute"),
     ("lineage", "mt-haplogroup"),
     ("lineage", "y-haplogroup"),
     ("lineage", "y-str"),
@@ -86,6 +88,7 @@ MIGRATED = (
     ("qc", "multiqc"),
     ("qc", "multiqc-metrics"),
     ("qc", "vcf"),
+    ("qc", "ancestry"),
     ("qc", "contamination"),
     ("qc", "fake-data"),
     ("qc", "relate"),
@@ -96,6 +99,9 @@ MIGRATED = (
     ("ref", "aadr"),
     ("ref", "ybrowse"),
     ("ref", "somalier"),
+    ("ref", "ancestry"),
+    ("ref", "gnomad-sv"),
+    ("ref", "imputation"),
     ("ref", "download"),
     ("ref", "index"),
     ("ref", "count-ns"),
@@ -123,6 +129,8 @@ MIGRATED = (
     ("sign",),
     ("sign", "create"),
     ("sign", "verify"),
+    ("score",),
+    ("score", "pgs"),
     ("deps",),
     ("deps", "check"),
     ("example-genome",),
@@ -131,6 +139,7 @@ MIGRATED = (
     ("typing",),
     ("typing", "cyp2d6"),
     ("typing", "hla"),
+    ("typing", "smn"),
     ("typing", "str"),
     ("methylation",),
     ("methylation", "pileup"),
@@ -409,6 +418,12 @@ ARGVS = (
     ],
     ["ref", "aadr", "--install", "--ref", "lib"],
     ["ref", "somalier", "--install", "--ref", "lib"],
+    ["ref", "gnomad-sv", "--install", "--source", "lr", "--ref", "lib"],
+    ["vcf", "sv-freq", "--vcf-input", "sv.vcf.gz", "--min-overlap", "0.7"],
+    ["ref", "imputation", "--install", "--chromosomes", "chr20,chr21", "-t", "4"],
+    ["ref", "imputation", "--delete", "--chromosomes", "chr20"],
+    ["vcf", "impute", "-i", "x.bam", "--chromosomes", "chr20", "--min-gp", "0.95"],
+    ["vcf", "impute", "--vcf-input", "chip.vcf.gz", "--min-info", "0.3", "-m", "2G"],
     ["qc", "relate", "a.cram", "b.vcf.gz", "--ped", "t.ped", "--no-ancestry"],
     ["ref", "ybrowse", "--install", "--snapshot", "y.vcf.gz"],
     ["ref", "download", "--url", "https://x/r.fa.gz", "--out", "r.fa.gz"],
@@ -481,6 +496,20 @@ ARGVS = (
     ["sign", "verify", "SHA256SUMS"],
     ["sign", "verify", "S", "--signature", "s.sig", "--public-key", "k.pub"],
     ["sign", "verify", "S", "--allowed-signers", "a", "--identity", "me"],
+    ["score", "pgs", "--input", "s.vcf.gz", "--build", "GRCh38", "--trait", "height"],
+    [
+        "score",
+        "pgs",
+        "--input",
+        "s.vcf.gz",
+        "--build",
+        "GRCh37",
+        "--pgs-id",
+        "PGS000018",
+        "--min-match",
+        "0.9",
+        "--json",
+    ],
     ["deps", "check"],
     ["deps", "check", "--tool", "samtools", "--debug"],
     ["example-genome", "list", "--tag", "pacbio", "--tag", "hifi"],
@@ -490,6 +519,7 @@ ARGVS = (
     ["typing", "cyp2d6", "-i", "x.bam", "--ref", "r.fa", "-t", "4"],
     ["typing", "hla", "-i", "x.cram", "--hla-index", "h.fa", "-o", "out"],
     ["typing", "str", "-i", "x.bam", "--catalog", "c.json", "--sex", "male"],
+    ["typing", "smn", "-i", "x.cram", "--ref", "r.fa", "-o", "out", "-t", "4"],
     ["methylation", "pileup", "-i", "x.bam"],
     ["methylation", "pileup", "-i", "x.cram", "--ref", "r.fa", "-r", "chr1,chr2:5-9"],
     ["methylation", "pileup", "-i", "x.bam", "--5hmc", "--context", "all"],
@@ -624,10 +654,13 @@ def _namespace(argv: list[str]) -> dict[str, Any]:
 
 
 def snapshot() -> dict[str, Any]:
+    from wgsextract_cli.core.config import settings_suspended
+
     saved = os.environ.get("COLUMNS"), sys.argv[0]
     os.environ["COLUMNS"] = "100"
     try:
-        return _snapshot()
+        with settings_suspended():
+            return _snapshot()
     finally:
         if saved[0] is None:
             os.environ.pop("COLUMNS", None)

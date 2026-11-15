@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dev tool: lint GUI-for-CLI bundle localization TOML files.
+"""Dev tool: lint WGS Extract GUI bundle localization TOML files.
 
 Usage:
   tools/localization/lint_locales.py [--strict] [--json] [--update-source-hashes] [PATH ...]

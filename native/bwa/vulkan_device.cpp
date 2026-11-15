@@ -36,11 +36,11 @@ namespace {
     X(vkGetPhysicalDeviceMemoryProperties) X(vkGetPhysicalDeviceFeatures2) \
     X(vkCreateDevice) X(vkDestroyDevice) X(vkGetDeviceQueue) X(vkDeviceWaitIdle) \
     X(vkCreateBuffer) X(vkDestroyBuffer) X(vkGetBufferMemoryRequirements) \
-    X(vkAllocateMemory) X(vkFreeMemory) X(vkBindBufferMemory) X(vkMapMemory) \
+    X(vkAllocateMemory) X(vkFreeMemory) X(vkBindBufferMemory) X(vkMapMemory) X(vkUnmapMemory) \
     X(vkCreateShaderModule) X(vkDestroyShaderModule) X(vkCreateDescriptorSetLayout) \
     X(vkDestroyDescriptorSetLayout) X(vkCreatePipelineLayout) X(vkDestroyPipelineLayout) \
     X(vkCreateComputePipelines) X(vkDestroyPipeline) X(vkCreateDescriptorPool) \
-    X(vkDestroyDescriptorPool) X(vkAllocateDescriptorSets) X(vkUpdateDescriptorSets) \
+    X(vkDestroyDescriptorPool) X(vkAllocateDescriptorSets) X(vkFreeDescriptorSets) X(vkUpdateDescriptorSets) \
     X(vkCreateCommandPool) X(vkDestroyCommandPool) X(vkResetCommandPool) \
     X(vkAllocateCommandBuffers) X(vkBeginCommandBuffer) X(vkEndCommandBuffer) \
     X(vkCmdBindPipeline) X(vkCmdBindDescriptorSets) X(vkCmdPushConstants) X(vkCmdDispatch) \
@@ -452,6 +452,7 @@ public:
 
     void free(Buffer &buffer) {
         Vk &v = vk();
+        if (buffer.mapped) v.vkUnmapMemory(device_, buffer.memory);
         if (buffer.buffer) v.vkDestroyBuffer(device_, buffer.buffer, nullptr);
         if (buffer.memory) v.vkFreeMemory(device_, buffer.memory, nullptr);
         buffer = {};
@@ -460,12 +461,17 @@ public:
     void free(VulkanExtendBuffers &b) {
         if (vulkan_hung) return;
         Vk &v = vk();
-        if (b.fence) v.vkWaitForFences(device_, 1, &b.fence, VK_TRUE, UINT64_MAX);
+        // The scheduler drains callbacks before releasing buffers. In particular,
+        // an unused or already-reset fence is unsignalled: waiting here deadlocks.
         for (Buffer *buffer : {&b.host_bases, &b.host_jobs, &b.host_results, &b.host_order,
                  &b.device_bases, &b.device_jobs, &b.device_results, &b.device_order})
             free(*buffer);
         if (b.pool) v.vkDestroyCommandPool(device_, b.pool, nullptr);
         if (b.fence) v.vkDestroyFence(device_, b.fence, nullptr);
+        if (b.descriptors) {
+            std::lock_guard<std::mutex> lock(descriptor_mutex_);
+            v.vkFreeDescriptorSets(device_, descriptor_pool_, 1, &b.descriptors);
+        }
     }
 
 private:

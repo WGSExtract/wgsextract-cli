@@ -63,7 +63,7 @@ def create_archlinux_package(
     output_dir.mkdir(parents=True, exist_ok=True)
     package_path = output_dir / f"{pkgname}-{pkgver}-{pkgrel}-{arch}.pkg.tar.zst"
 
-    with tempfile.TemporaryDirectory(prefix="gui-for-cli-archpkg-") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="wgsextract-gui-archpkg-") as temp_dir:
         staging_dir = Path(temp_dir) / "package"
         archive_path = Path(temp_dir) / package_path.with_suffix("").name
         app_dir = staging_dir / "opt" / pkgname
@@ -180,7 +180,7 @@ def package_info(
         f"pkgdesc = {pkgdesc}",
         f"url = {url}",
         f"builddate = {int(time.time())}",
-        "packager = GUI for CLI",
+        "packager = WGS Extract GUI",
         f"size = {installed_size}",
         f"arch = {arch}",
         "license = MIT",

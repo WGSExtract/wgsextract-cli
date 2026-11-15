@@ -1,0 +1,29 @@
+name: Mockup previews
+
+# Pushing or deleting a mockups/<name> branch republishes the Pages site from
+# main, whose pages.yml copies each such branch's gui/mockups/ static files to
+# app/mockups/preview/<name>/. The github-pages environment deploys from main
+# only, so this workflow just asks main's to run.
+on:
+  push:
+    branches: ["mockups/**"]
+  delete:
+
+permissions:
+  actions: write
+
+# Rapid pushes coalesce into one republish.
+concurrency:
+  group: mockup-previews
+  cancel-in-progress: true
+
+jobs:
+  republish:
+    if: github.event_name == 'push' || (github.event.ref_type == 'branch' && startsWith(github.event.ref, 'mockups/'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Run the Pages workflow on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --ref main --repo "$GITHUB_REPOSITORY"

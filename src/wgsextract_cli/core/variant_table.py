@@ -10,6 +10,8 @@ values. The annotations come from the INFO fields our own commands write:
 - ``CLNSIG``/``CLNDN`` (`vcf clinvar`), ``GNOMAD_AF`` (`vcf gnomad`),
   ``PHARMGKB`` (`vcf pharmgkb`) and ``WGSE_CONF``/``WGSE_CONF_REASONS`` (depth-aware
   confidence labels, `vcf clinvar`/`vcf gnomad`/`vcf pharmcat`).
+- ``SV_AF``/``SV_FREQ`` (`vcf sv-freq`): structural variants' population
+  frequency and class (common, low, rare or novel).
 
 An annotation the VCF lacks leaves its column empty. Records are parsed one at
 a time, so a whole genome streams through in constant memory.
@@ -22,6 +24,8 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from urllib.parse import unquote
 
+from wgsextract_cli.core import clinical_evidence as ce
+from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.table_writer import Column
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
 
@@ -98,6 +102,52 @@ COLUMNS: tuple[Column, ...] = (
         TEXT,
         "PharmCAT's phenotype for this row's gene (with --pharmcat-json).",
     ),
+    Column(
+        "sv_af",
+        REAL,
+        "Population allele frequency of the matching gnomAD SV (SV_AF, `vcf sv-freq`).",
+    ),
+    Column(
+        "sv_freq",
+        TEXT,
+        "SV frequency class: common, low, rare or novel (SV_FREQ, `vcf sv-freq`).",
+    ),
+    Column(
+        "imputed",
+        INTEGER,
+        "1 when the genotype was imputed from a reference panel (INFO/IMP, "
+        "`vcf impute`), not read from the sample; else 0.",
+    ),
+    Column(
+        "genotype_probability",
+        REAL,
+        "Probability of the sample's genotype (largest FORMAT/GP), for imputed calls.",
+    ),
+    Column("clinvar_id", TEXT, "ClinVar resource record ID (not the sample rsID)."),
+    Column(
+        "clinvar_review_status", TEXT, "ClinVar CLNREVSTAT assertion review status."
+    ),
+    Column(
+        "clinvar_review_stars",
+        INTEGER,
+        "ClinVar review stars (0-4), not sequencing confidence.",
+    ),
+    Column(
+        "clinvar_review_tier",
+        TEXT,
+        "ClinVar assertion support tier, not sequencing confidence.",
+    ),
+    Column(
+        "clinvar_conflict_evidence",
+        TEXT,
+        "ClinVar conflicting submitter classifications (CLNSIGCONF).",
+    ),
+    Column(
+        "original_record", TEXT, "Original allele and sample fields (URL-encoded JSON)."
+    ),
+    Column(
+        "mnv_components", TEXT, "Phase-supported MNV components (URL-encoded JSON)."
+    ),
 )
 COLUMN_NAMES = tuple(column.name for column in COLUMNS)
 Row = tuple[str | int | float | None, ...]
@@ -168,6 +218,7 @@ class VcfHeader:
             ("gnomad", "GNOMAD_AF"),
             ("pharmgkb", "PHARMGKB"),
             ("confidence", "WGSE_CONF"),
+            ("sv_freq", "SV_FREQ"),
         ):
             if key in self.info_number:
                 found.append(name)
@@ -391,6 +442,13 @@ def _pharmgkb(raw: str | None) -> tuple[str | None, str | None, str | None]:
     return gene, (ranked[0] if ranked else None), "; ".join(sorted(set(drugs))) or None
 
 
+def _max_probability(raw: str | None) -> float | None:
+    values = [
+        v for part in (raw or "").split(",") if (v := _to_float(part)) is not None
+    ]
+    return max(values) if values and all(0 <= v <= 1 for v in values) else None
+
+
 def _info(raw: str) -> dict[str, str]:
     if raw in ("", "."):
         return {}
@@ -429,7 +487,7 @@ def variant_rows(
         if all(a in _NON_VARIANT_ALTS for a in alts):
             continue
         info = _info(info_text)
-        gt = sample_depth = gq = None
+        gt = sample_depth = gq = gp = None
         sample_column = None if sample_index is None else 9 + sample_index
         has_sample = sample_column is not None and len(fields) > sample_column
         if sample_column is not None and has_sample:
@@ -447,6 +505,7 @@ def variant_rows(
                 if all(v is not None for v in ad):
                     sample_depth = sum(v for v in ad if v is not None)
             gq = _to_int(sample.get("GQ"))
+            gp = _max_probability(sample.get("GP"))
         depth = sample_depth if sample_depth is not None else _to_int(info.get("DP"))
         pos = int(pos_text)
         qual = _to_float(qual_text)
@@ -504,6 +563,12 @@ def variant_rows(
                 (ann or {}).get("HGVS.p")
             )
             diplotype, phenotype = pharmcat.get(gene or "", (None, None))
+            clinical = {
+                key: _per_allele(info.get(key), numbers.get(key), alt_index)
+                for key in (ce.IDENTITY, "CLNREVSTAT", "CLNSIGCONF")
+            }
+            clinical["CLNSIG"] = clnsig
+            review = ce.review_evidence(clinical)
             yield (
                 chrom,
                 pos,
@@ -536,4 +601,15 @@ def variant_rows(
                 pgx_drugs,
                 diplotype,
                 phenotype,
+                _to_float(info.get("SV_AF")),
+                _value(info.get("SV_FREQ")),
+                int(IMPUTED_TAG in info),
+                gp,
+                clinical[ce.IDENTITY],
+                clinical["CLNREVSTAT"],
+                _to_int(str(review["stars"])),
+                str(review["review_tier"]) if "CLNSIG" in info else None,
+                clinical["CLNSIGCONF"],
+                _value(info.get(ce.ORIGIN)),
+                _value(info.get(ce.COMPONENTS)),
             )

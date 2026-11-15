@@ -65,8 +65,8 @@ repeat:
   its several hundred crates into that worktree's `target/` directory.
 
 The bundled Node runtime the desktop build ships is downloaded once per user, to
-`~/Library/Caches/gui-for-cli-dev` (macOS), `%LOCALAPPDATA%\gui-for-cli-dev\Cache`
-(Windows), or `$XDG_CACHE_HOME/gui-for-cli-dev` (Linux, default `~/.cache`).
+`~/Library/Caches/wgsextract-gui-dev` (macOS), `%LOCALAPPDATA%\wgsextract-gui-dev\Cache`
+(Windows), or `$XDG_CACHE_HOME/wgsextract-gui-dev` (Linux, default `~/.cache`).
 
 To avoid recompiling the same crates in every worktree, set up
 [sccache](https://github.com/mozilla/sccache) once. It caches compiled crates per

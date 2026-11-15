@@ -1,16 +1,13 @@
 """`sample show|set|unset`: a sample's workspace, wgsextract.sample.toml."""
 
-import argparse
-from typing import Any
-
-from wgsextract_cli.api._cli import add_arguments, cli_handler
 from wgsextract_cli.api.sample import (
     SampleSetParams,
     SampleShowParams,
     SampleUnsetParams,
 )
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.cli.registration.sample import register as register
 from wgsextract_cli.core.results import current_result, human_output
+from wgsextract_cli.core.sample_types import OverrideChanges
 from wgsextract_cli.core.sample_workspace import (
     FACTS,
     SampleWorkspace,
@@ -19,7 +16,7 @@ from wgsextract_cli.core.sample_workspace import (
 _LABEL_WIDTH = 15
 
 
-def _value(value: Any) -> str:
+def _value(value: object) -> str:
     if isinstance(value, dict):
         return ", ".join(f"{k} {v}" for k, v in value.items())
     return str(value)
@@ -84,10 +81,10 @@ def _report(params: SampleShowParams | SampleSetParams | SampleUnsetParams) -> N
             human_output(f"  {key}: {line}{note}")
     if data["outputs"]:
         human_output("\nResults:")
-        for key, entry in data["outputs"].items():
+        for key, output in data["outputs"].items():
             human_output(
-                f"  {key}: {entry.get('command', '?')}, {entry.get('status', '?')}"
-                f", {str(entry.get('at', ''))[:10]}"
+                f"  {key}: {output.get('command', '?')}, {output.get('status', '?')}"
+                f", {str(output.get('at', ''))[:10]}"
             )
 
 
@@ -96,43 +93,23 @@ def run_show(params: SampleShowParams) -> None:
 
 
 def run_set(params: SampleSetParams) -> None:
-    SampleWorkspace(params.folder).set_overrides(
-        {
-            name: value
-            for name in ("sex", "platform")
-            if (value := getattr(params, name)) is not None
-        },
-        params.input,
-    )
+    changes: OverrideChanges = {}
+    if params.sex is not None:
+        changes["sex"] = params.sex
+    if params.platform is not None:
+        changes["platform"] = params.platform
+    SampleWorkspace(params.folder).set_overrides(changes, params.input)
     _report(params)
 
 
 def run_unset(params: SampleUnsetParams) -> None:
-    SampleWorkspace(params.folder).set_overrides(
-        {name: None for name in ("sex", "platform") if getattr(params, name)},
-        params.input,
-    )
+    changes: OverrideChanges = {}
+    if params.sex:
+        changes["sex"] = None
+    if params.platform:
+        changes["platform"] = None
+    SampleWorkspace(params.folder).set_overrides(changes, params.input)
     _report(params)
-
-
-def register(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser(
-        "sample", parents=[base_parser], help=CLI_HELP["cmd_sample"]
-    )
-    subs = parser.add_subparsers(dest="sample_cmd", required=True)
-    for name, cls, impl in (
-        ("show", SampleShowParams, run_show),
-        ("set", SampleSetParams, run_set),
-        ("unset", SampleUnsetParams, run_unset),
-    ):
-        sub = subs.add_parser(
-            name, parents=[base_parser], help=CLI_HELP[f"cmd_sample-{name}"]
-        )
-        add_arguments(sub, cls)
-        sub.set_defaults(func=cli_handler(cls, impl))
 
 
 __all__ = ["register", "run_set", "run_show", "run_unset"]

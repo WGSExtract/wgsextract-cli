@@ -26,6 +26,7 @@ from tests.smoke_utils import state_directory_setting
 from wgsextract_cli.commands import _analyze_workflows as wf
 from wgsextract_cli.core.config import get_config_path
 from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
+from wgsextract_cli.core.mito_reference import CHM13_CHRM_MD5
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.main import main
 
@@ -185,14 +186,19 @@ class FakeSteps:
         data = home / "data"
         data.mkdir()
         self.config = get_config_path().read_text()
-        # An empty library, so only the configured data counts as installed.
+        # The FASTA is installed; annotation availability comes from config.
         (home / "library").mkdir()
+        genomes = home / "library" / "genomes"
+        genomes.mkdir()
+        (genomes / "hg38.fa").write_text(">chr1\n" + "A" * 1000 + "\n")
         self.settings: dict[str, object] = {"reference_library": str(home / "library")}
         for ann, key in _ANNOTATION_DATA.items():
             (data / ann).write_text(f"{ann} release 1")
             self.settings[key] = str(data / ann)
         (data / "vep").mkdir()
         self.settings["vep_cache_directory"] = str(data / "vep")
+        # A stand-in Ensembl VEP; vep-rs's own runs are in test_vep_rs.
+        self.settings["vep_engine"] = "ensembl"
         python_tool(home / "tools", "vep", "")
         monkeypatch.setenv("PATH", f"{home / 'tools'}{os.pathsep}{os.environ['PATH']}")
         clear_tool_caches()
@@ -260,12 +266,12 @@ def fake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeSteps:
     return FakeSteps(tmp_path / "fake-steps", monkeypatch)
 
 
-def _bam(path: Path, sample: str = "S") -> str:
+def _bam(path: Path, sample: str = "S", *sq: str) -> str:
     if not get_tool_path("samtools"):
         pytest.skip("samtools missing")
     path.parent.mkdir(parents=True, exist_ok=True)
     return sam_to_bam(
-        ["@HD\tVN:1.6\tSO:coordinate", "@SQ\tSN:chr1\tLN:10000",
+        ["@HD\tVN:1.6\tSO:coordinate", "@SQ\tSN:chr1\tLN:10000", *sq,
          f"@RG\tID:rg\tSM:{sample}"],
         path,
     )  # fmt: skip
@@ -530,6 +536,21 @@ def test_failed_y_haplogroup_warns_and_still_calls_variants(
     assert fake.run("--input", bam, "--outdir", str(out)).ran == ["y-haplogroup"]
 
 
+@needs_bcftools
+def test_chm13_chrm_skips_the_mt_haplogroup_but_still_calls_variants_827(
+    fake: FakeSteps, tmp_path: Path
+) -> None:
+    # #827: mt-haplogroup now refuses CHM13's rotated chrM; that refusal
+    # mustn't stop a comprehensive run of a CHM13 genome.
+    chrm = f"@SQ\tSN:chrM\tLN:16569\tM5:{CHM13_CHRM_MD5}"
+    bam = _bam(tmp_path / "in" / "chm13.bam", "S", chrm)
+    run = fake.run("--input", bam, "--outdir", str(tmp_path / "o"))
+    assert run.code == 0
+    assert run.ran == [step for step in _ALL_STEPS if step != "mt-haplogroup"]
+    codes = [w["code"] for w in run.document.get("warnings") or []]
+    assert "mt_haplogroup_skipped" in codes
+
+
 # --- analyze comprehensive: resuming ---------------------------------------------
 
 
@@ -648,6 +669,29 @@ def test_updated_reference_or_annotation_data_redo_the_steps_that_read_them(
     run = fake.run("--input", bam, "--outdir", str(out))
     assert [s for s in run.ran if not s.startswith("discovery")] == [
         "snp", "annotate:snp-indel_snps"
+    ]  # fmt: skip
+
+
+@needs_bcftools
+def test_858_edited_file_in_vep_cache_reruns_annotation(
+    fake: FakeSteps, bam: str, tmp_path: Path
+) -> None:
+    # Issue #858: a changed file inside VEP's cache directory kept old results.
+    release = Path(str(fake.settings["vep_cache_directory"]), "homo_sapiens", "116")
+    release.mkdir(parents=True)
+    (release / "info.txt").write_text("release-one")
+    out = tmp_path / "out"
+    fake.run("--input", bam, "--outdir", str(out))
+    assert fake.run("--input", bam, "--outdir", str(out)).ran == []
+
+    (release / "info.txt").write_text("release-two")
+    # A later edit: a second on, for filesystems with coarse timestamps.
+    mtime = (release / "info.txt").stat().st_mtime_ns + 1_000_000_000
+    os.utime(release / "info.txt", ns=(mtime, mtime))
+    run = fake.run("--input", bam, "--outdir", str(out))
+    assert run.ran == _ALL_STEPS[5:]
+    assert list(fake.annotated()) == [
+        str(out / "snps.vcf.gz"), str(out / "indels.vcf.gz")
     ]  # fmt: skip
 
 
@@ -888,6 +932,9 @@ def test_vcf_input_end_to_end_with_clinvar(
         tmp_path / "me.vcf.gz",
         [(100, "a", "50", "."), (200, "b", "50", "."), (300, "c", "50", ".")],
     )
+    from tests.htslib_helpers import reference_for_vcf
+
+    reference_for_vcf(lib / "genomes" / "hg38.fa.gz", calls)
     out = tmp_path / "out"
     main(["--config", str(cfg), "analyze", "comprehensive", "--vcf-inputs", calls,
           "--outdir", str(out), "--threads", "1"])  # fmt: skip

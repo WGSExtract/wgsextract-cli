@@ -1,14 +1,26 @@
+import gzip
 import hashlib
+import logging
 import os
 import platform
+import re
 import shutil
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from tests.fake_tools import FakeClair3, require_bare_name_fakes
+from tests.disk_volumes import GIB, Volumes
+from tests.fake_tools import (
+    FakeClair3,
+    FakeDocker,
+    fake_image_torch,
+    fake_nvidia_smi,
+    require_bare_name_fakes,
+    set_gpus,
+)
 from tests.htslib_helpers import (
     needs_tools,
     require_runnable,
@@ -20,8 +32,10 @@ from wgsextract_cli.cli.parser import build_parser
 from wgsextract_cli.cli.platform_support import verify_platform_support
 from wgsextract_cli.commands.vcf import clair3
 from wgsextract_cli.core.dependencies import clear_tool_caches
+from wgsextract_cli.core.resource_estimates import estimate_clair3
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
+    UsageError,
     WGSExtractError,
     run_command,
 )
@@ -511,3 +525,325 @@ def test_intel_macos_is_refused(monkeypatch):
     monkeypatch.setattr(platform, "machine", lambda: "x86_64")
     with pytest.raises(WGSExtractError, match="no Clair3 2.x build"):
         clair3.require_supported_platform()
+
+
+# Clair3 on an NVIDIA GPU (#639) ---------------------------------------------
+
+
+@pytest.fixture
+def clair3_gpu(request, tmp_path, monkeypatch, linux_x86):
+    """A GPU host: an RTX 3090 with nothing else on it, Docker's NVIDIA runtime
+    and HKU's Clair3 GPU image, whose /opt/bin holds FakeClair3 (2.0.5, or the
+    version given by indirect parametrization) and whose PyTorch has CUDA; no
+    Clair3 on PATH."""
+    require_bare_name_fakes()
+    require_runnable("samtools", "bcftools", "tabix")
+    image_bin = tmp_path / "image" / "bin"
+    version = getattr(request, "param", "2.0.5")
+    fake = FakeClair3(image_bin, CORE_TOOLS["bcftools"] or "bcftools", version)
+    fake_image_torch(image_bin)
+    docker = FakeDocker(tmp_path / "docker" / "bin", image_bin)
+    docker.set(gpus=True, runtimes='{"nvidia":{},"runc":{}}')
+    docker.add_image(clair3.DEFAULT_GPU_IMAGE)
+    gpus = tmp_path / "gpus.json"
+    set_gpus(gpus, (24_576, 0))
+    fake_nvidia_smi(docker.root.parent / "bin", gpus)
+    monkeypatch.setenv(
+        "PATH", f"{docker.root.parent / 'bin'}{os.pathsep}{os.environ['PATH']}"
+    )
+    monkeypatch.delitem(clair3.settings, "clair3_model", raising=False)
+    monkeypatch.delitem(clair3.settings, "clair3_gpu_image", raising=False)
+    clear_tool_caches()
+    (tmp_path / "reads").mkdir()
+    return SimpleNamespace(
+        clair3=fake, docker=docker, gpus=gpus, image_bin=image_bin,
+        reads=snp_sample(tmp_path / "reads", DORADO_RG), out=tmp_path / "out",
+    )  # fmt: skip
+
+
+def gpu_call(gpu, model: Path, *options: str, reads=None, cram: str = "") -> None:
+    """--gpu on ``reads`` (a snp_sample; default the fixture's), or its ``cram``."""
+    reads = reads or gpu.reads
+    run_wgsextract(
+        "vcf", "clair3", "--input", cram or reads.bam, "--ref", reads.ref,
+        "--gpu", "--outdir", str(gpu.out), "--model", str(model),
+        "-r", "chr1:900-1100", *options,
+    )  # fmt: skip
+
+
+def clair3_containers(gpu) -> list[dict]:
+    return [r for r in gpu.docker.runs() if r["command"][0] == clair3.GPU_CLAIR3]
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+def test_gpu_calls_in_hkus_gpu_image_from_paths_with_spaces(tmp_path, clair3_gpu):
+    """#639: --gpu runs Clair3 on the GPU in HKU's image, which must still
+    open the space-free links to the user's files (#623), within --threads."""
+    home = tmp_path / "John Smith"
+    home.mkdir()
+    reads = snp_sample(home, DORADO_RG)
+    model = make_model(home / "clair3 models", "my r1041 model")
+    clair3_gpu.out = home / "wgse out"
+    gpu_call(clair3_gpu, model, "--threads", "2", reads=reads)
+
+    outdir = clair3_gpu.out
+    assert vcf_calls(outdir / "clair3.vcf.gz") == reads.calls[:1]
+    assert sorted(p.name for p in outdir.iterdir()) == [
+        "clair3.vcf.gz",
+        "clair3.vcf.gz.tbi",
+    ]
+    assert f"##reference={reads.ref}" in header_lines(outdir / "clair3.vcf.gz")
+    (run,) = clair3_gpu.clair3.runs()
+    # contract: Clair3's networks run on the GPU, with the chosen model.
+    assert (run["opts"]["use_gpu"], run["model"]) == ("True", str(model.resolve()))
+    (container,) = clair3_containers(clair3_gpu)
+    assert (container["image"], container["gpus"]) == (clair3.DEFAULT_GPU_IMAGE, "all")
+    # contract: Clair3 starts GPU workers by free GPU memory, not --threads,
+    # so the container is held to the thread budget (Copilot on #725).
+    assert container["cpus"] == "2"
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+def test_gpu_mounts_model_weights_linked_from_elsewhere(tmp_path, clair3_gpu):
+    """#639 (Copilot on #725): a model whose weights link to a separate store
+    passes the checks on the host, so the container must see the store too."""
+    store = tmp_path / "weights store"
+    model = make_model(store, "r1041_e82_400bps_sup_v500")
+    linked = tmp_path / "models" / "my_r1041_model"
+    linked.mkdir(parents=True)
+    for name in clair3.MODEL_FILES:
+        (linked / name).symlink_to(model / name)
+    gpu_call(clair3_gpu, linked)
+
+    assert vcf_calls(clair3_gpu.out / "clair3.vcf.gz") == clair3_gpu.reads.calls[:1]
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+@pytest.mark.parametrize("clair3_gpu", ["2.0.3"], indirect=True)
+def test_custom_gpu_image_tag_doesnt_decide_its_clair3_version(
+    tmp_path, clair3_gpu, monkeypatch
+):
+    """#639 (Copilot on #725): an image tagged 2.0.6 holding Clair3 2.0.3
+    still gets CRAM 3.0 reads; its bundled htslib can't decode CRAM 3.1 (#604)."""
+    image = "my/clair3:2.0.6"
+    clair3_gpu.docker.add_image(image)
+    monkeypatch.setitem(clair3.settings, "clair3_gpu_image", image)
+    model = make_model(tmp_path, "my_r1041_model")
+    cram = as_cram(clair3_gpu.reads, "3.1", tmp_path / "reads.cram")
+    gpu_call(clair3_gpu, model, cram=cram)
+
+    (run,) = clair3_gpu.clair3.runs()
+    assert run["cram_version"] == [3, 0]
+    assert vcf_calls(clair3_gpu.out / "clair3.vcf.gz") == clair3_gpu.reads.calls[:1]
+    assert {c["image"] for c in clair3_containers(clair3_gpu)} == {image}
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+def test_gpu_skips_gpus_that_report_no_free_memory(tmp_path, clair3_gpu):
+    """#639 (Copilot on #725): Clair3 fails on a GPU whose free memory
+    nvidia-smi reports as N/A, so it is given only the GPUs with room."""
+    set_gpus(clair3_gpu.gpus, None, (24_576, 0), (24_576, 20_000))
+    gpu_call(clair3_gpu, make_model(tmp_path, "my_r1041_model"))
+
+    (run,) = clair3_gpu.clair3.runs()
+    # contract: Clair3's --device picks the GPUs its workers start on.
+    assert run["opts"]["device"] == "cuda:1"
+    assert vcf_calls(clair3_gpu.out / "clair3.vcf.gz") == clair3_gpu.reads.calls[:1]
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+@pytest.mark.parametrize(
+    ("setup", "error", "message"),
+    [
+        pytest.param(lambda gpu: gpu.docker.set(images={}), MissingDependencyError,
+                     r"docker pull hkubal/clair3:v2\.0\.5_gpu@sha256:", id="no-image"),
+        pytest.param(lambda gpu: set_gpus(gpu.gpus, (24_576, 18_000)), WGSExtractError,
+                     r"7\.8 GiB free on \(GPU 0: 6\.4 GiB free\)", id="gpu-busy"),
+        pytest.param(lambda gpu: set_gpus(gpu.gpus, None), WGSExtractError,
+                     r"GPU 0: free memory unknown \(N/A\)", id="gpu-memory-na"),
+        pytest.param(lambda gpu: gpu.docker.set(runtimes='{"runc":{}}'),
+                     MissingDependencyError, "no NVIDIA runtime", id="no-runtime"),
+        pytest.param(lambda gpu: fake_image_torch(gpu.image_bin, cuda=False),
+                     WGSExtractError, r"can't use the GPU.*would run on the CPU",
+                     id="cpu-only-torch"),
+    ],
+)  # fmt: skip
+def test_gpu_refuses_a_host_that_cant_run_it_before_any_work(
+    tmp_path, clair3_gpu, setup, error, message
+):
+    """#639: a missing image, a busy GPU (Clair3 would stop only after
+    pileup calling and phasing), no NVIDIA runtime or an image whose PyTorch
+    can't use CUDA (Clair3 would quietly call on the CPU) is named up front."""
+    setup(clair3_gpu)
+    with pytest.raises(error, match=message):
+        gpu_call(clair3_gpu, make_model(tmp_path, "my_r1041_model"))
+    assert clair3_gpu.clair3.runs() == []
+    assert not clair3_gpu.out.exists()
+
+
+@pytest.mark.parametrize(
+    ("host", "machine"), [("darwin", "arm64"), ("linux", "aarch64")]
+)
+def test_gpu_is_refused_where_clair3_has_no_gpu_build(monkeypatch, host, machine):
+    """#639: Clair3's GPU mode is CUDA only (no Apple MPS), in an x86-64 image."""
+    monkeypatch.setattr(sys, "platform", host)
+    monkeypatch.setattr(platform, "machine", lambda: machine)
+    with pytest.raises(UsageError, match="x86-64 Linux with an NVIDIA GPU"):
+        run_wgsextract("vcf", "clair3", "--input", "reads.bam", "--gpu")
+
+
+# Clair3's temporary space (#811) ---------------------------------------------
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+def test_gpu_refuses_before_calling_when_its_tensors_wont_fit(
+    tmp_path, clair3_gpu, monkeypatch, caplog
+):
+    """#811: Clair3's GPU mode writes every full-alignment tensor beside the
+    output before predicting any (about 100 GiB for a whole genome), so a
+    disk without room is refused up front, not hours in."""
+    clair3_gpu.out.mkdir()
+    volumes = Volumes(monkeypatch)
+    volumes.free[clair3_gpu.out] = 0
+    model = make_model(tmp_path, "my_r1041_model")
+    with pytest.raises(
+        WGSExtractError,
+        match=r"Clair3 run's requirement: .*GiB disk on .*--no-preflight",
+    ):
+        gpu_call(clair3_gpu, model)
+    assert clair3_gpu.clair3.runs() == []
+    assert not (clair3_gpu.out / "clair3.vcf.gz").exists()
+
+    gpu_call(clair3_gpu, model, "--no-preflight")
+    assert vcf_calls(clair3_gpu.out / "clair3.vcf.gz") == clair3_gpu.reads.calls[:1]
+    assert "Preflight disk   LOW" in caplog.text
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+@pytest.mark.parametrize("index", ["bai", "plain crai"])
+def test_temp_space_is_sized_for_the_contigs_the_reads_are_on(
+    tmp_path, clair3_gpu, monkeypatch, index
+):
+    """#811: without --region Clair3 calls chr1-22, X and Y where the index
+    places reads, so reads on one 3 kb contig of a 103 kb reference are sized
+    for that contig, not the whole reference; also from an uncompressed CRAI
+    (Copilot on #819)."""
+    reads = clair3_gpu.reads
+    path = reads.bam
+    if index == "plain crai":
+        path = reads.cram
+        crai = Path(f"{path}.crai")
+        crai.write_bytes(gzip.decompress(crai.read_bytes()))
+    ref = tmp_path / "genome.fa"
+    ref.write_text(Path(reads.ref).read_text() + ">chr2\n" + "ACGT" * 25_000 + "\n")
+    run_command(["samtools", "faidx", str(ref)])
+    clair3_gpu.out.mkdir()
+    volumes = Volumes(monkeypatch)
+    room = estimate_clair3(str(clair3_gpu.out), 10 * 3000, gpu=True).resources[0]
+    assert room.estimated_bytes
+    volumes.free[clair3_gpu.out] = room.estimated_bytes / GIB
+    run_wgsextract(
+        "vcf", "clair3", "--input", path, "--ref", str(ref), "--gpu",
+        "--outdir", str(clair3_gpu.out),
+        "--model", str(make_model(tmp_path, "my_r1041_model")),
+    )  # fmt: skip
+    assert clair3_gpu.clair3.runs()
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+def test_region_is_sized_at_its_own_depth(tmp_path, clair3_gpu, caplog):
+    """#811 (Copilot on #819): a region shallower than the rest of the reads
+    (a man's chrX, or here chr1:1-3000 with reads over 500-2500) is sized at
+    its own depth, which needs more tensors."""
+    caplog.set_level(logging.INFO)
+    reads = clair3_gpu.reads
+    bed = tmp_path / "region.bed"
+    bed.write_text("chr1\t0\t3000\n")
+    bedcov = run_command(
+        ["samtools", "bedcov", "-j", str(bed), reads.bam], capture_output=True
+    ).stdout
+    depth = int(bedcov.split()[3]) / 3000
+    run_wgsextract(
+        "vcf", "clair3", "--input", reads.bam, "--ref", reads.ref, "--gpu",
+        "--outdir", str(clair3_gpu.out), "-r", "chr1:1-3000",
+        "--model", str(make_model(tmp_path, "my_r1041_model")),
+    )  # fmt: skip
+    assert f" at {depth:.0f}x." in caplog.text
+
+
+def test_gpu_estimate_covers_the_measured_whole_genome_and_shallow_reads(tmp_path):
+    """#811: the 43x HG002 whole genome peaked at 99.7 GiB of tensors; the
+    estimate covers it, and shallower reads (more low-quality candidates)
+    need more."""
+
+    def gib(depth: float) -> float:
+        estimate = estimate_clair3(str(tmp_path), 3_088_269_832, gpu=True, depth=depth)
+        return (estimate.resources[0].estimated_bytes or 0) / GIB
+
+    assert 99.7 < gib(43) < 1.5 * 99.7
+    assert gib(10) > 3 * gib(43)
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+def test_clair3_states_its_host_requirement_and_only_warns_short_of_ram(
+    tmp_path, clair3_gpu, ram, caplog
+):
+    """#690: Clair3 states its disk, RAM and time before it starts. Its RAM
+    is one measured --gpu run's (#431), so a computer with less is warned,
+    not refused."""
+    caplog.set_level(logging.INFO)
+    ram(4 * GIB)
+    gpu_call(clair3_gpu, make_model(tmp_path, "my_r1041_model"))
+    assert re.search(
+        r"this Clair3 run needs \S+ GiB disk on .*, ~\d+ GiB RAM, "
+        r"~[\d.]+ (h|min) on \d+ threads?",
+        caplog.text,
+    )
+    assert clair3_gpu.clair3.runs()
+    assert (clair3_gpu.out / "clair3.vcf.gz").is_file()
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+@pytest.mark.parametrize("clair3_gpu", ["2.0.3"], indirect=True)
+def test_staged_reads_state_the_host_requirement_once(
+    tmp_path, clair3_gpu, ram, monkeypatch, caplog
+):
+    """#690 review: the disk recheck after a CRAM 3.0 copy is written printed
+    Clair3's requirement and recorded its RAM warning a second time."""
+    from wgsextract_cli.core.results import CommandResult, collecting
+
+    caplog.set_level(logging.INFO)
+    ram(4 * GIB)
+    # Clair3 2.0.3 in an image whose tag doesn't say so: its reads are staged.
+    clair3_gpu.docker.add_image("my/clair3:latest")
+    monkeypatch.setitem(clair3.settings, "clair3_gpu_image", "my/clair3:latest")
+    cram = as_cram(clair3_gpu.reads, "3.1", tmp_path / "reads.cram")
+    result = CommandResult(command="vcf clair3")
+    with collecting(result):
+        gpu_call(clair3_gpu, make_model(tmp_path, "my_r1041_model"), cram=cram)
+
+    assert clair3_gpu.clair3.runs()[0]["cram_version"] == [3, 0]
+    assert caplog.text.count("Host requirement:") == 1
+    codes = [warning.code for warning in result.warnings]
+    assert codes.count("host_requirement_memory") == 1
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+@pytest.mark.parametrize("clair3_gpu", ["2.0.3"], indirect=True)
+def test_staged_copy_counts_in_the_host_requirement_before_transcoding(
+    tmp_path, clair3_gpu, monkeypatch, caplog
+):
+    """#690 review: a disk with room for the CRAM 3.0 copy or the tensors,
+    not both, passed both checks and wrote the whole copy before the recheck
+    refused. The first requirement now counts both."""
+    caplog.set_level(logging.INFO)
+    clair3_gpu.docker.add_image("my/clair3:latest")
+    monkeypatch.setitem(clair3.settings, "clair3_gpu_image", "my/clair3:latest")
+    cram = as_cram(clair3_gpu.reads, "3.1", tmp_path / "reads.cram")
+    clair3_gpu.out.mkdir()
+    # Exactly the copy's 64 MiB minimum.
+    Volumes(monkeypatch).free[clair3_gpu.out] = 64 / 1024
+    with pytest.raises(WGSExtractError, match=r"Clair3 run's requirement: .*GiB disk"):
+        gpu_call(clair3_gpu, make_model(tmp_path, "my_r1041_model"), cram=cram)
+    assert "Transcoding CRAM" not in caplog.text
+    assert clair3_gpu.clair3.runs() == []

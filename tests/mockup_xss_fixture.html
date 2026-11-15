@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mockup inert-text regression</title>
+<script>window.WGSM = { render: { blocks: {} } };</script>
+<script src="../gui/mockups/shared/core.js" defer></script>
+<script src="../gui/mockups/shared/ui.js" defer></script>
+<script src="../gui/mockups/shared/annotate/composer.js" defer></script>
+<script src="../gui/mockups/shared/annotate/panel.js" defer></script>
+<script src="mockup_xss_fixture.js" defer></script>
+<script src="../gui/mockups/shared/annotate/all-notes.js" defer></script>
+</head>
+<body data-page-id="index">
+<main id="fixture-vp">
+  <input id="filter-idea"><input id="filter-page"><input id="filter-author">
+  <select id="filter-status"><option value="">All</option></select>
+  <button id="refresh-notes">Refresh</button><button id="export-notes">Export</button>
+  <input id="import-notes" type="file">
+  <p id="notes-status"></p><ol id="all-notes"></ol>
+  <section id="fixture-summary"></section>
+</main>
+<button id="fixture-notes-button">Notes</button>
+<pre id="xss-result">Pending</pre>
+</body>
+</html>

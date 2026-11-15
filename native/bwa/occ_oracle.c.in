@@ -1,0 +1,109 @@
+/* wgse: bwt_occ4() and bwt_2occ4() with NEON on aarch64. An occurrence block is
+ * 4 counts and 8 words of 16 bases (2 bits each, the first base in the top
+ * bits). Upstream adds four table lookups per word up to k's; this counts each
+ * base in the block's 32 bytes at once, after masking the bases past k, and
+ * gives the same counts. Upstream's code runs with --cpu-upstream and
+ * elsewhere. */
+#if defined(__aarch64__)
+#include <arm_neon.h>
+#include <pthread.h>
+
+/* wgse_occ_mask[n]: the block's bytes with its first n bases kept. */
+static uint8_t wgse_occ_mask[129][32];
+static int wgse_occ_ready = 0; /* 1: NEON, -1: upstream's (decided once) */
+
+static void wgse_occ_init(void)
+{
+	int n, i;
+	for (n = 0; n <= 128; ++n)
+		for (i = 0; i < 8; ++i) {
+			int bases = n - 16 * i;
+			uint32_t w = bases <= 0 ? 0 : bases >= 16 ? 0xffffffffu : ~((1u << ((16 - bases) << 1)) - 1);
+			memcpy(wgse_occ_mask[n] + 4 * i, &w, 4);
+		}
+}
+
+static inline int wgse_occ_fast(void)
+{
+	int ready = __atomic_load_n(&wgse_occ_ready, __ATOMIC_ACQUIRE);
+	if (ready == 0) {
+		static pthread_once_t once = PTHREAD_ONCE_INIT;
+		pthread_once(&once, wgse_occ_init);
+		ready = wgse_fast_cpu() ? 1 : -1;
+		__atomic_store_n(&wgse_occ_ready, ready, __ATOMIC_RELEASE);
+	}
+	return ready > 0;
+}
+
+/* Adds the counts of A, C, G and T among the first n bases of the block's
+ * words w to cnt. */
+static inline void wgse_occ_count(const uint32_t *w, int n, bwtint_t cnt[4])
+{
+	const uint8x16_t m55 = vdupq_n_u8(0x55);
+	const uint8_t *mask = wgse_occ_mask[n];
+	uint8x16_t k0 = vld1q_u8(mask), k1 = vld1q_u8(mask + 16);
+	uint8x16_t v0 = vandq_u8(vld1q_u8((const uint8_t*)w), k0);
+	uint8x16_t v1 = vandq_u8(vld1q_u8((const uint8_t*)w + 16), k1);
+	uint8x16_t lo0 = vandq_u8(v0, m55), hi0 = vandq_u8(vshrq_n_u8(v0, 1), m55);
+	uint8x16_t lo1 = vandq_u8(v1, m55), hi1 = vandq_u8(vshrq_n_u8(v1, 1), m55);
+	/* A is 00: count only the kept bases. */
+	uint8x16_t a0 = vbicq_u8(vandq_u8(k0, m55), vorrq_u8(lo0, hi0));
+	uint8x16_t a1 = vbicq_u8(vandq_u8(k1, m55), vorrq_u8(lo1, hi1));
+	uint8x16_t c0 = vbicq_u8(lo0, hi0), c1 = vbicq_u8(lo1, hi1);
+	uint8x16_t g0 = vbicq_u8(hi0, lo0), g1 = vbicq_u8(hi1, lo1);
+	uint8x16_t t0 = vandq_u8(lo0, hi0), t1 = vandq_u8(lo1, hi1);
+	cnt[0] += vaddvq_u8(vaddq_u8(vcntq_u8(a0), vcntq_u8(a1)));
+	cnt[1] += vaddvq_u8(vaddq_u8(vcntq_u8(c0), vcntq_u8(c1)));
+	cnt[2] += vaddvq_u8(vaddq_u8(vcntq_u8(g0), vcntq_u8(g1)));
+	cnt[3] += vaddvq_u8(vaddq_u8(vcntq_u8(t0), vcntq_u8(t1)));
+}
+
+void bwt_occ4(const bwt_t *bwt, bwtint_t k, bwtint_t cnt[4])
+{
+	const uint32_t *p;
+	if (!wgse_occ_fast()) {
+		bwt_occ4_upstream(bwt, k, cnt);
+		return;
+	}
+	if (k == (bwtint_t)(-1)) {
+		memset(cnt, 0, 4 * sizeof(bwtint_t));
+		return;
+	}
+	k -= (k >= bwt->primary); /* because $ is not in bwt */
+	p = bwt_occ_intv(bwt, k);
+	memcpy(cnt, p, 4 * sizeof(bwtint_t));
+	wgse_occ_count(p + sizeof(bwtint_t), (int)(k & OCC_INTV_MASK) + 1, cnt);
+}
+
+void bwt_2occ4(const bwt_t *bwt, bwtint_t k, bwtint_t l, bwtint_t cntk[4], bwtint_t cntl[4])
+{
+	bwtint_t _k, _l;
+	const uint32_t *p;
+	if (!wgse_occ_fast()) {
+		bwt_2occ4_upstream(bwt, k, l, cntk, cntl);
+		return;
+	}
+	_k = k - (k >= bwt->primary);
+	_l = l - (l >= bwt->primary);
+	if (_l>>OCC_INTV_SHIFT != _k>>OCC_INTV_SHIFT || k == (bwtint_t)(-1) || l == (bwtint_t)(-1)) {
+		bwt_occ4(bwt, k, cntk);
+		bwt_occ4(bwt, l, cntl);
+		return;
+	}
+	p = bwt_occ_intv(bwt, _k);
+	memcpy(cntk, p, 4 * sizeof(bwtint_t));
+	memcpy(cntl, p, 4 * sizeof(bwtint_t));
+	wgse_occ_count(p + sizeof(bwtint_t), (int)(_k & OCC_INTV_MASK) + 1, cntk);
+	wgse_occ_count(p + sizeof(bwtint_t), (int)(_l & OCC_INTV_MASK) + 1, cntl);
+}
+#else
+void bwt_occ4(const bwt_t *bwt, bwtint_t k, bwtint_t cnt[4])
+{
+	bwt_occ4_upstream(bwt, k, cnt);
+}
+
+void bwt_2occ4(const bwt_t *bwt, bwtint_t k, bwtint_t l, bwtint_t cntk[4], bwtint_t cntl[4])
+{
+	bwt_2occ4_upstream(bwt, k, l, cntk, cntl);
+}
+#endif

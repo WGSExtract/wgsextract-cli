@@ -14,6 +14,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from wgsextract_cli.cli.registration.serve import register as register
 from wgsextract_cli.core.config import dataset_library, get_config_path, settings
 from wgsextract_cli.core.results import json_mode
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
@@ -24,85 +25,6 @@ if TYPE_CHECKING:
 
 
 MCP_TRANSPORTS = ("stdio", "http")
-
-
-def register(
-    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    base_parser: argparse.ArgumentParser,
-) -> None:
-    parser = subparsers.add_parser(
-        "serve",
-        parents=[base_parser],
-        help="Serve the WGS Extract API to local apps and AI agents, over "
-        "HTTP/JSON or MCP.",
-        description="Run the same operations as the CLI (info, vcf snp, ...) "
-        "for other programs on this computer: as an HTTP/JSON API on "
-        "127.0.0.1 with a per-launch token, or as an MCP server (--mcp) on "
-        "stdio or on 127.0.0.1 over streamable HTTP. Operations run as "
-        "background jobs with progress, cancelling and result manifests. "
-        "Requests may only name files inside the folders you allow: --allow, "
-        "config server_allowed_paths, "
-        "dataset_library, reference_library, reference_genome_library and "
-        "output_directory.",
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        help="Port on 127.0.0.1 (default: config server_port, or "
-        "server_mcp_port for MCP over HTTP, else any free port).",
-    )
-    parser.add_argument(
-        "--allow",
-        action="append",
-        default=[],
-        metavar="DIR",
-        help="Also let requests read and write inside DIR (repeatable).",
-    )
-    parser.add_argument(
-        "--max-jobs",
-        type=int,
-        help="Long jobs that run at once; others wait in a queue (default: "
-        "config server_max_jobs, else 1). Quick queries never wait.",
-    )
-    parser.add_argument(
-        "--mcp",
-        action="store_true",
-        help="Speak the Model Context Protocol instead of the HTTP/JSON API: "
-        "on stdin/stdout, or over HTTP with --mcp-transport http.",
-    )
-    parser.add_argument(
-        "--mcp-transport",
-        choices=MCP_TRANSPORTS,
-        help="How --mcp is spoken (implies --mcp): stdio, or http for "
-        "streamable HTTP on 127.0.0.1 with a per-launch token, which needs "
-        "the optional 'mcp' package (default: config server_mcp_transport, "
-        "else stdio).",
-    )
-    parser.add_argument(
-        "--allow-jobs",
-        action="store_true",
-        help="With --mcp, also offer the operations that write files or change "
-        "a sample's settings, not just the read-only queries.",
-    )
-    parser.add_argument(
-        "--allow-destructive",
-        action="store_true",
-        help="Also run requests that delete data a command didn't make: "
-        "bam unindex, sample unset, vep delete and the ref installers' --delete.",
-    )
-    parser.add_argument(
-        "--ready-json",
-        action="store_true",
-        help="Once listening, print the address and token as one JSON line on "
-        'stdout ({"url": ..., "token": ..., "pid": ...}), for a program that '
-        "starts the server itself. Not for MCP over stdio.",
-    )
-    parser.add_argument(
-        "--openapi",
-        action="store_true",
-        help="Print the HTTP API's OpenAPI document and exit.",
-    )
-    parser.set_defaults(func=run)
 
 
 def allowed_roots(extra: Iterable[str]) -> list[Path]:
@@ -281,19 +203,19 @@ def _serve_mcp_http(
         raise UsageError(f"Can't listen on 127.0.0.1:{port}: {e}") from None
     url = f"http://127.0.0.1:{sock.getsockname()[1]}{PATH}"
     mode = " (jobs allowed)" if allow_jobs else " (read-only queries)"
-    _announce(
-        f"WGS Extract MCP server (streamable HTTP) on {url}{mode}",
-        url,
-        token,
-        discovery,
-        guard,
-        f"Clients send it as 'Authorization: Bearer {token}'.",
-        ready_json=ready_json,
-    )
     try:
+        # Discovery precedes HTTP startup, so protect it from early Ctrl-C too.
+        _announce(
+            f"WGS Extract MCP server (streamable HTTP) on {url}{mode}",
+            url,
+            token,
+            discovery,
+            guard,
+            f"Clients send it as 'Authorization: Bearer {token}'.",
+            ready_json=ready_json,
+        )
         serve(McpTools(manager, guard, allow_jobs=allow_jobs), token, sock)
     except (KeyboardInterrupt, SystemExit):
-        # uvicorn shuts down gracefully, then re-raises the signal.
         logging.info("Stopping the MCP server.")
     finally:
         sock.close()
@@ -316,16 +238,16 @@ def _serve_http(
     except OSError as e:
         raise UsageError(f"Can't listen on 127.0.0.1:{port}: {e}") from None
     url = server.url + "/v1"
-    _announce(
-        f"WGS Extract server on {url}",
-        url,
-        token,
-        discovery,
-        guard,
-        f"Try: curl -H 'Authorization: Bearer {token}' {url}/ops",
-        ready_json=ready_json,
-    )
     try:
+        _announce(
+            f"WGS Extract server on {url}",
+            url,
+            token,
+            discovery,
+            guard,
+            f"Try: curl -H 'Authorization: Bearer {token}' {url}/ops",
+            ready_json=ready_json,
+        )
         server.serve_forever()
     except (KeyboardInterrupt, SystemExit):
         logging.info("Stopping the server.")

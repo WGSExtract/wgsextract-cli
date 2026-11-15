@@ -8,6 +8,8 @@
 # sequences too short or too ambiguous to split.
 # Usage: segments.sh <wgse-minimap2> <wgse-minimap2-segments> <work-dir>
 set -eu
+# shellcheck source=native/tests/seeded_random.sh
+. "$(dirname "$0")/../../tests/seeded_random.sh"
 release=$1
 segments=$2
 work=$3
@@ -16,8 +18,8 @@ rm -rf "$work"
 mkdir -p "$work"
 cd "$work"
 
-awk 'BEGIN {
-    srand(364)
+awk "$seeded_random"'BEGIN {
+    seed(364)
     split("A C G T", base, " ")
     contig("chr1", 400000, "random")
     contig("chr2", 120000, "homopolymer")
@@ -31,19 +33,19 @@ function contig(name, size, kind,    i, j, b, line, n_gap) {
     line = ""; n_gap = 0
     for (i = 1; i <= size; i++) {
         if (kind == "n") b = "N"
-        else if (kind == "gappy") b = i % 800 == 0 ? "N" : base[int(rand() * 4) + 1]
+        else if (kind == "gappy") b = i % 800 == 0 ? "N" : base[int(rnd() * 4) + 1]
         else if (n_gap > 0) { b = "N"; n_gap-- }
         else if (kind == "homopolymer") {
             # Runs of 1200 identical bases between 24 random ones. In HPC mode each segment
             # then starts after a run, with no k-mer counted in its warm-up, while the
             # window holds valid k-mers of the bases before the run.
             j = (i - 1) % 1224
-            if (j == 0) hb = base[int(rand() * 4) + 1]
-            b = j < 1200 ? hb : base[int(rand() * 4) + 1]
+            if (j == 0) hb = base[int(rnd() * 4) + 1]
+            b = j < 1200 ? hb : base[int(rnd() * 4) + 1]
         } else {
-            b = base[int(rand() * 4) + 1]
-            r = rand()
-            if (r < 0.00002) n_gap = int(rand() * 3000)
+            b = base[int(rnd() * 4) + 1]
+            r = rnd()
+            if (r < 0.00002) n_gap = int(rnd() * 3000)
             else if (r < 0.00004) b = "R"
             else if (r < 0.0004) b = tolower(b)
         }

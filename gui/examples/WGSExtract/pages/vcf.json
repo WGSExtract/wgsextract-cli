@@ -32,12 +32,29 @@
       "iconName": "annotation",
       "textIcon": "✅",
       "dataSource": {
-        "path": "scripts/library-state.sh",
+        "path": "scripts/run-wgsextract.sh",
         "arguments": [
-          "{{ref_path}}",
-          "{{dataset_library}}",
-          "{{vcf_ann_vcf}}",
-          "{{vcf_path}}"
+          "ref",
+          "status",
+          "--values"
+        ],
+        "optionalArguments": [
+          [
+            "--ref",
+            "{{ref_path}}"
+          ],
+          [
+            "--dataset-library",
+            "{{dataset_library}}"
+          ],
+          [
+            "--annotation-vcf",
+            "{{vcf_ann_vcf}}"
+          ],
+          [
+            "--input",
+            "{{vcf_path}}"
+          ]
         ]
       },
       "controls": [
@@ -496,6 +513,7 @@
       "id": "more-annotations",
       "title": "sections.cli.more-annotations.title",
       "subtitle": "sections.cli.more-annotations.subtitle",
+      "iconName": "tags",
       "textIcon": "🏷️",
       "advancedOnly": true,
       "controls": [
@@ -895,6 +913,7 @@
     {
       "id": "pharmacogenomics",
       "title": "sections.cli.pharmacogenomics.title",
+      "iconName": "pharmacogenomics",
       "textIcon": "💊",
       "advancedOnly": true,
       "controls": [
@@ -980,6 +999,7 @@
     {
       "id": "consensus",
       "title": "sections.cli.consensus.title",
+      "iconName": "fasta",
       "textIcon": "🧬",
       "advancedOnly": true,
       "controls": [

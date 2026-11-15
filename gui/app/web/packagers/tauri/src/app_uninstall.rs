@@ -19,7 +19,7 @@ use crate::{backend::BackendProcess, child_process_path, menu::app_name, AppPath
 
 pub(crate) const UNINSTALL_MENU_ID: &str = "uninstall-app";
 /// Runs the uninstall at launch without asking, then quits (for automated lifecycle tests).
-pub(crate) const AUTO_RUN_UNINSTALL_ENV: &str = "GUI_FOR_CLI_AUTO_RUN_UNINSTALL";
+pub(crate) const AUTO_RUN_UNINSTALL_ENV: &str = "WGSEXTRACT_GUI_AUTO_RUN_UNINSTALL";
 
 pub(crate) fn request_uninstall<R: Runtime>(app: &AppHandle<R>) {
     let app = app.clone();
@@ -58,8 +58,8 @@ fn ask_to_remove_workspace<R: Runtime>(app: &AppHandle<R>, name: &str) -> bool {
     let workspace = Command::new(&paths.node_path)
         .arg(child_process_path(&uninstall_script(&paths)))
         .args([
-            "--app-support-name",
-            &paths.app_support_name,
+            "--app-data-name",
+            &paths.app_data_name,
             "--print-workspace",
         ])
         .arg(child_process_path(&paths.bundle_root))
@@ -129,8 +129,8 @@ fn remove_setup_and_data<R: Runtime>(
     let paths = app.state::<AppPaths>();
     let mut command = Command::new(&paths.node_path);
     command.arg(child_process_path(&uninstall_script(&paths))).args([
-        "--app-support-name",
-        &paths.app_support_name,
+        "--app-data-name",
+        &paths.app_data_name,
         "--remove-app-data",
     ]);
     if remove_workspace {
@@ -143,8 +143,13 @@ fn remove_setup_and_data<R: Runtime>(
     if !status.success() {
         return Err(format!("the uninstall steps failed ({status})"));
     }
-    // WebKit's caches and the backend log, outside the data folder the steps removed.
-    for dir in [app.path().app_cache_dir(), app.path().app_log_dir()]
+    // The webview's data and caches and the backend log, outside the data folder the steps removed.
+    for dir in [
+        app.path().app_data_dir(),
+        app.path().app_local_data_dir(),
+        app.path().app_cache_dir(),
+        app.path().app_log_dir(),
+    ]
         .into_iter()
         .flatten()
     {

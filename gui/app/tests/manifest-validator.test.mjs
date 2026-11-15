@@ -104,4 +104,6 @@ test("manifest validator counts emoji text icons as single characters", () => {
 test("manifest validator checks setup step platforms and admin flags", () => {
   rejects((manifest) => { manifest.setup.steps[0].platforms = ["beos"]; }, /Unsupported setup platform at setup\.steps\.0\.platforms\.0: beos/);
   rejects((manifest) => { manifest.setup.steps[0].requiresAdmin = "yes"; }, /Invalid setup\.steps\.0\.requiresAdmin/);
+  // A kind the setup runner can't run (and Settings can't name) fails at load, not mid-setup.
+  rejects((manifest) => { manifest.setup.steps[0].kind = "setupScritp"; }, /Invalid setup\.steps\.tool\.kind: expected one of pathTool, /);
 });

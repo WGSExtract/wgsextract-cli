@@ -181,7 +181,8 @@ def decode_text(data: bytes) -> str:
     return data.decode("utf-8-sig")
 
 
-def _read_bytes(path: Path) -> bytes:
+def read_raw_bytes(path: Path) -> bytes:
+    """A raw-data file's bytes; a ZIP must hold one data file."""
     if zipfile.is_zipfile(path):
         with zipfile.ZipFile(path) as archive:
             members = [
@@ -204,7 +205,7 @@ def read_raw_export(path: str | Path) -> RawExport:
     """Parse a raw-data export (plain, gzip or single-file ZIP) without genotypes."""
     path = Path(path)
     try:
-        text = decode_text(_read_bytes(path))
+        text = decode_text(read_raw_bytes(path))
         return parse_raw_export(io.StringIO(text), path.name)
     except (
         OSError,

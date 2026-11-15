@@ -10,7 +10,6 @@ from .cli.bootstrap import (
     install_signal_handlers,
     start_parent_monitor,
 )
-from .cli.dispatch import dispatch_command
 from .cli.help import print_full_help, run_help
 from .cli.parser import build_parser, config_path_from_argv, parse_args
 from .core.config import reload_settings, set_config_path
@@ -34,7 +33,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         )
         raise SystemExit(1) from None
 
-    parser, base_parser = build_parser()
+    parser, base_parser = build_parser(lazy=True)
     args, explicit_dests = parse_args(parser, base_parser, argv)
     args._argv = list(sys.argv[1:] if argv is None else argv)
 
@@ -54,6 +53,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     try:
         with run_logging(args, sys.argv[1:] if argv is None else argv):
             if hasattr(args, "func"):
+                from .cli.dispatch import dispatch_command
+
                 dispatch_command(args, explicit_dests)
             else:
                 parser.print_help()

@@ -1,0 +1,239 @@
+/* Progress: bars (determinate, indeterminate), rings, multi-stage
+ * pipelines, and the job row built from them. */
+
+.progress {
+  position: relative;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--c-surface-3);
+  overflow: hidden;
+}
+
+.progress__fill {
+  height: 100%;
+  width: var(--v, 0%);
+  border-radius: inherit;
+  background: var(--progress, var(--c-primary));
+  transition: width var(--dur-slow) var(--ease);
+}
+
+.progress--lg {
+  height: 10px;
+}
+
+.progress--success {
+  --progress: var(--c-success);
+}
+
+.progress--warn {
+  --progress: var(--c-warn);
+}
+
+.progress--danger {
+  --progress: var(--c-danger);
+}
+
+.progress--indeterminate .progress__fill {
+  position: absolute;
+  width: 35%;
+  animation: progress-slide 1.4s var(--ease) infinite;
+}
+
+@keyframes progress-slide {
+  from {
+    left: -35%;
+  }
+
+  to {
+    left: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress--indeterminate .progress__fill {
+    left: 0;
+    width: 100%;
+    opacity: 0.45;
+    animation: none;
+  }
+}
+
+/* Ring: conic-gradient so it needs no SVG; --v is 0-100 */
+.ring {
+  --size: 28px;
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: var(--size);
+  height: var(--size);
+  border-radius: 50%;
+  background: conic-gradient(var(--progress, var(--c-primary)) calc(var(--v, 0) * 1%), var(--c-surface-3) 0);
+  font-size: 9px;
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.ring::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--ring-bg, var(--c-surface));
+}
+
+.ring > * {
+  position: relative;
+}
+
+.ring--lg {
+  --size: 56px;
+  font-size: var(--fs-sm);
+}
+
+.ring--lg::before {
+  inset: 5px;
+}
+
+/* Multi-stage pipeline: one segment per step of a job */
+.stages {
+  display: flex;
+  gap: 3px;
+  width: 100%;
+}
+
+.stage {
+  flex: var(--w, 1) 1 0;
+  min-width: 0;
+}
+
+.stage__bar {
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--c-surface-3);
+  overflow: hidden;
+}
+
+.stage__bar > span {
+  display: block;
+  height: 100%;
+  width: var(--v, 0%);
+  background: var(--c-primary);
+}
+
+.stage[data-state="done"] .stage__bar > span {
+  width: 100%;
+  background: var(--c-success);
+}
+
+.stage[data-state="skipped"] .stage__bar {
+  background: repeating-linear-gradient(45deg, var(--c-surface-3) 0 4px, transparent 4px 8px);
+}
+
+.stage[data-state="failed"] .stage__bar > span {
+  width: 100%;
+  background: var(--c-danger);
+}
+
+.stage__label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: var(--fs-2xs);
+  color: var(--c-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stage[data-state="running"] .stage__label {
+  color: var(--c-text);
+  font-weight: var(--fw-semibold);
+}
+
+/* Job row: icon, title, stages/progress, meta, actions */
+.job {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--sp-2) var(--sp-3);
+  align-items: start;
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-surface);
+}
+
+.job:last-child {
+  border-bottom: 0;
+}
+
+.job__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  background: var(--c-surface-2);
+  color: var(--c-text-2);
+}
+
+.job[data-status="running"] .job__icon {
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+
+.job[data-status="failed"] .job__icon,
+.job[data-status="interrupted"] .job__icon {
+  background: var(--c-danger-soft);
+  color: var(--c-danger);
+}
+
+.job[data-status="succeeded"] .job__icon {
+  background: var(--c-success-soft);
+  color: var(--c-success);
+}
+
+.job__main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.job__title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+  font-weight: var(--fw-semibold);
+}
+
+.job__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--c-text-3);
+}
+
+.job__meta strong {
+  color: var(--c-text-2);
+  font-weight: var(--fw-semibold);
+}
+
+.job__actions {
+  display: flex;
+  gap: var(--sp-1);
+  align-self: start;
+}
+
+@container app (max-width: 720px) {
+  .job {
+    grid-template-columns: auto 1fr;
+  }
+
+  .job__actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+}

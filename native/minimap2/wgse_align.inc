@@ -11,7 +11,7 @@ static void wgse_ksw_prefetch(void *km, const mm_mapopt_t *opt, const mm_idx_t *
 	int8_t mat[25];
 	mm128_t *tmp = 0;
 	(void)qlen;
-	if (!wgse_ksw_metal_enabled() || n_regs == 0) return;
+	if (!wgse_ksw_gpu_enabled() || n_regs == 0) return;
 	// mm_align_pair's ksw_extd2_sse path, without KSW_EZ_GENERIC_SC or splicing.
 	if (opt->flag & (MM_F_SR | MM_F_SPLICE | MM_F_SR_RNA)) return;
 	if ((opt->q == opt->q2 && opt->e == opt->e2) || (opt->transition != 0 && opt->b != opt->transition)) return;

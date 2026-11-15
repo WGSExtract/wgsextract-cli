@@ -1,0 +1,16 @@
+--- a/phase/src/caller/caller_initialise.cpp
++++ b/phase/src/caller/caller_initialise.cpp
+@@ -167,8 +167,13 @@ void caller::setup_mpileup()
+ 	{
+ 	// without these 2 lines, htslib sometimes tries to download a part of the sequence
+ 	// even though the -f reference was provided.
++#ifdef _WIN32
++		if (!getenv("REF_CACHE")) _putenv_s("REF_CACHE", "");
++		if (!getenv("REF_PATH")) _putenv_s("REF_PATH", "fake_value_so_no_download");
++#else
+ 		setenv("REF_CACHE", "", 0);
+ 		setenv("REF_PATH", "fake_value_so_no_download", 0);
++#endif
+ 	}
+ 
+ 	//if (!options.count("fasta") && !options.count("download-fasta-ref")) vrb.error("Fasta file should be provided or --download-fasta-ref option must be added.");

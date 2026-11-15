@@ -79,7 +79,7 @@ function zipArchive(files) {
 }
 
 async function withTempDir(run) {
-  const directory = await mkdtemp(path.join(tmpdir(), "gui-for-cli-archive-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-archive-"));
   try {
     await run(directory);
   }

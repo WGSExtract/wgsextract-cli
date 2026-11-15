@@ -1,0 +1,165 @@
+name: Linux DeepVariant
+
+# Builds wgse-deepvariant for Linux x86-64 as conda packages
+# (packaging/wgse-deepvariant: DeepVariant 1.10.0 from native/deepvariant, with
+# call_variants on ONNX Runtime, in a CUDA and a CPU-only build), converts its
+# WGS and ONT_R104 weights from Google's image, smoke-tests both builds on the
+# CPU (the runner has no GPU), and publishes packages and weights to a
+# prerelease when asked: Actions > Linux DeepVariant > Run workflow, with a new
+# tag such as linux-deepvariant-1.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+    branches: [ main ]
+    paths:
+      - native/deepvariant/**
+      - native/tests/seeded_random.sh
+      - packaging/wgse-deepvariant/**
+      - .github/workflows/linux_deepvariant.yml
+      - .github/actions/setup-pixi/**
+      - "!**/*.md"
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+  schedule:
+    - cron: "47 6 * * *"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: New release tag to publish the packages under (empty builds only).
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
+  # A newer push supersedes a PR's build; a release run is never cancelled.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # The image docs/deepvariant-arm64.md checks the Linux ARM64 build's models against.
+  DEEPVARIANT_IMAGE: google/deepvariant:1.10.0@sha256:962e5a83b1d76aae6990625d47102785f791603f2138aa1fa9aa4fb6a2eecbe6
+
+jobs:
+  weights:
+    if: ${{ github.event.pull_request.draft != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Convert the WGS and ONT_R104 models
+        run: |
+          mkdir -p out/weights
+          docker run --rm --network none -v "$PWD:/w" "$DEEPVARIANT_IMAGE" \
+            python3 /w/native/deepvariant/convert_weights.py /w/out/weights
+          (cd out/weights && sha256sum -c ../../native/deepvariant/weights-sha256.txt)
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: deepvariant-weights-linux
+          path: out/weights
+          if-no-files-found: error
+
+  build:
+    if: ${{ github.event.pull_request.draft != true }}
+    needs: weights
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Pixi
+        uses: ./.github/actions/setup-pixi
+        with:
+          install: "false"
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: deepvariant-weights-linux
+          path: out/weights
+
+      - uses: ./.github/actions/compiler-cache
+        with:
+          scope: deepvariant-conda
+          recipe: ${{ hashFiles('packaging/wgse-deepvariant/**', 'native/deepvariant/**/CMakeLists.txt', '.github/workflows/linux_deepvariant.yml') }}
+
+      - name: Build the packages
+        # The CUDA build needs a driver only to call on the GPU: CONDA_OVERRIDE_CUDA
+        # lets the GPU-less runner solve and install it.
+        env:
+          CONDA_OVERRIDE_CUDA: "12.9"
+        run: |
+          pixi exec --spec rattler-build==0.77.0 rattler-build build --no-build-id -c conda-forge -c bioconda --recipe-dir packaging/wgse-deepvariant \
+            -m packaging/wgse-deepvariant/variants.yaml --output-dir out/conda --target-platform linux-64
+
+      - name: Smoke-test both builds on the CPU
+        env:
+          CONDA_OVERRIDE_CUDA: "12.9"
+        run: |
+          # The single-quoted script runs in the package's environment.
+          # shellcheck disable=SC2016
+          for package in out/conda/linux-64/wgse-deepvariant-*.conda; do
+            build=$(basename "$package" .conda)
+            pixi exec -c "file://$PWD/out/conda" -c conda-forge -c bioconda \
+              --spec "wgse-deepvariant==$(echo "$build" | cut -d- -f3)=$(echo "$build" | cut -d- -f4)" \
+              --spec samtools -- bash -c '
+                set -e
+                wgse-deepvariant --version
+                native/deepvariant/tests/smoke.sh "$(command -v wgse-deepvariant)" out/weights "out/smoke-$0"
+              ' "$build"
+          done
+
+      - uses: ./.github/actions/compiler-cache
+        with:
+          phase: save
+          scope: deepvariant-conda
+          recipe: ${{ hashFiles('packaging/wgse-deepvariant/**', 'native/deepvariant/**/CMakeLists.txt', '.github/workflows/linux_deepvariant.yml') }}
+
+      - name: Package the weights
+        run: |
+          mkdir -p out/stage
+          # Google distributes the models under DeepVariant's BSD-3-Clause licence.
+          curl -fsSL -o out/DeepVariant-LICENSE \
+            https://raw.githubusercontent.com/google/deepvariant/v1.10.0/LICENSE
+          weights=wgse-deepvariant-weights-1.10.0
+          mkdir -p "out/stage/$weights"
+          cp -R out/weights/. "out/stage/$weights/"
+          cp out/DeepVariant-LICENSE "out/stage/$weights/LICENSE"
+          tar -C out/stage -czf "out/conda/$weights.tar.gz" "$weights"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-deepvariant
+          path: |
+            out/conda/linux-64/*.conda
+            out/conda/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/publish-native-release
+        with:
+          tag: ${{ inputs.release_tag }}
+          tag-prefix: linux-deepvariant-
+          title: Linux DeepVariant ${{ inputs.release_tag }}
+          source: native/deepvariant and packaging/wgse-deepvariant
+          artifacts: linux-deepvariant
+          assets: "*.conda *.tar.gz"
+          sha256sums: "true"
+          description: |
+            wgse-deepvariant: DeepVariant 1.10.0 for Linux x86-64 as conda packages (CUDA 12.9 or CPU-only call_variants), and its WGS and ONT_R104 model weights converted from google/deepvariant:1.10.0.
+            See native/deepvariant/README.md for installation, validation and licences.

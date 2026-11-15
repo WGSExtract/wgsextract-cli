@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ancestry &amp; lineage · Direction C · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="c-ancestry" data-direction="C" data-shell="c" data-nav="ancestry" data-title="Ancestry &amp; lineage">
+<div class="page" data-annot-id="page">
+  <header class="page-header" data-annot-id="header">
+    <div class="page-header__text">
+      <h1>Ancestry &amp; lineage</h1>
+      <p class="page-header__lead">Your direct paternal and maternal lines, and how your genome compares with reference populations.</p>
+    </div>
+    <div class="btn-group">
+      <label class="visually-hidden" for="who">Genome</label>
+      <select class="select" id="who" style="width: auto"><option>HG002 (son)</option><option>HG004 (mother)</option><option>Alex — 23andMe v5</option></select>
+      <button class="btn" type="button" data-open="#share"><i data-icon="share-2"></i>Share</button>
+    </div>
+  </header>
+
+  <div class="grid grid--fit" style="--grid-min: 320px" data-annot-id="haplogroups">
+    <section class="card" style="--hap: var(--c-primary)" data-annot-id="y-card">
+      <div class="card__header"><span class="action__icon"><i data-icon="y-lineage"></i></span><div class="grow"><h2 class="card__title">Paternal line (Y-DNA)</h2><span class="xsmall subtle">Passed from father to son</span></div><span class="badge badge--success">High confidence</span></div>
+      <div class="hap-result"><span class="hap-result__name">J-ZS241</span><span class="small muted">in the J1 branch, common in the Middle East, Caucasus and among Ashkenazi Jews</span></div>
+      <ol class="hap-path" aria-label="Path from the root of the Y tree">
+        <li class="hap-path__node"><span class="hap-path__dot"></span><span class="hap-path__name">A0-T</span><span class="hap-path__meta">root</span></li>
+        <li class="hap-path__node hap-path__node--gap"><span class="hap-path__dot"></span><span class="hap-path__name">14 branches</span><span class="hap-path__meta"></span></li>
+        <li class="hap-path__node"><span class="hap-path__dot"></span><span class="hap-path__name">J-M304</span><span class="hap-path__meta">J · ~ 43,000 years</span></li>
+        <li class="hap-path__node"><span class="hap-path__dot"></span><span class="hap-path__name">J-M267</span><span class="hap-path__meta">J1</span></li>
+        <li class="hap-path__node"><span class="hap-path__dot"></span><span class="hap-path__name">J-P58</span><span class="hap-path__meta">J1a2a</span></li>
+        <li class="hap-path__node hap-path__node--gap"><span class="hap-path__dot"></span><span class="hap-path__name">3 branches</span><span class="hap-path__meta"></span></li>
+        <li class="hap-path__node hap-path__node--leaf"><span class="hap-path__dot"></span><span class="hap-path__name">J-ZS241</span><span class="hap-path__meta">41 of 43 markers</span></li>
+      </ol>
+      <div class="card__footer"><span class="xsmall subtle grow">YFull tree (pinned) · QC 0.98 · <span class="adv-only"><code>lineage/y-haplogroup</code></span></span><button class="btn btn--sm btn--ghost adv-only" type="button" data-toast="Opening yleaf/ folder">Files</button></div>
+    </section>
+
+    <section class="card" style="--hap: var(--c-accent)" data-annot-id="mt-card">
+      <div class="card__header"><span class="action__icon" style="--tone: var(--c-accent); --tone-soft: var(--c-accent-soft)"><i data-icon="mt-ring"></i></span><div class="grow"><h2 class="card__title">Maternal line (mtDNA)</h2><span class="xsmall subtle">Passed from mother to all her children</span></div><span class="badge badge--success">High confidence</span></div>
+      <div class="hap-result"><span class="hap-result__name">K1a1b1a</span><span class="small muted">a branch of K, found across Europe and common among Ashkenazi Jews</span></div>
+      <ol class="hap-path" aria-label="Path from the root of the mtDNA tree">
+        <li class="hap-path__node"><span class="hap-path__dot"></span><span class="hap-path__name">L3</span><span class="hap-path__meta">out of Africa</span></li>
+        <li class="hap-path__node"><span class="hap-path__dot"></span><span class="hap-path__name">N → R → U</span><span class="hap-path__meta"></span></li>
+        <li class="hap-path__node"><span class="hap-path__dot"></span><span class="hap-path__name">U8b</span><span class="hap-path__meta"></span></li>
+        <li class="hap-path__node"><span class="hap-path__dot"></span><span class="hap-path__name">K</span><span class="hap-path__meta">~ 22,000 years</span></li>
+        <li class="hap-path__node"><span class="hap-path__dot"></span><span class="hap-path__name">K1a1b1</span><span class="hap-path__meta"></span></li>
+        <li class="hap-path__node hap-path__node--leaf"><span class="hap-path__dot"></span><span class="hap-path__name">K1a1b1a</span><span class="hap-path__meta">quality 0.94</span></li>
+      </ol>
+      <div class="card__footer"><span class="xsmall subtle grow">PhyloTree 17 · HaploGrep 3 · <span class="adv-only"><code>lineage/mt-haplogroup</code></span></span><button class="btn btn--sm btn--ghost adv-only" type="button" data-toast="Opening haplogrep/ folder">Files</button></div>
+    </section>
+  </div>
+
+  <section class="card" data-annot-id="admixture">
+    <div class="card__header" style="flex-wrap: wrap">
+      <span class="action__icon" style="--tone: var(--chart-4); --tone-soft: color-mix(in srgb, var(--chart-4) 14%, transparent)"><i data-icon="admixture"></i></span>
+      <div class="grow"><h2 class="card__title">Ancestry proportions</h2><span class="xsmall subtle">Compared with 3,129 people from 80 reference populations (HGDP + 1000 Genomes)</span></div>
+      <div class="seg" data-seg="k" role="group" aria-label="Detail"><button class="seg__btn" type="button" value="7" aria-pressed="true">Continental</button><button class="seg__btn" type="button" value="12">Regional</button></div>
+    </div>
+    <div data-render="ancestry-bar" data-genome="hg002" data-height="32px"></div>
+    <div class="table-wrap" data-when="k:7">
+      <table class="table table--compact" aria-label="Ancestry proportions with 95% intervals">
+        <thead><tr><th>Component</th><th class="num">Share</th><th style="width: 40%">95% interval</th><th class="hide-phone">Carried most by</th></tr></thead>
+        <tbody>
+          <tr><td><span class="row"><span class="swatch seg-1"></span>European</span></td><td class="num">52%</td><td><div class="ci seg-1" style="--v: 52%; --lo: 49%; --hi: 55%"><div class="ci__fill"></div><div class="ci__whisker"></div></div></td><td class="hide-phone small muted">Tuscan, Iberian, British, Finnish</td></tr>
+          <tr><td><span class="row"><span class="swatch seg-2"></span>Middle Eastern</span></td><td class="num">38%</td><td><div class="ci seg-2" style="--v: 38%; --lo: 35%; --hi: 41%"><div class="ci__fill"></div><div class="ci__whisker"></div></div></td><td class="hide-phone small muted">Druze, Palestinian, Bedouin</td></tr>
+          <tr><td><span class="row"><span class="swatch seg-3"></span>Central &amp; South Asian</span></td><td class="num">6%</td><td><div class="ci seg-3" style="--v: 6%; --lo: 4%; --hi: 8%"><div class="ci__fill"></div><div class="ci__whisker"></div></div></td><td class="hide-phone small muted">Balochi, Brahui, Makrani</td></tr>
+          <tr><td><span class="row"><span class="swatch seg-4"></span>Sub-Saharan African</span></td><td class="num">3%</td><td><div class="ci seg-4" style="--v: 3%; --lo: 2%; --hi: 4%"><div class="ci__fill"></div><div class="ci__whisker"></div></div></td><td class="hide-phone small muted">Yoruba, Mandenka</td></tr>
+          <tr><td><span class="row"><span class="swatch seg-5"></span>East Asian</span></td><td class="num">1%</td><td><div class="ci seg-5" style="--v: 1%; --lo: 0%; --hi: 2%"><div class="ci__fill"></div><div class="ci__whisker"></div></div></td><td class="hide-phone small muted">Han, Japanese</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small muted" data-when="k:12" hidden>The regional view splits the 7 components into 12 (for example Northern European, and Middle Eastern &amp; Mediterranean). Same layout, more rows.</p>
+    <div class="callout callout--neutral" data-annot-id="not-ethnicity">
+      <i data-icon="info"></i>
+      <div><strong>These are shares of reference populations, not an ethnicity.</strong> Each component is named after the groups that carry it most, but many people carry several. Reference Europeans, for example, carry about a quarter “Middle Eastern” on average, from shared ancient ancestry. Indigenous American and Oceanian were 0%.</div>
+    </div>
+    <div class="card__footer"><span class="xsmall subtle grow">187,417 sites · 96% found · <span class="adv-only"><code>qc/ancestry</code> · ADAMIXTURE K=7</span></span></div>
+  </section>
+
+  <section class="section" data-annot-id="more-lineage">
+    <h2>More you can run</h2>
+    <div class="grid grid--fit" style="--grid-min: 340px">
+      <div class="action"><span class="action__icon"><i data-icon="repeats"></i></span><span><span class="action__title">Y-STR markers</span><br><span class="action__desc">111 markers for surname projects · 4 min</span></span><button class="btn btn--sm btn--soft" type="button" data-toast="Started: Y-STR markers">Run</button></div>
+      <div class="action"><span class="action__icon"><i data-icon="relate"></i></span><span><span class="action__title">Compare with family</span><br><span class="action__desc">HG003 and HG004 are in your library</span></span><button class="btn btn--sm btn--soft" type="button" data-toast="Started: relatedness check">Run</button></div>
+    </div>
+  </section>
+</div>
+
+<dialog class="dialog" id="share" aria-labelledby="share-title" data-annot-id="share">
+  <div class="dialog__header"><h2 class="dialog__title" id="share-title">Share or export</h2><button class="btn btn--ghost btn--icon" type="button" data-close aria-label="Close"><i data-icon="x"></i></button></div>
+  <div class="dialog__body">
+    <p class="small muted">Nothing leaves your computer unless you send it. Choose what to include:</p>
+    <label class="check"><input type="checkbox" checked><span>Haplogroups</span></label>
+    <label class="check"><input type="checkbox" checked><span>Ancestry chart</span></label>
+    <label class="check"><input type="checkbox"><span>Sample name (otherwise “Sample”)</span></label>
+  </div>
+  <div class="dialog__footer">
+    <button class="btn" type="button" data-close data-toast="Saved HG002_ancestry.csv">CSV</button>
+    <button class="btn" type="button" data-close data-toast="Saved HG002_lineage.png">Image</button>
+    <button class="btn btn--primary" type="button" data-close data-toast="Saved HG002_report.pdf">PDF report</button>
+  </div>
+</dialog>
+</body>
+</html>

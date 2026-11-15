@@ -8,7 +8,10 @@ if ($args.Count -lt 1) {
 $scriptDir = Split-Path -Parent $PSCommandPath
 $scriptsRoot = Split-Path -Parent $scriptDir
 $bundleRoot = Split-Path -Parent $scriptsRoot
-$appDir = if ($env:WGSEXTRACT_APP_DIR) { $env:WGSEXTRACT_APP_DIR } else { Join-Path $bundleRoot "runtime\wgsextract-cli\app" }
+# Setup installs the runtime in the app's data folder; run outside the app, the workspace's own runtime
+# folder (where apps up to 0.8.6 installed it).
+$runtimeRoot = if ($env:WGSEXTRACT_GUI_APP_DATA) { $env:WGSEXTRACT_GUI_APP_DATA } else { $bundleRoot }
+$appDir = if ($env:WGSEXTRACT_APP_DIR) { $env:WGSEXTRACT_APP_DIR } else { Join-Path $runtimeRoot "runtime\wgsextract-cli\app" }
 # The CLI finds the MSYS2 tools setup installed through MSYS2_ROOT (its own
 # default is C:\msys64, and the bundle's config.toml doesn't record one).
 . (Join-Path $scriptDir "wgsextract-msys2.ps1")
@@ -212,7 +215,7 @@ if (-not $env:PIXI_CACHE_DIR) {
 # an interrupted install: they need the shim setup writes last and run the
 # environment as it is.
 $runArgs = @("run")
-if ($env:GUI_FOR_CLI_DATA_SOURCE -eq "1") {
+if ($env:WGSEXTRACT_GUI_DATA_SOURCE -eq "1") {
     $shim = Join-Path (Split-Path -Parent $appDir) "bin\wgsextract.cmd"
     if (-not (Test-Path -LiteralPath $shim -PathType Leaf)) {
         [Console]::Error.WriteLine("WGS Extract CLI setup has not finished ($shim is missing). Run the WGS Extract setup action again.")

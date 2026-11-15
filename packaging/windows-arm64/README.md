@@ -107,6 +107,15 @@ full comparison as one. The raw full and pilot VCFs are preserved and their
 body hashes independently rechecked after download; headers remain separate.
 Full native calling takes **892.02 s**, sampled peak group RSS **3.717 GiB**,
 compute **$0.232**; live Python/BCFtools and every loaded module audit AA64.
+
+These body hashes predate `vcf snp` requesting per-sample
+`FORMAT/AD,FORMAT/DP` for depth-aware confidence labels, which adds `DP` to
+every record; in the pilot nothing else changes. The x64 control now pins
+1,437 records,
+`GT:PL:DP:AD`, body SHA-256
+`d74f491db6eb9f2f6ee3188639d4ad44fd9c276f4af102f23d7c64eff8aff77f`; native
+Windows x64 and Linux x64 agree.
+
 The complete Windows ARM assignment settles at **$15.00865 including
 conservative disk/network reserves**, below the $20 cap. All three owned VMs
 and associated assets are deleted and independently verified absent.

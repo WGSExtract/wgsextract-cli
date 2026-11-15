@@ -5,10 +5,10 @@ import type { ProcessRunOptions } from "../../../shared/types.js";
 import { errorMessage } from "./errors.js";
 import { powerShellSingleQuotedString } from "./platform-command.js";
 
-const windowsAdminModeEnvironmentKey = "GUI_FOR_CLI_WINDOWS_ADMIN_MODE";
+const windowsAdminModeEnvironmentKey = "WGSEXTRACT_GUI_WINDOWS_ADMIN_MODE";
 const windowsAdminScheduledTaskMode = "scheduled-task";
-const windowsAdminTaskEnvironmentKey = "GUI_FOR_CLI_WINDOWS_ADMIN_TASK";
-const windowsAdminQueueEnvironmentKey = "GUI_FOR_CLI_WINDOWS_ADMIN_QUEUE";
+const windowsAdminTaskEnvironmentKey = "WGSEXTRACT_GUI_WINDOWS_ADMIN_TASK";
+const windowsAdminQueueEnvironmentKey = "WGSEXTRACT_GUI_WINDOWS_ADMIN_QUEUE";
 
 interface WindowsAdminSettings {
     mode: "uac" | "scheduled-task";
@@ -25,7 +25,7 @@ export async function windowsAdminCommand(
     command: { executable: string; args: string[] },
     options: ProcessRunOptions,
 ): Promise<ElevatedCommand> {
-    const tempRoot = await mkdtemp(path.join(tmpdir(), "gui-for-cli-admin-"));
+    const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-admin-"));
     try {
         const launcherPath = path.join(tempRoot, "launch.ps1");
         const stdoutPath = path.join(tempRoot, "stdout.txt");

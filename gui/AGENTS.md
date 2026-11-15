@@ -27,7 +27,7 @@ This project is in the greenfield stage and has not been released. Do **not** ad
 
 ## Project Layout
 
-GUI for CLI is one TypeScript app: a Web UI plus a local Node backend, packaged
+WGS Extract GUI is one TypeScript app: a Web UI plus a local Node backend, packaged
 with Tauri for Windows, macOS, and Linux. Earlier platforms and experiments
 (SwiftUI, the Swift CLI, Electron, Rust/Go/C++/.NET/Python renderers,
 benchmarks) live on the `old-experimental` branch; do not reintroduce them here.

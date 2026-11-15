@@ -34,7 +34,17 @@ $env:PATH = "$env:USERPROFILE\.pixi\bin;$env:PATH"
 if (-not (Get-Command pixi -ErrorAction SilentlyContinue)) {
     throw "Pixi isn't on PATH; open a new terminal and rerun."
 }
-Note (pixi --version)
+$Manifest = Get-Content -Raw -LiteralPath (Join-Path $Root "pixi.toml")
+if ($Manifest -notmatch '(?m)^requires-pixi = ">=(\d+\.\d+\.\d+)"\r?$') {
+    throw "Cannot read the minimum Pixi version from pixi.toml."
+}
+$MinimumPixi = [version]$Matches[1]
+$InstalledPixi = pixi --version
+if ($LASTEXITCODE -ne 0) { throw "Cannot run pixi --version." }
+if ($InstalledPixi -notmatch '^pixi (\d+\.\d+\.\d+)$' -or [version]$Matches[1] -lt $MinimumPixi) {
+    throw "Pixi >=$MinimumPixi is required; found $InstalledPixi. Run 'pixi self-update', then rerun setup."
+}
+Note "$InstalledPixi (required >=$MinimumPixi)"
 
 Step "Installing the default and dev environments (first run downloads a few GB)"
 Invoke-Checked pixi @("install", "--locked")
@@ -50,6 +60,8 @@ Note (just --version)
 if (Test-Path -LiteralPath (Join-Path $Root ".git")) {
     Step "Installing pre-commit hooks"
     Invoke-Checked pixi @("run", "pre-commit", "install")
+    Invoke-Checked git @("config", "merge.generated.name", "Keep generated references until regeneration")
+    Invoke-Checked git @("config", "merge.generated.driver", "true")
 }
 
 Step "Checking the CLI and its tools"

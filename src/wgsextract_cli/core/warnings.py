@@ -14,9 +14,10 @@ GB = 1024**3
 # A file's size alone misjudges sort and FASTQ space: CRAMs take from about 12 to
 # 50 bytes per read. Measured on a 30x MGI CRAM (680M 149 bp reads, binned
 # qualities, 12 bytes per read): samtools sort/collate temp files peaked at 74
-# bytes per read and the gzipped FASTQ pair took 68.
+# bytes per read and the gzipped FASTQ pair took 68. Full-quality HG002 (#722)
+# took 85.4 bytes per indexed record, so FASTQs need a larger allowance.
 TEMP_BYTES_PER_READ = 80
-FASTQ_BYTES_PER_READ = 75
+FASTQ_BYTES_PER_READ = 100
 
 
 def warn_alignment_sort_space(path: PathInput, reads: int | None) -> None:

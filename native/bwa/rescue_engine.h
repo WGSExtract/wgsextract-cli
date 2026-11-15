@@ -95,13 +95,12 @@ public:
                         threadsPerThreadgroup:MTLSizeMake(group, 1, 1)];
                 }
                 [encoder endEncoding];
-                wgse::metal::Runtime::commit(command);
-                [command waitUntilCompleted];
+                wgse::metal::Runtime::run(command);
                 if (attempt < wgse::metal::Runtime::attempts
                     && wgse::metal::Runtime::interrupted(command, attempt)) continue;
                 if (command.status == MTLCommandBufferStatusCompleted) break;
-                throw std::runtime_error(std::string("GPU mate rescue: ") + (command.error
-                    ? command.error.localizedDescription.UTF8String : "Metal command failed"));
+                throw std::runtime_error("GPU mate rescue: "
+                    + wgse::metal::Runtime::describe(command));
             }
             kernel_seconds += std::max(0.0, command.GPUEndTime - command.GPUStartTime);
             memcpy(output.data(), results.contents, work.size() * sizeof(RescueResult));

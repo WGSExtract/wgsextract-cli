@@ -12,6 +12,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, TypedDict
 
+from wgsextract_cli.commands.lineage import alignment_mito_problem
 from wgsextract_cli.core import variant_confidence
 from wgsextract_cli.core.config import config_args
 from wgsextract_cli.core.haplogrep_trees import configured_tree_spec
@@ -448,7 +449,7 @@ def run_vcf_workflow(
         anns = "clinvar,gnomad"
 
     # Imported here: vcf.chain -> _vep_run imports detect_vcf_type from this module.
-    from wgsextract_cli.commands.vcf.chain import dataset, skip_reason
+    from wgsextract_cli.commands.vcf.chain import dataset, skip_reason, vep_step_engine
 
     lib = ReferenceLibrary(job.ref, None, input_path=vcf_path)
     available = [a for a in anns.split(",") if not skip_reason(a, lib)]
@@ -477,24 +478,21 @@ def run_vcf_workflow(
         if Path(actual_ann_vcf).exists():
             handle.add_output(actual_ann_vcf)
 
-    # Updated annotation data (a new ClinVar release) must redo the step.
+    # Updated annotation data (a new ClinVar release, an edited file in VEP's
+    # cache directory) must redo the step.
     inputs = {"vcf": vcf_path}
-    caches: dict[str, list[str]] = {}
     for ann in available:
-        path = dataset(ann, lib)
-        if path and Path(path).is_dir():
-            # VEP's cache: a release is a species/version directory.
-            caches[ann] = sorted(
-                p.relative_to(path).as_posix() for p in Path(path).glob("*/*")
-            )
-        elif path:
+        if path := dataset(ann, lib):
             inputs[f"dataset:{ann}"] = path
     tag = f"{v_type}_{base_name}"
     annotate_step = Step(
         f"annotate:{tag}",
         inputs=inputs,
-        params={**_step_params(job, command), "caches": caches},
-        tools=["bcftools", *(["vep"] if "vep" in available else [])],
+        params=_step_params(job, command),
+        tools=[
+            "bcftools",
+            *([vep_step_engine(lib).tool] if "vep" in available else []),
+        ],
     )
     annotated, _ = run_step(
         journal, annotate_step, annotate, after=after, clean=[work_dir]
@@ -611,6 +609,17 @@ def run_bam_chain(
         # 4. Y-lineage only if it's NOT female
         if name == "y-haplogroup" and gender == "Female":
             logging.info("Skipping Y-lineage analysis for female genome.")
+            continue
+        if name == "mt-haplogroup" and (
+            problem := alignment_mito_problem(input_file, job.ref)
+        ):
+            # A reference whose chrM isn't the rCRS (hg19's, CHM13's) has no
+            # mt haplogroup, but its variants can still be called.
+            warn(
+                "mt_haplogroup_skipped",
+                f"No mtDNA haplogroup: {problem} Continuing without it.",
+                step=name,
+            )
             continue
         command = [*command, "--input", input_file, "--outdir", outdir]
         tools = ["samtools", "bcftools"]

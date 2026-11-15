@@ -36,12 +36,15 @@ def _build_param() -> Any:
 
 @dataclass(frozen=True, kw_only=True)
 class MtHaplogroupParams(Params):
-    """Predict the mtDNA haplogroup with Haplogrep 3 from a BAM/CRAM (chrM is
-    called first; needs the reference) or a VCF. The report is
-    ``haplogrep_results.txt`` in the output folder. The chosen tree is
-    downloaded once into the reference library. With ``contamination``,
-    haplocheck also checks the mtDNA for a mixture of two haplogroups and writes
-    ``haplocheck_contamination.txt``."""
+    """Predict the mtDNA haplogroup with Haplogrep 3 from a BAM/CRAM (chrM
+    called first; needs the reference) or a VCF, into
+    ``haplogrep_results.txt``; the tree is downloaded once into the reference
+    library. With ``contamination``, haplocheck also looks for a mixture of
+    two haplogroups (``haplocheck_contamination.txt``). Haplogrep reads
+    rCRS positions, so a chrM that isn't the rCRS is refused: hg19's Yoruba
+    sequence, or CHM13v2.0's original chrM, which is as long but rotated. One
+    the header MD5, the reference or a VCF's REF alleles can't confirm as the
+    rCRS is warned of (``mt_reference_unconfirmed``)."""
 
     COMMAND = "lineage mt-haplogroup"
 
@@ -108,10 +111,11 @@ class YHaplogroupParams(Params):
         exclusive="tree",
     )
     min_reads: int = param(
-        10, doc="Reads needed at a marker position for it to be used."
+        10,
+        doc="Reads needed at a marker; VCF requires AD, DP or callable-block MIN_DP.",
     )
     base_quality: int = param(
-        20, doc="Minimum base quality of a read at a marker position."
+        20, doc="Minimum read base quality; VCF also checks GQ when present."
     )
     base_majority: int = param(
         90, doc="Percentage of reads at a marker that must agree on the base."
@@ -124,8 +128,8 @@ class YHaplogroupParams(Params):
     )
     no_ref_inference: bool = param(
         False,
-        help="VCF: use genotyped positions only (targeted panels); otherwise --ref "
-        "is required.",
+        help="VCF: use explicit genotypes only; otherwise --ref supplies bases "
+        "inside callable reference blocks, never at unassessed sites.",
         action="store_true",
     )
     qc_min_depth: float | None = depth_param()

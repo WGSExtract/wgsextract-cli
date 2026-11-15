@@ -53,6 +53,13 @@ export function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 export function findControl(id: string): ControlSpec {
+    const control = controlWithID(id);
+    if (!control) {
+        throw new Error(`Unknown control: ${id}`);
+    }
+    return control;
+}
+export function controlWithID(id: string): ControlSpec | undefined {
     for (const page of state.manifest?.pages ?? []) {
         for (const section of page.sections ?? []) {
             const control = (section.controls ?? []).find((candidate) => candidate.id === id);
@@ -60,7 +67,7 @@ export function findControl(id: string): ControlSpec {
                 return control;
         }
     }
-    throw new Error(`Unknown control: ${id}`);
+    return undefined;
 }
 export function displayOption(option: ControlOption): string {
     return optionTitle(option, state.labels);
@@ -109,7 +116,7 @@ export function renderTooltip(text: unknown): string {
         : "";
 }
 export function renderInlineError(message: unknown, accessory = ""): string {
-    return `<div class="inline-error"><span aria-hidden="true">⚠</span><span>${escapeHTML(message)}</span>${accessory}</div>`;
+    return `<div class="inline-error"><span aria-hidden="true">${renderIcon("exclamationmark.triangle.fill", undefined, "⚠")}</span><span>${escapeHTML(message)}</span>${accessory}</div>`;
 }
 export function renderLoadingInline(message: unknown): string {
     return `<p class="loading-inline"><span class="spinner small" aria-hidden="true"></span>${escapeHTML(message)}</p>`;

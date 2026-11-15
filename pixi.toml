@@ -1,10 +1,13 @@
 [workspace]
+requires-pixi = ">=0.82.0"
 name = "wgsextract-cli"
-version = "0.8.6"
+version = "0.8.7"
 description = "A modern, standalone Command-Line Interface for WGS Extract."
 authors = ["WGS Extract Contributors"]
 channels = ["conda-forge", "bioconda"]
-platforms = ["osx-arm64", "osx-64", "linux-64", "linux-aarch64", "win-64"]
+# linux-64-cuda (CUDA 12 required) is for the deepvariant environment only:
+# every other environment takes feature.standard-platforms instead.
+platforms = ["osx-arm64", "osx-64", "linux-64", "linux-aarch64", "win-64", { name = "linux-64-cuda", platform = "linux-64", cuda = "12" }]
 
 [dependencies]
 python = "3.13.*"
@@ -90,6 +93,10 @@ sambamba = ">=1.0.1,<2"
 # Match the qualified x64 calling version; do not introduce architecture drift.
 bcftools = "==1.24"
 
+[feature.bio-tools.target.osx-arm64.dependencies]
+# Override-enabled mimalloc for bcftools; published by mimalloc.yml.
+wgse-mimalloc = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/wgse-mimalloc-1/wgse-mimalloc-3.6.1-osxarm64_wgse_1.conda", sha256 = "970706abfefea9610af0f4624e58dc8d816e5e1068f690ab07c06b27e6978429" }
+
 [feature.bio-tools.target.win-64.dependencies]
 fastqc = ">=0.13,<0.14"
 haplogrep3 = "==3.2.2"
@@ -114,6 +121,16 @@ samtools = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/downlo
 # it there automatically. Fold it back into bio-tools once that is rebuilt.
 [feature.freebayes.target.unix.dependencies]
 freebayes = ">=1.3.10,<2"
+
+# Bioconda's bwa-mem3 writes bwa's or bwa-mem2's exact records (--compat)
+# several times faster (#672). Its builds need htslib 1.25, which conflicts with
+# the qualified samtools/bcftools 1.24, so it gets its own environment (#591);
+# the CLI runs it there automatically. 0.16 is the release checked for parity.
+[feature.bwa-mem3]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
+
+[feature.bwa-mem3.dependencies]
+bwa-mem3 = "0.16.*"
 
 # HLA typing with T1K (`typing hla`) and repeat expansions with ExpansionHunter
 # (`typing str`). T1K's package pins samtools 0.1 and ExpansionHunter's (on macOS)
@@ -173,6 +190,21 @@ platforms = ["linux-64", "linux-aarch64", "osx-arm64"]
 [feature.clair3.dependencies]
 clair3 = ">=2.0.5,<3"
 
+# wgse-deepvariant (`vcf deepvariant`; native/deepvariant/README.md):
+# DeepVariant 1.10.0's WGS and ONT_R104 models without Docker, with
+# call_variants on an NVIDIA GPU for `--gpu` (CUDA 12.9) or the CPU. Opt-in
+# environment (`pixi install -e deepvariant`, about 4 GB) for Linux x86-64 with
+# an NVIDIA driver: only it takes the workspace's linux-64-cuda platform (every
+# other environment takes feature.standard-platforms). WGS Extract's build from
+# packaging/wgse-deepvariant (workflow linux_deepvariant.yml), published as
+# linux-deepvariant-2 and pinned by URL
+# and SHA-256; its weights are a separate download (deepvariant_weights).
+[feature.deepvariant]
+platforms = ["linux-64-cuda"]
+
+[feature.deepvariant.dependencies]
+wgse-deepvariant = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/linux-deepvariant-2/wgse-deepvariant-0.3.0-linux64_cuda129_wgse_0.conda", sha256 = "e5ad2e951c0cc6224a2f3ff784b5d76ef259a4e8f47adfd6dccc0e4066be9a02" }
+
 # modkit summarizes Nanopore/PacBio base-modification (MM/ML) tags into
 # bedMethyl (`methylation pileup`). Opt-in environment (`pixi install -e modkit`);
 # Bioconda builds it for Linux and macOS, not Windows.
@@ -217,6 +249,24 @@ longphase = ">=2.1.1,<3"
 [feature.phasing.target.osx-arm64.dependencies]
 longphase = ">=2.1.1,<3"
 
+# Genotype imputation (`vcf impute`, `ref imputation`): GLIMPSE2 (MIT) imputes
+# low-coverage reads, Beagle 5 (GPL-3, run as a separate program) genotype-only
+# VCFs such as microarray calls. Bioconda builds GLIMPSE2 for Intel only.
+# Opt-in environment (`pixi install -e imputation`) that the CLI runs automatically.
+[feature.imputation]
+platforms = ["linux-64", "osx-64", "win-64"]
+
+[feature.imputation.dependencies]
+beagle = "==5.5_27Feb25.75f"
+openjdk = ">=17"
+
+[feature.imputation.target.unix.dependencies]
+glimpse-bio = "==2.0.1"
+
+# Our native Windows build; upstream Bioconda has no win-64 package.
+[feature.imputation.target.win-64.dependencies]
+glimpse-bio = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/glimpse2-1/glimpse-bio-2.0.1-win64_wgse_1.conda", sha256 = "a7a970ab79957d08a44e1eedbe3cee7f36a86078d9880a84e25bbb06d2906184" }
+
 [feature.vep]
 platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
 
@@ -229,6 +279,28 @@ ensembl-vep = ">=116.3,<117"
 # falls back to NDBM_File; VEP reads FASTA through Bio::DB::HTS::Faidx anyway.
 [feature.vep.target.osx-arm64.activation.env]
 PERL_DL_NONLAZY = "1"
+
+# vep-rs, a Rust reimplementation of Ensembl VEP (`vep run --engine vep-rs`),
+# on every platform including native Windows. No conda package exists upstream:
+# these are WGS Extract's builds from packaging/vep-rs (workflow vep_rs.yml),
+# published as a vep-rs-N release and pinned here by URL and SHA-256.
+[feature.vep-rs]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64", "win-64"]
+
+[feature.vep-rs.target.linux-64.dependencies]
+vep-rs = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/vep-rs-1/vep-rs-0.5.0-linux64_wgse_1.conda", sha256 = "ef106d4f34ff5402bd5bdb3ed8c154dfa95e23cddbba60996f8f77d4ad6565c9" }
+
+[feature.vep-rs.target.linux-aarch64.dependencies]
+vep-rs = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/vep-rs-1/vep-rs-0.5.0-linuxaarch64_wgse_1.conda", sha256 = "4bf2a8393e9f1041bbe8db1109df44dca0cbf3f17fab342509182ea2efabc18d" }
+
+[feature.vep-rs.target.osx-64.dependencies]
+vep-rs = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/vep-rs-1/vep-rs-0.5.0-osx64_wgse_1.conda", sha256 = "2a5b468085dd88b32271fb5a7281efe6c26d352458df22a5fdf35e22f8b2f806" }
+
+[feature.vep-rs.target.osx-arm64.dependencies]
+vep-rs = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/vep-rs-1/vep-rs-0.5.0-osxarm64_wgse_1.conda", sha256 = "8054a1663a2d90026c657d22e209ad00062b95d761a28a84e41449bafb6f6933" }
+
+[feature.vep-rs.target.win-64.dependencies]
+vep-rs = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/vep-rs-1/vep-rs-0.5.0-win64_wgse_1.conda", sha256 = "601b82755ccb7817d4ae5ae42085c89b067de52ec72628971539383b070153b8" }
 
 [feature.pysam.target.unix.pypi-dependencies]
 # pysam has no native Windows build.
@@ -249,6 +321,21 @@ statsmodels = ">=0.14"
 [feature.cyrius.pypi-dependencies]
 # Brings pysam's PyPI wheel (a conda pysam would be installed twice).
 cyrius = "==1.1.1"
+
+# SMNCopyNumberCaller calls SMN1/SMN2 copy number from a WGS BAM/CRAM
+# (`typing smn`). Upstream (Illumina) is archived; v1.1.2 is the last
+# Apache-2.0 release (later commits relicensed to PolyForm Strict), so it's
+# pinned. Opt-in environment (`pixi install -e smn`) that the CLI runs
+# automatically. Bioconda's noarch package needs pysam, which isn't built for
+# Windows.
+[feature.smn]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
+
+[feature.smn.dependencies]
+python = "3.12.*"
+smncopynumbercaller = "==1.1.2"
+numpy = ">=2"
+pysam = ">=0.23"
 
 # Optional report aggregation; never installed by command invocation.
 [feature.multiqc.pypi-dependencies]
@@ -299,7 +386,7 @@ ruff = "ruff"
 mypy = "mypy"
 pre-commit = "pre-commit"
 test = "pytest --ignore=tests/test_e2e_fast_chrM.py --ignore=tests/test_e2e_full_genome.py --ignore=tests/test_microarray_real_data.py"
-test-ci = "python -c \"from pathlib import Path; Path('out').mkdir(exist_ok=True)\" && pytest -n auto --dist loadgroup --cov=wgsextract_cli --cov-report=term-missing:skip-covered --cov-report=xml:out/coverage.xml --junitxml=out/pytest.xml --durations=25 --basetemp=out/pytest-tmp --ignore=tests/test_e2e_fast_chrM.py --ignore=tests/test_e2e_full_genome.py --ignore=tests/test_microarray_real_data.py"
+test-ci = "python -c \"from pathlib import Path; Path('out').mkdir(exist_ok=True)\" && pytest -n auto --dist loadgroup --junitxml=out/pytest.xml --durations=60 --basetemp=out/pytest-tmp --ignore=tests/test_e2e_fast_chrM.py --ignore=tests/test_e2e_full_genome.py --ignore=tests/test_microarray_real_data.py --ignore=tests/test_smoke_real_full.py"
 test-e2e = "pytest tests/test_e2e_fast_chrM.py tests/test_e2e_full_genome.py tests/test_microarray_real_data.py"
 test-e2e-fake = "pytest --fake-data tests/test_e2e_fast_chrM.py tests/test_e2e_full_genome.py"
 test-remote = "pytest -m remote tests/test_remote_resources.py tests/test_remote_downloads.py tests/test_remote_benchmark.py"
@@ -326,28 +413,38 @@ vncdotool = ">=1.2, <2"
 # Qualify the same test runner as x64, not a newly released pytest.
 pytest = "==9.2.0"
 
+# The workspace's usual platforms: every environment but deepvariant takes
+# them, so the CUDA platform below reaches only deepvariant.
+[feature.standard-platforms]
+platforms = ["osx-arm64", "osx-64", "linux-64", "linux-aarch64", "win-64"]
+
 [environments]
-default = { features = ["bio-tools", "pysam"], solve-group = "default" }
-dev = { features = ["bio-tools", "pysam", "dev", "lint", "multiqc", "parquet", "mcp"], solve-group = "default" }
-lint = { features = ["lint"], no-default-feature = true }
-multiqc = { features = ["multiqc"], solve-group = "default" }
-parquet = { features = ["bio-tools", "pysam", "parquet"], solve-group = "default" }
-mcp = { features = ["bio-tools", "pysam", "mcp"], solve-group = "default" }
-gatk = { features = ["gatk"], no-default-feature = true }
-freebayes = { features = ["freebayes"], no-default-feature = true }
-t1k = { features = ["t1k"], no-default-feature = true }
-expansionhunter = { features = ["expansionhunter"], no-default-feature = true }
-longtr = { features = ["longtr"], no-default-feature = true }
-strkit = { features = ["strkit"], no-default-feature = true }
-pacbio = { features = ["bio-tools", "pacbio"], no-default-feature = true, solve-group = "pacbio-unix" }
-vep = { features = ["vep"], no-default-feature = true }
-pharmcat = { features = ["pharmcat"], no-default-feature = true }
-cyrius = { features = ["cyrius"], no-default-feature = true }
-clair3 = { features = ["clair3"], no-default-feature = true }
-modkit = { features = ["modkit"], no-default-feature = true }
-verifybamid2 = { features = ["verifybamid2"], no-default-feature = true }
-somalier = { features = ["somalier"], no-default-feature = true }
-phasing = { features = ["phasing"], no-default-feature = true }
+default = { features = ["standard-platforms", "bio-tools", "pysam"], solve-group = "default" }
+dev = { features = ["standard-platforms", "bio-tools", "pysam", "dev", "lint", "multiqc", "parquet", "mcp"], solve-group = "default" }
+lint = { features = ["standard-platforms", "lint"], no-default-feature = true }
+multiqc = { features = ["standard-platforms", "multiqc"], solve-group = "default" }
+parquet = { features = ["standard-platforms", "bio-tools", "pysam", "parquet"], solve-group = "default" }
+mcp = { features = ["standard-platforms", "bio-tools", "pysam", "mcp"], solve-group = "default" }
+gatk = { features = ["standard-platforms", "gatk"], no-default-feature = true }
+freebayes = { features = ["standard-platforms", "freebayes"], no-default-feature = true }
+bwa-mem3 = { features = ["standard-platforms", "bwa-mem3"], no-default-feature = true }
+t1k = { features = ["standard-platforms", "t1k"], no-default-feature = true }
+expansionhunter = { features = ["standard-platforms", "expansionhunter"], no-default-feature = true }
+longtr = { features = ["standard-platforms", "longtr"], no-default-feature = true }
+strkit = { features = ["standard-platforms", "strkit"], no-default-feature = true }
+pacbio = { features = ["standard-platforms", "bio-tools", "pacbio"], no-default-feature = true, solve-group = "pacbio-unix" }
+vep = { features = ["standard-platforms", "vep"], no-default-feature = true }
+vep-rs = { features = ["standard-platforms", "vep-rs"], no-default-feature = true }
+pharmcat = { features = ["standard-platforms", "pharmcat"], no-default-feature = true }
+cyrius = { features = ["standard-platforms", "cyrius"], no-default-feature = true }
+clair3 = { features = ["standard-platforms", "clair3"], no-default-feature = true }
+deepvariant = { features = ["deepvariant"], no-default-feature = true }
+modkit = { features = ["standard-platforms", "modkit"], no-default-feature = true }
+verifybamid2 = { features = ["standard-platforms", "verifybamid2"], no-default-feature = true }
+somalier = { features = ["standard-platforms", "somalier"], no-default-feature = true }
+phasing = { features = ["standard-platforms", "phasing"], no-default-feature = true }
+smn = { features = ["standard-platforms", "smn"], no-default-feature = true }
+imputation = { features = ["standard-platforms", "imputation"], no-default-feature = true }
 
 [pypi-dependencies]
 # pysam is platform-specific (no native Windows build); see feature.pysam.

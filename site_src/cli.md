@@ -97,7 +97,7 @@ Pick the line that matches your file and run its commands in order. Each command
 ::: wrap
 ::: section-head
 ## Command groups
-`wgsextract --help` lists the core commands first, in the order you would usually run them, then setup and advanced commands. Run `wgsextract help --all` for one line per command (`--json` for a machine-readable index with each command's options and, for typed commands, a JSON Schema), `wgsextract help <command>` for one command's options, examples and output files (`--help-all` adds the advanced options), `wgsextract help topics` for concepts such as references, builds and exit codes, or `wgsextract help` for the full tree. The [command reference](https://github.com/WGSExtract/wgsextract-cli/blob/main/docs/commands.md){.inline-link} lists every command with its outputs and an example. A mistyped command or option gets a "Did you mean" hint, and on a terminal some commands suggest what to run next.
+`wgsextract --help` lists the core commands first, in the order you would usually run them, then setup and advanced commands. Run `wgsextract help --all` for one line per command. Agents: start with `wgsextract help --all --json` for a compact index of paths, summaries, tiers and key flags, then `wgsextract help <command> --json` for full options and typed JSON Schemas. Use `wgsextract help --all --json --full` only when the complete schema dump is needed. Run `wgsextract help <command>` for one command's options, examples and output files (`--help-all` adds the advanced options), `wgsextract help topics` for concepts such as references, builds and exit codes, or `wgsextract help` for the full tree. The [command reference](https://github.com/WGSExtract/wgsextract-cli/blob/main/docs/commands.md){.inline-link} lists every command with its outputs and an example. A mistyped command or option gets a "Did you mean" hint, and on a terminal some commands suggest what to run next.
 :::
 
 ::: grid three
@@ -131,16 +131,17 @@ Pick the line that matches your file and run its commands in order. Each command
 - `qc`: Read and VCF quality reports; fake test data.
 - `repair`: Fix FTDNA BAM/VCF formatting problems.
 - `analyze`: Run several analyses in one go, for one or many genomes.
-- `typing`: Genotype CYP2D6, HLA and repeat expansions (30x WGS).
+- `typing`: CYP2D6, SMN1/2, HLA and repeat expansions (30x WGS).
 - `methylation`: 5mC/5hmC methylation from Nanopore and PacBio reads.
 - `basecall`: Nanopore POD5 signal to reads with Dorado (optional).
 - `panel`: Gene lists to BED targets for Nanopore adaptive sampling.
 - `pet-align`: Align and call variants for a cat or dog genome.
 - `sign`: Checksum and sign output files; verify them.
+- `score`: Research-only polygenic scores from local genotypes.
 - `benchmark`: Time the main workflows on test data.
 - `serve`: Local HTTP/JSON and MCP server for apps and AI agents.
 
-Advanced subcommands of core groups: `extract bam-subset`, `vcf alphamissense`, `vcf cadd`, `vcf chain-annotate`, `vcf clair3`, `vcf cnv`, `vcf deepvariant`, `vcf freebayes`, `vcf gatk`, `vcf gerp`, `vcf pharmcat`, `vcf phase`, `vcf phylop`, `vcf spliceai`, `vcf sv`, `vcf to-fasta`, `vcf trio`.
+Advanced subcommands of core groups: `extract bam-subset`, `vcf alphamissense`, `vcf cadd`, `vcf chain-annotate`, `vcf clair3`, `vcf cnv`, `vcf deepvariant`, `vcf freebayes`, `vcf gatk`, `vcf gerp`, `vcf impute`, `vcf pharmcat`, `vcf phase`, `vcf phylop`, `vcf spliceai`, `vcf sv`, `vcf to-fasta`, `vcf trio`.
 :::
 
 :::

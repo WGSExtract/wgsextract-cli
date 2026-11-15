@@ -70,7 +70,7 @@ async function prepareBranding() {
     process.env.TAURI_PRODUCT_SUFFIX,
   );
   const appVersion = resolveAppVersion(bundleMetadata, baseConfig.version);
-  const appIdentifier = resolveAppIdentifier(bundleMetadata, baseConfig.identifier);
+  const appIdentifier = resolveAppIdentifier(baseConfig.identifier);
 
   await mkdir(path.dirname(generatedConfigPath), { recursive: true });
   await rm(generatedBundlePath, { recursive: true, force: true });
@@ -274,16 +274,11 @@ function resolveAppVersion(bundleMetadata, defaultVersion) {
     || defaultVersion;
 }
 
-function resolveAppIdentifier(bundleMetadata, defaultIdentifier) {
-  const explicitIdentifier = process.env.PACKAGE_APP_IDENTIFIER
+function resolveAppIdentifier(defaultIdentifier) {
+  return process.env.PACKAGE_APP_IDENTIFIER
     || process.env.EMBEDDED_APP_IDENTIFIER
-    || devConfig.packaging?.app_identifier;
-  if (explicitIdentifier) {
-    return explicitIdentifier;
-  }
-  const id = bundleMetadata.id || "wgsextract";
-  const normalizedId = id.replace(/[^a-zA-Z0-9]/g, "").toLowerCase() || "wgsextract";
-  return `dev.guiforcli.web.embed.${normalizedId}`;
+    || devConfig.packaging?.app_identifier
+    || defaultIdentifier;
 }
 
 async function cleanupGeneratedFiles() {

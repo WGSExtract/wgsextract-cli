@@ -16,14 +16,17 @@ import math
 import re
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import psutil
 
 from wgsextract_cli.core.paths import append_suffix
 from wgsextract_cli.core.reference_assets import read_fai_lengths
 from wgsextract_cli.core.results import warn
-from wgsextract_cli.core.samtools_commands import parse_memory
+from wgsextract_cli.core.samtools_commands import (
+    DECODED_BYTES_PER_INPUT_BYTE,
+    parse_memory,
+)
 from wgsextract_cli.core.utils import WGSExtractError
 
 _GIB = 1024**3
@@ -48,13 +51,20 @@ _BWA_BATCH_BASES = 100_000_000
 # at 8.76 GB RSS against Bioconda bwa's 7.96 GB: its GPU buffers and a second
 # chunk of reads in flight. After 20M reads (on Macs with 16 GiB or more) it
 # adds a denser suffix-array sample, one 33-bit entry per 32 of the 2n+1 rows
-# (0.76 GiB for hs38; native/README.md, Memory).
-_BWA_METAL_BYTES = 3 * _GIB // 4
-_BWA_METAL_DENSE_SA_AFTER_READS = 20_000_000
+# (0.76 GiB for hs38; native/README.md, Memory). wgse-bwa --cuda 0.10.0 adds
+# about as much host memory (pinned batch buffers and the same samples).
+_BWA_GPU_BYTES = 3 * _GIB // 4
+_BWA_GPU_DENSE_SA_AFTER_READS = 20_000_000
 # bwa-mem3 estimates its own peak as its index plus 1 GiB plus 24 bytes per
 # base of a batch (native/README.md, Memory); --metal adds about 0.2 GiB.
 _BWA_MEM3_WORKING_BYTES = _GIB + 24 * _BWA_BATCH_BASES
 BWA_MEM3_METAL_BYTES = _GIB // 4
+# --cuda's pinned batch buffers: its peak was 0.5 GiB above the CPU backend's on
+# full-5m at 8 threads (native/README.md).
+BWA_MEM3_CUDA_BYTES = _GIB // 2
+# wgse-minimap2 --cuda's pinned batch buffers and CUDA context: its peak RSS was
+# 0.8 GiB above the CPU backend's for HiFi and ONT at 8 threads (native/README.md).
+MINIMAP2_CUDA_BYTES = _GIB
 # minimap2 2.31 builds its index from the FASTA on every run. On hs38 (3.10
 # Gbases) the build peaked at 11.1-11.3 GiB with every preset but map-pb's
 # homopolymer-compressed 8.6 GiB. The built index (as a saved .mmi) is smaller:
@@ -72,11 +82,9 @@ _MINIMAP2_INDEX_BYTES_PER_BASE = {
 # index, plus each thread's alignment buffers, which grow with read length:
 # 40k HG002 ONT reads (20 kb mean) at -t 4 peaked 4.2 GiB above the index.
 _MINIMAP2_BATCH_BYTES = 5 * _GIB // 2
-# That is about 5.4 bytes per batched base. Even reference-compressed CRAM with
-# binned qualities holds fewer than 16 bases per byte, so read files smaller
-# than about 30 MB fill one smaller batch. The same bound caps samtools sort's
-# buffers and the threads' work, which only grow as reads arrive.
-_DECODED_BYTES_PER_INPUT_BYTE = 96
+# That is about 5.4 bytes per batched base, so read files smaller than about
+# 30 MB (DECODED_BYTES_PER_INPUT_BYTE) fill one smaller batch. The same bound
+# caps the threads' work, which only grows as reads arrive.
 # gzip/BGZF stores a FASTA's bases in at least 0.2 bytes each.
 _FASTA_GZ_BASES_PER_BYTE = 5
 _MINIMAP2_THREAD_BYTES = _GIB // 2
@@ -107,6 +115,13 @@ class MappingMemory(NamedTuple):
     def total(self) -> int:
         return sum(self)
 
+    @property
+    def essential(self) -> int:
+        """What the aligner can't run without: its index and working memory,
+        and the pipeline's base overhead. The sort's buffers, samblaster's
+        table and read-scaled transients can swap, slowly (#690)."""
+        return self.index_resident + self.working + _PIPELINE_OVERHEAD_BYTES
+
 
 def available_memory() -> int:
     """Reclaimable physical memory, using psutil's native API on Windows too."""
@@ -115,58 +130,81 @@ def available_memory() -> int:
     return min(available, capped) if capped is not None else available
 
 
-def _cgroup_available_memory(
+def total_memory() -> int:
+    """All the memory a run here could ever have: the computer's RAM, or a
+    Linux cgroup's lower limit, and never less than is available now."""
+    total = int(psutil.virtual_memory().total)
+    limits = [limit for _, limit in _cgroup_limits()]
+    # A cgroup's limit binds whatever is free; without one, free memory
+    # measured elsewhere (a container's) can exceed the host's total.
+    return min([total, *limits]) if limits else max(total, available_memory())
+
+
+def _cgroup_limits(
     membership: Path = Path("/proc/self/cgroup"),
     root: Path = Path("/sys/fs/cgroup"),
     mountinfo: Path = Path("/proc/self/mountinfo"),
-) -> int | None:
-    """Honor Linux cgroup-v2 ancestor caps, not just the host's free RAM."""
+) -> list[tuple[Path, int]]:
+    """This process's cgroup-v2 group and its ancestors that cap memory, with
+    their memory.max."""
     try:
         relative = next(
             line[3:]
             for line in membership.read_text().splitlines()
             if line.startswith("0::")
         )
-        path = PurePosixPath(relative)
-        if ".." in path.parts:
-            group = root
-        else:
-            mounted = _cgroup_mount_root(root, mountinfo)
-            try:
-                path = path.relative_to(mounted)
-            except ValueError:
-                # Membership may already be relative to a cgroup namespace.
-                path = PurePosixPath(relative.lstrip("/"))
-            group = root / str(path)
-        # A container can expose only the namespace root rather than the
-        # host-relative membership path.
-        if not group.is_dir():
-            group = root
-        budgets = []
-        while True:
-            try:
-                limit = (group / "memory.max").read_text().strip()
-                if limit != "max":
-                    current = int((group / "memory.current").read_text())
-                    reclaimable = 0
-                    try:
-                        for line in (group / "memory.stat").read_text().splitlines():
-                            name, value = line.split()
-                            if name == "inactive_file":
-                                reclaimable = int(value)
-                    except (OSError, ValueError):
-                        pass
-                    budgets.append(
-                        min(int(limit), max(0, int(limit) - current + reclaimable))
-                    )
-            except (OSError, ValueError):
-                pass
-            if group == root:
-                break
-            group = group.parent
-        return min(budgets) if budgets else None
     except (OSError, StopIteration):
-        return None
+        return []
+    path = PurePosixPath(relative)
+    if ".." in path.parts:
+        group = root
+    else:
+        mounted = _cgroup_mount_root(root, mountinfo)
+        try:
+            path = path.relative_to(mounted)
+        except ValueError:
+            # Membership may already be relative to a cgroup namespace.
+            path = PurePosixPath(relative.lstrip("/"))
+        group = root / str(path)
+    # A container can expose only the namespace root rather than the
+    # host-relative membership path.
+    if not group.is_dir():
+        group = root
+    limits = []
+    while True:
+        try:
+            limit = (group / "memory.max").read_text().strip()
+            if limit != "max":
+                limits.append((group, int(limit)))
+        except (OSError, ValueError):
+            pass
+        if group == root:
+            return limits
+        group = group.parent
+
+
+def _cgroup_available_memory(
+    membership: Path = Path("/proc/self/cgroup"),
+    root: Path = Path("/sys/fs/cgroup"),
+    mountinfo: Path = Path("/proc/self/mountinfo"),
+) -> int | None:
+    """Honor Linux cgroup-v2 ancestor caps, not just the host's free RAM."""
+    budgets = []
+    for group, limit in _cgroup_limits(membership, root, mountinfo):
+        try:
+            current = int((group / "memory.current").read_text())
+        except (OSError, ValueError):
+            continue
+        reclaimable = 0
+        try:
+            for line in (group / "memory.stat").read_text().splitlines():
+                name, value = line.split()
+                if name == "inactive_file":
+                    reclaimable = int(value)
+        except (OSError, ValueError):
+            pass
+        budgets.append(min(limit, max(0, limit - current + reclaimable)))
+    return min(budgets) if budgets else None
 
 
 def _cgroup_mount_root(root: Path, mountinfo: Path) -> PurePosixPath:
@@ -262,7 +300,7 @@ def _minimap2_memory(
         )
     thread_work = math.ceil(threads * per_thread)
     if input_bytes is not None:
-        decoded = max(0, input_bytes) * _DECODED_BYTES_PER_INPUT_BYTE
+        decoded = max(0, input_bytes) * DECODED_BYTES_PER_INPUT_BYTE
         batch = min(batch, decoded)
         # One long read can still need a whole thread's alignment buffers.
         thread_work = min(thread_work, max(math.ceil(per_thread), decoded))
@@ -293,12 +331,53 @@ def reference_bases(ref: str | None) -> int:
         return 0
 
 
-def bwa_metal_memory(ref: str | None, reads: int | None) -> int:
-    """What ``wgse-bwa --metal`` needs beyond bwa's estimate."""
-    if reads is not None and reads <= _BWA_METAL_DENSE_SA_AFTER_READS:
-        return _BWA_METAL_BYTES
+def bwa_gpu_memory(
+    ref: str | None, reads: int | None, *, dense_sa_file: bool = False
+) -> int:
+    """What wgse-bwa's GPU backend (Metal or CUDA) needs beyond bwa's estimate.
+    With a dense suffix-array file (``dense_sa_file``, counted as index memory) the GPU
+    uses it rather than building its own denser sample."""
+    if dense_sa_file or (reads is not None and reads <= _BWA_GPU_DENSE_SA_AFTER_READS):
+        return _BWA_GPU_BYTES
     bases = reference_bases(ref) or _HUMAN_REFERENCE_BASES
-    return _BWA_METAL_BYTES + math.ceil((2 * bases + 1) * 33 / (32 * 8))
+    return _BWA_GPU_BYTES + math.ceil((2 * bases + 1) * 33 / (32 * 8))
+
+
+def _model_bases(ref: str | None, aligner: str) -> int:
+    """The reference bases the memory model sizes indexes by."""
+    return (
+        reference_bases(ref)
+        or (_fasta_bases_bound(ref) if aligner == "minimap2" else 0)
+        or _HUMAN_REFERENCE_BASES
+    )
+
+
+def least_mapping_memory(
+    ref: str | None,
+    aligner: str,
+    *,
+    memory: str = "256M",
+    preset: str | None = None,
+    input_bytes: int | None = None,
+    read_length: float | None = None,
+    gpu_bytes: int = 0,
+    **options: Any,
+) -> int:
+    """What the aligner can't run without on one thread (#690): its index,
+    its working memory and the pipeline's base overhead. For minimap2's long
+    reads, the larger of its index build and its mapping, whichever phase
+    the estimate's total picks."""
+    one = estimate_mapping_memory(
+        ref, aligner, threads="1", memory=memory, preset=preset,
+        input_bytes=input_bytes, read_length=read_length, gpu_bytes=gpu_bytes,
+        **options,
+    )  # fmt: skip
+    if aligner != "minimap2" or not _long_read_preset(preset):
+        return one.essential
+    index, build, mapping = _minimap2_memory(
+        _model_bases(ref, aligner), preset, 1, input_bytes, read_length
+    )
+    return index + max(build, mapping) + gpu_bytes + _PIPELINE_OVERHEAD_BYTES
 
 
 def estimate_mapping_memory(
@@ -314,24 +393,28 @@ def estimate_mapping_memory(
     preset: str | None = None,
     input_bytes: int | None = None,
     gpu_bytes: int = 0,
+    dense_sa_bytes: int = 0,
+    staged: bool = False,
 ) -> MappingMemory:
     """Peak memory of the alignment pipeline. ``preset`` is minimap2's, and
     ``input_bytes`` (the read files' size) bounds its batches. ``gpu_bytes``
-    (an aligner's GPU backend: bwa_metal_memory) counts as working memory."""
-    bases = (
-        reference_bases(ref)
-        or (_fasta_bases_bound(ref) if aligner == "minimap2" else 0)
-        or _HUMAN_REFERENCE_BASES
-    )
+    (an aligner's GPU backend: bwa_gpu_memory) counts as working memory,
+    and ``dense_sa_bytes`` (wgse-bwa's dense suffix-array file) as index."""
+    bases = _model_bases(ref, aligner)
     amount, unit = parse_memory(memory)
     per_thread = amount * (1024**3 if unit == "G" else 1024**2)
-    sort = int(int(threads) * per_thread * 1.25)
+    # samtools sort reserves -@ × -m when it starts (#781).
+    reserved = int(int(threads) * per_thread)
+    sort = int(reserved * 1.25)
     input_reads = max(0, reads) if reads is not None else _H2_INPUT_READS
     if aligner == "minimap2":
         long_read = _long_read_preset(preset)
         index, build, mapping = _minimap2_memory(
             bases, preset, int(threads), input_bytes, read_length
         )
+        # A GPU backend's buffers are set up before the index builds or loads.
+        build += gpu_bytes
+        mapping += gpu_bytes
         # The build's scratch counts as working memory while it exceeds mapping's.
         working = max(build, mapping)
         overhead = _PIPELINE_OVERHEAD_BYTES
@@ -339,9 +422,10 @@ def estimate_mapping_memory(
             sort = int(int(threads) * per_thread * _LONG_READ_SORT_FACTOR)
             overhead += _LONG_READ_DECODER_BYTES
         if input_bytes is not None:
-            decoded = max(0, input_bytes) * _DECODED_BYTES_PER_INPUT_BYTE
-            # samtools sort fills its buffers only with the reads it receives.
-            sort = min(sort, decoded)
+            decoded = max(0, input_bytes) * DECODED_BYTES_PER_INPUT_BYTE
+            # samtools sort fills its buffers only with the reads it receives,
+            # beyond the buffer it reserves.
+            sort = max(reserved, min(sort, decoded))
             overhead = min(overhead, _PIPELINE_OVERHEAD_BYTES + decoded)
         if reads is None and input_bytes is not None:
             # A compressed short read takes at least 8 bytes.
@@ -372,14 +456,25 @@ def estimate_mapping_memory(
             )
         except OSError:
             pass
-    return MappingMemory(
-        index,
+    result = MappingMemory(
+        index + dense_sa_bytes,
         _working_memory(aligner, int(threads), reads, platform, read_length)
         + gpu_bytes,
         (input_reads * _SAMBLASTER_BYTES_PER_PAIR + 1) // 2 if samblaster else 0,
         sort,
         _PIPELINE_OVERHEAD_BYTES + input_reads * _H2_TRANSIENT_BYTES // _H2_INPUT_READS,
     )
+    if staged:
+        if aligner != "bwa" or not samblaster:
+            raise ValueError("Staged mapping requires paired BWA/samblaster")
+        staged_mapping = result._replace(
+            samblaster=0, sort=0, overhead=result.overhead + 5 * _GIB // 16
+        )
+        postprocess = MappingMemory(
+            0, 0, result.samblaster, int(per_thread * 1.25), 3 * _GIB // 4
+        )
+        return max(staged_mapping, postprocess, key=lambda phase: phase.total)
+    return result
 
 
 def check_mapping_memory(
@@ -396,6 +491,8 @@ def check_mapping_memory(
     preset: str | None = None,
     input_bytes: int | None = None,
     gpu_bytes: int = 0,
+    dense_sa_bytes: int = 0,
+    staged: bool = False,
     required: bool = False,
     label: str | None = None,
 ) -> None:
@@ -416,6 +513,8 @@ def check_mapping_memory(
             preset=preset,
             input_bytes=input_bytes,
             gpu_bytes=gpu_bytes,
+            dense_sa_bytes=dense_sa_bytes,
+            staged=staged,
         )
 
     requested = estimate(threads, memory)

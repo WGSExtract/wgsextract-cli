@@ -1,8 +1,10 @@
 #!/bin/sh
 # Index and align a deterministic synthetic genome; require accurate CPU
 # mappings and, for metal modes when Metal is usable, byte-identical alignments.
-# Usage: smoke.sh <aligner> <work-dir> [metal|force-gpu]
+# Usage: smoke.sh <aligner> <work-dir> [metal|force-gpu|dense-sa]
 set -eu
+# shellcheck source=native/tests/seeded_random.sh
+. "$(dirname "$0")/seeded_random.sh"
 binary=$1
 work=$2
 mode=${3:-cpu}
@@ -13,24 +15,24 @@ rm -rf "$work"
 mkdir -p "$work"
 cd "$work"
 
-awk 'BEGIN {
-    srand(364)
+awk "$seeded_random"'BEGIN {
+    seed(364)
     split("A C G T", base, " ")
     complement["A"] = "T"; complement["C"] = "G"
     complement["G"] = "C"; complement["T"] = "A"
     contigs = 2; length_ = 120000; pairs = 3000; read = 150
     for (c = 1; c <= contigs; c++) {
         sequence[c] = ""
-        for (i = 0; i < length_; i++) sequence[c] = sequence[c] base[int(rand() * 4) + 1]
+        for (i = 0; i < length_; i++) sequence[c] = sequence[c] base[int(rnd() * 4) + 1]
         print ">chr" c > "reference.fa"
         for (i = 1; i <= length_; i += 60) print substr(sequence[c], i, 60) > "reference.fa"
     }
     quality = ""
     for (i = 0; i < read; i++) quality = quality "I"
     for (p = 1; p <= pairs; p++) {
-        c = int(rand() * contigs) + 1
-        insert = 300 + int(rand() * 200)
-        start = int(rand() * (length_ - insert)) + 1
+        c = int(rnd() * contigs) + 1
+        insert = 300 + int(rnd() * 200)
+        start = int(rnd() * (length_ - insert)) + 1
         left = mutate(substr(sequence[c], start, read))
         right = mutate(substr(sequence[c], start + insert - read, read))
         reverse = ""
@@ -42,8 +44,8 @@ awk 'BEGIN {
 }
 function mutate(read_sequence,    i, position) {
     for (i = 0; i < 3; i++) {
-        position = int(rand() * length(read_sequence)) + 1
-        read_sequence = substr(read_sequence, 1, position - 1) base[int(rand() * 4) + 1] \
+        position = int(rnd() * length(read_sequence)) + 1
+        read_sequence = substr(read_sequence, 1, position - 1) base[int(rnd() * 4) + 1] \
             substr(read_sequence, position + 1)
     }
     return read_sequence
@@ -65,7 +67,30 @@ awk -F '\t' '
     }
     function bit(flags, value) { return int(flags / value) % 2 }' cpu.sam
 
-if [ "$mode" = cpu ]; then
+if [ "$mode" = dense-sa ]; then
+    "$binary" densify-sa reference.fa > dense-build.log 2>&1
+    "$binary" capabilities --json reference.fa > dense-capabilities.json 2> dense-capabilities.log
+    grep -v '^@PG' cpu.sam > cpu.records
+    for setting in on off; do
+        "$binary" --backend auto --dense-sa "$setting" mem -t 4 \
+            reference.fa reads_1.fq reads_2.fq > "dense-$setting.sam" 2> "dense-$setting.log"
+        grep -v '^@PG' "dense-$setting.sam" > "dense-$setting.records"
+        cmp cpu.records "dense-$setting.records"
+    done
+    if grep -q 'read suffix-array samples' dense-off.log; then
+        echo "--dense-sa off loaded a side file" >&2
+        exit 1
+    fi
+    if grep -Eq '"interval"[[:space:]]*:[[:space:]]*16([,}]|$)' dense-capabilities.json; then
+        grep -q 'read suffix-array samples for every 16 rows' dense-on.log
+    fi
+    if "$binary" --dense-sa force --version > force.log 2>&1; then
+        echo "Production CLI must not expose the benchmark-only memory bypass" >&2
+        exit 1
+    fi
+    grep -Fq -- '--dense-sa requires on or off' force.log
+    echo "Production dense-SA options preserve alignment records"
+elif [ "$mode" = cpu ]; then
     echo "CPU alignment verified"
 else
     "$binary" capabilities --json > capabilities.json 2> capabilities.log

@@ -1,4 +1,4 @@
-"""Constants for the GUI-for-CLI localization linter."""
+"""Constants for the WGS Extract GUI localization linter."""
 
 BUILTIN_REQUIRED_KEYS: list[str] = [
     "language.code",

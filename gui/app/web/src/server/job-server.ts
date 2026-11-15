@@ -3,6 +3,7 @@ import { renderedCommand } from "../../../shared/rendering.js";
 import type { JobServerSpec, RunProcess } from "../../../shared/types.js";
 import { errorMessage } from "./errors.js";
 import type { JobServerAddress } from "./job-server-client.js";
+import { bundleEnvironment } from "./paths.js";
 import { isPlatformScriptReference, resolvePlatformScriptPath } from "./platform-scripts.js";
 
 const defaultStartupTimeoutSeconds = 60;
@@ -69,7 +70,7 @@ export function createJobServer(spec: JobServerSpec, bundleRoot: string, runProc
             };
             runProcess(executable, rendered.arguments ?? [], {
                 cwd: bundleRoot,
-                env: { ...process.env, GUI_FOR_CLI_BUNDLE_ROOT: bundleRoot, GUI_FOR_CLI_BUNDLE_WORKSPACE: bundleRoot },
+                env: { ...process.env, ...bundleEnvironment(bundleRoot) },
                 signal: controller.signal,
                 maxOutputBytes: 64 * 1024,
                 onStdout,

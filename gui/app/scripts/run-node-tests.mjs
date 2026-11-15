@@ -1,12 +1,17 @@
 import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 const defaultTests = [
   "tests/dev-runner.test.mjs",
   "tests/rendering.test.mjs",
   "tests/rendering-regressions.test.mjs",
+  "tests/rendering-layout.test.mjs",
   "tests/bundle-loader.test.mjs",
   "tests/manifest-validator.test.mjs",
   "tests/bundle-archive.test.mjs",
+  "tests/appimage-environment.test.mjs",
   "tests/paths.test.mjs",
   "tests/config-store.test.mjs",
   "tests/bundle-test-runner.test.mjs",
@@ -14,6 +19,7 @@ const defaultTests = [
   "tests/quick-uninstall.test.mjs",
   "tests/wgsextract-missing-pixi-environment.test.mjs",
   "tests/example-bundles.test.mjs",
+  "tests/wgsextract-reference-genomes.test.mjs",
   "tests/workspace.test.mjs",
   "tests/workspace-location.test.mjs",
   "tests/platform.test.mjs",
@@ -30,13 +36,23 @@ const defaultTests = [
   "tests/result-document.test.mjs",
   "tests/conformance.test.mjs",
   "tests/action-confirmation.test.mjs",
+  "tests/prerequisites.test.mjs",
   "tests/ui-mode.test.mjs",
 ];
 
 const tests = process.argv.slice(2);
+// The app's data folder (from LOCALAPPDATA or XDG_DATA_HOME) holds the CLI runtime that uninstall tests remove,
+// stopping whatever uses it. Tests get a throwaway one, so a test that forgets to isolate it can't touch the
+// developer's own installed app.
+const isolatedRoot = mkdtempSync(path.join(tmpdir(), "wgsextract-gui-tests-"));
 const child = spawn(process.execPath, ["--test", ...(tests.length > 0 ? tests : defaultTests)], {
   stdio: ["ignore", "pipe", "pipe"],
   windowsHide: true,
+  env: {
+    ...process.env,
+    LOCALAPPDATA: path.join(isolatedRoot, "LocalAppData"),
+    XDG_DATA_HOME: path.join(isolatedRoot, "data"),
+  },
 });
 
 const stdout = [];
@@ -51,6 +67,12 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 }
 
 child.on("close", (code, signal) => {
+  try {
+    rmSync(isolatedRoot, { recursive: true, force: true, maxRetries: 3 });
+  } catch (error) {
+    // A file Windows still holds open must not hide the results or change the outcome.
+    console.warn(`Could not remove the tests' app data folder ${isolatedRoot}: ${error.message}`);
+  }
   const stdoutText = Buffer.concat(stdout).toString("utf8");
   const stderrText = Buffer.concat(stderr).toString("utf8");
   if (signal) {

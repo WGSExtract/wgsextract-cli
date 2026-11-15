@@ -1,6 +1,6 @@
 """Examples and outputs for every runnable command (the help contract).
 
-Each command's ``--help`` ends with these, ``wgsextract help --all --json``
+Each command's ``--help`` ends with these, ``wgsextract help <command> --json``
 and docs/commands.md publish them, and tests/test_cli_help.py checks that
 every runnable command has an entry and that every example parses.
 
@@ -34,6 +34,12 @@ _SCORED = _ANNOTATED + "; with --min-score N, also {name}_gt_N.vcf.gz."
 _LIBRARY = "Into the reference library (reflib)"
 
 COMMAND_HELP: dict[str, CommandHelp] = {
+    "score pgs": _h(
+        "<input stem>_<PGS ID>_pgs.json and .tsv: raw score, variant match rate, "
+        "licence and citation. No calibrated percentile yet.",
+        "wgsextract score pgs --input sample.vcf.gz --build GRCh38 --trait height",
+        "wgsextract score pgs --input sample.vcf.gz --build GRCh38 --pgs-id PGS000018",
+    ),
     "help": _h(
         "Prints to stdout; writes no files.",
         "wgsextract help --all",
@@ -57,10 +63,11 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "_coverage_bins.tsv (depth bands, or .parquet with --format parquet) "
         "instead; with --with-bins both .tsv files. With --by, <input>_<bed>_target_coverage.tsv (depth per "
         "target) and <input>_<bed>_target_summary.txt (on- and off-target "
-        "depth, enrichment and targets below --min-depth).",
+        "depth, enrichment and targets below --min-depth). --status writes nothing.",
         "wgsextract info calculate-coverage --input sample.cram",
         "wgsextract info calculate-coverage --input sample.cram --bins --format parquet",
         "wgsextract info calculate-coverage --input sample.bam --by panel.bed --min-depth 20",
+        "wgsextract info calculate-coverage --input sample.cram --status",
     ),
     "info coverage-sample": _h(
         "<input file name>_samplecvg.json; a whole-file run also updates the "
@@ -217,6 +224,12 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "clair3.vcf.gz (+ .tbi).",
         "wgsextract vcf clair3 --input ont.bam",
     ),
+    "vcf impute": _h(
+        "imputed.vcf.gz (+ .tbi): every imputed record marked INFO/IMP, "
+        "low-confidence ones FILTERed ImpLowConf.",
+        "wgsextract vcf impute --input lowpass.bam --chromosomes chr20",
+        "wgsextract vcf impute --vcf-input chip.vcf.gz",
+    ),
     "vcf phase": _h(
         "phased.vcf.gz (+ .tbi) and phased.blocks.tsv; with --haplotag, "
         "haplotagged.bam or .cram (+ index).",
@@ -260,6 +273,10 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         ".confidence.tsv table.",
         f"wgsextract vcf gnomad {_VCF_IN} --max-af 0.01",
     ),
+    "vcf sv-freq": _h(
+        "sv_freq_annotated.vcf.gz (+ .tbi) and sv_freq.tsv.",
+        "wgsextract vcf sv-freq --vcf-input sniffles.vcf.gz",
+    ),
     "vcf revel": _h(
         _SCORED.format(name="revel"),
         f"wgsextract vcf revel {_VCF_IN}",
@@ -297,7 +314,9 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         f"wgsextract vcf pharmcat {_VCF_IN}",
     ),
     "vcf trio": _h(
-        "trio_<mode>.vcf.gz (+ .tbi); from alignments, also trio_joint.vcf.gz "
+        "trio_<mode>.vcf.gz (+ .tbi); VCF denovo/comphet also write "
+        "trio_<mode>_inconclusive.vcf.gz for missing/weak parental evidence; "
+        "from alignments, also trio_joint.vcf.gz "
         "(and trio_denovo_isolated.vcf.gz for --mode denovo). The manifest is "
         "trio.manifest.json.",
         "wgsextract vcf trio --proband child.vcf.gz --mother mother.vcf.gz "
@@ -340,6 +359,20 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "Prints the reference library's status; writes no files.",
         "wgsextract ref status",
     ),
+    "ref test-genome": _h(
+        "In the dataset library: wgsextract-benchmark-hg19-mini/ with its "
+        "genome-config.toml, and the verified zip in .downloads (--delete "
+        "removes both). Without --install or --delete, prints its status.",
+        "wgsextract ref test-genome --install",
+        "wgsextract --json ref test-genome",
+    ),
+    "ref needs": _h(
+        "Prints the missing reference genome or annotation data and the command "
+        "that installs each; writes no files. With --json, the result's "
+        "details.missing lists them.",
+        "wgsextract ref needs -- info --input sample.cram",
+        "wgsextract --json ref needs -- vcf snp --input sample.bam",
+    ),
     "ref download": _h(
         "The FASTA at --out.",
         "wgsextract ref download --url https://example.org/genome.fa.gz "
@@ -349,6 +382,13 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "Beside the FASTA: .fai, .dict and the aligner's index files.",
         "wgsextract ref index --ref hs38.fa",
         "wgsextract ref index --ref hs38.fa --aligner bwa-mem2",
+    ),
+    "ref dense-sa": _h(
+        "Beside the FASTA: <FASTA>.wgse-sa16, wgse-bwa's optional dense "
+        "suffix-array file (0.8 GB for hs38); --list prints the FASTA's files, "
+        "--delete removes them.",
+        "wgsextract ref dense-sa --ref hs38.fa",
+        "wgsextract ref dense-sa --ref hs38.fa --list",
     ),
     "ref verify": _h(
         "Prints what is missing or damaged; creates a missing .fai (and .gzi for "
@@ -411,6 +451,20 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "(--delete removes them).",
         "wgsextract ref somalier --install",
         "wgsextract ref somalier --delete",
+    ),
+    "ref ancestry": _h(
+        f"{_LIBRARY}: the HGDP+1KG ancestry reference (--delete removes it).",
+        "wgsextract ref ancestry --install",
+    ),
+    "ref gnomad-sv": _h(
+        f"{_LIBRARY}: gnomAD SV tables in gnomad-sv/ (--delete removes them).",
+        "wgsextract ref gnomad-sv --install --source lr",
+    ),
+    "ref imputation": _h(
+        f"{_LIBRARY}: the imputation panel's chromosomes, prepared for GLIMPSE2 "
+        "(--delete removes them).",
+        "wgsextract ref imputation --install --chromosomes chr20",
+        "wgsextract ref imputation --delete --chromosomes all",
     ),
     "ref ybrowse": _h(
         f"{_LIBRARY}: the yBrowse GRCh38 SNP sites (--delete removes them).",
@@ -502,9 +556,9 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract bam to-bam --input sample.cram",
     ),
     "bam unalign": _h(
-        "The FASTQ files named by --r1/--r2 (or --se).",
-        "wgsextract bam unalign --input sample.cram --r1 sample_R1.fastq.gz "
-        "--r2 sample_R2.fastq.gz",
+        "<input stem>_R1.fastq.gz and _R2.fastq.gz, or the FASTQs --r1/--r2 "
+        "name (and --se).",
+        "wgsextract bam unalign --input sample.cram",
     ),
     "bam merge": _h(
         "merged.bam or merged.cram (+ index), or the --output path; each run "
@@ -520,8 +574,10 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     ),
     # advanced: qc, repair
     "qc fastqc": _h(
-        "FastQC's <input>_fastqc.html and .zip.",
+        "FastQC's <input>_fastqc.html and .zip (and --r2's); with --r2 and "
+        "--multiqc, multiqc_report.html too.",
         "wgsextract qc fastqc --input sample_R1.fastq.gz",
+        "wgsextract qc fastqc --input s_R1.fastq.gz --r2 s_R2.fastq.gz --multiqc",
     ),
     "qc fastp": _h(
         "<stem>_fp_1.fastq.gz (and _fp_2), <stem>_fastp.html and <stem>_fastp.json.",
@@ -549,6 +605,11 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract qc relate me.cram",
         "wgsextract qc relate child.cram mother.cram father.cram --ped trio.ped",
         "wgsextract qc relate me.cram somalier/cousin.somalier --no-ancestry",
+    ),
+    "qc ancestry": _h(
+        "<stem>.ancestry.tsv: K=7 and K=12 proportions with confidence intervals.",
+        "wgsextract qc ancestry --input sample.cram",
+        "wgsextract qc ancestry --input 23andme_raw.txt",
     ),
     "qc contamination": _h(
         "<stem>.contamination.selfSM (FREEMIX) and <stem>.contamination.Ancestry.",
@@ -583,6 +644,11 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     "typing cyp2d6": _h(
         "Cyrius's <stem>.json/.tsv and <stem>.cyp2d6.pharmcat.tsv.",
         "wgsextract typing cyp2d6 --input sample.cram",
+    ),
+    "typing smn": _h(
+        "SMNCopyNumberCaller's <stem>.smn.tsv/.json; copy numbers and carrier "
+        "status in the result's metrics.",
+        "wgsextract typing smn --input sample.cram",
     ),
     "typing hla": _h(
         "<stem>.t1k_genotype.tsv (and T1K's other files) and <stem>.hla.pharmcat.tsv.",

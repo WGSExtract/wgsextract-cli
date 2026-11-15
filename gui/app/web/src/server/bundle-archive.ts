@@ -17,7 +17,7 @@ interface ArchiveEntry {
 /** What a bundle picker offers: a bundle's manifest.json or any archive `bundleArchiveFormat` reads. */
 export const BUNDLE_FILE_EXTENSIONS = ["json", "zip", "tar", "tgz", "gz", "gzip"] as const;
 
-const COMPLETE_MARKER = ".gui-for-cli-extracted";
+const COMPLETE_MARKER = ".wgsextract-gui-extracted";
 /** Folders archivers add beside the bundle that never hold bundle content. */
 const IGNORED_ROOT_ENTRIES = new Set([COMPLETE_MARKER, "__MACOSX"]);
 
@@ -57,7 +57,7 @@ export async function extractBundleArchive(archivePath: string, format: BundleAr
 }
 
 function defaultCacheRoot(): string {
-    return path.join(tmpdir(), "gui-for-cli-bundles");
+    return path.join(tmpdir(), "wgsextract-gui-bundles");
 }
 
 function archiveEntries(buffer: Buffer, format: BundleArchiveFormat): ArchiveEntry[] {

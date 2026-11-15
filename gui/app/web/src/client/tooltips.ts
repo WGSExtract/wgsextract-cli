@@ -65,7 +65,9 @@ export function positionFloatingTooltip(target: HTMLElement, tooltip: HTMLElemen
     }
     const margin = 12;
     const gap = 8;
-    tooltip.style.maxWidth = `${Math.min(420, Math.max(260, window.innerWidth - margin * 2))}px`;
+    // Wider windows get wider tooltips (a third of the window, 320-640px), so long help reads in fewer lines.
+    const preferredWidth = Math.min(640, Math.max(320, window.innerWidth / 3));
+    tooltip.style.maxWidth = `${Math.min(preferredWidth, window.innerWidth - margin * 2)}px`;
     tooltip.style.left = "0px";
     tooltip.style.top = "0px";
     const targetRect = target.getBoundingClientRect();

@@ -74,8 +74,8 @@ def threads_param() -> Any:
 def memory_param() -> Any:
     return param(
         None,
-        doc="Memory limit per thread, e.g. '2G'; None picks a share of "
-        "this machine's RAM (default: config memory_limit, else auto).",
+        doc="Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); "
+        "None picks a share of RAM (default: config memory_limit, else auto).",
         flags=("--memory", "-m"),
         shared=True,
         config_key="memory_limit",
@@ -176,6 +176,14 @@ def check_confidence(params: Any) -> None:
     from wgsextract_cli.core.variant_confidence import thresholds_from
 
     thresholds_from(params)
+
+
+def no_preflight_param() -> Any:
+    return param(
+        False,
+        help="Run despite too little disk or RAM (not recommended).",
+        action="store_true",
+    )
 
 
 def no_gpu_memory_check_param() -> Any:

@@ -1,29 +1,39 @@
-
-/* mem_sort_dedup_patch()'s two ks_introsort() calls, run on pointers. The same
- * introsort makes the same comparisons and the same moves, so it leaves the
- * regions in exactly upstream's order while moving 8 bytes instead of 88. */
-typedef mem_alnreg_t *wgse_alnreg_p;
-#define wgse_alnreg_slt2(a, b) alnreg_slt2(*(a), *(b))
-KSORT_INIT(wgse_ars2, wgse_alnreg_p, wgse_alnreg_slt2)
-#define wgse_alnreg_slt(a, b) alnreg_slt(*(a), *(b))
-KSORT_INIT(wgse_ars, wgse_alnreg_p, wgse_alnreg_slt)
+/* mem_sort_dedup_patch()'s two ks_introsort() calls, run on small records of
+ * each region's sort keys and its address. The same introsort makes the same
+ * comparisons (on the same key values) and the same moves, so it leaves the
+ * regions in exactly upstream's order, while comparing without loading the
+ * 88-byte regions and moving 16 or 24 bytes instead of 88. */
+typedef struct { int64_t re; mem_alnreg_t *p; } wgse_alnreg_end_t;
+#define wgse_alnreg_end_lt(a, b) ((a).re < (b).re)
+KSORT_INIT(wgse_ars2, wgse_alnreg_end_t, wgse_alnreg_end_lt)
+typedef struct { int64_t rb; int score, qb; mem_alnreg_t *p; } wgse_alnreg_score_t;
+#define wgse_alnreg_score_lt(a, b) ((a).score > (b).score || ((a).score == (b).score && ((a).rb < (b).rb || ((a).rb == (b).rb && (a).qb < (b).qb))))
+KSORT_INIT(wgse_ars, wgse_alnreg_score_t, wgse_alnreg_score_lt)
 
 static void wgse_sort_alnreg(int by_end, size_t n, mem_alnreg_t *a)
 {
 	enum { small = 32 };
-	wgse_alnreg_p small_order[small], *order = small_order;
+	wgse_alnreg_end_t small_end[small], *end = small_end;
+	wgse_alnreg_score_t small_score[small], *score = small_score;
 	mem_alnreg_t small_copy[small], *copy = small_copy;
 	size_t i;
 	if (n > small) { /* BWA's malloc wrapper aborts on failure, as everywhere in bwamem.c. */
-		order = (wgse_alnreg_p*)malloc(n * sizeof(*order));
+		if (by_end) end = (wgse_alnreg_end_t*)malloc(n * sizeof(*end));
+		else score = (wgse_alnreg_score_t*)malloc(n * sizeof(*score));
 		copy = (mem_alnreg_t*)malloc(n * sizeof(*copy));
 	}
-	for (i = 0; i < n; ++i) order[i] = &a[i];
-	if (by_end) ks_introsort(wgse_ars2, n, order);
-	else ks_introsort(wgse_ars, n, order);
-	for (i = 0; i < n; ++i) copy[i] = *order[i];
+	if (by_end) {
+		for (i = 0; i < n; ++i) end[i].re = a[i].re, end[i].p = &a[i];
+		ks_introsort(wgse_ars2, n, end);
+		for (i = 0; i < n; ++i) copy[i] = *end[i].p;
+	} else {
+		for (i = 0; i < n; ++i)
+			score[i].rb = a[i].rb, score[i].score = a[i].score, score[i].qb = a[i].qb, score[i].p = &a[i];
+		ks_introsort(wgse_ars, n, score);
+		for (i = 0; i < n; ++i) copy[i] = *score[i].p;
+	}
 	memcpy(a, copy, n * sizeof(*a));
-	if (n > small) free(order), free(copy);
+	if (n > small) free(by_end ? (void*)end : (void*)score), free(copy);
 }
 
 void wgse_sort_alnreg_by_end(size_t n, mem_alnreg_t *a) { wgse_sort_alnreg(1, n, a); }

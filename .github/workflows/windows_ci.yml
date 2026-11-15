@@ -1,66 +1,39 @@
 name: CI Windows
 
-# Native Windows, as users run it: every tool comes from the Pixi environment
-# (WGS Extract's own Windows builds of the bioinformatics tools). Lint and type
-# checks run on Ubuntu.
-# The desktop app (gui/) has its own CI (gui-*.yml); app-only changes skip this.
+# Native Windows uses the same published Pixi tools as users.
+# pr_ci.yml selects PRs; main pushes and nightly runs retain the full matrix.
 on:
   push:
     branches: [ main ]
     paths-ignore:
-      - gui/**
-      - .github/workflows/gui-*.yml
-  pull_request:
-    branches: [ main ]
-    paths-ignore:
-      - gui/**
-      - .github/workflows/gui-*.yml
+      - "**/*.md"
+  workflow_call:
+    inputs:
+      tests:
+        type: string
+        default: all
+      smoke-only:
+        type: boolean
+        default: false
+  schedule:
+    - cron: "11 6 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-windows-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   test-windows:
-    runs-on: windows-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Set up Pixi
-        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
-        with:
-          pixi-version: v0.82.0
-          locked: true
-          environments: >-
-            default
-            dev
-            gatk
-      - name: Validate installer arguments
-        shell: cmd
-        run: install_windows.bat --dry-run --msys2-root C:\msys64 --skip-pacman-setup
-      - name: Check tools
-        run: pixi run wgsextract deps check
-      - name: Run Benchmark
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          pixi run wgsextract benchmark --dataset real --profile smoke
-          "Benchmark timing is published in this job summary." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
-      - name: Run Tests
-        run: pixi run test-ci
-      - name: Publish test timings and non-gating coverage
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: tests-windows
-          path: |
-            out/coverage.xml
-            out/pytest.xml
-      - name: Run end-to-end tests on generated data
-        run: pixi run test-e2e-fake
-      - name: Build and Smoke Test Package
-        run: pixi run package-smoke
+    if: inputs.tests != '[]'
+    uses: ./.github/workflows/os_tests.yml
+    with:
+      os: windows
+      runner: windows-latest
+      timeout-minutes: 45
+      environments: default dev gatk vep-rs
+      tests: ${{ inputs.tests || 'all' }}
+      smoke-only: ${{ inputs.smoke-only == true }}

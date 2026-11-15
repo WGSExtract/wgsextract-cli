@@ -32,7 +32,7 @@ from wgsextract_cli.core.variant_files import (
 
 if TYPE_CHECKING:
     from wgsextract_cli.api.genotyping import _TypingParams
-    from wgsextract_cli.api.qc import QcContaminationParams
+    from wgsextract_cli.api.qc import QcAncestryParams, QcContaminationParams
 
 _ALT_CONTIG = re.compile(r"^(?:chr)?(?P<chrom>[0-9XY]+)_\w+_alt$")
 
@@ -84,7 +84,7 @@ class Alignment:
 
 
 def open_alignment(
-    params: _TypingParams | QcContaminationParams,
+    params: _TypingParams | QcContaminationParams | QcAncestryParams,
     *,
     purpose: str = "typing",
     any_build: bool = False,
@@ -150,6 +150,19 @@ class RepeatCall:
     coverage: float
     clipped_reads: int = 0
     allele_reads: tuple[int, ...] | None = None
+
+
+def illumina_genome(aln: Alignment, tool: str) -> str:
+    """The -g/--genome of Illumina's Cyrius and SMNCopyNumberCaller: 38, or
+    19/37 for GRCh37 with/without "chr" names."""
+    if aln.build == "hg38":
+        if not aln.chr_prefix:
+            raise WGSExtractError(
+                f"{tool} needs GRCh38 contigs named chr1, chr2, ... (its region "
+                "files use them); this input names them 1, 2, ..."
+            )
+        return "38"
+    return "19" if aln.chr_prefix else "37"
 
 
 def env_tool(tool: str, env: str, note: str = "") -> list[str]:
