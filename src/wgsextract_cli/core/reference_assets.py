@@ -198,13 +198,14 @@ def _fasta_description(fasta: PathInput) -> str:
     Ensembl's "dna:chromosome chromosome:GRCh38:1:..." or NCBI's
     "Homo sapiens chromosome 1, GRCh38.p14 Primary Assembly"."""
     import gzip
+    import zlib
 
     path = fspath(fasta)
     opener = gzip.open if path.lower().endswith(".gz") else open
     try:
         with opener(path, "rb") as handle:
             line = handle.readline(4096)
-    except (OSError, EOFError):
+    except (OSError, EOFError, zlib.error):
         return ""
     parts = line[1:].decode("utf-8", "replace").split(None, 1)
     return parts[1].strip() if line.startswith(b">") and len(parts) == 2 else ""
