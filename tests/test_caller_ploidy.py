@@ -1,6 +1,8 @@
 """Sex-PAR regression: real fixture alignments, only expensive callers faked."""
 
+import platform
 import random
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -123,7 +125,13 @@ def test_sex_par_850_caller_genotypes_preserve_par_and_autosomes(
         assert any(w.code == "caller_sex_unknown" for w in result.warnings)
 
 
-def test_sex_par_850_gpu_gatk_refuses_unsupported_haploid_policy(sex_par):
+@pytest.mark.parametrize("architecture", ["x86_64", "aarch64"])
+def test_sex_par_850_gpu_gatk_refuses_unsupported_haploid_policy(
+    sex_par, architecture, monkeypatch
+):
+    if architecture == "aarch64":
+        monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(platform, "machine", lambda: architecture)
     run_wgsextract("sample", "set", "--input", str(sex_par.bam), "--sex", "Male")
     result = api.vcf.gatk(
         VcfGatkParams(
@@ -137,7 +145,8 @@ def test_sex_par_850_gpu_gatk_refuses_unsupported_haploid_policy(sex_par):
         check=False,
     )
     assert result.status == "failed"
-    assert "sex/PAR ploidy" in str(result.error)
+    expected = "Linux ARM64" if architecture == "aarch64" else "sex/PAR ploidy"
+    assert expected in str(result.error)
     assert not (sex_par.root / "refused" / "gatk.vcf.gz").exists()
 
 
@@ -161,9 +170,17 @@ def test_sex_par_850_native_deepvariant_refuses_unsupported_policy(sex_par, requ
     assert not (sex_par.root / "refused" / "deepvariant.vcf.gz").exists()
 
 
-@pytest.mark.parametrize("caller", ["gatk", "clair3", "deepvariant"])
+@pytest.mark.parametrize(
+    ("caller", "architecture"),
+    [
+        ("gatk", "x86_64"),
+        ("gatk", "aarch64"),
+        ("clair3", None),
+        ("deepvariant", None),
+    ],
+)
 def test_sex_par_850_single_sex_custom_table_is_not_silently_diploid(
-    sex_par, caller, request
+    sex_par, caller, architecture, request, monkeypatch
 ):
     require_bare_name_fakes()
     for build in ("hg19", "hg38"):
@@ -177,6 +194,9 @@ def test_sex_par_850_single_sex_custom_table_is_not_silently_diploid(
         "threads": 1,
     }
     if caller == "gatk":
+        if architecture == "aarch64":
+            monkeypatch.setattr(sys, "platform", "linux")
+        monkeypatch.setattr(platform, "machine", lambda: architecture)
         result = api.vcf.gatk(VcfGatkParams(**common), check=False)
     elif caller == "clair3":
         request.getfixturevalue("linux_x86")
@@ -188,7 +208,8 @@ def test_sex_par_850_single_sex_custom_table_is_not_silently_diploid(
             VcfDeepvariantParams(**common, model_type="WGS"), check=False
         )
     assert result.status == "failed"
-    assert "single-sex" in str(result.error)
+    expected = "Linux ARM64" if architecture == "aarch64" else "single-sex"
+    assert expected in str(result.error)
     assert not (sex_par.root / "refused" / f"{caller}.vcf.gz").exists()
 
 
