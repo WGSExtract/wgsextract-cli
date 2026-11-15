@@ -265,7 +265,11 @@ def test_issue872_staged_estimate_includes_extraction_reserve_and_raw_resume_cre
     }
     one = estimate_resources("realign", threads="3", **options)
     many = estimate_resources("realign", threads="16", **options)
-    assert one.resources == many.resources
+    # Available RAM and disk are live snapshots, not part of the thread cap.
+    for three, sixteen in zip(one.resources, many.resources, strict=True):
+        assert three.resource == sixteen.resource
+        assert three.estimated_bytes == sixteen.estimated_bytes
+        assert three.components == sixteen.components
     workspace = tmp_path / "checkpoint"
     workspace.mkdir()
     raw = workspace / "unsorted.bam"
