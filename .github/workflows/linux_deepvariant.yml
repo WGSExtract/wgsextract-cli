@@ -36,7 +36,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
   # A newer push supersedes a PR's build; a release run is never cancelled.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 

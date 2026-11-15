@@ -70,7 +70,7 @@ permissions:
 # Called releases inherit the caller's event/workflow: give them a unique group,
 # and never cancel a tagged build. Nightly/manual runs are independent too.
 concurrency:
-  group: gui-distribution-${{ github.event_name }}-${{ inputs.tag == '' && (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}
+  group: gui-distribution-${{ github.event_name }}-${{ inputs.tag == '' && (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
   cancel-in-progress: ${{ inputs.tag == '' && (github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1) }}
 
 jobs:
