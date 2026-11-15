@@ -190,12 +190,14 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           pixi run python -c "import sys, xml.etree.ElementTree as ET; s = ET.parse('out/imputation-e2e.xml').getroot().find('testsuite'); assert s is not None; n = int(s.get('tests', '0')); skipped = int(s.get('skipped', '0')); print(n, 'tests,', skipped, 'skipped'); sys.exit(n == 0 or skipped > 0)"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-      # Test result cache (#915): PRs skip test files whose exact dependency
-      # hash already passed on main or on an earlier push of the same PR. Only
-      # main (push, nightly, dispatch) writes the -main- entries PRs read; a
-      # PR's own entries are scoped to its ref. Merge groups run uncached.
+      # Test result cache (#915): PRs and merge groups skip test files whose
+      # exact dependency hash already passed on main (PRs also on an earlier
+      # push of the same PR). Only main (push, nightly, dispatch) writes the
+      # -main- entries they read, and main always runs the full suite, so an
+      # undeclared input that slips past the queue still fails the next main run.
+      # A PR's own entries are scoped to its ref; merge groups record nothing.
       - name: Restore test hashes that passed on main
-        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' && github.event_name != 'merge_group'
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.ref == 'refs/heads/main'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: out/test-cache/main
@@ -230,7 +232,9 @@ jobs:
             cache+=(--cache-read main=out/test-cache/main/passed.json)
             cache+=(--cache-read pr=out/test-cache/pr/passed.json)
             cache+=(--cache-record out/test-cache/pr/passed.json --summary "$GITHUB_STEP_SUMMARY")
-          elif [ "$REF" = refs/heads/main ] && [ "$EVENT" != merge_group ]; then
+          elif [ "$EVENT" = merge_group ]; then
+            cache+=(--cache-read main=out/test-cache/main/passed.json --summary "$GITHUB_STEP_SUMMARY")
+          elif [ "$REF" = refs/heads/main ]; then
             cache+=(--cache-record out/test-cache/main/passed.json)
           else
             cache=()

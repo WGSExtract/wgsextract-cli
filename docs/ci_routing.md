@@ -235,8 +235,9 @@ one lightweight smoke job; changing shared `os_tests.yml` exercises all four
 OS smoke jobs. Mixed product/CI changes union their coverage. Declared docs
 freshness modules join a product selection before the docs lane is suppressed.
 Extra generated-genome, imputation, ONT and Windows vep-rs checks run only
-when their test files are affected. Main pushes, nightly/manual runs and
-merge-queue Ubuntu validation retain full-suite coverage.
+when their test files are affected. Main pushes and nightly/manual runs
+retain full-suite coverage; merge-queue Ubuntu runs the full suite minus files
+the test cache already saw pass on main.
 
 Local callers can use
 `pixi run python scripts/ci_changes.py --base origin/main --head HEAD --print-tests`.
@@ -315,7 +316,8 @@ Each `os_tests.yml` matrix job keeps one manifest of passed hashes:
 |---|---|---|
 | Main push, nightly, manual dispatch on main | nothing (runs the full suite) | `test-pass-v1-<os>-<label>-main-<run>` |
 | Ready PR push or `ready_for_review` | latest `-main-` and this PR's latest `-pr-` manifest | `test-pass-v1-<os>-<label>-pr-<run>` |
-| Merge group, other refs | nothing (runs uncached) | nothing |
+| Merge group | latest `-main-` manifest | nothing |
+| Other refs | nothing (runs uncached) | nothing |
 
 A lookup is exact set membership, so a stale, corrupt, evicted or missing
 manifest can only re-run tests, never skip one whose inputs changed. A run
@@ -329,8 +331,10 @@ and eight trees' names (tens of KB each), so they cannot crowd out Pixi caches.
 base branch's (main's) caches. Only `push`, `schedule` and `workflow_dispatch`
 runs can write main's scope. A PR therefore cannot poison what main or other
 PRs read; at most it can skip its own tests, which its own workflow edits could
-do anyway. Main, nightly and the merge queue run the full suite, so the
-required gate never depends on the cache.
+do anyway. Merge groups read only main's manifest (owner decision,
+2026-11-15): a skipped file's every tracked input matches a tree that passed
+on main. Main pushes and nightly always run the full suite, so an undeclared
+input the hash misses fails the next main run instead of going unnoticed.
 
 Each test job's summary lists the cache-skipped files, where they passed
 (`main` or `pr`) and their hashes. To estimate savings, run
@@ -435,8 +439,8 @@ independent, disjoint pytest tiers in parallel:
   ONT and Windows vep-rs checks retain their environments when affected.
 
 Both tiers partition the affected files on CLI-routed PRs; an empty partition
-passes without testing unrelated files. Non-prose main pushes, merge-queue
-Ubuntu and nightly runs retain full coverage. ARM64 runs its selection in one
+passes without testing unrelated files. Non-prose main pushes and nightly runs
+retain full coverage; merge-queue Ubuntu skips only cache hits from main. ARM64 runs its selection in one
 job. No slow suite is demoted to nightly-only coverage.
 Only the statically proven generic set is Ubuntu-x64-only in CI. Genotyping
 modules whose import closure includes command/tool behavior remain cross-platform.
@@ -513,7 +517,7 @@ required check as passing.
 | Event | Jobs `required` waits for | Not required |
 |---|---|---|
 | Ready pull request | routing, documentation freshness, changed Python lint, CI policy, selected CI Ubuntu checks, secret scan, native CLI smoke, Pages checks, and the area gate covering selected macOS, Windows, ARM64, package smoke and Install Lab jobs | separate CodeQL, GUI and native workflows |
-| Merge-queue group | full Ubuntu CLI suite plus ancillary required checks selected by the group's diff | other OSes, package smoke and Install Lab not run |
+| Merge-queue group | full Ubuntu CLI suite (less test files cached as passed on main) plus ancillary required checks selected by the group's diff | other OSes, package smoke and Install Lab not run |
 
 On PRs, `required` waits for the existing `ready-gate` verdict and requires it
 to succeed, so enabling auto-merge cannot bypass a failing selected OS job.
