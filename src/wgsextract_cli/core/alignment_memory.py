@@ -394,6 +394,7 @@ def estimate_mapping_memory(
     input_bytes: int | None = None,
     gpu_bytes: int = 0,
     dense_sa_bytes: int = 0,
+    staged: bool = False,
 ) -> MappingMemory:
     """Peak memory of the alignment pipeline. ``preset`` is minimap2's, and
     ``input_bytes`` (the read files' size) bounds its batches. ``gpu_bytes``
@@ -455,7 +456,7 @@ def estimate_mapping_memory(
             )
         except OSError:
             pass
-    return MappingMemory(
+    result = MappingMemory(
         index + dense_sa_bytes,
         _working_memory(aligner, int(threads), reads, platform, read_length)
         + gpu_bytes,
@@ -463,6 +464,17 @@ def estimate_mapping_memory(
         sort,
         _PIPELINE_OVERHEAD_BYTES + input_reads * _H2_TRANSIENT_BYTES // _H2_INPUT_READS,
     )
+    if staged:
+        if aligner != "bwa" or not samblaster:
+            raise ValueError("Staged mapping requires paired BWA/samblaster")
+        staged_mapping = result._replace(
+            samblaster=0, sort=0, overhead=result.overhead + 5 * _GIB // 16
+        )
+        postprocess = MappingMemory(
+            0, 0, result.samblaster, int(per_thread * 1.25), 3 * _GIB // 4
+        )
+        return max(staged_mapping, postprocess, key=lambda phase: phase.total)
+    return result
 
 
 def check_mapping_memory(
@@ -480,6 +492,7 @@ def check_mapping_memory(
     input_bytes: int | None = None,
     gpu_bytes: int = 0,
     dense_sa_bytes: int = 0,
+    staged: bool = False,
     required: bool = False,
     label: str | None = None,
 ) -> None:
@@ -501,6 +514,7 @@ def check_mapping_memory(
             input_bytes=input_bytes,
             gpu_bytes=gpu_bytes,
             dense_sa_bytes=dense_sa_bytes,
+            staged=staged,
         )
 
     requested = estimate(threads, memory)
