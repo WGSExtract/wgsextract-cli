@@ -24,10 +24,21 @@
       "title": "sections.datasets.test-dataset.title",
       "subtitle": "sections.datasets.test-dataset.summary",
       "dataSource": {
-        "path": "scripts/library-state.sh",
+        "path": "scripts/run-wgsextract.sh",
         "arguments": [
-          "{{ref_path}}",
-          "{{dataset_library}}"
+          "ref",
+          "status",
+          "--values"
+        ],
+        "optionalArguments": [
+          [
+            "--ref",
+            "{{ref_path}}"
+          ],
+          [
+            "--dataset-library",
+            "{{dataset_library}}"
+          ]
         ]
       },
       "actions": [
@@ -42,10 +53,21 @@
             }
           ],
           "command": {
-            "executable": "{{bundleRoot}}/scripts/test-genome-library.py",
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
-              "download",
-              "{{dataset_library}}"
+              "ref",
+              "test-genome",
+              "--install"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
+                "--dataset-library",
+                "{{dataset_library}}"
+              ]
             ]
           }
         },
@@ -67,10 +89,21 @@
             }
           ],
           "command": {
-            "executable": "{{bundleRoot}}/scripts/test-genome-library.py",
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
-              "delete",
-              "{{dataset_library}}"
+              "ref",
+              "test-genome",
+              "--delete"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
+                "--dataset-library",
+                "{{dataset_library}}"
+              ]
             ]
           }
         },
@@ -94,10 +127,20 @@
             }
           ],
           "command": {
-            "executable": "{{bundleRoot}}/scripts/test-genome-library.py",
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
-              "state",
-              "{{dataset_library}}"
+              "ref",
+              "test-genome"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
+                "--dataset-library",
+                "{{dataset_library}}"
+              ]
             ]
           }
         }

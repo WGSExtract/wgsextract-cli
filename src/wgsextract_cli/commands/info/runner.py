@@ -80,6 +80,7 @@ from .metrics import (
 from .render import (
     MAPPING_UNAVAILABLE,
     exact_mapped_read_pct,
+    is_fresh_output,
     region_file_tag,
     render_info,
     run_full_coverage,
@@ -751,12 +752,42 @@ def _mapped_reads(
     }
 
 
+def _coverage_status(params: CalculateCoverageParams) -> None:
+    """Whether the whole-file reports ``--with-bins`` writes exist and are newer
+    than the input, so a run would show them again instead of rescanning."""
+    reports: dict[str, Path] = {}
+    if params.input:
+        source = Path(params.input).expanduser()
+        folder = Path(params.outdir).expanduser() if params.outdir else source.parent
+        reports = {
+            role: folder / f"{source.name}{suffix}"
+            for role, suffix in (
+                ("coverage", "_coverage.tsv"),
+                ("coverage_bins", "_coverage_bins.tsv"),
+            )
+        }
+    current = bool(reports) and all(
+        is_fresh_output(str(path), str(source)) for path in reports.values()
+    )
+    current_result().set_details(
+        {"current": current, **{role: str(path) for role, path in reports.items()}}
+    )
+    human_output(
+        "Coverage reports: "
+        + ("current" if current else "not current")
+        + "".join(f"\n  {path}" for path in reports.values())
+    )
+
+
 def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
     """``info`` and its coverage subcommands; ``as_csv`` prints the detailed
     table as CSV (CLI only)."""
     from wgsextract_cli.core.variant_files import resolve_reference
     from wgsextract_cli.core.warnings import print_warning
 
+    if isinstance(params, CalculateCoverageParams) and params.status:
+        _coverage_status(params)
+        return
     start_time = time.time()
     verify_dependencies(["samtools"])
     log_dependency_info(["samtools"])

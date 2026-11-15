@@ -13,7 +13,7 @@ from pathlib import Path, PurePosixPath
 from wgsextract_cli.core.bgzf import ensure_bgzf
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.reference_assets import (
-    fasta_prefix,
+    GENOME_SIDECARS,
     n_count_paths,
     read_fai_lengths,
     reference_dict_path,
@@ -102,31 +102,11 @@ def download_gnomad(
     return success
 
 
-# Files made from a genome's FASTA: download state, indexes, aligner indexes.
-_GENOME_SIDECARS = (
-    ".partial", ".partial.source", ".partial.segments",
-    ".fai", ".gzi", ".dict", ".alt",
-    ".amb", ".ann", ".bwt", ".pac", ".sa",  # bwa
-    ".0123", ".bwt.2bit.64",  # bwa-mem2
-)  # fmt: skip
-
-
 def _remove_genome_files(base_path: str) -> None:
     """The FASTA, everything made from it, and its sequence dictionary."""
-    for path in [base_path, *(base_path + ext for ext in _GENOME_SIDECARS)]:
+    for path in [base_path, *(base_path + ext for ext in GENOME_SIDECARS)]:
         Path(path).unlink(missing_ok=True)
     Path(reference_dict_path(base_path)).unlink(missing_ok=True)
-
-
-def delete_genome(final_name: str, reflib_dir: str) -> bool:
-    base_path = str(Path(reference_genomes_dir(reflib_dir), final_name))
-    _remove_genome_files(base_path)
-    paths = [*n_count_paths(base_path)]
-    paths.append(fasta_prefix(base_path) + ".wgse")
-    for path in paths:
-        if Path(path).exists():
-            Path(path).unlink()
-    return True
 
 
 def has_ref_ns(final_name: str, reflib_dir: str) -> bool:

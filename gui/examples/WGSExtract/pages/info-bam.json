@@ -224,11 +224,27 @@
       "iconName": "command-line",
       "textIcon": "▸",
       "dataSource": {
-        "path": "scripts/coverage-state.py",
+        "path": "scripts/run-wgsextract.sh",
         "arguments": [
-          "{{bam_path}}",
-          "{{out_dir}}"
-        ]
+          "--json",
+          "info",
+          "calculate-coverage",
+          "--status"
+        ],
+        "optionalArguments": [
+          [
+            "--input",
+            "{{bam_path}}"
+          ],
+          [
+            "--outdir",
+            "{{out_dir}}"
+          ]
+        ],
+        "transform": {
+          "module": "transforms/coverage-status.mjs",
+          "export": "values"
+        }
       },
       "controls": [
         {
@@ -458,12 +474,18 @@
           "tooltip": "actions.info-bam.bam-commands.bam-unalign.tooltip",
           "estimatedDurationMinutes": 75,
           "command": {
-            "executable": "{{bundleRoot}}/scripts/unalign-to-fastq.sh",
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
-              "{{bam_path}}",
-              "{{out_dir}}"
+              "bam",
+              "unalign",
+              "--input",
+              "{{bam_path}}"
             ],
             "optionalArguments": [
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ],
               [
                 "--region",
                 "{{bam_region}}"
