@@ -13,6 +13,7 @@ import pytest
 
 from scripts import pr_checks_ready
 from scripts.ci_changes import routes, site_validation
+from scripts.ci_select_tests import ci_path, select_tests
 from scripts.ci_test_dependencies import (
     DOCS_ONLY_SCRIPTS,
     DOCS_TEST_TARGETS,
@@ -39,7 +40,7 @@ from scripts.pr_checks_ready import checks_ready, latest_ready_run
         (["src/wgsextract_cli/commands/info.py"], {"cli"}),
         (["pixi.lock"], {"cli", "install"}),
         (["scripts/installlab/lab.py"], {"cli", "install"}),
-        ([".github/actions/download-cache/action.yml"], {"cli", "install"}),
+        ([".github/actions/download-cache/action.yml"], {"docs"}),
         (["install.sh"], {"cli", "install"}),
         (["uninstall.sh"], {"cli", "install"}),
         (["uninstall_windows.bat"], {"cli", "install"}),
@@ -88,6 +89,17 @@ def test_757_install_lab_label_does_not_repeat_the_cli_matrix() -> None:
         "draft_cli": "false",
         "python_files": "[]",
         "routed": "true",
+        "tests": "[]",
+        "ci": "false",
+        "ci_tests": "[]",
+        "ubuntu_tests": "[]",
+        "macos_tests": "[]",
+        "windows_tests": "[]",
+        "arm64_tests": "[]",
+        "ubuntu_smoke": "false",
+        "macos_smoke": "false",
+        "windows_smoke": "false",
+        "arm64_smoke": "false",
     }
 
 
@@ -137,10 +149,24 @@ def test_757_reviewed_test_inputs_never_bypass_pytest(path: str) -> None:
 
 def test_757_every_test_referenced_input_selects_pytest() -> None:
     for path, readers in referenced_inputs().items():
+        if ci_path(path):
+            assert not routes([path])["cli"], path
+            selected_tests = select_tests([path])
+            actual_readers = {
+                reader for reader in readers if Path(reader).name.startswith("test_")
+            }
+            assert selected_tests == "all" or actual_readers <= set(selected_tests), (
+                path
+            )
+            continue
         readers = readers - {
             "tests/test_ci_changes.py",
+            "tests/test_ci_selection.py",
             "tests/test_github_actions_policy.py",
         }
+        readers = frozenset(
+            reader for reader in readers if Path(reader).name.startswith("test_")
+        )
         if not readers:
             continue
         if path.endswith(".md") and path not in GENERATED_DOCS:
@@ -297,8 +323,12 @@ def test_913_light_checks_run_only_for_their_own_inputs(
     path: str, targets: list[str]
 ) -> None:
     selected = routes([path])
-    assert not selected["cli"]
-    assert selected["docs"]
+    if path == "scripts/build_mockup_previews.py":
+        # Its non-light imported readers now run in the product lane.
+        assert selected["cli"]
+    else:
+        assert not selected["cli"]
+        assert selected["docs"]
     assert docs_test_targets([path]) == targets
 
 
@@ -583,6 +613,28 @@ def workflow_shell(step_name: str) -> str:
             break
         command.append(line[10:])
     return "\n".join(command)
+
+
+@LINUX_BASH
+def test_914_ci_policy_creates_out_on_a_fresh_checkout(tmp_path: Path) -> None:
+    test = tmp_path / "tests" / "test_policy_input.py"
+    test.parent.mkdir()
+    test.write_text("def test_temp_input(tmp_path):\n assert tmp_path.is_dir()\n")
+    script = workflow_shell("Run affected CI policy and routing tests")
+    # The Python environment is already installed; exercise local bootstrap,
+    # not the package-install network boundary.
+    script = "\n".join(
+        line for line in script.splitlines() if "pip install" not in line
+    )
+    result = subprocess.run(
+        ["bash", "-c", script],
+        cwd=tmp_path,
+        env={**os.environ, "CI_TESTS": json.dumps(["tests/test_policy_input.py"])},
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "out" / "ci-policy").is_dir()
 
 
 @LINUX_BASH

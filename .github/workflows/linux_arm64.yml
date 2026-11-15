@@ -7,6 +7,13 @@ on:
     paths-ignore:
       - "**/*.md"
   workflow_call:
+    inputs:
+      tests:
+        type: string
+        default: all
+      smoke-only:
+        type: boolean
+        default: false
   schedule:
     - cron: "11 6 * * *"
   workflow_dispatch:
@@ -19,8 +26,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ARM64 keeps its complete suite in one job (docs/ci_routing.md).
   native-arm64:
+    if: inputs.tests != '[]'
     uses: ./.github/workflows/os_tests.yml
     with:
       os: linux-arm64
@@ -28,3 +35,5 @@ jobs:
       timeout-minutes: 90
       environments: default dev vep
       matrix: '[{"tier": "all", "shard": "all", "label": "native"}]'
+      tests: ${{ inputs.tests || 'all' }}
+      smoke-only: ${{ inputs.smoke-only == true }}

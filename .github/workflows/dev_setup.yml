@@ -15,6 +15,7 @@ on:
       - pixi.lock
       - .pre-commit-config.yaml
       - .github/workflows/dev_setup.yml
+      - "!**/*.md"
   workflow_dispatch:
 
 permissions:

@@ -10,6 +10,24 @@ import pytest
 from scripts import validate_github_actions as policy
 from scripts.ci_changes import routes
 
+
+@pytest.mark.parametrize(
+    "workflow",
+    [
+        "ubuntu_ci.yml",
+        "macos_ci.yml",
+        "windows_ci.yml",
+        "linux_arm64.yml",
+    ],
+)
+def test_906_selected_tests_survive_shared_workflow_boundary(workflow: str) -> None:
+    source = (policy.ROOT / ".github/workflows" / workflow).read_text()
+    # CI contract: the shared suite must receive both PR selection and smoke mode.
+    assert "uses: ./.github/workflows/os_tests.yml" in source
+    assert "tests: ${{ inputs.tests || 'all' }}" in source
+    assert "smoke-only: ${{ inputs.smoke-only == true }}" in source
+
+
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 
 
@@ -87,9 +105,17 @@ def test_910_pr_workflows_allocate_no_draft_runners_and_wake_on_readiness(
         )
 
 
-def test_910_shared_os_suite_skips_drafts_before_expanding_the_runner_matrix() -> None:
+@pytest.mark.parametrize("job_name", ["workflow-smoke", "test"])
+def test_910_shared_os_suite_skips_drafts_before_expanding_the_runner_matrix(
+    job_name: str,
+) -> None:
     workflow = (WORKFLOWS / "os_tests.yml").read_text()
-    job = workflow.split("\njobs:\n", 1)[1].split("\n    steps:", 1)[0]
+    job = re.split(
+        r"^  [\w-]+:\s*$",
+        workflow.split(f"\n  {job_name}:\n", 1)[1],
+        maxsplit=1,
+        flags=re.MULTILINE,
+    )[0]
     condition = re.search(r"^    if: (.*)", job, re.MULTILINE)
     assert condition
     assert "github.event.pull_request.draft != true" in top_level_conjuncts(
