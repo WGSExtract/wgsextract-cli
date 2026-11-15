@@ -1,7 +1,6 @@
 """Regression tests for CLI bootstrap, config, and core runtime helpers."""
 
 import csv
-import importlib
 import logging
 import subprocess
 import sys
@@ -16,8 +15,23 @@ import tomllib
 
 from wgsextract_cli import api
 from wgsextract_cli.cli import bootstrap, parser
-from wgsextract_cli.commands import _deps_status, examples
-from wgsextract_cli.core import config, process_registry, resource_policy
+from wgsextract_cli.commands import (
+    _deps_status,
+    _vep_engines,
+    examples,
+    methylation,
+    serve,
+)
+from wgsextract_cli.core import (
+    config,
+    microarray_quirks,
+    mimalloc,
+    native_aligners,
+    native_deepvariant,
+    output_profiles,
+    process_registry,
+    resource_policy,
+)
 from wgsextract_cli.core.settings_schema import SETTINGS
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -156,24 +170,20 @@ def test_valid_config_types_preserve_values_and_defaults(temp_config):
 
 
 @pytest.mark.parametrize(
-    ("key", "module", "accepted"),
+    ("key", "values"),
     [
-        ("server_mcp_transport", "wgsextract_cli.commands.serve", "MCP_TRANSPORTS"),
-        ("methylation_context", "wgsextract_cli.commands.methylation", "CONTEXTS"),
-        ("vep_engine", "wgsextract_cli.commands._vep_engines", "ENGINE_NAMES"),
-        ("native_aligners", "wgsextract_cli.core.native_aligners", "SETTINGS"),
-        ("mimalloc", "wgsextract_cli.core.mimalloc", "SETTINGS"),
-        (
-            "deepvariant_native",
-            "wgsextract_cli.core.native_deepvariant",
-            "ENGINE_CHOICES",
-        ),
-        ("microarray_quirks", "wgsextract_cli.core.microarray_quirks", "MODES"),
+        ("server_mcp_transport", serve.MCP_TRANSPORTS),
+        ("methylation_context", methylation.CONTEXTS),
+        ("vep_engine", _vep_engines.ENGINE_NAMES),
+        ("native_aligners", native_aligners.SETTINGS),
+        ("mimalloc", mimalloc.SETTINGS),
+        ("deepvariant_native", native_deepvariant.ENGINE_CHOICES),
+        ("microarray_quirks", microarray_quirks.MODES),
+        ("output_profile", output_profiles.OUTPUT_PROFILES),
     ],
 )
-def test_config_choices_are_what_their_commands_accept(key, module, accepted):
+def test_config_choices_are_what_their_commands_accept(key, values):
     # contract: loading must accept exactly the values the command runs with.
-    values = getattr(importlib.import_module(module), accepted)
     assert set(SETTINGS[key].info.choices) == set(values)
 
 
