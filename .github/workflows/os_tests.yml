@@ -31,6 +31,9 @@ on:
         description: Install the hs38 reference library the reference-backed tests read.
         type: boolean
         default: false
+      skip-generic:
+        type: boolean
+        default: false
       tests:
         description: JSON affected test files, or all for safety runs.
         type: string
@@ -215,7 +218,7 @@ jobs:
           SHARD: ${{ matrix.shard }}
           OS: ${{ inputs.os }}
           # Ubuntu x64 alone runs the reviewed OS-independent tests.
-          SKIP_INDEPENDENT: ${{ inputs.os != 'ubuntu' }}
+          SKIP_INDEPENDENT: ${{ inputs.os != 'ubuntu' || inputs.skip-generic }}
         run: |
           args=(--ci-tier "$TIER" --ci-shard "$SHARD")
           if [ "$SKIP_INDEPENDENT" = true ]; then args+=(--ci-skip-independent); fi

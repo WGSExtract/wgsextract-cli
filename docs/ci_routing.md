@@ -68,6 +68,70 @@ after deployment.
 
 ## Coverage
 
+### Writer self-certification
+
+Before marking a pushed owner PR ready, run `just certify` on a clean checkout.
+On shared Linux hosts use
+`agent-coord run --cores 4 --mem 8G --label "PR certification" -- just certify`.
+`--platform-only` / `--generic-only` divide the layers across machines.
+The host platform is detected, never overridden; Linux x64 cannot certify ARM64,
+macOS or Windows. All selected tiers/shards run locally in full, without CI's
+passed-test cache. Lint, strict typing, changed-file lint, routed docs/site checks
+and the selector's complete affected CI-policy union form the generic layer.
+Logs/JUnit live in `out/certify/<sha>/<layer>/`; successful exact-head statuses
+include machine, test count, duration and the full log SHA-256.
+
+Certification never provisions its execution environments, including inside the
+nested pytest runner (the installer regression still exercises its own isolated
+installation sandbox, exactly as CI does). Prepared default/dev environments are mandatory,
+with vep-rs for Ubuntu/macOS, gatk/vep-rs for Windows, vep for Linux ARM64, and
+the routed supplemental tools. Installed conda URLs/builds/checksums and Python
+versions/RECORD integrity must match `pixi list --locked`. Retain each pinned
+PyPI wheel as `out/certify/inputs/wheels/<sha256>.whl`: validation checks its
+lock SHA-256 and compares installed files with the wheel, without downloading or
+installing it. Missing archives refuse certification. Editable Python packages
+must point to this checkout. Dependency updates require manually refreshed
+environments and retained artifacts matching the new lock; stale versions or
+changed wheel URLs/hashes cannot reuse old provenance. Both layers enforce this.
+Ubuntu/macOS full suites also require the retained bootstrap archive at
+`out/certify/inputs/wgsextract-reference-bootstrap.tar.gz` with its
+pinned SHA-256, byte-matching installed bootstrap support files, the pinned hg19-to-hg38
+chain and pinned hs38 genome. Retain the bootstrap archive separately when preparing
+certification inputs: the normal bootstrap command removes it after extraction.
+Missing or unprovable reference inputs refuse certification; no downloads occur.
+
+The router executes only the verifier from the PR's **base SHA**, before checking
+out PR code, with isolated Python. A missing base verifier or any change to the
+verifier file falls back to hosted checks. Therefore the bootstrap PR adding the
+verifier cannot itself skip hosted tests; its first trusted skip can happen only
+after landing. Forks are excluded before the verifier executes. The verifier
+accepts only the latest successful status on the exact same-repository head,
+created by an account with write, maintain or admin permission. Missing
+permissions and API errors fail closed. Writers can already push to main:
+this is an attestation at the same trust boundary, not proof against a malicious
+writer. CI needs `statuses: read` and the collaborator-permission API's
+**Metadata: read** (implicit in `GITHUB_TOKEN`); local `gh` needs commit-status
+write and PR-comment write access. No privileged token is given to PR code.
+
+Generic classification rejects uncertain imports/fixtures, subprocess/tool use,
+platform branches, concrete pathlib operations, permissions, signals, symlinks
+and line-ending behavior. Currently no existing module is proven generic under
+these deliberately strict rules; modules remain platform-sensitive until proven.
+Uncertified generic tests run once on Ubuntu; main/nightly behavior is unchanged.
+Gitleaks, CodeQL, Install Lab, native/app builds and package/benchmark smoke stay
+hosted when routed. Merge groups never consume attestations. `required` and the
+ready-gate accept certified skips only after successful routing, and the landing
+validator relies on the current ready run rather than treating status contexts as
+standalone workflow runs. Failed/pending certificates allow hosted fallback.
+
+For macOS remotely, push the branch, acquire randy-mini's coordinator lock, and
+SSH to a dedicated clean worktree with prepared Pixi environments. Leave 25 GiB
+RAM free and run `just certify --platform-only` there using its existing `gh`
+authentication; never forward credentials. Run Linux plus generic locally.
+Whole-suite baseline savings are about 22 Linux runner-minutes plus 1–3 generic
+minutes (package smoke remains), or about 33 additional minutes for macOS ARM64.
+Sparse selected PRs save less.
+
 ### Per-test PR selection
 
 `scripts/ci_select_tests.py` selects individual test files, not whole areas.
@@ -318,8 +382,8 @@ Both tiers partition the affected files on CLI-routed PRs; an empty partition
 passes without testing unrelated files. Non-prose main pushes, merge-queue
 Ubuntu and nightly runs retain full coverage. ARM64 runs its selection in one
 job. No slow suite is demoted to nightly-only coverage.
-Only `test_genotyping.py` (pure genotype parsing/repeat classification) is
-Ubuntu-x64-only in CI. Real-tool genotyping commands remain cross-platform.
+Only the statically proven generic set is Ubuntu-x64-only in CI. Genotyping
+modules whose import closure includes command/tool behavior remain cross-platform.
 Ordinary local pytest still collects everything; the opt-in `--ci-tier` and
 `--ci-skip-independent` and `--ci-shard` flags implement these CI-only partitions.
 

@@ -31,6 +31,22 @@ def test_906_selected_tests_survive_shared_workflow_boundary(workflow: str) -> N
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 
 
+def test_923_fork_code_cannot_write_certification_outputs() -> None:
+    source = (WORKFLOWS / "pr_ci.yml").read_text()
+    before_route = source.split("      - name: Route the complete PR diff", 1)[0]
+    trusted, verifier = before_route.split(
+        "      - name: Read writer certifications using only base code", 1
+    )
+    # CI trust contract: checkout base code and run it before any head checkout.
+    assert "ref: ${{ github.event.pull_request.base.sha }}" in trusted
+    assert "path: .certification-base" in trusted
+    step = verifier.split("      - uses: actions/checkout@", 1)[0]
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in step
+    assert "working-directory: .certification-base" in step
+    assert "python3 -I scripts/ci_certifications.py" in step
+    assert "else\n" in step and "retaining all hosted checks" in step
+
+
 def top_level_conjuncts(expression: str) -> list[str]:
     """Find mandatory conditions without treating a nested OR as a bypass."""
     expression = expression.strip().removeprefix("${{").removesuffix("}}").strip()

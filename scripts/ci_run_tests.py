@@ -20,6 +20,7 @@ from scripts.ci_test_cache import (  # noqa: E402
     fingerprint,
     skip_summary,
 )
+from scripts.ci_test_tiers import SINGLE_OS_MODULES  # noqa: E402
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -109,6 +110,8 @@ def record_passes(manifest_path: Path, tests: list[str], current: Fingerprint) -
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--selection", default="all")
+    parser.add_argument("--generic-only", action="store_true")
+    parser.add_argument("--platform-only", action="store_true")
     parser.add_argument(
         "--cache-job",
         help="Partition identity (OS, tier, shard, flags) for dependency hashes.",
@@ -132,6 +135,22 @@ def main() -> None:
     if (args.cache_read or args.cache_record) and not args.cache_job:
         parser.error("--cache-read and --cache-record need --cache-job")
     targets = test_targets(args.selection)
+    if args.generic_only:
+        targets = test_targets(
+            json.dumps(
+                [
+                    target
+                    for target in (
+                        targets
+                        if targets is not None
+                        else sorted(
+                            path.as_posix() for path in Path("tests").glob("test_*.py")
+                        )
+                    )
+                    if Path(target).name in SINGLE_OS_MODULES
+                ]
+            )
+        )
     current: Fingerprint | None = None
     skipped: list[str] = []
     if args.cache_job and targets != []:
@@ -151,7 +170,11 @@ def main() -> None:
     options = args.pytest_args
     if options[:1] == ["--"]:
         options = options[1:]
-    result = subprocess.run(["pixi", "run", "test-ci", *options, *(targets or [])])
+    if args.platform_only:
+        options.append("--ci-skip-independent")
+    result = subprocess.run(
+        ["pixi", "run", "--no-install", "test-ci", *options, *(targets or [])]
+    )
     # A sparse selection may contain no tests in this tier/hash shard.
     passed = result.returncode == 0 or result.returncode == 5 and targets is not None
     if passed and args.cache_record and current is not None:
