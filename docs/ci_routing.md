@@ -456,13 +456,16 @@ required check as passing.
 
 | Event | Jobs `required` waits for | Not required |
 |---|---|---|
-| Ready pull request | routing, documentation freshness, changed Python lint, CI policy, selected CI Ubuntu checks, secret scan, native CLI smoke, Pages checks | macOS, Windows, ARM64, package smoke, Install Lab, CodeQL, GUI and native workflows: advisory |
+| Ready pull request | routing, documentation freshness, changed Python lint, CI policy, selected CI Ubuntu checks, secret scan, native CLI smoke, Pages checks, and the area gate covering selected macOS, Windows, ARM64, package smoke and Install Lab jobs | separate CodeQL, GUI and native workflows |
 | Merge-queue group | full Ubuntu CLI suite plus ancillary required checks selected by the group's diff | other OSes, package smoke and Install Lab not run |
 
-The required set stays on fast Ubuntu jobs. The other OS jobs, which more
-often lose runners or wait for capacity, stay advisory so they can't stall the
-queue; main pushes run selected advisory workflows in full and nightly runs cover
-all paths. A job-level `needs:` summary in one workflow, rather than polling the
+On PRs, `required` waits for the existing `ready-gate` verdict and requires it
+to succeed, so enabling auto-merge cannot bypass a failing selected OS job.
+Routing/selection skips and valid self-certifications remain accepted by that
+gate. The area gate does not depend on `required`, avoiding a dependency cycle.
+Merge groups skip the area gate and retain the same smaller required set;
+main pushes run selected workflows in full and nightly runs cover all paths.
+A job-level `needs:` summary in one workflow, rather than polling the
 checks API, reports exactly once per run with no extra permissions or timeout.
 The queue's `merge_group` events ignore `paths:` filters, so routing uses the
 group's `base_sha...head_sha` diff for ancillary lanes; Ubuntu retains full
@@ -479,10 +482,10 @@ gh pr checks "$PR" --watch --interval 90
 gh pr checks "$PR" --json bucket,name,workflow,link | python scripts/pr_checks_ready.py --pr "$PR"
 ```
 
-The validator requires a passing `Ready PR area checks` gate, `required` check
-and `changes` job from the same workflow run, with draft-fast absent or skipped
-in that run. That gate runs
-only on non-draft, non-label events after all selected area jobs succeed.
+The validator requires a passing `required` check (which includes the area-gate
+verdict on PRs) and `changes` job from the same workflow run, with draft-fast
+absent or skipped in that run. The area gate runs
+only on non-draft, non-label events after all selected area jobs finish.
 Routing uses `set -euo pipefail`; the final gate fails on a routing failure
 or a missing completion output, rather than accepting an all-skipped matrix.
 It rejects old draft-only passes/skips (including the gap before the ready

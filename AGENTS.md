@@ -123,6 +123,8 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
 
 ## Babysitting a PR
 
+Auto-merge is now safe for area-selected checks because `required` includes the PR area gate; merge-group validation keeps its smaller matrix.
+
 "Babysit" a PR (or "babysit landing" it) means: shepherd it until it merges, using the `ci-pr-autopilot` skill (`.agents/skills/ci-pr-autopilot`).
 
 - Fix review comments that are legitimate, then resolve their threads. Reply `(AI): Reason: ...` to the ones you decline, then resolve those too.

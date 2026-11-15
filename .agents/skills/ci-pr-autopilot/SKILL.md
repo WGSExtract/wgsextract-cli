@@ -165,9 +165,11 @@ Only resolve a thread after one of these is true:
 Check counts depend on the PR's changed areas. Never wait for a fixed minimum
 number of checks (such as the old `scratch/merge_when_clean.sh` threshold of
 more than five). Use `gh pr checks "$PR" --json bucket,name,workflow,link` with
-`python scripts/pr_checks_ready.py --pr "$PR"`: require a passing `Ready PR area checks`
-gate, `required` check and passing `changes` job from the **same run**, with draft-fast absent
-or skipped there and no failing, pending, cancelled or unknown checks. The gate runs only
+`python scripts/pr_checks_ready.py --pr "$PR"`: require a passing `required` check
+and passing `changes` job from the **same run**, with draft-fast absent
+or skipped there and no failing, pending, cancelled or unknown checks. On PRs,
+`required` consumes the existing area-gate verdict, so auto-merge cannot bypass
+a failing selected OS, smoke or Install Lab job. The area gate runs only
 after all area-selected checks finish on a non-draft, non-label event.
 Area checks are evaluated only from that selected run; cancelled/failed older
 draft runs cannot block it. For every other Actions workflow represented in the
@@ -187,7 +189,7 @@ Verify that the PR is non-draft and the checks still refer to the current
 head SHA immediately before merging; use `--match-head-commit` with that SHA.
 Recheck review threads separately.
 This is PR validation before enqueueing, not a gate for merge-group commits:
-the queue retests only its `required` set and intentionally omits advisory jobs.
+the queue retests only its smaller `required` set and skips the PR-only area gate.
 Documentation-only PRs deliberately skip the OS matrix and Install Lab.
 
 Repeat until complete or blocked:

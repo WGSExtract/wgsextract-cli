@@ -368,7 +368,7 @@ def test_757_landing_accepts_one_green_check_not_a_fixed_matrix_size(
 ) -> None:
     checks = [
         {
-            "name": "Ready PR area checks",
+            "name": "required",
             "bucket": buckets[0] if buckets else "pending",
             "workflow": "PR area checks",
             "link": "https://github.com/owner/repo/actions/runs/10/job/100",
@@ -386,7 +386,7 @@ def test_757_landing_accepts_one_green_check_not_a_fixed_matrix_size(
             "link": "https://github.com/owner/repo/actions/runs/10/job/102",
         },
         {
-            "name": "required",
+            "name": "Ready PR area checks",
             "bucket": "pass",
             "workflow": "PR area checks",
             "link": "https://github.com/owner/repo/actions/runs/10/job/103",
@@ -719,6 +719,7 @@ def test_802_queue_required_summary_accepts_its_small_matrix_but_not_missing_rou
         "changes": {"result": routing_result},
         "ubuntu": {"result": ubuntu_result},
         "gitleaks": {"result": "success"},
+        "ready-gate": {"result": "skipped"},
         **{
             job: {"result": "skipped"}
             for job in ("draft-fast", "docs", "python-lint", "native-smoke", "pages")
@@ -730,11 +731,105 @@ def test_802_queue_required_summary_accepts_its_small_matrix_but_not_missing_rou
             "-c",
             workflow_shell("Require routing and every selected required job to pass"),
         ],
-        env={**os.environ, "NEEDS": json.dumps(needs), "ROUTED": routed},
+        env={
+            **os.environ,
+            "NEEDS": json.dumps(needs),
+            "ROUTED": routed,
+            "EVENT_NAME": "merge_group",
+        },
         capture_output=True,
         text=True,
     )
     assert (result.returncode == 0) is ready
+
+
+@LINUX_BASH
+@pytest.mark.parametrize(
+    ("windows_result", "ready"),
+    [("failure", False), ("cancelled", False), ("success", True), ("skipped", True)],
+)
+def test_949_required_consumes_area_verdict_for_windows_failure_or_certified_skip(
+    windows_result: str, ready: bool
+) -> None:
+    area = subprocess.run(
+        [
+            "bash",
+            "-c",
+            workflow_shell("Require complete routing and successful selected checks"),
+        ],
+        env={
+            **os.environ,
+            "ROUTING_RESULT": "success",
+            "ROUTED": "true",
+            "CHECKS_FAILED": str(windows_result == "failure").lower(),
+            "CHECKS_CANCELLED": str(windows_result == "cancelled").lower(),
+        },
+        capture_output=True,
+        text=True,
+    )
+    needs = {
+        "changes": {"result": "success"},
+        "ubuntu": {"result": "success"},
+        "gitleaks": {"result": "success"},
+        "ready-gate": {"result": "success" if area.returncode == 0 else "failure"},
+    }
+    required = subprocess.run(
+        [
+            "bash",
+            "-c",
+            workflow_shell("Require routing and every selected required job to pass"),
+        ],
+        env={
+            **os.environ,
+            "NEEDS": json.dumps(needs),
+            "ROUTED": "true",
+            "EVENT_NAME": "pull_request",
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert (required.returncode == 0) is ready
+    if not ready:
+        assert "ready-gate" in required.stderr
+
+
+@LINUX_BASH
+def test_949_pr_required_rejects_a_skipped_area_gate() -> None:
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            workflow_shell("Require routing and every selected required job to pass"),
+        ],
+        env={
+            **os.environ,
+            "NEEDS": json.dumps(
+                {
+                    "changes": {"result": "success"},
+                    "ready-gate": {"result": "skipped"},
+                }
+            ),
+            "ROUTED": "true",
+            "EVENT_NAME": "pull_request",
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "ready-gate" in result.stderr
+
+
+def test_949_landing_uses_required_instead_of_a_separate_area_gate_check() -> None:
+    checks = [
+        {
+            "name": name,
+            "bucket": "pass",
+            "workflow": "PR area checks",
+            "link": f"https://github.com/owner/repo/actions/runs/10/job/{job}",
+        }
+        for job, name in enumerate(("changes", "required"), 100)
+    ]
+    assert checks_ready(checks, run_id=10)
 
 
 @pytest.mark.parametrize("required_bucket", [None, "pending", "skipping", "pass"])
@@ -975,7 +1070,12 @@ def test_876_active_run_cannot_pass_with_a_failed_or_timed_out_dependency(
             "-c",
             workflow_shell("Require routing and every selected required job to pass"),
         ],
-        env={**os.environ, "NEEDS": json.dumps(needs), "ROUTED": "true"},
+        env={
+            **os.environ,
+            "NEEDS": json.dumps(needs),
+            "ROUTED": "true",
+            "EVENT_NAME": "merge_group",
+        },
         capture_output=True,
         text=True,
     )

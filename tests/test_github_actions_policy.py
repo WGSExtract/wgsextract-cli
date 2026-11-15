@@ -303,6 +303,23 @@ def test_876_summary_gates_stop_when_the_workflow_is_cancelled(job: str) -> None
     assert "success()" not in condition
 
 
+def test_949_required_waits_for_area_gate_without_a_dependency_cycle() -> None:
+    workflow = (WORKFLOWS / "pr_ci.yml").read_text()
+    area, required = workflow.split("\n  ready-gate:\n", 1)[1].split(
+        "\n  required:\n", 1
+    )
+    area_needs = re.search(r"^    needs: \[([^]]+)\]", area, re.MULTILINE)
+    required_needs = re.search(r"^    needs: \[([^]]+)\]", required, re.MULTILINE)
+    assert area_needs and required_needs
+    # CI contract: branch protection must wait for the real area verdict.
+    assert "ready-gate" in required_needs[1].split(", ")
+    assert "required" not in area_needs[1].split(", ")
+    assert {"macos", "windows", "arm64", "smoke", "install"} <= set(
+        area_needs[1].split(", ")
+    )
+    assert "EVENT_NAME: ${{ github.event_name }}" in required
+
+
 def write_workflow(root: Path, uses: str) -> None:
     directory = root / ".github" / "workflows"
     directory.mkdir(parents=True)
