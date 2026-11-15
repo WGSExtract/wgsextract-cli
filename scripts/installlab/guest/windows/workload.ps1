@@ -39,6 +39,9 @@ foreach ($Cache in @("reference/yleaf", "reference/haplogrep3")) {
     }
 }
 W "snp" @("vcf", "snp", "--input", $BAM, "--ref", $REF, "--region", "20", "--ploidy", "2", "--outdir", (Join-Path $Out "snp"))
+# HG00096 is male, but the mini genome has no chrX reads, so microarray refuses
+# Unknown-sex ploidy until the sex is declared (#975).
+W "sample_sex" @("sample", "set", "--input", $BAM, "--sex", "Male")
 # The 5x fixture uses the real confidence defaults; explain weak-site no-calls.
 W "microarray" @("microarray", "--input", $BAM, "--ref", $REF, "--ref-vcf-tab", $TARGETS, "--formats", "23andme_v5", "--call-reasons", "--outdir", (Join-Path $Out "microarray"))
 W "align" @("align", "--r1", $R1, "--r2", $R2, "--ref", $REF, "--outdir", (Join-Path $Out "align"))
