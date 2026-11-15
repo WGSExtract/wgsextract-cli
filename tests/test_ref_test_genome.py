@@ -66,7 +66,7 @@ def _run(capsys, datasets: Path, *flags: str) -> dict:
 
 
 def _tree(root: Path) -> list[str]:
-    return sorted(str(p.relative_to(root)) for p in root.rglob("*"))
+    return sorted(p.relative_to(root).as_posix() for p in root.rglob("*"))
 
 
 def test_install_status_and_delete(tmp_path, published, capsys):
@@ -141,7 +141,7 @@ def test_delete_unlinks_a_linked_dataset_not_what_it_points_to(tmp_path, capsys)
 
 
 @pytest.mark.parametrize("unsafe", ["outside", "link"])
-def test_a_zip_with_an_unsafe_entry_installs_nothing(
+def test_issue_947_a_zip_with_an_unsafe_entry_installs_nothing(
     tmp_path, monkeypatch, capsys, unsafe
 ):
     datasets = tmp_path / "datasets"

@@ -70,6 +70,56 @@ after deployment.
 
 ### Writer self-certification
 
+#### One-time machine / checkout preparation
+
+Use the Pixi version pinned in `.github/actions/setup-pixi/action.yml` (or a
+compatible version exposing locked wheel URLs and SHA-256 values). Ensure `pixi`
+is on PATH in non-interactive shells too; an unconfigured mise shim is not a
+working Pixi installation. Install environments explicitly, just as CI does:
+
+```sh
+pixi install --locked -e default -e dev
+just certify-setup
+```
+
+`certify-setup` downloads the exact PyPI wheels in `pixi list --locked`, checks
+their lockfile SHA-256, retains them under `out/certify/inputs/wheels/`, and
+validates the installed environments against them. It does not install tools,
+rebuild dependencies from source, change the lockfile, or publish attestations.
+Re-run it after lockfile updates and for each new checkout; Pixi environments
+are non-relocatable and editable packages must refer to that checkout.
+Already verified downloads are reused; incomplete or incorrect downloads never
+replace a verified archive.
+
+For **full Ubuntu/macOS product suites**, install the supplemental environments
+needed by the selection (normally `vep-rs`; `imputation`, `pacbio`, `phasing`,
+and `somalier` for their routed tests), then retain their wheels too:
+
+```sh
+pixi install --locked -e vep-rs
+just certify-setup -e default -e dev -e vep-rs --reference
+```
+
+Repeated `-e` replaces the default environment list. `--reference` retains the
+bootstrap release archive after verifying its pinned SHA-256, safely extracts
+missing support files, fetches the pinned liftOver chain (with the same mirror
+fallback as CI), and invokes CI's normal hs38 catalog installer. It then
+validates all reference bytes, including the catalog-pinned full genome.
+This can download several GiB; run under the resource coordinator on shared
+hosts. Existing conflicting bootstrap files are not overwritten: the refusal
+identifies the file to move aside before repeating setup.
+An older or modified hs38 FASTA must likewise be moved aside with its indexes
+before rerunning setup; the normal catalog installer reuses an existing FASTA
+rather than replacing it with the pinned copy.
+
+References use `reference_library` in config.toml, falling back to `reference/`.
+To reuse a machine's existing library across worktrees, configure that path
+using normal CLI configuration rather than copying the multi-GiB genome.
+Each checkout still needs the retained bootstrap archive and wheel archives.
+Generic-only and CI-policy-only certifications do not need reference setup.
+
+#### Certifying a PR
+
 Before marking a pushed owner PR ready, run `just certify` on a clean checkout.
 On shared Linux hosts use
 `agent-coord run --cores 4 --mem 8G --label "PR certification" -- just certify`.
@@ -90,15 +140,16 @@ versions/RECORD integrity must match `pixi list --locked`. Retain each pinned
 PyPI wheel as `out/certify/inputs/wheels/<sha256>.whl`: validation checks its
 lock SHA-256 and compares installed files with the wheel, without downloading or
 installing it. Missing archives refuse certification. Editable Python packages
-must point to this checkout. Dependency updates require manually refreshed
-environments and retained artifacts matching the new lock; stale versions or
+must point to this checkout. Dependency updates require explicitly refreshed
+environments and `just certify-setup` artifacts matching the new lock; stale versions or
 changed wheel URLs/hashes cannot reuse old provenance. Both layers enforce this.
 Ubuntu/macOS full suites also require the retained bootstrap archive at
 `out/certify/inputs/wgsextract-reference-bootstrap.tar.gz` with its
 pinned SHA-256, byte-matching installed bootstrap support files, the pinned hg19-to-hg38
 chain and pinned hs38 genome. Retain the bootstrap archive separately when preparing
 certification inputs: the normal bootstrap command removes it after extraction.
-Missing or unprovable reference inputs refuse certification; no downloads occur.
+Missing or unprovable reference inputs refuse certification with the missing
+path and setup command; no downloads occur during certification.
 
 The router executes only the verifier from the PR's **base SHA**, before checking
 out PR code, with isolated Python. A missing base verifier or any change to the
@@ -123,6 +174,11 @@ hosted when routed. Merge groups never consume attestations. `required` and the
 ready-gate accept certified skips only after successful routing, and the landing
 validator relies on the current ready run rather than treating status contexts as
 standalone workflow runs. Failed/pending certificates allow hosted fallback.
+Setup refusals, missing inputs and interruptions clear pending attestations with
+`error` (“Not certified … hosted CI covers this SHA”), not `failure`. Only a
+test runner report containing failed tests produces `failure`. Landing still
+requires the passing hosted ready run; non-success local attestations never
+make that otherwise-passing run fail the landing gate.
 
 For macOS remotely, push the branch, acquire randy-mini's coordinator lock, and
 SSH to a dedicated clean worktree with prepared Pixi environments. Leave 25 GiB
@@ -456,13 +512,16 @@ required check as passing.
 
 | Event | Jobs `required` waits for | Not required |
 |---|---|---|
-| Ready pull request | routing, documentation freshness, changed Python lint, CI policy, selected CI Ubuntu checks, secret scan, native CLI smoke, Pages checks | macOS, Windows, ARM64, package smoke, Install Lab, CodeQL, GUI and native workflows: advisory |
+| Ready pull request | routing, documentation freshness, changed Python lint, CI policy, selected CI Ubuntu checks, secret scan, native CLI smoke, Pages checks, and the area gate covering selected macOS, Windows, ARM64, package smoke and Install Lab jobs | separate CodeQL, GUI and native workflows |
 | Merge-queue group | full Ubuntu CLI suite plus ancillary required checks selected by the group's diff | other OSes, package smoke and Install Lab not run |
 
-The required set stays on fast Ubuntu jobs. The other OS jobs, which more
-often lose runners or wait for capacity, stay advisory so they can't stall the
-queue; main pushes run selected advisory workflows in full and nightly runs cover
-all paths. A job-level `needs:` summary in one workflow, rather than polling the
+On PRs, `required` waits for the existing `ready-gate` verdict and requires it
+to succeed, so enabling auto-merge cannot bypass a failing selected OS job.
+Routing/selection skips and valid self-certifications remain accepted by that
+gate. The area gate does not depend on `required`, avoiding a dependency cycle.
+Merge groups skip the area gate and retain the same smaller required set;
+main pushes run selected workflows in full and nightly runs cover all paths.
+A job-level `needs:` summary in one workflow, rather than polling the
 checks API, reports exactly once per run with no extra permissions or timeout.
 The queue's `merge_group` events ignore `paths:` filters, so routing uses the
 group's `base_sha...head_sha` diff for ancillary lanes; Ubuntu retains full
@@ -479,10 +538,10 @@ gh pr checks "$PR" --watch --interval 90
 gh pr checks "$PR" --json bucket,name,workflow,link | python scripts/pr_checks_ready.py --pr "$PR"
 ```
 
-The validator requires a passing `Ready PR area checks` gate, `required` check
-and `changes` job from the same workflow run, with draft-fast absent or skipped
-in that run. That gate runs
-only on non-draft, non-label events after all selected area jobs succeed.
+The validator requires a passing `required` check (which includes the area-gate
+verdict on PRs) and `changes` job from the same workflow run, with draft-fast
+absent or skipped in that run. The area gate runs
+only on non-draft, non-label events after all selected area jobs finish.
 Routing uses `set -euo pipefail`; the final gate fails on a routing failure
 or a missing completion output, rather than accepting an all-skipped matrix.
 It rejects old draft-only passes/skips (including the gap before the ready
