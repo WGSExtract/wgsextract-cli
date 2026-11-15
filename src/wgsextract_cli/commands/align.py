@@ -224,11 +224,19 @@ class AlignJob:
         job.format = job.format or "BAM"
         if job.output_profile != "default":
             if getattr(params, "format", None) == "BAM":
-                raise UsageError(
-                    f"--output-profile {job.output_profile} writes CRAM, not "
-                    "explicit --format BAM. Omit --format or use --format CRAM."
+                if params.explicitly_set("output_profile"):
+                    raise UsageError(
+                        f"--output-profile {job.output_profile} writes CRAM, not "
+                        "explicit --format BAM. Use --output-profile default "
+                        "for BAM, or --format CRAM."
+                    )
+                logging.info(
+                    "Using explicit --format BAM instead of config output_profile=%s.",
+                    job.output_profile,
                 )
-            job.format = "CRAM"
+                job.output_profile = "default"
+            else:
+                job.format = "CRAM"
         current_result().add_metrics(output_profile=job.output_profile)
         return job
 

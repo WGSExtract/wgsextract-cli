@@ -106,7 +106,7 @@ GPU_HELP = (
     "minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU "
     "alignment to retain MM/ML methylation tags."
 )
-_FORMAT_DOC = "None uses BAM; CRAM is written with the target reference."
+_FORMAT_DOC = "Default: BAM. CRAM is written with the target reference."
 
 
 def _output_profile_param() -> Any:

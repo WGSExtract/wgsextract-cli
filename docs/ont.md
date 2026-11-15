@@ -52,8 +52,11 @@ The usual realignment disk-space preflight also applies to streamed ONT reads.
 
 `align` and `realign` accept `--output-profile default|archive|calling`.
 The default leaves `--format` and the installed encoder's defaults unchanged.
-The other profiles select CRAM when `--format` is omitted; explicit
-`--format BAM` conflicts and is refused:
+The other profiles select CRAM when `--format` is omitted. An explicit
+profile conflicts with `--format BAM` and is refused; use
+`--output-profile default` for BAM. When the profile comes from config.toml
+instead, explicit `--format BAM` wins and the effective profile is default
+(logged at info level), including in the desktop app and Python API:
 
 | Profile | Encoding | Readers |
 | --- | --- | --- |
@@ -68,6 +71,13 @@ writes BAM: auto selects minimap2 for PacBio CRAM profiles, while explicit
 `--aligner pbmm2` is refused with a profile-specific message.
 GPU alignment writes BAM first and converts it with samtools for these
 profiles, so it needs temporary space for that BAM too.
+
+On one 5M-pair HG002 short-read observation, archive reduced size by **9.4%**,
+but writing was **1.9× slower**, SNP calling took **12% longer**, and peak
+RSS during writing/calling was **2.71 vs 1.53 GB (about 1.8×)** compared
+with default CRAM 3.1. These are single warm-cache observations on a shared
+M1 Pro, not established performance guarantees; the trade-off depends on
+the reads and reader.
 
 ```bash
 wgsextract realign --input ont.cram --ref hs38.fa --output-profile archive

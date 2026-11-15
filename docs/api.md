@@ -814,7 +814,7 @@ workspace.
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `sample` | `str \| None` | `None` | `--sample` | Sample name for the read group (default: the reads' file name). |
 | `long_read` | `bool` | `False` | `--long-read` | Treat the reads as long reads (PacBio/ONT) and align them with pbmm2 or minimap2. |
-| `format` | `str \| None` | `None` | `--format` | None uses BAM; CRAM is written with the target reference. One of: `BAM`, `CRAM` |
+| `format` | `str \| None` | `None` | `--format` | Default: BAM. CRAM is written with the target reference. One of: `BAM`, `CRAM` |
 | `output_profile` | `str \| None` | `None` (config `output_profile`) | `--output-profile` | Lossless output: default keeps --format; archive selects CRAM 3.1 (GATK >=4.7); calling selects CRAM 3.0. Default: config output_profile, else default. See docs/ont.md. One of: `default`, `archive`, `calling` |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | An aligned BAM/CRAM of the same sample whose header picks the reference from the library when ref is unset. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
@@ -857,7 +857,7 @@ settings and tools are unchanged.
 | `input_ref` | `Path \| None` | `None` | `--input-ref` | FASTA decoding the input CRAM, not the target --ref. Default: --ref if sequence names, lengths and MD5s match, else the matching reference-library FASTA. |
 | `sample` | `str \| None` | `None` | `--sample` | Sample name to embed in read-group metadata. |
 | `long_read` | `bool` | `False` | `--long-read` | Treat input as long-read data (PacBio/ONT). |
-| `format` | `str \| None` | `None` | `--format` | None uses BAM; CRAM is written with the target reference. One of: `BAM`, `CRAM` |
+| `format` | `str \| None` | `None` | `--format` | Default: BAM. CRAM is written with the target reference. One of: `BAM`, `CRAM` |
 | `output_profile` | `str \| None` | `None` (config `output_profile`) | `--output-profile` | Lossless output: default keeps --format; archive selects CRAM 3.1 (GATK >=4.7); calling selects CRAM 3.0. Default: config output_profile, else default. See docs/ont.md. One of: `default`, `archive`, `calling` |
 | `keep_fastq` | `bool` | `False` | `--keep-fastq` | Keep extracted FASTQs (normally deleted): pairs, or one tagged <input stem>.fastq.gz for ONT/PacBio. Supplied or reused FASTQs are never deleted. |
 | `force_extract` | `bool` | `False` | `--force-extract` | Re-extract FASTQs even if a matching pair already exists next to the BAM. |

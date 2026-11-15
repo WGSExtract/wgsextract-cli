@@ -152,12 +152,17 @@ def test_691_lossless_profiles_are_readable_by_calling_extract_and_info(
 
 @needs_tools("bwa", "samtools")
 def test_691_config_profile_selects_cram_and_explicit_default_preserves_bam(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, caplog
 ):
     reads = _short_reads(tmp_path)
     monkeypatch.setitem(settings, "output_profile", "calling")
-    for profile, suffix in ((None, "cram"), ("default", "bam")):
-        out = tmp_path / suffix
+    caplog.set_level("INFO")
+    for profile, output_format, suffix in (
+        (None, None, "cram"),
+        ("default", None, "bam"),
+        (None, "BAM", "bam"),
+    ):
+        out = tmp_path / f"{suffix}-{profile or 'configured'}"
         result = api.align.align(
             api.AlignParams(
                 r1=reads.r1,
@@ -165,6 +170,7 @@ def test_691_config_profile_selects_cram_and_explicit_default_preserves_bam(
                 ref=reads.ref,
                 outdir=out,
                 output_profile=profile,
+                format=output_format,
                 native_aligners="off",
                 aligner="bwa",
                 threads=1,
@@ -174,10 +180,27 @@ def test_691_config_profile_selects_cram_and_explicit_default_preserves_bam(
         output = out / f"reads_aligned.{suffix}"
         assert output.is_file()
         assert result.metrics["output_profile"] == (
-            "calling" if profile is None else profile
+            "calling" if suffix == "cram" else "default"
         )
         if suffix == "cram":
             assert cram_version(str(output)) == (3, 0)
+    assert "config output_profile=calling" in caplog.text
+
+
+@needs_tools("bwa", "samtools")
+def test_691_desktop_style_explicit_bam_overrides_config_profile(tmp_path, monkeypatch):
+    reads = _short_reads(tmp_path)
+    monkeypatch.setitem(settings, "output_profile", "archive")
+    out = tmp_path / "out"
+    run_wgsextract(
+        "align", "--r1", reads.r1, "--r2", reads.r2, "--ref", reads.ref,
+        "--format", "BAM", "--outdir", str(out), "--aligner", "bwa",
+        "--native-aligners", "off", "--threads", "1", "--memory", "64M",
+    )  # fmt: skip
+    output = out / "reads_aligned.bam"
+    assert output.is_file()
+    _samtools("quickcheck", str(output))
+    assert not list(out.glob("*.cram"))
 
 
 @needs_tools("bwa", "samtools")
@@ -285,6 +308,7 @@ def test_691_explicit_bam_conflicts_with_cram_profile_before_running(tmp_path, c
     result = run(params, check=False)
     assert result.exit_code == 2
     assert result.error is not None and "--format BAM" in result.error.message
+    assert "--output-profile default" in result.error.message
 
 
 @needs_tools("samtools", "minimap2")
