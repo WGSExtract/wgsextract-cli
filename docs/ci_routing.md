@@ -70,6 +70,53 @@ after deployment.
 
 ### Writer self-certification
 
+#### One-time machine / checkout preparation
+
+Use the Pixi version pinned in `.github/actions/setup-pixi/action.yml` (or a
+compatible version exposing locked wheel URLs and SHA-256 values). Ensure `pixi`
+is on PATH in non-interactive shells too; an unconfigured mise shim is not a
+working Pixi installation. Install environments explicitly, just as CI does:
+
+```sh
+pixi install --locked -e default -e dev
+just certify-setup
+```
+
+`certify-setup` downloads the exact PyPI wheels in `pixi list --locked`, checks
+their lockfile SHA-256, retains them under `out/certify/inputs/wheels/`, and
+validates the installed environments against them. It does not install tools,
+rebuild dependencies from source, change the lockfile, or publish attestations.
+Re-run it after lockfile updates and for each new checkout; Pixi environments
+are non-relocatable and editable packages must refer to that checkout.
+Already verified downloads are reused; incomplete or incorrect downloads never
+replace a verified archive.
+
+For **full Ubuntu/macOS product suites**, install the supplemental environments
+needed by the selection (normally `vep-rs`; `imputation`, `pacbio`, `phasing`,
+and `somalier` for their routed tests), then retain their wheels too:
+
+```sh
+pixi install --locked -e vep-rs
+just certify-setup -e default -e dev -e vep-rs --reference
+```
+
+Repeated `-e` replaces the default environment list. `--reference` retains the
+bootstrap release archive after verifying its pinned SHA-256, safely extracts
+missing support files, fetches the pinned liftOver chain (with the same mirror
+fallback as CI), and invokes CI's normal hs38 catalog installer. It then
+validates all reference bytes, including the catalog-pinned full genome.
+This can download several GiB; run under the resource coordinator on shared
+hosts. Existing conflicting bootstrap files are not overwritten: the refusal
+identifies the file to move aside before repeating setup.
+
+References use `reference_library` in config.toml, falling back to `reference/`.
+To reuse a machine's existing library across worktrees, configure that path
+using normal CLI configuration rather than copying the multi-GiB genome.
+Each checkout still needs the retained bootstrap archive and wheel archives.
+Generic-only and CI-policy-only certifications do not need reference setup.
+
+#### Certifying a PR
+
 Before marking a pushed owner PR ready, run `just certify` on a clean checkout.
 On shared Linux hosts use
 `agent-coord run --cores 4 --mem 8G --label "PR certification" -- just certify`.
@@ -90,15 +137,16 @@ versions/RECORD integrity must match `pixi list --locked`. Retain each pinned
 PyPI wheel as `out/certify/inputs/wheels/<sha256>.whl`: validation checks its
 lock SHA-256 and compares installed files with the wheel, without downloading or
 installing it. Missing archives refuse certification. Editable Python packages
-must point to this checkout. Dependency updates require manually refreshed
-environments and retained artifacts matching the new lock; stale versions or
+must point to this checkout. Dependency updates require explicitly refreshed
+environments and `just certify-setup` artifacts matching the new lock; stale versions or
 changed wheel URLs/hashes cannot reuse old provenance. Both layers enforce this.
 Ubuntu/macOS full suites also require the retained bootstrap archive at
 `out/certify/inputs/wgsextract-reference-bootstrap.tar.gz` with its
 pinned SHA-256, byte-matching installed bootstrap support files, the pinned hg19-to-hg38
 chain and pinned hs38 genome. Retain the bootstrap archive separately when preparing
 certification inputs: the normal bootstrap command removes it after extraction.
-Missing or unprovable reference inputs refuse certification; no downloads occur.
+Missing or unprovable reference inputs refuse certification with the missing
+path and setup command; no downloads occur during certification.
 
 The router executes only the verifier from the PR's **base SHA**, before checking
 out PR code, with isolated Python. A missing base verifier or any change to the

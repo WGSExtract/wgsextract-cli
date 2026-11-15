@@ -18,8 +18,11 @@ from scripts.ci_certifications import certifications, publish_certification
 from scripts.ci_certify import host_platform, run_layer, validate_head
 from scripts.ci_certify_inputs import (
     check_packages,
+    check_wheel,
+    locked_packages,
     validate_bootstrap,
 )
+from scripts.ci_certify_setup import prepare_wheels
 from scripts.ci_test_tiers import generic_test
 from scripts.pr_checks_ready import checks_ready
 
@@ -307,6 +310,74 @@ def test_923_installed_tool_must_match_lock_url_and_digest(tmp_path: Path) -> No
     record.write_text(json.dumps({**package, "sha256": "b" * 64}))
     with pytest.raises(ValueError, match="pixi.lock"):
         check_packages(tmp_path, [package])
+
+
+def test_951_missing_environment_names_install_and_setup_remedy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ValueError) as caught:
+        locked_packages("dev")
+    assert ".pixi/envs/dev" in str(caught.value)
+    assert "pixi install --locked -e dev" in str(caught.value)
+    assert "just certify-setup -e dev" in str(caught.value)
+
+
+def test_951_missing_wheel_names_exact_archive_and_setup_remedy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import importlib.metadata
+
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ValueError) as caught:
+        check_wheel(
+            tmp_path,
+            importlib.metadata.PathDistribution(tmp_path),
+            {"name": "sample", "sha256": "a" * 64},
+        )
+    assert "sample" in str(caught.value)
+    assert f"out/certify/inputs/wheels/{'a' * 64}.whl" in str(caught.value)
+    assert "just certify-setup" in str(caught.value)
+
+
+def test_951_missing_bootstrap_names_archive_and_reference_remedy(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError) as caught:
+        validate_bootstrap(tmp_path, "bootstrap.tar.gz", "a" * 64)
+    assert str(tmp_path / "bootstrap.tar.gz") in str(caught.value)
+    assert "just certify-setup --reference" in str(caught.value)
+
+
+def test_951_setup_retains_only_lock_verified_wheels_and_reuses_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    wheel = tmp_path / "sample.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("sample.py", "version = '1.0'\n")
+    data = wheel.read_bytes()
+    checksum = hashlib.sha256(data).hexdigest()
+    package = {
+        "kind": "pypi",
+        "name": "sample",
+        "version": "1.0",
+        "url": wheel.as_uri(),
+        "sha256": checksum,
+    }
+    prepare_wheels([package])
+    retained = Path("out/certify/inputs/wheels") / f"{checksum}.whl"
+    assert retained.read_bytes() == data
+    wheel.unlink()
+    prepare_wheels([package])
+    retained.write_bytes(b"corrupted cached wheel")
+    wheel.write_bytes(data)
+    prepare_wheels([package])
+    assert retained.read_bytes() == data
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        prepare_wheels([{**package, "sha256": "f" * 64}])
+    assert not retained.with_name(f"{'f' * 64}.whl").exists()
+    assert not list(retained.parent.glob("*.part"))
 
 
 def test_923_stale_or_modified_python_dependency_cannot_certify(
