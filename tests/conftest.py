@@ -214,7 +214,11 @@ def _isolate_user_config(
     saved = dict(settings)
     real = ""
     if request.node.get_closest_marker("real_config") is not None:
-        real = _REAL_CONFIG.read_text() if _REAL_CONFIG.is_file() else ""
+        real = (
+            _REAL_CONFIG.read_text(encoding="utf-8-sig")
+            if _REAL_CONFIG.is_file()
+            else ""
+        )
         real = "".join(
             line + "\n"
             for line in real.splitlines()
